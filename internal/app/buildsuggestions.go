@@ -89,7 +89,7 @@ func buildSuggestions(
 		provider = overrides.LLM
 	}
 	suggester := suggest.New(provider, catalogService, tmdbClient, set.intv("suggest.max_acquisitions"))
-	suggester.WithRatings(tmdbClient)
+	suggester.WithRatings(tmdbClient).WithFeedback(discoveryFeedbackSource{store: st})
 	service := suggest.NewService(st, suggester, suggest.Config{
 		Workers: set.intv("job.workers"), Timeout: set.dur("job.timeout"), CacheTTL: 24 * time.Hour,
 	}, newID, time.Now, log).

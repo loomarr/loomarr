@@ -7,26 +7,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 )
-
-const (
-	scorecardSchemaVersion = 2
-	corpusVersion          = "2026-08-23.3"
-)
-
-type Scorecard struct {
-	SchemaVersion int       `json:"schemaVersion"`
-	CorpusVersion string    `json:"corpusVersion"`
-	GeneratedAt   time.Time `json:"generatedAt"`
-	Profile       string    `json:"profile"`
-	Provider      string    `json:"provider"`
-	Model         string    `json:"model"`
-	Certified     bool      `json:"certified"`
-	Results       []Result  `json:"results"`
-}
 
 // TestEvalCorpus runs the whole intent corpus through the REAL suggester against
 // the REAL configured LLM + catalog, applying the deterministic hard gates and an
@@ -38,6 +23,9 @@ type Scorecard struct {
 // with LLM_* + LIBRARY_URL + LIBRARY_TOKEN + TMDB_API_KEY set. It skips (not fails)
 // when the env isn't configured, so it's safe to leave in CI as a no-op until wired.
 func TestEvalCorpus(t *testing.T) {
+	if os.Getenv("LOOMARR_EVAL_CONTRACT_ONLY") == "1" {
+		t.Skip("live semantic corpus is disabled in the hermetic contract lane")
+	}
 	required := os.Getenv("LOOMARR_EVAL_REQUIRED") == "1"
 	if required && os.Getenv("LOOMARR_EVAL_OUT") == "" {
 		t.Fatal("LOOMARR_EVAL_OUT is required in certification mode")
@@ -49,64 +37,53 @@ func TestEvalCorpus(t *testing.T) {
 		}
 		t.Skipf("eval not configured: %v", err)
 	}
-	// The judge uses the same configured provider by default. LOOMARR_EVAL_JUDGE can
-	// point at a stronger model later; for now reuse the suggester's provider.
-	judgeProvider := buildJudgeProvider()
-
 	ctx, cancel := context.WithTimeout(context.Background(), 18*time.Minute)
 	defer cancel()
 
-	var results []Result
-	for _, c := range Corpus {
-		c := c
-		t.Run(c.Name, func(t *testing.T) {
-			observed.Begin()
-			prop, gerr := sug.Suggest(ctx, mapIntent(c.Intent))
-			res := Result{
-				Case: c.Name, Lineup: len(prop.Lineup), Acquisitions: len(prop.Acquisitions),
-				Ceiling: string(prop.Policy.Audience.Ceiling), ThemeFit: prop.Scores.ThemeFit,
-				JudgeScore: -1, RelevanceScore: -1, SerendipityScore: -1,
-			}
-			res.Observation = observed.Snapshot(gerr)
-			res.Failures = deterministicChecks(c, prop, gerr)
-
-			// Judge only a proposal that cleared the hard gates + has a rubric.
-			if res.Passed() && c.JudgeRubric != "" {
-				scores := judge(ctx, judgeProvider, c, prop)
-				res.JudgeScore, res.RelevanceScore = scores.Overall, scores.Relevance
-				res.SerendipityScore, res.JudgeNote = scores.Serendipity, scores.Reason
-				if c.MinJudgeScore > 0 && scores.Overall < c.MinJudgeScore && (required || scores.Overall >= 0) {
-					res.Failures = append(res.Failures,
-						fmt.Sprintf("judge score %.2f < required %.2f: %s", scores.Overall, c.MinJudgeScore, scores.Reason))
-				}
-				if c.MinRelevanceScore > 0 && scores.Relevance < c.MinRelevanceScore && (required || scores.Relevance >= 0) {
-					res.Failures = append(res.Failures,
-						fmt.Sprintf("relevance score %.2f < required %.2f: %s", scores.Relevance, c.MinRelevanceScore, scores.Reason))
-				}
-				if c.MinSerendipityScore > 0 && scores.Serendipity < c.MinSerendipityScore && (required || scores.Serendipity >= 0) {
-					res.Failures = append(res.Failures,
-						fmt.Sprintf("serendipity score %.2f < required %.2f: %s", scores.Serendipity, c.MinSerendipityScore, scores.Reason))
-				}
-			}
-			results = append(results, res)
-
-			for _, fail := range res.Failures {
-				t.Errorf("%s", fail)
-			}
-			t.Logf("lineup=%d acq=%d ceiling=%q themeFit=%.2f judge=%.2f relevance=%.2f serendipity=%.2f stage=%s tools=%d candidates=%d (%s)",
-				res.Lineup, res.Acquisitions, res.Ceiling, res.ThemeFit, res.JudgeScore,
-				res.RelevanceScore, res.SerendipityScore, res.GroundingStage,
-				res.ToolCalls, res.CandidatesSurfaced, res.JudgeNote)
-		})
+	trials := evalTrials(required)
+	provider := os.Getenv("LLM_PROVIDER")
+	if provider == "" {
+		provider = "ollama"
+	}
+	runner := NewRunner(sug, RunnerConfig{
+		Trials: trials, Required: required, Profile: os.Getenv("LOOMARR_EVAL_PROFILE"),
+		Provider: provider, Model: os.Getenv("LLM_MODEL"),
+	}).WithObserver(observed).WithJudge(modelJudge{provider: buildJudgeProvider()})
+	card := runner.Run(ctx, Corpus)
+	for _, res := range card.Results {
+		for _, fail := range res.Failures {
+			t.Errorf("%s trial %d: %s", res.Case, res.Trial, fail)
+		}
+		t.Logf("case=%s trial=%d lineup=%d acq=%d ceiling=%q themeFit=%.2f judge=%.2f relevance=%.2f serendipity=%.2f stage=%s tools=%d candidates=%d (%s)",
+			res.Case, res.Trial, res.Lineup, res.Acquisitions, res.Ceiling, res.ThemeFit,
+			res.JudgeScore, res.RelevanceScore, res.SerendipityScore, res.GroundingStage,
+			res.ToolCalls, res.CandidatesSurfaced, res.JudgeNote)
 	}
 
 	// Emit a scorecard artifact (stdout + optional file) so a run is inspectable.
-	writeScorecard(t, results, required)
+	writeScorecard(t, card, required)
+}
+
+func evalTrials(required bool) int {
+	defaultTrials := 1
+	if required {
+		defaultTrials = 3
+	}
+	raw := os.Getenv("LOOMARR_EVAL_TRIALS")
+	if raw == "" {
+		return defaultTrials
+	}
+	trials, err := strconv.Atoi(raw)
+	if err != nil || trials <= 0 {
+		return defaultTrials
+	}
+	return trials
 }
 
 // writeScorecard prints a summary table and, when LOOMARR_EVAL_OUT is set, writes
 // the JSON scorecard there for CI archiving / trend tracking.
-func writeScorecard(t *testing.T, results []Result, required bool) {
+func writeScorecard(t *testing.T, scorecard Scorecard, required bool) {
+	results := scorecard.Results
 	pass := 0
 	var b strings.Builder
 	b.WriteString("\n=== Eval scorecard ===\n")
@@ -129,20 +106,6 @@ func writeScorecard(t *testing.T, results []Result, required bool) {
 	t.Log(b.String())
 
 	if out := os.Getenv("LOOMARR_EVAL_OUT"); out != "" {
-		certified := len(results) == len(Corpus)
-		for _, result := range results {
-			certified = certified && result.Passed()
-		}
-		provider := os.Getenv("LLM_PROVIDER")
-		if provider == "" {
-			provider = "ollama"
-		}
-		scorecard := Scorecard{
-			SchemaVersion: scorecardSchemaVersion, CorpusVersion: corpusVersion,
-			GeneratedAt: time.Now().UTC(), Profile: os.Getenv("LOOMARR_EVAL_PROFILE"),
-			Provider: provider, Model: os.Getenv("LLM_MODEL"),
-			Certified: certified, Results: results,
-		}
 		blob, err := json.MarshalIndent(scorecard, "", "  ")
 		if err != nil {
 			t.Fatalf("marshal semantic scorecard: %v", err)

@@ -107,14 +107,17 @@ type SearchStub struct {
 // EpisodeStub is one Emby/Jellyfin episode returned from a ParentId-scoped
 // /Items query. RunTimeMs is converted to the server's 100-nanosecond ticks.
 type EpisodeStub struct {
-	LibraryItemID  string
-	Name           string
-	RunTimeMs      int64
-	Season         int
-	Episode        int
-	EpisodeEnd     int
-	ProductionYear int
-	OfficialRating string
+	LibraryItemID   string
+	Name            string
+	RunTimeMs       int64
+	Season          int
+	Episode         int
+	EpisodeEnd      int
+	ProductionYear  int
+	OfficialRating  string
+	CommunityRating float64
+	Overview        string
+	Tags            []string
 }
 
 // stubRuntime returns the RunTimeTicks a scripted stub declares for a library item
@@ -455,6 +458,7 @@ func (ms *MediaServer) episodeItems() []map[string]any {
 			"Id": e.LibraryItemID, "Name": e.Name, "RunTimeTicks": e.RunTimeMs * 10_000,
 			"ParentIndexNumber": e.Season, "IndexNumber": e.Episode,
 			"ProductionYear": e.ProductionYear, "OfficialRating": e.OfficialRating,
+			"CommunityRating": e.CommunityRating, "Overview": e.Overview, "Tags": e.Tags,
 		}
 		if e.EpisodeEnd > 0 {
 			item["IndexNumberEnd"] = e.EpisodeEnd

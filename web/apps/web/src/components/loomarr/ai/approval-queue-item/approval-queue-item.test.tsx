@@ -104,4 +104,18 @@ describe("ApprovalQueueItem", () => {
     render(<ApprovalQueueItem title="80s action heroes" refused={[]} />);
     expect(screen.queryByText(/won't be included/i)).not.toBeInTheDocument();
   });
+
+  it("records explicit taste separately from approving or dropping a pick", () => {
+    const onFeedback = vi.fn();
+    render(
+      <ApprovalQueueItem
+        title="Classic Simpsons"
+        lineup={[{ mediaType: "series", name: "The Simpsons", tmdbId: 456, inLibrary: true }]}
+        onFeedback={onFeedback}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /show picks/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Never" }));
+    expect(onFeedback).toHaveBeenCalledWith(expect.objectContaining({ tmdbId: 456 }), "never");
+  });
 });

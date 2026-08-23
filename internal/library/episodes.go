@@ -37,6 +37,12 @@ type Episode struct {
 	// Those two aired on a TV-PG channel because nothing below the series entry was ever
 	// asked. TMDB agrees the summary is lossy: it lists BOTH TV-PG and TV-14 for the show.
 	OfficialRating string
+	// Editorial evidence for deterministic episode selection. A zero/empty value
+	// means the server did not supply it; scheduling then falls back to the safe
+	// complete episode pool instead of guessing.
+	CommunityRating float64
+	Overview        string
+	Tags            []string
 }
 
 // episodeItem mirrors the /Items slice fields we need. RunTimeTicks is the
@@ -50,8 +56,11 @@ type episodeItem struct {
 	EpisodeEnd   *int   `json:"IndexNumberEnd"` // set on a single-file multi-part episode
 	// Absent on most episodes even when the SHOW is rated — hence a plain string with ""
 	// meaning "the server has none", not "unrated content".
-	OfficialRating string `json:"OfficialRating"`
-	ProductionYear int    `json:"ProductionYear"`
+	OfficialRating  string   `json:"OfficialRating"`
+	ProductionYear  int      `json:"ProductionYear"`
+	CommunityRating float64  `json:"CommunityRating"`
+	Overview        string   `json:"Overview"`
+	Tags            []string `json:"Tags"`
 }
 
 type episodesResponse struct {
@@ -77,7 +86,7 @@ func (c *Client) ListEpisodes(ctx context.Context, showItemID string) ([]Episode
 	q.Set("ParentId", showItemID)
 	q.Set("Recursive", "true")
 	q.Set("IncludeItemTypes", "Episode")
-	q.Set("Fields", "RunTimeTicks,IndexNumberEnd,OfficialRating,ProductionYear")
+	q.Set("Fields", "RunTimeTicks,IndexNumberEnd,OfficialRating,ProductionYear,CommunityRating,Overview,Tags")
 	q.Set("SortBy", "ParentIndexNumber,IndexNumber")
 	q.Set("SortOrder", "Ascending")
 
@@ -98,11 +107,14 @@ func (c *Client) ListEpisodes(ctx context.Context, showItemID string) ([]Episode
 			continue // unplayable as a program slot (Tunarr requires duration > 0)
 		}
 		e := Episode{
-			LibraryItemID:  it.ID,
-			Name:           it.Name,
-			DurationMs:     dur,
-			ProductionYear: it.ProductionYear,
-			OfficialRating: it.OfficialRating,
+			LibraryItemID:   it.ID,
+			Name:            it.Name,
+			DurationMs:      dur,
+			ProductionYear:  it.ProductionYear,
+			OfficialRating:  it.OfficialRating,
+			CommunityRating: it.CommunityRating,
+			Overview:        it.Overview,
+			Tags:            append([]string(nil), it.Tags...),
 		}
 		if it.SeasonNumber != nil {
 			e.Season = *it.SeasonNumber

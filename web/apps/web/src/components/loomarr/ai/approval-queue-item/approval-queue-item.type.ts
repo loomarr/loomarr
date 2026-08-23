@@ -31,6 +31,9 @@ interface ApprovalQueueItemProps {
   // `undefined` is load-bearing, not laziness: the caller must send no body at all in that case
   // so an unmodified approval is byte-identical to the pre-V25 behaviour (see ProposalEdit).
   onEdit?: (edit: ApprovalEditDTO | undefined) => void;
+  // Explicit household taste only. This never approves, denies, or mutates the
+  // current proposal; it shapes a later suggestion through the backend ranker.
+  onFeedback?: (item: ProposalItem, action: "keep" | "less" | "never" | "surprise") => void;
   onApprove?: () => void;
   // Deny carries the admin's optional reason — the same string this component already
   // renders back via `denyReason` once the proposal is denied. The two halves were

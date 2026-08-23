@@ -197,13 +197,27 @@ The one heuristic where an error is a *harm*, not an aesthetic bug — so it fai
 - **Omitted `ordering` inherits the channel's `Strategy`.** A channel created without an explicit policy ordering keeps its existing `sequential`/`shuffle` behavior — the syndication default applies only when a policy explicitly requests it (or a template ships it). This keeps policy adoption non-breaking for existing channels.
 - **One operator knob, one canonical precedence ladder.** Ordering resolves in exactly this order: **per-rule `How.Ordering` (within that rule's active window, §6.5) > `policy.ordering` > `Channel.Strategy` (the create-time stored default)**. `policy.ordering` is *the* operator-facing knob (edited in Programming → How it's ordered); `Channel.Strategy` is the default the binder seeds and is consulted only on inherit — it is **not** a second editable field (design.md §9). A rule's `How` overrides only for the slots that rule governs; outside any rule window, the base `policy.ordering` applies. This is the single ladder that makes "three ways to express ordering" read as one.
 - **Rerun curation and narrative order are different promises.** A channel whose lineup is several series (a "Star Trek" franchise channel) defaults to `syndication` so the shows intermix instead of playing one to completion. A clearly curated single-series intent (`classic Simpsons`, `best episodes`, favorites, highlights, reruns) also resolves to `syndication`: its eligible season window is a pool to curate into a deterministic no-repeat deck, not an instruction to start at S1E1. Explicit chronological, start-to-finish, binge, or marathon language still resolves to `sequential` and wins over that fallback. One series plus movies is not inferred as either case. This episodic rule does **not** loosen the movie-franchise floor above: films sharing a TMDB collection remain one atomic, in-release-order block even when the surrounding channel is shuffled or syndicated. The prompt guides the model, and `groundPolicy` enforces the two deterministic fallbacks so a small model cannot turn a rerun request into a box-set binge.
+- **Episode selection precedes episode ordering.** A curated single-series request also stamps an
+  `episodeSelection` policy onto that series entry. `highlights` selects a bounded, deterministic
+  pool from media-server community ratings after the hard season, era, and audience filters run;
+  `holiday` selects episodes whose title, overview, or tags match the explicitly named built-in
+  holidays. Selection never relaxes a safety/scope rejection, runs before syndication/shuffle, and
+  expands an entire detected multi-part group when any member is selected. Sparse metadata falls
+  back to the complete already-eligible episode pool: weak evidence may reduce curation quality but
+  must never manufacture dead air. Explicit chronological/binge language suppresses a general
+  `highlights` selector and therefore retains the complete canonical episode run; an explicitly
+  named holiday may still select that holiday's episodes and order that selected pool sequentially.
 
 ## 6. Seasonality ("holiday episodes at holiday time — and only then")
 
 Two symmetric behaviors, because knowing what October wants implies knowing what July doesn't:
 
-- **Detection** (deterministic, at catalog/proposal time — not the LLM): an item is *seasonal* for holiday H if it matches H's keyword set against episode/movie title, media-server tags/keywords, or TMDB keywords ("halloween," "christmas," "thanksgiving," …). Built-in calendar v1: Halloween (Oct 1–31), Thanksgiving-US (Nov 15–30), Christmas/holidays (Dec 1–26), New Year (Dec 27–Jan 2), Valentine's (Feb 1–14). Windows and keyword sets ship as data, not code; custom holidays/regions are future work.
-  - **v1 scope — entry-level detection, TITLE ONLY.** Detection matches keywords against the entry's **title**, never its genres. Per-episode tag/keyword matching (and TMDB-keyword lookups) is future work — it needs per-episode metadata the library adapter doesn't yet surface. So in v1 a seasonal *series* is benched/boosted as a whole rather than episode-by-episode.
+- **Detection** (deterministic, not LLM judgment): an item is *seasonal* for holiday H if it matches H's keyword set against episode/movie title, media-server tags/keywords, or overview ("halloween," "christmas," "thanksgiving," …). Built-in calendar v1: Halloween (Oct 1–31), Thanksgiving-US (Nov 15–30), Christmas/holidays (Dec 1–26), New Year (Dec 27–Jan 2), Valentine's (Feb 1–14). Windows and keyword sets ship as data, not code; custom holidays/regions are future work.
+  - **Entry and episode scope.** Entry-level seasonal bench/boost continues to match a movie or
+    series title only. An explicitly holiday-curated series additionally carries a per-entry
+    `holiday` episode selector; after episode safety/scope filtering it matches the episode's title,
+    overview, and media-server tags against only the named holiday ids. This supports “Christmas
+    Simpsons episodes” without mistaking every Comedy or Family episode for a holiday episode.
   - ⚠ **Genres are excluded deliberately, and this is a correction.** Detection originally hayed over title **+ genres**, which conflated *"this title is about a holiday"* with *"this title belongs to a genre that correlates with one"*. Those are different claims, and only the first is what a holiday window should act on. The failure was total rather than cosmetic: `horror` sat in the Halloween keyword set, so on a year-round horror channel **every** entry detected as seasonal, and `auto` mode benched all of them `out_of_season` for the eleven months outside October. The channel was legal to configure, reported `live`, and aired nothing. A genre is what a channel **is**; a holiday keyword is what a title is **about**. The rule's own example — *Christmas episodes in July break the spell* — is a title, and the fix restores exactly that reading. (A single genre-shaped keyword could have been dropped instead, but the mechanism would have re-fired on the next collision: a Romance channel near Valentine's, a Family channel near Christmas.)
 - **`mode: "auto"` (default):** in-window, seasonal items get a scheduling **boost** (weighted up, tasteful — not wall-to-wall); out-of-window, detected-seasonal items are **benched** (excluded). The bench is the half everyone forgets and the one viewers notice: *Christmas episodes in July break the spell.*
 - **`mode: "exclusive"`:** the channel *is* the holiday (a December Hallmark-style channel): only in-window seasonal content airs; out of window the channel runs its `offSeason` fallback (loop scope without seasonal filter, or go dark — policy field, default loop).
@@ -298,16 +312,10 @@ oracle green *by construction* — the mechanism is untouched; only the calendar
 - **Backward compatible.** A channel with no rules and no window (`Rules==nil ∧ Window==0`)
   is byte-identical to today's behavior; existing channels are unaffected until a rule or
   window is set.
-- **Known limitation — WHAT is series/movie-level, not episode-level.** A `holiday-matched`
-  or `genre` WHAT filter resolves against a title's genres and (once threaded, §6-followup)
-  keywords/overview — all of which live at the **series/movie** level. Neither our schedule
-  entries nor TMDB carry episode-level thematic tags (TMDB has no episode `keywords`
-  endpoint; keywords exist only on the series/movie). So a rule can say "in December, only
-  series/movies tagged Christmas" but *cannot* precisely say "in December, only the Christmas
-  *episodes* of an otherwise-evergreen series" — that would require per-episode `name`/
-  `overview` text heuristics, logged as future work. A rule author (and the LLM prompt) must
-  not promise episode-thematic precision the data can't back. Series-level and movie-level
-  holiday matching *is* supported (the §6 keyword engine).
+- **Rule WHAT remains entry-level.** A generic `holiday-matched` or `genre` WHAT filter still
+  narrows series/movies. Per-episode holiday precision is activated only by the approved series
+  entry's `episodeSelection` policy, which has explicit holiday ids and episode metadata; it is not
+  inferred from an arbitrary rule at reconcile time.
 
 ## 6.6. The preset lowering table (the closed authoring vocabulary)
 

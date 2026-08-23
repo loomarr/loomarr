@@ -222,16 +222,18 @@ func mapIntent(i Intent) suggest.Intent {
 
 // Result is the scored outcome of one case.
 type Result struct {
-	Case             string   `json:"case"`
-	Failures         []string `json:"failures"` // deterministic gate failures (empty = passed the hard gates)
-	ThemeFit         float64  `json:"themeFit"`
-	Lineup           int      `json:"lineup"`
-	Acquisitions     int      `json:"acquisitions"`
-	Ceiling          string   `json:"ceiling"`          // the extracted policy ceiling
-	JudgeScore       float64  `json:"judgeScore"`       // -1 when the judge didn't run
-	RelevanceScore   float64  `json:"relevanceScore"`   // -1 when the judge didn't run
-	SerendipityScore float64  `json:"serendipityScore"` // -1 when the judge didn't run
-	JudgeNote        string   `json:"judgeNote"`
+	Case              string   `json:"case"`
+	Trial             int      `json:"trial"`
+	Failures          []string `json:"failures"` // deterministic gate failures (empty = passed the hard gates)
+	ThemeFit          float64  `json:"themeFit"`
+	Lineup            int      `json:"lineup"`
+	Acquisitions      int      `json:"acquisitions"`
+	Ceiling           string   `json:"ceiling"`          // the extracted policy ceiling
+	JudgeScore        float64  `json:"judgeScore"`       // -1 when the judge didn't run
+	RelevanceScore    float64  `json:"relevanceScore"`   // -1 when the judge didn't run
+	SerendipityScore  float64  `json:"serendipityScore"` // -1 when the judge didn't run
+	JudgeNote         string   `json:"judgeNote"`
+	ScheduledPrograms []string `json:"scheduledPrograms,omitempty"`
 	Observation
 }
 
@@ -273,6 +275,50 @@ func deterministicChecks(c Case, prop suggest.Proposal, groundErr error) []strin
 	}
 	if grounded := len(prop.Lineup) + len(prop.Acquisitions); grounded < c.MinGrounded {
 		f = append(f, fmt.Sprintf("grounded titles %d < required %d", grounded, c.MinGrounded))
+	}
+	if len(c.RequireKeys) > 0 {
+		grounded := make(map[provision.Key]bool, len(prop.Lineup)+len(prop.Acquisitions))
+		for _, item := range allItems(prop) {
+			if key, err := item.Key(); err == nil {
+				grounded[key] = true
+			}
+		}
+		for _, required := range c.RequireKeys {
+			if !grounded[required] {
+				f = append(f, fmt.Sprintf("required grounded key %q is missing", required))
+			}
+		}
+	}
+	groundedKeys := make(map[provision.Key]bool, len(prop.Lineup)+len(prop.Acquisitions))
+	movies, series := 0, 0
+	genres := map[string]bool{}
+	for _, item := range allItems(prop) {
+		if key, err := item.Key(); err == nil {
+			groundedKeys[key] = true
+		}
+		switch item.MediaType {
+		case provision.Movie:
+			movies++
+		case provision.Series:
+			series++
+		}
+		for _, genre := range item.Genres {
+			genres[strings.ToLower(strings.TrimSpace(genre))] = true
+		}
+	}
+	for _, forbidden := range c.ForbidKeys {
+		if groundedKeys[forbidden] {
+			f = append(f, fmt.Sprintf("forbidden grounded key %q is present", forbidden))
+		}
+	}
+	if movies < c.MinMovies {
+		f = append(f, fmt.Sprintf("movies %d < required %d", movies, c.MinMovies))
+	}
+	if series < c.MinSeries {
+		f = append(f, fmt.Sprintf("series %d < required %d", series, c.MinSeries))
+	}
+	if len(genres) < c.MinDistinctGenres {
+		f = append(f, fmt.Sprintf("distinct genres %d < required %d", len(genres), c.MinDistinctGenres))
 	}
 	if c.ExpectCeiling != "" && string(prop.Policy.Audience.Ceiling) != c.ExpectCeiling {
 		f = append(f, fmt.Sprintf("expected ceiling %q, extracted %q", c.ExpectCeiling, prop.Policy.Audience.Ceiling))

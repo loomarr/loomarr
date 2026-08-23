@@ -53,14 +53,17 @@ absent. `make eval-cert` is an assertion: missing configuration, a skipped/unexe
 grounding or negative-constraint failure, a required judge failure, or an unwritable scorecard makes
 the command fail. It always bypasses Go's test cache and writes
 `$LOOMARR_ARTIFACT_DIR/semantic-certification.json` unless `LOOMARR_EVAL_OUT` selects another path.
-The scorecard records its schema/corpus version and provider/model, never credentials. Alongside hard
-grounding, exact holiday policy, explicit rating-limit, and outside-Library expectations, judge-backed cases report relevance and
-serendipity separately: novelty only scores when it remains defensibly on-theme. The versioned corpus
-includes holiday requests as well as starter, named-title, thematic, and adversarial cases. It
-also records tool-call mode and surfaced-candidate counts, classifying outcomes as no tool call,
-empty retrieval, empty selection after retrieval, invalid generation, or provider error, so a low score points at the layer to tune. It
-certifies that one configured model and catalog snapshot; it is not part of the hermetic `make check`
-gate.
+The scorecard records its schema/corpus version, requested generator/provider, trial profile, and
+bounded structural observations—never credentials. Hard predicates cover
+exact named includes/excludes, holiday policy, rating limits, ownership mix, and concrete scheduled
+programme identities/order; a non-empty Proposal or favorable judge paragraph cannot substitute for
+one. Fixture cases materialize `schedule.DesiredLineup` in the hermetic gate. Real-provider cases run
+serially for an explicit trial count and report pass rate plus min/median/max relevance and
+serendipity: novelty only scores when it remains defensibly on-theme. Per-case tool-call and
+surfaced-candidate budgets fail deterministically. Structural diagnostics record the grounding stage,
+tool mode, candidate count, generation failure, and schedule materialization failure, so a low score
+points at the layer to tune. Real inference still remains outside `make check` and certifies only the
+requested model/provider configuration, catalog snapshot, and corpus version in the artifact.
 
 `make eval-matrix` prevents tuning to one local model. It requires the ordinary exported `LLM_*`
 configuration plus `OPENROUTER_API_KEY` and `OPENROUTER_MODEL`; `OPENROUTER_JUDGE_MODEL` may select a

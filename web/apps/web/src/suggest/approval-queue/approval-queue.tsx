@@ -1,3 +1,4 @@
+import * as discoveryApi from "@loomarr/api/endpoints/discovery";
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
@@ -40,6 +41,7 @@ const ApprovalQueue = () => {
     },
   });
   const deny = proposalsApi.useDenyProposal({ mutation: { onSuccess: invalidate } });
+  const feedback = discoveryApi.useRecordDiscoveryFeedback();
 
   // Filler pulls (V35). ⚠ `status: "pending"` and not a client-side filter: a decided pull is
   // KEPT on the server for the History tab, so asking for everything would put approvals an
@@ -193,6 +195,14 @@ const ApprovalQueue = () => {
               refused={p.proposal.refused ?? []}
               status={busy ? "approving" : "pending"}
               onEdit={(edit) => setEdit(p.id, edit)}
+              onFeedback={(item, action) => {
+                const provider = item.tmdbId ? "tmdb" : "tvdb";
+                const id = item.tmdbId ?? item.tvdbId;
+                if (!id) return;
+                feedback.mutate({
+                  data: { scope: "household", targetKey: `${item.mediaType}:${provider}:${id}`, action },
+                });
+              }}
               // The edit rides the SAME approve call — there is no separate "save edit" step,
               // because the edit is a parameter to the one approval gate, not a mutation of the
               // proposal (§7 / D-K). An unmodified row sends `{}`, exactly as it always has:

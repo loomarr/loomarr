@@ -21,6 +21,7 @@ import (
 	"errors"
 	"log/slog"
 
+	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -101,7 +102,13 @@ func (c *Curator) Consider(ctx context.Context, p store.Proposal) (suggest.Decis
 	// growth cap. In-library lineup picks are NOT gated by score — they're already available and
 	// cost nothing; they're added regardless (they extend the lineup, no acquisition). Rewrite
 	// the proposal's acquisition list to exactly the survivors so Approve requests ONLY those.
-	res, err := filterAcquisitions(p, ch, minScore, maxTitles)
+	protected, err := c.protectedTitles(ctx, ch.ID)
+	if err != nil {
+		// Keep is an explicit operator promise. If its state cannot be read, do not
+		// guess which titles are retirable; leave the proposal for manual review.
+		return suggest.Decision{Reason: "discovery feedback unavailable"}, nil
+	}
+	res, err := filterAcquisitionsProtected(p, ch, minScore, maxTitles, protected)
 	if err != nil {
 		return suggest.Decision{Reason: "proposal unreadable"}, err
 	}
@@ -152,6 +159,36 @@ func (c *Curator) Consider(ctx context.Context, p store.Proposal) (suggest.Decis
 			"replaced_by", r.In, "replacement_confidence", r.InScore)
 	}
 	return suggest.Decision{Approved: true, Enqueued: approval.Enqueued}, nil
+}
+
+type discoveryFeedbackReader interface {
+	ListDiscoveryFeedback(context.Context, store.FeedbackFilter) ([]store.DiscoveryFeedback, error)
+}
+
+func (c *Curator) protectedTitles(ctx context.Context, channelID string) (map[provision.Key]bool, error) {
+	reader, ok := c.store.(discoveryFeedbackReader)
+	if !ok {
+		return nil, nil
+	}
+	household, err := reader.ListDiscoveryFeedback(ctx, store.FeedbackFilter{Scope: store.FeedbackHousehold})
+	if err != nil {
+		return nil, err
+	}
+	channel, err := reader.ListDiscoveryFeedback(ctx, store.FeedbackFilter{Scope: store.FeedbackChannel, ScopeID: channelID})
+	if err != nil {
+		return nil, err
+	}
+	events := append(channel, household...)
+	seen := map[provision.Key]bool{}
+	protected := map[provision.Key]bool{}
+	for _, event := range events {
+		if seen[event.Target] {
+			continue
+		}
+		seen[event.Target] = true
+		protected[event.Target] = event.Action == store.FeedbackKeep
+	}
+	return protected, nil
 }
 
 // channelForJob finds the channel bound to a suggestion job (its IntentRef). A re-curation

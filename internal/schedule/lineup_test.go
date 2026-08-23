@@ -1,7 +1,10 @@
 package schedule_test
 
 import (
+	"fmt"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -96,6 +99,78 @@ func TestComputeDesired_Sequential_AvailableBecomesProgram(t *testing.T) {
 	}
 	if got.Slots[0].LibraryItemID != "lib-A" {
 		t.Fatalf("want lib-A, got %q", got.Slots[0].LibraryItemID)
+	}
+}
+
+func TestComputeDesiredHighlightsSelectsRatedEpisodePoolBeforeOrdering(t *testing.T) {
+	key := provision.Key("series:tmdb:456")
+	episodes := make([]schedule.ResolvedProgram, 0, 8)
+	for episode, rating := range []float64{6.1, 9.4, 6.3, 8.9, 6.0, 9.1, 6.2, 8.8} {
+		episodes = append(episodes, schedule.ResolvedProgram{
+			LibraryItemID:   fmt.Sprintf("ep-%d", episode+1),
+			Title:           fmt.Sprintf("Episode %d", episode+1),
+			DurationMs:      22 * 60 * 1000,
+			Season:          1,
+			Episode:         episode + 1,
+			CommunityRating: rating,
+		})
+	}
+	got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{
+		Key: key, Title: "The Simpsons",
+		EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
+	}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill,
+		schedule.ChannelPolicy{}, time.Time{})
+
+	var ids []string
+	for _, slot := range got.Slots {
+		if slot.IsProgram() {
+			ids = append(ids, slot.LibraryItemID)
+		}
+	}
+	if want := []string{"ep-2", "ep-4", "ep-6", "ep-8"}; !slices.Equal(ids, want) {
+		t.Fatalf("curated highlights = %v, want stable high-rated pool %v", ids, want)
+	}
+}
+
+func TestComputeDesiredHolidaySelectionUsesEpisodeEvidenceAndKeepsPartsTogether(t *testing.T) {
+	key := provision.Key("series:tmdb:456")
+	episodes := []schedule.ResolvedProgram{
+		{LibraryItemID: "ordinary", Title: "A Regular Tuesday", DurationMs: 1, Season: 2, Episode: 1},
+		{LibraryItemID: "xmas-1", Title: "A Springfield Christmas (1)", DurationMs: 1, Season: 2, Episode: 2},
+		{LibraryItemID: "xmas-2", Title: "A Springfield Christmas (2)", DurationMs: 1, Season: 2, Episode: 3},
+		{LibraryItemID: "overview", Title: "Home for Winter", Overview: "The family meets Santa", DurationMs: 1, Season: 2, Episode: 4},
+	}
+	got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{
+		Key: key, Title: "The Simpsons", EpisodeSelection: schedule.EpisodeSelection{
+			Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"},
+		},
+	}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill,
+		schedule.ChannelPolicy{}, time.Time{})
+
+	var ids []string
+	for _, slot := range got.Slots {
+		if slot.IsProgram() {
+			ids = append(ids, slot.LibraryItemID)
+		}
+	}
+	if want := []string{"xmas-1", "xmas-2", "overview"}; !slices.Equal(ids, want) {
+		t.Fatalf("holiday episode pool = %v, want %v", ids, want)
+	}
+}
+
+func TestComputeDesiredEpisodeSelectionFallsBackWhenEvidenceIsSparse(t *testing.T) {
+	key := provision.Key("series:tmdb:456")
+	episodes := []schedule.ResolvedProgram{
+		{LibraryItemID: "ep-1", Title: "One", DurationMs: 1, Season: 1, Episode: 1, CommunityRating: 9.5},
+		{LibraryItemID: "ep-2", Title: "Two", DurationMs: 1, Season: 1, Episode: 2},
+		{LibraryItemID: "ep-3", Title: "Three", DurationMs: 1, Season: 1, Episode: 3},
+	}
+	got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{
+		Key: key, Title: "Series", EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
+	}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill,
+		schedule.ChannelPolicy{}, time.Time{})
+	if got.ProgramCount() != 3 {
+		t.Fatalf("sparse ratings produced %d programs, want safe full-pool fallback of 3", got.ProgramCount())
 	}
 }
 

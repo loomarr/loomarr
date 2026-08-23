@@ -516,8 +516,9 @@ func lineupEntries(p suggest.Proposal) ([]schedule.LineupEntry, error) {
 				// Airing season window (§8): a series pick the suggester scoped to an
 				// era ("classic Simpsons" → 1–10) carries its window onto the entry, so
 				// series expansion airs only those seasons (§9 inSeasonRange). 0 = all.
-				SeasonMin: it.SeasonMin,
-				SeasonMax: it.SeasonMax,
+				SeasonMin:        it.SeasonMin,
+				SeasonMax:        it.SeasonMax,
+				EpisodeSelection: it.EpisodeSelection,
 			})
 		}
 	}

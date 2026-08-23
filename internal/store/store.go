@@ -606,6 +606,7 @@ type Store interface {
 	SettingStore
 	CountStore
 	ImageStore
+	DiscoveryFeedbackStore
 
 	// Close releases the underlying database handle.
 	Close() error

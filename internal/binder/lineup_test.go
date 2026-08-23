@@ -14,7 +14,8 @@ import (
 func TestLineupEntriesCarriesSeasonWindow(t *testing.T) {
 	p := suggest.Proposal{
 		Lineup: []suggest.ProposalItem{
-			{MediaType: provision.Series, TVDBID: 71663, Name: "The Simpsons", SeasonMin: 1, SeasonMax: 10},
+			{MediaType: provision.Series, TVDBID: 71663, Name: "The Simpsons", SeasonMin: 1, SeasonMax: 10,
+				EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights}},
 			{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"},
 		},
 	}
@@ -36,6 +37,9 @@ func TestLineupEntriesCarriesSeasonWindow(t *testing.T) {
 	}
 	if simpsons.SeasonMin != 1 || simpsons.SeasonMax != 10 {
 		t.Errorf("Simpsons window = [%d,%d], want [1,10]", simpsons.SeasonMin, simpsons.SeasonMax)
+	}
+	if simpsons.EpisodeSelection.Mode != schedule.EpisodeHighlights {
+		t.Errorf("Simpsons episode selection = %+v, want highlights", simpsons.EpisodeSelection)
 	}
 	if matrix.SeasonMin != 0 || matrix.SeasonMax != 0 {
 		t.Errorf("movie must carry no season window, got [%d,%d]", matrix.SeasonMin, matrix.SeasonMax)

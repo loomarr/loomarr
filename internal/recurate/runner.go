@@ -126,6 +126,7 @@ func (r *Runner) refreshIntent(ctx context.Context, ch store.Channel) (suggest.I
 	intent.RefineText = ""
 	intent.CurrentLineup = lineupContext(ch.Lineup)
 	intent.Adjacent = r.adjacentFor(ctx, ch)
+	intent.DiscoveryScopeID = ch.ID
 	return intent, true
 }
 
