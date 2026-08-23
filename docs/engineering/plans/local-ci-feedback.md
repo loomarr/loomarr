@@ -64,3 +64,12 @@ and Android. The work changes when assurance runs, not whether it exists.
 
 Each activation is a separate reversible pull request. `docs/design.md` section 19 and the developer
 gate documentation are amended before the first change that alters required behavior.
+
+## Evidence
+
+- PR #462 merged the fail-closed classifier with the full required CI matrix green. Its critical
+  path was 11m18s; the other Go shards took 11m06s and 9m37s.
+- The reverse-dependency selector resolves the repository graph in about 0.3 seconds on the
+  development host. A representative `internal/suggest` leaf selects 10 of 59 packages, including
+  its command, API, composition, integration, and workflow consumers while excluding the unrelated
+  store package. Cross-cutting and unknown paths select all 59.
