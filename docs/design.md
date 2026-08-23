@@ -198,6 +198,8 @@ flowchart TD
   Supervises one child process and every descendant it starts.
 - **`provision`** · 16 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
+- **`releasenotes`**
+  Categorizes GitHub-generated release notes without allowing a language model to invent release content.
 - **`releaseverify`**
   Validates the repository's release publication policy.
 - **`taxonomy`** · 4 importers
@@ -4945,6 +4947,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | OIDC (SSO) | **`github.com/coreos/go-oidc/v3`** (+ `golang.org/x/oauth2`, `github.com/go-jose/go-jose/v4`) | SSO is a third credential path (§11, V8), and OIDC means verifying a signed token against the issuer's published JWKS — discovery, key rotation, `nonce`/`aud`/`exp` validation. Hand-rolling JWT verification is the kind of security code that looks right and is not. **Three modules total**, all current and maintained; `go-jose` does the crypto and `x/oauth2` the code exchange. Deliberately chosen over building forward-auth instead, which needs no dependency but trusts network topology (§11). |
 | Goroutine-leak gate | **`go.uber.org/goleak`** (test-only) | The in-process restart loop (§9.2) is only correct if Build/Run/Shutdown can repeat without accumulating goroutines or stale state, and a leak there is **silent** — it degrades an install over successive restarts rather than failing anything. goleak is the standard detector, test-only (never in a shipped binary), zero runtime cost. Added by V13 alongside the N-iteration restart test, because a prose rule would not have caught it. |
 | LLM clients | **Ollama via plain HTTP** (`/api/chat` with tools) + a hand-written **OpenAI-compatible** client (`/v1/chat/completions` with tools) — both plain `net/http`, no SDK | One OpenAI-compat client covers OpenAI, Gemini (compat endpoint), Groq, Together, OpenRouter, **and** local Ollama's own `/v1` mode — so the model is a config choice, not a per-vendor code fork. Replaces the earlier `anthropics/anthropic-sdk-go` intent (a net dependency *reduction*); Claude is still reachable via OpenRouter. Ollama stays first-class as the local default. |
+| Release-note classification | **OpenRouter structured output via plain `net/http`**, defaulting to `openai/gpt-5-mini`; GitHub remains the source of PR titles, authors, links, contributors, and compare ranges | Release notes get useful, Uptime-Kuma-style sections for pennies per release without another application runtime or SDK. The model may assign only real PR numbers to a closed schema; deterministic Go rejects missing, duplicate, invented, extra, or malformed output and renders only GitHub-authored bullets. Publication fails closed when inference is unavailable. |
 | TMDB / Seerr / media server / Tunarr | **plain HTTP, hand-written thin clients** | Each uses a handful of endpoints; generating from Tunarr's full pre-1.0 spec couples us to its churn. Pin + record versions tested against |
 | Model discovery source | **Hugging Face model API** (`huggingface.co/api/models`), plain HTTP via the existing factory | The **only** live source of *downloadable* Ollama models — Ollama ships no such API (`/api/search` unshipped; ollama.com is HTML-only). Anonymous GET, **no new Go dependency** (one `net/http` call), and `ollama pull hf.co/<repo>` consumes its ids directly (§8.1). Best-effort: an outage degrades to a "browse on huggingface.co" link, never a page failure. A single read-only outbound endpoint, pinned via a captured fixture like the others |
 | Image rendering runtime | **the required Rust `loomarr-image` one-shot worker**, over a versioned bounded-JSON/file-manifest protocol | Static and animated decoding is an untrusted, allocation-heavy boundary. A sibling process contains panics and native-code crashes without making the Go server use cgo, returns all worker memory to the OS after each Image, and can be killed on cancellation. One invocation renders a complete requested ladder, amortising process startup. A persistent daemon adds supervision and retained-memory complexity before measurement justifies it; in-process FFI would let a decoder fault take down Loomarr. The worker is part of Loomarr, ships in the one image, and is mandatory: a missing or incompatible worker prevents readiness, with no Go codec fallback (§22). |
@@ -5072,7 +5075,7 @@ model/catalog snapshot, not a timeless claim that every provider is certified.
 
 ### 14.2 The package map
 
-`internal/` is **43 flat packages, deliberately** — the grouping below is prose, not directories.
+`internal/` is **44 flat packages, deliberately** — the grouping below is prose, not directories.
 
 Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
 
@@ -5128,6 +5131,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `metrics` | The Prometheus surface (§7, §18) |
 | `buildinfo` | The version stamped in at build time |
 | `releaseverify` | Build-time policy over the release chain: pinned actions, digest-only builds, and signing strictly before tag promotion |
+| `releasenotes` | Build-time release-note parsing, constrained OpenRouter classification, validation, and deterministic rendering |
 
 **The edges** — inbound HTTP, wiring, and the things that only exist for tests:
 

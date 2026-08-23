@@ -1,7 +1,7 @@
 // Command releaseverify checks that the release chain cannot publish something nobody signed.
 // `make release-verify` runs it over .github/workflows plus the packaged runtime notices.
 //
-// It enforces five things the workflow YAML cannot state about itself: actions are pinned to
+// It enforces the things the workflow YAML cannot state about itself: actions are pinned to
 // immutable references, CI builds the image from the inputs it claims to, the required aggregate
 // depends on every CI job, the release job runs checkout -> source validation -> tag protection ->
 // digest-only build -> Cosign install -> sign/verify/promotion IN THAT ORDER, and the
@@ -47,7 +47,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "release-verify: Android workflow policy: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println("release-verify: workflows use immutable actions and keep server and Android publication behind audited signing paths")
+	if err := releaseverify.VerifyReleaseNotesWorkflow(filepath.Join(*root, ".github", "workflows", "release-notes.yml")); err != nil {
+		fmt.Fprintf(os.Stderr, "release-verify: release notes policy: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("release-verify: workflows use immutable actions and keep server, Android, and release-note publication behind audited paths")
 	if err := releaseverify.VerifyNotices(*root); err != nil {
 		fmt.Fprintf(os.Stderr, "release-verify: notice policy: %v\n", err)
 		os.Exit(1)
