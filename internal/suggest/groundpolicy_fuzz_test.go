@@ -3,7 +3,7 @@ package suggest
 import (
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // onLadderCeilings are the canonical rating strings NormalizeRating maps to itself

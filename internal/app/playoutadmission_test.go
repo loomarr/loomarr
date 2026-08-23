@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/backendtransition"
-	"github.com/mantonx/loomarr/internal/schedule"
-	"github.com/mantonx/loomarr/internal/store"
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/backendtransition"
+	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestDurableInternalTransportPlayableRejectsEveryOffAirShape(t *testing.T) {

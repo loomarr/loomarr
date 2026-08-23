@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func newClient(t *testing.T, flavor Flavor) (*Client, *testkit.MediaServer) {

@@ -6,7 +6,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/mantonx/loomarr/internal/auth"
+	"github.com/loomarr/loomarr/internal/auth"
 )
 
 // TestMain lowers the stored-password bcrypt cost for this package's tests.

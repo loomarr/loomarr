@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/httpx"
 )
 
 // now is the clock for stamping a new channel's loop anchor (StartTime). A package var so

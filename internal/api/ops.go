@@ -7,7 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/mantonx/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/metrics"
 )
 
 // Operational endpoints (§7, §17, §18): liveness, readiness, Prometheus, the profiler, and the

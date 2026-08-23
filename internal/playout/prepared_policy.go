@@ -1,6 +1,6 @@
 package playout
 
-import "github.com/mantonx/loomarr/internal/prepared"
+import "github.com/loomarr/loomarr/internal/prepared"
 
 const preparedSegmentDurationMS = 2_000
 

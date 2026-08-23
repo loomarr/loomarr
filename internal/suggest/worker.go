@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // This file is the job execution model (§8): submissions become persisted jobs;

@@ -3,7 +3,7 @@ package llm_test
 import (
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/llm"
 )
 
 func TestExtractJSONObject(t *testing.T) {

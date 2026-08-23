@@ -3,7 +3,7 @@ package playout
 import (
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/prepared"
+	"github.com/loomarr/loomarr/internal/prepared"
 )
 
 func TestCanonicalPreparedRenditionUsesTheTierTopRung(t *testing.T) {

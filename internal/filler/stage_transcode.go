@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/mediatools"
 )
 
 // The TRANSCODE stage (§10 V51b): every clip is re-encoded once, to one mezzanine profile.

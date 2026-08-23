@@ -3,7 +3,7 @@ package filler_test
 import (
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 // PoolCounts is the catalog-wide half of the Filler page's pool strip (§10 V35). These tests

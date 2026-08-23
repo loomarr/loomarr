@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/mantonx/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library"
 )
 
 // LiveTVURLs is a Live TV M3U playlist + XMLTV guide pair.

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/mantonx/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library"
 )
 
 // MediaSourceProgrammer is Tunarr's media-source surface (§6) — satisfied by

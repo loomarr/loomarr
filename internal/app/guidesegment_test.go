@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/playout"
-	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // rotatingCycle mimics the real scheduler: it returns a DIFFERENT arrangement per rolling window,

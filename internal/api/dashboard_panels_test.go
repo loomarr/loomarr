@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/api"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 func serverWithPanels(t *testing.T, opts api.Options) (*httptest.Server, store.Store) {

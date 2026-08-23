@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/mantonx/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library"
 )
 
 // LookupResult is one deterministic media-library presence answer.

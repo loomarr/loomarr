@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/api"
-	"github.com/mantonx/loomarr/internal/programmer"
+	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/programmer"
 )
 
 // guideAdapter maps the Tunarr guide reader to api.GuideReader, converting

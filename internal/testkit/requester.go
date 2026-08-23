@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Requester is the shared Requester test double (AGENTS.md). It records calls and

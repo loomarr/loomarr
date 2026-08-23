@@ -8,9 +8,9 @@ import (
 	"log"
 	"os"
 
-	"github.com/mantonx/loomarr/internal/config"
-	"github.com/mantonx/loomarr/internal/devbootstrap"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/config"
+	"github.com/loomarr/loomarr/internal/devbootstrap"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 func main() {

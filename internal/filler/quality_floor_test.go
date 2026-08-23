@@ -3,7 +3,7 @@ package filler_test
 import (
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 // A catalog spanning the quality range, all otherwise identical so quality is the only

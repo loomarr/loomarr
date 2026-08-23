@@ -17,7 +17,7 @@ import (
 	"github.com/adhocore/gronx"
 	"github.com/riverqueue/river"
 
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // Job is one named, recurring unit of work. The Run func is code; the SCHEDULE is a cron

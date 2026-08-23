@@ -17,9 +17,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/app"
-	"github.com/mantonx/loomarr/internal/config"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/app"
+	"github.com/loomarr/loomarr/internal/config"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 func main() {

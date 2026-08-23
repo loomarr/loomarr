@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/images"
 )
 
 // imageHashFromLogo is the seam between an operator-controlled string and an image-store lookup

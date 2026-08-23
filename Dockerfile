@@ -48,9 +48,9 @@ ARG BUILT_AT=""
 # Static, stripped, reproducible-ish.
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
     -ldflags="-s -w \
-      -X github.com/mantonx/loomarr/internal/buildinfo.version=${VERSION} \
-      -X github.com/mantonx/loomarr/internal/buildinfo.commit=${COMMIT} \
-      -X github.com/mantonx/loomarr/internal/buildinfo.builtAt=${BUILT_AT}" \
+      -X github.com/loomarr/loomarr/internal/buildinfo.version=${VERSION} \
+      -X github.com/loomarr/loomarr/internal/buildinfo.commit=${COMMIT} \
+      -X github.com/loomarr/loomarr/internal/buildinfo.builtAt=${BUILT_AT}" \
     -o /out/loomarr ./cmd/loomarr
 
 # Required image renderer (§14, §22). Build natively for each Buildx target so the bundled
@@ -66,7 +66,7 @@ RUN LOOMARR_RELEASE="${VERSION:-dev}" cargo build --release --locked -p loomarr-
 # THE image. One tag, one release unit, all required binaries and tooling (§16 — revised).
 #
 # Loomarr previously published two tags: a 31MB distroless `loomarr:latest` with no
-# media tooling, and a 549MB `loomarr:filler` that added it for the §10 ingest job.
+# media tooling, and a retired 549MB `loomarr:filler` that added it for the §10 ingest job.
 # That split existed to keep media tooling out of the default image — the same goal
 # that had earlier motivated a separate ingest sidecar, itself already reversed in
 # favour of the opt-in tag.
@@ -443,8 +443,8 @@ ARG COMMIT=""
 # GPL-3.0-or-later). The packaged notice records redistribution blockers honestly.
 LABEL org.opencontainers.image.title="loomarr" \
       org.opencontainers.image.description="Turn a natural-language channel intent into a live, self-maintaining Tunarr channel." \
-      org.opencontainers.image.source="https://github.com/mantonx/loomarr" \
-      org.opencontainers.image.documentation="https://github.com/mantonx/loomarr/blob/main/THIRD_PARTY_NOTICES.md" \
+      org.opencontainers.image.source="https://github.com/loomarr/loomarr" \
+      org.opencontainers.image.documentation="https://github.com/loomarr/loomarr/blob/main/THIRD_PARTY_NOTICES.md" \
       org.opencontainers.image.licenses="MIT AND GPL-3.0-or-later" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${COMMIT}"

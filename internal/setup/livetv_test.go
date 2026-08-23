@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/library"
-	"github.com/mantonx/loomarr/internal/setup"
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/setup"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func newConnector(lib *testkit.LiveTV) *setup.LiveTVConnector {

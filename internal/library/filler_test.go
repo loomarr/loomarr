@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/filler"
-	"github.com/mantonx/loomarr/internal/library"
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // ItemDurationMs resolves a single item's runtime via GET /Items?Ids=<id>&

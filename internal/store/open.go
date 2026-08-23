@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/taxonomy"
+	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 // seedAfterMigrate runs idempotent boot seeds that must live in Go rather than SQL (the taxonomy, so

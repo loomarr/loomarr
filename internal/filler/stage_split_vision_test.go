@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/llm"
-	"github.com/mantonx/loomarr/internal/taxonomy"
+	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 // The auto-confirm gate has had NO data source since V51g removed the text classifier, so

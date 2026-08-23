@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/mantonx/loomarr/internal/schedule"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // lineupFromIntent resolves the approved proposal identified by intentRef (the

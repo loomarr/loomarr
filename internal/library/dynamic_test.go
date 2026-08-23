@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/testkit/httpfixture"
+	"github.com/loomarr/loomarr/internal/testkit/httpfixture"
 )
 
 func dynamicResponse(status int, body string) *http.Response {

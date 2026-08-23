@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/metrics"
-	"github.com/mantonx/loomarr/internal/testkit/httpfixture"
+	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/testkit/httpfixture"
 	"github.com/prometheus/client_golang/prometheus"
 )
 

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/images"
-	"github.com/mantonx/loomarr/internal/tmdb"
+	"github.com/loomarr/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // tmdbTimelineStub serves the TMDB endpoints the timeline resolver uses: a movie's backdrop

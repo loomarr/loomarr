@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/mantonx/loomarr/internal/httpx"
-	"github.com/mantonx/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/metrics"
 )
 
 // Ollama is the local-Ollama provider (§8 homelab default). Pinned to the real

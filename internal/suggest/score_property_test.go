@@ -14,8 +14,8 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // randWords is a small vocabulary the generators draw from so terms sometimes hit

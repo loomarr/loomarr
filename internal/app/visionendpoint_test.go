@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/settings"
 )
 
 // visionSet builds a live settings service over the DECLARED registry, so these tests resolve

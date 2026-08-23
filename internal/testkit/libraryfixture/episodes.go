@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // Episodes is the shared no-network adapter for library episode resolution.

@@ -3,7 +3,7 @@ package recurate
 import (
 	"context"
 
-	"github.com/mantonx/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/scheduler"
 )
 
 // Job returns the auto-recuration pass as a scheduler job (§18.1) — the per-channel opt-in

@@ -18,9 +18,9 @@ work; only the Go test package list was partitioned.
 
 The repository requires one aggregate `CI` status. On 2026-08-23 its branch protection was changed
 to strict mode while preserving the GitHub Actions app binding, so a pull request must be tested
-against the current `main` before merging. GitHub does not offer merge queues to personally owned
-public repositories; queue activation remains ready at the workflow level and becomes available
-after an organization owns the repository.
+against the current `main` before merging. The repository is now organization-owned at
+`loomarr/loomarr`; queue activation remains ready at the workflow level and awaits a repository
+ruleset plus a proven `merge_group` run.
 
 ## Assurance tiers
 
@@ -59,8 +59,8 @@ and Android. The work changes when assurance runs, not whether it exists.
 4. Add specialized Postgres, Windows, Rust, visual, e2e, tuner, image, and Android decisions in
    shadow mode while the old jobs still run.
 5. Compare shadow selections with full outcomes and add a regression fixture for every mismatch.
-6. Enable strict merge protection. Enable and prove the already-supported `merge_group` path after
-   an organization owns the repository; GitHub does not expose merge queues to personal repos.
+6. Enable strict merge protection. After the repository transfer, enable and prove the
+   already-supported `merge_group` path through an organization repository ruleset.
 7. Activate proportional pull-request gates and retain complete merge/main/nightly/release audits.
 8. Publish selected gates, setup/cache/test timings, critical path, and runner-minutes in summaries;
    then profile genuinely slow packages after orchestration waste is gone.
@@ -116,4 +116,8 @@ gate documentation are amended before the first change that alters required beha
   shadow maps fully represented: design/configuration/generated-command docs, install docs and
   README, committed OpenAPI, and production Compose. It also found release-contract consumers for
   Dockerfile and packaged notices. Each now selects its consuming gate and has an exact fixture;
-  activation waits for this correction to pass the legacy matrix.
+  PR #472 passed the complete legacy matrix and merged.
+- The repository transferred from the personal namespace to the lowercase organization namespace
+  `loomarr/loomarr` on 2026-08-23. Public visibility, the `main` default branch, Actions, the release
+  and tag, open work, and strict app-bound `CI` protection survived the transfer. Source, module,
+  image, documentation, and local Git identities move together in the repository-identity slice.

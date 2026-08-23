@@ -107,7 +107,7 @@ against the complete file. It is a placeholder, not a screen.
 ## 2a. The mocks were built FROM this repo — most of §4 is not new work
 
 **Discovered after the first pass, and it materially shrinks the delta.** The design project contains
-`github.md`, a sync log (`repo: mantonx/loomarr`, `branch: main`, last sync
+`github.md`, a sync log (`repo: loomarr/loomarr`, `branch: main`, last sync
 **`2026-07-24T21:51:03Z`** — at or ahead of `55fc691`). It records the mocks being rebuilt *from*
 shipped source: *"Rebuilt channel detail as the real 5-tab surface from `channels/$id.tsx`"*,
 *"Adopted the repo's channel vocabulary from `channel-health.ts`"*, and carries a screen→source map.

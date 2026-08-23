@@ -1,6 +1,6 @@
 package schedule
 
-import "github.com/mantonx/loomarr/internal/provision"
+import "github.com/loomarr/loomarr/internal/provision"
 
 // Lineup application (programming-design §9). Every write to a channel's approved lineup
 // goes through ApplyLineup, so "what changes the lineup" has ONE implementation with an

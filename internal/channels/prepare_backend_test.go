@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/schedule"
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestPrepareInheritedBackendUsesSuppliedTarget(t *testing.T) {

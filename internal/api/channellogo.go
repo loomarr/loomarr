@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/mantonx/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/images"
 )
 
 // Resolving a channel's `logo` URL back to an image record (§22, V52 phase 5).

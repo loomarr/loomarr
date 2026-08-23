@@ -5,10 +5,10 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/activity"
-	"github.com/mantonx/loomarr/internal/library"
-	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/activity"
+	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // LibraryScan is the poll-based availability path (design §4, §18.1) — the PRIMARY way a

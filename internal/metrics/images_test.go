@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	dto "github.com/prometheus/client_model/go"
 
-	"github.com/mantonx/loomarr/internal/images/rustgen"
+	"github.com/loomarr/loomarr/internal/images/rustgen"
 )
 
 func TestImageWorkerMetricsObserveProcessAndQueueBoundaries(t *testing.T) {

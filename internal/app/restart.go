@@ -3,8 +3,8 @@ package app
 import (
 	"sort"
 
-	"github.com/mantonx/loomarr/internal/config"
-	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/config"
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 // restartAdapter is the composition root's bridge between the API's RestartService and

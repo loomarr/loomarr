@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/images/rustgen"
+	"github.com/loomarr/loomarr/internal/images/rustgen"
 )
 
 func seedWithWebP(t *testing.T, svc *Service, role Role, width, height int) Image {

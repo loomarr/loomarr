@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/playout"
-	"github.com/mantonx/loomarr/internal/schedule"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // GET /playout/program/{id} — "what is airing right now?" (§9.1, prior-art §1).

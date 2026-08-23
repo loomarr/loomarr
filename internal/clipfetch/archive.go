@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 // Archive.org ingestion (§10): a plain-net/http walk of Archive's public JSON

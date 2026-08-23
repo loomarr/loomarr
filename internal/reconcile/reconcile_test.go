@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/library"
-	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/store"
-	"github.com/mantonx/loomarr/internal/testkit"
-	"github.com/mantonx/loomarr/internal/testkit/libraryfixture"
+	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/testkit/libraryfixture"
 )
 
 var now = time.Date(2026, 7, 13, 20, 0, 0, 0, time.UTC)

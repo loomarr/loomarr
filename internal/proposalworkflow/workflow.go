@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/schedule"
-	"github.com/mantonx/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 const (

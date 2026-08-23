@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/activity"
-	"github.com/mantonx/loomarr/internal/filler"
-	"github.com/mantonx/loomarr/internal/images"
-	"github.com/mantonx/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/activity"
+	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/scheduler"
 )
 
 const (

@@ -3,7 +3,7 @@ package channels
 import (
 	"context"
 
-	"github.com/mantonx/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/scheduler"
 )
 
 // Job returns the channel sweep as a scheduler job (§9, §18.1) — the periodic reconcile

@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 // The taxonomy CRUD API (§10 V45a): read the graph, and let an ADMIN edit it — every write reindexing

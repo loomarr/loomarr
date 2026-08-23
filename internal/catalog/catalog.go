@@ -15,8 +15,8 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/mantonx/loomarr/internal/library"
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Scope selects which corpora a search fans out to (§7.2).

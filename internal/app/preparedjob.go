@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 
-	"github.com/mantonx/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/scheduler"
 )
 
 type preparedRunner interface{ Run(context.Context) error }

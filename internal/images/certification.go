@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/images/rustgen"
+	"github.com/loomarr/loomarr/internal/images/rustgen"
 )
 
 const certificationMaxInputBytes int64 = 8 << 20

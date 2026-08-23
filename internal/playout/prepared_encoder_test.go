@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/prepared"
+	"github.com/loomarr/loomarr/internal/prepared"
 )
 
 func TestPreparedVideoArgsReuseNVENCPolicy(t *testing.T) {

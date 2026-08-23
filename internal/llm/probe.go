@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mantonx/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/httpx"
 )
 
 // Probe is the detected state of the LOCAL model host + machine (§8.1). All fields

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api"
 )
 
 // fakeJobs is a scriptable JobService for the API-layer tests.

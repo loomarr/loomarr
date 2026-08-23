@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library"
 )
 
 func TestResolvedLibraryConnectionReadsLiveSettingsTogether(t *testing.T) {

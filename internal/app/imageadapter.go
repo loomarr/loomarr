@@ -10,12 +10,12 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/api"
-	"github.com/mantonx/loomarr/internal/filler"
-	"github.com/mantonx/loomarr/internal/images"
-	"github.com/mantonx/loomarr/internal/images/rustgen"
-	"github.com/mantonx/loomarr/internal/metrics"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/images/rustgen"
+	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // The image service's store bridge (§22, V52).

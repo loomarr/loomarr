@@ -3,8 +3,8 @@ package testkit
 import (
 	"context"
 
-	"github.com/mantonx/loomarr/internal/schedule"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // ChannelCodecWrite records one revision-checked derived codec write.

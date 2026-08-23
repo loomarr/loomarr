@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // ErrNotSubmitted reports an approval attempt on a proposal that is not awaiting one.

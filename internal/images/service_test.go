@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/images/rustgen"
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/images/rustgen"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // fakeStore is an in-memory Store. Small enough to be obviously correct; the real persistence is

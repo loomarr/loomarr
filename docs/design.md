@@ -5244,7 +5244,7 @@ readiness additionally requires the bundled
 image worker's release/profile self-test. The web UI is embedded and served at `/`.
 
 **One image (revised — supersedes "two tags, one binary").** Releases publish one image at
-`ghcr.io/mantonx/loomarr`. Immutable SemVer tags are the operator contract; prereleases such as
+`ghcr.io/loomarr/loomarr`. Immutable SemVer tags are the operator contract; prereleases such as
 `0.1.0-beta.1` never move `latest`, which is reserved for the newest stable release. Compose requires
 `LOOMARR_VERSION` so installs, upgrades, and rollbacks always pin the artifact deliberately. A
 one-shot Compose preflight applies the same strict SemVer and OCI tag policy as the publisher, so
@@ -5363,7 +5363,7 @@ services:
     volumes: ["loomarr-data:/data"]
 
   loomarr:
-    image: ghcr.io/mantonx/loomarr:${LOOMARR_VERSION:?pin a released version}
+    image: ghcr.io/loomarr/loomarr:${LOOMARR_VERSION:?pin a released version}
     depends_on:
       loomarr-version-check:
         condition: service_completed_successfully

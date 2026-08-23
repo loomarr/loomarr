@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 func deviceFixture(t *testing.T) (*DeviceManager, store.Store, func(time.Duration)) {

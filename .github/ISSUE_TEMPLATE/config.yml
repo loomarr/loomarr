@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/mantonx/loomarr/security/advisories/new
+    url: https://github.com/loomarr/loomarr/security/advisories/new
     about: Report security issues privately — please do not open a public issue.
   - name: Question or discussion
-    url: https://github.com/mantonx/loomarr/discussions
+    url: https://github.com/loomarr/loomarr/discussions
     about: For usage questions and open-ended ideas, start a discussion.

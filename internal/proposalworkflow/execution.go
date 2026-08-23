@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 var ErrStaleAttempt = errors.New("proposal workflow: stale attempt")

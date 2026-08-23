@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // QueueStatus correlates queue records to titles by the arr's internal id (resolved via lookup),

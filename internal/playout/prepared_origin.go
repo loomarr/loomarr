@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/prepared"
+	"github.com/loomarr/loomarr/internal/prepared"
 )
 
 // PreparedAiring binds one immutable source rendition to its authoritative place on a Channel's

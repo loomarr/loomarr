@@ -9,14 +9,14 @@ missing_signature() {
 }
 
 self_test() {
-	ref=ghcr.io/mantonx/loomarr:0.1.0-beta.1
+	ref=ghcr.io/loomarr/loomarr:0.1.0-beta.1
 	if ! missing_signature "$ref" "ERROR: $ref: not found"; then
 		echo 'release-verify: rejected the exact missing-manifest signature' >&2
 		exit 1
 	fi
 
 	for error in \
-		"ERROR: unexpected status from HEAD request to https://ghcr.io/v2/mantonx/loomarr/manifests/0.1.0-beta.1: 404 Not Found" \
+		"ERROR: unexpected status from HEAD request to https://ghcr.io/v2/loomarr/loomarr/manifests/0.1.0-beta.1: 404 Not Found" \
 		'ERROR: failed to authorize: 403 Forbidden' \
 		'ERROR: unexpected status: 429 Too Many Requests' \
 		'ERROR: failed to do request: dial tcp: network is unreachable'; do

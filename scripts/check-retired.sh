@@ -3,6 +3,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 RETIRED=(
+  # The project moved from the maintainer's personal namespace to the lowercase Loomarr
+  # organization. Old GitHub links can be reclaimed and old GHCR coordinates name the wrong
+  # publisher, so source, release metadata, and operator instructions must use one identity.
+  'mantonx/loomarr|repository identity moved to the loomarr organization; use loomarr/loomarr'
   # §10 V51b — four per-capability sweeps became one ingest pipeline. Their schedule keys are the
   # dangerous half: `docs/help/` ships inside the binary and is read as INSTRUCTIONS, so a page
   # telling an operator to tune `JOB_FILLER_VISION_SCHEDULE` sends them to set an env var nothing
@@ -271,8 +275,9 @@ ALLOW_LINE='retired-ok|[Rr]etired|[Ss]uperseded|no longer exist|was deleted|was 
 # a hand-maintained list of WHAT to look for. Anything a human reads as a statement about the
 # product belongs here. docs-site/ is deliberately absent — it renders docs/ and holds no prose
 # of its own (design §13).
-SEARCH=(docs internal docker scripts web/apps/web/src README.md CLAUDE.md AGENTS.md
-        CONTRIBUTING.md CONTEXT.md CHANGELOG.md THIRD_PARTY_NOTICES.md .env.example)
+SEARCH=(docs internal docker scripts web/apps/web/src .github README.md SECURITY.md
+        CODE_OF_CONDUCT.md CLAUDE.md AGENTS.md CONTRIBUTING.md CONTEXT.md CHANGELOG.md
+        THIRD_PARTY_NOTICES.md Dockerfile Makefile go.mod .env.example)
 fail=0
 for row in "${RETIRED[@]}"; do
   id="${row%%|*}"; why="${row#*|}"

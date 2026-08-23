@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/settings"
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestBootSettingsGeneratesOnlyOperationalTokensAndRedactsThem(t *testing.T) {

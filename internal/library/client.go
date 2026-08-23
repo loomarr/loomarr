@@ -11,7 +11,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/mantonx/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/httpx"
 )
 
 // Connection is one immutable media-server connection snapshot. Flavor, URL,

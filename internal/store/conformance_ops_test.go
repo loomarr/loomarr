@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Operational tables: the settings KV, session lifecycle, the /metrics count queries,

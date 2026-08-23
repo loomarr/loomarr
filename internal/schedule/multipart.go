@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // franchiseTag is a movie entry's franchise-group assignment (§5): the shared PartGroup id

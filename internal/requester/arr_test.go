@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // arrStub is a fake Sonarr/Radarr: it answers lookup/qualityprofile/rootfolder/queue and

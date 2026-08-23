@@ -18,7 +18,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/scheduler"
 )
 
 // Windows are the configured retention periods, read per run.

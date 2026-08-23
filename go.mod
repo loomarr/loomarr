@@ -1,4 +1,4 @@
-module github.com/mantonx/loomarr
+module github.com/loomarr/loomarr
 
 go 1.26
 

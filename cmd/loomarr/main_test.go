@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/config"
+	"github.com/loomarr/loomarr/internal/config"
 )
 
 func TestDatabaseMigrationRequesterIsNonBlocking(t *testing.T) {

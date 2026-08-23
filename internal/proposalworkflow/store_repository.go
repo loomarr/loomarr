@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/store"
-	"github.com/mantonx/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // Store is the private persistence port used by Workflow. The application

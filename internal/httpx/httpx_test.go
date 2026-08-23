@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/testkit/httpfixture"
+	"github.com/loomarr/loomarr/internal/testkit/httpfixture"
 )
 
 type contextBody struct{ ctx context.Context }

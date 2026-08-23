@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout"
 )
 
 func TestAuthorizePlayoutUsesCurrentReplicaTokenForRawAndSignedCredentials(t *testing.T) {

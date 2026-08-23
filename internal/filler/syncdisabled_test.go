@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 // countingSource records whether the syncer reached the filesystem at all.

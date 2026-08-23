@@ -3,7 +3,7 @@ package reconcile
 import (
 	"context"
 
-	"github.com/mantonx/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/scheduler"
 )
 
 // Each service declares its OWN scheduler job (§18.1).

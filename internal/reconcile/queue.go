@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/requester"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/requester"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // QueueStatuser is the narrow capability the queue poller needs (§18.1 arr-queue-poll): report

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/settings"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 func TestTrackReplicaSettingsRefresh_SQLiteStartsNoReader(t *testing.T) {

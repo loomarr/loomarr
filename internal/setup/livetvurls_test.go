@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/setup"
+	"github.com/loomarr/loomarr/internal/setup"
 )
 
 // THE GAP THIS CLOSES: the Live TV wiring built Tunarr's URLs unconditionally, while

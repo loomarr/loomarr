@@ -11,8 +11,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/mantonx/loomarr/internal/httpx"
-	"github.com/mantonx/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/metrics"
 )
 
 // OpenAI is the OpenAI-COMPATIBLE provider (§8/§14): one hand-written client

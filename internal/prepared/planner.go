@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/media"
+	"github.com/loomarr/loomarr/internal/media"
 )
 
 const preparationLookahead = 6 * time.Hour

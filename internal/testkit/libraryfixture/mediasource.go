@@ -6,7 +6,7 @@ package libraryfixture
 import (
 	"context"
 
-	"github.com/mantonx/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library"
 )
 
 // MediaSourceLibrary is one immutable media-source snapshot for setup tests.

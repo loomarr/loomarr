@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/api"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // fakeSessions implements api.SessionManager. The API layer must not care how hashes are

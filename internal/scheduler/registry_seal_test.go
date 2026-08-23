@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/scheduler"
 )
 
 // ⚠ **THE SEAL (§18.1).** `New` snapshots the registry into a map, so a job added afterwards

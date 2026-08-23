@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/mantonx/loomarr/internal/channels"
-	"github.com/mantonx/loomarr/internal/reconcile"
-	"github.com/mantonx/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/reconcile"
+	"github.com/loomarr/loomarr/internal/scheduler"
 )
 
 // channelMaintenanceJob composes the two prerequisites for a current channel guide. Episode

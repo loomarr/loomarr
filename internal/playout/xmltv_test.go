@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 var guideNow = time.Date(2026, 7, 25, 20, 0, 0, 0, time.UTC)

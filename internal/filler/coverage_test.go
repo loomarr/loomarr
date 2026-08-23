@@ -3,7 +3,7 @@ package filler_test
 import (
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 // THE V29 gate (plan §6, §6.2): the coverage meter must agree with what actually airs.

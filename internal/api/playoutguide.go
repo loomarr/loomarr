@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout"
 )
 
 // GET /playout/guide.xml — XMLTV listings (§9.1, V6b).

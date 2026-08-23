@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/images/rustgen"
+	"github.com/loomarr/loomarr/internal/images/rustgen"
 	"golang.org/x/sync/singleflight"
 )
 

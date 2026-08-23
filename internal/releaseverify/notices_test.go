@@ -12,7 +12,7 @@ func TestVerifyNoticesFailsClosed(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "Dockerfile"), []byte(strings.Join([]string{
 		"FROM scratch",
 		"COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/doc/loomarr/",
-		`LABEL org.opencontainers.image.documentation="https://github.com/mantonx/loomarr/blob/main/THIRD_PARTY_NOTICES.md" org.opencontainers.image.licenses="MIT AND GPL-3.0-or-later"`,
+		`LABEL org.opencontainers.image.documentation="https://github.com/loomarr/loomarr/blob/main/THIRD_PARTY_NOTICES.md" org.opencontainers.image.licenses="MIT AND GPL-3.0-or-later"`,
 	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}

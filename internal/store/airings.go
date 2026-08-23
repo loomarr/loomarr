@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Airing history (§5, programming-design §3.1) — what a channel actually broadcast.

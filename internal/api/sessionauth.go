@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/mantonx/loomarr/internal/auth"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/auth"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // sessionAuthorizer resolves a request to a role via the session cookie first

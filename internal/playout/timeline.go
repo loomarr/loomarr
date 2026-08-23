@@ -3,8 +3,8 @@ package playout
 import (
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // "What is airing right now?" — the question the block supervisor asks at each finite EOF (§9.1).

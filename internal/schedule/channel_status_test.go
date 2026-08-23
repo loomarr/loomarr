@@ -3,7 +3,7 @@ package schedule_test
 import (
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 func TestChannelStatusReconcilable(t *testing.T) {

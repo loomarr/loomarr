@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/metrics"
 )
 
 const (

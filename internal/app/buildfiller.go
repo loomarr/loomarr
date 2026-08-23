@@ -8,14 +8,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/mediatools"
 
-	"github.com/mantonx/loomarr/internal/clipfetch"
-	"github.com/mantonx/loomarr/internal/filler"
-	"github.com/mantonx/loomarr/internal/library"
-	"github.com/mantonx/loomarr/internal/llm"
-	"github.com/mantonx/loomarr/internal/programmer"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/clipfetch"
+	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/programmer"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // This file holds the composition root's per-subsystem builders (§14.1).

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/llm"
 )
 
 // Hosted vision (§10 V44): AskAboutImages builds a multimodal user message whose content is an

@@ -23,7 +23,7 @@ sqlite="$(
 		-f "$ROOT/docker/compose.yaml" \
 		--profile sqlite config 2>/dev/null
 )"
-printf '%s\n' "$sqlite" | grep -q "image: ghcr.io/mantonx/loomarr:$VERSION"
+printf '%s\n' "$sqlite" | grep -q "image: ghcr.io/loomarr/loomarr:$VERSION"
 printf '%s\n' "$sqlite" | grep -q 'DATABASE_URL: sqlite:///data/loomarr.db'
 printf '%s\n' "$sqlite" | grep -q 'image: traefik:v3.7.1@sha256:6b9cbca6fac42ab0075f5437d8dc1685cfd188626d8d515839ea94f8b6271c42'
 # shellcheck disable=SC2016 # the backticks are literal Traefik rule syntax
@@ -62,7 +62,7 @@ postgres="$(
 		-f "$ROOT/docker/compose.postgres.yaml" \
 		--profile postgres config 2>/dev/null
 )"
-printf '%s\n' "$postgres" | grep -q "image: ghcr.io/mantonx/loomarr:$VERSION"
+printf '%s\n' "$postgres" | grep -q "image: ghcr.io/loomarr/loomarr:$VERSION"
 printf '%s\n' "$postgres" | grep -q 'DATABASE_URL: postgres://loomarr:loomarr@postgres:5432/loomarr?sslmode=disable'
 if printf '%s\n' "$postgres" | grep -q 'DATABASE_URL: sqlite:'; then
 	echo 'compose-verify: postgres deployment resolved Loomarr to SQLite' >&2

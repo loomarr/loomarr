@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/store"
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestControllerAppliesInDurableOrderAndPublishesRuntimeAfterSave(t *testing.T) {

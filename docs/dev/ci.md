@@ -115,8 +115,9 @@ check sits "expected" forever and the PR can't merge. Filter per job.
 
 The workflow already handles `merge_group`, but GitHub offers merge queues only to public
 repositories owned by organizations (or qualifying organization-owned private repositories).
-`mantonx/loomarr` is personally owned, so queue activation is deferred until an organization owns
-the repository. Strict required checks provide the protected current-base boundary in the meantime.
+`loomarr/loomarr` is organization-owned. Queue activation is therefore an explicit repository
+ruleset operation; the strict required `CI` check remains the protected current-base boundary until
+the queue is enabled and its first `merge_group` run is proven.
 
 ## Sharding
 

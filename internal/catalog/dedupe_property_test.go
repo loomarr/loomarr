@@ -16,7 +16,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // propSeed pins the corpus generation. Change it only to widen coverage; a

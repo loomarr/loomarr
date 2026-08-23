@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestCertifyReportsARealStaticLadder(t *testing.T) {

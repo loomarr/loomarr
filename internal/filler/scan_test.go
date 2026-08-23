@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 // fakeProbe reports a fixed duration, so the scanner is testable without ffmpeg.

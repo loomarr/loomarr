@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/prepared"
+	"github.com/loomarr/loomarr/internal/prepared"
 )
 
 type fixedPreparedResolver struct {

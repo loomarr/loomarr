@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout"
 )
 
 // Signed playout URLs — how a PERSON's browser plays a channel without holding the device

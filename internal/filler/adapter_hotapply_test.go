@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 // ⚠ **The setting→policy edge, which no other test in this package touches.**

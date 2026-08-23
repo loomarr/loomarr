@@ -30,7 +30,7 @@ sudo pacman -S ffmpeg        # Arch
 ## From a clean clone
 
 ```bash
-git clone https://github.com/mantonx/loomarr && cd loomarr
+git clone https://github.com/loomarr/loomarr && cd loomarr
 make doctor         # exact toolchain + local-state diagnostics
 make bootstrap      # pnpm install + codegen
 make agent-baseline # make check, shared by clean worktrees at this commit

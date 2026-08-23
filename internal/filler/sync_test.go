@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 // fakeSource is a Tunarr local filler source returning a fixed set of raw clips.

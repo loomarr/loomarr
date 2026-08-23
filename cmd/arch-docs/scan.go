@@ -13,7 +13,7 @@ import (
 
 // modulePath prefixes every internal import. Used to tell "our package" from a
 // third-party one without asking the build system anything.
-const modulePath = "github.com/mantonx/loomarr/internal/"
+const modulePath = "github.com/loomarr/loomarr/internal/"
 
 // Package is one row of the generated map: what it is, and what it sits on.
 //

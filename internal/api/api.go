@@ -14,8 +14,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
-	"github.com/mantonx/loomarr/internal/metrics"
-	"github.com/mantonx/loomarr/internal/web"
+	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/web"
 )
 
 // ReadyFunc reports readiness (DB + migrations; soft Tunarr) — §17.

@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/programmer"
+	"github.com/loomarr/loomarr/internal/programmer"
 )
 
 func TestResolvedTunarrConfigReadsLiveSettingsTogether(t *testing.T) {

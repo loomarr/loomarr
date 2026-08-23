@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mantonx/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/httpx"
 )
 
 // This file is the curated catalog of HOSTED (OpenAI-compatible) PROVIDERS Loomarr

@@ -21,9 +21,9 @@ import (
 	"errors"
 	"log/slog"
 
-	"github.com/mantonx/loomarr/internal/schedule"
-	"github.com/mantonx/loomarr/internal/store"
-	"github.com/mantonx/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // Thresholds supplies the global re-curation knobs, read per call so a settings change takes

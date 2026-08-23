@@ -10,7 +10,7 @@ package programmer
 import (
 	"context"
 
-	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // ChannelSpec is the desired Tunarr channel definition the scheduler wants to

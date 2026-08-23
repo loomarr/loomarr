@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/scheduler"
 )
 
 type noopPreparedRunner struct{}

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 // memSink is an in-memory fileSink for testing the walk without touching disk.

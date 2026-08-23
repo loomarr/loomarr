@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // This file is the ChannelPolicy ENFORCEMENT half (programming-design §3–§5): the

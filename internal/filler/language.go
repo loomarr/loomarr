@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/mantonx/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/mediatools"
 	"os"
 	"os/exec"
 	"path/filepath"

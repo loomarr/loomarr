@@ -19,7 +19,7 @@ export default defineConfig({
       description:
         "Describe a TV channel in a sentence. Loomarr builds it, plays it, and keeps it running.",
       social: [
-        { icon: "github", label: "GitHub", href: "https://github.com/mantonx/loomarr" },
+        { icon: "github", label: "GitHub", href: "https://github.com/loomarr/loomarr" },
       ],
       // Mermaid, client-side. Starlight has no native support, and rehype-mermaid renders
       // through a headless browser — a Playwright download in the docs build is not worth a
