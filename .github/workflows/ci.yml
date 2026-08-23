@@ -734,6 +734,7 @@ jobs:
             clients-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}-
             clients-${{ runner.os }}-
       - run: make fe-install
+      - run: make fe-codegen
       - name: Verify the affected client graph
         env:
           TMPDIR: ${{ runner.temp }}
