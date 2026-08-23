@@ -7,22 +7,18 @@ WEB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly WEB_ROOT
 readonly APP_DIR="${WEB_ROOT}/apps/${APP_NAME}"
 readonly ARTIFACTS_DIR="${LOOMARR_APPLE_ARTIFACTS_DIR:-${WEB_ROOT}/../.artifacts/apple-client/${APP_NAME}}"
-readonly DERIVED_DATA="${LOOMARR_APPLE_DERIVED_DATA_DIR:-${ARTIFACTS_DIR}/derived-data}"
+readonly BUILD_DIR="${LOOMARR_APPLE_BUILD_DIR:-${ARTIFACTS_DIR}/build}"
 
 case "${APP_NAME}" in
   mobile)
     readonly SCHEME="LoomarrMobilePrototype"
-    readonly SDK="iphonesimulator"
     readonly RUNTIME_TOKEN="iOS"
     readonly BUNDLE_ID="media.loomarr.mobile.prototype"
-    readonly BUILD_PRODUCT="Release-iphonesimulator/${SCHEME}.app"
     ;;
   tv)
     readonly SCHEME="LoomarrTVPrototype"
-    readonly SDK="appletvsimulator"
     readonly RUNTIME_TOKEN="tvOS"
     readonly BUNDLE_ID="media.loomarr.tv.prototype"
-    readonly BUILD_PRODUCT="Release-appletvsimulator/${SCHEME}.app"
     ;;
   *)
     printf 'usage: %s [mobile|tv]\n' "$0" >&2
@@ -34,7 +30,7 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   printf 'Apple client verification requires macOS with Xcode\n' >&2
   exit 2
 fi
-for command_name in jq pod xcodebuild xcrun; do
+for command_name in jq xcodebuild xcrun; do
   command -v "${command_name}" >/dev/null 2>&1 || {
     printf '%s is required for Apple client verification\n' "${command_name}" >&2
     exit 2
@@ -48,8 +44,7 @@ if [[ ! "${xcode_version}" =~ ^26\. ]]; then
   exit 2
 fi
 
-mkdir -p "${ARTIFACTS_DIR}"
-rm -rf "${DERIVED_DATA}"
+mkdir -p "${ARTIFACTS_DIR}" "${BUILD_DIR}"
 
 if [[ "${APP_NAME}" == "tv" ]]; then
   (
@@ -62,11 +57,6 @@ else
     pnpm --filter @loomarr/mobile exec expo prebuild --platform ios --clean --no-install
   )
 fi
-
-(
-  cd "${APP_DIR}/ios"
-  pod install
-)
 
 simulator_json="$(xcrun simctl list devices available --json)"
 simulator_id="$(jq -r --arg runtime "${RUNTIME_TOKEN}" '
@@ -94,24 +84,28 @@ cleanup() {
 trap cleanup EXIT
 xcrun simctl bootstatus "${simulator_id}" -b
 
-NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 xcodebuild \
-  -workspace "${APP_DIR}/ios/${SCHEME}.xcworkspace" \
-  -scheme "${SCHEME}" \
-  -configuration Release \
-  -sdk "${SDK}" \
-  -destination "id=${simulator_id}" \
-  -derivedDataPath "${DERIVED_DATA}" \
-  ONLY_ACTIVE_ARCH=YES \
-  CODE_SIGNING_ALLOWED=NO \
-  CODE_SIGNING_REQUIRED=NO \
-  build
-readonly APP_PATH="${DERIVED_DATA}/Build/Products/${BUILD_PRODUCT}"
-if [[ ! -d "${APP_PATH}" ]]; then
-  printf 'expected simulator application was not built at %s\n' "${APP_PATH}" >&2
-  exit 1
+expo_run=(
+  pnpm exec expo run:ios
+  --scheme "${SCHEME}"
+  --configuration Release
+  --device "${simulator_id}"
+  --no-bundler
+  --output "${BUILD_DIR}"
+)
+if [[ "${APP_NAME}" == "tv" ]]; then
+  (
+    cd "${APP_DIR}"
+    NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 EXPO_TV=1 "${expo_run[@]}"
+  )
+else
+  (
+    cd "${APP_DIR}"
+    NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 "${expo_run[@]}"
+  )
 fi
 
-xcrun simctl install "${simulator_id}" "${APP_PATH}"
+# Expo owns dependency installation, CocoaPods, compilation, installation, and
+# initial launch. Relaunch once to obtain the host PID used by the liveness check.
 launch_output="$(xcrun simctl launch --terminate-running-process "${simulator_id}" "${BUNDLE_ID}")"
 printf '%s\n' "${launch_output}"
 launch_pid="${launch_output##*: }"

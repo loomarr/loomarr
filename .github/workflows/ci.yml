@@ -773,7 +773,7 @@ jobs:
       - name: Generate, build, install, and launch
         env:
           LOOMARR_APPLE_ARTIFACTS_DIR: ${{ runner.temp }}/apple-client-${{ matrix.client }}
-          LOOMARR_APPLE_DERIVED_DATA_DIR: ${{ runner.temp }}/apple-derived-data-${{ matrix.client }}
+          LOOMARR_APPLE_BUILD_DIR: ${{ runner.temp }}/apple-build-${{ matrix.client }}
         run: make client-apple-simulator CLIENT_APP=${{ matrix.client }}
       - name: Keep simulator screenshot
         if: always()
