@@ -86,3 +86,10 @@ gate documentation are amended before the first change that alters required beha
   versus 11m15s, 9m14s, and 9m28s before. The one-time contract job took 8m50s because a 1m59s
   runtime certification still followed 6m26s of independent static contracts; the next slice runs
   those two required results in parallel.
+- PR #466 merged the certification split. On its clean run, repository contracts became the
+  5m39s critical path while release-worker certification completed in 2m50s and the cached Go
+  shards completed in 2m21s, 3m09s, and 2m24s. This establishes the pre-activation baseline for
+  observing specialized decisions without allowing them to skip any current job.
+- The specialized classifier now publishes shadow `impact_*` decisions and a comparison table in
+  the `changes` job summary. Legacy broad outputs remain the only selectors until shadow evidence
+  and regression fixtures establish that every affected gate is retained.

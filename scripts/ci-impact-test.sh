@@ -45,6 +45,18 @@ grep -qx 'go=true' <<<"$stdin_output"
 grep -qx 'docs=true' <<<"$stdin_output"
 grep -qx 'go_full=false' <<<"$stdin_output"
 
+all_output="$($CLASSIFIER --all)"
+while IFS= read -r decision; do
+  [[ "$decision" == *=true ]] || {
+    printf 'ci-impact-test: --all returned non-true decision: %s\n' "$decision" >&2
+    exit 1
+  }
+done <<<"$all_output"
+if "$CLASSIFIER" --all internal/suggest/ground.go >/dev/null 2>&1; then
+  echo 'ci-impact-test: --all unexpectedly accepted a path' >&2
+  exit 1
+fi
+
 git -C "$ROOT" ls-files --cached --others --exclude-standard | "$CLASSIFIER" --check-known >/dev/null
 
 echo 'ci-impact-test: ok'

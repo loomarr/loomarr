@@ -46,6 +46,18 @@ usable merge base — first push, force-push, new branch — runs everything.
 Two non-obvious entries: `docs/help/` is in the Go filter because those pages are embedded and
 the doc-claims test reads them, and `scripts/` is there because the job executes them.
 
+### Specialized gate classifier is shadow-only
+
+The `changes` job also runs `scripts/ci-impact.sh` and publishes `impact_*` outputs for the
+specialized contract, Go, full-Go, Rust, Postgres, Windows, web, visual, e2e, tuner, image, docs,
+agent, and Android gates. Its run summary places those proposed decisions beside the current broad
+Go and web families.
+
+Those outputs are observational: no required job consumes them yet. The existing `go`, `web`,
+`image`, `docs`, `agent`, and `android` outputs remain authoritative while shadow results are
+compared with complete CI outcomes. A missing base, classifier failure, or unknown path selects
+every proposed gate.
+
 ## The image job is the exception
 
 The image filter follows every source family copied by the Dockerfile: Docker metadata, packaged

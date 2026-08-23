@@ -48,6 +48,20 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       agent: ${{ steps.filter.outputs.agent }}
       android: ${{ steps.filter.outputs.android }}
+      impact_contracts: ${{ steps.impact.outputs.contracts }}
+      impact_go: ${{ steps.impact.outputs.go }}
+      impact_go_full: ${{ steps.impact.outputs.go_full }}
+      impact_rust: ${{ steps.impact.outputs.rust }}
+      impact_postgres: ${{ steps.impact.outputs.postgres }}
+      impact_windows: ${{ steps.impact.outputs.windows }}
+      impact_web: ${{ steps.impact.outputs.web }}
+      impact_visual: ${{ steps.impact.outputs.visual }}
+      impact_e2e: ${{ steps.impact.outputs.e2e }}
+      impact_tuner: ${{ steps.impact.outputs.tuner }}
+      impact_image: ${{ steps.impact.outputs.image }}
+      impact_docs: ${{ steps.impact.outputs.docs }}
+      impact_agent: ${{ steps.impact.outputs.agent }}
+      impact_android: ${{ steps.impact.outputs.android }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -170,6 +184,66 @@ jobs:
           else
             echo "image=false" >> "$GITHUB_OUTPUT"
           fi
+
+      # Observe the dependency-aware classifier before it is allowed to skip required work.
+      # Every job below still consumes the legacy outputs from `steps.filter`.
+      - name: Classify specialized gates (shadow only)
+        id: impact
+        env:
+          BASE: >-
+            ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha
+             || github.event_name == 'merge_group' && github.event.merge_group.base_sha
+             || github.event.before }}
+          LEGACY_GO: ${{ steps.filter.outputs.go }}
+          LEGACY_WEB: ${{ steps.filter.outputs.web }}
+          LEGACY_IMAGE: ${{ steps.filter.outputs.image }}
+          LEGACY_DOCS: ${{ steps.filter.outputs.docs }}
+          LEGACY_AGENT: ${{ steps.filter.outputs.agent }}
+          LEGACY_ANDROID: ${{ steps.filter.outputs.android }}
+        run: |
+          set -uo pipefail
+          reason="classified the merge-base diff"
+          if [ -z "${BASE:-}" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            reason="no usable diff base; failed closed"
+            impact="$(./scripts/ci-impact.sh --all)"
+          elif ! impact="$(git diff --name-only "$BASE" HEAD | ./scripts/ci-impact.sh)"; then
+            echo "::warning::CI impact classification failed; shadow decisions defaulted to all gates"
+            reason="classifier error; failed closed"
+            impact="$(./scripts/ci-impact.sh --all)"
+          fi
+          printf '%s\n' "$impact" >> "$GITHUB_OUTPUT"
+
+          impact_value() {
+            printf '%s\n' "$impact" | sed -n "s/^$1=//p"
+          }
+          {
+            echo "### Specialized CI gate shadow"
+            echo
+            echo "These decisions are observational only; current jobs still use the legacy families."
+            echo
+            echo "Reason: $reason."
+            echo
+            echo "| Proposed gate | Run? |"
+            echo "| --- | --- |"
+            while IFS='=' read -r gate decision; do
+              printf '| %s | %s |\n' "$gate" "$decision"
+            done <<< "$impact"
+            echo
+            echo "| Current family | Run? | Proposed components |"
+            echo "| --- | --- | --- |"
+            printf '| Go | %s | contracts=%s, go=%s, full=%s, rust=%s, postgres=%s, windows=%s |\n' \
+              "$LEGACY_GO" "$(impact_value contracts)" "$(impact_value go)" \
+              "$(impact_value go_full)" "$(impact_value rust)" \
+              "$(impact_value postgres)" "$(impact_value windows)"
+            printf '| Web | %s | web=%s, visual=%s, e2e=%s, tuner=%s |\n' \
+              "$LEGACY_WEB" "$(impact_value web)" "$(impact_value visual)" \
+              "$(impact_value e2e)" "$(impact_value tuner)"
+            printf '| Image | %s | image=%s |\n' "$LEGACY_IMAGE" "$(impact_value image)"
+            printf '| Docs | %s | docs=%s |\n' "$LEGACY_DOCS" "$(impact_value docs)"
+            printf '| Agent | %s | agent=%s |\n' "$LEGACY_AGENT" "$(impact_value agent)"
+            printf '| Android | %s | android=%s |\n' "$LEGACY_ANDROID" "$(impact_value android)"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   agent-harness-macos:
     name: Agent harness (macOS)
