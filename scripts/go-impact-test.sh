@@ -5,10 +5,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SELECTOR="$ROOT/scripts/go-impact.sh"
 
 leaf="$($SELECTOR internal/suggest/ground.go)"
-grep -qx './internal/suggest' <<<"$leaf"
-grep -qx './internal/app' <<<"$leaf"
-grep -qx './cmd/loomarr' <<<"$leaf"
-if grep -qx './internal/store' <<<"$leaf"; then
+module="$(cd "$ROOT" && go list -m)"
+grep -qx "$module/internal/suggest" <<<"$leaf"
+grep -qx "$module/internal/app" <<<"$leaf"
+grep -qx "$module/cmd/loomarr" <<<"$leaf"
+if grep -qx "$module/internal/store" <<<"$leaf"; then
   echo 'go-impact-test: a suggest leaf selected unrelated internal/store' >&2
   exit 1
 fi

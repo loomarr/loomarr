@@ -4,7 +4,6 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MODULE="$(cd "$ROOT" && go list -m)"
 
 paths=()
 if (($#)); then
@@ -56,7 +55,7 @@ changed_list="$(printf '%s\n' "${changed_imports[@]}" | sort -u)"
   go list \
     -f '{{.ImportPath}}{{"\t"}}{{join .Deps " "}}{{"\t"}}{{join .TestImports " "}}{{"\t"}}{{join .XTestImports " "}}' \
     ./... \
-    | awk -F '\t' -v module="$MODULE" '
+    | awk -F '\t' '
         BEGIN {
           count = split(ENVIRON["CHANGED_IMPORTS"], changed, "\n")
           for (i = 1; i <= count; i++) wanted[changed[i]] = 1
@@ -65,9 +64,7 @@ changed_list="$(printf '%s\n' "${changed_imports[@]}" | sort -u)"
           haystack = " " $1 " " $2 " " $3 " " $4 " "
           for (dependency in wanted) {
             if (index(haystack, " " dependency " ")) {
-              path = $1
-              sub("^" module, ".", path)
-              print path
+              print $1
               break
             }
           }
