@@ -1,0 +1,66 @@
+# Proportional local and CI feedback
+
+## Goal
+
+Reduce Loomarr's local-development and CI feedback time without weakening the assurance required
+to merge or release. Changed paths are classified once, unfamiliar inputs fail closed, fast checks
+exercise the affected dependency closure, and a protected final boundary retains the complete
+required gates.
+
+## Measured baseline
+
+On 2026-08-22, recent successful pull requests completed in roughly 10-12 minutes. A change limited
+to `internal/suggest` and `docs/programming-design.md` still ran three `make check` shards, Postgres
+conformance, Windows playout verification, and native amd64 and arm64 release-image builds. In one
+representative run the three `make check` steps took 456, 537, and 648 seconds. Each shard repeated
+Rust, formatting, vet, lint, tagged compilation, Windows compilation, harness, and release-contract
+work; only the Go test package list was partitioned.
+
+The repository currently requires one aggregate `CI` status, but branch protection is not strict
+and no merge queue is enforced. Complete assurance therefore cannot move out of pull-request CI
+until a protected merge boundary exists.
+
+## Assurance tiers
+
+| Tier | Scope | Budget |
+| --- | --- | --- |
+| Edit | Direct package or frontend test in watch mode | seconds |
+| Pre-push | Affected Go dependency closure and relevant frontend/static checks | 90 seconds p95 |
+| Pull request | Fail-closed, impact-scoped gates running in parallel | 5 minutes p95 for leaf changes |
+| Merge group | Full affected-domain gate against current `main` | 12 minutes p95 |
+| Main, nightly, release | Complete race, database, browser, architecture, and packaging matrices | comprehensive |
+
+These are feedback budgets, not test timeouts. Exceeding one produces evidence for the next
+optimization; it never skips or kills a correctness gate.
+
+## Policy
+
+One deep module owns path classification. Its interface accepts changed repository paths and
+returns stable gate decisions. Local tooling and CI are adapters at that seam; neither carries a
+second set of path regular expressions. Unknown paths, missing bases, classifier errors, and new
+source families select every gate.
+
+For Go changes, the fast tier runs race tests for changed packages plus their reverse-dependent
+closure. Repository-wide compilation and contract checks remain cheap, parallel checks. These
+seams always force the complete Go suite: composition root, shared testkit, store interfaces and
+migrations, module files, build tags, and generators.
+
+The final protected tier retains all applicable assertions from `make check`, Postgres conformance,
+the three-browser tuner suite, visual and accessibility coverage, native release architectures,
+and Android. The work changes when assurance runs, not whether it exists.
+
+## Delivery
+
+1. Add the classifier and exhaustive table/known-path tests without changing CI behavior.
+2. Make `agent-verify` consume it and calculate reverse Go dependencies.
+3. Split global Go contracts from sharded race tests so global work runs once.
+4. Add specialized Postgres, Windows, Rust, visual, e2e, tuner, image, and Android decisions in
+   shadow mode while the old jobs still run.
+5. Compare shadow selections with full outcomes and add a regression fixture for every mismatch.
+6. Enable strict merge protection and the merge queue; prove `merge_group` runs the aggregate gate.
+7. Activate proportional pull-request gates and retain complete merge/main/nightly/release audits.
+8. Publish selected gates, setup/cache/test timings, critical path, and runner-minutes in summaries;
+   then profile genuinely slow packages after orchestration waste is gone.
+
+Each activation is a separate reversible pull request. `docs/design.md` section 19 and the developer
+gate documentation are amended before the first change that alters required behavior.
