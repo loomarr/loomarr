@@ -31,6 +31,8 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
   const queryClient = useQueryClient();
   const run = useSuggestionRun();
   const elapsed = useElapsed(run.isRunning);
+  const runProblem = run.error == null ? undefined : toProblem(run.error);
+  const aiUnconfigured = runProblem?.type === "feature_not_configured";
 
   const approve = proposalsApi.useApproveProposal({
     mutation: {
@@ -73,7 +75,21 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
         <IntentForm initialDescription={initialIntent} onSubmit={run.start} submitting={run.isRunning} />
       )}
 
-      {run.error != null && <ErrorState error={run.error} />}
+      {run.error != null &&
+        (aiUnconfigured ? (
+          <div role="alert" className="rounded-lg border border-border bg-muted/40 p-4">
+            <p className="font-medium">Connect AI to describe a channel</p>
+            <p className="mt-1 text-muted-foreground text-sm">
+              This needs a configured AI provider and a selected tool-capable lineup model. Your description
+              is still here, so you can return and submit it after setup.
+            </p>
+            <Link to="/settings/ai" className={buttonVariants({ variant: "link", size: "sm" })}>
+              Open AI settings
+            </Link>
+          </div>
+        ) : (
+          <ErrorState error={run.error} />
+        ))}
 
       {/* Running — the live generation phases. */}
       {/* Before the first frame lands the model is already loading and thinking, so

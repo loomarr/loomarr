@@ -33,16 +33,21 @@ func TestFeatures_EmptyIsAllOff(t *testing.T) {
 	}
 }
 
-// Suggestions need BOTH an LLM provider AND TMDB grounding (config-design §7).
-// (llm.provider has a default of "ollama", so the missing piece is tmdb.api_key.)
-func TestFeatures_SuggestionsNeedTMDB(t *testing.T) {
-	// llm.provider defaults to ollama (set), but tmdb.api_key is empty → gated off.
+// Suggestions need a selected lineup model as well as TMDB grounding
+// (config-design §7). The default Ollama provider names a transport; it does not
+// prove that an operator has pulled and selected a tool-capable model.
+func TestFeatures_SuggestionsNeedModelAndTMDB(t *testing.T) {
 	if featureService(t, nil).Features().Suggestions {
+		t.Error("suggestions should be off without a model and TMDB grounding")
+	}
+	if featureService(t, map[string]string{"tmdb.api_key": "tmdbkey"}).Features().Suggestions {
+		t.Error("suggestions should be off until a lineup model is selected")
+	}
+	if featureService(t, map[string]string{"llm.model": "qwen3:8b"}).Features().Suggestions {
 		t.Error("suggestions should be off without TMDB grounding")
 	}
-	// Add TMDB → on.
-	if !featureService(t, map[string]string{"tmdb.api_key": "tmdbkey"}).Features().Suggestions {
-		t.Error("suggestions should be on with a provider + TMDB")
+	if !featureService(t, map[string]string{"llm.model": "qwen3:8b", "tmdb.api_key": "tmdbkey"}).Features().Suggestions {
+		t.Error("suggestions should be on with a selected model and TMDB")
 	}
 }
 

@@ -8,6 +8,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
@@ -159,6 +160,34 @@ describe("ChannelSuggestPanel", () => {
       expect(submissions).toHaveLength(1);
       expect(submissions[0]).toMatchObject({ description: "80s teen comedies" });
     });
+  });
+
+  it("preserves the intent and links AI settings when submission is not configured", async () => {
+    const user = userEvent.setup();
+    stubSuggest();
+    server.use(
+      http.post("*/v1/proposals", () =>
+        HttpResponse.json(
+          {
+            type: "feature_not_configured",
+            title: "AI isn't set up",
+            detail: "Connect an AI provider in Settings → AI to build channels from a sentence.",
+          },
+          { status: 501 },
+        ),
+      ),
+    );
+    renderPanel(() => {});
+
+    const intent = await screen.findByLabelText("Channel intent");
+    await user.type(intent, "Saturday morning cartoons");
+    await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /configured AI provider.*tool-capable lineup model/i,
+    );
+    expect(screen.getByRole("link", { name: /open ai settings/i })).toHaveAttribute("href", "/settings/ai");
+    expect(intent).toHaveValue("Saturday morning cartoons");
   });
 
   // Moved here when `/suggest` folded into the Guide header (§12) and its route-level suite

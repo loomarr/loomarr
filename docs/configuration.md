@@ -83,7 +83,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | --- | --- | --- | --- |
 | `llm.provider` (`LLM_PROVIDER`) | enum | `ollama` | Which AI to use: a local Ollama, or an OpenAI-compatible service. You can also pick a model in the AI settings. _(required for suggestions; one of: ollama \| openai)_ |
 | `llm.url` (`LLM_URL`) | url | — | For Ollama, its host such as http://ollama:11434. For a hosted provider, the exact OpenAI-compatible API base; Loomarr fills this for OpenRouter, while Custom remains editable. |
-| `llm.model` (`LLM_MODEL`) | string | — | The active hosted model id. Prefer the guided picker on the AI page; OpenRouter ids use provider/model (for example openai/gpt-4o-mini). |
+| `llm.model` (`LLM_MODEL`) | string | — | The active model used to build channel lineups. Prefer the guided picker on the AI page; OpenRouter ids use provider/model (for example openai/gpt-4o-mini). _(required for suggestions)_ |
 | `llm.api_key` (`LLM_API_KEY`) | secret | (secret) | API key for your hosted AI service. Never shown again after saving. |
 | `llm.keep_alive` (`LLM_KEEP_ALIVE`) | duration | `2m` | How long to keep the local AI model loaded in memory between requests. Loading it takes several seconds, so keeping it ready makes suggestions much faster — but the model shares GPU memory with channel playback, so the default is short (2m) to free that memory for streaming. Raise it if you rarely stream and want faster suggestions; set 0 to free memory as soon as each request finishes. _(advanced)_ |
 | `suggest.max_acquisitions` (`SUGGEST_MAX_ACQUISITIONS`) | int | `10` | The most titles a single suggestion may download. |

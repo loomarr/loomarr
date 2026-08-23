@@ -423,9 +423,9 @@ func declared() []Setting {
 			// The normal AI page uses the ranked picker for both provider kinds so two
 			// controls never compete. This declaration remains for env compatibility and
 			// the explicit All Settings escape hatch.
-			Key: "llm.model", Label: "Hosted lineup model", EnvVar: "LLM_MODEL", Group: GroupAI,
-			Kind: KindString, Default: "",
-			Doc:      "The active hosted model id. Prefer the guided picker on the AI page; OpenRouter ids use provider/model (for example openai/gpt-4o-mini).",
+			Key: "llm.model", Label: "Lineup model", EnvVar: "LLM_MODEL", Group: GroupAI,
+			Kind: KindString, Default: "", Required: FeatureSuggestions,
+			Doc:      "The active model used to build channel lineups. Prefer the guided picker on the AI page; OpenRouter ids use provider/model (for example openai/gpt-4o-mini).",
 			ShowWhen: map[string][]string{"llm.provider": {"openai"}},
 		},
 		{

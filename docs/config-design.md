@@ -454,7 +454,7 @@ No parallel form system. Each wizard step renders the relevant **settings group'
 
 `RequiredFor` on registry keys computes feature availability:
 
-- **AI unconfigured** → the Suggest tab renders an inviting empty state ("Connect an LLM to build channels from a sentence" → deep link to Settings→AI), and `POST /v1/proposals` returns a 409 problem `feature_not_configured` with the same pointer. Never a stack trace, never a dead button.
+- **AI unconfigured** → `POST /v1/proposals` rejects before creating a Job with a 409 problem `feature_not_configured`; the Add channel panel preserves the typed intent and renders an actionable state ("Connect AI to describe a channel" → deep link to Settings→AI) so the operator can configure a tool-capable lineup model and retry. Never a stack trace, never a dead button.
 - **Requester unconfigured** → proposals still generate from the library; acquisitions render disabled with "Connect Seerr to request missing titles."
 - **Filler unconfigured** → channels build without pods; the channel card notes "no filler drop-folder configured."
 
@@ -562,4 +562,3 @@ does not exist.
 - **Phase 9:** generated API/playout tokens + rotation side-effects (auth interplay).
 - **Phase 13:** Settings pages, save bar, provenance chips, wizard-as-settings-forms, feature-gated empty states.
 - This doc is a **seed doc**: incorporate as `docs/config-design.md` during phase 14; `docs/configuration.md` is the *generated* reference beside it.
-

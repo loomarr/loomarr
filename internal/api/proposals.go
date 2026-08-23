@@ -85,7 +85,7 @@ type submitOutput struct {
 
 func (s *Server) submitProposal(ctx context.Context, in *submitInput) (*submitOutput, error) {
 	if s.suggest == nil || s.featureOff(ctx, "suggestions") {
-		return nil, errNotImplemented("AI isn't set up", "Connect an AI provider in Settings → AI to build channels from a sentence.")
+		return nil, errFeatureNotConfigured("AI isn't set up", "Connect an AI provider and select a tool-capable lineup model in Settings → AI to build channels from a sentence.")
 	}
 	if in.Body.Description == "" {
 		return nil, errBadRequest("Description required", "Describe the channel you want in a sentence.")

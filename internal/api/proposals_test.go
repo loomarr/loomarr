@@ -48,6 +48,10 @@ func (f *fakeSuggest) Refine(_ context.Context, jobID string, intent suggest.Int
 }
 
 func newSuggestServer(t *testing.T) (*httptest.Server, store.Store, *fakeSuggest) {
+	return newSuggestServerWithSettings(t, nil)
+}
+
+func newSuggestServerWithSettings(t *testing.T, settings api.SettingsService) (*httptest.Server, store.Store, *fakeSuggest) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/s.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -71,6 +75,7 @@ func newSuggestServer(t *testing.T) (*httptest.Server, store.Store, *fakeSuggest
 		// channel row and just skips the immediate Tunarr reconcile push.
 		Approver: suggest.NewApprover(st, chBinder, time.Now),
 		Binder:   chBinder,
+		Settings: settings,
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -135,6 +140,28 @@ func TestSubmit_AnyAuthenticatedUser(t *testing.T) {
 	}
 	if fs.submits != 1 {
 		t.Errorf("submit not invoked: %d", fs.submits)
+	}
+}
+
+func TestSubmit_UnconfiguredAIFailsBeforeCreatingJob(t *testing.T) {
+	srv, _, fs := newSuggestServerWithSettings(t, &fakeSettings{})
+	resp := do(t, srv, http.MethodPost, "/v1/proposals", adminToken, `{"description":"90s action"}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("submit → %d, want 409 feature-not-configured", resp.StatusCode)
+	}
+	if fs.submits != 0 {
+		t.Fatalf("unconfigured submission created %d jobs, want none", fs.submits)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var problem struct {
+		Type   string `json:"type"`
+		Detail string `json:"detail"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&problem); err != nil {
+		t.Fatal(err)
+	}
+	if problem.Type != "feature_not_configured" || !strings.Contains(problem.Detail, "tool-capable lineup model") {
+		t.Errorf("problem = %+v, want actionable feature-not-configured guidance", problem)
 	}
 }
 

@@ -73,6 +73,14 @@ func errNotFound(title, detail string, doc ...string) huma.StatusError {
 func errConflict(title, detail string, doc ...string) huma.StatusError {
 	return apiErr(http.StatusConflict, title, detail, doc...)
 }
+func errFeatureNotConfigured(title, detail string) huma.StatusError {
+	return &huma.ErrorModel{
+		Status: http.StatusConflict,
+		Title:  title,
+		Detail: detail,
+		Type:   "feature_not_configured",
+	}
+}
 func errUnprocessable(title, detail string, doc ...string) huma.StatusError {
 	return apiErr(http.StatusUnprocessableEntity, title, detail, doc...)
 }
