@@ -82,3 +82,7 @@ gate documentation are amended before the first change that alters required beha
 - The next slice preserves `make check` as `check-static` plus `test`, runs the static/repository
   contracts once beside three test-only shards, verifies the shard partition independently, and
   requires both halves in the `CI` aggregate.
+- PR #465 merged that split. Its clean-run test shards completed in 3m48s, 4m36s, and 5m56s,
+  versus 11m15s, 9m14s, and 9m28s before. The one-time contract job took 8m50s because a 1m59s
+  runtime certification still followed 6m26s of independent static contracts; the next slice runs
+  those two required results in parallel.
