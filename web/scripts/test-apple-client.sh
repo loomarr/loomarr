@@ -95,12 +95,16 @@ expo_run=(
 if [[ "${APP_NAME}" == "tv" ]]; then
   (
     cd "${APP_DIR}"
-    NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 EXPO_TV=1 "${expo_run[@]}"
+    # Expo owns the build entrypoint; silence React Native's nested pod helper notice.
+    NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 RCT_IGNORE_PODS_DEPRECATION=1 \
+      EXPO_TV=1 "${expo_run[@]}"
   )
 else
   (
     cd "${APP_DIR}"
-    NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 "${expo_run[@]}"
+    # Expo owns the build entrypoint; silence React Native's nested pod helper notice.
+    NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 RCT_IGNORE_PODS_DEPRECATION=1 \
+      "${expo_run[@]}"
   )
 fi
 
