@@ -170,6 +170,70 @@ func diagnosticNullableInt(value *int) any {
 	return *value
 }
 
+// ListDiagnosticRetentionCandidates returns one oldest-first page. A zero before selects all
+// deletable evidence for the storage-budget phase; active Process runs are never candidates.
+func (s *sqlStore) ListDiagnosticRetentionCandidates(
+	ctx context.Context, before time.Time, limit int,
+) ([]diagnostics.RetentionCandidate, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 256
+	}
+	beforeMS := before.UnixMilli()
+	if before.IsZero() {
+		beforeMS = 0
+	}
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT kind, id, at, size_bytes, output_ref FROM (
+		SELECT 'event' AS kind, id, occurred_at AS at, size_bytes, '' AS output_ref
+		FROM diagnostic_events WHERE (CAST(? AS BIGINT) = 0 OR occurred_at < CAST(? AS BIGINT))
+		UNION ALL
+		SELECT 'process_run' AS kind, id, ended_at AS at, size_bytes, output_ref
+		FROM diagnostic_process_runs
+		WHERE status <> 'running' AND ended_at > 0
+			AND (CAST(? AS BIGINT) = 0 OR ended_at < CAST(? AS BIGINT))
+	) candidates ORDER BY at, id LIMIT ?`), beforeMS, beforeMS, beforeMS, beforeMS, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list diagnostic retention candidates: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	result := make([]diagnostics.RetentionCandidate, 0, limit)
+	for rows.Next() {
+		var candidate diagnostics.RetentionCandidate
+		if err := rows.Scan(&candidate.Kind, &candidate.ID, &candidate.At, &candidate.SizeBytes, &candidate.OutputRef); err != nil {
+			return nil, fmt.Errorf("scan diagnostic retention candidate: %w", err)
+		}
+		result = append(result, candidate)
+	}
+	return result, rows.Err()
+}
+
+func (s *sqlStore) DeleteDiagnosticEvent(ctx context.Context, id string) (bool, error) {
+	result, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM diagnostic_events WHERE id = ?`), id)
+	if err != nil {
+		return false, fmt.Errorf("delete diagnostic event %s: %w", id, err)
+	}
+	return rowsAffected(result) > 0, nil
+}
+
+// DeleteDiagnosticProcessRun repeats the terminal-state guard at the destructive boundary.
+func (s *sqlStore) DeleteDiagnosticProcessRun(ctx context.Context, id string) (bool, error) {
+	result, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM diagnostic_process_runs WHERE id = ? AND status <> 'running'`), id)
+	if err != nil {
+		return false, fmt.Errorf("delete diagnostic process run %s: %w", id, err)
+	}
+	return rowsAffected(result) > 0, nil
+}
+
+func (s *sqlStore) DiagnosticRetainedBytes(ctx context.Context) (int64, error) {
+	var retained int64
+	err := s.db.QueryRowContext(ctx, `SELECT
+		COALESCE((SELECT SUM(size_bytes) FROM diagnostic_events), 0) +
+		COALESCE((SELECT SUM(size_bytes) FROM diagnostic_process_runs), 0)`).Scan(&retained)
+	if err != nil {
+		return 0, fmt.Errorf("measure retained diagnostics: %w", err)
+	}
+	return retained, nil
+}
+
 // PurgeDiagnostics applies the SQL-owned half of §5 retention. File-backed completed runs are
 // deliberately excluded: #512's diagnostics-owned cleaner removes their opaque output first, then
 // their row. Deleting the row here would orphan a file the store cannot resolve safely.

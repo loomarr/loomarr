@@ -101,12 +101,10 @@ func breakDuration(v any) error {
 	return nil
 }
 
-// storagePath validates the two generation-scoped filler paths without importing
-// filler back into settings. Absolute paths keep a catalog row anchored to one
-// unambiguous root; filler.Layout owns canonical cleaning for the generation so
-// legacy trailing slashes and equivalent spellings remain upgrade-compatible.
-// Refusing the filesystem root prevents a bad edit from turning a scan into a walk
-// of the whole mounted host/container filesystem.
+// storagePath validates generation-scoped storage roots without importing their owning modules
+// back into settings. Absolute paths keep one generation anchored to an unambiguous root.
+// Refusing the filesystem root prevents a bad edit from turning a bounded subsystem into a walk
+// or output sink over the whole mounted host/container filesystem.
 func storagePath(optional bool) ValidateFunc {
 	return func(v any) error {
 		path, ok := v.(string)
@@ -126,7 +124,7 @@ func storagePath(optional bool) ValidateFunc {
 		}
 		root := filepath.VolumeName(clean) + string(filepath.Separator)
 		if clean == root {
-			return fmt.Errorf("the filesystem root cannot be used as a clip folder")
+			return fmt.Errorf("the filesystem root cannot be used as a storage directory")
 		}
 		return nil
 	}
@@ -1245,6 +1243,12 @@ func declared() []Setting {
 			Key: "activity.retention", EnvVar: "ACTIVITY_RETENTION", Group: GroupAdvanced,
 			Kind: KindDuration, Default: "720h",
 			Doc: "How long the Dashboard's recent-activity entries are kept before they're cleaned up.",
+		},
+		{
+			Key: "diagnostics.dir", EnvVar: "DIAGNOSTICS_DIR", Group: GroupAdvanced,
+			Kind: KindString, Presentation: PresentationPath, Apply: ApplyRestart,
+			Default: "/data/diagnostics", Validate: storagePath(false), Advanced: true,
+			Doc: "Where Loomarr keeps bounded ffmpeg and streaming-process output. The directory must be persistent if logs should survive a restart.",
 		},
 		{
 			Key: "diagnostics.retention", EnvVar: "DIAGNOSTICS_RETENTION", Group: GroupAdvanced,

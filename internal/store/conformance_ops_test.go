@@ -524,6 +524,24 @@ func testDiagnostics(t *testing.T, newStore func(t *testing.T) Store) {
 	if _, err := st.GetDiagnosticProcessRun(ctx, "missing"); err != ErrNotFound {
 		t.Fatalf("missing process run = %v, want ErrNotFound", err)
 	}
+	fileBacked := finished
+	fileBacked.ID = "process-file-backed"
+	fileBacked.EndedAt = base.Add(-4 * time.Hour).UnixMilli()
+	fileBacked.OutputRef = "process-file-backed.log"
+	fileBacked.SizeBytes = 120
+	if err := st.UpsertDiagnosticProcessRun(ctx, fileBacked); err != nil {
+		t.Fatal(err)
+	}
+	candidates, err := st.ListDiagnosticRetentionCandidates(ctx, base.Add(-90*time.Minute), 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 3 || candidates[0].ID != fileBacked.ID || candidates[0].OutputRef != fileBacked.OutputRef {
+		t.Fatalf("retention candidates = %+v, want file-backed run then old event/run", candidates)
+	}
+	if removed, err := st.DeleteDiagnosticProcessRun(ctx, running.ID); err != nil || removed {
+		t.Fatalf("active process delete = (%v, %v), want guarded false", removed, err)
+	}
 
 	// Age removes the old event and completed run, but NEVER the older active run.
 	purged, err := st.PurgeDiagnostics(ctx, base.Add(-90*time.Minute), 0)
@@ -535,6 +553,12 @@ func testDiagnostics(t *testing.T, newStore func(t *testing.T) Store) {
 	}
 	if _, err := st.GetDiagnosticProcessRun(ctx, running.ID); err != nil {
 		t.Fatalf("active process was purged by age: %v", err)
+	}
+	if _, err := st.GetDiagnosticProcessRun(ctx, fileBacked.ID); err != nil {
+		t.Fatalf("store-only purge orphaned file-backed process metadata: %v", err)
+	}
+	if removed, err := st.DeleteDiagnosticProcessRun(ctx, fileBacked.ID); err != nil || !removed {
+		t.Fatalf("completed process delete = (%v, %v), want true", removed, err)
 	}
 
 	// The logical-byte budget removes the oldest eligible evidence. The active run remains even

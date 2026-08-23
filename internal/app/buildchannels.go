@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/backendtransition"
 	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/library"
@@ -52,7 +53,7 @@ func buildChannels(
 	readGeneratedSecret func(context.Context, settings.GeneratedSecret) (string, error),
 	eventBus *events.Bus, emitter *eventEmitter, activityRec *activity.Recorder,
 	jobReg *scheduler.Registry, episodeRefresh *reconcile.EpisodeRefresh, fillerLayout filler.Layout,
-	log *slog.Logger,
+	log *slog.Logger, processDiagnostics *diagnostics.ProcessManager,
 ) (channelBuild, error) {
 	// Scheduler + Tunarr (§9, Phase 10): the channel reconcile engine + periodic
 	// sweep, plus the Live TV wiring connector (guide-refresh poker). Wired when a
@@ -270,6 +271,7 @@ func buildChannels(
 			channels: channelEngine, liveTVConnector: liveTVConnector, backendView: backendView,
 			resolveDesiredBackend: resolveDesiredBackend, appliedBackend: appliedBackendContext,
 			transportBackend: transportBackendContext, log: log,
+			processDiagnostics: processDiagnostics,
 		})
 		if err != nil {
 			return channelBuild{}, err

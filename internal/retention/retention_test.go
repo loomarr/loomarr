@@ -16,6 +16,16 @@ type retentionStore struct {
 	sessionsCalled   bool
 }
 
+type retentionDiagnostics struct {
+	before time.Time
+	max    int64
+}
+
+func (d *retentionDiagnostics) Purge(_ context.Context, before time.Time, max int64) (diagnostics.PurgeResult, error) {
+	d.before, d.max = before, max
+	return diagnostics.PurgeResult{ProcessRuns: 2, RetainedBytes: 77}, nil
+}
+
 func (*retentionStore) PurgeDeniedProposals(context.Context, time.Time) (int, error) { return 0, nil }
 func (*retentionStore) PurgeFinishedJobs(context.Context, time.Time) (int, error)    { return 0, nil }
 func (*retentionStore) PurgeActivity(context.Context, time.Time) (int, error)        { return 0, nil }
@@ -72,5 +82,25 @@ func TestHousekeepingAttemptsLaterStagesAfterDiagnosticFailure(t *testing.T) {
 	}
 	if !store.sessionsCalled {
 		t.Fatal("diagnostic failure stopped later session cleanup")
+	}
+}
+
+func TestHousekeepingUsesFilesystemAwareDiagnosticsCoordinator(t *testing.T) {
+	now := time.Date(2026, 8, 23, 17, 0, 0, 0, time.UTC)
+	store := &retentionStore{}
+	coordinator := &retentionDiagnostics{}
+	service := New(store, Windows{
+		Proposals: func() time.Duration { return time.Hour }, Jobs: func() time.Duration { return time.Hour },
+		Activity: func() time.Duration { return time.Hour }, Diagnostics: func() time.Duration { return 7 * 24 * time.Hour },
+		DiagnosticsMaxBytes: func() int64 { return 1234 },
+	}, func() time.Time { return now }, nil).WithDiagnostics(coordinator)
+	if err := service.PurgeDiagnostics(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if !coordinator.before.Equal(now.Add(-7*24*time.Hour)) || coordinator.max != 1234 {
+		t.Fatalf("coordinator got before=%v max=%d", coordinator.before, coordinator.max)
+	}
+	if !store.diagnosticBefore.IsZero() {
+		t.Fatal("production coordinator fell through to store-only purge")
 	}
 }

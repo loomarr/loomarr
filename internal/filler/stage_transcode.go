@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/mediatools"
 )
 
@@ -40,7 +41,16 @@ type TranscodeStage struct {
 	// tests replace it with a byte writer so the lifecycle can be exercised without a host binary.
 	transcode func(context.Context, mediatools.TranscodeRequest, func(int)) (MediaQuality, error)
 	// inspect backfills quality facts for a mezzanine made before those facts rode the encode.
-	inspect func(context.Context, string, string, int64, bool) (MediaQuality, error)
+	inspect     func(context.Context, string, string, int64, bool) (MediaQuality, error)
+	diagnostics *diagnostics.ProcessManager
+}
+
+// WithDiagnostics observes ffmpeg without changing the stage's failure or retry contract.
+func (s *TranscodeStage) WithDiagnostics(manager *diagnostics.ProcessManager) *TranscodeStage {
+	if s != nil {
+		s.diagnostics = manager
+	}
+	return s
 }
 
 // NewTranscodeStage builds the stage.
@@ -164,6 +174,7 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 		DurationMs: in.DurationMs, HadAudio: !in.Silent,
 		TargetLUFS: lufs, Profile: s.profile,
 		FFmpegPath: ffmpeg, Probe: s.probe,
+		Diagnostics: s.diagnostics,
 	}
 	quality, err := s.transcode(ctx, req, func(pct int) { reportProgress(ctx, StageTranscode, pct) })
 	if err != nil {

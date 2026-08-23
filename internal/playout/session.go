@@ -196,6 +196,25 @@ type Manager struct {
 	sessions map[sessionKey]*Session
 }
 
+// ProcessRunID returns the opaque diagnostic identity of one ready session, if observed.
+func (m *Manager) ProcessRunID(channelID string, plan EncodePlan) string {
+	if m == nil {
+		return ""
+	}
+	m.mu.Lock()
+	s := m.sessions[sessionKey{channel: channelID, plan: plan}]
+	m.mu.Unlock()
+	if s == nil {
+		return ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.proc == nil {
+		return ""
+	}
+	return s.proc.ProcessRunID()
+}
+
 // OnChange registers the session-set change hook. Called once during composition, before any
 // viewer can attach.
 func (m *Manager) OnChange(fn func()) { m.onChange = fn }

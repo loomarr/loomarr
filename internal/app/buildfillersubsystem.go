@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/library"
@@ -32,6 +33,7 @@ func buildFillerSubsystem(
 	jobs *scheduler.Registry,
 	playoutResolver *playoutResolver,
 	channelService api.ChannelService,
+	processDiagnostics *diagnostics.ProcessManager,
 ) fillerBuild {
 	var result fillerBuild
 	if st == nil {
@@ -77,7 +79,7 @@ func buildFillerSubsystem(
 	jobs.Add(fillerSyncJob(syncer))
 	log.Info("filler catalog sync registered", "dir", layout.ClipDir(),
 		"every", set.dur("filler.sync_every"), "ai_tagging", set.boolv("filler.ai_tagging"))
-	pipeline := buildPipeline(st, set, layout, log, emitter, splitter, taggerProvider, wake)
+	pipeline := buildPipeline(st, set, layout, log, emitter, splitter, taggerProvider, wake, processDiagnostics)
 	jobs.Add(fillerPipelineJob(pipeline))
 	adapter.pipeline = pipeline
 	adapter.afterIngest = func(ctx context.Context) error {

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/proctree"
 )
 
@@ -61,6 +62,10 @@ type Process struct {
 	// mux). Ordinary finite encoders leave it nil.
 	Stdin io.WriteCloser
 	proc  *proctree.Supervisor
+	run   *diagnostics.ProcessHandle
+
+	finishOnce sync.Once
+	ioWG       sync.WaitGroup
 
 	log *slog.Logger
 
@@ -74,18 +79,32 @@ type Process struct {
 // Signalling only the parent leaves children running — the exact bug viewra has, where start
 // uses Setpgid but the watchdog calls Process.Kill().
 func Start(ctx context.Context, bin string, args []string, log *slog.Logger, onProgress func(Progress)) (*Process, error) {
-	return startProcess(ctx, bin, args, log, onProgress, false)
+	return startProcess(ctx, bin, args, log, onProgress, false, nil, diagnostics.ProcessSpec{})
+}
+
+// StartObserved launches ffmpeg while recording one best-effort diagnostic Process run.
+func StartObserved(ctx context.Context, bin string, args []string, log *slog.Logger, onProgress func(Progress),
+	manager *diagnostics.ProcessManager, spec diagnostics.ProcessSpec,
+) (*Process, error) {
+	return startProcess(ctx, bin, args, log, onProgress, false, manager, spec)
 }
 
 // StartPiped launches ffmpeg with caller-owned stdin. The returned Process owns both pipe ends;
 // closing Stdin is the clean EOF signal that lets the mux flush and exit.
 func StartPiped(ctx context.Context, bin string, args []string, log *slog.Logger, onProgress func(Progress)) (*Process, error) {
-	return startProcess(ctx, bin, args, log, onProgress, true)
+	return startProcess(ctx, bin, args, log, onProgress, true, nil, diagnostics.ProcessSpec{})
+}
+
+// StartPipedObserved is StartPiped with best-effort Process-run diagnostics.
+func StartPipedObserved(ctx context.Context, bin string, args []string, log *slog.Logger, onProgress func(Progress),
+	manager *diagnostics.ProcessManager, spec diagnostics.ProcessSpec,
+) (*Process, error) {
+	return startProcess(ctx, bin, args, log, onProgress, true, manager, spec)
 }
 
 func startProcess(
 	ctx context.Context, bin string, args []string, log *slog.Logger,
-	onProgress func(Progress), piped bool,
+	onProgress func(Progress), piped bool, manager *diagnostics.ProcessManager, spec diagnostics.ProcessSpec,
 ) (*Process, error) {
 	cmd := exec.Command(bin, args...) //nolint:gosec // args are built by this package, never user text
 	var stdin io.WriteCloser
@@ -144,15 +163,22 @@ func startProcess(
 		return nil, fmt.Errorf("start ffmpeg: %w", err)
 	}
 	p.proc = supervised
+	if manager != nil {
+		spec.Executable = bin
+		spec.Args = args
+		p.run = manager.Begin(spec)
+	}
 	if progress.afterStart != nil {
 		progress.afterStart()
 	}
 
 	if progress.combined {
-		go p.readCombined(progress.reader, onProgress)
+		p.ioWG.Add(1)
+		go func() { defer p.ioWG.Done(); p.readCombined(progress.reader, onProgress) }()
 	} else {
-		go p.readProgress(progress.reader, onProgress)
-		go p.readStderr(stderr)
+		p.ioWG.Add(2)
+		go func() { defer p.ioWG.Done(); p.readProgress(progress.reader, onProgress) }()
+		go func() { defer p.ioWG.Done(); p.readStderr(stderr) }()
 	}
 
 	return p, nil
@@ -164,7 +190,21 @@ func startProcess(
 // for "frame=" substrings, and a chunked read can split a token across the buffer boundary —
 // a bufio.Scanner over a dedicated pipe cannot.
 func (p *Process) readProgress(r io.ReadCloser, onProgress func(Progress)) {
-	ReadProgress(r, onProgress)
+	ReadProgress(r, p.observeProgress(onProgress))
+}
+
+func (p *Process) observeProgress(onProgress func(Progress)) func(Progress) {
+	if p.run == nil {
+		return onProgress
+	}
+	return func(progress Progress) {
+		p.run.ObserveProgress(diagnostics.ProcessProgress{
+			Frame: progress.Frame, Speed: progress.Speed, OutTimeMS: progress.OutTimeMS,
+		})
+		if onProgress != nil {
+			onProgress(progress)
+		}
+	}
 }
 
 // ReadProgress parses ffmpeg's `-progress` stream and calls onProgress once per block.
@@ -297,13 +337,14 @@ func (p *Process) readStderr(r io.ReadCloser) {
 func (p *Process) readCombined(r io.ReadCloser, onProgress func(Progress)) {
 	defer func() { _ = r.Close() }()
 	var cur Progress
+	observe := p.observeProgress(onProgress)
 	sc := bufio.NewScanner(r)
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
 		recognized, complete := consumeProgressLine(line, &cur)
 		if recognized {
-			if complete && onProgress != nil {
-				onProgress(cur)
+			if complete && observe != nil {
+				observe(cur)
 			}
 			continue
 		}
@@ -319,6 +360,9 @@ func (p *Process) recordStderr(line string) {
 	p.mu.Lock()
 	p.lastErr = line
 	p.mu.Unlock()
+	if p.run != nil {
+		p.run.RecordOutput(line)
+	}
 	if p.log != nil {
 		// Debug, not warn: ffmpeg writes routine notices to stderr, and logging them
 		// as problems trains an operator to ignore the log. viewra needed an explicit
@@ -347,6 +391,8 @@ func (p *Process) Stop() {
 		return
 	}
 	p.proc.Stop()
+	p.ioWG.Wait()
+	p.finish(p.proc.Wait())
 }
 
 // Wait blocks until the process exits, returning its error. Safe to call concurrently with
@@ -355,5 +401,30 @@ func (p *Process) Wait() error {
 	if p.proc == nil {
 		return nil
 	}
-	return p.proc.Wait()
+	err := p.proc.Wait()
+	p.ioWG.Wait()
+	p.finish(err)
+	return err
+}
+
+// ProcessRunID exposes only the opaque correlation id, never the diagnostics output path.
+func (p *Process) ProcessRunID() string {
+	if p == nil || p.run == nil {
+		return ""
+	}
+	return p.run.ID()
+}
+
+func (p *Process) finish(err error) {
+	p.finishOnce.Do(func() {
+		if p.run == nil {
+			return
+		}
+		cancelled := p.proc != nil && p.proc.Stopped()
+		reason := ""
+		if cancelled {
+			reason = "process tree stopped"
+		}
+		p.run.Finish(diagnostics.ProcessResult{Err: err, Cancelled: cancelled, TerminationReason: reason})
+	})
 }

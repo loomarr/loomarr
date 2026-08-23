@@ -35,6 +35,7 @@ type foundationBuild struct {
 	jobs                   *scheduler.Registry
 	activity               *activity.Recorder
 	diagnostics            *diagnostics.Recorder
+	processDiagnostics     *diagnostics.ProcessManager
 }
 
 // buildFoundation creates the shared roots consumed by later subsystem builders. The returned
@@ -47,6 +48,7 @@ func buildFoundation(
 	owner *generationLifecycle,
 ) (foundationBuild, error) {
 	result := foundationBuild{}
+	instanceID := ""
 	result.ready = func() (bool, string) {
 		if st == nil {
 			return false, "no store configured"
@@ -76,7 +78,8 @@ func buildFoundation(
 		canonicalFillerRestartBaseline(result.appliedRestartSettings, result.fillerLayout)
 		result.secrets = secrets
 		result.log = redactedLog
-		result.libraryClient = library.NewDynamic(result.set.libraryConn(), instanceDeviceID(rootCtx, st))
+		instanceID = instanceDeviceID(rootCtx, st)
+		result.libraryClient = library.NewDynamic(result.set.libraryConn(), instanceID)
 		key := func() string { return result.set.str("tmdb.api_key") }
 		if overrides.TMDBBaseURL != "" {
 			result.tmdbClient = tmdb.NewDynamicWithBase(overrides.TMDBBaseURL, key)
@@ -110,6 +113,11 @@ func buildFoundation(
 			},
 		})
 		owner.addStop(result.diagnostics.Close)
+		result.processDiagnostics = diagnostics.NewProcessManager(st, result.diagnostics, diagnostics.ProcessOptions{
+			OutputDir: result.set.str("diagnostics.dir"), InstanceID: instanceID,
+			OnFailure: func(err error) { fallbackLog.Error("diagnostics: process recorder failed", "err", err) },
+		})
+		owner.addStop(result.processDiagnostics.Close)
 	}
 	return result, nil
 }

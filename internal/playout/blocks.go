@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
 
@@ -32,11 +33,20 @@ type BlockSource func(context.Context, string, EncodePlan) (Block, error)
 // BlockSpawner builds the production session spawner around finite, explicit blocks. One long-lived
 // copy mux keeps output timestamps monotonic; Go owns the EOF-and-advance loop so an Airing boundary
 // is no longer hidden inside a media-tool demuxer.
-func BlockSpawner(ffmpeg string, source BlockSource, log *slog.Logger) Spawner {
+func BlockSpawner(ffmpeg string, source BlockSource, log *slog.Logger, observers ...*diagnostics.ProcessManager) Spawner {
 	return func(ctx context.Context, channelID string, plan EncodePlan) (*Process, error) {
-		proc, err := StartPiped(ctx, ffmpeg, BlockMuxArgs(), log, nil)
+		var observer *diagnostics.ProcessManager
+		if len(observers) > 0 {
+			observer = observers[0]
+		}
+		proc, err := StartPipedObserved(ctx, ffmpeg, BlockMuxArgs(), log, nil, observer, diagnostics.ProcessSpec{
+			Purpose: "playout_parent", ChannelID: channelID, Target: plan.String(),
+		})
 		if err != nil {
 			return nil, err
+		}
+		if parentID := proc.ProcessRunID(); parentID != "" {
+			ctx = diagnostics.WithProcessSpec(ctx, diagnostics.ProcessSpec{ParentRunID: parentID})
 		}
 		go pumpBlocks(ctx, proc.Stdin, source, channelID, plan, log)
 		return proc, nil

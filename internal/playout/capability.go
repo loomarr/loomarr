@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/diagnostics"
 )
 
 // Encoder capability detection (§9.1) — "which encoder should this box use, and how many
@@ -150,7 +151,14 @@ type Capacity struct {
 // first (preferenceFor). Pass "" when the GPU is unknown — the cross-vendor default order applies and
 // the trial still decides what actually works.
 func Detect(ctx context.Context, ffmpegPath string, p Profile, gpuVendor string) Capacity {
-	listed := listEncoders(ctx, ffmpegPath)
+	return DetectObserved(ctx, ffmpegPath, p, gpuVendor, nil)
+}
+
+// DetectObserved is Detect with best-effort Process-run diagnostics for each external probe.
+func DetectObserved(ctx context.Context, ffmpegPath string, p Profile, gpuVendor string,
+	manager *diagnostics.ProcessManager,
+) Capacity {
+	listed := listEncodersObserved(ctx, ffmpegPath, manager)
 	out := Capacity{Chosen: EncoderSoftware, MaxChannels: 1}
 
 	for _, enc := range preferenceFor(gpuVendor) {
@@ -160,7 +168,7 @@ func Detect(ctx context.Context, ffmpegPath string, p Profile, gpuVendor string)
 			out.All = append(out.All, Capability{Encoder: enc, Err: "not in this ffmpeg build"})
 			continue
 		}
-		got := trialEncode(ctx, ffmpegPath, enc, p, trialSeconds)
+		got := trialEncodeObserved(ctx, ffmpegPath, enc, p, trialSeconds, manager)
 		got.Available = true
 		out.All = append(out.All, got)
 
@@ -178,7 +186,7 @@ func Detect(ctx context.Context, ffmpegPath string, p Profile, gpuVendor string)
 	// at boot, not per candidate. Software is left on its short-probe figure: it has no cold ramp to
 	// clear (the CPU is already warm) and channelsFromSpeed governs it honestly.
 	if out.Chosen != EncoderSoftware {
-		if warm := trialEncode(ctx, ffmpegPath, out.Chosen, p, trialSecondsWarm); warm.Works && warm.Speed > 0 {
+		if warm := trialEncodeObserved(ctx, ffmpegPath, out.Chosen, p, trialSecondsWarm, manager); warm.Works && warm.Speed > 0 {
 			out.MaxChannels = channelsFromSpeed(warm.Speed)
 		}
 		// Clamp to [floor, ceiling] for any hardware encoder: the floor stops a still-low reading from
@@ -199,12 +207,18 @@ func Detect(ctx context.Context, ffmpegPath string, p Profile, gpuVendor string)
 // This is the ONLY honest "could it possibly work here" signal, and it is why the detector
 // needs no per-vendor device knowledge: a Pi's build lists h264_v4l2m2m, a Mac's lists
 // h264_videotoolbox, and an unknown future encoder is probed the day its build ships.
-func listEncoders(ctx context.Context, ffmpegPath string) map[Encoder]bool {
+func listEncodersObserved(ctx context.Context, ffmpegPath string, manager *diagnostics.ProcessManager) map[Encoder]bool {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	out := map[Encoder]bool{}
-	raw, err := exec.CommandContext(ctx, ffmpegPath, "-hide_banner", "-encoders").Output()
+	args := []string{"-hide_banner", "-encoders"}
+	run := manager.Begin(diagnostics.ProcessSpec{Purpose: "encoder_list_probe", Target: "encoders", Executable: ffmpegPath, Args: args})
+	raw, err := exec.CommandContext(ctx, ffmpegPath, args...).Output()
+	recordExitStderr(run, err)
+	if run != nil {
+		run.Finish(diagnostics.ProcessResult{Err: err, Cancelled: ctx.Err() != nil, TerminationReason: capabilityTerminationReason(ctx)})
+	}
 	if err != nil {
 		// No ffmpeg, or it refused to run. Software is still claimed as available so
 		// Detect returns a usable answer; the trial encode will fail honestly and the
@@ -238,7 +252,9 @@ func listEncoders(ctx context.Context, ffmpegPath string) map[Encoder]bool {
 // and asserting a keyframe is present makes the probe fail that encoder here instead — which is what
 // lets ordering prefer a vendor-native encoder while an immature cross-vendor driver is demoted
 // automatically rather than by a hard-coded exclusion.
-func trialEncode(ctx context.Context, ffmpegPath string, enc Encoder, p Profile, seconds int) Capability {
+func trialEncodeObserved(ctx context.Context, ffmpegPath string, enc Encoder, p Profile, seconds int,
+	manager *diagnostics.ProcessManager,
+) Capability {
 	// Bounded: a wedged GPU driver can hang an encode indefinitely, and boot waits on this. The
 	// timeout scales with the trial length (a 15s warm trial needs more than a 5s probe's headroom).
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(seconds+25)*time.Second)
@@ -307,14 +323,41 @@ func trialEncode(ctx context.Context, ffmpegPath string, enc Encoder, p Profile,
 	if err != nil {
 		return Capability{Encoder: enc, Err: err.Error()}
 	}
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return Capability{Encoder: enc, Err: err.Error()}
+	}
+	run := manager.Begin(diagnostics.ProcessSpec{
+		Purpose: "encoder_trial_probe", Target: string(enc), Executable: ffmpegPath, Args: args,
+	})
 	if err := cmd.Start(); err != nil {
+		if run != nil {
+			run.Finish(diagnostics.ProcessResult{Err: err})
+		}
 		return Capability{Encoder: enc, Err: err.Error()}
 	}
 
-	speed := lastSpeed(stdout)
+	var stderr strings.Builder
+	stderrDone := make(chan struct{})
+	go func() {
+		defer close(stderrDone)
+		scanner := bufio.NewScanner(stderrPipe)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if stderr.Len() < 64<<10 {
+				_, _ = stderr.WriteString(line + "\n")
+			}
+			if run != nil {
+				run.RecordOutput(line)
+			}
+		}
+	}()
+	speed := lastSpeedObserved(stdout, run)
 	err = cmd.Wait()
+	<-stderrDone
+	if run != nil {
+		run.Finish(diagnostics.ProcessResult{Err: err, Cancelled: ctx.Err() != nil, TerminationReason: capabilityTerminationReason(ctx)})
+	}
 
 	if err != nil {
 		msg := strings.TrimSpace(firstLine(stderr.String()))
@@ -329,7 +372,11 @@ func trialEncode(ctx context.Context, ffmpegPath string, enc Encoder, p Profile,
 
 	// The encode exited 0 — but Works also requires the muxed stream to carry a keyframe the HLS
 	// remux could cut on. An empty/keyframeless .ts here is exactly the live stall, caught early.
-	if !hasKeyframe(ctx, ffmpegPath, outPath) {
+	probeCtx := ctx
+	if run != nil {
+		probeCtx = diagnostics.WithProcessSpec(ctx, diagnostics.ProcessSpec{ParentRunID: run.ID()})
+	}
+	if !hasKeyframeObserved(probeCtx, ffmpegPath, outPath, manager) {
 		return Capability{Encoder: enc, Err: "encoded but produced no keyframe the HLS remux could segment on"}
 	}
 	return Capability{Encoder: enc, Works: true, Speed: speed}
@@ -340,16 +387,25 @@ func trialEncode(ctx context.Context, ffmpegPath string, enc Encoder, p Profile,
 // live pipeline, so the trial rejects it. Best-effort: if ffprobe cannot run we do NOT fail the
 // encoder on that basis (the encode itself already exited 0) — we only fail on a definitive "no
 // keyframe" answer.
-func hasKeyframe(ctx context.Context, ffmpegPath, path string) bool {
+func hasKeyframeObserved(ctx context.Context, ffmpegPath, path string, manager *diagnostics.ProcessManager) bool {
 	probeBin := ffprobeFor(ffmpegPath)
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	raw, err := exec.CommandContext(ctx, probeBin,
+	args := []string{
 		"-hide_banner", "-loglevel", "error",
 		"-select_streams", "v",
 		"-show_entries", "packet=flags",
 		"-read_intervals", "%+#5", // first few packets are enough; a frame-0 IDR is the target
-		"-of", "csv=p=0", path).Output()
+		"-of", "csv=p=0", path,
+	}
+	spec, _ := diagnostics.ProcessSpecFromContext(ctx)
+	spec.Purpose, spec.Target, spec.Executable, spec.Args = "media_probe", "trial_keyframes", probeBin, args
+	run := manager.Begin(spec)
+	raw, err := exec.CommandContext(ctx, probeBin, args...).Output()
+	recordExitStderr(run, err)
+	if run != nil {
+		run.Finish(diagnostics.ProcessResult{Err: err, Cancelled: ctx.Err() != nil, TerminationReason: capabilityTerminationReason(ctx)})
+	}
 	if err != nil {
 		return true // can't probe → don't punish an encode that already succeeded
 	}
@@ -517,20 +573,45 @@ func renderNode() string {
 // GPU that sustains several, which then made the admission gate cap the box at one transcode. The
 // peak is stable against the cold ramp and is the honest "how fast can this encoder go" signal.
 func lastSpeed(r interface{ Read([]byte) (int, error) }) float64 {
+	return lastSpeedObserved(r, nil)
+}
+
+func lastSpeedObserved(r interface{ Read([]byte) (int, error) }, run *diagnostics.ProcessHandle) float64 {
 	var speed float64
-	sc := bufio.NewScanner(r)
-	for sc.Scan() {
-		v, ok := strings.CutPrefix(sc.Text(), "speed=")
-		if !ok {
-			continue
+	var current Progress
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		_, complete := consumeProgressLine(strings.TrimSpace(scanner.Text()), &current)
+		if current.Speed > speed {
+			speed = current.Speed
 		}
-		// Padded, with a trailing x: "speed=  14x".
-		v = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(v), "x"))
-		if f, err := strconv.ParseFloat(v, 64); err == nil && f > speed {
-			speed = f
+		if complete && run != nil {
+			run.ObserveProgress(diagnostics.ProcessProgress{
+				Frame: current.Frame, Speed: current.Speed, OutTimeMS: current.OutTimeMS,
+			})
 		}
 	}
 	return speed
+}
+
+func capabilityTerminationReason(ctx context.Context) string {
+	if ctx.Err() != nil {
+		return "context cancelled"
+	}
+	return ""
+}
+
+func recordExitStderr(run *diagnostics.ProcessHandle, err error) {
+	if run == nil || err == nil {
+		return
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		return
+	}
+	for _, line := range strings.Split(string(exitErr.Stderr), "\n") {
+		run.RecordOutput(line)
+	}
 }
 
 // channelsFromSpeed converts a realtime multiple into a channel count, with headroom.

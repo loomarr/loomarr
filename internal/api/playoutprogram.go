@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -66,12 +67,13 @@ type PlayoutResolver interface {
 // request. These names are exported only for the composition adapter that performs that owned HTTP
 // hop; device clients never set or consume them.
 const (
-	PlayoutBroadcastFormatQuery  = "broadcast"
-	PlayoutBroadcastFormatHeader = "X-Loomarr-Broadcast-Format"
-	PlayoutAiringStartedAtHeader = "X-Loomarr-Airing-Started-At"
-	PlayoutAiringEndsAtHeader    = "X-Loomarr-Airing-Ends-At"
-	PlayoutAiringKindHeader      = "X-Loomarr-Airing-Kind"
-	PlayoutAiringContentHeader   = "X-Loomarr-Airing-Content"
+	PlayoutBroadcastFormatQuery   = "broadcast"
+	PlayoutBroadcastFormatHeader  = "X-Loomarr-Broadcast-Format"
+	PlayoutAiringStartedAtHeader  = "X-Loomarr-Airing-Started-At"
+	PlayoutAiringEndsAtHeader     = "X-Loomarr-Airing-Ends-At"
+	PlayoutAiringKindHeader       = "X-Loomarr-Airing-Kind"
+	PlayoutAiringContentHeader    = "X-Loomarr-Airing-Content"
+	PlayoutParentProcessRunHeader = "X-Loomarr-Parent-Process-Run"
 )
 
 func setPlayoutAiringIdentity(header http.Header, airing playout.Airing) {
@@ -127,6 +129,9 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	r = r.WithContext(diagnostics.WithProcessSpec(r.Context(), diagnostics.ProcessSpec{
+		Purpose: "playout_program", ParentRunID: r.Header.Get(PlayoutParentProcessRunHeader), ChannelID: channelID,
+	}))
 	admission, ok := s.acquirePlayoutAdmission(w, r, channelID)
 	if !ok {
 		return
@@ -185,6 +190,10 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	setPlayoutAiringIdentity(w.Header(), airing)
+	processSpec, _ := diagnostics.ProcessSpecFromContext(r.Context())
+	processSpec.Target = encPlan.String()
+	processSpec.ScheduleBlockID = airing.Identity
+	r = r.WithContext(diagnostics.WithProcessSpec(r.Context(), processSpec))
 
 	// Nothing airing ⇒ the offline card, NOT an error and NOT an empty body.
 	//
@@ -479,6 +488,11 @@ func (s *Server) startChild(
 	// stream's lifetime; on a nil return here we cancel immediately so a failed attempt leaves no
 	// orphan before the next ladder step.
 	cctx, cancel := context.WithCancel(ctx)
+	processSpec, _ := diagnostics.ProcessSpecFromContext(cctx)
+	processSpec.Purpose = "playout_program"
+	processSpec.ChannelID = channelID
+	processSpec.Target = target.String()
+	cctx = diagnostics.WithProcessSpec(cctx, processSpec)
 
 	enc2 := enc // capture for the progress closure
 	onProgress := func(p playout.Progress) {

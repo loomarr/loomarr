@@ -537,6 +537,10 @@ type DiagnosticStore interface {
 	ListDiagnosticEvents(ctx context.Context, limit int) ([]diagnostics.Record, error)
 	UpsertDiagnosticProcessRun(ctx context.Context, run diagnostics.ProcessRun) error
 	GetDiagnosticProcessRun(ctx context.Context, id string) (diagnostics.ProcessRun, error)
+	ListDiagnosticRetentionCandidates(ctx context.Context, before time.Time, limit int) ([]diagnostics.RetentionCandidate, error)
+	DeleteDiagnosticEvent(ctx context.Context, id string) (bool, error)
+	DeleteDiagnosticProcessRun(ctx context.Context, id string) (bool, error)
+	DiagnosticRetainedBytes(ctx context.Context) (int64, error)
 	PurgeDiagnostics(ctx context.Context, before time.Time, maxBytes int64) (diagnostics.PurgeResult, error)
 }
 

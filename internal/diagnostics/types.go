@@ -108,3 +108,21 @@ type PurgeResult struct {
 	ProcessRuns   int
 	RetainedBytes int64
 }
+
+// EvidenceKind identifies one retention candidate without exposing store table names.
+type EvidenceKind string
+
+const (
+	EvidenceEvent      EvidenceKind = "event"
+	EvidenceProcessRun EvidenceKind = "process_run"
+)
+
+// RetentionCandidate is one completed/immutable item ordered by its retention timestamp.
+// OutputRef remains opaque to store implementations; only ProcessManager resolves it.
+type RetentionCandidate struct {
+	Kind      EvidenceKind
+	ID        string
+	At        int64
+	SizeBytes int64
+	OutputRef string
+}
