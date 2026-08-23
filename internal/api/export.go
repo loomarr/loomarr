@@ -76,6 +76,7 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	// the exporter has no Options to read the flag from.
 	srv.registerOps(humaAPI, false)
 	srv.registerDashboard(humaAPI)
+	srv.registerDiagnostics(humaAPI)
 	srv.registerPlayoutStatus(humaAPI)
 	// registerProvisioning is nil-guarded (like registerAuth): with no provisioner
 	// wired here, /v1/setup/bootstrap + /v1/users/import stay out of the exported

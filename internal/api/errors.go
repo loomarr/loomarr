@@ -126,7 +126,14 @@ func errorTransformer(log *slog.Logger) huma.Transformer {
 		// Log server-side detail keyed by the id. 5xx are our errors; 4xx are the client's
 		// mistake (info). m.Errors carries the wrapped causes we deliberately kept OUT of the
 		// client-facing detail — this is where a developer reads them.
-		attrs := []any{"requestId", reqID, "status", m.Status, "path", path, "title", m.Title, "detail", m.Detail}
+		eventName := "api.request_rejected"
+		if m.Status >= 500 {
+			eventName = "api.request_failed"
+		}
+		attrs := []any{
+			"event", eventName, "subsystem", "api", "request_id", reqID, "instance", reqID,
+			"status", m.Status, "path", path, "title", m.Title, "detail", m.Detail,
+		}
 		if len(m.Errors) > 0 {
 			attrs = append(attrs, "cause", joinErrorDetails(m.Errors))
 		}
@@ -147,10 +154,18 @@ func (s *Server) writeProblem(w http.ResponseWriter, r *http.Request, status int
 	reqID := requestIDFrom(r.Context())
 	body := &huma.ErrorModel{Status: status, Title: title, Detail: detail, Instance: reqID}
 	if s.log != nil {
+		eventName := "api.request_rejected"
 		if status >= 500 {
-			s.log.Error("request failed", "requestId", reqID, "status", status, "path", r.Method+" "+r.URL.Path, "detail", detail)
+			eventName = "api.request_failed"
+		}
+		attrs := []any{
+			"event", eventName, "subsystem", "api", "request_id", reqID, "instance", reqID,
+			"status", status, "path", r.Method + " " + r.URL.Path, "detail", detail,
+		}
+		if status >= 500 {
+			s.log.Error("request failed", attrs...)
 		} else if status >= 400 {
-			s.log.Info("request rejected", "requestId", reqID, "status", status, "path", r.Method+" "+r.URL.Path, "detail", detail)
+			s.log.Info("request rejected", attrs...)
 		}
 	}
 	writeJSON(w, status, body)

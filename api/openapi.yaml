@@ -1890,6 +1890,64 @@ components:
           format: uri
           type: string
       type: object
+    EventView:
+      additionalProperties: false
+      properties:
+        actorId:
+          type: string
+        attributes:
+          additionalProperties: {}
+          type: object
+        channelId:
+          type: string
+        event:
+          type: string
+        id:
+          type: string
+        instanceId:
+          type: string
+        jobId:
+          type: string
+        level:
+          enum:
+            - debug
+            - info
+            - warn
+            - error
+          type: string
+        message:
+          type: string
+        occurredAt:
+          format: int64
+          type: integer
+        playbackSessionId:
+          type: string
+        processRunId:
+          type: string
+        receivedAt:
+          format: int64
+          type: integer
+        requestId:
+          type: string
+        scheduleBlockId:
+          type: string
+        source:
+          enum:
+            - server
+            - web
+            - android_tv
+          type: string
+        subsystem:
+          type: string
+      required:
+        - id
+        - occurredAt
+        - receivedAt
+        - level
+        - source
+        - event
+        - attributes
+      type: object
     ExcludedDTO:
       additionalProperties: false
       properties:
@@ -7391,6 +7449,178 @@ paths:
       summary: What's on this channel now and next
       tags:
         - channels
+  /v1/diagnostics/events:
+    get:
+      description: Returns one bounded, newest-first diagnostic timeline page as typed JSON or the same records as NDJSON.
+      operationId: list-diagnostic-events
+      parameters:
+        - description: Window start as Unix epoch milliseconds; defaults to one hour before to
+          explode: false
+          in: query
+          name: from
+          schema:
+            description: Window start as Unix epoch milliseconds; defaults to one hour before to
+            format: int64
+            minimum: 0
+            type: integer
+        - description: Window end as Unix epoch milliseconds; defaults to now
+          explode: false
+          in: query
+          name: to
+          schema:
+            description: Window end as Unix epoch milliseconds; defaults to now
+            format: int64
+            minimum: 0
+            type: integer
+        - description: Page size
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 100
+            description: Page size
+            format: int64
+            maximum: 200
+            minimum: 1
+            type: integer
+        - description: Opaque cursor returned by the previous page
+          explode: false
+          in: query
+          name: cursor
+          schema:
+            description: Opaque cursor returned by the previous page
+            maxLength: 512
+            type: string
+        - description: Exact severity
+          explode: false
+          in: query
+          name: level
+          schema:
+            description: Exact severity
+            enum:
+              - debug
+              - info
+              - warn
+              - error
+            type: string
+        - description: Exact observing runtime
+          explode: false
+          in: query
+          name: source
+          schema:
+            description: Exact observing runtime
+            enum:
+              - server
+              - web
+              - android_tv
+            type: string
+        - description: Exact subsystem
+          explode: false
+          in: query
+          name: subsystem
+          schema:
+            description: Exact subsystem
+            maxLength: 128
+            type: string
+        - description: Exact API request correlation id
+          explode: false
+          in: query
+          name: requestId
+          schema:
+            description: Exact API request correlation id
+            maxLength: 128
+            type: string
+        - description: Exact playback-session correlation id
+          explode: false
+          in: query
+          name: playbackSessionId
+          schema:
+            description: Exact playback-session correlation id
+            maxLength: 128
+            type: string
+        - description: Exact Channel correlation id
+          explode: false
+          in: query
+          name: channelId
+          schema:
+            description: Exact Channel correlation id
+            maxLength: 128
+            type: string
+        - description: Exact schedule-block correlation id
+          explode: false
+          in: query
+          name: scheduleBlockId
+          schema:
+            description: Exact schedule-block correlation id
+            maxLength: 128
+            type: string
+        - description: Exact Job correlation id
+          explode: false
+          in: query
+          name: jobId
+          schema:
+            description: Exact Job correlation id
+            maxLength: 128
+            type: string
+        - description: Exact Process-run correlation id
+          explode: false
+          in: query
+          name: processRunId
+          schema:
+            description: Exact Process-run correlation id
+            maxLength: 128
+            type: string
+        - description: Exact Loomarr instance correlation id
+          explode: false
+          in: query
+          name: instanceId
+          schema:
+            description: Exact Loomarr instance correlation id
+            maxLength: 128
+            type: string
+        - description: Case-insensitive text match across event, message, subsystem, and attributes
+          explode: false
+          in: query
+          name: text
+          schema:
+            description: Case-insensitive text match across event, message, subsystem, and attributes
+            maxLength: 256
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  items:
+                    items:
+                      $ref: "#/components/schemas/EventView"
+                    type: array
+                  nextCursor:
+                    type: string
+                required:
+                  - items
+                type: object
+            application/x-ndjson:
+              schema:
+                description: One EventView JSON object per line
+                type: string
+          description: A filtered diagnostic-event page
+          headers:
+            X-Next-Cursor:
+              description: Opaque next-page cursor; absent when this is the final page
+              schema:
+                type: string
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List diagnostic events
+      tags:
+        - diagnostics
   /v1/discovery/feedback:
     get:
       operationId: list-discovery-feedback

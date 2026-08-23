@@ -166,6 +166,7 @@ func TestRedactor_SecretNeverInLogs(t *testing.T) {
 	log.Info("auth", "token", secret)
 	log.Info("auth", "url", "http://x?apikey="+secret+"&y=1")
 	log.Error("failed", "detail", "response body contained "+secret)
+	log.With("bound_token", secret).Info("pre-bound attribute")
 
 	out := buf.String()
 	if strings.Contains(out, secret) {
@@ -173,6 +174,25 @@ func TestRedactor_SecretNeverInLogs(t *testing.T) {
 	}
 	if !strings.Contains(out, "‹redacted›") {
 		t.Error("expected a redaction marker in the output")
+	}
+}
+
+func TestRedactor_AppliesCurrentSecretsToPreBoundAndGroupedAttributes(t *testing.T) {
+	const secret = "secret-discovered-after-logger-binding"
+	var buf bytes.Buffer
+	r := NewRedactor()
+	log := slog.New(r.Handler(slog.NewJSONHandler(&buf, nil))).
+		With("bound", secret).
+		WithGroup("request").
+		With("nested", slog.GroupValue(slog.String("credential", secret)))
+
+	// Settings refresh can discover or rotate a secret after a long-lived subsystem logger was
+	// constructed. Redaction must happen when the record is handled, not when With captured it.
+	r.Set([]string{secret})
+	log.Info("ready")
+	out := buf.String()
+	if strings.Contains(out, secret) || !strings.Contains(out, "‹redacted›") {
+		t.Fatalf("current redaction did not cover bound/grouped attrs: %s", out)
 	}
 }
 

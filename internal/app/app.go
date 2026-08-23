@@ -119,10 +119,10 @@ func buildHandler(
 	ov Overrides,
 	owner *generationLifecycle,
 	capturePlayoutResolver func(*playoutResolver),
-) (http.Handler, error) {
+) (http.Handler, *slog.Logger, error) {
 	foundation, err := buildFoundation(rootCtx, st, log, ov, owner)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	set, desiredSet := foundation.set, foundation.desiredSet
 	fillerLayout := foundation.fillerLayout
@@ -141,7 +141,7 @@ func buildHandler(
 		foundation.processDiagnostics,
 	)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	channelSvc := channelsBuilt.channelService
 	appliedBackendContext := channelsBuilt.appliedBackend
@@ -156,7 +156,7 @@ func buildHandler(
 		libraryClient, tmdbClient, channelSvc, proposalApprover, owner,
 	)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	fillers := buildFillerSubsystem(
 		st, set, fillerLayout, log, libraryClient, eventBus, emitter, jobReg, playoutRes, channelSvc,
@@ -186,5 +186,5 @@ func buildHandler(
 	// their complete runtime snapshot within the documented ~30-second bound.
 	trackReplicaSettingsRefresh(owner, store.DialectOf(st), set.svc,
 		replicaSettingsRefreshInterval, refreshSecretRedactor)
-	return handler, nil
+	return handler, log, nil
 }

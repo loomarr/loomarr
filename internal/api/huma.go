@@ -107,6 +107,9 @@ type Server struct {
 	// a handler built without one (unit tests) records nothing rather than needing a guard
 	// at every write point.
 	activity *activity.Recorder
+	// diagnosticEvents is the admin-only retained technical timeline. Nil keeps the route mounted
+	// but truthfully unavailable for store-less generations.
+	diagnosticEvents DiagnosticEventService
 	// restart wires POST /v1/system/restart (§9.2, V13); nil ⇒ 501. Nil is the honest
 	// answer for a handler built without main's generation loop behind it (tests, the
 	// integration harness): a button that silently does nothing is worse than none.
@@ -821,6 +824,8 @@ type Options struct {
 	SSO SSOService
 	// Activity records Dashboard feed lines (§12, V32); nil ⇒ nothing is recorded.
 	Activity *activity.Recorder
+	// DiagnosticEvents backs the bounded admin/agent diagnostic timeline.
+	DiagnosticEvents DiagnosticEventService
 	// Restart backs POST /v1/system/restart (§9.2, V13) — implemented over main's
 	// generation loop. nil ⇒ 501, the honest answer for a handler with no loop behind it.
 	Restart RestartService

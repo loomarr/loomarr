@@ -15,6 +15,7 @@ import (
 // and store; Application owns the handler and every generation-scoped worker built behind it.
 type Application struct {
 	handler         http.Handler
+	log             *slog.Logger
 	lifecycle       *generationLifecycle
 	playoutResolver *playoutResolver
 }
@@ -24,7 +25,7 @@ type Application struct {
 func Build(parent context.Context, st store.Store, log *slog.Logger, ov Overrides) (*Application, error) {
 	lifecycle := newGenerationLifecycle(parent)
 	var resolver *playoutResolver
-	handler, err := buildHandler(lifecycle.ctx, st, log, ov, lifecycle, func(built *playoutResolver) {
+	handler, generationLog, err := buildHandler(lifecycle.ctx, st, log, ov, lifecycle, func(built *playoutResolver) {
 		resolver = built
 	})
 	if err != nil {
@@ -32,7 +33,16 @@ func Build(parent context.Context, st store.Store, log *slog.Logger, ov Override
 		defer cancel()
 		return nil, errors.Join(err, lifecycle.shutdown(shutdownCtx))
 	}
-	return &Application{handler: handler, lifecycle: lifecycle, playoutResolver: resolver}, nil
+	return &Application{handler: handler, log: generationLog, lifecycle: lifecycle, playoutResolver: resolver}, nil
+}
+
+// Logger returns the generation's logger. Once a store-backed generation is built, this is the
+// redacted stdout-plus-diagnostics logger; store-less builds retain the supplied stdout logger.
+func (a *Application) Logger() *slog.Logger {
+	if a == nil {
+		return nil
+	}
+	return a.log
 }
 
 // Handler returns the generation's immutable HTTP entry point.
