@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -444,6 +445,117 @@ func testActivityFeed(t *testing.T, newStore func(t *testing.T) Store) {
 	for _, a := range left {
 		if strings.HasPrefix(a.Text, "oldest") || strings.HasPrefix(a.Text, "middle") {
 			t.Errorf("row %q survived a purge that should have removed it", a.Text)
+		}
+	}
+}
+
+// testDiagnostics pins the normalized-event batch, Process-run lifecycle, and conservative
+// retention contract against both SQLite and Postgres (§5, §17).
+func testDiagnostics(t *testing.T, newStore func(t *testing.T) Store) {
+	t.Helper()
+	st := newStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 8, 23, 16, 0, 0, 0, time.UTC)
+
+	oldEvent := diagnostics.Record{
+		ID: "diag-old", OccurredAt: base.Add(-2 * time.Hour).UnixMilli(), ReceivedAt: base.UnixMilli(),
+		Level: diagnostics.LevelInfo, Source: diagnostics.SourceServer, Subsystem: "store",
+		Event: "store.old", AttributesJSON: `{}`, SizeBytes: 20,
+	}
+	newEvent := diagnostics.Record{
+		ID: "diag-new", OccurredAt: base.Add(-time.Minute).UnixMilli(), ReceivedAt: base.UnixMilli(),
+		Level: diagnostics.LevelError, Source: diagnostics.SourceWeb, Subsystem: "player",
+		Event: "player.failed", RequestID: "req-1", ChannelID: "channel-1",
+		AttributesJSON: `{"code":"MEDIA_ERR"}`, SizeBytes: 40,
+	}
+	if err := st.AppendDiagnosticEvents(ctx, []diagnostics.Record{oldEvent, newEvent}); err != nil {
+		t.Fatal(err)
+	}
+	events, err := st.ListDiagnosticEvents(ctx, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 || events[0] != newEvent || events[1] != oldEvent {
+		t.Fatalf("diagnostic events = %+v, want newest then oldest", events)
+	}
+
+	// A batch is one commit: invalid input after a valid row cannot leave the valid prefix behind.
+	if err := st.AppendDiagnosticEvents(ctx, []diagnostics.Record{
+		{ID: "diag-rolled-back", OccurredAt: base.UnixMilli(), ReceivedAt: base.UnixMilli(),
+			Level: diagnostics.LevelInfo, Source: diagnostics.SourceServer, Event: "would.persist",
+			AttributesJSON: `{}`, SizeBytes: 10},
+		{ID: "diag-invalid", OccurredAt: base.UnixMilli(), ReceivedAt: base.UnixMilli(),
+			Level: diagnostics.LevelInfo, Source: diagnostics.SourceServer, AttributesJSON: `{}`},
+	}); err == nil {
+		t.Fatal("invalid diagnostic batch succeeded")
+	}
+	events, _ = st.ListDiagnosticEvents(ctx, 100)
+	if len(events) != 2 {
+		t.Fatalf("failed batch left %d total events, want original 2", len(events))
+	}
+
+	running := diagnostics.ProcessRun{
+		ID: "process-running", Purpose: "playout_parent", InstanceID: "instance-1",
+		ChannelID: "channel-1", StartedAt: base.Add(-24 * time.Hour).UnixMilli(),
+		Status: diagnostics.ProcessRunning, UpdatedAt: base.UnixMilli(), SizeBytes: 70,
+	}
+	if err := st.UpsertDiagnosticProcessRun(ctx, running); err != nil {
+		t.Fatal(err)
+	}
+	exitCode := 7
+	finished := diagnostics.ProcessRun{
+		ID: "process-finished", Purpose: "program_encode", ParentRunID: running.ID,
+		InstanceID: "instance-1", ChannelID: "channel-1", ScheduleBlockID: "block-1",
+		Executable: "ffmpeg", ExecutableVersion: "n9.0", CommandSummary: "ffmpeg [redacted]",
+		StartedAt: base.Add(-3 * time.Hour).UnixMilli(), EndedAt: base.Add(-2 * time.Hour).UnixMilli(),
+		Status: diagnostics.ProcessFailed, ExitCode: &exitCode, LastError: "encoder failed",
+		UpdatedAt: base.Add(-2 * time.Hour).UnixMilli(), SizeBytes: 80,
+	}
+	if err := st.UpsertDiagnosticProcessRun(ctx, finished); err != nil {
+		t.Fatal(err)
+	}
+	gotRun, err := st.GetDiagnosticProcessRun(ctx, finished.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotRun.ExitCode == nil || *gotRun.ExitCode != exitCode || gotRun.Status != diagnostics.ProcessFailed || gotRun.ParentRunID != running.ID {
+		t.Fatalf("process run round trip = %+v", gotRun)
+	}
+	if _, err := st.GetDiagnosticProcessRun(ctx, "missing"); err != ErrNotFound {
+		t.Fatalf("missing process run = %v, want ErrNotFound", err)
+	}
+
+	// Age removes the old event and completed run, but NEVER the older active run.
+	purged, err := st.PurgeDiagnostics(ctx, base.Add(-90*time.Minute), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if purged.Events != 1 || purged.ProcessRuns != 1 {
+		t.Fatalf("age purge = %+v, want 1 event and 1 completed process", purged)
+	}
+	if _, err := st.GetDiagnosticProcessRun(ctx, running.ID); err != nil {
+		t.Fatalf("active process was purged by age: %v", err)
+	}
+
+	// The logical-byte budget removes the oldest eligible evidence. The active run remains even
+	// when it alone exceeds the budget: storage pressure is not authority to delete live state.
+	if err := st.AppendDiagnosticEvents(ctx, []diagnostics.Record{
+		{ID: "diag-budget-old", OccurredAt: base.UnixMilli(), ReceivedAt: base.UnixMilli(), Level: diagnostics.LevelInfo, Source: diagnostics.SourceServer, Event: "budget.old", AttributesJSON: `{}`, SizeBytes: 30},
+		{ID: "diag-budget-new", OccurredAt: base.Add(time.Minute).UnixMilli(), ReceivedAt: base.UnixMilli(), Level: diagnostics.LevelInfo, Source: diagnostics.SourceServer, Event: "budget.new", AttributesJSON: `{}`, SizeBytes: 30},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	purged, err = st.PurgeDiagnostics(ctx, base.Add(-24*time.Hour), 110)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if purged.RetainedBytes > 110 {
+		t.Fatalf("retained bytes = %d, want <= 110", purged.RetainedBytes)
+	}
+	events, _ = st.ListDiagnosticEvents(ctx, 100)
+	for _, event := range events {
+		if event.ID == "diag-new" || event.ID == "diag-budget-old" {
+			t.Errorf("old budget candidate %s survived before newer evidence", event.ID)
 		}
 	}
 }

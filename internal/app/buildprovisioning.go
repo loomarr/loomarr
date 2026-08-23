@@ -33,9 +33,13 @@ func buildProvisioning(
 	}, time.Now, log)
 	jobs.Add(reconciler.Job())
 	jobs.Add(retention.New(st, retention.Windows{
-		Proposals: func() time.Duration { return set.dur("proposals.retention") },
-		Jobs:      func() time.Duration { return set.dur("jobs.retention") },
-		Activity:  func() time.Duration { return set.dur("activity.retention") },
+		Proposals:   func() time.Duration { return set.dur("proposals.retention") },
+		Jobs:        func() time.Duration { return set.dur("jobs.retention") },
+		Activity:    func() time.Duration { return set.dur("activity.retention") },
+		Diagnostics: func() time.Duration { return set.dur("diagnostics.retention") },
+		DiagnosticsMaxBytes: func() int64 {
+			return int64(set.intv("diagnostics.max_storage_mb")) * 1024 * 1024
+		},
 	}, time.Now, log).Job())
 
 	libraryScan := reconcile.NewLibraryScan(

@@ -68,6 +68,17 @@ func positiveWholeNumber(v any) error {
 	return nil
 }
 
+func positiveDuration(v any) error {
+	d, ok := v.(time.Duration)
+	if !ok {
+		return fmt.Errorf("want a duration")
+	}
+	if d <= 0 {
+		return fmt.Errorf("want a duration greater than zero (got %s)", d)
+	}
+	return nil
+}
+
 func nonNegativeWholeNumber(v any) error {
 	n, ok := v.(int)
 	if !ok {
@@ -1234,6 +1245,16 @@ func declared() []Setting {
 			Key: "activity.retention", EnvVar: "ACTIVITY_RETENTION", Group: GroupAdvanced,
 			Kind: KindDuration, Default: "720h",
 			Doc: "How long the Dashboard's recent-activity entries are kept before they're cleaned up.",
+		},
+		{
+			Key: "diagnostics.retention", EnvVar: "DIAGNOSTICS_RETENTION", Group: GroupAdvanced,
+			Kind: KindDuration, Default: "168h", Validate: positiveDuration,
+			Doc: "How long Diagnostic events and completed Process runs are kept. Active Process runs are never removed by age.",
+		},
+		{
+			Key: "diagnostics.max_storage_mb", EnvVar: "DIAGNOSTICS_MAX_STORAGE_MB", Group: GroupAdvanced,
+			Kind: KindInt, Default: 512, Validate: positiveWholeNumber,
+			Doc: "Soft global storage budget in MiB for retained Diagnostic events and bounded Process output. Active Process runs remain protected.",
 		},
 		{
 			Key: "job.housekeeping.schedule", EnvVar: "JOB_HOUSEKEEPING_SCHEDULE", Group: GroupAdvanced,
