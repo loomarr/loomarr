@@ -58,6 +58,12 @@ func (r *Redactor) Handler(inner slog.Handler) slog.Handler {
 type redactHandler struct {
 	inner slog.Handler
 	r     *Redactor
+	ops   []redactHandlerOp
+}
+
+type redactHandlerOp struct {
+	group string
+	attrs []slog.Attr
 }
 
 func (h *redactHandler) Enabled(ctx context.Context, l slog.Level) bool {
@@ -65,13 +71,25 @@ func (h *redactHandler) Enabled(ctx context.Context, l slog.Level) bool {
 }
 
 func (h *redactHandler) Handle(ctx context.Context, rec slog.Record) error {
+	inner := h.inner
+	for _, op := range h.ops {
+		if op.group != "" {
+			inner = inner.WithGroup(op.group)
+			continue
+		}
+		attrs := make([]slog.Attr, len(op.attrs))
+		for i, attr := range op.attrs {
+			attrs[i] = h.redactAttr(attr)
+		}
+		inner = inner.WithAttrs(attrs)
+	}
 	// Rebuild the record with a scrubbed message and scrubbed attribute values.
 	out := slog.NewRecord(rec.Time, rec.Level, h.r.redact(rec.Message), rec.PC)
 	rec.Attrs(func(a slog.Attr) bool {
 		out.AddAttrs(h.redactAttr(a))
 		return true
 	})
-	return h.inner.Handle(ctx, out)
+	return inner.Handle(ctx, out)
 }
 
 // redactAttr scrubs an attribute's string form. Non-string values are rendered
@@ -79,6 +97,14 @@ func (h *redactHandler) Handle(ctx context.Context, rec slog.Record) error {
 // stringer doesn't slip past.
 func (h *redactHandler) redactAttr(a slog.Attr) slog.Attr {
 	v := a.Value.Resolve()
+	if v.Kind() == slog.KindGroup {
+		children := v.Group()
+		redacted := make([]slog.Attr, len(children))
+		for i, child := range children {
+			redacted[i] = h.redactAttr(child)
+		}
+		return slog.Attr{Key: a.Key, Value: slog.GroupValue(redacted...)}
+	}
 	if v.Kind() == slog.KindString {
 		return slog.String(a.Key, h.r.redact(v.String()))
 	}
@@ -92,9 +118,18 @@ func (h *redactHandler) redactAttr(a slog.Attr) slog.Attr {
 }
 
 func (h *redactHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return &redactHandler{inner: h.inner.WithAttrs(attrs), r: h.r}
+	clone := *h
+	clone.ops = append(append([]redactHandlerOp(nil), h.ops...), redactHandlerOp{
+		attrs: append([]slog.Attr(nil), attrs...),
+	})
+	return &clone
 }
 
 func (h *redactHandler) WithGroup(name string) slog.Handler {
-	return &redactHandler{inner: h.inner.WithGroup(name), r: h.r}
+	if name == "" {
+		return h
+	}
+	clone := *h
+	clone.ops = append(append([]redactHandlerOp(nil), h.ops...), redactHandlerOp{group: name})
+	return &clone
 }

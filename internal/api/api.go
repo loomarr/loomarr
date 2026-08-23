@@ -52,9 +52,10 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		login: opts.Login, sessions: opts.Sessions, passwords: opts.Passwords, userSync: opts.UserSync, devices: opts.Devices, deviceLimiter: opts.DeviceLimiter, cookieSecure: opts.CookieSecure, trustProxy: opts.TrustProxy, devLogin: opts.DevLogin,
 		channels: opts.Channels, livetv: opts.LiveTV, tunerRescanner: opts.TunerRescanner, tunarrConnect: opts.TunarrConnect,
 		suggest: opts.Suggest, proposalWorkflow: opts.ProposalWorkflow, search: opts.Search, collections: opts.Collections, icons: opts.Icons, images: opts.Images, events: opts.Events, shutdown: opts.Shutdown, filler: opts.Filler, pods: opts.Pods,
-		fillerLayout: opts.FillerLayout,
-		jobs:         opts.Jobs,
-		systemLLM:    opts.SystemLLM, database: opts.Database, backups: opts.Backups, restart: opts.Restart, activity: opts.Activity, sso: opts.SSO,
+		fillerLayout:     opts.FillerLayout,
+		jobs:             opts.Jobs,
+		diagnosticEvents: opts.DiagnosticEvents,
+		systemLLM:        opts.SystemLLM, database: opts.Database, backups: opts.Backups, restart: opts.Restart, activity: opts.Activity, sso: opts.SSO,
 		restartDrift: opts.RestartDrift,
 		settings:     opts.Settings, backendTransition: opts.BackendTransition,
 		backendCheckpoint: opts.BackendCheckpoint,
@@ -102,6 +103,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerImages(humaAPI)
 	srv.registerJobs(humaAPI)
 	srv.registerDashboard(humaAPI)
+	srv.registerDiagnostics(humaAPI)
 	srv.registerPlayoutStatus(humaAPI) // §9.1 V47: playout status projection
 	srv.registerSystemLLM(humaAPI)
 	srv.registerSystemDatabase(humaAPI)

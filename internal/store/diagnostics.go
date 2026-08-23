@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
@@ -71,6 +72,67 @@ func (s *sqlStore) ListDiagnosticEvents(ctx context.Context, limit int) ([]diagn
 		out = append(out, record)
 	}
 	return out, rows.Err()
+}
+
+// QueryDiagnosticEvents applies one fully validated, bounded query from the diagnostics module.
+// The time predicate is mandatory even when indexed identity filters are present, which prevents a
+// caller-controlled combination from degrading into an unbounded retained-history scan.
+func (s *sqlStore) QueryDiagnosticEvents(
+	ctx context.Context, query diagnostics.EventStoreQuery,
+) ([]diagnostics.Record, error) {
+	if query.From < 0 || query.To <= query.From || query.Limit < 1 || query.Limit > 201 {
+		return nil, fmt.Errorf("query diagnostic events: invalid module query")
+	}
+	clauses := []string{"occurred_at >= ?", "occurred_at <= ?"}
+	args := []any{query.From, query.To}
+	addExact := func(column, value string) {
+		if value == "" {
+			return
+		}
+		clauses = append(clauses, column+" = ?")
+		args = append(args, value)
+	}
+	addExact("level", string(query.Level))
+	addExact("source", string(query.Source))
+	addExact("subsystem", query.Subsystem)
+	addExact("request_id", query.RequestID)
+	addExact("playback_session_id", query.PlaybackSessionID)
+	addExact("channel_id", query.ChannelID)
+	addExact("schedule_block_id", query.ScheduleBlockID)
+	addExact("job_id", query.JobID)
+	addExact("process_run_id", query.ProcessRunID)
+	addExact("instance_id", query.InstanceID)
+	if query.CursorID != "" {
+		clauses = append(clauses, "(occurred_at < ? OR (occurred_at = ? AND id < ?))")
+		args = append(args, query.CursorOccurredAt, query.CursorOccurredAt, query.CursorID)
+	}
+	if query.Text != "" {
+		literal := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(strings.ToLower(query.Text))
+		pattern := "%" + literal + "%"
+		clauses = append(clauses, `(LOWER(event) LIKE ? ESCAPE '\' OR LOWER(message) LIKE ? ESCAPE '\' OR
+			LOWER(subsystem) LIKE ? ESCAPE '\' OR LOWER(attributes_json) LIKE ? ESCAPE '\')`)
+		args = append(args, pattern, pattern, pattern, pattern)
+	}
+	args = append(args, query.Limit)
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT `+diagnosticEventColumns+`
+		FROM diagnostic_events WHERE `+strings.Join(clauses, " AND ")+`
+		ORDER BY occurred_at DESC, id DESC LIMIT ?`), args...)
+	if err != nil {
+		return nil, fmt.Errorf("query diagnostic events: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := make([]diagnostics.Record, 0, query.Limit)
+	for rows.Next() {
+		record, err := scanDiagnosticEvent(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("query diagnostic events rows: %w", err)
+	}
+	return out, nil
 }
 
 func scanDiagnosticEvent(row interface{ Scan(...any) error }) (diagnostics.Record, error) {

@@ -540,6 +540,7 @@ type ActivityStore interface {
 type DiagnosticStore interface {
 	AppendDiagnosticEvents(ctx context.Context, records []diagnostics.Record) error
 	ListDiagnosticEvents(ctx context.Context, limit int) ([]diagnostics.Record, error)
+	QueryDiagnosticEvents(ctx context.Context, query diagnostics.EventStoreQuery) ([]diagnostics.Record, error)
 	UpsertDiagnosticProcessRun(ctx context.Context, run diagnostics.ProcessRun) error
 	GetDiagnosticProcessRun(ctx context.Context, id string) (diagnostics.ProcessRun, error)
 	ListDiagnosticRetentionCandidates(ctx context.Context, before time.Time, limit int) ([]diagnostics.RetentionCandidate, error)

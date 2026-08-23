@@ -31,8 +31,12 @@ type Options struct {
 	BatchSize     int
 	FlushInterval time.Duration
 	WriteTimeout  time.Duration
-	Now           func() time.Time
-	OnFailure     func(error, int)
+	// MinLevel defaults to info. A future bounded verbose-capture controller may construct a
+	// recorder at debug without changing every producer or making permanent debug retention the
+	// default.
+	MinLevel  Level
+	Now       func() time.Time
+	OnFailure func(error, int)
 }
 
 // Recorder accepts events without waiting for persistence and owns one batching worker.
@@ -73,7 +77,7 @@ func New(sink Sink, opts Options) *Recorder {
 // Record normalizes and redacts one event, then attempts a non-blocking enqueue. Warn/error have a
 // reserved queue so routine info/debug traffic is discarded first under saturation.
 func (r *Recorder) Record(_ context.Context, event Event) {
-	if r == nil || r.sink == nil {
+	if r == nil || r.sink == nil || !r.Accepts(event.Level) {
 		return
 	}
 	record := normalize(event, r.opts.Now())
@@ -93,6 +97,16 @@ func (r *Recorder) Record(_ context.Context, event Event) {
 	default:
 		r.dropped.Add(1)
 	}
+}
+
+// Accepts reports whether a severity is eligible for durable recording. Filtering happens before
+// normalization and queue admission, so intentionally excluded debug evidence is not reported as
+// dropped evidence.
+func (r *Recorder) Accepts(level Level) bool {
+	if r == nil || r.sink == nil {
+		return false
+	}
+	return levelRank(normalizeLevel(level)) >= levelRank(r.opts.MinLevel)
 }
 
 // Dropped returns how many records this process refused because its bounded queue was full or the
@@ -198,10 +212,30 @@ func withDefaults(opts Options) Options {
 	if opts.WriteTimeout <= 0 {
 		opts.WriteTimeout = defaultWriteTimeout
 	}
+	if opts.MinLevel == "" {
+		opts.MinLevel = LevelInfo
+	} else {
+		opts.MinLevel = normalizeLevel(opts.MinLevel)
+	}
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
 	return opts
+}
+
+func levelRank(level Level) int {
+	switch level {
+	case LevelDebug:
+		return 0
+	case LevelInfo:
+		return 1
+	case LevelWarn:
+		return 2
+	case LevelError:
+		return 3
+	default:
+		return 1
+	}
 }
 
 func newID(now time.Time) string {

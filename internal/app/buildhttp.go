@@ -101,6 +101,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		SSO:              ssoSvc,
 		Restart:          restartSvc,
 		Activity:         activityRec,
+		DiagnosticEvents: deps.foundation.diagnosticEvents,
 		// The baseline for "has a restart-scoped setting changed?" is what THIS
 		// generation booted with, captured here rather than per call (config-design §3).
 		RestartDrift: restartDrift(bootCfg, appliedRestartSettings, canonicalRestartCurrent(desiredSet)),

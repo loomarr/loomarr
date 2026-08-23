@@ -11,6 +11,7 @@
 export * as authApi from "../generated/endpoints/auth/auth";
 export * as channelsApi from "../generated/endpoints/channels/channels";
 export * as dashboardApi from "../generated/endpoints/dashboard/dashboard";
+export * as diagnosticsApi from "../generated/endpoints/diagnostics/diagnostics";
 export * as discoveryApi from "../generated/endpoints/discovery/discovery";
 export * as eventsApi from "../generated/endpoints/events/events";
 export * as fillerApi from "../generated/endpoints/filler/filler";

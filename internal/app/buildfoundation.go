@@ -35,6 +35,7 @@ type foundationBuild struct {
 	jobs                   *scheduler.Registry
 	activity               *activity.Recorder
 	diagnostics            *diagnostics.Recorder
+	diagnosticEvents       *diagnostics.EventLog
 	processDiagnostics     *diagnostics.ProcessManager
 }
 
@@ -49,6 +50,7 @@ func buildFoundation(
 ) (foundationBuild, error) {
 	result := foundationBuild{}
 	instanceID := ""
+	var secretRedactor *settings.Redactor
 	result.ready = func() (bool, string) {
 		if st == nil {
 			return false, "no store configured"
@@ -78,6 +80,7 @@ func buildFoundation(
 		canonicalFillerRestartBaseline(result.appliedRestartSettings, result.fillerLayout)
 		result.secrets = secrets
 		result.log = redactedLog
+		secretRedactor = redactor
 		instanceID = instanceDeviceID(rootCtx, st)
 		result.libraryClient = library.NewDynamic(result.set.libraryConn(), instanceID)
 		key := func() string { return result.set.str("tmdb.api_key") }
@@ -89,7 +92,6 @@ func buildFoundation(
 		result.refreshSecretRedactor = func() {
 			redactor.Set(collectSecrets(settings.NewRegistry(), result.set.svc, secrets))
 		}
-		slog.SetDefault(redactedLog)
 	} else {
 		result.log = log
 		result.refreshSecretRedactor = func() {}
@@ -103,7 +105,6 @@ func buildFoundation(
 	result.emitter = &eventEmitter{bus: result.eventBus}
 	result.jobs = scheduler.NewRegistry()
 	if st != nil {
-		result.activity = activity.New(st, result.log).WithNotifier(result.emitter)
 		// Capture the pre-recorder logger permanently. #511 may fan result.log into diagnostics;
 		// persistence failures must keep using this stdout-only path or they would recurse.
 		fallbackLog := result.log
@@ -113,11 +114,20 @@ func buildFoundation(
 			},
 		})
 		owner.addStop(result.diagnostics.Close)
+		result.diagnosticEvents = diagnostics.NewEventLog(st, time.Now)
+		// Dynamic secret redaction wraps the fan-out rather than only stdout. Both durable events
+		// and JSON output therefore receive the same scrubbed record, while the recorder failure
+		// hook above retains its permanently stdout-only logger.
+		result.log = slog.New(secretRedactor.Handler(diagnostics.NewSlogHandler(log.Handler(), result.diagnostics)))
+		slog.SetDefault(result.log)
+		result.activity = activity.New(st, result.log).WithNotifier(result.emitter)
 		result.processDiagnostics = diagnostics.NewProcessManager(st, result.diagnostics, diagnostics.ProcessOptions{
 			OutputDir: result.set.str("diagnostics.dir"), InstanceID: instanceID,
 			OnFailure: func(err error) { fallbackLog.Error("diagnostics: process recorder failed", "err", err) },
 		})
 		owner.addStop(result.processDiagnostics.Close)
+	} else {
+		slog.SetDefault(result.log)
 	}
 	return result, nil
 }

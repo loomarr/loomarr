@@ -188,3 +188,32 @@ func TestRecorderCloseRejectsLateRecords(t *testing.T) {
 		t.Fatal("record accepted after Close")
 	}
 }
+
+func TestRecorderDefaultThresholdExcludesDebugWithoutCountingADrop(t *testing.T) {
+	sink := &memorySink{}
+	recorder := New(sink, Options{FlushInterval: time.Hour})
+	recorder.Record(context.Background(), Event{Level: LevelDebug, Name: "debug.excluded"})
+	recorder.Record(context.Background(), Event{Level: LevelInfo, Name: "info.retained"})
+	if err := recorder.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if recorder.Dropped() != 0 {
+		t.Fatalf("dropped = %d, want 0 for intentionally filtered debug", recorder.Dropped())
+	}
+	records := sink.snapshot()
+	if len(records) != 1 || records[0].Event != "info.retained" {
+		t.Fatalf("records = %+v, want only info", records)
+	}
+}
+
+func TestRecorderCanBoundedlyEnableDebug(t *testing.T) {
+	sink := &memorySink{}
+	recorder := New(sink, Options{MinLevel: LevelDebug, FlushInterval: time.Hour})
+	recorder.Record(context.Background(), Event{Level: LevelDebug, Name: "debug.retained"})
+	if err := recorder.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if records := sink.snapshot(); len(records) != 1 || records[0].Level != LevelDebug {
+		t.Fatalf("records = %+v, want retained debug", records)
+	}
+}

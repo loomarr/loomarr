@@ -184,6 +184,9 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 		}
 		return false, err
 	}
+	// From this point onward, process lifecycle messages belong to this generation's retained
+	// diagnostic timeline as well as stdout. Pre-store/open failures necessarily remain stdout-only.
+	log = application.Logger()
 	// A FRESH server per generation. http.Server is single-use by design — Shutdown sets
 	// `inShutdown` and never clears it, so a reused one would refuse to serve (§9.2).
 	srv := &http.Server{

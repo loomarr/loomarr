@@ -5909,6 +5909,14 @@ NDJSON, one Process run downloads as a readable text log, and an administrator c
 redacted ZIP Support bundle containing a manifest, versions, selected events, Process metadata and
 output, truncation/drop counts, and a redaction summary.
 
+The Diagnostic-event read defaults to the last hour, permits at most a 24-hour window, and returns
+100 records by default with a hard page maximum of 200. Its opaque cursor is the total
+`(occurred_at, id)` newest-first position. Exact severity, source, subsystem, request, playback,
+Channel, schedule-block, Job, Process-run, and instance filters are each capped at 128 bytes; the
+case-insensitive event/message/subsystem/attribute text filter is capped at 256 bytes. The store
+always receives a validated time predicate and fetches at most one sentinel row beyond the page.
+JSON and `application/x-ndjson` are projections of that same queried page, not separate searches.
+
 Support submission is deliberately not part of download. A future submission uploads the exact
 bundle the administrator reviewed through a separate explicit outbound action showing destination,
 contents, size, and expiry. Loomarr never sends diagnostics automatically.

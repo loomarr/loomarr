@@ -41,16 +41,30 @@ func rawOp[I any](
 	body func(http.ResponseWriter, *http.Request),
 	mw ...func(huma.Context, func(huma.Context)),
 ) {
+	rawInputOp(api, op, role, func(w http.ResponseWriter, r *http.Request, _ *I) {
+		body(w, r)
+	}, mw...)
+}
+
+// rawInputOp is rawOp's typed-input form. Huma still owns parameter parsing and validation, while
+// the response body retains direct access to ResponseWriter for negotiated or streamed formats.
+func rawInputOp[I any](
+	api huma.API,
+	op huma.Operation,
+	role Role,
+	body func(http.ResponseWriter, *http.Request, *I),
+	mw ...func(huma.Context, func(huma.Context)),
+) {
 	// ⚠ Every raw op declares its role out loud, same as every typed op. roleForOperation
 	// defaults to ADMIN for an unmarked operation, so a route that must stay reachable without
 	// a session (the channel icon Tunarr fetches machine-to-machine) has to say RolePublic —
 	// forgetting fails closed, which surfaces as a 403 in development rather than an exposure.
 	op = withRole(op, role)
 	op.Middlewares = append(op.Middlewares, mw...)
-	huma.Register(api, op, func(_ context.Context, _ *I) (*huma.StreamResponse, error) {
+	huma.Register(api, op, func(_ context.Context, input *I) (*huma.StreamResponse, error) {
 		return &huma.StreamResponse{Body: func(hctx huma.Context) {
 			r, w := humago.Unwrap(hctx)
-			body(w, r)
+			body(w, r, input)
 		}}, nil
 	})
 }

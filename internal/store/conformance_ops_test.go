@@ -478,6 +478,39 @@ func testDiagnostics(t *testing.T, newStore func(t *testing.T) Store) {
 	if len(events) != 2 || events[0] != newEvent || events[1] != oldEvent {
 		t.Fatalf("diagnostic events = %+v, want newest then oldest", events)
 	}
+	filtered, err := st.QueryDiagnosticEvents(ctx, diagnostics.EventStoreQuery{
+		From: base.Add(-3 * time.Hour).UnixMilli(), To: base.UnixMilli(), Limit: 10,
+		Level: diagnostics.LevelError, Source: diagnostics.SourceWeb, Subsystem: "player",
+		RequestID: "req-1", ChannelID: "channel-1", Text: "media_err",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 1 || filtered[0] != newEvent {
+		t.Fatalf("filtered diagnostic events = %+v, want correlated new event", filtered)
+	}
+	literalWildcard, err := st.QueryDiagnosticEvents(ctx, diagnostics.EventStoreQuery{
+		From: base.Add(-3 * time.Hour).UnixMilli(), To: base.UnixMilli(), Limit: 10, Text: "%",
+	})
+	if err != nil || len(literalWildcard) != 0 {
+		t.Fatalf("literal wildcard text = %+v, %v; percent must not widen the search", literalWildcard, err)
+	}
+	first, err := st.QueryDiagnosticEvents(ctx, diagnostics.EventStoreQuery{
+		From: base.Add(-3 * time.Hour).UnixMilli(), To: base.UnixMilli(), Limit: 1,
+	})
+	if err != nil || len(first) != 1 || first[0].ID != newEvent.ID {
+		t.Fatalf("first diagnostic page = %+v, %v", first, err)
+	}
+	second, err := st.QueryDiagnosticEvents(ctx, diagnostics.EventStoreQuery{
+		From: base.Add(-3 * time.Hour).UnixMilli(), To: base.UnixMilli(), Limit: 1,
+		CursorOccurredAt: first[0].OccurredAt, CursorID: first[0].ID,
+	})
+	if err != nil || len(second) != 1 || second[0].ID != oldEvent.ID {
+		t.Fatalf("second diagnostic page = %+v, %v", second, err)
+	}
+	if _, err := st.QueryDiagnosticEvents(ctx, diagnostics.EventStoreQuery{Limit: 1000}); err == nil {
+		t.Fatal("unbounded diagnostic store query succeeded")
+	}
 
 	// A batch is one commit: invalid input after a valid row cannot leave the valid prefix behind.
 	if err := st.AppendDiagnosticEvents(ctx, []diagnostics.Record{

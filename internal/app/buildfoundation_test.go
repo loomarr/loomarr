@@ -1,7 +1,9 @@
 package app
 
 import (
+	"bytes"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
@@ -28,11 +30,43 @@ func TestFoundationDiagnosticsFlushOnGenerationShutdown(t *testing.T) {
 	if err := lifecycle.shutdown(t.Context()); err != nil {
 		t.Fatalf("shutdown: %v", err)
 	}
+	page, err := foundation.diagnosticEvents.Query(t.Context(), diagnostics.EventQuery{Limit: 10})
+	if err != nil {
+		t.Fatalf("query diagnostic events: %v", err)
+	}
+	if len(page.Items) != 1 || page.Items[0].Event != "application.test" {
+		t.Fatalf("flushed records = %+v, want application.test", page.Items)
+	}
+}
+
+func TestFoundationLoggerRedactsAndPersistsTheSameSlogRecord(t *testing.T) {
+	const secret = "tmdb-secret-value-for-diagnostics"
+	t.Setenv("TMDB_API_KEY", secret)
+	st := testkit.MigratedSQLiteStore(t)
+	lifecycle := newGenerationLifecycle(t.Context())
+	var stdout bytes.Buffer
+	base := slog.New(slog.NewJSONHandler(&stdout, nil))
+	foundation, err := buildFoundation(t.Context(), st, base, Overrides{}, lifecycle)
+	if err != nil {
+		t.Fatalf("buildFoundation: %v", err)
+	}
+	foundation.log.Info("configured "+secret,
+		"event", "application.configured", "subsystem", "app", "token", secret)
+	if err := lifecycle.shutdown(t.Context()); err != nil {
+		t.Fatalf("shutdown: %v", err)
+	}
+	if strings.Contains(stdout.String(), secret) || !strings.Contains(stdout.String(), "‹redacted›") {
+		t.Fatalf("stdout redaction = %s", stdout.String())
+	}
 	records, err := st.ListDiagnosticEvents(t.Context(), 10)
 	if err != nil {
-		t.Fatalf("ListDiagnosticEvents: %v", err)
+		t.Fatal(err)
 	}
-	if len(records) != 1 || records[0].Event != "application.test" {
-		t.Fatalf("flushed records = %+v, want application.test", records)
+	if len(records) != 1 || records[0].Event != "application.configured" || records[0].Subsystem != "app" {
+		t.Fatalf("persisted slog records = %+v", records)
+	}
+	if strings.Contains(records[0].Message+records[0].AttributesJSON, secret) ||
+		!strings.Contains(records[0].Message+records[0].AttributesJSON, "‹redacted›") {
+		t.Fatalf("durable redaction = %+v", records[0])
 	}
 }
