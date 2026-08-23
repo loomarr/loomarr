@@ -745,11 +745,9 @@ jobs:
     name: Apple clients — native build + launch (${{ matrix.client }})
     needs: changes
     if: needs.changes.outputs.clients == 'true'
-    runs-on: macos-15
-    env:
-      # ExpoModulesJSI's Apple package declares Swift tools 6.2. The runner's Xcode 16.4
-      # default only carries Swift 6.1, so select a compatible installed toolchain explicitly.
-      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    # ExpoModulesJSI uses Swift 6.2 C++ constructor ownership annotations, which are
+    # accepted by Xcode 27. Keep this native proof on GitHub's matching Apple image.
+    runs-on: xcode-27
     strategy:
       fail-fast: false
       matrix:
