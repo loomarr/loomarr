@@ -17,6 +17,7 @@
 export * from "../../generated/endpoints/auth/auth.msw";
 export * from "../../generated/endpoints/channels/channels.msw";
 export * from "../../generated/endpoints/dashboard/dashboard.msw";
+export * from "../../generated/endpoints/discovery/discovery.msw";
 export * from "../../generated/endpoints/events/events.msw";
 export * from "../../generated/endpoints/filler/filler.msw";
 export * from "../../generated/endpoints/help/help.msw";
