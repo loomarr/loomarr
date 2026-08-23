@@ -109,6 +109,8 @@ classify() {
     api/openapi.yaml)
       known=true
       select_gate contracts
+      select_gate go
+      select_gate go_full
       select_gate web
       select_gate image
       select_gate android
@@ -122,7 +124,12 @@ classify() {
       known=true
       select_gate android
       ;;
-    Dockerfile|.dockerignore|LICENSE|THIRD_PARTY_NOTICES.md)
+    Dockerfile|LICENSE|THIRD_PARTY_NOTICES.md)
+      known=true
+      select_gate contracts
+      select_gate image
+      ;;
+    .dockerignore)
       known=true
       select_gate image
       ;;
@@ -130,10 +137,17 @@ classify() {
       known=true
       select_gate contracts
       select_gate go
+      select_gate go_full
       select_gate image
       select_gate docs
       ;;
-    docs/*|README.md|CHANGELOG.md|CODE_OF_CONDUCT.md|CONTRIBUTING.md|SECURITY.md|CLAUDE.md|AGENTS.md|CONTEXT.md|PROGRESS.md|docs-site/*|.agents/*|.claude/*|.vale|.vale/*|.vale.ini|lychee.toml|.markdownlint*|.github/CODEOWNERS|.github/ISSUE_TEMPLATE/*|.github/PULL_REQUEST_TEMPLATE.md)
+    docs/design.md|docs/configuration.md|docs/dev/commands.md|docs/install/*|README.md)
+      known=true
+      select_gate go
+      select_gate go_full
+      select_gate docs
+      ;;
+    docs/*|CHANGELOG.md|CODE_OF_CONDUCT.md|CONTRIBUTING.md|SECURITY.md|CLAUDE.md|AGENTS.md|CONTEXT.md|PROGRESS.md|docs-site/*|.agents/*|.claude/*|.vale|.vale/*|.vale.ini|lychee.toml|.markdownlint*|.github/CODEOWNERS|.github/ISSUE_TEMPLATE/*|.github/PULL_REQUEST_TEMPLATE.md)
       known=true
       select_gate docs
       ;;
@@ -150,6 +164,7 @@ classify() {
       known=true
       select_gate contracts
       select_gate go
+      select_gate go_full
       select_gate image
       select_gate web
       ;;
@@ -175,6 +190,7 @@ classify() {
       select_gate contracts
       case "$path" in
         docker/compose.dev*|.node-version) select_gate agent ;;
+        docker/compose.yaml) select_gate go; select_gate go_full ;;
       esac
       ;;
   esac

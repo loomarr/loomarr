@@ -74,6 +74,12 @@ every proposed gate.
 multi-path changes across every specialized gate. The classifier contract test compares complete
 sets, so both a missed gate and an unexplained extra gate require an explicit fixture decision.
 
+Non-code files consumed by Go tests are Go inputs too. In particular, design/configuration/command
+docs, install docs and README, the committed OpenAPI document, production Compose, and embedded
+help select the complete Go test set. Dockerfile and packaged licence/notices select repository
+contracts as well as the image build. These mappings are fixtures because file extensions cannot
+reveal those dependencies.
+
 ## The image job is the exception
 
 The image filter follows every source family copied by the Dockerfile: Docker metadata, packaged
