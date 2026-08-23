@@ -62,12 +62,14 @@ import loomarr.media.navigation.WatchingRemoteAction
 import loomarr.media.navigation.channelIndexForNumber
 import loomarr.media.navigation.channelSections
 import loomarr.media.navigation.watchingRemoteAction
+import loomarr.media.version.VersionIdentity
 
 /** Full-screen playback plus the mock's Watching and Surf remote states. */
 @Composable
 fun WatchScreen(
     model: WatchViewModel,
     guideModel: GuideViewModel,
+    versionIdentity: VersionIdentity? = null,
     showingSurf: Boolean = false,
     onOpenGuide: () -> Unit = {},
     onOpenSurf: () -> Unit = {},
@@ -185,6 +187,7 @@ fun WatchScreen(
                     SurfRail(
                         state = current,
                         guide = liveGuide,
+                        versionIdentity = versionIdentity,
                         onTune = {
                             model.tuneChannelId(it.id)
                             onCloseSurf()
@@ -419,6 +422,7 @@ internal const val NOW_PLAYING_BAR_TAG = "now-playing-bar"
 internal fun SurfRail(
     state: WatchUiState.Ready,
     guide: GuideUiState,
+    versionIdentity: VersionIdentity? = null,
     onTune: (Channel) -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -536,6 +540,15 @@ internal fun SurfRail(
                 maxLines = 1,
                 modifier = Modifier.padding(top = LoomarrTokens.Space.S2),
             )
+            versionIdentity?.let {
+                MonoData(
+                    it.label,
+                    color = LoomarrTokens.Color.Static500,
+                    fontSize = LoomarrTokens.Type.Xs2,
+                    maxLines = 1,
+                    modifier = Modifier.padding(top = LoomarrTokens.Space.S1),
+                )
+            }
         }
         MonoData(
             "OK tune · BACK cancel",

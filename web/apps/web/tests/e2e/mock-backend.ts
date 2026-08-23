@@ -92,6 +92,9 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
       state.authed = true;
       return json(route, ADMIN);
     }
+    if (path === "/v1/system/version") {
+      return json(route, { version: "v0.9.3", ready: true, dirty: false });
+    }
     // Unauthenticated (§7): the router guards read this BEFORE any session exists, to
     // tell an unclaimed install from a merely signed-out one.
     if (path === "/v1/setup/state") {

@@ -52,7 +52,18 @@ test("pages share one navigation and header geometry at desktop and mobile width
       await expect(title, `${entry.path} should expose its page title`).toBeVisible();
       await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
       await expect(header, `${entry.path} should use PageHeader`).toHaveCount(1);
-      await expect(primary.locator('a[data-status="active"]')).toHaveCount(1);
+      if (entry.path === "/account") {
+        // The account identity is a rail footer control, not a section of the product's
+        // primary navigation. It still identifies the current page, while none of the
+        // authored primary destinations claims to be active.
+        await expect(primary.locator('a[data-status="active"]')).toHaveCount(0);
+        await expect(page.getByRole("link", { name: "Your account" })).toHaveAttribute(
+          "aria-current",
+          "page",
+        );
+      } else {
+        await expect(primary.locator('a[data-status="active"]')).toHaveCount(1);
+      }
 
       const [mainBox, navBox, headerBox, titleBox] = await Promise.all([
         main.boundingBox(),

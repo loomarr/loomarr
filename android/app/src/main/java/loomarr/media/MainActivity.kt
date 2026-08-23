@@ -61,6 +61,8 @@ import loomarr.media.playback.WatchScreen
 import loomarr.media.playback.WatchUiState
 import loomarr.media.playback.WatchViewModel
 import loomarr.media.playback.WatchViewModelFactory
+import loomarr.media.version.ServerVersionClient
+import loomarr.media.version.VersionIdentity
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -244,6 +246,18 @@ internal fun PairingOffer(
 @Composable
 private fun PairedApp(store: DeviceStore) {
     var home by remember { mutableStateOf(TvHomeState()) }
+    var serverVersion by remember { mutableStateOf("checking…") }
+    LaunchedEffect(store) {
+        val baseUrl = store.serverUrl()
+        serverVersion =
+            if (baseUrl == null) {
+                "unavailable"
+            } else {
+                runCatching { ServerVersionClient(baseUrl).fetch().displayName }
+                    .getOrDefault("unavailable")
+            }
+    }
+    val versionIdentity = VersionIdentity(BuildConfig.VERSION_NAME, serverVersion)
     val catalogModel: ChannelCatalogViewModel =
         viewModel(factory = ChannelCatalogViewModelFactory(store))
     val catalog = catalogModel.catalog
@@ -293,6 +307,7 @@ private fun PairedApp(store: DeviceStore) {
         WatchScreen(
             model = watch,
             guideModel = guide,
+            versionIdentity = versionIdentity,
             showingSurf = home.surfVisible,
             onOpenGuide = {
                 guide.load()

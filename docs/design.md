@@ -1899,7 +1899,9 @@ The remote has three explicit surfaces:
 - **Surf** is an overlay on the still-mounted player, not a replacement playback surface. It groups
   available favourites, session recents, then every playable Channel; OK tunes the focused row and
   Back cancels. Until a user-preference contract supplies favourites, that group is present but
-  empty rather than populated with guessed Channels.
+  empty rather than populated with guessed Channels. Its quiet footer identifies both independently
+  deployable sides as `Loomarr TV <client version> · Server <server version>`; an unavailable server
+  identity is shown honestly and never blocks Watching or Surf.
 - **Guide** is a Channel-by-time grid. Its timeline, focus surfaces, position rail, and focused-detail
   surface span the physical screen; readable labels, artwork, and metadata remain inside the
   overscan-safe content area. Inside the grid, up/down changes Channel and left/right changes the

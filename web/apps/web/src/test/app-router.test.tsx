@@ -79,6 +79,12 @@ describe("app router auth", () => {
     stubAuth(true);
     renderApp("/guide");
     expect(await screen.findByRole("heading", { name: "Channels" })).toBeInTheDocument();
+    // The shell owns one version query for every route; this proves the generated response reaches
+    // the persistent frame, not only the isolated AppShell story.
+    expect(await screen.findByRole("link", { name: "Loomarr dev — About" })).toHaveAttribute(
+      "href",
+      "/settings/system/about",
+    );
   });
 
   it("signs in and lands on the Channels home", async () => {

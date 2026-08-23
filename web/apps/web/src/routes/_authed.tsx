@@ -1,4 +1,5 @@
 import * as authApi from "@loomarr/api/endpoints/auth";
+import * as systemApi from "@loomarr/api/endpoints/system";
 import { ApiError } from "@loomarr/api/mutator";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Outlet, redirect, useNavigate } from "@tanstack/react-router";
@@ -36,6 +37,14 @@ const AuthedFrame = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const restartWatch = useRestartWatchContext();
+  // One shell-lifetime query supplies every authenticated route. About uses the same generated
+  // query key, so opening it reads this cached server truth rather than inventing a second source.
+  // Failure is deliberately quiet: version visibility must never hold the application shell.
+  const version = systemApi.useSystemVersion({ query: { retry: false } });
+  const versionBody = version.data?.status === 200 ? version.data.data : undefined;
+  const serverVersion = versionBody
+    ? `${versionBody.version}${versionBody.dirty ? " (modified)" : ""}`
+    : undefined;
 
   const logout = authApi.useLogout({
     mutation: {
@@ -51,6 +60,7 @@ const AuthedFrame = () => {
       <AppShell
         isAdmin={isAdmin}
         userName={user?.name ?? "…"}
+        serverVersion={serverVersion}
         onOpenCommand={() => setCommandOpen(true)}
         onLogout={() => logout.mutate()}
       >
