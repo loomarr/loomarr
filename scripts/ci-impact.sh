@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Classify changed repository paths into the smallest trustworthy CI gate set.
 #
-# Interface: pass paths as arguments, or one path per line on stdin. The command
-# prints stable key=true|false records suitable for GitHub outputs. An unknown
-# path fails closed by selecting every gate.
+# Interface: pass paths as arguments, or one path per line on stdin. Pass --all
+# when the caller cannot establish a trustworthy diff base. The command prints
+# stable key=true|false records suitable for GitHub outputs. An unknown path
+# fails closed by selecting every gate.
 set -euo pipefail
 
 readonly GATES=(
@@ -13,6 +14,7 @@ readonly GATES=(
 selected=()
 strict=false
 unknown=false
+force_all=false
 for ((i = 0; i < ${#GATES[@]}; i++)); do
   selected[i]=false
 done
@@ -184,12 +186,31 @@ classify() {
   fi
 }
 
-if [[ "${1:-}" == --check-known ]]; then
-  strict=true
-  shift
-fi
+while (($#)); do
+  case "$1" in
+    --check-known)
+      strict=true
+      shift
+      ;;
+    --all)
+      force_all=true
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *) break ;;
+  esac
+done
 
-if (($#)); then
+if [[ "$force_all" == true ]]; then
+  if (($#)); then
+    printf 'ci-impact: --all does not accept paths\n' >&2
+    exit 2
+  fi
+  select_all
+elif (($#)); then
   for path in "$@"; do
     [[ -n "$path" ]] && classify "$path"
   done
