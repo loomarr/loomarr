@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import {
+  BadgeInfo,
   CalendarClock,
   Clapperboard,
   LayoutDashboard,
@@ -64,6 +65,7 @@ const AppShell = ({
   children,
   isAdmin = true,
   userName = "Operator",
+  serverVersion,
   onOpenCommand,
   onLogout,
 }: AppShellProps) => (
@@ -73,45 +75,72 @@ const AppShell = ({
   // invisible on short pages and breaks anything that needs a real viewport: the Guide's
   // virtualizer measured an 11,000px "viewport" and dutifully mounted all 200 rows.
   <div className="grid h-screen grid-cols-[auto_1fr] overflow-hidden bg-background text-foreground">
-    <nav
-      aria-label="Primary"
-      className="flex w-14 flex-col gap-1 border-border border-r bg-card px-1 py-4 md:w-56 md:px-3"
-    >
-      <div className="mb-4 px-2 text-center md:text-left">
-        <span className="font-semibold md:hidden" aria-hidden>
-          L
-        </span>
-        <div className="hidden md:block">
-          <BrandLockup variant="compact" />
+    <aside className="flex w-14 flex-col gap-1 border-border border-r bg-card px-1 py-4 md:w-56 md:px-3">
+      <nav aria-label="Primary" className="-mx-1 flex w-14 flex-col gap-1 px-1 md:-mx-3 md:w-56 md:px-3">
+        <div className="mb-4 px-2 text-center md:text-left">
+          <span className="font-semibold md:hidden" aria-hidden>
+            L
+          </span>
+          <div className="hidden md:block">
+            <BrandLockup variant="compact" />
+          </div>
         </div>
-      </div>
 
-      <button
-        type="button"
-        onClick={onOpenCommand}
-        aria-label="Open global search"
-        className="mb-2 flex cursor-pointer items-center justify-center gap-2 rounded-md border border-input px-2 py-2 text-muted-foreground text-sm transition-colors hover:bg-accent md:justify-start md:px-3"
-      >
-        <Search className="size-4" aria-hidden />
-        <span className="sr-only md:not-sr-only">Search…</span>
-        <kbd className="ml-auto hidden font-mono text-static-400 text-xs md:inline">⌘K</kbd>
-      </button>
-
-      {(isAdmin ? ADMIN_NAV : MEMBER_NAV).map(({ to, label, icon: Icon }) => (
-        // TanStack Link marks the matched route with data-status="active" — style the
-        // active state off that attribute (higher specificity wins over the base), so
-        // AppShell stays a pure-className component (no isActive render-prop).
-        <Link
-          key={to}
-          to={to}
-          className="flex cursor-pointer items-center justify-center gap-3 rounded-md px-2 py-2 text-sm text-static-400 transition-colors hover:bg-accent hover:text-foreground data-[status=active]:bg-signal-tint-15 data-[status=active]:text-signal md:justify-start md:px-3"
+        <button
+          type="button"
+          onClick={onOpenCommand}
+          aria-label="Open global search"
+          className="mb-2 flex cursor-pointer items-center justify-center gap-2 rounded-md border border-input px-2 py-2 text-muted-foreground text-sm transition-colors hover:bg-accent md:justify-start md:px-3"
         >
-          <Icon className="size-4" aria-hidden />
-          <span className="sr-only md:not-sr-only">{label}</span>
-        </Link>
-      ))}
+          <Search className="size-4" aria-hidden />
+          <span className="sr-only md:not-sr-only">Search…</span>
+          <kbd className="ml-auto hidden font-mono text-static-400 text-xs md:inline">⌘K</kbd>
+        </button>
 
-      <div className="mt-auto flex flex-col items-center gap-2 border-border border-t px-1 pt-3 text-sm md:flex-row md:px-2">
+        {(isAdmin ? ADMIN_NAV : MEMBER_NAV).map(({ to, label, icon: Icon }) => (
+          // TanStack Link marks the matched route with data-status="active" — style the
+          // active state off that attribute (higher specificity wins over the base), so
+          // AppShell stays a pure-className component (no isActive render-prop).
+          <Link
+            key={to}
+            to={to}
+            className="flex cursor-pointer items-center justify-center gap-3 rounded-md px-2 py-2 text-sm text-static-400 transition-colors hover:bg-accent hover:text-foreground data-[status=active]:bg-signal-tint-15 data-[status=active]:text-signal md:justify-start md:px-3"
+          >
+            <Icon className="size-4" aria-hidden />
+            <span className="sr-only md:not-sr-only">{label}</span>
+          </Link>
+        ))}
+      </nav>
+
+      {serverVersion && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              isAdmin ? (
+                <Link
+                  to="/settings/system/about"
+                  aria-label={`Loomarr ${serverVersion} — About`}
+                  className="mt-auto flex min-w-0 items-center justify-center gap-2 rounded-md px-2 py-1.5 font-mono text-static-500 text-xs transition-colors hover:bg-accent hover:text-foreground md:justify-start md:px-3"
+                />
+              ) : (
+                <span className="mt-auto flex min-w-0 items-center justify-center gap-2 px-2 py-1.5 font-mono text-static-500 text-xs md:justify-start md:px-3" />
+              )
+            }
+          >
+            <BadgeInfo className="size-4 shrink-0" aria-hidden />
+            {isAdmin ? (
+              <span className="hidden truncate md:block">{serverVersion}</span>
+            ) : (
+              <span className="sr-only md:not-sr-only md:truncate">Loomarr {serverVersion}</span>
+            )}
+          </TooltipTrigger>
+          <TooltipContent side="right">Loomarr {serverVersion}</TooltipContent>
+        </Tooltip>
+      )}
+
+      <div
+        className={`${serverVersion ? "mt-1" : "mt-auto"} flex flex-col items-center gap-2 border-border border-t px-1 pt-3 text-sm md:flex-row md:px-2`}
+      >
         {/* The footer identity is the way into Your account (§11) — where the mock puts
             it, and where someone looks for "my settings" rather than the app's. Not a
             NAV item: it isn't a section of the app, it's you. */}
@@ -143,7 +172,7 @@ const AppShell = ({
           </Tooltip>
         )}
       </div>
-    </nav>
+    </aside>
 
     {/* `flex flex-col`, not a plain block. A block child is not a flex item, so a page using
         the `min-h-0 flex-1` idiom to fill the viewport gets no constraint from here and grows

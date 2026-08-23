@@ -137,7 +137,7 @@ adapters while legacy consumers remain and disappear with those consumers.
 
 | Component | Purpose | States to register |
 | --- | --- | --- |
-| `AppShell` | Nav rail (Channels, Board, Suggest, Filler, Users, Settings, Help) + ⌘K + user menu | member / admin / mobile-web collapsed |
+| `AppShell` | Nav rail + ⌘K + quiet server-version identity above the account footer + user menu. The compact rail exposes the full identity accessibly; admins link to System → About, while members are not sent into admin-only Settings. | member / admin / mobile-web collapsed |
 | `PageHeader` | A page's single semantic title, optional explanatory copy, and optional page-level actions/status. Owns the page-edge gutter, divider, and responsive action stacking. | title only · title + description · with actions |
 | `StateBadge` | Provisioning lifecycle chip (mono) | wanted · requested · downloading · available · unavailable · drift |
 | `OnAirIndicator` | The red dot with a pulse (pulse ≤ reduced-motion) | off · live · reconciling |

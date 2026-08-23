@@ -7,6 +7,43 @@ const renderShell = (isAdmin: boolean) =>
   render(<RouterHarness content={<AppShell isAdmin={isAdmin}>content</AppShell>} />);
 
 describe("AppShell", () => {
+  it("shows the server identity above the account footer and links admins to About", async () => {
+    render(
+      <RouterHarness
+        content={
+          <AppShell isAdmin serverVersion="v0.9.3 (modified)">
+            content
+          </AppShell>
+        }
+      />,
+    );
+
+    expect(await screen.findByRole("link", { name: "Loomarr v0.9.3 (modified) — About" })).toHaveAttribute(
+      "href",
+      "/settings/system/about",
+    );
+    expect(
+      within(screen.getByRole("navigation", { name: "Primary" })).queryByRole("link", {
+        name: /loomarr v0\.9\.3/i,
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows members the version without linking them into admin Settings", async () => {
+    render(
+      <RouterHarness
+        content={
+          <AppShell isAdmin={false} serverVersion="dev">
+            content
+          </AppShell>
+        }
+      />,
+    );
+
+    expect(await screen.findByText("Loomarr dev")).not.toHaveAttribute("href");
+    expect(screen.queryByRole("link", { name: /loomarr dev/i })).not.toBeInTheDocument();
+  });
+
   it("gives an admin the full console", async () => {
     renderShell(true);
     expect(await screen.findByRole("link", { name: /settings/i })).toBeInTheDocument();

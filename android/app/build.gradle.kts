@@ -120,6 +120,9 @@ android {
 
     buildFeatures {
         compose = true
+        // The troubleshooting identity uses the same versionName packaged into the APK. Reading
+        // BuildConfig keeps release/debug suffixes honest instead of maintaining a second value.
+        buildConfig = true
     }
 
     testOptions {
