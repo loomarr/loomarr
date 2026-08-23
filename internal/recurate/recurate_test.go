@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/binder"
-	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/recurate"
-	"github.com/mantonx/loomarr/internal/schedule"
-	"github.com/mantonx/loomarr/internal/store"
-	"github.com/mantonx/loomarr/internal/suggest"
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/binder"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/recurate"
+	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func newStore(t *testing.T) store.Store {

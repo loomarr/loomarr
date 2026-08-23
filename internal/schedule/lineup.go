@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // DesiredLineup is the ordered set of Slots a channel *should* have right now,

@@ -11,10 +11,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/clipfetch"
-	"github.com/mantonx/loomarr/internal/filler"
-	"github.com/mantonx/loomarr/internal/llm"
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/clipfetch"
+	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestFillerSourceAdapter_HotEnablesTunarrAnnotation(t *testing.T) {

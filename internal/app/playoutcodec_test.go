@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/library"
-	"github.com/mantonx/loomarr/internal/playout"
-	"github.com/mantonx/loomarr/internal/schedule"
-	"github.com/mantonx/loomarr/internal/store"
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // The §9.1 V50 decision (Q2): a channel's broadcast codec is the MAJORITY of its content's codecs,

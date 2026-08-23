@@ -4,10 +4,10 @@ import (
 	"context"
 	"sync"
 
-	"github.com/mantonx/loomarr/internal/api"
-	"github.com/mantonx/loomarr/internal/config"
-	"github.com/mantonx/loomarr/internal/events"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/config"
+	"github.com/loomarr/loomarr/internal/events"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // databaseService implements api.DatabaseService — the SQLite→PostgreSQL migration

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mantonx/loomarr/internal/proctree"
+	"github.com/loomarr/loomarr/internal/proctree"
 )
 
 // ffmpeg process supervision for playout (§9.1).

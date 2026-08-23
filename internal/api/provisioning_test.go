@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/api"
-	"github.com/mantonx/loomarr/internal/auth"
-	"github.com/mantonx/loomarr/internal/library"
-	"github.com/mantonx/loomarr/internal/store"
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/auth"
+	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // provServer builds the provisioning stack (bootstrap + import + login) over a

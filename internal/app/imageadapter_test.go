@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // The image service's wiring test (§22, V52).

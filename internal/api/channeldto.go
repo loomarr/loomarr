@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/schedule"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // The channel WIRE SHAPE and the mapping to and from it (§7.1).

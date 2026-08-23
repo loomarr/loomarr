@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 type fetchStub struct {

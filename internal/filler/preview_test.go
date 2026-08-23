@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 type stubCatalog struct {

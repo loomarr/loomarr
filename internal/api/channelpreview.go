@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/channels"
-	"github.com/mantonx/loomarr/internal/filler"
-	"github.com/mantonx/loomarr/internal/schedule"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // Channel PREVIEW surfaces — "what would this channel actually play?" (§10, §12).

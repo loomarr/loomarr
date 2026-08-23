@@ -33,7 +33,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE: ghcr.io/${{ github.repository }} # ghcr.io/mantonx/loomarr
+  IMAGE: ghcr.io/${{ github.repository }} # ghcr.io/loomarr/loomarr
 
 jobs:
   # Build each release architecture on its NATIVE runner and push it BY DIGEST only. No public tag,

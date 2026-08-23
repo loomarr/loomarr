@@ -5,11 +5,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/programmer"
-	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/schedule"
-	"github.com/mantonx/loomarr/internal/store"
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/programmer"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // ⚠ **Tunarr refuses a duplicate channel number, and it says so as `500` with an EMPTY BODY**

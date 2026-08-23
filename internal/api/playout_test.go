@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/api"
-	"github.com/mantonx/loomarr/internal/playout"
-	"github.com/mantonx/loomarr/internal/schedule"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 const playoutToken = "playout-token-abcdefghijklmnop"

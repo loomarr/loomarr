@@ -1,7 +1,7 @@
 # FINDINGS — beta binary redistribution evidence (2026-08-16)
 
 This note records engineering evidence for the Linux container artifacts proposed in
-[PR #402](https://github.com/mantonx/loomarr/pull/402): BtbN's static GPL FFmpeg build and
+[PR #402](https://github.com/loomarr/loomarr/pull/402): BtbN's static GPL FFmpeg build and
 yt-dlp's PyInstaller standalone executables. A Docker image run through Docker Desktop on macOS is
 still a Linux image; this review does not cover a native macOS application bundle.
 

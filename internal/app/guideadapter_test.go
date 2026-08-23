@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/api"
-	"github.com/mantonx/loomarr/internal/programmer"
+	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/programmer"
 )
 
 // Now/next selection is a containment test, not "take the first entry" — a guide that

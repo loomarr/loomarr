@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Property tests for applySeasonal / holidayActive / newYearWindow (§6). These are

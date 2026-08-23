@@ -11,9 +11,9 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/mantonx/loomarr/internal/auth"
-	"github.com/mantonx/loomarr/internal/metrics"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/auth"
+	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // /v1/auth/sso/* — the OIDC credential path (§11 SSO, D-F, V8).

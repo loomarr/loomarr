@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // fakeStore is an in-memory ScheduleStore with a controllable clock-independent view; the

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/api"
-	"github.com/mantonx/loomarr/internal/filler"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // The member-visible health projection describes the generation doing the work, not a saved

@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/api"
-	"github.com/mantonx/loomarr/internal/events"
+	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/events"
 )
 
 // ⚠ **THE SILENT FAILURE THIS FILE EXISTS FOR.** huma names an SSE frame after the Go TYPE

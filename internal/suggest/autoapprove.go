@@ -5,7 +5,7 @@ import (
 	"errors"
 	"log/slog"
 
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // AutoApprovedBy is the audit value recorded when the grant, not a human, approved a

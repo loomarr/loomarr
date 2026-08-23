@@ -5,8 +5,8 @@ import (
 	"context"
 	"sync"
 
-	"github.com/mantonx/loomarr/internal/catalog"
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Corpus is a deterministic search/discovery corpus.

@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // SeriesEpisodes is one show's cached episode list (§5, §9 series expansion).

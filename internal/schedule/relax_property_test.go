@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // ladderProgress is a monotone-decreasing scalar over the fields the ladder is

@@ -6,8 +6,8 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/mantonx/loomarr/internal/programmer"
-	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/programmer"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // Tunarr is the shared Programmer test double (AGENTS.md: one mock per service,

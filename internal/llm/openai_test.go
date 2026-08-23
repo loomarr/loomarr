@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/llm"
 )
 
 // The OpenAI provider normalizes the one shape difference from Ollama: tool-call

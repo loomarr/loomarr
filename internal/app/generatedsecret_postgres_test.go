@@ -6,9 +6,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/settings"
-	"github.com/mantonx/loomarr/internal/store"
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestPostgresGeneratedSecretReaderObservesOtherReplicaRotation(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func cloneSnapshot(in Snapshot) Snapshot {

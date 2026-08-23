@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/mantonx/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout"
 )
 
 // Playout is the shared in-memory double for the API's playback seam. It records per-channel

@@ -17,7 +17,7 @@ import (
 	"github.com/riverqueue/river/rivertype"
 	"github.com/robfig/cron/v3"
 
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // River is the background-job engine (§14, §18.1): the registry's jobs become River periodic

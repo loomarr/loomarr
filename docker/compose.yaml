@@ -85,7 +85,7 @@ services:
   loomarr:
     # Releases live in GHCR. Pin LOOMARR_VERSION for beta installs and rollbacks;
     # `latest` is reserved for stable releases and never moves on a prerelease tag.
-    image: ghcr.io/mantonx/loomarr:${LOOMARR_VERSION:?Pin a released Loomarr version}
+    image: ghcr.io/loomarr/loomarr:${LOOMARR_VERSION:?Pin a released Loomarr version}
     depends_on:
       loomarr-version-check:
         condition: service_completed_successfully

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // relaxAndSlot skips re-placing the cycle when a ladder step changed nothing placement reads

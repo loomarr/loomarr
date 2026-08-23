@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/llm"
-	"github.com/mantonx/loomarr/internal/taxonomy"
+	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 // The AI-tagging job (§10): classify untagged commercials in the catalog via the

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library"
 )
 
 // Provenance is where a resolved value came from (config-design §3). It drives the

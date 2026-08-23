@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 // The persisted split proposal (§10, V34 — migration 00025). Detection runs

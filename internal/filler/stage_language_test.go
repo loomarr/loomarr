@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 // The language rung (§10 V40's gate, V51b's stage). Its whole risk is that it REFUSES clips, so

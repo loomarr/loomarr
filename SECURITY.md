@@ -7,7 +7,7 @@
 Report privately through GitHub's confidential channel:
 
 > **Security → Advisories → Report a vulnerability**
-> (<https://github.com/mantonx/loomarr/security/advisories/new>)
+> (<https://github.com/loomarr/loomarr/security/advisories/new>)
 
 This opens a private advisory visible only to you and the maintainers. Please
 include:
@@ -39,7 +39,7 @@ window to ship a fix before any public write-up.
   `whisper-cli` with its shared libraries and model data) pinned by the `Dockerfile`;
   vulnerabilities in those upstreams are best
   reported to their projects, but do let us know if a pin needs bumping. These used
-  to ship only in an opt-in `loomarr:filler` variant; since internal playout (design
+  to ship only in the now-retired opt-in `loomarr:filler` variant; since internal playout (design
   §9.1) they are in every image we publish, so their CVE surface is everyone's.
 
 ## Supported versions

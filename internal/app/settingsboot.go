@@ -7,11 +7,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/library"
-	"github.com/mantonx/loomarr/internal/programmer"
-	"github.com/mantonx/loomarr/internal/requester"
-	"github.com/mantonx/loomarr/internal/settings"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/programmer"
+	"github.com/loomarr/loomarr/internal/requester"
+	"github.com/loomarr/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // envLookup is the process env accessor the secrets lifecycle uses to honor env-pinned generated

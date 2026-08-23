@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/llm"
-	"github.com/mantonx/loomarr/internal/taxonomy"
+	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 // The TAG stage (§10 V51b): classify the clip from its TEXT signals and write what grounds.

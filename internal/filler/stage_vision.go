@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/llm"
-	"github.com/mantonx/loomarr/internal/mediatools"
-	"github.com/mantonx/loomarr/internal/taxonomy"
+	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 // The VISION stage (§10 V51b) — the expensive last tier, unchanged from V44 except for what drives

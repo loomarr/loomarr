@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/taxonomy"
+	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 // The taxonomy store (§10 V45a): the `taxa` graph (operator-editable) and the denormalised

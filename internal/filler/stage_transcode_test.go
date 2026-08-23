@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/mediatools"
 )
 
 type transcodeStore struct {

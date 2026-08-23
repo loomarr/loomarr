@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/settings"
 )
 
 func TestToAPIEntry_ExposesApplyTiming(t *testing.T) {

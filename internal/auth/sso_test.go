@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/auth"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/auth"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // ⚠ THE V8 SAFETY GATE (§11, §19, D-F).

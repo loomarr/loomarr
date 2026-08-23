@@ -3,9 +3,9 @@ package binder
 import (
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/schedule"
-	"github.com/mantonx/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // A season window the suggester put on a series pick ("classic Simpsons" → 1–10)

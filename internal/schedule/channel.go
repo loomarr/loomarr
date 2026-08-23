@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Strategy is how a channel's available programs are ordered onto the timeline

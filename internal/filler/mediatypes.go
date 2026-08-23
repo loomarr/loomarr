@@ -1,6 +1,6 @@
 package filler
 
-import "github.com/mantonx/loomarr/internal/mediatools"
+import "github.com/loomarr/loomarr/internal/mediatools"
 
 // The media-tool vocabulary, re-exported as ALIASES rather than re-declared (§14.2).
 //

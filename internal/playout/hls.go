@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/proctree"
+	"github.com/loomarr/loomarr/internal/proctree"
 )
 
 // Direct-play HLS for internal playout (§9.1 Watch, V46).

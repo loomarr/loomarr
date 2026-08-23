@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/clipfetch"
+	"github.com/loomarr/loomarr/internal/clipfetch"
 )
 
 // fakeDL records which sources it was handed and returns scripted results.

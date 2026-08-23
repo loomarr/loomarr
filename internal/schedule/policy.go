@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // ChannelPolicy is the per-channel programming contract (programming-design.md §2):

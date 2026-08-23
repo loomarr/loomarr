@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 // The operator's decision has to reach the PIPELINE ROW, not only `clips` (§10 V54).

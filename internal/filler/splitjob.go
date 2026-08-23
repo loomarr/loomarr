@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/llm"
-	"github.com/mantonx/loomarr/internal/taxonomy"
+	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 // ErrSplitValidation marks a rejected confirm edit (out-of-clip bounds,

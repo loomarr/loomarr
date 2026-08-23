@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 func recSlot(id, title string, dur int64) Slot {

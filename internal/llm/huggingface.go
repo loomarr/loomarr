@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mantonx/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/httpx"
 )
 
 // The "browse downloadable models" source (§8.1). There is NO first-party Ollama API

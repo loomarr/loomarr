@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // progSlot builds a program slot for a series key with a given item id + duration.

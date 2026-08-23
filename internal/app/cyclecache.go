@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // The arranged-cycle cache — the guide's read path only (V13b follow-up).

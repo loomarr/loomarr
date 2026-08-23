@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mantonx/loomarr/docs"
+	"github.com/loomarr/loomarr/docs"
 )
 
 // docHrefs is every deep-link the API emits on a setup check (internal/api/setup.go).

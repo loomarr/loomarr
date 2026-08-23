@@ -9,7 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api"
 )
 
 // fakeCollections is a CollectionService returning a fixed list, or an error.

@@ -3,7 +3,7 @@ package channels
 import (
 	"context"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // This file wires the backfill loop (§9): provisioning availability events

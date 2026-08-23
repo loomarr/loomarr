@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // The V11 gate: an established SQLite install migrates to Postgres with row-count

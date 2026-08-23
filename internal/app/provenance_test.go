@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 var provNow = time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)

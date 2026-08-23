@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/channels"
-	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 func durationPtr(d time.Duration) *schedule.Duration {

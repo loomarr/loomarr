@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // "What's on?" — the viewer-facing airtime surfaces (§9 guide freshness, §12).

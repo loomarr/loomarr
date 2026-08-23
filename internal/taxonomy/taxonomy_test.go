@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/taxonomy"
+	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 func seed() *taxonomy.Forest { return taxonomy.New(taxonomy.SeedForest()) }

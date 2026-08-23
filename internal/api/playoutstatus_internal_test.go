@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/playout"
-	"github.com/mantonx/loomarr/internal/prepared"
+	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/prepared"
 )
 
 type fixedPreparedObserver struct{ status prepared.PlannerStatus }

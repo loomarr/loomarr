@@ -6,7 +6,7 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once it reache
 its first tagged release.
 
 A release is cut from a successful `main` build by pushing a SemVer `vX.Y.Z` tag; the release
-workflow then publishes a signed multi-arch `ghcr.io/mantonx/loomarr` image. **No tag has been cut
+workflow then publishes a signed multi-arch `ghcr.io/loomarr/loomarr` image. **No tag has been cut
 yet.** The first beta candidate and its remaining blockers are tracked in
 [`docs/engineering/plans/first-beta-readiness.md`](docs/engineering/plans/first-beta-readiness.md).
 

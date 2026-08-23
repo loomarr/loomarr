@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/programmer"
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/programmer"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // Guide parsing runs against the PINNED capture

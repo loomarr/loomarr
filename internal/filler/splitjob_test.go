@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/filler"
-	"github.com/mantonx/loomarr/internal/llm"
-	"github.com/mantonx/loomarr/internal/taxonomy"
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/taxonomy"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // fakeTools scripts MediaTools per test (§19 — unit tests never exec a binary).

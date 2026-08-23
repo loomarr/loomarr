@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // TMDB is the shared TMDB test double (AGENTS.md: one mock per service). It

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 func movieEntry(key string, year, collectionID int) LineupEntry {

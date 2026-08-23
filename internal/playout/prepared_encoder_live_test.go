@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/prepared"
+	"github.com/loomarr/loomarr/internal/prepared"
 )
 
 // This is the tagged proof that the shared live-encoder policy also produces a complete prepared

@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"sort"
 
-	"github.com/mantonx/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/metrics"
 )
 
 // PodAdapter implements the scheduler's PodFiller port (§10): it loads the clip

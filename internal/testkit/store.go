@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // InvalidationListenStep scripts one subscription attempt for InvalidationListener.

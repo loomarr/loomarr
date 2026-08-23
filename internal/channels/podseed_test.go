@@ -3,7 +3,7 @@ package channels_test
 import (
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels"
 )
 
 // THE POINT OF THE PER-BREAK SEED: consecutive breaks must not replay the same adverts. The

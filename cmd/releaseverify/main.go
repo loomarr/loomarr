@@ -19,7 +19,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/mantonx/loomarr/internal/releaseverify"
+	"github.com/loomarr/loomarr/internal/releaseverify"
 )
 
 func main() {

@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // kidsIntent is an intent that signals a kids/teen audience, so a proposed audience ceiling

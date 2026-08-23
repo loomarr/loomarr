@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Dialect names a backend. It exists so capability checks read as what they mean:

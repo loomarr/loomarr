@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/programmer"
-	"github.com/mantonx/loomarr/internal/schedule"
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/programmer"
+	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // newServer spins a mock Tunarr with a per-path handler map and records the last

@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/mantonx/loomarr/internal/backendtransition"
-	"github.com/mantonx/loomarr/internal/schedule"
-	"github.com/mantonx/loomarr/internal/setup"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/backendtransition"
+	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/setup"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // backendTransitionDependencies are the composition-owned adapters needed to construct the

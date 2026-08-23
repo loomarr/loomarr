@@ -3,8 +3,8 @@ package schedule_test
 import (
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 func lineupKeys(entries []schedule.LineupEntry) []provision.Key {

@@ -7,9 +7,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/testkit"
-	"github.com/mantonx/loomarr/internal/tmdb"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // movieDetail is the /movie/{id} shape the exists-check re-validates against (§8

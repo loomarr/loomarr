@@ -8,7 +8,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/mantonx/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/images"
 )
 
 // fakeImageService is the api package's stand-in for api.ImageService (§22, V52).

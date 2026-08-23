@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/scheduler"
 )
 
 // The filler jobs that do real media or file I/O MUST declare a Timeout — it is both their

@@ -7,7 +7,7 @@ import (
 	"image/jpeg"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/mediatools"
 )
 
 // The frame-heuristic tier (§10 V44) is deterministic and LLM-free, so it is

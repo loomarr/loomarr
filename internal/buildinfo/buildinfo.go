@@ -8,7 +8,7 @@ package buildinfo
 
 import "runtime/debug"
 
-// Set by the linker: -ldflags "-X github.com/mantonx/loomarr/internal/buildinfo.version=..."
+// Set by the linker: -ldflags "-X github.com/loomarr/loomarr/internal/buildinfo.version=..."
 // A source build leaves these empty, which is why Get() falls back to Go's own embedded
 // VCS stamps — `go run ./cmd/loomarr` still reports a usable commit.
 var (

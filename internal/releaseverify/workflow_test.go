@@ -20,7 +20,7 @@ func TestVerifyReleaseWorkflow(t *testing.T) {
 		{name: "duplicate keys fail closed", workflow: strings.Replace(good, "          push: true\n", "          push: true\n          push: true\n", 1), wantErr: true},
 		{name: "aliases fail closed", workflow: strings.Replace(good, "        with:\n          context:", "        with: &build\n          context:", 1), wantErr: true},
 		{name: "custom tags fail closed", workflow: strings.Replace(good, "          push: true", "          push: !hidden true", 1), wantErr: true},
-		{name: "public tags cannot hide in a block", workflow: strings.Replace(good, "          push: true\n", "          push: true\n          tags: |\n            ghcr.io/mantonx/loomarr:latest\n", 1), wantErr: true},
+		{name: "public tags cannot hide in a block", workflow: strings.Replace(good, "          push: true\n", "          push: true\n          tags: |\n            ghcr.io/loomarr/loomarr:latest\n", 1), wantErr: true},
 		{name: "image repository is fixed", workflow: strings.Replace(good, "IMAGE: ghcr.io/${{ github.repository }}", "IMAGE: ghcr.io/example/other", 1), wantErr: true},
 		{name: "image repository cannot be overridden by the job", workflow: strings.Replace(good, "  build:\n", "  build:\n    env:\n      IMAGE: ghcr.io/example/other\n", 1), wantErr: true},
 		{name: "no second publication job", workflow: strings.Replace(good, "jobs:\n", "jobs:\n  bypass:\n    steps:\n      - run: docker push ghcr.io/example/other:latest\n", 1), wantErr: true},

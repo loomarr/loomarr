@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mantonx/loomarr/docs"
-	"github.com/mantonx/loomarr/internal/config"
-	"github.com/mantonx/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/docs"
+	"github.com/loomarr/loomarr/internal/config"
+	"github.com/loomarr/loomarr/internal/settings"
 )
 
 // The help set ships INSIDE the binary and is read as instructions. embed_test.go already

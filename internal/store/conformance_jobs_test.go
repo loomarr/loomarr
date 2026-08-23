@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // Jobs and proposals (§8): the suggester job lifecycle, the scheduled-job table behind

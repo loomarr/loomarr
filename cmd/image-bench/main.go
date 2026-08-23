@@ -22,8 +22,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/images"
-	"github.com/mantonx/loomarr/internal/images/rustgen"
+	"github.com/loomarr/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/images/rustgen"
 )
 
 const benchmarkRecipe = "loomarr-rendition-v2"

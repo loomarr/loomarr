@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 // The auto-confirm gate (§10 V43). ⚠ Every assertion here is about REFUSING to cut. A gate that

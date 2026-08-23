@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/mantonx/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/scheduler"
 )
 
 // The image service's scheduled jobs (§22, §18.1).

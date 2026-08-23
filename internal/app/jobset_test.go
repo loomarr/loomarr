@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/app"
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/app"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // ⚠ **THE JOB SET IS THE CONTRACT (§18.1).** Every job's name, cron default and settings key

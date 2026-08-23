@@ -27,7 +27,7 @@ import (
 // do not exist there — inventing violations, which is the failure mode that discredits a gate
 // fastest.
 
-const modulePath = "github.com/mantonx/loomarr"
+const modulePath = "github.com/loomarr/loomarr"
 
 // loomarrPackages maps each Loomarr package import path to its parsed *build.Package, for a
 // DEFAULT build (no build tags), which is what `cmd/loomarr` compiles as. `.Imports` drives the

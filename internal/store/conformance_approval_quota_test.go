@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 var errTestApprovalQuotaFull = errors.New("test approval quota is full")

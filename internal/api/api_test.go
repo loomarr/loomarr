@@ -14,8 +14,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/api"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 const adminToken = "test-admin-token"

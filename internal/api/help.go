@@ -8,9 +8,9 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/mantonx/loomarr/docs"
-	"github.com/mantonx/loomarr/internal/buildinfo"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/docs"
+	"github.com/loomarr/loomarr/internal/buildinfo"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // registerHelp mounts the in-app Help + system-info routes (§13). Both are readable by

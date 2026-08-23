@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library"
 )
 
 func TestMediaServerConnectionTestUsesSharedLibraryClient(t *testing.T) {

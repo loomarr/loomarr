@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/auth"
+	"github.com/loomarr/loomarr/internal/auth"
 )
 
 // stubIDP is a real, minimal OIDC provider: it publishes a discovery document and a JWKS,

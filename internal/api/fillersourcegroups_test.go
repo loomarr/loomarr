@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/api"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // The source ROLL-UP (§10 V51c): three archive.org collections stop being three sibling rows and

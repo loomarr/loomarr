@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/requester"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/requester"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // fakeQueue returns scripted queue items regardless of the titles passed — enough to drive the

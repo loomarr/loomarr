@@ -3,7 +3,7 @@ package schedule
 import (
 	"sort"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // This file holds the separation-aware slot placement (programming-design §3, §5):

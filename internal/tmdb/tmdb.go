@@ -19,9 +19,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mantonx/loomarr/internal/catalog"
-	"github.com/mantonx/loomarr/internal/httpx"
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Client is the TMDB v3 client. The api key rides as a bearer token (v4 auth) or

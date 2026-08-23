@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 func TestSeedClipsCreatesDistinctTaxonomyReadyCatalog(t *testing.T) {

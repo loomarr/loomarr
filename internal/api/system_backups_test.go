@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api"
 )
 
 // fakeBackups is a scriptable BackupsService. It records the name Open was asked for, so

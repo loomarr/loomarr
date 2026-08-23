@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library"
 )
 
 // T1's resolution (§9.1): a library item becomes an ffmpeg-readable URL. The shape matters

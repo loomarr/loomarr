@@ -4,12 +4,12 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/activity"
-	"github.com/mantonx/loomarr/internal/library"
-	"github.com/mantonx/loomarr/internal/reconcile"
-	"github.com/mantonx/loomarr/internal/retention"
-	"github.com/mantonx/loomarr/internal/scheduler"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/activity"
+	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/reconcile"
+	"github.com/loomarr/loomarr/internal/retention"
+	"github.com/loomarr/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // buildProvisioning registers acquisition, availability, retention, and queue work and returns

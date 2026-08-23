@@ -8,8 +8,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/mantonx/loomarr/internal/buildinfo"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/buildinfo"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // The Dashboard's two lower panels (§12, V31 + V32).

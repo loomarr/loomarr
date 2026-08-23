@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mantonx/loomarr/internal/httpx"
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Arr is the direct Sonarr/Radarr Requester (§6) — the alternative to Seerr, selected by

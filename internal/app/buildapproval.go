@@ -4,11 +4,11 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/activity"
-	"github.com/mantonx/loomarr/internal/api"
-	"github.com/mantonx/loomarr/internal/binder"
-	"github.com/mantonx/loomarr/internal/store"
-	"github.com/mantonx/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/activity"
+	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/binder"
+	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 type approvalBuild struct {

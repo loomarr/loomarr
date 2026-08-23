@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/catalog"
-	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/testkit"
-	"github.com/mantonx/loomarr/internal/tmdb"
+	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 func seed(id int, name string) catalog.Candidate {

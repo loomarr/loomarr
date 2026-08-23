@@ -13,15 +13,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/api"
-	"github.com/mantonx/loomarr/internal/binder"
-	"github.com/mantonx/loomarr/internal/events"
-	"github.com/mantonx/loomarr/internal/proposalworkflow"
-	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/schedule"
-	"github.com/mantonx/loomarr/internal/store"
-	"github.com/mantonx/loomarr/internal/suggest"
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/binder"
+	"github.com/loomarr/loomarr/internal/events"
+	"github.com/loomarr/loomarr/internal/proposalworkflow"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // fakeSuggest records the LAST intent it was asked to run, so a test can assert the

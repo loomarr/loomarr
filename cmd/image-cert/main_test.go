@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/images"
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestRunWritesTheRepositoryCertificationReport(t *testing.T) {

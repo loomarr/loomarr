@@ -3,7 +3,7 @@ package playout
 import (
 	"strings"
 
-	"github.com/mantonx/loomarr/internal/prepared"
+	"github.com/loomarr/loomarr/internal/prepared"
 )
 
 // PreparedVideoArgs adapts the live playout encoder policy to finite prepared packaging. It reuses

@@ -12,7 +12,7 @@ var dockerfileNoticeRequirements = []struct {
 	fragment    string
 }{
 	{instruction: "COPY", fragment: "COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/doc/loomarr/"},
-	{instruction: "LABEL", fragment: `org.opencontainers.image.documentation="https://github.com/mantonx/loomarr/blob/main/THIRD_PARTY_NOTICES.md"`},
+	{instruction: "LABEL", fragment: `org.opencontainers.image.documentation="https://github.com/loomarr/loomarr/blob/main/THIRD_PARTY_NOTICES.md"`},
 	{instruction: "LABEL", fragment: `org.opencontainers.image.licenses="MIT AND GPL-3.0-or-later"`},
 }
 

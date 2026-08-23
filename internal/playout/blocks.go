@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // AiringIdentity is the scheduler-owned boundary metadata carried beside a finite transport block.

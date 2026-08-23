@@ -3,8 +3,8 @@ package suggest
 import (
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // scopeNarrows decides whether a lowered rule scope is kept or nilled to "inherit the channel

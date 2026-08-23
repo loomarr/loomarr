@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // ProposalApproval is the complete durable consequence of one approval decision.

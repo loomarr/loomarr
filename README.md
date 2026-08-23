@@ -1,6 +1,6 @@
 # Loomarr
 
-[![CI](https://github.com/mantonx/loomarr/actions/workflows/ci.yml/badge.svg)](https://github.com/mantonx/loomarr/actions/workflows/ci.yml)
+[![CI](https://github.com/loomarr/loomarr/actions/workflows/ci.yml/badge.svg)](https://github.com/loomarr/loomarr/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go 1.26](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
 
@@ -47,7 +47,7 @@ Until `v0.1.0-beta.1` appears in GitHub Releases, this is the release-candidate 
 there is no beta artifact to pull yet.
 
 ```bash
-git clone --branch v0.1.0-beta.1 --depth 1 https://github.com/mantonx/loomarr && cd loomarr
+git clone --branch v0.1.0-beta.1 --depth 1 https://github.com/loomarr/loomarr && cd loomarr
 cp .env.example .env                     # set SERVER_PUBLIC_URL to this host's reachable URL
 LOOMARR_VERSION=0.1.0-beta.1 docker compose -f docker/compose.yaml --profile sqlite up -d
 ```

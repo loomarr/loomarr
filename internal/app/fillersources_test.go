@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/clipfetch"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/clipfetch"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // recordingSources captures what got registered, and can fail on demand.

@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/settings"
-	"github.com/mantonx/loomarr/internal/store"
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestPostgresStateRoundTrip(t *testing.T) {

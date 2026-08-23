@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/filler"
-	"github.com/mantonx/loomarr/internal/schedule"
-	"github.com/mantonx/loomarr/internal/taxonomy"
+	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 // Clip is the persisted form of a filler clip (§10). It embeds the domain

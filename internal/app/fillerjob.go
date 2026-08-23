@@ -3,8 +3,8 @@ package app
 import (
 	"context"
 
-	"github.com/mantonx/loomarr/internal/filler"
-	"github.com/mantonx/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/scheduler"
 )
 
 // fillerSyncJob declares the filler catalog sync (§10, §18.1).

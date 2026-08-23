@@ -7,7 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/mantonx/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout"
 )
 
 // The dashboard's telemetry surface (§12, V16).

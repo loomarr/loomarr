@@ -13,7 +13,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/metrics"
 )
 
 // Per-service hard timeouts (§6). Verified reachable at these budgets in Phase 0.

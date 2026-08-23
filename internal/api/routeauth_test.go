@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api"
 )
 
 // ⚠ **THE AUTHORIZATION GATE (§11, §19).** These pin the invariant the architecture review

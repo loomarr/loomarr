@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/images"
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // An in-memory images.FetchStore for the adapter tests in this package.

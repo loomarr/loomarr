@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/config"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/config"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // ⚠ THE GATE FOR §9.2. Restarting in place is only correct if Build/Run/Shutdown can

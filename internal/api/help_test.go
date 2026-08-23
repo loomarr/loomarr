@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api"
 )
 
 // readBody drains a response so two of them can be compared verbatim.

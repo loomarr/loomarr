@@ -275,7 +275,7 @@ eval-cert: ## certify exact starter/adversarial intents; fails on missing config
 build: rust-build ## build the cgo-free Go server and required Rust image worker
 	release="$${LOOMARR_RELEASE:-dev}"; \
 	  CGO_ENABLED=0 $(GO) build \
-	    -ldflags="-X github.com/mantonx/loomarr/internal/buildinfo.version=$$release" \
+	    -ldflags="-X github.com/loomarr/loomarr/internal/buildinfo.version=$$release" \
 	    -o $(BIN_DIR)/loomarr ./cmd/loomarr; \
 	  $(BIN_DIR)/loomarr-image capabilities --protocol 1 --self-test | grep -q "\"release\":\"$$release\""
 

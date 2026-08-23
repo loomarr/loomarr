@@ -3,7 +3,7 @@ package playout_test
 import (
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout"
 )
 
 func TestEffectiveCapacity_AutomaticUsesMeasurement(t *testing.T) {

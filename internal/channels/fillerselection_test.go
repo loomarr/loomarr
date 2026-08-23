@@ -3,9 +3,9 @@ package channels_test
 import (
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/channels"
-	"github.com/mantonx/loomarr/internal/filler"
-	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // The three states of a filler era (§10, V51f), and the reason the middle one had to exist.

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Observability counts (§17 /metrics state gauges). These are read on scrape by

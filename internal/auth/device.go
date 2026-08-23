@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // PairingTTL is how long a code shown on a TV stays valid.

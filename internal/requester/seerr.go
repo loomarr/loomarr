@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/mantonx/loomarr/internal/httpx"
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Seerr is the default Requester (§6). POST {url}/api/v1/request with the

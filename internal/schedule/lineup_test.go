@@ -3,8 +3,8 @@ package schedule_test
 import (
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // mapAvail is a pure Availability for tests: keys present in the map are

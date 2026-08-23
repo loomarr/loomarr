@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // newID generates a random 128-bit hex id for jobs/proposals.

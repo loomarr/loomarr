@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // A fixed reference clock: 2026-07-25 is a Saturday, 2026-07-23 a Thursday. Using UTC

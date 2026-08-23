@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/proctree"
+	"github.com/loomarr/loomarr/internal/proctree"
 )
 
 // eagerAttacher models a warm live session whose initial burst arrives as the sink is attached.

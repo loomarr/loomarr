@@ -45,8 +45,8 @@ func TestPublisherPromotesStableTagsOnlyAfterVerification(t *testing.T) {
 	if sign < 0 || verify < sign || promote < verify {
 		t.Fatalf("unsafe publication order:\n%s", result.log)
 	}
-	if !strings.Contains(result.log, "--tag ghcr.io/mantonx/loomarr:0.1.0") ||
-		!strings.Contains(result.log, "--tag ghcr.io/mantonx/loomarr:latest") {
+	if !strings.Contains(result.log, "--tag ghcr.io/loomarr/loomarr:0.1.0") ||
+		!strings.Contains(result.log, "--tag ghcr.io/loomarr/loomarr:latest") {
 		t.Fatalf("stable promotion did not name both public tags:\n%s", result.log)
 	}
 }
@@ -92,11 +92,11 @@ func runPublisher(t *testing.T, fail string, stable bool) publisherResult {
 		"PATH="+bin+":"+os.Getenv("PATH"),
 		"LOG_FILE="+logPath,
 		"COSIGN_FAIL="+fail,
-		"IMAGE=ghcr.io/mantonx/loomarr",
+		"IMAGE=ghcr.io/loomarr/loomarr",
 		"DIGEST="+publisherDigest,
 		"RELEASE_TAG="+tag,
 		"PUBLISH_LATEST="+publishLatest,
-		"COSIGN_CERTIFICATE_IDENTITY=https://github.com/mantonx/loomarr/.github/workflows/release.yml@refs/tags/"+tag,
+		"COSIGN_CERTIFICATE_IDENTITY=https://github.com/loomarr/loomarr/.github/workflows/release.yml@refs/tags/"+tag,
 		"COSIGN_CERTIFICATE_OIDC_ISSUER=https://token.actions.githubusercontent.com",
 	)
 	output, err := command.CombinedOutput()

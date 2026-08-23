@@ -10,13 +10,13 @@ contract rather than an available download.
 ## Start it
 
 ```bash
-git clone --branch v0.1.0-beta.1 --depth 1 https://github.com/mantonx/loomarr && cd loomarr
+git clone --branch v0.1.0-beta.1 --depth 1 https://github.com/loomarr/loomarr && cd loomarr
 cp .env.example .env
 # Edit .env: SERVER_PUBLIC_URL must be a URL this host and your media server can reach.
 LOOMARR_VERSION=0.1.0-beta.1 docker compose -f docker/compose.yaml --profile sqlite up -d
 ```
 
-This pulls the pinned `ghcr.io/mantonx/loomarr:0.1.0-beta.1` image. Linux hosts use the native
+This pulls the pinned `ghcr.io/loomarr/loomarr:0.1.0-beta.1` image. Linux hosts use the native
 amd64 or arm64 manifest. Docker Desktop does the same on Intel or Apple Silicon Macs.
 
 Profiles combine:

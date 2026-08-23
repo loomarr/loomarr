@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // Application is one fully wired Loomarr generation. The process owns the listener, signals,

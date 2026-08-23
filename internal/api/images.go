@@ -13,7 +13,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/mantonx/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/images"
 )
 
 // The image service's HTTP surface (§22, V52).

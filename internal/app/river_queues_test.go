@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/scheduler"
-	"github.com/mantonx/loomarr/internal/store"
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // ⚠ **A job's ceiling must not become every other job's ceiling.**

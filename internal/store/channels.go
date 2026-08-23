@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // The two legal channel broadcast codecs (§9.1 V50). Kept as plain strings to match

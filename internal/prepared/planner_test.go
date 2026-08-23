@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/media"
+	"github.com/loomarr/loomarr/internal/media"
 )
 
 type fixedCandidates struct {

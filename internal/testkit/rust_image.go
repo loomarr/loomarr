@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/images/rustgen"
+	"github.com/loomarr/loomarr/internal/images/rustgen"
 )
 
 // RustImageRenderer opens the same required worker used in production. `make check` builds it

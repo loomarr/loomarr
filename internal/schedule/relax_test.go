@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // A tiny pool that can't fill a long no-repeat window forces the relaxation ladder

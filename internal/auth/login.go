@@ -7,8 +7,8 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/mantonx/loomarr/internal/library"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // ErrRateLimited is returned when login attempts exceed the per-IP+username rate.

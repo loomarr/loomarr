@@ -855,7 +855,7 @@ jobs:
           set -euo pipefail
           image=loomarr-ci:verify
           test "$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.documentation" }}')" = \
-            "https://github.com/mantonx/loomarr/blob/main/THIRD_PARTY_NOTICES.md"
+            "https://github.com/loomarr/loomarr/blob/main/THIRD_PARTY_NOTICES.md"
           test "$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.licenses" }}')" = \
             "MIT AND GPL-3.0-or-later"
           container=$(docker create "$image")

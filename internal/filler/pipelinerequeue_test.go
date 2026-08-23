@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 // seedParkedReel puts a compilation in the state that was unreachable before V54a: parked at the

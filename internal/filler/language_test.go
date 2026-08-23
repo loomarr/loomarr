@@ -3,7 +3,7 @@ package filler_test
 import (
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 // The language gate's decision logic (§10 V40). These are pure functions on purpose: the two

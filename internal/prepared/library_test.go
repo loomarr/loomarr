@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/prepared"
+	"github.com/loomarr/loomarr/internal/prepared"
 )
 
 // Tune-time lookup must never wait for the readiness control plane. A publication is deliberately

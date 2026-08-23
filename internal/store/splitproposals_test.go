@@ -3,7 +3,7 @@ package store
 import (
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 func TestUnmarshalSplitProposal_AcceptsLegacyBareSegmentArray(t *testing.T) {

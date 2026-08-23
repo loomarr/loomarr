@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 func TestPostgresLifecycleInvalidationsAreCommitOrdered(t *testing.T) {

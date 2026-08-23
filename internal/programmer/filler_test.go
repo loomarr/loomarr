@@ -10,8 +10,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/programmer"
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/programmer"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // fillerMock is a Tunarr double for the §10 filler endpoints: `local` media-source

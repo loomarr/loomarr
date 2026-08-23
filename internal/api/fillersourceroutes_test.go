@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 func sourceReq(t *testing.T, method, url, body, token string) *http.Response {

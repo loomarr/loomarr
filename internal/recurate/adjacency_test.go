@@ -5,13 +5,13 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/catalog"
-	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/recurate"
-	"github.com/mantonx/loomarr/internal/schedule"
-	"github.com/mantonx/loomarr/internal/store"
-	"github.com/mantonx/loomarr/internal/suggest"
-	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/recurate"
+	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // fakeAdjacencer records the seeds it was walked with and returns a fixed answer.

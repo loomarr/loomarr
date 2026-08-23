@@ -17,7 +17,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // Sink is the storage this package needs — accept-interfaces, so callers can pass a double

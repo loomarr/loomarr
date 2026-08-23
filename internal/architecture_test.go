@@ -152,7 +152,7 @@ func TestImageServiceDoesNotImportGoPixelCode(t *testing.T) {
 //
 // ⚠ `go list -deps ./cmd/loomarr` STILL reports `testing` and `flag`, and that is not ours —
 // `riverqueue/river/rivershared/testsignal` imports `riversharedtest`, in the job-queue
-// dependency. This gate deliberately scopes to `github.com/mantonx/loomarr/internal`: a rule we
+// dependency. This gate deliberately scopes to `github.com/loomarr/loomarr/internal`: a rule we
 // cannot act on is not a gate, it is noise. If River ever drops it, the raw `go list` becomes
 // clean on its own; nothing here needs to change.
 func TestNoLoomarrPackageLinksTestingIntoTheBinary(t *testing.T) {

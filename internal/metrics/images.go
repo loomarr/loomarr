@@ -6,7 +6,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/mantonx/loomarr/internal/images/rustgen"
+	"github.com/loomarr/loomarr/internal/images/rustgen"
 )
 
 var (

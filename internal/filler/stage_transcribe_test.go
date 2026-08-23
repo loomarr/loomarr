@@ -7,7 +7,7 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 // The transcribe rung (§10 V44's job, V51b's stage). Its whole risk is COST: Whisper is ~341s a

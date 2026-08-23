@@ -4,12 +4,12 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/catalog"
-	"github.com/mantonx/loomarr/internal/library"
-	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/testkit"
-	"github.com/mantonx/loomarr/internal/testkit/catalogfixture"
-	"github.com/mantonx/loomarr/internal/tmdb"
+	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
+	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // realLibrary builds a library client pointed at the testkit media-server mock,

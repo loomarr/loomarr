@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 type writeCloser struct{ bytes.Buffer }

@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/mantonx/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api"
 )
 
 func main() {
