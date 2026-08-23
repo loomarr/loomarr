@@ -5535,6 +5535,11 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
 ---
 
 ## 19. Testing strategy
+- **Gate composition:** `make check` remains the complete local Go/Rust gate. CI may run its
+  `check-static` contract half and its race-policy-aware `test` half as parallel jobs, and may shard
+  the latter, but the required aggregate succeeds only when every constituent succeeds. Splitting
+  execution must not delete, skip, or weaken an assertion; `go-shard-verify` proves the test shards
+  remain an exact partition of `go list ./...`.
 - **State machine:** every transition + the five invariants.
 - **Store conformance:** one suite vs **both** SQLite (temp file) and Postgres (**testcontainers**), incl. `ClaimDue` concurrency (no record claimed twice).
 - **Library conformance:** Emby vs Jellyfin flavors w/ mock transport; correct auth header each.
