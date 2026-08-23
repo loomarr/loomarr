@@ -112,3 +112,8 @@ gate documentation are amended before the first change that alters required beha
   `CI` check, still bound to the GitHub Actions app (`app_id: 15368`). Merge-queue activation is
   blocked by GitHub's organization-ownership requirement, not by workflow readiness:
   `merge_group` and its merge-base handling are already present.
+- The pre-activation input audit found non-code files read by Go tests that neither the legacy nor
+  shadow maps fully represented: design/configuration/generated-command docs, install docs and
+  README, committed OpenAPI, and production Compose. It also found release-contract consumers for
+  Dockerfile and packaged notices. Each now selects its consuming gate and has an exact fixture;
+  activation waits for this correction to pass the legacy matrix.
