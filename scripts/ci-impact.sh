@@ -198,7 +198,7 @@ classify() {
       known=true
       select_gate contracts
       ;;
-    docker/*|.air.toml|.env.example|.golangci.yml|.node-version|.editorconfig|.gitignore|.vscode/*|.github/dependabot.yml|skills-lock.json)
+    docker/*|.air.toml|.env.example|.golangci.yml|.node-version|.editorconfig|.gitignore|.vscode/*|.github/actionlint.yaml|.github/actionlint.yml|.github/dependabot.yml|skills-lock.json)
       known=true
       select_gate contracts
       case "$path" in
