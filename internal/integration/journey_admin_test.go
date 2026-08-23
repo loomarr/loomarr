@@ -190,6 +190,57 @@ func TestJourney_NewAdmin(t *testing.T) {
 	}
 }
 
+// A holiday request travels through the public Proposal API and durable worker,
+// uses TMDB thematic keywords rather than title matching, and stops in submitted
+// review. Discovery may suggest a new title; it must never turn that into approval.
+func TestJourney_HolidayKeywordProposalIncludesOutsideLibraryDiscovery(t *testing.T) {
+	llm := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{
+			"keywords": []any{"Christmas"}, "media_type": "movie",
+		}),
+		testkit.FinalResponse(`{
+			"channelName":"Snow Day Cinema",
+			"picks":[{"mediaType":"movie","tmdbId":2401,"name":"Snowbound Reunion","confidence":0.91}],
+			"policy":{"seasonal":{"mode":"exclusive"}}
+		}`),
+	)
+	h := newHarness(t, withLLM(llm))
+	h.tmdb.AddKeywordMovie(2401, "Snowbound Reunion", 2021, []int{35, 10751},
+		"Estranged siblings reunite during Christmas week.", "Christmas")
+	if code := h.bootstrap("owner", "owner-pass"); code != http.StatusOK {
+		t.Fatalf("bootstrap → %d, want 200", code)
+	}
+	admin := h.login("owner", "owner-pass")
+
+	var submitted struct {
+		JobID string `json:"jobId"`
+	}
+	decodeBody(t, h.do(http.MethodPost, "/v1/proposals",
+		`{"description":"A cozy Christmas movie channel"}`, admin), &submitted)
+	if submitted.JobID == "" {
+		t.Fatal("submit returned no jobId")
+	}
+	_, prop := h.awaitProposal(admin, submitted.JobID)
+	if len(prop.Acquisitions) != 1 || prop.Acquisitions[0].TMDBID != 2401 {
+		t.Fatalf("submitted holiday proposal did not include grounded outside-Library discovery: %+v", prop)
+	}
+	if prop.Policy.Seasonal.Mode != "exclusive" {
+		t.Fatalf("seasonal mode = %q, want exclusive", prop.Policy.Seasonal.Mode)
+	}
+	stored, err := h.store.GetJob(context.Background(), submitted.JobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != "done" {
+		t.Fatalf("proposal job status = %q, want done", stored.Status)
+	}
+	// No approve call was made: the new acquisition remains submitted for review.
+	proposals, err := h.store.ListProposalsByStatus(context.Background(), "submitted")
+	if err != nil || len(proposals) != 1 || proposals[0].Status != "submitted" {
+		t.Fatalf("holiday proposal bypassed or missed review: proposals=%+v err=%v", proposals, err)
+	}
+}
+
 // decodeBody decodes a 2xx JSON response body into v (fails on non-2xx).
 func decodeBody(t *testing.T, resp *http.Response, v any) {
 	t.Helper()

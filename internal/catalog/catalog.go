@@ -108,6 +108,12 @@ type TMDBDiscoverer interface {
 	Discover(ctx context.Context, mt provision.MediaType, genres []string, yearFrom, yearTo, limit int) ([]Candidate, error)
 }
 
+// TMDBKeywordDiscoverer is thematic discovery for concepts that are not genres
+// and need not appear in a title: holidays, motifs, franchises, and topics.
+type TMDBKeywordDiscoverer interface {
+	DiscoverKeywords(ctx context.Context, mt provision.MediaType, keywords, genres []string, yearFrom, yearTo, limit int) ([]Candidate, error)
+}
+
 // LibraryPresence checks whether a specific title (by external id) is already in
 // the media library — the piece discovery needs that keyword search gets for free.
 // Discovery is TMDB-only (the library has no discover-by-genre endpoint), so a
@@ -232,10 +238,38 @@ func (c *Catalog) Discover(ctx context.Context, mt provision.MediaType, genres [
 	if !ok || c.tmdb == nil {
 		return nil, nil // no discovery corpus wired
 	}
-	res, err := d.Discover(ctx, mt, genres, yearFrom, yearTo, limit)
+	// Presence is known only after TMDB returns. Draw a bounded larger pool so an
+	// owned first page cannot consume the entire result before the owned/missing
+	// blend has a chance to reserve discovery candidates.
+	poolLimit := limit * 2
+	res, err := d.Discover(ctx, mt, genres, yearFrom, yearTo, poolLimit)
 	if err != nil {
 		return nil, err
 	}
+	return c.finishDiscovery(ctx, res, poolLimit, limit), nil
+}
+
+// DiscoverKeywords finds titles by TMDB keyword, optionally narrowed by genre,
+// era, and media type. It shares discovery's presence backfill and bounded
+// owned/missing blend, so a holiday query can be both immediately useful and
+// open to coherent additions outside the current Library.
+func (c *Catalog) DiscoverKeywords(ctx context.Context, mt provision.MediaType, keywords, genres []string, yearFrom, yearTo, limit int) ([]Candidate, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	d, ok := c.tmdb.(TMDBKeywordDiscoverer)
+	if !ok || c.tmdb == nil {
+		return nil, nil
+	}
+	poolLimit := limit * 2
+	res, err := d.DiscoverKeywords(ctx, mt, keywords, genres, yearFrom, yearTo, poolLimit)
+	if err != nil {
+		return nil, err
+	}
+	return c.finishDiscovery(ctx, res, poolLimit, limit), nil
+}
+
+func (c *Catalog) finishDiscovery(ctx context.Context, res []Candidate, poolLimit, limit int) []Candidate {
 	byKey := map[string]*Candidate{}
 	order := []string{}
 	for _, cand := range res {
@@ -248,9 +282,9 @@ func (c *Catalog) Discover(ctx context.Context, mt provision.MediaType, genres [
 		byKey[k] = &cp
 		order = append(order, k)
 	}
-	out := dedupeAndOrder(byKey, order, limit)
+	out := dedupeAndOrder(byKey, order, poolLimit)
 	c.backfillPresence(ctx, out)
-	return out, nil
+	return orderCandidates(out, limit)
 }
 
 // TMDBRecommender is the adjacency corpus: TMDB's behavioural "also watched" graph for
@@ -429,22 +463,55 @@ func (c *Catalog) backfillPresence(ctx context.Context, cands []Candidate) {
 	}
 }
 
-// dedupeAndOrder flattens the merged candidate map into the deterministic order
-// the tool + UI depend on: in-library first, then by name; truncated to limit.
+// dedupeAndOrder flattens the merged candidate map into the deterministic bounded
+// blend the tool + UI depend on. Library candidates remain first because they can
+// play immediately, but when both partitions have matches one quarter of a full
+// page is reserved for outside-Library discovery. Each partition is sorted by
+// name so identical candidate sets always produce identical output regardless of
+// upstream or map insertion order; the upstream relevance rank still determines
+// which bounded candidates enter the pool.
 func dedupeAndOrder(byKey map[string]*Candidate, order []string, limit int) []Candidate {
-	out := make([]Candidate, 0, len(order))
+	candidates := make([]Candidate, 0, len(order))
 	for _, k := range order {
-		out = append(out, *byKey[k])
+		candidates = append(candidates, *byKey[k])
 	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].InLibrary != out[j].InLibrary {
-			return out[i].InLibrary // in-library first
+	return orderCandidates(candidates, limit)
+}
+
+// orderCandidates applies the stable owned/missing blend after identity dedupe
+// and, for Discover, after Library-presence backfill.
+func orderCandidates(candidates []Candidate, limit int) []Candidate {
+	owned := make([]Candidate, 0, len(candidates))
+	outside := make([]Candidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.InLibrary {
+			owned = append(owned, candidate)
+		} else {
+			outside = append(outside, candidate)
 		}
-		return out[i].Name < out[j].Name
-	})
-	if len(out) > limit {
-		out = out[:limit]
 	}
+	sort.SliceStable(owned, func(i, j int) bool { return owned[i].Name < owned[j].Name })
+	sort.SliceStable(outside, func(i, j int) bool { return outside[i].Name < outside[j].Name })
+	if len(owned)+len(outside) <= limit {
+		return append(owned, outside...)
+	}
+	if len(owned) == 0 {
+		return outside[:min(limit, len(outside))]
+	}
+	if len(outside) == 0 {
+		return owned[:min(limit, len(owned))]
+	}
+
+	outsideSlots := max(1, limit/4)
+	outsideSlots = min(outsideSlots, len(outside))
+	ownedSlots := min(limit-outsideSlots, len(owned))
+	// If the preferred Library partition cannot fill its share, give every spare
+	// place to discovery rather than returning a short page.
+	outsideSlots = min(limit-ownedSlots, len(outside))
+
+	out := make([]Candidate, 0, ownedSlots+outsideSlots)
+	out = append(out, owned[:ownedSlots]...)
+	out = append(out, outside[:outsideSlots]...)
 	return out
 }
 

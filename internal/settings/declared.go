@@ -1212,8 +1212,8 @@ func declared() []Setting {
 		},
 		{
 			Key: "job.workers", EnvVar: "JOB_WORKERS", Group: GroupAdvanced,
-			Kind: KindInt, Default: 2,
-			Doc: "How many channel suggestions can be worked on at once.",
+			Kind: KindInt, Default: 1,
+			Doc: "How many channel suggestions can be worked on at once. One is the appliance-safe default; raise it deliberately for larger or hosted-model deployments.",
 		},
 		{
 			Key: "job.timeout", EnvVar: "JOB_TIMEOUT", Group: GroupAdvanced,

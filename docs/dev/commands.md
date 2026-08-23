@@ -65,6 +65,7 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make test-ffmpeg` |  | playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`) |
 | `make eval` |  | semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate) |
 | `make eval-cert` |  | certify exact starter/adversarial intents; fails on missing config and writes a scorecard |
+| `make eval-matrix` |  | explicitly certify local + OpenRouter generation sequentially (manual, resource-heavy) |
 
 ## Build / run
 

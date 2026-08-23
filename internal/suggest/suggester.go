@@ -34,6 +34,12 @@ const catalogSearchLimit = 24
 // creative — tool-calling and structured output want determinism, not variety.
 var groundedTemp = 0.2
 
+// groundedMaxTokens bounds hosted-provider cost reservation and keeps a runaway
+// final response from crowding the tool loop. Two thousand tokens comfortably fit
+// the bounded proposal schema (at most 24 surfaced candidates and 10 actionable
+// acquisitions) while avoiding an unbounded provider default on every turn.
+const groundedMaxTokens = 2048
+
 // chatOpts builds the per-turn ChatOptions with the tools + grounded sampling.
 // temp lets the repair loop lower it further on a retry.
 //
@@ -46,7 +52,9 @@ var groundedTemp = 0.2
 // FINAL turn, and the repair loop backstops any stray prose. (Caught live: qwen3:8b
 // on a themed intent — correct genres, but the call landed in content, not tool_calls.)
 func chatOpts(tools []llm.ToolSchema, temp float64) llm.ChatOptions {
-	return llm.ChatOptions{Tools: tools, JSONMode: len(tools) == 0, Temperature: &temp}
+	return llm.ChatOptions{
+		Tools: tools, JSONMode: len(tools) == 0, Temperature: &temp, MaxTokens: groundedMaxTokens,
+	}
 }
 
 // Validator re-checks a proposed acquisition against reality before it's
@@ -104,6 +112,10 @@ func New(provider llm.Provider, cat *catalog.Catalog, v Validator, maxAcq int) *
 // turn that's empty or not valid schema JSON. Small — a model that can't produce
 // the schema in a couple of nudges won't in ten. Separate from maxToolRounds.
 const maxRepairs = 2
+
+const groundingRetryPrompt = `You returned no grounded picks without finding usable catalog candidates. ` +
+	`You MUST call catalog_search now. Use title search for a named title, genre discovery for a genre, ` +
+	`or keywords for a holiday, motif, franchise, or topic. Then select only ids the tool returns.`
 
 func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error) {
 	messages := []llm.Message{
@@ -164,7 +176,9 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 	// empty or malformed JSON, append a corrective nudge and re-ask at a lower
 	// temperature. maxToolRounds bounds each generation; maxRepairs bounds the
 	// re-asks. JOB_TIMEOUT + httpx.TimeoutLLM are the hard ceilings.
-	for repair := 0; ; repair++ {
+	repairs := 0
+	groundingRetried := false
+	for {
 		final, err := s.generate(ctx, &messages, tools, surfaced, temp)
 		if err != nil {
 			return Proposal{}, err
@@ -172,15 +186,23 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 		out, perr := parsePicks(final)
 		if perr == nil {
 			reportProgress(ctx, PhaseScoring, 0)
-			return s.buildProposal(ctx, intent, out, surfaced)
+			prop, buildErr := s.buildProposal(ctx, intent, out, surfaced)
+			if errors.Is(buildErr, ErrNoGroundedTitles) && len(surfaced) == 0 && !groundingRetried {
+				groundingRetried = true
+				messages = append(messages, llm.Message{Role: llm.User, Content: groundingRetryPrompt})
+				temp = temp / 2
+				continue
+			}
+			return prop, buildErr
 		}
-		if repair >= maxRepairs {
+		if repairs >= maxRepairs {
 			return Proposal{}, fmt.Errorf("suggester: model output not valid after %d repairs: %w", maxRepairs, perr)
 		}
 		// Nudge the model to fix its output, and turn the temperature down further
 		// so it adheres to the schema rather than getting creative.
 		messages = append(messages, llm.Message{Role: llm.User, Content: repairPrompt})
 		temp = temp / 2
+		repairs++
 	}
 }
 
@@ -201,8 +223,12 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 		}
 		if resp.WantsTools() {
 			reportProgress(ctx, PhaseSearching, round+1)
-			*messages = append(*messages, assistantToolCallMsg(resp.ToolCalls))
-			for _, tc := range resp.ToolCalls {
+			// The provider-neutral contract is sequential single-tool. Some hosted
+			// models still emit parallel calls despite the prompt; accepting all of
+			// them would let one round escape maxToolRounds and flood the next context.
+			toolCalls := resp.ToolCalls[:1]
+			*messages = append(*messages, assistantToolCallMsg(toolCalls))
+			for _, tc := range toolCalls {
 				result, cands := s.runTool(ctx, tc)
 				for _, c := range cands {
 					if k, err := c.Key(); err == nil {
@@ -231,10 +257,16 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall) (string, []cat
 	}
 	mtArg, _ := tc.Arguments["media_type"].(string)
 	genres := stringSlice(tc.Arguments["genres"])
+	keywords := stringSlice(tc.Arguments["keywords"])
 
 	var cands []catalog.Candidate
 	var err error
-	if len(genres) > 0 {
+	if len(keywords) > 0 {
+		// THEMATIC DISCOVERY: holidays, motifs, franchises, and topics live in
+		// TMDB's keyword corpus and need not occur in the title text.
+		from, to := parseEra(stringArg(tc.Arguments["era"]))
+		cands, err = s.catalog.DiscoverKeywords(ctx, mediaTypeArg(mtArg), keywords, genres, from, to, catalogSearchLimit)
+	} else if len(genres) > 0 {
 		// DISCOVERY: the model gave genres → find by theme (+ era) rather than title.
 		// This is what lets an abstract intent surface real content instead of an
 		// empty keyword result. Grounding is unaffected: discovered candidates are
@@ -449,33 +481,35 @@ func refuseUnairable(a schedule.AudiencePolicy, lineup, acquisitions []ProposalI
 // machine-checked: the ceiling must be on the closed rating ladder (else dropped),
 // enums must be known (else dropped), the era is taken as-is (the enforcer clamps),
 // and any series allowlist is intersected with the actually-grounded picks so the
-// model can't scope to a series that never surfaced. Explicit child-safety intent contributes
-// its deterministic ceiling even when the model omits or hallucinates the policy.
+// model can't scope to a series that never surfaced. Explicit child-safety intent and a rating
+// cap written by the user contribute deterministic ceilings even when the model omits or
+// hallucinates the policy. A named holiday similarly determines exclusive mode + holiday subset.
 func groundPolicy(raw *pickPolicy, lineup, acquisitions []ProposalItem, intent Intent) schedule.ChannelPolicy {
-	childSafetyCeiling := schedule.Rating("")
-	if intentRequiresChildSafety(intent) {
-		childSafetyCeiling = schedule.NormalizeRating("TV-Y7")
-	}
+	childSafetyCeiling := intentDeterministicSafetyCeiling(intent)
+	explicitCeiling := intentExplicitAudienceCeiling(intent)
+	requestedCeiling := stricterCeiling(explicitCeiling, childSafetyCeiling)
 	if raw == nil {
 		return schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
-			Audience: schedule.AudiencePolicy{Ceiling: childSafetyCeiling},
+			Audience: schedule.AudiencePolicy{Ceiling: requestedCeiling},
+			Seasonal: seasonalPolicyForIntent(intent),
 		}}
 	}
 	var p schedule.ChannelPolicy
 
-	// Audience ceiling (programming-design §4/§8): the ceiling is a KIDS/TEEN GUARDRAIL, not a
-	// general default. An unqualified channel is adult-default — "1980s Action Heroes" includes
+	// Audience ceiling (programming-design §4/§8): the ceiling is a KIDS/TEEN GUARDRAIL or an
+	// explicit user-written rating limit, not a general default. An unqualified channel is adult-default — "1980s Action Heroes" includes
 	// its R-rated films. So a model-proposed ceiling is kept ONLY when the intent actually
-	// signals kids/teens; with no such signal it is DROPPED (→ no ceiling, everything admitted),
+	// signals kids/teens or names a rating cap; with neither signal it is DROPPED (→ no ceiling, everything admitted),
 	// because a small model reflexively caps action/genre channels ("might be violent → TV-14")
 	// and that must not silently strip the R-rated content the channel is about. The prompt says
 	// "adult/no mention → omit," but the model isn't trusted to obey it — this is the enforcement.
-	if c := schedule.NormalizeRating(raw.Audience.Ceiling); c != "" && intentSignalsKids(intent) {
-		p.Audience.Ceiling = stricterCeiling(c, childSafetyCeiling)
-	} else if childSafetyCeiling != "" {
+	if c := schedule.NormalizeRating(raw.Audience.Ceiling); c != "" && (intentSignalsKids(intent) || explicitCeiling != "") {
+		p.Audience.Ceiling = stricterCeiling(c, requestedCeiling)
+	} else if requestedCeiling != "" {
 		// Explicit child safety is deterministic and cannot disappear because the model
-		// omitted or hallucinated the policy value.
-		p.Audience.Ceiling = childSafetyCeiling
+		// omitted or hallucinated the policy value. The same applies to a rating the
+		// user wrote explicitly (for example, "keep it PG-13").
+		p.Audience.Ceiling = requestedCeiling
 	}
 	switch schedule.UnratedPolicy(raw.Audience.Unrated) {
 	case schedule.UnratedExclude, schedule.UnratedAllow:
@@ -510,12 +544,24 @@ func groundPolicy(raw *pickPolicy, lineup, acquisitions []ProposalItem, intent I
 	if p.Ordering == schedule.OrderInherit && multiSeries(lineup) {
 		p.Ordering = schedule.OrderSyndication
 	}
+	// A curated/rerun request for one episodic series is not a box-set binge. Deal
+	// its eligible episodes as a no-repeat syndication deck, even if the model
+	// reflexively said sequential. Explicit chronological/binge language wins.
+	// Movie franchises are unaffected: the scheduler independently keeps each
+	// TMDB collection atomic and in release order under every non-sequential mode.
+	if intentRequestsCuratedEpisodes(intent) && !intentRequestsSequential(intent) &&
+		singleSeriesOnly(lineup, acquisitions) {
+		p.Ordering = schedule.OrderSyndication
+	}
 
 	// Seasonal: keep only a known mode + holiday ids.
 	switch schedule.SeasonalMode(raw.Seasonal.Mode) {
 	case schedule.SeasonalOff, schedule.SeasonalAuto, schedule.SeasonalExclusive:
 		p.Seasonal.Mode = schedule.SeasonalMode(raw.Seasonal.Mode)
 		p.Seasonal.Holidays = raw.Seasonal.Holidays
+	}
+	if seasonal := seasonalPolicyForIntent(intent); seasonal.Mode != "" {
+		p.Seasonal = seasonal
 	}
 
 	// Curation rules (§6.5/§6.6): lower the model's preset tokens into SchedulingRules,
@@ -715,6 +761,43 @@ func multiSeries(lineup []ProposalItem) bool {
 	return false
 }
 
+func singleSeriesOnly(groups ...[]ProposalItem) bool {
+	seen := map[provision.Key]struct{}{}
+	for _, group := range groups {
+		for _, it := range group {
+			if it.MediaType != provision.Series {
+				return false
+			}
+			key, err := it.Key()
+			if err != nil {
+				continue
+			}
+			seen[key] = struct{}{}
+		}
+	}
+	return len(seen) == 1
+}
+
+func intentRequestsCuratedEpisodes(intent Intent) bool {
+	hay := normalizedIntentText(intent)
+	for _, cue := range []string{"classic", "best of", "greatest", "favorite", "favourite", "rerun", "curated", "highlights"} {
+		if strings.Contains(hay, cue) {
+			return true
+		}
+	}
+	return false
+}
+
+func intentRequestsSequential(intent Intent) bool {
+	hay := normalizedIntentText(intent)
+	for _, cue := range []string{"chronological", "in order", "start to finish", "from the beginning", "episode order", "binge", "marathon"} {
+		if strings.Contains(hay, cue) {
+			return true
+		}
+	}
+	return false
+}
+
 // eraAdmittingPicks widens a model-proposed year window just far enough to include the
 // channel's OWN grounded picks (programming-design §4). It returns the era to persist, never
 // nil for a non-empty input.
@@ -772,10 +855,7 @@ func stricterCeiling(candidate, maximum schedule.Rating) schedule.Rating {
 // and silent otherwise — no signal ⇒ adult-default, no ceiling. Case-insensitive substring
 // match; a word-boundary check keeps "family" from matching inside an unrelated word.
 func intentSignalsKids(intent Intent) bool {
-	hay := strings.ToLower(strings.Join([]string{
-		intent.Description, intent.Tone, intent.Era, intent.RefineText,
-		strings.Join(intent.MustInclude, " "),
-	}, " "))
+	hay := normalizedIntentText(intent)
 	for _, cue := range kidsIntentCues {
 		if strings.Contains(hay, cue) {
 			return true
@@ -788,6 +868,82 @@ func intentSignalsKids(intent Intent) bool {
 		}
 	}
 	return false
+}
+
+// intentExplicitAudienceCeiling extracts only ratings the user actually wrote.
+// It deliberately does not infer an adult cap from genre or tone: unqualified
+// channels retain the adult-default behavior, while an explicit limit is exact.
+func intentExplicitAudienceCeiling(intent Intent) schedule.Rating {
+	hay := normalizedIntentText(intent)
+	for _, candidate := range []struct {
+		cues   []string
+		rating string
+	}{
+		{[]string{"nc-17", "nc17"}, "NC-17"},
+		{[]string{"tv-ma"}, "TV-MA"},
+		{[]string{"pg-13", "pg13"}, "PG-13"},
+		{[]string{"tv-14"}, "TV-14"},
+		{[]string{"r-rated", "rated r"}, "R"},
+		{[]string{"tv-pg"}, "TV-PG"},
+		{[]string{"pg-rated", "rated pg"}, "PG"},
+		{[]string{"tv-y7"}, "TV-Y7"},
+		{[]string{"tv-y"}, "TV-Y"},
+		{[]string{"tv-g"}, "TV-G"},
+		{[]string{"g-rated", "rated g"}, "G"},
+	} {
+		for _, cue := range candidate.cues {
+			if strings.Contains(hay, cue) {
+				return schedule.NormalizeRating(candidate.rating)
+			}
+		}
+	}
+	return ""
+}
+
+func normalizedIntentText(intent Intent) string {
+	return strings.ToLower(strings.Join([]string{
+		intent.Description, intent.Tone, intent.Era, intent.RefineText,
+		strings.Join(intent.MustInclude, " "), strings.Join(intent.MustExclude, " "),
+	}, " "))
+}
+
+// seasonalPolicyForIntent makes an explicitly named holiday deterministic. A
+// holiday channel is exclusive to that holiday; leaving Holidays empty would mean
+// every built-in holiday and would make a Christmas request rotate into Halloween.
+func seasonalPolicyForIntent(intent Intent) schedule.SeasonalPolicy {
+	// A refine can add a timed holiday block to an existing year-round channel.
+	// Only treat the refine as a whole-channel identity change when it actually
+	// names a channel transformation; ordinary "add Christmas specials" language
+	// is represented by grounded holiday rules instead.
+	hay := strings.ToLower(strings.Join([]string{
+		intent.Description, intent.Tone, intent.Era, strings.Join(intent.MustInclude, " "),
+	}, " "))
+	refine := strings.ToLower(intent.RefineText)
+	if strings.Contains(refine, "channel") {
+		hay += " " + refine
+	}
+	var holidays []string
+	for _, holiday := range []struct {
+		id   string
+		cues []string
+	}{
+		{"halloween", []string{"halloween"}},
+		{"thanksgiving", []string{"thanksgiving"}},
+		{"christmas", []string{"christmas", "xmas", "yuletide"}},
+		{"newyear", []string{"new year's", "new years", "new year", "nye"}},
+		{"valentines", []string{"valentine's", "valentines", "valentine"}},
+	} {
+		for _, cue := range holiday.cues {
+			if strings.Contains(hay, cue) {
+				holidays = append(holidays, holiday.id)
+				break
+			}
+		}
+	}
+	if len(holidays) == 0 {
+		return schedule.SeasonalPolicy{}
+	}
+	return schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive, Holidays: holidays}
 }
 
 // kidsIntentCues are the substrings that mark a kids/teen intent (§4/§8). Lowercased.
@@ -805,20 +961,35 @@ var kidsIntentCues = []string{
 // be refused before approval. These are intentionally stronger than the broad kids/teen cues
 // above: they state a child audience or safety promise, rather than merely describing a tone.
 func intentRequiresChildSafety(intent Intent) bool {
-	hay := strings.ToLower(strings.Join([]string{
-		intent.Description, intent.Tone, intent.Era, intent.RefineText,
-		strings.Join(intent.MustInclude, " "),
-	}, " "))
+	return intentDeterministicSafetyCeiling(intent) != ""
+}
+
+func intentDeterministicSafetyCeiling(intent Intent) schedule.Rating {
+	hay := normalizedIntentText(intent)
 	for _, cue := range []string{
 		"kid-safe", "kid safe", "kids-safe", "kids safe", "child-safe", "child safe",
 		"safe for kids", "safe for children", "for kids", "for children",
 		"young children", "preschool", "toddler", "saturday morning",
 	} {
 		if strings.Contains(hay, cue) {
-			return true
+			return schedule.NormalizeRating("TV-Y7")
 		}
 	}
-	return false
+	for _, cue := range []string{
+		"family-friendly", "family friendly", "for the family", "for families", "all ages", "all-ages",
+	} {
+		if strings.Contains(hay, cue) {
+			return schedule.NormalizeRating("TV-PG")
+		}
+	}
+	if strings.Contains(hay, "family") {
+		for _, safetyCue := range []string{"nothing too", "not too", "never gruesome", "safe", "appropriate"} {
+			if strings.Contains(hay, safetyCue) {
+				return schedule.NormalizeRating("TV-PG")
+			}
+		}
+	}
+	return ""
 }
 
 // clampSeasonWindow validates a model-proposed AIRING season window (§8 grounding
@@ -864,7 +1035,7 @@ RULES:
 - You MUST NOT invent titles. To find any title, call the catalog_search tool.
 - Pick the search mode from the intent, and CALL THE TOOL MORE THAN ONCE if the first call comes back empty or thin:
   - GENRE/MOOD/ERA intent (e.g. "90s action", "feel-good sci-fi") → call catalog_search with "genres" (and "era") to DISCOVER by theme. Do NOT put a bare genre word in "query" — it won't match a title.
-  - THEMATIC-KEYWORD intent — a holiday, franchise, motif, or topic that is NOT a genre (e.g. "Christmas", "Halloween", "zombie", "heist", "based on a true story", "Star Wars") → use "query" with that keyword. These match titles AND overviews, so a "query" search is the RIGHT tool even though the intent is thematic. Genre discovery will MISS them (there is no "Christmas" or "heist" genre).
+  - THEMATIC-KEYWORD intent — a holiday, franchise, motif, or topic that is NOT a genre (e.g. "Christmas", "Halloween", "zombie", "heist", "based on a true story", "Star Wars") → use "keywords". These resolve through TMDB's thematic keyword corpus, so titles do NOT need to contain the term. Add genres/era/media_type only when the request justifies narrowing it.
   - KNOWN TITLE → "query" with the title.
 - If a call returns few or no candidates, TRY THE OTHER MODE before giving up (a genre discovery that finds nothing → retry as a "query" keyword, and vice-versa). Never conclude "no content" after a single empty search.
 - Each result carries genres + a short overview — use them to judge which titles fit the intent.
@@ -873,14 +1044,15 @@ RULES:
 - A pick whose genres/overview CONTRADICT the intent (wrong country, wrong tone, wrong era, wrong subject) must be dropped even if its title contains the keyword. Matching one word is not fitting the intent.
 - FORMAT/MEDIUM is a hard qualifier, not a vibe. Words like "cartoons", "animated", "anime" mean the title must be ANIMATION; "live-action", "documentary", "docuseries", "stand-up", "reality" name their own medium. A title of the wrong medium does NOT fit no matter how well its tone or audience matches — "Saturday morning cartoons" is animated kids' TV, so a live-action family dramedy (however wholesome and colorful) is WRONG for it and must be dropped. Check the genres/overview for the medium (Animation vs Drama/Comedy) before picking, and never let a warm rationale talk a live-action show into a cartoon channel.
 - Select ONLY from ids the tool returns. Never output a tmdbId or tvdbId that did not appear in a tool result.
-- Prefer titles already in the library (inLibrary:true) for the lineup; propose missing ones as acquisitions.
+- Use well-matched owned titles as anchors for immediate playability, but do not let the library consume the whole selection. When acquisitions are allowed and strong outside candidates exist, reserve about one-third of a 6-8 pick lineup (at least two picks) for genuinely less-obvious outside-library discoveries—not merely sequels, remakes, or equally obvious staples. Never sacrifice relevance or a hard qualifier to fill that share; a smaller accurate lineup is better.
+- Select at most 8 picks total. Favor a concise, varied lineup over exhausting every candidate; keep each pick rationale to one short sentence so the final grounded JSON fits the bounded completion budget.
 - SEASON WINDOW for a series: when the intent implies an ERA of a long-running show, set "seasonMin"/"seasonMax" on that series pick so ONLY those seasons air. Examples: "Simpsons Classics" or "classic Simpsons" -> the golden-age run, seasonMin:1, seasonMax:10; "early Seinfeld" -> seasonMin:1, seasonMax:4; "first three seasons of X" -> seasonMin:1, seasonMax:3; "late-era X" -> seasonMin only. Use it ONLY when the intent scopes an era of a SERIES; omit both for movies and for "all of a show". This narrows which episodes play; it does NOT change what gets acquired.
 - Also infer a "policy" describing HOW the channel should behave, from the intent. Only include a field you can justify from the intent; omit the rest.
-  - audience.ceiling: a KIDS/TEEN safety cap — set it ONLY when the intent explicitly asks for a young audience ("cartoons"/"for kids" -> "TV-Y7"; "family" -> "TV-PG"; "teen" -> "TV-14"). For ANY channel that does not ask for kids/family/teen content, OMIT it entirely — an unqualified channel is adult-default and includes its R-rated titles (e.g. "action heroes" includes Die Hard/The Terminator; do NOT cap it). When in doubt, omit. Use ONLY these values: TV-Y, TV-Y7, TV-G, TV-PG, TV-14, TV-MA (or film G, PG, PG-13, R, NC-17).
+  - audience.ceiling: a KIDS/TEEN safety cap or the user's EXPLICIT rating limit — set it when the intent asks for a young audience ("cartoons"/"for kids" -> "TV-Y7"; "family" -> "TV-PG"; "teen" -> "TV-14") or says a cap such as "keep it PG-13". For a channel with neither, OMIT it entirely — an unqualified channel is adult-default and includes its R-rated titles (e.g. "action heroes" includes Die Hard/The Terminator; do NOT cap it). When in doubt, omit. Use ONLY these values: TV-Y, TV-Y7, TV-G, TV-PG, TV-14, TV-MA (or film G, PG, PG-13, R, NC-17).
   - era.from/era.to: year range if the intent names one ("90s" -> from 1990 to 1999).
   - genres.include/exclude: genre names implied by the intent.
-  - ordering: "syndication" (rerun feel — different series INTERMIXED, like a rerun channel), "sequential" (strict order — one show start-to-finish), or "shuffle". RULE OF THUMB: if the lineup has MORE THAN ONE series, prefer "syndication" so the shows interleave instead of playing one series to the end before the next (a Star-Trek-style multi-show channel should feel like flipping between them, not a chronological box set). Use "sequential" only for a SINGLE show meant to play in episode order, or when the intent explicitly asks for chronological/marathon.
-  - seasonal.mode: "exclusive" for a holiday channel, "auto" otherwise (omit for evergreen).
+  - ordering: "syndication" (rerun feel — episodes are curated into a no-repeat deck and different series intermix), "sequential" (strict order), or "shuffle". Use "syndication" for MORE THAN ONE series and for a single-series CURATED/RERUN intent such as "classic Simpsons", "best episodes", or "favorites". Use "sequential" only when the intent explicitly asks for chronological order, start-to-finish, binge, or marathon. Movie franchises are kept together in release order by the scheduler even when the surrounding channel is shuffled/syndicated.
+  - seasonal.mode: "exclusive" for a holiday channel, "auto" otherwise (omit for evergreen). For an exclusive channel include seasonal.holidays with only the matching ids: christmas, halloween, thanksgiving, newyear, valentines.
   - rules: OPTIONAL time-of-day / calendar programming, ONLY if the intent asks for it ("weekend marathons", "holiday specials in December", "kids in the morning"). Each rule is {when, what, how} from a CLOSED vocabulary — do NOT invent times or predicates:
     - when: "weekend" | "weekday" | "mornings" | "daytime" | "primetime" | "late-night" | "overnight" | "holiday:christmas" | "holiday:halloween" | "holiday:thanksgiving" | "holiday:newyear" | "holiday:valentines" | a composite like "weekend-mornings".
     - what (optional; omit to keep the whole channel): "series:<the exact key of a pick>" | "genre:<name>" | "kids" | "family" | "holiday-matched" | "all".
@@ -894,7 +1066,7 @@ RULES:
   Do NOT give everything 0.9+. If every pick scores the same, the score carries no information and the bar cannot do its job. A pick you were HANDED (see the suggestions below, if any) still needs your own honest score — judge it against the intent exactly as you would one you found yourself, and never omit the field.
 - Also invent a short, catchy "channelName" for the channel (2-4 words, like a real TV network — e.g. "Springfield Classics" for a Simpsons channel, "Fright Night Theater" for horror). NOT the user's raw prompt, and NOT a single title's name.
 When finished, reply with ONLY this JSON (no prose):
-{"channelName":"<2-4 words>","rationale":"<one sentence>","picks":[{"mediaType":"movie|series","tmdbId":<int>,"tvdbId":<int optional>,"name":"<string>","rationale":"<why it fits>","confidence":<0..1>,"seasonMin":<int optional, series era only>,"seasonMax":<int optional, series era only>}],"policy":{"audience":{"ceiling":"<rating>"},"era":{"from":<int>,"to":<int>},"genres":{"include":["..."],"exclude":["..."]},"ordering":"<mode>","seasonal":{"mode":"<mode>"},"rules":[{"when":"<token>","what":"<token optional>","how":"<token optional>"}]}}`
+{"channelName":"<2-4 words>","rationale":"<one sentence>","picks":[{"mediaType":"movie|series","tmdbId":<int>,"tvdbId":<int optional>,"name":"<string>","rationale":"<why it fits>","confidence":<0..1>,"seasonMin":<int optional, series era only>,"seasonMax":<int optional, series era only>}],"policy":{"audience":{"ceiling":"<rating>"},"era":{"from":<int>,"to":<int>},"genres":{"include":["..."],"exclude":["..."]},"ordering":"<mode>","seasonal":{"mode":"<mode>","holidays":["<holiday id>"]},"rules":[{"when":"<token>","what":"<token optional>","how":"<token optional>"}]}}`
 
 // repairPrompt nudges the model when its final turn wasn't valid schema JSON (or
 // was empty). Kept short + imperative; it never relaxes the grounding rules.
@@ -967,20 +1139,21 @@ func userPrompt(i Intent) string {
 }
 
 // catalogTool is the provider-neutral tool schema the model may call (§8). It does
-// double duty: `query` runs a title keyword search; `genres` (+ optional `era`)
-// runs DISCOVERY by theme — use that for an abstract intent ("high-energy 90s
-// action") that no exact title matches. Either mode returns real ids + genres +
+// three modes: `query` runs title search; `genres` (+ optional `era`) discovers
+// genre themes; `keywords` discovers holidays, motifs, franchises, and topics
+// whose terms need not occur in the title. Every mode returns real ids + genres +
 // overview + an inLibrary flag; it is the ONLY way to find titles.
 func catalogTool() llm.ToolSchema {
 	return llm.ToolSchema{
 		Name: catalogToolName,
-		Description: "Find real titles from the library + TMDB. Provide `query` to search by title, OR `genres` " +
-			"(with optional `era`) to DISCOVER titles by theme when no exact title fits the intent. " +
+		Description: "Find real titles from the library + TMDB. Provide `query` to search by title, `genres` " +
+			"to discover genre/era matches, or `keywords` to discover holidays, motifs, franchises, and topics. " +
 			"Returns real external ids, genres, a short overview, and an inLibrary flag. This is the ONLY way to find titles.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"query":      map[string]any{"type": "string", "description": "title keywords (for a known title)"},
+				"keywords":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "TMDB thematic keywords, e.g. [\"Christmas\"] or [\"heist\"]"},
 				"genres":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "genre names to discover by, e.g. [\"Action\",\"Science Fiction\"]"},
 				"era":        map[string]any{"type": "string", "description": "decade or year range for discovery, e.g. \"1990s\" or \"1985-1995\""},
 				"media_type": map[string]any{"type": "string", "enum": []string{"movie", "series"}},

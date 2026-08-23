@@ -264,15 +264,39 @@ go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must
 test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
 	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ ./internal/api/ -v
 
-.PHONY: eval eval-cert
+.PHONY: eval eval-cert eval-matrix
 eval: ## semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate)
 	$(GO) test -tags=eval -v -timeout 20m ./internal/eval/
 
 eval-cert: ## certify exact starter/adversarial intents; fails on missing config and writes a scorecard
 	@eval "$$(./scripts/dev-env.sh export)"; \
 	  report="$${LOOMARR_EVAL_OUT:-$$LOOMARR_ARTIFACT_DIR/semantic-certification.json}"; \
+	  mkdir -p "$$(dirname "$$report")"; \
 	  LOOMARR_EVAL_REQUIRED=1 LOOMARR_EVAL_OUT="$$report" \
 	    $(GO) test -count=1 -tags=eval -v -timeout 20m ./internal/eval/
+
+eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (manual, resource-heavy)
+	@test -n "$$OPENROUTER_API_KEY" || { echo "eval-matrix: OPENROUTER_API_KEY is required" >&2; exit 2; }; \
+	  test -n "$$OPENROUTER_MODEL" || { echo "eval-matrix: OPENROUTER_MODEL is required" >&2; exit 2; }; \
+	  test "$$LOOMARR_EVAL_ALLOW_LOCAL" = "1" || { echo "eval-matrix: refusing local inference; confirm an idle host with sufficient RAM/VRAM, then set LOOMARR_EVAL_ALLOW_LOCAL=1" >&2; exit 2; }; \
+	  eval "$$(./scripts/dev-env.sh export)"; \
+	  judge_model="$${OPENROUTER_JUDGE_MODEL:-$$OPENROUTER_MODEL}"; \
+	  status=0; \
+	  LOOMARR_EVAL_PROFILE=local \
+	  LOOMARR_EVAL_OUT="$$LOOMARR_ARTIFACT_DIR/semantic-certification-local.json" \
+	  LOOMARR_EVAL_JUDGE="$$judge_model" LOOMARR_EVAL_JUDGE_PROVIDER=openai \
+	  LOOMARR_EVAL_JUDGE_URL=https://openrouter.ai/api/v1 \
+	  LOOMARR_EVAL_JUDGE_API_KEY="$$OPENROUTER_API_KEY" \
+	    $(MAKE) eval-cert || status=$$?; \
+	  LLM_PROVIDER=openai LLM_URL=https://openrouter.ai/api/v1 \
+	  LLM_MODEL="$$OPENROUTER_MODEL" LLM_API_KEY="$$OPENROUTER_API_KEY" \
+	  LOOMARR_EVAL_PROFILE=openrouter \
+	  LOOMARR_EVAL_OUT="$$LOOMARR_ARTIFACT_DIR/semantic-certification-openrouter.json" \
+	  LOOMARR_EVAL_JUDGE="$$judge_model" LOOMARR_EVAL_JUDGE_PROVIDER=openai \
+	  LOOMARR_EVAL_JUDGE_URL=https://openrouter.ai/api/v1 \
+	  LOOMARR_EVAL_JUDGE_API_KEY="$$OPENROUTER_API_KEY" \
+	    $(MAKE) eval-cert || status=$$?; \
+	  exit "$$status"
 
 ## ---- build / run ---------------------------------------------------------
 

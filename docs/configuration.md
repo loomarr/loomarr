@@ -114,7 +114,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `episodes.max_age` (`EPISODES_MAX_AGE`) | duration | `24h` | How stale a cached series episode list may be before it is re-read from the media server. A missing or expired entry still falls back to a live read, so this bounds freshness, never correctness. |
 | `job.arr_queue_poll.schedule` (`JOB_ARR_QUEUE_POLL_SCHEDULE`) | cron | `0 * * * * *` | How often Loomarr polls Sonarr/Radarr download progress (cron; direct requester only). |
 | `job.seerr_queue_poll.schedule` (`JOB_SEERR_QUEUE_POLL_SCHEDULE`) | cron | `0 * * * * *` | How often Loomarr polls Seerr for coarse acquisition status (cron; Seerr requester only). |
-| `job.workers` (`JOB_WORKERS`) | int | `2` | How many channel suggestions can be worked on at once. |
+| `job.workers` (`JOB_WORKERS`) | int | `1` | How many channel suggestions can be worked on at once. One is the appliance-safe default; raise it deliberately for larger or hosted-model deployments. |
 | `job.timeout` (`JOB_TIMEOUT`) | duration | `10m` | How long one channel suggestion may run before it's stopped. |
 | `jobs.retention` (`JOBS_RETENTION`) | duration | `720h` | How long finished suggestion jobs are kept before they're cleaned up. |
 | `proposals.retention` (`PROPOSALS_RETENTION`) | duration | `2160h` | How long suggested lineups are kept before they're cleaned up. |

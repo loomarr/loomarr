@@ -4,10 +4,14 @@ package eval
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/library"
@@ -22,11 +26,11 @@ import (
 // provider (from LLM_*), real catalog (real library search + real TMDB), real
 // validator — so the eval exercises the production path, not a mock. Returns an
 // error (skips the eval) when the required env isn't configured.
-func buildSuggester() (*suggest.Suggester, *tmdb.Client, error) {
+func buildSuggester() (*suggest.Suggester, *tmdb.Client, *observedProvider, error) {
 	libURL := os.Getenv("LIBRARY_URL")
 	libTok := os.Getenv("LIBRARY_TOKEN")
 	if libURL == "" || libTok == "" {
-		return nil, nil, fmt.Errorf("LIBRARY_URL + LIBRARY_TOKEN required for the eval")
+		return nil, nil, nil, fmt.Errorf("LIBRARY_URL + LIBRARY_TOKEN required for the eval")
 	}
 	flavor := library.Emby
 	if os.Getenv("LIBRARY_FLAVOR") == "jellyfin" {
@@ -36,16 +40,118 @@ func buildSuggester() (*suggest.Suggester, *tmdb.Client, error) {
 
 	tmdbKey := os.Getenv("TMDB_API_KEY")
 	if tmdbKey == "" {
-		return nil, nil, fmt.Errorf("TMDB_API_KEY required for the eval (grounding + discovery)")
+		return nil, nil, nil, fmt.Errorf("TMDB_API_KEY required for the eval (grounding + discovery)")
 	}
 	tm := tmdb.New(tmdbKey)
 	cat := catalog.New(lib, tm).WithPresence(libPresence{lib})
 
 	provider := buildProvider()
 	if provider == nil {
-		return nil, nil, fmt.Errorf("LLM not configured (set LLM_PROVIDER/LLM_URL/LLM_MODEL[/LLM_API_KEY])")
+		return nil, nil, nil, fmt.Errorf("LLM not configured (set LLM_PROVIDER/LLM_URL/LLM_MODEL[/LLM_API_KEY])")
 	}
-	return suggest.New(provider, cat, tm, 10), tm, nil
+	observed := &observedProvider{inner: provider}
+	return suggest.New(observed, cat, tm, 10).WithRatings(tm), tm, observed, nil
+}
+
+// observedProvider records only structural evaluation evidence—tool mode and
+// candidate counts, never prompts, titles, credentials, or model output. This is
+// what separates retrieval failures from model-selection failures in a scorecard.
+type observedProvider struct {
+	inner llm.Provider
+	mu    sync.Mutex
+	obs   Observation
+}
+
+type Observation struct {
+	ToolCalls          int    `json:"toolCalls"`
+	TitleCalls         int    `json:"titleCalls"`
+	GenreCalls         int    `json:"genreCalls"`
+	KeywordCalls       int    `json:"keywordCalls"`
+	CandidatesSurfaced int    `json:"candidatesSurfaced"`
+	GroundingStage     string `json:"groundingStage"`
+	toolMessagesSeen   int
+	toolCallsSeen      int
+}
+
+func (p *observedProvider) Name() string { return p.inner.Name() }
+
+func (p *observedProvider) Begin() {
+	p.mu.Lock()
+	p.obs = Observation{}
+	p.mu.Unlock()
+}
+
+func (p *observedProvider) Chat(ctx context.Context, messages []llm.Message, opts llm.ChatOptions) (llm.Response, error) {
+	p.observeToolCalls(messages)
+	p.observeToolResults(messages)
+	return p.inner.Chat(ctx, messages, opts)
+}
+
+func (p *observedProvider) observeToolCalls(messages []llm.Message) {
+	var calls []llm.ToolCall
+	for _, message := range messages {
+		if message.Role == llm.Assistant {
+			calls = append(calls, message.ToolCalls...)
+		}
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, call := range calls[p.obs.toolCallsSeen:] {
+		p.obs.ToolCalls++
+		switch {
+		case len(stringSliceAny(call.Arguments["keywords"])) > 0:
+			p.obs.KeywordCalls++
+		case len(stringSliceAny(call.Arguments["genres"])) > 0:
+			p.obs.GenreCalls++
+		default:
+			p.obs.TitleCalls++
+		}
+	}
+	p.obs.toolCallsSeen = len(calls)
+}
+
+func (p *observedProvider) observeToolResults(messages []llm.Message) {
+	var contents []string
+	for _, message := range messages {
+		if message.Role == llm.Tool {
+			contents = append(contents, message.Content)
+		}
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, content := range contents[p.obs.toolMessagesSeen:] {
+		var candidates []json.RawMessage
+		if json.Unmarshal([]byte(content), &candidates) == nil {
+			p.obs.CandidatesSurfaced += len(candidates)
+		}
+	}
+	p.obs.toolMessagesSeen = len(contents)
+}
+
+func (p *observedProvider) Snapshot(groundErr error) Observation {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := p.obs
+	switch {
+	case groundErr == nil:
+		out.GroundingStage = "grounded"
+	case !errors.Is(groundErr, suggest.ErrNoGroundedTitles) && strings.Contains(groundErr.Error(), "llm chat:"):
+		out.GroundingStage = "provider_error"
+	case !errors.Is(groundErr, suggest.ErrNoGroundedTitles):
+		out.GroundingStage = "generation_error"
+	case out.ToolCalls == 0:
+		out.GroundingStage = "no_tool_call"
+	case out.CandidatesSurfaced == 0:
+		out.GroundingStage = "retrieval_empty"
+	default:
+		out.GroundingStage = "selection_empty"
+	}
+	return out
+}
+
+func stringSliceAny(value any) []any {
+	items, _ := value.([]any)
+	return items
 }
 
 // buildProvider mirrors cmd/loomarr's buildProviderFor: Ollama for local, the
@@ -69,13 +175,22 @@ func buildJudgeProvider() llm.Provider {
 	if judgeModel == "" {
 		return buildProvider()
 	}
-	provider := os.Getenv("LLM_PROVIDER")
-	url := os.Getenv("LLM_URL")
-	key := os.Getenv("LLM_API_KEY")
+	provider := firstNonEmpty(os.Getenv("LOOMARR_EVAL_JUDGE_PROVIDER"), os.Getenv("LLM_PROVIDER"))
+	url := firstNonEmpty(os.Getenv("LOOMARR_EVAL_JUDGE_URL"), os.Getenv("LLM_URL"))
+	key := firstNonEmpty(os.Getenv("LOOMARR_EVAL_JUDGE_API_KEY"), os.Getenv("LLM_API_KEY"))
 	if provider == "ollama" || provider == "" {
 		return llm.NewOllama(url, judgeModel)
 	}
 	return llm.NewOpenAI(url, judgeModel, key)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // libPresence adapts the library client to catalog.LibraryPresence (mirrors main.go).
@@ -107,14 +222,17 @@ func mapIntent(i Intent) suggest.Intent {
 
 // Result is the scored outcome of one case.
 type Result struct {
-	Case         string
-	Failures     []string // deterministic gate failures (empty = passed the hard gates)
-	ThemeFit     float64
-	Lineup       int
-	Acquisitions int
-	Ceiling      string  // the extracted policy ceiling
-	JudgeScore   float64 // -1 when the judge didn't run
-	JudgeNote    string
+	Case             string   `json:"case"`
+	Failures         []string `json:"failures"` // deterministic gate failures (empty = passed the hard gates)
+	ThemeFit         float64  `json:"themeFit"`
+	Lineup           int      `json:"lineup"`
+	Acquisitions     int      `json:"acquisitions"`
+	Ceiling          string   `json:"ceiling"`          // the extracted policy ceiling
+	JudgeScore       float64  `json:"judgeScore"`       // -1 when the judge didn't run
+	RelevanceScore   float64  `json:"relevanceScore"`   // -1 when the judge didn't run
+	SerendipityScore float64  `json:"serendipityScore"` // -1 when the judge didn't run
+	JudgeNote        string   `json:"judgeNote"`
+	Observation
 }
 
 func (r Result) Passed() bool { return len(r.Failures) == 0 }
@@ -127,10 +245,14 @@ func deterministicChecks(c Case, prop suggest.Proposal, groundErr error) []strin
 
 	// No-fabrication case: the grounded set may be any size (even 0), but EVERY item
 	// must have a real, resolvable id — the grounding guarantee. A clean empty/failed
-	// result also satisfies it (nothing fabricated).
+	// result also satisfies it (nothing fabricated). A provider or generation
+	// failure cannot certify the invariant because the production path did not run.
 	if c.NoFabrication {
-		if groundErr != nil {
+		if groundErr != nil && errors.Is(groundErr, suggest.ErrNoGroundedTitles) {
 			return nil // a clean grounding failure fabricated nothing → passes
+		}
+		if groundErr != nil {
+			return []string{fmt.Sprintf("evaluation failed before grounding could be assessed: %v", groundErr)}
 		}
 		for _, it := range allItems(prop) {
 			if _, err := it.Key(); err != nil {
@@ -149,11 +271,20 @@ func deterministicChecks(c Case, prop suggest.Proposal, groundErr error) []strin
 	if len(prop.Acquisitions) < c.MinAcquisitions {
 		f = append(f, fmt.Sprintf("acquisitions %d < required %d", len(prop.Acquisitions), c.MinAcquisitions))
 	}
+	if grounded := len(prop.Lineup) + len(prop.Acquisitions); grounded < c.MinGrounded {
+		f = append(f, fmt.Sprintf("grounded titles %d < required %d", grounded, c.MinGrounded))
+	}
 	if c.ExpectCeiling != "" && string(prop.Policy.Audience.Ceiling) != c.ExpectCeiling {
 		f = append(f, fmt.Sprintf("expected ceiling %q, extracted %q", c.ExpectCeiling, prop.Policy.Audience.Ceiling))
 	}
 	if c.ExpectSeasonalMode != "" && string(prop.Policy.Seasonal.Mode) != c.ExpectSeasonalMode {
 		f = append(f, fmt.Sprintf("expected seasonal mode %q, extracted %q", c.ExpectSeasonalMode, prop.Policy.Seasonal.Mode))
+	}
+	if c.ExpectSeasonalHolidays != nil && !slices.Equal(prop.Policy.Seasonal.Holidays, c.ExpectSeasonalHolidays) {
+		f = append(f, fmt.Sprintf("expected seasonal holidays %v, extracted %v", c.ExpectSeasonalHolidays, prop.Policy.Seasonal.Holidays))
+	}
+	if c.ExpectOrdering != "" && string(prop.Policy.Ordering) != c.ExpectOrdering {
+		f = append(f, fmt.Sprintf("expected ordering %q, extracted %q", c.ExpectOrdering, prop.Policy.Ordering))
 	}
 	if c.MinThemeFit > 0 && prop.Scores.ThemeFit < c.MinThemeFit {
 		f = append(f, fmt.Sprintf("themeFit %.2f < required %.2f", prop.Scores.ThemeFit, c.MinThemeFit))
