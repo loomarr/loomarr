@@ -140,6 +140,9 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make fe-lint` |  | Biome lint + format check (web/) |
 | `make fe-lint-fix` |  | Biome autofix — format + safe lint fixes (web/) |
 | `make fe` | ✅ | biome + codegen + typecheck + unit tests + embedded SPA + storybook gallery |
+| `make clients` | ✅ | lint, test, typecheck, and bundle the shared browser, mobile, and TV scaffold |
+| `make client-android-debug` |  | memory-bounded arm64 debug build (CLIENT_APP=mobile|tv) |
+| `make client-apple-simulator` | ✅ | build and launch an Apple simulator proof (CLIENT_APP=mobile|tv; macOS) |
 | `make storybook` |  | Storybook dev workshop on this worktree's isolated port |
 | `make storybook-build` |  | offline storybook-static build (what fe-visual snapshots) |
 | `make fe-visual` | ✅ | Playwright visual + a11y over storybook-static, in the pinned Docker image (§5.2) <br>*runs:* `storybook-build` |
@@ -169,7 +172,7 @@ The *runs:* note on a row lists what each parent pulls in.
 
 ## What CI runs
 
-`agent-harness-test` · `android-release-test` · `android` · `arch-docs-verify` · `check-static` · `ci-lint` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `openapi-verify` · `retired-verify` · `test-pg` · `test` · `tuner-e2e-host`
+`agent-harness-test` · `android-release-test` · `android` · `arch-docs-verify` · `check-static` · `ci-lint` · `client-apple-simulator` · `clients` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `openapi-verify` · `retired-verify` · `test-pg` · `test` · `tuner-e2e-host`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 for example, `check-static` expands to formatting, vet, lint, and repository

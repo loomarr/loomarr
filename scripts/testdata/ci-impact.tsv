@@ -6,10 +6,15 @@ playout-go	internal/playout/session.go	contracts,go,windows,image
 rust-worker	rust/loomarr-image/src/lib.rs	rust,image
 migration	internal/store/migrations/sqlite/00001_init.sql	contracts,go,go_full,postgres,image
 generic-web	web/apps/web/src/people/users-page/users-page.ts	web,image
+mobile-client	web/apps/mobile/app/index.tsx	clients
+tv-client	web/apps/tv/src/app.tsx	clients
+shared-client-ui	web/packages/ui/src/client-platform-proof/client-platform-proof.tsx	clients
+client-tooling	web/turbo.json	clients
 visual-web	web/apps/web/src/people/users-page/users-page.tsx	web,visual,image
 wizard-e2e	web/apps/web/src/wizard/steps/steps.tsx	web,visual,e2e,image
 tuner-web	web/apps/web/src/channels/use-hls-player/use-hls-player.ts	web,tuner,image
 web-tooling	web/apps/web/package.json	web,visual,e2e,tuner,image
+workspace-tooling	web/package.json	web,clients,visual,e2e,tuner,image
 openapi	api/openapi.yaml	contracts,go,go_full,web,image,android
 android	android/app/src/main/AndroidManifest.xml	android
 release-image	Dockerfile	contracts,image
@@ -22,7 +27,7 @@ readme-contract	README.md	go,go_full,docs
 embedded-help	docs/help/quickstart.md	contracts,go,go_full,image,docs
 agent-script	scripts/agent.sh	contracts,agent
 release-workflow	.github/workflows/release.yml	contracts
-ci-workflow	.github/workflows/ci.yml	contracts,go,go_full,rust,postgres,windows,web,visual,e2e,tuner,image,docs,agent,android
+ci-workflow	.github/workflows/ci.yml	contracts,go,go_full,rust,postgres,windows,web,clients,visual,e2e,tuner,image,docs,agent,android
 dev-compose	docker/compose.dev.yaml	contracts,agent
 production-compose	docker/compose.yaml	contracts,go,go_full
 combined-leaf-and-docs	internal/suggest/ground.go;docs/dev/testing.md	contracts,go,image,docs

@@ -63,7 +63,7 @@ GO_SHARD ?=
 CUSTOM_TAGS   := ffmpeg eval integration
 PLATFORM_TAGS := windows
 TAGS          := $(CUSTOM_TAGS) $(PLATFORM_TAGS)
-SHELL_SCRIPTS := $(sort $(wildcard scripts/*.sh))
+SHELL_SCRIPTS := $(sort $(wildcard scripts/*.sh) $(wildcard web/scripts/*.sh))
 comma     := ,
 space     := $(subst ,, )
 TAGS_CSV  := $(subst $(space),$(comma),$(CUSTOM_TAGS))
@@ -552,11 +552,28 @@ FE_SHARD_ARG := $(if $(FE_SHARD),--shard=$(FE_SHARD),)
 
 .PHONY: fe
 fe: ## biome + codegen + typecheck + unit tests + embedded SPA + storybook gallery
-	cd $(WEB) && pnpm codegen && pnpm lint && pnpm -r --parallel typecheck \
-	  && pnpm --filter '!@loomarr/web' -r --parallel test \
+	cd $(WEB) && pnpm codegen && pnpm lint && pnpm --filter @loomarr/web... -r --parallel typecheck \
+	  && pnpm --filter @loomarr/web... --filter '!@loomarr/web' -r --parallel test \
 	  && pnpm --filter @loomarr/web test $(FE_SHARD_ARG) \
 	  && pnpm --filter @loomarr/web build && pnpm --filter @loomarr/web build-storybook
 	@touch internal/web/dist/.gitkeep
+
+.PHONY: clients
+clients: ## lint, test, typecheck, and bundle the shared browser, mobile, and TV scaffold
+	cd $(WEB) && pnpm exec biome check apps/mobile apps/tv apps/web/client-platform-proof.html \
+	  apps/web/src/client-platform-proof apps/web/tests/client-platform-proof.ssr.test.tsx \
+	  apps/web/vite.client-platform.config.ts \
+	  packages/design-system packages/ui turbo.json \
+	  && pnpm imports:check && pnpm lint:boundaries && pnpm clients:check
+
+CLIENT_APP ?= mobile
+.PHONY: client-android-debug
+client-android-debug: ## memory-bounded arm64 debug build (CLIENT_APP=mobile|tv)
+	cd $(WEB) && ./scripts/build-android-client.sh $(CLIENT_APP)
+
+.PHONY: client-apple-simulator
+client-apple-simulator: ## build and launch an Apple simulator proof (CLIENT_APP=mobile|tv; macOS)
+	cd $(WEB) && ./scripts/test-apple-client.sh $(CLIENT_APP)
 
 .PHONY: storybook
 storybook: ## Storybook dev workshop on this worktree's isolated port

@@ -53,6 +53,7 @@ jobs:
     outputs:
       go: ${{ steps.filter.outputs.go }}
       web: ${{ steps.filter.outputs.web }}
+      clients: ${{ steps.filter.outputs.clients }}
       image: ${{ steps.filter.outputs.image }}
       docs: ${{ steps.filter.outputs.docs }}
       agent: ${{ steps.filter.outputs.agent }}
@@ -64,6 +65,7 @@ jobs:
       impact_postgres: ${{ steps.impact.outputs.postgres }}
       impact_windows: ${{ steps.impact.outputs.windows }}
       impact_web: ${{ steps.impact.outputs.web }}
+      impact_clients: ${{ steps.impact.outputs.clients }}
       impact_visual: ${{ steps.impact.outputs.visual }}
       impact_e2e: ${{ steps.impact.outputs.e2e }}
       impact_tuner: ${{ steps.impact.outputs.tuner }}
@@ -104,7 +106,7 @@ jobs:
           if [ -z "${BASE:-}" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
              || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             echo "no usable base ($BASE) — running every job"
-            { echo "go=true"; echo "web=true"; echo "image=true"; echo "docs=true"; echo "agent=true"; echo "android=true"; echo "release_candidate=false"; } >> "$GITHUB_OUTPUT"
+            { echo "go=true"; echo "web=true"; echo "clients=true"; echo "image=true"; echo "docs=true"; echo "agent=true"; echo "android=true"; echo "release_candidate=false"; } >> "$GITHUB_OUTPUT"
             exit 0
           fi
           changed=$(git diff --name-only "$BASE" HEAD)
@@ -174,10 +176,19 @@ jobs:
           # affect a web job and must not spend six runners rebuilding + re-Playwrighting the SPA.
           # The Go filter keeps the broad glob on purpose: `make ci-lint` actionlints EVERY workflow
           # and `cmd/releaseverify` reads release.yml, so those genuinely need any-workflow coverage.
-          if echo "$changed" | grep -qE '^web/|^Makefile$|^\.github/workflows/ci\.yml$'; then
+          if echo "$changed" | grep -qE '^web/(apps/web/|packages/(api|core|fixtures|tokens)/|scripts/)|^web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|biome\.json|tsconfig\.base\.json|\.dependency-cruiser\.cjs)$|^Makefile$|^\.github/workflows/ci\.yml$'; then
             echo "web=true" >> "$GITHUB_OUTPUT"
           else
             echo "web=false" >> "$GITHUB_OUTPUT"
+          fi
+          # The candidate Expo clients and Loomarr-owned universal packages have their own
+          # gate. A native-only edit must not wake the legacy SPA, Playwright, tuner, or image
+          # jobs. Workspace-root dependency and tooling inputs still gate both families because
+          # they can change how either graph resolves or builds.
+          if echo "$changed" | grep -qE '^web/(apps/(mobile|tv)/|packages/(design-system|ui)/|turbo\.json$)|^web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|biome\.json|tsconfig\.base\.json|\.dependency-cruiser\.cjs)$|^web/scripts/|^Makefile$|^\.github/workflows/ci\.yml$'; then
+            echo "clients=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "clients=false" >> "$GITHUB_OUTPUT"
           fi
           # The IMAGE. Added after a Dockerfile change that could never have built for
           # arm64 sat undetected: `intel-media-va-driver` has no arm64 candidate, so apt
@@ -195,7 +206,7 @@ jobs:
           # the bundle guard. Restricting this to Dockerfile/Rust changes allowed a Go,
           # frontend, or embedded-help change to reach a tag before the production image
           # containing it had ever been built.
-          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$|^LICENSE$|^THIRD_PARTY_NOTICES\.md$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|\.go$|^go\.(mod|sum)$|^docs/help/|^web/|^api/openapi\.yaml$|^scripts/check-fe-bundle\.mjs$'; then
+          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$|^LICENSE$|^THIRD_PARTY_NOTICES\.md$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|\.go$|^go\.(mod|sum)$|^docs/help/|^web/(apps/web/|packages/(api|core|fixtures|tokens)/|scripts/)|^web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|biome\.json|tsconfig\.base\.json|\.dependency-cruiser\.cjs)$|^api/openapi\.yaml$|^scripts/check-fe-bundle\.mjs$'; then
             echo "image=true" >> "$GITHUB_OUTPUT"
           else
             echo "image=false" >> "$GITHUB_OUTPUT"
@@ -699,6 +710,92 @@ jobs:
         if: matrix.shard == 1
         run: make fe-tokens-verify
 
+  clients:
+    name: Shared clients — lint + test + browser/iOS/Android/TV bundles
+    needs: changes
+    if: needs.changes.outputs.clients == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Enable pnpm (pinned via web/package.json packageManager)
+        run: corepack enable
+      - name: Cache pnpm, Metro, and Turbo work
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.local/share/pnpm/store
+            ${{ runner.temp }}/metro-cache
+            web/.turbo
+          key: clients-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            clients-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}-
+            clients-${{ runner.os }}-
+      - run: make fe-install
+      - run: make fe-codegen
+      - name: Verify the affected client graph
+        env:
+          TMPDIR: ${{ runner.temp }}
+          TURBO_TELEMETRY_DISABLED: "1"
+        run: make clients
+
+  apple-clients:
+    name: Apple clients — native build + launch (${{ matrix.client }})
+    needs: changes
+    if: needs.changes.outputs.clients == 'true'
+    # ExpoModulesJSI needs Swift 6.3: Xcode 16.4 cannot load the package and Xcode 26.3
+    # rejects its C++ ownership annotations. The macOS 26 image supplies a compatible
+    # Xcode 26.4+ toolchain without opting into Xcode 27's mandatory UIScene lifecycle,
+    # which Expo 57 prebuild does not yet generate. The verifier fails closed on another
+    # Xcode major so a future image-default change cannot silently alter this contract.
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        client: [mobile, tv]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: corepack enable
+      - name: Cache pnpm and CocoaPods work
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.local/share/pnpm/store
+            ~/Library/Caches/CocoaPods
+          key: apple-clients-${{ matrix.client }}-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
+          restore-keys: apple-clients-${{ matrix.client }}-${{ runner.os }}-
+      - run: make fe-install
+      - name: Fingerprint the Apple toolchain
+        id: apple-toolchain
+        run: echo "fingerprint=$(xcodebuild -version | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+      - name: Cache ExpoModulesJSI native slice
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          # ExpoModulesJSI's build script validates each restored slice against
+          # source, React headers, React Native roots, and the Swift toolchain.
+          # Cache the final XCFramework only; DerivedData is intentionally fresh.
+          path: web/node_modules/.pnpm/expo-modules-jsi@*/node_modules/expo-modules-jsi/apple/Products
+          key: apple-jsi-${{ matrix.client }}-${{ runner.arch }}-${{ steps.apple-toolchain.outputs.fingerprint }}-${{ hashFiles('web/pnpm-lock.yaml') }}
+          restore-keys: apple-jsi-${{ matrix.client }}-${{ runner.arch }}-${{ steps.apple-toolchain.outputs.fingerprint }}-
+      - name: Generate, build, install, and launch
+        env:
+          LOOMARR_APPLE_ARTIFACTS_DIR: ${{ runner.temp }}/apple-client-${{ matrix.client }}
+          LOOMARR_APPLE_BUILD_DIR: ${{ runner.temp }}/apple-build-${{ matrix.client }}
+        run: make client-apple-simulator CLIENT_APP=${{ matrix.client }}
+      - name: Keep simulator screenshot
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: apple-client-${{ matrix.client }}
+          path: ${{ runner.temp }}/apple-client-${{ matrix.client }}/
+          if-no-files-found: warn
+          retention-days: 7
+
   playwright:
     name: Playwright — visual + a11y + e2e (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: changes
@@ -983,7 +1080,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, release-candidate-scope, full-manual-scope, agent-harness-macos, windows-playout, go-contracts, image-certification, go, store-postgres, frontend, playwright, tuner, image, docs, android]
+    needs: [changes, release-candidate-scope, full-manual-scope, agent-harness-macos, windows-playout, go-contracts, image-certification, go, store-postgres, frontend, clients, apple-clients, playwright, tuner, image, docs, android]
     runs-on: ubuntu-latest
     steps:
       - name: Every job that ran must have passed

@@ -4,10 +4,13 @@ import { fileURLToPath } from "node:url";
 
 const sourceRoots = [
   "../apps/web/src/",
+  "../apps/mobile/app/",
+  "../apps/tv/src/",
   "../packages/api/src/",
   "../packages/core/src/",
   "../packages/fixtures/src/",
   "../packages/tokens/src/",
+  "../packages/ui/src/",
 ].map((path) => fileURLToPath(new URL(path, import.meta.url)));
 
 // These files are useful catalogs for tests, stories, and editor tooling. A production module
@@ -121,6 +124,27 @@ const findCatalogImports = (source) => {
   return violations.sort((a, b) => a.offset - b.offset).map(({ offset: _, ...violation }) => violation);
 };
 
+const findFrameworkImports = (source) => {
+  const searchable = withoutComments(source);
+  const violations = [];
+  const pattern =
+    /(?:^|[;\n])\s*(?:import|export)\s+(?:type\s+)?(?:[^"'`;]*?\s+from\s+)?(["'])(@tamagui\/[^"']+|tamagui)\1/gm;
+  for (const match of searchable.matchAll(pattern)) {
+    const importPath = match[2];
+    if (!importPath) continue;
+    const offset = match.index + match[0].lastIndexOf(importPath);
+    const before = source.slice(0, offset);
+    const lineStart = before.lastIndexOf("\n") + 1;
+    violations.push({
+      importPath,
+      line: before.split("\n").length,
+      column: offset - lineStart + 1,
+      offset,
+    });
+  }
+  return violations.sort((a, b) => a.offset - b.offset).map(({ offset: _, ...violation }) => violation);
+};
+
 const checkImports = (roots = sourceRoots) =>
   roots.flatMap((root) =>
     sourceFiles(root).flatMap((file) =>
@@ -128,21 +152,41 @@ const checkImports = (roots = sourceRoots) =>
     ),
   );
 
+const checkFrameworkImports = (roots = sourceRoots) =>
+  roots.flatMap((root) =>
+    sourceFiles(root).flatMap((file) =>
+      findFrameworkImports(readFileSync(file, "utf8")).map((violation) => ({ file, ...violation })),
+    ),
+  );
+
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 if (isMain) {
-  const violations = checkImports();
-  if (violations.length > 0) {
+  const catalogViolations = checkImports();
+  const frameworkViolations = checkFrameworkImports();
+  if (catalogViolations.length > 0) {
     console.error("Production imports must name the nearest module instead of a catalog root:");
-    for (const violation of violations) {
+    for (const violation of catalogViolations) {
       console.error(
         `  ${violation.file}:${violation.line}:${violation.column} imports ${violation.importPath}`,
       );
     }
     console.error("Use a component, endpoint, model, or core-module subpath (frontend-design §4.4).");
     process.exitCode = 1;
-  } else {
+  }
+  if (frameworkViolations.length > 0) {
+    console.error(
+      "Tamagui is private to @loomarr/design-system; production modules import Loomarr interfaces:",
+    );
+    for (const violation of frameworkViolations) {
+      console.error(
+        `  ${violation.file}:${violation.line}:${violation.column} imports ${violation.importPath}`,
+      );
+    }
+    process.exitCode = 1;
+  }
+  if (catalogViolations.length === 0 && frameworkViolations.length === 0) {
     console.log("import-boundaries: clean");
   }
 }
 
-export { checkImports, findCatalogImports };
+export { checkFrameworkImports, checkImports, findCatalogImports, findFrameworkImports };

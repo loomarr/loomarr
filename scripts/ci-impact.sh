@@ -8,7 +8,7 @@
 set -euo pipefail
 
 readonly GATES=(
-  contracts go go_full rust postgres windows web visual e2e tuner image docs agent android
+  contracts go go_full rust postgres windows web clients visual e2e tuner image docs agent android
 )
 
 selected=()
@@ -78,6 +78,19 @@ classify() {
       select_gate go_full
       select_gate postgres
       select_gate image
+      ;;
+    web/apps/mobile/*|web/apps/tv/*|web/packages/design-system/*|web/packages/ui/*|web/turbo.json)
+      known=true
+      select_gate clients
+      ;;
+    web/package.json|web/pnpm-lock.yaml|web/pnpm-workspace.yaml|web/.gitignore|web/biome.json|web/tsconfig.base.json|web/.dependency-cruiser.cjs|web/scripts/*)
+      known=true
+      select_gate web
+      select_gate clients
+      select_gate image
+      select_gate visual
+      select_gate e2e
+      select_gate tuner
       ;;
     web/*)
       known=true
@@ -185,7 +198,7 @@ classify() {
       known=true
       select_gate contracts
       ;;
-    docker/*|.air.toml|.env.example|.golangci.yml|.node-version|.editorconfig|.gitignore|.vscode/*|.github/dependabot.yml|skills-lock.json)
+    docker/*|.air.toml|.env.example|.golangci.yml|.node-version|.editorconfig|.gitignore|.vscode/*|.github/actionlint.yaml|.github/actionlint.yml|.github/dependabot.yml|skills-lock.json)
       known=true
       select_gate contracts
       case "$path" in

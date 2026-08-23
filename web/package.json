@@ -16,15 +16,18 @@
     "typecheck": "pnpm -r --parallel typecheck",
     "test": "pnpm -r --parallel test",
     "build": "pnpm codegen && pnpm --filter @loomarr/web build",
+    "clients:check": "turbo run doctor typecheck test --filter=@loomarr/mobile... --filter=@loomarr/tv... && turbo run bundle --filter=@loomarr/mobile --filter=@loomarr/tv && turbo run client-proof --filter=@loomarr/web",
     "dev": "pnpm --filter @loomarr/web dev",
     "lint": "biome check && pnpm imports:check && pnpm lint:boundaries",
-    "lint:boundaries": "depcruise apps/web/src packages/*/*.ts packages/*/src packages/*/tests",
-    "imports:check": "node --test scripts/check-imports.test.mjs && node scripts/check-imports.mjs",
+    "lint:boundaries": "depcruise apps/web/src apps/mobile/app apps/tv/src packages/*/*.ts packages/*/src packages/*/tests",
+    "imports:check": "node --test scripts/*.test.mjs scripts/*.test.cjs && node scripts/check-imports.mjs",
     "lint:fix": "biome check --write",
     "format": "biome format --write"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.8",
-    "dependency-cruiser": "18.2.0"
+    "@expo/config-plugins": "57.0.8",
+    "dependency-cruiser": "18.2.0",
+    "turbo": "2.10.11"
   }
 }
