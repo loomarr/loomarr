@@ -136,7 +136,7 @@ func isProviderID(id string) bool { return strings.HasPrefix(id, providerIDPrefi
 var providerGroups = []struct {
 	kind, id, label, detail string
 }{
-	{"archive", providerIDPrefix + "archive", "Archive.org", "collections you've added — searchable here, downloaded when you queue or approve"},
+	{"archive", providerIDPrefix + "archive", "Archive.org", "collections you've added — searched and downloaded on their configured schedule"},
 	{"youtube", providerIDPrefix + "youtube", "YouTube", "playlists you've added — titles and descriptions are kept for tagging"},
 }
 
@@ -188,18 +188,19 @@ func (s *Server) registerFillerSources(api huma.API) {
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "fetch-filler-source", Method: http.MethodPost, Path: "/v1/filler/sources/fetch",
-		Summary: "Re-scan the catalog now",
-		Description: "Admin only. Runs the same sync as POST /v1/filler/sync — the Sources tab's " +
-			"per-row `Fetch now`. Separate operation id so the UI's affordance is nameable, same work.",
+		Summary: "Fetch and scan filler now",
+		Description: "Admin only (§10 V56). Runs one ordinary bounded acquisition pass for the selected " +
+			"source, then scans configured local sources. Omit id for the backward-compatible all-source pass. " +
+			"It retains enable checks, deduplication and safety limits; this is not an unbounded bypass.",
 		Tags: []string{"filler"},
 	}, RoleAdmin), s.fetchFillerSource)
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "add-filler-source", Method: http.MethodPost, Path: "/v1/filler/sources",
 		Summary: "Register a remote collection to pull filler from",
-		Description: "Admin only (§10 V35). Registers an archive.org collection so pulls and searches can " +
-			"use it. Registering DOWNLOADS NOTHING — it records that this source exists and is allowed; " +
-			"fetching is the ingest path, and a composed multi-source pull goes through the approval gate.",
+		Description: "Admin only (§10 V35/V38b). Registers a source for search, pulls, and bounded scheduled " +
+			"acquisition. Registration itself only records the source; enabled remote sources are downloaded " +
+			"on their configured schedule, while composed multi-source pulls retain their approval gate.",
 		Tags: []string{"filler"},
 	}, RoleAdmin), s.addFillerSource)
 
@@ -799,7 +800,7 @@ func providerNode(id, kind, label, detail string, children []FillerSourceDTO) Fi
 func sourceDetail(kind, uri string) string {
 	switch kind {
 	case "archive":
-		return "an archive.org collection — searchable here, downloaded when you queue or approve"
+		return "an archive.org collection — searchable here and downloaded on its configured schedule"
 	case "youtube":
 		// ⚠ Names the operator's own act. §10 records that Loomarr never recommends YouTube
 		// content itself; the playlist is one the operator supplied, and the copy should not
@@ -819,9 +820,22 @@ type fetchFillerSourceOutput struct {
 	}
 }
 
-func (s *Server) fetchFillerSource(ctx context.Context, _ *struct{}) (*fetchFillerSourceOutput, error) {
+type fetchFillerSourceInput struct {
+	// Optional for compatibility with the former global action. The Sources UI always sends the
+	// leaf row it is acting on, so one button cannot start unrelated remote collections.
+	ID string `query:"id" doc:"Registered source id to refresh; omit to run all enabled sources"`
+}
+
+func (s *Server) fetchFillerSource(ctx context.Context, in *fetchFillerSourceInput) (*fetchFillerSourceOutput, error) {
 	if s.filler == nil {
 		return nil, huma.Error501NotImplemented("filler sync is not available on this instance")
+	}
+	if _, err := s.filler.Fetch(ctx, in.ID); err != nil {
+		if errors.Is(err, ErrIngestUnavailable) {
+			return nil, errConflict("Downloading isn't available on this install",
+				"This build can't run the download tooling. Local folders can still be scanned.")
+		}
+		return nil, huma.Error502BadGateway("fetch remote filler", err)
 	}
 	total, added, updated, pruned, err := s.filler.Sync(ctx)
 	// Same reason as the sync route: a source the operator switched off is an answer, not a

@@ -2,11 +2,16 @@ package api_test
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // Filing admits a held clip to the catalog — where "in the catalog" means matchable into a pod,
@@ -32,6 +37,39 @@ func TestFileFillerClips_AdmitsAHeldClipToTheCatalog(t *testing.T) {
 	}
 	if got[0].Held {
 		t.Error("still held after filing")
+	}
+}
+
+// Filing the first eligible clip changes an internal channel from a back-to-back cycle to one
+// with real break slots. Waiting for the ten-minute sweep makes the successful review look like
+// it did nothing, so the durable catalog write must wake every active channel immediately.
+func TestFileFillerClips_ReconcilesActiveChannelsImmediately(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	channels := &fakeChannelSvc{}
+	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
+		Store: st, Auth: testAuthorizer{}, Filler: &fakeFiller{}, Channels: channels,
+	}))
+	t.Cleanup(srv.Close)
+
+	putClip(t, st, filler.Clip{
+		Path: "first.mp4", Name: "first.mp4", Kind: filler.Commercial, DurationMs: 30_000,
+		Era: 1990, Audience: filler.Kids, Category: "toys", Held: true,
+	})
+	for _, ch := range []store.Channel{
+		{Channel: schedule.Channel{ID: "live", Name: "Live", Number: 1, Status: schedule.StatusLive}},
+		{Channel: schedule.Channel{ID: "paused", Name: "Paused", Number: 2, Status: schedule.StatusPaused}},
+	} {
+		if _, err := st.SaveChannel(t.Context(), ch); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/file", `{"paths":["first.mp4"]}`, adminToken)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", res.StatusCode)
+	}
+	if len(channels.reconciledIDs) != 1 || channels.reconciledIDs[0] != "live" {
+		t.Fatalf("reconciled = %v, want only the active channel immediately", channels.reconciledIDs)
 	}
 }
 

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"time"
@@ -51,15 +52,16 @@ func buildFillerSubsystem(
 	}
 
 	fillerProgrammer := programmer.NewDynamic(set.tunarrConfig())
+	wake := &fillerChannelWake{st: st, channels: channelService, log: log}
 	syncer := buildSyncer(st, set, layout, log, fillerProgrammer, libraryClient)
-	taggerProvider, tagger := buildTagger(st, set, layout, log)
+	taggerProvider, tagger := buildTagger(st, set, layout, log, wake)
 	fetcher := buildFetcher(set, layout, log)
-	splitter := buildSplitter(st, set, layout, log)
+	splitter := buildSplitter(st, set, layout, log, wake)
 	adapter := fillerServiceAdapter{
 		syncer: syncer, tagger: tagger, fetcher: fetcher,
 		bus: eventBus, newID: newID, timeout: set.dur("ingest.timeout"),
 		sources: st, now: time.Now,
-		splitter: splitter, splitClips: fillerSplitStoreAdapter{st},
+		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st, wake: wake},
 	}
 
 	pods := buildPodAdapter(st, set, log)
@@ -75,9 +77,18 @@ func buildFillerSubsystem(
 	jobs.Add(fillerSyncJob(syncer))
 	log.Info("filler catalog sync registered", "dir", layout.ClipDir(),
 		"every", set.dur("filler.sync_every"), "ai_tagging", set.boolv("filler.ai_tagging"))
-	pipeline := buildPipeline(st, set, layout, log, emitter, splitter, taggerProvider)
+	pipeline := buildPipeline(st, set, layout, log, emitter, splitter, taggerProvider, wake)
 	jobs.Add(fillerPipelineJob(pipeline))
 	adapter.pipeline = pipeline
+	adapter.afterIngest = func(ctx context.Context) error {
+		if _, err := syncer.Sync(ctx); err != nil {
+			return err
+		}
+		// Enrol only. Running a whole pipeline pass here could make one completed download wait on
+		// an unrelated transcode/Whisper backlog; the scheduled job remains the stage driver.
+		_, err := pipeline.EnrolMissing(ctx)
+		return err
+	}
 	jobs.Add(fillerSplitSweepJob(filler.NewSplitSweeper(
 		fillerSweepStoreAdapter{st}, layout.ClipDir(),
 		func() time.Duration { return set.dur("filler.split.review_window") }, time.Now, log,

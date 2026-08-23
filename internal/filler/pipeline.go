@@ -236,6 +236,17 @@ func NewPipeline(store PipelineStore, clips ClipStore, stages []Stage, budget Bu
 	return &Pipeline{store: store, clips: clips, stages: byID, budget: budget, notify: notify, now: now, log: log}
 }
 
+// EnrolMissing puts newly catalogued clips onto the durable conveyor without running a stage.
+// Download completion uses this narrow nudge so Incoming becomes truthful immediately without
+// making an HTTP-triggered ingest pay for an arbitrary pre-existing transcode/Whisper backlog.
+// The scheduled RunOnce remains the sole budgeted stage driver.
+func (p *Pipeline) EnrolMissing(ctx context.Context) (int, error) {
+	if p == nil || p.store == nil {
+		return 0, nil
+	}
+	return p.enrolMissing(ctx)
+}
+
 // PipelineResult summarises one pass.
 type PipelineResult struct {
 	Enrolled  int

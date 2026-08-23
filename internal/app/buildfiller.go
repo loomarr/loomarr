@@ -37,7 +37,7 @@ import (
 // the `if` rather than living inside the tagger. Nil for both is the honest un-opted-in state,
 // and every reader treats it that way — the manual sweep becomes a no-op, and the rung reports
 // "no language model is configured" on each clip's ladder rather than silently doing nothing.
-func buildTagger(st store.Store, set resolved, layout filler.Layout, log *slog.Logger) (llm.Provider, *filler.Tagger) {
+func buildTagger(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, wake *fillerChannelWake) (llm.Provider, *filler.Tagger) {
 	if !set.boolv("filler.ai_tagging") {
 		return nil, nil
 	}
@@ -48,7 +48,7 @@ func buildTagger(st store.Store, set resolved, layout filler.Layout, log *slog.L
 
 	// The generation's clip-root FS lets tagging read the info-JSON sidecars ingest writes beside
 	// each clip (§10). A zero layout yields nil and tagging falls back to filenames.
-	tagger := filler.NewTagger(fillerTagStoreAdapter{st}, provider, layout.FS(), time.Now, log).
+	tagger := filler.NewTagger(fillerTagStoreAdapter{st: st, wake: wake}, provider, layout.FS(), time.Now, log).
 		// Auto-filing (§10 V38): a held clip whose grounding-capped score clears the threshold
 		// is filed without a human. Closures, not captured values, so a changed threshold
 		// applies on the next run rather than the next restart.
@@ -159,7 +159,7 @@ func buildFetcher(set resolved, layout filler.Layout, log *slog.Logger) *clipfet
 //
 // The LLM provider wires whenever one is configured — splitting's rescue and classification are
 // operator-invoked, so they are not gated by `filler.ai_tagging`, which gates the batch job.
-func buildSplitter(st store.Store, set resolved, layout filler.Layout, log *slog.Logger) *filler.Splitter {
+func buildSplitter(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, wake *fillerChannelWake) *filler.Splitter {
 	dir := layout.ClipDir()
 	if dir == "" {
 		return nil
@@ -170,7 +170,7 @@ func buildSplitter(st store.Store, set resolved, layout filler.Layout, log *slog
 	tools := buildFillerMediaTools(set)
 
 	// The same live minimum is enforced during detection and at the scan boundary (§10 V34).
-	return filler.NewSplitter(fillerSplitStoreAdapter{st}, tools, splitProvider, dir,
+	return filler.NewSplitter(fillerSplitStoreAdapter{st: st, wake: wake}, tools, splitProvider, dir,
 		func() time.Duration { return set.dur("filler.min_duration") }, newID, time.Now, log)
 }
 
@@ -231,7 +231,7 @@ func buildFillerMediaTools(set resolved) *mediatools.FFmpegTools {
 // ladder explain an install rather than merely show gaps in it. Do not make registration
 // conditional to "clean up" the nil cases.
 func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, emitter *eventEmitter,
-	splitter *filler.Splitter, taggerProvider llm.Provider) *filler.Pipeline {
+	splitter *filler.Splitter, taggerProvider llm.Provider, wake *fillerChannelWake) *filler.Pipeline {
 	// The language gate (§10 V40). Registered unconditionally: `filler.language` empty makes
 	// Run a no-op, so an install that has not opted in pays nothing and the Tasks row still
 	// exists to be seen and paused.
@@ -346,10 +346,10 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 			func() string { return set.str("filler.language") }, time.Now),
 		filler.NewTranscribeStage(fillerTools, fillerTranscribeStoreAdapter{st}, clipDir, fillerDrop,
 			func() bool { return set.boolv("filler.transcribe.enabled") }, time.Now),
-		filler.NewTagStage(taggerProvider, fillerTagStoreAdapter{st}, fillerDrop, time.Now),
+		filler.NewTagStage(taggerProvider, fillerTagStoreAdapter{st: st, wake: wake}, fillerDrop, time.Now),
 		filler.NewVisionStage(fillerTools, visionProvider, fillerVisionStoreAdapter{st}, clipDir,
 			func() bool { return set.boolv("filler.vision.enabled") }, time.Now),
-		filler.NewScoreStage(fillerTagStoreAdapter{st}, &filler.AutoFilePolicy{
+		filler.NewScoreStage(fillerTagStoreAdapter{st: st, wake: wake}, &filler.AutoFilePolicy{
 			// ⚠ `boolv`, the FAIL-CLOSED read, not `boolOn`. The two differ only when the
 			// settings service cannot answer, and here that difference is the safety property:
 			// failing OPEN would publish unreviewed clips to live channels exactly when the
@@ -364,7 +364,7 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 		// irrelevant. Stating that is worth a line, because a slice that looks like a pipeline
 		// invites someone to "fix" its order.
 		pipelineStages = append(pipelineStages,
-			filler.NewSplitStage(splitter, fillerSplitStoreAdapter{st}).
+			filler.NewSplitStage(splitter, fillerSplitStoreAdapter{st: st, wake: wake}).
 				WithLogger(log).
 				WithAutoConfirm(filler.AutoSplitPolicy{
 					Enabled:       func() bool { return set.boolv("filler.autosplit.enabled") },

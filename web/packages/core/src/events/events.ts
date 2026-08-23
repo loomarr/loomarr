@@ -101,10 +101,13 @@ const useLoomarrEvents = (extra?: EventHandlers): void => {
         extraRef.current?.onPlayout?.(e);
       },
       onFillerIngest: (e) => {
-        // Downloaded files are not clips until Tunarr scans the folder, so a finished
-        // ingest does NOT invalidate the catalog on its own — the operator runs Sync,
-        // which is what actually changes /v1/filler. Invalidating here would refetch an
-        // unchanged list and imply the clips had arrived.
+        // Since §10 V56 a success is published only AFTER the ordinary catalog sync and one
+        // durable pipeline nudge. Incoming, watch status and the catalog are therefore already
+        // authoritative at this point; keeping the old no-invalidation rule made completed
+        // downloads stay invisible until some unrelated refetch.
+        if (e.status === "success") {
+          invalidateByPrefix(qc, "/v1/filler");
+        }
         extraRef.current?.onFillerIngest?.(e);
       },
       onFillerSplit: (e) => {
