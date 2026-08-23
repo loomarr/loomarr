@@ -169,10 +169,12 @@ func (e *Engine) reconcileOnce(
 	// real local catalog look empty.
 	var fillerIDs []string
 	hasFillerPool := false
+	var playableFillerMs int64
 	if e.pods != nil {
 		seed, selection := PodSeed(ch.ID), SelectionForChannel(ch)
 		if playsInternally {
-			hasFillerPool = e.pods.HasPool(ctx, ch.ID, seed, selection)
+			playableFillerMs = e.pods.PlayableDurationMs(ctx, ch.ID, seed, selection)
+			hasFillerPool = playableFillerMs > 0
 		} else if ids, ok := e.pods.BuildFillerList(ctx, ch.ID, seed, selection); ok && len(ids) > 0 {
 			fillerIDs, hasFillerPool = ids, true
 		}
@@ -194,6 +196,9 @@ func (e *Engine) reconcileOnce(
 	chDomain.BreakDurationMs = BreakDurationFor(ch.Policy, e.breakDurationFor()).Milliseconds()
 	chDomain.DefaultWindow = e.defaultWindowFor() // §6.5 rolling-window horizon from settings
 	desired := schedule.ComputeDesiredAt(chDomain, ch.Lineup, e.avail, e.policy, ch.Policy, e.now())
+	if playsInternally {
+		desired.Slots = capCommercialBreaks(desired.Slots, playableFillerMs)
+	}
 	// Building is the durable "this backend must (re)publish the channel list" marker:
 	// it covers first materialization and a backend switch that reuses a historical
 	// Tunarr id. An internal Empty channel also enters the surfable M3U catalog when its

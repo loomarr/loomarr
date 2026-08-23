@@ -124,3 +124,22 @@ func TestPodAdapter_ChannelBreakDurationOverridesGlobal(t *testing.T) {
 		t.Fatalf("2m channel override = %d entries / %dms, want 4 / 120000", len(pod.Entries), pod.TotalMs)
 	}
 }
+
+func TestPodAdapter_PlayableDurationIsOnlyRealClipMedia(t *testing.T) {
+	clips := []filler.Clip{
+		{Hash: "a", Path: "a.mp4", Kind: filler.Commercial, DurationMs: 18_000},
+		{Hash: "b", Path: "b.mp4", Kind: filler.Commercial, DurationMs: 22_000},
+	}
+	adapter := filler.NewPodAdapter(stubCatalog{clips: clips}, func() filler.Policy {
+		return filler.Policy{BreakDurationMs: 5 * 60_000}
+	}, discardLogger())
+
+	if got := adapter.PlayableDurationMs(context.Background(), "ch-1", 7, filler.Selection{}); got != 40_000 {
+		t.Fatalf("playable duration = %dms, want the two real clips' 40000ms", got)
+	}
+
+	empty := filler.NewPodAdapter(stubCatalog{}, nil, discardLogger())
+	if got := empty.PlayableDurationMs(context.Background(), "ch-1", 7, filler.Selection{}); got != 0 {
+		t.Fatalf("fallback-only duration = %dms, want 0", got)
+	}
+}

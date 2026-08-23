@@ -7,6 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -27,11 +28,13 @@ func chTunarrID(t *testing.T, st store.Store, id string) string {
 // asked with (§10 redesign: BuildFillerList returns program uuids for the channel's
 // Tunarr filler-list, not per-gap slots).
 type fakePods struct {
-	calls    int
-	hasCalls int
-	seeds    []int64
-	sels     []filler.Selection // the selection each call received
-	ids      []string           // the pool to return; nil → ok=false (no filler)
+	calls         int
+	hasCalls      int
+	durationCalls int
+	seeds         []int64
+	sels          []filler.Selection // the selection each call received
+	ids           []string           // the pool to return; nil → ok=false (no filler)
+	duration      int64
 }
 
 // HasPool mirrors the real adapter: a pool exists when there are clips to play. The double
@@ -40,6 +43,14 @@ type fakePods struct {
 func (f *fakePods) HasPool(_ context.Context, _ string, _ int64, _ filler.Selection) bool {
 	f.hasCalls++
 	return len(f.ids) > 0
+}
+
+func (f *fakePods) PlayableDurationMs(_ context.Context, _ string, _ int64, _ filler.Selection) int64 {
+	f.durationCalls++
+	if f.duration > 0 {
+		return f.duration
+	}
+	return int64(len(f.ids)) * 30_000
 }
 
 func (f *fakePods) BuildFillerList(_ context.Context, channelID string, seed int64, sel filler.Selection) ([]string, bool) {
@@ -107,8 +118,8 @@ func TestReconcile_InternalUsesBackendIndependentFillerPool(t *testing.T) {
 	if err := e.Reconcile(context.Background(), "internal-pods"); err != nil {
 		t.Fatal(err)
 	}
-	if pods.hasCalls != 1 {
-		t.Fatalf("HasPool calls = %d, want 1", pods.hasCalls)
+	if pods.durationCalls != 1 {
+		t.Fatalf("PlayableDurationMs calls = %d, want 1", pods.durationCalls)
 	}
 	if pods.calls != 0 {
 		t.Fatalf("internal reconcile built a Tunarr filler-list %d times", pods.calls)
@@ -126,6 +137,55 @@ func TestReconcile_InternalUsesBackendIndependentFillerPool(t *testing.T) {
 	if breaks == 0 {
 		t.Fatalf("local filler pool did not materialize break gaps: %+v", ch.Desired)
 	}
+}
+
+func TestReconcile_InternalBreakEndsWhenItsPodIsExhausted(t *testing.T) {
+	st := newStore(t)
+	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
+	pods := &fakePods{ids: []string{"commercial-a", "commercial-b"}, duration: 40_000}
+	e := channels.New(st, nil, avail, nil, channels.Config{
+		ReconcileTTL:  10 * time.Minute,
+		BreaksPerHour: 30,
+		BreakDuration: 5 * time.Minute,
+		ResolvePlayoutBackendContext: func(context.Context) (string, error) {
+			return schedule.PlayoutBackendInternal, nil
+		},
+	}, func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, testkit.Logger()).WithPods(pods)
+	seedChannel(t, st, "underfilled", 5,
+		entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
+
+	if err := e.Reconcile(context.Background(), "underfilled"); err != nil {
+		t.Fatal(err)
+	}
+	ch, err := st.GetChannel(context.Background(), "underfilled")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, preview, _, _, err := e.CyclePreview(context.Background(), "underfilled", time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, slot := range preview {
+		if slot.Kind == schedule.SlotFiller && slot.Key == "" && slot.DurationMs != 40_000 {
+			t.Fatalf("preview break duration = %dms, want accepted duration 40000ms", slot.DurationMs)
+		}
+	}
+	var beforeBreak time.Duration
+	for _, slot := range ch.Desired {
+		if slot.Kind == schedule.SlotFiller && slot.Key == "" {
+			if slot.DurationMs != 40_000 {
+				t.Fatalf("commercial break duration = %dms, want the two configured clips' 40000ms", slot.DurationMs)
+			}
+			atBoundary := playout.AiringAt(ch.Desired, ch.PlayoutAnchor,
+				ch.PlayoutAnchor.Add(beforeBreak+40*time.Second))
+			if atBoundary.Kind != schedule.SlotProgram || atBoundary.LibraryItemID != "lib-2" {
+				t.Fatalf("airing after commercial two = %+v, want the following programme", atBoundary)
+			}
+			return
+		}
+		beforeBreak += time.Duration(slot.DurationMs) * time.Millisecond
+	}
+	t.Fatal("no commercial break was interleaved")
 }
 
 // Idempotency (§9/§10): a second reconcile with an unchanged pool makes NO new

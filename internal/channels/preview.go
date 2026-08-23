@@ -90,12 +90,24 @@ func (e *Engine) CyclePreviewDraft(
 
 	// Mirror reconcile's chDomain assembly (reconcile.go step 2): break density only when a
 	// filler pool exists (drafted selection), and the settings-driven rolling-window horizon.
+	globalBackend, err := e.playoutBackendFor(ctx)
+	if err != nil {
+		return CycleResult{}, fmt.Errorf("resolve playout backend for channel %s: %w", channelID, err)
+	}
+	playsInternally := schedule.PlaysInternally(ch.Policy, globalBackend)
 	hasFillerPool := false
+	var playableFillerMs int64
 	if e.pods != nil {
-		// HasPool, not BuildFillerList: the question is "are there commercials to play",
-		// which is backend-independent. BuildFillerList answers the narrower Tunarr question
-		// and would report no pool on an install with no Tunarr (§9.1).
-		hasFillerPool = e.pods.HasPool(ctx, ch.ID, PodSeed(ch.ID), SelectionForChannel(ch))
+		// Internal playout needs the pod's playable duration so its accepted break ends with
+		// the media. Tunarr needs only the backend-independent pool predicate here; its
+		// projection builds the remote filler-list during reconcile (§9.1).
+		seed, selection := PodSeed(ch.ID), SelectionForChannel(ch)
+		if playsInternally {
+			playableFillerMs = e.pods.PlayableDurationMs(ctx, ch.ID, seed, selection)
+			hasFillerPool = playableFillerMs > 0
+		} else {
+			hasFillerPool = e.pods.HasPool(ctx, ch.ID, seed, selection)
+		}
 	}
 	chDomain := ch.Channel
 	chDomain.LastAired = e.lastAiredFor(ctx, ch.ID)
@@ -130,6 +142,9 @@ func (e *Engine) CyclePreviewDraft(
 	}
 
 	desired := schedule.ComputeDesiredAt(chDomain, lineup, e.avail, e.policy, ch.Policy, at)
+	if playsInternally {
+		desired.Slots = capCommercialBreaks(desired.Slots, playableFillerMs)
+	}
 	return CycleResult{
 		At:     at,
 		Slots:  desired.Slots,
