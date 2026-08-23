@@ -120,7 +120,7 @@ func (s *Server) fileFillerClips(ctx context.Context, in *fileFillerInput) (*bul
 	// never reaches zero.
 	s.settlePipeline(ctx, hashes, filler.DispositionFiled, filler.DispositionReview)
 	if updated > 0 {
-		s.reconcileChannelsForFillerChange(ctx)
+		s.reconcileChannelsForFillerChange(ctx, storeClipsToFiller(clips)...)
 	}
 	out := &bulkResultOutput{}
 	out.Body.Updated = updated
@@ -135,6 +135,12 @@ func (s *Server) holdFillerClips(ctx context.Context, in *holdFillerInput) (*bul
 	// ⚠ `autoFiled: false` here too, and for a subtler reason than above: a clip sent back is no
 	// longer filed at all, so a marker saying "filed without a human" would describe a state it
 	// is not in. Re-filing it later re-decides that flag from scratch.
+	clips := make([]store.Clip, 0, len(in.Body.Paths))
+	for _, path := range in.Body.Paths {
+		if c, err := s.store.GetClipByPath(ctx, path); err == nil {
+			clips = append(clips, c)
+		}
+	}
 	updated, err := s.store.SetClipsHeld(ctx, in.Body.Paths, true, false, time.Now().UTC())
 	if err != nil {
 		return nil, huma.Error500InternalServerError("hold clips", err)
@@ -152,7 +158,7 @@ func (s *Server) holdFillerClips(ctx context.Context, in *holdFillerInput) (*bul
 	}
 	s.settlePipeline(ctx, hashes, filler.DispositionReview, filler.DispositionFiled)
 	if updated > 0 {
-		s.reconcileChannelsForFillerChange(ctx)
+		s.reconcileChannelsForFillerChange(ctx, storeClipsToFiller(clips)...)
 	}
 	out := &bulkResultOutput{}
 	out.Body.Updated = updated
@@ -163,8 +169,16 @@ func (s *Server) holdFillerClips(ctx context.Context, in *holdFillerInput) (*bul
 // reconcileChannelsForFillerChange is the latency path for §10 V56. The clip state is already
 // durable when this runs, so a reconcile failure must not turn a successful filing decision into
 // an HTTP failure. The ordinary channel sweep remains the crash-safe retry.
-func (s *Server) reconcileChannelsForFillerChange(ctx context.Context) {
+func (s *Server) reconcileChannelsForFillerChange(ctx context.Context, snapshots ...filler.Clip) {
 	if s.channels == nil || s.store == nil {
+		return
+	}
+	if targeted, ok := s.channels.(interface {
+		ReconcileFillerChange(context.Context, []filler.Clip) error
+	}); ok {
+		if err := targeted.ReconcileFillerChange(ctx, snapshots); err != nil && s.log != nil {
+			s.log.Warn("filler catalog changed but affected-channel reconcile failed; sweep will retry", "err", err)
+		}
 		return
 	}
 	all, err := s.store.ListChannels(ctx)
@@ -183,4 +197,12 @@ func (s *Server) reconcileChannelsForFillerChange(ctx context.Context) {
 				"channel", ch.ID, "err", err)
 		}
 	}
+}
+
+func storeClipsToFiller(clips []store.Clip) []filler.Clip {
+	out := make([]filler.Clip, len(clips))
+	for i := range clips {
+		out[i] = clips[i].Clip
+	}
+	return out
 }

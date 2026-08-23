@@ -55,7 +55,7 @@ const stubSources = () => {
     getAddFillerSourceMockHandler(async ({ request }) => {
       adds.push(await request.json());
       // ⚠ The add returns a RemoteSourceDTO — `{ id, label, uri, enabled }` — not a bare id.
-      return { id: "src-new", label: "New source", uri: "/mnt/extra-ads", enabled: true };
+      return { id: "src-new", label: "New source", uri: "/mnt/extra-ads", enabled: true, autoAdmit: true };
     }),
     getSetFillerSourceEnabledMockHandler(async ({ request, params }) => {
       enables.push({ id: String(params.id), body: await request.json() });
@@ -82,6 +82,8 @@ const source = (over: Partial<FillerSourceDTO> & Pick<FillerSourceDTO, "kind">):
   configured: true,
   fetchable: true,
   enabled: true,
+  autoAdmit: true,
+  admissionControllable: true,
   switchable: true,
   removable: false,
   searchable: false,
@@ -137,6 +139,18 @@ describe("SourcesPanel", () => {
     });
   });
 
+  it("changes source admission without disabling acquisition", async () => {
+    const { enables } = stubSources();
+    renderPanel([source({ kind: "archive", id: "archive:classic", target: "Classic TV" })]);
+
+    await userEvent.click(
+      screen.getByRole("switch", { name: "Automatically file grounded clips from Classic TV" }),
+    );
+    await waitFor(() => {
+      expect(enables).toEqual([{ id: "archive:classic", body: { enabled: true, autoAdmit: false } }]);
+    });
+  });
+
   // ⚠ Only `archive` can be searched in place, and the panel reads the server's `searchable`
   // flag rather than testing the kind itself. A YouTube playlist can only be ENUMERATED by
   // yt-dlp, so a search box there would return nothing forever.
@@ -162,7 +176,7 @@ describe("SourcesPanel", () => {
     stubSources();
     renderPanel();
     expect(await screen.findByText(/checked on their schedule/i)).toBeInTheDocument();
-    expect(screen.getByText(/download into Incoming for review/i)).toBeInTheDocument();
+    expect(screen.getByText(/review-only sources stay in Incoming/i)).toBeInTheDocument();
   });
 
   it("fetches only the source row the operator selected", async () => {

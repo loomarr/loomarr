@@ -257,8 +257,16 @@ type fillerChannelWake struct {
 	log *slog.Logger
 }
 
-func (w *fillerChannelWake) Run(ctx context.Context) {
+func (w *fillerChannelWake) Run(ctx context.Context, snapshots []filler.Clip) {
 	if w == nil || w.st == nil || w.channels == nil {
+		return
+	}
+	if targeted, ok := w.channels.(interface {
+		ReconcileFillerChange(context.Context, []filler.Clip) error
+	}); ok {
+		if err := targeted.ReconcileFillerChange(ctx, snapshots); err != nil && w.log != nil {
+			w.log.Warn("filler catalog changed but affected-channel reconcile failed; sweep will retry", "err", err)
+		}
 		return
 	}
 	all, err := w.st.ListChannels(ctx)
@@ -309,9 +317,10 @@ func (a fillerTagStoreAdapter) SetClipConfidence(ctx context.Context, path strin
 }
 
 func (a fillerTagStoreAdapter) SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error) {
+	snapshots := fillerClipsByPath(ctx, a.st, paths)
 	updated, err := a.st.SetClipsHeld(ctx, paths, held, autoFiled, at)
 	if err == nil && updated > 0 {
-		a.wake.Run(ctx)
+		a.wake.Run(ctx, snapshots)
 	}
 	return updated, err
 }
@@ -542,11 +551,22 @@ func (a fillerSplitStoreAdapter) SetClipComposite(ctx context.Context, hash stri
 	return a.st.SetClipComposite(ctx, hash, composite, at)
 }
 func (a fillerSplitStoreAdapter) SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error) {
+	snapshots := fillerClipsByPath(ctx, a.st, paths)
 	updated, err := a.st.SetClipsHeld(ctx, paths, held, autoFiled, at)
 	if err == nil && updated > 0 {
-		a.wake.Run(ctx)
+		a.wake.Run(ctx, snapshots)
 	}
 	return updated, err
+}
+
+func fillerClipsByPath(ctx context.Context, st store.Store, paths []string) []filler.Clip {
+	out := make([]filler.Clip, 0, len(paths))
+	for _, path := range paths {
+		if clip, err := st.GetClipByPath(ctx, path); err == nil {
+			out = append(out, clip.Clip)
+		}
+	}
+	return out
 }
 
 // ListTaxa: split-segment classification serves + grounds against the taxonomy graph (§10 V45a).
@@ -603,7 +623,7 @@ type fillerServiceAdapter struct {
 	// sources registers what an operator added, so the Sources tab can show where clips
 	// came from. Narrow interface, not the whole store: this adapter has no other reason
 	// to reach persistence.
-	sources store.FillerSourceStore
+	sources fillerSourceRegistry
 	now     func() time.Time
 	// splitter / splitClips back compilation splitting (§10, V34). nil splitter ⇒
 	// no drop-folder configured ⇒ Split/ConfirmSplit answer ErrSplitUnavailable.
@@ -617,6 +637,13 @@ type fillerServiceAdapter struct {
 	// autoFetch supplies the live limit status rendered by /v1/filler/watch. It is the same
 	// Fetcher the scheduler runs, so reporting and enforcement cannot drift.
 	autoFetch *filler.Fetcher
+}
+
+// fillerSourceRegistry is the acquisition-side source slice. Admission policy is deliberately
+// absent: this adapter registers and fetches sources but is not allowed to change their trust.
+type fillerSourceRegistry interface {
+	ListFillerSources(context.Context) ([]store.FillerSource, error)
+	UpsertFillerSource(context.Context, store.FillerSource) error
 }
 
 func (a fillerServiceAdapter) FetchStatus(ctx context.Context) (filler.FetchStatus, error) {
@@ -662,22 +689,28 @@ func (a fillerServiceAdapter) Tag(ctx context.Context) (int, int, int, int, erro
 // pull uses, because it is the same problem (long external process, no request to hold).
 // ⚠ Downloads only — it does NOT register a source. See `rememberSources`.
 func (a fillerServiceAdapter) Ingest(ctx context.Context, urls []string) (string, error) {
-	return a.ingest(ctx, urls)
+	return a.ingest(ctx, "", urls)
+}
+
+// IngestSource is the unattended registered-source path. It preserves source attribution through
+// the downloader sidecar so the catalog can apply and audit the correct admission policy.
+func (a fillerServiceAdapter) IngestSource(ctx context.Context, sourceID string, urls []string) (string, error) {
+	return a.ingest(ctx, sourceID, urls)
 }
 
 // IngestAsked downloads AND remembers the target, for the one path where an operator named it.
 func (a fillerServiceAdapter) IngestAsked(ctx context.Context, urls []string) (string, error) {
 	a.rememberSources(ctx, urls)
-	return a.ingest(ctx, urls)
+	return a.ingest(ctx, "", urls)
 }
 
-func (a fillerServiceAdapter) ingest(ctx context.Context, urls []string) (string, error) {
+func (a fillerServiceAdapter) ingest(ctx context.Context, sourceID string, urls []string) (string, error) {
 	if a.fetcher == nil {
 		return "", api.ErrIngestUnavailable
 	}
 	sources := make([]clipfetch.Source, 0, len(urls))
 	for _, u := range urls {
-		sources = append(sources, clipfetch.Source{Kind: clipfetch.KindForURL(u), URL: u})
+		sources = append(sources, clipfetch.Source{ID: sourceID, Kind: clipfetch.KindForURL(u), URL: u})
 	}
 
 	jobID := a.newID()

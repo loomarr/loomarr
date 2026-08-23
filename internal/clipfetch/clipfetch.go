@@ -36,6 +36,9 @@ const (
 
 // Source is one ingestion target the sidecar pulls into the drop-folder.
 type Source struct {
+	// ID is the registered source policy responsible for this acquisition. Empty means a manual
+	// ingest whose arrivals use the folder admission policy.
+	ID   string
 	Kind Kind
 	URL  string
 }

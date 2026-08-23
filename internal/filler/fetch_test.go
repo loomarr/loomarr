@@ -16,6 +16,7 @@ type fetchStub struct {
 	paths     []string
 	offers    []filler.DiscoveredRef
 	queued    []string
+	sourceID  string
 	calls     int
 	listed    []string
 	ingestErr error
@@ -32,7 +33,8 @@ func (f *fetchStub) DiscoverCollection(_ context.Context, ref string, _ int) ([]
 	f.listed = append(f.listed, ref)
 	return f.offers, len(f.offers), nil
 }
-func (f *fetchStub) Ingest(_ context.Context, urls []string) (string, error) {
+func (f *fetchStub) IngestSource(_ context.Context, sourceID string, urls []string) (string, error) {
+	f.sourceID = sourceID
 	if f.ingestErr != nil {
 		return "", f.ingestErr
 	}
@@ -82,6 +84,9 @@ func TestFetch_StopsAtMaxPerRun(t *testing.T) {
 	if res.Queued != 3 || len(stub.queued) != 3 {
 		t.Fatalf("queued %d (%v), want 3 — max_per_run is what stops a collection arriving at once",
 			res.Queued, stub.queued)
+	}
+	if stub.sourceID != "s1" {
+		t.Errorf("queued source id = %q, want s1 — admission provenance was dropped", stub.sourceID)
 	}
 }
 

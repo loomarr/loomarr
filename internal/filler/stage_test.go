@@ -162,6 +162,31 @@ func alwaysFileAt(min int) *filler.AutoFilePolicy {
 	}
 }
 
+func TestScoreStage_SourcePolicyCanOnlyReduceAutomaticAdmission(t *testing.T) {
+	st := newScoreMemStore()
+	policy := alwaysFileAt(85)
+	policy.SourceAllowed = func(_ context.Context, source string) (bool, error) {
+		return source == "trusted", nil
+	}
+	s := filler.NewScoreStage(st, policy, func() bool { return false }, nil)
+	grounded := func(source string) filler.StoreClip {
+		return heldClipWith(func(c *filler.Clip) {
+			c.Source = source
+			c.Era = 1985
+			c.Audience = filler.Kids
+			c.Category = "toys"
+			c.AITagged = true
+			c.Confidence = 90
+		})
+	}
+	if out, err := s.Run(context.Background(), grounded("review-only")); err != nil || out.Verdict != filler.VerdictReview {
+		t.Fatalf("review-only source = %+v, %v; want review", out, err)
+	}
+	if out, err := s.Run(context.Background(), grounded("trusted")); err != nil || out.Verdict != filler.VerdictContinue {
+		t.Fatalf("trusted source = %+v, %v; want filed continuation", out, err)
+	}
+}
+
 func heldClipWith(mut func(*filler.Clip)) filler.StoreClip {
 	c := filler.Clip{Hash: "c1", Path: "a3/f9/c1.mp4", Name: "Toy ad", Kind: filler.Commercial, Held: true}
 	mut(&c)

@@ -193,7 +193,8 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 		// Soup Advert" while the `title` field carries just "Campbell's Soup Advert".
 		heuristicName := strings.TrimSuffix(filepath.Base(rel), filepath.Ext(rel))
 		id := ""
-		if tags, ok := ReadSidecarTags(path); ok {
+		tags, hasTags := ReadSidecarTags(path)
+		if hasTags {
 			if tags.OriginalName != "" {
 				heuristicName = strings.TrimSuffix(tags.OriginalName, filepath.Ext(tags.OriginalName))
 			}
@@ -212,9 +213,10 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 		}
 
 		clips = append(clips, RawClip{
-			ID:   id,
-			Path: rel,
-			Name: name,
+			ID:     id,
+			Path:   rel,
+			Name:   name,
+			Source: tags.SourceID,
 			// Kind + Era from the HEURISTIC name (the filename), NOT the display name — the cheapest
 			// tagging tier (§10). ⚠ Must be `heuristicName`: the display `name` now prefers the
 			// sidecar title, which often drops the year ("Campbell's Soup Advert" has no 1993), and

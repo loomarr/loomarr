@@ -121,6 +121,8 @@ const stubReachable = () => {
         {
           id: "archive:classic_tv_commercials",
           enabled: true,
+          autoAdmit: true,
+          admissionControllable: true,
           switchable: true,
           removable: true,
           kind: "archive",

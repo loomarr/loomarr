@@ -1591,6 +1591,9 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 		if !got.Enabled {
 			t.Errorf("%s seeded switched OFF — it would sit in the UI doing nothing", want.id)
 		}
+		if !got.AutoAdmit {
+			t.Errorf("%s seeded with auto-admission OFF — upgrade must preserve the grounded workflow", want.id)
+		}
 		// ⚠ Fetchable, which is the whole point: `folder` and `library` are SCANNED, so before
 		// this seed a fresh install had no source it could download from at all.
 		if !got.Fetchable() {
@@ -1624,7 +1627,7 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 		// Enabled explicitly: a Go bool zero-values to false, so a literal that omits it
 		// describes a source that is switched OFF. Real add paths go through
 		// NewFillerSource for exactly that reason.
-		Enabled: true,
+		Enabled: true, AutoAdmit: true,
 		// ⚠ NOT `classic_tv_commercials` — that is a SEEDED row now (00034), and 00032's unique
 		// index on (kind, uri) correctly refuses a second row pointing at the same collection.
 		// The fixture needs its own target; the index is doing its job.
@@ -1694,6 +1697,12 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	}
 	if !added[0].LastFetchedAt.IsZero() {
 		t.Errorf("a never-fetched source has LastFetchedAt %v, want zero", added[0].LastFetchedAt)
+	}
+	if err := s.SetFillerSourceAutoAdmit(ctx, "src-1", false); err != nil {
+		t.Fatal(err)
+	}
+	if src1(t, s).AutoAdmit {
+		t.Error("source still auto-admits after its admission policy was switched off")
 	}
 
 	// ⚠ THE invariant the flat model has to carry itself (§10), MOVED in V38c from the kind to
@@ -1869,6 +1878,9 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	}
 	if err := s.SetFillerSourceEnabled(ctx, "nope", false); !errors.Is(err, ErrNotFound) {
 		t.Errorf("set enabled on unknown = %v, want ErrNotFound", err)
+	}
+	if err := s.SetFillerSourceAutoAdmit(ctx, "nope", false); !errors.Is(err, ErrNotFound) {
+		t.Errorf("set auto-admit on unknown = %v, want ErrNotFound", err)
 	}
 }
 

@@ -99,7 +99,7 @@ type DiscoveredRef struct {
 // ⚠ The SAME path a queued search result or an approved pull uses. A second downloader is the
 // shape §10 rejects by name, and it is how one route would quietly stop honouring the lifecycle.
 type FetchIngestor interface {
-	Ingest(ctx context.Context, urls []string) (string, error)
+	IngestSource(ctx context.Context, sourceID string, urls []string) (string, error)
 }
 
 // Fetcher polls registered sources.
@@ -300,7 +300,7 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 		if len(urls) == 0 {
 			continue
 		}
-		if _, ierr := f.ingest.Ingest(ctx, urls); ierr != nil {
+		if _, ierr := f.ingest.IngestSource(ctx, src.ID, urls); ierr != nil {
 			if !scheduled {
 				return res, fmt.Errorf("queue source %q: %w", src.ID, ierr)
 			}

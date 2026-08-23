@@ -47,6 +47,10 @@ type FillerSource struct {
 	// already brought in are untouched either way — they are real files an operator may have
 	// tagged and pinned.
 	Enabled bool
+	// AutoAdmit permits grounded, sufficiently confident arrivals from this source to leave
+	// Incoming without a per-clip decision (§10 V57). It is independent of Enabled: one controls
+	// acquisition, the other catalog admission. Channel matching and overrides happen later.
+	AutoAdmit bool
 	// FetchEverySeconds overrides `filler.fetch.every` for THIS source (§10 V38c). A busy archive
 	// collection and a small playlist want different numbers, and one global figure serves
 	// neither well.
@@ -153,11 +157,11 @@ func (f FillerSource) Configured() bool { return f.URI != "" }
 // only way to create a disabled source is to switch one off afterwards, which is what the
 // operator would expect to have to do.
 func NewFillerSource(id, kind, uri, label string, createdAt time.Time) FillerSource {
-	return FillerSource{ID: id, Kind: kind, URI: uri, Label: label, CreatedAt: createdAt, Enabled: true}
+	return FillerSource{ID: id, Kind: kind, URI: uri, Label: label, CreatedAt: createdAt, Enabled: true, AutoAdmit: true}
 }
 
 const fillerSourceSelect = `SELECT id, kind, uri, label, license, last_fetched_at, created_at, enabled,
-	fetch_every_seconds, fetch_max_per_run
+	auto_admit, fetch_every_seconds, fetch_max_per_run
 	FROM filler_sources`
 
 // ListFillerSources returns every source, OLDEST FIRST. Ordering is explicit rather than
@@ -183,7 +187,7 @@ func (s *sqlStore) ListFillerSources(ctx context.Context) ([]FillerSource, error
 			perRun sql.NullInt64
 		)
 		if err := rows.Scan(&src.ID, &src.Kind, &src.URI, &src.Label, &src.License,
-			&fetchedAt, &createdAt, &src.Enabled, &every, &perRun); err != nil {
+			&fetchedAt, &createdAt, &src.Enabled, &src.AutoAdmit, &every, &perRun); err != nil {
 			return nil, fmt.Errorf("scan filler source: %w", err)
 		}
 		src.LastFetchedAt = fromEpoch(fetchedAt)
@@ -225,12 +229,12 @@ func (s *sqlStore) UpsertFillerSource(ctx context.Context, src FillerSource) err
 		// next re-register. Same failure V35 nearly shipped with `enabled`, one column over.
 		// SetFillerSourceFetchPolicy is their only writer.
 		`INSERT INTO filler_sources (id, kind, uri, label, license, last_fetched_at, created_at, enabled,
-		   fetch_every_seconds, fetch_max_per_run)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		   auto_admit, fetch_every_seconds, fetch_max_per_run)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   kind=excluded.kind, uri=excluded.uri, label=excluded.label, license=excluded.license`),
 		src.ID, src.Kind, src.URI, src.Label, src.License,
-		epoch(src.LastFetchedAt), epoch(src.CreatedAt), src.Enabled,
+		epoch(src.LastFetchedAt), epoch(src.CreatedAt), src.Enabled, src.AutoAdmit,
 		nullableInt(src.FetchEverySeconds), nullableInt(src.FetchMaxPerRun))
 	if err != nil {
 		return fmt.Errorf("upsert filler source %s: %w", src.ID, err)
@@ -327,6 +331,24 @@ func (s *sqlStore) SetFillerSourceEnabled(ctx context.Context, id string, enable
 	n, err := res.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("set filler source enabled %s: %w", id, err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetFillerSourceAutoAdmit is the sole writer of a source's admission policy. A targeted update
+// prevents an unrelated re-registration or enabled toggle from changing a trust decision.
+func (s *sqlStore) SetFillerSourceAutoAdmit(ctx context.Context, id string, autoAdmit bool) error {
+	res, err := s.db.ExecContext(ctx,
+		s.ph(`UPDATE filler_sources SET auto_admit = ? WHERE id = ?`), autoAdmit, id)
+	if err != nil {
+		return fmt.Errorf("set filler source auto-admit %s: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("set filler source auto-admit %s: %w", id, err)
 	}
 	if n == 0 {
 		return ErrNotFound

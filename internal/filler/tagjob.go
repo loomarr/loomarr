@@ -150,6 +150,10 @@ type AutoFilePolicy struct {
 	// MinConfidence is the score a clip must reach. Bounded 50-95 by the registry; see
 	// MaxAutoFileConfidence for why the ceiling is load-bearing.
 	MinConfidence func() int
+	// SourceAllowed is the source-specific catalog-admission decision (§10 V57). nil preserves
+	// the historical globally-grounded policy for callers that do not have a source registry.
+	// Errors fail closed: degraded policy storage cannot publish an unattended clip.
+	SourceAllowed func(context.Context, string) (bool, error)
 }
 
 // WithAutoFile attaches the auto-filing policy. Absent, the tagger tags but never files —
@@ -160,7 +164,7 @@ func (t *Tagger) WithAutoFile(p AutoFilePolicy) *Tagger {
 	return t
 }
 
-// Allows reports whether a clip scoring `score` may be filed unattended.
+// AllowsSource reports whether a clip from `source` scoring `score` may be filed unattended.
 //
 // ⚠ The threshold is clamped to MaxAutoFileConfidence here as well as in the registry. The
 // registry validates what an operator TYPES; this guards what the code READS — an env pin, a
@@ -171,7 +175,18 @@ func (t *Tagger) WithAutoFile(p AutoFilePolicy) *Tagger {
 // SAME clamp rather than each carrying a copy. Two implementations of a safety ceiling is how one
 // of them ends up missing the guard — and the guard is the only thing keeping a fabricated era out
 // of a live channel.
-func (p *AutoFilePolicy) Allows(score int) bool {
+func (p *AutoFilePolicy) AllowsSource(ctx context.Context, source string, score int) bool {
+	if !p.allowsConfidence(score) {
+		return false
+	}
+	if p.SourceAllowed == nil {
+		return true
+	}
+	allowed, err := p.SourceAllowed(ctx, source)
+	return err == nil && allowed
+}
+
+func (p *AutoFilePolicy) allowsConfidence(score int) bool {
 	if p == nil || p.Enabled == nil || !p.Enabled() {
 		return false
 	}
@@ -186,7 +201,9 @@ func (p *AutoFilePolicy) Allows(score int) bool {
 }
 
 // shouldAutoFile defers to the policy so there is one clamp.
-func (t *Tagger) shouldAutoFile(score int) bool { return t.autoFile.Allows(score) }
+func (t *Tagger) shouldAutoFile(ctx context.Context, source string, score int) bool {
+	return t.autoFile.AllowsSource(ctx, source, score)
+}
 
 // TagResult reports what a tagging run did.
 type TagResult struct {
@@ -259,7 +276,7 @@ func (t *Tagger) Run(ctx context.Context) (TagResult, error) {
 		// moments: the pipeline files at the SCORE rung, after vision has had its turn, while this
 		// sweep has no later rung to defer to. Filing inside the tag rung would file a clip before
 		// the tier that exists for wordless spots had run.
-		if clip.Held && t.shouldAutoFile(out.Clip.Confidence) {
+		if clip.Held && t.shouldAutoFile(ctx, clip.Source, out.Clip.Confidence) {
 			if _, err := t.store.SetClipsHeld(ctx, []string{clip.Path}, false, true, t.now()); err != nil {
 				return res, err
 			}

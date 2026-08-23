@@ -496,6 +496,9 @@ type FillerSourceStore interface {
 	// the row keeps its licence and fetch history, and clips it already brought in stay in the
 	// catalog. It only withdraws the source from future searching and downloading.
 	SetFillerSourceEnabled(ctx context.Context, id string, enabled bool) error
+	// SetFillerSourceAutoAdmit changes only catalog admission (§10 V57). It does not authorize
+	// acquisition and cannot bypass grounding, matching, or per-channel exclusions.
+	SetFillerSourceAutoAdmit(ctx context.Context, id string, autoAdmit bool) error
 }
 
 // AiringStore records what actually went to air — written from playout only.
