@@ -2189,6 +2189,10 @@ components:
     FillerSourceDTO:
       additionalProperties: false
       properties:
+        admissionControllable:
+          type: boolean
+        autoAdmit:
+          type: boolean
         configured:
           type: boolean
         count:
@@ -2232,6 +2236,8 @@ components:
       required:
         - id
         - enabled
+        - autoAdmit
+        - admissionControllable
         - switchable
         - removable
         - kind
@@ -4747,6 +4753,8 @@ components:
           format: uri
           readOnly: true
           type: string
+        autoAdmit:
+          type: boolean
         enabled:
           type: boolean
         id:
@@ -4761,6 +4769,7 @@ components:
       required:
         - id
         - enabled
+        - autoAdmit
         - label
         - uri
       type: object
@@ -5215,6 +5224,8 @@ components:
           format: uri
           readOnly: true
           type: string
+        autoAdmit:
+          type: boolean
         enabled:
           type: boolean
         fetchEverySeconds:
@@ -5242,6 +5253,8 @@ components:
           format: uri
           readOnly: true
           type: string
+        autoAdmit:
+          type: boolean
         enabled:
           type: boolean
         fetchEverySeconds:
@@ -8487,7 +8500,7 @@ paths:
       tags:
         - filler
     patch:
-      description: "Admin only (§10 V35, extended V38c). Off means Loomarr stops scanning, searching and downloading from this source. ⚠ It does NOT remove clips already in the catalog, and it is not a delete: the source keeps its licence and fetch history, so switching it back on resumes rather than restarts. `folder` writes the drop-folder setting; any other id writes that source's own row. ⚠ `fetchEverySeconds` is three-state — omit or send null to inherit the global, 0 to never auto-fetch this source, or a positive number of seconds. Library sources became switchable in V38c, when §10 restored them to being scanned."
+      description: "Admin only (§10 V35, extended V38c/V57). Off means Loomarr stops scanning, searching and downloading from this source. ⚠ It does NOT remove clips already in the catalog, and it is not a delete: the source keeps its licence and fetch history, so switching it back on resumes rather than restarts. `autoAdmit` is separate: when true, only grounded clips that pass the global confidence gate may be filed without review. `folder` writes the drop-folder setting; any other id writes that source's own row. ⚠ `fetchEverySeconds` is three-state — omit or send null to inherit the global, 0 to never auto-fetch this source, or a positive number of seconds. Library sources became switchable in V38c, when §10 restored them to being scanned."
       operationId: set-filler-source-enabled
       parameters:
         - in: path
@@ -8514,7 +8527,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Switch a source on or off, and tune how often it is fetched
+      summary: Control source acquisition, admission, and fetch cadence
       tags:
         - filler
   /v1/filler/split:

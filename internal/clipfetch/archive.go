@@ -159,6 +159,17 @@ type searchDoc struct {
 	Date string `json:"date"`
 }
 
+type registeredSourceContextKey struct{}
+
+func withRegisteredSource(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, registeredSourceContextKey{}, id)
+}
+
+func registeredSourceFrom(ctx context.Context) string {
+	id, _ := ctx.Value(registeredSourceContextKey{}).(string)
+	return id
+}
+
 // walk resolves an Archive URL/id and downloads its video content. Returns
 // (fetched, skipped, error). A per-item failure inside a collection is logged by
 // the caller via the aggregate error; here a collection continues past a bad item.
@@ -248,7 +259,7 @@ func (c *archiveClient) downloadItem(ctx context.Context, id string, meta metada
 	// Nothing wrote this until V38c.8, so every auto-fetched clip landed `held=false` and went
 	// straight to air unreviewed. Caught by running auto-fetch against real collections and
 	// reading the rows back, not by any test.
-	fields[filler.SidecarLoomarrKey()] = filler.SidecarFetchedMark()
+	fields[filler.SidecarLoomarrKey()] = filler.SidecarFetchedMarkFor(registeredSourceFrom(ctx))
 	sidecar, _ := json.MarshalIndent(fields, "", "  ")
 	if err := c.fs.WriteFile(sidecarPath, sidecar); err != nil {
 		return 1, 0, fmt.Errorf("archive sidecar %s: %w", id, err)

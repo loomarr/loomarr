@@ -35,6 +35,14 @@ type fakePods struct {
 	sels          []filler.Selection // the selection each call received
 	ids           []string           // the pool to return; nil → ok=false (no filler)
 	duration      int64
+	fitChannels   map[string]bool
+}
+
+func (f *fakePods) FitForChannel(channelID string, _ filler.Selection, _ filler.Clip) filler.Fit {
+	if f.fitChannels == nil || f.fitChannels[channelID] {
+		return filler.Fit{}
+	}
+	return filler.Fit{Reason: filler.FitAudience}
 }
 
 // HasPool mirrors the real adapter: a pool exists when there are clips to play. The double
@@ -96,6 +104,27 @@ func TestReconcile_PodsBuildAndAttachFillerList(t *testing.T) {
 	// The program slot is untouched (filler never displaces a program).
 	if programCount(ch) != 1 {
 		t.Errorf("program count changed: %+v", ch.Desired)
+	}
+}
+
+func TestReconcileFillerChange_TargetsOnlyCompatibleChannels(t *testing.T) {
+	st := newStore(t)
+	tun := testkit.NewTunarr()
+	seedChannel(t, st, "fits", 5, entry("movie:tmdb:1", "A"))
+	seedChannel(t, st, "does-not-fit", 6, entry("movie:tmdb:1", "A"))
+	pods := &fakePods{ids: []string{"clip-a"}, fitChannels: map[string]bool{"fits": true}}
+	e := newEngine(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil).WithPods(pods)
+
+	if err := e.ReconcileFillerChange(context.Background(), []filler.Clip{{Hash: "clip-a", Kind: filler.Commercial}}); err != nil {
+		t.Fatal(err)
+	}
+	fit, _ := st.GetChannel(context.Background(), "fits")
+	notFit, _ := st.GetChannel(context.Background(), "does-not-fit")
+	if len(fit.Desired) == 0 {
+		t.Fatal("compatible channel was not reconciled")
+	}
+	if len(notFit.Desired) != 0 {
+		t.Fatalf("incompatible channel was reconciled: %+v", notFit.Desired)
 	}
 }
 

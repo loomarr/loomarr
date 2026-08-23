@@ -60,9 +60,32 @@ func buildTagger(st store.Store, set resolved, layout filler.Layout, log *slog.L
 		WithAutoFile(filler.AutoFilePolicy{
 			Enabled:       func() bool { return set.boolv("filler.autofile.enabled") },
 			MinConfidence: func() int { return set.intv("filler.autofile.min_confidence") },
+			SourceAllowed: fillerSourceAutoAdmit(st),
 		})
 
 	return provider, tagger
+}
+
+// fillerSourceAutoAdmit resolves the source-specific admission decision at run time (§10 V57).
+// The folder policy owns hand-copied, manual-ingest and pre-provenance clips. A named source that
+// cannot be resolved fails closed; silently treating an unknown id as trusted would turn broken
+// attribution into publication authority.
+func fillerSourceAutoAdmit(st store.FillerSourceStore) func(context.Context, string) (bool, error) {
+	return func(ctx context.Context, source string) (bool, error) {
+		if source == "" || source == "filler-dir" {
+			source = "folder"
+		}
+		sources, err := st.ListFillerSources(ctx)
+		if err != nil {
+			return false, err
+		}
+		for _, candidate := range sources {
+			if candidate.ID == source {
+				return candidate.AutoAdmit, nil
+			}
+		}
+		return false, nil
+	}
 }
 
 // buildSyncer constructs the catalog syncer and its scan sources (§10 V38c).
@@ -356,6 +379,7 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 			// install is degraded.
 			Enabled:       func() bool { return set.boolv("filler.autofile.enabled") },
 			MinConfidence: func() int { return set.intv("filler.autofile.min_confidence") },
+			SourceAllowed: fillerSourceAutoAdmit(st),
 		}, func() bool { return set.boolv("filler.reject.unidentified") }, time.Now),
 	}
 	if splitter != nil {

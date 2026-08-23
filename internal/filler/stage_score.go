@@ -65,7 +65,7 @@ func (s *ScoreStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		return StageResult{Verdict: VerdictReview, Note: "nothing could be grounded — this needs a person"}, nil
 	}
 
-	if c.Held && s.autoFile.Allows(score) {
+	if c.Held && s.autoFile.AllowsSource(ctx, c.Source, score) {
 		if s.store != nil {
 			if _, err := s.store.SetClipsHeld(ctx, []string{c.Path}, false, true, s.now().UTC()); err != nil {
 				return StageResult{}, err

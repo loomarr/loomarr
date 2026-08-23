@@ -73,6 +73,13 @@ type IntakeResult struct {
 // the sidecar records `fetchedBy` — the held/filed fork's signal. An operator dropping files in
 // runs the same code with `fetched=false`.
 func TakeIn(watchDir, clipDir string, fetched bool, log func(string, ...any)) (IntakeResult, error) {
+	return TakeInFrom(watchDir, clipDir, fetched, "", log)
+}
+
+// TakeInFrom preserves the registered source responsible for an unattended arrival. Registered
+// folder/library scans set fetched=true so the clip waits for the same grounded admission gate as
+// a remote download; a direct hand-copy still uses TakeIn(..., false, ...) as an operator decision.
+func TakeInFrom(watchDir, clipDir string, fetched bool, sourceID string, log func(string, ...any)) (IntakeResult, error) {
 	var res IntakeResult
 	if watchDir == "" || clipDir == "" {
 		return res, nil
@@ -164,7 +171,7 @@ func TakeIn(watchDir, clipDir string, fetched bool, log func(string, ...any)) (I
 		// to reach the tagger.
 		_ = moveIfPresent(sidecarPathFor(src), sidecarPathFor(dst))
 
-		if err := WriteSidecarTags(dst, SidecarTags{OriginalName: original}, fetched); err != nil && log != nil {
+		if err := WriteSidecarTags(dst, SidecarTags{OriginalName: original, SourceID: sourceID}, fetched); err != nil && log != nil {
 			// Not fatal: the clip is in place and catalogueable. A missing sidecar costs the
 			// filename signal, not the file.
 			log("filler intake: could not write a sidecar", "clip", dst, "err", err)

@@ -684,6 +684,7 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 	if err != nil {
 		return nil, err
 	}
+	s.reconcileChannelsForFillerChange(ctx, clip.Clip, c.Clip)
 	return &clipOutput{Body: clipToDTO(c, s.playsCounted(), s.clipArtworkResolver(ctx, []store.Clip{c}))}, nil
 }
 

@@ -68,6 +68,36 @@ func TestAutomaticFillerAdmission_ReconcilesActiveChannelsImmediately(t *testing
 	}
 }
 
+func TestFillerSourceAutoAdmit_UsesExactPolicyAndFailsClosed(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	ctx := t.Context()
+	trusted := store.NewFillerSource("archive:trusted", "archive", "trusted", "Trusted", time.Now().UTC())
+	review := store.NewFillerSource("archive:review", "archive", "review", "Review", time.Now().UTC())
+	for _, src := range []store.FillerSource{trusted, review} {
+		if err := st.UpsertFillerSource(ctx, src); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := st.SetFillerSourceAutoAdmit(ctx, review.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	allows := fillerSourceAutoAdmit(st)
+	for source, want := range map[string]bool{
+		trusted.ID: true,
+		review.ID:  false,
+		"missing":  false,
+		"":         true, // manual URL/legacy fetched clips resolve through the seeded folder policy
+	} {
+		got, err := allows(ctx, source)
+		if err != nil {
+			t.Fatalf("source %q: %v", source, err)
+		}
+		if got != want {
+			t.Errorf("source %q allowed = %v, want %v", source, got, want)
+		}
+	}
+}
+
 // Full internal-playout proof of the beta symptom: the first reconcile has no eligible pool and
 // therefore no break slots; filing the downloaded clip through the production adapter wakes the
 // real channel engine, whose persisted desired cycle immediately gains a filler transition.

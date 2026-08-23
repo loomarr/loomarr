@@ -113,7 +113,7 @@ const TunePanel = ({ filed, needsYou }: TunePanelProps) => {
       </div>
       <p className="text-[12.5px] text-muted-foreground leading-normal">
         {enabled
-          ? "Loomarr files high-confidence clips and sends uncertain ones to this queue."
+          ? "Loomarr files grounded, high-confidence clips from sources that allow automatic admission; everything else stays in this queue."
           : "Every incoming clip waits here for you to review."}
       </p>
 

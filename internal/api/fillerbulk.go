@@ -83,6 +83,7 @@ func (s *Server) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bu
 
 	out := &bulkResultOutput{}
 	now := time.Now().UTC()
+	var snapshots []filler.Clip
 
 	// Ground the requested tag set ONCE against the live taxonomy (§10 V45a) — an unknown slug 422s
 	// the whole batch before any clip is touched (all-or-nothing on a bad request, like the single
@@ -119,6 +120,7 @@ func (s *Server) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bu
 			out.Body.Missing++
 			continue
 		}
+		snapshots = append(snapshots, clip.Clip)
 		era, audience := clip.Era, clip.Audience
 		if in.Body.Era != nil {
 			era = *in.Body.Era
@@ -149,7 +151,13 @@ func (s *Server) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bu
 		if err := s.store.UpdateClipClassification(ctx, clip.Hash, era, string(audience), suggested, false, now); err != nil {
 			return nil, huma.Error500InternalServerError("retag clips", err)
 		}
+		if changed, err := s.store.GetClip(ctx, clip.Hash); err == nil {
+			snapshots = append(snapshots, changed.Clip)
+		}
 		out.Body.Updated++
+	}
+	if out.Body.Updated > 0 {
+		s.reconcileChannelsForFillerChange(ctx, snapshots...)
 	}
 	return out, nil
 }
@@ -171,12 +179,14 @@ func (s *Server) bulkRemoveFiller(ctx context.Context, in *bulkRemoveFillerInput
 	// store keeps its path key and the wire keeps its hash identity. A hash that no longer resolves (a
 	// clip removed by a re-sync between selection and apply) is dropped and reported as missing.
 	paths := make([]string, 0, len(in.Body.Hashes))
+	snapshots := make([]filler.Clip, 0, len(in.Body.Hashes))
 	for _, hash := range in.Body.Hashes {
 		clip, err := s.store.GetClip(ctx, hash)
 		if err != nil {
 			continue // stale hash — counted as missing below
 		}
 		paths = append(paths, clip.Path)
+		snapshots = append(snapshots, clip.Clip)
 	}
 
 	// The zero time is the restore value: `removed_at = 0` is what "present" means, so undo
@@ -207,6 +217,9 @@ func (s *Server) bulkRemoveFiller(ctx context.Context, in *bulkRemoveFillerInput
 	out.Body.Updated = n
 	// Missing = requested hashes that did not resolve OR did not match a removable row.
 	out.Body.Missing = len(in.Body.Hashes) - n
+	if n > 0 {
+		s.reconcileChannelsForFillerChange(ctx, snapshots...)
+	}
 	return out, nil
 }
 

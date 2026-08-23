@@ -207,8 +207,9 @@ func TestDrainScanSources_OneBadSourceDoesNotStopTheRest(t *testing.T) {
 		byName:  map[string][]LibraryClip{"Working": good},
 	}
 
+	clipDir := t.TempDir()
 	s := &Syncer{
-		dir:   t.TempDir(),
+		dir:   clipDir,
 		watch: watch,
 		scanSources: fakeScanSources{srcs: []ScanSource{
 			{ID: "lib:broken", Kind: "library", URI: "Broken"},
@@ -222,8 +223,17 @@ func TestDrainScanSources_OneBadSourceDoesNotStopTheRest(t *testing.T) {
 	if len(lister.seen) != 2 {
 		t.Fatalf("listed %v, want both libraries — the loop stopped at the failure", lister.seen)
 	}
-	if _, err := os.Stat(filepath.Join(watch, "reachable.mp4")); err != nil {
-		t.Errorf("the working library's clip never arrived: %v — one dead source cost the others", err)
+	var filed string
+	_ = filepath.WalkDir(clipDir, func(path string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && filepath.Ext(path) == ".mp4" {
+			filed = path
+		}
+		return nil
+	})
+	if filed == "" {
+		t.Error("the working library's clip never arrived — one dead source cost the others")
+	} else if tags, ok := ReadSidecarTags(filed); !ok || tags.SourceID != "lib:working" || !SidecarFetchedByUs(filed) {
+		t.Errorf("working library provenance = %+v/%v, want lib:working held-pipeline marker", tags, ok)
 	}
 }
 
@@ -258,6 +268,11 @@ func TestDrainScanSources_RegisteredFolderIsDrainedNotScannedInPlace(t *testing.
 	})
 	if len(filed) != 1 {
 		t.Fatalf("clip folder holds %v, want the one drained clip", filed)
+	}
+	if len(filed) == 1 {
+		if tags, ok := ReadSidecarTags(filed[0]); !ok || tags.SourceID != "folder:extra" || !SidecarFetchedByUs(filed[0]) {
+			t.Errorf("registered-folder provenance = %+v/%v, want folder:extra held-pipeline marker", tags, ok)
+		}
 	}
 	if left, _ := os.ReadDir(extra); len(left) != 0 {
 		t.Errorf("the registered folder still holds %d files — it was not drained", len(left))

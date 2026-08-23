@@ -78,7 +78,17 @@ const (
 // the sync cannot know who put a file in the watch folder. Only the downloader knows. Found by
 // running auto-fetch against real archive.org collections and seeing every clip land `held=false`.
 func SidecarFetchedMark() map[string]any {
-	return map[string]any{fetchedByKey: fetchedByUs}
+	return SidecarFetchedMarkFor("")
+}
+
+// SidecarFetchedMarkFor also carries the exact registered source policy responsible for the
+// acquisition (§10 V57). The empty-id form preserves the historical manual-ingest marker.
+func SidecarFetchedMarkFor(sourceID string) map[string]any {
+	mark := map[string]any{fetchedByKey: fetchedByUs}
+	if sourceID != "" {
+		mark["sourceId"] = sourceID
+	}
+	return mark
 }
 
 // SidecarLoomarrKey is the namespaced key `SidecarFetchedMark` belongs under. Exported for the
@@ -89,6 +99,8 @@ func SidecarLoomarrKey() string { return loomarrKey }
 // travels with it (§10 V38c). Reset the database, move the folder, or take migration 00033 and
 // the tagging returns on the next scan instead of being retyped.
 type SidecarTags struct {
+	// SourceID attributes an acquired clip to the registered source whose admission policy applies.
+	SourceID string `json:"sourceId,omitempty"`
 	// OriginalName is the filename the clip arrived with, captured BEFORE intake renamed it to
 	// its hash (§10 V38c).
 	//

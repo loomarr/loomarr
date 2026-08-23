@@ -43,6 +43,12 @@ type FillerSourceDTO struct {
 	// Enabled is the row's on/off switch (V35). ⚠ Off means Loomarr stops scanning, searching
 	// and downloading from this source — it does NOT remove clips already in the catalog.
 	Enabled bool `json:"enabled"`
+	// AutoAdmit is independent of Enabled: it permits only grounded, sufficiently confident clips
+	// from this source to leave Incoming automatically (§10 V57).
+	AutoAdmit bool `json:"autoAdmit"`
+	// AdmissionControllable is false for provider groups and legacy provenance rows that own no
+	// admission policy. The client must not infer this from kind or persistence details.
+	AdmissionControllable bool `json:"admissionControllable"`
 	// Switchable is false for a row with no work to stop — a switch there would dim a row and
 	// change nothing.
 	//
@@ -155,7 +161,8 @@ var providerGroups = []struct {
 type RemoteSourceDTO struct {
 	ID string `json:"id"`
 	// Enabled is this collection's own switch, stored as a column on its row (V35).
-	Enabled bool `json:"enabled"`
+	Enabled   bool `json:"enabled"`
+	AutoAdmit bool `json:"autoAdmit"`
 	// Label falls back to the URI when a source has none, so a row is never blank.
 	Label string `json:"label"`
 	URI   string `json:"uri"`
@@ -206,11 +213,12 @@ func (s *Server) registerFillerSources(api huma.API) {
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "set-filler-source-enabled", Method: http.MethodPatch, Path: "/v1/filler/sources/{id}",
-		Summary: "Switch a source on or off, and tune how often it is fetched",
-		Description: "Admin only (§10 V35, extended V38c). Off means Loomarr stops scanning, searching and " +
+		Summary: "Control source acquisition, admission, and fetch cadence",
+		Description: "Admin only (§10 V35, extended V38c/V57). Off means Loomarr stops scanning, searching and " +
 			"downloading from this source. ⚠ It does NOT remove clips already in the catalog, and it is not " +
 			"a delete: the source keeps its licence and fetch history, so switching it back on resumes rather " +
-			"than restarts. `folder` writes the drop-folder setting; any other id writes that source's own row. " +
+			"than restarts. `autoAdmit` is separate: when true, only grounded clips that pass the global " +
+			"confidence gate may be filed without review. `folder` writes the drop-folder setting; any other id writes that source's own row. " +
 			"⚠ `fetchEverySeconds` is three-state — omit or send null to inherit the global, 0 to never " +
 			"auto-fetch this source, or a positive number of seconds. Library sources became switchable in " +
 			"V38c, when §10 restored them to being scanned.",
@@ -381,7 +389,7 @@ func (s *Server) addFillerSource(ctx context.Context, in *addFillerSourceInput) 
 		return nil, huma.Error500InternalServerError("register filler source", err)
 	}
 	return &addFillerSourceOutput{Body: RemoteSourceDTO{
-		ID: src.ID, Label: src.Label, URI: src.URI, Enabled: src.Enabled,
+		ID: src.ID, Label: src.Label, URI: src.URI, Enabled: src.Enabled, AutoAdmit: src.AutoAdmit,
 	}}, nil
 }
 
@@ -389,6 +397,9 @@ type setFillerSourceEnabledInput struct {
 	ID   string `path:"id"`
 	Body struct {
 		Enabled bool `json:"enabled"`
+		// AutoAdmit is optional so changing acquisition or fetch cadence cannot overwrite source
+		// trust. When present it changes catalog admission only.
+		AutoAdmit *bool `json:"autoAdmit,omitempty"`
 		// FetchEverySeconds overrides `filler.fetch.every` for THIS source (§10 V38c).
 		//
 		// ⚠ **A POINTER, and the three states are all distinct and all reachable:**
@@ -411,8 +422,9 @@ type setFillerSourceEnabledInput struct {
 
 type setFillerSourceEnabledOutput struct {
 	Body struct {
-		ID      string `json:"id"`
-		Enabled bool   `json:"enabled"`
+		ID        string `json:"id"`
+		Enabled   bool   `json:"enabled"`
+		AutoAdmit *bool  `json:"autoAdmit,omitempty"`
 		// Echoed back so the UI renders what was STORED rather than what it hoped it sent — the
 		// difference matters here because null and 0 mean different things and a client that
 		// muddles them would show "never fetch" as "inherit".
@@ -438,6 +450,7 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 
 	out := &setFillerSourceEnabledOutput{}
 	out.Body.ID, out.Body.Enabled = in.ID, in.Body.Enabled
+	out.Body.AutoAdmit = in.Body.AutoAdmit
 	out.Body.FetchEverySeconds, out.Body.FetchMaxPerRun = in.Body.FetchEverySeconds, in.Body.FetchMaxPerRun
 
 	switch in.ID {
@@ -460,6 +473,14 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 				return nil, huma.Error500InternalServerError("save the drop-folder switch: "+r.Status, nil)
 			}
 		}
+		if in.Body.AutoAdmit != nil {
+			if s.store == nil {
+				return nil, huma.Error501NotImplemented("no store configured")
+			}
+			if err := s.store.SetFillerSourceAutoAdmit(ctx, "folder", *in.Body.AutoAdmit); err != nil {
+				return nil, huma.Error500InternalServerError("set folder auto-admission policy", err)
+			}
+		}
 		return out, nil
 	// ⚠ `case "remote"` was here and is gone (§10 V51c). It guarded the V37-retired container —
 	// an id nothing could produce for two phases, so it read as protection while protecting
@@ -480,6 +501,20 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 				return nil, errNotFound("Source not found", "That source isn't registered — it may have been removed.")
 			}
 			return nil, huma.Error500InternalServerError("set filler source enabled", err)
+		}
+		if in.Body.AutoAdmit != nil {
+			if err := s.store.SetFillerSourceAutoAdmit(ctx, in.ID, *in.Body.AutoAdmit); err != nil {
+				if errors.Is(err, store.ErrNotFound) {
+					return nil, errNotFound("Source not found", "That source isn't registered — it may have been removed.")
+				}
+				return nil, huma.Error500InternalServerError("set filler source auto-admission policy", err)
+			}
+		}
+		// An admission-only PATCH must not reset fetch tuning. The older enabled/fetch contract
+		// treats two nil values as "clear both overrides", so autoAdmit is the discriminator that
+		// makes this new independent control genuinely independent without changing that wire rule.
+		if in.Body.AutoAdmit != nil && in.Body.FetchEverySeconds == nil && in.Body.FetchMaxPerRun == nil {
+			return out, nil
 		}
 		// ⚠ The overrides are written UNCONDITIONALLY, including when both are nil — because nil
 		// means "clear this back to inheriting the global", which is a real action an operator
@@ -589,12 +624,16 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 	// the provider kinds are collected per-provider so the group node can be emitted above its
 	// own children in one pre-ordered pass.
 	var registered []FillerSourceDTO
+	folderAutoAdmit := true
 	byProvider := map[string][]FillerSourceDTO{}
 	if srcs, srcErr := s.store.ListFillerSources(ctx); srcErr != nil {
 		s.log.Warn("list filler sources", "err", srcErr)
 	} else {
 		for _, src := range srcs {
 			if src.Kind == "folder" && (!src.Configured() || src.URI == dir) {
+				if src.ID == "folder" {
+					folderAutoAdmit = src.AutoAdmit
+				}
 				continue // the config-backed drop-folder; rendered from configuration above
 			}
 			if src.Kind == "library" && !src.Configured() {
@@ -613,16 +652,18 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 				label = src.URI
 			}
 			row := FillerSourceDTO{
-				ID:         src.ID,
-				Kind:       src.Kind,
-				Enabled:    src.Enabled,
-				Switchable: true,
-				Removable:  true,
-				Target:     label,
-				URI:        src.URI,
-				Detail:     sourceDetail(src.Kind, src.URI),
-				Count:      bySource[src.Kind],
-				Configured: true,
+				ID:                    src.ID,
+				Kind:                  src.Kind,
+				Enabled:               src.Enabled,
+				AutoAdmit:             src.AutoAdmit,
+				AdmissionControllable: true,
+				Switchable:            true,
+				Removable:             true,
+				Target:                label,
+				URI:                   src.URI,
+				Detail:                sourceDetail(src.Kind, src.URI),
+				Count:                 bySource[src.ID],
+				Configured:            true,
 				// ⚠ SCANNED sources are refreshed by the sync, DOWNLOADED ones by ingest — and
 				// both are reachable through this row's "Fetch now", so both report fetchable.
 				// A scanned folder whose button did nothing would read as broken; the store's
@@ -635,12 +676,9 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 				// A folder or library is not searchable for the same reason.
 				Searchable: src.Kind == "archive" && s.filler != nil,
 			}
-			// ⚠ Counted by SOURCE ID for the addable kinds, not by kind. Two watched folders both
-			// count `bySource["folder"]`, so a kind-keyed count would show each of them the
-			// catalog's whole folder total — every row claiming every clip.
-			if src.Scannable() {
-				row.Count = bySource[src.ID]
-			}
+			// Exact source attribution (§10 V57), for downloaded and scanned sources alike. Older
+			// kind-only provenance remains in the folder/legacy aggregate rather than being guessed
+			// onto one of several registered rows.
 			if !src.LastFetchedAt.IsZero() {
 				row.LastFetchedAt = src.LastFetchedAt.UTC().Format(time.RFC3339)
 			}
@@ -670,10 +708,12 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 			// The folder's switch is a SETTING, because the folder itself is derived from one.
 			// `boolOn` semantics: anything other than an explicit false reads as on, so a
 			// settings service that cannot answer does not silently stop the scan.
-			Enabled:    folderEnabled,
-			Switchable: true,
-			Target:     orPlaceholder(dir, "not configured"),
-			Detail:     "watched directly — new files appear on the next pass",
+			Enabled:               folderEnabled,
+			AutoAdmit:             folderAutoAdmit,
+			AdmissionControllable: true,
+			Switchable:            true,
+			Target:                orPlaceholder(dir, "not configured"),
+			Detail:                "watched directly — new files appear on the next pass",
 			// filler-dir is what DirSource writes; the older tunarr-local value is counted
 			// here too because those clips also live in the folder — the provenance string
 			// changed with §9.1, the files did not.

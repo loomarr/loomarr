@@ -64,7 +64,7 @@ func (d *YtDlpDownloader) Download(ctx context.Context, src Source, dropDir stri
 	//
 	// ⚠ Best-effort: a stamp that fails must not fail the download. The clip is on disk and
 	// catalogueable; the cost is that it files without review rather than being lost.
-	stampFetched(dropDir)
+	stampFetched(dropDir, src.ID)
 	return 0, 0, nil
 }
 
@@ -74,7 +74,7 @@ func (d *YtDlpDownloader) Download(ctx context.Context, src Source, dropDir stri
 // template (`%(title)s [%(id)s]`) after sanitising, and guessing that name back is how the mark
 // would silently miss the files it was written for. Anything already stamped is left alone, so a
 // re-run is cheap and idempotent.
-func stampFetched(dropDir string) {
+func stampFetched(dropDir, sourceID string) {
 	entries, err := os.ReadDir(dropDir)
 	if err != nil {
 		return
@@ -97,7 +97,7 @@ func stampFetched(dropDir string) {
 		if _, done := doc[filler.SidecarLoomarrKey()]; done {
 			continue
 		}
-		doc[filler.SidecarLoomarrKey()] = filler.SidecarFetchedMark()
+		doc[filler.SidecarLoomarrKey()] = filler.SidecarFetchedMarkFor(sourceID)
 		out, err := json.MarshalIndent(doc, "", "  ")
 		if err != nil {
 			continue
@@ -129,7 +129,7 @@ func NewArchiveDownloader(preferOriginal bool) *ArchiveDownloader {
 
 // Download fetches an Archive.org source into dropDir (§10).
 func (d *ArchiveDownloader) Download(ctx context.Context, src Source, dropDir string) (int, int, error) {
-	return d.client.walk(ctx, src.URL, dropDir)
+	return d.client.walk(withRegisteredSource(ctx, src.ID), src.URL, dropDir)
 }
 
 var (

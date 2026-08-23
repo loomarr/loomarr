@@ -35,6 +35,9 @@ type RawClip struct {
 	// Path is the clip's LOCATION under the clip folder — `a3/f9/<hash>.mp4` for anything intake
 	// has filed. Data, not identity.
 	Path string
+	// Source is the registered source id restored from Loomarr's sidecar. Empty is a hand-copied
+	// or legacy clip and resolves through the folder source policy.
+	Source string
 	// TunarrProgramID is set only when the clip was ALSO seen through Tunarr's local
 	// source, so Tunarr-backed channels can still build filler-lists. Empty on an
 	// install with no Tunarr, which is a supported configuration, not a degraded one.
@@ -205,7 +208,7 @@ func (s *Syncer) drainScanSources(ctx context.Context) {
 				s.warnSource("filler: skipped a watched folder that overlaps the clip library", src, err)
 				continue
 			}
-			if res, err := TakeIn(sourceDir, s.dir, false, s.logAttrs); err != nil {
+			if res, err := TakeInFrom(sourceDir, s.dir, true, src.ID, s.logAttrs); err != nil {
 				s.warnSource("filler: could not drain a watched folder", src, err)
 			} else if s.log != nil && res.Taken > 0 {
 				s.log.Info("filler: filed clips from a watched folder",
@@ -227,6 +230,11 @@ func (s *Syncer) drainScanSources(ctx context.Context) {
 			if s.log != nil && res.Copied > 0 {
 				s.log.Info("filler: copied clips from a media-server library",
 					"source", src.ID, "library", src.URI, "copied", res.Copied)
+			}
+			if res.Copied > 0 {
+				if _, err := TakeInFrom(watch, s.dir, true, src.ID, s.logAttrs); err != nil {
+					s.warnSource("filler: could not file media-server library clips", src, err)
+				}
 			}
 		}
 	}
@@ -453,7 +461,10 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 			// New clip: seed era from the filename hint; leave audience/category
 			// untagged for AI/manual tagging.
 			merged.Era = rc.Era
-			merged.Source = "filler-dir"
+			merged.Source = strings.TrimSpace(rc.Source)
+			if merged.Source == "" {
+				merged.Source = "filler-dir"
+			}
 			// ⚠ The lifecycle fork (§10 V38), and it is decided ONLY for a clip this scan has
 			// never seen — an existing clip's `Held` is preserved above, so re-scanning can
 			// never re-hold something a human already filed.
