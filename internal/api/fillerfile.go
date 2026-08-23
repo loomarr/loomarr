@@ -119,6 +119,9 @@ func (s *Server) fileFillerClips(ctx context.Context, in *fileFillerInput) (*bul
 	// true — so the clip the operator just filed reappears on the next refetch and the tab's count
 	// never reaches zero.
 	s.settlePipeline(ctx, hashes, filler.DispositionFiled, filler.DispositionReview)
+	if updated > 0 {
+		s.reconcileChannelsForFillerChange(ctx)
+	}
 	out := &bulkResultOutput{}
 	out.Body.Updated = updated
 	out.Body.Missing = len(in.Body.Paths) - updated
@@ -148,8 +151,36 @@ func (s *Server) holdFillerClips(ctx context.Context, in *holdFillerInput) (*bul
 		hashes = append(hashes, c.Hash)
 	}
 	s.settlePipeline(ctx, hashes, filler.DispositionReview, filler.DispositionFiled)
+	if updated > 0 {
+		s.reconcileChannelsForFillerChange(ctx)
+	}
 	out := &bulkResultOutput{}
 	out.Body.Updated = updated
 	out.Body.Missing = len(in.Body.Paths) - updated
 	return out, nil
+}
+
+// reconcileChannelsForFillerChange is the latency path for §10 V56. The clip state is already
+// durable when this runs, so a reconcile failure must not turn a successful filing decision into
+// an HTTP failure. The ordinary channel sweep remains the crash-safe retry.
+func (s *Server) reconcileChannelsForFillerChange(ctx context.Context) {
+	if s.channels == nil || s.store == nil {
+		return
+	}
+	all, err := s.store.ListChannels(ctx)
+	if err != nil {
+		if s.log != nil {
+			s.log.Warn("filler catalog changed but active channels could not be listed; sweep will retry", "err", err)
+		}
+		return
+	}
+	for _, ch := range all {
+		if !ch.Status.Reconcilable() {
+			continue
+		}
+		if err := s.channels.Reconcile(ctx, ch.ID); err != nil && s.log != nil {
+			s.log.Warn("filler catalog changed but channel reconcile failed; sweep will retry",
+				"channel", ch.ID, "err", err)
+		}
+	}
 }

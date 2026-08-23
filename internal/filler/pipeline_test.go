@@ -875,6 +875,28 @@ func TestPipeline_EnrolsCataloguedClips(t *testing.T) {
 	}
 }
 
+// Download completion needs the cheap half of RunOnce: make the clip visible on the durable
+// conveyor without unexpectedly spending a transcode/Whisper budget on an unrelated backlog.
+func TestPipeline_EnrolMissingDoesNotRunAStage(t *testing.T) {
+	st := newPipeMemStore()
+	st.put(filler.StoreClip{Clip: filler.Clip{Hash: "c1", Path: "a/b/c1.mp4"}})
+	stages := allStages()
+
+	n, err := newPipe(st, asSlice(stages), filler.DefaultBudget()).EnrolMissing(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("enrolled %d, want 1", n)
+	}
+	if stages[filler.StageProbe].runs != 0 {
+		t.Fatalf("probe ran %d times; enrol-only nudge must not execute stages", stages[filler.StageProbe].runs)
+	}
+	if row := st.rows["c1"]; row.Stage != filler.StageProbe || row.Status != filler.StatusQueued {
+		t.Fatalf("pipeline row = %+v, want probe/queued", row)
+	}
+}
+
 // resetSchedule clears the backoff so a test can drive consecutive attempts against a frozen clock.
 func resetSchedule(r filler.ClipPipeline) filler.ClipPipeline {
 	r.NextRun = time.Time{}

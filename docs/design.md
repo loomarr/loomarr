@@ -2386,6 +2386,15 @@ uses. The UI names the bound and its current/maximum values. This makes "nothing
 answerable state even after restart, and makes the warning disappear as soon as curation or a
 settings change creates room.
 
+**`Fetch now` runs acquisition as well as discovery (V56).** A source row invokes one ordinary
+bounded fetch pass for that selected source and then scans the configured local sources. It is not
+an alias for the local catalog scan: that old wiring returned success on an Archive or YouTube row
+while queueing no download at all. Nor is it a global button repeated on every row: clicking the
+drop folder cannot unexpectedly start three remote collections. The deliberate admin action may
+run while unattended timing is off, but it retains the source's enabled switch, deduplication and
+disk/catalog/per-source ceilings, so it is not an unbounded bypass. Omitting the source id keeps the
+former all-source endpoint behavior for older clients.
+
 ⚠ **Archive.org collections are the case the limits exist for.** A collection is thousands of
 items; `max_per_run` is what stops "add a source" from meaning "download 8,000 files tonight".
 A bulk backfill remains the **pull**'s job, where a human sees the plan and approves it.
@@ -3396,6 +3405,14 @@ and a hand-dropped file all take one route:
 4. **Write the sidecar** beside it, carrying tags and provenance.
 5. **Catalogue** the clip.
 
+**A completed download closes that whole loop (V56).** The ingest job does not stop after writing
+the watch folder and wait up to fifteen minutes for an unrelated scan. Before its terminal success
+event, it runs the ordinary catalog sync and nudges the durable ingest pipeline once, so the new
+held clips are already visible in Incoming. The terminal event therefore invalidates the filler
+status, Incoming queue and catalog reads. A sync failure is reported as an ingest failure even when
+the bytes downloaded successfully: "on disk but invisible to Loomarr" is not a successful
+acquisition from the operator's point of view, and the scheduled sync/pipeline remain the retry.
+
 ⚠ **The original filename is preserved IN THE SIDECAR before the rename**, and this is
 load-bearing rather than sentimental. §10's grounding rule accepts an era only when the year
 appears literally in the clip's text signals — and the filename is one of them
@@ -4399,6 +4416,15 @@ The scheduler assembles realistic **ad pods**, not single random clips:
 - **Per-channel filler selection (`policy.filler`, the `FillerSelection`).** A channel narrows its own break content — the era/audience/category/kinds it draws from, plus specific clips to always include or never use — rather than every channel drawing the same global pool. It lives on `ChannelPolicy` (persisted in `policy_json`, no new column; edited on the channel page like the other programming rules). The shape: `era` (a year range, **both bounds honoured — V51f**, with THREE states because "unset" was never "any": **unset = INHERIT `policy.scope.era`**, applied live at every derivation rather than stamped once at create, so a 90s channel gets 90s ads out of the box and keeps getting them when its scope changes; **`{from: 0, to: 0}` = explicitly ANY era**, the escape hatch that did not exist before V51f; a set range = that window, matched with both ends. ⚠ **Before V51f only `from` was ever read** — `filler.Selection.Era` and `filler.Window.Era` were a single `int`, so 1990–1999 behaved identically to 1990–2035 while the UI rendered, canonicalised and inverted-range-validated a "To year" nobody consumed — and because the scope default was re-applied on every derivation rather than at create, clearing the field silently re-inherited, making "any era" unreachable on any channel that had a programming era. The presence-as-opt-in third state is the same pattern `AutoCurate` uses, for the same reason), `audience` (unset = any), `categories` (empty = any; a subset of the closed category set), `kinds` (empty = the default commercial+bumper+station_id; else the chosen subset), `pinned` (clip ids always included), `excluded` (clip ids never used). Every field is optional and an empty selection == the whole catalog (the prior behavior), so this is additive.
 - **How the selection reaches assembly.** The theme filter is applied as a **catalog pre-filter** (`[]Clip → []Clip` by category + kinds) plus `Window.Era`/`Window.Audience` from the selection — replacing the previously **hardcoded** `PodEra→0` and empty audience. `excluded` ids are pre-seeded into the assembler's no-repeat set (`used`), which already excludes at every pick site, so exclusion needs no ladder change. `pinned` ids are placed as a **top-priority pool** at the front of the commercial fill before the ladder takes the rest (the one genuinely new assembly step, since the ladder ranks pools and has no force-include). If a clip is both pinned and excluded, **exclude wins** (the safe default). *(Historical note: the assembler once passed `general` as the channel audience under a comment claiming it "matches broadly" — the opposite of the filter's actual behavior — so every channel's filler-list held only bumpers + the fallback card, §10's central feature silently doing nothing; found by building the §12 pod preview. The per-channel selection above is what finally wires real era/audience through.)*
 - **Density:** target break length and breaks-per-hour; min/max filler duration. `FILLER_BREAK_DURATION` defaults to 5m and may be overridden per channel as `policy.breakDuration`; it hot-applies on the next reconcile. The minimum is 30s because Tunarr silently clamps smaller flex gaps to 30s, which would otherwise make Loomarr's preview and guide disagree with playout. Zero never means off here — `policy.breaksPerHour = 0` is the one off switch. `FILLER_POD_MAX` is a preferred clip-count ceiling, but break length wins: the adapter estimates the clips required from the median duration of the tightest matching pool and raises the limit when necessary, so a 5m target is not truncated to four 30s adverts. The assembled pool window is `max(10m, resolved break length)` so long custom breaks are not clipped by the pool's former fixed size. **Break placement (the scheduler's job, §9):** the scheduler interleaves break slots between program slots at `FILLER_BREAKS_PER_HOUR` — a break roughly every `60 / breaks-per-hour` minutes of accumulated program runtime (default 4/hr ⇒ ~every 15 min). Because Tunarr only inserts filler at **program boundaries** (below), breaks snap to the nearest boundary: walk the ordered program slots summing durations, and when the running total crosses the next break threshold, emit a `SlotFiller` break *after* the current program and reset the accumulator. This is duration-aware — a 90-min movie gets several breaks, a 22-min sitcom about one — and the reconcile's `PodAdapter.Assemble` bridge calls the pure `filler.Assemble` over the matched catalog. **Breaks are only interleaved when a filler pool actually exists** (the reconcile builds the pool up front and passes `BreaksPerHour 0` when it's empty / no `FILLER_DIR` / no `PodFiller`): inserting break gaps with no clips to fill them leaves empty flex that Tunarr renders as large **channel-named blocks** in the guide — a promise of commercials it can't keep. No pool ⇒ programs play **back-to-back** (still "never dead air"). Self-healing: once clips land, the next reconcile sees a pool and re-inserts breaks. Deterministic: the same lineup + seed yields the same break positions.
+
+  **Eligibility changes wake reconciliation immediately (V56).** Filing or holding a clip changes
+  whether a real pool exists; waiting for the ordinary ten-minute channel sweep made a successful
+  review look ineffective and could leave an internal stream on a no-break cycle after filler was
+  ready. After the clip state is durably committed, Loomarr best-effort reconciles every active
+  channel. Paused and detached channels remain explicit opt-outs. A failure never rolls back the
+  filing decision: the durable sweep remains the crash-safe retry, while the immediate pass is the
+  latency path. The same hook is used by human filing and confidence-gated automatic filing, so
+  admission has one scheduling consequence regardless of who made the decision.
 - **Repeat avoidance:** don't repeat a clip within a session/window.
 - **Fallback ladder:** exact-era match → widen era (a decade either side of the range) → any appropriate-audience clip → **clips whose audience could not be grounded** → channel bumper card (Tunarr's flex fallback). Never dead air.
 

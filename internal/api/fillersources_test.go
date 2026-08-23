@@ -282,8 +282,37 @@ func TestFillerSources_RequiresAdmin(t *testing.T) {
 // With no filler service wired, Fetch now reports 501 rather than pretending to work.
 func TestFillerSources_FetchWithoutAServiceIs501(t *testing.T) {
 	srv := serverWithClips(t, nil, nil)
-	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch", adminToken, "")
+	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
 	if resp.StatusCode != http.StatusNotImplemented {
 		t.Errorf("fetch with no filler service → %d, want 501", resp.StatusCode)
+	}
+}
+
+// The beta's per-source "Fetch now" only ran the local catalog scan. For remote Archive/YouTube
+// rows that meant a successful 200 with no download ever queued — exactly the reported symptom.
+func TestFillerSources_FetchNowRunsAcquisitionBeforeCatalogSync(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("fetch → %d, want 200", resp.StatusCode)
+	}
+	if ff.fetches != 1 || ff.syncs != 1 {
+		t.Fatalf("fetches/syncs = %d/%d, want 1/1 so remote acquisition and local catalog refresh both run", ff.fetches, ff.syncs)
+	}
+	if len(ff.fetchedSourceIDs) != 1 || ff.fetchedSourceIDs[0] != "archive:classic" {
+		t.Fatalf("fetched source ids = %v, want only the selected row", ff.fetchedSourceIDs)
+	}
+}
+
+func TestFillerSources_FetchNowReportsUnavailableIngestTooling(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+	ff.fetchErr = api.ErrIngestUnavailable
+
+	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("fetch without ingest tooling = %d, want 409", resp.StatusCode)
+	}
+	if ff.syncs != 0 {
+		t.Fatalf("catalog synced %d times after acquisition failed, want 0", ff.syncs)
 	}
 }

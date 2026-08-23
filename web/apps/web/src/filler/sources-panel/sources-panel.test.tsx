@@ -9,6 +9,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 import { me } from "@/test/fixtures/users";
@@ -48,6 +49,7 @@ const stubSources = () => {
   const adds: unknown[] = [];
   const enables: { id: string; body: unknown }[] = [];
   const discoveries: URL[] = [];
+  const fetches: URL[] = [];
   server.use(
     getMeMockHandler(me({ name: "Admin" })),
     getAddFillerSourceMockHandler(async ({ request }) => {
@@ -64,8 +66,12 @@ const stubSources = () => {
       discoveries.push(new URL(request.url));
       return { items: [], total: 0, licenceNote: "Check licences." };
     }),
+    http.post("*/v1/filler/sources/fetch", ({ request }) => {
+      fetches.push(new URL(request.url));
+      return HttpResponse.json({ total: 0, added: 0, updated: 0, pruned: 0 });
+    }),
   );
-  return { adds, enables, discoveries };
+  return { adds, enables, discoveries, fetches };
 };
 
 const source = (over: Partial<FillerSourceDTO> & Pick<FillerSourceDTO, "kind">): FillerSourceDTO => ({
@@ -150,13 +156,23 @@ describe("SourcesPanel", () => {
     expect(screen.queryByRole("button", { name: /^search vintage_ads$/i })).not.toBeInTheDocument();
   });
 
-  // Registering records that a source EXISTS and is allowed. Downloading is the pull's approval
-  // gate or a deliberate per-result queue — an operator who expects "add" to start fetching would
-  // otherwise read the silence as a failure.
-  it("says that adding a source downloads nothing", async () => {
+  // Scheduled fetching has been live since V38b. Saying "downloads nothing" made a successful
+  // beta fetch look broken when its held clips correctly landed in Incoming instead of Catalog.
+  it("says that enabled remote sources download into Incoming on their schedule", async () => {
     stubSources();
     renderPanel();
-    expect(await screen.findByText(/downloads nothing/i)).toBeInTheDocument();
+    expect(await screen.findByText(/checked on their schedule/i)).toBeInTheDocument();
+    expect(screen.getByText(/download into Incoming for review/i)).toBeInTheDocument();
+  });
+
+  it("fetches only the source row the operator selected", async () => {
+    const { fetches } = stubSources();
+    renderPanel([source({ kind: "archive", id: "archive:classic", target: "Classic TV" })]);
+
+    await userEvent.click(screen.getByRole("button", { name: /fetch now from classic tv/i }));
+
+    await waitFor(() => expect(fetches).toHaveLength(1));
+    expect(fetches[0]?.searchParams.get("id")).toBe("archive:classic");
   });
 });
 

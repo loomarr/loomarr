@@ -16,6 +16,12 @@ type recordingSources struct {
 	err      error
 }
 
+type successfulClipIngestor struct{}
+
+func (successfulClipIngestor) Run(context.Context, []clipfetch.Source) clipfetch.Result {
+	return clipfetch.Result{Fetched: 1}
+}
+
 func (r *recordingSources) ListFillerSources(context.Context) ([]store.FillerSource, error) {
 	return r.upserted, nil
 }
@@ -193,5 +199,29 @@ func TestIngestAsked_RemembersWhatTheOperatorNamed(t *testing.T) {
 	}
 	if rec.upserted[0].ID != "classic_tv_commercials" {
 		t.Errorf("registered %q, want the collection identifier", rec.upserted[0].ID)
+	}
+}
+
+// A successful downloader result was formerly the end of the job: bytes stayed in _watch until
+// the next 15-minute scan, so Catalog and Incoming both looked unchanged. The completion hook is
+// now part of success and closes that loop before the terminal event is emitted.
+func TestIngest_SuccessCataloguesTheDownloadedFilesImmediately(t *testing.T) {
+	prepared := make(chan struct{}, 1)
+	a := fillerServiceAdapter{
+		fetcher: successfulClipIngestor{},
+		newID:   func() string { return "job-1" },
+		afterIngest: func(context.Context) error {
+			prepared <- struct{}{}
+			return nil
+		},
+	}
+
+	if _, err := a.Ingest(t.Context(), []string{"https://archive.org/details/clip"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-prepared:
+	case <-time.After(time.Second):
+		t.Fatal("download completed but catalog sync/pipeline nudge never ran")
 	}
 }

@@ -77,7 +77,7 @@ func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerSe
 	}
 	a := fillerServiceAdapter{
 		bus: bus, newID: func() string { return "job-1" }, timeout: time.Minute,
-		splitClips: fillerSplitStoreAdapter{st},
+		splitClips: fillerSplitStoreAdapter{st: st},
 	}
 	if withSplitter {
 		drop := t.TempDir()
@@ -92,7 +92,7 @@ func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerSe
 			{StartMs: 30_000, EndMs: 61_000, Title: "Lego"},
 		}}
 		n := 0
-		a.splitter = filler.NewSplitter(fillerSplitStoreAdapter{st}, tools, nil, drop,
+		a.splitter = filler.NewSplitter(fillerSplitStoreAdapter{st: st}, tools, nil, drop,
 			func() time.Duration { return 10 * time.Second },
 			func() string { n++; return fmt.Sprintf("sp_%d", n) }, time.Now, nil)
 	}
@@ -285,7 +285,7 @@ func TestConfirmSplit_WritesEverySegmentAsItsOwnRow(t *testing.T) {
 	}
 
 	n := 0
-	sp := filler.NewSplitter(fillerSplitStoreAdapter{st}, splitFakeTools{chapters: []filler.Chapter{
+	sp := filler.NewSplitter(fillerSplitStoreAdapter{st: st}, splitFakeTools{chapters: []filler.Chapter{
 		{StartMs: 0, EndMs: 30_000, Title: "McDonald's"},
 		{StartMs: 30_000, EndMs: 61_000, Title: "Lego"},
 	}}, nil, drop, func() time.Duration { return 10 * time.Second },

@@ -2,6 +2,7 @@ package filler_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,11 +12,13 @@ import (
 )
 
 type fetchStub struct {
-	sources []filler.FetchSource
-	paths   []string
-	offers  []filler.DiscoveredRef
-	queued  []string
-	calls   int
+	sources   []filler.FetchSource
+	paths     []string
+	offers    []filler.DiscoveredRef
+	queued    []string
+	calls     int
+	listed    []string
+	ingestErr error
 	// stamped records which sources were marked fetched, and when.
 	stamped map[string]time.Time
 }
@@ -24,11 +27,15 @@ func (f *fetchStub) ListFetchSources(context.Context) ([]filler.FetchSource, err
 	return f.sources, nil
 }
 func (f *fetchStub) CatalogPaths(context.Context) ([]string, error) { return f.paths, nil }
-func (f *fetchStub) DiscoverCollection(_ context.Context, _ string, _ int) ([]filler.DiscoveredRef, int, error) {
+func (f *fetchStub) DiscoverCollection(_ context.Context, ref string, _ int) ([]filler.DiscoveredRef, int, error) {
 	f.calls++
+	f.listed = append(f.listed, ref)
 	return f.offers, len(f.offers), nil
 }
 func (f *fetchStub) Ingest(_ context.Context, urls []string) (string, error) {
+	if f.ingestErr != nil {
+		return "", f.ingestErr
+	}
 	f.queued = append(f.queued, urls...)
 	return "job-1", nil
 }
@@ -320,5 +327,66 @@ func TestFetch_DisabledDoesNothing(t *testing.T) {
 	if res.SourcesPolled != 0 || len(stub.queued) != 0 || stub.calls != 0 {
 		t.Errorf("disabled auto-fetch still ran: polled=%d queued=%v calls=%d",
 			res.SourcesPolled, stub.queued, stub.calls)
+	}
+}
+
+// A row-level Fetch now is a deliberate action, not the global crawler. It must fetch exactly the
+// selected enabled source, even when unattended timing is off, while retaining the ordinary cap.
+func TestFetch_RunSourceFetchesOnlyTheSelectedSource(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{
+			{ID: "first", Kind: "archive", URI: "one", Enabled: true},
+			{ID: "selected", Kind: "archive", URI: "two", Enabled: true, NeverFetch: true},
+		},
+		offers: refs("a", "b", "c"),
+	}
+	f := newFetcher(t, stub, limits(2, 2000, 20)).WithEnabled(func() bool { return false })
+	res, err := f.RunSource(context.Background(), "selected")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.SourcesPolled != 1 || res.Queued != 2 {
+		t.Fatalf("result = %+v, want one selected source and its bounded two items", res)
+	}
+	if len(stub.listed) != 1 || stub.listed[0] != "two" {
+		t.Fatalf("listed = %v, want only the selected source", stub.listed)
+	}
+	if _, ok := stub.stamped["first"]; ok {
+		t.Fatal("the unselected source was stamped as fetched")
+	}
+}
+
+// Scheduled fetching is resilient across independently failing sources, but Fetch now is a direct
+// admin request and must not return success when its selected source could not queue anything.
+func TestFetch_RunSourceReportsQueueFailure(t *testing.T) {
+	want := errors.New("ingest tooling unavailable")
+	stub := &fetchStub{
+		sources:   []filler.FetchSource{{ID: "selected", Kind: "archive", URI: "two", Enabled: true}},
+		offers:    refs("a"),
+		ingestErr: want,
+	}
+
+	_, err := newFetcher(t, stub, limits(2, 2000, 20)).RunSource(context.Background(), "selected")
+	if !errors.Is(err, want) {
+		t.Fatalf("RunSource error = %v, want wrapped queue failure", err)
+	}
+}
+
+func TestFetch_ScheduledRunKeepsQueueFailureBestEffort(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{
+			{ID: "first", Kind: "archive", URI: "one", Enabled: true},
+			{ID: "second", Kind: "archive", URI: "two", Enabled: true},
+		},
+		offers:    refs("a"),
+		ingestErr: errors.New("one source cannot queue"),
+	}
+
+	res, err := newFetcher(t, stub, limits(2, 2000, 20)).Run(context.Background())
+	if err != nil {
+		t.Fatalf("scheduled Run error = %v, want per-source failure isolated", err)
+	}
+	if res.SourcesPolled != 2 || res.Queued != 0 {
+		t.Fatalf("scheduled result = %+v, want both sources attempted and none queued", res)
 	}
 }

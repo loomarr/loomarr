@@ -192,8 +192,19 @@ func (f *Fetcher) Status(ctx context.Context) (FetchStatus, error) {
 
 // Run polls every enabled source once.
 func (f *Fetcher) Run(ctx context.Context) (FetchResult, error) {
+	return f.run(ctx, "", true)
+}
+
+// RunSource performs one deliberate, bounded pass for a single registered source. The operator's
+// click is not an unattended schedule, so it ignores the global/per-source timing opt-outs while
+// retaining the source's enabled switch and every disk/catalog/per-run safety ceiling.
+func (f *Fetcher) RunSource(ctx context.Context, sourceID string) (FetchResult, error) {
+	return f.run(ctx, sourceID, false)
+}
+
+func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (FetchResult, error) {
 	var res FetchResult
-	if f.enabled != nil && !f.enabled() {
+	if scheduled && f.enabled != nil && !f.enabled() {
 		return res, nil
 	}
 
@@ -246,7 +257,10 @@ func (f *Fetcher) Run(ctx context.Context) (FetchResult, error) {
 		// source can be on — searched, its clips counted, its switch showing "on" — while opting
 		// out of UNATTENDED fetching. Collapsing the two would make "stop auto-downloading from
 		// this one" require switching it off entirely, which also stops search.
-		if !src.Enabled || src.NeverFetch || src.URI == "" || src.Kind == "folder" || src.Kind == "library" {
+		if sourceID != "" && src.ID != sourceID {
+			continue
+		}
+		if !src.Enabled || (scheduled && src.NeverFetch) || src.URI == "" || src.Kind == "folder" || src.Kind == "library" {
 			continue
 		}
 		res.SourcesPolled++
@@ -263,6 +277,9 @@ func (f *Fetcher) Run(ctx context.Context) (FetchResult, error) {
 		// forever while the rest of the collection sat unfetched.
 		items, _, derr := f.disc.DiscoverCollection(ctx, src.URI, perRun*4)
 		if derr != nil {
+			if !scheduled {
+				return res, fmt.Errorf("list source %q: %w", src.ID, derr)
+			}
 			f.log.Warn("filler auto-fetch: source could not be listed", "source", src.ID, "err", derr)
 			continue
 		}
@@ -284,6 +301,9 @@ func (f *Fetcher) Run(ctx context.Context) (FetchResult, error) {
 			continue
 		}
 		if _, ierr := f.ingest.Ingest(ctx, urls); ierr != nil {
+			if !scheduled {
+				return res, fmt.Errorf("queue source %q: %w", src.ID, ierr)
+			}
 			f.log.Warn("filler auto-fetch: queueing failed", "source", src.ID, "err", ierr)
 			continue
 		}

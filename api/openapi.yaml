@@ -8099,7 +8099,7 @@ paths:
       tags:
         - filler
     post:
-      description: Admin only (§10 V35). Registers an archive.org collection so pulls and searches can use it. Registering DOWNLOADS NOTHING — it records that this source exists and is allowed; fetching is the ingest path, and a composed multi-source pull goes through the approval gate.
+      description: Admin only (§10 V35/V38b). Registers a source for search, pulls, and bounded scheduled acquisition. Registration itself only records the source; enabled remote sources are downloaded on their configured schedule, while composed multi-source pulls retain their approval gate.
       operationId: add-filler-source
       requestBody:
         content:
@@ -8125,8 +8125,16 @@ paths:
         - filler
   /v1/filler/sources/fetch:
     post:
-      description: Admin only. Runs the same sync as POST /v1/filler/sync — the Sources tab's per-row `Fetch now`. Separate operation id so the UI's affordance is nameable, same work.
+      description: Admin only (§10 V56). Runs one ordinary bounded acquisition pass for the selected source, then scans configured local sources. Omit id for the backward-compatible all-source pass. It retains enable checks, deduplication and safety limits; this is not an unbounded bypass.
       operationId: fetch-filler-source
+      parameters:
+        - description: Registered source id to refresh; omit to run all enabled sources
+          explode: false
+          in: query
+          name: id
+          schema:
+            description: Registered source id to refresh; omit to run all enabled sources
+            type: string
       responses:
         "200":
           content:
@@ -8140,7 +8148,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Re-scan the catalog now
+      summary: Fetch and scan filler now
       tags:
         - filler
   /v1/filler/sources/{id}:

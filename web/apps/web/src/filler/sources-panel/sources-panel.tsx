@@ -71,9 +71,8 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
   // searching and downloading; clips already in the catalog are untouched, which is why nothing
   // here invalidates the clip list.
   const [togglingSource, setTogglingSource] = useState<string>();
-  // Which source's "Fetch now" is running. ⚠ Tracked here rather than derived from the mutation:
-  // `POST /v1/filler/sources/fetch` re-runs the whole sync and does not take a source, so the
-  // only record of WHICH row the operator clicked is the one we keep.
+  // Which source's "Fetch now" is running. The request is row-scoped, and this local state keeps
+  // the corresponding card busy while the bounded acquisition and catalog scan complete.
   const [fetchingSource, setFetchingSource] = useState<string>();
   const toggleSource = fillerApi.useSetFillerSourceEnabled({
     mutation: {
@@ -97,7 +96,7 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
     mutation: {
       onSuccess: () => {
         setNewSourceURI("");
-        toast.success("Source added", { description: "Nothing is downloading yet." });
+        toast.success("Source added", { description: "Loomarr will check it on its download schedule." });
         void queryClient.invalidateQueries({ queryKey: fillerApi.getListFillerSourcesQueryKey() });
       },
     },
@@ -204,7 +203,7 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
         // the only fetchable row; a visible lie now that V38c allows many.
         onFetch={(id) => {
           setFetchingSource(id);
-          fetchSource.mutate();
+          fetchSource.mutate({ params: { id } });
         }}
         fetching={fetchSource.isPending ? fetchingSource : null}
         onToggleEnabled={(id, enabled) => {
@@ -346,13 +345,12 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
             </Button>
           </form>
           {addSource.error != null && <ErrorState error={addSource.error} />}
-          {/* ⚠ Says what adding does NOT do. Registering a source records that it exists and
-              is allowed; downloading is the pull's approval gate or a deliberate per-result
-              queue. An operator who expects "add" to start fetching would otherwise read the
-              silence as a failure. */}
+          {/* Scheduled source polling is real work (§10 V38b), while every arrival remains held
+              until the admission gate files it. Name both halves so a successful fetch does not
+              look broken merely because Catalog correctly excludes its Incoming clips. */}
           <Caption>
-            Adding a source downloads nothing — it just lets Loomarr use it. Clips arrive when you queue one
-            or approve a pull.
+            Enabled remote sources are checked on their schedule. New clips download into Incoming for review;
+            queue one or approve a pull when you want a deliberate batch sooner.
           </Caption>
         </div>
       )}

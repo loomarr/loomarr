@@ -334,6 +334,10 @@ type SettingResult struct {
 type FillerService interface {
 	// Sync reconciles the clip catalog from the media server's filler library.
 	Sync(ctx context.Context) (total, added, updated, pruned int, err error)
+	// Fetch runs one bounded acquisition pass over enabled remote sources. It is the same
+	// operation the scheduled filler-fetch job runs; the Sources page uses it to run that policy
+	// now rather than merely scanning local files and claiming a remote fetch succeeded.
+	Fetch(ctx context.Context, sourceID string) (filler.FetchResult, error)
 	// Tag runs AI classification over untagged commercials.
 	Tag(ctx context.Context) (considered, tagged, partial, skipped int, err error)
 	// Ingest downloads clips from the given source URLs into the drop-folder, returning

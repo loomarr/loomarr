@@ -23,8 +23,9 @@ import (
 
 // fakeFiller records sync/tag calls.
 type fakeFiller struct {
-	syncs, tags int
-	rewinds     []struct {
+	syncs, tags, fetches int
+	fetchedSourceIDs     []string
+	rewinds              []struct {
 		hash  string
 		from  filler.StageID
 		force bool
@@ -59,10 +60,20 @@ type fakeFiller struct {
 	confirmNotFound  bool
 	confirmInvalid   bool
 	fetchStatus      filler.FetchStatus
+	fetchErr         error
 }
 
 func (f *fakeFiller) FetchStatus(context.Context) (filler.FetchStatus, error) {
 	return f.fetchStatus, nil
+}
+
+func (f *fakeFiller) Fetch(_ context.Context, sourceID string) (filler.FetchResult, error) {
+	f.fetches++
+	f.fetchedSourceIDs = append(f.fetchedSourceIDs, sourceID)
+	if f.fetchErr != nil {
+		return filler.FetchResult{}, f.fetchErr
+	}
+	return filler.FetchResult{SourcesPolled: 1, Queued: 2}, nil
 }
 
 func (f *fakeFiller) Rewind(_ context.Context, hash string, from filler.StageID, force bool) error {

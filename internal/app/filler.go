@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -245,8 +246,44 @@ func (a fillerLibraryAdapter) ListLibraryClips(ctx context.Context, name string)
 	return out, nil
 }
 
+// fillerChannelWake is the shared post-commit latency path for every non-HTTP filing operation.
+// It deliberately depends on only Reconcile: pipeline code does not need the API's wider channel
+// management surface merely to announce that pod eligibility changed.
+type fillerChannelWake struct {
+	st       store.Store
+	channels interface {
+		Reconcile(context.Context, string) error
+	}
+	log *slog.Logger
+}
+
+func (w *fillerChannelWake) Run(ctx context.Context) {
+	if w == nil || w.st == nil || w.channels == nil {
+		return
+	}
+	all, err := w.st.ListChannels(ctx)
+	if err != nil {
+		if w.log != nil {
+			w.log.Warn("filler catalog changed but active channels could not be listed; sweep will retry", "err", err)
+		}
+		return
+	}
+	for _, ch := range all {
+		if !ch.Status.Reconcilable() {
+			continue
+		}
+		if err := w.channels.Reconcile(ctx, ch.ID); err != nil && w.log != nil {
+			w.log.Warn("filler catalog changed but channel reconcile failed; sweep will retry",
+				"channel", ch.ID, "err", err)
+		}
+	}
+}
+
 // fillerTagStoreAdapter bridges the store → filler.TagStore (the AI-tagging job).
-type fillerTagStoreAdapter struct{ st store.Store }
+type fillerTagStoreAdapter struct {
+	st   store.Store
+	wake *fillerChannelWake
+}
 
 func (a fillerTagStoreAdapter) ListUntaggedCommercials(ctx context.Context) ([]filler.StoreClip, error) {
 	clips, err := a.st.ListUntaggedCommercials(ctx)
@@ -272,7 +309,11 @@ func (a fillerTagStoreAdapter) SetClipConfidence(ctx context.Context, path strin
 }
 
 func (a fillerTagStoreAdapter) SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error) {
-	return a.st.SetClipsHeld(ctx, paths, held, autoFiled, at)
+	updated, err := a.st.SetClipsHeld(ctx, paths, held, autoFiled, at)
+	if err == nil && updated > 0 {
+		a.wake.Run(ctx)
+	}
+	return updated, err
 }
 
 // The taxonomy path (§10 V45a): the tagger serves the vocabulary, grounds against it, and persists
@@ -457,10 +498,13 @@ func (a clipCatalogAdapter) AllClips(ctx context.Context) ([]filler.Clip, error)
 // fillerSplitStoreAdapter bridges the store → filler.SplitStore (V34). The
 // proposal methods pass filler.SplitProposal straight through — the store
 // persists exactly that type, so there is nothing to translate.
-type fillerSplitStoreAdapter struct{ st store.Store }
+type fillerSplitStoreAdapter struct {
+	st   store.Store
+	wake *fillerChannelWake
+}
 
 func (a fillerSplitStoreAdapter) GetClip(ctx context.Context, id string) (filler.StoreClip, bool, error) {
-	return fillerStoreAdapter(a).GetClip(ctx, id)
+	return fillerStoreAdapter{st: a.st}.GetClip(ctx, id)
 }
 func (a fillerSplitStoreAdapter) ListClips(ctx context.Context) ([]filler.StoreClip, error) {
 	clips, err := a.st.ListClips(ctx, store.ClipFilter{})
@@ -498,7 +542,11 @@ func (a fillerSplitStoreAdapter) SetClipComposite(ctx context.Context, hash stri
 	return a.st.SetClipComposite(ctx, hash, composite, at)
 }
 func (a fillerSplitStoreAdapter) SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error) {
-	return a.st.SetClipsHeld(ctx, paths, held, autoFiled, at)
+	updated, err := a.st.SetClipsHeld(ctx, paths, held, autoFiled, at)
+	if err == nil && updated > 0 {
+		a.wake.Run(ctx)
+	}
+	return updated, err
 }
 
 // ListTaxa: split-segment classification serves + grounds against the taxonomy graph (§10 V45a).
@@ -543,10 +591,15 @@ type fillerServiceAdapter struct {
 	tagger *filler.Tagger
 	// fetcher is nil unless the running image carries the ingest tooling (the single image
 	// — §16). nil is the normal state on loomarr:latest, not a misconfiguration.
-	fetcher *clipfetch.Ingestor
-	bus     *events.Bus
-	newID   func() string
-	timeout time.Duration
+	fetcher interface {
+		Run(context.Context, []clipfetch.Source) clipfetch.Result
+	}
+	// afterIngest closes the watch-folder → catalog → pipeline loop before a successful ingest
+	// event is published (§10 V56). Optional only in narrow unit tests.
+	afterIngest func(context.Context) error
+	bus         *events.Bus
+	newID       func() string
+	timeout     time.Duration
 	// sources registers what an operator added, so the Sources tab can show where clips
 	// came from. Narrow interface, not the whole store: this adapter has no other reason
 	// to reach persistence.
@@ -571,6 +624,16 @@ func (a fillerServiceAdapter) FetchStatus(ctx context.Context) (filler.FetchStat
 		return filler.FetchStatus{}, nil
 	}
 	return a.autoFetch.Status(ctx)
+}
+
+func (a fillerServiceAdapter) Fetch(ctx context.Context, sourceID string) (filler.FetchResult, error) {
+	if a.autoFetch == nil {
+		return filler.FetchResult{}, api.ErrIngestUnavailable
+	}
+	if sourceID != "" {
+		return a.autoFetch.RunSource(ctx, sourceID)
+	}
+	return a.autoFetch.Run(ctx)
 }
 
 func (a fillerServiceAdapter) Rewind(ctx context.Context, hash string, from filler.StageID, force bool) error {
@@ -636,6 +699,13 @@ func (a fillerServiceAdapter) ingest(ctx context.Context, urls []string) (string
 			// expired yt-dlp.
 			a.publishIngest(jobID, "error", res, "every source failed; check the URLs and the yt-dlp version")
 			return
+		}
+		if a.afterIngest != nil {
+			if err := a.afterIngest(bg); err != nil {
+				a.publishIngest(jobID, "error", res,
+					"downloaded files could not be catalogued; the scheduled sync will retry: "+err.Error())
+				return
+			}
 		}
 		a.publishIngest(jobID, "success", res, "")
 	}()

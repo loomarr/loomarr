@@ -30,6 +30,11 @@ The bundled `yt-dlp` and `ffmpeg` tools let Sources fetch clips without a sideca
 settings keep unattended acquisition bounded: how often to check, downloads per source check,
 maximum catalog clips, and maximum filler storage.
 
+Use **Fetch now** on a source when you want one bounded check immediately. It checks only that row,
+then puts new downloads through the same Incoming review pipeline; it does not start every remote
+collection or bypass the storage and catalog limits. A downloaded clip remains unavailable to
+channels until Loomarr can file it confidently or you approve it in Incoming.
+
 When the catalog or storage ceiling is reached, the Filler page names the ceiling and its current
 measurement. This pauses only automatic fetching; manually queued clips and approved pulls still
 work. Curate the library or raise the named limit to resume.
