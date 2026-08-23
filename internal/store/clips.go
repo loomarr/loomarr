@@ -317,6 +317,29 @@ func (s *sqlStore) ReplaceClipIdentity(ctx context.Context, oldHash string, c Cl
 	if oldHash == "" || c.Hash == "" || c.Path == "" {
 		return fmt.Errorf("replace clip identity: old hash, new hash and path are required")
 	}
+	// A transform can be byte-for-byte stable. In that case there is no identity graph to
+	// re-key: running the reference statements below with the same value needlessly deletes the
+	// still-valid fingerprint and can collide with unique sibling keys on existing databases.
+	// Update only the transformed media facts. Keep the Tunarr registration when even the path is
+	// unchanged; otherwise the next catalog sync must register the new location.
+	if oldHash == c.Hash {
+		res, err := s.db.ExecContext(ctx, s.ph(`UPDATE clips
+			SET path = ?,
+			    tunarr_program_id = CASE WHEN path = ? THEN tunarr_program_id ELSE NULL END,
+			    duration_ms = ?, quality = ?, updated_at = ?
+			WHERE hash = ?`), c.Path, c.Path, c.DurationMs, c.Quality, epoch(c.UpdatedAt), oldHash)
+		if err != nil {
+			return fmt.Errorf("replace clip identity %s: %w", oldHash, err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("replace clip identity %s: %w", oldHash, err)
+		}
+		if n == 0 {
+			return ErrNotFound
+		}
+		return nil
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("replace clip identity %s: %w", oldHash, err)

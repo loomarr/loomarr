@@ -128,6 +128,74 @@ func TestTranscodeStage_RekeysBytesAndPreservesHumanMetadata(t *testing.T) {
 	}
 }
 
+func TestTranscodeStage_IdenticalOutputAlreadyAtCanonicalPath(t *testing.T) {
+	dir := t.TempDir()
+	bytes := []byte("already normalized mezzanine bytes")
+	hash := writeContentAddressedClip(t, dir, bytes, ".mp4")
+	rel := filepath.ToSlash(ClipRelPath(hash, ".mp4"))
+	stored := &transcodeStore{}
+	probe := func(context.Context, string) (Probed, error) {
+		return Probed{DurationMs: 30_000, Height: 480}, nil
+	}
+	stage := NewTranscodeStage(stored, probe, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
+	stage.transcode = func(_ context.Context, req mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+		return MediaQuality{}, os.WriteFile(req.Out, bytes, 0o644)
+	}
+
+	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
+		Hash: hash, Path: rel, Name: "Already normalized", Kind: Commercial,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Clip.Hash != hash || out.Clip.Path != rel || stored.oldHash != hash || stored.clip.Hash != hash {
+		t.Fatalf("same-identity result = %+v, stored old=%q clip=%+v", out.Clip, stored.oldHash, stored.clip)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(bytes) {
+		t.Fatalf("canonical media changed: %q", got)
+	}
+	tags, ok := ReadSidecarTags(filepath.Join(dir, filepath.FromSlash(rel)))
+	if !ok || tags.Mezzanine != mediatools.DefaultMezzanine().ID() || tags.MediaQuality == nil {
+		t.Fatalf("canonical sidecar = %+v, ok=%v", tags, ok)
+	}
+}
+
+func TestTranscodeStage_IdenticalOutputMovesToCanonicalPath(t *testing.T) {
+	dir := t.TempDir()
+	bytes := []byte("unchanged bytes in a noncanonical container path")
+	hash := writeContentAddressedClip(t, dir, bytes, ".mkv")
+	oldRel := filepath.ToSlash(ClipRelPath(hash, ".mkv"))
+	stored := &transcodeStore{}
+	probe := func(context.Context, string) (Probed, error) {
+		return Probed{DurationMs: 30_000, Height: 480}, nil
+	}
+	stage := NewTranscodeStage(stored, probe, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
+	stage.transcode = func(_ context.Context, req mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+		return MediaQuality{}, os.WriteFile(req.Out, bytes, 0o644)
+	}
+
+	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
+		Hash: hash, Path: oldRel, Name: "Move without re-key", Kind: Commercial,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantRel := filepath.ToSlash(ClipRelPath(hash, ".mp4"))
+	if out.Clip.Hash != hash || out.Clip.Path != wantRel || stored.oldHash != hash || stored.clip.Hash != hash {
+		t.Fatalf("same-identity move = %+v, stored old=%q clip=%+v", out.Clip, stored.oldHash, stored.clip)
+	}
+	if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(oldRel))); !os.IsNotExist(err) {
+		t.Fatalf("old path survived canonical move: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(wantRel))); err != nil {
+		t.Fatalf("canonical path missing: %v", err)
+	}
+}
+
 func TestScanDir_IgnoresTranscodeStaging(t *testing.T) {
 	dir := t.TempDir()
 	stageDir := filepath.Join(dir, transcodeStagingDir)

@@ -663,6 +663,77 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+// A transform may legitimately preserve the content hash: remuxing an already-normalized clip
+// can produce byte-for-byte identical output. That is an update to transformed facts, not a
+// re-key, and must not run self-referential updates through unique sibling keys.
+func testClipIdentityReplacementSameHash(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_900_000_000, 0).UTC()
+
+	clip := sampleClip("unchanged-content", "Already normalized", filler.Commercial, 1995, filler.General, "")
+	clip.Path = "un/ch/unchanged-content.mkv"
+	clip.TunarrProgramID = "old-program"
+	if err := s.UpsertClip(ctx, clip); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertClipFingerprint(ctx, clip.Hash, "dhash-v1", []uint64{1, 2, 3}); err != nil {
+		t.Fatal(err)
+	}
+	pipeline := filler.ClipPipeline{
+		ClipHash: clip.Hash, Stage: filler.StageTranscode, Status: filler.StatusRunning,
+		Disposition: filler.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
+	}
+	if err := s.UpsertClipPipeline(ctx, pipeline); err != nil {
+		t.Fatal(err)
+	}
+
+	updated := clip
+	updated.Path = "un/ch/unchanged-content.mp4"
+	updated.DurationMs = 30_033
+	updated.Quality = "480p"
+	updated.UpdatedAt = now.Add(time.Minute)
+	if err := s.ReplaceClipIdentity(ctx, clip.Hash, updated); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.GetClip(ctx, clip.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Path != updated.Path || got.DurationMs != updated.DurationMs || got.Quality != updated.Quality {
+		t.Errorf("same-identity transformed facts = %+v, want path %q duration %d quality %q",
+			got, updated.Path, updated.DurationMs, updated.Quality)
+	}
+	if got.TunarrProgramID != "" {
+		t.Errorf("Tunarr program id = %q, want cleared after path change", got.TunarrProgramID)
+	}
+	// Once Tunarr knows the canonical path, an idempotent retry at that same path must not
+	// manufacture registration work. This also pins the CASE expression to the pre-update path
+	// semantics shared by SQLite and Postgres.
+	got.TunarrProgramID = "canonical-program"
+	if err := s.UpsertClip(ctx, got); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReplaceClipIdentity(ctx, got.Hash, got); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.GetClip(ctx, clip.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.TunarrProgramID != "canonical-program" {
+		t.Errorf("same-path retry cleared Tunarr program id: %q", got.TunarrProgramID)
+	}
+	if row, found, err := s.GetClipPipeline(ctx, clip.Hash); err != nil || !found || row.Stage != filler.StageTranscode {
+		t.Errorf("same-identity pipeline changed: %+v, found=%v err=%v", row, found, err)
+	}
+	if cached, found, err := cachedClipFingerprint(ctx, s, clip.Hash, "dhash-v1"); err != nil || !found || len(cached) != 3 {
+		t.Errorf("fingerprint for unchanged bytes = (%v, %v, %v), want preserved", cached, found, err)
+	}
+}
+
 // testClipFingerprintCache pins the cache's two correctness properties on both backends: only an
 // exact content+algorithm key hits, and catalog pruning removes sibling-table orphans.
 func testClipFingerprintCache(t *testing.T, newStore NewStoreFunc) {
