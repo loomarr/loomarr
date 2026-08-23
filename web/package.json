@@ -2,7 +2,7 @@
   "name": "loomarr-web-workspace",
   "version": "0.0.0",
   "private": true,
-  "description": "Loomarr frontend workspace (Test Card design system). Web now; Expo bolt-on later shares packages/{tokens,api,core}.",
+  "description": "Loomarr client workspace. Shipping Vite web plus the gated Expo/Tamagui shared-client migration.",
   "type": "module",
   "engines": {
     "node": ">=22.5 <23"
