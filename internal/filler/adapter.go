@@ -119,6 +119,26 @@ func (a *PodAdapter) HasPool(ctx context.Context, channelID string, seed int64, 
 	return false
 }
 
+// PlayableDurationMs reports the duration of real files in the deterministic pod.
+// The embedded fallback card deliberately contributes nothing: it is generated at
+// playout time and must not extend a commercial break after the selected clips end.
+func (a *PodAdapter) PlayableDurationMs(ctx context.Context, channelID string, seed int64, sel Selection) int64 {
+	pod, err := a.Preview(ctx, channelID, seed, sel)
+	if err != nil {
+		if a.log != nil {
+			a.log.Warn("filler duration check failed (channel stays break-free)", "channel", channelID, "err", err)
+		}
+		return 0
+	}
+	var total int64
+	for _, entry := range pod.Entries {
+		if entry.Path != "" && entry.DurationMs > 0 {
+			total += entry.DurationMs
+		}
+	}
+	return total
+}
+
 func (a *PodAdapter) BuildFillerList(ctx context.Context, channelID string, seed int64, sel Selection) ([]string, bool) {
 	pod, err := a.Preview(ctx, channelID, seed, sel)
 	if err != nil {

@@ -40,9 +40,9 @@ type Availability interface {
 	schedule.Availability
 }
 
-// PodFiller answers the two backend-specific views of a channel's matched filler
+// PodFiller answers the backend-specific views of a channel's matched filler
 // pool (§10). Implemented by the filler package; nil = flex-only (no pods).
-// Internal playout needs only HasPool because it resolves local clip paths per gap.
+// Internal playout needs the playable duration because it resolves local clip paths per gap.
 // Tunarr projection additionally needs BuildFillerList's program uuids to attach a
 // remote filler-list. Both are seed-deterministic (§10/§19).
 type PodFiller interface {
@@ -62,6 +62,9 @@ type PodFiller interface {
 	// good pod would report "no pool" and get NO BREAKS AT ALL, which is exactly the inverted
 	// dependency §9.1 set out to remove, one level up.
 	HasPool(ctx context.Context, channelID string, seed int64, sel filler.Selection) bool
+	// PlayableDurationMs reports how much real media the deterministic pod contains.
+	// It excludes the generated fallback card, which has no bytes to air.
+	PlayableDurationMs(ctx context.Context, channelID string, seed int64, sel filler.Selection) int64
 }
 
 // Engine reconciles every channel's local desired state and, only when that channel's
