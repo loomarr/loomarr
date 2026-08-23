@@ -231,7 +231,14 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 	}
 	// Sidecar first: the scan ignores it without media. Hard links publish without replacement,
 	// so a race or sparse-hash collision can never overwrite an existing content-addressed clip.
-	if !alreadyPublished {
+	// When the transformed bytes already have the input identity AND canonical path, the media is
+	// already published by definition. Install only the newly measured sidecar; trying to link the
+	// staged bytes onto that same existing path turns an idempotent transform into EEXIST.
+	if newFull == oldFull {
+		if err := WriteSidecarTags(oldFull, tags, false); err != nil {
+			return StageResult{}, fmt.Errorf("transcode %s: update unchanged sidecar: %w", oldRel, err)
+		}
+	} else if !alreadyPublished {
 		if err := publishTranscodePair(stageFull, newFull); err != nil {
 			return StageResult{}, fmt.Errorf("transcode %s: publish transformed media: %w", oldRel, err)
 		}
