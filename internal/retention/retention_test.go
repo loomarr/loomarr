@@ -1,0 +1,76 @@
+package retention
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/loomarr/loomarr/internal/diagnostics"
+)
+
+type retentionStore struct {
+	diagnosticBefore time.Time
+	diagnosticMax    int64
+	diagnosticErr    error
+	sessionsCalled   bool
+}
+
+func (*retentionStore) PurgeDeniedProposals(context.Context, time.Time) (int, error) { return 0, nil }
+func (*retentionStore) PurgeFinishedJobs(context.Context, time.Time) (int, error)    { return 0, nil }
+func (*retentionStore) PurgeActivity(context.Context, time.Time) (int, error)        { return 0, nil }
+func (s *retentionStore) PurgeDiagnostics(_ context.Context, before time.Time, maxBytes int64) (diagnostics.PurgeResult, error) {
+	s.diagnosticBefore = before
+	s.diagnosticMax = maxBytes
+	return diagnostics.PurgeResult{Events: 2, ProcessRuns: 1, RetainedBytes: 99}, s.diagnosticErr
+}
+func (s *retentionStore) PurgeExpiredSessions(context.Context, time.Time) (int, error) {
+	s.sessionsCalled = true
+	return 0, nil
+}
+
+func TestHousekeepingAppliesDiagnosticAgeAndStoragePolicy(t *testing.T) {
+	now := time.Date(2026, 8, 23, 17, 0, 0, 0, time.UTC)
+	store := &retentionStore{}
+	service := New(store, Windows{
+		Proposals: func() time.Duration { return 90 * 24 * time.Hour },
+		Jobs:      func() time.Duration { return 30 * 24 * time.Hour },
+		Activity:  func() time.Duration { return 30 * 24 * time.Hour },
+		Diagnostics: func() time.Duration {
+			return 7 * 24 * time.Hour
+		},
+		DiagnosticsMaxBytes: func() int64 { return 512 * 1024 * 1024 },
+	}, func() time.Time { return now }, nil)
+
+	if err := service.Housekeeping(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if want := now.Add(-7 * 24 * time.Hour); !store.diagnosticBefore.Equal(want) {
+		t.Fatalf("diagnostic horizon = %v, want %v", store.diagnosticBefore, want)
+	}
+	if store.diagnosticMax != 512*1024*1024 {
+		t.Fatalf("diagnostic budget = %d, want 512 MiB", store.diagnosticMax)
+	}
+}
+
+func TestHousekeepingAttemptsLaterStagesAfterDiagnosticFailure(t *testing.T) {
+	want := errors.New("diagnostic store unavailable")
+	store := &retentionStore{diagnosticErr: want}
+	service := New(store, Windows{
+		Proposals: func() time.Duration { return time.Hour },
+		Jobs:      func() time.Duration { return time.Hour },
+		Activity:  func() time.Duration { return time.Hour },
+		Diagnostics: func() time.Duration {
+			return time.Hour
+		},
+		DiagnosticsMaxBytes: func() int64 { return 1 },
+	}, time.Now, nil)
+
+	err := service.Housekeeping(context.Background())
+	if !errors.Is(err, want) {
+		t.Fatalf("Housekeeping error = %v, want diagnostics error", err)
+	}
+	if !store.sessionsCalled {
+		t.Fatal("diagnostic failure stopped later session cleanup")
+	}
+}

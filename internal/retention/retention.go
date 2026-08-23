@@ -18,14 +18,17 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/scheduler"
 )
 
 // Windows are the configured retention periods, read per run.
 type Windows struct {
-	Proposals func() time.Duration
-	Jobs      func() time.Duration
-	Activity  func() time.Duration
+	Proposals           func() time.Duration
+	Jobs                func() time.Duration
+	Activity            func() time.Duration
+	Diagnostics         func() time.Duration
+	DiagnosticsMaxBytes func() int64
 }
 
 // Store is the destructive persistence role behind retention policy. The
@@ -35,6 +38,7 @@ type Store interface {
 	PurgeDeniedProposals(ctx context.Context, before time.Time) (int, error)
 	PurgeFinishedJobs(ctx context.Context, before time.Time) (int, error)
 	PurgeActivity(ctx context.Context, before time.Time) (int, error)
+	PurgeDiagnostics(ctx context.Context, before time.Time, maxBytes int64) (diagnostics.PurgeResult, error)
 	PurgeExpiredSessions(ctx context.Context, now time.Time) (int, error)
 }
 
@@ -93,6 +97,22 @@ func (s *Service) PurgeActivity(ctx context.Context) error {
 	return nil
 }
 
+// PurgeDiagnostics enforces both the age window and logical retained-byte budget (§5, §17).
+// Active Process runs are protected by the store contract regardless of age or pressure.
+func (s *Service) PurgeDiagnostics(ctx context.Context) error {
+	result, err := s.store.PurgeDiagnostics(
+		ctx, s.now().Add(-s.win.Diagnostics()), s.win.DiagnosticsMaxBytes(),
+	)
+	if err != nil {
+		return err
+	}
+	if (result.Events > 0 || result.ProcessRuns > 0) && s.log != nil {
+		s.log.Info("diagnostics purged", "events", result.Events, "process_runs", result.ProcessRuns,
+			"retained_bytes", result.RetainedBytes)
+	}
+	return nil
+}
+
 // Housekeeping bounds every append-only operational table in one pass. The individual
 // purges remain methods because they are independently testable policies, but separate
 // schedules offered no useful operator decision and made routine cleanup look like three
@@ -103,6 +123,9 @@ func (s *Service) Housekeeping(ctx context.Context) error {
 		errs = append(errs, err)
 	}
 	if err := s.PurgeActivity(ctx); err != nil {
+		errs = append(errs, err)
+	}
+	if err := s.PurgeDiagnostics(ctx); err != nil {
 		errs = append(errs, err)
 	}
 	if n, err := s.store.PurgeExpiredSessions(ctx, s.now()); err != nil {
@@ -117,7 +140,7 @@ func (s *Service) Housekeeping(ctx context.Context) error {
 func (s *Service) Job() scheduler.Job {
 	return scheduler.Job{
 		Name: "housekeeping", Group: scheduler.GroupSystem, Title: "Clean up old data",
-		Description: "Removes expired sessions, old activity, denied requests, and completed jobs after their retention periods.",
+		Description: "Removes expired sessions, old activity and diagnostics, denied requests, and completed jobs after their retention periods.",
 		DefaultCron: "0 30 4 * * *", ScheduleKey: "job.housekeeping.schedule",
 		Run: s.Housekeeping,
 	}
