@@ -349,8 +349,8 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
               until the admission gate files it. Name both halves so a successful fetch does not
               look broken merely because Catalog correctly excludes its Incoming clips. */}
           <Caption>
-            Enabled remote sources are checked on their schedule. New clips download into Incoming for
-            review; queue one or approve a pull when you want a deliberate batch sooner.
+            Enabled remote sources are checked on their schedule. New clips download into Incoming for review;
+            queue one or approve a pull when you want a deliberate batch sooner.
           </Caption>
         </div>
       )}
