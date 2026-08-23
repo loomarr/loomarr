@@ -96,12 +96,21 @@ platforms or it can't catch that.
 It always runs and inspects `needs.*.result` explicitly. That has to be explicit: a skipped job
 doesn't fail an aggregate by default, and neither does a failed one under `if: always()`.
 
+The `main` branch requires the GitHub Actions-owned `CI` check in strict mode: a pull request must
+be tested against the current base before it can merge. Preserve both the check name and its app
+binding when editing branch protection.
+
 `make release-verify` parses the workflow and requires every top-level job to appear in
 `ci-ok.needs`. This prevents a newly added or accidentally removed dependency from producing a
 green required check while its real job is red.
 
 Never add a workflow-level `paths:`. A run that doesn't trigger reports no checks, so a required
 check sits "expected" forever and the PR can't merge. Filter per job.
+
+The workflow already handles `merge_group`, but GitHub offers merge queues only to public
+repositories owned by organizations (or qualifying organization-owned private repositories).
+`mantonx/loomarr` is personally owned, so queue activation is deferred until an organization owns
+the repository. Strict required checks provide the protected current-base boundary in the meantime.
 
 ## Sharding
 
