@@ -16,9 +16,11 @@ representative run the three `make check` steps took 456, 537, and 648 seconds. 
 Rust, formatting, vet, lint, tagged compilation, Windows compilation, harness, and release-contract
 work; only the Go test package list was partitioned.
 
-The repository currently requires one aggregate `CI` status, but branch protection is not strict
-and no merge queue is enforced. Complete assurance therefore cannot move out of pull-request CI
-until a protected merge boundary exists.
+The repository requires one aggregate `CI` status. On 2026-08-23 its branch protection was changed
+to strict mode while preserving the GitHub Actions app binding, so a pull request must be tested
+against the current `main` before merging. GitHub does not offer merge queues to personally owned
+public repositories; queue activation remains ready at the workflow level and becomes available
+after an organization owns the repository.
 
 ## Assurance tiers
 
@@ -57,7 +59,8 @@ and Android. The work changes when assurance runs, not whether it exists.
 4. Add specialized Postgres, Windows, Rust, visual, e2e, tuner, image, and Android decisions in
    shadow mode while the old jobs still run.
 5. Compare shadow selections with full outcomes and add a regression fixture for every mismatch.
-6. Enable strict merge protection and the merge queue; prove `merge_group` runs the aggregate gate.
+6. Enable strict merge protection. Enable and prove the already-supported `merge_group` path after
+   an organization owns the repository; GitHub does not expose merge queues to personal repos.
 7. Activate proportional pull-request gates and retain complete merge/main/nightly/release audits.
 8. Publish selected gates, setup/cache/test timings, critical path, and runner-minutes in summaries;
    then profile genuinely slow packages after orchestration waste is gone.
@@ -101,3 +104,11 @@ gate documentation are amended before the first change that alters required beha
   its full matrix passed with the now-load-bearing Windows result green in 1m32s. Exact path-set
   fixtures now pin both selected and intentionally unselected specialized gates across every gate
   family, turning subsequent shadow mismatches into explicit regression cases.
+- PR #470 merged those exact fixtures. Its script-and-docs change proposed only contracts and docs,
+  while the authoritative legacy family also ran three Go shards (up to 3m21s), Postgres (2m04s),
+  Windows (1m59s), and image certification (2m30s), all green. This is measured safe
+  over-selection rather than a false negative.
+- Live branch-protection verification on 2026-08-23 reports `strict: true` for the sole required
+  `CI` check, still bound to the GitHub Actions app (`app_id: 15368`). Merge-queue activation is
+  blocked by GitHub's organization-ownership requirement, not by workflow readiness:
+  `merge_group` and its merge-base handling are already present.
