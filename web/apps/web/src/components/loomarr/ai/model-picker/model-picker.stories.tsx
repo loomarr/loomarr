@@ -12,6 +12,7 @@ const model = (over: Partial<LLMModelView> & Pick<LLMModelView, "tag" | "label">
   recommended: false,
   runtimeOk: true,
   tools: true,
+  vision: false,
   why: "Good tool-calling at this size.",
   ...over,
 });

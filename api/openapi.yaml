@@ -2439,6 +2439,12 @@ components:
         tools:
           description: Provider advertises tool-calling for this model
           type: boolean
+        transcription:
+          description: Provider advertises speech-to-text output for this model
+          type: boolean
+        vision:
+          description: Provider advertises image input for this model
+          type: boolean
         why:
           description: Rule-derived rationale (from live pricing/context/tools metadata)
           type: string
@@ -3113,6 +3119,9 @@ components:
         tools:
           description: Ollama reports tool-calling — required to ground suggestions; a false model is shown but not selectable
           type: boolean
+        vision:
+          description: Ollama reports image input — required for filler frame analysis
+          type: boolean
         why:
           type: string
       required:
@@ -3123,6 +3132,7 @@ components:
         - pulled
         - runtimeOk
         - tools
+        - vision
         - recommended
         - why
       type: object
