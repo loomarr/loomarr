@@ -85,6 +85,9 @@ func TestLiveModels_RanksByQualityTierThenCost(t *testing.T) {
 			w.WriteHeader(404)
 			return
 		}
+		if r.URL.Query().Get("output_modalities") != "all" {
+			t.Errorf("output_modalities = %q, want all so every role is discoverable", r.URL.Query().Get("output_modalities"))
+		}
 		// - a FREE untiered coding model (cheapest, tool-capable) — must NOT be recommended
 		// - a tier-3 gpt-4o family model (pricier) — SHOULD be recommended first
 		// - a tier-2 claude-haiku family model (cheaper than gpt-4o) — explained alternative
@@ -94,6 +97,8 @@ func TestLiveModels_RanksByQualityTierThenCost(t *testing.T) {
 			{"id":"someorg/free-coder","name":"FreeCoder","context_length":1000000,"supported_parameters":["tools"],"pricing":{"prompt":"0","completion":"0"}},
 			{"id":"openai/gpt-4o","name":"GPT-4o","context_length":128000,"supported_parameters":["tools"],"pricing":{"prompt":"0.0000025","completion":"0.00001"}},
 			{"id":"anthropic/claude-haiku-4.5","name":"Claude Haiku","context_length":200000,"supported_parameters":["tools"],"pricing":{"prompt":"0.0000008","completion":"0.000004"}},
+			{"id":"google/gemini-vision","name":"Gemini Vision","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]}},
+			{"id":"openai/whisper-large-v3","name":"Whisper","architecture":{"input_modalities":["audio"],"output_modalities":["transcription"]}},
 			{"id":"no/tools","name":"NoTools","supported_parameters":["temperature"],"pricing":{"prompt":"0","completion":"0"}}
 		]}`))
 	}))
@@ -104,9 +109,9 @@ func TestLiveModels_RanksByQualityTierThenCost(t *testing.T) {
 	if !live {
 		t.Fatal("expected live=true")
 	}
-	// non-tool filtered out; the other three remain.
-	if len(models) != 3 {
-		t.Fatalf("got %d tool-capable models, want 3", len(models))
+	// Three lineup choices plus one authoritative choice for each other role.
+	if len(models) != 5 {
+		t.Fatalf("got %d role-capable models, want 5", len(models))
 	}
 	// Quality tier wins: gpt-4o (tier 3) ranks first despite being pricier than the
 	// free coder and pricier than haiku.
@@ -140,6 +145,12 @@ func TestLiveModels_RanksByQualityTierThenCost(t *testing.T) {
 	}
 	if coder.Recommended {
 		t.Error("an untiered model must never be recommended, even if cheapest")
+	}
+	if !models[3].Vision || models[3].Tools {
+		t.Errorf("vision model capabilities = %+v, want vision-only", models[3])
+	}
+	if !models[4].Transcription || models[4].Tools {
+		t.Errorf("transcription model capabilities = %+v, want transcription-only", models[4])
 	}
 }
 

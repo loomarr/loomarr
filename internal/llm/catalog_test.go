@@ -62,6 +62,18 @@ func TestAnnotateCatalog_OnlyToolCapableInstalled(t *testing.T) {
 	}
 }
 
+func TestAnnotateCatalog_KeepsVisionOnlyModelsForTheVisionRole(t *testing.T) {
+	vision := installed("qwen2.5vl:7b", 5.0, "7B", false)
+	vision.Vision = true
+	entries := annotateCatalog(Probe{VRAMGiB: 12, Reachable: true, Installed: []InstalledModel{vision}})
+	if len(entries) != 1 || entries[0].Tag != vision.Tag || !entries[0].Vision || entries[0].Tools {
+		t.Fatalf("vision catalog = %+v, want the vision-only installed model", entries)
+	}
+	if entries[0].Recommended {
+		t.Error("a vision-only model must not become the lineup recommendation")
+	}
+}
+
 // Among the models that fit, the recommendation is the largest (bigger ⇒ more capable
 // grounding, within the VRAM budget). A model that won't fit is never recommended.
 func TestAnnotateCatalog_Recommendation(t *testing.T) {

@@ -11,7 +11,7 @@ import {
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
@@ -289,6 +289,7 @@ describe("AI model pull", () => {
             // ⚠ Required, and it is a CAPABILITY flag (whether the model supports tool calls),
             // not a cosmetic one — the picker uses it to decide what a model can be used for.
             tools: true,
+            vision: false,
             why: "Good fit.",
           },
         ],
@@ -388,6 +389,14 @@ describe("Settings honesty", () => {
           }),
           setting({ key: "llm.model", label: "Hosted lineup model", group: "ai", value: "" }),
           setting({ key: "llm.api_key", group: "ai", kind: "secret", secret: true, set: false }),
+          setting({ key: "filler.vision.provider", group: "filler", value: "inherit" }),
+          setting({ key: "filler.vision.model", group: "filler", value: "" }),
+          setting({ key: "filler.transcribe.provider", group: "filler", value: "whisper" }),
+          setting({
+            key: "filler.transcribe.model",
+            group: "filler",
+            value: "openai/whisper-large-v3",
+          }),
         ],
       }),
       getSystemLlmStatusMockHandler({
@@ -405,7 +414,20 @@ describe("Settings honesty", () => {
             keyConfigured: false,
             active: false,
             modelsLive: false,
-            models: [],
+            models: [
+              {
+                id: "google/gemini-vision",
+                label: "Gemini Vision",
+                tools: false,
+                vision: true,
+              },
+              {
+                id: "openai/whisper-large-v3",
+                label: "Whisper large v3",
+                tools: false,
+                transcription: true,
+              },
+            ],
           },
         ],
       }),
@@ -420,6 +442,61 @@ describe("Settings honesty", () => {
     expect(screen.queryByLabelText("Hosted lineup model")).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: /unsaved changes/i })).toHaveTextContent("1 unsaved change");
     expect(screen.getByText(/Add your OpenRouter key above/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Model roles" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Gemini Vision/i })).not.toBeInTheDocument();
+  });
+
+  it("stages capability-filtered vision and transcription roles from a configured hosted provider", async () => {
+    server.use(
+      getMeMockHandler(me()),
+      getSettingsListMockHandler({
+        features: {},
+        settings: [
+          setting({ key: "llm.provider", group: "ai", kind: "enum", value: "openai" }),
+          setting({ key: "llm.url", group: "ai", kind: "url", value: "https://openrouter.ai/api/v1" }),
+          setting({ key: "llm.api_key", group: "ai", kind: "secret", secret: true, set: true }),
+          setting({ key: "filler.vision.provider", group: "filler", value: "inherit" }),
+          setting({ key: "filler.vision.model", group: "filler", value: "" }),
+          setting({ key: "filler.transcribe.provider", group: "filler", value: "whisper" }),
+          setting({ key: "filler.transcribe.model", group: "filler", value: "openai/whisper-large-v3" }),
+        ],
+      }),
+      getSystemLlmStatusMockHandler({
+        provider: "openrouter",
+        local: false,
+        reachable: true,
+        model: "openai/gpt-4o-mini",
+        catalog: [],
+        hosted: [
+          {
+            key: "openrouter",
+            label: "OpenRouter",
+            baseUrl: "https://openrouter.ai/api/v1",
+            keysUrl: "https://openrouter.ai/keys",
+            keyConfigured: true,
+            active: true,
+            modelsLive: true,
+            models: [
+              { id: "openai/gpt-4o-mini", label: "GPT-4o mini", tools: true },
+              { id: "google/gemini-vision", label: "Gemini Vision", vision: true },
+              { id: "openai/whisper-large-v3", label: "Whisper large v3", transcription: true },
+              { id: "vendor/text-only", label: "Text only" },
+            ],
+          },
+        ],
+      }),
+      ...appHandlers(),
+    );
+
+    renderAt("/settings/ai");
+    const vision = await screen.findByRole("region", { name: "Vision" });
+    expect(within(vision).queryByRole("button", { name: /Text only/i })).not.toBeInTheDocument();
+    await userEvent.click(within(vision).getByRole("button", { name: /Gemini Vision/i }));
+
+    const transcription = screen.getByRole("region", { name: "Transcription" });
+    expect(within(transcription).getByRole("button", { name: /Bundled local Whisper/i })).toBeDisabled();
+    await userEvent.click(within(transcription).getByRole("button", { name: /Whisper large v3/i }));
+    expect(screen.getByRole("region", { name: /unsaved changes/i })).toHaveTextContent("4 unsaved changes");
   });
 
   it("disables the spoken-language filter with the reason when its local model is missing", async () => {

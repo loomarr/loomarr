@@ -30,11 +30,13 @@ import (
 // most fields are derived from the provider's /models metadata; Recommended +Why
 // are computed by the ranking rules (rankModels), NOT hardcoded per id.
 type HostedModel struct {
-	ID          string `json:"id"`                    // exact model id for the API (LLM_MODEL)
-	Label       string `json:"label"`                 // human name (provider-supplied or the id)
-	Why         string `json:"why,omitempty"`         // rule-derived rationale ("cheap, tool-capable")
-	Recommended bool   `json:"recommended,omitempty"` // rule-selected as a top pick for grounding
-	Tools       bool   `json:"tools,omitempty"`       // provider advertises tool-calling for this model
+	ID            string `json:"id"`                      // exact model id for the API (LLM_MODEL)
+	Label         string `json:"label"`                   // human name (provider-supplied or the id)
+	Why           string `json:"why,omitempty"`           // rule-derived rationale ("cheap, tool-capable")
+	Recommended   bool   `json:"recommended,omitempty"`   // rule-selected as a top pick for grounding
+	Tools         bool   `json:"tools,omitempty"`         // provider advertises tool-calling for this model
+	Vision        bool   `json:"vision,omitempty"`        // provider advertises image input
+	Transcription bool   `json:"transcription,omitempty"` // provider advertises speech-to-text output
 }
 
 // HostedProvider is one curated OpenAI-compatible provider (§8.1). Only provider-
@@ -84,7 +86,7 @@ var hostedCatalog = []HostedProvider{
 		// supersedes this. Kept short + obvious; not an allowlist.
 		Fallback: []HostedModel{{
 			ID: "openai/gpt-4o-mini", Label: "GPT-4o mini",
-			Recommended: true, Tools: true,
+			Recommended: true, Tools: true, Vision: true,
 			Why: "Cheap, tool-capable, and a good default for Loomarr's grounded suggestions.",
 		}},
 	},
@@ -118,14 +120,26 @@ func HostedProviderByKey(key string) (HostedProvider, bool) {
 // Gemini) return little more than an id, in which case the rule engine degrades to
 // "show the live ids" without a fabricated ranking.
 type modelMeta struct {
-	ID         string   `json:"id"`
-	Name       string   `json:"name"`
-	Context    int      `json:"context_length"`
-	SupportedP []string `json:"supported_parameters"`
-	Pricing    struct {
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Context      int      `json:"context_length"`
+	SupportedP   []string `json:"supported_parameters"`
+	Architecture struct {
+		InputModalities  []string `json:"input_modalities"`
+		OutputModalities []string `json:"output_modalities"`
+	} `json:"architecture"`
+	Pricing struct {
 		Prompt     string `json:"prompt"`
 		Completion string `json:"completion"`
 	} `json:"pricing"`
+}
+
+func (m modelMeta) supportsVision() bool {
+	return slices.Contains(m.Architecture.InputModalities, "image")
+}
+
+func (m modelMeta) supportsTranscription() bool {
+	return slices.Contains(m.Architecture.OutputModalities, "transcription")
 }
 
 // supportsTools reports whether the provider advertises tool-calling for this model
@@ -232,7 +246,7 @@ func tierOf(id string) (int, string) {
 // current, just no "recommended" flags). On any fetch failure it returns the tiny
 // curated Fallback with live=false so the UI is never empty.
 func (hp HostedProvider) LiveModels(ctx context.Context, apiKey string) (models []HostedModel, live bool) {
-	metas, err := fetchModels(ctx, hp.BaseURL, apiKey)
+	metas, err := fetchModels(ctx, hp.BaseURL, apiKey, hp.Key == "openrouter")
 	if err != nil || len(metas) == 0 {
 		return hp.Fallback, false
 	}
@@ -252,7 +266,7 @@ func (hp HostedProvider) LiveModels(ctx context.Context, apiKey string) (models 
 	// (we'd drop everything) or rank on absent data.
 	rich := false
 	for _, m := range metas {
-		if len(m.SupportedP) > 0 {
+		if len(m.SupportedP) > 0 || len(m.Architecture.InputModalities) > 0 || len(m.Architecture.OutputModalities) > 0 {
 			rich = true
 			break
 		}
@@ -303,9 +317,13 @@ func (hp HostedProvider) LiveModels(ctx context.Context, apiKey string) (models 
 	// we vouch for for grounding", not "cheapest capable-looking". Other tiered
 	// models keep their rationale so the UI can explain its short alternatives.
 	recommended := false
+	seen := make(map[string]struct{}, len(metas))
 	for _, m := range capable {
 		tier, fam := tierOf(m.ID)
-		hm := HostedModel{ID: m.ID, Label: labelOf(m), Tools: m.supportsTools()}
+		hm := HostedModel{
+			ID: m.ID, Label: labelOf(m), Tools: m.supportsTools(),
+			Vision: m.supportsVision(), Transcription: m.supportsTranscription(),
+		}
 		if tier > 0 {
 			hm.Why = whyFor(m, fam)
 			if !recommended {
@@ -314,6 +332,21 @@ func (hp HostedProvider) LiveModels(ctx context.Context, apiKey string) (models 
 			}
 		}
 		models = append(models, hm)
+		seen[m.ID] = struct{}{}
+	}
+	// Preserve models for the other two role pickers. They remain after the ranked
+	// lineup choices and are filtered by authoritative capability in the UI.
+	for _, m := range metas {
+		if _, ok := seen[m.ID]; ok {
+			continue
+		}
+		if !m.supportsVision() && !m.supportsTranscription() {
+			continue
+		}
+		models = append(models, HostedModel{
+			ID: m.ID, Label: labelOf(m), Tools: m.supportsTools(),
+			Vision: m.supportsVision(), Transcription: m.supportsTranscription(),
+		})
 	}
 	return models, live
 }
@@ -345,9 +378,13 @@ func labelOf(m modelMeta) string {
 
 // fetchModels GETs {baseURL}/models and returns the metadata entries. The OpenAI
 // /models shape is {"data":[{...}]}; rich providers add supported_parameters/pricing.
-func fetchModels(ctx context.Context, baseURL, apiKey string) ([]modelMeta, error) {
+func fetchModels(ctx context.Context, baseURL, apiKey string, allModalities bool) ([]modelMeta, error) {
 	base := strings.TrimRight(baseURL, "/")
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/models", nil)
+	modelsURL := base + "/models"
+	if allModalities {
+		modelsURL += "?output_modalities=all&sort=most-popular"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, modelsURL, nil)
 	if err != nil {
 		return nil, err
 	}
