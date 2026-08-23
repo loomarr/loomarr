@@ -76,3 +76,9 @@ gate documentation are amended before the first change that alters required beha
 - With the selector wired into `agent-verify`, that representative leaf completed its 10-package
   race-policy-aware local check in 34.2 seconds on a warm development host. The command still states
   that it is focused evidence and that the complete gate remains required before publication.
+- PR #464 merged that local activation with the full matrix green. Its legacy CI critical path was
+  still 11m15s: every specialized job finished within 3m31s, while the three Go shards took 11m15s,
+  9m14s, and 9m28s because each repeated the same repository contracts before its test partition.
+- The next slice preserves `make check` as `check-static` plus `test`, runs the static/repository
+  contracts once beside three test-only shards, verifies the shard partition independently, and
+  requires both halves in the `CI` aggregate.

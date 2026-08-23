@@ -135,15 +135,19 @@ backup-restore-drill: backup-restore-verify ## SQLite + Docker-backed Postgres b
 
 ## ---- the default gate ----------------------------------------------------
 
-.PHONY: check
-check: rust-check fmt shellcheck privacy-verify vet tags-verify vet-tags windows-compile lint agent-harness-test compose-verify release-verify go-race-verify test ## Rust + Go formatting, lint, privacy, cross-platform compile, harness, release contracts, -race opt-out guard, and unit tests (the default gate)
+.PHONY: check check-static
+check: check-static test ## complete local gate: repository contracts plus race-policy-aware unit tests
 
-.PHONY: rust-check rust-audit rust-fuzz
-rust-check: ## format, lint, and test the required Rust image worker
+check-static: rust-check fmt shellcheck privacy-verify vet tags-verify vet-tags windows-compile lint agent-harness-test compose-verify release-verify go-race-verify ## repository contracts without the unit-test suite (CI runs this once beside test shards)
+
+.PHONY: rust-check rust-test-worker rust-audit rust-fuzz
+rust-check: rust-test-worker ## format, lint, build, and test the required Rust image worker
 	$(CARGO) fmt --all -- --check
 	$(CARGO) clippy --workspace --all-targets --all-features --locked -- -D warnings
-	LOOMARR_RELEASE=dev $(CARGO) build --locked -p loomarr-image
 	$(CARGO) test --workspace --all-features --locked
+
+rust-test-worker: ## build the debug Rust image worker required by Go unit tests
+	LOOMARR_RELEASE=dev $(CARGO) build --locked -p loomarr-image
 
 rust-audit: ## check Rust advisories, licences, and dependency sources (needs cargo-deny)
 	$(CARGO) deny check advisories licenses sources
@@ -194,7 +198,7 @@ lint: ## golangci-lint v2 (run via `go run` so no global install needed)
 	$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run --build-tags '$(TAGS_CSV)'
 
 .PHONY: test
-test: ## unit tests only (never touch the network — §19)
+test: rust-test-worker ## unit tests with their required Rust worker (never touch the network — §19)
 # ⚠ **-timeout is set explicitly because Go's default is 10m PER PACKAGE and `internal/api` grew
 # past it.** Measured 2026-08-09: that package alone is 267s locally under `-race`, and a CI runner
 # is roughly twice as slow — so it tripped the default and the job died with `panic: test timed out

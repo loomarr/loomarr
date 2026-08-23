@@ -3,7 +3,8 @@
 ```mermaid
 graph LR
   C["<b>changes</b><br/><i>diffs the merge base</i>"]
-  G["<b>go</b> ×2<br/>check · drift gates"]
+  GC["<b>go-contracts</b><br/>static · drift · release contracts"]
+  G["<b>go</b> ×3<br/>race-policy tests only"]
   P["<b>store-postgres</b>"]
   F["<b>frontend</b> ×2"]
   W["<b>playwright</b> ×4"]
@@ -11,12 +12,14 @@ graph LR
   I["<b>image</b><br/>amd64 + arm64"]
   OK(["<b>ci-ok</b><br/><i>the required check</i>"])
 
-  C -->|"*.go, migrations, docs/help/, scripts/, Makefile"| G
+  C -->|"*.go, migrations, docs/help/, scripts/, Makefile"| GC
+  C -->|"same Go inputs"| G
   C --> P
   C -->|"web/, Makefile"| F
   C --> W
   C -->|"docs/, README, docs-site/"| D
   C -->|"all Docker build inputs"| I
+  GC --> OK
   G --> OK
   P --> OK
   F --> OK
@@ -27,7 +30,7 @@ graph LR
   classDef gate fill:#1f6f4a,stroke:#134a31,color:#fff
   classDef job fill:#2b3b52,stroke:#1b2736,color:#dbe4ef
   class OK gate
-  class C,G,P,F,W,D,I job
+  class C,GC,G,P,F,W,D,I job
 ```
 
 ## Jobs run only when their inputs changed
@@ -67,9 +70,13 @@ check sits "expected" forever and the PR can't merge. Filter per job.
 
 ## Sharding
 
-Go, frontend and Playwright split across runners for wall-clock only. `make go-shard-verify`
-asserts the Go shards are a true partition of `go list ./...` — a split that drops a package
-would pass by not running.
+Go tests, frontend and Playwright split across runners for wall-clock only. Repository-wide Go and
+Rust contracts run once in `go-contracts`, in parallel with three test-only Go shards. Their union is
+the same assurance as local `make check`: `check-static` plus `test`. The `ci-ok` aggregate requires
+both jobs, so moving contracts out of the test shards cannot make them optional.
+
+`make go-shard-verify` runs in `go-contracts` and asserts the Go shards are a true partition of
+`go list ./...` — a split that drops a package would otherwise pass by not running it.
 
 Sharding is free on a public repo. Check the bill before copying it into a private one.
 
