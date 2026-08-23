@@ -264,17 +264,20 @@ func TestWiring_FreshInstall(t *testing.T) {
 		}
 	}
 
-	// External-feature routes report UNCONFIGURED (501) — no library/tunarr/llm.
-	// (After the live-enable fix these still 501 when unconfigured; saving the config
-	// makes them work live — see TestWiring_ConfigEnablesLive.)
-	unconfigured := []struct{ method, path, body string }{
-		{http.MethodPost, "/v1/proposals", `{"description":"x"}`},
-		{http.MethodGet, "/v1/search?q=matrix", ""},
-		{http.MethodPost, "/v1/setup/tunarr-connect", ""},
+	// External-feature routes report UNCONFIGURED — no library/tunarr/llm. Proposal
+	// submission uses the machine-readable 409 feature_not_configured contract; routes
+	// with no live implementation retain the general 501 response.
+	unconfigured := []struct {
+		method, path, body string
+		want               int
+	}{
+		{http.MethodPost, "/v1/proposals", `{"description":"x"}`, http.StatusConflict},
+		{http.MethodGet, "/v1/search?q=matrix", "", http.StatusNotImplemented},
+		{http.MethodPost, "/v1/setup/tunarr-connect", "", http.StatusNotImplemented},
 	}
 	for _, r := range unconfigured {
-		if code := h.status(r.method, r.path, r.body, admin); code != http.StatusNotImplemented {
-			t.Errorf("fresh install: %s %s → %d, want 501 (unconfigured)", r.method, r.path, code)
+		if code := h.status(r.method, r.path, r.body, admin); code != r.want {
+			t.Errorf("fresh install: %s %s → %d, want %d (unconfigured)", r.method, r.path, code, r.want)
 		}
 	}
 
@@ -321,14 +324,17 @@ func TestWiring_ConfigEnablesLive(t *testing.T) {
 	h := newHarness(t, withoutConnections())
 	admin := h.asAdmin()
 
-	// Fresh install: the feature routes report unconfigured (501).
-	preCheck := []struct{ method, path, body string }{
-		{http.MethodPost, "/v1/proposals", `{"description":"x"}`},
-		{http.MethodGet, "/v1/search?q=matrix", ""},
+	// Fresh install: the feature routes report unconfigured.
+	preCheck := []struct {
+		method, path, body string
+		want               int
+	}{
+		{http.MethodPost, "/v1/proposals", `{"description":"x"}`, http.StatusConflict},
+		{http.MethodGet, "/v1/search?q=matrix", "", http.StatusNotImplemented},
 	}
 	for _, r := range preCheck {
-		if code := h.status(r.method, r.path, r.body, admin); code != http.StatusNotImplemented {
-			t.Fatalf("pre-config %s %s → %d, want 501", r.method, r.path, code)
+		if code := h.status(r.method, r.path, r.body, admin); code != r.want {
+			t.Fatalf("pre-config %s %s → %d, want %d", r.method, r.path, code, r.want)
 		}
 	}
 	// Reconcile is already live for internal playout; a missing channel is a resource miss, not
