@@ -1,6 +1,6 @@
-# GitHub introduced this hosted preview label after actionlint v1.7.12's
-# built-in runner list. Declaring it here preserves strict label checking for
-# every other workflow value until actionlint publishes an updated list.
+# GitHub introduced this hosted label after actionlint v1.7.12's built-in runner
+# list. Declaring it here preserves strict label checking for every other workflow
+# value until actionlint publishes an updated list.
 self-hosted-runner:
   labels:
-    - xcode-27
+    - macos-26

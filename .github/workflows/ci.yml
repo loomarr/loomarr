@@ -745,9 +745,11 @@ jobs:
     name: Apple clients — native build + launch (${{ matrix.client }})
     needs: changes
     if: needs.changes.outputs.clients == 'true'
-    # ExpoModulesJSI uses Swift 6.2 C++ constructor ownership annotations, which are
-    # accepted by Xcode 27. Keep this native proof on GitHub's matching Apple image.
-    runs-on: xcode-27
+    # ExpoModulesJSI needs Swift 6.3: Xcode 16.4 cannot load the package and Xcode 26.3
+    # rejects its C++ ownership annotations. Xcode 26.4.1 is the first hosted pairing
+    # that compiles this Expo SDK without opting into Xcode 27's mandatory UIScene
+    # lifecycle, which Expo 57 prebuild does not yet generate.
+    runs-on: macos-26
     strategy:
       fail-fast: false
       matrix:
