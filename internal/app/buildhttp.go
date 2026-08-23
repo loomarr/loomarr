@@ -7,6 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/config"
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -161,7 +162,9 @@ func buildHTTP(deps httpBuild) http.Handler {
 			// `onProgress` was nil here since the supervisor was written, so ffmpeg's parsed
 			// progress samples were discarded every time. Passing it through is what makes the
 			// dashboard's encoder speed measured rather than invented (V16).
-			return playout.Start(ctx, set.str("playout.ffmpeg_path"), args, log, onProgress)
+			spec, _ := diagnostics.ProcessSpecFromContext(ctx)
+			return playout.StartObserved(ctx, set.str("playout.ffmpeg_path"), args, log, onProgress,
+				deps.foundation.processDiagnostics, spec)
 		},
 	})
 }

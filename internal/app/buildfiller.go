@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/mediatools"
 
 	"github.com/loomarr/loomarr/internal/clipfetch"
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
@@ -231,7 +232,8 @@ func buildFillerMediaTools(set resolved) *mediatools.FFmpegTools {
 // ladder explain an install rather than merely show gaps in it. Do not make registration
 // conditional to "clean up" the nil cases.
 func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, emitter *eventEmitter,
-	splitter *filler.Splitter, taggerProvider llm.Provider, wake *fillerChannelWake) *filler.Pipeline {
+	splitter *filler.Splitter, taggerProvider llm.Provider, wake *fillerChannelWake,
+	processDiagnostics *diagnostics.ProcessManager) *filler.Pipeline {
 	// The language gate (§10 V40). Registered unconditionally: `filler.language` empty makes
 	// Run a no-op, so an install that has not opted in pays nothing and the Tasks row still
 	// exists to be seen and paused.
@@ -341,7 +343,7 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 					return 0
 				}
 				return lufs
-			}, time.Now),
+			}, time.Now).WithDiagnostics(processDiagnostics),
 		filler.NewLanguageStage(langDetect, fillerLanguageStoreAdapter{st}, clipDir,
 			func() string { return set.str("filler.language") }, time.Now),
 		filler.NewTranscribeStage(fillerTools, fillerTranscribeStoreAdapter{st}, clipDir, fillerDrop,

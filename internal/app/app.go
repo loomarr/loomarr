@@ -132,11 +132,13 @@ func buildHandler(
 	eventBus, emitter := foundation.eventBus, foundation.emitter
 	jobReg, activityRec := foundation.jobs, foundation.activity
 
-	episodeRefresh := buildProvisioning(st, set, libraryClient, emitter, jobReg, activityRec, log)
+	episodeRefresh := buildProvisioning(st, set, libraryClient, emitter, jobReg, activityRec,
+		foundation.processDiagnostics, log)
 
 	channelsBuilt, err := buildChannels(
 		rootCtx, st, set, ov, owner, capturePlayoutResolver, libraryClient, secrets,
 		readGeneratedSecret, eventBus, emitter, activityRec, jobReg, episodeRefresh, fillerLayout, log,
+		foundation.processDiagnostics,
 	)
 	if err != nil {
 		return nil, err
@@ -158,6 +160,7 @@ func buildHandler(
 	}
 	fillers := buildFillerSubsystem(
 		st, set, fillerLayout, log, libraryClient, eventBus, emitter, jobReg, playoutRes, channelSvc,
+		foundation.processDiagnostics,
 	)
 	operations := buildOperations(
 		rootCtx, st, set, desiredSet, secrets, readGeneratedSecret, refreshSecretRedactor,

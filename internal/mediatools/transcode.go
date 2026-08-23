@@ -1,6 +1,7 @@
 package mediatools
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
@@ -9,7 +10,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"sync"
 
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/proctree"
 )
@@ -89,6 +92,9 @@ type TranscodeRequest struct {
 	// Probe re-measures the OUTPUT. Required: an unverified transcode is how a header-only file
 	// replaces a good original.
 	Probe Prober
+	// Diagnostics observes the process best-effort; it is never part of transcode success.
+	Diagnostics  *diagnostics.ProcessManager
+	ProcessJobID string
 }
 
 // Transcode re-encodes one clip and verifies the result.
@@ -153,25 +159,39 @@ func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percen
 	args = append(args, "-movflags", "+faststart", "-y", tmp)
 
 	cmd := exec.Command(FFmpegOr(req.FFmpegPath), args...) //nolint:gosec // args are built by this package
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+	var stderr boundedBytes
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return MediaQuality{}, fmt.Errorf("transcode %s: stderr pipe: %w", filepath.Base(req.In), err)
+	}
 	progress, err := cmd.StdoutPipe()
 	if err != nil {
 		return MediaQuality{}, fmt.Errorf("transcode %s: progress pipe: %w", filepath.Base(req.In), err)
 	}
+	run := req.Diagnostics.Begin(diagnostics.ProcessSpec{
+		Purpose: "filler_transcode", JobID: req.ProcessJobID, Target: req.Profile.ID(),
+		Executable: FFmpegOr(req.FFmpegPath), Args: args,
+	})
 	supervised, err := proctree.Start(ctx, cmd)
 	if err != nil {
 		_ = progress.Close()
+		_ = stderrPipe.Close()
+		if run != nil {
+			run.Finish(diagnostics.ProcessResult{Err: err})
+		}
 		return MediaQuality{}, fmt.Errorf("transcode %s: %w: %s", filepath.Base(req.In), err, stderr.String())
 	}
 
-	done := make(chan struct{})
+	progressDone := make(chan struct{})
 	go func() {
-		defer close(done)
+		defer close(progressDone)
 		// ⚠ The SHARED parser (`playout.ReadProgress`), not a second copy. `out_time_ms` reports
 		// microseconds despite its name, and that is exactly the kind of fact that gets fixed in
 		// one copy and not the other.
 		playout.ReadProgress(progress, func(sample playout.Progress) {
+			if run != nil {
+				run.ObserveProgress(diagnostics.ProcessProgress{Frame: sample.Frame, Speed: sample.Speed, OutTimeMS: sample.OutTimeMS})
+			}
 			if onProgress == nil || req.DurationMs <= 0 {
 				return
 			}
@@ -187,9 +207,27 @@ func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percen
 			onProgress(pct)
 		})
 	}()
+	stderrDone := make(chan struct{})
+	go func() {
+		defer close(stderrDone)
+		scanner := bufio.NewScanner(stderrPipe)
+		for scanner.Scan() {
+			line := scanner.Text()
+			stderr.add(line)
+			if run != nil {
+				run.RecordOutput(line)
+			}
+		}
+	}()
 
 	runErr := supervised.Wait()
-	<-done
+	<-progressDone
+	<-stderrDone
+	if run != nil {
+		run.Finish(diagnostics.ProcessResult{
+			Err: runErr, Cancelled: supervised.Stopped(), TerminationReason: transcodeTerminationReason(supervised.Stopped()),
+		})
+	}
 	if supervised.Stopped() && ctx.Err() != nil {
 		return MediaQuality{}, fmt.Errorf("transcode %s: %w: %s", filepath.Base(req.In), ctx.Err(), stderr.String())
 	}
@@ -207,6 +245,36 @@ func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percen
 		onProgress(100)
 	}
 	return qualityFromDetectorOutput(stderr.String(), req.DurationMs), nil
+}
+
+type boundedBytes struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *boundedBytes) add(line string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	_, _ = b.buf.WriteString(line + "\n")
+	const limit = 256 << 10
+	if b.buf.Len() > limit {
+		data := append([]byte(nil), b.buf.Bytes()[b.buf.Len()-limit:]...)
+		b.buf.Reset()
+		_, _ = b.buf.Write(data)
+	}
+}
+
+func (b *boundedBytes) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func transcodeTerminationReason(stopped bool) string {
+	if stopped {
+		return "process tree stopped"
+	}
+	return ""
 }
 
 // verifyTranscodeToleranceMs is how far the output's duration may drift from the input's.

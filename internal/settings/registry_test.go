@@ -45,7 +45,7 @@ func TestRegistry_TMDBHelpNamesEveryEnabledSurface(t *testing.T) {
 
 func TestRegistry_RestartKeys(t *testing.T) {
 	reg := NewRegistry()
-	want := []string{"filler.dir", "filler.watch_dir"}
+	want := []string{"filler.dir", "filler.watch_dir", "diagnostics.dir"}
 	got := reg.RestartKeys()
 	if len(got) != len(want) {
 		t.Fatalf("RestartKeys = %v, want %v", got, want)

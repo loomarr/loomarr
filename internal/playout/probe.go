@@ -1,12 +1,16 @@
 package playout
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/loomarr/loomarr/internal/diagnostics"
 )
 
 // All ffprobe use lives here (§9.1). One invocation, one stream model, three consumers.
@@ -66,7 +70,9 @@ type probed struct {
 // container, duration, bitrate) so later features need no second probe. `-v error` keeps ffprobe's
 // chatter off our stderr; a probe failure is returned, never fatal — callers degrade (audio →
 // track 0, format → transcode-required, tracks → empty list).
-func runFFprobe(ctx context.Context, bin, input string, inspectPackets bool) (probed, error) {
+func runFFprobeObserved(ctx context.Context, bin, input string, inspectPackets bool,
+	manager *diagnostics.ProcessManager,
+) (probed, error) {
 	entries := "stream=index,codec_type,codec_name,width,height,avg_frame_rate,pix_fmt,color_transfer,channels,sample_rate" +
 		":stream_tags=language,title" +
 		":format=format_name,duration,bit_rate"
@@ -82,11 +88,48 @@ func runFFprobe(ctx context.Context, bin, input string, inspectPackets bool) (pr
 	}
 	args = append(args, "-show_entries", entries, "-of", "json", input)
 	cmd := exec.CommandContext(ctx, bin, args...)
-	out, err := cmd.Output()
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	stderr, pipeErr := cmd.StderrPipe()
+	if pipeErr != nil {
+		return probed{}, pipeErr
+	}
+	spec, _ := diagnostics.ProcessSpecFromContext(ctx)
+	spec.Purpose, spec.Executable, spec.Args = "media_probe", bin, args
+	spec.Target = "streams_and_format"
+	run := manager.Begin(spec)
+	if err := cmd.Start(); err != nil {
+		if run != nil {
+			run.Finish(diagnostics.ProcessResult{Err: err})
+		}
+		return probed{}, err
+	}
+	drained := make(chan struct{})
+	go func() {
+		defer close(drained)
+		scanner := bufio.NewScanner(stderr)
+		for scanner.Scan() {
+			if run != nil {
+				run.RecordOutput(scanner.Text())
+			}
+		}
+	}()
+	err := cmd.Wait()
+	<-drained
+	if run != nil {
+		run.Finish(diagnostics.ProcessResult{Err: err, Cancelled: ctx.Err() != nil, TerminationReason: probeTerminationReason(ctx)})
+	}
 	if err != nil {
 		return probed{}, err
 	}
-	return parseProbeJSON(out)
+	return parseProbeJSON(out.Bytes())
+}
+
+func probeTerminationReason(ctx context.Context) string {
+	if ctx.Err() != nil {
+		return "context cancelled"
+	}
+	return ""
 }
 
 // parseProbeJSON decodes ffprobe's JSON — split from the exec so tests exercise the real struct
@@ -115,10 +158,14 @@ func ffprobeBesideFFmpeg(ffmpegPath string) string {
 
 // FFprobeAudioNextTo returns an AudioProber built on the shared probe. The audio streams, in the
 // order ffmpeg numbers them — which is what PickAudioTrack's audio-relative index needs.
-func FFprobeAudioNextTo(ffmpegPath string) AudioProber {
+func FFprobeAudioNextTo(ffmpegPath string, observers ...*diagnostics.ProcessManager) AudioProber {
 	bin := ffprobeBesideFFmpeg(ffmpegPath)
+	var observer *diagnostics.ProcessManager
+	if len(observers) > 0 {
+		observer = observers[0]
+	}
 	return func(ctx context.Context, input string) ([]AudioTrack, error) {
-		p, err := runFFprobe(ctx, bin, input, false)
+		p, err := runFFprobeObserved(ctx, bin, input, false, observer)
 		if err != nil {
 			return nil, err
 		}
@@ -141,10 +188,14 @@ func audioTracksOf(streams []probedStream) []AudioTrack {
 
 // FFprobeTracksNextTo returns a TrackProber built on the shared probe — the audio + subtitle tracks
 // the Watch surface offers.
-func FFprobeTracksNextTo(ffmpegPath string) TrackProber {
+func FFprobeTracksNextTo(ffmpegPath string, observers ...*diagnostics.ProcessManager) TrackProber {
 	bin := ffprobeBesideFFmpeg(ffmpegPath)
+	var observer *diagnostics.ProcessManager
+	if len(observers) > 0 {
+		observer = observers[0]
+	}
 	return func(ctx context.Context, input string) (MediaTracks, error) {
-		p, err := runFFprobe(ctx, bin, input, false)
+		p, err := runFFprobeObserved(ctx, bin, input, false, observer)
 		if err != nil {
 			return MediaTracks{}, err
 		}
@@ -180,10 +231,14 @@ func tracksOf(streams []probedStream) MediaTracks {
 
 // FFprobeFormatNextTo returns a FormatProber built on the shared probe — the full MediaFormat for
 // PlanCopy and any later feature that needs it.
-func FFprobeFormatNextTo(ffmpegPath string) FormatProber {
+func FFprobeFormatNextTo(ffmpegPath string, observers ...*diagnostics.ProcessManager) FormatProber {
 	bin := ffprobeBesideFFmpeg(ffmpegPath)
+	var observer *diagnostics.ProcessManager
+	if len(observers) > 0 {
+		observer = observers[0]
+	}
 	return func(ctx context.Context, input string) (MediaFormat, error) {
-		p, err := runFFprobe(ctx, bin, input, true)
+		p, err := runFFprobeObserved(ctx, bin, input, true, observer)
 		if err != nil {
 			return MediaFormat{}, err
 		}

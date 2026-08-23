@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/backendtransition"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/library"
@@ -53,6 +54,7 @@ type playoutDeps struct {
 	appliedBackend        func(context.Context) (string, error)
 	transportBackend      func(context.Context) (string, error)
 	log                   *slog.Logger
+	processDiagnostics    *diagnostics.ProcessManager
 }
 
 func buildPlayout(deps playoutDeps) (playoutBuild, error) {
@@ -132,7 +134,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	playoutMgr := playout.NewManager(
 		playoutSpawner(set.str("playout.ffmpeg_path"),
 			func() string { return set.str("server.public_url") },
-			playoutTokenFn, log),
+			playoutTokenFn, log, deps.processDiagnostics),
 		playoutBudget,
 		playout.DefaultGrace,
 		log,
@@ -182,10 +184,11 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		// Preferred audio language (§9.1), read live so a Settings change applies to the
 		// next programme rather than the next restart. The prober derives ffprobe from the
 		// ffmpeg path — the two ship together, so an operator who moved one moved both.
-		audioLanguage: func() string { return set.str("playout.audio_language") },
-		probeAudio:    playout.FFprobeAudioNextTo(set.str("playout.ffmpeg_path")),
-		probeTracks:   playout.FFprobeTracksNextTo(set.str("playout.ffmpeg_path")),
-		probeFormat:   playout.FFprobeFormatNextTo(set.str("playout.ffmpeg_path")),
+		audioLanguage:      func() string { return set.str("playout.audio_language") },
+		probeAudio:         playout.FFprobeAudioNextTo(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
+		probeTracks:        playout.FFprobeTracksNextTo(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
+		probeFormat:        playout.FFprobeFormatNextTo(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
+		processDiagnostics: deps.processDiagnostics,
 		// Live read of `library.path_map` (§15, V47), parsed each call so a mapping edit
 		// applies without a restart — the same hot-apply posture as audioLanguage.
 		pathMap: func() library.PathMap { return library.ParsePathMap(set.str("library.path_map")) },
@@ -225,7 +228,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	var liveHLS *playout.HLSManager
 	if hlsMgr, herr := playout.NewHLSManager(
 		playoutMgr, set.str("playout.ffmpeg_path"), set.str("playout.hls_dir"),
-		playout.DefaultGrace, log,
+		playout.DefaultGrace, log, deps.processDiagnostics,
 	); herr != nil {
 		log.Warn("internal playout: in-app HLS unavailable — browser playback disabled",
 			"err", herr)
@@ -309,7 +312,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 				}
 				return playout.PreparedVideoArgs(encoder, contract)
 			},
-		)
+		).WithDiagnostics(deps.processDiagnostics)
 		preparer := prepared.NewPreparer(prepared.PreparerDependencies{
 			Library: preparedLibrary, Packager: packager, Readiness: readiness,
 		})

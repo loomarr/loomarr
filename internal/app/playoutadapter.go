@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/playout"
@@ -142,8 +143,9 @@ type playoutResolver struct {
 	// probeTracks lists a source's audio AND subtitle tracks for the Watch pickers (§9.1, V46) —
 	// the options come from the airing media, not a list. Nil ⇒ empty tracks, so the pickers show
 	// only the current channel default rather than blocking.
-	probeTracks playout.TrackProber
-	log         *slog.Logger
+	probeTracks        playout.TrackProber
+	processDiagnostics *diagnostics.ProcessManager
+	log                *slog.Logger
 	// channels reads the channel the arranged-cycle cache fingerprints, and cycles is that
 	// cache (cyclecache.go). Both nil ⇒ the guide computes every cycle live, which is exactly
 	// the pre-cache behaviour — so tests and any install that skips the wiring still get correct
@@ -983,7 +985,7 @@ func (r *playoutResolver) detectedEncoder(ctx context.Context) playout.Encoder {
 		if r.gpuName != nil {
 			gpu = r.gpuName()
 		}
-		cap := playout.Detect(ctx, bin, playout.DefaultProfile(), gpu)
+		cap := playout.DetectObserved(ctx, bin, playout.DefaultProfile(), gpu, r.processDiagnostics)
 		r.detected = cap.Chosen
 		r.maxChannels.Store(int64(cap.MaxChannels))
 		if r.log != nil {
@@ -1035,6 +1037,7 @@ func effectivePlayoutAnchor(ch store.Channel) (time.Time, error) {
 // encode regardless of how many programs it plays.
 func playoutSpawner(
 	ffmpegBin string, publicURL func() string, token func() string, log *slog.Logger,
+	processDiagnostics *diagnostics.ProcessManager,
 ) playout.Spawner {
 	return func(ctx context.Context, channelID string, target playout.EncodePlan) (*playout.Process, error) {
 		base := publicURL()
@@ -1042,7 +1045,7 @@ func playoutSpawner(
 			return nil, fmt.Errorf("playout: server.public_url is not set, so the session cannot open blocks")
 		}
 		source := playoutBlockSource(base, token, http.DefaultClient)
-		return playout.BlockSpawner(ffmpegBin, source, log)(ctx, channelID, target)
+		return playout.BlockSpawner(ffmpegBin, source, log, processDiagnostics)(ctx, channelID, target)
 	}
 }
 
@@ -1064,6 +1067,9 @@ func playoutBlockSource(base string, token func() string, client *http.Client) p
 		req, err := http.NewRequestWithContext(blockCtx, http.MethodGet, programURL, nil)
 		if err != nil {
 			return playout.Block{}, err
+		}
+		if parent, ok := diagnostics.ProcessSpecFromContext(blockCtx); ok && parent.ParentRunID != "" {
+			req.Header.Set(api.PlayoutParentProcessRunHeader, parent.ParentRunID)
 		}
 		resp, err := client.Do(req)
 		if err != nil {

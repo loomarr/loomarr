@@ -19,8 +19,8 @@ func TestResolvedFreezeKeepsAppliedValuesAcrossLiveWrites(t *testing.T) {
 	if applied["filler.dir"] != "/clips/old" || applied["filler.watch_dir"] != "/watch/old" {
 		t.Fatalf("applied = %v, want canonical generation values", applied)
 	}
-	if len(applied) != 2 {
-		t.Fatalf("applied = %v, want only the two restart-scoped layout keys", applied)
+	if applied["diagnostics.dir"] != "/data/diagnostics" || len(applied) != 3 {
+		t.Fatalf("applied = %v, want all three restart-scoped storage keys", applied)
 	}
 
 	set.svc.SetDB(map[string]string{

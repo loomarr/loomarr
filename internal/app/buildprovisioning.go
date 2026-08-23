@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/activity"
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/reconcile"
 	"github.com/loomarr/loomarr/internal/retention"
@@ -21,6 +22,7 @@ func buildProvisioning(
 	emitter *eventEmitter,
 	jobs *scheduler.Registry,
 	activityRecorder *activity.Recorder,
+	processDiagnostics *diagnostics.ProcessManager,
 	log *slog.Logger,
 ) *reconcile.EpisodeRefresh {
 	if st == nil {
@@ -40,7 +42,7 @@ func buildProvisioning(
 		DiagnosticsMaxBytes: func() int64 {
 			return int64(set.intv("diagnostics.max_storage_mb")) * 1024 * 1024
 		},
-	}, time.Now, log).Job())
+	}, time.Now, log).WithDiagnostics(processDiagnostics).Job())
 
 	libraryScan := reconcile.NewLibraryScan(
 		st, libraryClient, emitter, set.dur("job.library_scan.lookback"), time.Now, log,

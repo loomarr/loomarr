@@ -1,15 +1,20 @@
 package prepared
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
+
+	"github.com/loomarr/loomarr/internal/diagnostics"
 )
 
 const (
@@ -25,8 +30,17 @@ var ErrUnsupportedRendition = errors.New("prepared: unsupported rendition")
 // FFmpegPackager is the real prepared-media driver. It produces finite fMP4 HLS as fast as the
 // machine allows; it is control-plane work and deliberately carries no realtime pacing flags.
 type FFmpegPackager struct {
-	path      string
-	videoArgs VideoArgs
+	path        string
+	videoArgs   VideoArgs
+	diagnostics *diagnostics.ProcessManager
+}
+
+// WithDiagnostics observes packaging without making diagnostics part of packaging correctness.
+func (p *FFmpegPackager) WithDiagnostics(manager *diagnostics.ProcessManager) *FFmpegPackager {
+	if p != nil {
+		p.diagnostics = manager
+	}
+	return p
 }
 
 // VideoPlan separates arguments that ffmpeg requires before its input from filters and encoder
@@ -61,11 +75,73 @@ func (p *FFmpegPackager) Package(ctx context.Context, workspace string, source S
 	if err != nil {
 		return Output{}, err
 	}
-	output, err := exec.CommandContext(ctx, p.path, args...).CombinedOutput()
+	cmd := exec.CommandContext(ctx, p.path, args...) //nolint:gosec // args are built from validated contracts
+	stderr, pipeErr := cmd.StderrPipe()
+	if pipeErr != nil {
+		return Output{}, fmt.Errorf("prepared: ffmpeg stderr: %w", pipeErr)
+	}
+	cmd.Stdout = io.Discard
+	run := p.diagnostics.Begin(diagnostics.ProcessSpec{
+		Purpose: "prepared_package", Target: fmt.Sprintf("%s-%dx%d", rendition.VideoCodec, rendition.Width, rendition.Height),
+		Executable: p.path, Args: args,
+	})
+	if err := cmd.Start(); err != nil {
+		if run != nil {
+			run.Finish(diagnostics.ProcessResult{Err: err})
+		}
+		return Output{}, fmt.Errorf("prepared: ffmpeg package: %w", err)
+	}
+	var output boundedOutput
+	drained := make(chan struct{})
+	go func() {
+		defer close(drained)
+		scanner := bufio.NewScanner(stderr)
+		for scanner.Scan() {
+			line := scanner.Text()
+			output.add(line)
+			if run != nil {
+				run.RecordOutput(line)
+			}
+		}
+	}()
+	err = cmd.Wait()
+	<-drained
+	if run != nil {
+		run.Finish(diagnostics.ProcessResult{Err: err, Cancelled: ctx.Err() != nil, TerminationReason: cancellationReason(ctx)})
+	}
 	if err != nil {
-		return Output{}, fmt.Errorf("prepared: ffmpeg package: %w: %s", err, commandDiagnostic(output))
+		return Output{}, fmt.Errorf("prepared: ffmpeg package: %w: %s", err, commandDiagnostic(output.bytes()))
 	}
 	return collectPackagedOutput(workspace)
+}
+
+type boundedOutput struct {
+	mu   sync.Mutex
+	data []byte
+}
+
+func (b *boundedOutput) add(line string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.data = append(b.data, line...)
+	b.data = append(b.data, '\n')
+	const limit = 64 << 10
+	if len(b.data) > limit {
+		b.data = append([]byte(nil), b.data[len(b.data)-limit:]...)
+	}
+}
+
+func (b *boundedOutput) bytes() []byte {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]byte(nil), b.data...)
+}
+
+func cancellationReason(ctx context.Context) string {
+	if ctx.Err() != nil {
+		return "context cancelled"
+	}
+	return ""
 }
 
 func ffmpegPackageArgs(workspace string, source Source, r RenditionContract) ([]string, error) {
