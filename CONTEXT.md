@@ -217,6 +217,36 @@ _Avoid_: synced, linked, connected
 
 ### Operations
 
+**Activity**:
+A curated, operator-readable historical statement about something Loomarr did. Activity is a
+product feed, not a technical diagnostic stream.
+_Avoid_: log, event log, audit log
+
+**Diagnostic event**:
+One structured technical observation from the Loomarr server or a connected Loomarr client,
+retained so an operator or support agent can correlate and investigate behaviour.
+_Avoid_: activity, log line, console message
+
+**Process run**:
+One bounded lifecycle of an external media process Loomarr owns, such as an ffmpeg playout parent,
+programme encoder, HLS remux, preparation, or probe.
+_Avoid_: stream, session (both already mean different things)
+
+**Process output**:
+The bounded technical text emitted by one Process run and retained for diagnosis; media bytes are
+not Process output.
+_Avoid_: stream output, console log
+
+**Support bundle**:
+A bounded, redacted diagnostic package an administrator deliberately assembles for download and,
+in the future, explicit submission for help.
+_Avoid_: log dump, crash report
+
+**Startup report**:
+The ordered health account for one Loomarr application generation, from configuration through
+readiness, including required failures and optional degradation.
+_Avoid_: boot log, startup table (the table is one rendering of the report)
+
 **Job**:
 A named unit of recurring or long-running work on the job bus, with a cron default and a
 settings key. Reports progress over SSE and is cancellable (§18).

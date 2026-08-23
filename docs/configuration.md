@@ -119,6 +119,8 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `jobs.retention` (`JOBS_RETENTION`) | duration | `720h` | How long finished suggestion jobs are kept before they're cleaned up. |
 | `proposals.retention` (`PROPOSALS_RETENTION`) | duration | `2160h` | How long suggested lineups are kept before they're cleaned up. |
 | `activity.retention` (`ACTIVITY_RETENTION`) | duration | `720h` | How long the Dashboard's recent-activity entries are kept before they're cleaned up. |
+| `diagnostics.retention` (`DIAGNOSTICS_RETENTION`) | duration | `168h` | How long Diagnostic events and completed Process runs are kept. Active Process runs are never removed by age. |
+| `diagnostics.max_storage_mb` (`DIAGNOSTICS_MAX_STORAGE_MB`) | int | `512` | Soft global storage budget in MiB for retained Diagnostic events and bounded Process output. Active Process runs remain protected. |
 | `job.housekeeping.schedule` (`JOB_HOUSEKEEPING_SCHEDULE`) | cron | `0 30 4 * * *` | When Loomarr removes expired sessions and operational records beyond their retention periods. |
 | `setup.completed` (`SETUP_COMPLETED`) | bool | `false` | Whether first-run setup is done. Until it is, Loomarr opens the setup wizard. _(advanced)_ |
 

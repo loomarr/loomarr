@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/activity"
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/library"
@@ -33,6 +34,7 @@ type foundationBuild struct {
 	emitter                *eventEmitter
 	jobs                   *scheduler.Registry
 	activity               *activity.Recorder
+	diagnostics            *diagnostics.Recorder
 }
 
 // buildFoundation creates the shared roots consumed by later subsystem builders. The returned
@@ -42,6 +44,7 @@ func buildFoundation(
 	st store.Store,
 	log *slog.Logger,
 	overrides Overrides,
+	owner *generationLifecycle,
 ) (foundationBuild, error) {
 	result := foundationBuild{}
 	result.ready = func() (bool, string) {
@@ -98,6 +101,15 @@ func buildFoundation(
 	result.jobs = scheduler.NewRegistry()
 	if st != nil {
 		result.activity = activity.New(st, result.log).WithNotifier(result.emitter)
+		// Capture the pre-recorder logger permanently. #511 may fan result.log into diagnostics;
+		// persistence failures must keep using this stdout-only path or they would recurse.
+		fallbackLog := result.log
+		result.diagnostics = diagnostics.New(st, diagnostics.Options{
+			OnFailure: func(err error, count int) {
+				fallbackLog.Error("diagnostics: persistence failed", "err", err, "records", count)
+			},
+		})
+		owner.addStop(result.diagnostics.Close)
 	}
 	return result, nil
 }

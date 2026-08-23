@@ -120,7 +120,7 @@ func buildHandler(
 	owner *generationLifecycle,
 	capturePlayoutResolver func(*playoutResolver),
 ) (http.Handler, error) {
-	foundation, err := buildFoundation(rootCtx, st, log, ov)
+	foundation, err := buildFoundation(rootCtx, st, log, ov, owner)
 	if err != nil {
 		return nil, err
 	}

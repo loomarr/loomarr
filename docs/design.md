@@ -190,6 +190,8 @@ flowchart TD
   Carries the version stamped into the binary at build time.
 - **`config`** · 1 importer
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
+- **`diagnostics`** · 3 importers
+  Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
 - **`media`** · 3 importers
@@ -222,7 +224,7 @@ flowchart TD
   One pipeline every image in Loomarr travels (§22).
 - **`playout`** · 4 importers · → `prepared`, `proctree`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
-- **`retention`** · 1 importer · → `scheduler`
+- **`retention`** · 1 importer · → `diagnostics`, `scheduler`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity rows.
 
 **Layer 3**
@@ -257,7 +259,7 @@ flowchart TD
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`library`** · 7 importers · → `filler`, `httpx`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`store`** · 14 importers · → `filler`, `provision`, `schedule`, `taxonomy`
+- **`store`** · 14 importers · → `diagnostics`, `filler`, `provision`, `schedule`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 **Layer 8**
@@ -308,7 +310,7 @@ flowchart TD
 
 **Layer 12**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `events`, `filler`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `diagnostics`, `events`, `filler`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -520,6 +522,41 @@ subject_id}` — for the Dashboard's **Recent activity** feed (§12, V32).
   a third would make the Advanced settings page a list of promises. *(Those two remain open;
   they are a pre-existing gap, not this phase's.)*
 
+`diagnostic_events` and `diagnostic_process_runs` retain the bounded technical evidence behind
+the operator-facing Diagnostics surface (§17). They do **not** replace `activity`: Activity answers
+*"what did Loomarr do?"* in curated prose, while a Diagnostic event answers *"what did this part of
+Loomarr observe?"* through stable fields an operator or support agent can filter and correlate.
+
+- **Diagnostic events are structured at ingestion.** Each row promotes the fields used for bounded
+  queries: `{id, occurred_at, received_at, level, source, subsystem, event, message, request_id,
+  playback_session_id, channel_id, schedule_block_id, job_id, process_run_id, actor_id,
+  instance_id, attributes_json, size_bytes}`. Times are Unix milliseconds because player and
+  process transitions can be separated by less than a second. `occurred_at` is when the producer
+  observed the event; `received_at` is server truth and exposes client clock skew rather than
+  silently rewriting it. `event` is a stable machine name such as `playout.process_exited`;
+  `message` is the human summary. Additional bounded attributes live in JSON without turning every
+  new observation into a migration.
+- **Process runs are lifecycles, not log lines.** One row identifies an external media process and
+  records its purpose, parent run, owning instance, related Channel/target/schedule block/Job,
+  executable + detected version, redacted command summary, start/end, status, exit code,
+  termination reason, first/last error, output reference/bytes, and discarded-line count. Active
+  runs are never removed by age. High-volume process output is a bounded file indexed by this row,
+  never one SQL row per ffmpeg stderr line (§17).
+- **`size_bytes` is the normalized retained size**, not a database-page measurement. SQLite does
+  not shrink its file on every DELETE and Postgres has its own vacuum policy; using physical file
+  size as a row-retention signal would therefore make the two supported backends behave
+  differently. The value accounts for the retained normalized strings/JSON, and Process-run
+  metadata accounts separately for its bounded output file.
+- **Best-effort by contract.** A Diagnostic event is never part of the transaction or operation it
+  describes. A failed or saturated recorder increments its drop counter and preserves stdout; it
+  cannot fail an API request, Job, reconcile, or Playout process. Graceful application shutdown
+  offers the recorder a bounded flush, but crash-time loss of the in-memory tail is preferable to
+  making diagnostics load-bearing.
+- **Redacted before persistence.** Attribute names are normalized and credentials, authorization,
+  cookies, session values, generated secrets, signed query parameters, raw form/DOM content, and
+  unnecessary complete local paths are removed or replaced before a row or process-output byte is
+  written. Read-time masking is defense in depth, not the privacy boundary (§17).
+
 ⚠ **A recency signal cannot make repeats rare on a small library, and must not pretend to.** The
 arithmetic is unforgiving: a 24h day consumes ~13 films, so a channel needs ~168h of content to
 avoid repeating inside a week. The dev channel has 34 titles ≈ 62h — a 3-day no-repeat is already
@@ -534,6 +571,16 @@ and adjacency candidates (`programming-design.md` §8.2/§8.3) exist to supply.
 State accumulates; the daily **housekeeping** task enforces retention so a year-old install isn't dragging a landfill:
 - **Sessions:** sliding TTL, `SESSION_TTL` default 30d; expired rows purged. (Without this, sessions live forever — both a growth and a security problem.)
 - **Activity:** feed rows purged after `activity.retention` (default 30d) by the `housekeeping` job (§18.1, V32).
+- **Diagnostics:** Diagnostic events and completed Process runs are purged after
+  `diagnostics.retention` (default 7d). A second `diagnostics.max_storage_mb` budget (default 512
+  MiB) bounds normalized database payload plus process-output files even inside that window. The
+  policy removes expired records first, then the oldest completed Process output/metadata and
+  oldest events until under budget; it never removes an active Process run. Each Process run also
+  has a non-configurable safety cap that preserves its initialization prefix and rolling failure
+  tail with an explicit truncation marker, so one chatty ffmpeg cannot consume the global budget
+  before housekeeping runs. File deletion and its database-row update are coordinated by the
+  diagnostics module, not by `store`: SQL cannot delete an output file, and two independent
+  retention implementations would drift.
 - **Jobs:** finished jobs (`done`/`failed`) purged after `JOBS_RETENTION` (default 30d) by the `housekeeping` job (§18.1). A `queued` or `running` job is never purged regardless of age — age is not evidence that work finished, and deleting a running job's row would strand the worker holding its lease.
 - **Proposals:** `denied` purged after `PROPOSALS_RETENTION` (default 90d). ⚠ **`approved` and `submitted` are kept indefinitely**, for different reasons: an approved proposal is the audit trail behind `approved_by` (the record of a decision that spent real resources), and a `submitted` one is a member still waiting for an answer — ageing it out would silently discard a request rather than decline it.
   - **A terminal decision is a compare-and-swap from `submitted`.** Approval first derives the
@@ -856,6 +903,13 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | GET | `/v1/system/restart` | What a restart would cost right now (admin, §9.2, V13), so the confirm dialog states consequences rather than guessing: the count of channels **Loomarr is currently streaming** (from `/v1/playout/sessions`) which drop for a few seconds, versus Tunarr-backed channels which keep playing (§9.1), plus whether any restart-scoped setting is pending (`restartRequired`, with the specific desired-vs-applied keys). |
 | GET | `/v1/system/services` | The Dashboard's **Services** panel (admin, §12, V31): one row per configured integration with its probe result and the **target** it was probed against, plus a `loomarr` row carrying version/backend/schema. Runs the **same `runConnectionChecks`** the wizard checklist and `/v1/system/reload` use — one probe implementation, asserted by a test, so three surfaces cannot disagree about whether Emby is reachable. |
 | GET | `/v1/activity?limit=` | The Dashboard's **Recent activity** feed (admin, §12, V32), newest first. Reads the persisted `activity` table (§5) rather than the SSE bus, so the feed survives a restart and is not subject to the bus's deliberate lossiness. |
+| GET | `/v1/diagnostics/events` | Cursor-paged Diagnostic events (admin, §17), filtered by bounded time window, level, source, subsystem, request/playback/Channel/schedule-block/Job/Process correlation, and text. JSON is the typed UI/agent truth; `Accept: application/x-ndjson` streams the same filtered records for download. |
+| GET | `/v1/diagnostics/processes` | Cursor-paged active and completed Process runs (admin, §17), with bounded time/status/purpose/Channel/Job filters. |
+| GET | `/v1/diagnostics/processes/{id}` | One Process run's durable metadata and downsampled progress (admin, §17). |
+| GET | `/v1/diagnostics/processes/{id}/output` | Stream one Process run's bounded readable output (admin, §17). Truncation and dropped-line counts are part of the response metadata, never hidden. |
+| GET | `/v1/diagnostics/startup` | The current application generation's Startup report plus a bounded recent history (admin, §17). The current in-memory report remains available when store startup failed; `/readyz` derives from the same required-check state. |
+| POST | `/v1/diagnostics/client-events` | Rate-limited ingestion of a closed, size-bounded web/Android TV event set (authenticated, §17). The server derives actor and receipt time; this route grants no diagnostic read access. |
+| POST | `/v1/diagnostics/support-bundle` | Stream one redacted, bounded Support bundle assembled from an explicit time window/correlation selection (admin, §17). Download only; future submission is a separate explicit-consent action. |
 | POST | `/v1/system/reload` | Re-probe every configured service without restarting (admin, §9.2, V13) — reuses the **one** `POST /v1/setup/test` probe implementation rather than a second copy, so a reload and the wizard's checklist can never disagree. No downtime: nothing is torn down. |
 | GET | `/v1/system/backups` | List the backups on disk in `backup.dir`, newest first (admin, §16, V12): filename, bytes, `writtenAt`. Also reports `dir`, `retain`, `schedule`, and `supported` (false on Postgres, where the listing is empty and the UI explains `pg_dump` rather than showing an empty table). Never 5xxs on a missing/unreadable directory — nothing written yet is an empty list, not an error. |
 | GET | `/v1/system/backups/{name}` | Download one **already-written** backup by filename (admin, §16, V12). `name` is validated against the `loomarr-<timestamp>.db` pattern and resolved inside `backup.dir` — it is a client-supplied path segment, so anything else is rejected before it reaches the filesystem. |
@@ -5254,7 +5308,7 @@ independently instead of treating every zero-lineup result as a model-quality my
 
 ### 14.2 The package map
 
-`internal/` is **44 flat packages, deliberately** — the grouping below is prose, not directories.
+`internal/` is **45 flat packages, deliberately** — the grouping below is prose, not directories.
 
 Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
 
@@ -5301,6 +5355,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `config` | ENV-ONLY bootstrap — the handful of values needed before the store opens |
 | `scheduler` | Recurring work as named, tunable, on-demand jobs (§18.1) |
 | `activity` | Records what Loomarr did, for the Dashboard feed (§5, §12) — written at each domain transition, never off the lossy event bus |
+| `diagnostics` | Records bounded, redacted technical evidence for operator and support investigation (§5, §17) |
 | `auth` | Sessions and their validation (§11) |
 | `events` | The in-memory bus behind SSE (§7) |
 | `media` | Host-wide admission for hardware media work, shared by foreground playout and background preparation (§9.1 V56) |
@@ -5407,6 +5462,8 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `JOB_WORKERS` / `JOB_TIMEOUT` | `1` / `10m` (§8). One suggestion at a time is the appliance-safe default because a local model may share CPU, memory, and GPU with playback or transcode. A larger or hosted-model deployment may deliberately raise it. |
 | `JOBS_RETENTION` / `PROPOSALS_RETENTION` | `720h` / `2160h` (§5 housekeeping). |
 | `ACTIVITY_RETENTION` | `720h` — how long Dashboard activity rows are kept before `housekeeping` removes them (§5, §18.1, V32). |
+| `DIAGNOSTICS_RETENTION` | `168h` — how long Diagnostic events and completed Process runs remain available. Active Process runs are exempt regardless of age (§5, §17). |
+| `DIAGNOSTICS_MAX_STORAGE_MB` | `512` — soft global budget for normalized Diagnostic-event payload plus bounded Process-output files. Housekeeping removes the oldest completed evidence until under budget; active Process runs remain protected even when that temporarily leaves the install over budget (§5, §17). |
 | `episodes.max_age` | `24h` — how stale a cached series episode list may be before `channel-maintenance` re-enumerates it (§5). A miss or an aged-out row still falls back to the live library call, so this bounds staleness, never correctness. |
 | `SUGGEST_MAX_ACQUISITIONS` | `10` |
 | `SCHED_WINDOW_HOURS` | `24h` (rolling-window horizon a channel materializes; per-channel/-rule overridable, `0` = the whole run — `programming-design.md` §6.5) |
@@ -5684,8 +5741,114 @@ The first-run wizard (§13) walks these checks interactively — the list below 
 ---
 
 ## 17. Observability
-- **Logging:** structured (`slog`); one line per provisioning transition and per channel reconcile (diff summary).
-- **Metrics (Prometheus):** records by state; requests submitted / give-ups; webhook events by type; library-lookup + reconcile-loop latency; **channel reconciles, Tunarr API latency/errors, slots pending-vs-filled per channel**; LLM latency + (hosted) token/cost, proposals generated, acquisitions proposed/approved/rejected, grounding-dropped candidates; filler clips synced/tagged/untagged and pod fallback-ladder depth (how often matching degrades); logins (success/failure) and active sessions; job queue depth + janitor purge counts; slot-drift substitutions. Outbound request count and latency wrap the retrying transport, so four attempts remain **one logical request** in those series; `loomarr_outbound_retries_total{target,reason}` separately counts each actual additional attempt with a bounded reason (`transport`, `408`, `429`, `500`, `502`, `503`, or `504`). Log lines carry the relevant job/proposal/channel id as a correlation field.
+
+### Diagnostics is one deep module, with two kinds of evidence
+
+`internal/diagnostics` owns retained technical evidence. Its caller interface is deliberately
+small: record one structured Diagnostic event, or begin one Process run and report its bounded
+progress/output/result. Callers do not choose SQL columns, output paths, batching, redaction,
+retention, or export formats. Those are implementation details behind the module's seam and are
+tested through that interface.
+
+The implementation has two real persistence adapters — SQLite and Postgres through the shared
+`store` implementation — and one in-memory test adapter. The composition root gives the module a
+narrow sink role rather than the full `store.Store`. The root retains the full Store union and
+conformance suite (§14.1).
+
+Application logging fans each accepted `slog` record to two independent sinks:
+
+1. **JSON stdout** remains the deployment/operator stream and is available before the database,
+   during a store failure, and while the store itself is reporting an error.
+2. **The bounded recorder** normalizes and redacts a copy, then performs a non-blocking enqueue to a
+   single batching worker. Queue saturation drops lower-severity evidence and increments a metric;
+   it never waits on the request, scheduler, or Playout goroutine. Persistence failures report once
+   through a stdout-only fallback logger, never through the composite handler that failed.
+
+The default durable threshold is `info`. A future operator-triggered verbose capture may retain
+`debug` for a bounded duration and optional subsystem/Channel scope; the design does not make
+permanent debug retention the default. Existing structured `slog` call sites remain valid. Stable
+event names and correlation attributes are added where a support query needs a contract rather
+than prose.
+
+### Correlation
+
+Every inbound API request has one `request_id`, echoed in `X-Request-Id` and RFC 7807 `instance` as
+today. Diagnostic producers additionally carry only the identities they actually know:
+`playback_session_id`, `channel_id`, `schedule_block_id`, `job_id`, `process_run_id`, `actor_id`, and
+`instance_id`. Empty is an honest unknown; no layer performs extra lookups merely to fill a log.
+
+A web or Android TV playback session uses one opaque `playback_session_id` across source
+replacement and schedule transitions. Client occurrence time and server receipt time remain
+distinct. This makes a server schedule transition, ffmpeg Process run, transport response, and
+player state comparable without pretending device clocks are synchronized.
+
+### Process runs and ffmpeg
+
+An ffmpeg Process run has three independent streams with three different owners:
+
+- **stdout is media** consumed by Playout and never logged;
+- **structured progress** is parsed and downsampled into bounded Process-run observations; and
+- **stderr is diagnostic output**, drained continuously into a bounded process-scoped file.
+
+Diagnostic writes happen after each pipe read and cannot apply backpressure to ffmpeg. If the
+output writer falls behind, it drops diagnostic lines, counts them, and continues draining. A
+long-lived run preserves an initialization prefix and rolling tail rather than an unbounded slice;
+download and UI both state exactly what was discarded. Commands are represented by a redacted
+summary, never raw arguments containing media URLs, tokens, or complete paths.
+
+`diagnostic_process_runs` is the durable metadata/index. The output path is opaque outside the
+diagnostics module. The initial beta remains single-replica for Playout ownership (§14), but every
+run records `instance_id`; a future shared-output adapter can replace local files without changing
+the caller interface or inventing ambiguous cross-instance rows.
+
+### Client diagnostics
+
+Clients report a closed, size-bounded event set; Loomarr never mirrors browser console output,
+Android logs, DOM/form contents, or arbitrary caller-supplied attributes. Initial useful evidence
+includes error boundaries/unhandled failures, failed typed operations with request id, player
+attach/detach, schedule-block transitions, media/HLS failures, server-versus-client playhead drift,
+buffering/seeking/readiness/source replacement, and client version/platform. The route is
+authenticated and rate-limited. The server derives `actor_id`; a client cannot attribute an event
+to another person.
+
+### Startup report
+
+Every application generation owns one structured **Startup report**: an ordered account of the
+checks that turn configuration into a ready Loomarr generation. Each check has a stable key,
+operator label, required flag, `pending | passed | warning | failed | skipped` status, start/end and
+duration, bounded redacted detail, optional remediation route, and Diagnostic-event correlation.
+The overall state is `starting` while a required check is pending, `ready` when required checks pass,
+`degraded` when only optional capabilities warn/fail, and `blocked` when a required check fails.
+Unconfigured optional integrations are `skipped`, never failures.
+
+The in-memory current-generation report is available even when the database cannot open, because
+that is exactly when an operator needs the reason. `/readyz` and the report derive from the same
+required-check state; they cannot disagree. Once persistence exists, the completed report enters
+Diagnostics retention, and an in-process restart creates a new generation id instead of rewriting
+the previous report.
+
+The report has three projections, all from the same value: a structured startup Diagnostic event,
+an admin-only in-app notice plus durable table, and a human terminal table in interactive/pretty log
+mode. The terminal renderer is formatting only: non-interactive container/JSON logging remains one
+structured object per line with no ANSI or multiline side channel. Formatted table text is never
+the persisted source of truth.
+
+### Read, download, and future support submission
+
+The authoritative read surfaces are admin-only, typed, cursor-paged, and bounded by time/filter
+limits. They expose stable JSON for the web UI and agents authenticated through the existing
+Bearer-token path; agents never scrape rendered HTML. Filtered Diagnostic events also stream as
+NDJSON, one Process run downloads as a readable text log, and an administrator can assemble a
+redacted ZIP Support bundle containing a manifest, versions, selected events, Process metadata and
+output, truncation/drop counts, and a redaction summary.
+
+Support submission is deliberately not part of download. A future submission uploads the exact
+bundle the administrator reviewed through a separate explicit outbound action showing destination,
+contents, size, and expiry. Loomarr never sends diagnostics automatically.
+
+### Metrics and health
+
+- **Metrics (Prometheus):** records by state; requests submitted / give-ups; webhook events by type; library-lookup + reconcile-loop latency; **channel reconciles, Tunarr API latency/errors, slots pending-vs-filled per channel**; LLM latency + (hosted) token/cost, proposals generated, acquisitions proposed/approved/rejected, grounding-dropped candidates; filler clips synced/tagged/untagged and pod fallback-ladder depth (how often matching degrades); logins (success/failure) and active sessions; job queue depth + janitor purge counts; slot-drift substitutions; Diagnostic events dropped by reason/source and retained Diagnostic/process-output bytes. Outbound request count and latency wrap the retrying transport, so four attempts remain **one logical request** in those series; `loomarr_outbound_retries_total{target,reason}` separately counts each actual additional attempt with a bounded reason (`transport`, `408`, `429`, `500`, `502`, `503`, or `504`).
 - **Readiness** true only after DB connectivity + migrations, and (soft) Tunarr reachability.
 
 ---

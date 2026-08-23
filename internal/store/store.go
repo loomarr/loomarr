@@ -11,6 +11,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/taxonomy"
@@ -526,6 +527,16 @@ type ActivityStore interface {
 	PurgeActivity(ctx context.Context, before time.Time) (int, error)
 }
 
+// DiagnosticStore is the retained technical evidence surface (§5, §17). Activity is deliberately
+// separate: it is a curated product feed, while these records are pageable/filterable diagnostics.
+type DiagnosticStore interface {
+	AppendDiagnosticEvents(ctx context.Context, records []diagnostics.Record) error
+	ListDiagnosticEvents(ctx context.Context, limit int) ([]diagnostics.Record, error)
+	UpsertDiagnosticProcessRun(ctx context.Context, run diagnostics.ProcessRun) error
+	GetDiagnosticProcessRun(ctx context.Context, id string) (diagnostics.ProcessRun, error)
+	PurgeDiagnostics(ctx context.Context, before time.Time, maxBytes int64) (diagnostics.PurgeResult, error)
+}
+
 // SettingStore is the settings KV (§5): instance id, per-app webhook last-received, etc.
 type SettingStore interface {
 	GetSetting(ctx context.Context, key string) (string, error)
@@ -609,6 +620,7 @@ type Store interface {
 	SplitProposalStore
 	AiringStore
 	ActivityStore
+	DiagnosticStore
 	SettingStore
 	CountStore
 	ImageStore
