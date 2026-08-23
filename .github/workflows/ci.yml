@@ -746,9 +746,10 @@ jobs:
     needs: changes
     if: needs.changes.outputs.clients == 'true'
     # ExpoModulesJSI needs Swift 6.3: Xcode 16.4 cannot load the package and Xcode 26.3
-    # rejects its C++ ownership annotations. Xcode 26.4.1 is the first hosted pairing
-    # that compiles this Expo SDK without opting into Xcode 27's mandatory UIScene
-    # lifecycle, which Expo 57 prebuild does not yet generate.
+    # rejects its C++ ownership annotations. The macOS 26 image supplies a compatible
+    # Xcode 26.4+ toolchain without opting into Xcode 27's mandatory UIScene lifecycle,
+    # which Expo 57 prebuild does not yet generate. The verifier fails closed on another
+    # Xcode major so a future image-default change cannot silently alter this contract.
     runs-on: macos-26
     strategy:
       fail-fast: false
@@ -772,6 +773,7 @@ jobs:
       - name: Generate, build, install, and launch
         env:
           LOOMARR_APPLE_ARTIFACTS_DIR: ${{ runner.temp }}/apple-client-${{ matrix.client }}
+          LOOMARR_APPLE_DERIVED_DATA_DIR: ${{ runner.temp }}/apple-derived-data-${{ matrix.client }}
         run: make client-apple-simulator CLIENT_APP=${{ matrix.client }}
       - name: Keep simulator screenshot
         if: always()

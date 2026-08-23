@@ -7,7 +7,7 @@ WEB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly WEB_ROOT
 readonly APP_DIR="${WEB_ROOT}/apps/${APP_NAME}"
 readonly ARTIFACTS_DIR="${LOOMARR_APPLE_ARTIFACTS_DIR:-${WEB_ROOT}/../.artifacts/apple-client/${APP_NAME}}"
-readonly DERIVED_DATA="${ARTIFACTS_DIR}/derived-data"
+readonly DERIVED_DATA="${LOOMARR_APPLE_DERIVED_DATA_DIR:-${ARTIFACTS_DIR}/derived-data}"
 
 case "${APP_NAME}" in
   mobile)
@@ -42,6 +42,11 @@ for command_name in jq pod xcodebuild xcrun; do
 done
 xcodebuild -version
 xcrun swift --version
+xcode_version="$(xcodebuild -version | awk 'NR == 1 { print $2 }')"
+if [[ ! "${xcode_version}" =~ ^26\. ]]; then
+  printf 'Apple client verification requires Xcode 26.x; found %s\n' "${xcode_version}" >&2
+  exit 2
+fi
 
 mkdir -p "${ARTIFACTS_DIR}"
 rm -rf "${DERIVED_DATA}"
@@ -116,7 +121,10 @@ if [[ ! "${launch_pid}" =~ ^[0-9]+$ ]]; then
 fi
 sleep 5
 xcrun simctl io "${simulator_id}" screenshot "${ARTIFACTS_DIR}/${APP_NAME}.png"
-if ! xcrun simctl spawn "${simulator_id}" /bin/kill -0 "${launch_pid}"; then
+# `simctl launch` returns the simulator application's host PID. Check it from the
+# host: simulator runtime command-line binaries are not guaranteed to be runnable
+# through `simctl spawn` (tvOS 26.4's /bin/kill is a macOS binary, for example).
+if ! /bin/kill -0 "${launch_pid}"; then
   printf 'apple-client: %s exited after launch; recent simulator log follows\n' "${APP_NAME}" >&2
   xcrun simctl spawn "${simulator_id}" log show \
     --last 2m \
