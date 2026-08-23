@@ -446,6 +446,13 @@ benchmarks at 45ms for *200* channels, so it was never the cost).
 becomes a store read. The **library is still the source of truth**; this is a materialized
 answer, never a second opinion:
 
+The cached episode evidence also carries community rating, overview, and tags. An approved series
+entry may persist an `episodeSelection` policy: deterministic `highlights` curation ranks credible
+community ratings, while `holiday` curation matches episode text against only the named built-in
+holidays. The scheduler applies that selector after its never-relaxed audience/era/season filters and
+before ordering. It keeps detected multi-part stories whole, and falls back to the complete safe pool
+when metadata is too sparse to select responsibly, so editorial precision cannot create dead air.
+
 - **Read path:** `GetSeriesEpisodes(libraryID)`. A miss (or a row older than the staleness
   horizon) falls back to the live call and writes the result back, so a cold cache degrades to
   today's behaviour rather than to an empty channel.
@@ -5162,22 +5169,56 @@ that module. Its constructor must not widen that interface back to `store.Store`
 when a module is touched; it is not permission to split the shared SQL implementation or duplicate
 repositories per database.
 
-**Semantic certification is explicit and inference-spending.** `make eval` remains an exploratory
-run that may skip when no live library, catalog, or model is configured. `make eval-cert` is the
-release/operator assertion: missing configuration, an unexecuted case, a failed deterministic gate,
-or a judge score below its declared floor fails the command. Its versioned corpus contains the exact
+**Semantic certification is explicit, inference-spending, and behavioral through the final
+schedule.** `make eval` remains an exploratory run that may skip when no live library, catalog, or
+model is configured. `make eval-cert` is the release/operator assertion: missing configuration, an
+unexecuted case, a failed deterministic gate, a schedule-materialization failure, or a judge score
+below its declared floor fails the command. Its versioned corpus contains the exact
 four starter-template Intents plus named-title, thematic, holiday, and adversarial grounding cases.
 Holiday cases span family and adult seasonal requests, assert both exclusive mode and the exact
 holiday subset, and
 require outside-Library proposals where acquisition is allowed. The scorecard reports relevance and
 serendipity separately: relevance rewards qualifier fidelity, while serendipity rewards coherent
 less-obvious additions without treating randomness as novelty. The corpus uses the real production suggester and
-catalog path, and writes a machine-readable scorecard naming the schema version, corpus version,
-provider/model (never credentials), every case outcome, and the aggregate certification result.
+catalog path. Exact user constraints are code-owned predicates: a named include/exclude, media mix,
+or expected episode cannot be certified by a merely non-empty Proposal or by judge prose. Cases that
+make a programming promise are materialized through `schedule.ComputeDesiredAt` with an explicit
+clock/history and assert the concrete program identities/order after expansion, filtering, grouping,
+and placement. The evaluator therefore has three nested contracts: Intent to grounded Proposal,
+Proposal plus episode evidence to editorial selection, and selected pool plus Policy to desired
+schedule. The same public Runner interface owns all three so exploratory and certification modes
+cannot silently test different behavior.
+
+It writes a machine-readable scorecard naming the schema version, corpus version, requested
+provider/model (never credentials), trial configuration, every case/trial outcome, and the
+aggregate certification result. Stochastic cases run serially for an explicit bounded number of
+trials; the scorecard reports pass rate and min/median/max quality rather than hiding variance in one
+point score. Per-case tool-call and surfaced-candidate budgets are deterministic failures, so an
+over-broad retrieval cannot masquerade as quality. The hermetic lane uses fixed candidates and
+episode evidence and remains in the normal gate; real catalog/provider certification stays manual and inference-spending.
 Network and inference keep it outside `make check`; a stored scorecard is evidence for one named
 model/catalog snapshot, not a timeless claim that every provider is certified.
+
+**Discovery feedback is explicit household editorial state, never inferred viewing behavior.**
+An admin may record `keep`, `less`, `never`, or `surprise` against a grounded title identity at
+household scope or for one channel. Each change appends an actor-attributed event; clearing a signal
+appends a tombstone rather than rewriting history. Members may read the effective signals but cannot
+mutate shared taste. Anonymous callers cannot read or write them.
+The latest event per `(scope, target)` is the effective signal, with channel scope overriding the
+household signal for that channel.
+
+A single pure deterministic discovery ranker consumes grounded candidate metadata plus effective
+signals. Explicit includes/excludes, grounding, audience safety, approval, and quotas remain outside
+and above it. `never` is a hard candidate exclusion; `keep` protects an existing lineup item from
+automatic retirement; `less` is a bounded exact-title demotion and may also demote a same-genre
+candidate when that relationship is present in the grounded batch; and `surprise` is a bounded
+positive signal. Outside-Library candidates receive a novelty tie-break, but relevance remains the
+primary rank band. Ranking affects only a later fresh proposal or re-curation proposal. It never
+edits current playout, and no playback/broadcast history is converted into taste.
 `make eval-matrix` runs that unchanged corpus twice—once with the configured local generator and once
-through OpenRouter's OpenAI-compatible endpoint—and writes separate named scorecards. Because local
+through OpenRouter's OpenAI-compatible endpoint—and writes separate named scorecards. The OpenRouter
+leg requires an explicit model input rather than a moving implicit default. Generator and judge
+identities are independent configuration inputs. Because local
 inference competes directly with playback, transcode, memory, and GPU capacity on an appliance,
 the target refuses to start unless the operator explicitly sets `LOOMARR_EVAL_ALLOW_LOCAL=1` after
 confirming the host is idle and has enough headroom. The target never starts, pulls, or configures a

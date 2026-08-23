@@ -12,6 +12,7 @@ interface ProposalEditProps {
   // must send NO body in that case, so an unmodified approval stays byte-identical to what it
   // was before edit-before-approve existed.
   onChange: (edit: ApprovalEditDTO | undefined) => void;
+  onFeedback?: (item: ProposalItem, action: "keep" | "less" | "never" | "surprise") => void;
   disabled?: boolean;
   className?: string;
 }

@@ -203,7 +203,7 @@ lint: ## golangci-lint v2 (run via `go run` so no global install needed)
 	$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run --build-tags '$(TAGS_CSV)'
 
 .PHONY: test
-test: rust-test-worker ## unit tests with their required Rust worker (never touch the network — §19)
+test: rust-test-worker eval-contract ## unit tests with their required Rust worker (never touch the network — §19)
 # ⚠ **-timeout is set explicitly because Go's default is 10m PER PACKAGE and `internal/api` grew
 # past it.** Measured 2026-08-09: that package alone is 267s locally under `-race`, and a CI runner
 # is roughly twice as slow — so it tripped the default and the job died with `panic: test timed out
@@ -264,7 +264,10 @@ go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must
 test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
 	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ ./internal/api/ -v
 
-.PHONY: eval eval-cert eval-matrix
+.PHONY: eval-contract eval eval-cert eval-matrix
+eval-contract: ## hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB
+	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/
+
 eval: ## semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate)
 	$(GO) test -tags=eval -v -timeout 20m ./internal/eval/
 

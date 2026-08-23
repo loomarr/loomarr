@@ -55,6 +55,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	})
 
 	t.Run("Jobs", func(t *testing.T) {
+		t.Run("DiscoveryFeedback", func(t *testing.T) { testDiscoveryFeedback(t, newStore) })
 		t.Run("JobRoundTrip", func(t *testing.T) { testJobRoundTrip(t, newStore) })
 		t.Run("ProposalJobListScope", func(t *testing.T) { testProposalJobListScope(t, newStore) })
 		t.Run("ClaimDueJobs", func(t *testing.T) { testClaimDueJobs(t, newStore) })

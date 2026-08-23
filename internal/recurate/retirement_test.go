@@ -124,6 +124,32 @@ func TestCurator_AtTheCapABetterTitleRetiresTheWeakest(t *testing.T) {
 	}
 }
 
+func TestCurator_KeepFeedbackProtectsTitleFromAutomaticRetirement(t *testing.T) {
+	st := newStore(t)
+	seedFullChannel(t, st, "ch-keep", "job-keep",
+		[]schedule.LineupEntry{lineupEntry(100, "Airing Title"), lineupEntry(200, "Family Favorite")},
+		[]provision.Key{"movie:tmdb:100"})
+	if err := st.AppendDiscoveryFeedback(context.Background(), store.DiscoveryFeedback{
+		ID: "keep-1", ActorID: "admin", Scope: store.FeedbackChannel, ScopeID: "ch-keep",
+		Target: "movie:tmdb:200", Action: store.FeedbackKeep,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	p := seedProposal(t, st, "p-keep", "job-keep", nil, []suggest.ProposalItem{
+		acqItem(300, "New Candidate", 0.99),
+	})
+	d, err := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 2}).Consider(context.Background(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Enqueued != 0 || retiredOf(t, st, "p-keep")["movie:tmdb:200"] {
+		t.Fatalf("keep feedback allowed automatic retirement: decision=%+v", d)
+	}
+	if !lineupOf(t, st, "ch-keep")["movie:tmdb:200"] {
+		t.Fatal("kept title disappeared from the channel")
+	}
+}
+
 // ⚠ THE SAFETY PROPERTY. A title in ch.Desired is airing in the current window — someone may be
 // planning to watch it today. When the ONLY thing at the cap is scheduled, the newcomer is
 // dropped over-cap instead: a stale channel beats yanking a programme out from under a viewer.

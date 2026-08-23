@@ -14,6 +14,8 @@
 // live-smoke script.
 package eval
 
+import "github.com/loomarr/loomarr/internal/provision"
+
 // Case is one evaluation: an intent plus the properties its grounded proposal must
 // satisfy. The deterministic checks are hard gates; the judge rubric guides the
 // LLM-judge score (0..1). A field left zero/empty is not asserted.
@@ -35,6 +37,22 @@ type Case struct {
 	// sense. Use for adversarial intents where the count is unpredictable but the
 	// no-fabrication invariant must hold.
 	NoFabrication bool
+	// RequireKeys are exact grounded identities that must survive into the
+	// actionable Proposal. Named user constraints belong here rather than only in
+	// judge prose or a non-empty count assertion.
+	RequireKeys           []provision.Key
+	ForbidKeys            []provision.Key
+	MinMovies             int
+	MinSeries             int
+	MinDistinctGenres     int
+	MaxToolCalls          int
+	MaxCandidatesSurfaced int
+	// RequireScheduledPrograms are stable concrete program identities observed
+	// after episode expansion, filtering, grouping, and ordering. Episode identities
+	// append :sXXeYY to their series Key.
+	RequireScheduledPrograms []string
+	ForbidScheduledPrograms  []string
+	RequireScheduledSequence []string
 	// ExpectCeiling, if set, is the audience ceiling the suggester MUST have
 	// extracted from the intent ("TV-Y7" for a kids intent). "" = don't assert.
 	ExpectCeiling string
@@ -162,6 +180,7 @@ var Corpus = []Case{
 		// Grounding must surface The Matrix (a real, well-known title) — it's the
 		// canary that the catalog + grounding loop actually find named titles.
 		MinLineup:   1,
+		RequireKeys: []provision.Key{"movie:tmdb:603"},
 		JudgeRubric: "A good result is science-fiction films and MUST include The Matrix (it was explicitly requested).",
 	},
 	{

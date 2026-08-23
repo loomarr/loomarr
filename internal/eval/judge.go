@@ -25,6 +25,12 @@ type judgeScores struct {
 	Reason      string
 }
 
+type modelJudge struct{ provider llm.Provider }
+
+func (j modelJudge) Score(ctx context.Context, c Case, prop suggest.Proposal) judgeScores {
+	return judge(ctx, j.provider, c, prop)
+}
+
 func judge(ctx context.Context, j llm.Provider, c Case, prop suggest.Proposal) judgeScores {
 	if j == nil || c.JudgeRubric == "" {
 		return judgeScores{Overall: -1, Relevance: -1, Serendipity: -1, Reason: "judge skipped (no rubric or no judge model)"}

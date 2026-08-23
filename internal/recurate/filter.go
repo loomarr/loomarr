@@ -53,7 +53,7 @@ type filterResult struct {
 // bar and dropped for the cap — for the audit log. Deterministic: acquisitions are ranked by
 // Confidence desc (Name as a stable tiebreaker) before the cap is applied, so the BEST titles
 // fill the remaining room. A maxTitles of 0 means "no cap" (inherit-none / unbounded).
-func filterAcquisitions(p store.Proposal, ch store.Channel, minScorePct, maxTitles int) (filterResult, error) {
+func filterAcquisitionsProtected(p store.Proposal, ch store.Channel, minScorePct, maxTitles int, protected map[provision.Key]bool) (filterResult, error) {
 	var body suggest.Proposal
 	if uerr := json.Unmarshal([]byte(p.ProposalJSON), &body); uerr != nil {
 		return filterResult{}, fmt.Errorf("recurate: proposal %s malformed: %w", p.ID, uerr)
@@ -125,7 +125,7 @@ func filterAcquisitions(p store.Proposal, ch store.Channel, minScorePct, maxTitl
 	rotating := maxTitles > 0 && len(committed) >= rotationTarget(maxTitles)
 	// The turnstile (§8.2a): at the cap, a better candidate retires the weakest RETIRABLE
 	// title rather than being discarded. Built once, consumed as room runs out.
-	bench := retirableByWeakest(ch)
+	bench := retirableByWeakest(ch, protected)
 
 	for _, c := range survivors {
 		if room == 0 || rotating {
@@ -268,7 +268,7 @@ func (b *bench) weakestBelow(incoming float64) (benchEntry, bool) {
 // A lineup entry carries no stored confidence (the proposal that added it is long gone), so an
 // untracked title sorts as 0 — the weakest, and therefore the first to go. That is the intended
 // reading: a title nobody has scored since it was added has the least evidence for its place.
-func retirableByWeakest(ch store.Channel) *bench {
+func retirableByWeakest(ch store.Channel, protected map[provision.Key]bool) *bench {
 	// ⚠ FAIL CLOSED on an unknown schedule. An empty Desired means "we do not know what is
 	// airing" — a channel that has never reconciled, or one whose desired state was cleared —
 	// NOT "nothing is airing". Treating unknown as all-retirable would let one run churn an
@@ -285,6 +285,9 @@ func retirableByWeakest(ch store.Channel) *bench {
 	}
 	out := make([]benchEntry, 0, len(ch.Lineup))
 	for _, e := range ch.Lineup {
+		if protected[e.Key] {
+			continue // explicit keep is stronger than automatic lineup rotation
+		}
 		if _, airing := scheduled[e.Key]; airing {
 			continue // never retire something on the air
 		}

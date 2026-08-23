@@ -20,7 +20,15 @@ const seasonWindowLabel = (min?: number, max?: number): string | null => {
   return `Through season ${hi}`;
 };
 
-const PickRow = ({ item, kind }: { item: ProposalItem; kind: "lineup" | "acquire" }) => {
+const PickRow = ({
+  item,
+  kind,
+  onFeedback,
+}: {
+  item: ProposalItem;
+  kind: "lineup" | "acquire";
+  onFeedback?: ApprovalQueueItemProps["onFeedback"];
+}) => {
   const window = seasonWindowLabel(item.seasonMin, item.seasonMax);
   return (
     <li className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-sm">
@@ -30,6 +38,30 @@ const PickRow = ({ item, kind }: { item: ProposalItem; kind: "lineup" | "acquire
         {kind === "lineup" ? "In library" : "Will acquire"}
       </Badge>
       {window && <Badge variant="tune">{window}</Badge>}
+      {item.episodeSelection?.mode === "highlights" && <Badge variant="suggest">Curated highlights</Badge>}
+      {item.episodeSelection?.mode === "holiday" && <Badge variant="suggest">Holiday episodes</Badge>}
+      {onFeedback && (
+        <fieldset className="ml-auto flex flex-wrap gap-1 border-0 p-0">
+          <legend className="sr-only">Taste feedback for {item.name}</legend>
+          {(["keep", "less", "never", "surprise"] as const).map((action) => (
+            <Button
+              key={action}
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => onFeedback(item, action)}
+            >
+              {action === "less"
+                ? "Less like this"
+                : action === "never"
+                  ? "Never"
+                  : action === "surprise"
+                    ? "Surprise me"
+                    : "Keep"}
+            </Button>
+          ))}
+        </fieldset>
+      )}
     </li>
   );
 };
@@ -51,6 +83,7 @@ const ApprovalQueueItem = ({
   acquisitionItems,
   refused,
   onEdit,
+  onFeedback,
   onApprove,
   onDeny,
   className,
@@ -191,14 +224,15 @@ const ApprovalQueueItem = ({
                 acquisitions={acquisitionItems ?? []}
                 disabled={status === "approving"}
                 onChange={onEdit}
+                onFeedback={onFeedback}
               />
             ) : (
               <ul className="mt-2 flex flex-col gap-1.5">
                 {lineup?.map((it) => (
-                  <PickRow key={`lib-${it.name}`} item={it} kind="lineup" />
+                  <PickRow key={`lib-${it.name}`} item={it} kind="lineup" onFeedback={onFeedback} />
                 ))}
                 {acquisitionItems?.map((it) => (
-                  <PickRow key={`acq-${it.name}`} item={it} kind="acquire" />
+                  <PickRow key={`acq-${it.name}`} item={it} kind="acquire" onFeedback={onFeedback} />
                 ))}
               </ul>
             ))}

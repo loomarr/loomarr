@@ -44,6 +44,9 @@ type Intent struct {
 	// Empty on a fresh suggestion (no lineup to walk from) and on any install without a
 	// TMDB corpus wired.
 	Adjacent []AdjacentContext `json:"adjacent,omitempty"`
+	// DiscoveryScopeID is internal execution context for channel-specific explicit
+	// feedback during re-curation. It never enters the API or persisted intent JSON.
+	DiscoveryScopeID string `json:"-"`
 }
 
 // LineupContext is a lightweight "what's on this channel now" entry fed to the refiner —
@@ -85,12 +88,13 @@ type ProposalItem struct {
 	// the grounded suggester when the intent implies an era ("classic" → 1–10);
 	// carried onto LineupEntry.SeasonMin/Max and enforced at series expansion (§9).
 	// 0 = unbounded on that end. Validated + clamped by the suggester before it lands.
-	SeasonMin     int     `json:"seasonMin,omitempty"`
-	SeasonMax     int     `json:"seasonMax,omitempty"`
-	InLibrary     bool    `json:"inLibrary"`
-	LibraryItemID string  `json:"libraryItemId,omitempty"`
-	Rationale     string  `json:"rationale,omitempty"` // why-it-fits (LLM)
-	Confidence    float64 `json:"confidence,omitempty"`
+	SeasonMin        int                       `json:"seasonMin,omitempty"`
+	SeasonMax        int                       `json:"seasonMax,omitempty"`
+	EpisodeSelection schedule.EpisodeSelection `json:"episodeSelection,omitempty"`
+	InLibrary        bool                      `json:"inLibrary"`
+	LibraryItemID    string                    `json:"libraryItemId,omitempty"`
+	Rationale        string                    `json:"rationale,omitempty"` // why-it-fits (LLM)
+	Confidence       float64                   `json:"confidence,omitempty"`
 	// Source records which corpus surfaced this pick, carried from the grounded Candidate
 	// (§8.3). It is PROVENANCE, never identity — Key() ignores it, exactly as it ignores
 	// Genres/Overview/OfficialRating.

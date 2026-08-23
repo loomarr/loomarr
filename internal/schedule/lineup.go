@@ -126,6 +126,12 @@ type ResolvedProgram struct {
 	// fail-closed reading would have emptied every kids channel on deploy until the refresh
 	// sweep repopulated the cache.
 	OfficialRating Rating
+	// CommunityRating, Overview, and Tags are editorial evidence supplied by the
+	// media server. They never override scope or audience safety; an optional
+	// EpisodeSelection consumes them only after those hard filters have passed.
+	CommunityRating float64
+	Overview        string
+	Tags            []string
 }
 
 // PendingPolicy is what to place where a lineup entry's title is not yet
@@ -153,6 +159,9 @@ type LineupEntry struct {
 	// "old-school Simpsons" (§9 series expansion). Ignored for movies.
 	SeasonMin int
 	SeasonMax int
+	// EpisodeSelection is an approved, per-series editorial selector applied
+	// after hard episode filters and before ordering. Empty preserves the full run.
+	EpisodeSelection EpisodeSelection `json:"episodeSelection,omitempty"`
 	// Policy-enforcement metadata, stamped from the grounded ProposalItem at
 	// channel-create time (programming-design §4): the audience filter, era/genre
 	// scope, and runtime cap read these off the entry so enforcement stays a pure
@@ -612,6 +621,7 @@ func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy, franc
 				inRange = append(inRange, ep)
 			}
 			assignPartGroups(string(e.Key), inRange)
+			inRange = selectEpisodes(inRange, e.EpisodeSelection)
 			out := make([]Slot, 0, len(inRange))
 			for _, ep := range inRange {
 				out = append(out, Slot{

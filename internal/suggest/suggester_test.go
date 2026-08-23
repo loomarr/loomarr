@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/tmdb"
@@ -205,6 +206,9 @@ func TestSuggest_ClassicSingleSeriesUsesCuratedSyndication(t *testing.T) {
 	if len(prop.Lineup) != 1 || prop.Lineup[0].SeasonMin != 1 || prop.Lineup[0].SeasonMax != 10 {
 		t.Fatalf("classic season scope was not preserved: %+v", prop.Lineup)
 	}
+	if prop.Lineup[0].EpisodeSelection.Mode != schedule.EpisodeHighlights {
+		t.Fatalf("episode selection = %+v, want highlights", prop.Lineup[0].EpisodeSelection)
+	}
 }
 
 func TestSuggest_ExplicitChronologicalSingleSeriesStaysSequential(t *testing.T) {
@@ -227,6 +231,29 @@ func TestSuggest_ExplicitChronologicalSingleSeriesStaysSequential(t *testing.T) 
 	}
 	if prop.Policy.Ordering != "sequential" {
 		t.Fatalf("ordering = %q, want explicit chronological request to stay sequential", prop.Policy.Ordering)
+	}
+	if len(prop.Lineup) != 1 || prop.Lineup[0].EpisodeSelection.Mode != "" {
+		t.Fatalf("chronological request unexpectedly selected an episode subset: %+v", prop.Lineup)
+	}
+}
+
+func TestSuggest_NamedHolidaySeriesSelectsMatchingEpisodes(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(testkit.SearchStub{Terms: []string{"simpsons"}, LibraryItemID: "lib-simpsons",
+		Name: "The Simpsons", Type: "Series", Year: 1989, TMDBID: 456})
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	s := suggest.New(testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "simpsons"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons"}]}`),
+	), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Christmas Simpsons episodes"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection := prop.Lineup[0].EpisodeSelection
+	if selection.Mode != schedule.EpisodeHoliday || len(selection.Holidays) != 1 || selection.Holidays[0] != "christmas" {
+		t.Fatalf("holiday episode selection = %+v, want Christmas", selection)
 	}
 }
 

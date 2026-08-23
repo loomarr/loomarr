@@ -40,6 +40,19 @@ const seasonWindowLabel = (min?: number, max?: number): string | null => {
   return `Through season ${hi}`;
 };
 
+const episodeSelectionLabel = (item: ProposalItem): string | null => {
+  switch (item.episodeSelection?.mode) {
+    case "highlights":
+      return "Curated highlights";
+    case "holiday": {
+      const holidays = item.episodeSelection.holidays ?? [];
+      return holidays.length > 0 ? `${holidays.join(", ")} episodes` : "Holiday episodes";
+    }
+    default:
+      return null;
+  }
+};
+
 const ItemRow = ({
   item,
   kind,
@@ -60,6 +73,7 @@ const ItemRow = ({
         {seasonWindowLabel(item.seasonMin, item.seasonMax) && (
           <Badge variant="tune">{seasonWindowLabel(item.seasonMin, item.seasonMax)}</Badge>
         )}
+        {episodeSelectionLabel(item) && <Badge variant="suggest">{episodeSelectionLabel(item)}</Badge>}
         {typeof item.confidence === "number" && (
           <span className="font-mono text-static-400 text-xs">{`${formatPercent(item.confidence)} fit`}</span>
         )}

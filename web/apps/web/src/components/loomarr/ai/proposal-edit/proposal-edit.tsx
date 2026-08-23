@@ -33,7 +33,14 @@ import type { ProposalEditProps } from "./proposal-edit.type";
 // cannot be dropped — it also cannot have been enqueued, so there is nothing to remove.
 type Keyed = { item: ProposalItem; key: string; kind: "lineup" | "acquire" };
 
-const ProposalEdit = ({ lineup, acquisitions, onChange, disabled, className }: ProposalEditProps) => {
+const ProposalEdit = ({
+  lineup,
+  acquisitions,
+  onChange,
+  onFeedback,
+  disabled,
+  className,
+}: ProposalEditProps) => {
   const [dropped, setDropped] = useState<string[]>([]);
   const [added, setAdded] = useState<ProposalItem[]>([]);
   const [note, setNote] = useState("");
@@ -148,6 +155,29 @@ const ProposalEdit = ({ lineup, acquisitions, onChange, disabled, className }: P
                 <Badge variant={kind === "lineup" ? "lock" : "tune"}>
                   {kind === "lineup" ? "In library" : "Will acquire"}
                 </Badge>
+                {item.episodeSelection?.mode === "highlights" && (
+                  <Badge variant="suggest">Curated highlights</Badge>
+                )}
+                {item.episodeSelection?.mode === "holiday" && (
+                  <Badge variant="suggest">Holiday episodes</Badge>
+                )}
+                {onFeedback && !isDropped && (
+                  <div className="flex gap-1">
+                    {(["keep", "less", "never", "surprise"] as const).map((action) => (
+                      <Button
+                        key={action}
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={disabled}
+                        aria-label={`${action} ${item.name}`}
+                        onClick={() => onFeedback(item, action)}
+                      >
+                        {action === "less" ? "Less" : action === "surprise" ? "Surprise" : action}
+                      </Button>
+                    ))}
+                  </div>
+                )}
                 {/* A pick with no usable id was never enqueueable, so there is nothing to drop
                     — the control is omitted rather than rendered inert. */}
                 {key !== "" && (

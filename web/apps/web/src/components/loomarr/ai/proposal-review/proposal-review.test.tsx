@@ -37,6 +37,23 @@ describe("ProposalReview", () => {
     expect(screen.getByText("88%")).toBeInTheDocument();
   });
 
+  it("explains episode selection before approval", () => {
+    const curated: Proposal = {
+      ...proposal,
+      lineup: [
+        {
+          name: "The Simpsons",
+          mediaType: "series",
+          tmdbId: 456,
+          inLibrary: true,
+          episodeSelection: { mode: "highlights" },
+        },
+      ],
+    };
+    renderWithTooltip(<ProposalReview proposal={curated} status="submitted" />);
+    expect(screen.getByText("Curated highlights")).toBeInTheDocument();
+  });
+
   it("gates on approve for an actionable proposal", () => {
     const onApprove = vi.fn();
     renderWithTooltip(<ProposalReview proposal={proposal} status="submitted" onApprove={onApprove} />);
