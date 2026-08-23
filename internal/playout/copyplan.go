@@ -36,6 +36,10 @@ type MediaFormat struct {
 	FrameRate     float64 // frames/sec, from avg_frame_rate; 0 when unknown
 	PixelFormat   string  // e.g. "yuv420p", "yuv420p10le" — the 10le suffix signals 10-bit
 	ColorTransfer string  // e.g. "smpte2084" (HDR10/PQ), "arib-std-b67" (HLG); "" for SDR
+	// VideoPreroll means the container hides a negative-timestamp video packet behind a discard
+	// edit. MPEG-TS cannot carry that edit safely, so live playout must decode from the true start
+	// instead of copying the hidden preceding GOP into the channel.
+	VideoPreroll bool
 
 	// Audio (the first/primary track — track SELECTION is a separate concern, see audio.go).
 	AudioCodec      string // e.g. "aac", "eac3", "ac3" — lowercased; empty when no audio
@@ -420,7 +424,7 @@ func (f BroadcastFormat) Apply(profile Profile) Profile {
 // timeline. Unknown properties deliberately fail toward transcode: extra work is recoverable; an
 // in-stream format change is not.
 func ConformCopyPlan(f MediaFormat, allowed CopyPlan, profile Profile, videoCodec string) CopyPlan {
-	copyVideo := allowed.CopyVideo && sameBroadcastVideo(f, profile, videoCodec)
+	copyVideo := allowed.CopyVideo && !f.VideoPreroll && sameBroadcastVideo(f, profile, videoCodec)
 	copyAudio := allowed.CopyAudio && strings.EqualFold(strings.TrimSpace(f.AudioCodec), "aac") &&
 		f.AudioChannels == 2 && f.AudioSampleRate == 48000
 	return CopyPlan{CopyVideo: copyVideo, CopyAudio: copyAudio}

@@ -4,15 +4,39 @@ import android.view.ViewGroup
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.delay
+
+/** Convert Media3's corrected origin clock and decoded-frame live offset into programme wall time. */
+internal fun frameUnixTimeMs(
+    originNowMs: Long,
+    liveOffsetMs: Long,
+): Long? =
+    if (originNowMs == C.TIME_UNSET || liveOffsetMs == C.TIME_UNSET) {
+        null
+    } else {
+        originNowMs - liveOffsetMs
+    }
+
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+private fun Player.frameUnixTimeMs(window: Timeline.Window): Long? {
+    if (currentTimeline.isEmpty || currentMediaItemIndex == C.INDEX_UNSET) return null
+    currentTimeline.getWindow(currentMediaItemIndex, window)
+    return frameUnixTimeMs(window.currentUnixTimeMs, currentLiveOffset)
+}
 
 /**
  * Full-screen playback of one channel.
@@ -32,6 +56,7 @@ import androidx.media3.ui.PlayerView
 fun PlayerScreen(
     playUrl: String,
     onError: (String) -> Unit = {},
+    onViewerTimeChanged: (Long) -> Unit = {},
 ) {
     val context = LocalContext.current
 
@@ -52,6 +77,19 @@ fun PlayerScreen(
                 prepare()
             }
         }
+    val currentViewerTimeChanged by rememberUpdatedState(onViewerTimeChanged)
+
+    // Media3 already maps HLS PROGRAM-DATE-TIME onto the origin server clock. Subtracting the
+    // player's current live offset reports the frame actually being rendered, including the normal
+    // safety buffer; a device clock is never consulted. Poll alongside the visible progress bar —
+    // Player.Listener has no continuous-position callback.
+    LaunchedEffect(player) {
+        val window = Timeline.Window()
+        while (true) {
+            player.frameUnixTimeMs(window)?.let(currentViewerTimeChanged)
+            delay(250)
+        }
+    }
 
     DisposableEffect(player) {
         val listener =

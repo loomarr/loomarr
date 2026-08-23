@@ -71,6 +71,7 @@ func TestConformCopyPlanRequiresTheSessionFormat(t *testing.T) {
 		{"different cadence", func(f *MediaFormat) { f.FrameRate = 24 }, false, true},
 		{"different pixel format", func(f *MediaFormat) { f.PixelFormat = "yuv420p10le" }, false, true},
 		{"HDR", func(f *MediaFormat) { f.ColorTransfer = "smpte2084" }, false, true},
+		{"discard preroll", func(f *MediaFormat) { f.VideoPreroll = true }, false, true},
 		{"different audio codec", func(f *MediaFormat) { f.AudioCodec = "eac3" }, true, false},
 		{"different audio layout", func(f *MediaFormat) { f.AudioChannels = 6 }, true, false},
 		{"different audio sample rate", func(f *MediaFormat) { f.AudioSampleRate = 44100 }, true, false},

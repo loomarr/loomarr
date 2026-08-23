@@ -83,6 +83,7 @@ fun WatchScreen(
     val focus = remember { FocusRequester() }
     var bannerNonce by remember { mutableIntStateOf(0) }
     var numberEntry by remember { mutableStateOf("") }
+    var viewerTimeMs by remember { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(showingSurf) {
         if (!showingSurf) {
@@ -151,8 +152,16 @@ fun WatchScreen(
                 )
             is WatchUiState.Ready -> {
                 val channel = current.channels[current.selected]
+                LaunchedEffect(current.playUrl) {
+                    // A newly tuned media timeline has its own PROGRAM-DATE-TIME mapping. Never
+                    // carry the outgoing Channel's decoded-frame clock into the replacement chrome.
+                    viewerTimeMs = null
+                }
                 if (current.playUrl != null) {
-                    PlayerScreen(playUrl = current.playUrl)
+                    PlayerScreen(
+                        playUrl = current.playUrl,
+                        onViewerTimeChanged = { viewerTimeMs = it },
+                    )
                 } else {
                     TuningText("Tuning ${channel.name}…", modifier = Modifier.align(Alignment.Center))
                 }
@@ -168,6 +177,7 @@ fun WatchScreen(
                             ?.name,
                     visibleNonce = bannerNonce + current.selected,
                     showProgrammeBar = !showingSurf,
+                    viewerTimeMs = viewerTimeMs,
                     modifier = Modifier.watchingChromeContainer(),
                 )
 
@@ -198,8 +208,9 @@ internal fun WatchingChrome(
     numberEntryChannelName: String? = null,
     playing: Boolean = true,
     showProgrammeBar: Boolean = true,
+    viewerTimeMs: Long? = null,
 ) {
-    val guideInfo = guide.infoFor(channel.id)
+    val guideInfo = guide.infoFor(channel.id, viewerTimeMs)
     var visible by remember { mutableStateOf(true) }
     LaunchedEffect(visibleNonce) {
         visible = true
@@ -645,14 +656,18 @@ private data class ChannelGuideInfo(
                 ?: 0
 }
 
-private fun GuideUiState.infoFor(channelId: String): ChannelGuideInfo? {
+private fun GuideUiState.infoFor(
+    channelId: String,
+    atMs: Long? = null,
+): ChannelGuideInfo? {
     val ready = this as? GuideUiState.Ready ?: return null
     val channel = ready.window.channels.firstOrNull { it.channelId == channelId } ?: return null
-    val current = channel.airingAt(ready.nowMs)
-    val next = channel.airings.firstOrNull { it.startMs >= (current?.stopMs ?: ready.nowMs) }
+    val viewerNow = atMs ?: ready.nowMs
+    val current = channel.airingAt(viewerNow)
+    val next = channel.airings.firstOrNull { it.startMs >= (current?.stopMs ?: viewerNow) }
     val progress =
         current?.let {
-            ((ready.nowMs - it.startMs).toFloat() / it.durationMs.toFloat()).coerceIn(0f, 1f)
+            ((viewerNow - it.startMs).toFloat() / it.durationMs.toFloat()).coerceIn(0f, 1f)
         } ?: 0f
     return ChannelGuideInfo(channel, current, next, progress)
 }

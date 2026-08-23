@@ -42,6 +42,7 @@ vi.mock("hls.js", () => {
     url: string | null = null;
     config: unknown;
     liveSyncPosition: number | null = 98;
+    playingDate: Date | null = null;
     attachMedia = vi.fn((media: HTMLMediaElement) => {
       this.media = media;
     });
@@ -94,6 +95,7 @@ describe("useHlsPlayer", () => {
     vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 Firefox/142.0");
   });
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -816,6 +818,34 @@ describe("useHlsPlayer", () => {
     expect(controller.startLoad).toHaveBeenCalledWith(-1);
     expect(video.currentTime).toBe(98);
     expect(result.current.liveTransport.state).toMatchObject({ mode: "live", lagSeconds: 0 });
+  });
+
+  it("anchors live programme time to the frame being shown instead of the wall-clock live edge", async () => {
+    hls.supported = true;
+    channelPlayUrl.mockResolvedValue({ relativeUrl: "/v1/playout/hls/ch-1/master.m3u8" });
+    vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const video = videoEl() as HTMLVideoElement;
+    video.currentTime = 44;
+    const { result } = renderHook(() => useHlsPlayer("ch-1"));
+
+    act(() => result.current.attach(video));
+    await waitFor(() => expect(hls.instances).toHaveLength(1));
+    const controller = hls.instances[0] as { playingDate: Date | null };
+    // Two HLS segments of safety buffer put the decoded frame eight seconds behind real time.
+    // At an Airing boundary those eight seconds are the difference between "commercial" and the
+    // following programme, so the Watch chrome must describe the frame, not Date.now().
+    controller.playingDate = new Date(992_000);
+
+    const timeUpdate = vi
+      .mocked(video.addEventListener)
+      .mock.calls.find(([event]) => event === "timeupdate")?.[1];
+    expect(timeUpdate).toBeTypeOf("function");
+    act(() => (timeUpdate as EventListener)(new Event("timeupdate")));
+
+    expect(result.current.liveTransport.state).toMatchObject({
+      mode: "live",
+      viewerTimeMs: 992_000,
+    });
   });
 
   it("keeps an intentional pause while the active controller buffers another fragment", async () => {

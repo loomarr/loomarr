@@ -91,6 +91,27 @@ func TestFormatOf_HDRAndTenBit(t *testing.T) {
 	}
 }
 
+func TestFormatOf_DetectsDiscardPrerollOnTheFirstVideoPacket(t *testing.T) {
+	f := formatOf(probeFrom(t, `{
+		"streams":[{"index":0,"codec_type":"video","codec_name":"h264"},{"index":1,"codec_type":"audio","codec_name":"aac"}],
+		"packets":[
+			{"stream_index":1,"pts_time":"-0.021333","flags":"KD_"},
+			{"stream_index":0,"pts_time":"-1.000000","flags":"KD_"}
+		]
+	}`))
+	if !f.VideoPreroll {
+		t.Fatal("negative discarded video packet must mark the source unsafe to remux by copy")
+	}
+
+	ordinary := formatOf(probeFrom(t, `{
+		"streams":[{"index":0,"codec_type":"video","codec_name":"h264"}],
+		"packets":[{"stream_index":0,"pts_time":"-0.080000","flags":"K__"}]
+	}`))
+	if ordinary.VideoPreroll {
+		t.Fatal("ordinary negative encoder timestamps without a discard edit are not preroll")
+	}
+}
+
 func TestFormatOf_VideoOnlyAndMalformed(t *testing.T) {
 	f := formatOf(probeFrom(t, `{"streams":[{"codec_type":"video","codec_name":"h264"}]}`))
 	if f.AudioCodec != "" {
