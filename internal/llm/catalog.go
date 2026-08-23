@@ -11,11 +11,9 @@ import (
 // tool (Open WebUI included) enumerates a downloadable list; the ecosystem pattern is
 // "browse ollama.com, pull by name, and let the app tell you what fits". So Loomarr
 // builds this catalog from what the operator has actually PULLED (probe.Installed via
-// /api/tags), keeps only models Ollama reports as TOOL-CAPABLE (/api/show capabilities
-// — the authoritative signal that replaces any hand-maintained "tool-callers" list),
-// and ranks by VRAM fit using each model's real on-disk size. A model like DeepSeek-R1
-// that doesn't advertise tools simply never appears — no curation needed, nothing to
-// go stale. Discovery + pull-by-name live in probe.go / the pull endpoint.
+// /api/tags), keeps models relevant to the text or vision role using /api/show
+// capabilities, and ranks by VRAM fit using each model's real on-disk size. Discovery
+// + pull-by-name live in probe.go / the pull endpoint.
 
 // ModelInfo describes one catalog model, built from the live probe.
 type ModelInfo struct {
@@ -79,19 +77,19 @@ type CatalogEntry struct {
 	Pulled      bool `json:"pulled"`      // already present in the local Ollama
 	RuntimeOK   bool `json:"runtimeOk"`   // an installed model runs on the installed Ollama (always true here)
 	Tools       bool `json:"tools"`       // Ollama reports tool-calling — REQUIRED to ground suggestions
+	Vision      bool `json:"vision"`      // Ollama reports image input — REQUIRED for frame analysis
 	Recommended bool `json:"recommended"` // the single best-fit default for this machine
 }
 
-// annotateCatalog builds the local catalog LIVE from the probe's installed models
-// (§8.1): only TOOL-CAPABLE models (Ollama's /api/show `capabilities`) are included —
-// grounding is impossible without tool-calling — each ranked by VRAM fit from its real
-// on-disk size. It flags the single recommended default: the largest model that fits
-// comfortably; failing that, the largest that fits tight; nothing if none fit.
+// annotateCatalog builds the local role catalog LIVE from installed models (§8.1).
+// Text choices require tools; vision-only models remain available only to the vision
+// picker. The single lineup recommendation is the largest tool-capable model that fits
+// comfortably, then the largest tight fit.
 func annotateCatalog(p Probe) []CatalogEntry {
 	entries := make([]CatalogEntry, 0, len(p.Installed))
 	for _, m := range p.Installed {
-		if !m.Tools {
-			continue // not tool-capable → useless for grounded suggestions; omit it
+		if !m.Tools && !m.Vision {
+			continue // irrelevant to every exposed model role
 		}
 		info := ModelInfo{
 			Tag:           m.Tag,
@@ -105,7 +103,8 @@ func annotateCatalog(p Probe) []CatalogEntry {
 			Fit:       classifyFit(info, p.VRAMGiB),
 			Pulled:    true, // everything discovered here is, by definition, pulled
 			RuntimeOK: true, // the installed model runs on the installed Ollama
-			Tools:     true,
+			Tools:     m.Tools,
+			Vision:    m.Vision,
 		})
 	}
 	// Recommend the largest comfortably-fitting model (bigger ⇒ more capable), falling
@@ -113,7 +112,7 @@ func annotateCatalog(p Probe) []CatalogEntry {
 	best := -1
 	bestScore := -1
 	for i, e := range entries {
-		if e.Fit == FitWontFit {
+		if !e.Tools || e.Fit == FitWontFit {
 			continue
 		}
 		score := e.Rank

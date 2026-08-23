@@ -258,9 +258,9 @@ func (s *systemLLMService) Status(ctx context.Context) (api.SystemLLMStatus, err
 		Local:    local,
 	}
 
-	// Local catalog: only meaningful when the active provider is Ollama (a probe of
-	// a non-local install would just be an idle localhost:11434 poll — skip it).
-	if local {
+	// A hosted lineup model can deliberately pair with local vision, so the role
+	// picker always needs the installed Ollama catalog even when hosted is active.
+	{
 		p := s.prober()
 		probe := p.Probe(ctx)
 		out.GPUName, out.VRAMGiB, out.OllamaVer, out.Reachable = probe.GPUName, probe.VRAMGiB, probe.OllamaVersion, probe.Reachable
@@ -271,7 +271,7 @@ func (s *systemLLMService) Status(ctx context.Context) (api.SystemLLMStatus, err
 			out.Catalog = append(out.Catalog, api.LLMModelView{
 				Tag: e.Tag, Label: e.Label, VRAMGiB: e.ApproxVRAMGiB,
 				Fit: string(e.Fit), Pulled: e.Pulled, RuntimeOK: e.RuntimeOK,
-				Tools: e.Tools, Recommended: e.Recommended, Why: e.Why,
+				Tools: e.Tools, Vision: e.Vision, Recommended: e.Recommended, Why: e.Why,
 			})
 		}
 	}
@@ -325,6 +325,7 @@ func (s *systemLLMService) hostedCatalog(ctx context.Context, active llm.Selecti
 		for _, m := range models {
 			view.Models = append(view.Models, api.HostedModelView{
 				ID: m.ID, Label: m.Label, Why: m.Why, Recommended: m.Recommended, Tools: m.Tools,
+				Vision: m.Vision, Transcription: m.Transcription,
 			})
 		}
 		views = append(views, view)

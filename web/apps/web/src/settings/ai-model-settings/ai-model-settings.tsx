@@ -1,13 +1,85 @@
 import * as systemApi from "@loomarr/api/endpoints/system";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { HostedModelPicker } from "@/components/loomarr/ai/hosted-model-picker";
 import { ModelDiscover } from "@/components/loomarr/ai/model-discover";
 import { ModelPicker } from "@/components/loomarr/ai/model-picker";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
 import { useLoomarrEventListener } from "@/events/events-provider";
+
+type RoleOption = {
+  id: string;
+  label: string;
+  detail: string;
+};
+
+const RolePicker = ({
+  title,
+  description,
+  options,
+  active,
+  onSelect,
+}: {
+  title: string;
+  description: string;
+  options: RoleOption[];
+  active: string;
+  onSelect: (id: string) => void;
+}) => {
+  const [expanded, setExpanded] = useState(false);
+  const guided = options.slice(0, 3);
+  const current = options.find(
+    (option) => option.id === active && !guided.some((item) => item.id === active),
+  );
+  const shown = expanded ? options : current ? [...guided, current] : guided;
+
+  return (
+    <section
+      aria-labelledby={`role-${title.toLowerCase()}`}
+      className="flex flex-col gap-2 rounded-md border border-border p-3"
+    >
+      <div>
+        <h3 id={`role-${title.toLowerCase()}`} className="font-medium text-sm">
+          {title}
+        </h3>
+        <p className="text-muted-foreground text-sm">{description}</p>
+      </div>
+      <div className="grid gap-2">
+        {shown.map((option) => {
+          const selected = option.id === active;
+          return (
+            <Button
+              key={option.id}
+              type="button"
+              variant={selected ? "secondary" : "outline"}
+              className="h-auto min-h-10 justify-start whitespace-normal px-3 py-2 text-left"
+              onClick={() => onSelect(option.id)}
+              disabled={selected}
+            >
+              <span>
+                <span className="block font-medium">{option.label}</span>
+                <span className="block font-normal text-muted-foreground text-xs">{option.detail}</span>
+              </span>
+            </Button>
+          );
+        })}
+      </div>
+      {options.length > 3 && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="self-start"
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? "Show guided choices" : `Show all ${options.length} choices`}
+        </Button>
+      )}
+    </section>
+  );
+};
 
 // The §8.1 model picker, wired. Selecting hot-swaps the running suggester (no restart),
 // which is why this sits beside the AI settings form rather than inside it: the form
@@ -34,11 +106,21 @@ const AiModelSettings = ({
   baseUrl,
   onBaseUrlChange,
   onModelChange,
+  visionProvider = "inherit",
+  visionModel = "",
+  transcriptionProvider = "whisper",
+  transcriptionModel = "openai/whisper-large-v3",
+  onRoleSettingChange,
 }: {
   provider?: string;
   baseUrl?: string;
   onBaseUrlChange?: (value: string) => void;
   onModelChange?: () => void;
+  visionProvider?: string;
+  visionModel?: string;
+  transcriptionProvider?: string;
+  transcriptionModel?: string;
+  onRoleSettingChange?: (key: string, value: string) => void;
 }) => {
   const queryClient = useQueryClient();
   const [pulling, setPulling] = useState<{ tag: string; percent?: number }>();
@@ -109,19 +191,29 @@ const AiModelSettings = ({
   if (llm.error) return <ErrorState error={llm.error} onRetry={() => llm.refetch()} />;
   if (!status) return <p className="text-muted-foreground text-sm">Checking your AI provider…</p>;
 
-  // Hosted (OpenAI-compatible): render the live model picker over the provider's /models.
-  // Reacts to the LIVE provider, so it appears the instant the dropdown flips, before Save.
+  const hosted = status.hosted ?? [];
+  const activeProvider =
+    hosted.find((candidate) => candidate.active) ??
+    hosted.find((candidate) => candidate.baseUrl === baseUrl) ??
+    hosted.find((candidate) => candidate.key === "openrouter");
+  const catalog = status.catalog ?? [];
+  const lineupCatalog = catalog.filter((model) => model.tools);
+  const discoverBody = unwrap(discover.data);
+  const discovered = discoverBody?.models ?? undefined;
+  const discoverFailed =
+    (discover.data !== undefined && discover.data.status !== 200) || discoverBody?.sourceOk === false;
+
+  let lineup: ReactNode;
   if (isHosted) {
-    const hosted = status.hosted ?? [];
-    const activeProvider =
-      hosted.find((candidate) => candidate.active) ??
-      hosted.find((candidate) => candidate.baseUrl === baseUrl) ??
-      hosted.find((candidate) => candidate.key === "openrouter");
     const testResult = unwrap(testProvider.data);
     const modelReady = Boolean(
       status.model && activeProvider?.models?.some((model) => model.id === status.model && model.tools),
     );
-    return (
+    const lineupProviders = hosted.map((candidate) => ({
+      ...candidate,
+      models: candidate.models?.filter((model) => model.tools),
+    }));
+    lineup = (
       <div className="flex flex-col gap-3">
         {select.error != null && <ErrorState error={select.error} />}
         {activeProvider?.keyConfigured && (
@@ -156,59 +248,157 @@ const AiModelSettings = ({
           </div>
         )}
         <HostedModelPicker
-          providers={hosted}
+          providers={lineupProviders}
           activeModel={status.model}
           busy={select.isPending}
           onSelect={(sel) => select.mutate({ data: sel })}
         />
       </div>
     );
-  }
-
-  if (!status.reachable) {
-    return (
+  } else if (!status.reachable) {
+    lineup = (
       <p className="text-onair-300 text-sm">
         Couldn't reach the Ollama host. Fix the URL above, then re-run the connection test.
       </p>
     );
-  }
-
-  const catalog = status.catalog ?? [];
-  const discoverBody = unwrap(discover.data);
-  const discovered = discoverBody?.models ?? undefined;
-  // "source down" (HF unreachable / rate-limited) is NOT the same as "0 compatible" —
-  // the BE flags it so the UI shows a browse link instead of a misleading empty state.
-  const discoverFailed =
-    (discover.data !== undefined && discover.data.status !== 200) || discoverBody?.sourceOk === false;
-
-  return (
-    <div className="flex flex-col gap-5">
-      {(select.error ?? pull.error) != null && <ErrorState error={select.error ?? pull.error} />}
-      {pullError && <ErrorState error={new Error(pullError)} />}
-
-      {catalog.length > 0 ? (
-        <ModelPicker
-          catalog={catalog}
-          active={status.model}
-          gpuName={status.gpuName}
-          vramGiB={status.vramGiB}
-          busy={select.isPending}
+  } else {
+    lineup = (
+      <div className="flex flex-col gap-5">
+        {(select.error ?? pull.error) != null && <ErrorState error={select.error ?? pull.error} />}
+        {pullError && <ErrorState error={new Error(pullError)} />}
+        {lineupCatalog.length > 0 ? (
+          <ModelPicker
+            catalog={lineupCatalog}
+            active={status.model}
+            gpuName={status.gpuName}
+            vramGiB={status.vramGiB}
+            busy={select.isPending}
+            pulling={pulling}
+            onSelect={(model) => select.mutate({ data: { model } })}
+            onPull={startPull}
+          />
+        ) : (
+          <p className="text-muted-foreground text-sm">
+            No tool-capable models installed yet. Download one below to get started.
+          </p>
+        )}
+        <ModelDiscover
+          results={discovered}
+          loading={discover.isFetching}
+          sourceError={discoverFailed}
           pulling={pulling}
-          onSelect={(model) => select.mutate({ data: { model } })}
           onPull={startPull}
         />
-      ) : (
-        <p className="text-muted-foreground text-sm">
-          No tool-capable models installed yet. Download one below to get started.
-        </p>
-      )}
+      </div>
+    );
+  }
 
-      <ModelDiscover
-        results={discovered}
-        loading={discover.isFetching}
-        sourceError={discoverFailed}
-        pulling={pulling}
-        onPull={startPull}
+  if (!onRoleSettingChange) return lineup;
+
+  const activeLineup = isHosted
+    ? activeProvider?.models?.find((model) => model.id === status.model)
+    : catalog.find((model) => model.tag === status.model);
+  const visionOptions: RoleOption[] = [
+    {
+      id: "inherit",
+      label: "Reuse the text-role choice",
+      detail: activeLineup?.vision
+        ? "This model advertises image input, so no separate vision model is needed."
+        : "Inherits the text role. Choose a vision model below when that model cannot see images.",
+    },
+    ...catalog
+      .filter((model) => model.vision)
+      .map((model) => ({
+        id: `ollama:${model.tag}`,
+        label: model.label,
+        detail: `Local Ollama · ${model.fit.replace("_", " ")} · ${model.why}`,
+      })),
+    ...(isHosted && activeProvider?.keyConfigured
+      ? (activeProvider?.models ?? [])
+          .filter((model) => model.vision)
+          .map((model) => ({
+            id: `hosted:${model.id}`,
+            label: model.label,
+            detail: `${activeProvider?.label ?? "Hosted"} · vision capable`,
+          }))
+      : []),
+  ];
+  const activeVision =
+    visionProvider === "inherit" && visionModel === ""
+      ? "inherit"
+      : visionProvider === "ollama" || (!isHosted && visionProvider === "inherit")
+        ? `ollama:${visionModel}`
+        : `hosted:${visionModel}`;
+  const transcriptionOptions: RoleOption[] = [
+    {
+      id: "whisper",
+      label: "Bundled local Whisper",
+      detail: "Default. Runs locally and does not use hosted credits.",
+    },
+    ...(isHosted && activeProvider?.keyConfigured
+      ? (activeProvider?.models ?? [])
+          .filter((model) => model.transcription)
+          .map((model) => ({
+            id: `hosted:${model.id}`,
+            label: model.label,
+            detail: `${activeProvider?.label ?? "Hosted"} · timed speech-to-text`,
+          }))
+      : []),
+  ];
+  const activeTranscription = transcriptionProvider === "hosted" ? `hosted:${transcriptionModel}` : "whisper";
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <h2 className="font-display font-semibold text-xl">Model roles</h2>
+        <p className="text-muted-foreground text-sm">
+          Lineup planning, frame vision, and transcription need different capabilities. They share your active
+          hosted provider and credential, but keep separate model choices.
+        </p>
+      </div>
+      <section
+        aria-labelledby="role-lineup"
+        className="flex flex-col gap-3 rounded-md border border-border p-3"
+      >
+        <div>
+          <h3 id="role-lineup" className="font-medium text-sm">
+            Lineup / text
+          </h3>
+          <p className="text-muted-foreground text-sm">
+            Requires tool calling so every suggestion stays grounded in your library.
+          </p>
+        </div>
+        {lineup}
+      </section>
+      <RolePicker
+        title="Vision"
+        description="Reads sampled filler frames. It inherits the lineup model unless you choose a vision-capable model."
+        options={visionOptions}
+        active={activeVision}
+        onSelect={(id) => {
+          if (id === "inherit") {
+            onRoleSettingChange("filler.vision.provider", "inherit");
+            onRoleSettingChange("filler.vision.model", "");
+          } else {
+            const [kind, ...parts] = id.split(":");
+            onRoleSettingChange("filler.vision.provider", kind === "ollama" ? "ollama" : "inherit");
+            onRoleSettingChange("filler.vision.model", parts.join(":"));
+          }
+        }}
+      />
+      <RolePicker
+        title="Transcription"
+        description="Creates timed speech segments. Bundled Whisper is the local default; hosted choices use the same active provider credential."
+        options={transcriptionOptions}
+        active={activeTranscription}
+        onSelect={(id) => {
+          if (id === "whisper") {
+            onRoleSettingChange("filler.transcribe.provider", "whisper");
+          } else {
+            onRoleSettingChange("filler.transcribe.provider", "hosted");
+            onRoleSettingChange("filler.transcribe.model", id.slice("hosted:".length));
+          }
+        }}
       />
     </div>
   );

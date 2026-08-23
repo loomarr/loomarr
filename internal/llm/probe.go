@@ -24,10 +24,9 @@ type Probe struct {
 	OllamaVersion string   `json:"ollamaVersion"` // e.g. "0.13.5"; "" = unreachable/unknown
 	PulledModels  []string `json:"pulledModels"`  // tags already present locally
 	// Installed is the RICH view of each pulled model — its on-disk size (a VRAM proxy),
-	// parameter size / family / quant (from /api/tags), and whether it advertises tool
-	// calling (from /api/show `capabilities`). The catalog is built LIVE from these, so
-	// there is no hardcoded model list to go stale: a model you pulled that can tool-call
-	// shows up, one that can't (e.g. DeepSeek-R1 in the official registry) does not.
+	// parameter size / family / quant (from /api/tags), and advertised role capabilities
+	// (from /api/show `capabilities`). The catalog is built LIVE from these, so there is
+	// no hardcoded model list to go stale.
 	Installed []InstalledModel `json:"installed"`
 	Reachable bool             `json:"reachable"` // Ollama /api/version answered
 }
@@ -40,6 +39,7 @@ type InstalledModel struct {
 	Family        string  `json:"family"`        // e.g. "qwen2" (details.family)
 	Quant         string  `json:"quant"`         // e.g. "Q4_K_M" (details.quantization_level)
 	Tools         bool    `json:"tools"`         // /api/show capabilities includes "tools"
+	Vision        bool    `json:"vision"`        // /api/show capabilities includes "vision"
 	VRAMGiB       float64 `json:"vramGiB"`       // SizeBytes → GiB (resident footprint proxy)
 }
 
@@ -116,6 +116,7 @@ func (p *Prober) installedModels(ctx context.Context) []InstalledModel {
 	}
 	models := make([]InstalledModel, 0, len(out.Models))
 	for _, m := range out.Models {
+		capabilities := p.modelCapabilities(ctx, m.Name)
 		models = append(models, InstalledModel{
 			Tag:           m.Name,
 			SizeBytes:     m.Size,
@@ -123,40 +124,40 @@ func (p *Prober) installedModels(ctx context.Context) []InstalledModel {
 			Family:        m.Details.Family,
 			Quant:         m.Details.QuantizationLevel,
 			VRAMGiB:       float64(m.Size) / bytesPerGiB,
-			Tools:         p.modelHasTools(ctx, m.Name),
+			Tools:         slices.Contains(capabilities, "tools"),
+			Vision:        slices.Contains(capabilities, "vision"),
 		})
 	}
 	return models
 }
 
-// modelHasTools asks /api/show whether a model advertises tool calling. Ollama exposes
-// this as a `capabilities` array (values: completion, tools, vision, …). This is the
-// live, authoritative signal that replaces a hand-maintained "tool-callers" list.
-func (p *Prober) modelHasTools(ctx context.Context, model string) bool {
+// modelCapabilities asks /api/show which roles a model can perform. Ollama exposes
+// the live, authoritative `capabilities` array (completion, tools, vision, …).
+func (p *Prober) modelCapabilities(ctx context.Context, model string) []string {
 	body, err := json.Marshal(map[string]string{"model": model})
 	if err != nil {
-		return false
+		return nil
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/api/show", strings.NewReader(string(body)))
 	if err != nil {
-		return false
+		return nil
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := p.http.Do(req)
 	if err != nil {
-		return false
+		return nil
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return false
+		return nil
 	}
 	var out struct {
 		Capabilities []string `json:"capabilities"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return false
+		return nil
 	}
-	return slices.Contains(out.Capabilities, "tools")
+	return out.Capabilities
 }
 
 // Catalog returns the curated model catalog annotated for THIS machine (fit,

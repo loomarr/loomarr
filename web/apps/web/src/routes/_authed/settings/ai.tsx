@@ -23,7 +23,6 @@ const AiSettings = () => (
           "filler.vision.provider",
           "filler.vision.url",
           "filler.vision.api_key",
-          "filler.vision.model",
           "filler.language_provider",
           "filler.language_model",
         ],
@@ -46,6 +45,11 @@ const AiSettings = () => (
         provider={liveValue("llm.provider")}
         baseUrl={liveValue("llm.url")}
         onBaseUrlChange={(value) => setEdit("llm.url", value)}
+        visionProvider={liveValue("filler.vision.provider")}
+        visionModel={liveValue("filler.vision.model")}
+        transcriptionProvider={liveValue("filler.transcribe.provider")}
+        transcriptionModel={liveValue("filler.transcribe.model")}
+        onRoleSettingChange={setEdit}
       />
     )}
   />

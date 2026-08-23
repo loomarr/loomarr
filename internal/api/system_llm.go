@@ -110,11 +110,13 @@ type HostedProviderView struct {
 
 // HostedModelView is one hosted model, ranked from live metadata (§8.1).
 type HostedModelView struct {
-	ID          string `json:"id"`
-	Label       string `json:"label"`
-	Why         string `json:"why,omitempty" doc:"Rule-derived rationale (from live pricing/context/tools metadata)"`
-	Recommended bool   `json:"recommended,omitempty" doc:"Rule-selected top pick (cheap + tool-capable)"`
-	Tools       bool   `json:"tools,omitempty" doc:"Provider advertises tool-calling for this model"`
+	ID            string `json:"id"`
+	Label         string `json:"label"`
+	Why           string `json:"why,omitempty" doc:"Rule-derived rationale (from live pricing/context/tools metadata)"`
+	Recommended   bool   `json:"recommended,omitempty" doc:"Rule-selected top pick (cheap + tool-capable)"`
+	Tools         bool   `json:"tools,omitempty" doc:"Provider advertises tool-calling for this model"`
+	Vision        bool   `json:"vision,omitempty" doc:"Provider advertises image input for this model"`
+	Transcription bool   `json:"transcription,omitempty" doc:"Provider advertises speech-to-text output for this model"`
 }
 
 // LLMModelView is one catalog model annotated for the machine (§8.1).
@@ -126,6 +128,7 @@ type LLMModelView struct {
 	Pulled      bool    `json:"pulled" doc:"Already present in the local Ollama"`
 	RuntimeOK   bool    `json:"runtimeOk" doc:"Detected Ollama version supports this model"`
 	Tools       bool    `json:"tools" doc:"Ollama reports tool-calling — required to ground suggestions; a false model is shown but not selectable"`
+	Vision      bool    `json:"vision" doc:"Ollama reports image input — required for filler frame analysis"`
 	Recommended bool    `json:"recommended"`
 	Why         string  `json:"why"`
 }
