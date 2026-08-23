@@ -292,7 +292,9 @@ prebuild is not recorded as a native Apple build. The `client-apple-simulator` t
 local/CI verifier: its mobile and TV matrix legs generate the native project, install pods, make a
 Release simulator build, boot the matching iOS or tvOS runtime, install and launch the application,
 assert that its process remains alive, and retain a screenshot. A bundle-only result cannot make
-P0b ready.
+P0b ready. Hosted builds keep CocoaPods and ExpoModulesJSI caches, and use React Native's supported
+`ccache` compiler wrappers with isolated 750 MiB mobile and TV stores. CI reports cache telemetry so
+an ineffective cache is visible rather than inferred from a green job.
 
 The browser proof is also rendered, not bundle-only. At a 1440x900 viewport, the shared screen fills
 the viewport and the 760x126 proof panel is centered at x=340, y=387 with no horizontal or vertical

@@ -770,9 +770,26 @@ jobs:
           key: apple-clients-${{ matrix.client }}-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
           restore-keys: apple-clients-${{ matrix.client }}-${{ runner.os }}-
       - run: make fe-install
+      - name: Install the React Native compile cache
+        run: brew install ccache
       - name: Fingerprint the Apple toolchain
         id: apple-toolchain
-        run: echo "fingerprint=$(xcodebuild -version | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "fingerprint=$(xcodebuild -version | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+          echo "ccache=$(ccache --version | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+      - name: Cache native compiler outputs
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ runner.temp }}/ccache-${{ matrix.client }}
+          key: apple-ccache-${{ matrix.client }}-${{ runner.arch }}-${{ steps.apple-toolchain.outputs.fingerprint }}-${{ steps.apple-toolchain.outputs.ccache }}-${{ hashFiles('web/pnpm-lock.yaml') }}-${{ hashFiles('web/apps/mobile/**', 'web/apps/tv/**', 'web/packages/design-system/**', 'web/packages/ui/**') }}
+          restore-keys: apple-ccache-${{ matrix.client }}-${{ runner.arch }}-${{ steps.apple-toolchain.outputs.fingerprint }}-${{ steps.apple-toolchain.outputs.ccache }}-${{ hashFiles('web/pnpm-lock.yaml') }}-
+      - name: Bound and reset compile-cache telemetry
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache-${{ matrix.client }}
+        run: |
+          ccache --set-config=max_size=750M
+          ccache --set-config=compression=true
+          ccache --zero-stats
       - name: Cache ExpoModulesJSI native slice
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
@@ -786,7 +803,15 @@ jobs:
         env:
           LOOMARR_APPLE_ARTIFACTS_DIR: ${{ runner.temp }}/apple-client-${{ matrix.client }}
           LOOMARR_APPLE_BUILD_DIR: ${{ runner.temp }}/apple-build-${{ matrix.client }}
+          CCACHE_BASEDIR: ${{ github.workspace }}
+          CCACHE_DIR: ${{ runner.temp }}/ccache-${{ matrix.client }}
+          USE_CCACHE: "1"
         run: make client-apple-simulator CLIENT_APP=${{ matrix.client }}
+      - name: Report native compile-cache effectiveness
+        if: always()
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache-${{ matrix.client }}
+        run: ccache --show-stats --verbose
       - name: Keep simulator screenshot
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
