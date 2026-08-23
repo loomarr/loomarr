@@ -52,14 +52,36 @@ interface LiveClock {
 }
 
 const liveStateAt = (clock: LiveClock, now: number): LivePlaybackState => {
-  const viewerTimeMs =
-    clock.mode === "live" ? now : clock.mode === "paused" ? clock.viewerTimeMs : now - clock.lagMs;
+  const viewerTimeMs = clock.viewerTimeMs;
   return {
     mode: clock.mode,
     lagSeconds: clock.mode === "live" ? 0 : Math.max(0, Math.round((now - viewerTimeMs) / 1000)),
     viewerTimeMs,
     noticeRevision: clock.noticeRevision,
   };
+};
+
+type NativeDatedMedia = HTMLVideoElement & { getStartDate?: () => Date };
+
+// The Watch clock describes the frame on screen, not the wall-clock edge the Channel is producing.
+// hls.js maps currentTime through EXT-X-PROGRAM-DATE-TIME directly. Safari's native HLS surface
+// exposes the same mapping as the Date at media time zero, so add the element's currentTime there.
+// Both are optional while metadata warms; callers supply the mode-correct wall-clock fallback.
+const displayedWallClockMs = (
+  video: HTMLVideoElement | undefined,
+  hls: Hls | undefined,
+  fallback: number,
+): number => {
+  const playingDate = hls?.playingDate;
+  const playingMs = playingDate?.getTime();
+  if (playingMs !== undefined && Number.isFinite(playingMs)) return playingMs;
+
+  const native = video as NativeDatedMedia | undefined;
+  const startMs = native?.getStartDate?.().getTime();
+  if (startMs !== undefined && Number.isFinite(startMs) && Number.isFinite(native?.currentTime)) {
+    return startMs + (native?.currentTime ?? 0) * 1_000;
+  }
+  return fallback;
 };
 
 const containsMediaTime = (ranges: TimeRanges, point: number): boolean => {
@@ -270,12 +292,20 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
   });
   const warmedPlayURL = playbackAttempt?.playURL;
 
-  const publishTransport = useCallback(() => {
-    const at = Date.now();
-    const clock = clockRef.current;
-    if (clock.channelId !== channelId) return;
-    setTransportState({ channelId, value: liveStateAt(clock, at) });
-  }, [channelId]);
+  const publishTransport = useCallback(
+    (sampleFrame = true) => {
+      const at = Date.now();
+      const clock = clockRef.current;
+      if (clock.channelId !== channelId) return;
+      if (sampleFrame && clock.mode !== "paused") {
+        const fallback = clock.mode === "live" ? at : at - clock.lagMs;
+        const active = activeRef.current;
+        clock.viewerTimeMs = displayedWallClockMs(active.video, active.hls, fallback);
+      }
+      setTransportState({ channelId, value: liveStateAt(clock, at) });
+    },
+    [channelId],
+  );
 
   const returnLive = useCallback(
     async (video: HTMLVideoElement, expired: boolean) => {
@@ -295,7 +325,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       } else if (video.seekable.length > 0) {
         video.currentTime = video.seekable.end(video.seekable.length - 1);
       }
-      publishTransport();
+      publishTransport(false);
       await video.play().catch(() => undefined);
     },
     [channelId, publishTransport],
@@ -306,11 +336,13 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       const at = Date.now();
       const clock = clockRef.current;
       if (clock.channelId !== channelId) return;
-      clock.viewerTimeMs = clock.mode === "behind" ? at - clock.lagMs : at;
+      const fallback = clock.mode === "behind" ? at - clock.lagMs : at;
+      const active = activeRef.current;
+      clock.viewerTimeMs = displayedWallClockMs(active.video, active.hls, fallback);
       clock.mode = "paused";
       clock.pausedMediaTime = video.currentTime;
       video.pause();
-      publishTransport();
+      publishTransport(false);
     },
     [channelId, publishTransport],
   );
@@ -725,6 +757,11 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       const generation = ++generationRef.current;
       const controller = new AbortController();
       const current = () => generationRef.current === generation && !controller.signal.aborted;
+      // Keep programme context on the frame the decoder advances to. The one-second transport
+      // timer remains the stall/lag heartbeat; timeupdate makes ordinary playback boundary-accurate
+      // instead of allowing the chrome to lead by as much as a polling interval.
+      const onTimeUpdate = () => publishTransport();
+      video.addEventListener("timeupdate", onTimeUpdate);
       setState({ channelId, status: "loading" });
       const at = Date.now();
       clockRef.current = {
@@ -775,12 +812,13 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         });
 
       return () => {
+        video.removeEventListener("timeupdate", onTimeUpdate);
         controller.abort();
         if (generationRef.current === generation) generationRef.current++;
         teardown?.();
       };
     },
-    [channelId, bind, warmedPlayURL],
+    [channelId, bind, publishTransport, warmedPlayURL],
   );
 
   const liveTransport = useMemo<LivePlaybackTransport>(

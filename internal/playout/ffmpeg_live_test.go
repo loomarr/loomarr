@@ -474,12 +474,12 @@ func TestLive_HLSKeepsAStableTimelineAcrossBlockBoundaries(t *testing.T) {
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		manifest, _ = os.ReadFile(manifestPath)
-		if strings.Count(string(manifest), "#EXTINF:") >= 2 && opened.Load() >= 3 {
+		if strings.Count(string(manifest), "#EXTINF:") >= 3 && opened.Load() >= 3 {
 			break
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
-	if strings.Count(string(manifest), "#EXTINF:") < 2 {
+	if strings.Count(string(manifest), "#EXTINF:") < 3 {
 		t.Fatalf("HLS did not advance across blocks:\n%s\nlast error: %s", manifest, hls.LastError())
 	}
 	if !strings.Contains(string(manifest), "#EXT-X-PROGRAM-DATE-TIME:") {
@@ -512,10 +512,126 @@ func TestLive_HLSKeepsAStableTimelineAcrossBlockBoundaries(t *testing.T) {
 		t.Fatalf("HLS wrote %d segments, want at least two across the block boundary", segments)
 	}
 
+	// Decode the first twelve seconds down to one RGB pixel at 5fps. Solid red → blue → red makes
+	// the exact content transitions observable without screenshots: an inserted black frame, a
+	// repeated outgoing run, or a missing second boundary changes this compact sequence. Container
+	// and timestamp checks alone cannot catch that viewer-visible blip.
+	// Snapshot the open-ended live manifest before decoding it. Feeding the live form to a finite
+	// verifier makes ffmpeg correctly wait for future segments forever — a harness hang, not a
+	// playback result.
+	snapshotPath := hlsDir + "/snapshot.m3u8"
+	if err := os.WriteFile(snapshotPath, []byte(string(manifest)+"#EXT-X-ENDLIST\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pixels, err := exec.CommandContext(ctx, bin,
+		"-hide_banner", "-loglevel", "error", "-i", snapshotPath, "-t", "12",
+		"-vf", "fps=5,scale=1:1:flags=neighbor,format=rgb24", "-f", "rawvideo", "pipe:1").Output()
+	if err != nil {
+		t.Fatalf("decode HLS transition frames: %v\n%s", err, pixels)
+	}
+	var runs []byte
+	var frameColours []byte
+	for i := 0; i+2 < len(pixels); i += 3 {
+		r, g, b := pixels[i], pixels[i+1], pixels[i+2]
+		var colour byte
+		switch {
+		case r > 160 && g < 80 && b < 80:
+			colour = 'R'
+		case b > 160 && r < 80 && g < 80:
+			colour = 'B'
+		default:
+			t.Fatalf("unexpected transition frame rgb(%d,%d,%d); content visibly blipped", r, g, b)
+		}
+		if len(runs) == 0 || runs[len(runs)-1] != colour {
+			runs = append(runs, colour)
+		}
+		frameColours = append(frameColours, colour)
+	}
+	if got := string(runs); got != "RBR" {
+		t.Fatalf("decoded content runs = %q, want RBR; a block repeated or disappeared", got)
+	}
+	var transitions []int
+	for i := 1; i < len(frameColours); i++ {
+		if frameColours[i] != frameColours[i-1] {
+			transitions = append(transitions, i)
+		}
+	}
+	if len(transitions) != 2 || transitions[0] < 24 || transitions[0] > 26 ||
+		transitions[1] < 49 || transitions[1] > 51 {
+		t.Fatalf("colour transitions at frames %v (5fps), want about [25 50]; a block boundary moved", transitions)
+	}
+
 	cancel()
 	<-copyDone
 	_ = hls.wait()
 	_ = channel.Wait()
+}
+
+// Confirmed compilation Segments are MP4 edit-list cuts: stream copy seeks to the preceding
+// keyframe and the container hides that preroll. Internal playout then stream-copies the Segment
+// into MPEG-TS. If that second remux drops the edit, the incoming commercial begins with up to one
+// GOP of the material before its cut — observed by a viewer as an approximately two-second replay
+// immediately before the break transition.
+func TestLive_DirectCopyOfTrimmedMP4DoesNotExposeKeyframePreroll(t *testing.T) {
+	bin := ffmpegBin(t)
+	dir := t.TempDir()
+	source := dir + "/compilation.mp4"
+	cut := dir + "/commercial.mp4"
+	transport := dir + "/commercial.ts"
+
+	// Keyframes every two seconds. The cut starts at 5s, midway through the 4s→6s GOP; red is the
+	// preceding content and blue is the requested commercial.
+	if out, err := exec.Command(bin, "-hide_banner", "-loglevel", "error", "-y",
+		"-f", "lavfi", "-i", "color=c=red:s=320x180:r=25:d=5",
+		"-f", "lavfi", "-i", "color=c=blue:s=320x180:r=25:d=7",
+		"-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000:d=12",
+		"-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[v]",
+		"-map", "[v]", "-map", "2:a:0", "-t", "12", "-c:v", "libx264", "-preset", "ultrafast",
+		"-g", "50", "-keyint_min", "50", "-sc_threshold", "0", "-pix_fmt", "yuv420p",
+		"-c:a", "aac", source).CombinedOutput(); err != nil {
+		t.Fatalf("generate compilation: %v\n%s", err, out)
+	}
+	// This is mediatools.Cut's production shape.
+	if out, err := exec.Command(bin, "-hide_banner", "-loglevel", "error", "-y",
+		"-ss", "5", "-t", "5", "-i", source, "-c", "copy", cut).CombinedOutput(); err != nil {
+		t.Fatalf("cut commercial: %v\n%s", err, out)
+	}
+
+	profile := DefaultProfile()
+	profile.Width, profile.Height, profile.Framerate, profile.Encoder = 320, 180, 25, EncoderSoftware
+	sourceFormat, err := FFprobeFormatNextTo(bin)(context.Background(), cut)
+	if err != nil {
+		t.Fatalf("probe cut commercial: %v", err)
+	}
+	plan := ConformCopyPlan(sourceFormat, PlanCopy(sourceFormat, PlanBaseline), profile, "h264")
+	if plan.CopyVideo {
+		t.Fatal("trimmed commercial with discard preroll was direct-copied; its preceding GOP would become visible")
+	}
+	spec := ProgramSpec{
+		Profile: profile, Input: cut, Limit: 5 * time.Second,
+		TargetLUFS: "-16", Plan: plan, Source: sourceFormat,
+	}
+	proc, err := Start(context.Background(), bin, replaceOutput(ProgramArgs(spec), transport), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _, _ = io.Copy(io.Discard, proc.Stdout) }()
+	if err := proc.Wait(); err != nil {
+		t.Fatalf("remux commercial: %v\n%s", err, proc.LastError())
+	}
+
+	pixels, err := exec.Command(bin, "-hide_banner", "-loglevel", "error", "-i", transport,
+		"-t", "0.5", "-vf", "fps=5,scale=1:1:flags=neighbor,format=rgb24",
+		"-f", "rawvideo", "pipe:1").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i+2 < len(pixels); i += 3 {
+		r, g, b := pixels[i], pixels[i+1], pixels[i+2]
+		if b <= 160 || r >= 80 || g >= 80 {
+			t.Fatalf("commercial began with preroll rgb(%d,%d,%d), want blue from its first frame", r, g, b)
+		}
+	}
 }
 
 // replaceOutput swaps the trailing "pipe:1" for a bounded file output.

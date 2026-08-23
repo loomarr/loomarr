@@ -1334,6 +1334,14 @@ The mechanism, the way every mature media server (Plex/Emby/Jellyfin) does it:
    when the codec genuinely is not playable by the plan** (e.g. HEVC to a `baseline` client, or
    10-bit to an 8-bit-only one).
 
+Direct play also requires a **decoder-safe first video packet**. A stream-copy cut can store packets
+from the preceding GOP at negative timestamps and use an MP4 edit list to hide them. Re-muxing that
+file into the live MPEG-TS stream discards the edit list and visibly replays the outgoing material at
+the next block boundary. The source probe therefore treats a negative video packet marked discard as
+preroll and forces that clip through the video transcode path, which creates a keyframe at its actual
+start. Compatible whole files still direct-play; output-side seeking alone is not a substitute because
+it can leave the new stream undecodable until its next keyframe, making the player hold the old frame.
+
 **A transcode has a retry ladder, because hardware encoding can fail silently (V47).** When a program
 must transcode, it uses the box's detected hardware encoder (nvenc/vulkan/qsv/…). But a hardware
 encode can fail to start for a reason that produces **no error and no output** — most commonly the GPU
@@ -1947,7 +1955,13 @@ silently discard a position the server still promises.
 These transport states belong in the playback bar: live is a compact status, while paused or behind
 live shows the increasing lag beside the **Go Live** action. Programme time and the mini-guide use
 the stored viewer wall clock, so their labels follow delayed playback rather than continuing to
-describe the live edge. The top bar remains Channel identity only. A Channel tune resets the
+describe the live edge. **Normal live playback is frame-accurate too:** the viewer clock comes from
+the `EXT-X-PROGRAM-DATE-TIME` mapped to the media element's current frame (hls.js `playingDate`, or
+the native HLS timeline start plus `currentTime`; Android Media3 uses the origin-corrected Window
+clock minus `currentLiveOffset`), not the client wall clock. The two-segment safety buffer is
+still live, but it must not let the mini-guide enter the next Airing while the displayed frame is
+still in the preceding Pod. Wall clock is only the startup fallback before that mapping exists.
+The top bar remains Channel identity only. A Channel tune resets the
 transport to live; the bounded fresh-standby handoff above may join replacement playback after
 manifest, fragment, or `loadeddata`, but those callbacks must never resume a viewer who deliberately
 paused the active Channel.

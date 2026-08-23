@@ -21,6 +21,7 @@ import (
 // probedStream is one stream from `ffprobe -show_streams`, carrying every field any consumer needs
 // (the superset). Extend this — not a parallel struct — when a new consumer needs another field.
 type probedStream struct {
+	Index         int    `json:"index"`
 	CodecType     string `json:"codec_type"`
 	CodecName     string `json:"codec_name"`
 	Width         int    `json:"width"`
@@ -36,6 +37,15 @@ type probedStream struct {
 	} `json:"tags"`
 }
 
+// probedPacket carries only what decides whether a container is hiding pre-cut video. ffprobe's
+// `D` flag means the packet is marked discard (for example by an MP4 edit list); when that packet
+// also precedes timestamp zero, copying it into MPEG-TS can make the hidden GOP visible.
+type probedPacket struct {
+	StreamIndex int    `json:"stream_index"`
+	PTS         string `json:"pts_time"`
+	Flags       string `json:"flags"`
+}
+
 // probedFormat is the container-level `-show_format` slice — one per file, not per stream.
 type probedFormat struct {
 	FormatName string `json:"format_name"` // "matroska,webm", "mov,mp4,…"
@@ -46,6 +56,7 @@ type probedFormat struct {
 // probed is the full result of one ffprobe call: every stream plus the container format.
 type probed struct {
 	Streams []probedStream `json:"streams"`
+	Packets []probedPacket `json:"packets"`
 	Format  probedFormat   `json:"format"`
 }
 
@@ -55,16 +66,22 @@ type probed struct {
 // container, duration, bitrate) so later features need no second probe. `-v error` keeps ffprobe's
 // chatter off our stderr; a probe failure is returned, never fatal — callers degrade (audio →
 // track 0, format → transcode-required, tracks → empty list).
-func runFFprobe(ctx context.Context, bin, input string) (probed, error) {
-	cmd := exec.CommandContext(ctx, bin,
+func runFFprobe(ctx context.Context, bin, input string, inspectPackets bool) (probed, error) {
+	entries := "stream=index,codec_type,codec_name,width,height,avg_frame_rate,pix_fmt,color_transfer,channels,sample_rate" +
+		":stream_tags=language,title" +
+		":format=format_name,duration,bit_rate"
+	args := []string{
 		"-v", "error",
-		"-show_entries",
-		"stream=codec_type,codec_name,width,height,avg_frame_rate,pix_fmt,color_transfer,channels,sample_rate"+
-			":stream_tags=language,title"+
-			":format=format_name,duration,bit_rate",
-		"-of", "json",
-		input,
-	)
+	}
+	if inspectPackets {
+		// Packet inspection is bounded: enough to reach the first video packet even when audio is
+		// interleaved first, without turning a format probe into a scan of the whole asset. Audio and
+		// track-list probes do not pay this boundary-safety cost.
+		args = append(args, "-read_intervals", "%+#128")
+		entries += ":packet=stream_index,pts_time,flags"
+	}
+	args = append(args, "-show_entries", entries, "-of", "json", input)
+	cmd := exec.CommandContext(ctx, bin, args...)
 	out, err := cmd.Output()
 	if err != nil {
 		return probed{}, err
@@ -101,7 +118,7 @@ func ffprobeBesideFFmpeg(ffmpegPath string) string {
 func FFprobeAudioNextTo(ffmpegPath string) AudioProber {
 	bin := ffprobeBesideFFmpeg(ffmpegPath)
 	return func(ctx context.Context, input string) ([]AudioTrack, error) {
-		p, err := runFFprobe(ctx, bin, input)
+		p, err := runFFprobe(ctx, bin, input, false)
 		if err != nil {
 			return nil, err
 		}
@@ -127,7 +144,7 @@ func audioTracksOf(streams []probedStream) []AudioTrack {
 func FFprobeTracksNextTo(ffmpegPath string) TrackProber {
 	bin := ffprobeBesideFFmpeg(ffmpegPath)
 	return func(ctx context.Context, input string) (MediaTracks, error) {
-		p, err := runFFprobe(ctx, bin, input)
+		p, err := runFFprobe(ctx, bin, input, false)
 		if err != nil {
 			return MediaTracks{}, err
 		}
@@ -166,7 +183,7 @@ func tracksOf(streams []probedStream) MediaTracks {
 func FFprobeFormatNextTo(ffmpegPath string) FormatProber {
 	bin := ffprobeBesideFFmpeg(ffmpegPath)
 	return func(ctx context.Context, input string) (MediaFormat, error) {
-		p, err := runFFprobe(ctx, bin, input)
+		p, err := runFFprobe(ctx, bin, input, true)
 		if err != nil {
 			return MediaFormat{}, err
 		}
@@ -180,10 +197,12 @@ func FFprobeFormatNextTo(ffmpegPath string) FormatProber {
 // SELECTION among audio streams is a separate concern (audio.go). Pure, testable over probe output.
 func formatOf(p probed) MediaFormat {
 	var f MediaFormat
+	videoIndex := -1
 	for _, s := range p.Streams {
 		switch s.CodecType {
 		case "video":
 			if f.VideoCodec == "" {
+				videoIndex = s.Index
 				f.VideoCodec = strings.ToLower(s.CodecName)
 				f.Width, f.Height = s.Width, s.Height
 				f.FrameRate = parseRational(s.AvgFrameRate)
@@ -201,6 +220,13 @@ func formatOf(p probed) MediaFormat {
 	f.Container = p.Format.FormatName
 	f.Duration = parseFloat(p.Format.Duration)
 	f.Bitrate = parseInt(p.Format.BitRate)
+	for _, packet := range p.Packets {
+		if packet.StreamIndex != videoIndex {
+			continue
+		}
+		f.VideoPreroll = parseFloat(packet.PTS) < 0 && strings.Contains(packet.Flags, "D")
+		break
+	}
 	return f
 }
 
