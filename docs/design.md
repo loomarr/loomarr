@@ -5540,7 +5540,8 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   the latter or run independent runtime certification beside both, but the required aggregate
   succeeds only when every constituent succeeds. Splitting execution must not delete, skip, or
   weaken an assertion; `go-shard-verify` proves the test shards remain an exact partition of
-  `go list ./...`.
+  `go list ./...`. The release verifier also requires every top-level job in `ci.yml` to appear in
+  `ci-ok.needs`; adding a job without aggregating its result fails closed.
 - **State machine:** every transition + the five invariants.
 - **Store conformance:** one suite vs **both** SQLite (temp file) and Postgres (**testcontainers**), incl. `ClaimDue` concurrency (no record claimed twice).
 - **Library conformance:** Emby vs Jellyfin flavors w/ mock transport; correct auth header each.

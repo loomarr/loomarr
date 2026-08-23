@@ -1,10 +1,11 @@
 // Command releaseverify checks that the release chain cannot publish something nobody signed.
 // `make release-verify` runs it over .github/workflows plus the packaged runtime notices.
 //
-// It enforces four things the workflow YAML cannot state about itself: actions are pinned to
-// immutable references, CI builds the image from the inputs it claims to, the release job runs
-// checkout -> source validation -> tag protection -> digest-only build -> Cosign install ->
-// sign/verify/promotion IN THAT ORDER, and the redistribution notices are actually packaged.
+// It enforces five things the workflow YAML cannot state about itself: actions are pinned to
+// immutable references, CI builds the image from the inputs it claims to, the required aggregate
+// depends on every CI job, the release job runs checkout -> source validation -> tag protection ->
+// digest-only build -> Cosign install -> sign/verify/promotion IN THAT ORDER, and the
+// redistribution notices are actually packaged.
 //
 // ⚠ The ordering check is the load-bearing one, and it is a SEQUENCE not a set: promoting a
 // tag before the digest is signed, or signing after promotion, both leave a window where the
@@ -33,6 +34,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "release-verify: CI image input policy: %v\n", err)
 		os.Exit(1)
 	}
+	if err := releaseverify.VerifyCIAggregate(filepath.Join(*root, ".github", "workflows", "ci.yml")); err != nil {
+		fmt.Fprintf(os.Stderr, "release-verify: CI aggregate policy: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("release-verify: CI aggregate includes every top-level job")
 	if err := releaseverify.VerifyReleaseWorkflow(filepath.Join(*root, ".github", "workflows", "release.yml")); err != nil {
 		fmt.Fprintf(os.Stderr, "release-verify: workflow policy: %v\n", err)
 		os.Exit(1)

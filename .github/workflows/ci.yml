@@ -949,7 +949,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, agent-harness-macos, go-contracts, image-certification, go, store-postgres, frontend, playwright, tuner, image, docs, android]
+    needs: [changes, agent-harness-macos, windows-playout, go-contracts, image-certification, go, store-postgres, frontend, playwright, tuner, image, docs, android]
     runs-on: ubuntu-latest
     steps:
       - name: Every job that ran must have passed
