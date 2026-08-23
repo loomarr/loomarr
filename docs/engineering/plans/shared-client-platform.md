@@ -1,6 +1,6 @@
 # Shared client platform migration
 
-**Status:** Phase 0 contract in progress  
+**Status:** P0a merged; P0b scaffold in progress
 **Date:** 2026-08-23  
 **Decision owner:** maintainer  
 **Companion contract:** [`docs/frontend-design.md`](../../frontend-design.md)
@@ -246,12 +246,60 @@ old implementation is then deleted in the same PR or the next explicitly paired 
 does not linger as an unowned fallback. Retiring framework identifiers adds them to
 `scripts/check-retired.sh` as required by `AGENTS.md`.
 
+## P0b scaffold evidence
+
+P0b uses separate `mobile` and `tv` Expo applications because navigation and release identity are
+real platform seams. Mobile owns Expo Router; TV owns a minimal root registration because the TV
+config plugin does not support Expo Router. Both applications resolve the exact same
+`react-native-tvos` version, which supports phone and TV targets, and both render the same
+`ClientPlatformProof` source through the Loomarr-owned `design-system` interface.
+
+The scaffold uses prototype-only bundle and package identifiers. It cannot overwrite the shipping
+Compose application or claim the permanent mobile identity before P5 adoption. Runtime Tamagui is
+proven through Android touch, iOS, Android TV, and Apple TV production JS bundles and a dedicated
+Vite browser entry. After web-adapter React deduplication, the browser proof produces one 277.41 kB JavaScript
+chunk (92.94 kB gzip) without mounting or changing a shipping route. No compiler or production
+screen has been introduced.
+
+Turborepo runs beneath `make clients`. Expo, Metro, and Turbo outputs are excluded from task inputs,
+so a warmed unchanged graph restores all bundle tasks instead of rebuilding itself because of its
+own logs. CI has a dedicated client gate: native-only source changes select clients without
+selecting the legacy frontend, Playwright, tuner, or production-image families; workspace-root
+dependency and tool changes fail wider because both graphs consume them.
+
+Native Android proof builds are arm64-only and serialized. `make client-android-debug` defaults to
+the mobile app; `CLIENT_APP=tv` selects TV. On Linux the command places the whole Gradle, Kotlin,
+CMake, and Ninja process tree under a 3.75 GiB soft limit and 4 GiB hard limit, pins that tree to four
+CPUs, uses one Gradle worker, keeps Kotlin compilation in-process, and injects one-slot CMake compile
+and link pools through an Expo config plugin. Third-party native modules can own separate Ninja
+graphs, so CPU affinity and the process-tree limit remain the fail-safe boundaries. Mobile and TV
+native builds are never run concurrently.
+
+The clean native proof is green for both generated Android targets: mobile produced a 76 MiB
+`media.loomarr.mobile.prototype` APK in 5m35s and TV produced a 57 MiB
+`media.loomarr.tv.prototype` APK in 2m15s. Both contain only `arm64-v8a`; the TV manifest is a
+required Leanback application, marks touchscreen and faketouch optional, and exposes a Leanback
+launcher activity. The proof also caught an optional-peer mismatch that Expo Doctor and production
+JS bundles did not: Expo SDK 57 supports Reanimated 4.5.1 with Worklets 0.10.1, while pnpm had
+auto-selected incompatible 4.6.0 and 0.12.1 releases. Both app manifests now pin Expo's supported
+pair directly.
+
+The Linux proof also generates both native Apple projects cleanly: the mobile project targets
+iPhone and iPad (`TARGETED_DEVICE_FAMILY = "1,2"`, `SDKROOT = iphoneos`) while the TV project targets
+Apple TV (`TARGETED_DEVICE_FAMILY = 3`, `SDKROOT = appletvos`). Xcode compilation and launch still
+require the maintainer's Mac and remain explicit P0b acceptance evidence; a successful Metro bundle
+or Linux prebuild is not recorded as a native Apple build.
+
+The browser proof is also rendered, not bundle-only. At a 1440x900 viewport, the shared screen fills
+the viewport and the 760x126 proof panel is centered at x=340, y=387 with no horizontal or vertical
+overflow and no page exceptions. A server-render test runs through the same adapter aliases so a
+second React runtime in a linked universal package fails the client gate instead of producing a
+blank-but-successfully-bundled page.
+
 ## Open evidence, not open architecture
 
 The architecture above is decided for the slice. These facts must be measured rather than guessed:
 
-- whether one Expo app with TV configuration or separate `mobile` and `tv` apps yields the cleanest
-  release identities while keeping one React Native version;
 - whether Tamagui's runtime-only path meets the web and Shield budgets;
 - whether the compiler improves the representative slice enough to justify its build seam; and
 - which current tokens or assets deserve migration after side-by-side visual review.

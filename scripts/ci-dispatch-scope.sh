@@ -12,6 +12,7 @@ case "$1" in
 		cat <<'OUTPUT'
 go=false
 web=false
+clients=false
 image=true
 docs=false
 agent=false
@@ -23,6 +24,7 @@ OUTPUT
 		cat <<'OUTPUT'
 go=true
 web=true
+clients=true
 image=true
 docs=true
 agent=true

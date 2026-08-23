@@ -25,7 +25,7 @@ while IFS=$'\t' read -r name path_set want; do
   fi
 done <"$FIXTURES"
 
-all_gates='contracts,go,go_full,rust,postgres,windows,web,visual,e2e,tuner,image,docs,agent,android'
+all_gates='contracts,go,go_full,rust,postgres,windows,web,clients,visual,e2e,tuner,image,docs,agent,android'
 unknown="$(selected_gates unexpected/new-runtime/file.xyz)"
 if [[ "$unknown" != "$all_gates" ]]; then
   printf 'ci-impact-test: unknown path: got %s, want %s\n' "$unknown" "$all_gates" >&2

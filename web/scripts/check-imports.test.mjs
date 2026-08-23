@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { findCatalogImports } from "./check-imports.mjs";
+import { findCatalogImports, findFrameworkImports } from "./check-imports.mjs";
 
 describe("findCatalogImports", () => {
   it("rejects value, type-only, re-export, and dynamic catalog dependencies", () => {
@@ -26,5 +26,23 @@ describe("findCatalogImports", () => {
     `;
 
     assert.deepEqual(findCatalogImports(source), []);
+  });
+});
+
+describe("findFrameworkImports", () => {
+  it("rejects direct Tamagui imports from product modules", () => {
+    const source = `
+      import { View } from "@tamagui/core";
+      export { Button } from "tamagui";
+    `;
+
+    assert.deepEqual(
+      findFrameworkImports(source).map(({ importPath }) => importPath),
+      ["@tamagui/core", "tamagui"],
+    );
+  });
+
+  it("accepts Loomarr-owned design-system imports", () => {
+    assert.deepEqual(findFrameworkImports('import { Screen } from "@loomarr/design-system";'), []);
   });
 });

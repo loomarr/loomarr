@@ -5,8 +5,8 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 selector="$root/scripts/ci-dispatch-scope.sh"
 
-release_expected=$'go=false\nweb=false\nimage=true\ndocs=false\nagent=false\nandroid=false\nrelease_candidate=true'
-full_expected=$'go=true\nweb=true\nimage=true\ndocs=true\nagent=true\nandroid=true\nrelease_candidate=false'
+release_expected=$'go=false\nweb=false\nclients=false\nimage=true\ndocs=false\nagent=false\nandroid=false\nrelease_candidate=true'
+full_expected=$'go=true\nweb=true\nclients=true\nimage=true\ndocs=true\nagent=true\nandroid=true\nrelease_candidate=false'
 
 [[ "$($selector release-candidate)" == "$release_expected" ]] || {
 	echo 'release-candidate scope drifted from its minimal assurance set' >&2

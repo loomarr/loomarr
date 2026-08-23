@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Loomarr TV Prototype",
+    "slug": "loomarr-tv-prototype",
+    "version": "0.0.1",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "bundleIdentifier": "media.loomarr.tv.prototype"
+    },
+    "android": {
+      "package": "media.loomarr.tv.prototype"
+    },
+    "plugins": [
+      "../../scripts/with-memory-safe-android-build.cjs",
+      [
+        "@react-native-tvos/config-tv",
+        {
+          "isTV": true,
+          "androidTVRequired": true,
+          "removeFlipperOnAndroid": true
+        }
+      ]
+    ]
+  }
+}

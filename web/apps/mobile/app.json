@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "Loomarr Mobile Prototype",
+    "slug": "loomarr-mobile-prototype",
+    "scheme": "loomarr-prototype",
+    "version": "0.0.1",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "bundleIdentifier": "media.loomarr.mobile.prototype",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "media.loomarr.mobile.prototype",
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": ["expo-router", "../../scripts/with-memory-safe-android-build.cjs"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

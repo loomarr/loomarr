@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build && pnpm bundle:check",
+    "client-proof": "vite build --config vite.client-platform.config.ts && vitest run --config vite.client-platform.config.ts tests/client-platform-proof.ssr.test.tsx",
     "bundle:check": "node ../../../scripts/check-fe-bundle.mjs",
     "preview": "vite preview",
     "generate:routes": "tsr generate",
@@ -24,8 +25,10 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@loomarr/api": "workspace:*",
     "@loomarr/core": "workspace:*",
+    "@loomarr/design-system": "workspace:*",
     "@loomarr/fixtures": "workspace:*",
     "@loomarr/tokens": "workspace:*",
+    "@loomarr/ui": "workspace:*",
     "@tanstack/react-form": "^1.33.5",
     "@tanstack/react-query": "^5.101.4",
     "@tanstack/react-virtual": "^3.14.9",

@@ -1,0 +1,28 @@
+{
+  "name": "@loomarr/design-system",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Loomarr-owned semantic themes and universal primitives, implemented behind Tamagui Core.",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@tamagui/core": "2.7.7"
+  },
+  "peerDependencies": {
+    "react": ">=19 <20",
+    "react-native": ">=0.86 <0.87"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "react": "19.2.3",
+    "react-native": "npm:react-native-tvos@0.86.2-0",
+    "typescript": "~6.0.3",
+    "vitest": "^4.1.10"
+  }
+}
