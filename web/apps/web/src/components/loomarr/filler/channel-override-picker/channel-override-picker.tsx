@@ -73,7 +73,8 @@ const ChannelOverridePicker = ({
         baseline: every unit test here asserts the write, and none of them read the instructions. */}
     <Caption>
       Loomarr picks channels for {clipName} automatically. Tick a channel to always play it there, or use
-      Block to keep it off that channel. Untick to hand the choice back to Loomarr.
+      Block to keep it off that channel. A pin takes priority over automatic rotation, so it may repeat inside
+      the cooldown or reduce variety. Untick to hand the choice back to Loomarr.
     </Caption>
 
     {error && <p className="text-onair-300 text-sm">{error}</p>}

@@ -108,8 +108,11 @@ type tunarrChannel struct {
 	Duration     int64       `json:"duration"`
 	TranscodeID  string      `json:"transcodeConfigId"`
 	FillerColls  []any       `json:"fillerCollections"`
-	Subtitles    bool        `json:"subtitlesEnabled"`
-	DisableFillO bool        `json:"disableFillerOverlay"`
+	// Tunarr applies this channel-level programme repeat cooldown in milliseconds. The
+	// per-collection cooldown is a different list-selection rule and stays zero for our one list.
+	FillerRepeatCooldown int64 `json:"fillerRepeatCooldown"`
+	Subtitles            bool  `json:"subtitlesEnabled"`
+	DisableFillO         bool  `json:"disableFillerOverlay"`
 }
 
 type tunarrIcon struct {

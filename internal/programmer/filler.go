@@ -431,36 +431,38 @@ func (t *Tunarr) attachFillerList(ctx context.Context, tunarrID, listID string) 
 	}
 	// An empty desired attachment detaches every Loomarr-managed filler list.
 	desired := []fillerCollection{}
+	desiredRepeatCooldown := ch.FillerRepeatCooldown
 	if listID != "" {
 		// Tunarr's channel fillerCollections entry REQUIRES id + weight +
-		// cooldownSeconds (all three; a bare {id} → 400 "Bad Request"). weight =
-		// relative draw, cooldownSeconds = min seconds before a clip repeats — both
-		// configurable (FILLER_WEIGHT / FILLER_COOLDOWN_SECONDS, §15), with defaults
-		// here so a zero-config client still attaches validly. (Caught by the live
-		// smoke: a PUT with only {id} failed validation, so the list never attached.)
+		// cooldownSeconds (all three; a bare {id} → 400 "Bad Request"). With one managed
+		// list its LIST-selection cooldown is deliberately zero. Clip repetition is Tunarr's
+		// CHANNEL-level fillerRepeatCooldown (milliseconds); wiring the user setting into the
+		// list field made the whole list unavailable without protecting individual clips.
 		cfg := t.configFor(ctx)
 		weight := cfg.FillerWeight
 		if weight <= 0 {
 			weight = 1
 		}
-		cooldown := cfg.FillerCooldownSeconds
-		if cooldown < 0 {
-			cooldown = 30
+		cooldownSeconds := cfg.FillerCooldownSeconds
+		if cooldownSeconds < 0 {
+			cooldownSeconds = 1800
 		}
 		desired = append(desired, fillerCollection{
-			ID: listID, Weight: weight, CooldownSeconds: cooldown,
+			ID: listID, Weight: weight, CooldownSeconds: 0,
 		})
+		desiredRepeatCooldown = int64(cooldownSeconds) * 1000
 	}
 	// Preserve the established detach write after deleting a list: Tunarr may
 	// still hold the deleted reference even when its GET response omits it. For a
 	// live attachment, however, an exact match is a true no-op.
-	if listID != "" && sameFillerCollections(ch.FillerColls, desired) {
+	if listID != "" && sameFillerCollections(ch.FillerColls, desired) && ch.FillerRepeatCooldown == desiredRepeatCooldown {
 		return nil
 	}
 	ch.FillerColls = make([]any, len(desired))
 	for i := range desired {
 		ch.FillerColls[i] = desired[i]
 	}
+	ch.FillerRepeatCooldown = desiredRepeatCooldown
 	if err := t.doJSON(ctx, http.MethodPut, "/api/channels/"+tunarrID, ch, nil); err != nil {
 		return fmt.Errorf("attach filler list to channel %s: %w", tunarrID, err)
 	}

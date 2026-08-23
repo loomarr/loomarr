@@ -3,16 +3,26 @@ package filler
 import (
 	"math/rand"
 	"sort"
+	"time"
 )
+
+// Exposure is one clip's durable actual-airing history on a channel (§10 V58).
+// It is an aggregate rather than an event log: rotation needs recency and whether a clip is new,
+// while the existing global Clip counters remain the operator-facing all-channel totals.
+type Exposure struct {
+	PlayCount    int64
+	LastPlayedAt time.Time
+}
 
 // Pod is an assembled ad break (§10): an intro bumper → matched commercials →
 // return bumper, sized to a flex gap. It's what the scheduler inserts between
 // programs via Tunarr flex + filler lists. Every entry is a real catalog clip
 // (grounding: §10) or the embedded bumper-card fallback.
 type Pod struct {
-	Entries    []PodEntry
-	TotalMs    int64
-	MatchLevel MatchLevel // how far down the fallback ladder we went (§10)
+	Entries         []PodEntry
+	TotalMs         int64
+	MatchLevel      MatchLevel // how far down the fallback ladder we went (§10)
+	CooldownRelaxed bool       // at least one unpinned clip had to be reused inside cooldown
 }
 
 // PodEntry is one clip placed in a pod, in play order.
@@ -61,6 +71,10 @@ type PodEntry struct {
 	Audience    Audience
 	Category    string
 	VisibleText string
+	// RecentRepeat is computed from the immutable exposure snapshot used to plan this break.
+	// RotationPinned distinguishes an intentional operator override from pool-pressure relaxation.
+	RecentRepeat   bool
+	RotationPinned bool
 }
 
 // MatchLevel records how the pod was filled — the fallback ladder rung reached
@@ -102,6 +116,10 @@ type Window struct {
 	Kinds      []string
 	Pinned     []string
 	Excluded   []string
+	// Exposures is the durable per-channel snapshot strictly before SnapshotAt (§10 V58).
+	// SnapshotAt is the break start, not wall-clock planning time, so a rebuild is deterministic.
+	Exposures  map[string]Exposure
+	SnapshotAt time.Time
 }
 
 // Policy tunes assembly (from §15 FILLER_* + per-channel pod policy).
@@ -138,6 +156,9 @@ type Policy struct {
 	// Excluding unknowns would silently empty the catalog of every clip predating that
 	// migration the moment someone set a floor, which reads as "my commercials vanished".
 	MinQualityHeight int
+	// Cooldown is a preference, never permission to leave a break empty. Rotation ranks new clips,
+	// then least-recently played clips outside this interval, then deterministically relaxes it.
+	Cooldown time.Duration
 }
 
 // FallbackCard is the embedded default bumper-card asset (§10): Loomarr ships one
@@ -182,7 +203,7 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 	pod := Pod{MatchLevel: MatchBumperCard}
 
 	// Intro bumper (best-effort — a matched bumper if we have one).
-	if b, ok := pickBumper(catalog, w, used, rng); ok && b.DurationMs <= w.GapMs {
+	if b, ok := pickBumper(catalog, w, policy, used, rng); ok && b.DurationMs <= w.GapMs {
 		pod.append(b, used)
 	}
 
@@ -194,7 +215,9 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 	pinWindow.GapMs -= pod.TotalMs
 	pinned := pickPinned(catalog, pinWindow, policy, used)
 	for _, c := range pinned {
-		pod.append(clipToEntry(c), used)
+		e := clipToEntry(c, w, policy)
+		e.RotationPinned = true
+		pod.append(e, used)
 	}
 
 	// Fill the rest with matched commercials from the tightest non-empty pool,
@@ -215,12 +238,12 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 			pod.MatchLevel = level
 		}
 		for _, c := range commercials {
-			pod.append(clipToEntry(c), used)
+			pod.append(clipToEntry(c, w, policy), used)
 		}
 	}
 
 	// Return bumper.
-	if b, ok := pickBumper(catalog, w, used, rng); ok && pod.TotalMs+b.DurationMs <= w.GapMs {
+	if b, ok := pickBumper(catalog, w, policy, used, rng); ok && pod.TotalMs+b.DurationMs <= w.GapMs {
 		pod.append(b, used)
 	}
 
@@ -288,6 +311,9 @@ func pickPinned(catalog []Clip, w Window, policy Policy, used map[string]bool) [
 func (p *Pod) append(e PodEntry, used map[string]bool) {
 	p.Entries = append(p.Entries, e)
 	p.TotalMs += e.DurationMs
+	if e.RecentRepeat && !e.RotationPinned {
+		p.CooldownRelaxed = true
+	}
 	// ⚠ Reserve by HASH — the identity `used` is keyed on everywhere (pinned/excluded seed it with
 	// hashes). PodEntry carries both; keying on Path here let a clip pinned/excluded by hash slip the
 	// reservation (it never matched), so no-repeat and exclusion were both silently broken (§10 V45a).
@@ -296,7 +322,8 @@ func (p *Pod) append(e PodEntry, used map[string]bool) {
 	}
 }
 
-func clipToEntry(c Clip) PodEntry {
+func clipToEntry(c Clip, w Window, policy Policy) PodEntry {
+	tier, _ := rotationRank(c, w, policy)
 	return PodEntry{
 		Path: c.Path, Hash: c.Hash, TunarrProgramID: c.TunarrProgramID,
 		Name: c.Name, Kind: c.Kind, DurationMs: c.DurationMs,
@@ -304,12 +331,13 @@ func clipToEntry(c Clip) PodEntry {
 		// a clip cannot reach the hover card with its metadata mysteriously absent.
 		Era: c.Era, Quality: c.Quality,
 		Brand: c.Brand, Audience: c.Audience, Category: c.Category, VisibleText: c.VisibleText,
+		RecentRepeat: tier == rotationRecent,
 	}
 }
 
 // pickBumper chooses a bumper/station-id for a pod bookend, preferring era match,
 // avoiding no-repeat, deterministic under rng. Returns ok=false if none exist.
-func pickBumper(catalog []Clip, w Window, used map[string]bool, rng *rand.Rand) (PodEntry, bool) {
+func pickBumper(catalog []Clip, w Window, policy Policy, used map[string]bool, rng *rand.Rand) (PodEntry, bool) {
 	var bumpers []Clip
 	for _, c := range catalog {
 		if c.IsBumper() && !used[c.ID()] {
@@ -325,5 +353,17 @@ func pickBumper(catalog []Clip, w Window, used map[string]bool, rng *rand.Rand) 
 		bumpers = era
 	}
 	sort.Slice(bumpers, func(i, j int) bool { return bumpers[i].Path < bumpers[j].Path })
-	return clipToEntry(bumpers[rng.Intn(len(bumpers))]), true
+	// Keep the historical seeded choice among equally ranked bumpers, but never let it jump ahead
+	// of a new or older candidate. Equal-rank choices remain varied across breaks.
+	sort.SliceStable(bumpers, func(i, j int) bool { return rotationLess(bumpers[i], bumpers[j], w, policy) })
+	bestTier, bestAt := rotationRank(bumpers[0], w, policy)
+	best := 1
+	for best < len(bumpers) {
+		tier, at := rotationRank(bumpers[best], w, policy)
+		if tier != bestTier || !at.Equal(bestAt) {
+			break
+		}
+		best++
+	}
+	return clipToEntry(bumpers[rng.Intn(best)], w, policy), true
 }

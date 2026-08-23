@@ -28,6 +28,13 @@ var (
 		Help: "Assembled filler pods by fallback-ladder match level.",
 	}, []string{"match_level"})
 
+	// fillerRotationAirings counts actual internal-playout clip starts, never previews or
+	// reconciles. Both labels are bounded domain states; channel and clip identities are omitted.
+	fillerRotationAirings = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "loomarr", Subsystem: "filler", Name: "rotation_airings_total",
+		Help: "Actual filler clip airings by repeat state and cooldown pressure.",
+	}, []string{"repeat", "cooldown"})
+
 	// slotSubstitutions counts scheduled programs demoted to a placeholder because
 	// the title vanished from the library between reconciles (§17 slot drift).
 	slotSubstitutions = promauto.NewCounter(prometheus.CounterOpts{
@@ -50,6 +57,22 @@ func LLMTokens(promptTokens, completionTokens int) {
 
 // FillerPodAssembled records one assembled pod under its ladder match level.
 func FillerPodAssembled(matchLevel string) { fillerPods.WithLabelValues(matchLevel).Inc() }
+
+// FillerRotationAired records one actual clip start. A pinned recent clip is an intentional
+// override, while relaxed means the unpinned pool was depleted inside the preferred cooldown.
+func FillerRotationAired(repeated, relaxed, pinned bool) {
+	repeat := "fresh"
+	if repeated {
+		repeat = "repeat"
+	}
+	cooldown := "ready"
+	if pinned && repeated {
+		cooldown = "override"
+	} else if relaxed {
+		cooldown = "relaxed"
+	}
+	fillerRotationAirings.WithLabelValues(repeat, cooldown).Inc()
+}
 
 // SlotSubstitutions records n programs demoted to placeholders in one reconcile.
 func SlotSubstitutions(n int) {

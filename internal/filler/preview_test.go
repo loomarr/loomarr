@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
 )
@@ -14,9 +15,44 @@ type stubCatalog struct {
 	err   error
 }
 
+type stubExposures struct {
+	items   map[string]filler.Exposure
+	channel string
+	before  time.Time
+}
+
+func (s *stubExposures) FillerExposuresByChannel(_ context.Context, channelID string, before time.Time) (map[string]filler.Exposure, error) {
+	s.channel, s.before = channelID, before
+	return s.items, nil
+}
+
 func (s stubCatalog) AllClips(context.Context) ([]filler.Clip, error) { return s.clips, s.err }
 
 func discardLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
+
+func TestPreviewAtUsesBreakScopedExposureSnapshot(t *testing.T) {
+	start := time.Date(2026, 8, 23, 12, 0, 0, 123_000_000, time.UTC)
+	cat := []filler.Clip{
+		{Hash: "recent", Path: "recent.mp4", Kind: filler.Commercial, DurationMs: 30_000, Category: "one"},
+		{Hash: "new", Path: "new.mp4", Kind: filler.Commercial, DurationMs: 30_000, Category: "two"},
+	}
+	history := &stubExposures{items: map[string]filler.Exposure{
+		"recent": {PlayCount: 1, LastPlayedAt: start.Add(-time.Minute)},
+	}}
+	adapter := filler.NewPodAdapter(stubCatalog{clips: cat}, history, func() filler.Policy {
+		return filler.Policy{PodMax: 2, Cooldown: time.Hour}
+	}, discardLogger())
+	pod, err := adapter.PreviewAt(context.Background(), "channel-7", 42, filler.Selection{}, start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if history.channel != "channel-7" || !history.before.Equal(start) {
+		t.Fatalf("history query = %q before %v, want channel and exact break start", history.channel, history.before)
+	}
+	if len(pod.Entries) < 2 || pod.Entries[0].Hash != "new" || pod.Entries[1].Hash != "recent" {
+		t.Fatalf("rotation entries = %+v, want new before recent", pod.Entries)
+	}
+}
 
 // THE invariant behind §12's pod preview: preview must return exactly the pool that
 // reconcile attaches. They share one code path by construction (BuildFillerList calls
@@ -26,7 +62,7 @@ func discardLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
 // A preview that could drift from what actually ships is worse than no preview: it
 // would confidently show an operator commercials their channel never receives.
 func TestPreviewMatchesWhatReconcileAttaches(t *testing.T) {
-	adapter := filler.NewPodAdapter(stubCatalog{clips: sampleCatalog()}, nil, discardLogger())
+	adapter := filler.NewPodAdapter(stubCatalog{clips: sampleCatalog()}, nil, nil, discardLogger())
 	ctx := context.Background()
 	const channelID, era = "ch-1", 1992
 	const seed int64 = 424242
@@ -76,7 +112,7 @@ func TestPreviewMatchesWhatReconcileAttaches(t *testing.T) {
 // The sample catalog's commercials are all audience=kids, which is exactly the case that
 // used to yield nothing.
 func TestFillerListContainsCommercialsNotJustBumpers(t *testing.T) {
-	adapter := filler.NewPodAdapter(stubCatalog{clips: sampleCatalog()}, nil, discardLogger())
+	adapter := filler.NewPodAdapter(stubCatalog{clips: sampleCatalog()}, nil, nil, discardLogger())
 	ids, ok := adapter.BuildFillerList(context.Background(), "ch-1", 42, filler.Selection{Era: filler.Year(1992)})
 	if !ok {
 		t.Fatal("no filler list built from a catalog full of era-matching commercials")
@@ -102,7 +138,7 @@ func TestFillerListContainsCommercialsNotJustBumpers(t *testing.T) {
 // seed must preview identically on every call, or "what you see is what you get" holds
 // only until the next refresh (§10 seeded-deterministic, §19).
 func TestPreviewIsSeedDeterministic(t *testing.T) {
-	adapter := filler.NewPodAdapter(stubCatalog{clips: sampleCatalog()}, nil, discardLogger())
+	adapter := filler.NewPodAdapter(stubCatalog{clips: sampleCatalog()}, nil, nil, discardLogger())
 	ctx := context.Background()
 
 	first, err := adapter.Preview(ctx, "ch-1", 99, filler.Selection{Era: filler.Year(1992)})
@@ -127,7 +163,7 @@ func TestPreviewIsSeedDeterministic(t *testing.T) {
 // An empty catalog is a normal state the UI renders as "no clips yet" — not an error,
 // and not a reason for the channel to fail. Reconcile treats it as "attach nothing".
 func TestPreviewEmptyCatalogIsNotAnError(t *testing.T) {
-	adapter := filler.NewPodAdapter(stubCatalog{}, nil, discardLogger())
+	adapter := filler.NewPodAdapter(stubCatalog{}, nil, nil, discardLogger())
 	pod, err := adapter.Preview(context.Background(), "ch-1", 1, filler.Selection{})
 	if err != nil {
 		t.Fatalf("empty catalog returned an error: %v", err)
@@ -146,7 +182,7 @@ func TestHasPool_LocalClipNeedsNoTunarrProgramID(t *testing.T) {
 	adapter := filler.NewPodAdapter(stubCatalog{clips: []filler.Clip{{
 		Hash: "local", Path: "commercials/local.mp4", Name: "Local ad",
 		Kind: filler.Commercial, DurationMs: 30_000,
-	}}}, nil, discardLogger())
+	}}}, nil, nil, discardLogger())
 
 	if !adapter.HasPool(context.Background(), "internal", 42, filler.Selection{}) {
 		t.Fatal("local playable clip was treated as no filler pool without a Tunarr uuid")
@@ -161,7 +197,7 @@ func TestHasPool_LocalClipNeedsNoTunarrProgramID(t *testing.T) {
 // deliberately different handling at the two call sites.
 func TestPreviewSurfacesCatalogErrorWhileReconcileDegrades(t *testing.T) {
 	boom := errors.New("store is down")
-	adapter := filler.NewPodAdapter(stubCatalog{err: boom}, nil, discardLogger())
+	adapter := filler.NewPodAdapter(stubCatalog{err: boom}, nil, nil, discardLogger())
 
 	if _, err := adapter.Preview(context.Background(), "ch-1", 1, filler.Selection{}); !errors.Is(err, boom) {
 		t.Errorf("preview swallowed the catalog error: %v", err)

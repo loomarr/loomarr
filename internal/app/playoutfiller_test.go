@@ -361,12 +361,14 @@ func TestProfile_ProbesOnlyOnce(t *testing.T) {
 
 // recordingPlays captures RecordClipPlay calls (V28).
 type recordingPlays struct {
-	calls []string
-	err   error
+	calls    []string
+	channels []string
+	err      error
 }
 
-func (r *recordingPlays) RecordClipPlay(_ context.Context, clipHash string, _ time.Time) error {
+func (r *recordingPlays) RecordClipPlay(_ context.Context, channelID, clipHash string, _ time.Time) error {
 	r.calls = append(r.calls, clipHash)
+	r.channels = append(r.channels, channelID)
 	return r.err
 }
 
@@ -396,6 +398,9 @@ func TestAiringNow_CountsTheClipThatAirs(t *testing.T) {
 	// swallows the error as telemetry.
 	if len(plays.calls) != 1 || plays.calls[0] != "hash-toys" {
 		t.Fatalf("recorded %v, want one play of the clip HASH", plays.calls)
+	}
+	if len(plays.channels) != 1 || plays.channels[0] != "ch1" {
+		t.Fatalf("recorded channels %v, want the airing channel", plays.channels)
 	}
 }
 

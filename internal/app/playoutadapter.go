@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -57,7 +58,7 @@ type titleReader interface {
 // clipPlayRecorder is the one-method slice of the store the resolver needs to count an
 // airing. Narrow deliberately — the resolver has no other business writing.
 type clipPlayRecorder interface {
-	RecordClipPlay(ctx context.Context, clipPath string, at time.Time) error
+	RecordClipPlay(ctx context.Context, channelID, clipHash string, at time.Time) error
 }
 
 // airingRecorder stamps that a PROGRAMME aired (§5, programming-design §3.1) — the recency
@@ -792,11 +793,14 @@ func (r *playoutResolver) airingFiller(
 			// `e.Path` from V38c until V41 and every counter stayed at zero. The error below is
 			// swallowed by design, so the miss was silent — the guard is `PodEntry.Hash` now
 			// existing at all, plus the store's ClipKeyIsHashNotPath conformance test.
-			if into == 0 && r.clipPlays != nil && e.Hash != "" {
-				if err := r.clipPlays.RecordClipPlay(ctx, e.Hash, now); err != nil {
-					// Telemetry, never correctness: a failed count must not stop a break from
-					// airing. Logged at debug because a pruned clip is an ordinary race.
-					_ = err
+			if into == 0 && e.Hash != "" {
+				metrics.FillerRotationAired(e.RecentRepeat, e.RecentRepeat && !e.RotationPinned, e.RotationPinned)
+				if r.clipPlays != nil {
+					if err := r.clipPlays.RecordClipPlay(ctx, channelID, e.Hash, now); err != nil {
+						// Telemetry, never correctness: a failed count must not stop a break from
+						// airing. Logged at debug because a pruned clip is an ordinary race.
+						_ = err
+					}
 				}
 			}
 			return playout.Airing{

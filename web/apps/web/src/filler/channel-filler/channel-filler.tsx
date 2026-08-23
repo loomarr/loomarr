@@ -311,13 +311,13 @@ const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFiller
 
       <CollapsibleSection
         title="Specific clips"
-        description="Optionally pin clips to every break or block clips from this channel."
+        description="Optionally pin clips to every break or block clips from this channel. Pins are intentional overrides: they play ahead of rotation and may repeat inside the cooldown or reduce variety."
         defaultOpen={pinned.length > 0 || excluded.length > 0}
       >
         <div className="flex flex-col gap-4">
           <FillerClipList
             label="Always include"
-            hint="Pin specific clips so every break can use them, ahead of the theme."
+            hint="Pin specific clips ahead of the theme and automatic rotation. A recent pin may repeat."
             ids={pinned}
             onChange={(next) => setDraft({ ...draft, pinned: next })}
             resolve={resolve}

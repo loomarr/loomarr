@@ -278,8 +278,8 @@ func TestEnsureFillerList_UsesLiveFillerPolicyPerOperation(t *testing.T) {
 	}
 
 	want := []testkit.TunarrFillerPolicy{
-		{Weight: 2, CooldownSeconds: 15},
-		{Weight: 7, CooldownSeconds: 90},
+		{Weight: 2, CooldownSeconds: 0, RepeatCooldownMs: 15_000},
+		{Weight: 7, CooldownSeconds: 0, RepeatCooldownMs: 90_000},
 	}
 	if got := srv.FillerPolicies("channel"); !reflect.DeepEqual(got, want) {
 		t.Errorf("same-channel filler policy history = %+v, want %+v", got, want)
