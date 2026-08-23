@@ -150,6 +150,7 @@ Packages imported by 5 or more others, and how they sit against each other. Ever
 ```mermaid
 flowchart TD
   p_catalog["catalog<br/><small>5 importers</small>"]
+  p_diagnostics["diagnostics<br/><small>8 importers</small>"]
   p_filler["filler<br/><small>6 importers</small>"]
   p_httpx["httpx<br/><small>5 importers</small>"]
   p_library["library<br/><small>7 importers</small>"]
@@ -162,6 +163,7 @@ flowchart TD
   p_suggest["suggest<br/><small>6 importers</small>"]
   p_catalog --> p_library
   p_catalog --> p_provision
+  p_filler --> p_diagnostics
   p_filler --> p_llm
   p_filler --> p_metrics
   p_httpx --> p_metrics
@@ -172,6 +174,7 @@ flowchart TD
   p_metrics --> p_provision
   p_schedule --> p_provision
   p_scheduler --> p_store
+  p_store --> p_diagnostics
   p_store --> p_filler
   p_store --> p_provision
   p_store --> p_schedule
@@ -190,7 +193,7 @@ flowchart TD
   Carries the version stamped into the binary at build time.
 - **`config`** · 1 importer
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
-- **`diagnostics`** · 3 importers
+- **`diagnostics`** · 8 importers
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
@@ -211,7 +214,7 @@ flowchart TD
 
 **Layer 1**
 
-- **`prepared`** · 3 importers · → `media`
+- **`prepared`** · 3 importers · → `diagnostics`, `media`
   Owns immutable, reusable playout publications.
 - **`schedule`** · 14 importers · → `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
@@ -222,14 +225,14 @@ flowchart TD
 
 - **`images`** · 4 importers · → `scheduler`
   One pipeline every image in Loomarr travels (§22).
-- **`playout`** · 4 importers · → `prepared`, `proctree`, `provision`, `schedule`
+- **`playout`** · 4 importers · → `diagnostics`, `prepared`, `proctree`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 - **`retention`** · 1 importer · → `diagnostics`, `scheduler`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity rows.
 
 **Layer 3**
 
-- **`mediatools`** · 2 importers · → `playout`, `proctree`
+- **`mediatools`** · 2 importers · → `diagnostics`, `playout`, `proctree`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`metrics`** · 6 importers · → `images`, `provision`
   Loomarr's Prometheus surface (design §7 /metrics, §17).
@@ -250,7 +253,7 @@ flowchart TD
 
 **Layer 6**
 
-- **`filler`** · 6 importers · → `llm`, `mediatools`, `metrics`, `taxonomy`
+- **`filler`** · 6 importers · → `diagnostics`, `llm`, `mediatools`, `metrics`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 
 **Layer 7**
@@ -305,7 +308,7 @@ flowchart TD
 
 **Layer 11**
 
-- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `events`, `filler`, `images`, `media`, `metrics`, `playout`, `prepared`, `proposalworkflow`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `diagnostics`, `events`, `filler`, `images`, `media`, `metrics`, `playout`, `prepared`, `proposalworkflow`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 **Layer 12**
@@ -5462,6 +5465,7 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `JOB_WORKERS` / `JOB_TIMEOUT` | `1` / `10m` (§8). One suggestion at a time is the appliance-safe default because a local model may share CPU, memory, and GPU with playback or transcode. A larger or hosted-model deployment may deliberately raise it. |
 | `JOBS_RETENTION` / `PROPOSALS_RETENTION` | `720h` / `2160h` (§5 housekeeping). |
 | `ACTIVITY_RETENTION` | `720h` — how long Dashboard activity rows are kept before `housekeeping` removes them (§5, §18.1, V32). |
+| `DIAGNOSTICS_DIR` | `/data/diagnostics` — persistent, diagnostics-owned Process-output files. The path is generation-scoped and applies after restart; changing it cannot split one generation's active Process runs across roots (§17). |
 | `DIAGNOSTICS_RETENTION` | `168h` — how long Diagnostic events and completed Process runs remain available. Active Process runs are exempt regardless of age (§5, §17). |
 | `DIAGNOSTICS_MAX_STORAGE_MB` | `512` — soft global budget for normalized Diagnostic-event payload plus bounded Process-output files. Housekeeping removes the oldest completed evidence until under budget; active Process runs remain protected even when that temporarily leaves the install over budget (§5, §17). |
 | `episodes.max_age` | `24h` — how stale a cached series episode list may be before `channel-maintenance` re-enumerates it (§5). A miss or an aged-out row still falls back to the live library call, so this bounds staleness, never correctness. |
@@ -5552,8 +5556,9 @@ What an operator downloads is the compressed pull, which is smaller.
 It pre-creates `/data` owned by uid 65532 and declares it a `VOLUME`, so a fresh named volume inherits nonroot ownership and the documented `docker run -v loomarr-data:/data loomarr` boots. Without that the volume arrives root-owned and boot dies with *"unable to open database file (14)"* — a failure that was **masked** while `DATABASE_URL` had no default (§15), because the app never tried to open a file. Compose's one-shot chown init container stays for **bind mounts**, which the image cannot pre-seed.
 
 **Storage-path portability is explicit.** In the supported Linux Docker deployment,
-`/data/filler` lives on the persistent `/data` volume and any alternative `filler.dir` is an
-**in-container** path whose bind/named volume must already be present and writable by uid 65532.
+`/data/filler` and `/data/diagnostics` live on the persistent `/data` volume; any alternative
+`filler.dir` or `diagnostics.dir` is an **in-container** path whose bind/named volume must already
+be present and writable by uid 65532.
 Saving a host path cannot add a mount; change Compose first, then apply the saved layout by
 restarting/recreating every Loomarr replica. On a native macOS source/binary run, `/data/filler` is
 the container-oriented default and is commonly not writable, so the operator/development harness
@@ -5792,9 +5797,11 @@ An ffmpeg Process run has three independent streams with three different owners:
 
 Diagnostic writes happen after each pipe read and cannot apply backpressure to ffmpeg. If the
 output writer falls behind, it drops diagnostic lines, counts them, and continues draining. A
-long-lived run preserves an initialization prefix and rolling tail rather than an unbounded slice;
-download and UI both state exactly what was discarded. Commands are represented by a redacted
-summary, never raw arguments containing media URLs, tokens, or complete paths.
+long-lived run keeps an explicit 1 MiB safety envelope: the first 256 KiB of initialization context
+plus a rolling 768 KiB failure tail. The file inserts a marker with both cap evictions and
+pre-disk queue drops; metadata carries the same total, so downloads and UI state exactly what was
+discarded. Commands are represented by a redacted summary, never raw arguments containing media
+URLs, tokens, or complete paths.
 
 `diagnostic_process_runs` is the durable metadata/index. The output path is opaque outside the
 diagnostics module. The initial beta remains single-replica for Playout ownership (§14), but every

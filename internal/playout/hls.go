@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/proctree"
 )
 
@@ -88,6 +89,10 @@ type HLSAttacher interface {
 	AttachSink(ctx context.Context, channelID string, plan EncodePlan, sink sessionSink) (func(), error)
 }
 
+type hlsProcessCorrelator interface {
+	ProcessRunID(channelID string, plan EncodePlan) string
+}
+
 // hlsSpawner starts the repackaging ffmpeg for a channel dir. A field on the manager
 // (defaulting to startHLSFFmpeg) rather than a hard call, so the refcount and lifecycle can be
 // tested without executing a binary — the same seam Manager's Spawner provides.
@@ -136,7 +141,9 @@ type remuxKey struct {
 // scratch, not a per-request choice, and re-reading it live would let an operator's mid-session
 // edit strand live segments in the old directory. A changed `playout.hls_dir` takes effect on the
 // next restart, like the ffmpeg path it sits beside.
-func NewHLSManager(attacher HLSAttacher, ffmpeg, baseDir string, grace time.Duration, log *slog.Logger) (*HLSManager, error) {
+func NewHLSManager(attacher HLSAttacher, ffmpeg, baseDir string, grace time.Duration, log *slog.Logger,
+	observers ...*diagnostics.ProcessManager,
+) (*HLSManager, error) {
 	if grace <= 0 {
 		grace = DefaultGrace
 	}
@@ -153,9 +160,16 @@ func NewHLSManager(attacher HLSAttacher, ffmpeg, baseDir string, grace time.Dura
 	if err != nil {
 		return nil, fmt.Errorf("hls: segment root under %q: %w", baseDir, err)
 	}
+	spawn := hlsSpawner(startHLSFFmpeg)
+	if len(observers) > 0 && observers[0] != nil {
+		manager := observers[0]
+		spawn = func(ctx context.Context, bin, dir string, plan EncodePlan, log *slog.Logger) (*hlsProcess, error) {
+			return startHLSFFmpegObserved(ctx, bin, dir, plan, log, manager)
+		}
+	}
 	return &HLSManager{
 		attacher: attacher, ffmpeg: ffmpeg, grace: grace, log: log,
-		spawn:   startHLSFFmpeg,
+		spawn:   spawn,
 		root:    root,
 		remuxes: map[remuxKey]*hlsRemux{},
 	}, nil
@@ -293,6 +307,13 @@ func (m *HLSManager) start(channelID string, plan EncodePlan) (*hlsRemux, error)
 
 	// Direct-play: the remux stream-copies the session's bytes into HLS. No renditions, no
 	// transcode — one encode per channel is the SESSION's; the remux only re-containers it.
+	parentRunID := ""
+	if correlator, ok := m.attacher.(hlsProcessCorrelator); ok {
+		parentRunID = correlator.ProcessRunID(channelID, plan)
+	}
+	ctx = diagnostics.WithProcessSpec(ctx, diagnostics.ProcessSpec{
+		Purpose: "hls_remux", ParentRunID: parentRunID, ChannelID: channelID, Target: plan.String(),
+	})
 	proc, err := m.spawn(ctx, m.ffmpeg, dir, plan, m.log)
 	if err != nil {
 		cancel()
@@ -659,6 +680,7 @@ type hlsProcess struct {
 	stdin io.WriteCloser
 	log   *slog.Logger
 	proc  *proctree.Supervisor
+	run   *diagnostics.ProcessHandle
 	done  chan struct{}
 
 	mu       sync.Mutex
@@ -669,17 +691,46 @@ type hlsProcess struct {
 
 func (p *hlsProcess) closeStdin() error { return p.stdin.Close() }
 func (p *hlsProcess) wait() error {
-	p.waitOnce.Do(func() { p.waitErr = p.proc.Wait() })
+	if p.done == nil { // test-injected process wrappers predate the asynchronous constructor.
+		p.waitOnce.Do(func() { p.waitErr = p.proc.Wait(); p.finishRun(p.waitErr) })
+		return p.waitErr
+	}
+	<-p.done
 	return p.waitErr
 }
 
 func newHLSProcess(proc *proctree.Supervisor, stdin io.WriteCloser, log *slog.Logger) *hlsProcess {
-	p := &hlsProcess{proc: proc, stdin: stdin, log: log, done: make(chan struct{})}
+	return newObservedHLSProcess(proc, stdin, log, nil, nil)
+}
+
+func newObservedHLSProcess(proc *proctree.Supervisor, stdin io.WriteCloser, log *slog.Logger,
+	run *diagnostics.ProcessHandle, stderr io.Reader,
+) *hlsProcess {
+	p := &hlsProcess{proc: proc, stdin: stdin, log: log, done: make(chan struct{}), run: run}
+	stderrDone := make(chan struct{})
+	if stderr == nil {
+		close(stderrDone)
+	} else {
+		go func() { defer close(stderrDone); p.readStderr(stderr) }()
+	}
 	go func() {
-		_ = p.wait()
+		err := p.proc.Wait()
+		<-stderrDone
+		p.waitOnce.Do(func() {
+			p.waitErr = err
+			p.finishRun(err)
+		})
 		close(p.done)
 	}()
 	return p
+}
+
+func (p *hlsProcess) finishRun(err error) {
+	if p.run != nil {
+		p.run.Finish(diagnostics.ProcessResult{
+			Err: err, Cancelled: p.proc.Stopped(), TerminationReason: hlsTerminationReason(p.proc.Stopped()),
+		})
+	}
 }
 
 // LastError returns ffmpeg's most recent stderr line — the actionable reason a remux produced no
@@ -706,6 +757,9 @@ func (p *hlsProcess) readStderr(r io.Reader) {
 		p.mu.Lock()
 		p.lastErr = line
 		p.mu.Unlock()
+		if p.run != nil {
+			p.run.RecordOutput(line)
+		}
 		if p.log != nil {
 			p.log.Debug("hls ffmpeg", "line", line)
 		}
@@ -716,6 +770,12 @@ func (p *hlsProcess) readStderr(r io.Reader) {
 // stdin and stream-COPYING it into a live HLS playlist (hlsArgs). Under the same platform
 // process-tree owner as Process, so cancellation cannot orphan a helper.
 func startHLSFFmpeg(ctx context.Context, bin, dir string, plan EncodePlan, log *slog.Logger) (*hlsProcess, error) {
+	return startHLSFFmpegObserved(ctx, bin, dir, plan, log, nil)
+}
+
+func startHLSFFmpegObserved(ctx context.Context, bin, dir string, plan EncodePlan, log *slog.Logger,
+	manager *diagnostics.ProcessManager,
+) (*hlsProcess, error) {
 	args := hlsArgs(dir, plan)
 	cmd := exec.Command(bin, args...) //nolint:gosec // args built here, never user text
 
@@ -733,9 +793,21 @@ func startHLSFFmpeg(ctx context.Context, bin, dir string, plan EncodePlan, log *
 		_ = stdin.Close()
 		return nil, fmt.Errorf("hls: start ffmpeg: %w", err)
 	}
-	p := newHLSProcess(supervised, stdin, log)
-	go p.readStderr(stderr)
+	var run *diagnostics.ProcessHandle
+	if manager != nil {
+		spec, _ := diagnostics.ProcessSpecFromContext(ctx)
+		spec.Executable, spec.Args = bin, args
+		run = manager.Begin(spec)
+	}
+	p := newObservedHLSProcess(supervised, stdin, log, run, stderr)
 	return p, nil
+}
+
+func hlsTerminationReason(stopped bool) string {
+	if stopped {
+		return "process tree stopped"
+	}
+	return ""
 }
 
 // hlsArgs builds the DIRECT-PLAY repackage command: `-c copy -f hls`, a single live playlist. Split

@@ -44,10 +44,22 @@ type Store interface {
 
 // Service runs the purges.
 type Service struct {
-	store Store
-	win   Windows
-	now   func() time.Time
-	log   *slog.Logger
+	store       Store
+	diagnostics interface {
+		Purge(context.Context, time.Time, int64) (diagnostics.PurgeResult, error)
+	}
+	win Windows
+	now func() time.Time
+	log *slog.Logger
+}
+
+// WithDiagnostics assigns the filesystem-aware purge coordinator. The store-only fallback keeps
+// narrow tests and store-less adapters useful, but production always supplies ProcessManager.
+func (s *Service) WithDiagnostics(purger interface {
+	Purge(context.Context, time.Time, int64) (diagnostics.PurgeResult, error)
+}) *Service {
+	s.diagnostics = purger
+	return s
 }
 
 // New builds the retention service. A nil `now` means time.Now.
@@ -100,9 +112,14 @@ func (s *Service) PurgeActivity(ctx context.Context) error {
 // PurgeDiagnostics enforces both the age window and logical retained-byte budget (§5, §17).
 // Active Process runs are protected by the store contract regardless of age or pressure.
 func (s *Service) PurgeDiagnostics(ctx context.Context) error {
-	result, err := s.store.PurgeDiagnostics(
-		ctx, s.now().Add(-s.win.Diagnostics()), s.win.DiagnosticsMaxBytes(),
-	)
+	before, maxBytes := s.now().Add(-s.win.Diagnostics()), s.win.DiagnosticsMaxBytes()
+	var result diagnostics.PurgeResult
+	var err error
+	if s.diagnostics != nil {
+		result, err = s.diagnostics.Purge(ctx, before, maxBytes)
+	} else {
+		result, err = s.store.PurgeDiagnostics(ctx, before, maxBytes)
+	}
 	if err != nil {
 		return err
 	}

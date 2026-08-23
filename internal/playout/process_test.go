@@ -8,8 +8,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/diagnostics"
 )
 
 func TestCombinedProgressPreservesDiagnostics(t *testing.T) {
@@ -74,6 +77,84 @@ func TestProcessProgressTransport(t *testing.T) {
 	}
 	if got := proc.LastError(); got != "Decoder warning: recovered damaged frame" {
 		t.Errorf("last diagnostic = %q", got)
+	}
+}
+
+type processDiagnosticsSink struct {
+	mu     sync.Mutex
+	runs   map[string]diagnostics.ProcessRun
+	events []diagnostics.Record
+}
+
+func (s *processDiagnosticsSink) UpsertDiagnosticProcessRun(_ context.Context, run diagnostics.ProcessRun) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.runs == nil {
+		s.runs = map[string]diagnostics.ProcessRun{}
+	}
+	s.runs[run.ID] = run
+	return nil
+}
+func (s *processDiagnosticsSink) AppendDiagnosticEvents(_ context.Context, events []diagnostics.Record) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = append(s.events, events...)
+	return nil
+}
+func (*processDiagnosticsSink) ListDiagnosticRetentionCandidates(context.Context, time.Time, int) ([]diagnostics.RetentionCandidate, error) {
+	return nil, nil
+}
+func (*processDiagnosticsSink) DeleteDiagnosticEvent(context.Context, string) (bool, error) {
+	return false, nil
+}
+func (*processDiagnosticsSink) DeleteDiagnosticProcessRun(context.Context, string) (bool, error) {
+	return false, nil
+}
+func (*processDiagnosticsSink) DiagnosticRetainedBytes(context.Context) (int64, error) { return 0, nil }
+
+func TestStartObservedPersistsProgressStderrAndExit(t *testing.T) {
+	sink := &processDiagnosticsSink{}
+	recorder := diagnostics.New(sink, diagnostics.Options{FlushInterval: time.Millisecond})
+	manager := diagnostics.NewProcessManager(sink, recorder, diagnostics.ProcessOptions{
+		OutputDir: t.TempDir(), FlushInterval: time.Millisecond,
+		Version: func(context.Context, string) string { return "test ffmpeg version" },
+	})
+	proc, err := StartObserved(t.Context(), os.Args[0], []string{
+		"-test.run=^TestProcessTreeHelper$", "--", "progress",
+	}, nil, nil, manager, diagnostics.ProcessSpec{
+		Purpose: "playout_program", ChannelID: "channel-a", ScheduleBlockID: "block-a",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := proc.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	if err := manager.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := recorder.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	sink.mu.Lock()
+	defer sink.mu.Unlock()
+	run := sink.runs[proc.ProcessRunID()]
+	if run.Status != diagnostics.ProcessSucceeded || run.ChannelID != "channel-a" || run.ScheduleBlockID != "block-a" {
+		t.Fatalf("observed run = %#v", run)
+	}
+	if run.FirstError != "Decoder warning: recovered damaged frame" || run.OutputBytes == 0 {
+		t.Fatalf("observed output metadata = %#v", run)
+	}
+	progress := false
+	for _, event := range sink.events {
+		if event.Event == "process.progress" && event.ProcessRunID == run.ID {
+			progress = true
+		}
+	}
+	if !progress {
+		t.Fatalf("progress events = %+v", sink.events)
 	}
 }
 
