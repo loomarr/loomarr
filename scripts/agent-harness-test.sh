@@ -132,6 +132,31 @@ PATH="$TMP/fake-bin:$PATH" BASELINE_LOG="$baseline_log" LOOMARR_REPO_ROOT="$TMP-
 	"$SCRIPT_DIR/agent.sh" baseline >/dev/null
 [ "$(wc -l < "$baseline_log" | tr -d ' ')" = 1 ]
 
+# Focused verification uses the shared classifier and the reverse-dependency closure rather than
+# testing only the directory that happened to contain the edited file. Fake only the expensive
+# command execution; the real classifiers still resolve Loomarr's actual package graph.
+step 'dependency-aware focused verification'
+git -C "$TMP" add -A
+git -C "$TMP" commit -qm 'focused verification fixture'
+mkdir -p "$TMP/internal/suggest"
+printf 'package suggest\n' > "$TMP/internal/suggest/probe.go"
+verify_log="$TMP/verify-runs"
+real_go="$(command -v go)"
+verify_bin="$TMP-wt/verify-bin"
+mkdir -p "$verify_bin"
+# shellcheck disable=SC2016 # REAL_GO and VERIFY_LOG expand when the generated fixture executes.
+printf '%s\n' '#!/usr/bin/env sh' 'if [ "$1" = test ]; then echo "go $*" >> "$VERIFY_LOG"; exit 0; fi' 'exec "$REAL_GO" "$@"' > "$verify_bin/go"
+# shellcheck disable=SC2016 # VERIFY_LOG expands when the generated fixture executes.
+printf '%s\n' '#!/usr/bin/env sh' 'echo "make $*" >> "$VERIFY_LOG"' > "$verify_bin/make"
+chmod +x "$verify_bin/go" "$verify_bin/make"
+verify_output="$(PATH="$verify_bin:$PATH" REAL_GO="$real_go" VERIFY_LOG="$verify_log" \
+	BASE=HEAD LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" verify)"
+printf '%s\n' "$verify_output" | grep -q 'selected gates: contracts,go,image'
+printf '%s\n' "$verify_output" | grep -q 'affected Go packages:'
+grep -q 'make -C .* fmt tags-verify' "$verify_log"
+grep -q 'go test -race .*internal/app.*internal/suggest' "$verify_log"
+rm -rf "$TMP/internal"
+
 # Process ownership is the worktree cwd, not the globally shared process name.
 step 'process ownership'
 mkdir "$TMP-gone"
@@ -151,7 +176,7 @@ wait_for_repo_pid "$second_pid" loomarr-dev "$TMP-wt"
 # Worktree creation is product-neutral and does not copy credentials by default.
 step 'worktree creation'
 printf 'SECRET=fixture\n' > "$TMP/.env"
-WORKTREE_PATH="$TMP-third" AGENT_WORKTREE_SKIP_BOOTSTRAP=1 LOOMARR_REPO_ROOT="$TMP" \
+BASE=HEAD WORKTREE_PATH="$TMP-third" AGENT_WORKTREE_SKIP_BOOTSTRAP=1 LOOMARR_REPO_ROOT="$TMP" \
 	"$SCRIPT_DIR/agent.sh" worktree third >/dev/null
 [ -d "$TMP-third" ]
 [ ! -e "$TMP-third/.env" ]

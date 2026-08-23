@@ -73,3 +73,6 @@ gate documentation are amended before the first change that alters required beha
   development host. A representative `internal/suggest` leaf selects 10 of 59 packages, including
   its command, API, composition, integration, and workflow consumers while excluding the unrelated
   store package. Cross-cutting and unknown paths select all 59.
+- With the selector wired into `agent-verify`, that representative leaf completed its 10-package
+  race-policy-aware local check in 34.2 seconds on a warm development host. The command still states
+  that it is focused evidence and that the complete gate remains required before publication.

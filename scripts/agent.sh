@@ -354,16 +354,50 @@ verify_changed() {
 	[ -n "$changed" ] || { echo 'agent-verify: no changes'; return; }
 	echo 'agent-verify: focused checks only; make check remains the final gate'
 	printf '%s\n' "$changed"
-	make -C "$ROOT" fmt tags-verify agent-harness-test
-	go_dirs="$(printf '%s\n' "$changed" | sed -n '/\.go$/s#/[^/]*$##p' | sort -u)"
-	if [ -n "$go_dirs" ]; then
-		packages=
-		for dir in $go_dirs; do packages="$packages ./$dir"; done
-		# shellcheck disable=SC2086 # packages is intentionally a word list of Go package paths.
-		( cd "$ROOT" && go test -race $packages )
+	scope="$(printf '%s\n' "$changed" | "$SCRIPT_DIR/ci-impact.sh")"
+	selected="$(printf '%s\n' "$scope" | sed -n 's/=true$//p' | paste -sd, -)"
+	echo "agent-verify: selected gates: $selected"
+
+	if printf '%s\n' "$scope" | grep -qx 'contracts=true'; then
+		if printf '%s\n' "$changed" | grep -qE '\.go$|^go\.(mod|sum)$'; then
+			make -C "$ROOT" fmt tags-verify
+		fi
+		if printf '%s\n' "$changed" | grep -qE '^scripts/.*\.sh$'; then
+			make -C "$ROOT" shellcheck
+		fi
+		if printf '%s\n' "$changed" | grep -q '^docs/help/'; then
+			make -C "$ROOT" retired-verify
+		fi
 	fi
-	if printf '%s\n' "$changed" | grep -q '^web/'; then
+	if printf '%s\n' "$scope" | grep -qx 'agent=true'; then
+		make -C "$ROOT" agent-harness-test
+	fi
+	if printf '%s\n' "$scope" | grep -qx 'go=true'; then
+		packages="$(printf '%s\n' "$changed" | "$SCRIPT_DIR/go-impact.sh")"
+		[ -n "$packages" ] || { echo 'agent-verify: Go selected but package closure is empty' >&2; exit 1; }
+		echo "agent-verify: affected Go packages: $(printf '%s\n' "$packages" | wc -l | tr -d ' ')"
+		traced="$(printf '%s\n' "$packages" | "$SCRIPT_DIR/go-race-policy.sh" --race)"
+		untraced="$(printf '%s\n' "$packages" | "$SCRIPT_DIR/go-race-policy.sh" --no-race)"
+		if [ -n "$traced" ]; then
+			# shellcheck disable=SC2086 # newline-delimited package list intentionally becomes argv.
+			( cd "$ROOT" && go test -race -timeout 25m $traced )
+		fi
+		if [ -n "$untraced" ]; then
+			# shellcheck disable=SC2086 # newline-delimited package list intentionally becomes argv.
+			( cd "$ROOT" && go test -timeout 25m $untraced )
+		fi
+	fi
+	if printf '%s\n' "$scope" | grep -qx 'rust=true'; then
+		make -C "$ROOT" rust-check
+	fi
+	if printf '%s\n' "$scope" | grep -qx 'web=true'; then
 		( cd "$ROOT/web" && pnpm codegen && pnpm lint && pnpm -r --parallel typecheck )
+	fi
+	if printf '%s\n' "$scope" | grep -qx 'docs=true'; then
+		make -C "$ROOT" docs-lint
+	fi
+	if printf '%s\n' "$scope" | grep -qx 'android=true'; then
+		make -C "$ROOT" android
 	fi
 }
 

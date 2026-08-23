@@ -21,9 +21,12 @@ make agent-stop
 architecture. Worktrees at the same commit wait for one proof and reuse it. Dirty trees always run the
 gate and never populate the cache.
 
-`agent-verify` is an inner-loop aid, not a gate. It reports the changed-file scope, runs harness and
-format guards, tests directly changed Go packages, and checks frontend codegen/lint/types when `web/`
-moved. Its first output line deliberately says that `make check` remains required.
+`agent-verify` is an inner-loop aid, not a gate. It reports the changed-file scope and the gates
+selected by the shared fail-closed classifier. Go changes run the changed packages plus every
+repository package that depends on them (including test imports), split through the same race policy
+as the final gate. Harness, shell, Rust, frontend, documentation, and Android checks run only when
+their inputs moved. Unknown or cross-cutting paths select everything. Its first output line
+deliberately says that `make check` remains required.
 
 ## Claims
 
