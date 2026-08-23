@@ -13,7 +13,6 @@ case "${APP_NAME}" in
   mobile)
     readonly SCHEME="LoomarrMobilePrototype"
     readonly SDK="iphonesimulator"
-    readonly DESTINATION="generic/platform=iOS Simulator"
     readonly RUNTIME_TOKEN="iOS"
     readonly BUNDLE_ID="media.loomarr.mobile.prototype"
     readonly BUILD_PRODUCT="Release-iphonesimulator/${SCHEME}.app"
@@ -21,7 +20,6 @@ case "${APP_NAME}" in
   tv)
     readonly SCHEME="LoomarrTVPrototype"
     readonly SDK="appletvsimulator"
-    readonly DESTINATION="generic/platform=tvOS Simulator"
     readonly RUNTIME_TOKEN="tvOS"
     readonly BUNDLE_ID="media.loomarr.tv.prototype"
     readonly BUILD_PRODUCT="Release-appletvsimulator/${SCHEME}.app"
@@ -65,17 +63,6 @@ fi
   pod install
 )
 
-NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 xcodebuild \
-  -workspace "${APP_DIR}/ios/${SCHEME}.xcworkspace" \
-  -scheme "${SCHEME}" \
-  -configuration Release \
-  -sdk "${SDK}" \
-  -destination "${DESTINATION}" \
-  -derivedDataPath "${DERIVED_DATA}" \
-  CODE_SIGNING_ALLOWED=NO \
-  CODE_SIGNING_REQUIRED=NO \
-  build
-
 simulator_json="$(xcrun simctl list devices available --json)"
 simulator_id="$(jq -r --arg runtime "${RUNTIME_TOKEN}" '
   [.devices | to_entries[] | select(.key | contains($runtime)) | .value[] | select(.isAvailable)]
@@ -100,8 +87,19 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
-
 xcrun simctl bootstatus "${simulator_id}" -b
+
+NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 xcodebuild \
+  -workspace "${APP_DIR}/ios/${SCHEME}.xcworkspace" \
+  -scheme "${SCHEME}" \
+  -configuration Release \
+  -sdk "${SDK}" \
+  -destination "id=${simulator_id}" \
+  -derivedDataPath "${DERIVED_DATA}" \
+  ONLY_ACTIVE_ARCH=YES \
+  CODE_SIGNING_ALLOWED=NO \
+  CODE_SIGNING_REQUIRED=NO \
+  build
 readonly APP_PATH="${DERIVED_DATA}/Build/Products/${BUILD_PRODUCT}"
 if [[ ! -d "${APP_PATH}" ]]; then
   printf 'expected simulator application was not built at %s\n' "${APP_PATH}" >&2
