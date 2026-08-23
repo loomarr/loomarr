@@ -69,12 +69,17 @@ const (
 	PlayoutBroadcastFormatQuery  = "broadcast"
 	PlayoutBroadcastFormatHeader = "X-Loomarr-Broadcast-Format"
 	PlayoutAiringStartedAtHeader = "X-Loomarr-Airing-Started-At"
+	PlayoutAiringEndsAtHeader    = "X-Loomarr-Airing-Ends-At"
 	PlayoutAiringKindHeader      = "X-Loomarr-Airing-Kind"
 	PlayoutAiringContentHeader   = "X-Loomarr-Airing-Content"
 )
 
 func setPlayoutAiringIdentity(header http.Header, airing playout.Airing) {
 	header.Set(PlayoutAiringStartedAtHeader, airing.StartedAt.UTC().Format(time.RFC3339Nano))
+	if airing.Remaining > 0 {
+		endsAt := airing.StartedAt.Add(airing.Offset).Add(airing.Remaining)
+		header.Set(PlayoutAiringEndsAtHeader, endsAt.UTC().Format(time.RFC3339Nano))
+	}
 	header.Set(PlayoutAiringKindHeader, string(airing.Kind))
 	header.Set(PlayoutAiringContentHeader, airing.Identity)
 }
@@ -84,13 +89,17 @@ func setPlayoutAiringIdentity(header http.Header, airing playout.Airing) {
 // would make transition telemetry claim an identity the scheduler never supplied.
 func ParsePlayoutAiringIdentity(header http.Header) (playout.AiringIdentity, bool) {
 	startedAt, err := time.Parse(time.RFC3339Nano, header.Get(PlayoutAiringStartedAtHeader))
+	var endsAt time.Time
+	if raw := header.Get(PlayoutAiringEndsAtHeader); raw != "" {
+		endsAt, err = time.Parse(time.RFC3339Nano, raw)
+	}
 	kind := schedule.SlotKind(header.Get(PlayoutAiringKindHeader))
 	contentID := header.Get(PlayoutAiringContentHeader)
-	if err != nil || startedAt.IsZero() || contentID == "" ||
+	if err != nil || startedAt.IsZero() || (!endsAt.IsZero() && !endsAt.After(startedAt)) || contentID == "" ||
 		(kind != schedule.SlotProgram && kind != schedule.SlotFiller && kind != schedule.SlotFlex) {
 		return playout.AiringIdentity{}, false
 	}
-	return playout.AiringIdentity{StartedAt: startedAt, Kind: kind, ContentID: contentID}, true
+	return playout.AiringIdentity{StartedAt: startedAt, EndsAt: endsAt, Kind: kind, ContentID: contentID}, true
 }
 
 // PlayoutEncoder starts a supervised ffmpeg for the given args. Injected so the handlers can be
@@ -322,7 +331,9 @@ func (s *Server) serveCard(
 	card := func(enc playout.Encoder) []string {
 		p := profile
 		p.Encoder = enc
-		return playout.OfflineCardArgs(p, font, title, channelID, duration)
+		// The route key is an opaque internal identifier, not viewer-facing Channel identity.
+		// Keep fallback cards unlabelled until a real name/number is explicitly supplied.
+		return playout.OfflineCardArgs(p, font, title, "", duration)
 	}
 	if c := s.startChild(r.Context(), channelID, encPlan, profile.Encoder, true, card(profile.Encoder)); c != nil {
 		s.pipeChild(w, r, channelID, "offline card", c)
