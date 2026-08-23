@@ -287,8 +287,12 @@ pair directly.
 The Linux proof also generates both native Apple projects cleanly: the mobile project targets
 iPhone and iPad (`TARGETED_DEVICE_FAMILY = "1,2"`, `SDKROOT = iphoneos`) while the TV project targets
 Apple TV (`TARGETED_DEVICE_FAMILY = 3`, `SDKROOT = appletvos`). Xcode compilation and launch still
-require the maintainer's Mac and remain explicit P0b acceptance evidence; a successful Metro bundle
-or Linux prebuild is not recorded as a native Apple build.
+require macOS and remain explicit P0b acceptance evidence; a successful Metro bundle or Linux
+prebuild is not recorded as a native Apple build. The `client-apple-simulator` target is the shared
+local/CI verifier: its mobile and TV matrix legs generate the native project, install pods, make a
+Release simulator build, boot the matching iOS or tvOS runtime, install and launch the application,
+assert that its process remains alive, and retain a screenshot. A bundle-only result cannot make
+P0b ready.
 
 The browser proof is also rendered, not bundle-only. At a 1440x900 viewport, the shared screen fills
 the viewport and the 760x126 proof panel is centered at x=340, y=387 with no horizontal or vertical

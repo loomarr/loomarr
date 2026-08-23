@@ -571,6 +571,10 @@ CLIENT_APP ?= mobile
 client-android-debug: ## memory-bounded arm64 debug build (CLIENT_APP=mobile|tv)
 	cd $(WEB) && ./scripts/build-android-client.sh $(CLIENT_APP)
 
+.PHONY: client-apple-simulator
+client-apple-simulator: ## build and launch an Apple simulator proof (CLIENT_APP=mobile|tv; macOS)
+	cd $(WEB) && ./scripts/test-apple-client.sh $(CLIENT_APP)
+
 .PHONY: storybook
 storybook: ## Storybook dev workshop on this worktree's isolated port
 	@eval "$$(./scripts/dev-env.sh export)"; \
