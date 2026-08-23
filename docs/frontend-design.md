@@ -1,14 +1,40 @@
-# Loomarr Frontend — Architecture & Design System ("Test Card")
+# Loomarr Client Platform — Architecture & Design System
 
-**Status:** Implemented · companion to [`design.md`](design.md)
+**Status:** Implemented legacy + approved replacement contract · companion to [`design.md`](design.md)
 **Precedence:** the main design doc is authoritative for *behavior* (endpoints, flows, auth, phases). This doc is authoritative for *how the frontend looks and is built*. Conflicts → main doc wins on what, this doc wins on how; fix the loser in the same PR.
-**Language policy (main doc §14) applies:** everything here is build-time tooling and libraries that compile to static assets embedded in the Go binary.
+**Language policy (main doc §14) applies:** the web implementation compiles to static assets embedded in the Go binary; Expo and React Native are the approved client build/runtime exception and do not add an application backend.
+
+## 0. Replacement authority and migration state
+
+The maintainer has rejected preservation of the current design system and authorized a Phase-0
+replacement based on **Tamagui Core**, Expo, and `react-native-tvos`. The complete target interfaces,
+acceptance evidence, adoption gate, delivery sequence, and rollback contract live in
+[`engineering/plans/shared-client-platform.md`](engineering/plans/shared-client-platform.md).
+
+The sections below describe the **shipping legacy implementation** until each surface migrates. They
+remain binding for code that still uses Tailwind/shadcn or Compose, but they are not the target visual
+language and may not be used to reject a conforming replacement. New shared design work follows the
+migration plan and these precedence rules:
+
+1. Loomarr owns the semantic interfaces; application code does not depend directly on Tamagui.
+2. Product rules, deterministic states, artwork treatment, and appropriate visual primitives are
+   shared; navigation, focus, safe-area/overscan, DOM semantics, and player transport sit behind
+   platform seams.
+3. Existing behavior, accessibility, authorization, pairing, playout, release, and rollback
+   guarantees survive every migration PR.
+4. The Guide-to-Playback slice must pass browser, iPhone, emulator, and physical Shield evidence
+   before a full migration or legacy retirement is authorized.
+5. Until that adoption decision, the current web and Compose applications remain releasable.
 
 ---
 
-## 1. Design concept: Test Card
+## 1. Legacy design concept: Test Card
 
-A *test card* is the color-bars calibration image broadcasters transmitted to prove the picture was true — the original pixel-perfect contract between a station and every screen tuned to it. That is exactly this frontend's contract: a broadcast-console aesthetic whose correctness is *enforced by machines* (the Playwright visual suite is our transmitted test card).
+This section records the implemented visual system so migration reviews can identify what changed.
+It is not the target aesthetic. A *test card* is the color-bars calibration image broadcasters
+transmitted to prove the picture was true — the original pixel-perfect contract between a station
+and every screen tuned to it. The current frontend used that metaphor for a broadcast-console
+aesthetic whose correctness is enforced by the Playwright visual suite.
 
 **Aesthetic direction:** a modern, dark broadcast console — calm surfaces, precise data, mono-set channel numbers — with retro-TV warmth used as *seasoning, not sauce*. Loomarr's product soul is era-matched: Saturday-morning cartoons with period cereal ads. The UI should feel like the master control room that makes that possible: professional first, nostalgic in the margins.
 
@@ -83,18 +109,25 @@ Stored as OKLCH in the source of truth (Tailwind v4/shadcn convention); hex abov
 - `prefers-reduced-motion` is honored globally (single CSS gate) and force-enabled in visual-test mode.
 - Signature moments (used sparingly): checklist items "lock in" (static→clear, 200ms) during onboarding; a channel card's `onair` dot fades in when its first reconcile completes.
 
-### 2.5 Token pipeline (the mobile bridge starts here)
+### 2.5 Token pipeline and migration
 
-`web/packages/tokens` holds the TS source of truth → generates three artifacts in CI:
+For legacy consumers, `web/packages/tokens` holds the TS source of truth and generates three
+artifacts in CI:
 1. `theme.css` — Tailwind v4 `@theme` variables for the web app,
-2. a **shared Tailwind preset** — consumed by web now, by NativeWind (Expo) later,
-3. `tokens.json` — for any future non-Tailwind native consumer.
+2. a **Tailwind preset** — consumed by the legacy web implementation during migration,
+3. `tokens.json` — consumed by the legacy Compose adapter and migration tooling.
 
 CI fails if generated artifacts drift from source (`make fe-tokens` regenerates; diff must be empty). This is the same committed-artifact discipline as `api/openapi.yaml`.
 
+The target source is `packages/design-system`'s Tamagui configuration and semantic token interface.
+During migration it generates the legacy CSS, JSON, and Kotlin artifacts so there is still one source
+per value. A token does not graduate into the target interface merely because it exists here: the
+visual review classifies it as keep, redesign, adapt, or retire. Tailwind and Kotlin output are
+adapters while legacy consumers remain and disappear with those consumers.
+
 ---
 
-## 3. Component library — three layers
+## 3. Legacy component library — three layers
 
 **Layer 0 — tokens** (§2).
 **Layer 1 — primitives:** shadcn/ui (new-york style, Tailwind v4), copy-in per its philosophy. Restyled **only** via tokens/CSS variables — never fork primitive logic. **Base UI** (`@base-ui/react`) underneath gives focus management and a11y for free; shadcn ships a Base UI variant of every component the app uses, so the copy-in path is unchanged. ⚠ "For free" has one documented exception: Base UI's Tooltip is **visual-only by design** (no `role="tooltip"`, no `aria-describedby`), so a tooltip whose content is information rather than a restatement of the trigger's label must declare its own description — see `FieldHelp` and design §14.
@@ -122,35 +155,51 @@ CI fails if generated artifacts drift from source (`make fe-tokens` regenerates;
 
 ---
 
-## 4. Architecture & mobile-readiness
+## 4. Target shared-client architecture
 
-### 4.1 Workspace layout (pnpm, inside `web/`)
+### 4.1 Workspace layout (pnpm, inside `web/` during migration)
 
 ```text
 web/
-  packages/tokens/      # §2.5 — source of truth + generators
-  packages/api/         # orval output: types + TanStack Query hooks (platform-agnostic)
-  packages/core/        # SSE bus, zod schemas, formatters, shared data contracts
-  packages/fixtures/    # deterministic "test card" story/test data (web + future mobile)
-  apps/web/             # Vite + React 18 + TanStack Router + Tailwind v4 + shadcn
-  apps/web/.storybook/  # Storybook 10 (react-vite): main, preview, vitest wiring
-  apps/mobile/          # FUTURE: Expo + NativeWind + RN Reusables + @storybook/react-native
+  packages/api/            # orval output: wire models and query functions
+  packages/core/           # validation, SSE, formatters, platform-neutral domain logic
+  packages/fixtures/       # deterministic domain scenarios shared by stories and tests
+  packages/design-system/  # semantic tokens, Tamagui config, fonts, icons, primitives
+  packages/ui/             # shared product and viewer modules
+  packages/ui-tv/          # D-pad focus, overscan, remote, and TV guide adapters
+  packages/player/         # shared playback state interface + platform adapters
+  packages/tokens/         # TRANSITIONAL generated adapters for legacy consumers
+  apps/web/                # Vite delivery adapter; embedded in the Go binary
+  apps/mobile/             # Expo Router; iOS and Android touch clients
+  apps/tv/                 # Expo + react-native-tvos; Android TV and Apple TV clients
 ```
+
+The directory remains named `web/` through the adoption gate to avoid coupling a workspace move to
+the UI proof. A later rename is allowed only as an isolated mechanical change. Packages follow
+[`web/packages/README.md`](../web/packages/README.md): root files are the interface, nested source is
+private implementation, tests use the interface, and the graph is acyclic.
 
 ### 4.2 The sharing decision (explicit)
 
-**Web-first now; when mobile happens, share logic and tokens — never component implementations.**
+**Share product implementation where behavior and information hierarchy are the same; adapt the
+interaction and platform mechanics that genuinely differ.**
 
-| Shared across platforms | Per-platform |
+| Shared implementation | Adapter-owned implementation |
 | --- | --- |
-| Design tokens + Tailwind preset (§2.5) | Component implementations (shadcn/Base UI web ↔ React Native Reusables native) |
-| `packages/api` (orval types + query hooks — TanStack Query runs on RN) | Navigation (TanStack Router ↔ Expo Router) |
-| `packages/core` (zod validation, SSE handling, domain logic, formatters, **shared data contracts**) | Gesture/touch interactions, portals (`PortalHost` on native) |
-| CVA variant definitions & component *contracts* (names, props, states) | Styling details where RN lacks cascade (each `Text` styled directly) |
-| **Storybook story *contracts*** (CSF states) + `packages/fixtures` "test card" args | Story *implementations* (`*.stories.tsx`: web shadcn ↔ RN Reusables) |
-| Icon vocabulary (lucide ↔ lucide-react-native, same names) | Visual-test baselines |
+| semantic tokens, themes, type roles, artwork, metadata, actions | font loading, safe area, overscan, DOM-only semantics |
+| `packages/api`, `packages/core`, and deterministic fixtures | cookie/CSRF browser transport vs paired-device native transport |
+| Guide shaping and time-axis math; player/overlay state machines | TanStack Router vs Expo Router; hls.js vs native playback |
+| product component source where semantics match | pointer/keyboard, touch/gesture, D-pad/focus and remote events |
+| story state contracts and fixture data | platform renderers, interaction tests, and visual baselines |
 
-**Rejected alternatives, on the record:** `react-native-web` (would forfeit shadcn/Base UI and the decided web stack to render RN primitives on the web); universal kits like Tamagui/gluestack (different styling philosophy, heavier lock-in — our bridge is the token/preset layer, which NativeWind consumes natively). The future mobile app is Expo + NativeWind + React Native Reusables — the shadcn-philosophy port built on rn-primitives — consuming the same preset, tokens, and `packages/{api,core,fixtures}`. Its component workshop is **`@storybook/react-native`** (v10, on-device via the `withStorybook` Expo wrapper), authored in the same CSF format and reusing the same `packages/fixtures` args — so a component's *states* are defined once and rendered by each platform's own implementation. Consistent with the `react-native-web` rejection above, the mobile Storybook runs on-device, not by rendering RN primitives in a browser.
+**Superseded decision, retained as migration history:** the original system rejected Tamagui and
+react-native-web in favor of Tailwind/shadcn on web and a future NativeWind/React Native Reusables
+client with no shared component implementation. That decision no longer governs new work. Tamagui
+Core is the candidate implementation behind Loomarr-owned modules; NativeWind and Gluestack are not
+parallel styling authorities. The full Tamagui UI theme is not adopted.
+
+The candidate framework does not define the seam. Production applications import Loomarr packages,
+not Tamagui. This keeps a rejected spike recoverable and makes replacing the implementation local.
 
 ### 4.3 Forms & state
 
@@ -189,7 +238,11 @@ the session round trip after JavaScript evaluation or issuing a duplicate reques
 
 ## 5. Component workshop + pixel-perfect testing (Storybook + Playwright)
 
-The component library lives in **Storybook** — the workshop for building and reviewing components in isolation — and the visual suite is the transmitted test card: if the picture drifts, the build fails. **Stories are the contract; Playwright is the camera.**
+The component library lives in **Storybook** — the workshop for building and reviewing modules in
+isolation. Story states and fixtures are shared; web and on-device Storybooks render the appropriate
+adapters. Playwright remains the deterministic web renderer, while emulator/device captures and
+interaction tests prove native behavior. **A browser rendering of React Native code is not TV
+evidence.**
 
 **Why Storybook over a hand-rolled `/__gallery`:** stories are the industry-standard component contract (CSF), they double as the dev workshop (controls, autodocs, the a11y panel), and they carry to the future mobile app (§4.2) via `@storybook/react-native`. The mechanics below preserve **every guarantee** of the earlier registry plan — offline, deterministic, committed baselines, 100%-coverage-enforced. **Chromatic is rejected on the record:** it is a hosted SaaS visual-diff service that would send our UI off-box and break the offline/self-hosted rule (§2.2, main doc §16); visual regression stays self-hosted Playwright against the offline `storybook-static` build.
 
@@ -272,13 +325,21 @@ These suites join **phase 13's gate** in the main doc's build plan.
 - Loading: **skeletons, not spinners**, for anything list-shaped; the word "Tuning…" is reserved for suggester generation. SSE keeps surfaces live so loading states are rare after first paint.
 
 ### Responsive posture
-- Desktop-first admin surfaces, fully functional ≥768px. Mobile web is a first-class *read-and-approve* experience (Board, approval queue, channel status); creation flows are optimized for desktop. The true mobile app is the future Expo target (§4.2) — mobile web is not asked to fake it.
+- Desktop remains the primary administrative surface, while mobile web and the Expo client provide
+  first-class read, approve, Guide, and Watch journeys. TV is watching-first rather than a scaled
+  desktop admin UI. Shared information hierarchy does not imply identical density or navigation.
+- TV layouts use logical units and fill both 1920x1080 and 3840x2160 output. Overscan/safe-area
+  padding lives inside an edge-to-edge surface and never produces an outer frame.
 - **One page-edge contract.** Every top-level route begins with `PageHeader`; nested route navigation may precede it, but may not restyle it. The header owns the 24px horizontal gutter, 16px vertical gutter, bottom rule, one `<h1>`, bounded explanatory copy, and page-level actions/status. At mobile widths those actions stack below the copy so the title never collapses into a narrow text column. Entity-detail and focused workflow headers may add domain identity, but keep the same gutter and title scale.
 - **One navigation treatment per level.** `AppShell` owns primary navigation and `NavTabs` owns every route-level tab bar, including nested Settings pages. Pages do not hand-build a third active-state treatment.
 
 ---
 
 ## 7. Deliverables & integration with the build plan
+
+- **Shared-client migration P0-P8:** the authoritative sequence and adoption evidence are in
+  [`engineering/plans/shared-client-platform.md`](engineering/plans/shared-client-platform.md).
+  No full migration or legacy retirement begins before its P5 adoption gate.
 
 - **Phase 1** (main doc; also add the `web/packages` layout to its repo-layout block): `web/` workspace skeleton + `packages/tokens` with generators + self-hosted fonts + the `fe-tokens` make target.
 - **Phase 13**: everything else here. **Gate additions:** story coverage = 100% of **Layer-1 primitives AND Layer-2 components** (each has a co-located `*.stories.tsx`); visual baselines committed for all stories at both viewports; axe clean (`addon-a11y` `test: 'error'`); `fe-visual` green in the Playwright Docker image.

@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Test Card design tokens — source of truth + generator (frontend-design §2.5).",
+  "description": "Legacy design-token generator and migration adapters (frontend-design §2.5).",
   "exports": {
     ".": "./index.ts",
     "./theme.css": "./generated/theme.css",
