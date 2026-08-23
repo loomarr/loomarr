@@ -19,6 +19,7 @@ const clipAt = (over: Partial<IncomingClipDTO> = {}): IncomingClipDTO => ({
   pipeline: {
     stage: "tag",
     status: "running",
+    lifecycle: "in_progress",
     progress: -1,
     stages: [{ stage: "probe", status: "done", at: "2026-08-08T10:00:00Z" }],
     updatedAt: "2026-08-08T10:01:00Z",
@@ -119,6 +120,9 @@ describe("PreparingRow", () => {
       pipeline: {
         stage: "vision",
         status: "failed",
+        lifecycle: "scheduled",
+        recovery: "retry",
+        retryStage: "vision",
         attempts: 2,
         progress: -1,
         stages: [],

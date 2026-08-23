@@ -71,6 +71,15 @@ const stubFillerPage = (over: { clips?: ClipDTO[]; incomingTotal?: number; total
     // the count says 3. (§10 V51e renamed `asks`+`pipeline` → `clips`; the badge reads `total`
     // either way, which is why this survived the rename as a pure field swap.)
     getFillerIncomingMockHandler({
+      overview: {
+        runnable: 0,
+        inProgress: 0,
+        scheduled: 0,
+        needsDecision: 3,
+        admitted: 0,
+        rejected: 0,
+        dismissed: 0,
+      },
       clips: [],
       clipsTotal: 0,
       decisionsTotal: over.incomingTotal ?? 3,

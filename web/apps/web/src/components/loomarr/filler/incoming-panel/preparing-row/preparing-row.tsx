@@ -89,7 +89,7 @@ const PreparingRow = ({
 
         <Disclosure.Panel className="border-border border-t p-3">
           <ClipPipeline row={pipeline} name={name} ladder={ladder} variant="list" />
-          {pipeline.status === "failed" && onRetryStage ? (
+          {pipeline.recovery === "retry" && onRetryStage ? (
             <div className="mt-3 flex flex-wrap items-center gap-3 border-border border-t pt-3">
               <p className="min-w-0 flex-1 text-muted-foreground text-xs">
                 Fixed the cause? Retry this stage now instead of waiting for its backoff.
@@ -98,7 +98,7 @@ const PreparingRow = ({
                 variant="outline"
                 size="sm"
                 disabled={busy}
-                onClick={() => onRetryStage(clip, pipeline.stage)}
+                onClick={() => onRetryStage(clip, pipeline.retryStage ?? pipeline.stage)}
               >
                 Retry {copyFor(pipeline.stage).label.toLowerCase()} now
               </Button>

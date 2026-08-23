@@ -37,6 +37,7 @@ const IncomingTab = ({ onEditTags }: IncomingTabProps) => {
   const recentlyFiled = unwrap(incomingQuery.data, (b) => b.recentlyFiled) ?? [];
   const rejected = unwrap(incomingQuery.data, (b) => b.rejected) ?? [];
   const stageOrder = unwrap(incomingQuery.data, (b) => b.stageOrder) ?? [];
+  const overview = unwrap(incomingQuery.data, (b) => b.overview);
   const clipsTotal = unwrap(incomingQuery.data, (b) => b.clipsTotal) ?? clips.length;
   const decisionsTotal = unwrap(incomingQuery.data, (b) => b.decisionsTotal) ?? 0;
   const reelsTotal = unwrap(incomingQuery.data, (b) => b.reelsTotal) ?? reels.length;
@@ -85,17 +86,55 @@ const IncomingTab = ({ onEditTags }: IncomingTabProps) => {
       onError: (error) => toast.error(toProblem(error).title ?? "Couldn't retry that clip"),
     },
   });
+  const retryFailures = fillerApi.useRetryFillerFailures({
+    mutation: {
+      onSettled: settle,
+      onSuccess: () => {
+        toast.success("Clip queued again", { description: "Completed upstream work was preserved." });
+        invalidateLifecycle();
+      },
+      onError: (error) => toast.error(toProblem(error).title ?? "Couldn't retry that clip"),
+    },
+  });
   // ⚠ The era-confirm PATCH mutation that used to live here is GONE, not merely unused (§10 V54).
   // "Looks right" files through `fileClips` with `asSuggested`, so the single-clip tag route has no
   // caller on this tab — and a mutation left wired to nothing is how a later reader concludes there
   // are two ways to confirm an era and picks the one that no longer files. The route still exists
   // and is still the Catalog's tag dialog's writer; what is deleted is this tab's second path to it.
-  const busy = removeClips.isPending || fileClips.isPending || holdClips.isPending || rewind.isPending;
+  const busy =
+    removeClips.isPending ||
+    fileClips.isPending ||
+    holdClips.isPending ||
+    rewind.isPending ||
+    retryFailures.isPending;
 
   return (
     <div className="flex flex-col gap-4">
       {incomingQuery.error != null && (
         <ErrorState error={incomingQuery.error} onRetry={() => incomingQuery.refetch()} />
+      )}
+      {overview && (
+        <section aria-label="Filler pipeline status" className="grid gap-2 sm:grid-cols-3">
+          <div className="rounded-lg border border-border p-3">
+            <p className="font-medium text-sm">Loomarr is working</p>
+            <p className="text-muted-foreground text-xs">
+              {overview.runnable + overview.inProgress} ready or active · {overview.scheduled} waiting for
+              retry
+            </p>
+          </div>
+          <div className="rounded-lg border border-border p-3">
+            <p className="font-medium text-sm">Needs you</p>
+            <p className="text-muted-foreground text-xs">
+              {overview.needsDecision} clip decisions · {reelsTotal} compilations
+            </p>
+          </div>
+          <div className="rounded-lg border border-border p-3">
+            <p className="font-medium text-sm">Stopped or settled</p>
+            <p className="text-muted-foreground text-xs">
+              {overview.rejected} rejected · {overview.admitted} admitted · {overview.dismissed} dismissed
+            </p>
+          </div>
+        </section>
       )}
       {/* ⚠ ABOVE the queue, matching the mock: the policy is the context the rows below are
           read in. Its counts come from this tab's query rather than a second one — the panel
@@ -120,6 +159,10 @@ const IncomingTab = ({ onEditTags }: IncomingTabProps) => {
         onRestore={(clip) => {
           setBusyClip(clip.hash);
           removeClips.mutate({ data: { hashes: [clip.hash], restore: true } });
+        }}
+        onRetryFailure={(clip) => {
+          setBusyClip(clip.hash);
+          retryFailures.mutate({ data: { hashes: [clip.hash] } });
         }}
         // "Looks right" CONFIRMS the guess and FILES, in one request (§10 V54).
         //
@@ -147,9 +190,9 @@ const IncomingTab = ({ onEditTags }: IncomingTabProps) => {
           setBusyClip(ask.path);
           rewind.mutate({ data: { hash: ask.hash, from: "tag" as never } });
         }}
-        onRetryStage={(clip, stage) => {
+        onRetryStage={(clip) => {
           setBusyClip(clip.path);
-          rewind.mutate({ data: { hash: clip.hash, from: stage as never } });
+          retryFailures.mutate({ data: { hashes: [clip.hash] } });
         }}
         // "Don't use it" removes the clip from the CATALOG. The file stays where the operator
         // put it — the server's action is a tombstone, never a delete.

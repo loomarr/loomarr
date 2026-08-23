@@ -1028,8 +1028,9 @@ func escapeLike(term string) string {
 // SetClipsHeld files clips into the catalog (held=false) or sends them back to the review queue
 // (held=true) — the Incoming tab's decisions (§10 V38).
 //
-// ⚠ **This is the ONLY writer of `held` and `auto_filed`**, for the same reason SetClipsRemoved
-// owns the tombstone: `UpsertClip` deliberately omits both from its DO UPDATE list, so the folder
+// ⚠ **This and RetryClipPipeline are the ONLY writers of `held` and `auto_filed`**. Recovery is
+// the narrow exception because holding the clip and requeueing its failed row must be atomic.
+// `UpsertClip` deliberately omits both from its DO UPDATE list, so the folder
 // scan cannot file a held clip by finding its file still on disk. Route the write anywhere else
 // and one scan pass empties the review queue into live channels.
 //
@@ -1067,8 +1068,9 @@ func (s *sqlStore) SetClipsHeld(ctx context.Context, paths []string, held, autoF
 // SetClipsRemoved tombstones (or restores) clips by path — the Catalog tab's "Remove from
 // catalog" (V35).
 //
-// ⚠ This and ReplaceSplitChildren are the ONLY writers of `removed_at`, and both express the same
-// catalog tombstone transition. `UpsertClip` deliberately omits the column, so the next scan
+// ⚠ This, ReplaceSplitChildren, and RetryClipPipeline are the ONLY writers of `removed_at`.
+// Recovery is the narrow exception because restoring the tombstone and requeueing its failed row
+// must be atomic. `UpsertClip` deliberately omits the column, so the next scan
 // cannot resurrect a removed clip merely by finding its file still on disk.
 //
 // ⚠ It does NOT touch the file. Nothing in Loomarr deletes an operator's media — the button says

@@ -26,12 +26,16 @@ type incomingBody struct {
 		Reason        string `json:"reason"`
 		NeedsDecision bool   `json:"needsDecision"`
 		Pipeline      *struct {
-			Stage      string `json:"stage"`
-			Status     string `json:"status"`
-			Progress   int    `json:"progress"`
-			DurationMs int64  `json:"durationMs"`
-			Thumbnail  string `json:"thumbnail"`
-			Stages     []struct {
+			Stage       string `json:"stage"`
+			Status      string `json:"status"`
+			Progress    int    `json:"progress"`
+			DurationMs  int64  `json:"durationMs"`
+			Thumbnail   string `json:"thumbnail"`
+			Lifecycle   string `json:"lifecycle"`
+			FailureCode string `json:"failureCode"`
+			Recovery    string `json:"recovery"`
+			RetryStage  string `json:"retryStage"`
+			Stages      []struct {
 				Stage  string `json:"stage"`
 				Status string `json:"status"`
 				Note   string `json:"note"`
@@ -48,10 +52,16 @@ type incomingBody struct {
 	// Rejected is the refusals audit — what Loomarr decided WITHOUT the operator. An operator's own
 	// dismissal must not appear here (§10 V54).
 	Rejected []struct {
-		Hash       string `json:"hash"`
-		Reason     string `json:"reason"`
-		Restorable bool   `json:"restorable"`
+		Hash        string `json:"hash"`
+		Reason      string `json:"reason"`
+		Restorable  bool   `json:"restorable"`
+		FailureCode string `json:"failureCode"`
+		Recovery    string `json:"recovery"`
+		RetryStage  string `json:"retryStage"`
 	} `json:"rejected"`
+	Overview struct {
+		Runnable, InProgress, Scheduled, NeedsDecision, Admitted, Rejected, Dismissed int
+	} `json:"overview"`
 	StageOrder     []string `json:"stageOrder"`
 	ClipsTotal     int      `json:"clipsTotal"`
 	DecisionsTotal int      `json:"decisionsTotal"`
@@ -351,10 +361,38 @@ func TestFillerIncoming_PipelineRowCarriesTheClipItDescribes(t *testing.T) {
 		t.Errorf("pipeline = {stage %q, status %q, progress %d}, want {tag, running, -1}",
 			got.Pipeline.Stage, got.Pipeline.Status, got.Pipeline.Progress)
 	}
+	if got.Pipeline.Lifecycle != "in_progress" || body.Overview.InProgress != 1 {
+		t.Errorf("lifecycle/overview = %q / %+v, want in_progress and one active", got.Pipeline.Lifecycle, body.Overview)
+	}
 	// ⚠ The VISITED ladder, including the skip and its reason. A stage that silently did not
 	// happen reads as broken, so the note is the half that makes the skip legible.
 	if len(got.Pipeline.Stages) != 2 || got.Pipeline.Stages[1].Status != "skipped" || got.Pipeline.Stages[1].Note == "" {
 		t.Errorf("stages = %+v, want probe/done then transcribe/skipped with its note", got.Pipeline.Stages)
+	}
+}
+
+func TestFillerIncoming_ExecutionFailureCarriesSafeRecovery(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	putClip(t, st, filler.Clip{Hash: "failed", Path: "failed.mp4", Name: "Failed", Kind: filler.Commercial})
+	if err := st.UpsertClipPipeline(context.Background(), filler.ClipPipeline{
+		ClipHash: "failed", Stage: filler.StageTranscode, Status: filler.StatusFailed,
+		Attempts: filler.MaxAttempts, Disposition: filler.DispositionRejected,
+		RejectReason: filler.ReasonUnplayable, RejectDetail: "ffmpeg exited 1",
+		UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, body := getIncoming(t, srv.URL+"/v1/filler/incoming", adminToken)
+	if len(body.Rejected) != 1 {
+		t.Fatalf("rejected = %+v, want one", body.Rejected)
+	}
+	got := body.Rejected[0]
+	if got.FailureCode != "unplayable" || got.Recovery != "retry" || got.RetryStage != "transcode" || got.Restorable {
+		t.Fatalf("recovery = %+v, want retry/transcode without content override", got)
+	}
+	if body.Overview.Rejected != 1 {
+		t.Fatalf("overview = %+v, want one terminal rejection", body.Overview)
 	}
 }
 

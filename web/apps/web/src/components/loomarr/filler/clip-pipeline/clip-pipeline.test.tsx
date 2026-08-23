@@ -23,6 +23,7 @@ const show = (row: IncomingPipelineDTO, opts: { ladder?: string[]; variant?: Cli
 const at = (over: Partial<IncomingPipelineDTO> = {}): IncomingPipelineDTO => ({
   stage: "tag",
   status: "running",
+  lifecycle: "in_progress",
   // -1 is the "this rung cannot measure itself" sentinel, and it is the DEFAULT here on purpose:
   // most rungs cannot measure themselves, so a fixture defaulting to a real percentage would make
   // the measured case look like the ordinary one.

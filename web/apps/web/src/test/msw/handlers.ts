@@ -97,6 +97,15 @@ const appHandlers = (): RequestHandler[] => [
   // ⚠ `clips` is the whole conveyor (§10 V51e) — being-prepared and needs-a-decision in ONE list,
   // where this used to carry `asks` and `pipeline` as separate arrays over overlapping populations.
   getFillerIncomingMockHandler({
+    overview: {
+      runnable: 0,
+      inProgress: 0,
+      scheduled: 0,
+      needsDecision: 0,
+      admitted: 0,
+      rejected: 0,
+      dismissed: 0,
+    },
     clips: [],
     clipsTotal: 0,
     decisionsTotal: 0,

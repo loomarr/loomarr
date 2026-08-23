@@ -40,6 +40,7 @@ const row = (over: Partial<IncomingPipelineDTO> = {}): IncomingClipDTO => ({
   pipeline: {
     stage: "transcode",
     status: "running",
+    lifecycle: "in_progress",
     progress: 80,
     // ⚠ Seeded non-empty on purpose: `stages` is the VISITED ladder and the frame carries no
     // value for it, so a merge that replaced the block wholesale would silently empty the
@@ -60,6 +61,15 @@ const frame = (over: Partial<FillerClipEvent> = {}): FillerClipEvent => ({
 });
 
 const body = (clips: IncomingClipDTO[]): FillerIncomingOutputBody => ({
+  overview: {
+    runnable: 0,
+    inProgress: clips.length,
+    scheduled: 0,
+    needsDecision: 0,
+    admitted: 0,
+    rejected: 0,
+    dismissed: 0,
+  },
   clips,
   clipsTotal: clips.length,
   decisionsTotal: clips.filter((clip) => clip.needsDecision).length,

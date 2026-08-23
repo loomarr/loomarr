@@ -38,6 +38,8 @@ interface IncomingPanelProps {
    * video, unreadable) offers no override, because restoring it is a control that could not work.
    */
   onRestore?: (clip: IncomingRejectDTO) => void;
+  /** Retries a server-classified execution failure at its exact failed stage. */
+  onRetryFailure?: (clip: IncomingRejectDTO) => void;
   /**
    * What Loomarr filed WITHOUT asking (§10 V38) — the audit half of auto-filing.
    *
@@ -75,7 +77,7 @@ interface IncomingPanelProps {
    * row and the file both stay, which is what separates it from `onDismiss`.
    */
   onSendBack?: (clip: IncomingClipDTO) => void;
-  /** Retry a failed stage immediately, clearing its attempts/backoff and dependent stage state. */
+  /** Retry a server-approved failed stage immediately, preserving completed upstream work. */
   onRetryStage?: (clip: IncomingClipDTO, stage: string) => void;
   // Which clip path is currently being written, so its row can say so.
   busyPath?: string;

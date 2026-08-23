@@ -135,6 +135,15 @@ const stubReachable = () => {
       total: 1,
     }),
     getFillerIncomingMockHandler({
+      overview: {
+        runnable: 0,
+        inProgress: 0,
+        scheduled: 0,
+        needsDecision: 1,
+        admitted: 1,
+        rejected: 0,
+        dismissed: 0,
+      },
       // ⚠ `hash` is REQUIRED on an incoming clip — it is the content identity (§10, the
       // filler-path-identity rule), and every row action keys on it. Both of these fixtures
       // omitted it, so the queue rendered rows whose identity was undefined.

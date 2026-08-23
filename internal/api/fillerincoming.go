@@ -141,8 +141,12 @@ type IncomingPipelineDTO struct {
 	Progress int    `json:"progress"`
 	Attempts int    `json:"attempts,omitempty" doc:"Retries spent on the current stage; absent on the first try"`
 	// Stages is the finished ladder — what ran, what was skipped, and why.
-	Stages    []IncomingStageDTO `json:"stages"`
-	UpdatedAt string             `json:"updatedAt" doc:"RFC3339"`
+	Stages      []IncomingStageDTO `json:"stages"`
+	UpdatedAt   string             `json:"updatedAt" doc:"RFC3339"`
+	Lifecycle   string             `json:"lifecycle" doc:"Who owns this clip now: runnable, in_progress, scheduled, or needs_decision"`
+	FailureCode string             `json:"failureCode,omitempty" doc:"Stable execution failure class"`
+	Recovery    string             `json:"recovery,omitempty" doc:"Server-sanctioned recovery action"`
+	RetryStage  string             `json:"retryStage,omitempty" doc:"Exact dependency suffix a safe retry will reset"`
 }
 
 // IncomingStageDTO is one rung of a clip's ladder.
@@ -174,13 +178,17 @@ type IncomingRejectDTO struct {
 	// Restorable reports whether an operator may override this one. A HARD reject (no audio, no
 	// video, unreadable) offers no override, because that is a control that could not work:
 	// restoring a clip with no audio puts silence in a break.
-	Restorable bool   `json:"restorable"`
-	Stage      string `json:"stage" doc:"Which stage refused it"`
-	At         string `json:"at" doc:"RFC3339"`
+	Restorable  bool   `json:"restorable"`
+	FailureCode string `json:"failureCode,omitempty" doc:"Stable execution failure class"`
+	Recovery    string `json:"recovery,omitempty" doc:"retry for failed work, restore for an overridable content decision"`
+	RetryStage  string `json:"retryStage,omitempty" doc:"Server-selected stage for recovery"`
+	Stage       string `json:"stage" doc:"Which stage refused it"`
+	At          string `json:"at" doc:"RFC3339"`
 }
 
 type fillerIncomingOutput struct {
 	Body struct {
+		Overview PipelineOverviewDTO `json:"overview" doc:"Bounded lifecycle counts across the durable filler pipeline"`
 		// Clips is the whole conveyor, in one list: what is being prepared and what is waiting on
 		// a person, ordered decisions-first.
 		//
@@ -224,6 +232,16 @@ type fillerIncomingOutput struct {
 	}
 }
 
+type PipelineOverviewDTO struct {
+	Runnable      int `json:"runnable"`
+	InProgress    int `json:"inProgress"`
+	Scheduled     int `json:"scheduled"`
+	NeedsDecision int `json:"needsDecision"`
+	Admitted      int `json:"admitted"`
+	Rejected      int `json:"rejected"`
+	Dismissed     int `json:"dismissed"`
+}
+
 func (s *Server) registerFillerIncoming(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "filler-incoming", Method: http.MethodGet, Path: "/v1/filler/incoming",
@@ -249,6 +267,12 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 	}
 
 	out := &fillerIncomingOutput{}
+	lifecycleAt := time.Now().UTC()
+	if overview, oerr := s.store.PipelineOverview(ctx, lifecycleAt); oerr != nil {
+		s.log.Warn("summarize filler pipeline for incoming", "err", oerr)
+	} else {
+		out.Body.Overview = pipelineOverviewDTO(overview)
+	}
 
 	// The conveyor, assembled from two reads that used to be two LISTS (§10 V51e).
 	//
@@ -333,7 +357,7 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 
 	out.Body.Clips = make([]IncomingClipDTO, 0, len(belt))
 	for _, e := range belt {
-		out.Body.Clips = append(out.Body.Clips, conveyorDTO(e.clip, e.row, beltImg))
+		out.Body.Clips = append(out.Body.Clips, conveyorDTO(e.clip, e.row, beltImg, lifecycleAt))
 	}
 
 	// ⚠ Decisions first: work the operator OWES outranks work they merely watch. Within the
@@ -426,7 +450,7 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 		s.log.Warn("list rejected clips for incoming", "err", rerr)
 	} else {
 		for _, r := range rows {
-			out.Body.Rejected = append(out.Body.Rejected, rejectDTO(ctx, s, r))
+			out.Body.Rejected = append(out.Body.Rejected, rejectDTO(ctx, s, r, lifecycleAt))
 		}
 	}
 
@@ -511,7 +535,7 @@ const incomingListLimit = 100
 // zero-value `row` (no pipeline row at all) is the only case that falls back to the V38 test, and
 // it exists for one population: clips catalogued before V51b. Treating "no row" as "still being
 // prepared" would strand them in a section that says nothing needs the operator, forever.
-func conveyorDTO(c store.Clip, row filler.ClipPipeline, img func(string) *ImageDTO) IncomingClipDTO {
+func conveyorDTO(c store.Clip, row filler.ClipPipeline, img func(string) *ImageDTO, at time.Time) IncomingClipDTO {
 	dto := incomingDTO(c, askReasonFor(c), img)
 	// ⚠ **A compilation is never a decision.** Its handoff to a human is the REEL, and the ask
 	// row's controls are meaningless on a container of adverts: "Add tags" would tag twenty
@@ -524,7 +548,7 @@ func conveyorDTO(c store.Clip, row filler.ClipPipeline, img func(string) *ImageD
 		dto.NeedsDecision = !c.IsComposite
 		return dto
 	}
-	p := pipelineDTO(row)
+	p := pipelineDTO(row, at)
 	dto.Pipeline = &p
 	dto.NeedsDecision = !c.IsComposite && row.Disposition == filler.DispositionReview
 	if dto.NeedsDecision && len(row.Stages) > 0 {
@@ -537,12 +561,15 @@ func conveyorDTO(c store.Clip, row filler.ClipPipeline, img func(string) *ImageD
 	return dto
 }
 
-func pipelineDTO(r filler.ClipPipeline) IncomingPipelineDTO {
+func pipelineDTO(r filler.ClipPipeline, at time.Time) IncomingPipelineDTO {
+	lifecycle := r.Lifecycle(at)
 	dto := IncomingPipelineDTO{
 		Stage: string(r.Stage), Status: string(r.Status),
 		Progress: r.Progress, Attempts: r.Attempts,
 		Stages:    make([]IncomingStageDTO, 0, len(r.Stages)),
 		UpdatedAt: r.UpdatedAt.UTC().Format(time.RFC3339),
+		Lifecycle: string(lifecycle.State), FailureCode: string(lifecycle.FailureCode),
+		Recovery: string(lifecycle.Recovery), RetryStage: string(lifecycle.RetryStage),
 	}
 	for _, rec := range r.Stages {
 		dto.Stages = append(dto.Stages, IncomingStageDTO{
@@ -554,13 +581,16 @@ func pipelineDTO(r filler.ClipPipeline) IncomingPipelineDTO {
 }
 
 // rejectDTO renders one refusal.
-func rejectDTO(ctx context.Context, s *Server, r filler.ClipPipeline) IncomingRejectDTO {
+func rejectDTO(ctx context.Context, s *Server, r filler.ClipPipeline, at time.Time) IncomingRejectDTO {
+	lifecycle := r.Lifecycle(at)
 	dto := IncomingRejectDTO{
 		Hash: r.ClipHash, Reason: string(r.RejectReason), Detail: r.RejectDetail,
 		// ⚠ `Soft()` owns which reasons a human may overturn, so the button's presence and the
 		// endpoint's behaviour cannot disagree. Deriving it here from a second list would be the
 		// drift class this codebase keeps finding.
-		Restorable: r.RejectReason.Soft(),
+		Restorable:  r.RejectReason.Soft(),
+		FailureCode: string(lifecycle.FailureCode), Recovery: string(lifecycle.Recovery),
+		RetryStage: string(lifecycle.RetryStage),
 		Stage:      string(r.Stage),
 		At:         r.UpdatedAt.UTC().Format(time.RFC3339),
 	}
@@ -568,6 +598,14 @@ func rejectDTO(ctx context.Context, s *Server, r filler.ClipPipeline) IncomingRe
 		dto.Name = clip.Name
 	}
 	return dto
+}
+
+func pipelineOverviewDTO(o filler.PipelineOverview) PipelineOverviewDTO {
+	return PipelineOverviewDTO{
+		Runnable: o.Runnable, InProgress: o.InProgress, Scheduled: o.Scheduled,
+		NeedsDecision: o.NeedsDecision, Admitted: o.Admitted,
+		Rejected: o.Rejected, Dismissed: o.Dismissed,
+	}
 }
 
 // incomingDTO renders one clip for either half of the tab — shared so an ask and an audit row

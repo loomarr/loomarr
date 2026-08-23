@@ -9,6 +9,7 @@ const LADDER = ["probe", "transcode", "split", "language", "transcribe", "tag", 
 const at = (over: Partial<IncomingPipelineDTO> = {}): IncomingPipelineDTO => ({
   stage: "tag",
   status: "running",
+  lifecycle: "in_progress",
   progress: -1,
   stages: [
     { stage: "probe", status: "done", at: "2026-08-08T10:00:00Z" },

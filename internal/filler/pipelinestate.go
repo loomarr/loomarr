@@ -197,17 +197,22 @@ type PipelineFilter struct {
 // PipelineStore is the slice of the store the pipeline needs (the sync.go/splitjob.go pattern —
 // declared here so `filler` does not import `store`; `app` bridges them).
 //
-// ⚠ `UpsertClipPipeline` is the ONLY writer of this table, which is what keeps the state machine
-// in one place. Every other filler column keeps its existing owner (SetClipLanguage,
+// ⚠ PipelineStore is the ONLY writer of this table, which is what keeps the state machine
+// in one module. Every other filler column keeps its existing owner (SetClipLanguage,
 // SetClipTranscript, ApplyClipVision, SetClipsHeld, …) — this phase adds no second writer to any
 // of them, which is why the 1600-line store conformance suite needs no rework to accept it.
 type PipelineStore interface {
 	// ListPipelineWork returns non-terminal rows due at or before `now`, oldest first.
 	ListPipelineWork(ctx context.Context, now time.Time, limit int) ([]ClipPipeline, error)
+	// PipelineOverview returns one lifecycle-classified snapshot for API and run telemetry.
+	PipelineOverview(ctx context.Context, at time.Time) (PipelineOverview, error)
 	// ListClipsWithoutPipeline returns catalogued clips that have no pipeline row yet — the
 	// lazy enrolment the pipeline self-heals with, instead of a data migration.
 	ListClipsWithoutPipeline(ctx context.Context, limit int) ([]StoreClip, error)
 	GetClipPipeline(ctx context.Context, hash string) (ClipPipeline, bool, error)
 	ListClipPipelines(ctx context.Context, f PipelineFilter) ([]ClipPipeline, error)
 	UpsertClipPipeline(ctx context.Context, p ClipPipeline) error
+	// RetryClipPipeline atomically returns a failed row to the conveyor. When restore is true it
+	// also clears the rejection tombstone while holding the clip.
+	RetryClipPipeline(ctx context.Context, failed, retry ClipPipeline, restore bool) error
 }

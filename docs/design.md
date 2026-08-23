@@ -802,6 +802,7 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | GET | `/v1/filler` | List clip catalog; filter by kind/era/audience/category/untagged, by `taxon` (an exact graph node whose descendant rollups match too), by `unclassified` (no directly asserted taxonomy tags on any axis), or by `withoutAxis` (no direct assertion on one named axis; neutral because cue axes are intentionally sparse), plus `q` across name, brand, visible text, and tags (§7.2 — clip search lives here, not in `/v1/search`). |
 | PATCH | `/v1/filler/tags` | Edit a clip's tags — including **confirming an era suggestion** (§10): setting `era` on a clip that carries one clears the suggestion. The suggestion itself is never settable directly; only the tagger writes it, and only when the year is not in the source text. ⚠ **The clip is identified by its content `hash` in the BODY** (V45a) — completing the V38c identity change up through the API. The wire identity is the hash (hex, no slashes), NOT the path: the path is a disk *location* the server keeps to itself, and putting a slash-bearing path in a URL or body was the source of a routing/proxy 404. Every clip-addressing route (this, split, and the byte routes below) takes the hash. |
 | POST | `/v1/filler/rewind` | Re-run one clip from a named ingest stage (admin, §10 V55). This is the recovery path after a configuration or provider problem has been fixed: it resets that stage and every dependent stage, durably forces the selected rung past its ordinary applicability shortcut, clears only derived artifacts safe for that rung to replace, and puts the pipeline row back on the conveyor. Rewinding `transcode` is refused unless `force:true`, because it can replace the playable bytes; routine UI actions expose only non-destructive rewinds. |
+| POST | `/v1/filler/retry` | Retry one or up to 50 execution failures (admin, §10 V56). The server selects the failed rung from the lifecycle projection, preserves completed upstream work, and reports rows that are no longer retryable without coercing them. For an exhausted probe/transcode failure, restore, hold, and requeue commit atomically; content-decision overrides remain on the separate restore path. |
 | GET | `/v1/filler/discover` | Browse clips the operator could add, **downloading nothing** (admin, §10 V33/V17d). `q` searches archive.org by keyword; `collection` lists one named collection (a URL, a `/details/<id>` path, or a bare identifier); sending both searches **within that collection**, which is what a registered source row promises. The `collection`-only mode is what a **starter pack** is — a curated collection listed for keep/exclude before anything is fetched — so browsing a suggested pack and browsing a search result are one code path, not two. Neither mode requires the ingest tooling: listing is plain `net/http`, so an operator on a degraded install can still see what exists and learn why the fetch is unavailable. Licence availability is stated **once, about the search** — archive.org declares one on ~8% of items, so a per-row chip would imply a check that never happened (build plan §6.3). |
 | POST | `/v1/filler/sync` | Sync catalog from the Tunarr `local` filler source (§10). |
 | POST | `/v1/filler/ingest` | Download clips into the drop-folder from a playlist/collection/video URL (admin). Runs as a job; progress on `/v1/events`. 409 `feature_not_configured` if the vendored ingest tooling isn't runnable — it ships in the single image (§10, §16), so this is a degraded-install signal, not an opt-in gate. |
@@ -3861,6 +3862,23 @@ even after a restart, then clears the marker when the rung resolves; upstream me
 operator-authored tags survive. A transcode rewind is exceptional and requires an explicit force
 flag because it may replace source bytes. This is deliberately a pipeline operation rather than a
 delete-and-rescan workaround: recovery must preserve identity, provenance, and operator decisions.
+
+**Lifecycle and recovery are domain answers, not UI guesses (V56).** The persisted row remains the
+fact record, but `filler.Pipeline` projects it into one bounded lifecycle vocabulary shared by the
+runner, Incoming, and telemetry: `runnable`, `in_progress`, `scheduled`, `needs_decision`,
+`admitted`, `rejected`, or `dismissed`. A failed rung additionally carries a stable failure code,
+the exact rung that can be retried, and one sanctioned recovery action. This prevents three callers
+from independently interpreting combinations of disposition, status, backoff, and reject reason;
+the store aggregates facts, while the filler domain owns their meaning.
+
+Retry and override remain different authorities. An exhausted `probe` or `transcode` execution
+failure may retry the failed rung after its dependency suffix is invalidated; a soft content
+decision may be restored to human review; measured hard content failures remain non-overridable.
+For a terminal execution failure, returning the row to `running` and clearing the catalog tombstone
+is one store transaction, and the clip is held before it becomes present again. Derived artifacts
+are invalidated first; if that preparation fails, the old rejected row and tombstone remain. Thus
+no partial recovery can make an unprepared or rejected clip airable, while a successful retry
+preserves completed upstream measurements and operator-authored tags.
 
 #### Stage state is persisted, in a sibling table
 

@@ -230,6 +230,7 @@ describe("IncomingPanel — being prepared", () => {
     pipeline: {
       stage: "tag",
       status: "running",
+      lifecycle: "in_progress",
       progress: -1,
       stages: [{ stage: "probe", status: "done", at: "2026-08-08T10:00:00Z" }],
       updatedAt: "2026-08-08T10:01:00Z",

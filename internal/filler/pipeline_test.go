@@ -108,6 +108,14 @@ func (m *pipeMemStore) ListPipelineWork(_ context.Context, now time.Time, limit 
 	return out, nil
 }
 
+func (m *pipeMemStore) PipelineOverview(_ context.Context, at time.Time) (filler.PipelineOverview, error) {
+	rows := make([]filler.ClipPipeline, 0, len(m.rows))
+	for _, row := range m.rows {
+		rows = append(rows, row)
+	}
+	return filler.SummarizePipelines(rows, at), nil
+}
+
 func (m *pipeMemStore) ListClipsWithoutPipeline(_ context.Context, limit int) ([]filler.StoreClip, error) {
 	var out []filler.StoreClip
 	for h, c := range m.clips {
@@ -152,6 +160,19 @@ func (m *pipeMemStore) UpsertClipPipeline(ctx context.Context, p filler.ClipPipe
 		return err
 	}
 	m.rows[p.ClipHash] = p
+	return nil
+}
+
+func (m *pipeMemStore) RetryClipPipeline(ctx context.Context, _ filler.ClipPipeline, p filler.ClipPipeline, restore bool) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	m.rows[p.ClipHash] = p
+	if restore {
+		c := m.clips[p.ClipHash]
+		c.RemovedAt, c.Held, c.AutoFiled = time.Time{}, true, false
+		m.clips[p.ClipHash] = c
+	}
 	return nil
 }
 
@@ -312,6 +333,57 @@ func TestPipeline_RewindTranscodeRequiresExplicitForce(t *testing.T) {
 	}
 	if got := st.rows["encoded"]; got.Stage != before.Stage || got.Status != before.Status {
 		t.Errorf("refused rewind mutated row: before=%+v after=%+v", before, got)
+	}
+}
+
+func TestPipeline_RetryFailureRestoresTerminalExecutionFailureHeld(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "broken-encode")
+	c := st.clips["broken-encode"]
+	c.RemovedAt, c.Held, c.AutoFiled = time.Now().UTC(), false, true
+	st.clips[c.Hash] = c
+	row := st.rows[c.Hash]
+	row.Stage, row.Status = filler.StageTranscode, filler.StatusFailed
+	row.Attempts, row.Disposition = filler.MaxAttempts, filler.DispositionRejected
+	row.RejectReason, row.RejectDetail = filler.ReasonUnplayable, "ffmpeg exited 1"
+	row.Stages = []filler.StageRecord{
+		{Stage: filler.StageProbe, Status: filler.StatusDone},
+		{Stage: filler.StageTranscode, Status: filler.StatusFailed},
+	}
+	st.rows[c.Hash] = row
+
+	p := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, "")
+	if err := p.RetryFailure(context.Background(), c.Hash); err != nil {
+		t.Fatal(err)
+	}
+	got := st.rows[c.Hash]
+	if got.Stage != filler.StageTranscode || got.Status != filler.StatusQueued ||
+		got.Disposition != filler.DispositionRunning || got.Attempts != 0 || !got.ForceRun {
+		t.Fatalf("retried row = %+v, want transcode/queued/running with force", got)
+	}
+	if len(got.Stages) != 1 || got.Stages[0].Stage != filler.StageProbe {
+		t.Fatalf("retry discarded completed upstream work: %+v", got.Stages)
+	}
+	clip := st.clips[c.Hash]
+	if !clip.RemovedAt.IsZero() || !clip.Held || clip.AutoFiled {
+		t.Fatalf("restored clip = removed:%v held:%v auto:%v, want present and held", clip.RemovedAt, clip.Held, clip.AutoFiled)
+	}
+}
+
+func TestPipeline_RetryFailureRefusesContentDecision(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "silent")
+	row := st.rows["silent"]
+	row.Stage, row.Status = filler.StageTranscode, filler.StatusDone
+	row.Disposition, row.RejectReason = filler.DispositionRejected, filler.ReasonSilentContent
+	st.rows[row.ClipHash] = row
+
+	err := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, "").RetryFailure(context.Background(), row.ClipHash)
+	if !errors.Is(err, filler.ErrPipelineNotRetryable) {
+		t.Fatalf("retry content decision = %v, want ErrPipelineNotRetryable", err)
+	}
+	if got := st.rows[row.ClipHash]; got.Disposition != filler.DispositionRejected {
+		t.Fatalf("refused retry mutated row: %+v", got)
 	}
 }
 

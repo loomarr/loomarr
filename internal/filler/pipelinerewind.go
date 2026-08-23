@@ -33,9 +33,10 @@ import (
 
 // RewindStore is the slice of the store `Rewind` invalidates through.
 //
-// ⚠ These are the EXISTING single writers of each column, reused rather than replaced. Rewind adds
-// no new writer to any clip column — it calls the ones that already own them, with the "not yet"
-// value each one already defines.
+// ⚠ These are the EXISTING single writers of each derived column, reused rather than replaced.
+// Rewind adds no new writer to them — it calls the ones that already own them, with the "not yet"
+// value each one already defines. Terminal retry's catalog restore is a separate atomic store
+// transition because it must change the tombstone, hold, and pipeline row together.
 type RewindStore interface {
 	// SetClipLanguage with "" — the only value meaning "not yet heard".
 	SetClipLanguage(ctx context.Context, path, language string, at time.Time) error
@@ -54,6 +55,10 @@ type RewindStore interface {
 
 // ErrTranscodeNeedsForce is returned when a rewind would re-encode a clip without `force`.
 var ErrTranscodeNeedsForce = errors.New("re-encoding loses a generation of quality and the original is gone; pass force to do it anyway")
+
+// ErrPipelineNotRetryable distinguishes an execution retry from an arbitrary rewind or content
+// override. API callers map it to a conflict after reloading the authoritative row.
+var ErrPipelineNotRetryable = errors.New("pipeline row does not have a retryable execution failure")
 
 // WithRewind attaches the invalidation seam. Without it, `Rewind` still resets the ladder but
 // cannot clear derived data — so it refuses rather than producing a rewind that silently
@@ -109,6 +114,56 @@ func (p *Pipeline) Rewind(ctx context.Context, hash string, from StageID, force 
 	if !found {
 		row = ClipPipeline{ClipHash: hash, EnrolledAt: now}
 	}
+	row = resetPipelineRow(row, from, now)
+	if err := p.store.UpsertClipPipeline(ctx, row); err != nil {
+		return err
+	}
+	p.publish(row, clip)
+	return nil
+}
+
+// RetryFailure retries exactly the failed rung the lifecycle projection permits. It is narrower
+// than Rewind: callers cannot choose a rung, cannot override a measured content decision, and do
+// not need to authorize transcode force because the server has proved that the transcode itself
+// failed. Completed upstream work is retained.
+func (p *Pipeline) RetryFailure(ctx context.Context, hash string) error {
+	row, found, err := p.store.GetClipPipeline(ctx, hash)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("%w: clip %s has no pipeline row", ErrPipelineNotRetryable, hash)
+	}
+	now := p.now().UTC()
+	lifecycle := row.Lifecycle(now)
+	if lifecycle.Recovery != RecoveryRetry || lifecycle.RetryStage == "" {
+		return fmt.Errorf("%w: clip %s", ErrPipelineNotRetryable, hash)
+	}
+	if p.rewind == nil {
+		return errors.New("this install cannot retry pipeline stages: no invalidation seam is wired")
+	}
+	clip, found, err := p.clips.GetClip(ctx, hash)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("clip %s is not in the catalog", hash)
+	}
+	if err := p.invalidate(ctx, clip, StageIndex(lifecycle.RetryStage)); err != nil {
+		return err
+	}
+	failed := row
+	restore := failed.Disposition == DispositionRejected
+	row = resetPipelineRow(row, lifecycle.RetryStage, now)
+	if err := p.store.RetryClipPipeline(ctx, failed, row, restore); err != nil {
+		return err
+	}
+	p.publish(row, clip)
+	return nil
+}
+
+func resetPipelineRow(row ClipPipeline, from StageID, now time.Time) ClipPipeline {
+	idx := StageIndex(from)
 	// Keep the rungs BELOW the rewind point; drop the rest. The ladder is a picture of where the
 	// clip is, so leaving a `done` vision rung above a queued transcribe one would show history
 	// that is about to be overwritten.
@@ -128,11 +183,7 @@ func (p *Pipeline) Rewind(ctx context.Context, hash string, from StageID, force 
 	row.RejectReason, row.RejectDetail = "", ""
 	row.NextRun = time.Time{}
 	row.UpdatedAt = now
-	if err := p.store.UpsertClipPipeline(ctx, row); err != nil {
-		return err
-	}
-	p.publish(row, clip)
-	return nil
+	return row
 }
 
 // Requeue returns a reel parked at the split rung to the belt (§10 V54a). It reports whether it

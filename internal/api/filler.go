@@ -69,6 +69,13 @@ func (s *Server) registerFiller(api huma.API) {
 	}, RoleAdmin), s.rewindFillerClip)
 
 	huma.Register(api, withRole(huma.Operation{
+		OperationID: "retry-filler-failures", Method: http.MethodPost, Path: "/v1/filler/retry",
+		Summary:     "Retry eligible ingest failures",
+		Description: "Admin only. Retries one or a bounded set of execution failures at the server-selected failed stage, preserving completed upstream work. Content decisions use restore instead.",
+		Tags:        []string{"filler"},
+	}, RoleAdmin), s.retryFillerFailures)
+
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "ingest-filler", Method: http.MethodPost, Path: "/v1/filler/ingest",
 		Summary: "Download clips into the drop-folder (admin; needs the vendored yt-dlp + ffmpeg)",
 		Tags:    []string{"filler"},
@@ -211,6 +218,45 @@ func (s *Server) rewindFillerClip(ctx context.Context, in *rewindFillerClipInput
 	default:
 		return &struct{}{}, nil
 	}
+}
+
+type retryFillerFailuresInput struct {
+	Body struct {
+		Hashes []string `json:"hashes" minItems:"1" maxItems:"50" doc:"Eligible clip hashes; duplicate and non-retryable rows are reported without mutation"`
+	}
+}
+
+type retryFillerFailuresOutput struct {
+	Body struct {
+		Retried      int `json:"retried"`
+		NotRetryable int `json:"notRetryable"`
+	}
+}
+
+func (s *Server) retryFillerFailures(ctx context.Context, in *retryFillerFailuresInput) (*retryFillerFailuresOutput, error) {
+	rewinder, ok := s.filler.(FillerRewinder)
+	if !ok {
+		return nil, huma.Error501NotImplemented("the filler pipeline is not configured")
+	}
+	out := &retryFillerFailuresOutput{}
+	seen := make(map[string]struct{}, len(in.Body.Hashes))
+	for _, hash := range in.Body.Hashes {
+		if _, duplicate := seen[hash]; duplicate {
+			out.Body.NotRetryable++
+			continue
+		}
+		seen[hash] = struct{}{}
+		err := rewinder.RetryFailure(ctx, hash)
+		if errors.Is(err, filler.ErrPipelineNotRetryable) {
+			out.Body.NotRetryable++
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		out.Body.Retried++
+	}
+	return out, nil
 }
 
 // ClipDTO is the API view of a filler clip (§10). Identity is the content HASH (V38c/V45a) — the

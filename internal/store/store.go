@@ -300,8 +300,8 @@ type ClipStore interface {
 	CountClipsBySource(ctx context.Context, filter ClipFilter) (map[string]int, error)
 	// SetClipsRemoved tombstones (or restores) clips by path — "Remove from catalog" (V35).
 	//
-	// ⚠ The ONLY writer of that tombstone, like RecordClipPlay is the only writer of the play
-	// counters: UpsertClip deliberately omits the column, which is what stops the next scan
+	// ⚠ The ordinary tombstone writer; RetryClipPipeline is the only cross-table exception, so
+	// restore+hold+requeue can commit atomically. UpsertClip deliberately omits the column, which stops the next scan
 	// resurrecting a removed clip by finding its file still on disk. It never touches the file.
 	SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error)
 	// ReplaceSplitChildren makes one completed re-split generation airable and tombstones older
@@ -424,16 +424,22 @@ type SplitProposalStore interface {
 	//
 	// ⚠ A SIBLING of `clips`, never columns on it: `clips` is a synced cache that has been dropped
 	// and recreated twice, and these rows record that Whisper seconds and a paid vision call have
-	// ALREADY been spent. `UpsertClipPipeline` is the table's only writer, so unlike the clip
+	// ALREADY been spent. This pipeline persistence surface is the table's only writer, so unlike the clip
 	// columns there is no DO UPDATE omission list to keep in step.
 
-	// UpsertClipPipeline writes a clip's pipeline row — the ONLY writer of that table.
+	// UpsertClipPipeline writes an ordinary runner transition.
 	UpsertClipPipeline(ctx context.Context, p filler.ClipPipeline) error
+	// RetryClipPipeline writes the recovery transition and, for an exhausted terminal failure,
+	// restores the catalog tombstone while holding the clip in the same transaction.
+	RetryClipPipeline(ctx context.Context, failed, retry filler.ClipPipeline, restore bool) error
 	// GetClipPipeline reads one row. Absence is ordinary (an un-enrolled clip), not an error.
 	GetClipPipeline(ctx context.Context, hash string) (filler.ClipPipeline, bool, error)
 	// ListPipelineWork returns non-terminal rows due at or before `now`, oldest first, with a
 	// total order so one clip cannot starve while another is worked repeatedly.
 	ListPipelineWork(ctx context.Context, now time.Time, limit int) ([]filler.ClipPipeline, error)
+	// PipelineOverview groups the durable state through filler.ClipPipeline.Lifecycle so API,
+	// runner telemetry and persistence cannot acquire separate ownership predicates.
+	PipelineOverview(ctx context.Context, at time.Time) (filler.PipelineOverview, error)
 	// ListClipPipelines serves the Incoming read model — what is moving, and what was refused.
 	ListClipPipelines(ctx context.Context, f filler.PipelineFilter) ([]filler.ClipPipeline, error)
 	// ListClipsWithoutPipeline returns catalogued clips with no pipeline row yet, so enrolment is
