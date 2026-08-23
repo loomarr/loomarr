@@ -78,3 +78,53 @@ func TestVerifyCIAggregate(t *testing.T) {
 		t.Fatal("VerifyCIAggregate accepted an unknown dependency")
 	}
 }
+
+func TestVerifyCIManualScopes(t *testing.T) {
+	workflow := `on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        default: release-candidate
+        type: choice
+        options: [release-candidate, full]
+jobs:
+  changes:
+    outputs:
+      release_candidate: ${{ steps.filter.outputs.release_candidate }}
+    steps:
+      - id: filter
+        run: ./scripts/ci-dispatch-scope.sh "$DISPATCH_SCOPE"
+  release-candidate-scope:
+    name: Release candidate — exact main scope
+  full-manual-scope:
+    name: Manual CI — full scope
+  go-contracts:
+    if: needs.changes.outputs.release_candidate == 'true'
+  image-certification:
+    if: needs.changes.outputs.release_candidate == 'true'
+`
+	path := filepath.Join(t.TempDir(), "ci.yml")
+	if err := os.WriteFile(path, []byte(workflow), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyCIManualScopes(path); err != nil {
+		t.Fatalf("complete manual CI scopes: %v", err)
+	}
+
+	mutations := map[string]string{
+		"wrong default":    strings.Replace(workflow, "default: release-candidate", "default: full", 1),
+		"missing selector": strings.Replace(workflow, "./scripts/ci-dispatch-scope.sh", "./scripts/other.sh", 1),
+		"renamed marker":   strings.Replace(workflow, "Release candidate — exact main scope", "Candidate", 1),
+		"missing contract": strings.Replace(workflow, "needs.changes.outputs.release_candidate == 'true'", "false", 1),
+	}
+	for name, mutated := range mutations {
+		t.Run(name, func(t *testing.T) {
+			if err := os.WriteFile(path, []byte(mutated), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := VerifyCIManualScopes(path); err == nil {
+				t.Fatal("VerifyCIManualScopes accepted a broken manual scope contract")
+			}
+		})
+	}
+}

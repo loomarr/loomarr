@@ -39,6 +39,10 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Println("release-verify: CI aggregate includes every top-level job")
+	if err := releaseverify.VerifyCIManualScopes(filepath.Join(*root, ".github", "workflows", "ci.yml")); err != nil {
+		fmt.Fprintf(os.Stderr, "release-verify: CI manual scope policy: %v\n", err)
+		os.Exit(1)
+	}
 	if err := releaseverify.VerifyReleaseWorkflow(filepath.Join(*root, ".github", "workflows", "release.yml")); err != nil {
 		fmt.Fprintf(os.Stderr, "release-verify: workflow policy: %v\n", err)
 		os.Exit(1)

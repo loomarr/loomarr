@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -128,6 +129,87 @@ func VerifyCIAggregate(path string) error {
 	for need := range included {
 		if !knownJobs[need] {
 			return fmt.Errorf("CI ci-ok aggregate references unknown job %s", need)
+		}
+	}
+	return nil
+}
+
+// VerifyCIManualScopes pins the manual-dispatch contract used to certify an
+// exact main commit before release. The candidate scope is intentionally
+// proportional; the full scope remains available for deliberate deep checks.
+func VerifyCIManualScopes(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	root, err := parseYAML(data)
+	if err != nil {
+		return err
+	}
+	on, err := requiredMap(root, "on")
+	if err != nil {
+		return errors.New("CI workflow must define triggers")
+	}
+	dispatch, err := requiredMap(on, "workflow_dispatch")
+	if err != nil {
+		return errors.New("CI workflow must define workflow_dispatch")
+	}
+	inputs, err := requiredMap(dispatch, "inputs")
+	if err != nil {
+		return errors.New("CI workflow_dispatch must define inputs")
+	}
+	scope, err := requiredMap(inputs, "scope")
+	if err != nil {
+		return errors.New("CI workflow_dispatch must define the scope input")
+	}
+	if scalarValue(scope, "type") != "choice" || scalarValue(scope, "default") != "release-candidate" {
+		return errors.New("CI scope input must be a choice defaulting to release-candidate")
+	}
+	options, err := requiredSequence(scope, "options")
+	if err != nil || len(options.Content) != 2 || options.Content[0].Value != "release-candidate" || options.Content[1].Value != "full" {
+		return errors.New("CI scope choices must be release-candidate then full")
+	}
+
+	jobs, err := requiredMap(root, "jobs")
+	if err != nil {
+		return err
+	}
+	changes, err := requiredMap(jobs, "changes")
+	if err != nil {
+		return errors.New("CI workflow must define the changes job")
+	}
+	outputs, err := requiredMap(changes, "outputs")
+	if err != nil || scalarValue(outputs, "release_candidate") != "${{ steps.filter.outputs.release_candidate }}" {
+		return errors.New("CI changes job must expose the release_candidate filter output")
+	}
+	steps, err := requiredSequence(changes, "steps")
+	if err != nil {
+		return errors.New("CI changes job must define steps")
+	}
+	var filterRun string
+	for _, step := range steps.Content {
+		if step.Kind == yaml.MappingNode && scalarValue(step, "id") == "filter" {
+			filterRun = scalarValue(step, "run")
+		}
+	}
+	if !strings.Contains(filterRun, `./scripts/ci-dispatch-scope.sh "$DISPATCH_SCOPE"`) {
+		return errors.New("CI filter step must delegate manual scope selection to ci-dispatch-scope.sh")
+	}
+
+	markers := map[string]string{
+		"release-candidate-scope": "Release candidate — exact main scope",
+		"full-manual-scope":       "Manual CI — full scope",
+	}
+	for jobID, name := range markers {
+		job, jobErr := requiredMap(jobs, jobID)
+		if jobErr != nil || scalarValue(job, "name") != name {
+			return fmt.Errorf("CI workflow must define the %s marker job", jobID)
+		}
+	}
+	for _, jobID := range []string{"go-contracts", "image-certification"} {
+		job, jobErr := requiredMap(jobs, jobID)
+		if jobErr != nil || !strings.Contains(scalarValue(job, "if"), "needs.changes.outputs.release_candidate == 'true'") {
+			return fmt.Errorf("CI %s job must run for release-candidate dispatches", jobID)
 		}
 	}
 	return nil

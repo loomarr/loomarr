@@ -52,9 +52,21 @@ publishes uncategorized or model-authored notes.
 
 ## Tag and verify
 
-Push the protected version tag only after the required commit gates are green. Both release workflows
-start from that tag. If OpenRouter is temporarily unavailable, rerun the failed **Release notes**
-workflow after service recovers; the separately hardened image publication is unaffected.
+Push the protected version tag only after the required commit gates are green. If the exact current
+`main` commit did not run both image jobs—for example, because the final merge changed only prose—run
+the proportional release-candidate scope first:
+
+```sh
+gh workflow run ci.yml --repo loomarr/loomarr --ref main -f scope=release-candidate
+```
+
+That scope runs repository contracts, real-codec image-worker certification, and the native amd64
+and arm64 image builds. It deliberately leaves unrelated platform and UI matrices to their normal
+change-based CI. Use `-f scope=full` only when a complete manual rerun is actually required.
+
+Both release workflows start from the tag. If OpenRouter is temporarily unavailable, rerun the
+failed **Release notes** workflow after service recovers; the separately hardened image publication
+is unaffected.
 
 After both workflows finish, verify the GitHub Release body, the GHCR manifest, signature, SBOM, and
 provenance against the tagged commit. The tag-specific header remains the place to state limitations

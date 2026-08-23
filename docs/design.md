@@ -5294,8 +5294,14 @@ tags, hidden build tags, mutable third-party action refs, and reordered publicat
 tests inject signing and verification failures and prove neither reaches promotion. Every third-party
 GitHub Action used by repository workflows is pinned to a full commit SHA.
 The tagged main commit must have a successful CI run whose native amd64 and arm64 image jobs both
-ran; a manual full release-candidate rerun is available when a docs-only final commit would
-otherwise skip those jobs. Those gates precede publication. The image contains the Go server and
+ran. When a docs-only final commit would otherwise skip those jobs, the default manual
+`release-candidate` scope runs the repository contracts, the real-codec image-worker certification,
+and both native image builds on that exact `main` commit. It deliberately skips the Android,
+Windows, database, Go race, frontend, browser, tuner, documentation and macOS harness matrices;
+those remain change-gated on every push and pull request. A separately selected `full` manual scope
+retains the complete rerun for exceptional investigations. The release validator distinguishes the
+two manual scopes, requires the contract and certification jobs for the proportional scope, and
+fails closed on an unmarked dispatch. Those gates precede publication. The image contains the Go server and
 its required release-matched `loomarr-image` Rust worker, and
 vendors pinned **`yt-dlp`** + **`ffmpeg`** + **`ffprobe`** + **`deno`** + **`whisper-cli`** (with its
 model file, §14 — added by V34) on a non-distroless base (those binaries are glibc-linked), at
