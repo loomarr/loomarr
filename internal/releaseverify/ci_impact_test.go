@@ -17,3 +17,15 @@ func TestCIImpactClassifier(t *testing.T) {
 		t.Fatalf("ci impact classifier contract: %v\n%s", err, output)
 	}
 }
+
+func TestGoImpactSelector(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Clean(filepath.Join("..", ".."))
+	cmd := exec.Command("bash", filepath.Join("scripts", "go-impact-test.sh"))
+	cmd.Dir = root
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Go impact selector contract: %v\n%s", err, output)
+	}
+}
