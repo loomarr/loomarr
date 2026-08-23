@@ -7,6 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -87,6 +88,228 @@ func TestGrounding_AcquisitionRevalidatedAgainstTMDB(t *testing.T) {
 	}
 	if len(prop.Acquisitions) != 1 || prop.Acquisitions[0].TMDBID != 101 {
 		t.Fatalf("The Rock (101, exists on TMDB) should be a validated acquisition: %+v", prop.Acquisitions)
+	}
+}
+
+// Holiday and motif requests are thematic discovery, not title search. A title
+// can be squarely Christmas programming without containing "Christmas" in its
+// name; the grounded catalog tool must surface TMDB keyword matches so the model
+// can select them without inventing an id.
+func TestSuggest_HolidayKeywordDiscoversTitleWithoutHolidayInName(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	mt := testkit.NewTMDB(t)
+	mt.AddKeywordMovie(2401, "Snowbound Reunion", 2021, []int{35, 10751},
+		"Estranged siblings reunite during Christmas week.", "Christmas")
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{
+			"query": "Christmas", "keywords": []any{"Christmas"}, "media_type": "movie",
+		}),
+		testkit.FinalResponse(`{"channelName":"Snow Day Cinema","picks":[
+			{"mediaType":"movie","tmdbId":2401,"name":"Snowbound Reunion","confidence":0.91}
+		],"policy":{"seasonal":{"mode":"auto"}}}`),
+	)
+	s := suggest.New(llmMock, catalog.New(lib, tm), tm, 10)
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "A cozy Christmas movie channel"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Acquisitions) != 1 || prop.Acquisitions[0].TMDBID != 2401 {
+		t.Fatalf("holiday keyword discovery did not ground the non-title match: %+v", prop.Acquisitions)
+	}
+	if prop.Policy.Seasonal.Mode != "exclusive" {
+		t.Fatalf("seasonal mode = %q, want exclusive", prop.Policy.Seasonal.Mode)
+	}
+	if len(prop.Policy.Seasonal.Holidays) != 1 || prop.Policy.Seasonal.Holidays[0] != "christmas" {
+		t.Fatalf("seasonal holidays = %v, want [christmas]", prop.Policy.Seasonal.Holidays)
+	}
+}
+
+// An explicit rating limit is an audience request even when it is not phrased as
+// kids/family programming. The grounded policy must retain the user's PG-13 cap
+// and refuse a surfaced R-rated title rather than letting a model omission or the
+// adult-default rule silently broaden the channel.
+func TestSuggest_ExplicitRatingLimitIsEnforced(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(
+		testkit.SearchStub{Terms: []string{"action"}, LibraryItemID: "lib-r", Name: "Hard Target", Type: "Movie", Year: 1993, TMDBID: 5011, Genres: []string{"Action"}, OfficialRating: "R"},
+	)
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "action"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":5011,"name":"Hard Target"}],"policy":{"audience":{"ceiling":"PG-13"}}}`),
+	)
+	s := suggest.New(llmMock, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Back-to-back action movies, keep it PG-13"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prop.Policy.Audience.Ceiling != "PG-13" {
+		t.Fatalf("ceiling = %q, want PG-13", prop.Policy.Audience.Ceiling)
+	}
+	if len(prop.Lineup) != 0 || len(prop.Refused) != 1 || prop.Refused[0].Item.TMDBID != 5011 {
+		t.Fatalf("explicit ceiling did not refuse the R-rated pick: %+v", prop)
+	}
+}
+
+func TestSuggest_ExplicitFamilySafetyIsEnforcedWhenModelOmitsPolicy(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(
+		testkit.SearchStub{Terms: []string{"family"}, LibraryItemID: "lib-r", Name: "Very Scary Night", Type: "Movie", Year: 2020, TMDBID: 5012, Genres: []string{"Horror"}, OfficialRating: "R"},
+	)
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "family"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":5012,"name":"Very Scary Night"}]}`),
+	)
+	s := suggest.New(llmMock, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "family movie night, nothing too scary or mature"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prop.Policy.Audience.Ceiling != "TV-PG" {
+		t.Fatalf("ceiling = %q, want deterministic TV-PG family-safety ceiling", prop.Policy.Audience.Ceiling)
+	}
+	if len(prop.Lineup) != 0 || len(prop.Refused) != 1 {
+		t.Fatalf("family-safety ceiling did not refuse the R-rated pick: %+v", prop)
+	}
+}
+
+func TestSuggest_ClassicSingleSeriesUsesCuratedSyndication(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(testkit.SearchStub{
+		Terms: []string{"simpsons"}, LibraryItemID: "lib-simpsons", Name: "The Simpsons",
+		Type: "Series", Year: 1989, TMDBID: 456, Genres: []string{"Animation"}, OfficialRating: "TV-PG",
+	})
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "simpsons"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons","seasonMin":1,"seasonMax":10}],"policy":{"ordering":"sequential"}}`),
+	)
+	s := suggest.New(llmMock, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Classic Simpsons episodes"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prop.Policy.Ordering != "syndication" {
+		t.Fatalf("ordering = %q, want curated syndication rather than chronological playback", prop.Policy.Ordering)
+	}
+	if len(prop.Lineup) != 1 || prop.Lineup[0].SeasonMin != 1 || prop.Lineup[0].SeasonMax != 10 {
+		t.Fatalf("classic season scope was not preserved: %+v", prop.Lineup)
+	}
+}
+
+func TestSuggest_ExplicitChronologicalSingleSeriesStaysSequential(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(testkit.SearchStub{
+		Terms: []string{"simpsons"}, LibraryItemID: "lib-simpsons", Name: "The Simpsons",
+		Type: "Series", Year: 1989, TMDBID: 456, Genres: []string{"Animation"}, OfficialRating: "TV-PG",
+	})
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "simpsons"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons","seasonMin":1,"seasonMax":10}],"policy":{"ordering":"sequential"}}`),
+	)
+	s := suggest.New(llmMock, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Classic Simpsons in chronological order from the beginning"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prop.Policy.Ordering != "sequential" {
+		t.Fatalf("ordering = %q, want explicit chronological request to stay sequential", prop.Policy.Ordering)
+	}
+}
+
+func TestSuggest_RefineAddsDaypartAndHolidayRulesWithoutReplacingChannelIdentity(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(testkit.SearchStub{
+		Terms: []string{"simpsons"}, LibraryItemID: "lib-simpsons", Name: "The Simpsons",
+		Type: "Series", Year: 1989, TMDBID: 456, Genres: []string{"Animation", "Family"}, OfficialRating: "TV-PG",
+	})
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "simpsons"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons"}],"policy":{
+			"seasonal":{"mode":"auto"},
+			"rules":[
+				{"when":"mornings","what":"family","how":"syndication"},
+				{"when":"holiday:christmas","what":"holiday-matched"}
+			]
+		}}`),
+	)
+	s := suggest.New(llmMock, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{
+		Description:   "A classic family sitcom channel",
+		RefineText:    "Keep mornings family-friendly and add Christmas specials during the holiday window",
+		CurrentLineup: []suggest.LineupContext{{Name: "The Simpsons", Key: "series:tmdb:456"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prop.Policy.Seasonal.Mode != "auto" {
+		t.Fatalf("seasonal mode = %q, want year-round auto; a holiday block must not replace channel identity", prop.Policy.Seasonal.Mode)
+	}
+	if len(prop.Policy.Rules) != 2 {
+		t.Fatalf("grounded daypart/holiday rules = %+v, want two", prop.Policy.Rules)
+	}
+	if prop.Policy.Rules[0].When.HourFrom != 6 || prop.Policy.Rules[1].When.Holiday != "christmas" {
+		t.Fatalf("refine rules did not preserve morning + Christmas timing: %+v", prop.Policy.Rules)
+	}
+}
+
+// The provider contract is deliberately sequential-single-tool. A hosted model
+// may nevertheless emit parallel calls; execute only the first so one turn cannot
+// multiply catalog work, context, and hosted cost outside maxToolRounds.
+func TestSuggest_ExecutesOnlyFirstToolCallFromParallelResponse(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		llm.Response{ToolCalls: []llm.ToolCall{
+			{ID: "speed", Name: "catalog_search", Arguments: map[string]any{"query": "speed"}},
+			{ID: "rock", Name: "catalog_search", Arguments: map[string]any{"query": "the rock"}},
+		}},
+		testkit.FinalResponse(`{"picks":[
+			{"mediaType":"movie","tmdbId":100,"name":"Speed"},
+			{"mediaType":"movie","tmdbId":101,"name":"The Rock"}
+		]}`),
+	)
+	prop, err := buildSuggester(t, llmMock).Suggest(context.Background(), suggest.Intent{Description: "90s action"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Acquisitions) != 1 || prop.Acquisitions[0].TMDBID != 100 {
+		t.Fatalf("parallel tool response escaped the single-call bound: %+v", prop.Acquisitions)
+	}
+}
+
+// A small local model can return schema-valid {"picks":[]} without ever using
+// the catalog. Give that specific failure one bounded grounding retry rather
+// than persisting a misleading no-results outcome.
+func TestSuggest_RetriesOnceWhenModelNeverSearches(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		testkit.FinalResponse(`{"picks":[]}`),
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+	)
+	prop, err := buildSuggester(t, llmMock).Suggest(context.Background(), suggest.Intent{Description: "science fiction"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Lineup) != 1 || prop.Lineup[0].TMDBID != 603 {
+		t.Fatalf("bounded grounding retry did not recover the proposal: %+v", prop)
+	}
+	if llmMock.Calls != 3 {
+		t.Fatalf("model calls = %d, want empty final + tool call + grounded final", llmMock.Calls)
 	}
 }
 
@@ -213,6 +436,9 @@ func TestSuggest_ForwardsSamplingControls(t *testing.T) {
 	}
 	if *llmMock.LastOpts.Temperature > 0.5 {
 		t.Errorf("grounded temperature = %v, want low (<=0.5) for JSON/tool adherence", *llmMock.LastOpts.Temperature)
+	}
+	if llmMock.LastOpts.MaxTokens <= 0 || llmMock.LastOpts.MaxTokens > 2048 {
+		t.Errorf("grounded max tokens = %d, want a positive hosted-cost ceiling <= 2048", llmMock.LastOpts.MaxTokens)
 	}
 	// JSONMode is OFF while tools are offered — forcing format:json + tools corrupts
 	// the tool-call channel on some models (they emit the call as content JSON). The

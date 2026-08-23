@@ -899,6 +899,33 @@ Two consequences worth stating, because both look like details and are not:
 
 `GET /v1/search?q=&scope=library|tmdb|all` fans out accordingly and returns unified `Candidate` results (external ids, library item id when present, `in_library` flag). **Clips are deliberately NOT a search scope (revised).** `Candidate` models a *provisionable title* — its `MediaType` admits only `movie|series`, and it flows through the same dedupe/identity machinery that grounds the LLM. A clip is not a title (§10: commercials "are not 'titles,' so the provisioning loop does not apply"), so representing one as a `Candidate` would push an unprovisionable row with an invalid media type through the grounding path — the exact filler-into-programming leak §10 is built to prevent. Clip search therefore lives where clips live: `GET /v1/filler?q=` applies the `name LIKE` filter this section prescribes and returns real `ClipDTO`s, so a result carries a Tunarr program id and can be deep-linked. *The `clips` scope was advertised in the enum but never implemented — the catalog was always constructed with a nil clip searcher, so it silently returned nothing. Removing it corrects the contract rather than shipping a leak to satisfy it.* Crucially, **this is the same implementation as the Catalog boundary (§8)** — the LLM's grounding tool and the human's search box share one code path, so humans and the model see identical results, and "why did the suggester pick/miss X" is debuggable by typing the query into the UI. Results feed the lineup editor: adding an `in_library` result places it; adding a missing one creates an acquisition — which flows through the existing approval gate, so search adds **no new privilege surface and no new config**.
 
+**A federated result is a bounded blend, not “Library until the page is full.”** After identity
+deduplication, an `all` search that has both owned and missing matches reserves one quarter of the
+page (at least one row) for outside-Library candidates; the remainder prefers immediately playable
+Library candidates. An undersubscribed side yields its unused places to the other. The external
+corpora choose the bounded relevance pool; Loomarr orders each owned/missing partition
+deterministically by name so insertion timing cannot change the result. Genre/era discovery applies the same
+owned/missing blend after its Library-presence backfill, drawing a larger bounded TMDB candidate
+pool when necessary so already-owned results cannot consume the entire grounding window. This is
+candidate **exposure**, not approval or acquisition: the model still rejects poor fits, every chosen
+id remains grounded and revalidated, `MaxAcquire` still caps missing picks, and the approval gate
+still owns spending. The reserve prevents a large Library from making discovery self-sealing while
+keeping most of the model's context immediately playable — the deliberate accuracy/serendipity
+balance.
+
+TMDB exposes movie and series discovery as separate endpoints. When the tool does not pin a media
+type, Loomarr gives each populated type half of the bounded TMDB pool before the Library-presence
+blend; an undersubscribed type yields its unused slots. Appending movies first and truncating later is
+not neutral—it silently makes every sufficiently broad mixed request movies-only.
+
+Holiday, motif, franchise, and topic requests use TMDB's keyword corpus rather than pretending that
+title search scans plot text. Loomarr resolves the model's grounded keyword terms through
+`/search/keyword`, prefers an exact normalized keyword name when available, and discovers movies or
+series through `with_keywords` (multiple resolved terms are recall-oriented OR alternatives). Genre
+and era filters may narrow the same request. The resulting candidates go through the identical
+presence backfill and owned/missing blend above; keywords widen the real candidate corpus, never the
+set of ids the model may fabricate.
+
 **Scopes follow live configuration, not boot-time construction.** `library` requires a current,
 complete `library.flavor` + `library.url` + `library.token` connection; `tmdb` requires a current
 `tmdb.api_key`. `all` (and an omitted scope) searches
@@ -917,6 +944,15 @@ Channel/proposal/Board filtering and Help search stay **client-side** — househ
 
 Turns a channel **intent** (NL description + optional constraints: era, runtime target, tone, must-include/exclude) into a **proposal**: a lineup from existing library content + an acquisition list of missing titles. Approved acquisitions feed the provisioner; the approved lineup feeds the scheduler. The intent also carries the **refine** inputs (§7 `POST .../{id}/refine`): a free-text change plus the channel's *current lineup* as context, rendered into the prompt so the model reasons from what's already there. Grounding is unchanged — the current lineup is context only; every new pick is still grounded through the catalog tool (real ids), so a refine can't invent titles any more than a fresh suggestion can.
 
+**Ambient context is an explicit snapshot, not hidden nondeterminism.** Today the suggester reasons
+about a daypart or weather condition only when the request says it (for example, “rainy late night”).
+If Loomarr later supplies current time or weather automatically, the Proposal Intent must carry the
+resolved household-local daypart and a coarse optional condition (`clear|rain|snow|storm|hot|cold`)
+as inspectable inputs. Ranking may use them as soft taste signals only: the user's words, audience
+safety, exclusions, grounding, quotas, and approval remain stronger. The suggester must not fetch
+weather itself; choosing a location source/provider is a separate privacy and dependency decision.
+Evaluation pins these values or writes them into the request so identical inputs remain reproducible.
+
 ```mermaid
 flowchart LR
   Intent[Channel intent: NL + constraints]
@@ -932,7 +968,8 @@ flowchart LR
 
 ### Grounding — the critical correctness rule
 An AI that can trigger real downloads must never act on a hallucinated title.
-- The LLM does **not** invent titles; it proposes candidates via a **catalog tool** (function-calling) that searches the real library + TMDB/TVDB and returns **real external ids**. The model selects from tool results. The tool supports both **keyword search** (by title text) and **discovery** (by genre + era) — so an abstract intent ("high-energy 90s action") surfaces themed content instead of an empty title-match, and each returned candidate carries **genre + a short overview** so the model reasons about theme rather than guessing from the title string alone.
+- The LLM does **not** invent titles; it proposes candidates via a **catalog tool** (function-calling) that searches the real library + TMDB/TVDB and returns **real external ids**. The model selects from tool results. The tool supports **title search**, **genre + era discovery**, and **TMDB keyword discovery** for holidays, motifs, franchises, and topics — so an abstract intent ("high-energy 90s action") or a thematic one ("cozy Christmas movies") surfaces grounded content instead of depending on an exact title match. Each returned candidate carries **genre + a short overview** so the model reasons about theme rather than guessing from the title string alone.
+- TMDB movie and TV discovery use different genre id namespaces. Human genre names are translated per endpoint (`Science Fiction` → movie `878` but TV `10765`, `Action` → movie `28` but TV `10759`, and `Family` → movie `10751` but TV `10762`) before a mixed search is blended. One shared numeric mapping would silently make valid TV discovery empty.
 - Every proposal item resolves to a real id, tagged `in_library: true|false`; unresolvable items are dropped before display.
 - Acquisitions re-validated against TMDB (exists) + library (not present) before actionable.
 - Library/TMDB text in prompts is **untrusted**: it must not steer tools, change quotas, or reach secrets; catalog tools are read-only.
@@ -943,6 +980,37 @@ One `Suggester` interface; provider by config. **Two adapters, both plain `net/h
 - **`openai`** (generic OpenAI-compatible: `/v1/chat/completions` with tools) — **one** adapter that covers the converged ecosystem, so the model is a config choice, not a per-vendor fork: OpenAI, Gemini (compat endpoint), Groq, Together, OpenRouter, and local runtimes (llama.cpp/vLLM/LocalAI/LM Studio) — **and Ollama's own `/v1` mode**. **Claude is reached through OpenRouter/an OpenAI-compatible gateway, not a native Anthropic SDK** (a deliberate net dependency *reduction* — the dialect is the interface; do not add named per-vendor adapters). The one shape difference it normalizes: OpenAI returns tool-call `arguments` as a JSON *string* (Ollama gives an object).
 
 `LLM_PROVIDER` selects the client; the model is `LLM_MODEL` (or an in-app selection, §8.1). Both need structured JSON output + tool-use; prompts/tool schemas stay provider-neutral. **JSON mode is off whenever tools are offered** — forcing `format:json`/`response_format` *and* tools makes some models emit the tool call as a JSON object in `content` instead of the native `tool_calls` array, which the grounding loop then mis-reads as a pick-less final answer. Because different models present their *final* JSON differently (some bare, some wrapped in a ```` ```json ```` fence or a sentence of prose even when told "ONLY JSON"), the parser extracts the outermost balanced JSON object from the final turn before validating — presentation never rejects a well-formed, grounded proposal. Grounding is unaffected: extraction only decides whether the picks are *readable*, never which picks survive the surfaced-id chokepoint.
+
+Every grounded tool/final turn carries `max_tokens: 2048`. The bounded proposal fits within that
+ceiling, while a hosted provider cannot reserve its unbounded default completion budget repeatedly
+through the tool loop. This is both a cost ceiling and an availability guard: OpenRouter may reject a
+request before inference when its maximum possible completion exceeds the account's in-flight budget.
+The final selection is limited to eight concise picks so a model cannot turn a broad discovery pool
+into truncated JSON that exhausts that same bound. Selection mirrors the exposure balance instead of
+undoing it: well-matched Library titles anchor immediate playback, while an allowed acquisition budget
+reserves roughly one third of a 6–8-title proposal for genuinely less-obvious outside-Library
+discoveries when such candidates exist. The reserve is conditional on relevance and every hard
+qualifier; it never licenses random novelty or forces a weak acquisition.
+
+A schema-valid empty final answer is not accepted immediately when the model never surfaced a catalog
+candidate. Loomarr gives that exact failure one lower-temperature retry that explicitly requires a
+catalog call and names the title/genre/keyword choices. The retry neither invents candidates nor
+widens authority: it still passes through the same read-only tool, surfaced-id chokepoint, acquisition
+revalidation, quota, and approval gate. A second empty answer fails normally, keeping the loop bounded.
+
+Policy grounding does not delegate explicit user constraints back to probabilistic output. A rating
+the user writes (for example, `keep it PG-13`) is retained as the exact audience ceiling even on an
+otherwise adult channel, while an unqualified adult channel still has no inferred ceiling. A request
+that explicitly promises child or family safety contributes a deterministic `TV-Y7` or `TV-PG`
+maximum even when the model omits policy; unrated or harder picks are refused before approval. A request
+that names a built-in holiday deterministically becomes `seasonal.mode=exclusive` with only that
+holiday id selected; an empty holiday subset would mean all built-ins and is therefore not an honest
+representation of a Christmas-, Halloween-, or other single-holiday channel.
+An existing-channel refine that merely adds holiday programming is different: it contributes a
+grounded `holiday:<id>` scheduling rule and leaves the year-round seasonal identity intact. Only a
+refine that explicitly turns the object into a holiday *channel* receives the exclusive override.
+Daypart and holiday rules are persisted policy, so both new and existing channels change their
+eligible slice deterministically at clock boundaries without re-running inference each hour.
 
 **The probe is the arbiter of capability:** tool-calling support varies by runtime and model, and generic endpoints expose no uniform capability API — so the §13 wizard check is *behavioral* (send a trivial tool-call request, assert a real tool call returns). Ollama's declared capabilities are a pre-check only. Keep the tool loop to **sequential single tool calls** (no parallel-call dependence — the least-supported corner of the dialect); the grounding pipeline already ensures a weak model degrades to "no valid proposal," never to corruption.
 
@@ -5084,11 +5152,32 @@ repositories per database.
 run that may skip when no live library, catalog, or model is configured. `make eval-cert` is the
 release/operator assertion: missing configuration, an unexecuted case, a failed deterministic gate,
 or a judge score below its declared floor fails the command. Its versioned corpus contains the exact
-four starter-template Intents plus adversarial grounding cases, uses the real production suggester and
+four starter-template Intents plus named-title, thematic, holiday, and adversarial grounding cases.
+Holiday cases span family and adult seasonal requests, assert both exclusive mode and the exact
+holiday subset, and
+require outside-Library proposals where acquisition is allowed. The scorecard reports relevance and
+serendipity separately: relevance rewards qualifier fidelity, while serendipity rewards coherent
+less-obvious additions without treating randomness as novelty. The corpus uses the real production suggester and
 catalog path, and writes a machine-readable scorecard naming the schema version, corpus version,
 provider/model (never credentials), every case outcome, and the aggregate certification result.
 Network and inference keep it outside `make check`; a stored scorecard is evidence for one named
 model/catalog snapshot, not a timeless claim that every provider is certified.
+`make eval-matrix` runs that unchanged corpus twice—once with the configured local generator and once
+through OpenRouter's OpenAI-compatible endpoint—and writes separate named scorecards. Because local
+inference competes directly with playback, transcode, memory, and GPU capacity on an appliance,
+the target refuses to start unless the operator explicitly sets `LOOMARR_EVAL_ALLOW_LOCAL=1` after
+confirming the host is idle and has enough headroom. The target never starts, pulls, or configures a
+model runtime itself, and its two generator legs run sequentially. The local leg may use an
+OpenRouter model as an independent judge. A matrix is required evidence for discovery
+tuning so behavior is not optimized around one local model's tool-call quirks; provider/model and
+judge choices remain explicit run inputs, and no credential enters either artifact.
+An expectation that only needs real grounded content counts owned lineup entries and outside-Library
+acquisitions together; it asserts a particular ownership side only when that distinction is part of
+the behavior under test. Each case also records only structural grounding diagnostics (title/genre/keyword call counts and the
+number of candidates returned, never prompts or catalog text). An empty proposal is classified as
+`no_tool_call`, `retrieval_empty`, `selection_empty`, `generation_error`, or `provider_error`; retrieval, provider
+availability, and curation can therefore be tuned
+independently instead of treating every zero-lineup result as a model-quality mystery.
 
 ### 14.2 The package map
 
@@ -5242,7 +5331,7 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `TRUST_PROXY` | `false` (§11) — trust `X-Forwarded-For`/`X-Forwarded-Proto`. Default `false`: the login rate-limit key and `cookie.secure=auto` use the socket peer address, so forwarding headers can't be forged by a direct client. Set `true` only when a reverse proxy in front sets these headers. |
 | `LOOMARR_PPROF` | *(unset)* — **development only.** `1` mounts `/debug/pprof/*` (§7). Unset ⇒ the routes do not exist. Bootstrap-tier for the same reason as `LOOMARR_DEV_LOGIN`: it decides which routes are mounted, and a profiling surface an admin session could switch on at runtime would be a worse hole than the one it opens. Boot WARNs while it is on. |
 | `LOOMARR_DEV_LOGIN` | *(unset)* — **development only.** `1` registers `POST /v1/auth/dev-login`, a credential-free admin sign-in (§11), and makes the login screen offer it. Unset ⇒ the route does not exist. Bootstrap-tier (read at boot, not hot-appliable): it decides which routes are mounted, and a bypass that could be switched on at runtime through the settings API would be a worse hole than the one it opens. Boot WARNs on every startup while it is on. |
-| `JOB_WORKERS` / `JOB_TIMEOUT` | `2` / `10m` (§8) |
+| `JOB_WORKERS` / `JOB_TIMEOUT` | `1` / `10m` (§8). One suggestion at a time is the appliance-safe default because a local model may share CPU, memory, and GPU with playback or transcode. A larger or hosted-model deployment may deliberately raise it. |
 | `JOBS_RETENTION` / `PROPOSALS_RETENTION` | `720h` / `2160h` (§5 housekeeping). |
 | `ACTIVITY_RETENTION` | `720h` — how long Dashboard activity rows are kept before `housekeeping` removes them (§5, §18.1, V32). |
 | `episodes.max_age` | `24h` — how stale a cached series episode list may be before `channel-maintenance` re-enumerates it (§5). A miss or an aged-out row still falls back to the live library call, so this bounds staleness, never correctness. |

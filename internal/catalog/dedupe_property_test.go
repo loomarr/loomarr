@@ -479,9 +479,10 @@ func assertInLibraryFirstThenName(t *testing.T, cands []Candidate) {
 	}
 }
 
-// Truncation to limit is order-stable too: the first `limit` of the ordered
-// output equals the full ordered output truncated. dedupeAndOrder sorts BEFORE
-// truncating, so which candidates survive must not depend on add-order.
+// Truncation to limit is order-stable too. The bounded blend deliberately is NOT
+// the first `limit` rows of the full in-library-first output: when both partitions
+// exist it reserves outside-Library discovery slots. Which candidates fill that
+// blend must still be independent of add-order.
 func TestProp_DedupeAndOrder_TruncationStable(t *testing.T) {
 	rng := rand.New(rand.NewSource(propSeed + 5))
 	const iters = 1000
@@ -494,10 +495,7 @@ func TestProp_DedupeAndOrder_TruncationStable(t *testing.T) {
 		full := foldCorpus(corpus, 1000)
 		limit := 1 + rng.Intn(len(full)+2)
 
-		want := orderKeys(full)
-		if limit < len(want) {
-			want = want[:limit]
-		}
+		want := orderKeys(foldCorpus(corpus, limit))
 		for s := 0; s < 3; s++ {
 			shuffled := append([]Candidate(nil), corpus...)
 			rng.Shuffle(len(shuffled), func(a, b int) {
@@ -508,6 +506,9 @@ func TestProp_DedupeAndOrder_TruncationStable(t *testing.T) {
 				t.Fatalf("seed=%#x iter=%d shuffle=%d limit=%d: truncated output depends on add-order\nwant=%v\ngot =%v",
 					propSeed, i, s, limit, want, got)
 			}
+		}
+		if len(want) != min(limit, len(full)) {
+			t.Fatalf("seed=%#x iter=%d limit=%d: blended length=%d want %d", propSeed, i, limit, len(want), min(limit, len(full)))
 		}
 	}
 }

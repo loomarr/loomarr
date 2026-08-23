@@ -373,7 +373,7 @@ func TestRegistry_MovedDefaults(t *testing.T) {
 	cases := map[string]string{
 		"request.ttl":  "48h",
 		"session.ttl":  "720h",
-		"job.workers":  "2",
+		"job.workers":  "1",
 		"llm.provider": "ollama",
 	}
 	for key, want := range cases {

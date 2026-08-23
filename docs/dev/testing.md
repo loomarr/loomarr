@@ -38,6 +38,7 @@ wouldn't catch it either, since `go build` skips `_test.go` and most tagged file
 | ffmpeg | `make test-ffmpeg` | Programmes sequence through real ffmpeg | manual |
 | LLM eval | `make eval` | Real intents against a real model | manual |
 | LLM certification | `make eval-cert` | Exact starter/adversarial corpus executed with a versioned scorecard | release/manual |
+| LLM matrix | `make eval-matrix` | Same corpus on local and OpenRouter generation, judged through OpenRouter | release/manual |
 | Rust supply chain | `make rust-audit` | Cargo advisories, licences, and sources | weekly + manual |
 | Rust fuzz | `make rust-fuzz` | Bounded worker protocol and decoder do not crash | weekly + manual |
 | SSO | `make test-sso` | OIDC against real Authelia + Authentik | manual |
@@ -52,8 +53,24 @@ absent. `make eval-cert` is an assertion: missing configuration, a skipped/unexe
 grounding or negative-constraint failure, a required judge failure, or an unwritable scorecard makes
 the command fail. It always bypasses Go's test cache and writes
 `$LOOMARR_ARTIFACT_DIR/semantic-certification.json` unless `LOOMARR_EVAL_OUT` selects another path.
-The scorecard records its schema/corpus version and provider/model, never credentials. It certifies
-that one configured model and catalog snapshot; it is not part of the hermetic `make check` gate.
+The scorecard records its schema/corpus version and provider/model, never credentials. Alongside hard
+grounding, exact holiday policy, explicit rating-limit, and outside-Library expectations, judge-backed cases report relevance and
+serendipity separately: novelty only scores when it remains defensibly on-theme. The versioned corpus
+includes holiday requests as well as starter, named-title, thematic, and adversarial cases. It
+also records tool-call mode and surfaced-candidate counts, classifying outcomes as no tool call,
+empty retrieval, empty selection after retrieval, invalid generation, or provider error, so a low score points at the layer to tune. It
+certifies that one configured model and catalog snapshot; it is not part of the hermetic `make check`
+gate.
+
+`make eval-matrix` prevents tuning to one local model. It requires the ordinary exported `LLM_*`
+configuration plus `OPENROUTER_API_KEY` and `OPENROUTER_MODEL`; `OPENROUTER_JUDGE_MODEL` may select a
+different hosted judge. It writes separate `local` and `openrouter` scorecards from the exact same
+corpus. OpenRouter uses its OpenAI-compatible `https://openrouter.ai/api/v1` endpoint; keys are passed
+only in request authorization and are never scorecard metadata. The command also requires
+`LOOMARR_EVAL_ALLOW_LOCAL=1`: set it only after confirming the machine is idle and the configured
+local runtime fits available RAM/VRAM without spilling. The two legs are sequential, and the target
+does not provision or start Ollama. On a shared media server, run this manual certification during a
+maintenance window; playback and transcode capacity take precedence over evaluation evidence.
 
 ### Rust dependency review
 

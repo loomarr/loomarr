@@ -18,13 +18,20 @@ import (
 // suggester's own model: pass any llm.Provider (the same one is fine for a first
 // pass; a stronger judge model is better). Returns (score, note). A judge error is
 // non-fatal — it returns (-1, reason) and the case is scored on the hard gates only.
-func judge(ctx context.Context, j llm.Provider, c Case, prop suggest.Proposal) (float64, string) {
+type judgeScores struct {
+	Overall     float64
+	Relevance   float64
+	Serendipity float64
+	Reason      string
+}
+
+func judge(ctx context.Context, j llm.Provider, c Case, prop suggest.Proposal) judgeScores {
 	if j == nil || c.JudgeRubric == "" {
-		return -1, "judge skipped (no rubric or no judge model)"
+		return judgeScores{Overall: -1, Relevance: -1, Serendipity: -1, Reason: "judge skipped (no rubric or no judge model)"}
 	}
 	titles := titleList(prop)
 	if titles == "" {
-		return -1, "judge skipped (empty proposal)"
+		return judgeScores{Overall: -1, Relevance: -1, Serendipity: -1, Reason: "judge skipped (empty proposal)"}
 	}
 	prompt := fmt.Sprintf(`You are grading a generated TV-channel lineup for how well it fits a request.
 
@@ -35,8 +42,11 @@ RUBRIC (what a good result looks like): %s
 THE LINEUP THAT WAS GENERATED:
 %s
 
-Score how well the lineup satisfies the request, from 0.0 (completely wrong) to 1.0 (excellent).
-Reply with ONLY this JSON: {"score": <0..1>, "reason": "<one sentence>"}`,
+Score three dimensions from 0.0 to 1.0:
+- relevance: accuracy to the request and every qualifier.
+- serendipity: coherent, defensible discoveries beyond only the most obvious answers. Random or off-theme picks score LOW, not high.
+- overall: the quality of the lineup considering both, with relevance more important.
+Reply with ONLY this JSON: {"overall": <0..1>, "relevance": <0..1>, "serendipity": <0..1>, "reason": "<one sentence>"}`,
 		c.Intent.Description, c.JudgeRubric, titles)
 
 	resp, err := j.Chat(ctx, []llm.Message{
@@ -44,13 +54,13 @@ Reply with ONLY this JSON: {"score": <0..1>, "reason": "<one sentence>"}`,
 		{Role: llm.User, Content: prompt},
 	}, llm.ChatOptions{JSONMode: true})
 	if err != nil {
-		return -1, fmt.Sprintf("judge call failed: %v", err)
+		return judgeScores{Overall: -1, Relevance: -1, Serendipity: -1, Reason: fmt.Sprintf("judge call failed: %v", err)}
 	}
-	score, reason, perr := parseJudge(resp.Content)
+	scores, perr := parseJudge(resp.Content)
 	if perr != nil {
-		return -1, fmt.Sprintf("judge output unparseable: %v (%q)", perr, truncate(resp.Content, 120))
+		return judgeScores{Overall: -1, Relevance: -1, Serendipity: -1, Reason: fmt.Sprintf("judge output unparseable: %v (%q)", perr, truncate(resp.Content, 120))}
 	}
-	return score, reason
+	return scores
 }
 
 // titleList renders the proposal's grounded titles for the judge to read.
@@ -74,22 +84,31 @@ func truncate(s string, n int) string {
 
 // parseJudge extracts {"score":..,"reason":..} from the judge's reply, tolerating a
 // code fence or surrounding prose (same robustness the suggester needs).
-func parseJudge(content string) (float64, string, error) {
+func parseJudge(content string) (judgeScores, error) {
 	span := extractObject(content)
 	var out struct {
-		Score  float64 `json:"score"`
-		Reason string  `json:"reason"`
+		Overall     float64 `json:"overall"`
+		Relevance   float64 `json:"relevance"`
+		Serendipity float64 `json:"serendipity"`
+		Reason      string  `json:"reason"`
 	}
 	if err := json.Unmarshal([]byte(span), &out); err != nil {
-		return 0, "", err
+		return judgeScores{}, err
 	}
-	if out.Score < 0 {
-		out.Score = 0
+	return judgeScores{
+		Overall: clampScore(out.Overall), Relevance: clampScore(out.Relevance),
+		Serendipity: clampScore(out.Serendipity), Reason: out.Reason,
+	}, nil
+}
+
+func clampScore(score float64) float64 {
+	if score < 0 {
+		return 0
 	}
-	if out.Score > 1 {
-		out.Score = 1
+	if score > 1 {
+		return 1
 	}
-	return out.Score, out.Reason, nil
+	return score
 }
 
 // extractObject returns the outermost {...} span (string/escape aware) — a local
