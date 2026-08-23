@@ -97,6 +97,18 @@ It's also the only job with a `timeout-minutes`; GitHub's default is six hours.
 It exists because a Dockerfile that could never build for arm64 sat undetected. Build both
 platforms or it can't catch that.
 
+## Manual scopes are explicit
+
+Manual CI defaults to `release-candidate`. That scope is for certifying an exact `main` commit before
+tagging: it runs repository contracts, the real-codec image-worker certification, and both native
+release-image builds. It does not rerun Android, Windows, PostgreSQL, Go race, frontend, Playwright,
+tuner, docs, or the macOS harness; their normal push and pull-request impact coverage is unchanged.
+
+Select `full` explicitly when an investigation genuinely needs every matrix. Both modes publish a
+scope-marker job, and `scripts/validate-release-source.sh` rejects an unmarked manual run. The
+release-candidate marker also makes the contract and certification jobs mandatory evidence rather
+than relying only on the workflow's overall conclusion.
+
 ## `ci-ok` is the only required check
 
 It always runs and inspects `needs.*.result` explicitly. That has to be explicit: a skipped job

@@ -20,19 +20,41 @@ fi
 
 run=$(gh api \
   "/repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&per_page=20" \
-  --jq '[.workflow_runs[] | select(.head_branch == "main" and (.event == "push" or .event == "workflow_dispatch"))] | sort_by(.created_at) | last | [.id, .conclusion] | @tsv')
-IFS=$'\t' read -r run_id conclusion <<< "$run"
+  --jq '[.workflow_runs[] | select(.head_branch == "main" and (.event == "push" or .event == "workflow_dispatch"))] | sort_by(.created_at) | last | [.id, .conclusion, .event] | @tsv')
+IFS=$'\t' read -r run_id conclusion event <<< "$run"
 if [[ "$conclusion" != success ]]; then
   echo "tagged main commit does not have a successful CI run (found: ${conclusion:-none})" >&2
+  exit 1
+fi
+if [[ "$event" != push && "$event" != workflow_dispatch ]]; then
+  echo "tagged main commit has no supported CI evidence (found: ${event:-none})" >&2
   exit 1
 fi
 
 jobs=$(gh api --paginate \
   "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs?per_page=100" \
   --jq '.jobs[] | [.name, .conclusion] | @tsv')
-for platform in linux/amd64 linux/arm64; do
-  if ! grep -Fqx "Image — release build (${platform})"$'\t'"success" <<< "$jobs"; then
-    echo "successful CI run did not prove the release image for ${platform}" >&2
+
+require_job() {
+  local name=$1
+  local expected=${2:-success}
+  if ! grep -Fqx "$name"$'\t'"$expected" <<< "$jobs"; then
+    echo "successful CI run did not prove ${name} (${expected})" >&2
     exit 1
   fi
+}
+
+require_job "CI"
+for platform in linux/amd64 linux/arm64; do
+  require_job "Image — release build (${platform})"
 done
+
+if [[ "$event" == workflow_dispatch ]]; then
+  if grep -Fqx "Release candidate — exact main scope"$'\t'"success" <<< "$jobs"; then
+    require_job "Go + Rust — repository contracts"
+    require_job "Rust image — runtime certification"
+  elif ! grep -Fqx "Manual CI — full scope"$'\t'"success" <<< "$jobs"; then
+    echo "manual CI run has no recognized release-candidate or full-scope marker" >&2
+    exit 1
+  fi
+fi
