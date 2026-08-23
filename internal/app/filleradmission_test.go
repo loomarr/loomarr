@@ -124,7 +124,7 @@ func TestAutomaticFillerAdmission_InsertsBreakIntoInternalSchedule(t *testing.T)
 		t.Fatal(err)
 	}
 
-	pods := filler.NewPodAdapter(clipCatalogAdapter{st: st}, func() filler.Policy {
+	pods := filler.NewPodAdapter(clipCatalogAdapter{st: st}, nil, func() filler.Policy {
 		return filler.Policy{PodMax: 4, BreakDurationMs: 30_000}
 	}, slog.New(slog.DiscardHandler))
 	engine := channels.New(st, nil, fillerAdmissionAvailability{

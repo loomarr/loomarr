@@ -4613,7 +4613,45 @@ The scheduler assembles realistic **ad pods**, not single random clips:
   catalog decision: the durable ordinary sweep remains the crash-safe retry, while this immediate
   pass is only the latency path. Human filing and confidence-gated automatic filing call the same
   seam, so admission has one scheduling consequence regardless of who made the decision.
-- **Repeat avoidance:** don't repeat a clip within a session/window.
+- **Repeat avoidance and durable rotation (V58).** No-repeat inside one pod remains absolute, but
+  a changing seed is not exposure history. Loomarr persists one bounded row per `(channel, clip)`:
+  play count plus the most recent actual-airing timestamp. The history is channel-scoped because
+  the same commercial airing on one channel must not suppress an independent channel, and it
+  survives restart, clip removal, and later restoration without becoming an append-only log;
+  deleting the owning channel cascades its rows. The
+  row retains one prior timestamp solely to reconstruct an active break's pre-start snapshot after
+  its current clip writes the latest timestamp; no-repeat means one predecessor is sufficient.
+  Preview and reconcile never write this table. Internal playout records the exposure, together
+  with the clip's existing aggregate counter, only when the parent channel encoder starts the
+  clip; viewer tune-ins and schedule rebuilds therefore cannot inflate it.
+
+  Assembly takes an immutable exposure snapshot. For a specific break the snapshot is cut off
+  strictly before that break's start, so recording the first clip cannot reshuffle the second
+  clip when the resolver advances through the same pod. Given the same catalog, snapshot,
+  channel, and break seed, the result is identical. Within each matching rung, candidates are
+  deterministically tie-shuffled and then ranked: never aired first, then least recently aired
+  outside `filler.cooldown_seconds`, then least recently aired inside the cooldown only when the
+  earlier tiers cannot fill the bounded pod. Bumpers use the same ranking. This is least-recently-
+  aired fairness: among candidates that fit the remaining duration, a clip does not repeat until
+  the alternatives have aired. A newly admitted clip receives bounded exploration because it is
+  never-aired until its first real play, but it can consume no more than the ordinary pod budget;
+  after one airing it rejoins the same recency ordering.
+
+  Cooldown is a preference, not permission to create dead air. A small or exact-fit pool relaxes
+  to its oldest recent candidates and still obeys the duration and clip-count ceilings; the pod
+  reports that pressure for telemetry. Pins remain ahead of rotation, in operator order, and may
+  intentionally repeat; the channel UI says so. Exclusion still wins over pin. Actual internal
+  airings increment low-cardinality rotation metrics (`fresh` versus `repeat`, plus whether
+  cooldown relaxed), with no channel or clip labels.
+
+  Tunarr-backed channels remain an explicit backend boundary. Tunarr owns their actual picker and
+  play-history database; its 1.3.8 API exposes session counts but no current filler-item callback,
+  so Loomarr must not fabricate those airings in its own table. Loomarr writes the configured
+  repeat cooldown to Tunarr's channel-level `fillerRepeatCooldown` in milliseconds. The attached
+  Loomarr list itself has zero list cooldown: with exactly one managed list, applying the same
+  value as a list cooldown blocks the entire source rather than rotating programs. Tunarr then
+  enforces its own program history; Loomarr's durable per-channel metrics and guarantees are
+  reported only where Loomarr owns playout and can observe the actual start.
 - **Fallback ladder:** exact-era match → widen era (a decade either side of the range) → any appropriate-audience clip → **clips whose audience could not be grounded** → channel bumper card (Tunarr's flex fallback). Never dead air.
 
   ⚠ **The untagged rung (V51f) exists because picking an Audience on an un-tagged catalog emptied EVERY rung above it.** `filterAudience` admits a clip whose audience equals the channel's or is `general`; a clip Loomarr could not classify carries `""` and matched neither, so it was invisible to pod assembly — and the meter said "nothing in the catalog fits", never "your catalog is untagged". These clips now fill breaks at the bottom rung, below every grounded match, so a real classification always wins and the operator can see the state they are actually in.
@@ -5877,7 +5915,7 @@ contents, size, and expiry. Loomarr never sends diagnostics automatically.
 
 ### Metrics and health
 
-- **Metrics (Prometheus):** records by state; requests submitted / give-ups; webhook events by type; library-lookup + reconcile-loop latency; **channel reconciles, Tunarr API latency/errors, slots pending-vs-filled per channel**; LLM latency + (hosted) token/cost, proposals generated, acquisitions proposed/approved/rejected, grounding-dropped candidates; filler clips synced/tagged/untagged and pod fallback-ladder depth (how often matching degrades); logins (success/failure) and active sessions; job queue depth + janitor purge counts; slot-drift substitutions; Diagnostic events dropped by reason/source and retained Diagnostic/process-output bytes. Outbound request count and latency wrap the retrying transport, so four attempts remain **one logical request** in those series; `loomarr_outbound_retries_total{target,reason}` separately counts each actual additional attempt with a bounded reason (`transport`, `408`, `429`, `500`, `502`, `503`, or `504`).
+- **Metrics (Prometheus):** records by state; requests submitted / give-ups; webhook events by type; library-lookup + reconcile-loop latency; **channel reconciles, Tunarr API latency/errors, slots pending-vs-filled per channel**; LLM latency + (hosted) token/cost, proposals generated, acquisitions proposed/approved/rejected, grounding-dropped candidates; filler clips synced/tagged/untagged, pod fallback-ladder depth (how often matching degrades), and actual internal-playout rotation airings by bounded repeat/cooldown state; logins (success/failure) and active sessions; job queue depth + janitor purge counts; slot-drift substitutions; Diagnostic events dropped by reason/source and retained Diagnostic/process-output bytes. Outbound request count and latency wrap the retrying transport, so four attempts remain **one logical request** in those series; `loomarr_outbound_retries_total{target,reason}` separately counts each actual additional attempt with a bounded reason (`transport`, `408`, `429`, `500`, `502`, `503`, or `504`).
 - **Readiness** true only after DB connectivity + migrations, and (soft) Tunarr reachability.
 
 ---

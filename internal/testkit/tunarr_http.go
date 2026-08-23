@@ -18,8 +18,9 @@ type TunarrHTTPConfig struct {
 
 // TunarrFillerPolicy is one filler attachment observed by the shared Tunarr wire fixture.
 type TunarrFillerPolicy struct {
-	Weight          int
-	CooldownSeconds int
+	Weight           int
+	CooldownSeconds  int
+	RepeatCooldownMs int64
 }
 
 // TunarrHTTP is the shared HTTP-level Tunarr fixture for adapter contract tests.
@@ -269,6 +270,12 @@ func (m *TunarrHTTP) handleGetChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"id": r.PathValue("id"), "fillerCollections": collections,
+		"fillerRepeatCooldown": func() int64 {
+			if len(history) == 0 {
+				return 0
+			}
+			return history[len(history)-1].RepeatCooldownMs
+		}(),
 	})
 }
 
@@ -279,6 +286,7 @@ func (m *TunarrHTTP) handlePutChannel(w http.ResponseWriter, r *http.Request) {
 			Weight          int `json:"weight"`
 			CooldownSeconds int `json:"cooldownSeconds"`
 		} `json:"fillerCollections"`
+		RepeatCooldownMs int64 `json:"fillerRepeatCooldown"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		m.t.Errorf("decode Tunarr channel update: %v", err)
@@ -290,6 +298,7 @@ func (m *TunarrHTTP) handlePutChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	policy := TunarrFillerPolicy{
 		Weight: body.Collections[0].Weight, CooldownSeconds: body.Collections[0].CooldownSeconds,
+		RepeatCooldownMs: body.RepeatCooldownMs,
 	}
 	m.mu.Lock()
 	m.fillerPolicies[r.PathValue("id")] = append(m.fillerPolicies[r.PathValue("id")], policy)

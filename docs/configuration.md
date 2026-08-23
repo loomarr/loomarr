@@ -169,7 +169,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `filler.breaks_per_hour` (`FILLER_BREAKS_PER_HOUR`) | int | `4` | Default commercial-break frequency for channels that follow it. Set 0 to disable breaks by default; each channel can choose its own frequency. |
 | `filler.break_duration` (`FILLER_BREAK_DURATION`) | duration | `5m` | How long each commercial break lasts by default. Channels can choose their own length. Use breaks per program hour to turn breaks off. |
 | `filler.pod_max` (`FILLER_POD_MAX`) | int | `4` | Preferred clip count per break. Loomarr automatically exceeds it when shorter clips need more slots to fill the requested break length. |
-| `filler.cooldown_seconds` (`FILLER_COOLDOWN_SECONDS`) | int | `30` | Seconds before the same commercial can play again. _(advanced)_ |
+| `filler.cooldown_seconds` (`FILLER_COOLDOWN_SECONDS`) | int | `1800` | Preferred seconds before the same commercial airs again. Loomarr relaxes this predictably when a small pool would otherwise leave a break empty. _(advanced)_ |
 | `filler.min_quality` (`FILLER_MIN_QUALITY`) | int | `0` | Minimum clip height in pixels for a commercial to be eligible (480 excludes 240p rips). 0 disables the floor, which is the default — era accuracy beats resolution. _(advanced)_ |
 | `filler.weight` (`FILLER_WEIGHT`) | int | `1` | How heavily this commercial set is drawn from, relative to others. _(advanced)_ |
 | `filler.min_duration` (`FILLER_MIN_DURATION`) | duration | `10s` | Clips shorter than this are rejected on sight and never enter the catalog — a truncated download is not a short commercial. Set to 0s to accept anything with a readable duration. _(advanced)_ |

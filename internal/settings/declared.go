@@ -852,8 +852,8 @@ func declared() []Setting {
 		},
 		{
 			Key: "filler.cooldown_seconds", Label: "Repeat cooldown (seconds)", EnvVar: "FILLER_COOLDOWN_SECONDS", Group: GroupFiller,
-			Kind: KindInt, Default: 30, Advanced: true,
-			Doc: "Seconds before the same commercial can play again.",
+			Kind: KindInt, Default: 1800, Advanced: true, Validate: nonNegativeWholeNumber,
+			Doc: "Preferred seconds before the same commercial airs again. Loomarr relaxes this predictably when a small pool would otherwise leave a break empty.",
 		},
 		// ⚠ Default 0 = OFF, and that is the whole safety property of this knob (V17c).
 		// `00014_clips_quality` shipped with quality as display-only and warned that a

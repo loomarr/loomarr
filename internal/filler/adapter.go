@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sort"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/metrics"
 )
@@ -17,7 +18,8 @@ import (
 // a per-channel pool (not a per-gap sequence): the scheduler no longer sizes pods
 // to individual gaps.
 type PodAdapter struct {
-	catalog CatalogReader
+	catalog   CatalogReader
+	exposures ExposureReader
 	// policy is RESOLVED PER CALL, not captured once.
 	//
 	// ⚠ **It was a plain `Policy` value, and that quietly broke every filler setting's
@@ -55,6 +57,13 @@ type CatalogReader interface {
 	AllClips(ctx context.Context) ([]Clip, error)
 }
 
+// ExposureReader is the durable channel-history seam used only for actual break planning.
+// Keeping it separate from CatalogReader makes previews/tests that intentionally have no history
+// explicit, and prevents assembly from acquiring any write capability.
+type ExposureReader interface {
+	FillerExposuresByChannel(ctx context.Context, channelID string, before time.Time) (map[string]Exposure, error)
+}
+
 // Selection is a channel's per-channel filler choice in filler-native terms (§10) — the
 // projection of schedule.FillerSelection that assembly needs. Callers (channels/app,
 // which know both packages) translate the policy type to this at the boundary, keeping
@@ -75,8 +84,8 @@ type Selection struct {
 //
 // ⚠ `policy` is a RESOLVER, called on every assembly, so a settings change takes effect on the
 // next pod rather than at the next restart. Pass nil for "no policy" — the zero value.
-func NewPodAdapter(catalog CatalogReader, policy func() Policy, log *slog.Logger) *PodAdapter {
-	return &PodAdapter{catalog: catalog, policy: policy, log: log}
+func NewPodAdapter(catalog CatalogReader, exposures ExposureReader, policy func() Policy, log *slog.Logger) *PodAdapter {
+	return &PodAdapter{catalog: catalog, exposures: exposures, policy: policy, log: log}
 }
 
 // poolGapMs is the notional window Assemble fills to size the channel's clip pool.
@@ -176,6 +185,16 @@ func (a *PodAdapter) BuildFillerList(ctx context.Context, channelID string, seed
 // same channel produce identical output. Returns an empty pod (not an error) when the
 // catalog is empty — "no clips yet" is a normal state the UI renders, not a failure.
 func (a *PodAdapter) Preview(ctx context.Context, channelID string, seed int64, sel Selection) (Pod, error) {
+	return a.previewAt(ctx, channelID, seed, sel, time.Time{})
+}
+
+// PreviewAt assembles an actual break from an immutable history snapshot strictly before its
+// start. Actual clip-start writes during the break therefore cannot reshuffle the remaining pod.
+func (a *PodAdapter) PreviewAt(ctx context.Context, channelID string, seed int64, sel Selection, breakStart time.Time) (Pod, error) {
+	return a.previewAt(ctx, channelID, seed, sel, breakStart)
+}
+
+func (a *PodAdapter) previewAt(ctx context.Context, channelID string, seed int64, sel Selection, breakStart time.Time) (Pod, error) {
 	clips, err := a.catalog.AllClips(ctx)
 	if err != nil {
 		return Pod{}, err
@@ -197,6 +216,14 @@ func (a *PodAdapter) Preview(ctx context.Context, channelID string, seed int64, 
 	// Selection leaves every field at its zero "any" value → the whole catalog, which is
 	// the prior behaviour (and the additive default for a channel with no filler choice).
 	w := a.windowFor(channelID, seed, sel, podMax, breakDurationMs)
+	if a.exposures != nil {
+		exposures, err := a.exposures.FillerExposuresByChannel(ctx, channelID, breakStart)
+		if err != nil {
+			return Pod{}, err
+		}
+		w.Exposures = exposures
+		w.SnapshotAt = breakStart
+	}
 	w.PodMax = podMaxForDuration(clips, w, pol, podMax, breakDurationMs)
 	return Assemble(clips, w, pol, map[string]bool{}), nil
 }

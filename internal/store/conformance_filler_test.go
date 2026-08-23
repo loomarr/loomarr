@@ -314,6 +314,7 @@ func testClipNameSearch(t *testing.T, newStore NewStoreFunc) {
 func testClipPlayCounters(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
+	mustSaveChannel(t, s, sampleChannel("channel-1", 1, time.Time{}))
 
 	c := sampleClip("1994/toys.mp4", "TMNT toys", filler.Commercial, 1994, filler.Kids, "toys")
 	c.Thumbnail = "1994/toys.jpg"
@@ -354,7 +355,7 @@ func testClipPlayCounters(t *testing.T, newStore NewStoreFunc) {
 
 	aired := time.Unix(1_800_000_000, 0).UTC()
 	for i := 0; i < 3; i++ {
-		if err := s.RecordClipPlay(ctx, c.Hash, aired); err != nil {
+		if err := s.RecordClipPlay(ctx, "channel-1", c.Hash, aired); err != nil {
 			t.Fatalf("record play %d: %v", i, err)
 		}
 	}
@@ -385,8 +386,116 @@ func testClipPlayCounters(t *testing.T, newStore NewStoreFunc) {
 
 	// Playout may resolve a clip the catalog has since pruned; that is telemetry missing a
 	// row, not a playback error.
-	if err := s.RecordClipPlay(ctx, "gone/missing.mp4", aired); err != nil {
+	if err := s.RecordClipPlay(ctx, "channel-1", "gone/missing.mp4", aired); err != nil {
 		t.Errorf("recording a play for a pruned clip must not error, got %v", err)
+	}
+}
+
+// V58: rotation history is channel-scoped, durable when a catalog row disappears, and queried
+// through a strict break-start cutoff so a clip beginning inside a break cannot reshuffle its tail.
+func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	mustSaveChannel(t, s, sampleChannel("channel-a", 1, time.Time{}))
+	mustSaveChannel(t, s, sampleChannel("channel-b", 2, time.Time{}))
+	clip := sampleClip("rotation-hash", "rotation.mp4", filler.Commercial, 1994, filler.Kids, "toys")
+	if err := s.UpsertClip(ctx, clip); err != nil {
+		t.Fatal(err)
+	}
+	first := time.UnixMilli(1_800_000_000_123).UTC()
+	second := first.Add(2 * time.Second)
+	if err := s.RecordClipPlay(ctx, "channel-a", clip.Hash, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordClipPlay(ctx, "channel-b", clip.Hash, second); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordClipPlay(ctx, "channel-a", clip.Hash, second); err != nil {
+		t.Fatal(err)
+	}
+
+	a, err := s.FillerExposuresByChannel(ctx, "channel-a", time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := a[clip.Hash]; got.PlayCount != 2 || !got.LastPlayedAt.Equal(second) {
+		t.Fatalf("channel-a exposure = %+v, want count 2 at %v", got, second)
+	}
+	b, err := s.FillerExposuresByChannel(ctx, "channel-b", time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := b[clip.Hash]; got.PlayCount != 1 || !got.LastPlayedAt.Equal(second) {
+		t.Fatalf("channel-b exposure = %+v, want count 1 at %v", got, second)
+	}
+
+	beforeBreak, err := s.FillerExposuresByChannel(ctx, "channel-a", second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := beforeBreak[clip.Hash]; got.PlayCount != 1 || !got.LastPlayedAt.Equal(first) {
+		t.Fatalf("break snapshot = %+v, want the history immediately before its cutoff", got)
+	}
+
+	// Multiple clip-start callbacks cannot lose increments. This pins the upsert arithmetic on
+	// both SQLite and Postgres rather than relying on a read-modify-write in application memory.
+	var wg sync.WaitGroup
+	errs := make(chan error, 4)
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			errs <- s.RecordClipPlay(ctx, "channel-a", clip.Hash, second.Add(time.Duration(i+1)*time.Millisecond))
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent record: %v", err)
+		}
+	}
+	a, err = s.FillerExposuresByChannel(ctx, "channel-a", time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := a[clip.Hash]; got.PlayCount != 6 || !got.LastPlayedAt.Equal(second.Add(4*time.Millisecond)) {
+		t.Fatalf("concurrent exposure = %+v, want all six starts and newest timestamp", got)
+	}
+
+	// A missing catalog row still records actual airing truth. Re-admission must retain it.
+	missing := "removed-and-readmitted"
+	if err := s.RecordClipPlay(ctx, "channel-a", missing, second); err != nil {
+		t.Fatal(err)
+	}
+	a, err = s.FillerExposuresByChannel(ctx, "channel-a", time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := a[missing]; got.PlayCount != 1 || !got.LastPlayedAt.Equal(second) {
+		t.Fatalf("pruned clip exposure = %+v, want durable actual airing", got)
+	}
+	restored := sampleClip(missing, "restored.mp4", filler.Commercial, 1994, filler.Kids, "toys")
+	if err := s.UpsertClip(ctx, restored); err != nil {
+		t.Fatal(err)
+	}
+	a, err = s.FillerExposuresByChannel(ctx, "channel-a", time.Time{})
+	if err != nil || a[missing].PlayCount != 1 {
+		t.Fatalf("re-admission lost exposure: %+v (err=%v)", a[missing], err)
+	}
+	channel, err := s.GetChannel(ctx, "channel-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteChannel(ctx, channel.ID, channel.Revision); err != nil {
+		t.Fatal(err)
+	}
+	a, err = s.FillerExposuresByChannel(ctx, "channel-a", time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(a) != 0 {
+		t.Fatalf("deleted channel retained exposure rows: %+v", a)
 	}
 }
 
@@ -404,6 +513,7 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
+	mustSaveChannel(t, s, sampleChannel("channel-1", 1, time.Time{}))
 
 	c := sampleClip("k1", "keyed.mp4", filler.Commercial, 0, "", "")
 	if c.Hash == c.Path {
@@ -432,14 +542,14 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 
 	// RecordClipPlay is hash-keyed and deliberately silent on a miss, so assert the COUNTER
 	// rather than the error — a path that no-ops returns nil either way.
-	if err := s.RecordClipPlay(ctx, c.Path, now); err != nil {
+	if err := s.RecordClipPlay(ctx, "channel-1", c.Path, now); err != nil {
 		t.Errorf("RecordClipPlay(path) = %v, want a silent no-op", err)
 	}
 	got, _ := s.GetClip(ctx, c.Hash)
 	if got.PlayCount != 0 {
 		t.Errorf("play count = %d after recording against a PATH, want 0", got.PlayCount)
 	}
-	if err := s.RecordClipPlay(ctx, c.Hash, now); err != nil {
+	if err := s.RecordClipPlay(ctx, "channel-1", c.Hash, now); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = s.GetClip(ctx, c.Hash)

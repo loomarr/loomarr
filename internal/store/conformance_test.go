@@ -87,6 +87,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ClipTagsAndPrune", func(t *testing.T) { testClipTagsAndPrune(t, newStore) })
 		t.Run("ClipNameSearch", func(t *testing.T) { testClipNameSearch(t, newStore) })
 		t.Run("ClipPlayCounters", func(t *testing.T) { testClipPlayCounters(t, newStore) })
+		t.Run("ClipExposureRotation", func(t *testing.T) { testClipExposureRotation(t, newStore) })
 		t.Run("ClipKeyIsHashNotPath", func(t *testing.T) { testClipKeyIsHashNotPath(t, newStore) })
 		t.Run("ClipIdentityReplacement", func(t *testing.T) { testClipIdentityReplacement(t, newStore) })
 		t.Run("ClipIdentityReplacementSameHash", func(t *testing.T) { testClipIdentityReplacementSameHash(t, newStore) })

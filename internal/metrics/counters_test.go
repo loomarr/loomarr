@@ -32,6 +32,28 @@ func TestFillerPodAssembled(t *testing.T) {
 	}
 }
 
+func TestFillerRotationAired(t *testing.T) {
+	cases := []struct {
+		name                   string
+		repeated, relaxed, pin bool
+		repeat, cooldown       string
+	}{
+		{"fresh ready", false, false, false, "fresh", "ready"},
+		{"depleted repeat", true, true, false, "repeat", "relaxed"},
+		{"pinned repeat", true, false, true, "repeat", "override"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			counter := fillerRotationAirings.WithLabelValues(tc.repeat, tc.cooldown)
+			before := testutil.ToFloat64(counter)
+			FillerRotationAired(tc.repeated, tc.relaxed, tc.pin)
+			if got := testutil.ToFloat64(counter); got != before+1 {
+				t.Fatalf("rotation counter = %v, want %v", got, before+1)
+			}
+		})
+	}
+}
+
 // SlotSubstitutions adds the count and no-ops on zero (a clean reconcile).
 func TestSlotSubstitutions(t *testing.T) {
 	before := testutil.ToFloat64(slotSubstitutions)

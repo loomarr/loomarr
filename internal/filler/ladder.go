@@ -3,6 +3,7 @@ package filler
 import (
 	"math/rand"
 	"sort"
+	"time"
 )
 
 // This file builds the fallback ladder (§10): the ordered sequence of candidate
@@ -106,6 +107,9 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 	// window but reproduces exactly for a given seed (§19).
 	cands := sortByID(chosen.clips)
 	rng.Shuffle(len(cands), func(i, j int) { cands[i], cands[j] = cands[j], cands[i] })
+	// Stable sorting after the seeded shuffle preserves varied tie-breaking while making durable
+	// rotation authoritative: new first, then oldest outside cooldown, then oldest recent clip.
+	sort.SliceStable(cands, func(i, j int) bool { return rotationLess(cands[i], cands[j], w, policy) })
 
 	var out []Clip
 	var totalMs int64
@@ -149,6 +153,39 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 		return "", nil
 	}
 	return chosen.level, out
+}
+
+const (
+	rotationNever = iota
+	rotationReady
+	rotationRecent
+)
+
+// rotationRank is the domain-owned anti-repeat ordering (§10 V58). The returned timestamp is
+// meaningful only for aired clips; lower tiers and older times rank first.
+func rotationRank(c Clip, w Window, policy Policy) (int, time.Time) {
+	exposure, ok := w.Exposures[c.ID()]
+	if !ok || exposure.PlayCount <= 0 || exposure.LastPlayedAt.IsZero() {
+		return rotationNever, time.Time{}
+	}
+	if policy.Cooldown <= 0 || w.SnapshotAt.IsZero() ||
+		!exposure.LastPlayedAt.After(w.SnapshotAt.Add(-policy.Cooldown)) {
+		return rotationReady, exposure.LastPlayedAt
+	}
+	return rotationRecent, exposure.LastPlayedAt
+}
+
+func rotationLess(a, b Clip, w Window, policy Policy) bool {
+	at, aa := rotationRank(a, w, policy)
+	bt, ba := rotationRank(b, w, policy)
+	if at != bt {
+		return at < bt
+	}
+	if !aa.Equal(ba) {
+		return aa.Before(ba)
+	}
+	// The caller establishes a deterministic seeded order before this stable comparison.
+	return false
 }
 
 // hasUnused reports whether any clip in the pool isn't already used this window.

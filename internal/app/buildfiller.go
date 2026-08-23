@@ -473,7 +473,7 @@ func buildPodAdapter(st store.Store, set resolved, log *slog.Logger) *filler.Pod
 	//
 	// config-design §3 defines hot-apply for long-lived clients; `AutoSplitPolicy` already
 	// resolves per call and says so. This is that contract, honoured by the pod path too.
-	podAdapter := filler.NewPodAdapter(clipCatalogAdapter{st}, func() filler.Policy {
+	podAdapter := filler.NewPodAdapter(clipCatalogAdapter{st}, clipExposureAdapter{st}, func() filler.Policy {
 		return filler.Policy{
 			PodMax:          set.intv("filler.pod_max"),
 			BreakDurationMs: set.dur("filler.break_duration").Milliseconds(),
@@ -486,6 +486,7 @@ func buildPodAdapter(st store.Store, set resolved, log *slog.Logger) *filler.Pod
 			// `PoolReport.Eligible` differ from `Commercials` instead of restating it.
 			MinClipMs: set.dur("filler.min_clip_duration").Milliseconds(),
 			MaxClipMs: set.dur("filler.max_clip_duration").Milliseconds(),
+			Cooldown:  time.Duration(set.intv("filler.cooldown_seconds")) * time.Second,
 		}
 	}, log)
 	return podAdapter

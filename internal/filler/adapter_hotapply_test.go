@@ -27,7 +27,7 @@ func TestPodAdapter_ResolvesPolicyPerCall(t *testing.T) {
 	// The live policy, as a boundary that reads settings would supply it.
 	maxClipMs := int64(0) // 0 = off, the default
 	calls := 0
-	adapter := filler.NewPodAdapter(stubCatalog{clips: catalog}, func() filler.Policy {
+	adapter := filler.NewPodAdapter(stubCatalog{clips: catalog}, nil, func() filler.Policy {
 		calls++
 		return filler.Policy{MaxClipMs: maxClipMs}
 	}, discardLogger())
@@ -67,7 +67,7 @@ func TestPodAdapter_ResolvesPolicyPerCall(t *testing.T) {
 // install with nothing configured — pass nil, and a constructor that required a closure for
 // "no policy" would make the common case the noisy one.
 func TestPodAdapter_NilPolicyResolverIsTheZeroPolicy(t *testing.T) {
-	adapter := filler.NewPodAdapter(stubCatalog{clips: sampleCatalog()}, nil, discardLogger())
+	adapter := filler.NewPodAdapter(stubCatalog{clips: sampleCatalog()}, nil, nil, discardLogger())
 
 	report, err := adapter.PoolCounts(context.Background())
 	if err != nil {
@@ -87,7 +87,7 @@ func TestPodAdapter_BreakDurationRaisesSoftPodLimit(t *testing.T) {
 			Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, DurationMs: 30_000,
 		})
 	}
-	adapter := filler.NewPodAdapter(stubCatalog{clips: clips}, func() filler.Policy {
+	adapter := filler.NewPodAdapter(stubCatalog{clips: clips}, nil, func() filler.Policy {
 		return filler.Policy{PodMax: 4, BreakDurationMs: 5 * 60_000}
 	}, discardLogger())
 
@@ -110,7 +110,7 @@ func TestPodAdapter_ChannelBreakDurationOverridesGlobal(t *testing.T) {
 			Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, DurationMs: 30_000,
 		})
 	}
-	adapter := filler.NewPodAdapter(stubCatalog{clips: clips}, func() filler.Policy {
+	adapter := filler.NewPodAdapter(stubCatalog{clips: clips}, nil, func() filler.Policy {
 		return filler.Policy{PodMax: 4, BreakDurationMs: 5 * 60_000}
 	}, discardLogger())
 
@@ -130,7 +130,7 @@ func TestPodAdapter_PlayableDurationIsOnlyRealClipMedia(t *testing.T) {
 		{Hash: "a", Path: "a.mp4", Kind: filler.Commercial, DurationMs: 18_000},
 		{Hash: "b", Path: "b.mp4", Kind: filler.Commercial, DurationMs: 22_000},
 	}
-	adapter := filler.NewPodAdapter(stubCatalog{clips: clips}, func() filler.Policy {
+	adapter := filler.NewPodAdapter(stubCatalog{clips: clips}, nil, func() filler.Policy {
 		return filler.Policy{BreakDurationMs: 5 * 60_000}
 	}, discardLogger())
 
@@ -138,7 +138,7 @@ func TestPodAdapter_PlayableDurationIsOnlyRealClipMedia(t *testing.T) {
 		t.Fatalf("playable duration = %dms, want the two real clips' 40000ms", got)
 	}
 
-	empty := filler.NewPodAdapter(stubCatalog{}, nil, discardLogger())
+	empty := filler.NewPodAdapter(stubCatalog{}, nil, nil, discardLogger())
 	if got := empty.PlayableDurationMs(context.Background(), "ch-1", 7, filler.Selection{}); got != 0 {
 		t.Fatalf("fallback-only duration = %dms, want 0", got)
 	}

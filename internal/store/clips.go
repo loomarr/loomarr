@@ -794,14 +794,69 @@ func (s *sqlStore) UpdateClipClassification(ctx context.Context, id string, era 
 //
 // updated_at is left alone: this is not a catalog edit, and touching it would make every clip
 // look freshly re-synced in the UI's "last updated" column.
-func (s *sqlStore) RecordClipPlay(ctx context.Context, id string, at time.Time) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
-		`UPDATE clips SET play_count = play_count + 1, last_played_at = ? WHERE hash = ?`),
-		epoch(at), id)
+func (s *sqlStore) RecordClipPlay(ctx context.Context, channelID, id string, at time.Time) error {
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("record clip play %s: %w", id, err)
 	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, s.ph(
+		`UPDATE clips SET play_count = play_count + 1, last_played_at = ? WHERE hash = ?`),
+		epoch(at), id); err != nil {
+		return fmt.Errorf("record clip play %s: %w", id, err)
+	}
+	if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_exposures
+		(channel_id, clip_hash, play_count, last_played_at, previous_played_at) VALUES (?, ?, 1, ?, 0)
+		ON CONFLICT(channel_id, clip_hash) DO UPDATE SET
+			play_count = filler_exposures.play_count + 1,
+			previous_played_at = CASE
+				WHEN excluded.last_played_at > filler_exposures.last_played_at
+				THEN filler_exposures.last_played_at ELSE filler_exposures.previous_played_at END,
+			last_played_at = CASE
+				WHEN excluded.last_played_at > filler_exposures.last_played_at
+				THEN excluded.last_played_at ELSE filler_exposures.last_played_at END`),
+		channelID, id, at.UnixMilli()); err != nil {
+		return fmt.Errorf("record channel clip play %s/%s: %w", channelID, id, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("record clip play %s: %w", id, err)
+	}
 	return nil
+}
+
+// FillerExposuresByChannel returns one channel's durable aggregate rotation snapshot (§10 V58).
+func (s *sqlStore) FillerExposuresByChannel(ctx context.Context, channelID string, before time.Time) (map[string]filler.Exposure, error) {
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT clip_hash, play_count, last_played_at,
+		previous_played_at FROM filler_exposures WHERE channel_id = ?`), channelID)
+	if err != nil {
+		return nil, fmt.Errorf("list filler exposures for channel %s: %w", channelID, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := map[string]filler.Exposure{}
+	for rows.Next() {
+		var hash string
+		var count, lastMs, previousMs int64
+		if err := rows.Scan(&hash, &count, &lastMs, &previousMs); err != nil {
+			return nil, fmt.Errorf("scan filler exposure for channel %s: %w", channelID, err)
+		}
+		// The aggregate retains one previous timestamp solely so a rebuild after a clip starts
+		// can reconstruct the immutable snapshot for that active break. No-repeat means a clip
+		// updates at most once inside one pod, so one predecessor is exactly the bounded state needed.
+		if !before.IsZero() && lastMs >= before.UnixMilli() {
+			count--
+			lastMs = previousMs
+		}
+		if count <= 0 || lastMs <= 0 {
+			continue
+		}
+		out[hash] = filler.Exposure{PlayCount: count, LastPlayedAt: time.UnixMilli(lastMs).UTC()}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list filler exposures for channel %s: %w", channelID, err)
+	}
+	return out, nil
 }
 
 // UpdateClipKind corrects a clip's kind (§10). Kind drives pod ROLE — a bumper bookends

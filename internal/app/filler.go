@@ -488,6 +488,14 @@ func (archiveDiscoverAdapter) DiscoverCollection(ctx context.Context, ref string
 // clipCatalogAdapter bridges the store → filler.CatalogReader (pod assembly).
 type clipCatalogAdapter struct{ st store.Store }
 
+// clipExposureAdapter is deliberately separate from the catalog reader: pod planning can read
+// actual-airing history but cannot write it. Playout owns the sole write boundary.
+type clipExposureAdapter struct{ st store.Store }
+
+func (a clipExposureAdapter) FillerExposuresByChannel(ctx context.Context, channelID string, before time.Time) (map[string]filler.Exposure, error) {
+	return a.st.FillerExposuresByChannel(ctx, channelID, before)
+}
+
 // ⚠ A ZERO filter, and that is what keeps HELD clips out of every pod (§10 V38). Pod assembly,
 // coverage and the filler-list builder all read through here, so the exclusion living in
 // ListClips means none of them can forget it. Adding IncludeHeld to this call would put every
@@ -906,7 +914,7 @@ func (a podPreviewAdapter) PreviewAt(ctx context.Context, channelID string, brea
 	if err != nil {
 		return filler.Pod{}, err
 	}
-	return a.pods.Preview(ctx, ch.ID, channels.PodSeedAt(ch.ID, breakStartMs), channels.SelectionForChannel(ch))
+	return a.pods.PreviewAt(ctx, ch.ID, channels.PodSeedAt(ch.ID, breakStartMs), channels.SelectionForChannel(ch), time.UnixMilli(breakStartMs).UTC())
 }
 
 // Coverage reports which ladder rung this channel's breaks would draw from (V29b-api).

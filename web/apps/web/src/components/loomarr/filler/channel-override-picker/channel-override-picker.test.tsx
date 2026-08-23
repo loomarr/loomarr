@@ -15,6 +15,14 @@ const base = {
 const row = (name: string) => screen.getByText(name).closest("li") as HTMLElement;
 
 describe("ChannelOverridePicker", () => {
+  it("explains that pinning overrides automatic rotation", () => {
+    render(<ChannelOverridePicker {...base} />);
+
+    expect(screen.getByText(/pin takes priority over automatic rotation/i)).toHaveTextContent(
+      /may repeat inside the cooldown or reduce variety/i,
+    );
+  });
+
   // ⚠ THE load-bearing one. The domain has three states and a checkbox has two; an automatic
   // channel must NOT read as blocked, or an operator sees their catalog apparently switched off
   // everywhere and starts ticking boxes to "fix" it.
