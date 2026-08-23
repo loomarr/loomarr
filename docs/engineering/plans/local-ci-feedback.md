@@ -93,3 +93,7 @@ gate documentation are amended before the first change that alters required beha
 - The specialized classifier now publishes shadow `impact_*` decisions and a comparison table in
   the `changes` job summary. Legacy broad outputs remain the only selectors until shadow evidence
   and regression fixtures establish that every affected gate is retained.
+- PR #468 merged the first live shadow report with every legacy-selected job green and a 3m32s
+  critical path. Auditing those full outcomes exposed that the native Windows job was absent from
+  `ci-ok.needs`; its failure could therefore have been invisible to the protected `CI` result. The
+  next regression fixture makes aggregate completeness structural rather than hand-maintained.

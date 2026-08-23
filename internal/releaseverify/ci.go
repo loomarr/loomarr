@@ -80,3 +80,55 @@ func VerifyCIImageInputs(path string) error {
 	}
 	return nil
 }
+
+// VerifyCIAggregate ensures the one branch-protected CI result cannot omit a
+// top-level job. A job that is allowed to skip still reports "skipped" through
+// needs; leaving it out entirely makes its failure invisible to the aggregate.
+func VerifyCIAggregate(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	root, err := parseYAML(data)
+	if err != nil {
+		return err
+	}
+	jobs, err := requiredMap(root, "jobs")
+	if err != nil {
+		return err
+	}
+	ciOK, err := requiredMap(jobs, "ci-ok")
+	if err != nil {
+		return errors.New("CI workflow must define the ci-ok aggregate job")
+	}
+	needs, err := requiredSequence(ciOK, "needs")
+	if err != nil {
+		return errors.New("CI ci-ok job must declare needs as a sequence")
+	}
+
+	included := make(map[string]bool, len(needs.Content))
+	for _, need := range needs.Content {
+		if need.Kind != yaml.ScalarNode || need.Value == "" {
+			return errors.New("CI ci-ok needs must contain only job identifiers")
+		}
+		if included[need.Value] {
+			return fmt.Errorf("CI ci-ok needs contains duplicate job %s", need.Value)
+		}
+		included[need.Value] = true
+	}
+
+	knownJobs := make(map[string]bool, len(jobs.Content)/2)
+	for i := 0; i < len(jobs.Content); i += 2 {
+		job := jobs.Content[i].Value
+		knownJobs[job] = true
+		if job != "ci-ok" && !included[job] {
+			return fmt.Errorf("CI ci-ok aggregate omits job %s", job)
+		}
+	}
+	for need := range included {
+		if !knownJobs[need] {
+			return fmt.Errorf("CI ci-ok aggregate references unknown job %s", need)
+		}
+	}
+	return nil
+}
