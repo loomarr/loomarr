@@ -770,6 +770,18 @@ jobs:
           key: apple-clients-${{ matrix.client }}-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
           restore-keys: apple-clients-${{ matrix.client }}-${{ runner.os }}-
       - run: make fe-install
+      - name: Fingerprint the Apple toolchain
+        id: apple-toolchain
+        run: echo "fingerprint=$(xcodebuild -version | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+      - name: Cache ExpoModulesJSI native slice
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          # ExpoModulesJSI's build script validates each restored slice against
+          # source, React headers, React Native roots, and the Swift toolchain.
+          # Cache the final XCFramework only; DerivedData is intentionally fresh.
+          path: web/node_modules/.pnpm/expo-modules-jsi@*/node_modules/expo-modules-jsi/apple/Products
+          key: apple-jsi-${{ matrix.client }}-${{ runner.arch }}-${{ steps.apple-toolchain.outputs.fingerprint }}-${{ hashFiles('web/pnpm-lock.yaml') }}
+          restore-keys: apple-jsi-${{ matrix.client }}-${{ runner.arch }}-${{ steps.apple-toolchain.outputs.fingerprint }}-
       - name: Generate, build, install, and launch
         env:
           LOOMARR_APPLE_ARTIFACTS_DIR: ${{ runner.temp }}/apple-client-${{ matrix.client }}
