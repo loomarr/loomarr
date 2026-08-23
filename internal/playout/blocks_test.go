@@ -55,3 +55,42 @@ func TestPumpBlocksReportsOnlyAuthoritativeAiringTransitions(t *testing.T) {
 		}
 	}
 }
+
+// A tune-in burst can make a finite child reach EOF before its wall-clock Airing ends. Resolving
+// immediately then returns the same Airing and replaying that response repeats the outgoing tail
+// at the next programme or Clip boundary.
+func TestPumpBlocksDoesNotReplayACleanlyFinishedAiring(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	programme := AiringIdentity{
+		StartedAt: time.Unix(1, 0).UTC(), EndsAt: time.Now().Add(10 * time.Millisecond),
+		Kind: schedule.SlotProgram, ContentID: "episode",
+	}
+	commercial := AiringIdentity{
+		StartedAt: time.Unix(2, 0).UTC(), Kind: schedule.SlotFiller, ContentID: "commercial",
+	}
+	blocks := []Block{
+		{Content: io.NopCloser(strings.NewReader("programme-tail")), Identity: programme},
+		// The wall clock has not crossed the boundary yet, so resolution returns the same
+		// Airing. Its bytes must not enter the mux a second time.
+		{Content: io.NopCloser(strings.NewReader("programme-tail")), Identity: programme},
+		{Content: io.NopCloser(strings.NewReader("commercial")), Identity: commercial},
+	}
+	next := 0
+	source := BlockSource(func(context.Context, string, EncodePlan) (Block, error) {
+		if next == len(blocks) {
+			cancel()
+			return Block{}, context.Canceled
+		}
+		block := blocks[next]
+		next++
+		return block, nil
+	})
+	var output writeCloser
+
+	pumpBlocks(ctx, &output, source, "channel", PlanBaseline, nil)
+
+	if got, want := output.String(), "programme-tailcommercial"; got != want {
+		t.Fatalf("mux input = %q, want %q; the outgoing Airing was replayed", got, want)
+	}
+}

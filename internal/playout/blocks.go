@@ -14,6 +14,7 @@ import (
 // guessing from process exits or request timing.
 type AiringIdentity struct {
 	StartedAt time.Time
+	EndsAt    time.Time
 	Kind      schedule.SlotKind
 	ContentID string
 }
@@ -61,7 +62,15 @@ func pumpBlocks(
 ) {
 	defer func() { _ = dst.Close() }()
 	var previous AiringIdentity
+	previousFinishedCleanly := false
 	for ctx.Err() == nil {
+		// A genuine mid-Airing tune-in may use a finite read-rate burst to fill the viewer's
+		// startup buffer. That child can consequently reach EOF before the wall-clock boundary.
+		// Its bytes already cover the Airing through EndsAt, so resolving again before then would
+		// return and replay the same outgoing tail.
+		if previousFinishedCleanly && !waitForAiringBoundary(ctx, previous.EndsAt) {
+			return
+		}
 		block, err := source(ctx, channelID, plan)
 		if err != nil {
 			if log != nil && ctx.Err() == nil {
@@ -72,16 +81,27 @@ func pumpBlocks(
 			}
 			continue
 		}
-		if previous != (AiringIdentity{}) && block.Identity != previous && log != nil {
+		if previousFinishedCleanly && block.Identity.sameAiring(previous) {
+			// EndsAt is authoritative when present, but identity is the final guard against clock
+			// skew and legacy peers without that metadata. A cleanly-finished Airing has already
+			// contributed all its bytes; never send it to the mux twice.
+			_ = block.Content.Close()
+			if !waitForBlockRetry(ctx) {
+				return
+			}
+			continue
+		}
+		if previous != (AiringIdentity{}) && !block.Identity.sameAiring(previous) && log != nil {
 			log.Info("playout: block transition",
 				"channel", channelID,
 				"from_kind", previous.Kind, "from_content", previous.ContentID,
 				"to_kind", block.Identity.Kind, "to_content", block.Identity.ContentID,
 				"started_at", block.Identity.StartedAt)
 		}
-		previous = block.Identity
 		n, copyErr := io.Copy(dst, block.Content)
 		closeErr := block.Content.Close()
+		previous = block.Identity
+		previousFinishedCleanly = n > 0 && copyErr == nil && closeErr == nil
 		if copyErr != nil || closeErr != nil {
 			if log != nil && ctx.Err() == nil {
 				log.Warn("playout: block ended with an error; resolving current Airing",
@@ -93,6 +113,28 @@ func pumpBlocks(
 		if n == 0 && !waitForBlockRetry(ctx) {
 			return
 		}
+	}
+}
+
+func (a AiringIdentity) sameAiring(other AiringIdentity) bool {
+	return a.StartedAt.Equal(other.StartedAt) && a.Kind == other.Kind && a.ContentID == other.ContentID
+}
+
+func waitForAiringBoundary(ctx context.Context, endsAt time.Time) bool {
+	if endsAt.IsZero() {
+		return true
+	}
+	remaining := time.Until(endsAt)
+	if remaining <= 0 {
+		return true
+	}
+	timer := time.NewTimer(remaining)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
 	}
 }
 

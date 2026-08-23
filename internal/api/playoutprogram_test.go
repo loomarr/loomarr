@@ -312,6 +312,13 @@ func TestPlayoutProgram_StreamsOneProgramThenEnds(t *testing.T) {
 	if ct := resp.Header.Get("Content-Type"); ct != "video/mp2t" {
 		t.Errorf("Content-Type = %q, want video/mp2t", ct)
 	}
+	identity, ok := api.ParsePlayoutAiringIdentity(resp.Header)
+	if !ok {
+		t.Fatal("program response has no valid Airing identity")
+	}
+	if got := identity.EndsAt.Sub(identity.StartedAt); got != time.Hour {
+		t.Fatalf("Airing boundary = %s after start, want 1h so the supervisor cannot replay an early EOF", got)
+	}
 
 	// The body must terminate on its own — read it fully with a deadline.
 	done := make(chan []byte, 1)
@@ -414,6 +421,9 @@ func TestPlayoutProgram_UnfilledBreakStopsAtTheProgrammeBoundary(t *testing.T) {
 	}
 	if !strings.Contains(got, "-t 10.000") {
 		t.Errorf("break card crossed the programme boundary: %q", got)
+	}
+	if strings.Contains(got, "ch1") {
+		t.Errorf("commercial-break card exposes the internal Channel ID: %q", got)
 	}
 }
 
