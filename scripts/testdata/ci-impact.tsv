@@ -1,0 +1,22 @@
+# name	paths separated by semicolons	expected true gates in classifier order
+leaf-go	internal/suggest/ground.go	contracts,go,image
+store-go	internal/store/store.go	contracts,go,postgres,image
+composition-go	internal/app/build.go	contracts,go,go_full,postgres,image
+playout-go	internal/playout/session.go	contracts,go,windows,image
+rust-worker	rust/loomarr-image/src/lib.rs	rust,image
+migration	internal/store/migrations/sqlite/00001_init.sql	contracts,go,go_full,postgres,image
+generic-web	web/apps/web/src/people/users-page/users-page.ts	web,image
+visual-web	web/apps/web/src/people/users-page/users-page.tsx	web,visual,image
+wizard-e2e	web/apps/web/src/wizard/steps/steps.tsx	web,visual,e2e,image
+tuner-web	web/apps/web/src/channels/use-hls-player/use-hls-player.ts	web,tuner,image
+web-tooling	web/apps/web/package.json	web,visual,e2e,tuner,image
+openapi	api/openapi.yaml	contracts,web,image,android
+android	android/app/src/main/AndroidManifest.xml	android
+release-image	Dockerfile	image
+documentation	docs/dev/testing.md	docs
+embedded-help	docs/help/quickstart.md	contracts,go,image,docs
+agent-script	scripts/agent.sh	contracts,agent
+release-workflow	.github/workflows/release.yml	contracts
+ci-workflow	.github/workflows/ci.yml	contracts,go,go_full,rust,postgres,windows,web,visual,e2e,tuner,image,docs,agent,android
+dev-compose	docker/compose.dev.yaml	contracts,agent
+combined-leaf-and-docs	internal/suggest/ground.go;docs/dev/testing.md	contracts,go,image,docs

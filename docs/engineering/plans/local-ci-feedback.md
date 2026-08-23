@@ -97,3 +97,7 @@ gate documentation are amended before the first change that alters required beha
   critical path. Auditing those full outcomes exposed that the native Windows job was absent from
   `ci-ok.needs`; its failure could therefore have been invisible to the protected `CI` result. The
   next regression fixture makes aggregate completeness structural rather than hand-maintained.
+- PR #469 restored Windows to the required aggregate and added a parser-backed completeness guard;
+  its full matrix passed with the now-load-bearing Windows result green in 1m32s. Exact path-set
+  fixtures now pin both selected and intentionally unselected specialized gates across every gate
+  family, turning subsequent shadow mismatches into explicit regression cases.

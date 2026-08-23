@@ -70,6 +70,10 @@ Those outputs are observational: no required job consumes them yet. The existing
 compared with complete CI outcomes. A missing base, classifier failure, or unknown path selects
 every proposed gate.
 
+`scripts/testdata/ci-impact.tsv` records the exact ordered gate set for representative paths and
+multi-path changes across every specialized gate. The classifier contract test compares complete
+sets, so both a missed gate and an unexplained extra gate require an explicit fixture decision.
+
 ## The image job is the exception
 
 The image filter follows every source family copied by the Dockerfile: Docker metadata, packaged
