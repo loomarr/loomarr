@@ -3,31 +3,49 @@
 ```mermaid
 graph LR
   C["<b>changes</b><br/><i>diffs the merge base</i>"]
-  G["<b>go</b> ×2<br/>check · drift gates"]
+  GC["<b>go-contracts</b><br/>static · drift · repository contracts"]
+  RC["<b>image-certification</b><br/>release-worker runtime contract"]
+  G["<b>go</b> ×3<br/>race-policy tests only"]
+  X["<b>windows-playout</b><br/>native process-tree contract"]
   P["<b>store-postgres</b>"]
   F["<b>frontend</b> ×2"]
   W["<b>playwright</b> ×4"]
+  T["<b>tuner</b><br/>three browser engines"]
   D["<b>docs</b><br/>links · structure · prose"]
+  A["<b>agent-harness-macos</b>"]
+  N["<b>android</b><br/>lint · unit · assemble"]
   I["<b>image</b><br/>amd64 + arm64"]
   OK(["<b>ci-ok</b><br/><i>the required check</i>"])
 
-  C -->|"*.go, migrations, docs/help/, scripts/, Makefile"| G
+  C -->|"*.go, migrations, docs/help/, scripts/, Makefile"| GC
+  C -->|"same Go inputs"| G
+  C -->|"same Go inputs"| RC
+  C --> X
   C --> P
   C -->|"web/, Makefile"| F
   C --> W
+  C --> T
   C -->|"docs/, README, docs-site/"| D
+  C --> A
+  C --> N
   C -->|"all Docker build inputs"| I
+  GC --> OK
+  RC --> OK
   G --> OK
+  X --> OK
   P --> OK
   F --> OK
   W --> OK
+  T --> OK
   D --> OK
+  A --> OK
+  N --> OK
   I --> OK
 
   classDef gate fill:#1f6f4a,stroke:#134a31,color:#fff
   classDef job fill:#2b3b52,stroke:#1b2736,color:#dbe4ef
   class OK gate
-  class C,G,P,F,W,D,I job
+  class C,GC,RC,G,X,P,F,W,T,D,A,N,I job
 ```
 
 ## Jobs run only when their inputs changed
@@ -39,6 +57,22 @@ usable merge base — first push, force-push, new branch — runs everything.
 
 Two non-obvious entries: `docs/help/` is in the Go filter because those pages are embedded and
 the doc-claims test reads them, and `scripts/` is there because the job executes them.
+
+### Specialized gate classifier is shadow-only
+
+The `changes` job also runs `scripts/ci-impact.sh` and publishes `impact_*` outputs for the
+specialized contract, Go, full-Go, Rust, Postgres, Windows, web, visual, e2e, tuner, image, docs,
+agent, and Android gates. Its run summary places those proposed decisions beside the current broad
+Go and web families.
+
+Those outputs are observational: no required job consumes them yet. The existing `go`, `web`,
+`image`, `docs`, `agent`, and `android` outputs remain authoritative while shadow results are
+compared with complete CI outcomes. A missing base, classifier failure, or unknown path selects
+every proposed gate.
+
+`scripts/testdata/ci-impact.tsv` records the exact ordered gate set for representative paths and
+multi-path changes across every specialized gate. The classifier contract test compares complete
+sets, so both a missed gate and an unexplained extra gate require an explicit fixture decision.
 
 ## The image job is the exception
 
@@ -62,14 +96,32 @@ platforms or it can't catch that.
 It always runs and inspects `needs.*.result` explicitly. That has to be explicit: a skipped job
 doesn't fail an aggregate by default, and neither does a failed one under `if: always()`.
 
+The `main` branch requires the GitHub Actions-owned `CI` check in strict mode: a pull request must
+be tested against the current base before it can merge. Preserve both the check name and its app
+binding when editing branch protection.
+
+`make release-verify` parses the workflow and requires every top-level job to appear in
+`ci-ok.needs`. This prevents a newly added or accidentally removed dependency from producing a
+green required check while its real job is red.
+
 Never add a workflow-level `paths:`. A run that doesn't trigger reports no checks, so a required
 check sits "expected" forever and the PR can't merge. Filter per job.
 
+The workflow already handles `merge_group`, but GitHub offers merge queues only to public
+repositories owned by organizations (or qualifying organization-owned private repositories).
+`mantonx/loomarr` is personally owned, so queue activation is deferred until an organization owns
+the repository. Strict required checks provide the protected current-base boundary in the meantime.
+
 ## Sharding
 
-Go, frontend and Playwright split across runners for wall-clock only. `make go-shard-verify`
-asserts the Go shards are a true partition of `go list ./...` — a split that drops a package
-would pass by not running.
+Go tests, frontend and Playwright split across runners for wall-clock only. Repository-wide Go and
+Rust contracts run once in `go-contracts`, in parallel with three test-only Go shards and the
+independent release-worker certification. Their union is the same assurance as local `make check`
+plus the existing CI-only certification. The `ci-ok` aggregate requires every job, so moving a
+contract out of the test shards cannot make it optional.
+
+`make go-shard-verify` runs in `go-contracts` and asserts the Go shards are a true partition of
+`go list ./...` — a split that drops a package would otherwise pass by not running it.
 
 Sharding is free on a public repo. Check the bill before copying it into a private one.
 

@@ -43,3 +43,38 @@ func TestVerifyCIImageInputs(t *testing.T) {
 		t.Fatal("VerifyCIImageInputs accepted a commented-out image filter")
 	}
 }
+
+func TestVerifyCIAggregate(t *testing.T) {
+	workflow := `jobs:
+  changes:
+    runs-on: ubuntu-latest
+  windows-playout:
+    runs-on: windows-latest
+  ci-ok:
+    needs: [changes, windows-playout]
+    runs-on: ubuntu-latest
+`
+	path := filepath.Join(t.TempDir(), "ci.yml")
+	if err := os.WriteFile(path, []byte(workflow), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyCIAggregate(path); err != nil {
+		t.Fatalf("complete CI aggregate: %v", err)
+	}
+
+	withoutWindows := strings.Replace(workflow, "changes, windows-playout", "changes", 1)
+	if err := os.WriteFile(path, []byte(withoutWindows), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyCIAggregate(path); err == nil {
+		t.Fatal("VerifyCIAggregate accepted a required check that omitted Windows")
+	}
+
+	unknownJob := strings.Replace(workflow, "changes, windows-playout", "changes, windows-playout, phantom", 1)
+	if err := os.WriteFile(path, []byte(unknownJob), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyCIAggregate(path); err == nil {
+		t.Fatal("VerifyCIAggregate accepted an unknown dependency")
+	}
+}

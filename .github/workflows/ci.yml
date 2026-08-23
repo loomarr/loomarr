@@ -48,6 +48,20 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       agent: ${{ steps.filter.outputs.agent }}
       android: ${{ steps.filter.outputs.android }}
+      impact_contracts: ${{ steps.impact.outputs.contracts }}
+      impact_go: ${{ steps.impact.outputs.go }}
+      impact_go_full: ${{ steps.impact.outputs.go_full }}
+      impact_rust: ${{ steps.impact.outputs.rust }}
+      impact_postgres: ${{ steps.impact.outputs.postgres }}
+      impact_windows: ${{ steps.impact.outputs.windows }}
+      impact_web: ${{ steps.impact.outputs.web }}
+      impact_visual: ${{ steps.impact.outputs.visual }}
+      impact_e2e: ${{ steps.impact.outputs.e2e }}
+      impact_tuner: ${{ steps.impact.outputs.tuner }}
+      impact_image: ${{ steps.impact.outputs.image }}
+      impact_docs: ${{ steps.impact.outputs.docs }}
+      impact_agent: ${{ steps.impact.outputs.agent }}
+      impact_android: ${{ steps.impact.outputs.android }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -171,6 +185,66 @@ jobs:
             echo "image=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # Observe the dependency-aware classifier before it is allowed to skip required work.
+      # Every job below still consumes the legacy outputs from `steps.filter`.
+      - name: Classify specialized gates (shadow only)
+        id: impact
+        env:
+          BASE: >-
+            ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha
+             || github.event_name == 'merge_group' && github.event.merge_group.base_sha
+             || github.event.before }}
+          LEGACY_GO: ${{ steps.filter.outputs.go }}
+          LEGACY_WEB: ${{ steps.filter.outputs.web }}
+          LEGACY_IMAGE: ${{ steps.filter.outputs.image }}
+          LEGACY_DOCS: ${{ steps.filter.outputs.docs }}
+          LEGACY_AGENT: ${{ steps.filter.outputs.agent }}
+          LEGACY_ANDROID: ${{ steps.filter.outputs.android }}
+        run: |
+          set -uo pipefail
+          reason="classified the merge-base diff"
+          if [ -z "${BASE:-}" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            reason="no usable diff base; failed closed"
+            impact="$(./scripts/ci-impact.sh --all)"
+          elif ! impact="$(git diff --name-only "$BASE" HEAD | ./scripts/ci-impact.sh)"; then
+            echo "::warning::CI impact classification failed; shadow decisions defaulted to all gates"
+            reason="classifier error; failed closed"
+            impact="$(./scripts/ci-impact.sh --all)"
+          fi
+          printf '%s\n' "$impact" >> "$GITHUB_OUTPUT"
+
+          impact_value() {
+            printf '%s\n' "$impact" | sed -n "s/^$1=//p"
+          }
+          {
+            echo "### Specialized CI gate shadow"
+            echo
+            echo "These decisions are observational only; current jobs still use the legacy families."
+            echo
+            echo "Reason: $reason."
+            echo
+            echo "| Proposed gate | Run? |"
+            echo "| --- | --- |"
+            while IFS='=' read -r gate decision; do
+              printf '| %s | %s |\n' "$gate" "$decision"
+            done <<< "$impact"
+            echo
+            echo "| Current family | Run? | Proposed components |"
+            echo "| --- | --- | --- |"
+            printf '| Go | %s | contracts=%s, go=%s, full=%s, rust=%s, postgres=%s, windows=%s |\n' \
+              "$LEGACY_GO" "$(impact_value contracts)" "$(impact_value go)" \
+              "$(impact_value go_full)" "$(impact_value rust)" \
+              "$(impact_value postgres)" "$(impact_value windows)"
+            printf '| Web | %s | web=%s, visual=%s, e2e=%s, tuner=%s |\n' \
+              "$LEGACY_WEB" "$(impact_value web)" "$(impact_value visual)" \
+              "$(impact_value e2e)" "$(impact_value tuner)"
+            printf '| Image | %s | image=%s |\n' "$LEGACY_IMAGE" "$(impact_value image)"
+            printf '| Docs | %s | docs=%s |\n' "$LEGACY_DOCS" "$(impact_value docs)"
+            printf '| Agent | %s | agent=%s |\n' "$LEGACY_AGENT" "$(impact_value agent)"
+            printf '| Android | %s | android=%s |\n' "$LEGACY_ANDROID" "$(impact_value android)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   agent-harness-macos:
     name: Agent harness (macOS)
     needs: changes
@@ -178,6 +252,12 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Dependency-aware verification resolves the reverse Go import graph even when its
+      # behavioral harness substitutes fake `go` and `make` commands for the final execution.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
       # This exercises the `lsof` process-ownership adapter. Linux runs the same harness through
       # `make check`, where `/proc` is available.
       - name: Worktree isolation, claims, leases, and process ownership
@@ -202,13 +282,101 @@ jobs:
       - name: Complete Windows binary builds
         run: go build -o "${{ runner.temp }}\loomarr.exe" ./cmd/loomarr
 
-  go:
-    name: Go — check + spec/config drift (${{ matrix.shard }}/${{ strategy.job-total }})
+  go-contracts:
+    name: Go + Rust — repository contracts
     needs: changes
     if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
-    # `go test -race` is effectively the whole cost here (measured 2026-08-09: `make lint` is
-    # 5.4s warm, so splitting lint off buys nothing). So the TESTS are what shards.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.93.0 --profile minimal
+      - name: Cache epoch
+        id: epoch
+        run: echo "week=$(date -u +%GW%V)" >> "$GITHUB_OUTPUT"
+      - name: Restore contract caches
+        id: cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: go-contracts-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-${{ hashFiles('go.sum', 'Cargo.lock') }}-${{ github.run_id }}
+          restore-keys: |
+            go-contracts-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-${{ hashFiles('go.sum', 'Cargo.lock') }}-
+            go-contracts-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-
+      - name: Static analysis and repository contracts
+        run: make check-static
+      - name: The test shards cover every package
+        run: make go-shard-verify SHARDS=3
+      - name: OpenAPI spec is committed and current
+        run: make openapi-verify
+      - name: Config docs are committed and current
+        run: make config-docs-verify
+      - name: The §2 package map is committed and current
+        run: make arch-docs-verify
+      - name: Command reference is committed and current
+        run: make dev-docs-verify
+      - name: Retired identifiers are gone from prose
+        run: make retired-verify
+      - name: Workflows are valid
+        run: make ci-lint
+      - name: Save contract caches (main only)
+        if: always() && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+
+  image-certification:
+    name: Rust image — runtime certification
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    # Certification is independent of static repository contracts. It used to start only after
+    # `check-static` finished, adding a measured two minutes to the critical path even though the
+    # two gates share no result. Keep it required through `ci-ok`, but run it in parallel.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.93.0 --profile minimal
+      - name: Certify the release worker against the deterministic real-codec corpus
+        run: IMAGE_CERT_REPORT="$RUNNER_TEMP/image-certification.json" make image-cert
+      - name: Keep the Rust image certification report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: rust-image-certification
+          path: ${{ runner.temp }}/image-certification.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  go:
+    name: Go — race-policy tests (${{ matrix.shard }}/${{ strategy.job-total }})
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    # This job is test-only. Repository-wide contracts run once in `go-contracts`, in parallel;
+    # repeating Rust, lint, vet, harness, Windows compile, and release checks in every shard spent
+    # runner time and inflated each shard's cache without adding assurance.
     #
     # THREE shards, not two. Re-measured 2026-08-18: the per-package -race suite is ~381s but is
     # dominated by a few packages (internal/app alone is ~125s), so round-robin balance depends on
@@ -226,9 +394,6 @@ jobs:
     # a package leaves those tests unrun and every shard green. `make go-shard-verify` below
     # is the guard, and it is not optional.
     #
-    # fmt/vet/lint re-run in every shard rather than being hoisted to one. That is deliberate:
-    # it keeps CI invoking the same `make check` a developer runs, which is the whole point of
-    # the harness contract, and the duplication is parallel so it costs no wall clock.
     strategy:
       fail-fast: false # one shard's failures must not hide the others'
       matrix:
@@ -247,13 +412,15 @@ jobs:
           # frozen-key bug the note below exists to prevent — so it re-froze a slice of the
           # very cache the rolling key was added to keep fresh.
           cache: false
+      # `make test` builds the real debug image worker its Go tests execute. Install the pinned
+      # toolchain but deliberately do not cache Cargo/target here: the old combined cache reached
+      # 1.36GB and cost longer to restore/save than this focused build. Static Rust checks and
+      # release certification still run once in `go-contracts`.
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.93.0 --profile minimal
-      # ONE cache for the whole Go toolchain: module downloads, build objects, and
-      # golangci's analysis cache. `make lint` runs golangci-lint via `go run …@v2.12.2`,
-      # whose dependencies are NOT in go.sum, so nothing keyed on go.sum alone ever covers
-      # them (visible in the logs as `go: downloading lipgloss / fatih-color / gofrs-flock`)
-      # — that is why the linter's module dir rides along here rather than in its own entry.
+      # Each test shard keeps only its Go module and compiler caches. Lint and static Rust checks
+      # run in `go-contracts`, so restoring their caches here would spend time and storage on
+      # inputs this job never reads.
       #
       # ⚠ THE KEY MUST BE UNIQUE PER RUN, and this is not a style choice. `actions/cache`
       # NEVER overwrites an existing key — it skips the save when the key already hit. This
@@ -281,26 +448,22 @@ jobs:
       - name: Cache epoch (bounds rolling-cache growth)
         id: epoch
         run: echo "week=$(date -u +%GW%V)" >> "$GITHUB_OUTPUT"
-      - name: Restore Go caches (modules + build + golangci)
+      - name: Restore Go test caches (modules + build)
         id: gocache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-            ~/.cache/golangci-lint
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
           # ⚠ THE SHARD IS PART OF THE KEY. Each shard compiles a DIFFERENT set of packages, so
           # a shared key would have them overwrite each other's build objects every run — each
           # shard restoring a cache built for the other's packages and recompiling its own.
           # It also makes the save well-defined: without it both shards race to write one key
           # and whichever lost simply skipped, so half the objects were never cached at all.
-          key: go-rust-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-s${{ matrix.shard }}-${{ hashFiles('go.sum', 'Cargo.lock') }}-${{ github.run_id }}
+          key: go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-s${{ matrix.shard }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
           restore-keys: |
-            go-rust-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-s${{ matrix.shard }}-${{ hashFiles('go.sum', 'Cargo.lock') }}-
-            go-rust-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-s${{ matrix.shard }}-
+            go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-s${{ matrix.shard }}-${{ hashFiles('go.sum') }}-
+            go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-s${{ matrix.shard }}-
       # ⚠ ffmpeg is NOT on the runner image, and several filler tests skip without it — the
       # language gate's span extraction (16kHz mono WAV, the shape whisper requires), the
       # silence guard, artwork rendering and the clip scan's probe. Measured on this runner
@@ -392,66 +555,7 @@ jobs:
         run: |
           command -v ffmpeg
           command -v ffprobe
-      # ⚠ RUN THE GUARD BEFORE THE SUITE, not after. It is the only thing standing between a
-      # bad split and a green run over untested packages, and a guard that reports after the
-      # tests have already "passed" is one cancelled job away from never running at all.
-      - name: The shard split covers every package
-        run: make go-shard-verify SHARDS=${{ strategy.job-total }}
-      # The -race opt-out list must name only real packages (fail-safe: race stays ON for anything
-      # not listed, so this catches a stale/renamed entry, not a coverage gap). `make check` also
-      # runs this, but assert it up front alongside the shard guard.
-      - name: The -race opt-out list is real
-        run: make go-race-verify
-      - run: make check GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}
-      # One shard certifies the RELEASE-profile worker against the deterministic real-codec
-      # corpus. `make check` already covers debug Rust tests in both shards; this is the packaged
-      # Go-to-Rust protocol, resource-boundary, and output-manifest gate operators run locally.
-      - name: Rust image runtime certification
-        if: matrix.shard == 1
-        run: IMAGE_CERT_REPORT="$RUNNER_TEMP/image-certification.json" make image-cert
-      - name: Keep the Rust image certification report
-        if: always() && matrix.shard == 1
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: rust-image-certification
-          path: ${{ runner.temp }}/image-certification.json
-          # An earlier `make check` failure means certification never ran; do not bury that cause
-          # under a second artifact error. A certification failure itself still writes this report.
-          if-no-files-found: ignore
-          retention-days: 14
-      # The drift checks are whole-repo and shard-independent: running them per shard would
-      # just diff the same generated files N times. Shard 1 by the same convention that runs
-      # e2e on one Playwright shard.
-      - name: OpenAPI spec is committed and current
-        if: matrix.shard == 1
-        run: make openapi-verify
-      - name: Config docs are committed and current
-        if: matrix.shard == 1
-        run: make config-docs-verify
-      - name: The §2 package map is committed and current
-        if: matrix.shard == 1
-        run: make arch-docs-verify
-      # The command reference is generated from this Makefile and these workflows, so it drifts
-      # whenever either moves. It lives in the Go job because the generator is Go, and because
-      # the `changes` filter already routes Makefile/workflow edits here.
-      - name: Command reference is committed and current
-        if: matrix.shard == 1
-        run: make dev-docs-verify
-      - name: Retired identifiers are gone from prose
-        if: matrix.shard == 1
-        run: make retired-verify
-      # The workflow parsed as valid YAML and was still REJECTED by GitHub: expressions only
-      # accept single quotes, and `join(needs.*.result, " ")` is a lex error the YAML parser
-      # cannot see. Verified this target catches exactly that.
-      #
-      # ⚠ `make ci-lint` IS WEAKER ON A DEV MACHINE THAN IT IS HERE. actionlint shells out to
-      # shellcheck for every `run:` block and SILENTLY SKIPS that half when shellcheck is not
-      # installed — so the target exits 0 locally and fails here, which is exactly what
-      # happened when the image filter was added (SC2129 on the grouped redirects). If this
-      # step is red and your local run was green, install shellcheck before doubting CI.
-      - name: Workflows are valid
-        if: matrix.shard == 1
-        run: make ci-lint
+      - run: make test GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}
       # ⚠ SAVE ONLY ON main, which is why this is cache/save rather than the round-trip
       # `actions/cache`. A PR's cache is scoped to `refs/pull/N/merge` and can never be
       # restored again once that PR closes — cache reads are scoped to the branch and its
@@ -469,7 +573,6 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-            ~/.cache/golangci-lint
           key: ${{ steps.gocache.outputs.cache-primary-key }}
 
   store-postgres:
@@ -846,7 +949,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, agent-harness-macos, go, store-postgres, frontend, playwright, tuner, image, docs, android]
+    needs: [changes, agent-harness-macos, windows-playout, go-contracts, image-certification, go, store-postgres, frontend, playwright, tuner, image, docs, android]
     runs-on: ubuntu-latest
     steps:
       - name: Every job that ran must have passed

@@ -1,0 +1,229 @@
+#!/usr/bin/env bash
+# Classify changed repository paths into the smallest trustworthy CI gate set.
+#
+# Interface: pass paths as arguments, or one path per line on stdin. Pass --all
+# when the caller cannot establish a trustworthy diff base. The command prints
+# stable key=true|false records suitable for GitHub outputs. An unknown path
+# fails closed by selecting every gate.
+set -euo pipefail
+
+readonly GATES=(
+  contracts go go_full rust postgres windows web visual e2e tuner image docs agent android
+)
+
+selected=()
+strict=false
+unknown=false
+force_all=false
+for ((i = 0; i < ${#GATES[@]}; i++)); do
+  selected[i]=false
+done
+
+select_gate() {
+  local gate="$1" i
+  for ((i = 0; i < ${#GATES[@]}; i++)); do
+    if [[ "${GATES[$i]}" == "$gate" ]]; then
+      selected[i]=true
+      return
+    fi
+  done
+  printf 'ci-impact: internal error: unknown gate %q\n' "$gate" >&2
+  exit 2
+}
+
+select_all() {
+  local i
+  for ((i = 0; i < ${#GATES[@]}; i++)); do
+    selected[i]=true
+  done
+}
+
+classify() {
+  local path="$1"
+  local known=false
+
+  # Product Go. Release images compile and embed these source families.
+  if [[ "$path" == *.go || "$path" == go.mod || "$path" == go.sum ]]; then
+    known=true
+    select_gate contracts
+    select_gate go
+    select_gate image
+    case "$path" in
+      cmd/loomarr/*|internal/app/*|internal/testkit/*|go.mod|go.sum)
+        select_gate go_full
+        ;;
+    esac
+    case "$path" in
+      internal/store/*|internal/app/*|internal/testkit/*|go.mod|go.sum)
+        select_gate postgres
+        ;;
+    esac
+    case "$path" in
+      cmd/loomarr/*|internal/playout/*|internal/proctree/*|go.mod|go.sum)
+        select_gate windows
+        ;;
+    esac
+  fi
+
+  case "$path" in
+    Cargo.toml|Cargo.lock|rust-toolchain.toml|deny.toml|rust/*)
+      known=true
+      select_gate rust
+      select_gate image
+      ;;
+    internal/store/migrations/*)
+      known=true
+      select_gate contracts
+      select_gate go
+      select_gate go_full
+      select_gate postgres
+      select_gate image
+      ;;
+    web/*)
+      known=true
+      select_gate web
+      select_gate image
+      case "$path" in
+        web/packages/tokens/*|web/apps/web/public/*|web/apps/web/src/*.tsx|*.stories.ts|*.stories.tsx|*.snap|*.css)
+          select_gate visual
+          ;;
+      esac
+      case "$path" in
+        web/apps/web/tests/e2e/*|web/apps/web/tests/smoke/*|web/apps/web/src/auth/*|web/apps/web/src/routes/*|web/apps/web/src/wizard/*)
+          select_gate e2e
+          ;;
+      esac
+      case "$path" in
+        web/apps/web/tests/e2e/tuner-*|web/apps/web/src/channels/channel-watch/*|web/apps/web/src/channels/guide-*|web/apps/web/src/channels/tuner-*|web/apps/web/src/channels/use-channel-tuner/*|web/apps/web/src/channels/use-hls-player/*)
+          select_gate tuner
+          ;;
+      esac
+      case "$path" in
+        web/package.json|web/pnpm-lock.yaml|web/apps/web/package.json|web/apps/web/playwright*|web/apps/web/.storybook/*)
+          select_gate visual
+          select_gate e2e
+          select_gate tuner
+          ;;
+      esac
+      ;;
+    api/openapi.yaml)
+      known=true
+      select_gate contracts
+      select_gate web
+      select_gate image
+      select_gate android
+      ;;
+    api/vendor/*)
+      known=true
+      select_gate contracts
+      select_gate go
+      ;;
+    android/*)
+      known=true
+      select_gate android
+      ;;
+    Dockerfile|.dockerignore|LICENSE|THIRD_PARTY_NOTICES.md)
+      known=true
+      select_gate image
+      ;;
+    docs/help/*)
+      known=true
+      select_gate contracts
+      select_gate go
+      select_gate image
+      select_gate docs
+      ;;
+    docs/*|README.md|CHANGELOG.md|CODE_OF_CONDUCT.md|CONTRIBUTING.md|SECURITY.md|CLAUDE.md|AGENTS.md|CONTEXT.md|PROGRESS.md|docs-site/*|.agents/*|.claude/*|.vale|.vale/*|.vale.ini|lychee.toml|.markdownlint*|.github/CODEOWNERS|.github/ISSUE_TEMPLATE/*|.github/PULL_REQUEST_TEMPLATE.md)
+      known=true
+      select_gate docs
+      ;;
+    design/*)
+      known=true
+      select_gate docs
+      ;;
+    internal/testkit/fixtures/*)
+      known=true
+      select_gate go
+      select_gate go_full
+      ;;
+    internal/web/dist/*)
+      known=true
+      select_gate contracts
+      select_gate go
+      select_gate image
+      select_gate web
+      ;;
+    scripts/*)
+      known=true
+      select_gate contracts
+      case "$path" in
+        scripts/agent*|scripts/dev-*) select_gate agent ;;
+        scripts/android-*.sh|scripts/build-android-beta.sh|scripts/check-android-release-env.sh|scripts/generate-android-tv-brand.sh|scripts/publish-android-beta.sh|scripts/test-android-release.sh|scripts/validate-android-release-source.sh) select_gate android ;;
+        scripts/check-fe-bundle.mjs) select_gate web; select_gate image ;;
+      esac
+      ;;
+    Makefile|.github/workflows/ci.yml)
+      known=true
+      select_all
+      ;;
+    .github/workflows/*)
+      known=true
+      select_gate contracts
+      ;;
+    docker/*|.air.toml|.env.example|.golangci.yml|.node-version|.editorconfig|.gitignore|.vscode/*|.github/dependabot.yml|skills-lock.json)
+      known=true
+      select_gate contracts
+      case "$path" in
+        docker/compose.dev*|.node-version) select_gate agent ;;
+      esac
+      ;;
+  esac
+
+  if [[ "$known" == false ]]; then
+    printf 'ci-impact: unknown path %q; selecting every gate\n' "$path" >&2
+    unknown=true
+    select_all
+  fi
+}
+
+while (($#)); do
+  case "$1" in
+    --check-known)
+      strict=true
+      shift
+      ;;
+    --all)
+      force_all=true
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *) break ;;
+  esac
+done
+
+if [[ "$force_all" == true ]]; then
+  if (($#)); then
+    printf 'ci-impact: --all does not accept paths\n' >&2
+    exit 2
+  fi
+  select_all
+elif (($#)); then
+  for path in "$@"; do
+    [[ -n "$path" ]] && classify "$path"
+  done
+else
+  while IFS= read -r path; do
+    [[ -n "$path" ]] && classify "$path"
+  done
+fi
+
+if [[ "$strict" == true && "$unknown" == true ]]; then
+  exit 1
+fi
+
+for ((i = 0; i < ${#GATES[@]}; i++)); do
+  printf '%s=%s\n' "${GATES[$i]}" "${selected[$i]}"
+done

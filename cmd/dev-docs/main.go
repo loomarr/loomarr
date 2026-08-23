@@ -174,12 +174,12 @@ func render(targets []target) []byte {
 	b.WriteString("Both columns are read from source — the descriptions from the Makefile's own `##`\n")
 	b.WriteString("comments, the CI column from `make` invocations in the workflows — so this page\n")
 	b.WriteString("cannot drift from either. `make dev-docs-verify` fails the build if it does.\n\n")
-	// The CI column is derived from workflow invocations BY NAME, so `test` and `lint` are
-	// blank despite running on every PR. Without this line a reader concludes CI does not run
-	// the unit tests — a false claim, generated, and therefore trusted.
+	// The CI column is derived from workflow invocations BY NAME, so prerequisite targets such
+	// as `lint` are blank despite running on every relevant PR. Without this line a reader can
+	// conclude CI does not run them — a false claim, generated, and therefore trusted.
 	b.WriteString("**✅ means a workflow invokes that target by name.** A blank cell is not\n")
-	b.WriteString("\"never runs in CI\" — `fmt`, `vet`, `lint` and `test` all run as prerequisites\n")
-	b.WriteString("of `make check`. The *runs:* note on a row lists what it pulls in.\n\n")
+	b.WriteString("\"never runs in CI\" — prerequisite targets run through their named parent.\n")
+	b.WriteString("The *runs:* note on a row lists what each parent pulls in.\n\n")
 	b.WriteString("**The default gate is `make check`.** Run it before every push.\n\n")
 
 	// Preserve Makefile order for sections; a stable order keeps the diff readable when
@@ -219,8 +219,8 @@ func render(targets []target) []byte {
 	sort.Strings(ciNames)
 	fmt.Fprintf(&b, "## What CI runs\n\n%s\n", strings.Join(ciNames, " · "))
 	b.WriteString("\nThese are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —\n")
-	b.WriteString("`fmt`, `vet`, `vet-tags`, `lint` and `test` are all covered by `check` — so read the\n")
-	b.WriteString("*runs:* line in each table above for the full picture.\n\n")
+	b.WriteString("for example, `check-static` expands to formatting, vet, lint, and repository\n")
+	b.WriteString("contracts. Read the *runs:* line in each table above for the full picture.\n\n")
 	b.WriteString("A target absent from both is yours to run deliberately: the maintainer smoke suites\n")
 	b.WriteString("and the tagged builds are not gates and never run unattended.\n")
 	return []byte(b.String())
