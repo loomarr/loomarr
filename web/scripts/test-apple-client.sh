@@ -42,6 +42,8 @@ for command_name in jq pod xcodebuild xcrun; do
     exit 2
   }
 done
+xcodebuild -version
+xcrun swift --version
 
 mkdir -p "${ARTIFACTS_DIR}"
 rm -rf "${DERIVED_DATA}"
