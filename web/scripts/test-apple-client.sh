@@ -107,9 +107,23 @@ if [[ ! -d "${APP_PATH}" ]]; then
 fi
 
 xcrun simctl install "${simulator_id}" "${APP_PATH}"
-xcrun simctl launch --terminate-running-process "${simulator_id}" "${BUNDLE_ID}"
+launch_output="$(xcrun simctl launch --terminate-running-process "${simulator_id}" "${BUNDLE_ID}")"
+printf '%s\n' "${launch_output}"
+launch_pid="${launch_output##*: }"
+if [[ ! "${launch_pid}" =~ ^[0-9]+$ ]]; then
+  printf 'could not parse launched process id from: %s\n' "${launch_output}" >&2
+  exit 1
+fi
 sleep 5
 xcrun simctl io "${simulator_id}" screenshot "${ARTIFACTS_DIR}/${APP_NAME}.png"
-xcrun simctl spawn "${simulator_id}" launchctl list | grep -F "${BUNDLE_ID}" >/dev/null
+if ! xcrun simctl spawn "${simulator_id}" /bin/kill -0 "${launch_pid}"; then
+  printf 'apple-client: %s exited after launch; recent simulator log follows\n' "${APP_NAME}" >&2
+  xcrun simctl spawn "${simulator_id}" log show \
+    --last 2m \
+    --style compact \
+    --predicate "process == '${SCHEME}' OR eventMessage CONTAINS[c] '${BUNDLE_ID}'" \
+    | tee "${ARTIFACTS_DIR}/${APP_NAME}.log" >&2
+  exit 1
+fi
 printf 'apple-client: %s built, installed, launched, and remained alive on %s\n' \
   "${APP_NAME}" "${simulator_id}"
