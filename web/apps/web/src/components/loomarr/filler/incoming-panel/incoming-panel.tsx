@@ -193,6 +193,7 @@ const IncomingPanel = ({
   onFileAllAsSuggested,
   onSendBack,
   onRestore,
+  onRetryFailure,
   busyPath,
   className,
 }: IncomingPanelProps) => {
@@ -355,6 +356,7 @@ const IncomingPanel = ({
           <RejectedSection
             rows={rejected}
             {...(onRestore ? { onRestore } : {})}
+            {...(onRetryFailure ? { onRetryFailure } : {})}
             {...(busyPath ? { busyHash: busyPath } : {})}
           />
           {allRejected > rejected.length && (

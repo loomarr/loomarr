@@ -46,6 +46,14 @@ func (m *progMemStore) ListPipelineWork(_ context.Context, _ time.Time, _ int) (
 	}
 	return out, nil
 }
+
+func (m *progMemStore) PipelineOverview(_ context.Context, at time.Time) (PipelineOverview, error) {
+	rows := make([]ClipPipeline, 0, len(m.rows))
+	for _, row := range m.rows {
+		rows = append(rows, row)
+	}
+	return SummarizePipelines(rows, at), nil
+}
 func (m *progMemStore) ListClipsWithoutPipeline(context.Context, int) ([]StoreClip, error) {
 	return nil, nil
 }
@@ -59,6 +67,15 @@ func (m *progMemStore) ListClipPipelines(context.Context, PipelineFilter) ([]Cli
 func (m *progMemStore) UpsertClipPipeline(_ context.Context, p ClipPipeline) error {
 	m.rows[p.ClipHash] = p
 	m.writes++
+	return nil
+}
+func (m *progMemStore) RetryClipPipeline(_ context.Context, _ ClipPipeline, p ClipPipeline, restore bool) error {
+	m.rows[p.ClipHash] = p
+	if restore {
+		c := m.clips[p.ClipHash]
+		c.RemovedAt, c.Held, c.AutoFiled = time.Time{}, true, false
+		m.clips[p.ClipHash] = c
+	}
 	return nil
 }
 func (m *progMemStore) GetClip(_ context.Context, id string) (StoreClip, bool, error) {

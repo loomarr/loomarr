@@ -30,6 +30,7 @@ type fakeFiller struct {
 		from  filler.StageID
 		force bool
 	}
+	retries  []string
 	ingested []string
 	// asked records only what came through IngestAsked — the operator-initiated path, and the
 	// only one that may register a source. Separate from `ingested` so a test can tell the two
@@ -82,6 +83,14 @@ func (f *fakeFiller) Rewind(_ context.Context, hash string, from filler.StageID,
 		from  filler.StageID
 		force bool
 	}{hash: hash, from: from, force: force})
+	return nil
+}
+
+func (f *fakeFiller) RetryFailure(_ context.Context, hash string) error {
+	if hash == "settled" {
+		return filler.ErrPipelineNotRetryable
+	}
+	f.retries = append(f.retries, hash)
 	return nil
 }
 
@@ -494,6 +503,47 @@ func TestRewindFillerClip_IsAdminOnlyAndNamesTheStage(t *testing.T) {
 	missing := do(t, srv, http.MethodPost, "/v1/filler/rewind", adminToken, `{"hash":"gone","from":"tag"}`)
 	if missing.StatusCode != http.StatusNotFound {
 		t.Errorf("missing clip rewind → %d, want 404", missing.StatusCode)
+	}
+}
+
+func TestRetryFillerFailures_IsAdminOnlyBoundedAndServerSelected(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+	member := do(t, srv, http.MethodPost, "/v1/filler/retry", memberToken, `{"hashes":["failed"]}`)
+	if member.StatusCode != http.StatusForbidden {
+		t.Fatalf("member retry → %d, want 403", member.StatusCode)
+	}
+	admin := do(t, srv, http.MethodPost, "/v1/filler/retry", adminToken,
+		`{"hashes":["failed","settled","failed"]}`)
+	if admin.StatusCode != http.StatusOK {
+		t.Fatalf("admin retry → %d, want 200", admin.StatusCode)
+	}
+	var body struct {
+		Retried      int `json:"retried"`
+		NotRetryable int `json:"notRetryable"`
+	}
+	if err := json.NewDecoder(admin.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Retried != 1 || body.NotRetryable != 2 {
+		t.Fatalf("retry result = %+v, want one retried and two unchanged", body)
+	}
+	if !slices.Equal(ff.retries, []string{"failed"}) {
+		t.Fatalf("retry calls = %v, want one server-selected retry", ff.retries)
+	}
+	hashes := make([]string, 51)
+	for i := range hashes {
+		hashes[i] = fmt.Sprintf("failed-%d", i)
+	}
+	payload, err := json.Marshal(map[string]any{"hashes": hashes})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tooMany := do(t, srv, http.MethodPost, "/v1/filler/retry", adminToken, string(payload))
+	if tooMany.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("51 retries → %d, want 422", tooMany.StatusCode)
+	}
+	if len(ff.retries) != 1 {
+		t.Fatalf("oversized retry reached service: %v", ff.retries)
 	}
 }
 

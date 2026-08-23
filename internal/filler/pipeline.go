@@ -262,6 +262,10 @@ type PipelineResult struct {
 	// the clip. A number that says "we ran out of time" is the one an operator can act on (raise
 	// the schedule, raise the budget); "failed" sends them looking at the file.
 	Deferred int
+	Overview PipelineOverview
+	// NoAdvanceReason is empty after productive work and otherwise explains who owns the ending
+	// backlog or which clock it is waiting on.
+	NoAdvanceReason string
 }
 
 // ErrDeferred marks a pass that ended before the stage did. It is NOT a failure: no attempt is
@@ -371,6 +375,16 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 			res.Completed++
 		}
 	}
+	summaryCtx, cancelSummary := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancelSummary()
+	if overview, overviewErr := p.store.PipelineOverview(summaryCtx, p.now().UTC()); overviewErr != nil {
+		if p.log != nil {
+			p.log.Warn("filler pipeline: ending overview failed", "err", overviewErr)
+		}
+	} else {
+		res.Overview = overview
+		res.NoAdvanceReason = overview.NoAdvanceReason(res.Advanced)
+	}
 	if p.log != nil {
 		// ⚠ `deferred` is HERE because leaving it out was worse than the failure count it replaced.
 		// Observed live: `advanced=0 completed=0 rejected=0 failed=0` on every pass, while one
@@ -380,7 +394,11 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 		// able to act on.
 		p.log.Info("filler pipeline run", "enrolled", res.Enrolled, "requeued", res.Requeued, "repaired", res.Repaired, "advanced", res.Advanced,
 			"completed", res.Completed, "rejected", res.Rejected, "failed", res.Failed,
-			"deferred", res.Deferred)
+			"deferred", res.Deferred, "runnable", res.Overview.Runnable,
+			"in_progress", res.Overview.InProgress, "scheduled", res.Overview.Scheduled,
+			"needs_decision", res.Overview.NeedsDecision, "terminal", res.Overview.Rejected,
+			"admitted", res.Overview.Admitted, "dismissed", res.Overview.Dismissed,
+			"no_advance_reason", res.NoAdvanceReason)
 	}
 	return res, nil
 }

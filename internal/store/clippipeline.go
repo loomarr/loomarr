@@ -59,13 +59,24 @@ func scanClipPipeline(sc scannable) (filler.ClipPipeline, error) {
 	return p, nil
 }
 
-// UpsertClipPipeline writes a clip's pipeline row.
+// UpsertClipPipeline writes a clip's ordinary runner transition.
 //
-// ⚠ **The ONLY writer of this table**, which is what keeps the state machine in one place. Unlike
+// ⚠ **This file is the ONLY writer of this table**, which is what keeps the state machine in one place. Unlike
 // `UpsertClip` there is no omission list to maintain here: the row is authored by exactly one
 // component (`filler.Pipeline`), so every column rides the update and none of them can be blanked
 // by a caller that did not know about them.
 func (s *sqlStore) UpsertClipPipeline(ctx context.Context, p filler.ClipPipeline) error {
+	if err := s.writeClipPipeline(ctx, s.db, p); err != nil {
+		return fmt.Errorf("upsert clip pipeline %s: %w", p.ClipHash, err)
+	}
+	return nil
+}
+
+type pipelineExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func (s *sqlStore) writeClipPipeline(ctx context.Context, exec pipelineExecer, p filler.ClipPipeline) error {
 	raw, err := json.Marshal(p.Stages)
 	if err != nil {
 		return fmt.Errorf("marshal pipeline ladder: %w", err)
@@ -73,7 +84,7 @@ func (s *sqlStore) UpsertClipPipeline(ctx context.Context, p filler.ClipPipeline
 	if len(p.Stages) == 0 {
 		raw = []byte("[]")
 	}
-	_, err = s.db.ExecContext(ctx, s.ph(
+	_, err = exec.ExecContext(ctx, s.ph(
 		`INSERT INTO filler_clip_pipeline (clip_hash, stage, status, progress, disposition,
 		   reject_reason, reject_detail, attempts, force_run, next_run, stages_json, enrolled_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -88,7 +99,59 @@ func (s *sqlStore) UpsertClipPipeline(ctx context.Context, p filler.ClipPipeline
 		string(p.RejectReason), p.RejectDetail, p.Attempts, p.ForceRun, epoch(p.NextRun), string(raw),
 		epoch(p.EnrolledAt), epoch(p.UpdatedAt))
 	if err != nil {
-		return fmt.Errorf("upsert clip pipeline %s: %w", p.ClipHash, err)
+		return err
+	}
+	return nil
+}
+
+// RetryClipPipeline commits the cross-table recovery boundary. A terminal execution failure has
+// been tombstoned; it must become present and queued together, and it remains held until the
+// downstream score stage admits it. If invalidation failed, the caller never reaches this method.
+func (s *sqlStore) RetryClipPipeline(ctx context.Context, failed, p filler.ClipPipeline, restore bool) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin clip pipeline retry: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if restore {
+		res, err := tx.ExecContext(ctx, s.ph(`UPDATE clips
+			SET removed_at = 0, held = ?, auto_filed = ?, updated_at = ? WHERE hash = ?`),
+			true, false, epoch(p.UpdatedAt), p.ClipHash)
+		if err != nil {
+			return fmt.Errorf("hold restored retry clip %s: %w", p.ClipHash, err)
+		}
+		if n, err := res.RowsAffected(); err != nil {
+			return fmt.Errorf("count restored retry clip %s: %w", p.ClipHash, err)
+		} else if n != 1 {
+			return fmt.Errorf("restore retry clip %s: clip is not in the catalog", p.ClipHash)
+		}
+	}
+	raw, err := json.Marshal(p.Stages)
+	if err != nil {
+		return fmt.Errorf("marshal retry pipeline ladder: %w", err)
+	}
+	if len(p.Stages) == 0 {
+		raw = []byte("[]")
+	}
+	res, err := tx.ExecContext(ctx, s.ph(`UPDATE filler_clip_pipeline SET
+		stage = ?, status = ?, progress = ?, disposition = ?, reject_reason = ?, reject_detail = ?,
+		attempts = ?, force_run = ?, next_run = ?, stages_json = ?, updated_at = ?
+		WHERE clip_hash = ? AND stage = ? AND status = ? AND disposition = ?
+		  AND reject_reason = ? AND attempts = ? AND updated_at = ?`),
+		string(p.Stage), string(p.Status), p.Progress, string(p.Disposition), string(p.RejectReason),
+		p.RejectDetail, p.Attempts, p.ForceRun, epoch(p.NextRun), string(raw), epoch(p.UpdatedAt),
+		failed.ClipHash, string(failed.Stage), string(failed.Status), string(failed.Disposition),
+		string(failed.RejectReason), failed.Attempts, epoch(failed.UpdatedAt))
+	if err != nil {
+		return fmt.Errorf("retry clip pipeline %s: %w", p.ClipHash, err)
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return fmt.Errorf("count retry clip pipeline %s: %w", p.ClipHash, err)
+	} else if n != 1 {
+		return fmt.Errorf("%w: clip %s changed before retry", filler.ErrPipelineNotRetryable, p.ClipHash)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit clip pipeline retry %s: %w", p.ClipHash, err)
 	}
 	return nil
 }
@@ -144,6 +207,40 @@ func (s *sqlStore) ListPipelineWork(ctx context.Context, now time.Time, limit in
 	}
 	defer func() { _ = rows.Close() }()
 	return collectClipPipelines(rows)
+}
+
+// PipelineOverview groups storage facts, then lets the domain classify each group. SQL knows how
+// to aggregate; it does not gain a second copy of the lifecycle state machine. Grouping on whether
+// next_run is in the future keeps the result bounded regardless of catalog size.
+func (s *sqlStore) PipelineOverview(ctx context.Context, at time.Time) (filler.PipelineOverview, error) {
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT disposition, status,
+		CASE WHEN next_run > ? THEN 1 ELSE 0 END AS scheduled, COUNT(*)
+		FROM filler_clip_pipeline
+		GROUP BY 1, 2, 3`), epoch(at))
+	if err != nil {
+		return filler.PipelineOverview{}, fmt.Errorf("pipeline overview: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out filler.PipelineOverview
+	for rows.Next() {
+		var disposition, status string
+		var scheduled, count int
+		if err := rows.Scan(&disposition, &status, &scheduled, &count); err != nil {
+			return filler.PipelineOverview{}, fmt.Errorf("scan pipeline overview: %w", err)
+		}
+		row := filler.ClipPipeline{
+			Disposition: filler.Disposition(disposition),
+			Status:      filler.StageStatus(status),
+		}
+		if scheduled != 0 {
+			row.NextRun = at.Add(time.Second)
+		}
+		out.Add(row.Lifecycle(at).State, count)
+	}
+	if err := rows.Err(); err != nil {
+		return filler.PipelineOverview{}, fmt.Errorf("pipeline overview rows: %w", err)
+	}
+	return out, nil
 }
 
 // ListClipPipelines reads pipeline rows for the Incoming read model.

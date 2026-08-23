@@ -81,6 +81,17 @@ const stubIncoming = (incoming: Partial<FillerIncomingOutputBody> = {}) => {
     reelsTotal: incoming.reelsTotal ?? incoming.reels?.length ?? 0,
     recentlyFiledTotal: incoming.recentlyFiledTotal ?? incoming.recentlyFiled?.length ?? 0,
     rejectedTotal: incoming.rejectedTotal ?? incoming.rejected?.length ?? 0,
+    overview:
+      incoming.overview ??
+      ({
+        runnable: 0,
+        inProgress: 0,
+        scheduled: 0,
+        needsDecision: 1,
+        admitted: 0,
+        rejected: 0,
+        dismissed: 0,
+      } as const),
   };
   const patches: unknown[] = [];
   const files: unknown[] = [];
@@ -126,6 +137,9 @@ describe("IncomingTab", () => {
     // fetch happened — and an unmatched request would now fail the test by name, where the old
     // catch-all would have answered it silently.
     expect(await screen.findByText("Toy ad")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /filler pipeline status/i })).toHaveTextContent(
+      /1 clip decisions/i,
+    );
   });
 
   // ⚠ **"Looks right" has to FILE, and it did not** (§10 V54). It PATCHed the era and stopped, so

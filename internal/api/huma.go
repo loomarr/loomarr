@@ -401,6 +401,7 @@ type FillerService interface {
 // a recovery operation they cannot perform.
 type FillerRewinder interface {
 	Rewind(ctx context.Context, hash string, from filler.StageID, force bool) error
+	RetryFailure(ctx context.Context, hash string) error
 }
 
 // DiscoveredClip is one candidate the operator could add (§10, V33).

@@ -41,10 +41,12 @@ const REASON: Record<string, string> = {
 const RejectedSection = ({
   rows,
   onRestore,
+  onRetryFailure,
   busyHash,
 }: {
   rows: IncomingRejectDTO[];
   onRestore?: (clip: IncomingRejectDTO) => void;
+  onRetryFailure?: (clip: IncomingRejectDTO) => void;
   busyHash?: string;
 }) => (
   <section className="flex flex-col gap-3">
@@ -69,7 +71,17 @@ const RejectedSection = ({
               button, because restoring it puts silence in a break — a control that cannot work is
               worse than no control, and deriving the list a second time here is the drift class
               this codebase keeps finding. */}
-          {clip.restorable && onRestore && (
+          {clip.recovery === "retry" && onRetryFailure ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busyHash === clip.hash}
+              onClick={() => onRetryFailure(clip)}
+              title="Retry the failed work while preserving completed upstream stages."
+            >
+              Retry {clip.retryStage ?? clip.stage}
+            </Button>
+          ) : clip.restorable && onRestore ? (
             <Button
               variant="outline"
               size="sm"
@@ -79,7 +91,7 @@ const RejectedSection = ({
             >
               Use it anyway
             </Button>
-          )}
+          ) : null}
         </li>
       ))}
     </ul>

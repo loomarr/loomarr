@@ -177,6 +177,15 @@ const stubFiller = ({
       stageOrder: [],
       total: 0,
       ...incoming,
+      overview: incoming?.overview ?? {
+        runnable: 0,
+        inProgress: 0,
+        scheduled: 0,
+        needsDecision: 0,
+        admitted: 0,
+        rejected: 0,
+        dismissed: 0,
+      },
       clipsTotal: incoming?.clipsTotal ?? incoming?.clips?.length ?? 0,
       decisionsTotal:
         incoming?.decisionsTotal ?? incoming?.clips?.filter((clip) => clip.needsDecision).length ?? 0,
@@ -796,6 +805,7 @@ describe("Filler page", () => {
             pipeline: {
               stage: "tag",
               status: "done",
+              lifecycle: "needs_decision",
               attempts: 0,
               progress: 100,
               stages: [],

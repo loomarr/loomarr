@@ -734,6 +734,93 @@ func testClipIdentityReplacementSameHash(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+func testClipPipelineOverview(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_900_000_000, 0).UTC()
+	rows := []filler.ClipPipeline{
+		{ClipHash: "due", Stage: filler.StageProbe, Status: filler.StatusQueued,
+			Disposition: filler.DispositionRunning, NextRun: now.Add(-time.Minute)},
+		{ClipHash: "active", Stage: filler.StageTranscode, Status: filler.StatusRunning,
+			Disposition: filler.DispositionRunning},
+		{ClipHash: "backoff", Stage: filler.StageVision, Status: filler.StatusFailed,
+			Disposition: filler.DispositionRunning, NextRun: now.Add(time.Hour)},
+		{ClipHash: "deferred", Stage: filler.StageSplit, Status: filler.StatusQueued,
+			Disposition: filler.DispositionRunning, NextRun: now.Add(time.Hour)},
+		{ClipHash: "review", Stage: filler.StageScore, Status: filler.StatusDone,
+			Disposition: filler.DispositionReview},
+		{ClipHash: "filed", Stage: filler.StageScore, Status: filler.StatusDone,
+			Disposition: filler.DispositionFiled},
+		{ClipHash: "rejected", Stage: filler.StageTranscode, Status: filler.StatusFailed,
+			Disposition: filler.DispositionRejected, RejectReason: filler.ReasonUnplayable},
+		{ClipHash: "dismissed", Stage: filler.StageTag, Status: filler.StatusDone,
+			Disposition: filler.DispositionDismissed},
+	}
+	for i := range rows {
+		rows[i].EnrolledAt, rows[i].UpdatedAt = now, now
+		if err := s.UpsertClipPipeline(ctx, rows[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.PipelineOverview(ctx, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filler.PipelineOverview{
+		Runnable: 1, InProgress: 1, Scheduled: 2, NeedsDecision: 1,
+		Admitted: 1, Rejected: 1, Dismissed: 1,
+	}
+	if got != want {
+		t.Fatalf("PipelineOverview() = %+v, want %+v", got, want)
+	}
+}
+
+func testClipPipelineRetry(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_900_000_000, 0).UTC()
+	clip := clipAt("retry/failed.mp4", "Failed encode", filler.Commercial, 30_000)
+	if err := s.UpsertClip(ctx, Clip{Clip: clip, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetClipsHeld(ctx, []string{clip.Path}, false, true, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetClipsRemoved(ctx, []string{clip.Path}, now); err != nil {
+		t.Fatal(err)
+	}
+	failed := filler.ClipPipeline{
+		ClipHash: clip.Hash, Stage: filler.StageTranscode, Status: filler.StatusFailed,
+		Disposition: filler.DispositionRejected, RejectReason: filler.ReasonUnplayable,
+		Attempts: filler.MaxAttempts, EnrolledAt: now, UpdatedAt: now,
+	}
+	if err := s.UpsertClipPipeline(ctx, failed); err != nil {
+		t.Fatal(err)
+	}
+	retry := failed
+	retry.Status, retry.Disposition, retry.Attempts = filler.StatusQueued, filler.DispositionRunning, 0
+	retry.RejectReason, retry.ForceRun, retry.UpdatedAt = "", true, now.Add(time.Minute)
+	if err := s.RetryClipPipeline(ctx, failed, retry, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RetryClipPipeline(ctx, failed, retry, true); !errors.Is(err, filler.ErrPipelineNotRetryable) {
+		t.Fatalf("stale retry = %v, want ErrPipelineNotRetryable", err)
+	}
+	got, err := s.GetClip(ctx, clip.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.RemovedAt.IsZero() || !got.Held || got.AutoFiled {
+		t.Fatalf("restored clip = removed:%v held:%v auto:%v, want present and held", got.RemovedAt, got.Held, got.AutoFiled)
+	}
+	row, found, err := s.GetClipPipeline(ctx, clip.Hash)
+	if err != nil || !found || row.Status != filler.StatusQueued || row.Disposition != filler.DispositionRunning || !row.ForceRun {
+		t.Fatalf("retry row = %+v found=%v err=%v", row, found, err)
+	}
+}
+
 // testClipFingerprintCache pins the cache's two correctness properties on both backends: only an
 // exact content+algorithm key hits, and catalog pruning removes sibling-table orphans.
 func testClipFingerprintCache(t *testing.T, newStore NewStoreFunc) {

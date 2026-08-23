@@ -48,6 +48,23 @@ describe("RejectedSection", () => {
     expect(screen.queryByRole("button", { name: /use it anyway/i })).not.toBeInTheDocument();
   });
 
+  it("offers retry for an execution failure without offering content override", async () => {
+    const onRetryFailure = vi.fn();
+    const clip = reject({
+      reason: "unplayable",
+      restorable: false,
+      failureCode: "unplayable",
+      recovery: "retry",
+      retryStage: "transcode",
+    });
+    render(<RejectedSection rows={[clip]} onRestore={vi.fn()} onRetryFailure={onRetryFailure} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /retry transcode/i }));
+
+    expect(onRetryFailure).toHaveBeenCalledWith(clip);
+    expect(screen.queryByRole("button", { name: /use it anyway/i })).not.toBeInTheDocument();
+  });
+
   it("explains content-silent and black-stream refusals separately from missing streams", () => {
     render(
       <RejectedSection

@@ -114,6 +114,7 @@ const taggingClip: IncomingClipDTO = {
   pipeline: {
     stage: "tag",
     status: "running",
+    lifecycle: "in_progress",
     progress: -1,
     updatedAt: "2026-08-01T12:01:00Z",
     stages: [
@@ -149,6 +150,7 @@ const transcodingClip: IncomingClipDTO = {
   pipeline: {
     stage: "transcode",
     status: "running",
+    lifecycle: "in_progress",
     progress: 62,
     stages: [{ stage: "probe", status: "done", at: "2026-08-01T12:02:00Z" }],
     updatedAt: "2026-08-01T12:02:10Z",
@@ -172,6 +174,7 @@ const needsDecisionClip: IncomingClipDTO = {
   pipeline: {
     stage: "score",
     status: "done",
+    lifecycle: "needs_decision",
     progress: -1,
     stages: [{ stage: "probe", status: "done", at: "2026-08-01T12:03:00Z" }],
     updatedAt: "2026-08-01T12:03:30Z",
