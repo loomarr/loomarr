@@ -7,10 +7,11 @@
 # `contents: write`, so it lives here in its own workflow with the minimum permission. The two run
 # in parallel off the same `v*` tag and never share a token.
 #
-# Notes = GitHub's auto-generated list of merged PRs since the previous tag (`--generate-notes`),
-# with a curated header prepended from `docs/release/<tag>.md` when one exists (the beta framing and
-# the known-limitations list a machine can't infer). A tag with a `-` (e.g. `v0.1.0-beta.1`) is
-# marked a prerelease.
+# Notes begin with GitHub's exact list of merged PRs since the previous tag. OpenRouter assigns only
+# those verified PR numbers to a fixed set of sections; repository code rejects missing, duplicate,
+# invented, or malformed classifications and renders GitHub's real titles/authors/links. A curated
+# `docs/release/<tag>.md` header still supplies framing a machine cannot infer. A tag with a `-`
+# (e.g. `v0.1.0-beta.1`) is marked a prerelease.
 name: Release notes
 
 on:
@@ -32,6 +33,21 @@ jobs:
       - name: Check out the tagged commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Generate validated release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPENROUTER_RELEASE_API_KEY: ${{ secrets.OPENROUTER_RELEASE_API_KEY }}
+          RELEASE_NOTES_MODEL: ${{ vars.RELEASE_NOTES_MODEL }}
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: ./scripts/generate-release-notes.sh "$TAG" "$RUNNER_TEMP/release-notes.md"
+
       - name: Create the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -39,14 +55,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # A curated header (beta framing + known limitations) if the repo ships one for this tag.
-          header="docs/release/${TAG}.md"
-          args=(release create "$TAG" --title "$TAG" --generate-notes --verify-tag)
+          args=(release create "$TAG" --title "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md" --verify-tag)
           # Prerelease when the SemVer tag carries a pre-release suffix (e.g. -beta.1).
           case "$TAG" in *-*) args+=(--prerelease) ;; esac
-          # --notes-file is PREPENDED to the auto-generated PR list when combined with
-          # --generate-notes, so the curated framing leads and the mechanical changelog follows.
-          if [ -f "$header" ]; then
-            args+=(--notes-file "$header")
-          fi
           gh "${args[@]}"
