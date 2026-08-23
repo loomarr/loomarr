@@ -24,8 +24,10 @@ type Case struct {
 
 	// --- deterministic expectations (checked without a judge) ---
 
-	// MinLineup / MinAcquisitions: the proposal must ground at least this many
-	// (grounding produced real content, not an empty result).
+	// MinGrounded counts owned lineup and outside-library acquisitions together.
+	// Use it when ownership is irrelevant to the request. MinLineup and
+	// MinAcquisitions assert a specific side of that boundary when required.
+	MinGrounded     int
 	MinLineup       int
 	MinAcquisitions int
 	// NoFabrication asserts every grounded pick has a real, resolvable id (the
@@ -51,7 +53,11 @@ type Case struct {
 	// proposal is actually on-theme, not just non-empty). 0 = don't assert.
 	MinThemeFit float64
 	// ExpectSeasonalMode, if set, is the seasonal mode the intent implies.
-	ExpectSeasonalMode string
+	ExpectSeasonalMode     string
+	ExpectSeasonalHolidays []string
+	// ExpectOrdering pins the programming texture implied by the request, such as
+	// curated single-series reruns versus an explicit chronological binge.
+	ExpectOrdering string
 
 	// --- judge rubric (subjective, scored by the judge model 0..1) ---
 
@@ -61,6 +67,11 @@ type Case struct {
 	// MinJudgeScore: the judge's 0..1 score must be at least this to pass (only when
 	// the judge runs). 0 = judge is advisory (scored + reported, never fails).
 	MinJudgeScore float64
+	// Relevance and serendipity are separate because a merely surprising lineup
+	// can be nonsense, while a perfectly literal lineup can feel stale. Each floor
+	// applies only when the judge runs; 0 leaves that dimension advisory.
+	MinRelevanceScore   float64
+	MinSerendipityScore float64
 }
 
 // Intent mirrors suggest.Intent's fields (kept local so the corpus is pure data;
@@ -94,19 +105,21 @@ var Corpus = []Case{
 		MinThemeFit: 0.5,
 		JudgeRubric: "A good result is a set of genuine 1990s animated kids shows/movies. " +
 			"Penalize any adult-oriented, violent, or clearly non-kids title; penalize non-90s titles.",
-		MinJudgeScore: 0.6,
+		MinJudgeScore:     0.6,
+		MinRelevanceScore: 0.65, MinSerendipityScore: 0.35,
 	},
 	{
 		Name:       "template_cozy_mystery",
 		TemplateID: "cozy-mystery",
 		Intent: Intent{Description: "Gentle small-town mysteries for a rainy evening — nothing gruesome",
 			Tone: "cozy"},
-		MinLineup:    1,
+		MinGrounded:  1,
 		MinThemeFit:  0.5,
 		ForbidGenres: []string{"Horror"},
 		JudgeRubric: "A good result is gentle, cozy mystery programming. Penalize graphic violence, gore, horror, " +
 			"grim serial-killer stories, or titles that are not mysteries.",
-		MinJudgeScore: 0.65,
+		MinJudgeScore:     0.65,
+		MinRelevanceScore: 0.7, MinSerendipityScore: 0.35,
 	},
 	{
 		Name:       "template_late_night_scifi",
@@ -117,27 +130,31 @@ var Corpus = []Case{
 		MinThemeFit: 0.5,
 		JudgeRubric: "A good result is atmospheric, strange, or cerebral science fiction suitable for late-night viewing. " +
 			"Penalize ordinary action films and titles with no science-fiction connection.",
-		MinJudgeScore: 0.6,
+		MinJudgeScore:     0.6,
+		MinRelevanceScore: 0.65, MinSerendipityScore: 0.4,
 	},
 	{
 		Name:       "template_action_marathon",
 		TemplateID: "action-marathon",
 		Intent: Intent{Description: "Back-to-back action movies, high energy, keep it PG-13",
 			Tone: "high energy"},
-		MinLineup:          1,
-		ForbidRatingsAbove: "PG-13",
-		MinThemeFit:        0.5,
-		JudgeRubric:        "A good result is a fast, high-energy action-movie marathon. Penalize slow dramas, non-action titles, and content inappropriate for a PG-13 ceiling.",
-		MinJudgeScore:      0.6,
+		MinLineup:           1,
+		ForbidRatingsAbove:  "PG-13",
+		MinThemeFit:         0.5,
+		JudgeRubric:         "A good result is a fast, high-energy action-movie marathon. Penalize slow dramas, non-action titles, and content inappropriate for a PG-13 ceiling.",
+		MinJudgeScore:       0.6,
+		MinRelevanceScore:   0.65,
+		MinSerendipityScore: 0.35,
 	},
 	{
-		Name:             "explicit_negative_constraint",
-		Intent:           Intent{Description: "gentle mysteries with no horror; exclude Saw", MustExclude: []string{"Saw"}},
-		MinLineup:        1,
-		ForbidGenres:     []string{"Horror"},
-		ForbidTitleTerms: []string{"Saw"},
-		JudgeRubric:      "A good result is a gentle mystery lineup with no horror, gore, or Saw title.",
-		MinJudgeScore:    0.65,
+		Name:              "explicit_negative_constraint",
+		Intent:            Intent{Description: "gentle mysteries with no horror; exclude Saw", MustExclude: []string{"Saw"}},
+		MinGrounded:       1,
+		ForbidGenres:      []string{"Horror"},
+		ForbidTitleTerms:  []string{"Saw"},
+		JudgeRubric:       "A good result is a gentle mystery lineup with no horror, gore, or Saw title.",
+		MinJudgeScore:     0.65,
+		MinRelevanceScore: 0.7,
 	},
 	{
 		Name:   "must_include_grounding",
@@ -148,14 +165,117 @@ var Corpus = []Case{
 		JudgeRubric: "A good result is science-fiction films and MUST include The Matrix (it was explicitly requested).",
 	},
 	{
+		Name: "classic_single_series_curated",
+		Intent: Intent{
+			Description: "Classic Simpsons reruns from the golden era, curated for variety",
+			MustInclude: []string{"The Simpsons"}, MaxAcquire: 1,
+		},
+		MinGrounded:    1,
+		ExpectOrdering: "syndication",
+	},
+	{
 		Name:   "family_movie_night",
 		Intent: Intent{Description: "family movie night, nothing too scary or mature"},
 		// A softer safety case: "family" implies a PG-ish ceiling; assert the lineup
 		// carries nothing above TV-14 even if the exact ceiling varies.
-		MinLineup:          1,
-		ForbidRatingsAbove: "TV-14",
-		JudgeRubric:        "A good result is broadly family-appropriate films. Penalize R-rated / TV-MA titles.",
-		MinJudgeScore:      0.5,
+		MinGrounded:         1,
+		ForbidRatingsAbove:  "TV-14",
+		JudgeRubric:         "A good result is broadly family-appropriate films. Penalize R-rated / TV-MA titles.",
+		MinJudgeScore:       0.5,
+		MinRelevanceScore:   0.6,
+		MinSerendipityScore: 0.3,
+	},
+	{
+		Name: "holiday_christmas_cozy_discovery",
+		Intent: Intent{
+			Description: "A cozy Christmas movie channel with beloved favorites and a few warm discoveries",
+			Tone:        "cozy", MaxAcquire: 4,
+		},
+		MinAcquisitions:        1,
+		ExpectSeasonalMode:     "exclusive",
+		ExpectSeasonalHolidays: []string{"christmas"},
+		MinThemeFit:            0.55,
+		JudgeRubric: "A good result is unmistakably Christmas programming with a coherent cozy tone. " +
+			"It should balance recognizable anchors with relevant less-obvious discoveries; random winter films are not serendipity.",
+		MinJudgeScore: 0.65, MinRelevanceScore: 0.7, MinSerendipityScore: 0.55,
+	},
+	{
+		Name: "holiday_family_halloween",
+		Intent: Intent{
+			Description: "Playful Halloween movies for families, spooky but never gruesome",
+			Tone:        "playful", MaxAcquire: 3,
+		},
+		MinLineup:              1,
+		ExpectCeiling:          "TV-PG",
+		ForbidRatingsAbove:     "TV-PG",
+		ExpectSeasonalMode:     "exclusive",
+		ExpectSeasonalHolidays: []string{"halloween"},
+		JudgeRubric: "A good result is clearly Halloween-themed, playful, and family-safe. " +
+			"Reward clever animated or supernatural discoveries; penalize gore, adult horror, and generic family films with no Halloween connection.",
+		MinJudgeScore: 0.7, MinRelevanceScore: 0.75, MinSerendipityScore: 0.4,
+	},
+	{
+		Name: "holiday_thanksgiving_comedy",
+		Intent: Intent{
+			Description: "Thanksgiving comedies about chaotic families, travel disasters, and coming home",
+			Tone:        "funny", MaxAcquire: 4,
+		},
+		MinAcquisitions:        1,
+		ExpectSeasonalMode:     "exclusive",
+		ExpectSeasonalHolidays: []string{"thanksgiving"},
+		JudgeRubric: "A good result fits Thanksgiving through the holiday itself or its family, travel, and homecoming themes. " +
+			"Reward apt discoveries beyond the single most famous title; penalize unrelated broad comedies.",
+		MinJudgeScore: 0.65, MinRelevanceScore: 0.7, MinSerendipityScore: 0.5,
+	},
+	{
+		Name: "holiday_new_years_eve",
+		Intent: Intent{
+			Description: "A stylish New Year's Eve channel for the countdown: parties, fresh starts, and midnight",
+			Tone:        "celebratory", MaxAcquire: 4,
+		},
+		MinAcquisitions:        1,
+		ExpectSeasonalMode:     "exclusive",
+		ExpectSeasonalHolidays: []string{"newyear"},
+		JudgeRubric: "A good result has a real New Year's Eve, countdown, midnight-party, or fresh-start connection. " +
+			"Reward a varied but coherent mix; penalize movies selected merely because they are glamorous or set in winter.",
+		MinJudgeScore: 0.65, MinRelevanceScore: 0.7, MinSerendipityScore: 0.5,
+	},
+	{
+		Name: "holiday_valentines_offbeat_romance",
+		Intent: Intent{
+			Description: "An offbeat Valentine's Day channel: witty romances and unexpected love stories, not syrupy melodrama",
+			Tone:        "witty", MaxAcquire: 4,
+		},
+		MinAcquisitions:        1,
+		ExpectSeasonalMode:     "exclusive",
+		ExpectSeasonalHolidays: []string{"valentines"},
+		JudgeRubric: "A good result is suitable for Valentine's viewing while honoring the witty, offbeat qualifier. " +
+			"Reward surprising but defensible love stories; penalize generic melodrama and novelty with no romantic connection.",
+		MinJudgeScore: 0.65, MinRelevanceScore: 0.7, MinSerendipityScore: 0.55,
+	},
+	{
+		Name: "context_rainy_late_night",
+		Intent: Intent{
+			Description: "It's a rainy late night; build a channel of atmospheric mysteries and quiet thrillers",
+			Tone:        "moody", MaxAcquire: 4,
+		},
+		MinAcquisitions: 1,
+		JudgeRubric: "A good result suits both the rainy mood and late-night viewing while remaining a coherent mystery/thriller channel. " +
+			"Reward subtle, defensible discoveries; penalize generic blockbusters, bright daytime fare, and randomness mistaken for mood.",
+		MinJudgeScore: 0.65, MinRelevanceScore: 0.7, MinSerendipityScore: 0.5,
+	},
+	{
+		Name: "context_sunday_morning_family",
+		Intent: Intent{
+			Description: "Easy Sunday-morning viewing for the family: gentle nature, travel, and food programs",
+			Tone:        "calm", MaxAcquire: 4,
+		},
+		MinAcquisitions:    1,
+		ExpectCeiling:      "TV-PG",
+		ForbidRatingsAbove: "TV-PG",
+		JudgeRubric: "A good result feels calm, welcoming, and appropriate for shared Sunday-morning viewing, across nature, travel, or food. " +
+			"Reward a pleasantly varied set; penalize intense survival shows, adult travelogues, or unrelated family films.",
+		MinJudgeScore: 0.65, MinRelevanceScore: 0.7, MinSerendipityScore: 0.45,
 	},
 	{
 		Name: "nonsense_intent_no_fabrication",

@@ -2,8 +2,10 @@ package testkit
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,6 +27,10 @@ type TMDB struct {
 	// here, else 404 — that 404 is what the suggester's validation drops.
 	movies map[int]tmdbTitle
 	series map[int]tmdbTitle
+	// keywords model TMDB's separate keyword corpus. Titles carry keyword ids;
+	// /search/keyword resolves human terms and /discover uses with_keywords.
+	keywords      map[int]string
+	nextKeywordID int
 	// recommends is the adjacency graph /{movie,tv}/{id}/recommendations serves
 	// (programming-design §8.3): seed tmdb id → the ids it recommends. Empty for a
 	// seed the test didn't wire, which is the real API's behaviour for an obscure
@@ -64,12 +70,13 @@ func (m *TMDB) WithRecommendations(graph map[int][]int) *TMDB {
 }
 
 type tmdbTitle struct {
-	ID       int
-	Name     string
-	Year     int
-	Date     string
-	GenreIDs []int  // §8 enrichment: TMDB genre ids (28=Action, 878=Sci-Fi, …)
-	Overview string // short synopsis the model reasons about
+	ID         int
+	Name       string
+	Year       int
+	Date       string
+	GenreIDs   []int // §8 enrichment: endpoint-specific TMDB genre ids (movie 878 vs TV 10765 for Sci-Fi)
+	KeywordIDs []int
+	Overview   string // short synopsis the model reasons about
 	// USRating is the US content rating the /content_ratings (tv) or /release_dates
 	// (movie) endpoint reports (§389 acquisition enrichment). Empty ⇒ no US rating,
 	// which is the common sparse-coverage case a test may assert is handled.
@@ -88,11 +95,61 @@ func (m *TMDB) SetRating(mt provision.MediaType, tmdbID int, rating string) {
 	cat[tmdbID] = t
 }
 
+// AddMovie adds one grounded movie to the shared TMDB corpus. Tests use this to
+// exercise realistic result windows and pagination without inventing a private
+// TMDB mock beside the repository-wide service double.
+func (m *TMDB) AddMovie(id int, name string, year int, genreIDs []int, overview string) {
+	m.movies[id] = tmdbTitle{
+		ID: id, Name: name, Year: year, Date: fmt.Sprintf("%04d-01-01", year),
+		GenreIDs: append([]int(nil), genreIDs...), Overview: overview,
+	}
+}
+
+// AddSeries adds one grounded series to the shared TMDB corpus.
+func (m *TMDB) AddSeries(id int, name string, year int, genreIDs []int, overview string) {
+	m.series[id] = tmdbTitle{
+		ID: id, Name: name, Year: year, Date: fmt.Sprintf("%04d-01-01", year),
+		GenreIDs: append([]int(nil), genreIDs...), Overview: overview,
+	}
+}
+
+// AddKeywordMovie adds a movie whose thematic match lives in TMDB's keyword
+// metadata rather than its title. It is the realistic boundary fixture for
+// holiday/motif requests such as "Christmas" finding "Snowbound Reunion".
+func (m *TMDB) AddKeywordMovie(id int, name string, year int, genreIDs []int, overview string, keywords ...string) {
+	keywordIDs := make([]int, 0, len(keywords))
+	for _, keyword := range keywords {
+		keyword = strings.TrimSpace(keyword)
+		if keyword == "" {
+			continue
+		}
+		var keywordID int
+		for id, existing := range m.keywords {
+			if strings.EqualFold(existing, keyword) {
+				keywordID = id
+				break
+			}
+		}
+		if keywordID == 0 {
+			keywordID = m.nextKeywordID
+			m.nextKeywordID++
+			m.keywords[keywordID] = keyword
+		}
+		keywordIDs = append(keywordIDs, keywordID)
+	}
+	m.movies[id] = tmdbTitle{
+		ID: id, Name: name, Year: year, Date: fmt.Sprintf("%04d-01-01", year),
+		GenreIDs: append([]int(nil), genreIDs...), KeywordIDs: keywordIDs, Overview: overview,
+	}
+}
+
 // NewTMDB starts a mock TMDB with a fixed small catalog (Speed/The Rock movies,
 // one series) — enough to exercise search + exists + the fabricated-id path.
 func NewTMDB(t testing.TB) *TMDB {
 	t.Helper()
 	m := &TMDB{
+		keywords:      map[int]string{},
+		nextKeywordID: 5000,
 		movies: map[int]tmdbTitle{
 			100: {ID: 100, Name: "Speed", Year: 1994, Date: "1994-06-10", GenreIDs: []int{28, 53}, Overview: "A cop must keep a bus above 50mph or a bomb detonates."},
 			101: {ID: 101, Name: "The Rock", Year: 1996, Date: "1996-06-07", GenreIDs: []int{28, 12, 53}, Overview: "A chemist and an ex-con storm Alcatraz to stop a rogue general."},
@@ -120,27 +177,46 @@ func NewTMDB(t testing.TB) *TMDB {
 		results = append(results, map[string]any{"id": 9999, "media_type": "person", "name": "Some Actor"})
 		_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
 	})
+	mux.HandleFunc("GET /search/keyword", func(w http.ResponseWriter, r *http.Request) {
+		q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("query")))
+		ids := make([]int, 0, len(m.keywords))
+		for id := range m.keywords {
+			ids = append(ids, id)
+		}
+		sort.Ints(ids)
+		var results []map[string]any
+		for _, id := range ids {
+			if strings.Contains(strings.ToLower(m.keywords[id]), q) {
+				results = append(results, map[string]any{"id": id, "name": m.keywords[id]})
+			}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"page": 1, "total_pages": 1, "results": results})
+	})
 	// /discover/{movie,tv}: filter the catalog by with_genres (§8 discovery path).
 	// A comma/pipe-separated with_genres matches any listed genre id; empty = all.
 	mux.HandleFunc("GET /discover/movie", func(w http.ResponseWriter, r *http.Request) {
 		want := parseGenreParam(r.URL.Query().Get("with_genres"))
+		wantKeywords := parseGenreParam(r.URL.Query().Get("with_keywords"))
 		var results []map[string]any
-		for _, mv := range m.movies {
-			if genreMatch(mv.GenreIDs, want) {
+		for _, mv := range sortedTitles(m.movies) {
+			if allIDsMatch(mv.GenreIDs, want) && anyIDMatches(mv.KeywordIDs, wantKeywords) {
 				results = append(results, movieRow(mv))
 			}
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
+		results, page, totalPages := tmdbPage(results, r.URL.Query().Get("page"))
+		_ = json.NewEncoder(w).Encode(map[string]any{"page": page, "total_pages": totalPages, "results": results})
 	})
 	mux.HandleFunc("GET /discover/tv", func(w http.ResponseWriter, r *http.Request) {
 		want := parseGenreParam(r.URL.Query().Get("with_genres"))
+		wantKeywords := parseGenreParam(r.URL.Query().Get("with_keywords"))
 		var results []map[string]any
-		for _, s := range m.series {
-			if genreMatch(s.GenreIDs, want) {
+		for _, s := range sortedTitles(m.series) {
+			if allIDsMatch(s.GenreIDs, want) && anyIDMatches(s.KeywordIDs, wantKeywords) {
 				results = append(results, tvRow(s))
 			}
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
+		results, page, totalPages := tmdbPage(results, r.URL.Query().Get("page"))
+		_ = json.NewEncoder(w).Encode(map[string]any{"page": page, "total_pages": totalPages, "results": results})
 	})
 	// /{movie,tv}/{id}/recommendations: the §8.3 adjacency graph. Registered BEFORE the
 	// bare /{id} routes so the more specific pattern wins.
@@ -226,6 +302,37 @@ func tvRow(s tmdbTitle) map[string]any {
 	}
 }
 
+func sortedTitles(catalog map[int]tmdbTitle) []tmdbTitle {
+	ids := make([]int, 0, len(catalog))
+	for id := range catalog {
+		ids = append(ids, id)
+	}
+	sort.Ints(ids)
+	out := make([]tmdbTitle, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, catalog[id])
+	}
+	return out
+}
+
+// TMDB discovery pages contain at most twenty results. Modelling that boundary
+// is load-bearing: a client that asks for forty candidates but never advances
+// page=2 has still only widened its local slice, not its real discovery corpus.
+func tmdbPage(results []map[string]any, rawPage string) ([]map[string]any, int, int) {
+	const pageSize = 20
+	page := atoiPath(rawPage)
+	if page <= 0 {
+		page = 1
+	}
+	totalPages := max(1, (len(results)+pageSize-1)/pageSize)
+	start := (page - 1) * pageSize
+	if start >= len(results) {
+		return nil, page, totalPages
+	}
+	end := min(start+pageSize, len(results))
+	return results[start:end], page, totalPages
+}
+
 // parseGenreParam splits TMDB's with_genres (comma = OR, pipe = OR here) into ids.
 func parseGenreParam(v string) []int {
 	if v == "" {
@@ -240,8 +347,28 @@ func parseGenreParam(v string) []int {
 	return out
 }
 
-// genreMatch reports whether have shares any id with want (empty want = match all).
-func genreMatch(have, want []int) bool {
+// allIDsMatch models TMDB's comma-separated with_genres semantics (AND).
+func allIDsMatch(have, want []int) bool {
+	if len(want) == 0 {
+		return true
+	}
+	for _, w := range want {
+		found := false
+		for _, h := range have {
+			if h == w {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+// anyIDMatches models pipe-separated with_keywords alternatives (OR).
+func anyIDMatches(have, want []int) bool {
 	if len(want) == 0 {
 		return true
 	}

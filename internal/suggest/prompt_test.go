@@ -25,3 +25,17 @@ func TestSystemPromptConstrainsFormatMedium(t *testing.T) {
 		}
 	}
 }
+
+func TestSystemPromptBoundsFinalSelectionToFitHostedCompletionBudget(t *testing.T) {
+	if !strings.Contains(systemPrompt, "Select at most 8 picks") {
+		t.Fatal("systemPrompt must bound the final selection so grounded JSON fits max_tokens")
+	}
+}
+
+func TestSystemPromptBalancesOwnedAnchorsWithOutsideLibraryDiscovery(t *testing.T) {
+	for _, want := range []string{"owned titles as anchors", "one-third", "outside-library discoveries", "Never sacrifice relevance"} {
+		if !strings.Contains(systemPrompt, want) {
+			t.Errorf("systemPrompt is missing discovery-balance guidance %q", want)
+		}
+	}
+}

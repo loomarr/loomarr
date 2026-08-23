@@ -2,6 +2,8 @@ package catalog_test
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
@@ -160,6 +162,46 @@ func TestCatalogSearch_InLibraryOrderedFirst(t *testing.T) {
 	}
 }
 
+// A full Library result page must not crowd every outside-Library candidate out of
+// the federated result. The Catalog is the grounding corpus for a new Channel
+// Proposal, so truncating only after an in-library-first sort makes acquisitions
+// impossible whenever the Library alone fills the limit — even though TMDB returned
+// relevant titles in the same search.
+func TestCatalogSearch_AllScopeKeepsOutsideLibraryDiscoveryWhenLibraryFillsLimit(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	items := make([]testkit.SearchStub, 24)
+	for i := range items {
+		items[i] = testkit.SearchStub{
+			Terms: []string{"a"}, LibraryItemID: fmt.Sprintf("owned-%02d", i),
+			Name: fmt.Sprintf("Archive Pick %02d", i), Type: "Movie", Year: 1990 + i%10,
+			TMDBID: 10_000 + i,
+		}
+	}
+	ms.SetSearchItems(items...)
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	tmdbServer := testkit.NewTMDB(t)
+	tmdbClient := tmdb.NewWithBase(tmdbServer.URL, "test-key")
+
+	got, err := catalog.New(lib, tmdbClient).Search(context.Background(), "a", catalog.ScopeAll, 24)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var owned, outside int
+	for _, candidate := range got {
+		if candidate.InLibrary {
+			owned++
+		} else {
+			outside++
+		}
+	}
+	if owned == 0 {
+		t.Fatal("federated search dropped every immediately playable Library candidate")
+	}
+	if outside == 0 {
+		t.Fatal("a full Library page crowded every relevant outside-Library candidate out of discovery")
+	}
+}
+
 func TestCandidateKey(t *testing.T) {
 	c := catalog.Candidate{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}
 	k, err := c.Key()
@@ -241,6 +283,138 @@ func TestCatalogDiscover_BackfillsInLibrary(t *testing.T) {
 		if c.TMDBID == 100 && c.InLibrary { // Speed, not in the owned set
 			t.Error("un-owned discovered title should stay not-in-library")
 		}
+	}
+}
+
+// Presence backfill has to happen before the owned/missing blend is truncated.
+// Otherwise a popular themed corpus whose first page is already owned becomes a
+// self-sealing result: the model sees no relevant title it could acquire even when
+// TMDB returned missing candidates in the same bounded pool.
+func TestCatalogDiscover_KeepsOutsideLibraryCandidatesAfterPresenceBackfill(t *testing.T) {
+	candidates := make([]catalog.Candidate, 32)
+	owned := make(map[int]catalog.Presence, 24)
+	for i := range candidates {
+		candidates[i] = catalog.Candidate{
+			MediaType: provision.Movie, TMDBID: 20_000 + i,
+			Name:   fmt.Sprintf("%c Holiday Pick %02d", 'A'+rune(i/24)*25, i),
+			Genres: []string{"Family"}, Source: catalog.ScopeTMDB,
+		}
+		if i < 24 {
+			owned[candidates[i].TMDBID] = catalog.Presence{LibraryItemID: fmt.Sprintf("owned-%02d", i)}
+		}
+	}
+	corpus := &catalogfixture.Corpus{Candidates: candidates}
+	c := catalog.New(nil, corpus).WithPresence(&catalogfixture.Presence{Hits: owned})
+
+	got, err := c.Discover(context.Background(), provision.Movie, []string{"Family"}, 0, 0, 24)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var outside int
+	for _, candidate := range got {
+		if !candidate.InLibrary {
+			outside++
+		}
+	}
+	if outside == 0 {
+		t.Fatal("presence backfill filled the discovery window entirely with owned titles")
+	}
+}
+
+// The production TMDB API returns twenty discovery rows per page. Catalog's
+// larger pre-backfill pool therefore has to make the client advance pages; asking
+// for 48 and reading only page one still lets twenty owned titles hide every new
+// result.
+func TestCatalogDiscover_ReachesOutsideLibraryCandidatesBeyondTMDBFirstPage(t *testing.T) {
+	tmdbServer := testkit.NewTMDB(t)
+	owned := make(map[int]catalog.Presence, 20)
+	for i := range 28 {
+		id := 30_000 + i
+		tmdbServer.AddMovie(id, fmt.Sprintf("Holiday Pick %02d", i), 1990+i%10, []int{10_751}, "A family holiday gathering.")
+		if i < 20 {
+			owned[id] = catalog.Presence{LibraryItemID: fmt.Sprintf("owned-%02d", i)}
+		}
+	}
+	tmdbClient := tmdb.NewWithBase(tmdbServer.URL, "test-key")
+	c := catalog.New(nil, tmdbClient).WithPresence(&catalogfixture.Presence{Hits: owned})
+
+	got, err := c.Discover(context.Background(), provision.Movie, []string{"Family"}, 0, 0, 24)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var outside int
+	for _, candidate := range got {
+		if candidate.TMDBID >= 30_000 && !candidate.InLibrary {
+			outside++
+		}
+	}
+	if outside == 0 {
+		t.Fatal("discovery never reached the missing holiday candidates on TMDB page two")
+	}
+}
+
+// An unpinned media-type request means movies AND series. TMDB exposes them on
+// separate endpoints, so filling the movie limit before appending TV must not
+// silently turn a mixed discovery request into a movies-only corpus.
+func TestCatalogDiscover_UnpinnedMediaTypeKeepsMoviesAndSeries(t *testing.T) {
+	tmdbServer := testkit.NewTMDB(t)
+	for i := range 55 {
+		tmdbServer.AddMovie(50_000+i, fmt.Sprintf("Action Movie %02d", i), 2000+i%20,
+			[]int{28}, "An action movie.")
+	}
+	// TMDB's TV genre namespace uses 10759 (Action & Adventure), not the movie
+	// namespace's 28 (Action). The adapter must translate the human genre per endpoint.
+	tmdbServer.AddSeries(51_000, "Action Dispatch", 2018, []int{10759}, "An action series.")
+	c := catalog.New(nil, tmdb.NewWithBase(tmdbServer.URL, "test-key"))
+
+	got, err := c.Discover(context.Background(), "", []string{"Action"}, 0, 0, 24)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var movies, series int
+	for _, candidate := range got {
+		switch candidate.MediaType {
+		case provision.Movie:
+			movies++
+		case provision.Series:
+			series++
+		}
+	}
+	if movies == 0 || series == 0 {
+		t.Fatalf("untyped discovery collapsed to one media type: movies=%d series=%d", movies, series)
+	}
+}
+
+func TestCatalogDiscoverKeywords_FindsThematicTitleAndKeepsItOutsideLibrary(t *testing.T) {
+	tmdbServer := testkit.NewTMDB(t)
+	// Register a broader substring first. The adapter must prefer the exact
+	// "Christmas" keyword rather than blindly taking TMDB's first search hit.
+	tmdbServer.AddKeywordMovie(41_000, "Midnight Eve", 2020, []int{35},
+		"A New Year's party goes sideways.", "Christmas Eve")
+	tmdbServer.AddKeywordMovie(41_001, "Snowbound Reunion", 2021, []int{35, 10_751},
+		"Estranged siblings reunite during Christmas week.", "Christmas")
+	tmdbClient := tmdb.NewWithBase(tmdbServer.URL, "test-key")
+	c := catalog.New(nil, tmdbClient).WithPresence(&catalogfixture.Presence{})
+
+	got, err := c.DiscoverKeywords(context.Background(), provision.Movie,
+		[]string{"Christmas"}, []string{"Comedy", "Family"}, 2015, 2025, 24)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].TMDBID != 41_001 {
+		t.Fatalf("keyword discovery = %+v, want Snowbound Reunion", got)
+	}
+	if got[0].InLibrary {
+		t.Fatal("a TMDB keyword discovery absent from the Library was not exposed as a possible acquisition")
+	}
+	var searchedKeyword, discoveredByKeyword bool
+	for _, request := range tmdbServer.Requests() {
+		searchedKeyword = searchedKeyword || request.Path == "/search/keyword"
+		discoveredByKeyword = discoveredByKeyword ||
+			(request.Path == "/discover/movie" && strings.Contains(request.RawQuery, "with_keywords="))
+	}
+	if !searchedKeyword || !discoveredByKeyword {
+		t.Fatalf("TMDB keyword path was not used: %+v", tmdbServer.Requests())
 	}
 }
 

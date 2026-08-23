@@ -116,6 +116,15 @@ type multiResponse struct {
 	Results []multiResult `json:"results"`
 }
 
+type keywordResult struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+type keywordResponse struct {
+	Results []keywordResult `json:"results"`
+}
+
 // Search implements catalog.TMDBSearcher: GET /search/multi?query=<q>, mapping
 // movie/tv results to Candidates with real TMDB ids (§8 grounding). Person
 // results are dropped. in_library is false here — the catalog sets it by merging
@@ -175,7 +184,9 @@ type discoverResult struct {
 }
 
 type discoverResponse struct {
-	Results []discoverResult `json:"results"`
+	Page       int              `json:"page"`
+	TotalPages int              `json:"total_pages"`
+	Results    []discoverResult `json:"results"`
 }
 
 // Discover finds titles by GENRE + ERA rather than title text (§8 discovery path)
@@ -189,26 +200,118 @@ func (c *Client) Discover(ctx context.Context, mt provision.MediaType, genres []
 	if err != nil {
 		return nil, err
 	}
-	ids := genreIDsFor(genres)
-	var out []catalog.Candidate
+	if limit <= 0 {
+		limit = 20
+	}
+	var movies, series []catalog.Candidate
 	if mt == "" || mt == provision.Movie {
-		rows, err := c.discover(ctx, "/discover/movie", ids, yearFrom, yearTo, "primary_release_date")
+		rows, err := c.discover(ctx, "/discover/movie", genreIDsForMedia(genres, provision.Movie), nil, yearFrom, yearTo, "primary_release_date", limit)
 		if err != nil {
 			return nil, err
 		}
-		out = appendDiscover(out, rows, provision.Movie)
+		movies = appendDiscover(movies, rows, provision.Movie)
 	}
 	if mt == "" || mt == provision.Series {
-		rows, err := c.discover(ctx, "/discover/tv", ids, yearFrom, yearTo, "first_air_date")
+		rows, err := c.discover(ctx, "/discover/tv", genreIDsForMedia(genres, provision.Series), nil, yearFrom, yearTo, "first_air_date", limit)
 		if err != nil {
 			return nil, err
 		}
-		out = appendDiscover(out, rows, provision.Series)
+		series = appendDiscover(series, rows, provision.Series)
 	}
-	if limit > 0 && len(out) > limit {
-		out = out[:limit]
+	return blendMediaTypes(movies, series, limit), nil
+}
+
+// DiscoverKeywords resolves human thematic terms through /search/keyword and
+// feeds their real ids into TMDB discovery. Multiple terms are OR alternatives:
+// the model performs the precision step over grounded genres and overviews, while
+// this adapter preserves recall for synonyms and related holiday terms.
+func (c *Client) DiscoverKeywords(ctx context.Context, mt provision.MediaType, keywords, genres []string, yearFrom, yearTo, limit int) ([]catalog.Candidate, error) {
+	ctx, err := c.operation(ctx)
+	if err != nil {
+		return nil, err
 	}
-	return out, nil
+	if limit <= 0 {
+		limit = 20
+	}
+	keywordIDs, err := c.resolveKeywordIDs(ctx, keywords)
+	if err != nil || len(keywordIDs) == 0 {
+		return nil, err
+	}
+	var movies, series []catalog.Candidate
+	if mt == "" || mt == provision.Movie {
+		rows, err := c.discover(ctx, "/discover/movie", genreIDsForMedia(genres, provision.Movie), keywordIDs, yearFrom, yearTo, "primary_release_date", limit)
+		if err != nil {
+			return nil, err
+		}
+		movies = appendDiscover(movies, rows, provision.Movie)
+	}
+	if mt == "" || mt == provision.Series {
+		rows, err := c.discover(ctx, "/discover/tv", genreIDsForMedia(genres, provision.Series), keywordIDs, yearFrom, yearTo, "first_air_date", limit)
+		if err != nil {
+			return nil, err
+		}
+		series = appendDiscover(series, rows, provision.Series)
+	}
+	return blendMediaTypes(movies, series, limit), nil
+}
+
+// blendMediaTypes prevents the two-endpoint TMDB API from becoming an accidental
+// movies-only result whenever /discover/movie fills the limit before TV rows are
+// appended. An unpinned request gives each populated type half the bounded window;
+// an undersubscribed side yields its unused slots to the other.
+func blendMediaTypes(movies, series []catalog.Candidate, limit int) []catalog.Candidate {
+	if limit <= 0 {
+		limit = 20
+	}
+	if len(movies) == 0 {
+		return append([]catalog.Candidate(nil), series[:min(limit, len(series))]...)
+	}
+	if len(series) == 0 {
+		return append([]catalog.Candidate(nil), movies[:min(limit, len(movies))]...)
+	}
+	movieSlots := min((limit+1)/2, len(movies))
+	seriesSlots := min(limit/2, len(series))
+	if movieSlots+seriesSlots < limit {
+		movieSlots = min(len(movies), limit-seriesSlots)
+		seriesSlots = min(len(series), limit-movieSlots)
+	}
+	out := make([]catalog.Candidate, 0, movieSlots+seriesSlots)
+	out = append(out, movies[:movieSlots]...)
+	out = append(out, series[:seriesSlots]...)
+	return out
+}
+
+func (c *Client) resolveKeywordIDs(ctx context.Context, keywords []string) ([]int, error) {
+	seen := map[int]bool{}
+	ids := make([]int, 0, len(keywords))
+	for _, keyword := range keywords {
+		keyword = strings.TrimSpace(keyword)
+		if keyword == "" {
+			continue
+		}
+		q := url.Values{}
+		q.Set("query", keyword)
+		q.Set("page", "1")
+		var resp keywordResponse
+		if err := c.get(ctx, "/search/keyword?"+q.Encode(), &resp); err != nil {
+			return nil, err
+		}
+		if len(resp.Results) == 0 {
+			continue
+		}
+		chosen := resp.Results[0]
+		for _, candidate := range resp.Results {
+			if strings.EqualFold(strings.TrimSpace(candidate.Name), keyword) {
+				chosen = candidate
+				break
+			}
+		}
+		if chosen.ID > 0 && !seen[chosen.ID] {
+			seen[chosen.ID] = true
+			ids = append(ids, chosen.ID)
+		}
+	}
+	return ids, nil
 }
 
 // Recommendations returns TMDB's behavioural neighbours for one title — the
@@ -244,7 +347,15 @@ func (c *Client) Recommendations(ctx context.Context, mt provision.MediaType, tm
 	return out, nil
 }
 
-func (c *Client) discover(ctx context.Context, path string, genreIDs []int, yearFrom, yearTo int, dateField string) ([]discoverResult, error) {
+func (c *Client) discover(
+	ctx context.Context,
+	path string,
+	genreIDs []int,
+	keywordIDs []int,
+	yearFrom, yearTo int,
+	dateField string,
+	limit int,
+) ([]discoverResult, error) {
 	q := url.Values{}
 	q.Set("include_adult", "false")
 	q.Set("sort_by", "popularity.desc")
@@ -253,7 +364,14 @@ func (c *Client) discover(ctx context.Context, path string, genreIDs []int, year
 		for i, id := range genreIDs {
 			parts[i] = strconv.Itoa(id)
 		}
-		q.Set("with_genres", strings.Join(parts, ",")) // comma = OR
+		q.Set("with_genres", strings.Join(parts, ",")) // comma = AND
+	}
+	if len(keywordIDs) > 0 {
+		parts := make([]string, len(keywordIDs))
+		for i, id := range keywordIDs {
+			parts[i] = strconv.Itoa(id)
+		}
+		q.Set("with_keywords", strings.Join(parts, "|")) // pipe = OR
 	}
 	if yearFrom > 0 {
 		q.Set(dateField+".gte", fmt.Sprintf("%04d-01-01", yearFrom))
@@ -261,11 +379,22 @@ func (c *Client) discover(ctx context.Context, path string, genreIDs []int, year
 	if yearTo > 0 {
 		q.Set(dateField+".lte", fmt.Sprintf("%04d-12-31", yearTo))
 	}
-	var resp discoverResponse
-	if err := c.get(ctx, path+"?"+q.Encode(), &resp); err != nil {
-		return nil, err
+	rows := make([]discoverResult, 0, limit)
+	for page := 1; len(rows) < limit; page++ {
+		q.Set("page", strconv.Itoa(page))
+		var resp discoverResponse
+		if err := c.get(ctx, path+"?"+q.Encode(), &resp); err != nil {
+			return nil, err
+		}
+		rows = append(rows, resp.Results...)
+		if len(resp.Results) == 0 || (resp.TotalPages > 0 && page >= resp.TotalPages) {
+			break
+		}
 	}
-	return resp.Results, nil
+	if len(rows) > limit {
+		rows = rows[:limit]
+	}
+	return rows, nil
 }
 
 func appendDiscover(out []catalog.Candidate, rows []discoverResult, mt provision.MediaType) []catalog.Candidate {
@@ -285,10 +414,35 @@ func appendDiscover(out []catalog.Candidate, rows []discoverResult, mt provision
 
 // genreIDsFor maps human genre names (case-insensitive) to TMDB ids, dropping
 // unknowns. Used by Discover to translate an intent's genre terms.
-func genreIDsFor(names []string) []int {
+func genreIDsForMedia(names []string, mt provision.MediaType) []int {
+	seen := map[int]bool{}
 	var out []int
 	for _, n := range names {
 		if id, ok := genreIDByName[canonGenre(n)]; ok {
+			switch mt {
+			case provision.Series:
+				switch id {
+				case 28, 12: // movie Action / Adventure → TV Action & Adventure
+					id = 10759
+				case 14, 878: // movie Fantasy / Science Fiction → TV Sci-Fi & Fantasy
+					id = 10765
+				case 10751: // movie Family → TV Kids
+					id = 10762
+				}
+			case provision.Movie:
+				switch id {
+				case 10759:
+					id = 28
+				case 10765:
+					id = 878
+				case 10762:
+					id = 10751
+				}
+			}
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
 			out = append(out, id)
 		}
 	}

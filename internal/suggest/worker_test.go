@@ -180,7 +180,12 @@ func TestWorker_RunsJobAndPersistsProposal(t *testing.T) {
 func TestWorker_NoGroundedTitlesPersistsTypedFailure(t *testing.T) {
 	st := newStore(t)
 	workflow := proposalworkflow.New(st, func() string { return "workflow-proposal-1" }, time.Now)
-	svc := buildService(t, st, testkit.NewLLM(testkit.FinalResponse(`{"picks":[]}`))).
+	// The first empty, no-tool answer receives the bounded grounding retry; a second
+	// explicit empty answer proves the retry exhausted and preserves the typed failure.
+	svc := buildService(t, st, testkit.NewLLM(
+		testkit.FinalResponse(`{"picks":[]}`),
+		testkit.FinalResponse(`{"picks":[]}`),
+	)).
 		WithDurableWorkflow(workflow)
 	jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "Classic Simpsons episodes"}, "alice")
 	if err != nil {

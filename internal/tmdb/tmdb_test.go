@@ -32,6 +32,20 @@ func TestSearch_MapsMovieAndTV_DropsPerson(t *testing.T) {
 	}
 }
 
+func TestDiscover_MapsScienceFictionToTVGenreID(t *testing.T) {
+	mock := testkit.NewTMDB(t)
+	mock.AddSeries(52_001, "Midnight Orbit", 2022, []int{10765}, "Atmospheric science fiction after dark.")
+	c := tmdb.NewWithBase(mock.URL, "key")
+
+	got, err := c.Discover(context.Background(), provision.Series, []string{"science fiction"}, 0, 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].TMDBID != 52_001 {
+		t.Fatalf("TV science-fiction discovery = %+v, want Midnight Orbit via genre 10765", got)
+	}
+}
+
 func TestExists_RealID200_FabricatedID404(t *testing.T) {
 	mock := testkit.NewTMDB(t)
 	c := tmdb.NewWithBase(mock.URL, "key")
