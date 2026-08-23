@@ -3,7 +3,8 @@
 ```mermaid
 graph LR
   C["<b>changes</b><br/><i>diffs the merge base</i>"]
-  GC["<b>go-contracts</b><br/>static · drift · release contracts"]
+  GC["<b>go-contracts</b><br/>static · drift · repository contracts"]
+  RC["<b>image-certification</b><br/>release-worker runtime contract"]
   G["<b>go</b> ×3<br/>race-policy tests only"]
   P["<b>store-postgres</b>"]
   F["<b>frontend</b> ×2"]
@@ -14,12 +15,14 @@ graph LR
 
   C -->|"*.go, migrations, docs/help/, scripts/, Makefile"| GC
   C -->|"same Go inputs"| G
+  C -->|"same Go inputs"| RC
   C --> P
   C -->|"web/, Makefile"| F
   C --> W
   C -->|"docs/, README, docs-site/"| D
   C -->|"all Docker build inputs"| I
   GC --> OK
+  RC --> OK
   G --> OK
   P --> OK
   F --> OK
@@ -30,7 +33,7 @@ graph LR
   classDef gate fill:#1f6f4a,stroke:#134a31,color:#fff
   classDef job fill:#2b3b52,stroke:#1b2736,color:#dbe4ef
   class OK gate
-  class C,GC,G,P,F,W,D,I job
+  class C,GC,RC,G,P,F,W,D,I job
 ```
 
 ## Jobs run only when their inputs changed
@@ -71,9 +74,10 @@ check sits "expected" forever and the PR can't merge. Filter per job.
 ## Sharding
 
 Go tests, frontend and Playwright split across runners for wall-clock only. Repository-wide Go and
-Rust contracts run once in `go-contracts`, in parallel with three test-only Go shards. Their union is
-the same assurance as local `make check`: `check-static` plus `test`. The `ci-ok` aggregate requires
-both jobs, so moving contracts out of the test shards cannot make them optional.
+Rust contracts run once in `go-contracts`, in parallel with three test-only Go shards and the
+independent release-worker certification. Their union is the same assurance as local `make check`
+plus the existing CI-only certification. The `ci-ok` aggregate requires every job, so moving a
+contract out of the test shards cannot make it optional.
 
 `make go-shard-verify` runs in `go-contracts` and asserts the Go shards are a true partition of
 `go list ./...` — a split that drops a package would otherwise pass by not running it.
