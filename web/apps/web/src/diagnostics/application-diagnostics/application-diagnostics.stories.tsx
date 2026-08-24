@@ -61,12 +61,7 @@ type StoryMode = "populated" | "empty" | "loading" | "disconnected";
 const DiagnosticsStory = ({ mode: _mode }: { mode: StoryMode }) => {
   const [filters, setFilters] = useState(DEFAULT_APPLICATION_FILTERS);
   return (
-    <ApplicationDiagnostics
-      filters={filters}
-      onFiltersChange={setFilters}
-      onBrowseProcesses={() => undefined}
-      onOpenProcess={() => undefined}
-    />
+    <ApplicationDiagnostics filters={filters} onFiltersChange={setFilters} onOpenProcess={() => undefined} />
   );
 };
 

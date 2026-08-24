@@ -24,6 +24,7 @@ const run = {
 const initial: DiagnosticsSearch = {
   view: "process",
   range: "1h",
+  order: "newest",
   level: "all",
   source: "all",
   subsystem: "",
@@ -81,9 +82,12 @@ describe("PlayoutDiagnostics", () => {
     );
 
     expect(await screen.findAllByText("channel-segment")).toHaveLength(2);
+    expect(screen.getByRole("heading", { name: "Media processes" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Refresh" })).not.toBeInTheDocument();
     expect(await screen.findByText(/Frame/)).toHaveTextContent("240");
     expect(await screen.findByText(/3 earlier lines/)).toBeInTheDocument();
+    await userEvent.hover(screen.getByRole("button", { name: "Follow tail" }));
+    expect(await screen.findByText("Keep the newest output line in view")).toBeInTheDocument();
     await userEvent.type(screen.getByRole("textbox", { name: "Search Process output" }), "warning");
     expect(screen.getByText(/warning retry/)).toBeInTheDocument();
     expect(screen.queryByText(/frame=120 healthy/)).not.toBeInTheDocument();
@@ -99,7 +103,7 @@ describe("PlayoutDiagnostics", () => {
     fireEvent.scroll(output!);
     expect(screen.getByRole("button", { name: "Follow tail" })).toHaveAttribute("aria-pressed", "false");
     await userEvent.click(screen.getByRole("combobox", { name: "Process status" }));
-    await userEvent.click(screen.getByRole("option", { name: "Failed" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Failed" }));
     expect(onFiltersChange).toHaveBeenLastCalledWith(expect.objectContaining({ processStatus: "failed" }));
   });
 
@@ -117,8 +121,9 @@ describe("PlayoutDiagnostics", () => {
         <PlayoutDiagnostics filters={initial} onFiltersChange={vi.fn()} />
       </QueryClientProvider>,
     );
-    expect(await screen.findByText(/No Process runs/)).toBeInTheDocument();
+    expect(await screen.findByText(/No media processes/)).toBeInTheDocument();
     await waitFor(() => expect(requestedLimit).toBe("50"));
-    expect(screen.getByText("Page 1 · 50 per page")).toBeInTheDocument();
+    expect(screen.getByText("Page 1")).toBeInTheDocument();
+    expect(screen.getByText("Up to 50 processes")).toBeInTheDocument();
   });
 });

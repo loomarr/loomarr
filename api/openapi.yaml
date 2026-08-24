@@ -8529,7 +8529,7 @@ paths:
         - diagnostics
   /v1/diagnostics/events:
     get:
-      description: Returns one bounded, newest-first diagnostic timeline page as typed JSON or the same records as NDJSON.
+      description: Returns one bounded diagnostic timeline page in newest-first or oldest-first order as typed JSON or the same records as NDJSON.
       operationId: list-diagnostic-events
       parameters:
         - description: Window start as Unix epoch milliseconds; defaults to one hour before to
@@ -8568,6 +8568,17 @@ paths:
           schema:
             description: Opaque cursor returned by the previous page
             maxLength: 512
+            type: string
+        - description: Timeline order
+          explode: false
+          in: query
+          name: order
+          schema:
+            default: newest
+            description: Timeline order
+            enum:
+              - newest
+              - oldest
             type: string
         - description: Exact severity
           explode: false

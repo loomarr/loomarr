@@ -1,4 +1,4 @@
-import { Activity, ArrowLeft, HeartPulse } from "lucide-react";
+import { Activity, HeartPulse, RadioTower } from "lucide-react";
 import type { ReactNode } from "react";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { ApplicationDiagnostics, type ApplicationFilters } from "../application-diagnostics";
@@ -31,6 +31,7 @@ const DiagnosticsPage = ({
   const tabs = [
     { id: "logs" as const, label: "Logs", icon: Activity },
     { id: "health" as const, label: "Current Health", icon: HeartPulse },
+    { id: "process" as const, label: "Media processes", icon: RadioTower },
   ];
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -51,20 +52,25 @@ const DiagnosticsPage = ({
           />
         }
       />
-      <nav className="flex gap-1 border-border border-b px-4 pt-2 sm:px-6" aria-label="Diagnostics views">
+      <nav
+        className="flex gap-1 overflow-x-auto border-border border-b px-4 pt-2 pb-2 sm:px-6"
+        aria-label="Diagnostics views"
+      >
         {tabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             type="button"
             aria-current={search.view === id ? "page" : undefined}
-            className={`inline-flex items-center gap-2 rounded-t-md border px-3 py-2 text-sm ${
+            className={`inline-flex shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap rounded-md px-3 py-1.5 text-sm transition-colors ${
               search.view === id
-                ? "border-border border-b-background bg-background font-medium text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
+                ? "bg-signal-tint-15 font-medium text-signal"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground"
             }`}
-            onClick={() => onSearchChange({ ...search, view: id })}
+            onClick={() =>
+              onSearchChange({ ...search, view: id, ...(id === "process" ? {} : { processId: undefined }) })
+            }
           >
-            <Icon aria-hidden className="size-4" />
+            <Icon aria-hidden className="hidden size-4 sm:block" />
             {label}
           </button>
         ))}
@@ -75,23 +81,11 @@ const DiagnosticsPage = ({
             filters={search}
             onFiltersChange={(filters) => onSearchChange({ ...search, ...filters })}
             onOpenProcess={(processId) => onSearchChange({ ...search, view: "process", processId })}
-            onBrowseProcesses={() => onSearchChange({ ...search, view: "process", processId: undefined })}
             onOpenRelated={onOpenRelated}
           />
         )}
         {search.view === "health" && <StartupReportPage embedded />}
-        {search.view === "process" && (
-          <div className="space-y-4">
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 text-muted-foreground text-sm hover:text-foreground"
-              onClick={() => onSearchChange({ ...search, view: "logs", processId: undefined })}
-            >
-              <ArrowLeft aria-hidden className="size-4" /> Back to Logs
-            </button>
-            {playout}
-          </div>
-        )}
+        {search.view === "process" && playout}
       </div>
     </div>
   );

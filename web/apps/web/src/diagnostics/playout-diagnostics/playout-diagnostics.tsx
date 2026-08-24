@@ -11,7 +11,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusDot, type StatusTone } from "@/components/ui/status-dot";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { DiagnosticsSearch } from "../diagnostics-page";
+import { DiagnosticsPager } from "../diagnostics-pager";
+import { DiagnosticsSplitPane } from "../diagnostics-split-pane";
 
 const RANGE_MS = { "1h": 3_600_000, "6h": 21_600_000, "24h": 86_400_000 } as const;
 const VIRTUAL_VIEWPORT = { width: 352, height: 640 };
@@ -165,14 +168,21 @@ const ProcessOutput = ({ run }: { run: ProcessRunView }) => {
         >
           Wrap
         </Button>
-        <Button
-          variant={follow ? "secondary" : "outline"}
-          size="sm"
-          aria-pressed={follow}
-          onClick={() => setFollow(!follow)}
-        >
-          Follow tail
-        </Button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant={follow ? "secondary" : "outline"}
+                size="sm"
+                aria-pressed={follow}
+                onClick={() => setFollow(!follow)}
+              >
+                Follow tail
+              </Button>
+            }
+          />
+          <TooltipContent>Keep the newest output line in view</TooltipContent>
+        </Tooltip>
         <Button
           variant={timestamps ? "secondary" : "outline"}
           size="sm"
@@ -220,7 +230,7 @@ const ProcessDetail = ({
   return (
     <section
       className="space-y-4 rounded-lg border border-border bg-card p-4"
-      aria-label="Selected Process run"
+      aria-label="Selected media process"
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
@@ -234,8 +244,8 @@ const ProcessDetail = ({
       </div>
       <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
         <div>
-          <span className="text-muted-foreground text-xs">Process run</span>
-          <CopyValue label="Process run" value={run.id} />
+          <span className="text-muted-foreground text-xs">Run ID</span>
+          <CopyValue label="Run ID" value={run.id} />
         </div>
         {run.channelId && (
           <div>
@@ -362,14 +372,14 @@ const PlayoutDiagnostics = ({
     onFiltersChange(next);
   };
   return (
-    <section className="space-y-4" aria-labelledby="process-runs-title">
+    <section className="space-y-4" aria-labelledby="media-processes-title">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 id="process-runs-title" className="font-medium text-lg">
-            Process runs
+          <h2 id="media-processes-title" className="font-medium text-lg">
+            Media processes
           </h2>
           <p className="text-muted-foreground text-sm">
-            FFmpeg and other media processes connected to the logs you are investigating.
+            FFmpeg and streaming activity connected to the logs you are investigating.
           </p>
         </div>
       </div>
@@ -430,87 +440,89 @@ const PlayoutDiagnostics = ({
           </div>
         </details>
       </div>
+      <DiagnosticsPager
+        label="Media process pages"
+        page={cursorStack.length + 1}
+        itemLabel="processes"
+        canGoNewer={cursorStack.length > 0}
+        canGoOlder={Boolean(body?.nextCursor)}
+        onNewer={() => setCursorStack((stack) => stack.slice(0, -1))}
+        onOlder={() => body?.nextCursor && setCursorStack((stack) => [...stack, body.nextCursor ?? ""])}
+      />
       {query.isError ? (
         <ErrorState error={query.error} onRetry={() => query.refetch()} />
       ) : query.isPending ? (
         <p className="rounded-lg border border-border bg-card px-4 py-8 text-center text-muted-foreground text-sm">
-          Loading Process runs…
+          Loading media processes…
         </p>
       ) : runs.length === 0 ? (
         <p className="rounded-lg border border-border bg-card px-4 py-8 text-center text-muted-foreground text-sm">
-          No Process runs match this bounded window.
+          No media processes match this bounded window.
         </p>
       ) : (
-        <div className="grid min-h-96 gap-4 xl:grid-cols-[22rem_minmax(0,1fr)]">
-          <div
-            ref={listRef}
-            className="overflow-auto rounded-lg border border-border bg-card"
-            style={{ height: `${Math.min(Math.max(virtualizer.getTotalSize(), 152), 640)}px` }}
-          >
-            <ul
-              className="relative w-full"
-              style={{ height: `${virtualizer.getTotalSize()}px` }}
-              aria-label="Process runs"
+        <DiagnosticsSplitPane
+          storageKey="diagnostics-media-process-details"
+          revealKey={filters.processId}
+          breakpoint="xl"
+          secondaryOnMobile
+          className="min-h-96"
+          primary={
+            <div
+              ref={listRef}
+              className="max-h-[55vh] overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-card xl:max-h-[40rem]"
+              style={{ height: `${Math.min(Math.max(virtualizer.getTotalSize(), 152), 640)}px` }}
             >
-              {virtualizer.getVirtualItems().map((virtualRow) => {
-                const run = runs[virtualRow.index];
-                if (!run) return null;
-                return (
-                  <li
-                    key={run.id}
-                    data-index={virtualRow.index}
-                    className="absolute top-0 left-0 w-full"
-                    style={{ height: `${virtualRow.size}px`, transform: `translateY(${virtualRow.start}px)` }}
-                  >
-                    <button
-                      type="button"
-                      className={`grid h-full w-full cursor-pointer gap-1 border-border border-b px-3 py-3 text-left hover:bg-muted/20 ${selected?.id === run.id ? "bg-muted/30" : ""}`}
-                      aria-pressed={selected?.id === run.id}
-                      onClick={() => onFiltersChange({ ...filters, processId: run.id })}
+              <ul
+                className="relative w-full"
+                style={{ height: `${virtualizer.getTotalSize()}px` }}
+                aria-label="Media processes"
+              >
+                {virtualizer.getVirtualItems().map((virtualRow) => {
+                  const run = runs[virtualRow.index];
+                  if (!run) return null;
+                  return (
+                    <li
+                      key={run.id}
+                      data-index={virtualRow.index}
+                      className="absolute top-0 left-0 w-full"
+                      style={{
+                        height: `${virtualRow.size}px`,
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
                     >
-                      <span className="flex items-center justify-between gap-2">
-                        <strong className="truncate text-sm">{run.purpose}</strong>
-                        <span className="inline-flex items-center gap-1 text-xs">
-                          <StatusDot tone={tone(run.status)} label={run.status} />
-                          {run.status}
+                      <button
+                        type="button"
+                        className={`grid h-full w-full cursor-pointer gap-1 border-border border-b px-3 py-3 text-left hover:bg-muted/20 ${selected?.id === run.id ? "bg-muted/30" : ""}`}
+                        aria-pressed={selected?.id === run.id}
+                        onClick={() => onFiltersChange({ ...filters, processId: run.id })}
+                      >
+                        <span className="flex items-center justify-between gap-2">
+                          <strong className="truncate text-sm">{run.purpose}</strong>
+                          <span className="inline-flex items-center gap-1 text-xs">
+                            <StatusDot tone={tone(run.status)} label={run.status} />
+                            {run.status}
+                          </span>
                         </span>
-                      </span>
-                      <span className="truncate text-muted-foreground text-xs">{run.target ?? run.id}</span>
-                      <time className="text-muted-foreground text-xs">{formatTime(run.startedAt)}</time>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-          {selected ? (
-            <ProcessDetail run={selected} onOpenChannel={onOpenChannel} />
-          ) : (
-            <p className="rounded-lg border border-border p-6 text-muted-foreground text-sm">
-              The selected Process run is outside this page. Adjust the filters or return to a newer page.
-            </p>
-          )}
-        </div>
+                        <span className="truncate text-muted-foreground text-xs">{run.target ?? run.id}</span>
+                        <time className="text-muted-foreground text-xs">{formatTime(run.startedAt)}</time>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          }
+          secondary={
+            selected ? (
+              <ProcessDetail run={selected} onOpenChannel={onOpenChannel} />
+            ) : (
+              <p className="rounded-lg border border-border p-6 text-muted-foreground text-sm">
+                The selected media process is outside this page. Adjust the filters or return to a newer page.
+              </p>
+            )
+          }
+        />
       )}
-      <div className="flex items-center justify-between">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={cursorStack.length === 0}
-          onClick={() => setCursorStack((stack) => stack.slice(0, -1))}
-        >
-          Newer
-        </Button>
-        <span className="text-muted-foreground text-xs">Page {cursorStack.length + 1} · 50 per page</span>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!body?.nextCursor}
-          onClick={() => body?.nextCursor && setCursorStack((stack) => [...stack, body.nextCursor ?? ""])}
-        >
-          Older
-        </Button>
-      </div>
     </section>
   );
 };

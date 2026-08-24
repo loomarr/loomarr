@@ -76,23 +76,39 @@ describe("ApplicationDiagnostics", () => {
     );
 
     const errors = await screen.findByRole("button", { name: "1 error" });
-    expect(errors).toHaveClass("text-danger");
+    expect(errors).toHaveClass("text-onair");
     expect(errors).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByText("Playback failed")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "1 warning" })).toHaveClass("text-caution");
-    expect(screen.getByRole("button", { name: "0 info" })).toHaveClass("text-signal");
+    const info = screen.getByRole("button", { name: "0 info" });
+    expect(info).toHaveClass("text-lock");
+    expect(screen.getByRole("button", { name: "All 2" })).toHaveAttribute("aria-pressed", "true");
+    await userEvent.hover(info);
+    expect(await screen.findByText("Show informational logs")).toBeInTheDocument();
     expect(screen.getByText("2 events dropped since startup")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Older" })).toBeEnabled();
+    expect(screen.getByRole("combobox", { name: "Log order" })).toHaveTextContent("Newest first");
     expect(screen.queryByRole("button", { name: /pause|resume|refresh now/i })).not.toBeInTheDocument();
 
     await userEvent.click(errors);
     expect(onFiltersChange).toHaveBeenLastCalledWith(expect.objectContaining({ level: "error" }));
     expect(screen.getByRole("button", { name: "1 error" })).toHaveAttribute("aria-pressed", "true");
 
+    await userEvent.click(errors);
+    expect(onFiltersChange).toHaveBeenLastCalledWith(expect.objectContaining({ level: "error" }));
+    expect(screen.getByRole("button", { name: "1 error" })).toHaveAttribute("aria-pressed", "true");
+
+    await userEvent.click(screen.getByRole("button", { name: "Hide details" }));
+    expect(screen.getByRole("button", { name: "Show details" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /Playback failed/ }));
+    expect(screen.getByRole("button", { name: "Hide details" })).toBeInTheDocument();
     await userEvent.click(screen.getAllByText("Technical details")[0]!);
     expect(screen.getAllByText("player.media_error")[0]).toBeInTheDocument();
     expect(screen.getAllByText(/hls_js/)[0]).toBeInTheDocument();
+    await userEvent.click(screen.getAllByRole("button", { name: "Copy log details" })[0]!);
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      expect.stringContaining('"event": "player.media_error"'),
+    );
     expect(screen.getAllByRole("button", { name: "Copy Request id" })[0]).toBeInTheDocument();
     await userEvent.click(screen.getAllByRole("button", { name: "Open process output" })[0]!);
     expect(onOpenProcess).toHaveBeenCalledWith("process-1");
@@ -106,6 +122,12 @@ describe("ApplicationDiagnostics", () => {
       level: "error",
       subsystem: "api",
     });
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Log order" }));
+    await userEvent.click(screen.getByRole("option", { name: "Oldest first" }));
+    expect(onFiltersChange).toHaveBeenLastCalledWith(expect.objectContaining({ order: "oldest" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Newer" })).toBeEnabled());
+    expect(screen.getByRole("button", { name: "Older" })).toBeDisabled();
   });
 
   it("requests a small server page and refreshes without replacing the current rows", async () => {
@@ -140,6 +162,12 @@ describe("ApplicationDiagnostics", () => {
 
     expect(await screen.findByText("Loomarr is ready")).toBeInTheDocument();
     await waitFor(() => expect(requests[0]?.searchParams.get("limit")).toBe("50"));
-    expect(screen.getByText("Page 1 · 50 per page")).toBeInTheDocument();
+    expect(requests[0]?.searchParams.get("order")).toBe("newest");
+    expect(screen.getByText("Page 1")).toBeInTheDocument();
+    expect(screen.getByText("Up to 50 logs")).toBeInTheDocument();
+    const pager = screen.getByRole("navigation", { name: "Log pages" });
+    const list = document.querySelector('section[aria-label="Logs"]');
+    if (!list) throw new Error("log viewport missing");
+    expect(pager.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

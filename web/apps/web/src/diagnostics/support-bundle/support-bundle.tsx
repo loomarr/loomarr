@@ -213,7 +213,7 @@ const SupportBundle = ({
               </Select>
             </div>
             <div className="mt-4 flex items-start gap-2 rounded-md border border-success/30 bg-success/5 p-3">
-              <ShieldCheck className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />
+              <ShieldCheck className="mt-0.5 size-4 shrink-0 text-lock" aria-hidden />
               <p className="text-muted-foreground text-xs">
                 Secrets, URL credentials, and local paths are redacted again while the report is built.
               </p>

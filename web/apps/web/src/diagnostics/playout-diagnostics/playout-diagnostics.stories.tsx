@@ -23,6 +23,7 @@ const run = {
 const initial: DiagnosticsSearch = {
   view: "process",
   range: "1h",
+  order: "newest",
   level: "all",
   source: "all",
   subsystem: "",

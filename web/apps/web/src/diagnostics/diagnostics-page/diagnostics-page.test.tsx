@@ -6,6 +6,7 @@ import { DiagnosticsPage, type DiagnosticsSearch } from "./diagnostics-page";
 const search: DiagnosticsSearch = {
   view: "process",
   range: "1h",
+  order: "newest",
   level: "all",
   source: "all",
   subsystem: "",
@@ -18,7 +19,7 @@ const search: DiagnosticsSearch = {
 };
 
 describe("DiagnosticsPage", () => {
-  it("composes the three operator views and reflects tab choices", async () => {
+  it("uses the site navigation treatment for all three operator views", async () => {
     const onSearchChange = vi.fn();
     render(
       <DiagnosticsPage
@@ -30,9 +31,13 @@ describe("DiagnosticsPage", () => {
 
     expect(screen.getByRole("heading", { name: "Diagnostics" })).toBeInTheDocument();
     expect(screen.getByText("Live Process evidence")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Back to Logs" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Back to Logs" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Logs" })).toHaveClass("cursor-pointer");
+    expect(screen.getByRole("button", { name: "Current Health" })).toHaveClass("cursor-pointer");
+    const processes = screen.getByRole("button", { name: "Media processes" });
+    expect(processes).toHaveClass("cursor-pointer", "bg-signal-tint-15", "text-signal");
 
-    await userEvent.click(screen.getByRole("button", { name: "Back to Logs" }));
-    expect(onSearchChange).toHaveBeenCalledWith({ ...search, view: "logs" });
+    await userEvent.click(screen.getByRole("button", { name: "Logs" }));
+    expect(onSearchChange).toHaveBeenCalledWith({ ...search, view: "logs", processId: undefined });
   });
 });

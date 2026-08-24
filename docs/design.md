@@ -6045,8 +6045,13 @@ Completed reports follow Diagnostics retention, survive restart, and an in-proce
 a new generation id without rewriting the prior report. The current startup snapshot and at most 20
 retained reports are available independently from Current Health.
 
-Settings → System → Diagnostics has two primary views: **Logs** and **Current Health**. Logs is the
+Settings → System → Diagnostics has three primary views: **Logs**, **Current Health**, and **Media
+processes**. Logs is the
 default because the common operator task is to find what happened, not to choose an evidence model.
+The three destinations use the same filled-pill navigation, hover state, pointer affordance, and
+URL-backed selection as the rest of Settings. **Media processes** is the operator-facing name for
+the retained ffmpeg and streaming-process evidence; **Process run** remains protocol and storage
+vocabulary, not the page title.
 Current Health leads with present status, version, and observation/freshness, then keeps every current
 check in one always-visible responsive table; startup-mode and continuously monitored checks are
 distinguished in that table instead of exposing immutable startup-report history as a competing UI
@@ -6066,25 +6071,45 @@ NDJSON, one Process run downloads as a readable text log, and an administrator c
 redacted ZIP Support bundle containing a manifest, versions, selected events, Process metadata and
 output, truncation/drop counts, and a redaction summary.
 
-The Logs view is one automatically and smoothly refreshing newest-first stream with no Live, Pause,
-or manual Refresh controls. Stable query identity and background replacement keep the current page
+The Logs view is one automatically and smoothly refreshing timeline with no Live, Pause,
+or manual Refresh controls. It defaults to **Newest first**, while an explicit **Oldest first** order
+starts at the first retained matching event so an operator can inspect startup history without walking
+every newer page. Stable query identity and background replacement keep the current page
 rendered while a newer authoritative page is fetched. Its primary row contains one plain-language
-search plus time and clickable, color-and-text severity filters; source, subsystem, Channel, and exact
-correlation identifiers live behind **More filters**. A row leads with time, severity, source, human-readable
+search plus time and explicit **All**, **Errors**, **Warnings**, and **Info** severity filters. Errors
+are red, Warnings yellow, and Info green; the selected filter has a strong filled treatment and does
+not toggle itself off when clicked again. Source and subsystem are the first **More filters** fields;
+exact correlation identifiers stay in a nested disclosure so the common path remains short. A row leads with time, severity, source, human-readable
 message, and useful context. Raw event names, identifiers, and structured attributes are secondary
-**Technical details**. Selecting a related Process run opens its retained metadata/output in context
-without making Process runs a competing primary view. A secondary **Process runs** action still lets
-an operator browse recent runs directly. Desktop may keep selected evidence beside the stream;
+**Technical details**. A selected log offers one icon-and-tooltip copy action that places the complete
+already-redacted structured event on the clipboard for an issue or agent conversation. Selecting a
+related Process run opens its retained metadata/output in context
+and Media processes also remains directly navigable as a peer Diagnostics view. Desktop may keep selected evidence beside the stream;
 mobile presents the same evidence as an accessible disclosure or sheet. Logs and Process-run results
 request 50 records per server page and virtualize the visible rows, so retained history remains bounded
-at both the API and DOM seams. Process output follows a running tail only while the reader remains at
+at both the API and DOM seams. Cursor pagination is attached immediately above the collection it
+controls, describes its newer/older time direction independently of the selected sort order, and
+precedes the inner virtual scroll viewport;
+on narrow screens that viewport is capped relative to the screen so paging never hides beyond a second
+full-height scroll. Ambiguous technical controls such as chronology and tail-follow carry themed
+hover/focus tooltips. Process output follows a running tail only while the reader remains at
 the bottom; manual scrolling disables tail-follow and a background refresh preserves the reader's
 position. Filtered NDJSON download is independent of troubleshooting-report creation and always uses
 the visible filters.
 
-The Diagnostic-event read defaults to the last hour, permits at most a 24-hour window, and returns
-100 records by default with a hard page maximum of 200. Its opaque cursor is the total
-`(occurred_at, id)` newest-first position. Exact severity, source, subsystem, request, playback,
+On desktop, the Logs and Media-processes list/detail layouts share one bounded split-panel behavior.
+The evidence list remains the primary flexible pane; the detail pane can be resized between 18 and 40
+rem with a pointer or the separator's arrow/Home/End keys, collapsed through a labelled icon action,
+and restored from the resulting rail. Its width is remembered for the browser session and is not reset
+by background refresh. Selecting a log or media process always restores a collapsed detail pane. The
+panes clip horizontal overflow; only an intrinsically wide technical payload may own a local horizontal
+code scroller. Narrow layouts keep their existing stacked/disclosure presentation and expose no drag
+affordance.
+
+The Diagnostic-event read defaults to the last hour and newest-first order, permits at most a 24-hour
+window, and returns 100 records by default with a hard page maximum of 200. Callers may request
+oldest-first order. Its opaque cursor is the total `(occurred_at, id)` position and is bound to the
+requested order, so a cursor cannot silently reverse chronology. Exact severity, source, subsystem, request, playback,
 Channel, schedule-block, Job, Process-run, and instance filters are each capped at 128 bytes; the
 case-insensitive event/message/subsystem/attribute text filter is capped at 256 bytes. The store
 always receives a validated time predicate and fetches at most one sentinel row beyond the page.
