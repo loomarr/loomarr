@@ -34,3 +34,5 @@ ci-workflow	.github/workflows/ci.yml	contracts,go,go_full,rust,postgres,windows,
 dev-compose	docker/compose.dev.yaml	contracts,agent
 production-compose	docker/compose.yaml	contracts,go,go_full
 combined-leaf-and-docs	internal/suggest/ground.go;docs/dev/testing.md	contracts,go,image,docs
+filler-eval-corpus	internal/fillereval/corpus/seed-v1.json	contracts,go
+filler-eval-doc	internal/fillereval/README.md	docs
