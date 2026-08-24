@@ -100,18 +100,18 @@ expo_run=(
 # the react-native-tvos npm alias, so Node follows the app's `react-native` symlink to a physical
 # `react-native-tvos` directory and the podspec cannot infer the alias on its own. Give native
 # podspecs the app-local node_modules directory, where the canonical symlink is present.
-readonly REACT_NATIVE_NODE_MODULES_DIR="${APP_DIR}/node_modules"
+readonly REACT_NATIVE_MODULES_DIR="${APP_DIR}/node_modules"
 if [[ "${APP_NAME}" == "tv" ]]; then
   (
     cd "${APP_DIR}"
     NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 EXPO_TV=1 \
-      REACT_NATIVE_NODE_MODULES_DIR="${REACT_NATIVE_NODE_MODULES_DIR}" "${expo_run[@]}"
+      REACT_NATIVE_NODE_MODULES_DIR="${REACT_NATIVE_MODULES_DIR}" "${expo_run[@]}"
   ) 2>&1 | filter_react_native_pods_notice
 else
   (
     cd "${APP_DIR}"
     NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 \
-      REACT_NATIVE_NODE_MODULES_DIR="${REACT_NATIVE_NODE_MODULES_DIR}" "${expo_run[@]}"
+      REACT_NATIVE_NODE_MODULES_DIR="${REACT_NATIVE_MODULES_DIR}" "${expo_run[@]}"
   ) 2>&1 | filter_react_native_pods_notice
 fi
 
