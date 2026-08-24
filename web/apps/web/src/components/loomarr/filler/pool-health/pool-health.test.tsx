@@ -44,8 +44,26 @@ describe("PoolHealth", () => {
       <PoolHealth
         pool={pool({
           channels: [
-            { channelId: "ch-3", name: "Newsreel", number: 3, level: "bumper_card", total: 0 },
-            { channelId: "ch-42", name: "Cartoons", number: 42, level: "exact", total: 44 },
+            {
+              channelId: "ch-3",
+              name: "Newsreel",
+              number: 3,
+              level: "bumper_card",
+              total: 0,
+              durationMs: 0,
+              categories: 0,
+              brands: 0,
+            },
+            {
+              channelId: "ch-42",
+              name: "Cartoons",
+              number: 42,
+              level: "exact",
+              total: 44,
+              durationMs: 900_000,
+              categories: 5,
+              brands: 12,
+            },
           ],
         })}
       />,
@@ -63,7 +81,18 @@ describe("PoolHealth", () => {
     render(
       <PoolHealth
         pool={pool({
-          channels: [{ channelId: "ch-42", name: "Cartoons", number: 42, level: "exact", total: 44 }],
+          channels: [
+            {
+              channelId: "ch-42",
+              name: "Cartoons",
+              number: 42,
+              level: "exact",
+              total: 44,
+              durationMs: 900_000,
+              categories: 5,
+              brands: 12,
+            },
+          ],
         })}
       />,
     );
@@ -82,8 +111,26 @@ describe("PoolHealth", () => {
       <PoolHealth
         pool={pool({
           channels: [
-            { channelId: "ch-1", name: "Cartoons", number: 1, level: "audience", total: 12 },
-            { channelId: "ch-2", name: "Sci-Fi", number: 2, level: "widened", total: 9 },
+            {
+              channelId: "ch-1",
+              name: "Cartoons",
+              number: 1,
+              level: "audience",
+              total: 12,
+              durationMs: 300_000,
+              categories: 2,
+              brands: 4,
+            },
+            {
+              channelId: "ch-2",
+              name: "Sci-Fi",
+              number: 2,
+              level: "widened",
+              total: 9,
+              durationMs: 240_000,
+              categories: 2,
+              brands: 3,
+            },
           ],
         })}
       />,

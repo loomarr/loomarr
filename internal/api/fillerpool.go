@@ -1,6 +1,10 @@
 package api
 
-import "context"
+import (
+	"context"
+
+	"github.com/loomarr/loomarr/internal/filler"
+)
 
 // Catalog-wide filler health — the Filler page's pool strip (§10 V35).
 //
@@ -16,11 +20,14 @@ import "context"
 
 // PoolChannelDTO is one live channel's coverage, as the pool strip lists it.
 type PoolChannelDTO struct {
-	ChannelID string `json:"channelId" doc:"Channel id"`
-	Name      string `json:"name" doc:"Channel name"`
-	Number    int    `json:"number" doc:"Channel number"`
-	Level     string `json:"level" enum:"exact,widened,audience,bumper_card" doc:"Which ladder rung this channel's breaks resolve at. bumper_card means the catalog cannot fill them and the embedded card plays."`
-	Total     int    `json:"total" doc:"Eligible clips available to this channel at its widest rung"`
+	ChannelID  string `json:"channelId" doc:"Channel id"`
+	Name       string `json:"name" doc:"Channel name"`
+	Number     int    `json:"number" doc:"Channel number"`
+	Level      string `json:"level" enum:"exact,widened,audience,bumper_card" doc:"Which ladder rung this channel's breaks resolve at. bumper_card means the catalog cannot fill them and the embedded card plays."`
+	Total      int    `json:"total" doc:"Eligible clips available to this channel at its widest rung"`
+	DurationMs int64  `json:"durationMs" doc:"Combined playable duration at the widest eligible rung"`
+	Categories int    `json:"categories" doc:"Distinct grounded product categories at the widest eligible rung"`
+	Brands     int    `json:"brands" doc:"Distinct grounded brands at the widest eligible rung"`
 }
 
 // PoolDTO is catalog-wide filler health (§10 V35).
@@ -56,21 +63,28 @@ func (s *Server) fillerPool(ctx context.Context, _ *struct{}) (*fillerPoolOutput
 		return nil, err
 	}
 
+	return &fillerPoolOutput{Body: poolDTO(report)}, nil
+}
+
+func poolDTO(report filler.PoolReport) PoolDTO {
 	chans := make([]PoolChannelDTO, 0, len(report.Channels))
 	for _, c := range report.Channels {
 		chans = append(chans, PoolChannelDTO{
-			ChannelID: c.ChannelID,
-			Name:      c.Name,
-			Number:    c.Number,
-			Level:     string(c.Report.Level),
-			Total:     c.Report.Total,
+			ChannelID:  c.ChannelID,
+			Name:       c.Name,
+			Number:     c.Number,
+			Level:      string(c.Report.Level),
+			Total:      c.Report.Total,
+			DurationMs: c.Report.DurationMs,
+			Categories: c.Report.Categories,
+			Brands:     c.Report.Brands,
 		})
 	}
-	return &fillerPoolOutput{Body: PoolDTO{
+	return PoolDTO{
 		Clips:       report.Clips,
 		Commercials: report.Commercials,
 		Eligible:    report.Eligible,
 		Untagged:    report.Untagged,
 		Channels:    chans,
-	}}, nil
+	}
 }

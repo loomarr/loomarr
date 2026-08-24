@@ -307,7 +307,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
           </p>
           {data.unclassifiedClips > 0 ? (
             <Link
-              to="/filler"
+              to="/filler/library"
               search={{ unclassified: true }}
               className="mt-2 inline-flex text-signal text-sm underline-offset-2 hover:underline"
             >
@@ -346,7 +346,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
                         <>
                           {" · "}
                           <Link
-                            to="/filler"
+                            to="/filler/library"
                             search={{ withoutAxis: axis }}
                             className="text-signal underline-offset-2 hover:underline"
                           >
@@ -411,7 +411,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
                           </Badge>
                         ) : null}
                         <Link
-                          to="/filler"
+                          to="/filler/library"
                           search={{ taxon: taxon.slug }}
                           className="rounded-sm font-mono text-signal text-xs underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           title={`Browse clips matching ${taxon.label}, including descendants`}

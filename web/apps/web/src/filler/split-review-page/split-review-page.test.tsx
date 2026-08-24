@@ -106,7 +106,7 @@ const renderPage = () => {
   });
   const fillerRoute = createRoute({
     getParentRoute: () => rootRoute,
-    path: "/filler",
+    path: "/filler/library",
     component: () => <p>the catalog</p>,
   });
   const router = createRouter({
@@ -146,7 +146,7 @@ describe("SplitReviewPage", () => {
     expect(body.segments).toHaveLength(2);
     expect(body.segments[1]).toMatchObject({ index: 1, era: 1985 });
     expect(body.segments[1]?.suggestedEra).toBeUndefined();
-    expect(router.state.location.pathname).toBe("/filler");
+    expect(router.state.location.pathname).toBe("/filler/library");
   });
 
   it("Back leaves without calling confirm", async () => {

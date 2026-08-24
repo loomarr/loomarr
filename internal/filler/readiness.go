@@ -35,32 +35,39 @@ type Readiness struct {
 
 	ChannelID string
 	Count     int
+
+	Fetch    FetchStatus
+	Pipeline PipelineOverview
+	Pool     PoolReport
+	Runs     []AcquisitionRun
 }
 
 // ProjectReadiness chooses one next action in impact order. Machine blockage precedes operator
 // decisions, and an empty airable pool precedes quality improvements to a pool that already works.
 func ProjectReadiness(in ReadinessInput) Readiness {
+	out := Readiness{Fetch: in.Fetch, Pipeline: in.Pipeline, Pool: in.Pool, Runs: in.Runs}
 	switch {
 	case !in.Fetch.Enabled:
-		return Readiness{Next: ReadinessEnableFetch}
+		out.Next = ReadinessEnableFetch
 	case in.Fetch.StoppedBy == "catalog":
-		return Readiness{Next: ReadinessFreeCatalog, Count: in.Fetch.CatalogClips}
+		out.Next, out.Count = ReadinessFreeCatalog, in.Fetch.CatalogClips
 	case in.Fetch.StoppedBy == "disk":
-		return Readiness{Next: ReadinessFreeDisk}
+		out.Next = ReadinessFreeDisk
 	case len(in.Runs) > 0 && in.Runs[0].Status == AcquisitionError:
-		return Readiness{Next: ReadinessRetryAcquisition, Count: in.Runs[0].Failed}
+		out.Next, out.Count = ReadinessRetryAcquisition, in.Runs[0].Failed
 	case in.Pipeline.Recoverable > 0:
-		return Readiness{Next: ReadinessRetryWork, Count: in.Pipeline.Recoverable}
+		out.Next, out.Count = ReadinessRetryWork, in.Pipeline.Recoverable
 	case in.Pipeline.NeedsDecision > 0:
-		return Readiness{Next: ReadinessReviewIncoming, Count: in.Pipeline.NeedsDecision}
+		out.Next, out.Count = ReadinessReviewIncoming, in.Pipeline.NeedsDecision
 	case in.Pool.Eligible == 0:
-		return Readiness{Next: ReadinessAddFiller}
-	}
-	if weakest := in.Pool.Weakest(); weakest != nil && weakest.Report.Level != MatchExact {
-		return Readiness{
-			Next: ReadinessImproveCoverage, ChannelID: weakest.ChannelID,
-			Count: weakest.Report.Total,
+		out.Next = ReadinessAddFiller
+	default:
+		if weakest := in.Pool.Weakest(); weakest != nil && weakest.Report.Level != MatchExact {
+			out.Next, out.ChannelID = ReadinessImproveCoverage, weakest.ChannelID
+			out.Count = weakest.Report.Total
+		} else {
+			out.Ready, out.Next = true, ReadinessNone
 		}
 	}
-	return Readiness{Ready: true, Next: ReadinessNone}
+	return out
 }

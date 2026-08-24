@@ -304,8 +304,8 @@ const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFiller
           <h3 className="font-semibold text-base">Match this channel</h3>
           <p className="text-muted-foreground text-sm">
             Start broad. Add only the filters this channel really needs. Clips come from your{" "}
-            <Link to="/filler" className="text-signal underline-offset-2 hover:underline">
-              filler catalog
+            <Link to="/filler/library" className="text-signal underline-offset-2 hover:underline">
+              filler library
             </Link>
             .
           </p>
@@ -378,7 +378,7 @@ const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFiller
               <>
                 No clips match this selection yet. Breaks fall back to the bumper card. Loosen the theme
                 above, or{" "}
-                <Link to="/filler" className="text-signal underline-offset-2 hover:underline">
+                <Link to="/filler/library" className="text-signal underline-offset-2 hover:underline">
                   add and tag clips
                 </Link>{" "}
                 in your filler catalog.

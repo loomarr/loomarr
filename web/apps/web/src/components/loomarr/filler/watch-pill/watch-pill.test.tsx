@@ -26,7 +26,7 @@ describe("WatchPill", () => {
     expect(screen.getByText("Watching your sources")).toBeInTheDocument();
 
     rerender(<WatchPill status="x" health="attention" />);
-    expect(screen.getByText("Sources need attention")).toBeInTheDocument();
+    expect(screen.getByText("Filler needs attention")).toBeInTheDocument();
 
     rerender(<WatchPill status="x" health="unconfigured" />);
     expect(screen.getByText("No sources set up yet")).toBeInTheDocument();

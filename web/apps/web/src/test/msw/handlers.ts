@@ -6,6 +6,7 @@ import {
   getDeviceListMockHandler,
   getFillerIncomingMockHandler,
   getFillerPoolMockHandler,
+  getFillerReadinessMockHandler,
   getFillerWatchMockHandler,
   getGetChannelMockHandler,
   getGetCurrentHealthMockHandler,
@@ -132,6 +133,7 @@ const appHandlers = (): RequestHandler[] => [
       inProgress: 0,
       scheduled: 0,
       needsDecision: 0,
+      recoverable: 0,
       admitted: 0,
       rejected: 0,
       dismissed: 0,
@@ -169,6 +171,23 @@ const appHandlers = (): RequestHandler[] => [
   getListDocsMockHandler({ docs: [] }),
   getFillerPoolMockHandler({ channels: [], clips: 0, commercials: 0, eligible: 0, untagged: 0 }),
   getFillerWatchMockHandler({ clips: 0, health: "healthy", held: 0, sourcesOn: 0, sourcesTotal: 0 }),
+  getFillerReadinessMockHandler({
+    ready: true,
+    nextAction: "none",
+    fetch: { enabled: true, catalogClips: 0 },
+    pipeline: {
+      runnable: 0,
+      inProgress: 0,
+      scheduled: 0,
+      needsDecision: 0,
+      recoverable: 0,
+      admitted: 0,
+      rejected: 0,
+      dismissed: 0,
+    },
+    pool: { channels: [], clips: 0, commercials: 0, eligible: 0, untagged: 0 },
+    acquisitions: [],
+  }),
 ];
 
 export { appHandlers };

@@ -76,6 +76,7 @@ const stubFillerPage = (over: { clips?: ClipDTO[]; incomingTotal?: number; total
         inProgress: 0,
         scheduled: 0,
         needsDecision: 3,
+        recoverable: 0,
         admitted: 0,
         rejected: 0,
         dismissed: 0,
@@ -117,7 +118,7 @@ const makeWrapper = () => {
   );
 };
 
-const renderPage = (tab: "catalog" | "incoming" | "sources", initialPath = "/filler") =>
+const renderPage = (tab: "library" | "attention" | "sources", initialPath = "/filler/library") =>
   render(<RouterHarness content={<FillerPage tab={tab} />} initialPath={initialPath} />, {
     wrapper: makeWrapper(),
   });
@@ -132,9 +133,9 @@ describe("FillerPage shell", () => {
   // "60" beside a filter matching 1,204, which is a worse lie than no badge at all.
   it("counts the Catalog badge from the filtered clip query, not the server total", async () => {
     stubFillerPage();
-    renderPage("catalog");
+    renderPage("library");
 
-    const catalogTab = await screen.findByRole("link", { name: /catalog/i });
+    const catalogTab = await screen.findByRole("link", { name: /library/i });
     // The filter matches two ⇒ "2", though the watch endpoint reports a 200-clip catalog.
     expect(within(catalogTab).getByText("2")).toBeInTheDocument();
   });
@@ -143,10 +144,10 @@ describe("FillerPage shell", () => {
   // instantly against a member's (countless) tab and prove nothing.
   it("counts the Incoming badge from the queue total", async () => {
     stubFillerPage({ incomingTotal: 7 });
-    renderPage("catalog");
+    renderPage("library");
 
     await waitFor(() => {
-      const incomingTab = screen.getByRole("link", { name: /incoming/i });
+      const incomingTab = screen.getByRole("link", { name: /needs attention/i });
       expect(within(incomingTab).getByText("7")).toBeInTheDocument();
     });
   });
@@ -155,7 +156,7 @@ describe("FillerPage shell", () => {
   // is the reason to look, while the configured-source count is already the header pill's job.
   it("gives the Sources tab no badge", async () => {
     stubFillerPage();
-    renderPage("catalog");
+    renderPage("library");
 
     const sourcesTab = await screen.findByRole("link", { name: /sources/i });
     expect(sourcesTab).toHaveTextContent(/^Sources$/);
@@ -163,7 +164,7 @@ describe("FillerPage shell", () => {
 
   it("treats section links as navigation without an orphan tabpanel role", async () => {
     stubFillerPage();
-    renderPage("catalog");
+    renderPage("library");
 
     await screen.findByRole("navigation", { name: "Filler sections" });
     expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument();
@@ -174,7 +175,7 @@ describe("FillerPage shell", () => {
   // list it invites the reading that a source is at fault for weak coverage.
   it("shows the pool strip on Catalog", async () => {
     stubFillerPage();
-    renderPage("catalog");
+    renderPage("library");
 
     expect(await screen.findByLabelText("Catalog health")).toBeInTheDocument();
   });
@@ -190,7 +191,7 @@ describe("FillerPage shell", () => {
 
   it("moves and selects the clip view with radio-group arrow keys", async () => {
     stubFillerPage();
-    renderPage("catalog");
+    renderPage("library");
 
     const grid = await screen.findByRole("radio", { name: "Grid" });
     const list = screen.getByRole("radio", { name: "List" });
@@ -221,7 +222,7 @@ describe("FillerPage shell", () => {
       }),
     );
 
-    renderPage("catalog");
+    renderPage("library");
     await waitFor(() => {
       const top = requests.find(
         (url) => !url.searchParams.has("parentHash") && !url.searchParams.has("hashes"),
@@ -249,7 +250,7 @@ describe("FillerPage catalog paging", () => {
 
   it("asks for the requested page and says where you are", async () => {
     const catalogQueries = stubFillerPage({ clips: page(60), total: 130 });
-    renderPage("catalog", "/filler?page=2");
+    renderPage("library", "/filler/library?page=2");
 
     // ⚠ Asserting on the REQUEST, not just the rendering: an offset the component computed but
     // never sent would still render a plausible "Page 2 of 3" over page one's clips.
@@ -272,7 +273,7 @@ describe("FillerPage catalog paging", () => {
     // A small page with a large total: the pager only needs `total` to believe there are three
     // pages, and 60 rendered cards per keystroke is what made this test time out.
     const catalogQueries = stubFillerPage({ clips: page(3), total: 130 });
-    renderPage("catalog", "/filler?page=2");
+    renderPage("library", "/filler/library?page=2");
     // ⚠ Wait for the CONTROLS, not just the request. The first listing fires before
     // `/v1/settings` resolves, so the page is still showing its unconfigured state at that
     // point and the filter bar does not exist yet.
@@ -296,7 +297,7 @@ describe("FillerPage catalog paging", () => {
   // LARGER than one page must never be silently truncated to it.
   it("shows no pager on a single page", async () => {
     stubFillerPage({ clips: page(2), total: 2 });
-    renderPage("catalog");
+    renderPage("library");
     expect(await screen.findByText("2 clips")).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: /catalog pages/i })).not.toBeInTheDocument();
   });

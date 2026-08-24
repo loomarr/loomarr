@@ -182,6 +182,7 @@ const stubFiller = ({
         inProgress: 0,
         scheduled: 0,
         needsDecision: 0,
+        recoverable: 0,
         admitted: 0,
         rejected: 0,
         dismissed: 0,
@@ -272,7 +273,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe("Filler page", () => {
   it("lists the catalog with each clip's match tags", async () => {
     stubFiller();
-    renderAt("/filler");
+    renderAt("/filler/library");
     expect(await screen.findByText("Frosted Flakes")).toBeInTheDocument();
     // §10 V45a era label: a SPECIFIC year renders plain (the tagger grounds a literal year, §8), only
     // a decade boundary gets the "s". 1992 → "1992", not the old nonsense "1992s".
@@ -288,7 +289,7 @@ describe("Filler page", () => {
         clip({ hash: "c2-hash", tunarrProgramId: "c2", name: "TMNT figures", category: "toys" }),
       ],
     });
-    renderAt("/filler");
+    renderAt("/filler/library");
     await screen.findByText("Frosted Flakes");
 
     await userEvent.type(screen.getByLabelText("Search"), "tmnt");
@@ -314,7 +315,7 @@ describe("Filler page", () => {
   // This test is what stops them being re-added by reflex.
   it("offers no whole-catalog sync or tag button — that work runs on its own", async () => {
     stubFiller();
-    renderAt("/filler");
+    renderAt("/filler/library");
     await screen.findByText("Frosted Flakes");
 
     expect(screen.queryByRole("button", { name: /^sync$/i })).not.toBeInTheDocument();
@@ -326,7 +327,7 @@ describe("Filler page", () => {
   // that, and "3 sources" on an install where one is dark is a reassuring lie.
   it("heads the page with how many sources are on", async () => {
     stubFiller();
-    renderAt("/filler");
+    renderAt("/filler/library");
     await screen.findByText("Frosted Flakes");
 
     expect(await screen.findByText(/\d+ of \d+ sources on/i)).toBeInTheDocument();
@@ -345,7 +346,7 @@ describe("Filler page", () => {
       clips: [],
       watch: { health: "healthy", sourcesOn: 5, sourcesTotal: 5, clips: 0, held: 12 },
     });
-    renderAt("/filler");
+    renderAt("/filler/library");
 
     expect(await screen.findByText(/0 clips · 12 waiting/i)).toBeInTheDocument();
   });
@@ -357,7 +358,7 @@ describe("Filler page", () => {
     stubFiller({
       watch: { health: "healthy", sourcesOn: 5, sourcesTotal: 5, clips: 9, held: 0 },
     });
-    renderAt("/filler");
+    renderAt("/filler/library");
 
     await screen.findByText(/9 clips/i);
     expect(screen.queryByText(/waiting/i)).not.toBeInTheDocument();
@@ -365,7 +366,7 @@ describe("Filler page", () => {
 
   it("explains rather than listing when no filler folder is configured", async () => {
     stubFiller({ features: { filler: false } });
-    renderAt("/filler");
+    renderAt("/filler/library");
     expect(await screen.findByText(/no filler folder configured/i)).toBeInTheDocument();
   });
 
@@ -385,7 +386,7 @@ describe("Filler page", () => {
     const { tagPatches } = stubFiller({
       clips: [clip({ kind: "commercial", name: "Some Trailer", brand: "Wrong brand" })],
     });
-    renderAt("/filler");
+    renderAt("/filler/library");
     await screen.findByText("Some Trailer");
 
     await userEvent.click(screen.getByRole("button", { name: /edit tags/i }));
@@ -430,7 +431,7 @@ describe("Filler page", () => {
         ],
       },
     });
-    renderAt("/filler");
+    renderAt("/filler/library");
     await screen.findByText("Frosted Flakes");
 
     await userEvent.click(screen.getByRole("button", { name: /edit tags/i }));
@@ -479,7 +480,7 @@ describe("Filler page", () => {
     expect(screen.queryByRole("button", { name: "Remove tag" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("link", { name: "7 clips" }));
 
-    await expect.poll(() => router.state.location.pathname).toBe("/filler");
+    await expect.poll(() => router.state.location.pathname).toBe("/filler/library");
     expect(router.state.location.search).toMatchObject({ taxon: "food" });
     await expect
       .poll(() => listQueries.some((query) => new URLSearchParams(query).get("taxon") === "food"))
@@ -537,7 +538,7 @@ describe("Filler page", () => {
         },
       },
     });
-    renderAt("/filler");
+    renderAt("/filler/library");
 
     expect(await screen.findByText("Automatic fetching is paused")).toBeInTheDocument();
     expect(screen.getByText(/2,000 of 2,000 catalog clips/i)).toBeInTheDocument();
@@ -553,7 +554,7 @@ describe("Filler page", () => {
     const { tagPatches } = stubFiller({
       clips: [clip({ era: 0, suggestedEra: 1985, audience: "kids", category: "cereal", tagged: false })],
     });
-    renderAt("/filler");
+    renderAt("/filler/library");
     await screen.findByText("Frosted Flakes");
     expect(screen.getByText("1985s?")).toBeInTheDocument();
 
@@ -575,7 +576,7 @@ describe("Filler page", () => {
     const { tagPatches } = stubFiller({
       clips: [clip({ era: 1990, audience: "kids", category: "cereal", tagged: true })],
     });
-    renderAt("/filler");
+    renderAt("/filler/library");
     await screen.findByText("Frosted Flakes");
 
     await userEvent.click(screen.getByRole("button", { name: /change the audience/i }));
@@ -598,7 +599,7 @@ describe("Filler page", () => {
       me: MEMBER,
       clips: [clip({ era: 0, suggestedEra: 1985, tagged: false, isComposite: true, durationMs: 900_000 })],
     });
-    renderAt("/filler");
+    renderAt("/filler/library");
     await screen.findByText("Frosted Flakes");
     expect(screen.getByText("1985s?")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /confirm 1985/i })).not.toBeInTheDocument();
@@ -610,7 +611,7 @@ describe("Filler page", () => {
   // card in the catalog (§10 V54 A8).
   it("does not offer splitting on a clip that is not a compilation", async () => {
     stubFiller({ clips: [clip()] }); // the default: a 30s commercial
-    renderAt("/filler");
+    renderAt("/filler/library");
     await screen.findByText("Frosted Flakes");
     expect(screen.queryByRole("button", { name: /split into clips/i })).not.toBeInTheDocument();
   });
@@ -618,7 +619,7 @@ describe("Filler page", () => {
   // The confirmation itself: the first click must ask, not act.
   it("asks before starting a split, and starts nothing if the operator backs out", async () => {
     const { splitCount } = stubFiller({ clips: [clip({ isComposite: true, durationMs: 900_000 })] });
-    renderAt("/filler");
+    renderAt("/filler/library");
     await screen.findByText("Frosted Flakes");
 
     await userEvent.click(screen.getByRole("button", { name: /split into clips/i }));
@@ -643,7 +644,7 @@ describe("Filler page", () => {
     // ⚠ A COMPILATION now, because the action is offered only on one (§10 V54 A8) — and the split
     // is confirmed rather than fired on the first click.
     const { splitCount } = stubFiller({ clips: [clip({ isComposite: true, durationMs: 900_000 })] });
-    const router = renderAt("/filler");
+    const router = renderAt("/filler/library");
     await screen.findByText("Frosted Flakes");
 
     await userEvent.click(screen.getByRole("button", { name: /split into clips/i }));
@@ -674,7 +675,7 @@ describe("Filler page", () => {
 
   it("surfaces the split job's terminal error instead of navigating", async () => {
     stubFiller({ clips: [clip({ isComposite: true, durationMs: 900_000 })] });
-    renderAt("/filler");
+    renderAt("/filler/library");
     await screen.findByText("Frosted Flakes");
     await userEvent.click(screen.getByRole("button", { name: /split into clips/i }));
     await userEvent.click(await screen.findByRole("button", { name: /find the clips/i }));
@@ -696,7 +697,7 @@ describe("Filler page", () => {
 
   it("shows the bulk bar only once something is selected", async () => {
     stubFiller();
-    renderAt("/filler");
+    renderAt("/filler/library");
     await screen.findByText("Frosted Flakes");
 
     expect(screen.queryByText(/clip selected/i)).not.toBeInTheDocument();
@@ -711,7 +712,7 @@ describe("Filler page", () => {
   // saying "Delete" would describe something Loomarr deliberately does not do.
   it("offers removal in terms of the catalog, never the files", async () => {
     stubFiller();
-    renderAt("/filler");
+    renderAt("/filler/library");
     await screen.findByText("Frosted Flakes");
     await userEvent.click(screen.getByRole("checkbox", { name: /select frosted flakes/i }));
 
@@ -722,7 +723,7 @@ describe("Filler page", () => {
 
   it("bulk-removes the selection through the bulk route", async () => {
     const { bulkRemoves } = stubFiller();
-    renderAt("/filler");
+    renderAt("/filler/library");
     await screen.findByText("Frosted Flakes");
     await userEvent.click(screen.getByRole("checkbox", { name: /select frosted flakes/i }));
     await userEvent.click(await screen.findByRole("button", { name: /remove from catalog/i }));
@@ -737,7 +738,7 @@ describe("Filler page", () => {
   // which only holds if the client sends a partial body.
   it("sends only the tag field the operator picked", async () => {
     const { bulkTags } = stubFiller();
-    renderAt("/filler");
+    renderAt("/filler/library");
     await screen.findByText("Frosted Flakes");
     await userEvent.click(screen.getByRole("checkbox", { name: /select frosted flakes/i }));
 
@@ -781,7 +782,7 @@ describe("Filler page", () => {
       // synthesised clip would offer to save an empty tag set over a tagged clip).
       held: [clip({ hash: "held-hash", name: "Held promo", category: "cereal", era: 1985 })],
     });
-    renderAt("/filler/incoming");
+    renderAt("/filler/attention");
 
     await userEvent.click(await screen.findByRole("button", { name: /add tags/i }));
 
@@ -816,7 +817,7 @@ describe("Filler page", () => {
         total: 1,
       },
     });
-    renderAt("/filler/incoming");
+    renderAt("/filler/attention");
 
     await userEvent.click(await screen.findByText("More"));
     await userEvent.click(await screen.findByRole("button", { name: "Re-run AI" }));
@@ -829,7 +830,7 @@ describe("Filler page", () => {
   // present-and-failing.
   it("gives a member no way to select clips", async () => {
     stubFiller({ me: MEMBER });
-    renderAt("/filler");
+    renderAt("/filler/library");
     await screen.findByText("Frosted Flakes");
 
     expect(screen.queryByRole("checkbox", { name: /select frosted flakes/i })).not.toBeInTheDocument();

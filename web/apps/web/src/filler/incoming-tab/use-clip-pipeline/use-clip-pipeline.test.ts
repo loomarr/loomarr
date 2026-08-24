@@ -66,6 +66,7 @@ const body = (clips: IncomingClipDTO[]): FillerIncomingOutputBody => ({
     inProgress: clips.length,
     scheduled: 0,
     needsDecision: 0,
+    recoverable: 0,
     admitted: 0,
     rejected: 0,
     dismissed: 0,

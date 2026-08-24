@@ -111,6 +111,9 @@ func TestApproveFillerPull_IsTheOnlyPathThatDownloads(t *testing.T) {
 	if len(ff.ingested) != 1 || ff.ingested[0] != "https://archive.org/details/classic" {
 		t.Errorf("ingested %v, want the source's uri once", ff.ingested)
 	}
+	if ff.pullID != created.ID || len(ff.pullTargets) != 1 || ff.pullTargets[0].SourceID != "classic" {
+		t.Errorf("pull attribution = id %q targets %+v, want approved pull and exact source", ff.pullID, ff.pullTargets)
+	}
 }
 
 // A double-click, a retried request, or a second admin on the same queue must not enqueue the
