@@ -5,12 +5,14 @@ export type { ClientShellProps } from "./src/client-shell";
 export { ClientShell } from "./src/client-shell";
 export type {
   GuideArtworkRenderer,
+  GuideExperienceProps,
   GuideFilter,
   GuideFilterOption,
   GuideLogoRenderer,
   GuideSurfaceProps,
+  GuideUnavailableState,
 } from "./src/guide";
-export { GuideSurface } from "./src/guide";
+export { GuideExperience, GuideSurface } from "./src/guide";
 export type {
   ChannelIdentityData,
   ChannelIdentityProps,

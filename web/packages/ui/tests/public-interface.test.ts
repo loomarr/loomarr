@@ -6,6 +6,7 @@ import {
   ClientPlatformProof,
   ClientShell,
   clientBackDestination,
+  GuideExperience,
   GuideSurface,
   ModalOverlay,
   PairingShell,
@@ -24,6 +25,7 @@ describe("ui public interface", () => {
     expect(ChannelIdentity).toBeTypeOf("function");
     expect(ClientNavigation).toBeTypeOf("function");
     expect(GuideSurface).toBeTypeOf("function");
+    expect(GuideExperience).toBeTypeOf("function");
     expect(clientBackDestination).toBeTypeOf("function");
     expect(ProgrammeIdentity).toBeTypeOf("function");
     expect(ModalOverlay).toBeTypeOf("function");

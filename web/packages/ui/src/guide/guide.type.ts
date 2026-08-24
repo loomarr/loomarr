@@ -26,4 +26,23 @@ interface GuideSurfaceProps {
   selection: GuideSelection;
 }
 
-export type { GuideArtworkRenderer, GuideFilter, GuideFilterOption, GuideLogoRenderer, GuideSurfaceProps };
+type GuideUnavailableState = "empty" | "error" | "loading" | "offline";
+type GuideReadyProps = GuideSurfaceProps & { state?: "ready" };
+
+interface GuideUnavailableProps {
+  density?: Density;
+  onRetry?: () => void;
+  state: GuideUnavailableState;
+}
+
+type GuideExperienceProps = GuideReadyProps | GuideUnavailableProps;
+
+export type {
+  GuideArtworkRenderer,
+  GuideExperienceProps,
+  GuideFilter,
+  GuideFilterOption,
+  GuideLogoRenderer,
+  GuideSurfaceProps,
+  GuideUnavailableState,
+};

@@ -18,8 +18,14 @@ import { ScrollView, View } from "react-native";
 
 import { ChannelIdentity } from "../identity";
 import { ProgrammeCard } from "../programme-card";
+import { StatePanel } from "../state-panel";
 
-import type { GuideFilterOption, GuideSurfaceProps } from "./guide.type";
+import type {
+  GuideExperienceProps,
+  GuideFilterOption,
+  GuideSurfaceProps,
+  GuideUnavailableState,
+} from "./guide.type";
 
 const defaultFilters: readonly GuideFilterOption[] = [
   { label: "All", value: "all" },
@@ -251,4 +257,49 @@ const GuideSurface = ({
   );
 };
 
-export { defaultFilters, GuideSurface, guideRailWidth, guideRowHeight };
+const unavailableGuideCopy: Record<
+  GuideUnavailableState,
+  { description: string; kind: GuideUnavailableState; title: string }
+> = {
+  empty: {
+    description: "No playable channels are available yet.",
+    kind: "empty",
+    title: "No channels on air",
+  },
+  error: {
+    description: "The schedule could not be loaded. Your current channel is unchanged.",
+    kind: "error",
+    title: "Guide unavailable",
+  },
+  loading: {
+    description: "Reading the latest channel schedule.",
+    kind: "loading",
+    title: "Loading channels",
+  },
+  offline: {
+    description: "Reconnect to refresh the channel schedule.",
+    kind: "offline",
+    title: "You're offline",
+  },
+};
+
+const GuideExperience = (props: GuideExperienceProps) => {
+  if (!props.state || props.state === "ready") return <GuideSurface {...props} />;
+  const copy = unavailableGuideCopy[props.state];
+  const onRetry = "onRetry" in props ? props.onRetry : undefined;
+  return (
+    <StatePanel
+      action={
+        onRetry && (props.state === "error" || props.state === "offline")
+          ? { label: "Try again", onPress: onRetry }
+          : undefined
+      }
+      density={props.density}
+      description={copy.description}
+      kind={copy.kind}
+      title={copy.title}
+    />
+  );
+};
+
+export { defaultFilters, GuideExperience, GuideSurface, guideRailWidth, guideRowHeight };

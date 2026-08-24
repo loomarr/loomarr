@@ -3,7 +3,7 @@ import { LoomarrProvider } from "@loomarr/design-system";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { GuideSurface } from "../index";
+import { GuideExperience, GuideSurface } from "../index";
 
 const layout = {
   channels: [
@@ -77,5 +77,20 @@ describe("GuideSurface", () => {
     expect(output).toContain('aria-label="Favourites channels"');
     expect(output).toContain('aria-label="Recent channels"');
     expect(output.match(/aria-disabled="true"/g)).toHaveLength(2);
+  });
+
+  it.each([
+    ["loading", "Loading channels"],
+    ["empty", "No channels on air"],
+    ["error", "Guide unavailable"],
+    ["offline", "You&#x27;re offline"],
+  ] as const)("owns the %s guide state", (state, title) => {
+    const output = renderToStaticMarkup(
+      <LoomarrProvider>
+        <GuideExperience onRetry={vi.fn()} state={state} />
+      </LoomarrProvider>,
+    );
+    expect(output).toContain(title);
+    expect(output.includes("Try again")).toBe(state === "error" || state === "offline");
   });
 });
