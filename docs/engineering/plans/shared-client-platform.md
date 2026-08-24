@@ -1,6 +1,6 @@
 # Shared client platform migration
 
-**Status:** P0a through P1 merged; P2 shared Guide contracts validated locally and pending publication
+**Status:** P0a through P1 merged; P2 is in protected CI; P3 pairing and native-shell implementation is stacked locally
 **Date:** 2026-08-23  
 **Decision owner:** maintainer  
 **Companion contract:** [`docs/frontend-design.md`](../../frontend-design.md)
