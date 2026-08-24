@@ -35,7 +35,9 @@ const StatePanel = ({ action, description, density = "pointer", icon, kind, titl
     >
       {icon ??
         (loading ? (
-          <ActivityIndicator accessibilityLabel={title} size={density === "tv" ? "tv" : "control"} />
+          <Surface alignItems="center" backgroundColor="$transparent" borderWidth={0}>
+            <ActivityIndicator accessibilityLabel={title} size={density === "tv" ? "tv" : "control"} />
+          </Surface>
         ) : (
           <Icon
             accessibilityLabel={presentation?.iconLabel ?? title}
