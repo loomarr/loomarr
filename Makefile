@@ -533,6 +533,10 @@ brand-assets-verify: ## verify every platform brand derivative matches the share
 fe-codegen: ## regenerate tokens + orval api client from api/openapi.yaml
 	cd $(WEB) && pnpm codegen
 
+.PHONY: fe-api-codegen
+fe-api-codegen: ## regenerate only the orval api client from api/openapi.yaml
+	cd $(WEB) && pnpm api
+
 .PHONY: fe-lint
 fe-lint: ## Biome lint + format check (web/)
 	cd $(WEB) && pnpm lint
@@ -577,11 +581,11 @@ clients: brand-assets-verify ## lint, test, typecheck, and bundle the shared bro
 
 CLIENT_APP ?= mobile
 .PHONY: client-android-debug
-client-android-debug: ## memory-bounded arm64 debug build (CLIENT_APP=mobile|tv)
+client-android-debug: fe-api-codegen ## memory-bounded arm64 debug build (CLIENT_APP=mobile|tv)
 	cd $(WEB) && ./scripts/build-android-client.sh $(CLIENT_APP)
 
 .PHONY: client-apple-simulator
-client-apple-simulator: ## build and launch an Apple simulator proof (CLIENT_APP=mobile|tv; macOS)
+client-apple-simulator: fe-api-codegen ## build and launch an Apple simulator proof (CLIENT_APP=mobile|tv; macOS)
 	cd $(WEB) && ./scripts/test-apple-client.sh $(CLIENT_APP)
 
 .PHONY: storybook
