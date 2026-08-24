@@ -52,6 +52,7 @@ import type { PaletteScope, SearchCommandProps } from "./search-command.type";
 // affordance. A keyboard user presses Escape, nothing happened, and no test noticed because
 // every test clicked Cancel. Found by a maintainer pressing the key.
 const SCOPE_LABEL: Record<PaletteScope, string> = {
+  diagnostics: "Admin tools",
   channels: "Channels",
   library: "In your library",
   tmdb: "Discover (TMDB)",
@@ -59,7 +60,7 @@ const SCOPE_LABEL: Record<PaletteScope, string> = {
   help: "Help",
 };
 
-const SCOPE_ORDER: PaletteScope[] = ["channels", "library", "tmdb", "clips", "help"];
+const SCOPE_ORDER: PaletteScope[] = ["diagnostics", "channels", "library", "tmdb", "clips", "help"];
 
 const SearchCommand = ({
   query,

@@ -31,7 +31,7 @@ const LABELS: Record<string, string> = {
 
 const serviceLabel = (name: string): string => LABELS[name] ?? name;
 
-const ServicesPanel = ({ view, onFix, refreshing, className }: ServicesPanelProps) => {
+const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: ServicesPanelProps) => {
   const rows = view.rows ?? [];
 
   return (
@@ -80,6 +80,17 @@ const ServicesPanel = ({ view, onFix, refreshing, className }: ServicesPanelProp
                   aria-label={`Fix ${serviceLabel(row.name)}`}
                 >
                   Fix →
+                </Button>
+              ) : null}
+              {!row.ok && onDiagnose ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onDiagnose(row.name)}
+                  aria-label={`View ${serviceLabel(row.name)} diagnostics`}
+                >
+                  Logs →
                 </Button>
               ) : null}
             </PanelRow.Meta>

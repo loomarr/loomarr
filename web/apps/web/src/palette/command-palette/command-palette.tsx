@@ -43,6 +43,9 @@ const CommandPalette = ({ open, onOpenChange }: CommandPaletteProps) => {
     setOpen(false);
     setQuery("");
     switch (result.scope) {
+      case "diagnostics":
+        void navigate({ to: "/settings/system/diagnostics", search: { view: "application" } });
+        break;
       case "channels":
         void navigate({ to: "/channels/$id", params: { id: result.id } });
         break;
