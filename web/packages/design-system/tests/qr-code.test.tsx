@@ -16,5 +16,8 @@ describe("Loomarr QR code", () => {
     expect(markup).toContain('<path d="');
     expect(markup).toContain("#0B0C0E");
     expect(markup).toContain("#F7F8FA");
+    expect(markup).toContain('aria-hidden="true"');
+    expect(markup).toContain("#FFB020");
+    expect(markup).toContain("#8B93A3");
   });
 });

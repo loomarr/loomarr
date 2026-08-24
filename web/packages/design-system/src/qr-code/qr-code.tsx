@@ -3,6 +3,7 @@ import QRCodeEncoder from "qrcode";
 import { useMemo } from "react";
 import Svg, { Path, Rect } from "react-native-svg";
 
+import { BrandMark } from "../brand/brand";
 import { semanticColors } from "../tokens";
 
 type QrCodeProps = {
@@ -12,7 +13,9 @@ type QrCodeProps = {
 };
 
 const matrixPath = (value: string) => {
-  const matrix = QRCodeEncoder.create(value, { errorCorrectionLevel: "M" }).modules;
+  // The protected centre mark obscures a small part of the matrix. Level H keeps the payload
+  // recoverable even with that deliberate obstruction and ordinary TV-camera perspective loss.
+  const matrix = QRCodeEncoder.create(value, { errorCorrectionLevel: "H" }).modules;
   const commands: string[] = [];
 
   for (let row = 0; row < matrix.size; row += 1) {
@@ -38,9 +41,13 @@ const QrCode = ({
   value,
 }: QrCodeProps) => {
   const path = useMemo(() => matrixPath(value), [value]);
+  const markSize = Math.round(size * 0.14);
+  const markPadding = Math.max(3, Math.round(size * 0.018));
+  const markPlateSize = markSize + markPadding * 2;
+  const markInset = (size - markPlateSize) / 2;
 
   return (
-    <View>
+    <View height={size} position="relative" width={size}>
       <Svg
         aria-label={accessibilityLabel}
         height={size}
@@ -51,6 +58,19 @@ const QrCode = ({
         <Rect fill={semanticColors.brand.foreground} height="100%" width="100%" />
         <Path d={path.commands} fill={semanticColors.brand.ground} />
       </Svg>
+      <View
+        alignItems="center"
+        backgroundColor={semanticColors.brand.foreground}
+        borderRadius={Math.round(markPlateSize * 0.2)}
+        height={markPlateSize}
+        justifyContent="center"
+        left={markInset}
+        position="absolute"
+        top={markInset}
+        width={markPlateSize}
+      >
+        <BrandMark contained decorative size={markSize} />
+      </View>
     </View>
   );
 };

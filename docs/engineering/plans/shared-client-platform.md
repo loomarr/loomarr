@@ -271,7 +271,7 @@ the adoption gate.
 | P0b | pnpm/Turborepo/Expo/Tamagui scaffold; no migrated production screen | web build unchanged; Expo iOS/Android/TV dev builds; affected-task tests |
 | P1 | semantic tokens, fonts, brand assets, iconography, loading motion, primitive interfaces, fixtures, web/native Storybooks | token/asset drift, contrast, story coverage, web/native renders |
 | P2 | shared Guide data/view modules and web integration | real API + deterministic visual/a11y gates; current web behavior retained |
-| P3 | mobile/TV shells, pairing, transport, and navigation adapters; shipping-screen parity inventory and dark-first pairing with QR | iPhone and Shield login/pair/revocation evidence plus visual parity review |
+| P3 | mobile/TV shells, pairing, transport, and navigation adapters; shipping-screen parity inventory and dark-first pairing with canonical lockup and protected-centre branded QR | iPhone and Shield login/pair/revocation evidence plus visual parity and QR-decode review |
 | P4 | playback, overlay, Surf, tuning, and previous-channel behavior | real-server first frame and remote/touch/browser traversal |
 | P5 | full vertical-slice evidence and go/no-go decision | every acceptance item above recorded |
 | P6 | remaining viewer surfaces | route-by-route parity; current clients still releasable |

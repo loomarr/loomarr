@@ -3,7 +3,6 @@ import {
   Action,
   ActivityIndicator,
   BrandLockup,
-  BrandMark,
   Field,
   QrCode,
   Screen,
@@ -41,12 +40,7 @@ const PairingShell = ({
   return (
     <Screen alignItems="center" density={density} gap="$section" justifyContent="center">
       {awaitingApproval ? (
-        <BrandMark
-          contained={false}
-          decorative
-          size={density === "tv" ? 14 : 10}
-          width={density === "tv" ? 200 : 140}
-        />
+        <BrandLockup orientation="horizontal" size={density === "tv" ? "large" : "medium"} />
       ) : null}
       <Surface
         gap="$section"
