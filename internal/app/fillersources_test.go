@@ -312,6 +312,13 @@ func TestIngest_RefusesAJobThatCannotBePersisted(t *testing.T) {
 	}
 }
 
+func TestIngest_RefusesAnEmptyAcquisition(t *testing.T) {
+	a := fillerServiceAdapter{fetcher: successfulClipIngestor{}, newID: func() string { return "acq-17" }}
+	if _, err := a.Ingest(t.Context(), nil); err == nil {
+		t.Fatal("empty ingest created a successful-looking job")
+	}
+}
+
 func TestIngestPull_PreservesPerTargetSourcesUnderOneRun(t *testing.T) {
 	fetched := recordingClipIngestor{sources: make(chan []clipfetch.Source, 1)}
 	runs := make(chan filler.AcquisitionRun, 3)

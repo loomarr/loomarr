@@ -71,7 +71,7 @@ func buildFillerSubsystem(
 	splitter := buildSplitter(st, set, layout, log, wake)
 	adapter := fillerServiceAdapter{
 		syncer: syncer, tagger: tagger, fetcher: fetcher,
-		bus: eventBus, newID: newID, timeout: set.dur("ingest.timeout"),
+		bus: eventBus, log: log, newID: newID, timeout: set.dur("ingest.timeout"),
 		sources: st, acquisitions: st, readiness: st, now: time.Now,
 		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st, wake: wake},
 	}

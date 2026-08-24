@@ -626,6 +626,7 @@ type fillerServiceAdapter struct {
 	// event is published (§10 V56). Optional only in narrow unit tests.
 	afterIngest func(context.Context) error
 	bus         *events.Bus
+	log         *slog.Logger
 	newID       func() string
 	timeout     time.Duration
 	// sources registers what an operator added, so the Sources tab can show where clips
@@ -785,6 +786,9 @@ func (a fillerServiceAdapter) ingest(
 	if a.fetcher == nil {
 		return "", api.ErrIngestUnavailable
 	}
+	if len(targets) == 0 {
+		return "", errors.New("filler acquisition requires at least one target")
+	}
 	jobID := a.newID()
 	sources := make([]clipfetch.Source, 0, len(targets))
 	for _, target := range targets {
@@ -877,7 +881,10 @@ func (a fillerServiceAdapter) persistAcquisition(run filler.AcquisitionRun) {
 	// Use an independent bounded context because the download timeout may have fired already.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_ = a.acquisitions.UpsertAcquisitionRun(ctx, run)
+	if err := a.acquisitions.UpsertAcquisitionRun(ctx, run); err != nil && a.log != nil {
+		a.log.Error("could not persist filler acquisition state",
+			"acquisition", run.ID, "status", run.Status, "err", err)
+	}
 }
 
 // publishIngest emits one ingest-progress frame (§7, type=filler_ingest). Empty counts
