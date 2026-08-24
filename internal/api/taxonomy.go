@@ -227,9 +227,7 @@ func taxonomyImpactToDTO(impact TaxonomyImpact, deleting bool) TaxonomyImpactDTO
 		out.Descendants = append(out.Descendants, TaxonomyImpactNodeDTO{Slug: descendant.Slug, Label: descendant.Label})
 	}
 	for _, channel := range impact.Channels {
-		out.SavedChannelSelections = append(out.SavedChannelSelections, TaxonomyImpactChannelDTO{
-			ID: channel.ID, Name: channel.Name, Number: channel.Number,
-		})
+		out.SavedChannelSelections = append(out.SavedChannelSelections, TaxonomyImpactChannelDTO(channel))
 	}
 	return out
 }
