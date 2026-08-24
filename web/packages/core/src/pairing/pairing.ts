@@ -158,7 +158,10 @@ const createAuthenticatedFetch =
     headers.set("Authorization", `Bearer ${credential.token}`);
     const method = (init.method ?? request?.method ?? "GET").toUpperCase();
     if (method !== "GET" && method !== "HEAD") headers.set("X-Loomarr-Csrf", "1");
-    const normalizedInput = request ? new Request(requestUrl.toString(), request) : requestUrl.toString();
+    // A Request already carries an absolute URL, so it can pass through after the origin check.
+    // Reconstructing it as RequestInit is both unnecessary and not portable: React Native and DOM
+    // intentionally expose different stream body types for that overload.
+    const normalizedInput = request ?? requestUrl.toString();
     const response = await fetcher(normalizedInput, { ...init, headers, method });
     if (response.status === 401) await revoked();
     return response;

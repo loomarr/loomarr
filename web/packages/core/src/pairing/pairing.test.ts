@@ -89,6 +89,18 @@ describe("pairing contract", () => {
     await expect(unavailableFetch("/v1/guide")).rejects.toThrow("offline");
     expect(revoked).not.toHaveBeenCalled();
   });
+  it("preserves an authenticated Request object after validating its origin", async () => {
+    const credential = { deviceName: "iPhone", serverUrl: "https://loomarr.media", token: "secret" };
+    const request = new Request("https://loomarr.media/v1/guide", { method: "POST" });
+    const fetcher = vi.fn(async () => new Response(null, { status: 204 }));
+
+    await createAuthenticatedFetch(credential, vi.fn(), fetcher)(request);
+
+    const calls = fetcher.mock.calls as unknown as Array<[RequestInfo | URL, RequestInit | undefined]>;
+    expect(calls[0]?.[0]).toBe(request);
+    expect(new Headers(calls[0]?.[1]?.headers).get("Authorization")).toBe("Bearer secret");
+    expect(new Headers(calls[0]?.[1]?.headers).get("X-Loomarr-Csrf")).toBe("1");
+  });
   it("clears only an authoritatively rejected saved credential", async () => {
     const credential = { deviceName: "Shield", serverUrl: "https://loomarr.media", token: "revoked" };
     const store = memoryStore(credential);

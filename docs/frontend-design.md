@@ -19,14 +19,19 @@ refined target language. New shared design work follows the
 migration plan and these precedence rules:
 
 1. Loomarr owns the semantic interfaces; application code does not depend directly on Tamagui.
-2. Product rules, deterministic states, artwork treatment, and appropriate visual primitives are
+2. A migration is a translation and refinement of Loomarr's shipping design, not permission to
+   invent an unrelated presentation. Before implementation, every migrated surface records a
+   parity inventory against the shipping client and the supplied approved mocks. Existing content,
+   actions, states, and recovery paths remain present unless the maintainer explicitly approves an
+   omission or replacement during visual review.
+3. Product rules, deterministic states, artwork treatment, and appropriate visual primitives are
    shared; navigation, focus, safe-area/overscan, DOM semantics, and player transport sit behind
    platform seams.
-3. Existing behavior, accessibility, authorization, pairing, playout, release, and rollback
+4. Existing behavior, accessibility, authorization, pairing, playout, release, and rollback
    guarantees survive every migration PR.
-4. The Guide-to-Playback slice must pass browser, iPhone, emulator, and physical Shield evidence
+5. The Guide-to-Playback slice must pass browser, iPhone, emulator, and physical Shield evidence
    before a full migration or legacy retirement is authorized.
-5. Until that adoption decision, the current web and Compose applications remain releasable.
+6. Until that adoption decision, the current web and Compose applications remain releasable.
 
 Brand identity and product iconography follow the consolidation contract as well. The canonical
 Loomarr chroma bar, wordmark, lockups, favicon, launcher icons, TV banner, and store artwork are generated
@@ -59,11 +64,13 @@ Tokens are the single source of truth. **No raw color/size literals outside the 
 
 ### 2.1 Color — the Test Card palette
 
-Dark remains the primary broadcast-console presentation, and the refined system ships a first-class
-light theme across web and native. Components consume semantic surface, content, border, focus, and
-scrim roles rather than assuming a dark ground. The chroma bar and its calibrated broadcast accents
-do not change between modes; supporting neutrals and contrast pairings do. Both themes are rendered
-and contrast-checked in Storybook.
+Dark is Loomarr's default presentation on first load and fresh install across web, mobile, and TV.
+The operating system's current appearance does not silently select a different initial Loomarr
+theme. A person's explicit saved choice may select light or system-following mode, and the refined
+system ships a first-class light theme across web and native. Components consume semantic surface,
+content, border, focus, and scrim roles rather than assuming a dark ground. The chroma bar and its
+calibrated broadcast accents do not change between modes; supporting neutrals and contrast pairings
+do. Both themes are rendered and contrast-checked in Storybook.
 
 **Static scale (neutrals — "the set"):**
 

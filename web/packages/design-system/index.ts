@@ -31,7 +31,9 @@ export {
   Text,
 } from "./src/primitives";
 export type { LoomarrProviderProps, LoomarrTheme } from "./src/provider";
-export { LoomarrProvider } from "./src/provider";
+export { LoomarrProvider, resolveLoomarrTheme } from "./src/provider";
+export type { QrCodeProps } from "./src/qr-code";
+export { QrCode } from "./src/qr-code";
 export type { Density, TextRole } from "./src/tokens";
 export {
   brandChroma,
