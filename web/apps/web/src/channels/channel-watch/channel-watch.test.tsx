@@ -33,8 +33,14 @@ const hls = vi.hoisted(() => ({
 }));
 
 vi.mock("../use-hls-player", () => ({
-  useHlsPlayer: () => ({ status: hls.status, attach: hls.attach, liveTransport: hls.liveTransport }),
+  useHlsPlayer: () => ({
+    status: hls.status,
+    playbackSessionId: "playback_1",
+    attach: hls.attach,
+    liveTransport: hls.liveTransport,
+  }),
 }));
+vi.mock("@/diagnostics/client-reporter", () => ({ clientDiagnostics: { record: vi.fn() } }));
 
 const makeWrapper = () => {
   const client = new QueryClient({

@@ -5,6 +5,7 @@ import type {
   LivePlaybackState,
   LivePlaybackTransport,
 } from "@/components/ui/video-player/live-playback-transport.type";
+import { clientDiagnostics } from "@/diagnostics/client-reporter";
 import { mintChannelPlaySource } from "../channel-play-url";
 import { markTunePhase, type TuneAttempt } from "../tuner-timing";
 
@@ -32,6 +33,7 @@ const LIVE_DVR_HORIZON_MS = 15 * 60_000;
 interface UseHlsPlayer {
   status: PlayerStatus;
   error?: string;
+  playbackSessionId: string;
   liveTransport: LivePlaybackTransport;
   /**
    * Bind live playback to a <video>. Pass to VideoPlayer's `attach` prop. Mints a signed URL,
@@ -238,6 +240,15 @@ const createHlsController = (HlsController: typeof Hls): Hls =>
   });
 
 function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
+  const playbackSessionIDRef = useRef(
+    globalThis.crypto?.randomUUID?.() ?? `web_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+  );
+  const channelIdentityRef = useRef(channelId);
+  const replacedChannelRef = useRef<string | undefined>(undefined);
+  if (channelIdentityRef.current !== channelId) {
+    replacedChannelRef.current = channelIdentityRef.current;
+    channelIdentityRef.current = channelId;
+  }
   // TanStack commits the route parameter after the tuner has already activated its target. That
   // commit can drop the transient attempt object while the Channel itself is unchanged. Retain the
   // attempt for that Channel so VideoPlayer does not tear down and reattach the same live source
@@ -435,6 +446,53 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       if (HlsController) cachedHlsController = HlsController;
       if (!current()) return () => undefined;
 
+      const diagnosticTransport = HlsController?.isSupported() ? "hls_js" : "native_hls";
+      const diagnosticBase = {
+        playbackSessionId: playbackSessionIDRef.current,
+        channelId,
+        transport: diagnosticTransport,
+      } as const;
+      const bufferedMs = () => {
+        if (video.buffered.length === 0) return 0;
+        return Math.max(0, Math.round((video.buffered.end(video.buffered.length - 1) - video.currentTime) * 1_000));
+      };
+      const reportPosition = (event: "player.buffering_started" | "player.buffering_ended" | "player.seeking" | "player.seeked") =>
+        clientDiagnostics.record({
+          ...diagnosticBase,
+          event,
+          viewerTimeMs: Math.round(clockRef.current.viewerTimeMs),
+          ...(event.startsWith("player.buffering") ? { bufferedMs: bufferedMs() } : {}),
+        });
+      const onWaiting = () => reportPosition("player.buffering_started");
+      const onPlaying = () => reportPosition("player.buffering_ended");
+      const onNativeError = () =>
+        clientDiagnostics.record({
+          ...diagnosticBase,
+          event: "player.media_error",
+          errorCode: `media_${video.error?.code ?? 0}`,
+          fatal: true,
+        });
+      video.addEventListener("waiting", onWaiting);
+      video.addEventListener("playing", onPlaying);
+      video.addEventListener("error", onNativeError);
+      clientDiagnostics.record({ ...diagnosticBase, event: "player.attached", reason: "mount" });
+      const replacedChannelID = replacedChannelRef.current;
+      if (replacedChannelID) {
+        replacedChannelRef.current = undefined;
+        clientDiagnostics.record({
+          ...diagnosticBase,
+          event: "player.source_replaced",
+          reason: "channel_change",
+          previousChannelId: replacedChannelID,
+        });
+      }
+      const stopDiagnostics = (reason: "unmount" | "retry" = "unmount") => {
+        video.removeEventListener("waiting", onWaiting);
+        video.removeEventListener("playing", onPlaying);
+        video.removeEventListener("error", onNativeError);
+        clientDiagnostics.record({ ...diagnosticBase, event: "player.detached", reason });
+      };
+
       // Name the generation on the element before any decoded-frame observer is armed. The tuner
       // certification captures this value when requestVideoFrameCallback is REQUESTED, so a late
       // callback from the outgoing Channel cannot be mistaken for the replacement when both use
@@ -449,6 +507,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         if (video.poster.startsWith("data:image/png;base64,")) video.removeAttribute("poster");
         markTunePhase(playbackAttempt, "first-frame");
         setState({ channelId, status: "playing" });
+        clientDiagnostics.record({ ...diagnosticBase, event: "player.ready" });
         replenishAfterFirstFrame?.();
       };
       let frameCallback: number | undefined;
@@ -573,6 +632,12 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
           playReplacement();
         };
         const onError = (_evt: string, data: { fatal: boolean; type: string }) => {
+          clientDiagnostics.record({
+            ...diagnosticBase,
+            event: "player.media_error",
+            errorCode: data.type === Hls.ErrorTypes.NETWORK_ERROR ? "hls_network" : data.type === Hls.ErrorTypes.MEDIA_ERROR ? "hls_media" : "hls_other",
+            fatal: data.fatal,
+          });
           if (!data.fatal) return; // non-fatal: hls.js recovers on its own
           // ⚠ A fatal error during a LIVE stream is usually RECOVERABLE, not terminal — the channel
           // is warming up (empty playlist for a beat) or a segment hiccuped. hls.js has built-in
@@ -659,6 +724,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
             hlsRef.current.standbyFresh = false;
             activeRef.current = { lastKeepaliveMs: 0 };
           }
+          stopDiagnostics("retry");
           return () => undefined;
         }
         let sourceLoaded = false;
@@ -695,6 +761,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         hls.startLoad();
         if (manifestParsed) playReplacement();
         return () => {
+          stopDiagnostics();
           stopFirstFrameWatch();
           hls.off(Hls.Events.MANIFEST_PARSED, onManifestParsed);
           hls.off(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
@@ -733,6 +800,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
           /* autoplay may be blocked; the play control covers it */
         });
         return () => {
+          stopDiagnostics();
           stopFirstFrameWatch();
           video.removeEventListener("loadedmetadata", onManifest);
           if (activeRef.current.video === video) activeRef.current = { lastKeepaliveMs: 0 };
@@ -742,6 +810,13 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       }
 
       stopFirstFrameWatch();
+      clientDiagnostics.record({
+        ...diagnosticBase,
+        event: "player.media_error",
+        errorCode: "unsupported",
+        fatal: true,
+      });
+      stopDiagnostics("retry");
       setState({ channelId, status: "error", error: "This browser can't play live channels." });
       return () => undefined;
     },
@@ -834,7 +909,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
     [channelId, pauseLive, playLive, returnLive, transportState],
   );
 
-  return { status, error, attach, liveTransport };
+  return { status, error, playbackSessionId: playbackSessionIDRef.current, attach, liveTransport };
 }
 
 export type { PlayerStatus, UseHlsPlayer };

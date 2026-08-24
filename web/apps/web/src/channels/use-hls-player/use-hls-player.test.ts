@@ -25,6 +25,7 @@ vi.mock("@loomarr/api/unwrap", () => ({ unwrap }));
 vi.mock("@loomarr/api/mutator", () => ({
   toProblem: (e: unknown) => ({ detail: (e as Error)?.message, title: "Problem" }),
 }));
+vi.mock("@/diagnostics/client-reporter", () => ({ clientDiagnostics: { record: vi.fn() } }));
 
 // Most tests keep hls.js unsupported and exercise the native/fallthrough seams. Handoff tests opt
 // in and record constructed controllers so a Channel-param rerender can prove MediaSource reuse.

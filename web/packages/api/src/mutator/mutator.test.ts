@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, customFetch, toProblem } from "./mutator";
+import { ApiError, customFetch, observeApiFailures, toProblem } from "./mutator";
 
 const mockFetch = (status: number, body: unknown) =>
   vi.fn((_url: string, _init?: RequestInit) =>
@@ -39,6 +39,27 @@ describe("customFetch", () => {
       status: 502,
       problem: { title: "Bad gateway", detail: "tunarr down" },
     });
+  });
+
+  it("reports only the bounded request correlation from failed operations", async () => {
+    const observed = vi.fn();
+    const stop = observeApiFailures(observed);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ title: "Unavailable", detail: "private upstream detail" }), {
+            status: 503,
+            headers: { "X-Request-Id": "request_1" },
+          }),
+        ),
+      ),
+    );
+
+    await expect(customFetch("/v1/channels")).rejects.toMatchObject({ requestId: "request_1" });
+    expect(observed).toHaveBeenCalledWith({ requestId: "request_1", status: 503 });
+    expect(JSON.stringify(observed.mock.calls)).not.toContain("private upstream detail");
+    stop();
   });
 
   it("returns the { status, data } envelope orval's fetch client expects", async () => {
