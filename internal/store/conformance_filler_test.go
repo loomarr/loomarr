@@ -1387,6 +1387,48 @@ func testTaxonomy(t *testing.T, newStore NewStoreFunc) {
 	if got := usage.ByTaxon["drinks"]; got.Asserted != 0 || got.Matched != 1 {
 		t.Errorf("drinks usage = %+v, want asserted=0 matched=1", got)
 	}
+
+	// Preview uses the same prospective-graph validation as commit but does not mutate it. It counts
+	// distinct stored assertions across the affected subtree, separately identifies playable clips
+	// that may change channel fit, and explains resolver behavior changes.
+	beer, ok := taxonomy.New(mustList(t, s, ctx)).Get("beer")
+	if !ok {
+		t.Fatal("seed taxonomy has no beer taxon")
+	}
+	beer.Synonyms = append(beer.Synonyms, "pint")
+	impact, err := s.PreviewTaxonomyEdit(ctx, TaxonomyEdit{Slug: beer.Slug, Taxon: beer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if impact.DirectStoredClips != 2 || impact.DescendantStoredClips != 0 || impact.AffectedStoredClips != 2 {
+		t.Errorf("beer preview stored impact = direct %d/descendant %d/affected %d, want 2/0/2", impact.DirectStoredClips, impact.DescendantStoredClips, impact.AffectedStoredClips)
+	}
+	if len(impact.PlayableClipHashes) != 0 {
+		t.Errorf("resolver-only preview playable hashes = %v, want none because eligibility is unchanged", impact.PlayableClipHashes)
+	}
+	assertSet(t, "beer preview added resolver terms", impact.ResolverTermsAdded, []string{"pint"})
+	if len(impact.ResolverTermsRemoved) != 0 {
+		t.Errorf("beer preview removed resolver terms = %v, want none", impact.ResolverTermsRemoved)
+	}
+	if liveBeer, _ := taxonomy.New(mustList(t, s, ctx)).Get("beer"); len(liveBeer.Synonyms) == len(beer.Synonyms) {
+		t.Error("PreviewTaxonomyEdit mutated the live graph")
+	}
+
+	alcoholImpact, err := s.PreviewTaxonomyEdit(ctx, TaxonomyEdit{Delete: true, Slug: "alcohol"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if alcoholImpact.DirectStoredClips != 0 || alcoholImpact.DescendantStoredClips != 2 || alcoholImpact.AffectedStoredClips != 2 {
+		t.Errorf("alcohol delete impact = direct %d/descendant %d/affected %d, want 0/2/2", alcoholImpact.DirectStoredClips, alcoholImpact.DescendantStoredClips, alcoholImpact.AffectedStoredClips)
+	}
+	gotDescendants := make([]string, 0, len(alcoholImpact.Descendants))
+	for _, descendant := range alcoholImpact.Descendants {
+		gotDescendants = append(gotDescendants, descendant.Slug)
+	}
+	assertSet(t, "alcohol descendants", gotDescendants, []string{"beer", "spirits"})
+	if _, err := s.PreviewTaxonomyEdit(ctx, TaxonomyEdit{Slug: "beer", Taxon: taxonomy.Taxon{Slug: "beer", Label: "Beer", Parent: "promo", Axis: taxonomy.AxisProduct}}); !errors.Is(err, taxonomy.ErrInvalidForest) {
+		t.Fatalf("invalid taxonomy preview = %v, want ErrInvalidForest", err)
+	}
 	if usage.ByAxis[taxonomy.AxisProduct] != 1 || usage.ByAxis[taxonomy.AxisFormat] != 0 {
 		t.Errorf("axis coverage product=%d format=%d, want 1/0 unique playable clips", usage.ByAxis[taxonomy.AxisProduct], usage.ByAxis[taxonomy.AxisFormat])
 	}

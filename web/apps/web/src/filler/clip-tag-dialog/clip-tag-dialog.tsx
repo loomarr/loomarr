@@ -14,7 +14,7 @@ import type { ClipTagDialogProps } from "./clip-tag-dialog.type";
 // Ordered product-first because it is the deepest and most-used; the labels are the human forms.
 const AXES = ["product", "format", "seasonal", "audience-cue"] as const;
 const AXIS_LABEL: Record<(typeof AXES)[number], string> = {
-  product: "Product",
+  product: "Products & topics",
   format: "Format",
   seasonal: "Seasonal",
   "audience-cue": "Audience cue",
@@ -60,12 +60,16 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
   // Writing it back would promote every derived rollup to a direct assertion, so later graph edits
   // could no longer distinguish what the operator chose from what the hierarchy implied.
   const [tags, setTags] = useState<string[]>(clip?.assertedTags ?? []);
+  const derivedTags = (clip?.tags ?? []).filter((tag) => !(clip?.assertedTags ?? []).includes(tag));
 
   // The tag vocabulary comes from the taxonomy graph — the ONE source of truth (§10 V45a), replacing
   // the old hardcoded CATEGORIES mirror. A member-readable read, so it loads for any operator.
   const vocab = fillerApi.useListTaxonomy();
   // The orval hook wraps the body: data.status===200 ? data.data.<body>. undefined while loading.
   const vocabTaxa = vocab.data?.status === 200 ? (vocab.data.data.taxa ?? []) : undefined;
+  const derivedLabels = derivedTags.map(
+    (slug) => vocabTaxa?.find((taxon) => taxon.slug === slug)?.label ?? slug,
+  );
   const patch = fillerApi.useTagFillerClip({ mutation: { onSuccess: () => onSaved?.() } });
 
   if (!clip) return null;
@@ -175,10 +179,10 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
             actual vocabulary is both easier and impossible to mis-type. The category shadow is derived
             server-side, so it is not edited here. */}
         <fieldset className="flex flex-col gap-3">
-          <legend className="font-medium text-sm">Tags</legend>
+          <legend className="font-medium text-sm">Observed facts</legend>
           <p className="text-muted-foreground text-xs">
-            Choose the most specific tags you know. Parent tags match every descendant and may be selected
-            when a broad description is genuinely all you know.
+            Choose only what this clip actually shows or advertises. Loomarr derives broader matches from the
+            hierarchy; classifier synonyms are managed separately under Advanced.
           </p>
           {vocab.error != null && <ErrorState error={vocab.error} />}
           {vocabTaxa == null ? (
@@ -218,6 +222,16 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
             })
           )}
         </fieldset>
+
+        {derivedTags.length > 0 ? (
+          <section className="rounded-md border border-border bg-surface/40 p-3" aria-label="Derived matches">
+            <p className="font-medium text-sm">Derived matches — read only</p>
+            <p className="mt-1 text-muted-foreground text-xs">
+              Inherited from the observed facts above and updated automatically when the hierarchy changes.
+            </p>
+            <p className="mt-2 break-words text-sm">{derivedLabels.join(", ")}</p>
+          </section>
+        ) : null}
 
         <div className="flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>

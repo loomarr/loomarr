@@ -17,6 +17,7 @@ import {
   getListFillerMockHandler,
   getListTaxonomyMockHandler,
   getMeMockHandler,
+  getPreviewTaxonomyEditMockHandler,
   getRewindFillerClipMockHandler,
   getSettingsListMockHandler,
   getSplitFillerMockHandler,
@@ -161,6 +162,21 @@ const stubFiller = ({
       };
       taxonCreates.push(body);
       return { ...body, assertedClips: 0, matchedClips: 0, storedClips: 0 };
+    }),
+    getPreviewTaxonomyEditMockHandler(async ({ request }) => {
+      const body = (await request.json()) as { operation: "create" | "update" | "delete"; slug: string };
+      const deleting = body.operation === "delete";
+      return {
+        directStoredClips: deleting ? 2 : 0,
+        descendantStoredClips: 0,
+        affectedStoredClips: deleting ? 2 : 0,
+        affectedPlayableClips: deleting ? 1 : 0,
+        descendants: [],
+        savedChannelSelections: [],
+        resolverTermsAdded: body.operation === "create" ? [body.slug] : [],
+        resolverTermsRemoved: deleting ? [body.slug] : [],
+        deleteBlocked: deleting,
+      };
     }),
     getFillerPoolMockHandler({
       clips: clips.length,
@@ -438,6 +454,9 @@ describe("Filler page", () => {
     const editor = await screen.findByRole("region", { name: /edit tags: frosted flakes/i });
     expect(within(editor).getByRole("button", { name: /cereal$/i })).toHaveAttribute("aria-pressed", "true");
     expect(within(editor).getByRole("button", { name: "Food" })).toHaveAttribute("aria-pressed", "false");
+    const derived = within(editor).getByRole("region", { name: "Derived matches" });
+    expect(within(derived).getByText("Food")).toBeInTheDocument();
+    expect(within(derived).getByText(/read only/i)).toBeInTheDocument();
     await userEvent.click(within(editor).getByRole("button", { name: /save tags/i }));
 
     await expect.poll(() => tagPatches).toHaveLength(1);
@@ -473,11 +492,15 @@ describe("Filler page", () => {
     const router = renderAt("/filler/taxonomy");
 
     expect(await screen.findByText("10 / 12")).toBeInTheDocument();
-    expect(screen.getByText("Products & topics")).toBeInTheDocument();
+    expect(screen.getAllByText("Products & topics")).toHaveLength(2);
+    await userEvent.click(screen.getByText("Manage vocabulary"));
     expect(screen.getByText("1 direct")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Food" }));
-    expect(screen.getByText(/retag 2 stored clips before removing/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Remove tag" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Review removal" }));
+    expect(
+      await screen.findByText(/retag 2 directly assigned stored clips before removing/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirm removal" })).toBeDisabled();
     await userEvent.click(screen.getByRole("link", { name: "7 clips" }));
 
     await expect.poll(() => router.state.location.pathname).toBe("/filler/library");
@@ -487,7 +510,7 @@ describe("Filler page", () => {
       .toBe(true);
 
     await router.navigate({ to: "/filler/taxonomy" });
-    await userEvent.click(await screen.findByRole("link", { name: "Browse 5 without" }));
+    await userEvent.click(await screen.findByRole("link", { name: /browse 5 without/i }));
     await expect.poll(() => router.state.location.search).toMatchObject({ withoutAxis: "product" });
     await expect
       .poll(() => listQueries.some((query) => new URLSearchParams(query).get("withoutAxis") === "product"))
@@ -499,15 +522,18 @@ describe("Filler page", () => {
       taxonomy: { totalClips: 0, taggedClips: 0, unclassifiedClips: 0, axisCoverage: [], taxa: [] },
     });
     renderAt("/filler/taxonomy");
-    const product = (await screen.findByText("Products & topics")).closest(
-      "div.border-border",
-    )?.parentElement;
-    expect(product).not.toBeNull();
-    await userEvent.click(within(product as HTMLElement).getByRole("button", { name: "Add" }));
+    await screen.findByText("Manage vocabulary");
+    await userEvent.click(screen.getByText("Manage vocabulary"));
+    const addProduct = screen.getAllByRole("button", { name: "Add" })[0];
+    if (!addProduct) throw new Error("product vocabulary Add button missing");
+    await userEvent.click(addProduct);
 
     await userEvent.type(screen.getByLabelText("Label"), "Breakfast cereal");
     await userEvent.type(screen.getByLabelText("Slug"), "breakfast-cereal");
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await userEvent.click(screen.getByRole("button", { name: "Review changes" }));
+    expect(await screen.findByText("No stored clip classifications will change.")).toBeInTheDocument();
+    expect(screen.getByText(/starts resolving: breakfast-cereal/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Confirm add" }));
 
     await expect
       .poll(() => taxonCreates)

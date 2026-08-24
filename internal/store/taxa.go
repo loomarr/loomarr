@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -27,6 +28,19 @@ type TaxonomyEdit struct {
 	Delete bool
 	Slug   string
 	Taxon  taxonomy.Taxon
+}
+
+// TaxonomyEditImpact is the durable-library half of a prospective graph edit. Channel policy
+// references are deliberately added by the app module: the store owns graph and clip accounting,
+// while the channel domain owns the meaning of a saved filler selection.
+type TaxonomyEditImpact struct {
+	DirectStoredClips     int
+	DescendantStoredClips int
+	AffectedStoredClips   int
+	PlayableClipHashes    []string
+	Descendants           []taxonomy.Taxon
+	ResolverTermsAdded    []string
+	ResolverTermsRemoved  []string
 }
 
 type TaxonUsage struct {
@@ -128,26 +142,14 @@ func (s *sqlStore) ApplyTaxonomyEdit(ctx context.Context, edit TaxonomyEdit, at 
 	if err != nil {
 		return err
 	}
-
-	idx := -1
-	slug := edit.Taxon.Slug
-	if edit.Delete {
-		slug = edit.Slug
+	prospective, current, err := planTaxonomyEdit(existing, edit)
+	if err != nil {
+		return err
 	}
-	for i, t := range existing {
-		if t.Slug == slug {
-			idx = i
-			break
-		}
+	slug := current.Slug
+	if edit.Create {
+		slug = edit.Taxon.Slug
 	}
-	if edit.Create && idx >= 0 {
-		return fmt.Errorf("%w: taxon %q already exists", ErrTaxonConflict, slug)
-	}
-	if !edit.Create && idx < 0 {
-		return ErrNotFound
-	}
-
-	prospective := append([]taxonomy.Taxon(nil), existing...)
 	if edit.Delete {
 		var direct int
 		if err := tx.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM clip_tags WHERE taxon = ? AND leaf = ?`), slug, true).Scan(&direct); err != nil {
@@ -156,25 +158,10 @@ func (s *sqlStore) ApplyTaxonomyEdit(ctx context.Context, edit TaxonomyEdit, at 
 		if direct > 0 {
 			return fmt.Errorf("%w: taxon %q is directly asserted on %d clips; retag them first", ErrTaxonConflict, slug, direct)
 		}
-		parent := prospective[idx].Parent
-		prospective = append(prospective[:idx], prospective[idx+1:]...)
-		for i := range prospective {
-			if prospective[i].Parent == slug {
-				prospective[i].Parent = parent
-			}
-		}
-	} else if edit.Create {
-		prospective = append(prospective, edit.Taxon)
-	} else {
-		edit.Taxon.Slug = slug
-		prospective[idx] = edit.Taxon
-	}
-	if err := taxonomy.Validate(prospective); err != nil {
-		return err
 	}
 
 	if edit.Delete {
-		parent := existing[idx].Parent
+		parent := current.Parent
 		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE taxa SET parent = ?, updated_at = ? WHERE parent = ?`), parent, epoch(at), slug); err != nil {
 			return fmt.Errorf("delete taxon %s: reparent children: %w", slug, err)
 		}
@@ -199,6 +186,180 @@ func (s *sqlStore) ApplyTaxonomyEdit(ctx context.Context, edit TaxonomyEdit, at 
 		return err
 	}
 	return tx.Commit()
+}
+
+// PreviewTaxonomyEdit validates the same prospective graph ApplyTaxonomyEdit will use and returns
+// the stored knowledge and playable clips whose derived lineage could change. It performs no write;
+// callers must still treat ApplyTaxonomyEdit as authoritative if another editor wins the race.
+func (s *sqlStore) PreviewTaxonomyEdit(ctx context.Context, edit TaxonomyEdit) (TaxonomyEditImpact, error) {
+	edit.Slug = strings.TrimSpace(edit.Slug)
+	edit.Taxon = taxonomy.Canonicalize(edit.Taxon)
+	existing, err := s.ListTaxa(ctx)
+	if err != nil {
+		return TaxonomyEditImpact{}, err
+	}
+	_, current, err := planTaxonomyEdit(existing, edit)
+	if err != nil {
+		return TaxonomyEditImpact{}, err
+	}
+
+	impact := TaxonomyEditImpact{}
+	if edit.Create {
+		impact.ResolverTermsAdded = resolverTerms(edit.Taxon)
+		return impact, nil
+	}
+	impact.Descendants = taxonomy.New(existing).Descendants(current.Slug)
+	affected := []string{current.Slug}
+	descendants := make([]string, 0, len(impact.Descendants))
+	for _, child := range impact.Descendants {
+		affected = append(affected, child.Slug)
+		descendants = append(descendants, child.Slug)
+	}
+	if impact.DirectStoredClips, err = s.countStoredAssertions(ctx, []string{current.Slug}); err != nil {
+		return TaxonomyEditImpact{}, err
+	}
+	if impact.DescendantStoredClips, err = s.countStoredAssertions(ctx, descendants); err != nil {
+		return TaxonomyEditImpact{}, err
+	}
+	if impact.AffectedStoredClips, err = s.countStoredAssertions(ctx, affected); err != nil {
+		return TaxonomyEditImpact{}, err
+	}
+	lineageChanges := edit.Delete || current.Parent != edit.Taxon.Parent || current.Axis != edit.Taxon.Axis
+	if lineageChanges {
+		if impact.PlayableClipHashes, err = s.playableHashesWithAssertions(ctx, affected); err != nil {
+			return TaxonomyEditImpact{}, err
+		}
+	}
+
+	beforeTerms := resolverTerms(current)
+	if edit.Delete {
+		impact.ResolverTermsRemoved = beforeTerms
+	} else {
+		afterTerms := resolverTerms(edit.Taxon)
+		impact.ResolverTermsAdded, impact.ResolverTermsRemoved = termDiff(beforeTerms, afterTerms)
+	}
+	return impact, nil
+}
+
+func planTaxonomyEdit(existing []taxonomy.Taxon, edit TaxonomyEdit) ([]taxonomy.Taxon, taxonomy.Taxon, error) {
+	idx := -1
+	slug := edit.Taxon.Slug
+	if edit.Delete {
+		slug = edit.Slug
+	}
+	for i, t := range existing {
+		if t.Slug == slug {
+			idx = i
+			break
+		}
+	}
+	if edit.Create && idx >= 0 {
+		return nil, taxonomy.Taxon{}, fmt.Errorf("%w: taxon %q already exists", ErrTaxonConflict, slug)
+	}
+	if !edit.Create && idx < 0 {
+		return nil, taxonomy.Taxon{}, ErrNotFound
+	}
+
+	prospective := append([]taxonomy.Taxon(nil), existing...)
+	var current taxonomy.Taxon
+	switch {
+	case edit.Delete:
+		current = existing[idx]
+		prospective = append(prospective[:idx], prospective[idx+1:]...)
+		for i := range prospective {
+			if prospective[i].Parent == slug {
+				prospective[i].Parent = current.Parent
+			}
+		}
+	case edit.Create:
+		prospective = append(prospective, edit.Taxon)
+	case !edit.Create:
+		current = existing[idx]
+		edit.Taxon.Slug = slug
+		prospective[idx] = edit.Taxon
+	}
+	if err := taxonomy.Validate(prospective); err != nil {
+		return nil, taxonomy.Taxon{}, err
+	}
+	return prospective, current, nil
+}
+
+func (s *sqlStore) countStoredAssertions(ctx context.Context, slugs []string) (int, error) {
+	if len(slugs) == 0 {
+		return 0, nil
+	}
+	marks := strings.TrimSuffix(strings.Repeat("?,", len(slugs)), ",")
+	args := make([]any, 0, len(slugs)+1)
+	args = append(args, true)
+	for _, slug := range slugs {
+		args = append(args, slug)
+	}
+	var n int
+	if err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(DISTINCT clip_hash) FROM clip_tags WHERE leaf = ? AND taxon IN (`+marks+`)`), args...).Scan(&n); err != nil {
+		return 0, fmt.Errorf("preview taxonomy stored assertions: %w", err)
+	}
+	return n, nil
+}
+
+func (s *sqlStore) playableHashesWithAssertions(ctx context.Context, slugs []string) ([]string, error) {
+	if len(slugs) == 0 {
+		return nil, nil
+	}
+	marks := strings.TrimSuffix(strings.Repeat("?,", len(slugs)), ",")
+	args := []any{true}
+	for _, slug := range slugs {
+		args = append(args, slug)
+	}
+	args = append(args, false, false, 0)
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT DISTINCT c.hash FROM clips c JOIN clip_tags ct ON ct.clip_hash = c.hash WHERE ct.leaf = ? AND ct.taxon IN (`+marks+`) AND c.held = ? AND c.is_composite = ? AND c.removed_at = ? ORDER BY c.hash`), args...)
+	if err != nil {
+		return nil, fmt.Errorf("preview taxonomy playable clips: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var hashes []string
+	for rows.Next() {
+		var hash string
+		if err := rows.Scan(&hash); err != nil {
+			return nil, err
+		}
+		hashes = append(hashes, hash)
+	}
+	return hashes, rows.Err()
+}
+
+func resolverTerms(t taxonomy.Taxon) []string {
+	terms := append([]string{t.Slug}, t.Synonyms...)
+	terms = append(terms, t.RetiredAliases...)
+	seen := map[string]bool{}
+	out := make([]string, 0, len(terms))
+	for _, raw := range terms {
+		term := strings.ToLower(strings.TrimSpace(raw))
+		if term != "" && !seen[term] {
+			seen[term] = true
+			out = append(out, term)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func termDiff(before, after []string) (added, removed []string) {
+	beforeSet, afterSet := map[string]bool{}, map[string]bool{}
+	for _, term := range before {
+		beforeSet[term] = true
+	}
+	for _, term := range after {
+		afterSet[term] = true
+		if !beforeSet[term] {
+			added = append(added, term)
+		}
+	}
+	for _, term := range before {
+		if !afterSet[term] {
+			removed = append(removed, term)
+		}
+	}
+	return added, removed
 }
 
 // SeedTaxonomy writes the default forest IF AND ONLY IF `taxa` is empty (§10 V45a). Idempotent and

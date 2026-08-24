@@ -220,6 +220,31 @@ func (f *Forest) Ancestors(slug string) []string {
 	return out
 }
 
+// Descendants returns every node below slug, nearest parents before their children and with
+// siblings ordered by slug. The stable parent-first order is useful to both impact previews and
+// hierarchy UIs: callers do not need to reconstruct the child graph (and risk disagreeing with
+// the rollup implementation) merely to explain which subtree a graph edit affects.
+func (f *Forest) Descendants(slug string) []Taxon {
+	var out []Taxon
+	var visit func(string)
+	visit = func(parent string) {
+		children := append([]string(nil), f.children[parent]...)
+		sort.Strings(children)
+		for _, child := range children {
+			t, ok := f.bySlug[child]
+			if !ok {
+				continue
+			}
+			out = append(out, t)
+			visit(child)
+		}
+	}
+	if _, ok := f.bySlug[slug]; ok {
+		visit(slug)
+	}
+	return out
+}
+
 // WithRollups returns the full tag set a leaf tag implies: the leaf plus all its ancestors, each
 // flagged whether it is the LEAF (the model/operator asserted it) or a ROLLUP (derived). This is what
 // the denormalised writer stores — the leaf flag is what lets a re-tag replace leaves while rollups

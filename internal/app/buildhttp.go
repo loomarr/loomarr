@@ -55,7 +55,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 	searchSvc, collectionsSvc := deps.suggestions.search, deps.suggestions.collections
 	systemLLM, iconSvc, imageSvc := deps.suggestions.systemLLM, deps.suggestions.icons, deps.suggestions.images
 	timelineThumbs := deps.suggestions.timelineThumbs
-	fillerSvc, podPreview := deps.fillers.service, deps.fillers.preview
+	fillerSvc, podPreview, taxonomyEditor := deps.fillers.service, deps.fillers.preview, deps.fillers.taxonomy
 	backup, authorizer := deps.auth.backup, deps.auth.authorizer
 	loginSvc, ssoSvc := deps.auth.login, deps.auth.sso
 	sessMgr, userSync := deps.auth.sessions, deps.auth.userSync
@@ -96,6 +96,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		Shutdown:          rootCtx.Done(),
 		Filler:            fillerSvc,
 		Pods:              podPreview,
+		Taxonomy:          taxonomyEditor,
 		SystemLLM:         systemLLM,
 		Database:          databaseSvc,
 		Backups:           backupsSvc,

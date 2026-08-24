@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 // The taxonomy CRUD API (§10 V45a): read the graph, and let an ADMIN edit it — every write reindexing
@@ -48,6 +49,7 @@ func TestTaxonomy_WritesRequireAdmin(t *testing.T) {
 	cases := []struct {
 		method, path, body string
 	}{
+		{http.MethodPost, "/v1/taxonomy/impact", `{"operation":"update","slug":"beer","label":"Beer","axis":"product","parent":"alcohol"}`},
 		{http.MethodPost, "/v1/taxonomy", `{"slug":"energy-drink","label":"Energy drink","axis":"product","parent":"drinks"}`},
 		{http.MethodPut, "/v1/taxonomy/beer", `{"label":"Beer","axis":"product","parent":"alcohol"}`},
 		{http.MethodDelete, "/v1/taxonomy/beer", ""},
@@ -56,6 +58,61 @@ func TestTaxonomy_WritesRequireAdmin(t *testing.T) {
 		resp := do(t, srv, c.method, c.path, memberToken, c.body)
 		if resp.StatusCode == http.StatusOK {
 			t.Errorf("%s %s as member → 200, want a refusal (writes are admin-only)", c.method, c.path)
+		}
+	}
+}
+
+func TestTaxonomy_ImpactPreviewExplainsConsequencesWithoutMutation(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	seedClip(t, st, "b1", filler.Commercial, 1994, filler.General, "")
+	if p := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"b1","tags":["beer"]}`); p.StatusCode != http.StatusOK {
+		t.Fatalf("tag beer → %d", p.StatusCode)
+	}
+
+	resp := do(t, srv, http.MethodPost, "/v1/taxonomy/impact", adminToken,
+		`{"operation":"update","slug":"beer","label":"Beer advertisements with an exceptionally long operator-facing label","axis":"product","parent":"food","synonyms":["brew","lager","ale","pint"],"retiredAliases":["beer-old"]}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("preview taxonomy edit → %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		DirectStoredClips, AffectedStoredClips, AffectedPlayableClips int
+		ResolverTermsAdded                                            []string
+		DeleteBlocked                                                 bool
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.DirectStoredClips != 1 || body.AffectedStoredClips != 1 || body.AffectedPlayableClips != 1 {
+		t.Fatalf("preview counts = direct %d/affected %d/playable %d, want 1/1/1", body.DirectStoredClips, body.AffectedStoredClips, body.AffectedPlayableClips)
+	}
+	if !hasTag(body.ResolverTermsAdded, "pint") || !hasTag(body.ResolverTermsAdded, "beer-old") || body.DeleteBlocked {
+		t.Fatalf("resolver/delete preview = added %v blocked %v", body.ResolverTermsAdded, body.DeleteBlocked)
+	}
+
+	taxa, err := st.ListTaxa(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	beer, ok := taxonomy.New(taxa).Get("beer")
+	if !ok || beer.Parent != "alcohol" || beer.Label != "Beer" {
+		t.Fatalf("preview mutated live beer = %+v (ok=%v)", beer, ok)
+	}
+}
+
+func TestTaxonomy_ImpactPreviewKeepsEmptyCollectionsAsArrays(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+	resp := do(t, srv, http.MethodPost, "/v1/taxonomy/impact", adminToken,
+		`{"operation":"delete","slug":"apparel"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("preview unused taxonomy delete → %d, want 200", resp.StatusCode)
+	}
+	var body map[string]json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"descendants", "savedChannelSelections", "resolverTermsAdded"} {
+		if got := string(body[field]); got != "[]" {
+			t.Errorf("%s = %s, want [] so generated clients can safely use the array contract", field, got)
 		}
 	}
 }

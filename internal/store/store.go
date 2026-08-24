@@ -354,6 +354,9 @@ type ClipStore interface {
 	// the row edit, closure rebuild, and catalog rollup rebuild atomically. Callers never choreograph
 	// those derived writes themselves.
 	ApplyTaxonomyEdit(ctx context.Context, edit TaxonomyEdit, at time.Time) error
+	// PreviewTaxonomyEdit validates the same prospective graph and reports the stored/playable
+	// library facts whose derived taxonomy meaning may change, without mutating the graph.
+	PreviewTaxonomyEdit(ctx context.Context, edit TaxonomyEdit) (TaxonomyEditImpact, error)
 	// SeedTaxonomy writes the default forest only when `taxa` is empty — idempotent, run at boot.
 	SeedTaxonomy(ctx context.Context, seed []taxonomy.Taxon, at time.Time) error
 	// SetClipTags REPLACES one clip's asserted tags and derives its rollups and category shadow from

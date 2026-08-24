@@ -1,5 +1,7 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { TaxonDTO } from "@loomarr/api/models/taxonDTO";
+import type { TaxonomyImpactCommandDTO } from "@loomarr/api/models/taxonomyImpactCommandDTO";
+import type { TaxonomyImpactDTO } from "@loomarr/api/models/taxonomyImpactDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
@@ -19,17 +21,31 @@ import { cn } from "@/lib/utils";
 const AXES = ["product", "format", "seasonal", "audience-cue"] as const;
 type Axis = (typeof AXES)[number];
 
-const AXIS_COPY: Record<Axis, { label: string; help: string }> = {
-  product: { label: "Products & topics", help: "What the clip is about or advertising." },
+const AXIS_COPY: Record<Axis, { label: string; help: string; example: string }> = {
+  product: {
+    label: "Products & topics",
+    help: "What the clip is about or advertising.",
+    example: "For example: cereal, cars, local businesses",
+  },
   format: {
     label: "Format",
     help: "Descriptive browsing tags. Clip kind separately controls how Loomarr may play it.",
+    example: "For example: commercial, promo, station ident",
   },
-  seasonal: { label: "Seasonal", help: "A holiday or time-of-year cue." },
-  "audience-cue": { label: "Audience cues", help: "Signals useful for matching a channel's audience." },
+  seasonal: {
+    label: "Seasonal",
+    help: "A holiday or time-of-year cue.",
+    example: "For example: Christmas, Halloween, back to school",
+  },
+  "audience-cue": {
+    label: "Audience cues",
+    help: "Signals useful for matching a channel's audience.",
+    example: "For example: kids-oriented, family, late night",
+  },
 };
 
 type Editor = { mode: "create" | "edit"; axis: Axis; taxon?: TaxonDTO };
+type Review = { action: "save" | "delete"; command: TaxonomyImpactCommandDTO; impact: TaxonomyImpactDTO };
 
 const splitTerms = (value: string) =>
   value
@@ -52,7 +68,9 @@ const descendantsOf = (taxa: TaxonDTO[], slug: string): Set<string> => {
   return out;
 };
 
-const flattenAxis = (taxa: TaxonDTO[], axis: Axis): Array<{ taxon: TaxonDTO; depth: number }> => {
+type TaxonTreeNode = { taxon: TaxonDTO; children: TaxonTreeNode[] };
+
+const treeForAxis = (taxa: TaxonDTO[], axis: Axis): TaxonTreeNode[] => {
   const nodes = taxa.filter((taxon) => taxon.axis === axis);
   const slugs = new Set(nodes.map((taxon) => taxon.slug));
   const children = new Map<string, TaxonDTO[]>();
@@ -61,16 +79,87 @@ const flattenAxis = (taxa: TaxonDTO[], axis: Axis): Array<{ taxon: TaxonDTO; dep
     children.set(parent, [...(children.get(parent) ?? []), taxon]);
   }
   for (const rows of children.values()) rows.sort((a, b) => a.label.localeCompare(b.label));
-  const out: Array<{ taxon: TaxonDTO; depth: number }> = [];
-  const visit = (parent: string, depth: number) => {
-    for (const taxon of children.get(parent) ?? []) {
-      out.push({ taxon, depth });
-      visit(taxon.slug, depth + 1);
-    }
-  };
-  visit("", 0);
-  return out;
+  const build = (parent: string): TaxonTreeNode[] =>
+    (children.get(parent) ?? []).map((taxon) => ({ taxon, children: build(taxon.slug) }));
+  return build("");
 };
+
+const TaxonTree = ({
+  nodes,
+  axis,
+  isAdmin,
+  onEdit,
+  nested = false,
+}: {
+  nodes: TaxonTreeNode[];
+  axis: Axis;
+  isAdmin: boolean;
+  onEdit: (taxon: TaxonDTO) => void;
+  nested?: boolean;
+}) => (
+  <ul
+    className={nested ? "ml-5 border-border border-l" : "divide-y divide-border"}
+    {...(!nested ? { "aria-label": `${AXIS_COPY[axis].label} vocabulary` } : {})}
+  >
+    {nodes.map(({ taxon, children }) => {
+      const synonyms = taxon.synonyms ?? [];
+      const aliases = taxon.retiredAliases ?? [];
+      const resolverTermCount = synonyms.length + aliases.length;
+      return (
+        <li key={taxon.slug}>
+          <div className="flex items-start gap-2 px-4 py-3">
+            {nested ? <ChevronRight className="mt-1 size-3 shrink-0 text-static-500" aria-hidden /> : null}
+            <div className="min-w-0 flex-1">
+              <button
+                type="button"
+                disabled={!isAdmin}
+                className={cn(
+                  "break-words text-left font-medium text-sm",
+                  isAdmin && "cursor-pointer hover:text-signal",
+                )}
+                onClick={() => onEdit(taxon)}
+              >
+                {taxon.label}
+              </button>
+              <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                <span className="break-all font-mono text-muted-foreground text-xs">{taxon.slug}</span>
+                {resolverTermCount > 0 ? (
+                  <details className="text-muted-foreground text-xs">
+                    <summary className="cursor-pointer">
+                      {resolverTermCount} classifier {resolverTermCount === 1 ? "term" : "terms"}
+                    </summary>
+                    <div className="mt-1 max-w-sm space-y-1 break-words">
+                      {synonyms.length > 0 ? <p>Synonyms: {synonyms.join(", ")}</p> : null}
+                      {aliases.length > 0 ? <p>Retired slugs: {aliases.join(", ")}</p> : null}
+                    </div>
+                  </details>
+                ) : null}
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+              {(taxon.assertedClips ?? 0) > 0 && taxon.assertedClips !== taxon.matchedClips ? (
+                <Badge variant="neutral" title="Clips directly assigned this tag">
+                  {taxon.assertedClips.toLocaleString()} direct
+                </Badge>
+              ) : null}
+              <Link
+                to="/filler/library"
+                search={{ taxon: taxon.slug }}
+                className="rounded-sm font-mono text-signal text-xs underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                title={`Browse clips matching ${taxon.label}, including descendants`}
+              >
+                {taxon.matchedClips.toLocaleString()} {taxon.matchedClips === 1 ? "clip" : "clips"}
+              </Link>
+            </div>
+          </div>
+          {children.length > 0 ? (
+            <TaxonTree nodes={children} axis={axis} isAdmin={isAdmin} onEdit={onEdit} nested />
+          ) : null}
+        </li>
+      );
+    })}
+  </ul>
+);
 
 const TaxonEditor = ({
   editor,
@@ -89,7 +178,7 @@ const TaxonEditor = ({
   const [parent, setParent] = useState(current?.parent ?? "");
   const [synonyms, setSynonyms] = useState((current?.synonyms ?? []).join(", "));
   const [aliases, setAliases] = useState((current?.retiredAliases ?? []).join(", "));
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [review, setReview] = useState<Review>();
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: fillerApi.getListTaxonomyQueryKey() });
@@ -116,29 +205,61 @@ const TaxonEditor = ({
       onError: fail,
     },
   });
-  const storedAssignments = current?.storedClips ?? current?.assertedClips ?? 0;
-  const blocked = storedAssignments > 0;
+  const preview = fillerApi.usePreviewTaxonomyEdit();
   const excluded = current ? descendantsOf(taxa, current.slug) : new Set<string>();
   const nodeHasDescendants = excluded.size > 0;
   if (current) excluded.add(current.slug);
   const parentOptions = taxa
     .filter((taxon) => taxon.axis === axis && !excluded.has(taxon.slug))
     .sort((a, b) => a.label.localeCompare(b.label));
-  const busy = create.isPending || update.isPending || remove.isPending;
+  const busy = create.isPending || update.isPending || remove.isPending || preview.isPending;
 
-  const save = () => {
-    const common = {
-      label: label.trim(),
-      axis,
-      ...(parent ? { parent } : {}),
-      synonyms: splitTerms(synonyms),
-      retiredAliases: splitTerms(aliases),
-    };
-    if (editor.mode === "create") {
-      create.mutate({ data: { slug: slug.trim(), ...common } });
-    } else if (current) {
-      update.mutate({ slug: current.slug, data: common });
+  const saveCommand = (): TaxonomyImpactCommandDTO => ({
+    operation: editor.mode === "create" ? "create" : "update",
+    slug: editor.mode === "create" ? slug.trim() : (current?.slug ?? ""),
+    label: label.trim(),
+    axis,
+    ...(parent ? { parent } : {}),
+    synonyms: splitTerms(synonyms),
+    retiredAliases: splitTerms(aliases),
+  });
+
+  const requestReview = (action: Review["action"], command: TaxonomyImpactCommandDTO) => {
+    preview.mutate(
+      { data: command },
+      {
+        onSuccess: (response) => {
+          if (response.status === 200) setReview({ action, command, impact: response.data });
+        },
+        onError: fail,
+      },
+    );
+  };
+
+  const applyReview = () => {
+    if (!review) return;
+    if (review.action === "delete") {
+      remove.mutate({ slug: review.command.slug });
+      return;
     }
+    const command = review.command;
+    const common = {
+      label: command.label ?? "",
+      axis: (command.axis ?? axis) as Axis,
+      ...(command.parent ? { parent: command.parent } : {}),
+      synonyms: command.synonyms ?? [],
+      retiredAliases: command.retiredAliases ?? [],
+    };
+    if (command.operation === "create") {
+      create.mutate({ data: { slug: command.slug, ...common } });
+    } else {
+      update.mutate({ slug: command.slug, data: common });
+    }
+  };
+
+  const edit = (change: () => void) => {
+    setReview(undefined);
+    change();
   };
 
   return (
@@ -156,7 +277,11 @@ const TaxonEditor = ({
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <Label htmlFor="taxon-label">Label</Label>
-          <Input id="taxon-label" value={label} onChange={(event) => setLabel(event.target.value)} />
+          <Input
+            id="taxon-label"
+            value={label}
+            onChange={(event) => edit(() => setLabel(event.target.value))}
+          />
         </div>
         <div>
           <Label htmlFor="taxon-slug">Slug</Label>
@@ -165,7 +290,9 @@ const TaxonEditor = ({
             value={slug}
             disabled={editor.mode === "edit"}
             placeholder="breakfast-cereal"
-            onChange={(event) => setSlug(event.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "-"))}
+            onChange={(event) =>
+              edit(() => setSlug(event.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "-")))
+            }
           />
         </div>
         <div>
@@ -174,8 +301,10 @@ const TaxonEditor = ({
             value={axis}
             disabled={Boolean(current && nodeHasDescendants)}
             onValueChange={(value) => {
-              setAxis(value as Axis);
-              setParent("");
+              edit(() => {
+                setAxis(value as Axis);
+                setParent("");
+              });
             }}
           >
             <SelectTrigger id="taxon-axis">
@@ -199,7 +328,7 @@ const TaxonEditor = ({
           <Label htmlFor="taxon-parent">Parent</Label>
           <Select
             value={parent || "root"}
-            onValueChange={(value) => setParent(value === "root" ? "" : value)}
+            onValueChange={(value) => edit(() => setParent(value === "root" ? "" : value))}
           >
             <SelectTrigger id="taxon-parent">
               <SelectValue />
@@ -220,7 +349,7 @@ const TaxonEditor = ({
             id="taxon-synonyms"
             value={synonyms}
             placeholder="soda, soft drink"
-            onChange={(event) => setSynonyms(event.target.value)}
+            onChange={(event) => edit(() => setSynonyms(event.target.value))}
           />
         </div>
         <div>
@@ -229,7 +358,7 @@ const TaxonEditor = ({
             id="taxon-aliases"
             value={aliases}
             placeholder="old-machine-name"
-            onChange={(event) => setAliases(event.target.value)}
+            onChange={(event) => edit(() => setAliases(event.target.value))}
           />
         </div>
       </div>
@@ -237,36 +366,114 @@ const TaxonEditor = ({
         Synonyms help the classifier resolve ordinary wording. Retired slugs preserve old integrations; both
         must be unique across the whole vocabulary.
       </p>
+      {review ? (
+        <Card
+          className="space-y-3 border-signal/40 bg-signal/5 p-4"
+          aria-label="Change impact"
+          aria-live="polite"
+        >
+          <div>
+            <h4 className="font-medium">Review the impact</h4>
+            <p className="mt-1 text-muted-foreground text-sm">
+              {review.impact.affectedStoredClips > 0
+                ? `${review.impact.affectedStoredClips.toLocaleString()} stored clips may have different inherited classification (${review.impact.directStoredClips.toLocaleString()} direct, ${review.impact.descendantStoredClips.toLocaleString()} through descendants).`
+                : "No stored clip classifications will change."}
+            </p>
+            <p className="mt-1 text-muted-foreground text-sm">
+              {review.impact.affectedPlayableClips > 0
+                ? `${review.impact.affectedPlayableClips.toLocaleString()} playable clips will be checked against channel filler rules after this change.`
+                : "No playable clips need channel eligibility checks."}
+            </p>
+          </div>
+          {review.impact.descendants.length > 0 ? (
+            <p className="text-sm">
+              Descendants kept: {review.impact.descendants.map((node) => node.label).join(", ")}
+            </p>
+          ) : null}
+          {review.impact.savedChannelSelections.length > 0 ? (
+            <div className="text-sm">
+              <p className="font-medium">Saved channel selections that reference this branch</p>
+              <ul className="mt-1 list-disc pl-5">
+                {review.impact.savedChannelSelections.map((channel) => (
+                  <li key={channel.id}>
+                    Channel {channel.number}: {channel.name}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              No saved channel selections reference this branch.
+            </p>
+          )}
+          {review.impact.resolverTermsAdded.length > 0 || review.impact.resolverTermsRemoved.length > 0 ? (
+            <div className="text-sm">
+              <p className="font-medium">Classifier wording</p>
+              {review.impact.resolverTermsAdded.length > 0 ? (
+                <p className="mt-1">Starts resolving: {review.impact.resolverTermsAdded.join(", ")}</p>
+              ) : null}
+              {review.impact.resolverTermsRemoved.length > 0 ? (
+                <p className="mt-1">Stops resolving: {review.impact.resolverTermsRemoved.join(", ")}</p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-sm">Classifier wording is unchanged.</p>
+          )}
+          {review.impact.deleteBlocked ? (
+            <p className="text-caution text-sm">
+              Retag {review.impact.directStoredClips.toLocaleString()} directly assigned stored clips before
+              removing this tag. This includes clips in Incoming, removed clips, and compilations.
+            </p>
+          ) : null}
+        </Card>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         {current ? (
-          blocked ? (
-            <p className="mr-auto text-caution text-xs">
-              Retag {storedAssignments} stored {storedAssignments === 1 ? "clip" : "clips"} before removing
-              this tag. This count includes clips in Incoming, removed clips, and compilations.
-            </p>
-          ) : (
-            <Button
-              variant={confirmDelete ? "destructive" : "ghost"}
-              size="sm"
-              disabled={busy}
-              onClick={() => (confirmDelete ? remove.mutate({ slug: current.slug }) : setConfirmDelete(true))}
-            >
-              {confirmDelete ? "Confirm remove" : "Remove tag"}
-            </Button>
-          )
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={busy}
+            onClick={() => requestReview("delete", { operation: "delete", slug: current.slug })}
+          >
+            Review removal
+          </Button>
         ) : (
           <span className="mr-auto" />
         )}
-        <Button variant="outline" size="sm" disabled={busy} onClick={onClose}>
-          Cancel
-        </Button>
-        <Button
-          size="sm"
-          disabled={busy || !label.trim() || (editor.mode === "create" && !slug.trim())}
-          onClick={save}
-        >
-          {busy ? "Saving…" : "Save"}
-        </Button>
+        {review ? (
+          <>
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => setReview(undefined)}>
+              Back
+            </Button>
+            <Button
+              variant={review.action === "delete" ? "destructive" : "default"}
+              size="sm"
+              disabled={busy || review.impact.deleteBlocked}
+              onClick={applyReview}
+            >
+              {busy
+                ? "Applying…"
+                : review.action === "delete"
+                  ? "Confirm removal"
+                  : editor.mode === "create"
+                    ? "Confirm add"
+                    : "Confirm update"}
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button variant="outline" size="sm" disabled={busy} onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={busy || !label.trim() || (editor.mode === "create" && !slug.trim())}
+              onClick={() => requestReview("save", saveCommand())}
+            >
+              {busy ? "Checking impact…" : "Review changes"}
+            </Button>
+          </>
+        )}
       </div>
     </Card>
   );
@@ -279,9 +486,9 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
   const [editor, setEditor] = useState<Editor>();
   const byAxis = useMemo(
     () =>
-      Object.fromEntries(AXES.map((axis) => [axis, flattenAxis(taxa, axis)])) as Record<
+      Object.fromEntries(AXES.map((axis) => [axis, treeForAxis(taxa, axis)])) as Record<
         Axis,
-        Array<{ taxon: TaxonDTO; depth: number }>
+        TaxonTreeNode[]
       >,
     [taxa],
   );
@@ -297,13 +504,15 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
           <p className="mt-1 font-semibold text-2xl">
             {data.taggedClips.toLocaleString()} / {data.totalClips.toLocaleString()}
           </p>
-          <p className="mt-1 text-muted-foreground text-sm">playable clips have at least one taxonomy tag</p>
+          <p className="mt-1 text-muted-foreground text-sm">
+            playable clips have at least one classification signal
+          </p>
         </Card>
         <Card className="p-4 sm:col-span-2">
           <p className="font-medium">What belongs here</p>
           <p className="mt-1 text-muted-foreground text-sm">
-            Taxonomy describes what a clip contains. Kind is the closed playout role; format tags are optional
-            browsing vocabulary. Era, audience, and grounded brand remain separate facts too.
+            Classification describes what a clip contains. Kind is the closed playout role; format signals are
+            optional browsing vocabulary. Era, audience, and grounded brand remain separate facts too.
           </p>
           {data.unclassifiedClips > 0 ? (
             <Link
@@ -329,104 +538,90 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
         />
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        {AXES.map((axis) => {
-          const coverage = data.axisCoverage?.find((item) => item.axis === axis);
-          return (
-            <Card key={axis} className="overflow-hidden">
-              <div className="flex items-start gap-3 border-border border-b p-4">
-                <div className="min-w-0 flex-1">
-                  <h2 className="font-medium">{AXIS_COPY[axis].label}</h2>
-                  <p className="mt-0.5 text-muted-foreground text-sm">{AXIS_COPY[axis].help}</p>
-                  {coverage ? (
-                    <p className="mt-1 text-muted-foreground text-xs">
-                      {coverage.taggedClips.toLocaleString()} {coverage.taggedClips === 1 ? "clip" : "clips"}{" "}
-                      tagged
-                      {coverage.untaggedClips > 0 ? (
-                        <>
-                          {" · "}
-                          <Link
-                            to="/filler/library"
-                            search={{ withoutAxis: axis }}
-                            className="text-signal underline-offset-2 hover:underline"
-                          >
-                            Browse {coverage.untaggedClips.toLocaleString()} without
-                          </Link>
-                        </>
-                      ) : null}
+      <section aria-labelledby="classification-coverage-heading">
+        <div>
+          <h2 id="classification-coverage-heading" className="font-semibold text-lg">
+            Classification coverage
+          </h2>
+          <p className="mt-1 text-muted-foreground text-sm">
+            These are independent signals. Missing seasonal or audience cues can be perfectly normal.
+          </p>
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {AXES.map((axis) => {
+            const coverage = data.axisCoverage?.find((item) => item.axis === axis);
+            return (
+              <Card key={axis} className="p-4">
+                <h3 className="font-medium">{AXIS_COPY[axis].label}</h3>
+                <p className="mt-1 text-muted-foreground text-sm">{AXIS_COPY[axis].help}</p>
+                <p className="mt-2 text-muted-foreground text-xs">{AXIS_COPY[axis].example}</p>
+                {coverage ? (
+                  <div className="mt-3 border-border border-t pt-3 text-sm">
+                    <p>
+                      <span className="font-medium">{coverage.taggedClips.toLocaleString()}</span> of{" "}
+                      {data.totalClips.toLocaleString()} playable clips
                     </p>
-                  ) : null}
-                </div>
-                {isAdmin ? (
-                  <Button variant="outline" size="sm" onClick={() => setEditor({ mode: "create", axis })}>
-                    <Plus className="size-4" aria-hidden /> Add
-                  </Button>
+                    {coverage.untaggedClips > 0 ? (
+                      <Link
+                        to="/filler/library"
+                        search={{ withoutAxis: axis }}
+                        className="mt-1 inline-flex text-signal text-xs underline-offset-2 hover:underline"
+                      >
+                        Browse {coverage.untaggedClips.toLocaleString()} without this signal
+                      </Link>
+                    ) : (
+                      <p className="mt-1 text-lock text-xs">All playable clips have this signal.</p>
+                    )}
+                  </div>
                 ) : null}
-              </div>
-              <ul className="divide-y divide-border">
-                {byAxis[axis].map(({ taxon, depth }) => {
-                  const synonyms = taxon.synonyms ?? [];
-                  const aliases = taxon.retiredAliases ?? [];
-                  const resolverTermCount = synonyms.length + aliases.length;
-                  return (
-                    <li
-                      key={taxon.slug}
-                      className="flex items-start gap-2 px-4 py-3"
-                      style={{ paddingLeft: `${16 + depth * 20}px` }}
-                    >
-                      {depth > 0 ? (
-                        <ChevronRight className="mt-1 size-3 shrink-0 text-static-500" aria-hidden />
-                      ) : null}
-                      <div className="min-w-0 flex-1">
-                        <button
-                          type="button"
-                          disabled={!isAdmin}
-                          className={cn(
-                            "text-left font-medium text-sm",
-                            isAdmin && "cursor-pointer hover:text-signal",
-                          )}
-                          onClick={() => isAdmin && setEditor({ mode: "edit", axis, taxon })}
-                        >
-                          {taxon.label}
-                        </button>
-                        <div className="mt-0.5 flex flex-wrap items-center gap-2">
-                          <span className="font-mono text-muted-foreground text-xs">{taxon.slug}</span>
-                          {resolverTermCount > 0 ? (
-                            <details className="text-muted-foreground text-xs">
-                              <summary className="cursor-pointer">
-                                {resolverTermCount} classifier {resolverTermCount === 1 ? "term" : "terms"}
-                              </summary>
-                              <div className="mt-1 max-w-sm space-y-1 break-words">
-                                {synonyms.length > 0 ? <p>Synonyms: {synonyms.join(", ")}</p> : null}
-                                {aliases.length > 0 ? <p>Retired slugs: {aliases.join(", ")}</p> : null}
-                              </div>
-                            </details>
-                          ) : null}
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        {(taxon.assertedClips ?? 0) > 0 && taxon.assertedClips !== taxon.matchedClips ? (
-                          <Badge variant="neutral" title="Clips directly assigned this tag">
-                            {taxon.assertedClips} direct
-                          </Badge>
-                        ) : null}
-                        <Link
-                          to="/filler/library"
-                          search={{ taxon: taxon.slug }}
-                          className="rounded-sm font-mono text-signal text-xs underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          title={`Browse clips matching ${taxon.label}, including descendants`}
-                        >
-                          {taxon.matchedClips.toLocaleString()} {taxon.matchedClips === 1 ? "clip" : "clips"}
-                        </Link>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            </Card>
-          );
-        })}
-      </div>
+              </Card>
+            );
+          })}
+        </div>
+      </section>
+
+      <details className="rounded-lg border border-border bg-panel">
+        <summary className="cursor-pointer px-4 py-3 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          {isAdmin ? "Manage vocabulary" : "Browse vocabulary"}
+        </summary>
+        <div className="border-border border-t p-4">
+          <p className="mb-4 text-muted-foreground text-sm">
+            {isAdmin
+              ? "Advanced: change the hierarchy and the words classifiers resolve. Review the impact before any edit is applied."
+              : "This hierarchy is read-only. Administrators can change classifier vocabulary and relationships."}
+          </p>
+          <div className="grid gap-4 xl:grid-cols-2">
+            {AXES.map((axis) => {
+              return (
+                <Card key={axis} className="overflow-hidden">
+                  <div className="flex items-start gap-3 border-border border-b p-4">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-medium">{AXIS_COPY[axis].label}</h3>
+                      <p className="mt-0.5 text-muted-foreground text-sm">{AXIS_COPY[axis].help}</p>
+                      <p className="mt-1 text-muted-foreground text-xs">{AXIS_COPY[axis].example}</p>
+                    </div>
+                    {isAdmin ? (
+                      <Button variant="outline" size="sm" onClick={() => setEditor({ mode: "create", axis })}>
+                        <Plus className="size-4" aria-hidden /> Add
+                      </Button>
+                    ) : null}
+                  </div>
+                  {byAxis[axis].length === 0 ? (
+                    <p className="px-4 py-3 text-muted-foreground text-sm">No terms yet.</p>
+                  ) : (
+                    <TaxonTree
+                      nodes={byAxis[axis]}
+                      axis={axis}
+                      isAdmin={isAdmin}
+                      onEdit={(taxon) => isAdmin && setEditor({ mode: "edit", axis, taxon })}
+                    />
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      </details>
     </div>
   );
 };
