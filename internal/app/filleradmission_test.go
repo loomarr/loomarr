@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
@@ -14,6 +15,14 @@ import (
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
+
+// The HTTP API discovers recovery support through this interface. A concrete adapter can still
+// expose Rewind while silently losing the entire recovery surface if one method drifts.
+func TestFillerServiceAdapter_ExposesPipelineRecovery(t *testing.T) {
+	if _, ok := any(fillerServiceAdapter{}).(api.FillerRewinder); !ok {
+		t.Fatal("production filler adapter does not expose pipeline recovery; retry and rewind return 501")
+	}
+}
 
 type cataloguingFillerIngestor struct {
 	store store.Store
