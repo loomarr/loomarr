@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  Action,
   ActivityIndicator,
   ArtworkFrame,
   Badge,
@@ -9,6 +10,7 @@ import {
   BrandMark,
   BrandWordmark,
   brandContract,
+  Field,
   FocusSurface,
   Icon,
   iconography,
@@ -29,9 +31,11 @@ describe("design-system public interface", () => {
     expect([
       LoomarrProvider,
       ActivityIndicator,
+      Action,
       Screen,
       Surface,
       FocusSurface,
+      Field,
       Text,
       Badge,
       ArtworkFrame,

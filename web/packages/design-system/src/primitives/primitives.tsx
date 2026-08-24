@@ -1,5 +1,6 @@
-import { styled, Text as TamaguiText, View } from "@tamagui/core";
-import type { ComponentProps, ReactNode } from "react";
+import { styled, Text as TamaguiText, useTheme, View } from "@tamagui/core";
+import { type ComponentProps, type ReactNode, useState } from "react";
+import { Pressable, TextInput } from "react-native";
 
 import { type Density, type TextRole, typography } from "../tokens";
 
@@ -187,6 +188,107 @@ type ProgressTrackProps = Omit<ComponentProps<typeof View>, "children"> & {
   tone?: "live" | "primary";
 };
 
+const ActionFrame = styled(Pressable, {
+  name: "LoomarrAction",
+  alignItems: "center",
+  borderRadius: "$control",
+  borderWidth: 2,
+  justifyContent: "center",
+  paddingHorizontal: "$control",
+  focusStyle: {
+    borderColor: "$actionFocus",
+    outlineColor: "$actionFocus",
+    outlineStyle: "solid",
+    outlineWidth: 3,
+  },
+  pressStyle: { opacity: 0.82, scale: 0.98 },
+  variants: {
+    tone: {
+      primary: { backgroundColor: "$actionPrimary", borderColor: "$actionPrimary" },
+      secondary: { backgroundColor: "$surfaceElevated", borderColor: "$borderDecorative" },
+    },
+  } as const,
+  defaultVariants: { tone: "primary" },
+});
+
+type ActionProps = Omit<ComponentProps<typeof ActionFrame>, "children" | "tone"> & {
+  children: ReactNode;
+  density?: Density;
+  tone?: "primary" | "secondary";
+};
+
+const Action = ({
+  children,
+  density = "pointer",
+  onBlur,
+  onFocus,
+  tone = "primary",
+  ...props
+}: ActionProps) => {
+  const [focused, setFocused] = useState(false);
+  return (
+    <ActionFrame
+      {...props}
+      borderColor={focused ? "$actionFocus" : undefined}
+      borderWidth={focused ? 4 : 2}
+      minHeight={density === "tv" ? 64 : density === "touch" ? 48 : 40}
+      onBlur={(event) => {
+        setFocused(false);
+        onBlur?.(event);
+      }}
+      onFocus={(event) => {
+        setFocused(true);
+        onFocus?.(event);
+      }}
+      scale={focused ? 1.025 : 1}
+      tone={tone}
+    >
+      <TamaguiText
+        color={tone === "primary" ? "$contentInverse" : "$contentPrimary"}
+        fontFamily="$body"
+        fontSize={typography[density].label.size}
+        fontWeight="700"
+      >
+        {children}
+      </TamaguiText>
+    </ActionFrame>
+  );
+};
+
+type FieldProps = ComponentProps<typeof TextInput> & { density?: Density };
+const Field = ({ density = "pointer", onBlur, onFocus, style, ...props }: FieldProps) => {
+  const theme = useTheme();
+  const [focused, setFocused] = useState(false);
+  return (
+    <TextInput
+      {...props}
+      onBlur={(event) => {
+        setFocused(false);
+        onBlur?.(event);
+      }}
+      onFocus={(event) => {
+        setFocused(true);
+        onFocus?.(event);
+      }}
+      placeholderTextColor={theme.contentMuted.val}
+      style={[
+        {
+          backgroundColor: theme.surfaceCanvas.val,
+          borderColor: focused ? theme.actionFocus.val : theme.borderDecorative.val,
+          borderRadius: 8,
+          borderWidth: focused ? 3 : 2,
+          color: theme.contentPrimary.val,
+          fontFamily: typography.family.data.native,
+          fontSize: typography[density].body.size,
+          minHeight: density === "tv" ? 64 : density === "touch" ? 48 : 40,
+          paddingHorizontal: 16,
+        },
+        style,
+      ]}
+    />
+  );
+};
+
 const ProgressTrack = ({ percent, tone = "primary", ...props }: ProgressTrackProps) => {
   const bounded = Math.max(0, Math.min(100, percent));
   return (
@@ -201,5 +303,5 @@ const ProgressTrack = ({ percent, tone = "primary", ...props }: ProgressTrackPro
   );
 };
 
-export type { ArtworkState, BadgeTone, TextProps };
-export { ArtworkFrame, Badge, FocusSurface, ProgressTrack, Screen, Surface, Text };
+export type { ActionProps, ArtworkState, BadgeTone, FieldProps, TextProps };
+export { Action, ArtworkFrame, Badge, Field, FocusSurface, ProgressTrack, Screen, Surface, Text };

@@ -34,7 +34,8 @@
           }
         }
       ],
-      "../../scripts/with-memory-safe-android-build.cjs"
+      "../../scripts/with-memory-safe-android-build.cjs",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true

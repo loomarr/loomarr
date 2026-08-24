@@ -81,6 +81,9 @@ importers:
 
   apps/mobile:
     dependencies:
+      '@loomarr/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@loomarr/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
@@ -99,6 +102,9 @@ importers:
       expo-router:
         specifier: ~57.0.16
         version: 57.0.16(@babel/core@7.29.7)(@expo/log-box@57.0.3)(@expo/metro-runtime@57.0.13)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(expo-constants@57.0.14)(expo-font@57.0.1)(expo-linking@57.0.7)(expo@57.0.16)(react-dom@19.2.3(react@19.2.3))(react-native-gesture-handler@3.2.1(react-native-tvos@0.86.2-0)(react@19.2.3))(react-native-reanimated@4.5.1(react-native-tvos@0.86.2-0)(react-native-worklets@0.10.1(@babel/core@7.29.7)(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(react-native-tvos@0.86.2-0)(react@19.2.3))(react@19.2.3))(react-native-safe-area-context@5.7.0(react-native-tvos@0.86.2-0)(react@19.2.3))(react-native-screens@4.26.2(react-native-tvos@0.86.2-0)(react@19.2.3))(react-native-tvos@0.86.2-0)(react-native-web@0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native-worklets@0.10.1(@babel/core@7.29.7)(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(react-native-tvos@0.86.2-0)(react@19.2.3))(react@19.2.3)
+      expo-secure-store:
+        specifier: ~57.0.1
+        version: 57.0.1(expo@57.0.16)
       expo-splash-screen:
         specifier: ~57.0.8
         version: 57.0.8(expo@57.0.16)(typescript@6.0.3)
@@ -145,6 +151,9 @@ importers:
 
   apps/tv:
     dependencies:
+      '@loomarr/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@loomarr/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
@@ -157,6 +166,9 @@ importers:
       expo:
         specifier: ~57.0.16
         version: 57.0.16(@babel/core@7.29.7)(@expo/dom-webview@57.0.1)(@expo/metro-runtime@57.0.13)(expo-router@57.0.16)(react-dom@19.2.3(react@19.2.3))(react-native-tvos@0.86.2-0)(react-native-web@0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native-worklets@0.10.1(@babel/core@7.29.7)(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(react-native-tvos@0.86.2-0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
+      expo-secure-store:
+        specifier: ~57.0.1
+        version: 57.0.1(expo@57.0.16)
       expo-status-bar:
         specifier: ~57.0.1
         version: 57.0.1(expo@57.0.16)(react-native-tvos@0.86.2-0)(react@19.2.3)
@@ -487,6 +499,9 @@ importers:
 
   packages/ui:
     dependencies:
+      '@loomarr/core':
+        specifier: workspace:*
+        version: link:../core
       '@loomarr/design-system':
         specifier: workspace:*
         version: link:../design-system
@@ -4169,6 +4184,11 @@ packages:
         optional: true
       react-server-dom-webpack:
         optional: true
+
+  expo-secure-store@57.0.1:
+    resolution: {integrity: sha512-tLa1VmSadOq19mA/dwkl99RbHyjLE0T1qqBYMY3/OsguZTI+rlrDy/DDJjupqlVtmr95hD7o1pYqx5aL+B4YMA==}
+    peerDependencies:
+      expo: '*'
 
   expo-server@57.0.3:
     resolution: {integrity: sha512-aK+LdKzauHSGmsOStZtyxdzv0zWssCkxTw3m4QuOhfDSJsZaMRTd9O41d8ixU/QfELTbaJ0oRNcF7JFV/7O9YQ==}
@@ -10591,6 +10611,10 @@ snapshots:
       - expo-font
       - react-native-worklets
       - supports-color
+
+  expo-secure-store@57.0.1(expo@57.0.16):
+    dependencies:
+      expo: 57.0.16(@babel/core@7.29.7)(@expo/dom-webview@57.0.1)(@expo/metro-runtime@57.0.13)(expo-router@57.0.16)(react-dom@19.2.3(react@19.2.3))(react-native-tvos@0.86.2-0)(react-native-web@0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native-worklets@0.10.1(@babel/core@7.29.7)(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(react-native-tvos@0.86.2-0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
 
   expo-server@57.0.3: {}
 

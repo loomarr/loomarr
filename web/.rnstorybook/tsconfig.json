@@ -4,6 +4,7 @@
     "jsx": "react-jsx",
     "noEmit": true,
     "paths": {
+      "@loomarr/core": ["../packages/core/index.ts"],
       "@loomarr/design-system": ["../packages/design-system/index.ts"],
       "@loomarr/fixtures": ["../packages/fixtures/src/index.ts"],
       "@loomarr/ui": ["../packages/ui/index.ts"]
