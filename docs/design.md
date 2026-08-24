@@ -4668,15 +4668,19 @@ The scheduler assembles realistic **ad pods**, not single random clips:
 
   The Filler entry point presents one server-owned readiness projection built from the live fetch
   limits, the pipeline lifecycle overview, the playable pool, per-channel coverage (including
-  usable duration and grounded category/brand variety), and recent
-  acquisition runs. It returns one typed highest-impact next action in this order: repair a stopped
+  usable duration and grounded category/brand variety), and recent acquisition runs. It returns
+  one typed highest-impact next action in this order: repair a stopped
   acquisition path, retry failed machine work, make pending operator decisions, add an empty
   airable pool, improve the weakest live channel, or no action when ready. A terminal rejection
   remains audit; only rows carrying the domain's explicit retry/restore action count as recoverable
-  work. Clients render that
-  decision; they do not reconstruct health from raw counters. A latest failed acquisition is an
+  work. Clients render that decision; they do not reconstruct health from raw counters. A latest
+  failed acquisition is an
   actionable machine failure rather than a transient toast. Detailed execution history, the
   catalog, sources, and taxonomy remain available through progressive disclosure.
+
+  A channel's Filler section renders its saved coverage before matching controls, making inherited
+  behavior the ordinary path. Per-clip overrides stay collapsed under explicit `Prefer on this
+  channel` and `Exclude from this channel` language; they are never presented as required setup.
 
   Acquisition is not admission. These records and summaries do not weaken registered-source
   enablement, disk/catalog limits, approval, grounding, or the held-to-filed gate. Machine work,

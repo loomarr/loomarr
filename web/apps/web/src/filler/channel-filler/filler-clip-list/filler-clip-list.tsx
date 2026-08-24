@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-// FillerClipList — one override list ("Always include" pins, or "Never include" excludes).
+// FillerClipList — one explicit channel override list (prefer or exclude).
 // Add a clip via the filler search (SearchCommand's `clips` scope, fed by useListFiller),
 // remove with the X. Clips are identified by TunarrProgramID — the same id the selection
 // stores and the assembler pins/excludes on. A resolved clip carries its name/duration for
