@@ -16,7 +16,7 @@
     "@loomarr/design-system": "workspace:*",
     "@loomarr/ui": "workspace:*",
     "@react-native-tvos/config-tv": "0.1.6",
-    "expo": "~57.0.15",
+    "expo": "~57.0.16",
     "expo-status-bar": "~57.0.1",
     "expo-system-ui": "~57.0.2",
     "react": "19.2.3",
