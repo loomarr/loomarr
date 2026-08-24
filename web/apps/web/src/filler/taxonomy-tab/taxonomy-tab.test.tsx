@@ -1,4 +1,4 @@
-import { getListTaxonomyMockHandler } from "@loomarr/api/msw";
+import { getListTaxonomyMockHandler, getPreviewTaxonomyEditMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen, within } from "@testing-library/react";
@@ -45,6 +45,17 @@ describe("TaxonomyTab", () => {
           },
         ],
       }),
+      getPreviewTaxonomyEditMockHandler({
+        directStoredClips: 2,
+        descendantStoredClips: 4,
+        affectedStoredClips: 6,
+        affectedPlayableClips: 5,
+        descendants: [{ slug: "cereal", label: "Cereal" }],
+        savedChannelSelections: [{ id: "channel-1", number: 7, name: "Saturday Morning" }],
+        resolverTermsAdded: [],
+        resolverTermsRemoved: ["food"],
+        deleteBlocked: true,
+      }),
     );
     renderTab();
 
@@ -56,7 +67,14 @@ describe("TaxonomyTab", () => {
     await userEvent.click(screen.getByRole("button", { name: "Cereal" }));
     const editor = await screen.findByRole("region", { name: "Edit Cereal" });
     expect(within(editor).getByLabelText("Slug")).toBeDisabled();
-    expect(within(editor).getByText(/retag 2 stored clips/i)).toBeInTheDocument();
+    await userEvent.click(within(editor).getByRole("button", { name: "Review removal" }));
+    expect(
+      await within(editor).findByText(/6 stored clips may have different inherited classification/i),
+    ).toBeInTheDocument();
+    expect(within(editor).getByText("Channel 7: Saturday Morning")).toBeInTheDocument();
+    expect(within(editor).getByText(/stops resolving: food/i)).toBeInTheDocument();
+    expect(within(editor).getByText(/retag 2 directly assigned stored clips/i)).toBeInTheDocument();
+    expect(within(editor).getByRole("button", { name: "Confirm removal" })).toBeDisabled();
   });
 
   it("keeps an empty vocabulary useful and leaves members read-only", async () => {

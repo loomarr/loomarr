@@ -17,6 +17,7 @@ import {
   getListFillerMockHandler,
   getListTaxonomyMockHandler,
   getMeMockHandler,
+  getPreviewTaxonomyEditMockHandler,
   getRewindFillerClipMockHandler,
   getSettingsListMockHandler,
   getSplitFillerMockHandler,
@@ -161,6 +162,21 @@ const stubFiller = ({
       };
       taxonCreates.push(body);
       return { ...body, assertedClips: 0, matchedClips: 0, storedClips: 0 };
+    }),
+    getPreviewTaxonomyEditMockHandler(async ({ request }) => {
+      const body = (await request.json()) as { operation: "create" | "update" | "delete"; slug: string };
+      const deleting = body.operation === "delete";
+      return {
+        directStoredClips: deleting ? 2 : 0,
+        descendantStoredClips: 0,
+        affectedStoredClips: deleting ? 2 : 0,
+        affectedPlayableClips: deleting ? 1 : 0,
+        descendants: [],
+        savedChannelSelections: [],
+        resolverTermsAdded: body.operation === "create" ? [body.slug] : [],
+        resolverTermsRemoved: deleting ? [body.slug] : [],
+        deleteBlocked: deleting,
+      };
     }),
     getFillerPoolMockHandler({
       clips: clips.length,
@@ -480,8 +496,11 @@ describe("Filler page", () => {
     await userEvent.click(screen.getByText("Manage vocabulary"));
     expect(screen.getByText("1 direct")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Food" }));
-    expect(screen.getByText(/retag 2 stored clips before removing/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Remove tag" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Review removal" }));
+    expect(
+      await screen.findByText(/retag 2 directly assigned stored clips before removing/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirm removal" })).toBeDisabled();
     await userEvent.click(screen.getByRole("link", { name: "7 clips" }));
 
     await expect.poll(() => router.state.location.pathname).toBe("/filler/library");
@@ -505,11 +524,16 @@ describe("Filler page", () => {
     renderAt("/filler/taxonomy");
     await screen.findByText("Manage vocabulary");
     await userEvent.click(screen.getByText("Manage vocabulary"));
-    await userEvent.click(screen.getAllByRole("button", { name: "Add" })[0]);
+    const addProduct = screen.getAllByRole("button", { name: "Add" })[0];
+    if (!addProduct) throw new Error("product vocabulary Add button missing");
+    await userEvent.click(addProduct);
 
     await userEvent.type(screen.getByLabelText("Label"), "Breakfast cereal");
     await userEvent.type(screen.getByLabelText("Slug"), "breakfast-cereal");
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await userEvent.click(screen.getByRole("button", { name: "Review changes" }));
+    expect(await screen.findByText("No stored clip classifications will change.")).toBeInTheDocument();
+    expect(screen.getByText(/starts resolving: breakfast-cereal/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Confirm add" }));
 
     await expect
       .poll(() => taxonCreates)

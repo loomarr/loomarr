@@ -6713,6 +6713,134 @@ components:
         - taggedClips
         - untaggedClips
       type: object
+    TaxonomyImpactChannelDTO:
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        number:
+          format: int64
+          type: integer
+      required:
+        - id
+        - name
+        - number
+      type: object
+    TaxonomyImpactCommandDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/TaxonomyImpactCommandDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        axis:
+          enum:
+            - product
+            - format
+            - seasonal
+            - audience-cue
+            - ""
+          type: string
+        label:
+          type: string
+        operation:
+          enum:
+            - create
+            - update
+            - delete
+          type: string
+        parent:
+          type: string
+        retiredAliases:
+          items:
+            type: string
+          type: array
+        slug:
+          description: The new slug for create, or existing slug for update/delete
+          type: string
+        synonyms:
+          items:
+            type: string
+          type: array
+      required:
+        - operation
+        - slug
+      type: object
+    TaxonomyImpactDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/TaxonomyImpactDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        affectedPlayableClips:
+          description: Airable clips whose channel fit may change
+          format: int64
+          type: integer
+        affectedStoredClips:
+          description: Distinct stored clips whose derived lineage may change
+          format: int64
+          type: integer
+        deleteBlocked:
+          description: True when direct stored assertions must be retagged before deletion
+          type: boolean
+        descendantStoredClips:
+          description: Distinct stored clips asserting a descendant
+          format: int64
+          type: integer
+        descendants:
+          items:
+            $ref: "#/components/schemas/TaxonomyImpactNodeDTO"
+          type: array
+        directStoredClips:
+          description: Stored clips directly asserting the selected taxon
+          format: int64
+          type: integer
+        resolverTermsAdded:
+          description: New classifier spellings that will resolve after the edit
+          items:
+            type: string
+          type: array
+        resolverTermsRemoved:
+          description: Classifier spellings that will stop resolving after the edit
+          items:
+            type: string
+          type: array
+        savedChannelSelections:
+          description: Saved channel selections referencing the selected taxon or descendants
+          items:
+            $ref: "#/components/schemas/TaxonomyImpactChannelDTO"
+          type: array
+      required:
+        - directStoredClips
+        - descendantStoredClips
+        - affectedStoredClips
+        - affectedPlayableClips
+        - descendants
+        - savedChannelSelections
+        - resolverTermsAdded
+        - resolverTermsRemoved
+        - deleteBlocked
+      type: object
+    TaxonomyImpactNodeDTO:
+      additionalProperties: false
+      properties:
+        label:
+          type: string
+        slug:
+          type: string
+      required:
+        - slug
+        - label
+      type: object
     TimelineOutputBody:
       additionalProperties: false
       properties:
@@ -11307,6 +11435,32 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Add a taxon
+      tags:
+        - filler
+  /v1/taxonomy/impact:
+    post:
+      description: Admin only. Validates the prospective graph and reports stored clips, descendants, saved channel selections, and classifier terms affected without mutating anything.
+      operationId: preview-taxonomy-edit
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaxonomyImpactCommandDTO"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaxonomyImpactDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Preview a vocabulary edit
       tags:
         - filler
   /v1/taxonomy/{slug}:

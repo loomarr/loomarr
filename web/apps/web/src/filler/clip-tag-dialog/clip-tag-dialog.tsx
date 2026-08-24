@@ -67,6 +67,9 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
   const vocab = fillerApi.useListTaxonomy();
   // The orval hook wraps the body: data.status===200 ? data.data.<body>. undefined while loading.
   const vocabTaxa = vocab.data?.status === 200 ? (vocab.data.data.taxa ?? []) : undefined;
+  const derivedLabels = derivedTags.map(
+    (slug) => vocabTaxa?.find((taxon) => taxon.slug === slug)?.label ?? slug,
+  );
   const patch = fillerApi.useTagFillerClip({ mutation: { onSuccess: () => onSaved?.() } });
 
   if (!clip) return null;
@@ -226,7 +229,7 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
             <p className="mt-1 text-muted-foreground text-xs">
               Inherited from the observed facts above and updated automatically when the hierarchy changes.
             </p>
-            <p className="mt-2 break-words text-sm">{derivedTags.join(", ")}</p>
+            <p className="mt-2 break-words text-sm">{derivedLabels.join(", ")}</p>
           </section>
         ) : null}
 

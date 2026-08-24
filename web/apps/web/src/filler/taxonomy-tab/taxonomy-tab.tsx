@@ -1,5 +1,7 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { TaxonDTO } from "@loomarr/api/models/taxonDTO";
+import type { TaxonomyImpactCommandDTO } from "@loomarr/api/models/taxonomyImpactCommandDTO";
+import type { TaxonomyImpactDTO } from "@loomarr/api/models/taxonomyImpactDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
@@ -43,6 +45,7 @@ const AXIS_COPY: Record<Axis, { label: string; help: string; example: string }> 
 };
 
 type Editor = { mode: "create" | "edit"; axis: Axis; taxon?: TaxonDTO };
+type Review = { action: "save" | "delete"; command: TaxonomyImpactCommandDTO; impact: TaxonomyImpactDTO };
 
 const splitTerms = (value: string) =>
   value
@@ -175,7 +178,7 @@ const TaxonEditor = ({
   const [parent, setParent] = useState(current?.parent ?? "");
   const [synonyms, setSynonyms] = useState((current?.synonyms ?? []).join(", "));
   const [aliases, setAliases] = useState((current?.retiredAliases ?? []).join(", "));
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [review, setReview] = useState<Review>();
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: fillerApi.getListTaxonomyQueryKey() });
@@ -202,29 +205,61 @@ const TaxonEditor = ({
       onError: fail,
     },
   });
-  const storedAssignments = current?.storedClips ?? current?.assertedClips ?? 0;
-  const blocked = storedAssignments > 0;
+  const preview = fillerApi.usePreviewTaxonomyEdit();
   const excluded = current ? descendantsOf(taxa, current.slug) : new Set<string>();
   const nodeHasDescendants = excluded.size > 0;
   if (current) excluded.add(current.slug);
   const parentOptions = taxa
     .filter((taxon) => taxon.axis === axis && !excluded.has(taxon.slug))
     .sort((a, b) => a.label.localeCompare(b.label));
-  const busy = create.isPending || update.isPending || remove.isPending;
+  const busy = create.isPending || update.isPending || remove.isPending || preview.isPending;
 
-  const save = () => {
-    const common = {
-      label: label.trim(),
-      axis,
-      ...(parent ? { parent } : {}),
-      synonyms: splitTerms(synonyms),
-      retiredAliases: splitTerms(aliases),
-    };
-    if (editor.mode === "create") {
-      create.mutate({ data: { slug: slug.trim(), ...common } });
-    } else if (current) {
-      update.mutate({ slug: current.slug, data: common });
+  const saveCommand = (): TaxonomyImpactCommandDTO => ({
+    operation: editor.mode === "create" ? "create" : "update",
+    slug: editor.mode === "create" ? slug.trim() : (current?.slug ?? ""),
+    label: label.trim(),
+    axis,
+    ...(parent ? { parent } : {}),
+    synonyms: splitTerms(synonyms),
+    retiredAliases: splitTerms(aliases),
+  });
+
+  const requestReview = (action: Review["action"], command: TaxonomyImpactCommandDTO) => {
+    preview.mutate(
+      { data: command },
+      {
+        onSuccess: (response) => {
+          if (response.status === 200) setReview({ action, command, impact: response.data });
+        },
+        onError: fail,
+      },
+    );
+  };
+
+  const applyReview = () => {
+    if (!review) return;
+    if (review.action === "delete") {
+      remove.mutate({ slug: review.command.slug });
+      return;
     }
+    const command = review.command;
+    const common = {
+      label: command.label ?? "",
+      axis: (command.axis ?? axis) as Axis,
+      ...(command.parent ? { parent: command.parent } : {}),
+      synonyms: command.synonyms ?? [],
+      retiredAliases: command.retiredAliases ?? [],
+    };
+    if (command.operation === "create") {
+      create.mutate({ data: { slug: command.slug, ...common } });
+    } else {
+      update.mutate({ slug: command.slug, data: common });
+    }
+  };
+
+  const edit = (change: () => void) => {
+    setReview(undefined);
+    change();
   };
 
   return (
@@ -242,7 +277,11 @@ const TaxonEditor = ({
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <Label htmlFor="taxon-label">Label</Label>
-          <Input id="taxon-label" value={label} onChange={(event) => setLabel(event.target.value)} />
+          <Input
+            id="taxon-label"
+            value={label}
+            onChange={(event) => edit(() => setLabel(event.target.value))}
+          />
         </div>
         <div>
           <Label htmlFor="taxon-slug">Slug</Label>
@@ -251,7 +290,9 @@ const TaxonEditor = ({
             value={slug}
             disabled={editor.mode === "edit"}
             placeholder="breakfast-cereal"
-            onChange={(event) => setSlug(event.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "-"))}
+            onChange={(event) =>
+              edit(() => setSlug(event.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "-")))
+            }
           />
         </div>
         <div>
@@ -260,8 +301,10 @@ const TaxonEditor = ({
             value={axis}
             disabled={Boolean(current && nodeHasDescendants)}
             onValueChange={(value) => {
-              setAxis(value as Axis);
-              setParent("");
+              edit(() => {
+                setAxis(value as Axis);
+                setParent("");
+              });
             }}
           >
             <SelectTrigger id="taxon-axis">
@@ -285,7 +328,7 @@ const TaxonEditor = ({
           <Label htmlFor="taxon-parent">Parent</Label>
           <Select
             value={parent || "root"}
-            onValueChange={(value) => setParent(value === "root" ? "" : value)}
+            onValueChange={(value) => edit(() => setParent(value === "root" ? "" : value))}
           >
             <SelectTrigger id="taxon-parent">
               <SelectValue />
@@ -306,7 +349,7 @@ const TaxonEditor = ({
             id="taxon-synonyms"
             value={synonyms}
             placeholder="soda, soft drink"
-            onChange={(event) => setSynonyms(event.target.value)}
+            onChange={(event) => edit(() => setSynonyms(event.target.value))}
           />
         </div>
         <div>
@@ -315,7 +358,7 @@ const TaxonEditor = ({
             id="taxon-aliases"
             value={aliases}
             placeholder="old-machine-name"
-            onChange={(event) => setAliases(event.target.value)}
+            onChange={(event) => edit(() => setAliases(event.target.value))}
           />
         </div>
       </div>
@@ -323,36 +366,114 @@ const TaxonEditor = ({
         Synonyms help the classifier resolve ordinary wording. Retired slugs preserve old integrations; both
         must be unique across the whole vocabulary.
       </p>
+      {review ? (
+        <Card
+          className="space-y-3 border-signal/40 bg-signal/5 p-4"
+          aria-label="Change impact"
+          aria-live="polite"
+        >
+          <div>
+            <h4 className="font-medium">Review the impact</h4>
+            <p className="mt-1 text-muted-foreground text-sm">
+              {review.impact.affectedStoredClips > 0
+                ? `${review.impact.affectedStoredClips.toLocaleString()} stored clips may have different inherited classification (${review.impact.directStoredClips.toLocaleString()} direct, ${review.impact.descendantStoredClips.toLocaleString()} through descendants).`
+                : "No stored clip classifications will change."}
+            </p>
+            <p className="mt-1 text-muted-foreground text-sm">
+              {review.impact.affectedPlayableClips > 0
+                ? `${review.impact.affectedPlayableClips.toLocaleString()} playable clips will be checked against channel filler rules after this change.`
+                : "No playable clips need channel eligibility checks."}
+            </p>
+          </div>
+          {review.impact.descendants.length > 0 ? (
+            <p className="text-sm">
+              Descendants kept: {review.impact.descendants.map((node) => node.label).join(", ")}
+            </p>
+          ) : null}
+          {review.impact.savedChannelSelections.length > 0 ? (
+            <div className="text-sm">
+              <p className="font-medium">Saved channel selections that reference this branch</p>
+              <ul className="mt-1 list-disc pl-5">
+                {review.impact.savedChannelSelections.map((channel) => (
+                  <li key={channel.id}>
+                    Channel {channel.number}: {channel.name}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              No saved channel selections reference this branch.
+            </p>
+          )}
+          {review.impact.resolverTermsAdded.length > 0 || review.impact.resolverTermsRemoved.length > 0 ? (
+            <div className="text-sm">
+              <p className="font-medium">Classifier wording</p>
+              {review.impact.resolverTermsAdded.length > 0 ? (
+                <p className="mt-1">Starts resolving: {review.impact.resolverTermsAdded.join(", ")}</p>
+              ) : null}
+              {review.impact.resolverTermsRemoved.length > 0 ? (
+                <p className="mt-1">Stops resolving: {review.impact.resolverTermsRemoved.join(", ")}</p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-sm">Classifier wording is unchanged.</p>
+          )}
+          {review.impact.deleteBlocked ? (
+            <p className="text-caution text-sm">
+              Retag {review.impact.directStoredClips.toLocaleString()} directly assigned stored clips before
+              removing this tag. This includes clips in Incoming, removed clips, and compilations.
+            </p>
+          ) : null}
+        </Card>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         {current ? (
-          blocked ? (
-            <p className="mr-auto text-caution text-xs">
-              Retag {storedAssignments} stored {storedAssignments === 1 ? "clip" : "clips"} before removing
-              this tag. This count includes clips in Incoming, removed clips, and compilations.
-            </p>
-          ) : (
-            <Button
-              variant={confirmDelete ? "destructive" : "ghost"}
-              size="sm"
-              disabled={busy}
-              onClick={() => (confirmDelete ? remove.mutate({ slug: current.slug }) : setConfirmDelete(true))}
-            >
-              {confirmDelete ? "Confirm remove" : "Remove tag"}
-            </Button>
-          )
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={busy}
+            onClick={() => requestReview("delete", { operation: "delete", slug: current.slug })}
+          >
+            Review removal
+          </Button>
         ) : (
           <span className="mr-auto" />
         )}
-        <Button variant="outline" size="sm" disabled={busy} onClick={onClose}>
-          Cancel
-        </Button>
-        <Button
-          size="sm"
-          disabled={busy || !label.trim() || (editor.mode === "create" && !slug.trim())}
-          onClick={save}
-        >
-          {busy ? "Saving…" : "Save"}
-        </Button>
+        {review ? (
+          <>
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => setReview(undefined)}>
+              Back
+            </Button>
+            <Button
+              variant={review.action === "delete" ? "destructive" : "default"}
+              size="sm"
+              disabled={busy || review.impact.deleteBlocked}
+              onClick={applyReview}
+            >
+              {busy
+                ? "Applying…"
+                : review.action === "delete"
+                  ? "Confirm removal"
+                  : editor.mode === "create"
+                    ? "Confirm add"
+                    : "Confirm update"}
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button variant="outline" size="sm" disabled={busy} onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={busy || !label.trim() || (editor.mode === "create" && !slug.trim())}
+              onClick={() => requestReview("save", saveCommand())}
+            >
+              {busy ? "Checking impact…" : "Review changes"}
+            </Button>
+          </>
+        )}
       </div>
     </Card>
   );
