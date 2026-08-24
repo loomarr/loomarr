@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   ChannelIdentity,
+  ClientNavigation,
   ClientPlatformProof,
   ClientShell,
+  clientBackDestination,
   ModalOverlay,
   PairingShell,
   ProgrammeCard,
@@ -19,6 +21,8 @@ describe("ui public interface", () => {
     expect(PairingShell).toBeTypeOf("function");
     expect(ProgrammeCard).toBeTypeOf("function");
     expect(ChannelIdentity).toBeTypeOf("function");
+    expect(ClientNavigation).toBeTypeOf("function");
+    expect(clientBackDestination).toBeTypeOf("function");
     expect(ProgrammeIdentity).toBeTypeOf("function");
     expect(ModalOverlay).toBeTypeOf("function");
     expect(TransientOverlay).toBeTypeOf("function");

@@ -6,11 +6,11 @@ import {
   validatePairingCredential,
 } from "@loomarr/core/pairing";
 import type { ClientDestination } from "@loomarr/ui";
-import { ClientShell, PairingShell } from "@loomarr/ui";
+import { ClientShell, clientBackDestination, PairingShell } from "@loomarr/ui";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
-import { useMemo, useState } from "react";
-import { Platform } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { BackHandler, Platform } from "react-native";
 
 const credentialStore = createPairingCredentialStore({
   deleteItem: SecureStore.deleteItemAsync,
@@ -20,6 +20,15 @@ const credentialStore = createPairingCredentialStore({
 
 const MobileShell = ({ credential, session }: { credential: PairingCredential; session: PairingSession }) => {
   const [active, setActive] = useState<ClientDestination>("guide");
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      const destination = clientBackDestination(active);
+      if (!destination) return false;
+      setActive(destination);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [active]);
   return (
     <ClientShell
       active={active}

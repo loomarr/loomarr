@@ -1,104 +1,129 @@
 import { Text as TamaguiText, useTheme, View } from "@tamagui/core";
-import type { ComponentProps, ReactNode } from "react";
-import { useState } from "react";
+import type { ComponentProps, ComponentRef, ReactNode } from "react";
+import { forwardRef, useState } from "react";
 import { Pressable, TextInput } from "react-native";
 
 import { Icon } from "../icon";
-import { icons } from "../icons";
+import { type IconName, icons } from "../icons";
 import { Surface, Text } from "../primitives";
-import {
-  type Density,
-  semanticRadius,
-  semanticSpace,
-  semanticTargets,
-  typography,
-} from "../tokens";
+import { type Density, semanticRadius, semanticSpace, semanticTargets, typography } from "../tokens";
 
 type ActionProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> & {
   children: ReactNode;
   density?: Density;
+  icon?: IconName;
   selected?: boolean;
   style?: ComponentProps<typeof Pressable>["style"];
   tone?: "danger" | "primary" | "secondary";
 };
 
-const Action = ({
-  accessibilityState,
-  children,
-  density = "pointer",
-  disabled = false,
-  onBlur,
-  onFocus,
-  selected = false,
-  style,
-  tabIndex,
-  tone = "primary",
-  ...props
-}: ActionProps) => {
-  const theme = useTheme();
-  const [focused, setFocused] = useState(false);
-  const isDisabled = disabled === true;
-  const backgroundColor =
-    tone === "danger"
-      ? theme.stateDanger.val
-      : tone === "primary"
-        ? theme.actionPrimary.val
-        : selected
-          ? theme.surfaceFocus.val
-          : theme.surfaceElevated.val;
-  const borderColor =
-    focused || selected
-      ? theme.actionFocus.val
-      : tone === "danger"
+const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
+  (
+    {
+      accessibilityState,
+      children,
+      density = "pointer",
+      disabled = false,
+      icon,
+      onBlur,
+      onFocus,
+      selected = false,
+      style,
+      tabIndex,
+      tone = "primary",
+      ...props
+    },
+    ref,
+  ) => {
+    const theme = useTheme();
+    const [focused, setFocused] = useState(false);
+    const isDisabled = disabled === true;
+    const role = props.accessibilityRole ?? "button";
+    const backgroundColor =
+      tone === "danger"
         ? theme.stateDanger.val
         : tone === "primary"
           ? theme.actionPrimary.val
-          : theme.borderControl.val;
-  return (
-    <Pressable
-      {...props}
-      accessibilityState={{ ...accessibilityState, disabled: isDisabled, selected }}
-      accessibilityRole={props.accessibilityRole ?? "button"}
-      aria-disabled={isDisabled || undefined}
-      aria-pressed={selected || undefined}
-      disabled={isDisabled}
-      onBlur={(event) => {
-        setFocused(false);
-        onBlur?.(event);
-      }}
-      onFocus={(event) => {
-        setFocused(true);
-        onFocus?.(event);
-      }}
-      tabIndex={isDisabled ? -1 : tabIndex}
-      style={(state) => [
-        {
-          alignItems: "center",
-          backgroundColor,
-          borderColor,
-          borderRadius: semanticRadius.control,
-          borderStyle: "solid",
-          borderWidth: focused ? 4 : 2,
-          justifyContent: "center",
-          minHeight: semanticTargets[density],
-          opacity: isDisabled ? 0.55 : state.pressed ? 0.82 : 1,
-          paddingHorizontal: semanticSpace.control,
-          transform: [{ scale: focused ? 1.025 : state.pressed ? 0.98 : 1 }],
-        },
-        typeof style === "function" ? style(state) : style,
-      ]}
-    >
-      <TamaguiText
-        color={tone === "secondary" ? "$contentPrimary" : "$contentInverse"}
-        fontFamily="$body"
-        fontSize={typography[density].label.size}
-        fontWeight="700"
+          : selected
+            ? theme.surfaceFocus.val
+            : theme.surfaceElevated.val;
+    const borderColor =
+      focused || selected
+        ? theme.actionFocus.val
+        : tone === "danger"
+          ? theme.stateDanger.val
+          : tone === "primary"
+            ? theme.actionPrimary.val
+            : theme.borderControl.val;
+    return (
+      <Pressable
+        {...props}
+        accessibilityState={{ ...accessibilityState, disabled: isDisabled, selected }}
+        accessibilityRole={role}
+        aria-disabled={isDisabled || undefined}
+        aria-pressed={role === "button" && selected ? true : undefined}
+        aria-selected={role === "tab" ? selected : undefined}
+        disabled={isDisabled}
+        onBlur={(event) => {
+          setFocused(false);
+          onBlur?.(event);
+        }}
+        onFocus={(event) => {
+          setFocused(true);
+          onFocus?.(event);
+        }}
+        ref={ref}
+        tabIndex={isDisabled ? -1 : tabIndex}
+        style={(state) => [
+          {
+            alignItems: "center",
+            backgroundColor,
+            borderColor,
+            borderRadius: semanticRadius.control,
+            borderStyle: "solid",
+            borderWidth: focused ? 4 : 2,
+            justifyContent: "center",
+            minHeight: semanticTargets[density],
+            opacity: isDisabled ? 0.55 : state.pressed ? 0.82 : 1,
+            paddingHorizontal: semanticSpace.control,
+            transform: [{ scale: focused ? 1.025 : state.pressed ? 0.98 : 1 }],
+          },
+          typeof style === "function" ? style(state) : style,
+        ]}
       >
-        {children}
-      </TamaguiText>
-    </Pressable>
-  );
-};
+        {icon ? (
+          <View alignItems="center" flexDirection="row" gap="$inline">
+            <Icon
+              decorative
+              glyph={icons[icon]}
+              size={density === "tv" ? "touch" : "default"}
+              tone={tone === "secondary" && !selected ? "secondary" : "inverse"}
+            />
+            <TamaguiText
+              color={tone === "secondary" ? "$contentPrimary" : "$contentInverse"}
+              fontFamily="$body"
+              fontSize={typography[density].label.size}
+              fontWeight="700"
+            >
+              {children}
+            </TamaguiText>
+          </View>
+        ) : (
+          <TamaguiText
+            color={tone === "secondary" ? "$contentPrimary" : "$contentInverse"}
+            fontFamily="$body"
+            fontSize={typography[density].label.size}
+            fontWeight="700"
+          >
+            {children}
+          </TamaguiText>
+        )}
+      </Pressable>
+    );
+  },
+);
+
+Action.displayName = "Action";
 
 type FieldProps = Omit<ComponentProps<typeof TextInput>, "editable"> & {
   density?: Density;

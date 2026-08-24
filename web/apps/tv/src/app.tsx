@@ -7,11 +7,12 @@ import {
 } from "@loomarr/core/pairing";
 import { LoomarrProvider } from "@loomarr/design-system";
 import type { ClientDestination } from "@loomarr/ui";
-import { ClientShell, PairingShell } from "@loomarr/ui";
+import { ClientShell, clientBackDestination, PairingShell } from "@loomarr/ui";
 import { useKeepAwake } from "expo-keep-awake";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { BackHandler } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 
 const credentialStore = createPairingCredentialStore({
@@ -22,6 +23,15 @@ const credentialStore = createPairingCredentialStore({
 
 const TvShell = ({ credential, session }: { credential: PairingCredential; session: PairingSession }) => {
   const [active, setActive] = useState<ClientDestination>("watching");
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      const destination = clientBackDestination(active);
+      if (!destination) return false;
+      setActive(destination);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [active]);
   return (
     <ClientShell
       active={active}

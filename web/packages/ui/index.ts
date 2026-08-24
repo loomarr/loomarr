@@ -1,5 +1,7 @@
+export type { ClientDestination, ClientNavigationProps } from "./src/client-navigation";
+export { ClientNavigation, clientBackDestination, clientDestinationLabel } from "./src/client-navigation";
 export { ClientPlatformProof } from "./src/client-platform-proof";
-export type { ClientDestination, ClientShellProps } from "./src/client-shell";
+export type { ClientShellProps } from "./src/client-shell";
 export { ClientShell } from "./src/client-shell";
 export type {
   ChannelIdentityData,
