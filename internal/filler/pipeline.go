@@ -567,6 +567,11 @@ func (p *Pipeline) enrolMissing(ctx context.Context) (int, error) {
 			ClipHash: c.Hash, Stage: StageProbe, Status: StatusQueued,
 			Disposition: DispositionRunning, EnrolledAt: now, UpdatedAt: now,
 		}
+		if p.clipDir != "" && c.Path != "" {
+			if tags, ok := ReadSidecarTags(filepath.Join(p.clipDir, filepath.FromSlash(c.Path))); ok {
+				row.AcquisitionID = tags.AcquisitionID
+			}
+		}
 		if err := p.store.UpsertClipPipeline(ctx, row); err != nil {
 			return n, err
 		}

@@ -652,6 +652,7 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	// drop dir would build a path that does not exist.
 	ext := filepath.Ext(clip.Path)
 	src := filepath.Join(sp.dropDir, clip.Path)
+	parentTags, _ := ReadSidecarTags(src)
 
 	// ⚠ Segments are cut to a TEMPORARY file first, because a clip's identity is the hash of its
 	// CONTENTS and those contents do not exist until ffmpeg has written them. There is no name to
@@ -710,6 +711,16 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	spawned := make([]string, 0, len(cuts))
 	for _, c := range cuts {
 		spawned = append(spawned, c.hash)
+		// A split creates new media bytes, so it must also create the provenance sidecar that lets
+		// a catalog rebuild reconnect those bytes to their source and acquisition run. The segment
+		// inherits both from the compilation; neither changes its admission policy.
+		if err := WriteSidecarTags(filepath.Join(sp.dropDir, filepath.FromSlash(c.path)), SidecarTags{
+			SourceID:      parentTags.SourceID,
+			AcquisitionID: parentTags.AcquisitionID,
+			OriginalName:  c.seg.Name + ext,
+		}, false); err != nil {
+			return nil, fmt.Errorf("split confirm: record segment provenance: %w", err)
+		}
 		nc := StoreClip{UpdatedAt: now}
 		// ⚠ **The identity, and it was MISSING.** `UpsertClip` is `ON CONFLICT(hash) DO UPDATE`,
 		// so every segment used to insert with `hash=''` and each one overwrote the last — a

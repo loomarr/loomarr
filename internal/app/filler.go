@@ -632,7 +632,12 @@ type fillerServiceAdapter struct {
 	// came from. Narrow interface, not the whole store: this adapter has no other reason
 	// to reach persistence.
 	sources fillerSourceRegistry
-	now     func() time.Time
+	// acquisitions is the reconnect truth for background downloads. nil is allowed only in
+	// narrow tests; production always supplies the store before any job can be accepted.
+	acquisitions fillerAcquisitionWriter
+	readiness    fillerReadinessStore
+	pool         func(context.Context) (filler.PoolReport, error)
+	now          func() time.Time
 	// splitter / splitClips back compilation splitting (§10, V34). nil splitter ⇒
 	// no drop-folder configured ⇒ Split/ConfirmSplit answer ErrSplitUnavailable.
 	splitter   *filler.Splitter
@@ -652,6 +657,47 @@ type fillerServiceAdapter struct {
 type fillerSourceRegistry interface {
 	ListFillerSources(context.Context) ([]store.FillerSource, error)
 	UpsertFillerSource(context.Context, store.FillerSource) error
+}
+
+type fillerAcquisitionWriter interface {
+	UpsertAcquisitionRun(context.Context, filler.AcquisitionRun) error
+}
+
+type fillerReadinessStore interface {
+	PipelineOverview(context.Context, time.Time) (filler.PipelineOverview, error)
+	ListAcquisitionRuns(context.Context, int, time.Time) ([]filler.AcquisitionRun, error)
+}
+
+// Readiness composes existing authoritative projections and delegates prioritisation to the
+// filler domain. It is intentionally available before the HTTP route so API wiring cannot tempt
+// the client to rebuild the decision from lower-level endpoints.
+func (a fillerServiceAdapter) Readiness(ctx context.Context) (filler.Readiness, error) {
+	if a.readiness == nil || a.pool == nil {
+		return filler.Readiness{}, errors.New("filler readiness is not configured")
+	}
+	now := time.Now().UTC()
+	if a.now != nil {
+		now = a.now().UTC()
+	}
+	fetch, err := a.FetchStatus(ctx)
+	if err != nil {
+		return filler.Readiness{}, err
+	}
+	pipeline, err := a.readiness.PipelineOverview(ctx, now)
+	if err != nil {
+		return filler.Readiness{}, err
+	}
+	pool, err := a.pool(ctx)
+	if err != nil {
+		return filler.Readiness{}, err
+	}
+	runs, err := a.readiness.ListAcquisitionRuns(ctx, 20, now)
+	if err != nil {
+		return filler.Readiness{}, err
+	}
+	return filler.ProjectReadiness(filler.ReadinessInput{
+		Fetch: fetch, Pipeline: pipeline, Pool: pool, Runs: runs,
+	}), nil
 }
 
 func (a fillerServiceAdapter) FetchStatus(ctx context.Context) (filler.FetchStatus, error) {
@@ -697,31 +743,72 @@ func (a fillerServiceAdapter) Tag(ctx context.Context) (int, int, int, int, erro
 // pull uses, because it is the same problem (long external process, no request to hold).
 // ⚠ Downloads only — it does NOT register a source. See `rememberSources`.
 func (a fillerServiceAdapter) Ingest(ctx context.Context, urls []string) (string, error) {
-	return a.ingest(ctx, "", urls)
+	return a.ingest(ctx, filler.AcquisitionManual, "", acquisitionTargets("", urls))
 }
 
 // IngestSource is the unattended registered-source path. It preserves source attribution through
 // the downloader sidecar so the catalog can apply and audit the correct admission policy.
 func (a fillerServiceAdapter) IngestSource(ctx context.Context, sourceID string, urls []string) (string, error) {
-	return a.ingest(ctx, sourceID, urls)
+	return a.ingest(ctx, filler.AcquisitionSource, "", acquisitionTargets(sourceID, urls))
 }
 
 // IngestAsked downloads AND remembers the target, for the one path where an operator named it.
 func (a fillerServiceAdapter) IngestAsked(ctx context.Context, urls []string) (string, error) {
 	a.rememberSources(ctx, urls)
-	return a.ingest(ctx, "", urls)
+	return a.ingest(ctx, filler.AcquisitionManual, "", acquisitionTargets("", urls))
 }
 
-func (a fillerServiceAdapter) ingest(ctx context.Context, sourceID string, urls []string) (string, error) {
+// IngestPull preserves one approval identity across a plan that may contain several registered
+// sources. The approval route will use this seam once the shared API surface is available.
+func (a fillerServiceAdapter) IngestPull(
+	ctx context.Context,
+	pullID string,
+	targets []filler.AcquisitionTarget,
+) (string, error) {
+	return a.ingest(ctx, filler.AcquisitionPull, pullID, targets)
+}
+
+func acquisitionTargets(sourceID string, urls []string) []filler.AcquisitionTarget {
+	targets := make([]filler.AcquisitionTarget, 0, len(urls))
+	for _, url := range urls {
+		targets = append(targets, filler.AcquisitionTarget{SourceID: sourceID, URL: url})
+	}
+	return targets
+}
+
+func (a fillerServiceAdapter) ingest(
+	ctx context.Context,
+	trigger filler.AcquisitionTrigger,
+	pullID string,
+	targets []filler.AcquisitionTarget,
+) (string, error) {
 	if a.fetcher == nil {
 		return "", api.ErrIngestUnavailable
 	}
-	sources := make([]clipfetch.Source, 0, len(urls))
-	for _, u := range urls {
-		sources = append(sources, clipfetch.Source{ID: sourceID, Kind: clipfetch.KindForURL(u), URL: u})
-	}
-
 	jobID := a.newID()
+	sources := make([]clipfetch.Source, 0, len(targets))
+	for _, target := range targets {
+		sources = append(sources, clipfetch.Source{
+			ID: target.SourceID, AcquisitionID: jobID,
+			Kind: clipfetch.KindForURL(target.URL), URL: target.URL,
+		})
+	}
+	sourceID := commonAcquisitionSource(targets)
+
+	now := time.Now
+	if a.now != nil {
+		now = a.now
+	}
+	run := filler.AcquisitionRun{
+		ID: jobID, Trigger: trigger, SourceID: sourceID, PullID: pullID,
+		Status: filler.AcquisitionQueued, Requested: len(sources),
+		StartedAt: now().UTC(), UpdatedAt: now().UTC(),
+	}
+	if a.acquisitions != nil {
+		if err := a.acquisitions.UpsertAcquisitionRun(ctx, run); err != nil {
+			return "", fmt.Errorf("queue filler acquisition: %w", err)
+		}
+	}
 	go func() {
 		// Deliberately NOT the request context: the HTTP response has already been
 		// written, so tying the download to it would cancel every ingest the moment the
@@ -732,25 +819,65 @@ func (a fillerServiceAdapter) ingest(ctx context.Context, sourceID string, urls 
 			bg, cancel = context.WithTimeout(bg, a.timeout*time.Duration(len(sources)))
 			defer cancel()
 		}
+		run.Status = filler.AcquisitionRunning
+		run.UpdatedAt = now().UTC()
+		a.persistAcquisition(run)
 		a.publishIngest(jobID, "starting", clipfetch.Result{}, "")
 		res := a.fetcher.Run(bg, sources)
+		run.Fetched, run.Skipped = res.Fetched, res.Skipped
+		run.Failed, run.Empty = res.Failed, res.Empty
 		if res.Failed > 0 && res.Fetched == 0 {
 			// Every source failed — report it as an error rather than a success with
 			// zeroes, which reads as "nothing to download" and hides a bad URL or an
 			// expired yt-dlp.
-			a.publishIngest(jobID, "error", res, "every source failed; check the URLs and the yt-dlp version")
+			run.Status = filler.AcquisitionError
+			run.Error = "every source failed; check the URLs and the yt-dlp version"
+			run.CompletedAt, run.UpdatedAt = now().UTC(), now().UTC()
+			a.persistAcquisition(run)
+			a.publishIngest(jobID, "error", res, run.Error)
 			return
 		}
 		if a.afterIngest != nil {
 			if err := a.afterIngest(bg); err != nil {
-				a.publishIngest(jobID, "error", res,
-					"downloaded files could not be catalogued; the scheduled sync will retry: "+err.Error())
+				run.Status = filler.AcquisitionError
+				run.Error = "downloaded files could not be catalogued; the scheduled sync will retry: " + err.Error()
+				run.CompletedAt, run.UpdatedAt = now().UTC(), now().UTC()
+				a.persistAcquisition(run)
+				a.publishIngest(jobID, "error", res, run.Error)
 				return
 			}
 		}
+		run.Status = filler.AcquisitionSuccess
+		run.CompletedAt, run.UpdatedAt = now().UTC(), now().UTC()
+		a.persistAcquisition(run)
 		a.publishIngest(jobID, "success", res, "")
 	}()
 	return jobID, nil
+}
+
+func commonAcquisitionSource(targets []filler.AcquisitionTarget) string {
+	if len(targets) == 0 {
+		return ""
+	}
+	sourceID := targets[0].SourceID
+	for _, target := range targets[1:] {
+		if target.SourceID != sourceID {
+			return ""
+		}
+	}
+	return sourceID
+}
+
+func (a fillerServiceAdapter) persistAcquisition(run filler.AcquisitionRun) {
+	if a.acquisitions == nil {
+		return
+	}
+	// The run was durably queued before the goroutine started. Later snapshots are best-effort:
+	// a transient store failure must not cancel downloaded bytes or bypass pipeline reconciliation.
+	// Use an independent bounded context because the download timeout may have fired already.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = a.acquisitions.UpsertAcquisitionRun(ctx, run)
 }
 
 // publishIngest emits one ingest-progress frame (§7, type=filler_ingest). Empty counts

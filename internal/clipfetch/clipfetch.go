@@ -38,9 +38,12 @@ const (
 type Source struct {
 	// ID is the registered source policy responsible for this acquisition. Empty means a manual
 	// ingest whose arrivals use the folder admission policy.
-	ID   string
-	Kind Kind
-	URL  string
+	ID string
+	// AcquisitionID ties every downloaded clip back to the durable run that requested it.
+	// It is metadata only: admission continues to be governed by the registered source ID.
+	AcquisitionID string
+	Kind          Kind
+	URL           string
 }
 
 // KindForURL infers the source kind from a URL (youtube.com / youtu.be →

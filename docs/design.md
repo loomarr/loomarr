@@ -4654,6 +4654,32 @@ The scheduler assembles realistic **ad pods**, not single random clips:
   value as a list cooldown blocks the entire source rather than rotating programs. Tunarr then
   enforces its own program history; Loomarr's durable per-channel metrics and guarantees are
   reported only where Loomarr owns playout and can observe the actual start.
+
+- **Durable acquisition and filler readiness (V59).** Every accepted download creates a durable
+  acquisition run before background work begins. The run records its trigger, registered source or
+  approved pull attribution, requested/downloaded/skipped/failed/empty counts, and queued/running/
+  terminal state. Its id travels beside the downloaded bytes in the Loomarr sidecar, through
+  compilation splitting, and into each resulting pipeline row. Reconnecting clients therefore read
+  the current run and its preparing/needs-decision/admitted/rejected/dismissed outcomes from the
+  store; SSE remains a latency hint and is never the only history. A job whose initial run record
+  cannot be persisted does not start. Manual and pre-V59 files honestly retain no acquisition id.
+
+  The Filler entry point presents one server-owned readiness projection built from the live fetch
+  limits, the pipeline lifecycle overview, the playable pool, per-channel coverage (including
+  usable duration and grounded category/brand variety), and recent
+  acquisition runs. It returns one typed highest-impact next action in this order: repair a stopped
+  acquisition path, retry failed machine work, make pending operator decisions, add an empty
+  airable pool, improve the weakest live channel, or no action when ready. A terminal rejection
+  remains audit; only rows carrying the domain's explicit retry/restore action count as recoverable
+  work. Clients render that
+  decision; they do not reconstruct health from raw counters. A latest failed acquisition is an
+  actionable machine failure rather than a transient toast. Detailed execution history, the
+  catalog, sources, and taxonomy remain available through progressive disclosure.
+
+  Acquisition is not admission. These records and summaries do not weaken registered-source
+  enablement, disk/catalog limits, approval, grounding, or the held-to-filed gate. Machine work,
+  operator decisions, terminal audit outcomes, and admitted catalog content remain distinct even
+  when the simple overview brings them onto one page.
 - **Fallback ladder:** exact-era match → widen era (a decade either side of the range) → any appropriate-audience clip → **clips whose audience could not be grounded** → channel bumper card (Tunarr's flex fallback). Never dead air.
 
   ⚠ **The untagged rung (V51f) exists because picking an Audience on an un-tagged catalog emptied EVERY rung above it.** `filterAudience` admits a clip whose audience equals the channel's or is `general`; a clip Loomarr could not classify carries `""` and matched neither, so it was invisible to pod assembly — and the meter said "nothing in the catalog fits", never "your catalog is untagged". These clips now fill breaks at the bottom rung, below every grounded match, so a real classification always wins and the operator can see the state they are actually in.

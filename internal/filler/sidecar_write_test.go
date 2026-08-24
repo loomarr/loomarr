@@ -67,7 +67,7 @@ func TestWriteSidecarTags_RoundTrips(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := filler.SidecarTags{SourceID: "archive:classic", Kind: "commercial", Era: 1992, Audience: "kids", Category: "toys", Confidence: 88}
+	want := filler.SidecarTags{SourceID: "archive:classic", AcquisitionID: "acq-17", Kind: "commercial", Era: 1992, Audience: "kids", Category: "toys", Confidence: 88}
 	if err := filler.WriteSidecarTags(media, want, false); err != nil {
 		t.Fatal(err)
 	}
@@ -84,6 +84,13 @@ func TestSidecarFetchedMarkFor_CarriesRegisteredSource(t *testing.T) {
 	mark := filler.SidecarFetchedMarkFor("archive:classic")
 	if mark["fetchedBy"] != "loomarr" || mark["sourceId"] != "archive:classic" {
 		t.Fatalf("mark = %#v, want acquisition marker plus exact source id", mark)
+	}
+}
+
+func TestSidecarFetchedMarkForAcquisition_CarriesRunAndSource(t *testing.T) {
+	mark := filler.SidecarFetchedMarkForAcquisition("archive:classic", "acq-17")
+	if mark["fetchedBy"] != "loomarr" || mark["sourceId"] != "archive:classic" || mark["acquisitionId"] != "acq-17" {
+		t.Fatalf("mark = %#v, want fetched, source, and acquisition attribution", mark)
 	}
 }
 

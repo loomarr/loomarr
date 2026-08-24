@@ -62,12 +62,13 @@ func buildFillerSubsystem(
 	adapter := fillerServiceAdapter{
 		syncer: syncer, tagger: tagger, fetcher: fetcher,
 		bus: eventBus, newID: newID, timeout: set.dur("ingest.timeout"),
-		sources: st, now: time.Now,
+		sources: st, acquisitions: st, readiness: st, now: time.Now,
 		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st, wake: wake},
 	}
 
 	pods := buildPodAdapter(st, set, log)
 	result.preview = podPreviewAdapter{store: st, pods: pods}
+	adapter.pool = result.preview.Pool
 	if playoutResolver != nil {
 		playoutResolver.pods = result.preview
 	}

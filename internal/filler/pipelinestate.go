@@ -123,11 +123,14 @@ type StageRecord struct {
 
 // ClipPipeline is one clip's pipeline row.
 type ClipPipeline struct {
-	ClipHash    string
-	Stage       StageID
-	Status      StageStatus
-	Progress    int
-	Disposition Disposition
+	ClipHash string
+	// AcquisitionID ties this row to the durable fetch/pull run that produced its bytes. Empty is
+	// honest for operator-dropped and pre-V59 clips. It survives retries and rewinds unchanged.
+	AcquisitionID string
+	Stage         StageID
+	Status        StageStatus
+	Progress      int
+	Disposition   Disposition
 	// RejectReason is a stable code; RejectDetail is the measured fact behind it.
 	RejectReason RejectReason
 	RejectDetail string
