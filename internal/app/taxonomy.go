@@ -50,8 +50,9 @@ func (e taxonomyEditor) Apply(ctx context.Context, edit store.TaxonomyEdit) (api
 		}
 		return impact, nil
 	}
-	if e.wake != nil {
-		e.wake.Run(ctx, append(before, after...))
+	snapshots := append(before, after...)
+	if e.wake != nil && len(snapshots) > 0 {
+		e.wake.Run(ctx, snapshots)
 	}
 	return impact, nil
 }

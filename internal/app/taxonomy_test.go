@@ -6,7 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/taxonomy"
@@ -91,6 +93,103 @@ func TestTaxonomyEditor_PreviewsSavedSelectionsAndConvergesCommittedEligibility(
 	}
 	if !containsString(recorder.snapshots[0].Tags, "alcohol") || containsString(recorder.snapshots[1].Tags, "alcohol") || !containsString(recorder.snapshots[1].Tags, "food") {
 		t.Fatalf("wake snapshots did not carry old/new eligibility: before=%v after=%v", recorder.snapshots[0].Tags, recorder.snapshots[1].Tags)
+	}
+}
+
+func TestTaxonomyEditor_CommittedLineageChangeReconcilesTheRealChannelPool(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	now := time.Unix(1_800_000_000, 0).UTC()
+	clip := filler.Clip{
+		Hash: "beer-clip", Path: "beer-clip.mp4", Name: "Beer clip", Kind: filler.Commercial,
+		DurationMs: 30_000, Era: 1994, Audience: filler.General,
+	}
+	if err := st.UpsertClip(t.Context(), store.Clip{Clip: clip, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetClipTags(t.Context(), clip.Hash, []string{"beer"}); err != nil {
+		t.Fatal(err)
+	}
+	channel := store.Channel{
+		Channel: schedule.Channel{
+			ID: "alcohol-channel", Name: "Alcohol channel", Number: 31,
+			Strategy: schedule.Sequential, Status: schedule.StatusBuilding,
+		},
+		Lineup: []schedule.LineupEntry{
+			{Key: provision.Key("movie:tmdb:1"), Title: "One", DurationMs: time.Hour.Milliseconds()},
+			{Key: provision.Key("movie:tmdb:2"), Title: "Two", DurationMs: time.Hour.Milliseconds()},
+		},
+		Policy: schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{
+			Filler: &schedule.FillerSelection{Categories: []string{"alcohol"}},
+		}},
+	}
+	if _, err := st.SaveChannel(t.Context(), channel); err != nil {
+		t.Fatal(err)
+	}
+	pods := filler.NewPodAdapter(clipCatalogAdapter{st: st}, nil, func() filler.Policy {
+		return filler.Policy{PodMax: 4, BreakDurationMs: 30_000}
+	}, slog.New(slog.DiscardHandler))
+	engine := channels.New(st, nil, fillerAdmissionAvailability{
+		provision.Key("movie:tmdb:1"): "lib-1",
+		provision.Key("movie:tmdb:2"): "lib-2",
+	}, nil, channels.Config{
+		ReconcileTTL: 10 * time.Minute, BreaksPerHour: 30,
+		ResolvePlayoutBackendContext: func(context.Context) (string, error) {
+			return schedule.PlayoutBackendInternal, nil
+		},
+	}, func() time.Time { return now }, slog.New(slog.DiscardHandler)).WithPods(pods)
+	if err := engine.Reconcile(t.Context(), channel.ID); err != nil {
+		t.Fatal(err)
+	}
+	assertChannelHasFiller(t, st, channel.ID, true)
+
+	beer, ok := taxonomy.New(mustTaxa(t, st)).Get("beer")
+	if !ok {
+		t.Fatal("seed taxonomy has no beer")
+	}
+	beer.Parent = "food"
+	editor := taxonomyEditor{
+		store: st,
+		wake:  &fillerChannelWake{st: st, channels: engine, log: slog.New(slog.DiscardHandler)},
+		now:   func() time.Time { return now.Add(time.Minute) },
+	}
+	if _, err := editor.Apply(t.Context(), store.TaxonomyEdit{Slug: beer.Slug, Taxon: beer}); err != nil {
+		t.Fatal(err)
+	}
+	assertChannelHasFiller(t, st, channel.ID, false)
+}
+
+func TestTaxonomyEditor_ResolverOnlyEditDoesNotReconcileChannels(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	beer, ok := taxonomy.New(mustTaxa(t, st)).Get("beer")
+	if !ok {
+		t.Fatal("seed taxonomy has no beer")
+	}
+	beer.Synonyms = append(beer.Synonyms, "pint")
+	recorder := &taxonomyWakeRecorder{}
+	editor := taxonomyEditor{
+		store: st,
+		wake:  &fillerChannelWake{st: st, channels: recorder, log: slog.New(slog.DiscardHandler)},
+	}
+	if _, err := editor.Apply(t.Context(), store.TaxonomyEdit{Slug: beer.Slug, Taxon: beer}); err != nil {
+		t.Fatal(err)
+	}
+	if len(recorder.snapshots) != 0 {
+		t.Fatalf("resolver-only edit woke channel eligibility with snapshots %+v", recorder.snapshots)
+	}
+}
+
+func assertChannelHasFiller(t *testing.T, st store.Store, channelID string, want bool) {
+	t.Helper()
+	channel, err := st.GetChannel(t.Context(), channelID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	has := false
+	for _, slot := range channel.Desired {
+		has = has || slot.Kind == schedule.SlotFiller
+	}
+	if has != want {
+		t.Fatalf("channel %s has filler = %v, want %v; desired=%+v", channelID, has, want, channel.Desired)
 	}
 }
 
