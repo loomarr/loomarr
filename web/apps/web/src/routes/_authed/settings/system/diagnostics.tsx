@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { DEFAULT_APPLICATION_FILTERS, DiagnosticsPage, type DiagnosticsSearch } from "@/diagnostics";
+import { PlayoutDiagnostics } from "@/diagnostics/playout-diagnostics";
 
 const oneOf = <T extends string>(value: unknown, allowed: readonly T[], fallback: T): T =>
   typeof value === "string" && allowed.includes(value as T) ? (value as T) : fallback;
@@ -30,6 +31,15 @@ const validateSearch = (raw: Record<string, unknown>): Partial<DiagnosticsSearch
   ...(typeof raw.jobId === "string" ? { jobId: raw.jobId.slice(0, 128) } : {}),
   ...(typeof raw.processRunId === "string" ? { processRunId: raw.processRunId.slice(0, 128) } : {}),
   ...(typeof raw.processId === "string" ? { processId: raw.processId.slice(0, 128) } : {}),
+  processRange: oneOf(raw.processRange, ["1h", "6h", "24h"] as const, "1h"),
+  processStatus: oneOf(
+    raw.processStatus,
+    ["all", "running", "succeeded", "failed", "cancelled"] as const,
+    "all",
+  ),
+  processPurpose: typeof raw.processPurpose === "string" ? raw.processPurpose.slice(0, 128) : "",
+  processChannelId: typeof raw.processChannelId === "string" ? raw.processChannelId.slice(0, 128) : "",
+  processJobId: typeof raw.processJobId === "string" ? raw.processJobId.slice(0, 128) : "",
 });
 
 const DiagnosticsRoute = () => {
@@ -38,6 +48,11 @@ const DiagnosticsRoute = () => {
   const navigate = Route.useNavigate();
   const normalized: DiagnosticsSearch = {
     view: search.view ?? "health",
+    processRange: "1h",
+    processStatus: "all",
+    processPurpose: "",
+    processChannelId: "",
+    processJobId: "",
     ...DEFAULT_APPLICATION_FILTERS,
     ...search,
   };
@@ -63,9 +78,11 @@ const DiagnosticsRoute = () => {
         }
       }}
       playout={
-        <p className="rounded-lg border border-border bg-card px-4 py-8 text-center text-muted-foreground text-sm">
-          Loading Process-run diagnostics…
-        </p>
+        <PlayoutDiagnostics
+          filters={normalized}
+          onFiltersChange={(next) => void navigate({ search: next, replace: true })}
+          onOpenChannel={(id) => void navigate({ to: "/channels/$id", params: { id } })}
+        />
       }
     />
   );

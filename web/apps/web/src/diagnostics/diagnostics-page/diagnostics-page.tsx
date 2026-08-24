@@ -9,6 +9,11 @@ type DiagnosticsView = "health" | "application" | "playout";
 type DiagnosticsSearch = ApplicationFilters & {
   view: DiagnosticsView;
   processId?: string;
+  processRange: "1h" | "6h" | "24h";
+  processStatus: "all" | "running" | "succeeded" | "failed" | "cancelled";
+  processPurpose: string;
+  processChannelId: string;
+  processJobId: string;
 };
 
 const DiagnosticsPage = ({

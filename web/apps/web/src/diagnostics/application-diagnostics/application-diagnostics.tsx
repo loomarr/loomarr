@@ -3,7 +3,7 @@ import type { EventView } from "@loomarr/api/models/eventView";
 import { ListDiagnosticEventsLevel } from "@loomarr/api/models/listDiagnosticEventsLevel";
 import type { ListDiagnosticEventsParams } from "@loomarr/api/models/listDiagnosticEventsParams";
 import { ListDiagnosticEventsSource } from "@loomarr/api/models/listDiagnosticEventsSource";
-import { AlertTriangle, Check, Clipboard, Download, RotateCcw } from "lucide-react";
+import { AlertTriangle, Check, Clipboard, Download, Radio, RotateCcw, Square } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
@@ -172,6 +172,85 @@ const EventDetail = ({
   );
 };
 
+const VerboseCaptureControl = ({ filters }: { filters: ApplicationFilters }) => {
+  const [duration, setDuration] = useState("5");
+  const query = diagnosticsApi.useGetDiagnosticVerboseCapture({
+    query: { retry: false, refetchInterval: 5_000 },
+  });
+  const start = diagnosticsApi.useStartDiagnosticVerboseCapture();
+  const stop = diagnosticsApi.useStopDiagnosticVerboseCapture();
+  const capture = query.data?.status === 200 ? query.data.data : undefined;
+  const busy = start.isPending || stop.isPending;
+  const startCapture = async () => {
+    await start.mutateAsync({
+      data: {
+        durationMinutes: Number(duration),
+        ...(filters.subsystem.trim() ? { subsystem: filters.subsystem.trim() } : {}),
+        ...(filters.channelId ? { channelId: filters.channelId } : {}),
+      },
+    });
+    await query.refetch();
+  };
+  const stopCapture = async () => {
+    await stop.mutateAsync();
+    await query.refetch();
+  };
+  return (
+    <section className="rounded-lg border border-border bg-card p-3" aria-labelledby="verbose-capture-title">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="min-w-64 flex-1">
+          <h3 id="verbose-capture-title" className="font-medium text-sm">
+            Verbose capture
+          </h3>
+          <p className="text-muted-foreground text-xs">
+            Temporarily retain debug events
+            {filters.subsystem.trim() ? ` for ${filters.subsystem.trim()}` : ""}
+            {filters.channelId ? ` on Channel ${filters.channelId}` : ""}. The same redaction, queue, and
+            retention limits still apply.
+          </p>
+        </div>
+        {capture?.active ? (
+          <>
+            <span className="inline-flex items-center gap-2 text-sm">
+              <Radio aria-hidden className="size-4 text-caution" />
+              Active until {formatTime(capture.endsAt ?? Date.now())}
+            </span>
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => void stopCapture()}>
+              <Square aria-hidden /> Stop
+            </Button>
+          </>
+        ) : (
+          <>
+            <Select value={duration} onValueChange={setDuration}>
+              <SelectTrigger className="w-32" aria-label="Verbose capture duration">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">1 minute</SelectItem>
+                <SelectItem value="5">5 minutes</SelectItem>
+                <SelectItem value="10">10 minutes</SelectItem>
+                <SelectItem value="15">15 minutes</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy || query.isError}
+              onClick={() => void startCapture()}
+            >
+              <Radio aria-hidden /> Start capture
+            </Button>
+          </>
+        )}
+      </div>
+      {query.isError && <p className="mt-2 text-danger text-xs">Verbose capture is unavailable.</p>}
+      {(start.isError || stop.isError) && (
+        <p className="mt-2 text-danger text-xs">The capture control could not be updated.</p>
+      )}
+    </section>
+  );
+};
+
 const ApplicationDiagnostics = ({
   filters,
   onFiltersChange,
@@ -311,6 +390,8 @@ const ApplicationDiagnostics = ({
           onChange={(event) => updateFilters({ ...filters, text: event.target.value })}
         />
       </div>
+
+      <VerboseCaptureControl filters={filters} />
 
       <div
         className="flex flex-wrap items-center gap-4 text-xs"

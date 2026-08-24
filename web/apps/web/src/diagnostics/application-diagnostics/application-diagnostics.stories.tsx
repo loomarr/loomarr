@@ -65,7 +65,17 @@ const DiagnosticsStory = () => {
 };
 
 const withDiagnostics = (Story: typeof DiagnosticsStory) => {
-  window.fetch = (() => Promise.resolve(jsonResponse(events))) as typeof fetch;
+  window.fetch = ((input) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    return Promise.resolve(
+      url.includes("verbose-capture")
+        ? new Response(JSON.stringify({ active: false }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          })
+        : jsonResponse(events),
+    );
+  }) as typeof fetch;
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
     <QueryClientProvider client={client}>

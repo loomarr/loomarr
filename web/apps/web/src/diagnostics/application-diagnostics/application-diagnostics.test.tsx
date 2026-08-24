@@ -1,4 +1,7 @@
-import { getListDiagnosticEventsMockHandler } from "@loomarr/api/msw";
+import {
+  getGetDiagnosticVerboseCaptureMockHandler,
+  getListDiagnosticEventsMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -11,6 +14,7 @@ describe("ApplicationDiagnostics", () => {
   it("renders bounded events, expands structured correlation, and edits reproducible filters", async () => {
     const dropState = { dropped: 2 };
     server.use(
+      getGetDiagnosticVerboseCaptureMockHandler({ active: false }),
       getListDiagnosticEventsMockHandler({
         items: [
           {
