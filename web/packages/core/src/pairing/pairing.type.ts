@@ -37,6 +37,7 @@ type PairingSessionOptions = {
   createTransport(serverUrl: string): PairingTransport;
   deviceName: string;
   now?: () => number;
+  revokeCredential?: (credential: PairingCredential, signal: AbortSignal) => Promise<void>;
   sleep?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
   store: PairingCredentialStore;
   validateCredential?: (credential: PairingCredential, signal: AbortSignal) => Promise<boolean>;

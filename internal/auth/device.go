@@ -42,6 +42,13 @@ type DeviceManager struct {
 	now   func() time.Time
 }
 
+// DevicePrincipal is the authenticated identity carried by one paired-device credential. ID is the
+// token hash: it is safe to use as a revocation handle and cannot authenticate a request.
+type DevicePrincipal struct {
+	ID   string
+	User store.User
+}
+
 // NewDeviceManager builds a device manager. now defaults to time.Now.
 func NewDeviceManager(st store.Store, now func() time.Time) *DeviceManager {
 	if now == nil {
@@ -183,21 +190,23 @@ func (m *DeviceManager) Revoke(ctx context.Context, tokenHash, userID string) (b
 	return m.store.DeleteDeviceToken(ctx, tokenHash, userID)
 }
 
-// ResolveDevice authenticates a device token and returns its owning user, so a device acts AS the
-// member who approved it and inherits that member's role — never more.
-func (m *DeviceManager) ResolveDevice(ctx context.Context, token string) (store.User, error) {
-	dt, err := m.store.GetDeviceToken(ctx, hashToken(token))
+// ResolveDevice authenticates a device token and returns its non-secret revocation identity plus
+// its owning user, so a device acts AS the member who approved it and inherits that member's role —
+// never more.
+func (m *DeviceManager) ResolveDevice(ctx context.Context, token string) (DevicePrincipal, error) {
+	id := hashToken(token)
+	dt, err := m.store.GetDeviceToken(ctx, id)
 	if err != nil {
-		return store.User{}, err
+		return DevicePrincipal{}, err
 	}
 	user, err := m.store.GetUser(ctx, dt.UserID)
 	if err != nil {
-		return store.User{}, err
+		return DevicePrincipal{}, err
 	}
 	if user.Disabled {
 		// Same rule sessions follow: disabling a user must take effect immediately everywhere,
 		// including on a TV that has not been touched in weeks.
-		return store.User{}, store.ErrNotFound
+		return DevicePrincipal{}, store.ErrNotFound
 	}
-	return user, nil
+	return DevicePrincipal{ID: id, User: user}, nil
 }

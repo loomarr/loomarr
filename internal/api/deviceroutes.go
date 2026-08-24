@@ -55,6 +55,12 @@ func (s *Server) registerDeviceAuth(api huma.API) {
 		Summary: "Revoke one paired device", Tags: []string{"auth"},
 		DefaultStatus: http.StatusNoContent,
 	}, RoleMember), s.handleDeviceRevoke)
+
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "device-revoke-current", Method: http.MethodDelete, Path: "/v1/auth/device",
+		Summary: "Revoke the paired device making this request", Tags: []string{"auth"},
+		DefaultStatus: http.StatusNoContent,
+	}, RoleMember), s.handleCurrentDeviceRevoke)
 }
 
 type deviceStartInput struct {
@@ -237,6 +243,25 @@ func (s *Server) handleDeviceRevoke(ctx context.Context, in *deviceRevokeInput) 
 	}
 	if !revoked {
 		return nil, errNotFound("Device not found", "That device is already gone.")
+	}
+	return nil, nil
+}
+
+func (s *Server) handleCurrentDeviceRevoke(ctx context.Context, _ *struct{}) (*struct{}, error) {
+	user, ok := userFrom(ctx)
+	if !ok {
+		return nil, errUnauthorized("Paired device required", "Only a paired device can disconnect itself.")
+	}
+	deviceID, ok := deviceIDFrom(ctx)
+	if !ok {
+		return nil, errUnauthorized("Paired device required", "Only a paired device can disconnect itself.")
+	}
+	revoked, err := s.devices.Revoke(ctx, deviceID, user.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !revoked {
+		return nil, errUnauthorized("Device disconnected", "This paired device is already disconnected.")
 	}
 	return nil, nil
 }

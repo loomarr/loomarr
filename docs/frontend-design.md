@@ -39,7 +39,9 @@ from one shared vector definition and reviewed together in Storybook. Product gl
 outlined family behind a Loomarr-owned interface with named sizes, stroke, state, and accessibility
 rules. Pairing surfaces use the canonical chroma-and-Geist lockup, while the QR code carries the
 contained Loomarr mark inside a high-contrast protected centre area and sufficient error correction
-for reliable scanning. A platform asset or one-off icon is not a new source of design truth.
+for reliable scanning. Paired native shells expose a confirmed **Disconnect this device** action;
+the server revokes the current device before secure local state is cleared, and a failed revocation
+remains retryable. A platform asset or one-off icon is not a new source of design truth.
 
 ---
 

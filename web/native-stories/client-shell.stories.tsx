@@ -7,6 +7,7 @@ const meta = {
   args: {
     active: "guide",
     density: "touch",
+    onDisconnect: () => {},
     onNavigate: () => {},
     serverName: "loomarr.media",
   },

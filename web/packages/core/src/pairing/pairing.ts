@@ -1,4 +1,9 @@
-import { getDeviceListUrl, getDevicePairPollUrl, getDevicePairStartUrl } from "@loomarr/api/endpoints/auth";
+import {
+  getDeviceListUrl,
+  getDevicePairPollUrl,
+  getDevicePairStartUrl,
+  getDeviceRevokeCurrentUrl,
+} from "@loomarr/api/endpoints/auth";
 
 import type {
   PairingCredential,
@@ -139,6 +144,23 @@ const validatePairingCredential = async (
   }
 };
 
+const revokePairingCredential = async (
+  credential: PairingCredential,
+  signal: AbortSignal,
+  fetcher: PairingFetch = fetch,
+): Promise<void> => {
+  const response = await fetcher(`${credential.serverUrl}${getDeviceRevokeCurrentUrl()}`, {
+    headers: {
+      Authorization: `Bearer ${credential.token}`,
+      "X-Loomarr-Csrf": "1",
+    },
+    method: "DELETE",
+    signal,
+  });
+  if (!response.ok)
+    throw new PairingHttpError(response.status, `Disconnect request failed (${response.status})`);
+};
+
 const createAuthenticatedFetch =
   (
     credential: PairingCredential,
@@ -222,6 +244,27 @@ class PairingSession {
     await this.options.store.clear();
     if (current.status === "paired") this.emit({ serverUrl: current.serverUrl, status: "revoked" });
   }
+  async disconnect() {
+    const current = this.state;
+    if (current.status !== "paired") return;
+    this.stop();
+    const controller = new AbortController();
+    this.abortController = controller;
+    try {
+      const credential: PairingCredential = {
+        deviceName: current.deviceName,
+        serverUrl: current.serverUrl,
+        token: current.token,
+      };
+      await (this.options.revokeCredential ?? revokePairingCredential)(credential, controller.signal);
+    } catch (error) {
+      if (!(error instanceof PairingHttpError) || error.status !== 401) throw error;
+    } finally {
+      if (this.abortController === controller) this.abortController = undefined;
+    }
+    await this.options.store.clear();
+    this.emit({ serverUrl: current.serverUrl, status: "revoked" });
+  }
   stop() {
     this.abortController?.abort();
     this.abortController = undefined;
@@ -300,5 +343,6 @@ export {
   PairingHttpError,
   PairingSession,
   pairingLifetimeSeconds,
+  revokePairingCredential,
   validatePairingCredential,
 };

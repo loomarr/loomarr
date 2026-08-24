@@ -3,6 +3,7 @@ import {
   createAuthenticatedFetch,
   createPairingCredentialStore,
   normalizeServerUrl,
+  PairingHttpError,
   PairingSession,
   pairingLifetimeSeconds,
 } from "./pairing";
@@ -113,6 +114,66 @@ describe("pairing contract", () => {
       validateCredential: vi.fn(async () => false),
     });
     await session.initialize(undefined);
+    expect(store.clear).toHaveBeenCalledOnce();
+    expect(session.snapshot()).toEqual({ serverUrl: credential.serverUrl, status: "revoked" });
+  });
+  it("revokes the server credential before clearing a deliberate disconnect", async () => {
+    const credential = { deviceName: "Shield", serverUrl: "https://loomarr.media", token: "secret" };
+    const store = memoryStore(credential);
+    const revokeCredential = vi.fn(async () => {});
+    const session = new PairingSession({
+      createTransport: () => {
+        throw new Error("must not start a pairing");
+      },
+      deviceName: "Shield",
+      revokeCredential,
+      store,
+      validateCredential: vi.fn(async () => true),
+    });
+    await session.initialize(undefined);
+    await session.disconnect();
+
+    expect(revokeCredential).toHaveBeenCalledWith(credential, expect.any(AbortSignal));
+    expect(store.clear).toHaveBeenCalledOnce();
+    expect(session.snapshot()).toEqual({ serverUrl: credential.serverUrl, status: "revoked" });
+  });
+  it("retains the credential when deliberate server revocation fails", async () => {
+    const credential = { deviceName: "Shield", serverUrl: "https://loomarr.media", token: "secret" };
+    const store = memoryStore(credential);
+    const session = new PairingSession({
+      createTransport: () => {
+        throw new Error("must not start a pairing");
+      },
+      deviceName: "Shield",
+      revokeCredential: vi.fn(async () => {
+        throw new PairingHttpError(503, "Server unavailable");
+      }),
+      store,
+      validateCredential: vi.fn(async () => true),
+    });
+    await session.initialize(undefined);
+
+    await expect(session.disconnect()).rejects.toThrow("Server unavailable");
+    expect(store.clear).not.toHaveBeenCalled();
+    expect(session.snapshot()).toEqual({ ...credential, status: "paired" });
+  });
+  it("clears an already-unauthorized credential during deliberate disconnect", async () => {
+    const credential = { deviceName: "Shield", serverUrl: "https://loomarr.media", token: "dead" };
+    const store = memoryStore(credential);
+    const session = new PairingSession({
+      createTransport: () => {
+        throw new Error("must not start a pairing");
+      },
+      deviceName: "Shield",
+      revokeCredential: vi.fn(async () => {
+        throw new PairingHttpError(401, "Already revoked");
+      }),
+      store,
+      validateCredential: vi.fn(async () => true),
+    });
+    await session.initialize(undefined);
+    await session.disconnect();
+
     expect(store.clear).toHaveBeenCalledOnce();
     expect(session.snapshot()).toEqual({ serverUrl: credential.serverUrl, status: "revoked" });
   });

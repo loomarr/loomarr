@@ -6,6 +6,7 @@ export {
   PairingHttpError,
   PairingSession,
   pairingLifetimeSeconds,
+  revokePairingCredential,
   validatePairingCredential,
 } from "./pairing";
 export type {

@@ -41,18 +41,36 @@ func NewSessionAuthorizerCurrent(
 }
 
 func (a *sessionAuthorizer) Authorize(r *http.Request) Role {
-	role, _ := a.AuthorizeUser(r)
-	return role
+	return a.authorizeIdentity(r).role
 }
 
 // AuthorizeUser resolves the role AND the authenticated user (when a session
 // cookie identifies one). The API_TOKEN path has no user (machine/break-glass).
 func (a *sessionAuthorizer) AuthorizeUser(r *http.Request) (Role, *store.User) {
+	identity := a.authorizeIdentity(r)
+	return identity.role, identity.user
+}
+
+type requestIdentity struct {
+	deviceID string
+	role     Role
+	user     *store.User
+}
+
+type identityAuthorizer interface {
+	AuthorizeIdentity(r *http.Request) requestIdentity
+}
+
+func (a *sessionAuthorizer) AuthorizeIdentity(r *http.Request) requestIdentity {
+	return a.authorizeIdentity(r)
+}
+
+func (a *sessionAuthorizer) authorizeIdentity(r *http.Request) requestIdentity {
 	// Session cookie (the normal human path).
 	if c, err := r.Cookie(auth.CookieName); err == nil && c.Value != "" {
 		if u, err := a.mgr.Resolve(r.Context(), c.Value); err == nil {
 			user := u
-			return roleOf(u), &user
+			return requestIdentity{role: roleOf(u), user: &user}
 		}
 	}
 	const prefix = "Bearer "
@@ -67,8 +85,9 @@ func (a *sessionAuthorizer) AuthorizeUser(r *http.Request) (Role, *store.User) {
 	// virtue of being a device. That is the whole point of this path: the alternative was shipping
 	// the admin break-glass token to every TV in the house.
 	if a.devices != nil && len(h) > len(prefix) && h[:len(prefix)] == prefix {
-		if user, err := a.devices.ResolveDevice(r.Context(), h[len(prefix):]); err == nil {
-			return roleOf(user), &user
+		if principal, err := a.devices.ResolveDevice(r.Context(), h[len(prefix):]); err == nil {
+			user := principal.User
+			return requestIdentity{deviceID: principal.ID, role: roleOf(user), user: &user}
 		}
 	}
 
@@ -85,10 +104,10 @@ func (a *sessionAuthorizer) AuthorizeUser(r *http.Request) (Role, *store.User) {
 			}
 		}
 		if apiToken != "" && constantEq(h[len(prefix):], apiToken) {
-			return RoleAdmin, nil
+			return requestIdentity{role: RoleAdmin}
 		}
 	}
-	return RoleAnonymous, nil
+	return requestIdentity{role: RoleAnonymous}
 }
 
 // hasBearer reports whether a request carries an Authorization: Bearer credential.
@@ -125,6 +144,15 @@ type userCtxKey struct{}
 func userFrom(ctx context.Context) (store.User, bool) {
 	u, ok := ctx.Value(userCtxKey{}).(store.User)
 	return u, ok
+}
+
+// deviceCtxKey threads the safe token-hash identity of an authenticated paired device. It is set
+// only by the authorizer that validated the bearer credential; handlers never re-parse credentials.
+type deviceCtxKey struct{}
+
+func deviceIDFrom(ctx context.Context) (string, bool) {
+	id, ok := ctx.Value(deviceCtxKey{}).(string)
+	return id, ok && id != ""
 }
 
 // reqCtxKey threads the raw *http.Request so handlers can read the client IP and

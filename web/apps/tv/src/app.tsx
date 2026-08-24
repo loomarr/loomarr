@@ -19,10 +19,16 @@ const credentialStore = createPairingCredentialStore({
   setItem: SecureStore.setItemAsync,
 });
 
-const TvShell = ({ credential }: { credential: PairingCredential }) => {
+const TvShell = ({ credential, session }: { credential: PairingCredential; session: PairingSession }) => {
   const [active, setActive] = useState<ClientDestination>("watching");
   return (
-    <ClientShell active={active} density="tv" onNavigate={setActive} serverName={credential.serverUrl} />
+    <ClientShell
+      active={active}
+      density="tv"
+      onDisconnect={() => session.disconnect()}
+      onNavigate={setActive}
+      serverName={credential.serverUrl}
+    />
   );
 };
 
@@ -43,7 +49,7 @@ const App = () => {
       <PairingShell
         density="tv"
         initialServerUrl={process.env.EXPO_PUBLIC_LOOMARR_URL}
-        renderPaired={(credential) => <TvShell credential={credential} />}
+        renderPaired={(credential) => <TvShell credential={credential} session={session} />}
         session={session}
       />
       <StatusBar hidden />

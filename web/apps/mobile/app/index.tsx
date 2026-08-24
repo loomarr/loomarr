@@ -18,10 +18,16 @@ const credentialStore = createPairingCredentialStore({
   setItem: SecureStore.setItemAsync,
 });
 
-const MobileShell = ({ credential }: { credential: PairingCredential }) => {
+const MobileShell = ({ credential, session }: { credential: PairingCredential; session: PairingSession }) => {
   const [active, setActive] = useState<ClientDestination>("guide");
   return (
-    <ClientShell active={active} density="touch" onNavigate={setActive} serverName={credential.serverUrl} />
+    <ClientShell
+      active={active}
+      density="touch"
+      onDisconnect={() => session.disconnect()}
+      onNavigate={setActive}
+      serverName={credential.serverUrl}
+    />
   );
 };
 
@@ -42,7 +48,7 @@ const Index = () => {
         allowServerEntry
         density="touch"
         initialServerUrl={process.env.EXPO_PUBLIC_LOOMARR_URL}
-        renderPaired={(credential) => <MobileShell credential={credential} />}
+        renderPaired={(credential) => <MobileShell credential={credential} session={session} />}
         session={session}
       />
       <StatusBar style="auto" />

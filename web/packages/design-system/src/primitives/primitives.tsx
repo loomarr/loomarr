@@ -204,6 +204,7 @@ const ActionFrame = styled(Pressable, {
   pressStyle: { opacity: 0.82, scale: 0.98 },
   variants: {
     tone: {
+      danger: { backgroundColor: "$stateDanger", borderColor: "$stateDanger" },
       primary: { backgroundColor: "$actionPrimary", borderColor: "$actionPrimary" },
       secondary: { backgroundColor: "$surfaceElevated", borderColor: "$borderDecorative" },
     },
@@ -214,7 +215,7 @@ const ActionFrame = styled(Pressable, {
 type ActionProps = Omit<ComponentProps<typeof ActionFrame>, "children" | "tone"> & {
   children: ReactNode;
   density?: Density;
-  tone?: "primary" | "secondary";
+  tone?: "danger" | "primary" | "secondary";
 };
 
 const Action = ({
@@ -244,7 +245,7 @@ const Action = ({
       tone={tone}
     >
       <TamaguiText
-        color={tone === "primary" ? "$contentInverse" : "$contentPrimary"}
+        color={tone === "secondary" ? "$contentPrimary" : "$contentInverse"}
         fontFamily="$body"
         fontSize={typography[density].label.size}
         fontWeight="700"

@@ -4761,6 +4761,24 @@ Multi-user, **Loomarr-owned identity**: the local `users` table is the source of
 - The `DeviceId` in the media-server login header is stable per install (derived from an instance id generated at first migration), so Loomarr appears as one device in the media server's dashboard.
 - **Machine access:** the generated `API_TOKEN` (config-design §4) authenticates non-human clients (scripts, an external scheduler) via `Authorization: Bearer` and doubles as break-glass admin — it is the escape hatch if the media server is down *and* before any user exists.
 
+### Paired clients own a revocable device credential
+
+Native phone and TV clients pair through the device-code flow and receive a durable, member-scoped
+bearer credential stored in the platform secure store. A paired client exposes **Disconnect this
+device** behind an explicit confirmation. Confirming calls `DELETE /v1/auth/device` with that device
+credential; authorization resolves and threads the current device identity, and the handler may
+revoke only that identity. It never accepts a browser session or the break-glass `API_TOKEN` as a
+substitute for a current device. The existing owner-facing device list remains the remote-revocation
+path for another phone or browser.
+
+The client clears its secure credential only after the server confirms self-revocation, or after an
+authoritative `401` proves the credential is already dead. Network errors and `5xx` responses retain
+the credential and present a retryable failure, so a local-only sign-out cannot leave an unnoticed
+live token behind. A successful disconnect returns to the pairing flow and can pair again with the
+same or a different Loomarr server. Disabling the owning user and remote revocation retain their
+existing behavior: the next authenticated request returns `401`, clears the local credential, and
+returns the client to pairing.
+
 ### SSO is a credential path, not a provisioning path (D-F, V8)
 
 An **OIDC** provider (Authelia, Authentik, Keycloak, any compliant issuer) becomes a **third
