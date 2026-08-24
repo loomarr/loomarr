@@ -13,11 +13,12 @@
     "bundle": "EXPO_TV=1 expo export --platform android --output-dir dist/android-tv && EXPO_TV=1 expo export --platform ios --output-dir dist/apple-tv"
   },
   "dependencies": {
-    "@loomarr/design-system": "workspace:*",
     "@loomarr/core": "workspace:*",
+    "@loomarr/design-system": "workspace:*",
     "@loomarr/ui": "workspace:*",
     "@react-native-tvos/config-tv": "0.1.6",
     "expo": "~57.0.16",
+    "expo-keep-awake": "~57.0.1",
     "expo-secure-store": "~57.0.1",
     "expo-status-bar": "~57.0.1",
     "expo-system-ui": "~57.0.2",

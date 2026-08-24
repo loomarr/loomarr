@@ -8,6 +8,7 @@ import {
 import { LoomarrProvider } from "@loomarr/design-system";
 import type { ClientDestination } from "@loomarr/ui";
 import { ClientShell, PairingShell } from "@loomarr/ui";
+import { useKeepAwake } from "expo-keep-awake";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
 import { useMemo, useState } from "react";
@@ -26,6 +27,7 @@ const TvShell = ({ credential }: { credential: PairingCredential }) => {
 };
 
 const App = () => {
+  useKeepAwake();
   const session = useMemo(
     () =>
       new PairingSession({
