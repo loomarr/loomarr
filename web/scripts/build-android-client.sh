@@ -14,10 +14,16 @@ readonly MEMORY_MAX="${LOOMARR_ANDROID_MEMORY_MAX:-4G}"
 readonly GRADLE_HEAP="${LOOMARR_ANDROID_GRADLE_HEAP:-1280m}"
 readonly ARCHITECTURES="${LOOMARR_ANDROID_ARCHITECTURES:-arm64-v8a}"
 readonly CPUSET="${LOOMARR_ANDROID_CPUSET:-0-3}"
+readonly NATIVE_JOBS="${LOOMARR_ANDROID_NATIVE_JOBS:-1}"
 
 if [[ "${APP_NAME}" != "mobile" && "${APP_NAME}" != "tv" ]]; then
   printf 'usage: %s [mobile|tv]\n' "$0" >&2
   exit 2
+fi
+if [[ "${APP_NAME}" == "tv" ]]; then
+  readonly ENTRY_FILE="index.ts"
+else
+  readonly ENTRY_FILE="node_modules/expo-router/entry.js"
 fi
 if [[ -z "${ANDROID_HOME:-}" ]]; then
   printf 'ANDROID_HOME must point to the Android SDK\n' >&2
@@ -31,6 +37,22 @@ if [[ ! -x "${APP_DIR}/android/gradlew" ]]; then
   )
 fi
 
+# `assembleDebug` normally expects Metro and therefore produces an APK that opens to React Native's
+# red "Unable to load script" screen when installed on a remote Shield. This target is the physical
+# device proof, so embed the production JS/assets explicitly while retaining debug-native signing
+# and the faster incremental native build.
+mkdir -p "${APP_DIR}/android/app/src/main/assets" "${APP_DIR}/android/app/src/main/res"
+(
+  cd "${APP_DIR}"
+  NODE_ENV=production pnpm exec expo export:embed \
+    --platform android \
+    --dev false \
+    --entry-file "${ENTRY_FILE}" \
+    --bundle-output android/app/src/main/assets/index.android.bundle \
+    --assets-dest android/app/src/main/res \
+    --max-workers 1
+)
+
 if [[ "${SCOPE_MARKER}" != "--inside-memory-scope" ]] \
   && command -v systemd-run >/dev/null 2>&1 \
   && systemctl --user show-environment >/dev/null 2>&1; then
@@ -42,6 +64,7 @@ if [[ "${SCOPE_MARKER}" != "--inside-memory-scope" ]] \
     LOOMARR_ANDROID_GRADLE_HEAP="${GRADLE_HEAP}" \
     LOOMARR_ANDROID_ARCHITECTURES="${ARCHITECTURES}" \
     LOOMARR_ANDROID_CPUSET="${CPUSET}" \
+    LOOMARR_ANDROID_NATIVE_JOBS="${NATIVE_JOBS}" \
     ANDROID_HOME="${ANDROID_HOME}" \
     "${SCRIPT_PATH}" "${APP_NAME}" --inside-memory-scope
 fi
@@ -58,7 +81,8 @@ gradle_command=(./gradlew assembleDebug
   -Pkotlin.compiler.execution.strategy=in-process \
   "-PreactNativeArchitectures=${ARCHITECTURES}")
 if command -v taskset >/dev/null 2>&1; then
-  NODE_ENV=development taskset --cpu-list "${CPUSET}" "${gradle_command[@]}"
+  CMAKE_BUILD_PARALLEL_LEVEL="${NATIVE_JOBS}" NODE_ENV=development \
+    taskset --cpu-list "${CPUSET}" "${gradle_command[@]}"
 else
-  NODE_ENV=development "${gradle_command[@]}"
+  CMAKE_BUILD_PARALLEL_LEVEL="${NATIVE_JOBS}" NODE_ENV=development "${gradle_command[@]}"
 fi
