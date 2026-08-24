@@ -179,6 +179,15 @@ classify() {
       select_gate go
       select_gate go_full
       ;;
+    internal/fillereval/corpus/*)
+      known=true
+      select_gate contracts
+      select_gate go
+      ;;
+    internal/fillereval/*.md)
+      known=true
+      select_gate docs
+      ;;
     internal/web/dist/*)
       known=true
       select_gate contracts

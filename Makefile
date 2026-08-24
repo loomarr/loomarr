@@ -264,7 +264,7 @@ go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must
 test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
 	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ ./internal/api/ -v
 
-.PHONY: eval-contract eval eval-cert eval-matrix
+.PHONY: eval-contract eval eval-cert eval-matrix filler-eval-contract filler-eval-cert
 eval-contract: ## hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB
 	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/
 
@@ -300,6 +300,24 @@ eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (m
 	  LOOMARR_EVAL_JUDGE_API_KEY="$$OPENROUTER_API_KEY" \
 	    $(MAKE) eval-cert || status=$$?; \
 	  exit "$$status"
+
+filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
+	$(GO) test ./internal/fillereval/ ./cmd/filler-cert/
+
+filler-eval-cert: ## score captured filler decisions; never contacts a model or media source
+	@test -n "$$LOOMARR_FILLER_EVAL_PREDICTIONS" || { echo "filler-eval-cert: LOOMARR_FILLER_EVAL_PREDICTIONS is required" >&2; exit 2; }; \
+	  eval "$$(./scripts/dev-env.sh export)"; \
+	  report="$${LOOMARR_FILLER_EVAL_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-certification.json}"; \
+	  $(GO) run ./cmd/filler-cert \
+	    --manifest "$${LOOMARR_FILLER_EVAL_MANIFEST:-internal/fillereval/corpus/seed-v1.json}" \
+	    --predictions "$$LOOMARR_FILLER_EVAL_PREDICTIONS" --report "$$report" \
+	    --profile "$${LOOMARR_FILLER_EVAL_PROFILE:-replay}" \
+	    --evidence-version "$$LOOMARR_FILLER_EVAL_EVIDENCE_VERSION" \
+	    --prompt-version "$$LOOMARR_FILLER_EVAL_PROMPT_VERSION" \
+	    --taxonomy-version "$$LOOMARR_FILLER_EVAL_TAXONOMY_VERSION" \
+	    --policy-version "$$LOOMARR_FILLER_EVAL_POLICY_VERSION" \
+	    --capability-snapshot "$$LOOMARR_FILLER_EVAL_CAPABILITY_SNAPSHOT" \
+	    --price-snapshot "$$LOOMARR_FILLER_EVAL_PRICE_SNAPSHOT"
 
 ## ---- build / run ---------------------------------------------------------
 
