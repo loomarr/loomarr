@@ -662,15 +662,30 @@ const guideChannels: GuideChannelTimeline[] = [
     status: "live",
     pendingCount: 0,
     airings: [
-      { kind: "program", title: "Heat", startMs: guideAt(-25), stopMs: guideAt(35), year: 1995 },
+      {
+        kind: "program",
+        scheduleBlockId: "block_action_heat",
+        title: "Heat",
+        startMs: guideAt(-25),
+        stopMs: guideAt(35),
+        year: 1995,
+      },
       {
         kind: "filler",
+        scheduleBlockId: "block_action_break_1",
         title: "Commercials",
         startMs: guideAt(35),
         stopMs: guideAt(39),
         pod: guidePod,
       },
-      { kind: "program", title: "Point Break", startMs: guideAt(39), stopMs: guideAt(111), year: 1991 },
+      {
+        kind: "program",
+        scheduleBlockId: "block_action_point_break",
+        title: "Point Break",
+        startMs: guideAt(39),
+        stopMs: guideAt(111),
+        year: 1991,
+      },
     ],
   },
   {
@@ -682,6 +697,7 @@ const guideChannels: GuideChannelTimeline[] = [
     airings: [
       {
         kind: "program",
+        scheduleBlockId: "block_springfield_bart_mother",
         title: "Bart the Mother",
         series: "The Simpsons",
         season: 10,
@@ -689,9 +705,16 @@ const guideChannels: GuideChannelTimeline[] = [
         startMs: guideAt(0),
         stopMs: guideAt(22),
       },
-      { kind: "filler", title: "Commercials", startMs: guideAt(22), stopMs: guideAt(26) },
+      {
+        kind: "filler",
+        scheduleBlockId: "block_springfield_break_1",
+        title: "Commercials",
+        startMs: guideAt(22),
+        stopMs: guideAt(26),
+      },
       {
         kind: "program",
+        scheduleBlockId: "block_springfield_lisa_a",
         title: "Lisa Gets an A",
         series: "The Simpsons",
         season: 10,
@@ -699,9 +722,16 @@ const guideChannels: GuideChannelTimeline[] = [
         startMs: guideAt(26),
         stopMs: guideAt(48),
       },
-      { kind: "flex", title: "", startMs: guideAt(48), stopMs: guideAt(60) },
+      {
+        kind: "flex",
+        scheduleBlockId: "block_springfield_flex_1",
+        title: "",
+        startMs: guideAt(48),
+        stopMs: guideAt(60),
+      },
       {
         kind: "program",
+        scheduleBlockId: "block_springfield_kidney",
         title: "Homer Simpson in: Kidney Trouble",
         series: "The Simpsons",
         season: 10,
@@ -723,6 +753,7 @@ const guideChannels: GuideChannelTimeline[] = [
     airings: [
       {
         kind: "program",
+        scheduleBlockId: "block_scifi_best_worlds",
         title: "The Best of Both Worlds",
         series: "Star Trek: TNG",
         season: 3,
@@ -734,6 +765,7 @@ const guideChannels: GuideChannelTimeline[] = [
       // promise that something airs then.
       {
         kind: "pending",
+        scheduleBlockId: "block_scifi_first_contact",
         title: "Star Trek: First Contact",
         nominal: true,
         startMs: guideAt(45),
@@ -743,6 +775,7 @@ const guideChannels: GuideChannelTimeline[] = [
       },
       {
         kind: "program",
+        scheduleBlockId: "block_scifi_family",
         title: "Family",
         series: "Star Trek: TNG",
         season: 4,

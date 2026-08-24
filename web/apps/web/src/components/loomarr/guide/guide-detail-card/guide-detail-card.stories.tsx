@@ -23,6 +23,7 @@ const Movie: Story = {
   args: {
     airing: {
       kind: "program",
+      scheduleBlockId: "block_movie",
       title: "Heat",
       startMs: START,
       stopMs: STOP,
@@ -41,6 +42,7 @@ const Episode: Story = {
   args: {
     airing: {
       kind: "program",
+      scheduleBlockId: "block_episode",
       title: "Bart the Mother",
       series: "The Simpsons",
       season: 10,
@@ -62,6 +64,7 @@ const Break: Story = {
   args: {
     airing: {
       kind: "filler",
+      scheduleBlockId: "block_break",
       title: "Commercials",
       startMs: START,
       stopMs: STOP,
@@ -75,6 +78,7 @@ const BreakEraWidened: Story = {
   args: {
     airing: {
       kind: "filler",
+      scheduleBlockId: "block_break_widened",
       title: "Commercials",
       startMs: START,
       stopMs: STOP,
@@ -88,6 +92,7 @@ const BreakBumperCardOnly: Story = {
   args: {
     airing: {
       kind: "filler",
+      scheduleBlockId: "block_break_card",
       title: "Commercials",
       startMs: START,
       stopMs: STOP,
@@ -107,6 +112,7 @@ const PendingSlot: Story = {
   args: {
     airing: {
       kind: "pending",
+      scheduleBlockId: "block_pending",
       title: "Star Trek: First Contact",
       nominal: true,
       startMs: START,

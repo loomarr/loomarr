@@ -5925,6 +5925,43 @@ buffering/seeking/readiness/source replacement, and client version/platform. The
 authenticated and rate-limited. The server derives `actor_id`; a client cannot attribute an event
 to another person.
 
+`POST /v1/diagnostics/client-events` accepts one batch of 1–20 observations. The batch declares
+`web | android_tv`, a bounded client version, and a bounded platform label. Each observation may
+carry only its occurrence time and the correlation fields it actually knows plus the fields allowed
+for its event name. The initial closed vocabulary is:
+
+- `client.error_boundary` and `client.unhandled_error` — a bounded error class and named surface,
+  never a message, stack, DOM value, or console record;
+- `client.api_failed` — HTTP status and response `request_id`, never the request URL, body, or
+  headers;
+- `player.attached`, `player.detached`, `player.ready`, and `player.source_replaced` — Channel,
+  playback-session, transport, and bounded reason/state metadata;
+- `player.buffering_started`, `player.buffering_ended`, `player.seeking`, and `player.seeked` — the
+  same playback identity plus bounded numeric playback state;
+- `player.media_error` — a platform error code and transport, never the media URL;
+- `player.schedule_block_changed` — the server-authored current/prior schedule-block ids and block
+  kind; and
+- `player.playhead_drift` — server and rendered-frame instants plus their bounded signed delta.
+
+Severity and subsystem are server-owned per event name. Unknown names, unknown fields, invalid
+enums, oversized strings, non-finite/out-of-range numbers, and timestamps outside the accepted
+clock-skew window reject the whole batch before any record is enqueued. Accepted observations enter
+the existing best-effort recorder; ingestion returns `202` after bounded validation/enqueue and
+never waits for durable storage. Rate limiting is a per-server-derived-actor token bucket refilling
+at 120 observations per minute with a 30-observation burst; a limited batch returns `429` as a whole.
+
+Web and Android TV each keep a 100-observation in-memory queue, send at most 20 every two seconds,
+and drop oldest routine observations before errors when offline or saturated. Delivery uses the
+normal authenticated transport (`fetch` with keepalive and CSRF for web; paired-device Bearer for
+TV), never blocks playback, retries only the retained bounded queue, and does not persist a second
+client-side log.
+
+One opaque `schedule_block_id` is deterministically derived by the server from Channel, scheduled
+start, kind, and scheduled content identity. Guide projections and the Process run for that same
+scheduled block carry the identical value. A filler pod remains one scheduled block even though it
+may spawn several clip Process runs; this is the join that lets client transitions, schedule truth,
+and ffmpeg evidence meet without exposing library ids or file paths.
+
 ### Current Health and startup history
 
 Every running application generation owns one structured **Current Health** value: the server-owned

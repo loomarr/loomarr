@@ -74,6 +74,7 @@ const GUIDE = {
       airings: [
         {
           kind: "program" as const,
+          scheduleBlockId: "block_matrix",
           title: "The Matrix",
           startMs: NOW,
           stopMs: NOW + 7_200_000,

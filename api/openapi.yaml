@@ -806,6 +806,177 @@ components:
         - scope
         - targetKey
       type: object
+    ClientBatch:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ClientBatch.json
+          format: uri
+          readOnly: true
+          type: string
+        clientVersion:
+          maxLength: 64
+          type: string
+        events:
+          items:
+            $ref: "#/components/schemas/ClientObservation"
+          maxItems: 20
+          minItems: 1
+          type: array
+        platform:
+          enum:
+            - chromium
+            - firefox
+            - webkit
+            - unknown_web
+            - android_tv
+            - shield_tv
+            - unknown_android_tv
+          type: string
+        source:
+          enum:
+            - web
+            - android_tv
+          type: string
+      required:
+        - source
+        - clientVersion
+        - platform
+        - events
+      type: object
+    ClientDiagnosticsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ClientDiagnosticsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        accepted:
+          format: int64
+          type: integer
+      required:
+        - accepted
+      type: object
+    ClientObservation:
+      additionalProperties: false
+      properties:
+        blockKind:
+          enum:
+            - program
+            - filler
+            - flex
+          type: string
+        bufferedMs:
+          format: int64
+          minimum: 0
+          type: integer
+        channelId:
+          maxLength: 128
+          type: string
+        driftMs:
+          format: int64
+          type: integer
+        errorClass:
+          enum:
+            - error
+            - type_error
+            - range_error
+            - promise_rejection
+            - react_error
+            - playback_exception
+            - io_exception
+            - unknown
+          type: string
+        errorCode:
+          maxLength: 64
+          type: string
+        event:
+          enum:
+            - client.error_boundary
+            - client.unhandled_error
+            - client.api_failed
+            - player.attached
+            - player.detached
+            - player.ready
+            - player.source_replaced
+            - player.buffering_started
+            - player.buffering_ended
+            - player.seeking
+            - player.seeked
+            - player.media_error
+            - player.schedule_block_changed
+            - player.playhead_drift
+          type: string
+        fatal:
+          type: boolean
+        httpStatus:
+          format: int64
+          maximum: 599
+          minimum: 100
+          type: integer
+        occurredAt:
+          format: int64
+          minimum: 1
+          type: integer
+        playbackSessionId:
+          maxLength: 128
+          type: string
+        previousChannelId:
+          maxLength: 128
+          type: string
+        previousScheduleBlockId:
+          maxLength: 128
+          type: string
+        reason:
+          enum:
+            - mount
+            - unmount
+            - channel_change
+            - retry
+            - expired
+            - unsupported
+            - network
+            - media
+            - unknown
+          type: string
+        requestId:
+          maxLength: 128
+          type: string
+        scheduleBlockId:
+          maxLength: 128
+          type: string
+        serverTimeMs:
+          format: int64
+          minimum: 0
+          type: integer
+        surface:
+          enum:
+            - root
+            - router
+            - watch
+            - guide
+            - settings
+            - unknown
+          type: string
+        transport:
+          enum:
+            - native_hls
+            - hls_js
+            - media3
+          type: string
+        viewerTimeMs:
+          format: int64
+          minimum: 0
+          type: integer
+      required:
+        - event
+        - occurredAt
+      type: object
     ClipDTO:
       additionalProperties: false
       properties:
@@ -2603,6 +2774,9 @@ components:
         runtimeMs:
           format: int64
           type: integer
+        scheduleBlockId:
+          description: Opaque server-authored identity shared with diagnostics and Process runs for this scheduled block
+          type: string
         season:
           format: int64
           type: integer
@@ -2631,6 +2805,7 @@ components:
           type: integer
       required:
         - kind
+        - scheduleBlockId
         - title
         - startMs
         - stopMs
@@ -6553,7 +6728,12 @@ components:
           items:
             $ref: "#/components/schemas/GuideAiring"
           type: array
+        serverNowMs:
+          description: Server wall-clock at projection time, used to compare the displayed frame with schedule truth without trusting device clock
+          format: int64
+          type: integer
       required:
+        - serverNowMs
         - airings
       type: object
     TitleDTO:
@@ -7815,6 +7995,32 @@ paths:
       summary: What's on this channel now and next
       tags:
         - channels
+  /v1/diagnostics/client-events:
+    post:
+      description: Accepts a bounded closed event batch from the signed-in web or Android TV client. Actor, receipt time, severity, subsystem, and retained attributes are server-owned.
+      operationId: ingest-client-diagnostics
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientBatch"
+        required: true
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientDiagnosticsOutputBody"
+          description: Accepted
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Report curated client diagnostics
+      tags:
+        - diagnostics
   /v1/diagnostics/events:
     get:
       description: Returns one bounded, newest-first diagnostic timeline page as typed JSON or the same records as NDJSON.

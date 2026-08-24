@@ -41,13 +41,14 @@ var guideConcurrency = max(2, runtime.NumCPU())
 // simply "not a program" — so the grid could not draw them differently, and "why is there a
 // blank hour on my channel" had two completely different answers with the same rendering.
 type GuideAiring struct {
-	Kind    string `json:"kind" enum:"program,filler,pending,flex" doc:"What occupies this block: a real program, a commercial pod, an acquisition still in flight, or dead-time padding"`
-	Title   string `json:"title" doc:"The episode's name for a series, or the film's name"`
-	Series  string `json:"series,omitempty" doc:"The show's name for an episode block; absent for a movie"`
-	Season  int    `json:"season,omitempty"`
-	Episode int    `json:"episode,omitempty"`
-	StartMs int64  `json:"startMs" doc:"Epoch ms, absolute wall-clock"`
-	StopMs  int64  `json:"stopMs" doc:"Epoch ms, exclusive"`
+	Kind            string `json:"kind" enum:"program,filler,pending,flex" doc:"What occupies this block: a real program, a commercial pod, an acquisition still in flight, or dead-time padding"`
+	ScheduleBlockID string `json:"scheduleBlockId" doc:"Opaque server-authored identity shared with diagnostics and Process runs for this scheduled block"`
+	Title           string `json:"title" doc:"The episode's name for a series, or the film's name"`
+	Series          string `json:"series,omitempty" doc:"The show's name for an episode block; absent for a movie"`
+	Season          int    `json:"season,omitempty"`
+	Episode         int    `json:"episode,omitempty"`
+	StartMs         int64  `json:"startMs" doc:"Epoch ms, absolute wall-clock"`
+	StopMs          int64  `json:"stopMs" doc:"Epoch ms, exclusive"`
 	// Nominal marks a block whose times are a DISPLAY ESTIMATE rather than real airtime.
 	// Today that is exactly the pending blocks: an acquisition has no known duration, so the
 	// grid draws it at a fixed nominal width to hold its place in the timeline. A client must
@@ -272,7 +273,7 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 			airings := make([]GuideAiring, 0, len(bs))
 			refs := make([]guideArtworkRef, 0, len(bs))
 			for _, b := range bs {
-				a := guideAiringOf(b)
+				a := guideAiringOf(ch.ID, b)
 				ref := guideArtworkRef{}
 				if b.Kind == schedule.SlotProgram && s.timelineThumbs != nil {
 					ref.program = timelineThumbKey{
@@ -401,27 +402,28 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 // "what's on next" strip and fatal for a grid: a dropped block leaves a hole that every later
 // block silently slides into, so the timeline stops matching the clock. V13b's gate names this
 // explicitly — "Upcoming's gap-filtering not reintroduced".
-func guideAiringOf(b playout.Broadcast) GuideAiring {
+func guideAiringOf(channelID string, b playout.Broadcast) GuideAiring {
 	kind := string(b.Kind)
 	if kind == "" {
 		kind = string(schedule.SlotFlex)
 	}
 	return GuideAiring{
-		Kind:        kind,
-		Title:       b.Title,
-		Series:      b.SeriesTitle,
-		Season:      b.Season,
-		Episode:     b.Episode,
-		StartMs:     b.Start.UnixMilli(),
-		StopMs:      b.Stop.UnixMilli(),
-		Nominal:     b.Nominal,
-		Description: b.Description,
-		Genres:      b.Genres,
-		Year:        b.Year,
-		Rating:      b.Rating,
-		ItemID:      b.LibraryItemID,
-		RuntimeMs:   b.RuntimeMs,
-		Provenance:  b.Provenance,
+		Kind:            kind,
+		ScheduleBlockID: b.ScheduleBlockID(channelID),
+		Title:           b.Title,
+		Series:          b.SeriesTitle,
+		Season:          b.Season,
+		Episode:         b.Episode,
+		StartMs:         b.Start.UnixMilli(),
+		StopMs:          b.Stop.UnixMilli(),
+		Nominal:         b.Nominal,
+		Description:     b.Description,
+		Genres:          b.Genres,
+		Year:            b.Year,
+		Rating:          b.Rating,
+		ItemID:          b.LibraryItemID,
+		RuntimeMs:       b.RuntimeMs,
+		Provenance:      b.Provenance,
 	}
 }
 

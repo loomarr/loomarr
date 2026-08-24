@@ -3,11 +3,14 @@ import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { Toaster } from "sonner";
+import { clientDiagnostics, installGlobalClientDiagnostics } from "@/diagnostics/client-reporter";
 import { routeTree } from "@/routeTree.gen";
 // Self-hosted Geist (§2.2) — bundled by Vite, no CDN, deterministic visual tests.
 import "@fontsource-variable/geist";
 import "@fontsource-variable/geist-mono";
 import "@/styles.css";
+
+installGlobalClientDiagnostics();
 
 // Server state is TanStack Query, SSE-invalidated (no global store, §4.3). Retries
 // are conservative — most failures here are 401/403/501 that a retry won't fix.
@@ -43,7 +46,12 @@ declare module "@tanstack/react-router" {
   }
 }
 
-createRoot(document.getElementById("root")!).render(
+createRoot(document.getElementById("root")!, {
+  onCaughtError: () =>
+    clientDiagnostics.record({ event: "client.error_boundary", surface: "root", errorClass: "react_error" }),
+  onUncaughtError: () =>
+    clientDiagnostics.record({ event: "client.unhandled_error", surface: "root", errorClass: "react_error" }),
+}).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />

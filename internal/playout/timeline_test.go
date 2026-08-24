@@ -1,6 +1,7 @@
 package playout
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -170,6 +171,31 @@ func TestBroadcastsBetween_AgreesWithAiringAt(t *testing.T) {
 		if got[0].Title != want.Title || got[0].Kind != want.Kind {
 			t.Errorf("+%dm: guide says %q (%s), encoder plays %q (%s)",
 				m, got[0].Title, got[0].Kind, want.Title, want.Kind)
+		}
+		wantBlockID := ScheduledBlockID("channel_1", want.StartedAt, want.Kind, want.Identity)
+		if gotBlockID := got[0].ScheduleBlockID("channel_1"); gotBlockID != wantBlockID {
+			t.Errorf("+%dm: guide block = %q, encoder block = %q", m, gotBlockID, wantBlockID)
+		}
+	}
+}
+
+func TestScheduledBlockIDIsOpaqueStableAndScheduleSpecific(t *testing.T) {
+	startedAt := epoch.Add(10 * time.Minute)
+	want := ScheduledBlockID("channel_1", startedAt, schedule.SlotProgram, "library_item_1")
+
+	if got := ScheduledBlockID("channel_1", startedAt, schedule.SlotProgram, "library_item_1"); got != want {
+		t.Fatalf("same scheduled block = %q, want stable %q", got, want)
+	}
+	if strings.Contains(want, "library_item_1") || !strings.HasPrefix(want, "block_") {
+		t.Fatalf("scheduled block id = %q, want an opaque block_ token", want)
+	}
+	for name, got := range map[string]string{
+		"channel": ScheduledBlockID("channel_2", startedAt, schedule.SlotProgram, "library_item_1"),
+		"start":   ScheduledBlockID("channel_1", startedAt.Add(time.Second), schedule.SlotProgram, "library_item_1"),
+		"content": ScheduledBlockID("channel_1", startedAt, schedule.SlotProgram, "library_item_2"),
+	} {
+		if got == want {
+			t.Errorf("changing %s kept scheduled block id %q", name, got)
 		}
 	}
 }

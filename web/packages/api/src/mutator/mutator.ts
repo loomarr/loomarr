@@ -12,6 +12,7 @@ class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly problem: ErrorModel,
+    readonly requestId?: string,
   ) {
     super(problem.title || problem.detail || `HTTP ${status}`);
     this.name = "ApiError";
@@ -28,6 +29,14 @@ const toProblem = (err: unknown): ErrorModel => {
 };
 
 const CSRF_HEADER = "X-Loomarr-Csrf";
+type ApiFailure = { requestId: string; status: number };
+let apiFailureObserver: ((failure: ApiFailure) => void) | undefined;
+const observeApiFailures = (observer: (failure: ApiFailure) => void) => {
+  apiFailureObserver = observer;
+  return () => {
+    if (apiFailureObserver === observer) apiFailureObserver = undefined;
+  };
+};
 type InitialAuthGlobal = typeof globalThis & {
   __loomarrInitialAuthResponse?: Promise<Response>;
 };
@@ -52,7 +61,10 @@ const customFetch = async <T>(url: string, options: RequestInit = {}): Promise<T
   const body = text ? (JSON.parse(text) as unknown) : undefined;
 
   if (!res.ok) {
-    throw new ApiError(res.status, (body as ErrorModel) ?? { status: res.status });
+    const requestId = res.headers.get("X-Request-Id") ?? undefined;
+    if (requestId && url !== "/v1/diagnostics/client-events")
+      apiFailureObserver?.({ requestId, status: res.status });
+    throw new ApiError(res.status, (body as ErrorModel) ?? { status: res.status }, requestId);
   }
   // orval's fetch client expects the response ENVELOPE (like axios's response), not the
   // bare body — the generated hooks type `data` as `{ status, data }`, so a caller reads
@@ -61,4 +73,5 @@ const customFetch = async <T>(url: string, options: RequestInit = {}): Promise<T
   return { status: res.status, data: body, headers: res.headers } as T;
 };
 
-export { ApiError, customFetch, toProblem };
+export type { ApiFailure };
+export { ApiError, customFetch, observeApiFailures, toProblem };

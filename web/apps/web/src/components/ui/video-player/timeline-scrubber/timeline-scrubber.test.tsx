@@ -9,6 +9,7 @@ const min = (n: number) => n * 60_000;
 const airings: GuideAiring[] = [
   {
     kind: "program",
+    scheduleBlockId: "block_episode_a",
     series: "The Simpsons",
     title: "Ep A",
     season: 1,
@@ -16,9 +17,16 @@ const airings: GuideAiring[] = [
     startMs: NOW - min(5),
     stopMs: NOW + min(15),
   },
-  { kind: "filler", title: "", startMs: NOW + min(15), stopMs: NOW + min(17) },
+  {
+    kind: "filler",
+    scheduleBlockId: "block_break",
+    title: "",
+    startMs: NOW + min(15),
+    stopMs: NOW + min(17),
+  },
   {
     kind: "program",
+    scheduleBlockId: "block_episode_b",
     series: "The Simpsons",
     title: "Ep B",
     season: 1,
@@ -71,6 +79,7 @@ describe("TimelineScrubber", () => {
   it("shows a movie backdrop without cropping it in the landscape preview frame", () => {
     const movie: GuideAiring = {
       kind: "program",
+      scheduleBlockId: "block_movie",
       title: "Indiana Jones and the Temple of Doom",
       startMs: NOW - min(60),
       stopMs: NOW + min(60),

@@ -11,7 +11,7 @@ const at = (minutes: number) => FROM + minutes * 60_000;
 
 const airing = (
   over: Partial<GuideAiring> & Pick<GuideAiring, "kind" | "startMs" | "stopMs">,
-): GuideAiring => ({ title: "Untitled", ...over });
+): GuideAiring => ({ scheduleBlockId: `block_${over.startMs}`, title: "Untitled", ...over });
 
 const row = (
   channelId: string,

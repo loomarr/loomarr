@@ -3,7 +3,7 @@ import * as systemApi from "@loomarr/api/endpoints/system";
 import { ApiError } from "@loomarr/api/mutator";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Outlet, redirect, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { meQueryOptions } from "@/auth/me-query";
 import { needsBootstrap } from "@/auth/setup-state-query";
 import { useAuth } from "@/auth/use-auth";
@@ -11,6 +11,7 @@ import { AppShell } from "@/components/loomarr/shell/app-shell";
 import { RestartOverlay } from "@/components/loomarr/shell/restart-overlay";
 import { RestartWatchProvider, useRestartWatchContext } from "@/dashboard/restart-watch-provider";
 import { HealthNotice } from "@/diagnostics";
+import { clientDiagnostics } from "@/diagnostics/client-reporter";
 import { LoomarrEventsProvider } from "@/events/events-provider";
 import { CommandPalette } from "@/palette/command-palette";
 import { useCommandShortcut } from "@/palette/use-command-shortcut";
@@ -46,6 +47,7 @@ const AuthedFrame = () => {
   const serverVersion = versionBody
     ? `${versionBody.version}${versionBody.dirty ? " (modified)" : ""}`
     : undefined;
+  useEffect(() => clientDiagnostics.setVersion(versionBody?.version), [versionBody?.version]);
 
   const logout = authApi.useLogout({
     mutation: {

@@ -19,6 +19,13 @@ type DiagnosticEventService interface {
 	Query(context.Context, diagnostics.EventQuery) (diagnostics.EventPage, error)
 }
 
+// ClientDiagnosticService is the write half of Diagnostics. The HTTP adapter supplies only the
+// server-derived actor; vocabulary, validation, rate limiting and Recorder admission stay behind
+// the module interface.
+type ClientDiagnosticService interface {
+	Ingest(context.Context, string, diagnostics.ClientBatch) (int, error)
+}
+
 // StartupReportService exposes the current in-memory generation and recent retained reports.
 type StartupReportService interface {
 	Current() diagnostics.StartupReport
@@ -65,6 +72,16 @@ type diagnosticEventsInput struct {
 	Text              string             `query:"text" maxLength:"256" doc:"Case-insensitive text match across event, message, subsystem, and attributes"`
 }
 
+type clientDiagnosticsInput struct {
+	Body diagnostics.ClientBatch
+}
+
+type clientDiagnosticsOutput struct {
+	Body struct {
+		Accepted int `json:"accepted"`
+	}
+}
+
 func (s *Server) registerDiagnostics(api huma.API) {
 	if s.startupReports != nil || s.schemaOnly {
 		huma.Register(api, withRole(huma.Operation{
@@ -87,6 +104,14 @@ func (s *Server) registerDiagnostics(api huma.API) {
 			Description: "Runs the same bounded health probes used by Loomarr's named System health task and returns the refreshed source of truth.",
 			Tags:        []string{"diagnostics"},
 		}, RoleAdmin), s.refreshCurrentHealth)
+	}
+	if s.clientDiagnostics != nil || s.schemaOnly {
+		huma.Register(api, withRole(huma.Operation{
+			OperationID: "ingest-client-diagnostics", Method: http.MethodPost, Path: "/v1/diagnostics/client-events",
+			Summary:     "Report curated client diagnostics",
+			Description: "Accepts a bounded closed event batch from the signed-in web or Android TV client. Actor, receipt time, severity, subsystem, and retained attributes are server-owned.",
+			Tags:        []string{"diagnostics"}, DefaultStatus: http.StatusAccepted,
+		}, RoleMember), s.ingestClientDiagnostics)
 	}
 	op := huma.Operation{
 		OperationID: "list-diagnostic-events",
@@ -116,6 +141,40 @@ func (s *Server) registerDiagnostics(api huma.API) {
 		},
 	}
 	rawInputOp(api, op, RoleAdmin, s.diagnosticEventsHandler)
+}
+
+func (s *Server) ingestClientDiagnostics(
+	ctx context.Context, input *clientDiagnosticsInput,
+) (*clientDiagnosticsOutput, error) {
+	if s.clientDiagnostics == nil {
+		return nil, errNotImplemented("Client diagnostics unavailable",
+			"Client diagnostic ingestion isn't available on this Loomarr generation.")
+	}
+	actorID := "api_token"
+	if user, ok := userFrom(ctx); ok {
+		actorID = user.ID
+	}
+	accepted, err := s.clientDiagnostics.Ingest(ctx, actorID, input.Body)
+	if err != nil {
+		switch {
+		case errors.Is(err, diagnostics.ErrInvalidClientBatch):
+			detail := strings.TrimPrefix(err.Error(), diagnostics.ErrInvalidClientBatch.Error()+": ")
+			return nil, errBadRequest("Invalid client diagnostics", detail)
+		case errors.Is(err, diagnostics.ErrClientRateLimited):
+			return nil, errTooManyRequests("Client diagnostics rate limited",
+				"This client sent too many diagnostic observations. Playback can continue while the bounded queue retries later.")
+		case errors.Is(err, diagnostics.ErrClientUnavailable):
+			return nil, errServiceUnavailable("Client diagnostics unavailable",
+				"Playback can continue, but this diagnostic batch couldn't be retained.")
+		default:
+			s.log.Error("client diagnostic ingestion failed", "event", "diagnostics.client_ingestion_failed", "subsystem", "diagnostics", "err", err)
+			return nil, apiErrWithCause(http.StatusInternalServerError, "Client diagnostics failed",
+				"Playback can continue, but this diagnostic batch couldn't be accepted.", err)
+		}
+	}
+	out := &clientDiagnosticsOutput{}
+	out.Body.Accepted = accepted
+	return out, nil
 }
 
 func (s *Server) getCurrentHealth(_ context.Context, _ *struct{}) (*currentHealthOutput, error) {

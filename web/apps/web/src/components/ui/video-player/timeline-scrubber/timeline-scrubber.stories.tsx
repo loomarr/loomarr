@@ -10,6 +10,7 @@ const min = (n: number) => n * 60_000;
 const airings: GuideAiring[] = [
   {
     kind: "program",
+    scheduleBlockId: "block_episode_a",
     series: "The Simpsons",
     title: "Some Enchanted Evening",
     season: 1,
@@ -17,9 +18,16 @@ const airings: GuideAiring[] = [
     startMs: NOW - min(8),
     stopMs: NOW + min(14),
   },
-  { kind: "filler", title: "", startMs: NOW + min(14), stopMs: NOW + min(16) },
+  {
+    kind: "filler",
+    scheduleBlockId: "block_break",
+    title: "",
+    startMs: NOW + min(14),
+    stopMs: NOW + min(16),
+  },
   {
     kind: "program",
+    scheduleBlockId: "block_episode_b",
     series: "The Simpsons",
     title: "Bart the Genius",
     season: 1,

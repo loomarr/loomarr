@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { VideoPlayer } from "@/components/ui/video-player";
 import { TimelineScrubber } from "@/components/ui/video-player/timeline-scrubber";
 import { TrackSelectMenu } from "@/components/ui/video-player/track-select-menu";
+import { clientDiagnostics } from "@/diagnostics/client-reporter";
 import { TunerOSD } from "../tuner-osd";
 import type { TuneAttempt } from "../tuner-timing";
 import type { TuneDirection } from "../use-channel-tuner";
@@ -69,6 +70,7 @@ const withSaved = (options: { value: string; label: string }[], value: string) =
 // empty-string item value, so the picker carries this named sentinel and lowers it back to "" on
 // the wire — the same shape channel-seasonal/ordering use for their "" defaults.
 const AUTO_SENTINEL = "auto";
+const PLAYHEAD_DRIFT_THRESHOLD_MS = 30_000;
 
 // audioOptions builds the Audio picker's choices from the REAL audio tracks of what's airing
 // (§9.1, V46) — never a hardcoded list. Always leads with "Auto", then one entry per distinct track
@@ -166,7 +168,56 @@ const ChannelWatch = ({
   const timeline = channelsApi.useChannelTimeline(channel.id, undefined, {
     query: { enabled: active && !paused, retry: false, refetchInterval: 30_000 },
   });
-  const airings = unwrap(timeline.data)?.airings ?? [];
+  const timelineBody = unwrap(timeline.data);
+  const airings = timelineBody?.airings ?? [];
+  const serverAtProjection = timelineBody?.serverNowMs;
+  const serverNowMs =
+    serverAtProjection === undefined
+      ? undefined
+      : serverAtProjection + Math.max(0, Date.now() - timeline.dataUpdatedAt);
+  const viewerTimeMs = player.liveTransport.state.viewerTimeMs;
+  const diagnosticAiring = airings.find(
+    (airing) => !airing.nominal && viewerTimeMs >= airing.startMs && viewerTimeMs < airing.stopMs,
+  );
+  const scheduleBlockId = diagnosticAiring?.scheduleBlockId;
+  const previousBlockRef = useRef<{ channelId: string; scheduleBlockId?: string }>({ channelId: channel.id });
+  const driftedBlockRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (previousBlockRef.current.channelId !== channel.id) {
+      previousBlockRef.current = { channelId: channel.id };
+      driftedBlockRef.current = undefined;
+    }
+    if (!diagnosticAiring || !scheduleBlockId || serverNowMs === undefined) return;
+    if (previousBlockRef.current.scheduleBlockId === scheduleBlockId) return;
+    clientDiagnostics.record({
+      event: "player.schedule_block_changed",
+      playbackSessionId: player.playbackSessionId,
+      channelId: channel.id,
+      scheduleBlockId,
+      previousScheduleBlockId: previousBlockRef.current.scheduleBlockId,
+      blockKind:
+        diagnosticAiring.kind === "program" || diagnosticAiring.kind === "filler"
+          ? diagnosticAiring.kind
+          : "flex",
+      viewerTimeMs: Math.round(viewerTimeMs),
+      serverTimeMs: Math.round(serverNowMs),
+    });
+    previousBlockRef.current.scheduleBlockId = scheduleBlockId;
+  }, [channel.id, diagnosticAiring, player.playbackSessionId, scheduleBlockId, serverNowMs, viewerTimeMs]);
+  useEffect(() => {
+    if (!scheduleBlockId || serverNowMs === undefined || driftedBlockRef.current === scheduleBlockId) return;
+    const driftMs = Math.round(viewerTimeMs - serverNowMs);
+    if (Math.abs(driftMs) < PLAYHEAD_DRIFT_THRESHOLD_MS) return;
+    clientDiagnostics.record({
+      event: "player.playhead_drift",
+      playbackSessionId: player.playbackSessionId,
+      channelId: channel.id,
+      viewerTimeMs: Math.round(viewerTimeMs),
+      serverTimeMs: Math.round(serverNowMs),
+      driftMs,
+    });
+    driftedBlockRef.current = scheduleBlockId;
+  }, [channel.id, player.playbackSessionId, scheduleBlockId, serverNowMs, viewerTimeMs]);
   const audioValue = channel.policy?.playout?.audioLanguage ?? "";
 
   // The channel may be set to a track the CURRENTLY-airing programme doesn't carry (set to French,

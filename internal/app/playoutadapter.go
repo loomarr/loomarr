@@ -189,6 +189,7 @@ func (r *playoutResolver) AiringNow(ctx context.Context, channelID string) (play
 	}
 
 	airing := playout.AiringAt(slots, epoch, now)
+	airing.ScheduleBlockID = playout.ScheduledBlockID(channelID, airing.StartedAt, airing.Kind, airing.Identity)
 
 	// A BREAK GAP resolves to a real commercial (§10). Tunarr used to do this: the scheduler
 	// leaves flex, and Tunarr played clips from a filler-list into it. Internal playout has no
@@ -804,9 +805,10 @@ func (r *playoutResolver) airingFiller(
 				}
 			}
 			return playout.Airing{
-				StartedAt: now.Add(-into),
-				Identity:  e.Hash,
-				Kind:      schedule.SlotFiller,
+				StartedAt:       now.Add(-into),
+				Identity:        e.Hash,
+				ScheduleBlockID: gap.ScheduleBlockID,
+				Kind:            schedule.SlotFiller,
 				// Source, not LibraryItemID: this is a local file, not a media-server item.
 				// Playable() checks Source for exactly this case.
 				Source:    full,

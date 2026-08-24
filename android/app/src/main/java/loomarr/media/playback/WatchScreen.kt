@@ -154,6 +154,38 @@ fun WatchScreen(
                 )
             is WatchUiState.Ready -> {
                 val channel = current.channels[current.selected]
+                val diagnosticNow = viewerTimeMs ?: liveGuideNow
+                val diagnosticAiring =
+                    (liveGuide as? GuideUiState.Ready)
+                        ?.window
+                        ?.channels
+                        ?.firstOrNull { it.channelId == channel.id }
+                        ?.airingAt(diagnosticNow)
+                        ?.takeUnless { it.nominal || it.scheduleBlockId.isBlank() }
+                var previousScheduleBlockId by remember(channel.id) { mutableStateOf<String?>(null) }
+                var driftReportedForBlock by remember(channel.id) { mutableStateOf<String?>(null) }
+                LaunchedEffect(channel.id, diagnosticAiring?.scheduleBlockId) {
+                    val airing = diagnosticAiring ?: return@LaunchedEffect
+                    model.reportSchedule(
+                        channelId = channel.id,
+                        scheduleBlockId = airing.scheduleBlockId,
+                        previousScheduleBlockId = previousScheduleBlockId,
+                        blockKind = airing.kind,
+                        viewerTimeMs = diagnosticNow,
+                        serverTimeMs = liveGuideNow,
+                    )
+                    previousScheduleBlockId = airing.scheduleBlockId
+                }
+                LaunchedEffect(channel.id, diagnosticAiring?.scheduleBlockId, diagnosticNow / 5_000) {
+                    val airing = diagnosticAiring ?: return@LaunchedEffect
+                    if (
+                        driftReportedForBlock != airing.scheduleBlockId &&
+                        kotlin.math.abs(diagnosticNow - liveGuideNow) >= PLAYHEAD_DRIFT_THRESHOLD_MS
+                    ) {
+                        model.reportDrift(channel.id, diagnosticNow, liveGuideNow)
+                        driftReportedForBlock = airing.scheduleBlockId
+                    }
+                }
                 LaunchedEffect(current.playUrl) {
                     // A newly tuned media timeline has its own PROGRAM-DATE-TIME mapping. Never
                     // carry the outgoing Channel's decoded-frame clock into the replacement chrome.
@@ -163,6 +195,17 @@ fun WatchScreen(
                     PlayerScreen(
                         playUrl = current.playUrl,
                         onViewerTimeChanged = { viewerTimeMs = it },
+                        onDiagnostic = { diagnostic ->
+                            model.reportPlayer(
+                                channelId = channel.id,
+                                event = diagnostic.event,
+                                reason = diagnostic.reason,
+                                errorCode = diagnostic.errorCode,
+                                fatal = diagnostic.fatal,
+                                viewerTimeMs = diagnostic.viewerTimeMs,
+                                bufferedMs = diagnostic.bufferedMs,
+                            )
+                        },
                     )
                 } else {
                     TuningText("Tuning ${channel.name}…", modifier = Modifier.align(Alignment.Center))
@@ -719,3 +762,4 @@ private val SURF_RAIL_WIDTH = 420.dp
 private const val MAX_CHANNEL_DIGITS = 3
 private const val NUMBER_ENTRY_MS = 1_200L
 private const val BANNER_VISIBLE_MS = 5_000L
+private const val PLAYHEAD_DRIFT_THRESHOLD_MS = 30_000L
