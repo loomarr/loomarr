@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 )
 
 // MediaTools is the split pipeline's exec boundary (§10 V34): everything the
@@ -35,11 +37,13 @@ type MediaTools interface {
 	// ⚠ **Deliberately NOT GrayFrames.** GrayFrames is 9x8 grayscale dHash food —
 	// it has thrown away colour (so it cannot see a B&W transfer) and resolution
 	// (so it cannot read a logo), the two things both V44 tiers exist to read. This
-	// returns real ~320px JPEGs, the same asset FFmpegArtwork produces, but N of
-	// them across the duration rather than one still. Order is start→end of clip.
+	// returns bounded near-full-resolution JPEGs from representative windows,
+	// including a closing-card-biased window. The 320px artwork rendition is
+	// presentation data, never OCR/semantic evidence. Order is start→end of clip.
 	Keyframes(ctx context.Context, file string, n int) ([][]byte, error)
-	// KeyframesIn is Keyframes scoped to [startMs,endMs) — the frames of ONE segment inside a
-	// compilation, before that segment exists as a file. endMs <= startMs means "to the end".
+	// KeyframesIn is Keyframes scoped to the measured [startMs,endMs) of ONE segment inside a
+	// compilation, before that segment exists as a file. An invalid or unbounded span is refused:
+	// the closing-card window and resource ceiling both depend on an honest duration.
 	//
 	// ⚠ This is what lets the auto-confirm gate be answered from a segment's own pixels rather
 	// than from its generated name (§10 V54). `Transcribe` has always taken a span for the same
@@ -178,80 +182,101 @@ func (t *FFmpegTools) GrayFrames(ctx context.Context, file string, startMs, endM
 	return frames, nil
 }
 
-// Keyframes samples the WHOLE clip — the span-less form every existing caller wants.
+// Keyframes samples the WHOLE clip. Prefer KeyframesIn when the caller already owns the measured
+// duration: probing again is needless work and makes it impossible for a fake to pin the window.
 func (t *FFmpegTools) Keyframes(ctx context.Context, file string, n int) ([][]byte, error) {
-	return t.KeyframesIn(ctx, file, 0, 0, n)
+	if n <= 0 {
+		return nil, nil
+	}
+	if t.FFprobePath == "" {
+		return nil, fmt.Errorf("ffprobe is required to bound semantic frames for %s", file)
+	}
+	out, err := exec.CommandContext(ctx, t.FFprobePath,
+		"-v", "error", "-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1", file).Output()
+	if err != nil {
+		return nil, fmt.Errorf("ffprobe semantic-frame duration %s: %w", file, err)
+	}
+	seconds, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
+	if err != nil || seconds <= 0 {
+		return nil, fmt.Errorf("ffprobe semantic-frame duration %s: invalid duration %q", file, strings.TrimSpace(string(out)))
+	}
+	return t.KeyframesIn(ctx, file, 0, int64(seconds*1000), n)
 }
 
-// KeyframesIn is Keyframes scoped to [startMs,endMs). endMs <= startMs means "to the end".
+// KeyframesIn is Keyframes scoped to a measured [startMs,endMs).
 //
 // ⚠ `-ss` before `-i` is an INPUT seek and is the only form fast enough here: it jumps the
 // demuxer to the span instead of decoding everything before it. On a 16-minute compilation the
 // difference between input- and output-seeking is the difference between per-segment framing
 // being viable at all and costing a full decode per segment (§10 V51g's budget rule).
 func (t *FFmpegTools) KeyframesIn(ctx context.Context, file string, startMs, endMs int64, n int) ([][]byte, error) {
-	// n frames spread ACROSS the clip, decoded to real JPEGs — mirrors the
-	// FFmpegArtwork still (scale ~320px wide, JPEG at -q:v) but produces several
-	// samples rather than one. A commercial's brand card, its B&W transfer, its
-	// end slate can each fall in a different part of the runtime, so one frame is
-	// not enough signal for either V44 tier (vision or framehints).
 	if n <= 0 {
 		return nil, nil
 	}
-	// `thumbnail=n=…` is ffmpeg's own "most representative frame of a group"
-	// selector: it scores frames within each window and picks the least-blurry,
-	// most-distinct one, which beats a flat every-Kth-frame sample for a clip that
-	// opens on a black fade. We ask for `n` groups by sizing the window to the
-	// clip's frame count / n — but we do not know the frame count without probing,
-	// so we use `select` on a normalised timeline instead: `n` evenly-spaced picks.
-	//
-	// The expression selects a frame when its presentation time crosses one of n
-	// evenly-spaced marks over the (probed) duration. We avoid a second probe by
-	// letting ffmpeg compute it: `select='isnan(prev_selected_t)+gte(t-prev_selected_t\,DUR/n)'`
-	// is fragile across builds, so the robust portable form is fps-based — sample
-	// at a rate that yields ~n frames, capped by `-frames:v n`. A clip's exact
-	// length is unknown here, so we oversample slightly and let the frame cap trim.
-	//
-	// ⚠ `-vsync vfr` (a.k.a `-fps_mode vfr`) keeps the selected frames at their own
-	// timestamps rather than duplicating to a constant rate — without it a short
-	// clip sampled sparsely gets padded with repeats, and the heuristics would then
-	// score the same frame n times.
-	var stdout bytes.Buffer
-	args := []string{"-nostdin"}
-	// Input seek (before -i). Skipped entirely when no span is asked for, so the whole-clip
-	// path emits byte-identical arguments to what it always did.
-	if startMs > 0 {
-		args = append(args, "-ss", fmt.Sprintf("%.3f", float64(startMs)/1000))
+	if startMs < 0 || endMs <= startMs {
+		return nil, fmt.Errorf("semantic frames require a measured span, got %d..%d for %s", startMs, endMs, file)
 	}
-	args = append(args, "-i", file)
-	if endMs > startMs {
-		// `-t` (duration), not `-to`: after an input seek `-to` is interpreted against the
-		// ORIGINAL timeline on some builds and the seeked one on others, so a duration is the
-		// portable way to say "this much of it".
-		args = append(args, "-t", fmt.Sprintf("%.3f", float64(endMs-startMs)/1000))
+
+	// Each small window is decoded independently. `thumbnail` chooses a representative frame
+	// inside that window rather than a fade or blurred transition, and the final window begins at
+	// 90% so brief closing logos are not systematically missed. `thumbnail=n` means INPUT FRAMES
+	// PER GROUP; the retired code passed the requested output count there and consequently took
+	// all of its outputs from roughly the opening 0.3 seconds.
+	spanMs := endMs - startMs
+	starts := semanticWindowStarts(startMs, endMs, n)
+	frames := make([][]byte, 0, len(starts))
+	for _, seekMs := range starts {
+		windowMs := min(int64(3000), endMs-seekMs)
+		if windowMs <= 0 {
+			continue
+		}
+		var stdout bytes.Buffer
+		cmd := exec.CommandContext(ctx, t.FFmpegPath,
+			"-nostdin",
+			"-ss", fmt.Sprintf("%.3f", float64(seekMs)/1000),
+			"-i", file,
+			"-t", fmt.Sprintf("%.3f", float64(windowMs)/1000),
+			"-an",
+			"-vf", fmt.Sprintf("thumbnail=n=%d,scale=w='min(iw,%d)':h=-2", semanticThumbnailFrames, SemanticFrameMaxWidth),
+			"-frames:v", "1",
+			"-q:v", "4",
+			"-f", "image2pipe", "-c:v", "mjpeg", "-")
+		cmd.Stdout = &stdout
+		if err := cmd.Run(); err != nil {
+			return nil, fmt.Errorf("ffmpeg semantic frame %s at %d/%dms: %w", file, seekMs-startMs, spanMs, err)
+		}
+		decoded := splitJPEGs(stdout.Bytes())
+		if len(decoded) > 0 {
+			frames = append(frames, decoded[0])
+		}
 	}
-	args = append(args, "-an")
-	cmd := exec.CommandContext(ctx, t.FFmpegPath, append(args,
-		// thumbnail=n groups the decode into n buckets and emits the single most
-		// representative frame of each — exactly n frames for a clip long enough to
-		// fill the buckets, fewer for a very short one, which is fine (the caller
-		// tolerates <n).
-		"-vf", fmt.Sprintf("thumbnail=n=%d,scale=%d:-1", n, PreviewWidth),
-		"-frames:v", fmt.Sprintf("%d", n),
-		// mjpeg over image2pipe streams the JPEGs back to us concatenated; -q:v 6
-		// matches the still's quality (artwork.go) — a vision model does not need
-		// archival frames, and a B&W/aspect check needs even less.
-		"-q:v", "6",
-		"-f", "image2pipe", "-c:v", "mjpeg", "-",
-	)...)
-	cmd.Stdout = &stdout
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("ffmpeg keyframes %s: %w", file, err)
+	return frames, nil
+}
+
+// SemanticFrameMaxWidth bounds upload and pixel cost while preserving native resolution for the
+// SD/HD archive material Loomarr commonly sees. It is intentionally unrelated to PreviewWidth.
+const SemanticFrameMaxWidth = 1920
+
+// About three seconds at ordinary broadcast frame rates. The window itself is also capped at
+// three seconds, so this never grows with clip duration or buffers an entire reel.
+const semanticThumbnailFrames = 90
+
+func semanticWindowStarts(startMs, endMs int64, n int) []int64 {
+	spanMs := endMs - startMs
+	if n <= 0 || spanMs <= 0 {
+		return nil
 	}
-	// image2pipe concatenates whole JPEGs; split on the SOI/EOI markers so each
-	// element is one decodable frame. A clip with no video stream yields nothing,
-	// which the caller reads as "no frames to look at" rather than an error.
-	return splitJPEGs(stdout.Bytes()), nil
+	if n == 1 {
+		return []int64{startMs + spanMs*90/100}
+	}
+	first := spanMs * 5 / 100
+	rangeMs := spanMs * 85 / 100
+	starts := make([]int64, 0, n)
+	for i := 0; i < n; i++ {
+		starts = append(starts, startMs+first+int64(i)*rangeMs/int64(n-1))
+	}
+	return starts
 }
 
 func (t *FFmpegTools) Cut(ctx context.Context, file string, startMs, endMs int64, out string) error {

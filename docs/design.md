@@ -3412,6 +3412,14 @@ have hard frame, pixel, duration, byte, token, retry, concurrency, per-clip, dai
 ceilings. Shared-appliance inference is serial by default. Privacy/provider constraints never relax
 silently; an ineligible route leaves the clip held.
 
+The default frame derivative is exactly four ordered JPEGs from bounded representative windows at
+5%, one-third, roughly two-thirds, and 90% of the measured clip or segment span. Each window decodes
+at most three seconds and the final window is the closing-card bias. Frames preserve their native
+size through 1920 px wide (never upscale, preserve aspect ratio) and are encoded sequentially. This
+is an extraction ceiling, not permission to send all four frames: the evidence router may send a
+strict subset when a cheaper claim is already answered. A missing/invalid duration refuses visual
+extraction rather than falling back to an unbounded decode.
+
 Certification uses a versioned, source/similarity-separated development corpus and locked holdout.
 Near-duplicates cannot cross that split. It reports action-specific precision and coverage,
 worst-slice results, review answerability, conflicts, schema/grounding/security failures, calibration,
