@@ -85,9 +85,9 @@ var hostedCatalog = []HostedProvider{
 		// Fallback: shown only before a key is set (no live metadata). Live ranking
 		// supersedes this. Kept short + obvious; not an allowlist.
 		Fallback: []HostedModel{{
-			ID: "openai/gpt-4o-mini", Label: "GPT-4o mini",
+			ID: "openai/gpt-4.1-mini", Label: "GPT-4.1 mini",
 			Recommended: true, Tools: true, Vision: true,
-			Why: "Cheap, tool-capable, and a good default for Loomarr's grounded suggestions.",
+			Why: "Reliable multi-axis classification and grounded suggestions at modest cost.",
 		}},
 	},
 	{
@@ -196,6 +196,12 @@ type familyTier struct {
 }
 
 var familyTiers = []familyTier{
+	// Nano is deliberately below the rest of GPT-4.1. A 16-clip filler eval found that nano
+	// invented an invalid product slug and one false product while mini classified every
+	// identifiable product and correctly abstained on political/news/compilation clips. Without
+	// this specific entry the generic GPT-4.1 match gives both the same tier and cost recommends
+	// nano — optimizing pennies while silently degrading the metadata every filler rule consumes.
+	{"gpt-4.1-nano", 2, "GPT-4.1 nano"},
 	// Tier 3 — top grounded reasoners.
 	{"gpt-4o", 3, "GPT-4o"},
 	{"gpt-4.1", 3, "GPT-4.1"},

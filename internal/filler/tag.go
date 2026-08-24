@@ -133,11 +133,17 @@ func (t TagSuggestion) Score(modelConfidence int) int {
 type tagOutput struct {
 	Era      int    `json:"era"`
 	Audience string `json:"audience"`
-	// Tags is the model's proposed taxonomy tags (§10 V45a) — a list of slugs it picked from the
-	// served vocabulary. Untrusted: each is grounded through forest.Resolve in validateTags, and any
-	// that does not resolve (an off-vocabulary slug) is dropped, never minted. Replaces the old single
-	// `category` string.
-	Tags []string `json:"tags"`
+	// The axis-shaped fields make the model answer the independent taxonomy questions independently:
+	// what the clip sells, what it is, when it belongs, and which audience cues it carries. A flat
+	// bag made `local` look plausible for political/news clips because the model lost the fact that
+	// `local` is on the PRODUCT axis. Each value is still untrusted and resolve-or-dropped below.
+	Product      string   `json:"product"`
+	Format       string   `json:"format"`
+	Seasonal     []string `json:"seasonal"`
+	AudienceCues []string `json:"audienceCues"`
+	// Tags is a compatibility input for providers/cached responses still returning the pre-axis
+	// shape. The current prompt does not ask for it. It remains resolve-or-drop, never authoritative.
+	Tags []string `json:"tags,omitempty"`
 	// Brand is the advertiser the model read off the text (§10 V44). Untrusted like every other
 	// field here: validateTags keeps it only if it appears literally in the clip's text signals,
 	// otherwise it is dropped — a brand is never allowed to raise Confidence (it rides the existing
@@ -214,11 +220,26 @@ func validateTags(out tagOutput, forest *taxonomy.Forest, text string) TagSugges
 	// install with no taxonomy tags nothing rather than persisting raw model output.
 	if forest != nil {
 		seen := map[string]bool{}
-		for _, raw := range out.Tags {
+		add := func(raw string, axis taxonomy.Axis) {
 			if slug, ok := forest.Resolve(raw); ok && !seen[slug] {
+				taxon, exists := forest.Get(slug)
+				if axis != "" && (!exists || taxon.Axis != axis) {
+					return
+				}
 				seen[slug] = true
 				t.Tags = append(t.Tags, slug)
 			}
+		}
+		for _, raw := range out.Tags {
+			add(raw, "") // compatibility bag: the slug itself still declares its axis
+		}
+		add(out.Product, taxonomy.AxisProduct)
+		add(out.Format, taxonomy.AxisFormat)
+		for _, raw := range out.Seasonal {
+			add(raw, taxonomy.AxisSeasonal)
+		}
+		for _, raw := range out.AudienceCues {
+			add(raw, taxonomy.AxisAudienceCue)
 		}
 		sort.Strings(t.Tags)
 		// Category is the DERIVED shadow: the primary product leaf of the grounded set. Computed here,
@@ -288,10 +309,26 @@ func tagSystemPrompt(forest *taxonomy.Forest) string {
 	}
 	return `You classify a short TV filler clip (a commercial/bumper/PSA) from its text only.
 Return ONLY this JSON, no prose:
-{"era":<4-digit year or 0 if unknown>,"audience":"kids|family|general|late_night","tags":["<slug>", ...],"brand":"<advertiser name or empty>","confidence":<0-100>}
-Choose "tags" ONLY from this vocabulary, grouped by axis (you may pick several, across axes, most specific that applies):
+{"era":<4-digit year or 0 if unknown>,"audience":"kids|family|general|late_night","product":"<one product slug or empty>","format":"<one format slug or empty>","seasonal":["<seasonal slug>", ...],"audienceCues":["<audience-cue slug>", ...],"brand":"<advertiser name or empty>","confidence":<0-100>}
+Choose values ONLY from this vocabulary, grouped by axis. Entries written as "child (under parent)"
+describe hierarchy; emit only the slug, never the annotation. Classify every identifiable axis
+independently. On each axis emit only the most-specific applicable taxon, never its ancestors:
 ` + vocab + `
-Rules: give era ONLY when a 4-digit year literally appears in the text — never infer a decade from tone, style, or products; use 0 for era if no year appears; pick the closest audience from the list ONLY; for tags, use ONLY slugs from the vocabulary above — never invent a tag not in the list, and return [] if none apply; give brand ONLY when the advertiser's name literally appears in the text (e.g. "Kellogg's", "Ford") — never guess it from the products, and use "" if no name appears; set confidence to how certain you are that these tags are right, where 100 means the text states them outright and 0 means you are guessing.`
+Rules: give era ONLY when a 4-digit year literally appears in the text — never infer a decade from
+tone, style, or products; use 0 for era if no year appears. Pick the closest audience from the list.
+Product asks WHAT IS BEING SOLD. For a product advertisement, include its most-specific product
+whenever the advertised product is identifiable. Reliable common knowledge about an explicitly
+named product or brand is allowed even when the generic category word is absent: Coca-Cola implies
+soda, Ford Mustang implies cars, McDonald's implies fast_food, and a department-store advert implies
+retail. This product rule does NOT relax era or brand grounding. For a station ID, newsbreak,
+political campaign ad, commercial-break compilation, or unknown clip with no identifiable advertised
+product, use an empty product rather than forcing one. The product slug local means a local BUSINESS,
+never merely local geography, politics, news, or a station. Format asks WHAT THE CLIP IS; a paid
+political campaign ad is commercial, not psa. Use ONLY slugs from the vocabulary — never invent one.
+Give brand ONLY when the advertiser's name
+literally appears in the text (e.g. "Kellogg's", "Ford") — never guess it from the products, and use
+"" if no name appears. Set confidence to certainty in the complete classification, where 100 means
+the evidence is explicit and 0 means you are guessing.`
 }
 
 func tagUserPrompt(name, sourceText string) string {

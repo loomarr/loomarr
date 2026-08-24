@@ -154,6 +154,25 @@ func TestLiveModels_RanksByQualityTierThenCost(t *testing.T) {
 	}
 }
 
+func TestLiveModels_DoesNotRecommendGPT41NanoOverMiniOnCostAlone(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":[
+			{"id":"openai/gpt-4.1-nano","context_length":128000,"supported_parameters":["tools"],"pricing":{"prompt":"0.0000001","completion":"0.0000004"}},
+			{"id":"openai/gpt-4.1-mini","context_length":128000,"supported_parameters":["tools"],"pricing":{"prompt":"0.0000004","completion":"0.0000016"}}
+		]}`))
+	}))
+	defer srv.Close()
+
+	hp := HostedProvider{Key: "openrouter", BaseURL: srv.URL}
+	models, live := hp.LiveModels(context.Background(), "key")
+	if !live || len(models) != 2 {
+		t.Fatalf("models = %+v, live=%v; want two live candidates", models, live)
+	}
+	if models[0].ID != "openai/gpt-4.1-mini" || !models[0].Recommended {
+		t.Errorf("first = %+v, want gpt-4.1-mini recommended ahead of nano", models[0])
+	}
+}
+
 // THIN provider (OpenAI/Groq-shape: just ids, no metadata): rules can't rank, so it
 // degrades gracefully to the live id list — current, unranked, no fabricated stars.
 func TestLiveModels_ThinMetadataDegrades(t *testing.T) {
