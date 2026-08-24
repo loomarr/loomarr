@@ -6,6 +6,7 @@ export * from "./clip-thumb";
 export * from "./contracts";
 export * from "./events";
 export * from "./format";
+export * from "./guide";
 export * from "./provision";
 export * from "./schemas";
 export * from "./templates";
