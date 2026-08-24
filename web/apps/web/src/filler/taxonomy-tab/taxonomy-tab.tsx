@@ -19,14 +19,27 @@ import { cn } from "@/lib/utils";
 const AXES = ["product", "format", "seasonal", "audience-cue"] as const;
 type Axis = (typeof AXES)[number];
 
-const AXIS_COPY: Record<Axis, { label: string; help: string }> = {
-  product: { label: "Products & topics", help: "What the clip is about or advertising." },
+const AXIS_COPY: Record<Axis, { label: string; help: string; example: string }> = {
+  product: {
+    label: "Products & topics",
+    help: "What the clip is about or advertising.",
+    example: "For example: cereal, cars, local businesses",
+  },
   format: {
     label: "Format",
     help: "Descriptive browsing tags. Clip kind separately controls how Loomarr may play it.",
+    example: "For example: commercial, promo, station ident",
   },
-  seasonal: { label: "Seasonal", help: "A holiday or time-of-year cue." },
-  "audience-cue": { label: "Audience cues", help: "Signals useful for matching a channel's audience." },
+  seasonal: {
+    label: "Seasonal",
+    help: "A holiday or time-of-year cue.",
+    example: "For example: Christmas, Halloween, back to school",
+  },
+  "audience-cue": {
+    label: "Audience cues",
+    help: "Signals useful for matching a channel's audience.",
+    example: "For example: kids-oriented, family, late night",
+  },
 };
 
 type Editor = { mode: "create" | "edit"; axis: Axis; taxon?: TaxonDTO };
@@ -52,7 +65,9 @@ const descendantsOf = (taxa: TaxonDTO[], slug: string): Set<string> => {
   return out;
 };
 
-const flattenAxis = (taxa: TaxonDTO[], axis: Axis): Array<{ taxon: TaxonDTO; depth: number }> => {
+type TaxonTreeNode = { taxon: TaxonDTO; children: TaxonTreeNode[] };
+
+const treeForAxis = (taxa: TaxonDTO[], axis: Axis): TaxonTreeNode[] => {
   const nodes = taxa.filter((taxon) => taxon.axis === axis);
   const slugs = new Set(nodes.map((taxon) => taxon.slug));
   const children = new Map<string, TaxonDTO[]>();
@@ -61,16 +76,87 @@ const flattenAxis = (taxa: TaxonDTO[], axis: Axis): Array<{ taxon: TaxonDTO; dep
     children.set(parent, [...(children.get(parent) ?? []), taxon]);
   }
   for (const rows of children.values()) rows.sort((a, b) => a.label.localeCompare(b.label));
-  const out: Array<{ taxon: TaxonDTO; depth: number }> = [];
-  const visit = (parent: string, depth: number) => {
-    for (const taxon of children.get(parent) ?? []) {
-      out.push({ taxon, depth });
-      visit(taxon.slug, depth + 1);
-    }
-  };
-  visit("", 0);
-  return out;
+  const build = (parent: string): TaxonTreeNode[] =>
+    (children.get(parent) ?? []).map((taxon) => ({ taxon, children: build(taxon.slug) }));
+  return build("");
 };
+
+const TaxonTree = ({
+  nodes,
+  axis,
+  isAdmin,
+  onEdit,
+  nested = false,
+}: {
+  nodes: TaxonTreeNode[];
+  axis: Axis;
+  isAdmin: boolean;
+  onEdit: (taxon: TaxonDTO) => void;
+  nested?: boolean;
+}) => (
+  <ul
+    className={nested ? "ml-5 border-border border-l" : "divide-y divide-border"}
+    {...(!nested ? { "aria-label": `${AXIS_COPY[axis].label} vocabulary` } : {})}
+  >
+    {nodes.map(({ taxon, children }) => {
+      const synonyms = taxon.synonyms ?? [];
+      const aliases = taxon.retiredAliases ?? [];
+      const resolverTermCount = synonyms.length + aliases.length;
+      return (
+        <li key={taxon.slug}>
+          <div className="flex items-start gap-2 px-4 py-3">
+            {nested ? <ChevronRight className="mt-1 size-3 shrink-0 text-static-500" aria-hidden /> : null}
+            <div className="min-w-0 flex-1">
+              <button
+                type="button"
+                disabled={!isAdmin}
+                className={cn(
+                  "break-words text-left font-medium text-sm",
+                  isAdmin && "cursor-pointer hover:text-signal",
+                )}
+                onClick={() => onEdit(taxon)}
+              >
+                {taxon.label}
+              </button>
+              <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                <span className="break-all font-mono text-muted-foreground text-xs">{taxon.slug}</span>
+                {resolverTermCount > 0 ? (
+                  <details className="text-muted-foreground text-xs">
+                    <summary className="cursor-pointer">
+                      {resolverTermCount} classifier {resolverTermCount === 1 ? "term" : "terms"}
+                    </summary>
+                    <div className="mt-1 max-w-sm space-y-1 break-words">
+                      {synonyms.length > 0 ? <p>Synonyms: {synonyms.join(", ")}</p> : null}
+                      {aliases.length > 0 ? <p>Retired slugs: {aliases.join(", ")}</p> : null}
+                    </div>
+                  </details>
+                ) : null}
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+              {(taxon.assertedClips ?? 0) > 0 && taxon.assertedClips !== taxon.matchedClips ? (
+                <Badge variant="neutral" title="Clips directly assigned this tag">
+                  {taxon.assertedClips} direct
+                </Badge>
+              ) : null}
+              <Link
+                to="/filler/library"
+                search={{ taxon: taxon.slug }}
+                className="rounded-sm font-mono text-signal text-xs underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                title={`Browse clips matching ${taxon.label}, including descendants`}
+              >
+                {taxon.matchedClips.toLocaleString()} {taxon.matchedClips === 1 ? "clip" : "clips"}
+              </Link>
+            </div>
+          </div>
+          {children.length > 0 ? (
+            <TaxonTree nodes={children} axis={axis} isAdmin={isAdmin} onEdit={onEdit} nested />
+          ) : null}
+        </li>
+      );
+    })}
+  </ul>
+);
 
 const TaxonEditor = ({
   editor,
@@ -279,9 +365,9 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
   const [editor, setEditor] = useState<Editor>();
   const byAxis = useMemo(
     () =>
-      Object.fromEntries(AXES.map((axis) => [axis, flattenAxis(taxa, axis)])) as Record<
+      Object.fromEntries(AXES.map((axis) => [axis, treeForAxis(taxa, axis)])) as Record<
         Axis,
-        Array<{ taxon: TaxonDTO; depth: number }>
+        TaxonTreeNode[]
       >,
     [taxa],
   );
@@ -329,104 +415,90 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
         />
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        {AXES.map((axis) => {
-          const coverage = data.axisCoverage?.find((item) => item.axis === axis);
-          return (
-            <Card key={axis} className="overflow-hidden">
-              <div className="flex items-start gap-3 border-border border-b p-4">
-                <div className="min-w-0 flex-1">
-                  <h2 className="font-medium">{AXIS_COPY[axis].label}</h2>
-                  <p className="mt-0.5 text-muted-foreground text-sm">{AXIS_COPY[axis].help}</p>
-                  {coverage ? (
-                    <p className="mt-1 text-muted-foreground text-xs">
-                      {coverage.taggedClips.toLocaleString()} {coverage.taggedClips === 1 ? "clip" : "clips"}{" "}
-                      tagged
-                      {coverage.untaggedClips > 0 ? (
-                        <>
-                          {" · "}
-                          <Link
-                            to="/filler/library"
-                            search={{ withoutAxis: axis }}
-                            className="text-signal underline-offset-2 hover:underline"
-                          >
-                            Browse {coverage.untaggedClips.toLocaleString()} without
-                          </Link>
-                        </>
-                      ) : null}
+      <section aria-labelledby="classification-coverage-heading">
+        <div>
+          <h2 id="classification-coverage-heading" className="font-semibold text-lg">
+            Classification coverage
+          </h2>
+          <p className="mt-1 text-muted-foreground text-sm">
+            These are independent signals. Missing seasonal or audience cues can be perfectly normal.
+          </p>
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {AXES.map((axis) => {
+            const coverage = data.axisCoverage?.find((item) => item.axis === axis);
+            return (
+              <Card key={axis} className="p-4">
+                <h3 className="font-medium">{AXIS_COPY[axis].label}</h3>
+                <p className="mt-1 text-muted-foreground text-sm">{AXIS_COPY[axis].help}</p>
+                <p className="mt-2 text-muted-foreground text-xs">{AXIS_COPY[axis].example}</p>
+                {coverage ? (
+                  <div className="mt-3 border-border border-t pt-3 text-sm">
+                    <p>
+                      <span className="font-medium">{coverage.taggedClips.toLocaleString()}</span> of{" "}
+                      {data.totalClips.toLocaleString()} playable clips
                     </p>
-                  ) : null}
-                </div>
-                {isAdmin ? (
-                  <Button variant="outline" size="sm" onClick={() => setEditor({ mode: "create", axis })}>
-                    <Plus className="size-4" aria-hidden /> Add
-                  </Button>
+                    {coverage.untaggedClips > 0 ? (
+                      <Link
+                        to="/filler/library"
+                        search={{ withoutAxis: axis }}
+                        className="mt-1 inline-flex text-signal text-xs underline-offset-2 hover:underline"
+                      >
+                        Browse {coverage.untaggedClips.toLocaleString()} without this signal
+                      </Link>
+                    ) : (
+                      <p className="mt-1 text-lock text-xs">All playable clips have this signal.</p>
+                    )}
+                  </div>
                 ) : null}
-              </div>
-              <ul className="divide-y divide-border">
-                {byAxis[axis].map(({ taxon, depth }) => {
-                  const synonyms = taxon.synonyms ?? [];
-                  const aliases = taxon.retiredAliases ?? [];
-                  const resolverTermCount = synonyms.length + aliases.length;
-                  return (
-                    <li
-                      key={taxon.slug}
-                      className="flex items-start gap-2 px-4 py-3"
-                      style={{ paddingLeft: `${16 + depth * 20}px` }}
-                    >
-                      {depth > 0 ? (
-                        <ChevronRight className="mt-1 size-3 shrink-0 text-static-500" aria-hidden />
-                      ) : null}
-                      <div className="min-w-0 flex-1">
-                        <button
-                          type="button"
-                          disabled={!isAdmin}
-                          className={cn(
-                            "text-left font-medium text-sm",
-                            isAdmin && "cursor-pointer hover:text-signal",
-                          )}
-                          onClick={() => isAdmin && setEditor({ mode: "edit", axis, taxon })}
-                        >
-                          {taxon.label}
-                        </button>
-                        <div className="mt-0.5 flex flex-wrap items-center gap-2">
-                          <span className="font-mono text-muted-foreground text-xs">{taxon.slug}</span>
-                          {resolverTermCount > 0 ? (
-                            <details className="text-muted-foreground text-xs">
-                              <summary className="cursor-pointer">
-                                {resolverTermCount} classifier {resolverTermCount === 1 ? "term" : "terms"}
-                              </summary>
-                              <div className="mt-1 max-w-sm space-y-1 break-words">
-                                {synonyms.length > 0 ? <p>Synonyms: {synonyms.join(", ")}</p> : null}
-                                {aliases.length > 0 ? <p>Retired slugs: {aliases.join(", ")}</p> : null}
-                              </div>
-                            </details>
-                          ) : null}
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        {(taxon.assertedClips ?? 0) > 0 && taxon.assertedClips !== taxon.matchedClips ? (
-                          <Badge variant="neutral" title="Clips directly assigned this tag">
-                            {taxon.assertedClips} direct
-                          </Badge>
-                        ) : null}
-                        <Link
-                          to="/filler/library"
-                          search={{ taxon: taxon.slug }}
-                          className="rounded-sm font-mono text-signal text-xs underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          title={`Browse clips matching ${taxon.label}, including descendants`}
-                        >
-                          {taxon.matchedClips.toLocaleString()} {taxon.matchedClips === 1 ? "clip" : "clips"}
-                        </Link>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            </Card>
-          );
-        })}
-      </div>
+              </Card>
+            );
+          })}
+        </div>
+      </section>
+
+      <details className="rounded-lg border border-border bg-panel">
+        <summary className="cursor-pointer px-4 py-3 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          {isAdmin ? "Manage vocabulary" : "Browse vocabulary"}
+        </summary>
+        <div className="border-border border-t p-4">
+          <p className="mb-4 text-muted-foreground text-sm">
+            {isAdmin
+              ? "Advanced: change the hierarchy and the words classifiers resolve. Review the impact before any edit is applied."
+              : "This hierarchy is read-only. Administrators can change classifier vocabulary and relationships."}
+          </p>
+          <div className="grid gap-4 xl:grid-cols-2">
+            {AXES.map((axis) => {
+              return (
+                <Card key={axis} className="overflow-hidden">
+                  <div className="flex items-start gap-3 border-border border-b p-4">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-medium">{AXIS_COPY[axis].label}</h3>
+                      <p className="mt-0.5 text-muted-foreground text-sm">{AXIS_COPY[axis].help}</p>
+                      <p className="mt-1 text-muted-foreground text-xs">{AXIS_COPY[axis].example}</p>
+                    </div>
+                    {isAdmin ? (
+                      <Button variant="outline" size="sm" onClick={() => setEditor({ mode: "create", axis })}>
+                        <Plus className="size-4" aria-hidden /> Add
+                      </Button>
+                    ) : null}
+                  </div>
+                  {byAxis[axis].length === 0 ? (
+                    <p className="px-4 py-3 text-muted-foreground text-sm">No terms yet.</p>
+                  ) : (
+                    <TaxonTree
+                      nodes={byAxis[axis]}
+                      axis={axis}
+                      isAdmin={isAdmin}
+                      onEdit={(taxon) => isAdmin && setEditor({ mode: "edit", axis, taxon })}
+                    />
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      </details>
     </div>
   );
 };

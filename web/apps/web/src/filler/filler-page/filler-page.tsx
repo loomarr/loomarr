@@ -727,13 +727,13 @@ const FillerPage = ({ tab }: FillerPageProps) => {
         ) : tab === "advanced" ? (
           <div className="grid gap-4 md:grid-cols-2">
             <Card className="p-5">
-              <h2 className="font-semibold text-lg">Taxonomy</h2>
+              <h2 className="font-semibold text-lg">Classification vocabulary</h2>
               <p className="mt-1 text-muted-foreground text-sm">
                 Inspect or refine the vocabulary Loomarr uses to ground matching. Ordinary filler setup does
                 not require this.
               </p>
               <Button className="mt-4" variant="outline" render={<Link to="/filler/taxonomy" />}>
-                Open taxonomy
+                Open classification vocabulary
               </Button>
             </Card>
             {isAdmin ? (

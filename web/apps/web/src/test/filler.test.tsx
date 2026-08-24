@@ -473,7 +473,8 @@ describe("Filler page", () => {
     const router = renderAt("/filler/taxonomy");
 
     expect(await screen.findByText("10 / 12")).toBeInTheDocument();
-    expect(screen.getByText("Products & topics")).toBeInTheDocument();
+    expect(screen.getAllByText("Products & topics")).toHaveLength(2);
+    await userEvent.click(screen.getByText("Manage vocabulary"));
     expect(screen.getByText("1 direct")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Food" }));
     expect(screen.getByText(/retag 2 stored clips before removing/i)).toBeInTheDocument();
@@ -487,7 +488,7 @@ describe("Filler page", () => {
       .toBe(true);
 
     await router.navigate({ to: "/filler/taxonomy" });
-    await userEvent.click(await screen.findByRole("link", { name: "Browse 5 without" }));
+    await userEvent.click(await screen.findByRole("link", { name: /browse 5 without/i }));
     await expect.poll(() => router.state.location.search).toMatchObject({ withoutAxis: "product" });
     await expect
       .poll(() => listQueries.some((query) => new URLSearchParams(query).get("withoutAxis") === "product"))
@@ -499,11 +500,9 @@ describe("Filler page", () => {
       taxonomy: { totalClips: 0, taggedClips: 0, unclassifiedClips: 0, axisCoverage: [], taxa: [] },
     });
     renderAt("/filler/taxonomy");
-    const product = (await screen.findByText("Products & topics")).closest(
-      "div.border-border",
-    )?.parentElement;
-    expect(product).not.toBeNull();
-    await userEvent.click(within(product as HTMLElement).getByRole("button", { name: "Add" }));
+    await screen.findByText("Manage vocabulary");
+    await userEvent.click(screen.getByText("Manage vocabulary"));
+    await userEvent.click(screen.getAllByRole("button", { name: "Add" })[0]);
 
     await userEvent.type(screen.getByLabelText("Label"), "Breakfast cereal");
     await userEvent.type(screen.getByLabelText("Slug"), "breakfast-cereal");
