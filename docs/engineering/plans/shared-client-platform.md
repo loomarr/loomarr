@@ -1,6 +1,6 @@
 # Shared client platform migration
 
-**Status:** P0a through P2 merged; P3 pairing and native-shell implementation is stacked locally
+**Status:** P0a through P2 merged; P3 pairing and native-shell implementation is in protected CI as PR #538
 **Date:** 2026-08-23  
 **Decision owner:** maintainer  
 **Companion contract:** [`docs/frontend-design.md`](../../frontend-design.md)
