@@ -91,6 +91,7 @@ class GuideClient(
                                 add(
                                     Airing(
                                         kind = a.optString("kind", "program"),
+                                        scheduleBlockId = a.optString("scheduleBlockId"),
                                         title = a.optString("title"),
                                         // `optString` returns "" for a missing key, but this field is
                                         // genuinely absent for a film — so the empty case is mapped

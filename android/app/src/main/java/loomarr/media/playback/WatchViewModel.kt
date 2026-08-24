@@ -1,5 +1,6 @@
 package loomarr.media.playback
 
+import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -8,9 +9,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import loomarr.media.BuildConfig
+import loomarr.media.diagnostics.ClientDiagnosticsReporter
+import loomarr.media.diagnostics.ClientEvent
+import loomarr.media.diagnostics.ClientObservation
+import loomarr.media.diagnostics.HttpClientDiagnosticSender
 import loomarr.media.navigation.TuneHistory
 import loomarr.media.navigation.channelIndexForNumber
 import loomarr.media.pairing.DeviceStore
+import java.util.UUID
 
 /** What the watch surface is showing. */
 sealed interface WatchUiState {
@@ -56,6 +63,8 @@ class WatchViewModel(
     val state: StateFlow<WatchUiState> = _state.asStateFlow()
 
     private var client: PlaybackClient? = null
+    private var diagnostics: ClientDiagnosticsReporter? = null
+    private val playbackSessionId = UUID.randomUUID().toString()
     private var history = TuneHistory()
 
     init {
@@ -71,6 +80,15 @@ class WatchViewModel(
                 return@launch
             }
             client = clientFor(baseUrl, token)
+            diagnostics =
+                ClientDiagnosticsReporter(
+                    HttpClientDiagnosticSender(
+                        baseUrl = baseUrl,
+                        token = token,
+                        clientVersion = BuildConfig.VERSION_NAME,
+                        platform = androidTVPlatform(),
+                    ),
+                )
 
             catalog.state.collect(::applyCatalog)
         }
@@ -125,7 +143,20 @@ class WatchViewModel(
         val current = _state.value as? WatchUiState.Ready ?: return
         val playback = client ?: return
         val wrapped = ((index % current.channels.size) + current.channels.size) % current.channels.size
-        history = history.tuned(current.channels[wrapped].id)
+        val previousChannelId = current.channels.getOrNull(current.selected)?.id
+        val nextChannelId = current.channels[wrapped].id
+        if (previousChannelId != null && previousChannelId != nextChannelId) {
+            diagnostics?.record(
+                ClientObservation(
+                    event = ClientEvent.PlayerSourceReplaced,
+                    playbackSessionId = playbackSessionId,
+                    channelId = nextChannelId,
+                    previousChannelId = previousChannelId,
+                    reason = "channel_change",
+                ),
+            )
+        }
+        history = history.tuned(nextChannelId)
 
         // Clear the URL first so the player tears down the old stream rather than showing the
         // previous channel while the next one is still being minted.
@@ -179,7 +210,84 @@ class WatchViewModel(
     fun channelDown() {
         (_state.value as? WatchUiState.Ready)?.let { tune(it.selected - 1) }
     }
+
+    fun reportPlayer(
+        channelId: String,
+        event: ClientEvent,
+        reason: String? = null,
+        errorCode: String? = null,
+        fatal: Boolean? = null,
+        viewerTimeMs: Long? = null,
+        bufferedMs: Long? = null,
+    ) {
+        diagnostics?.record(
+            ClientObservation(
+                event = event,
+                playbackSessionId = playbackSessionId,
+                channelId = channelId,
+                reason = reason,
+                errorCode = errorCode,
+                fatal = fatal,
+                viewerTimeMs = viewerTimeMs,
+                bufferedMs = bufferedMs,
+            ),
+        )
+    }
+
+    fun reportSchedule(
+        channelId: String,
+        scheduleBlockId: String,
+        previousScheduleBlockId: String?,
+        blockKind: String,
+        viewerTimeMs: Long,
+        serverTimeMs: Long,
+    ) {
+        diagnostics?.record(
+            ClientObservation(
+                event = ClientEvent.PlayerScheduleBlockChanged,
+                playbackSessionId = playbackSessionId,
+                channelId = channelId,
+                scheduleBlockId = scheduleBlockId,
+                previousScheduleBlockId = previousScheduleBlockId,
+                blockKind = blockKind.takeIf { it in setOf("program", "filler", "flex") } ?: "flex",
+                viewerTimeMs = viewerTimeMs,
+                serverTimeMs = serverTimeMs,
+            ),
+        )
+    }
+
+    fun reportDrift(
+        channelId: String,
+        viewerTimeMs: Long,
+        serverTimeMs: Long,
+    ) {
+        diagnostics?.record(
+            ClientObservation(
+                event = ClientEvent.PlayerPlayheadDrift,
+                playbackSessionId = playbackSessionId,
+                channelId = channelId,
+                viewerTimeMs = viewerTimeMs,
+                serverTimeMs = serverTimeMs,
+                driftMs = viewerTimeMs - serverTimeMs,
+            ),
+        )
+    }
+
+    override fun onCleared() {
+        diagnostics?.close()
+        super.onCleared()
+    }
 }
+
+private fun androidTVPlatform(): String =
+    if (
+        Build.MANUFACTURER.orEmpty().contains("nvidia", ignoreCase = true) ||
+        Build.MODEL.orEmpty().contains("shield", ignoreCase = true)
+    ) {
+        "shield_tv"
+    } else {
+        "android_tv"
+    }
 
 /** Builds [WatchViewModel] — see PairingViewModelFactory for why a factory is required. */
 class WatchViewModelFactory(

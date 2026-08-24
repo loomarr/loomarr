@@ -19,6 +19,16 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
+import loomarr.media.diagnostics.ClientEvent
+
+data class PlayerDiagnostic(
+    val event: ClientEvent,
+    val reason: String? = null,
+    val errorCode: String? = null,
+    val fatal: Boolean? = null,
+    val viewerTimeMs: Long? = null,
+    val bufferedMs: Long? = null,
+)
 
 /** Convert Media3's corrected origin clock and decoded-frame live offset into programme wall time. */
 internal fun frameUnixTimeMs(
@@ -57,6 +67,7 @@ fun PlayerScreen(
     playUrl: String,
     onError: (String) -> Unit = {},
     onViewerTimeChanged: (Long) -> Unit = {},
+    onDiagnostic: (PlayerDiagnostic) -> Unit = {},
 ) {
     val context = LocalContext.current
 
@@ -78,6 +89,7 @@ fun PlayerScreen(
             }
         }
     val currentViewerTimeChanged by rememberUpdatedState(onViewerTimeChanged)
+    val currentDiagnostic by rememberUpdatedState(onDiagnostic)
 
     // Media3 already maps HLS PROGRAM-DATE-TIME onto the origin server clock. Subtracting the
     // player's current live offset reports the frame actually being rendered, including the normal
@@ -94,6 +106,46 @@ fun PlayerScreen(
     DisposableEffect(player) {
         val listener =
             object : Player.Listener {
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    val viewerTime = player.frameUnixTimeMs(Timeline.Window())
+                    when (playbackState) {
+                        Player.STATE_BUFFERING ->
+                            viewerTime?.let {
+                                currentDiagnostic(
+                                    PlayerDiagnostic(
+                                        event = ClientEvent.PlayerBufferingStarted,
+                                        viewerTimeMs = it,
+                                        bufferedMs = player.totalBufferedDuration.coerceAtLeast(0),
+                                    ),
+                                )
+                            }
+                        Player.STATE_READY -> {
+                            viewerTime?.let {
+                                currentDiagnostic(
+                                    PlayerDiagnostic(
+                                        ClientEvent.PlayerBufferingEnded,
+                                        viewerTimeMs = it,
+                                        bufferedMs = player.totalBufferedDuration.coerceAtLeast(0),
+                                    ),
+                                )
+                            }
+                            currentDiagnostic(PlayerDiagnostic(ClientEvent.PlayerReady))
+                        }
+                        Player.STATE_IDLE, Player.STATE_ENDED -> Unit
+                    }
+                }
+
+                override fun onPositionDiscontinuity(
+                    oldPosition: Player.PositionInfo,
+                    newPosition: Player.PositionInfo,
+                    reason: Int,
+                ) {
+                    if (reason != Player.DISCONTINUITY_REASON_SEEK) return
+                    val viewerTime = player.frameUnixTimeMs(Timeline.Window()) ?: return
+                    currentDiagnostic(PlayerDiagnostic(ClientEvent.PlayerSeeking, viewerTimeMs = viewerTime))
+                    currentDiagnostic(PlayerDiagnostic(ClientEvent.PlayerSeeked, viewerTimeMs = viewerTime))
+                }
+
                 override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                     // ⚠ Report and STOP. Jellyfin shipped the same bug twice (#5422, #5703): an
                     // unmapped track restarted playback, which failed the same way, which restarted
@@ -101,10 +153,19 @@ fun PlayerScreen(
                     // Whatever recovery is added later must be bounded and must not loop on the
                     // same failure.
                     onError(error.errorCodeName)
+                    currentDiagnostic(
+                        PlayerDiagnostic(
+                            event = ClientEvent.PlayerMediaError,
+                            errorCode = error.errorCodeName.take(64),
+                            fatal = true,
+                        ),
+                    )
                 }
             }
         player.addListener(listener)
+        currentDiagnostic(PlayerDiagnostic(ClientEvent.PlayerAttached, reason = "mount"))
         onDispose {
+            currentDiagnostic(PlayerDiagnostic(ClientEvent.PlayerDetached, reason = "unmount"))
             player.removeListener(listener)
             player.release()
         }

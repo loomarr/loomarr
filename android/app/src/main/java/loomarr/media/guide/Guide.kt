@@ -10,6 +10,8 @@ package loomarr.media.guide
 data class Airing(
     /** `program`, `filler`, `pending`, or `flex`. */
     val kind: String,
+    /** Opaque server identity shared with Process runs and client diagnostics. */
+    val scheduleBlockId: String = "",
     val title: String,
     val series: String?,
     val season: Int,
