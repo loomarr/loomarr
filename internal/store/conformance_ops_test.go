@@ -557,6 +557,25 @@ func testDiagnostics(t *testing.T, newStore func(t *testing.T) Store) {
 	if _, err := st.GetDiagnosticProcessRun(ctx, "missing"); err != ErrNotFound {
 		t.Fatalf("missing process run = %v, want ErrNotFound", err)
 	}
+	if foundRun, found, err := st.FindDiagnosticProcessRun(ctx, finished.ID); err != nil || !found || foundRun.ID != finished.ID {
+		t.Fatalf("find process run = (%+v, %v, %v)", foundRun, found, err)
+	}
+	if _, found, err := st.FindDiagnosticProcessRun(ctx, "missing"); err != nil || found {
+		t.Fatalf("find missing process run = (%v, %v), want false nil", found, err)
+	}
+	processes, err := st.QueryDiagnosticProcessRuns(ctx, diagnostics.ProcessStoreQuery{
+		From: base.Add(-4 * time.Hour).UnixMilli(), To: base.UnixMilli(), Limit: 2,
+		Status: diagnostics.ProcessFailed, Purpose: finished.Purpose, ChannelID: finished.ChannelID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(processes) != 1 || processes[0].ID != finished.ID {
+		t.Fatalf("filtered process query = %+v", processes)
+	}
+	if _, err := st.QueryDiagnosticProcessRuns(ctx, diagnostics.ProcessStoreQuery{Limit: 1000}); err == nil {
+		t.Fatal("unbounded diagnostic process query succeeded")
+	}
 	fileBacked := finished
 	fileBacked.ID = "process-file-backed"
 	fileBacked.EndedAt = base.Add(-4 * time.Hour).UnixMilli()

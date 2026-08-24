@@ -243,7 +243,7 @@ const StartupReportCard = ({ report }: { report: StartupReport }) => (
   </section>
 );
 
-const StartupReportPage = () => {
+const StartupReportPage = ({ embedded = false }: { embedded?: boolean }) => {
   const queryClient = useQueryClient();
   const health = diagnosticsApi.useGetCurrentHealth({
     query: { retry: false, refetchInterval: 30_000 },
@@ -266,45 +266,52 @@ const StartupReportPage = () => {
   const reportBody = reports.data?.status === 200 ? reports.data.data : undefined;
   const previous = reportBody?.items.filter((report) => report.id !== reportBody.current.id) ?? [];
 
+  const content = (
+    <div
+      className={embedded ? "space-y-6" : "min-h-0 flex-1 space-y-6 overflow-y-auto p-4 sm:p-6"}
+      aria-live="polite"
+    >
+      {currentHealth ? (
+        <CurrentHealthCard
+          report={currentHealth}
+          refreshing={refresh.isPending}
+          onRefresh={() => refresh.mutate()}
+        />
+      ) : (
+        <p className="text-muted-foreground text-sm">Checking app health…</p>
+      )}
+
+      <section className="space-y-3" aria-labelledby="previous-startups-title">
+        <div>
+          <h2 id="previous-startups-title" className="font-medium text-lg">
+            Previous Startups
+          </h2>
+          <p className="text-muted-foreground text-sm">
+            Retained boot reports from earlier application generations.
+          </p>
+        </div>
+        {reports.isError ? (
+          <p className="text-danger text-sm">Previous startup reports could not be loaded.</p>
+        ) : !reportBody ? (
+          <p className="text-muted-foreground text-sm">Loading startup history…</p>
+        ) : previous.length === 0 ? (
+          <p className="rounded-lg border border-border bg-card px-4 py-6 text-muted-foreground text-sm">
+            No previous startups are retained yet.
+          </p>
+        ) : (
+          previous.map((report) => <StartupReportCard key={report.id} report={report} />)
+        )}
+      </section>
+    </div>
+  );
+  if (embedded) return content;
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader
         title="App Health"
         description="What is healthy now, what needs attention, and how previous Loomarr startups completed."
       />
-      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4 sm:p-6" aria-live="polite">
-        {currentHealth ? (
-          <CurrentHealthCard
-            report={currentHealth}
-            refreshing={refresh.isPending}
-            onRefresh={() => refresh.mutate()}
-          />
-        ) : (
-          <p className="text-muted-foreground text-sm">Checking app health…</p>
-        )}
-
-        <section className="space-y-3" aria-labelledby="previous-startups-title">
-          <div>
-            <h2 id="previous-startups-title" className="font-medium text-lg">
-              Previous Startups
-            </h2>
-            <p className="text-muted-foreground text-sm">
-              Retained boot reports from earlier application generations.
-            </p>
-          </div>
-          {reports.isError ? (
-            <p className="text-danger text-sm">Previous startup reports could not be loaded.</p>
-          ) : !reportBody ? (
-            <p className="text-muted-foreground text-sm">Loading startup history…</p>
-          ) : previous.length === 0 ? (
-            <p className="rounded-lg border border-border bg-card px-4 py-6 text-muted-foreground text-sm">
-              No previous startups are retained yet.
-            </p>
-          ) : (
-            previous.map((report) => <StartupReportCard key={report.id} report={report} />)
-          )}
-        </section>
-      </div>
+      {content}
     </div>
   );
 };

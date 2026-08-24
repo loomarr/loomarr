@@ -95,6 +95,7 @@ type EventView struct {
 type EventPage struct {
 	Items      []EventView `json:"items"`
 	NextCursor string      `json:"nextCursor,omitempty"`
+	Dropped    uint64      `json:"dropped" doc:"Events dropped by this process since startup because the bounded recorder could not accept them"`
 }
 
 // EventReader is the persistence role required by EventLog. The SQL store and in-memory tests are
@@ -105,8 +106,16 @@ type EventReader interface {
 
 // EventLog owns bounded filter validation, opaque pagination, and public projection.
 type EventLog struct {
-	reader EventReader
-	now    func() time.Time
+	reader  EventReader
+	now     func() time.Time
+	dropped func() uint64
+}
+
+// WithDropped attaches the recorder's process-lifetime saturation counter without exposing the
+// recorder itself across the EventLog read seam.
+func (l *EventLog) WithDropped(dropped func() uint64) *EventLog {
+	l.dropped = dropped
+	return l
 }
 
 func NewEventLog(reader EventReader, now func() time.Time) *EventLog {
@@ -131,6 +140,9 @@ func (l *EventLog) Query(ctx context.Context, query EventQuery) (EventPage, erro
 		return EventPage{}, fmt.Errorf("query diagnostic events: %w", err)
 	}
 	page := EventPage{Items: make([]EventView, 0, min(len(records), publicLimit))}
+	if l.dropped != nil {
+		page.Dropped = l.dropped()
+	}
 	visible := records
 	if len(visible) > publicLimit {
 		visible = visible[:publicLimit]

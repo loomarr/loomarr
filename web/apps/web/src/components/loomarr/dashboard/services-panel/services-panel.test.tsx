@@ -38,6 +38,20 @@ describe("ServicesPanel", () => {
     expect(onFix).toHaveBeenCalledWith("requester");
   });
 
+  it("opens retained evidence already scoped to the failing service", async () => {
+    const onDiagnose = vi.fn();
+    render(
+      <ServicesPanel
+        view={{ loomarr, rows: [{ name: "media_server", ok: false, hint: "timed out" }] }}
+        onFix={() => {}}
+        onDiagnose={onDiagnose}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "View Media server diagnostics" }));
+    expect(onDiagnose).toHaveBeenCalledWith("media_server");
+  });
+
   // The hint is the actionable half — the panel's job is to explain, not just to flag.
   it("shows the server's reason on a failing row", () => {
     render(

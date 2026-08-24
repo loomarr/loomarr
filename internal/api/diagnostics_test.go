@@ -20,6 +20,24 @@ import (
 
 type diagnosticEventServiceFunc func(context.Context, diagnostics.EventQuery) (diagnostics.EventPage, error)
 
+type diagnosticProcessService struct {
+	query  func(context.Context, diagnostics.ProcessQuery) (diagnostics.ProcessPage, error)
+	get    func(context.Context, string) (diagnostics.ProcessDetail, error)
+	output func(context.Context, string) (diagnostics.ProcessOutput, error)
+}
+
+func (s diagnosticProcessService) Query(ctx context.Context, query diagnostics.ProcessQuery) (diagnostics.ProcessPage, error) {
+	return s.query(ctx, query)
+}
+
+func (s diagnosticProcessService) Get(ctx context.Context, id string) (diagnostics.ProcessDetail, error) {
+	return s.get(ctx, id)
+}
+
+func (s diagnosticProcessService) Output(ctx context.Context, id string) (diagnostics.ProcessOutput, error) {
+	return s.output(ctx, id)
+}
+
 type clientDiagnosticServiceFunc func(context.Context, string, diagnostics.ClientBatch) (int, error)
 
 func (f clientDiagnosticServiceFunc) Ingest(
@@ -266,6 +284,90 @@ func TestDiagnosticEventsAreAdminOnlyAndBearerQueryable(t *testing.T) {
 	}
 }
 
+func TestDiagnosticProcessesAreAdminOnlyAndExposeBoundedOutput(t *testing.T) {
+	wantPage := diagnostics.ProcessPage{Items: []diagnostics.ProcessRunView{{
+		ID: "process-1", Purpose: "playout_program", ChannelID: "channel-1",
+		StartedAt: 10, Status: diagnostics.ProcessFailed, DiscardedLines: 2,
+	}}, NextCursor: "process-next"}
+	wantDetail := diagnostics.ProcessDetail{Run: wantPage.Items[0], Progress: []diagnostics.ProcessProgressView{{
+		OccurredAt: 11, Frame: 20, Speed: 0.9, OutTimeMS: 1_000,
+	}}}
+	var gotQuery diagnostics.ProcessQuery
+	service := diagnosticProcessService{
+		query: func(_ context.Context, query diagnostics.ProcessQuery) (diagnostics.ProcessPage, error) {
+			gotQuery = query
+			return wantPage, nil
+		},
+		get: func(_ context.Context, id string) (diagnostics.ProcessDetail, error) {
+			if id != "process-1" {
+				return diagnostics.ProcessDetail{}, diagnostics.ErrProcessNotFound
+			}
+			return wantDetail, nil
+		},
+		output: func(_ context.Context, id string) (diagnostics.ProcessOutput, error) {
+			if id != "process-1" {
+				return diagnostics.ProcessOutput{}, diagnostics.ErrProcessNotFound
+			}
+			return diagnostics.ProcessOutput{Content: []byte("redacted ffmpeg output\n"), DiscardedLines: 2, Truncated: true}, nil
+		},
+	}
+	log := slog.New(slog.DiscardHandler)
+	handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, DiagnosticProcesses: service})
+
+	member := httptest.NewRequest(http.MethodGet, "/v1/diagnostics/processes", nil)
+	member.Header.Set("Authorization", "Bearer "+memberToken)
+	memberResponse := httptest.NewRecorder()
+	handler.ServeHTTP(memberResponse, member)
+	if memberResponse.Code != http.StatusForbidden {
+		t.Fatalf("member status = %d, want 403", memberResponse.Code)
+	}
+
+	list := httptest.NewRequest(http.MethodGet, "/v1/diagnostics/processes?from=1&to=1000&limit=25&status=failed&purpose=playout_program&channelId=channel-1&jobId=job-1", nil)
+	list.Header.Set("Authorization", "Bearer "+adminToken)
+	listResponse := httptest.NewRecorder()
+	handler.ServeHTTP(listResponse, list)
+	if listResponse.Code != http.StatusOK {
+		t.Fatalf("list status = %d: %s", listResponse.Code, listResponse.Body.String())
+	}
+	var page diagnostics.ProcessPage
+	if err := json.NewDecoder(listResponse.Body).Decode(&page); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(page, wantPage) {
+		t.Fatalf("page = %#v, want %#v", page, wantPage)
+	}
+	wantQuery := diagnostics.ProcessQuery{From: 1, To: 1000, Limit: 25, Status: diagnostics.ProcessFailed, Purpose: "playout_program", ChannelID: "channel-1", JobID: "job-1"}
+	if !reflect.DeepEqual(gotQuery, wantQuery) {
+		t.Fatalf("query = %#v, want %#v", gotQuery, wantQuery)
+	}
+
+	detail := httptest.NewRequest(http.MethodGet, "/v1/diagnostics/processes/process-1", nil)
+	detail.Header.Set("Authorization", "Bearer "+adminToken)
+	detailResponse := httptest.NewRecorder()
+	handler.ServeHTTP(detailResponse, detail)
+	if detailResponse.Code != http.StatusOK {
+		t.Fatalf("detail status = %d: %s", detailResponse.Code, detailResponse.Body.String())
+	}
+	var gotDetail diagnostics.ProcessDetail
+	if err := json.NewDecoder(detailResponse.Body).Decode(&gotDetail); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(gotDetail, wantDetail) {
+		t.Fatalf("detail = %#v, want %#v", gotDetail, wantDetail)
+	}
+
+	output := httptest.NewRequest(http.MethodGet, "/v1/diagnostics/processes/process-1/output", nil)
+	output.Header.Set("Authorization", "Bearer "+adminToken)
+	outputResponse := httptest.NewRecorder()
+	handler.ServeHTTP(outputResponse, output)
+	if outputResponse.Code != http.StatusOK || outputResponse.Body.String() != "redacted ffmpeg output\n" {
+		t.Fatalf("output = %d %q", outputResponse.Code, outputResponse.Body.String())
+	}
+	if outputResponse.Header().Get("X-Diagnostic-Truncated") != "true" || outputResponse.Header().Get("X-Diagnostic-Discarded-Lines") != "2" {
+		t.Fatalf("output metadata = %#v", outputResponse.Header())
+	}
+}
+
 func TestClientDiagnosticsAcceptMemberAndDeriveActor(t *testing.T) {
 	var gotActor string
 	var gotBatch diagnostics.ClientBatch
@@ -421,6 +523,48 @@ func TestDiagnosticEventFiltersFailBeforeUnboundedRead(t *testing.T) {
 	}
 	if calls != 0 {
 		t.Fatalf("invalid query reached diagnostics module %d times", calls)
+	}
+}
+
+func TestVerboseCaptureIsAdminOnlyBoundedAndStoppable(t *testing.T) {
+	recorder := diagnostics.New(&diagnosticRecordSink{}, diagnostics.Options{})
+	defer func() { _ = recorder.Close(t.Context()) }()
+	log := slog.New(slog.DiscardHandler)
+	handler := api.Router(log, api.Options{
+		Auth: testAuthorizer{}, Log: log, DiagnosticCapture: recorder,
+	})
+
+	member := httptest.NewRequest(http.MethodPost, "/v1/diagnostics/verbose-capture", strings.NewReader(`{"durationMinutes":5}`))
+	member.Header.Set("Authorization", "Bearer "+memberToken)
+	member.Header.Set("Content-Type", "application/json")
+	memberResponse := httptest.NewRecorder()
+	handler.ServeHTTP(memberResponse, member)
+	if memberResponse.Code != http.StatusForbidden {
+		t.Fatalf("member status = %d, want 403", memberResponse.Code)
+	}
+
+	start := httptest.NewRequest(http.MethodPost, "/v1/diagnostics/verbose-capture", strings.NewReader(`{"durationMinutes":5,"subsystem":"player","channelId":"channel-1"}`))
+	start.Header.Set("Authorization", "Bearer "+adminToken)
+	start.Header.Set("Content-Type", "application/json")
+	startResponse := httptest.NewRecorder()
+	handler.ServeHTTP(startResponse, start)
+	if startResponse.Code != http.StatusOK {
+		t.Fatalf("start status = %d: %s", startResponse.Code, startResponse.Body.String())
+	}
+	var capture diagnostics.VerboseCapture
+	if err := json.NewDecoder(startResponse.Body).Decode(&capture); err != nil {
+		t.Fatal(err)
+	}
+	if !capture.Active || capture.Subsystem != "player" || capture.ChannelID != "channel-1" {
+		t.Fatalf("capture = %#v", capture)
+	}
+
+	stop := httptest.NewRequest(http.MethodDelete, "/v1/diagnostics/verbose-capture", nil)
+	stop.Header.Set("Authorization", "Bearer "+adminToken)
+	stopResponse := httptest.NewRecorder()
+	handler.ServeHTTP(stopResponse, stop)
+	if stopResponse.Code != http.StatusOK || recorder.VerboseCapture().Active {
+		t.Fatalf("stop status = %d, capture = %#v", stopResponse.Code, recorder.VerboseCapture())
 	}
 }
 

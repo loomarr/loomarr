@@ -220,3 +220,45 @@ func TestRecorderCanBoundedlyEnableDebug(t *testing.T) {
 		t.Fatalf("records = %+v, want retained debug", records)
 	}
 }
+
+func TestRecorderVerboseCaptureIsScopedAndExpires(t *testing.T) {
+	now := time.Date(2026, 8, 23, 14, 5, 0, 0, time.UTC)
+	sink := &memorySink{}
+	recorder := New(sink, Options{Now: func() time.Time { return now }, FlushInterval: time.Hour})
+	capture, err := recorder.StartVerboseCapture(5*time.Minute, "player", "channel-1")
+	if err != nil || !capture.Active || capture.EndsAt != now.Add(5*time.Minute).UnixMilli() {
+		t.Fatalf("capture = %#v, err = %v", capture, err)
+	}
+	recorder.Record(t.Context(), Event{Level: LevelDebug, Subsystem: "player", ChannelID: "channel-1", Name: "captured"})
+	recorder.Record(t.Context(), Event{Level: LevelDebug, Subsystem: "player", ChannelID: "channel-2", Name: "wrong-channel"})
+	recorder.Record(t.Context(), Event{Level: LevelDebug, Subsystem: "api", ChannelID: "channel-1", Name: "wrong-subsystem"})
+	now = now.Add(5 * time.Minute)
+	recorder.Record(t.Context(), Event{Level: LevelDebug, Subsystem: "player", ChannelID: "channel-1", Name: "expired"})
+	if recorder.VerboseCapture().Active {
+		t.Fatal("elapsed capture remained active")
+	}
+	if err := recorder.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	records := sink.snapshot()
+	if len(records) != 1 || records[0].Event != "captured" {
+		t.Fatalf("records = %+v, want only scoped capture", records)
+	}
+}
+
+func TestRecorderVerboseCaptureRejectsUnsafeBounds(t *testing.T) {
+	recorder := New(&memorySink{}, Options{})
+	defer func() { _ = recorder.Close(t.Context()) }()
+	for _, tc := range []struct {
+		duration  time.Duration
+		subsystem string
+	}{
+		{duration: 30 * time.Second},
+		{duration: 16 * time.Minute},
+		{duration: time.Minute, subsystem: strings.Repeat("x", 129)},
+	} {
+		if _, err := recorder.StartVerboseCapture(tc.duration, tc.subsystem, ""); !errors.Is(err, ErrInvalidVerboseCapture) {
+			t.Fatalf("StartVerboseCapture(%v) error = %v", tc, err)
+		}
+	}
+}

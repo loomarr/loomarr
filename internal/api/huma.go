@@ -111,6 +111,9 @@ type Server struct {
 	// diagnosticEvents is the admin-only retained technical timeline. Nil keeps the route mounted
 	// but truthfully unavailable for store-less generations.
 	diagnosticEvents DiagnosticEventService
+	// diagnosticProcesses owns bounded Process-run metadata, progress, and output reads.
+	diagnosticProcesses DiagnosticProcessService
+	diagnosticCapture   DiagnosticCaptureService
 	// clientDiagnostics accepts a closed authenticated web/TV event set; it never grants reads.
 	clientDiagnostics ClientDiagnosticService
 	// restart wires POST /v1/system/restart (§9.2, V13); nil ⇒ 501. Nil is the honest
@@ -855,6 +858,10 @@ type Options struct {
 	Activity *activity.Recorder
 	// DiagnosticEvents backs the bounded admin/agent diagnostic timeline.
 	DiagnosticEvents DiagnosticEventService
+	// DiagnosticProcesses backs active/recent Process runs and bounded output.
+	DiagnosticProcesses DiagnosticProcessService
+	// DiagnosticCapture controls the recorder's process-local bounded debug window.
+	DiagnosticCapture DiagnosticCaptureService
 	// ClientDiagnostics accepts bounded curated events from authenticated web/TV clients.
 	ClientDiagnostics ClientDiagnosticService
 	// StartupReports backs the current/recent application-generation report.

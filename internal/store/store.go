@@ -558,6 +558,8 @@ type DiagnosticStore interface {
 	QueryDiagnosticEvents(ctx context.Context, query diagnostics.EventStoreQuery) ([]diagnostics.Record, error)
 	UpsertDiagnosticProcessRun(ctx context.Context, run diagnostics.ProcessRun) error
 	GetDiagnosticProcessRun(ctx context.Context, id string) (diagnostics.ProcessRun, error)
+	FindDiagnosticProcessRun(ctx context.Context, id string) (diagnostics.ProcessRun, bool, error)
+	QueryDiagnosticProcessRuns(ctx context.Context, query diagnostics.ProcessStoreQuery) ([]diagnostics.ProcessRun, error)
 	ListDiagnosticRetentionCandidates(ctx context.Context, before time.Time, limit int) ([]diagnostics.RetentionCandidate, error)
 	DeleteDiagnosticEvent(ctx context.Context, id string) (bool, error)
 	DeleteDiagnosticProcessRun(ctx context.Context, id string) (bool, error)

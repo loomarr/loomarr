@@ -5893,9 +5893,10 @@ Application logging fans each accepted `slog` record to two independent sinks:
    it never waits on the request, scheduler, or Playout goroutine. Persistence failures report once
    through a stdout-only fallback logger, never through the composite handler that failed.
 
-The default durable threshold is `info`. A future operator-triggered verbose capture may retain
-`debug` for a bounded duration and optional subsystem/Channel scope; the design does not make
-permanent debug retention the default. Existing structured `slog` call sites remain valid. Stable
+The default durable threshold is `info`. An admin-triggered verbose capture may retain `debug` for
+one to fifteen minutes and an optional subsystem/Channel scope. The capture is process-local,
+automatically expires, and continues through the same bounded queue, redaction, and retention path;
+the design does not make permanent debug retention the default. Existing structured `slog` call sites remain valid. Stable
 event names and correlation attributes are added where a support query needs a contract rather
 than prose.
 
@@ -5920,7 +5921,9 @@ An ffmpeg Process run has three independent streams with three different owners:
 - **stderr is diagnostic output**, drained continuously into a bounded process-scoped file.
 
 Diagnostic writes happen after each pipe read and cannot apply backpressure to ffmpeg. If the
-output writer falls behind, it drops diagnostic lines, counts them, and continues draining. A
+output writer falls behind, it drops diagnostic lines, counts them, and continues draining. Each
+retained line carries its UTC observation timestamp so the UI can show or hide timing without
+inventing it from the Process start time. A
 long-lived run keeps an explicit 1 MiB safety envelope: the first 256 KiB of initialization context
 plus a rolling 768 KiB failure tail. The file inserts a marker with both cap evictions and
 pre-disk queue drops; metadata carries the same total, so downloads and UI state exactly what was

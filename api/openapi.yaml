@@ -4754,6 +4754,132 @@ components:
         - pods
         - excluded
       type: object
+    ProcessDetail:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ProcessDetail.json
+          format: uri
+          readOnly: true
+          type: string
+        progress:
+          items:
+            $ref: "#/components/schemas/ProcessProgressView"
+          type: array
+        progressTruncated:
+          type: boolean
+        run:
+          $ref: "#/components/schemas/ProcessRunView"
+      required:
+        - run
+        - progress
+        - progressTruncated
+      type: object
+    ProcessPage:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ProcessPage.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/ProcessRunView"
+          type: array
+        nextCursor:
+          type: string
+      required:
+        - items
+      type: object
+    ProcessProgressView:
+      additionalProperties: false
+      properties:
+        frame:
+          format: int64
+          type: integer
+        occurredAt:
+          format: int64
+          type: integer
+        outTimeMs:
+          format: int64
+          type: integer
+        speed:
+          format: double
+          type: number
+      required:
+        - occurredAt
+        - frame
+        - speed
+        - outTimeMs
+      type: object
+    ProcessRunView:
+      additionalProperties: false
+      properties:
+        channelId:
+          type: string
+        discardedLines:
+          format: int64
+          type: integer
+        endedAt:
+          format: int64
+          type: integer
+        executable:
+          type: string
+        executableVersion:
+          type: string
+        exitCode:
+          format: int64
+          type: integer
+        firstError:
+          type: string
+        id:
+          type: string
+        instanceId:
+          type: string
+        jobId:
+          type: string
+        lastError:
+          type: string
+        outputBytes:
+          format: int64
+          type: integer
+        parentRunId:
+          type: string
+        purpose:
+          type: string
+        scheduleBlockId:
+          type: string
+        startedAt:
+          format: int64
+          type: integer
+        status:
+          enum:
+            - running
+            - succeeded
+            - failed
+            - cancelled
+          type: string
+        target:
+          type: string
+        terminationReason:
+          type: string
+        updatedAt:
+          format: int64
+          type: integer
+      required:
+        - id
+        - purpose
+        - startedAt
+        - status
+        - outputBytes
+        - discardedLines
+        - updatedAt
+      type: object
     Proposal:
       additionalProperties: false
       properties:
@@ -7151,6 +7277,55 @@ components:
         - autoApprove
         - local
       type: object
+    VerboseCapture:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/VerboseCapture.json
+          format: uri
+          readOnly: true
+          type: string
+        active:
+          type: boolean
+        channelId:
+          type: string
+        endsAt:
+          format: int64
+          type: integer
+        startedAt:
+          format: int64
+          type: integer
+        subsystem:
+          type: string
+      required:
+        - active
+      type: object
+    VerboseCaptureInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/VerboseCaptureInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        channelId:
+          maxLength: 128
+          type: string
+        durationMinutes:
+          format: int64
+          maximum: 15
+          minimum: 1
+          type: integer
+        subsystem:
+          maxLength: 128
+          type: string
+      required:
+        - durationMinutes
+      type: object
     Vocabulary:
       additionalProperties: false
       properties:
@@ -8301,6 +8476,11 @@ paths:
               schema:
                 additionalProperties: false
                 properties:
+                  dropped:
+                    description: Events dropped by this process since startup because the bounded recorder could not accept them
+                    format: int64
+                    minimum: 0
+                    type: integer
                   items:
                     items:
                       $ref: "#/components/schemas/EventView"
@@ -8309,6 +8489,7 @@ paths:
                     type: string
                 required:
                   - items
+                  - dropped
                 type: object
             application/x-ndjson:
               schema:
@@ -8369,6 +8550,167 @@ paths:
       summary: Refresh current health
       tags:
         - diagnostics
+  /v1/diagnostics/processes:
+    get:
+      description: Returns one bounded newest-first page of active and recent external media Process runs.
+      operationId: list-diagnostic-processes
+      parameters:
+        - description: Window start as Unix epoch milliseconds; defaults to one hour before to
+          explode: false
+          in: query
+          name: from
+          schema:
+            description: Window start as Unix epoch milliseconds; defaults to one hour before to
+            format: int64
+            minimum: 0
+            type: integer
+        - description: Window end as Unix epoch milliseconds; defaults to now
+          explode: false
+          in: query
+          name: to
+          schema:
+            description: Window end as Unix epoch milliseconds; defaults to now
+            format: int64
+            minimum: 0
+            type: integer
+        - description: Page size
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 100
+            description: Page size
+            format: int64
+            maximum: 200
+            minimum: 1
+            type: integer
+        - description: Opaque cursor returned by the previous page
+          explode: false
+          in: query
+          name: cursor
+          schema:
+            description: Opaque cursor returned by the previous page
+            maxLength: 512
+            type: string
+        - description: Exact lifecycle status
+          explode: false
+          in: query
+          name: status
+          schema:
+            description: Exact lifecycle status
+            enum:
+              - running
+              - succeeded
+              - failed
+              - cancelled
+            type: string
+        - description: Exact process purpose
+          explode: false
+          in: query
+          name: purpose
+          schema:
+            description: Exact process purpose
+            maxLength: 128
+            type: string
+        - description: Exact Channel correlation id
+          explode: false
+          in: query
+          name: channelId
+          schema:
+            description: Exact Channel correlation id
+            maxLength: 128
+            type: string
+        - description: Exact Job correlation id
+          explode: false
+          in: query
+          name: jobId
+          schema:
+            description: Exact Job correlation id
+            maxLength: 128
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessPage"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List diagnostic Process runs
+      tags:
+        - diagnostics
+  /v1/diagnostics/processes/{id}:
+    get:
+      description: Returns bounded lifecycle metadata and downsampled progress for one Process run.
+      operationId: get-diagnostic-process
+      parameters:
+        - description: Opaque Process-run id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Opaque Process-run id
+            maxLength: 128
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessDetail"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get a diagnostic Process run
+      tags:
+        - diagnostics
+  /v1/diagnostics/processes/{id}/output:
+    get:
+      description: Streams one Process run's bounded redacted diagnostic output as readable text.
+      operationId: get-diagnostic-process-output
+      parameters:
+        - description: Opaque Process-run id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Opaque Process-run id
+            maxLength: 128
+            type: string
+      responses:
+        "200":
+          content:
+            text/plain:
+              schema:
+                type: string
+          description: Bounded redacted Process output
+          headers:
+            X-Diagnostic-Discarded-Lines:
+              description: Count of output lines discarded before this retained view
+              schema:
+                type: integer
+            X-Diagnostic-Truncated:
+              description: Whether earlier output was discarded
+              schema:
+                type: boolean
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Read diagnostic Process output
+      tags:
+        - diagnostics
   /v1/diagnostics/startup-reports:
     get:
       description: Returns the live application-generation startup report and recent completed reports retained in Diagnostics.
@@ -8399,6 +8741,70 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: List startup reports
+      tags:
+        - diagnostics
+  /v1/diagnostics/verbose-capture:
+    delete:
+      description: Immediately restores the default diagnostic retention threshold.
+      operationId: stop-diagnostic-verbose-capture
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerboseCapture"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Stop verbose capture
+      tags:
+        - diagnostics
+    get:
+      description: Returns the current process-local bounded debug-capture window.
+      operationId: get-diagnostic-verbose-capture
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerboseCapture"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get verbose capture
+      tags:
+        - diagnostics
+    post:
+      description: Temporarily retains scoped debug evidence through the ordinary bounded and redacted recorder.
+      operationId: start-diagnostic-verbose-capture
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerboseCaptureInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerboseCapture"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Start verbose capture
       tags:
         - diagnostics
   /v1/discovery/feedback:

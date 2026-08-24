@@ -164,6 +164,12 @@ const DashboardScreen = () => {
             // "Fix →" routes to the settings that own the failing connection. A red dot
             // with nowhere to go is a puzzle, not a diagnosis (§12).
             onFix={(group) => navigate({ to: "/settings/connections", hash: group })}
+            onDiagnose={(subsystem) =>
+              navigate({
+                to: "/settings/system/diagnostics",
+                search: { view: "application", level: "error", subsystem },
+              })
+            }
           />
         ) : null}
 

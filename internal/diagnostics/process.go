@@ -369,6 +369,7 @@ func (h *ProcessHandle) RecordOutput(line string) {
 		h.firstOutput = line
 	}
 	h.lastOutput = line
+	line = "[" + h.manager.opts.Now().UTC().Format(time.RFC3339Nano) + "] " + line
 	select {
 	case h.lines <- line:
 	default:

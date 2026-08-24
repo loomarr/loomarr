@@ -8,6 +8,8 @@ interface ServicesPanelProps {
    * row's `settingsGroup` — a red dot with nowhere to go is a puzzle, not a diagnosis.
    */
   onFix: (settingsGroup: string) => void;
+  /** Open retained application evidence already filtered to the failing subsystem. */
+  onDiagnose?: (subsystem: string) => void;
   /** True while a poll is in flight, so the panel can show it is re-checking. */
   refreshing?: boolean;
   className?: string;

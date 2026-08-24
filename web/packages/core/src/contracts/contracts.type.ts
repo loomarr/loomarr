@@ -6,7 +6,7 @@
 // The ⌘K palette merges API search candidates + local channels + help links into one
 // list, so its scope is a *superset* of the API's SearchScope — named PaletteScope to
 // avoid colliding with the generated one.
-type PaletteScope = "library" | "tmdb" | "clips" | "channels" | "help";
+type PaletteScope = "diagnostics" | "library" | "tmdb" | "clips" | "channels" | "help";
 
 interface SearchResult {
   id: string;
