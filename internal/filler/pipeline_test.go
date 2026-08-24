@@ -184,6 +184,7 @@ type fakeStage struct {
 	note    string
 	result  filler.StageResult
 	err     error
+	panicV  any
 	runs    int
 	killCtx func()
 }
@@ -195,6 +196,9 @@ func (f *fakeStage) Applies(context.Context, filler.StoreClip) (bool, string) {
 }
 func (f *fakeStage) Run(ctx context.Context, _ filler.StoreClip) (filler.StageResult, error) {
 	f.runs++
+	if f.panicV != nil {
+		panic(f.panicV)
+	}
 	// killCtx models the rung whose work outlives the pass: the deadline lands mid-exec, the
 	// child process dies, and the stage reports the context error — exactly what ffmpeg, whisper
 	// and an LLM turn all do when the budget ends underneath them.
@@ -203,6 +207,32 @@ func (f *fakeStage) Run(ctx context.Context, _ filler.StoreClip) (filler.StageRe
 		return filler.StageResult{}, ctx.Err()
 	}
 	return f.result, f.err
+}
+
+// A rung panic must fail ONE clip, not abort the scheduled pass and leave that row permanently
+// `running`. The scheduler has its own last-resort recovery, but it is too far out to persist the
+// clip's retry/backoff state or let work behind it advance.
+func TestPipeline_StagePanicBecomesARecoverableClipFailure(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "c1")
+	stages := allStages()
+	stages[filler.StageTag].panicV = "classifier exploded"
+
+	p := newPipe(st, asSlice(stages), filler.DefaultBudget())
+	if err := p.Advance(context.Background(), "c1"); err != nil {
+		t.Fatal(err)
+	}
+
+	row := st.rows["c1"]
+	if row.Stage != filler.StageTag || row.Status != filler.StatusFailed || row.Attempts != 1 {
+		t.Fatalf("panic state = %q/%q attempts=%d, want tag/failed attempts=1", row.Stage, row.Status, row.Attempts)
+	}
+	if row.NextRun.IsZero() {
+		t.Error("panic did not receive ordinary failure backoff")
+	}
+	if got := row.Stages[len(row.Stages)-1].Note; got != "stage tag panicked: classifier exploded" {
+		t.Fatalf("panic note = %q", got)
+	}
 }
 
 func stage(id filler.StageID) *fakeStage {
