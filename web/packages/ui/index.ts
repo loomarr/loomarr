@@ -28,3 +28,12 @@ export type { ProgrammeCardData, ProgrammeCardProps } from "./src/programme-card
 export { ProgrammeCard } from "./src/programme-card";
 export type { StatePanelAction, StatePanelKind, StatePanelProps } from "./src/state-panel";
 export { StatePanel } from "./src/state-panel";
+export type {
+  SurfChannelData,
+  SurfGroupData,
+  SurfGroupKind,
+  SurfProgrammeData,
+  SurfRailProps,
+  SurfSelection,
+} from "./src/surf-rail";
+export { SurfRail } from "./src/surf-rail";

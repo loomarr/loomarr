@@ -12,9 +12,11 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@loomarr/core": "workspace:*"
+    "@loomarr/core": "workspace:*",
+    "@loomarr/ui": "workspace:*"
   },
   "devDependencies": {
+    "@loomarr/fixtures": "workspace:*",
     "typescript": "~6.0.3",
     "vitest": "^4.1.10"
   }

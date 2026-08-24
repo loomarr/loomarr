@@ -521,6 +521,9 @@ importers:
         specifier: workspace:*
         version: link:../design-system
     devDependencies:
+      '@loomarr/fixtures':
+        specifier: workspace:*
+        version: link:../fixtures
       '@types/react':
         specifier: ~19.2.2
         version: 19.2.18
@@ -545,7 +548,13 @@ importers:
       '@loomarr/core':
         specifier: workspace:*
         version: link:../core
+      '@loomarr/ui':
+        specifier: workspace:*
+        version: link:../ui
     devDependencies:
+      '@loomarr/fixtures':
+        specifier: workspace:*
+        version: link:../fixtures
       typescript:
         specifier: ~6.0.3
         version: 6.0.3

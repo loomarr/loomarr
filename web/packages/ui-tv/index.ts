@@ -12,3 +12,14 @@ export type {
   TvGuideNavigationState,
   TvGuideRowWindow,
 } from "./src/guide-navigation.type";
+export {
+  activateTvSurfSelection,
+  moveTvSurfSelection,
+  previousSurfChannel,
+  restoreTvSurfSelection,
+} from "./src/surf-navigation";
+export type {
+  TvSurfActivation,
+  TvSurfDirection,
+  TvSurfMoveResult,
+} from "./src/surf-navigation.type";

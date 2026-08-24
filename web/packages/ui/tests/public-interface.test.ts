@@ -13,6 +13,7 @@ import {
   ProgrammeCard,
   ProgrammeIdentity,
   StatePanel,
+  SurfRail,
   TransientOverlay,
 } from "../index";
 
@@ -31,5 +32,6 @@ describe("ui public interface", () => {
     expect(ModalOverlay).toBeTypeOf("function");
     expect(TransientOverlay).toBeTypeOf("function");
     expect(StatePanel).toBeTypeOf("function");
+    expect(SurfRail).toBeTypeOf("function");
   });
 });
