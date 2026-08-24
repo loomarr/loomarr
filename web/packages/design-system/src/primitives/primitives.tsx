@@ -1,27 +1,55 @@
-import { styled, Text as TamaguiText, useTheme, View } from "@tamagui/core";
+import { isWeb, styled, Text as TamaguiText, useTheme, View } from "@tamagui/core";
 import { type ComponentProps, type ReactNode, useState } from "react";
 import { Pressable, TextInput } from "react-native";
 
 import { type Density, type TextRole, typography } from "../tokens";
+import { resolveViewportInsets, useViewportInsets } from "../viewport";
 
-const Screen = styled(View, {
+const ScreenFrame = styled(View, {
   name: "LoomarrScreen",
   flex: 1,
   width: "100%",
-  minHeight: "100%",
+  minHeight: isWeb ? "100vh" : "100%",
   backgroundColor: "$surfaceCanvas",
-  padding: "$screen",
-  variants: {
-    density: {
-      pointer: { padding: "$screen" },
-      touch: { padding: "$section" },
-      tv: { padding: 48 },
-    },
-  } as const,
-  defaultVariants: {
-    density: "pointer",
-  },
 });
+
+type ScreenFrameProps = ComponentProps<typeof ScreenFrame>;
+type ScreenProps = Omit<
+  ScreenFrameProps,
+  | "padding"
+  | "paddingBlock"
+  | "paddingBlockEnd"
+  | "paddingBlockStart"
+  | "paddingBottom"
+  | "paddingEnd"
+  | "paddingHorizontal"
+  | "paddingInline"
+  | "paddingInlineEnd"
+  | "paddingInlineStart"
+  | "paddingLeft"
+  | "paddingRight"
+  | "paddingStart"
+  | "paddingTop"
+  | "paddingVertical"
+> & { density?: Density };
+
+/**
+ * Edge-to-edge application frame whose content always stays inside platform insets and the
+ * distance-appropriate Loomarr gutter. Insets are supplied once by LoomarrProvider.
+ */
+const Screen = ({ density = "pointer", ...props }: ScreenProps) => {
+  const platformInsets = useViewportInsets();
+  const insets = resolveViewportInsets(density, platformInsets);
+  return (
+    <ScreenFrame
+      {...props}
+      paddingBottom={insets.bottom}
+      paddingLeft={insets.left}
+      paddingRight={insets.right}
+      paddingTop={insets.top}
+    />
+  );
+};
 
 const Surface = styled(View, {
   name: "LoomarrSurface",
@@ -304,5 +332,5 @@ const ProgressTrack = ({ percent, tone = "primary", ...props }: ProgressTrackPro
   );
 };
 
-export type { ActionProps, ArtworkState, BadgeTone, FieldProps, TextProps };
+export type { ActionProps, ArtworkState, BadgeTone, FieldProps, ScreenProps, TextProps };
 export { Action, ArtworkFrame, Badge, Field, FocusSurface, ProgressTrack, Screen, Surface, Text };

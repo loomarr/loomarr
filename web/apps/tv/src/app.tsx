@@ -12,6 +12,7 @@ import { useKeepAwake } from "expo-keep-awake";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
 import { useMemo, useState } from "react";
+import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 
 const credentialStore = createPairingCredentialStore({
   deleteItem: SecureStore.deleteItemAsync,
@@ -32,8 +33,9 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
   );
 };
 
-const App = () => {
+const TvClient = () => {
   useKeepAwake();
+  const insets = useSafeAreaInsets();
   const session = useMemo(
     () =>
       new PairingSession({
@@ -45,7 +47,7 @@ const App = () => {
     [],
   );
   return (
-    <LoomarrProvider>
+    <LoomarrProvider insets={insets}>
       <PairingShell
         density="tv"
         initialServerUrl={process.env.EXPO_PUBLIC_LOOMARR_URL}
@@ -56,5 +58,11 @@ const App = () => {
     </LoomarrProvider>
   );
 };
+
+const App = () => (
+  <SafeAreaProvider>
+    <TvClient />
+  </SafeAreaProvider>
+);
 
 export default App;

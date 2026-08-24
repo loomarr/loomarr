@@ -18,7 +18,14 @@ export {
   signalLoaderMotion,
   skeletonMotion,
 } from "./src/loading";
-export type { ActionProps, ArtworkState, BadgeTone, FieldProps, TextProps } from "./src/primitives";
+export type {
+  ActionProps,
+  ArtworkState,
+  BadgeTone,
+  FieldProps,
+  ScreenProps,
+  TextProps,
+} from "./src/primitives";
 export {
   Action,
   ArtworkFrame,
@@ -47,3 +54,5 @@ export {
   semanticThemes,
   typography,
 } from "./src/tokens";
+export type { ViewportInsets } from "./src/viewport";
+export { emptyViewportInsets, resolveViewportInsets, TV_OVERSCAN_INSET } from "./src/viewport";
