@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { ApplicationDiagnostics, type ApplicationFilters } from "../application-diagnostics";
 import { StartupReportPage } from "../startup-report-page";
+import { SupportBundle } from "../support-bundle";
 
 type DiagnosticsView = "health" | "application" | "playout";
 
@@ -37,6 +38,19 @@ const DiagnosticsPage = ({
       <PageHeader
         title="Diagnostics"
         description="Current health and bounded technical evidence for this Loomarr instance."
+        actions={
+          <SupportBundle
+            initialRange={search.range}
+            correlations={{
+              requestId: search.requestId,
+              playbackSessionId: search.playbackSessionId,
+              channelId: (search.channelId ?? search.processChannelId) || undefined,
+              scheduleBlockId: search.scheduleBlockId,
+              jobId: (search.jobId ?? search.processJobId) || undefined,
+              processRunId: search.processRunId ?? search.processId,
+            }}
+          />
+        }
       />
       <nav className="flex gap-1 border-border border-b px-4 pt-2 sm:px-6" aria-label="Diagnostics views">
         {tabs.map(({ id, label, icon: Icon }) => (

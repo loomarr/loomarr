@@ -26,6 +26,19 @@ type diagnosticProcessService struct {
 	output func(context.Context, string) (diagnostics.ProcessOutput, error)
 }
 
+type diagnosticBundleService struct {
+	preview func(context.Context, diagnostics.BundleSelection) (diagnostics.BundlePreview, error)
+	build   func(context.Context, diagnostics.BundleSelection) (diagnostics.BundleResult, error)
+}
+
+func (s diagnosticBundleService) Preview(ctx context.Context, selection diagnostics.BundleSelection) (diagnostics.BundlePreview, error) {
+	return s.preview(ctx, selection)
+}
+
+func (s diagnosticBundleService) Build(ctx context.Context, selection diagnostics.BundleSelection) (diagnostics.BundleResult, error) {
+	return s.build(ctx, selection)
+}
+
 func (s diagnosticProcessService) Query(ctx context.Context, query diagnostics.ProcessQuery) (diagnostics.ProcessPage, error) {
 	return s.query(ctx, query)
 }
@@ -115,6 +128,52 @@ func TestStartupReportsAreAdminOnlyAndBearerQueryable(t *testing.T) {
 	}
 	if body.Current.ID != current.ID || len(body.Items) != 1 || body.Items[0].State != diagnostics.StartupDegraded {
 		t.Fatalf("startup response = %+v", body)
+	}
+}
+
+func TestSupportBundlePreviewAndDownloadAreAdminOnlyAndUseSameSelection(t *testing.T) {
+	var previewSelection, buildSelection diagnostics.BundleSelection
+	service := diagnosticBundleService{
+		preview: func(_ context.Context, selection diagnostics.BundleSelection) (diagnostics.BundlePreview, error) {
+			previewSelection = selection
+			return diagnostics.BundlePreview{Manifest: diagnostics.BundleManifest{FormatVersion: diagnostics.SupportBundleFormat, Counts: diagnostics.BundleCounts{Events: 2}}, EstimatedBytes: 512}, nil
+		},
+		build: func(_ context.Context, selection diagnostics.BundleSelection) (diagnostics.BundleResult, error) {
+			buildSelection = selection
+			return diagnostics.BundleResult{Manifest: diagnostics.BundleManifest{GeneratedAt: 1787572800000}, Content: []byte("PK bundle")}, nil
+		},
+	}
+	log := slog.New(slog.DiscardHandler)
+	handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, DiagnosticBundles: service})
+	body := `{"from":1,"to":2,"events":true,"processes":true,"processOutput":false,"channelId":"channel-1"}`
+	member := httptest.NewRequest(http.MethodPost, "/v1/diagnostics/support-bundle/preview", strings.NewReader(body))
+	member.Header.Set("Authorization", "Bearer "+memberToken)
+	member.Header.Set("Content-Type", "application/json")
+	memberResponse := httptest.NewRecorder()
+	handler.ServeHTTP(memberResponse, member)
+	if memberResponse.Code != http.StatusForbidden {
+		t.Fatalf("member status = %d", memberResponse.Code)
+	}
+
+	preview := httptest.NewRequest(http.MethodPost, "/v1/diagnostics/support-bundle/preview", strings.NewReader(body))
+	preview.Header.Set("Authorization", "Bearer "+adminToken)
+	preview.Header.Set("Content-Type", "application/json")
+	previewResponse := httptest.NewRecorder()
+	handler.ServeHTTP(previewResponse, preview)
+	if previewResponse.Code != http.StatusOK || previewSelection.ChannelID != "channel-1" {
+		t.Fatalf("preview = %d %s, selection %#v", previewResponse.Code, previewResponse.Body.String(), previewSelection)
+	}
+
+	download := httptest.NewRequest(http.MethodPost, "/v1/diagnostics/support-bundle", strings.NewReader(body))
+	download.Header.Set("Authorization", "Bearer "+adminToken)
+	download.Header.Set("Content-Type", "application/json")
+	downloadResponse := httptest.NewRecorder()
+	handler.ServeHTTP(downloadResponse, download)
+	if downloadResponse.Code != http.StatusOK || downloadResponse.Body.String() != "PK bundle" || buildSelection != previewSelection {
+		t.Fatalf("download = %d %q, selection %#v", downloadResponse.Code, downloadResponse.Body.String(), buildSelection)
+	}
+	if downloadResponse.Header().Get("Content-Type") != "application/zip" || !strings.Contains(downloadResponse.Header().Get("Content-Disposition"), "loomarr-support-20260824T120000Z.zip") {
+		t.Fatalf("download headers = %#v", downloadResponse.Header())
 	}
 }
 
