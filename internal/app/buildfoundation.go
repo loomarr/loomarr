@@ -36,6 +36,7 @@ type foundationBuild struct {
 	activity               *activity.Recorder
 	diagnostics            *diagnostics.Recorder
 	diagnosticEvents       *diagnostics.EventLog
+	clientDiagnostics      *diagnostics.ClientIngestor
 	processDiagnostics     *diagnostics.ProcessManager
 	startup                *diagnostics.Startup
 	startupReports         *diagnostics.StartupReports
@@ -83,6 +84,7 @@ func buildFoundation(
 		})
 		owner.addStop(result.diagnostics.Close)
 		result.diagnosticEvents = diagnostics.NewEventLog(st, time.Now)
+		result.clientDiagnostics = diagnostics.NewClientIngestor(result.diagnostics, time.Now)
 		result.startup.AttachPersistence(result.diagnostics, instanceID)
 		result.startupReports = diagnostics.NewStartupReports(result.startup, st, time.Now)
 	}

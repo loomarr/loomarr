@@ -110,6 +110,8 @@ type Server struct {
 	// diagnosticEvents is the admin-only retained technical timeline. Nil keeps the route mounted
 	// but truthfully unavailable for store-less generations.
 	diagnosticEvents DiagnosticEventService
+	// clientDiagnostics accepts a closed authenticated web/TV event set; it never grants reads.
+	clientDiagnostics ClientDiagnosticService
 	// restart wires POST /v1/system/restart (§9.2, V13); nil ⇒ 501. Nil is the honest
 	// answer for a handler built without main's generation loop behind it (tests, the
 	// integration harness): a button that silently does nothing is worse than none.
@@ -832,6 +834,8 @@ type Options struct {
 	Activity *activity.Recorder
 	// DiagnosticEvents backs the bounded admin/agent diagnostic timeline.
 	DiagnosticEvents DiagnosticEventService
+	// ClientDiagnostics accepts bounded curated events from authenticated web/TV clients.
+	ClientDiagnostics ClientDiagnosticService
 	// StartupReports backs the current/recent application-generation report.
 	StartupReports StartupReportService
 	// HealthRefresh invokes the same runner as the named System health task.

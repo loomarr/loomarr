@@ -15,9 +15,33 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 type diagnosticEventServiceFunc func(context.Context, diagnostics.EventQuery) (diagnostics.EventPage, error)
+
+type clientDiagnosticServiceFunc func(context.Context, string, diagnostics.ClientBatch) (int, error)
+
+func (f clientDiagnosticServiceFunc) Ingest(
+	ctx context.Context, actorID string, batch diagnostics.ClientBatch,
+) (int, error) {
+	return f(ctx, actorID, batch)
+}
+
+type diagnosticUserAuthorizer struct{}
+
+func (diagnosticUserAuthorizer) Authorize(r *http.Request) api.Role {
+	role, _ := diagnosticUserAuthorizer{}.AuthorizeUser(r)
+	return role
+}
+
+func (diagnosticUserAuthorizer) AuthorizeUser(r *http.Request) (api.Role, *store.User) {
+	if strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ") != memberToken {
+		return api.RoleAnonymous, nil
+	}
+	user := store.User{ID: "member_1", Name: "Viewer", Role: store.RoleMember}
+	return api.RoleMember, &user
+}
 
 func (f diagnosticEventServiceFunc) Query(
 	ctx context.Context, query diagnostics.EventQuery,
@@ -239,6 +263,105 @@ func TestDiagnosticEventsAreAdminOnlyAndBearerQueryable(t *testing.T) {
 	}
 	if !reflect.DeepEqual(queries[0], wantQuery) || !reflect.DeepEqual(queries[1], wantQuery) {
 		t.Fatalf("parsed queries = %+v", queries)
+	}
+}
+
+func TestClientDiagnosticsAcceptMemberAndDeriveActor(t *testing.T) {
+	var gotActor string
+	var gotBatch diagnostics.ClientBatch
+	service := clientDiagnosticServiceFunc(func(_ context.Context, actorID string, batch diagnostics.ClientBatch) (int, error) {
+		gotActor, gotBatch = actorID, batch
+		return len(batch.Events), nil
+	})
+	log := slog.New(slog.DiscardHandler)
+	handler := api.Router(log, api.Options{
+		Auth: diagnosticUserAuthorizer{}, Log: log, ClientDiagnostics: service,
+	})
+
+	anonymous := httptest.NewRequest(http.MethodPost, "/v1/diagnostics/client-events", strings.NewReader(`{
+		"source":"web","clientVersion":"dev","platform":"chromium","events":[]
+	}`))
+	anonymous.Header.Set("Content-Type", "application/json")
+	anonymousResponse := httptest.NewRecorder()
+	handler.ServeHTTP(anonymousResponse, anonymous)
+	if anonymousResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous status = %d, want 401", anonymousResponse.Code)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/v1/diagnostics/client-events", strings.NewReader(`{
+		"source":"web","clientVersion":"v0.1.0-beta.4","platform":"chromium",
+		"events":[{"event":"player.attached","occurredAt":1800000000000,
+		"playbackSessionId":"play_1","channelId":"ch_1","transport":"hls_js"}]
+	}`))
+	request.Header.Set("Authorization", "Bearer "+memberToken)
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("member status = %d, want 202: %s", response.Code, response.Body.String())
+	}
+	if gotActor != "member_1" || gotBatch.Source != diagnostics.SourceWeb || len(gotBatch.Events) != 1 {
+		t.Fatalf("derived submission = actor %q batch %+v", gotActor, gotBatch)
+	}
+	var body struct {
+		Accepted int `json:"accepted"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil || body.Accepted != 1 {
+		t.Fatalf("response = %+v, err %v", body, err)
+	}
+}
+
+func TestClientDiagnosticsDeriveAPITokenIdentityAndMapModuleErrors(t *testing.T) {
+	var actor string
+	service := clientDiagnosticServiceFunc(func(_ context.Context, actorID string, _ diagnostics.ClientBatch) (int, error) {
+		actor = actorID
+		return 0, diagnostics.ErrClientRateLimited
+	})
+	log := slog.New(slog.DiscardHandler)
+	handler := api.Router(log, api.Options{
+		Auth: api.NewTokenAuthorizer("agent-token"), Log: log, ClientDiagnostics: service,
+	})
+	request := httptest.NewRequest(http.MethodPost, "/v1/diagnostics/client-events", strings.NewReader(`{
+		"source":"android_tv","clientVersion":"0.1.0","platform":"shield_tv",
+		"events":[{"event":"player.ready","occurredAt":1800000000000,
+		"playbackSessionId":"play_1","channelId":"ch_1","transport":"media3"}]
+	}`))
+	request.Header.Set("Authorization", "Bearer agent-token")
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusTooManyRequests {
+		t.Fatalf("rate-limited status = %d, want 429: %s", response.Code, response.Body.String())
+	}
+	if actor != "api_token" {
+		t.Fatalf("API-token actor = %q, want server-owned api_token", actor)
+	}
+}
+
+func TestClientDiagnosticsRejectUnknownJSONBeforeModule(t *testing.T) {
+	calls := 0
+	service := clientDiagnosticServiceFunc(func(context.Context, string, diagnostics.ClientBatch) (int, error) {
+		calls++
+		return 1, nil
+	})
+	log := slog.New(slog.DiscardHandler)
+	handler := api.Router(log, api.Options{
+		Auth: diagnosticUserAuthorizer{}, Log: log, ClientDiagnostics: service,
+	})
+	request := httptest.NewRequest(http.MethodPost, "/v1/diagnostics/client-events", strings.NewReader(`{
+		"source":"web","clientVersion":"dev","platform":"chromium",
+		"events":[{"event":"client.unhandled_error","occurredAt":1800000000000,
+		"surface":"root","errorClass":"type_error","cookie":"session=secret"}]
+	}`))
+	request.Header.Set("Authorization", "Bearer "+memberToken)
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code < 400 || response.Code >= 500 {
+		t.Fatalf("unknown-field status = %d, want 4xx: %s", response.Code, response.Body.String())
+	}
+	if calls != 0 {
+		t.Fatalf("unknown field reached module %d times", calls)
 	}
 }
 
