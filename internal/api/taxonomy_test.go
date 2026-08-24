@@ -99,6 +99,24 @@ func TestTaxonomy_ImpactPreviewExplainsConsequencesWithoutMutation(t *testing.T)
 	}
 }
 
+func TestTaxonomy_ImpactPreviewKeepsEmptyCollectionsAsArrays(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+	resp := do(t, srv, http.MethodPost, "/v1/taxonomy/impact", adminToken,
+		`{"operation":"delete","slug":"apparel"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("preview unused taxonomy delete → %d, want 200", resp.StatusCode)
+	}
+	var body map[string]json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"descendants", "savedChannelSelections", "resolverTermsAdded"} {
+		if got := string(body[field]); got != "[]" {
+			t.Errorf("%s = %s, want [] so generated clients can safely use the array contract", field, got)
+		}
+	}
+}
+
 // Create a taxon, then confirm it is queryable AND that a clip tagged under it rolls up through the
 // new node — i.e. the create REINDEXED. This is the whole point of the write path.
 func TestTaxonomy_CreateReindexesRollups(t *testing.T) {
