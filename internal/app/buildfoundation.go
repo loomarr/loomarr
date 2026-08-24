@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/activity"
+	"github.com/loomarr/loomarr/internal/buildinfo"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
@@ -37,6 +38,7 @@ type foundationBuild struct {
 	diagnostics            *diagnostics.Recorder
 	diagnosticEvents       *diagnostics.EventLog
 	diagnosticProcesses    *diagnostics.ProcessLog
+	diagnosticBundles      *diagnostics.BundleService
 	clientDiagnostics      *diagnostics.ClientIngestor
 	processDiagnostics     *diagnostics.ProcessManager
 	startup                *diagnostics.Startup
@@ -160,6 +162,15 @@ func buildFoundation(
 	}
 	if result.startupReports == nil {
 		result.startupReports = diagnostics.NewStartupReports(result.startup, nil, time.Now)
+	}
+	if result.diagnosticEvents != nil && result.diagnosticProcesses != nil {
+		result.diagnosticBundles = diagnostics.NewBundleService(diagnostics.BundleOptions{
+			Events: result.diagnosticEvents, Processes: result.diagnosticProcesses,
+			Health: result.startupReports.Health, Build: func() diagnostics.BundleBuild {
+				info := buildinfo.Get()
+				return diagnostics.BundleBuild{Version: info.Version, Commit: info.Commit, BuiltAt: info.BuiltAt, Dirty: info.Dirty}
+			}, Now: time.Now,
+		})
 	}
 	return result, nil
 }

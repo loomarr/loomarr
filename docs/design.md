@@ -915,7 +915,8 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | POST | `/v1/diagnostics/health/refresh` | Run the same bounded Current Health probe path used by the named System scheduler job (admin, §17). This is an invocation seam, not a second probe implementation. |
 | GET | `/v1/diagnostics/startup-reports` | The current generation's immutable Startup report plus at most 20 retained reports (admin, §17). Startup history explains boot; Current Health answers whether Loomarr is healthy now. |
 | POST | `/v1/diagnostics/client-events` | Rate-limited ingestion of a closed, size-bounded web/Android TV event set (authenticated, §17). The server derives actor and receipt time; this route grants no diagnostic read access. |
-| POST | `/v1/diagnostics/support-bundle` | Stream one redacted, bounded Support bundle assembled from an explicit time window/correlation selection (admin, §17). Download only; future submission is a separate explicit-consent action. |
+| POST | `/v1/diagnostics/support-bundle/preview` | Preview the contents, counts, estimated size, and truncation of one bounded Support bundle selection without creating an archive (admin, §17). |
+| POST | `/v1/diagnostics/support-bundle` | Download one redacted, bounded Support bundle assembled from the same explicit time window/category/correlation selection as preview (admin, §17). Download only; future submission is a separate explicit-consent action. |
 | POST | `/v1/system/reload` | Re-probe every configured service without restarting (admin, §9.2, V13) — reuses the **one** `POST /v1/setup/test` probe implementation rather than a second copy, so a reload and the wizard's checklist can never disagree. No downtime: nothing is torn down. |
 | GET | `/v1/system/backups` | List the backups on disk in `backup.dir`, newest first (admin, §16, V12): filename, bytes, `writtenAt`. Also reports `dir`, `retain`, `schedule`, and `supported` (false on Postgres, where the listing is empty and the UI explains `pg_dump` rather than showing an empty table). Never 5xxs on a missing/unreadable directory — nothing written yet is an empty list, not an error. |
 | GET | `/v1/system/backups/{name}` | Download one **already-written** backup by filename (admin, §16, V12). `name` is validated against the `loomarr-<timestamp>.db` pattern and resolved inside `backup.dir` — it is a client-supplied path segment, so anything else is rejected before it reaches the filesystem. |
@@ -6047,6 +6048,34 @@ JSON and `application/x-ndjson` are projections of that same queried page, not s
 Support submission is deliberately not part of download. A future submission uploads the exact
 bundle the administrator reviewed through a separate explicit outbound action showing destination,
 contents, size, and expiry. Loomarr never sends diagnostics automatically.
+
+A Support-bundle selection has an explicit increasing Unix-millisecond window of at most 24 hours,
+category switches for Diagnostic events, Process metadata, and Process output, plus the same bounded
+correlation fields as the read surfaces. At least one category is required. Process output requires
+Process metadata so every readable log retains its lifecycle context. Selection is capped at
+2,000 events, 50 Process runs, eight Process outputs, 16 MiB of uncompressed selected evidence, and
+a 30-second assembly deadline. Hitting a cap is a successful, declared truncation rather than an
+unbounded retry. Bundle work performs bounded reads only and never takes a playout lifecycle lock.
+
+Preview and download call one selection implementation. Preview reports the proposed archive entries,
+record counts, estimated bytes, drop/truncation counts, versions, and redaction count without retaining
+a second copy. Download assembles the archive on demand in bounded memory, honors cancellation, and
+persists no temporary artifact. The ZIP has fixed safe entry names and stable ordering:
+`manifest.json`, `system.json`, `events.ndjson`, `processes/index.json`, then ordinal
+`processes/0001.json` and `processes/0001.log` pairs. Caller-controlled identifiers never become paths.
+Every entry receives a fixed ZIP timestamp so identical selected evidence has deterministic structure.
+
+`manifest.json` is the machine-readable contract. It declares a format version, generation time,
+requested and effective window, category/correlation selection, Loomarr and observed client versions,
+entry list, selected and omitted counts, event-recorder drops, Process-output discarded lines,
+uncompressed and final archive bytes, truncation reasons, and defensive redaction replacements.
+`system.json` is a deliberately small non-identifying summary of build and Current Health; it excludes
+host names, network addresses, configured service targets, filesystem roots, and user data. Retained
+events and Process output are already redacted before storage, but bundle assembly defensively redacts
+again and records replacements so imported or legacy evidence cannot bypass the download boundary.
+The web flow previews first, then prepares the bounded ZIP in client memory and displays its exact final
+size before a separate **Save ZIP** action writes that reviewed artifact to disk. Changing any selection
+invalidates both preview and prepared artifact.
 
 ### Metrics and health
 

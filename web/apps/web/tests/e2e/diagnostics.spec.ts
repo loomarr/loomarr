@@ -110,3 +110,65 @@ test("Playout diagnostics follows a live Process and downloads retained output",
   await page.getByRole("button", { name: "Download output" }).click();
   expect((await download).suggestedFilename()).toBe("loomarr-process-process-19.log");
 });
+
+test("Support bundle previews exact contents before downloading the redacted ZIP", async ({ page }) => {
+  await installMockBackend(page, { authed: true, role: "admin" });
+  await page.route("**/v1/diagnostics/support-bundle/preview", async (route) => {
+    const selection = route.request().postDataJSON();
+    expect(selection).toMatchObject({ events: true, processes: true, processOutput: true });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        estimatedBytes: 2048,
+        manifest: {
+          formatVersion: "loomarr.support-bundle.v1",
+          generatedAt: Date.UTC(2026, 7, 24, 12),
+          selection,
+          effectiveFrom: selection.from,
+          effectiveTo: selection.to,
+          loomarr: { version: "v0.9.0" },
+          clientVersions: ["web:v0.9.0"],
+          entries: [
+            { name: "system.json", uncompressedBytes: 512 },
+            { name: "events.ndjson", uncompressedBytes: 1536 },
+          ],
+          counts: {
+            events: 14,
+            processes: 2,
+            processOutputs: 1,
+            eventRecorderDrops: 0,
+            discardedProcessLines: 3,
+            redactions: 5,
+          },
+          truncationReasons: [],
+          uncompressedBytes: 2048,
+          finalArchiveBytes: 0,
+        },
+      }),
+    });
+  });
+  await page.route("**/v1/diagnostics/support-bundle", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/zip",
+      headers: { "Content-Disposition": 'attachment; filename="loomarr-support-20260824T120000Z.zip"' },
+      body: "PK mock bundle",
+    }),
+  );
+
+  await page.goto("/settings/system/diagnostics?view=application");
+  await page.getByRole("button", { name: /support bundle/i }).click();
+  await expect(page.getByRole("heading", { name: "Create a Support bundle" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /prepare zip/i })).toBeDisabled();
+  await page.getByRole("button", { name: /preview contents/i }).click();
+  await expect(page.getByRole("region", { name: "Support bundle preview" })).toContainText(
+    "Estimated 2.0 KiB",
+  );
+  await expect(page.getByText("events.ndjson")).toBeVisible();
+  await page.getByRole("button", { name: /prepare zip/i }).click();
+  await expect(page.getByText(/final size/i)).toBeVisible();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: /save zip/i }).click();
+  expect((await download).suggestedFilename()).toBe("loomarr-support-20260824T120000Z.zip");
+});

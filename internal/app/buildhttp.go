@@ -105,6 +105,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		Activity:            activityRec,
 		DiagnosticEvents:    deps.foundation.diagnosticEvents,
 		DiagnosticProcesses: deps.foundation.diagnosticProcesses,
+		DiagnosticBundles:   deps.foundation.diagnosticBundles,
 		DiagnosticCapture:   deps.foundation.diagnostics,
 		ClientDiagnostics:   deps.foundation.clientDiagnostics,
 		StartupReports:      deps.foundation.startupReports,

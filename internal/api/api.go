@@ -54,7 +54,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		suggest: opts.Suggest, proposalWorkflow: opts.ProposalWorkflow, search: opts.Search, collections: opts.Collections, icons: opts.Icons, images: opts.Images, events: opts.Events, shutdown: opts.Shutdown, filler: opts.Filler, pods: opts.Pods, taxonomy: opts.Taxonomy,
 		fillerLayout:     opts.FillerLayout,
 		jobs:             opts.Jobs,
-		diagnosticEvents: opts.DiagnosticEvents, diagnosticProcesses: opts.DiagnosticProcesses,
+		diagnosticEvents: opts.DiagnosticEvents, diagnosticProcesses: opts.DiagnosticProcesses, diagnosticBundles: opts.DiagnosticBundles,
 		diagnosticCapture: opts.DiagnosticCapture,
 		clientDiagnostics: opts.ClientDiagnostics,
 		startupReports:    opts.StartupReports,

@@ -113,7 +113,9 @@ type Server struct {
 	diagnosticEvents DiagnosticEventService
 	// diagnosticProcesses owns bounded Process-run metadata, progress, and output reads.
 	diagnosticProcesses DiagnosticProcessService
-	diagnosticCapture   DiagnosticCaptureService
+	// diagnosticBundles owns bounded preview and on-demand archive assembly.
+	diagnosticBundles DiagnosticBundleService
+	diagnosticCapture DiagnosticCaptureService
 	// clientDiagnostics accepts a closed authenticated web/TV event set; it never grants reads.
 	clientDiagnostics ClientDiagnosticService
 	// restart wires POST /v1/system/restart (§9.2, V13); nil ⇒ 501. Nil is the honest
@@ -860,6 +862,8 @@ type Options struct {
 	DiagnosticEvents DiagnosticEventService
 	// DiagnosticProcesses backs active/recent Process runs and bounded output.
 	DiagnosticProcesses DiagnosticProcessService
+	// DiagnosticBundles backs preview and on-demand redacted ZIP creation.
+	DiagnosticBundles DiagnosticBundleService
 	// DiagnosticCapture controls the recorder's process-local bounded debug window.
 	DiagnosticCapture DiagnosticCaptureService
 	// ClientDiagnostics accepts bounded curated events from authenticated web/TV clients.

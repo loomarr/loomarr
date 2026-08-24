@@ -28,6 +28,13 @@ type DiagnosticProcessService interface {
 	Output(context.Context, string) (diagnostics.ProcessOutput, error)
 }
 
+// DiagnosticBundleService owns preview and ZIP assembly so HTTP cannot drift selection, redaction,
+// or safety bounds between the two operations.
+type DiagnosticBundleService interface {
+	Preview(context.Context, diagnostics.BundleSelection) (diagnostics.BundlePreview, error)
+	Build(context.Context, diagnostics.BundleSelection) (diagnostics.BundleResult, error)
+}
+
 // DiagnosticCaptureService controls the recorder's one process-local bounded debug window.
 type DiagnosticCaptureService interface {
 	VerboseCapture() diagnostics.VerboseCapture
@@ -109,6 +116,14 @@ type diagnosticProcessPageOutput struct {
 
 type diagnosticProcessDetailOutput struct {
 	Body diagnostics.ProcessDetail
+}
+
+type diagnosticBundleInput struct {
+	Body diagnostics.BundleSelection
+}
+
+type diagnosticBundlePreviewOutput struct {
+	Body diagnostics.BundlePreview
 }
 
 type verboseCaptureInput struct {
@@ -213,6 +228,16 @@ func (s *Server) registerDiagnostics(api huma.API) {
 		},
 	}, RoleAdmin, s.diagnosticProcessOutputHandler)
 	huma.Register(api, withRole(huma.Operation{
+		OperationID: "preview-diagnostic-support-bundle", Method: http.MethodPost, Path: "/v1/diagnostics/support-bundle/preview",
+		Summary: "Preview a Support bundle", Description: "Returns the entries, counts, estimated size, truncation, versions, drops, and redactions selected for a bounded Support bundle without creating the archive.",
+		Tags: []string{"diagnostics"},
+	}, RoleAdmin), s.previewDiagnosticBundle)
+	rawInputOp(api, huma.Operation{
+		OperationID: "download-diagnostic-support-bundle", Method: http.MethodPost, Path: "/v1/diagnostics/support-bundle",
+		Summary: "Download a Support bundle", Description: "Builds and downloads one bounded redacted ZIP from the same explicit selection accepted by preview.",
+		Tags: []string{"diagnostics"}, Responses: map[string]*huma.Response{"200": {Description: "Redacted Support bundle ZIP", Content: map[string]*huma.MediaType{"application/zip": {Schema: &huma.Schema{Type: huma.TypeString, Format: "binary"}}}}},
+	}, RoleAdmin, s.diagnosticBundleHandler)
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "get-diagnostic-verbose-capture", Method: http.MethodGet, Path: "/v1/diagnostics/verbose-capture",
 		Summary: "Get verbose capture", Description: "Returns the current process-local bounded debug-capture window.", Tags: []string{"diagnostics"},
 	}, RoleAdmin), s.getVerboseCapture)
@@ -224,6 +249,49 @@ func (s *Server) registerDiagnostics(api huma.API) {
 		OperationID: "stop-diagnostic-verbose-capture", Method: http.MethodDelete, Path: "/v1/diagnostics/verbose-capture",
 		Summary: "Stop verbose capture", Description: "Immediately restores the default diagnostic retention threshold.", Tags: []string{"diagnostics"},
 	}, RoleAdmin), s.stopVerboseCapture)
+}
+
+func (s *Server) previewDiagnosticBundle(ctx context.Context, input *diagnosticBundleInput) (*diagnosticBundlePreviewOutput, error) {
+	if s.diagnosticBundles == nil {
+		return nil, huma.Error501NotImplemented("Support bundles aren't available on this Loomarr generation.")
+	}
+	preview, err := s.diagnosticBundles.Preview(ctx, input.Body)
+	if err != nil {
+		if errors.Is(err, diagnostics.ErrInvalidBundleSelection) {
+			return nil, errBadRequest("Invalid Support bundle selection", strings.TrimPrefix(err.Error(), diagnostics.ErrInvalidBundleSelection.Error()+": "))
+		}
+		if errors.Is(err, diagnostics.ErrBundleTooLarge) {
+			return nil, huma.Error413RequestEntityTooLarge("The selected evidence exceeds the 16 MiB Support bundle limit.")
+		}
+		s.log.Error("diagnostic bundle preview failed", "event", "diagnostics.bundle_preview_failed", "subsystem", "diagnostics", "err", err)
+		return nil, huma.Error500InternalServerError("The Support bundle preview couldn't be created.")
+	}
+	return &diagnosticBundlePreviewOutput{Body: preview}, nil
+}
+
+func (s *Server) diagnosticBundleHandler(w http.ResponseWriter, r *http.Request, input *diagnosticBundleInput) {
+	if s.diagnosticBundles == nil {
+		s.writeProblem(w, r, http.StatusNotImplemented, "Support bundles unavailable", "Support bundles aren't available on this Loomarr generation.")
+		return
+	}
+	result, err := s.diagnosticBundles.Build(r.Context(), input.Body)
+	if err != nil {
+		switch {
+		case errors.Is(err, diagnostics.ErrInvalidBundleSelection):
+			s.writeProblem(w, r, http.StatusBadRequest, "Invalid Support bundle selection", strings.TrimPrefix(err.Error(), diagnostics.ErrInvalidBundleSelection.Error()+": "))
+		case errors.Is(err, diagnostics.ErrBundleTooLarge):
+			s.writeProblem(w, r, http.StatusRequestEntityTooLarge, "Support bundle too large", "The selected evidence exceeds the 16 MiB Support bundle limit.")
+		default:
+			s.log.Error("diagnostic bundle failed", "event", "diagnostics.bundle_failed", "subsystem", "diagnostics", "err", err)
+			s.writeProblem(w, r, http.StatusInternalServerError, "Couldn't create Support bundle", "The selected evidence couldn't be assembled.")
+		}
+		return
+	}
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="loomarr-support-%s.zip"`, time.UnixMilli(result.Manifest.GeneratedAt).UTC().Format("20060102T150405Z")))
+	w.Header().Set("Content-Length", fmt.Sprint(len(result.Content)))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(result.Content)
 }
 
 func (s *Server) getVerboseCapture(_ context.Context, _ *struct{}) (*verboseCaptureOutput, error) {

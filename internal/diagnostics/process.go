@@ -620,6 +620,7 @@ var (
 	urlCredentialPattern  = regexp.MustCompile(`(?i)(https?://)[^/@\s]+@`)
 	embeddedURLPattern    = regexp.MustCompile(`(?i)https?://[^\s'"<>]+`)
 	sensitiveValuePattern = regexp.MustCompile(`(?i)(authorization|cookie|token|api[_-]?key|password|secret|signature)([=: ]+)([^\s,;]+)`)
+	bearerValuePattern    = regexp.MustCompile(`(?i)(bearer\s+)([^\s,;]+)`)
 	absPathPattern        = regexp.MustCompile(`(^|[\s='"])(/[A-Za-z0-9._~!$&()+,;=:@%/-]+)`)
 	windowsPathPattern    = regexp.MustCompile(`(?i)(^|[\s='"])([a-z]:\\[^\s'"]+)`)
 )
@@ -627,6 +628,7 @@ var (
 func sanitizeProcessOutput(value string) string {
 	value = strings.TrimSpace(value)
 	value = urlCredentialPattern.ReplaceAllString(value, `${1}[redacted]@`)
+	value = bearerValuePattern.ReplaceAllString(value, `${1}[redacted]`)
 	value = sensitiveValuePattern.ReplaceAllString(value, `${1}${2}[redacted]`)
 	value = embeddedURLPattern.ReplaceAllStringFunc(value, func(raw string) string {
 		parsed, err := url.Parse(raw)
