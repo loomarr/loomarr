@@ -261,6 +261,9 @@ describe("layoutGuide", () => {
         anchorMs: 2_500,
       },
     });
+
+    const boundarySelection = guideSelectionForChannel(layout, "empty", 1_800);
+    expect(boundarySelection?.scheduleBlockId).toBe("adjacent-overlap");
   });
 
   it("moves between adjacent airings and reports boundaries to the platform adapter", () => {

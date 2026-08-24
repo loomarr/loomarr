@@ -168,6 +168,11 @@ const distanceFromAiring = (airing: GuideAiringLayout, atMs: number): number => 
 };
 
 const nearestAiring = (channel: GuideChannelLayout, atMs: number): GuideAiringLayout | undefined => {
+  const containing = channel.airings.find(
+    (airing) => airing.source.startMs <= atMs && atMs < airing.source.stopMs,
+  );
+  if (containing) return containing;
+
   let nearest: GuideAiringLayout | undefined;
   let nearestDistance = Number.POSITIVE_INFINITY;
   for (const airing of channel.airings) {
