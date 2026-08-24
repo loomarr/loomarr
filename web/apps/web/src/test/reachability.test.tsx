@@ -142,6 +142,7 @@ const stubReachable = () => {
         inProgress: 0,
         scheduled: 0,
         needsDecision: 1,
+        recoverable: 0,
         admitted: 1,
         rejected: 0,
         dismissed: 0,
@@ -440,25 +441,25 @@ describe("feature-gated panels mount when their flag is on", () => {
     // through, and it is asserted there.
     // V35: the queue of clips waiting on a human decision. Same reason as the ingest panel —
     // this suite exists because eight things were built, unit-tested and imported by nothing.
-    ["/filler/incoming", /nothing needs you|needs? a decision/i, "the incoming queue"],
+    ["/filler/attention", /nothing needs you|needs? a decision/i, "the decision queue"],
     // ⚠ V38's AUDIT half. Auto-filing is on by default, so clips enter the catalog unattended;
     // if this section stops rendering, an operator has no way to find what was filed without
     // them, and nothing else on the page would look wrong. That is precisely the silent-loss
     // shape this suite exists for.
-    ["/filler/incoming", /filed .* without asking/i, "the auto-filed audit list"],
+    ["/filler/attention", /filed .* without asking/i, "the auto-filed audit list"],
     // ⚠ And the tab itself must be reachable FROM the catalog, or the assertions above only
     // prove a deep link works. This is the V1/V17a/V23 failure in tab form.
-    ["/filler", /^incoming$/i, "the Incoming tab's own entry point"],
+    ["/filler", /^needs attention$/i, "the decision queue's own entry point"],
     // V35: catalog health is a strip above the tabs rather than a tab of its own, so it has
     // no nav entry to assert — it must simply BE on the page, on every tab.
-    ["/filler", /fits a break/i, "the pool-health strip"],
+    ["/filler/library", /fits a break/i, "the pool-health strip"],
     // V34: the split review route exists, but if no card offers the entry point the
     // operator can never reach it. The action lives on each clip card (admin).
-    ["/filler", /split into clips/i, "the compilation-split entry point"],
+    ["/filler/library", /split into clips/i, "the compilation-split entry point"],
     // V35 item 1.7: the per-channel override picker. Its entry point is on each clip card
     // (admin) — the picker itself is behind a click, so this asserts the DOOR, which is the
     // half that has gone missing eight times before.
-    ["/filler", /use in a channel/i, "the channel-override entry point"],
+    ["/filler/library", /use in a channel/i, "the channel-override entry point"],
     // V35: per-source search, on the Sources tab. ⚠ `GET /v1/filler/discover` was API-ONLY for
     // a whole phase — the route shipped, `DiscoverPanel` was deleted rather than left orphaned,
     // and nothing called it. This is the assertion that stops it going back to that state.
@@ -544,7 +545,9 @@ describe("feature-gated panels mount when their flag is on", () => {
   it("/channels/ch-1 reaches the filler coverage meter", async () => {
     stubReachable();
     renderAt("/channels/ch-1/filler");
-    expect(await screen.findByText(/catalog coverage/i, undefined, { timeout: 3000 })).toBeInTheDocument();
+    expect(
+      await screen.findByText(/saved channel coverage/i, undefined, { timeout: 3000 }),
+    ).toBeInTheDocument();
     // And the meter itself rendered, not just its heading.
     expect(await screen.findByText("Exact match")).toBeInTheDocument();
   });

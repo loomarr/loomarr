@@ -30,8 +30,26 @@ const healthyPool: PoolDTO = {
   eligible: 374,
   untagged: 0,
   channels: [
-    { channelId: "ch-42", name: "Saturday Mornings", number: 42, level: "exact", total: 88 },
-    { channelId: "ch-7", name: "Late Night Sci-Fi", number: 7, level: "exact", total: 61 },
+    {
+      channelId: "ch-42",
+      name: "Saturday Mornings",
+      number: 42,
+      level: "exact",
+      total: 88,
+      durationMs: 2_640_000,
+      categories: 8,
+      brands: 24,
+    },
+    {
+      channelId: "ch-7",
+      name: "Late Night Sci-Fi",
+      number: 7,
+      level: "exact",
+      total: 61,
+      durationMs: 1_830_000,
+      categories: 6,
+      brands: 19,
+    },
   ],
 };
 
@@ -43,8 +61,26 @@ const thinPool: PoolDTO = {
   eligible: 61,
   untagged: 14,
   channels: [
-    { channelId: "ch-3", name: "Newsreel", number: 3, level: "bumper_card", total: 0 },
-    { channelId: "ch-42", name: "Saturday Mornings", number: 42, level: "exact", total: 44 },
+    {
+      channelId: "ch-3",
+      name: "Newsreel",
+      number: 3,
+      level: "bumper_card",
+      total: 0,
+      durationMs: 0,
+      categories: 0,
+      brands: 0,
+    },
+    {
+      channelId: "ch-42",
+      name: "Saturday Mornings",
+      number: 42,
+      level: "exact",
+      total: 44,
+      durationMs: 1_320_000,
+      categories: 5,
+      brands: 13,
+    },
   ],
 };
 
@@ -55,7 +91,18 @@ const unplaceablePool: PoolDTO = {
   commercials: 500,
   eligible: 0,
   untagged: 500,
-  channels: [{ channelId: "ch-3", name: "Newsreel", number: 3, level: "bumper_card", total: 0 }],
+  channels: [
+    {
+      channelId: "ch-3",
+      name: "Newsreel",
+      number: 3,
+      level: "bumper_card",
+      total: 0,
+      durationMs: 0,
+      categories: 0,
+      brands: 0,
+    },
+  ],
 };
 
 const emptyPool: PoolDTO = { clips: 0, commercials: 0, eligible: 0, untagged: 0, channels: [] };

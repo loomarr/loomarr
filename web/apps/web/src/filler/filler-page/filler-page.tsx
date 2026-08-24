@@ -26,9 +26,10 @@ import { NavTabs } from "@/components/ui/nav-tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useLoomarrEventListener } from "@/events/events-provider";
 import { useDocumentTitle } from "@/lib/use-document-title";
-import type { FillerSearch } from "@/routes/_authed/filler";
 import { ClipTagDialog } from "../clip-tag-dialog";
 import { ConfirmSplitDialog } from "../confirm-split-dialog";
+import { FillerOverview } from "../filler-overview";
+import type { FillerSearch } from "../filler-search";
 import { IncomingTab } from "../incoming-tab";
 import { PinClipDialog } from "../pin-clip-dialog";
 import { SourcesTab } from "../sources-tab";
@@ -192,7 +193,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   // ⚠ Paging itself is the exception, so it passes `page` explicitly and keeps it.
   const setFilters = (next: Partial<FillerSearch>) =>
     navigate({
-      to: "/filler",
+      to: "/filler/library",
       search: (prev) => ({ ...prev, page: undefined, ...next }),
       replace: true,
     });
@@ -252,18 +253,21 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   // One page of the catalog (§10 V51d). ⚠ This was an unbounded read of every clip in the
   // install; the endpoint now caps at 500 and defaults to 100, so an un-paged catalog would
   // silently show the first hundred clips and call it the catalog.
-  const clips = fillerApi.useListFiller({
-    ...(q ? { q } : {}),
-    ...(kind ? { kind: kind as never } : {}),
-    ...(audience ? { audience: audience as never } : {}),
-    ...(taxon ? { taxon } : {}),
-    ...(unclassified ? { unclassified: true } : {}),
-    ...(withoutAxis ? { withoutAxis } : {}),
-    ...(untagged ? { untagged: true } : {}),
-    ...(parentHash ? { parentHash } : !filtered ? { includeComposites: true, topLevel: true } : {}),
-    limit: CATALOG_PAGE_SIZE,
-    ...(page > 1 ? { offset: (page - 1) * CATALOG_PAGE_SIZE } : {}),
-  });
+  const clips = fillerApi.useListFiller(
+    {
+      ...(q ? { q } : {}),
+      ...(kind ? { kind: kind as never } : {}),
+      ...(audience ? { audience: audience as never } : {}),
+      ...(taxon ? { taxon } : {}),
+      ...(unclassified ? { unclassified: true } : {}),
+      ...(withoutAxis ? { withoutAxis } : {}),
+      ...(untagged ? { untagged: true } : {}),
+      ...(parentHash ? { parentHash } : !filtered ? { includeComposites: true, topLevel: true } : {}),
+      limit: CATALOG_PAGE_SIZE,
+      ...(page > 1 ? { offset: (page - 1) * CATALOG_PAGE_SIZE } : {}),
+    },
+    { query: { enabled: tab === "library" } },
+  );
   const parent = fillerApi.useListFiller(
     { hashes: parentHash ? [parentHash] : [], includeComposites: true, limit: 1 },
     { query: { enabled: Boolean(parentHash) } },
@@ -321,7 +325,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
 
   // Catalog health (V35). Member-readable, so no `enabled` gate: it explains why a channel plays
   // what it plays, which is the same reason the catalog listing itself is member-visible.
-  const poolQuery = fillerApi.useFillerPool();
+  const poolQuery = fillerApi.useFillerPool({ query: { enabled: tab === "library" } });
   const pool = unwrap(poolQuery.data, (b) => b);
 
   // The Incoming queue's COUNT (V35) — the tab badge, which the shell owns because the badge is
@@ -385,7 +389,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   const goToPage = (next: number) => {
     clearSelection();
     navigate({
-      to: "/filler",
+      to: "/filler/library",
       search: (prev) => ({ ...prev, page: next > 1 ? next : undefined }),
     });
   };
@@ -639,7 +643,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
           strip answers "what does my catalog hold and can it fill a break" — which is the context
           for reading CLIPS. The Sources tab is about where clips come from, and a coverage strip
           above it invites the reading that a source is at fault for a channel's weak coverage. */}
-        {pool && tab !== "sources" && tab !== "taxonomy" && (
+        {pool && tab === "library" && (
           <PoolHealth
             pool={pool}
             {...(isAdmin ? { onProposePull: () => proposePull.mutate({ data: {} }) } : {})}
@@ -647,7 +651,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
           />
         )}
 
-        {watch?.autoFetch?.stoppedBy ? (
+        {watch?.autoFetch?.stoppedBy && tab === "library" ? (
           <Card className="flex flex-wrap items-center gap-3 border-caution/40 bg-caution/5 p-4">
             <div className="min-w-0 flex-1">
               <p className="font-medium text-sm">Automatic fetching is paused</p>
@@ -687,23 +691,29 @@ const FillerPage = ({ tab }: FillerPageProps) => {
             // 1,204 is a worse lie than no badge, and `clipList.length` became exactly that the
             // moment the listing started paging.
             {
-              id: "catalog",
-              label: "Catalog",
+              id: "overview",
+              label: "Overview",
               to: "/filler",
+            },
+            ...(isAdmin
+              ? [{ id: "attention", label: "Needs attention", to: "/filler/attention", count: incomingTotal }]
+              : []),
+            {
+              id: "library",
+              label: "Library",
+              to: "/filler/library",
               search: catalogSearch,
               count: total,
             },
-            ...(isAdmin
-              ? [{ id: "incoming", label: "Incoming", to: "/filler/incoming", count: incomingTotal }]
-              : []),
             { id: "sources", label: "Sources", to: "/filler/sources" },
-            { id: "taxonomy", label: "Taxonomy", to: "/filler/taxonomy" },
-            ...(isAdmin ? [{ id: "settings", label: "Settings", to: "/filler/settings" }] : []),
+            { id: "advanced", label: "Advanced", to: "/filler/advanced" },
           ]}
-          activeId={tab}
+          activeId={tab === "taxonomy" ? "advanced" : tab}
         />
 
-        {tab === "incoming" && isAdmin ? (
+        {tab === "overview" ? (
+          <FillerOverview />
+        ) : tab === "attention" && isAdmin ? (
           // ⚠ The tab owns its own query and its four filing mutations — see `incoming-tab.tsx`.
           // They used to live up here, so the Catalog tab mounted the whole Incoming queue too.
           <IncomingTab onEditTags={setTagging} />
@@ -714,6 +724,30 @@ const FillerPage = ({ tab }: FillerPageProps) => {
           <SourcesTab />
         ) : tab === "taxonomy" ? (
           <TaxonomyTab isAdmin={isAdmin} />
+        ) : tab === "advanced" ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card className="p-5">
+              <h2 className="font-semibold text-lg">Taxonomy</h2>
+              <p className="mt-1 text-muted-foreground text-sm">
+                Inspect or refine the vocabulary Loomarr uses to ground matching. Ordinary filler setup does
+                not require this.
+              </p>
+              <Button className="mt-4" variant="outline" render={<Link to="/filler/taxonomy" />}>
+                Open taxonomy
+              </Button>
+            </Card>
+            {isAdmin ? (
+              <Card className="p-5">
+                <h2 className="font-semibold text-lg">Defaults and limits</h2>
+                <p className="mt-1 text-muted-foreground text-sm">
+                  Change storage paths, acquisition ceilings, and system-wide filler behavior.
+                </p>
+                <Button className="mt-4" variant="outline" render={<Link to="/filler/settings" />}>
+                  Open settings
+                </Button>
+              </Card>
+            ) : null}
+          </div>
         ) : (
           <div className="flex flex-col gap-6">
             {split.error != null && <ErrorState error={split.error} />}
@@ -1117,16 +1151,14 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   );
 };
 
-// Orients the two-surface filler model without re-implementing the page title. The catalog
-// owns tags; a channel's Filler section owns selection and preview.
+// Orients the two-surface filler model without making the default Overview sound like a catalog.
 const FillerDescription = () => (
   <>
-    Your whole library of commercials, bumpers, and station IDs. Browse and tag them here. Tags are what let
-    the scheduler match a clip to a channel. Each channel then{" "}
+    Loomarr continuously sources, prepares, and rotates commercials, bumpers, and station IDs. Each channel{" "}
     <Link to="/guide" className="text-signal underline-offset-2 hover:underline">
-      picks and previews its own filler
+      uses its own grounded selection
     </Link>{" "}
-    from this catalog.
+    from the shared library.
   </>
 );
 

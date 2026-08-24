@@ -222,10 +222,10 @@ describe("legacy tab links redirect to their new paths", () => {
     await waitFor(() => expect(at(router)).toBe("/filler/sources"));
   });
 
-  it("/filler?tab=incoming lands on /filler/incoming", async () => {
+  it("/filler?tab=incoming lands on /filler/attention", async () => {
     stubAuth(true);
     const router = renderApp("/filler?tab=incoming");
-    await waitFor(() => expect(at(router)).toBe("/filler/incoming"));
+    await waitFor(() => expect(at(router)).toBe("/filler/attention"));
   });
 
   // ⚠ The catalog FILTERS survive the move. They are query params on purpose — a shared link to

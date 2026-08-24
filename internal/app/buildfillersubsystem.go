@@ -39,6 +39,16 @@ func buildFillerSubsystem(
 	if st == nil {
 		return result
 	}
+	// Background acquisition workers are process-owned in the single-replica beta. Any queued or
+	// running rows visible before this process accepts requests belonged to the previous process
+	// and can no longer complete; close them instead of promising work that does not exist.
+	recoveryCtx, recoveryCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if n, err := st.RecoverInterruptedAcquisitionRuns(recoveryCtx, time.Now().UTC()); err != nil {
+		log.Warn("could not recover interrupted filler acquisitions", "err", err)
+	} else if n > 0 {
+		log.Info("recovered interrupted filler acquisitions", "runs", n)
+	}
+	recoveryCancel()
 
 	if dir := layout.ClipDir(); dir != "" {
 		if err := os.MkdirAll(dir, 0o750); err != nil {
@@ -61,13 +71,14 @@ func buildFillerSubsystem(
 	splitter := buildSplitter(st, set, layout, log, wake)
 	adapter := fillerServiceAdapter{
 		syncer: syncer, tagger: tagger, fetcher: fetcher,
-		bus: eventBus, newID: newID, timeout: set.dur("ingest.timeout"),
-		sources: st, now: time.Now,
+		bus: eventBus, log: log, newID: newID, timeout: set.dur("ingest.timeout"),
+		sources: st, acquisitions: st, readiness: st, now: time.Now,
 		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st, wake: wake},
 	}
 
 	pods := buildPodAdapter(st, set, log)
 	result.preview = podPreviewAdapter{store: st, pods: pods}
+	adapter.pool = result.preview.Pool
 	if playoutResolver != nil {
 		playoutResolver.pods = result.preview
 	}

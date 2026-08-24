@@ -172,6 +172,18 @@ func TestCoverageIsAboutMaterialNotThisBreaksGap(t *testing.T) {
 	}
 }
 
+func TestCoverageReportsUsableDurationAndVariety(t *testing.T) {
+	cat := []filler.Clip{
+		{Hash: "a", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "cereal", Brand: "A", DurationMs: 30_000},
+		{Hash: "b", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "cereal", Brand: "B", DurationMs: 20_000},
+		{Hash: "c", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "toys", Brand: "", DurationMs: 10_000},
+	}
+	report := filler.Coverage(cat, filler.Window{Era: filler.Year(1992), Audience: filler.Kids}, filler.Policy{})
+	if report.DurationMs != 60_000 || report.Categories != 2 || report.Brands != 2 {
+		t.Fatalf("coverage material = %+v, want 60s across 2 categories and 2 grounded brands", report)
+	}
+}
+
 func sumRungs(r filler.CoverageReport) int {
 	var n int
 	for _, rung := range r.Rungs {

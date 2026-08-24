@@ -879,10 +879,104 @@ func testClipPipelineOverview(t *testing.T, newStore NewStoreFunc) {
 	}
 	want := filler.PipelineOverview{
 		Runnable: 1, InProgress: 1, Scheduled: 2, NeedsDecision: 1,
-		Admitted: 1, Rejected: 1, Dismissed: 1,
+		Admitted: 1, Rejected: 1, Dismissed: 1, Recoverable: 1,
 	}
 	if got != want {
 		t.Fatalf("PipelineOverview() = %+v, want %+v", got, want)
+	}
+}
+
+func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_900_000_000, 0).UTC()
+	older := filler.AcquisitionRun{
+		ID: "acq-old", Trigger: filler.AcquisitionScheduled, SourceID: "archive:classic",
+		Status: filler.AcquisitionRunning, Requested: 3, StartedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour),
+	}
+	newer := filler.AcquisitionRun{
+		ID: "acq-new", Trigger: filler.AcquisitionPull, SourceID: "archive:vault", PullID: "pull-7",
+		Status: filler.AcquisitionSuccess, Requested: 4, Fetched: 2, Skipped: 1, Failed: 1,
+		StartedAt: now.Add(-time.Minute), CompletedAt: now, UpdatedAt: now,
+	}
+	for _, run := range []filler.AcquisitionRun{older, newer} {
+		if err := s.UpsertAcquisitionRun(ctx, run); err != nil {
+			t.Fatal(err)
+		}
+	}
+	queued := filler.AcquisitionRun{
+		ID: "acq-queued", Trigger: filler.AcquisitionManual, Status: filler.AcquisitionQueued,
+		Requested: 1, StartedAt: now.Add(-2 * time.Hour), UpdatedAt: now.Add(-2 * time.Hour),
+	}
+	if err := s.UpsertAcquisitionRun(ctx, queued); err != nil {
+		t.Fatal(err)
+	}
+	pipelines := []filler.ClipPipeline{
+		{ClipHash: "preparing", AcquisitionID: newer.ID, Stage: filler.StageTag, Status: filler.StatusRunning,
+			Disposition: filler.DispositionRunning, EnrolledAt: now, UpdatedAt: now},
+		{ClipHash: "review", AcquisitionID: newer.ID, Stage: filler.StageScore, Status: filler.StatusDone,
+			Disposition: filler.DispositionReview, EnrolledAt: now, UpdatedAt: now},
+		{ClipHash: "admitted", AcquisitionID: newer.ID, Stage: filler.StageScore, Status: filler.StatusDone,
+			Disposition: filler.DispositionFiled, EnrolledAt: now, UpdatedAt: now},
+		{ClipHash: "rejected", AcquisitionID: newer.ID, Stage: filler.StageProbe, Status: filler.StatusFailed,
+			Disposition: filler.DispositionRejected, EnrolledAt: now, UpdatedAt: now},
+	}
+	for _, row := range pipelines {
+		if err := s.UpsertClipPipeline(ctx, row); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	runs, err := s.ListAcquisitionRuns(ctx, 1, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 || runs[0].ID != newer.ID {
+		t.Fatalf("latest acquisition = %+v, want only %s", runs, newer.ID)
+	}
+	wantOutcome := filler.AcquisitionOutcome{Enrolled: 4, Preparing: 1, NeedsDecision: 1, Admitted: 1, Rejected: 1}
+	if runs[0].Outcome != wantOutcome {
+		t.Fatalf("outcome = %+v, want %+v", runs[0].Outcome, wantOutcome)
+	}
+	if runs[0].PullID != "pull-7" || runs[0].Fetched != 2 || !runs[0].CompletedAt.Equal(now) {
+		t.Fatalf("run facts did not round-trip: %+v", runs[0])
+	}
+
+	newer.Status, newer.Error, newer.UpdatedAt = filler.AcquisitionError, "catalogue failed", now.Add(time.Minute)
+	if err := s.UpsertAcquisitionRun(ctx, newer); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetAcquisitionRun(ctx, newer.ID, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != filler.AcquisitionError || got.Error != "catalogue failed" || got.Outcome != wantOutcome {
+		t.Fatalf("updated acquisition = %+v", got)
+	}
+	if _, err := s.GetAcquisitionRun(ctx, "missing", now); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing acquisition = %v, want ErrNotFound", err)
+	}
+
+	recoveredAt := now.Add(2 * time.Minute)
+	if n, err := s.RecoverInterruptedAcquisitionRuns(ctx, recoveredAt); err != nil || n != 2 {
+		t.Fatalf("recover interrupted = %d, %v; want two queued/running runs", n, err)
+	}
+	for _, id := range []string{older.ID, queued.ID} {
+		run, err := s.GetAcquisitionRun(ctx, id, recoveredAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if run.Status != filler.AcquisitionError || run.Error == "" || !run.CompletedAt.Equal(recoveredAt) {
+			t.Fatalf("recovered %s = %+v", id, run)
+		}
+	}
+	terminal, err := s.GetAcquisitionRun(ctx, newer.ID, recoveredAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if terminal.UpdatedAt.Equal(recoveredAt) {
+		t.Fatal("startup recovery rewrote an already-terminal acquisition")
 	}
 }
 

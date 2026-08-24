@@ -88,6 +88,7 @@ const stubIncoming = (incoming: Partial<FillerIncomingOutputBody> = {}) => {
         inProgress: 0,
         scheduled: 0,
         needsDecision: 1,
+        recoverable: 0,
         admitted: 0,
         rejected: 0,
         dismissed: 0,

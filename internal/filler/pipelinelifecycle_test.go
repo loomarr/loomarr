@@ -92,8 +92,9 @@ func TestPipelineOverviewNoAdvanceReason(t *testing.T) {
 		{name: "advanced", overview: PipelineOverview{Runnable: 2}, advanced: 1, want: ""},
 		{name: "retry clock", overview: PipelineOverview{Scheduled: 2}, want: "waiting_for_retry"},
 		{name: "human", overview: PipelineOverview{NeedsDecision: 3}, want: "waiting_for_decisions"},
-		{name: "failed", overview: PipelineOverview{Rejected: 4}, want: "waiting_for_recovery"},
-		{name: "mixed", overview: PipelineOverview{NeedsDecision: 3, Rejected: 4}, want: "waiting_for_decisions_and_recovery"},
+		{name: "recoverable", overview: PipelineOverview{Rejected: 4, Recoverable: 2}, want: "waiting_for_recovery"},
+		{name: "terminal audit", overview: PipelineOverview{Rejected: 4}, want: "idle"},
+		{name: "mixed", overview: PipelineOverview{NeedsDecision: 3, Rejected: 4, Recoverable: 2}, want: "waiting_for_decisions_and_recovery"},
 		{name: "empty", overview: PipelineOverview{}, want: "idle"},
 	}
 	for _, tc := range tests {

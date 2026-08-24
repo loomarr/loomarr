@@ -19,7 +19,7 @@ import (
 // survive an identity change — and it makes the single-writer rule STRUCTURAL rather than a
 // convention `UpsertClip`'s DO UPDATE list has to remember.
 
-const clipPipelineSelect = `SELECT clip_hash, stage, status, progress, disposition,
+const clipPipelineSelect = `SELECT clip_hash, acquisition_id, stage, status, progress, disposition,
 	reject_reason, reject_detail, attempts, force_run, next_run, stages_json, enrolled_at, updated_at
 	FROM filler_clip_pipeline`
 
@@ -40,7 +40,7 @@ func scanClipPipeline(sc scannable) (filler.ClipPipeline, error) {
 		enrolledAt int64
 		updatedAt  int64
 	)
-	if err := sc.Scan(&p.ClipHash, &stage, &status, &p.Progress, &dispo,
+	if err := sc.Scan(&p.ClipHash, &p.AcquisitionID, &stage, &status, &p.Progress, &dispo,
 		&reason, &p.RejectDetail, &p.Attempts, &p.ForceRun, &nextRun, &raw, &enrolledAt, &updatedAt); err != nil {
 		return filler.ClipPipeline{}, err
 	}
@@ -85,17 +85,18 @@ func (s *sqlStore) writeClipPipeline(ctx context.Context, exec pipelineExecer, p
 		raw = []byte("[]")
 	}
 	_, err = exec.ExecContext(ctx, s.ph(
-		`INSERT INTO filler_clip_pipeline (clip_hash, stage, status, progress, disposition,
+		`INSERT INTO filler_clip_pipeline (clip_hash, acquisition_id, stage, status, progress, disposition,
 		   reject_reason, reject_detail, attempts, force_run, next_run, stages_json, enrolled_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(clip_hash) DO UPDATE SET
+		   acquisition_id=excluded.acquisition_id,
 		   stage=excluded.stage, status=excluded.status, progress=excluded.progress,
 		   disposition=excluded.disposition, reject_reason=excluded.reject_reason,
 		   reject_detail=excluded.reject_detail, attempts=excluded.attempts,
 		   force_run=excluded.force_run,
 		   next_run=excluded.next_run, stages_json=excluded.stages_json,
 		   updated_at=excluded.updated_at`),
-		p.ClipHash, string(p.Stage), string(p.Status), p.Progress, string(p.Disposition),
+		p.ClipHash, p.AcquisitionID, string(p.Stage), string(p.Status), p.Progress, string(p.Disposition),
 		string(p.RejectReason), p.RejectDetail, p.Attempts, p.ForceRun, epoch(p.NextRun), string(raw),
 		epoch(p.EnrolledAt), epoch(p.UpdatedAt))
 	if err != nil {
@@ -213,29 +214,31 @@ func (s *sqlStore) ListPipelineWork(ctx context.Context, now time.Time, limit in
 // to aggregate; it does not gain a second copy of the lifecycle state machine. Grouping on whether
 // next_run is in the future keeps the result bounded regardless of catalog size.
 func (s *sqlStore) PipelineOverview(ctx context.Context, at time.Time) (filler.PipelineOverview, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT disposition, status,
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT disposition, status, stage, reject_reason,
 		CASE WHEN next_run > ? THEN 1 ELSE 0 END AS scheduled, COUNT(*)
 		FROM filler_clip_pipeline
-		GROUP BY 1, 2, 3`), epoch(at))
+		GROUP BY 1, 2, 3, 4, 5`), epoch(at))
 	if err != nil {
 		return filler.PipelineOverview{}, fmt.Errorf("pipeline overview: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 	var out filler.PipelineOverview
 	for rows.Next() {
-		var disposition, status string
+		var disposition, status, stage, rejectReason string
 		var scheduled, count int
-		if err := rows.Scan(&disposition, &status, &scheduled, &count); err != nil {
+		if err := rows.Scan(&disposition, &status, &stage, &rejectReason, &scheduled, &count); err != nil {
 			return filler.PipelineOverview{}, fmt.Errorf("scan pipeline overview: %w", err)
 		}
 		row := filler.ClipPipeline{
-			Disposition: filler.Disposition(disposition),
-			Status:      filler.StageStatus(status),
+			Disposition:  filler.Disposition(disposition),
+			Status:       filler.StageStatus(status),
+			Stage:        filler.StageID(stage),
+			RejectReason: filler.RejectReason(rejectReason),
 		}
 		if scheduled != 0 {
 			row.NextRun = at.Add(time.Second)
 		}
-		out.Add(row.Lifecycle(at).State, count)
+		out.AddLifecycle(row.Lifecycle(at), count)
 	}
 	if err := rows.Err(); err != nil {
 		return filler.PipelineOverview{}, fmt.Errorf("pipeline overview rows: %w", err)

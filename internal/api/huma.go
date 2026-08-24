@@ -337,6 +337,8 @@ type SettingResult struct {
 // tagging job. Implemented by filler.Syncer + filler.Tagger. list/patch read/write
 // the store directly (no service needed).
 type FillerService interface {
+	// Readiness is the one server-owned operational summary used by the Filler overview.
+	Readiness(ctx context.Context) (filler.Readiness, error)
 	// Sync reconciles the clip catalog from the media server's filler library.
 	Sync(ctx context.Context) (total, added, updated, pruned int, err error)
 	// Fetch runs one bounded acquisition pass over enabled remote sources. It is the same
@@ -353,6 +355,8 @@ type FillerService interface {
 	//
 	// ⚠ Downloads and nothing else — it does not register a source.
 	Ingest(ctx context.Context, urls []string) (jobID string, err error)
+	// IngestPull retains the approval id and each plan row's registered source attribution.
+	IngestPull(ctx context.Context, pullID string, targets []filler.AcquisitionTarget) (jobID string, err error)
 	// IngestAsked is Ingest plus "remember this source", for `POST /v1/filler/ingest` only.
 	//
 	// ⚠ The split is a correctness fix: registration used to live inside Ingest, and auto-fetch

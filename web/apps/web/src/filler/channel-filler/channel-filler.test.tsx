@@ -177,6 +177,28 @@ describe("ChannelFiller", () => {
     await waitFor(() => expect(screen.getByLabelText("Pod segments")).toBeInTheDocument());
   });
 
+  it("shows saved coverage before controls and keeps clip overrides collapsed", async () => {
+    const user = userEvent.setup();
+    stubChannelFiller();
+    renderSection(
+      <ChannelFiller
+        channelId="ch-1"
+        revision={1}
+        policy={policy({ pinned: ["preferred"], excluded: ["blocked"] })}
+      />,
+    );
+
+    const coverage = await screen.findByRole("heading", { name: "Saved channel coverage" });
+    const controls = screen.getByRole("heading", { name: "Match this channel" });
+    expect(coverage.compareDocumentPosition(controls) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+
+    const overrides = screen.getByRole("button", { name: /clip preferences \(advanced\)/i });
+    expect(overrides).toHaveAttribute("aria-expanded", "false");
+    await user.click(overrides);
+    expect(screen.getByText("Prefer on this channel")).toBeVisible();
+    expect(screen.getByText("Exclude from this channel")).toBeVisible();
+  });
+
   it("previews and applies a custom break length", async () => {
     const user = userEvent.setup();
     const { patches, previews } = stubChannelFiller();

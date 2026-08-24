@@ -54,7 +54,7 @@ const SplitReviewPage = ({ proposalId }: SplitReviewPageProps) => {
         void queryClient.invalidateQueries({ queryKey: fillerApi.getListFillerQueryKey() });
         const clips = isOk(res) ? res.data.clips : 0;
         toast.success(clips > 0 ? `Split into ${clips} clips` : "Split confirmed");
-        void navigate({ to: "/filler" });
+        void navigate({ to: "/filler/library" });
       },
       onError: (e) => toast.error(toProblem(e).title ?? "Couldn't confirm the split"),
     },
@@ -100,7 +100,7 @@ const SplitReviewPage = ({ proposalId }: SplitReviewPageProps) => {
         {...(minClipDurationMs !== undefined ? { minClipDurationMs } : {})}
         confirming={confirm.isPending}
         onConfirm={(segments) => confirm.mutate({ proposalId, data: { segments } })}
-        onBack={() => void navigate({ to: "/filler" })}
+        onBack={() => void navigate({ to: "/filler/library" })}
       />
     </div>
   );

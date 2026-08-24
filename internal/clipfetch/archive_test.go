@@ -143,6 +143,31 @@ func TestArchive_DownloadsItemAndSidecar(t *testing.T) {
 	}
 }
 
+func TestArchive_DownloadCarriesAcquisitionProvenance(t *testing.T) {
+	fs := newMemSink()
+	c := newTestClient(t, fs)
+	ctx := withAcquisition(context.Background(), "archive:classic", "acq-17")
+
+	if _, _, err := c.walk(ctx, "test-ad", "/drop"); err != nil {
+		t.Fatal(err)
+	}
+	for path, raw := range fs.files {
+		if !strings.HasSuffix(path, ".info.json") {
+			continue
+		}
+		var sc map[string]any
+		if err := json.Unmarshal(raw, &sc); err != nil {
+			t.Fatal(err)
+		}
+		ours, _ := sc[filler.SidecarLoomarrKey()].(map[string]any)
+		if ours["sourceId"] != "archive:classic" || ours["acquisitionId"] != "acq-17" {
+			t.Fatalf("loomarr sidecar = %#v, want source and acquisition provenance", ours)
+		}
+		return
+	}
+	t.Fatal("no info-JSON sidecar written")
+}
+
 func TestArchive_SkipsIfPresent(t *testing.T) {
 	fs := newMemSink()
 	c := newTestClient(t, fs)

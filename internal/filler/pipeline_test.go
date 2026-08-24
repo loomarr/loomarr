@@ -947,6 +947,30 @@ func TestPipeline_EnrolsCataloguedClips(t *testing.T) {
 	}
 }
 
+func TestPipeline_EnrolmentCarriesAcquisitionFromSidecar(t *testing.T) {
+	dir := t.TempDir()
+	rel := filepath.Join("ab", "clip.mp4")
+	media := filepath.Join(dir, rel)
+	if err := os.MkdirAll(filepath.Dir(media), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(media, []byte("video"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := filler.WriteSidecarTags(media, filler.SidecarTags{AcquisitionID: "acq-17"}, false); err != nil {
+		t.Fatal(err)
+	}
+	st := newPipeMemStore()
+	st.put(filler.StoreClip{Clip: filler.Clip{Hash: "c1", Path: rel}})
+
+	if _, err := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, dir).EnrolMissing(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := st.rows["c1"].AcquisitionID; got != "acq-17" {
+		t.Fatalf("pipeline acquisition = %q, want acq-17", got)
+	}
+}
+
 // Download completion needs the cheap half of RunOnce: make the clip visible on the durable
 // conveyor without unexpectedly spending a transcode/Whisper budget on an unrelated backlog.
 func TestPipeline_EnrolMissingDoesNotRunAStage(t *testing.T) {

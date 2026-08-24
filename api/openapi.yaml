@@ -1,5 +1,34 @@
 components:
   schemas:
+    AcquisitionOutcomeDTO:
+      additionalProperties: false
+      properties:
+        admitted:
+          format: int64
+          type: integer
+        dismissed:
+          format: int64
+          type: integer
+        enrolled:
+          format: int64
+          type: integer
+        needsDecision:
+          format: int64
+          type: integer
+        preparing:
+          format: int64
+          type: integer
+        rejected:
+          format: int64
+          type: integer
+      required:
+        - enrolled
+        - preparing
+        - needsDecision
+        - admitted
+        - rejected
+        - dismissed
+      type: object
     ActiveRuleDTO:
       additionalProperties: false
       properties:
@@ -2041,6 +2070,70 @@ components:
       required:
         - paths
       type: object
+    FillerAcquisitionRunDTO:
+      additionalProperties: false
+      properties:
+        completedAt:
+          format: date-time
+          type: string
+        empty:
+          format: int64
+          type: integer
+        error:
+          type: string
+        failed:
+          format: int64
+          type: integer
+        fetched:
+          format: int64
+          type: integer
+        id:
+          type: string
+        outcome:
+          $ref: "#/components/schemas/AcquisitionOutcomeDTO"
+        pullId:
+          type: string
+        requested:
+          format: int64
+          type: integer
+        skipped:
+          format: int64
+          type: integer
+        sourceId:
+          type: string
+        startedAt:
+          format: date-time
+          type: string
+        status:
+          enum:
+            - queued
+            - running
+            - success
+            - error
+          type: string
+        trigger:
+          enum:
+            - scheduled
+            - source
+            - pull
+            - manual
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      required:
+        - id
+        - trigger
+        - status
+        - requested
+        - fetched
+        - skipped
+        - failed
+        - empty
+        - startedAt
+        - updatedAt
+        - outcome
+      type: object
     FillerClipEvent:
       additionalProperties: false
       properties:
@@ -2219,6 +2312,53 @@ components:
         - skipped
         - failed
         - empty
+      type: object
+    FillerReadinessDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/FillerReadinessDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        acquisitions:
+          items:
+            $ref: "#/components/schemas/FillerAcquisitionRunDTO"
+          type: array
+        actionCount:
+          format: int64
+          type: integer
+        channelId:
+          type: string
+        fetch:
+          $ref: "#/components/schemas/FillerFetchStatusDTO"
+        nextAction:
+          enum:
+            - none
+            - enable_fetch
+            - free_catalog_capacity
+            - free_disk_capacity
+            - retry_acquisition
+            - retry_failed_work
+            - review_incoming
+            - add_filler
+            - improve_channel_coverage
+          type: string
+        pipeline:
+          $ref: "#/components/schemas/PipelineOverviewDTO"
+        pool:
+          $ref: "#/components/schemas/PoolDTO"
+        ready:
+          type: boolean
+      required:
+        - ready
+        - nextAction
+        - fetch
+        - pipeline
+        - pool
+        - acquisitions
       type: object
     FillerSelection:
       additionalProperties: false
@@ -3921,6 +4061,10 @@ components:
         needsDecision:
           format: int64
           type: integer
+        recoverable:
+          description: Terminal failures with an explicit retry or restore action
+          format: int64
+          type: integer
         rejected:
           format: int64
           type: integer
@@ -3938,6 +4082,7 @@ components:
         - admitted
         - rejected
         - dismissed
+        - recoverable
       type: object
     PlayURLOutputBody:
       additionalProperties: false
@@ -4147,9 +4292,21 @@ components:
     PoolChannelDTO:
       additionalProperties: false
       properties:
+        brands:
+          description: Distinct grounded brands at the widest eligible rung
+          format: int64
+          type: integer
+        categories:
+          description: Distinct grounded product categories at the widest eligible rung
+          format: int64
+          type: integer
         channelId:
           description: Channel id
           type: string
+        durationMs:
+          description: Combined playable duration at the widest eligible rung
+          format: int64
+          type: integer
         level:
           description: Which ladder rung this channel's breaks resolve at. bumper_card means the catalog cannot fill them and the embedded card plays.
           enum:
@@ -4175,6 +4332,9 @@ components:
         - number
         - level
         - total
+        - durationMs
+        - categories
+        - brands
       type: object
     PoolDTO:
       additionalProperties: false
@@ -8888,6 +9048,26 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Decline a pull
+      tags:
+        - filler
+  /v1/filler/readiness:
+    get:
+      description: One server-owned operational projection across acquisition limits, durable runs, pipeline ownership, playable inventory, and worst-first channel coverage (§10 V59). Clients render the typed next action rather than reconstructing priorities from counters.
+      operationId: filler-readiness
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillerReadinessDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Filler readiness and next action
       tags:
         - filler
   /v1/filler/retry:

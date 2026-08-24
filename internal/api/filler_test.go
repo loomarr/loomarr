@@ -62,7 +62,12 @@ type fakeFiller struct {
 	confirmInvalid   bool
 	fetchStatus      filler.FetchStatus
 	fetchErr         error
+	readiness        filler.Readiness
+	pullID           string
+	pullTargets      []filler.AcquisitionTarget
 }
+
+func (f *fakeFiller) Readiness(context.Context) (filler.Readiness, error) { return f.readiness, nil }
 
 func (f *fakeFiller) FetchStatus(context.Context) (filler.FetchStatus, error) {
 	return f.fetchStatus, nil
@@ -156,6 +161,18 @@ func (f *fakeFiller) Ingest(_ context.Context, urls []string) (string, error) {
 		return "", api.ErrIngestUnavailable
 	}
 	f.ingested = append(f.ingested, urls...)
+	return "job-1", nil
+}
+
+func (f *fakeFiller) IngestPull(_ context.Context, pullID string, targets []filler.AcquisitionTarget) (string, error) {
+	if f.unavailable {
+		return "", api.ErrIngestUnavailable
+	}
+	f.pullID = pullID
+	f.pullTargets = append([]filler.AcquisitionTarget(nil), targets...)
+	for _, target := range targets {
+		f.ingested = append(f.ingested, target.URL)
+	}
 	return "job-1", nil
 }
 

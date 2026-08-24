@@ -82,6 +82,12 @@ type CoverageReport struct {
 	// could fill this break at any match quality. Not a sum: the rungs nest (exact ⊆
 	// widened ⊆ audience), so adding them counts the same clip up to three times.
 	Total int
+	// DurationMs is the combined playable duration of the widest eligible rung. Categories and
+	// Brands are distinct grounded values in that same pool. Together with Total they distinguish
+	// a genuinely varied hour of material from many near-duplicate short clips.
+	DurationMs int64
+	Categories int
+	Brands     int
 }
 
 // ChannelCoverage is one channel's coverage answer, labelled for display (§10 V35).
@@ -273,6 +279,19 @@ func Coverage(catalog []Clip, w Window, policy Policy) CoverageReport {
 		// The widest rung is the last, and the rungs nest, so its count is the total
 		// distinct material — summing would triple-count an exact-era clip.
 		report.Total = report.Rungs[n-1].Clips
+		categories := map[string]struct{}{}
+		brands := map[string]struct{}{}
+		for _, clip := range pools[n-1].clips {
+			report.DurationMs += clip.DurationMs
+			if clip.Category != "" {
+				categories[clip.Category] = struct{}{}
+			}
+			if clip.Brand != "" {
+				brands[clip.Brand] = struct{}{}
+			}
+		}
+		report.Categories = len(categories)
+		report.Brands = len(brands)
 	}
 	return report
 }

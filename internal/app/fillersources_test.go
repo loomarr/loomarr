@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/clipfetch"
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -20,6 +21,29 @@ type successfulClipIngestor struct{}
 
 func (successfulClipIngestor) Run(context.Context, []clipfetch.Source) clipfetch.Result {
 	return clipfetch.Result{Fetched: 1}
+}
+
+type recordingClipIngestor struct {
+	sources chan []clipfetch.Source
+	result  clipfetch.Result
+}
+
+func (r recordingClipIngestor) Run(_ context.Context, sources []clipfetch.Source) clipfetch.Result {
+	r.sources <- append([]clipfetch.Source(nil), sources...)
+	return r.result
+}
+
+type recordingAcquisitions struct {
+	runs chan filler.AcquisitionRun
+	err  error
+}
+
+func (r recordingAcquisitions) UpsertAcquisitionRun(_ context.Context, run filler.AcquisitionRun) error {
+	if r.err != nil {
+		return r.err
+	}
+	r.runs <- run
+	return nil
 }
 
 func (r *recordingSources) ListFillerSources(context.Context) ([]store.FillerSource, error) {
@@ -223,5 +247,106 @@ func TestIngest_SuccessCataloguesTheDownloadedFilesImmediately(t *testing.T) {
 	case <-prepared:
 	case <-time.After(time.Second):
 		t.Fatal("download completed but catalog sync/pipeline nudge never ran")
+	}
+}
+
+func TestIngest_PersistsLifecycleAndCarriesAcquisitionToDownloader(t *testing.T) {
+	fixed := time.Date(2026, 8, 23, 10, 0, 0, 0, time.UTC)
+	fetched := recordingClipIngestor{
+		sources: make(chan []clipfetch.Source, 1),
+		result:  clipfetch.Result{Fetched: 2, Skipped: 1},
+	}
+	runs := make(chan filler.AcquisitionRun, 3)
+	a := fillerServiceAdapter{
+		fetcher: fetched, acquisitions: recordingAcquisitions{runs: runs},
+		newID: func() string { return "acq-17" }, now: func() time.Time { return fixed },
+	}
+
+	jobID, err := a.IngestSource(t.Context(), "archive:classic", []string{
+		"https://archive.org/details/one", "https://archive.org/details/two",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if jobID != "acq-17" {
+		t.Fatalf("job id = %q, want acq-17", jobID)
+	}
+	for i, want := range []filler.AcquisitionStatus{
+		filler.AcquisitionQueued, filler.AcquisitionRunning, filler.AcquisitionSuccess,
+	} {
+		select {
+		case run := <-runs:
+			if run.Status != want {
+				t.Fatalf("snapshot %d status = %q, want %q", i, run.Status, want)
+			}
+			if run.ID != "acq-17" || run.SourceID != "archive:classic" || run.Requested != 2 {
+				t.Fatalf("snapshot %d = %+v, want stable run identity and request count", i, run)
+			}
+			if want == filler.AcquisitionSuccess && (run.Fetched != 2 || run.Skipped != 1 || run.CompletedAt.IsZero()) {
+				t.Fatalf("terminal snapshot = %+v, want downloader counts and completion", run)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("timed out waiting for acquisition snapshot %d", i)
+		}
+	}
+	select {
+	case sources := <-fetched.sources:
+		for _, source := range sources {
+			if source.AcquisitionID != "acq-17" || source.ID != "archive:classic" {
+				t.Fatalf("download source = %+v, want acquisition and source provenance", source)
+			}
+		}
+	case <-time.After(time.Second):
+		t.Fatal("downloader was not called")
+	}
+}
+
+func TestIngest_RefusesAJobThatCannotBePersisted(t *testing.T) {
+	a := fillerServiceAdapter{
+		fetcher:      successfulClipIngestor{},
+		acquisitions: recordingAcquisitions{err: errors.New("database unavailable")},
+		newID:        func() string { return "acq-17" },
+	}
+	if _, err := a.Ingest(t.Context(), []string{"https://archive.org/details/one"}); err == nil {
+		t.Fatal("ingest started without durable run state")
+	}
+}
+
+func TestIngest_RefusesAnEmptyAcquisition(t *testing.T) {
+	a := fillerServiceAdapter{fetcher: successfulClipIngestor{}, newID: func() string { return "acq-17" }}
+	if _, err := a.Ingest(t.Context(), nil); err == nil {
+		t.Fatal("empty ingest created a successful-looking job")
+	}
+}
+
+func TestIngestPull_PreservesPerTargetSourcesUnderOneRun(t *testing.T) {
+	fetched := recordingClipIngestor{sources: make(chan []clipfetch.Source, 1)}
+	runs := make(chan filler.AcquisitionRun, 3)
+	a := fillerServiceAdapter{
+		fetcher: fetched, acquisitions: recordingAcquisitions{runs: runs},
+		newID: func() string { return "acq-17" },
+	}
+
+	_, err := a.IngestPull(t.Context(), "pull-7", []filler.AcquisitionTarget{
+		{SourceID: "classic", URL: "https://archive.org/details/one"},
+		{SourceID: "holiday", URL: "https://archive.org/details/two"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	queued := <-runs
+	if queued.PullID != "pull-7" || queued.SourceID != "" {
+		t.Fatalf("run = %+v, want pull attribution and no false single-source claim", queued)
+	}
+	select {
+	case sources := <-fetched.sources:
+		if sources[0].ID != "classic" || sources[1].ID != "holiday" {
+			t.Fatalf("sources = %+v, want per-target registered source ids", sources)
+		}
+		if sources[0].AcquisitionID != "acq-17" || sources[1].AcquisitionID != "acq-17" {
+			t.Fatalf("sources = %+v, want one acquisition id", sources)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("downloader was not called")
 	}
 }

@@ -84,9 +84,19 @@ func SidecarFetchedMark() map[string]any {
 // SidecarFetchedMarkFor also carries the exact registered source policy responsible for the
 // acquisition (§10 V57). The empty-id form preserves the historical manual-ingest marker.
 func SidecarFetchedMarkFor(sourceID string) map[string]any {
+	return SidecarFetchedMarkForAcquisition(sourceID, "")
+}
+
+// SidecarFetchedMarkForAcquisition also records the durable acquisition run responsible for the
+// fetched bytes. It is intentionally separate from SourceID: the source owns admission policy,
+// while the acquisition identifies one observable attempt that may be retried or inspected.
+func SidecarFetchedMarkForAcquisition(sourceID, acquisitionID string) map[string]any {
 	mark := map[string]any{fetchedByKey: fetchedByUs}
 	if sourceID != "" {
 		mark["sourceId"] = sourceID
+	}
+	if acquisitionID != "" {
+		mark["acquisitionId"] = acquisitionID
 	}
 	return mark
 }
@@ -101,6 +111,8 @@ func SidecarLoomarrKey() string { return loomarrKey }
 type SidecarTags struct {
 	// SourceID attributes an acquired clip to the registered source whose admission policy applies.
 	SourceID string `json:"sourceId,omitempty"`
+	// AcquisitionID attributes the clip to the durable download attempt that produced it.
+	AcquisitionID string `json:"acquisitionId,omitempty"`
 	// OriginalName is the filename the clip arrived with, captured BEFORE intake renamed it to
 	// its hash (§10 V38c).
 	//

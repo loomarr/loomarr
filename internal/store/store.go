@@ -468,6 +468,18 @@ type FillerPullStore interface {
 	UpsertPull(ctx context.Context, p filler.Pull) error
 }
 
+// FillerAcquisitionStore is the reconnect truth for filler downloads and their resulting clip
+// lifecycle. It is separate from sources and pulls because one run is an execution record, not a
+// source definition or approval decision.
+type FillerAcquisitionStore interface {
+	UpsertAcquisitionRun(ctx context.Context, run filler.AcquisitionRun) error
+	// RecoverInterruptedAcquisitionRuns marks work orphaned by the previous process as failed.
+	// The beta is single-replica; startup is therefore the exact ownership boundary.
+	RecoverInterruptedAcquisitionRuns(ctx context.Context, at time.Time) (int, error)
+	GetAcquisitionRun(ctx context.Context, id string, at time.Time) (filler.AcquisitionRun, error)
+	ListAcquisitionRuns(ctx context.Context, limit int, at time.Time) ([]filler.AcquisitionRun, error)
+}
+
 // FillerSourceStore is the persisted REMOTE filler-source registry (§10, V33).
 //
 // ⚠ Remote sources only. The drop-folder and the media-server library stay DERIVED from config
@@ -630,6 +642,7 @@ type Store interface {
 	ClipStore
 	FillerSourceStore
 	FillerPullStore
+	FillerAcquisitionStore
 	SplitProposalStore
 	AiringStore
 	ActivityStore

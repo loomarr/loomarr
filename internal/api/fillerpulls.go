@@ -277,19 +277,19 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 			live[src.ID] = src
 		}
 	}
-	urls := make([]string, 0, len(committed))
+	targets := make([]filler.AcquisitionTarget, 0, len(committed))
 	for _, row := range committed {
 		src, ok := live[row.SourceID]
 		if !ok {
 			return nil, errConflict("A source in this pull is no longer available",
 				"“"+row.Name+"” has been switched off or removed since this pull was proposed. Dismiss it and propose a new one.")
 		}
-		urls = append(urls, src.URI)
+		targets = append(targets, filler.AcquisitionTarget{SourceID: src.ID, URL: src.URI})
 	}
 
 	// THE gate's other half: the work goes through the ordinary ingest job. A pull never
 	// downloads by a route of its own.
-	if _, err := s.filler.Ingest(ctx, urls); err != nil {
+	if _, err := s.filler.IngestPull(ctx, p.ID, targets); err != nil {
 		if errors.Is(err, ErrIngestUnavailable) {
 			return nil, errConflict("Downloading isn't available on this install",
 				"This build can't run the download tooling, so an approved pull would have nothing to fetch with.")

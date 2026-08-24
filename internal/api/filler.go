@@ -44,6 +44,13 @@ func (s *Server) registerFiller(api huma.API) {
 	}, RoleMember), s.fillerPool)
 
 	huma.Register(api, withRole(huma.Operation{
+		OperationID: "filler-readiness", Method: http.MethodGet, Path: "/v1/filler/readiness",
+		Summary:     "Filler readiness and next action",
+		Description: "One server-owned operational projection across acquisition limits, durable runs, pipeline ownership, playable inventory, and worst-first channel coverage (§10 V59). Clients render the typed next action rather than reconstructing priorities from counters.",
+		Tags:        []string{"filler"},
+	}, RoleMember), s.fillerReadiness)
+
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "tag-filler-clip", Method: http.MethodPatch, Path: "/v1/filler/tags",
 		Summary: "Edit a clip's classification", Description: "Admin only. Corrects kind, era, audience, brand, and directly asserted taxonomy tags. The clip is identified by content `hash` in the body (§10 V45a).", Tags: []string{"filler"},
 	}, RoleAdmin), s.patchFillerClip)

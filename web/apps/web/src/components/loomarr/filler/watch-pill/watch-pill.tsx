@@ -26,7 +26,7 @@ const DOT: Record<WatchHealth, string> = {
 // colour and the sr-only sentence, which carry the whole meaning without the movement.
 const SR: Record<WatchHealth, string> = {
   healthy: "Watching your sources",
-  attention: "Sources need attention",
+  attention: "Filler needs attention",
   unconfigured: "No sources set up yet",
 };
 

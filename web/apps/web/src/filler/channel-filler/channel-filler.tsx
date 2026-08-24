@@ -269,17 +269,43 @@ const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFiller
       <div>
         <h2 className="font-semibold text-lg">Filler</h2>
         <p className="text-muted-foreground text-sm">
-          Choose what plays between shows, then preview the actual break before applying it.
+          This channel inherits sensible filler automatically. Check the saved result first, then narrow it
+          only when the channel needs something different.
         </p>
       </div>
+
+      {/* Saved truth comes before authoring. An operator should see whether this channel already
+          works before meeting the controls that can make its pool narrower. This is intentionally
+          not collapsed: coverage is the primary answer, not advanced diagnosis. */}
+      <section className="flex flex-col gap-3 rounded-lg border border-border p-5">
+        <div>
+          <h3 className="font-semibold text-base">Saved channel coverage</h3>
+          <p className="text-muted-foreground text-sm">
+            The material this channel can use now, after its inherited and saved matching rules.
+          </p>
+        </div>
+        {coverageQuery.isLoading ? (
+          <p className="text-muted-foreground text-sm">Checking saved coverage…</p>
+        ) : coverageQuery.error ? (
+          <p className="text-onair-300 text-sm">
+            Saved coverage could not be checked. Your existing channel settings are unchanged.
+          </p>
+        ) : coverage ? (
+          <CoverageMeter coverage={coverage} />
+        ) : (
+          <p className="text-muted-foreground text-sm">
+            Coverage becomes available after filler is configured for this install.
+          </p>
+        )}
+      </section>
 
       <section className="flex flex-col gap-5 rounded-lg border border-border p-5">
         <div>
           <h3 className="font-semibold text-base">Match this channel</h3>
           <p className="text-muted-foreground text-sm">
             Start broad. Add only the filters this channel really needs. Clips come from your{" "}
-            <Link to="/filler" className="text-signal underline-offset-2 hover:underline">
-              filler catalog
+            <Link to="/filler/library" className="text-signal underline-offset-2 hover:underline">
+              filler library
             </Link>
             .
           </p>
@@ -310,14 +336,13 @@ const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFiller
       </section>
 
       <CollapsibleSection
-        title="Specific clips"
-        description="Optionally pin clips to every break or block clips from this channel. Pins are intentional overrides: they play ahead of rotation and may repeat inside the cooldown or reduce variety."
-        defaultOpen={pinned.length > 0 || excluded.length > 0}
+        title="Clip preferences (advanced)"
+        description={`${pluralize(pinned.length + excluded.length, "saved override")}. Prefer or exclude individual clips only when matching rules are not enough.`}
       >
         <div className="flex flex-col gap-4">
           <FillerClipList
-            label="Always include"
-            hint="Pin specific clips ahead of the theme and automatic rotation. A recent pin may repeat."
+            label="Prefer on this channel"
+            hint="Play these clips ahead of automatic rotation when they fit. A recent preference may repeat."
             ids={pinned}
             onChange={(next) => setDraft({ ...draft, pinned: next })}
             resolve={resolve}
@@ -326,8 +351,8 @@ const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFiller
             excludeIds={excluded}
           />
           <FillerClipList
-            label="Never include"
-            hint="Block clips you don't want on this channel. They win over a pin."
+            label="Exclude from this channel"
+            hint="Never play these clips on this channel. Exclusion wins over a preference."
             ids={excluded}
             onChange={(next) => setDraft({ ...draft, excluded: next })}
             resolve={resolve}
@@ -353,7 +378,7 @@ const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFiller
               <>
                 No clips match this selection yet. Breaks fall back to the bumper card. Loosen the theme
                 above, or{" "}
-                <Link to="/filler" className="text-signal underline-offset-2 hover:underline">
+                <Link to="/filler/library" className="text-signal underline-offset-2 hover:underline">
                   add and tag clips
                 </Link>{" "}
                 in your filler catalog.
@@ -369,17 +394,6 @@ const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFiller
           </div>
         )}
       </section>
-
-      {/* Why the saved break looks the way it does (V29b). It is diagnosis, so it stays quiet
-          until an operator needs to understand a fallback or an unexpectedly small pool. */}
-      {coverage && (
-        <CollapsibleSection
-          title="Catalog coverage"
-          description="See which saved filters narrow this channel's available clips."
-        >
-          <CoverageMeter coverage={coverage} />
-        </CollapsibleSection>
-      )}
 
       {/* Apply / Discard — only offered when the draft differs from what's saved. Apply is
           the seamless commit; Discard throws the draft away. */}

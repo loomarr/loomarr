@@ -58,6 +58,9 @@ type PipelineOverview struct {
 	Admitted      int
 	Rejected      int
 	Dismissed     int
+	// Recoverable is the subset with an explicit retry or restore action. Rejected remains the
+	// terminal audit count; clients must not assume every refusal should be retried.
+	Recoverable int
 }
 
 // NoAdvanceReason explains a zero-advance pass from the same lifecycle vocabulary operators see.
@@ -73,11 +76,11 @@ func (o PipelineOverview) NoAdvanceReason(advanced int) string {
 		return "runnable_work_remains"
 	case o.Scheduled > 0:
 		return "waiting_for_retry"
-	case o.NeedsDecision > 0 && o.Rejected > 0:
+	case o.NeedsDecision > 0 && o.Recoverable > 0:
 		return "waiting_for_decisions_and_recovery"
 	case o.NeedsDecision > 0:
 		return "waiting_for_decisions"
-	case o.Rejected > 0:
+	case o.Recoverable > 0:
 		return "waiting_for_recovery"
 	default:
 		return "idle"
@@ -104,12 +107,22 @@ func (o *PipelineOverview) Add(state LifecycleState, count int) {
 	}
 }
 
+// AddLifecycle records both ownership and the independently-derived recovery capability.
+func (o *PipelineOverview) AddLifecycle(lifecycle PipelineLifecycle, count int) {
+	o.Add(lifecycle.State, count)
+	// Scheduled retries remain machine-owned even though an explicit retry operation exists.
+	// Needs-attention counts only terminal rows where progress now requires an operator.
+	if lifecycle.State == LifecycleRejected && lifecycle.Recovery != "" {
+		o.Recoverable += count
+	}
+}
+
 // SummarizePipelines is the in-memory adapter for tests and small stores. Production SQL groups
 // equivalent facts before calling Add, but both paths cross Lifecycle for the actual decision.
 func SummarizePipelines(rows []ClipPipeline, at time.Time) PipelineOverview {
 	var out PipelineOverview
 	for _, row := range rows {
-		out.Add(row.Lifecycle(at).State, 1)
+		out.AddLifecycle(row.Lifecycle(at), 1)
 	}
 	return out
 }

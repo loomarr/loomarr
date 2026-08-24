@@ -240,6 +240,7 @@ type PipelineOverviewDTO struct {
 	Admitted      int `json:"admitted"`
 	Rejected      int `json:"rejected"`
 	Dismissed     int `json:"dismissed"`
+	Recoverable   int `json:"recoverable" doc:"Terminal failures with an explicit retry or restore action"`
 }
 
 func (s *Server) registerFillerIncoming(api huma.API) {
@@ -604,7 +605,7 @@ func pipelineOverviewDTO(o filler.PipelineOverview) PipelineOverviewDTO {
 	return PipelineOverviewDTO{
 		Runnable: o.Runnable, InProgress: o.InProgress, Scheduled: o.Scheduled,
 		NeedsDecision: o.NeedsDecision, Admitted: o.Admitted,
-		Rejected: o.Rejected, Dismissed: o.Dismissed,
+		Rejected: o.Rejected, Dismissed: o.Dismissed, Recoverable: o.Recoverable,
 	}
 }
 
