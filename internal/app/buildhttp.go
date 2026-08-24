@@ -33,6 +33,7 @@ type httpBuild struct {
 	jobs              api.JobService
 	database          api.DatabaseService
 	residentLLM       residentLLMBuild
+	healthRefresh     api.HealthRefreshService
 }
 
 func buildHTTP(deps httpBuild) http.Handler {
@@ -102,6 +103,8 @@ func buildHTTP(deps httpBuild) http.Handler {
 		Restart:          restartSvc,
 		Activity:         activityRec,
 		DiagnosticEvents: deps.foundation.diagnosticEvents,
+		StartupReports:   deps.foundation.startupReports,
+		HealthRefresh:    deps.healthRefresh,
 		// The baseline for "has a restart-scoped setting changed?" is what THIS
 		// generation booted with, captured here rather than per call (config-design §3).
 		RestartDrift: restartDrift(bootCfg, appliedRestartSettings, canonicalRestartCurrent(desiredSet)),

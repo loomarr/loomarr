@@ -19,6 +19,33 @@ type DiagnosticEventService interface {
 	Query(context.Context, diagnostics.EventQuery) (diagnostics.EventPage, error)
 }
 
+// StartupReportService exposes the current in-memory generation and recent retained reports.
+type StartupReportService interface {
+	Current() diagnostics.StartupReport
+	Health() diagnostics.HealthReport
+	Recent(context.Context, int) ([]diagnostics.StartupReport, error)
+}
+
+// HealthRefreshService invokes the same bounded probe runner used by the scheduler.
+type HealthRefreshService interface {
+	Refresh(context.Context) (diagnostics.HealthReport, error)
+}
+
+type currentHealthOutput struct {
+	Body diagnostics.HealthReport
+}
+
+type startupReportsInput struct {
+	Limit int `query:"limit" minimum:"1" maximum:"20" default:"10" doc:"Current plus recent generations to return"`
+}
+
+type startupReportsOutput struct {
+	Body struct {
+		Current diagnostics.StartupReport   `json:"current"`
+		Items   []diagnostics.StartupReport `json:"items"`
+	}
+}
+
 type diagnosticEventsInput struct {
 	From              int64              `query:"from" minimum:"0" doc:"Window start as Unix epoch milliseconds; defaults to one hour before to"`
 	To                int64              `query:"to" minimum:"0" doc:"Window end as Unix epoch milliseconds; defaults to now"`
@@ -26,6 +53,7 @@ type diagnosticEventsInput struct {
 	Cursor            string             `query:"cursor" maxLength:"512" doc:"Opaque cursor returned by the previous page"`
 	Level             diagnostics.Level  `query:"level" enum:"debug,info,warn,error" doc:"Exact severity"`
 	Source            diagnostics.Source `query:"source" enum:"server,web,android_tv" doc:"Exact observing runtime"`
+	Event             string             `query:"event" maxLength:"128" doc:"Exact stable event name"`
 	Subsystem         string             `query:"subsystem" maxLength:"128" doc:"Exact subsystem"`
 	RequestID         string             `query:"requestId" maxLength:"128" doc:"Exact API request correlation id"`
 	PlaybackSessionID string             `query:"playbackSessionId" maxLength:"128" doc:"Exact playback-session correlation id"`
@@ -38,6 +66,28 @@ type diagnosticEventsInput struct {
 }
 
 func (s *Server) registerDiagnostics(api huma.API) {
+	if s.startupReports != nil || s.schemaOnly {
+		huma.Register(api, withRole(huma.Operation{
+			OperationID: "get-current-health", Method: http.MethodGet, Path: "/v1/diagnostics/health",
+			Summary:     "Get current health",
+			Description: "Returns the freshness-aware health of the running Loomarr generation from the same required checks used by readiness.",
+			Tags:        []string{"diagnostics"},
+		}, RoleAdmin), s.getCurrentHealth)
+		huma.Register(api, withRole(huma.Operation{
+			OperationID: "list-startup-reports", Method: http.MethodGet, Path: "/v1/diagnostics/startup-reports",
+			Summary:     "List startup reports",
+			Description: "Returns the live application-generation startup report and recent completed reports retained in Diagnostics.",
+			Tags:        []string{"diagnostics"},
+		}, RoleAdmin), s.listStartupReports)
+	}
+	if s.healthRefresh != nil || s.schemaOnly {
+		huma.Register(api, withRole(huma.Operation{
+			OperationID: "refresh-current-health", Method: http.MethodPost, Path: "/v1/diagnostics/health/refresh",
+			Summary:     "Refresh current health",
+			Description: "Runs the same bounded health probes used by Loomarr's named System health task and returns the refreshed source of truth.",
+			Tags:        []string{"diagnostics"},
+		}, RoleAdmin), s.refreshCurrentHealth)
+	}
 	op := huma.Operation{
 		OperationID: "list-diagnostic-events",
 		Method:      http.MethodGet,
@@ -68,6 +118,40 @@ func (s *Server) registerDiagnostics(api huma.API) {
 	rawInputOp(api, op, RoleAdmin, s.diagnosticEventsHandler)
 }
 
+func (s *Server) getCurrentHealth(_ context.Context, _ *struct{}) (*currentHealthOutput, error) {
+	if s.startupReports == nil {
+		return nil, huma.Error501NotImplemented("Current Health isn't available on this Loomarr generation.")
+	}
+	return &currentHealthOutput{Body: s.startupReports.Health()}, nil
+}
+
+func (s *Server) refreshCurrentHealth(ctx context.Context, _ *struct{}) (*currentHealthOutput, error) {
+	if s.healthRefresh == nil {
+		return nil, huma.Error501NotImplemented("Current Health refresh isn't available on this Loomarr generation.")
+	}
+	health, err := s.healthRefresh.Refresh(ctx)
+	if err != nil {
+		s.log.Error("current health refresh failed", "event", "diagnostics.health_refresh_failed", "subsystem", "diagnostics", "err", err)
+		return nil, huma.Error500InternalServerError("Current Health couldn't be refreshed.")
+	}
+	return &currentHealthOutput{Body: health}, nil
+}
+
+func (s *Server) listStartupReports(ctx context.Context, input *startupReportsInput) (*startupReportsOutput, error) {
+	if s.startupReports == nil {
+		return nil, huma.Error501NotImplemented("Startup reports aren't available on this Loomarr generation.")
+	}
+	items, err := s.startupReports.Recent(ctx, input.Limit)
+	if err != nil {
+		s.log.Error("startup report query failed", "event", "diagnostics.startup_query_failed", "subsystem", "diagnostics", "err", err)
+		return nil, huma.Error500InternalServerError("The retained startup reports couldn't be read.")
+	}
+	out := &startupReportsOutput{}
+	out.Body.Current = s.startupReports.Current()
+	out.Body.Items = items
+	return out, nil
+}
+
 func (s *Server) diagnosticEventsHandler(
 	w http.ResponseWriter, r *http.Request, input *diagnosticEventsInput,
 ) {
@@ -78,7 +162,7 @@ func (s *Server) diagnosticEventsHandler(
 	}
 	page, err := s.diagnosticEvents.Query(r.Context(), diagnostics.EventQuery{
 		From: input.From, To: input.To, Limit: input.Limit, Cursor: input.Cursor,
-		Level: input.Level, Source: input.Source, Subsystem: input.Subsystem,
+		Level: input.Level, Source: input.Source, Event: input.Event, Subsystem: input.Subsystem,
 		RequestID: input.RequestID, PlaybackSessionID: input.PlaybackSessionID,
 		ChannelID: input.ChannelID, ScheduleBlockID: input.ScheduleBlockID,
 		JobID: input.JobID, ProcessRunID: input.ProcessRunID, InstanceID: input.InstanceID,

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/settings"
@@ -20,6 +21,9 @@ import (
 // Overrides injects the two in-process boundaries (the Tunarr push target and the
 // LLM provider) for tests. Both nil ⇒ the real URL-built adapters (production).
 type Overrides struct {
+	// Startup is the process-owned report for this application generation. nil creates a minimal
+	// embedded-build report so /readyz still derives from the same state object in tests.
+	Startup    *diagnostics.Startup
 	Programmer programmer.Programmer // nil ⇒ programmer.NewDynamic(live Tunarr config)
 	LLM        llm.Provider          // nil ⇒ the Swappable from buildLLM
 	// TMDBBaseURL redirects the real dynamic TMDB adapter to an in-process external
@@ -124,6 +128,9 @@ func buildHandler(
 	if err != nil {
 		return nil, nil, err
 	}
+	// Every later builder completes checks on the exact state /readyz uses. Embedded callers may
+	// omit the override, in which case foundation created that state for them.
+	ov.Startup = foundation.startup
 	set, desiredSet := foundation.set, foundation.desiredSet
 	fillerLayout := foundation.fillerLayout
 	secrets, log := foundation.secrets, foundation.log
@@ -162,6 +169,11 @@ func buildHandler(
 		st, set, fillerLayout, log, libraryClient, eventBus, emitter, jobReg, playoutRes, channelSvc,
 		foundation.processDiagnostics,
 	)
+	healthProbes := connectionTests(set, libraryClient, tmdbClient)
+	completeStartupIntegrations(rootCtx, foundation.startup, set, healthProbes)
+	healthRunner := newCurrentHealthRunner(foundation.startup, st, set, healthProbes)
+	jobReg.Add(healthRunner.Job())
+
 	operations := buildOperations(
 		rootCtx, st, set, desiredSet, secrets, readGeneratedSecret, refreshSecretRedactor,
 		libraryClient, tmdbClient, eventBus, emitter, jobReg, owner, playoutRes,
@@ -179,6 +191,7 @@ func buildHandler(
 		guide: operations.guide, settings: operations.settings, liveConfig: operations.liveConfig,
 		libraryConfigured: operations.libraryConfigured, jobs: operations.jobs,
 		database: operations.database, residentLLM: operations.residentLLM,
+		healthRefresh: healthRunner,
 	})
 	// SQLite is single-process by contract, so its settings snapshot changes only
 	// through this process's writes and needs no polling reads. Postgres permits

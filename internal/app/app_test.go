@@ -2,12 +2,16 @@ package app
 
 import (
 	"context"
+	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -53,6 +57,139 @@ func TestEventEmitterPublishesToBus(t *testing.T) {
 		}
 	default:
 		t.Fatal("no event published to the bus — #11 seam still open (nothing reached the subscriber)")
+	}
+}
+
+func TestStartupReportAndReadinessShareOneGenerationState(t *testing.T) {
+	t.Setenv("API_TOKEN", "startup-admin-token")
+	for _, tc := range []struct {
+		name       string
+		status     diagnostics.StartupCheckStatus
+		state      diagnostics.StartupState
+		health     diagnostics.HealthState
+		readyCode  int
+		readyValue bool
+	}{
+		{"ready", diagnostics.StartupPassed, diagnostics.StartupReady, diagnostics.HealthHealthy, http.StatusOK, true},
+		{"blocked", diagnostics.StartupFailed, diagnostics.StartupBlocked, diagnostics.HealthUnhealthy, http.StatusServiceUnavailable, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st := testkit.MigratedSQLiteStore(t)
+			now := time.Unix(100, 0)
+			startup := diagnostics.NewStartup(now, 1, "v1.2.3", []diagnostics.StartupCheck{
+				{Key: diagnostics.StartupCheckDatabase, Label: "Database", Required: true},
+			}, func() time.Time { return now })
+			startup.Complete(diagnostics.StartupCheckDatabase, tc.status, tc.name, "", "")
+			handler := buildTestApplication(t, st, Overrides{Startup: startup}).Handler()
+
+			ready := httptest.NewRecorder()
+			handler.ServeHTTP(ready, httptest.NewRequest(http.MethodGet, "/v1/readyz", nil))
+			if ready.Code != tc.readyCode {
+				t.Fatalf("/readyz = %d, want %d: %s", ready.Code, tc.readyCode, ready.Body.String())
+			}
+			var readyBody struct {
+				Ready bool `json:"ready"`
+			}
+			if err := json.NewDecoder(ready.Body).Decode(&readyBody); err != nil {
+				t.Fatal(err)
+			}
+
+			reportRequest := httptest.NewRequest(http.MethodGet, "/v1/diagnostics/startup-reports?limit=1", nil)
+			reportRequest.Header.Set("Authorization", "Bearer startup-admin-token")
+			reportResponse := httptest.NewRecorder()
+			handler.ServeHTTP(reportResponse, reportRequest)
+			if reportResponse.Code != http.StatusOK {
+				t.Fatalf("startup reports = %d: %s", reportResponse.Code, reportResponse.Body.String())
+			}
+			var reportBody struct {
+				Current diagnostics.StartupReport `json:"current"`
+			}
+			if err := json.NewDecoder(reportResponse.Body).Decode(&reportBody); err != nil {
+				t.Fatal(err)
+			}
+			if readyBody.Ready != tc.readyValue || reportBody.Current.State != tc.state {
+				t.Fatalf("shared state disagreed: ready=%v report=%q", readyBody.Ready, reportBody.Current.State)
+			}
+
+			healthRequest := httptest.NewRequest(http.MethodGet, "/v1/diagnostics/health", nil)
+			healthRequest.Header.Set("Authorization", "Bearer startup-admin-token")
+			healthResponse := httptest.NewRecorder()
+			handler.ServeHTTP(healthResponse, healthRequest)
+			if healthResponse.Code != http.StatusOK {
+				t.Fatalf("current health = %d: %s", healthResponse.Code, healthResponse.Body.String())
+			}
+			var health diagnostics.HealthReport
+			if err := json.NewDecoder(healthResponse.Body).Decode(&health); err != nil {
+				t.Fatal(err)
+			}
+			if health.State != tc.health || readyBody.Ready != (health.State != diagnostics.HealthUnhealthy && health.State != diagnostics.HealthStarting) {
+				t.Fatalf("readiness and Current Health disagreed: ready=%v health=%q", readyBody.Ready, health.State)
+			}
+		})
+	}
+}
+
+func TestHealthEmitterPublishesTypedInvalidation(t *testing.T) {
+	t.Parallel()
+	bus := events.NewBus()
+	sub, unsubscribe := bus.Subscribe()
+	defer unsubscribe()
+	emit := &eventEmitter{bus: bus}
+	emit.HealthChanged()
+	select {
+	case got := <-sub:
+		if got.Type != "health" {
+			t.Fatalf("event type = %q", got.Type)
+		}
+		if _, ok := got.Payload.(api.HealthEvent); !ok {
+			t.Fatalf("payload type = %T, want api.HealthEvent", got.Payload)
+		}
+	default:
+		t.Fatal("no Current Health invalidation reached the SSE bus")
+	}
+}
+
+func TestStartupReportsSurviveGenerationReplacement(t *testing.T) {
+	t.Setenv("API_TOKEN", "startup-admin-token")
+	st := testkit.MigratedSQLiteStore(t)
+	processStarted := time.Unix(100, 0)
+	newReport := func(generation int) *diagnostics.Startup {
+		now := processStarted.Add(time.Duration(generation) * time.Second)
+		report := diagnostics.NewStartup(processStarted, generation, "v1.2.3", []diagnostics.StartupCheck{
+			{Key: diagnostics.StartupCheckDatabase, Label: "Database", Required: true},
+		}, func() time.Time { return now })
+		report.Complete(diagnostics.StartupCheckDatabase, diagnostics.StartupPassed, "ready", "", "")
+		return report
+	}
+
+	first, err := Build(t.Context(), st, slog.New(slog.DiscardHandler), Overrides{Startup: newReport(1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Shutdown(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	second, err := Build(t.Context(), st, slog.New(slog.DiscardHandler), Overrides{Startup: newReport(2)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = second.Shutdown(context.Background()) })
+
+	request := httptest.NewRequest(http.MethodGet, "/v1/diagnostics/startup-reports?limit=10", nil)
+	request.Header.Set("Authorization", "Bearer startup-admin-token")
+	response := httptest.NewRecorder()
+	second.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("startup reports = %d: %s", response.Code, response.Body.String())
+	}
+	var body struct {
+		Items []diagnostics.StartupReport `json:"items"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Items) != 2 || body.Items[0].Generation != 2 || body.Items[1].Generation != 1 {
+		t.Fatalf("reports after replacement = %+v", body.Items)
 	}
 }
 

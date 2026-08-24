@@ -37,6 +37,9 @@ type foundationBuild struct {
 	diagnostics            *diagnostics.Recorder
 	diagnosticEvents       *diagnostics.EventLog
 	processDiagnostics     *diagnostics.ProcessManager
+	startup                *diagnostics.Startup
+	startupReports         *diagnostics.StartupReports
+	instanceID             string
 }
 
 // buildFoundation creates the shared roots consumed by later subsystem builders. The returned
@@ -50,15 +53,38 @@ func buildFoundation(
 ) (foundationBuild, error) {
 	result := foundationBuild{}
 	instanceID := ""
+	fallbackLog := log
 	var secretRedactor *settings.Redactor
-	result.ready = func() (bool, string) {
+	result.startup = overrides.Startup
+	if result.startup == nil {
+		result.startup = diagnostics.NewStartup(time.Now(), 1, "dev", []diagnostics.StartupCheck{
+			{Key: "database", Label: "Database", Required: true,
+				Mode: diagnostics.HealthCheckContinuous, FreshFor: 3 * time.Minute},
+		}, time.Now)
 		if st == nil {
-			return false, "no store configured"
+			result.startup.Complete("database", diagnostics.StartupFailed, "no store configured", "/settings/system/database", "")
+		} else if _, err := st.GetSetting(context.Background(), "healthcheck_probe"); err != nil && err != store.ErrNotFound {
+			result.startup.Complete("database", diagnostics.StartupFailed, "store unreachable", "/settings/system/database", "")
+		} else {
+			result.startup.Complete("database", diagnostics.StartupPassed, "ready", "", "")
 		}
-		if _, err := st.GetSetting(context.Background(), "healthcheck_probe"); err != nil && err != store.ErrNotFound {
-			return false, "store unreachable: " + err.Error()
-		}
-		return true, "ok"
+	}
+	result.ready = result.startup.Ready
+	result.log = log
+	if st != nil {
+		// Startup retention is available as soon as the migrated store is available. Building it
+		// before settings means a later settings/generated-secret failure is still retained.
+		instanceID = instanceDeviceID(rootCtx, st)
+		result.instanceID = instanceID
+		result.diagnostics = diagnostics.New(st, diagnostics.Options{
+			OnFailure: func(err error, count int) {
+				fallbackLog.Error("diagnostics: persistence failed", "err", err, "records", count)
+			},
+		})
+		owner.addStop(result.diagnostics.Close)
+		result.diagnosticEvents = diagnostics.NewEventLog(st, time.Now)
+		result.startup.AttachPersistence(result.diagnostics, instanceID)
+		result.startupReports = diagnostics.NewStartupReports(result.startup, st, time.Now)
 	}
 	if st != nil {
 		if err := metrics.RegisterStoreCollector(st, time.Now); err != nil {
@@ -67,8 +93,12 @@ func buildFoundation(
 
 		set, secrets, redactor, redactedLog, err := bootSettings(context.Background(), st, log)
 		if err != nil {
+			result.startup.Complete(diagnostics.StartupCheckGeneratedSecrets, diagnostics.StartupFailed,
+				"settings and generated secrets could not be initialized", "/settings/system/diagnostics", "")
 			return foundationBuild{}, err
 		}
+		result.startup.Complete(diagnostics.StartupCheckGeneratedSecrets, diagnostics.StartupPassed,
+			"generated secrets are available", "", "")
 		result.desiredSet = set
 		result.set, result.appliedRestartSettings = set.freeze(settings.NewRegistry().RestartKeys()...)
 		result.fillerLayout, err = filler.NewLayout(
@@ -80,8 +110,8 @@ func buildFoundation(
 		canonicalFillerRestartBaseline(result.appliedRestartSettings, result.fillerLayout)
 		result.secrets = secrets
 		result.log = redactedLog
+		fallbackLog = redactedLog
 		secretRedactor = redactor
-		instanceID = instanceDeviceID(rootCtx, st)
 		result.libraryClient = library.NewDynamic(result.set.libraryConn(), instanceID)
 		key := func() string { return result.set.str("tmdb.api_key") }
 		if overrides.TMDBBaseURL != "" {
@@ -93,6 +123,8 @@ func buildFoundation(
 			redactor.Set(collectSecrets(settings.NewRegistry(), result.set.svc, secrets))
 		}
 	} else {
+		result.startup.Complete(diagnostics.StartupCheckGeneratedSecrets, diagnostics.StartupSkipped,
+			"database unavailable", "/settings/system/diagnostics", "")
 		result.log = log
 		result.refreshSecretRedactor = func() {}
 	}
@@ -103,18 +135,9 @@ func buildFoundation(
 	}
 	result.eventBus = events.NewBus()
 	result.emitter = &eventEmitter{bus: result.eventBus}
+	result.startup.SetHealthNotifier(result.emitter.HealthChanged)
 	result.jobs = scheduler.NewRegistry()
 	if st != nil {
-		// Capture the pre-recorder logger permanently. #511 may fan result.log into diagnostics;
-		// persistence failures must keep using this stdout-only path or they would recurse.
-		fallbackLog := result.log
-		result.diagnostics = diagnostics.New(st, diagnostics.Options{
-			OnFailure: func(err error, count int) {
-				fallbackLog.Error("diagnostics: persistence failed", "err", err, "records", count)
-			},
-		})
-		owner.addStop(result.diagnostics.Close)
-		result.diagnosticEvents = diagnostics.NewEventLog(st, time.Now)
 		// Dynamic secret redaction wraps the fan-out rather than only stdout. Both durable events
 		// and JSON output therefore receive the same scrubbed record, while the recorder failure
 		// hook above retains its permanently stdout-only logger.
@@ -128,6 +151,9 @@ func buildFoundation(
 		owner.addStop(result.processDiagnostics.Close)
 	} else {
 		slog.SetDefault(result.log)
+	}
+	if result.startupReports == nil {
+		result.startupReports = diagnostics.NewStartupReports(result.startup, nil, time.Now)
 	}
 	return result, nil
 }

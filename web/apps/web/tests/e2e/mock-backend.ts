@@ -95,6 +95,33 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     if (path === "/v1/system/version") {
       return json(route, { version: "v0.9.3", ready: true, dirty: false });
     }
+    if (path === "/v1/diagnostics/health") {
+      return json(route, {
+        generationId: "e2e-generation",
+        generation: 1,
+        version: "v0.9.3",
+        processStartedAt: 1_780_000_000_000,
+        generationStartedAt: 1_780_000_001_000,
+        updatedAt: 1_780_000_002_000,
+        nextRefreshAt: 1_780_000_062_000,
+        state: "healthy",
+        checks: [],
+      });
+    }
+    if (path === "/v1/diagnostics/startup-reports") {
+      const current = {
+        id: "e2e-generation",
+        generation: 1,
+        version: "v0.9.3",
+        processStartedAt: 1_780_000_000_000,
+        generationStartedAt: 1_780_000_001_000,
+        generationEndedAt: 1_780_000_002_000,
+        durationMillis: 1_000,
+        state: "ready",
+        checks: [],
+      };
+      return json(route, { current, items: [current] });
+    }
     // Unauthenticated (§7): the router guards read this BEFORE any session exists, to
     // tell an unclaimed install from a merely signed-out one.
     if (path === "/v1/setup/state") {

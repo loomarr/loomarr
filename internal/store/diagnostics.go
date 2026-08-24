@@ -94,6 +94,7 @@ func (s *sqlStore) QueryDiagnosticEvents(
 	}
 	addExact("level", string(query.Level))
 	addExact("source", string(query.Source))
+	addExact("event", query.Event)
 	addExact("subsystem", query.Subsystem)
 	addExact("request_id", query.RequestID)
 	addExact("playback_session_id", query.PlaybackSessionID)

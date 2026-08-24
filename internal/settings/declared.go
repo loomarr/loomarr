@@ -1078,6 +1078,11 @@ func declared() []Setting {
 		// 6-field seconds-leading cron; edited via the Tasks page's Modify Job modal (presets
 		// + an advanced raw-cron field). These OVERRIDE each job's built-in default cron.
 		{
+			Key: "job.system_health.schedule", EnvVar: "JOB_SYSTEM_HEALTH_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 * * * * *",
+			Doc: "How often Loomarr checks its database and configured connections for Current Health (cron).",
+		},
+		{
 			Key: "job.reconcile.schedule", EnvVar: "JOB_RECONCILE_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Default: "0 */5 * * * *",
 			Doc: "How often Loomarr checks on in-progress downloads (cron).",

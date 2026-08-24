@@ -17,6 +17,7 @@ const SUB_PAGES = [
   { to: "/settings/system/database", label: "Database" },
   { to: "/settings/system/backup", label: "Backup" },
   { to: "/settings/system/storage", label: "Storage" },
+  { to: "/settings/system/diagnostics", label: "Diagnostics" },
   { to: "/settings/system/about", label: "About" },
 ] as const;
 

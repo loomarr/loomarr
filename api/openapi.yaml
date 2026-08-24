@@ -2560,6 +2560,54 @@ components:
         - toMs
         - channels
       type: object
+    HealthCheck:
+      additionalProperties: false
+      properties:
+        consecutiveFailures:
+          format: int64
+          type: integer
+        detail:
+          type: string
+        diagnosticEvent:
+          type: string
+        freshUntil:
+          format: int64
+          type: integer
+        key:
+          type: string
+        label:
+          type: string
+        mode:
+          enum:
+            - startup
+            - continuous
+          type: string
+        observedAt:
+          format: int64
+          type: integer
+        remediationRoute:
+          type: string
+        required:
+          type: boolean
+        status:
+          enum:
+            - pending
+            - passed
+            - warning
+            - failed
+            - skipped
+            - stale
+          type: string
+      required:
+        - key
+        - label
+        - required
+        - mode
+        - status
+      type: object
+    HealthEvent:
+      additionalProperties: false
+      type: object
     HealthOutputBody:
       additionalProperties: false
       properties:
@@ -2576,6 +2624,56 @@ components:
           type: string
       required:
         - status
+      type: object
+    HealthReport:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/HealthReport.json
+          format: uri
+          readOnly: true
+          type: string
+        checks:
+          items:
+            $ref: "#/components/schemas/HealthCheck"
+          type: array
+        generation:
+          format: int64
+          type: integer
+        generationId:
+          type: string
+        generationStartedAt:
+          format: int64
+          type: integer
+        nextRefreshAt:
+          format: int64
+          type: integer
+        processStartedAt:
+          format: int64
+          type: integer
+        state:
+          enum:
+            - starting
+            - healthy
+            - degraded
+            - unhealthy
+          type: string
+        updatedAt:
+          format: int64
+          type: integer
+        version:
+          type: string
+      required:
+        - generationId
+        - generation
+        - version
+        - processStartedAt
+        - generationStartedAt
+        - updatedAt
+        - state
+        - checks
       type: object
     HoldFillerInputBody:
       additionalProperties: false
@@ -5728,6 +5826,114 @@ components:
         - endMs
         - name
       type: object
+    StartupCheck:
+      additionalProperties: false
+      properties:
+        detail:
+          type: string
+        diagnosticEvent:
+          type: string
+        durationMillis:
+          format: int64
+          type: integer
+        endedAt:
+          format: int64
+          type: integer
+        key:
+          type: string
+        label:
+          type: string
+        mode:
+          enum:
+            - startup
+            - continuous
+          type: string
+        remediationRoute:
+          type: string
+        required:
+          type: boolean
+        startedAt:
+          format: int64
+          type: integer
+        status:
+          enum:
+            - pending
+            - passed
+            - warning
+            - failed
+            - skipped
+          type: string
+      required:
+        - key
+        - label
+        - required
+        - status
+        - durationMillis
+        - mode
+      type: object
+    StartupReport:
+      additionalProperties: false
+      properties:
+        checks:
+          items:
+            $ref: "#/components/schemas/StartupCheck"
+          type: array
+        durationMillis:
+          format: int64
+          type: integer
+        generation:
+          format: int64
+          type: integer
+        generationEndedAt:
+          format: int64
+          type: integer
+        generationStartedAt:
+          format: int64
+          type: integer
+        id:
+          type: string
+        processStartedAt:
+          format: int64
+          type: integer
+        state:
+          enum:
+            - starting
+            - ready
+            - degraded
+            - blocked
+          type: string
+        version:
+          type: string
+      required:
+        - id
+        - generation
+        - version
+        - processStartedAt
+        - generationStartedAt
+        - durationMillis
+        - state
+        - checks
+      type: object
+    StartupReportsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/StartupReportsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        current:
+          $ref: "#/components/schemas/StartupReport"
+        items:
+          items:
+            $ref: "#/components/schemas/StartupReport"
+          type: array
+      required:
+        - current
+        - items
+      type: object
     SubmitOutputBody:
       additionalProperties: false
       properties:
@@ -7514,6 +7720,14 @@ paths:
               - web
               - android_tv
             type: string
+        - description: Exact stable event name
+          explode: false
+          in: query
+          name: event
+          schema:
+            description: Exact stable event name
+            maxLength: 128
+            type: string
         - description: Exact subsystem
           explode: false
           in: query
@@ -7619,6 +7833,78 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: List diagnostic events
+      tags:
+        - diagnostics
+  /v1/diagnostics/health:
+    get:
+      description: Returns the freshness-aware health of the running Loomarr generation from the same required checks used by readiness.
+      operationId: get-current-health
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthReport"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get current health
+      tags:
+        - diagnostics
+  /v1/diagnostics/health/refresh:
+    post:
+      description: Runs the same bounded health probes used by Loomarr's named System health task and returns the refreshed source of truth.
+      operationId: refresh-current-health
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthReport"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Refresh current health
+      tags:
+        - diagnostics
+  /v1/diagnostics/startup-reports:
+    get:
+      description: Returns the live application-generation startup report and recent completed reports retained in Diagnostics.
+      operationId: list-startup-reports
+      parameters:
+        - description: Current plus recent generations to return
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 10
+            description: Current plus recent generations to return
+            format: int64
+            maximum: 20
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StartupReportsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List startup reports
       tags:
         - diagnostics
   /v1/discovery/feedback:
@@ -7872,6 +8158,24 @@ paths:
                         - data
                         - event
                       title: Event filler_split
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/HealthEvent"
+                        event:
+                          const: health
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event health
                       type: object
                     - properties:
                         data:

@@ -910,13 +910,15 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | GET | `/v1/diagnostics/processes` | Cursor-paged active and completed Process runs (admin, §17), with bounded time/status/purpose/Channel/Job filters. |
 | GET | `/v1/diagnostics/processes/{id}` | One Process run's durable metadata and downsampled progress (admin, §17). |
 | GET | `/v1/diagnostics/processes/{id}/output` | Stream one Process run's bounded readable output (admin, §17). Truncation and dropped-line counts are part of the response metadata, never hidden. |
-| GET | `/v1/diagnostics/startup` | The current application generation's Startup report plus a bounded recent history (admin, §17). The current in-memory report remains available when store startup failed; `/readyz` derives from the same required-check state. |
+| GET | `/v1/diagnostics/health` | Current Health for the running application generation (admin, §17): server-derived overall state plus ordered startup/continuous checks, observation and freshness times, concise redacted detail, and remediation. The in-memory value remains available when the store is unhealthy; `/readyz` derives from the same required-check state. |
+| POST | `/v1/diagnostics/health/refresh` | Run the same bounded Current Health probe path used by the named System scheduler job (admin, §17). This is an invocation seam, not a second probe implementation. |
+| GET | `/v1/diagnostics/startup-reports` | The current generation's immutable Startup report plus at most 20 retained reports (admin, §17). Startup history explains boot; Current Health answers whether Loomarr is healthy now. |
 | POST | `/v1/diagnostics/client-events` | Rate-limited ingestion of a closed, size-bounded web/Android TV event set (authenticated, §17). The server derives actor and receipt time; this route grants no diagnostic read access. |
 | POST | `/v1/diagnostics/support-bundle` | Stream one redacted, bounded Support bundle assembled from an explicit time window/correlation selection (admin, §17). Download only; future submission is a separate explicit-consent action. |
 | POST | `/v1/system/reload` | Re-probe every configured service without restarting (admin, §9.2, V13) — reuses the **one** `POST /v1/setup/test` probe implementation rather than a second copy, so a reload and the wizard's checklist can never disagree. No downtime: nothing is torn down. |
 | GET | `/v1/system/backups` | List the backups on disk in `backup.dir`, newest first (admin, §16, V12): filename, bytes, `writtenAt`. Also reports `dir`, `retain`, `schedule`, and `supported` (false on Postgres, where the listing is empty and the UI explains `pg_dump` rather than showing an empty table). Never 5xxs on a missing/unreadable directory — nothing written yet is an empty list, not an error. |
 | GET | `/v1/system/backups/{name}` | Download one **already-written** backup by filename (admin, §16, V12). `name` is validated against the `loomarr-<timestamp>.db` pattern and resolved inside `backup.dir` — it is a client-supplied path segment, so anything else is rejected before it reaches the filesystem. |
-| GET | `/v1/events` | SSE stream of state changes. Frame `event:` types: `title` (provisioning) · `channel` (lineup/health) · `suggestion` (generation progress — `searching`→`reasoning`→`scoring`→`done`/`failed`, payload `{jobId, phase}`) · `llm_pull` (model-download percent) · `filler_ingest` (clip-download progress — §10) · `filler_split` (compilation-detection progress: `running` → terminal `success` carrying `{proposalId, segments}` or `error` — §10, V34) · `activity` (a new Dashboard feed row was written — §12, V32). Latency-only: a dropped frame is never a correctness bug — the `GET` endpoints are the source of truth on reconnect (§8). |
+| GET | `/v1/events` | SSE stream of state changes. Frame `event:` types: `title` (provisioning) · `channel` (lineup/health) · `suggestion` (generation progress — `searching`→`reasoning`→`scoring`→`done`/`failed`, payload `{jobId, phase}`) · `llm_pull` (model-download percent) · `filler_ingest` (clip-download progress — §10) · `filler_split` (compilation-detection progress: `running` → terminal `success` carrying `{proposalId, segments}` or `error` — §10, V34) · `activity` (a new Dashboard feed row was written — §12, V32) · `health` (Current Health changed; empty invalidation payload — §17). Latency-only: a dropped frame is never a correctness bug — the `GET` endpoints are the source of truth on reconnect (§8). |
 | GET | `/openapi.json` / `/openapi.yaml` | OpenAPI 3.1 spec. |
 | GET | `/v1/reference` | Interactive API reference (self-hosted assets). ⚠ Not `/v1/docs` — that is the Help table of contents above. |
 | GET | `/v1/healthz` / `/v1/readyz` / `/v1/metrics` | Ops. Public (`RolePublic`), because their consumers are container runtimes and scrape jobs. The bare `/healthz`, `/readyz`, `/metrics` and `/docs` remain as permanent hidden aliases — they are configured outside this repo, so the move must cost an operator nothing. |
@@ -5181,6 +5183,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | Local passwords | `golang.org/x/crypto/bcrypt` (DefaultCost) | Local-admin bootstrap + local users (§11 identity rework) need a password hash at rest. bcrypt is the boring, correct choice; already in the module tree transitively — this promotes it to a direct dependency. Session *tokens* stay SHA-256 (fast, high-entropy); only human passwords use bcrypt. |
 | Rate limiting | `golang.org/x/time/rate`, per-IP+username, in-memory | Login only; per-instance is acceptable v1 |
 | Metrics / logs | `prometheus/client_golang` / `slog` | Standard |
+| Interactive Startup report | **`github.com/jedib0t/go-pretty/v6/table`** | Renders the one Loomarr-owned structured Startup report as a restrained, width-bounded terminal table. It is formatting only: JSON `slog`, persistence, readiness, API, and UI consume the report value directly, and non-interactive output never passes through it. |
 | Windows process trees | **`golang.org/x/sys/windows`** (already in the resolved graph, promoted to direct) | The standard library can create a Windows process group but cannot own or terminate its descendant tree. Job Objects provide the Unix-process-group invariant required by §9.1 without a shell helper or supervisor. |
 | OIDC (SSO) | **`github.com/coreos/go-oidc/v3`** (+ `golang.org/x/oauth2`, `github.com/go-jose/go-jose/v4`) | SSO is a third credential path (§11, V8), and OIDC means verifying a signed token against the issuer's published JWKS — discovery, key rotation, `nonce`/`aud`/`exp` validation. Hand-rolling JWT verification is the kind of security code that looks right and is not. **Three modules total**, all current and maintained; `go-jose` does the crypto and `x/oauth2` the code exchange. Deliberately chosen over building forward-auth instead, which needs no dependency but trusts network topology (§11). |
 | Goroutine-leak gate | **`go.uber.org/goleak`** (test-only) | The in-process restart loop (§9.2) is only correct if Build/Run/Shutdown can repeat without accumulating goroutines or stale state, and a leak there is **silent** — it degrades an install over successive restarts rather than failing anything. goleak is the standard detector, test-only (never in a shipped binary), zero runtime cost. Added by V13 alongside the N-iteration restart test, because a prose rule would not have caught it. |
@@ -5517,6 +5520,7 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | Image module policy (not settings) | AVIF/WebP/JPEG are always emitted; remote fetch concurrency is capped below the provider limit; fetched artwork never outlives the six-month compliance ceiling. These are compatibility, service-protection, and compliance invariants rather than user preferences. |
 | `REQUEST_TTL` / `DOWNLOADING_TTL` | `48h` / `12h` |
 | `CHANNEL_RECONCILE_EVERY` | `10m` — minimum delay after a successful channel rebuild before it is eligible for another scheduled sweep. The normal cadence control is the **Maintain live channels** task under System → Tasks, so this cooldown remains an advanced setting. |
+| `JOB_SYSTEM_HEALTH_SCHEDULE` | `0 * * * * *` — once a minute, refresh Current Health through the named System task. Probes run concurrently under bounded deadlines; changing this cadence also changes their freshness deadline rather than allowing an older observation to remain green indefinitely (§17). |
 | `JOB_PLAYOUT_PREPARE_SCHEDULE` | `0 * * * * *` — once a minute, look six hours ahead and spend only preemptible spare hardware on the nearest missing prepared publications (§9.1 V56). |
 | `SESSION_TTL` / `COOKIE_SECURE` | `720h` / `auto` (§11) |
 | `TRUST_PROXY` | `false` (§11) — trust `X-Forwarded-For`/`X-Forwarded-Proto`. Default `false`: the login rate-limit key and `cookie.secure=auto` use the socket peer address, so forwarding headers can't be forged by a direct client. Set `true` only when a reverse proxy in front sets these headers. |
@@ -5878,27 +5882,50 @@ buffering/seeking/readiness/source replacement, and client version/platform. The
 authenticated and rate-limited. The server derives `actor_id`; a client cannot attribute an event
 to another person.
 
-### Startup report
+### Current Health and startup history
 
-Every application generation owns one structured **Startup report**: an ordered account of the
-checks that turn configuration into a ready Loomarr generation. Each check has a stable key,
-operator label, required flag, `pending | passed | warning | failed | skipped` status, start/end and
-duration, bounded redacted detail, optional remediation route, and Diagnostic-event correlation.
-The overall state is `starting` while a required check is pending, `ready` when required checks pass,
-`degraded` when only optional capabilities warn/fail, and `blocked` when a required check fails.
-Unconfigured optional integrations are `skipped`, never failures.
+Every running application generation owns one structured **Current Health** value: the server-owned
+answer to whether Loomarr and its configured capabilities are healthy now. Ordered checks declare a
+stable key, operator label, required flag, and `startup | continuous` mode. Their observations carry
+`pending | passed | warning | failed | skipped | stale`, bounded redacted detail, remediation,
+observation time, and an explicit freshness deadline. An unconfigured optional integration is
+`skipped`, never failed. A continuous result that passes once cannot remain green indefinitely: it
+becomes `stale` after its deadline if no newer observation arrives.
 
-The in-memory current-generation report is available even when the database cannot open, because
-that is exactly when an operator needs the reason. `/readyz` and the report derive from the same
-required-check state; they cannot disagree. Once persistence exists, the completed report enters
-Diagnostics retention, and an in-process restart creates a new generation id instead of rewriting
-the previous report.
+The overall state is `starting` while a required startup check is pending, `healthy` when required
+checks pass and optional checks need no attention, `degraded` when only optional checks warn, fail,
+or become stale, and `unhealthy` when a required check fails or becomes stale. Periodic observations
+need two consecutive failures to move a previously passing required check to failed; an explicit
+fatal lifecycle observation may fail immediately, and one success recovers it. `/readyz` is this
+same value's required-check projection, so the UI, API, and readiness probe cannot disagree.
+`/healthz` remains process liveness and performs no dependency work.
 
-The report has three projections, all from the same value: a structured startup Diagnostic event,
-an admin-only in-app notice plus durable table, and a human terminal table in interactive/pretty log
-mode. The terminal renderer is formatting only: non-interactive container/JSON logging remains one
-structured object per line with no ANSI or multiline side channel. Formatted table text is never
-the persisted source of truth.
+Startup is the first observation pass. Configuration, database/migrations, generated secrets,
+image-worker certification, and HTTP assembly/listening record at their real lifecycle seams.
+Configured media server, Tunarr, requester, AI, and TMDB reuse the existing setup probes concurrently
+under one bounded window. After startup, the named System scheduler job uses those same adapters to
+refresh continuous checks; `job.system_health.schedule` defaults to once per minute. Settings changes
+invalidate affected observations and prompt a run, and an explicit refresh invokes the same runner.
+No request path, scheduler goroutine, or Playout goroutine waits on unbounded probe work.
+
+`internal/diagnostics` owns state derivation, freshness, readiness, incident-transition
+deduplication, redaction, and snapshots behind one small reporting interface. The in-memory Current
+Health value remains available when the database cannot open or later becomes unhealthy, because
+that is exactly when an operator needs the reason. Only transitions into or out of an incident are
+checkpointed as structured Diagnostic events; ordinary successful polls do not create repetitive
+rows, and a failed checkpoint remains retryable.
+
+Each generation also freezes one immutable **Startup report** when its startup pass finishes.
+Completed reports follow Diagnostics retention, survive restart, and an in-process restart creates
+a new generation id without rewriting the prior report. The current startup snapshot and at most 20
+retained reports are available independently from Current Health.
+
+Settings → System → Diagnostics leads with **App Health** and **Current Health**, with status,
+version, last observation/freshness, detail, and remediation represented by text as well as color.
+Immutable reports sit beneath **Previous Startups**. Notices deduplicate per health incident,
+persist while action is needed, announce recovery calmly, and are superseded by a newer generation.
+The interactive terminal table remains a startup projection only. Continuous transitions use the
+ordinary one-line structured JSON stream; formatted text is never persisted truth.
 
 ### Read, download, and future support submission
 
@@ -5924,7 +5951,10 @@ contents, size, and expiry. Loomarr never sends diagnostics automatically.
 ### Metrics and health
 
 - **Metrics (Prometheus):** records by state; requests submitted / give-ups; webhook events by type; library-lookup + reconcile-loop latency; **channel reconciles, Tunarr API latency/errors, slots pending-vs-filled per channel**; LLM latency + (hosted) token/cost, proposals generated, acquisitions proposed/approved/rejected, grounding-dropped candidates; filler clips synced/tagged/untagged, pod fallback-ladder depth (how often matching degrades), and actual internal-playout rotation airings by bounded repeat/cooldown state; logins (success/failure) and active sessions; job queue depth + janitor purge counts; slot-drift substitutions; Diagnostic events dropped by reason/source and retained Diagnostic/process-output bytes. Outbound request count and latency wrap the retrying transport, so four attempts remain **one logical request** in those series; `loomarr_outbound_retries_total{target,reason}` separately counts each actual additional attempt with a bounded reason (`transport`, `408`, `429`, `500`, `502`, `503`, or `504`).
-- **Readiness** true only after DB connectivity + migrations, and (soft) Tunarr reachability.
+- **Readiness** is Current Health's required-check projection: required startup evidence must pass,
+  continuously observed required checks must remain fresh, and sustained required-check failures make
+  readiness false while liveness remains true. Optional warnings/failures/staleness produce
+  `degraded` while readiness remains true.
 
 ---
 

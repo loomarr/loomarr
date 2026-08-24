@@ -8,6 +8,7 @@ import {
   getFillerPoolMockHandler,
   getFillerWatchMockHandler,
   getGetChannelMockHandler,
+  getGetCurrentHealthMockHandler,
   getJobsListMockHandler,
   getListActivityMockHandler,
   getListChannelsMockHandler,
@@ -16,6 +17,7 @@ import {
   getListFillerSourcesMockHandler,
   getListProposalJobsMockHandler,
   getListProposalsMockHandler,
+  getListStartupReportsMockHandler,
   getListTitlesMockHandler,
   getListUsersMockHandler,
   getSettingsListMockHandler,
@@ -68,6 +70,30 @@ const appHandlers = (): RequestHandler[] => [
   // AppShell reads this once for every authenticated route. `dev` is the honest baseline for a
   // test bundle; tests that exercise release/dirty presentation override the generated handler.
   getSystemVersionMockHandler({ version: "dev", ready: true }),
+  getGetCurrentHealthMockHandler({
+    generationId: "startup-test",
+    generation: 1,
+    version: "dev",
+    processStartedAt: 1,
+    generationStartedAt: 1,
+    updatedAt: 2,
+    state: "healthy",
+    checks: [],
+  }),
+  getListStartupReportsMockHandler({
+    current: {
+      id: "startup-test",
+      generation: 1,
+      version: "dev",
+      processStartedAt: 1,
+      generationStartedAt: 1,
+      generationEndedAt: 2,
+      durationMillis: 1,
+      state: "ready",
+      checks: [],
+    },
+    items: [],
+  }),
   getSetupStatusMockHandler({ checks: [] }),
   // Settings → Security lists the operator's paired devices on mount (§11, Shield P1). Empty is
   // the honest default: a test that cares about devices overrides this, and every other test that

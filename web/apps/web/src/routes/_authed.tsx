@@ -10,6 +10,7 @@ import { useAuth } from "@/auth/use-auth";
 import { AppShell } from "@/components/loomarr/shell/app-shell";
 import { RestartOverlay } from "@/components/loomarr/shell/restart-overlay";
 import { RestartWatchProvider, useRestartWatchContext } from "@/dashboard/restart-watch-provider";
+import { HealthNotice } from "@/diagnostics";
 import { LoomarrEventsProvider } from "@/events/events-provider";
 import { CommandPalette } from "@/palette/command-palette";
 import { useCommandShortcut } from "@/palette/use-command-shortcut";
@@ -57,6 +58,7 @@ const AuthedFrame = () => {
 
   return (
     <LoomarrEventsProvider>
+      <HealthNotice enabled={isAdmin} />
       <AppShell
         isAdmin={isAdmin}
         userName={user?.name ?? "…"}

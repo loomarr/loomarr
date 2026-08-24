@@ -113,6 +113,12 @@ func (e *eventEmitter) ActivityRecorded() {
 	e.bus.Publish(events.Event{Type: "activity", Payload: api.ActivityEvent{}})
 }
 
+// HealthChanged invalidates Current Health after a material check-state transition. It carries no
+// mutable report payload; GET /v1/diagnostics/health remains the source of truth.
+func (e *eventEmitter) HealthChanged() {
+	e.bus.Publish(events.Event{Type: "health", Payload: api.HealthEvent{}})
+}
+
 // clipFrameMinGap / clipFrameMinPoints are the throttle for intra-stage filler progress.
 //
 // ⚠ **Throttled HERE rather than at the source, which is the call `PlayoutEvent` already

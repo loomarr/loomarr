@@ -69,6 +69,9 @@ const LoomarrEventsProvider = ({ children }: LoomarrEventsProviderProps) => {
       onDatabase: (e) => {
         for (const l of listeners.current) l.onDatabase?.(e);
       },
+      onHealth: (e) => {
+        for (const l of listeners.current) l.onHealth?.(e);
+      },
     }),
     [],
   );
@@ -108,6 +111,7 @@ const useLoomarrEventListener = (handlers: EventHandlers): void => {
       // assertions now; see events-provider.test.tsx.
       onPlayout: (e) => ref.current.onPlayout?.(e),
       onDatabase: (e) => ref.current.onDatabase?.(e),
+      onHealth: (e) => ref.current.onHealth?.(e),
     });
   }, [subscribe]);
 };

@@ -25,6 +25,131 @@ func (f diagnosticEventServiceFunc) Query(
 	return f(ctx, query)
 }
 
+type startupReportService struct {
+	current diagnostics.StartupReport
+	health  diagnostics.HealthReport
+	items   []diagnostics.StartupReport
+}
+
+type healthRefreshFunc func(context.Context) (diagnostics.HealthReport, error)
+
+func (f healthRefreshFunc) Refresh(ctx context.Context) (diagnostics.HealthReport, error) {
+	return f(ctx)
+}
+
+func (s startupReportService) Current() diagnostics.StartupReport { return s.current }
+func (s startupReportService) Health() diagnostics.HealthReport   { return s.health }
+func (s startupReportService) Recent(context.Context, int) ([]diagnostics.StartupReport, error) {
+	return s.items, nil
+}
+
+func TestStartupReportsAreAdminOnlyAndBearerQueryable(t *testing.T) {
+	current := diagnostics.StartupReport{ID: "startup-current", Generation: 2, Version: "v1.2.3", State: diagnostics.StartupDegraded}
+	service := startupReportService{current: current, items: []diagnostics.StartupReport{current}}
+	log := slog.New(slog.DiscardHandler)
+	handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, StartupReports: service})
+
+	member := httptest.NewRequest(http.MethodGet, "/v1/diagnostics/startup-reports", nil)
+	member.Header.Set("Authorization", "Bearer "+memberToken)
+	memberResponse := httptest.NewRecorder()
+	handler.ServeHTTP(memberResponse, member)
+	if memberResponse.Code != http.StatusForbidden {
+		t.Fatalf("member status = %d, want 403", memberResponse.Code)
+	}
+
+	admin := httptest.NewRequest(http.MethodGet, "/v1/diagnostics/startup-reports?limit=10", nil)
+	admin.Header.Set("Authorization", "Bearer "+adminToken)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, admin)
+	if response.Code != http.StatusOK {
+		t.Fatalf("admin status = %d: %s", response.Code, response.Body.String())
+	}
+	var body struct {
+		Current diagnostics.StartupReport   `json:"current"`
+		Items   []diagnostics.StartupReport `json:"items"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Current.ID != current.ID || len(body.Items) != 1 || body.Items[0].State != diagnostics.StartupDegraded {
+		t.Fatalf("startup response = %+v", body)
+	}
+}
+
+func TestCurrentHealthIsAdminOnlyAndBearerQueryable(t *testing.T) {
+	want := diagnostics.HealthReport{
+		GenerationID: "startup-current", Generation: 2, Version: "v1.2.3",
+		State: diagnostics.HealthDegraded, UpdatedAt: 123,
+		Checks: []diagnostics.HealthCheck{{
+			Key: "media_server", Label: "Media server", Mode: diagnostics.HealthCheckContinuous,
+			Status: diagnostics.HealthWarning, Detail: "configured but unavailable",
+		}},
+	}
+	service := startupReportService{health: want}
+	log := slog.New(slog.DiscardHandler)
+	handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, StartupReports: service})
+
+	member := httptest.NewRequest(http.MethodGet, "/v1/diagnostics/health", nil)
+	member.Header.Set("Authorization", "Bearer "+memberToken)
+	memberResponse := httptest.NewRecorder()
+	handler.ServeHTTP(memberResponse, member)
+	if memberResponse.Code != http.StatusForbidden {
+		t.Fatalf("member status = %d, want 403", memberResponse.Code)
+	}
+
+	agentHandler := api.Router(log, api.Options{
+		Auth: api.NewTokenAuthorizer("agent-token"), Log: log, StartupReports: service,
+	})
+	request := httptest.NewRequest(http.MethodGet, "/v1/diagnostics/health", nil)
+	request.Header.Set("Authorization", "Bearer agent-token")
+	response := httptest.NewRecorder()
+	agentHandler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("agent status = %d: %s", response.Code, response.Body.String())
+	}
+	var got diagnostics.HealthReport
+	if err := json.NewDecoder(response.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("health response = %+v, want %+v", got, want)
+	}
+}
+
+func TestCurrentHealthRefreshIsAdminOnlyAndUsesSharedRunner(t *testing.T) {
+	want := diagnostics.HealthReport{GenerationID: "startup-current", State: diagnostics.HealthHealthy}
+	calls := 0
+	refresh := healthRefreshFunc(func(context.Context) (diagnostics.HealthReport, error) {
+		calls++
+		return want, nil
+	})
+	log := slog.New(slog.DiscardHandler)
+	handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, HealthRefresh: refresh})
+
+	member := httptest.NewRequest(http.MethodPost, "/v1/diagnostics/health/refresh", nil)
+	member.Header.Set("Authorization", "Bearer "+memberToken)
+	memberResponse := httptest.NewRecorder()
+	handler.ServeHTTP(memberResponse, member)
+	if memberResponse.Code != http.StatusForbidden || calls != 0 {
+		t.Fatalf("member response = %d, calls = %d", memberResponse.Code, calls)
+	}
+
+	admin := httptest.NewRequest(http.MethodPost, "/v1/diagnostics/health/refresh", nil)
+	admin.Header.Set("Authorization", "Bearer "+adminToken)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, admin)
+	if response.Code != http.StatusOK || calls != 1 {
+		t.Fatalf("admin response = %d, calls = %d: %s", response.Code, calls, response.Body.String())
+	}
+	var got diagnostics.HealthReport
+	if err := json.NewDecoder(response.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("refresh response = %+v, want %+v", got, want)
+	}
+}
+
 func TestDiagnosticEventsAreAdminOnlyAndBearerQueryable(t *testing.T) {
 	wantPage := diagnostics.EventPage{Items: []diagnostics.EventView{{
 		ID: "diag-1", OccurredAt: 10, ReceivedAt: 11, Level: diagnostics.LevelError,
@@ -50,7 +175,7 @@ func TestDiagnosticEventsAreAdminOnlyAndBearerQueryable(t *testing.T) {
 		t.Fatalf("member status = %d, want 403", memberResponse.Code)
 	}
 
-	path := "/v1/diagnostics/events?from=1&to=1000&limit=1&level=error&source=server" +
+	path := "/v1/diagnostics/events?from=1&to=1000&limit=1&level=error&source=server&event=api.request_failed" +
 		"&subsystem=api&requestId=req-1&playbackSessionId=play-1&channelId=channel-1" +
 		"&scheduleBlockId=block-1&jobId=job-1&processRunId=process-1&instanceId=instance-1&text=failed"
 	admin := httptest.NewRequest(http.MethodGet, path, nil)
@@ -107,6 +232,7 @@ func TestDiagnosticEventsAreAdminOnlyAndBearerQueryable(t *testing.T) {
 	}
 	wantQuery := diagnostics.EventQuery{
 		From: 1, To: 1000, Limit: 1, Level: diagnostics.LevelError, Source: diagnostics.SourceServer,
+		Event:     "api.request_failed",
 		Subsystem: "api", RequestID: "req-1", PlaybackSessionID: "play-1", ChannelID: "channel-1",
 		ScheduleBlockID: "block-1", JobID: "job-1", ProcessRunID: "process-1",
 		InstanceID: "instance-1", Text: "failed",
