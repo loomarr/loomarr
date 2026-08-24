@@ -696,7 +696,11 @@ const guideChannels: GuideChannelTimeline[] = [
     pendingCount: 0,
     airings: [
       {
+        description:
+          "Bart nurses an injured bird and learns how much responsibility comes with caring for it.",
+        genres: ["Animation", "Comedy"],
         kind: "program",
+        rating: "TV-PG",
         scheduleBlockId: "block_springfield_bart_mother",
         title: "Bart the Mother",
         series: "The Simpsons",
@@ -704,6 +708,8 @@ const guideChannels: GuideChannelTimeline[] = [
         episode: 3,
         startMs: guideAt(0),
         stopMs: guideAt(22),
+        thumbUrl: "/v1/images/storybook-springfield",
+        year: 1998,
       },
       {
         kind: "filler",

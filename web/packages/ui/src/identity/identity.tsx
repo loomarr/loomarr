@@ -1,4 +1,4 @@
-import { Badge, Surface, Text, semanticTargets } from "@loomarr/design-system";
+import { Badge, Surface, semanticTargets, Text } from "@loomarr/design-system";
 
 import type { ChannelIdentityProps, ProgrammeIdentityProps } from "./identity.type";
 
@@ -81,6 +81,12 @@ const ProgrammeIdentity = ({ density = "pointer", programme }: ProgrammeIdentity
     <Text density={density} textRole="time">
       {[programme.timeLabel, programme.episodeLabel].filter(Boolean).join(" · ")}
     </Text>
+
+    {programme.facts?.length ? (
+      <Text density={density} textRole="metadata">
+        {programme.facts.join(" · ")}
+      </Text>
+    ) : null}
 
     {programme.description ? (
       <Text density={density} numberOfLines={density === "tv" ? 3 : 2} textRole="body">

@@ -4,6 +4,14 @@ export { ClientPlatformProof } from "./src/client-platform-proof";
 export type { ClientShellProps } from "./src/client-shell";
 export { ClientShell } from "./src/client-shell";
 export type {
+  GuideArtworkRenderer,
+  GuideFilter,
+  GuideFilterOption,
+  GuideLogoRenderer,
+  GuideSurfaceProps,
+} from "./src/guide";
+export { GuideSurface } from "./src/guide";
+export type {
   ChannelIdentityData,
   ChannelIdentityProps,
   ProgrammeIdentityData,

@@ -17,6 +17,7 @@ interface ProgrammeIdentityData {
   badge?: { label: string; tone: BadgeTone };
   description?: string;
   episodeLabel?: string;
+  facts?: string[];
   seriesTitle?: string;
   timeLabel: string;
   title: string;
@@ -27,9 +28,4 @@ interface ProgrammeIdentityProps {
   programme: ProgrammeIdentityData;
 }
 
-export type {
-  ChannelIdentityData,
-  ChannelIdentityProps,
-  ProgrammeIdentityData,
-  ProgrammeIdentityProps,
-};
+export type { ChannelIdentityData, ChannelIdentityProps, ProgrammeIdentityData, ProgrammeIdentityProps };
