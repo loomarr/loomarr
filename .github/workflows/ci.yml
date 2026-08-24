@@ -185,7 +185,7 @@ jobs:
           # gate. A native-only edit must not wake the legacy SPA, Playwright, tuner, or image
           # jobs. Workspace-root dependency and tooling inputs still gate both families because
           # they can change how either graph resolves or builds.
-          if echo "$changed" | grep -qE '^web/(apps/(mobile|tv)/|packages/(design-system|ui)/|turbo\.json$)|^web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|biome\.json|tsconfig\.base\.json|\.dependency-cruiser\.cjs)$|^web/scripts/|^Makefile$|^\.github/workflows/ci\.yml$'; then
+          if echo "$changed" | grep -qE '^brand-assets\.lock\.json$|^scripts/(generate-brand-assets|check-brand-assets)\.mjs$|^web/(apps/(mobile|tv)/|packages/(design-system|ui)/|turbo\.json$)|^web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|biome\.json|tsconfig\.base\.json|\.dependency-cruiser\.cjs)$|^web/scripts/|^Makefile$|^\.github/workflows/ci\.yml$'; then
             echo "clients=true" >> "$GITHUB_OUTPUT"
           else
             echo "clients=false" >> "$GITHUB_OUTPUT"

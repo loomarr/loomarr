@@ -1,4 +1,16 @@
+import { fileURLToPath } from "node:url";
 import type { StorybookConfig } from "@storybook/react-vite";
+import { mergeConfig } from "vite";
+
+const webReact = fileURLToPath(new URL("../node_modules/react", import.meta.url));
+const webReactDOM = fileURLToPath(new URL("../node_modules/react-dom", import.meta.url));
+const reactNativeWeb = fileURLToPath(new URL("../node_modules/react-native-web", import.meta.url));
+const reactNativeSvgWeb = fileURLToPath(
+  new URL(
+    "../../../packages/design-system/node_modules/react-native-svg/lib/module/elements.web.js",
+    import.meta.url,
+  ),
+);
 
 // Storybook 10 (react-vite) — the component workshop AND the offline gallery the visual
 // suite snapshots (frontend-design §5). Stories are co-located with their components
@@ -17,9 +29,31 @@ const config: StorybookConfig = {
   // These assets are same-origin (no race) and comma-free (loadable in srcset). They live HERE
   // rather than in `public/` deliberately: `public/` ships inside the app bundle, and these are
   // story fixtures, not product assets.
-  staticDirs: ["./story-assets"],
+  staticDirs: [
+    "./story-assets",
+    { from: "../../mobile/assets", to: "/generated-brand/mobile" },
+    { from: "../../tv/assets", to: "/generated-brand/tv" },
+    { from: "../../../../android/store-listing", to: "/generated-brand/store" },
+  ],
   framework: { name: "@storybook/react-vite", options: {} },
   core: { disableTelemetry: true },
+  viteFinal: async (baseConfig) =>
+    mergeConfig(baseConfig, {
+      optimizeDeps: {
+        exclude: ["lucide-react-native"],
+        include: ["react-native-svg"],
+      },
+      resolve: {
+        alias: [
+          { find: /^react$/, replacement: webReact },
+          { find: /^react-dom$/, replacement: webReactDOM },
+          { find: /^react-native$/, replacement: reactNativeWeb },
+          { find: /^react-native-svg$/, replacement: reactNativeSvgWeb },
+        ],
+        dedupe: ["react", "react-dom", "react-native"],
+        extensions: [".web.mjs", ".web.js", ".web.ts", ".web.tsx", ".mjs", ".js", ".ts", ".tsx", ".json"],
+      },
+    }),
 };
 
 export default config;

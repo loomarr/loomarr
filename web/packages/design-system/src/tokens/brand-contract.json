@@ -1,0 +1,13 @@
+{
+  "name": "LOOMARR",
+  "tagline": "always something on",
+  "chroma": ["#FFB020", "#F5D90A", "#3DD68C", "#4CC9E8", "#D6409F", "#E5484D", "#8B93A3"],
+  "ground": "#0B0C0E",
+  "foreground": "#F7F8FA",
+  "outline": "#2A2E37",
+  "wordmark": {
+    "family": "Geist",
+    "trackingEm": 0.12,
+    "weight": 700
+  }
+}

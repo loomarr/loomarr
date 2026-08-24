@@ -1,1 +1,2 @@
-export { Body, Heading, Panel, Screen } from "./primitives";
+export type { ArtworkState, BadgeTone, TextProps } from "./primitives";
+export { ArtworkFrame, Badge, FocusSurface, ProgressTrack, Screen, Surface, Text } from "./primitives";

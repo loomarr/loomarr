@@ -136,11 +136,13 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make fe-install` | ✅ | install the web workspace (pnpm) |
 | `make fe-tokens` |  | regenerate design-token artifacts from packages/tokens (CI diff must be empty) |
 | `make fe-tokens-verify` | ✅ | regenerated token artifacts must match committed <br>*runs:* `fe-tokens` |
+| `make brand-assets` |  | regenerate favicon, launcher, TV, and store artwork from the shared brand contract |
+| `make brand-assets-verify` |  | verify every platform brand derivative matches the shared brand contract |
 | `make fe-codegen` | ✅ | regenerate tokens + orval api client from api/openapi.yaml |
 | `make fe-lint` |  | Biome lint + format check (web/) |
 | `make fe-lint-fix` |  | Biome autofix — format + safe lint fixes (web/) |
 | `make fe` | ✅ | biome + codegen + typecheck + unit tests + embedded SPA + storybook gallery |
-| `make clients` | ✅ | lint, test, typecheck, and bundle the shared browser, mobile, and TV scaffold |
+| `make clients` | ✅ | lint, test, typecheck, and bundle the shared browser, mobile, and TV scaffold <br>*runs:* `brand-assets-verify` |
 | `make client-android-debug` |  | memory-bounded arm64 debug build (CLIENT_APP=mobile|tv) |
 | `make client-apple-simulator` | ✅ | build and launch an Apple simulator proof (CLIENT_APP=mobile|tv; macOS) |
 | `make storybook` |  | Storybook dev workshop on this worktree's isolated port |

@@ -5,16 +5,37 @@
     "scheme": "loomarr-prototype",
     "version": "0.0.1",
     "orientation": "portrait",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
     "ios": {
       "bundleIdentifier": "media.loomarr.mobile.prototype",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "icon": "./assets/icon.png"
     },
     "android": {
       "package": "media.loomarr.mobile.prototype",
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0B0C0E"
+      }
     },
-    "plugins": ["expo-router", "../../scripts/with-memory-safe-android-build.cjs"],
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#0B0C0E",
+          "dark": {
+            "image": "./assets/splash-icon.png",
+            "backgroundColor": "#0B0C0E"
+          }
+        }
+      ],
+      "../../scripts/with-memory-safe-android-build.cjs"
+    ],
     "experiments": {
       "typedRoutes": true
     }

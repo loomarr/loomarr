@@ -3,12 +3,17 @@
     "name": "Loomarr TV Prototype",
     "slug": "loomarr-tv-prototype",
     "version": "0.0.1",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
     "ios": {
       "bundleIdentifier": "media.loomarr.tv.prototype"
     },
     "android": {
-      "package": "media.loomarr.tv.prototype"
+      "package": "media.loomarr.tv.prototype",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0B0C0E"
+      }
     },
     "plugins": [
       "../../scripts/with-memory-safe-android-build.cjs",
@@ -17,6 +22,7 @@
         {
           "isTV": true,
           "androidTVRequired": true,
+          "androidTVBanner": "./assets/tv-banner.png",
           "removeFlipperOnAndroid": true
         }
       ]
