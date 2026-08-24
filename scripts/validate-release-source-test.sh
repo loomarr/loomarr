@@ -58,9 +58,9 @@ run_case() {
   fi
 }
 
-run_case push-evidence push "$common_jobs" pass
+run_case push-evidence push "$common_jobs" fail
 run_case candidate-evidence workflow_dispatch "$common_jobs"$'\n'"$candidate_jobs" pass
-run_case full-evidence workflow_dispatch "$common_jobs"$'\nManual CI — full scope\tsuccess' pass
+run_case full-evidence workflow_dispatch "$common_jobs"$'\nManual CI — full scope\tsuccess' fail
 run_case candidate-missing-contract workflow_dispatch \
   "$common_jobs"$'\nRelease candidate — exact main scope\tsuccess\nRust image — runtime certification\tsuccess' fail
 run_case dispatch-missing-marker workflow_dispatch "$common_jobs" fail

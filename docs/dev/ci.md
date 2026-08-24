@@ -105,9 +105,11 @@ release-image builds. It does not rerun Android, Windows, PostgreSQL, Go race, f
 tuner, docs, or the macOS harness; their normal push and pull-request impact coverage is unchanged.
 
 Select `full` explicitly when an investigation genuinely needs every matrix. Both modes publish a
-scope-marker job, and `scripts/validate-release-source.sh` rejects an unmarked manual run. The
-release-candidate marker also makes the contract and certification jobs mandatory evidence rather
-than relying only on the workflow's overall conclusion.
+scope-marker job, but `scripts/validate-release-source.sh` accepts only the release-candidate marker
+for Docker publication. It rejects normal push CI and full manual runs even when green, so mobile,
+client, and unrelated platform matrices cannot become release prerequisites. The release-candidate
+marker also makes the contract and certification jobs mandatory evidence rather than relying only on
+the workflow's overall conclusion.
 
 ## `ci-ok` is the only required check
 
