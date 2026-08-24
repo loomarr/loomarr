@@ -207,6 +207,66 @@ func (s *sqlStore) GetDiagnosticProcessRun(ctx context.Context, id string) (diag
 	return run, nil
 }
 
+// FindDiagnosticProcessRun is the diagnostics module's lookup seam. It keeps store.ErrNotFound out
+// of the domain package while preserving GetDiagnosticProcessRun for store callers and conformance.
+func (s *sqlStore) FindDiagnosticProcessRun(ctx context.Context, id string) (diagnostics.ProcessRun, bool, error) {
+	run, err := s.GetDiagnosticProcessRun(ctx, id)
+	if err == ErrNotFound {
+		return diagnostics.ProcessRun{}, false, nil
+	}
+	if err != nil {
+		return diagnostics.ProcessRun{}, false, err
+	}
+	return run, true, nil
+}
+
+// QueryDiagnosticProcessRuns applies the diagnostics module's mandatory bounded time window and
+// exact filters. The sentinel limit and opaque cursor are resolved above this adapter.
+func (s *sqlStore) QueryDiagnosticProcessRuns(
+	ctx context.Context, query diagnostics.ProcessStoreQuery,
+) ([]diagnostics.ProcessRun, error) {
+	if query.From < 0 || query.To <= query.From || query.Limit < 1 || query.Limit > 201 {
+		return nil, fmt.Errorf("query diagnostic process runs: invalid module query")
+	}
+	clauses := []string{"started_at >= ?", "started_at <= ?"}
+	args := []any{query.From, query.To}
+	addExact := func(column, value string) {
+		if value == "" {
+			return
+		}
+		clauses = append(clauses, column+" = ?")
+		args = append(args, value)
+	}
+	addExact("status", string(query.Status))
+	addExact("purpose", query.Purpose)
+	addExact("channel_id", query.ChannelID)
+	addExact("job_id", query.JobID)
+	if query.CursorID != "" {
+		clauses = append(clauses, "(started_at < ? OR (started_at = ? AND id < ?))")
+		args = append(args, query.CursorStartedAt, query.CursorStartedAt, query.CursorID)
+	}
+	args = append(args, query.Limit)
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT `+diagnosticProcessColumns+`
+		FROM diagnostic_process_runs WHERE `+strings.Join(clauses, " AND ")+`
+		ORDER BY started_at DESC, id DESC LIMIT ?`), args...)
+	if err != nil {
+		return nil, fmt.Errorf("query diagnostic process runs: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	runs := make([]diagnostics.ProcessRun, 0, query.Limit)
+	for rows.Next() {
+		run, err := scanDiagnosticProcessRun(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan diagnostic process run: %w", err)
+		}
+		runs = append(runs, run)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("query diagnostic process run rows: %w", err)
+	}
+	return runs, nil
+}
+
 func scanDiagnosticProcessRun(row interface{ Scan(...any) error }) (diagnostics.ProcessRun, error) {
 	var run diagnostics.ProcessRun
 	var exitCode sql.NullInt64

@@ -36,6 +36,7 @@ type foundationBuild struct {
 	activity               *activity.Recorder
 	diagnostics            *diagnostics.Recorder
 	diagnosticEvents       *diagnostics.EventLog
+	diagnosticProcesses    *diagnostics.ProcessLog
 	clientDiagnostics      *diagnostics.ClientIngestor
 	processDiagnostics     *diagnostics.ProcessManager
 	startup                *diagnostics.Startup
@@ -149,6 +150,9 @@ func buildFoundation(
 		result.processDiagnostics = diagnostics.NewProcessManager(st, result.diagnostics, diagnostics.ProcessOptions{
 			OutputDir: result.set.str("diagnostics.dir"), InstanceID: instanceID,
 			OnFailure: func(err error) { fallbackLog.Error("diagnostics: process recorder failed", "err", err) },
+		})
+		result.diagnosticProcesses = diagnostics.NewProcessLog(st, diagnostics.ProcessReadOptions{
+			OutputDir: result.set.str("diagnostics.dir"), Now: time.Now,
 		})
 		owner.addStop(result.processDiagnostics.Close)
 	} else {

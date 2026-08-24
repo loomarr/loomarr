@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"reflect"
 	"strings"
@@ -17,6 +18,13 @@ import (
 // behind the module's interface.
 type DiagnosticEventService interface {
 	Query(context.Context, diagnostics.EventQuery) (diagnostics.EventPage, error)
+}
+
+// DiagnosticProcessService is the one bounded Process-run read capability exposed by HTTP.
+type DiagnosticProcessService interface {
+	Query(context.Context, diagnostics.ProcessQuery) (diagnostics.ProcessPage, error)
+	Get(context.Context, string) (diagnostics.ProcessDetail, error)
+	Output(context.Context, string) (diagnostics.ProcessOutput, error)
 }
 
 // ClientDiagnosticService is the write half of Diagnostics. The HTTP adapter supplies only the
@@ -70,6 +78,29 @@ type diagnosticEventsInput struct {
 	ProcessRunID      string             `query:"processRunId" maxLength:"128" doc:"Exact Process-run correlation id"`
 	InstanceID        string             `query:"instanceId" maxLength:"128" doc:"Exact Loomarr instance correlation id"`
 	Text              string             `query:"text" maxLength:"256" doc:"Case-insensitive text match across event, message, subsystem, and attributes"`
+}
+
+type diagnosticProcessesInput struct {
+	From      int64                     `query:"from" minimum:"0" doc:"Window start as Unix epoch milliseconds; defaults to one hour before to"`
+	To        int64                     `query:"to" minimum:"0" doc:"Window end as Unix epoch milliseconds; defaults to now"`
+	Limit     int                       `query:"limit" minimum:"1" maximum:"200" default:"100" doc:"Page size"`
+	Cursor    string                    `query:"cursor" maxLength:"512" doc:"Opaque cursor returned by the previous page"`
+	Status    diagnostics.ProcessStatus `query:"status" enum:"running,succeeded,failed,cancelled" doc:"Exact lifecycle status"`
+	Purpose   string                    `query:"purpose" maxLength:"128" doc:"Exact process purpose"`
+	ChannelID string                    `query:"channelId" maxLength:"128" doc:"Exact Channel correlation id"`
+	JobID     string                    `query:"jobId" maxLength:"128" doc:"Exact Job correlation id"`
+}
+
+type diagnosticProcessInput struct {
+	ID string `path:"id" maxLength:"128" doc:"Opaque Process-run id"`
+}
+
+type diagnosticProcessPageOutput struct {
+	Body diagnostics.ProcessPage
+}
+
+type diagnosticProcessDetailOutput struct {
+	Body diagnostics.ProcessDetail
 }
 
 type clientDiagnosticsInput struct {
@@ -141,6 +172,82 @@ func (s *Server) registerDiagnostics(api huma.API) {
 		},
 	}
 	rawInputOp(api, op, RoleAdmin, s.diagnosticEventsHandler)
+	if s.diagnosticProcesses != nil || s.schemaOnly {
+		huma.Register(api, withRole(huma.Operation{
+			OperationID: "list-diagnostic-processes", Method: http.MethodGet, Path: "/v1/diagnostics/processes",
+			Summary: "List diagnostic Process runs", Description: "Returns one bounded newest-first page of active and recent external media Process runs.",
+			Tags: []string{"diagnostics"},
+		}, RoleAdmin), s.listDiagnosticProcesses)
+		huma.Register(api, withRole(huma.Operation{
+			OperationID: "get-diagnostic-process", Method: http.MethodGet, Path: "/v1/diagnostics/processes/{id}",
+			Summary: "Get a diagnostic Process run", Description: "Returns bounded lifecycle metadata and downsampled progress for one Process run.",
+			Tags: []string{"diagnostics"},
+		}, RoleAdmin), s.getDiagnosticProcess)
+		rawInputOp(api, huma.Operation{
+			OperationID: "get-diagnostic-process-output", Method: http.MethodGet, Path: "/v1/diagnostics/processes/{id}/output",
+			Summary: "Read diagnostic Process output", Description: "Streams one Process run's bounded redacted diagnostic output as readable text.",
+			Tags: []string{"diagnostics"}, Responses: map[string]*huma.Response{
+				"200": {Description: "Bounded redacted Process output", Content: map[string]*huma.MediaType{
+					"text/plain": {Schema: &huma.Schema{Type: huma.TypeString}},
+				}},
+			},
+		}, RoleAdmin, s.diagnosticProcessOutputHandler)
+	}
+}
+
+func (s *Server) listDiagnosticProcesses(
+	ctx context.Context, input *diagnosticProcessesInput,
+) (*diagnosticProcessPageOutput, error) {
+	page, err := s.diagnosticProcesses.Query(ctx, diagnostics.ProcessQuery{
+		From: input.From, To: input.To, Limit: input.Limit, Cursor: input.Cursor,
+		Status: input.Status, Purpose: input.Purpose, ChannelID: input.ChannelID, JobID: input.JobID,
+	})
+	if err != nil {
+		if errors.Is(err, diagnostics.ErrInvalidProcessQuery) {
+			return nil, errBadRequest("Invalid Process filters", strings.TrimPrefix(err.Error(), diagnostics.ErrInvalidProcessQuery.Error()+": "))
+		}
+		s.log.Error("diagnostic process query failed", "event", "diagnostics.processes_query_failed", "subsystem", "diagnostics", "err", err)
+		return nil, huma.Error500InternalServerError("The retained Process timeline couldn't be read.")
+	}
+	return &diagnosticProcessPageOutput{Body: page}, nil
+}
+
+func (s *Server) getDiagnosticProcess(
+	ctx context.Context, input *diagnosticProcessInput,
+) (*diagnosticProcessDetailOutput, error) {
+	detail, err := s.diagnosticProcesses.Get(ctx, input.ID)
+	if errors.Is(err, diagnostics.ErrProcessNotFound) {
+		return nil, huma.Error404NotFound("Process run not found.")
+	}
+	if err != nil {
+		s.log.Error("diagnostic process detail failed", "event", "diagnostics.process_detail_failed", "subsystem", "diagnostics", "process_run_id", input.ID, "err", err)
+		return nil, huma.Error500InternalServerError("The retained Process run couldn't be read.")
+	}
+	return &diagnosticProcessDetailOutput{Body: detail}, nil
+}
+
+func (s *Server) diagnosticProcessOutputHandler(
+	w http.ResponseWriter, r *http.Request, input *diagnosticProcessInput,
+) {
+	output, err := s.diagnosticProcesses.Output(r.Context(), input.ID)
+	if errors.Is(err, diagnostics.ErrProcessNotFound) {
+		s.writeProblem(w, r, http.StatusNotFound, "Process run not found", "The requested retained Process run does not exist.")
+		return
+	}
+	if errors.Is(err, diagnostics.ErrProcessOutputUnavailable) {
+		s.writeProblem(w, r, http.StatusGone, "Process output unavailable", "The Process run exists, but its bounded output is unavailable or retention-expired.")
+		return
+	}
+	if err != nil {
+		s.log.Error("diagnostic process output failed", "event", "diagnostics.process_output_failed", "subsystem", "diagnostics", "process_run_id", input.ID, "err", err)
+		s.writeProblem(w, r, http.StatusInternalServerError, "Couldn't read Process output", "The retained Process output couldn't be read.")
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Diagnostic-Discarded-Lines", fmt.Sprint(output.DiscardedLines))
+	w.Header().Set("X-Diagnostic-Truncated", fmt.Sprint(output.Truncated))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(output.Content)
 }
 
 func (s *Server) ingestClientDiagnostics(
