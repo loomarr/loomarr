@@ -653,6 +653,8 @@ type fillerServiceAdapter struct {
 	autoFetch *filler.Fetcher
 }
 
+var _ api.FillerRewinder = fillerServiceAdapter{}
+
 // fillerSourceRegistry is the acquisition-side source slice. Admission policy is deliberately
 // absent: this adapter registers and fetches sources but is not allowed to change their trust.
 type fillerSourceRegistry interface {
@@ -723,6 +725,13 @@ func (a fillerServiceAdapter) Rewind(ctx context.Context, hash string, from fill
 		return errors.New("filler pipeline is not configured")
 	}
 	return a.pipeline.Rewind(ctx, hash, from, force)
+}
+
+func (a fillerServiceAdapter) RetryFailure(ctx context.Context, hash string) error {
+	if a.pipeline == nil {
+		return errors.New("filler pipeline is not configured")
+	}
+	return a.pipeline.RetryFailure(ctx, hash)
 }
 
 func (a fillerServiceAdapter) Sync(ctx context.Context) (int, int, int, int, error) {
