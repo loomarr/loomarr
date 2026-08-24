@@ -85,7 +85,8 @@ type Story = StoryObj<typeof meta>;
 const Timeline: Story = {};
 const ExpandedFailure: Story = {
   play: async ({ canvas, userEvent }) => {
-    await userEvent.click(await canvas.findByRole("button", { name: /details/i }));
+    await canvas.findByText("player.transition_failed");
+    await userEvent.click(canvas.getAllByRole("button", { name: /details/i })[0]!);
     await canvas.findByText("Structured attributes");
   },
 };
