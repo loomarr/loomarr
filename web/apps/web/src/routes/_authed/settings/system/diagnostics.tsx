@@ -2,12 +2,16 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { DEFAULT_APPLICATION_FILTERS, DiagnosticsPage, type DiagnosticsSearch } from "@/diagnostics";
+import { DiagnosticsPrototype, type PrototypeVariant } from "@/diagnostics/diagnostics-prototype";
 import { PlayoutDiagnostics } from "@/diagnostics/playout-diagnostics";
 
 const oneOf = <T extends string>(value: unknown, allowed: readonly T[], fallback: T): T =>
   typeof value === "string" && allowed.includes(value as T) ? (value as T) : fallback;
 
-const validateSearch = (raw: Record<string, unknown>): Partial<DiagnosticsSearch> => ({
+type DiagnosticsRouteSearch = Partial<DiagnosticsSearch> & { variant?: PrototypeVariant };
+
+const validateSearch = (raw: Record<string, unknown>): DiagnosticsRouteSearch => ({
+  ...(raw.variant === "A" || raw.variant === "B" || raw.variant === "C" ? { variant: raw.variant } : {}),
   view: oneOf(raw.view, ["health", "application", "playout"] as const, "health"),
   range: oneOf(raw.range, ["1h", "6h", "24h"] as const, DEFAULT_APPLICATION_FILTERS.range),
   level: oneOf(
@@ -46,6 +50,7 @@ const DiagnosticsRoute = () => {
   const { isAdmin } = useAuth();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
+  const { variant, ...diagnosticsSearch } = search;
   const normalized: DiagnosticsSearch = {
     view: search.view ?? "health",
     processRange: "1h",
@@ -54,7 +59,7 @@ const DiagnosticsRoute = () => {
     processChannelId: "",
     processJobId: "",
     ...DEFAULT_APPLICATION_FILTERS,
-    ...search,
+    ...diagnosticsSearch,
   };
   if (!isAdmin) {
     return (
@@ -64,6 +69,15 @@ const DiagnosticsRoute = () => {
           description="This surface contains machine state and technical logs."
         />
       </div>
+    );
+  }
+  if (import.meta.env.DEV && variant) {
+    return (
+      <DiagnosticsPrototype
+        variant={variant}
+        showSwitcher
+        onVariantChange={(next) => void navigate({ search: { ...search, variant: next }, replace: true })}
+      />
     );
   }
   return (
