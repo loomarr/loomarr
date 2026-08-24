@@ -239,6 +239,9 @@ importers:
       '@loomarr/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@loomarr/ui-tv':
+        specifier: workspace:*
+        version: link:../../packages/ui-tv
       '@tanstack/react-form':
         specifier: ^1.33.5
         version: 1.33.5(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
