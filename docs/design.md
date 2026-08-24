@@ -4662,7 +4662,9 @@ The scheduler assembles realistic **ad pods**, not single random clips:
   compilation splitting, and into each resulting pipeline row. Reconnecting clients therefore read
   the current run and its preparing/needs-decision/admitted/rejected/dismissed outcomes from the
   store; SSE remains a latency hint and is never the only history. A job whose initial run record
-  cannot be persisted does not start. Manual and pre-V59 files honestly retain no acquisition id.
+  cannot be persisted does not start. On single-replica startup, queued/running rows left by the
+  previous process become terminal interrupted errors rather than appearing active forever.
+  Manual and pre-V59 files honestly retain no acquisition id.
 
   The Filler entry point presents one server-owned readiness projection built from the live fetch
   limits, the pipeline lifecycle overview, the playable pool, per-channel coverage (including

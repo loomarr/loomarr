@@ -473,6 +473,9 @@ type FillerPullStore interface {
 // source definition or approval decision.
 type FillerAcquisitionStore interface {
 	UpsertAcquisitionRun(ctx context.Context, run filler.AcquisitionRun) error
+	// RecoverInterruptedAcquisitionRuns marks work orphaned by the previous process as failed.
+	// The beta is single-replica; startup is therefore the exact ownership boundary.
+	RecoverInterruptedAcquisitionRuns(ctx context.Context, at time.Time) (int, error)
 	GetAcquisitionRun(ctx context.Context, id string, at time.Time) (filler.AcquisitionRun, error)
 	ListAcquisitionRuns(ctx context.Context, limit int, at time.Time) ([]filler.AcquisitionRun, error)
 }

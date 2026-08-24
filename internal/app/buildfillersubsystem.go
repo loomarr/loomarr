@@ -39,6 +39,16 @@ func buildFillerSubsystem(
 	if st == nil {
 		return result
 	}
+	// Background acquisition workers are process-owned in the single-replica beta. Any queued or
+	// running rows visible before this process accepts requests belonged to the previous process
+	// and can no longer complete; close them instead of promising work that does not exist.
+	recoveryCtx, recoveryCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if n, err := st.RecoverInterruptedAcquisitionRuns(recoveryCtx, time.Now().UTC()); err != nil {
+		log.Warn("could not recover interrupted filler acquisitions", "err", err)
+	} else if n > 0 {
+		log.Info("recovered interrupted filler acquisitions", "runs", n)
+	}
+	recoveryCancel()
 
 	if dir := layout.ClipDir(); dir != "" {
 		if err := os.MkdirAll(dir, 0o750); err != nil {

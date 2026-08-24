@@ -37,6 +37,24 @@ func (s *sqlStore) UpsertAcquisitionRun(ctx context.Context, run filler.Acquisit
 	return nil
 }
 
+// RecoverInterruptedAcquisitionRuns closes jobs whose in-memory worker disappeared with the
+// previous process. Without this, a restart turns queued/running into a permanent false promise.
+func (s *sqlStore) RecoverInterruptedAcquisitionRuns(ctx context.Context, at time.Time) (int, error) {
+	res, err := s.db.ExecContext(ctx, s.ph(`UPDATE filler_acquisition_runs
+		SET status = ?, error = ?, completed_at = ?, updated_at = ?
+		WHERE status IN (?, ?)`),
+		string(filler.AcquisitionError), "application restarted before the acquisition completed",
+		epoch(at), epoch(at), string(filler.AcquisitionQueued), string(filler.AcquisitionRunning))
+	if err != nil {
+		return 0, fmt.Errorf("recover interrupted filler acquisitions: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("count interrupted filler acquisitions: %w", err)
+	}
+	return int(n), nil
+}
+
 func scanAcquisitionRun(sc scannable) (filler.AcquisitionRun, error) {
 	var run filler.AcquisitionRun
 	var trigger, status string
