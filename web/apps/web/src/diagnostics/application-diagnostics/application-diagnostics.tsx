@@ -3,20 +3,19 @@ import type { EventView } from "@loomarr/api/models/eventView";
 import { ListDiagnosticEventsLevel } from "@loomarr/api/models/listDiagnosticEventsLevel";
 import type { ListDiagnosticEventsParams } from "@loomarr/api/models/listDiagnosticEventsParams";
 import { ListDiagnosticEventsSource } from "@loomarr/api/models/listDiagnosticEventsSource";
+import { useQuery } from "@tanstack/react-query";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   AlertTriangle,
   Check,
-  CirclePause,
-  CirclePlay,
   Clipboard,
   Download,
   ListFilter,
   Radio,
   RadioTower,
-  RotateCcw,
   Square,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,6 +49,27 @@ const DEFAULT_APPLICATION_FILTERS: ApplicationFilters = {
 };
 
 const RANGE_MS: Record<EventRange, number> = { "1h": 3_600_000, "6h": 21_600_000, "24h": 86_400_000 };
+const VIRTUAL_VIEWPORT = { width: 960, height: 520 };
+
+const observeVirtualRect = (
+  instance: { scrollElement: Element | Window | null },
+  callback: (rect: { width: number; height: number }) => void,
+) => {
+  const element = instance.scrollElement;
+  if (!(element instanceof Element)) return;
+  const report = () => {
+    const rect = element.getBoundingClientRect();
+    callback({
+      width: rect.width || VIRTUAL_VIEWPORT.width,
+      height: rect.height || VIRTUAL_VIEWPORT.height,
+    });
+  };
+  report();
+  if (typeof ResizeObserver === "undefined") return;
+  const observer = new ResizeObserver(report);
+  observer.observe(element);
+  return () => observer.disconnect();
+};
 
 const formatTime = (millis: number) =>
   new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" }).format(new Date(millis));
@@ -88,7 +108,7 @@ const eventParams = (
   return {
     from: to - RANGE_MS[filters.range],
     to,
-    limit: 200,
+    limit: 50,
     ...(cursor ? { cursor } : {}),
     ...(filters.level === "all" ? {} : { level: ListDiagnosticEventsLevel[filters.level] }),
     ...(filters.source === "all" ? {} : { source: ListDiagnosticEventsSource[filters.source] }),
@@ -294,39 +314,45 @@ const ApplicationDiagnostics = ({
   const [cursorStack, setCursorStack] = useState<string[]>([]);
   const [expanded, setExpanded] = useState<string>();
   const [advanced, setAdvanced] = useState(false);
-  const [live, setLive] = useState(true);
   const [downloadState, setDownloadState] = useState<"idle" | "working" | "failed">("idle");
-  const [now, setNow] = useState(() => Date.now());
+  const listRef = useRef<HTMLElement>(null);
   const cursor = cursorStack.at(-1);
-  const params = useMemo(() => eventParams(filters, cursor, now), [filters, cursor, now]);
-  const query = diagnosticsApi.useListDiagnosticEvents(params, {
-    query: { retry: false },
-    request: { headers: { Accept: "application/json" } },
+  const query = useQuery({
+    queryKey: ["diagnostic-events-page", filters, cursor],
+    queryFn: ({ signal }) =>
+      diagnosticsApi.listDiagnosticEvents(eventParams(filters, cursor), {
+        signal,
+        headers: { Accept: "application/json" },
+      }),
+    retry: false,
+    refetchInterval: cursor ? false : 5_000,
   });
   const body = query.data?.status === 200 && "data" in query.data ? query.data.data : undefined;
   const events = body?.items ?? [];
   const dropped = body && "dropped" in body && typeof body.dropped === "number" ? body.dropped : 0;
-  useEffect(() => {
-    if (cursor || !live) return;
-    const interval = window.setInterval(() => setNow(Date.now()), 15_000);
-    return () => window.clearInterval(interval);
-  }, [cursor, live]);
-
   const counts = { debug: 0, info: 0, warn: 0, error: 0 };
   for (const event of events) counts[event.level] += 1;
   const selectedEvent = events.find((event) => event.id === expanded);
+  const virtualizer = useVirtualizer({
+    count: events.length,
+    getScrollElement: () => listRef.current,
+    getItemKey: (index) => events[index]?.id ?? index,
+    estimateSize: () => 76,
+    overscan: 6,
+    initialRect: VIRTUAL_VIEWPORT,
+    observeElementRect: observeVirtualRect,
+  });
 
   const updateFilters = (next: ApplicationFilters) => {
     setCursorStack([]);
     setExpanded(undefined);
-    setNow(Date.now());
     onFiltersChange(next);
   };
 
   const download = async () => {
     setDownloadState("working");
     try {
-      const response = await fetch(diagnosticsApi.getListDiagnosticEventsUrl(params), {
+      const response = await fetch(diagnosticsApi.getListDiagnosticEventsUrl(eventParams(filters, cursor)), {
         credentials: "same-origin",
         headers: { Accept: "application/x-ndjson" },
       });
@@ -402,21 +428,6 @@ const ApplicationDiagnostics = ({
             <SelectItem value="24h">Last 24 hours</SelectItem>
           </SelectContent>
         </Select>
-        <Select
-          value={filters.level}
-          onValueChange={(level) => updateFilters({ ...filters, level: level as EventLevel })}
-        >
-          <SelectTrigger className="w-40" aria-label="Severity">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All severities</SelectItem>
-            <SelectItem value="error">Error</SelectItem>
-            <SelectItem value="warn">Warning</SelectItem>
-            <SelectItem value="info">Info</SelectItem>
-            <SelectItem value="debug">Debug</SelectItem>
-          </SelectContent>
-        </Select>
         <Button variant="ghost" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)}>
           <ListFilter aria-hidden /> More filters
         </Button>
@@ -478,10 +489,34 @@ const ApplicationDiagnostics = ({
         role="status"
         aria-label="Current page summary"
       >
-        <span>{counts.error} errors</span>
-        <span>{counts.warn} warnings</span>
-        <span>{counts.info} info</span>
-        {counts.debug > 0 && <span>{counts.debug} debug</span>}
+        {(
+          [
+            ["error", counts.error, "text-danger", "error"],
+            ["warn", counts.warn, "text-caution", "warning"],
+            ["info", counts.info, "text-signal", "info"],
+          ] as const
+        ).map(([level, count, color, label]) => (
+          <button
+            key={level}
+            type="button"
+            className={`cursor-pointer rounded-full border px-2.5 py-1 font-medium transition-colors ${color} ${filters.level === level ? "border-current bg-current/10" : "border-border hover:border-current"}`}
+            aria-pressed={filters.level === level}
+            onClick={() => updateFilters({ ...filters, level: filters.level === level ? "all" : level })}
+          >
+            {count} {label}
+            {label === "info" || count === 1 ? "" : "s"}
+          </button>
+        ))}
+        {counts.debug > 0 && (
+          <button
+            type="button"
+            className={`cursor-pointer rounded-full border px-2.5 py-1 font-medium text-muted-foreground ${filters.level === "debug" ? "border-current bg-current/10" : "border-border hover:border-current"}`}
+            aria-pressed={filters.level === "debug"}
+            onClick={() => updateFilters({ ...filters, level: filters.level === "debug" ? "all" : "debug" })}
+          >
+            {counts.debug} debug
+          </button>
+        )}
         {downloadState === "failed" && (
           <span className="inline-flex items-center gap-1 text-danger">
             <AlertTriangle aria-hidden className="size-3" /> Download failed
@@ -492,17 +527,6 @@ const ApplicationDiagnostics = ({
             <AlertTriangle aria-hidden className="size-3" /> {dropped} events dropped since startup
           </span>
         )}
-        <span className="ml-auto inline-flex items-center gap-2 text-muted-foreground">
-          <StatusDot tone={live ? "ok" : "off"} label={live ? "Live" : "Paused"} />
-          {live ? "Live · refreshes every 15 seconds" : "Updates paused"}
-        </span>
-        <Button variant="ghost" size="sm" onClick={() => setLive(!live)}>
-          {live ? <CirclePause aria-hidden /> : <CirclePlay aria-hidden />}
-          {live ? "Pause" : "Resume"}
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => query.refetch()} disabled={query.isFetching}>
-          <RotateCcw aria-hidden /> Refresh now
-        </Button>
       </div>
 
       {query.isError ? (
@@ -517,51 +541,66 @@ const ApplicationDiagnostics = ({
         </p>
       ) : (
         <div className="grid min-h-72 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_22rem]">
-          <section className="overflow-auto rounded-lg border border-border bg-card" aria-label="Logs">
-            {events.map((event) => {
-              const open = expanded === event.id;
-              return (
-                <article key={event.id} className="border-border border-b last:border-b-0">
-                  <button
-                    type="button"
-                    className={`grid w-full gap-2 px-4 py-3 text-left hover:bg-muted/20 sm:grid-cols-[7rem_minmax(0,1fr)_8rem] sm:items-start ${open ? "bg-muted/20" : ""}`}
-                    aria-expanded={open}
-                    onClick={() => setExpanded(open ? undefined : event.id)}
+          <section
+            ref={listRef}
+            className="overflow-auto rounded-lg border border-border bg-card"
+            aria-label="Logs"
+            style={{ height: `${Math.min(Math.max(virtualizer.getTotalSize(), 228), 640)}px` }}
+          >
+            <div className="relative w-full" style={{ height: `${virtualizer.getTotalSize()}px` }}>
+              {virtualizer.getVirtualItems().map((virtualRow) => {
+                const event = events[virtualRow.index];
+                if (!event) return null;
+                const open = expanded === event.id;
+                return (
+                  <article
+                    key={event.id}
+                    ref={virtualizer.measureElement}
+                    data-index={virtualRow.index}
+                    className="absolute top-0 left-0 w-full border-border border-b"
+                    style={{ transform: `translateY(${virtualRow.start}px)` }}
                   >
-                    <span className="inline-flex items-center gap-2 text-xs">
-                      <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
-                      {levelLabel(event.level)}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block font-medium text-sm">
-                        {event.message || fallbackMessage(event)}
-                      </span>
-                      <span className="mt-1 block text-muted-foreground text-xs">
-                        {sourceLabel(event.source)}
-                        {event.subsystem ? ` · ${event.subsystem}` : ""}
-                        {event.channelId ? " · Channel involved" : ""}
-                        {event.processRunId ? " · Process output available" : ""}
-                      </span>
-                    </span>
-                    <time
-                      className="font-mono text-muted-foreground text-xs sm:text-right"
-                      dateTime={new Date(event.occurredAt).toISOString()}
+                    <button
+                      type="button"
+                      className={`grid w-full cursor-pointer gap-2 px-4 py-3 text-left hover:bg-muted/20 sm:grid-cols-[7rem_minmax(0,1fr)_8rem] sm:items-start ${open ? "bg-muted/20" : ""}`}
+                      aria-expanded={open}
+                      onClick={() => setExpanded(open ? undefined : event.id)}
                     >
-                      {formatTime(event.occurredAt)}
-                    </time>
-                  </button>
-                  {open && (
-                    <div className="border-border border-t lg:hidden">
-                      <EventDetail
-                        event={event}
-                        onOpenProcess={onOpenProcess}
-                        onOpenRelated={onOpenRelated}
-                      />
-                    </div>
-                  )}
-                </article>
-              );
-            })}
+                      <span className="inline-flex items-center gap-2 text-xs">
+                        <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
+                        {levelLabel(event.level)}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block font-medium text-sm">
+                          {event.message || fallbackMessage(event)}
+                        </span>
+                        <span className="mt-1 block text-muted-foreground text-xs">
+                          {sourceLabel(event.source)}
+                          {event.subsystem ? ` · ${event.subsystem}` : ""}
+                          {event.channelId ? " · Channel involved" : ""}
+                          {event.processRunId ? " · Process output available" : ""}
+                        </span>
+                      </span>
+                      <time
+                        className="font-mono text-muted-foreground text-xs sm:text-right"
+                        dateTime={new Date(event.occurredAt).toISOString()}
+                      >
+                        {formatTime(event.occurredAt)}
+                      </time>
+                    </button>
+                    {open && (
+                      <div className="border-border border-t lg:hidden">
+                        <EventDetail
+                          event={event}
+                          onOpenProcess={onOpenProcess}
+                          onOpenRelated={onOpenRelated}
+                        />
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
           </section>
           <aside
             className="hidden overflow-auto rounded-lg border border-border bg-card lg:block"
@@ -592,9 +631,7 @@ const ApplicationDiagnostics = ({
         >
           Newer
         </Button>
-        <span className="text-muted-foreground text-xs">
-          Page {cursorStack.length + 1} · at most 200 records
-        </span>
+        <span className="text-muted-foreground text-xs">Page {cursorStack.length + 1} · 50 per page</span>
         <Button
           variant="outline"
           size="sm"

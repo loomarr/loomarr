@@ -3,7 +3,8 @@ import type { ListDiagnosticProcessesParams } from "@loomarr/api/models/listDiag
 import { ListDiagnosticProcessesStatus } from "@loomarr/api/models/listDiagnosticProcessesStatus";
 import type { ProcessRunView } from "@loomarr/api/models/processRunView";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Check, Clipboard, Download, ExternalLink, RotateCcw } from "lucide-react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { AlertTriangle, Check, Clipboard, Download, ExternalLink } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,27 @@ import { StatusDot, type StatusTone } from "@/components/ui/status-dot";
 import type { DiagnosticsSearch } from "../diagnostics-page";
 
 const RANGE_MS = { "1h": 3_600_000, "6h": 21_600_000, "24h": 86_400_000 } as const;
+const VIRTUAL_VIEWPORT = { width: 352, height: 640 };
+
+const observeVirtualRect = (
+  instance: { scrollElement: Element | Window | null },
+  callback: (rect: { width: number; height: number }) => void,
+) => {
+  const element = instance.scrollElement;
+  if (!(element instanceof Element)) return;
+  const report = () => {
+    const rect = element.getBoundingClientRect();
+    callback({
+      width: rect.width || VIRTUAL_VIEWPORT.width,
+      height: rect.height || VIRTUAL_VIEWPORT.height,
+    });
+  };
+  report();
+  if (typeof ResizeObserver === "undefined") return;
+  const observer = new ResizeObserver(report);
+  observer.observe(element);
+  return () => observer.disconnect();
+};
 
 type OutputResult = {
   text: string;
@@ -171,6 +193,10 @@ const ProcessOutput = ({ run }: { run: ProcessRunView }) => {
       )}
       <pre
         ref={scrollRef}
+        onScroll={(event) => {
+          const output = event.currentTarget;
+          if (follow && output.scrollHeight - output.scrollTop - output.clientHeight > 24) setFollow(false);
+        }}
         className={`max-h-[28rem] overflow-auto rounded-md border border-border bg-background p-3 font-mono text-xs ${wrap ? "whitespace-pre-wrap break-words" : "whitespace-pre"}`}
       >
         {visible || "No retained output matches this search."}
@@ -275,7 +301,7 @@ const ProcessDetail = ({
       ) : (
         <p className="text-muted-foreground text-sm">No progress samples retained for this run.</p>
       )}
-      <ProcessOutput run={run} />
+      <ProcessOutput key={run.id} run={run} />
     </section>
   );
 };
@@ -290,36 +316,49 @@ const PlayoutDiagnostics = ({
   onOpenChannel?: (id: string) => void;
 }) => {
   const [cursorStack, setCursorStack] = useState<string[]>([]);
-  const [now, setNow] = useState(Date.now());
+  const listRef = useRef<HTMLDivElement>(null);
   const cursor = cursorStack.at(-1);
-  useEffect(() => {
-    if (cursor) return;
-    const interval = window.setInterval(() => setNow(Date.now()), 5_000);
-    return () => window.clearInterval(interval);
-  }, [cursor]);
-  const params = useMemo<ListDiagnosticProcessesParams>(
-    () => ({
-      from: now - RANGE_MS[filters.processRange],
-      to: now,
-      limit: 200,
-      ...(cursor ? { cursor } : {}),
-      ...(filters.processStatus === "all"
-        ? {}
-        : { status: ListDiagnosticProcessesStatus[filters.processStatus] }),
-      ...(filters.processPurpose.trim() ? { purpose: filters.processPurpose.trim() } : {}),
-      ...(filters.processChannelId.trim() ? { channelId: filters.processChannelId.trim() } : {}),
-      ...(filters.processJobId.trim() ? { jobId: filters.processJobId.trim() } : {}),
-    }),
-    [cursor, filters, now],
-  );
-  const query = diagnosticsApi.useListDiagnosticProcesses(params, { query: { retry: false } });
+  const processParams = (now = Date.now()): ListDiagnosticProcessesParams => ({
+    from: now - RANGE_MS[filters.processRange],
+    to: now,
+    limit: 50,
+    ...(cursor ? { cursor } : {}),
+    ...(filters.processStatus === "all"
+      ? {}
+      : { status: ListDiagnosticProcessesStatus[filters.processStatus] }),
+    ...(filters.processPurpose.trim() ? { purpose: filters.processPurpose.trim() } : {}),
+    ...(filters.processChannelId.trim() ? { channelId: filters.processChannelId.trim() } : {}),
+    ...(filters.processJobId.trim() ? { jobId: filters.processJobId.trim() } : {}),
+  });
+  const query = useQuery({
+    queryKey: [
+      "diagnostic-process-page",
+      filters.processRange,
+      filters.processStatus,
+      filters.processPurpose,
+      filters.processChannelId,
+      filters.processJobId,
+      cursor,
+    ],
+    queryFn: ({ signal }) => diagnosticsApi.listDiagnosticProcesses(processParams(), { signal }),
+    retry: false,
+    refetchInterval: cursor ? false : 5_000,
+  });
   const body = query.data?.status === 200 ? query.data.data : undefined;
   const runs = body?.items ?? [];
   const selected =
     runs.find((run) => run.id === filters.processId) ?? (filters.processId ? undefined : runs[0]);
+  const virtualizer = useVirtualizer({
+    count: runs.length,
+    getScrollElement: () => listRef.current,
+    getItemKey: (index) => runs[index]?.id ?? index,
+    estimateSize: () => 76,
+    overscan: 6,
+    initialRect: VIRTUAL_VIEWPORT,
+    observeElementRect: observeVirtualRect,
+  });
   const update = (next: DiagnosticsSearch) => {
     setCursorStack([]);
-    setNow(Date.now());
     onFiltersChange(next);
   };
   return (
@@ -333,9 +372,6 @@ const PlayoutDiagnostics = ({
             FFmpeg and other media processes connected to the logs you are investigating.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => query.refetch()} disabled={query.isFetching}>
-          <RotateCcw aria-hidden /> Refresh
-        </Button>
       </div>
       <div className="grid gap-3 rounded-lg border border-border bg-card p-3 sm:grid-cols-2">
         <Select
@@ -406,31 +442,47 @@ const PlayoutDiagnostics = ({
         </p>
       ) : (
         <div className="grid min-h-96 gap-4 xl:grid-cols-[22rem_minmax(0,1fr)]">
-          <ul
-            className="max-h-[48rem] overflow-auto rounded-lg border border-border bg-card"
-            aria-label="Process runs"
+          <div
+            ref={listRef}
+            className="overflow-auto rounded-lg border border-border bg-card"
+            style={{ height: `${Math.min(Math.max(virtualizer.getTotalSize(), 152), 640)}px` }}
           >
-            {runs.map((run) => (
-              <li key={run.id} className="[contain-intrinsic-size:auto_76px] [content-visibility:auto]">
-                <button
-                  type="button"
-                  className={`grid w-full gap-1 border-border border-b px-3 py-3 text-left hover:bg-muted/20 ${selected?.id === run.id ? "bg-muted/30" : ""}`}
-                  aria-pressed={selected?.id === run.id}
-                  onClick={() => onFiltersChange({ ...filters, processId: run.id })}
-                >
-                  <span className="flex items-center justify-between gap-2">
-                    <strong className="truncate text-sm">{run.purpose}</strong>
-                    <span className="inline-flex items-center gap-1 text-xs">
-                      <StatusDot tone={tone(run.status)} label={run.status} />
-                      {run.status}
-                    </span>
-                  </span>
-                  <span className="truncate text-muted-foreground text-xs">{run.target ?? run.id}</span>
-                  <time className="text-muted-foreground text-xs">{formatTime(run.startedAt)}</time>
-                </button>
-              </li>
-            ))}
-          </ul>
+            <ul
+              className="relative w-full"
+              style={{ height: `${virtualizer.getTotalSize()}px` }}
+              aria-label="Process runs"
+            >
+              {virtualizer.getVirtualItems().map((virtualRow) => {
+                const run = runs[virtualRow.index];
+                if (!run) return null;
+                return (
+                  <li
+                    key={run.id}
+                    data-index={virtualRow.index}
+                    className="absolute top-0 left-0 w-full"
+                    style={{ height: `${virtualRow.size}px`, transform: `translateY(${virtualRow.start}px)` }}
+                  >
+                    <button
+                      type="button"
+                      className={`grid h-full w-full cursor-pointer gap-1 border-border border-b px-3 py-3 text-left hover:bg-muted/20 ${selected?.id === run.id ? "bg-muted/30" : ""}`}
+                      aria-pressed={selected?.id === run.id}
+                      onClick={() => onFiltersChange({ ...filters, processId: run.id })}
+                    >
+                      <span className="flex items-center justify-between gap-2">
+                        <strong className="truncate text-sm">{run.purpose}</strong>
+                        <span className="inline-flex items-center gap-1 text-xs">
+                          <StatusDot tone={tone(run.status)} label={run.status} />
+                          {run.status}
+                        </span>
+                      </span>
+                      <span className="truncate text-muted-foreground text-xs">{run.target ?? run.id}</span>
+                      <time className="text-muted-foreground text-xs">{formatTime(run.startedAt)}</time>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
           {selected ? (
             <ProcessDetail run={selected} onOpenChannel={onOpenChannel} />
           ) : (
@@ -449,9 +501,7 @@ const PlayoutDiagnostics = ({
         >
           Newer
         </Button>
-        <span className="text-muted-foreground text-xs">
-          Page {cursorStack.length + 1} · at most 200 runs
-        </span>
+        <span className="text-muted-foreground text-xs">Page {cursorStack.length + 1} · 50 per page</span>
         <Button
           variant="outline"
           size="sm"

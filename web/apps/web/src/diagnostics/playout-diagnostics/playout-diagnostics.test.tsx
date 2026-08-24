@@ -1,6 +1,6 @@
 import { getGetDiagnosticProcessMockHandler, getListDiagnosticProcessesMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { useState } from "react";
@@ -74,13 +74,14 @@ describe("PlayoutDiagnostics", () => {
         />
       );
     };
-    render(
+    const view = render(
       <QueryClientProvider client={client}>
         <Harness />
       </QueryClientProvider>,
     );
 
     expect(await screen.findAllByText("channel-segment")).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "Refresh" })).not.toBeInTheDocument();
     expect(await screen.findByText(/Frame/)).toHaveTextContent("240");
     expect(await screen.findByText(/3 earlier lines/)).toBeInTheDocument();
     await userEvent.type(screen.getByRole("textbox", { name: "Search Process output" }), "warning");
@@ -88,8 +89,36 @@ describe("PlayoutDiagnostics", () => {
     expect(screen.queryByText(/frame=120 healthy/)).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Timestamps" }));
     expect(screen.getByText("warning retry")).toBeInTheDocument();
+    const output = view.container.querySelector("pre");
+    expect(output).not.toBeNull();
+    Object.defineProperties(output, {
+      scrollHeight: { configurable: true, value: 600 },
+      clientHeight: { configurable: true, value: 200 },
+      scrollTop: { configurable: true, value: 100, writable: true },
+    });
+    fireEvent.scroll(output!);
+    expect(screen.getByRole("button", { name: "Follow tail" })).toHaveAttribute("aria-pressed", "false");
     await userEvent.click(screen.getByRole("combobox", { name: "Process status" }));
     await userEvent.click(screen.getByRole("option", { name: "Failed" }));
     expect(onFiltersChange).toHaveBeenLastCalledWith(expect.objectContaining({ processStatus: "failed" }));
+  });
+
+  it("requests 50 Process runs per server page", async () => {
+    let requestedLimit: string | null = null;
+    server.use(
+      http.get("/v1/diagnostics/processes", ({ request }) => {
+        requestedLimit = new URL(request.url).searchParams.get("limit");
+        return HttpResponse.json({ items: [] });
+      }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <PlayoutDiagnostics filters={initial} onFiltersChange={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText(/No Process runs/)).toBeInTheDocument();
+    await waitFor(() => expect(requestedLimit).toBe("50"));
+    expect(screen.getByText("Page 1 · 50 per page")).toBeInTheDocument();
   });
 });

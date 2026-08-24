@@ -6047,9 +6047,12 @@ retained reports are available independently from Current Health.
 
 Settings → System → Diagnostics has two primary views: **Logs** and **Current Health**. Logs is the
 default because the common operator task is to find what happened, not to choose an evidence model.
-Current Health leads with present status, version, observation/freshness, and any check that needs
-attention; healthy checks collapse into a summary and immutable reports sit beneath secondary
-**Startup history**. Detail and remediation use text as well as color. Notices deduplicate per health
+Current Health leads with present status, version, and observation/freshness, then keeps every current
+check in one always-visible responsive table; startup-mode and continuously monitored checks are
+distinguished in that table instead of exposing immutable startup-report history as a competing UI
+surface. The Current Health read updates automatically through health-event invalidation with a
+bounded polling fallback and has no manual refresh control. Detail and remediation use text as well
+as color. Notices deduplicate per health
 incident, persist while action is needed, announce recovery calmly, and are superseded by a newer
 generation. The interactive terminal table remains a startup projection only. Continuous transitions
 use the ordinary one-line structured JSON stream; formatted text is never persisted truth.
@@ -6063,15 +6066,21 @@ NDJSON, one Process run downloads as a readable text log, and an administrator c
 redacted ZIP Support bundle containing a manifest, versions, selected events, Process metadata and
 output, truncation/drop counts, and a redaction summary.
 
-The Logs view is one continuously refreshing, pausable newest-first stream. Its primary row contains
-one plain-language search plus time and severity; source, subsystem, Channel, and exact correlation
-identifiers live behind **More filters**. A row leads with time, severity, source, human-readable
+The Logs view is one automatically and smoothly refreshing newest-first stream with no Live, Pause,
+or manual Refresh controls. Stable query identity and background replacement keep the current page
+rendered while a newer authoritative page is fetched. Its primary row contains one plain-language
+search plus time and clickable, color-and-text severity filters; source, subsystem, Channel, and exact
+correlation identifiers live behind **More filters**. A row leads with time, severity, source, human-readable
 message, and useful context. Raw event names, identifiers, and structured attributes are secondary
 **Technical details**. Selecting a related Process run opens its retained metadata/output in context
 without making Process runs a competing primary view. A secondary **Process runs** action still lets
 an operator browse recent runs directly. Desktop may keep selected evidence beside the stream;
-mobile presents the same evidence as an accessible disclosure or sheet. Filtered NDJSON download is
-independent of Support-bundle creation and always uses the visible filters.
+mobile presents the same evidence as an accessible disclosure or sheet. Logs and Process-run results
+request 50 records per server page and virtualize the visible rows, so retained history remains bounded
+at both the API and DOM seams. Process output follows a running tail only while the reader remains at
+the bottom; manual scrolling disables tail-follow and a background refresh preserves the reader's
+position. Filtered NDJSON download is independent of troubleshooting-report creation and always uses
+the visible filters.
 
 The Diagnostic-event read defaults to the last hour, permits at most a 24-hour window, and returns
 100 records by default with a hard page maximum of 200. Its opaque cursor is the total
@@ -6109,14 +6118,13 @@ uncompressed and final archive bytes, truncation reasons, and defensive redactio
 host names, network addresses, configured service targets, filesystem roots, and user data. Retained
 events and Process output are already redacted before storage, but bundle assembly defensively redacts
 again and records replacements so imported or legacy evidence cannot bypass the download boundary.
-**Create support bundle** is a secondary Diagnostics page action, initialized from the visible Logs
-time range and correlations. Its two-step web flow is **Review bundle → Download bundle**. Review runs
-the bounded preview automatically and leads with a plain-language scope, contents, estimated size,
-omissions, truncation, and redaction summary; category switches and exact correlation fields remain
-under **Advanced options**. Selecting Process output automatically includes Process metadata. Preparing
-for download assembles the exact ZIP in client memory and advances to Download, where the final size is
-shown before one **Download bundle** action writes that reviewed artifact to disk. Changing scope or an
-advanced selection returns to Review and invalidates the prepared artifact.
+**Download troubleshooting report** is a secondary Diagnostics page action, initialized from the
+visible Logs time range and correlations. Its one-screen web flow runs the bounded preview
+automatically and leads with a plain-language scope, contents, estimated size, omissions, truncation,
+and redaction summary; category switches and exact correlation fields remain under **Customize
+report**. Selecting Process output automatically includes Process metadata. One **Download report**
+action assembles the exact reviewed ZIP and writes it to disk; changing scope or a customized
+selection invalidates the preview and disables download until the replacement preview succeeds.
 
 ### Metrics and health
 
