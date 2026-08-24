@@ -11,7 +11,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 
 const LoadingGallery = ({
   density = "pointer",
-  reducedMotion = false,
+  reducedMotion,
   theme = "dark",
 }: {
   density?: Density;

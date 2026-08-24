@@ -19,6 +19,20 @@ test.use({ reducedMotion: "no-preference" });
 const story = (id: string) => `/iframe.html?id=${id}&viewMode=story`;
 
 test.describe("idle-surface motion", () => {
+  test("loading indicators animate when motion is enabled", async ({ page }) => {
+    await page.goto(story("loomarr-foundations-loading--dark"));
+    await page.locator("#storybook-root > *").first().waitFor({ state: "visible" });
+
+    const indicator = page.getByRole("progressbar", { name: "Saving" });
+    const firstTransform = await indicator.evaluate((element) => getComputedStyle(element).transform);
+    let moved = false;
+    for (let i = 0; i < 6 && !moved; i++) {
+      await page.waitForTimeout(200);
+      moved = (await indicator.evaluate((element) => getComputedStyle(element).transform)) !== firstTransform;
+    }
+    expect(moved, "the activity indicator never rotated across ~1.2s").toBe(true);
+  });
+
   // The guide's "Dead air" test card (§1). Each segment breathes out of phase, so the shimmer
   // travels across the card rather than the strip pulsing as one block.
   test("ColorBars breathe, and the segments are staggered", async ({ page }) => {
