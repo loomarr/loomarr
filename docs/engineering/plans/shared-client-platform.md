@@ -395,7 +395,14 @@ boundaries. `make clients` passes the package graph, shared types/tests, Expo Do
 bundles, and browser proof; `make fe` passes 198 frontend files / 1,585 tests plus production and
 Storybook builds; a fresh immutable `make fe-visual` passes all 890 visual, motion, and accessibility
 cases without changing a baseline. The final `make check` repository gate and `make docs-lint` also
-pass on the publication head.
+pass on the publication head. P2 also closes an affected-CI hole exposed by this first real shared
+core change: native Storybook consumes fixtures, fixtures consume core and API, and edits to any of
+those three packages now select the shared-client and Apple-native gates as well as the web family.
+The publication gate also exposed an existing integration-test race: library setting writes queue a
+durable `system-health` run, and the test could count a token-rotation probe that was already in
+flight as work caused by the later credential clear. The test now synchronizes on recorded job
+completion before and after clear, proving the clear-triggered health pass and subsequent explicit
+operations are dormant without relying on a sleep; 20 consecutive race-enabled repetitions pass.
 
 ## Open evidence, not open architecture
 
