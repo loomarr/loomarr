@@ -104,6 +104,16 @@ describe("GuideDetailCard", () => {
     expect(screen.getByText(/S10E03/)).toBeInTheDocument();
   });
 
+  it("does not drop season zero specials", () => {
+    render(
+      <GuideDetailCard
+        airing={{ ...base, title: "Treehouse of Horror", series: "The Simpsons", season: 0, episode: 1 }}
+      />,
+    );
+
+    expect(screen.getByText(/S00E01/)).toBeInTheDocument();
+  });
+
   // THE BREAK CASE — the one that could not exist before V13b, because the API had only a
   // channel-wide pool and nothing could say what plays in THIS break.
   it("lists the clips that play in a break, with era and quality", () => {

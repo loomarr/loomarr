@@ -1,5 +1,5 @@
 import type { PodPoolDTOMatchLevel } from "@loomarr/api/models/podPoolDTOMatchLevel";
-import { formatGuideTimeRange } from "@loomarr/core/guide";
+import { formatGuideEpisode, formatGuideTimeRange } from "@loomarr/core/guide";
 import { Badge } from "@/components/ui/badge";
 import { Caption } from "@/components/ui/caption";
 import { Image } from "@/components/ui/image";
@@ -88,10 +88,7 @@ const GuideDetailCard = ({ airing, timezone, className }: GuideDetailCardProps) 
     .filter(Boolean)
     .join(" · ");
 
-  const episode =
-    airing.season && airing.episode
-      ? `S${String(airing.season).padStart(2, "0")}E${String(airing.episode).padStart(2, "0")}`
-      : null;
+  const episode = formatGuideEpisode(airing.season, airing.episode);
 
   return (
     <aside

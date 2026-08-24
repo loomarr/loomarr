@@ -67,6 +67,13 @@ const formatGuideTimeRange = (startMs: number, stopMs: number, timeZone?: string
   return `${formatter.format(startMs)}–${formatter.format(stopMs)}`;
 };
 
+/** Compact episode identity, including season zero specials and partially known metadata. */
+const formatGuideEpisode = (season?: number, episode?: number): string | undefined => {
+  const seasonLabel = season === undefined ? "" : `S${String(season).padStart(2, "0")}`;
+  const episodeLabel = episode === undefined ? "" : `E${String(episode).padStart(2, "0")}`;
+  return seasonLabel || episodeLabel ? `${seasonLabel}${episodeLabel}` : undefined;
+};
+
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 
 /**
@@ -215,6 +222,7 @@ const moveGuideSelection = (
 export {
   DEFAULT_WINDOW_MINUTES,
   defaultGuideWindow,
+  formatGuideEpisode,
   formatGuideTime,
   formatGuideTimeRange,
   GUIDE_BUCKET_MS,

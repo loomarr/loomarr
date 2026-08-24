@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_WINDOW_MINUTES,
   defaultGuideWindow,
+  formatGuideEpisode,
   formatGuideTime,
   formatGuideTimeRange,
   GUIDE_BUCKET_MS,
@@ -47,6 +48,14 @@ describe("guide time formatting", () => {
     expect(formatGuideTime(at, "America/New_York")).toBe("7:00 PM");
     expect(formatGuideTime(at, "America/Los_Angeles")).toBe("4:00 PM");
     expect(formatGuideTimeRange(at, at + 30 * 60_000, "America/New_York")).toBe("7:00 PM–7:30 PM");
+  });
+
+  it("keeps season zero specials and partial episode identity", () => {
+    expect(formatGuideEpisode(7, 2)).toBe("S07E02");
+    expect(formatGuideEpisode(0, 1)).toBe("S00E01");
+    expect(formatGuideEpisode(7)).toBe("S07");
+    expect(formatGuideEpisode(undefined, 2)).toBe("E02");
+    expect(formatGuideEpisode()).toBeUndefined();
   });
 });
 
