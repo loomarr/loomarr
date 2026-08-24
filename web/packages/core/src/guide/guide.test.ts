@@ -6,9 +6,11 @@ import {
   formatGuideTime,
   formatGuideTimeRange,
   GUIDE_BUCKET_MS,
+  guideSelectionForChannel,
   guideWindow,
   LOOKBACK_MINUTES,
   layoutGuide,
+  moveGuideSelection,
 } from "./guide";
 
 describe("guideWindow", () => {
@@ -146,5 +148,84 @@ describe("layoutGuide", () => {
     expect(layout.channels[0]?.airings[0]?.source.nominal).toBe(true);
     expect(layout.channels[1]).toEqual({ source: source.channels[1], airings: [] });
     expect(layout.channels[0]?.airings.every((airing) => airing.progressRatio === undefined)).toBe(true);
+  });
+
+  it("keeps the same time column when moving between channels", () => {
+    const firstChannel = source.channels[0];
+    const secondChannel = source.channels[1];
+    expect(firstChannel).toBeDefined();
+    expect(secondChannel).toBeDefined();
+    if (!firstChannel || !secondChannel) return;
+
+    const navigationSource = {
+      ...source,
+      channels: [
+        firstChannel,
+        {
+          ...secondChannel,
+          airings: [
+            {
+              scheduleBlockId: "adjacent-early",
+              kind: "program",
+              title: "Early",
+              startMs: 1_000,
+              stopMs: 1_800,
+            },
+            {
+              scheduleBlockId: "adjacent-overlap",
+              kind: "program",
+              title: "Overlapping",
+              startMs: 1_800,
+              stopMs: 3_500,
+            },
+          ],
+        },
+      ],
+    } satisfies GuideOutputBody;
+    const layout = layoutGuide(navigationSource, 2_000);
+    const selection = guideSelectionForChannel(layout, "classic-animation", 2_500);
+
+    expect(selection).toEqual({
+      channelId: "classic-animation",
+      scheduleBlockId: "radioactive-man",
+      anchorMs: 2_500,
+    });
+    expect(selection && moveGuideSelection(layout, selection, "down")).toEqual({
+      selection: {
+        channelId: "empty",
+        scheduleBlockId: "adjacent-overlap",
+        anchorMs: 2_500,
+      },
+    });
+  });
+
+  it("moves between adjacent airings and reports boundaries to the platform adapter", () => {
+    const layout = layoutGuide(source, 2_000);
+    const first = guideSelectionForChannel(layout, "classic-animation", 2_000);
+    expect(first).toBeDefined();
+    if (!first) return;
+
+    const right = moveGuideSelection(layout, first, "right");
+    expect(right.selection).toMatchObject({
+      channelId: "classic-animation",
+      scheduleBlockId: "after",
+      anchorMs: 5_000,
+    });
+    expect(moveGuideSelection(layout, right.selection, "right")).toEqual({
+      selection: right.selection,
+      boundary: "right",
+    });
+    expect(moveGuideSelection(layout, first, "up")).toEqual({ selection: first, boundary: "up" });
+  });
+
+  it("keeps an empty channel row focusable during vertical traversal", () => {
+    const layout = layoutGuide(source, 2_000);
+    const first = guideSelectionForChannel(layout, "classic-animation", 2_000);
+    expect(first).toBeDefined();
+    if (!first) return;
+
+    expect(moveGuideSelection(layout, first, "down")).toEqual({
+      selection: { channelId: "empty", scheduleBlockId: undefined, anchorMs: 2_000 },
+    });
   });
 });

@@ -48,4 +48,29 @@ type GuideLayout = {
   channels: GuideChannelLayout[];
 };
 
-export type { GuideAiringLayout, GuideChannelLayout, GuideLayout, GuideWindow, GuideWindowArgs };
+type GuideSelection = {
+  channelId: string;
+  /** Absent when the channel has no block in the served window; the channel row still has focus. */
+  scheduleBlockId?: string;
+  /** Stable time column retained while moving vertically between differently sized blocks. */
+  anchorMs: number;
+};
+
+type GuideNavigationDirection = "left" | "right" | "up" | "down";
+
+type GuideNavigationResult = {
+  selection: GuideSelection;
+  /** Lets the platform adapter hand focus to filters or surrounding chrome without guessing. */
+  boundary?: GuideNavigationDirection;
+};
+
+export type {
+  GuideAiringLayout,
+  GuideChannelLayout,
+  GuideLayout,
+  GuideNavigationDirection,
+  GuideNavigationResult,
+  GuideSelection,
+  GuideWindow,
+  GuideWindowArgs,
+};

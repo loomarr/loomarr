@@ -1,5 +1,14 @@
 import type { GuideOutputBody } from "@loomarr/api/models/guideOutputBody";
-import type { GuideAiringLayout, GuideLayout, GuideWindow, GuideWindowArgs } from "./guide.type";
+import type {
+  GuideAiringLayout,
+  GuideChannelLayout,
+  GuideLayout,
+  GuideNavigationDirection,
+  GuideNavigationResult,
+  GuideSelection,
+  GuideWindow,
+  GuideWindowArgs,
+} from "./guide.type";
 
 // Kept equal to the server's arrangement bucket so a prefetched window and its schedule expire
 // together. The client does not depend on that equality for correctness.
@@ -112,14 +121,107 @@ const layoutGuide = (source: GuideOutputBody, nowMs: number): GuideLayout => {
   };
 };
 
+const distanceFromAiring = (airing: GuideAiringLayout, atMs: number): number => {
+  if (airing.source.startMs <= atMs && atMs < airing.source.stopMs) return 0;
+  if (atMs < airing.source.startMs) return airing.source.startMs - atMs;
+  return atMs - airing.source.stopMs;
+};
+
+const nearestAiring = (channel: GuideChannelLayout, atMs: number): GuideAiringLayout | undefined => {
+  let nearest: GuideAiringLayout | undefined;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  for (const airing of channel.airings) {
+    const distance = distanceFromAiring(airing, atMs);
+    if (distance < nearestDistance) {
+      nearest = airing;
+      nearestDistance = distance;
+    }
+  }
+  return nearest;
+};
+
+/** Build a focus target for a channel while retaining the requested time column. */
+const guideSelectionForChannel = (
+  layout: GuideLayout,
+  channelId: string,
+  anchorMs: number,
+): GuideSelection | undefined => {
+  const channel = layout.channels.find((candidate) => candidate.source.channelId === channelId);
+  if (!channel) return undefined;
+  const airing = nearestAiring(channel, anchorMs);
+  return {
+    channelId,
+    scheduleBlockId: airing?.scheduleBlockId,
+    anchorMs,
+  };
+};
+
+const horizontalSelection = (
+  channel: GuideChannelLayout,
+  selection: GuideSelection,
+  direction: "left" | "right",
+): GuideNavigationResult => {
+  const currentIndex = selection.scheduleBlockId
+    ? channel.airings.findIndex((airing) => airing.scheduleBlockId === selection.scheduleBlockId)
+    : -1;
+  const current =
+    currentIndex >= 0 ? channel.airings[currentIndex] : nearestAiring(channel, selection.anchorMs);
+  const resolvedIndex = current ? channel.airings.indexOf(current) : -1;
+  const nextIndex = resolvedIndex + (direction === "left" ? -1 : 1);
+  const next = channel.airings[nextIndex];
+  if (!next) return { selection, boundary: direction };
+
+  return {
+    selection: {
+      channelId: selection.channelId,
+      scheduleBlockId: next.scheduleBlockId,
+      anchorMs: next.source.startMs + (next.source.stopMs - next.source.startMs) / 2,
+    },
+  };
+};
+
+/**
+ * Resolve one grid move. Platform adapters own key/focus events and use boundary results to enter
+ * filters or surrounding chrome; the time-column and block-neighbor rules remain identical.
+ */
+const moveGuideSelection = (
+  layout: GuideLayout,
+  selection: GuideSelection,
+  direction: GuideNavigationDirection,
+): GuideNavigationResult => {
+  const rowIndex = layout.channels.findIndex((channel) => channel.source.channelId === selection.channelId);
+  if (rowIndex < 0) return { selection, boundary: direction };
+
+  const currentChannel = layout.channels[rowIndex];
+  if (!currentChannel) return { selection, boundary: direction };
+  if (direction === "left" || direction === "right") {
+    return horizontalSelection(currentChannel, selection, direction);
+  }
+
+  const targetIndex = rowIndex + (direction === "up" ? -1 : 1);
+  const targetChannel = layout.channels[targetIndex];
+  if (!targetChannel) return { selection, boundary: direction };
+
+  const targetAiring = nearestAiring(targetChannel, selection.anchorMs);
+  return {
+    selection: {
+      channelId: targetChannel.source.channelId,
+      scheduleBlockId: targetAiring?.scheduleBlockId,
+      anchorMs: selection.anchorMs,
+    },
+  };
+};
+
 export {
   DEFAULT_WINDOW_MINUTES,
   defaultGuideWindow,
   formatGuideTime,
   formatGuideTimeRange,
   GUIDE_BUCKET_MS,
+  guideSelectionForChannel,
   guideTimeFormatter,
   guideWindow,
   LOOKBACK_MINUTES,
   layoutGuide,
+  moveGuideSelection,
 };
