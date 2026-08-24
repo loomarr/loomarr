@@ -10,6 +10,7 @@ import {
   BrandMark,
   BrandWordmark,
   brandContract,
+  ChoiceGroup,
   Field,
   FocusSurface,
   Icon,
@@ -24,6 +25,7 @@ import {
   Surface,
   semanticColors,
   Text,
+  Toggle,
   typography,
 } from "../index";
 
@@ -37,6 +39,8 @@ describe("design-system public interface", () => {
       Surface,
       FocusSurface,
       Field,
+      Toggle,
+      ChoiceGroup,
       Text,
       Badge,
       ArtworkFrame,

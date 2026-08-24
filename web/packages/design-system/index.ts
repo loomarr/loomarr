@@ -9,6 +9,14 @@ export type {
 export { BrandLaunch, BrandLockup, BrandMark, BrandWordmark, brandLaunchMotion } from "./src/brand";
 export type { IconName, IconProps, IconSize, IconTone } from "./src/icon";
 export { Icon, icons } from "./src/icon";
+export type {
+  ActionProps,
+  ChoiceGroupProps,
+  ChoiceOption,
+  FieldProps,
+  ToggleProps,
+} from "./src/interaction";
+export { Action, ChoiceGroup, Field, Toggle } from "./src/interaction";
 export type { ActivityIndicatorProps, SignalLoaderProps, SkeletonProps, SkeletonShape } from "./src/loading";
 export {
   ActivityIndicator,
@@ -19,18 +27,15 @@ export {
   skeletonMotion,
 } from "./src/loading";
 export type {
-  ActionProps,
   ArtworkState,
   BadgeTone,
-  FieldProps,
   ScreenProps,
   TextProps,
+  TextTone,
 } from "./src/primitives";
 export {
-  Action,
   ArtworkFrame,
   Badge,
-  Field,
   FocusSurface,
   ProgressTrack,
   Screen,
