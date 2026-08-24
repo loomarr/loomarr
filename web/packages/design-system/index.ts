@@ -17,6 +17,13 @@ export type {
   ToggleProps,
 } from "./src/interaction";
 export { Action, ChoiceGroup, Field, Toggle } from "./src/interaction";
+export type {
+  AdaptiveDirection,
+  AdaptiveSplitProps,
+  DisclosureProps,
+  ScrollFrameProps,
+} from "./src/layout";
+export { AdaptiveSplit, Disclosure, resolveAdaptiveDirection, ScrollFrame } from "./src/layout";
 export type { ActivityIndicatorProps, SignalLoaderProps, SkeletonProps, SkeletonShape } from "./src/loading";
 export {
   ActivityIndicator,

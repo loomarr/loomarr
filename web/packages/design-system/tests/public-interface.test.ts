@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AdaptiveSplit,
   Action,
   ActivityIndicator,
   ArtworkFrame,
@@ -11,6 +12,7 @@ import {
   BrandWordmark,
   brandContract,
   ChoiceGroup,
+  Disclosure,
   Field,
   FocusSurface,
   Icon,
@@ -20,6 +22,7 @@ import {
   ProgressTrack,
   resolveViewportInsets,
   Screen,
+  ScrollFrame,
   SignalLoader,
   Skeleton,
   Surface,
@@ -41,6 +44,9 @@ describe("design-system public interface", () => {
       Field,
       Toggle,
       ChoiceGroup,
+      AdaptiveSplit,
+      ScrollFrame,
+      Disclosure,
       Text,
       Badge,
       ArtworkFrame,
