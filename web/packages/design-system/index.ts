@@ -54,6 +54,16 @@ export type { LoomarrProviderProps, LoomarrTheme } from "./src/provider";
 export { LoomarrProvider, resolveLoomarrTheme } from "./src/provider";
 export type { QrCodeProps } from "./src/qr-code";
 export { QrCode } from "./src/qr-code";
+export type {
+  HintProps,
+  MenuItem,
+  MenuListProps,
+  SelectControlProps,
+  SelectOption,
+  TabOption,
+  TabsProps,
+} from "./src/selection";
+export { Hint, MenuList, SelectControl, Tabs } from "./src/selection";
 export type { Density, TextRole } from "./src/tokens";
 export {
   brandChroma,
