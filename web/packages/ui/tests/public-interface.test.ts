@@ -4,10 +4,12 @@ import {
   ChannelIdentity,
   ClientPlatformProof,
   ClientShell,
+  ModalOverlay,
   PairingShell,
   ProgrammeCard,
   ProgrammeIdentity,
   StatePanel,
+  TransientOverlay,
 } from "../index";
 
 describe("ui public interface", () => {
@@ -18,6 +20,8 @@ describe("ui public interface", () => {
     expect(ProgrammeCard).toBeTypeOf("function");
     expect(ChannelIdentity).toBeTypeOf("function");
     expect(ProgrammeIdentity).toBeTypeOf("function");
+    expect(ModalOverlay).toBeTypeOf("function");
+    expect(TransientOverlay).toBeTypeOf("function");
     expect(StatePanel).toBeTypeOf("function");
   });
 });

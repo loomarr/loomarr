@@ -8,6 +8,8 @@ export type {
   ProgrammeIdentityProps,
 } from "./src/identity";
 export { ChannelIdentity, ProgrammeIdentity } from "./src/identity";
+export type { ModalOverlayProps, OverlayAction, TransientOverlayProps } from "./src/overlay";
+export { ModalOverlay, TransientOverlay } from "./src/overlay";
 export type { PairingShellProps } from "./src/pairing-shell";
 export { PairingShell } from "./src/pairing-shell";
 export type { ProgrammeCardData, ProgrammeCardProps } from "./src/programme-card";

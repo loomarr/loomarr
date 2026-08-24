@@ -44,11 +44,16 @@ const ViewportInsetsProvider = ({
 
 const useViewportInsets = (): ViewportInsets => useContext(ViewportInsetsContext);
 
+/** Resolve platform safe-area values and Loomarr's density gutter at the point of use. */
+const useResolvedViewportInsets = (density: Density): ViewportInsets =>
+  resolveViewportInsets(density, useViewportInsets());
+
 export type { ViewportInsets };
 export {
   emptyViewportInsets,
   resolveViewportInsets,
   TV_OVERSCAN_INSET,
+  useResolvedViewportInsets,
   useViewportInsets,
   ViewportInsetsProvider,
 };

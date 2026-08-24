@@ -33,6 +33,7 @@ export {
   signalLoaderMotion,
   skeletonMotion,
 } from "./src/loading";
+export { useReducedMotionPreference } from "./src/motion/use-reduced-motion";
 export type {
   ArtworkState,
   BadgeTone,
@@ -67,4 +68,9 @@ export {
   typography,
 } from "./src/tokens";
 export type { ViewportInsets } from "./src/viewport";
-export { emptyViewportInsets, resolveViewportInsets, TV_OVERSCAN_INSET } from "./src/viewport";
+export {
+  emptyViewportInsets,
+  resolveViewportInsets,
+  TV_OVERSCAN_INSET,
+  useResolvedViewportInsets,
+} from "./src/viewport";

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  AdaptiveSplit,
   Action,
   ActivityIndicator,
+  AdaptiveSplit,
   ArtworkFrame,
   Badge,
   BrandLaunch,
@@ -30,6 +30,8 @@ import {
   Text,
   Toggle,
   typography,
+  useReducedMotionPreference,
+  useResolvedViewportInsets,
 } from "../index";
 
 describe("design-system public interface", () => {
@@ -64,6 +66,8 @@ describe("design-system public interface", () => {
       iconography,
       semanticColors,
       typography,
+      useReducedMotionPreference,
+      useResolvedViewportInsets,
     ]).not.toContain(undefined);
   });
 });
