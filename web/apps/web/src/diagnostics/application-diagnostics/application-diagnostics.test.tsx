@@ -24,6 +24,7 @@ describe("ApplicationDiagnostics", () => {
             message: "Playback failed",
             processRunId: "process-1",
             requestId: "request-1",
+            channelId: "channel-1",
             attributes: { transport: "hls_js", fatal: true },
           },
           {
@@ -43,6 +44,7 @@ describe("ApplicationDiagnostics", () => {
     );
     const onFiltersChange = vi.fn();
     const onOpenProcess = vi.fn();
+    const onOpenRelated = vi.fn();
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
@@ -58,6 +60,7 @@ describe("ApplicationDiagnostics", () => {
             setFilters(next);
           }}
           onOpenProcess={onOpenProcess}
+          onOpenRelated={onOpenRelated}
         />
       );
     };
@@ -77,8 +80,10 @@ describe("ApplicationDiagnostics", () => {
     expect(screen.getByText("Structured attributes")).toBeInTheDocument();
     expect(screen.getByText(/hls_js/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Copy Request id" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Open" }));
+    await userEvent.click(screen.getByRole("button", { name: "Open Process run" }));
     expect(onOpenProcess).toHaveBeenCalledWith("process-1");
+    await userEvent.click(screen.getByRole("button", { name: "Open Channel" }));
+    expect(onOpenRelated).toHaveBeenCalledWith("channel", "channel-1");
 
     await userEvent.type(screen.getByRole("textbox", { name: "Subsystem" }), "api");
     expect(onFiltersChange).toHaveBeenLastCalledWith({ ...DEFAULT_APPLICATION_FILTERS, subsystem: "api" });

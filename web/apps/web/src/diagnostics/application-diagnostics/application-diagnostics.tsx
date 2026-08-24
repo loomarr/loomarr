@@ -97,9 +97,11 @@ const CopyValue = ({ label, value }: { label: string; value: string }) => {
 const EventDetail = ({
   event,
   onOpenProcess,
+  onOpenRelated,
 }: {
   event: EventView;
   onOpenProcess?: (id: string) => void;
+  onOpenRelated?: (kind: "channel" | "job", id: string) => void;
 }) => {
   const correlations = [
     ["Request id", event.requestId],
@@ -125,6 +127,29 @@ const EventDetail = ({
                   size="sm"
                   className="h-auto px-1 py-0"
                   onClick={() => onOpenProcess(value)}
+                  aria-label="Open Process run"
+                >
+                  Open
+                </Button>
+              )}
+              {label === "Channel" && onOpenRelated && (
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-auto px-1 py-0"
+                  onClick={() => onOpenRelated("channel", value)}
+                  aria-label="Open Channel"
+                >
+                  Open
+                </Button>
+              )}
+              {label === "Job" && onOpenRelated && (
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-auto px-1 py-0"
+                  onClick={() => onOpenRelated("job", value)}
+                  aria-label="Open Job"
                 >
                   Open
                 </Button>
@@ -151,10 +176,12 @@ const ApplicationDiagnostics = ({
   filters,
   onFiltersChange,
   onOpenProcess,
+  onOpenRelated,
 }: {
   filters: ApplicationFilters;
   onFiltersChange: (filters: ApplicationFilters) => void;
   onOpenProcess?: (id: string) => void;
+  onOpenRelated?: (kind: "channel" | "job", id: string) => void;
 }) => {
   const [cursorStack, setCursorStack] = useState<string[]>([]);
   const [expanded, setExpanded] = useState<string>();
@@ -365,7 +392,9 @@ const ApplicationDiagnostics = ({
                     </span>
                     <span className="text-muted-foreground text-xs">{open ? "Hide" : "Details"}</span>
                   </button>
-                  {open && <EventDetail event={event} onOpenProcess={onOpenProcess} />}
+                  {open && (
+                    <EventDetail event={event} onOpenProcess={onOpenProcess} onOpenRelated={onOpenRelated} />
+                  )}
                 </article>
               );
             })}

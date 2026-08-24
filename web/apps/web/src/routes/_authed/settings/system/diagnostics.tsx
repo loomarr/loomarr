@@ -55,6 +55,13 @@ const DiagnosticsRoute = () => {
     <DiagnosticsPage
       search={normalized}
       onSearchChange={(next) => void navigate({ search: next, replace: true })}
+      onOpenRelated={(kind, id) => {
+        if (kind === "channel") {
+          void navigate({ to: "/channels/$id", params: { id } });
+        } else {
+          void navigate({ to: "/settings/system/tasks" });
+        }
+      }}
       playout={
         <p className="rounded-lg border border-border bg-card px-4 py-8 text-center text-muted-foreground text-sm">
           Loading Process-run diagnostics…

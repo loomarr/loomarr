@@ -15,10 +15,12 @@ const DiagnosticsPage = ({
   search,
   onSearchChange,
   playout,
+  onOpenRelated,
 }: {
   search: DiagnosticsSearch;
   onSearchChange: (search: DiagnosticsSearch) => void;
   playout?: ReactNode;
+  onOpenRelated?: (kind: "channel" | "job", id: string) => void;
 }) => {
   const tabs = [
     { id: "health" as const, label: "App Health", icon: HeartPulse },
@@ -56,6 +58,7 @@ const DiagnosticsPage = ({
             filters={search}
             onFiltersChange={(filters) => onSearchChange({ ...search, ...filters })}
             onOpenProcess={(processId) => onSearchChange({ ...search, view: "playout", processId })}
+            onOpenRelated={onOpenRelated}
           />
         )}
         {search.view === "playout" && playout}
