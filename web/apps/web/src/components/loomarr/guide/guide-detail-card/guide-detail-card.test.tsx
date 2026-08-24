@@ -6,7 +6,13 @@ import { GuideDetailCard } from "./guide-detail-card";
 const START = Date.UTC(2026, 6, 25, 21, 0, 0);
 const STOP = Date.UTC(2026, 6, 25, 21, 30, 0);
 
-const base: GuideAiring = { kind: "program", title: "Heat", startMs: START, stopMs: STOP };
+const base: GuideAiring = {
+  kind: "program",
+  scheduleBlockId: "block_heat",
+  title: "Heat",
+  startMs: START,
+  stopMs: STOP,
+};
 const previewImage: ImageDTO = {
   hash: "preview-art",
   role: "backdrop",
@@ -52,6 +58,7 @@ describe("GuideDetailCard", () => {
       "filler",
       {
         kind: "filler" as const,
+        scheduleBlockId: "block_preview_filler",
         title: "Commercials",
         startMs: START,
         stopMs: STOP,
@@ -98,6 +105,7 @@ describe("GuideDetailCard", () => {
       <GuideDetailCard
         airing={{
           kind: "filler",
+          scheduleBlockId: "block_break_exact",
           title: "Break",
           startMs: START,
           stopMs: STOP,
@@ -132,6 +140,7 @@ describe("GuideDetailCard", () => {
       <GuideDetailCard
         airing={{
           kind: "filler",
+          scheduleBlockId: "block_break_widened",
           title: "Break",
           startMs: START,
           stopMs: STOP,
@@ -154,6 +163,7 @@ describe("GuideDetailCard", () => {
       <GuideDetailCard
         airing={{
           kind: "filler",
+          scheduleBlockId: "block_break_quiet",
           title: "Break",
           startMs: START,
           stopMs: STOP,
@@ -174,6 +184,7 @@ describe("GuideDetailCard", () => {
       <GuideDetailCard
         airing={{
           kind: "pending",
+          scheduleBlockId: "block_pending",
           title: "Dune: Part Two",
           startMs: START,
           stopMs: STOP,

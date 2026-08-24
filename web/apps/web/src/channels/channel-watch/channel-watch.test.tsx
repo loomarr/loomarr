@@ -31,6 +31,7 @@ const hls = vi.hoisted(() => ({
     goLive: vi.fn(),
   },
 }));
+const diagnosticsRecord = vi.hoisted(() => vi.fn());
 
 vi.mock("../use-hls-player", () => ({
   useHlsPlayer: () => ({
@@ -40,7 +41,7 @@ vi.mock("../use-hls-player", () => ({
     liveTransport: hls.liveTransport,
   }),
 }));
-vi.mock("@/diagnostics/client-reporter", () => ({ clientDiagnostics: { record: vi.fn() } }));
+vi.mock("@/diagnostics/client-reporter", () => ({ clientDiagnostics: { record: diagnosticsRecord } }));
 
 const makeWrapper = () => {
   const client = new QueryClient({
@@ -64,7 +65,7 @@ const stubTracks = (tracks: Partial<ChannelTracksOutputBody> = {}) => {
   server.use(
     // ⚠ The player also reads the channel timeline; the OLD catch-all answered it with `{}`, so
     // the strip rendered against an empty object and nothing said so. The guard named it.
-    getChannelTimelineMockHandler({ airings: [] }),
+    getChannelTimelineMockHandler({ serverNowMs: 1_000_000, airings: [] }),
     // ⚠ And the play-url mint. THREE requests this component makes were answered by the old
     // `json({})` catch-all — timeline, play-url and any other — so three code paths ran against
     // an empty object with nothing to say so.
@@ -88,6 +89,7 @@ const live = channel({ id: "ch-1", name: "Late Night Noir", number: 42, status: 
 
 describe("ChannelWatch pickers", () => {
   beforeEach(() => {
+    diagnosticsRecord.mockReset();
     hls.status = "playing";
     hls.liveTransport.state = {
       mode: "live",
@@ -193,7 +195,16 @@ describe("ChannelWatch pickers", () => {
     };
     server.use(
       getChannelTimelineMockHandler({
-        airings: [{ kind: "program", title: "Paused Programme", startMs: 1_000_000, stopMs: 1_090_000 }],
+        serverNowMs: 1_060_000,
+        airings: [
+          {
+            kind: "program",
+            scheduleBlockId: "block_paused",
+            title: "Paused Programme",
+            startMs: 1_000_000,
+            stopMs: 1_090_000,
+          },
+        ],
       }),
     );
 
@@ -201,6 +212,20 @@ describe("ChannelWatch pickers", () => {
 
     expect(await screen.findByText("0:30")).toBeInTheDocument();
     expect(screen.getByText("1m left")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(diagnosticsRecord).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "player.schedule_block_changed",
+          playbackSessionId: "playback_1",
+          channelId: "ch-1",
+          scheduleBlockId: "block_paused",
+          viewerTimeMs: 1_030_000,
+        }),
+      ),
+    );
+    expect(diagnosticsRecord).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "player.playhead_drift", driftMs: expect.any(Number) }),
+    );
   });
 
   it("explains when an expired paused point returns the viewer live", async () => {

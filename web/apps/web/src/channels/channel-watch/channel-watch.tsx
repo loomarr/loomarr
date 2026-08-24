@@ -72,20 +72,6 @@ const withSaved = (options: { value: string; label: string }[], value: string) =
 const AUTO_SENTINEL = "auto";
 const PLAYHEAD_DRIFT_THRESHOLD_MS = 30_000;
 
-// These accessors disappear after the generated client is refreshed from this branch's OpenAPI.
-// Until the active openapi-client claim is released, keep the runtime read narrow and fail closed
-// rather than hand-authoring a replacement response DTO.
-const numericField = (value: unknown, name: string): number | undefined => {
-  if (!value || typeof value !== "object") return undefined;
-  const field = Reflect.get(value, name);
-  return typeof field === "number" && Number.isFinite(field) ? field : undefined;
-};
-const stringField = (value: unknown, name: string): string | undefined => {
-  if (!value || typeof value !== "object") return undefined;
-  const field = Reflect.get(value, name);
-  return typeof field === "string" && field.length > 0 ? field : undefined;
-};
-
 // audioOptions builds the Audio picker's choices from the REAL audio tracks of what's airing
 // (§9.1, V46) — never a hardcoded list. Always leads with "Auto", then one entry per distinct track
 // language the airing media carries. Labels come from Intl (languageLabel), not a hand-written
@@ -184,14 +170,16 @@ const ChannelWatch = ({
   });
   const timelineBody = unwrap(timeline.data);
   const airings = timelineBody?.airings ?? [];
-  const serverAtProjection = numericField(timelineBody, "serverNowMs");
+  const serverAtProjection = timelineBody?.serverNowMs;
   const serverNowMs =
-    serverAtProjection === undefined ? undefined : serverAtProjection + Math.max(0, Date.now() - timeline.dataUpdatedAt);
+    serverAtProjection === undefined
+      ? undefined
+      : serverAtProjection + Math.max(0, Date.now() - timeline.dataUpdatedAt);
   const viewerTimeMs = player.liveTransport.state.viewerTimeMs;
   const diagnosticAiring = airings.find(
     (airing) => !airing.nominal && viewerTimeMs >= airing.startMs && viewerTimeMs < airing.stopMs,
   );
-  const scheduleBlockId = stringField(diagnosticAiring, "scheduleBlockId");
+  const scheduleBlockId = diagnosticAiring?.scheduleBlockId;
   const previousBlockRef = useRef<{ channelId: string; scheduleBlockId?: string }>({ channelId: channel.id });
   const driftedBlockRef = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -207,7 +195,10 @@ const ChannelWatch = ({
       channelId: channel.id,
       scheduleBlockId,
       previousScheduleBlockId: previousBlockRef.current.scheduleBlockId,
-      blockKind: diagnosticAiring.kind === "program" || diagnosticAiring.kind === "filler" ? diagnosticAiring.kind : "flex",
+      blockKind:
+        diagnosticAiring.kind === "program" || diagnosticAiring.kind === "filler"
+          ? diagnosticAiring.kind
+          : "flex",
       viewerTimeMs: Math.round(viewerTimeMs),
       serverTimeMs: Math.round(serverNowMs),
     });

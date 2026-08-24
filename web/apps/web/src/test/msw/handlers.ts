@@ -112,7 +112,7 @@ const appHandlers = (): RequestHandler[] => [
   // Deliberately empty/inert payloads: these exist so the player MOUNTS without an unhandled
   // request, not to make it play. A test that cares about tracks or the timeline stubs its own.
   getChannelTracksMockHandler({ audio: [], subtitles: [] }),
-  getChannelTimelineMockHandler({ airings: [] }),
+  getChannelTimelineMockHandler({ serverNowMs: Date.UTC(2026, 0, 1), airings: [] }),
   getChannelPlayUrlMockHandler({ url: "", relativeUrl: "", expiresAt: "2026-01-01T00:00:00Z" }),
   getListTitlesMockHandler({ titles: [] }),
   getListProposalJobsMockHandler({ journeys: [] }),

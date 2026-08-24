@@ -454,9 +454,14 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       } as const;
       const bufferedMs = () => {
         if (video.buffered.length === 0) return 0;
-        return Math.max(0, Math.round((video.buffered.end(video.buffered.length - 1) - video.currentTime) * 1_000));
+        return Math.max(
+          0,
+          Math.round((video.buffered.end(video.buffered.length - 1) - video.currentTime) * 1_000),
+        );
       };
-      const reportPosition = (event: "player.buffering_started" | "player.buffering_ended" | "player.seeking" | "player.seeked") =>
+      const reportPosition = (
+        event: "player.buffering_started" | "player.buffering_ended" | "player.seeking" | "player.seeked",
+      ) =>
         clientDiagnostics.record({
           ...diagnosticBase,
           event,
@@ -635,7 +640,12 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
           clientDiagnostics.record({
             ...diagnosticBase,
             event: "player.media_error",
-            errorCode: data.type === Hls.ErrorTypes.NETWORK_ERROR ? "hls_network" : data.type === Hls.ErrorTypes.MEDIA_ERROR ? "hls_media" : "hls_other",
+            errorCode:
+              data.type === Hls.ErrorTypes.NETWORK_ERROR
+                ? "hls_network"
+                : data.type === Hls.ErrorTypes.MEDIA_ERROR
+                  ? "hls_media"
+                  : "hls_other",
             fatal: data.fatal,
           });
           if (!data.fatal) return; // non-fatal: hls.js recovers on its own

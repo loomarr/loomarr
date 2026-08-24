@@ -1,46 +1,12 @@
-import { customFetch, observeApiFailures } from "@loomarr/api/mutator";
+import { ingestClientDiagnostics } from "@loomarr/api/endpoints/diagnostics";
+import type { ClientBatch } from "@loomarr/api/models/clientBatch";
+import type { ClientObservation as GeneratedClientObservation } from "@loomarr/api/models/clientObservation";
+import { observeApiFailures } from "@loomarr/api/mutator";
 
 type WebPlatform = "chromium" | "firefox" | "webkit" | "unknown_web";
-type ClientEvent =
-  | "client.error_boundary"
-  | "client.unhandled_error"
-  | "client.api_failed"
-  | "player.attached"
-  | "player.detached"
-  | "player.ready"
-  | "player.source_replaced"
-  | "player.buffering_started"
-  | "player.buffering_ended"
-  | "player.seeking"
-  | "player.seeked"
-  | "player.media_error"
-  | "player.schedule_block_changed"
-  | "player.playhead_drift";
-
-type ClientObservation = {
-  event: ClientEvent;
-  occurredAt?: number;
-  requestId?: string;
-  playbackSessionId?: string;
-  channelId?: string;
-  scheduleBlockId?: string;
-  previousScheduleBlockId?: string;
-  previousChannelId?: string;
-  transport?: "native_hls" | "hls_js";
-  reason?: "mount" | "unmount" | "channel_change" | "retry" | "expired" | "unsupported" | "network" | "media" | "unknown";
-  surface?: "root" | "router" | "watch" | "guide" | "settings" | "unknown";
-  errorClass?: "error" | "type_error" | "range_error" | "promise_rejection" | "react_error" | "unknown";
-  errorCode?: string;
-  blockKind?: "program" | "filler" | "flex";
-  httpStatus?: number;
-  fatal?: boolean;
-  viewerTimeMs?: number;
-  serverTimeMs?: number;
-  driftMs?: number;
-  bufferedMs?: number;
-};
-
-type AcceptedObservation = ClientObservation & { occurredAt: number };
+type ClientEvent = GeneratedClientObservation["event"];
+type ClientObservation = Omit<GeneratedClientObservation, "occurredAt"> & { occurredAt?: number };
+type AcceptedObservation = GeneratedClientObservation;
 type SendBatch = (events: AcceptedObservation[]) => Promise<void>;
 
 const QUEUE_LIMIT = 100;
@@ -107,22 +73,17 @@ class ClientDiagnosticsReporter {
     }, FLUSH_MS);
   }
 
-  wireBatch(events: AcceptedObservation[]) {
-    return { source: "web" as const, clientVersion: this.version, platform: webPlatform(), events };
+  wireBatch(events: AcceptedObservation[]): ClientBatch {
+    return { source: "web", clientVersion: this.version, platform: webPlatform(), events };
   }
 }
 
 let reporter: ClientDiagnosticsReporter;
 reporter = new ClientDiagnosticsReporter(async (events) => {
-  await customFetch("/v1/diagnostics/client-events", {
-    method: "POST",
-    keepalive: true,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(reporter.wireBatch(events)),
-  });
+  await ingestClientDiagnostics(reporter.wireBatch(events), { keepalive: true });
 });
 
-const errorClassOf = (error: unknown): ClientObservation["errorClass"] => {
+const errorClassOf = (error: unknown): GeneratedClientObservation["errorClass"] => {
   if (error instanceof TypeError) return "type_error";
   if (error instanceof RangeError) return "range_error";
   if (error instanceof Error) return "error";
@@ -134,7 +95,11 @@ const installGlobalClientDiagnostics = () => {
     reporter.record({ event: "client.api_failed", requestId, httpStatus: status });
   });
   window.addEventListener("error", (event) => {
-    reporter.record({ event: "client.unhandled_error", surface: "root", errorClass: errorClassOf(event.error) });
+    reporter.record({
+      event: "client.unhandled_error",
+      surface: "root",
+      errorClass: errorClassOf(event.error),
+    });
   });
   window.addEventListener("unhandledrejection", () => {
     reporter.record({ event: "client.unhandled_error", surface: "root", errorClass: "promise_rejection" });

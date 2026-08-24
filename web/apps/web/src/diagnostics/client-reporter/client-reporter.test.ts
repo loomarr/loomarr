@@ -32,7 +32,9 @@ describe("ClientDiagnosticsReporter", () => {
     }
 
     for (let i = 0; i < 5; i++) await reporter.flush();
-    expect(send.mock.calls.flatMap((call) => call[0]).some((event) => event.event === "client.unhandled_error")).toBe(true);
+    expect(
+      send.mock.calls.flatMap((call) => call[0]).some((event) => event.event === "client.unhandled_error"),
+    ).toBe(true);
     expect(send.mock.calls.flatMap((call) => call[0])).toHaveLength(100);
   });
 

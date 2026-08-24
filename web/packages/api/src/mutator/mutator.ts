@@ -62,7 +62,8 @@ const customFetch = async <T>(url: string, options: RequestInit = {}): Promise<T
 
   if (!res.ok) {
     const requestId = res.headers.get("X-Request-Id") ?? undefined;
-    if (requestId && url !== "/v1/diagnostics/client-events") apiFailureObserver?.({ requestId, status: res.status });
+    if (requestId && url !== "/v1/diagnostics/client-events")
+      apiFailureObserver?.({ requestId, status: res.status });
     throw new ApiError(res.status, (body as ErrorModel) ?? { status: res.status }, requestId);
   }
   // orval's fetch client expects the response ENVELOPE (like axios's response), not the
