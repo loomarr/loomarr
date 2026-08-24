@@ -64,9 +64,21 @@ type GuideNavigationResult = {
   boundary?: GuideNavigationDirection;
 };
 
+type GuideBroadcastState = "live" | "reconciling" | "off";
+type GuideHealthState = "pending-slots" | "drift" | "paused" | "error" | "creating";
+
+type GuideChannelState = {
+  broadcast: GuideBroadcastState;
+  /** Null is the healthy, intentionally quiet state. */
+  health: GuideHealthState | null;
+};
+
 export type {
   GuideAiringLayout,
+  GuideBroadcastState,
   GuideChannelLayout,
+  GuideChannelState,
+  GuideHealthState,
   GuideLayout,
   GuideNavigationDirection,
   GuideNavigationResult,

@@ -1,3 +1,4 @@
+import type { GuideChannelTimeline } from "@loomarr/api/models/guideChannelTimeline";
 import type { GuideOutputBody } from "@loomarr/api/models/guideOutputBody";
 import { describe, expect, it } from "vitest";
 import {
@@ -7,6 +8,8 @@ import {
   formatGuideTime,
   formatGuideTimeRange,
   GUIDE_BUCKET_MS,
+  guideAiringLabel,
+  guideChannelState,
   guideSelectionForChannel,
   guideWindow,
   LOOKBACK_MINUTES,
@@ -56,6 +59,58 @@ describe("guide time formatting", () => {
     expect(formatGuideEpisode(7)).toBe("S07");
     expect(formatGuideEpisode(undefined, 2)).toBe("E02");
     expect(formatGuideEpisode()).toBeUndefined();
+  });
+});
+
+describe("guide presentation facts", () => {
+  it("keeps series and episode title together with honest fallbacks", () => {
+    expect(
+      guideAiringLabel({
+        scheduleBlockId: "episode",
+        kind: "program",
+        title: "Radioactive Man",
+        series: "The Simpsons",
+        startMs: 0,
+        stopMs: 1,
+      }),
+    ).toBe("The Simpsons · Radioactive Man");
+    expect(
+      guideAiringLabel({
+        scheduleBlockId: "pending",
+        kind: "pending",
+        title: "   ",
+        startMs: 0,
+        stopMs: 1,
+      }),
+    ).toBe("Coming soon");
+  });
+
+  it("keeps on-air truth separate from channel health", () => {
+    const channel: Omit<GuideChannelTimeline, "status"> = {
+      channelId: "classic-animation",
+      name: "Classic Animation",
+      number: 7,
+      pendingCount: 0,
+      airings: [],
+    };
+
+    expect(guideChannelState({ ...channel, status: "live" })).toEqual({ broadcast: "live", health: null });
+    expect(guideChannelState({ ...channel, status: "drifted" })).toEqual({
+      broadcast: "live",
+      health: "drift",
+    });
+    expect(guideChannelState({ ...channel, status: "building" })).toEqual({
+      broadcast: "reconciling",
+      health: "creating",
+    });
+    expect(guideChannelState({ ...channel, status: "live", pendingCount: 2 })).toEqual({
+      broadcast: "live",
+      health: "pending-slots",
+    });
+    expect(guideChannelState({ ...channel, status: "detached" })).toEqual({
+      broadcast: "off",
+      health: "error",
+    });
   });
 });
 

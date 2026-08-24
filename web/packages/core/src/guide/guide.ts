@@ -1,7 +1,10 @@
+import type { GuideAiring } from "@loomarr/api/models/guideAiring";
+import type { GuideChannelTimeline } from "@loomarr/api/models/guideChannelTimeline";
 import type { GuideOutputBody } from "@loomarr/api/models/guideOutputBody";
 import type {
   GuideAiringLayout,
   GuideChannelLayout,
+  GuideChannelState,
   GuideLayout,
   GuideNavigationDirection,
   GuideNavigationResult,
@@ -72,6 +75,36 @@ const formatGuideEpisode = (season?: number, episode?: number): string | undefin
   const seasonLabel = season === undefined ? "" : `S${String(season).padStart(2, "0")}`;
   const episodeLabel = episode === undefined ? "" : `E${String(episode).padStart(2, "0")}`;
   return seasonLabel || episodeLabel ? `${seasonLabel}${episodeLabel}` : undefined;
+};
+
+const GUIDE_KIND_LABEL = {
+  program: "Programme",
+  filler: "Commercials",
+  pending: "Coming soon",
+  flex: "Filler",
+} as const;
+
+/** The compact identity shared by Guide blocks and their accessible names. */
+const guideAiringLabel = (airing: GuideAiring): string => {
+  const title = airing.title.trim();
+  if (!title) return GUIDE_KIND_LABEL[airing.kind];
+  return airing.series ? `${airing.series} · ${title}` : title;
+};
+
+/** Broadcast and health answer different questions and must not collapse into one status. */
+const guideChannelState = (channel: GuideChannelTimeline): GuideChannelState => {
+  let broadcast: GuideChannelState["broadcast"] = "off";
+  if (channel.status === "live" || channel.status === "drifted") broadcast = "live";
+  if (channel.status === "building") broadcast = "reconciling";
+
+  let health: GuideChannelState["health"] = null;
+  if (channel.status === "building") health = "creating";
+  else if (channel.status === "drifted") health = "drift";
+  else if (channel.status === "detached") health = "error";
+  else if (channel.status === "paused") health = "paused";
+  else if (channel.pendingCount > 0) health = "pending-slots";
+
+  return { broadcast, health };
 };
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
@@ -226,6 +259,8 @@ export {
   formatGuideTime,
   formatGuideTimeRange,
   GUIDE_BUCKET_MS,
+  guideAiringLabel,
+  guideChannelState,
   guideSelectionForChannel,
   guideTimeFormatter,
   guideWindow,

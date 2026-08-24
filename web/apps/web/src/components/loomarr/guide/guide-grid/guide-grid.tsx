@@ -1,7 +1,4 @@
-import type { GuideAiring } from "@loomarr/api/models/guideAiring";
-import type { GuideAiringKind } from "@loomarr/api/models/guideAiringKind";
-import type { GuideChannelTimeline } from "@loomarr/api/models/guideChannelTimeline";
-import { guideTimeFormatter } from "@loomarr/core/guide";
+import { guideAiringLabel, guideChannelState, guideTimeFormatter } from "@loomarr/core/guide";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLayoutEffect, useRef, useState } from "react";
 import { Caption } from "@/components/ui/caption";
@@ -108,13 +105,6 @@ const TITLE_PX = 13;
 const META_PX = 10.5;
 const CLIP_PX = 10;
 
-const KIND_FALLBACK_LABEL: Record<GuideAiringKind, string> = {
-  program: "Programme",
-  filler: "Commercials",
-  pending: "Coming soon",
-  flex: "Filler",
-};
-
 // The left accent — the 2px stripe that says what KIND of block this is at a glance, even when
 // the block is too narrow for a label. Applied inline (see the block's `style`) because a
 // Tailwind `border-l-*` utility loses to the all-sides `border-<color>` on the same element.
@@ -153,46 +143,6 @@ const HEALTH_CHIP: Record<string, { label: string; className: string }> = {
   paused: { label: "Paused", className: "text-static-400" },
   error: { label: "Error", className: "text-onair" },
   creating: { label: "Creating", className: "text-static-400" },
-};
-
-// healthOf mirrors channel-health.ts's channelHealth for the fields a guide row carries.
-// Returns "" for a healthy channel, which renders no chip.
-const healthOf = (ch: GuideChannelTimeline): string => {
-  switch (ch.status) {
-    case "building":
-      return "creating";
-    case "drifted":
-      return "drift";
-    case "detached":
-      // Tunarr no longer has the channel Loomarr manages — the one state that needs action.
-      return "error";
-    case "paused":
-      return "paused";
-    default:
-      // Live but still acquiring: on air, but not yet what was asked for.
-      return ch.pendingCount > 0 ? "pending-slots" : "";
-  }
-};
-
-// onAirOf mirrors channelOnAir: whether a VIEWER sees anything, which is a different question
-// from health. A drifted channel still broadcasts what it has, so it reads live here and drift
-// in the chip.
-const onAirOf = (ch: GuideChannelTimeline): "live" | "reconciling" | "off" => {
-  switch (ch.status) {
-    case "live":
-    case "drifted":
-      return "live";
-    case "building":
-      return "reconciling";
-    default:
-      return "off";
-  }
-};
-
-const blockLabel = (a: GuideAiring): string => {
-  const title = a.title?.trim();
-  if (!title) return KIND_FALLBACK_LABEL[a.kind];
-  return a.series ? `${a.series} · ${title}` : title;
 };
 
 const GuideGrid = ({
@@ -445,9 +395,10 @@ const GuideGrid = ({
           {virtualRows.map((vr) => {
             const ch = channels[vr.index];
             if (!ch) return null;
-            const health = healthOf(ch);
+            const channelState = guideChannelState(ch);
+            const health = channelState.health;
             const chip = health ? HEALTH_CHIP[health] : null;
-            const onAir = onAirOf(ch);
+            const onAir = channelState.broadcast;
             return (
               <li
                 key={ch.channelId}
@@ -537,7 +488,7 @@ const GuideGrid = ({
                     const blockPx = width * pxPerPct;
                     const clips = a.pod?.entries ?? [];
                     const podTotal = clips.reduce((n, c) => n + (c.durationMs || 0), 0) || 1;
-                    const label = blockLabel(a);
+                    const label = guideAiringLabel(a);
                     const when = `${timeFmt.format(new Date(a.startMs))}–${timeFmt.format(new Date(a.stopMs))}`;
                     // The caveat rides in the accessible name, not only in the styling — a
                     // screen-reader user must not be told a placeholder is a schedule.
