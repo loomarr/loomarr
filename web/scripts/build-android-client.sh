@@ -37,22 +37,6 @@ if [[ ! -x "${APP_DIR}/android/gradlew" ]]; then
   )
 fi
 
-# `assembleDebug` normally expects Metro and therefore produces an APK that opens to React Native's
-# red "Unable to load script" screen when installed on a remote Shield. This target is the physical
-# device proof, so embed the production JS/assets explicitly while retaining debug-native signing
-# and the faster incremental native build.
-mkdir -p "${APP_DIR}/android/app/src/main/assets" "${APP_DIR}/android/app/src/main/res"
-(
-  cd "${APP_DIR}"
-  NODE_ENV=production pnpm exec expo export:embed \
-    --platform android \
-    --dev false \
-    --entry-file "${ENTRY_FILE}" \
-    --bundle-output android/app/src/main/assets/index.android.bundle \
-    --assets-dest android/app/src/main/res \
-    --max-workers 1
-)
-
 if [[ "${SCOPE_MARKER}" != "--inside-memory-scope" ]] \
   && command -v systemd-run >/dev/null 2>&1 \
   && systemctl --user show-environment >/dev/null 2>&1; then
@@ -72,6 +56,23 @@ fi
 if [[ "${SCOPE_MARKER}" != "--inside-memory-scope" ]]; then
   printf 'warning: user systemd unavailable; native build has worker limits but no memory ceiling\n' >&2
 fi
+
+# `assembleDebug` normally expects Metro and therefore produces an APK that opens to React Native's
+# red "Unable to load script" screen when installed on a remote Shield. This target is the physical
+# device proof, so embed the production JS/assets explicitly while retaining debug-native signing
+# and the faster incremental native build. Keep this below the scope handoff: otherwise the outer
+# and inner script processes both bundle, and the first Metro process escapes the memory limit.
+mkdir -p "${APP_DIR}/android/app/src/main/assets" "${APP_DIR}/android/app/src/main/res"
+(
+  cd "${APP_DIR}"
+  NODE_ENV=production pnpm exec expo export:embed \
+    --platform android \
+    --dev false \
+    --entry-file "${ENTRY_FILE}" \
+    --bundle-output android/app/src/main/assets/index.android.bundle \
+    --assets-dest android/app/src/main/res \
+    --max-workers 1
+)
 
 cd "${APP_DIR}/android"
 gradle_command=(./gradlew assembleDebug
