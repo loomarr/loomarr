@@ -20,9 +20,7 @@ const eventPage = {
   dropped: 2,
 };
 
-test("Application diagnostics filters, expands evidence, and downloads the visible page", async ({
-  page,
-}) => {
+test("Logs filters, expands evidence, and downloads the visible page", async ({ page }) => {
   await installMockBackend(page, { authed: true, role: "admin" });
   await page.route("**/v1/diagnostics/events**", async (route) => {
     if (route.request().headers().accept?.includes("application/x-ndjson")) {
@@ -38,30 +36,31 @@ test("Application diagnostics filters, expands evidence, and downloads the visib
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ active: false }) }),
   );
 
-  await page.goto("/settings/system/diagnostics?view=application");
+  await page.goto("/settings/system/diagnostics?view=logs");
   await expect(page.getByRole("heading", { name: "Diagnostics", exact: true })).toBeVisible();
-  await expect(page.getByText("player.transition_failed")).toBeVisible();
+  await expect(page.getByText("Replacement source missed its handoff deadline.")).toBeVisible();
   await expect(page.getByText("2 events dropped since startup")).toBeVisible();
 
-  await page.getByRole("button", { name: /details/i }).click();
-  await expect(page.getByText("Structured attributes")).toBeVisible();
-  await expect(page.getByText(/drift_ms/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Copy Request id" })).toBeVisible();
+  await page.getByRole("button", { name: /Replacement source missed/ }).click();
+  await page.locator("summary:visible").filter({ hasText: "Technical details" }).click();
+  await expect(page.locator("pre:visible").filter({ hasText: "drift_ms" })).toBeVisible();
+  await expect(page.locator('button[aria-label="Copy Request id"]:visible')).toBeVisible();
 
   const filteredRequest = page.waitForRequest((request) => {
     const url = new URL(request.url());
     return url.pathname === "/v1/diagnostics/events" && url.searchParams.get("subsystem") === "player";
   });
+  await page.getByRole("button", { name: "More filters" }).click();
   await page.getByRole("textbox", { name: "Subsystem" }).fill("player");
   await filteredRequest;
   await expect(page).toHaveURL(/subsystem=player/);
 
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download this page (NDJSON)" }).click();
+  await page.getByRole("button", { name: "Download logs" }).click();
   expect((await download).suggestedFilename()).toMatch(/loomarr-diagnostics-.*\.ndjson/);
 });
 
-test("Playout diagnostics follows a live Process and downloads retained output", async ({ page }) => {
+test("Process runs follows a live process and downloads retained output", async ({ page }) => {
   await installMockBackend(page, { authed: true, role: "admin" });
   const run = {
     id: "process-19",
@@ -97,8 +96,8 @@ test("Playout diagnostics follows a live Process and downloads retained output",
     }),
   );
 
-  await page.goto("/settings/system/diagnostics?view=playout");
-  await expect(page.getByRole("heading", { name: "Playout" })).toBeVisible();
+  await page.goto("/settings/system/diagnostics?view=process");
+  await expect(page.getByRole("heading", { name: "Process runs" })).toBeVisible();
   await expect(page.getByText("channel-segment").first()).toBeVisible();
   await expect(page.getByText(/Frame 200/)).toBeVisible();
   await page.getByRole("textbox", { name: "Search Process output" }).fill("warning");
@@ -111,7 +110,7 @@ test("Playout diagnostics follows a live Process and downloads retained output",
   expect((await download).suggestedFilename()).toBe("loomarr-process-process-19.log");
 });
 
-test("Support bundle previews exact contents before downloading the redacted ZIP", async ({ page }) => {
+test("Support bundle reviews exact contents before downloading the redacted ZIP", async ({ page }) => {
   await installMockBackend(page, { authed: true, role: "admin" });
   await page.route("**/v1/diagnostics/support-bundle/preview", async (route) => {
     const selection = route.request().postDataJSON();
@@ -157,18 +156,13 @@ test("Support bundle previews exact contents before downloading the redacted ZIP
     }),
   );
 
-  await page.goto("/settings/system/diagnostics?view=application");
+  await page.goto("/settings/system/diagnostics?view=logs");
   await page.getByRole("button", { name: /support bundle/i }).click();
-  await expect(page.getByRole("heading", { name: "Create a Support bundle" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /prepare zip/i })).toBeDisabled();
-  await page.getByRole("button", { name: /preview contents/i }).click();
-  await expect(page.getByRole("region", { name: "Support bundle preview" })).toContainText(
-    "Estimated 2.0 KiB",
-  );
-  await expect(page.getByText("events.ndjson")).toBeVisible();
-  await page.getByRole("button", { name: /prepare zip/i }).click();
+  await expect(page.getByRole("heading", { name: "Review support bundle" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Support bundle review" })).toContainText("About 2.0 KiB");
+  await page.getByRole("button", { name: /prepare download/i }).click();
   await expect(page.getByText(/final size/i)).toBeVisible();
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: /save zip/i }).click();
+  await page.getByRole("button", { name: /download bundle/i }).click();
   expect((await download).suggestedFilename()).toBe("loomarr-support-20260824T120000Z.zip");
 });

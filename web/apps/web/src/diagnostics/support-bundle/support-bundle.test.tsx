@@ -34,7 +34,7 @@ const preview = {
 };
 
 describe("SupportBundle", () => {
-  it("previews selected contents before enabling the download", async () => {
+  it("reviews selected contents automatically before preparing the download", async () => {
     let sent: unknown;
     server.use(
       http.post("/v1/diagnostics/support-bundle/preview", async ({ request }) => {
@@ -45,15 +45,11 @@ describe("SupportBundle", () => {
     render(<SupportBundle correlations={{ channelId: "channel-7" }} />);
 
     await userEvent.click(screen.getByRole("button", { name: /support bundle/i }));
-    expect(screen.getByRole("button", { name: /prepare zip/i })).toBeDisabled();
-    await userEvent.click(screen.getByRole("button", { name: /preview contents/i }));
-
-    expect(await screen.findByRole("region", { name: /support bundle preview/i })).toHaveTextContent(
-      "Estimated 1.5 KiB",
+    expect(await screen.findByRole("region", { name: /support bundle review/i })).toHaveTextContent(
+      "About 1.5 KiB",
     );
-    expect(screen.getByText("events.ndjson")).toBeInTheDocument();
     expect(screen.getByText("12")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /prepare zip/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /prepare download/i })).toBeEnabled();
     expect(sent).toMatchObject({
       events: true,
       processes: true,
@@ -62,24 +58,26 @@ describe("SupportBundle", () => {
     });
   });
 
-  it("requires a fresh preview after the selection changes", async () => {
+  it("reviews again after the selection changes", async () => {
     server.use(http.post("/v1/diagnostics/support-bundle/preview", () => HttpResponse.json(preview)));
     render(<SupportBundle />);
     await userEvent.click(screen.getByRole("button", { name: /support bundle/i }));
-    await userEvent.click(screen.getByRole("button", { name: /preview contents/i }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /prepare zip/i })).toBeEnabled());
-    await userEvent.click(screen.getByLabelText("Application events"));
-    expect(screen.getByRole("button", { name: /prepare zip/i })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: /prepare download/i })).toBeEnabled());
+    await userEvent.click(screen.getByText("Advanced options"));
+    await userEvent.click(screen.getByLabelText("Application and player logs"));
+    expect(screen.getByRole("button", { name: /prepare download/i })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: /prepare download/i })).toBeEnabled());
   });
 
   it("keeps Process output coupled to its metadata", async () => {
     render(<SupportBundle />);
     await userEvent.click(screen.getByRole("button", { name: /support bundle/i }));
-    await userEvent.click(screen.getByLabelText("Process metadata"));
-    expect(screen.getByLabelText("Process metadata")).not.toBeChecked();
+    await userEvent.click(screen.getByText("Advanced options"));
+    await userEvent.click(screen.getByLabelText("Process details"));
+    expect(screen.getByLabelText("Process details")).not.toBeChecked();
     expect(screen.getByLabelText("Process output")).not.toBeChecked();
     await userEvent.click(screen.getByLabelText("Process output"));
-    expect(screen.getByLabelText("Process metadata")).toBeChecked();
+    expect(screen.getByLabelText("Process details")).toBeChecked();
     expect(screen.getByLabelText("Process output")).toBeChecked();
   });
 });

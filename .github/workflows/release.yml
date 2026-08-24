@@ -27,7 +27,7 @@ concurrency:
 
 permissions:
   contents: read
-  actions: read # require a successful main CI run for the tagged commit
+  actions: read # require a successful server/image-only candidate run for the tagged commit
   packages: write # push images to GHCR
   id-token: write # keyless cosign signing (OIDC)
 

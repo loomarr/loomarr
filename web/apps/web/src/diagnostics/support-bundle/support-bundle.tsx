@@ -1,7 +1,7 @@
 import type { BundlePreview } from "@loomarr/api/models/bundlePreview";
 import type { BundleSelection } from "@loomarr/api/models/bundleSelection";
-import { Archive, Download, Eye, LoaderCircle, ShieldCheck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Archive, ArrowLeft, Download, LoaderCircle, Settings2, ShieldCheck } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type Range = "1h" | "6h" | "24h";
+type Step = "review" | "download";
 const RANGE_MS: Record<Range, number> = { "1h": 3_600_000, "6h": 21_600_000, "24h": 86_400_000 };
 
 const formatBytes = (bytes: number) => {
@@ -47,15 +48,15 @@ const SupportBundle = ({
   >;
 }) => {
   const [open, setOpen] = useState(false);
+  const [step, setStep] = useState<Step>("review");
   const [range, setRange] = useState<Range>(initialRange);
   const [events, setEvents] = useState(true);
   const [processes, setProcesses] = useState(true);
   const [processOutput, setProcessOutput] = useState(true);
   const [fields, setFields] = useState(correlations);
   const [preview, setPreview] = useState<BundlePreview>();
-  const [finalBytes, setFinalBytes] = useState<number>();
   const [artifact, setArtifact] = useState<{ blob: Blob; filename: string }>();
-  const [busy, setBusy] = useState<"preview" | "download">();
+  const [busy, setBusy] = useState<"preview" | "prepare">();
   const [error, setError] = useState<string>();
 
   const selection = useMemo<BundleSelection>(() => {
@@ -63,36 +64,48 @@ const SupportBundle = ({
     return { from: to - RANGE_MS[range], to, events, processes, processOutput, ...fields };
   }, [events, fields, processOutput, processes, range]);
 
-  const resetResult = () => {
-    setPreview(undefined);
-    setFinalBytes(undefined);
-    setArtifact(undefined);
-    setError(undefined);
-  };
-
-  const runPreview = async () => {
-    setBusy("preview");
-    setError(undefined);
-    setFinalBytes(undefined);
-    setArtifact(undefined);
-    try {
-      const response = await fetch("/v1/diagnostics/support-bundle/preview", {
+  const selectionKey = JSON.stringify(selection);
+  useEffect(() => {
+    if (!open || step !== "review" || (!events && !processes && !processOutput)) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setBusy("preview");
+      setError(undefined);
+      void fetch("/v1/diagnostics/support-bundle/preview", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(selection),
-      });
-      if (!response.ok) throw new Error(await problemDetail(response));
-      setPreview((await response.json()) as BundlePreview);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "The preview could not be created.");
-    } finally {
-      setBusy(undefined);
-    }
+        body: selectionKey,
+        signal: controller.signal,
+      })
+        .then(async (response) => {
+          if (!response.ok) throw new Error(await problemDetail(response));
+          setPreview((await response.json()) as BundlePreview);
+        })
+        .catch((reason: unknown) => {
+          if (reason instanceof DOMException && reason.name === "AbortError") return;
+          setError(reason instanceof Error ? reason.message : "The bundle could not be reviewed.");
+          setPreview(undefined);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setBusy(undefined);
+        });
+    }, 200);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [events, open, processOutput, processes, selectionKey, step]);
+
+  const invalidate = () => {
+    setStep("review");
+    setPreview(undefined);
+    setArtifact(undefined);
+    setError(undefined);
   };
 
   const prepare = async () => {
-    setBusy("download");
+    setBusy("prepare");
     setError(undefined);
     try {
       const response = await fetch("/v1/diagnostics/support-bundle", {
@@ -105,16 +118,16 @@ const SupportBundle = ({
       const blob = await response.blob();
       const disposition = response.headers.get("Content-Disposition") ?? "";
       const filename = disposition.match(/filename="([^"]+)"/)?.[1] ?? "loomarr-support.zip";
-      setFinalBytes(blob.size);
       setArtifact({ blob, filename });
+      setStep("download");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "The bundle could not be downloaded.");
+      setError(reason instanceof Error ? reason.message : "The support bundle could not be prepared.");
     } finally {
       setBusy(undefined);
     }
   };
 
-  const save = () => {
+  const download = () => {
     if (!artifact) return;
     const url = URL.createObjectURL(artifact.blob);
     const link = document.createElement("a");
@@ -124,22 +137,19 @@ const SupportBundle = ({
     URL.revokeObjectURL(url);
   };
 
-  const category = (label: string, checked: boolean, setChecked: (value: boolean) => void) => (
-    <label
-      htmlFor={`bundle-${label.replaceAll(" ", "-").toLowerCase()}`}
-      className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm"
-    >
-      <Checkbox
-        id={`bundle-${label.replaceAll(" ", "-").toLowerCase()}`}
-        checked={checked}
-        onChange={(event) => {
-          setChecked(event.currentTarget.checked);
-          resetResult();
-        }}
-      />
-      {label}
-    </label>
-  );
+  const updateCategory = (kind: "events" | "processes" | "output", checked: boolean) => {
+    if (kind === "events") setEvents(checked);
+    if (kind === "processes") {
+      setProcesses(checked);
+      if (!checked) setProcessOutput(false);
+    }
+    if (kind === "output") {
+      setProcessOutput(checked);
+      if (checked) setProcesses(true);
+    }
+    invalidate();
+  };
+
   const correlationFields = [
     ["Request id", "requestId"],
     ["Playback session", "playbackSessionId"],
@@ -149,154 +159,267 @@ const SupportBundle = ({
     ["Process run", "processRunId"],
   ] as const;
 
+  const counts = preview?.manifest.counts;
+  const warnings = preview?.manifest.truncationReasons ?? [];
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) {
+          setStep("review");
+          setArtifact(undefined);
+          setPreview(undefined);
+          setError(undefined);
+        }
+      }}
+    >
       <DialogTrigger render={<Button variant="outline" />}>
-        <Archive aria-hidden /> Support bundle
+        <Archive aria-hidden /> Create support bundle
       </DialogTrigger>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Create a Support bundle</DialogTitle>
+          <div className="mb-1 flex gap-2 text-xs">
+            <span className={step === "review" ? "font-medium text-foreground" : "text-muted-foreground"}>
+              1 · Review
+            </span>
+            <span aria-hidden className="text-muted-foreground">
+              →
+            </span>
+            <span className={step === "download" ? "font-medium text-foreground" : "text-muted-foreground"}>
+              2 · Download
+            </span>
+          </div>
+          <DialogTitle>{step === "review" ? "Review support bundle" : "Download support bundle"}</DialogTitle>
           <DialogDescription>
-            Select the evidence to package. Loomarr previews and redacts it locally; nothing is submitted.
+            {step === "review"
+              ? "Check the evidence Loomarr will package. Nothing is submitted or sent anywhere."
+              : "This is the exact reviewed bundle. Save it when you are ready."}
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1 text-sm">
-              <span className="font-medium">Time window</span>
-              <Select
-                value={range}
-                onValueChange={(value) => {
-                  setRange(value as Range);
-                  resetResult();
-                }}
-              >
-                <SelectTrigger aria-label="Support bundle time window">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1h">Last hour</SelectItem>
-                  <SelectItem value="6h">Last 6 hours</SelectItem>
-                  <SelectItem value="24h">Last 24 hours</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="rounded-md border border-border bg-muted/20 p-3 text-muted-foreground text-xs">
-              <ShieldCheck className="mb-1 size-4 text-success" aria-hidden />
-              Secrets, URL credentials, and local paths are defensively redacted again at download.
-            </div>
-          </div>
-          <fieldset className="space-y-2">
-            <legend className="mb-2 font-medium text-sm">Contents</legend>
-            <div className="grid gap-2 sm:grid-cols-3">
-              {category("Application events", events, setEvents)}
-              {category("Process metadata", processes, (checked) => {
-                setProcesses(checked);
-                if (!checked) setProcessOutput(false);
-              })}
-              {category("Process output", processOutput, (checked) => {
-                setProcessOutput(checked);
-                if (checked) setProcesses(true);
-              })}
-            </div>
-          </fieldset>
-          <details className="rounded-md border border-border p-3">
-            <summary className="cursor-pointer font-medium text-sm">Narrow by correlation</summary>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              {correlationFields.map(([label, key]) => (
-                <label htmlFor={`bundle-${key}`} key={key} className="space-y-1 text-sm">
-                  <span>{label}</span>
-                  <Input
-                    id={`bundle-${key}`}
-                    value={fields[key] ?? ""}
-                    maxLength={128}
-                    onChange={(event) => {
-                      setFields((current) => ({ ...current, [key]: event.target.value || undefined }));
-                      resetResult();
-                    }}
-                  />
-                </label>
-              ))}
-            </div>
-          </details>
-          {error && (
-            <p
-              role="alert"
-              className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-destructive text-sm"
-            >
-              {error}
-            </p>
-          )}
-          {preview && (
-            <section
-              className="space-y-3 rounded-md border border-border bg-muted/20 p-4"
-              aria-label="Support bundle preview"
-            >
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h3 className="font-medium">Bundle preview</h3>
-                <span className="font-mono text-sm">Estimated {formatBytes(preview.estimatedBytes)}</span>
+
+        {step === "review" ? (
+          <div className="space-y-4">
+            <section className="rounded-lg border border-border bg-muted/20 p-4" aria-label="Bundle scope">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-medium">Recent diagnostic evidence</h3>
+                  <p className="mt-1 text-muted-foreground text-sm">
+                    {events ? "Application and player logs" : ""}
+                    {events && processes ? " plus " : ""}
+                    {processes ? "related process details" : ""}
+                    {processOutput ? " and retained output" : ""}.
+                  </p>
+                </div>
+                <Select
+                  value={range}
+                  onValueChange={(value) => {
+                    setRange(value as Range);
+                    invalidate();
+                  }}
+                >
+                  <SelectTrigger className="w-40" aria-label="Support bundle time window">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1h">Last hour</SelectItem>
+                    <SelectItem value="6h">Last 6 hours</SelectItem>
+                    <SelectItem value="24h">Last 24 hours</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-                <div>
-                  <dt className="text-muted-foreground">Events</dt>
-                  <dd className="font-medium">{preview.manifest.counts.events}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Processes</dt>
-                  <dd className="font-medium">{preview.manifest.counts.processes}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Outputs</dt>
-                  <dd className="font-medium">{preview.manifest.counts.processOutputs}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Redactions</dt>
-                  <dd className="font-medium">{preview.manifest.counts.redactions}</dd>
-                </div>
-              </dl>
-              <div>
-                <p className="text-muted-foreground text-xs">Archive contents</p>
-                <ul className="mt-1 grid gap-1 font-mono text-xs sm:grid-cols-2">
-                  {["manifest.json", ...preview.manifest.entries.map((entry) => entry.name)].map((name) => (
-                    <li key={name}>{name}</li>
-                  ))}
-                </ul>
+              <div className="mt-4 flex items-start gap-2 rounded-md border border-success/30 bg-success/5 p-3">
+                <ShieldCheck className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />
+                <p className="text-muted-foreground text-xs">
+                  Secrets, URL credentials, and local paths are redacted again while the bundle is built.
+                </p>
               </div>
-              {preview.manifest.truncationReasons.length > 0 && (
-                <p className="text-warning text-xs">
-                  Truncated: {preview.manifest.truncationReasons.join(", ")}
-                </p>
-              )}
-              {finalBytes !== undefined && (
-                <p className="font-medium text-sm text-success">
-                  Prepared · final size {formatBytes(finalBytes)}
-                </p>
-              )}
             </section>
-          )}
-        </div>
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => void runPreview()}
-            disabled={busy !== undefined || (!events && !processes && !processOutput)}
+
+            {busy === "preview" && (
+              <p className="inline-flex items-center gap-2 text-muted-foreground text-sm" role="status">
+                <LoaderCircle className="size-4 animate-spin" aria-hidden /> Reviewing the selected evidence…
+              </p>
+            )}
+
+            {preview && (
+              <section
+                className="space-y-3 rounded-lg border border-border bg-card p-4"
+                aria-label="Support bundle review"
+              >
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <h3 className="font-medium">What will be included</h3>
+                  <span className="font-mono text-sm">About {formatBytes(preview.estimatedBytes)}</span>
+                </div>
+                <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                  <div>
+                    <dt className="text-muted-foreground">Logs</dt>
+                    <dd className="font-medium">{counts?.events ?? 0}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Processes</dt>
+                    <dd className="font-medium">{counts?.processes ?? 0}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Outputs</dt>
+                    <dd className="font-medium">{counts?.processOutputs ?? 0}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Redactions</dt>
+                    <dd className="font-medium">{counts?.redactions ?? 0}</dd>
+                  </div>
+                </dl>
+                {warnings.length > 0 ? (
+                  <p className="rounded-md border border-caution/30 bg-caution/5 p-3 text-sm">
+                    Some evidence is limited: {warnings.join(", ")}.
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground text-xs">
+                    No evidence limits were reached in this review.
+                  </p>
+                )}
+              </section>
+            )}
+
+            <details className="rounded-lg border border-border p-4">
+              <summary className="cursor-pointer font-medium text-sm">
+                <Settings2 className="mr-2 inline size-4" aria-hidden /> Advanced options
+              </summary>
+              <div className="mt-4 space-y-4">
+                <fieldset>
+                  <legend className="mb-2 font-medium text-sm">Evidence types</legend>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {[
+                      ["Application and player logs", "events", events],
+                      ["Process details", "processes", processes],
+                      ["Process output", "output", processOutput],
+                    ].map(([label, kind, checked]) => (
+                      <div
+                        key={String(kind)}
+                        className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm"
+                      >
+                        <Checkbox
+                          aria-label={String(label)}
+                          checked={Boolean(checked)}
+                          onChange={(event) =>
+                            updateCategory(
+                              kind as "events" | "processes" | "output",
+                              event.currentTarget.checked,
+                            )
+                          }
+                        />
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+                </fieldset>
+                <div>
+                  <h4 className="mb-2 font-medium text-sm">Exact identifiers</h4>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {correlationFields.map(([label, key]) => (
+                      <div key={key} className="space-y-1 text-sm">
+                        <span>{label}</span>
+                        <Input
+                          aria-label={label}
+                          value={fields[key] ?? ""}
+                          maxLength={128}
+                          onChange={(event) => {
+                            setFields((current) => ({ ...current, [key]: event.target.value || undefined }));
+                            invalidate();
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {preview && (
+                  <details>
+                    <summary className="cursor-pointer text-muted-foreground text-sm">Files included</summary>
+                    <ul className="mt-2 grid gap-1 font-mono text-xs sm:grid-cols-2">
+                      {["manifest.json", ...preview.manifest.entries.map((entry) => entry.name)].map(
+                        (name) => (
+                          <li key={name}>{name}</li>
+                        ),
+                      )}
+                    </ul>
+                  </details>
+                )}
+              </div>
+            </details>
+          </div>
+        ) : (
+          <section
+            className="space-y-4 rounded-lg border border-border bg-card p-5"
+            aria-label="Prepared support bundle"
           >
-            {busy === "preview" ? <LoaderCircle className="animate-spin" aria-hidden /> : <Eye aria-hidden />}{" "}
-            Preview contents
-          </Button>
-          {artifact ? (
-            <Button onClick={save}>
-              <Download aria-hidden /> Save ZIP
+            <div className="flex items-center gap-3">
+              <span className="flex size-10 items-center justify-center rounded-full bg-success/10 text-success">
+                <ShieldCheck aria-hidden />
+              </span>
+              <div>
+                <h3 className="font-medium">Bundle ready</h3>
+                <p className="text-muted-foreground text-sm">
+                  Final size {formatBytes(artifact?.blob.size ?? 0)}
+                </p>
+              </div>
+            </div>
+            <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+              <div>
+                <dt className="text-muted-foreground">Logs</dt>
+                <dd className="font-medium">{counts?.events ?? 0}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Processes</dt>
+                <dd className="font-medium">{counts?.processes ?? 0}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Outputs</dt>
+                <dd className="font-medium">{counts?.processOutputs ?? 0}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Redactions</dt>
+                <dd className="font-medium">{counts?.redactions ?? 0}</dd>
+              </div>
+            </dl>
+            {warnings.length > 0 && (
+              <p className="rounded-md border border-caution/30 bg-caution/5 p-3 text-sm">
+                Included with declared limits: {warnings.join(", ")}.
+              </p>
+            )}
+          </section>
+        )}
+
+        {error && (
+          <p
+            role="alert"
+            className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-destructive text-sm"
+          >
+            {error}
+          </p>
+        )}
+
+        <DialogFooter className="flex-col-reverse sm:flex-row">
+          {step === "download" && (
+            <Button variant="outline" onClick={() => setStep("review")}>
+              <ArrowLeft aria-hidden /> Back to review
             </Button>
-          ) : (
-            <Button onClick={() => void prepare()} disabled={!preview || busy !== undefined}>
-              {busy === "download" ? (
+          )}
+          {step === "review" ? (
+            <Button
+              onClick={() => void prepare()}
+              disabled={!preview || busy !== undefined || (!events && !processes && !processOutput)}
+            >
+              {busy === "prepare" ? (
                 <LoaderCircle className="animate-spin" aria-hidden />
               ) : (
                 <Archive aria-hidden />
-              )}{" "}
-              Prepare ZIP
+              )}
+              Prepare download
+            </Button>
+          ) : (
+            <Button onClick={download} disabled={!artifact}>
+              <Download aria-hidden /> Download bundle
             </Button>
           )}
         </DialogFooter>

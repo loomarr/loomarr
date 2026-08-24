@@ -122,66 +122,91 @@ const CurrentHealthCard = ({
   report: HealthReport;
   refreshing?: boolean;
   onRefresh?: () => void;
-}) => (
-  <section
-    className="overflow-hidden rounded-lg border border-border bg-card"
-    aria-labelledby="current-health-title"
-  >
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-4">
-      <div className="min-w-0">
-        <h2 id="current-health-title" className="font-medium text-lg">
-          Current Health
-        </h2>
-        <p className="text-muted-foreground text-xs">
-          Updated{" "}
-          <time dateTime={new Date(report.updatedAt).toISOString()}>{dateTime(report.updatedAt)}</time>
-          {report.nextRefreshAt && (
-            <>
-              {" · Next check expected "}
-              <time dateTime={new Date(report.nextRefreshAt).toISOString()}>
-                {dateTime(report.nextRefreshAt)}
-              </time>
-            </>
-          )}
-        </p>
+}) => {
+  const attention = report.checks.filter(
+    (check) => !["passed", "ready", "healthy", "skipped"].includes(check.status),
+  );
+  const routine = report.checks.filter((check) => !attention.includes(check));
+  return (
+    <section
+      className="overflow-hidden rounded-lg border border-border bg-card"
+      aria-labelledby="current-health-title"
+    >
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-4">
+        <div className="min-w-0">
+          <h2 id="current-health-title" className="font-medium text-lg">
+            Loomarr status
+          </h2>
+          <p className="text-muted-foreground text-xs">
+            Updated{" "}
+            <time dateTime={new Date(report.updatedAt).toISOString()}>{dateTime(report.updatedAt)}</time>
+            {report.nextRefreshAt && (
+              <>
+                {" · Next check expected "}
+                <time dateTime={new Date(report.nextRefreshAt).toISOString()}>
+                  {dateTime(report.nextRefreshAt)}
+                </time>
+              </>
+            )}
+          </p>
+        </div>
+        <span className="inline-flex items-center gap-2 text-sm">
+          <StatusDot tone={statusTone(report.state)} label={healthStateCopy(report.state)} />
+          {healthStateCopy(report.state)}
+        </span>
+        <span className="font-mono text-muted-foreground text-xs">{report.version}</span>
+        {onRefresh && (
+          <Button className="ml-auto" variant="outline" size="sm" disabled={refreshing} onClick={onRefresh}>
+            {refreshing ? "Checking…" : "Check again"}
+          </Button>
+        )}
       </div>
-      <span className="inline-flex items-center gap-2 text-sm">
-        <StatusDot tone={statusTone(report.state)} label={healthStateCopy(report.state)} />
-        {healthStateCopy(report.state)}
-      </span>
-      <span className="font-mono text-muted-foreground text-xs">{report.version}</span>
-      {onRefresh && (
-        <Button className="ml-auto" variant="outline" size="sm" disabled={refreshing} onClick={onRefresh}>
-          {refreshing ? "Checking…" : "Check again"}
-        </Button>
-      )}
-    </div>
-    <div className="hidden overflow-x-auto md:block">
-      <table className="w-full min-w-[44rem] text-sm">
-        <caption className="sr-only">Current Loomarr health checks</caption>
-        <thead className="border-border border-t bg-muted/30 text-muted-foreground text-xs">
-          <tr>
-            {(["Check", "Status", "Last checked", "Detail"] as const).map((label) => (
-              <th key={label} scope="col" className="px-4 py-2 text-left font-medium">
-                {label}
-              </th>
+      {attention.length > 0 && (
+        <div className="border-border border-t">
+          <p className="bg-caution/5 px-4 py-2 font-medium text-sm">
+            {attention.length} {attention.length === 1 ? "check needs" : "checks need"} attention
+          </p>
+          <div className="hidden overflow-x-auto md:block">
+            <table className="w-full min-w-[44rem] text-sm">
+              <caption className="sr-only">Loomarr health checks needing attention</caption>
+              <thead className="border-border border-t bg-muted/30 text-muted-foreground text-xs">
+                <tr>
+                  {(["Check", "Status", "Last checked", "Detail"] as const).map((label) => (
+                    <th key={label} scope="col" className="px-4 py-2 text-left font-medium">
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {attention.map((check) => (
+                  <HealthCheckRow key={check.key} check={check} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <ul className="md:hidden" aria-label="Loomarr health checks needing attention">
+            {attention.map((check) => (
+              <HealthCheckCard key={check.key} check={check} />
             ))}
-          </tr>
-        </thead>
-        <tbody>
-          {report.checks.map((check) => (
-            <HealthCheckRow key={check.key} check={check} />
-          ))}
-        </tbody>
-      </table>
-    </div>
-    <ul className="border-border border-t md:hidden" aria-label="Current Loomarr health checks">
-      {report.checks.map((check) => (
-        <HealthCheckCard key={check.key} check={check} />
-      ))}
-    </ul>
-  </section>
-);
+          </ul>
+        </div>
+      )}
+      {routine.length > 0 && (
+        <details className="border-border border-t">
+          <summary className="cursor-pointer px-4 py-3 text-muted-foreground text-sm">
+            {routine.length} healthy or optional {routine.length === 1 ? "check" : "checks"}
+          </summary>
+          <ul className="border-border border-t" aria-label="Healthy and optional Loomarr checks">
+            {routine.map((check) => (
+              <HealthCheckCard key={check.key} check={check} />
+            ))}
+          </ul>
+        </details>
+      )}
+    </section>
+  );
+};
 
 const StartupCheckRow = ({ check }: { check: StartupCheck }) => (
   <tr className="border-border border-t align-top">
@@ -281,36 +306,34 @@ const StartupReportPage = ({ embedded = false }: { embedded?: boolean }) => {
         <p className="text-muted-foreground text-sm">Checking app health…</p>
       )}
 
-      <section className="space-y-3" aria-labelledby="previous-startups-title">
-        <div>
-          <h2 id="previous-startups-title" className="font-medium text-lg">
-            Previous Startups
-          </h2>
+      <details className="rounded-lg border border-border bg-card">
+        <summary className="cursor-pointer px-4 py-4">
+          <span className="font-medium">Startup history</span>
+          <span className="ml-2 text-muted-foreground text-sm">
+            {previous.length > 0 ? `${previous.length} retained` : "No earlier startups"}
+          </span>
+        </summary>
+        <div className="space-y-3 border-border border-t p-4">
           <p className="text-muted-foreground text-sm">
-            Retained boot reports from earlier application generations.
+            Boot reports from earlier Loomarr starts. Open these when a problem began after a restart.
           </p>
+          {reports.isError ? (
+            <p className="text-danger text-sm">Startup history could not be loaded.</p>
+          ) : !reportBody ? (
+            <p className="text-muted-foreground text-sm">Loading startup history…</p>
+          ) : previous.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No previous startups are retained yet.</p>
+          ) : (
+            previous.map((report) => <StartupReportCard key={report.id} report={report} />)
+          )}
         </div>
-        {reports.isError ? (
-          <p className="text-danger text-sm">Previous startup reports could not be loaded.</p>
-        ) : !reportBody ? (
-          <p className="text-muted-foreground text-sm">Loading startup history…</p>
-        ) : previous.length === 0 ? (
-          <p className="rounded-lg border border-border bg-card px-4 py-6 text-muted-foreground text-sm">
-            No previous startups are retained yet.
-          </p>
-        ) : (
-          previous.map((report) => <StartupReportCard key={report.id} report={report} />)
-        )}
-      </section>
+      </details>
     </div>
   );
   if (embedded) return content;
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PageHeader
-        title="App Health"
-        description="What is healthy now, what needs attention, and how previous Loomarr startups completed."
-      />
+      <PageHeader title="Current Health" description="What is working now and what needs your attention." />
       {content}
     </div>
   );

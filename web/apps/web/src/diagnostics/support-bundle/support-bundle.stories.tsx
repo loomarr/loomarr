@@ -23,10 +23,11 @@ export const Open: Story = {
   args: { correlations: { channelId: "channel-7" } },
   render: framed,
   play: async ({ canvas, userEvent }) => {
+    window.fetch = (() => new Promise(() => undefined)) as typeof fetch;
     await userEvent.click(canvas.getByRole("button", { name: /support bundle/i }));
   },
 };
-export const Previewed: Story = {
+export const Reviewed: Story = {
   args: { correlations: { channelId: "channel-7" } },
   render: framed,
   play: async ({ canvas, canvasElement, userEvent }) => {
@@ -69,7 +70,6 @@ export const Previewed: Story = {
       )) as typeof fetch;
     await userEvent.click(canvas.getByRole("button", { name: /support bundle/i }));
     const page = within(canvasElement.ownerDocument.body);
-    await userEvent.click(page.getByRole("button", { name: /preview contents/i }));
-    await page.findByRole("region", { name: /support bundle preview/i });
+    await page.findByRole("region", { name: /support bundle review/i });
   },
 };

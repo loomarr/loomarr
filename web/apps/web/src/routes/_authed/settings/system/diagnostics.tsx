@@ -8,7 +8,12 @@ const oneOf = <T extends string>(value: unknown, allowed: readonly T[], fallback
   typeof value === "string" && allowed.includes(value as T) ? (value as T) : fallback;
 
 const validateSearch = (raw: Record<string, unknown>): Partial<DiagnosticsSearch> => ({
-  view: oneOf(raw.view, ["health", "application", "playout"] as const, "health"),
+  view:
+    raw.view === "application"
+      ? "logs"
+      : raw.view === "playout"
+        ? "process"
+        : oneOf(raw.view, ["logs", "health", "process"] as const, "logs"),
   range: oneOf(raw.range, ["1h", "6h", "24h"] as const, DEFAULT_APPLICATION_FILTERS.range),
   level: oneOf(
     raw.level,
@@ -47,7 +52,7 @@ const DiagnosticsRoute = () => {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const normalized: DiagnosticsSearch = {
-    view: search.view ?? "health",
+    view: search.view ?? "logs",
     processRange: "1h",
     processStatus: "all",
     processPurpose: "",

@@ -52,9 +52,8 @@ publishes uncategorized or model-authored notes.
 
 ## Tag and verify
 
-Push the protected version tag only after the required commit gates are green. If the exact current
-`main` commit did not run both image jobs—for example, because the final merge changed only prose—run
-the proportional release-candidate scope first:
+Push the protected version tag only after the required commit gates are green and the exact current
+`main` commit has passed the proportional release-candidate scope:
 
 ```sh
 gh workflow run ci.yml --repo loomarr/loomarr --ref main -f scope=release-candidate
@@ -62,7 +61,9 @@ gh workflow run ci.yml --repo loomarr/loomarr --ref main -f scope=release-candid
 
 That scope runs repository contracts, real-codec image-worker certification, and the native amd64
 and arm64 image builds. It deliberately leaves unrelated platform and UI matrices to their normal
-change-based CI. Use `-f scope=full` only when a complete manual rerun is actually required.
+change-based CI. A normal push run or `-f scope=full` run is never accepted as Docker-release
+evidence, even when green, because neither proves that publication is isolated from those unrelated
+jobs. Use `-f scope=full` only when a complete manual rerun is independently required.
 
 Both release workflows start from the tag. If OpenRouter is temporarily unavailable, rerun the
 failed **Release notes** workflow after service recovers; the separately hardened image publication
