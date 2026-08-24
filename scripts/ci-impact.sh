@@ -83,6 +83,12 @@ classify() {
       known=true
       select_gate clients
       ;;
+    web/packages/api/*|web/packages/core/*|web/packages/fixtures/*)
+      known=true
+      select_gate web
+      select_gate clients
+      select_gate image
+      ;;
     web/package.json|web/pnpm-lock.yaml|web/pnpm-workspace.yaml|web/.gitignore|web/biome.json|web/tsconfig.base.json|web/.dependency-cruiser.cjs|web/scripts/*)
       known=true
       select_gate web
