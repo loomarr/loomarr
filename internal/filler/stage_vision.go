@@ -95,7 +95,7 @@ func (s *VisionStage) Run(ctx context.Context, c StoreClip) (StageResult, error)
 	forest := taxonomy.New(taxa)
 
 	file := filepath.Join(s.clipDir, filepath.FromSlash(c.Path))
-	frames, err := s.tools.Keyframes(ctx, file, VisionKeyframes)
+	frames, err := s.tools.KeyframesIn(ctx, file, 0, c.DurationMs, VisionKeyframes)
 	if err != nil {
 		return StageResult{}, fmt.Errorf("keyframes for %s: %w", c.Path, err)
 	}
@@ -166,9 +166,9 @@ func (s *VisionStage) Run(ctx context.Context, c StoreClip) (StageResult, error)
 
 // VisionKeyframes is how many stills one pass samples per clip (§10 V44). A commercial's brand
 // card, its B&W transfer, and its end slate can each fall in a different part of the runtime, so
-// one frame is not enough signal — but a fistful of 320px JPEGs is tens of KB, which is what the
-// inline multimodal request is sized for.
-const VisionKeyframes = 3
+// one frame is not enough signal. These are bounded near-full-resolution semantic frames, not the
+// 320px UI preview: early, middle, late, and closing-card windows remain a small fixed request.
+const VisionKeyframes = 4
 
 // visionTags is a grounded vision classification for one clip — the fields ApplyClipVision
 // writes.
