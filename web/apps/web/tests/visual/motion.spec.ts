@@ -20,7 +20,7 @@ const story = (id: string) => `/iframe.html?id=${id}&viewMode=story`;
 
 test.describe("idle-surface motion", () => {
   test("loading indicators animate when motion is enabled", async ({ page }) => {
-    await page.goto(story("loomarr-foundations-loading--dark"));
+    await page.goto(story("loomarr-foundations-loading--animated"));
     await page.locator("#storybook-root > *").first().waitFor({ state: "visible" });
 
     const indicator = page.getByRole("progressbar", { name: "Saving" });

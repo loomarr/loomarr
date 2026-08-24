@@ -130,10 +130,14 @@ const meta = {
 } satisfies Meta<typeof LoadingGallery>;
 
 type Story = StoryObj<typeof meta>;
-const Dark: Story = { args: { density: "pointer", theme: "dark" } };
-const Light: Story = { args: { density: "pointer", theme: "light" } };
-const Tv: Story = { args: { density: "tv", theme: "dark" } };
+const Dark: Story = { args: { density: "pointer", reducedMotion: true, theme: "dark" } };
+const Light: Story = { args: { density: "pointer", reducedMotion: true, theme: "light" } };
+const Tv: Story = { args: { density: "tv", reducedMotion: true, theme: "dark" } };
 const ReducedMotion: Story = { args: { density: "pointer", reducedMotion: true, theme: "dark" } };
+const Animated: Story = {
+  args: { density: "pointer", reducedMotion: false, theme: "dark" },
+  tags: ["motion-only"],
+};
 
 export default meta;
-export { Dark, Light, ReducedMotion, Tv };
+export { Animated, Dark, Light, ReducedMotion, Tv };

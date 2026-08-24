@@ -21,11 +21,17 @@ interface StoryEntry {
   id: string;
   title: string;
   name: string;
+  tags?: string[];
   type: string;
 }
 
 const index = JSON.parse(readFileSync(indexPath, "utf8")) as { entries: Record<string, StoryEntry> };
-const stories = Object.values(index.entries).filter((entry) => entry.type === "story");
+// JS-driven React Native animations cannot be frozen by Playwright's CSS animation switch.
+// Their dedicated stories are exercised by motion.spec.ts through frame-to-frame behavior;
+// pixel snapshots cover the same markup in its explicit reduced-motion state.
+const stories = Object.values(index.entries).filter(
+  (entry) => entry.type === "story" && !entry.tags?.includes("motion-only"),
+);
 
 // axe-core keeps a module-global "running" flag per frame, and its runPartialRecursive
 // walk can re-enter it — so an analyze() occasionally rejects with "Axe is already
