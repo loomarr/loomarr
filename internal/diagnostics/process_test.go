@@ -105,7 +105,7 @@ func TestProcessManagerCapturesBoundedRedactedOutputAndLifecycle(t *testing.T) {
 	sink := &processSinkMemory{}
 	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	manager := NewProcessManager(sink, nil, ProcessOptions{
-		OutputDir: dir, InstanceID: "instance-a", PrefixBytes: 12, TailBytes: 48,
+		OutputDir: dir, InstanceID: "instance-a", PrefixBytes: 12, TailBytes: 128,
 		FlushInterval: time.Hour, Now: func() time.Time { return now },
 		Version: func(context.Context, string) string { return "ffmpeg version 8.0" },
 	})
@@ -152,6 +152,9 @@ func TestProcessManagerCapturesBoundedRedactedOutputAndLifecycle(t *testing.T) {
 	}
 	if run.DiscardedLines == 0 || !strings.Contains(string(output), "discarded") {
 		t.Fatalf("bounded output did not report truncation: run=%#v output=%q", run, output)
+	}
+	if !strings.Contains(string(output), "[2026-08-23T12:00:00Z]") {
+		t.Fatalf("output lines do not carry observation timestamps: %q", output)
 	}
 }
 

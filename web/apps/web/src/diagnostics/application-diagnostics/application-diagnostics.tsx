@@ -163,7 +163,7 @@ const ApplicationDiagnostics = ({
   const cursor = cursorStack.at(-1);
   const params = useMemo(() => eventParams(filters, cursor, now), [filters, cursor, now]);
   const query = diagnosticsApi.useListDiagnosticEvents(params, {
-    query: { retry: false, refetchInterval: cursor ? false : 15_000 },
+    query: { retry: false },
     request: { headers: { Accept: "application/json" } },
   });
   const body = query.data?.status === 200 && "data" in query.data ? query.data.data : undefined;
@@ -181,13 +181,14 @@ const ApplicationDiagnostics = ({
   const updateFilters = (next: ApplicationFilters) => {
     setCursorStack([]);
     setExpanded(undefined);
+    setNow(Date.now());
     onFiltersChange(next);
   };
 
   const download = async () => {
     setDownloadState("working");
     try {
-      const response = await fetch(diagnosticsApi.getListDiagnosticEventsUrl(eventParams(filters)), {
+      const response = await fetch(diagnosticsApi.getListDiagnosticEventsUrl(params), {
         credentials: "same-origin",
         headers: { Accept: "application/x-ndjson" },
       });
