@@ -1,5 +1,6 @@
 import { Activity, HeartPulse, RadioTower } from "lucide-react";
 import type { ReactNode } from "react";
+import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { ApplicationDiagnostics, type ApplicationFilters } from "../application-diagnostics";
 import { StartupReportPage } from "../startup-report-page";
 
@@ -26,12 +27,10 @@ const DiagnosticsPage = ({
   ];
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="border-border border-b px-4 py-4 sm:px-6">
-        <h1 className="font-semibold text-xl">Diagnostics</h1>
-        <p className="mt-1 text-muted-foreground text-sm">
-          Current health and bounded technical evidence for this Loomarr instance.
-        </p>
-      </header>
+      <PageHeader
+        title="Diagnostics"
+        description="Current health and bounded technical evidence for this Loomarr instance."
+      />
       <nav className="flex gap-1 border-border border-b px-4 pt-2 sm:px-6" aria-label="Diagnostics views">
         {tabs.map(({ id, label, icon: Icon }) => (
           <button
