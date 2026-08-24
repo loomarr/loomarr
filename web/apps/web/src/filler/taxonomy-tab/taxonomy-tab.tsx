@@ -139,7 +139,7 @@ const TaxonTree = ({
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
               {(taxon.assertedClips ?? 0) > 0 && taxon.assertedClips !== taxon.matchedClips ? (
                 <Badge variant="neutral" title="Clips directly assigned this tag">
-                  {taxon.assertedClips} direct
+                  {taxon.assertedClips.toLocaleString()} direct
                 </Badge>
               ) : null}
               <Link

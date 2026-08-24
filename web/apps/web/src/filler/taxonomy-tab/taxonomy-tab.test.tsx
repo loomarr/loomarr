@@ -138,4 +138,40 @@ describe("TaxonomyTab", () => {
       }),
     ).toBeDisabled();
   });
+
+  it("keeps unused and heavily used vocabulary legible", async () => {
+    server.use(
+      getListTaxonomyMockHandler({
+        totalClips: 20_000,
+        taggedClips: 12_345,
+        unclassifiedClips: 7_655,
+        axisCoverage: [{ axis: "product", taggedClips: 12_345, untaggedClips: 7_655 }],
+        taxa: [
+          {
+            slug: "unused",
+            label: "Unused",
+            axis: "product",
+            assertedClips: 0,
+            matchedClips: 0,
+            storedClips: 0,
+          },
+          {
+            slug: "popular",
+            label: "Popular",
+            axis: "product",
+            assertedClips: 9_876,
+            matchedClips: 12_345,
+            storedClips: 9_876,
+          },
+        ],
+      }),
+    );
+    renderTab();
+
+    await screen.findByText("12,345 / 20,000");
+    await userEvent.click(screen.getByText("Manage vocabulary"));
+    expect(screen.getByRole("link", { name: "0 clips" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "12,345 clips" })).toBeInTheDocument();
+    expect(screen.getByText("9,876 direct")).toBeInTheDocument();
+  });
 });
