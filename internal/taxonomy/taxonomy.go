@@ -313,8 +313,11 @@ func (f *Forest) PrimaryProductLeaf(leaves []string) string {
 // Vocab renders the taxonomy as a compact per-axis prompt fragment the tagger serves to the model
 // (§10 V45a) — the same "BE is the single source of the vocabulary" discipline schedule.BuildVocabulary
 // gives the suggester, so the model never guesses a slug blind and every slug it CAN emit is one the
-// grounding will accept. One line per axis: `product: beer, cereal, cars, …` using slugs (the tokens
-// Resolve grounds against), so the served list and the accepted list are the same list by construction.
+// grounding will accept. One line per axis uses `child (under parent)` annotations to expose enough
+// of the graph for the model to choose the most-specific applicable taxon. The annotation is prompt
+// guidance, not output syntax: the model still emits only the slug, which Resolve grounds. Without
+// it, `drinks` and `soda` look like unrelated peers and real classifications collapse to the broad
+// parent even though the graph already knows the relationship.
 func (f *Forest) Vocab() string {
 	byAxis := map[Axis][]string{}
 	var order []Axis
@@ -322,7 +325,11 @@ func (f *Forest) Vocab() string {
 		if _, seen := byAxis[t.Axis]; !seen {
 			order = append(order, t.Axis)
 		}
-		byAxis[t.Axis] = append(byAxis[t.Axis], t.Slug)
+		token := t.Slug
+		if t.Parent != "" {
+			token += " (under " + t.Parent + ")"
+		}
+		byAxis[t.Axis] = append(byAxis[t.Axis], token)
 	}
 	var b strings.Builder
 	for _, ax := range order {

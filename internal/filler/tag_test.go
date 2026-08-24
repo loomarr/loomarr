@@ -3,6 +3,7 @@ package filler_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -294,6 +295,60 @@ func TestClassify_ValidatesEnums(t *testing.T) {
 	}
 	if sug.SuggestedEra != 0 {
 		t.Errorf("grounded era leaked into SuggestedEra: %+v", sug)
+	}
+}
+
+// Product tags are semantic classifications, unlike era and brand: a title naming Mountain Dew
+// need not also spell out "soda" for the model to classify the advertised product. The prompt must
+// make that asymmetry explicit while preserving an honest empty product axis for non-product filler.
+func TestClassify_PromptRequiresAnIdentifiableProductLeafWithoutForcingOne(t *testing.T) {
+	llmMock := testkit.NewLLM(testkit.FinalResponse(
+		`{"era":1986,"audience":"kids","product":"soda","format":"commercial","brand":"Mountain Dew","confidence":90}`,
+	))
+	if _, err := filler.Classify(context.Background(), llmMock, seedForest(),
+		"1986 Mountain Dew Skateboarding TV Commercial", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	prompt := llmMock.Prompt()
+	lowerPrompt := strings.ToLower(prompt)
+	for _, contract := range []string{
+		"every identifiable axis",
+		"reliable common knowledge",
+		"most-specific product",
+		"never its ancestors",
+		"political campaign ad",
+		"commercial-break compilation",
+	} {
+		if !strings.Contains(lowerPrompt, contract) {
+			t.Errorf("classifier prompt does not state %q contract:\n%s", contract, prompt)
+		}
+	}
+}
+
+func TestClassify_GroundsAxisShapedTagsOnTheirDeclaredAxis(t *testing.T) {
+	llmMock := testkit.NewLLM(testkit.FinalResponse(
+		`{"era":1986,"audience":"kids","product":"soda","format":"commercial","seasonal":["holiday"],"audienceCues":["kids-cue"],"brand":"Mountain Dew","confidence":90}`,
+	))
+	got, err := filler.Classify(context.Background(), llmMock, seedForest(),
+		"1986 Mountain Dew holiday TV Commercial", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"commercial", "holiday", "kids-cue", "soda"}
+	if !reflect.DeepEqual(got.Tags, want) || got.Category != "soda" {
+		t.Errorf("axis-shaped classification = tags %v category %q, want %v / soda", got.Tags, got.Category, want)
+	}
+
+	wrongAxes := testkit.NewLLM(testkit.FinalResponse(
+		`{"era":1986,"audience":"kids","product":"commercial","format":"soda","seasonal":["cars"],"audienceCues":["holiday"],"confidence":90}`,
+	))
+	got, err = filler.Classify(context.Background(), wrongAxes, seedForest(), "1986 mixed-up response", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Tags) != 0 || got.Category != "" {
+		t.Errorf("cross-axis values escaped their declared axes: %+v", got)
 	}
 }
 

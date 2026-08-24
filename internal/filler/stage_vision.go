@@ -325,7 +325,7 @@ func visionPrompt(forest *taxonomy.Forest) string {
 First read any TEXT visible in the frames — a logo, a product name, a slogan, a year.
 Return ONLY this JSON, no prose:
 {"visibleText":"<the on-screen text you can read, verbatim; empty if none>","brand":"<advertiser name or empty>","era":<4-digit year visible in a frame, or 0>,"tags":["<zero or more taxonomy slugs>"]}
-Rules: put in visibleText only text you can actually READ in the frames; give brand ONLY when the advertiser's name is among that visible text — never guess it from the imagery or the products; give era ONLY when a 4-digit year is visible in a frame — never infer a decade from the film stock, colour, or style, use 0 otherwise; choose tags only from the live vocabulary below. A tag may describe what the imagery shows even when its slug is not printed as text. Return an empty tags array when the frames do not support a choice.
+Rules: put in visibleText only text you can actually READ in the frames; give brand ONLY when the advertiser's name is among that visible text — never guess it from the imagery or the products; give era ONLY when a 4-digit year is visible in a frame — never infer a decade from the film stock, colour, or style, use 0 otherwise; choose tags only from the live vocabulary below. Vocabulary entries written as "child (under parent)" explain hierarchy; return only the slug, never the annotation. A tag may describe what the imagery shows even when its slug is not printed as text. Return an empty tags array when the frames do not support a choice.
 
 Live taxonomy vocabulary:
 %s`, vocab)

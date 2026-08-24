@@ -3,6 +3,7 @@ package taxonomy_test
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/taxonomy"
@@ -85,6 +86,19 @@ func TestRollups(t *testing.T) {
 	want := []taxonomy.TagRow{{Slug: "beer", Leaf: true}, {Slug: "alcohol", Leaf: false}, {Slug: "drinks", Leaf: false}}
 	if !reflect.DeepEqual(rows, want) {
 		t.Errorf("WithRollups(beer) = %+v, want %+v", rows, want)
+	}
+}
+
+func TestVocab_ExplainsHierarchyWithoutChangingOutputSlugs(t *testing.T) {
+	vocab := seed().Vocab()
+	for _, relation := range []string{
+		"soda (under drinks)",
+		"beer (under alcohol)",
+		"dealer (under cars)",
+	} {
+		if !strings.Contains(vocab, relation) {
+			t.Errorf("Vocab does not explain %q hierarchy:\n%s", relation, vocab)
+		}
 	}
 }
 
