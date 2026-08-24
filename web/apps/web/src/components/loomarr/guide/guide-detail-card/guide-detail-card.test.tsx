@@ -52,6 +52,12 @@ describe("GuideDetailCard", () => {
     expect(screen.getByText(/professional thieves/)).toBeInTheDocument();
   });
 
+  it("renders the household schedule time instead of the viewer device time", () => {
+    render(<GuideDetailCard airing={base} timezone="America/New_York" />);
+
+    expect(screen.getByText("5:00 PM–5:30 PM")).toBeInTheDocument();
+  });
+
   it.each([
     ["programme", { ...base, thumbImage: previewImage }, { width: 80, height: 45 }],
     [

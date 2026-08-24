@@ -1,4 +1,5 @@
 import type { PodPoolDTOMatchLevel } from "@loomarr/api/models/podPoolDTOMatchLevel";
+import { formatGuideTimeRange } from "@loomarr/core/guide";
 import { Badge } from "@/components/ui/badge";
 import { Caption } from "@/components/ui/caption";
 import { Image } from "@/components/ui/image";
@@ -44,9 +45,6 @@ const CLIP_DOT: Record<string, string> = {
   interstitial: "bg-static-500",
 };
 
-const fmtClock = (ms: number) =>
-  new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(ms));
-
 // Durations read as a runtime ("1h 47m", "22m"), not as a decimal count of minutes.
 const fmtRuntime = (ms: number): string => {
   const total = Math.round(ms / 60_000);
@@ -60,10 +58,10 @@ const fmtClip = (ms: number): string => {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 };
 
-const GuideDetailCard = ({ airing, className }: GuideDetailCardProps) => {
+const GuideDetailCard = ({ airing, timezone, className }: GuideDetailCardProps) => {
   if (!airing) return null;
 
-  const when = `${fmtClock(airing.startMs)}–${fmtClock(airing.stopMs)}`;
+  const when = formatGuideTimeRange(airing.startMs, airing.stopMs, timezone);
   const pod = airing.pod;
   const isBreak = airing.kind === "filler" && pod;
   const chip = pod ? MATCH[pod.matchLevel] : null;

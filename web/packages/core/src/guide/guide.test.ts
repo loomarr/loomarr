@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_WINDOW_MINUTES,
   defaultGuideWindow,
+  formatGuideTime,
+  formatGuideTimeRange,
   GUIDE_BUCKET_MS,
   guideWindow,
   LOOKBACK_MINUTES,
@@ -33,6 +35,16 @@ describe("guideWindow", () => {
       from: tomorrow + 6 * 3_600_000,
       to: tomorrow + 8 * 3_600_000,
     });
+  });
+});
+
+describe("guide time formatting", () => {
+  it("uses the household time zone instead of the viewer device time zone", () => {
+    const at = Date.parse("2026-08-23T23:00:00Z");
+
+    expect(formatGuideTime(at, "America/New_York")).toBe("7:00 PM");
+    expect(formatGuideTime(at, "America/Los_Angeles")).toBe("4:00 PM");
+    expect(formatGuideTimeRange(at, at + 30 * 60_000, "America/New_York")).toBe("7:00 PM–7:30 PM");
   });
 });
 

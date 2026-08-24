@@ -10,6 +10,9 @@ interface GuideGridProps {
   // the window that was actually served rather than the one it asked for.
   fromMs: number;
   toMs: number;
+  // Household/container time zone echoed by GET /v1/guide. Device-local time would make the
+  // same schedule appear to air at different hours on web, phone, and TV.
+  timezone?: string;
   // Zoom scales the CHROME — rail width, row height, type — not the time scale. The window
   // always fits the viewport, which is the TV-guide convention: you change how much detail
   // each row shows, not how much time is on screen. (Time span is chosen separately, by

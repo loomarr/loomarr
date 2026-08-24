@@ -1,6 +1,7 @@
 import type { GuideAiring } from "@loomarr/api/models/guideAiring";
 import type { GuideAiringKind } from "@loomarr/api/models/guideAiringKind";
 import type { GuideChannelTimeline } from "@loomarr/api/models/guideChannelTimeline";
+import { guideTimeFormatter } from "@loomarr/core/guide";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLayoutEffect, useRef, useState } from "react";
 import { Caption } from "@/components/ui/caption";
@@ -198,6 +199,7 @@ const GuideGrid = ({
   channels,
   fromMs,
   toMs,
+  timezone,
   zoom = 1,
   nowMs,
   onInspect,
@@ -207,7 +209,7 @@ const GuideGrid = ({
 }: GuideGridProps) => {
   const spanMs = Math.max(1, toMs - fromMs);
   const spanMinutes = spanMs / MS_PER_MINUTE;
-  const timeFmt = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+  const timeFmt = guideTimeFormatter(timezone);
 
   // Chrome is FIXED (see the zoom note at the top): the rail and rows are the same size at
   // every zoom level, so channel names stay readable and the same number of rows stay on

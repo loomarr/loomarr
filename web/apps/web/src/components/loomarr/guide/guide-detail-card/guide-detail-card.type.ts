@@ -4,6 +4,7 @@ interface GuideDetailCardProps {
   // The block being inspected. Null renders nothing — the caller can mount this
   // unconditionally rather than guarding at every use.
   airing: GuideAiring | null;
+  timezone?: string;
   className?: string;
 }
 

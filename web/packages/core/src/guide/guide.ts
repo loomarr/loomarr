@@ -42,6 +42,22 @@ const defaultGuideWindow = (at: number): GuideWindow =>
     startHour: null,
   });
 
+/** Household guide clocks are explicit and consistent across browser, mobile, and TV. */
+const guideTimeFormatter = (timeZone?: string): Intl.DateTimeFormat =>
+  new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hourCycle: "h12",
+    timeZone,
+  });
+
+const formatGuideTime = (at: number, timeZone?: string): string => guideTimeFormatter(timeZone).format(at);
+
+const formatGuideTimeRange = (startMs: number, stopMs: number, timeZone?: string): string => {
+  const formatter = guideTimeFormatter(timeZone);
+  return `${formatter.format(startMs)}–${formatter.format(stopMs)}`;
+};
+
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 
 /**
@@ -99,7 +115,10 @@ const layoutGuide = (source: GuideOutputBody, nowMs: number): GuideLayout => {
 export {
   DEFAULT_WINDOW_MINUTES,
   defaultGuideWindow,
+  formatGuideTime,
+  formatGuideTimeRange,
   GUIDE_BUCKET_MS,
+  guideTimeFormatter,
   guideWindow,
   LOOKBACK_MINUTES,
   layoutGuide,
