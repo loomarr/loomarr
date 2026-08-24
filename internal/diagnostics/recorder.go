@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -50,11 +51,24 @@ type Recorder struct {
 	stop     chan struct{}
 	done     chan struct{}
 
-	mu       sync.RWMutex
-	closed   bool
-	stopOnce sync.Once
-	dropped  atomic.Uint64
+	mu        sync.RWMutex
+	closed    bool
+	stopOnce  sync.Once
+	dropped   atomic.Uint64
+	captureMu sync.Mutex
+	capture   VerboseCapture
 }
+
+// VerboseCapture is the current bounded exception to the recorder's default info threshold.
+type VerboseCapture struct {
+	Active    bool   `json:"active"`
+	StartedAt int64  `json:"startedAt,omitempty"`
+	EndsAt    int64  `json:"endsAt,omitempty"`
+	Subsystem string `json:"subsystem,omitempty"`
+	ChannelID string `json:"channelId,omitempty"`
+}
+
+var ErrInvalidVerboseCapture = errors.New("invalid verbose capture")
 
 // New builds and starts a recorder. A nil Sink yields a no-op recorder so store-less boot and
 // narrow unit tests do not need guards at every call site.
@@ -78,7 +92,7 @@ func New(sink Sink, opts Options) *Recorder {
 // Record normalizes and redacts one event, then attempts a non-blocking enqueue. Warn/error have a
 // reserved queue so routine info/debug traffic is discarded first under saturation.
 func (r *Recorder) Record(_ context.Context, event Event) {
-	if r == nil || r.sink == nil || !r.Accepts(event.Level) {
+	if r == nil || r.sink == nil || !r.acceptsEvent(event) {
 		return
 	}
 	record := normalize(event, r.opts.Now())
@@ -107,7 +121,7 @@ func (r *Recorder) RecordDurable(ctx context.Context, event Event) error {
 	if r == nil || r.sink == nil {
 		return errors.New("diagnostics persistence is unavailable")
 	}
-	if !r.Accepts(event.Level) {
+	if !r.acceptsEvent(event) {
 		return fmt.Errorf("diagnostics severity %q is filtered", event.Level)
 	}
 	r.mu.RLock()
@@ -132,7 +146,72 @@ func (r *Recorder) Accepts(level Level) bool {
 	if r == nil || r.sink == nil {
 		return false
 	}
-	return levelRank(normalizeLevel(level)) >= levelRank(r.opts.MinLevel)
+	level = normalizeLevel(level)
+	if levelRank(level) >= levelRank(r.opts.MinLevel) {
+		return true
+	}
+	return level == LevelDebug && r.VerboseCapture().Active
+}
+
+func (r *Recorder) acceptsEvent(event Event) bool {
+	level := normalizeLevel(event.Level)
+	if levelRank(level) >= levelRank(r.opts.MinLevel) {
+		return true
+	}
+	if level != LevelDebug {
+		return false
+	}
+	capture := r.VerboseCapture()
+	return capture.Active && (capture.Subsystem == "" || capture.Subsystem == event.Subsystem) &&
+		(capture.ChannelID == "" || capture.ChannelID == event.ChannelID)
+}
+
+// StartVerboseCapture temporarily admits scoped debug evidence through the same bounded queue,
+// redaction, and retention path as ordinary diagnostics. A later start replaces the prior window.
+func (r *Recorder) StartVerboseCapture(duration time.Duration, subsystem, channelID string) (VerboseCapture, error) {
+	if r == nil || r.sink == nil {
+		return VerboseCapture{}, errors.New("diagnostics recorder unavailable")
+	}
+	if duration < time.Minute || duration > 15*time.Minute {
+		return VerboseCapture{}, fmt.Errorf("%w: duration must be between 1 and 15 minutes", ErrInvalidVerboseCapture)
+	}
+	subsystem, channelID = strings.TrimSpace(subsystem), strings.TrimSpace(channelID)
+	if len(subsystem) > 128 || len(channelID) > 128 {
+		return VerboseCapture{}, fmt.Errorf("%w: scope cannot exceed 128 bytes", ErrInvalidVerboseCapture)
+	}
+	now := r.opts.Now()
+	capture := VerboseCapture{
+		Active: true, StartedAt: now.UnixMilli(), EndsAt: now.Add(duration).UnixMilli(),
+		Subsystem: subsystem, ChannelID: channelID,
+	}
+	r.captureMu.Lock()
+	r.capture = capture
+	r.captureMu.Unlock()
+	return capture, nil
+}
+
+// StopVerboseCapture returns the default durable threshold immediately.
+func (r *Recorder) StopVerboseCapture() VerboseCapture {
+	if r == nil {
+		return VerboseCapture{}
+	}
+	r.captureMu.Lock()
+	r.capture = VerboseCapture{}
+	r.captureMu.Unlock()
+	return VerboseCapture{}
+}
+
+// VerboseCapture reports live state and lazily expires elapsed windows.
+func (r *Recorder) VerboseCapture() VerboseCapture {
+	if r == nil {
+		return VerboseCapture{}
+	}
+	r.captureMu.Lock()
+	defer r.captureMu.Unlock()
+	if r.capture.Active && r.opts.Now().UnixMilli() >= r.capture.EndsAt {
+		r.capture = VerboseCapture{}
+	}
+	return r.capture
 }
 
 // Dropped returns how many records this process refused because its bounded queue was full or the

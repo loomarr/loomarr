@@ -55,6 +55,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		fillerLayout:     opts.FillerLayout,
 		jobs:             opts.Jobs,
 		diagnosticEvents: opts.DiagnosticEvents, diagnosticProcesses: opts.DiagnosticProcesses,
+		diagnosticCapture: opts.DiagnosticCapture,
 		clientDiagnostics: opts.ClientDiagnostics,
 		startupReports:    opts.StartupReports,
 		healthRefresh:     opts.HealthRefresh,

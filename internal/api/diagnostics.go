@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -25,6 +26,13 @@ type DiagnosticProcessService interface {
 	Query(context.Context, diagnostics.ProcessQuery) (diagnostics.ProcessPage, error)
 	Get(context.Context, string) (diagnostics.ProcessDetail, error)
 	Output(context.Context, string) (diagnostics.ProcessOutput, error)
+}
+
+// DiagnosticCaptureService controls the recorder's one process-local bounded debug window.
+type DiagnosticCaptureService interface {
+	VerboseCapture() diagnostics.VerboseCapture
+	StartVerboseCapture(time.Duration, string, string) (diagnostics.VerboseCapture, error)
+	StopVerboseCapture() diagnostics.VerboseCapture
 }
 
 // ClientDiagnosticService is the write half of Diagnostics. The HTTP adapter supplies only the
@@ -101,6 +109,18 @@ type diagnosticProcessPageOutput struct {
 
 type diagnosticProcessDetailOutput struct {
 	Body diagnostics.ProcessDetail
+}
+
+type verboseCaptureInput struct {
+	Body struct {
+		DurationMinutes int    `json:"durationMinutes" minimum:"1" maximum:"15"`
+		Subsystem       string `json:"subsystem,omitempty" maxLength:"128"`
+		ChannelID       string `json:"channelId,omitempty" maxLength:"128"`
+	}
+}
+
+type verboseCaptureOutput struct {
+	Body diagnostics.VerboseCapture
 }
 
 type clientDiagnosticsInput struct {
@@ -192,6 +212,48 @@ func (s *Server) registerDiagnostics(api huma.API) {
 			}, Content: map[string]*huma.MediaType{"text/plain": {Schema: &huma.Schema{Type: huma.TypeString}}}},
 		},
 	}, RoleAdmin, s.diagnosticProcessOutputHandler)
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "get-diagnostic-verbose-capture", Method: http.MethodGet, Path: "/v1/diagnostics/verbose-capture",
+		Summary: "Get verbose capture", Description: "Returns the current process-local bounded debug-capture window.", Tags: []string{"diagnostics"},
+	}, RoleAdmin), s.getVerboseCapture)
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "start-diagnostic-verbose-capture", Method: http.MethodPost, Path: "/v1/diagnostics/verbose-capture",
+		Summary: "Start verbose capture", Description: "Temporarily retains scoped debug evidence through the ordinary bounded and redacted recorder.", Tags: []string{"diagnostics"},
+	}, RoleAdmin), s.startVerboseCapture)
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "stop-diagnostic-verbose-capture", Method: http.MethodDelete, Path: "/v1/diagnostics/verbose-capture",
+		Summary: "Stop verbose capture", Description: "Immediately restores the default diagnostic retention threshold.", Tags: []string{"diagnostics"},
+	}, RoleAdmin), s.stopVerboseCapture)
+}
+
+func (s *Server) getVerboseCapture(_ context.Context, _ *struct{}) (*verboseCaptureOutput, error) {
+	if s.diagnosticCapture == nil {
+		return nil, huma.Error501NotImplemented("Verbose capture isn't available on this Loomarr generation.")
+	}
+	return &verboseCaptureOutput{Body: s.diagnosticCapture.VerboseCapture()}, nil
+}
+
+func (s *Server) startVerboseCapture(_ context.Context, input *verboseCaptureInput) (*verboseCaptureOutput, error) {
+	if s.diagnosticCapture == nil {
+		return nil, huma.Error501NotImplemented("Verbose capture isn't available on this Loomarr generation.")
+	}
+	capture, err := s.diagnosticCapture.StartVerboseCapture(
+		time.Duration(input.Body.DurationMinutes)*time.Minute, input.Body.Subsystem, input.Body.ChannelID,
+	)
+	if errors.Is(err, diagnostics.ErrInvalidVerboseCapture) {
+		return nil, errBadRequest("Invalid verbose capture", strings.TrimPrefix(err.Error(), diagnostics.ErrInvalidVerboseCapture.Error()+": "))
+	}
+	if err != nil {
+		return nil, huma.Error503ServiceUnavailable("Verbose capture couldn't be started.")
+	}
+	return &verboseCaptureOutput{Body: capture}, nil
+}
+
+func (s *Server) stopVerboseCapture(_ context.Context, _ *struct{}) (*verboseCaptureOutput, error) {
+	if s.diagnosticCapture == nil {
+		return nil, huma.Error501NotImplemented("Verbose capture isn't available on this Loomarr generation.")
+	}
+	return &verboseCaptureOutput{Body: s.diagnosticCapture.StopVerboseCapture()}, nil
 }
 
 func (s *Server) listDiagnosticProcesses(

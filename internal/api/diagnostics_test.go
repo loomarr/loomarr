@@ -526,6 +526,48 @@ func TestDiagnosticEventFiltersFailBeforeUnboundedRead(t *testing.T) {
 	}
 }
 
+func TestVerboseCaptureIsAdminOnlyBoundedAndStoppable(t *testing.T) {
+	recorder := diagnostics.New(&diagnosticRecordSink{}, diagnostics.Options{})
+	defer func() { _ = recorder.Close(t.Context()) }()
+	log := slog.New(slog.DiscardHandler)
+	handler := api.Router(log, api.Options{
+		Auth: testAuthorizer{}, Log: log, DiagnosticCapture: recorder,
+	})
+
+	member := httptest.NewRequest(http.MethodPost, "/v1/diagnostics/verbose-capture", strings.NewReader(`{"durationMinutes":5}`))
+	member.Header.Set("Authorization", "Bearer "+memberToken)
+	member.Header.Set("Content-Type", "application/json")
+	memberResponse := httptest.NewRecorder()
+	handler.ServeHTTP(memberResponse, member)
+	if memberResponse.Code != http.StatusForbidden {
+		t.Fatalf("member status = %d, want 403", memberResponse.Code)
+	}
+
+	start := httptest.NewRequest(http.MethodPost, "/v1/diagnostics/verbose-capture", strings.NewReader(`{"durationMinutes":5,"subsystem":"player","channelId":"channel-1"}`))
+	start.Header.Set("Authorization", "Bearer "+adminToken)
+	start.Header.Set("Content-Type", "application/json")
+	startResponse := httptest.NewRecorder()
+	handler.ServeHTTP(startResponse, start)
+	if startResponse.Code != http.StatusOK {
+		t.Fatalf("start status = %d: %s", startResponse.Code, startResponse.Body.String())
+	}
+	var capture diagnostics.VerboseCapture
+	if err := json.NewDecoder(startResponse.Body).Decode(&capture); err != nil {
+		t.Fatal(err)
+	}
+	if !capture.Active || capture.Subsystem != "player" || capture.ChannelID != "channel-1" {
+		t.Fatalf("capture = %#v", capture)
+	}
+
+	stop := httptest.NewRequest(http.MethodDelete, "/v1/diagnostics/verbose-capture", nil)
+	stop.Header.Set("Authorization", "Bearer "+adminToken)
+	stopResponse := httptest.NewRecorder()
+	handler.ServeHTTP(stopResponse, stop)
+	if stopResponse.Code != http.StatusOK || recorder.VerboseCapture().Active {
+		t.Fatalf("stop status = %d, capture = %#v", stopResponse.Code, recorder.VerboseCapture())
+	}
+}
+
 type diagnosticRecordSink struct {
 	mu      sync.Mutex
 	records []diagnostics.Record

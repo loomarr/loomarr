@@ -5893,9 +5893,10 @@ Application logging fans each accepted `slog` record to two independent sinks:
    it never waits on the request, scheduler, or Playout goroutine. Persistence failures report once
    through a stdout-only fallback logger, never through the composite handler that failed.
 
-The default durable threshold is `info`. A future operator-triggered verbose capture may retain
-`debug` for a bounded duration and optional subsystem/Channel scope; the design does not make
-permanent debug retention the default. Existing structured `slog` call sites remain valid. Stable
+The default durable threshold is `info`. An admin-triggered verbose capture may retain `debug` for
+one to fifteen minutes and an optional subsystem/Channel scope. The capture is process-local,
+automatically expires, and continues through the same bounded queue, redaction, and retention path;
+the design does not make permanent debug retention the default. Existing structured `slog` call sites remain valid. Stable
 event names and correlation attributes are added where a support query needs a contract rather
 than prose.
 
