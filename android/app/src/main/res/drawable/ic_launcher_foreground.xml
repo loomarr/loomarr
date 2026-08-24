@@ -1,8 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp"
-    android:viewportWidth="108" android:viewportHeight="108">
-    <!-- Canonical Loomarr colour bars, kept inside the adaptive-icon safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
     <path android:fillColor="#FFB020" android:pathData="M27,30h6v48h-6z" />
     <path android:fillColor="#F5D90A" android:pathData="M35,30h6v48h-6z" />
     <path android:fillColor="#3DD68C" android:pathData="M43,30h6v48h-6z" />

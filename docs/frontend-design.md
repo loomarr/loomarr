@@ -1,19 +1,21 @@
 # Loomarr Client Platform — Architecture & Design System
 
-**Status:** Implemented legacy + approved replacement contract · companion to [`design.md`](design.md)
+**Status:** Implemented legacy + approved refinement contract · companion to [`design.md`](design.md)
 **Precedence:** the main design doc is authoritative for *behavior* (endpoints, flows, auth, phases). This doc is authoritative for *how the frontend looks and is built*. Conflicts → main doc wins on what, this doc wins on how; fix the loser in the same PR.
 **Language policy (main doc §14) applies:** the web implementation compiles to static assets embedded in the Go binary; Expo and React Native are the approved client build/runtime exception and do not add an application backend.
 
-## 0. Replacement authority and migration state
+## 0. Refinement authority and migration state
 
-The maintainer has rejected preservation of the current design system and authorized a Phase-0
-replacement based on **Tamagui Core**, Expo, and `react-native-tvos`. The complete target interfaces,
+The maintainer has authorized a Phase-0 refinement and cross-platform consolidation of the current
+design system based on **Tamagui Core**, Expo, and `react-native-tvos`. Loomarr's existing Test Card
+identity is the visual foundation: its chroma bar, calibrated broadcast palette, Geist typography,
+and broadcast-console character are preserved and refined rather than replaced. The complete target interfaces,
 acceptance evidence, adoption gate, delivery sequence, and rollback contract live in
 [`engineering/plans/shared-client-platform.md`](engineering/plans/shared-client-platform.md).
 
 The sections below describe the **shipping legacy implementation** until each surface migrates. They
-remain binding for code that still uses Tailwind/shadcn or Compose, but they are not the target visual
-language and may not be used to reject a conforming replacement. New shared design work follows the
+remain binding for code that still uses Tailwind/shadcn or Compose and are migration evidence for the
+refined target language. New shared design work follows the
 migration plan and these precedence rules:
 
 1. Loomarr owns the semantic interfaces; application code does not depend directly on Tamagui.
@@ -26,12 +28,18 @@ migration plan and these precedence rules:
    before a full migration or legacy retirement is authorized.
 5. Until that adoption decision, the current web and Compose applications remain releasable.
 
+Brand identity and product iconography follow the consolidation contract as well. The canonical
+Loomarr chroma bar, wordmark, lockups, favicon, launcher icons, TV banner, and store artwork are generated
+from one shared vector definition and reviewed together in Storybook. Product glyphs use one shared
+outlined family behind a Loomarr-owned interface with named sizes, stroke, state, and accessibility
+rules. A platform asset or one-off icon is not a new source of design truth.
+
 ---
 
 ## 1. Legacy design concept: Test Card
 
-This section records the implemented visual system so migration reviews can identify what changed.
-It is not the target aesthetic. A *test card* is the color-bars calibration image broadcasters
+This section records the implemented visual system that forms the basis of the refined target.
+A *test card* is the color-bars calibration image broadcasters
 transmitted to prove the picture was true — the original pixel-perfect contract between a station
 and every screen tuned to it. The current frontend used that metaphor for a broadcast-console
 aesthetic whose correctness is enforced by the Playwright visual suite.
@@ -51,7 +59,11 @@ Tokens are the single source of truth. **No raw color/size literals outside the 
 
 ### 2.1 Color — the Test Card palette
 
-Dark-first; **v1 ships dark-only**, but every color is a semantic token so a light theme is a token-set later, not a refactor. Accents are derived from the SMPTE bars, adjusted for WCAG AA on dark surfaces (raw SMPTE values are not accessible).
+Dark remains the primary broadcast-console presentation, and the refined system ships a first-class
+light theme across web and native. Components consume semantic surface, content, border, focus, and
+scrim roles rather than assuming a dark ground. The chroma bar and its calibrated broadcast accents
+do not change between modes; supporting neutrals and contrast pairings do. Both themes are rendered
+and contrast-checked in Storybook.
 
 **Static scale (neutrals — "the set"):**
 
@@ -105,9 +117,17 @@ Stored as OKLCH in the source of truth (Tailwind v4/shadcn convention); hex abov
 
 ### 2.4 Motion
 
-- Tokens: `fast` 120ms · `base` 200ms, ease-out. Nothing animates longer than 300ms except the suggester's generation shimmer.
+- Interaction tokens remain `fast` 120ms · `base` 200ms, ease-out. Nothing interactive animates
+  longer than 300ms except the suggester's generation shimmer. The one-time launch identity is a
+  documented exception based on the supplied power-on mock: 340ms chroma segments at 40ms stagger
+  and a 400ms word/tagline settle. The mock's broad broadcast roll is intentionally omitted after
+  visual review because it cheapened the otherwise restrained identity motion.
 - `prefers-reduced-motion` is honored globally (single CSS gate) and force-enabled in visual-test mode.
 - Signature moments (used sparingly): checklist items "lock in" (static→clear, 200ms) during onboarding; a channel card's `onair` dot fades in when its first reconcile completes.
+- Loading has four named jobs: compact inline activity, content skeleton, determinate progress, and
+  signal acquisition. Preserve and refine the current tuner loader's gray-to-amber meter lock as the
+  branded playback treatment; replace local `Loader2` decisions with the shared activity interface.
+  A wait longer than three seconds must expose stage, elapsed time, or other useful progress context.
 
 ### 2.5 Token pipeline and migration
 

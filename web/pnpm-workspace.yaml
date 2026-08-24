@@ -2,6 +2,11 @@ packages:
   - "packages/*"
   - "apps/*"
 
+# Native clients must resolve peers from their own declared runtimes. Letting a
+# browser-only dependency in another workspace satisfy an Expo peer creates a
+# second native module graph that Expo Doctor correctly rejects.
+resolvePeersFromWorkspaceRoot: false
+
 allowBuilds:
   esbuild: true
   # @scarf/scarf is analytics/telemetry pulled in transitively — deny its build.
@@ -20,9 +25,35 @@ minimumReleaseAgeExclude:
 # analyzer-only compatible compiler beside it so pnpm's isolated linker makes
 # it resolvable without changing any package's TypeScript 7 compiler.
 packageExtensions:
-  "dependency-cruiser@17.4.3":
+  "dependency-cruiser@18.2.0":
     dependencies:
       typescript: "~6.0.3"
+  # Native Storybook runs in lite mode inside each Expo app, where React Native, Reanimated,
+  # SVG, and safe-area are already supplied at Expo-compatible versions. Its published full-UI
+  # peers otherwise make pnpm auto-install a second React Native plus gesture and bottom-sheet
+  # modules that the lite UI deliberately does not load.
+  "@storybook/react-native@10.5.0":
+    peerDependenciesMeta:
+      "@gorhom/bottom-sheet": { optional: true }
+      react: { optional: true }
+      react-native: { optional: true }
+      react-native-gesture-handler: { optional: true }
+      react-native-reanimated: { optional: true }
+      react-native-safe-area-context: { optional: true }
+  "@storybook/react-native-ui@10.5.4":
+    peerDependenciesMeta:
+      "@gorhom/bottom-sheet": { optional: true }
+      react: { optional: true }
+      react-native: { optional: true }
+      react-native-gesture-handler: { optional: true }
+      react-native-reanimated: { optional: true }
+      react-native-safe-area-context: { optional: true }
+      react-native-svg: { optional: true }
+  "@storybook/react-native-ui-lite@10.5.0":
+    peerDependenciesMeta:
+      react: { optional: true }
+      react-native: { optional: true }
+      react-native-safe-area-context: { optional: true }
 
 # esbuild (used by tsx + vitest + vite) ships a platform binary via a postinstall
 # build script; pnpm blocks build scripts by default. Approve exactly this one.
@@ -40,6 +71,8 @@ overrides:
   # pins, pnpm can auto-fill optional peers with a second React Native Metro context and
   # unsupported Reanimated/Worklets releases that pass JS bundling but fail native C++.
   "@react-native/metro-config": "0.86.2"
+  react: "19.2.3"
+  react-dom: "19.2.3"
   react-native-reanimated: "4.5.1"
   react-native-worklets: "0.10.1"
   # GHSA: code injection via `_.template` + prototype pollution in `_.unset`/`_.omit`.

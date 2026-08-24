@@ -9,6 +9,7 @@
       "!**/dist",
       "!**/generated",
       "!**/routeTree.gen.ts",
+      "!**/.rnstorybook/storybook.requires.ts",
       "!**/storybook-static",
       "!**/playwright-report",
       "!**/test-results",

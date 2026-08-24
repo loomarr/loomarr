@@ -181,12 +181,17 @@ classify() {
       select_gate image
       select_gate web
       ;;
+    brand-assets.lock.json)
+      known=true
+      select_gate clients
+      ;;
     scripts/*)
       known=true
       select_gate contracts
       case "$path" in
         scripts/agent*|scripts/dev-*) select_gate agent ;;
         scripts/android-*.sh|scripts/build-android-beta.sh|scripts/check-android-release-env.sh|scripts/generate-android-tv-brand.sh|scripts/publish-android-beta.sh|scripts/test-android-release.sh|scripts/validate-android-release-source.sh) select_gate android ;;
+        scripts/generate-brand-assets.mjs|scripts/check-brand-assets.mjs) select_gate clients ;;
         scripts/check-fe-bundle.mjs) select_gate web; select_gate image ;;
       esac
       ;;

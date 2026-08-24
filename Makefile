@@ -520,6 +520,15 @@ fe-tokens: ## regenerate design-token artifacts from packages/tokens (CI diff mu
 fe-tokens-verify: fe-tokens ## regenerated token artifacts must match committed
 	@git diff --exit-code web/packages/tokens/generated
 
+.PHONY: brand-assets
+brand-assets: ## regenerate favicon, launcher, TV, and store artwork from the shared brand contract
+	node scripts/generate-brand-assets.mjs
+
+.PHONY: brand-assets-verify
+brand-assets-verify: ## verify every platform brand derivative matches the shared brand contract
+	node --check scripts/generate-brand-assets.mjs
+	node scripts/check-brand-assets.mjs
+
 .PHONY: fe-codegen
 fe-codegen: ## regenerate tokens + orval api client from api/openapi.yaml
 	cd $(WEB) && pnpm codegen
@@ -559,12 +568,12 @@ fe: ## biome + codegen + typecheck + unit tests + embedded SPA + storybook galle
 	@touch internal/web/dist/.gitkeep
 
 .PHONY: clients
-clients: ## lint, test, typecheck, and bundle the shared browser, mobile, and TV scaffold
+clients: brand-assets-verify ## lint, test, typecheck, and bundle the shared browser, mobile, and TV scaffold
 	cd $(WEB) && pnpm exec biome check apps/mobile apps/tv apps/web/client-platform-proof.html \
 	  apps/web/src/client-platform-proof apps/web/tests/client-platform-proof.ssr.test.tsx \
 	  apps/web/vite.client-platform.config.ts \
-	  packages/design-system packages/ui turbo.json \
-	  && pnpm imports:check && pnpm lint:boundaries && pnpm clients:check
+	  .rnstorybook native-stories packages/design-system packages/ui turbo.json \
+	  && pnpm imports:check && pnpm lint:boundaries && pnpm native-storybook:check && pnpm clients:check
 
 CLIENT_APP ?= mobile
 .PHONY: client-android-debug

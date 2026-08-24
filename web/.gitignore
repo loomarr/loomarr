@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+.rnstorybook/storybook.requires.ts
 .pnpm-store/
 
 # Build output (the app's dist is synced into internal/web/dist by `make fe`)

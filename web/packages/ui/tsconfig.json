@@ -4,5 +4,6 @@
     "jsx": "react-jsx",
     "lib": ["ES2022"]
   },
-  "include": ["./**/*.ts", "./**/*.tsx"]
+  "include": ["./**/*.ts", "./**/*.tsx"],
+  "exclude": ["vitest.config.ts"]
 }

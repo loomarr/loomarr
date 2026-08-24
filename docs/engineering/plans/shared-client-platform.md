@@ -1,6 +1,6 @@
 # Shared client platform migration
 
-**Status:** P0a merged; P0b scaffold in progress
+**Status:** P0a and P0b merged; P1 visual foundations validated locally and pending publication
 **Date:** 2026-08-23  
 **Decision owner:** maintainer  
 **Companion contract:** [`docs/frontend-design.md`](../../frontend-design.md)
@@ -8,8 +8,9 @@
 
 ## Outcome
 
-Loomarr will replace the current Test Card/Tailwind/shadcn web design system and the separately
-implemented Compose TV presentation with a Loomarr-owned client platform built on **Tamagui Core**.
+Loomarr will refine and consolidate the current Test Card visual system and the separately implemented
+Tailwind/shadcn web and Compose TV presentations into a Loomarr-owned client platform built on
+**Tamagui Core**.
 The target serves the embedded web app, iOS and Android touch clients, and Android TV and Apple TV
 clients without pretending that pointer, touch, and remote control are the same interaction.
 
@@ -30,9 +31,10 @@ implementations. That decision produced three costs that now outweigh its benefi
 3. a new mobile client would add a third implementation before the product has one design system
    worth reproducing.
 
-The current palette, primitives, and screenshots are migration evidence, not presumed-good target
-design. Existing behavior, accessibility, authorization, pairing, playout, and release guarantees
-remain requirements even when their presentation is replaced.
+The current palette, chroma-bar identity, Geist typography, primitives, and screenshots are migration
+evidence and the basis of the target language. Individual component treatments may be refined when
+review evidence supports it, but the work must remain recognizably Loomarr. Existing behavior,
+accessibility, authorization, pairing, playout, and release guarantees remain requirements.
 
 ## Non-negotiable product invariants
 
@@ -117,8 +119,9 @@ The replacement has no retro-theme name. It is simply Loomarr's product language
   visually primary; application chrome recedes.
 - **Watching first on TV.** Playback is the home state. Guide and Surf are transient, edge-to-edge
   layers over a still-mounted player and dismiss without losing the tuned channel.
-- **Calm, dimensional dark surfaces.** Black is reserved for playback and transparent overlays;
-  ordinary surfaces use distinguishable semantic layers rather than one undifferentiated black.
+- **Mode-aware surfaces.** Dark keeps Loomarr's broadcast-console character; light provides an equally
+  intentional daytime presentation. Playback may remain black, while ordinary surfaces, content,
+  borders, focus, and scrims resolve through semantic theme roles.
 - **Focus is a first-class state.** Focus is not hover with a larger scale. It has a visible ring or
   surface treatment, predictable movement, restored position, and no layout jump.
 - **Artwork has a contract.** Programmes use 16:9 stills/backdrops with complete-image treatment;
@@ -127,6 +130,40 @@ The replacement has no retro-theme name. It is simply Loomarr's product language
   gutters, and disclosure differ for desktop, touch, and ten-foot viewing.
 - **Motion explains state.** Overlay entrance/exit, focus movement, and tuning transitions may
   animate; decoration does not compete with playback, and reduced-motion is honored everywhere.
+- **Launch identifies the station.** Web, mobile, and TV hand off their platform-native splash to
+  the same Loomarr launch identity: the seven chroma segments rise left-to-right, then the Geist
+  wordmark and tagline settle in. It is based on the supplied
+  power-on mock, never blocks an already-ready client, and resolves immediately under reduced motion.
+
+### Brand and iconography contract
+
+Loomarr's identity is part of the shared system rather than a set of manually synchronized app
+assets. The existing seven-segment chroma bar is the canonical symbol; its order and calibrated
+colors are invariant. One canonical vector definition owns that symbol, the Geist wordmark, and
+lockup geometry. It generates
+the browser favicon, web manifest icons, mobile launcher icons, TV launcher/banner artwork, and store
+listing derivatives. P1 shows every supported variation together: full-color and one-color symbol,
+wordmark, horizontal and stacked lockups, light and dark grounds, minimum sizes, clear space, and the
+small-icon reduction. The gallery renders each appropriate treatment on light and dark grounds.
+Generated assets carry a drift test; hand-editing a platform derivative is a failing change.
+The gallery also renders and replays the shared launch identity at pointer, touch, and TV densities;
+client adapters own only the native splash handoff and readiness transition.
+
+Product icons are a separate system from the Loomarr mark. Shared UI uses the outlined Lucide family
+through a Loomarr-owned `Icon` interface backed by `lucide-react-native` and `react-native-svg`.
+Named size roles, a single default stroke weight, optical exceptions, semantic colors, focus and
+disabled treatments, and accessible-label rules are documented and rendered in the workshop. Apps
+may not mix in an arbitrary icon family or invent local sizes. Platform-native symbols remain an
+adapter option only where the platform convention conveys meaning that a shared glyph cannot.
+
+Loading motion is also a shared vocabulary, not a collection of local spinners. P1 renders four
+distinct jobs in both themes and every density: a compact activity glyph for short inline actions,
+layout-preserving skeletons for unknown content, determinate progress for measured work, and the
+Loomarr signal-acquisition treatment for player tuning. The latter refines the shipping tuner loader:
+nine static-gray meter bars resolve left-to-right into signal amber beside a concise mono status.
+Long waits expose useful stage or elapsed information rather than spinning silently. All variants
+freeze into an informative final frame under reduced motion, and accessible status text carries the
+meaning instead of decorative animation.
 
 ### Semantic token interface
 
@@ -225,7 +262,7 @@ the adoption gate.
 | --- | --- | --- |
 | P0a | This contract and dependency decision | docs and generated-doc gates |
 | P0b | pnpm/Turborepo/Expo/Tamagui scaffold; no migrated production screen | web build unchanged; Expo iOS/Android/TV dev builds; affected-task tests |
-| P1 | semantic tokens, fonts, primitive interfaces, fixtures, web/native Storybooks | token drift, contrast, story coverage, web/native renders |
+| P1 | semantic tokens, fonts, brand assets, iconography, loading motion, primitive interfaces, fixtures, web/native Storybooks | token/asset drift, contrast, story coverage, web/native renders |
 | P2 | shared Guide data/view modules and web integration | real API + deterministic visual/a11y gates; current web behavior retained |
 | P3 | mobile/TV shells, pairing, transport, and navigation adapters | iPhone and Shield login/pair/revocation evidence |
 | P4 | playback, overlay, Surf, tuning, and previous-channel behavior | real-server first frame and remote/touch/browser traversal |
@@ -305,6 +342,33 @@ the viewport and the 760x126 proof panel is centered at x=340, y=387 with no hor
 overflow and no page exceptions. A server-render test runs through the same adapter aliases so a
 second React runtime in a linked universal package fails the client gate instead of producing a
 blank-but-successfully-bundled page.
+
+## P1 visual-foundation evidence
+
+P1 replaces the provisional scaffold styling with Loomarr's original brand contract, refined as a
+cross-platform system. One checked-in JSON contract owns the seven-segment chroma order, calibrated
+colors, wordmark, and identity outline; a hash-bound deterministic generator owns the platform asset
+geometry and specifications. The generator produces 16 web,
+mobile, TV, Android launcher, and store-listing derivatives; `make brand-assets-verify` fails on a
+hand-edited or stale derivative. Light and dark semantic themes, pointer/touch/TV density scales,
+reduced-motion behavior, contrast assertions, Geist wordmark treatment, Lucide-backed product icons,
+launch motion, inline activity, skeleton, progress, signal-acquisition loading, and the first shared
+`ProgrammeCard` are exposed only through the Loomarr-owned `design-system` and `ui` roots.
+
+The browser Storybook and its offline production build render the brand standards, generated asset
+matrix, tokens, typography, spacing, iconography, launch sequence, loading vocabulary, and programme
+states. Native Storybook uses the same stories. On the physical Shield at 3840x2160, its TV-specific
+rail rendered the canonical lockup and visible focus treatment; D-pad Down moved focus between story
+cards and OK selected the focused story. This proof uses the prototype package
+`media.loomarr.tv.prototype`, leaving the shipping Compose package untouched.
+
+The complete `make clients` gate passes package-boundary enforcement, native Storybook generation
+and typing, shared typechecks and tests, Expo Doctor (21/21 for both mobile and TV), production JS
+exports for Android, iOS, Android TV, and Apple TV, and the Vite browser adapter build plus
+server-render test. `make storybook-build` also passes. Workspace peer resolution is app-local and
+React/ReactDOM are pinned to Expo SDK 57's 19.2.3 runtime so optional browser peers cannot create a
+second native module graph. Web aliases map universal native host elements to `react-native-web` and
+the SVG web adapter, making a native Flow import a red build instead of a runtime surprise.
 
 ## Open evidence, not open architecture
 
