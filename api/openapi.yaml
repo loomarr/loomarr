@@ -7637,6 +7637,21 @@ paths:
       summary: What Loomarr has been doing, newest first
       tags:
         - system
+  /v1/auth/device:
+    delete:
+      operationId: device-revoke-current
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Revoke the paired device making this request
+      tags:
+        - auth
   /v1/auth/device/approve:
     post:
       operationId: device-pair-approve

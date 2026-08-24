@@ -270,3 +270,88 @@ func TestDeviceRevokeIsScopedToOwner(t *testing.T) {
 		t.Error("the owner's device stopped working after a foreign revoke attempt")
 	}
 }
+
+// A paired client can deliberately revoke only the credential authenticating this request. This
+// is the native client's Disconnect action: server state dies before SecureStore is cleared.
+func TestDeviceCanRevokeItself(t *testing.T) {
+	t.Parallel()
+	srv, _ := deviceServer(t, nil)
+	_, start := postJSON(t, srv, "/v1/auth/device/start", map[string]string{"deviceName": "Shield"}, nil)
+	deviceCode, _ := start["deviceCode"].(string)
+	userCode, _ := start["userCode"].(string)
+	session := login(t, srv, "kid", "pw")
+	postJSON(t, srv, "/v1/auth/device/approve", map[string]string{"userCode": userCode}, session)
+	_, poll := postJSON(t, srv, "/v1/auth/device/poll", map[string]string{"deviceCode": deviceCode}, nil)
+	token, _ := poll["token"].(string)
+
+	disconnect, _ := http.NewRequest(http.MethodDelete, srv.URL+"/v1/auth/device", nil)
+	disconnect.Header.Set("Authorization", "Bearer "+token)
+	res, err := srv.Client().Do(disconnect)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("self revoke = %d, want 204", res.StatusCode)
+	}
+
+	me, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/auth/me", nil)
+	me.Header.Set("Authorization", "Bearer "+token)
+	meRes, err := srv.Client().Do(me)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = meRes.Body.Close()
+	if meRes.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("self-revoked token = %d, want 401", meRes.StatusCode)
+	}
+}
+
+// A browser session is a person, not a current paired device. It must use the existing device list
+// and id-scoped revoke route instead of turning "current device" into an ambiguous credential. The
+// break-glass API token has no paired-device identity either and must fail the same way.
+func TestDeviceSelfRevokeRejectsHumanSession(t *testing.T) {
+	t.Parallel()
+	srv, _ := deviceServer(t, nil)
+	_, start := postJSON(t, srv, "/v1/auth/device/start", map[string]string{"deviceName": "Shield"}, nil)
+	deviceCode, _ := start["deviceCode"].(string)
+	userCode, _ := start["userCode"].(string)
+	session := login(t, srv, "kid", "pw")
+	postJSON(t, srv, "/v1/auth/device/approve", map[string]string{"userCode": userCode}, session)
+	_, poll := postJSON(t, srv, "/v1/auth/device/poll", map[string]string{"deviceCode": deviceCode}, nil)
+	token, _ := poll["token"].(string)
+
+	disconnect, _ := http.NewRequest(http.MethodDelete, srv.URL+"/v1/auth/device", nil)
+	disconnect.AddCookie(session)
+	disconnect.Header.Set("X-Loomarr-Csrf", "1")
+	res, err := srv.Client().Do(disconnect)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("human self revoke = %d, want 401", res.StatusCode)
+	}
+
+	breakGlass, _ := http.NewRequest(http.MethodDelete, srv.URL+"/v1/auth/device", nil)
+	breakGlass.Header.Set("Authorization", "Bearer "+adminToken)
+	breakGlassRes, err := srv.Client().Do(breakGlass)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = breakGlassRes.Body.Close()
+	if breakGlassRes.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("API token self revoke = %d, want 401", breakGlassRes.StatusCode)
+	}
+
+	me, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/auth/me", nil)
+	me.Header.Set("Authorization", "Bearer "+token)
+	meRes, err := srv.Client().Do(me)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = meRes.Body.Close()
+	if meRes.StatusCode != http.StatusOK {
+		t.Fatalf("device after refused human self revoke = %d, want 200", meRes.StatusCode)
+	}
+}

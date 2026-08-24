@@ -19,8 +19,12 @@ func (s *Server) registerMiddleware(api huma.API) {
 		r, _ := humago.Unwrap(ctx)
 		role := RoleAnonymous
 		var user *store.User
+		var deviceID string
 		if s.auth != nil {
-			if ua, ok := s.auth.(UserAuthorizer); ok {
+			if ia, ok := s.auth.(identityAuthorizer); ok {
+				identity := ia.AuthorizeIdentity(r)
+				role, user, deviceID = identity.role, identity.user, identity.deviceID
+			} else if ua, ok := s.auth.(UserAuthorizer); ok {
 				role, user = ua.AuthorizeUser(r)
 			} else {
 				role = s.auth.Authorize(r)
@@ -65,6 +69,9 @@ func (s *Server) registerMiddleware(api huma.API) {
 		c = huma.WithValue(c, reqCtxKey{}, r) // raw request for handlers (login IP, cookies)
 		if user != nil {
 			c = huma.WithValue(c, userCtxKey{}, *user)
+		}
+		if deviceID != "" {
+			c = huma.WithValue(c, deviceCtxKey{}, deviceID)
 		}
 		next(c)
 	})

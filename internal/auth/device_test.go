@@ -48,12 +48,15 @@ func TestDevicePairingRoundTrip(t *testing.T) {
 		t.Fatalf("Redeem = (%q, %q), want a token and the device name", token, name)
 	}
 
-	user, err := mgr.ResolveDevice(t.Context(), token)
+	principal, err := mgr.ResolveDevice(t.Context(), token)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if user.ID != "u-member" {
-		t.Errorf("device resolved to %q, want the approving user", user.ID)
+	if principal.User.ID != "u-member" {
+		t.Errorf("device resolved to %q, want the approving user", principal.User.ID)
+	}
+	if principal.ID == "" || principal.ID == token {
+		t.Errorf("device id = %q, want a non-secret revocation handle", principal.ID)
 	}
 }
 
@@ -73,15 +76,15 @@ func TestDeviceInheritsApproverRoleAndNeverEscalates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	user, err := mgr.ResolveDevice(t.Context(), token)
+	principal, err := mgr.ResolveDevice(t.Context(), token)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if user.Role == "admin" {
-		t.Fatalf("device escalated to admin; role = %q", user.Role)
+	if principal.User.Role == "admin" {
+		t.Fatalf("device escalated to admin; role = %q", principal.User.Role)
 	}
-	if user.Role != "member" {
-		t.Errorf("device role = %q, want member", user.Role)
+	if principal.User.Role != "member" {
+		t.Errorf("device role = %q, want member", principal.User.Role)
 	}
 }
 

@@ -25,7 +25,8 @@
           "androidTVBanner": "./assets/tv-banner.png",
           "removeFlipperOnAndroid": true
         }
-      ]
+      ],
+      "expo-secure-store"
     ]
   }
 }

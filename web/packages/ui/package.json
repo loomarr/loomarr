@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@loomarr/core": "workspace:*",
     "@loomarr/design-system": "workspace:*"
   },
   "peerDependencies": {

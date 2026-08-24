@@ -1,6 +1,6 @@
 # Shared client platform migration
 
-**Status:** P0a through P1 merged; P2 shared Guide contracts validated locally and pending publication
+**Status:** P0a through P2 merged; P3 pairing and native-shell implementation is in protected CI as PR #538
 **Date:** 2026-08-23  
 **Decision owner:** maintainer  
 **Companion contract:** [`docs/frontend-design.md`](../../frontend-design.md)
@@ -51,6 +51,12 @@ accessibility, authorization, pairing, playout, and release guarantees remain re
   never the only path to a function. Back ultimately returns to the platform home screen.
 - Layout is authored in logical units. The same composition must fill 1920x1080 and 3840x2160
   output without hard-coded pixel coordinates, clipping, or a smaller centered canvas.
+- Every migrated surface starts with a parity inventory against the shipping client and supplied
+  approved mocks. A refinement may change hierarchy or treatment, but it may not silently drop
+  content, actions, states, or recovery paths; an omission requires an explicit maintainer decision.
+- Loomarr starts in its dark presentation on every fresh web or native client. Light and
+  system-following presentations remain supported user choices, but the host operating system does
+  not silently replace the product default before the person chooses one.
 - Every migration PR leaves a shippable product and has a documented rollback. The Compose package
   `loomarr.media` is retired only after the replacement proves install and in-place update parity.
 
@@ -119,9 +125,10 @@ The replacement has no retro-theme name. It is simply Loomarr's product language
   visually primary; application chrome recedes.
 - **Watching first on TV.** Playback is the home state. Guide and Surf are transient, edge-to-edge
   layers over a still-mounted player and dismiss without losing the tuned channel.
-- **Mode-aware surfaces.** Dark keeps Loomarr's broadcast-console character; light provides an equally
-  intentional daytime presentation. Playback may remain black, while ordinary surfaces, content,
-  borders, focus, and scrims resolve through semantic theme roles.
+- **Dark-first, mode-aware surfaces.** Loomarr defaults to the dark broadcast-console presentation
+  on first load and fresh install. Light provides an equally intentional daytime presentation, and
+  system-following may be offered as an explicit saved choice. Playback may remain black, while
+  ordinary surfaces, content, borders, focus, and scrims resolve through semantic theme roles.
 - **Focus is a first-class state.** Focus is not hover with a larger scale. It has a visible ring or
   surface treatment, predictable movement, restored position, and no layout jump.
 - **Artwork has a contract.** Programmes use 16:9 stills/backdrops with complete-image treatment;
@@ -264,7 +271,7 @@ the adoption gate.
 | P0b | pnpm/Turborepo/Expo/Tamagui scaffold; no migrated production screen | web build unchanged; Expo iOS/Android/TV dev builds; affected-task tests |
 | P1 | semantic tokens, fonts, brand assets, iconography, loading motion, primitive interfaces, fixtures, web/native Storybooks | token/asset drift, contrast, story coverage, web/native renders |
 | P2 | shared Guide data/view modules and web integration | real API + deterministic visual/a11y gates; current web behavior retained |
-| P3 | mobile/TV shells, pairing, transport, and navigation adapters | iPhone and Shield login/pair/revocation evidence |
+| P3 | mobile/TV shells, pairing, confirmed self-disconnect, transport, and navigation adapters; shipping-screen parity inventory and dark-first pairing with canonical lockup and protected-centre branded QR | iPhone and Shield pair/self-disconnect/remote-revocation recovery evidence plus visual parity and QR-decode review |
 | P4 | playback, overlay, Surf, tuning, and previous-channel behavior | real-server first frame and remote/touch/browser traversal |
 | P5 | full vertical-slice evidence and go/no-go decision | every acceptance item above recorded |
 | P6 | remaining viewer surfaces | route-by-route parity; current clients still releasable |

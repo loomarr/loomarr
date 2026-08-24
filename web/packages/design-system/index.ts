@@ -18,10 +18,22 @@ export {
   signalLoaderMotion,
   skeletonMotion,
 } from "./src/loading";
-export type { ArtworkState, BadgeTone, TextProps } from "./src/primitives";
-export { ArtworkFrame, Badge, FocusSurface, ProgressTrack, Screen, Surface, Text } from "./src/primitives";
+export type { ActionProps, ArtworkState, BadgeTone, FieldProps, TextProps } from "./src/primitives";
+export {
+  Action,
+  ArtworkFrame,
+  Badge,
+  Field,
+  FocusSurface,
+  ProgressTrack,
+  Screen,
+  Surface,
+  Text,
+} from "./src/primitives";
 export type { LoomarrProviderProps, LoomarrTheme } from "./src/provider";
-export { LoomarrProvider } from "./src/provider";
+export { LoomarrProvider, resolveLoomarrTheme } from "./src/provider";
+export type { QrCodeProps } from "./src/qr-code";
+export { QrCode } from "./src/qr-code";
 export type { Density, TextRole } from "./src/tokens";
 export {
   brandChroma,
