@@ -21,7 +21,7 @@ const run = {
   discardedLines: 14,
 };
 const initial: DiagnosticsSearch = {
-  view: "playout",
+  view: "process",
   range: "1h",
   level: "all",
   source: "all",
@@ -96,7 +96,7 @@ const withDiagnostics = (Story: typeof StoryHarness) => {
 };
 
 const meta = {
-  title: "Diagnostics/Playout",
+  title: "Diagnostics/ProcessRuns",
   component: StoryHarness,
   decorators: [widthFrame(1200), withDiagnostics],
 } satisfies Meta<typeof StoryHarness>;

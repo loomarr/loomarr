@@ -22,7 +22,7 @@ const run = {
 };
 
 const initial: DiagnosticsSearch = {
-  view: "playout",
+  view: "process",
   range: "1h",
   level: "all",
   source: "all",

@@ -323,21 +323,21 @@ const PlayoutDiagnostics = ({
     onFiltersChange(next);
   };
   return (
-    <section className="space-y-4" aria-labelledby="playout-diagnostics-title">
+    <section className="space-y-4" aria-labelledby="process-runs-title">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 id="playout-diagnostics-title" className="font-medium text-lg">
-            Playout
+          <h2 id="process-runs-title" className="font-medium text-lg">
+            Process runs
           </h2>
           <p className="text-muted-foreground text-sm">
-            Active and recent ffmpeg and streaming Process runs. Filters are reflected in this page's URL.
+            FFmpeg and other media processes connected to the logs you are investigating.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => query.refetch()} disabled={query.isFetching}>
           <RotateCcw aria-hidden /> Refresh
         </Button>
       </div>
-      <div className="grid gap-3 rounded-lg border border-border bg-card p-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-3 rounded-lg border border-border bg-card p-3 sm:grid-cols-2">
         <Select
           value={filters.processRange}
           onValueChange={(value) =>
@@ -370,24 +370,29 @@ const PlayoutDiagnostics = ({
             <SelectItem value="cancelled">Cancelled</SelectItem>
           </SelectContent>
         </Select>
-        <Input
-          aria-label="Process purpose"
-          placeholder="Purpose"
-          value={filters.processPurpose}
-          onChange={(event) => update({ ...filters, processPurpose: event.target.value })}
-        />
-        <Input
-          aria-label="Process Channel id"
-          placeholder="Channel id"
-          value={filters.processChannelId}
-          onChange={(event) => update({ ...filters, processChannelId: event.target.value })}
-        />
-        <Input
-          aria-label="Process Job id"
-          placeholder="Job id"
-          value={filters.processJobId}
-          onChange={(event) => update({ ...filters, processJobId: event.target.value })}
-        />
+        <details className="sm:col-span-2">
+          <summary className="cursor-pointer py-1 text-muted-foreground text-sm">More filters</summary>
+          <div className="mt-2 grid gap-3 sm:grid-cols-3">
+            <Input
+              aria-label="Process purpose"
+              placeholder="Purpose"
+              value={filters.processPurpose}
+              onChange={(event) => update({ ...filters, processPurpose: event.target.value })}
+            />
+            <Input
+              aria-label="Process Channel id"
+              placeholder="Channel id"
+              value={filters.processChannelId}
+              onChange={(event) => update({ ...filters, processChannelId: event.target.value })}
+            />
+            <Input
+              aria-label="Process Job id"
+              placeholder="Job id"
+              value={filters.processJobId}
+              onChange={(event) => update({ ...filters, processJobId: event.target.value })}
+            />
+          </div>
+        </details>
       </div>
       {query.isError ? (
         <ErrorState error={query.error} onRetry={() => query.refetch()} />
