@@ -370,6 +370,11 @@ React/ReactDOM are pinned to Expo SDK 57's 19.2.3 runtime so optional browser pe
 second native module graph. Web aliases map universal native host elements to `react-native-web` and
 the SVG web adapter, making a native Flow import a red build instead of a runtime surprise.
 
+The committed browser visual contract adds 34 reviewed desktop/mobile captures for brand standards,
+light/dark themes, launch motion, loading states, iconography, and programme-card density/focus. A
+fresh non-update `make fe-visual` run passes all 888 Storybook visual and accessibility cases against
+the merged corpus.
+
 ## Open evidence, not open architecture
 
 The architecture above is decided for the slice. These facts must be measured rather than guessed:
