@@ -3,7 +3,19 @@ import type { EventView } from "@loomarr/api/models/eventView";
 import { ListDiagnosticEventsLevel } from "@loomarr/api/models/listDiagnosticEventsLevel";
 import type { ListDiagnosticEventsParams } from "@loomarr/api/models/listDiagnosticEventsParams";
 import { ListDiagnosticEventsSource } from "@loomarr/api/models/listDiagnosticEventsSource";
-import { AlertTriangle, Check, Clipboard, Download, Radio, RotateCcw, Square } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  CirclePause,
+  CirclePlay,
+  Clipboard,
+  Download,
+  ListFilter,
+  Radio,
+  RadioTower,
+  RotateCcw,
+  Square,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
@@ -48,6 +60,24 @@ const levelTone = (level: EventView["level"]): StatusTone => {
   if (level === "info") return "ok";
   return "off";
 };
+
+const levelLabel = (level: EventView["level"]) => {
+  if (level === "warn") return "Warning";
+  return `${level.charAt(0).toUpperCase()}${level.slice(1)}`;
+};
+
+const sourceLabel = (source: EventView["source"]) => {
+  if (source === "server") return "Loomarr";
+  if (source === "android_tv") return "Android TV";
+  return "Web player";
+};
+
+const fallbackMessage = (event: EventView) =>
+  event.event
+    .split(/[._]/)
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
 
 const eventParams = (
   filters: ApplicationFilters,
@@ -113,61 +143,58 @@ const EventDetail = ({
     ["Instance", event.instanceId],
   ].filter((entry): entry is [string, string] => Boolean(entry[1]));
   return (
-    <div className="space-y-3 border-border border-t bg-muted/20 px-4 py-4 text-sm">
-      {event.message && <p>{event.message}</p>}
-      {correlations.length > 0 && (
-        <div className="grid gap-1 sm:grid-cols-2">
-          {correlations.map(([label, value]) => (
-            <div key={label} className="flex min-w-0 items-center gap-1">
-              <span className="w-28 shrink-0 text-muted-foreground text-xs">{label}</span>
-              <CopyValue label={label} value={value} />
-              {label === "Process run" && onOpenProcess && (
-                <Button
-                  variant="link"
-                  size="sm"
-                  className="h-auto px-1 py-0"
-                  onClick={() => onOpenProcess(value)}
-                  aria-label="Open Process run"
-                >
-                  Open
-                </Button>
-              )}
-              {label === "Channel" && onOpenRelated && (
-                <Button
-                  variant="link"
-                  size="sm"
-                  className="h-auto px-1 py-0"
-                  onClick={() => onOpenRelated("channel", value)}
-                  aria-label="Open Channel"
-                >
-                  Open
-                </Button>
-              )}
-              {label === "Job" && onOpenRelated && (
-                <Button
-                  variant="link"
-                  size="sm"
-                  className="h-auto px-1 py-0"
-                  onClick={() => onOpenRelated("job", value)}
-                  aria-label="Open Job"
-                >
-                  Open
-                </Button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+    <div className="space-y-4 bg-muted/20 p-4 text-sm">
       <div>
-        <h4 className="mb-1 font-medium text-xs">Structured attributes</h4>
-        {Object.keys(event.attributes).length === 0 ? (
-          <p className="text-muted-foreground text-xs">No structured attributes.</p>
-        ) : (
-          <pre className="max-h-56 overflow-auto rounded-md border border-border bg-background p-3 font-mono text-xs">
-            {JSON.stringify(event.attributes, null, 2)}
-          </pre>
+        <span className="inline-flex items-center gap-2 text-muted-foreground text-xs">
+          <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
+          {levelLabel(event.level)} · {sourceLabel(event.source)}
+        </span>
+        <h3 className="mt-2 font-medium text-lg">{event.message || fallbackMessage(event)}</h3>
+        <p className="mt-1 text-muted-foreground text-xs">
+          {formatTime(event.occurredAt)}
+          {event.subsystem ? ` · ${event.subsystem}` : ""}
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {event.processRunId && onOpenProcess && (
+          <Button variant="outline" size="sm" onClick={() => onOpenProcess(event.processRunId ?? "")}>
+            <RadioTower aria-hidden /> Open process output
+          </Button>
+        )}
+        {event.channelId && onOpenRelated && (
+          <Button variant="outline" size="sm" onClick={() => onOpenRelated("channel", event.channelId ?? "")}>
+            Open related Channel
+          </Button>
+        )}
+        {event.jobId && onOpenRelated && (
+          <Button variant="outline" size="sm" onClick={() => onOpenRelated("job", event.jobId ?? "")}>
+            Open related Job
+          </Button>
         )}
       </div>
+      <details className="rounded-md border border-border bg-background p-3">
+        <summary className="cursor-pointer font-medium text-sm">Technical details</summary>
+        <div className="mt-3 space-y-3">
+          <p className="font-mono text-muted-foreground text-xs">{event.event}</p>
+          {correlations.length > 0 && (
+            <div className="grid gap-1">
+              {correlations.map(([label, value]) => (
+                <div key={label} className="flex min-w-0 items-center gap-1">
+                  <span className="w-28 shrink-0 text-muted-foreground text-xs">{label}</span>
+                  <CopyValue label={label} value={value} />
+                </div>
+              ))}
+            </div>
+          )}
+          {Object.keys(event.attributes).length === 0 ? (
+            <p className="text-muted-foreground text-xs">No structured attributes.</p>
+          ) : (
+            <pre className="max-h-56 overflow-auto rounded-md border border-border bg-card p-3 font-mono text-xs">
+              {JSON.stringify(event.attributes, null, 2)}
+            </pre>
+          )}
+        </div>
+      </details>
     </div>
   );
 };
@@ -255,15 +282,19 @@ const ApplicationDiagnostics = ({
   filters,
   onFiltersChange,
   onOpenProcess,
+  onBrowseProcesses,
   onOpenRelated,
 }: {
   filters: ApplicationFilters;
   onFiltersChange: (filters: ApplicationFilters) => void;
   onOpenProcess?: (id: string) => void;
+  onBrowseProcesses?: () => void;
   onOpenRelated?: (kind: "channel" | "job", id: string) => void;
 }) => {
   const [cursorStack, setCursorStack] = useState<string[]>([]);
   const [expanded, setExpanded] = useState<string>();
+  const [advanced, setAdvanced] = useState(false);
+  const [live, setLive] = useState(true);
   const [downloadState, setDownloadState] = useState<"idle" | "working" | "failed">("idle");
   const [now, setNow] = useState(() => Date.now());
   const cursor = cursorStack.at(-1);
@@ -276,13 +307,14 @@ const ApplicationDiagnostics = ({
   const events = body?.items ?? [];
   const dropped = body && "dropped" in body && typeof body.dropped === "number" ? body.dropped : 0;
   useEffect(() => {
-    if (cursor) return;
+    if (cursor || !live) return;
     const interval = window.setInterval(() => setNow(Date.now()), 15_000);
     return () => window.clearInterval(interval);
-  }, [cursor]);
+  }, [cursor, live]);
 
   const counts = { debug: 0, info: 0, warn: 0, error: 0 };
   for (const event of events) counts[event.level] += 1;
+  const selectedEvent = events.find((event) => event.id === expanded);
 
   const updateFilters = (next: ApplicationFilters) => {
     setCursorStack([]);
@@ -312,34 +344,56 @@ const ApplicationDiagnostics = ({
     }
   };
 
+  const correlationFilters = [
+    ["Request id", "requestId"],
+    ["Playback session", "playbackSessionId"],
+    ["Channel", "channelId"],
+    ["Schedule block", "scheduleBlockId"],
+    ["Job", "jobId"],
+    ["Process run", "processRunId"],
+  ] as const;
+
   return (
-    <section className="flex min-h-0 flex-1 flex-col gap-4" aria-labelledby="application-diagnostics-title">
+    <section className="flex min-h-0 flex-1 flex-col gap-4" aria-labelledby="logs-title">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 id="application-diagnostics-title" className="font-medium text-lg">
-            Application
+          <h2 id="logs-title" className="font-medium text-lg">
+            Logs
           </h2>
           <p className="text-muted-foreground text-sm">
-            Server and client observations, newest first. Filters are reflected in this page's URL.
+            Recent Loomarr, player, and process events. Newest first.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={downloadState === "working"}
-          onClick={() => void download()}
-        >
-          <Download aria-hidden />{" "}
-          {downloadState === "working" ? "Preparing…" : "Download this page (NDJSON)"}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {onBrowseProcesses && (
+            <Button variant="outline" size="sm" onClick={onBrowseProcesses}>
+              <RadioTower aria-hidden /> Process runs
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={downloadState === "working"}
+            onClick={() => void download()}
+          >
+            <Download aria-hidden /> {downloadState === "working" ? "Preparing…" : "Download logs"}
+          </Button>
+        </div>
       </div>
 
-      <div className="grid gap-3 rounded-lg border border-border bg-card p-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="flex flex-wrap gap-2 rounded-lg border border-border bg-card p-3">
+        <Input
+          className="min-w-64 flex-1"
+          aria-label="Search logs"
+          placeholder="Search logs"
+          value={filters.text}
+          onChange={(event) => updateFilters({ ...filters, text: event.target.value })}
+        />
         <Select
           value={filters.range}
           onValueChange={(range) => updateFilters({ ...filters, range: range as EventRange })}
         >
-          <SelectTrigger aria-label="Time range">
+          <SelectTrigger className="w-36" aria-label="Time range">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -352,7 +406,7 @@ const ApplicationDiagnostics = ({
           value={filters.level}
           onValueChange={(level) => updateFilters({ ...filters, level: level as EventLevel })}
         >
-          <SelectTrigger aria-label="Severity">
+          <SelectTrigger className="w-40" aria-label="Severity">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -363,46 +417,71 @@ const ApplicationDiagnostics = ({
             <SelectItem value="debug">Debug</SelectItem>
           </SelectContent>
         </Select>
-        <Select
-          value={filters.source}
-          onValueChange={(source) => updateFilters({ ...filters, source: source as EventSource })}
-        >
-          <SelectTrigger aria-label="Source">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All sources</SelectItem>
-            <SelectItem value="server">Server</SelectItem>
-            <SelectItem value="web">Web</SelectItem>
-            <SelectItem value="android_tv">Android TV</SelectItem>
-          </SelectContent>
-        </Select>
-        <Input
-          aria-label="Subsystem"
-          placeholder="Subsystem"
-          value={filters.subsystem}
-          onChange={(event) => updateFilters({ ...filters, subsystem: event.target.value })}
-        />
-        <Input
-          aria-label="Search diagnostics"
-          placeholder="Search events and attributes"
-          value={filters.text}
-          onChange={(event) => updateFilters({ ...filters, text: event.target.value })}
-        />
+        <Button variant="ghost" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)}>
+          <ListFilter aria-hidden /> More filters
+        </Button>
       </div>
 
-      <VerboseCaptureControl filters={filters} />
+      {advanced && (
+        <section
+          className="space-y-4 rounded-lg border border-border bg-card p-4"
+          aria-label="More log filters"
+        >
+          <div>
+            <h3 className="font-medium text-sm">More filters</h3>
+            <p className="text-muted-foreground text-xs">
+              Use these when you already know the affected source or identifier.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Select
+              value={filters.source}
+              onValueChange={(source) => updateFilters({ ...filters, source: source as EventSource })}
+            >
+              <SelectTrigger aria-label="Source">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All sources</SelectItem>
+                <SelectItem value="server">Loomarr</SelectItem>
+                <SelectItem value="web">Web player</SelectItem>
+                <SelectItem value="android_tv">Android TV</SelectItem>
+              </SelectContent>
+            </Select>
+            <Input
+              aria-label="Subsystem"
+              placeholder="Subsystem"
+              value={filters.subsystem}
+              onChange={(event) => updateFilters({ ...filters, subsystem: event.target.value })}
+            />
+            {correlationFilters.map(([label, key]) => (
+              <Input
+                key={key}
+                aria-label={label}
+                placeholder={label}
+                value={filters[key] ?? ""}
+                onChange={(event) => updateFilters({ ...filters, [key]: event.target.value || undefined })}
+              />
+            ))}
+          </div>
+          <details>
+            <summary className="cursor-pointer font-medium text-sm">Verbose capture</summary>
+            <div className="mt-3">
+              <VerboseCaptureControl filters={filters} />
+            </div>
+          </details>
+        </section>
+      )}
 
       <div
-        className="flex flex-wrap items-center gap-4 text-xs"
+        className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs"
         role="status"
         aria-label="Current page summary"
       >
-        <span className="text-muted-foreground">This page</span>
         <span>{counts.error} errors</span>
         <span>{counts.warn} warnings</span>
         <span>{counts.info} info</span>
-        <span>{counts.debug} debug</span>
+        {counts.debug > 0 && <span>{counts.debug} debug</span>}
         {downloadState === "failed" && (
           <span className="inline-flex items-center gap-1 text-danger">
             <AlertTriangle aria-hidden className="size-3" /> Download failed
@@ -413,14 +492,16 @@ const ApplicationDiagnostics = ({
             <AlertTriangle aria-hidden className="size-3" /> {dropped} events dropped since startup
           </span>
         )}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="ml-auto"
-          onClick={() => query.refetch()}
-          disabled={query.isFetching}
-        >
-          <RotateCcw aria-hidden /> Refresh
+        <span className="ml-auto inline-flex items-center gap-2 text-muted-foreground">
+          <StatusDot tone={live ? "ok" : "off"} label={live ? "Live" : "Paused"} />
+          {live ? "Live · refreshes every 15 seconds" : "Updates paused"}
+        </span>
+        <Button variant="ghost" size="sm" onClick={() => setLive(!live)}>
+          {live ? <CirclePause aria-hidden /> : <CirclePlay aria-hidden />}
+          {live ? "Pause" : "Resume"}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => query.refetch()} disabled={query.isFetching}>
+          <RotateCcw aria-hidden /> Refresh now
         </Button>
       </div>
 
@@ -432,55 +513,74 @@ const ApplicationDiagnostics = ({
         </p>
       ) : events.length === 0 ? (
         <p className="rounded-lg border border-border bg-card px-4 py-8 text-center text-muted-foreground text-sm">
-          No retained events match this bounded window.
+          No logs match these filters. Try a longer time range or clear More filters.
         </p>
       ) : (
-        <section
-          className="min-h-72 flex-1 overflow-auto rounded-lg border border-border bg-card"
-          aria-label="Diagnostic event timeline"
-        >
-          <div>
+        <div className="grid min-h-72 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_22rem]">
+          <section className="overflow-auto rounded-lg border border-border bg-card" aria-label="Logs">
             {events.map((event) => {
               const open = expanded === event.id;
               return (
-                <article
-                  key={event.id}
-                  className="border-border border-b [contain-intrinsic-size:auto_72px] [content-visibility:auto]"
-                >
+                <article key={event.id} className="border-border border-b last:border-b-0">
                   <button
                     type="button"
-                    className="grid w-full gap-2 px-4 py-3 text-left hover:bg-muted/20 sm:grid-cols-[8rem_7rem_minmax(0,1fr)_auto] sm:items-center"
+                    className={`grid w-full gap-2 px-4 py-3 text-left hover:bg-muted/20 sm:grid-cols-[7rem_minmax(0,1fr)_8rem] sm:items-start ${open ? "bg-muted/20" : ""}`}
                     aria-expanded={open}
                     onClick={() => setExpanded(open ? undefined : event.id)}
                   >
+                    <span className="inline-flex items-center gap-2 text-xs">
+                      <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
+                      {levelLabel(event.level)}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block font-medium text-sm">
+                        {event.message || fallbackMessage(event)}
+                      </span>
+                      <span className="mt-1 block text-muted-foreground text-xs">
+                        {sourceLabel(event.source)}
+                        {event.subsystem ? ` · ${event.subsystem}` : ""}
+                        {event.channelId ? " · Channel involved" : ""}
+                        {event.processRunId ? " · Process output available" : ""}
+                      </span>
+                    </span>
                     <time
-                      className="font-mono text-muted-foreground text-xs"
+                      className="font-mono text-muted-foreground text-xs sm:text-right"
                       dateTime={new Date(event.occurredAt).toISOString()}
                     >
                       {formatTime(event.occurredAt)}
                     </time>
-                    <span className="inline-flex items-center gap-2 text-xs">
-                      <StatusDot tone={levelTone(event.level)} label={event.level} />
-                      {event.level}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium text-sm">{event.event}</span>
-                      <span className="block truncate text-muted-foreground text-xs">
-                        {event.source}
-                        {event.subsystem ? ` · ${event.subsystem}` : ""}
-                        {event.message ? ` · ${event.message}` : ""}
-                      </span>
-                    </span>
-                    <span className="text-muted-foreground text-xs">{open ? "Hide" : "Details"}</span>
                   </button>
                   {open && (
-                    <EventDetail event={event} onOpenProcess={onOpenProcess} onOpenRelated={onOpenRelated} />
+                    <div className="border-border border-t lg:hidden">
+                      <EventDetail
+                        event={event}
+                        onOpenProcess={onOpenProcess}
+                        onOpenRelated={onOpenRelated}
+                      />
+                    </div>
                   )}
                 </article>
               );
             })}
-          </div>
-        </section>
+          </section>
+          <aside
+            className="hidden overflow-auto rounded-lg border border-border bg-card lg:block"
+            aria-label="Selected log"
+          >
+            {selectedEvent ? (
+              <EventDetail
+                event={selectedEvent}
+                onOpenProcess={onOpenProcess}
+                onOpenRelated={onOpenRelated}
+              />
+            ) : (
+              <div className="p-6 text-muted-foreground text-sm">
+                <p className="font-medium text-foreground">Select a log to see more</p>
+                <p className="mt-1">Related actions and technical details will appear here.</p>
+              </div>
+            )}
+          </aside>
+        </div>
       )}
 
       <div className="flex items-center justify-between">

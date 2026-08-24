@@ -83,18 +83,27 @@ describe("StartupReportPage", () => {
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByRole("heading", { name: "App Health" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Current Health" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Loomarr status" })).toBeInTheDocument();
     expect(screen.getByText("Needs attention")).toBeInTheDocument();
     expect(screen.getByText(/Next check expected/)).toBeInTheDocument();
-    expect(screen.getByRole("table", { name: "Current Loomarr health checks" })).toBeInTheDocument();
     expect(
-      screen.getByRole("rowheader", { name: /Database and migrationsRequired · Monitored/ }),
+      screen.getByRole("table", { name: "Loomarr health checks needing attention" }),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("rowheader", { name: /Database and migrationsRequired · Monitored/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("1 healthy or optional check")).toBeInTheDocument();
+    await userEvent.click(screen.getByText("1 healthy or optional check"));
+    expect(screen.getAllByText(/Database and migrations/)[0]).toBeInTheDocument();
     expect(screen.getAllByText("Configured but unavailable")).toHaveLength(2);
     expect(screen.getAllByRole("link", { name: "Open" })[0]).toHaveAttribute("href", "/settings/connections");
 
-    expect(screen.getByRole("heading", { name: "Previous Startups" })).toBeInTheDocument();
+    expect(screen.getByText("Startup history")).toBeInTheDocument();
+    const history = screen.getByText("Startup history").closest("details");
+    expect(history).not.toHaveAttribute("open");
+    await userEvent.click(screen.getByText("Startup history"));
+    expect(history).toHaveAttribute("open");
     expect(
       screen.getByRole("table", { name: "Startup checks for application generation 1" }),
     ).toBeInTheDocument();
