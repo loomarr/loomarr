@@ -18,6 +18,10 @@ it introduces a genuinely new interaction or presentation contract.
 Storybook is the executable workshop for deterministic states. It is necessary evidence, not a
 substitute for rendering the production journey on browsers and real hardware.
 
+The web workshop's official Themes toolbar drives the same `LoomarrProvider` used by clients. Dark
+is the default; light and system-selected light/dark are interactive global modes, while a story may
+pin a mode only when the mode itself is the state under review.
+
 ## Completion rules
 
 P3.5 is complete only when all of these rules hold:

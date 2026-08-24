@@ -1,4 +1,3 @@
-import { LoomarrProvider, semanticThemes } from "@loomarr/design-system";
 import { StatePanel } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
@@ -6,16 +5,11 @@ const meta = {
   title: "Loomarr Components/Feedback and Recovery",
   component: StatePanel,
   decorators: [
-    (Story, context) => {
-      const theme = context.parameters.loomarrTheme === "light" ? "light" : "dark";
-      return (
-        <LoomarrProvider theme={theme}>
-          <div style={{ background: semanticThemes[theme].surface.canvas, minHeight: "100vh", padding: 48 }}>
-            <Story />
-          </div>
-        </LoomarrProvider>
-      );
-    },
+    (Story) => (
+      <div style={{ boxSizing: "border-box", minHeight: "100vh", padding: 48 }}>
+        <Story />
+      </div>
+    ),
   ],
   args: {
     density: "pointer",
@@ -62,7 +56,7 @@ const PermissionTv: Story = {
 };
 const Light: Story = {
   ...Empty,
-  parameters: { loomarrTheme: "light" },
+  globals: { theme: "light" },
 };
 
 export default meta;
