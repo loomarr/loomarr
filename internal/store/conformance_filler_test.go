@@ -1403,7 +1403,9 @@ func testTaxonomy(t *testing.T, newStore NewStoreFunc) {
 	if impact.DirectStoredClips != 2 || impact.DescendantStoredClips != 0 || impact.AffectedStoredClips != 2 {
 		t.Errorf("beer preview stored impact = direct %d/descendant %d/affected %d, want 2/0/2", impact.DirectStoredClips, impact.DescendantStoredClips, impact.AffectedStoredClips)
 	}
-	assertSet(t, "beer preview playable hashes", impact.PlayableClipHashes, []string{"clipReal"})
+	if len(impact.PlayableClipHashes) != 0 {
+		t.Errorf("resolver-only preview playable hashes = %v, want none because eligibility is unchanged", impact.PlayableClipHashes)
+	}
 	assertSet(t, "beer preview added resolver terms", impact.ResolverTermsAdded, []string{"pint"})
 	if len(impact.ResolverTermsRemoved) != 0 {
 		t.Errorf("beer preview removed resolver terms = %v, want none", impact.ResolverTermsRemoved)

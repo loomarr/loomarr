@@ -438,6 +438,9 @@ describe("Filler page", () => {
     const editor = await screen.findByRole("region", { name: /edit tags: frosted flakes/i });
     expect(within(editor).getByRole("button", { name: /cereal$/i })).toHaveAttribute("aria-pressed", "true");
     expect(within(editor).getByRole("button", { name: "Food" })).toHaveAttribute("aria-pressed", "false");
+    const derived = within(editor).getByRole("region", { name: "Derived matches" });
+    expect(within(derived).getByText("Food")).toBeInTheDocument();
+    expect(within(derived).getByText(/read only/i)).toBeInTheDocument();
     await userEvent.click(within(editor).getByRole("button", { name: /save tags/i }));
 
     await expect.poll(() => tagPatches).toHaveLength(1);

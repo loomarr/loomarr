@@ -383,13 +383,15 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
           <p className="mt-1 font-semibold text-2xl">
             {data.taggedClips.toLocaleString()} / {data.totalClips.toLocaleString()}
           </p>
-          <p className="mt-1 text-muted-foreground text-sm">playable clips have at least one taxonomy tag</p>
+          <p className="mt-1 text-muted-foreground text-sm">
+            playable clips have at least one classification signal
+          </p>
         </Card>
         <Card className="p-4 sm:col-span-2">
           <p className="font-medium">What belongs here</p>
           <p className="mt-1 text-muted-foreground text-sm">
-            Taxonomy describes what a clip contains. Kind is the closed playout role; format tags are optional
-            browsing vocabulary. Era, audience, and grounded brand remain separate facts too.
+            Classification describes what a clip contains. Kind is the closed playout role; format signals are
+            optional browsing vocabulary. Era, audience, and grounded brand remain separate facts too.
           </p>
           {data.unclassifiedClips > 0 ? (
             <Link

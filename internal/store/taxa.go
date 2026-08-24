@@ -224,8 +224,11 @@ func (s *sqlStore) PreviewTaxonomyEdit(ctx context.Context, edit TaxonomyEdit) (
 	if impact.AffectedStoredClips, err = s.countStoredAssertions(ctx, affected); err != nil {
 		return TaxonomyEditImpact{}, err
 	}
-	if impact.PlayableClipHashes, err = s.playableHashesWithAssertions(ctx, affected); err != nil {
-		return TaxonomyEditImpact{}, err
+	lineageChanges := edit.Delete || current.Parent != edit.Taxon.Parent || current.Axis != edit.Taxon.Axis
+	if lineageChanges {
+		if impact.PlayableClipHashes, err = s.playableHashesWithAssertions(ctx, affected); err != nil {
+			return TaxonomyEditImpact{}, err
+		}
 	}
 
 	beforeTerms := resolverTerms(current)
