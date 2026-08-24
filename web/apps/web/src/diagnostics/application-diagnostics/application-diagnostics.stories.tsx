@@ -2,7 +2,6 @@ import type { ListDiagnosticEvents200One } from "@loomarr/api";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
-import { widthFrame } from "@/test/story-utils";
 import { ApplicationDiagnostics, DEFAULT_APPLICATION_FILTERS } from "./application-diagnostics";
 
 const observedAt = Date.UTC(2026, 7, 23, 23, 14);
@@ -57,49 +56,76 @@ const events: ListDiagnosticEvents200One = {
 const jsonResponse = (body: ListDiagnosticEvents200One) =>
   new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
-const DiagnosticsStory = () => {
+type StoryMode = "populated" | "empty" | "loading" | "disconnected";
+
+const DiagnosticsStory = ({ mode: _mode }: { mode: StoryMode }) => {
   const [filters, setFilters] = useState(DEFAULT_APPLICATION_FILTERS);
   return (
-    <ApplicationDiagnostics filters={filters} onFiltersChange={setFilters} onOpenProcess={() => undefined} />
+    <ApplicationDiagnostics
+      filters={filters}
+      onFiltersChange={setFilters}
+      onBrowseProcesses={() => undefined}
+      onOpenProcess={() => undefined}
+    />
   );
 };
 
-const withDiagnostics = (Story: typeof DiagnosticsStory) => {
+const withDiagnostics = (Story: typeof DiagnosticsStory, context: { args: { mode?: StoryMode } }) => {
   window.fetch = ((input) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (context.args.mode === "loading") return new Promise(() => undefined);
+    if (context.args.mode === "disconnected") return Promise.reject(new Error("Loomarr is unreachable"));
     return Promise.resolve(
       url.includes("verbose-capture")
         ? new Response(JSON.stringify({ active: false }), {
             status: 200,
             headers: { "content-type": "application/json" },
           })
-        : jsonResponse(events),
+        : jsonResponse(context.args.mode === "empty" ? { items: [], dropped: 0 } : events),
     );
   }) as typeof fetch;
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
     <QueryClientProvider client={client}>
-      <Story />
+      <Story mode={context.args.mode ?? "populated"} />
     </QueryClientProvider>
   );
 };
 
 const meta = {
-  title: "Diagnostics/Application",
+  title: "Diagnostics/Logs",
   component: DiagnosticsStory,
-  decorators: [widthFrame(1100), withDiagnostics],
+  decorators: [
+    (Story) => (
+      <div style={{ width: "min(1100px, calc(100vw - 32px))" }}>
+        <Story />
+      </div>
+    ),
+    withDiagnostics,
+  ],
+  args: { mode: "populated" },
 } satisfies Meta<typeof DiagnosticsStory>;
 
 type Story = StoryObj<typeof meta>;
 
-const Timeline: Story = {};
-const ExpandedFailure: Story = {
+const Populated: Story = {};
+const Empty: Story = { args: { mode: "empty" } };
+const Loading: Story = { args: { mode: "loading" } };
+const Disconnected: Story = { args: { mode: "disconnected" } };
+const AdvancedFilters: Story = {
   play: async ({ canvas, userEvent }) => {
-    await canvas.findByText("player.transition_failed");
-    await userEvent.click(canvas.getAllByRole("button", { name: /details/i })[0]!);
-    await canvas.findByText("Structured attributes");
+    await canvas.findByText(/replacement source did not become playable/i);
+    await userEvent.click(canvas.getByRole("button", { name: "More filters" }));
+    await canvas.findByRole("textbox", { name: "Subsystem" });
+  },
+};
+const ProcessDetail: Story = {
+  play: async ({ canvas, userEvent }) => {
+    const row = await canvas.findByRole("button", { name: /replacement source did not become playable/i });
+    await userEvent.click(row);
+    await canvas.findAllByRole("button", { name: "Open process output" });
   },
 };
 
 export default meta;
-export { ExpandedFailure, Timeline };
+export { AdvancedFilters, Disconnected, Empty, Loading, Populated, ProcessDetail };

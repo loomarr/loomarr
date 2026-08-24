@@ -75,20 +75,22 @@ describe("ApplicationDiagnostics", () => {
     );
 
     expect(await screen.findByText("1 errors")).toBeInTheDocument();
-    expect(screen.getByText("player.media_error")).toBeInTheDocument();
+    expect(screen.getByText("Playback failed")).toBeInTheDocument();
     expect(screen.getByText("1 warnings")).toBeInTheDocument();
     expect(screen.getByText("2 events dropped since startup")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Older" })).toBeEnabled();
 
-    await userEvent.click(screen.getAllByRole("button", { name: /Details/ })[0]!);
-    expect(screen.getByText("Structured attributes")).toBeInTheDocument();
-    expect(screen.getByText(/hls_js/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Copy Request id" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Open Process run" }));
+    await userEvent.click(screen.getByRole("button", { name: /Playback failed/ }));
+    await userEvent.click(screen.getAllByText("Technical details")[0]!);
+    expect(screen.getAllByText("player.media_error")[0]).toBeInTheDocument();
+    expect(screen.getAllByText(/hls_js/)[0]).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Copy Request id" })[0]).toBeInTheDocument();
+    await userEvent.click(screen.getAllByRole("button", { name: "Open process output" })[0]!);
     expect(onOpenProcess).toHaveBeenCalledWith("process-1");
-    await userEvent.click(screen.getByRole("button", { name: "Open Channel" }));
+    await userEvent.click(screen.getAllByRole("button", { name: "Open related Channel" })[0]!);
     expect(onOpenRelated).toHaveBeenCalledWith("channel", "channel-1");
 
+    await userEvent.click(screen.getByRole("button", { name: "More filters" }));
     await userEvent.type(screen.getByRole("textbox", { name: "Subsystem" }), "api");
     expect(onFiltersChange).toHaveBeenLastCalledWith({ ...DEFAULT_APPLICATION_FILTERS, subsystem: "api" });
   });

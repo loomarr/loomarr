@@ -167,7 +167,7 @@ const DashboardScreen = () => {
             onDiagnose={(subsystem) =>
               navigate({
                 to: "/settings/system/diagnostics",
-                search: { view: "application", level: "error", subsystem },
+                search: { view: "logs", level: "error", subsystem },
               })
             }
           />
