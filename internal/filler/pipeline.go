@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"runtime/debug"
 	"time"
 )
 
@@ -682,7 +683,7 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 		}
 
 		stageCtx := WithProgress(ctx, p.stageProgress(ctx, &row, clip))
-		out, runErr := stage.Run(stageCtx, clip)
+		out, runErr := p.runStage(stageCtx, stage, clip)
 		s.charge(stage.Cost())
 
 		if runErr != nil {
@@ -793,6 +794,24 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 	// finished its whole ladder inside a pass that then expired would otherwise be re-run from
 	// wherever it was last durably recorded, spending the expensive rungs again.
 	return row.Disposition, p.persist(ctx, row, clip)
+}
+
+// runStage contains a broken rung to one clip. The scheduler also recovers panics, but that
+// boundary aborts the WHOLE pass before the pipeline can persist failure/backoff state; the same
+// clip is then left `running` at the head of the queue and every later clip starves. A stage panic
+// is an execution failure, not evidence that the media is bad, so the ordinary retry policy below
+// remains the single place that decides whether to retry, skip, or reject it.
+func (p *Pipeline) runStage(ctx context.Context, stage Stage, clip StoreClip) (out StageResult, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("stage %s panicked: %v", stage.ID(), recovered)
+			if p.log != nil {
+				p.log.Error("filler pipeline: stage panicked", "stage", stage.ID(), "clip", clip.Hash,
+					"panic", recovered, "stack", string(debug.Stack()))
+			}
+		}
+	}()
+	return stage.Run(ctx, clip)
 }
 
 // step advances to the next stage, returning true when the ladder is finished.
