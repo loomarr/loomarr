@@ -1,6 +1,13 @@
 export { ClientPlatformProof } from "./src/client-platform-proof";
 export type { ClientDestination, ClientShellProps } from "./src/client-shell";
 export { ClientShell } from "./src/client-shell";
+export type {
+  ChannelIdentityData,
+  ChannelIdentityProps,
+  ProgrammeIdentityData,
+  ProgrammeIdentityProps,
+} from "./src/identity";
+export { ChannelIdentity, ProgrammeIdentity } from "./src/identity";
 export type { PairingShellProps } from "./src/pairing-shell";
 export { PairingShell } from "./src/pairing-shell";
 export type { ProgrammeCardData, ProgrammeCardProps } from "./src/programme-card";

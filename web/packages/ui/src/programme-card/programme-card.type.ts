@@ -1,21 +1,16 @@
-import type { ArtworkState, BadgeTone, Density } from "@loomarr/design-system";
+import type { ArtworkState, Density } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 
-interface ProgrammeCardData {
+import type { ChannelIdentityData, ProgrammeIdentityData } from "../identity";
+
+interface ProgrammeCardData extends ChannelIdentityData, ProgrammeIdentityData {
   artworkState: ArtworkState;
-  badge?: { label: string; tone: BadgeTone };
-  channelName: string;
-  channelNumber: string;
-  description?: string;
-  episodeLabel?: string;
   progressPercent?: number;
-  seriesTitle?: string;
-  timeLabel: string;
-  title: string;
 }
 
 interface ProgrammeCardProps {
   artwork?: ReactNode;
+  channelLogo?: ReactNode;
   density?: Density;
   focused?: boolean;
   programme: ProgrammeCardData;

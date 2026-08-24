@@ -1,6 +1,7 @@
 const classicEpisode = {
   artworkState: "ready",
   badge: { label: "On now", tone: "live" },
+  channelLogoState: "missing",
   channelName: "Classic Animation",
   channelNumber: "07",
   description: "Milhouse is cast as Fallout Boy when a Radioactive Man movie begins filming in Springfield.",
