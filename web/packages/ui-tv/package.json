@@ -1,0 +1,21 @@
+{
+  "name": "@loomarr/ui-tv",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "TV-only remote focus and viewport adapters for shared Loomarr viewer modules.",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@loomarr/core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.3",
+    "vitest": "^4.1.10"
+  }
+}
