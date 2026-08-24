@@ -16,6 +16,7 @@ import type {
   FillerClipEvent,
   FillerIngestEvent,
   FillerSplitEvent,
+  HealthEvent,
   JobEvent,
   LlmPullEvent,
   PlayoutEvent,
@@ -51,6 +52,7 @@ const openEventStream = (handlers: EventHandlers, url: string = EVENTS_URL): (()
   on<PlayoutEvent>("playout", handlers.onPlayout);
   on<DatabaseEvent>("database", handlers.onDatabase);
   on<ActivityEvent>("activity", handlers.onActivity);
+  on<HealthEvent>("health", handlers.onHealth);
   return () => es.close();
 };
 
@@ -150,6 +152,10 @@ const useLoomarrEvents = (extra?: EventHandlers): void => {
         // only exists because the server went and asked.
         invalidateByPrefix(qc, "/v1/activity");
         extraRef.current?.onActivity?.(e);
+      },
+      onHealth: (e) => {
+        invalidateByPrefix(qc, "/v1/diagnostics/health");
+        extraRef.current?.onHealth?.(e);
       },
     });
   }, [qc]);

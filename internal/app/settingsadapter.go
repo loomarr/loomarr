@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
@@ -37,6 +38,7 @@ type settingsAdapter struct {
 	// exposes the redactor's values.
 	refreshRedactor func()
 	readSecret      func(context.Context, settings.GeneratedSecret) (string, error)
+	triggerHealth   func(context.Context)
 	// tests maps a check name → a live connection probe (media_server, tunarr, …).
 	// nil-safe: an unknown/unconfigured check returns a neutral "not configured".
 	tests map[string]func(ctx context.Context) (bool, string)
@@ -99,13 +101,17 @@ func (a settingsAdapter) Patch(ctx context.Context, edits map[string]string, upd
 		a.refreshRedactor()
 	}
 	out := make([]api.SettingResult, 0, len(results))
+	healthChanged := false
 	for _, r := range results {
 		out = append(out, api.SettingResult{Key: r.Key, Status: string(r.Status), Problem: r.Problem})
+		healthChanged = healthChanged || (r.Status == settings.PatchSaved && isHealthSetting(r.Key))
 	}
 	// A persistence error surfaces as an extra synthetic invalid result so the UI
 	// shows the save failed rather than silently reporting nothing.
 	if err != nil {
 		out = append(out, api.SettingResult{Key: "", Status: string(settings.PatchInvalid), Problem: "save failed"})
+	} else if healthChanged && a.triggerHealth != nil {
+		a.triggerHealth(ctx)
 	}
 	return out
 }
@@ -120,6 +126,9 @@ func (a settingsAdapter) Clear(ctx context.Context, key string) api.SettingResul
 	if err != nil {
 		return api.SettingResult{Key: key, Status: string(settings.PatchInvalid), Problem: "clear failed"}
 	}
+	if res.Status == settings.PatchSaved && isHealthSetting(key) && a.triggerHealth != nil {
+		a.triggerHealth(ctx)
+	}
 	return api.SettingResult{Key: res.Key, Status: string(res.Status), Problem: res.Problem}
 }
 
@@ -132,7 +141,21 @@ func (a settingsAdapter) SetEnvOverride(ctx context.Context, key string, on bool
 	if err != nil {
 		return api.SettingResult{Key: key, Status: string(settings.PatchInvalid), Problem: "could not change who manages this setting"}
 	}
+	if st == settings.EnvOverrideApplied && isHealthSetting(key) && a.triggerHealth != nil {
+		a.triggerHealth(ctx)
+	}
 	return api.SettingResult{Key: key, Status: string(st)}
+}
+
+func isHealthSetting(key string) bool {
+	for _, prefix := range []string{
+		"library.", "seerr.", "sonarr.", "radarr.", "requester.", "tunarr.", "llm.", "tmdb.",
+	} {
+		if strings.HasPrefix(key, prefix) {
+			return true
+		}
+	}
+	return key == "job.system_health.schedule"
 }
 
 func (a settingsAdapter) Features(ctx context.Context) map[string]bool {

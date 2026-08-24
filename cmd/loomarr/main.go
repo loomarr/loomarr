@@ -7,18 +7,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/app"
+	"github.com/loomarr/loomarr/internal/buildinfo"
 	"github.com/loomarr/loomarr/internal/config"
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -64,11 +68,17 @@ func dispatch(args []string) error {
 // down before the next pass, because a value carried across generations is a value still
 // pointing at the closed resources of the last one.
 func run() error {
+	processStarted := time.Now()
 	// Config is loaded once for the log level only. Each generation re-loads it, so an
 	// operator who edits a boot-time setting gets the new value on restart — which is the
 	// entire point of the RestartRequired flag (config-design §3).
 	bootCfg, err := config.Load()
 	if err != nil {
+		health := newGenerationHealth(processStarted, 1)
+		health.Complete(diagnostics.StartupCheckConfiguration, diagnostics.StartupFailed,
+			"configuration is invalid", "", "")
+		health.CompletePending(diagnostics.StartupSkipped, "configuration unavailable")
+		printStartupReport(os.Stdout, health.Snapshot(), stdoutInteractive(), terminalWidth(), os.Getenv("NO_COLOR") == "")
 		return err
 	}
 	// Logging is hoisted above the loop deliberately: slog.SetDefault mutates process
@@ -79,7 +89,8 @@ func run() error {
 
 	databaseMigration := &databaseMigrationState{bootstrapDir: config.ConventionalDataDir}
 	for generation := 1; ; generation++ {
-		restart, err := runOnce(log, generation, databaseMigration)
+		startup := newGenerationHealth(processStarted, generation)
+		restart, err := runOnce(log, generation, databaseMigration, startup)
 		if err != nil {
 			return err
 		}
@@ -90,6 +101,33 @@ func run() error {
 	}
 }
 
+func newGenerationHealth(processStarted time.Time, generation int) *diagnostics.Startup {
+	return diagnostics.NewStartup(processStarted, generation, buildinfo.Get().Version, []diagnostics.StartupCheck{
+		{Key: diagnostics.StartupCheckConfiguration, Label: "Configuration", Required: true},
+		{Key: diagnostics.StartupCheckDatabase, Label: "Database and migrations", Required: true,
+			Mode: diagnostics.HealthCheckContinuous, FreshFor: 3 * time.Minute,
+			RemediationRoute: "/settings/system/database"},
+		{Key: diagnostics.StartupCheckGeneratedSecrets, Label: "Generated secrets", Required: true},
+		{Key: diagnostics.StartupCheckImageWorker, Label: "Image worker certification", Required: true},
+		{Key: diagnostics.StartupCheckHTTP, Label: "HTTP assembly and listener", Required: true},
+		{Key: diagnostics.StartupCheckMediaServer, Label: "Media server", Required: false,
+			Mode: diagnostics.HealthCheckContinuous, FreshFor: 3 * time.Minute,
+			RemediationRoute: "/settings/connections"},
+		{Key: diagnostics.StartupCheckTunarr, Label: "Tunarr", Required: false,
+			Mode: diagnostics.HealthCheckContinuous, FreshFor: 3 * time.Minute,
+			RemediationRoute: "/settings/connections"},
+		{Key: diagnostics.StartupCheckRequester, Label: "Requester", Required: false,
+			Mode: diagnostics.HealthCheckContinuous, FreshFor: 3 * time.Minute,
+			RemediationRoute: "/settings/connections"},
+		{Key: diagnostics.StartupCheckLLM, Label: "AI provider", Required: false,
+			Mode: diagnostics.HealthCheckContinuous, FreshFor: 3 * time.Minute,
+			RemediationRoute: "/settings/ai"},
+		{Key: diagnostics.StartupCheckTMDB, Label: "TMDB", Required: false,
+			Mode: diagnostics.HealthCheckContinuous, FreshFor: 3 * time.Minute,
+			RemediationRoute: "/settings/connections"},
+	}, time.Now)
+}
+
 // runOnce is one generation: build everything, serve, tear it all down. It returns true
 // when the operator asked for a restart, so run() can build the next generation. A
 // failed database migration records the concise error the next generation exposes.
@@ -97,11 +135,16 @@ func run() error {
 // The returned bool and error are deliberately separate: "the operator restarted us" is
 // not a failure, and collapsing it into an error would make a normal action look like one
 // in the logs.
-func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrationState) (restart bool, err error) {
+func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrationState, startup *diagnostics.Startup) (restart bool, err error) {
 	cfg, err := config.Load()
 	if err != nil {
+		startup.Complete(diagnostics.StartupCheckConfiguration, diagnostics.StartupFailed,
+			"configuration is invalid", "", "")
+		startup.CompletePending(diagnostics.StartupSkipped, "configuration unavailable")
+		printStartupReport(os.Stdout, startup.Snapshot(), stdoutInteractive(), terminalWidth(), os.Getenv("NO_COLOR") == "")
 		return false, err
 	}
+	startup.Complete(diagnostics.StartupCheckConfiguration, diagnostics.StartupPassed, "valid", "", "")
 	// LLM_PROVIDER (llm.provider) is now a registry setting validated at settings
 	// boot (an invalid enum fails there, config-design §3) — no separate check here.
 
@@ -120,14 +163,24 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 				}
 				return true, nil
 			}
-			return false, err // downgrade guard / bad scheme / unreachable DB fail fast
+			startup.Complete(diagnostics.StartupCheckDatabase, diagnostics.StartupFailed,
+				"database open or migration failed", "/settings/system/database", "")
+			log.Error("database unavailable; serving blocked startup report", "err", err)
+			st = nil
+		} else {
+			startup.Complete(diagnostics.StartupCheckDatabase, diagnostics.StartupPassed,
+				string(store.DialectOf(st))+" ready", "", "")
 		}
 		// Closed on EVERY exit from this generation, including a restart — the next
 		// generation opens its own handle, and a leaked one would hold the SQLite file
 		// (and, on a migration, the database it just moved off).
-		log.Info("store opened", "auto_migrate", cfg.AutoMigrate)
+		if st != nil {
+			log.Info("store opened", "auto_migrate", cfg.AutoMigrate)
+		}
 	} else {
 		log.Warn("no DATABASE_URL set — running without a store (not ready)")
+		startup.Complete(diagnostics.StartupCheckDatabase, diagnostics.StartupFailed,
+			"no store configured", "/settings/system/database", "")
 	}
 	if databaseMigration.fallbackSQLiteURL != "" && store.DialectOf(st) != store.DialectPostgres {
 		databaseMigration.lastError = "database migration verified, but bootstrap did not select PostgreSQL; still running on SQLite"
@@ -169,6 +222,7 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 	// Build the fully-wired API handler. This is the composition seam that the
 	// integration harness also calls, so tests exercise the REAL wiring (§21).
 	application, err := app.Build(rootCtx, st, log, app.Overrides{
+		Startup:                startup,
 		DevLogin:               cfg.DevLogin,
 		Pprof:                  cfg.Pprof,
 		Restart:                lifecycle.RequestRestart,
@@ -176,6 +230,7 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 		DatabaseMigrationError: databaseMigration.lastError,
 	})
 	if err != nil {
+		printStartupReport(os.Stdout, startup.Snapshot(), stdoutInteractive(), terminalWidth(), os.Getenv("NO_COLOR") == "")
 		if databaseMigration.fallbackSQLiteURL != "" {
 			if restoreErr := databaseMigration.restoreSQLite(fmt.Errorf("build first PostgreSQL generation: %w", err)); restoreErr != nil {
 				return false, restoreErr
@@ -200,6 +255,9 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 	// before ListenAndServe reports the error asynchronously.
 	listener, err := net.Listen("tcp", cfg.ListenAddr)
 	if err != nil {
+		startup.Complete(diagnostics.StartupCheckHTTP, diagnostics.StartupFailed,
+			"listener could not start", "/settings/system/diagnostics", "")
+		printStartupReport(os.Stdout, startup.Snapshot(), stdoutInteractive(), terminalWidth(), os.Getenv("NO_COLOR") == "")
 		if databaseMigration.fallbackSQLiteURL != "" {
 			if restoreErr := databaseMigration.restoreSQLite(fmt.Errorf("listen for first PostgreSQL generation: %w", err)); restoreErr != nil {
 				return false, restoreErr
@@ -208,6 +266,9 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 		}
 		return false, err
 	}
+	startup.Complete(diagnostics.StartupCheckHTTP, diagnostics.StartupPassed,
+		"listener is accepting connections", "", "")
+	printStartupReport(os.Stdout, startup.Snapshot(), stdoutInteractive(), terminalWidth(), os.Getenv("NO_COLOR") == "")
 	defer func() { _ = listener.Close() }()
 	// A fully built generation with an acquired listener is the cutover's final commit.
 	// Future, unrelated runtime failures must not roll back a live PostgreSQL install.
@@ -428,4 +489,23 @@ func newLogger(level string) *slog.Logger {
 		lvl = slog.LevelInfo
 	}
 	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: lvl}))
+}
+
+func stdoutInteractive() bool {
+	info, err := os.Stdout.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
+}
+
+func terminalWidth() int {
+	if width, err := strconv.Atoi(os.Getenv("COLUMNS")); err == nil && width >= 40 && width <= 240 {
+		return width
+	}
+	return 100
+}
+
+func printStartupReport(out io.Writer, report diagnostics.StartupReport, interactive bool, width int, color bool) {
+	if !interactive || out == nil {
+		return
+	}
+	_, _ = fmt.Fprintln(out, diagnostics.RenderStartupTable(report, diagnostics.StartupTableOptions{Width: width, Color: color}))
 }

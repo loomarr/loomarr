@@ -34,6 +34,7 @@ type EventQuery struct {
 	Cursor            string
 	Level             Level
 	Source            Source
+	Event             string
 	Subsystem         string
 	RequestID         string
 	PlaybackSessionID string
@@ -55,6 +56,7 @@ type EventStoreQuery struct {
 	CursorID          string
 	Level             Level
 	Source            Source
+	Event             string
 	Subsystem         string
 	RequestID         string
 	PlaybackSessionID string
@@ -200,7 +202,7 @@ func (l *EventLog) validate(query EventQuery) (EventStoreQuery, int, error) {
 		}
 	}
 	for name, value := range map[string]string{
-		"subsystem": query.Subsystem, "requestId": query.RequestID,
+		"event": query.Event, "subsystem": query.Subsystem, "requestId": query.RequestID,
 		"playbackSessionId": query.PlaybackSessionID, "channelId": query.ChannelID,
 		"scheduleBlockId": query.ScheduleBlockID, "jobId": query.JobID,
 		"processRunId": query.ProcessRunID, "instanceId": query.InstanceID,
@@ -215,7 +217,8 @@ func (l *EventLog) validate(query EventQuery) (EventStoreQuery, int, error) {
 
 	storeQuery := EventStoreQuery{
 		From: from, To: to, Limit: limit + 1,
-		Level: query.Level, Source: query.Source, Subsystem: strings.TrimSpace(query.Subsystem),
+		Level: query.Level, Source: query.Source, Event: strings.TrimSpace(query.Event),
+		Subsystem: strings.TrimSpace(query.Subsystem),
 		RequestID: strings.TrimSpace(query.RequestID), PlaybackSessionID: strings.TrimSpace(query.PlaybackSessionID),
 		ChannelID: strings.TrimSpace(query.ChannelID), ScheduleBlockID: strings.TrimSpace(query.ScheduleBlockID),
 		JobID: strings.TrimSpace(query.JobID), ProcessRunID: strings.TrimSpace(query.ProcessRunID),

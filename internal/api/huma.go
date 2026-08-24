@@ -148,7 +148,9 @@ type Server struct {
 	libraryConfigured func() bool
 	// ready is the same readiness /readyz reports, surfaced through the typed
 	// /v1/system/version so the UI can show it without an untyped fetch. nil ⇒ ready.
-	ready ReadyFunc
+	ready          ReadyFunc
+	startupReports StartupReportService
+	healthRefresh  HealthRefreshService
 
 	liveConfigInt func(key string) int
 	// liveConfigBoolOn reads a BOOL setting whose safe answer is true (resolved.boolOn).
@@ -826,6 +828,10 @@ type Options struct {
 	Activity *activity.Recorder
 	// DiagnosticEvents backs the bounded admin/agent diagnostic timeline.
 	DiagnosticEvents DiagnosticEventService
+	// StartupReports backs the current/recent application-generation report.
+	StartupReports StartupReportService
+	// HealthRefresh invokes the same runner as the named System health task.
+	HealthRefresh HealthRefreshService
 	// Restart backs POST /v1/system/restart (§9.2, V13) — implemented over main's
 	// generation loop. nil ⇒ 501, the honest answer for a handler with no loop behind it.
 	Restart RestartService

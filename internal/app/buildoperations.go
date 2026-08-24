@@ -86,15 +86,25 @@ func buildOperations(
 	log *slog.Logger,
 ) operationsBuild {
 	restart, bootConfig := buildRestart(overrides, log)
+	backups := buildBackups(st, set, registry, log)
+	jobs := buildScheduler(rootCtx, st, set, registry, emitter, owner, log)
+	triggerHealth := func(ctx context.Context) {
+		if jobs == nil {
+			return
+		}
+		if err := jobs.Trigger(ctx, "system-health"); err != nil {
+			log.Warn("current health refresh after settings change could not be queued", "err", err)
+		}
+	}
 	result := operationsBuild{
-		backups: buildBackups(st, set, registry, log), restart: restart, bootConfig: bootConfig,
+		backups: backups, restart: restart, bootConfig: bootConfig,
 		auth:  buildAuth(st, set, secrets, readGeneratedSecret, libraryClient, log),
 		guide: buildGuide(st, set, playoutResolver, appliedBackend),
 		settings: buildSettings(
 			st, set, desiredSet, secrets, libraryClient, tmdbClient,
-			refreshSecretRedactor, readGeneratedSecret, log,
+			refreshSecretRedactor, readGeneratedSecret, triggerHealth, log,
 		),
-		jobs:        buildScheduler(rootCtx, st, set, registry, emitter, owner, log),
+		jobs:        jobs,
 		database:    buildDatabase(st, set, overrides, eventBus),
 		residentLLM: buildResidentLLM(set, log),
 	}
@@ -258,6 +268,7 @@ func buildSettings(
 	tmdbClient *tmdb.Client,
 	refreshRedactor func(),
 	readSecret func(context.Context, settings.GeneratedSecret) (string, error),
+	triggerHealth func(context.Context),
 	log *slog.Logger,
 ) api.SettingsService {
 	if st == nil || secrets == nil {
@@ -266,7 +277,7 @@ func buildSettings(
 	return settingsAdapter{
 		svc: set.svc, secrets: secrets, store: st, log: log,
 		tests: connectionTests(desiredSet, libraryClient, tmdbClient), refreshRedactor: refreshRedactor,
-		readSecret: readSecret,
+		readSecret: readSecret, triggerHealth: triggerHealth,
 	}
 }
 

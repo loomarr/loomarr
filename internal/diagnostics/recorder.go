@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -97,6 +98,31 @@ func (r *Recorder) Record(_ context.Context, event Event) {
 	default:
 		r.dropped.Add(1)
 	}
+}
+
+// RecordDurable normalizes and writes one event synchronously. It is reserved for state
+// checkpoints whose contract says they survived before the caller can advertise completion;
+// ordinary diagnostic traffic must continue through Record's bounded non-blocking queue.
+func (r *Recorder) RecordDurable(ctx context.Context, event Event) error {
+	if r == nil || r.sink == nil {
+		return errors.New("diagnostics persistence is unavailable")
+	}
+	if !r.Accepts(event.Level) {
+		return fmt.Errorf("diagnostics severity %q is filtered", event.Level)
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.closed {
+		return errors.New("diagnostics recorder is closed")
+	}
+	record := normalize(event, r.opts.Now())
+	writeCtx, cancel := context.WithTimeout(ctx, r.opts.WriteTimeout)
+	err := r.sink.AppendDiagnosticEvents(writeCtx, []Record{record})
+	cancel()
+	if err != nil && r.opts.OnFailure != nil {
+		r.opts.OnFailure(err, 1)
+	}
+	return err
 }
 
 // Accepts reports whether a severity is eligible for durable recording. Filtering happens before

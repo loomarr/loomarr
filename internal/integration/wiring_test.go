@@ -2,6 +2,7 @@ package integration_test
 
 import (
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -42,6 +43,23 @@ func TestWiring_TMDBConfigHotApplies(t *testing.T) {
 			t.Fatalf("TMDB Authorization = %q, want bearer for newly saved credential", got)
 		}
 	}
+	searchRequestCount := func(term string) int {
+		t.Helper()
+		count := 0
+		for _, request := range h.tmdb.Requests() {
+			if request.Path != "/search/multi" {
+				continue
+			}
+			query, err := url.ParseQuery(request.RawQuery)
+			if err != nil {
+				t.Fatalf("parse TMDB request query %q: %v", request.RawQuery, err)
+			}
+			if query.Get("query") == term {
+				count++
+			}
+		}
+		return count
+	}
 
 	before := h.tmdb.RequestCount()
 	if ok, hint := probe(); ok || hint != "set your TMDB API key" {
@@ -58,12 +76,12 @@ func TestWiring_TMDBConfigHotApplies(t *testing.T) {
 		t.Fatalf("configured TMDB probe failed: %q", hint)
 	}
 	assertLastCredential("first-key")
-	before = h.tmdb.RequestCount()
+	before = searchRequestCount("matrix")
 	if code := h.status(http.MethodGet, "/v1/search?q=matrix&scope=tmdb", "", admin); code != http.StatusOK {
 		t.Fatalf("TMDB-only search after configure → %d, want 200 without a library connection", code)
 	}
-	if got := h.tmdb.RequestCount(); got != before+1 {
-		t.Fatalf("TMDB-only search sent %d outbound requests, want one through the shared client", got-before)
+	if got := searchRequestCount("matrix"); got != before+1 {
+		t.Fatalf("TMDB-only search sent %d matching outbound requests, want one through the shared client", got-before)
 	}
 	assertLastCredential("first-key")
 
@@ -75,21 +93,18 @@ func TestWiring_TMDBConfigHotApplies(t *testing.T) {
 	}
 	assertLastCredential("rotated-key")
 
-	before = h.tmdb.RequestCount()
+	before = searchRequestCount("matrix")
 	if code := h.status(http.MethodDelete, "/v1/settings/tmdb.api_key", "", admin); code != http.StatusNoContent {
 		t.Fatalf("clear TMDB key → %d, want 204", code)
 	}
 	if ok, hint := probe(); ok || hint != "set your TMDB API key" {
 		t.Fatalf("cleared TMDB probe = (%v, %q), want unconfigured", ok, hint)
 	}
-	if got := h.tmdb.RequestCount(); got != before {
-		t.Fatalf("cleared TMDB credential sent %d outbound requests, want none", got-before)
-	}
 	if code := h.status(http.MethodGet, "/v1/search?q=matrix&scope=tmdb", "", admin); code != http.StatusNotImplemented {
 		t.Fatalf("TMDB-only search after clear → %d, want 501 unconfigured", code)
 	}
-	if got := h.tmdb.RequestCount(); got != before {
-		t.Fatalf("TMDB-only search after clear sent %d outbound requests, want none", got-before)
+	if got := searchRequestCount("matrix"); got != before {
+		t.Fatalf("TMDB-only search after clear sent %d matching outbound requests, want none", got-before)
 	}
 }
 

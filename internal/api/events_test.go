@@ -133,6 +133,7 @@ func TestEveryFrameStreamsWithItsEventName(t *testing.T) {
 		{"suggestion", api.SuggestionEvent{JobID: "j1", Phase: "scoring", Round: 3}},
 		{"job", api.JobEvent{Name: "library-scan"}},
 		{"activity", api.ActivityEvent{}},
+		{"health", api.HealthEvent{}},
 		{"filler_ingest", api.FillerIngestEvent{JobID: "j1", Status: "success", Fetched: 2}},
 		{"filler_split", api.FillerSplitEvent{JobID: "j1", Status: "success", ProposalID: "p1"}},
 		{"llm_pull", api.LLMPullEvent{JobID: "j1", Model: "llama", Status: "pulling", Percent: 42}},

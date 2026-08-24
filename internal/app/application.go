@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -29,6 +30,11 @@ func Build(parent context.Context, st store.Store, log *slog.Logger, ov Override
 		resolver = built
 	})
 	if err != nil {
+		if ov.Startup != nil {
+			ov.Startup.Complete(diagnostics.StartupCheckHTTP, diagnostics.StartupFailed,
+				"application HTTP assembly failed", "/settings/system/diagnostics", "")
+			ov.Startup.CompletePending(diagnostics.StartupSkipped, "application assembly stopped")
+		}
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		return nil, errors.Join(err, lifecycle.shutdown(shutdownCtx))

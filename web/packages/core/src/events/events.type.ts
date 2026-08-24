@@ -27,6 +27,7 @@ import type { DatabaseEvent } from "@loomarr/api/models/databaseEvent";
 import type { FillerClipEvent } from "@loomarr/api/models/fillerClipEvent";
 import type { FillerIngestEvent } from "@loomarr/api/models/fillerIngestEvent";
 import type { FillerSplitEvent } from "@loomarr/api/models/fillerSplitEvent";
+import type { HealthEvent } from "@loomarr/api/models/healthEvent";
 import type { JobEvent } from "@loomarr/api/models/jobEvent";
 import type { LLMPullEvent } from "@loomarr/api/models/lLMPullEvent";
 import type { PlayoutEvent } from "@loomarr/api/models/playoutEvent";
@@ -52,6 +53,7 @@ interface EventHandlers {
   onPlayout?: (e: PlayoutEvent) => void;
   onDatabase?: (e: DatabaseEvent) => void;
   onActivity?: (e: ActivityEvent) => void;
+  onHealth?: (e: HealthEvent) => void;
 }
 
 export type {
@@ -62,6 +64,7 @@ export type {
   FillerClipEvent,
   FillerIngestEvent,
   FillerSplitEvent,
+  HealthEvent,
   JobEvent,
   LlmPullEvent,
   PlayoutEvent,

@@ -81,6 +81,10 @@ type JobEvent struct {
 // design, so that list would be silently missing entries.
 type ActivityEvent struct{}
 
+// HealthEvent announces that Current Health changed. The payload is intentionally empty: clients
+// refetch the typed health endpoint so a dropped SSE frame cannot create partial client truth.
+type HealthEvent struct{}
+
 // FillerIngestEvent tracks a clip-fetch job (§10 V38b).
 type FillerIngestEvent struct {
 	JobID   string `json:"jobId"`
@@ -193,6 +197,7 @@ func eventTypeMap() map[string]any {
 		"suggestion":    SuggestionEvent{},
 		"job":           JobEvent{},
 		"activity":      ActivityEvent{},
+		"health":        HealthEvent{},
 		"filler_ingest": FillerIngestEvent{},
 		"filler_split":  FillerSplitEvent{},
 		"filler_clip":   FillerClipEvent{},

@@ -481,7 +481,7 @@ func testDiagnostics(t *testing.T, newStore func(t *testing.T) Store) {
 	filtered, err := st.QueryDiagnosticEvents(ctx, diagnostics.EventStoreQuery{
 		From: base.Add(-3 * time.Hour).UnixMilli(), To: base.UnixMilli(), Limit: 10,
 		Level: diagnostics.LevelError, Source: diagnostics.SourceWeb, Subsystem: "player",
-		RequestID: "req-1", ChannelID: "channel-1", Text: "media_err",
+		Event: "player.failed", RequestID: "req-1", ChannelID: "channel-1", Text: "media_err",
 	})
 	if err != nil {
 		t.Fatal(err)

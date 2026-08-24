@@ -25,6 +25,7 @@ const pages = [
   { path: "/settings/system/database", title: "Database" },
   { path: "/settings/system/backup", title: "Backup" },
   { path: "/settings/system/storage", title: "Storage" },
+  { path: "/settings/system/diagnostics", title: "App Health" },
   { path: "/settings/system/about", title: "About" },
   { path: "/help", title: "Help" },
   { path: "/account", title: "Your account" },

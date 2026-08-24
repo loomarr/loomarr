@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/buildinfo"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/images"
@@ -54,6 +55,8 @@ func buildSuggestions(
 ) (suggestionBuild, error) {
 	var result suggestionBuild
 	if st == nil {
+		overrides.Startup.Complete(diagnostics.StartupCheckImageWorker, diagnostics.StartupSkipped,
+			"database unavailable", "/settings/system/diagnostics", "")
 		return result, nil
 	}
 
@@ -63,8 +66,12 @@ func buildSuggestions(
 	var err error
 	result.images, err = newImageService(st, set, overrides.ImageWorkerExecutable, buildinfo.Get().Version)
 	if err != nil {
+		overrides.Startup.Complete(diagnostics.StartupCheckImageWorker, diagnostics.StartupFailed,
+			"required image worker certification failed", "/settings/system/diagnostics", "")
 		return suggestionBuild{}, err
 	}
+	overrides.Startup.Complete(diagnostics.StartupCheckImageWorker, diagnostics.StartupPassed,
+		"required worker certified", "", "")
 	result.imageFetcher = registerImageJobs(
 		rootCtx, jobs, result.images, imageStore{st}, fillerLayout, set, activityRecorder, log,
 	)

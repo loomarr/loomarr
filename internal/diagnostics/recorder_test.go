@@ -181,6 +181,9 @@ func TestRecorderCloseRejectsLateRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 	recorder.Record(context.Background(), Event{Name: "too.late"})
+	if err := recorder.RecordDurable(context.Background(), Event{Name: "durable.too_late"}); err == nil {
+		t.Fatal("durable record accepted after Close")
+	}
 	if recorder.Dropped() != 1 {
 		t.Fatalf("dropped = %d, want 1", recorder.Dropped())
 	}

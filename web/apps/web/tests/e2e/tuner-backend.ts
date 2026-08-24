@@ -204,6 +204,19 @@ const startTunerServer = () => {
 
       if (path === "/v1/auth/me") return sendJSON(response, ADMIN);
       if (path === "/v1/setup/state") return sendJSON(response, { bootstrapped: true });
+      if (path === "/v1/diagnostics/health") {
+        return sendJSON(response, {
+          generationId: "tuner-e2e-generation",
+          generation: 1,
+          version: "v0.9.3",
+          processStartedAt: now - 60_000,
+          generationStartedAt: now - 59_000,
+          updatedAt: now,
+          nextRefreshAt: now + 60_000,
+          state: "healthy",
+          checks: [],
+        });
+      }
       if (path === "/v1/settings") return sendJSON(response, { features: {}, settings: [] });
       if (path === "/v1/channels") return sendJSON(response, { channels });
       if (path === "/v1/channels/now-next") {
