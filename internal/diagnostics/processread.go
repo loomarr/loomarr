@@ -153,6 +153,9 @@ func (l *ProcessLog) Get(ctx context.Context, id string) (ProcessDetail, error) 
 		to = l.now().UnixMilli()
 	}
 	from := run.StartedAt
+	if to <= from {
+		to = from + 1
+	}
 	truncated := false
 	if to-from > maxEventWindow.Milliseconds() {
 		from = to - maxEventWindow.Milliseconds()

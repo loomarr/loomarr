@@ -112,3 +112,15 @@ func TestProcessLogRejectsInvalidQueriesAndUnsafeOutputRefs(t *testing.T) {
 		t.Fatalf("Output unsafe error = %v", err)
 	}
 }
+
+func TestProcessLogReadsProgressForAJustStartedRun(t *testing.T) {
+	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	store := &processReadMemory{runs: []ProcessRun{{
+		ID: "just-started", Purpose: "playout_program", StartedAt: now.UnixMilli(), Status: ProcessRunning,
+	}}}
+	log := NewProcessLog(store, ProcessReadOptions{Now: func() time.Time { return now }})
+
+	if _, err := log.Get(t.Context(), "just-started"); err != nil {
+		t.Fatalf("Get just-started run: %v", err)
+	}
+}

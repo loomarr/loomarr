@@ -172,32 +172,34 @@ func (s *Server) registerDiagnostics(api huma.API) {
 		},
 	}
 	rawInputOp(api, op, RoleAdmin, s.diagnosticEventsHandler)
-	if s.diagnosticProcesses != nil || s.schemaOnly {
-		huma.Register(api, withRole(huma.Operation{
-			OperationID: "list-diagnostic-processes", Method: http.MethodGet, Path: "/v1/diagnostics/processes",
-			Summary: "List diagnostic Process runs", Description: "Returns one bounded newest-first page of active and recent external media Process runs.",
-			Tags: []string{"diagnostics"},
-		}, RoleAdmin), s.listDiagnosticProcesses)
-		huma.Register(api, withRole(huma.Operation{
-			OperationID: "get-diagnostic-process", Method: http.MethodGet, Path: "/v1/diagnostics/processes/{id}",
-			Summary: "Get a diagnostic Process run", Description: "Returns bounded lifecycle metadata and downsampled progress for one Process run.",
-			Tags: []string{"diagnostics"},
-		}, RoleAdmin), s.getDiagnosticProcess)
-		rawInputOp(api, huma.Operation{
-			OperationID: "get-diagnostic-process-output", Method: http.MethodGet, Path: "/v1/diagnostics/processes/{id}/output",
-			Summary: "Read diagnostic Process output", Description: "Streams one Process run's bounded redacted diagnostic output as readable text.",
-			Tags: []string{"diagnostics"}, Responses: map[string]*huma.Response{
-				"200": {Description: "Bounded redacted Process output", Content: map[string]*huma.MediaType{
-					"text/plain": {Schema: &huma.Schema{Type: huma.TypeString}},
-				}},
-			},
-		}, RoleAdmin, s.diagnosticProcessOutputHandler)
-	}
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "list-diagnostic-processes", Method: http.MethodGet, Path: "/v1/diagnostics/processes",
+		Summary: "List diagnostic Process runs", Description: "Returns one bounded newest-first page of active and recent external media Process runs.",
+		Tags: []string{"diagnostics"},
+	}, RoleAdmin), s.listDiagnosticProcesses)
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "get-diagnostic-process", Method: http.MethodGet, Path: "/v1/diagnostics/processes/{id}",
+		Summary: "Get a diagnostic Process run", Description: "Returns bounded lifecycle metadata and downsampled progress for one Process run.",
+		Tags: []string{"diagnostics"},
+	}, RoleAdmin), s.getDiagnosticProcess)
+	rawInputOp(api, huma.Operation{
+		OperationID: "get-diagnostic-process-output", Method: http.MethodGet, Path: "/v1/diagnostics/processes/{id}/output",
+		Summary: "Read diagnostic Process output", Description: "Streams one Process run's bounded redacted diagnostic output as readable text.",
+		Tags: []string{"diagnostics"}, Responses: map[string]*huma.Response{
+			"200": {Description: "Bounded redacted Process output", Headers: map[string]*huma.Param{
+				"X-Diagnostic-Discarded-Lines": {Description: "Count of output lines discarded before this retained view", Schema: &huma.Schema{Type: huma.TypeInteger}},
+				"X-Diagnostic-Truncated":       {Description: "Whether earlier output was discarded", Schema: &huma.Schema{Type: huma.TypeBoolean}},
+			}, Content: map[string]*huma.MediaType{"text/plain": {Schema: &huma.Schema{Type: huma.TypeString}}}},
+		},
+	}, RoleAdmin, s.diagnosticProcessOutputHandler)
 }
 
 func (s *Server) listDiagnosticProcesses(
 	ctx context.Context, input *diagnosticProcessesInput,
 ) (*diagnosticProcessPageOutput, error) {
+	if s.diagnosticProcesses == nil {
+		return nil, huma.Error501NotImplemented("Process diagnostics aren't available on this Loomarr generation.")
+	}
 	page, err := s.diagnosticProcesses.Query(ctx, diagnostics.ProcessQuery{
 		From: input.From, To: input.To, Limit: input.Limit, Cursor: input.Cursor,
 		Status: input.Status, Purpose: input.Purpose, ChannelID: input.ChannelID, JobID: input.JobID,
@@ -215,6 +217,9 @@ func (s *Server) listDiagnosticProcesses(
 func (s *Server) getDiagnosticProcess(
 	ctx context.Context, input *diagnosticProcessInput,
 ) (*diagnosticProcessDetailOutput, error) {
+	if s.diagnosticProcesses == nil {
+		return nil, huma.Error501NotImplemented("Process diagnostics aren't available on this Loomarr generation.")
+	}
 	detail, err := s.diagnosticProcesses.Get(ctx, input.ID)
 	if errors.Is(err, diagnostics.ErrProcessNotFound) {
 		return nil, huma.Error404NotFound("Process run not found.")
@@ -229,6 +234,10 @@ func (s *Server) getDiagnosticProcess(
 func (s *Server) diagnosticProcessOutputHandler(
 	w http.ResponseWriter, r *http.Request, input *diagnosticProcessInput,
 ) {
+	if s.diagnosticProcesses == nil {
+		s.writeProblem(w, r, http.StatusNotImplemented, "Process diagnostics unavailable", "Process diagnostics aren't available on this Loomarr generation.")
+		return
+	}
 	output, err := s.diagnosticProcesses.Output(r.Context(), input.ID)
 	if errors.Is(err, diagnostics.ErrProcessNotFound) {
 		s.writeProblem(w, r, http.StatusNotFound, "Process run not found", "The requested retained Process run does not exist.")
