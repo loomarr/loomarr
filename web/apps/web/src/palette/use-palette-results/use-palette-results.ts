@@ -20,6 +20,17 @@ import { useAuth } from "@/auth/use-auth";
 // the slice would either drop hits or fetch rows nobody sees.
 const CLIP_RESULTS = 6;
 
+const diagnosticPaletteResult = (query: string, isAdmin: boolean): SearchResult | undefined => {
+  const q = query.trim().toLowerCase();
+  if (
+    q.length > 1 &&
+    isAdmin &&
+    ["diagnostics", "logs", "app health", "playout"].some((term) => term.includes(q) || q.includes(term))
+  ) {
+    return { id: "application", scope: "diagnostics", name: "Diagnostics", meta: "Health and logs" };
+  }
+};
+
 const usePaletteResults = (query: string) => {
   const { isAdmin } = useAuth();
   const enabled = query.trim().length > 1;
@@ -41,12 +52,8 @@ const usePaletteResults = (query: string) => {
   const q = query.trim().toLowerCase();
   const results: SearchResult[] = [];
 
-  if (
-    isAdmin &&
-    ["diagnostics", "logs", "app health", "playout"].some((term) => term.includes(q) || q.includes(term))
-  ) {
-    results.push({ id: "application", scope: "diagnostics", name: "Diagnostics", meta: "Health and logs" });
-  }
+  const diagnostic = diagnosticPaletteResult(query, isAdmin);
+  if (diagnostic) results.push(diagnostic);
 
   if (channels.data?.status === 200) {
     for (const c of channels.data.data.channels ?? []) {
@@ -96,4 +103,4 @@ const usePaletteResults = (query: string) => {
   };
 };
 
-export { usePaletteResults };
+export { diagnosticPaletteResult, usePaletteResults };
