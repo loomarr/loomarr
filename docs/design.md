@@ -1908,7 +1908,10 @@ The remote has three explicit surfaces:
   identity is shown honestly and never blocks Watching or Surf.
 - **Guide** is a Channel-by-time grid. Its timeline, focus surfaces, position rail, and focused-detail
   surface span the physical screen; readable labels, artwork, and metadata remain inside the
-  overscan-safe content area. Inside the grid, up/down changes Channel and left/right changes the
+  overscan-safe content area. Every client renders Guide clocks in the time zone echoed by
+  `GET /v1/guide` (the household/container `TZ`) with a 12-hour clock and explicit AM or PM; a
+  viewer device in another time zone must not reinterpret the household schedule. Inside the grid,
+  up/down changes Channel and left/right changes the
   focused airing. Up from the first Channel enters the filter row; left/right traverses enabled
   All/Favourites/Recent filters, Down returns to the same grid position, and OK activates the
   focused filter. Empty optional filters remain visibly disabled and are skipped during traversal,

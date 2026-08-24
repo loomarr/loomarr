@@ -510,6 +510,7 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
             channels={channels}
             fromMs={body?.fromMs ?? from}
             toMs={body?.toMs ?? to}
+            timezone={body?.timezone}
             zoom={ZOOM_STOPS[zoomIndex]}
             // The now-line belongs to TODAY. Drawing it on another day would mark an instant
             // that is not in the window being shown.
@@ -541,7 +542,7 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
                 className="pointer-events-none z-40"
               >
                 <TooltipPrimitive.Popup className="pointer-events-none">
-                  <GuideDetailCard airing={inspected} />
+                  <GuideDetailCard airing={inspected} timezone={body?.timezone} />
                 </TooltipPrimitive.Popup>
               </TooltipPrimitive.Positioner>
             </TooltipPrimitive.Portal>

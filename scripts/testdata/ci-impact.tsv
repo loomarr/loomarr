@@ -9,6 +9,9 @@ generic-web	web/apps/web/src/people/users-page/users-page.ts	web,image
 mobile-client	web/apps/mobile/app/index.tsx	clients
 tv-client	web/apps/tv/src/app.tsx	clients
 shared-client-ui	web/packages/ui/src/client-platform-proof/client-platform-proof.tsx	clients
+shared-client-api	web/packages/api/src/unwrap/unwrap.ts	web,clients,image
+shared-client-core	web/packages/core/src/guide/guide.ts	web,clients,image
+shared-client-fixtures	web/packages/fixtures/src/index.ts	web,clients,image
 client-tooling	web/turbo.json	clients
 visual-web	web/apps/web/src/people/users-page/users-page.tsx	web,visual,image
 wizard-e2e	web/apps/web/src/wizard/steps/steps.tsx	web,visual,e2e,image

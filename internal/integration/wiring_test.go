@@ -115,6 +115,7 @@ func TestWiring_TMDBConfigHotApplies(t *testing.T) {
 func TestWiring_LibraryConfigHotApplies(t *testing.T) {
 	h := newHarness(t, withoutConnections(), withFillerStorage())
 	admin := h.asAdmin()
+	healthRuns := jobRunCount(t, h, admin, "system-health")
 	if err := h.store.UpsertFillerSource(t.Context(),
 		store.NewFillerSource("library-movies", "library", "Movies", "Commercials", time.Now())); err != nil {
 		t.Fatal(err)
@@ -149,6 +150,10 @@ func TestWiring_LibraryConfigHotApplies(t *testing.T) {
 	}
 	assertLibrarySearchStatus(t, h, admin, http.StatusOK)
 	assertUserImportStatus(t, h, admin, http.StatusOK)
+	// Both the initial connection and token rotation queue an asynchronous health pass. Wait for
+	// their durable executions before taking the no-request baseline; otherwise a legitimate probe
+	// that already captured token two can arrive while the clear operation is under assertion.
+	waitForJobRunCount(t, h, admin, "system-health", healthRuns+2)
 	requests = h.ms.Requests()
 	assertJellyfinSearchAuth(t, requests, "jellyfin-token-two")
 	assertJellyfinUserAuth(t, requests, "jellyfin-token-two")
@@ -157,13 +162,33 @@ func TestWiring_LibraryConfigHotApplies(t *testing.T) {
 	if code := h.status(http.MethodDelete, "/v1/settings/library.token", "", admin); code != http.StatusNoContent {
 		t.Fatalf("clear library.token → %d, want 204", code)
 	}
+	// Clear queues its own health pass. Waiting for it proves the background path observes the
+	// cleared snapshot too; checking immediately could pass before that job even starts.
+	waitForJobRunCount(t, h, admin, "system-health", healthRuns+3)
 	assertLibrarySearchStatus(t, h, admin, http.StatusNotImplemented)
 	assertUserImportStatus(t, h, admin, http.StatusNotImplemented)
 	assertUserSyncStatus(t, h, admin, http.StatusNotImplemented)
 	assertFillerSyncStatus(t, h, admin, http.StatusOK)
 	if got := len(h.ms.Requests()); got != beforeClear {
-		t.Fatalf("cleared connection made an outbound request: before=%d after=%d", beforeClear, got)
+		t.Fatalf("cleared connection made an outbound request: before=%d after=%d new=%+v",
+			beforeClear, got, h.ms.Requests()[beforeClear:])
 	}
+}
+
+func jobRunCount(t *testing.T, h *harness, admin *http.Cookie, name string) int {
+	t.Helper()
+	var out struct {
+		RunCount int `json:"runCount"`
+	}
+	resp := h.do(http.MethodGet, "/v1/jobs/"+name+"/history", "", admin)
+	decodeBody(t, resp, &out)
+	return out.RunCount
+}
+
+func waitForJobRunCount(t *testing.T, h *harness, admin *http.Cookie, name string, want int) {
+	t.Helper()
+	waitFor(t, func() bool { return jobRunCount(t, h, admin, name) >= want },
+		"background job did not finish: "+name)
 }
 
 func assertUserImportStatus(t *testing.T, h *harness, admin *http.Cookie, want int) {

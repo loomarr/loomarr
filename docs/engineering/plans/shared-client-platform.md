@@ -1,6 +1,6 @@
 # Shared client platform migration
 
-**Status:** P0a and P0b merged; P1 visual foundations validated locally and pending publication
+**Status:** P0a through P1 merged; P2 shared Guide contracts validated locally and pending publication
 **Date:** 2026-08-23  
 **Decision owner:** maintainer  
 **Companion contract:** [`docs/frontend-design.md`](../../frontend-design.md)
@@ -374,6 +374,35 @@ The committed browser visual contract adds 34 reviewed desktop/mobile captures f
 light/dark themes, launch motion, loading states, iconography, and programme-card density/focus. A
 fresh non-update `make fe-visual` run passes all 890 Storybook visual, motion, and accessibility
 cases against the merged corpus.
+
+## P2 shared-Guide evidence
+
+P2 moves the product rules that every Guide presentation needs into the platform-neutral
+`@loomarr/core` interface while leaving transport, DOM rendering, and focus events in their platform
+adapters. The shared module consumes generated API objects directly and adds only served-window
+geometry, live progress, channel broadcast/health facts, household-timezone formatting, compact
+episode identity, and one stable selection model. Vertical movement retains a time anchor across
+differently sized blocks; horizontal movement selects actual neighbours; every edge returns an
+explicit boundary so a browser, touch, or remote adapter can enter surrounding controls without
+copying Guide rules.
+
+The existing web Guide now delegates window calculation, block geometry, channel state, time labels,
+episode labels, and movement to that interface. Its current approved composition and visual
+baselines remain unchanged; this phase does not infer the maintainer's pending updated Guide mock.
+The shared module has 11 focused tests covering clipping, live progress, special episodes, timezone
+formatting, exact time-boundary ownership, empty rows, all movement directions, and navigation
+boundaries. `make clients` passes the package graph, shared types/tests, Expo Doctor, four native
+bundles, and browser proof; `make fe` passes 198 frontend files / 1,585 tests plus production and
+Storybook builds; a fresh immutable `make fe-visual` passes all 890 visual, motion, and accessibility
+cases without changing a baseline. The final `make check` repository gate and `make docs-lint` also
+pass on the publication head. P2 also closes an affected-CI hole exposed by this first real shared
+core change: native Storybook consumes fixtures, fixtures consume core and API, and edits to any of
+those three packages now select the shared-client and Apple-native gates as well as the web family.
+The publication gate also exposed an existing integration-test race: library setting writes queue a
+durable `system-health` run, and the test could count a token-rotation probe that was already in
+flight as work caused by the later credential clear. The test now synchronizes on recorded job
+completion before and after clear, proving the clear-triggered health pass and subsequent explicit
+operations are dormant without relying on a sleep; 20 consecutive race-enabled repetitions pass.
 
 ## Open evidence, not open architecture
 

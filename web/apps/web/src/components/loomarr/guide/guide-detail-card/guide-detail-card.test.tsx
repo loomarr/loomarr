@@ -52,6 +52,12 @@ describe("GuideDetailCard", () => {
     expect(screen.getByText(/professional thieves/)).toBeInTheDocument();
   });
 
+  it("renders the household schedule time instead of the viewer device time", () => {
+    render(<GuideDetailCard airing={base} timezone="America/New_York" />);
+
+    expect(screen.getByText("5:00 PM–5:30 PM")).toBeInTheDocument();
+  });
+
   it.each([
     ["programme", { ...base, thumbImage: previewImage }, { width: 80, height: 45 }],
     [
@@ -96,6 +102,16 @@ describe("GuideDetailCard", () => {
     );
     expect(screen.getByText("The Simpsons")).toBeInTheDocument();
     expect(screen.getByText(/S10E03/)).toBeInTheDocument();
+  });
+
+  it("does not drop season zero specials", () => {
+    render(
+      <GuideDetailCard
+        airing={{ ...base, title: "Treehouse of Horror", series: "The Simpsons", season: 0, episode: 1 }}
+      />,
+    );
+
+    expect(screen.getByText(/S00E01/)).toBeInTheDocument();
   });
 
   // THE BREAK CASE — the one that could not exist before V13b, because the API had only a
