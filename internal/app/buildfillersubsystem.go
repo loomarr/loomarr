@@ -18,8 +18,9 @@ import (
 )
 
 type fillerBuild struct {
-	service api.FillerService
-	preview api.PodPreviewer
+	service  api.FillerService
+	preview  api.PodPreviewer
+	taxonomy api.TaxonomyEditor
 }
 
 func buildFillerSubsystem(
@@ -65,6 +66,7 @@ func buildFillerSubsystem(
 
 	fillerProgrammer := programmer.NewDynamic(set.tunarrConfig())
 	wake := &fillerChannelWake{st: st, channels: channelService, log: log}
+	result.taxonomy = taxonomyEditor{store: st, wake: wake}
 	syncer := buildSyncer(st, set, layout, log, fillerProgrammer, libraryClient)
 	taggerProvider, tagger := buildTagger(st, set, layout, log, wake)
 	fetcher := buildFetcher(set, layout, log)

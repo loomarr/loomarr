@@ -57,6 +57,42 @@ type UpdateTaxonDTO struct {
 	RetiredAliases []string `json:"retiredAliases,omitempty"`
 }
 
+// TaxonomyImpactCommandDTO describes one prospective advanced vocabulary edit. A single command
+// shape keeps create/update/delete impact behind one generated client operation; the server still
+// validates the operation-specific requirements and the complete prospective graph.
+type TaxonomyImpactCommandDTO struct {
+	Operation      string   `json:"operation" enum:"create,update,delete"`
+	Slug           string   `json:"slug" doc:"The new slug for create, or existing slug for update/delete"`
+	Label          string   `json:"label,omitempty"`
+	Parent         string   `json:"parent,omitempty"`
+	Axis           string   `json:"axis,omitempty" enum:"product,format,seasonal,audience-cue,"`
+	Synonyms       []string `json:"synonyms,omitempty"`
+	RetiredAliases []string `json:"retiredAliases,omitempty"`
+}
+
+type TaxonomyImpactNodeDTO struct {
+	Slug  string `json:"slug"`
+	Label string `json:"label"`
+}
+
+type TaxonomyImpactChannelDTO struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Number int    `json:"number"`
+}
+
+type TaxonomyImpactDTO struct {
+	DirectStoredClips      int                        `json:"directStoredClips" doc:"Stored clips directly asserting the selected taxon"`
+	DescendantStoredClips  int                        `json:"descendantStoredClips" doc:"Distinct stored clips asserting a descendant"`
+	AffectedStoredClips    int                        `json:"affectedStoredClips" doc:"Distinct stored clips whose derived lineage may change"`
+	AffectedPlayableClips  int                        `json:"affectedPlayableClips" doc:"Airable clips whose channel fit may change"`
+	Descendants            []TaxonomyImpactNodeDTO    `json:"descendants"`
+	SavedChannelSelections []TaxonomyImpactChannelDTO `json:"savedChannelSelections" doc:"Saved channel selections referencing the selected taxon or descendants"`
+	ResolverTermsAdded     []string                   `json:"resolverTermsAdded" doc:"New classifier spellings that will resolve after the edit"`
+	ResolverTermsRemoved   []string                   `json:"resolverTermsRemoved" doc:"Classifier spellings that will stop resolving after the edit"`
+	DeleteBlocked          bool                       `json:"deleteBlocked" doc:"True when direct stored assertions must be retagged before deletion"`
+}
+
 // TaxonomyAxisCoverageDTO reports unique playable clips covered on one independent dimension.
 // It is not the sum of per-taxon counts because a clip may assert several tags on the same axis.
 type TaxonomyAxisCoverageDTO struct {
@@ -99,6 +135,12 @@ func (s *Server) registerTaxonomy(api huma.API) {
 	}, RoleMember), s.listTaxonomy)
 
 	huma.Register(api, withRole(huma.Operation{
+		OperationID: "preview-taxonomy-edit", Method: http.MethodPost, Path: "/v1/taxonomy/impact",
+		Summary: "Preview a vocabulary edit", Description: "Admin only. Validates the prospective graph and reports stored clips, descendants, saved channel selections, and classifier terms affected without mutating anything.",
+		Tags: []string{"filler"},
+	}, RoleAdmin), s.previewTaxonomyEdit)
+
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "create-taxon", Method: http.MethodPost, Path: "/v1/taxonomy",
 		Summary: "Add a taxon", Description: "Admin only. Updates the graph and catalog tags atomically (§10 V45a).",
 		Tags: []string{"filler"},
@@ -126,6 +168,70 @@ type listTaxonomyOutput struct {
 		UnclassifiedClips int                       `json:"unclassifiedClips"`
 		AxisCoverage      []TaxonomyAxisCoverageDTO `json:"axisCoverage"`
 	}
+}
+
+type previewTaxonomyEditInput struct{ Body TaxonomyImpactCommandDTO }
+type previewTaxonomyEditOutput struct{ Body TaxonomyImpactDTO }
+
+func (s *Server) previewTaxonomyEdit(ctx context.Context, in *previewTaxonomyEditInput) (*previewTaxonomyEditOutput, error) {
+	edit, err := impactCommandToEdit(in.Body)
+	if err != nil {
+		return nil, err
+	}
+	var impact TaxonomyImpact
+	if s.taxonomy != nil {
+		impact, err = s.taxonomy.Preview(ctx, edit)
+	} else if s.store != nil {
+		impact.Store, err = s.store.PreviewTaxonomyEdit(ctx, edit)
+	} else {
+		return nil, huma.Error501NotImplemented("no taxonomy editor configured")
+	}
+	if err != nil {
+		return nil, mapTaxonomyEditError(err)
+	}
+	out := &previewTaxonomyEditOutput{}
+	out.Body = taxonomyImpactToDTO(impact, edit.Delete)
+	return out, nil
+}
+
+func impactCommandToEdit(command TaxonomyImpactCommandDTO) (store.TaxonomyEdit, error) {
+	taxon := taxonomy.Canonicalize(taxonomy.Taxon{
+		Slug: command.Slug, Label: command.Label, Parent: command.Parent, Axis: taxonomy.Axis(command.Axis),
+		Synonyms: command.Synonyms, RetiredAliases: command.RetiredAliases,
+	})
+	switch command.Operation {
+	case "create":
+		return store.TaxonomyEdit{Create: true, Taxon: taxon}, nil
+	case "update":
+		return store.TaxonomyEdit{Slug: taxon.Slug, Taxon: taxon}, nil
+	case "delete":
+		return store.TaxonomyEdit{Delete: true, Slug: taxon.Slug}, nil
+	default:
+		return store.TaxonomyEdit{}, errUnprocessable("Unknown taxonomy operation", "Choose create, update, or delete.")
+	}
+}
+
+func taxonomyImpactToDTO(impact TaxonomyImpact, deleting bool) TaxonomyImpactDTO {
+	out := TaxonomyImpactDTO{
+		DirectStoredClips:      impact.Store.DirectStoredClips,
+		DescendantStoredClips:  impact.Store.DescendantStoredClips,
+		AffectedStoredClips:    impact.Store.AffectedStoredClips,
+		AffectedPlayableClips:  len(impact.Store.PlayableClipHashes),
+		ResolverTermsAdded:     impact.Store.ResolverTermsAdded,
+		ResolverTermsRemoved:   impact.Store.ResolverTermsRemoved,
+		DeleteBlocked:          deleting && impact.Store.DirectStoredClips > 0,
+		Descendants:            make([]TaxonomyImpactNodeDTO, 0, len(impact.Store.Descendants)),
+		SavedChannelSelections: make([]TaxonomyImpactChannelDTO, 0, len(impact.Channels)),
+	}
+	for _, descendant := range impact.Store.Descendants {
+		out.Descendants = append(out.Descendants, TaxonomyImpactNodeDTO{Slug: descendant.Slug, Label: descendant.Label})
+	}
+	for _, channel := range impact.Channels {
+		out.SavedChannelSelections = append(out.SavedChannelSelections, TaxonomyImpactChannelDTO{
+			ID: channel.ID, Name: channel.Name, Number: channel.Number,
+		})
+	}
+	return out
 }
 
 func (s *Server) listTaxonomy(ctx context.Context, _ *listTaxonomyInput) (*listTaxonomyOutput, error) {
@@ -213,7 +319,16 @@ func (s *Server) deleteTaxon(ctx context.Context, in *deleteTaxonInput) (*struct
 }
 
 func (s *Server) applyTaxonomyEdit(ctx context.Context, edit store.TaxonomyEdit) error {
-	err := s.store.ApplyTaxonomyEdit(ctx, edit, time.Now())
+	var err error
+	if s.taxonomy != nil {
+		_, err = s.taxonomy.Apply(ctx, edit)
+	} else {
+		err = s.store.ApplyTaxonomyEdit(ctx, edit, time.Now())
+	}
+	return mapTaxonomyEditError(err)
+}
+
+func mapTaxonomyEditError(err error) error {
 	switch {
 	case errors.Is(err, taxonomy.ErrInvalidForest):
 		return errUnprocessable("Invalid taxonomy", err.Error())

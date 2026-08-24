@@ -134,6 +134,28 @@ func TestResolve_RetiredAlias(t *testing.T) {
 	}
 }
 
+func TestDescendants_IsStableParentFirstForDeepTrees(t *testing.T) {
+	forest := taxonomy.New([]taxonomy.Taxon{
+		{Slug: "root", Label: "Root", Axis: taxonomy.AxisProduct},
+		{Slug: "z-child", Label: "Z", Parent: "root", Axis: taxonomy.AxisProduct},
+		{Slug: "a-child", Label: "A", Parent: "root", Axis: taxonomy.AxisProduct},
+		{Slug: "grandchild", Label: "Grandchild", Parent: "a-child", Axis: taxonomy.AxisProduct},
+	})
+	got := forest.Descendants("root")
+	want := []string{"a-child", "grandchild", "z-child"}
+	if len(got) != len(want) {
+		t.Fatalf("Descendants(root) = %+v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i].Slug != want[i] {
+			t.Fatalf("Descendants(root)[%d] = %q, want %q", i, got[i].Slug, want[i])
+		}
+	}
+	if got := forest.Descendants("missing"); len(got) != 0 {
+		t.Fatalf("Descendants(missing) = %+v, want empty", got)
+	}
+}
+
 func TestValidate_AcceptsSeedForest(t *testing.T) {
 	if err := taxonomy.Validate(taxonomy.SeedForest()); err != nil {
 		t.Fatalf("Validate(seed) = %v, want a valid shipped forest", err)

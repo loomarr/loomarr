@@ -3155,13 +3155,30 @@ taxon with directly asserted clips is refused until those clips are retagged; de
 intermediate node reparents its children to the grandparent. This keeps an operator mistake from
 silently erasing classification or leaving the catalog between graph generations.
 
-⚠ **The taxonomy surface is an accounting view, not just a vocabulary picker.** It shows the forest
-by axis and hierarchy, distinguishes playable direct assertions from descendant matches, and reports
-overall plus per-axis catalog coverage. A clip with a seasonal cue but no product/topic assertion is
-therefore visible in both dimensions rather than flattened into one “classified” bit. Every taxon
-count and axis population links back to the matching catalog. Axis absence is neutral—seasonal and
-audience cues are intentionally sparse—not an automatic cleanup task. Synonyms and retired aliases remain progressive detail
-because they help the classifier but are not another set of tags the operator must manage day to day.
+⚠ **The taxonomy surface is an accounting view first, not a vocabulary console.** Daily Filler
+navigation leads with overall and per-axis classification coverage, plain-language axis names and
+examples, and direct catalog links for gaps. A clip with a seasonal cue but no product/topic
+assertion is therefore visible in both dimensions rather than flattened into one “classified” bit.
+Axis absence is neutral—seasonal and audience cues are intentionally sparse—not an automatic cleanup
+task. The raw forest, stable slugs, parent relationships, synonyms, retired aliases, and mutation
+controls live under Filler → Advanced → Classification vocabulary in a collapsed **Manage
+vocabulary** disclosure. Members may inspect that hierarchy but only admins may edit it. The clip
+editor writes only observed/asserted facts and shows inherited matches as read-only context, so a
+derived ancestor can never be accidentally promoted into a permanent assertion.
+
+⚠ **An advanced graph edit is previewed through the same prospective-graph contract it commits.**
+Before create, update, or delete, the server validates the whole proposed forest and reports directly
+asserted stored clips, distinct descendant assertions, affected playable clips, descendants whose
+lineage changes, saved channel selections referencing the node/subtree, and resolver terms added or
+removed. The browser renders that projection; it does not reconstruct impact. A commit re-runs
+validation under the store's graph lock, applies the atomic closure/rollup/category rebuild below,
+then sends the affected clips' before-and-after snapshots through the same targeted channel
+reconciliation path as a clip-classification edit. Reconciliation remains best-effort after the
+semantic commit, with the ordinary channel sweep as the crash-safe retry.
+
+Every taxon count and axis population links back to the matching catalog. Synonyms and retired aliases
+remain progressive detail because they help the classifier but are not another set of tags the
+operator must manage day to day.
 Brand, clip kind, era, and audience remain adjacent
 structured facts rather than being folded into the taxonomy: the forest answers thematic/type
 membership, while those fields keep their existing grounded or structural semantics. The clip

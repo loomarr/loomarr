@@ -642,7 +642,7 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 			slug, ok := forest.Resolve(raw)
 			if !ok {
 				return nil, errUnprocessable("Unknown tag",
-					fmt.Sprintf("The tag %q is not in the taxonomy vocabulary. Add it under Filler → Taxonomy first, or choose an existing tag.", raw))
+					fmt.Sprintf("The tag %q is not in the classification vocabulary. Add it under Filler → Advanced → Classification vocabulary first, or choose an existing tag.", raw))
 			}
 			if !seen[slug] {
 				seen[slug] = true

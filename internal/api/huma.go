@@ -77,6 +77,7 @@ type Server struct {
 	shutdown <-chan struct{} // generation shutdown closes long-lived streams before HTTP drain
 	filler   FillerService   // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
 	pods     PodPreviewer    // /v1/channels/{id}/pods (§12); nil ⇒ 501
+	taxonomy TaxonomyEditor  // taxonomy impact + graph convergence; nil keeps store-only test wiring
 	// fillerLayout is the immutable filesystem topology applied to this server generation.
 	// Operational routes keep interpreting catalog paths against this root until restart.
 	fillerLayout filler.Layout
@@ -405,6 +406,25 @@ type FillerService interface {
 	// copy cuts seek rather than decode, so this is seconds, not the detection's
 	// minutes. filler.ErrSplitValidation ⇒ 422; a missing proposal ⇒ ErrNotFound.
 	ConfirmSplit(ctx context.Context, proposalID string, segments []filler.SplitSegment) error
+}
+
+// TaxonomyEditor is the deep graph-edit module used by taxonomy writes. The store still owns the
+// atomic graph transaction; this seam adds an authoritative preview and post-commit channel
+// convergence without making HTTP handlers understand either implementation.
+type TaxonomyEditor interface {
+	Preview(ctx context.Context, edit store.TaxonomyEdit) (TaxonomyImpact, error)
+	Apply(ctx context.Context, edit store.TaxonomyEdit) (TaxonomyImpact, error)
+}
+
+type TaxonomyImpact struct {
+	Store    store.TaxonomyEditImpact
+	Channels []TaxonomyChannelImpact
+}
+
+type TaxonomyChannelImpact struct {
+	ID     string
+	Name   string
+	Number int
 }
 
 // FillerRewinder is the optional recovery seam behind the Incoming UI. Separate from
@@ -817,6 +837,7 @@ type Options struct {
 	Shutdown <-chan struct{} // generation lifetime; closes SSE so http.Server.Shutdown can drain
 	Filler   FillerService   // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
 	Pods     PodPreviewer    // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
+	Taxonomy TaxonomyEditor  // taxonomy impact + committed channel convergence
 	// FillerLayout is the immutable storage topology applied to this server generation. Its zero
 	// value means filler storage is unavailable; saved desired values do not replace it mid-run.
 	FillerLayout filler.Layout
