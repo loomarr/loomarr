@@ -1,10 +1,11 @@
 # Shared client platform migration
 
-**Status:** P0a through P2 merged; P3 pairing and native-shell implementation is in protected CI as PR #538
+**Status:** P0a through P3 merged; P3.5 shared-UI completeness gate is in progress
 **Date:** 2026-08-23  
 **Decision owner:** maintainer  
 **Companion contract:** [`docs/frontend-design.md`](../../frontend-design.md)
 **Current-state inventory:** [`docs/engineering/client-platform-inventory.md`](../client-platform-inventory.md)
+**Completeness ledger:** [`docs/engineering/client-design-system-coverage.md`](../client-design-system-coverage.md)
 
 ## Outcome
 
@@ -272,6 +273,7 @@ the adoption gate.
 | P1 | semantic tokens, fonts, brand assets, iconography, loading motion, primitive interfaces, fixtures, web/native Storybooks | token/asset drift, contrast, story coverage, web/native renders |
 | P2 | shared Guide data/view modules and web integration | real API + deterministic visual/a11y gates; current web behavior retained |
 | P3 | mobile/TV shells, pairing, confirmed self-disconnect, transport, and navigation adapters; shipping-screen parity inventory and dark-first pairing with canonical lockup and protected-centre branded QR | iPhone and Shield pair/self-disconnect/remote-revocation recovery evidence plus visual parity and QR-decode review |
+| P3.5 | complete the shared design-system, product-UI, and platform-adapter interfaces required by the known web, mobile, and TV surfaces | coverage ledger has no unexplained gaps; web/native Storybooks exercise every supported theme, density, state, interaction, and motion mode; interface, visual, interaction, accessibility, drift, and import-boundary gates pass; real iPhone and 1080p/4K TV workshop evidence recorded |
 | P4 | playback, overlay, Surf, tuning, and previous-channel behavior | real-server first frame and remote/touch/browser traversal |
 | P5 | full vertical-slice evidence and go/no-go decision | every acceptance item above recorded |
 | P6 | remaining viewer surfaces | route-by-route parity; current clients still releasable |
