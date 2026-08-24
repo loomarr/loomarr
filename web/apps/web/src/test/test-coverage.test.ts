@@ -73,7 +73,6 @@ const KNOWN_GAPS = new Set([
   "lib/use-document-title/use-document-title.ts",
   "palette/command-palette/command-palette.tsx",
   "palette/use-command-shortcut/use-command-shortcut.ts",
-  "palette/use-palette-results/use-palette-results.ts",
   "people/create-local-panel/create-local-panel.tsx",
   "people/import-panel/import-panel.tsx",
   "people/users-page/users-page.tsx",
