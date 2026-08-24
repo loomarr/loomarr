@@ -1,6 +1,9 @@
 package playout
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/provision"
@@ -27,6 +30,10 @@ type Airing struct {
 	// Identity is the stable content identity within StartedAt: a provisioning key for programmes,
 	// a clip hash for commercials, and the slot kind for an unplayable scheduled card.
 	Identity string
+	// ScheduleBlockID identifies the scheduled block that contains this Airing. A filler break keeps
+	// one value across its several clip Airings so client transitions and child Process runs join to
+	// the same schedule truth.
+	ScheduleBlockID string
 	// Kind mirrors the scheduler's slot kind, so a caller can distinguish "play this
 	// program" from "play a filler clip" from "there is nothing".
 	Kind schedule.SlotKind
@@ -221,6 +228,33 @@ type Broadcast struct {
 	Nominal bool
 	// Start and Stop are absolute wall-clock. Stop is exclusive.
 	Start, Stop time.Time
+}
+
+// ScheduleBlockID returns the same opaque identity the live Airing path assigns. It is deterministic
+// across Guide reads and restarts but reveals none of the content identity used to derive it.
+func (b Broadcast) ScheduleBlockID(channelID string) string {
+	return ScheduledBlockID(channelID, b.Start, b.Kind, broadcastIdentity(b))
+}
+
+// ScheduledBlockID is the one schedule-to-diagnostics correlation function. Callers provide the
+// scheduler-owned facts they already have; no diagnostic layer performs a lookup to invent them.
+func ScheduledBlockID(channelID string, startedAt time.Time, kind schedule.SlotKind, contentIdentity string) string {
+	canonical := strings.Join([]string{
+		strings.TrimSpace(channelID), startedAt.UTC().Format(time.RFC3339Nano),
+		string(kind), strings.TrimSpace(contentIdentity),
+	}, "\x00")
+	sum := sha256.Sum256([]byte(canonical))
+	return "block_" + hex.EncodeToString(sum[:12])
+}
+
+func broadcastIdentity(b Broadcast) string {
+	if b.Key != "" {
+		return string(b.Key)
+	}
+	if b.LibraryItemID != "" {
+		return b.LibraryItemID
+	}
+	return string(b.Kind)
 }
 
 // Duration is how long this programme occupies the schedule.

@@ -31,6 +31,7 @@ func TestPlayoutBlockSourcePinsTheFirstBroadcastFormat(t *testing.T) {
 		w.Header().Set(api.PlayoutAiringStartedAtHeader, time.Unix(int64(requests), 0).UTC().Format(time.RFC3339Nano))
 		w.Header().Set(api.PlayoutAiringKindHeader, string(schedule.SlotProgram))
 		w.Header().Set(api.PlayoutAiringContentHeader, "episode")
+		w.Header().Set(api.PlayoutScheduleBlockHeader, "block_episode")
 		_, _ = io.WriteString(w, "block")
 	}))
 	t.Cleanup(srv.Close)
@@ -41,7 +42,8 @@ func TestPlayoutBlockSourcePinsTheFirstBroadcastFormat(t *testing.T) {
 		if err != nil {
 			t.Fatalf("block %d: %v", i+1, err)
 		}
-		if block.Identity.Kind != schedule.SlotProgram || block.Identity.ContentID != "episode" {
+		if block.Identity.Kind != schedule.SlotProgram || block.Identity.ContentID != "episode" ||
+			block.Identity.ScheduleBlockID != "block_episode" {
 			t.Fatalf("block %d identity = %+v", i+1, block.Identity)
 		}
 		_, _ = io.Copy(io.Discard, block.Content)
@@ -56,6 +58,7 @@ func TestPlayoutBlockSourceRejectsAFormatChange(t *testing.T) {
 		w.Header().Set(api.PlayoutAiringStartedAtHeader, time.Unix(1, 0).UTC().Format(time.RFC3339Nano))
 		w.Header().Set(api.PlayoutAiringKindHeader, string(schedule.SlotProgram))
 		w.Header().Set(api.PlayoutAiringContentHeader, "episode")
+		w.Header().Set(api.PlayoutScheduleBlockHeader, "block_episode")
 		formats = formats[1:]
 		_, _ = io.WriteString(w, "block")
 	}))

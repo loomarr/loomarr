@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -104,6 +105,7 @@ func (f *fakeResolver) callCount() int {
 type fakeEncoder struct {
 	mu      sync.Mutex
 	gotArgs []string
+	spec    diagnostics.ProcessSpec
 	output  string
 	failErr error
 	// progressScript emits ffmpeg-shaped progress on fd 3 (`>&3`) so the parser + the V16
@@ -116,6 +118,7 @@ func (f *fakeEncoder) start(
 ) (*playout.Process, error) {
 	f.mu.Lock()
 	f.gotArgs = args
+	f.spec, _ = diagnostics.ProcessSpecFromContext(ctx)
 	f.mu.Unlock()
 	if f.failErr != nil {
 		return nil, f.failErr
@@ -144,6 +147,12 @@ func (f *fakeEncoder) args() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.gotArgs
+}
+
+func (f *fakeEncoder) processSpec() diagnostics.ProcessSpec {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.spec
 }
 
 type programOpts struct {
@@ -453,6 +462,13 @@ func TestPlayoutProgram_ResolverFailureShowsTheCard(t *testing.T) {
 	// to read and the args have to come from the synthetic lavfi generator.
 	if got := strings.Join(enc.args(), " "); !strings.Contains(got, "color=c=black") {
 		t.Errorf("did not render the offline card on a resolver failure: %q", got)
+	}
+	identity, ok := api.ParsePlayoutAiringIdentity(resp.Header)
+	if !ok {
+		t.Fatal("resolver-failure card has no complete airing identity")
+	}
+	if got := enc.processSpec().ScheduleBlockID; got == "" || got != identity.ScheduleBlockID {
+		t.Errorf("card Process schedule block = %q, response identity = %q", got, identity.ScheduleBlockID)
 	}
 }
 

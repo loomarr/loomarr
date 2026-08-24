@@ -73,6 +73,7 @@ const (
 	PlayoutAiringEndsAtHeader     = "X-Loomarr-Airing-Ends-At"
 	PlayoutAiringKindHeader       = "X-Loomarr-Airing-Kind"
 	PlayoutAiringContentHeader    = "X-Loomarr-Airing-Content"
+	PlayoutScheduleBlockHeader    = "X-Loomarr-Schedule-Block"
 	PlayoutParentProcessRunHeader = "X-Loomarr-Parent-Process-Run"
 )
 
@@ -84,6 +85,7 @@ func setPlayoutAiringIdentity(header http.Header, airing playout.Airing) {
 	}
 	header.Set(PlayoutAiringKindHeader, string(airing.Kind))
 	header.Set(PlayoutAiringContentHeader, airing.Identity)
+	header.Set(PlayoutScheduleBlockHeader, airing.ScheduleBlockID)
 }
 
 // ParsePlayoutAiringIdentity is the composition adapter's inverse of setPlayoutAiringIdentity.
@@ -97,11 +99,16 @@ func ParsePlayoutAiringIdentity(header http.Header) (playout.AiringIdentity, boo
 	}
 	kind := schedule.SlotKind(header.Get(PlayoutAiringKindHeader))
 	contentID := header.Get(PlayoutAiringContentHeader)
+	scheduleBlockID := header.Get(PlayoutScheduleBlockHeader)
 	if err != nil || startedAt.IsZero() || (!endsAt.IsZero() && !endsAt.After(startedAt)) || contentID == "" ||
+		scheduleBlockID == "" ||
 		(kind != schedule.SlotProgram && kind != schedule.SlotFiller && kind != schedule.SlotFlex) {
 		return playout.AiringIdentity{}, false
 	}
-	return playout.AiringIdentity{StartedAt: startedAt, EndsAt: endsAt, Kind: kind, ContentID: contentID}, true
+	return playout.AiringIdentity{
+		StartedAt: startedAt, EndsAt: endsAt, Kind: kind, ContentID: contentID,
+		ScheduleBlockID: scheduleBlockID,
+	}, true
 }
 
 // PlayoutEncoder starts a supervised ffmpeg for the given args. Injected so the handlers can be
@@ -166,11 +173,18 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	} else if err != nil {
 		s.log.Warn("playout: could not resolve what is airing — showing the card", "channel", channelID, "err", err)
-		setPlayoutAiringIdentity(w.Header(), playout.Airing{
+		cardAiring := playout.Airing{
 			StartedAt: time.Now().UTC().Truncate(offlineCardDuration),
 			Identity:  "unavailable-card",
 			Kind:      schedule.SlotFlex,
-		})
+		}
+		cardAiring.ScheduleBlockID = playout.ScheduledBlockID(
+			channelID, cardAiring.StartedAt, cardAiring.Kind, cardAiring.Identity,
+		)
+		setPlayoutAiringIdentity(w.Header(), cardAiring)
+		processSpec, _ := diagnostics.ProcessSpecFromContext(r.Context())
+		processSpec.ScheduleBlockID = cardAiring.ScheduleBlockID
+		r = r.WithContext(diagnostics.WithProcessSpec(r.Context(), processSpec))
 		// The card, not a 502 (see serveCard): the usual cause is the media server being
 		// unreachable, which is upstream of us and typically transient — and writing an error
 		// document in place of MPEG-TS would leave every viewer without channel bytes
@@ -189,10 +203,13 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 			airing.Identity = string(schedule.SlotFlex)
 		}
 	}
+	if airing.ScheduleBlockID == "" {
+		airing.ScheduleBlockID = playout.ScheduledBlockID(channelID, airing.StartedAt, airing.Kind, airing.Identity)
+	}
 	setPlayoutAiringIdentity(w.Header(), airing)
 	processSpec, _ := diagnostics.ProcessSpecFromContext(r.Context())
 	processSpec.Target = encPlan.String()
-	processSpec.ScheduleBlockID = airing.Identity
+	processSpec.ScheduleBlockID = airing.ScheduleBlockID
 	r = r.WithContext(diagnostics.WithProcessSpec(r.Context(), processSpec))
 
 	// Nothing airing ⇒ the offline card, NOT an error and NOT an empty body.

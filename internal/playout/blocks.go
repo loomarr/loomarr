@@ -14,10 +14,11 @@ import (
 // It never enters the MPEG-TS payload; the supervisor uses it to identify real transitions without
 // guessing from process exits or request timing.
 type AiringIdentity struct {
-	StartedAt time.Time
-	EndsAt    time.Time
-	Kind      schedule.SlotKind
-	ContentID string
+	StartedAt       time.Time
+	EndsAt          time.Time
+	Kind            schedule.SlotKind
+	ContentID       string
+	ScheduleBlockID string
 }
 
 type Block struct {
@@ -106,6 +107,7 @@ func pumpBlocks(
 				"channel", channelID,
 				"from_kind", previous.Kind, "from_content", previous.ContentID,
 				"to_kind", block.Identity.Kind, "to_content", block.Identity.ContentID,
+				"schedule_block_id", block.Identity.ScheduleBlockID,
 				"started_at", block.Identity.StartedAt)
 		}
 		n, copyErr := io.Copy(dst, block.Content)

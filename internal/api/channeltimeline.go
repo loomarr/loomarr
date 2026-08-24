@@ -115,7 +115,8 @@ func (s *Server) resolveTimelineThumbs(
 
 type timelineOutput struct {
 	Body struct {
-		Airings []GuideAiring `json:"airings" doc:"The current programme (first) then the next few and the breaks between them, in airtime order, with a preview image per programme block"`
+		ServerNowMs int64         `json:"serverNowMs" doc:"Server wall-clock at projection time, used to compare the displayed frame with schedule truth without trusting device clock"`
+		Airings     []GuideAiring `json:"airings" doc:"The current programme (first) then the next few and the breaks between them, in airtime order, with a preview image per programme block"`
 	}
 }
 
@@ -125,6 +126,7 @@ type timelineOutput struct {
 func (s *Server) channelTimeline(ctx context.Context, in *upcomingInput) (*timelineOutput, error) {
 	out := &timelineOutput{}
 	out.Body.Airings = []GuideAiring{}
+	out.Body.ServerNowMs = time.Now().UnixMilli()
 
 	ch, err := s.store.GetChannel(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
@@ -138,7 +140,7 @@ func (s *Server) channelTimeline(ctx context.Context, in *upcomingInput) (*timel
 		return out, nil
 	}
 
-	now := time.Now()
+	now := time.UnixMilli(out.Body.ServerNowMs)
 	bs, err := s.playoutGuide.BroadcastsBetween(
 		ctx, ch.ID, now.Add(-playout.DVRHorizon), now.Add(timelineWindow),
 	)
@@ -153,7 +155,7 @@ func (s *Server) channelTimeline(ctx context.Context, in *upcomingInput) (*timel
 	thumbHashes := make([]string, 0, len(bs))
 	thumbKeys := make([]timelineThumbKey, 0, len(bs))
 	for _, b := range bs {
-		a := guideAiringOf(b)
+		a := guideAiringOf(ch.ID, b)
 		key := timelineThumbKey{}
 		// A preview image for PROGRAMME blocks only (a break/flex/pending block has no title image
 		// to show). Best-effort and gated on a resolver being wired — an install without TMDB shows

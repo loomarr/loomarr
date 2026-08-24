@@ -166,6 +166,37 @@ func TestChannelTimeline_EpisodesAndBreaks(t *testing.T) {
 	if got := thumbs.askedCount(); got != 2 {
 		t.Errorf("thumb resolver asked %d times, want 2 (one per programme, not the break)", got)
 	}
+	for i, airing := range airings {
+		if airing.ScheduleBlockID == "" {
+			t.Errorf("airing %d has no server-authored schedule block identity", i)
+		}
+	}
+	if first.ScheduleBlockID == airings[1].ScheduleBlockID {
+		t.Errorf("programme and commercial share schedule block id %q", first.ScheduleBlockID)
+	}
+}
+
+func TestChannelTimelineCarriesServerClock(t *testing.T) {
+	srv, st := newTimelineServer(t, &fakeXMLTVGuide{}, nil)
+	seedChannel(t, st, "ch1", "Springfield Classics", 1, "internal")
+	before := time.Now().UnixMilli()
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/channels/ch1/timeline", nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var body struct {
+		ServerNowMs int64 `json:"serverNowMs"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	after := time.Now().UnixMilli()
+	if body.ServerNowMs < before || body.ServerNowMs > after {
+		t.Fatalf("serverNowMs = %d, want request window %d..%d", body.ServerNowMs, before, after)
+	}
 }
 
 // No internal-playout guide wired ⇒ an empty strip, not an error — the player falls back to its

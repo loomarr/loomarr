@@ -181,6 +181,9 @@ func TestAiringNow_BreakResolvesToACommercialFile(t *testing.T) {
 	if airing.Kind != schedule.SlotFiller {
 		t.Errorf("kind = %q, want filler preserved through playout", airing.Kind)
 	}
+	if airing.ScheduleBlockID == "" {
+		t.Fatal("commercial airing has no schedule block identity")
+	}
 }
 
 // The pod is a SEQUENCE, so the resolver must pick whichever clip covers this instant —
@@ -212,6 +215,10 @@ func TestAiringNow_BreakWalksThePodByOffset(t *testing.T) {
 	}
 	if airing.StartedAt != base.Add(4*time.Second) {
 		t.Errorf("started at = %v, want second clip boundary %v", airing.StartedAt, base.Add(4*time.Second))
+	}
+	firstBlockID := playout.ScheduledBlockID("ch1", base, schedule.SlotFiller, string(schedule.SlotFiller))
+	if airing.ScheduleBlockID != firstBlockID {
+		t.Errorf("second commercial block id = %q, want break identity %q", airing.ScheduleBlockID, firstBlockID)
 	}
 }
 
