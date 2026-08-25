@@ -27,7 +27,7 @@ graph LR
   C -->|"web/, Makefile"| F
   C -->|"Expo apps and shared packages"| CJS
   C -->|"same broad client family"| AP
-  C --> W
+  C -->|"fail-closed visual ∪ e2e impact"| W
   C --> T
   C -->|"docs/, README, docs-site/"| D
   C --> A
@@ -71,17 +71,25 @@ specialized contract, Go, full-Go, Rust, Postgres, Windows, web, shared-client, 
 Android mobile, Expo Android TV, visual, e2e, tuner, image, docs, agent, and legacy Android TV
 gates. Its run summary places those proposed decisions beside the current broad families.
 
-Postgres is the first active specialized output. `store-postgres` consumes `impact_postgres`
+Postgres was the first active specialized output. `store-postgres` consumes `impact_postgres`
 directly while remaining in the required `CI` aggregate. The explicit release-candidate scope
 continues to exclude database conformance. This first activation intentionally treats every `.go`
-file plus `go.mod`, `go.sum`, store
-migrations, and unknown paths as Postgres-sensitive. That conservative boundary skips proven
+file plus `go.mod`, `go.sum`, store migrations, and unknown paths as Postgres-sensitive. That
+conservative boundary skips proven
 non-Go over-selection without guessing which transitive Go dependency can change a real-Postgres
 assertion. Dependency-aware narrowing is a later shadow change.
 
+Playwright is the second active job. Its four shards consume the union of `impact_visual` and
+`impact_e2e`; the combined job still runs both suites exactly as before. Shipping Web runtime
+sources are conservatively visual-sensitive because Storybook alias imports make filename-only
+transitive narrowing unsafe. Shared API/core/fixture inputs and OpenAPI select both suites, while
+visual/e2e tests and committed baselines select their owner. Only proven unit-test-only Web sources
+skip Playwright in this first slice.
+
 The existing `go`, `web`, `image`, `docs`, `agent`, and `android` outputs remain authoritative for
 every other job while their specialized results are compared with complete CI outcomes. A missing
-base, classifier failure, or unknown path selects every specialized gate.
+base, classifier failure, or unknown path selects every specialized gate. The manual
+release-candidate scope remains unchanged and excludes both Postgres and Playwright.
 
 `scripts/testdata/ci-impact.tsv` records the exact ordered gate set for representative paths and
 multi-path changes across every specialized gate. The classifier contract test compares complete

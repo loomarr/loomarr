@@ -161,3 +161,12 @@ gate documentation are amended before the first change that alters required beha
   initial Postgres decision to every Go source, pins the missed package in the exact fixture, and
   adds a structural verifier before replacing the legacy selector. This still removes non-Go
   over-selection and leaves dependency-aware Go narrowing for a separately observed slice.
+- PR #561 merged that Postgres activation after the complete required matrix passed against current
+  `main`. Its authoritative run completed in 29.1 minutes and 104.2 occupied runner-minutes; tvOS
+  was the 26.8-minute critical path and mobile took 23.6 minutes. The activation review also caught
+  and prevented an accidental expansion of the proportional release-candidate scope.
+- The Playwright activation audit found shadow false negatives for extensionless runtime helpers,
+  committed PNG baselines, Vite configuration, shared API/core/fixture packages, and OpenAPI. The
+  conservative first selector treats every shipping Web runtime source as visual-sensitive, keeps
+  unit-test-only sources outside the browser job, and structurally requires the visual/e2e union
+  before replacing the broad Web selector. Tuner remains shadow-only for its own reversible slice.
