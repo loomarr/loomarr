@@ -183,6 +183,10 @@ func VerifyCIImpactActivation(path string) error {
 			outputs:   []classifierOutput{{name: "impact_tuner", source: "tuner"}},
 			condition: "needs.changes.outputs.impact_tuner == 'true'",
 		},
+		"apple-mobile": {
+			outputs:   []classifierOutput{{name: "impact_apple_mobile", source: "apple_mobile"}},
+			condition: "needs.changes.outputs.impact_apple_mobile == 'true'",
+		},
 	}
 	for jobName, gate := range activated {
 		for _, expected := range gate.outputs {
@@ -205,18 +209,42 @@ func VerifyCIImpactActivation(path string) error {
 			return fmt.Errorf("CI job %s condition %q does not match activated contract %q", jobName, condition, gate.condition)
 		}
 	}
+	appleCommands := map[string]string{
+		"apple-mobile": "make client-apple-simulator CLIENT_APP=mobile",
+		"apple-tv":     "make client-apple-simulator CLIENT_APP=tv",
+	}
+	for jobName, command := range appleCommands {
+		job, err := requiredMap(jobs, jobName)
+		if err != nil {
+			return fmt.Errorf("CI workflow must define split Apple job %s", jobName)
+		}
+		if _, ok := mappingValue(job, "strategy"); ok {
+			return fmt.Errorf("CI Apple job %s must be a single app-specific job", jobName)
+		}
+		if !yamlNodeContainsScalar(job, command) {
+			return fmt.Errorf("CI Apple job %s must run %q", jobName, command)
+		}
+	}
+	appleTV, _ := requiredMap(jobs, "apple-tv")
+	appleTVNeeds, ok := mappingValue(appleTV, "needs")
+	if !ok || !yamlNodeContainsScalar(appleTVNeeds, "changes") {
+		return errors.New("CI job apple-tv must depend on changes")
+	}
+	if condition := scalarValue(appleTV, "if"); condition != "needs.changes.outputs.clients == 'true'" {
+		return fmt.Errorf("CI job apple-tv condition %q must remain on the legacy client selector until activation", condition)
+	}
 	return nil
 }
 
 func yamlNodeContainsScalar(node *yaml.Node, value string) bool {
+	if node == nil {
+		return false
+	}
 	if node.Kind == yaml.ScalarNode {
 		return node.Value == value
 	}
-	if node.Kind != yaml.SequenceNode {
-		return false
-	}
 	for _, child := range node.Content {
-		if child.Kind == yaml.ScalarNode && child.Value == value {
+		if yamlNodeContainsScalar(child, value) {
 			return true
 		}
 	}

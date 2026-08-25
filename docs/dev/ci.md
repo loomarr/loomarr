@@ -10,7 +10,8 @@ graph LR
   P["<b>store-postgres</b>"]
   F["<b>frontend</b> ×2"]
   CJS["<b>shared clients</b><br/>lint · test · four JS bundles"]
-  AP["<b>Apple clients</b> ×2<br/>native build · install · launch"]
+  AM["<b>Apple mobile</b><br/>native build · install · launch"]
+  AT["<b>Apple TV</b><br/>native build · install · launch"]
   W["<b>playwright</b> ×4"]
   T["<b>tuner</b><br/>three browser engines"]
   D["<b>docs</b><br/>links · structure · prose"]
@@ -26,9 +27,10 @@ graph LR
   C -->|"fail-closed Postgres impact"| P
   C -->|"web/, Makefile"| F
   C -->|"Expo apps and shared packages"| CJS
-  C -->|"same broad client family"| AP
+  C -->|"fail-closed Apple mobile impact"| AM
+  C -->|"legacy client family"| AT
   C -->|"fail-closed visual ∪ e2e impact"| W
-  C --> T
+  C -->|"fail-closed tuner impact"| T
   C -->|"docs/, README, docs-site/"| D
   C --> A
   C --> N
@@ -40,7 +42,8 @@ graph LR
   P --> OK
   F --> OK
   CJS --> OK
-  AP --> OK
+  AM --> OK
+  AT --> OK
   W --> OK
   T --> OK
   D --> OK
@@ -51,7 +54,7 @@ graph LR
   classDef gate fill:#1f6f4a,stroke:#134a31,color:#fff
   classDef job fill:#2b3b52,stroke:#1b2736,color:#dbe4ef
   class OK gate
-  class C,GC,RC,G,X,P,F,CJS,AP,W,T,D,A,N,I job
+  class C,GC,RC,G,X,P,F,CJS,AM,AT,W,T,D,A,N,I job
 ```
 
 ## Jobs run only when their inputs changed
@@ -91,6 +94,12 @@ shipping Web runtime source remains tuner-sensitive because the matrix loads the
 controller; unit, spec, and story-only modules may skip it. Tuner e2e inputs, browser build
 configuration, shared API/core/fixture packages, runtime tokens, and OpenAPI select it explicitly.
 
+Apple mobile is the fourth active decision and the first native split. iOS and tvOS are separate
+top-level jobs with hard-coded app commands and independent required results. iOS consumes
+`impact_apple_mobile`; tvOS deliberately retains the legacy shared-client selector until its own
+reversible activation. Existing cache-key strings are preserved so splitting job identity does not
+discard compatible pnpm, CocoaPods, or ExpoModulesJSI entries.
+
 The existing `go`, `web`, `image`, `docs`, `agent`, and `android` outputs remain authoritative for
 every other job while their specialized results are compared with complete CI outcomes. A missing
 base, classifier failure, or unknown path selects every specialized gate. The manual
@@ -111,8 +120,8 @@ iOS, and Expo Android mobile evidence; a TV change selects shared-client, tvOS, 
 Changes to `api`, `core`, `fixtures`, `design-system`, or `ui` select both apps on both native
 platforms because those packages are transitive inputs to both. Browser-only client-proof and
 Turborepo contract changes select the shared JavaScript gate without spending a native runner.
-The four native decisions remain shadow-only until each has an independently required job and the
-current-main boundary is proven.
+Apple mobile is active. Apple TV, Expo Android mobile, and Expo Android TV remain observational
+until each consumes its independently required job and current-main evidence is proven.
 
 ## Per-run measurements
 

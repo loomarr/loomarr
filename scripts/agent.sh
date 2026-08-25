@@ -294,7 +294,7 @@ bootstrap() {
 	mkdir -p "$ROOT/.artifacts" "$ROOT/.agent-data"
 	eval "$("$SCRIPT_DIR/dev-env.sh" export)"
 	if [ -n "$LOOMARR_AGENT_DATABASE_URL" ] && [ "${AGENT_DEV_IDENTITY:-1}" = 1 ]; then
-		DATABASE_URL="$LOOMARR_AGENT_DATABASE_URL" go run ./cmd/dev-bootstrap
+		( cd "$ROOT" && DATABASE_URL="$LOOMARR_AGENT_DATABASE_URL" go run ./cmd/dev-bootstrap )
 	elif [ -n "$LOOMARR_AGENT_DATABASE_URL" ]; then
 		echo 'dev-bootstrap: skipped (AGENT_DEV_IDENTITY=0)'
 	fi
