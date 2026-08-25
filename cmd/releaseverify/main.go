@@ -39,6 +39,11 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Println("release-verify: CI aggregate includes every top-level job")
+	if err := releaseverify.VerifyCIImpactActivation(filepath.Join(*root, ".github", "workflows", "ci.yml")); err != nil {
+		fmt.Fprintf(os.Stderr, "release-verify: CI impact activation policy: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("release-verify: activated CI gates consume fail-closed specialized decisions")
 	if err := releaseverify.VerifyCIManualScopes(filepath.Join(*root, ".github", "workflows", "ci.yml")); err != nil {
 		fmt.Fprintf(os.Stderr, "release-verify: CI manual scope policy: %v\n", err)
 		os.Exit(1)

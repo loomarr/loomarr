@@ -6335,6 +6335,13 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   weaken an assertion; `go-shard-verify` proves the test shards remain an exact partition of
   `go list ./...`. The release verifier also requires every top-level job in `ci.yml` to appear in
   `ci-ok.needs`; adding a job without aggregating its result fails closed.
+- **Proportional CI selection:** pull-request jobs may consume dedicated path-impact decisions only
+  after their classifier has run in shadow, its complete path-to-gate sets are pinned by exact
+  fixtures, and an activation verifier rejects falling back to the replaced broad selector. A
+  missing or unresolvable diff base, classifier error, or unknown path selects every gate. Gates
+  activate one job at a time so each change is independently reversible; an activated job remains
+  a constituent of the single required aggregate, and activation must neither broaden nor shrink
+  the explicit manual release-candidate scope.
 - **State machine:** every transition + the five invariants.
 - **Store conformance:** one suite vs **both** SQLite (temp file) and Postgres (**testcontainers**), incl. `ClaimDue` concurrency (no record claimed twice).
 - **Library conformance:** Emby vs Jellyfin flavors w/ mock transport; correct auth header each.

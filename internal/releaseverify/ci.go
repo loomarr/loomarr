@@ -134,6 +134,83 @@ func VerifyCIAggregate(path string) error {
 	return nil
 }
 
+// VerifyCIImpactActivation pins each specialized decision that has graduated
+// from shadow mode. An activated job must consume its dedicated classifier
+// output, preserve the explicit manual release scope, and stop consulting the
+// legacy broad family that the specialized decision replaces.
+func VerifyCIImpactActivation(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	root, err := parseYAML(data)
+	if err != nil {
+		return err
+	}
+	jobs, err := requiredMap(root, "jobs")
+	if err != nil {
+		return err
+	}
+	changes, err := requiredMap(jobs, "changes")
+	if err != nil {
+		return errors.New("CI workflow must define the changes job")
+	}
+	outputs, err := requiredMap(changes, "outputs")
+	if err != nil {
+		return errors.New("CI changes job must publish classifier outputs")
+	}
+
+	activated := map[string]struct {
+		output                  string
+		legacy                  string
+		runsForReleaseCandidate bool
+	}{
+		"store-postgres": {output: "impact_postgres", legacy: "go", runsForReleaseCandidate: false},
+	}
+	for jobName, gate := range activated {
+		output, ok := mappingValue(outputs, gate.output)
+		if !ok || output.Kind != yaml.ScalarNode ||
+			!strings.Contains(output.Value, "steps.impact.outputs.postgres") {
+			return fmt.Errorf("CI changes job does not publish %s from the specialized classifier", gate.output)
+		}
+		job, err := requiredMap(jobs, jobName)
+		if err != nil {
+			return fmt.Errorf("CI workflow must define activated job %s", jobName)
+		}
+		needs, ok := mappingValue(job, "needs")
+		if !ok || !yamlNodeContainsScalar(needs, "changes") {
+			return fmt.Errorf("CI job %s must depend on changes", jobName)
+		}
+		condition := scalarValue(job, "if")
+		if !strings.Contains(condition, "needs.changes.outputs."+gate.output+" == 'true'") {
+			return fmt.Errorf("CI job %s does not consume %s", jobName, gate.output)
+		}
+		hasReleaseCandidate := strings.Contains(condition, "needs.changes.outputs.release_candidate == 'true'")
+		if hasReleaseCandidate != gate.runsForReleaseCandidate {
+			return fmt.Errorf("CI job %s changed the explicit release-candidate scope", jobName)
+		}
+		if strings.Contains(condition, "needs.changes.outputs."+gate.legacy+" == 'true'") {
+			return fmt.Errorf("CI job %s still consumes legacy %s impact", jobName, gate.legacy)
+		}
+	}
+	return nil
+}
+
+func yamlNodeContainsScalar(node *yaml.Node, value string) bool {
+	if node.Kind == yaml.ScalarNode {
+		return node.Value == value
+	}
+	if node.Kind != yaml.SequenceNode {
+		return false
+	}
+	for _, child := range node.Content {
+		if child.Kind == yaml.ScalarNode && child.Value == value {
+			return true
+		}
+	}
+	return false
+}
+
 // VerifyCIManualScopes pins the manual-dispatch contract used to certify an
 // exact main commit before release. The candidate scope is intentionally
 // proportional; the full scope remains available for deliberate deep checks.
