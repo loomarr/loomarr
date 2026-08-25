@@ -914,7 +914,7 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | GET | `/v1/system/llm/discover` | The **downloadable** local models that are **compatible with this machine**, ranked best-first (admin, §8.1). Takes the most-popular GGUF repos from a live source (Hugging Face, §14), sizes each against detected VRAM (the repo's Q4_K_M-class build — what Ollama's `latest` resolves to and what actually downloads), drops repos too big for the machine, and returns each with a bare `pullRef` (`hf.co/<repo>`, implicit `:latest`) to hand to `/pull`. Tool-capability is confirmed only **after** pull + probe. No keyword — it's the compatible set. Best-effort — a source outage returns an empty list (browse on huggingface.co instead), never a 5xx. |
 | GET | `/v1/search?q=&scope=` | Federated search (§7.2): library + TMDB. Any authenticated user. Clips are not a scope — see §7.2; use `/v1/filler?q=`. |
 | GET | `/v1/backup` | Stream a consistent DB snapshot (admin; SQLite backend — §16). Postgres → 501 + pg_dump docs. Generates a fresh snapshot and keeps nothing; see `/v1/system/backups` for the ones on disk. |
-| POST | `/v1/system/restart` | Restart Loomarr in place (admin, §9.2, V13). Drains HTTP, tears down every playout process tree, closes the store, and rebuilds every subsystem in the **same process** — no re-exec, no supervisor needed, with the same lifecycle guarantee on Windows. Responds **before** the drain begins, since a client that never gets a reply cannot tell "restarting" from "crashed". |
+| POST | `/v1/system/restart` | Restart Loomarr in place (admin, §9.2, V13). Drains HTTP, tears down every playout process tree, closes the store, and rebuilds every subsystem in the **same process** — no re-exec and no supervisor needed on the supported Linux deployment. Responds **before** the drain begins, since a client that never gets a reply cannot tell "restarting" from "crashed". |
 | GET | `/v1/system/restart` | What a restart would cost right now (admin, §9.2, V13), so the confirm dialog states consequences rather than guessing: the count of channels **Loomarr is currently streaming** (from `/v1/playout/sessions`) which drop for a few seconds, versus Tunarr-backed channels which keep playing (§9.1), plus whether any restart-scoped setting is pending (`restartRequired`, with the specific desired-vs-applied keys). |
 | GET | `/v1/system/services` | The Dashboard's **Services** panel (admin, §12, V31): one row per configured integration with its probe result and the **target** it was probed against, plus a `loomarr` row carrying version/backend/schema. Runs the **same `runConnectionChecks`** the wizard checklist and `/v1/system/reload` use — one probe implementation, asserted by a test, so three surfaces cannot disagree about whether Emby is reachable. |
 | GET | `/v1/activity?limit=` | The Dashboard's **Recent activity** feed (admin, §12, V32), newest first. Reads the persisted `activity` table (§5) rather than the SSE bus, so the feed survives a restart and is not subject to the bus's deliberate lossiness. |
@@ -2368,8 +2368,8 @@ projects a planner-owned snapshot; it never rescans schedules or the filesystem 
    restart UI must say so rather than inherit the old reassurance.
 
    ⚠ **The honest copy is PER-BACKEND, not a flat reversal** (recorded during V16, when the
-   telemetry made the mechanism concrete). ffmpeg is spawned under one platform process-tree
-   owner — a Unix process group or a Windows Job Object — so a restart kills every helper and
+   telemetry made the mechanism concrete). ffmpeg is spawned under one Unix process-group owner
+   on the supported server runtime, so a restart kills every helper and
    stream Loomarr is encoding, while Tunarr-backed channels genuinely do keep playing, exactly as
    the old copy said. Since `policy.playout.backend` is per channel, an install can have both at once. The
    restart dialog (V13) therefore needs the live session count, which `GET /v1/playout/sessions`
@@ -2379,7 +2379,7 @@ projects a planner-owned snapshot; it never rescans schedules or the filesystem 
    **Tree ownership is one process primitive, not a playout-only convention.** The channel
    encoder, its HLS remux, and filler's bounded ffmpeg transcodes all enter the same supervisor;
    cancellation, a natural parent crash, and in-process restart therefore sweep descendants with
-   the same Unix-group / Windows-Job-Object guarantee. A direct `exec.CommandContext` around a
+   the same Unix-process-group guarantee. A direct `exec.CommandContext` around a
    lifecycle-owned encoder or ingest transcode is a violation because it kills only the immediate
    child.
 
@@ -2400,26 +2400,20 @@ and hands it to every consumer. This is the filesystem equivalent of taking one 
 for a multi-request operation, at the longer lifetime the resource requires.
 
 The three mechanisms were weighed against the constraint that an operator must never be left
-with a dead service and no way back:
+with a dead service and no way back on the supported Linux runtime:
 
-| | Unix | Windows | Needs a supervisor |
-| --- | --- | --- | --- |
-| `syscall.Exec` (execve) | ideal — same PID, bounded failure | **unsupported** | no |
-| **In-process rebuild (chosen)** | works | **works identically** | no |
-| Exit and let a supervisor restart | works | works | **yes** |
+| | Same PID | Needs a supervisor |
+| --- | --- | --- |
+| `syscall.Exec` (execve) | yes, with bounded pre-exec failure | no |
+| **In-process rebuild (chosen)** | yes | no |
+| Exit and let a supervisor restart | no | **yes** |
 
-- ⚠ **`syscall.Exec` is a stub on Windows, not an absence.** `syscall/exec_windows.go` returns
-  `EWINDOWS`, so cross-platform code **compiles cleanly and fails only at runtime** — the button
-  would ship broken rather than refuse to build. Windows has no execve at all (`CreateProcess`
-  always makes a new process), so any exec-based design needs a permanent platform branch.
 - ⚠ **Exit-and-be-restarted is the option that can strand an operator.** It assumes a supervisor
   exists — false for `make dev-be` and any bare binary — and the exit-code contract is
   supervisor-specific (Docker `unless-stopped` restarts on 0; systemd `Restart=on-failure` does
   not). Docker's restart backoff is also exponential, so a wrong guess costs minutes of downtime.
 - **Prior art:** this is what **Jellyfin** does (`Jellyfin.Server/Program.cs`: `do { await
-  StartServer(...); } while (_restartOnShutdown);`) — a full host rebuild, same PID, and the
-  reason Windows needs no special case there. Sonarr, by contrast, spawns a detached child and
-  branches on `IsWindowsService`, which is exactly the platform-specific complexity this avoids.
+  StartServer(...); } while (_restartOnShutdown);`) — a full host rebuild with the same PID.
 
 **What the loop costs, stated plainly.** Rebuilding in-process makes package-level mutable state
 a correctness constraint the compiler cannot enforce:
@@ -5557,7 +5551,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | Rate limiting | `golang.org/x/time/rate`, per-IP+username, in-memory | Login only; per-instance is acceptable v1 |
 | Metrics / logs | `prometheus/client_golang` / `slog` | Standard |
 | Interactive Startup report | **`github.com/jedib0t/go-pretty/v6/table`** | Renders the one Loomarr-owned structured Startup report as a restrained, width-bounded terminal table. It is formatting only: JSON `slog`, persistence, readiness, API, and UI consume the report value directly, and non-interactive output never passes through it. |
-| Windows process trees | **`golang.org/x/sys/windows`** (already in the resolved graph, promoted to direct) | The standard library can create a Windows process group but cannot own or terminate its descendant tree. Job Objects provide the Unix-process-group invariant required by §9.1 without a shell helper or supervisor. |
+| Unsupported Windows compatibility code | **`golang.org/x/sys/windows`** | A legacy Job Object adapter remains compile-isolated behind the built-in Windows constraint, but Loomarr publishes no native Windows server, makes no Windows lifecycle guarantee, and spends no CI or local-publication gate on it. Retaining the adapter is not a support claim. |
 | OIDC (SSO) | **`github.com/coreos/go-oidc/v3`** (+ `golang.org/x/oauth2`, `github.com/go-jose/go-jose/v4`) | SSO is a third credential path (§11, V8), and OIDC means verifying a signed token against the issuer's published JWKS — discovery, key rotation, `nonce`/`aud`/`exp` validation. Hand-rolling JWT verification is the kind of security code that looks right and is not. **Three modules total**, all current and maintained; `go-jose` does the crypto and `x/oauth2` the code exchange. Deliberately chosen over building forward-auth instead, which needs no dependency but trusts network topology (§11). |
 | Goroutine-leak gate | **`go.uber.org/goleak`** (test-only) | The in-process restart loop (§9.2) is only correct if Build/Run/Shutdown can repeat without accumulating goroutines or stale state, and a leak there is **silent** — it degrades an install over successive restarts rather than failing anything. goleak is the standard detector, test-only (never in a shipped binary), zero runtime cost. Added by V13 alongside the N-iteration restart test, because a prose rule would not have caught it. |
 | LLM clients | **Ollama via plain HTTP** (`/api/chat` with tools) + a hand-written **OpenAI-compatible** client (`/v1/chat/completions` with tools) — both plain `net/http`, no SDK | One OpenAI-compat client covers OpenAI, Gemini (compat endpoint), Groq, Together, OpenRouter, **and** local Ollama's own `/v1` mode — so the model is a config choice, not a per-vendor code fork. Replaces the earlier `anthropics/anthropic-sdk-go` intent (a net dependency *reduction*); Claude is still reachable via OpenRouter. Ollama stays first-class as the local default. |
@@ -5804,7 +5798,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `auth` | Sessions and their validation (§11) |
 | `events` | The in-memory bus behind SSE (§7) |
 | `media` | Host-wide admission for hardware media work, shared by foreground playout and background preparation (§9.1 V56) |
-| `proctree` | Owns complete child-process trees across Unix process groups and Windows Job Objects (§9.1) |
+| `proctree` | Owns complete child-process trees through Unix process groups on the supported server runtime (§9.1) |
 | `httpx` | The shared outbound HTTP client factory (§6) |
 | `images` | Every image Loomarr shows: ingest, content-addressed storage, derivatives, serving (§22) |
 | `metrics` | The Prometheus surface (§7, §18) |
@@ -5976,11 +5970,14 @@ cannot publish a public tag. The policy parser rejects duplicate YAML keys, anch
 tags, hidden build tags, mutable third-party action refs, and reordered publication steps; publisher
 tests inject signing and verification failures and prove neither reaches promotion. Every third-party
 GitHub Action used by repository workflows is pinned to a full commit SHA.
+There is no supported native Windows server artifact; CI and local publication gates certify the two
+Linux architectures only. macOS support means running the Linux image through Docker Desktop, not a
+native server binary.
 The tagged main commit must have a successful CI run whose native amd64 and arm64 image jobs both
 ran. When a docs-only final commit would otherwise skip those jobs, the default manual
 `release-candidate` scope runs the repository contracts, the real-codec image-worker certification,
 and both native image builds on that exact `main` commit. It deliberately skips the Android,
-Windows, database, Go race, frontend, browser, tuner, documentation and macOS harness matrices;
+database, Go race, frontend, browser, tuner, documentation and macOS harness matrices;
 those remain change-gated on every push and pull request. A separately selected `full` manual scope
 retains the complete rerun for exceptional investigations. The release validator distinguishes the
 two manual scopes, requires the contract and certification jobs for the proportional scope, and

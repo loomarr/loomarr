@@ -8,7 +8,7 @@
 set -euo pipefail
 
 readonly GATES=(
-  contracts go go_full rust postgres windows web clients apple_mobile apple_tv
+  contracts go go_full rust postgres web clients apple_mobile apple_tv
   expo_android_mobile expo_android_tv visual e2e tuner image docs agent android
 )
 
@@ -64,11 +64,6 @@ classify() {
     case "$path" in
       cmd/loomarr/*|internal/app/*|internal/testkit/*|go.mod|go.sum)
         select_gate go_full
-        ;;
-    esac
-    case "$path" in
-      cmd/loomarr/*|internal/playout/*|internal/proctree/*|go.mod|go.sum)
-        select_gate windows
         ;;
     esac
   fi

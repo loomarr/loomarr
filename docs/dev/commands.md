@@ -46,7 +46,7 @@ The *runs:* note on a row lists what each parent pulls in.
 | Target | CI | What it does |
 | --- | --- | --- |
 | `make check` |  | complete local gate: repository contracts plus race-policy-aware unit tests <br>*runs:* `check-static` `test` |
-| `make check-static` | ✅ | repository contracts without the unit-test suite (CI runs this once beside test shards) <br>*runs:* `rust-check` `fmt` `shellcheck` `privacy-verify` `vet` `tags-verify` `vet-tags` `windows-compile` `lint` `agent-harness-test` `compose-verify` `release-verify` `go-race-verify` |
+| `make check-static` | ✅ | repository contracts without the unit-test suite (CI runs this once beside test shards) <br>*runs:* `rust-check` `fmt` `shellcheck` `privacy-verify` `vet` `tags-verify` `vet-tags` `lint` `agent-harness-test` `compose-verify` `release-verify` `go-race-verify` |
 | `make rust-check` |  | format, lint, build, and test the required Rust image worker <br>*runs:* `rust-test-worker` |
 | `make rust-test-worker` |  | build the debug Rust image worker required by Go unit tests |
 | `make rust-audit` |  | check Rust advisories, licences, and dependency sources (needs cargo-deny) |
@@ -55,8 +55,7 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make shellcheck` |  | shellcheck every repository shell script |
 | `make privacy-verify` |  | captured private fixture literals must not re-enter the tracked tree |
 | `make vet` |  | go vet |
-| `make vet-tags` |  | go vet over custom-tagged sources; platform constraints use their cross-compile gate |
-| `make windows-compile` |  | cross-compile every Go package and test for Windows (does not execute them) |
+| `make vet-tags` |  | go vet over custom-tagged sources |
 | `make tags-verify` |  | the Makefile's TAGS list matches every //go:build tag in the tree, both ways |
 | `make lint` |  | golangci-lint v2 (run via `go run` so no global install needed) |
 | `make test` | ✅ | unit tests with their required Rust worker (never touch the network — §19) <br>*runs:* `rust-test-worker` `eval-contract` |

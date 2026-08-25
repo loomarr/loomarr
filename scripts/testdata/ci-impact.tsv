@@ -3,7 +3,7 @@ leaf-go	internal/suggest/score.go	contracts,go,postgres,image
 store-go	internal/store/store.go	contracts,go,postgres,image
 composition-go	internal/app/application.go	contracts,go,go_full,postgres,image
 backend-transition-go	internal/backendtransition/controller.go	contracts,go,postgres,image
-playout-go	internal/playout/session.go	contracts,go,postgres,windows,image
+playout-go	internal/playout/session.go	contracts,go,postgres,image
 rust-worker	rust/loomarr-image/src/lib.rs	rust,image
 migration	internal/store/migrations/sqlite/00001_init.sql	contracts,go,go_full,postgres,image
 generic-web	web/apps/web/src/diagnostics/client-reporter/client-reporter.ts	web,visual,tuner,image
@@ -41,7 +41,7 @@ readme-contract	README.md	go,go_full,docs
 embedded-help	docs/help/quickstart.md	contracts,go,go_full,image,docs
 agent-script	scripts/agent.sh	contracts,agent
 release-workflow	.github/workflows/release.yml	contracts
-ci-workflow	.github/workflows/ci.yml	contracts,go,go_full,rust,postgres,windows,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,docs,agent,android
+ci-workflow	.github/workflows/ci.yml	contracts,go,go_full,rust,postgres,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,docs,agent,android
 dev-compose	docker/compose.dev.yaml	contracts,agent
 production-compose	docker/compose.yaml	contracts,go,go_full
 combined-leaf-and-docs	internal/suggest/score.go;docs/dev/testing.md	contracts,go,postgres,image,docs
