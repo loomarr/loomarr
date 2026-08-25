@@ -298,7 +298,7 @@ eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (m
 	  exit "$$status"
 
 filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
-	$(GO) test ./internal/fillereval/ ./cmd/filler-cert/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-rights-review/
+	$(GO) test ./internal/fillereval/ ./cmd/filler-cert/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/
 
 filler-corpus-archive: ## freeze a bounded rights-filtered Archive.org corpus inventory
 	@test -n "$$LOOMARR_FILLER_CORPUS_ARCHIVE_COLLECTION" || { echo "filler-corpus-archive: LOOMARR_FILLER_CORPUS_ARCHIVE_COLLECTION is required" >&2; exit 2; }; \
@@ -335,9 +335,22 @@ filler-corpus-rights-review: ## prepare an inert worksheet from a frozen filler 
 	  $(GO) run ./cmd/filler-corpus-rights-review \
 	    --inventory "$$LOOMARR_FILLER_CORPUS_INVENTORY" \
 	    --out "$${LOOMARR_FILLER_CORPUS_RIGHTS_WORKSHEET:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-rights-review.json}" \
+	    --csv-out "$${LOOMARR_FILLER_CORPUS_RIGHTS_CSV:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-rights-review.csv}" \
 	    --prepared-at "$$LOOMARR_FILLER_CORPUS_RIGHTS_PREPARED_AT" \
 	    --min-items "$${LOOMARR_FILLER_CORPUS_RIGHTS_MIN_ITEMS:-300}" \
 	    --max-items "$${LOOMARR_FILLER_CORPUS_RIGHTS_MAX_ITEMS:-500}"
+
+filler-corpus-rights-lock: ## validate completed rights review CSV into approval JSONL
+	@test -n "$$LOOMARR_FILLER_CORPUS_INVENTORY" || { echo "filler-corpus-rights-lock: LOOMARR_FILLER_CORPUS_INVENTORY is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_RIGHTS_WORKSHEET" || { echo "filler-corpus-rights-lock: LOOMARR_FILLER_CORPUS_RIGHTS_WORKSHEET is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_RIGHTS_CSV" || { echo "filler-corpus-rights-lock: LOOMARR_FILLER_CORPUS_RIGHTS_CSV is required" >&2; exit 2; }; \
+	  eval "$$(./scripts/dev-env.sh export)"; \
+	  $(GO) run ./cmd/filler-corpus-rights-lock \
+	    --inventory "$$LOOMARR_FILLER_CORPUS_INVENTORY" \
+	    --worksheet "$$LOOMARR_FILLER_CORPUS_RIGHTS_WORKSHEET" \
+	    --completed-csv "$$LOOMARR_FILLER_CORPUS_RIGHTS_CSV" \
+	    --approvals-out "$${LOOMARR_FILLER_CORPUS_RIGHTS_APPROVALS:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-rights-approvals.jsonl}" \
+	    --locked-at "$$LOOMARR_FILLER_CORPUS_RIGHTS_LOCKED_AT"
 
 filler-corpus-lock: ## lock two blind filler-label batches into a certification manifest
 	@test -n "$$LOOMARR_FILLER_CORPUS_DRAFT" || { echo "filler-corpus-lock: LOOMARR_FILLER_CORPUS_DRAFT is required" >&2; exit 2; }; \

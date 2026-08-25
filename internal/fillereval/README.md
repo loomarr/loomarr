@@ -44,8 +44,15 @@ failed or stale approval writes no ledger and cannot silently widen the selected
 
 `make filler-corpus-rights-review` converts that frozen inventory into a deterministic worksheet
 bounded by explicit minimum and maximum item counts. It exposes the source assertions and selected
-representation but leaves every authority field blank. The live 2026-08-25 Archive snapshot produced
-331 such inert rows; this is a review queue, not evidence that any row is legally reusable.
+representation in immutable JSON plus a spreadsheet-safe CSV, but leaves every authority field
+blank. Reviewers edit only `reviewer_id`, `reviewed_at`, `decision`, `basis`, `redistributable`,
+`required_credit`, and `restrictions_json`. The live 2026-08-25 Archive snapshot produced 331 such
+inert rows; this is a review queue, not evidence that any row is legally reusable.
+
+`make filler-corpus-rights-lock` validates the completed CSV against both the original byte-exact
+inventory and the inert JSON worksheet. Every row must be present once, immutable source fields must
+match, decisions must be complete and time-bound, and approved BY/BY-SA media must carry attribution.
+Only a fully valid review is atomically converted to the JSONL consumed by the downloader.
 
 `make filler-eval-contract` verifies the scorer and seed. `make filler-eval-cert` scores a JSONL file
 named by `LOOMARR_FILLER_EVAL_PREDICTIONS`; the remaining `LOOMARR_FILLER_EVAL_*` variables identify
