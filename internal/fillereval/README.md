@@ -14,7 +14,8 @@ enters git.
 Schema v3 distinguishes development seeds from certification manifests. A certification case also
 locks its evidence packet and item metadata, records item-level rights adjudication and the bounded
 source segment, and requires two independent blind-review attestations over the same canonical final
-label hash. The report records the exact manifest SHA-256 and scores only the explicitly selected
+label hash while preserving each original blind submission. Divergent submissions require a
+reasoned third-party adjudication. The report records the exact manifest SHA-256 and scores only the explicitly selected
 development or holdout split, so development examples cannot inflate certification.
 
 `make filler-eval-contract` verifies the scorer and seed. `make filler-eval-cert` scores a JSONL file

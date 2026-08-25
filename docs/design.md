@@ -3498,10 +3498,12 @@ source media and captured evidence packet by SHA-256 plus item-level provenance:
 stable item and media URLs, retrieved metadata hash/time, exact rights statement, rights decision
 and reviewer, source representation/size, and bounded segment. Redistribution permission is
 explicit; media that cannot be redistributed stays outside Git. A collection name or missing rights
-field never implies permission. Two distinct reviewers in distinct blind-review batches attest the
-same canonical final-label hash covering disposition, reject class, content role, taxonomy, policy
-flags, evidence spans, and any review question. Rights adjudication and semantic labeling are
-separate records.
+field never implies permission. Two distinct reviewers in distinct blind-review batches submit
+immutable label hashes, then attest the canonical final-label hash covering disposition, reject
+class, content role, taxonomy, policy flags, evidence spans, and any review question. The original
+blind submissions remain visible. A disagreement requires a reasoned final adjudication by a third
+identity; matching reviews do not manufacture adjudication work. Rights adjudication and semantic
+labeling are separate records.
 
 Certification scores exactly one named split. Development examples cannot inflate locked-holdout
 metrics, and exact or near-duplicate content cannot cross their source/similarity cluster boundary.

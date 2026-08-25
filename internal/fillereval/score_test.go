@@ -62,6 +62,26 @@ func TestScoreIsDeterministicForCapturedInputs(t *testing.T) {
 	if first.ManifestSHA256 == "" || first.ManifestSHA256 != ManifestSHA256(manifest) {
 		t.Fatalf("manifest digest = %q", first.ManifestSHA256)
 	}
+	if first.Cases[0].RequestedModel != "fixture" || first.Cases[0].ResolvedProvider != "fixture" || len(first.Cases[0].Modalities) != 1 {
+		t.Fatalf("case attribution = %+v", first.Cases[0])
+	}
+}
+
+func TestScoreCannotUseDevelopmentCasesToInflateHoldout(t *testing.T) {
+	manifest, predictions := passingCorpus(500)
+	report := Score(manifest, predictions, completeRun())
+	if report.Metrics.Cases != 500 || len(manifest.Cases) <= report.Metrics.Cases {
+		t.Fatalf("scored %d of %d cases", report.Metrics.Cases, len(manifest.Cases))
+	}
+	development := manifest.Cases[len(manifest.Cases)-1]
+	predictions = append(predictions, Prediction{
+		CaseID: development.ID, Verdict: VerdictAdmit, ContentRole: "commercial",
+		Role: "filler_text", Rung: "text", RequestedProvider: "fixture", RequestedModel: "fixture",
+		ResolvedModel: "fixture", ResolvedProvider: "fixture", Modalities: []string{"text"}, Attempts: 1,
+	})
+	if report := Score(manifest, predictions, completeRun()); report.Certified || !containsFailure(report.Failures, "prediction has no corpus case") {
+		t.Fatalf("development prediction entered holdout report: %v", report.Failures)
+	}
 }
 
 func TestCertificationManifestRequiresLockedProvenanceAndIndependentLabels(t *testing.T) {
@@ -70,10 +90,19 @@ func TestCertificationManifestRequiresLockedProvenanceAndIndependentLabels(t *te
 	manifest.Cases[1].Provenance.RightsDecision = ""
 	manifest.Cases[2].LabelReviews = manifest.Cases[2].LabelReviews[:1]
 	failures := ValidateManifest(manifest)
-	for _, term := range []string{"media and evidence hashes", "rights evidence and adjudication", "two independent label reviews"} {
+	for _, term := range []string{"media and evidence hashes", "rights evidence and adjudication", "two independent label submissions"} {
 		if !containsFailure(failures, term) {
 			t.Errorf("failures %v do not include %q", failures, term)
 		}
+	}
+}
+
+func TestCertificationManifestRequiresIndependentAdjudicationForDivergentLabels(t *testing.T) {
+	manifest, _ := passingCorpus(500)
+	manifest.Cases[0].LabelReviews[0].SubmissionSHA256 = strings.Repeat("f", 64)
+	failures := ValidateManifest(manifest)
+	if !containsFailure(failures, "require final adjudication") {
+		t.Fatalf("divergent labels were not held: %v", failures)
 	}
 }
 
@@ -204,8 +233,8 @@ func passingCorpus(total int) (Manifest, []Prediction) {
 		}
 		labelHash := LabelSHA256(c)
 		c.LabelReviews = []LabelReview{
-			{ReviewerID: "reviewer-a", BatchID: "blind-a", ReviewedAt: lockedAt, Independent: true, LabelSHA256: labelHash},
-			{ReviewerID: "reviewer-b", BatchID: "blind-b", ReviewedAt: lockedAt, Independent: true, LabelSHA256: labelHash},
+			{ReviewerID: "reviewer-a", BatchID: "blind-a", ReviewedAt: lockedAt, Independent: true, SubmissionSHA256: labelHash, FinalAttestedAt: lockedAt, FinalLabelSHA256: labelHash},
+			{ReviewerID: "reviewer-b", BatchID: "blind-b", ReviewedAt: lockedAt, Independent: true, SubmissionSHA256: labelHash, FinalAttestedAt: lockedAt, FinalLabelSHA256: labelHash},
 		}
 		manifest.Cases = append(manifest.Cases, c)
 		predictions = append(predictions, Prediction{
@@ -231,8 +260,8 @@ func passingCorpus(total int) (Manifest, []Prediction) {
 		}
 		labelHash := LabelSHA256(c)
 		c.LabelReviews = []LabelReview{
-			{ReviewerID: "reviewer-a", BatchID: "blind-a", ReviewedAt: lockedAt, Independent: true, LabelSHA256: labelHash},
-			{ReviewerID: "reviewer-b", BatchID: "blind-b", ReviewedAt: lockedAt, Independent: true, LabelSHA256: labelHash},
+			{ReviewerID: "reviewer-a", BatchID: "blind-a", ReviewedAt: lockedAt, Independent: true, SubmissionSHA256: labelHash, FinalAttestedAt: lockedAt, FinalLabelSHA256: labelHash},
+			{ReviewerID: "reviewer-b", BatchID: "blind-b", ReviewedAt: lockedAt, Independent: true, SubmissionSHA256: labelHash, FinalAttestedAt: lockedAt, FinalLabelSHA256: labelHash},
 		}
 		manifest.Cases = append(manifest.Cases, c)
 	}

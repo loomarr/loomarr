@@ -73,6 +73,7 @@ type Case struct {
 	License        string              `json:"license"`
 	Provenance     MediaProvenance     `json:"provenance,omitempty"`
 	LabelReviews   []LabelReview       `json:"labelReviews,omitempty"`
+	Adjudication   *LabelAdjudication  `json:"adjudication,omitempty"`
 	Truth          Truth               `json:"truth"`
 	RejectClass    RejectClass         `json:"rejectClass,omitempty"`
 	ContentRole    string              `json:"contentRole"`
@@ -112,11 +113,20 @@ type MediaProvenance struct {
 // LabelReview is an independently produced attestation over the canonical
 // disposition, role, taxonomy, policy, evidence, and review-question labels.
 type LabelReview struct {
-	ReviewerID  string    `json:"reviewerId"`
-	BatchID     string    `json:"batchId"`
-	ReviewedAt  time.Time `json:"reviewedAt"`
-	Independent bool      `json:"independent"`
-	LabelSHA256 string    `json:"labelSha256"`
+	ReviewerID       string    `json:"reviewerId"`
+	BatchID          string    `json:"batchId"`
+	ReviewedAt       time.Time `json:"reviewedAt"`
+	Independent      bool      `json:"independent"`
+	SubmissionSHA256 string    `json:"submissionSha256"`
+	FinalAttestedAt  time.Time `json:"finalAttestedAt"`
+	FinalLabelSHA256 string    `json:"finalLabelSha256"`
+}
+
+type LabelAdjudication struct {
+	AdjudicatorID string    `json:"adjudicatorId"`
+	AdjudicatedAt time.Time `json:"adjudicatedAt"`
+	LabelSHA256   string    `json:"labelSha256"`
+	Reason        string    `json:"reason"`
 }
 
 type Evidence struct {
@@ -265,10 +275,22 @@ type RungScore struct {
 }
 
 type CaseResult struct {
-	CaseID   string   `json:"caseId"`
-	Slice    []string `json:"slices"`
-	Expected Truth    `json:"expected"`
-	Actual   Verdict  `json:"actual"`
-	Correct  bool     `json:"correct"`
-	Failure  string   `json:"failure,omitempty"`
+	CaseID            string     `json:"caseId"`
+	Slice             []string   `json:"slices"`
+	Expected          Truth      `json:"expected"`
+	Actual            Verdict    `json:"actual"`
+	Correct           bool       `json:"correct"`
+	Failure           string     `json:"failure,omitempty"`
+	Role              string     `json:"role,omitempty"`
+	Rung              string     `json:"rung,omitempty"`
+	RequestedProvider string     `json:"requestedProvider,omitempty"`
+	RequestedModel    string     `json:"requestedModel,omitempty"`
+	ResolvedProvider  string     `json:"resolvedProvider,omitempty"`
+	ResolvedModel     string     `json:"resolvedModel,omitempty"`
+	Modalities        []string   `json:"modalities,omitempty"`
+	Derivative        Derivative `json:"derivative,omitempty"`
+	GenerationID      string     `json:"generationId,omitempty"`
+	Attempts          int        `json:"attempts,omitempty"`
+	ChargedNanoUSD    int64      `json:"chargedNanoUsd,omitempty"`
+	LatencyMS         int64      `json:"latencyMs,omitempty"`
 }

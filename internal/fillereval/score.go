@@ -62,6 +62,18 @@ func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report 
 		}
 		delete(byID, c.ID)
 		result.Actual = prediction.Verdict
+		result.Role = prediction.Role
+		result.Rung = prediction.Rung
+		result.RequestedProvider = prediction.RequestedProvider
+		result.RequestedModel = prediction.RequestedModel
+		result.ResolvedProvider = prediction.ResolvedProvider
+		result.ResolvedModel = prediction.ResolvedModel
+		result.Modalities = slices.Clone(prediction.Modalities)
+		result.Derivative = prediction.Derivative
+		result.GenerationID = prediction.GenerationID
+		result.Attempts = prediction.Attempts
+		result.ChargedNanoUSD = prediction.ChargedNanoUSD
+		result.LatencyMS = prediction.LatencyMS
 		if prediction.Verdict != VerdictAdmit && prediction.Verdict != VerdictReject && prediction.Verdict != VerdictReview {
 			result.Failure = "invalid verdict"
 			report.Failures = append(report.Failures, c.ID+": invalid verdict")
@@ -176,7 +188,7 @@ func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report 
 		report.Failures = append(report.Failures, id+": prediction has no corpus case")
 	}
 
-	report.Metrics.Cases = len(manifest.Cases)
+	report.Metrics.Cases = len(report.Cases)
 	report.Metrics.AutoAdmitPrecision = ratio(report.Metrics.AutoAdmitCorrect, report.Metrics.AutoAdmit)
 	report.Metrics.AutoAdmitPrecisionLower = wilsonLower(report.Metrics.AutoAdmitCorrect, report.Metrics.AutoAdmit)
 	report.Metrics.ValidAutomation = ratio(report.Metrics.AutoAdmitCorrect, eligible)
@@ -189,8 +201,8 @@ func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report 
 	report.Metrics.DeterministicRejectPrecisionLower = wilsonLower(deterministicRejectsCorrect, deterministicRejects)
 	report.Metrics.SemanticRejectPrecision = ratio(semanticRejectsCorrect, semanticRejects)
 	report.Metrics.SemanticRejectPrecisionLower = wilsonLower(semanticRejectsCorrect, semanticRejects)
-	report.Metrics.ReviewRate = ratio(reviews, len(manifest.Cases))
-	report.Metrics.ReviewRateUpper = wilsonUpper(reviews, len(manifest.Cases))
+	report.Metrics.ReviewRate = ratio(reviews, report.Metrics.Cases)
+	report.Metrics.ReviewRateUpper = wilsonUpper(reviews, report.Metrics.Cases)
 	report.Metrics.ReviewAnswerable = ratio(answerable, reviews)
 	report.Metrics.ReviewAnswerableLower = wilsonLower(answerable, reviews)
 	report.Metrics.AdmittedRoleAccuracy = ratio(admittedRoleCorrect, admittedEligible)
@@ -199,7 +211,7 @@ func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report 
 		report.Metrics.BrierScore = brier / float64(probabilityCount)
 	}
 	report.Metrics.TotalChargedCostUSD = float64(report.Metrics.TotalChargedNanoUSD) / 1_000_000_000
-	report.Metrics.CostPerThousandCasesNanoUSD = perUnit(report.Metrics.TotalChargedNanoUSD, 1000, len(manifest.Cases))
+	report.Metrics.CostPerThousandCasesNanoUSD = perUnit(report.Metrics.TotalChargedNanoUSD, 1000, report.Metrics.Cases)
 	report.Metrics.CostPerCorrectAutomationNanoUSD = perUnit(report.Metrics.TotalChargedNanoUSD, 1, report.Metrics.AutoAdmitCorrect+report.Metrics.AutoRejectCorrect)
 	report.Metrics.CostPerAdmitNanoUSD = perUnit(report.Metrics.TotalChargedNanoUSD, 1, report.Metrics.AutoAdmit)
 	slices.Sort(latencies)
@@ -415,15 +427,27 @@ func validateCertificationCase(prefix string, c Case) []string {
 	}
 	reviewers := map[string]struct{}{}
 	batches := map[string]struct{}{}
+	needsAdjudication := false
 	for _, review := range c.LabelReviews {
-		if strings.TrimSpace(review.ReviewerID) == "" || strings.TrimSpace(review.BatchID) == "" || review.ReviewedAt.IsZero() || !review.Independent || review.LabelSHA256 != wantLabelHash {
+		if strings.TrimSpace(review.ReviewerID) == "" || strings.TrimSpace(review.BatchID) == "" || review.ReviewedAt.IsZero() || !review.Independent || !isSHA256(review.SubmissionSHA256) || review.FinalAttestedAt.IsZero() || review.FinalLabelSHA256 != wantLabelHash {
 			continue
+		}
+		if review.SubmissionSHA256 != wantLabelHash {
+			needsAdjudication = true
 		}
 		reviewers[review.ReviewerID] = struct{}{}
 		batches[review.BatchID] = struct{}{}
 	}
 	if len(reviewers) < 2 || len(batches) < 2 {
-		failures = append(failures, prefix+": two independent label reviews over the final label hash are required")
+		failures = append(failures, prefix+": two independent label submissions and final attestations are required")
+	}
+	if needsAdjudication {
+		a := c.Adjudication
+		if a == nil || strings.TrimSpace(a.AdjudicatorID) == "" || a.AdjudicatedAt.IsZero() || a.LabelSHA256 != wantLabelHash || strings.TrimSpace(a.Reason) == "" {
+			failures = append(failures, prefix+": divergent independent labels require final adjudication")
+		} else if _, reviewerWasAdjudicator := reviewers[a.AdjudicatorID]; reviewerWasAdjudicator {
+			failures = append(failures, prefix+": adjudicator must be independent from the two label reviewers")
+		}
 	}
 	return failures
 }
