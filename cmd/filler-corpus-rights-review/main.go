@@ -44,6 +44,11 @@ type candidate struct {
 	MetadataURL             string     `json:"metadataUrl"`
 	MetadataRetrievedAt     time.Time  `json:"metadataRetrievedAt"`
 	MetadataSHA256          string     `json:"metadataSha256"`
+	RightsPageRetrievedAt   time.Time  `json:"rightsPageRetrievedAt,omitempty"`
+	RightsPageSHA256        string     `json:"rightsPageSha256,omitempty"`
+	Unit                    string     `json:"unit,omitempty"`
+	VIRIN                   string     `json:"virin,omitempty"`
+	Category                string     `json:"category,omitempty"`
 	File                    sourceFile `json:"file"`
 }
 
@@ -87,6 +92,11 @@ type reviewRow struct {
 	MetadataURL             string     `json:"metadataUrl"`
 	MetadataRetrievedAt     time.Time  `json:"metadataRetrievedAt"`
 	MetadataSHA256          string     `json:"metadataSha256"`
+	RightsPageRetrievedAt   time.Time  `json:"rightsPageRetrievedAt,omitempty"`
+	RightsPageSHA256        string     `json:"rightsPageSha256,omitempty"`
+	Unit                    string     `json:"unit,omitempty"`
+	VIRIN                   string     `json:"virin,omitempty"`
+	Category                string     `json:"category,omitempty"`
 	File                    sourceFile `json:"file"`
 	ReviewerID              string     `json:"reviewerId"`
 	ReviewedAt              string     `json:"reviewedAt"`
@@ -153,6 +163,7 @@ var reviewCSVHeader = []string{
 	"rank", "inventory_sha256", "identifier", "metadata_sha256", "title", "creator_json", "date",
 	"license_url", "rights_json", "possible_copyright_status_json", "item_url", "metadata_url", "metadata_retrieved_at",
 	"file_name", "file_url", "file_format", "file_source", "file_bytes", "file_sha1", "file_md5", "file_duration", "file_width", "file_height",
+	"rights_page_sha256", "rights_page_retrieved_at", "unit", "virin", "source_category",
 	"reviewer_id", "reviewed_at", "decision", "basis", "redistributable", "required_credit", "restrictions_json",
 }
 
@@ -168,6 +179,7 @@ func writeReviewCSV(path string, sheet worksheet) error {
 				row.LicenseURL, jsonCell(row.Rights), jsonCell(row.PossibleCopyrightStatus), row.ItemURL, row.MetadataURL, row.MetadataRetrievedAt.UTC().Format(time.RFC3339),
 				spreadsheetSafe(row.File.Name), row.File.URL, spreadsheetSafe(row.File.Format), spreadsheetSafe(row.File.Source), strconv.FormatInt(row.File.Bytes, 10), row.File.SHA1, row.File.MD5,
 				spreadsheetSafe(row.File.Duration), spreadsheetSafe(row.File.Width), spreadsheetSafe(row.File.Height),
+				row.RightsPageSHA256, formatOptionalTime(row.RightsPageRetrievedAt), spreadsheetSafe(row.Unit), spreadsheetSafe(row.VIRIN), spreadsheetSafe(row.Category),
 				"", "", "", "", "", "", "",
 			}
 			if err := csvWriter.Write(record); err != nil {
@@ -196,7 +208,7 @@ func spreadsheetSafe(value string) string {
 }
 
 func prepareWorksheet(inv inventory, digest string, preparedAt time.Time, minItems, maxItems int) (worksheet, error) {
-	if inv.SchemaVersion != 1 || inv.Source != "archive.org" || inv.Collection == "" || inv.SnapshotAt.IsZero() || preparedAt.Before(inv.SnapshotAt) {
+	if inv.SchemaVersion != 1 || (inv.Source != "archive.org" && inv.Source != "dvids") || inv.Collection == "" || inv.SnapshotAt.IsZero() || preparedAt.Before(inv.SnapshotAt) {
 		return worksheet{}, fmt.Errorf("inventory identity or worksheet time is invalid")
 	}
 	if len(inv.Cases) < minItems {
@@ -223,6 +235,9 @@ func prepareWorksheet(inv inventory, digest string, preparedAt time.Time, minIte
 		if !safeIdentifier.MatchString(item.Identifier) || strings.Contains(item.Identifier, "..") || !sha256Digest.MatchString(item.MetadataSHA256) || item.MetadataRetrievedAt.IsZero() || item.File.Bytes <= 0 {
 			return worksheet{}, fmt.Errorf("candidate %q has incomplete frozen identity", item.Identifier)
 		}
+		if inv.Source == "dvids" && (!sha256Digest.MatchString(item.RightsPageSHA256) || item.RightsPageRetrievedAt.IsZero() || strings.TrimSpace(item.Unit) == "" || strings.TrimSpace(item.VIRIN) == "" || strings.TrimSpace(item.Category) == "" || item.File.Source != "dvids") {
+			return worksheet{}, fmt.Errorf("DVIDS candidate %q lacks institutional rights evidence", item.Identifier)
+		}
 		if _, exists := seen[item.Identifier]; exists {
 			return worksheet{}, fmt.Errorf("duplicate candidate %s", item.Identifier)
 		}
@@ -232,10 +247,19 @@ func prepareWorksheet(inv inventory, digest string, preparedAt time.Time, minIte
 			Creator: item.Creator, Date: item.Date, LicenseURL: item.LicenseURL, Rights: item.Rights,
 			PossibleCopyrightStatus: item.PossibleCopyrightStatus, ItemURL: item.ItemURL, MetadataURL: item.MetadataURL,
 			MetadataRetrievedAt: item.MetadataRetrievedAt, MetadataSHA256: item.MetadataSHA256, File: item.File,
+			RightsPageRetrievedAt: item.RightsPageRetrievedAt, RightsPageSHA256: item.RightsPageSHA256,
+			Unit: item.Unit, VIRIN: item.VIRIN, Category: item.Category,
 			Restrictions: []string{},
 		})
 	}
 	return result, nil
+}
+
+func formatOptionalTime(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.UTC().Format(time.RFC3339)
 }
 
 func sha256Hex(data []byte) string {

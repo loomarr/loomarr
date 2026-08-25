@@ -52,6 +52,11 @@ type reviewRow struct {
 	MetadataURL             string     `json:"metadataUrl"`
 	MetadataRetrievedAt     time.Time  `json:"metadataRetrievedAt"`
 	MetadataSHA256          string     `json:"metadataSha256"`
+	RightsPageRetrievedAt   time.Time  `json:"rightsPageRetrievedAt,omitempty"`
+	RightsPageSHA256        string     `json:"rightsPageSha256,omitempty"`
+	Unit                    string     `json:"unit,omitempty"`
+	VIRIN                   string     `json:"virin,omitempty"`
+	Category                string     `json:"category,omitempty"`
 	File                    sourceFile `json:"file"`
 }
 
@@ -69,22 +74,24 @@ type sourceFile struct {
 }
 
 type rightsDecision struct {
-	InventorySHA256 string    `json:"inventorySha256"`
-	Identifier      string    `json:"identifier"`
-	MetadataSHA256  string    `json:"metadataSha256"`
-	ReviewerID      string    `json:"reviewerId"`
-	ReviewedAt      time.Time `json:"reviewedAt"`
-	Decision        string    `json:"decision"`
-	Basis           string    `json:"basis"`
-	Redistributable bool      `json:"redistributable"`
-	RequiredCredit  string    `json:"requiredCredit,omitempty"`
-	Restrictions    []string  `json:"restrictions,omitempty"`
+	InventorySHA256  string    `json:"inventorySha256"`
+	Identifier       string    `json:"identifier"`
+	MetadataSHA256   string    `json:"metadataSha256"`
+	RightsPageSHA256 string    `json:"rightsPageSha256,omitempty"`
+	ReviewerID       string    `json:"reviewerId"`
+	ReviewedAt       time.Time `json:"reviewedAt"`
+	Decision         string    `json:"decision"`
+	Basis            string    `json:"basis"`
+	Redistributable  bool      `json:"redistributable"`
+	RequiredCredit   string    `json:"requiredCredit,omitempty"`
+	Restrictions     []string  `json:"restrictions,omitempty"`
 }
 
 var reviewCSVHeader = []string{
 	"rank", "inventory_sha256", "identifier", "metadata_sha256", "title", "creator_json", "date",
 	"license_url", "rights_json", "possible_copyright_status_json", "item_url", "metadata_url", "metadata_retrieved_at",
 	"file_name", "file_url", "file_format", "file_source", "file_bytes", "file_sha1", "file_md5", "file_duration", "file_width", "file_height",
+	"rights_page_sha256", "rights_page_retrieved_at", "unit", "virin", "source_category",
 	"reviewer_id", "reviewed_at", "decision", "basis", "redistributable", "required_credit", "restrictions_json",
 }
 
@@ -133,7 +140,7 @@ func lockDecisions(inventoryPath, worksheetPath, csvPath string, lockedAt time.T
 	if err := json.Unmarshal(inventoryRaw, &inv); err != nil {
 		return nil, fmt.Errorf("decode inventory: %w", err)
 	}
-	if inv.SchemaVersion != 1 || inv.Source != "archive.org" || inv.Collection == "" || inv.SnapshotAt.IsZero() || len(inv.Cases) == 0 {
+	if inv.SchemaVersion != 1 || (inv.Source != "archive.org" && inv.Source != "dvids") || inv.Collection == "" || inv.SnapshotAt.IsZero() || len(inv.Cases) == 0 {
 		return nil, fmt.Errorf("inventory identity is invalid")
 	}
 	raw, err := os.ReadFile(worksheetPath)
@@ -178,6 +185,9 @@ func lockDecisions(inventoryPath, worksheetPath, csvPath string, lockedAt time.T
 		if row.InventorySHA256 != sheet.InventorySHA256 || row.Identifier == "" || row.MetadataSHA256 == "" || row.MetadataRetrievedAt.IsZero() {
 			return nil, fmt.Errorf("worksheet row %q has incomplete frozen identity", row.Identifier)
 		}
+		if inv.Source == "dvids" && (len(row.RightsPageSHA256) != 64 || row.RightsPageRetrievedAt.IsZero() || strings.TrimSpace(row.Unit) == "" || strings.TrimSpace(row.VIRIN) == "" || strings.TrimSpace(row.Category) == "") {
+			return nil, fmt.Errorf("DVIDS worksheet row %s lacks institutional rights evidence", row.Identifier)
+		}
 		if _, duplicate := byID[row.Identifier]; duplicate {
 			return nil, fmt.Errorf("duplicate worksheet row %s", row.Identifier)
 		}
@@ -201,10 +211,10 @@ func lockDecisions(inventoryPath, worksheetPath, csvPath string, lockedAt time.T
 			return nil, fmt.Errorf("duplicate completed review row %s", identifier)
 		}
 		seen[identifier] = struct{}{}
-		if expected := immutableRecord(row); !reflect.DeepEqual(record[:23], expected) {
+		if expected := immutableRecord(row); !reflect.DeepEqual(record[:28], expected) {
 			return nil, fmt.Errorf("completed review row %s changes immutable worksheet fields", identifier)
 		}
-		decision, err := parseDecision(row, record[23:], lockedAt)
+		decision, err := parseDecision(row, record[28:], lockedAt)
 		if err != nil {
 			return nil, fmt.Errorf("completed review row %s: %w", identifier, err)
 		}
@@ -226,13 +236,25 @@ func immutableRecord(row reviewRow) []string {
 		row.LicenseURL, jsonCell(row.Rights), jsonCell(row.PossibleCopyrightStatus), row.ItemURL, row.MetadataURL, row.MetadataRetrievedAt.UTC().Format(time.RFC3339),
 		spreadsheetSafe(row.File.Name), row.File.URL, spreadsheetSafe(row.File.Format), spreadsheetSafe(row.File.Source), strconv.FormatInt(row.File.Bytes, 10), row.File.SHA1, row.File.MD5,
 		spreadsheetSafe(row.File.Duration), spreadsheetSafe(row.File.Width), spreadsheetSafe(row.File.Height),
+		row.RightsPageSHA256, formatOptionalTime(row.RightsPageRetrievedAt), spreadsheetSafe(row.Unit), spreadsheetSafe(row.VIRIN), spreadsheetSafe(row.Category),
 	}
+}
+
+func formatOptionalTime(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.UTC().Format(time.RFC3339)
 }
 
 func parseDecision(row reviewRow, fields []string, lockedAt time.Time) (rightsDecision, error) {
 	reviewerID := strings.TrimSpace(fields[0])
 	reviewedAt, err := time.Parse(time.RFC3339, strings.TrimSpace(fields[1]))
-	if reviewerID == "" || err != nil || reviewedAt.Before(row.MetadataRetrievedAt) || reviewedAt.After(lockedAt) {
+	evidenceRetrievedAt := row.MetadataRetrievedAt
+	if row.RightsPageRetrievedAt.After(evidenceRetrievedAt) {
+		evidenceRetrievedAt = row.RightsPageRetrievedAt
+	}
+	if reviewerID == "" || err != nil || reviewedAt.Before(evidenceRetrievedAt) || reviewedAt.After(lockedAt) {
 		return rightsDecision{}, fmt.Errorf("reviewer and review time must bind a completed review to the frozen metadata")
 	}
 	decision := strings.TrimSpace(fields[2])
@@ -258,12 +280,13 @@ func parseDecision(row reviewRow, fields []string, lockedAt time.Time) (rightsDe
 	if decision == "held" && redistributable {
 		return rightsDecision{}, fmt.Errorf("held rows cannot grant redistribution authority")
 	}
-	if decision == "approved" && requiresCredit(row.LicenseURL) && requiredCredit == "" {
+	if decision == "approved" && (requiresCredit(row.LicenseURL) || row.RightsPageSHA256 != "") && requiredCredit == "" {
 		return rightsDecision{}, fmt.Errorf("the asserted license requires attribution")
 	}
 	return rightsDecision{
 		InventorySHA256: row.InventorySHA256, Identifier: row.Identifier, MetadataSHA256: row.MetadataSHA256,
-		ReviewerID: reviewerID, ReviewedAt: reviewedAt.UTC(), Decision: decision, Basis: basis,
+		RightsPageSHA256: row.RightsPageSHA256,
+		ReviewerID:       reviewerID, ReviewedAt: reviewedAt.UTC(), Decision: decision, Basis: basis,
 		Redistributable: redistributable, RequiredCredit: requiredCredit, Restrictions: restrictions,
 	}, nil
 }

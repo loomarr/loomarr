@@ -3516,6 +3516,21 @@ hashes, selected representation identity/checksums, and predicted bytes before a
 model call. A partial bounded inventory reports exactly what it saw; it never widens the ceiling or
 treats a truncated search response as complete.
 
+A DVIDS inventory follows the same metadata-only boundary but uses an explicit API key that is never
+written to logs, cache names, URLs, or artifacts. It searches only declared video categories in a
+stable ascending timestamp order, with an explicit duration bound and the API's documented 50-item
+page ceiling. Each candidate requires matching search/detail identity, a producing unit, VIRIN,
+credit, a bounded MP4 representation, and an item page whose item-level rights block explicitly says
+`PUBLIC DOMAIN`; both the JSON detail and HTML rights evidence are cached and content-addressed.
+Search, detail, page, item, predicted-byte, and total request ceilings apply before acquisition, and
+all requests remain identified, serial, delayed, and subject to source throttling. The locked approval
+binds both the raw API metadata digest and the raw item-page rights digest, and its review timestamp
+must follow both retrievals. DVIDS's general
+federal-media statement and the page marker are stronger institutional evidence than an uploader
+field, but courtesy/contractor/third-party material and non-copyright restrictions still require
+independent adjudication. The frozen cache must be refreshed before reuse and retired when the source
+removes or changes an item, as required by the DVIDS API terms.
+
 Media acquisition consumes a separate rights-review ledger; discovery output is never download
 authority. Every `approved` row binds the source metadata hash to reviewer, review time, rationale,
 redistribution decision, attribution, and restrictions; `held` rows remain inert. The downloader
