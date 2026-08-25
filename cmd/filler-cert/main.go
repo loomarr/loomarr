@@ -29,6 +29,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	promptVersion := flags.String("prompt-version", "", "prompt/schema version")
 	taxonomyVersion := flags.String("taxonomy-version", "", "taxonomy generation")
 	policyVersion := flags.String("policy-version", "", "admission policy version")
+	rolePolicyVersion := flags.String("role-policy-version", "", "inference role policy version")
 	capabilitySnapshot := flags.String("capability-snapshot", "", "model capability snapshot identifier")
 	priceSnapshot := flags.String("price-snapshot", "", "price snapshot identifier")
 	if err := flags.Parse(args); err != nil {
@@ -50,7 +51,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	report := fillereval.Score(manifest, predictions, fillereval.RunIdentity{
 		Profile: *profile, EvidenceVersion: *evidenceVersion, PromptVersion: *promptVersion,
-		TaxonomyVersion: *taxonomyVersion, PolicyVersion: *policyVersion,
+		TaxonomyVersion: *taxonomyVersion, PolicyVersion: *policyVersion, RolePolicyVersion: *rolePolicyVersion,
 		CapabilitySnapshot: *capabilitySnapshot, PriceSnapshot: *priceSnapshot,
 	})
 	if err := writeJSON(*reportPath, report); err != nil {

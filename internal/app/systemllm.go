@@ -159,7 +159,7 @@ func buildProviderFor(sel llm.Selection) llm.Provider {
 		// which is why it's applied here rather than in the shared construction below.
 		return llm.NewOllama(sel.URL, sel.Model).WithKeepAlive(sel.KeepAlive)
 	}
-	return llm.NewOpenAI(sel.URL, sel.Model, sel.APIKey)
+	return llm.NewOpenAIForProvider(sel.Provider, sel.URL, sel.Model, sel.APIKey)
 }
 
 // resolveSelection reads the active LLM selection from the settings service

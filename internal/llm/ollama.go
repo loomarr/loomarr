@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/httpx"
 	"github.com/loomarr/loomarr/internal/metrics"
@@ -126,6 +127,7 @@ type ollamaChatResp struct {
 
 // Chat implements Provider against Ollama /api/chat.
 func (o *Ollama) Chat(ctx context.Context, messages []Message, opts ChatOptions) (Response, error) {
+	started := time.Now()
 	req := ollamaChatReq{
 		Model:     o.model,
 		Stream:    false,
@@ -173,6 +175,13 @@ func (o *Ollama) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 	return Response{
 		Content:   out.Message.Content,
 		ToolCalls: fromOllamaToolCalls(out.Message.ToolCalls),
+		Attribution: Attribution{
+			RequestedModel: o.model, ResolvedModel: o.model,
+			RequestedProvider: "ollama", ResolvedProvider: "ollama",
+			Modalities: []string{"text"},
+			Tokens:     TokenUsage{Prompt: out.PromptEvalCount, Completion: out.EvalCount},
+			Latency:    time.Since(started), Attempts: 1,
+		},
 	}, nil
 }
 
@@ -193,6 +202,7 @@ func (o *Ollama) AskAboutImages(ctx context.Context, prompt string, jpegs [][]by
 	if len(jpegs) == 0 {
 		return Response{}, fmt.Errorf("vision request carries no images")
 	}
+	started := time.Now()
 	imgs := make([]string, 0, len(jpegs))
 	for _, jpg := range jpegs {
 		imgs = append(imgs, base64.StdEncoding.EncodeToString(jpg))
@@ -231,7 +241,16 @@ func (o *Ollama) AskAboutImages(ctx context.Context, prompt string, jpegs [][]by
 		return Response{}, fmt.Errorf("decode ollama vision response: %w", err)
 	}
 	metrics.LLMTokens(out.PromptEvalCount, out.EvalCount) // §17: no-op on 0
-	return Response{Content: strings.TrimSpace(out.Message.Content)}, nil
+	return Response{
+		Content: strings.TrimSpace(out.Message.Content),
+		Attribution: Attribution{
+			RequestedModel: o.model, ResolvedModel: o.model,
+			RequestedProvider: "ollama", ResolvedProvider: "ollama",
+			Modalities: []string{"text", "image"},
+			Tokens:     TokenUsage{Prompt: out.PromptEvalCount, Completion: out.EvalCount},
+			Latency:    time.Since(started), Attempts: 1,
+		},
+	}, nil
 }
 
 // ollamaChatCtx is the context window we request for the grounded tool loop.

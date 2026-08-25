@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "corpusVersion": "2026-08-24.seed-v1",
   "sliceGates": [
     {"slice": "evidence-conflict", "minCases": 1, "minAccuracy": 1},

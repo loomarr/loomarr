@@ -37,7 +37,7 @@ func TestOpenRouterVideoSendsBoundedBase64OnPinnedPrivateRoute(t *testing.T) {
 			t.Fatal(err)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"kind\":\"commercial\"}"}}]}`))
+		_, _ = w.Write([]byte(`{"id":"video-1","model":"google/gemma-4-26b-a4b-it","choices":[{"message":{"content":"{\"kind\":\"commercial\"}"}}],"usage":{"prompt_tokens":99,"completion_tokens":6,"cost":0.0042}}`))
 	}))
 	defer srv.Close()
 	provider, err := llm.NewOpenRouterVideo(llm.OpenRouterVideoConfig{
@@ -60,6 +60,9 @@ func TestOpenRouterVideoSendsBoundedBase64OnPinnedPrivateRoute(t *testing.T) {
 	}
 	if resp.Content != `{"kind":"commercial"}` {
 		t.Fatalf("content = %q", resp.Content)
+	}
+	if resp.Attribution.ResolvedProvider != "Google AI Studio" || resp.Attribution.Tokens.Prompt != 99 || resp.Attribution.Charge == nil || resp.Attribution.Charge.Amount != "0.0042" {
+		t.Fatalf("attribution = %+v", resp.Attribution)
 	}
 
 	want := map[string]any{

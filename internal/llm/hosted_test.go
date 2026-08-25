@@ -8,27 +8,6 @@ import (
 	"testing"
 )
 
-// tierOf matches by FAMILY substring so provider prefixes + dated snapshots hit the
-// same tier — the durability property that keeps this from rotting on exact ids.
-func TestTierOf_MatchesFamiliesAcrossPrefixesAndDates(t *testing.T) {
-	cases := []struct {
-		id       string
-		wantTier int
-	}{
-		{"openai/gpt-4o", 3},              // OpenRouter prefix
-		{"gpt-4o-mini", 3},                // OpenAI direct
-		{"gpt-4o-mini-2026-05-01", 3},     // dated snapshot still matches
-		{"anthropic/claude-haiku-4.5", 2}, // tier-2 workhorse
-		{"meta-llama/llama-3.3-70b", 2},
-		{"someorg/unknown-model", 0}, // untiered → tier 0
-	}
-	for _, c := range cases {
-		if got, _ := tierOf(c.id); got != c.wantTier {
-			t.Errorf("tierOf(%q) = %d, want %d", c.id, got, c.wantTier)
-		}
-	}
-}
-
 func TestHostedProviderByKey(t *testing.T) {
 	if _, ok := HostedProviderByKey("openrouter"); !ok {
 		t.Error("openrouter should be in the curated catalog")
@@ -61,7 +40,7 @@ func TestHostedCatalog_OpenRouterAndCustomOnly(t *testing.T) {
 	}
 }
 
-func TestHostedCatalog_OpenRouterFallbackExplainsTheSafeDefault(t *testing.T) {
+func TestHostedCatalog_OpenRouterFallbackIsNotAnUncertifiedRecommendation(t *testing.T) {
 	hp, ok := HostedProviderByKey("openrouter")
 	if !ok {
 		t.Fatal("openrouter should be in the curated catalog")
@@ -70,16 +49,14 @@ func TestHostedCatalog_OpenRouterFallbackExplainsTheSafeDefault(t *testing.T) {
 		t.Fatalf("openrouter fallback = %+v, want one deliberate safe default", hp.Fallback)
 	}
 	model := hp.Fallback[0]
-	if !model.Recommended || !model.Tools || model.Why == "" {
-		t.Errorf("fallback = %+v, want recommended + tools + a plain-English rationale", model)
+	if model.Recommended || !model.Tools || model.Why != "" {
+		t.Errorf("fallback = %+v, want a capable placeholder without a quality claim", model)
 	}
 }
 
-// RICH provider (OpenRouter-shape): LiveModels ranks for the USE CASE — a curated
-// quality FAMILY tier beats a cheaper-but-lower-tier model, and an untiered model
-// (even if cheapest + tool-capable) is shown but NOT recommended. This is the
-// "best for grounding, not merely cheapest" behavior.
-func TestLiveModels_RanksByQualityTierThenCost(t *testing.T) {
+// RICH provider (OpenRouter-shape): LiveModels projects capabilities and preserves
+// provider order. Quality recommendations belong only to a certified role policy.
+func TestLiveModels_PreservesProviderOrderWithoutQualityClaims(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/models" {
 			w.WriteHeader(404)
@@ -88,10 +65,8 @@ func TestLiveModels_RanksByQualityTierThenCost(t *testing.T) {
 		if r.URL.Query().Get("output_modalities") != "all" {
 			t.Errorf("output_modalities = %q, want all so every role is discoverable", r.URL.Query().Get("output_modalities"))
 		}
-		// - a FREE untiered coding model (cheapest, tool-capable) — must NOT be recommended
-		// - a tier-3 gpt-4o family model (pricier) — SHOULD be recommended first
-		// - a tier-2 claude-haiku family model (cheaper than gpt-4o) — explained alternative
-		// - a non-tool model — filtered out
+		// The provider order is deliberate. Loomarr may filter incompatible entries,
+		// but must not reshuffle these into a stale family hierarchy.
 		_, _ = w.Write([]byte(`{"data":[
 			{"id":"openai/gpt-4.1-nano:batch","name":"GPT-4.1 nano Batch","context_length":128000,"supported_parameters":["tools"],"pricing":{"prompt":"0.0000001","completion":"0.0000004"}},
 			{"id":"someorg/free-coder","name":"FreeCoder","context_length":1000000,"supported_parameters":["tools"],"pricing":{"prompt":"0","completion":"0"}},
@@ -113,38 +88,16 @@ func TestLiveModels_RanksByQualityTierThenCost(t *testing.T) {
 	if len(models) != 5 {
 		t.Fatalf("got %d role-capable models, want 5", len(models))
 	}
-	// Quality tier wins: gpt-4o (tier 3) ranks first despite being pricier than the
-	// free coder and pricier than haiku.
-	if models[0].ID != "openai/gpt-4o" || !models[0].Recommended {
-		t.Errorf("first = %+v, want openai/gpt-4o recommended (tier beats cheaper)", models[0])
+	if models[0].ID != "someorg/free-coder" || models[1].ID != "openai/gpt-4o" || models[2].ID != "anthropic/claude-haiku-4.5" {
+		t.Errorf("provider order changed: %+v", models)
 	}
-	for i, model := range models {
+	for _, model := range models {
 		if strings.HasSuffix(model.ID, ":batch") {
 			t.Errorf("batch-only model remained selectable: %+v", model)
 		}
-		if i > 0 && model.Recommended {
-			t.Errorf("model %d = %+v, want exactly one safe default", i, model)
+		if model.Recommended || model.Why != "" {
+			t.Errorf("generic catalog made an uncertified quality claim: %+v", model)
 		}
-	}
-	if models[1].Recommended || models[1].Why == "" {
-		t.Errorf("strong alternative = %+v, want a differentiated rationale without another recommendation", models[1])
-	}
-	// The Why names the family (the quality signal), not just cost.
-	if !strings.Contains(models[0].Why, "GPT-4o") {
-		t.Errorf("Why should name the curated family, got %q", models[0].Why)
-	}
-	// The FREE untiered coder is present but must NOT be recommended.
-	var coder *HostedModel
-	for i := range models {
-		if models[i].ID == "someorg/free-coder" {
-			coder = &models[i]
-		}
-	}
-	if coder == nil {
-		t.Fatal("the untiered free coder should still be selectable")
-	}
-	if coder.Recommended {
-		t.Error("an untiered model must never be recommended, even if cheapest")
 	}
 	if !models[3].Vision || models[3].Tools {
 		t.Errorf("vision model capabilities = %+v, want vision-only", models[3])
@@ -154,22 +107,29 @@ func TestLiveModels_RanksByQualityTierThenCost(t *testing.T) {
 	}
 }
 
-func TestLiveModels_DoesNotRecommendGPT41NanoOverMiniOnCostAlone(t *testing.T) {
+func TestLiveModels_DoesNotDemoteGPT5OrGemini3BehindLegacyFamilies(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"data":[
-			{"id":"openai/gpt-4.1-nano","context_length":128000,"supported_parameters":["tools"],"pricing":{"prompt":"0.0000001","completion":"0.0000004"}},
-			{"id":"openai/gpt-4.1-mini","context_length":128000,"supported_parameters":["tools"],"pricing":{"prompt":"0.0000004","completion":"0.0000016"}}
+			{"id":"openai/gpt-5-mini","supported_parameters":["tools"]},
+			{"id":"google/gemini-3.7-flash","supported_parameters":["tools"]},
+			{"id":"openai/gpt-4o","supported_parameters":["tools"]},
+			{"id":"google/gemini-2.5-pro","supported_parameters":["tools"]}
 		]}`))
 	}))
 	defer srv.Close()
 
 	hp := HostedProvider{Key: "openrouter", BaseURL: srv.URL}
 	models, live := hp.LiveModels(context.Background(), "key")
-	if !live || len(models) != 2 {
-		t.Fatalf("models = %+v, live=%v; want two live candidates", models, live)
+	if !live || len(models) != 4 {
+		t.Fatalf("models = %+v, live=%v; want four live candidates", models, live)
 	}
-	if models[0].ID != "openai/gpt-4.1-mini" || !models[0].Recommended {
-		t.Errorf("first = %+v, want gpt-4.1-mini recommended ahead of nano", models[0])
+	if models[0].ID != "openai/gpt-5-mini" || models[1].ID != "google/gemini-3.7-flash" {
+		t.Errorf("new families were demoted behind legacy tiers: %+v", models)
+	}
+	for _, model := range models {
+		if model.Recommended {
+			t.Errorf("live capability metadata cannot certify %q", model.ID)
+		}
 	}
 }
 

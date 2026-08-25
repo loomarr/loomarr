@@ -9,6 +9,9 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
+
+	"github.com/loomarr/loomarr/internal/metrics"
 )
 
 // Hosted speech-to-text over the OpenAI-compatible transcription endpoint (§10). OpenRouter uses
@@ -28,6 +31,11 @@ type TranscriptionSegment struct {
 	Text    string
 }
 
+type TranscriptionResult struct {
+	Segments    []TranscriptionSegment
+	Attribution Attribution
+}
+
 type transcriptionRequest struct {
 	Model                  string             `json:"model"`
 	InputAudio             transcriptionAudio `json:"input_audio"`
@@ -42,9 +50,13 @@ type transcriptionAudio struct {
 }
 
 type transcriptionResponse struct {
-	Text     string  `json:"text"`
-	Duration float64 `json:"duration"`
-	Segments []struct {
+	ID                 string             `json:"id"`
+	Model              string             `json:"model"`
+	Text               string             `json:"text"`
+	Duration           float64            `json:"duration"`
+	Usage              openAIUsage        `json:"usage"`
+	OpenRouterMetadata openRouterMetadata `json:"openrouter_metadata"`
+	Segments           []struct {
 		Start float64 `json:"start"`
 		End   float64 `json:"end"`
 		Text  string  `json:"text"`
@@ -57,10 +69,11 @@ type transcriptionResponse struct {
 // TranscribeAudio requests verbose JSON because compilation rescue needs timed utterances. A
 // provider that returns only plain text is rejected rather than assigning invented timestamps;
 // the caller can retry or fall back to review without manufacturing cut evidence.
-func (o *OpenAI) TranscribeAudio(ctx context.Context, req TranscriptionRequest) ([]TranscriptionSegment, error) {
+func (o *OpenAI) TranscribeAudio(ctx context.Context, req TranscriptionRequest) (TranscriptionResult, error) {
 	if len(req.Audio) == 0 {
-		return nil, fmt.Errorf("transcription request carries no audio")
+		return TranscriptionResult{}, fmt.Errorf("transcription request carries no audio")
 	}
+	started := time.Now()
 	model := req.Model
 	if model == "" {
 		model = o.model
@@ -78,33 +91,34 @@ func (o *OpenAI) TranscribeAudio(ctx context.Context, req TranscriptionRequest) 
 		TimestampGranularities: []string{"segment"},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("marshal transcription request: %w", err)
+		return TranscriptionResult{}, fmt.Errorf("marshal transcription request: %w", err)
 	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		o.baseURL+"/audio/transcriptions", bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return TranscriptionResult{}, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	o.addMetadataHeader(httpReq)
 	if o.apiKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
 	}
 	resp, err := o.http.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("audio transcription: %w", err)
+		return TranscriptionResult{}, fmt.Errorf("audio transcription: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		var buf bytes.Buffer
 		_, _ = buf.ReadFrom(io.LimitReader(resp.Body, 512))
-		return nil, fmt.Errorf("audio transcription: status %d: %s", resp.StatusCode, strings.TrimSpace(buf.String()))
+		return TranscriptionResult{}, fmt.Errorf("audio transcription: status %d: %s", resp.StatusCode, strings.TrimSpace(buf.String()))
 	}
 	var out transcriptionResponse
 	if err := decodeOpenAIJSON(resp, &out, "transcription response"); err != nil {
-		return nil, err
+		return TranscriptionResult{}, err
 	}
 	if out.Error != nil {
-		return nil, fmt.Errorf("audio transcription: %s", out.Error.Message)
+		return TranscriptionResult{}, fmt.Errorf("audio transcription: %s", out.Error.Message)
 	}
 	segments := make([]TranscriptionSegment, 0, len(out.Segments))
 	for _, seg := range out.Segments {
@@ -117,7 +131,12 @@ func (o *OpenAI) TranscribeAudio(ctx context.Context, req TranscriptionRequest) 
 		})
 	}
 	if len(segments) == 0 && strings.TrimSpace(out.Text) != "" {
-		return nil, fmt.Errorf("audio transcription returned text without segment timestamps")
+		return TranscriptionResult{}, fmt.Errorf("audio transcription returned text without segment timestamps")
 	}
-	return segments, nil
+	metrics.LLMTokens(out.Usage.PromptTokens, out.Usage.CompletionTokens)
+	return TranscriptionResult{
+		Segments: segments,
+		Attribution: attributionFromWire(o.provider, model, out.ID, out.Model, out.Usage,
+			out.OpenRouterMetadata, "", []string{"audio", "text"}, time.Since(started)),
+	}, nil
 }

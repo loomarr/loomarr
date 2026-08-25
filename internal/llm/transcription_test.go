@@ -20,12 +20,12 @@ func TestOpenAI_TranscribeAudioRequestsTimedSegments(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Fatal(err)
 		}
-		_, _ = w.Write([]byte(`{"text":"Buy now. Call today.","duration":4.2,"segments":[{"start":0.1,"end":1.5,"text":" Buy now. "},{"start":1.5,"end":4.2,"text":"Call today."}]}`))
+		_, _ = w.Write([]byte(`{"id":"stt-1","model":"openai/whisper-large-v3","text":"Buy now. Call today.","duration":4.2,"segments":[{"start":0.1,"end":1.5,"text":" Buy now. "},{"start":1.5,"end":4.2,"text":"Call today."}],"usage":{"prompt_tokens":9,"completion_tokens":4}}`))
 	}))
 	defer srv.Close()
 
 	client := NewOpenAI(srv.URL, "chat-model", "secret")
-	segments, err := client.TranscribeAudio(context.Background(), TranscriptionRequest{
+	result, err := client.TranscribeAudio(context.Background(), TranscriptionRequest{
 		Model: "openai/whisper-large-v3", Audio: []byte("wav"), Format: "wav", Language: "en",
 	})
 	if err != nil {
@@ -40,8 +40,11 @@ func TestOpenAI_TranscribeAudioRequestsTimedSegments(t *testing.T) {
 	if got.InputAudio.Data != "d2F2" || got.InputAudio.Format != "wav" {
 		t.Fatalf("audio = %+v", got.InputAudio)
 	}
-	if len(segments) != 2 || segments[0].StartMs != 100 || segments[1].EndMs != 4200 {
-		t.Fatalf("segments = %+v", segments)
+	if len(result.Segments) != 2 || result.Segments[0].StartMs != 100 || result.Segments[1].EndMs != 4200 {
+		t.Fatalf("segments = %+v", result.Segments)
+	}
+	if result.Attribution.Tokens.Prompt != 9 || result.Attribution.Tokens.Completion != 4 || result.Attribution.GenerationID != "stt-1" {
+		t.Fatalf("attribution = %+v", result.Attribution)
 	}
 }
 

@@ -197,6 +197,8 @@ flowchart TD
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
+- **`filleradmission`**
+  Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
 - **`fillereval`**
   Owns the hermetic certification contract for filler admission.
 - **`media`** · 3 importers
@@ -3282,7 +3284,8 @@ from the display path, rather than carrying dead fields that read as capability.
 
 #### Settings + AI-page implications (V45 — governed by `docs/config-design.md`)
 
-⚠ **The system has three model roles:** text, vision, and audio/transcription. They may share one
+⚠ **V61/V62 supersede this manual three-role surface with five automatic role routes.** The
+historical implementation has three model roles: text, vision, and audio/transcription. They may share one
 hosted OpenAI-compatible provider (including OpenRouter) while keeping separate model ids because
 their modalities differ. Local transcription remains the bundled whisper path; there is no
 embedding role.
@@ -3390,6 +3393,45 @@ untrusted data with no instruction authority. **Contradiction is a first-class e
 the evaluator either invokes one bounded additional rung or abstains with a specific question. More
 conflicting tokens never increase confidence.
 
+The evaluator accepts one closed, versioned evidence document rather than a prompt-shaped bag of
+strings. Its claim roles are exactly media usability, recording date/era, brand, product, content
+role, source/licence, and sensitive-policy flags. Each fact names its extractor kind, source
+identity, bounded location, and inference evaluation when one produced it. Authority is assigned by
+the Go policy from the claim and provenance kind; evidence cannot declare its own rank. Decoder
+measurements alone can prove unusable media, and source policy alone can prove source/licence
+eligibility. For conflict-prone semantic claims, independent corroboration means distinct extractor
+kinds over distinct derivatives or source records — repeated tokens from one transcript, OCR frame,
+or model generation still count once. A filename year and a different spoken historical year are a
+conflict, not two votes; a source-owned recording date may resolve them because the policy, not
+literal presence, grants that source authority.
+
+Content-role and product corroboration also require at least one in-clip signal (transcript, OCR,
+frame, audio, or video). A filename plus an uploader description are two fields controlled by the
+same uploader, not proof that the bytes contain the claimed advert; metadata-only agreement remains
+review evidence and cannot authorize admission.
+
+A commercial requires a corroborated product from the closed taxonomy before admission. Brand is
+retained as useful evidence and may expose a conflict, but the advertiser-name field is open text and
+cannot substitute for that closed product gate; two copies of instruction-looking OCR/transcript text
+therefore cannot become a commercial identity merely by agreeing with each other.
+
+`filleradmission.Evaluator.Evaluate` is deterministic and has no provider, decoder, store, clock, or
+network dependency. It returns a semantic decision only after validating the complete evidence and
+policy versions. Decisions carry a stable sorted set of reason codes, the exact evidence references
+that support them, all material conflicts, at most one answerable review question, and the inference
+attribution/usage supplied with the evidence. Every semantic inference attribution is referenced by
+at least one fact, and every fact's inference reference must resolve; unrelated or dangling model
+calls cannot be smuggled into a decision's audit. Invalid schema/taxonomy, failed extraction, unavailable
+provider, retryable error, or exhausted budget returns a separate operational hold and no semantic
+verdict. Model confidence is retained for diagnostics but is never read by admission policy.
+Untrusted evidence values are compared only as data; instruction-looking metadata, OCR, or transcript
+text cannot select a reason, change precedence, or authorize a verdict.
+
+The first production integration is shadow-only: it records what this evaluator would decide but the
+V38 compatibility gate remains the filing authority until the corpus and rollout gates below pass.
+The durable decision projection and unattended cutover are separate changes, so adding this module
+cannot by itself expand what reaches a channel without review.
+
 Every evaluation durably attributes the clip and evidence hashes, extractor/prompt/schema/taxonomy/
 policy versions, requested and resolved model/provider, modality and derivative bounds, returned
 token categories, provider-reported charged cost, the price snapshot used for local estimation,
@@ -3455,6 +3497,48 @@ exceptions only**, each asking one plain question and showing the decisive evide
 Automatic admits/rejects belong to Activity; queued/running/retry/provider/budget state belongs to
 Diagnostics. Overview answers whether filler is working and offers one ranked action only when one
 exists. Ordinary maintenance never asks a person to interpret confidence thresholds.
+
+#### Certified role routing and evaluation accounting (V62)
+
+V61's five roles are one versioned Go-owned **inference policy**, not five independent settings:
+`lineup`, `filler_text`, `filler_frames`, `filler_video`, and `transcription`. Its small interface
+resolves a role to one concrete model/provider route plus capability, privacy, fallback, and budget
+constraints. The compatibility snapshot proves that a route accepts the required modality and
+structured-output parameters; the admission certification artifact separately proves measured
+quality. A compatibility result alone never authorizes unattended admission.
+
+The last fully certified policy is the automatic default. Until one exists for a role, Loomarr
+retains the currently configured compatible route but labels it unverified and cannot expand
+unattended admission through that role. Manual model/provider selection moves under **Advanced
+overrides**. An override is explicit operator intent, is recorded in every evaluation, and does not
+inherit the certified label. A missing or incompatible route is an operational hold with a recovery
+action, never a semantic verdict. The live model catalog remains useful for override discovery but
+does not rank unknown families by a stale global quality tier; only an exact model named by the
+versioned role policy can be recommended.
+
+Every inference adapter returns one provider-neutral attribution envelope with its semantic output.
+The envelope records requested and resolved model/provider identities, modalities, prompt,
+completion, reasoning, cached/cache-write, and media token categories when returned, exact
+provider-reported charge and currency, latency, attempts, and provider generation id. OpenRouter
+requests opt into routing metadata and record the selected upstream endpoint; `usage.cost` is the
+billing fact. Missing provider facts remain missing rather than being estimated. Local price
+estimation is a separate value tied to the run's immutable price snapshot. Aggregate Prometheus
+token counters continue unchanged and never encode a price.
+
+Evaluation accounting is durable state with one atomic reservation-to-settlement transition; after
+settlement the row is immutable. One row owns the clip/evidence identity, role
+and cascade rung, derivative byte/duration/pixel bounds, the attribution envelope, prompt/schema/
+extractor/taxonomy/admission-policy and role-policy versions, price snapshot and estimated charge,
+retry reason, and terminal operational outcome. Exact decimal charge text and an integer
+nanodollar projection are retained together so historical records neither drift with current prices
+nor accumulate binary floating-point error. Per-clip, UTC-day, and certification-run ledgers reserve
+budget before a call and settle it from the returned charge; shared-appliance inference is serial by
+default so concurrent reservations cannot overspend. Exhaustion leaves the evaluation held and
+recoverable.
+
+The deterministic evaluation cache identity includes the clip/evidence, extractor, prompt/schema,
+concrete model/provider and role/capability policy, taxonomy, admission policy, modality, and bounded
+derivative dimensions. A change to any semantic input cannot reuse an older answer accidentally.
 
 **Loudness normalisation — SPECIFIED, NOT YET BUILT.** Clips filed automatically should be
 normalised to **−16 LUFS** on the ingest path: filler is cut together from sources recorded
@@ -5557,7 +5641,7 @@ independently instead of treating every zero-lineup result as a model-quality my
 
 ### 14.2 The package map
 
-`internal/` is **46 flat packages, deliberately** — the grouping below is prose, not directories.
+`internal/` is **47 flat packages, deliberately** — the grouping below is prose, not directories.
 
 Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
 
@@ -5578,6 +5662,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `reconcile` | The provisioning backstop when a webhook never arrives (§4, §7, §18) |
 | `retention` | What may be purged, in what order, after how long (§5, §18.1) — the policy; `store` owns the SQL |
 | `filler` | Commercials: the clip catalog and seeded pod assembly (§10) |
+| `filleradmission` | Pure evidence-to-`admit \| reject \| review` policy, with conflicts and operational holds kept outside semantic verdicts (§10 V61) |
 | `fillereval` | Hermetic filler-admission certification: versioned corpus contracts, selective-risk/cost scoring, and captured-decision replay (§10 V61) |
 | `mediatools` | The ffmpeg/ffprobe/whisper layer — exec calls, output parsers, and the shapes those tools return (§10). Carved out of `filler`; the dependency runs one way and nothing here knows what a clip is |
 | `taxonomy` | The clip tag vocabulary — the operator-editable graph filler grounds tags against and curation matches over (§10 V45a) |
