@@ -9,6 +9,8 @@ graph LR
   X["<b>windows-playout</b><br/>native process-tree contract"]
   P["<b>store-postgres</b>"]
   F["<b>frontend</b> ×2"]
+  CJS["<b>shared clients</b><br/>lint · test · four JS bundles"]
+  AP["<b>Apple clients</b> ×2<br/>native build · install · launch"]
   W["<b>playwright</b> ×4"]
   T["<b>tuner</b><br/>three browser engines"]
   D["<b>docs</b><br/>links · structure · prose"]
@@ -23,6 +25,8 @@ graph LR
   C --> X
   C --> P
   C -->|"web/, Makefile"| F
+  C -->|"Expo apps and shared packages"| CJS
+  C -->|"same broad client family"| AP
   C --> W
   C --> T
   C -->|"docs/, README, docs-site/"| D
@@ -35,6 +39,8 @@ graph LR
   X --> OK
   P --> OK
   F --> OK
+  CJS --> OK
+  AP --> OK
   W --> OK
   T --> OK
   D --> OK
@@ -45,7 +51,7 @@ graph LR
   classDef gate fill:#1f6f4a,stroke:#134a31,color:#fff
   classDef job fill:#2b3b52,stroke:#1b2736,color:#dbe4ef
   class OK gate
-  class C,GC,RC,G,X,P,F,W,T,D,A,N,I job
+  class C,GC,RC,G,X,P,F,CJS,AP,W,T,D,A,N,I job
 ```
 
 ## Jobs run only when their inputs changed
@@ -61,9 +67,9 @@ the doc-claims test reads them, and `scripts/` is there because the job executes
 ### Specialized gate classifier is shadow-only
 
 The `changes` job also runs `scripts/ci-impact.sh` and publishes `impact_*` outputs for the
-specialized contract, Go, full-Go, Rust, Postgres, Windows, web, visual, e2e, tuner, image, docs,
-agent, and Android gates. Its run summary places those proposed decisions beside the current broad
-Go and web families.
+specialized contract, Go, full-Go, Rust, Postgres, Windows, web, shared-client, iOS, tvOS, Expo
+Android mobile, Expo Android TV, visual, e2e, tuner, image, docs, agent, and legacy Android TV
+gates. Its run summary places those proposed decisions beside the current broad families.
 
 Those outputs are observational: no required job consumes them yet. The existing `go`, `web`,
 `image`, `docs`, `agent`, and `android` outputs remain authoritative while shadow results are
@@ -79,6 +85,26 @@ docs, install docs and README, the committed OpenAPI document, production Compos
 help select the complete Go test set. Dockerfile and packaged licence/notices select repository
 contracts as well as the image build. These mappings are fixtures because file extensions cannot
 reveal those dependencies.
+
+Client decisions follow the actual consumer graph. An app-local mobile change selects shared-client,
+iOS, and Expo Android mobile evidence; a TV change selects shared-client, tvOS, and Expo Android TV.
+Changes to `api`, `core`, `fixtures`, `design-system`, or `ui` select both apps on both native
+platforms because those packages are transitive inputs to both. Browser-only client-proof and
+Turborepo contract changes select the shared JavaScript gate without spending a native runner.
+The four native decisions remain shadow-only until each has an independently required job and the
+current-main boundary is proven.
+
+## Per-run measurements
+
+The required `CI` aggregate appends a timing table after it has evaluated every required result.
+`scripts/ci-run-metrics.sh` reads GitHub's run and job records and reports queue delay, execution
+time, end-to-end time, the longest job, and total occupied runner time. The report is observational:
+an API or checkout failure emits a warning but cannot turn verified code red or hide a failed gate.
+Its formatter is tested against a pinned API fixture without touching the network.
+
+The distinction between queue and execution is load-bearing for native work. A macOS job can be the
+critical path because it waited for capacity, because Xcode compiled slowly, or both; changing cache
+policy cannot solve the first case, while adding shards can make it worse.
 
 ## The image job is the exception
 

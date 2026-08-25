@@ -22,6 +22,24 @@ against the current `main` before merging. The repository is now organization-ow
 `loomarr/loomarr`; queue activation remains ready at the workflow level and awaits a repository
 ruleset plus a proven `merge_group` run.
 
+On 2026-08-24, the next 20 successful pull-request runs were measured from GitHub's run and job
+records. Wall time includes runner queueing; occupied time is the sum of non-skipped job execution;
+critical path is the longest single job execution.
+
+| Family | Runs | Wall p95 | Occupied runner p95 | Longest-job p95 |
+| --- | ---: | ---: | ---: | ---: |
+| Native client selected | 9 | 68.8 min | 146.9 min | 53.3 min |
+| Backend / repository | 10 | 13.2 min | 37.8 min | 7.3 min |
+| Web | 1 | 18.1 min | 51.3 min | 4.8 min |
+| All sampled runs | 20 | 54.5 min | 124.4 min | 40.6 min |
+
+This sample is the activation baseline, not a claim that the families have equal statistical
+confidence. It establishes the actual first bottleneck: the broad `clients` decision wakes both
+macOS native builds, and native queue plus execution dominates the end-to-end tail. The initial
+target is a native-client p95 at or below 20 minutes and at least 40% fewer occupied runner-minutes
+for this representative mix. Existing 5-minute leaf and 12-minute merge-group budgets remain; a
+budget miss creates optimization evidence and never skips a gate.
+
 ## Assurance tiers
 
 | Tier | Scope | Budget |
@@ -64,6 +82,13 @@ and Android. The work changes when assurance runs, not whether it exists.
 7. Activate proportional pull-request gates and retain complete merge/main/nightly/release audits.
 8. Publish selected gates, setup/cache/test timings, critical path, and runner-minutes in summaries;
    then profile genuinely slow packages after orchestration waste is gone.
+9. Split the broad client family into shared JavaScript, iOS, tvOS, Expo Android mobile, and Expo
+   Android TV decisions. App-local paths select one app on two platforms; shared-package and API
+   contract paths select every transitive native consumer. Keep all five observational until each
+   required native job and the protected final boundary are explicit.
+10. Before any new release, run and record release-relevant certification on the maintainer's local
+    machine. Protected CI remains required for host-incompatible native evidence and current-main
+    provenance; neither local nor remote evidence substitutes for the other.
 
 Each activation is a separate reversible pull request. `docs/design.md` section 19 and the developer
 gate documentation are amended before the first change that alters required behavior.
@@ -121,3 +146,10 @@ gate documentation are amended before the first change that alters required beha
   `loomarr/loomarr` on 2026-08-23. Public visibility, the `main` default branch, Actions, the release
   and tag, open work, and strict app-bound `CI` protection survived the transfer. Source, module,
   image, documentation, and local Git identities move together in the repository-identity slice.
+- A 20-run post-client sample measured a 68.8-minute native-client wall p95 and 146.9 occupied
+  runner-minute p95, compared with 13.2 and 37.8 minutes for backend/repository runs. Per-run CI
+  summaries now expose queueing separately from execution so runner scarcity is not mistaken for a
+  compilation-cache problem.
+- The shadow classifier now separates shared-client, iOS, tvOS, Expo Android mobile, and Expo
+  Android TV decisions. Exact fixtures cover app-local, shared-package, native-script, workspace,
+  and OpenAPI inputs; unknown paths still select every gate.
