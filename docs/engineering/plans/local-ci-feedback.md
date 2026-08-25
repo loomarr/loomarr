@@ -179,5 +179,18 @@ gate documentation are amended before the first change that alters required beha
   three-browser performance matrix loads the real SPA and HLS controller. Exact fixtures prove that
   unit, spec, and story-only source changes may skip tuner, while tuner e2e inputs, browser build
   configuration, shared API/core/fixtures, runtime tokens, and OpenAPI retain it. A structural
-  verifier rejects the
-  legacy broad Web selector, detached classifier output, and release-candidate broadening.
+  verifier rejects the legacy broad Web selector, detached classifier output, and
+  release-candidate broadening.
+- PR #567 merged the tuner activation with its dedicated macOS matrix green in 3.1 minutes after a
+  20.8-minute runner queue. The complete run took 43.2 minutes and 104.5 occupied runner-minutes;
+  mobile Apple executed for 33.4 minutes after 9.5 queued, while tvOS executed for 20.3 minutes
+  after 10.4 queued. Queue and execution therefore remain separate native budget inputs.
+- The first native activation replaces the combined Apple matrix with independently required iOS
+  and tvOS jobs, hard-codes each app command, and preserves the evaluated cache-key strings. Only
+  iOS consumes its specialized decision in this slice; tvOS retains the broad client selector for
+  a separate activation. The structural verifier rejects app swaps, a restored matrix, a detached
+  mobile output, or fallback to the legacy selector.
+- Repeated fresh-worktree bootstrap failures exposed that Cargo and pnpm changed into the selected
+  worktree but `go run ./cmd/dev-bootstrap` inherited the caller's checkout. A harness regression
+  now records the Go command's working directory, and bootstrap roots all three toolchains in the
+  selected worktree before native CI work proceeds.
