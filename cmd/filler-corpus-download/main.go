@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -84,8 +85,13 @@ type downloadedCase struct {
 	LocalFile           string         `json:"localFile"`
 	ContentSHA256       string         `json:"contentSha256"`
 	Approval            rightsApproval `json:"approval"`
-	DownloadedAt        time.Time      `json:"downloadedAt"`
+	VerifiedAt          time.Time      `json:"verifiedAt"`
 }
+
+var (
+	safeIdentifier = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+	sha256Digest   = regexp.MustCompile(`^[a-f0-9]{64}$`)
+)
 
 type plannedDownload struct {
 	candidate inventoryCandidate
@@ -182,6 +188,12 @@ func planDownloads(inv inventory, approvals []rightsApproval, opts options) ([]p
 	}
 	byID := make(map[string]inventoryCandidate, len(inv.Cases))
 	for _, candidate := range inv.Cases {
+		if !safeIdentifier.MatchString(candidate.Identifier) || strings.Contains(candidate.Identifier, "..") {
+			return nil, fmt.Errorf("unsafe inventory identifier %q", candidate.Identifier)
+		}
+		if !sha256Digest.MatchString(candidate.MetadataSHA256) || candidate.MetadataRetrievedAt.IsZero() || candidate.File.Bytes <= 0 || strings.TrimSpace(candidate.File.Name) == "" {
+			return nil, fmt.Errorf("inventory candidate %s has incomplete frozen metadata or media identity", candidate.Identifier)
+		}
 		if _, duplicate := byID[candidate.Identifier]; duplicate {
 			return nil, fmt.Errorf("duplicate inventory candidate %s", candidate.Identifier)
 		}
@@ -207,6 +219,9 @@ func planDownloads(inv inventory, approvals []rightsApproval, opts options) ([]p
 		}
 		if approval.Decision == "held" {
 			continue
+		}
+		if !approval.Redistributable {
+			return nil, fmt.Errorf("approved item %s is not explicitly redistributable", approval.Identifier)
 		}
 		if requiresCredit(candidate.LicenseURL) && strings.TrimSpace(approval.RequiredCredit) == "" {
 			return nil, fmt.Errorf("approved item %s requires attribution", approval.Identifier)
@@ -235,7 +250,7 @@ func executeDownloads(ctx context.Context, client *http.Client, plan []plannedDo
 	ledger := downloadLedger{SchemaVersion: 1, GeneratedAt: opts.generatedAt.UTC(), MaxRequests: opts.maxRequests, MaxItems: opts.maxItems, MaxBytes: opts.maxBytes}
 	lastRequestAt := time.Time{}
 	for _, item := range plan {
-		downloadedAt := opts.generatedAt.UTC()
+		verifiedAt := opts.generatedAt.UTC()
 		hashes, size, err := hashFile(item.path)
 		if errors.Is(err, os.ErrNotExist) {
 			if ledger.RequestsUsed >= opts.maxRequests {
@@ -256,7 +271,7 @@ func executeDownloads(ctx context.Context, client *http.Client, plan []plannedDo
 			hashes, size, err = download(ctx, client, item, opts.userAgent)
 			ledger.RequestsUsed++
 			lastRequestAt = time.Now()
-			downloadedAt = lastRequestAt.UTC()
+			verifiedAt = lastRequestAt.UTC()
 		}
 		if err != nil {
 			return downloadLedger{}, fmt.Errorf("%s: %w", item.candidate.Identifier, err)
@@ -270,7 +285,7 @@ func executeDownloads(ctx context.Context, client *http.Client, plan []plannedDo
 			ItemURL: item.candidate.ItemURL, MetadataURL: item.candidate.MetadataURL,
 			MetadataRetrievedAt: item.candidate.MetadataRetrievedAt, MetadataSHA256: item.candidate.MetadataSHA256,
 			File: item.candidate.File, LocalFile: filepath.Base(item.path), ContentSHA256: hashes.sha256,
-			Approval: item.approval, DownloadedAt: downloadedAt,
+			Approval: item.approval, VerifiedAt: verifiedAt,
 		})
 	}
 	return ledger, nil
