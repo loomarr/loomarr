@@ -8,17 +8,20 @@ engineering provenance policy, not legal advice.
 
 ## Verdict
 
-Build the first representative corpus from three tiers, in this order:
+Build the first representative corpus from four tiers, in this order:
 
 1. clips already held by the maintainer, where Loomarr can record the maintainer's authority and the
    original file hash;
 2. Internet Archive items with affirmative, machine-readable item-level rights metadata and an
    independent adjudication, especially the affirmatively marked portion of the Prelinger collection;
-3. Library of Congress and federal-agency material with an item-level public-domain statement.
+3. Wikimedia Commons files whose file page, source provenance, and machine-readable rights agree
+   after independent review;
+4. Library of Congress and federal-agency material with an item-level public-domain statement.
 
-Do **not** treat membership in Internet Archive, Prelinger, the National Screening Room, NARA, or a
-NASA site as a blanket license. Each of those repositories contains mixed-rights material or warns
-that third-party, privacy, publicity, trademark, donor, or territorial restrictions can remain
+Do **not** treat membership in Internet Archive, Prelinger, a Wikimedia Commons category, the
+National Screening Room, NARA, or a NASA site as a blanket license. Each repository contains
+mixed-rights material or warns that third-party, privacy, publicity, trademark, donor, or territorial
+restrictions can remain
 ([Internet Archive rights fields](https://archive.org/developers/metadata-schema/index.html#licenseurl),
 [Library of Congress National Screening Room rights](https://www.loc.gov/collections/national-screening-room/about-this-collection/rights-and-access/),
 [NARA permissions](https://www.archives.gov/research/motion-pictures/permissions),
@@ -61,7 +64,7 @@ Consequently, corpus import should:
 - preserve attribution and share-alike obligations for `BY` or `BY-SA`, while preferring CC0,
   Public Domain Mark, or an explicit public-domain statement for checked-in fixtures;
 - never promote an uploader's uncertain renewal-search prose to `public_domain` without an
-independent adjudication record.
+  independent adjudication record.
 
 Creative Commons defines `BY` as requiring attribution, `SA` as requiring adaptations to use the
 same or a compatible license, `NC` as noncommercial-only, and `ND` as unadapted-form-only; it also
@@ -135,6 +138,126 @@ and promotional use can add restrictions
 canonical NASA page, agency credit, third-party copyright marking, recognizable-person flag, logo
 flag, and intended non-endorsement use for every candidate; exclude any item whose embedded music or
 footage cannot be cleared.
+
+### Wikimedia Commons: useful second pool, not a rights oracle
+
+Wikimedia Commons is worth adding because it has directly categorized commercials, public-service
+announcements, station identification, and trailers, plus openly licensed negative controls. Its
+official licensing policy accepts media that is explicitly freely licensed or public domain in both
+the United States and the source country, and it does not accept fair-use, noncommercial-only, or
+no-derivatives-only files
+([Commons licensing policy](https://commons.wikimedia.org/wiki/Commons:Licensing)). However, the
+Foundation owns almost none of the content, provides no warranty for its copyright status or license
+terms, and tells reusers to verify each file and account for trademark, personality, moral, privacy,
+and other non-copyright rights
+([Commons reuse guidance](https://commons.wikimedia.org/wiki/Commons:Reusing_content_outside_Wikimedia)).
+That makes Commons a provenance-rich candidate pool, not an automatic admission signal.
+
+#### Category snapshot
+
+The following read-only snapshot was taken on 2026-08-25 without downloading media. For each named
+root, the measurement traversed the root and its immediate subcategories with `categorymembers`,
+followed API continuation, deduplicated by page ID within that root, and counted only files whose
+`imageinfo` reported `mediatype=VIDEO` or a `video/*` MIME type. MediaWiki documents `cmtype=file`,
+`cmtype=subcat`, 500-item pagination, and `cmcontinue`; `imageinfo` supplies MIME and media type
+([categorymembers API](https://www.mediawiki.org/wiki/API:Categorymembers),
+[continuation](https://www.mediawiki.org/wiki/API:Continue),
+[imageinfo API](https://www.mediawiki.org/wiki/API:Imageinfo)).
+
+| Intended slice | Commons category root | Categories visited | Approximate video files |
+| --- | --- | ---: | ---: |
+| broad promotion/advertising discovery | [`Advertising videos`](https://commons.wikimedia.org/wiki/Category:Advertising_videos) | 5 | 71 |
+| television commercials | [`Television advertisements`](https://commons.wikimedia.org/wiki/Category:Television_advertisements) | 11 | 55 |
+| public-service announcements | [`Public service announcements`](https://commons.wikimedia.org/wiki/Category:Public_service_announcements) | 6 | 23 |
+| station IDs | [`Station identification`](https://commons.wikimedia.org/wiki/Category:Station_identification) | 1 | 9 |
+| trailers | [`Film trailer videos`](https://commons.wikimedia.org/wiki/Category:Film_trailer_videos) | 4 | 355 |
+| non-filler documentary controls | [`Documentary films videos`](https://commons.wikimedia.org/wiki/Category:Documentary_films_videos) | 9 | 293 |
+| non-filler speech controls | [`Videos of speeches`](https://commons.wikimedia.org/wiki/Category:Videos_of_speeches) | 3 | 158 |
+| non-filler educational controls | [`Educational videos`](https://commons.wikimedia.org/wiki/Category:Educational_videos) | 1 | 4 |
+
+These are discovery counts, not rights-cleared cases or semantic labels. Category membership is
+community-maintained, the graphs overlap, deeper descendants are deliberately excluded, and the
+counts will change. In particular, `Advertising videos` contains trailer and company-related
+subcategories, so its 71 files cannot be treated as a disjoint “promo” class. The result is still
+large enough to justify a Commons importer: the dedicated roots expose roughly 55 commercial, 23
+PSA, 9 station-ID, and 355 trailer candidates, while the three control roots expose up to 455
+documentary, speech, and educational video candidates before cross-root deduplication.
+
+#### Metadata and license caveats
+
+Use the Commons Action API at `https://commons.wikimedia.org/w/api.php`. Category traversal should
+feed a batched `imageinfo` request for `timestamp`, `user`, `url`, `size`, `sha1`, `mime`,
+`mediatype`, and a filtered `extmetadata` projection. The CommonsMetadata extension exposes
+`LicenseShortName`, `LicenseUrl`, `UsageTerms`, `Copyrighted`, `Attribution`,
+`AttributionRequired`, `Artist`, `Credit`, `Permission`, `Restrictions`, `DeletionReason`, and
+categories; it explicitly says that multi-license values are currently unreliable and that
+`Restrictions` can carry trademark or personality-right flags
+([CommonsMetadata fields](https://www.mediawiki.org/wiki/Extension:CommonsMetadata#Returned_data)).
+The underlying `extmetadata` values can contain HTML and are built from description-page free text;
+MediaWiki calls the property expensive and recommends requesting only a few results and only needed
+fields
+([imageinfo `extmetadata`](https://www.mediawiki.org/wiki/API:Imageinfo),
+[machine-readable-data limitations](https://commons.wikimedia.org/wiki/Commons:Machine-readable_data)).
+
+Also retrieve the file's Wikibase MediaInfo entity, whose ID is `M` plus the Commons page ID.
+Structured rights use `P6216` (copyright status), `P275` (copyright license), and `P7482` (source of
+file), with creator normally represented by `P170`
+([MediaInfo entity model](https://www.mediawiki.org/wiki/Extension:WikibaseMediaInfo#MediaInfo_Entity),
+[Commons structured-data model](https://commons.wikimedia.org/wiki/Commons:Structured_data/Modeling),
+[copyright model](https://commons.wikimedia.org/wiki/Commons:Structured_data/Modeling/Copyright)).
+MediaInfo is supplemental and can be a virtual entity with no stored captions or statements, so its
+absence is not affirmative rights evidence
+([WikibaseMediaInfo](https://www.mediawiki.org/wiki/Extension:WikibaseMediaInfo#MediaInfo_Entity)).
+The copyright model also warns that a digital file and creative works contained in it can have
+different rights, explicitly naming films with music or fragments of other films as complex cases
+([copyright-model caveat](https://commons.wikimedia.org/wiki/Commons:Structured_data/Modeling/Copyright)).
+
+A live example shows why both machine layers and human review are required. The 1954 Kool-Aid
+commercial's `extmetadata` reports `Public domain`, no `LicenseUrl`, and
+`Restrictions=trademarked`, while its MediaInfo entity has a caption but no structured `P275`,
+`P6216`, or `P7482` rights claims
+([file page](https://commons.wikimedia.org/wiki/File:1954_Kool-Aid_Commercial._Debut_of_Pitcher_Man.webm),
+[live `imageinfo` response](https://commons.wikimedia.org/w/api.php?action=query&format=json&formatversion=2&prop=imageinfo&titles=File%3A1954%20Kool-Aid%20Commercial.%20Debut%20of%20Pitcher%20Man.webm&iiprop=timestamp%7Cuser%7Curl%7Csize%7Csha1%7Cmime%7Cmediatype%7Cextmetadata&iimetadataversion=latest&iiextmetadatafilter=LicenseShortName%7CLicenseUrl%7CUsageTerms%7CCopyrighted%7CAttribution%7CCredit%7CArtist%7CRestrictions),
+[live MediaInfo response](https://commons.wikimedia.org/w/api.php?action=wbgetentities&format=json&ids=M147457667&props=labels%7Cclaims)).
+That file may become a candidate only after the public-domain rationale, original source, embedded
+audio, and trademark handling are independently adjudicated.
+
+#### Exact Commons import contract
+
+1. Traverse only declared category roots to a declared depth, follow continuation, retain category
+   paths, deduplicate page IDs, and filter to API-reported video media. Category membership is never
+   a truth label.
+2. Batch `imageinfo`; store Commons page ID/title, file-description URL, upload timestamp/user,
+   byte size, MIME/media type, Commons SHA-1, and the raw filtered `extmetadata` response hash.
+3. Store the file-page revision ID and timestamp plus the MediaInfo entity revision and all `P275`,
+   `P6216`, `P7482`, and `P170` statements, qualifiers, ranks, and references. A missing statement,
+   deprecated rank, multi-license parse, or disagreement between description-page and MediaInfo
+   rights holds the file for adjudication.
+4. Require an allowlisted license or public-domain rationale, a traceable original source, creator,
+   required attribution, and independent reviewer decision. Verify the original source's rights;
+   Commons' copy is not independent corroboration.
+5. Reject or hold deletion-nominated files, unclear permissions, untraceable source transfers,
+   unresolved embedded music/film rights, and any `Restrictions` value without an explicit handling
+   decision. Preserve trademarks, personality/privacy rights, jurisdiction, and attribution as
+   separate policy flags rather than collapsing them into copyright.
+6. Preserve the exact license URI and terms selected for multi-licensed files. For derivatives,
+   record the applicable attribution, change notice, and share-alike obligation; prefer CC0 or
+   independently established public domain for redistributable fixtures.
+7. Before media acquisition, freeze the metadata evidence and predicted byte/request budget. After
+   an approved download, independently compute SHA-256 and hash every derived segment/frame/audio/
+   transcript artifact; do not rely on the mutable file title or Commons SHA-1 alone.
+
+Wikimedia requires a meaningful User-Agent with contact information. Its API guidance recommends
+serial rather than parallel reads, batching titles or using generators, caching, respecting all
+throttling responses, and exponential backoff; the Foundation forbids attempts to evade limits
+([User-Agent policy](https://foundation.wikimedia.org/wiki/Policy:Wikimedia_Foundation_User-Agent_Policy),
+[API etiquette](https://www.mediawiki.org/wiki/API:Etiquette),
+[Foundation API policy](https://foundation.wikimedia.org/wiki/Policy:Wikimedia_Foundation_API_Usage_Guidelines)).
+Noninteractive import should send `maxlag=5` and honor `Retry-After`; MediaWiki recommends that value
+for Wikimedia bots
+([maxlag guidance](https://www.mediawiki.org/wiki/Manual:Maxlag_parameter)). Loomarr should keep the
+same one-request concurrency ceiling as the certification runner and cache category and metadata
+pages by revision.
 
 ### Minimum provenance record
 
@@ -213,8 +336,8 @@ comparison.
 
 ## 3. Immediate certification sequence
 
-1. Inventory maintainer-owned clips and the rights-cleared Archive/Library pools without downloading
-   bulk media; reject candidates missing affirmative per-item rights evidence.
+1. Inventory maintainer-owned clips and the adjudicable Archive, Commons, and Library pools without
+   downloading bulk media; reject candidates missing affirmative per-item rights evidence.
 2. Independently review and adjudicate rights, filler role, taxonomy, reject class, and policy flags;
    cluster before assigning development/holdout splits.
 3. Freeze 300--500 cases if the lawful pool supports it, retaining external media by hash when it
