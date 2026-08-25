@@ -1,0 +1,51 @@
+package main
+
+import (
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestPlanDownloadsRequiresMetadataBoundRightsReview(t *testing.T) {
+	retrieved := time.Date(2026, 8, 25, 8, 0, 0, 0, time.UTC)
+	inv := inventory{Source: "archive.org", Cases: []inventoryCandidate{{
+		Identifier: "soda-ad", LicenseURL: "https://creativecommons.org/publicdomain/mark/1.0/",
+		MetadataSHA256: strings.Repeat("a", 64), MetadataRetrievedAt: retrieved,
+		File: sourceFile{Name: "soda.mp4", URL: "https://archive.org/download/soda-ad/soda.mp4", Bytes: 1024},
+	}}}
+	approval := rightsApproval{
+		Identifier: "soda-ad", MetadataSHA256: strings.Repeat("a", 64), ReviewerID: "rights-reviewer",
+		ReviewedAt: retrieved.Add(time.Minute), Decision: "approved", Basis: "item license and source reviewed",
+	}
+	opts := options{outputDir: "/tmp/corpus", generatedAt: retrieved.Add(2 * time.Minute), maxItems: 1, maxBytes: 1024}
+	plan, err := planDownloads(inv, []rightsApproval{approval}, opts)
+	if err != nil || len(plan) != 1 {
+		t.Fatalf("plan = %v, %v", plan, err)
+	}
+	approval.MetadataSHA256 = strings.Repeat("b", 64)
+	if _, err := planDownloads(inv, []rightsApproval{approval}, opts); err == nil {
+		t.Fatal("stale rights review was accepted")
+	}
+}
+
+func TestPlanDownloadsRequiresAttributionForBY(t *testing.T) {
+	retrieved := time.Date(2026, 8, 25, 8, 0, 0, 0, time.UTC)
+	inv := inventory{Source: "archive.org", Cases: []inventoryCandidate{{
+		Identifier: "by-ad", LicenseURL: "https://creativecommons.org/licenses/by/4.0/",
+		MetadataSHA256: strings.Repeat("a", 64), MetadataRetrievedAt: retrieved,
+		File: sourceFile{Name: "by.mp4", URL: "https://archive.org/download/by-ad/by.mp4", Bytes: 1024},
+	}}}
+	approval := rightsApproval{
+		Identifier: "by-ad", MetadataSHA256: strings.Repeat("a", 64), ReviewerID: "rights-reviewer",
+		ReviewedAt: retrieved, Decision: "approved", Basis: "CC BY source reviewed",
+	}
+	if _, err := planDownloads(inv, []rightsApproval{approval}, options{outputDir: "/tmp/corpus", generatedAt: retrieved.Add(time.Minute), maxItems: 1, maxBytes: 1024}); err == nil {
+		t.Fatal("attribution-free CC BY approval was accepted")
+	}
+}
+
+func TestValidateSourceURLRejectsNonArchiveHost(t *testing.T) {
+	if err := validateSourceURL("clip", "https://example.com/download/clip/video.mp4"); err == nil {
+		t.Fatal("non-Archive URL was accepted")
+	}
+}

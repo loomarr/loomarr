@@ -3522,6 +3522,15 @@ hashes, selected representation identity/checksums, and predicted bytes before a
 model call. A partial bounded inventory reports exactly what it saw; it never widens the ceiling or
 treats a truncated search response as complete.
 
+Media acquisition consumes a separate rights-review ledger; discovery output is never download
+authority. Every `approved` row binds the source metadata hash to reviewer, review time, rationale,
+redistribution decision, attribution, and restrictions; `held` rows remain inert. The downloader
+preflights aggregate item and byte ceilings before its first request, stays serial and identified,
+allows redirects only within the source authority, bounds each body by the inventoried size, verifies
+source checksums when present, and adds SHA-256. Media and its download ledger remain external to Git.
+An incomplete, stale, oversized, or checksum-mismatched plan fails without producing a completed
+ledger and cannot flow into blind semantic review.
+
 Rollout is shadow-first on a bounded appliance workload. Deterministic rejection enables before
 certified admission slices; harder slices enable only after shadow evidence. A random sample of
 automatic outcomes and every disagreement between rungs remains auditable. Any model, provider,

@@ -264,7 +264,7 @@ go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must
 test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
 	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ ./internal/api/ -v
 
-.PHONY: eval-contract eval eval-cert eval-matrix filler-corpus-archive filler-corpus-lock filler-eval-contract filler-eval-cert
+.PHONY: eval-contract eval eval-cert eval-matrix filler-corpus-archive filler-corpus-download filler-corpus-lock filler-eval-contract filler-eval-cert
 eval-contract: ## hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB
 	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/
 
@@ -302,7 +302,7 @@ eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (m
 	  exit "$$status"
 
 filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
-	$(GO) test ./internal/fillereval/ ./cmd/filler-cert/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/
+	$(GO) test ./internal/fillereval/ ./cmd/filler-cert/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-download/
 
 filler-corpus-archive: ## freeze a bounded rights-filtered Archive.org corpus inventory
 	@test -n "$$LOOMARR_FILLER_CORPUS_ARCHIVE_COLLECTION" || { echo "filler-corpus-archive: LOOMARR_FILLER_CORPUS_ARCHIVE_COLLECTION is required" >&2; exit 2; }; \
@@ -318,6 +318,20 @@ filler-corpus-archive: ## freeze a bounded rights-filtered Archive.org corpus in
 	    --max-item-bytes "$$LOOMARR_FILLER_CORPUS_ARCHIVE_MAX_ITEM_BYTES" \
 	    --max-total-bytes "$$LOOMARR_FILLER_CORPUS_ARCHIVE_MAX_TOTAL_BYTES" \
 	    --delay "$${LOOMARR_FILLER_CORPUS_ARCHIVE_DELAY:-1s}"
+
+filler-corpus-download: ## download only rights-approved corpus media under hard ceilings
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  $(GO) run ./cmd/filler-corpus-download \
+	    --inventory "$$LOOMARR_FILLER_CORPUS_INVENTORY" \
+	    --rights-approvals "$$LOOMARR_FILLER_CORPUS_RIGHTS_APPROVALS" \
+	    --out-dir "$$LOOMARR_FILLER_CORPUS_MEDIA_DIR" \
+	    --ledger "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_LEDGER" \
+	    --user-agent "$$LOOMARR_FILLER_CORPUS_ARCHIVE_USER_AGENT" \
+	    --generated-at "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_GENERATED_AT" \
+	    --max-requests "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_MAX_REQUESTS" \
+	    --max-items "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_MAX_ITEMS" \
+	    --max-bytes "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_MAX_BYTES" \
+	    --delay "$${LOOMARR_FILLER_CORPUS_DOWNLOAD_DELAY:-1s}"
 
 filler-corpus-lock: ## lock two blind filler-label batches into a certification manifest
 	@test -n "$$LOOMARR_FILLER_CORPUS_DRAFT" || { echo "filler-corpus-lock: LOOMARR_FILLER_CORPUS_DRAFT is required" >&2; exit 2; }; \

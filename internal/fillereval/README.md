@@ -34,6 +34,14 @@ and selects a bounded video representation. Its output is only a candidate inven
 license metadata still needs independent item-level rights adjudication before it can enter a draft
 manifest, and the command never downloads media or invokes a model.
 
+`make filler-corpus-download` is the separately authorized media step. It accepts only `approved`
+rights rows tied to the frozen metadata SHA-256, reviewer, review time, rationale, redistribution
+decision, attribution, and restrictions; `held` rows remain out of the plan. Before the first request
+it proves the approved count and predicted bytes fit explicit ceilings. Downloads remain serial and
+identified, redirects stay on Archive.org, bodies cannot exceed their recorded size, Archive SHA-1/
+MD5 values are checked when present, and the external ledger adds a locally computed SHA-256. A
+failed or stale approval writes no ledger and cannot silently widen the selected corpus.
+
 `make filler-eval-contract` verifies the scorer and seed. `make filler-eval-cert` scores a JSONL file
 named by `LOOMARR_FILLER_EVAL_PREDICTIONS`; the remaining `LOOMARR_FILLER_EVAL_*` variables identify
 the corpus, selected split, captured run time, every versioned input, and positive request, spend,
