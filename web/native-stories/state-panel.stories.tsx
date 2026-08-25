@@ -30,6 +30,10 @@ const PermissionTv: Story = {
     title: "This TV was disconnected",
   },
 };
+const LightEmpty: Story = {
+  args: { action: { label: "Open Guide", onPress: () => undefined } },
+  globals: { theme: "light" },
+};
 
 export default meta;
-export { EmptyTouch, LoadingTv, OfflineTouch, PermissionTv };
+export { EmptyTouch, LightEmpty, LoadingTv, OfflineTouch, PermissionTv };

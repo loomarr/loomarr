@@ -12,6 +12,7 @@ const Loading: Story = {};
 const Empty: Story = { args: { state: "empty" } };
 const ErrorState: Story = { args: { state: "error" } };
 const TvOffline: Story = { args: { density: "tv", state: "offline" } };
+const LightEmpty: Story = { args: { state: "empty" }, globals: { theme: "light" } };
 
 export default meta;
-export { Empty, ErrorState, Loading, TvOffline };
+export { Empty, ErrorState, LightEmpty, Loading, TvOffline };

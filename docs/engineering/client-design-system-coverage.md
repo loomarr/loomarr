@@ -22,6 +22,11 @@ The web workshop's official Themes toolbar drives the same `LoomarrProvider` use
 is the default; light and system-selected light/dark are interactive global modes, while a story may
 pin a mode only when the mode itself is the state under review.
 
+The official Themes addon declares React Native unsupported, so the on-device workshop consumes the
+same `theme` story global through its native decorator instead of pretending the web manager addon
+runs there. Dark is again the default, and every shared native story module publishes an explicit
+light state; a source gate prevents a later module from silently becoming dark-only.
+
 ## Completion rules
 
 P3.5 is complete only when all of these rules hold:

@@ -55,6 +55,7 @@ const TouchTransient: Story = {};
 const TvTransient: Story = { args: { density: "tv" } };
 const TouchModal: Story = { args: { kind: "modal" } };
 const TvModal: Story = { args: { density: "tv", kind: "modal" } };
+const LightModal: Story = { args: { kind: "modal" }, globals: { theme: "light" } };
 
 export default meta;
-export { TouchModal, TouchTransient, TvModal, TvTransient };
+export { LightModal, TouchModal, TouchTransient, TvModal, TvTransient };

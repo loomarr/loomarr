@@ -27,6 +27,10 @@ const PhoneNotch: Story = {
   args: { insets: { bottom: 34, left: 0, right: 0, top: 47 } },
 };
 const TvOverscan: Story = { args: { density: "tv" } };
+const LightPhoneNotch: Story = {
+  args: { insets: { bottom: 34, left: 0, right: 0, top: 47 } },
+  globals: { theme: "light" },
+};
 
 export default meta;
-export { PhoneNotch, TvOverscan };
+export { LightPhoneNotch, PhoneNotch, TvOverscan };

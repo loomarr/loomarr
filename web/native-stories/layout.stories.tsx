@@ -1,11 +1,4 @@
-import {
-  AdaptiveSplit,
-  Disclosure,
-  Screen,
-  ScrollFrame,
-  Surface,
-  Text,
-} from "@loomarr/design-system";
+import { AdaptiveSplit, Disclosure, Screen, ScrollFrame, Surface, Text } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-native";
 import { useState } from "react";
 
@@ -56,6 +49,7 @@ const meta = {
 type Story = StoryObj<typeof meta>;
 const Touch: Story = {};
 const Tv: Story = { args: { density: "tv" } };
+const Light: Story = { globals: { theme: "light" } };
 
 export default meta;
-export { Touch, Tv };
+export { Light, Touch, Tv };
