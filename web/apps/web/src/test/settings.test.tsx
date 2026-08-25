@@ -442,7 +442,9 @@ describe("Settings honesty", () => {
     expect(screen.queryByLabelText("Hosted lineup model")).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: /unsaved changes/i })).toHaveTextContent("1 unsaved change");
     expect(screen.getByText(/Add your OpenRouter key above/i)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Model roles" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Automatic model policy" })).toBeInTheDocument();
+    expect(screen.getByText(/do not need to maintain a model matrix/i)).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Vision" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Gemini Vision/i })).not.toBeInTheDocument();
   });
 
@@ -489,6 +491,8 @@ describe("Settings honesty", () => {
     );
 
     renderAt("/settings/ai");
+    expect(await screen.findByRole("heading", { name: "Automatic model policy" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Advanced model overrides/i }));
     const vision = await screen.findByRole("region", { name: "Vision" });
     expect(within(vision).queryByRole("button", { name: /Text only/i })).not.toBeInTheDocument();
     await userEvent.click(within(vision).getByRole("button", { name: /Gemini Vision/i }));
