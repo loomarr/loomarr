@@ -194,3 +194,12 @@ gate documentation are amended before the first change that alters required beha
   worktree but `go run ./cmd/dev-bootstrap` inherited the caller's checkout. A harness regression
   now records the Go command's working directory, and bootstrap roots all three toolchains in the
   selected worktree before native CI work proceeds.
+- Local Expo Android activation exposed a second false safety assumption before a new CI job could
+  consume it: AGP executes generated Ninja commands directly, so
+  `CMAKE_BUILD_PARALLEL_LEVEL=1` did not constrain Reanimated and six compiler children stalled a
+  4 GB scope for more than 30 minutes. The corrective generator registers depth-one CMake compile
+  and link pools on every Android application and library subproject at plugin-application time.
+  A dependency-cold local mobile build completed in 6m07s with one live Clang child. After the
+  generated pool was parameterized and both app projects were regenerated, the final mobile and TV
+  targets completed in 4m43s and 2m57s. Expo Android jobs remain unactivated until this correction
+  passes protected CI and their exact app/platform selectors are introduced in reversible slices.
