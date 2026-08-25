@@ -68,6 +68,7 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make eval-matrix` |  | explicitly certify local + OpenRouter generation sequentially (manual, resource-heavy) |
 | `make filler-eval-contract` |  | hermetic filler-admission corpus and selective-risk contracts |
 | `make filler-corpus-archive` |  | freeze a bounded rights-filtered Archive.org corpus inventory |
+| `make filler-corpus-dvids` |  | freeze a bounded item-rights-marked DVIDS video inventory |
 | `make filler-corpus-download` |  | download only rights-approved corpus media under hard ceilings |
 | `make filler-corpus-rights-review` |  | prepare an inert worksheet from a frozen filler inventory |
 | `make filler-corpus-rights-lock` |  | validate completed rights review CSV into approval JSONL |
