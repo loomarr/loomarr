@@ -298,7 +298,7 @@ eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (m
 	  exit "$$status"
 
 filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
-	$(GO) test ./internal/fillereval/ ./cmd/filler-cert/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-download/
+	$(GO) test ./internal/fillereval/ ./cmd/filler-cert/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-rights-review/
 
 filler-corpus-archive: ## freeze a bounded rights-filtered Archive.org corpus inventory
 	@test -n "$$LOOMARR_FILLER_CORPUS_ARCHIVE_COLLECTION" || { echo "filler-corpus-archive: LOOMARR_FILLER_CORPUS_ARCHIVE_COLLECTION is required" >&2; exit 2; }; \
@@ -328,6 +328,16 @@ filler-corpus-download: ## download only rights-approved corpus media under hard
 	    --max-items "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_MAX_ITEMS" \
 	    --max-bytes "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_MAX_BYTES" \
 	    --delay "$${LOOMARR_FILLER_CORPUS_DOWNLOAD_DELAY:-1s}"
+
+filler-corpus-rights-review: ## prepare an inert worksheet from a frozen filler inventory
+	@test -n "$$LOOMARR_FILLER_CORPUS_INVENTORY" || { echo "filler-corpus-rights-review: LOOMARR_FILLER_CORPUS_INVENTORY is required" >&2; exit 2; }; \
+	  eval "$$(./scripts/dev-env.sh export)"; \
+	  $(GO) run ./cmd/filler-corpus-rights-review \
+	    --inventory "$$LOOMARR_FILLER_CORPUS_INVENTORY" \
+	    --out "$${LOOMARR_FILLER_CORPUS_RIGHTS_WORKSHEET:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-rights-review.json}" \
+	    --prepared-at "$$LOOMARR_FILLER_CORPUS_RIGHTS_PREPARED_AT" \
+	    --min-items "$${LOOMARR_FILLER_CORPUS_RIGHTS_MIN_ITEMS:-300}" \
+	    --max-items "$${LOOMARR_FILLER_CORPUS_RIGHTS_MAX_ITEMS:-500}"
 
 filler-corpus-lock: ## lock two blind filler-label batches into a certification manifest
 	@test -n "$$LOOMARR_FILLER_CORPUS_DRAFT" || { echo "filler-corpus-lock: LOOMARR_FILLER_CORPUS_DRAFT is required" >&2; exit 2; }; \

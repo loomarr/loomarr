@@ -14,11 +14,11 @@ func TestPlanDownloadsRequiresMetadataBoundRightsReview(t *testing.T) {
 		File: sourceFile{Name: "soda.mp4", URL: "https://archive.org/download/soda-ad/soda.mp4", Bytes: 1024},
 	}}}
 	approval := rightsApproval{
-		Identifier: "soda-ad", MetadataSHA256: strings.Repeat("a", 64), ReviewerID: "rights-reviewer",
+		InventorySHA256: strings.Repeat("f", 64), Identifier: "soda-ad", MetadataSHA256: strings.Repeat("a", 64), ReviewerID: "rights-reviewer",
 		ReviewedAt: retrieved.Add(time.Minute), Decision: "approved", Basis: "item license and source reviewed",
 		Redistributable: true,
 	}
-	opts := options{outputDir: "/tmp/corpus", generatedAt: retrieved.Add(2 * time.Minute), maxItems: 1, maxBytes: 1024}
+	opts := options{outputDir: "/tmp/corpus", inventorySHA256: strings.Repeat("f", 64), generatedAt: retrieved.Add(2 * time.Minute), maxItems: 1, maxBytes: 1024}
 	plan, err := planDownloads(inv, []rightsApproval{approval}, opts)
 	if err != nil || len(plan) != 1 {
 		t.Fatalf("plan = %v, %v", plan, err)
@@ -26,6 +26,11 @@ func TestPlanDownloadsRequiresMetadataBoundRightsReview(t *testing.T) {
 	approval.MetadataSHA256 = strings.Repeat("b", 64)
 	if _, err := planDownloads(inv, []rightsApproval{approval}, opts); err == nil {
 		t.Fatal("stale rights review was accepted")
+	}
+	approval.MetadataSHA256 = strings.Repeat("a", 64)
+	approval.InventorySHA256 = strings.Repeat("e", 64)
+	if _, err := planDownloads(inv, []rightsApproval{approval}, opts); err == nil {
+		t.Fatal("approval from a different inventory was accepted")
 	}
 }
 
@@ -37,10 +42,10 @@ func TestPlanDownloadsRequiresAttributionForBY(t *testing.T) {
 		File: sourceFile{Name: "by.mp4", URL: "https://archive.org/download/by-ad/by.mp4", Bytes: 1024},
 	}}}
 	approval := rightsApproval{
-		Identifier: "by-ad", MetadataSHA256: strings.Repeat("a", 64), ReviewerID: "rights-reviewer",
+		InventorySHA256: strings.Repeat("f", 64), Identifier: "by-ad", MetadataSHA256: strings.Repeat("a", 64), ReviewerID: "rights-reviewer",
 		ReviewedAt: retrieved, Decision: "approved", Basis: "CC BY source reviewed", Redistributable: true,
 	}
-	if _, err := planDownloads(inv, []rightsApproval{approval}, options{outputDir: "/tmp/corpus", generatedAt: retrieved.Add(time.Minute), maxItems: 1, maxBytes: 1024}); err == nil {
+	if _, err := planDownloads(inv, []rightsApproval{approval}, options{outputDir: "/tmp/corpus", inventorySHA256: strings.Repeat("f", 64), generatedAt: retrieved.Add(time.Minute), maxItems: 1, maxBytes: 1024}); err == nil {
 		t.Fatal("attribution-free CC BY approval was accepted")
 	}
 }
@@ -53,10 +58,10 @@ func TestPlanDownloadsRequiresExplicitRedistributionApproval(t *testing.T) {
 		File: sourceFile{Name: "clip.mp4", URL: "https://archive.org/download/held-rights/clip.mp4", Bytes: 1024},
 	}}}
 	approval := rightsApproval{
-		Identifier: "held-rights", MetadataSHA256: strings.Repeat("a", 64), ReviewerID: "rights-reviewer",
+		InventorySHA256: strings.Repeat("f", 64), Identifier: "held-rights", MetadataSHA256: strings.Repeat("a", 64), ReviewerID: "rights-reviewer",
 		ReviewedAt: retrieved, Decision: "approved", Basis: "source reviewed",
 	}
-	if _, err := planDownloads(inv, []rightsApproval{approval}, options{outputDir: "/tmp/corpus", generatedAt: retrieved.Add(time.Minute), maxItems: 1, maxBytes: 1024}); err == nil {
+	if _, err := planDownloads(inv, []rightsApproval{approval}, options{outputDir: "/tmp/corpus", inventorySHA256: strings.Repeat("f", 64), generatedAt: retrieved.Add(time.Minute), maxItems: 1, maxBytes: 1024}); err == nil {
 		t.Fatal("non-redistributable approval was accepted")
 	}
 }
