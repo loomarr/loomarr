@@ -84,9 +84,14 @@ func TestVerifyCIImpactActivation(t *testing.T) {
   changes:
     outputs:
       impact_postgres: ${{ steps.impact.outputs.postgres }}
+      impact_visual: ${{ steps.impact.outputs.visual }}
+      impact_e2e: ${{ steps.impact.outputs.e2e }}
   store-postgres:
     needs: changes
     if: needs.changes.outputs.impact_postgres == 'true'
+  playwright:
+    needs: changes
+    if: needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true'
 `
 	path := filepath.Join(t.TempDir(), "ci.yml")
 	if err := os.WriteFile(path, []byte(workflow), 0o600); err != nil {
@@ -97,10 +102,24 @@ func TestVerifyCIImpactActivation(t *testing.T) {
 	}
 
 	mutations := map[string]string{
-		"legacy selector":     strings.Replace(workflow, "impact_postgres", "go", 2),
-		"missing dependency":  strings.Replace(workflow, "    needs: changes\n", "", 1),
-		"broadened candidate": strings.Replace(workflow, " == 'true'", " == 'true' || needs.changes.outputs.release_candidate == 'true'", 1),
-		"detached output":     strings.Replace(workflow, "steps.impact.outputs.postgres", "steps.filter.outputs.go", 1),
+		"legacy Postgres selector": strings.Replace(workflow, "impact_postgres", "go", 2),
+		"missing dependency":       strings.Replace(workflow, "    needs: changes\n", "", 1),
+		"broadened candidate":      strings.Replace(workflow, " == 'true'", " == 'true' || needs.changes.outputs.release_candidate == 'true'", 1),
+		"detached Postgres output": strings.Replace(workflow, "steps.impact.outputs.postgres", "steps.filter.outputs.go", 1),
+		"legacy Playwright selector": strings.Replace(
+			workflow,
+			"needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true'",
+			"needs.changes.outputs.web == 'true'",
+			1,
+		),
+		"detached visual output": strings.Replace(workflow, "steps.impact.outputs.visual", "steps.filter.outputs.web", 1),
+		"lost e2e selector": strings.Replace(
+			workflow,
+			" || needs.changes.outputs.impact_e2e == 'true'",
+			"",
+			1,
+		),
+		"intersected browser selectors": strings.Replace(workflow, "impact_visual == 'true' ||", "impact_visual == 'true' &&", 1),
 	}
 	for name, mutated := range mutations {
 		t.Run(name, func(t *testing.T) {

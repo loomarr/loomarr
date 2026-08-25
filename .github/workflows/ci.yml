@@ -219,8 +219,9 @@ jobs:
           fi
           echo "release_candidate=false" >> "$GITHUB_OUTPUT"
 
-      # Postgres is the first specialized decision allowed to skip required work. Every other
-      # job remains on its legacy output while its dedicated decision stays in shadow.
+      # Postgres and the combined Playwright gate are the first specialized decisions allowed to
+      # skip required work. Every other job remains on its legacy output while its dedicated
+      # decision stays in shadow.
       - name: Classify specialized gates
         id: impact
         env:
@@ -255,7 +256,7 @@ jobs:
           {
             echo "### Specialized CI gate decisions"
             echo
-            echo "Postgres is active and fail-closed; every other specialized decision remains observational."
+            echo "Postgres and Playwright are active and fail-closed; every other specialized decision remains observational."
             echo
             echo "Reason: $reason."
             echo
@@ -810,7 +811,7 @@ jobs:
   playwright:
     name: Playwright — visual + a11y + e2e (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: changes
-    if: needs.changes.outputs.web == 'true'
+    if: needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true'
     runs-on: ubuntu-latest
     # Sharded purely for WALL-CLOCK. The shard COUNT below is the only number to change —
     # the denominator everywhere else derives from `strategy.job-total`, so editing

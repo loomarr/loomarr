@@ -18,6 +18,12 @@ selected_gates() {
 while IFS=$'\t' read -r name path_set want; do
   [[ -z "$name" || "$name" == \#* ]] && continue
   IFS=';' read -r -a paths <<<"$path_set"
+  for path in "${paths[@]}"; do
+    if [[ ! -e "$ROOT/$path" ]]; then
+      printf 'ci-impact-test: fixture %s references missing path %s\n' "$name" "$path" >&2
+      exit 1
+    fi
+  done
   got="$(selected_gates "${paths[@]}")"
   if [[ "$got" != "$want" ]]; then
     printf 'ci-impact-test: %s for %s: got %s, want %s\n' "$name" "$path_set" "$got" "$want" >&2
@@ -32,7 +38,7 @@ if [[ "$unknown" != "$all_gates" ]]; then
   exit 1
 fi
 
-stdin_output="$(printf '%s\n' internal/suggest/ground.go docs/dev/testing.md | "$CLASSIFIER")"
+stdin_output="$(printf '%s\n' internal/suggest/score.go docs/dev/testing.md | "$CLASSIFIER")"
 stdin_selected="$(awk -F= '$2 == "true" { if (selected != "") selected = selected ","; selected = selected $1 } END { print selected }' <<<"$stdin_output")"
 if [[ "$stdin_selected" != 'contracts,go,postgres,image,docs' ]]; then
   printf 'ci-impact-test: stdin paths: got %s, want contracts,go,postgres,image,docs\n' "$stdin_selected" >&2

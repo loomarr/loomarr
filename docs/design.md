@@ -6426,7 +6426,11 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   missing or unresolvable diff base, classifier error, or unknown path selects every gate. Gates
   activate one job at a time so each change is independently reversible; an activated job remains
   a constituent of the single required aggregate, and activation must neither broaden nor shrink
-  the explicit manual release-candidate scope.
+  the explicit manual release-candidate scope. The combined Playwright job is selected by the union
+  of its visual and end-to-end decisions. Before that selector activates, every shipping Web runtime
+  source and browser build configuration is conservatively visual-sensitive; shared API/core/fixture
+  inputs and the OpenAPI generator contract select both browser suites. Unit-test-only Web sources
+  may skip Playwright, while visual/e2e tests and their committed baselines select their owning suite.
 - **State machine:** every transition + the five invariants.
 - **Store conformance:** one suite vs **both** SQLite (temp file) and Postgres (**testcontainers**), incl. `ClaimDue` concurrency (no record claimed twice).
 - **Library conformance:** Emby vs Jellyfin flavors w/ mock transport; correct auth header each.
