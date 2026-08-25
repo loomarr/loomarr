@@ -1408,10 +1408,11 @@ func orNone(path string) string {
 type audioAskerAdapter struct{ oa *llm.OpenAI }
 
 func (a audioAskerAdapter) AskAboutAudio(ctx context.Context, req filler.AudioAsk) (string, error) {
-	return a.oa.AskAboutAudio(ctx, llm.AudioRequest{
+	resp, err := a.oa.AskAboutAudio(ctx, llm.AudioRequest{
 		Model: req.Model, Prompt: req.Prompt, Audio: req.Audio,
 		Format: req.Format, MaxTokens: req.MaxTokens,
 	})
+	return resp.Content, err
 }
 
 // hostedSTTAdapter maps the OpenAI-compatible transcription wire into mediatools' timed segment
@@ -1420,14 +1421,14 @@ func (a audioAskerAdapter) AskAboutAudio(ctx context.Context, req filler.AudioAs
 type hostedSTTAdapter struct{ oa *llm.OpenAI }
 
 func (a hostedSTTAdapter) TranscribeAudio(ctx context.Context, model, format, language string, audio []byte) ([]mediatools.TranscriptSegment, error) {
-	segments, err := a.oa.TranscribeAudio(ctx, llm.TranscriptionRequest{
+	result, err := a.oa.TranscribeAudio(ctx, llm.TranscriptionRequest{
 		Model: model, Audio: audio, Format: format, Language: language,
 	})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]mediatools.TranscriptSegment, 0, len(segments))
-	for _, seg := range segments {
+	out := make([]mediatools.TranscriptSegment, 0, len(result.Segments))
+	for _, seg := range result.Segments {
 		out = append(out, mediatools.TranscriptSegment{
 			StartMs: seg.StartMs, EndMs: seg.EndMs, Text: seg.Text,
 		})

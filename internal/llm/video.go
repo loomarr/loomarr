@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/httpx"
 	"github.com/loomarr/loomarr/internal/metrics"
@@ -144,6 +145,7 @@ func (o *openRouterVideo) AskAboutVideo(ctx context.Context, prompt string, vide
 	if strings.TrimSpace(prompt) == "" {
 		return Response{}, fmt.Errorf("video request carries no prompt")
 	}
+	started := time.Now()
 
 	body, err := json.Marshal(openRouterVideoRequest{
 		Model: o.model, MaxTokens: 512,
@@ -166,6 +168,7 @@ func (o *openRouterVideo) AskAboutVideo(ctx context.Context, prompt string, vide
 		return Response{}, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("X-OpenRouter-Metadata", "enabled")
 	if o.apiKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
 	}
@@ -198,7 +201,11 @@ func (o *openRouterVideo) AskAboutVideo(ctx context.Context, prompt string, vide
 		return Response{}, fmt.Errorf("video chat: no choices")
 	}
 	metrics.LLMTokens(out.Usage.PromptTokens, out.Usage.CompletionTokens)
-	return Response{Content: strings.TrimSpace(out.Choices[0].Message.Content)}, nil
+	return Response{
+		Content: strings.TrimSpace(out.Choices[0].Message.Content),
+		Attribution: attributionFromWire("openrouter", o.model, out.ID, out.Model, out.Usage,
+			out.OpenRouterMetadata, o.upstreamProvider, []string{"text", "video", "audio"}, time.Since(started)),
+	}, nil
 }
 
 var _ VideoProvider = (*openRouterVideo)(nil)

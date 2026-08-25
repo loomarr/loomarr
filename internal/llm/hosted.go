@@ -4,22 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math"
 	"net/http"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/httpx"
 )
 
 // This file is the curated catalog of HOSTED (OpenAI-compatible) PROVIDERS Loomarr
-// recommends (§8.1) — the hosted analog of catalog.go. The curation here is
+// exposes (§8.1) — the hosted analog of catalog.go. The curation here is
 // deliberately PROVIDER-LEVEL only (label, base URL, keys URL, note): those are
-// stable and don't rot. The MODEL recommendations are NOT hardcoded — they are
-// DERIVED from each provider's live /models metadata by rules (does it support
-// tools? how cheap? how much context?), so they stay good as the catalog turns over
-// year to year instead of pointing at renamed/retired ids. The only per-model
+// stable and don't rot. Live models are projected by advertised capability; model
+// recommendations belong to the versioned role policy in role_policy.go. The only per-model
 // hardcoding is a tiny FALLBACK list shown before a key is entered (when no live
 // metadata is available), clearly marked as such.
 //
@@ -27,8 +23,8 @@ import (
 // openai.go client drives them all — the entry just supplies the base URL.
 
 // HostedModel is one model offered by a hosted provider (§8.1). For a live model
-// most fields are derived from the provider's /models metadata; Recommended +Why
-// are computed by the ranking rules (rankModels), NOT hardcoded per id.
+// most fields are derived from the provider's /models metadata. Recommended + Why
+// are reserved for an exact certified role policy.
 type HostedModel struct {
 	ID            string `json:"id"`                      // exact model id for the API (LLM_MODEL)
 	Label         string `json:"label"`                   // human name (provider-supplied or the id)
@@ -60,16 +56,9 @@ type HostedProvider struct {
 	Note string `json:"note,omitempty"`
 }
 
-// hostedCatalog is the curated truth. IMPORTANT — the model ids here are NOT an
-// allowlist and NOT the list the user picks from. The pickable list is fetched LIVE
-// from each provider's /models (see LiveModels); these curated entries serve two
-// narrower jobs: (1) ANNOTATION — overlay a human "why"/cost hint + top-of-list
-// ranking onto the live ids we've vetted; (2) FALLBACK — a sensible placeholder list
-// shown before a key is entered (when the live list can't be fetched). A curated id
-// that gets renamed upstream degrades gracefully: the model still appears (from the
-// live list), it just loses its hint until this list is refreshed (the sanctioned
-// update path, like the local catalog). The PROVIDERS (base URLs, keys URLs) are the
-// stable part; the models are live.
+// hostedCatalog is the curated provider truth. Model ids are neither an allowlist nor
+// quality advice: the pickable list is fetched live from /models. The tiny fallback
+// only keeps setup usable before credentials or when that metadata endpoint fails.
 // The hosted surface is deliberately two entries (design §8.1): OpenRouter — the
 // one blessed aggregator whose single key reaches every frontier family (OpenAI,
 // Anthropic, Gemini, Llama, Qwen) with the richest live /models metadata — and
@@ -83,12 +72,11 @@ var hostedCatalog = []HostedProvider{
 		Key: "openrouter", Label: "OpenRouter", BaseURL: "https://openrouter.ai/api/v1",
 		KeysURL: "https://openrouter.ai/keys",
 		Note:    "One key → every frontier family (OpenAI, Anthropic, Gemini, Llama, Qwen). The blessed hosted path.",
-		// Fallback: shown only before a key is set (no live metadata). Live ranking
-		// supersedes this. Kept short + obvious; not an allowlist.
+		// Fallback: shown only before a key is set or live metadata is unavailable.
+		// It is deliberately not marked as recommended.
 		Fallback: []HostedModel{{
 			ID: "openai/gpt-4.1-mini", Label: "GPT-4.1 mini",
-			Recommended: true, Tools: true, Vision: true,
-			Why: "Reliable multi-axis classification and grounded suggestions at modest cost.",
+			Tools: true, Vision: true,
 		}},
 	},
 	{
@@ -116,10 +104,9 @@ func HostedProviderByKey(key string) (HostedProvider, bool) {
 	return HostedProvider{}, false
 }
 
-// modelMeta is the subset of a /models entry Loomarr ranks on. Rich providers
-// (OpenRouter) populate SupportedParameters + Pricing; thin ones (OpenAI, Groq,
-// Gemini) return little more than an id, in which case the rule engine degrades to
-// "show the live ids" without a fabricated ranking.
+// modelMeta is the subset of a /models entry Loomarr projects into compatibility
+// evidence. Rich providers populate capabilities and pricing; thin ones may return
+// little more than an id, in which case Loomarr shows the ids without guessing.
 type modelMeta struct {
 	ID           string   `json:"id"`
 	Name         string   `json:"name"`
@@ -154,107 +141,18 @@ func (m modelMeta) supportsTools() bool {
 	return slices.Contains(m.SupportedP, "tools") || slices.Contains(m.SupportedP, "tool_choice")
 }
 
-// costPerMTok is a rough $/1M-token blend (prompt+completion) for ranking cheapest-
-// first. Returns +Inf when pricing is absent/unparseable so unpriced models sort
-// last among priced ones (but are still shown).
-func (m modelMeta) costPerMTok() float64 {
-	p := parsePrice(m.Pricing.Prompt)
-	c := parsePrice(m.Pricing.Completion)
-	if p < 0 && c < 0 {
-		return math.Inf(1)
-	}
-	if p < 0 {
-		p = 0
-	}
-	if c < 0 {
-		c = 0
-	}
-	return (p + c) * 1_000_000 // per-token → per-1M
-}
-
-func parsePrice(s string) float64 {
-	if s == "" {
-		return -1
-	}
-	v, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return -1
-	}
-	return v
-}
-
-// familyTier maps a model FAMILY (substring of the id, provider-prefix-agnostic) to
-// a quality tier for GROUNDED TOOL-CALLING — the one thing /models metadata can't
-// tell us. Higher = better for picking themed titles reliably. We curate FAMILIES,
-// not exact ids: "gpt-4o", "claude-sonnet" etc. survive across dated snapshots
-// (gpt-4o-mini-2026-xx, …) and provider prefixes (openai/gpt-4o-mini on OpenRouter),
-// so this barely rots — far slower than an exact-id list. This encodes JUDGMENT
-// (these families reason well); availability + capability + cost stay live.
-//
-// Matched by case-insensitive substring so both "openai/gpt-4o-mini" (OpenRouter)
-// and "gpt-4o-mini" (OpenAI direct) hit the same tier. Ordered most-specific first
-// so "claude-sonnet" wins over a hypothetical bare "claude" entry.
-type familyTier struct {
-	family string // lowercase substring to match in the model id
-	tier   int    // higher = better grounded tool-caller
-	label  string // human family name for the rationale
-}
-
-var familyTiers = []familyTier{
-	// Nano is deliberately below the rest of GPT-4.1. A 16-clip filler eval found that nano
-	// invented an invalid product slug and one false product while mini classified every
-	// identifiable product and correctly abstained on political/news/compilation clips. Without
-	// this specific entry the generic GPT-4.1 match gives both the same tier and cost recommends
-	// nano — optimizing pennies while silently degrading the metadata every filler rule consumes.
-	{"gpt-4.1-nano", 2, "GPT-4.1 nano"},
-	// Tier 3 — top grounded reasoners.
-	{"gpt-4o", 3, "GPT-4o"},
-	{"gpt-4.1", 3, "GPT-4.1"},
-	{"claude-sonnet", 3, "Claude Sonnet"},
-	{"claude-3.5-sonnet", 3, "Claude 3.5 Sonnet"},
-	{"gemini-2.5-pro", 3, "Gemini 2.5 Pro"},
-	{"gemini-1.5-pro", 3, "Gemini 1.5 Pro"},
-	// Tier 2 — strong, cheaper workhorses (the sweet spot for a per-job suggester).
-	{"claude-haiku", 2, "Claude Haiku"},
-	{"claude-3.5-haiku", 2, "Claude 3.5 Haiku"},
-	{"gemini-2.5-flash", 2, "Gemini 2.5 Flash"},
-	{"gemini-1.5-flash", 2, "Gemini Flash"},
-	{"llama-3.3", 2, "Llama 3.3"},
-	{"llama-3.1", 2, "Llama 3.1"},
-	{"qwen3", 2, "Qwen3"},
-	{"qwen-2.5", 2, "Qwen 2.5"},
-	{"mistral-large", 2, "Mistral Large"},
-	// Tier 1 — capable but less proven for grounded JSON tool-use.
-	{"mixtral", 1, "Mixtral"},
-	{"gemma", 1, "Gemma"},
-}
-
-// tierOf returns the curated quality tier + family label for a model id (0 / "" if
-// the family isn't tiered — such a model is still shown, just unranked).
-func tierOf(id string) (int, string) {
-	lid := strings.ToLower(id)
-	for _, ft := range familyTiers {
-		if strings.Contains(lid, ft.family) {
-			return ft.tier, ft.label
-		}
-	}
-	return 0, ""
-}
-
-// LiveModels fetches the provider's CURRENT models from {baseURL}/models and RANKS
-// them by rules derived from the live metadata (§8.1) — NOT from hardcoded ids, so
-// recommendations stay good as the catalog turns over:
+// LiveModels fetches the provider's CURRENT models from {baseURL}/models and
+// projects advertised capabilities without inferring semantic quality:
 //
 //  1. HARD FILTER: exclude batch-only variants because Loomarr uses synchronous chat
 //     completions. When metadata is rich, also keep only models the provider says
 //     support tool-calling — grounding is impossible without it.
-//  2. RANK: curated quality tier first, then cost within a tier; context length
-//     breaks ties. Exactly one tiered model is marked Recommended, while other
-//     tiered models retain rule-derived rationales for the guided alternatives.
+//  2. PRESERVE provider order and capabilities. Only an exact model selected by a
+//     certified RolePolicySnapshot may acquire Recommended/Why elsewhere.
 //
 // When the provider returns THIN metadata (just ids — OpenAI/Groq/Gemini's /models),
-// the rules can't rank, so it degrades gracefully to the live id list unranked (still
-// current, just no "recommended" flags). On any fetch failure it returns the tiny
+// Loomarr degrades gracefully to the live id list without capability claims. On any
+// fetch failure it returns the tiny
 // curated Fallback with live=false so the UI is never empty.
 func (hp HostedProvider) LiveModels(ctx context.Context, apiKey string) (models []HostedModel, live bool) {
 	metas, err := fetchModels(ctx, hp.BaseURL, apiKey, hp.Key == "openrouter")
@@ -274,7 +172,7 @@ func (hp HostedProvider) LiveModels(ctx context.Context, apiKey string) (models 
 
 	// Does this provider expose capability metadata at all? If NONE of the models
 	// advertise supported_parameters, it's a thin provider — don't hard-filter
-	// (we'd drop everything) or rank on absent data.
+	// (we'd drop everything) or infer capabilities from absent data.
 	rich := false
 	for _, m := range metas {
 		if len(m.SupportedP) > 0 || len(m.Architecture.InputModalities) > 0 || len(m.Architecture.OutputModalities) > 0 {
@@ -291,67 +189,11 @@ func (hp HostedProvider) LiveModels(ctx context.Context, apiKey string) (models 
 		return models, live
 	}
 
-	// Rich provider: keep tool-capable models, then rank for the USE CASE — best
-	// grounded tool-caller first, not merely cheapest:
-	//   1. quality TIER (curated by family) descending — the durable judgment,
-	//   2. cost ascending within a tier — cheaper of two equally-good families,
-	//   3. bigger context as a final tie-break.
-	// A tool-capable model with no tier (tier 0) sorts AFTER all tiered ones, so the
-	// recommended set is always quality-first; untiered models remain selectable.
-	var capable []modelMeta
+	// Rich provider: retain every model usable by at least one Loomarr role in the
+	// order the provider returned. OpenRouter is already queried in its live
+	// popularity order; Loomarr must not overwrite it with stale family lore.
 	for _, m := range metas {
-		if m.supportsTools() {
-			capable = append(capable, m)
-		}
-	}
-	if len(capable) == 0 {
-		// No tool-capable model advertised — unusual, but don't hide everything.
-		capable = metas
-	}
-	slices.SortStableFunc(capable, func(a, b modelMeta) int {
-		ta, _ := tierOf(a.ID)
-		tb, _ := tierOf(b.ID)
-		if ta != tb {
-			return tb - ta // higher tier first
-		}
-		if ca, cb := a.costPerMTok(), b.costPerMTok(); ca != cb {
-			if ca < cb {
-				return -1
-			}
-			return 1
-		}
-		return b.Context - a.Context
-	})
-
-	// Recommend the top model — but ONLY a tiered model (tier > 0). We never star an
-	// untiered model just because it floated up: "recommended" must mean "a family
-	// we vouch for for grounding", not "cheapest capable-looking". Other tiered
-	// models keep their rationale so the UI can explain its short alternatives.
-	recommended := false
-	seen := make(map[string]struct{}, len(metas))
-	for _, m := range capable {
-		tier, fam := tierOf(m.ID)
-		hm := HostedModel{
-			ID: m.ID, Label: labelOf(m), Tools: m.supportsTools(),
-			Vision: m.supportsVision(), Video: m.supportsVideo(), Transcription: m.supportsTranscription(),
-		}
-		if tier > 0 {
-			hm.Why = whyFor(m, fam)
-			if !recommended {
-				hm.Recommended = true
-				recommended = true
-			}
-		}
-		models = append(models, hm)
-		seen[m.ID] = struct{}{}
-	}
-	// Preserve models for the other two role pickers. They remain after the ranked
-	// lineup choices and are filtered by authoritative capability in the UI.
-	for _, m := range metas {
-		if _, ok := seen[m.ID]; ok {
-			continue
-		}
-		if !m.supportsVision() && !m.supportsVideo() && !m.supportsTranscription() {
+		if !m.supportsTools() && !m.supportsVision() && !m.supportsVideo() && !m.supportsTranscription() {
 			continue
 		}
 		models = append(models, HostedModel{
@@ -360,24 +202,6 @@ func (hp HostedProvider) LiveModels(ctx context.Context, apiKey string) (models 
 		})
 	}
 	return models, live
-}
-
-// whyFor builds a rationale: the curated family (the quality signal) + live cost /
-// context. The family is the durable "why this is good"; cost/context are live.
-func whyFor(m modelMeta, family string) string {
-	var parts []string
-	if family != "" {
-		parts = append(parts, family+" — strong grounded tool-caller")
-	} else {
-		parts = append(parts, "tool-calling")
-	}
-	if cost := m.costPerMTok(); !math.IsInf(cost, 1) {
-		parts = append(parts, fmt.Sprintf("~$%.2f/1M tokens", cost))
-	}
-	if m.Context >= 100_000 {
-		parts = append(parts, fmt.Sprintf("%dk context", m.Context/1000))
-	}
-	return strings.Join(parts, ", ")
 }
 
 func labelOf(m modelMeta) string {

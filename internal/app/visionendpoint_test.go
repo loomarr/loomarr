@@ -64,6 +64,9 @@ func TestVisionEndpoint_InheritsTheSelectedProvidersNamespacedKey(t *testing.T) 
 	if v.provider != "openai" {
 		t.Errorf("wire provider = %q, want openai-compatible", v.provider)
 	}
+	if v.identity != "openrouter" {
+		t.Errorf("provider identity = %q, want openrouter attribution", v.identity)
+	}
 }
 
 // ⚠ THE SECURITY PROPERTY. Naming a vision provider must not send the operator's hosted key to

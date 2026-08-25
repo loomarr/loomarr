@@ -3282,7 +3282,8 @@ from the display path, rather than carrying dead fields that read as capability.
 
 #### Settings + AI-page implications (V45 — governed by `docs/config-design.md`)
 
-⚠ **The system has three model roles:** text, vision, and audio/transcription. They may share one
+⚠ **V61/V62 supersede this manual three-role surface with five automatic role routes.** The
+historical implementation has three model roles: text, vision, and audio/transcription. They may share one
 hosted OpenAI-compatible provider (including OpenRouter) while keeping separate model ids because
 their modalities differ. Local transcription remains the bundled whisper path; there is no
 embedding role.
@@ -3455,6 +3456,48 @@ exceptions only**, each asking one plain question and showing the decisive evide
 Automatic admits/rejects belong to Activity; queued/running/retry/provider/budget state belongs to
 Diagnostics. Overview answers whether filler is working and offers one ranked action only when one
 exists. Ordinary maintenance never asks a person to interpret confidence thresholds.
+
+#### Certified role routing and evaluation accounting (V62)
+
+V61's five roles are one versioned Go-owned **inference policy**, not five independent settings:
+`lineup`, `filler_text`, `filler_frames`, `filler_video`, and `transcription`. Its small interface
+resolves a role to one concrete model/provider route plus capability, privacy, fallback, and budget
+constraints. The compatibility snapshot proves that a route accepts the required modality and
+structured-output parameters; the admission certification artifact separately proves measured
+quality. A compatibility result alone never authorizes unattended admission.
+
+The last fully certified policy is the automatic default. Until one exists for a role, Loomarr
+retains the currently configured compatible route but labels it unverified and cannot expand
+unattended admission through that role. Manual model/provider selection moves under **Advanced
+overrides**. An override is explicit operator intent, is recorded in every evaluation, and does not
+inherit the certified label. A missing or incompatible route is an operational hold with a recovery
+action, never a semantic verdict. The live model catalog remains useful for override discovery but
+does not rank unknown families by a stale global quality tier; only an exact model named by the
+versioned role policy can be recommended.
+
+Every inference adapter returns one provider-neutral attribution envelope with its semantic output.
+The envelope records requested and resolved model/provider identities, modalities, prompt,
+completion, reasoning, cached/cache-write, and media token categories when returned, exact
+provider-reported charge and currency, latency, attempts, and provider generation id. OpenRouter
+requests opt into routing metadata and record the selected upstream endpoint; `usage.cost` is the
+billing fact. Missing provider facts remain missing rather than being estimated. Local price
+estimation is a separate value tied to the run's immutable price snapshot. Aggregate Prometheus
+token counters continue unchanged and never encode a price.
+
+Evaluation accounting is durable state with one atomic reservation-to-settlement transition; after
+settlement the row is immutable. One row owns the clip/evidence identity, role
+and cascade rung, derivative byte/duration/pixel bounds, the attribution envelope, prompt/schema/
+extractor/taxonomy/admission-policy and role-policy versions, price snapshot and estimated charge,
+retry reason, and terminal operational outcome. Exact decimal charge text and an integer
+nanodollar projection are retained together so historical records neither drift with current prices
+nor accumulate binary floating-point error. Per-clip, UTC-day, and certification-run ledgers reserve
+budget before a call and settle it from the returned charge; shared-appliance inference is serial by
+default so concurrent reservations cannot overspend. Exhaustion leaves the evaluation held and
+recoverable.
+
+The deterministic evaluation cache identity includes the clip/evidence, extractor, prompt/schema,
+concrete model/provider and role/capability policy, taxonomy, admission policy, modality, and bounded
+derivative dimensions. A change to any semantic input cannot reuse an older answer accidentally.
 
 **Loudness normalisation — SPECIFIED, NOT YET BUILT.** Clips filed automatically should be
 normalised to **−16 LUFS** on the ingest path: filler is cut together from sources recorded

@@ -10,6 +10,7 @@ import (
 	"mime"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/httpx"
 	"github.com/loomarr/loomarr/internal/metrics"
@@ -28,10 +29,11 @@ import (
 // malformed output. Tool-calling IS required (grounding depends on it): a model
 // that doesn't emit tool_calls fails grounding, which the §13 wizard check flags.
 type OpenAI struct {
-	baseURL string // includes the API root, e.g. https://api.openai.com/v1
-	apiKey  string
-	model   string
-	http    *http.Client
+	baseURL  string // includes the API root, e.g. https://api.openai.com/v1
+	apiKey   string
+	model    string
+	provider string // branded route identity (openrouter, custom, openai)
+	http     *http.Client
 }
 
 // decodeOpenAIJSON preserves ordinary JSON syntax errors while turning the common "wrong API
@@ -57,11 +59,23 @@ func decodeOpenAIJSON(resp *http.Response, out any, operation string) error {
 // (".../v1"); a trailing "/v1" is NOT auto-appended — point LLM_URL at the exact
 // base the endpoint documents (hosted: https://…/v1; local: http://ollama:11434/v1).
 func NewOpenAI(baseURL, model, apiKey string) *OpenAI {
+	return NewOpenAIForProvider("openai", baseURL, model, apiKey)
+}
+
+// NewOpenAIForProvider retains the branded provider identity while using the
+// shared OpenAI-compatible wire adapter. OpenRouter needs that identity to opt in
+// to routing metadata and interpret usage.cost as a USD billing fact.
+func NewOpenAIForProvider(provider, baseURL, model, apiKey string) *OpenAI {
+	provider = strings.TrimSpace(provider)
+	if provider == "" {
+		provider = "openai"
+	}
 	return &OpenAI{
-		baseURL: strings.TrimRight(baseURL, "/"),
-		apiKey:  apiKey,
-		model:   model,
-		http:    httpx.NewNamed("llm", httpx.TimeoutLLM),
+		baseURL:  strings.TrimRight(baseURL, "/"),
+		apiKey:   apiKey,
+		model:    model,
+		provider: provider,
+		http:     httpx.NewNamed("llm", httpx.TimeoutLLM),
 	}
 }
 
@@ -113,6 +127,8 @@ type openaiTool struct {
 }
 
 type openaiChatResp struct {
+	ID      string `json:"id"`
+	Model   string `json:"model"`
 	Choices []struct {
 		Message openaiMessage `json:"message"`
 	} `json:"choices"`
@@ -121,14 +137,43 @@ type openaiChatResp struct {
 	} `json:"error"`
 	// Token accounting (§17): the OpenAI-compatible usage block. Absent on a
 	// provider that omits it ⇒ zero ⇒ LLMTokens skips it.
-	Usage struct {
-		PromptTokens     int `json:"prompt_tokens"`
-		CompletionTokens int `json:"completion_tokens"`
-	} `json:"usage"`
+	Usage              openAIUsage        `json:"usage"`
+	OpenRouterMetadata openRouterMetadata `json:"openrouter_metadata"`
+}
+
+type openAIUsage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	PromptDetails    struct {
+		CachedTokens     int `json:"cached_tokens"`
+		CacheWriteTokens int `json:"cache_write_tokens"`
+		AudioTokens      int `json:"audio_tokens"`
+		ImageTokens      int `json:"image_tokens"`
+		VideoTokens      int `json:"video_tokens"`
+	} `json:"prompt_tokens_details"`
+	CompletionDetails struct {
+		ReasoningTokens int `json:"reasoning_tokens"`
+		AudioTokens     int `json:"audio_tokens"`
+		ImageTokens     int `json:"image_tokens"`
+		VideoTokens     int `json:"video_tokens"`
+	} `json:"completion_tokens_details"`
+	Cost json.Number `json:"cost"`
+}
+
+type openRouterMetadata struct {
+	Attempt   int `json:"attempt"`
+	Endpoints struct {
+		Available []struct {
+			Model    string `json:"model"`
+			Provider string `json:"provider"`
+			Selected bool   `json:"selected"`
+		} `json:"available"`
+	} `json:"endpoints"`
 }
 
 // Chat implements Provider against /v1/chat/completions.
 func (o *OpenAI) Chat(ctx context.Context, messages []Message, opts ChatOptions) (Response, error) {
+	started := time.Now()
 	req := openaiChatReq{
 		Model:       o.model,
 		Messages:    toOpenAIMessages(messages),
@@ -152,6 +197,7 @@ func (o *OpenAI) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 		return Response{}, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	o.addMetadataHeader(httpReq)
 	if o.apiKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
 	}
@@ -188,7 +234,57 @@ func (o *OpenAI) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 	return Response{
 		Content:   msg.Content,
 		ToolCalls: fromOpenAIToolCalls(msg.ToolCalls),
+		Attribution: attributionFromWire(o.provider, o.model, out.ID, out.Model, out.Usage,
+			out.OpenRouterMetadata, "", []string{"text"}, time.Since(started)),
 	}, nil
+}
+
+func (o *OpenAI) addMetadataHeader(req *http.Request) {
+	if o.provider == "openrouter" {
+		req.Header.Set("X-OpenRouter-Metadata", "enabled")
+	}
+}
+
+func attributionFromWire(requestedProvider, requestedModel, generationID, reportedModel string,
+	usage openAIUsage, metadata openRouterMetadata, pinnedProvider string, modalities []string,
+	latency time.Duration,
+) Attribution {
+	resolvedModel := strings.TrimSpace(reportedModel)
+	if resolvedModel == "" {
+		resolvedModel = requestedModel
+	}
+	resolvedProvider := strings.TrimSpace(pinnedProvider)
+	for _, endpoint := range metadata.Endpoints.Available {
+		if endpoint.Selected {
+			resolvedProvider = endpoint.Provider
+			break
+		}
+	}
+	if resolvedProvider == "" && requestedProvider != "openrouter" {
+		resolvedProvider = requestedProvider
+	}
+	attempts := metadata.Attempt
+	if attempts < 1 {
+		attempts = 1
+	}
+	a := Attribution{
+		RequestedModel: requestedModel, ResolvedModel: resolvedModel,
+		RequestedProvider: requestedProvider, ResolvedProvider: resolvedProvider,
+		Modalities: append([]string(nil), modalities...),
+		Tokens: TokenUsage{
+			Prompt: usage.PromptTokens, Completion: usage.CompletionTokens,
+			Reasoning: usage.CompletionDetails.ReasoningTokens,
+			Cached:    usage.PromptDetails.CachedTokens, CacheWrite: usage.PromptDetails.CacheWriteTokens,
+			Image: usage.PromptDetails.ImageTokens + usage.CompletionDetails.ImageTokens,
+			Audio: usage.PromptDetails.AudioTokens + usage.CompletionDetails.AudioTokens,
+			Video: usage.PromptDetails.VideoTokens + usage.CompletionDetails.VideoTokens,
+		},
+		Latency: latency, Attempts: attempts, GenerationID: generationID,
+	}
+	if requestedProvider == "openrouter" && usage.Cost.String() != "" {
+		a.Charge = &Money{Amount: usage.Cost.String(), Currency: "USD"}
+	}
+	return a
 }
 
 func toOpenAIMessages(msgs []Message) []openaiMessage {
@@ -263,6 +359,7 @@ func (o *OpenAI) AskAboutImages(ctx context.Context, prompt string, jpegs [][]by
 	if len(jpegs) == 0 {
 		return Response{}, fmt.Errorf("vision request carries no images")
 	}
+	started := time.Now()
 
 	// text prompt first, then one image_url part per keyframe — the order the spec shows.
 	parts := make([]visionPart, 0, len(jpegs)+1)
@@ -287,6 +384,7 @@ func (o *OpenAI) AskAboutImages(ctx context.Context, prompt string, jpegs [][]by
 		return Response{}, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	o.addMetadataHeader(httpReq)
 	if o.apiKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
 	}
@@ -317,7 +415,11 @@ func (o *OpenAI) AskAboutImages(ctx context.Context, prompt string, jpegs [][]by
 		return Response{}, fmt.Errorf("vision chat: no choices")
 	}
 	metrics.LLMTokens(out.Usage.PromptTokens, out.Usage.CompletionTokens) // §17: no-op on 0
-	return Response{Content: strings.TrimSpace(out.Choices[0].Message.Content)}, nil
+	return Response{
+		Content: strings.TrimSpace(out.Choices[0].Message.Content),
+		Attribution: attributionFromWire(o.provider, o.model, out.ID, out.Model, out.Usage,
+			out.OpenRouterMetadata, "", []string{"text", "image"}, time.Since(started)),
+	}, nil
 }
 
 var _ Provider = (*OpenAI)(nil)

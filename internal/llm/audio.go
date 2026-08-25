@@ -9,6 +9,9 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
+
+	"github.com/loomarr/loomarr/internal/metrics"
 )
 
 // Audio input over the OpenAI-compatible chat API (§8.1, for §10 V40's language gate).
@@ -76,10 +79,11 @@ type audioPartAudio struct {
 // It deliberately does NOT use the Provider interface: that models a tool-calling chat loop, and
 // this is a single stateless question whose answer is one word. Reusing it would mean satisfying
 // Tools/JSONMode/streaming for a call that wants none of them.
-func (o *OpenAI) AskAboutAudio(ctx context.Context, req AudioRequest) (string, error) {
+func (o *OpenAI) AskAboutAudio(ctx context.Context, req AudioRequest) (Response, error) {
 	if len(req.Audio) == 0 {
-		return "", fmt.Errorf("audio request carries no audio")
+		return Response{}, fmt.Errorf("audio request carries no audio")
 	}
+	started := time.Now()
 	model := req.Model
 	if model == "" {
 		model = o.model
@@ -104,22 +108,23 @@ func (o *OpenAI) AskAboutAudio(ctx context.Context, req AudioRequest) (string, e
 		}},
 	})
 	if err != nil {
-		return "", fmt.Errorf("marshal audio request: %w", err)
+		return Response{}, fmt.Errorf("marshal audio request: %w", err)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		o.baseURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
-		return "", err
+		return Response{}, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	o.addMetadataHeader(httpReq)
 	if o.apiKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
 	}
 
 	resp, err := o.http.Do(httpReq)
 	if err != nil {
-		return "", fmt.Errorf("audio chat: %w", err)
+		return Response{}, fmt.Errorf("audio chat: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -128,18 +133,23 @@ func (o *OpenAI) AskAboutAudio(ctx context.Context, req AudioRequest) (string, e
 		// operator's to fix and are indistinguishable from a bare status code.
 		var buf bytes.Buffer
 		_, _ = buf.ReadFrom(io.LimitReader(resp.Body, 512))
-		return "", fmt.Errorf("audio chat: status %d: %s", resp.StatusCode, strings.TrimSpace(buf.String()))
+		return Response{}, fmt.Errorf("audio chat: status %d: %s", resp.StatusCode, strings.TrimSpace(buf.String()))
 	}
 
 	var out openaiChatResp
 	if err := decodeOpenAIJSON(resp, &out, "audio response"); err != nil {
-		return "", err
+		return Response{}, err
 	}
 	if out.Error != nil {
-		return "", fmt.Errorf("audio chat: %s", out.Error.Message)
+		return Response{}, fmt.Errorf("audio chat: %s", out.Error.Message)
 	}
 	if len(out.Choices) == 0 {
-		return "", fmt.Errorf("audio chat: no choices")
+		return Response{}, fmt.Errorf("audio chat: no choices")
 	}
-	return strings.TrimSpace(out.Choices[0].Message.Content), nil
+	metrics.LLMTokens(out.Usage.PromptTokens, out.Usage.CompletionTokens)
+	return Response{
+		Content: strings.TrimSpace(out.Choices[0].Message.Content),
+		Attribution: attributionFromWire(o.provider, model, out.ID, out.Model, out.Usage,
+			out.OpenRouterMetadata, "", []string{"text", "audio"}, time.Since(started)),
+	}, nil
 }
