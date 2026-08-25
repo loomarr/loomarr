@@ -88,6 +88,7 @@ func TestVerifyCIImpactActivation(t *testing.T) {
       impact_e2e: ${{ steps.impact.outputs.e2e }}
       impact_tuner: ${{ steps.impact.outputs.tuner }}
       impact_apple_mobile: ${{ steps.impact.outputs.apple_mobile }}
+      impact_apple_tv: ${{ steps.impact.outputs.apple_tv }}
   store-postgres:
     needs: changes
     if: needs.changes.outputs.impact_postgres == 'true'
@@ -104,7 +105,7 @@ func TestVerifyCIImpactActivation(t *testing.T) {
       - run: make client-apple-simulator CLIENT_APP=mobile
   apple-tv:
     needs: changes
-    if: needs.changes.outputs.clients == 'true'
+    if: needs.changes.outputs.impact_apple_tv == 'true'
     steps:
       - run: make client-apple-simulator CLIENT_APP=tv
 `
@@ -155,8 +156,21 @@ func TestVerifyCIImpactActivation(t *testing.T) {
 			1,
 		),
 		"detached Apple mobile output": strings.Replace(workflow, "steps.impact.outputs.apple_mobile", "steps.filter.outputs.clients", 1),
-		"Apple mobile runs tvOS":       strings.Replace(workflow, "CLIENT_APP=mobile", "CLIENT_APP=tv", 1),
-		"Apple tv runs mobile":         strings.Replace(workflow, "CLIENT_APP=tv", "CLIENT_APP=mobile", 1),
+		"legacy Apple TV selector": strings.Replace(
+			workflow,
+			"needs.changes.outputs.impact_apple_tv == 'true'",
+			"needs.changes.outputs.clients == 'true'",
+			1,
+		),
+		"detached Apple TV output": strings.Replace(workflow, "steps.impact.outputs.apple_tv", "steps.filter.outputs.clients", 1),
+		"broadened Apple TV selector": strings.Replace(
+			workflow,
+			"needs.changes.outputs.impact_apple_tv == 'true'",
+			"needs.changes.outputs.impact_apple_tv == 'true' || needs.changes.outputs.release_candidate == 'true'",
+			1,
+		),
+		"Apple mobile runs tvOS": strings.Replace(workflow, "CLIENT_APP=mobile", "CLIENT_APP=tv", 1),
+		"Apple tv runs mobile":   strings.Replace(workflow, "CLIENT_APP=tv", "CLIENT_APP=mobile", 1),
 		"restored Apple matrix": strings.Replace(
 			workflow,
 			"  apple-mobile:\n    needs: changes",

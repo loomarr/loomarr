@@ -28,7 +28,7 @@ graph LR
   C -->|"web/, Makefile"| F
   C -->|"Expo apps and shared packages"| CJS
   C -->|"fail-closed Apple mobile impact"| AM
-  C -->|"legacy client family"| AT
+  C -->|"fail-closed Apple TV impact"| AT
   C -->|"fail-closed visual ∪ e2e impact"| W
   C -->|"fail-closed tuner impact"| T
   C -->|"docs/, README, docs-site/"| D
@@ -94,11 +94,10 @@ shipping Web runtime source remains tuner-sensitive because the matrix loads the
 controller; unit, spec, and story-only modules may skip it. Tuner e2e inputs, browser build
 configuration, shared API/core/fixture packages, runtime tokens, and OpenAPI select it explicitly.
 
-Apple mobile is the fourth active decision and the first native split. iOS and tvOS are separate
-top-level jobs with hard-coded app commands and independent required results. iOS consumes
-`impact_apple_mobile`; tvOS deliberately retains the legacy shared-client selector until its own
-reversible activation. Existing cache-key strings are preserved so splitting job identity does not
-discard compatible pnpm, CocoaPods, or ExpoModulesJSI entries.
+Apple mobile is the fourth active decision and Apple TV is the fifth. iOS and tvOS are separate
+top-level jobs with hard-coded app commands, dedicated impact selectors, and independent required
+results. Existing cache-key strings are preserved so splitting job identity does not discard
+compatible pnpm, CocoaPods, or ExpoModulesJSI entries.
 
 The existing `go`, `web`, `image`, `docs`, `agent`, and `android` outputs remain authoritative for
 every other job while their specialized results are compared with complete CI outcomes. A missing
@@ -120,7 +119,7 @@ iOS, and Expo Android mobile evidence; a TV change selects shared-client, tvOS, 
 Changes to `api`, `core`, `fixtures`, `design-system`, or `ui` select both apps on both native
 platforms because those packages are transitive inputs to both. Browser-only client-proof and
 Turborepo contract changes select the shared JavaScript gate without spending a native runner.
-Apple mobile is active. Apple TV, Expo Android mobile, and Expo Android TV remain observational
+Apple mobile and Apple TV are active. Expo Android mobile and Expo Android TV remain observational
 until each consumes its independently required job and current-main evidence is proven.
 
 ## Per-run measurements

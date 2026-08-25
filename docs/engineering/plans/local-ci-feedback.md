@@ -194,3 +194,8 @@ gate documentation are amended before the first change that alters required beha
   worktree but `go run ./cmd/dev-bootstrap` inherited the caller's checkout. A harness regression
   now records the Go command's working directory, and bootstrap roots all three toolchains in the
   selected worktree before native CI work proceeds.
+- PR #569 merged the Apple split and mobile activation after a refreshed current-main matrix. Its
+  authoritative run took 31.6 minutes end to end and 109.4 occupied runner-minutes; mobile executed
+  for 30.6 minutes and tvOS for 24.3 minutes with negligible queueing. The tvOS follow-up consumes
+  the already-shadowed `apple_tv` decision and adds fail-closed verifier mutations for legacy
+  fallback, detached output, and release-scope broadening without changing manual release scope.

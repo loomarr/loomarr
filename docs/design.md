@@ -6508,8 +6508,7 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   story-only sources may skip tuner, while tuner e2e inputs, browser configuration, shared
   API/core/fixtures, runtime tokens, and OpenAPI select it directly.
   Apple mobile and Apple TV are separate required jobs with app-specific native build, install, and
-  launch commands. Apple mobile consumes its dedicated decision; Apple TV retains the legacy client
-  selector until its own independently reversible activation. Splitting a matrix must preserve
+  launch commands, and each consumes its dedicated decision. Splitting a matrix must preserve
   compatible cache-key identities and must preserve each native result as a separate aggregate
   dependency.
 - **State machine:** every transition + the five invariants.
