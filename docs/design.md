@@ -197,7 +197,7 @@ flowchart TD
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
-- **`filleradmission`**
+- **`filleradmission`** · 3 importers
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
 - **`fillereval`**
   Owns the hermetic certification contract for filler admission.
@@ -218,6 +218,8 @@ flowchart TD
 
 **Layer 1**
 
+- **`fillerdecision`** · 3 importers · → `filleradmission`
+  Owns the durable lifecycle and operator projections for filler-admission results.
 - **`prepared`** · 3 importers · → `diagnostics`, `media`
   Owns immutable, reusable playout publications.
 - **`schedule`** · 14 importers · → `provision`
@@ -266,7 +268,7 @@ flowchart TD
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`library`** · 7 importers · → `filler`, `httpx`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`store`** · 14 importers · → `diagnostics`, `filler`, `provision`, `schedule`, `taxonomy`
+- **`store`** · 14 importers · → `diagnostics`, `filler`, `filleradmission`, `fillerdecision`, `provision`, `schedule`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 **Layer 8**
@@ -312,12 +314,12 @@ flowchart TD
 
 **Layer 11**
 
-- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `diagnostics`, `events`, `filler`, `images`, `media`, `metrics`, `playout`, `prepared`, `proposalworkflow`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `images`, `media`, `metrics`, `playout`, `prepared`, `proposalworkflow`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 **Layer 12**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `diagnostics`, `events`, `filler`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `diagnostics`, `events`, `filler`, `fillerdecision`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -867,6 +869,11 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | GET | `/v1/filler/media/{path...}` | Stream a clip's own bytes for in-app preview (§10 V35). The path is resolved inside `FILLER_DIR` and anything escaping it is refused before the file is opened. Served with `http.ServeContent`, so Range and conditional requests work and a `<video>` element can seek. ⚠ **Deliberately not named `preview`**: "preview" already means a pod listing in two places (build plan §6.2). ⚠ It had two siblings serving a clip's still and hover loop; both were **retired in V52 phase 8** (§22) — artwork is image-service content now, addressed by content hash and served from `/v1/images/{hash}`. This route survives because a clip's own bytes are not an image. |
 | GET | `/v1/filler/pool` | Catalog-wide filler health (§10 V35) — how well the catalog can actually resolve breaks, plus what is thin. ⚠ **Computed over the same pools pod assembly uses** (`internal/filler`), never a second implementation: a meter that agrees today and drifts next quarter is worse than none, which is why the per-channel `/v1/channels/{id}/filler/coverage` was built the same way. |
 | GET | `/v1/filler/readiness` | Member-readable filler readiness: one server-ranked next action plus fetch ceilings, disjoint pipeline ownership counts, channel coverage with usable duration and grounded variety, and bounded recent acquisition runs. The browser renders this decision; it does not reproduce the priority rule. Acquisition runs preserve their source/pull attribution and terminal outcome across restart, while rejected/dismissed audit remains distinct from failures with an explicit retry or restore action. |
+| GET | `/v1/filler/decisions/overview` | Member-readable, server-owned admission health: semantic and operational counts plus at most one ranked next action. Clients never derive health or priority from the detail feeds (§10 V63). |
+| GET | `/v1/filler/decisions/reviews` | Admin-only bounded page of unresolved semantic exceptions. Every row has exactly one plain review question and only the decisive reason codes, evidence references, and conflicts (§10 V63). |
+| GET | `/v1/filler/decisions/activity` | Member-readable bounded audit of automatic decisions and human actions. Automatic admission, automatic rejection, correction, restore, and reversal remain distinct event kinds (§10 V63). |
+| GET | `/v1/filler/decisions/diagnostics` | Admin-only bounded operational holds. Returns stable recovery codes and redacted details; queued/running/retry/provider/budget state never appears in the human review feed (§10 V63). |
+| POST | `/v1/filler/decisions/{id}/actions` | Resolve, correct, restore, or reverse one durable decision (admin). The request names a closed action kind and records actor, reason, and optional corrected answer as an append-only event; it never rewrites evaluator evidence (§10 V63). |
 | GET/POST | `/v1/filler/sources` | List sources, or add one (admin, §10 V35/V37/V38c). **One flat list, one row per source.** A POST carries `{kind, uri, label?}` — ⚠ `kind` is required and validated **per kind** (an archive identifier, a YouTube playlist URL, an absolute folder path and a media-server library name are not interchangeable). ⚠ **V38c: `folder` and `library` are ADDABLE and no longer singletons** — many watched folders and many scanned libraries are supported, so the partial unique index and the 409 that enforced one-of-each are both gone. |
 | PATCH/DELETE | `/v1/filler/sources/{id}` | Enable/disable, tune, or remove a source (admin, §10 V35, extended V38c/V57). ⚠ Disabling withdraws a source from future scanning, searching and downloading — **it never removes clips already in the catalog**, and the enforcement lives at those three sites rather than in the UI. `autoAdmit` is the source's separate catalog-admission policy: grounded clips at or above the global confidence threshold may be filed automatically when it is true; false leaves every arrival from that source held for review. It defaults true on upgrade to preserve the existing grounded workflow and is always an additional gate, never a bypass around grounding. The PATCH body also carries the per-source fetch overrides: ⚠ `fetchEverySeconds` is **three-state** — omit/`null` inherits the global, `0` means *never auto-fetch this source*, a positive value is an interval. `fetchMaxPerRun` has a **minimum of 1**, because "fetch nothing per run" is what `fetchEverySeconds: 0` already says and saying it twice invites the two to disagree. |
 | GET | `/v1/filler/watch` | **The Filler header's live status (§10 V38c/V55).** Returns `{health, sourcesOn, sourcesTotal, clips, lastScanAt?, autoFetch?}` — everything the page header renders, computed on the SERVER. `autoFetch` names whether fetching is enabled, the current catalog/disk measurements and ceilings, and the ceiling currently stopping it (`catalog` or `disk`); it is current state, not merely the last scheduler result, so a removal or settings change clears the warning immediately. ⚠ **`health` is `healthy` / `attention` / `unconfigured`, and the server owns that judgement.** Deriving it in the client was tried first and rejected for two reasons: the rule ("all sources dark", "nothing has arrived in days") is real domain logic that belongs where it can be tested against the store rather than against a hand-built fixture array, and `/v1/filler/sources` is **admin-only** — so a member's pill would have been permanently grey while their channels played fine. ⚠ **Member-readable**, like `/pool` and the catalog listing, and for the same reason: it explains what the channels are doing. It names no filesystem paths or library targets, which is what keeps it safe to widen — the counts and the verdict, never the infrastructure. |
@@ -3540,6 +3547,53 @@ The deterministic evaluation cache identity includes the clip/evidence, extracto
 concrete model/provider and role/capability policy, taxonomy, admission policy, modality, and bounded
 derivative dimensions. A change to any semantic input cannot reuse an older answer accidentally.
 
+#### Durable admission audit and operator projections (V63)
+
+`fillerdecision` is the single lifecycle owner between the pure V61 evaluator and operator-facing
+reads. It accepts a canonical evaluator result, persists it before it can affect a catalog, and
+returns a durable decision id. A semantic decision and an operational hold use one envelope but
+remain disjoint states; a provider, schema, extraction, or budget failure cannot enter the semantic
+review queue by changing labels in an API handler.
+
+The original decision row is immutable and stores the clip and evidence identities, complete
+canonical V61 result, policy/schema/taxonomy lineage, creation time, and the inference-evaluation
+references whose exact usage and cost live in V62 accounting. Human resolution, correction,
+restore, and reversal are append-only action rows. They name a closed action kind, actor, reason,
+time, and optional corrected answer, and point to the action they supersede when relevant. History
+therefore distinguishes an automatic admission from a reviewed admission, a rejection from an
+operational failure, and a correction from a later reversal without overwriting the evidence that
+caused the original result.
+
+The store exposes one conformance contract over SQLite and Postgres. Insertion is idempotent by
+decision id and rejects a different payload under the same id. Decision plus first action is
+transactional where an operation requires both. Reads use bounded keyset pagination with a stable
+`(created_at, id)` order; decision/action time retains nanoseconds so two transitions in one second
+cannot be reordered by random ids. Counts are computed by the same predicates as their rows. Startup
+needs no queue repair because decisions and actions are not leased work. Forward migrations add the
+tables and indexes; applied migrations remain immutable.
+
+Four projections are owned by `fillerdecision`, not by clients:
+
+- **Overview** reports the latest durable outcome per clip, semantic and operational counts, and at
+  most one ranked next action. A later successful decision clears an older operational hold from
+  current health without erasing it from Activity. An
+  operational failure that prevents all progress ranks first, followed by a recoverable hold,
+  semantic review, an empty admitted pool, then no action.
+- **Needs attention** contains only the latest unresolved `review` decision per clip, each with exactly one non-empty
+  question and its decisive reason codes, evidence references, and conflicts. Queued work, retries,
+  and provider or budget holds are structurally ineligible.
+- **Activity** is the bounded audit of automatic decisions and append-only operator actions.
+- **Diagnostics** contains each clip's latest operational hold with stable recovery codes and retryability. Provider
+  response text, local paths, raw prompts, and evidence locations are never projected.
+
+Overview and Activity follow the existing member-readable filler contract. Needs attention,
+Diagnostics, and every action require an admin; member attempts return 403 and create no action.
+The API never returns raw evidence sources or locations, provider response bodies, or secrets. A
+review action requires the current unresolved review and is idempotent under its action id; stale or
+duplicate conflicting actions fail closed. Automatic catalog filing remains behind the existing
+compatibility gate until V61 certification explicitly enables a slice, so durable shadow records do
+not themselves widen unattended behavior.
+
 **Loudness normalisation — SPECIFIED, NOT YET BUILT.** Clips filed automatically should be
 normalised to **−16 LUFS** on the ingest path: filler is cut together from sources recorded
 decades apart, and without it a break swings between a whisper and a shout, which is the single
@@ -5641,7 +5695,7 @@ independently instead of treating every zero-lineup result as a model-quality my
 
 ### 14.2 The package map
 
-`internal/` is **47 flat packages, deliberately** — the grouping below is prose, not directories.
+`internal/` is **48 flat packages, deliberately** — the grouping below is prose, not directories.
 
 Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
 
@@ -5663,6 +5717,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `retention` | What may be purged, in what order, after how long (§5, §18.1) — the policy; `store` owns the SQL |
 | `filler` | Commercials: the clip catalog and seeded pod assembly (§10) |
 | `filleradmission` | Pure evidence-to-`admit \| reject \| review` policy, with conflicts and operational holds kept outside semantic verdicts (§10 V61) |
+| `fillerdecision` | Durable admission lifecycle, append-only actions, and server-owned review/activity/diagnostic projections (§10 V63) |
 | `fillereval` | Hermetic filler-admission certification: versioned corpus contracts, selective-risk/cost scoring, and captured-decision replay (§10 V61) |
 | `mediatools` | The ffmpeg/ffprobe/whisper layer — exec calls, output parsers, and the shapes those tools return (§10). Carved out of `filler`; the dependency runs one way and nothing here knows what a clip is |
 | `taxonomy` | The clip tag vocabulary — the operator-editable graph filler grounds tags against and curation matches over (§10 V45a) |

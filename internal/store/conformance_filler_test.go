@@ -2,12 +2,15 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filleradmission"
+	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
@@ -3234,4 +3237,240 @@ func testFillerInferenceAccountingAndBudgets(t *testing.T, newStore NewStoreFunc
 	if err != nil || got.GenerationID != "gen-1" || got.Versions.RolePolicy != "r1" || len(got.Modalities) != 2 || got.CacheKey == "" {
 		t.Fatalf("inspect evaluation = %+v, %v", got, err)
 	}
+}
+
+func testFillerAdmissionDecisionAudit(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, 8, 25, 5, 0, 0, 0, time.UTC)
+	record := func(id string, result filleradmission.Result) fillerdecision.Record {
+		return fillerdecision.Record{
+			ID: id, ClipHash: "clip-" + id, EvidenceHash: "evidence-" + id,
+			EvidenceVersion: "e1", SchemaVersion: filleradmission.SchemaVersion,
+			PolicyVersion: "policy-1", TaxonomyVersion: "taxonomy-1", Result: result, CreatedAt: at,
+		}
+	}
+	semantic := func(verdict filleradmission.Verdict) filleradmission.Result {
+		decision := &filleradmission.Decision{
+			Verdict: verdict, ReasonCodes: []filleradmission.ReasonCode{filleradmission.ReasonEvidenceSatisfied},
+			EvidenceRefs: []string{"evidence-a"},
+		}
+		if verdict == filleradmission.VerdictReview {
+			decision.ReviewQuestion = "What product is this clip advertising?"
+		}
+		return filleradmission.Result{Decision: decision}
+	}
+
+	for _, row := range []fillerdecision.Record{
+		record("d-admit", semantic(filleradmission.VerdictAdmit)),
+		record("d-reject", semantic(filleradmission.VerdictReject)),
+		record("d-review", semantic(filleradmission.VerdictReview)),
+		record("d-hold", filleradmission.Result{Hold: &filleradmission.Hold{
+			Code: filleradmission.HoldProviderUnavailable, Detail: "provider response is deliberately not projected", Retryable: true,
+		}}),
+	} {
+		if err := s.PutFillerDecision(ctx, row); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := s.GetFillerDecision(ctx, "d-review")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantJSON, _ := json.Marshal(record("d-review", semantic(filleradmission.VerdictReview)).Result)
+	gotJSON, _ := json.Marshal(got.Result)
+	if string(gotJSON) != string(wantJSON) || got.CreatedAt != at {
+		t.Fatalf("decision round trip = %+v (%s), want canonical %s", got, gotJSON, wantJSON)
+	}
+	second := openSecondConformanceStore(t, s)
+	fromSecond, err := second.GetFillerDecision(ctx, "d-review")
+	if err != nil || fromSecond.Result.Decision == nil || fromSecond.Result.Decision.ReviewQuestion == "" {
+		_ = second.Close()
+		t.Fatalf("decision did not survive a fresh store pool: %+v, %v", fromSecond, err)
+	}
+	if err := second.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PutFillerDecision(ctx, record("d-review", semantic(filleradmission.VerdictReview))); err != nil {
+		t.Fatalf("idempotent insert: %v", err)
+	}
+	conflict := record("d-review", semantic(filleradmission.VerdictReject))
+	if err := s.PutFillerDecision(ctx, conflict); !errors.Is(err, fillerdecision.ErrConflict) {
+		t.Fatalf("conflicting immutable insert = %v", err)
+	}
+	missingReference := record("d-missing-inference", semantic(filleradmission.VerdictAdmit))
+	missingReference.Result.Decision.Attribution = []filleradmission.Attribution{{EvaluationID: "eval-missing"}}
+	if err := s.PutFillerDecision(ctx, missingReference); err == nil {
+		t.Fatal("decision with a missing inference evaluation was persisted")
+	}
+	if _, err := s.GetFillerDecision(ctx, missingReference.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("failed decision transaction left a row behind: %v", err)
+	}
+
+	page, err := s.ListFillerDecisions(ctx, fillerdecision.DecisionFilter{
+		Kind: fillerdecision.OutcomeSemantic, Cursor: fillerdecision.Cursor{}, Limit: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 3 || len(page.Rows) != 2 || page.Rows[0].ID != "d-review" || page.Rows[1].ID != "d-reject" {
+		t.Fatalf("first keyset page = %+v", page)
+	}
+	next, err := s.ListFillerDecisions(ctx, fillerdecision.DecisionFilter{
+		Kind:   fillerdecision.OutcomeSemantic,
+		Cursor: fillerdecision.Cursor{BeforeCreatedAt: page.Rows[1].CreatedAt, BeforeID: page.Rows[1].ID}, Limit: 2,
+	})
+	if err != nil || next.Total != 3 || len(next.Rows) != 1 || next.Rows[0].ID != "d-admit" {
+		t.Fatalf("second keyset page = %+v, %v", next, err)
+	}
+
+	counts, err := s.FillerDecisionCounts(ctx)
+	if err != nil || counts.Admitted != 1 || counts.Rejected != 1 || counts.Reviews != 1 ||
+		counts.Operational != 1 || counts.Retryable != 1 || counts.UnresolvedReviews != 1 {
+		t.Fatalf("decision counts = %+v, %v", counts, err)
+	}
+	if err := s.CommitFillerDecisionAction(ctx, fillerdecision.Action{
+		ID: "action-on-current-hold", DecisionID: "d-hold", Kind: fillerdecision.ActionAdmit,
+		ActorID: "admin-1", CreatedAt: at.Add(250 * time.Millisecond),
+	}); !errors.Is(err, fillerdecision.ErrActionNotAllowed) {
+		t.Fatalf("current operational hold accepted a semantic action: %v", err)
+	}
+	// A recovered clip gets a new immutable decision. Current health and diagnostics follow that
+	// latest outcome, while the earlier hold remains durable history for Activity and audit reads.
+	recovered := record("d-recovered", semantic(filleradmission.VerdictAdmit))
+	recovered.ClipHash = "clip-d-hold"
+	recovered.CreatedAt = at.Add(500 * time.Millisecond)
+	if err := s.PutFillerDecision(ctx, recovered); err != nil {
+		t.Fatal(err)
+	}
+	currentHolds, err := s.ListFillerDecisions(ctx, fillerdecision.DecisionFilter{
+		Kind: fillerdecision.OutcomeOperational, CurrentOnly: true, Limit: 10,
+	})
+	if err != nil || currentHolds.Total != 0 || len(currentHolds.Rows) != 0 {
+		t.Fatalf("recovered hold remained in current diagnostics = %+v, %v", currentHolds, err)
+	}
+	historicalHolds, err := s.ListFillerDecisions(ctx, fillerdecision.DecisionFilter{
+		Kind: fillerdecision.OutcomeOperational, Limit: 10,
+	})
+	if err != nil || historicalHolds.Total != 1 || len(historicalHolds.Rows) != 1 {
+		t.Fatalf("recovered hold disappeared from history = %+v, %v", historicalHolds, err)
+	}
+	counts, err = s.FillerDecisionCounts(ctx)
+	if err != nil || counts.Admitted != 2 || counts.Operational != 0 || counts.Retryable != 0 || counts.UnresolvedReviews != 1 {
+		t.Fatalf("recovered current counts = %+v, %v", counts, err)
+	}
+
+	resolution := fillerdecision.Action{
+		ID: "action-admit", DecisionID: "d-review", Kind: fillerdecision.ActionAdmit,
+		ActorID: "admin-1", Reason: "closing card proves product", CreatedAt: at.Add(time.Second),
+	}
+	if err := s.CommitFillerDecisionAction(ctx, resolution); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CommitFillerDecisionAction(ctx, resolution); err != nil {
+		t.Fatalf("idempotent action: %v", err)
+	}
+	changed := resolution
+	changed.Reason = "different payload"
+	if err := s.CommitFillerDecisionAction(ctx, changed); !errors.Is(err, fillerdecision.ErrConflict) {
+		t.Fatalf("conflicting action = %v", err)
+	}
+	if err := s.CommitFillerDecisionAction(ctx, fillerdecision.Action{
+		ID: "action-reject", DecisionID: "d-review", Kind: fillerdecision.ActionReject,
+		ActorID: "admin-1", SupersedesID: resolution.ID, CreatedAt: at.Add(2 * time.Second),
+	}); !errors.Is(err, fillerdecision.ErrActionNotAllowed) {
+		t.Fatalf("invalid transition = %v", err)
+	}
+	reversal := fillerdecision.Action{
+		ID: "action-z-reverse", DecisionID: "d-review", Kind: fillerdecision.ActionReverse,
+		ActorID: "admin-1", Reason: "review answer was later disproven",
+		SupersedesID: resolution.ID, CreatedAt: at.Add(3*time.Second + 100*time.Nanosecond),
+	}
+	if err := s.CommitFillerDecisionAction(ctx, reversal); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CommitFillerDecisionAction(ctx, fillerdecision.Action{
+		ID: "action-a-restore", DecisionID: "d-review", Kind: fillerdecision.ActionRestore,
+		ActorID: "admin-1", Reason: "new evidence restored the reviewed answer",
+		SupersedesID: reversal.ID, CreatedAt: at.Add(3*time.Second + 200*time.Nanosecond),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PutFillerDecision(ctx, record("d-correct", semantic(filleradmission.VerdictReview))); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CommitFillerDecisionAction(ctx, fillerdecision.Action{
+		ID: "action-correct", DecisionID: "d-correct", Kind: fillerdecision.ActionCorrect,
+		ActorID: "admin-1", Answer: "The closing card identifies soda.",
+		CorrectedVerdict: filleradmission.VerdictAdmit, CreatedAt: at.Add(5 * time.Second),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CommitFillerDecisionAction(ctx, fillerdecision.Action{
+		ID: "action-on-hold", DecisionID: "d-hold", Kind: fillerdecision.ActionAdmit,
+		ActorID: "admin-1", CreatedAt: at.Add(6 * time.Second),
+	}); !errors.Is(err, fillerdecision.ErrActionStale) {
+		t.Fatalf("superseded operational hold accepted a stale semantic action: %v", err)
+	}
+
+	reviews, err := s.ListFillerDecisions(ctx, fillerdecision.DecisionFilter{
+		Kind: fillerdecision.OutcomeSemantic, Verdict: filleradmission.VerdictReview,
+		UnresolvedOnly: true, Limit: 10,
+	})
+	if err != nil || reviews.Total != 0 || len(reviews.Rows) != 0 {
+		t.Fatalf("resolved review remained actionable = %+v, %v", reviews, err)
+	}
+	actions, err := s.ListFillerDecisionActions(ctx, fillerdecision.ActionFilter{DecisionID: "d-review", Limit: 10})
+	if err != nil || actions.Total != 3 || len(actions.Rows) != 3 || actions.Rows[0].ID != "action-a-restore" {
+		t.Fatalf("action history = %+v, %v", actions, err)
+	}
+	activity, err := s.ListFillerDecisionActivity(ctx, fillerdecision.Cursor{}, 10)
+	if err != nil || activity.Total != 9 || len(activity.Rows) != 9 || activity.Rows[0].Kind != fillerdecision.ActivityCorrection {
+		t.Fatalf("activity projection = %+v, %v", activity, err)
+	}
+	kinds := make(map[fillerdecision.ActivityKind]int)
+	for _, item := range activity.Rows {
+		kinds[item.Kind]++
+	}
+	for kind, want := range map[fillerdecision.ActivityKind]int{
+		fillerdecision.ActivityAutomaticAdmit: 2, fillerdecision.ActivityAutomaticReject: 1,
+		fillerdecision.ActivityReviewRequested: 2, fillerdecision.ActivityActionAdmit: 1,
+		fillerdecision.ActivityCorrection: 1, fillerdecision.ActivityRestore: 1,
+		fillerdecision.ActivityReversal: 1,
+	} {
+		if kinds[kind] != want {
+			t.Fatalf("activity kind %q = %d, want %d: %+v", kind, kinds[kind], want, activity.Rows)
+		}
+	}
+	counts, err = s.FillerDecisionCounts(ctx)
+	if err != nil || counts.UnresolvedReviews != 0 {
+		t.Fatalf("resolved counts = %+v, %v", counts, err)
+	}
+}
+
+// openSecondConformanceStore proves committed decision state through a fresh database pool while
+// leaving the suite-owned pool alive for its cleanup. It runs inside the one shared conformance
+// assertion, so SQLite and Postgres prove the same restart/reconnect property.
+func openSecondConformanceStore(t *testing.T, s Store) Store {
+	t.Helper()
+	impl := s.(*sqlStore)
+	var (
+		second *sqlStore
+		err    error
+	)
+	if impl.dialect == DialectPostgres {
+		second, err = openPostgres(t.Context(), impl.dsn)
+	} else {
+		var opened Store
+		opened, err = Open(t.Context(), "sqlite://"+impl.path, true)
+		if err == nil {
+			return opened
+		}
+	}
+	if err != nil {
+		t.Fatalf("open second conformance store: %v", err)
+	}
+	return second
 }
