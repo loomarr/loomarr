@@ -13,10 +13,18 @@ enters git.
 
 Schema v3 distinguishes development seeds from certification manifests. A certification case also
 locks its evidence packet and item metadata, records item-level rights adjudication and the bounded
-source segment, and requires two independent blind-review attestations over the same canonical final
-label hash while preserving each original blind submission. Divergent submissions require a
-reasoned third-party adjudication. The report records the exact manifest SHA-256 and scores only the explicitly selected
-development or holdout split, so development examples cannot inflate certification.
+source segment, and preserves two independent blind-review submission hashes. Matching submissions
+become final directly; divergent submissions require a reasoned third-party adjudication. The report
+records the exact manifest SHA-256 and scores only the explicitly selected development or holdout
+split, so development examples cannot inflate certification.
+
+`make filler-corpus-lock` combines a provenance-complete draft with two independently authored JSONL
+review batches. Each line has `caseId`, `reviewerId`, `batchId`, `reviewedAt`, and `labels`; labels
+contain disposition, reject class, content role, taxonomy, policy flags, slices, evidence, and the
+answerable review question. A reviewer file must use one identity and one batch throughout. When the
+two canonical label hashes differ, `LOOMARR_FILLER_CORPUS_ADJUDICATIONS` names a third JSONL file with
+`caseId`, a distinct `adjudicatorId`, `adjudicatedAt`, `reason`, and final `labels`. The command writes
+nothing until every draft case is covered and the complete certification manifest validates.
 
 `make filler-eval-contract` verifies the scorer and seed. `make filler-eval-cert` scores a JSONL file
 named by `LOOMARR_FILLER_EVAL_PREDICTIONS`; the remaining `LOOMARR_FILLER_EVAL_*` variables identify

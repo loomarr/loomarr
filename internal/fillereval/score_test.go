@@ -233,8 +233,8 @@ func passingCorpus(total int) (Manifest, []Prediction) {
 		}
 		labelHash := LabelSHA256(c)
 		c.LabelReviews = []LabelReview{
-			{ReviewerID: "reviewer-a", BatchID: "blind-a", ReviewedAt: lockedAt, Independent: true, SubmissionSHA256: labelHash, FinalAttestedAt: lockedAt, FinalLabelSHA256: labelHash},
-			{ReviewerID: "reviewer-b", BatchID: "blind-b", ReviewedAt: lockedAt, Independent: true, SubmissionSHA256: labelHash, FinalAttestedAt: lockedAt, FinalLabelSHA256: labelHash},
+			{ReviewerID: "reviewer-a", BatchID: "blind-a", ReviewedAt: lockedAt, Independent: true, SubmissionSHA256: labelHash},
+			{ReviewerID: "reviewer-b", BatchID: "blind-b", ReviewedAt: lockedAt, Independent: true, SubmissionSHA256: labelHash},
 		}
 		manifest.Cases = append(manifest.Cases, c)
 		predictions = append(predictions, Prediction{
@@ -260,8 +260,8 @@ func passingCorpus(total int) (Manifest, []Prediction) {
 		}
 		labelHash := LabelSHA256(c)
 		c.LabelReviews = []LabelReview{
-			{ReviewerID: "reviewer-a", BatchID: "blind-a", ReviewedAt: lockedAt, Independent: true, SubmissionSHA256: labelHash, FinalAttestedAt: lockedAt, FinalLabelSHA256: labelHash},
-			{ReviewerID: "reviewer-b", BatchID: "blind-b", ReviewedAt: lockedAt, Independent: true, SubmissionSHA256: labelHash, FinalAttestedAt: lockedAt, FinalLabelSHA256: labelHash},
+			{ReviewerID: "reviewer-a", BatchID: "blind-a", ReviewedAt: lockedAt, Independent: true, SubmissionSHA256: labelHash},
+			{ReviewerID: "reviewer-b", BatchID: "blind-b", ReviewedAt: lockedAt, Independent: true, SubmissionSHA256: labelHash},
 		}
 		manifest.Cases = append(manifest.Cases, c)
 	}

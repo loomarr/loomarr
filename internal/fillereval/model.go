@@ -118,8 +118,6 @@ type LabelReview struct {
 	ReviewedAt       time.Time `json:"reviewedAt"`
 	Independent      bool      `json:"independent"`
 	SubmissionSHA256 string    `json:"submissionSha256"`
-	FinalAttestedAt  time.Time `json:"finalAttestedAt"`
-	FinalLabelSHA256 string    `json:"finalLabelSha256"`
 }
 
 type LabelAdjudication struct {

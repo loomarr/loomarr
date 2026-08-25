@@ -264,7 +264,7 @@ go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must
 test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
 	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ ./internal/api/ -v
 
-.PHONY: eval-contract eval eval-cert eval-matrix filler-eval-contract filler-eval-cert
+.PHONY: eval-contract eval eval-cert eval-matrix filler-corpus-lock filler-eval-contract filler-eval-cert
 eval-contract: ## hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB
 	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/
 
@@ -302,7 +302,21 @@ eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (m
 	  exit "$$status"
 
 filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
-	$(GO) test ./internal/fillereval/ ./cmd/filler-cert/
+	$(GO) test ./internal/fillereval/ ./cmd/filler-cert/ ./cmd/filler-corpus/
+
+filler-corpus-lock: ## lock two blind filler-label batches into a certification manifest
+	@test -n "$$LOOMARR_FILLER_CORPUS_DRAFT" || { echo "filler-corpus-lock: LOOMARR_FILLER_CORPUS_DRAFT is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_REVIEW_A" || { echo "filler-corpus-lock: LOOMARR_FILLER_CORPUS_REVIEW_A is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_REVIEW_B" || { echo "filler-corpus-lock: LOOMARR_FILLER_CORPUS_REVIEW_B is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_LOCKED_AT" || { echo "filler-corpus-lock: LOOMARR_FILLER_CORPUS_LOCKED_AT is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_OUT" || { echo "filler-corpus-lock: LOOMARR_FILLER_CORPUS_OUT is required" >&2; exit 2; }; \
+	  $(GO) run ./cmd/filler-corpus \
+	    --draft "$$LOOMARR_FILLER_CORPUS_DRAFT" \
+	    --review-a "$$LOOMARR_FILLER_CORPUS_REVIEW_A" \
+	    --review-b "$$LOOMARR_FILLER_CORPUS_REVIEW_B" \
+	    --adjudications "$$LOOMARR_FILLER_CORPUS_ADJUDICATIONS" \
+	    --locked-at "$$LOOMARR_FILLER_CORPUS_LOCKED_AT" \
+	    --out "$$LOOMARR_FILLER_CORPUS_OUT"
 
 filler-eval-cert: ## score captured filler decisions; never contacts a model or media source
 	@test -n "$$LOOMARR_FILLER_EVAL_PREDICTIONS" || { echo "filler-eval-cert: LOOMARR_FILLER_EVAL_PREDICTIONS is required" >&2; exit 2; }; \

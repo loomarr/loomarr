@@ -10,6 +10,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 )
 
 const oneSided95Z = 1.6448536269514722
@@ -379,7 +380,7 @@ func ValidateManifest(manifest Manifest) []string {
 			failures = append(failures, prefix+": source and license are required")
 		}
 		if manifest.Kind == CorpusCertification {
-			failures = append(failures, validateCertificationCase(prefix, c)...)
+			failures = append(failures, validateCertificationCase(prefix, c, manifest.LockedAt)...)
 			if previousCluster, exists := contentClusters[c.ContentSHA256]; exists && previousCluster != c.Cluster {
 				failures = append(failures, prefix+": identical content hash appears in a different similarity cluster")
 			} else if c.ContentSHA256 != "" {
@@ -406,7 +407,7 @@ func ValidateManifest(manifest Manifest) []string {
 	return failures
 }
 
-func validateCertificationCase(prefix string, c Case) []string {
+func validateCertificationCase(prefix string, c Case, lockedAt time.Time) []string {
 	var failures []string
 	if !isSHA256(c.ContentSHA256) || !isSHA256(c.EvidenceSHA256) {
 		failures = append(failures, prefix+": certification requires lowercase SHA-256 media and evidence hashes")
@@ -417,6 +418,9 @@ func validateCertificationCase(prefix string, c Case) []string {
 	}
 	if strings.TrimSpace(p.RightsStatement) == "" || strings.TrimSpace(p.RightsDecision) == "" || strings.TrimSpace(p.RightsReviewerID) == "" || p.RightsReviewedAt.IsZero() {
 		failures = append(failures, prefix+": item-level rights evidence and adjudication are required")
+	}
+	if p.MetadataRetrievedAt.After(lockedAt) || p.RightsReviewedAt.After(lockedAt) {
+		failures = append(failures, prefix+": source metadata and rights review cannot postdate the manifest lock")
 	}
 	if strings.TrimSpace(p.SourceFilename) == "" || strings.TrimSpace(p.SourceURL) == "" || p.SourceBytes <= 0 || p.SegmentStartMS < 0 || p.SegmentDurationMS <= 0 {
 		failures = append(failures, prefix+": source file identity, positive size, and bounded segment are required")
@@ -429,7 +433,11 @@ func validateCertificationCase(prefix string, c Case) []string {
 	batches := map[string]struct{}{}
 	needsAdjudication := false
 	for _, review := range c.LabelReviews {
-		if strings.TrimSpace(review.ReviewerID) == "" || strings.TrimSpace(review.BatchID) == "" || review.ReviewedAt.IsZero() || !review.Independent || !isSHA256(review.SubmissionSHA256) || review.FinalAttestedAt.IsZero() || review.FinalLabelSHA256 != wantLabelHash {
+		if strings.TrimSpace(review.ReviewerID) == "" || strings.TrimSpace(review.BatchID) == "" || review.ReviewedAt.IsZero() || !review.Independent || !isSHA256(review.SubmissionSHA256) {
+			continue
+		}
+		if review.ReviewedAt.After(lockedAt) {
+			failures = append(failures, prefix+": label review cannot postdate the manifest lock")
 			continue
 		}
 		if review.SubmissionSHA256 != wantLabelHash {
@@ -439,7 +447,7 @@ func validateCertificationCase(prefix string, c Case) []string {
 		batches[review.BatchID] = struct{}{}
 	}
 	if len(reviewers) < 2 || len(batches) < 2 {
-		failures = append(failures, prefix+": two independent label submissions and final attestations are required")
+		failures = append(failures, prefix+": two independent label submissions are required")
 	}
 	if needsAdjudication {
 		a := c.Adjudication
@@ -447,6 +455,8 @@ func validateCertificationCase(prefix string, c Case) []string {
 			failures = append(failures, prefix+": divergent independent labels require final adjudication")
 		} else if _, reviewerWasAdjudicator := reviewers[a.AdjudicatorID]; reviewerWasAdjudicator {
 			failures = append(failures, prefix+": adjudicator must be independent from the two label reviewers")
+		} else if a.AdjudicatedAt.After(lockedAt) {
+			failures = append(failures, prefix+": adjudication cannot postdate the manifest lock")
 		}
 	}
 	return failures
@@ -473,21 +483,7 @@ func ManifestSHA256(manifest Manifest) string {
 
 // LabelSHA256 is the attestation target for independent corpus reviewers.
 func LabelSHA256(c Case) string {
-	labels := struct {
-		Truth          Truth               `json:"truth"`
-		RejectClass    RejectClass         `json:"rejectClass,omitempty"`
-		ContentRole    string              `json:"contentRole"`
-		Taxonomy       map[string][]string `json:"taxonomy,omitempty"`
-		PolicyFlags    []string            `json:"policyFlags,omitempty"`
-		Evidence       []Evidence          `json:"evidence"`
-		ReviewQuestion string              `json:"reviewQuestion,omitempty"`
-	}{c.Truth, c.RejectClass, c.ContentRole, c.Taxonomy, c.PolicyFlags, c.Evidence, c.ReviewQuestion}
-	data, err := json.Marshal(labels)
-	if err != nil {
-		return ""
-	}
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
+	return LabelsSHA256(LabelsFromCase(c))
 }
 
 func correct(c Case, prediction Prediction) bool {
