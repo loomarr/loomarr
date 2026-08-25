@@ -199,3 +199,16 @@ gate documentation are amended before the first change that alters required beha
   for 30.6 minutes and tvOS for 24.3 minutes with negligible queueing. The tvOS follow-up consumes
   the already-shadowed `apple_tv` decision and adds fail-closed verifier mutations for legacy
   fallback, detached output, and release-scope broadening without changing manual release scope.
+- PR #571 merged the Apple TV activation after a refreshed current-main matrix. Its authoritative
+  run took 45.9 minutes end to end and 125.9 occupied runner-minutes; mobile executed for 42.2
+  minutes and tvOS for 29.7 minutes. This is above the 20-minute native feedback target and below
+  the 53.3-minute pre-activation longest-job p95, so further cache/build work remains required.
+- Local Expo Android activation exposed a second false safety assumption before a new CI job could
+  consume it: AGP executes generated Ninja commands directly, so
+  `CMAKE_BUILD_PARALLEL_LEVEL=1` did not constrain Reanimated and six compiler children stalled a
+  4 GB scope for more than 30 minutes. The corrective generator registers depth-one CMake compile
+  and link pools on every Android application and library subproject at plugin-application time.
+  A dependency-cold local mobile build completed in 6m07s with one live Clang child. After the
+  generated pool was parameterized and both app projects were regenerated, the final mobile and TV
+  targets completed in 4m43s and 2m57s. Expo Android jobs remain unactivated until this correction
+  passes protected CI and their exact app/platform selectors are introduced in reversible slices.

@@ -315,9 +315,12 @@ Native Android proof builds are arm64-only and serialized. `make client-android-
 the mobile app; `CLIENT_APP=tv` selects TV. On Linux the command places the whole Gradle, Kotlin,
 CMake, and Ninja process tree under a 3.75 GiB soft limit and 4 GiB hard limit, pins that tree to four
 CPUs, uses one Gradle worker, keeps Kotlin compilation in-process, and injects one-slot CMake compile
-and link pools through an Expo config plugin. Third-party native modules can own separate Ninja
-graphs, so CPU affinity and the process-tree limit remain the fail-safe boundaries. Mobile and TV
-native builds are never run concurrently.
+and link pools through an Expo config plugin. The plugin registers those arguments on every Android
+application and library subproject as its Gradle plugin is applied, so third-party Ninja graphs are
+bounded too. `CMAKE_BUILD_PARALLEL_LEVEL` remains a defence for `cmake --build`; the generated pools
+are the control that AGP's direct Ninja invocations actually consume. CPU affinity and the
+process-tree limit remain fail-safe boundaries. Mobile and TV native builds are never run
+concurrently.
 
 The clean native proof is green for both generated Android targets: mobile produced a 76 MiB
 `media.loomarr.mobile.prototype` APK in 5m35s and TV produced a 57 MiB
@@ -327,6 +330,15 @@ launcher activity. The proof also caught an optional-peer mismatch that Expo Doc
 JS bundles did not: Expo SDK 57 supports Reanimated 4.5.1 with Worklets 0.10.1, while pnpm had
 auto-selected incompatible 4.6.0 and 0.12.1 releases. Both app manifests now pin Expo's supported
 pair directly.
+
+A 2026-08-25 regression proof caught that the earlier app-only pool did not reach Reanimated: AGP
+launched Ninja directly with six Clang children despite `CMAKE_BUILD_PARALLEL_LEVEL=1`, pinned the
+scope at its memory-high threshold, and had not completed after 30 minutes. With the all-subproject
+generator, the real Worklets and Reanimated Ninja graphs contain depth-one pools on 38 and 106
+compile edges respectively. Live sampling found one Clang child. The dependency-cold corrective
+mobile proof completed in 6m07s; after parameterizing the generated pool and regenerating both app
+projects, the final mobile target built and packaged in 4m43s and the independent TV target in
+2m57s. None of those scopes reached its hard memory limit or recorded an OOM.
 
 The Linux proof also generates both native Apple projects cleanly: the mobile project targets
 iPhone and iPad (`TARGETED_DEVICE_FAMILY = "1,2"`, `SDKROOT = iphoneos`) while the TV project targets
