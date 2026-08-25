@@ -187,6 +187,10 @@ func VerifyCIImpactActivation(path string) error {
 			outputs:   []classifierOutput{{name: "impact_apple_mobile", source: "apple_mobile"}},
 			condition: "needs.changes.outputs.impact_apple_mobile == 'true'",
 		},
+		"apple-tv": {
+			outputs:   []classifierOutput{{name: "impact_apple_tv", source: "apple_tv"}},
+			condition: "needs.changes.outputs.impact_apple_tv == 'true'",
+		},
 	}
 	for jobName, gate := range activated {
 		for _, expected := range gate.outputs {
@@ -224,14 +228,6 @@ func VerifyCIImpactActivation(path string) error {
 		if !yamlNodeContainsScalar(job, command) {
 			return fmt.Errorf("CI Apple job %s must run %q", jobName, command)
 		}
-	}
-	appleTV, _ := requiredMap(jobs, "apple-tv")
-	appleTVNeeds, ok := mappingValue(appleTV, "needs")
-	if !ok || !yamlNodeContainsScalar(appleTVNeeds, "changes") {
-		return errors.New("CI job apple-tv must depend on changes")
-	}
-	if condition := scalarValue(appleTV, "if"); condition != "needs.changes.outputs.clients == 'true'" {
-		return fmt.Errorf("CI job apple-tv condition %q must remain on the legacy client selector until activation", condition)
 	}
 	return nil
 }
