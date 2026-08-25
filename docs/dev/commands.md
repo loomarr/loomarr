@@ -69,6 +69,7 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make filler-eval-contract` |  | hermetic filler-admission corpus and selective-risk contracts |
 | `make filler-corpus-archive` |  | freeze a bounded rights-filtered Archive.org corpus inventory |
 | `make filler-corpus-download` |  | download only rights-approved corpus media under hard ceilings |
+| `make filler-corpus-rights-review` |  | prepare an inert worksheet from a frozen filler inventory |
 | `make filler-corpus-lock` |  | lock two blind filler-label batches into a certification manifest |
 | `make filler-eval-cert` |  | score captured filler decisions; never contacts a model or media source |
 

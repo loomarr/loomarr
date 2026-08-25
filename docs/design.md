@@ -3525,6 +3525,12 @@ source checksums when present, and adds SHA-256. Media and its download ledger r
 An incomplete, stale, oversized, or checksum-mismatched plan fails without producing a completed
 ledger and cannot flow into blind semantic review.
 
+A rights worksheet is deterministic review aid, not authority. It records the digest of the exact
+frozen inventory, presents every selected source assertion and representation fact, and leaves the
+reviewer, time, decision, rationale, redistribution, attribution, and restriction fields inert. The
+completed ledger must bind each row to both that inventory digest and the item's metadata digest;
+copying an approval between inventory snapshots fails closed.
+
 Rollout is shadow-first on a bounded appliance workload. Deterministic rejection enables before
 certified admission slices; harder slices enable only after shadow evidence. A random sample of
 automatic outcomes and every disagreement between rungs remains auditable. Any model, provider,
