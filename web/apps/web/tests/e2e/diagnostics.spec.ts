@@ -60,7 +60,7 @@ test("Logs filters, expands evidence, and downloads the visible page", async ({ 
   expect((await download).suggestedFilename()).toMatch(/loomarr-diagnostics-.*\.ndjson/);
 });
 
-test("Process runs follows a live process and downloads retained output", async ({ page }) => {
+test("Media processes follows a live process and downloads retained output", async ({ page }) => {
   await installMockBackend(page, { authed: true, role: "admin" });
   const run = {
     id: "process-19",
@@ -97,7 +97,7 @@ test("Process runs follows a live process and downloads retained output", async 
   );
 
   await page.goto("/settings/system/diagnostics?view=process");
-  await expect(page.getByRole("heading", { name: "Process runs" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Media processes" })).toBeVisible();
   await expect(page.getByText("channel-segment").first()).toBeVisible();
   await expect(page.getByText(/Frame 200/)).toBeVisible();
   await page.getByRole("textbox", { name: "Search Process output" }).fill("warning");
@@ -110,7 +110,9 @@ test("Process runs follows a live process and downloads retained output", async 
   expect((await download).suggestedFilename()).toBe("loomarr-process-process-19.log");
 });
 
-test("Support bundle reviews exact contents before downloading the redacted ZIP", async ({ page }) => {
+test("Troubleshooting report reviews exact contents before downloading the redacted ZIP", async ({
+  page,
+}) => {
   await installMockBackend(page, { authed: true, role: "admin" });
   await page.route("**/v1/diagnostics/support-bundle/preview", async (route) => {
     const selection = route.request().postDataJSON();
@@ -157,12 +159,12 @@ test("Support bundle reviews exact contents before downloading the redacted ZIP"
   );
 
   await page.goto("/settings/system/diagnostics?view=logs");
-  await page.getByRole("button", { name: /support bundle/i }).click();
-  await expect(page.getByRole("heading", { name: "Review support bundle" })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Support bundle review" })).toContainText("About 2.0 KiB");
-  await page.getByRole("button", { name: /prepare download/i }).click();
-  await expect(page.getByText(/final size/i)).toBeVisible();
+  await page.getByRole("button", { name: "Download troubleshooting report" }).click();
+  await expect(page.getByRole("heading", { name: "Download troubleshooting report" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Troubleshooting report summary" })).toContainText(
+    "About 2.0 KiB",
+  );
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: /download bundle/i }).click();
+  await page.getByRole("button", { name: "Download report" }).click();
   expect((await download).suggestedFilename()).toBe("loomarr-support-20260824T120000Z.zip");
 });

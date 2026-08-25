@@ -5704,7 +5704,7 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | Image module policy (not settings) | AVIF/WebP/JPEG are always emitted; remote fetch concurrency is capped below the provider limit; fetched artwork never outlives the six-month compliance ceiling. These are compatibility, service-protection, and compliance invariants rather than user preferences. |
 | `REQUEST_TTL` / `DOWNLOADING_TTL` | `48h` / `12h` |
 | `CHANNEL_RECONCILE_EVERY` | `10m` — minimum delay after a successful channel rebuild before it is eligible for another scheduled sweep. The normal cadence control is the **Maintain live channels** task under System → Tasks, so this cooldown remains an advanced setting. |
-| `JOB_SYSTEM_HEALTH_SCHEDULE` | `0 * * * * *` — once a minute, refresh Current Health through the named System task. Probes run concurrently under bounded deadlines; changing this cadence also changes their freshness deadline rather than allowing an older observation to remain green indefinitely (§17). |
+| `JOB_SYSTEM_HEALTH_SCHEDULE` | `*/30 * * * * *` — every 30 seconds, refresh Current Health through the named System task. Probes run concurrently under bounded deadlines; changing this cadence also changes their freshness deadline rather than allowing an older observation to remain green indefinitely (§17). |
 | `JOB_PLAYOUT_PREPARE_SCHEDULE` | `0 * * * * *` — once a minute, look six hours ahead and spend only preemptible spare hardware on the nearest missing prepared publications (§9.1 V56). |
 | `SESSION_TTL` / `COOKIE_SECURE` | `720h` / `auto` (§11) |
 | `TRUST_PROXY` | `false` (§11) — trust `X-Forwarded-For`/`X-Forwarded-Proto`. Default `false`: the login rate-limit key and `cookie.secure=auto` use the socket peer address, so forwarding headers can't be forged by a direct client. Set `true` only when a reverse proxy in front sets these headers. |
@@ -6128,7 +6128,7 @@ Startup is the first observation pass. Configuration, database/migrations, gener
 image-worker certification, and HTTP assembly/listening record at their real lifecycle seams.
 Configured media server, Tunarr, requester, AI, and TMDB reuse the existing setup probes concurrently
 under one bounded window. After startup, the named System scheduler job uses those same adapters to
-refresh continuous checks; `job.system_health.schedule` defaults to once per minute. Settings changes
+refresh continuous checks; `job.system_health.schedule` defaults to every 30 seconds. Settings changes
 invalidate affected observations and prompt a run, and an explicit refresh invokes the same runner.
 No request path, scheduler goroutine, or Playout goroutine waits on unbounded probe work.
 
@@ -6144,14 +6144,28 @@ Completed reports follow Diagnostics retention, survive restart, and an in-proce
 a new generation id without rewriting the prior report. The current startup snapshot and at most 20
 retained reports are available independently from Current Health.
 
-Settings → System → Diagnostics has two primary views: **Logs** and **Current Health**. Logs is the
+Settings → System → Diagnostics has three primary views: **Logs**, **Current Health**, and **Media
+processes**. Logs is the
 default because the common operator task is to find what happened, not to choose an evidence model.
-Current Health leads with present status, version, observation/freshness, and any check that needs
-attention; healthy checks collapse into a summary and immutable reports sit beneath secondary
-**Startup history**. Detail and remediation use text as well as color. Notices deduplicate per health
+The three destinations use the same filled-pill navigation, hover state, pointer affordance, and
+URL-backed selection as the rest of Settings. **Media processes** is the operator-facing name for
+the retained ffmpeg and streaming-process evidence; **Process run** remains protocol and storage
+vocabulary, not the page title.
+Current Health leads with present status, version, and a concise continuously-monitored indicator, then keeps every current
+check in one always-visible responsive table; startup-mode and continuously monitored checks are
+distinguished in that table instead of exposing immutable startup-report history as a competing UI
+surface. The Current Health read updates automatically through health-event invalidation with a
+ten-second polling fallback and has no manual refresh control. The freshness deadline remains API
+state for stale derivation; the UI does not mislabel it as the next scheduled probe. Detail and remediation use text as well
+as color. Notices deduplicate per health
 incident, persist while action is needed, announce recovery calmly, and are superseded by a newer
 generation. The interactive terminal table remains a startup projection only. Continuous transitions
 use the ordinary one-line structured JSON stream; formatted text is never persisted truth.
+
+The Logs view defaults to all retained evidence with newest records first. Its time-range control can
+narrow that retained set, while the independent newest/oldest order starts page one at the matching
+edge. Selecting all retained evidence and oldest first therefore begins with the earliest retained
+startup-era event instead of merely reversing the last hour.
 
 ### Read, download, and future support submission
 
@@ -6162,19 +6176,47 @@ NDJSON, one Process run downloads as a readable text log, and an administrator c
 redacted ZIP Support bundle containing a manifest, versions, selected events, Process metadata and
 output, truncation/drop counts, and a redaction summary.
 
-The Logs view is one continuously refreshing, pausable newest-first stream. Its primary row contains
-one plain-language search plus time and severity; source, subsystem, Channel, and exact correlation
-identifiers live behind **More filters**. A row leads with time, severity, source, human-readable
+The Logs view is one automatically and smoothly refreshing timeline with no Live, Pause,
+or manual Refresh controls. It defaults to **Newest first**, while an explicit **Oldest first** order
+starts at the first retained matching event so an operator can inspect startup history without walking
+every newer page. Stable query identity and background replacement keep the current page
+rendered while a newer authoritative page is fetched. Its primary row contains one plain-language
+search plus time and explicit **All**, **Errors**, **Warnings**, and **Info** severity filters. Errors
+are red, Warnings yellow, and Info green; the selected filter has a strong filled treatment and does
+not toggle itself off when clicked again. Source and subsystem are the first **More filters** fields;
+exact correlation identifiers stay in a nested disclosure so the common path remains short. A row leads with time, severity, source, human-readable
 message, and useful context. Raw event names, identifiers, and structured attributes are secondary
-**Technical details**. Selecting a related Process run opens its retained metadata/output in context
-without making Process runs a competing primary view. A secondary **Process runs** action still lets
-an operator browse recent runs directly. Desktop may keep selected evidence beside the stream;
-mobile presents the same evidence as an accessible disclosure or sheet. Filtered NDJSON download is
-independent of Support-bundle creation and always uses the visible filters.
+**Technical details**. A selected log offers one icon-and-tooltip copy action that places the complete
+already-redacted structured event on the clipboard for an issue or agent conversation. Selecting a
+related Process run opens its retained metadata/output in context
+and Media processes also remains directly navigable as a peer Diagnostics view. Desktop may keep selected evidence beside the stream;
+mobile presents the same evidence as an accessible disclosure or sheet. Logs and Process-run results
+request 50 records per server page and virtualize the visible rows, so retained history remains bounded
+at both the API and DOM seams. Cursor pagination is attached immediately above the collection it
+controls, describes its newer/older time direction independently of the selected sort order, and
+precedes the inner virtual scroll viewport;
+on narrow screens that viewport is capped relative to the screen so paging never hides beyond a second
+full-height scroll. Ambiguous technical controls such as chronology and tail-follow carry themed
+hover/focus tooltips. Process output follows a running tail only while the reader remains at
+the bottom; manual scrolling disables tail-follow and a background refresh preserves the reader's
+position. Filtered NDJSON download is independent of troubleshooting-report creation and always uses
+the visible filters.
 
-The Diagnostic-event read defaults to the last hour, permits at most a 24-hour window, and returns
-100 records by default with a hard page maximum of 200. Its opaque cursor is the total
-`(occurred_at, id)` newest-first position. Exact severity, source, subsystem, request, playback,
+On desktop, the Logs and Media-processes list/detail layouts share one bounded split-panel behavior.
+The evidence list remains the primary flexible pane; the detail pane can be resized between 18 and 40
+rem with a pointer or the separator's arrow/Home/End keys, collapsed through a labelled icon action,
+and restored from the resulting rail. Its width is remembered for the browser session and is not reset
+by background refresh. Selecting a log or media process always restores a collapsed detail pane. The
+panes clip horizontal overflow; only an intrinsically wide technical payload may own a local horizontal
+code scroller. Narrow layouts keep their existing stacked/disclosure presentation and expose no drag
+affordance.
+
+The Diagnostic-event API read defaults to the last hour and newest-first order when callers omit a
+window, and returns 100 records by default with a hard page maximum of 200. An explicit increasing
+window may span all retained history; retention age and the global storage budget bound the searchable
+set, while cursor paging bounds each store read. Callers may request oldest-first order. Its opaque
+cursor is the total `(occurred_at, id)` position and is bound to the
+requested order, so a cursor cannot silently reverse chronology. Exact severity, source, subsystem, request, playback,
 Channel, schedule-block, Job, Process-run, and instance filters are each capped at 128 bytes; the
 case-insensitive event/message/subsystem/attribute text filter is capped at 256 bytes. The store
 always receives a validated time predicate and fetches at most one sentinel row beyond the page.
@@ -6208,14 +6250,13 @@ uncompressed and final archive bytes, truncation reasons, and defensive redactio
 host names, network addresses, configured service targets, filesystem roots, and user data. Retained
 events and Process output are already redacted before storage, but bundle assembly defensively redacts
 again and records replacements so imported or legacy evidence cannot bypass the download boundary.
-**Create support bundle** is a secondary Diagnostics page action, initialized from the visible Logs
-time range and correlations. Its two-step web flow is **Review bundle → Download bundle**. Review runs
-the bounded preview automatically and leads with a plain-language scope, contents, estimated size,
-omissions, truncation, and redaction summary; category switches and exact correlation fields remain
-under **Advanced options**. Selecting Process output automatically includes Process metadata. Preparing
-for download assembles the exact ZIP in client memory and advances to Download, where the final size is
-shown before one **Download bundle** action writes that reviewed artifact to disk. Changing scope or an
-advanced selection returns to Review and invalidates the prepared artifact.
+**Download troubleshooting report** is a secondary Diagnostics page action, initialized from the
+visible Logs time range and correlations. Its one-screen web flow runs the bounded preview
+automatically and leads with a plain-language scope, contents, estimated size, omissions, truncation,
+and redaction summary; category switches and exact correlation fields remain under **Customize
+report**. Selecting Process output automatically includes Process metadata. One **Download report**
+action assembles the exact reviewed ZIP and writes it to disk; changing scope or a customized
+selection invalidates the preview and disables download until the replacement preview succeeds.
 
 ### Metrics and health
 

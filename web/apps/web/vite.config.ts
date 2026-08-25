@@ -59,6 +59,12 @@ export default defineConfig({
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
+  // This directory also contains client-platform-proof.html, whose entrypoint deliberately imports
+  // React Native modules. Dev dependency discovery must stay rooted at the browser app; otherwise
+  // Vite tries to parse react-native-tvos' Flow sources before the web aliases can apply.
+  optimizeDeps: {
+    entries: ["index.html"],
+  },
   server: {
     port: DEV_PORT,
     // Multiple worktrees receive distinct deterministic ports. If one is unexpectedly occupied,

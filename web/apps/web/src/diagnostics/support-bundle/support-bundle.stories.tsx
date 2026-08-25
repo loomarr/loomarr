@@ -24,7 +24,7 @@ export const Open: Story = {
   render: framed,
   play: async ({ canvas, userEvent }) => {
     window.fetch = (() => new Promise(() => undefined)) as typeof fetch;
-    await userEvent.click(canvas.getByRole("button", { name: /support bundle/i }));
+    await userEvent.click(canvas.getByRole("button", { name: /troubleshooting report/i }));
   },
 };
 export const Reviewed: Story = {
@@ -68,8 +68,8 @@ export const Reviewed: Story = {
           { status: 200, headers: { "content-type": "application/json" } },
         ),
       )) as typeof fetch;
-    await userEvent.click(canvas.getByRole("button", { name: /support bundle/i }));
+    await userEvent.click(canvas.getByRole("button", { name: /troubleshooting report/i }));
     const page = within(canvasElement.ownerDocument.body);
-    await page.findByRole("region", { name: /support bundle review/i });
+    await page.findByRole("region", { name: /troubleshooting report summary/i });
   },
 };

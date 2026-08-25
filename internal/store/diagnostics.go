@@ -83,6 +83,17 @@ func (s *sqlStore) QueryDiagnosticEvents(
 	if query.From < 0 || query.To <= query.From || query.Limit < 1 || query.Limit > 201 {
 		return nil, fmt.Errorf("query diagnostic events: invalid module query")
 	}
+	order := query.Order
+	if order == "" {
+		order = diagnostics.EventOrderNewest
+	}
+	if order != diagnostics.EventOrderNewest && order != diagnostics.EventOrderOldest {
+		return nil, fmt.Errorf("query diagnostic events: invalid module query")
+	}
+	comparison, direction := "<", "DESC"
+	if order == diagnostics.EventOrderOldest {
+		comparison, direction = ">", "ASC"
+	}
 	clauses := []string{"occurred_at >= ?", "occurred_at <= ?"}
 	args := []any{query.From, query.To}
 	addExact := func(column, value string) {
@@ -104,7 +115,7 @@ func (s *sqlStore) QueryDiagnosticEvents(
 	addExact("process_run_id", query.ProcessRunID)
 	addExact("instance_id", query.InstanceID)
 	if query.CursorID != "" {
-		clauses = append(clauses, "(occurred_at < ? OR (occurred_at = ? AND id < ?))")
+		clauses = append(clauses, "(occurred_at "+comparison+" ? OR (occurred_at = ? AND id "+comparison+" ?))")
 		args = append(args, query.CursorOccurredAt, query.CursorOccurredAt, query.CursorID)
 	}
 	if query.Text != "" {
@@ -117,7 +128,7 @@ func (s *sqlStore) QueryDiagnosticEvents(
 	args = append(args, query.Limit)
 	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT `+diagnosticEventColumns+`
 		FROM diagnostic_events WHERE `+strings.Join(clauses, " AND ")+`
-		ORDER BY occurred_at DESC, id DESC LIMIT ?`), args...)
+		ORDER BY occurred_at `+direction+`, id `+direction+` LIMIT ?`), args...)
 	if err != nil {
 		return nil, fmt.Errorf("query diagnostic events: %w", err)
 	}

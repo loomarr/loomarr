@@ -13,7 +13,7 @@ import (
 
 const (
 	defaultEventWindow = time.Hour
-	maxEventWindow     = 24 * time.Hour
+	maxSelectionWindow = 24 * time.Hour
 	defaultEventLimit  = 100
 	maxEventLimit      = 200
 	maxCursorBytes     = 512
@@ -25,6 +25,14 @@ const (
 // accompanying message as a 400 detail; storage and decoding failures remain separate errors.
 var ErrInvalidEventQuery = errors.New("invalid diagnostic event query")
 
+// EventOrder controls which end of the bounded retained timeline is read first.
+type EventOrder string
+
+const (
+	EventOrderNewest EventOrder = "newest"
+	EventOrderOldest EventOrder = "oldest"
+)
+
 // EventQuery is the small caller-facing read interface. Zero times select the default one-hour
 // window; the module validates and resolves every bound before the store adapter sees it.
 type EventQuery struct {
@@ -32,6 +40,7 @@ type EventQuery struct {
 	To                int64
 	Limit             int
 	Cursor            string
+	Order             EventOrder
 	Level             Level
 	Source            Source
 	Event             string
@@ -47,13 +56,14 @@ type EventQuery struct {
 }
 
 // EventStoreQuery is the fully validated persistence shape. Store adapters must apply every field
-// conjunctively and return newest-first records, capped at Limit.
+// conjunctively and return records in Order, capped at Limit.
 type EventStoreQuery struct {
 	From              int64
 	To                int64
 	Limit             int
 	CursorOccurredAt  int64
 	CursorID          string
+	Order             EventOrder
 	Level             Level
 	Source            Source
 	Event             string
@@ -147,7 +157,7 @@ func (l *EventLog) Query(ctx context.Context, query EventQuery) (EventPage, erro
 	if len(visible) > publicLimit {
 		visible = visible[:publicLimit]
 		last := visible[len(visible)-1]
-		page.NextCursor = encodeEventCursor(eventCursor{OccurredAt: last.OccurredAt, ID: last.ID})
+		page.NextCursor = encodeEventCursor(eventCursor{OccurredAt: last.OccurredAt, ID: last.ID, Order: storeQuery.Order})
 	}
 	for _, record := range visible {
 		view, err := eventView(record)
@@ -189,15 +199,19 @@ func (l *EventLog) validate(query EventQuery) (EventStoreQuery, int, error) {
 	if from < 0 || to <= from {
 		return EventStoreQuery{}, 0, invalidEventQuery("from and to must define an increasing time window")
 	}
-	if to-from > maxEventWindow.Milliseconds() {
-		return EventStoreQuery{}, 0, invalidEventQuery("time window cannot exceed 24 hours")
-	}
 	limit := query.Limit
 	if limit == 0 {
 		limit = defaultEventLimit
 	}
 	if limit < 1 || limit > maxEventLimit {
 		return EventStoreQuery{}, 0, invalidEventQuery("limit must be between 1 and 200")
+	}
+	order := query.Order
+	if order == "" {
+		order = EventOrderNewest
+	}
+	if order != EventOrderNewest && order != EventOrderOldest {
+		return EventStoreQuery{}, 0, invalidEventQuery("order must be newest or oldest")
 	}
 	if query.Level != "" {
 		switch query.Level {
@@ -228,7 +242,7 @@ func (l *EventLog) validate(query EventQuery) (EventStoreQuery, int, error) {
 	}
 
 	storeQuery := EventStoreQuery{
-		From: from, To: to, Limit: limit + 1,
+		From: from, To: to, Limit: limit + 1, Order: order,
 		Level: query.Level, Source: query.Source, Event: strings.TrimSpace(query.Event),
 		Subsystem: strings.TrimSpace(query.Subsystem),
 		RequestID: strings.TrimSpace(query.RequestID), PlaybackSessionID: strings.TrimSpace(query.PlaybackSessionID),
@@ -238,7 +252,11 @@ func (l *EventLog) validate(query EventQuery) (EventStoreQuery, int, error) {
 	}
 	if query.Cursor != "" {
 		cursor, err := decodeEventCursor(query.Cursor)
-		if err != nil || cursor.OccurredAt < from || cursor.OccurredAt > to || cursor.ID == "" || len(cursor.ID) > maxFilterBytes {
+		cursorOrder := cursor.Order
+		if cursorOrder == "" {
+			cursorOrder = EventOrderNewest
+		}
+		if err != nil || cursor.OccurredAt < from || cursor.OccurredAt > to || cursor.ID == "" || len(cursor.ID) > maxFilterBytes || cursorOrder != order {
 			return EventStoreQuery{}, 0, invalidEventQuery("cursor is invalid for this time window")
 		}
 		storeQuery.CursorOccurredAt, storeQuery.CursorID = cursor.OccurredAt, cursor.ID
@@ -264,8 +282,9 @@ func eventView(record Record) (EventView, error) {
 }
 
 type eventCursor struct {
-	OccurredAt int64  `json:"occurredAt"`
-	ID         string `json:"id"`
+	OccurredAt int64      `json:"occurredAt"`
+	ID         string     `json:"id"`
+	Order      EventOrder `json:"order,omitempty"`
 }
 
 func encodeEventCursor(cursor eventCursor) string {

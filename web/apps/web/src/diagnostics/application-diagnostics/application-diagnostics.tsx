@@ -1,34 +1,39 @@
 import * as diagnosticsApi from "@loomarr/api/endpoints/diagnostics";
 import type { EventView } from "@loomarr/api/models/eventView";
 import { ListDiagnosticEventsLevel } from "@loomarr/api/models/listDiagnosticEventsLevel";
+import { ListDiagnosticEventsOrder } from "@loomarr/api/models/listDiagnosticEventsOrder";
 import type { ListDiagnosticEventsParams } from "@loomarr/api/models/listDiagnosticEventsParams";
 import { ListDiagnosticEventsSource } from "@loomarr/api/models/listDiagnosticEventsSource";
+import { useQuery } from "@tanstack/react-query";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   AlertTriangle,
   Check,
-  CirclePause,
-  CirclePlay,
   Clipboard,
   Download,
   ListFilter,
   Radio,
   RadioTower,
-  RotateCcw,
   Square,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusDot, type StatusTone } from "@/components/ui/status-dot";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { DiagnosticsPager } from "../diagnostics-pager";
+import { DiagnosticsSplitPane } from "../diagnostics-split-pane";
 
-type EventRange = "1h" | "6h" | "24h";
+type EventRange = "all" | "1h" | "6h" | "24h";
 type EventLevel = "all" | "debug" | "info" | "warn" | "error";
 type EventSource = "all" | "server" | "web" | "android_tv";
+type EventOrder = "newest" | "oldest";
 
 type ApplicationFilters = {
   range: EventRange;
+  order: EventOrder;
   level: EventLevel;
   source: EventSource;
   subsystem: string;
@@ -42,14 +47,40 @@ type ApplicationFilters = {
 };
 
 const DEFAULT_APPLICATION_FILTERS: ApplicationFilters = {
-  range: "1h",
+  range: "all",
+  order: "newest",
   level: "all",
   source: "all",
   subsystem: "",
   text: "",
 };
 
-const RANGE_MS: Record<EventRange, number> = { "1h": 3_600_000, "6h": 21_600_000, "24h": 86_400_000 };
+const RANGE_MS: Record<Exclude<EventRange, "all">, number> = {
+  "1h": 3_600_000,
+  "6h": 21_600_000,
+  "24h": 86_400_000,
+};
+const VIRTUAL_VIEWPORT = { width: 960, height: 520 };
+
+const observeVirtualRect = (
+  instance: { scrollElement: Element | Window | null },
+  callback: (rect: { width: number; height: number }) => void,
+) => {
+  const element = instance.scrollElement;
+  if (!(element instanceof Element)) return;
+  const report = () => {
+    const rect = element.getBoundingClientRect();
+    callback({
+      width: rect.width || VIRTUAL_VIEWPORT.width,
+      height: rect.height || VIRTUAL_VIEWPORT.height,
+    });
+  };
+  report();
+  if (typeof ResizeObserver === "undefined") return;
+  const observer = new ResizeObserver(report);
+  observer.observe(element);
+  return () => observer.disconnect();
+};
 
 const formatTime = (millis: number) =>
   new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" }).format(new Date(millis));
@@ -85,10 +116,13 @@ const eventParams = (
   now = Date.now(),
 ): ListDiagnosticEventsParams => {
   const to = now;
+  // Zero asks the API to apply its one-hour default, so one millisecond after the epoch is the
+  // explicit lower bound for every retained Loomarr event.
+  const timeWindow = filters.range === "all" ? { from: 1, to } : { from: to - RANGE_MS[filters.range], to };
   return {
-    from: to - RANGE_MS[filters.range],
-    to,
-    limit: 200,
+    ...timeWindow,
+    limit: 50,
+    order: ListDiagnosticEventsOrder[filters.order],
     ...(cursor ? { cursor } : {}),
     ...(filters.level === "all" ? {} : { level: ListDiagnosticEventsLevel[filters.level] }),
     ...(filters.source === "all" ? {} : { source: ListDiagnosticEventsSource[filters.source] }),
@@ -133,6 +167,7 @@ const EventDetail = ({
   onOpenProcess?: (id: string) => void;
   onOpenRelated?: (kind: "channel" | "job", id: string) => void;
 }) => {
+  const [copied, setCopied] = useState(false);
   const correlations = [
     ["Request id", event.requestId],
     ["Playback session", event.playbackSessionId],
@@ -142,18 +177,42 @@ const EventDetail = ({
     ["Process run", event.processRunId],
     ["Instance", event.instanceId],
   ].filter((entry): entry is [string, string] => Boolean(entry[1]));
+  const copyLog = () => {
+    void navigator.clipboard.writeText(JSON.stringify(event, null, 2)).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1_500);
+    });
+  };
   return (
     <div className="space-y-4 bg-muted/20 p-4 text-sm">
-      <div>
-        <span className="inline-flex items-center gap-2 text-muted-foreground text-xs">
-          <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
-          {levelLabel(event.level)} · {sourceLabel(event.source)}
-        </span>
-        <h3 className="mt-2 font-medium text-lg">{event.message || fallbackMessage(event)}</h3>
-        <p className="mt-1 text-muted-foreground text-xs">
-          {formatTime(event.occurredAt)}
-          {event.subsystem ? ` · ${event.subsystem}` : ""}
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <span className="inline-flex items-center gap-2 text-muted-foreground text-xs">
+            <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
+            {levelLabel(event.level)} · {sourceLabel(event.source)}
+          </span>
+          <h3 className="mt-2 font-medium text-lg">{event.message || fallbackMessage(event)}</h3>
+          <p className="mt-1 text-muted-foreground text-xs">
+            {formatTime(event.occurredAt)}
+            {event.subsystem ? ` · ${event.subsystem}` : ""}
+          </p>
+        </div>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon"
+                className="shrink-0"
+                aria-label={copied ? "Copied log details" : "Copy log details"}
+                onClick={copyLog}
+              >
+                {copied ? <Check aria-hidden /> : <Clipboard aria-hidden />}
+              </Button>
+            }
+          />
+          <TooltipContent>{copied ? "Copied" : "Copy complete log details"}</TooltipContent>
+        </Tooltip>
       </div>
       <div className="flex flex-wrap gap-2">
         {event.processRunId && onOpenProcess && (
@@ -270,9 +329,9 @@ const VerboseCaptureControl = ({ filters }: { filters: ApplicationFilters }) => 
           </>
         )}
       </div>
-      {query.isError && <p className="mt-2 text-danger text-xs">Verbose capture is unavailable.</p>}
+      {query.isError && <p className="mt-2 text-onair text-xs">Verbose capture is unavailable.</p>}
       {(start.isError || stop.isError) && (
-        <p className="mt-2 text-danger text-xs">The capture control could not be updated.</p>
+        <p className="mt-2 text-onair text-xs">The capture control could not be updated.</p>
       )}
     </section>
   );
@@ -282,51 +341,55 @@ const ApplicationDiagnostics = ({
   filters,
   onFiltersChange,
   onOpenProcess,
-  onBrowseProcesses,
   onOpenRelated,
 }: {
   filters: ApplicationFilters;
   onFiltersChange: (filters: ApplicationFilters) => void;
   onOpenProcess?: (id: string) => void;
-  onBrowseProcesses?: () => void;
   onOpenRelated?: (kind: "channel" | "job", id: string) => void;
 }) => {
   const [cursorStack, setCursorStack] = useState<string[]>([]);
   const [expanded, setExpanded] = useState<string>();
   const [advanced, setAdvanced] = useState(false);
-  const [live, setLive] = useState(true);
   const [downloadState, setDownloadState] = useState<"idle" | "working" | "failed">("idle");
-  const [now, setNow] = useState(() => Date.now());
+  const listRef = useRef<HTMLElement>(null);
   const cursor = cursorStack.at(-1);
-  const params = useMemo(() => eventParams(filters, cursor, now), [filters, cursor, now]);
-  const query = diagnosticsApi.useListDiagnosticEvents(params, {
-    query: { retry: false },
-    request: { headers: { Accept: "application/json" } },
+  const query = useQuery({
+    queryKey: ["diagnostic-events-page", filters, cursor],
+    queryFn: ({ signal }) =>
+      diagnosticsApi.listDiagnosticEvents(eventParams(filters, cursor), {
+        signal,
+        headers: { Accept: "application/json" },
+      }),
+    retry: false,
+    refetchInterval: cursor ? false : 5_000,
   });
   const body = query.data?.status === 200 && "data" in query.data ? query.data.data : undefined;
   const events = body?.items ?? [];
   const dropped = body && "dropped" in body && typeof body.dropped === "number" ? body.dropped : 0;
-  useEffect(() => {
-    if (cursor || !live) return;
-    const interval = window.setInterval(() => setNow(Date.now()), 15_000);
-    return () => window.clearInterval(interval);
-  }, [cursor, live]);
-
   const counts = { debug: 0, info: 0, warn: 0, error: 0 };
   for (const event of events) counts[event.level] += 1;
   const selectedEvent = events.find((event) => event.id === expanded);
+  const virtualizer = useVirtualizer({
+    count: events.length,
+    getScrollElement: () => listRef.current,
+    getItemKey: (index) => events[index]?.id ?? index,
+    estimateSize: () => 76,
+    overscan: 6,
+    initialRect: VIRTUAL_VIEWPORT,
+    observeElementRect: observeVirtualRect,
+  });
 
   const updateFilters = (next: ApplicationFilters) => {
     setCursorStack([]);
     setExpanded(undefined);
-    setNow(Date.now());
     onFiltersChange(next);
   };
 
   const download = async () => {
     setDownloadState("working");
     try {
-      const response = await fetch(diagnosticsApi.getListDiagnosticEventsUrl(params), {
+      const response = await fetch(diagnosticsApi.getListDiagnosticEventsUrl(eventParams(filters, cursor)), {
         credentials: "same-origin",
         headers: { Accept: "application/x-ndjson" },
       });
@@ -361,15 +424,11 @@ const ApplicationDiagnostics = ({
             Logs
           </h2>
           <p className="text-muted-foreground text-sm">
-            Recent Loomarr, player, and process events. Newest first.
+            Recent Loomarr, player, and process events. {filters.order === "newest" ? "Newest" : "Oldest"}{" "}
+            first.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {onBrowseProcesses && (
-            <Button variant="outline" size="sm" onClick={onBrowseProcesses}>
-              <RadioTower aria-hidden /> Process runs
-            </Button>
-          )}
           <Button
             variant="outline"
             size="sm"
@@ -397,24 +456,22 @@ const ApplicationDiagnostics = ({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="all">All retained</SelectItem>
             <SelectItem value="1h">Last hour</SelectItem>
             <SelectItem value="6h">Last 6 hours</SelectItem>
             <SelectItem value="24h">Last 24 hours</SelectItem>
           </SelectContent>
         </Select>
         <Select
-          value={filters.level}
-          onValueChange={(level) => updateFilters({ ...filters, level: level as EventLevel })}
+          value={filters.order}
+          onValueChange={(order) => updateFilters({ ...filters, order: order as EventOrder })}
         >
-          <SelectTrigger className="w-40" aria-label="Severity">
+          <SelectTrigger className="w-36" aria-label="Log order">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All severities</SelectItem>
-            <SelectItem value="error">Error</SelectItem>
-            <SelectItem value="warn">Warning</SelectItem>
-            <SelectItem value="info">Info</SelectItem>
-            <SelectItem value="debug">Debug</SelectItem>
+            <SelectItem value="newest">Newest first</SelectItem>
+            <SelectItem value="oldest">Oldest first</SelectItem>
           </SelectContent>
         </Select>
         <Button variant="ghost" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)}>
@@ -433,7 +490,7 @@ const ApplicationDiagnostics = ({
               Use these when you already know the affected source or identifier.
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2">
             <Select
               value={filters.source}
               onValueChange={(source) => updateFilters({ ...filters, source: source as EventSource })}
@@ -454,16 +511,23 @@ const ApplicationDiagnostics = ({
               value={filters.subsystem}
               onChange={(event) => updateFilters({ ...filters, subsystem: event.target.value })}
             />
-            {correlationFilters.map(([label, key]) => (
-              <Input
-                key={key}
-                aria-label={label}
-                placeholder={label}
-                value={filters[key] ?? ""}
-                onChange={(event) => updateFilters({ ...filters, [key]: event.target.value || undefined })}
-              />
-            ))}
           </div>
+          <details>
+            <summary className="cursor-pointer font-medium text-muted-foreground text-sm">
+              IDs and correlations
+            </summary>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {correlationFilters.map(([label, key]) => (
+                <Input
+                  key={key}
+                  aria-label={label}
+                  placeholder={label}
+                  value={filters[key] ?? ""}
+                  onChange={(event) => updateFilters({ ...filters, [key]: event.target.value || undefined })}
+                />
+              ))}
+            </div>
+          </details>
           <details>
             <summary className="cursor-pointer font-medium text-sm">Verbose capture</summary>
             <div className="mt-3">
@@ -473,17 +537,46 @@ const ApplicationDiagnostics = ({
         </section>
       )}
 
-      <div
-        className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs"
-        role="status"
-        aria-label="Current page summary"
-      >
-        <span>{counts.error} errors</span>
-        <span>{counts.warn} warnings</span>
-        <span>{counts.info} info</span>
-        {counts.debug > 0 && <span>{counts.debug} debug</span>}
+      <fieldset className="flex flex-wrap items-center gap-2 text-xs">
+        <legend className="sr-only">Severity filters</legend>
+        {(
+          [
+            ["all", events.length, "text-foreground", "bg-muted", "All", "Show every severity"],
+            ["error", counts.error, "text-onair", "bg-onair-tint-15", "error", "Show only errors"],
+            ["warn", counts.warn, "text-caution", "bg-caution-tint-15", "warning", "Show only warnings"],
+            ["info", counts.info, "text-lock", "bg-lock-tint-15", "info", "Show informational logs"],
+          ] as const
+        ).map(([level, count, color, fill, label, hint]) => (
+          <Tooltip key={level}>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  className={`cursor-pointer rounded-full border px-3 py-1 font-medium transition-colors ${color} ${filters.level === level ? `border-current ${fill} shadow-sm` : "border-border hover:border-current hover:bg-muted/30"}`}
+                  aria-pressed={filters.level === level}
+                  onClick={() => updateFilters({ ...filters, level })}
+                >
+                  {label === "All"
+                    ? `${label} ${count}`
+                    : `${count} ${label}${label === "info" || count === 1 ? "" : "s"}`}
+                </button>
+              }
+            />
+            <TooltipContent>{hint}</TooltipContent>
+          </Tooltip>
+        ))}
+        {counts.debug > 0 && (
+          <button
+            type="button"
+            className={`cursor-pointer rounded-full border px-2.5 py-1 font-medium text-muted-foreground ${filters.level === "debug" ? "border-current bg-current/10" : "border-border hover:border-current"}`}
+            aria-pressed={filters.level === "debug"}
+            onClick={() => updateFilters({ ...filters, level: filters.level === "debug" ? "all" : "debug" })}
+          >
+            {counts.debug} debug
+          </button>
+        )}
         {downloadState === "failed" && (
-          <span className="inline-flex items-center gap-1 text-danger">
+          <span className="inline-flex items-center gap-1 text-onair">
             <AlertTriangle aria-hidden className="size-3" /> Download failed
           </span>
         )}
@@ -492,18 +585,23 @@ const ApplicationDiagnostics = ({
             <AlertTriangle aria-hidden className="size-3" /> {dropped} events dropped since startup
           </span>
         )}
-        <span className="ml-auto inline-flex items-center gap-2 text-muted-foreground">
-          <StatusDot tone={live ? "ok" : "off"} label={live ? "Live" : "Paused"} />
-          {live ? "Live · refreshes every 15 seconds" : "Updates paused"}
-        </span>
-        <Button variant="ghost" size="sm" onClick={() => setLive(!live)}>
-          {live ? <CirclePause aria-hidden /> : <CirclePlay aria-hidden />}
-          {live ? "Pause" : "Resume"}
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => query.refetch()} disabled={query.isFetching}>
-          <RotateCcw aria-hidden /> Refresh now
-        </Button>
-      </div>
+      </fieldset>
+
+      <DiagnosticsPager
+        label="Log pages"
+        page={cursorStack.length + 1}
+        itemLabel="logs"
+        canGoNewer={filters.order === "newest" ? cursorStack.length > 0 : Boolean(body?.nextCursor)}
+        canGoOlder={filters.order === "newest" ? Boolean(body?.nextCursor) : cursorStack.length > 0}
+        onNewer={() => {
+          if (filters.order === "newest") setCursorStack((stack) => stack.slice(0, -1));
+          else if (body?.nextCursor) setCursorStack((stack) => [...stack, body.nextCursor ?? ""]);
+        }}
+        onOlder={() => {
+          if (filters.order === "oldest") setCursorStack((stack) => stack.slice(0, -1));
+          else if (body?.nextCursor) setCursorStack((stack) => [...stack, body.nextCursor ?? ""]);
+        }}
+      />
 
       {query.isError ? (
         <ErrorState error={query.error} onRetry={() => query.refetch()} />
@@ -516,97 +614,97 @@ const ApplicationDiagnostics = ({
           No logs match these filters. Try a longer time range or clear More filters.
         </p>
       ) : (
-        <div className="grid min-h-72 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_22rem]">
-          <section className="overflow-auto rounded-lg border border-border bg-card" aria-label="Logs">
-            {events.map((event) => {
-              const open = expanded === event.id;
-              return (
-                <article key={event.id} className="border-border border-b last:border-b-0">
-                  <button
-                    type="button"
-                    className={`grid w-full gap-2 px-4 py-3 text-left hover:bg-muted/20 sm:grid-cols-[7rem_minmax(0,1fr)_8rem] sm:items-start ${open ? "bg-muted/20" : ""}`}
-                    aria-expanded={open}
-                    onClick={() => setExpanded(open ? undefined : event.id)}
-                  >
-                    <span className="inline-flex items-center gap-2 text-xs">
-                      <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
-                      {levelLabel(event.level)}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block font-medium text-sm">
-                        {event.message || fallbackMessage(event)}
-                      </span>
-                      <span className="mt-1 block text-muted-foreground text-xs">
-                        {sourceLabel(event.source)}
-                        {event.subsystem ? ` · ${event.subsystem}` : ""}
-                        {event.channelId ? " · Channel involved" : ""}
-                        {event.processRunId ? " · Process output available" : ""}
-                      </span>
-                    </span>
-                    <time
-                      className="font-mono text-muted-foreground text-xs sm:text-right"
-                      dateTime={new Date(event.occurredAt).toISOString()}
+        <DiagnosticsSplitPane
+          storageKey="diagnostics-log-details"
+          revealKey={expanded}
+          className="min-h-72 flex-1"
+          primary={
+            <section
+              ref={listRef}
+              className="max-h-[55vh] overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-card lg:max-h-[40rem]"
+              aria-label="Logs"
+              style={{ height: `${Math.min(Math.max(virtualizer.getTotalSize(), 228), 640)}px` }}
+            >
+              <div className="relative w-full" style={{ height: `${virtualizer.getTotalSize()}px` }}>
+                {virtualizer.getVirtualItems().map((virtualRow) => {
+                  const event = events[virtualRow.index];
+                  if (!event) return null;
+                  const open = expanded === event.id;
+                  return (
+                    <article
+                      key={event.id}
+                      ref={virtualizer.measureElement}
+                      data-index={virtualRow.index}
+                      className="absolute top-0 left-0 w-full border-border border-b"
+                      style={{ transform: `translateY(${virtualRow.start}px)` }}
                     >
-                      {formatTime(event.occurredAt)}
-                    </time>
-                  </button>
-                  {open && (
-                    <div className="border-border border-t lg:hidden">
-                      <EventDetail
-                        event={event}
-                        onOpenProcess={onOpenProcess}
-                        onOpenRelated={onOpenRelated}
-                      />
-                    </div>
-                  )}
-                </article>
-              );
-            })}
-          </section>
-          <aside
-            className="hidden overflow-auto rounded-lg border border-border bg-card lg:block"
-            aria-label="Selected log"
-          >
-            {selectedEvent ? (
-              <EventDetail
-                event={selectedEvent}
-                onOpenProcess={onOpenProcess}
-                onOpenRelated={onOpenRelated}
-              />
-            ) : (
-              <div className="p-6 text-muted-foreground text-sm">
-                <p className="font-medium text-foreground">Select a log to see more</p>
-                <p className="mt-1">Related actions and technical details will appear here.</p>
+                      <button
+                        type="button"
+                        className={`grid w-full cursor-pointer gap-2 px-4 py-3 text-left hover:bg-muted/20 sm:grid-cols-[7rem_minmax(0,1fr)_8rem] sm:items-start ${open ? "bg-muted/20" : ""}`}
+                        aria-expanded={open}
+                        onClick={() => setExpanded(open ? undefined : event.id)}
+                      >
+                        <span className="inline-flex items-center gap-2 text-xs">
+                          <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
+                          {levelLabel(event.level)}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block font-medium text-sm">
+                            {event.message || fallbackMessage(event)}
+                          </span>
+                          <span className="mt-1 block text-muted-foreground text-xs">
+                            {sourceLabel(event.source)}
+                            {event.subsystem ? ` · ${event.subsystem}` : ""}
+                            {event.channelId ? " · Channel involved" : ""}
+                            {event.processRunId ? " · Process output available" : ""}
+                          </span>
+                        </span>
+                        <time
+                          className="font-mono text-muted-foreground text-xs sm:text-right"
+                          dateTime={new Date(event.occurredAt).toISOString()}
+                        >
+                          {formatTime(event.occurredAt)}
+                        </time>
+                      </button>
+                      {open && (
+                        <div className="border-border border-t lg:hidden">
+                          <EventDetail
+                            event={event}
+                            onOpenProcess={onOpenProcess}
+                            onOpenRelated={onOpenRelated}
+                          />
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
               </div>
-            )}
-          </aside>
-        </div>
+            </section>
+          }
+          secondary={
+            <aside
+              className="h-full overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-card"
+              aria-label="Selected log"
+            >
+              {selectedEvent ? (
+                <EventDetail
+                  event={selectedEvent}
+                  onOpenProcess={onOpenProcess}
+                  onOpenRelated={onOpenRelated}
+                />
+              ) : (
+                <div className="p-6 text-muted-foreground text-sm">
+                  <p className="font-medium text-foreground">Select a log to see more</p>
+                  <p className="mt-1">Related actions and technical details will appear here.</p>
+                </div>
+              )}
+            </aside>
+          }
+        />
       )}
-
-      <div className="flex items-center justify-between">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={cursorStack.length === 0}
-          onClick={() => setCursorStack((stack) => stack.slice(0, -1))}
-        >
-          Newer
-        </Button>
-        <span className="text-muted-foreground text-xs">
-          Page {cursorStack.length + 1} · at most 200 records
-        </span>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!body?.nextCursor}
-          onClick={() => body?.nextCursor && setCursorStack((stack) => [...stack, body.nextCursor ?? ""])}
-        >
-          Older
-        </Button>
-      </div>
     </section>
   );
 };
 
-export type { ApplicationFilters, EventLevel, EventRange, EventSource };
+export type { ApplicationFilters, EventLevel, EventOrder, EventRange, EventSource };
 export { ApplicationDiagnostics, DEFAULT_APPLICATION_FILTERS };

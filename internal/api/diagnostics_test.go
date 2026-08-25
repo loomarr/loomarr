@@ -276,7 +276,7 @@ func TestDiagnosticEventsAreAdminOnlyAndBearerQueryable(t *testing.T) {
 		t.Fatalf("member status = %d, want 403", memberResponse.Code)
 	}
 
-	path := "/v1/diagnostics/events?from=1&to=1000&limit=1&level=error&source=server&event=api.request_failed" +
+	path := "/v1/diagnostics/events?from=1&to=1000&limit=1&order=oldest&level=error&source=server&event=api.request_failed" +
 		"&subsystem=api&requestId=req-1&playbackSessionId=play-1&channelId=channel-1" +
 		"&scheduleBlockId=block-1&jobId=job-1&processRunId=process-1&instanceId=instance-1&text=failed"
 	admin := httptest.NewRequest(http.MethodGet, path, nil)
@@ -289,6 +289,11 @@ func TestDiagnosticEventsAreAdminOnlyAndBearerQueryable(t *testing.T) {
 	if adminResponse.Header().Get("X-Next-Cursor") != wantPage.NextCursor {
 		t.Fatalf("JSON next cursor header = %q", adminResponse.Header().Get("X-Next-Cursor"))
 	}
+	mu.Lock()
+	if len(queries) != 1 || queries[0].Order != diagnostics.EventOrderOldest {
+		t.Fatalf("event query order = %+v, want oldest", queries)
+	}
+	mu.Unlock()
 	var jsonPage diagnostics.EventPage
 	if err := json.NewDecoder(adminResponse.Body).Decode(&jsonPage); err != nil {
 		t.Fatal(err)
@@ -332,7 +337,8 @@ func TestDiagnosticEventsAreAdminOnlyAndBearerQueryable(t *testing.T) {
 		t.Fatalf("queries = %d, want JSON, NDJSON, and agent Bearer", len(queries))
 	}
 	wantQuery := diagnostics.EventQuery{
-		From: 1, To: 1000, Limit: 1, Level: diagnostics.LevelError, Source: diagnostics.SourceServer,
+		From: 1, To: 1000, Limit: 1, Order: diagnostics.EventOrderOldest,
+		Level: diagnostics.LevelError, Source: diagnostics.SourceServer,
 		Event:     "api.request_failed",
 		Subsystem: "api", RequestID: "req-1", PlaybackSessionID: "play-1", ChannelID: "channel-1",
 		ScheduleBlockID: "block-1", JobID: "job-1", ProcessRunID: "process-1",

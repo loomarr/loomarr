@@ -82,7 +82,7 @@ func TestJobSet(t *testing.T) {
 		"playout-prepare | playout | 0 * * * * * | job.playout_prepare.schedule",
 		"reconcile | acquisitions | 0 */5 * * * * | job.reconcile.schedule",
 		"seerr-queue-poll | acquisitions | 0 * * * * * | job.seerr_queue_poll.schedule",
-		"system-health | system | 0 * * * * * | job.system_health.schedule",
+		"system-health | system | */30 * * * * * | job.system_health.schedule",
 	}
 
 	st := testkit.MigratedSQLiteStore(t)
