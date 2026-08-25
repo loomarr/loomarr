@@ -14,7 +14,8 @@ const validateSearch = (raw: Record<string, unknown>): Partial<DiagnosticsSearch
       : raw.view === "playout"
         ? "process"
         : oneOf(raw.view, ["logs", "health", "process"] as const, "logs"),
-  range: oneOf(raw.range, ["1h", "6h", "24h"] as const, DEFAULT_APPLICATION_FILTERS.range),
+  range: oneOf(raw.range, ["all", "1h", "6h", "24h"] as const, DEFAULT_APPLICATION_FILTERS.range),
+  order: oneOf(raw.order, ["newest", "oldest"] as const, DEFAULT_APPLICATION_FILTERS.order),
   level: oneOf(
     raw.level,
     ["all", "debug", "info", "warn", "error"] as const,

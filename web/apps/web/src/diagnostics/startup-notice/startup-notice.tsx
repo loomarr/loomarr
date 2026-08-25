@@ -22,7 +22,7 @@ const healthSignature = (health: HealthReport) => {
 const HealthNotice = ({ enabled }: { enabled: boolean }) => {
   const navigate = useNavigate();
   const healthQuery = diagnosticsApi.useGetCurrentHealth({
-    query: { enabled, retry: false, refetchInterval: 30_000 },
+    query: { enabled, retry: false, refetchInterval: 10_000 },
   });
   const health = healthQuery.data?.status === 200 ? healthQuery.data.data : undefined;
   const signature = health ? healthSignature(health) : "";

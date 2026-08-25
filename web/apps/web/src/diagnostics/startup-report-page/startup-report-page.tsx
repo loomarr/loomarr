@@ -1,19 +1,9 @@
 import * as diagnosticsApi from "@loomarr/api/endpoints/diagnostics";
 import type { HealthCheck } from "@loomarr/api/models/healthCheck";
 import type { HealthReport } from "@loomarr/api/models/healthReport";
-import type { StartupCheck } from "@loomarr/api/models/startupCheck";
-import type { StartupReport } from "@loomarr/api/models/startupReport";
-import { useQueryClient } from "@tanstack/react-query";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
-import { Button } from "@/components/ui/button";
 import { StatusDot, type StatusTone } from "@/components/ui/status-dot";
-
-const duration = (millis: number, pending = false) => {
-  if (pending) return "In progress";
-  if (millis < 1_000) return `${millis}ms`;
-  return `${(millis / 1_000).toFixed(millis < 10_000 ? 1 : 0)}s`;
-};
 
 const dateTime = (millis?: number) => {
   if (!millis) return "Not checked yet";
@@ -36,13 +26,6 @@ const healthStateCopy = (state: HealthReport["state"]) => {
   if (state === "degraded") return "Needs attention";
   if (state === "unhealthy") return "Unhealthy";
   return "Checking";
-};
-
-const startupStateCopy = (report: StartupReport) => {
-  if (report.state === "ready") return "Ready";
-  if (report.state === "degraded") return "Started with warnings";
-  if (report.state === "blocked") return "Startup blocked";
-  return "Starting";
 };
 
 const readableStatus = (status: string) =>
@@ -86,199 +69,50 @@ const HealthCheckRow = ({ check }: { check: HealthCheck }) => (
   </tr>
 );
 
-const HealthCheckCard = ({ check }: { check: HealthCheck }) => (
-  <li className="space-y-2 border-border border-t px-4 py-3 first:border-t-0">
-    <div className="flex items-start justify-between gap-3">
-      <span className="flex flex-col gap-0.5">
-        <CheckIdentity check={check} />
-      </span>
-      <span className="inline-flex shrink-0 items-center gap-2 text-sm">
-        <StatusDot tone={statusTone(check.status)} label={readableStatus(check.status)} />
-        {readableStatus(check.status)}
-      </span>
-    </div>
-    <p className="text-muted-foreground text-sm">
-      {check.detail || "No additional detail."}
-      {check.remediationRoute && (
-        <a className="ml-2 text-signal underline underline-offset-4" href={check.remediationRoute}>
-          Open
-        </a>
-      )}
-    </p>
-    <time
-      className="block text-muted-foreground text-xs"
-      dateTime={check.observedAt ? new Date(check.observedAt).toISOString() : undefined}
-    >
-      Last checked {dateTime(check.observedAt)}
-    </time>
-  </li>
-);
-
-const CurrentHealthCard = ({
-  report,
-  refreshing = false,
-  onRefresh,
-}: {
-  report: HealthReport;
-  refreshing?: boolean;
-  onRefresh?: () => void;
-}) => {
-  const attention = report.checks.filter(
-    (check) => !["passed", "ready", "healthy", "skipped"].includes(check.status),
-  );
-  const routine = report.checks.filter((check) => !attention.includes(check));
+const CurrentHealthCard = ({ report }: { report: HealthReport }) => {
   return (
     <section
       className="overflow-hidden rounded-lg border border-border bg-card"
-      aria-labelledby="current-health-title"
+      aria-label="Current health summary"
     >
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-4">
-        <div className="min-w-0">
-          <h2 id="current-health-title" className="font-medium text-lg">
-            Loomarr status
-          </h2>
-          <p className="text-muted-foreground text-xs">
-            Updated{" "}
-            <time dateTime={new Date(report.updatedAt).toISOString()}>{dateTime(report.updatedAt)}</time>
-            {report.nextRefreshAt && (
-              <>
-                {" · Next check expected "}
-                <time dateTime={new Date(report.nextRefreshAt).toISOString()}>
-                  {dateTime(report.nextRefreshAt)}
-                </time>
-              </>
-            )}
+        <div className="min-w-0 flex-1">
+          <p className="inline-flex items-center gap-2 font-medium text-lg">
+            <StatusDot tone={statusTone(report.state)} label={healthStateCopy(report.state)} />
+            {healthStateCopy(report.state)}
           </p>
+          <p className="text-muted-foreground text-xs">Continuously monitored</p>
         </div>
-        <span className="inline-flex items-center gap-2 text-sm">
-          <StatusDot tone={statusTone(report.state)} label={healthStateCopy(report.state)} />
-          {healthStateCopy(report.state)}
-        </span>
         <span className="font-mono text-muted-foreground text-xs">{report.version}</span>
-        {onRefresh && (
-          <Button className="ml-auto" variant="outline" size="sm" disabled={refreshing} onClick={onRefresh}>
-            {refreshing ? "Checking…" : "Check again"}
-          </Button>
-        )}
       </div>
-      {attention.length > 0 && (
-        <div className="border-border border-t">
-          <p className="bg-caution/5 px-4 py-2 font-medium text-sm">
-            {attention.length} {attention.length === 1 ? "check needs" : "checks need"} attention
-          </p>
-          <div className="hidden overflow-x-auto md:block">
-            <table className="w-full min-w-[44rem] text-sm">
-              <caption className="sr-only">Loomarr health checks needing attention</caption>
-              <thead className="border-border border-t bg-muted/30 text-muted-foreground text-xs">
-                <tr>
-                  {(["Check", "Status", "Last checked", "Detail"] as const).map((label) => (
-                    <th key={label} scope="col" className="px-4 py-2 text-left font-medium">
-                      {label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {attention.map((check) => (
-                  <HealthCheckRow key={check.key} check={check} />
+      <div className="border-border border-t">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[44rem] text-sm">
+            <caption className="sr-only">Current health checks</caption>
+            <thead className="border-border border-t bg-muted/30 text-muted-foreground text-xs">
+              <tr>
+                {(["Check", "Status", "Last checked", "Detail"] as const).map((label) => (
+                  <th key={label} scope="col" className="px-4 py-2 text-left font-medium">
+                    {label}
+                  </th>
                 ))}
-              </tbody>
-            </table>
-          </div>
-          <ul className="md:hidden" aria-label="Loomarr health checks needing attention">
-            {attention.map((check) => (
-              <HealthCheckCard key={check.key} check={check} />
-            ))}
-          </ul>
+              </tr>
+            </thead>
+            <tbody>
+              {report.checks.map((check) => (
+                <HealthCheckRow key={check.key} check={check} />
+              ))}
+            </tbody>
+          </table>
         </div>
-      )}
-      {routine.length > 0 && (
-        <details className="border-border border-t">
-          <summary className="cursor-pointer px-4 py-3 text-muted-foreground text-sm">
-            {routine.length} healthy or optional {routine.length === 1 ? "check" : "checks"}
-          </summary>
-          <ul className="border-border border-t" aria-label="Healthy and optional Loomarr checks">
-            {routine.map((check) => (
-              <HealthCheckCard key={check.key} check={check} />
-            ))}
-          </ul>
-        </details>
-      )}
+      </div>
     </section>
   );
 };
 
-const StartupCheckRow = ({ check }: { check: StartupCheck }) => (
-  <tr className="border-border border-t align-top">
-    <th scope="row" className="px-4 py-3 text-left font-medium">
-      {check.label}
-    </th>
-    <td className="px-4 py-3">
-      <span className="inline-flex items-center gap-2">
-        <StatusDot tone={statusTone(check.status)} label={readableStatus(check.status)} />
-        {readableStatus(check.status)}
-      </span>
-    </td>
-    <td className="px-4 py-3 font-mono text-muted-foreground text-xs">
-      {duration(check.durationMillis, check.status === "pending")}
-    </td>
-    <td className="px-4 py-3 text-muted-foreground">{check.detail || "—"}</td>
-  </tr>
-);
-
-const StartupReportCard = ({ report }: { report: StartupReport }) => (
-  <section
-    className="overflow-hidden rounded-lg border border-border bg-card"
-    aria-labelledby={`report-${report.id}`}
-  >
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
-      <h3 id={`report-${report.id}`} className="font-medium">
-        <time dateTime={new Date(report.generationStartedAt).toISOString()}>
-          {dateTime(report.generationStartedAt)}
-        </time>
-      </h3>
-      <span className="inline-flex items-center gap-2 text-sm">
-        <StatusDot tone={statusTone(report.state)} label={startupStateCopy(report)} />
-        {startupStateCopy(report)}
-      </span>
-      <span className="font-mono text-muted-foreground text-xs">{report.version}</span>
-      <span className="ml-auto text-muted-foreground text-xs">
-        {duration(report.durationMillis, report.state === "starting")}
-      </span>
-    </div>
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[44rem] text-sm">
-        <caption className="sr-only">Startup checks for application generation {report.generation}</caption>
-        <thead className="border-border border-t bg-muted/30 text-muted-foreground text-xs">
-          <tr>
-            {(["Check", "Status", "Duration", "Detail"] as const).map((label) => (
-              <th key={label} scope="col" className="px-4 py-2 text-left font-medium">
-                {label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {report.checks.map((check) => (
-            <StartupCheckRow key={check.key} check={check} />
-          ))}
-        </tbody>
-      </table>
-    </div>
-  </section>
-);
-
 const StartupReportPage = ({ embedded = false }: { embedded?: boolean }) => {
-  const queryClient = useQueryClient();
   const health = diagnosticsApi.useGetCurrentHealth({
-    query: { retry: false, refetchInterval: 30_000 },
-  });
-  const reports = diagnosticsApi.useListStartupReports({ limit: 20 }, { query: { retry: false } });
-  const refresh = diagnosticsApi.useRefreshCurrentHealth({
-    mutation: {
-      onSuccess: () =>
-        queryClient.invalidateQueries({ queryKey: diagnosticsApi.getGetCurrentHealthQueryKey() }),
-    },
+    query: { retry: false, refetchInterval: 10_000 },
   });
 
   if (health.isError)
@@ -288,8 +122,6 @@ const StartupReportPage = ({ embedded = false }: { embedded?: boolean }) => {
       </div>
     );
   const currentHealth = health.data?.status === 200 ? health.data.data : undefined;
-  const reportBody = reports.data?.status === 200 ? reports.data.data : undefined;
-  const previous = reportBody?.items.filter((report) => report.id !== reportBody.current.id) ?? [];
 
   const content = (
     <div
@@ -297,37 +129,10 @@ const StartupReportPage = ({ embedded = false }: { embedded?: boolean }) => {
       aria-live="polite"
     >
       {currentHealth ? (
-        <CurrentHealthCard
-          report={currentHealth}
-          refreshing={refresh.isPending}
-          onRefresh={() => refresh.mutate()}
-        />
+        <CurrentHealthCard report={currentHealth} />
       ) : (
         <p className="text-muted-foreground text-sm">Checking app health…</p>
       )}
-
-      <details className="rounded-lg border border-border bg-card">
-        <summary className="cursor-pointer px-4 py-4">
-          <span className="font-medium">Startup history</span>
-          <span className="ml-2 text-muted-foreground text-sm">
-            {previous.length > 0 ? `${previous.length} retained` : "No earlier startups"}
-          </span>
-        </summary>
-        <div className="space-y-3 border-border border-t p-4">
-          <p className="text-muted-foreground text-sm">
-            Boot reports from earlier Loomarr starts. Open these when a problem began after a restart.
-          </p>
-          {reports.isError ? (
-            <p className="text-danger text-sm">Startup history could not be loaded.</p>
-          ) : !reportBody ? (
-            <p className="text-muted-foreground text-sm">Loading startup history…</p>
-          ) : previous.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No previous startups are retained yet.</p>
-          ) : (
-            previous.map((report) => <StartupReportCard key={report.id} report={report} />)
-          )}
-        </div>
-      </details>
     </div>
   );
   if (embedded) return content;
@@ -339,4 +144,4 @@ const StartupReportPage = ({ embedded = false }: { embedded?: boolean }) => {
   );
 };
 
-export { CurrentHealthCard, StartupReportCard, StartupReportPage };
+export { CurrentHealthCard, StartupReportPage };

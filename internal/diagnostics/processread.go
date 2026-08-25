@@ -157,8 +157,8 @@ func (l *ProcessLog) Get(ctx context.Context, id string) (ProcessDetail, error) 
 		to = from + 1
 	}
 	truncated := false
-	if to-from > maxEventWindow.Milliseconds() {
-		from = to - maxEventWindow.Milliseconds()
+	if to-from > maxSelectionWindow.Milliseconds() {
+		from = to - maxSelectionWindow.Milliseconds()
 		truncated = true
 	}
 	records, err := l.store.QueryDiagnosticEvents(ctx, EventStoreQuery{
@@ -241,7 +241,7 @@ func (l *ProcessLog) validate(query ProcessQuery) (ProcessStoreQuery, int, error
 	} else if to == 0 {
 		to = min(now, from+defaultEventWindow.Milliseconds())
 	}
-	if from < 0 || to <= from || to-from > maxEventWindow.Milliseconds() {
+	if from < 0 || to <= from || to-from > maxSelectionWindow.Milliseconds() {
 		return ProcessStoreQuery{}, 0, invalidProcessQuery("from and to must define a window of at most 24 hours")
 	}
 	limit := query.Limit

@@ -29,7 +29,7 @@ func TestEventLogOwnsBoundsProjectionAndOpaqueCursor(t *testing.T) {
 	})
 	log := NewEventLog(reader, func() time.Time { return now })
 	page, err := log.Query(context.Background(), EventQuery{
-		Limit: 1, Level: LevelError, Source: SourceServer, Subsystem: "api", RequestID: "req-7",
+		Limit: 1, Order: EventOrderOldest, Level: LevelError, Source: SourceServer, Subsystem: "api", RequestID: "req-7",
 		ChannelID: "channel-1", Text: "failed",
 	})
 	if err != nil {
@@ -38,7 +38,7 @@ func TestEventLogOwnsBoundsProjectionAndOpaqueCursor(t *testing.T) {
 	if captured.From != now.Add(-time.Hour).UnixMilli() || captured.To != now.UnixMilli() || captured.Limit != 2 {
 		t.Fatalf("resolved bounds = %+v", captured)
 	}
-	if captured.Level != LevelError || captured.Source != SourceServer || captured.Subsystem != "api" ||
+	if captured.Order != EventOrderOldest || captured.Level != LevelError || captured.Source != SourceServer || captured.Subsystem != "api" ||
 		captured.RequestID != "req-7" || captured.ChannelID != "channel-1" || captured.Text != "failed" {
 		t.Fatalf("filters not preserved: %+v", captured)
 	}
@@ -50,13 +50,19 @@ func TestEventLogOwnsBoundsProjectionAndOpaqueCursor(t *testing.T) {
 	}
 
 	_, err = log.Query(context.Background(), EventQuery{
-		From: now.Add(-time.Hour).UnixMilli(), To: now.UnixMilli(), Limit: 1, Cursor: page.NextCursor,
+		From: now.Add(-time.Hour).UnixMilli(), To: now.UnixMilli(), Limit: 1, Order: EventOrderOldest, Cursor: page.NextCursor,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if captured.CursorOccurredAt != page.Items[0].OccurredAt || captured.CursorID != page.Items[0].ID {
 		t.Fatalf("decoded cursor = %d/%q", captured.CursorOccurredAt, captured.CursorID)
+	}
+	if _, err := log.Query(context.Background(), EventQuery{
+		From: now.Add(-time.Hour).UnixMilli(), To: now.UnixMilli(), Limit: 1,
+		Order: EventOrderNewest, Cursor: page.NextCursor,
+	}); !errors.Is(err, ErrInvalidEventQuery) {
+		t.Fatalf("cursor reused with another order error = %v, want ErrInvalidEventQuery", err)
 	}
 }
 
@@ -68,11 +74,11 @@ func TestEventLogRejectsUnsafeQueriesBeforeStore(t *testing.T) {
 		return nil, nil
 	}), func() time.Time { return now })
 	tests := []EventQuery{
-		{From: now.Add(-25 * time.Hour).UnixMilli(), To: now.UnixMilli()},
 		{From: now.UnixMilli(), To: now.Add(-time.Minute).UnixMilli()},
 		{Limit: 201},
 		{Level: Level("fatal")},
 		{Source: Source("browser")},
+		{Order: EventOrder("sideways")},
 		{Text: strings.Repeat("x", 257)},
 		{RequestID: strings.Repeat("x", 129)},
 		{Cursor: "not-base64"},
@@ -84,6 +90,25 @@ func TestEventLogRejectsUnsafeQueriesBeforeStore(t *testing.T) {
 	}
 	if calls != 0 {
 		t.Fatalf("invalid queries reached store %d times", calls)
+	}
+}
+
+func TestEventLogAllowsAllRetainedHistory(t *testing.T) {
+	now := time.Date(2026, 8, 24, 20, 0, 0, 0, time.UTC)
+	var captured EventStoreQuery
+	log := NewEventLog(eventReaderFunc(func(_ context.Context, query EventStoreQuery) ([]Record, error) {
+		captured = query
+		return nil, nil
+	}), func() time.Time { return now })
+
+	_, err := log.Query(context.Background(), EventQuery{
+		From: 1, To: now.UnixMilli(), Limit: 50, Order: EventOrderOldest,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if captured.From != 1 || captured.To != now.UnixMilli() || captured.Limit != 51 || captured.Order != EventOrderOldest {
+		t.Fatalf("retained-history query = %+v", captured)
 	}
 }
 

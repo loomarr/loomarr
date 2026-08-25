@@ -508,6 +508,21 @@ func testDiagnostics(t *testing.T, newStore func(t *testing.T) Store) {
 	if err != nil || len(second) != 1 || second[0].ID != oldEvent.ID {
 		t.Fatalf("second diagnostic page = %+v, %v", second, err)
 	}
+	oldestFirst, err := st.QueryDiagnosticEvents(ctx, diagnostics.EventStoreQuery{
+		From: base.Add(-3 * time.Hour).UnixMilli(), To: base.UnixMilli(), Limit: 1,
+		Order: diagnostics.EventOrderOldest,
+	})
+	if err != nil || len(oldestFirst) != 1 || oldestFirst[0].ID != oldEvent.ID {
+		t.Fatalf("oldest-first diagnostic page = %+v, %v", oldestFirst, err)
+	}
+	newerFromOldest, err := st.QueryDiagnosticEvents(ctx, diagnostics.EventStoreQuery{
+		From: base.Add(-3 * time.Hour).UnixMilli(), To: base.UnixMilli(), Limit: 1,
+		Order:            diagnostics.EventOrderOldest,
+		CursorOccurredAt: oldestFirst[0].OccurredAt, CursorID: oldestFirst[0].ID,
+	})
+	if err != nil || len(newerFromOldest) != 1 || newerFromOldest[0].ID != newEvent.ID {
+		t.Fatalf("next oldest-first diagnostic page = %+v, %v", newerFromOldest, err)
+	}
 	if _, err := st.QueryDiagnosticEvents(ctx, diagnostics.EventStoreQuery{Limit: 1000}); err == nil {
 		t.Fatal("unbounded diagnostic store query succeeded")
 	}

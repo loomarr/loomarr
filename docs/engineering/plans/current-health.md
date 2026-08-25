@@ -60,8 +60,8 @@ process stays alive and continues exposing its in-memory explanation.
 
 Startup observations populate Current Health immediately. After startup, a named System scheduler
 job runs the continuous probes concurrently under bounded per-probe and whole-run deadlines. Its
-schedule uses the normal `job.system_health.schedule` setting, defaulting to once per minute. “Check
-again” invokes the same runner rather than a second implementation.
+schedule uses the normal `job.system_health.schedule` setting, defaulting to every 30 seconds. An
+explicit refresh invokes the same runner rather than a second implementation.
 
 Configuration changes invalidate affected observations and trigger a prompt run. Internal
 components may publish an immediate observation when they already know about a failure or recovery;

@@ -14,7 +14,7 @@ import (
 )
 
 const startupIntegrationTimeout = 5 * time.Second
-const systemHealthDefaultCron = "0 * * * * *"
+const systemHealthDefaultCron = "*/30 * * * * *"
 
 type startupIntegration struct {
 	key         string

@@ -61,7 +61,7 @@ const meta = {
   component: CurrentHealthCard,
   decorators: [widthFrame(920)],
   args: { report: base },
-  render: (args) => <CurrentHealthCard {...args} onRefresh={() => undefined} />,
+  render: (args) => <CurrentHealthCard {...args} />,
 } satisfies Meta<typeof CurrentHealthCard>;
 
 type Story = StoryObj<typeof meta>;
