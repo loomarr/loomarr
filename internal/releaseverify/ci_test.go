@@ -79,6 +79,42 @@ func TestVerifyCIAggregate(t *testing.T) {
 	}
 }
 
+func TestVerifyCIImpactActivation(t *testing.T) {
+	workflow := `jobs:
+  changes:
+    outputs:
+      impact_postgres: ${{ steps.impact.outputs.postgres }}
+      release_candidate: ${{ steps.filter.outputs.release_candidate }}
+  store-postgres:
+    needs: changes
+    if: needs.changes.outputs.impact_postgres == 'true' || needs.changes.outputs.release_candidate == 'true'
+`
+	path := filepath.Join(t.TempDir(), "ci.yml")
+	if err := os.WriteFile(path, []byte(workflow), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyCIImpactActivation(path); err != nil {
+		t.Fatalf("complete impact activation: %v", err)
+	}
+
+	mutations := map[string]string{
+		"legacy selector":    strings.Replace(workflow, "impact_postgres", "go", 2),
+		"missing dependency": strings.Replace(workflow, "    needs: changes\n", "", 1),
+		"missing candidate":  strings.Replace(workflow, " || needs.changes.outputs.release_candidate == 'true'", "", 1),
+		"detached output":    strings.Replace(workflow, "steps.impact.outputs.postgres", "steps.filter.outputs.go", 1),
+	}
+	for name, mutated := range mutations {
+		t.Run(name, func(t *testing.T) {
+			if err := os.WriteFile(path, []byte(mutated), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := VerifyCIImpactActivation(path); err == nil {
+				t.Fatal("VerifyCIImpactActivation accepted a broken activated-gate contract")
+			}
+		})
+	}
+}
+
 func TestVerifyCIManualScopes(t *testing.T) {
 	workflow := `on:
   workflow_dispatch:

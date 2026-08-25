@@ -23,7 +23,7 @@ graph LR
   C -->|"same Go inputs"| G
   C -->|"same Go inputs"| RC
   C --> X
-  C --> P
+  C -->|"fail-closed Postgres impact"| P
   C -->|"web/, Makefile"| F
   C -->|"Expo apps and shared packages"| CJS
   C -->|"same broad client family"| AP
@@ -64,17 +64,23 @@ usable merge base — first push, force-push, new branch — runs everything.
 Two non-obvious entries: `docs/help/` is in the Go filter because those pages are embedded and
 the doc-claims test reads them, and `scripts/` is there because the job executes them.
 
-### Specialized gate classifier is shadow-only
+### Specialized gate classifier activates one job at a time
 
 The `changes` job also runs `scripts/ci-impact.sh` and publishes `impact_*` outputs for the
 specialized contract, Go, full-Go, Rust, Postgres, Windows, web, shared-client, iOS, tvOS, Expo
 Android mobile, Expo Android TV, visual, e2e, tuner, image, docs, agent, and legacy Android TV
 gates. Its run summary places those proposed decisions beside the current broad families.
 
-Those outputs are observational: no required job consumes them yet. The existing `go`, `web`,
-`image`, `docs`, `agent`, and `android` outputs remain authoritative while shadow results are
-compared with complete CI outcomes. A missing base, classifier failure, or unknown path selects
-every proposed gate.
+Postgres is the first active specialized output. `store-postgres` consumes `impact_postgres`
+directly while remaining in the required `CI` aggregate and on the explicit release-candidate
+path. This first activation intentionally treats every `.go` file plus `go.mod`, `go.sum`, store
+migrations, and unknown paths as Postgres-sensitive. That conservative boundary skips proven
+non-Go over-selection without guessing which transitive Go dependency can change a real-Postgres
+assertion. Dependency-aware narrowing is a later shadow change.
+
+The existing `go`, `web`, `image`, `docs`, `agent`, and `android` outputs remain authoritative for
+every other job while their specialized results are compared with complete CI outcomes. A missing
+base, classifier failure, or unknown path selects every specialized gate.
 
 `scripts/testdata/ci-impact.tsv` records the exact ordered gate set for representative paths and
 multi-path changes across every specialized gate. The classifier contract test compares complete

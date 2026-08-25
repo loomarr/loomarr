@@ -55,15 +55,15 @@ classify() {
     known=true
     select_gate contracts
     select_gate go
+    # The first Postgres activation is deliberately conservative. The integration
+    # target compiles store, backend-transition, and app tests plus their broad Go
+    # dependency closure; until a dependency-aware Postgres selector is proven in
+    # shadow, every Go source change retains this gate.
+    select_gate postgres
     select_gate image
     case "$path" in
       cmd/loomarr/*|internal/app/*|internal/testkit/*|go.mod|go.sum)
         select_gate go_full
-        ;;
-    esac
-    case "$path" in
-      internal/store/*|internal/app/*|internal/testkit/*|go.mod|go.sum)
-        select_gate postgres
         ;;
     esac
     case "$path" in

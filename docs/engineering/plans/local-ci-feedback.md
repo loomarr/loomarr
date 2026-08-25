@@ -153,3 +153,11 @@ gate documentation are amended before the first change that alters required beha
 - The shadow classifier now separates shared-client, iOS, tvOS, Expo Android mobile, and Expo
   Android TV decisions. Exact fixtures cover app-local, shared-package, native-script, workspace,
   and OpenAPI inputs; unknown paths still select every gate.
+- PR #560 merged that split with the complete 24-result matrix and strict aggregate green. Its live
+  timing report measured 42.8 minutes end to end and 114.2 occupied runner-minutes: mobile Apple
+  alone consumed 41.5 minutes, tvOS 18.3 minutes, and the shared-client job 0.7 minutes.
+- The first activation audit found that `make test-pg` directly runs `internal/backendtransition`
+  while the shadow Postgres map did not select that package. The activation therefore broadens the
+  initial Postgres decision to every Go source, pins the missed package in the exact fixture, and
+  adds a structural verifier before replacing the legacy selector. This still removes non-Go
+  over-selection and leaves dependency-aware Go narrowing for a separately observed slice.

@@ -219,9 +219,9 @@ jobs:
           fi
           echo "release_candidate=false" >> "$GITHUB_OUTPUT"
 
-      # Observe the dependency-aware classifier before it is allowed to skip required work.
-      # Every job below still consumes the legacy outputs from `steps.filter`.
-      - name: Classify specialized gates (shadow only)
+      # Postgres is the first specialized decision allowed to skip required work. Every other
+      # job remains on its legacy output while its dedicated decision stays in shadow.
+      - name: Classify specialized gates
         id: impact
         env:
           BASE: >-
@@ -243,7 +243,7 @@ jobs:
             reason="no usable diff base; failed closed"
             impact="$(./scripts/ci-impact.sh --all)"
           elif ! impact="$(git diff --name-only "$BASE" HEAD | ./scripts/ci-impact.sh)"; then
-            echo "::warning::CI impact classification failed; shadow decisions defaulted to all gates"
+            echo "::warning::CI impact classification failed; specialized decisions defaulted to all gates"
             reason="classifier error; failed closed"
             impact="$(./scripts/ci-impact.sh --all)"
           fi
@@ -253,9 +253,9 @@ jobs:
             printf '%s\n' "$impact" | sed -n "s/^$1=//p"
           }
           {
-            echo "### Specialized CI gate shadow"
+            echo "### Specialized CI gate decisions"
             echo
-            echo "These decisions are observational only; current jobs still use the legacy families."
+            echo "Postgres is active and fail-closed; every other specialized decision remains observational."
             echo
             echo "Reason: $reason."
             echo
@@ -634,7 +634,7 @@ jobs:
   store-postgres:
     name: Store conformance (Postgres)
     needs: changes
-    if: needs.changes.outputs.go == 'true'
+    if: needs.changes.outputs.impact_postgres == 'true' || needs.changes.outputs.release_candidate == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

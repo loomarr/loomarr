@@ -34,8 +34,8 @@ fi
 
 stdin_output="$(printf '%s\n' internal/suggest/ground.go docs/dev/testing.md | "$CLASSIFIER")"
 stdin_selected="$(awk -F= '$2 == "true" { if (selected != "") selected = selected ","; selected = selected $1 } END { print selected }' <<<"$stdin_output")"
-if [[ "$stdin_selected" != 'contracts,go,image,docs' ]]; then
-  printf 'ci-impact-test: stdin paths: got %s, want contracts,go,image,docs\n' "$stdin_selected" >&2
+if [[ "$stdin_selected" != 'contracts,go,postgres,image,docs' ]]; then
+  printf 'ci-impact-test: stdin paths: got %s, want contracts,go,postgres,image,docs\n' "$stdin_selected" >&2
   exit 1
 fi
 
