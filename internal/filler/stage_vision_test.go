@@ -65,13 +65,17 @@ func (f *fakeVisionStore) ListTaxa(_ context.Context) ([]taxonomy.Taxon, error) 
 // stand-ins (any non-empty bytes — the rung never decodes them, only forwards them to the provider)
 // or an error. The rest satisfy the interface and are never called by this rung.
 type scriptedVision struct {
-	frames [][]byte
-	err    error
-	calls  int
+	frames             [][]byte
+	err                error
+	calls, spanCalls   int
+	spanStart, spanEnd int64
+	spanCount          int
 }
 
-func (s *scriptedVision) KeyframesIn(ctx context.Context, f string, _, _ int64, n int) ([][]byte, error) {
-	return s.Keyframes(ctx, f, n)
+func (s *scriptedVision) KeyframesIn(_ context.Context, _ string, start, end int64, n int) ([][]byte, error) {
+	s.spanCalls++
+	s.spanStart, s.spanEnd, s.spanCount = start, end, n
+	return s.frames, s.err
 }
 
 func (s *scriptedVision) Keyframes(_ context.Context, _ string, _ int) ([][]byte, error) {
@@ -387,6 +391,23 @@ func TestVisionStage_WordlessClipIsACandidate(t *testing.T) {
 	}
 	if prov.calls != 1 {
 		t.Errorf("provider calls = %d, want 1", prov.calls)
+	}
+}
+
+func TestVisionStage_BoundsSemanticFramesToTheMeasuredClip(t *testing.T) {
+	tools := &scriptedVision{frames: oneFrame}
+	clip := wordless(visionClip("measured.mp4"))
+	clip.DurationMs = 30_000
+	if !runVision(t, newVisionStage(newFakeVisionStore(), tools,
+		&scriptedProvider{answer: `{"visibleText":"SONY","brand":"Sony"}`}), clip) {
+		t.Fatal("the wordless clip did not apply")
+	}
+	if tools.spanCalls != 1 || tools.calls != 0 {
+		t.Fatalf("KeyframesIn calls = %d, whole-clip calls = %d; want the measured span once", tools.spanCalls, tools.calls)
+	}
+	if tools.spanStart != 0 || tools.spanEnd != clip.DurationMs || tools.spanCount != filler.VisionKeyframes {
+		t.Fatalf("semantic span = %d..%d x%d, want 0..%d x%d",
+			tools.spanStart, tools.spanEnd, tools.spanCount, clip.DurationMs, filler.VisionKeyframes)
 	}
 }
 

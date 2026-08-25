@@ -18,6 +18,18 @@ func TestCIImpactClassifier(t *testing.T) {
 	}
 }
 
+func TestCIRunMetrics(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Clean(filepath.Join("..", ".."))
+	cmd := exec.Command("bash", filepath.Join("scripts", "ci-run-metrics-test.sh"))
+	cmd.Dir = root
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("CI run metrics contract: %v\n%s", err, output)
+	}
+}
+
 func TestGoImpactSelector(t *testing.T) {
 	t.Parallel()
 

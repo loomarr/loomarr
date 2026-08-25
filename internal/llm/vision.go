@@ -31,10 +31,9 @@ type VisionProvider interface {
 	// answer as a Response (the same envelope Chat returns, so the caller parses grounded
 	// tags out of Content identically to a text tagging turn — vision never uses ToolCalls).
 	//
-	// The jpegs are keyframe stills from ffmpeg (§10 V44: the 320px FFmpegArtwork renderer,
-	// NOT the 9×8 grayscale dHash frames). They are sent INLINE — base64 in the JSON body —
-	// so this is for a few small frames, not a whole clip: a fistful of 320px JPEGs is tens
-	// of KB, which is exactly what the keyframe sampler produces.
+	// The jpegs are bounded near-full-resolution semantic frames from ffmpeg (§10 V61),
+	// NOT the 320px presentation artwork or 9×8 grayscale dHash frames. They are sent
+	// INLINE as base64; the evidence router selects only the frames a claim still needs.
 	AskAboutImages(ctx context.Context, prompt string, jpegs [][]byte) (Response, error)
 }
 

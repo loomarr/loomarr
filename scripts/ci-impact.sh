@@ -8,7 +8,8 @@
 set -euo pipefail
 
 readonly GATES=(
-  contracts go go_full rust postgres windows web clients visual e2e tuner image docs agent android
+  contracts go go_full rust postgres windows web clients apple_mobile apple_tv
+  expo_android_mobile expo_android_tv visual e2e tuner image docs agent android
 )
 
 selected=()
@@ -36,6 +37,13 @@ select_all() {
   for ((i = 0; i < ${#GATES[@]}; i++)); do
     selected[i]=true
   done
+}
+
+select_all_native_clients() {
+  select_gate apple_mobile
+  select_gate apple_tv
+  select_gate expo_android_mobile
+  select_gate expo_android_tv
 }
 
 classify() {
@@ -79,20 +87,66 @@ classify() {
       select_gate postgres
       select_gate image
       ;;
-    web/apps/mobile/*|web/apps/tv/*|web/packages/design-system/*|web/packages/ui/*|web/turbo.json)
+    web/apps/mobile/*)
       known=true
       select_gate clients
+      select_gate apple_mobile
+      select_gate expo_android_mobile
+      ;;
+    web/apps/tv/*)
+      known=true
+      select_gate clients
+      select_gate apple_tv
+      select_gate expo_android_tv
+      ;;
+    web/packages/design-system/*|web/packages/ui/*)
+      known=true
+      select_gate clients
+      select_all_native_clients
       ;;
     web/packages/api/*|web/packages/core/*|web/packages/fixtures/*)
       known=true
       select_gate web
       select_gate clients
+      select_all_native_clients
       select_gate image
       ;;
-    web/package.json|web/pnpm-lock.yaml|web/pnpm-workspace.yaml|web/.gitignore|web/biome.json|web/tsconfig.base.json|web/.dependency-cruiser.cjs|web/scripts/*)
+    web/package.json|web/pnpm-lock.yaml|web/pnpm-workspace.yaml|web/.gitignore|web/biome.json|web/tsconfig.base.json)
       known=true
       select_gate web
       select_gate clients
+      select_all_native_clients
+      select_gate image
+      select_gate visual
+      select_gate e2e
+      select_gate tuner
+      ;;
+    web/.dependency-cruiser.cjs|web/turbo.json|web/.rnstorybook/*|web/apps/web/client-platform-proof.html|web/apps/web/src/client-platform-proof/*|web/apps/web/tests/client-platform-proof.*|web/apps/web/vite.client-platform.config.ts)
+      known=true
+      select_gate clients
+      ;;
+    web/scripts/test-apple-client.sh|web/scripts/filter-react-native-pods-notice.awk|web/scripts/filter-react-native-pods-notice.test.mjs)
+      known=true
+      select_gate contracts
+      select_gate apple_mobile
+      select_gate apple_tv
+      ;;
+    web/scripts/build-android-client.sh|web/scripts/with-memory-safe-android-build.cjs|web/scripts/with-memory-safe-android-build.test.cjs)
+      known=true
+      select_gate contracts
+      select_gate expo_android_mobile
+      select_gate expo_android_tv
+      ;;
+    web/scripts/check-imports.mjs|web/scripts/check-imports.test.mjs)
+      known=true
+      select_gate clients
+      ;;
+    web/scripts/*)
+      known=true
+      select_gate contracts
+      select_gate web
+      select_gate clients
+      select_all_native_clients
       select_gate image
       select_gate visual
       select_gate e2e
@@ -131,6 +185,8 @@ classify() {
       select_gate go
       select_gate go_full
       select_gate web
+      select_gate clients
+      select_all_native_clients
       select_gate image
       select_gate android
       ;;
@@ -178,6 +234,15 @@ classify() {
       known=true
       select_gate go
       select_gate go_full
+      ;;
+    internal/fillereval/corpus/*)
+      known=true
+      select_gate contracts
+      select_gate go
+      ;;
+    internal/fillereval/*.md)
+      known=true
+      select_gate docs
       ;;
     internal/web/dist/*)
       known=true

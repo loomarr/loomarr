@@ -66,6 +66,10 @@ jobs:
       impact_windows: ${{ steps.impact.outputs.windows }}
       impact_web: ${{ steps.impact.outputs.web }}
       impact_clients: ${{ steps.impact.outputs.clients }}
+      impact_apple_mobile: ${{ steps.impact.outputs.apple_mobile }}
+      impact_apple_tv: ${{ steps.impact.outputs.apple_tv }}
+      impact_expo_android_mobile: ${{ steps.impact.outputs.expo_android_mobile }}
+      impact_expo_android_tv: ${{ steps.impact.outputs.expo_android_tv }}
       impact_visual: ${{ steps.impact.outputs.visual }}
       impact_e2e: ${{ steps.impact.outputs.e2e }}
       impact_tuner: ${{ steps.impact.outputs.tuner }}
@@ -226,6 +230,7 @@ jobs:
              || github.event.before }}
           LEGACY_GO: ${{ steps.filter.outputs.go }}
           LEGACY_WEB: ${{ steps.filter.outputs.web }}
+          LEGACY_CLIENTS: ${{ steps.filter.outputs.clients }}
           LEGACY_IMAGE: ${{ steps.filter.outputs.image }}
           LEGACY_DOCS: ${{ steps.filter.outputs.docs }}
           LEGACY_AGENT: ${{ steps.filter.outputs.agent }}
@@ -269,6 +274,10 @@ jobs:
             printf '| Web | %s | web=%s, visual=%s, e2e=%s, tuner=%s |\n' \
               "$LEGACY_WEB" "$(impact_value web)" "$(impact_value visual)" \
               "$(impact_value e2e)" "$(impact_value tuner)"
+            printf '| Clients | %s | shared=%s, iOS=%s, tvOS=%s, Expo Android=%s, Expo Android TV=%s |\n' \
+              "$LEGACY_CLIENTS" "$(impact_value clients)" "$(impact_value apple_mobile)" \
+              "$(impact_value apple_tv)" "$(impact_value expo_android_mobile)" \
+              "$(impact_value expo_android_tv)"
             printf '| Image | %s | image=%s |\n' "$LEGACY_IMAGE" "$(impact_value image)"
             printf '| Docs | %s | docs=%s |\n' "$LEGACY_DOCS" "$(impact_value docs)"
             printf '| Agent | %s | agent=%s |\n' "$LEGACY_AGENT" "$(impact_value agent)"
@@ -1084,6 +1093,9 @@ jobs:
     if: always()
     needs: [changes, release-candidate-scope, full-manual-scope, agent-harness-macos, windows-playout, go-contracts, image-certification, go, store-postgres, frontend, clients, apple-clients, playwright, tuner, image, docs, android]
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
     steps:
       - name: Every job that ran must have passed
         run: |
@@ -1104,3 +1116,15 @@ jobs:
               *) echo "::error::a required job reported '$r'"; exit 1 ;;
             esac
           done
+      - name: Check out the timing reporter
+        if: always()
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Summarize queue, execution, critical path, and runner use
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! ./scripts/ci-run-metrics.sh >> "$GITHUB_STEP_SUMMARY"; then
+            echo "::warning::CI timing summary was unavailable; verification results are unchanged"
+          fi

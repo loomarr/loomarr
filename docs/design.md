@@ -197,6 +197,8 @@ flowchart TD
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
+- **`fillereval`**
+  Owns the hermetic certification contract for filler admission.
 - **`media`** · 3 importers
   Owns host-wide resources shared by live and background media work.
 - **`proctree`** · 2 importers
@@ -3358,6 +3360,102 @@ opting in — a deliberate product call, made with the grounding cap in mind: th
 this section exists to guard against stays in Incoming regardless of the threshold, because an
 ungrounded era cannot clear it.
 
+#### Evidence-based admission certification (V61 — supersedes the scalar gate)
+
+V38's grounding cap was a necessary improvement over admitting every scanned file, but it is not a
+certification boundary. A literal token proves only that the token occurred. It does not resolve
+which of two conflicting years describes the recording, prove that uploader text is trustworthy,
+or calibrate a model's `confidence` against observed correctness. Consequently
+`filler.autofile.min_confidence` remains a compatibility input while V61 is delivered, but **a
+scalar score is not sufficient authority for unattended admission**.
+
+The terminal decision belongs to one Go-owned **filler admission evaluator** after evidence
+extraction and before catalog filing. Extractors return versioned facts and may abstain; they never
+authorize playback. The evaluator returns exactly one semantic verdict:
+
+- `admit` — sufficient policy-eligible evidence exists for this certified content slice;
+- `reject` — measured media or policy evidence proves the input cannot be used as filler; or
+- `review` — a named contradiction or missing fact can be resolved by one answerable human
+  question.
+
+Retries, provider failures, exhausted budgets, and unsupported modalities are operational states,
+not semantic verdicts. They keep the clip held and recoverable. They never guess-admit, become a
+semantic rejection, or create review work a person cannot resolve.
+
+Evidence is claim-specific and carries provenance. Decoder measurements own media usability;
+source-owned dates and recording sidecars outrank a year merely spoken in a clip; readable end
+cards, packaging, and spoken advertiser claims support brand/product; source and item policy own
+licence eligibility. Filename, uploader metadata, transcript, OCR, frames, audio, and video are all
+untrusted data with no instruction authority. **Contradiction is a first-class evidence result**:
+the evaluator either invokes one bounded additional rung or abstains with a specific question. More
+conflicting tokens never increase confidence.
+
+Every evaluation durably attributes the clip and evidence hashes, extractor/prompt/schema/taxonomy/
+policy versions, requested and resolved model/provider, modality and derivative bounds, returned
+token categories, provider-reported charged cost, the price snapshot used for local estimation,
+latency/retries, reason codes, evidence references, conflicts, and terminal outcome. Aggregate token
+metrics remain useful for operations; the durable row is the audit and cost-accounting truth.
+
+Model roles are certified independently: lineup, filler text, filler frames, filler video, and
+transcription may have different accuracy/cost frontiers. A normal install follows the last
+certified role policy automatically; overrides are Advanced controls. Certification pins concrete
+model and provider identities, disables fallback, requires the requested structured-output
+parameters, snapshots capabilities/prices/privacy, and uses identical evidence across candidates.
+Production resilience may use explicitly allowed fallback, but records the resolved endpoint and is
+measured separately. A moving `latest` alias cannot authorize unattended filler decisions.
+
+The evidence cascade is cost- and resource-bounded: deterministic checks, text/transcript/OCR,
+near-full-resolution scene/end-biased frames, direct bounded video only for named temporal
+ambiguity, premium escalation only where measured value exceeds marginal cost, then review. The
+320 px UI preview is never semantic/OCR evidence. Hosted derivatives strip container metadata and
+have hard frame, pixel, duration, byte, token, retry, concurrency, per-clip, daily, and evaluation
+ceilings. Shared-appliance inference is serial by default. Privacy/provider constraints never relax
+silently; an ineligible route leaves the clip held.
+
+The default frame derivative is exactly four ordered JPEGs from bounded representative windows at
+5%, one-third, roughly two-thirds, and 90% of the measured clip or segment span. Each window decodes
+at most three seconds and the final window is the closing-card bias. Frames preserve their native
+size through 1920 px wide (never upscale, preserve aspect ratio) and are encoded sequentially. This
+is an extraction ceiling, not permission to send all four frames: the evidence router may send a
+strict subset when a cheaper claim is already answered. A missing/invalid duration refuses visual
+extraction rather than falling back to an unbounded decode.
+
+The default hosted-video derivative is one metadata- and chapter-stripped MP4 containing H.264 video
+and optional AAC audio. It spans at most 60 seconds of the measured clip or segment, fits within
+1280×720 without upscaling or changing aspect ratio, and is at most 12 MiB before base64 expansion.
+Extraction and upload are sequential, encoding uses one ffmpeg thread, and a size-limited reader
+aborts encoding before buffering more than the ceiling. The request caps model output at 512 tokens
+and refuses a response body over 256 KiB. The direct-video provider is a separate capability from
+text and frame vision. The OpenRouter certification adapter accepts base64 transport only, a
+concrete namespaced model whose
+live metadata advertises video input, and one explicitly pinned upstream provider; it disables route
+fallback, requires supported request parameters, and denies provider data collection while requiring
+zero-data-retention routing. URL transport, thin or stale capability metadata, invalid measurements,
+and any exceeded bound fail closed before a hosted request. This adapter supplies evidence only and
+does not itself decide or change production admission.
+
+Certification uses a versioned, source/similarity-separated development corpus and locked holdout.
+Near-duplicates cannot cross that split. It reports action-specific precision and coverage,
+worst-slice results, review answerability, conflicts, schema/grounding/security failures, calibration,
+latency, and total operating cost with confidence bounds. Unattended behavior expands only after the
+predeclared gates in the certification artifact pass: zero observed prohibited admissions,
+instruction escapes, or ungrounded taxonomy values; at least 99% observed auto-admit precision; at
+least 99% deterministic-reject and 97% semantic-reject precision; then at least 90% valid-filler and
+95% invalid-input automation with at most 10% review. Each safety-critical slice has its own gate.
+The point estimates alone do not certify a small corpus.
+
+Rollout is shadow-first on a bounded appliance workload. Deterministic rejection enables before
+certified admission slices; harder slices enable only after shadow evidence. A random sample of
+automatic outcomes and every disagreement between rungs remains auditable. Any model, provider,
+prompt, schema, taxonomy, extractor, or policy change invalidates the affected certification until
+it is replayed.
+
+The human surface follows the same ownership boundary. **Needs attention contains semantic
+exceptions only**, each asking one plain question and showing the decisive evidence/conflict.
+Automatic admits/rejects belong to Activity; queued/running/retry/provider/budget state belongs to
+Diagnostics. Overview answers whether filler is working and offers one ranked action only when one
+exists. Ordinary maintenance never asks a person to interpret confidence thresholds.
+
 **Loudness normalisation — SPECIFIED, NOT YET BUILT.** Clips filed automatically should be
 normalised to **−16 LUFS** on the ingest path: filler is cut together from sources recorded
 decades apart, and without it a break swings between a whisper and a shout, which is the single
@@ -5459,7 +5557,7 @@ independently instead of treating every zero-lineup result as a model-quality my
 
 ### 14.2 The package map
 
-`internal/` is **45 flat packages, deliberately** — the grouping below is prose, not directories.
+`internal/` is **46 flat packages, deliberately** — the grouping below is prose, not directories.
 
 Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
 
@@ -5480,6 +5578,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `reconcile` | The provisioning backstop when a webhook never arrives (§4, §7, §18) |
 | `retention` | What may be purged, in what order, after how long (§5, §18.1) — the policy; `store` owns the SQL |
 | `filler` | Commercials: the clip catalog and seeded pod assembly (§10) |
+| `fillereval` | Hermetic filler-admission certification: versioned corpus contracts, selective-risk/cost scoring, and captured-decision replay (§10 V61) |
 | `mediatools` | The ffmpeg/ffprobe/whisper layer — exec calls, output parsers, and the shapes those tools return (§10). Carved out of `filler`; the dependency runs one way and nothing here knows what a clip is |
 | `taxonomy` | The clip tag vocabulary — the operator-editable graph filler grounds tags against and curation matches over (§10 V45a) |
 | `playout` | Loomarr's own streaming engine — lineup to MPEG-TS (§9.1) |
