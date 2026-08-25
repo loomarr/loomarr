@@ -39,7 +39,8 @@ func TestRunLocksCompleteSpreadsheetReviewToDownloaderJSONL(t *testing.T) {
 		t.Fatal(err)
 	}
 	worksheet := map[string]any{
-		"schemaVersion": 1, "inventorySha256": digest,
+		"schemaVersion": 1, "inventorySha256": digest, "source": "archive.org", "collection": "classic_tv_commercials",
+		"snapshotAt": retrievedAt, "preparedAt": "2026-08-25T08:30:00Z", "minItems": 1, "maxItems": 1,
 		"cases": []any{map[string]any{
 			"rank": 1, "inventorySha256": digest, "identifier": "soda-ad", "title": "Mountain Dew",
 			"licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/", "itemUrl": "https://archive.org/details/soda-ad",

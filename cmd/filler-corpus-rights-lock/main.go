@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -20,12 +21,20 @@ import (
 type worksheet struct {
 	SchemaVersion   int         `json:"schemaVersion"`
 	InventorySHA256 string      `json:"inventorySha256"`
+	Source          string      `json:"source"`
+	Collection      string      `json:"collection"`
+	SnapshotAt      time.Time   `json:"snapshotAt"`
+	PreparedAt      time.Time   `json:"preparedAt"`
+	MinItems        int         `json:"minItems"`
+	MaxItems        int         `json:"maxItems"`
 	Cases           []reviewRow `json:"cases"`
 }
 
 type inventory struct {
 	SchemaVersion int         `json:"schemaVersion"`
 	Source        string      `json:"source"`
+	Collection    string      `json:"collection"`
+	SnapshotAt    time.Time   `json:"snapshotAt"`
 	Cases         []reviewRow `json:"cases"`
 }
 
@@ -124,7 +133,7 @@ func lockDecisions(inventoryPath, worksheetPath, csvPath string, lockedAt time.T
 	if err := json.Unmarshal(inventoryRaw, &inv); err != nil {
 		return nil, fmt.Errorf("decode inventory: %w", err)
 	}
-	if inv.SchemaVersion != 1 || inv.Source != "archive.org" || len(inv.Cases) == 0 {
+	if inv.SchemaVersion != 1 || inv.Source != "archive.org" || inv.Collection == "" || inv.SnapshotAt.IsZero() || len(inv.Cases) == 0 {
 		return nil, fmt.Errorf("inventory identity is invalid")
 	}
 	raw, err := os.ReadFile(worksheetPath)
@@ -135,15 +144,20 @@ func lockDecisions(inventoryPath, worksheetPath, csvPath string, lockedAt time.T
 	if err := json.Unmarshal(raw, &sheet); err != nil {
 		return nil, fmt.Errorf("decode worksheet: %w", err)
 	}
-	if sheet.SchemaVersion != 1 || len(sheet.Cases) == 0 || sheet.InventorySHA256 != inventoryDigest {
+	if sheet.SchemaVersion != 1 || len(sheet.Cases) == 0 || sheet.InventorySHA256 != inventoryDigest ||
+		sheet.Source != inv.Source || sheet.Collection != inv.Collection || !sheet.SnapshotAt.Equal(inv.SnapshotAt) ||
+		sheet.PreparedAt.Before(sheet.SnapshotAt) || sheet.MinItems <= 0 || sheet.MaxItems < sheet.MinItems || len(inv.Cases) < sheet.MinItems {
 		return nil, fmt.Errorf("worksheet identity is invalid")
 	}
-	inventoryByID := make(map[string]reviewRow, len(inv.Cases))
-	for _, item := range inv.Cases {
-		if _, duplicate := inventoryByID[item.Identifier]; duplicate {
-			return nil, fmt.Errorf("duplicate inventory item %s", item.Identifier)
-		}
-		inventoryByID[item.Identifier] = item
+	expectedCases := append([]reviewRow(nil), inv.Cases...)
+	sort.Slice(expectedCases, func(i, j int) bool {
+		return sha256Hex(inventoryDigest+"/"+expectedCases[i].Identifier) < sha256Hex(inventoryDigest+"/"+expectedCases[j].Identifier)
+	})
+	if len(expectedCases) > sheet.MaxItems {
+		expectedCases = expectedCases[:sheet.MaxItems]
+	}
+	if len(sheet.Cases) != len(expectedCases) {
+		return nil, fmt.Errorf("worksheet selection does not match its frozen inventory and bounds")
 	}
 	file, err := os.Open(csvPath)
 	if err != nil {
@@ -160,21 +174,18 @@ func lockDecisions(inventoryPath, worksheetPath, csvPath string, lockedAt time.T
 		return nil, fmt.Errorf("completed CSV header does not match the worksheet contract")
 	}
 	byID := make(map[string]reviewRow, len(sheet.Cases))
-	for _, row := range sheet.Cases {
+	for index, row := range sheet.Cases {
 		if row.InventorySHA256 != sheet.InventorySHA256 || row.Identifier == "" || row.MetadataSHA256 == "" || row.MetadataRetrievedAt.IsZero() {
 			return nil, fmt.Errorf("worksheet row %q has incomplete frozen identity", row.Identifier)
 		}
 		if _, duplicate := byID[row.Identifier]; duplicate {
 			return nil, fmt.Errorf("duplicate worksheet row %s", row.Identifier)
 		}
-		item, ok := inventoryByID[row.Identifier]
-		if !ok {
-			return nil, fmt.Errorf("worksheet row %s is absent from the inventory", row.Identifier)
-		}
-		item.Rank = row.Rank
+		item := expectedCases[index]
+		item.Rank = index + 1
 		item.InventorySHA256 = inventoryDigest
-		if !reflect.DeepEqual(immutableRecord(row), immutableRecord(item)) {
-			return nil, fmt.Errorf("worksheet row %s changes frozen inventory fields", row.Identifier)
+		if row.Rank != index+1 || !reflect.DeepEqual(immutableRecord(row), immutableRecord(item)) {
+			return nil, fmt.Errorf("worksheet row %s changes the deterministic frozen selection", row.Identifier)
 		}
 		byID[row.Identifier] = row
 	}
@@ -203,6 +214,10 @@ func lockDecisions(inventoryPath, worksheetPath, csvPath string, lockedAt time.T
 		return nil, fmt.Errorf("completed CSV covers %d of %d worksheet rows", len(seen), len(sheet.Cases))
 	}
 	return decisions, nil
+}
+
+func sha256Hex(value string) string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(value)))
 }
 
 func immutableRecord(row reviewRow) []string {
