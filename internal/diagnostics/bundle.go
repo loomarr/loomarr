@@ -278,7 +278,7 @@ func (s *BundleService) selectEvidence(parent context.Context, selection BundleS
 }
 
 func validateBundleSelection(s BundleSelection) (BundleSelection, error) {
-	if s.From < 0 || s.To <= s.From || s.To-s.From > maxEventWindow.Milliseconds() {
+	if s.From < 0 || s.To <= s.From || s.To-s.From > maxSelectionWindow.Milliseconds() {
 		return s, fmt.Errorf("%w: from and to must define a window of at most 24 hours", ErrInvalidBundleSelection)
 	}
 	if !s.Events && !s.Processes && !s.ProcessOutput {

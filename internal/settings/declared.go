@@ -1079,7 +1079,7 @@ func declared() []Setting {
 		// + an advanced raw-cron field). These OVERRIDE each job's built-in default cron.
 		{
 			Key: "job.system_health.schedule", EnvVar: "JOB_SYSTEM_HEALTH_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 * * * * *",
+			Kind: KindCron, Default: "*/30 * * * * *",
 			Doc: "How often Loomarr checks its database and configured connections for Current Health (cron).",
 		},
 		{

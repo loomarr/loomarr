@@ -26,7 +26,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { DiagnosticsPager } from "../diagnostics-pager";
 import { DiagnosticsSplitPane } from "../diagnostics-split-pane";
 
-type EventRange = "1h" | "6h" | "24h";
+type EventRange = "all" | "1h" | "6h" | "24h";
 type EventLevel = "all" | "debug" | "info" | "warn" | "error";
 type EventSource = "all" | "server" | "web" | "android_tv";
 type EventOrder = "newest" | "oldest";
@@ -47,7 +47,7 @@ type ApplicationFilters = {
 };
 
 const DEFAULT_APPLICATION_FILTERS: ApplicationFilters = {
-  range: "1h",
+  range: "all",
   order: "newest",
   level: "all",
   source: "all",
@@ -55,7 +55,11 @@ const DEFAULT_APPLICATION_FILTERS: ApplicationFilters = {
   text: "",
 };
 
-const RANGE_MS: Record<EventRange, number> = { "1h": 3_600_000, "6h": 21_600_000, "24h": 86_400_000 };
+const RANGE_MS: Record<Exclude<EventRange, "all">, number> = {
+  "1h": 3_600_000,
+  "6h": 21_600_000,
+  "24h": 86_400_000,
+};
 const VIRTUAL_VIEWPORT = { width: 960, height: 520 };
 
 const observeVirtualRect = (
@@ -112,9 +116,11 @@ const eventParams = (
   now = Date.now(),
 ): ListDiagnosticEventsParams => {
   const to = now;
+  // Zero asks the API to apply its one-hour default, so one millisecond after the epoch is the
+  // explicit lower bound for every retained Loomarr event.
+  const timeWindow = filters.range === "all" ? { from: 1, to } : { from: to - RANGE_MS[filters.range], to };
   return {
-    from: to - RANGE_MS[filters.range],
-    to,
+    ...timeWindow,
     limit: 50,
     order: ListDiagnosticEventsOrder[filters.order],
     ...(cursor ? { cursor } : {}),
@@ -450,6 +456,7 @@ const ApplicationDiagnostics = ({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="all">All retained</SelectItem>
             <SelectItem value="1h">Last hour</SelectItem>
             <SelectItem value="6h">Last 6 hours</SelectItem>
             <SelectItem value="24h">Last 24 hours</SelectItem>

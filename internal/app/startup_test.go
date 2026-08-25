@@ -98,6 +98,9 @@ func TestCurrentHealthRunnerConfirmsDatabaseFailureAndRecovers(t *testing.T) {
 
 func TestCurrentHealthFreshnessTracksConfiguredSchedule(t *testing.T) {
 	now := time.Date(2026, 8, 23, 12, 0, 1, 0, time.UTC)
+	if got, want := currentHealthFreshness("", now), time.Minute+startupIntegrationTimeout; got != want {
+		t.Fatalf("default freshness = %s, want %s", got, want)
+	}
 	if got, want := currentHealthFreshness("0 */5 * * * *", now), 10*time.Minute+startupIntegrationTimeout; got != want {
 		t.Fatalf("freshness = %s, want %s", got, want)
 	}

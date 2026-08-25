@@ -13,7 +13,7 @@ import (
 
 const (
 	defaultEventWindow = time.Hour
-	maxEventWindow     = 24 * time.Hour
+	maxSelectionWindow = 24 * time.Hour
 	defaultEventLimit  = 100
 	maxEventLimit      = 200
 	maxCursorBytes     = 512
@@ -198,9 +198,6 @@ func (l *EventLog) validate(query EventQuery) (EventStoreQuery, int, error) {
 	}
 	if from < 0 || to <= from {
 		return EventStoreQuery{}, 0, invalidEventQuery("from and to must define an increasing time window")
-	}
-	if to-from > maxEventWindow.Milliseconds() {
-		return EventStoreQuery{}, 0, invalidEventQuery("time window cannot exceed 24 hours")
 	}
 	limit := query.Limit
 	if limit == 0 {

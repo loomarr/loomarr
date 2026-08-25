@@ -74,7 +74,6 @@ func TestEventLogRejectsUnsafeQueriesBeforeStore(t *testing.T) {
 		return nil, nil
 	}), func() time.Time { return now })
 	tests := []EventQuery{
-		{From: now.Add(-25 * time.Hour).UnixMilli(), To: now.UnixMilli()},
 		{From: now.UnixMilli(), To: now.Add(-time.Minute).UnixMilli()},
 		{Limit: 201},
 		{Level: Level("fatal")},
@@ -91,6 +90,25 @@ func TestEventLogRejectsUnsafeQueriesBeforeStore(t *testing.T) {
 	}
 	if calls != 0 {
 		t.Fatalf("invalid queries reached store %d times", calls)
+	}
+}
+
+func TestEventLogAllowsAllRetainedHistory(t *testing.T) {
+	now := time.Date(2026, 8, 24, 20, 0, 0, 0, time.UTC)
+	var captured EventStoreQuery
+	log := NewEventLog(eventReaderFunc(func(_ context.Context, query EventStoreQuery) ([]Record, error) {
+		captured = query
+		return nil, nil
+	}), func() time.Time { return now })
+
+	_, err := log.Query(context.Background(), EventQuery{
+		From: 1, To: now.UnixMilli(), Limit: 50, Order: EventOrderOldest,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if captured.From != 1 || captured.To != now.UnixMilli() || captured.Limit != 51 || captured.Order != EventOrderOldest {
+		t.Fatalf("retained-history query = %+v", captured)
 	}
 }
 

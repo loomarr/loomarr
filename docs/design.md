@@ -5605,7 +5605,7 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | Image module policy (not settings) | AVIF/WebP/JPEG are always emitted; remote fetch concurrency is capped below the provider limit; fetched artwork never outlives the six-month compliance ceiling. These are compatibility, service-protection, and compliance invariants rather than user preferences. |
 | `REQUEST_TTL` / `DOWNLOADING_TTL` | `48h` / `12h` |
 | `CHANNEL_RECONCILE_EVERY` | `10m` — minimum delay after a successful channel rebuild before it is eligible for another scheduled sweep. The normal cadence control is the **Maintain live channels** task under System → Tasks, so this cooldown remains an advanced setting. |
-| `JOB_SYSTEM_HEALTH_SCHEDULE` | `0 * * * * *` — once a minute, refresh Current Health through the named System task. Probes run concurrently under bounded deadlines; changing this cadence also changes their freshness deadline rather than allowing an older observation to remain green indefinitely (§17). |
+| `JOB_SYSTEM_HEALTH_SCHEDULE` | `*/30 * * * * *` — every 30 seconds, refresh Current Health through the named System task. Probes run concurrently under bounded deadlines; changing this cadence also changes their freshness deadline rather than allowing an older observation to remain green indefinitely (§17). |
 | `JOB_PLAYOUT_PREPARE_SCHEDULE` | `0 * * * * *` — once a minute, look six hours ahead and spend only preemptible spare hardware on the nearest missing prepared publications (§9.1 V56). |
 | `SESSION_TTL` / `COOKIE_SECURE` | `720h` / `auto` (§11) |
 | `TRUST_PROXY` | `false` (§11) — trust `X-Forwarded-For`/`X-Forwarded-Proto`. Default `false`: the login rate-limit key and `cookie.secure=auto` use the socket peer address, so forwarding headers can't be forged by a direct client. Set `true` only when a reverse proxy in front sets these headers. |
@@ -6029,7 +6029,7 @@ Startup is the first observation pass. Configuration, database/migrations, gener
 image-worker certification, and HTTP assembly/listening record at their real lifecycle seams.
 Configured media server, Tunarr, requester, AI, and TMDB reuse the existing setup probes concurrently
 under one bounded window. After startup, the named System scheduler job uses those same adapters to
-refresh continuous checks; `job.system_health.schedule` defaults to once per minute. Settings changes
+refresh continuous checks; `job.system_health.schedule` defaults to every 30 seconds. Settings changes
 invalidate affected observations and prompt a run, and an explicit refresh invokes the same runner.
 No request path, scheduler goroutine, or Playout goroutine waits on unbounded probe work.
 
@@ -6052,15 +6052,21 @@ The three destinations use the same filled-pill navigation, hover state, pointer
 URL-backed selection as the rest of Settings. **Media processes** is the operator-facing name for
 the retained ffmpeg and streaming-process evidence; **Process run** remains protocol and storage
 vocabulary, not the page title.
-Current Health leads with present status, version, and observation/freshness, then keeps every current
+Current Health leads with present status, version, and a concise continuously-monitored indicator, then keeps every current
 check in one always-visible responsive table; startup-mode and continuously monitored checks are
 distinguished in that table instead of exposing immutable startup-report history as a competing UI
 surface. The Current Health read updates automatically through health-event invalidation with a
-bounded polling fallback and has no manual refresh control. Detail and remediation use text as well
+ten-second polling fallback and has no manual refresh control. The freshness deadline remains API
+state for stale derivation; the UI does not mislabel it as the next scheduled probe. Detail and remediation use text as well
 as color. Notices deduplicate per health
 incident, persist while action is needed, announce recovery calmly, and are superseded by a newer
 generation. The interactive terminal table remains a startup projection only. Continuous transitions
 use the ordinary one-line structured JSON stream; formatted text is never persisted truth.
+
+The Logs view defaults to all retained evidence with newest records first. Its time-range control can
+narrow that retained set, while the independent newest/oldest order starts page one at the matching
+edge. Selecting all retained evidence and oldest first therefore begins with the earliest retained
+startup-era event instead of merely reversing the last hour.
 
 ### Read, download, and future support submission
 
@@ -6106,9 +6112,11 @@ panes clip horizontal overflow; only an intrinsically wide technical payload may
 code scroller. Narrow layouts keep their existing stacked/disclosure presentation and expose no drag
 affordance.
 
-The Diagnostic-event read defaults to the last hour and newest-first order, permits at most a 24-hour
-window, and returns 100 records by default with a hard page maximum of 200. Callers may request
-oldest-first order. Its opaque cursor is the total `(occurred_at, id)` position and is bound to the
+The Diagnostic-event API read defaults to the last hour and newest-first order when callers omit a
+window, and returns 100 records by default with a hard page maximum of 200. An explicit increasing
+window may span all retained history; retention age and the global storage budget bound the searchable
+set, while cursor paging bounds each store read. Callers may request oldest-first order. Its opaque
+cursor is the total `(occurred_at, id)` position and is bound to the
 requested order, so a cursor cannot silently reverse chronology. Exact severity, source, subsystem, request, playback,
 Channel, schedule-block, Job, Process-run, and instance filters are each capped at 128 bytes; the
 case-insensitive event/message/subsystem/attribute text filter is capped at 256 bytes. The store

@@ -81,18 +81,7 @@ const CurrentHealthCard = ({ report }: { report: HealthReport }) => {
             <StatusDot tone={statusTone(report.state)} label={healthStateCopy(report.state)} />
             {healthStateCopy(report.state)}
           </p>
-          <p className="text-muted-foreground text-xs">
-            Updated{" "}
-            <time dateTime={new Date(report.updatedAt).toISOString()}>{dateTime(report.updatedAt)}</time>
-            {report.nextRefreshAt && (
-              <>
-                {" · Next check expected "}
-                <time dateTime={new Date(report.nextRefreshAt).toISOString()}>
-                  {dateTime(report.nextRefreshAt)}
-                </time>
-              </>
-            )}
-          </p>
+          <p className="text-muted-foreground text-xs">Continuously monitored</p>
         </div>
         <span className="font-mono text-muted-foreground text-xs">{report.version}</span>
       </div>
@@ -123,7 +112,7 @@ const CurrentHealthCard = ({ report }: { report: HealthReport }) => {
 
 const StartupReportPage = ({ embedded = false }: { embedded?: boolean }) => {
   const health = diagnosticsApi.useGetCurrentHealth({
-    query: { retry: false, refetchInterval: 30_000 },
+    query: { retry: false, refetchInterval: 10_000 },
   });
 
   if (health.isError)

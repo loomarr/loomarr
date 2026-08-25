@@ -40,7 +40,7 @@ const DiagnosticsPage = ({
         description="Find what happened and check whether this Loomarr server is healthy."
         actions={
           <SupportBundle
-            initialRange={search.range}
+            initialRange={search.range === "all" ? "24h" : search.range}
             correlations={{
               requestId: search.requestId,
               playbackSessionId: search.playbackSessionId,

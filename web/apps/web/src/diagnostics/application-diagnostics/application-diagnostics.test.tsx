@@ -87,6 +87,7 @@ describe("ApplicationDiagnostics", () => {
     expect(await screen.findByText("Show informational logs")).toBeInTheDocument();
     expect(screen.getByText("2 events dropped since startup")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Older" })).toBeEnabled();
+    expect(screen.getByRole("combobox", { name: "Time range" })).toHaveTextContent("All retained");
     expect(screen.getByRole("combobox", { name: "Log order" })).toHaveTextContent("Newest first");
     expect(screen.queryByRole("button", { name: /pause|resume|refresh now/i })).not.toBeInTheDocument();
 
@@ -162,6 +163,7 @@ describe("ApplicationDiagnostics", () => {
 
     expect(await screen.findByText("Loomarr is ready")).toBeInTheDocument();
     await waitFor(() => expect(requests[0]?.searchParams.get("limit")).toBe("50"));
+    expect(requests[0]?.searchParams.get("from")).toBe("1");
     expect(requests[0]?.searchParams.get("order")).toBe("newest");
     expect(screen.getByText("Page 1")).toBeInTheDocument();
     expect(screen.getByText("Up to 50 logs")).toBeInTheDocument();

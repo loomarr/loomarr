@@ -51,7 +51,8 @@ describe("StartupReportPage", () => {
 
     expect(await screen.findByRole("heading", { name: "Current Health" })).toBeInTheDocument();
     expect(await screen.findByText("Needs attention")).toBeInTheDocument();
-    expect(screen.getByText(/Next check expected/)).toBeInTheDocument();
+    expect(screen.getByText("Continuously monitored")).toBeInTheDocument();
+    expect(screen.queryByText(/Next check expected/)).not.toBeInTheDocument();
     const table = screen.getByRole("table", { name: "Current health checks" });
     expect(table).toHaveTextContent("Database and migrations");
     expect(table).toHaveTextContent("Media server");
