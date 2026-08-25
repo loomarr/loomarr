@@ -321,7 +321,8 @@ func actionAllowed(outcome string, verdict filleradmission.Verdict, latest fille
 	}
 	switch state {
 	case string(filleradmission.VerdictReview):
-		return next == fillerdecision.ActionAdmit || next == fillerdecision.ActionReject || next == fillerdecision.ActionCorrect
+		return next == fillerdecision.ActionAdmit || next == fillerdecision.ActionReject ||
+			next == fillerdecision.ActionCorrect || next == fillerdecision.ActionAbandon
 	case string(filleradmission.VerdictAdmit):
 		return next == fillerdecision.ActionReverse
 	case string(filleradmission.VerdictReject), "reversed":
@@ -351,7 +352,7 @@ func getFillerDecisionAction(ctx context.Context, q actionRowQueryer, ph placeho
 
 func latestFillerDecisionAction(ctx context.Context, q actionRowQueryer, ph placeholder, decisionID string) (fillerdecision.Action, bool, error) {
 	action, err := scanFillerDecisionAction(q.QueryRowContext(ctx, ph(fillerDecisionActionSelect+
-		` WHERE decision_id = ? ORDER BY created_at DESC, id DESC LIMIT 1`), decisionID))
+		` WHERE decision_id = ? AND kind <> 'abandon' ORDER BY created_at DESC, id DESC LIMIT 1`), decisionID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return fillerdecision.Action{}, false, nil
 	}
@@ -430,7 +431,8 @@ func (s *sqlStore) ListFillerDecisionActivity(ctx context.Context, cursor filler
 		UNION ALL
 		SELECT 'action:' || a.id, a.id, a.decision_id, d.clip_hash, a.actor_id, a.reason,
 		CASE a.kind WHEN 'admit' THEN 'review_admit' WHEN 'reject' THEN 'review_reject'
-		WHEN 'correct' THEN 'correction' WHEN 'restore' THEN 'restore' ELSE 'reversal' END, a.created_at
+		WHEN 'correct' THEN 'correction' WHEN 'abandon' THEN 'review_abandoned'
+		WHEN 'restore' THEN 'restore' ELSE 'reversal' END, a.created_at
 		FROM filler_admission_actions a JOIN filler_admission_decisions d ON d.id = a.decision_id`
 	var total int
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM (`+base+`) activity_count`).Scan(&total); err != nil {

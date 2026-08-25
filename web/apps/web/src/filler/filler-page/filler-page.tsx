@@ -28,9 +28,10 @@ import { useLoomarrEventListener } from "@/events/events-provider";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { ClipTagDialog } from "../clip-tag-dialog";
 import { ConfirmSplitDialog } from "../confirm-split-dialog";
+import { FillerManage } from "../filler-manage";
 import { FillerOverview } from "../filler-overview";
+import { FillerReviewQueue } from "../filler-review-queue";
 import type { FillerSearch } from "../filler-search";
-import { IncomingTab } from "../incoming-tab";
 import { PinClipDialog } from "../pin-clip-dialog";
 import { SourcesTab } from "../sources-tab";
 import { TaxonomyTab } from "../taxonomy-tab";
@@ -328,20 +329,10 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   const poolQuery = fillerApi.useFillerPool({ query: { enabled: tab === "library" } });
   const pool = unwrap(poolQuery.data, (b) => b);
 
-  // The Incoming queue's COUNT (V35) — the tab badge, which the shell owns because the badge is
-  // visible from every tab. Admin-only on the server, so the QUERY is gated too, not just the
-  // tab: a member's request would 403 and fill their console with an error about a surface they
-  // cannot reach.
-  //
-  // ⚠ Only `total` is read here. The queue's contents (asks, reels, recently-filed) belong to
-  // `IncomingTab`, which runs the same query when it mounts — TanStack dedupes them onto one
-  // cache entry, so this is one request, not two. What it is NOT is the previous arrangement,
-  // where the Catalog tab unpacked and held a queue it never rendered.
-  //
-  // ⚠ `total` deliberately EXCLUDES the recently-filed audit list: that is not work waiting,
-  // and a tab badge that never clears stops being read.
-  const incomingQuery = fillerApi.useFillerIncoming({ query: { enabled: isAdmin } });
-  const incomingTotal = unwrap(incomingQuery.data, (b) => b.total) ?? 0;
+  // Needs attention counts the same server-owned semantic projection it renders. Pipeline work,
+  // retries and operational holds cannot leak into the badge (§10 V63).
+  const reviewsQuery = fillerApi.useFillerDecisionReviews({ limit: 1 }, { query: { enabled: isAdmin } });
+  const reviewTotal = unwrap(reviewsQuery.data, (b) => b.total) ?? 0;
 
   // ⚠ Proposing a pull DOWNLOADS NOTHING — it writes a proposal for the approval queue (§10).
   // The toast says so, because a button that appears to start a download and does not is worse
@@ -696,7 +687,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
               to: "/filler",
             },
             ...(isAdmin
-              ? [{ id: "attention", label: "Needs attention", to: "/filler/attention", count: incomingTotal }]
+              ? [{ id: "attention", label: "Needs attention", to: "/filler/attention", count: reviewTotal }]
               : []),
             {
               id: "library",
@@ -705,18 +696,17 @@ const FillerPage = ({ tab }: FillerPageProps) => {
               search: catalogSearch,
               count: total,
             },
-            { id: "sources", label: "Sources", to: "/filler/sources" },
-            { id: "advanced", label: "Advanced", to: "/filler/advanced" },
+            { id: "manage", label: "Manage", to: "/filler/manage" },
           ]}
-          activeId={tab === "taxonomy" ? "advanced" : tab}
+          activeId={tab === "sources" || tab === "taxonomy" ? "manage" : tab}
         />
 
         {tab === "overview" ? (
           <FillerOverview />
         ) : tab === "attention" && isAdmin ? (
-          // ⚠ The tab owns its own query and its four filing mutations — see `incoming-tab.tsx`.
-          // They used to live up here, so the Catalog tab mounted the whole Incoming queue too.
-          <IncomingTab onEditTags={setTagging} />
+          <FillerReviewQueue />
+        ) : tab === "manage" ? (
+          <FillerManage onEditTags={setTagging} />
         ) : tab === "sources" ? (
           // ⚠ The tab owns its own query. The header does NOT read it — the status line comes
           // from `/v1/filler/watch`, counts and verdict both (see `statusLine`) — so moving it
@@ -724,30 +714,6 @@ const FillerPage = ({ tab }: FillerPageProps) => {
           <SourcesTab />
         ) : tab === "taxonomy" ? (
           <TaxonomyTab isAdmin={isAdmin} />
-        ) : tab === "advanced" ? (
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card className="p-5">
-              <h2 className="font-semibold text-lg">Classification vocabulary</h2>
-              <p className="mt-1 text-muted-foreground text-sm">
-                Inspect or refine the vocabulary Loomarr uses to ground matching. Ordinary filler setup does
-                not require this.
-              </p>
-              <Button className="mt-4" variant="outline" render={<Link to="/filler/taxonomy" />}>
-                Open classification vocabulary
-              </Button>
-            </Card>
-            {isAdmin ? (
-              <Card className="p-5">
-                <h2 className="font-semibold text-lg">Defaults and limits</h2>
-                <p className="mt-1 text-muted-foreground text-sm">
-                  Change storage paths, acquisition ceilings, and system-wide filler behavior.
-                </p>
-                <Button className="mt-4" variant="outline" render={<Link to="/filler/settings" />}>
-                  Open settings
-                </Button>
-              </Card>
-            ) : null}
-          </div>
         ) : (
           <div className="flex flex-col gap-6">
             {split.error != null && <ErrorState error={split.error} />}

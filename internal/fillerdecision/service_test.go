@@ -60,6 +60,20 @@ func TestValidateCorrectionRequiresAnAnswerAndClosedVerdict(t *testing.T) {
 	}
 }
 
+func TestValidateAbandonCarriesNoInferredVerdict(t *testing.T) {
+	action := Action{
+		ID: "action-skip", DecisionID: "decision-1", ActorID: "admin-1", Kind: ActionAbandon,
+		Reason: "skip for now", CreatedAt: time.Date(2026, 8, 25, 5, 0, 0, 0, time.UTC),
+	}
+	if err := ValidateAction(action); err != nil {
+		t.Fatal(err)
+	}
+	action.CorrectedVerdict = filleradmission.VerdictReject
+	if err := ValidateAction(action); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("abandon with inferred verdict = %v, want ErrInvalid", err)
+	}
+}
+
 func TestValidateRecordBoundsCanonicalPayload(t *testing.T) {
 	record := validRecord()
 	record.Result.Decision.ReasonCodes = slices.Repeat(

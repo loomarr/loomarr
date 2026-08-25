@@ -1,10 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { FillerPage } from "@/filler/filler-page";
-
-const AdvancedScreen = () => <FillerPage tab="advanced" />;
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 const Route = createFileRoute("/_authed/filler/advanced")({
-  component: AdvancedScreen,
+  beforeLoad: () => {
+    throw redirect({ to: "/filler/manage" });
+  },
 });
 
 export { Route };

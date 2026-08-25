@@ -34,6 +34,7 @@ const NAV_PATHS = [
   "/filler/advanced",
   "/filler/attention",
   "/filler/library",
+  "/filler/manage",
   "/filler/sources",
   "/filler/taxonomy",
   "/people",

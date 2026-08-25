@@ -3362,6 +3362,21 @@ func testFillerAdmissionDecisionAudit(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("recovered current counts = %+v, %v", counts, err)
 	}
 
+	abandon := fillerdecision.Action{
+		ID: "action-abandon", DecisionID: "d-review", Kind: fillerdecision.ActionAbandon,
+		ActorID: "admin-1", Reason: "skip for now", CreatedAt: at.Add(750 * time.Millisecond),
+	}
+	if err := s.CommitFillerDecisionAction(ctx, abandon); err != nil {
+		t.Fatal(err)
+	}
+	stillUnresolved, err := s.ListFillerDecisions(ctx, fillerdecision.DecisionFilter{
+		Kind: fillerdecision.OutcomeSemantic, Verdict: filleradmission.VerdictReview,
+		UnresolvedOnly: true, Limit: 10,
+	})
+	if err != nil || stillUnresolved.Total != 1 {
+		t.Fatalf("abandoned review was treated as resolved = %+v, %v", stillUnresolved, err)
+	}
+
 	resolution := fillerdecision.Action{
 		ID: "action-admit", DecisionID: "d-review", Kind: fillerdecision.ActionAdmit,
 		ActorID: "admin-1", Reason: "closing card proves product", CreatedAt: at.Add(time.Second),
@@ -3423,11 +3438,11 @@ func testFillerAdmissionDecisionAudit(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("resolved review remained actionable = %+v, %v", reviews, err)
 	}
 	actions, err := s.ListFillerDecisionActions(ctx, fillerdecision.ActionFilter{DecisionID: "d-review", Limit: 10})
-	if err != nil || actions.Total != 3 || len(actions.Rows) != 3 || actions.Rows[0].ID != "action-a-restore" {
+	if err != nil || actions.Total != 4 || len(actions.Rows) != 4 || actions.Rows[0].ID != "action-a-restore" {
 		t.Fatalf("action history = %+v, %v", actions, err)
 	}
 	activity, err := s.ListFillerDecisionActivity(ctx, fillerdecision.Cursor{}, 10)
-	if err != nil || activity.Total != 9 || len(activity.Rows) != 9 || activity.Rows[0].Kind != fillerdecision.ActivityCorrection {
+	if err != nil || activity.Total != 10 || len(activity.Rows) != 10 || activity.Rows[0].Kind != fillerdecision.ActivityCorrection {
 		t.Fatalf("activity projection = %+v, %v", activity, err)
 	}
 	kinds := make(map[fillerdecision.ActivityKind]int)
@@ -3438,7 +3453,7 @@ func testFillerAdmissionDecisionAudit(t *testing.T, newStore NewStoreFunc) {
 		fillerdecision.ActivityAutomaticAdmit: 2, fillerdecision.ActivityAutomaticReject: 1,
 		fillerdecision.ActivityReviewRequested: 2, fillerdecision.ActivityActionAdmit: 1,
 		fillerdecision.ActivityCorrection: 1, fillerdecision.ActivityRestore: 1,
-		fillerdecision.ActivityReversal: 1,
+		fillerdecision.ActivityReversal: 1, fillerdecision.ActivityReviewAbandoned: 1,
 	} {
 		if kinds[kind] != want {
 			t.Fatalf("activity kind %q = %d, want %d: %+v", kind, kinds[kind], want, activity.Rows)
