@@ -151,7 +151,7 @@ printf '%s\n' '#!/usr/bin/env sh' 'echo "make $*" >> "$VERIFY_LOG"' > "$verify_b
 chmod +x "$verify_bin/go" "$verify_bin/make"
 verify_output="$(PATH="$verify_bin:$PATH" REAL_GO="$real_go" VERIFY_LOG="$verify_log" \
 	BASE=HEAD LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" verify)"
-printf '%s\n' "$verify_output" | grep -q 'selected gates: contracts,go,image'
+printf '%s\n' "$verify_output" | grep -q 'selected gates: contracts,go,postgres,image'
 printf '%s\n' "$verify_output" | grep -q 'affected Go packages:'
 grep -q 'make -C .* fmt tags-verify' "$verify_log"
 grep -q 'go test -race .*internal/app.*internal/suggest' "$verify_log"
