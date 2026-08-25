@@ -63,7 +63,6 @@ jobs:
       impact_go_full: ${{ steps.impact.outputs.go_full }}
       impact_rust: ${{ steps.impact.outputs.rust }}
       impact_postgres: ${{ steps.impact.outputs.postgres }}
-      impact_windows: ${{ steps.impact.outputs.windows }}
       impact_web: ${{ steps.impact.outputs.web }}
       impact_clients: ${{ steps.impact.outputs.clients }}
       impact_apple_mobile: ${{ steps.impact.outputs.apple_mobile }}
@@ -268,10 +267,10 @@ jobs:
             echo
             echo "| Current family | Run? | Proposed components |"
             echo "| --- | --- | --- |"
-            printf '| Go | %s | contracts=%s, go=%s, full=%s, rust=%s, postgres=%s, windows=%s |\n' \
+            printf '| Go | %s | contracts=%s, go=%s, full=%s, rust=%s, postgres=%s |\n' \
               "$LEGACY_GO" "$(impact_value contracts)" "$(impact_value go)" \
               "$(impact_value go_full)" "$(impact_value rust)" \
-              "$(impact_value postgres)" "$(impact_value windows)"
+              "$(impact_value postgres)"
             printf '| Web | %s | web=%s, visual=%s, e2e=%s, tuner=%s |\n' \
               "$LEGACY_WEB" "$(impact_value web)" "$(impact_value visual)" \
               "$(impact_value e2e)" "$(impact_value tuner)"
@@ -319,25 +318,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: echo 'Running the deliberately requested full CI matrix.'
-
-  windows-playout:
-    name: Windows playout process tree
-    needs: changes
-    if: needs.changes.outputs.go == 'true'
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: false
-      # Linux's permanent cross-compile gate catches accidental Unix-only fields in generic
-      # files. This native runner proves the Windows-only Job Object adapter actually assigns,
-      # resumes, cancels, and reaps a descendant process rather than merely compiling.
-      - name: Job Object owns the complete ffmpeg-shaped process tree
-        run: go test ./internal/playout -run '^(TestCombinedProgressPreservesDiagnostics|TestProcessProgressTransport|TestProcessTree.*)$' -count=1
-      - name: Complete Windows binary builds
-        run: go build -o "${{ runner.temp }}\loomarr.exe" ./cmd/loomarr
 
   go-contracts:
     name: Go + Rust — repository contracts
@@ -432,7 +412,7 @@ jobs:
     if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     # This job is test-only. Repository-wide contracts run once in `go-contracts`, in parallel;
-    # repeating Rust, lint, vet, harness, Windows compile, and release checks in every shard spent
+    # repeating Rust, lint, vet, harness, cross-compilation, and release checks in every shard spent
     # runner time and inflated each shard's cache without adding assurance.
     #
     # THREE shards, not two. Re-measured 2026-08-18: the per-package -race suite is ~381s but is
@@ -1132,7 +1112,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, release-candidate-scope, full-manual-scope, agent-harness-macos, windows-playout, go-contracts, image-certification, go, store-postgres, frontend, clients, apple-mobile, apple-tv, playwright, tuner, image, docs, android]
+    needs: [changes, release-candidate-scope, full-manual-scope, agent-harness-macos, go-contracts, image-certification, go, store-postgres, frontend, clients, apple-mobile, apple-tv, playwright, tuner, image, docs, android]
     runs-on: ubuntu-latest
     permissions:
       actions: read

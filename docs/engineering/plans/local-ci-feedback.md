@@ -210,5 +210,11 @@ gate documentation are amended before the first change that alters required beha
   and link pools on every Android application and library subproject at plugin-application time.
   A dependency-cold local mobile build completed in 6m07s with one live Clang child. After the
   generated pool was parameterized and both app projects were regenerated, the final mobile and TV
-  targets completed in 4m43s and 2m57s. Expo Android jobs remain unactivated until this correction
-  passes protected CI and their exact app/platform selectors are introduced in reversible slices.
+  targets completed in 4m43s and 2m57s. PR #573 merged the correction after a refreshed
+  current-main matrix; Expo Android jobs remain unactivated until their exact app/platform
+  selectors are introduced in reversible slices.
+- The supported release artifact is Linux on amd64 and arm64; Windows has no supported native
+  distribution. The dedicated Windows runner, its shadow decision, and the local Windows
+  cross-compile therefore spent assurance time on a platform outside the product contract. They
+  are retired together while the structural `ci-ok` verifier continues to require every remaining
+  top-level job.

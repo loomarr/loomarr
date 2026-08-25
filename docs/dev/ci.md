@@ -6,7 +6,6 @@ graph LR
   GC["<b>go-contracts</b><br/>static · drift · repository contracts"]
   RC["<b>image-certification</b><br/>release-worker runtime contract"]
   G["<b>go</b> ×3<br/>race-policy tests only"]
-  X["<b>windows-playout</b><br/>native process-tree contract"]
   P["<b>store-postgres</b>"]
   F["<b>frontend</b> ×2"]
   CJS["<b>shared clients</b><br/>lint · test · four JS bundles"]
@@ -23,7 +22,6 @@ graph LR
   C -->|"*.go, migrations, docs/help/, scripts/, Makefile"| GC
   C -->|"same Go inputs"| G
   C -->|"same Go inputs"| RC
-  C --> X
   C -->|"fail-closed Postgres impact"| P
   C -->|"web/, Makefile"| F
   C -->|"Expo apps and shared packages"| CJS
@@ -38,7 +36,6 @@ graph LR
   GC --> OK
   RC --> OK
   G --> OK
-  X --> OK
   P --> OK
   F --> OK
   CJS --> OK
@@ -54,7 +51,7 @@ graph LR
   classDef gate fill:#1f6f4a,stroke:#134a31,color:#fff
   classDef job fill:#2b3b52,stroke:#1b2736,color:#dbe4ef
   class OK gate
-  class C,GC,RC,G,X,P,F,CJS,AM,AT,W,T,D,A,N,I job
+  class C,GC,RC,G,P,F,CJS,AM,AT,W,T,D,A,N,I job
 ```
 
 ## Jobs run only when their inputs changed
@@ -70,7 +67,7 @@ the doc-claims test reads them, and `scripts/` is there because the job executes
 ### Specialized gate classifier activates one job at a time
 
 The `changes` job also runs `scripts/ci-impact.sh` and publishes `impact_*` outputs for the
-specialized contract, Go, full-Go, Rust, Postgres, Windows, web, shared-client, iOS, tvOS, Expo
+specialized contract, Go, full-Go, Rust, Postgres, web, shared-client, iOS, tvOS, Expo
 Android mobile, Expo Android TV, visual, e2e, tuner, image, docs, agent, and legacy Android TV
 gates. Its run summary places those proposed decisions beside the current broad families.
 
@@ -155,7 +152,7 @@ platforms or it can't catch that.
 
 Manual CI defaults to `release-candidate`. That scope is for certifying an exact `main` commit before
 tagging: it runs repository contracts, the real-codec image-worker certification, and both native
-release-image builds. It does not rerun Android, Windows, PostgreSQL, Go race, frontend, Playwright,
+release-image builds. It does not rerun Android, PostgreSQL, Go race, frontend, Playwright,
 tuner, docs, or the macOS harness; their normal push and pull-request impact coverage is unchanged.
 
 Select `full` explicitly when an investigation genuinely needs every matrix. Both modes publish a

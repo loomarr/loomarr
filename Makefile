@@ -52,9 +52,9 @@ GO_SHARD ?=
 # 3.2s for a never-before-seen tag set, because tags only recompile packages whose file
 # selection actually changed.
 #
-# Platform constraints are guarded by the same inventory but compiled through their real
-# GOOS adapter — passing `-tags windows` on Linux does NOT select `_windows.go` files and would
-# falsely exclude `!windows` files. `windows-compile` is therefore the platform half of this gate.
+# Platform constraints are retained in the inventory so a new platform-specific source file
+# cannot masquerade as a custom-tagged one. They are not included in TAGS_CSV: the supported
+# release artifact is Linux, and an unsupported GOOS is not a CI assurance target.
 #
 # ⚠ HAND-MAINTAINED LIST — but guarded. A new `//go:build` tag is covered only if it is added
 # here, the same drift class as `scripts/check-retired.sh`. `make tags-verify` enforces it in
@@ -143,7 +143,7 @@ backup-restore-drill: backup-restore-verify ## SQLite + Docker-backed Postgres b
 .PHONY: check check-static
 check: check-static test ## complete local gate: repository contracts plus race-policy-aware unit tests
 
-check-static: rust-check fmt shellcheck privacy-verify vet tags-verify vet-tags windows-compile lint agent-harness-test compose-verify release-verify go-race-verify ## repository contracts without the unit-test suite (CI runs this once beside test shards)
+check-static: rust-check fmt shellcheck privacy-verify vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify ## repository contracts without the unit-test suite (CI runs this once beside test shards)
 
 .PHONY: rust-check rust-test-worker rust-audit rust-fuzz
 rust-check: rust-test-worker ## format, lint, build, and test the required Rust image worker
@@ -181,12 +181,8 @@ vet: ## go vet
 	$(GO) vet $(PKG)
 
 .PHONY: vet-tags
-vet-tags: ## go vet over custom-tagged sources; platform constraints use their cross-compile gate
+vet-tags: ## go vet over custom-tagged sources
 	$(GO) vet -tags '$(CUSTOM_TAGS)' $(PKG)
-
-.PHONY: windows-compile
-windows-compile: ## cross-compile every Go package and test for Windows (does not execute them)
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) test -exec=true ./...
 
 .PHONY: tags-verify
 # Runs BEFORE vet-tags in `check`: it is ~0.1s and it validates the very list vet-tags consumes,

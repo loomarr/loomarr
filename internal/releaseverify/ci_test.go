@@ -48,10 +48,10 @@ func TestVerifyCIAggregate(t *testing.T) {
 	workflow := `jobs:
   changes:
     runs-on: ubuntu-latest
-  windows-playout:
-    runs-on: windows-latest
+  docs:
+    runs-on: ubuntu-latest
   ci-ok:
-    needs: [changes, windows-playout]
+    needs: [changes, docs]
     runs-on: ubuntu-latest
 `
 	path := filepath.Join(t.TempDir(), "ci.yml")
@@ -62,15 +62,15 @@ func TestVerifyCIAggregate(t *testing.T) {
 		t.Fatalf("complete CI aggregate: %v", err)
 	}
 
-	withoutWindows := strings.Replace(workflow, "changes, windows-playout", "changes", 1)
-	if err := os.WriteFile(path, []byte(withoutWindows), 0o600); err != nil {
+	withoutDocs := strings.Replace(workflow, "changes, docs", "changes", 1)
+	if err := os.WriteFile(path, []byte(withoutDocs), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := VerifyCIAggregate(path); err == nil {
-		t.Fatal("VerifyCIAggregate accepted a required check that omitted Windows")
+		t.Fatal("VerifyCIAggregate accepted a required check that omitted docs")
 	}
 
-	unknownJob := strings.Replace(workflow, "changes, windows-playout", "changes, windows-playout, phantom", 1)
+	unknownJob := strings.Replace(workflow, "changes, docs", "changes, docs, phantom", 1)
 	if err := os.WriteFile(path, []byte(unknownJob), 0o600); err != nil {
 		t.Fatal(err)
 	}

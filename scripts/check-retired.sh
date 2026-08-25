@@ -3,6 +3,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 RETIRED=(
+  # Loomarr publishes Linux amd64/arm64 containers and does not support a native Windows server.
+  # These names were assurance surfaces for that unsupported target, not product invariants.
+  'windows-playout|retired: Loomarr has no supported native Windows server build'
+  'windows-compile|retired: Loomarr has no supported native Windows server build'
+  'impact_windows|retired: Loomarr has no supported native Windows CI gate'
   # The project moved from the maintainer's personal namespace to the lowercase Loomarr
   # organization. Old GitHub links can be reclaimed and old GHCR coordinates name the wrong
   # publisher, so source, release metadata, and operator instructions must use one identity.
