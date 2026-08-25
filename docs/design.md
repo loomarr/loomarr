@@ -3420,6 +3420,20 @@ is an extraction ceiling, not permission to send all four frames: the evidence r
 strict subset when a cheaper claim is already answered. A missing/invalid duration refuses visual
 extraction rather than falling back to an unbounded decode.
 
+The default hosted-video derivative is one metadata- and chapter-stripped MP4 containing H.264 video
+and optional AAC audio. It spans at most 60 seconds of the measured clip or segment, fits within
+1280×720 without upscaling or changing aspect ratio, and is at most 12 MiB before base64 expansion.
+Extraction and upload are sequential, encoding uses one ffmpeg thread, and a size-limited reader
+aborts encoding before buffering more than the ceiling. The request caps model output at 512 tokens
+and refuses a response body over 256 KiB. The direct-video provider is a separate capability from
+text and frame vision. The OpenRouter certification adapter accepts base64 transport only, a
+concrete namespaced model whose
+live metadata advertises video input, and one explicitly pinned upstream provider; it disables route
+fallback, requires supported request parameters, and denies provider data collection while requiring
+zero-data-retention routing. URL transport, thin or stale capability metadata, invalid measurements,
+and any exceeded bound fail closed before a hosted request. This adapter supplies evidence only and
+does not itself decide or change production admission.
+
 Certification uses a versioned, source/similarity-separated development corpus and locked holdout.
 Near-duplicates cannot cross that split. It reports action-specific precision and coverage,
 worst-slice results, review answerability, conflicts, schema/grounding/security failures, calibration,

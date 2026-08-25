@@ -193,6 +193,23 @@ func TestLiveModels_ThinMetadataDegrades(t *testing.T) {
 	}
 }
 
+func TestLiveModels_PreservesAdvertisedVideoOnlyModel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":[
+			{"id":"google/video-model","architecture":{"input_modalities":["text","video"],"output_modalities":["text"]}}
+		]}`))
+	}))
+	defer srv.Close()
+
+	models, live := (HostedProvider{Key: "openrouter", BaseURL: srv.URL}).LiveModels(context.Background(), "key")
+	if !live || len(models) != 1 {
+		t.Fatalf("models = %+v, live=%v; want advertised video model preserved", models, live)
+	}
+	if !models[0].Video || models[0].Vision || models[0].Tools {
+		t.Fatalf("capabilities = %+v, want video-only", models[0])
+	}
+}
+
 func TestLiveModels_ThinMetadataExcludesBatchOnlyVariants(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"data":[{"id":"openai/gpt-4.1-nano:batch"},{"id":"openai/gpt-4.1-nano"}]}`))

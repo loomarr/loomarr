@@ -36,6 +36,7 @@ type HostedModel struct {
 	Recommended   bool   `json:"recommended,omitempty"`   // rule-selected as a top pick for grounding
 	Tools         bool   `json:"tools,omitempty"`         // provider advertises tool-calling for this model
 	Vision        bool   `json:"vision,omitempty"`        // provider advertises image input
+	Video         bool   `json:"video,omitempty"`         // provider advertises direct video input
 	Transcription bool   `json:"transcription,omitempty"` // provider advertises speech-to-text output
 }
 
@@ -136,6 +137,10 @@ type modelMeta struct {
 
 func (m modelMeta) supportsVision() bool {
 	return slices.Contains(m.Architecture.InputModalities, "image")
+}
+
+func (m modelMeta) supportsVideo() bool {
+	return slices.Contains(m.Architecture.InputModalities, "video")
 }
 
 func (m modelMeta) supportsTranscription() bool {
@@ -328,7 +333,7 @@ func (hp HostedProvider) LiveModels(ctx context.Context, apiKey string) (models 
 		tier, fam := tierOf(m.ID)
 		hm := HostedModel{
 			ID: m.ID, Label: labelOf(m), Tools: m.supportsTools(),
-			Vision: m.supportsVision(), Transcription: m.supportsTranscription(),
+			Vision: m.supportsVision(), Video: m.supportsVideo(), Transcription: m.supportsTranscription(),
 		}
 		if tier > 0 {
 			hm.Why = whyFor(m, fam)
@@ -346,12 +351,12 @@ func (hp HostedProvider) LiveModels(ctx context.Context, apiKey string) (models 
 		if _, ok := seen[m.ID]; ok {
 			continue
 		}
-		if !m.supportsVision() && !m.supportsTranscription() {
+		if !m.supportsVision() && !m.supportsVideo() && !m.supportsTranscription() {
 			continue
 		}
 		models = append(models, HostedModel{
 			ID: m.ID, Label: labelOf(m), Tools: m.supportsTools(),
-			Vision: m.supportsVision(), Transcription: m.supportsTranscription(),
+			Vision: m.supportsVision(), Video: m.supportsVideo(), Transcription: m.supportsTranscription(),
 		})
 	}
 	return models, live
