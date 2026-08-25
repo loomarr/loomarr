@@ -136,7 +136,7 @@ func VerifyCIAggregate(path string) error {
 
 // VerifyCIImpactActivation pins each specialized decision that has graduated
 // from shadow mode. An activated job must consume its dedicated classifier
-// output, retain the explicit release-candidate path, and stop consulting the
+// output, preserve the explicit manual release scope, and stop consulting the
 // legacy broad family that the specialized decision replaces.
 func VerifyCIImpactActivation(path string) error {
 	data, err := os.ReadFile(path)
@@ -161,10 +161,11 @@ func VerifyCIImpactActivation(path string) error {
 	}
 
 	activated := map[string]struct {
-		output string
-		legacy string
+		output                  string
+		legacy                  string
+		runsForReleaseCandidate bool
 	}{
-		"store-postgres": {output: "impact_postgres", legacy: "go"},
+		"store-postgres": {output: "impact_postgres", legacy: "go", runsForReleaseCandidate: false},
 	}
 	for jobName, gate := range activated {
 		output, ok := mappingValue(outputs, gate.output)
@@ -184,8 +185,9 @@ func VerifyCIImpactActivation(path string) error {
 		if !strings.Contains(condition, "needs.changes.outputs."+gate.output+" == 'true'") {
 			return fmt.Errorf("CI job %s does not consume %s", jobName, gate.output)
 		}
-		if !strings.Contains(condition, "needs.changes.outputs.release_candidate == 'true'") {
-			return fmt.Errorf("CI job %s omits release-candidate assurance", jobName)
+		hasReleaseCandidate := strings.Contains(condition, "needs.changes.outputs.release_candidate == 'true'")
+		if hasReleaseCandidate != gate.runsForReleaseCandidate {
+			return fmt.Errorf("CI job %s changed the explicit release-candidate scope", jobName)
 		}
 		if strings.Contains(condition, "needs.changes.outputs."+gate.legacy+" == 'true'") {
 			return fmt.Errorf("CI job %s still consumes legacy %s impact", jobName, gate.legacy)

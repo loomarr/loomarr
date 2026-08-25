@@ -72,8 +72,9 @@ Android mobile, Expo Android TV, visual, e2e, tuner, image, docs, agent, and leg
 gates. Its run summary places those proposed decisions beside the current broad families.
 
 Postgres is the first active specialized output. `store-postgres` consumes `impact_postgres`
-directly while remaining in the required `CI` aggregate and on the explicit release-candidate
-path. This first activation intentionally treats every `.go` file plus `go.mod`, `go.sum`, store
+directly while remaining in the required `CI` aggregate. The explicit release-candidate scope
+continues to exclude database conformance. This first activation intentionally treats every `.go`
+file plus `go.mod`, `go.sum`, store
 migrations, and unknown paths as Postgres-sensitive. That conservative boundary skips proven
 non-Go over-selection without guessing which transitive Go dependency can change a real-Postgres
 assertion. Dependency-aware narrowing is a later shadow change.

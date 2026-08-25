@@ -84,10 +84,9 @@ func TestVerifyCIImpactActivation(t *testing.T) {
   changes:
     outputs:
       impact_postgres: ${{ steps.impact.outputs.postgres }}
-      release_candidate: ${{ steps.filter.outputs.release_candidate }}
   store-postgres:
     needs: changes
-    if: needs.changes.outputs.impact_postgres == 'true' || needs.changes.outputs.release_candidate == 'true'
+    if: needs.changes.outputs.impact_postgres == 'true'
 `
 	path := filepath.Join(t.TempDir(), "ci.yml")
 	if err := os.WriteFile(path, []byte(workflow), 0o600); err != nil {
@@ -98,10 +97,10 @@ func TestVerifyCIImpactActivation(t *testing.T) {
 	}
 
 	mutations := map[string]string{
-		"legacy selector":    strings.Replace(workflow, "impact_postgres", "go", 2),
-		"missing dependency": strings.Replace(workflow, "    needs: changes\n", "", 1),
-		"missing candidate":  strings.Replace(workflow, " || needs.changes.outputs.release_candidate == 'true'", "", 1),
-		"detached output":    strings.Replace(workflow, "steps.impact.outputs.postgres", "steps.filter.outputs.go", 1),
+		"legacy selector":     strings.Replace(workflow, "impact_postgres", "go", 2),
+		"missing dependency":  strings.Replace(workflow, "    needs: changes\n", "", 1),
+		"broadened candidate": strings.Replace(workflow, " == 'true'", " == 'true' || needs.changes.outputs.release_candidate == 'true'", 1),
+		"detached output":     strings.Replace(workflow, "steps.impact.outputs.postgres", "steps.filter.outputs.go", 1),
 	}
 	for name, mutated := range mutations {
 		t.Run(name, func(t *testing.T) {

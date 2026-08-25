@@ -634,7 +634,7 @@ jobs:
   store-postgres:
     name: Store conformance (Postgres)
     needs: changes
-    if: needs.changes.outputs.impact_postgres == 'true' || needs.changes.outputs.release_candidate == 'true'
+    if: needs.changes.outputs.impact_postgres == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
