@@ -68,6 +68,7 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make eval-cert` |  | certify exact starter/adversarial intents; fails on missing config and writes a scorecard |
 | `make eval-matrix` |  | explicitly certify local + OpenRouter generation sequentially (manual, resource-heavy) |
 | `make filler-eval-contract` |  | hermetic filler-admission corpus and selective-risk contracts |
+| `make filler-corpus-archive` |  | freeze a bounded rights-filtered Archive.org corpus inventory |
 | `make filler-corpus-lock` |  | lock two blind filler-label batches into a certification manifest |
 | `make filler-eval-cert` |  | score captured filler decisions; never contacts a model or media source |
 

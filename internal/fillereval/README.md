@@ -26,6 +26,14 @@ two canonical label hashes differ, `LOOMARR_FILLER_CORPUS_ADJUDICATIONS` names a
 `caseId`, a distinct `adjudicatorId`, `adjudicatedAt`, `reason`, and final `labels`. The command writes
 nothing until every draft case is covered and the complete certification manifest validates.
 
+`make filler-corpus-archive` is the metadata-only acquisition preflight for Archive.org. It requires
+an identified User-Agent, explicit snapshot time, request/item/per-item-byte/total-byte ceilings, and
+a delay of at least 500 ms. It runs serially, caches the exact search and item responses, checks that
+search and item licenses agree, excludes NC/ND licenses, records response hashes and retrieval times,
+and selects a bounded video representation. Its output is only a candidate inventory: uploader
+license metadata still needs independent item-level rights adjudication before it can enter a draft
+manifest, and the command never downloads media or invokes a model.
+
 `make filler-eval-contract` verifies the scorer and seed. `make filler-eval-cert` scores a JSONL file
 named by `LOOMARR_FILLER_EVAL_PREDICTIONS`; the remaining `LOOMARR_FILLER_EVAL_*` variables identify
 the corpus, selected split, captured run time, every versioned input, and positive request, spend,

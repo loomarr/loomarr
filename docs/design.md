@@ -3513,6 +3513,15 @@ fail closed. Reports carry the exact manifest digest and one-sided Wilson bounds
 rejection, automation, review, and slice accuracy, including an upper bound for review rate. Each
 certification slice gate predeclares both a point threshold and a confidence lower bound.
 
+Source inventory is a separate, non-certifying preflight. An Archive inventory uses one identified
+serial client, cached raw search/item responses, a minimum inter-request delay, and explicit request,
+item, per-item byte, and total predicted-byte ceilings. Search-level and item-level licences must
+agree and NC/ND candidates are excluded, but an allowlisted uploader field remains only a candidate:
+independent rights adjudication is still required. The inventory freezes retrieval times, response
+hashes, selected representation identity/checksums, and predicted bytes before any media download or
+model call. A partial bounded inventory reports exactly what it saw; it never widens the ceiling or
+treats a truncated search response as complete.
+
 Rollout is shadow-first on a bounded appliance workload. Deterministic rejection enables before
 certified admission slices; harder slices enable only after shadow evidence. A random sample of
 automatic outcomes and every disagreement between rungs remains auditable. Any model, provider,
