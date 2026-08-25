@@ -4,7 +4,7 @@ package fillereval
 
 import "time"
 
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 type Split string
 
@@ -91,15 +91,40 @@ type Prediction struct {
 	Conflicts          []Conflict          `json:"conflicts,omitempty"`
 	ReviewQuestion     string              `json:"reviewQuestion,omitempty"`
 	Probability        *float64            `json:"probability,omitempty"`
+	Role               string              `json:"role"`
+	Rung               string              `json:"rung"`
+	RequestedProvider  string              `json:"requestedProvider"`
 	RequestedModel     string              `json:"requestedModel"`
 	ResolvedModel      string              `json:"resolvedModel"`
 	ResolvedProvider   string              `json:"resolvedProvider"`
 	Modalities         []string            `json:"modalities"`
-	PromptTokens       int                 `json:"promptTokens,omitempty"`
-	CompletionTokens   int                 `json:"completionTokens,omitempty"`
-	ChargedCostUSD     float64             `json:"chargedCostUsd,omitempty"`
+	Derivative         Derivative          `json:"derivative"`
+	Tokens             TokenUsage          `json:"tokens"`
+	ChargedAmount      string              `json:"chargedAmount,omitempty"`
+	ChargedCurrency    string              `json:"chargedCurrency,omitempty"`
+	ChargedNanoUSD     int64               `json:"chargedNanoUsd,omitempty"`
+	EstimatedNanoUSD   int64               `json:"estimatedNanoUsd,omitempty"`
+	Attempts           int                 `json:"attempts"`
+	GenerationID       string              `json:"generationId,omitempty"`
 	LatencyMS          int64               `json:"latencyMs,omitempty"`
 	OperationalFailure string              `json:"operationalFailure,omitempty"`
+}
+
+type Derivative struct {
+	Bytes      int64 `json:"bytes,omitempty"`
+	DurationMS int64 `json:"durationMs,omitempty"`
+	Pixels     int64 `json:"pixels,omitempty"`
+}
+
+type TokenUsage struct {
+	Prompt     int64 `json:"prompt,omitempty"`
+	Completion int64 `json:"completion,omitempty"`
+	Reasoning  int64 `json:"reasoning,omitempty"`
+	Cached     int64 `json:"cached,omitempty"`
+	CacheWrite int64 `json:"cacheWrite,omitempty"`
+	Image      int64 `json:"image,omitempty"`
+	Audio      int64 `json:"audio,omitempty"`
+	Video      int64 `json:"video,omitempty"`
 }
 
 type Conflict struct {
@@ -114,6 +139,7 @@ type RunIdentity struct {
 	PromptVersion      string    `json:"promptVersion"`
 	TaxonomyVersion    string    `json:"taxonomyVersion"`
 	PolicyVersion      string    `json:"policyVersion"`
+	RolePolicyVersion  string    `json:"rolePolicyVersion"`
 	CapabilitySnapshot string    `json:"capabilitySnapshot"`
 	PriceSnapshot      string    `json:"priceSnapshot"`
 	GeneratedAt        time.Time `json:"generatedAt"`
@@ -131,34 +157,47 @@ type Report struct {
 }
 
 type Metrics struct {
-	Cases                        int     `json:"cases"`
-	AutoAdmit                    int     `json:"autoAdmit"`
-	AutoAdmitCorrect             int     `json:"autoAdmitCorrect"`
-	AutoAdmitPrecision           float64 `json:"autoAdmitPrecision"`
-	AutoAdmitPrecisionLower      float64 `json:"autoAdmitPrecisionLower"`
-	ValidAutomation              float64 `json:"validAutomation"`
-	AutoReject                   int     `json:"autoReject"`
-	AutoRejectCorrect            int     `json:"autoRejectCorrect"`
-	AutoRejectPrecision          float64 `json:"autoRejectPrecision"`
-	DeterministicRejectPrecision float64 `json:"deterministicRejectPrecision"`
-	SemanticRejectPrecision      float64 `json:"semanticRejectPrecision"`
-	InvalidAutomation            float64 `json:"invalidAutomation"`
-	ReviewRate                   float64 `json:"reviewRate"`
-	ReviewAnswerable             float64 `json:"reviewAnswerable"`
-	AdmittedRoleAccuracy         float64 `json:"admittedRoleAccuracy"`
-	AdmittedTaxonomyAccuracy     float64 `json:"admittedTaxonomyAccuracy"`
-	BrierScore                   float64 `json:"brierScore,omitempty"`
-	TotalChargedCostUSD          float64 `json:"totalChargedCostUsd"`
-	CostPerThousandCasesUSD      float64 `json:"costPerThousandCasesUsd"`
-	P50LatencyMS                 int64   `json:"p50LatencyMs"`
-	P95LatencyMS                 int64   `json:"p95LatencyMs"`
+	Cases                           int         `json:"cases"`
+	AutoAdmit                       int         `json:"autoAdmit"`
+	AutoAdmitCorrect                int         `json:"autoAdmitCorrect"`
+	AutoAdmitPrecision              float64     `json:"autoAdmitPrecision"`
+	AutoAdmitPrecisionLower         float64     `json:"autoAdmitPrecisionLower"`
+	ValidAutomation                 float64     `json:"validAutomation"`
+	AutoReject                      int         `json:"autoReject"`
+	AutoRejectCorrect               int         `json:"autoRejectCorrect"`
+	AutoRejectPrecision             float64     `json:"autoRejectPrecision"`
+	DeterministicRejectPrecision    float64     `json:"deterministicRejectPrecision"`
+	SemanticRejectPrecision         float64     `json:"semanticRejectPrecision"`
+	InvalidAutomation               float64     `json:"invalidAutomation"`
+	ReviewRate                      float64     `json:"reviewRate"`
+	ReviewAnswerable                float64     `json:"reviewAnswerable"`
+	AdmittedRoleAccuracy            float64     `json:"admittedRoleAccuracy"`
+	AdmittedTaxonomyAccuracy        float64     `json:"admittedTaxonomyAccuracy"`
+	BrierScore                      float64     `json:"brierScore,omitempty"`
+	TotalChargedNanoUSD             int64       `json:"totalChargedNanoUsd"`
+	TotalChargedCostUSD             float64     `json:"totalChargedCostUsd"`
+	CostPerThousandCasesNanoUSD     int64       `json:"costPerThousandCasesNanoUsd"`
+	CostPerCorrectAutomationNanoUSD int64       `json:"costPerCorrectAutomationNanoUsd"`
+	CostPerAdmitNanoUSD             int64       `json:"costPerAdmitNanoUsd"`
+	P50LatencyMS                    int64       `json:"p50LatencyMs"`
+	P95LatencyMS                    int64       `json:"p95LatencyMs"`
+	Rungs                           []RungScore `json:"rungs"`
 }
 
 type SliceScore struct {
-	Slice    string  `json:"slice"`
-	Cases    int     `json:"cases"`
-	Correct  int     `json:"correct"`
-	Accuracy float64 `json:"accuracy"`
+	Slice                 string  `json:"slice"`
+	Cases                 int     `json:"cases"`
+	Correct               int     `json:"correct"`
+	Accuracy              float64 `json:"accuracy"`
+	ChargedNanoUSD        int64   `json:"chargedNanoUsd"`
+	CostPerCorrectNanoUSD int64   `json:"costPerCorrectNanoUsd"`
+}
+
+type RungScore struct {
+	Rung           string `json:"rung"`
+	Cases          int    `json:"cases"`
+	Correct        int    `json:"correct"`
+	ChargedNanoUSD int64  `json:"chargedNanoUsd"`
 }
 
 type CaseResult struct {

@@ -20,7 +20,11 @@ func TestRunWritesNonCertifyingReportForSmallReplay(t *testing.T) {
 		License: "CC0", Truth: fillereval.TruthEligible, ContentRole: "commercial", Slices: []string{"contract"},
 	}}}
 	writeTestJSON(t, manifestPath, manifest)
-	prediction := fillereval.Prediction{CaseID: "eligible", Verdict: fillereval.VerdictAdmit, ContentRole: "commercial", RequestedModel: "fixture", ResolvedModel: "fixture", ResolvedProvider: "fixture", Modalities: []string{"text"}}
+	prediction := fillereval.Prediction{
+		CaseID: "eligible", Verdict: fillereval.VerdictAdmit, ContentRole: "commercial",
+		Role: "filler_text", Rung: "text", RequestedProvider: "fixture", RequestedModel: "fixture",
+		ResolvedModel: "fixture", ResolvedProvider: "fixture", Modalities: []string{"text"}, Attempts: 1,
+	}
 	data, err := json.Marshal(prediction)
 	if err != nil {
 		t.Fatal(err)

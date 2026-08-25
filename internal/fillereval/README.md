@@ -18,6 +18,11 @@ duplicate predictions, cross-split similarity leakage, incomplete attribution, o
 wrong role/taxonomy, weak confidence bounds, or a missed precision/coverage/review gate produces a
 non-certifying report and nonzero exit.
 
+Schema v2 records the inference role/rung, requested and resolved route, derivative bounds, detailed
+token categories, attempts, generation id, and the provider's exact charged decimal alongside an
+integer nanodollar projection. Reports compare total cost, cost per correct automation, cost per
+admit, and per-slice/per-rung cost; they never sum provider charges with binary floating point.
+
 Provider execution belongs to the later bounded bakeoff layer. That runner must require explicit
 request, spend, and concurrency ceilings and write this package's prediction shape. The replay
 command itself never contacts OpenRouter or starts local inference.
