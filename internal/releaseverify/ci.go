@@ -179,6 +179,10 @@ func VerifyCIImpactActivation(path string) error {
 			},
 			condition: "needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true'",
 		},
+		"tuner": {
+			outputs:   []classifierOutput{{name: "impact_tuner", source: "tuner"}},
+			condition: "needs.changes.outputs.impact_tuner == 'true'",
+		},
 	}
 	for jobName, gate := range activated {
 		for _, expected := range gate.outputs {

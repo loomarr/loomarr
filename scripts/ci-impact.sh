@@ -170,8 +170,24 @@ classify() {
           ;;
       esac
       case "$path" in
+        web/apps/web/src/*.test.ts|web/apps/web/src/*.test.tsx|web/apps/web/src/*.spec.ts|web/apps/web/src/*.spec.tsx|web/apps/web/src/*.stories.ts|web/apps/web/src/*.stories.tsx)
+          ;;
+        web/apps/web/src/*)
+          # The tuner matrix imports the shipping SPA and exercises its real HLS controller.
+          # Until a committed dependency closure proves a narrower boundary, every runtime
+          # source can change that path; unit/spec/story-only modules are not shipped.
+          select_gate tuner
+          ;;
+      esac
+      case "$path" in
         web/packages/tokens/*|web/apps/web/public/*|web/apps/web/tests/visual/*|*.stories.ts|*.stories.tsx|*.snap|*.css)
           select_gate visual
+          ;;
+      esac
+      case "$path" in
+        web/packages/tokens/*)
+          # Tokens feed the production stylesheet consumed by the real tuner SPA build.
+          select_gate tuner
           ;;
       esac
       case "$path" in

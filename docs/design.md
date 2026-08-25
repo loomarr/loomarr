@@ -6486,6 +6486,10 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   source and browser build configuration is conservatively visual-sensitive; shared API/core/fixture
   inputs and the OpenAPI generator contract select both browser suites. Unit-test-only Web sources
   may skip Playwright, while visual/e2e tests and their committed baselines select their owning suite.
+  The tuner job consumes its dedicated tuner decision. Every shipping Web runtime source remains
+  tuner-sensitive until a committed dependency closure proves a narrower boundary; unit, spec, and
+  story-only sources may skip tuner, while tuner e2e inputs, browser configuration, shared
+  API/core/fixtures, runtime tokens, and OpenAPI select it directly.
 - **State machine:** every transition + the five invariants.
 - **Store conformance:** one suite vs **both** SQLite (temp file) and Postgres (**testcontainers**), incl. `ClaimDue` concurrency (no record claimed twice).
 - **Library conformance:** Emby vs Jellyfin flavors w/ mock transport; correct auth header each.

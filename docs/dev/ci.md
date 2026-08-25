@@ -86,10 +86,15 @@ transitive narrowing unsafe. Shared API/core/fixture inputs and OpenAPI select b
 visual/e2e tests and committed baselines select their owner. Only proven unit-test-only Web sources
 skip Playwright in this first slice.
 
+Tuner is the third active job. Its macOS browser matrix consumes `impact_tuner` directly. Every
+shipping Web runtime source remains tuner-sensitive because the matrix loads the real SPA and HLS
+controller; unit, spec, and story-only modules may skip it. Tuner e2e inputs, browser build
+configuration, shared API/core/fixture packages, runtime tokens, and OpenAPI select it explicitly.
+
 The existing `go`, `web`, `image`, `docs`, `agent`, and `android` outputs remain authoritative for
 every other job while their specialized results are compared with complete CI outcomes. A missing
 base, classifier failure, or unknown path selects every specialized gate. The manual
-release-candidate scope remains unchanged and excludes both Postgres and Playwright.
+release-candidate scope remains unchanged and excludes Postgres, Playwright, and tuner.
 
 `scripts/testdata/ci-impact.tsv` records the exact ordered gate set for representative paths and
 multi-path changes across every specialized gate. The classifier contract test compares complete
