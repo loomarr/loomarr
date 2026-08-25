@@ -153,7 +153,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		snapshotAt: snapshotAt, maxRequests: *maxRequests, maxItems: *maxItems,
 		maxItemBytes: *maxItemBytes, maxTotalBytes: *maxTotalBytes, delay: *delay,
 	}
-	result, err := buildInventory(context.Background(), http.DefaultClient, opts)
+	result, err := buildInventory(context.Background(), &http.Client{Timeout: time.Minute}, opts)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-archive:", err)
 		return 1
