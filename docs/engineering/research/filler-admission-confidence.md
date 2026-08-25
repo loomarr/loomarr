@@ -664,8 +664,9 @@ model, provider, prompt, schema, taxonomy, evidence extractor, or policy change.
    and license? Issue #545 proves a single “literal appeared” rule is insufficient.
 6. Is local transcription/OCR already accurate and cheap enough for the first rung, or should hosted
    audio be included in the bakeoff?
-7. What clip duration/byte/resolution ceilings are acceptable for direct video on target home
-   servers and network connections?
+7. **Resolved for the initial certification lane:** design V61 fixes a 60-second, 12-MiB,
+   1280×720 derivative, sequential one-thread encoding, and bounded provider output. The bakeoff
+   must measure whether that ceiling is accurate enough before any production lane adopts it.
 8. How large must each safety-critical slice become before its confidence-bound gate is meaningful?
 9. Should premium escalation ever run unattended, or only within an explicit monthly budget and
    backlog window?
