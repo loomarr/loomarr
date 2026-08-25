@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -147,11 +148,16 @@ func newServer(t *testing.T) (*httptest.Server, store.Store) {
 	t.Helper()
 	st := openTestStore(t, filepath.Join(t.TempDir(), "api.db"))
 	t.Cleanup(func() { _ = st.Close() })
+	decisions, err := fillerdecision.New(st)
+	if err != nil {
+		t.Fatal(err)
+	}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:        st,
-		Auth:         testAuthorizer{},
-		Log:          slog.New(slog.DiscardHandler),
-		BackupSQLite: store.SQLiteBackuper(st),
+		Store:           st,
+		Auth:            testAuthorizer{},
+		Log:             slog.New(slog.DiscardHandler),
+		BackupSQLite:    store.SQLiteBackuper(st),
+		FillerDecisions: decisions,
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)

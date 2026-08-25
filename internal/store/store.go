@@ -13,6 +13,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
@@ -500,6 +501,12 @@ type FillerInferenceStore interface {
 	ListInferenceEvaluations(ctx context.Context, filter InferenceEvaluationFilter) ([]InferenceEvaluation, error)
 }
 
+// FillerDecisionStore owns immutable V63 admission results and append-only
+// operator actions. Projection rules remain in fillerdecision.Service.
+type FillerDecisionStore interface {
+	fillerdecision.Repository
+}
+
 // FillerSourceStore is the persisted REMOTE filler-source registry (§10, V33).
 //
 // ⚠ Remote sources only. The drop-folder and the media-server library stay DERIVED from config
@@ -666,6 +673,7 @@ type Store interface {
 	FillerPullStore
 	FillerAcquisitionStore
 	FillerInferenceStore
+	FillerDecisionStore
 	SplitProposalStore
 	AiringStore
 	ActivityStore

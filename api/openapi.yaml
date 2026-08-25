@@ -1352,6 +1352,31 @@ components:
       required:
         - clips
       type: object
+    Conflict:
+      additionalProperties: false
+      properties:
+        claim:
+          type: string
+        evidenceRefs:
+          items:
+            type: string
+          type: array
+        resolved:
+          type: boolean
+        resolvedBy:
+          items:
+            type: string
+          type: array
+        values:
+          items:
+            type: string
+          type: array
+      required:
+        - claim
+        - values
+        - evidenceRefs
+        - resolved
+      type: object
     CoverageCriterionDTO:
       additionalProperties: false
       properties:
@@ -2540,6 +2565,276 @@ components:
         - status
         - progress
         - disposition
+      type: object
+    FillerDecisionActionInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/FillerDecisionActionInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        actionId:
+          maxLength: 128
+          type: string
+        answer:
+          maxLength: 512
+          type: string
+        correctedVerdict:
+          enum:
+            - admit
+            - reject
+          type: string
+        kind:
+          enum:
+            - admit
+            - reject
+            - correct
+            - restore
+            - reverse
+          type: string
+        reason:
+          maxLength: 512
+          type: string
+        supersedesId:
+          maxLength: 128
+          type: string
+      required:
+        - actionId
+        - kind
+      type: object
+    FillerDecisionActionOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/FillerDecisionActionOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        id:
+          type: string
+      required:
+        - id
+      type: object
+    FillerDecisionActivityOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/FillerDecisionActivityOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        rows:
+          items:
+            $ref: "#/components/schemas/FillerDecisionActivityWireDTO"
+          type: array
+        total:
+          format: int64
+          type: integer
+      required:
+        - rows
+        - total
+      type: object
+    FillerDecisionActivityWireDTO:
+      additionalProperties: false
+      properties:
+        actionId:
+          type: string
+        clipHash:
+          type: string
+        createdAt:
+          format: date-time
+          type: string
+        decisionId:
+          type: string
+        id:
+          type: string
+        kind:
+          enum:
+            - automatic_admit
+            - automatic_reject
+            - review_requested
+            - review_admit
+            - review_reject
+            - correction
+            - restore
+            - reversal
+          type: string
+      required:
+        - id
+        - decisionId
+        - clipHash
+        - kind
+        - createdAt
+      type: object
+    FillerDecisionCountsDTO:
+      additionalProperties: false
+      properties:
+        admitted:
+          format: int64
+          type: integer
+        operational:
+          format: int64
+          type: integer
+        rejected:
+          format: int64
+          type: integer
+        retryable:
+          format: int64
+          type: integer
+        reviews:
+          format: int64
+          type: integer
+        unresolvedReviews:
+          format: int64
+          type: integer
+      required:
+        - admitted
+        - rejected
+        - reviews
+        - operational
+        - retryable
+        - unresolvedReviews
+      type: object
+    FillerDecisionDiagnosticDTO:
+      additionalProperties: false
+      properties:
+        clipHash:
+          type: string
+        code:
+          type: string
+        createdAt:
+          format: date-time
+          type: string
+        id:
+          type: string
+        recovery:
+          enum:
+            - configure_provider
+            - adjust_budget
+            - retry_extraction
+            - inspect_media
+            - update_policy
+          type: string
+        retryable:
+          type: boolean
+      required:
+        - id
+        - clipHash
+        - code
+        - retryable
+        - recovery
+        - createdAt
+      type: object
+    FillerDecisionDiagnosticsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/FillerDecisionDiagnosticsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        rows:
+          items:
+            $ref: "#/components/schemas/FillerDecisionDiagnosticDTO"
+          type: array
+        total:
+          format: int64
+          type: integer
+      required:
+        - rows
+        - total
+      type: object
+    FillerDecisionOverviewDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/FillerDecisionOverviewDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        actionCount:
+          format: int64
+          type: integer
+        counts:
+          $ref: "#/components/schemas/FillerDecisionCountsDTO"
+        healthy:
+          type: boolean
+        nextAction:
+          enum:
+            - none
+            - repair_processing
+            - retry_processing
+            - review_decisions
+          type: string
+      required:
+        - healthy
+        - nextAction
+        - counts
+      type: object
+    FillerDecisionReviewDTO:
+      additionalProperties: false
+      properties:
+        clipHash:
+          type: string
+        conflicts:
+          items:
+            $ref: "#/components/schemas/Conflict"
+          type: array
+        createdAt:
+          format: date-time
+          type: string
+        evidenceRefs:
+          items:
+            type: string
+          type: array
+        id:
+          type: string
+        question:
+          type: string
+        reasonCodes:
+          items:
+            type: string
+          type: array
+      required:
+        - id
+        - clipHash
+        - question
+        - reasonCodes
+        - evidenceRefs
+        - conflicts
+        - createdAt
+      type: object
+    FillerDecisionReviewsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/FillerDecisionReviewsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        rows:
+          items:
+            $ref: "#/components/schemas/FillerDecisionReviewDTO"
+          type: array
+        total:
+          format: int64
+          type: integer
+      required:
+        - rows
+        - total
       type: object
     FillerFetchStatusDTO:
       additionalProperties: false
@@ -9678,6 +9973,197 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Retag a selection of clips
+      tags:
+        - filler
+  /v1/filler/decisions/activity:
+    get:
+      description: Member-readable bounded audit of automatic semantic decisions and subsequent operator actions (§10 V63).
+      operationId: filler-decision-activity
+      parameters:
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 100
+            format: int64
+            maximum: 100
+            minimum: 1
+            type: integer
+        - description: Created-at value from the last row of the previous page
+          explode: false
+          in: query
+          name: beforeAt
+          schema:
+            description: Created-at value from the last row of the previous page
+            format: date-time
+            type: string
+        - description: Opaque id from the last row of the previous page
+          explode: false
+          in: query
+          name: beforeId
+          schema:
+            description: Opaque id from the last row of the previous page
+            maxLength: 137
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillerDecisionActivityOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Filler admission decision activity
+      tags:
+        - filler
+  /v1/filler/decisions/diagnostics:
+    get:
+      description: Admin-only operational holds. Raw provider responses, prompts, paths, evidence locations, and secrets are never projected (§10 V63).
+      operationId: filler-decision-diagnostics
+      parameters:
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 100
+            format: int64
+            maximum: 100
+            minimum: 1
+            type: integer
+        - description: Created-at value from the last row of the previous page
+          explode: false
+          in: query
+          name: beforeAt
+          schema:
+            description: Created-at value from the last row of the previous page
+            format: date-time
+            type: string
+        - description: Opaque id from the last row of the previous page
+          explode: false
+          in: query
+          name: beforeId
+          schema:
+            description: Opaque id from the last row of the previous page
+            maxLength: 137
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillerDecisionDiagnosticsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Filler admission processing diagnostics
+      tags:
+        - filler
+  /v1/filler/decisions/overview:
+    get:
+      description: Member-readable server-owned V63 health and priority projection. Clients render nextAction; they do not reconstruct it from counts.
+      operationId: filler-decision-overview
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillerDecisionOverviewDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Admission decision health and next action
+      tags:
+        - filler
+  /v1/filler/decisions/reviews:
+    get:
+      description: Admin-only bounded semantic exceptions. Every row asks exactly one question and excludes machine work and provider failures (§10 V63).
+      operationId: filler-decision-reviews
+      parameters:
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 100
+            format: int64
+            maximum: 100
+            minimum: 1
+            type: integer
+        - description: Created-at value from the last row of the previous page
+          explode: false
+          in: query
+          name: beforeAt
+          schema:
+            description: Created-at value from the last row of the previous page
+            format: date-time
+            type: string
+        - description: Opaque id from the last row of the previous page
+          explode: false
+          in: query
+          name: beforeId
+          schema:
+            description: Opaque id from the last row of the previous page
+            maxLength: 137
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillerDecisionReviewsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Semantic filler decisions needing attention
+      tags:
+        - filler
+  /v1/filler/decisions/{id}/actions:
+    post:
+      description: Admin-only append-only action. The server records the authenticated actor and rejects stale or invalid state transitions (§10 V63).
+      operationId: act-on-filler-decision
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 128
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FillerDecisionActionInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillerDecisionActionOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Resolve or reverse a filler decision
       tags:
         - filler
   /v1/filler/discover:

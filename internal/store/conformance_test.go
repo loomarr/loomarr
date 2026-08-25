@@ -105,6 +105,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("FillerPulls", func(t *testing.T) { testFillerPulls(t, newStore) })
 		t.Run("FillerAcquisitionRuns", func(t *testing.T) { testFillerAcquisitionRuns(t, newStore) })
 		t.Run("FillerInferenceAccountingAndBudgets", func(t *testing.T) { testFillerInferenceAccountingAndBudgets(t, newStore) })
+		t.Run("FillerAdmissionDecisionAudit", func(t *testing.T) { testFillerAdmissionDecisionAudit(t, newStore) })
 		t.Run("SplitProposals", func(t *testing.T) { testSplitProposals(t, newStore) })
 		t.Run("ClipPipelineState", func(t *testing.T) { testClipPipeline(t, newStore) })
 		t.Run("ClipPipelineOverview", func(t *testing.T) { testClipPipelineOverview(t, newStore) })

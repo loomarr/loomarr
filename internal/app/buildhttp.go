@@ -95,6 +95,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		Events:              eventBus,
 		Shutdown:            rootCtx.Done(),
 		Filler:              fillerSvc,
+		FillerDecisions:     deps.fillers.decisions,
 		Pods:                podPreview,
 		Taxonomy:            taxonomyEditor,
 		SystemLLM:           systemLLM,

@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/scheduler"
@@ -18,9 +19,10 @@ import (
 )
 
 type fillerBuild struct {
-	service  api.FillerService
-	preview  api.PodPreviewer
-	taxonomy api.TaxonomyEditor
+	service   api.FillerService
+	decisions *fillerdecision.Service
+	preview   api.PodPreviewer
+	taxonomy  api.TaxonomyEditor
 }
 
 func buildFillerSubsystem(
@@ -39,6 +41,12 @@ func buildFillerSubsystem(
 	var result fillerBuild
 	if st == nil {
 		return result
+	}
+	decisionService, err := fillerdecision.New(st)
+	if err != nil {
+		log.Error("could not construct filler decision service", "err", err)
+	} else {
+		result.decisions = decisionService
 	}
 	// Background acquisition workers are process-owned in the single-replica beta. Any queued or
 	// running rows visible before this process accepts requests belonged to the previous process
