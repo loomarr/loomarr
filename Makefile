@@ -264,7 +264,7 @@ go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must
 test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
 	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ ./internal/api/ -v
 
-.PHONY: eval-contract eval eval-cert eval-matrix filler-eval-contract filler-eval-cert
+.PHONY: eval-contract eval eval-cert eval-matrix filler-corpus-archive filler-corpus-download filler-corpus-lock filler-eval-contract filler-eval-cert
 eval-contract: ## hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB
 	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/
 
@@ -302,23 +302,75 @@ eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (m
 	  exit "$$status"
 
 filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
-	$(GO) test ./internal/fillereval/ ./cmd/filler-cert/
+	$(GO) test ./internal/fillereval/ ./cmd/filler-cert/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-download/
+
+filler-corpus-archive: ## freeze a bounded rights-filtered Archive.org corpus inventory
+	@test -n "$$LOOMARR_FILLER_CORPUS_ARCHIVE_COLLECTION" || { echo "filler-corpus-archive: LOOMARR_FILLER_CORPUS_ARCHIVE_COLLECTION is required" >&2; exit 2; }; \
+	  eval "$$(./scripts/dev-env.sh export)"; \
+	  $(GO) run ./cmd/filler-corpus-archive \
+	    --collection "$$LOOMARR_FILLER_CORPUS_ARCHIVE_COLLECTION" \
+	    --out "$${LOOMARR_FILLER_CORPUS_ARCHIVE_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-archive.json}" \
+	    --cache-dir "$${LOOMARR_FILLER_CORPUS_ARCHIVE_CACHE:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-archive-cache}" \
+	    --user-agent "$$LOOMARR_FILLER_CORPUS_ARCHIVE_USER_AGENT" \
+	    --snapshot-at "$$LOOMARR_FILLER_CORPUS_ARCHIVE_SNAPSHOT_AT" \
+	    --max-requests "$$LOOMARR_FILLER_CORPUS_ARCHIVE_MAX_REQUESTS" \
+	    --max-items "$$LOOMARR_FILLER_CORPUS_ARCHIVE_MAX_ITEMS" \
+	    --max-item-bytes "$$LOOMARR_FILLER_CORPUS_ARCHIVE_MAX_ITEM_BYTES" \
+	    --max-total-bytes "$$LOOMARR_FILLER_CORPUS_ARCHIVE_MAX_TOTAL_BYTES" \
+	    --delay "$${LOOMARR_FILLER_CORPUS_ARCHIVE_DELAY:-1s}"
+
+filler-corpus-download: ## download only rights-approved corpus media under hard ceilings
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  $(GO) run ./cmd/filler-corpus-download \
+	    --inventory "$$LOOMARR_FILLER_CORPUS_INVENTORY" \
+	    --rights-approvals "$$LOOMARR_FILLER_CORPUS_RIGHTS_APPROVALS" \
+	    --out-dir "$$LOOMARR_FILLER_CORPUS_MEDIA_DIR" \
+	    --ledger "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_LEDGER" \
+	    --user-agent "$$LOOMARR_FILLER_CORPUS_ARCHIVE_USER_AGENT" \
+	    --generated-at "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_GENERATED_AT" \
+	    --max-requests "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_MAX_REQUESTS" \
+	    --max-items "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_MAX_ITEMS" \
+	    --max-bytes "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_MAX_BYTES" \
+	    --delay "$${LOOMARR_FILLER_CORPUS_DOWNLOAD_DELAY:-1s}"
+
+filler-corpus-lock: ## lock two blind filler-label batches into a certification manifest
+	@test -n "$$LOOMARR_FILLER_CORPUS_DRAFT" || { echo "filler-corpus-lock: LOOMARR_FILLER_CORPUS_DRAFT is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_REVIEW_A" || { echo "filler-corpus-lock: LOOMARR_FILLER_CORPUS_REVIEW_A is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_REVIEW_B" || { echo "filler-corpus-lock: LOOMARR_FILLER_CORPUS_REVIEW_B is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_LOCKED_AT" || { echo "filler-corpus-lock: LOOMARR_FILLER_CORPUS_LOCKED_AT is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_OUT" || { echo "filler-corpus-lock: LOOMARR_FILLER_CORPUS_OUT is required" >&2; exit 2; }; \
+	  $(GO) run ./cmd/filler-corpus \
+	    --draft "$$LOOMARR_FILLER_CORPUS_DRAFT" \
+	    --review-a "$$LOOMARR_FILLER_CORPUS_REVIEW_A" \
+	    --review-b "$$LOOMARR_FILLER_CORPUS_REVIEW_B" \
+	    --adjudications "$$LOOMARR_FILLER_CORPUS_ADJUDICATIONS" \
+	    --locked-at "$$LOOMARR_FILLER_CORPUS_LOCKED_AT" \
+	    --out "$$LOOMARR_FILLER_CORPUS_OUT"
 
 filler-eval-cert: ## score captured filler decisions; never contacts a model or media source
 	@test -n "$$LOOMARR_FILLER_EVAL_PREDICTIONS" || { echo "filler-eval-cert: LOOMARR_FILLER_EVAL_PREDICTIONS is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_EVAL_GENERATED_AT" || { echo "filler-eval-cert: LOOMARR_FILLER_EVAL_GENERATED_AT is required" >&2; exit 2; }; \
+	  test "$${LOOMARR_FILLER_EVAL_MAX_REQUESTS:-0}" -gt 0 || { echo "filler-eval-cert: positive LOOMARR_FILLER_EVAL_MAX_REQUESTS is required" >&2; exit 2; }; \
+	  test "$${LOOMARR_FILLER_EVAL_MAX_SPEND_NANO_USD:-0}" -gt 0 || { echo "filler-eval-cert: positive LOOMARR_FILLER_EVAL_MAX_SPEND_NANO_USD is required" >&2; exit 2; }; \
+	  test "$${LOOMARR_FILLER_EVAL_MAX_CONCURRENCY:-0}" -gt 0 || { echo "filler-eval-cert: positive LOOMARR_FILLER_EVAL_MAX_CONCURRENCY is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
 	  report="$${LOOMARR_FILLER_EVAL_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-certification.json}"; \
 	  $(GO) run ./cmd/filler-cert \
 	    --manifest "$${LOOMARR_FILLER_EVAL_MANIFEST:-internal/fillereval/corpus/seed-v1.json}" \
 	    --predictions "$$LOOMARR_FILLER_EVAL_PREDICTIONS" --report "$$report" \
 	    --profile "$${LOOMARR_FILLER_EVAL_PROFILE:-replay}" \
+	    --split "$${LOOMARR_FILLER_EVAL_SPLIT:-holdout}" \
 	    --evidence-version "$$LOOMARR_FILLER_EVAL_EVIDENCE_VERSION" \
 	    --prompt-version "$$LOOMARR_FILLER_EVAL_PROMPT_VERSION" \
 	    --taxonomy-version "$$LOOMARR_FILLER_EVAL_TAXONOMY_VERSION" \
 	    --policy-version "$$LOOMARR_FILLER_EVAL_POLICY_VERSION" \
 	    --role-policy-version "$$LOOMARR_FILLER_EVAL_ROLE_POLICY_VERSION" \
 	    --capability-snapshot "$$LOOMARR_FILLER_EVAL_CAPABILITY_SNAPSHOT" \
-	    --price-snapshot "$$LOOMARR_FILLER_EVAL_PRICE_SNAPSHOT"
+	    --price-snapshot "$$LOOMARR_FILLER_EVAL_PRICE_SNAPSHOT" \
+	    --generated-at "$$LOOMARR_FILLER_EVAL_GENERATED_AT" \
+	    --max-requests "$$LOOMARR_FILLER_EVAL_MAX_REQUESTS" \
+	    --max-spend-nano-usd "$$LOOMARR_FILLER_EVAL_MAX_SPEND_NANO_USD" \
+	    --max-concurrency "$$LOOMARR_FILLER_EVAL_MAX_CONCURRENCY"
 
 ## ---- build / run ---------------------------------------------------------
 

@@ -1,6 +1,9 @@
 package fillereval
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"math"
 	"math/big"
@@ -15,10 +18,7 @@ const oneSided95Z = 1.6448536269514722
 // Score evaluates captured predictions against a manifest. It is intentionally
 // strict: missing/duplicate results and operational failures cannot certify.
 func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report {
-	if run.GeneratedAt.IsZero() {
-		run.GeneratedAt = time.Now().UTC()
-	}
-	report := Report{SchemaVersion: SchemaVersion, CorpusVersion: manifest.CorpusVersion, Run: run}
+	report := Report{SchemaVersion: SchemaVersion, CorpusVersion: manifest.CorpusVersion, ManifestSHA256: ManifestSHA256(manifest), Run: run}
 	report.Failures = append(report.Failures, ValidateManifest(manifest)...)
 	byID := make(map[string]Prediction, len(predictions))
 	for _, prediction := range predictions {
@@ -41,8 +41,12 @@ func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report 
 	rungCounts := map[string]counts{}
 	var deterministicRejects, deterministicRejectsCorrect int
 	var semanticRejects, semanticRejectsCorrect int
+	var totalAttempts int
 
 	for _, c := range manifest.Cases {
+		if c.Split != run.EvaluationSplit {
+			continue
+		}
 		switch c.Truth {
 		case TruthEligible:
 			eligible++
@@ -59,6 +63,18 @@ func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report 
 		}
 		delete(byID, c.ID)
 		result.Actual = prediction.Verdict
+		result.Role = prediction.Role
+		result.Rung = prediction.Rung
+		result.RequestedProvider = prediction.RequestedProvider
+		result.RequestedModel = prediction.RequestedModel
+		result.ResolvedProvider = prediction.ResolvedProvider
+		result.ResolvedModel = prediction.ResolvedModel
+		result.Modalities = slices.Clone(prediction.Modalities)
+		result.Derivative = prediction.Derivative
+		result.GenerationID = prediction.GenerationID
+		result.Attempts = prediction.Attempts
+		result.ChargedNanoUSD = prediction.ChargedNanoUSD
+		result.LatencyMS = prediction.LatencyMS
 		if prediction.Verdict != VerdictAdmit && prediction.Verdict != VerdictReject && prediction.Verdict != VerdictReview {
 			result.Failure = "invalid verdict"
 			report.Failures = append(report.Failures, c.ID+": invalid verdict")
@@ -69,6 +85,7 @@ func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report 
 		if prediction.Attempts < 1 {
 			report.Failures = append(report.Failures, c.ID+": at least one inference attempt is required")
 		}
+		totalAttempts += prediction.Attempts
 		if prediction.Probability != nil && (*prediction.Probability < 0 || *prediction.Probability > 1) {
 			report.Failures = append(report.Failures, c.ID+": probability must be within [0,1]")
 		}
@@ -172,23 +189,30 @@ func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report 
 		report.Failures = append(report.Failures, id+": prediction has no corpus case")
 	}
 
-	report.Metrics.Cases = len(manifest.Cases)
+	report.Metrics.Cases = len(report.Cases)
 	report.Metrics.AutoAdmitPrecision = ratio(report.Metrics.AutoAdmitCorrect, report.Metrics.AutoAdmit)
 	report.Metrics.AutoAdmitPrecisionLower = wilsonLower(report.Metrics.AutoAdmitCorrect, report.Metrics.AutoAdmit)
 	report.Metrics.ValidAutomation = ratio(report.Metrics.AutoAdmitCorrect, eligible)
+	report.Metrics.ValidAutomationLower = wilsonLower(report.Metrics.AutoAdmitCorrect, eligible)
 	report.Metrics.AutoRejectPrecision = ratio(report.Metrics.AutoRejectCorrect, report.Metrics.AutoReject)
+	report.Metrics.AutoRejectPrecisionLower = wilsonLower(report.Metrics.AutoRejectCorrect, report.Metrics.AutoReject)
 	report.Metrics.InvalidAutomation = ratio(report.Metrics.AutoRejectCorrect, invalid)
+	report.Metrics.InvalidAutomationLower = wilsonLower(report.Metrics.AutoRejectCorrect, invalid)
 	report.Metrics.DeterministicRejectPrecision = ratio(deterministicRejectsCorrect, deterministicRejects)
+	report.Metrics.DeterministicRejectPrecisionLower = wilsonLower(deterministicRejectsCorrect, deterministicRejects)
 	report.Metrics.SemanticRejectPrecision = ratio(semanticRejectsCorrect, semanticRejects)
-	report.Metrics.ReviewRate = ratio(reviews, len(manifest.Cases))
+	report.Metrics.SemanticRejectPrecisionLower = wilsonLower(semanticRejectsCorrect, semanticRejects)
+	report.Metrics.ReviewRate = ratio(reviews, report.Metrics.Cases)
+	report.Metrics.ReviewRateUpper = wilsonUpper(reviews, report.Metrics.Cases)
 	report.Metrics.ReviewAnswerable = ratio(answerable, reviews)
+	report.Metrics.ReviewAnswerableLower = wilsonLower(answerable, reviews)
 	report.Metrics.AdmittedRoleAccuracy = ratio(admittedRoleCorrect, admittedEligible)
 	report.Metrics.AdmittedTaxonomyAccuracy = ratio(admittedTaxonomyCorrect, admittedEligible)
 	if probabilityCount > 0 {
 		report.Metrics.BrierScore = brier / float64(probabilityCount)
 	}
 	report.Metrics.TotalChargedCostUSD = float64(report.Metrics.TotalChargedNanoUSD) / 1_000_000_000
-	report.Metrics.CostPerThousandCasesNanoUSD = perUnit(report.Metrics.TotalChargedNanoUSD, 1000, len(manifest.Cases))
+	report.Metrics.CostPerThousandCasesNanoUSD = perUnit(report.Metrics.TotalChargedNanoUSD, 1000, report.Metrics.Cases)
 	report.Metrics.CostPerCorrectAutomationNanoUSD = perUnit(report.Metrics.TotalChargedNanoUSD, 1, report.Metrics.AutoAdmitCorrect+report.Metrics.AutoRejectCorrect)
 	report.Metrics.CostPerAdmitNanoUSD = perUnit(report.Metrics.TotalChargedNanoUSD, 1, report.Metrics.AutoAdmit)
 	slices.Sort(latencies)
@@ -196,7 +220,7 @@ func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report 
 	report.Metrics.P95LatencyMS = percentile(latencies, .95)
 	for name, n := range sliceCounts {
 		report.Slices = append(report.Slices, SliceScore{
-			Slice: name, Cases: n.total, Correct: n.correct, Accuracy: ratio(n.correct, n.total),
+			Slice: name, Cases: n.total, Correct: n.correct, Accuracy: ratio(n.correct, n.total), AccuracyLower: wilsonLower(n.correct, n.total),
 			ChargedNanoUSD: n.chargedNanoUSD, CostPerCorrectNanoUSD: perUnit(n.chargedNanoUSD, 1, n.correct),
 		})
 	}
@@ -206,7 +230,7 @@ func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report 
 	}
 	sort.Slice(report.Metrics.Rungs, func(i, j int) bool { return report.Metrics.Rungs[i].Rung < report.Metrics.Rungs[j].Rung })
 
-	applyGates(&report, manifest.SliceGates, eligible, invalid, deterministicRejects, semanticRejects)
+	applyGates(&report, manifest.SliceGates, eligible, invalid, deterministicRejects, semanticRejects, totalAttempts)
 	report.Certified = len(report.Failures) == 0
 	return report
 }
@@ -295,15 +319,26 @@ func ValidateManifest(manifest Manifest) []string {
 	if strings.TrimSpace(manifest.CorpusVersion) == "" {
 		failures = append(failures, "corpus version is required")
 	}
+	if manifest.Kind != CorpusDevelopmentSeed && manifest.Kind != CorpusCertification {
+		failures = append(failures, "manifest kind must be development_seed or certification")
+	}
+	if manifest.Kind == CorpusCertification && manifest.LockedAt.IsZero() {
+		failures = append(failures, "certification corpus requires a lock time")
+	}
 	ids := map[string]struct{}{}
 	clusters := map[string]Split{}
+	contentClusters := map[string]string{}
+	splitCounts := map[Split]int{}
 	if len(manifest.SliceGates) == 0 {
 		failures = append(failures, "at least one safety-critical slice gate is required")
 	}
 	gateNames := map[string]struct{}{}
 	for _, gate := range manifest.SliceGates {
-		if gate.Slice == "" || gate.MinCases <= 0 || gate.MinAccuracy <= 0 || gate.MinAccuracy > 1 {
+		if gate.Slice == "" || gate.MinCases <= 0 || gate.MinAccuracy <= 0 || gate.MinAccuracy > 1 || gate.MinAccuracyLower < 0 || gate.MinAccuracyLower > 1 {
 			failures = append(failures, "slice gate requires a name, positive case count, and accuracy within (0,1]")
+		}
+		if manifest.Kind == CorpusCertification && gate.MinAccuracyLower <= 0 {
+			failures = append(failures, "certification slice gate "+gate.Slice+" requires a positive confidence lower bound")
 		}
 		if _, exists := gateNames[gate.Slice]; exists {
 			failures = append(failures, "duplicate slice gate "+gate.Slice)
@@ -322,6 +357,8 @@ func ValidateManifest(manifest Manifest) []string {
 		}
 		if c.Split != SplitDevelopment && c.Split != SplitHoldout {
 			failures = append(failures, prefix+": invalid split")
+		} else {
+			splitCounts[c.Split]++
 		}
 		if c.Truth != TruthEligible && c.Truth != TruthInvalid && c.Truth != TruthAmbiguous {
 			failures = append(failures, prefix+": invalid truth")
@@ -342,6 +379,14 @@ func ValidateManifest(manifest Manifest) []string {
 		if strings.TrimSpace(c.Source) == "" || strings.TrimSpace(c.License) == "" {
 			failures = append(failures, prefix+": source and license are required")
 		}
+		if manifest.Kind == CorpusCertification {
+			failures = append(failures, validateCertificationCase(prefix, c, manifest.LockedAt)...)
+			if previousCluster, exists := contentClusters[c.ContentSHA256]; exists && previousCluster != c.Cluster {
+				failures = append(failures, prefix+": identical content hash appears in a different similarity cluster")
+			} else if c.ContentSHA256 != "" {
+				contentClusters[c.ContentSHA256] = c.Cluster
+			}
+		}
 		if len(c.Slices) == 0 {
 			failures = append(failures, prefix+": at least one slice is required")
 		}
@@ -356,7 +401,89 @@ func ValidateManifest(manifest Manifest) []string {
 			evidenceIDs[evidence.ID] = struct{}{}
 		}
 	}
+	if manifest.Kind == CorpusCertification && (splitCounts[SplitDevelopment] == 0 || splitCounts[SplitHoldout] == 0) {
+		failures = append(failures, "certification corpus requires non-empty development and holdout splits")
+	}
 	return failures
+}
+
+func validateCertificationCase(prefix string, c Case, lockedAt time.Time) []string {
+	var failures []string
+	if !isSHA256(c.ContentSHA256) || !isSHA256(c.EvidenceSHA256) {
+		failures = append(failures, prefix+": certification requires lowercase SHA-256 media and evidence hashes")
+	}
+	p := c.Provenance
+	if strings.TrimSpace(p.Authority) == "" || strings.TrimSpace(p.ItemID) == "" || strings.TrimSpace(p.ItemURL) == "" || p.MetadataRetrievedAt.IsZero() || !isSHA256(p.MetadataSHA256) || strings.TrimSpace(p.EvidenceURL) == "" {
+		failures = append(failures, prefix+": source authority, item identity, metadata retrieval, metadata hash, and evidence URL are required")
+	}
+	if strings.TrimSpace(p.RightsStatement) == "" || strings.TrimSpace(p.RightsDecision) == "" || strings.TrimSpace(p.RightsReviewerID) == "" || p.RightsReviewedAt.IsZero() {
+		failures = append(failures, prefix+": item-level rights evidence and adjudication are required")
+	}
+	if p.MetadataRetrievedAt.After(lockedAt) || p.RightsReviewedAt.After(lockedAt) {
+		failures = append(failures, prefix+": source metadata and rights review cannot postdate the manifest lock")
+	}
+	if strings.TrimSpace(p.SourceFilename) == "" || strings.TrimSpace(p.SourceURL) == "" || p.SourceBytes <= 0 || p.SegmentStartMS < 0 || p.SegmentDurationMS <= 0 {
+		failures = append(failures, prefix+": source file identity, positive size, and bounded segment are required")
+	}
+	wantLabelHash := LabelSHA256(c)
+	if len(c.Evidence) == 0 {
+		failures = append(failures, prefix+": independently reviewed evidence labels are required")
+	}
+	reviewers := map[string]struct{}{}
+	batches := map[string]struct{}{}
+	needsAdjudication := false
+	for _, review := range c.LabelReviews {
+		if strings.TrimSpace(review.ReviewerID) == "" || strings.TrimSpace(review.BatchID) == "" || review.ReviewedAt.IsZero() || !review.Independent || !isSHA256(review.SubmissionSHA256) {
+			continue
+		}
+		if review.ReviewedAt.After(lockedAt) {
+			failures = append(failures, prefix+": label review cannot postdate the manifest lock")
+			continue
+		}
+		if review.SubmissionSHA256 != wantLabelHash {
+			needsAdjudication = true
+		}
+		reviewers[review.ReviewerID] = struct{}{}
+		batches[review.BatchID] = struct{}{}
+	}
+	if len(reviewers) < 2 || len(batches) < 2 {
+		failures = append(failures, prefix+": two independent label submissions are required")
+	}
+	if needsAdjudication {
+		a := c.Adjudication
+		if a == nil || strings.TrimSpace(a.AdjudicatorID) == "" || a.AdjudicatedAt.IsZero() || a.LabelSHA256 != wantLabelHash || strings.TrimSpace(a.Reason) == "" {
+			failures = append(failures, prefix+": divergent independent labels require final adjudication")
+		} else if _, reviewerWasAdjudicator := reviewers[a.AdjudicatorID]; reviewerWasAdjudicator {
+			failures = append(failures, prefix+": adjudicator must be independent from the two label reviewers")
+		} else if a.AdjudicatedAt.After(lockedAt) {
+			failures = append(failures, prefix+": adjudication cannot postdate the manifest lock")
+		}
+	}
+	return failures
+}
+
+func isSHA256(value string) bool {
+	if len(value) != sha256.Size*2 || strings.ToLower(value) != value {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil
+}
+
+// ManifestSHA256 gives reports an exact corpus identity, not merely a mutable
+// human-readable version string.
+func ManifestSHA256(manifest Manifest) string {
+	data, err := json.Marshal(manifest)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+// LabelSHA256 is the attestation target for independent corpus reviewers.
+func LabelSHA256(c Case) string {
+	return LabelsSHA256(LabelsFromCase(c))
 }
 
 func correct(c Case, prediction Prediction) bool {
@@ -394,9 +521,18 @@ func containsAll(actual, expected []string) bool {
 	return true
 }
 
-func applyGates(r *Report, gates []SliceGate, eligible, invalid, deterministicRejects, semanticRejects int) {
-	if r.Run.Profile == "" || r.Run.EvidenceVersion == "" || r.Run.PromptVersion == "" || r.Run.TaxonomyVersion == "" || r.Run.PolicyVersion == "" || r.Run.RolePolicyVersion == "" || r.Run.CapabilitySnapshot == "" || r.Run.PriceSnapshot == "" {
+func applyGates(r *Report, gates []SliceGate, eligible, invalid, deterministicRejects, semanticRejects, totalAttempts int) {
+	if r.Run.Profile == "" || (r.Run.EvaluationSplit != SplitDevelopment && r.Run.EvaluationSplit != SplitHoldout) || r.Run.EvidenceVersion == "" || r.Run.PromptVersion == "" || r.Run.TaxonomyVersion == "" || r.Run.PolicyVersion == "" || r.Run.RolePolicyVersion == "" || r.Run.CapabilitySnapshot == "" || r.Run.PriceSnapshot == "" || r.Run.GeneratedAt.IsZero() {
 		r.Failures = append(r.Failures, "run identity requires profile, evidence, prompt, taxonomy, admission policy, role policy, capability, and price versions")
+	}
+	if r.Run.MaxRequests <= 0 || r.Run.MaxSpendNanoUSD <= 0 || r.Run.MaxConcurrency <= 0 {
+		r.Failures = append(r.Failures, "run identity requires positive request, spend, and concurrency ceilings")
+	}
+	if totalAttempts > r.Run.MaxRequests {
+		r.Failures = append(r.Failures, fmt.Sprintf("run used %d attempts; request ceiling is %d", totalAttempts, r.Run.MaxRequests))
+	}
+	if r.Metrics.TotalChargedNanoUSD > r.Run.MaxSpendNanoUSD {
+		r.Failures = append(r.Failures, fmt.Sprintf("run charged %d nanodollars; spend ceiling is %d", r.Metrics.TotalChargedNanoUSD, r.Run.MaxSpendNanoUSD))
 	}
 	if r.Metrics.Cases < 300 {
 		r.Failures = append(r.Failures, fmt.Sprintf("corpus has %d cases; certification requires at least 300", r.Metrics.Cases))
@@ -416,8 +552,8 @@ func applyGates(r *Report, gates []SliceGate, eligible, invalid, deterministicRe
 	if invalid == 0 || r.Metrics.InvalidAutomation < .95 {
 		r.Failures = append(r.Failures, fmt.Sprintf("invalid input automation %.4f, require >= 0.95", r.Metrics.InvalidAutomation))
 	}
-	if r.Metrics.ReviewRate > .10 {
-		r.Failures = append(r.Failures, fmt.Sprintf("review rate %.4f, require <= 0.10", r.Metrics.ReviewRate))
+	if r.Metrics.ReviewRateUpper > .10 {
+		r.Failures = append(r.Failures, fmt.Sprintf("review rate %.4f (one-sided 95%% upper %.4f), require upper <= 0.10", r.Metrics.ReviewRate, r.Metrics.ReviewRateUpper))
 	}
 	if r.Metrics.ReviewRate > 0 && r.Metrics.ReviewAnswerable < .95 {
 		r.Failures = append(r.Failures, fmt.Sprintf("answerable review %.4f, require >= 0.95", r.Metrics.ReviewAnswerable))
@@ -428,8 +564,8 @@ func applyGates(r *Report, gates []SliceGate, eligible, invalid, deterministicRe
 	}
 	for _, gate := range gates {
 		score := scores[gate.Slice]
-		if score.Cases < gate.MinCases || score.Accuracy < gate.MinAccuracy {
-			r.Failures = append(r.Failures, fmt.Sprintf("slice %s has %d cases at %.4f accuracy; require %d at %.4f", gate.Slice, score.Cases, score.Accuracy, gate.MinCases, gate.MinAccuracy))
+		if score.Cases < gate.MinCases || score.Accuracy < gate.MinAccuracy || score.AccuracyLower < gate.MinAccuracyLower {
+			r.Failures = append(r.Failures, fmt.Sprintf("slice %s has %d cases at %.4f accuracy (one-sided 95%% lower %.4f); require %d at %.4f with lower %.4f", gate.Slice, score.Cases, score.Accuracy, score.AccuracyLower, gate.MinCases, gate.MinAccuracy, gate.MinAccuracyLower))
 		}
 	}
 }
@@ -451,6 +587,18 @@ func wilsonLower(successes, trials int) float64 {
 	center := p + z2/(2*n)
 	margin := oneSided95Z * math.Sqrt((p*(1-p)+z2/(4*n))/n)
 	return (center - margin) / (1 + z2/n)
+}
+
+func wilsonUpper(successes, trials int) float64 {
+	if trials == 0 {
+		return 0
+	}
+	n := float64(trials)
+	p := float64(successes) / n
+	z2 := oneSided95Z * oneSided95Z
+	center := p + z2/(2*n)
+	margin := oneSided95Z * math.Sqrt((p*(1-p)+z2/(4*n))/n)
+	return (center + margin) / (1 + z2/n)
 }
 
 func percentile(values []int64, p float64) int64 {

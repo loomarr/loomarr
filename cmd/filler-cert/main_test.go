@@ -15,7 +15,7 @@ func TestRunWritesNonCertifyingReportForSmallReplay(t *testing.T) {
 	manifestPath := filepath.Join(dir, "manifest.json")
 	predictionsPath := filepath.Join(dir, "predictions.jsonl")
 	reportPath := filepath.Join(dir, "report.json")
-	manifest := fillereval.Manifest{SchemaVersion: fillereval.SchemaVersion, CorpusVersion: "seed-v1", SliceGates: []fillereval.SliceGate{{Slice: "contract", MinCases: 1, MinAccuracy: 1}}, Cases: []fillereval.Case{{
+	manifest := fillereval.Manifest{SchemaVersion: fillereval.SchemaVersion, Kind: fillereval.CorpusDevelopmentSeed, CorpusVersion: "seed-v1", SliceGates: []fillereval.SliceGate{{Slice: "contract", MinCases: 1, MinAccuracy: 1}}, Cases: []fillereval.Case{{
 		ID: "eligible", Split: fillereval.SplitDevelopment, Cluster: "eligible", Source: "synthetic",
 		License: "CC0", Truth: fillereval.TruthEligible, ContentRole: "commercial", Slices: []string{"contract"},
 	}}}
@@ -33,7 +33,11 @@ func TestRunWritesNonCertifyingReportForSmallReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"--manifest", manifestPath, "--predictions", predictionsPath, "--report", reportPath}, &stdout, &stderr)
+	code := run([]string{
+		"--manifest", manifestPath, "--predictions", predictionsPath, "--report", reportPath,
+		"--split", "development",
+		"--generated-at", "2026-08-25T13:00:00Z", "--max-requests", "1", "--max-spend-nano-usd", "1", "--max-concurrency", "1",
+	}, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("exit = %d, want non-certifying 1; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -54,6 +58,14 @@ func TestRunRequiresAllPaths(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := run(nil, &stdout, &stderr); code != 2 {
 		t.Fatalf("exit = %d, want 2", code)
+	}
+}
+
+func TestRunRequiresExplicitRunCeilings(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--manifest", "manifest.json", "--predictions", "predictions.jsonl", "--report", "report.json"}, &stdout, &stderr)
+	if code != 2 || !bytes.Contains(stderr.Bytes(), []byte("--max-requests")) {
+		t.Fatalf("exit = %d stderr = %s", code, stderr.String())
 	}
 }
 
