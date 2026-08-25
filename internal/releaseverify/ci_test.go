@@ -87,6 +87,7 @@ func TestVerifyCIImpactActivation(t *testing.T) {
       impact_visual: ${{ steps.impact.outputs.visual }}
       impact_e2e: ${{ steps.impact.outputs.e2e }}
       impact_tuner: ${{ steps.impact.outputs.tuner }}
+      impact_apple_mobile: ${{ steps.impact.outputs.apple_mobile }}
   store-postgres:
     needs: changes
     if: needs.changes.outputs.impact_postgres == 'true'
@@ -96,6 +97,16 @@ func TestVerifyCIImpactActivation(t *testing.T) {
   tuner:
     needs: changes
     if: needs.changes.outputs.impact_tuner == 'true'
+  apple-mobile:
+    needs: changes
+    if: needs.changes.outputs.impact_apple_mobile == 'true'
+    steps:
+      - run: make client-apple-simulator CLIENT_APP=mobile
+  apple-tv:
+    needs: changes
+    if: needs.changes.outputs.clients == 'true'
+    steps:
+      - run: make client-apple-simulator CLIENT_APP=tv
 `
 	path := filepath.Join(t.TempDir(), "ci.yml")
 	if err := os.WriteFile(path, []byte(workflow), 0o600); err != nil {
@@ -135,6 +146,21 @@ func TestVerifyCIImpactActivation(t *testing.T) {
 			workflow,
 			"needs.changes.outputs.impact_tuner == 'true'",
 			"needs.changes.outputs.impact_tuner == 'true' || needs.changes.outputs.release_candidate == 'true'",
+			1,
+		),
+		"legacy Apple mobile selector": strings.Replace(
+			workflow,
+			"needs.changes.outputs.impact_apple_mobile == 'true'",
+			"needs.changes.outputs.clients == 'true'",
+			1,
+		),
+		"detached Apple mobile output": strings.Replace(workflow, "steps.impact.outputs.apple_mobile", "steps.filter.outputs.clients", 1),
+		"Apple mobile runs tvOS":       strings.Replace(workflow, "CLIENT_APP=mobile", "CLIENT_APP=tv", 1),
+		"Apple tv runs mobile":         strings.Replace(workflow, "CLIENT_APP=tv", "CLIENT_APP=mobile", 1),
+		"restored Apple matrix": strings.Replace(
+			workflow,
+			"  apple-mobile:\n    needs: changes",
+			"  apple-mobile:\n    strategy:\n      matrix: {client: [mobile, tv]}\n    needs: changes",
 			1,
 		),
 	}
