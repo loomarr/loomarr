@@ -51,6 +51,7 @@ type sourceFile struct {
 }
 
 type rightsApproval struct {
+	InventorySHA256 string    `json:"inventorySha256"`
 	Identifier      string    `json:"identifier"`
 	MetadataSHA256  string    `json:"metadataSha256"`
 	ReviewerID      string    `json:"reviewerId"`
@@ -101,6 +102,7 @@ type plannedDownload struct {
 
 type options struct {
 	inventoryPath, approvalsPath, outputDir, ledgerPath, userAgent string
+	inventorySHA256                                                string
 	generatedAt                                                    time.Time
 	maxRequests, maxItems                                          int
 	maxBytes                                                       int64
@@ -141,11 +143,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		ledgerPath: *ledgerPath, userAgent: *userAgent, generatedAt: generatedAt,
 		maxRequests: *maxRequests, maxItems: *maxItems, maxBytes: *maxBytes, delay: *delay,
 	}
-	inv, err := readJSON[inventory](opts.inventoryPath)
+	inv, inventorySHA256, err := readInventory(opts.inventoryPath)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-download: read inventory:", err)
 		return 1
 	}
+	opts.inventorySHA256 = inventorySHA256
 	approvals, err := readJSONL[rightsApproval](opts.approvalsPath)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-download: read approvals:", err)
@@ -210,6 +213,9 @@ func planDownloads(inv inventory, approvals []rightsApproval, opts options) ([]p
 		candidate, ok := byID[approval.Identifier]
 		if !ok {
 			return nil, fmt.Errorf("rights-reviewed item %s is absent from the inventory", approval.Identifier)
+		}
+		if approval.InventorySHA256 != opts.inventorySHA256 {
+			return nil, fmt.Errorf("rights-reviewed item %s is not tied to the frozen inventory", approval.Identifier)
 		}
 		if approval.Decision != "approved" && approval.Decision != "held" {
 			return nil, fmt.Errorf("rights-reviewed item %s has unknown decision %q", approval.Identifier, approval.Decision)
@@ -387,14 +393,17 @@ func requiresCredit(license string) bool {
 	return strings.Contains(normalized, "/licenses/by/") || strings.Contains(normalized, "/licenses/by-sa/")
 }
 
-func readJSON[T any](path string) (T, error) {
-	var value T
+func readInventory(path string) (inventory, string, error) {
+	var value inventory
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return value, err
+		return value, "", err
 	}
-	err = json.Unmarshal(data, &value)
-	return value, err
+	if err := json.Unmarshal(data, &value); err != nil {
+		return value, "", err
+	}
+	sum := sha256.Sum256(data)
+	return value, hex.EncodeToString(sum[:]), nil
 }
 
 func readJSONL[T any](path string) ([]T, error) {

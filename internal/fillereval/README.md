@@ -35,12 +35,24 @@ license metadata still needs independent item-level rights adjudication before i
 manifest, and the command never downloads media or invokes a model.
 
 `make filler-corpus-download` is the separately authorized media step. It accepts only `approved`
-rights rows tied to the frozen metadata SHA-256, reviewer, review time, rationale, redistribution
-decision, attribution, and restrictions; `held` rows remain out of the plan. Before the first request
+rights rows tied to the exact inventory and metadata SHA-256 values, reviewer, review time, rationale,
+redistribution decision, attribution, and restrictions; `held` rows remain out of the plan. Before the first request
 it proves the approved count and predicted bytes fit explicit ceilings. Downloads remain serial and
 identified, redirects stay on Archive.org, bodies cannot exceed their recorded size, Archive SHA-1/
 MD5 values are checked when present, and the external ledger adds a locally computed SHA-256. A
 failed or stale approval writes no ledger and cannot silently widen the selected corpus.
+
+`make filler-corpus-rights-review` converts that frozen inventory into a deterministic worksheet
+bounded by explicit minimum and maximum item counts. It exposes the source assertions and selected
+representation in immutable JSON plus a spreadsheet-safe CSV, but leaves every authority field
+blank. Reviewers edit only `reviewer_id`, `reviewed_at`, `decision`, `basis`, `redistributable`,
+`required_credit`, and `restrictions_json`. The live 2026-08-25 Archive snapshot produced 331 such
+inert rows; this is a review queue, not evidence that any row is legally reusable.
+
+`make filler-corpus-rights-lock` validates the completed CSV against both the original byte-exact
+inventory and the inert JSON worksheet. Every row must be present once, immutable source fields must
+match, decisions must be complete and time-bound, and approved BY/BY-SA media must carry attribution.
+Only a fully valid review is atomically converted to the JSONL consumed by the downloader.
 
 `make filler-eval-contract` verifies the scorer and seed. `make filler-eval-cert` scores a JSONL file
 named by `LOOMARR_FILLER_EVAL_PREDICTIONS`; the remaining `LOOMARR_FILLER_EVAL_*` variables identify
