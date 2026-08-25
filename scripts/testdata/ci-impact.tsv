@@ -6,9 +6,11 @@ backend-transition-go	internal/backendtransition/controller.go	contracts,go,post
 playout-go	internal/playout/session.go	contracts,go,postgres,windows,image
 rust-worker	rust/loomarr-image/src/lib.rs	rust,image
 migration	internal/store/migrations/sqlite/00001_init.sql	contracts,go,go_full,postgres,image
-generic-web	web/apps/web/src/diagnostics/client-reporter/client-reporter.ts	web,visual,image
+generic-web	web/apps/web/src/diagnostics/client-reporter/client-reporter.ts	web,visual,tuner,image
 web-unit-test	web/apps/web/src/channels/channel-health/channel-health.test.ts	web,image
 web-unit-test-tsx	web/apps/web/src/diagnostics/application-diagnostics/application-diagnostics.test.tsx	web,image
+web-story-only	web/apps/web/src/design/typography/typography.stories.tsx	web,visual,image
+web-runtime-tokens	web/packages/tokens/src/tokens/tokens.ts	web,visual,tuner,image
 mobile-client	web/apps/mobile/app/index.tsx	clients,apple_mobile,expo_android_mobile
 tv-client	web/apps/tv/src/app.tsx	clients,apple_tv,expo_android_tv
 shared-client-ui	web/packages/ui/src/client-platform-proof/client-platform-proof.tsx	clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv
@@ -19,10 +21,10 @@ client-tooling	web/turbo.json	clients
 client-browser-proof	web/apps/web/src/client-platform-proof/client-platform-proof.tsx	clients
 apple-client-script	web/scripts/test-apple-client.sh	contracts,apple_mobile,apple_tv
 expo-android-script	web/scripts/build-android-client.sh	contracts,expo_android_mobile,expo_android_tv
-visual-web	web/apps/web/src/people/users-page/users-page.tsx	web,visual,image
+visual-web	web/apps/web/src/people/users-page/users-page.tsx	web,visual,tuner,image
 visual-baseline	web/apps/web/tests/visual/gallery.spec.ts-snapshots/ai-approvalhistoryrow--approved-desktop-linux.png	web,visual,image
 e2e-baseline	web/apps/web/tests/e2e/wizard.spec.ts-snapshots/step-1-bootstrap-desktop-linux.png	web,e2e,image
-wizard-e2e	web/apps/web/src/wizard/steps/steps.ts	web,visual,e2e,image
+wizard-e2e	web/apps/web/src/wizard/steps/steps.ts	web,visual,e2e,tuner,image
 tuner-web	web/apps/web/src/channels/use-hls-player/use-hls-player.ts	web,visual,tuner,image
 web-build-config	web/apps/web/vite.config.ts	web,visual,e2e,tuner,image
 web-tooling	web/apps/web/package.json	web,visual,e2e,tuner,image

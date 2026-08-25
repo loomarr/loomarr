@@ -170,3 +170,14 @@ gate documentation are amended before the first change that alters required beha
   conservative first selector treats every shipping Web runtime source as visual-sensitive, keeps
   unit-test-only sources outside the browser job, and structurally requires the visual/e2e union
   before replacing the broad Web selector. Tuner remains shadow-only for its own reversible slice.
+- PR #563 merged the Playwright activation after a complete current-main matrix and strict aggregate
+  passed. Its authoritative run completed in 38.8 minutes and 119.8 occupied runner-minutes; mobile
+  Apple took 37.2 minutes and tvOS 30.9 minutes while every non-native job completed within 5.0
+  minutes. The tuner activation therefore remains a separate change, and the native split/cache
+  work retains this per-platform baseline rather than hiding it inside a reshaped matrix.
+- The tuner activation audit keeps every shipping Web runtime source tuner-sensitive because the
+  three-browser performance matrix loads the real SPA and HLS controller. Exact fixtures prove that
+  unit, spec, and story-only source changes may skip tuner, while tuner e2e inputs, browser build
+  configuration, shared API/core/fixtures, runtime tokens, and OpenAPI retain it. A structural
+  verifier rejects the
+  legacy broad Web selector, detached classifier output, and release-candidate broadening.

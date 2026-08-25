@@ -86,12 +86,16 @@ func TestVerifyCIImpactActivation(t *testing.T) {
       impact_postgres: ${{ steps.impact.outputs.postgres }}
       impact_visual: ${{ steps.impact.outputs.visual }}
       impact_e2e: ${{ steps.impact.outputs.e2e }}
+      impact_tuner: ${{ steps.impact.outputs.tuner }}
   store-postgres:
     needs: changes
     if: needs.changes.outputs.impact_postgres == 'true'
   playwright:
     needs: changes
     if: needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true'
+  tuner:
+    needs: changes
+    if: needs.changes.outputs.impact_tuner == 'true'
 `
 	path := filepath.Join(t.TempDir(), "ci.yml")
 	if err := os.WriteFile(path, []byte(workflow), 0o600); err != nil {
@@ -120,6 +124,19 @@ func TestVerifyCIImpactActivation(t *testing.T) {
 			1,
 		),
 		"intersected browser selectors": strings.Replace(workflow, "impact_visual == 'true' ||", "impact_visual == 'true' &&", 1),
+		"legacy tuner selector": strings.Replace(
+			workflow,
+			"needs.changes.outputs.impact_tuner == 'true'",
+			"needs.changes.outputs.web == 'true'",
+			1,
+		),
+		"detached tuner output": strings.Replace(workflow, "steps.impact.outputs.tuner", "steps.filter.outputs.web", 1),
+		"broadened tuner selector": strings.Replace(
+			workflow,
+			"needs.changes.outputs.impact_tuner == 'true'",
+			"needs.changes.outputs.impact_tuner == 'true' || needs.changes.outputs.release_candidate == 'true'",
+			1,
+		),
 	}
 	for name, mutated := range mutations {
 		t.Run(name, func(t *testing.T) {

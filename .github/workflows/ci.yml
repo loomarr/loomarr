@@ -910,7 +910,7 @@ jobs:
   tuner:
     name: Tuner — Chromium + Firefox + WebKit
     needs: changes
-    if: needs.changes.outputs.web == 'true'
+    if: needs.changes.outputs.impact_tuner == 'true'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
