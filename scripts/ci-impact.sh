@@ -109,6 +109,9 @@ classify() {
       select_gate web
       select_gate clients
       select_all_native_clients
+      select_gate visual
+      select_gate e2e
+      select_gate tuner
       select_gate image
       ;;
     web/package.json|web/pnpm-lock.yaml|web/pnpm-workspace.yaml|web/.gitignore|web/biome.json|web/tsconfig.base.json)
@@ -157,7 +160,17 @@ classify() {
       select_gate web
       select_gate image
       case "$path" in
-        web/packages/tokens/*|web/apps/web/public/*|web/apps/web/src/*.tsx|*.stories.ts|*.stories.tsx|*.snap|*.css)
+        web/apps/web/src/*.test.ts|web/apps/web/src/*.test.tsx|web/apps/web/src/*.spec.ts|web/apps/web/src/*.spec.tsx)
+          ;;
+        web/apps/web/src/*)
+          # Storybook can reach any shipping runtime module through an alias import. Until a
+          # committed, generator-verified dependency closure exists, runtime source is the safe
+          # visual boundary; unit-test-only modules above are not part of that graph.
+          select_gate visual
+          ;;
+      esac
+      case "$path" in
+        web/packages/tokens/*|web/apps/web/public/*|web/apps/web/tests/visual/*|*.stories.ts|*.stories.tsx|*.snap|*.css)
           select_gate visual
           ;;
       esac
@@ -177,6 +190,11 @@ classify() {
           select_gate e2e
           select_gate tuner
           ;;
+        web/apps/web/components.json|web/apps/web/drive.mjs|web/apps/web/index.html|web/apps/web/tsconfig.json|web/apps/web/tsr.config.json|web/apps/web/vite.config.ts)
+          select_gate visual
+          select_gate e2e
+          select_gate tuner
+          ;;
       esac
       ;;
     api/openapi.yaml)
@@ -187,6 +205,9 @@ classify() {
       select_gate web
       select_gate clients
       select_all_native_clients
+      select_gate visual
+      select_gate e2e
+      select_gate tuner
       select_gate image
       select_gate android
       ;;

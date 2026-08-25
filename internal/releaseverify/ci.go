@@ -160,18 +160,33 @@ func VerifyCIImpactActivation(path string) error {
 		return errors.New("CI changes job must publish classifier outputs")
 	}
 
+	type classifierOutput struct {
+		name   string
+		source string
+	}
 	activated := map[string]struct {
-		output                  string
-		legacy                  string
-		runsForReleaseCandidate bool
+		outputs   []classifierOutput
+		condition string
 	}{
-		"store-postgres": {output: "impact_postgres", legacy: "go", runsForReleaseCandidate: false},
+		"store-postgres": {
+			outputs:   []classifierOutput{{name: "impact_postgres", source: "postgres"}},
+			condition: "needs.changes.outputs.impact_postgres == 'true'",
+		},
+		"playwright": {
+			outputs: []classifierOutput{
+				{name: "impact_visual", source: "visual"},
+				{name: "impact_e2e", source: "e2e"},
+			},
+			condition: "needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true'",
+		},
 	}
 	for jobName, gate := range activated {
-		output, ok := mappingValue(outputs, gate.output)
-		if !ok || output.Kind != yaml.ScalarNode ||
-			!strings.Contains(output.Value, "steps.impact.outputs.postgres") {
-			return fmt.Errorf("CI changes job does not publish %s from the specialized classifier", gate.output)
+		for _, expected := range gate.outputs {
+			output, ok := mappingValue(outputs, expected.name)
+			if !ok || output.Kind != yaml.ScalarNode ||
+				output.Value != "${{ steps.impact.outputs."+expected.source+" }}" {
+				return fmt.Errorf("CI changes job does not publish %s from the specialized classifier", expected.name)
+			}
 		}
 		job, err := requiredMap(jobs, jobName)
 		if err != nil {
@@ -182,15 +197,8 @@ func VerifyCIImpactActivation(path string) error {
 			return fmt.Errorf("CI job %s must depend on changes", jobName)
 		}
 		condition := scalarValue(job, "if")
-		if !strings.Contains(condition, "needs.changes.outputs."+gate.output+" == 'true'") {
-			return fmt.Errorf("CI job %s does not consume %s", jobName, gate.output)
-		}
-		hasReleaseCandidate := strings.Contains(condition, "needs.changes.outputs.release_candidate == 'true'")
-		if hasReleaseCandidate != gate.runsForReleaseCandidate {
-			return fmt.Errorf("CI job %s changed the explicit release-candidate scope", jobName)
-		}
-		if strings.Contains(condition, "needs.changes.outputs."+gate.legacy+" == 'true'") {
-			return fmt.Errorf("CI job %s still consumes legacy %s impact", jobName, gate.legacy)
+		if condition != gate.condition {
+			return fmt.Errorf("CI job %s condition %q does not match activated contract %q", jobName, condition, gate.condition)
 		}
 	}
 	return nil
