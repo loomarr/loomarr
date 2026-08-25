@@ -52,8 +52,17 @@ publishes uncategorized or model-authored notes.
 
 ## Tag and verify
 
-Push the protected version tag only after the required commit gates are green and the exact current
-`main` commit has passed the proportional release-candidate scope:
+Before requesting remote release certification, test the exact current `main` commit on the
+maintainer's local machine. Record the commit, commands, and results with the release evidence. At
+minimum, run every release-relevant gate this host supports: Go/Rust contracts and tests, Postgres,
+web unit/build, visual/e2e/tuner browser evidence, shared clients, both Expo Android app builds,
+legacy Android TV including its release bundle contract, image-worker certification, and release
+policy verification. Host-incompatible evidence such as iOS/tvOS and native arm64 image builds must
+be named explicitly and remain required in protected CI; a local Linux pass cannot stand in for
+them. Agent sessions still never run the maintainer's live-stack `make smoke*` targets.
+
+Push the protected version tag only after that local evidence is green, the required commit gates
+are green, and the exact current `main` commit has passed the proportional release-candidate scope:
 
 ```sh
 gh workflow run ci.yml --repo loomarr/loomarr --ref main -f scope=release-candidate
