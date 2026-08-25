@@ -1,16 +1,7 @@
-import {
-  Action,
-  type Density,
-  Hint,
-  MenuList,
-  Screen,
-  SelectControl,
-  Surface,
-  Tabs,
-  Text,
-} from "@loomarr/design-system";
+import { Action, type Density, Screen, Surface, Text } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
+import { BrowserHint, BrowserMenuList, BrowserSelectControl, BrowserTabs } from "../client-adapters";
 
 const SelectionWorkshop = ({
   density = "pointer",
@@ -21,7 +12,6 @@ const SelectionWorkshop = ({
 }) => {
   const [section, setSection] = useState<"guide" | "surf" | "watching">("guide");
   const [theme, setTheme] = useState<"dark" | "light" | "system">("dark");
-  const [open, setOpen] = useState(initialOpen);
   const [lastAction, setLastAction] = useState("No menu action");
   return (
     <Screen density={density} gap="$section">
@@ -29,7 +19,7 @@ const SelectionWorkshop = ({
         <Text density={density} textRole="title">
           Tabs
         </Text>
-        <Tabs
+        <BrowserTabs
           density={density}
           label="Viewer sections"
           onValueChange={setSection}
@@ -46,12 +36,11 @@ const SelectionWorkshop = ({
         <Text density={density} textRole="title">
           Selection and menu
         </Text>
-        <SelectControl
+        <BrowserSelectControl
           density={density}
+          initialOpen={initialOpen}
           label="Appearance"
-          onOpenChange={setOpen}
           onValueChange={setTheme}
-          open={open}
           options={[
             { description: "Loomarr's default.", label: "Dark", value: "dark" },
             { label: "Light", value: "light" },
@@ -59,7 +48,7 @@ const SelectionWorkshop = ({
           ]}
           value={theme}
         />
-        <MenuList
+        <BrowserMenuList
           density={density}
           items={[
             { label: "Refresh guide", value: "refresh" },
@@ -67,6 +56,7 @@ const SelectionWorkshop = ({
             { label: "Disconnect device", tone: "danger", value: "disconnect" },
           ]}
           label="Viewer actions"
+          onDismiss={() => setLastAction("dismiss")}
           onSelect={setLastAction}
         />
         <Text aria-live="polite" density={density} textRole="metadata">
@@ -78,11 +68,11 @@ const SelectionWorkshop = ({
         <Text density={density} textRole="title">
           Adapter-owned hint
         </Text>
-        <Hint content="Returns the time-shifted player to the live edge." density={density} visible>
+        <BrowserHint content="Returns the time-shifted player to the live edge." density={density}>
           <Action density={density} onPress={() => undefined} tone="secondary">
             Go live
           </Action>
-        </Hint>
+        </BrowserHint>
       </Surface>
     </Screen>
   );
@@ -106,6 +96,11 @@ const FocusedMenu: Story = {
     canvas.getByRole("menuitem", { name: "Refresh guide" }).focus();
   },
 };
+const FocusedHint: Story = {
+  play: async ({ canvas }) => {
+    canvas.getByRole("button", { name: "Go live" }).focus();
+  },
+};
 
 export default meta;
-export { FocusedMenu, Light, OpenSelect, Pointer, Touch, Tv };
+export { FocusedHint, FocusedMenu, Light, OpenSelect, Pointer, Touch, Tv };
