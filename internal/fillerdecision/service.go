@@ -200,7 +200,8 @@ func knownVerdict(verdict filleradmission.Verdict) bool {
 }
 
 func knownAction(kind ActionKind) bool {
-	return kind == ActionAdmit || kind == ActionReject || kind == ActionCorrect || kind == ActionRestore || kind == ActionReverse
+	return kind == ActionAdmit || kind == ActionReject || kind == ActionCorrect ||
+		kind == ActionAbandon || kind == ActionRestore || kind == ActionReverse
 }
 
 func boundedRequired(value string, limit int) bool {

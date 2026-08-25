@@ -4,6 +4,10 @@ import {
   getChannelTimelineMockHandler,
   getChannelTracksMockHandler,
   getDeviceListMockHandler,
+  getFillerDecisionActivityMockHandler,
+  getFillerDecisionDiagnosticsMockHandler,
+  getFillerDecisionOverviewMockHandler,
+  getFillerDecisionReviewsMockHandler,
   getFillerIncomingMockHandler,
   getFillerPoolMockHandler,
   getFillerReadinessMockHandler,
@@ -188,6 +192,14 @@ const appHandlers = (): RequestHandler[] => [
     pool: { channels: [], clips: 0, commercials: 0, eligible: 0, untagged: 0 },
     acquisitions: [],
   }),
+  getFillerDecisionOverviewMockHandler({
+    healthy: true,
+    nextAction: "none",
+    counts: { admitted: 0, rejected: 0, reviews: 0, unresolvedReviews: 0, operational: 0, retryable: 0 },
+  }),
+  getFillerDecisionReviewsMockHandler({ rows: [], total: 0 }),
+  getFillerDecisionActivityMockHandler({ rows: [], total: 0 }),
+  getFillerDecisionDiagnosticsMockHandler({ rows: [], total: 0 }),
 ];
 
 export { appHandlers };

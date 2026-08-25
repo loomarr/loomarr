@@ -1,0 +1,224 @@
+import * as fillerApi from "@loomarr/api/endpoints/filler";
+import type { FillerDecisionReviewDTO } from "@loomarr/api/models/fillerDecisionReviewDTO";
+import { toProblem } from "@loomarr/api/mutator";
+import { unwrap } from "@loomarr/api/unwrap";
+import { formatRelative, pluralize } from "@loomarr/core/format";
+import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { toast } from "sonner";
+import { EmptyState } from "@/components/loomarr/feedback/empty-state";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+
+const humanize = (value: string) => value.replaceAll("_", " ");
+
+const ReviewCard = ({ review, onAbandon }: { review: FillerDecisionReviewDTO; onAbandon: () => void }) => {
+  const queryClient = useQueryClient();
+  const [correcting, setCorrecting] = useState(false);
+  const [answer, setAnswer] = useState("");
+  const [verdict, setVerdict] = useState<"admit" | "reject">("admit");
+  const action = fillerApi.useActOnFillerDecision({
+    mutation: {
+      onSuccess: (_result, variables) => {
+        toast.success(variables.data.kind === "abandon" ? "Saved for later" : "Decision recorded");
+        void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerDecisionReviewsQueryKey() });
+        void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerDecisionOverviewQueryKey() });
+        void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerDecisionActivityQueryKey() });
+      },
+      onError: (error) => {
+        const problem = toProblem(error);
+        toast.error(problem.title ?? "The decision could not be recorded", {
+          ...(problem.detail ? { description: problem.detail } : {}),
+        });
+      },
+    },
+  });
+
+  const submit = (kind: "admit" | "reject" | "correct" | "abandon") => {
+    action.mutate(
+      {
+        id: review.id,
+        data: {
+          actionId: crypto.randomUUID(),
+          kind,
+          ...(kind === "correct" ? { answer: answer.trim() } : {}),
+          ...(kind === "correct" ? { correctedVerdict: verdict, reason: answer.trim() } : {}),
+          ...(kind === "abandon" ? { reason: "skip for now" } : {}),
+        },
+      },
+      { onSuccess: () => (kind === "abandon" ? onAbandon() : undefined) },
+    );
+  };
+
+  return (
+    <Card className="p-5" aria-labelledby={`review-${review.id}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-muted-foreground text-xs">Clip {review.clipHash.slice(0, 10)}…</p>
+          <h2 id={`review-${review.id}`} className="mt-1 font-semibold text-lg">
+            {review.question}
+          </h2>
+        </div>
+        <span className="text-muted-foreground text-xs">{formatRelative(review.createdAt)}</span>
+      </div>
+
+      {review.conflicts.length > 0 ? (
+        <section className="mt-4 space-y-3" aria-label="Decisive conflicts">
+          {review.conflicts.map((conflict) => (
+            <div
+              key={`${conflict.claim}-${conflict.values.join("-")}`}
+              className="rounded-md border border-caution/35 bg-caution/5 p-3"
+            >
+              <p className="font-medium text-sm">Conflicting {humanize(conflict.claim)}</p>
+              <p className="mt-1 text-muted-foreground text-sm">{conflict.values.join(" · ")}</p>
+            </div>
+          ))}
+        </section>
+      ) : null}
+
+      <section className="mt-4 flex flex-wrap gap-2" aria-label="Why Loomarr asked">
+        {review.reasonCodes.map((reason) => (
+          <Badge key={reason} variant="neutral">
+            {humanize(reason)}
+          </Badge>
+        ))}
+        {review.evidenceRefs.length > 0 ? (
+          <Badge variant="neutral">{pluralize(review.evidenceRefs.length, "evidence source")}</Badge>
+        ) : null}
+      </section>
+
+      {correcting ? (
+        <form
+          className="mt-5 rounded-md border border-border bg-muted/20 p-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (answer.trim()) submit("correct");
+          }}
+        >
+          <fieldset>
+            <legend className="font-medium text-sm">What should Loomarr learn from this clip?</legend>
+            <div className="mt-3 flex flex-wrap gap-4">
+              <Label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name={`verdict-${review.id}`}
+                  checked={verdict === "admit"}
+                  onChange={() => setVerdict("admit")}
+                />
+                It is filler
+              </Label>
+              <Label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name={`verdict-${review.id}`}
+                  checked={verdict === "reject"}
+                  onChange={() => setVerdict("reject")}
+                />
+                It is not filler
+              </Label>
+            </div>
+          </fieldset>
+          <Label htmlFor={`correction-${review.id}`} className="mt-4 block">
+            Correction
+          </Label>
+          <Input
+            id={`correction-${review.id}`}
+            className="mt-1"
+            value={answer}
+            onChange={(event) => setAnswer(event.target.value)}
+            placeholder="For example: This is a soda commercial"
+            autoFocus
+            required
+            maxLength={512}
+          />
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button type="submit" disabled={action.isPending || !answer.trim()}>
+              Save correction
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setCorrecting(false)}
+              disabled={action.isPending}
+            >
+              Cancel
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <div className="mt-5 flex flex-wrap gap-2">
+          <Button onClick={() => submit("admit")} disabled={action.isPending}>
+            Accept
+          </Button>
+          <Button variant="outline" onClick={() => setCorrecting(true)} disabled={action.isPending}>
+            Correct
+          </Button>
+          <Button variant="ghost" onClick={() => submit("reject")} disabled={action.isPending}>
+            Reject
+          </Button>
+          <Button variant="ghost" onClick={() => submit("abandon")} disabled={action.isPending}>
+            Skip for now
+          </Button>
+        </div>
+      )}
+    </Card>
+  );
+};
+
+const FillerReviewQueue = () => {
+  const [abandoned, setAbandoned] = useState(() => new Set<string>());
+  const query = fillerApi.useFillerDecisionReviews({ limit: 100 });
+  const body = unwrap(query.data, (value) => value);
+
+  if (query.error) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
+  if (!body)
+    return (
+      <Card aria-live="polite" className="p-6">
+        Checking for clips that need judgment…
+      </Card>
+    );
+  if (body.rows.length === 0) {
+    return (
+      <EmptyState
+        title="Nothing needs your attention"
+        description="Loomarr is handling filler automatically. Automatic admits and rejects are recorded under Manage → Activity."
+      />
+    );
+  }
+
+  const visibleRows = body.rows.filter((review) => !abandoned.has(review.id));
+  if (visibleRows.length === 0) {
+    return (
+      <EmptyState
+        title="You're caught up for now"
+        description="Skipped questions remain in Needs attention for a later visit. Loomarr did not treat them as accepted or rejected."
+      />
+    );
+  }
+
+  return (
+    <section aria-labelledby="review-queue-heading" className="flex flex-col gap-4">
+      <div>
+        <h1 id="review-queue-heading" className="font-semibold text-xl">
+          A few clips need your judgment
+        </h1>
+        <p className="mt-1 text-muted-foreground text-sm">
+          {pluralize(body.total, "plain question")}. Processing failures and retries live in Diagnostics.
+        </p>
+      </div>
+      {visibleRows.map((review) => (
+        <ReviewCard
+          key={review.id}
+          review={review}
+          onAbandon={() => setAbandoned((current) => new Set(current).add(review.id))}
+        />
+      ))}
+    </section>
+  );
+};
+
+export { FillerReviewQueue };

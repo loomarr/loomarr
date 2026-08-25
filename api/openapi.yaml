@@ -2592,6 +2592,7 @@ components:
             - admit
             - reject
             - correct
+            - abandon
             - restore
             - reverse
           type: string
@@ -2663,6 +2664,7 @@ components:
             - review_admit
             - review_reject
             - correction
+            - review_abandoned
             - restore
             - reversal
           type: string

@@ -20,6 +20,7 @@ const clip = {
 test("a trusted source converges into a channel break without routine approval", async ({ page }) => {
   await installMockBackend(page, { authed: true, role: "admin" });
   let fetched = false;
+  let reviewSkipped = false;
   const calls: string[] = [];
 
   await page.route("**/v1/**", async (route) => {
@@ -145,6 +146,69 @@ test("a trusted source converges into a channel break without routine approval",
           : [],
       });
     }
+    if (path === "/v1/filler/decisions/overview") {
+      return reply({
+        healthy: fetched,
+        nextAction: fetched ? "none" : "review_decisions",
+        actionCount: fetched ? 0 : 1,
+        counts: {
+          admitted: fetched ? 1 : 0,
+          rejected: 0,
+          reviews: fetched ? 0 : 1,
+          unresolvedReviews: fetched ? 0 : 1,
+          operational: 0,
+          retryable: 0,
+        },
+      });
+    }
+    if (path === "/v1/filler/decisions/reviews") {
+      const rows =
+        !fetched && !reviewSkipped
+          ? [
+              {
+                id: "review-1",
+                clipHash: "ambiguous-spot",
+                question: "Is this a toy commercial?",
+                reasonCodes: ["conflict_product"],
+                evidenceRefs: ["closing-frame"],
+                conflicts: [
+                  {
+                    claim: "product",
+                    values: ["toy", "programme excerpt"],
+                    evidenceRefs: ["closing-frame"],
+                    resolved: false,
+                  },
+                ],
+                createdAt: "2026-08-24T03:59:00Z",
+              },
+            ]
+          : [];
+      return reply({ rows, total: rows.length });
+    }
+    if (path === "/v1/filler/decisions/review-1/actions" && method === "POST") {
+      const body = request.postDataJSON();
+      expect(body).toMatchObject({ kind: "abandon", reason: "skip for now" });
+      reviewSkipped = true;
+      calls.push("review skipped without verdict");
+      return reply({ id: body.actionId });
+    }
+    if (path === "/v1/filler/decisions/activity") {
+      return reply({
+        rows: fetched
+          ? [
+              {
+                id: "event-1",
+                decisionId: "decision-1",
+                clipHash: clip.hash,
+                kind: "automatic_admit",
+                createdAt: "2026-08-24T04:00:01Z",
+              },
+            ]
+          : [],
+        total: fetched ? 1 : 0,
+      });
+    }
+    if (path === "/v1/filler/decisions/diagnostics") return reply({ rows: [], total: 0 });
     if (path === "/v1/filler/watch") {
       return reply({
         sourcesOn: 1,
@@ -224,6 +288,12 @@ test("a trusted source converges into a channel break without routine approval",
     return route.fallback();
   });
 
+  await page.goto("/filler/attention");
+  await expect(page.getByRole("heading", { name: "Is this a toy commercial?" })).toBeVisible();
+  await page.getByRole("button", { name: "Skip for now" }).click();
+  await expect(page.getByText("You're caught up for now")).toBeVisible();
+  expect(calls).toContain("review skipped without verdict");
+
   await page.goto("/filler/sources");
   await expect(page.getByText("Trusted Commercials")).toBeVisible();
   await expect(page.getByRole("switch", { name: /automatically file grounded clips/i })).toBeChecked();
@@ -232,11 +302,23 @@ test("a trusted source converges into a channel break without routine approval",
 
   await page.goto("/filler");
   await expect(page.getByText("Filler is working on its own")).toBeVisible();
-  await expect(page.getByText("1 download · 1 admitted clip")).toBeVisible();
+  const fillerNav = page.getByRole("navigation", { name: "Filler sections" });
+  await expect(fillerNav.getByRole("link", { name: "Overview" })).toBeVisible();
+  await expect(fillerNav.getByRole("link", { name: /Needs attention/ })).toBeVisible();
+  await expect(fillerNav.getByRole("link", { name: /Library/ })).toBeVisible();
+  await expect(fillerNav.getByRole("link", { name: "Manage" })).toBeVisible();
+  await expect(fillerNav.getByRole("link", { name: "Sources" })).toHaveCount(0);
+
+  await page.goto("/filler/manage");
+  await expect(page.getByText("Admitted automatically")).toBeVisible();
 
   await page.goto("/channels/ch-1/filler");
   await expect(page.getByRole("heading", { name: "Saved channel coverage" })).toBeVisible();
   await expect(page.getByLabel("Pod segments")).toContainText("Trusted Toy Spot");
   await expect(page.getByRole("button", { name: /apply filler/i })).toHaveCount(0);
-  expect(calls).toEqual(["bounded source fetch", "automatic break preview"]);
+  expect(calls).toEqual([
+    "review skipped without verdict",
+    "bounded source fetch",
+    "automatic break preview",
+  ]);
 });

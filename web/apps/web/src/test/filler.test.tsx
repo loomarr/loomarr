@@ -778,15 +778,15 @@ describe("Filler page", () => {
     await expect.poll(() => bulkTags).toEqual([{ hashes: ["c1-hash"], audience: "family" }]);
   });
 
-  // ⚠ **The Incoming tab's "Add tags" took a click and did nothing** (§10 V54). `ClipTagDialog`
+  // ⚠ **The processing queue's "Add tags" took a click and did nothing** (§10 V54). `ClipTagDialog`
   // was mounted only inside the catalog-tab branch, and the identifier handed up was the clip's
   // PATH where the shell resolves by hash — two independent reasons for the same silence, either
   // of which alone would have been enough.
   //
-  // This drives the app the way an operator does — Incoming, click, look — rather than asserting
+  // This drives the app the way an operator does — Manage, Diagnostics, click, look — rather than asserting
   // a callback fired. The tab's own test already asserts the callback, and it was green the whole
   // time the button did nothing; only rendering the whole page can tell the difference.
-  it("opens the tag editor from the Incoming queue, on the clip's real record", async () => {
+  it("opens the tag editor from processing diagnostics, on the clip's real record", async () => {
     stubFiller({
       incoming: {
         clips: [
@@ -808,8 +808,9 @@ describe("Filler page", () => {
       // synthesised clip would offer to save an empty tag set over a tagged clip).
       held: [clip({ hash: "held-hash", name: "Held promo", category: "cereal", era: 1985 })],
     });
-    renderAt("/filler/attention");
+    renderAt("/filler/manage");
 
+    await userEvent.click(await screen.findByRole("button", { name: "Show filler diagnostics" }));
     await userEvent.click(await screen.findByRole("button", { name: /add tags/i }));
 
     // The dialog labels its region with the clip's name, so finding it by name proves BOTH that
@@ -843,8 +844,9 @@ describe("Filler page", () => {
         total: 1,
       },
     });
-    renderAt("/filler/attention");
+    renderAt("/filler/manage");
 
+    await userEvent.click(await screen.findByRole("button", { name: "Show filler diagnostics" }));
     await userEvent.click(await screen.findByText("More"));
     await userEvent.click(await screen.findByRole("button", { name: "Re-run AI" }));
 

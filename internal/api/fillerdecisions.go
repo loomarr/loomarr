@@ -78,7 +78,7 @@ type fillerDecisionActivityWireDTO struct {
 	ActionID   string                      `json:"actionId,omitempty"`
 	DecisionID string                      `json:"decisionId"`
 	ClipHash   string                      `json:"clipHash"`
-	Kind       fillerdecision.ActivityKind `json:"kind" enum:"automatic_admit,automatic_reject,review_requested,review_admit,review_reject,correction,restore,reversal"`
+	Kind       fillerdecision.ActivityKind `json:"kind" enum:"automatic_admit,automatic_reject,review_requested,review_admit,review_reject,correction,review_abandoned,restore,reversal"`
 	CreatedAt  time.Time                   `json:"createdAt"`
 }
 
@@ -93,7 +93,7 @@ type fillerDecisionActionInput struct {
 	ID   string `path:"id" maxLength:"128"`
 	Body struct {
 		ActionID         string                    `json:"actionId" maxLength:"128"`
-		Kind             fillerdecision.ActionKind `json:"kind" enum:"admit,reject,correct,restore,reverse"`
+		Kind             fillerdecision.ActionKind `json:"kind" enum:"admit,reject,correct,abandon,restore,reverse"`
 		Reason           string                    `json:"reason,omitempty" maxLength:"512"`
 		Answer           string                    `json:"answer,omitempty" maxLength:"512"`
 		CorrectedVerdict filleradmission.Verdict   `json:"correctedVerdict,omitempty" enum:"admit,reject"`

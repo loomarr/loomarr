@@ -169,6 +169,48 @@ func TestFillerDecisionActionsRequireAdminAndAreIdempotent(t *testing.T) {
 	}
 }
 
+func TestFillerDecisionAbandonIsMeasurableWithoutResolvingTheReview(t *testing.T) {
+	srv, st := newServer(t)
+	seedDecisionAPI(t, st)
+
+	res := do(t, srv, http.MethodPost, "/v1/filler/decisions/review-1/actions", adminToken,
+		`{"actionId":"skip-1","kind":"abandon","reason":"skip for now"}`)
+	if res.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(res.Body)
+		_ = res.Body.Close()
+		t.Fatalf("abandon = %d: %s", res.StatusCode, raw)
+	}
+	_ = res.Body.Close()
+
+	res = do(t, srv, http.MethodGet, "/v1/filler/decisions/reviews?limit=10", adminToken, "")
+	var reviews decisionListBody[reviewWire]
+	decodeDecisionResponse(t, res, &reviews)
+	if reviews.Total != 1 {
+		t.Fatalf("abandon resolved the review: %+v", reviews)
+	}
+
+	res = do(t, srv, http.MethodGet, "/v1/filler/decisions/activity?limit=10", memberToken, "")
+	var activity decisionListBody[activityWire]
+	decodeDecisionResponse(t, res, &activity)
+	if activity.Total != 2 || activity.Rows[0].Kind != "review_abandoned" {
+		t.Fatalf("abandon was not measurable: %+v", activity)
+	}
+
+	res = do(t, srv, http.MethodPost, "/v1/filler/decisions/review-1/actions", adminToken,
+		`{"actionId":"answer-after-skip","kind":"admit","answer":"yes"}`)
+	if res.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(res.Body)
+		_ = res.Body.Close()
+		t.Fatalf("answer after abandon = %d: %s", res.StatusCode, raw)
+	}
+	_ = res.Body.Close()
+
+	actions, err := st.ListFillerDecisionActions(t.Context(), fillerdecision.ActionFilter{DecisionID: "review-1", Limit: 10})
+	if err != nil || actions.Total != 2 {
+		t.Fatalf("review action audit = %+v, %v", actions, err)
+	}
+}
+
 func TestFillerDecisionProjectionsUseLatestOutcomeWithoutErasingHistory(t *testing.T) {
 	srv, st := newServer(t)
 	at := time.Date(2026, 8, 25, 5, 0, 0, 0, time.UTC)

@@ -1,6 +1,6 @@
 import type { ClipDTO } from "@loomarr/api";
 import {
-  getFillerIncomingMockHandler,
+  getFillerDecisionReviewsMockHandler,
   getFillerPoolMockHandler,
   getFillerWatchMockHandler,
   getListFillerMockHandler,
@@ -70,29 +70,7 @@ const stubFillerPage = (over: { clips?: ClipDTO[]; incomingTotal?: number; total
     // query, and equal fixtures could not tell those two rules apart. So the belt stays empty and
     // the count says 3. (§10 V51e renamed `asks`+`pipeline` → `clips`; the badge reads `total`
     // either way, which is why this survived the rename as a pure field swap.)
-    getFillerIncomingMockHandler({
-      overview: {
-        runnable: 0,
-        inProgress: 0,
-        scheduled: 0,
-        needsDecision: 3,
-        recoverable: 0,
-        admitted: 0,
-        rejected: 0,
-        dismissed: 0,
-      },
-      clips: [],
-      clipsTotal: 0,
-      decisionsTotal: over.incomingTotal ?? 3,
-      reels: [],
-      reelsTotal: 0,
-      recentlyFiled: [],
-      recentlyFiledTotal: 0,
-      rejected: [],
-      rejectedTotal: 0,
-      stageOrder: [],
-      total: over.incomingTotal ?? 3,
-    }),
+    getFillerDecisionReviewsMockHandler({ rows: [], total: over.incomingTotal ?? 3 }),
     getFillerPoolMockHandler({ clips: 200, commercials: 200, eligible: 200, untagged: 0, channels: [] }),
     getListFillerSourcesMockHandler({ sources: [], total: 0 }),
     getSettingsListMockHandler({ settings: [], features: { filler: true } }),
@@ -142,7 +120,7 @@ describe("FillerPage shell", () => {
 
   // ⚠ Admin-only, so this must WAIT for `/v1/auth/me`. Asserting on the link alone would pass
   // instantly against a member's (countless) tab and prove nothing.
-  it("counts the Incoming badge from the queue total", async () => {
+  it("counts the Needs attention badge from the semantic review total", async () => {
     stubFillerPage({ incomingTotal: 7 });
     renderPage("library");
 
@@ -152,14 +130,13 @@ describe("FillerPage shell", () => {
     });
   });
 
-  // ⚠ Sources carries NO count, deliberately: Catalog and Incoming are queues where the number
-  // is the reason to look, while the configured-source count is already the header pill's job.
-  it("gives the Sources tab no badge", async () => {
+  it("keeps management behind one uncluttered destination", async () => {
     stubFillerPage();
     renderPage("library");
 
-    const sourcesTab = await screen.findByRole("link", { name: /sources/i });
-    expect(sourcesTab).toHaveTextContent(/^Sources$/);
+    const manageTab = await screen.findByRole("link", { name: /^manage$/i });
+    expect(manageTab).toHaveTextContent(/^Manage$/);
+    expect(screen.queryByRole("link", { name: /^sources$/i })).not.toBeInTheDocument();
   });
 
   it("treats section links as navigation without an orphan tabpanel role", async () => {
@@ -185,7 +162,7 @@ describe("FillerPage shell", () => {
     renderPage("sources");
 
     // Wait for the tab to be up, so this cannot pass merely by asserting before the render.
-    await screen.findByRole("link", { name: /sources/i });
+    await screen.findByRole("link", { name: /^manage$/i });
     expect(screen.queryByLabelText("Catalog health")).not.toBeInTheDocument();
   });
 

@@ -49,6 +49,7 @@ const (
 	ActionAdmit   ActionKind = "admit"
 	ActionReject  ActionKind = "reject"
 	ActionCorrect ActionKind = "correct"
+	ActionAbandon ActionKind = "abandon"
 	ActionRestore ActionKind = "restore"
 	ActionReverse ActionKind = "reverse"
 )
@@ -175,6 +176,7 @@ const (
 	ActivityActionAdmit     ActivityKind = "review_admit"
 	ActivityActionReject    ActivityKind = "review_reject"
 	ActivityCorrection      ActivityKind = "correction"
+	ActivityReviewAbandoned ActivityKind = "review_abandoned"
 	ActivityRestore         ActivityKind = "restore"
 	ActivityReversal        ActivityKind = "reversal"
 )

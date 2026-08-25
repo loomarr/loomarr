@@ -3,6 +3,9 @@ import {
   getChannelTracksMockHandler,
   getChannelUpcomingMockHandler,
   getDiscoverFillerMockHandler,
+  getFillerDecisionActivityMockHandler,
+  getFillerDecisionDiagnosticsMockHandler,
+  getFillerDecisionReviewsMockHandler,
   getFillerIncomingMockHandler,
   getGetChannelMockHandler,
   getGetFillerSplitMockHandler,
@@ -196,6 +199,33 @@ const stubReachable = () => {
       stageOrder: [],
       total: 1,
     }),
+    getFillerDecisionReviewsMockHandler({
+      rows: [
+        {
+          id: "decision-review",
+          clipHash: "held-hash",
+          createdAt: "2026-08-25T12:00:00Z",
+          question: "Is this a toy commercial?",
+          reasonCodes: ["unidentified"],
+          evidenceRefs: ["frame-1"],
+          conflicts: [],
+        },
+      ],
+      total: 1,
+    }),
+    getFillerDecisionActivityMockHandler({
+      rows: [
+        {
+          id: "automatic-admit-event",
+          decisionId: "automatic-admit-decision",
+          clipHash: "auto-hash",
+          kind: "automatic_admit",
+          createdAt: "2026-08-25T12:00:00Z",
+        },
+      ],
+      total: 1,
+    }),
+    getFillerDecisionDiagnosticsMockHandler({ rows: [], total: 0 }),
     // Both catalog shapes, not an empty catalog: Split belongs to the composite source reel,
     // while pinning belongs to an airable clip. A composite is deliberately excluded from pods,
     // so using one row to assert both doors would require the UI to offer an action that cannot
@@ -443,12 +473,11 @@ describe("feature-gated panels mount when their flag is on", () => {
     // through, and it is asserted there.
     // V35: the queue of clips waiting on a human decision. Same reason as the ingest panel —
     // this suite exists because eight things were built, unit-tested and imported by nothing.
-    ["/filler/attention", /nothing needs you|needs? a decision/i, "the decision queue"],
-    // ⚠ V38's AUDIT half. Auto-filing is on by default, so clips enter the catalog unattended;
-    // if this section stops rendering, an operator has no way to find what was filed without
-    // them, and nothing else on the page would look wrong. That is precisely the silent-loss
-    // shape this suite exists for.
-    ["/filler/attention", /filed .* without asking/i, "the auto-filed audit list"],
+    ["/filler/attention", /is this a toy commercial/i, "the semantic decision queue"],
+    // V63's durable audit half. Automatic admission is normal work, so it belongs in Manage
+    // activity rather than in the exception queue. Keeping this route-level assertion prevents
+    // unattended decisions from becoming invisible when the old Incoming surface is retired.
+    ["/filler/manage", /admitted automatically/i, "the automatic decision activity"],
     // ⚠ And the tab itself must be reachable FROM the catalog, or the assertions above only
     // prove a deep link works. This is the V1/V17a/V23 failure in tab form.
     ["/filler", /^needs attention$/i, "the decision queue's own entry point"],

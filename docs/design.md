@@ -3505,6 +3505,12 @@ Automatic admits/rejects belong to Activity; queued/running/retry/provider/budge
 Diagnostics. Overview answers whether filler is working and offers one ranked action only when one
 exists. Ordinary maintenance never asks a person to interpret confidence thresholds.
 
+The rendered review prototype compares evidence-first and proposal-visible ordering. Production
+uses evidence-first: decisive conflicts and reasons appear before any operator action, and Loomarr
+does not invent a proposed answer for an evaluator that explicitly abstained. The proposal-visible
+variant remains a Storybook comparison artifact so future measured human-review trials can revisit
+the choice without quietly changing the ordinary surface.
+
 #### Certified role routing and evaluation accounting (V62)
 
 V61's five roles are one versioned Go-owned **inference policy**, not five independent settings:
@@ -3558,11 +3564,17 @@ review queue by changing labels in an API handler.
 The original decision row is immutable and stores the clip and evidence identities, complete
 canonical V61 result, policy/schema/taxonomy lineage, creation time, and the inference-evaluation
 references whose exact usage and cost live in V62 accounting. Human resolution, correction,
-restore, and reversal are append-only action rows. They name a closed action kind, actor, reason,
-time, and optional corrected answer, and point to the action they supersede when relevant. History
+explicit review abandonment, restore, and reversal are append-only action rows. They name a closed
+action kind, actor, reason, time, and optional corrected answer, and point to the action they
+supersede when relevant. History
 therefore distinguishes an automatic admission from a reviewed admission, a rejection from an
 operational failure, and a correction from a later reversal without overwriting the evidence that
 caused the original result.
+
+An `abandon` action means **skip for now**, not reject. It is measurable review-friction evidence,
+does not resolve the semantic question, and is excluded when computing the latest state-changing
+action; the same review may therefore be answered later without pretending the operator expressed
+a content preference. The ordinary UI hides an explicitly skipped card only for that page session.
 
 The store exposes one conformance contract over SQLite and Postgres. Insertion is idempotent by
 decision id and rejects a different payload under the same id. Decision plus first action is
@@ -5317,21 +5329,26 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 - **Suggestion workspace** — enter intent (or start from a **template**, §13) → watch generation → review lineup + acquisitions w/ rationale + scores → **edit via search** (§7.2: add/replace titles; missing ones become acquisitions) → **submit**; admins get an **approval queue** and approve/deny with `approved_by` recorded. **The queue is also where a proposal is edited before approval** (§7.2 / D-K): "Review & edit picks" opens the same pick list with a drop control per title, an add-via-search box, and a note to the requester. The edit is a **delta** (`drop` by provisioning key, `add`, `note`) sent **on the approve call itself** — never a separate save — because `Approver.Approve` takes it as a parameter, keeping "what gets acquired" inside the one gate. Approving unmodified sends an empty body and behaves exactly as it did before the feature existed. Inline intent-writing hints. The same describe→review→approve machinery is reused **in a refine mode on an existing channel** (§7 `refine`): the intent is seeded from the channel's current lineup + a free-text change, and review shows a diff instead of a fresh lineup.
 - **Filler library** — browse/tag commercial clips (era/audience/category), trigger sync, review AI tags, preview a channel's pods (§10). This is the **catalog**; each channel *chooses* from it on its own Filler section (§10 per-channel selection). The two surfaces cross-link both ways — the catalog heading points to per-channel selection, a channel's Filler section links back to the catalog, and a clip offers a **"Use in a channel"** action that pins it into a channel's filler directly (a normal `PATCH …/{id}` of `policy.filler.pinned`, merged onto the channel's live policy).
 
-  **Five destinations — `Overview · Needs attention · Library · Sources · Advanced`.** Overview is
-  the default and answers two questions from the server-owned readiness classifier: whether filler
-  is working unattended, and the single highest-priority next action. It keeps machine work,
-  operator decisions, recoverable failures, terminal audit, and admitted clips visibly distinct;
-  shows recent acquisition provenance and outcomes; and links weak channel coverage directly to
-  that channel. The old pool-health strip remains Library context rather than forcing every
-  destination to carry a second, client-derived health model.
+  **Four destinations — `Overview · Needs attention · Library · Manage`.** Overview is the default
+  and answers two questions from the server-owned V63 projection: whether admission is working
+  unattended, and the single highest-priority next action. The client renders that answer and
+  action; it never recreates health, severity, or priority from detail feeds. Coverage and variety
+  remain separate server-owned context because a healthy admission system may still need more
+  playable clips. Automatic outcomes, human exceptions, operational failures, and admitted clips
+  stay visibly distinct.
 
-  - **Needs attention** — only work that can usefully involve an operator: grounded decisions and
-    explicit retry/restore paths, with rejected and auto-filed history kept as audit rather than a
-    queue that never clears. The former `/filler/incoming` path redirects here.
+  - **Needs attention** — only the V63 semantic-review projection. Each row asks one plain question,
+    shows only decisive reason/evidence/conflict context, and offers accept, correct, or reject.
+    Queued/running work, retries, provider or budget holds, split processing, and filing state are
+    structurally absent. The former `/filler/incoming` path redirects here.
   - **Library** — the clips themselves, in a grid or a dense list. Multi-select drives bulk retagging and removal; a card carries its thumbnail, duration, quality, tags, and **how often it has actually aired**. Legacy catalog filters on `/filler?...` redirect here without losing the filter.
-  - **Sources** — where filler comes from, each switchable off, each searchable in place.
-  - **Advanced** — progressive disclosure for taxonomy and system-wide defaults/limits. Taxonomy is
-    useful for diagnosis and expert refinement, but is not a prerequisite for ordinary filler setup.
+  - **Manage** — progressive disclosure over **Activity · Sources · Automation · Taxonomy ·
+    Diagnostics**. Activity is the normal audit of automatic outcomes and human corrections.
+    Sources owns acquisition. Automation links to system-wide defaults and bounded processing.
+    Taxonomy is expert vocabulary maintenance. Diagnostics alone exposes operational holds,
+    recovery codes, pipeline state, retries, provider/budget status, and stage details. The legacy
+    `/filler/sources`, `/filler/advanced`, `/filler/taxonomy`, and `/filler/settings` deep links stay
+    valid and render within this Manage destination.
 
   ⚠ **There is no Discover tab.** Finding clips used to be its own destination; it is now something you do *to a source*, which is the only place the answer differs. ⚠ **Incoming does not replace the split-review route** — `/filler/splits/{proposalId}` remains a **sibling** of `/filler`, because the catalog page renders no `<Outlet/>` and nesting it would make the whole surface unreachable while every unit test stayed green (PROGRESS.md records the near-miss). The tab is an additional door.
 

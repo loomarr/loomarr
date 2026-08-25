@@ -135,13 +135,12 @@ const FillerSettingsScreen = () => (
         label="Filler sections"
         linkComponent={Link}
         className="bg-background px-6 pt-2"
-        activeId="advanced"
+        activeId="manage"
         tabs={[
           { id: "overview", label: "Overview", to: "/filler" },
           { id: "attention", label: "Needs attention", to: "/filler/attention" },
           { id: "library", label: "Library", to: "/filler/library" },
-          { id: "sources", label: "Sources", to: "/filler/sources" },
-          { id: "advanced", label: "Advanced", to: "/filler/advanced" },
+          { id: "manage", label: "Manage", to: "/filler/manage" },
         ]}
       />
       <div className="min-h-0 flex-1 overflow-hidden">

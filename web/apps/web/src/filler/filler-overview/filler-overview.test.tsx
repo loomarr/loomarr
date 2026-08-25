@@ -1,11 +1,18 @@
-import type { FillerReadinessDTO } from "@loomarr/api";
-import { getFillerReadinessMockHandler } from "@loomarr/api/msw";
+import type { FillerDecisionOverviewDTO, FillerReadinessDTO } from "@loomarr/api";
+import { getFillerDecisionOverviewMockHandler, getFillerReadinessMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
 import { FillerOverview } from "./filler-overview";
+
+const decision = (over: Partial<FillerDecisionOverviewDTO> = {}): FillerDecisionOverviewDTO => ({
+  healthy: true,
+  nextAction: "none",
+  counts: { admitted: 25, rejected: 12, reviews: 0, unresolvedReviews: 0, operational: 0, retryable: 0 },
+  ...over,
+});
 
 const readiness = (over: Partial<FillerReadinessDTO> = {}): FillerReadinessDTO => ({
   ready: true,
@@ -26,8 +33,8 @@ const readiness = (over: Partial<FillerReadinessDTO> = {}): FillerReadinessDTO =
   ...over,
 });
 
-const show = (body: FillerReadinessDTO) => {
-  server.use(getFillerReadinessMockHandler(body));
+const show = (overview: FillerDecisionOverviewDTO, coverage: FillerReadinessDTO = readiness()) => {
+  server.use(getFillerDecisionOverviewMockHandler(overview), getFillerReadinessMockHandler(coverage));
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <RouterHarness
@@ -42,46 +49,43 @@ const show = (body: FillerReadinessDTO) => {
 };
 
 describe("FillerOverview", () => {
-  it("answers readiness plainly when unattended filler is healthy", async () => {
-    show(readiness());
-
+  it("renders the server-owned healthy answer without inventing an action", async () => {
+    show(decision());
     expect(await screen.findByText("Filler is working on its own")).toBeInTheDocument();
-    expect(screen.getByText("Ready")).toBeInTheDocument();
+    expect(screen.getByText("Working automatically")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /diagnostics|review clips/i })).not.toBeInTheDocument();
   });
 
-  it("keeps machine work, operator decisions, recovery, and terminal audit distinct", async () => {
+  it("renders the server-ranked review action and distinct counts", async () => {
     show(
-      readiness({
-        ready: false,
-        nextAction: "retry_failed_work",
-        actionCount: 2,
-        pipeline: {
-          runnable: 2,
-          scheduled: 1,
-          inProgress: 3,
-          needsDecision: 4,
-          recoverable: 2,
-          admitted: 18,
-          rejected: 5,
-          dismissed: 1,
-        },
+      decision({
+        healthy: false,
+        nextAction: "review_decisions",
+        actionCount: 4,
+        counts: { admitted: 18, rejected: 9, reviews: 5, unresolvedReviews: 4, operational: 2, retryable: 1 },
       }),
     );
 
-    expect(await screen.findByText("Some prepared filler can be recovered")).toBeInTheDocument();
-    expect(screen.getByText("6")).toBeInTheDocument();
-    expect(screen.getByText("4")).toBeInTheDocument();
-    expect(screen.getByText("2", { selector: "p" })).toBeInTheDocument();
-    expect(screen.getByText("Rejected or dismissed: 6")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Recover filler" })).toHaveAttribute("href", "/filler/attention");
+    expect(await screen.findByText("A few clips need your judgment")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Review clips" })).toHaveAttribute("href", "/filler/attention");
+    const summary = screen.getByRole("heading", { name: "Admission summary" }).parentElement?.parentElement;
+    expect(summary).toBeTruthy();
+    expect(within(summary as HTMLElement).getByText("18")).toBeInTheDocument();
+    expect(within(summary as HTMLElement).getByText("9")).toBeInTheDocument();
+    expect(within(summary as HTMLElement).getByText("4")).toBeInTheDocument();
+    expect(within(summary as HTMLElement).getByText("2")).toBeInTheDocument();
   });
 
-  it("shows usable channel duration and grounded variety with a direct fix path", async () => {
+  it("routes operational recovery to diagnostics, never the review queue", async () => {
+    show(decision({ healthy: false, nextAction: "retry_processing", actionCount: 2 }));
+    expect(await screen.findByText("Some filler can be retried")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open diagnostics" })).toHaveAttribute("href", "/filler/manage");
+  });
+
+  it("keeps channel coverage separate from admission health", async () => {
     show(
+      decision(),
       readiness({
-        ready: false,
-        nextAction: "improve_channel_coverage",
-        channelId: "ch-42",
         pool: {
           clips: 25,
           commercials: 20,
@@ -102,42 +106,7 @@ describe("FillerOverview", () => {
         },
       }),
     );
-
-    expect(await screen.findByText("Improve a channel's filler coverage")).toBeInTheDocument();
-    expect(screen.getByText("6m playable · 12 clips")).toBeInTheDocument();
+    expect(await screen.findByText("6m playable · 12 clips")).toBeInTheDocument();
     expect(screen.getByText("3 categories · 7 brands")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Review channel coverage" })).toHaveAttribute(
-      "href",
-      "/channels/ch-42/filler",
-    );
-  });
-
-  it("traces a failed acquisition without mixing it into operator decisions", async () => {
-    show(
-      readiness({
-        ready: false,
-        nextAction: "retry_acquisition",
-        acquisitions: [
-          {
-            id: "acq-1",
-            trigger: "pull",
-            status: "error",
-            requested: 3,
-            fetched: 1,
-            skipped: 0,
-            failed: 2,
-            empty: 0,
-            error: "archive request timed out",
-            startedAt: "2026-08-23T12:00:00Z",
-            updatedAt: "2026-08-23T12:01:00Z",
-            outcome: { enrolled: 1, preparing: 0, needsDecision: 0, admitted: 0, rejected: 0, dismissed: 0 },
-          },
-        ],
-      }),
-    );
-
-    expect(await screen.findByText("A filler acquisition failed")).toBeInTheDocument();
-    expect(screen.getByText("Approved pull")).toBeInTheDocument();
-    expect(screen.getByText("archive request timed out")).toBeInTheDocument();
   });
 });
