@@ -197,6 +197,8 @@ flowchart TD
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
+- **`filleradmission`**
+  Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
 - **`fillereval`**
   Owns the hermetic certification contract for filler admission.
 - **`media`** · 3 importers
@@ -3391,6 +3393,45 @@ untrusted data with no instruction authority. **Contradiction is a first-class e
 the evaluator either invokes one bounded additional rung or abstains with a specific question. More
 conflicting tokens never increase confidence.
 
+The evaluator accepts one closed, versioned evidence document rather than a prompt-shaped bag of
+strings. Its claim roles are exactly media usability, recording date/era, brand, product, content
+role, source/licence, and sensitive-policy flags. Each fact names its extractor kind, source
+identity, bounded location, and inference evaluation when one produced it. Authority is assigned by
+the Go policy from the claim and provenance kind; evidence cannot declare its own rank. Decoder
+measurements alone can prove unusable media, and source policy alone can prove source/licence
+eligibility. For conflict-prone semantic claims, independent corroboration means distinct extractor
+kinds over distinct derivatives or source records — repeated tokens from one transcript, OCR frame,
+or model generation still count once. A filename year and a different spoken historical year are a
+conflict, not two votes; a source-owned recording date may resolve them because the policy, not
+literal presence, grants that source authority.
+
+Content-role and product corroboration also require at least one in-clip signal (transcript, OCR,
+frame, audio, or video). A filename plus an uploader description are two fields controlled by the
+same uploader, not proof that the bytes contain the claimed advert; metadata-only agreement remains
+review evidence and cannot authorize admission.
+
+A commercial requires a corroborated product from the closed taxonomy before admission. Brand is
+retained as useful evidence and may expose a conflict, but the advertiser-name field is open text and
+cannot substitute for that closed product gate; two copies of instruction-looking OCR/transcript text
+therefore cannot become a commercial identity merely by agreeing with each other.
+
+`filleradmission.Evaluator.Evaluate` is deterministic and has no provider, decoder, store, clock, or
+network dependency. It returns a semantic decision only after validating the complete evidence and
+policy versions. Decisions carry a stable sorted set of reason codes, the exact evidence references
+that support them, all material conflicts, at most one answerable review question, and the inference
+attribution/usage supplied with the evidence. Every semantic inference attribution is referenced by
+at least one fact, and every fact's inference reference must resolve; unrelated or dangling model
+calls cannot be smuggled into a decision's audit. Invalid schema/taxonomy, failed extraction, unavailable
+provider, retryable error, or exhausted budget returns a separate operational hold and no semantic
+verdict. Model confidence is retained for diagnostics but is never read by admission policy.
+Untrusted evidence values are compared only as data; instruction-looking metadata, OCR, or transcript
+text cannot select a reason, change precedence, or authorize a verdict.
+
+The first production integration is shadow-only: it records what this evaluator would decide but the
+V38 compatibility gate remains the filing authority until the corpus and rollout gates below pass.
+The durable decision projection and unattended cutover are separate changes, so adding this module
+cannot by itself expand what reaches a channel without review.
+
 Every evaluation durably attributes the clip and evidence hashes, extractor/prompt/schema/taxonomy/
 policy versions, requested and resolved model/provider, modality and derivative bounds, returned
 token categories, provider-reported charged cost, the price snapshot used for local estimation,
@@ -5600,7 +5641,7 @@ independently instead of treating every zero-lineup result as a model-quality my
 
 ### 14.2 The package map
 
-`internal/` is **46 flat packages, deliberately** — the grouping below is prose, not directories.
+`internal/` is **47 flat packages, deliberately** — the grouping below is prose, not directories.
 
 Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
 
@@ -5621,6 +5662,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `reconcile` | The provisioning backstop when a webhook never arrives (§4, §7, §18) |
 | `retention` | What may be purged, in what order, after how long (§5, §18.1) — the policy; `store` owns the SQL |
 | `filler` | Commercials: the clip catalog and seeded pod assembly (§10) |
+| `filleradmission` | Pure evidence-to-`admit \| reject \| review` policy, with conflicts and operational holds kept outside semantic verdicts (§10 V61) |
 | `fillereval` | Hermetic filler-admission certification: versioned corpus contracts, selective-risk/cost scoring, and captured-decision replay (§10 V61) |
 | `mediatools` | The ffmpeg/ffprobe/whisper layer — exec calls, output parsers, and the shapes those tools return (§10). Carved out of `filler`; the dependency runs one way and nothing here knows what a clip is |
 | `taxonomy` | The clip tag vocabulary — the operator-editable graph filler grounds tags against and curation matches over (§10 V45a) |
