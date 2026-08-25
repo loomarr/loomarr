@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSeedCorpusContract(t *testing.T) {
@@ -46,6 +48,42 @@ func TestScoreCertifiesOnlyMeasuredSelectiveRiskAndCoverage(t *testing.T) {
 	}
 	if report.Metrics.ReviewRate > .10 || report.Metrics.ReviewAnswerable != 1 {
 		t.Fatalf("review rate = %.4f answerable = %.4f", report.Metrics.ReviewRate, report.Metrics.ReviewAnswerable)
+	}
+}
+
+func TestScoreIsDeterministicForCapturedInputs(t *testing.T) {
+	manifest, predictions := passingCorpus(500)
+	run := completeRun()
+	first := Score(manifest, predictions, run)
+	second := Score(manifest, predictions, run)
+	if !reflect.DeepEqual(first, second) {
+		t.Fatal("identical captured inputs produced different reports")
+	}
+	if first.ManifestSHA256 == "" || first.ManifestSHA256 != ManifestSHA256(manifest) {
+		t.Fatalf("manifest digest = %q", first.ManifestSHA256)
+	}
+}
+
+func TestCertificationManifestRequiresLockedProvenanceAndIndependentLabels(t *testing.T) {
+	manifest, _ := passingCorpus(500)
+	manifest.Cases[0].EvidenceSHA256 = ""
+	manifest.Cases[1].Provenance.RightsDecision = ""
+	manifest.Cases[2].LabelReviews = manifest.Cases[2].LabelReviews[:1]
+	failures := ValidateManifest(manifest)
+	for _, term := range []string{"media and evidence hashes", "rights evidence and adjudication", "two independent label reviews"} {
+		if !containsFailure(failures, term) {
+			t.Errorf("failures %v do not include %q", failures, term)
+		}
+	}
+}
+
+func TestScoreFailsWhenCapturedRunExceedsPredeclaredCeilings(t *testing.T) {
+	manifest, predictions := passingCorpus(500)
+	run := completeRun()
+	run.MaxRequests = 499
+	report := Score(manifest, predictions, run)
+	if report.Certified || !containsFailure(report.Failures, "request ceiling") {
+		t.Fatalf("request ceiling did not fail closed: %v", report.Failures)
 	}
 }
 
@@ -135,7 +173,8 @@ func TestValidateAccountingPreservesNonUSDCurrencyWithoutInventingFX(t *testing.
 }
 
 func passingCorpus(total int) (Manifest, []Prediction) {
-	manifest := Manifest{SchemaVersion: SchemaVersion, CorpusVersion: "test-v1", SliceGates: []SliceGate{{Slice: "contract", MinCases: total, MinAccuracy: .99}}}
+	lockedAt := time.Date(2026, time.August, 25, 12, 0, 0, 0, time.UTC)
+	manifest := Manifest{SchemaVersion: SchemaVersion, Kind: CorpusCertification, CorpusVersion: "test-v1", LockedAt: lockedAt, SliceGates: []SliceGate{{Slice: "contract", MinCases: total, MinAccuracy: .99, MinAccuracyLower: .99}}}
 	predictions := make([]Prediction, 0, total)
 	for i := 0; i < total; i++ {
 		truth, verdict, class := TruthEligible, VerdictAdmit, RejectClass("")
@@ -149,18 +188,63 @@ func passingCorpus(total int) (Manifest, []Prediction) {
 			truth, verdict, question = TruthAmbiguous, VerdictReview, "Is this a commercial or a programme excerpt?"
 		}
 		id := fmt.Sprintf("case-%03d", i)
-		manifest.Cases = append(manifest.Cases, Case{ID: id, Split: SplitHoldout, Cluster: id, Source: "synthetic", License: "CC0", Truth: truth, RejectClass: class, ContentRole: "commercial", Slices: []string{"contract"}, ReviewQuestion: question})
+		c := Case{
+			ID: id, Split: SplitHoldout, Cluster: id,
+			ContentSHA256: fmt.Sprintf("%064x", i+1), EvidenceSHA256: fmt.Sprintf("%064x", total+i+1),
+			Source: "fixture", License: "CC0-1.0", Truth: truth, RejectClass: class,
+			ContentRole: "commercial", Slices: []string{"contract"}, ReviewQuestion: question,
+			Evidence: []Evidence{{ID: "truth", Kind: "fixture", Claim: "content_role", Value: "commercial", Provenance: "blind annotation"}},
+			Provenance: MediaProvenance{
+				Authority: "fixture", ItemID: id, ItemURL: "https://example.invalid/items/" + id,
+				MetadataRetrievedAt: lockedAt, MetadataSHA256: strings.Repeat("c", 64), EvidenceURL: "https://example.invalid/metadata/" + id,
+				RightsStatement: "CC0 fixture", RightsDecision: "allowed", RightsReviewerID: "rights-reviewer", RightsReviewedAt: lockedAt,
+				Redistributable: true, SourceFilename: id + ".mp4", SourceURL: "https://example.invalid/media/" + id + ".mp4",
+				SourceBytes: 1024, SegmentDurationMS: 30_000,
+			},
+		}
+		labelHash := LabelSHA256(c)
+		c.LabelReviews = []LabelReview{
+			{ReviewerID: "reviewer-a", BatchID: "blind-a", ReviewedAt: lockedAt, Independent: true, LabelSHA256: labelHash},
+			{ReviewerID: "reviewer-b", BatchID: "blind-b", ReviewedAt: lockedAt, Independent: true, LabelSHA256: labelHash},
+		}
+		manifest.Cases = append(manifest.Cases, c)
 		predictions = append(predictions, Prediction{
 			CaseID: id, Verdict: verdict, RejectClass: class, ContentRole: "commercial", ReviewQuestion: question,
 			Role: "filler_text", Rung: "text", RequestedProvider: "fixture", RequestedModel: "fixture",
 			ResolvedModel: "fixture", ResolvedProvider: "fixture", Modalities: []string{"text"}, Attempts: 1, LatencyMS: int64(i),
 		})
 	}
+	for i := 0; i < total/4; i++ {
+		id := fmt.Sprintf("development-%03d", i)
+		c := Case{
+			ID: id, Split: SplitDevelopment, Cluster: id,
+			ContentSHA256: fmt.Sprintf("%064x", total*2+i+1), EvidenceSHA256: fmt.Sprintf("%064x", total*3+i+1),
+			Source: "fixture", License: "CC0-1.0", Truth: TruthEligible, ContentRole: "commercial", Slices: []string{"contract"},
+			Evidence: []Evidence{{ID: "truth", Kind: "fixture", Claim: "content_role", Value: "commercial", Provenance: "blind annotation"}},
+			Provenance: MediaProvenance{
+				Authority: "fixture", ItemID: id, ItemURL: "https://example.invalid/items/" + id,
+				MetadataRetrievedAt: lockedAt, MetadataSHA256: strings.Repeat("d", 64), EvidenceURL: "https://example.invalid/metadata/" + id,
+				RightsStatement: "CC0 fixture", RightsDecision: "allowed", RightsReviewerID: "rights-reviewer", RightsReviewedAt: lockedAt,
+				Redistributable: true, SourceFilename: id + ".mp4", SourceURL: "https://example.invalid/media/" + id + ".mp4",
+				SourceBytes: 1024, SegmentDurationMS: 30_000,
+			},
+		}
+		labelHash := LabelSHA256(c)
+		c.LabelReviews = []LabelReview{
+			{ReviewerID: "reviewer-a", BatchID: "blind-a", ReviewedAt: lockedAt, Independent: true, LabelSHA256: labelHash},
+			{ReviewerID: "reviewer-b", BatchID: "blind-b", ReviewedAt: lockedAt, Independent: true, LabelSHA256: labelHash},
+		}
+		manifest.Cases = append(manifest.Cases, c)
+	}
 	return manifest, predictions
 }
 
 func completeRun() RunIdentity {
-	return RunIdentity{Profile: "contract", EvidenceVersion: "e1", PromptVersion: "p1", TaxonomyVersion: "t1", PolicyVersion: "a1", RolePolicyVersion: "r1", CapabilitySnapshot: "c1", PriceSnapshot: "price1"}
+	return RunIdentity{
+		Profile: "contract", EvaluationSplit: SplitHoldout, EvidenceVersion: "e1", PromptVersion: "p1", TaxonomyVersion: "t1", PolicyVersion: "a1", RolePolicyVersion: "r1",
+		CapabilitySnapshot: "c1", PriceSnapshot: "price1", GeneratedAt: time.Date(2026, time.August, 25, 13, 0, 0, 0, time.UTC),
+		MaxRequests: 1000, MaxSpendNanoUSD: 1_000_000_000, MaxConcurrency: 1,
+	}
 }
 
 func containsFailure(failures []string, term string) bool {

@@ -306,19 +306,28 @@ filler-eval-contract: ## hermetic filler-admission corpus and selective-risk con
 
 filler-eval-cert: ## score captured filler decisions; never contacts a model or media source
 	@test -n "$$LOOMARR_FILLER_EVAL_PREDICTIONS" || { echo "filler-eval-cert: LOOMARR_FILLER_EVAL_PREDICTIONS is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_EVAL_GENERATED_AT" || { echo "filler-eval-cert: LOOMARR_FILLER_EVAL_GENERATED_AT is required" >&2; exit 2; }; \
+	  test "$${LOOMARR_FILLER_EVAL_MAX_REQUESTS:-0}" -gt 0 || { echo "filler-eval-cert: positive LOOMARR_FILLER_EVAL_MAX_REQUESTS is required" >&2; exit 2; }; \
+	  test "$${LOOMARR_FILLER_EVAL_MAX_SPEND_NANO_USD:-0}" -gt 0 || { echo "filler-eval-cert: positive LOOMARR_FILLER_EVAL_MAX_SPEND_NANO_USD is required" >&2; exit 2; }; \
+	  test "$${LOOMARR_FILLER_EVAL_MAX_CONCURRENCY:-0}" -gt 0 || { echo "filler-eval-cert: positive LOOMARR_FILLER_EVAL_MAX_CONCURRENCY is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
 	  report="$${LOOMARR_FILLER_EVAL_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-certification.json}"; \
 	  $(GO) run ./cmd/filler-cert \
 	    --manifest "$${LOOMARR_FILLER_EVAL_MANIFEST:-internal/fillereval/corpus/seed-v1.json}" \
 	    --predictions "$$LOOMARR_FILLER_EVAL_PREDICTIONS" --report "$$report" \
 	    --profile "$${LOOMARR_FILLER_EVAL_PROFILE:-replay}" \
+	    --split "$${LOOMARR_FILLER_EVAL_SPLIT:-holdout}" \
 	    --evidence-version "$$LOOMARR_FILLER_EVAL_EVIDENCE_VERSION" \
 	    --prompt-version "$$LOOMARR_FILLER_EVAL_PROMPT_VERSION" \
 	    --taxonomy-version "$$LOOMARR_FILLER_EVAL_TAXONOMY_VERSION" \
 	    --policy-version "$$LOOMARR_FILLER_EVAL_POLICY_VERSION" \
 	    --role-policy-version "$$LOOMARR_FILLER_EVAL_ROLE_POLICY_VERSION" \
 	    --capability-snapshot "$$LOOMARR_FILLER_EVAL_CAPABILITY_SNAPSHOT" \
-	    --price-snapshot "$$LOOMARR_FILLER_EVAL_PRICE_SNAPSHOT"
+	    --price-snapshot "$$LOOMARR_FILLER_EVAL_PRICE_SNAPSHOT" \
+	    --generated-at "$$LOOMARR_FILLER_EVAL_GENERATED_AT" \
+	    --max-requests "$$LOOMARR_FILLER_EVAL_MAX_REQUESTS" \
+	    --max-spend-nano-usd "$$LOOMARR_FILLER_EVAL_MAX_SPEND_NANO_USD" \
+	    --max-concurrency "$$LOOMARR_FILLER_EVAL_MAX_CONCURRENCY"
 
 ## ---- build / run ---------------------------------------------------------
 

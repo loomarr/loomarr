@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/fillereval"
 )
@@ -25,6 +26,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	predictionsPath := flags.String("predictions", "", "captured predictions JSONL")
 	reportPath := flags.String("report", "", "output report JSON")
 	profile := flags.String("profile", "replay", "evaluation profile identifier")
+	evaluationSplit := flags.String("split", "", "corpus split to score: development or holdout")
 	evidenceVersion := flags.String("evidence-version", "", "evidence extractor version")
 	promptVersion := flags.String("prompt-version", "", "prompt/schema version")
 	taxonomyVersion := flags.String("taxonomy-version", "", "taxonomy generation")
@@ -32,11 +34,24 @@ func run(args []string, stdout, stderr io.Writer) int {
 	rolePolicyVersion := flags.String("role-policy-version", "", "inference role policy version")
 	capabilitySnapshot := flags.String("capability-snapshot", "", "model capability snapshot identifier")
 	priceSnapshot := flags.String("price-snapshot", "", "price snapshot identifier")
+	generatedAt := flags.String("generated-at", "", "captured run time in RFC3339 format")
+	maxRequests := flags.Int("max-requests", 0, "predeclared inference request ceiling")
+	maxSpendNanoUSD := flags.Int64("max-spend-nano-usd", 0, "predeclared spend ceiling in nanodollars")
+	maxConcurrency := flags.Int("max-concurrency", 0, "predeclared inference concurrency ceiling")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
 	if *manifestPath == "" || *predictionsPath == "" || *reportPath == "" {
 		_, _ = fmt.Fprintln(stderr, "filler-cert: --manifest, --predictions, and --report are required")
+		return 2
+	}
+	if (*evaluationSplit != string(fillereval.SplitDevelopment) && *evaluationSplit != string(fillereval.SplitHoldout)) || *generatedAt == "" || *maxRequests <= 0 || *maxSpendNanoUSD <= 0 || *maxConcurrency <= 0 {
+		_, _ = fmt.Fprintln(stderr, "filler-cert: --split development|holdout, --generated-at, and positive --max-requests, --max-spend-nano-usd, and --max-concurrency are required")
+		return 2
+	}
+	runAt, err := time.Parse(time.RFC3339, *generatedAt)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "filler-cert: parse --generated-at: %v\n", err)
 		return 2
 	}
 	manifest, err := readManifest(*manifestPath)
@@ -50,9 +65,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	report := fillereval.Score(manifest, predictions, fillereval.RunIdentity{
-		Profile: *profile, EvidenceVersion: *evidenceVersion, PromptVersion: *promptVersion,
+		Profile: *profile, EvaluationSplit: fillereval.Split(*evaluationSplit), EvidenceVersion: *evidenceVersion, PromptVersion: *promptVersion,
 		TaxonomyVersion: *taxonomyVersion, PolicyVersion: *policyVersion, RolePolicyVersion: *rolePolicyVersion,
-		CapabilitySnapshot: *capabilitySnapshot, PriceSnapshot: *priceSnapshot,
+		CapabilitySnapshot: *capabilitySnapshot, PriceSnapshot: *priceSnapshot, GeneratedAt: runAt,
+		MaxRequests: *maxRequests, MaxSpendNanoUSD: *maxSpendNanoUSD, MaxConcurrency: *maxConcurrency,
 	})
 	if err := writeJSON(*reportPath, report); err != nil {
 		_, _ = fmt.Fprintf(stderr, "filler-cert: write report: %v\n", err)

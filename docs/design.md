@@ -3493,6 +3493,25 @@ least 99% deterministic-reject and 97% semantic-reject precision; then at least 
 95% invalid-input automation with at most 10% review. Each safety-critical slice has its own gate.
 The point estimates alone do not certify a small corpus.
 
+A certification manifest is itself content-addressed and records its lock time. Every case locks the
+source media and captured evidence packet by SHA-256 plus item-level provenance: source authority,
+stable item and media URLs, retrieved metadata hash/time, exact rights statement, rights decision
+and reviewer, source representation/size, and bounded segment. Redistribution permission is
+explicit; media that cannot be redistributed stays outside Git. A collection name or missing rights
+field never implies permission. Two distinct reviewers in distinct blind-review batches attest the
+same canonical final-label hash covering disposition, reject class, content role, taxonomy, policy
+flags, evidence spans, and any review question. Rights adjudication and semantic labeling are
+separate records.
+
+Certification scores exactly one named split. Development examples cannot inflate locked-holdout
+metrics, and exact or near-duplicate content cannot cross their source/similarity cluster boundary.
+The replay report is deterministic for the same manifest, captured predictions, and explicit run
+identity: generation time is an input, never the scorer's wall clock. The run predeclares positive
+request, spend, and concurrency ceilings; captured attempts or charged cost beyond either ceiling
+fail closed. Reports carry the exact manifest digest and one-sided Wilson bounds for admission,
+rejection, automation, review, and slice accuracy, including an upper bound for review rate. Each
+certification slice gate predeclares both a point threshold and a confidence lower bound.
+
 Rollout is shadow-first on a bounded appliance workload. Deterministic rejection enables before
 certified admission slices; harder slices enable only after shadow evidence. A random sample of
 automatic outcomes and every disagreement between rungs remains auditable. Any model, provider,
