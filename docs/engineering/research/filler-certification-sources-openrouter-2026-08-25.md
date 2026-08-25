@@ -348,3 +348,89 @@ comparison.
 
 This order avoids paying to benchmark an unrepresentative or legally ambiguous corpus and prevents
 provider routing changes from masquerading as model-quality differences.
+
+## 4. 2026-08-25 rights-authority audit
+
+### Internet Archive license fields are leads, not independent approval
+
+**Decision:** Loomarr cannot independently rights-approve a vintage commercial merely because its
+Internet Archive `licenseurl` is PDM, the legacy `licenses/publicdomain` URL, CC0, CC BY, or CC
+BY-SA. Internet Archive defines `licenseurl`, `rights`, and `possible-copyright-status` as fields
+defined and editable by the uploader
+([Archive metadata schema](https://archive.org/developers/metadata-schema/index.html#licenseurl)).
+Its own rights guidance says it does not guarantee an item's copyright status or the rights
+information on item and collection pages, describes the CC choice as a license *assigned by the
+uploader*, and puts non-infringement review on the reuser
+([Internet Archive Rights](https://archivesupport.zendesk.com/hc/en-us/articles/360014759692-Rights)).
+The Archive is therefore a host and metadata transport for this purpose, not the authority that
+verified the uploader's chain of title.
+
+The labels have materially different effects, but none supplies the missing identity and authority
+proof:
+
+- PDM is an informational label, not a legal tool. Creative Commons says anyone may apply it only
+  after researching and confirming that the work is already free of copyright worldwide; it should
+  not be used for uncertain or jurisdiction-specific status, including status based only on failed
+  U.S. formalities
+  ([CC public-domain tools](https://creativecommons.org/public-domain/),
+  [PDM guidance](https://creativecommons.org/public-domain/pdm/)). An uploader-selected PDM URL
+  records the assertion but not the research behind it.
+- The legacy `http://creativecommons.org/licenses/publicdomain/` label corresponds to Creative
+  Commons' U.S.-specific Public Domain Dedication and Certification. Creative Commons retired it in
+  2010 because it mixed certification and dedication, and no longer recommends applying it
+  ([retired-tools table](https://creativecommons.org/retiredlicenses/),
+  [legacy deed](https://creativecommons.org/publicdomain/certification/1.0/us/deed.en)). It is not a
+  current worldwide clearance mechanism.
+- CC0 is a waiver/dedication by an affirmer only to the extent that person owns the copyright and
+  related rights. Creative Commons instructs users to apply CC0 only to their own work or when they
+  have legal authority, and warns that trademark, privacy, publicity, and other people's rights can
+  remain
+  ([CC0 usage boundary](https://creativecommons.org/public-domain/),
+  [CC0 legal code](https://creativecommons.org/publicdomain/zero/1.0/legalcode.en)).
+- CC BY and BY-SA grant only rights the licensor has authority to grant. Creative Commons tells
+  licensors to secure all necessary rights and separately excludes patent and trademark rights;
+  privacy, publicity, moral, performance, broadcast, sound-recording, and embedded-party rights can
+  remain, while BY also requires attribution and change/license notices
+  ([CC BY 4.0 legal code](https://creativecommons.org/licenses/by/4.0/legalcode.en)). Older BY/BY-SA
+  versions in the inventory must be preserved and evaluated under their exact linked version, not
+  normalized to 4.0.
+
+The bounded 2026-08-25 inventory selected 331 items from the official
+[`classic_tv_commercials` licensed-item query](https://archive.org/advancedsearch.php?q=collection%3Aclassic_tv_commercials%20AND%20mediatype%3Amovies%20AND%20licenseurl%3A%2A&fl%5B%5D=identifier&fl%5B%5D=licenseurl&rows=1000&sort%5B%5D=identifier%20asc&output=json):
+165 PDM, 121 legacy public-domain, 24 CC0, and 21 BY/BY-SA items; 266 are at most 90 seconds. Those
+numbers measure technical candidates and uploader assertions, not cleared works. Only one selected
+item had separate `rights` prose and none had `possible-copyright-status`; that item combines PDM
+with a Fair Use Notice, an unresolved contradiction visible in the
+[`crying_indian_psa_hd` metadata](https://archive.org/metadata/crying_indian_psa_hd). This is direct
+evidence that presence of an allowlisted URL cannot be the admission predicate.
+
+Accordingly, all 331 start as `rights_unverified`. A case can advance only when Loomarr records an
+independent basis such as a primary rightsholder's license/waiver, documented federal authorship,
+or an institutional item-level rights determination with traceable reasoning. The current
+`1968EasterSealsWithCarolBurnett` probe must be re-adjudicated if its approval relied only on the
+Archive PDM field. Conflicting rights prose, fair-use rationales, unclear uploader authority,
+unresolved music/performance/footage, or a brand/personality restriction remains a hold or reject;
+duration and semantic suitability do not cure provenance.
+
+### Rights-safer pools that can reach hundreds of short cases
+
+| Pool | Scale and machine interface | Admission boundary |
+| --- | --- | --- |
+| Library of Congress Citizen DJ government-film subset | The Library identifies the subset as U.S.-government-created and public domain. Citizen DJ exposes 201 audio segments and 4,096 audio one-shots derived from 18 source films; those 4,297 samples are not video cases. Source item pages are reachable through the no-key LOC JSON API ([Citizen DJ rights and inventory](https://citizen-dj.labs.loc.gov/loc-national-screening-room/use/), [LOC API](https://www.loc.gov/apis/json-and-yaml/)). | Strong seed for deriving bounded video controls, PSAs, and promo-like segments from the 18 cleared source films, but insufficient alone for a representative 300-case video corpus. Keep every derivative of one source film in one split. Do not generalize the decision to the mixed-rights National Screening Room, because LOC normally tells users to determine rights themselves ([LOC legal notice](https://www.loc.gov/legal/)). |
+| DVIDS | The official JSON-over-HTTP API requires a registered API application; DVIDS says DoD/federal media is public domain unless an item indicates otherwise, and its own hub unit alone reports 14,649 videos ([API entry point](https://api.dvidshub.net/), [copyright summary](https://api.dvidshub.net/docs/copyright), [hub-unit inventory](https://www.dvidshub.net/unit/DVIDSHUB/)). | Require each asset's public-domain/copyright area, producing unit, creator/VIRIN, and release status; exclude courtesy/contractor or third-party-marked assets. Preserve requested creator credit and the non-endorsement disclaimer, and flag privacy/publicity, insignia, seal, and trademark issues. The API permits commercial use but may impose quotas and forbids circumventing them ([API terms](https://api.dvidshub.net/docs/tos), [full use limitations](https://www.dvidshub.net/about/copyright)). |
+| NARA Catalog | The key-gated Catalog API exposes archival descriptions and digital objects and supports field search and bulk export; NARA separately explains that official federal-employee works are uncopyrightable in the United States ([Catalog API and terms](https://www.archives.gov/research/catalog/help/api), [motion-picture permissions](https://www.archives.gov/research/motion-pictures/permissions)). | Admit only records that identify federal creation and have no conflicting restriction. NARA warns that many Special Media holdings contain third-party, contract, donor, publicity, performance, or foreign rights. Cache immutable evidence outside the API if permitted: current API terms say not to cache returned content, require a key and NARA attribution notice, and direct true bulk use to the AWS open-data export ([Catalog API terms](https://www.archives.gov/research/catalog/help/api)). |
+| NASA Image and Video Library | The official search API supports `media_type=video`, paging, NASA IDs, centers, creators, dates, and asset manifests ([NASA API documentation](https://images.nasa.gov/docs/images.nasa.gov_api_docs.pdf)). NASA describes extensive video galleries and says NASA media generally lacks U.S. copyright ([NASA media guidelines](https://www.nasa.gov/nasa-brand-center/images-and-media/)). | Useful at hundred-case scale for IDs, bumpers, educational/PSA-like positives, and controls, but only after rejecting third-party-marked media and resolving embedded music/footage, recognizable people, logos, and promotional/non-endorsement constraints. Follow NASA's separate AI-application disclosure and branding restrictions when frames are used in model evaluation ([NASA media and AI guidance](https://www.nasa.gov/nasa-brand-center/images-and-media/)). |
+| Creator-controlled CC video | Vimeo's API exposes the exact CC license, owner/user, duration, copyright-restriction state, and whether download is enabled; Vimeo requires uploaders to possess the rights and permissions to upload and share ([video response fields](https://developer.vimeo.com/api/reference/response/video), [Vimeo terms](https://vimeo.com/legal/)). | This is safer only for a directly verified creator account or a written creator grant, not arbitrary CC search results. Import only CC0/BY/BY-SA, require downloadable media, verify creator identity and authority over music/performers/stock, and preserve attribution/version. Direct file links require authenticated scopes and an eligible Vimeo plan, so the API is not an anonymous bulk-download corpus ([file-link requirements](https://developer.vimeo.com/api/files/video-links)). |
+
+Smithsonian Open Access is strong institutional evidence for assets actually marked CC0, and its
+public API is available through `api.data.gov`, but its official FAQ says video and sound are among
+the formats not yet fully incorporated into Open Access. It should be a supplemental, item-verified
+source rather than the plan for hundreds of video cases
+([Smithsonian Open Access FAQ](https://www.si.edu/openaccess/faq),
+[Smithsonian terms](https://www.si.edu/termsofuse)).
+
+The practical corpus strategy is therefore to use LOC Citizen DJ as the first rights-safe seed and
+carefully filtered DVIDS as the primary scalable, institution-backed video lane; add NARA and NASA
+only under their item-level flags; and use directly verified creator-owned CC video to restore
+commercial/promo diversity. Archive and Commons remain high-value discovery pools for authentic
+vintage advertisements, but their uploader labels never bypass independent rights adjudication.
