@@ -256,7 +256,7 @@ jobs:
           {
             echo "### Specialized CI gate decisions"
             echo
-            echo "Postgres and Playwright are active and fail-closed; every other specialized decision remains observational."
+            echo "Postgres, Playwright, tuner, Apple mobile, and Apple TV are active and fail-closed; remaining specialized decisions are observational."
             echo
             echo "Reason: $reason."
             echo
@@ -804,12 +804,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  # tvOS is structurally separate so it can graduate to its dedicated impact decision in the next
-  # reversible activation. Until then it intentionally retains the legacy shared-client selector.
+  # tvOS is independently selected so TV-local changes do not spend the mobile native runner.
   apple-tv:
     name: Apple TV — native build + launch
     needs: changes
-    if: needs.changes.outputs.clients == 'true'
+    if: needs.changes.outputs.impact_apple_tv == 'true'
     runs-on: macos-26
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
