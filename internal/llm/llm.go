@@ -23,6 +23,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 )
 
 // Role is a chat message role.
@@ -69,6 +70,47 @@ type ToolSchema struct {
 type Response struct {
 	Content   string     // final text (JSON when JSONMode was requested)
 	ToolCalls []ToolCall // non-empty ⇒ the model wants tools run before continuing
+	// Attribution is the provider-neutral accounting envelope for this one call.
+	// Zero values mean the adapter/provider did not report the fact; callers must
+	// never turn missing billing or routing facts into inferred ones.
+	Attribution Attribution
+}
+
+// TokenUsage retains the token categories providers expose. Prompt and Completion
+// remain the aggregate operational metrics; the detailed categories make a single
+// evaluation reproducible without changing Prometheus price semantics.
+type TokenUsage struct {
+	Prompt     int
+	Completion int
+	Reasoning  int
+	Cached     int
+	CacheWrite int
+	Image      int
+	Audio      int
+	Video      int
+}
+
+// Money is an exact provider-reported decimal amount. Amount deliberately stays a
+// string: converting a historical charge to float64 would make totals drift.
+type Money struct {
+	Amount   string
+	Currency string
+}
+
+// Attribution describes what one provider call actually used and cost. Requested
+// identities come from Loomarr's route; resolved identities come from the response
+// or explicit pinned endpoint. Attempts includes the successful attempt.
+type Attribution struct {
+	RequestedModel    string
+	ResolvedModel     string
+	RequestedProvider string
+	ResolvedProvider  string
+	Modalities        []string
+	Tokens            TokenUsage
+	Charge            *Money
+	Latency           time.Duration
+	Attempts          int
+	GenerationID      string
 }
 
 // WantsTools reports whether the model requested tool execution this turn.

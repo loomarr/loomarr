@@ -316,6 +316,7 @@ filler-eval-cert: ## score captured filler decisions; never contacts a model or 
 	    --prompt-version "$$LOOMARR_FILLER_EVAL_PROMPT_VERSION" \
 	    --taxonomy-version "$$LOOMARR_FILLER_EVAL_TAXONOMY_VERSION" \
 	    --policy-version "$$LOOMARR_FILLER_EVAL_POLICY_VERSION" \
+	    --role-policy-version "$$LOOMARR_FILLER_EVAL_ROLE_POLICY_VERSION" \
 	    --capability-snapshot "$$LOOMARR_FILLER_EVAL_CAPABILITY_SNAPSHOT" \
 	    --price-snapshot "$$LOOMARR_FILLER_EVAL_PRICE_SNAPSHOT"
 

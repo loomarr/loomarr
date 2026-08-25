@@ -95,6 +95,45 @@ func TestFalseSemanticRejectCountsAgainstRejectPrecision(t *testing.T) {
 	}
 }
 
+func TestScoreUsesExactNanodollarAccountingByRungAndSlice(t *testing.T) {
+	manifest, predictions := passingCorpus(500)
+	predictions[0].ChargedAmount = "0.0000012300"
+	predictions[0].ChargedCurrency = "USD"
+	predictions[0].ChargedNanoUSD = 1230
+	predictions[0].Rung = "frames"
+	report := Score(manifest, predictions, completeRun())
+	if !report.Certified {
+		t.Fatalf("exact accounting failed certification: %v", report.Failures)
+	}
+	if report.Metrics.TotalChargedNanoUSD != 1230 || report.Metrics.CostPerCorrectAutomationNanoUSD != 3 {
+		t.Fatalf("cost metrics = %+v", report.Metrics)
+	}
+	if len(report.Metrics.Rungs) != 2 || report.Metrics.Rungs[0].Rung != "frames" || report.Metrics.Rungs[0].ChargedNanoUSD != 1230 {
+		t.Fatalf("rung metrics = %+v", report.Metrics.Rungs)
+	}
+	predictions[0].ChargedNanoUSD = 1229
+	if report := Score(manifest, predictions, completeRun()); report.Certified || !containsFailure(report.Failures, "projects to 1230") {
+		t.Fatalf("mismatched cost projection certified: %v", report.Failures)
+	}
+}
+
+func TestUSDToNanoCeilRoundsSubNanodollarSpendUp(t *testing.T) {
+	got, err := USDToNanoCeil("0.0000000005")
+	if err != nil || got != 1 {
+		t.Fatalf("USDToNanoCeil = %d, %v", got, err)
+	}
+}
+
+func TestValidateAccountingPreservesNonUSDCurrencyWithoutInventingFX(t *testing.T) {
+	t.Parallel()
+	if err := validateAccounting(Prediction{ChargedAmount: "0.25", ChargedCurrency: "EUR"}); err != nil {
+		t.Fatalf("provider-reported non-USD charge = %v", err)
+	}
+	if err := validateAccounting(Prediction{ChargedAmount: "0.25", ChargedCurrency: "EUR", ChargedNanoUSD: 250_000_000}); err == nil {
+		t.Fatal("non-USD charge accepted an invented USD projection")
+	}
+}
+
 func passingCorpus(total int) (Manifest, []Prediction) {
 	manifest := Manifest{SchemaVersion: SchemaVersion, CorpusVersion: "test-v1", SliceGates: []SliceGate{{Slice: "contract", MinCases: total, MinAccuracy: .99}}}
 	predictions := make([]Prediction, 0, total)
@@ -111,13 +150,17 @@ func passingCorpus(total int) (Manifest, []Prediction) {
 		}
 		id := fmt.Sprintf("case-%03d", i)
 		manifest.Cases = append(manifest.Cases, Case{ID: id, Split: SplitHoldout, Cluster: id, Source: "synthetic", License: "CC0", Truth: truth, RejectClass: class, ContentRole: "commercial", Slices: []string{"contract"}, ReviewQuestion: question})
-		predictions = append(predictions, Prediction{CaseID: id, Verdict: verdict, RejectClass: class, ContentRole: "commercial", ReviewQuestion: question, RequestedModel: "fixture", ResolvedModel: "fixture", ResolvedProvider: "fixture", Modalities: []string{"text"}, LatencyMS: int64(i)})
+		predictions = append(predictions, Prediction{
+			CaseID: id, Verdict: verdict, RejectClass: class, ContentRole: "commercial", ReviewQuestion: question,
+			Role: "filler_text", Rung: "text", RequestedProvider: "fixture", RequestedModel: "fixture",
+			ResolvedModel: "fixture", ResolvedProvider: "fixture", Modalities: []string{"text"}, Attempts: 1, LatencyMS: int64(i),
+		})
 	}
 	return manifest, predictions
 }
 
 func completeRun() RunIdentity {
-	return RunIdentity{Profile: "contract", EvidenceVersion: "e1", PromptVersion: "p1", TaxonomyVersion: "t1", PolicyVersion: "a1", CapabilitySnapshot: "c1", PriceSnapshot: "price1"}
+	return RunIdentity{Profile: "contract", EvidenceVersion: "e1", PromptVersion: "p1", TaxonomyVersion: "t1", PolicyVersion: "a1", RolePolicyVersion: "r1", CapabilitySnapshot: "c1", PriceSnapshot: "price1"}
 }
 
 func containsFailure(failures []string, term string) bool {

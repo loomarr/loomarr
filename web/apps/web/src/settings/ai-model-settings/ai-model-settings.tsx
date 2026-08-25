@@ -5,6 +5,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { HostedModelPicker } from "@/components/loomarr/ai/hosted-model-picker";
 import { ModelDiscover } from "@/components/loomarr/ai/model-discover";
 import { ModelPicker } from "@/components/loomarr/ai/model-picker";
+import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
 import { useLoomarrEventListener } from "@/events/events-provider";
@@ -349,57 +350,75 @@ const AiModelSettings = ({
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="font-display font-semibold text-xl">Model roles</h2>
-        <p className="text-muted-foreground text-sm">
-          Lineup planning, frame vision, and transcription need different capabilities. They share your active
-          hosted provider and credential, but keep separate model choices.
+      <section
+        aria-labelledby="automatic-model-policy"
+        className="rounded-lg border border-border bg-static-900 p-5"
+      >
+        <h2 id="automatic-model-policy" className="font-display font-semibold text-xl">
+          Automatic model policy
+        </h2>
+        <p className="mt-1 text-muted-foreground text-sm">
+          Loomarr routes lineup planning, filler text, frames, video, and transcription independently using
+          the last certified compatibility and quality policy. You do not need to maintain a model matrix.
         </p>
-      </div>
+        <p className="mt-3 text-sm">
+          {status.model
+            ? `Current lineup route: ${status.model}. Existing manual choices remain unverified overrides until a certified policy replaces them.`
+            : "No lineup route is active yet. Connect an AI provider; Loomarr will keep filler work held until a compatible route is available."}
+        </p>
+      </section>
       <section
         aria-labelledby="role-lineup"
         className="flex flex-col gap-3 rounded-md border border-border p-3"
       >
         <div>
           <h3 id="role-lineup" className="font-medium text-sm">
-            Lineup / text
+            Provider and current model
           </h3>
           <p className="text-muted-foreground text-sm">
-            Requires tool calling so every suggestion stays grounded in your library.
+            Connect the AI service Loomarr can use now. Certified automatic routes will replace this
+            unverified choice when available.
           </p>
         </div>
         {lineup}
       </section>
-      <RolePicker
-        title="Vision"
-        description="Reads sampled filler frames. It inherits the lineup model unless you choose a vision-capable model."
-        options={visionOptions}
-        active={activeVision}
-        onSelect={(id) => {
-          if (id === "inherit") {
-            onRoleSettingChange("filler.vision.provider", "inherit");
-            onRoleSettingChange("filler.vision.model", "");
-          } else {
-            const [kind, ...parts] = id.split(":");
-            onRoleSettingChange("filler.vision.provider", kind === "ollama" ? "ollama" : "inherit");
-            onRoleSettingChange("filler.vision.model", parts.join(":"));
-          }
-        }}
-      />
-      <RolePicker
-        title="Transcription"
-        description="Creates timed speech segments. Bundled Whisper is the local default; hosted choices use the same active provider credential."
-        options={transcriptionOptions}
-        active={activeTranscription}
-        onSelect={(id) => {
-          if (id === "whisper") {
-            onRoleSettingChange("filler.transcribe.provider", "whisper");
-          } else {
-            onRoleSettingChange("filler.transcribe.provider", "hosted");
-            onRoleSettingChange("filler.transcribe.model", id.slice("hosted:".length));
-          }
-        }}
-      />
+      <CollapsibleSection
+        title="Advanced model overrides"
+        description="Replace individual filler routes. Overrides are recorded as unverified and never inherit certification."
+      >
+        <div className="flex flex-col gap-4">
+          <RolePicker
+            title="Vision"
+            description="Reads sampled filler frames. It inherits the lineup model unless you choose a vision-capable model."
+            options={visionOptions}
+            active={activeVision}
+            onSelect={(id) => {
+              if (id === "inherit") {
+                onRoleSettingChange("filler.vision.provider", "inherit");
+                onRoleSettingChange("filler.vision.model", "");
+              } else {
+                const [kind, ...parts] = id.split(":");
+                onRoleSettingChange("filler.vision.provider", kind === "ollama" ? "ollama" : "inherit");
+                onRoleSettingChange("filler.vision.model", parts.join(":"));
+              }
+            }}
+          />
+          <RolePicker
+            title="Transcription"
+            description="Creates timed speech segments. Bundled Whisper is the local default; hosted choices use the same active provider credential."
+            options={transcriptionOptions}
+            active={activeTranscription}
+            onSelect={(id) => {
+              if (id === "whisper") {
+                onRoleSettingChange("filler.transcribe.provider", "whisper");
+              } else {
+                onRoleSettingChange("filler.transcribe.provider", "hosted");
+                onRoleSettingChange("filler.transcribe.model", id.slice("hosted:".length));
+              }
+            }}
+          />
+        </div>
+      </CollapsibleSection>
     </div>
   );
 };

@@ -3,6 +3,7 @@ package fillereval
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"slices"
 	"sort"
 	"strings"
@@ -32,8 +33,12 @@ func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report 
 	var admittedEligible, admittedRoleCorrect, admittedTaxonomyCorrect int
 	var brier float64
 	var latencies []int64
-	type counts struct{ total, correct int }
+	type counts struct {
+		total, correct int
+		chargedNanoUSD int64
+	}
 	sliceCounts := map[string]counts{}
+	rungCounts := map[string]counts{}
 	var deterministicRejects, deterministicRejectsCorrect int
 	var semanticRejects, semanticRejectsCorrect int
 
@@ -58,8 +63,11 @@ func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report 
 			result.Failure = "invalid verdict"
 			report.Failures = append(report.Failures, c.ID+": invalid verdict")
 		}
-		if prediction.RequestedModel == "" || prediction.ResolvedModel == "" || prediction.ResolvedProvider == "" || len(prediction.Modalities) == 0 {
-			report.Failures = append(report.Failures, c.ID+": model, provider, and modality attribution are required")
+		if prediction.Role == "" || prediction.Rung == "" || prediction.RequestedProvider == "" || prediction.RequestedModel == "" || prediction.ResolvedModel == "" || prediction.ResolvedProvider == "" || len(prediction.Modalities) == 0 {
+			report.Failures = append(report.Failures, c.ID+": role, rung, model, provider, and modality attribution are required")
+		}
+		if prediction.Attempts < 1 {
+			report.Failures = append(report.Failures, c.ID+": at least one inference attempt is required")
 		}
 		if prediction.Probability != nil && (*prediction.Probability < 0 || *prediction.Probability > 1) {
 			report.Failures = append(report.Failures, c.ID+": probability must be within [0,1]")
@@ -80,8 +88,8 @@ func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report 
 				}
 			}
 		}
-		if prediction.ChargedCostUSD < 0 {
-			report.Failures = append(report.Failures, c.ID+": charged cost cannot be negative")
+		if err := validateAccounting(prediction); err != nil {
+			report.Failures = append(report.Failures, c.ID+": "+err.Error())
 		}
 		if prediction.OperationalFailure != "" {
 			result.Failure = "operational failure: " + prediction.OperationalFailure
@@ -140,16 +148,24 @@ func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report 
 			d := *prediction.Probability - y
 			brier += d * d
 		}
-		report.Metrics.TotalChargedCostUSD += prediction.ChargedCostUSD
+		report.Metrics.TotalChargedNanoUSD += prediction.ChargedNanoUSD
 		latencies = append(latencies, prediction.LatencyMS)
 		for _, slice := range c.Slices {
 			n := sliceCounts[slice]
 			n.total++
+			n.chargedNanoUSD += prediction.ChargedNanoUSD
 			if result.Correct {
 				n.correct++
 			}
 			sliceCounts[slice] = n
 		}
+		rung := rungCounts[prediction.Rung]
+		rung.total++
+		rung.chargedNanoUSD += prediction.ChargedNanoUSD
+		if result.Correct {
+			rung.correct++
+		}
+		rungCounts[prediction.Rung] = rung
 		report.Cases = append(report.Cases, result)
 	}
 	for id := range byID {
@@ -171,20 +187,102 @@ func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report 
 	if probabilityCount > 0 {
 		report.Metrics.BrierScore = brier / float64(probabilityCount)
 	}
-	if len(manifest.Cases) > 0 {
-		report.Metrics.CostPerThousandCasesUSD = report.Metrics.TotalChargedCostUSD * 1000 / float64(len(manifest.Cases))
-	}
+	report.Metrics.TotalChargedCostUSD = float64(report.Metrics.TotalChargedNanoUSD) / 1_000_000_000
+	report.Metrics.CostPerThousandCasesNanoUSD = perUnit(report.Metrics.TotalChargedNanoUSD, 1000, len(manifest.Cases))
+	report.Metrics.CostPerCorrectAutomationNanoUSD = perUnit(report.Metrics.TotalChargedNanoUSD, 1, report.Metrics.AutoAdmitCorrect+report.Metrics.AutoRejectCorrect)
+	report.Metrics.CostPerAdmitNanoUSD = perUnit(report.Metrics.TotalChargedNanoUSD, 1, report.Metrics.AutoAdmit)
 	slices.Sort(latencies)
 	report.Metrics.P50LatencyMS = percentile(latencies, .50)
 	report.Metrics.P95LatencyMS = percentile(latencies, .95)
 	for name, n := range sliceCounts {
-		report.Slices = append(report.Slices, SliceScore{Slice: name, Cases: n.total, Correct: n.correct, Accuracy: ratio(n.correct, n.total)})
+		report.Slices = append(report.Slices, SliceScore{
+			Slice: name, Cases: n.total, Correct: n.correct, Accuracy: ratio(n.correct, n.total),
+			ChargedNanoUSD: n.chargedNanoUSD, CostPerCorrectNanoUSD: perUnit(n.chargedNanoUSD, 1, n.correct),
+		})
 	}
 	sort.Slice(report.Slices, func(i, j int) bool { return report.Slices[i].Slice < report.Slices[j].Slice })
+	for name, n := range rungCounts {
+		report.Metrics.Rungs = append(report.Metrics.Rungs, RungScore{Rung: name, Cases: n.total, Correct: n.correct, ChargedNanoUSD: n.chargedNanoUSD})
+	}
+	sort.Slice(report.Metrics.Rungs, func(i, j int) bool { return report.Metrics.Rungs[i].Rung < report.Metrics.Rungs[j].Rung })
 
 	applyGates(&report, manifest.SliceGates, eligible, invalid, deterministicRejects, semanticRejects)
 	report.Certified = len(report.Failures) == 0
 	return report
+}
+
+func validateAccounting(prediction Prediction) error {
+	values := []int64{
+		prediction.Derivative.Bytes, prediction.Derivative.DurationMS, prediction.Derivative.Pixels,
+		prediction.Tokens.Prompt, prediction.Tokens.Completion, prediction.Tokens.Reasoning,
+		prediction.Tokens.Cached, prediction.Tokens.CacheWrite, prediction.Tokens.Image,
+		prediction.Tokens.Audio, prediction.Tokens.Video, prediction.ChargedNanoUSD,
+		prediction.EstimatedNanoUSD, prediction.LatencyMS,
+	}
+	for _, value := range values {
+		if value < 0 {
+			return fmt.Errorf("accounting values cannot be negative")
+		}
+	}
+	if prediction.ChargedAmount == "" {
+		if prediction.ChargedCurrency != "" || prediction.ChargedNanoUSD != 0 {
+			return fmt.Errorf("charged amount, currency, and nanodollars must be present together")
+		}
+		return nil
+	}
+	if prediction.ChargedCurrency == "" {
+		return fmt.Errorf("charged amount requires its provider-reported currency")
+	}
+	if prediction.ChargedCurrency != "USD" {
+		if prediction.ChargedNanoUSD != 0 {
+			return fmt.Errorf("non-USD provider charge cannot be projected without an exchange-rate snapshot")
+		}
+		return nil
+	}
+	nano, err := USDToNanoCeil(prediction.ChargedAmount)
+	if err != nil {
+		return fmt.Errorf("invalid charged amount: %w", err)
+	}
+	if nano != prediction.ChargedNanoUSD {
+		return fmt.Errorf("charged amount projects to %d nanodollars, got %d", nano, prediction.ChargedNanoUSD)
+	}
+	return nil
+}
+
+// USDToNanoCeil converts exact provider decimal text to an integer budget unit.
+// Sub-nanodollar charges round up so a budget reservation never understates spend.
+func USDToNanoCeil(amount string) (int64, error) {
+	r, ok := new(big.Rat).SetString(strings.TrimSpace(amount))
+	if !ok || r.Sign() < 0 {
+		return 0, fmt.Errorf("invalid non-negative USD decimal %q", amount)
+	}
+	scaled := new(big.Rat).Mul(r, big.NewRat(1_000_000_000, 1))
+	q, rem := new(big.Int), new(big.Int)
+	q.QuoRem(scaled.Num(), scaled.Denom(), rem)
+	if rem.Sign() > 0 {
+		q.Add(q, big.NewInt(1))
+	}
+	if !q.IsInt64() {
+		return 0, fmt.Errorf("USD decimal %q exceeds nanodollar range", amount)
+	}
+	return q.Int64(), nil
+}
+
+func perUnit(nano int64, multiplier, denominator int) int64 {
+	if nano <= 0 || multiplier <= 0 || denominator <= 0 {
+		return 0
+	}
+	n := new(big.Int).Mul(big.NewInt(nano), big.NewInt(int64(multiplier)))
+	d := big.NewInt(int64(denominator))
+	q, rem := new(big.Int), new(big.Int)
+	q.QuoRem(n, d, rem)
+	if rem.Sign() > 0 {
+		q.Add(q, big.NewInt(1))
+	}
+	if !q.IsInt64() {
+		return math.MaxInt64
+	}
+	return q.Int64()
 }
 
 // ValidateManifest rejects corpus drift that would make a score look stronger
@@ -297,8 +395,8 @@ func containsAll(actual, expected []string) bool {
 }
 
 func applyGates(r *Report, gates []SliceGate, eligible, invalid, deterministicRejects, semanticRejects int) {
-	if r.Run.Profile == "" || r.Run.EvidenceVersion == "" || r.Run.PromptVersion == "" || r.Run.TaxonomyVersion == "" || r.Run.PolicyVersion == "" || r.Run.CapabilitySnapshot == "" || r.Run.PriceSnapshot == "" {
-		r.Failures = append(r.Failures, "run identity requires profile, evidence, prompt, taxonomy, policy, capability, and price versions")
+	if r.Run.Profile == "" || r.Run.EvidenceVersion == "" || r.Run.PromptVersion == "" || r.Run.TaxonomyVersion == "" || r.Run.PolicyVersion == "" || r.Run.RolePolicyVersion == "" || r.Run.CapabilitySnapshot == "" || r.Run.PriceSnapshot == "" {
+		r.Failures = append(r.Failures, "run identity requires profile, evidence, prompt, taxonomy, admission policy, role policy, capability, and price versions")
 	}
 	if r.Metrics.Cases < 300 {
 		r.Failures = append(r.Failures, fmt.Sprintf("corpus has %d cases; certification requires at least 300", r.Metrics.Cases))

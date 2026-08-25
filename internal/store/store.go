@@ -46,6 +46,14 @@ var ErrJobNotRunning = errors.New("store: suggestion job is not running")
 // overwritten in place.
 var ErrJobNotTerminal = errors.New("store: suggestion job is not terminal")
 
+// ErrInferenceNotReserved reports a settlement that lost the reserved-state
+// compare-and-swap. A completed/failed/held evaluation is immutable accounting.
+var ErrInferenceNotReserved = errors.New("store: inference evaluation is not reserved")
+
+// ErrInferenceBudgetExceeded reports a provider charge above its pre-call
+// reservation. The charged fact is still persisted and the evaluation is held.
+var ErrInferenceBudgetExceeded = errors.New("store: inference budget exceeded")
+
 // ErrJobOwnershipMismatch reports a result whose proposal requester differs
 // from the requester persisted on its job. It prevents a worker/store wiring
 // mistake from moving generated content across user audit lifecycles.
@@ -483,6 +491,15 @@ type FillerAcquisitionStore interface {
 	ListAcquisitionRuns(ctx context.Context, limit int, at time.Time) ([]filler.AcquisitionRun, error)
 }
 
+// FillerInferenceStore owns append-only call attribution and the atomic budget
+// reservation that must succeed before hosted inference starts (§10 V62).
+type FillerInferenceStore interface {
+	ReserveInferenceEvaluation(ctx context.Context, evaluation InferenceEvaluation, budget InferenceBudget) (InferenceEvaluation, error)
+	SettleInferenceEvaluation(ctx context.Context, id string, settlement InferenceSettlement) (InferenceEvaluation, error)
+	GetInferenceEvaluation(ctx context.Context, id string) (InferenceEvaluation, error)
+	ListInferenceEvaluations(ctx context.Context, filter InferenceEvaluationFilter) ([]InferenceEvaluation, error)
+}
+
 // FillerSourceStore is the persisted REMOTE filler-source registry (§10, V33).
 //
 // ⚠ Remote sources only. The drop-folder and the media-server library stay DERIVED from config
@@ -648,6 +665,7 @@ type Store interface {
 	FillerSourceStore
 	FillerPullStore
 	FillerAcquisitionStore
+	FillerInferenceStore
 	SplitProposalStore
 	AiringStore
 	ActivityStore

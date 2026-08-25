@@ -3158,3 +3158,80 @@ func testIncomingConveyorCount(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("Incoming conveyor count = %d, want 1 draft reel; the ready reel has its own row", got)
 	}
 }
+
+func testFillerInferenceAccountingAndBudgets(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, 8, 24, 15, 0, 0, 0, time.UTC)
+	versions := InferenceVersions{
+		Evidence: "e1", Extractor: "x1", Prompt: "p1", Schema: "s1", Taxonomy: "t1",
+		AdmissionPolicy: "a1", RolePolicy: "r1", CapabilitySnapshot: "c1",
+	}
+	reserve := func(id, clip string, nano int64) InferenceEvaluation {
+		e, err := s.ReserveInferenceEvaluation(ctx, InferenceEvaluation{
+			ID: id, ClipHash: clip, RunID: "cert-1", Role: "filler_frames", Rung: "frames",
+			RequestedProvider: "openrouter", RequestedModel: "openai/gpt-5-mini",
+			Modalities: []string{"text", "image"}, DerivativeBytes: 4096, DerivativePixels: 2_073_600,
+			ReservedNanoUSD: nano, Versions: versions, CreatedAt: at,
+		}, InferenceBudget{PerClipNanoUSD: 100, PerDayNanoUSD: 1000, PerRunNanoUSD: 1000})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return e
+	}
+
+	first := reserve("eval-1", "clip-a", 60)
+	if first.State != InferenceReserved {
+		t.Fatalf("first reservation = %+v", first)
+	}
+	denied := reserve("eval-2", "clip-a", 50)
+	if denied.State != InferenceHeldBudget || denied.ReservedNanoUSD != 0 || denied.FailureReason == "" {
+		t.Fatalf("over-budget reservation = %+v", denied)
+	}
+
+	settled, err := s.SettleInferenceEvaluation(ctx, first.ID, InferenceSettlement{
+		State: InferenceCompleted, ResolvedProvider: "OpenAI", ResolvedModel: "openai/gpt-5-mini-2026-08-07",
+		Tokens:        InferenceTokens{Prompt: 194, Completion: 12, Reasoning: 5, Cached: 31, Image: 80},
+		ChargedAmount: "0.000000040", ChargedCurrency: "USD", ChargedNanoUSD: 40,
+		EstimatedNanoUSD: 42, PriceSnapshot: "prices-1", LatencyMS: 812, Attempts: 1,
+		GenerationID: "gen-1", Outcome: "admit", UpdatedAt: at.Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settled.State != InferenceCompleted || settled.ReservedNanoUSD != 40 || settled.ChargedAmount != "0.000000040" || settled.Tokens.Image != 80 {
+		t.Fatalf("settled evaluation = %+v", settled)
+	}
+
+	third := reserve("eval-3", "clip-a", 50)
+	if third.State != InferenceReserved {
+		t.Fatalf("unused reservation was not released: %+v", third)
+	}
+	over, err := s.SettleInferenceEvaluation(ctx, third.ID, InferenceSettlement{
+		State: InferenceCompleted, ChargedAmount: "0.000000055", ChargedCurrency: "USD",
+		ChargedNanoUSD: 55, UpdatedAt: at.Add(2 * time.Minute),
+	})
+	if !errors.Is(err, ErrInferenceBudgetExceeded) || over.State != InferenceHeldBudget || over.ChargedNanoUSD != 55 {
+		t.Fatalf("provider overspend = %+v, %v", over, err)
+	}
+	if _, err := s.SettleInferenceEvaluation(ctx, third.ID, InferenceSettlement{UpdatedAt: at.Add(3 * time.Minute)}); !errors.Is(err, ErrInferenceNotReserved) {
+		t.Fatalf("second settlement = %v", err)
+	}
+
+	dayDenied := reserve("eval-4", "clip-b", 906)
+	if dayDenied.State != InferenceHeldBudget {
+		t.Fatalf("daily/run ceiling did not hold request: %+v", dayDenied)
+	}
+	rows, err := s.ListInferenceEvaluations(ctx, InferenceEvaluationFilter{RunID: "cert-1", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 4 || rows[0].ID != "eval-4" {
+		t.Fatalf("evaluation history = %+v", rows)
+	}
+	got, err := s.GetInferenceEvaluation(ctx, "eval-1")
+	if err != nil || got.GenerationID != "gen-1" || got.Versions.RolePolicy != "r1" || len(got.Modalities) != 2 || got.CacheKey == "" {
+		t.Fatalf("inspect evaluation = %+v, %v", got, err)
+	}
+}

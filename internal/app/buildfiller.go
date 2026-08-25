@@ -223,7 +223,7 @@ func buildFillerMediaTools(set resolved) *mediatools.FFmpegTools {
 			if sel.URL == "" {
 				return nil
 			}
-			return hostedSTTAdapter{llm.NewOpenAI(sel.URL, set.str("filler.transcribe.model"), sel.APIKey)}
+			return hostedSTTAdapter{llm.NewOpenAIForProvider(sel.Provider, sel.URL, set.str("filler.transcribe.model"), sel.APIKey)}
 		},
 		Model: func() string { return set.str("filler.transcribe.model") },
 	}
@@ -448,7 +448,7 @@ func hostedLanguageAsker(set resolved) filler.AudioAsker {
 	if sel.URL == "" {
 		return nil // not configured ⇒ the gate keeps every clip
 	}
-	return audioAskerAdapter{llm.NewOpenAI(sel.URL, sel.Model, sel.APIKey)}
+	return audioAskerAdapter{llm.NewOpenAIForProvider(sel.Provider, sel.URL, sel.Model, sel.APIKey)}
 }
 
 // buildPodAdapter constructs the pod assembler: the thing that picks which commercials fill a
@@ -494,7 +494,7 @@ func buildPodAdapter(st store.Store, set resolved, log *slog.Logger) *filler.Pod
 
 // visionWiring is the resolved endpoint the frame-reader talks to (§10 V54a, §15).
 type visionWiring struct {
-	provider, url, model, key string
+	provider, identity, url, model, key string
 	// own reports that vision was pointed at its OWN service rather than inheriting the main
 	// LLM's. It is logged, because "which endpoint is vision actually using" was previously
 	// underivable from any output the process produced.
@@ -525,6 +525,7 @@ func visionEndpoint(set resolved) visionWiring {
 	}
 	v := visionWiring{
 		provider: wireProvider,
+		identity: sel.Provider,
 		url:      sel.URL,
 		key:      sel.APIKey,
 		model:    set.str("filler.vision.model"),
@@ -537,7 +538,7 @@ func visionEndpoint(set resolved) visionWiring {
 	// ⚠ "" as well as `inherit`: the declared default is the word, but an env var set to empty
 	// resolves to "" and means the same thing — inherit, not "no provider".
 	if p := set.str("filler.vision.provider"); p != "" && p != "inherit" {
-		v.provider, v.url, v.key, v.own = p, set.str("filler.vision.url"), set.str("filler.vision.api_key"), true
+		v.provider, v.identity, v.url, v.key, v.own = p, p, set.str("filler.vision.url"), set.str("filler.vision.api_key"), true
 		// A local Ollama on the conventional port is the case worth needing no second setting —
 		// the same default `ollamaBase` applies to probes and pulls.
 		if v.url == "" && p == "ollama" {
@@ -591,15 +592,20 @@ func (h *hotVisionProvider) resolve() (llm.VisionProvider, error) {
 	if h.cur != nil && h.last == v {
 		return h.cur, nil
 	}
-	p, ok := llm.NewProvider(v.provider, v.url, v.model, v.key).(llm.VisionProvider)
-	if !ok {
+	var p llm.VisionProvider
+	switch v.provider {
+	case "openai":
+		p = llm.NewOpenAIForProvider(v.identity, v.url, v.model, v.key)
+	case "ollama":
+		p = llm.NewOllama(v.url, v.model)
+	default:
 		return nil, fmt.Errorf("provider %q has no vision path", v.provider)
 	}
 	if h.log != nil && h.last != v {
 		// The line that answers "which endpoint is vision actually using" — underivable from any
 		// output this process produced before V54a.
 		h.log.Info("filler vision endpoint resolved",
-			"provider", v.provider, "url", v.url, "model", v.model, "own_endpoint", v.own)
+			"provider", v.identity, "wire_provider", v.provider, "url", v.url, "model", v.model, "own_endpoint", v.own)
 	}
 	h.last, h.cur = v, p
 	return p, nil

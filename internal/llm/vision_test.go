@@ -26,7 +26,7 @@ func TestOpenAI_AskAboutImages_BuildsDataURIParts(t *testing.T) {
 		}
 		body, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(body, &sentReq)
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"{\"brand\":\"Kellogg's\"}"}}]}`))
+		_, _ = w.Write([]byte(`{"model":"gemini-vision","choices":[{"message":{"role":"assistant","content":"{\"brand\":\"Kellogg's\"}"}}],"usage":{"prompt_tokens":20,"completion_tokens":3,"prompt_tokens_details":{"image_tokens":11}}}`))
 	}))
 	defer srv.Close()
 
@@ -46,6 +46,9 @@ func TestOpenAI_AskAboutImages_BuildsDataURIParts(t *testing.T) {
 	}
 	if resp.Content != `{"brand":"Kellogg's"}` {
 		t.Errorf("content = %q", resp.Content)
+	}
+	if resp.Attribution.Tokens.Image != 11 || resp.Attribution.Tokens.Prompt != 20 || len(resp.Attribution.Modalities) != 2 {
+		t.Errorf("attribution = %+v", resp.Attribution)
 	}
 
 	// The request carried the model and a single user message with an array content.
@@ -117,7 +120,7 @@ func TestOllama_AskAboutImages_SetsImagesArray(t *testing.T) {
 		path = r.URL.Path
 		body, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(body, &sentReq)
-		_, _ = w.Write([]byte(`{"message":{"role":"assistant","content":"a red sports car"}}`))
+		_, _ = w.Write([]byte(`{"message":{"role":"assistant","content":"a red sports car"},"prompt_eval_count":14,"eval_count":5}`))
 	}))
 	defer srv.Close()
 
@@ -129,6 +132,9 @@ func TestOllama_AskAboutImages_SetsImagesArray(t *testing.T) {
 	}
 	if resp.Content != "a red sports car" {
 		t.Errorf("content = %q", resp.Content)
+	}
+	if resp.Attribution.RequestedProvider != "ollama" || resp.Attribution.Tokens.Prompt != 14 || resp.Attribution.Tokens.Completion != 5 {
+		t.Errorf("attribution = %+v", resp.Attribution)
 	}
 	if path != "/api/chat" {
 		t.Errorf("path = %q, want /api/chat", path)
