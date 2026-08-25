@@ -4,6 +4,7 @@ package main
 
 import (
 	"crypto/sha256"
+	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
@@ -13,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -102,6 +104,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	inventoryPath := flags.String("inventory", "", "frozen source inventory JSON")
 	outputPath := flags.String("out", "", "non-authorizing rights worksheet JSON")
+	csvOutputPath := flags.String("csv-out", "", "spreadsheet-safe non-authorizing rights worksheet CSV")
 	preparedAtText := flags.String("prepared-at", "", "worksheet preparation time in RFC3339 format")
 	minItems := flags.Int("min-items", 0, "required minimum worksheet cases")
 	maxItems := flags.Int("max-items", 0, "hard worksheet case ceiling")
@@ -136,8 +139,60 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-review: write worksheet:", err)
 		return 1
 	}
+	if *csvOutputPath != "" {
+		if err := writeReviewCSV(*csvOutputPath, result); err != nil {
+			_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-review: write CSV worksheet:", err)
+			return 1
+		}
+	}
 	_, _ = fmt.Fprintf(stdout, "filler-corpus-rights-review: prepared %d inert review rows for inventory %s\n", len(result.Cases), result.InventorySHA256)
 	return 0
+}
+
+var reviewCSVHeader = []string{
+	"rank", "inventory_sha256", "identifier", "metadata_sha256", "title", "creator_json", "date",
+	"license_url", "rights_json", "possible_copyright_status_json", "item_url", "metadata_url", "metadata_retrieved_at",
+	"file_name", "file_url", "file_format", "file_source", "file_bytes", "file_sha1", "file_md5", "file_duration", "file_width", "file_height",
+	"reviewer_id", "reviewed_at", "decision", "basis", "redistributable", "required_credit", "restrictions_json",
+}
+
+func writeReviewCSV(path string, sheet worksheet) error {
+	return writeAtomic(path, func(writer io.Writer) error {
+		csvWriter := csv.NewWriter(writer)
+		if err := csvWriter.Write(reviewCSVHeader); err != nil {
+			return err
+		}
+		for _, row := range sheet.Cases {
+			record := []string{
+				strconv.Itoa(row.Rank), row.InventorySHA256, row.Identifier, row.MetadataSHA256, spreadsheetSafe(row.Title), jsonCell(row.Creator), spreadsheetSafe(row.Date),
+				row.LicenseURL, jsonCell(row.Rights), jsonCell(row.PossibleCopyrightStatus), row.ItemURL, row.MetadataURL, row.MetadataRetrievedAt.UTC().Format(time.RFC3339),
+				spreadsheetSafe(row.File.Name), row.File.URL, spreadsheetSafe(row.File.Format), spreadsheetSafe(row.File.Source), strconv.FormatInt(row.File.Bytes, 10), row.File.SHA1, row.File.MD5,
+				spreadsheetSafe(row.File.Duration), spreadsheetSafe(row.File.Width), spreadsheetSafe(row.File.Height),
+				"", "", "", "", "", "", "",
+			}
+			if err := csvWriter.Write(record); err != nil {
+				return err
+			}
+		}
+		csvWriter.Flush()
+		return csvWriter.Error()
+	})
+}
+
+func jsonCell(value any) string {
+	if values, ok := value.([]string); ok && len(values) == 0 {
+		return "null"
+	}
+	data, _ := json.Marshal(value)
+	return spreadsheetSafe(string(data))
+}
+
+func spreadsheetSafe(value string) string {
+	trimmed := strings.TrimLeft(value, " \t\r\n")
+	if trimmed != "" && strings.ContainsRune("=+-@", rune(trimmed[0])) {
+		return "'" + value
+	}
+	return value
 }
 
 func prepareWorksheet(inv inventory, digest string, preparedAt time.Time, minItems, maxItems int) (worksheet, error) {
@@ -193,6 +248,13 @@ func writeJSON(path string, value any) error {
 	if err != nil {
 		return err
 	}
+	return writeAtomic(path, func(writer io.Writer) error {
+		_, err := writer.Write(append(data, '\n'))
+		return err
+	})
+}
+
+func writeAtomic(path string, write func(io.Writer) error) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return err
 	}
@@ -211,7 +273,7 @@ func writeJSON(path string, value any) error {
 	if err := temp.Chmod(0o600); err != nil {
 		return err
 	}
-	if _, err := temp.Write(append(data, '\n')); err != nil {
+	if err := write(temp); err != nil {
 		return err
 	}
 	if err := temp.Close(); err != nil {
