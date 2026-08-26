@@ -35,20 +35,28 @@ and selects a bounded video representation. Its output is only a candidate inven
 license metadata still needs independent item-level rights adjudication before it can enter a draft
 manifest, and the command never downloads media or invokes a model.
 
+LOC, NASA, CDC, and Commons adapters promote their bounded discovery lanes through the same strict
+source-neutral inventory contract. `make filler-corpus-direct` adds the fixed 100-case modern
+cohort without pretending a local folder grants rights: it requires 20 commercials, 20 promos, 25
+bumpers, 25 station IDs, 5 trailers, and 5 PSAs; hashes 100 unique media payloads plus separate
+rights and provenance evidence beneath one symlink-safe root; and rejects any quota, path, byte, or
+wall-time violation. Public and direct inventories combine before one independent rights review.
+
 `make filler-corpus-download` is the separately authorized media step. It accepts only `approved`
 rights rows tied to the exact inventory and metadata SHA-256 values, reviewer, review time, rationale,
 redistribution decision, attribution, and restrictions; `held` rows remain out of the plan. Before the first request
 it proves the approved count and predicted bytes fit explicit ceilings. Downloads remain serial and identified,
-redirects stay on Archive.org, and bodies cannot exceed their recorded size. Archive SHA-1/MD5 values are
-checked when present, and the external ledger adds a locally computed SHA-256. A
+redirects stay within each authority's frozen and built-in host policy, and bodies cannot exceed
+their recorded size. Source checksums are checked when present, and the external ledger adds a
+locally computed SHA-256. Already-local direct-cohort cases are not downloaded again. A
 failed or stale approval writes no ledger and cannot silently widen the selected corpus.
 
-`make filler-corpus-rights-review` converts a frozen Archive inventory into a deterministic worksheet
+`make filler-corpus-rights-review` converts a frozen mixed-authority inventory into a deterministic worksheet
 bounded by explicit minimum and maximum item counts. It exposes the source assertions and selected
 representation in immutable JSON plus a spreadsheet-safe CSV, but leaves every authority field
 blank. Reviewers edit only `reviewer_id`, `reviewed_at`, `decision`, `basis`, `redistributable`,
-`required_credit`, and `restrictions_json`. The live 2026-08-25 Archive snapshot produced 331 such
-inert rows; this is a review queue, not evidence that any row is legally reusable.
+`required_credit`, and `restrictions_json`. Local rows expose the exact media, rights-evidence, and
+provenance-evidence paths and hashes. This is a review queue, not evidence that any row is legally reusable.
 
 `make filler-corpus-rights-lock` validates the completed CSV against both the original byte-exact
 inventory and the inert JSON worksheet. Every row must be present once, immutable source fields must
