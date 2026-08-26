@@ -1,6 +1,6 @@
 # Shared client design-system completeness ledger
 
-**Status:** initial audit; P3.5 in progress  
+**Status:** implementation and automated/rendered gates complete; P3.5 device evidence in progress
 **Owner:** shared client platform  
 **Parent plan:**
 [`docs/engineering/plans/shared-client-platform.md`](plans/shared-client-platform.md)
@@ -97,6 +97,23 @@ Every shared visual module declares the applicable cells rather than relying on 
 Story applicability is machine-readable and checked against each module's declared interface. A
 meaningless combination may be excluded, but the story metadata records why; absence is not an
 implicit exclusion.
+
+## P3.5 evidence to date
+
+The protected client matrix, including Apple mobile, Apple TV, the four Playwright visual and
+accessibility shards, and the aggregate CI job, passed on PR #581 before its final rebase. The pinned
+local visual run rendered 1,081 cases successfully with one declared skip, and a strict rerun passed
+against the reviewed baselines.
+
+On 2026-08-26, the native TV workshop was generated, compiled as an arm64 React Native Android TV
+development build, installed on the physical Nvidia Shield, and rendered at its 3840x2160 output.
+The TV-specific workshop rail showed the canonical lockup and focus treatment; D-pad Down moved
+focus between story cards and OK selected the focused story. Logcat contained no React Native or
+Android fatal exception. The local captures are retained under
+`.artifacts/primary/design-system-device-evidence/`.
+
+This is not the complete P3.5 exit claim. A 1920x1080 TV-host workshop pass and the real-iPhone
+portrait/landscape workshop evidence remain required.
 
 ## Publication gate
 
