@@ -28,6 +28,7 @@ interface SurfSelection {
 }
 
 interface SurfRailProps {
+  clientName?: string;
   clientVersion: string;
   density?: Density;
   groups: readonly SurfGroupData[];

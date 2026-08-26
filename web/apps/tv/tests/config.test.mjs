@@ -18,4 +18,5 @@ test("runs the authoritative Guide over the still-mounted TV player", async () =
   assert.match(source, /<TvWatching[^>]+player=\{player\}/);
   assert.match(source, /<GuideJourney/);
   assert.match(source, /player\.controller\.tuneChannel\(channelId\)/);
+  assert.match(source, /<SurfJourney/);
 });

@@ -6,7 +6,14 @@ import { ClientNavigation, clientDestinationLabel } from "../client-navigation";
 import { ModalOverlay } from "../overlay";
 import type { ClientShellProps } from "./client-shell.type";
 
-const ClientShell = ({ active, density, onDisconnect, onNavigate, serverName }: ClientShellProps) => {
+const ClientShell = ({
+  active,
+  children,
+  density,
+  onDisconnect,
+  onNavigate,
+  serverName,
+}: ClientShellProps) => {
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [disconnectError, setDisconnectError] = useState(false);
@@ -47,13 +54,17 @@ const ClientShell = ({ active, density, onDisconnect, onNavigate, serverName }: 
         </View>
       </View>
       <Surface flex={1} gap="$control" justifyContent="center" level="canvas">
-        <Text density={density} textRole="display">
-          {clientDestinationLabel(active)}
-        </Text>
-        <Text density={density} maxWidth={720} textRole="body">
-          Your paired client is ready. Guide and playback arrive through the same shared shell without
-          changing device authority.
-        </Text>
+        {children ?? (
+          <>
+            <Text density={density} textRole="display">
+              {clientDestinationLabel(active)}
+            </Text>
+            <Text density={density} maxWidth={720} textRole="body">
+              Your paired client is ready. Guide and playback arrive through the same shared shell without
+              changing device authority.
+            </Text>
+          </>
+        )}
       </Surface>
       <ClientNavigation active={active} density={density} onNavigate={onNavigate} />
       <ModalOverlay

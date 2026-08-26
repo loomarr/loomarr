@@ -15,4 +15,5 @@ test("runs the authoritative Guide over the still-mounted player", async () => {
   assert.match(source, /<MobileWatching[^>]+player=\{player\}/);
   assert.match(source, /<GuideJourney/);
   assert.match(source, /player\.controller\.tuneChannel\(channelId\)/);
+  assert.match(source, /<SurfJourney/);
 });

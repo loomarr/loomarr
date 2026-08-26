@@ -1,4 +1,4 @@
-import type { SurfGroupData, SurfSelection } from "@loomarr/ui";
+import { restoreSurfSelection, type SurfGroupData, type SurfSelection } from "@loomarr/ui";
 
 import type { TvSurfActivation, TvSurfDirection, TvSurfMoveResult } from "./surf-navigation.type";
 
@@ -21,16 +21,7 @@ const moveTvSurfSelection = (
 const restoreTvSurfSelection = (
   groups: readonly SurfGroupData[],
   selection: SurfSelection,
-): SurfSelection | undefined => {
-  const selections = surfSelections(groups);
-  return (
-    selections.find(
-      (candidate) => candidate.group === selection.group && candidate.channelId === selection.channelId,
-    ) ??
-    selections.find((candidate) => candidate.channelId === selection.channelId) ??
-    selections[0]
-  );
-};
+): SurfSelection | undefined => restoreSurfSelection(groups, selection);
 
 const activateTvSurfSelection = (selection: SurfSelection): TvSurfActivation => ({
   channelId: selection.channelId,

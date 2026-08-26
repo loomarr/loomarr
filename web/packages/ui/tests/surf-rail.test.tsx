@@ -9,6 +9,7 @@ const renderRail = (serverVersion?: string) =>
   renderToStaticMarkup(
     <LoomarrProvider>
       <SurfRail
+        clientName="Loomarr TV"
         clientVersion="0.2.0"
         groups={surfGroups}
         onFocusSelection={vi.fn()}

@@ -1,3 +1,6 @@
+export { restoreSurfSelection, surfGroupsFromGuide } from "./surf-data";
+export type { SurfJourneyProps } from "./surf-journey";
+export { SurfJourney } from "./surf-journey";
 export { SurfRail } from "./surf-rail";
 export type {
   SurfChannelData,

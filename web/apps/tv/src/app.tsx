@@ -17,6 +17,7 @@ import {
   clientBackDestination,
   GuideJourney,
   PairingShell,
+  SurfJourney,
   WatchingSurface,
 } from "@loomarr/ui";
 import { createTvNumberEntryController } from "@loomarr/ui-tv";
@@ -138,7 +139,21 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
             onDisconnect={() => session.disconnect()}
             onNavigate={setActive}
             serverName={credential.serverUrl}
-          />
+          >
+            <SurfJourney
+              clientName="Loomarr TV"
+              clientVersion="prototype"
+              controller={guide}
+              currentChannelId={player.snapshot.channel?.id}
+              density="tv"
+              onTune={(channelId) => {
+                void player.controller.tuneChannel(channelId);
+                setActive("watching");
+              }}
+              playableChannelIds={player.snapshot.catalog.map(({ id }) => id)}
+              recentChannelIds={player.snapshot.recentChannelIds}
+            />
+          </ClientShell>
         </View>
       ) : null}
     </View>

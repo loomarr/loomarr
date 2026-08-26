@@ -33,10 +33,11 @@ export type {
   SurfChannelData,
   SurfGroupData,
   SurfGroupKind,
+  SurfJourneyProps,
   SurfProgrammeData,
   SurfRailProps,
   SurfSelection,
 } from "./src/surf-rail";
-export { SurfRail } from "./src/surf-rail";
+export { restoreSurfSelection, SurfJourney, SurfRail, surfGroupsFromGuide } from "./src/surf-rail";
 export type { ChannelNumberEntry, WatchingSurfaceProps } from "./src/watching-surface";
 export { WatchingSurface } from "./src/watching-surface";

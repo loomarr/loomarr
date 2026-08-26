@@ -25,6 +25,7 @@ const findSurfChannel = (
     ?.channels.find((channel) => channel.id === selection.channelId);
 
 const SurfRail = ({
+  clientName = "Loomarr",
   clientVersion,
   density = "pointer",
   groups,
@@ -146,7 +147,7 @@ const SurfRail = ({
       </ScrollFrame>
 
       <Text density={density} textAlign="center" textRole="metadata">
-        {`Loomarr TV ${clientVersion} · Server ${serverVersion ?? "unavailable"}`}
+        {`${clientName} ${clientVersion} · Server ${serverVersion ?? "unavailable"}`}
       </Text>
     </Surface>
   );

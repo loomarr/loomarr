@@ -16,6 +16,7 @@ import {
   clientBackDestination,
   GuideJourney,
   PairingShell,
+  SurfJourney,
   WatchingSurface,
 } from "@loomarr/ui";
 import * as SecureStore from "expo-secure-store";
@@ -104,7 +105,21 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
             onDisconnect={() => session.disconnect()}
             onNavigate={setActive}
             serverName={credential.serverUrl}
-          />
+          >
+            <SurfJourney
+              clientName="Loomarr Mobile"
+              clientVersion="prototype"
+              controller={guide}
+              currentChannelId={player.snapshot.channel?.id}
+              density="touch"
+              onTune={(channelId) => {
+                void player.controller.tuneChannel(channelId);
+                setActive("watching");
+              }}
+              playableChannelIds={player.snapshot.catalog.map(({ id }) => id)}
+              recentChannelIds={player.snapshot.recentChannelIds}
+            />
+          </ClientShell>
         </View>
       ) : null}
     </View>
