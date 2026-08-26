@@ -177,6 +177,7 @@ start_session() {
 	{
 		printf 'task=%s\n' "$task"
 		printf 'depends_on=%s\n' "$depends_on"
+		printf 'dependency_branch=%s\n' "$dependency_branch"
 		printf 'claims=%s\n' "$claims"
 		printf 'worktree=%s\n' "$ROOT"
 		printf 'branch=%s\n' "$branch"
@@ -228,6 +229,7 @@ stop_session() {
 		task="$(field task "$file")"
 		rm -f "$file"
 		echo "agent-stop: released $task"
+		echo 'agent-stop: after merge, run make agent-gc to audit retirement eligibility'
 	else
 		echo "agent-stop: this worktree has no registered session"
 	fi
@@ -339,7 +341,11 @@ doctor() {
 	echo
 	"$SCRIPT_DIR/dev-env.sh" show
 	echo
-	echo "Registered worktrees: $(git -C "$ROOT" worktree list --porcelain | grep -c '^worktree ')"
+	worktree_count="$(git -C "$ROOT" worktree list --porcelain | grep -c '^worktree ')"
+	echo "Registered worktrees: $worktree_count"
+	if [ "$worktree_count" -gt 16 ]; then
+		echo '  WARNING: 16 or more secondary worktrees; run make agent-gc'
+	fi
 	git -C "$ROOT" worktree list --porcelain | awk '
 		/^worktree / { path=$2 }
 		/^branch refs\/heads\/main$/ && NR > 2 { print "  WARNING: main is parked at " path }
@@ -376,6 +382,16 @@ worktree() {
 	depends_on="${4:-}"
 	valid_name "$topic" || { echo 'agent-worktree: TOPIC is required' >&2; exit 2; }
 	primary="$(git -C "$ROOT" worktree list --porcelain | sed -n 's/^worktree //p' | head -1)"
+	worktree_limit="${AGENT_WORKTREE_LIMIT:-16}"
+	case "$worktree_limit" in ''|*[!0-9]*) echo 'agent-worktree: AGENT_WORKTREE_LIMIT must be an integer' >&2; exit 2 ;; esac
+	secondary_count="$(git -C "$ROOT" worktree list --porcelain | grep -c '^worktree ' || true)"
+	secondary_count=$((secondary_count - 1))
+	if [ "$secondary_count" -ge "$worktree_limit" ] && [ "${ALLOW_WORKTREE_BACKLOG:-0}" != 1 ]; then
+		echo "agent-worktree: $secondary_count secondary worktrees reached the limit of $worktree_limit" >&2
+		echo 'agent-worktree: run make agent-gc, then make agent-gc APPLY=1 after reviewing the audit' >&2
+		echo 'agent-worktree: set ALLOW_WORKTREE_BACKLOG=1 only for an intentional exception' >&2
+		exit 1
+	fi
 	slug="$(printf '%s' "$topic" | tr '/' '-' | tr -cs 'A-Za-z0-9._-' '-')"
 	target="${WORKTREE_PATH:-$(dirname "$primary")/$(basename "$primary")-$slug}"
 	[ ! -e "$target" ] || { echo "agent-worktree: target exists: $target" >&2; exit 1; }
@@ -489,8 +505,9 @@ case "${1:-}" in
 	bootstrap) bootstrap ;;
 	worktree) shift; worktree "${1:-}" "${2:-}" "${3:-}" "${4:-}" ;;
 	verify) verify_changed ;;
+	gc) exec "$SCRIPT_DIR/agent-worktree-gc.sh" ;;
 	*)
-		echo 'usage: scripts/agent.sh {start TASK [CLAIMS] [DEPENDS_ON]|status|renew|prune|stop|env|baseline|doctor|bootstrap|worktree TOPIC [TASK] [CLAIMS] [DEPENDS_ON]|verify}' >&2
+		echo 'usage: scripts/agent.sh {start TASK [CLAIMS] [DEPENDS_ON]|status|renew|prune|stop|env|baseline|doctor|bootstrap|worktree TOPIC [TASK] [CLAIMS] [DEPENDS_ON]|verify|gc}' >&2
 		exit 2
 		;;
 esac
