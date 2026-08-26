@@ -206,7 +206,6 @@ func (c *SourceClient) validateURL(rawURL string) error {
 	}
 	return nil
 }
-
 func decodeSourceHead(raw []byte) (SourceHead, error) {
 	var head SourceHead
 	decoder := json.NewDecoder(strings.NewReader(string(raw)))
