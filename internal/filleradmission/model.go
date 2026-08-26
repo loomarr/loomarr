@@ -161,6 +161,9 @@ const (
 	ReasonMissingCommercialIdentity     ReasonCode = "missing_commercial_identity"
 	ReasonInsufficientProductEvidence   ReasonCode = "insufficient_product_evidence"
 	ReasonInsufficientSensitiveEvidence ReasonCode = "insufficient_sensitive_policy_evidence"
+	// ReasonTemporalAmbiguity is reserved for evidence that requires observing
+	// ordering or change over time; only the direct-video bakeoff rung may use it.
+	ReasonTemporalAmbiguity ReasonCode = "temporal_ambiguity"
 )
 
 type Conflict struct {

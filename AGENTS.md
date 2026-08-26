@@ -63,6 +63,9 @@ different delivery path.
 5. Unit tests never touch the network. Extend `internal/testkit`; do not create private service mocks.
 6. Store conformance remains one suite over SQLite and Postgres.
 7. Never run `make smoke*` from an agent session. It drives the maintainer's live stack.
+8. Do not preserve legacy formats, schemas, adapters, or code paths speculatively. Keep compatibility
+   only for verified live data, active users, or an external contract that cannot be migrated in the
+   same change; otherwise migrate or remove the obsolete path.
 
 ## Commands
 

@@ -159,9 +159,9 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
-- **`filleradmission`** · 3 importers
+- **`filleradmission`** · 4 importers
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
-- **`fillereval`**
+- **`fillereval`** · 1 importer
   Owns the hermetic certification contract for filler admission.
 - **`media`** · 3 importers
   Owns host-wide resources shared by live and background media work.
@@ -180,6 +180,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 1**
 
+- **`fillerbakeoff`** · 1 importer · → `filleradmission`, `fillereval`
+  Runs bounded, inference-spending filler admission comparisons.
 - **`fillerdecision`** · 3 importers · → `filleradmission`
   Owns the durable lifecycle and operator projections for filler-admission results.
 - **`prepared`** · 3 importers · → `diagnostics`, `media`
@@ -249,7 +251,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`setup`** · 1 importer · → `library`
   Owns the operator connection flows (§7, §13): the Live TV wiring and setup-status checklist.
-- **`testkit`** · → `images`, `llm`, `playout`, `programmer`, `provision`, `schedule`, `store`
+- **`testkit`** · → `fillerbakeoff`, `images`, `llm`, `playout`, `programmer`, `provision`, `schedule`, `store`
   The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 
 **Layer 9**
@@ -3397,6 +3399,46 @@ token categories, provider-reported charged cost, the price snapshot used for lo
 latency/retries, reason codes, evidence references, conflicts, and terminal outcome. Aggregate token
 metrics remain useful for operations; the durable row is the audit and cost-accounting truth.
 
+Certification artifact schema v4 requires the per-inference-step ledger. Earlier scalar schemas are
+rejected: no completed bakeoff artifact depends on them, and preserving speculative compatibility
+would create an untested path that can hide multiple calls behind one terminal attribution.
+
+The inference-spending bakeoff reads a **raw evidence packet**, never the manifest's reviewed
+`Evidence` or terminal labels. The packet is a closed, content-addressed input containing only
+deterministic decoder/source-policy facts and bounded untrusted source text, transcript, OCR, frame,
+audio, or video derivative references. Every referenced external derivative carries its hash and
+measured byte/pixel/duration bounds. Packet identity must match the case's `evidenceSha256`; the
+runner re-opens every derivative beneath one declared corpus root, refuses symlink escapes, and
+verifies its exact bytes and hash. It refuses missing, extra, changed, or label-bearing fields before
+calling a provider. This separation keeps the scorer's answer key out of prompts and makes the exact
+provider input replayable.
+
+One bakeoff run accepts a locked manifest, an exact packet set, a versioned admission policy, an
+ordered role/rung route, and positive request/spend/concurrency ceilings; it emits an immutable
+prediction ledger. The runner is serial by default. Before each call it reserves that rung's
+predeclared maximum nanodollar charge and request count, then reconciles the provider-reported exact
+charge without binary floating point. A call is refused when its reservation cannot fit. If a failed
+call omits or corrupts settlement, its exact charge remains missing while the distinct recorded
+reservation stays consumed for that run. Every
+attempt is retained as a separate inference step, including route, modalities, derivative bounds,
+tokens, charge, latency, attempts, generation id, and operational failure. The terminal prediction
+aggregates those steps but never collapses a cascade into one falsely attributed rung.
+Certification routes authorize exactly one provider attempt per invocation; an adapter may not hide
+internal retries inside an aggregate attribution. A retry is a new runner invocation and ledger step.
+
+Routing is reason-driven rather than confidence-driven: deterministic and text evidence run first;
+frames may run only for a predeclared missing/conflicting claim; direct video may run only for a
+named temporal ambiguity; premium escalation may run only for a predeclared unresolved reason whose
+measured value justified its marginal ceiling. After each rung the same pure
+`filleradmission.Evaluator` evaluates the accumulated document. A terminal semantic result stops the
+cascade; a provider, route, schema, extraction, or budget failure becomes an operational hold in the
+ledger and can never be converted into `admit`, `reject`, or human review.
+Route classes enforce this order: text is first, then frames, direct video, and premium; frame routes
+accept only named visual claim gaps/conflicts; direct video accepts only `temporal_ambiguity`; and a
+premium route must name and hash the frozen measurement artifact that justified its marginal ceiling.
+Each request contains only signals whose modality the route declares; attribution must match that exact
+set, so a cheaper route cannot receive or claim a more expensive modality.
+
 Model roles are certified independently: lineup, filler text, filler frames, filler video, and
 transcription may have different accuracy/cost frontiers. A normal install follows the last
 certified role policy automatically; overrides are Advanced controls. Certification pins concrete
@@ -5717,7 +5759,7 @@ independently instead of treating every zero-lineup result as a model-quality my
 
 ### 14.2 The package map
 
-`internal/` is **48 flat packages, deliberately** — the grouping below is prose, not directories.
+`internal/` is **49 flat packages, deliberately** — the grouping below is prose, not directories.
 
 Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
 
@@ -5739,6 +5781,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `retention` | What may be purged, in what order, after how long (§5, §18.1) — the policy; `store` owns the SQL |
 | `filler` | Commercials: the clip catalog and seeded pod assembly (§10) |
 | `filleradmission` | Pure evidence-to-`admit \| reject \| review` policy, with conflicts and operational holds kept outside semantic verdicts (§10 V61) |
+| `fillerbakeoff` | Bounded label-blind provider execution, reason-gated cascades, and immutable per-call accounting before hermetic scoring (§10 V61) |
 | `fillerdecision` | Durable admission lifecycle, append-only actions, and server-owned review/activity/diagnostic projections (§10 V63) |
 | `fillereval` | Hermetic filler-admission certification: versioned corpus contracts, selective-risk/cost scoring, and captured-decision replay (§10 V61) |
 | `mediatools` | The ffmpeg/ffprobe/whisper layer — exec calls, output parsers, and the shapes those tools return (§10). Carved out of `filler`; the dependency runs one way and nothing here knows what a clip is |

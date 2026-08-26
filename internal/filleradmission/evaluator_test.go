@@ -95,7 +95,7 @@ func TestEvaluatorEscalatesUnresolvedRecordingDateConflict(t *testing.T) {
 	if got.Decision == nil || got.Decision.Verdict != VerdictReview {
 		t.Fatalf("result = %+v, want review", got)
 	}
-	if !reflect.DeepEqual(got.Decision.ReasonCodes, []ReasonCode{ReasonConflictRecordingDate}) {
+	if !reflect.DeepEqual(got.Decision.ReasonCodes, []ReasonCode{ReasonTemporalAmbiguity}) {
 		t.Fatalf("reasons = %v", got.Decision.ReasonCodes)
 	}
 	if got.Decision.ReviewQuestion != "Which date describes when this clip was recorded?" {

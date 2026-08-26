@@ -62,30 +62,51 @@ func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report 
 			continue
 		}
 		delete(byID, c.ID)
+		allowScalar := (prediction.OperationalFailure != "" && !hasScalarInference(prediction)) ||
+			(prediction.Verdict == VerdictReject && prediction.RejectClass == RejectDeterministic && !hasScalarInference(prediction))
+		accounting, accountingFailures := summarizePrediction(prediction, allowScalar)
+		for _, failure := range accountingFailures {
+			report.Failures = append(report.Failures, c.ID+": "+failure)
+		}
 		result.Actual = prediction.Verdict
-		result.Role = prediction.Role
-		result.Rung = prediction.Rung
-		result.RequestedProvider = prediction.RequestedProvider
-		result.RequestedModel = prediction.RequestedModel
-		result.ResolvedProvider = prediction.ResolvedProvider
-		result.ResolvedModel = prediction.ResolvedModel
-		result.Modalities = slices.Clone(prediction.Modalities)
-		result.Derivative = prediction.Derivative
-		result.GenerationID = prediction.GenerationID
-		result.Attempts = prediction.Attempts
-		result.ChargedNanoUSD = prediction.ChargedNanoUSD
-		result.LatencyMS = prediction.LatencyMS
-		if prediction.Verdict != VerdictAdmit && prediction.Verdict != VerdictReject && prediction.Verdict != VerdictReview {
+		zeroInference := len(prediction.Steps) == 0 && prediction.Role == "" && prediction.Attempts == 0
+		deterministic := zeroInference && prediction.Verdict == VerdictReject && prediction.RejectClass == RejectDeterministic
+		result.Role = accounting.Role
+		result.Rung = accounting.Rung
+		if deterministic {
+			result.Rung = "deterministic"
+		}
+		result.RequestedProvider = accounting.RequestedProvider
+		result.RequestedModel = accounting.RequestedModel
+		result.ResolvedProvider = accounting.ResolvedProvider
+		result.ResolvedModel = accounting.ResolvedModel
+		result.UpstreamProvider = accounting.UpstreamProvider
+		result.Modalities = slices.Clone(accounting.Modalities)
+		result.Derivative = accounting.Derivative
+		result.GenerationID = accounting.GenerationID
+		result.Attempts = accounting.Attempts
+		result.ChargedNanoUSD = accounting.ChargedNanoUSD
+		result.LatencyMS = accounting.LatencyMS
+		result.Steps = slices.Clone(prediction.Steps)
+		if prediction.OperationalFailure == "" && prediction.Verdict != VerdictAdmit && prediction.Verdict != VerdictReject && prediction.Verdict != VerdictReview {
 			result.Failure = "invalid verdict"
 			report.Failures = append(report.Failures, c.ID+": invalid verdict")
 		}
-		if prediction.Role == "" || prediction.Rung == "" || prediction.RequestedProvider == "" || prediction.RequestedModel == "" || prediction.ResolvedModel == "" || prediction.ResolvedProvider == "" || len(prediction.Modalities) == 0 {
+		missingRoute := accounting.Role == "" || accounting.Rung == "" || accounting.RequestedProvider == "" || accounting.RequestedModel == "" || len(accounting.Modalities) == 0
+		missingResolution := accounting.ResolvedModel == "" || accounting.ResolvedProvider == ""
+		requireAttribution := !deterministic && (prediction.OperationalFailure == "" || !zeroInference)
+		if requireAttribution && (missingRoute || (prediction.OperationalFailure == "" && missingResolution)) {
 			report.Failures = append(report.Failures, c.ID+": role, rung, model, provider, and modality attribution are required")
 		}
-		if prediction.Attempts < 1 {
+		if requireAttribution && accounting.Attempts < 1 {
 			report.Failures = append(report.Failures, c.ID+": at least one inference attempt is required")
 		}
-		totalAttempts += prediction.Attempts
+		if accounting.Attempts > 0 && totalAttempts > math.MaxInt-accounting.Attempts {
+			report.Failures = append(report.Failures, c.ID+": inference attempt total overflow")
+			totalAttempts = math.MaxInt
+		} else {
+			totalAttempts += accounting.Attempts
+		}
 		if prediction.Probability != nil && (*prediction.Probability < 0 || *prediction.Probability > 1) {
 			report.Failures = append(report.Failures, c.ID+": probability must be within [0,1]")
 		}
@@ -104,9 +125,6 @@ func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report 
 					report.Failures = append(report.Failures, c.ID+": conflict has unknown evidence reference "+ref)
 				}
 			}
-		}
-		if err := validateAccounting(prediction); err != nil {
-			report.Failures = append(report.Failures, c.ID+": "+err.Error())
 		}
 		if prediction.OperationalFailure != "" {
 			result.Failure = "operational failure: " + prediction.OperationalFailure
@@ -165,24 +183,47 @@ func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report 
 			d := *prediction.Probability - y
 			brier += d * d
 		}
-		report.Metrics.TotalChargedNanoUSD += prediction.ChargedNanoUSD
-		latencies = append(latencies, prediction.LatencyMS)
+		if accounting.ChargedNanoUSD > 0 && report.Metrics.TotalChargedNanoUSD > math.MaxInt64-accounting.ChargedNanoUSD {
+			report.Failures = append(report.Failures, c.ID+": charged cost total overflow")
+			report.Metrics.TotalChargedNanoUSD = math.MaxInt64
+		} else {
+			report.Metrics.TotalChargedNanoUSD += accounting.ChargedNanoUSD
+		}
+		latencies = append(latencies, accounting.LatencyMS)
 		for _, slice := range c.Slices {
 			n := sliceCounts[slice]
 			n.total++
-			n.chargedNanoUSD += prediction.ChargedNanoUSD
+			n.chargedNanoUSD = saturatingCost(n.chargedNanoUSD, accounting.ChargedNanoUSD)
 			if result.Correct {
 				n.correct++
 			}
 			sliceCounts[slice] = n
 		}
-		rung := rungCounts[prediction.Rung]
-		rung.total++
-		rung.chargedNanoUSD += prediction.ChargedNanoUSD
-		if result.Correct {
-			rung.correct++
+		if len(prediction.Steps) == 0 {
+			rungName := accounting.Rung
+			if deterministic {
+				rungName = "deterministic"
+			}
+			if rungName != "" {
+				rung := rungCounts[rungName]
+				rung.total++
+				rung.chargedNanoUSD = saturatingCost(rung.chargedNanoUSD, accounting.ChargedNanoUSD)
+				if result.Correct {
+					rung.correct++
+				}
+				rungCounts[rungName] = rung
+			}
+		} else {
+			for _, step := range prediction.Steps {
+				rung := rungCounts[step.Rung]
+				rung.total++
+				rung.chargedNanoUSD = saturatingCost(rung.chargedNanoUSD, step.ChargedNanoUSD)
+				if result.Correct {
+					rung.correct++
+				}
+				rungCounts[step.Rung] = rung
+			}
 		}
-		rungCounts[prediction.Rung] = rung
 		report.Cases = append(report.Cases, result)
 	}
 	for id := range byID {
@@ -233,6 +274,121 @@ func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report 
 	applyGates(&report, manifest.SliceGates, eligible, invalid, deterministicRejects, semanticRejects, totalAttempts)
 	report.Certified = len(report.Failures) == 0
 	return report
+}
+
+func summarizePrediction(prediction Prediction, allowScalar bool) (InferenceStep, []string) {
+	if len(prediction.Steps) == 0 {
+		if !allowScalar {
+			return inferenceStepFromPrediction(prediction), []string{"schema v4 inference requires per-attempt steps"}
+		}
+		if err := validateAccounting(prediction); err != nil {
+			return inferenceStepFromPrediction(prediction), []string{err.Error()}
+		}
+		return inferenceStepFromPrediction(prediction), nil
+	}
+	var total InferenceStep
+	seen := make(map[string]struct{}, len(prediction.Steps))
+	var failures []string
+	for i, step := range prediction.Steps {
+		prefix := fmt.Sprintf("step[%d]", i)
+		if step.EvaluationID == "" {
+			failures = append(failures, prefix+": evaluation id is required")
+		} else if _, exists := seen[step.EvaluationID]; exists {
+			failures = append(failures, prefix+": duplicate evaluation id "+step.EvaluationID)
+		} else {
+			seen[step.EvaluationID] = struct{}{}
+		}
+		missingRoute := step.Role == "" || step.Rung == "" || step.RequestedProvider == "" || step.RequestedModel == "" || len(step.Modalities) == 0
+		missingResolution := step.ResolvedModel == "" || step.ResolvedProvider == ""
+		if missingRoute || (step.OperationalFailure == "" && missingResolution) {
+			failures = append(failures, prefix+": role, rung, model, provider, and modality attribution are required")
+		}
+		if step.Attempts < 1 {
+			failures = append(failures, prefix+": at least one inference attempt is required")
+		}
+		if err := validateAccounting(predictionFromInferenceStep(step)); err != nil {
+			failures = append(failures, prefix+": "+err.Error())
+		}
+		addAccountingValue(&total.Derivative.Bytes, step.Derivative.Bytes, prefix, "derivative bytes", &failures)
+		addAccountingValue(&total.Derivative.DurationMS, step.Derivative.DurationMS, prefix, "derivative duration", &failures)
+		addAccountingValue(&total.Derivative.Pixels, step.Derivative.Pixels, prefix, "derivative pixels", &failures)
+		addAccountingValue(&total.Tokens.Prompt, step.Tokens.Prompt, prefix, "prompt tokens", &failures)
+		addAccountingValue(&total.Tokens.Completion, step.Tokens.Completion, prefix, "completion tokens", &failures)
+		addAccountingValue(&total.Tokens.Reasoning, step.Tokens.Reasoning, prefix, "reasoning tokens", &failures)
+		addAccountingValue(&total.Tokens.Cached, step.Tokens.Cached, prefix, "cached tokens", &failures)
+		addAccountingValue(&total.Tokens.CacheWrite, step.Tokens.CacheWrite, prefix, "cache-write tokens", &failures)
+		addAccountingValue(&total.Tokens.Image, step.Tokens.Image, prefix, "image tokens", &failures)
+		addAccountingValue(&total.Tokens.Audio, step.Tokens.Audio, prefix, "audio tokens", &failures)
+		addAccountingValue(&total.Tokens.Video, step.Tokens.Video, prefix, "video tokens", &failures)
+		addAccountingValue(&total.ChargedNanoUSD, step.ChargedNanoUSD, prefix, "charged cost", &failures)
+		addAccountingValue(&total.EstimatedNanoUSD, step.EstimatedNanoUSD, prefix, "estimated cost", &failures)
+		if step.Attempts > 0 && total.Attempts > math.MaxInt-step.Attempts {
+			failures = append(failures, prefix+": inference attempt total overflow")
+			total.Attempts = math.MaxInt
+		} else {
+			total.Attempts += step.Attempts
+		}
+		addAccountingValue(&total.LatencyMS, step.LatencyMS, prefix, "latency", &failures)
+	}
+	terminal := prediction.Steps[len(prediction.Steps)-1]
+	terminal.Derivative = total.Derivative
+	terminal.Tokens = total.Tokens
+	terminal.ChargedAmount = ""
+	terminal.ChargedCurrency = ""
+	terminal.ChargedNanoUSD = total.ChargedNanoUSD
+	terminal.EstimatedNanoUSD = total.EstimatedNanoUSD
+	terminal.Attempts = total.Attempts
+	terminal.LatencyMS = total.LatencyMS
+	return terminal, failures
+}
+
+func hasScalarInference(prediction Prediction) bool {
+	return prediction.Role != "" || prediction.Rung != "" || prediction.RequestedProvider != "" || prediction.RequestedModel != "" ||
+		prediction.ResolvedProvider != "" || prediction.ResolvedModel != "" || prediction.UpstreamProvider != "" || len(prediction.Modalities) > 0 || prediction.Attempts != 0 ||
+		prediction.Derivative != (Derivative{}) || prediction.Tokens != (TokenUsage{}) ||
+		prediction.ChargedAmount != "" || prediction.ChargedCurrency != "" || prediction.ChargedNanoUSD != 0 || prediction.EstimatedNanoUSD != 0 ||
+		prediction.GenerationID != "" || prediction.LatencyMS != 0
+}
+
+func saturatingCost(a, b int64) int64 {
+	if b > 0 && a > math.MaxInt64-b {
+		return math.MaxInt64
+	}
+	return a + b
+}
+
+func inferenceStepFromPrediction(prediction Prediction) InferenceStep {
+	return InferenceStep{
+		Role: prediction.Role, Rung: prediction.Rung, RequestedProvider: prediction.RequestedProvider,
+		RequestedModel: prediction.RequestedModel, ResolvedModel: prediction.ResolvedModel,
+		ResolvedProvider: prediction.ResolvedProvider, UpstreamProvider: prediction.UpstreamProvider, Modalities: prediction.Modalities,
+		Derivative: prediction.Derivative, Tokens: prediction.Tokens, ChargedAmount: prediction.ChargedAmount,
+		ChargedCurrency: prediction.ChargedCurrency, ChargedNanoUSD: prediction.ChargedNanoUSD,
+		EstimatedNanoUSD: prediction.EstimatedNanoUSD, Attempts: prediction.Attempts,
+		GenerationID: prediction.GenerationID, LatencyMS: prediction.LatencyMS,
+		OperationalFailure: prediction.OperationalFailure,
+	}
+}
+
+func predictionFromInferenceStep(step InferenceStep) Prediction {
+	return Prediction{
+		Role: step.Role, Rung: step.Rung, RequestedProvider: step.RequestedProvider,
+		RequestedModel: step.RequestedModel, ResolvedModel: step.ResolvedModel,
+		ResolvedProvider: step.ResolvedProvider, UpstreamProvider: step.UpstreamProvider, Modalities: step.Modalities,
+		Derivative: step.Derivative, Tokens: step.Tokens, ChargedAmount: step.ChargedAmount,
+		ChargedCurrency: step.ChargedCurrency, ChargedNanoUSD: step.ChargedNanoUSD,
+		EstimatedNanoUSD: step.EstimatedNanoUSD, Attempts: step.Attempts,
+		GenerationID: step.GenerationID, LatencyMS: step.LatencyMS,
+	}
+}
+
+func addAccountingValue(dst *int64, value int64, prefix, label string, failures *[]string) {
+	if value > 0 && *dst > math.MaxInt64-value {
+		*failures = append(*failures, prefix+": "+label+" total overflow")
+		*dst = math.MaxInt64
+		return
+	}
+	*dst += value
 }
 
 func validateAccounting(prediction Prediction) error {
