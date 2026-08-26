@@ -3481,14 +3481,24 @@ fail closed. Reports carry the exact manifest digest and one-sided Wilson bounds
 rejection, automation, review, and slice accuracy, including an upper bound for review rate. Each
 certification slice gate predeclares both a point threshold and a confidence lower bound.
 
-Source inventory is a separate, non-certifying preflight. An Archive inventory uses one identified
-serial client, cached raw search/item responses, a minimum inter-request delay, and explicit request,
-item, per-item byte, and total predicted-byte ceilings. Search-level and item-level licences must
-agree and NC/ND candidates are excluded, but an allowlisted uploader field remains only a candidate:
-independent rights adjudication is still required. The inventory freezes retrieval times, response
-hashes, selected representation identity/checksums, and predicted bytes before any media download or
-model call. A partial bounded inventory reports exactly what it saw; it never widens the ceiling or
-treats a truncated search response as complete.
+Source inventory is a separate, non-certifying preflight. Its only live contract is strict
+source-neutral schema v2: one snapshot may combine multiple captures, and every case carries the
+authority, authority-qualified stable case ID, capture ID, role hints, frozen metadata evidence, exact selected
+representation, and the adapter's explicit media-host allowlist. Capture-level request,
+response-byte, predicted-media-byte, and wall-clock ceilings remain visible beside actual usage.
+The combiner strictly decodes every capture artifact, sorts captures and cases by their stable IDs,
+and rejects duplicate capture or case identity before producing the single rights-review input.
+The former schema v1 put `source` and `collection` at the document root, so it could represent only
+one Archive.org collection; no certified artifact consumes it, and it is rejected rather than
+adapted or preserved.
+
+An Archive capture uses one identified serial client, cached raw search/item responses, a minimum
+inter-request delay, and explicit request, item, per-item byte, and total predicted-byte ceilings.
+Search-level and item-level licences must agree and NC/ND candidates are excluded, but an allowlisted
+uploader field remains only a candidate: independent rights adjudication is still required. Every
+adapter freezes retrieval times, response hashes, selected representation identity/checksums, and
+predicted bytes before any media download or model call. A partial bounded capture reports exactly
+what it saw; it never widens the ceiling or treats a truncated search response as complete.
 
 Before a new reusable source adapter is built, a source-neutral **rights-yield pilot** locks exactly
 ten metadata-only candidates from each qualified lane: Prelinger, Library of Congress, NASA, CDC,
@@ -3521,11 +3531,14 @@ promos, bumpers, station IDs, trailers, and PSAs. Rights clarity, API convenienc
 scale do not by themselves make a source representative.
 
 Media acquisition consumes a separate rights-review ledger; discovery output is never download
-authority. Every `approved` row binds the source metadata hash to reviewer, review time, rationale,
-redistribution decision, attribution, and restrictions; `held` rows remain inert. The downloader
-preflights aggregate item and byte ceilings before its first request, stays serial and identified,
-allows redirects only within the source authority, bounds each body by the inventoried size, verifies
-source checksums when present, and adds SHA-256. Media and its download ledger remain external to Git.
+authority. Every `approved` row binds the inventory digest, authority-qualified case ID, source
+metadata hash, reviewer, review time, rationale, redistribution decision, attribution, and
+restrictions; `held` rows remain inert. The downloader preflights aggregate item and byte ceilings
+before its first request, stays serial and identified, checks the initial URL and every redirect
+against both the case's frozen allowlist and the built-in policy for that authority, bounds each body
+by the inventoried size, verifies source checksums when present, and adds SHA-256. Query strings may
+remain when they are part of the exact frozen representation URL; credentials and fragments never
+may. Media and its download ledger remain external to Git.
 An incomplete, stale, oversized, or checksum-mismatched plan fails without producing a completed
 ledger and cannot flow into blind semantic review.
 

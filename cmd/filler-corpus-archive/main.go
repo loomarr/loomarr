@@ -144,8 +144,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
-	if *collection == "" || *outputPath == "" || *cacheDir == "" || *userAgent == "" || *snapshotAtText == "" || *maxRequests < 2 || *maxRequests > 1000 || *maxItems <= 0 || *maxItemBytes <= 0 || *maxTotalBytes < *maxItemBytes || *delay < 500*time.Millisecond || *maxWallTime <= 0 || (*pilotOutputPath != "" && *roleHint == "") {
-		_, _ = fmt.Fprintln(stderr, "filler-corpus-archive: collection, output, cache, identified User-Agent, snapshot time, >=2 requests, positive item/total byte ceilings, and >=500ms delay are required")
+	if *collection == "" || *outputPath == "" || *cacheDir == "" || *userAgent == "" || *snapshotAtText == "" || *roleHint == "" || *maxRequests < 2 || *maxRequests > 1000 || *maxItems <= 0 || *maxItemBytes <= 0 || *maxTotalBytes < *maxItemBytes || *delay < 500*time.Millisecond || *maxWallTime <= 0 {
+		_, _ = fmt.Fprintln(stderr, "filler-corpus-archive: collection, output, role hint, cache, identified User-Agent, snapshot time, >=2 requests, positive item/total byte ceilings, and >=500ms delay are required")
 		return 2
 	}
 	if !safeIdentifier.MatchString(*collection) || strings.Contains(*collection, "..") {
@@ -170,7 +170,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-archive:", err)
 		return 1
 	}
-	if err := writeJSON(opts.outputPath, result); err != nil {
+	fullInventory := sourceNeutralInventory(result, opts.roleHint)
+	if failures := fillercorpus.ValidateInventory(fullInventory); len(failures) != 0 {
+		_, _ = fmt.Fprintln(stderr, "filler-corpus-archive: generated inventory:", strings.Join(failures, "; "))
+		return 1
+	}
+	if err := writeJSON(opts.outputPath, fullInventory); err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-archive: write inventory:", err)
 		return 1
 	}
@@ -303,6 +308,41 @@ func prelingerPilotLane(inv inventory, roleHint string) fillercorpus.Lane {
 		})
 	}
 	return lane
+}
+
+func sourceNeutralInventory(inv inventory, roleHint string) fillercorpus.Inventory {
+	authority := "archive.org/prelinger"
+	captureID := fillercorpus.NewCaptureID(authority, inv.Collection, roleHint)
+	result := fillercorpus.Inventory{
+		SchemaVersion: fillercorpus.InventorySchemaVersion,
+		SnapshotAt:    inv.SnapshotAt,
+		Captures: []fillercorpus.Capture{{
+			CaptureID: captureID, Authority: authority, Collection: inv.Collection, RoleHint: roleHint, SnapshotAt: inv.SnapshotAt,
+			MaxRequests: inv.MaxRequests, RequestsUsed: inv.RequestsUsed,
+			MaxResponseBytes: inv.MaxResponseBytes, ResponseBytes: inv.ResponseBytes,
+			MaxPredictedMediaBytes: inv.MaxTotalBytes, PredictedMediaBytes: inv.SelectedBytes,
+			MaxWallTimeMS: inv.MaxWallTimeMS, WallTimeMS: inv.WallTimeMS,
+			SearchSHA256: inv.SearchSHA256, SearchRetrievedAt: inv.SearchRetrievedAt, CacheHits: inv.CacheHits,
+		}},
+	}
+	for _, item := range inv.Cases {
+		assertions := append([]string(nil), item.Rights...)
+		assertions = append(assertions, item.PossibleCopyrightStatus...)
+		assertions = append(assertions, "Archive license assertion: "+item.LicenseURL)
+		result.Cases = append(result.Cases, fillercorpus.InventoryCase{
+			CaseID: fillercorpus.CaseID(authority, item.Identifier), CaptureID: captureID, Authority: authority, ItemID: item.Identifier,
+			Title: item.Title, RoleHints: []string{roleHint}, Collection: item.Collection, Creator: item.Creator, Date: item.Date,
+			LicenseURL: strings.Replace(item.LicenseURL, "http://", "https://", 1), RightsAssertions: assertions,
+			PossibleCopyrightStatus: item.PossibleCopyrightStatus, ItemURL: item.ItemURL, MetadataURL: item.MetadataURL,
+			MetadataCache: item.MetadataCache, MetadataRetrievedAt: item.MetadataRetrievedAt, MetadataSHA256: item.MetadataSHA256,
+			AllowedMediaHosts: []string{"archive.org", ".archive.org"},
+			Representation: fillercorpus.InventoryRepresentation{
+				Name: item.File.Name, URL: item.File.URL, MIMEType: "video/mp4", Origin: item.File.Source,
+				Bytes: item.File.Bytes, SHA1: item.File.SHA1, MD5: item.File.MD5,
+			},
+		})
+	}
+	return result
 }
 
 func archiveSearchURL(baseURL, collection, query string) (string, error) {

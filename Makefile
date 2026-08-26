@@ -263,7 +263,7 @@ go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must
 test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
 	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ ./internal/api/ -v
 
-.PHONY: eval-contract eval eval-cert eval-matrix filler-bakeoff-openrouter filler-corpus-archive filler-corpus-cdc filler-corpus-commons filler-corpus-download filler-corpus-lock filler-corpus-loc filler-corpus-nasa filler-corpus-pilot filler-corpus-pilot-rights-lock filler-corpus-pilot-rights-review filler-eval-contract filler-eval-cert filler-openrouter-snapshot
+.PHONY: eval-contract eval eval-cert eval-matrix filler-bakeoff-openrouter filler-corpus-archive filler-corpus-cdc filler-corpus-commons filler-corpus-download filler-corpus-inventory filler-corpus-lock filler-corpus-loc filler-corpus-nasa filler-corpus-pilot filler-corpus-pilot-rights-lock filler-corpus-pilot-rights-review filler-eval-contract filler-eval-cert filler-openrouter-snapshot
 eval-contract: ## hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB
 	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/
 
@@ -301,7 +301,7 @@ eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (m
 	  exit "$$status"
 
 filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
-	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/
+	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/
 
 filler-corpus-commons: ## freeze the bounded Commons filler rights-yield pilot lane
 	@eval "$$(./scripts/dev-env.sh export)"; \
@@ -424,6 +424,14 @@ filler-corpus-archive: ## freeze a bounded rights-filtered Archive.org corpus in
 	    --max-total-bytes "$$LOOMARR_FILLER_CORPUS_ARCHIVE_MAX_TOTAL_BYTES" \
 	    --delay "$${LOOMARR_FILLER_CORPUS_ARCHIVE_DELAY:-1s}" \
 	    --max-wall-time "$${LOOMARR_FILLER_CORPUS_ARCHIVE_MAX_WALL_TIME:-1m}"
+
+filler-corpus-inventory: ## combine strict source inventories for mixed-authority rights review
+	@test -n "$$LOOMARR_FILLER_CORPUS_INVENTORIES" || { echo "filler-corpus-inventory: LOOMARR_FILLER_CORPUS_INVENTORIES is required" >&2; exit 2; }; \
+	  eval "$$(./scripts/dev-env.sh export)"; \
+	  set --; \
+	  for path in $$LOOMARR_FILLER_CORPUS_INVENTORIES; do set -- "$$@" --inventory "$$path"; done; \
+	  $(GO) run ./cmd/filler-corpus-inventory "$$@" \
+	    --out "$${LOOMARR_FILLER_CORPUS_INVENTORY:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-inventory.json}"
 
 filler-corpus-download: ## download only rights-approved corpus media under hard ceilings
 	@eval "$$(./scripts/dev-env.sh export)"; \
