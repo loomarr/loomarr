@@ -4,7 +4,7 @@ package fillereval
 
 import "time"
 
-const SchemaVersion = 3
+const SchemaVersion = 4
 
 type CorpusKind string
 
@@ -156,6 +156,7 @@ type Prediction struct {
 	RequestedModel     string              `json:"requestedModel"`
 	ResolvedModel      string              `json:"resolvedModel"`
 	ResolvedProvider   string              `json:"resolvedProvider"`
+	UpstreamProvider   string              `json:"upstreamProvider,omitempty"`
 	Modalities         []string            `json:"modalities"`
 	Derivative         Derivative          `json:"derivative"`
 	Tokens             TokenUsage          `json:"tokens"`
@@ -167,6 +168,34 @@ type Prediction struct {
 	GenerationID       string              `json:"generationId,omitempty"`
 	LatencyMS          int64               `json:"latencyMs,omitempty"`
 	OperationalFailure string              `json:"operationalFailure,omitempty"`
+	// Steps preserves every inference call in a cascade. Older captured ledgers
+	// may omit it and use the scalar attribution fields above.
+	Steps []InferenceStep `json:"steps,omitempty"`
+}
+
+// InferenceStep is the immutable accounting envelope for one attempted rung.
+// A cascade must not collapse several charged calls into the terminal route.
+type InferenceStep struct {
+	EvaluationID       string     `json:"evaluationId"`
+	Role               string     `json:"role"`
+	Rung               string     `json:"rung"`
+	RequestedProvider  string     `json:"requestedProvider"`
+	RequestedModel     string     `json:"requestedModel"`
+	ResolvedModel      string     `json:"resolvedModel"`
+	ResolvedProvider   string     `json:"resolvedProvider"`
+	UpstreamProvider   string     `json:"upstreamProvider,omitempty"`
+	Modalities         []string   `json:"modalities"`
+	Derivative         Derivative `json:"derivative"`
+	Tokens             TokenUsage `json:"tokens"`
+	ChargedAmount      string     `json:"chargedAmount,omitempty"`
+	ChargedCurrency    string     `json:"chargedCurrency,omitempty"`
+	ChargedNanoUSD     int64      `json:"chargedNanoUsd,omitempty"`
+	ReservedNanoUSD    int64      `json:"reservedNanoUsd,omitempty"`
+	EstimatedNanoUSD   int64      `json:"estimatedNanoUsd,omitempty"`
+	Attempts           int        `json:"attempts"`
+	GenerationID       string     `json:"generationId,omitempty"`
+	LatencyMS          int64      `json:"latencyMs,omitempty"`
+	OperationalFailure string     `json:"operationalFailure,omitempty"`
 }
 
 type Derivative struct {
@@ -273,22 +302,24 @@ type RungScore struct {
 }
 
 type CaseResult struct {
-	CaseID            string     `json:"caseId"`
-	Slice             []string   `json:"slices"`
-	Expected          Truth      `json:"expected"`
-	Actual            Verdict    `json:"actual"`
-	Correct           bool       `json:"correct"`
-	Failure           string     `json:"failure,omitempty"`
-	Role              string     `json:"role,omitempty"`
-	Rung              string     `json:"rung,omitempty"`
-	RequestedProvider string     `json:"requestedProvider,omitempty"`
-	RequestedModel    string     `json:"requestedModel,omitempty"`
-	ResolvedProvider  string     `json:"resolvedProvider,omitempty"`
-	ResolvedModel     string     `json:"resolvedModel,omitempty"`
-	Modalities        []string   `json:"modalities,omitempty"`
-	Derivative        Derivative `json:"derivative,omitempty"`
-	GenerationID      string     `json:"generationId,omitempty"`
-	Attempts          int        `json:"attempts,omitempty"`
-	ChargedNanoUSD    int64      `json:"chargedNanoUsd,omitempty"`
-	LatencyMS         int64      `json:"latencyMs,omitempty"`
+	CaseID            string          `json:"caseId"`
+	Slice             []string        `json:"slices"`
+	Expected          Truth           `json:"expected"`
+	Actual            Verdict         `json:"actual"`
+	Correct           bool            `json:"correct"`
+	Failure           string          `json:"failure,omitempty"`
+	Role              string          `json:"role,omitempty"`
+	Rung              string          `json:"rung,omitempty"`
+	RequestedProvider string          `json:"requestedProvider,omitempty"`
+	RequestedModel    string          `json:"requestedModel,omitempty"`
+	ResolvedProvider  string          `json:"resolvedProvider,omitempty"`
+	ResolvedModel     string          `json:"resolvedModel,omitempty"`
+	UpstreamProvider  string          `json:"upstreamProvider,omitempty"`
+	Modalities        []string        `json:"modalities,omitempty"`
+	Derivative        Derivative      `json:"derivative,omitempty"`
+	GenerationID      string          `json:"generationId,omitempty"`
+	Attempts          int             `json:"attempts,omitempty"`
+	ChargedNanoUSD    int64           `json:"chargedNanoUsd,omitempty"`
+	LatencyMS         int64           `json:"latencyMs,omitempty"`
+	Steps             []InferenceStep `json:"steps,omitempty"`
 }

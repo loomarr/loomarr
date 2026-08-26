@@ -3,6 +3,7 @@ package fillereval
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"reflect"
 	"strings"
@@ -64,6 +65,24 @@ func TestScoreIsDeterministicForCapturedInputs(t *testing.T) {
 	}
 	if first.Cases[0].RequestedModel != "fixture" || first.Cases[0].ResolvedProvider != "fixture" || len(first.Cases[0].Modalities) != 1 {
 		t.Fatalf("case attribution = %+v", first.Cases[0])
+	}
+}
+
+func TestScoreRejectsSchemaV4ScalarInference(t *testing.T) {
+	manifest, predictions := passingCorpus(500)
+	predictions[0].Steps = nil
+	report := Score(manifest, predictions, completeRun())
+	if report.Certified || !containsFailure(report.Failures, "schema v4 inference requires per-attempt steps") {
+		t.Fatalf("scalar v4 inference certified: %v", report.Failures)
+	}
+}
+
+func TestScoreRejectsUnsupportedSchema(t *testing.T) {
+	manifest, predictions := passingCorpus(500)
+	manifest.SchemaVersion = 3
+	report := Score(manifest, predictions, completeRun())
+	if report.Certified || !containsFailure(report.Failures, "manifest schema 3, want 4") {
+		t.Fatalf("unsupported schema accepted: %v", report.Failures)
 	}
 }
 
@@ -168,6 +187,10 @@ func TestScoreUsesExactNanodollarAccountingByRungAndSlice(t *testing.T) {
 	predictions[0].ChargedCurrency = "USD"
 	predictions[0].ChargedNanoUSD = 1230
 	predictions[0].Rung = "frames"
+	predictions[0].Steps[0].ChargedAmount = "0.0000012300"
+	predictions[0].Steps[0].ChargedCurrency = "USD"
+	predictions[0].Steps[0].ChargedNanoUSD = 1230
+	predictions[0].Steps[0].Rung = "frames"
 	report := Score(manifest, predictions, completeRun())
 	if !report.Certified {
 		t.Fatalf("exact accounting failed certification: %v", report.Failures)
@@ -179,8 +202,45 @@ func TestScoreUsesExactNanodollarAccountingByRungAndSlice(t *testing.T) {
 		t.Fatalf("rung metrics = %+v", report.Metrics.Rungs)
 	}
 	predictions[0].ChargedNanoUSD = 1229
+	predictions[0].Steps[0].ChargedNanoUSD = 1229
 	if report := Score(manifest, predictions, completeRun()); report.Certified || !containsFailure(report.Failures, "projects to 1230") {
 		t.Fatalf("mismatched cost projection certified: %v", report.Failures)
+	}
+}
+
+func TestScorePreservesAndAccountsEveryCascadeStep(t *testing.T) {
+	manifest, predictions := passingCorpus(500)
+	predictions[0] = Prediction{
+		CaseID: predictions[0].CaseID, Verdict: VerdictAdmit, ContentRole: "commercial",
+		Steps: []InferenceStep{
+			{EvaluationID: "text-1", Role: "filler_text", Rung: "text", RequestedProvider: "fixture", RequestedModel: "cheap", ResolvedProvider: "fixture", ResolvedModel: "cheap", Modalities: []string{"text"}, Attempts: 1, ChargedAmount: "0.000001", ChargedCurrency: "USD", ChargedNanoUSD: 1000, LatencyMS: 10},
+			{EvaluationID: "frames-1", Role: "filler_frames", Rung: "frames", RequestedProvider: "fixture", RequestedModel: "vision", ResolvedProvider: "fixture", ResolvedModel: "vision", Modalities: []string{"text", "image"}, Attempts: 1, ChargedAmount: "0.000002", ChargedCurrency: "USD", ChargedNanoUSD: 2000, LatencyMS: 20},
+		},
+	}
+	report := Score(manifest, predictions, completeRun())
+	if !report.Certified {
+		t.Fatalf("cascade failed certification: %v", report.Failures)
+	}
+	if report.Metrics.TotalChargedNanoUSD != 3000 || report.Cases[0].ChargedNanoUSD != 3000 || report.Cases[0].Attempts != 2 || report.Cases[0].LatencyMS != 30 {
+		t.Fatalf("cascade totals = metrics %+v case %+v", report.Metrics, report.Cases[0])
+	}
+	if len(report.Cases[0].Steps) != 2 || len(report.Metrics.Rungs) != 2 || report.Metrics.Rungs[0].Rung != "frames" || report.Metrics.Rungs[0].ChargedNanoUSD != 2000 || report.Metrics.Rungs[1].ChargedNanoUSD != 1000 {
+		t.Fatalf("cascade ledger = %+v, rungs = %+v", report.Cases[0].Steps, report.Metrics.Rungs)
+	}
+}
+
+func TestScoreFailsClosedWhenCascadeAccountingOverflows(t *testing.T) {
+	manifest, predictions := passingCorpus(500)
+	predictions[0] = Prediction{
+		CaseID: predictions[0].CaseID, Verdict: VerdictAdmit, ContentRole: "commercial",
+		Steps: []InferenceStep{
+			{EvaluationID: "max", Role: "filler_text", Rung: "text", RequestedProvider: "fixture", RequestedModel: "fixture", ResolvedProvider: "fixture", ResolvedModel: "fixture", Modalities: []string{"text"}, Attempts: 1, ChargedAmount: "9223372036.854775807", ChargedCurrency: "USD", ChargedNanoUSD: math.MaxInt64},
+			{EvaluationID: "one", Role: "filler_frames", Rung: "frames", RequestedProvider: "fixture", RequestedModel: "fixture", ResolvedProvider: "fixture", ResolvedModel: "fixture", Modalities: []string{"image"}, Attempts: 1, ChargedAmount: "0.000000001", ChargedCurrency: "USD", ChargedNanoUSD: 1},
+		},
+	}
+	report := Score(manifest, predictions, completeRun())
+	if report.Certified || !containsFailure(report.Failures, "charged cost total overflow") {
+		t.Fatalf("overflow failures = %v", report.Failures)
 	}
 }
 
@@ -237,10 +297,11 @@ func passingCorpus(total int) (Manifest, []Prediction) {
 			{ReviewerID: "reviewer-b", BatchID: "blind-b", ReviewedAt: lockedAt, Independent: true, SubmissionSHA256: labelHash},
 		}
 		manifest.Cases = append(manifest.Cases, c)
+		step := InferenceStep{EvaluationID: "eval-" + id, Role: "filler_text", Rung: "text", RequestedProvider: "fixture", RequestedModel: "fixture", ResolvedModel: "fixture", ResolvedProvider: "fixture", Modalities: []string{"text"}, Attempts: 1, LatencyMS: int64(i)}
 		predictions = append(predictions, Prediction{
 			CaseID: id, Verdict: verdict, RejectClass: class, ContentRole: "commercial", ReviewQuestion: question,
 			Role: "filler_text", Rung: "text", RequestedProvider: "fixture", RequestedModel: "fixture",
-			ResolvedModel: "fixture", ResolvedProvider: "fixture", Modalities: []string{"text"}, Attempts: 1, LatencyMS: int64(i),
+			ResolvedModel: "fixture", ResolvedProvider: "fixture", Modalities: []string{"text"}, Attempts: 1, LatencyMS: int64(i), Steps: []InferenceStep{step},
 		})
 	}
 	for i := 0; i < total/4; i++ {

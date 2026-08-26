@@ -11,7 +11,8 @@ certification manifest references external, legally usable media by content hash
 licence, similarity cluster, split, labels, evidence, and slices. Non-redistributable media never
 enters git.
 
-Schema v3 distinguishes development seeds from certification manifests. A certification case also
+Schema v4 distinguishes development seeds from certification manifests and preserves every
+inference step in a multi-rung prediction. A certification case also
 locks its evidence packet and item metadata, records item-level rights adjudication and the bounded
 source segment, and preserves two independent blind-review submission hashes. Matching submissions
 become final directly; divergent submissions require a reasoned third-party adjudication. The report
@@ -65,11 +66,15 @@ non-certifying report and nonzero exit.
 
 Predictions record the inference role/rung, requested and resolved route, derivative bounds, detailed
 token categories, attempts, generation id, and the provider's exact charged decimal alongside an
-integer nanodollar projection. Reports compare total cost, cost per correct automation, cost per
+integer nanodollar projection. A failed call with missing or malformed settlement keeps those charge
+fields missing and records its still-consumed reservation separately. Reports compare total cost, cost per correct automation, cost per
 admit, and per-slice/per-rung cost; they never sum provider charges with binary floating point. The
 scorer never reads its wall clock, and reports one-sided confidence bounds for every selective-risk,
 coverage, review, and slice measure used in certification.
 
-Provider execution belongs to the later bounded bakeoff layer. That runner must require explicit
-request, spend, and concurrency ceilings and write this package's prediction shape. The replay
-command itself never contacts OpenRouter or starts local inference.
+Provider execution belongs to `internal/fillerbakeoff`. That runner requires explicit request,
+spend, and concurrency ceilings, accepts only locked certification manifests and label-blind
+content-addressed packets, re-hashes external derivatives before spend, escalates through typed
+text/frame/video/premium routes on named evaluator reasons, and writes this package's prediction shape. Multi-rung predictions retain
+one immutable inference step per call so per-rung cost and attempts are not collapsed into the
+terminal route. The replay command itself never contacts OpenRouter or starts local inference.

@@ -529,7 +529,7 @@ func conflictReason(claim Claim) ReasonCode {
 	case ClaimMediaUsability:
 		return ReasonConflictMediaUsability
 	case ClaimRecordingDate:
-		return ReasonConflictRecordingDate
+		return ReasonTemporalAmbiguity
 	case ClaimBrand:
 		return ReasonConflictBrand
 	case ClaimProduct:
