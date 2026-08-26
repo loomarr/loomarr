@@ -294,7 +294,9 @@ batched MediaInfo request then froze ten deterministic candidates. The run used 
 162,981 response bytes, 448,607,902 predicted media bytes, and 1.0 second. It intentionally retains
 YouTube/Vimeo provenance, trademark restrictions, `License review needed` categories, and missing
 P275/P6216/P7482/P170 claims as review evidence rather than treating category membership or a
-licence string as approval.
+licence string as approval. Seven rows also freeze the asserted HTTPS `LicenseUrl` structurally;
+public-domain rows without that field retain the exact public-domain and credit assertions instead
+of inventing a URL.
 
 ## First bounded inventory and go/no-go review
 

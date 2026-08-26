@@ -263,7 +263,7 @@ go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must
 test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
 	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ ./internal/api/ -v
 
-.PHONY: eval-contract eval eval-cert eval-matrix filler-corpus-archive filler-corpus-cdc filler-corpus-commons filler-corpus-download filler-corpus-lock filler-corpus-loc filler-corpus-nasa filler-corpus-pilot filler-eval-contract filler-eval-cert
+.PHONY: eval-contract eval eval-cert eval-matrix filler-corpus-archive filler-corpus-cdc filler-corpus-commons filler-corpus-download filler-corpus-lock filler-corpus-loc filler-corpus-nasa filler-corpus-pilot filler-corpus-pilot-rights-lock filler-corpus-pilot-rights-review filler-eval-contract filler-eval-cert
 eval-contract: ## hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB
 	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/
 
@@ -301,7 +301,7 @@ eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (m
 	  exit "$$status"
 
 filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
-	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./cmd/filler-cert/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/
+	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./cmd/filler-cert/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/
 
 filler-corpus-commons: ## freeze the bounded Commons filler rights-yield pilot lane
 	@eval "$$(./scripts/dev-env.sh export)"; \
@@ -384,6 +384,27 @@ filler-corpus-pilot: ## lock the qualified metadata-only filler rights-yield pil
 	    --snapshot-at "$$LOOMARR_FILLER_CORPUS_PILOT_SNAPSHOT_AT" \
 	    --locked-at "$$LOOMARR_FILLER_CORPUS_PILOT_LOCKED_AT" \
 	    --out "$${LOOMARR_FILLER_CORPUS_PILOT_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-pilot.json}"
+
+filler-corpus-pilot-rights-review: ## prepare the inert five-lane pilot review packet
+	@test -n "$$LOOMARR_FILLER_CORPUS_PILOT_REVIEW_PREPARED_AT" || { echo "filler-corpus-pilot-rights-review: LOOMARR_FILLER_CORPUS_PILOT_REVIEW_PREPARED_AT is required" >&2; exit 2; }; \
+	  eval "$$(./scripts/dev-env.sh export)"; \
+	  $(GO) run ./cmd/filler-corpus-pilot-rights-review \
+	    --pilot "$${LOOMARR_FILLER_CORPUS_PILOT:-internal/fillercorpus/corpus/pilot/locked.json}" \
+	    --out "$${LOOMARR_FILLER_CORPUS_PILOT_REVIEW_WORKSHEET:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-pilot-rights-review.json}" \
+	    --csv-out "$${LOOMARR_FILLER_CORPUS_PILOT_REVIEW_CSV:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-pilot-rights-review.csv}" \
+	    --prepared-at "$$LOOMARR_FILLER_CORPUS_PILOT_REVIEW_PREPARED_AT"
+
+filler-corpus-pilot-rights-lock: ## lock completed pilot review into a non-authorizing yield report
+	@test -n "$$LOOMARR_FILLER_CORPUS_PILOT_REVIEW_WORKSHEET" || { echo "filler-corpus-pilot-rights-lock: LOOMARR_FILLER_CORPUS_PILOT_REVIEW_WORKSHEET is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_PILOT_REVIEW_CSV" || { echo "filler-corpus-pilot-rights-lock: LOOMARR_FILLER_CORPUS_PILOT_REVIEW_CSV is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_PILOT_REVIEW_LOCKED_AT" || { echo "filler-corpus-pilot-rights-lock: LOOMARR_FILLER_CORPUS_PILOT_REVIEW_LOCKED_AT is required" >&2; exit 2; }; \
+	  eval "$$(./scripts/dev-env.sh export)"; \
+	  $(GO) run ./cmd/filler-corpus-pilot-rights-lock \
+	    --pilot "$${LOOMARR_FILLER_CORPUS_PILOT:-internal/fillercorpus/corpus/pilot/locked.json}" \
+	    --worksheet "$$LOOMARR_FILLER_CORPUS_PILOT_REVIEW_WORKSHEET" \
+	    --completed-csv "$$LOOMARR_FILLER_CORPUS_PILOT_REVIEW_CSV" \
+	    --out "$${LOOMARR_FILLER_CORPUS_PILOT_REVIEW_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-pilot-rights-result.json}" \
+	    --locked-at "$$LOOMARR_FILLER_CORPUS_PILOT_REVIEW_LOCKED_AT"
 
 filler-corpus-archive: ## freeze a bounded rights-filtered Archive.org corpus inventory
 	@test -n "$$LOOMARR_FILLER_CORPUS_ARCHIVE_COLLECTION" || { echo "filler-corpus-archive: LOOMARR_FILLER_CORPUS_ARCHIVE_COLLECTION is required" >&2; exit 2; }; \

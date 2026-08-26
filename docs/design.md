@@ -3492,6 +3492,16 @@ least five product-relevant items without lowering the common rights threshold. 
 format exists: no completed pilot predates this contract, so the unpopulated six-lane shape is
 removed rather than decoded or migrated.
 
+Pilot qualification uses a separate deterministic worksheet bound to the exact locked-pilot
+SHA-256. It presents all fifty frozen rows and neutralizes spreadsheet formula prefixes while
+leaving reviewer identity, review time, independence attestation, rights decision, product
+relevance, rationale, redistribution assessment, credit, and restrictions blank. Locking requires
+one named reviewer, an explicit independence attestation, complete decisions for every row, and no
+immutable-cell changes. A lane qualifies only when at least five of its ten rows are both rights
+approved and product relevant. The resulting yield report says `downloadAuthority: false` at both
+report and decision level; it cannot be supplied to the media downloader and never substitutes for
+the corpus acquisition ledger.
+
 A new corpus-source adapter requires a product-relevance review before implementation. The review
 must show useful coverage of the filler roles the certification corpus needs, such as commercials,
 promos, bumpers, station IDs, trailers, and PSAs. Rights clarity, API convenience, and inventory

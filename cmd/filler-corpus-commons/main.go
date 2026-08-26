@@ -231,11 +231,27 @@ func capture(ctx context.Context, opts options) (fillercorpus.Lane, error) {
 		}
 		info := item.page.ImageInfo[0]
 		assertions := rightsAssertions(info.ExtMetadata, entity.Statements)
+		licenseURL, err := commonsLicenseURL(info.ExtMetadata)
+		if err != nil {
+			return fillercorpus.Lane{}, fmt.Errorf("MediaInfo licence for M%d: %w", item.page.PageID, err)
+		}
 		digestInput := append(append(append([]byte(nil), item.raw...), '\n'), entityRaw...)
-		lane.Cases = append(lane.Cases, fillercorpus.Candidate{ItemID: strconv.FormatInt(item.page.PageID, 10), Title: strings.TrimPrefix(item.page.Title, "File:"), RoleHints: []string{opts.roleHint}, DiscoveryPath: []string{"Category:" + opts.category}, ItemURL: info.DescriptionURL, MetadataURL: entityURL, MetadataRetrievedAt: retrievedAt, MetadataSHA256: sha256Hex(digestInput), RightsAssertions: assertions, Representation: fillercorpus.Representation{Name: path.Base(mustURL(info.URL).Path), URL: info.URL, MIMEType: info.MIME, Bytes: info.Size, SHA1: info.SHA1}})
+		lane.Cases = append(lane.Cases, fillercorpus.Candidate{ItemID: strconv.FormatInt(item.page.PageID, 10), Title: strings.TrimPrefix(item.page.Title, "File:"), RoleHints: []string{opts.roleHint}, DiscoveryPath: []string{"Category:" + opts.category}, ItemURL: info.DescriptionURL, MetadataURL: entityURL, MetadataRetrievedAt: retrievedAt, MetadataSHA256: sha256Hex(digestInput), RightsAssertions: assertions, LicenseURL: licenseURL, Representation: fillercorpus.Representation{Name: path.Base(mustURL(info.URL).Path), URL: info.URL, MIMEType: info.MIME, Bytes: info.Size, SHA1: info.SHA1}})
 	}
 	lane.RequestsUsed, lane.ResponseBytes, lane.WallTimeMS = client.RequestsUsed(), client.ResponseBytes(), time.Since(started).Milliseconds()
 	return lane, nil
+}
+
+func commonsLicenseURL(metadata map[string]metadataValue) (string, error) {
+	value := strings.TrimSpace(metadata["LicenseUrl"].Value)
+	if value == "" {
+		return "", nil
+	}
+	u, err := url.Parse(value)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
+		return "", fmt.Errorf("LicenseUrl is not an absolute HTTPS URL")
+	}
+	return u.String(), nil
 }
 
 func categoryURL(base, category, continuation string) (string, error) {

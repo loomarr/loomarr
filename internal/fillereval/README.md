@@ -55,6 +55,13 @@ inventory and the inert JSON worksheet. Every row must be present once, immutabl
 match, decisions must be complete and time-bound, and approved BY/BY-SA media must carry attribution.
 Only a fully valid review is atomically converted to the JSONL consumed by the downloader.
 
+`make filler-corpus-pilot-rights-review` prepares the distinct five-lane source-yield review packet
+from the checked-in locked pilot. Its fifty rows bind every source assertion and representation to
+the pilot digest while leaving all reviewer fields blank. `make filler-corpus-pilot-rights-lock`
+requires one independently attested reviewer to complete every row, reports whether each lane has at
+least five rights-approved and product-relevant candidates, and emits `downloadAuthority: false`.
+This qualifies or rejects an adapter lane; it never authorizes acquisition.
+
 `make filler-eval-contract` verifies the scorer and seed. `make filler-eval-cert` scores a JSONL file
 named by `LOOMARR_FILLER_EVAL_PREDICTIONS`; the remaining `LOOMARR_FILLER_EVAL_*` variables identify
 the corpus, selected split, captured run time, every versioned input, and positive request, spend,
