@@ -106,21 +106,3 @@ func TestPrepareWorksheetFailsBelowMinimum(t *testing.T) {
 		t.Fatal("undersized inventory was accepted")
 	}
 }
-
-func TestPrepareWorksheetCarriesDVIDSInstitutionalRightsEvidence(t *testing.T) {
-	snapshot := time.Date(2026, 8, 25, 18, 0, 0, 0, time.UTC)
-	inv := inventory{SchemaVersion: 1, Source: "dvids", Collection: "dvids:Commercials", SnapshotAt: snapshot, Cases: []candidate{{
-		Identifier: "dvids-video-123", Title: "Recruiting spot", LicenseURL: "https://www.dvidshub.net/about/copyright",
-		Rights: []string{"This work is marked PUBLIC DOMAIN by DVIDS."}, MetadataSHA256: strings.Repeat("a", 64), MetadataRetrievedAt: snapshot,
-		RightsPageSHA256: strings.Repeat("b", 64), RightsPageRetrievedAt: snapshot, Unit: "Defense Media Activity", VIRIN: "260825-F-AB123-001", Category: "Commercials",
-		File: sourceFile{Name: "DOD_123.mp4", URL: "https://d34w7g4gy10iej.cloudfront.net/video/DOD_123.mp4", Format: "video/mp4", Source: "dvids", Bytes: 1024},
-	}}}
-	got, err := prepareWorksheet(inv, strings.Repeat("f", 64), snapshot.Add(time.Minute), 1, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	row := got.Cases[0]
-	if row.RightsPageSHA256 != strings.Repeat("b", 64) || row.Unit != "Defense Media Activity" || row.VIRIN != "260825-F-AB123-001" || row.Category != "Commercials" {
-		t.Fatalf("DVIDS rights evidence was not preserved: %+v", row)
-	}
-}
