@@ -4,12 +4,7 @@ import { useId, useState } from "react";
 import { Pressable, ScrollView, useWindowDimensions } from "react-native";
 
 import { Text } from "../primitives";
-import {
-  type Density,
-  semanticRadius,
-  semanticSpace,
-  semanticTargets,
-} from "../tokens";
+import { type Density, semanticSpace, semanticTargets } from "../tokens";
 
 type AdaptiveDirection = "column" | "row";
 
