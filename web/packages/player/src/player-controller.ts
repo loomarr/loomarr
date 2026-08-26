@@ -7,9 +7,18 @@ type TuneReason = "catalog" | "channel" | "number" | "previous" | "retry" | "ste
 
 type PlayerStatus = "empty" | "idle" | "tuning" | "playing" | "paused" | "failed";
 
+type LivePlaybackMode = "behind" | "live" | "paused";
+
 type PlayerChannel = Pick<ChannelDTO, "id" | "inAppPlayable" | "name" | "number">;
 
 type DevicePlaybackProfile = Omit<DeviceProfileBody, "$schema">;
+
+interface LivePlaybackState {
+  lagSeconds: number;
+  mode: LivePlaybackMode;
+  noticeRevision: number;
+  viewerTimeMs: number;
+}
 
 interface PlayerSource {
   expiresAt?: number;
@@ -27,6 +36,7 @@ interface PlayerSourcePort {
 
 type PlayerTransportEvent =
   | { attemptId: number; type: "first-frame" }
+  | { attemptId: number; state: LivePlaybackState; type: "live-state" }
   | { attemptId: number; type: "paused" }
   | { attemptId: number; type: "playing" }
   | { attemptId: number; error: string; type: "error" };
@@ -45,6 +55,7 @@ interface PlayerSnapshot {
   catalog: readonly PlayerChannel[];
   channel?: PlayerChannel;
   error?: string;
+  livePlayback?: LivePlaybackState;
   overlayVisible: boolean;
   previousChannelId?: string;
   recentChannelIds: readonly string[];
@@ -129,6 +140,12 @@ const createPlayerController = ({
       attemptId,
       catalog: snapshot.catalog,
       channel,
+      livePlayback: {
+        lagSeconds: 0,
+        mode: "live",
+        noticeRevision: 0,
+        viewerTimeMs: Date.now(),
+      },
       overlayVisible: true,
       previousChannelId: recentChannelIds[0],
       recentChannelIds,
@@ -162,6 +179,10 @@ const createPlayerController = ({
 
   const unsubscribeTransport = transport.subscribe((event) => {
     if (!currentAttempt(event.attemptId) || event.attemptId !== snapshot.attemptId) return;
+    if (event.type === "live-state") {
+      publish({ ...snapshot, livePlayback: event.state });
+      return;
+    }
     if (event.type === "error") {
       publish({ ...snapshot, error: event.error, status: "failed" });
       return;
@@ -271,6 +292,8 @@ const createPlayerController = ({
 
 export type {
   DevicePlaybackProfile,
+  LivePlaybackMode,
+  LivePlaybackState,
   PlayerChannel,
   PlayerController,
   PlayerControllerOptions,

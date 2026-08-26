@@ -9,6 +9,7 @@ const playing: PlayerSnapshot = {
   attemptId: 4,
   catalog: [],
   channel: { id: "seven", inAppPlayable: true, name: "Science Fiction", number: 7 },
+  livePlayback: { lagSeconds: 0, mode: "live", noticeRevision: 0, viewerTimeMs: 1_777_777_777_000 },
   overlayVisible: true,
   previousChannelId: "six",
   recentChannelIds: ["six"],
@@ -57,7 +58,34 @@ describe("WatchingSurface", () => {
     expect(output).toContain("Surf");
     expect(output).toContain("Channel +");
     expect(output).toContain("Pause");
+    expect(output).toContain("Live");
+    expect(output).not.toContain("Go Live");
+  });
+
+  it("shows delayed playback lag and offers the explicit live-edge action", () => {
+    const output = renderSurface({
+      ...playing,
+      livePlayback: {
+        lagSeconds: 83,
+        mode: "paused",
+        noticeRevision: 0,
+        viewerTimeMs: 1_777_777_777_000,
+      },
+      status: "paused",
+    });
+
+    expect(output).toContain("Paused · 1:23 behind");
     expect(output).toContain("Go Live");
+    expect(output).toContain("Play");
+  });
+
+  it("explains when an expired paused point safely returns to live", () => {
+    const output = renderSurface({
+      ...playing,
+      livePlayback: { ...playing.livePlayback!, noticeRevision: 1 },
+    });
+
+    expect(output).toContain("Paused position expired. Returned to live.");
   });
 
   it("renders tuning and recoverable transport failure without replacing Channel identity", () => {

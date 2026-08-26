@@ -59,7 +59,11 @@ const TvWatching = ({
   useEffect(() => {
     void guide.refresh(snapshot.channel?.id);
   }, [guide, snapshot.channel?.id]);
-  const schedule = watchingScheduleFromGuide(guideSnapshot.layout, snapshot.channel?.id, Date.now());
+  const schedule = watchingScheduleFromGuide(
+    guideSnapshot.layout,
+    snapshot.channel?.id,
+    snapshot.livePlayback?.viewerTimeMs ?? Date.now(),
+  );
   const numberEntry = useMemo(
     () => createTvNumberEntryController({ onCommit: (digits) => void controller.tuneNumber(digits) }),
     [controller],

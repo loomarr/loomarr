@@ -314,6 +314,16 @@ one still exists; the long-lived controller retains previous/recent history. Int
 release/recreation sequence and the no-invented-tune empty case. Real-device background/foreground
 first-frame and audio-silence evidence remains required.
 
+The shared player snapshot now also owns the live-time-shift state consumed by product UI instead of
+leaving it inside a platform player. Expo Video's periodic update supplies the displayed frame's
+programme-date-time and live offset; the native adapter publishes live, paused, or behind mode plus
+the increasing lag and expiry revision. Pause keeps the one player's exact position, resume remains
+behind while that position is inside the fifteen-minute server horizon, an expired position seeks
+and resumes at the safe live edge, and an explicit Go Live does the same without waiting for a
+second Play action. Native now/next uses that displayed-frame clock, and the Watching bar exposes
+lag, meaningful Go Live availability, and expiry recovery. Interface tests cover ordering and the
+bounded fallback; real-device pause/resume/expiry evidence remains required.
+
 The touch application no longer hard-locks portrait: its Expo orientation is the schema-supported
 `default`, allowing the same safe-area-aware shell to rotate on Android and iOS. This removes a
 configuration blocker from the required portrait/landscape workshop, but does not count as real

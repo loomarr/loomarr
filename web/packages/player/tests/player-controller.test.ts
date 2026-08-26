@@ -182,8 +182,25 @@ describe("player controller", () => {
 
     emit({ attemptId: firstAttempt, type: "first-frame" });
     expect(controller.getSnapshot().status).toBe("tuning");
+    emit({
+      attemptId: firstAttempt,
+      state: { lagSeconds: 20, mode: "behind", noticeRevision: 0, viewerTimeMs: 1_000 },
+      type: "live-state",
+    });
+    expect(controller.getSnapshot().livePlayback?.mode).toBe("live");
     emit({ attemptId: latestAttempt, type: "first-frame" });
     expect(controller.getSnapshot().status).toBe("playing");
+    emit({
+      attemptId: latestAttempt,
+      state: { lagSeconds: 20, mode: "behind", noticeRevision: 0, viewerTimeMs: 1_000 },
+      type: "live-state",
+    });
+    expect(controller.getSnapshot().livePlayback).toEqual({
+      lagSeconds: 20,
+      mode: "behind",
+      noticeRevision: 0,
+      viewerTimeMs: 1_000,
+    });
     emit({ attemptId: latestAttempt, error: "decoder failed", type: "error" });
     expect(controller.getSnapshot()).toMatchObject({ error: "decoder failed", status: "failed" });
   });

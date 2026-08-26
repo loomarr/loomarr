@@ -48,7 +48,11 @@ const MobileWatching = ({
   useEffect(() => {
     void guide.refresh(snapshot.channel?.id);
   }, [guide, snapshot.channel?.id]);
-  const schedule = watchingScheduleFromGuide(guideSnapshot.layout, snapshot.channel?.id, Date.now());
+  const schedule = watchingScheduleFromGuide(
+    guideSnapshot.layout,
+    snapshot.channel?.id,
+    snapshot.livePlayback?.viewerTimeMs ?? Date.now(),
+  );
   return (
     <WatchingSurface
       chromeVisible={interactive}

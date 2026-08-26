@@ -13,6 +13,8 @@ import { createChannelCatalogPort, createPlayUrlSourcePort } from "./src/play-ur
 import {
   createPlayerController,
   type DevicePlaybackProfile,
+  type LivePlaybackMode,
+  type LivePlaybackState,
   type PlayerController,
   type PlayerSnapshot,
   type PlayerSource,
@@ -59,6 +61,7 @@ interface PairedNativePlayer {
 }
 
 const conservativeDeviceProfile: DevicePlaybackProfile = {};
+const LIVE_DVR_HORIZON_SECONDS = 15 * 60;
 let playbackSessionSequence = 0;
 
 const pairedNativeImageSource = (
@@ -92,12 +95,41 @@ const createNativePlayerTransport = (
   const playerListeners = new Set<() => void>();
   let playingSubscription: { remove: () => void } | undefined;
   let statusSubscription: { remove: () => void } | undefined;
+  let timeSubscription: { remove: () => void } | undefined;
+  let liveMode: LivePlaybackMode = "live";
+  let noticeRevision = 0;
+  let viewerTimeMs = Date.now();
   const emit = (event: PlayerTransportEvent) => {
     if (disposed) return;
     for (const listener of listeners) listener(event);
   };
   const publishPlayer = () => {
     for (const listener of playerListeners) listener();
+  };
+  const liveState = (
+    currentLiveTimestamp: number | null = player?.currentLiveTimestamp ?? null,
+    currentOffsetFromLive: number | null = player?.currentOffsetFromLive ?? null,
+  ): LivePlaybackState => {
+    const now = Date.now();
+    if (currentLiveTimestamp !== null && Number.isFinite(currentLiveTimestamp)) {
+      viewerTimeMs = currentLiveTimestamp;
+    } else if (currentOffsetFromLive !== null && Number.isFinite(currentOffsetFromLive)) {
+      viewerTimeMs = now - Math.max(0, currentOffsetFromLive) * 1_000;
+    }
+    return {
+      lagSeconds: liveMode === "live" ? 0 : Math.max(0, Math.round((now - viewerTimeMs) / 1_000)),
+      mode: liveMode,
+      noticeRevision,
+      viewerTimeMs,
+    };
+  };
+  const emitLiveState = (currentLiveTimestamp?: number | null, currentOffsetFromLive?: number | null) => {
+    if (activeAttemptId === undefined) return;
+    emit({
+      attemptId: activeAttemptId,
+      state: liveState(currentLiveTimestamp, currentOffsetFromLive),
+      type: "live-state",
+    });
   };
   const attachPlayer = (next: VideoPlayer) => {
     player = next;
@@ -115,7 +147,13 @@ const createNativePlayerTransport = (
       }
     });
     playingSubscription = next.addListener("playingChange", ({ isPlaying }) => {
-      if (isPlaying && activeAttemptId !== undefined) emit({ attemptId: activeAttemptId, type: "playing" });
+      if (isPlaying && activeAttemptId !== undefined) {
+        emit({ attemptId: activeAttemptId, type: "playing" });
+        emitLiveState();
+      }
+    });
+    timeSubscription = next.addListener("timeUpdate", ({ currentLiveTimestamp, currentOffsetFromLive }) => {
+      emitLiveState(currentLiveTimestamp, currentOffsetFromLive);
     });
   };
   const releasePlayer = () => {
@@ -124,8 +162,10 @@ const createNativePlayerTransport = (
     current.pause();
     statusSubscription?.remove();
     playingSubscription?.remove();
+    timeSubscription?.remove();
     statusSubscription = undefined;
     playingSubscription = undefined;
+    timeSubscription = undefined;
     activeAttemptId = undefined;
     player = undefined;
     current.release();
@@ -153,9 +193,43 @@ const createNativePlayerTransport = (
       } else if (Number.isFinite(player.duration) && player.duration > 0) {
         player.currentTime = player.duration;
       }
+      liveMode = "live";
+      viewerTimeMs = Date.now();
+      emitLiveState(null, 0);
+      player.play();
     },
-    pause: () => player?.pause(),
-    play: () => player?.play(),
+    pause: () => {
+      if (!player) return;
+      const timestamp = player.currentLiveTimestamp;
+      const offset = player.currentOffsetFromLive;
+      if (timestamp !== null && Number.isFinite(timestamp)) viewerTimeMs = timestamp;
+      else if (offset !== null && Number.isFinite(offset))
+        viewerTimeMs = Date.now() - Math.max(0, offset) * 1_000;
+      liveMode = "paused";
+      player.pause();
+      if (activeAttemptId !== undefined) emit({ attemptId: activeAttemptId, type: "paused" });
+      emitLiveState();
+    },
+    play: () => {
+      if (!player) return;
+      if (liveMode === "paused") {
+        const lagSeconds = Math.max(0, Math.round((Date.now() - viewerTimeMs) / 1_000));
+        if (lagSeconds >= LIVE_DVR_HORIZON_SECONDS) {
+          noticeRevision += 1;
+          const offset = player.currentOffsetFromLive;
+          if (offset !== null && Number.isFinite(offset) && offset > 0) player.seekBy(offset);
+          else if (Number.isFinite(player.duration) && player.duration > 0)
+            player.currentTime = player.duration;
+          liveMode = "live";
+          viewerTimeMs = Date.now();
+          emitLiveState(null, 0);
+        } else {
+          liveMode = "behind";
+          emitLiveState();
+        }
+      }
+      player.play();
+    },
     replace: async (source: PlayerSource, context: { attemptId: number; signal: AbortSignal }) => {
       const queued = replacement
         .catch(() => undefined)
@@ -164,6 +238,8 @@ const createNativePlayerTransport = (
           const current = player;
           if (!current) throw new Error("Native player is suspended.");
           activeAttemptId = context.attemptId;
+          liveMode = "live";
+          viewerTimeMs = Date.now();
           await current.replaceAsync({
             contentType: "hls",
             headers: source.headers ? { ...source.headers } : undefined,
@@ -178,6 +254,8 @@ const createNativePlayerTransport = (
       if (disposed || player) return;
       if (!recreatePlayer) throw new Error("Native player cannot resume without a player factory.");
       attachPlayer(recreatePlayer());
+      liveMode = "live";
+      viewerTimeMs = Date.now();
       publishPlayer();
     },
     subscribe: (listener) => {

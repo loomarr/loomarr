@@ -1,5 +1,7 @@
 export type {
   DevicePlaybackProfile,
+  LivePlaybackMode,
+  LivePlaybackState,
   PlayerChannel,
   PlayerController,
   PlayerControllerOptions,

@@ -42,6 +42,13 @@ interface WatchingSurfaceProps {
   schedule?: WatchingScheduleData;
 }
 
+const behindLabel = (seconds: number) => {
+  const rounded = Math.max(0, Math.round(seconds));
+  const minutes = Math.floor(rounded / 60);
+  const remainder = String(rounded % 60).padStart(2, "0");
+  return `${minutes}:${remainder} behind`;
+};
+
 const WatchingSurface = ({
   chromeVisible = true,
   density,
@@ -140,6 +147,18 @@ const WatchingSurface = ({
                 Tuning…
               </Text>
             ) : null}
+            {snapshot.livePlayback ? (
+              <Text accessibilityLiveRegion="polite" density={density} textRole="metadata">
+                {snapshot.livePlayback.mode === "live"
+                  ? "Live"
+                  : `${snapshot.livePlayback.mode === "paused" ? "Paused · " : ""}${behindLabel(snapshot.livePlayback.lagSeconds)}`}
+              </Text>
+            ) : null}
+            {snapshot.livePlayback?.noticeRevision ? (
+              <Text accessibilityLiveRegion="polite" density={density} textRole="body" tone="warning">
+                Paused position expired. Returned to live.
+              </Text>
+            ) : null}
             {message ? (
               <Text
                 accessibilityLiveRegion="polite"
@@ -183,9 +202,11 @@ const WatchingSurface = ({
                   Pause
                 </Action>
               )}
-              <Action density={density} disabled={!snapshot.channel} onPress={onGoLive} tone="secondary">
-                Go Live
-              </Action>
+              {snapshot.livePlayback?.mode && snapshot.livePlayback.mode !== "live" ? (
+                <Action density={density} disabled={!snapshot.channel} onPress={onGoLive} tone="secondary">
+                  Go Live
+                </Action>
+              ) : null}
               <Action
                 density={density}
                 disabled={snapshot.catalog.length < 2}
