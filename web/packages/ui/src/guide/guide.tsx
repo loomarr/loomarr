@@ -53,6 +53,7 @@ const airingFacts = (airing: GuideSurfaceProps["layout"]["channels"][number]["ai
 };
 
 const GuideSurface = ({
+  channelWindow,
   density = "pointer",
   filter = "all",
   filters = defaultFilters,
@@ -74,6 +75,9 @@ const GuideSurface = ({
   const artwork = selectedAiring ? renderArtwork?.(selectedAiring) : undefined;
   const channelLogo = selectedChannel ? renderChannelLogo?.(selectedChannel) : undefined;
   const tickCount = 5;
+  const visibleChannels = channelWindow
+    ? layout.channels.slice(channelWindow.start, channelWindow.end)
+    : layout.channels;
   const span = layout.toMs - layout.fromMs;
   const ticks = Array.from(
     { length: tickCount },
@@ -117,7 +121,7 @@ const GuideSurface = ({
           </View>
 
           <Surface aria-label="Channel schedule" borderRadius={0} gap={2} role="group">
-            {layout.channels.map((channel) => {
+            {visibleChannels.map((channel) => {
               const logo = renderChannelLogo?.(channel);
               return (
                 <View
@@ -199,7 +203,7 @@ const GuideSurface = ({
       </ScrollView>
 
       <Text density={density} textRole="metadata">
-        {`${layout.channels.length} channels · ${formatGuideTimeRange(
+        {`${layout.channels.length} channels${channelWindow ? ` · ${channelWindow.positionLabel}` : ""} · ${formatGuideTimeRange(
           layout.fromMs,
           layout.toMs,
           layout.timezone,

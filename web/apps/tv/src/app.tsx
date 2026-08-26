@@ -20,7 +20,7 @@ import {
   SurfJourney,
   WatchingSurface,
 } from "@loomarr/ui";
-import { createTvNumberEntryController } from "@loomarr/ui-tv";
+import { createTvNumberEntryController, restoreTvSurfSelection, tvGuideRowWindow } from "@loomarr/ui-tv";
 import { useKeepAwake } from "expo-keep-awake";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
@@ -123,6 +123,16 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
       {active === "guide" ? (
         <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>
           <GuideJourney
+            channelWindow={(layout, selection) =>
+              tvGuideRowWindow(
+                layout.channels.length,
+                Math.max(
+                  0,
+                  layout.channels.findIndex((channel) => channel.source.channelId === selection.channelId),
+                ),
+                8,
+              )
+            }
             controller={guide}
             density="tv"
             onTune={(channelId) => {
@@ -193,6 +203,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
                   />
                 ) : undefined
               }
+              restoreSelection={restoreTvSurfSelection}
               serverVersion={player.serverVersion}
             />
           </ClientShell>

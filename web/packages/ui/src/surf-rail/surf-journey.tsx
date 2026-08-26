@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { StatePanel } from "../state-panel";
 import { restoreSurfSelection, surfGroupsFromGuide } from "./surf-data";
 import { SurfRail, surfIdentityLabel } from "./surf-rail";
-import type { SurfRailProps, SurfSelection } from "./surf-rail.type";
+import type { SurfGroupData, SurfRailProps, SurfSelection } from "./surf-rail.type";
 
 interface SurfJourneyProps {
   clientName: string;
@@ -19,6 +19,10 @@ interface SurfJourneyProps {
   recentChannelIds: readonly string[];
   renderArtwork?: SurfRailProps["renderArtwork"];
   renderChannelLogo?: SurfRailProps["renderChannelLogo"];
+  restoreSelection?: (
+    groups: readonly SurfGroupData[],
+    selection: SurfSelection,
+  ) => SurfSelection | undefined;
   serverVersion?: string;
 }
 
@@ -34,6 +38,7 @@ const SurfJourney = ({
   recentChannelIds,
   renderArtwork,
   renderChannelLogo,
+  restoreSelection = restoreSurfSelection,
   serverVersion,
 }: SurfJourneyProps) => {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
@@ -51,7 +56,10 @@ const SurfJourney = ({
   const preferredSelection = currentChannelId
     ? { channelId: currentChannelId, group: "recent" as const }
     : undefined;
-  const resolvedSelection = restoreSurfSelection(groups, selection ?? preferredSelection);
+  const requestedSelection = selection ?? preferredSelection;
+  const resolvedSelection = requestedSelection
+    ? restoreSelection(groups, requestedSelection)
+    : restoreSurfSelection(groups);
 
   if (snapshot.status !== "ready" || !resolvedSelection) {
     const kind = snapshot.status === "error" ? "error" : snapshot.status === "empty" ? "empty" : "loading";

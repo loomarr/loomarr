@@ -5,6 +5,7 @@ export type { ClientShellProps } from "./src/client-shell";
 export { ClientShell } from "./src/client-shell";
 export type {
   GuideArtworkRenderer,
+  GuideChannelWindow,
   GuideExperienceProps,
   GuideFilter,
   GuideFilterOption,

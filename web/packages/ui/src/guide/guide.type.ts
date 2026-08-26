@@ -13,8 +13,15 @@ type GuideFilterOption = {
 type GuideArtworkRenderer = (airing: GuideAiringLayout) => ReactNode;
 type GuideLogoRenderer = (channel: GuideLayout["channels"][number]) => ReactNode;
 
+type GuideChannelWindow = {
+  end: number;
+  positionLabel: string;
+  start: number;
+};
+
 interface GuideSurfaceProps {
   density?: Density;
+  channelWindow?: GuideChannelWindow;
   filter?: GuideFilter;
   filters?: readonly GuideFilterOption[];
   layout: GuideLayout;
@@ -39,6 +46,7 @@ type GuideExperienceProps = GuideReadyProps | GuideUnavailableProps;
 
 export type {
   GuideArtworkRenderer,
+  GuideChannelWindow,
   GuideExperienceProps,
   GuideFilter,
   GuideFilterOption,

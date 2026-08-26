@@ -1,13 +1,14 @@
-import type { GuideController } from "@loomarr/core/guide";
+import type { GuideController, GuideLayout, GuideSelection } from "@loomarr/core/guide";
 import type { Density } from "@loomarr/design-system";
 import { Surface } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 import { useEffect, useSyncExternalStore } from "react";
 import { GuideExperience } from "./guide";
-import type { GuideArtworkRenderer, GuideLogoRenderer } from "./guide.type";
+import type { GuideArtworkRenderer, GuideChannelWindow, GuideLogoRenderer } from "./guide.type";
 
 interface GuideJourneyProps {
   controller: GuideController;
+  channelWindow?: (layout: GuideLayout, selection: GuideSelection) => GuideChannelWindow;
   density: Density;
   onTune: (channelId: string) => void;
   preferredChannelId?: string;
@@ -17,6 +18,7 @@ interface GuideJourneyProps {
 
 const GuideJourney = ({
   controller,
+  channelWindow,
   density,
   onTune,
   preferredChannelId,
@@ -40,6 +42,7 @@ const GuideJourney = ({
   } else {
     content = (
       <GuideExperience
+        channelWindow={channelWindow?.(snapshot.layout, snapshot.selection)}
         density={density}
         layout={snapshot.layout}
         onSelectionChange={controller.select}

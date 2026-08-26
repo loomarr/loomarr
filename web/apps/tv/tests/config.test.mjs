@@ -18,8 +18,10 @@ test("runs the authoritative Guide over the still-mounted TV player", async () =
   assert.match(source, /createGuideSourcePort\(authenticatedFetch\)/);
   assert.match(source, /<TvWatching[^>]+player=\{player\}/);
   assert.match(source, /<GuideJourney/);
+  assert.match(source, /tvGuideRowWindow/);
   assert.match(source, /player\.controller\.tuneChannel\(channelId\)/);
   assert.match(source, /<SurfJourney/);
+  assert.match(source, /restoreSelection=\{restoreTvSurfSelection\}/);
   assert.match(source, /clientVersion=\{appConfig\.expo\.version\}/);
   assert.match(source, /serverVersion=\{player\.serverVersion\}/);
   assert.match(source, /<PairedNativeImage/);
