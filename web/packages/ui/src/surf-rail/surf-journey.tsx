@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { StatePanel } from "../state-panel";
 import { restoreSurfSelection, surfGroupsFromGuide } from "./surf-data";
 import { SurfRail, surfIdentityLabel } from "./surf-rail";
-import type { SurfSelection } from "./surf-rail.type";
+import type { SurfRailProps, SurfSelection } from "./surf-rail.type";
 
 interface SurfJourneyProps {
   clientName: string;
@@ -17,6 +17,8 @@ interface SurfJourneyProps {
   onTune: (channelId: string) => void;
   playableChannelIds: readonly string[];
   recentChannelIds: readonly string[];
+  renderArtwork?: SurfRailProps["renderArtwork"];
+  renderChannelLogo?: SurfRailProps["renderChannelLogo"];
   serverVersion?: string;
 }
 
@@ -30,6 +32,8 @@ const SurfJourney = ({
   onTune,
   playableChannelIds,
   recentChannelIds,
+  renderArtwork,
+  renderChannelLogo,
   serverVersion,
 }: SurfJourneyProps) => {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
@@ -91,6 +95,8 @@ const SurfJourney = ({
       groups={groups}
       onFocusSelection={setSelection}
       onTune={onTune}
+      renderArtwork={renderArtwork}
+      renderChannelLogo={renderChannelLogo}
       selection={resolvedSelection}
       serverVersion={serverVersion}
     />

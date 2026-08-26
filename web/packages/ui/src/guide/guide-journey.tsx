@@ -4,15 +4,25 @@ import { Surface } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 import { useEffect, useSyncExternalStore } from "react";
 import { GuideExperience } from "./guide";
+import type { GuideArtworkRenderer, GuideLogoRenderer } from "./guide.type";
 
 interface GuideJourneyProps {
   controller: GuideController;
   density: Density;
   onTune: (channelId: string) => void;
   preferredChannelId?: string;
+  renderArtwork?: GuideArtworkRenderer;
+  renderChannelLogo?: GuideLogoRenderer;
 }
 
-const GuideJourney = ({ controller, density, onTune, preferredChannelId }: GuideJourneyProps) => {
+const GuideJourney = ({
+  controller,
+  density,
+  onTune,
+  preferredChannelId,
+  renderArtwork,
+  renderChannelLogo,
+}: GuideJourneyProps) => {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   useEffect(() => {
     void controller.refresh(preferredChannelId);
@@ -34,6 +44,8 @@ const GuideJourney = ({ controller, density, onTune, preferredChannelId }: Guide
         layout={snapshot.layout}
         onSelectionChange={controller.select}
         onTune={(selection) => onTune(selection.channelId)}
+        renderArtwork={renderArtwork}
+        renderChannelLogo={renderChannelLogo}
         selection={snapshot.selection}
       />
     );

@@ -7,10 +7,12 @@ type SurfGroupKind = "all" | "favourites" | "recent";
 
 interface SurfProgrammeData extends ProgrammeIdentityData {
   artworkState: ArtworkState;
+  artworkUri?: string;
   progressPercent?: number;
 }
 
 interface SurfChannelData extends ChannelIdentityData {
+  channelLogoUri?: string;
   id: string;
   next?: Pick<ProgrammeIdentityData, "timeLabel" | "title">;
   now?: SurfProgrammeData;

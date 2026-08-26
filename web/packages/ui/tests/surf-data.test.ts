@@ -7,10 +7,18 @@ const layout = layoutGuide(
     channels: [
       {
         airings: [
-          { kind: "program", scheduleBlockId: "now", startMs: 1_000, stopMs: 3_000, title: "Now" },
+          {
+            kind: "program",
+            scheduleBlockId: "now",
+            startMs: 1_000,
+            stopMs: 3_000,
+            thumbUrl: "/v1/images/now.jpg",
+            title: "Now",
+          },
           { kind: "program", scheduleBlockId: "next", startMs: 3_000, stopMs: 5_000, title: "Next" },
         ],
         channelId: "seven",
+        logo: "https://logos.example/seven.png",
         name: "Science Fiction",
         number: 7,
         pendingCount: 0,
@@ -41,8 +49,9 @@ describe("Surf data", () => {
     expect(groups[2]?.channels).toHaveLength(1);
     expect(groups[2]?.channels[0]).toMatchObject({
       channelName: "Science Fiction",
+      channelLogoUri: "https://logos.example/seven.png",
       next: { title: "Next" },
-      now: { progressPercent: 50, title: "Now" },
+      now: { artworkUri: "/v1/images/now.jpg", progressPercent: 50, title: "Now" },
     });
   });
 

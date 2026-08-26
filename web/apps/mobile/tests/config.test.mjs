@@ -19,4 +19,6 @@ test("runs the authoritative Guide over the still-mounted player", async () => {
   assert.match(source, /<SurfJourney/);
   assert.match(source, /clientVersion=\{appConfig\.expo\.version\}/);
   assert.match(source, /serverVersion=\{player\.serverVersion\}/);
+  assert.match(source, /<PairedNativeImage/);
+  assert.match(source, /channel\.now\.artworkUri/);
 });

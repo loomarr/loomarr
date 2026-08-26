@@ -9,7 +9,7 @@ import {
 } from "@loomarr/core/pairing";
 import { LoomarrProvider } from "@loomarr/design-system";
 import type { PairedNativePlayer } from "@loomarr/player/native";
-import { NativePlayerView, usePairedNativePlayer } from "@loomarr/player/native";
+import { NativePlayerView, PairedNativeImage, usePairedNativePlayer } from "@loomarr/player/native";
 import type { ClientDestination } from "@loomarr/ui";
 import {
   ClientNavigation,
@@ -130,6 +130,26 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
               setActive("watching");
             }}
             preferredChannelId={player.snapshot.channel?.id}
+            renderArtwork={(airing) => {
+              const uri = airing.source.thumbImage?.src ?? airing.source.thumbUrl;
+              return uri ? (
+                <PairedNativeImage
+                  credential={credential}
+                  style={{ height: "100%", width: "100%" }}
+                  uri={uri}
+                />
+              ) : undefined;
+            }}
+            renderChannelLogo={(channel) =>
+              channel.source.logo ? (
+                <PairedNativeImage
+                  credential={credential}
+                  resizeMode="contain"
+                  style={{ height: "100%", width: "100%" }}
+                  uri={channel.source.logo}
+                />
+              ) : undefined
+            }
           />
           <ClientNavigation active="guide" density="tv" onNavigate={setActive} />
         </View>
@@ -154,6 +174,25 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
               }}
               playableChannelIds={player.snapshot.catalog.map(({ id }) => id)}
               recentChannelIds={player.snapshot.recentChannelIds}
+              renderArtwork={(channel) =>
+                channel.now?.artworkUri ? (
+                  <PairedNativeImage
+                    credential={credential}
+                    style={{ height: "100%", width: "100%" }}
+                    uri={channel.now.artworkUri}
+                  />
+                ) : undefined
+              }
+              renderChannelLogo={(channel) =>
+                channel.channelLogoUri ? (
+                  <PairedNativeImage
+                    credential={credential}
+                    resizeMode="contain"
+                    style={{ height: "100%", width: "100%" }}
+                    uri={channel.channelLogoUri}
+                  />
+                ) : undefined
+              }
               serverVersion={player.serverVersion}
             />
           </ClientShell>

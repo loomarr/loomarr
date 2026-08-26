@@ -3,7 +3,7 @@ import { createAuthenticatedFetch } from "@loomarr/core/pairing";
 import { createServerVersionSource } from "@loomarr/core/system-version";
 import { createVideoPlayer, type VideoPlayer, VideoView, type VideoViewProps } from "expo-video";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { AppState } from "react-native";
+import { AppState, Image, type ImageProps } from "react-native";
 import { createChannelCatalogPort, createPlayUrlSourcePort } from "./src/play-url-source";
 import {
   createPlayerController,
@@ -25,6 +25,13 @@ interface NativePlayerViewProps {
   transport: NativePlayerTransport;
 }
 
+interface PairedNativeImageProps {
+  credential: Pick<PairingCredential, "serverUrl" | "token">;
+  resizeMode?: ImageProps["resizeMode"];
+  style?: ImageProps["style"];
+  uri: string;
+}
+
 interface PairedNativePlayerOptions {
   initialTune?: "first" | "none";
   credential: PairingCredential;
@@ -42,6 +49,25 @@ interface PairedNativePlayer {
 }
 
 const conservativeDeviceProfile: DevicePlaybackProfile = {};
+
+const pairedNativeImageSource = (
+  credential: Pick<PairingCredential, "serverUrl" | "token">,
+  rawUrl: string,
+): { headers?: { Authorization: string }; uri: string } | undefined => {
+  try {
+    const uri = new URL(
+      rawUrl.startsWith("/") ? `${credential.serverUrl}${rawUrl}` : rawUrl,
+      `${credential.serverUrl}/`,
+    );
+    if (uri.protocol !== "http:" && uri.protocol !== "https:") return undefined;
+    if (uri.origin === new URL(credential.serverUrl).origin) {
+      return { headers: { Authorization: `Bearer ${credential.token}` }, uri: uri.toString() };
+    }
+    return uri.protocol === "https:" ? { uri: uri.toString() } : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 const createNativePlayerTransport = (player: VideoPlayer): NativePlayerTransport => {
   let disposed = false;
@@ -199,5 +225,23 @@ const NativePlayerView = ({ style, transport }: NativePlayerViewProps) => (
   />
 );
 
-export type { NativePlayerTransport, NativePlayerViewProps, PairedNativePlayer, PairedNativePlayerOptions };
-export { createExpoVideoTransport, createNativePlayerTransport, NativePlayerView, usePairedNativePlayer };
+const PairedNativeImage = ({ credential, resizeMode = "cover", style, uri }: PairedNativeImageProps) => {
+  const source = pairedNativeImageSource(credential, uri);
+  return source ? <Image resizeMode={resizeMode} source={source} style={style} /> : null;
+};
+
+export type {
+  NativePlayerTransport,
+  NativePlayerViewProps,
+  PairedNativeImageProps,
+  PairedNativePlayer,
+  PairedNativePlayerOptions,
+};
+export {
+  createExpoVideoTransport,
+  createNativePlayerTransport,
+  NativePlayerView,
+  PairedNativeImage,
+  pairedNativeImageSource,
+  usePairedNativePlayer,
+};
