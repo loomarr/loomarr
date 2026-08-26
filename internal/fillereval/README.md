@@ -34,23 +34,15 @@ and selects a bounded video representation. Its output is only a candidate inven
 license metadata still needs independent item-level rights adjudication before it can enter a draft
 manifest, and the command never downloads media or invokes a model.
 
-`make filler-corpus-dvids` is the metadata-only institutional-video lane. It requires an explicit
-DVIDS API key but never persists it, searches only declared video categories in stable timestamp
-order, and freezes the search JSON, item JSON, and public item-page rights block under request,
-duration, item, and predicted-byte ceilings. A candidate must have matching search/detail identity,
-unit, VIRIN, creator credit, a bounded MP4, and an item-level `PUBLIC DOMAIN` marker. Courtesy,
-contractor, embedded third-party, attribution, and non-copyright restrictions still go through the
-same inert worksheet and independent adjudication before download.
-
 `make filler-corpus-download` is the separately authorized media step. It accepts only `approved`
-rights rows tied to the exact inventory and source-evidence SHA-256 values, reviewer, review time, rationale,
+rights rows tied to the exact inventory and metadata SHA-256 values, reviewer, review time, rationale,
 redistribution decision, attribution, and restrictions; `held` rows remain out of the plan. Before the first request
-it proves the approved count and predicted bytes fit explicit ceilings. Downloads remain serial and
-identified, redirects stay on the approved source host, and bodies cannot exceed their recorded size.
-Archive SHA-1/MD5 values are checked when present, and the external ledger adds a locally computed SHA-256. A
+it proves the approved count and predicted bytes fit explicit ceilings. Downloads remain serial and identified,
+redirects stay on Archive.org, and bodies cannot exceed their recorded size. Archive SHA-1/MD5 values are
+checked when present, and the external ledger adds a locally computed SHA-256. A
 failed or stale approval writes no ledger and cannot silently widen the selected corpus.
 
-`make filler-corpus-rights-review` converts an Archive or DVIDS frozen inventory into a deterministic worksheet
+`make filler-corpus-rights-review` converts a frozen Archive inventory into a deterministic worksheet
 bounded by explicit minimum and maximum item counts. It exposes the source assertions and selected
 representation in immutable JSON plus a spreadsheet-safe CSV, but leaves every authority field
 blank. Reviewers edit only `reviewer_id`, `reviewed_at`, `decision`, `basis`, `redistributable`,

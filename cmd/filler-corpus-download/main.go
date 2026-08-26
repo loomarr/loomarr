@@ -31,15 +31,13 @@ type inventory struct {
 }
 
 type inventoryCandidate struct {
-	Identifier            string     `json:"identifier"`
-	LicenseURL            string     `json:"licenseUrl"`
-	ItemURL               string     `json:"itemUrl"`
-	MetadataURL           string     `json:"metadataUrl"`
-	MetadataRetrievedAt   time.Time  `json:"metadataRetrievedAt"`
-	MetadataSHA256        string     `json:"metadataSha256"`
-	RightsPageRetrievedAt time.Time  `json:"rightsPageRetrievedAt,omitempty"`
-	RightsPageSHA256      string     `json:"rightsPageSha256,omitempty"`
-	File                  sourceFile `json:"file"`
+	Identifier          string     `json:"identifier"`
+	LicenseURL          string     `json:"licenseUrl"`
+	ItemURL             string     `json:"itemUrl"`
+	MetadataURL         string     `json:"metadataUrl"`
+	MetadataRetrievedAt time.Time  `json:"metadataRetrievedAt"`
+	MetadataSHA256      string     `json:"metadataSha256"`
+	File                sourceFile `json:"file"`
 }
 
 type sourceFile struct {
@@ -53,17 +51,16 @@ type sourceFile struct {
 }
 
 type rightsApproval struct {
-	InventorySHA256  string    `json:"inventorySha256"`
-	Identifier       string    `json:"identifier"`
-	MetadataSHA256   string    `json:"metadataSha256"`
-	RightsPageSHA256 string    `json:"rightsPageSha256,omitempty"`
-	ReviewerID       string    `json:"reviewerId"`
-	ReviewedAt       time.Time `json:"reviewedAt"`
-	Decision         string    `json:"decision"`
-	Basis            string    `json:"basis"`
-	Redistributable  bool      `json:"redistributable"`
-	RequiredCredit   string    `json:"requiredCredit,omitempty"`
-	Restrictions     []string  `json:"restrictions,omitempty"`
+	InventorySHA256 string    `json:"inventorySha256"`
+	Identifier      string    `json:"identifier"`
+	MetadataSHA256  string    `json:"metadataSha256"`
+	ReviewerID      string    `json:"reviewerId"`
+	ReviewedAt      time.Time `json:"reviewedAt"`
+	Decision        string    `json:"decision"`
+	Basis           string    `json:"basis"`
+	Redistributable bool      `json:"redistributable"`
+	RequiredCredit  string    `json:"requiredCredit,omitempty"`
+	Restrictions    []string  `json:"restrictions,omitempty"`
 }
 
 type downloadLedger struct {
@@ -79,19 +76,17 @@ type downloadLedger struct {
 }
 
 type downloadedCase struct {
-	Identifier            string         `json:"identifier"`
-	LicenseURL            string         `json:"licenseUrl"`
-	ItemURL               string         `json:"itemUrl"`
-	MetadataURL           string         `json:"metadataUrl"`
-	MetadataRetrievedAt   time.Time      `json:"metadataRetrievedAt"`
-	MetadataSHA256        string         `json:"metadataSha256"`
-	RightsPageRetrievedAt time.Time      `json:"rightsPageRetrievedAt,omitempty"`
-	RightsPageSHA256      string         `json:"rightsPageSha256,omitempty"`
-	File                  sourceFile     `json:"file"`
-	LocalFile             string         `json:"localFile"`
-	ContentSHA256         string         `json:"contentSha256"`
-	Approval              rightsApproval `json:"approval"`
-	VerifiedAt            time.Time      `json:"verifiedAt"`
+	Identifier          string         `json:"identifier"`
+	LicenseURL          string         `json:"licenseUrl"`
+	ItemURL             string         `json:"itemUrl"`
+	MetadataURL         string         `json:"metadataUrl"`
+	MetadataRetrievedAt time.Time      `json:"metadataRetrievedAt"`
+	MetadataSHA256      string         `json:"metadataSha256"`
+	File                sourceFile     `json:"file"`
+	LocalFile           string         `json:"localFile"`
+	ContentSHA256       string         `json:"contentSha256"`
+	Approval            rightsApproval `json:"approval"`
+	VerifiedAt          time.Time      `json:"verifiedAt"`
 }
 
 var (
@@ -167,8 +162,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 	client := &http.Client{
 		Timeout: 5 * time.Minute,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if !allowedRedirect(inv.Source, req.URL, via) {
-				return fmt.Errorf("refuse %s redirect to %s", inv.Source, req.URL.Hostname())
+			if req.URL == nil {
+				return fmt.Errorf("refuse redirect without a destination URL")
+			}
+			if req.URL.Scheme != "https" || !archiveHost(req.URL.Hostname()) {
+				return fmt.Errorf("refuse redirect outside archive.org to %s", req.URL.Hostname())
 			}
 			if len(via) >= 5 {
 				return fmt.Errorf("too many redirects")
@@ -191,7 +189,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 }
 
 func planDownloads(inv inventory, approvals []rightsApproval, opts options) ([]plannedDownload, error) {
-	if inv.Source != "archive.org" && inv.Source != "dvids" {
+	if inv.Source != "archive.org" {
 		return nil, fmt.Errorf("unsupported inventory source %q", inv.Source)
 	}
 	byID := make(map[string]inventoryCandidate, len(inv.Cases))
@@ -201,9 +199,6 @@ func planDownloads(inv inventory, approvals []rightsApproval, opts options) ([]p
 		}
 		if !sha256Digest.MatchString(candidate.MetadataSHA256) || candidate.MetadataRetrievedAt.IsZero() || candidate.File.Bytes <= 0 || strings.TrimSpace(candidate.File.Name) == "" {
 			return nil, fmt.Errorf("inventory candidate %s has incomplete frozen metadata or media identity", candidate.Identifier)
-		}
-		if inv.Source == "dvids" && (!sha256Digest.MatchString(candidate.RightsPageSHA256) || candidate.RightsPageRetrievedAt.IsZero()) {
-			return nil, fmt.Errorf("DVIDS inventory candidate %s lacks frozen item-page rights evidence", candidate.Identifier)
 		}
 		if _, duplicate := byID[candidate.Identifier]; duplicate {
 			return nil, fmt.Errorf("duplicate inventory candidate %s", candidate.Identifier)
@@ -228,15 +223,8 @@ func planDownloads(inv inventory, approvals []rightsApproval, opts options) ([]p
 		if approval.Decision != "approved" && approval.Decision != "held" {
 			return nil, fmt.Errorf("rights-reviewed item %s has unknown decision %q", approval.Identifier, approval.Decision)
 		}
-		evidenceRetrievedAt := candidate.MetadataRetrievedAt
-		if candidate.RightsPageRetrievedAt.After(evidenceRetrievedAt) {
-			evidenceRetrievedAt = candidate.RightsPageRetrievedAt
-		}
-		if approval.MetadataSHA256 != candidate.MetadataSHA256 || approval.ReviewerID == "" || approval.ReviewedAt.IsZero() || approval.ReviewedAt.Before(evidenceRetrievedAt) || approval.ReviewedAt.After(opts.generatedAt) || strings.TrimSpace(approval.Basis) == "" {
+		if approval.MetadataSHA256 != candidate.MetadataSHA256 || approval.ReviewerID == "" || approval.ReviewedAt.IsZero() || approval.ReviewedAt.Before(candidate.MetadataRetrievedAt) || approval.ReviewedAt.After(opts.generatedAt) || strings.TrimSpace(approval.Basis) == "" {
 			return nil, fmt.Errorf("rights-reviewed item %s is not tied to its metadata and complete review", approval.Identifier)
-		}
-		if inv.Source == "dvids" && approval.RightsPageSHA256 != candidate.RightsPageSHA256 {
-			return nil, fmt.Errorf("rights-reviewed item %s is not tied to its item-page rights evidence", approval.Identifier)
 		}
 		if approval.Decision == "held" {
 			continue
@@ -244,13 +232,13 @@ func planDownloads(inv inventory, approvals []rightsApproval, opts options) ([]p
 		if !approval.Redistributable {
 			return nil, fmt.Errorf("approved item %s is not explicitly redistributable", approval.Identifier)
 		}
-		if requiresCredit(inv.Source, candidate.LicenseURL) && strings.TrimSpace(approval.RequiredCredit) == "" {
+		if requiresCredit(candidate.LicenseURL) && strings.TrimSpace(approval.RequiredCredit) == "" {
 			return nil, fmt.Errorf("approved item %s requires attribution", approval.Identifier)
 		}
 		if candidate.File.Source != "" && candidate.File.Source != inv.Source {
 			return nil, fmt.Errorf("inventory candidate %s media source does not match %s", candidate.Identifier, inv.Source)
 		}
-		if err := validateSourceURL(inv.Source, candidate.Identifier, candidate.File.URL); err != nil {
+		if err := validateSourceURL(candidate.Identifier, candidate.File.URL); err != nil {
 			return nil, err
 		}
 		bytes += candidate.File.Bytes
@@ -308,7 +296,6 @@ func executeDownloads(ctx context.Context, client *http.Client, plan []plannedDo
 			Identifier: item.candidate.Identifier, LicenseURL: item.candidate.LicenseURL,
 			ItemURL: item.candidate.ItemURL, MetadataURL: item.candidate.MetadataURL,
 			MetadataRetrievedAt: item.candidate.MetadataRetrievedAt, MetadataSHA256: item.candidate.MetadataSHA256,
-			RightsPageRetrievedAt: item.candidate.RightsPageRetrievedAt, RightsPageSHA256: item.candidate.RightsPageSHA256,
 			File: item.candidate.File, LocalFile: filepath.Base(item.path), ContentSHA256: hashes.sha256,
 			Approval: item.approval, VerifiedAt: verifiedAt,
 		})
@@ -395,22 +382,13 @@ func matchesOptional(actual, expected string) bool {
 	return expected == "" || strings.EqualFold(actual, expected)
 }
 
-func validateSourceURL(source, identifier, rawURL string) error {
+func validateSourceURL(identifier, rawURL string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil || u.Scheme != "https" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
-		return fmt.Errorf("%s: invalid %s media URL", identifier, source)
+		return fmt.Errorf("%s: invalid Archive.org media URL", identifier)
 	}
-	switch source {
-	case "archive.org":
-		if !archiveHost(u.Hostname()) || !strings.HasPrefix(u.EscapedPath(), "/download/"+url.PathEscape(identifier)+"/") {
-			return fmt.Errorf("%s: invalid Archive.org media URL", identifier)
-		}
-	case "dvids":
-		if !dvidsMediaHost(u.Hostname()) || !strings.HasSuffix(strings.ToLower(u.EscapedPath()), ".mp4") {
-			return fmt.Errorf("%s: invalid DVIDS media URL", identifier)
-		}
-	default:
-		return fmt.Errorf("%s: unsupported media source %q", identifier, source)
+	if !archiveHost(u.Hostname()) || !strings.HasPrefix(u.EscapedPath(), "/download/"+url.PathEscape(identifier)+"/") {
+		return fmt.Errorf("%s: invalid Archive.org media URL", identifier)
 	}
 	return nil
 }
@@ -419,29 +397,7 @@ func archiveHost(host string) bool {
 	return host == "archive.org" || strings.HasSuffix(host, ".archive.org")
 }
 
-func dvidsMediaHost(host string) bool {
-	host = strings.ToLower(host)
-	return strings.HasSuffix(host, ".dvidshub.net") || host == "d34w7g4gy10iej.cloudfront.net"
-}
-
-func allowedRedirect(source string, destination *url.URL, via []*http.Request) bool {
-	if len(via) >= 5 || destination == nil || destination.Scheme != "https" {
-		return false
-	}
-	switch source {
-	case "archive.org":
-		return archiveHost(destination.Hostname())
-	case "dvids":
-		return len(via) > 0 && strings.EqualFold(destination.Hostname(), via[0].URL.Hostname()) && dvidsMediaHost(destination.Hostname())
-	default:
-		return false
-	}
-}
-
-func requiresCredit(source, license string) bool {
-	if source == "dvids" {
-		return true
-	}
+func requiresCredit(license string) bool {
 	normalized := strings.ToLower(license)
 	return strings.Contains(normalized, "/licenses/by/") || strings.Contains(normalized, "/licenses/by-sa/")
 }

@@ -64,13 +64,11 @@ func TestRunLocksCompleteSpreadsheetReviewToDownloaderJSONL(t *testing.T) {
 	header := []string{
 		"rank", "inventory_sha256", "identifier", "metadata_sha256", "title", "creator_json", "date", "license_url", "rights_json", "possible_copyright_status_json",
 		"item_url", "metadata_url", "metadata_retrieved_at", "file_name", "file_url", "file_format", "file_source", "file_bytes", "file_sha1", "file_md5", "file_duration", "file_width", "file_height",
-		"rights_page_sha256", "rights_page_retrieved_at", "unit", "virin", "source_category",
 		"reviewer_id", "reviewed_at", "decision", "basis", "redistributable", "required_credit", "restrictions_json",
 	}
 	row := []string{
 		"1", digest, "soda-ad", metadataDigest, "Mountain Dew", "null", "", "https://creativecommons.org/publicdomain/zero/1.0/", "null", "null",
 		"https://archive.org/details/soda-ad", "https://archive.org/metadata/soda-ad", retrievedAt, "soda.mp4", "https://archive.org/download/soda-ad/soda.mp4", "MPEG4", "original", "1024", "", "", "", "", "",
-		"", "", "", "", "",
 		"rights-reviewer", reviewedAt, "approved", "CC0 dedication and item inspection permit redistribution.", "true", "", "[]",
 	}
 	if err := writer.WriteAll([][]string{header, row}); err != nil {
@@ -95,48 +93,19 @@ func TestRunLocksCompleteSpreadsheetReviewToDownloaderJSONL(t *testing.T) {
 		t.Fatal(err)
 	}
 	var approval struct {
-		InventorySHA256  string    `json:"inventorySha256"`
-		Identifier       string    `json:"identifier"`
-		MetadataSHA256   string    `json:"metadataSha256"`
-		RightsPageSHA256 string    `json:"rightsPageSha256"`
-		ReviewerID       string    `json:"reviewerId"`
-		ReviewedAt       time.Time `json:"reviewedAt"`
-		Decision         string    `json:"decision"`
-		Redistributable  bool      `json:"redistributable"`
+		InventorySHA256 string    `json:"inventorySha256"`
+		Identifier      string    `json:"identifier"`
+		MetadataSHA256  string    `json:"metadataSha256"`
+		ReviewerID      string    `json:"reviewerId"`
+		ReviewedAt      time.Time `json:"reviewedAt"`
+		Decision        string    `json:"decision"`
+		Redistributable bool      `json:"redistributable"`
 	}
 	if err := json.Unmarshal(bytes.TrimSpace(approvalRaw), &approval); err != nil {
 		t.Fatal(err)
 	}
 	if approval.InventorySHA256 != digest || approval.Identifier != "soda-ad" || approval.MetadataSHA256 != metadataDigest || approval.ReviewerID != "rights-reviewer" || approval.Decision != "approved" || !approval.Redistributable {
 		t.Fatalf("unexpected locked approval: %+v", approval)
-	}
-}
-
-func TestParseDecisionBindsDVIDSRightsPageEvidence(t *testing.T) {
-	retrievedAt := time.Date(2026, 8, 25, 8, 0, 0, 0, time.UTC)
-	rightsDigest := strings.Repeat("b", 64)
-	row := reviewRow{
-		MetadataRetrievedAt:   retrievedAt,
-		RightsPageRetrievedAt: retrievedAt.Add(time.Minute),
-		RightsPageSHA256:      rightsDigest,
-		LicenseURL:            "https://www.dvidshub.net/about/copyright",
-	}
-	fields := []string{"rights-reviewer", retrievedAt.Add(time.Hour).Format(time.RFC3339), "approved", "DVIDS item page inspected.", "true", "Defense Media Activity / DVIDS", "[]"}
-	decision, err := parseDecision(row, fields, retrievedAt.Add(2*time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if decision.RightsPageSHA256 != rightsDigest {
-		t.Fatalf("rights page digest = %q, want %q", decision.RightsPageSHA256, rightsDigest)
-	}
-	withoutCredit := append([]string(nil), fields...)
-	withoutCredit[5] = ""
-	if _, err := parseDecision(row, withoutCredit, retrievedAt.Add(2*time.Hour)); err == nil {
-		t.Fatal("DVIDS approval without institutional credit was accepted")
-	}
-	fields[1] = retrievedAt.Add(30 * time.Second).Format(time.RFC3339)
-	if _, err := parseDecision(row, fields, retrievedAt.Add(2*time.Hour)); err == nil {
-		t.Fatal("review completed before item-page evidence retrieval was accepted")
 	}
 }
 

@@ -298,7 +298,7 @@ eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (m
 	  exit "$$status"
 
 filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
-	$(GO) test ./internal/fillereval/ ./cmd/filler-cert/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-dvids/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/
+	$(GO) test ./internal/fillereval/ ./cmd/filler-cert/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/
 
 filler-corpus-archive: ## freeze a bounded rights-filtered Archive.org corpus inventory
 	@test -n "$$LOOMARR_FILLER_CORPUS_ARCHIVE_COLLECTION" || { echo "filler-corpus-archive: LOOMARR_FILLER_CORPUS_ARCHIVE_COLLECTION is required" >&2; exit 2; }; \
@@ -314,24 +314,6 @@ filler-corpus-archive: ## freeze a bounded rights-filtered Archive.org corpus in
 	    --max-item-bytes "$$LOOMARR_FILLER_CORPUS_ARCHIVE_MAX_ITEM_BYTES" \
 	    --max-total-bytes "$$LOOMARR_FILLER_CORPUS_ARCHIVE_MAX_TOTAL_BYTES" \
 	    --delay "$${LOOMARR_FILLER_CORPUS_ARCHIVE_DELAY:-1s}"
-
-filler-corpus-dvids: ## freeze a bounded item-rights-marked DVIDS video inventory
-	@test -n "$$LOOMARR_DVIDS_API_KEY" || { echo "filler-corpus-dvids: LOOMARR_DVIDS_API_KEY is required" >&2; exit 2; }; \
-	  test -n "$$LOOMARR_FILLER_CORPUS_DVIDS_CATEGORIES" || { echo "filler-corpus-dvids: LOOMARR_FILLER_CORPUS_DVIDS_CATEGORIES is required" >&2; exit 2; }; \
-	  eval "$$(./scripts/dev-env.sh export)"; \
-	  $(GO) run ./cmd/filler-corpus-dvids \
-	    --api-key "$$LOOMARR_DVIDS_API_KEY" \
-	    --categories "$$LOOMARR_FILLER_CORPUS_DVIDS_CATEGORIES" \
-	    --out "$${LOOMARR_FILLER_CORPUS_INVENTORY:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-dvids.json}" \
-	    --cache-dir "$${LOOMARR_FILLER_CORPUS_CACHE_DIR:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-dvids-cache}" \
-	    --user-agent "$$LOOMARR_FILLER_CORPUS_USER_AGENT" \
-	    --snapshot-at "$$LOOMARR_FILLER_CORPUS_SNAPSHOT_AT" \
-	    --max-requests "$$LOOMARR_FILLER_CORPUS_MAX_REQUESTS" \
-	    --max-items "$$LOOMARR_FILLER_CORPUS_MAX_ITEMS" \
-	    --max-duration "$${LOOMARR_FILLER_CORPUS_MAX_DURATION:-90}" \
-	    --max-item-bytes "$$LOOMARR_FILLER_CORPUS_MAX_ITEM_BYTES" \
-	    --max-total-bytes "$$LOOMARR_FILLER_CORPUS_MAX_TOTAL_BYTES" \
-	    --delay "$${LOOMARR_FILLER_CORPUS_DVIDS_DELAY:-1s}"
 
 filler-corpus-download: ## download only rights-approved corpus media under hard ceilings
 	@eval "$$(./scripts/dev-env.sh export)"; \
