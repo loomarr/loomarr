@@ -1,24 +1,9 @@
 package main
 
 import (
-	"context"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
-
-func TestFetcherCountsAndBoundsCachedRawResponses(t *testing.T) {
-	dir := t.TempDir()
-	rawURL := "https://www.loc.gov/item/1/?fo=json"
-	if err := os.WriteFile(filepath.Join(dir, sha256Hex(rawURL)+".json"), []byte("{}"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	f := &fetcher{cacheDir: dir, maxResponseBytes: 1}
-	if _, _, err := f.get(context.Background(), rawURL); err == nil || !strings.Contains(err.Error(), "cached response-byte ceiling") {
-		t.Fatalf("err = %v", err)
-	}
-}
 
 func TestLOCSearchIsBoundedToNamedCollectionAndQuery(t *testing.T) {
 	raw, err := locSearchURL(defaultBaseURL, "advertising")

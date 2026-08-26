@@ -59,17 +59,6 @@ type options struct {
 	delay, maxWallTime                                        time.Duration
 }
 
-type fetcher struct {
-	client              *http.Client
-	userAgent, cacheDir string
-	maxRequests         int
-	maxResponseBytes    int64
-	requests            int
-	responseBytes       int64
-	lastRequest         time.Time
-	delay               time.Duration
-}
-
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 
 func run(args []string, stdout, stderr io.Writer) int {
@@ -122,12 +111,15 @@ func capture(ctx context.Context, opts options) (fillercorpus.Lane, error) {
 	if err := os.MkdirAll(opts.cacheDir, 0o750); err != nil {
 		return fillercorpus.Lane{}, err
 	}
-	f := &fetcher{client: &http.Client{Timeout: 30 * time.Second}, userAgent: opts.userAgent, cacheDir: opts.cacheDir, maxRequests: opts.maxRequests, maxResponseBytes: opts.maxResponseBytes, delay: opts.delay}
+	f, err := fillercorpus.NewSourceClient(fillercorpus.SourceClientConfig{HTTP: &http.Client{Timeout: 30 * time.Second}, CacheDir: opts.cacheDir, UserAgent: opts.userAgent, MaxRequests: opts.maxRequests, MaxResponseBytes: opts.maxResponseBytes, Delay: opts.delay})
+	if err != nil {
+		return fillercorpus.Lane{}, err
+	}
 	searchURL, err := locSearchURL(opts.baseURL, opts.query)
 	if err != nil {
 		return fillercorpus.Lane{}, err
 	}
-	raw, _, err := f.get(ctx, searchURL)
+	raw, _, err := f.Get(ctx, searchURL)
 	if err != nil {
 		return fillercorpus.Lane{}, err
 	}
@@ -151,7 +143,7 @@ func capture(ctx context.Context, opts options) (fillercorpus.Lane, error) {
 			break
 		}
 		itemURL := opts.baseURL + "/item/" + url.PathEscape(id) + "/"
-		raw, retrievedAt, err := f.get(ctx, itemURL+"?fo=json")
+		raw, retrievedAt, err := f.Get(ctx, itemURL+"?fo=json")
 		if err != nil {
 			return fillercorpus.Lane{}, err
 		}
@@ -166,7 +158,7 @@ func capture(ctx context.Context, opts options) (fillercorpus.Lane, error) {
 		lane.Cases = append(lane.Cases, fillercorpus.Candidate{ItemID: id, Title: item.Item.Title, RoleHints: []string{opts.roleHint}, ItemURL: itemURL, MetadataURL: itemURL + "?fo=json", MetadataRetrievedAt: retrievedAt, MetadataSHA256: sha256Hex(string(raw)), RightsAssertions: item.Item.Rights, Representation: fillercorpus.Representation{Name: filepath.Base(media.URL), URL: media.URL, MIMEType: media.MIMEType, Bytes: media.Size}})
 		lane.PredictedMediaBytes += media.Size
 	}
-	lane.RequestsUsed, lane.ResponseBytes, lane.WallTimeMS = f.requests, f.responseBytes, time.Since(started).Milliseconds()
+	lane.RequestsUsed, lane.ResponseBytes, lane.WallTimeMS = f.RequestsUsed(), f.ResponseBytes(), time.Since(started).Milliseconds()
 	if len(lane.Cases) != opts.maxItems {
 		return fillercorpus.Lane{}, fmt.Errorf("captured %d of %d candidates", len(lane.Cases), opts.maxItems)
 	}
@@ -221,61 +213,6 @@ func locItemID(raw string) string {
 	return parts[1]
 }
 
-func (f *fetcher) get(ctx context.Context, rawURL string) ([]byte, time.Time, error) {
-	cache := filepath.Join(f.cacheDir, sha256Hex(rawURL)+".json")
-	if raw, err := os.ReadFile(cache); err == nil {
-		if int64(len(raw)) > f.maxResponseBytes-f.responseBytes {
-			return nil, time.Time{}, fmt.Errorf("cached response-byte ceiling exceeded")
-		}
-		info, err := os.Stat(cache)
-		if err != nil {
-			return nil, time.Time{}, err
-		}
-		f.responseBytes += int64(len(raw))
-		return raw, info.ModTime().UTC(), nil
-	}
-	if f.requests >= f.maxRequests {
-		return nil, time.Time{}, fmt.Errorf("request ceiling exhausted")
-	}
-	if wait := f.delay - time.Since(f.lastRequest); !f.lastRequest.IsZero() && wait > 0 {
-		timer := time.NewTimer(wait)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return nil, time.Time{}, ctx.Err()
-		case <-timer.C:
-		}
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return nil, time.Time{}, err
-	}
-	req.Header.Set("User-Agent", f.userAgent)
-	resp, err := f.client.Do(req)
-	f.requests++
-	f.lastRequest = time.Now()
-	if err != nil {
-		return nil, time.Time{}, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return nil, time.Time{}, fmt.Errorf("GET %s: %s", rawURL, resp.Status)
-	}
-	remaining := f.maxResponseBytes - f.responseBytes
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, remaining+1))
-	if err != nil {
-		return nil, time.Time{}, err
-	}
-	if int64(len(raw)) > remaining {
-		return nil, time.Time{}, fmt.Errorf("response-byte ceiling exceeded")
-	}
-	f.responseBytes += int64(len(raw))
-	if err := writeBytes(cache, raw); err != nil {
-		return nil, time.Time{}, err
-	}
-	return raw, f.lastRequest.UTC(), nil
-}
-
 func sha256Hex(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(sum[:])
@@ -291,38 +228,6 @@ func writeJSON(path string, value any) error {
 	}
 	raw = append(raw, '\n')
 	temp, err := os.CreateTemp(filepath.Dir(path), ".filler-corpus-loc-*")
-	if err != nil {
-		return err
-	}
-	name := temp.Name()
-	ok := false
-	defer func() {
-		_ = temp.Close()
-		if !ok {
-			_ = os.Remove(name)
-		}
-	}()
-	if err := temp.Chmod(0o600); err != nil {
-		return err
-	}
-	if _, err := temp.Write(raw); err != nil {
-		return err
-	}
-	if err := temp.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(name, path); err != nil {
-		return err
-	}
-	ok = true
-	return nil
-}
-
-func writeBytes(path string, raw []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		return err
-	}
-	temp, err := os.CreateTemp(filepath.Dir(path), ".filler-corpus-loc-cache-*")
 	if err != nil {
 		return err
 	}
