@@ -1,3 +1,4 @@
+import type { ClientDiagnosticsReporter } from "@loomarr/core/client-diagnostics";
 import { openEventStream } from "@loomarr/core/events";
 import type { PairingCredential } from "@loomarr/core/pairing";
 import { createAuthenticatedFetch } from "@loomarr/core/pairing";
@@ -6,6 +7,7 @@ import { createVideoPlayer, type VideoPlayer, VideoView, type VideoViewProps } f
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AppState, Image, type ImageProps } from "react-native";
 import { createNativeEventStreamFactory } from "./src/native-event-stream";
+import { createNativePlaybackDiagnostics } from "./src/native-playback-diagnostics";
 import { createChannelCatalogPort, createPlayUrlSourcePort } from "./src/play-url-source";
 import {
   createPlayerController,
@@ -35,6 +37,7 @@ interface PairedNativeImageProps {
 }
 
 interface PairedNativePlayerOptions {
+  diagnostics?: ClientDiagnosticsReporter;
   initialTune?: "first" | "none";
   credential: PairingCredential;
   onChannelEvent?: () => Promise<void> | void;
@@ -52,6 +55,7 @@ interface PairedNativePlayer {
 }
 
 const conservativeDeviceProfile: DevicePlaybackProfile = {};
+let playbackSessionSequence = 0;
 
 const pairedNativeImageSource = (
   credential: Pick<PairingCredential, "serverUrl" | "token">,
@@ -147,11 +151,16 @@ const createExpoVideoTransport = (): NativePlayerTransport =>
 
 const usePairedNativePlayer = ({
   credential,
+  diagnostics,
   initialTune,
   onChannelEvent,
   onRevoked,
   profile = conservativeDeviceProfile,
 }: PairedNativePlayerOptions): PairedNativePlayer => {
+  const playbackSessionId = useMemo(() => {
+    playbackSessionSequence += 1;
+    return `native-${Date.now()}-${playbackSessionSequence}`;
+  }, []);
   const [loadError, setLoadError] = useState<string>();
   const [serverVersion, setServerVersion] = useState<string>();
   const refreshRequest = useRef<AbortController | undefined>(undefined);
@@ -162,6 +171,10 @@ const usePairedNativePlayer = ({
   const catalog = useMemo(() => createChannelCatalogPort(authenticatedFetch), [authenticatedFetch]);
   const version = useMemo(() => createServerVersionSource(authenticatedFetch), [authenticatedFetch]);
   const transport = useMemo(createExpoVideoTransport, []);
+  const playbackDiagnostics = useMemo(
+    () => (diagnostics ? createNativePlaybackDiagnostics(diagnostics, playbackSessionId) : undefined),
+    [diagnostics, playbackSessionId],
+  );
   const controller = useMemo(
     () =>
       createPlayerController({
@@ -246,6 +259,17 @@ const usePairedNativePlayer = ({
     };
   }, [credential.serverUrl, credential.token, onChannelEvent, onRevoked, refresh]);
 
+  useEffect(() => {
+    playbackDiagnostics?.channelChanged(snapshot.channel?.id);
+  }, [playbackDiagnostics, snapshot.channel?.id]);
+
+  useEffect(() => {
+    if (!playbackDiagnostics) return;
+    return transport.subscribe(playbackDiagnostics.transportEvent);
+  }, [playbackDiagnostics, transport]);
+
+  useEffect(() => () => playbackDiagnostics?.dispose(), [playbackDiagnostics]);
+
   return { controller, loadError, refresh, serverVersion, snapshot, transport };
 };
 
@@ -278,6 +302,8 @@ export {
   createNativeEventStreamFactory,
   parseEventFrames,
 } from "./src/native-event-stream";
+export type { NativeDiagnosticsRecorder, NativePlaybackDiagnostics } from "./src/native-playback-diagnostics";
+export { createNativePlaybackDiagnostics } from "./src/native-playback-diagnostics";
 export type {
   NativePlayerTransport,
   NativePlayerViewProps,

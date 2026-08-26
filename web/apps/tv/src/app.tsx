@@ -1,3 +1,4 @@
+import { ClientDiagnosticsReporter } from "@loomarr/core/client-diagnostics";
 import { createGuideController, createGuideSourcePort, type GuideController } from "@loomarr/core/guide";
 import type { PairingCredential } from "@loomarr/core/pairing";
 import {
@@ -26,7 +27,7 @@ import { useKeepAwake } from "expo-keep-awake";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { BackHandler, useTVEventHandler, View } from "react-native";
+import { BackHandler, Platform, useTVEventHandler, View } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import appConfig from "../app.json";
 
@@ -115,8 +116,29 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     () => createGuideController({ source: createGuideSourcePort(authenticatedFetch) }),
     [authenticatedFetch],
   );
+  const diagnostics = useMemo(() => {
+    if (Platform.OS !== "android") return undefined;
+    let reporter: ClientDiagnosticsReporter;
+    reporter = new ClientDiagnosticsReporter(
+      async (events) => {
+        const response = await authenticatedFetch("/v1/diagnostics/client-events", {
+          body: JSON.stringify(reporter.wireBatch(events)),
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        });
+        if (!response.ok) throw new Error(`Client diagnostics were rejected (${response.status}).`);
+      },
+      {
+        clientVersion: appConfig.expo.version,
+        platform: Platform.constants.Model.toLowerCase().includes("shield") ? "shield_tv" : "android_tv",
+        source: "android_tv",
+      },
+    );
+    return reporter;
+  }, [authenticatedFetch]);
   const onChannelEvent = useCallback(() => guide.refresh(), [guide]);
-  const player = usePairedNativePlayer({ credential, onChannelEvent, onRevoked });
+  const player = usePairedNativePlayer({ credential, diagnostics, onChannelEvent, onRevoked });
+  useEffect(() => () => diagnostics?.dispose(), [diagnostics]);
   useEffect(() => () => guide.dispose(), [guide]);
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
