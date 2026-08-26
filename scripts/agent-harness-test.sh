@@ -7,7 +7,7 @@ TMP="$(mktemp -d)"
 TMP="$(CDPATH='' cd -- "$TMP" && pwd -P)"
 pids=
 # shellcheck disable=SC2154 # pid is the loop variable inside the trap evaluated at exit.
-trap 'for pid in $pids; do kill "$pid" 2>/dev/null || true; done; rm -rf "$TMP" "$TMP-wt" "$TMP-third" "$TMP-fourth"' EXIT INT TERM
+trap 'for pid in $pids; do kill "$pid" 2>/dev/null || true; done; rm -rf "$TMP" "$TMP-wt" "$TMP-third" "$TMP-fourth" "$TMP-fifth"' EXIT INT TERM
 
 step() {
 	echo "agent-harness-test: $*"
@@ -209,5 +209,16 @@ LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" status | grep 'third-task.*agent
 BASE=third WORKTREE_PATH="$TMP-fourth" AGENT_WORKTREE_SKIP_BOOTSTRAP=1 LOOMARR_REPO_ROOT="$TMP" \
 	"$SCRIPT_DIR/agent.sh" worktree fourth fourth-task '' third-task >/dev/null
 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" status | grep 'fourth-task.*third-task' >/dev/null
+
+if AGENT_WORKTREE_LIMIT=3 BASE=HEAD WORKTREE_PATH="$TMP-fifth" AGENT_WORKTREE_SKIP_BOOTSTRAP=1 \
+	LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" worktree fifth fifth-task '' >/dev/null 2>&1; then
+	echo 'agent-harness-test: worktree backlog limit was not enforced' >&2
+	exit 1
+fi
+ALLOW_WORKTREE_BACKLOG=1 AGENT_WORKTREE_LIMIT=3 BASE=HEAD WORKTREE_PATH="$TMP-fifth" \
+	AGENT_WORKTREE_SKIP_BOOTSTRAP=1 LOOMARR_REPO_ROOT="$TMP" \
+	"$SCRIPT_DIR/agent.sh" worktree fifth fifth-task '' >/dev/null
+
+"$SCRIPT_DIR/agent-worktree-gc-test.sh" >/dev/null
 
 echo 'agent-harness-test: ok'

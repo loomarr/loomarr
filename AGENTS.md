@@ -42,7 +42,8 @@ files; the claim identifies the real seam where concurrent work would collide.
 During implementation, use `make agent-verify BASE=<base>` for a focused, explicitly non-final check.
 Before pushing, run the complete required gates for the touched areas; `make check` is always the Go
 gate. Renew a long-running claim with `make agent-renew`; clean abandoned expired entries with
-`make agent-prune`. When finished, run `make agent-stop`.
+`make agent-prune`. When finished, run `make agent-stop`; after merge, audit and retire completed
+worktrees with `make agent-gc` and an explicitly reviewed `make agent-gc APPLY=1`.
 
 ## Delivery
 
@@ -129,7 +130,9 @@ an SQLite database, a prepared-publication library, a filler drop folder, and
 `.artifacts/<instance>/`.
 
 Do not park a secondary worktree on `main`. Never remove a worktree containing uncommitted or untracked
-work. Use `git worktree list` and `make agent-status` before cleanup.
+work. `make agent-gc` is the canonical cross-worktree audit; its explicit `APPLY=1` mode may remove
+only worktrees whose exact head belongs to a merged PR on current `origin/main`. Active, dependent,
+dirty, credential-bearing, divergent, open, and ambiguous worktrees fail closed.
 
 Develop against the URL printed by `make dev-fe`; the backend URL serves the last embedded SPA build and
 can look stale by design. A bare `go run ./cmd/loomarr` can orphan a stale child; use `make dev-be`.
