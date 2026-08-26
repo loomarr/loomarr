@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { AppState, Image, type ImageProps } from "react-native";
 import { createNativeEventStreamFactory } from "./src/native-event-stream";
 import { createNativePlaybackDiagnostics } from "./src/native-playback-diagnostics";
+import { createNativePlayerLifecycle } from "./src/native-player-lifecycle";
 import { createChannelCatalogPort, createPlayUrlSourcePort } from "./src/play-url-source";
 import {
   createPlayerController,
@@ -21,7 +22,10 @@ import {
 
 interface NativePlayerTransport extends PlayerTransport {
   firstFrame: () => void;
-  player: VideoPlayer;
+  getPlayer: () => VideoPlayer | undefined;
+  resume: () => void;
+  subscribePlayer: (listener: () => void) => () => void;
+  suspend: () => void;
 }
 
 interface NativePlayerViewProps {
@@ -76,43 +80,73 @@ const pairedNativeImageSource = (
   }
 };
 
-const createNativePlayerTransport = (player: VideoPlayer): NativePlayerTransport => {
+const createNativePlayerTransport = (
+  initialPlayer: VideoPlayer,
+  recreatePlayer?: () => VideoPlayer,
+): NativePlayerTransport => {
   let disposed = false;
   let activeAttemptId: number | undefined;
+  let player: VideoPlayer | undefined;
   let replacement = Promise.resolve();
   const listeners = new Set<(event: PlayerTransportEvent) => void>();
+  const playerListeners = new Set<() => void>();
+  let playingSubscription: { remove: () => void } | undefined;
+  let statusSubscription: { remove: () => void } | undefined;
   const emit = (event: PlayerTransportEvent) => {
     if (disposed) return;
     for (const listener of listeners) listener(event);
   };
-  const statusSubscription = player.addListener("statusChange", ({ error, status }) => {
-    if (status === "error" && activeAttemptId !== undefined) {
-      emit({ attemptId: activeAttemptId, error: error?.message ?? "Native playback failed.", type: "error" });
-    }
-  });
-  const playingSubscription = player.addListener("playingChange", ({ isPlaying }) => {
-    if (isPlaying && activeAttemptId !== undefined) emit({ attemptId: activeAttemptId, type: "playing" });
-  });
-
-  player.loop = false;
-  player.showNowPlayingNotification = false;
-  player.staysActiveInBackground = false;
-  player.timeUpdateEventInterval = 0.25;
+  const publishPlayer = () => {
+    for (const listener of playerListeners) listener();
+  };
+  const attachPlayer = (next: VideoPlayer) => {
+    player = next;
+    next.loop = false;
+    next.showNowPlayingNotification = false;
+    next.staysActiveInBackground = false;
+    next.timeUpdateEventInterval = 0.25;
+    statusSubscription = next.addListener("statusChange", ({ error, status }) => {
+      if (status === "error" && activeAttemptId !== undefined) {
+        emit({
+          attemptId: activeAttemptId,
+          error: error?.message ?? "Native playback failed.",
+          type: "error",
+        });
+      }
+    });
+    playingSubscription = next.addListener("playingChange", ({ isPlaying }) => {
+      if (isPlaying && activeAttemptId !== undefined) emit({ attemptId: activeAttemptId, type: "playing" });
+    });
+  };
+  const releasePlayer = () => {
+    const current = player;
+    if (!current) return;
+    current.pause();
+    statusSubscription?.remove();
+    playingSubscription?.remove();
+    statusSubscription = undefined;
+    playingSubscription = undefined;
+    activeAttemptId = undefined;
+    player = undefined;
+    current.release();
+    publishPlayer();
+  };
+  attachPlayer(initialPlayer);
 
   return {
     dispose: () => {
       if (disposed) return;
       disposed = true;
-      player.pause();
-      statusSubscription.remove();
-      playingSubscription.remove();
+      releasePlayer();
       listeners.clear();
-      player.release();
+      playerListeners.clear();
     },
     firstFrame: () => {
       if (activeAttemptId !== undefined) emit({ attemptId: activeAttemptId, type: "first-frame" });
     },
+    getPlayer: () => player,
     goLive: () => {
+      if (!player) return;
       const offset = player.currentOffsetFromLive;
       if (offset !== null && Number.isFinite(offset) && offset > 0) {
         player.seekBy(offset);
@@ -120,16 +154,17 @@ const createNativePlayerTransport = (player: VideoPlayer): NativePlayerTransport
         player.currentTime = player.duration;
       }
     },
-    pause: () => player.pause(),
-    play: () => player.play(),
-    player,
+    pause: () => player?.pause(),
+    play: () => player?.play(),
     replace: async (source: PlayerSource, context: { attemptId: number; signal: AbortSignal }) => {
       const queued = replacement
         .catch(() => undefined)
         .then(async () => {
           if (disposed || context.signal.aborted) return;
+          const current = player;
+          if (!current) throw new Error("Native player is suspended.");
           activeAttemptId = context.attemptId;
-          await player.replaceAsync({
+          await current.replaceAsync({
             contentType: "hls",
             headers: source.headers ? { ...source.headers } : undefined,
             uri: source.uri,
@@ -139,15 +174,26 @@ const createNativePlayerTransport = (player: VideoPlayer): NativePlayerTransport
       replacement = queued;
       await queued;
     },
+    resume: () => {
+      if (disposed || player) return;
+      if (!recreatePlayer) throw new Error("Native player cannot resume without a player factory.");
+      attachPlayer(recreatePlayer());
+      publishPlayer();
+    },
     subscribe: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
+    subscribePlayer: (listener) => {
+      playerListeners.add(listener);
+      return () => playerListeners.delete(listener);
+    },
+    suspend: releasePlayer,
   };
 };
 
 const createExpoVideoTransport = (): NativePlayerTransport =>
-  createNativePlayerTransport(createVideoPlayer(null));
+  createNativePlayerTransport(createVideoPlayer(null), () => createVideoPlayer(null));
 
 const usePairedNativePlayer = ({
   credential,
@@ -207,15 +253,20 @@ const usePairedNativePlayer = ({
       if (refreshRequest.current === request) refreshRequest.current = undefined;
     }
   }, [catalog, controller, version]);
+  const lifecycle = useMemo(
+    () => createNativePlayerLifecycle({ controller, refresh, transport }),
+    [controller, refresh, transport],
+  );
 
   useEffect(() => {
-    void refresh();
+    if (AppState.currentState === "active") void refresh();
+    else lifecycle.enterBackground();
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active") {
-        void refresh().then(() => controller.play());
+        void lifecycle.enterForeground();
       } else {
         refreshRequest.current?.abort();
-        controller.pause();
+        lifecycle.enterBackground();
       }
     });
     return () => {
@@ -223,7 +274,7 @@ const usePairedNativePlayer = ({
       subscription.remove();
       controller.dispose();
     };
-  }, [controller, refresh]);
+  }, [controller, lifecycle, refresh]);
 
   useEffect(() => {
     const createStream = createNativeEventStreamFactory({
@@ -273,19 +324,22 @@ const usePairedNativePlayer = ({
   return { controller, loadError, refresh, serverVersion, snapshot, transport };
 };
 
-const NativePlayerView = ({ style, transport }: NativePlayerViewProps) => (
-  <VideoView
-    allowsPictureInPicture={false}
-    allowsVideoFrameAnalysis={false}
-    contentFit="contain"
-    nativeControls={false}
-    onFirstFrameRender={transport.firstFrame}
-    player={transport.player}
-    startsPictureInPictureAutomatically={false}
-    style={style}
-    surfaceType="surfaceView"
-  />
-);
+const NativePlayerView = ({ style, transport }: NativePlayerViewProps) => {
+  const player = useSyncExternalStore(transport.subscribePlayer, transport.getPlayer, transport.getPlayer);
+  return player ? (
+    <VideoView
+      allowsPictureInPicture={false}
+      allowsVideoFrameAnalysis={false}
+      contentFit="contain"
+      nativeControls={false}
+      onFirstFrameRender={transport.firstFrame}
+      player={player}
+      startsPictureInPictureAutomatically={false}
+      style={style}
+      surfaceType="surfaceView"
+    />
+  ) : null;
+};
 
 const PairedNativeImage = ({ credential, resizeMode = "cover", style, uri }: PairedNativeImageProps) => {
   const source = pairedNativeImageSource(credential, uri);
@@ -304,6 +358,12 @@ export {
 } from "./src/native-event-stream";
 export type { NativeDiagnosticsRecorder, NativePlaybackDiagnostics } from "./src/native-playback-diagnostics";
 export { createNativePlaybackDiagnostics } from "./src/native-playback-diagnostics";
+export type {
+  NativeLifecycleTransport,
+  NativePlayerLifecycle,
+  NativePlayerLifecycleOptions,
+} from "./src/native-player-lifecycle";
+export { createNativePlayerLifecycle } from "./src/native-player-lifecycle";
 export type {
   NativePlayerTransport,
   NativePlayerViewProps,

@@ -306,6 +306,14 @@ queues restoration until bounded rows mount, and keeps React Native focus mechan
 selection rules. Populated-device focus proof, mobile-client diagnostic admission, populated artwork
 evidence, and real-device acceptance remain open.
 
+The native player application lifecycle now treats backgrounding as a resource boundary rather than
+only a pause signal. It pauses controller state, removes native listeners, synchronously releases
+the Expo Video player, and renders no stale player view while backgrounded. Foregrounding creates a
+fresh player, re-reads the authoritative catalog, and force-retunes the remembered Channel only when
+one still exists; the long-lived controller retains previous/recent history. Interface tests pin the
+release/recreation sequence and the no-invented-tune empty case. Real-device background/foreground
+first-frame and audio-silence evidence remains required.
+
 The touch application no longer hard-locks portrait: its Expo orientation is the schema-supported
 `default`, allowing the same safe-area-aware shell to rotate on Android and iOS. This removes a
 configuration blocker from the required portrait/landscape workshop, but does not count as real
