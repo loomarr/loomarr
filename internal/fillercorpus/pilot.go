@@ -17,7 +17,6 @@ var PilotAuthorities = []string{
 	"loc.gov/national-screening-room",
 	"images.nasa.gov",
 	"cdc.gov",
-	"blender.org",
 	"commons.wikimedia.org",
 }
 

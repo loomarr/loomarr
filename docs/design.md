@@ -3479,13 +3479,17 @@ treats a truncated search response as complete.
 
 Before a new reusable source adapter is built, a source-neutral **rights-yield pilot** locks exactly
 ten metadata-only candidates from each qualified lane: Prelinger, Library of Congress, NASA, CDC,
-Blender, and Wikimedia Commons. Each lane records positive request, response-byte,
+and Wikimedia Commons. Blender is retired as a pilot lane because its live first-party surface could
+not supply ten distinct trailer candidates without duplicate encodes, full films, or dead media
+links; individually cleared Blender works may still enter the direct/static cohort
+(`filler-corpus-blender`; `retired-ok`). Each lane records positive request, response-byte,
 predicted-media-byte, and wall-clock ceilings plus actual usage; every candidate freezes its source
 identity, role hints, metadata hash/time, source rights assertions, and one predicted media
 representation. The strict decoder rejects semantic labels and rights decisions because this pilot
 is discovery evidence only. A lane earns an adapter only after an independent reviewer approves at
 least five product-relevant items without lowering the common rights threshold. No compatibility
-format exists: no completed pilot predates this contract.
+format exists: no completed pilot predates this contract, so the unpopulated six-lane shape is
+removed rather than decoded or migrated.
 
 A new corpus-source adapter requires a product-relevance review before implementation. The review
 must show useful coverage of the filler roles the certification corpus needs, such as commercials,

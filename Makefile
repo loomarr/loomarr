@@ -354,7 +354,7 @@ filler-corpus-nasa: ## freeze the bounded NASA filler rights-yield pilot lane
 	    --delay "$${LOOMARR_FILLER_CORPUS_NASA_DELAY:-250ms}" \
 	    --max-wall-time "$${LOOMARR_FILLER_CORPUS_NASA_MAX_WALL_TIME:-2m}"
 
-filler-corpus-pilot: ## lock the six-lane metadata-only filler rights-yield pilot
+filler-corpus-pilot: ## lock the qualified metadata-only filler rights-yield pilot
 	@test -n "$$LOOMARR_FILLER_CORPUS_PILOT_DRAFT" || { echo "filler-corpus-pilot: LOOMARR_FILLER_CORPUS_PILOT_DRAFT is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_PILOT_LOCKED_AT" || { echo "filler-corpus-pilot: LOOMARR_FILLER_CORPUS_PILOT_LOCKED_AT is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \

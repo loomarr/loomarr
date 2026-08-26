@@ -223,6 +223,25 @@ published under CC BY-ND, so a general `Blender is CC BY` assumption is unsafe.
 first-party trailers/teasers after item-specific licence review. Do not relabel a full open movie or
 an editor-created excerpt as an authentic trailer.
 
+**Live pilot outcome (2026-08-26): retired as a lane.** Execution found live first-party trailer
+representations for Big Buck Bunny and Sintel. The Tears of Steel page still names its MP4 teaser,
+but that media URL returns 404; only a ZIP archive remains on the Blender download host. The source
+therefore cannot supply the required ten distinct live candidates. Duplicate encodes, two edits of
+one trailer, full open movies, demo reels, and unrelated gallery files do not repair that product-
+relevance failure. Do not add a Blender adapter or a special short-lane format. Individually cleared
+works may still enter the direct/static cohort, and the missing public-source yield moves to direct
+licensing.
+
+The retirement probe used metadata/HEAD requests only:
+
+| First-party representation | HTTP | Reported type | Meaning |
+| --- | ---: | --- | --- |
+| Big Buck Bunny `trailer_480p.mov` | 200 | `video/quicktime` | live trailer |
+| Sintel `sintel_trailer-480p.mp4` | 200 | `video/mp4` | live trailer |
+| Sintel `Sintel_Trailer1.480p.DivX_Plus_HD.mkv` | 200 | `application/octet-stream` | second edit of the same work, not an independent project |
+| Tears of Steel `tears-of-steel_teaser.mp4` | 404 | `text/html` | project page points to dead media |
+| Tears of Steel `tears-of-steel_teaser.mp4.zip` | 200 | `application/zip` | archive container, not a directly represented video |
+
 ### 6. Wikimedia Commons: broad candidate pool, secondary rights evidence
 
 **Discovery and media contract.** Traverse declared category roots through
@@ -271,7 +290,7 @@ promo-like candidates. Expect substantial source-chain and role-label attrition.
 
 ## First bounded inventory and go/no-go review
 
-Freeze **160 metadata-only candidates** before implementing another reusable adapter or downloading
+Freeze **155 metadata-only candidates** before implementing another reusable adapter or downloading
 media:
 
 | Lane | Rows | Primary roles |
@@ -280,9 +299,8 @@ media:
 | Library of Congress | 25 | period advertising, PSA/promo, institutional controls |
 | NASA | 25 | promo, trailer |
 | CDC | 15 | PSA |
-| Blender | 5 | trailer |
 | Wikimedia Commons | 50 | commercial, PSA, ID, trailer, promo candidates |
-| **Total** | **160** | |
+| **Total** | **155** | |
 
 Before writing source adapters, send ten representative rows from each lane through independent
 rights review. Continue a lane only if it produces at least five approved, product-relevant items
@@ -299,8 +317,9 @@ fully locked approval record may authorize the separately bounded downloader.
 
 The first **new reusable adapter** should be a metadata-only Wikimedia Commons inventory adapter,
 after its ten-row rights-yield pilot passes. The Archive lane already has repository tooling;
-NASA is narrower and institutionally skewed; LOC has weaker blanket rights; and the small CDC and
-Blender pools are better represented by reviewed static manifests than by source-specific code.
+NASA is narrower and institutionally skewed; LOC has weaker blanket rights; the small CDC pool is
+better represented by a reviewed static manifest; and Blender is retired as a pilot lane after its
+live surface failed the ten-distinct-candidate precondition.
 Commons is the only remaining API lane with meaningful candidate coverage across commercials,
 station IDs, trailers, PSAs, and promo-like material.
 
@@ -387,8 +406,8 @@ Exclude or hold all of the following:
 
 ## Execution order
 
-1. Run the six-lane, 60-row rights-yield pilot: ten metadata-only candidates per lane.
-2. Freeze the 160-row inventory only for lanes that pass product-relevance and rights-yield review.
+1. Run the five-lane, 50-row rights-yield pilot: ten metadata-only candidates per qualified lane.
+2. Freeze the 155-row inventory only for lanes that pass product-relevance and rights-yield review.
 3. Execute the 100-case direct-license/commission brief in parallel; do not wait for archives to
    solve the modern bumper/ID gap.
 4. Independently adjudicate rights and acquire/hash approved-only media under existing ceilings.

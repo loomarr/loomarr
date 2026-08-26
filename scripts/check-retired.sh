@@ -3,6 +3,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 RETIRED=(
+  # The Blender pilot could not produce ten distinct live trailer candidates without duplicate
+  # encodes, full-film relabeling, or dead media. Individually cleared works belong in the static
+  # cohort; a dedicated lane/target would recreate the disproven source assumption.
+  'filler-corpus-blender|retired: Blender works may enter the reviewed static cohort, but Blender is not a qualified pilot lane'
   # Loomarr publishes Linux amd64/arm64 containers and does not support a native Windows server.
   # These names were assurance surfaces for that unsupported target, not product invariants.
   'windows-playout|retired: Loomarr has no supported native Windows server build'

@@ -103,6 +103,15 @@ func TestValidatePilotRejectsApprovalOrLabelFieldsAtDecodeBoundary(t *testing.T)
 	}
 }
 
+func TestValidatePilotRejectsRetiredBlenderLane(t *testing.T) {
+	p := validPilot()
+	p.Lanes[0].Authority = "blender.org"
+	failures := strings.Join(ValidatePilot(p), "\n")
+	if !strings.Contains(failures, `unknown pilot authority "blender.org"`) {
+		t.Fatalf("failures = %s", failures)
+	}
+}
+
 func validPilot() Pilot {
 	snapshot := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
 	p := Pilot{SchemaVersion: PilotSchemaVersion, SnapshotAt: snapshot, LockedAt: snapshot.Add(time.Hour)}

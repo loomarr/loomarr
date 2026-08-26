@@ -71,7 +71,7 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make filler-corpus-cdc` |  | freeze the bounded CDC filler rights-yield pilot lane |
 | `make filler-corpus-loc` |  | freeze the bounded LOC filler rights-yield pilot lane |
 | `make filler-corpus-nasa` |  | freeze the bounded NASA filler rights-yield pilot lane |
-| `make filler-corpus-pilot` |  | lock the six-lane metadata-only filler rights-yield pilot |
+| `make filler-corpus-pilot` |  | lock the qualified metadata-only filler rights-yield pilot |
 | `make filler-corpus-archive` |  | freeze a bounded rights-filtered Archive.org corpus inventory |
 | `make filler-corpus-download` |  | download only rights-approved corpus media under hard ceilings |
 | `make filler-corpus-rights-review` |  | prepare an inert worksheet from a frozen filler inventory |

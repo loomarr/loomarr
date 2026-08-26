@@ -65,7 +65,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-pilot: write:", err)
 		return 1
 	}
-	_, _ = fmt.Fprintf(stdout, "filler-corpus-pilot: locked %d non-authorizing candidates across %d lanes\n", 60, len(pilot.Lanes))
+	var candidates int
+	for _, lane := range pilot.Lanes {
+		candidates += len(lane.Cases)
+	}
+	_, _ = fmt.Fprintf(stdout, "filler-corpus-pilot: locked %d non-authorizing candidates across %d lanes\n", candidates, len(pilot.Lanes))
 	return 0
 }
 
