@@ -3563,6 +3563,13 @@ validated against its draft digest before either artifact is written; provider i
 cannot acquire a hidden answer key through corpus preparation. No hand-authored packet or older
 preparation shape is accepted.
 
+The label lock accepts only that still-unlocked, wholly unlabeled draft and strict current-schema
+JSON/JSONL; unknown or trailing fields are errors, not compatibility data. It validates both blind
+submissions as complete labels before comparing their canonical hashes, including the submission
+that an adjudicator does not select. A third reviewer therefore resolves a real semantic
+disagreement; adjudication cannot turn an incomplete or malformed second review into evidence of
+independent labeling.
+
 Media acquisition consumes a separate rights-review ledger; discovery output is never download
 authority. Every `approved` row binds the inventory digest, authority-qualified case ID, source
 metadata hash, reviewer, review time, rationale, redistribution decision, attribution, and

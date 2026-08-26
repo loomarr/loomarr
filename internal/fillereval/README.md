@@ -25,7 +25,10 @@ contain disposition, reject class, content role, taxonomy, policy flags, slices,
 answerable review question. A reviewer file must use one identity and one batch throughout. When the
 two canonical label hashes differ, `LOOMARR_FILLER_CORPUS_ADJUDICATIONS` names a third JSONL file with
 `caseId`, a distinct `adjudicatorId`, `adjudicatedAt`, `reason`, and final `labels`. The command writes
-nothing until every draft case is covered and the complete certification manifest validates.
+nothing until every draft case is covered and the complete certification manifest validates. The
+draft must still be unlocked and contain no labels, reviews, or adjudication. Unknown and trailing
+JSON fields fail rather than being retained as an implicit older format, and both blind submissions
+must be complete even when a third reviewer chooses one side of a disagreement.
 
 `make filler-corpus-archive` is the metadata-only acquisition preflight for Archive.org. It requires
 an identified User-Agent, explicit snapshot time, request/item/per-item-byte/total-byte ceilings, and

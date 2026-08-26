@@ -4,6 +4,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -80,11 +81,17 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 func readJSON[T any](path string) (T, error) {
 	var value T
-	data, err := os.ReadFile(path)
+	file, err := os.Open(path)
 	if err != nil {
 		return value, err
 	}
-	if err := json.Unmarshal(data, &value); err != nil {
+	defer func() { _ = file.Close() }()
+	decoder := json.NewDecoder(file)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&value); err != nil {
+		return value, err
+	}
+	if err := requireEOF(decoder); err != nil {
 		return value, err
 	}
 	return value, nil
@@ -104,12 +111,28 @@ func readJSONL[T any](path string) ([]T, error) {
 			continue
 		}
 		var value T
-		if err := json.Unmarshal(scanner.Bytes(), &value); err != nil {
+		decoder := json.NewDecoder(bytes.NewReader(scanner.Bytes()))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&value); err != nil {
+			return nil, fmt.Errorf("line %d: %w", line, err)
+		}
+		if err := requireEOF(decoder); err != nil {
 			return nil, fmt.Errorf("line %d: %w", line, err)
 		}
 		values = append(values, value)
 	}
 	return values, scanner.Err()
+}
+
+func requireEOF(decoder *json.Decoder) error {
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("trailing JSON value")
+		}
+		return err
+	}
+	return nil
 }
 
 func writeJSON(path string, value any) error {

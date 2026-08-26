@@ -478,15 +478,6 @@ func ValidateManifest(manifest Manifest) []string {
 		} else {
 			splitCounts[c.Split]++
 		}
-		if c.Truth != TruthEligible && c.Truth != TruthInvalid && c.Truth != TruthAmbiguous {
-			failures = append(failures, prefix+": invalid truth")
-		}
-		if c.Truth == TruthInvalid && c.RejectClass != RejectDeterministic && c.RejectClass != RejectSemantic {
-			failures = append(failures, prefix+": invalid truth requires a reject class")
-		}
-		if c.Truth == TruthAmbiguous && strings.TrimSpace(c.ReviewQuestion) == "" {
-			failures = append(failures, prefix+": ambiguous truth requires a review question")
-		}
 		if strings.TrimSpace(c.Cluster) == "" {
 			failures = append(failures, prefix+": similarity cluster is required")
 		} else if split, exists := clusters[c.Cluster]; exists && split != c.Split {
@@ -497,6 +488,7 @@ func ValidateManifest(manifest Manifest) []string {
 		if strings.TrimSpace(c.Source) == "" || strings.TrimSpace(c.License) == "" {
 			failures = append(failures, prefix+": source and license are required")
 		}
+		failures = append(failures, validateLabels(prefix, LabelsFromCase(c))...)
 		if manifest.Kind == CorpusCertification {
 			failures = append(failures, validateCertificationCase(prefix, c, manifest.LockedAt)...)
 			if previousCluster, exists := contentClusters[c.ContentSHA256]; exists && previousCluster != c.Cluster {
@@ -504,19 +496,6 @@ func ValidateManifest(manifest Manifest) []string {
 			} else if c.ContentSHA256 != "" {
 				contentClusters[c.ContentSHA256] = c.Cluster
 			}
-		}
-		if len(c.Slices) == 0 {
-			failures = append(failures, prefix+": at least one slice is required")
-		}
-		evidenceIDs := map[string]struct{}{}
-		for _, evidence := range c.Evidence {
-			if evidence.ID == "" || evidence.Kind == "" || evidence.Claim == "" || evidence.Provenance == "" {
-				failures = append(failures, prefix+": evidence requires id, kind, claim, and provenance")
-			}
-			if _, exists := evidenceIDs[evidence.ID]; exists {
-				failures = append(failures, prefix+": duplicate evidence id "+evidence.ID)
-			}
-			evidenceIDs[evidence.ID] = struct{}{}
 		}
 	}
 	if manifest.Kind == CorpusCertification && (splitCounts[SplitDevelopment] == 0 || splitCounts[SplitHoldout] == 0) {

@@ -33,7 +33,9 @@ func LockReviewedManifest(draft Manifest, first, second []LabelSubmission, adjud
 	locked.Cases = slices.Clone(draft.Cases)
 	locked.Kind = CorpusCertification
 	locked.LockedAt = lockedAt.UTC()
-	firstByID, failures := indexSubmissions("first review", first)
+	failures := validateUnlabeledDraft(draft)
+	firstByID, firstFailures := indexSubmissions("first review", first)
+	failures = append(failures, firstFailures...)
 	secondByID, moreFailures := indexSubmissions("second review", second)
 	failures = append(failures, moreFailures...)
 	adjudicationByID, adjudicationFailures := indexAdjudications(adjudications)
@@ -56,6 +58,8 @@ func LockReviewedManifest(draft Manifest, first, second []LabelSubmission, adjud
 		}
 		aHash := LabelsSHA256(a.Labels)
 		bHash := LabelsSHA256(b.Labels)
+		failures = append(failures, validateLabels(c.ID+": first review", a.Labels)...)
+		failures = append(failures, validateLabels(c.ID+": second review", b.Labels)...)
 		finalLabels := a.Labels
 		var adjudication *LabelAdjudication
 		if aHash != bHash {
@@ -68,6 +72,7 @@ func LockReviewedManifest(draft Manifest, first, second []LabelSubmission, adjud
 				failures = append(failures, c.ID+": adjudicator must differ from both reviewers")
 				continue
 			}
+			failures = append(failures, validateLabels(c.ID+": adjudication", resolution.Labels)...)
 			finalLabels = resolution.Labels
 			usedAdjudications[c.ID] = struct{}{}
 			adjudication = &LabelAdjudication{
@@ -101,6 +106,58 @@ func LockReviewedManifest(draft Manifest, first, second []LabelSubmission, adjud
 		failures = append(failures, ValidateManifest(locked)...)
 	}
 	return locked, failures
+}
+
+func validateUnlabeledDraft(draft Manifest) []string {
+	var failures []string
+	if draft.SchemaVersion != SchemaVersion || draft.Kind != CorpusCertification || strings.TrimSpace(draft.CorpusVersion) == "" || !draft.LockedAt.IsZero() {
+		failures = append(failures, "draft requires the current certification schema, corpus identity, and no prior lock time")
+	}
+	for _, c := range draft.Cases {
+		if c.Truth != "" || c.RejectClass != "" || strings.TrimSpace(c.ContentRole) != "" || len(c.Taxonomy) != 0 || len(c.PolicyFlags) != 0 || len(c.Slices) != 0 || len(c.Evidence) != 0 || strings.TrimSpace(c.ReviewQuestion) != "" || len(c.LabelReviews) != 0 || c.Adjudication != nil {
+			failures = append(failures, c.ID+": draft must not contain labels, reviews, or adjudication")
+		}
+	}
+	return failures
+}
+
+func validateLabels(prefix string, labels Labels) []string {
+	var failures []string
+	if labels.Truth != TruthEligible && labels.Truth != TruthInvalid && labels.Truth != TruthAmbiguous {
+		failures = append(failures, prefix+": invalid truth")
+	}
+	if labels.Truth == TruthInvalid && labels.RejectClass != RejectDeterministic && labels.RejectClass != RejectSemantic {
+		failures = append(failures, prefix+": invalid truth requires a reject class")
+	}
+	if labels.Truth != TruthInvalid && labels.RejectClass != "" {
+		failures = append(failures, prefix+": only invalid truth may carry a reject class")
+	}
+	if labels.Truth == TruthAmbiguous && strings.TrimSpace(labels.ReviewQuestion) == "" {
+		failures = append(failures, prefix+": ambiguous truth requires a review question")
+	}
+	if labels.Truth != TruthAmbiguous && strings.TrimSpace(labels.ReviewQuestion) != "" {
+		failures = append(failures, prefix+": only ambiguous truth may carry a review question")
+	}
+	if strings.TrimSpace(labels.ContentRole) == "" {
+		failures = append(failures, prefix+": content role is required")
+	}
+	if len(labels.Slices) == 0 {
+		failures = append(failures, prefix+": at least one slice is required")
+	}
+	if len(labels.Evidence) == 0 {
+		failures = append(failures, prefix+": at least one evidence label is required")
+	}
+	evidenceIDs := map[string]struct{}{}
+	for _, evidence := range labels.Evidence {
+		if evidence.ID == "" || evidence.Kind == "" || evidence.Claim == "" || evidence.Provenance == "" {
+			failures = append(failures, prefix+": evidence requires id, kind, claim, and provenance")
+		}
+		if _, exists := evidenceIDs[evidence.ID]; exists {
+			failures = append(failures, prefix+": duplicate evidence id "+evidence.ID)
+		}
+		evidenceIDs[evidence.ID] = struct{}{}
+	}
+	return failures
 }
 
 func indexSubmissions(name string, submissions []LabelSubmission) (map[string]LabelSubmission, []string) {

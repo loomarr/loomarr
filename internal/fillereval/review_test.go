@@ -8,12 +8,10 @@ import (
 
 func TestLockReviewedManifestPreservesIndependentSubmissions(t *testing.T) {
 	manifest, _ := passingCorpus(500)
-	for i := range manifest.Cases {
-		manifest.Cases[i].LabelReviews = nil
-		manifest.Cases[i].Adjudication = nil
-	}
 	first, second := submissionsFor(manifest)
-	locked, failures := LockReviewedManifest(manifest, first, second, nil, manifest.LockedAt.Add(time.Hour))
+	lockedAt := manifest.LockedAt.Add(time.Hour)
+	clearDraftLabels(&manifest)
+	locked, failures := LockReviewedManifest(manifest, first, second, nil, lockedAt)
 	if len(failures) > 0 {
 		t.Fatalf("lock failed: %v", failures)
 	}
@@ -24,25 +22,58 @@ func TestLockReviewedManifestPreservesIndependentSubmissions(t *testing.T) {
 
 func TestLockReviewedManifestRequiresThirdPartyAdjudication(t *testing.T) {
 	manifest, _ := passingCorpus(500)
-	for i := range manifest.Cases {
-		manifest.Cases[i].LabelReviews = nil
-		manifest.Cases[i].Adjudication = nil
-	}
 	first, second := submissionsFor(manifest)
+	lockedAt := manifest.LockedAt.Add(time.Hour)
+	adjudicatedAt := manifest.LockedAt
+	clearDraftLabels(&manifest)
 	second[0].Labels.ContentRole = "bumper"
-	if _, failures := LockReviewedManifest(manifest, first, second, nil, manifest.LockedAt.Add(time.Hour)); !containsFailure(failures, "divergent labels require adjudication") {
+	if _, failures := LockReviewedManifest(manifest, first, second, nil, lockedAt); !containsFailure(failures, "divergent labels require adjudication") {
 		t.Fatalf("missing adjudication failures = %v", failures)
 	}
 	adjudication := AdjudicationSubmission{
-		CaseID: first[0].CaseID, AdjudicatorID: "reviewer-c", AdjudicatedAt: manifest.LockedAt,
+		CaseID: first[0].CaseID, AdjudicatorID: "reviewer-c", AdjudicatedAt: adjudicatedAt,
 		Reason: "frame and transcript agree with the commercial label", Labels: first[0].Labels,
 	}
-	locked, failures := LockReviewedManifest(manifest, first, second, []AdjudicationSubmission{adjudication}, manifest.LockedAt.Add(time.Hour))
+	locked, failures := LockReviewedManifest(manifest, first, second, []AdjudicationSubmission{adjudication}, lockedAt)
 	if len(failures) > 0 || locked.Cases[0].Adjudication == nil {
 		t.Fatalf("adjudicated lock = %+v, %v", locked.Cases[0].Adjudication, failures)
 	}
 	if locked.Cases[0].LabelReviews[0].SubmissionSHA256 == locked.Cases[0].LabelReviews[1].SubmissionSHA256 {
 		t.Fatal("divergent blind submissions were overwritten")
+	}
+}
+
+func TestLockReviewedManifestRejectsLabelBearingDraft(t *testing.T) {
+	manifest, _ := passingCorpus(500)
+	first, second := submissionsFor(manifest)
+	lockedAt := manifest.LockedAt.Add(time.Hour)
+	clearDraftLabels(&manifest)
+	manifest.Cases[0].Truth = TruthEligible
+	if _, failures := LockReviewedManifest(manifest, first, second, nil, lockedAt); !containsFailure(failures, "draft must not contain labels") {
+		t.Fatalf("label-bearing draft failures = %v", failures)
+	}
+}
+
+func TestLockReviewedManifestValidatesBothBlindSubmissions(t *testing.T) {
+	manifest, _ := passingCorpus(500)
+	first, second := submissionsFor(manifest)
+	lockedAt := manifest.LockedAt.Add(time.Hour)
+	adjudicatedAt := manifest.LockedAt
+	clearDraftLabels(&manifest)
+	second[0].Labels = Labels{Truth: TruthInvalid}
+	adjudication := AdjudicationSubmission{CaseID: first[0].CaseID, AdjudicatorID: "reviewer-c", AdjudicatedAt: adjudicatedAt, Reason: "first review is supported", Labels: first[0].Labels}
+	if _, failures := LockReviewedManifest(manifest, first, second, []AdjudicationSubmission{adjudication}, lockedAt); !containsFailure(failures, "second review: invalid truth requires a reject class") || !containsFailure(failures, "second review: at least one slice is required") {
+		t.Fatalf("invalid losing review failures = %v", failures)
+	}
+}
+
+func clearDraftLabels(manifest *Manifest) {
+	manifest.LockedAt = time.Time{}
+	for i := range manifest.Cases {
+		c := &manifest.Cases[i]
+		c.Truth, c.RejectClass, c.ContentRole, c.ReviewQuestion = "", "", "", ""
+		c.Taxonomy, c.PolicyFlags, c.Slices, c.Evidence = nil, nil, nil, nil
+		c.LabelReviews, c.Adjudication = nil, nil
 	}
 }
 
