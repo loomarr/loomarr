@@ -231,6 +231,14 @@ func validateConfig(config Config) error {
 		}
 		previousRank = rank
 	}
+	if slices.ContainsFunc(config.Routes, func(route Route) bool { return route.Provider == "openrouter" }) {
+		if config.Snapshot == nil {
+			return fmt.Errorf("OpenRouter bakeoff routes require a locked capability and price snapshot")
+		}
+		if err := ValidateOpenRouterRunSnapshot(config.Run, config.Routes, *config.Snapshot); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

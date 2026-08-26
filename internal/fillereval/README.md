@@ -92,7 +92,10 @@ OpenRouter or starts local inference.
 
 `make filler-bakeoff-openrouter` is the paid/manual capture boundary. It consumes a locked manifest,
 label-blind packet JSONL, external derivative root, and strict versioned JSON containing the run,
-admission policy, and ordered routes. `OPENROUTER_API_KEY` is read only from the environment. The
+admission policy, and ordered routes. It also requires the immutable output of
+`make filler-openrouter-snapshot`; both run snapshot identities must equal that artifact's SHA-256,
+and every route must match a live ZDR endpoint recorded within the preceding 24 hours.
+`OPENROUTER_API_KEY` is read only from the environment. The
 adapter performs one request per reserved rung, pins the upstream provider with fallback disabled,
 requires strict structured output and ZDR routing, records OpenRouter routing metadata and exact
 `usage.cost`, and writes a private atomic prediction JSONL for separate `filler-eval-cert` replay.

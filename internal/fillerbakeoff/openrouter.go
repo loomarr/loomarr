@@ -221,6 +221,8 @@ func (o *openRouterExtractor) Extract(ctx context.Context, request Request) (Ext
 	}
 	httpRequest.Header.Set("Content-Type", "application/json")
 	httpRequest.Header.Set("X-OpenRouter-Metadata", "enabled")
+	httpRequest.Header.Set("HTTP-Referer", "https://github.com/loomarr/loomarr")
+	httpRequest.Header.Set("X-OpenRouter-Title", "Loomarr filler certification")
 	if o.apiKey != "" {
 		httpRequest.Header.Set("Authorization", "Bearer "+o.apiKey)
 	}

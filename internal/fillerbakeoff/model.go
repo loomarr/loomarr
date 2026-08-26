@@ -102,4 +102,5 @@ type Config struct {
 	Policy     AdmissionEvaluator
 	Routes     []Route
 	Extractor  Extractor
+	Snapshot   *OpenRouterSnapshot
 }

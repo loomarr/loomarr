@@ -37,14 +37,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 	manifestPath := flags.String("manifest", "", "locked certification manifest JSON")
 	packetsPath := flags.String("packets", "", "label-blind evidence packets JSONL")
 	configPath := flags.String("config", "", "versioned bakeoff route and policy JSON")
+	snapshotPath := flags.String("snapshot", "", "locked OpenRouter capability, price, and ZDR snapshot JSON")
 	corpusRoot := flags.String("corpus-root", "", "root containing packet media derivatives")
 	predictionsPath := flags.String("predictions", "", "output immutable predictions JSONL")
 	baseURL := flags.String("base-url", fillerbakeoff.OpenRouterBaseURL, "OpenRouter API base URL")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
-	if *manifestPath == "" || *packetsPath == "" || *configPath == "" || *corpusRoot == "" || *predictionsPath == "" {
-		_, _ = fmt.Fprintln(stderr, "filler-bakeoff-openrouter: --manifest, --packets, --config, --corpus-root, and --predictions are required")
+	if *manifestPath == "" || *packetsPath == "" || *configPath == "" || *snapshotPath == "" || *corpusRoot == "" || *predictionsPath == "" {
+		_, _ = fmt.Fprintln(stderr, "filler-bakeoff-openrouter: --manifest, --packets, --config, --snapshot, --corpus-root, and --predictions are required")
 		return 2
 	}
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
@@ -70,6 +71,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "filler-bakeoff-openrouter: prompt version %q, want %q\n", configFile.Run.PromptVersion, fillerbakeoff.OpenRouterPromptVersion)
 		return 1
 	}
+	snapshot, err := readStrictJSON[fillerbakeoff.OpenRouterSnapshot](*snapshotPath)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "filler-bakeoff-openrouter: read snapshot: %v\n", err)
+		return 1
+	}
 	packets, err := readPackets(*packetsPath)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "filler-bakeoff-openrouter: read packets: %v\n", err)
@@ -87,7 +93,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	predictions, err := fillerbakeoff.Run(context.Background(), fillerbakeoff.Config{
 		Run: configFile.Run, Manifest: manifest, Packets: packets, CorpusRoot: *corpusRoot,
-		Policy: policy, Routes: configFile.Routes, Extractor: extractor,
+		Policy: policy, Routes: configFile.Routes, Extractor: extractor, Snapshot: &snapshot,
 	})
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "filler-bakeoff-openrouter: run: %v\n", err)

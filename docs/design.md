@@ -3392,6 +3392,14 @@ aggregates those steps but never collapses a cascade into one falsely attributed
 Certification routes authorize exactly one provider attempt per invocation; an adapter may not hide
 internal retries inside an aggregate attribution. A retry is a new runner invocation and ledger step.
 
+An OpenRouter certification run is also bound to one immutable metadata snapshot fetched no more
+than 24 hours before its declared run time. The snapshot makes one bounded authenticated ZDR-list
+request plus one bounded endpoint request per concrete candidate and freezes model modalities,
+endpoint selector slug, distinct returned provider name, strict-output parameters, status, exact
+price text, and ZDR membership. Its SHA-256 is both the run's capability and price identity. Every
+route must resolve exactly within that snapshot before media is opened or spend is reserved; a
+human-readable snapshot label, catalog-level capability claim, or provider-family name is not proof.
+
 Routing is reason-driven rather than confidence-driven: deterministic and text evidence run first;
 frames may run only for a predeclared missing/conflicting claim; direct video may run only for a
 named temporal ambiguity; premium escalation may run only for a predeclared unresolved reason whose

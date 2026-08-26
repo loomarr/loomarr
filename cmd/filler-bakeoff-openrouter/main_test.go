@@ -19,7 +19,7 @@ func TestRunRequiresLockedInputsAndCredential(t *testing.T) {
 		t.Fatalf("missing inputs: code=%d stderr=%s", code, stderr.String())
 	}
 	stderr.Reset()
-	code := run([]string{"--manifest", "m", "--packets", "p", "--config", "c", "--corpus-root", "r", "--predictions", "o"}, &stdout, &stderr)
+	code := run([]string{"--manifest", "m", "--packets", "p", "--config", "c", "--snapshot", "s", "--corpus-root", "r", "--predictions", "o"}, &stdout, &stderr)
 	if code != 2 || !strings.Contains(stderr.String(), "OPENROUTER_API_KEY") {
 		t.Fatalf("missing key: code=%d stderr=%s", code, stderr.String())
 	}
