@@ -1,6 +1,6 @@
 import type { GuideController } from "@loomarr/core/guide";
 import type { Density } from "@loomarr/design-system";
-import { Surface, Text } from "@loomarr/design-system";
+import { Surface } from "@loomarr/design-system";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { StatePanel } from "../state-panel";
 import { restoreSurfSelection, surfGroupsFromGuide } from "./surf-data";
@@ -71,6 +71,7 @@ const SurfJourney = ({
               ? { label: "Try again", onPress: () => void controller.refresh(currentChannelId) }
               : undefined
           }
+          compact={density === "tv"}
           density={density}
           description={
             kind === "error"
@@ -80,6 +81,7 @@ const SurfJourney = ({
                 : "Reading the latest channels."
           }
           kind={kind}
+          metadata={surfIdentityLabel(clientName, clientVersion, serverVersion)}
           title={
             kind === "error"
               ? "Surf unavailable"
@@ -88,9 +90,6 @@ const SurfJourney = ({
                 : "Loading channels"
           }
         />
-        <Text density={density} textAlign="center" textRole="metadata">
-          {surfIdentityLabel(clientName, clientVersion, serverVersion)}
-        </Text>
       </Surface>
     );
   }

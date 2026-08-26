@@ -62,6 +62,7 @@ const WatchingSurface = ({
   snapshot,
   schedule,
 }: WatchingSurfaceProps) => {
+  const recoverableFailure = Boolean(loadError) || snapshot.status === "failed";
   const message =
     loadError ??
     (snapshot.status === "empty"
@@ -140,7 +141,12 @@ const WatchingSurface = ({
               </Text>
             ) : null}
             {message ? (
-              <Text accessibilityLiveRegion="polite" density={density} textRole="body" tone="danger">
+              <Text
+                accessibilityLiveRegion="polite"
+                density={density}
+                textRole="body"
+                tone={recoverableFailure ? "danger" : "muted"}
+              >
                 {message}
               </Text>
             ) : null}
@@ -188,7 +194,7 @@ const WatchingSurface = ({
               >
                 Channel +
               </Action>
-              {message ? (
+              {recoverableFailure ? (
                 <Action density={density} onPress={onRetry} tone="primary">
                   Retry
                 </Action>

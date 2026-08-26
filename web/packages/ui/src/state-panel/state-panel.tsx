@@ -16,7 +16,16 @@ const statePresentation: Record<
   permission: { icon: icons.warning, iconLabel: "Permission required", tone: "warning" },
 };
 
-const StatePanel = ({ action, description, density = "pointer", icon, kind, title }: StatePanelProps) => {
+const StatePanel = ({
+  action,
+  compact = false,
+  description,
+  density = "pointer",
+  icon,
+  kind,
+  metadata,
+  title,
+}: StatePanelProps) => {
   const loading = kind === "loading";
   const presentation = loading ? undefined : statePresentation[kind];
 
@@ -25,11 +34,11 @@ const StatePanel = ({ action, description, density = "pointer", icon, kind, titl
       aria-busy={loading || undefined}
       aria-live={kind === "error" ? "assertive" : "polite"}
       alignItems="center"
-      gap="$control"
+      gap={compact ? "$inline" : "$control"}
       justifyContent="center"
       level="raised"
-      minHeight={density === "tv" ? 320 : 220}
-      padding={density === "tv" ? 48 : "$section"}
+      minHeight={compact ? (density === "tv" ? 220 : 180) : density === "tv" ? 320 : 220}
+      padding={compact ? "$control" : density === "tv" ? 48 : "$section"}
       role={kind === "error" ? "alert" : "status"}
       width="100%"
     >
@@ -71,6 +80,11 @@ const StatePanel = ({ action, description, density = "pointer", icon, kind, titl
         >
           {action.label}
         </Action>
+      ) : null}
+      {metadata ? (
+        <Text density={density} textAlign="center" textRole="metadata">
+          {metadata}
+        </Text>
       ) : null}
     </Surface>
   );

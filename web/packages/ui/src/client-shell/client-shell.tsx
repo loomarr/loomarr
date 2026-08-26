@@ -34,7 +34,7 @@ const ClientShell = ({
   };
 
   return (
-    <Screen density={density} gap="$section">
+    <Screen density={density} gap={density === "tv" ? "$control" : "$section"}>
       <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
         <BrandLockup size={density === "tv" ? "large" : "medium"} />
         <View style={{ alignItems: "flex-end", gap: density === "tv" ? 12 : 8 }}>

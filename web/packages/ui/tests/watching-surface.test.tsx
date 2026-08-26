@@ -91,8 +91,12 @@ describe("WatchingSurface", () => {
       recentChannelIds: [],
       status: "empty",
     };
-    expect(renderSurface(empty)).toContain("No playable channels");
-    expect(renderSurface(empty, "Couldn't load channels.")).toContain("Couldn&#x27;t load channels.");
+    const deadAir = renderSurface(empty);
+    expect(deadAir).toContain("No playable channels");
+    expect(deadAir).not.toContain("Retry");
+    const failedLoad = renderSurface(empty, "Couldn't load channels.");
+    expect(failedLoad).toContain("Couldn&#x27;t load channels.");
+    expect(failedLoad).toContain("Retry");
   });
 
   it("keeps the native player mounted without leaking Watching chrome into another journey", () => {

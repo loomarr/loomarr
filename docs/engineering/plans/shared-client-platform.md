@@ -317,6 +317,23 @@ returned the Shield to the explicit disconnected state, and Pair again completed
 This is useful device evidence, not P4 acceptance: the isolated server had no playable channels, so
 first frame, populated focus traversal, tuning, and playback recovery remain open.
 
+A later release traversal used the Shield's real 1920 × 1080 xhdpi output, and therefore the
+contractual 960 × 540dp composition rather than treating physical pixels as layout units. It caught
+Surf's full-height unavailable panel painting over the connection control and quiet version footer.
+The shared shell now uses bounded TV spacing and an explicitly compact `StatePanel` composition;
+the footer is part of that panel instead of overflowing as an unrelated sibling. The repaired device
+tree keeps the disconnect control at y=203–252, unavailable content at y=510–726, and navigation at
+y=894–945, with no overlap or React Native/Android runtime error. Watching likewise offers Retry only
+for an actual catalog or transport failure, not for an authoritative empty catalog.
+
+That rebuild exposed a separate distribution hazard: React Native Gradle's default incremental bundle
+inputs stop at each Expo app directory even though Metro resolves Loomarr product code from workspace
+packages. The generated mobile and TV Android projects now add shared JavaScript/TypeScript/JSON,
+workspace package/lock metadata, and the app Metro configuration to every `BundleHermesCTask` input.
+The fail-closed config plugin and generated Gradle proof prevent an incremental release from silently
+retaining stale shared UI. The post-change native assemble still needs repeating under the normal
+Android build sandbox; the resumed restricted sandbox cannot initialize Gradle's local lock listener.
+
 After adoption, migration uses route/surface ownership rather than two implementations mounted for
 the same user journey. A surface switches only when its replacement passes its full contract. The
 old implementation is then deleted in the same PR or the next explicitly paired retirement PR; it
