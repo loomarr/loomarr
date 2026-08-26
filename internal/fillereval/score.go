@@ -531,8 +531,8 @@ func validateCertificationCase(prefix string, c Case, lockedAt time.Time) []stri
 		failures = append(failures, prefix+": certification requires lowercase SHA-256 media and evidence hashes")
 	}
 	p := c.Provenance
-	if strings.TrimSpace(p.Authority) == "" || strings.TrimSpace(p.ItemID) == "" || strings.TrimSpace(p.ItemURL) == "" || p.MetadataRetrievedAt.IsZero() || !isSHA256(p.MetadataSHA256) || strings.TrimSpace(p.EvidenceURL) == "" {
-		failures = append(failures, prefix+": source authority, item identity, metadata retrieval, metadata hash, and evidence URL are required")
+	if strings.TrimSpace(p.Authority) == "" || strings.TrimSpace(p.ItemID) == "" || strings.TrimSpace(p.ItemRef) == "" || p.MetadataRetrievedAt.IsZero() || !isSHA256(p.MetadataSHA256) || strings.TrimSpace(p.EvidenceRef) == "" {
+		failures = append(failures, prefix+": source authority, item identity, metadata retrieval, metadata hash, and evidence reference are required")
 	}
 	if strings.TrimSpace(p.RightsStatement) == "" || strings.TrimSpace(p.RightsDecision) == "" || strings.TrimSpace(p.RightsReviewerID) == "" || p.RightsReviewedAt.IsZero() {
 		failures = append(failures, prefix+": item-level rights evidence and adjudication are required")
@@ -540,7 +540,7 @@ func validateCertificationCase(prefix string, c Case, lockedAt time.Time) []stri
 	if p.MetadataRetrievedAt.After(lockedAt) || p.RightsReviewedAt.After(lockedAt) {
 		failures = append(failures, prefix+": source metadata and rights review cannot postdate the manifest lock")
 	}
-	if strings.TrimSpace(p.SourceFilename) == "" || strings.TrimSpace(p.SourceURL) == "" || p.SourceBytes <= 0 || p.SegmentStartMS < 0 || p.SegmentDurationMS <= 0 {
+	if strings.TrimSpace(p.SourceFilename) == "" || strings.TrimSpace(p.SourceRef) == "" || p.SourceBytes <= 0 || p.SegmentStartMS < 0 || p.SegmentDurationMS <= 0 {
 		failures = append(failures, prefix+": source file identity, positive size, and bounded segment are required")
 	}
 	wantLabelHash := LabelSHA256(c)

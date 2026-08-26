@@ -323,11 +323,11 @@ func certificationCase(id string, split fillereval.Split, contentHash, evidenceH
 			{ID: "role", Kind: "frame", Claim: "content_role", Value: filleradmission.RoleBumper, Provenance: "blind review"},
 		},
 		Provenance: fillereval.MediaProvenance{
-			Authority: "fixture", ItemID: id, ItemURL: "https://example.invalid/items/" + id,
-			MetadataRetrievedAt: lockedAt, MetadataSHA256: strings.Repeat("d", 64), EvidenceURL: "https://example.invalid/evidence/" + id,
+			Authority: "fixture", ItemID: id, ItemRef: "https://example.invalid/items/" + id,
+			MetadataRetrievedAt: lockedAt, MetadataSHA256: strings.Repeat("d", 64), EvidenceRef: "https://example.invalid/evidence/" + id,
 			RightsStatement: "CC0 fixture", RightsDecision: "approved", RightsReviewerID: "rights",
 			RightsReviewedAt: lockedAt, Redistributable: true, SourceFilename: id + ".mp4",
-			SourceURL: "https://example.invalid/media/" + id, SourceBytes: 1024, SegmentDurationMS: 30_000,
+			SourceRef: "https://example.invalid/media/" + id, SourceBytes: 1024, SegmentDurationMS: 30_000,
 		},
 	}
 	labelHash := fillereval.LabelSHA256(c)

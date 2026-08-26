@@ -63,6 +63,13 @@ inventory and the inert JSON worksheet. Every row must be present once, immutabl
 match, decisions must be complete and time-bound, and approved BY/BY-SA media must carry attribution.
 Only a fully valid review is atomically converted to the JSONL consumed by the downloader.
 
+`make filler-corpus-prepare` is the next mechanical boundary. It accepts only the complete approved
+inventory plus an authored split/cluster/segment plan, re-hashes every source file, measures the
+bounded segment, and stages the four frame and direct-video derivatives under aggregate resource
+ceilings. It writes an unlabeled provenance-complete draft and the exact label-blind packet JSONL
+consumed by the paid runner. The plan cannot contain truth, taxonomy, policy flags, evidence labels,
+or a review answer; those exist only in the two independent review submissions.
+
 `make filler-corpus-pilot-rights-review` prepares the distinct five-lane source-yield review packet
 from the checked-in locked pilot. Its fifty rows bind every source assertion and representation to
 the pilot digest while leaving all reviewer fields blank. `make filler-corpus-pilot-rights-lock`

@@ -263,7 +263,7 @@ go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must
 test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
 	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ ./internal/api/ -v
 
-.PHONY: eval-contract eval eval-cert eval-matrix filler-bakeoff-openrouter filler-corpus-archive filler-corpus-cdc filler-corpus-commons filler-corpus-direct filler-corpus-download filler-corpus-inventory filler-corpus-lock filler-corpus-loc filler-corpus-nasa filler-corpus-pilot filler-corpus-pilot-rights-lock filler-corpus-pilot-rights-review filler-eval-contract filler-eval-cert filler-openrouter-snapshot
+.PHONY: eval-contract eval eval-cert eval-matrix filler-bakeoff-openrouter filler-corpus-archive filler-corpus-cdc filler-corpus-commons filler-corpus-direct filler-corpus-download filler-corpus-inventory filler-corpus-lock filler-corpus-loc filler-corpus-nasa filler-corpus-pilot filler-corpus-pilot-rights-lock filler-corpus-pilot-rights-review filler-corpus-prepare filler-eval-contract filler-eval-cert filler-openrouter-snapshot
 eval-contract: ## hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB
 	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/
 
@@ -301,7 +301,7 @@ eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (m
 	  exit "$$status"
 
 filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
-	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-direct/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/
+	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-direct/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-prepare/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/
 
 filler-corpus-commons: ## freeze bounded Commons pilot and full-inventory artifacts
 	@eval "$$(./scripts/dev-env.sh export)"; \
@@ -453,6 +453,33 @@ filler-corpus-direct: ## freeze an authored local cohort with rights and provena
 	    --max-items "$${LOOMARR_FILLER_CORPUS_DIRECT_MAX_ITEMS:-100}" \
 	    --max-bytes "$$LOOMARR_FILLER_CORPUS_DIRECT_MAX_BYTES" \
 	    --max-wall-time "$${LOOMARR_FILLER_CORPUS_DIRECT_MAX_WALL_TIME:-1m}"
+
+filler-corpus-prepare: ## build an unlabeled corpus draft and bounded evidence packets
+	@test -n "$$LOOMARR_FILLER_CORPUS_INVENTORY" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_INVENTORY is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_RIGHTS_APPROVALS" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_RIGHTS_APPROVALS is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_PREPARATION_PLAN" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_PREPARATION_PLAN is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_LOCAL_ROOT" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_LOCAL_ROOT is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_MEDIA_DIR" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_MEDIA_DIR is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_PREPARED_AT" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_PREPARED_AT is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_PREP_MAX_INPUT_BYTES" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_PREP_MAX_INPUT_BYTES is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_PREP_MAX_OUTPUT_BYTES" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_PREP_MAX_OUTPUT_BYTES is required" >&2; exit 2; }; \
+	  eval "$$(./scripts/dev-env.sh export)"; \
+	  $(GO) run ./cmd/filler-corpus-prepare \
+	    --inventory "$$LOOMARR_FILLER_CORPUS_INVENTORY" \
+	    --rights-approvals "$$LOOMARR_FILLER_CORPUS_RIGHTS_APPROVALS" \
+	    --plan "$$LOOMARR_FILLER_CORPUS_PREPARATION_PLAN" \
+	    --local-root "$$LOOMARR_FILLER_CORPUS_LOCAL_ROOT" \
+	    --remote-root "$$LOOMARR_FILLER_CORPUS_MEDIA_DIR" \
+	    --draft-out "$${LOOMARR_FILLER_CORPUS_DRAFT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-draft.json}" \
+	    --packets-out "$${LOOMARR_FILLER_CORPUS_PACKETS:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-packets.jsonl}" \
+	    --derivatives-root "$${LOOMARR_FILLER_CORPUS_DERIVATIVES:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-derivatives}" \
+	    --prepared-at "$$LOOMARR_FILLER_CORPUS_PREPARED_AT" \
+	    --ffmpeg "$${LOOMARR_FILLER_CORPUS_FFMPEG:-ffmpeg}" \
+	    --min-items "$${LOOMARR_FILLER_CORPUS_PREP_MIN_ITEMS:-300}" \
+	    --max-items "$${LOOMARR_FILLER_CORPUS_PREP_MAX_ITEMS:-500}" \
+	    --max-input-bytes "$$LOOMARR_FILLER_CORPUS_PREP_MAX_INPUT_BYTES" \
+	    --max-output-bytes "$$LOOMARR_FILLER_CORPUS_PREP_MAX_OUTPUT_BYTES" \
+	    --max-wall-time "$${LOOMARR_FILLER_CORPUS_PREP_MAX_WALL_TIME:-6h}"
 
 filler-corpus-download: ## download only rights-approved corpus media under hard ceilings
 	@eval "$$(./scripts/dev-env.sh export)"; \

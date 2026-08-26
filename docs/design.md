@@ -3549,6 +3549,20 @@ into approval. The combined public-plus-direct inventory still goes through one 
 review; local media is already acquired and is therefore skipped by the network downloader. No
 pre-v2 or direct-manifest compatibility reader exists because no certified artifact consumes one.
 
+Corpus preparation is one fail-closed bridge from the fully approved inventory to blind review and
+provider evaluation. An authored schema-v1 plan may choose only the development/holdout split,
+similarity cluster, source segment, direct-video window, corpus version, evidence version, and
+predeclared slice gates. `filler-corpus-prepare` requires that plan and the approval ledger to cover
+every 300–500 inventory cases exactly once; reopens media beneath separate local/direct and
+download roots; rechecks size and all available SHA-256/SHA-1/MD5 identities; measures the bounded
+segment; and emits source-policy and decoder facts plus source text, four near-full-resolution
+frames, and one at-most-60-second 1280×720 direct-video derivative. It stages derivatives before
+publication and enforces aggregate source bytes, derivative bytes, and wall time. The resulting
+draft contains provenance but no semantic truth, evidence labels, or review answer. Each packet is
+validated against its draft digest before either artifact is written; provider input therefore
+cannot acquire a hidden answer key through corpus preparation. No hand-authored packet or older
+preparation shape is accepted.
+
 Media acquisition consumes a separate rights-review ledger; discovery output is never download
 authority. Every `approved` row binds the inventory digest, authority-qualified case ID, source
 metadata hash, reviewer, review time, rationale, redistribution decision, attribution, and

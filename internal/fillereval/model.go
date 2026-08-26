@@ -90,10 +90,10 @@ type MediaProvenance struct {
 	Authority           string    `json:"authority"`
 	Collection          string    `json:"collection,omitempty"`
 	ItemID              string    `json:"itemId"`
-	ItemURL             string    `json:"itemUrl"`
+	ItemRef             string    `json:"itemRef"`
 	MetadataRetrievedAt time.Time `json:"metadataRetrievedAt"`
 	MetadataSHA256      string    `json:"metadataSha256"`
-	EvidenceURL         string    `json:"evidenceUrl"`
+	EvidenceRef         string    `json:"evidenceRef"`
 	LicenseURL          string    `json:"licenseUrl,omitempty"`
 	RightsStatement     string    `json:"rightsStatement"`
 	RightsDecision      string    `json:"rightsDecision"`
@@ -104,7 +104,7 @@ type MediaProvenance struct {
 	RequiredCredit      string    `json:"requiredCredit,omitempty"`
 	Restrictions        []string  `json:"restrictions,omitempty"`
 	SourceFilename      string    `json:"sourceFilename"`
-	SourceURL           string    `json:"sourceUrl"`
+	SourceRef           string    `json:"sourceRef"`
 	SourceBytes         int64     `json:"sourceBytes"`
 	SegmentStartMS      int64     `json:"segmentStartMs,omitempty"`
 	SegmentDurationMS   int64     `json:"segmentDurationMs"`

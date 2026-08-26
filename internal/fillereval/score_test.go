@@ -277,10 +277,10 @@ func passingCorpus(total int) (Manifest, []Prediction) {
 			ContentRole: "commercial", Slices: []string{"contract"}, ReviewQuestion: question,
 			Evidence: []Evidence{{ID: "truth", Kind: "fixture", Claim: "content_role", Value: "commercial", Provenance: "blind annotation"}},
 			Provenance: MediaProvenance{
-				Authority: "fixture", ItemID: id, ItemURL: "https://example.invalid/items/" + id,
-				MetadataRetrievedAt: lockedAt, MetadataSHA256: strings.Repeat("c", 64), EvidenceURL: "https://example.invalid/metadata/" + id,
+				Authority: "fixture", ItemID: id, ItemRef: "https://example.invalid/items/" + id,
+				MetadataRetrievedAt: lockedAt, MetadataSHA256: strings.Repeat("c", 64), EvidenceRef: "https://example.invalid/metadata/" + id,
 				RightsStatement: "CC0 fixture", RightsDecision: "allowed", RightsReviewerID: "rights-reviewer", RightsReviewedAt: lockedAt,
-				Redistributable: true, SourceFilename: id + ".mp4", SourceURL: "https://example.invalid/media/" + id + ".mp4",
+				Redistributable: true, SourceFilename: id + ".mp4", SourceRef: "https://example.invalid/media/" + id + ".mp4",
 				SourceBytes: 1024, SegmentDurationMS: 30_000,
 			},
 		}
@@ -304,10 +304,10 @@ func passingCorpus(total int) (Manifest, []Prediction) {
 			Source: "fixture", License: "CC0-1.0", Truth: TruthEligible, ContentRole: "commercial", Slices: []string{"contract"},
 			Evidence: []Evidence{{ID: "truth", Kind: "fixture", Claim: "content_role", Value: "commercial", Provenance: "blind annotation"}},
 			Provenance: MediaProvenance{
-				Authority: "fixture", ItemID: id, ItemURL: "https://example.invalid/items/" + id,
-				MetadataRetrievedAt: lockedAt, MetadataSHA256: strings.Repeat("d", 64), EvidenceURL: "https://example.invalid/metadata/" + id,
+				Authority: "fixture", ItemID: id, ItemRef: "https://example.invalid/items/" + id,
+				MetadataRetrievedAt: lockedAt, MetadataSHA256: strings.Repeat("d", 64), EvidenceRef: "https://example.invalid/metadata/" + id,
 				RightsStatement: "CC0 fixture", RightsDecision: "allowed", RightsReviewerID: "rights-reviewer", RightsReviewedAt: lockedAt,
-				Redistributable: true, SourceFilename: id + ".mp4", SourceURL: "https://example.invalid/media/" + id + ".mp4",
+				Redistributable: true, SourceFilename: id + ".mp4", SourceRef: "https://example.invalid/media/" + id + ".mp4",
 				SourceBytes: 1024, SegmentDurationMS: 30_000,
 			},
 		}
