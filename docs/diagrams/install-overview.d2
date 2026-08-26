@@ -1,0 +1,25 @@
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 4
+    dark-theme-id: 200
+    pad: 32
+    center: true
+  }
+}
+
+direction: right
+
+library: Emby or Jellyfin library
+loomarr: Loomarr
+suggestions: LLM and TMDB
+downloads: Seerr or Sonarr/Radarr
+filler: Filler folder
+viewers: TVs and browsers
+
+library -> loomarr: Catalog and media
+suggestions -> loomarr: Suggestions {style.stroke-dash: 4}
+downloads -> library: Missing titles {style.stroke-dash: 4}
+filler -> loomarr: Commercials {style.stroke-dash: 4}
+loomarr -> library: Tuner and guide
+library -> viewers

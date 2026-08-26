@@ -131,7 +131,9 @@ The *runs:* note on a row lists what each parent pulls in.
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make docs-lint` |  | markdownlint + lychee (offline) + Vale over the prose set <br>*runs:* `docs-lint-md` `docs-lint-links` `docs-lint-prose` |
+| `make diagrams` |  | format D2 sources and regenerate the committed SVG diagrams |
+| `make diagrams-verify` |  | regenerated D2 sources and SVG diagrams must match committed <br>*runs:* `diagrams` |
+| `make docs-lint` |  | D2 + markdownlint + lychee (offline) + Vale <br>*runs:* `diagrams-verify` `docs-lint-md` `docs-lint-links` `docs-lint-prose` |
 | `make docs-lint-md` |  | markdown structure (globs + rules live in .markdownlint-cli2.jsonc) |
 | `make docs-lint-links` |  | relative-link check, offline, over the WIDE set (see lychee.toml for why) |
 | `make docs-lint-prose` |  | repo vocabulary + proper-noun casing (.vale.ini — no stock style package) |

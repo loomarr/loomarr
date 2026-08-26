@@ -52,33 +52,9 @@ Sized for a household/homelab, and tests should assume it: **~100k library items
 
 ## 2. Architecture
 
-```mermaid
-flowchart LR
-  human[Household member] --> web[Web and native clients]
-  web -->|Intent| suggest[Suggester]
-  suggest <-->|Grounded search| catalog[Library and TMDB catalog]
-  suggest <-->|Reason and structure| llm[LLM]
-  suggest -->|Proposal| approve{Admin approval}
+![Loomarr architecture from household intent through grounded decisions, provisioning, scheduling, and playout](diagrams/generated/architecture.svg)
 
-  approve -->|Missing titles| provision[Provisioner]
-  approve -->|Approved lineup| schedule[Scheduler]
-  provision --> requester[Seerr or Sonarr/Radarr]
-  requester --> media[Emby or Jellyfin library]
-  media -->|Availability| provision
-  provision -->|Terminal state| schedule
-
-  sources[Folders and remote clip sources] --> filler[Filler catalog and pod assembly]
-  filler --> schedule
-  schedule --> internal[Internal Playout]
-  schedule --> tunarr[Tunarr]
-  internal --> media
-  tunarr --> media
-  media --> viewers[TVs and browsers]
-
-  store[(SQLite or Postgres)] <--> provision
-  store <--> schedule
-  store <--> filler
-```
+*[D2 source](diagrams/architecture.d2)*
 
 The subsystems are internally decoupled (clean interfaces) but ship in one binary/container by default. The **provisioner's availability events are now an internal feed to the scheduler** — that's what drives backfill. An *optional* outbound webhook/SSE remains for external consumers, but the primary consumer is `loomarr`'s own scheduler.
 
@@ -308,21 +284,9 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 ## 4. Provisioning state machine
 
-```mermaid
-stateDiagram-v2
-  [*] --> Available: already in library
-  [*] --> Requested: request accepted
-  [*] --> Wanted: submit failed
-  Wanted --> Requested: reconcile retry
-  Requested --> Downloading: webhook Grab
-  Requested --> Available: library confirms
-  Downloading --> Available: Import + library confirms
-  Requested --> Unavailable: deadline exceeded
-  Downloading --> Unavailable: deadline exceeded
-  Wanted --> Unavailable: deadline exceeded
-  Available --> [*]
-  Unavailable --> [*]
-```
+![Acquisition state transitions from request submission through availability or terminal failure](diagrams/generated/acquisition-state.svg)
+
+*[D2 source](diagrams/acquisition-state.d2)*
 
 | State | Meaning | Emits event? |
 | --- | --- | --- |
@@ -997,14 +961,9 @@ safety, exclusions, grounding, quotas, and approval remain stronger. The suggest
 weather itself; choosing a location source/provider is a separate privacy and dependency decision.
 Evaluation pins these values or writes them into the request so identical inputs remain reproducible.
 
-```mermaid
-flowchart LR
-  intent[Intent and explicit context] --> search[Catalog tool searches library and TMDB]
-  search --> candidates[Grounded candidates with real identifiers]
-  candidates --> model[LLM selects and structures]
-  model --> validate[Deterministic validation and scoring]
-  validate --> proposal[Proposal: lineup, acquisitions, and rationale]
-```
+![The suggester grounds intent in catalog candidates before model selection and deterministic validation](diagrams/generated/suggester.svg)
+
+*[D2 source](diagrams/suggester.d2)*
 
 ### Grounding — the critical correctness rule
 An AI that can trigger real downloads must never act on a hallucinated title.
@@ -5508,7 +5467,7 @@ Docs live as markdown in `docs/` in the repo and are **embedded and rendered as 
 
 Two consequences worth stating, because both are load-bearing:
 - **`docs/help/*.md` carry no frontmatter.** `docs/embed.go` derives a page's title from its first H1, and the in-app viewer renders raw markdown — a YAML block would print as literal text to an operator. Starlight requires a `title`, so the site's loader **lifts the H1 into `data.title`** and strips it from the body rather than the pages growing frontmatter for one consumer's benefit.
-- **No mermaid in `docs/help/`.** Those pages render through the SPA's `react-markdown`, which has no mermaid support, so a diagram would show an end user its own source. Diagrams belong in the GitHub/site-rendered pages (README, `docs/install/`, `docs/dev/`, this document). The in-app set uses prose and tables.
+- **No generated diagrams in `docs/help/`.** Only the help Markdown is embedded in the binary, so a relative diagram asset would be missing in-app. Diagrams belong in the GitHub/site-rendered pages (README, `docs/install/`, `docs/dev/`, this document). The in-app set uses prose and tables.
 
 **Mechanics.** The user-facing pages live in **`docs/help/`** and are embedded by `docs/embed.go`. Only that subdirectory ships: the design docs sit beside it and are internal, so embedding `docs/` wholesale would put the project's own architecture notes and open questions in front of every operator. (A Go file lives in `docs/` because `//go:embed` cannot reference paths outside its own package directory — moving the pages under `internal/` would contradict this section's "docs live in `docs/`".) `GET /v1/docs` lists them; `GET /v1/docs/{slug}` returns raw markdown, since the frontend both renders and *searches* it client-side (§7.2).
 
@@ -5622,8 +5581,8 @@ Build-time only — none of this ships in the binary or the image, and none of i
 
 | Concern | Decision | Why |
 | --- | --- | --- |
-| Docs site | **Astro + Starlight**, in `docs-site/` at the repo root | The in-app Help set only helps people who already installed. Install and contributor docs need a rendered home for people who have not. Starlight ships minimal JS, generates nav from the tree, and includes offline **Pagefind** search — consistent with §7.1's no-CDN posture. ⚠ **It renders `docs/**` in place** via a `glob()` loader whose `base` points at the existing tree; nothing is copied (see §13). ⚠ **Deliberately NOT a member of the `web/` pnpm workspace** — CI's frontend and Playwright jobs gate on `^web/`, so a workspace member would make a markdown typo trigger the sharded visual suite. A sibling directory keeps the path filter honest. **MkDocs superseded** (this row previously anticipated it): Python, against §14's language policy, for a set already rendered by a JS toolchain the repo runs anyway. **Docusaurus rejected** — heavier runtime for no gain here. **Mintlify rejected** — hosted SaaS, same objection as Chromatic. |
-| Diagrams | **Mermaid**, in fenced blocks | Renders natively on GitHub *and* in Starlight, so a diagram is reviewable in a PR diff with no build step. **D2 rejected** despite better layout: it compiles to committed SVGs needing light/dark variants, which is a generated binary artifact to keep in sync — the exact cost this row avoids. ⚠ The Starlight integration must be **client-side**; `rehype-mermaid` renders through Playwright, and a browser download in the docs build is not worth a diagram. |
+| Docs site | **Astro + Starlight**, in `docs-site/` at the repo root | The in-app Help set only helps people who already installed. Install and contributor docs need a rendered home for people who have not. Starlight ships minimal JS, generates nav from the tree, and includes offline **Pagefind** search — consistent with §7.1's no-CDN posture. ⚠ **It renders `docs/**` in place** via a `glob()` loader whose `base` points at the existing tree; nothing is copied (see §13). ⚠ **Deliberately NOT a member of the `web/` pnpm workspace** — CI's frontend and Playwright jobs gate on `^web/`, so a workspace member would make a markdown typo trigger the sharded visual suite. A sibling directory keeps the path filter honest. `@astrojs/markdown-remark` is a direct dependency because the diagram-path adapter extends Astro's supported Markdown processor API instead of a deprecated configuration hook. **MkDocs superseded** (this row previously anticipated it): Python, against §14's language policy, for a set already rendered by a JS toolchain the repo runs anyway. **Docusaurus rejected** — heavier runtime for no gain here. **Mintlify rejected** — hosted SaaS, same objection as Chromatic. |
+| Diagrams | **D2 v0.7.1 with ELK**, rendered by a manifest-digest-pinned container into committed SVGs | D2's containers and orthogonal ELK routing make architecture and workflow diagrams materially easier to scan than Mermaid. Each review keeps readable `.d2` source beside the rendered SVG, and GitHub displays and image-diffs SVGs. One SVG contains both the light theme and a `prefers-color-scheme` dark theme, so there are no parallel assets. `make diagrams-verify` formats every source, renders with networking disabled, rejects orphan outputs, and fails on drift. Starlight serves the canonical `docs/diagrams/` tree as its public directory and a tested remark adapter rewrites only the site AST; GitHub keeps resolving the untouched relative Markdown paths, and no asset copy can drift. **Honest cost:** SVGs are generated artifacts in the repository and the docs gate pulls one approximately 50 MB tool image; the deterministic gate pays that cost instead of making every reader run a client-side diagram runtime. D2 is build-time documentation tooling only and does not ship in Loomarr. |
 | Link checking | **`lychee`** (Rust), `--offline` in the PR gate | Catches dangling relative links, a class this repo has shipped twice — `frontend-design.md` pointed at `loomarr-design.md` for months after the rename, and `phase-0-findings.md` linked a findings file that never existed. **`--offline` is deliberate:** checking external URLs on every PR imports the whole internet's link rot as CI flake, and a red build nobody trusts is worse than no check. |
 | Markdown structure | **`markdownlint-cli2`**, lean config | Heading levels, list style, fenced-code languages. Line-length and inline-HTML rules are **off** — `design.md` uses both heavily by design, and a linter that fights the source of truth loses. Scoped to the user-facing and contributor sets. |
 | Prose + terminology | **`Vale`**, custom style only | Machine-enforces this repo's vocabulary, which until now lived only in `CONTEXT.md` and reviewers' heads: **Proposal** (not "suggestion" — §7's rename), and the proper-noun casing that drifts most (Tunarr, Jellyseerr, Emby, TMDB, `ffmpeg`, `yt-dlp`, SQLite, Postgres). ⚠ **The Microsoft and Google packages are deliberately NOT enabled.** Across ~270k words they produce findings in the hundreds, and a gate whose output is skimmed is a gate that has stopped working. |

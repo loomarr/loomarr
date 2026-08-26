@@ -10,12 +10,9 @@ make dev-fe    # Vite HMR, proxying this worktree's backend
 
 ## Develop against the frontend URL
 
-```mermaid
-flowchart LR
-  browser[Browser] -->|Open the frontend URL| vite[Vite: current frontend]
-  vite -->|Proxy API, docs, and metrics| air[Air: current Go and Rust]
-  air -.->|Backend URL only| embedded[Last embedded SPA build]
-```
+![The local browser uses Vite for the current frontend and proxies to the Air-managed backend](../diagrams/generated/dev-loop.svg)
+
+*[D2 source](../diagrams/dev-loop.d2)*
 
 The backend URL serves the SPA compiled into the binary at your last `make fe`, not your working copy.
 Frontend changes appear only at the frontend URL.

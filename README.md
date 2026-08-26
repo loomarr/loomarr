@@ -11,15 +11,9 @@
 Loomarr picks a lineup from your library, requests anything missing, schedules it with ad
 breaks, and streams it to your media server as Live TV.
 
-```mermaid
-flowchart LR
-  intent[Describe a channel] --> proposal[Review a grounded proposal]
-  proposal --> approval{Admin approves?}
-  approval -->|Yes| channel[Build and schedule the channel]
-  approval -->|Request missing titles| acquire[Seerr or Sonarr/Radarr]
-  acquire -->|Titles arrive| channel
-  channel --> live[Watch in Emby or Jellyfin]
-```
+![Loomarr channel creation from household intent through approval, acquisition, scheduling, and viewing](docs/diagrams/generated/readme-overview.svg)
+
+*[D2 source](docs/diagrams/readme-overview.d2)*
 
 Every pick is a real title from your library or TMDB — the model can't invent one. Nothing
 downloads until an admin approves.

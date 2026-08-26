@@ -1,0 +1,30 @@
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 4
+    dark-theme-id: 200
+    pad: 32
+    center: true
+  }
+}
+
+direction: right
+
+changes: Classify the complete PR diff
+contracts: Contracts and Go
+clients: Web and shared clients
+native: Apple and Android
+runtime: Browser, tuner, and images
+docs: Docs and agent harness
+required: CI\nrequired aggregate {shape: hexagon}
+
+changes -> contracts
+changes -> clients
+changes -> native
+changes -> runtime
+changes -> docs
+contracts -> required
+clients -> required
+native -> required
+runtime -> required
+docs -> required

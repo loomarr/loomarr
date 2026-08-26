@@ -1,19 +1,8 @@
 # CI
 
-```mermaid
-flowchart LR
-  changes[Classify the complete PR diff]
-  changes --> contracts[Contracts and Go]
-  changes --> clients[Web and shared clients]
-  changes --> native[Apple and Android]
-  changes --> runtime[Browser, tuner, and images]
-  changes --> docs[Docs and agent harness]
-  contracts --> required[CI: required aggregate]
-  clients --> required
-  native --> required
-  runtime --> required
-  docs --> required
-```
+![The CI classifier selects specialized gates which converge on one required aggregate](../diagrams/generated/ci.svg)
+
+*[D2 source](../diagrams/ci.d2)*
 
 Each family contains independently filtered jobs. The required aggregate always runs and checks
 every top-level result, including jobs that correctly skipped.
