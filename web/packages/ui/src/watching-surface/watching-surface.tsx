@@ -1,15 +1,24 @@
 import type { Density } from "@loomarr/design-system";
-import { Action, ActivityIndicator, Surface, Text } from "@loomarr/design-system";
+import { Action, ActivityIndicator, ProgressTrack, Surface, Text } from "@loomarr/design-system";
 import type { PlayerSnapshot } from "@loomarr/player";
 import type { ReactNode } from "react";
 import { Pressable, View } from "react-native";
 
-import { ChannelIdentity } from "../identity";
+import { ChannelIdentity, ProgrammeIdentity, type ProgrammeIdentityData } from "../identity";
 import { TransientOverlay } from "../overlay";
 
 interface ChannelNumberEntry {
   channelName?: string;
   digits: string;
+}
+
+interface WatchingProgrammeData extends ProgrammeIdentityData {
+  progressPercent?: number;
+}
+
+interface WatchingScheduleData {
+  next?: Pick<ProgrammeIdentityData, "timeLabel" | "title">;
+  now?: WatchingProgrammeData;
 }
 
 interface WatchingSurfaceProps {
@@ -30,6 +39,7 @@ interface WatchingSurfaceProps {
   onShowControls: () => void;
   player: ReactNode;
   snapshot: PlayerSnapshot;
+  schedule?: WatchingScheduleData;
 }
 
 const WatchingSurface = ({
@@ -50,6 +60,7 @@ const WatchingSurface = ({
   onShowControls,
   player,
   snapshot,
+  schedule,
 }: WatchingSurfaceProps) => {
   const message =
     loadError ??
@@ -109,6 +120,19 @@ const WatchingSurface = ({
                 }}
                 density={density}
               />
+            ) : null}
+            {schedule?.now ? (
+              <Surface backgroundColor="$transparent" borderWidth={0} gap="$inline">
+                <ProgrammeIdentity density={density} programme={schedule.now} />
+                {schedule.now.progressPercent === undefined ? null : (
+                  <ProgressTrack percent={schedule.now.progressPercent} tone="live" width="100%" />
+                )}
+                {schedule.next ? (
+                  <Text density={density} numberOfLines={1} textRole="metadata">
+                    {`Next ${schedule.next.timeLabel} · ${schedule.next.title}`}
+                  </Text>
+                ) : null}
+              </Surface>
             ) : null}
             {snapshot.status === "tuning" ? (
               <Text accessibilityLiveRegion="polite" density={density} textRole="metadata">
@@ -177,5 +201,5 @@ const WatchingSurface = ({
   );
 };
 
-export type { ChannelNumberEntry, WatchingSurfaceProps };
+export type { ChannelNumberEntry, WatchingProgrammeData, WatchingScheduleData, WatchingSurfaceProps };
 export { WatchingSurface };

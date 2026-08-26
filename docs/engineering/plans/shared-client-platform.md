@@ -291,7 +291,7 @@ interface and adapter work to proceed, but does not waive the P3.5 evidence or a
 complete, adopted, or merged ahead of its dependency. Its first commit adds the Loomarr-owned player
 interface and tests; the next implementation slices add the selected native adapter, production
 Watching journey, transient chrome, exact TV number-entry buffer, and generated-contract Guide
-controller and authoritative Surf journey wired to the production native shells. The TV host now
+controller, authoritative Surf journey, and Watching now/next timeline wired to the production native shells. The TV host now
 supplies the tested bounded Guide row window and TV-specific Surf identity restoration through
 platform-neutral journey seams. Explicit native focus-ref binding, SSE reconciliation, diagnostics,
 populated artwork evidence, and real-device acceptance remain open.

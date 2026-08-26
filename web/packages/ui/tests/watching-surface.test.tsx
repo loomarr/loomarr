@@ -16,7 +16,12 @@ const playing: PlayerSnapshot = {
   tuneReason: "step",
 };
 
-const renderSurface = (snapshot: PlayerSnapshot, loadError?: string, chromeVisible = true) =>
+const renderSurface = (
+  snapshot: PlayerSnapshot,
+  loadError?: string,
+  chromeVisible = true,
+  schedule?: Parameters<typeof WatchingSurface>[0]["schedule"],
+) =>
   renderToStaticMarkup(
     <LoomarrProvider>
       <WatchingSurface
@@ -35,6 +40,7 @@ const renderSurface = (snapshot: PlayerSnapshot, loadError?: string, chromeVisib
         onRetry={vi.fn()}
         onShowControls={vi.fn()}
         player={<div data-player="one-native-player" />}
+        schedule={schedule}
         snapshot={snapshot}
       />
     </LoomarrProvider>,
@@ -60,6 +66,22 @@ describe("WatchingSurface", () => {
     expect(failed).toContain("Science Fiction");
     expect(failed).toContain("Decoder failed");
     expect(failed).toContain("Retry");
+  });
+
+  it("renders authoritative now, next, and live progress in playback chrome", () => {
+    const output = renderSurface(playing, undefined, true, {
+      next: { timeLabel: "9:30 PM", title: "The Next Frontier" },
+      now: {
+        badge: { label: "On now", tone: "live" },
+        progressPercent: 42,
+        timeLabel: "9:00 PM–9:30 PM",
+        title: "The Current Frontier",
+      },
+    });
+
+    expect(output).toContain("The Current Frontier");
+    expect(output).toContain("Next 9:30 PM · The Next Frontier");
+    expect(output).toContain('aria-valuenow="42"');
   });
 
   it("states authoritative catalog failure and dead air separately", () => {

@@ -1,4 +1,4 @@
-import { createGuideController, createGuideSourcePort } from "@loomarr/core/guide";
+import { createGuideController, createGuideSourcePort, type GuideController } from "@loomarr/core/guide";
 import type { PairingCredential } from "@loomarr/core/pairing";
 import {
   createAuthenticatedFetch,
@@ -19,6 +19,7 @@ import {
   PairingShell,
   SurfJourney,
   WatchingSurface,
+  watchingScheduleFromGuide,
 } from "@loomarr/ui";
 import { createTvNumberEntryController, restoreTvSurfSelection, tvGuideRowWindow } from "@loomarr/ui-tv";
 import { useKeepAwake } from "expo-keep-awake";
@@ -37,14 +38,21 @@ const credentialStore = createPairingCredentialStore({
 
 const TvWatching = ({
   interactive,
+  guide,
   onNavigate,
   player,
 }: {
   interactive: boolean;
+  guide: GuideController;
   onNavigate: (destination: ClientDestination) => void;
   player: PairedNativePlayer;
 }) => {
   const { controller, loadError, refresh, snapshot, transport } = player;
+  const guideSnapshot = useSyncExternalStore(guide.subscribe, guide.getSnapshot, guide.getSnapshot);
+  useEffect(() => {
+    void guide.refresh(snapshot.channel?.id);
+  }, [guide, snapshot.channel?.id]);
+  const schedule = watchingScheduleFromGuide(guideSnapshot.layout, snapshot.channel?.id, Date.now());
   const numberEntry = useMemo(
     () => createTvNumberEntryController({ onCommit: (digits) => void controller.tuneNumber(digits) }),
     [controller],
@@ -90,6 +98,7 @@ const TvWatching = ({
       onRetry={() => void (loadError ? refresh() : controller.retry())}
       onShowControls={controller.revealOverlay}
       player={<NativePlayerView style={{ flex: 1 }} transport={transport} />}
+      schedule={schedule}
       snapshot={snapshot}
     />
   );
@@ -119,7 +128,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
   }, [active]);
   return (
     <View style={{ flex: 1 }}>
-      <TvWatching interactive={active === "watching"} onNavigate={setActive} player={player} />
+      <TvWatching guide={guide} interactive={active === "watching"} onNavigate={setActive} player={player} />
       {active === "guide" ? (
         <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>
           <GuideJourney

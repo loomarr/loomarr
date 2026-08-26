@@ -1,4 +1,4 @@
-import { createGuideController, createGuideSourcePort } from "@loomarr/core/guide";
+import { createGuideController, createGuideSourcePort, type GuideController } from "@loomarr/core/guide";
 import type { PairingCredential } from "@loomarr/core/pairing";
 import {
   createAuthenticatedFetch,
@@ -18,10 +18,11 @@ import {
   PairingShell,
   SurfJourney,
   WatchingSurface,
+  watchingScheduleFromGuide,
 } from "@loomarr/ui";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { BackHandler, Platform, View } from "react-native";
 import appConfig from "../app.json";
 
@@ -33,14 +34,21 @@ const credentialStore = createPairingCredentialStore({
 
 const MobileWatching = ({
   interactive,
+  guide,
   onNavigate,
   player,
 }: {
   interactive: boolean;
+  guide: GuideController;
   onNavigate: (destination: ClientDestination) => void;
   player: PairedNativePlayer;
 }) => {
   const { controller, loadError, refresh, snapshot, transport } = player;
+  const guideSnapshot = useSyncExternalStore(guide.subscribe, guide.getSnapshot, guide.getSnapshot);
+  useEffect(() => {
+    void guide.refresh(snapshot.channel?.id);
+  }, [guide, snapshot.channel?.id]);
+  const schedule = watchingScheduleFromGuide(guideSnapshot.layout, snapshot.channel?.id, Date.now());
   return (
     <WatchingSurface
       chromeVisible={interactive}
@@ -58,6 +66,7 @@ const MobileWatching = ({
       onRetry={() => void (loadError ? refresh() : controller.retry())}
       onShowControls={controller.revealOverlay}
       player={<NativePlayerView style={{ flex: 1 }} transport={transport} />}
+      schedule={schedule}
       snapshot={snapshot}
     />
   );
@@ -87,7 +96,12 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
   }, [active]);
   return (
     <View style={{ flex: 1 }}>
-      <MobileWatching interactive={active === "watching"} onNavigate={setActive} player={player} />
+      <MobileWatching
+        guide={guide}
+        interactive={active === "watching"}
+        onNavigate={setActive}
+        player={player}
+      />
       {active === "guide" ? (
         <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>
           <GuideJourney

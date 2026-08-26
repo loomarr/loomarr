@@ -21,4 +21,6 @@ test("runs the authoritative Guide over the still-mounted player", async () => {
   assert.match(source, /serverVersion=\{player\.serverVersion\}/);
   assert.match(source, /<PairedNativeImage/);
   assert.match(source, /channel\.now\.artworkUri/);
+  assert.match(source, /watchingScheduleFromGuide/);
+  assert.match(source, /schedule=\{schedule\}/);
 });

@@ -45,6 +45,12 @@ export {
   SurfRail,
   surfGroupsFromGuide,
   surfIdentityLabel,
+  watchingScheduleFromGuide,
 } from "./src/surf-rail";
-export type { ChannelNumberEntry, WatchingSurfaceProps } from "./src/watching-surface";
+export type {
+  ChannelNumberEntry,
+  WatchingProgrammeData,
+  WatchingScheduleData,
+  WatchingSurfaceProps,
+} from "./src/watching-surface";
 export { WatchingSurface } from "./src/watching-surface";

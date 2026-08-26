@@ -241,8 +241,18 @@ type ProgressTrackProps = Omit<ComponentProps<typeof View>, "children"> & {
 
 const ProgressTrack = ({ percent, tone = "primary", ...props }: ProgressTrackProps) => {
   const bounded = Math.max(0, Math.min(100, percent));
+  const accessibilityProps = isWeb
+    ? { "aria-valuemax": 100, "aria-valuemin": 0, "aria-valuenow": bounded, role: "progressbar" as const }
+    : { accessibilityRole: "progressbar" as const, accessibilityValue: { max: 100, min: 0, now: bounded } };
   return (
-    <View {...props} backgroundColor="$surfaceCanvas" borderRadius="$round" height={4} overflow="hidden">
+    <View
+      {...props}
+      {...accessibilityProps}
+      backgroundColor="$surfaceCanvas"
+      borderRadius="$round"
+      height={4}
+      overflow="hidden"
+    >
       <View
         backgroundColor={tone === "live" ? "$stateLive" : "$actionPrimary"}
         borderRadius="$round"

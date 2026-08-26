@@ -78,6 +78,15 @@ const surfGroupsFromGuide = (
   ];
 };
 
+const watchingScheduleFromGuide = (
+  layout: GuideLayout | undefined,
+  channelId: string | undefined,
+  nowMs: number,
+): Pick<SurfChannelData, "next" | "now"> | undefined => {
+  const channel = layout?.channels.find((candidate) => candidate.source.channelId === channelId);
+  return channel ? surfChannelData(channel, nowMs, layout?.timezone) : undefined;
+};
+
 const restoreSurfSelection = (
   groups: readonly SurfGroupData[],
   selection?: SurfSelection,
@@ -95,4 +104,4 @@ const restoreSurfSelection = (
   );
 };
 
-export { restoreSurfSelection, surfChannelData, surfGroupsFromGuide };
+export { restoreSurfSelection, surfChannelData, surfGroupsFromGuide, watchingScheduleFromGuide };

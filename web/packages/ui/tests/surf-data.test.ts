@@ -1,6 +1,6 @@
 import { layoutGuide } from "@loomarr/core/guide";
 import { describe, expect, it } from "vitest";
-import { restoreSurfSelection, surfGroupsFromGuide } from "../index";
+import { restoreSurfSelection, surfGroupsFromGuide, watchingScheduleFromGuide } from "../index";
 
 const layout = layoutGuide(
   {
@@ -65,5 +65,13 @@ describe("Surf data", () => {
       channelId: "seven",
       group: "all",
     });
+  });
+
+  it("maps the tuned channel into the Watching now/next schedule", () => {
+    expect(watchingScheduleFromGuide(layout, "seven", 2_000)).toMatchObject({
+      next: { title: "Next" },
+      now: { artworkUri: "/v1/images/now.jpg", progressPercent: 50, title: "Now" },
+    });
+    expect(watchingScheduleFromGuide(layout, "missing", 2_000)).toBeUndefined();
   });
 });
