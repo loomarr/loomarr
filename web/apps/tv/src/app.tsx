@@ -73,6 +73,7 @@ const TvWatching = ({
   );
   return (
     <WatchingSurface
+      chromeVisible={interactive}
       density="tv"
       loadError={loadError}
       numberEntry={{ channelName: numberEntryChannel?.name, digits: numberEntrySnapshot.digits }}

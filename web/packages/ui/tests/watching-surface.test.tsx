@@ -16,10 +16,11 @@ const playing: PlayerSnapshot = {
   tuneReason: "step",
 };
 
-const renderSurface = (snapshot: PlayerSnapshot, loadError?: string) =>
+const renderSurface = (snapshot: PlayerSnapshot, loadError?: string, chromeVisible = true) =>
   renderToStaticMarkup(
     <LoomarrProvider>
       <WatchingSurface
+        chromeVisible={chromeVisible}
         density="tv"
         loadError={loadError}
         onChannelDown={vi.fn()}
@@ -70,5 +71,13 @@ describe("WatchingSurface", () => {
     };
     expect(renderSurface(empty)).toContain("No playable channels");
     expect(renderSurface(empty, "Couldn't load channels.")).toContain("Couldn&#x27;t load channels.");
+  });
+
+  it("keeps the native player mounted without leaking Watching chrome into another journey", () => {
+    const output = renderSurface(playing, undefined, false);
+    expect(output).toContain("one-native-player");
+    expect(output).not.toContain("Playback controls");
+    expect(output).not.toContain("Science Fiction");
+    expect(output).not.toContain("Show playback controls");
   });
 });

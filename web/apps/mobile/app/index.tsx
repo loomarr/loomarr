@@ -31,15 +31,18 @@ const credentialStore = createPairingCredentialStore({
 });
 
 const MobileWatching = ({
+  interactive,
   onNavigate,
   player,
 }: {
+  interactive: boolean;
   onNavigate: (destination: ClientDestination) => void;
   player: PairedNativePlayer;
 }) => {
   const { controller, loadError, refresh, snapshot, transport } = player;
   return (
     <WatchingSurface
+      chromeVisible={interactive}
       density="touch"
       loadError={loadError}
       onChannelDown={() => void controller.step(-1)}
@@ -83,7 +86,7 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
   }, [active]);
   return (
     <View style={{ flex: 1 }}>
-      <MobileWatching onNavigate={setActive} player={player} />
+      <MobileWatching interactive={active === "watching"} onNavigate={setActive} player={player} />
       {active === "guide" ? (
         <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>
           <GuideJourney

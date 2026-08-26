@@ -295,6 +295,17 @@ controller and authoritative Surf journey wired to the production native shells.
 and server identity, explicit TV focus binding, SSE reconciliation, diagnostics, and real-device
 acceptance remain open.
 
+The first physical P4 pass installed a production arm64 release APK on the 4K Shield and paired it
+to the isolated worktree backend over the deployment model's normal plain-HTTP LAN origin. That pass
+caught two native-only gaps: Expo's generated release manifest had not preserved the shipping
+client's explicit cleartext opt-in, and the still-mounted Watching surface leaked its transient
+chrome above Guide and Surf. A shared fail-closed config plugin now applies the Android policy to
+both native applications, while `WatchingSurface` can hide only its chrome and keep the one native
+player mounted. After repair, the paired credential survived a force-stop/reinstall and the remote
+traversed the empty Watching, Guide, and Surf routes without hidden playback controls entering the
+accessibility tree. This is useful device evidence, not P4 acceptance: the isolated server had no
+playable channels, so first frame, populated focus traversal, tuning, and recovery remain open.
+
 After adoption, migration uses route/surface ownership rather than two implementations mounted for
 the same user journey. A surface switches only when its replacement passes its full contract. The
 old implementation is then deleted in the same PR or the next explicitly paired retirement PR; it

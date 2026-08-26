@@ -13,6 +13,7 @@ interface ChannelNumberEntry {
 }
 
 interface WatchingSurfaceProps {
+  chromeVisible?: boolean;
   density: Density;
   loadError?: string;
   numberEntry?: ChannelNumberEntry;
@@ -32,6 +33,7 @@ interface WatchingSurfaceProps {
 }
 
 const WatchingSurface = ({
+  chromeVisible = true,
   density,
   loadError,
   numberEntry,
@@ -61,112 +63,116 @@ const WatchingSurface = ({
   return (
     <View style={{ backgroundColor: "#000", flex: 1 }}>
       <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>{player}</View>
-      <Pressable
-        accessibilityLabel="Show playback controls"
-        accessibilityRole="button"
-        focusable={density !== "tv"}
-        onPress={onShowControls}
-        pointerEvents={density === "tv" ? "none" : "auto"}
-        style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
-      />
-      {!snapshot.channel && !message ? (
-        <View style={{ alignItems: "center", flex: 1, justifyContent: "center" }}>
-          <ActivityIndicator
-            accessibilityLabel="Loading channels"
-            size={density === "tv" ? "tv" : density === "touch" ? "touch" : "default"}
+      {chromeVisible ? (
+        <>
+          <Pressable
+            accessibilityLabel="Show playback controls"
+            accessibilityRole="button"
+            focusable={density !== "tv"}
+            onPress={onShowControls}
+            pointerEvents={density === "tv" ? "none" : "auto"}
+            style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
           />
-        </View>
-      ) : null}
-      {numberEntry?.digits ? (
-        <Surface left={0} level="overlay" padding="$control" position="absolute" top={0}>
-          <Text density={density} textRole="title">
-            {`${numberEntry.digits.split("").join(" ")} _`}
-          </Text>
-          {numberEntry.channelName ? (
-            <Text density={density} textRole="metadata">
-              {numberEntry.channelName}
-            </Text>
+          {!snapshot.channel && !message ? (
+            <View style={{ alignItems: "center", flex: 1, justifyContent: "center" }}>
+              <ActivityIndicator
+                accessibilityLabel="Loading channels"
+                size={density === "tv" ? "tv" : density === "touch" ? "touch" : "default"}
+              />
+            </View>
           ) : null}
-        </Surface>
-      ) : null}
-      <TransientOverlay
-        autoDismissMs={message || snapshot.status === "tuning" ? undefined : 5_000}
-        density={density}
-        onDismiss={onDismissControls}
-        title="Playback controls"
-        visible={snapshot.overlayVisible || Boolean(message)}
-      >
-        {snapshot.channel ? (
-          <ChannelIdentity
-            channel={{
-              channelLogoState: "missing",
-              channelName: snapshot.channel.name,
-              channelNumber: String(snapshot.channel.number),
-            }}
-            density={density}
-          />
-        ) : null}
-        {snapshot.status === "tuning" ? (
-          <Text accessibilityLiveRegion="polite" density={density} textRole="metadata">
-            Tuning…
-          </Text>
-        ) : null}
-        {message ? (
-          <Text accessibilityLiveRegion="polite" density={density} textRole="body" tone="danger">
-            {message}
-          </Text>
-        ) : null}
-        <View style={{ flexDirection: "row", gap: density === "tv" ? 16 : 8 }}>
-          <Action
-            density={density}
-            disabled={!snapshot.previousChannelId}
-            icon="previous"
-            onPress={onPrevious}
-            tone="secondary"
-          >
-            Previous
-          </Action>
-          <Action
-            density={density}
-            disabled={snapshot.catalog.length < 2}
-            onPress={onChannelDown}
-            tone="secondary"
-          >
-            Channel −
-          </Action>
-          <Action density={density} icon="guide" onPress={onOpenGuide} tone="secondary">
-            Guide
-          </Action>
-          <Action density={density} icon="channels" onPress={onOpenSurf} tone="secondary">
-            Surf
-          </Action>
-          {snapshot.status === "paused" ? (
-            <Action density={density} disabled={!snapshot.channel} onPress={onPlay} tone="primary">
-              Play
-            </Action>
-          ) : (
-            <Action density={density} disabled={!snapshot.channel} onPress={onPause} tone="secondary">
-              Pause
-            </Action>
-          )}
-          <Action density={density} disabled={!snapshot.channel} onPress={onGoLive} tone="secondary">
-            Go Live
-          </Action>
-          <Action
-            density={density}
-            disabled={snapshot.catalog.length < 2}
-            onPress={onChannelUp}
-            tone="secondary"
-          >
-            Channel +
-          </Action>
-          {message ? (
-            <Action density={density} onPress={onRetry} tone="primary">
-              Retry
-            </Action>
+          {numberEntry?.digits ? (
+            <Surface left={0} level="overlay" padding="$control" position="absolute" top={0}>
+              <Text density={density} textRole="title">
+                {`${numberEntry.digits.split("").join(" ")} _`}
+              </Text>
+              {numberEntry.channelName ? (
+                <Text density={density} textRole="metadata">
+                  {numberEntry.channelName}
+                </Text>
+              ) : null}
+            </Surface>
           ) : null}
-        </View>
-      </TransientOverlay>
+          <TransientOverlay
+            autoDismissMs={message || snapshot.status === "tuning" ? undefined : 5_000}
+            density={density}
+            onDismiss={onDismissControls}
+            title="Playback controls"
+            visible={snapshot.overlayVisible || Boolean(message)}
+          >
+            {snapshot.channel ? (
+              <ChannelIdentity
+                channel={{
+                  channelLogoState: "missing",
+                  channelName: snapshot.channel.name,
+                  channelNumber: String(snapshot.channel.number),
+                }}
+                density={density}
+              />
+            ) : null}
+            {snapshot.status === "tuning" ? (
+              <Text accessibilityLiveRegion="polite" density={density} textRole="metadata">
+                Tuning…
+              </Text>
+            ) : null}
+            {message ? (
+              <Text accessibilityLiveRegion="polite" density={density} textRole="body" tone="danger">
+                {message}
+              </Text>
+            ) : null}
+            <View style={{ flexDirection: "row", gap: density === "tv" ? 16 : 8 }}>
+              <Action
+                density={density}
+                disabled={!snapshot.previousChannelId}
+                icon="previous"
+                onPress={onPrevious}
+                tone="secondary"
+              >
+                Previous
+              </Action>
+              <Action
+                density={density}
+                disabled={snapshot.catalog.length < 2}
+                onPress={onChannelDown}
+                tone="secondary"
+              >
+                Channel −
+              </Action>
+              <Action density={density} icon="guide" onPress={onOpenGuide} tone="secondary">
+                Guide
+              </Action>
+              <Action density={density} icon="channels" onPress={onOpenSurf} tone="secondary">
+                Surf
+              </Action>
+              {snapshot.status === "paused" ? (
+                <Action density={density} disabled={!snapshot.channel} onPress={onPlay} tone="primary">
+                  Play
+                </Action>
+              ) : (
+                <Action density={density} disabled={!snapshot.channel} onPress={onPause} tone="secondary">
+                  Pause
+                </Action>
+              )}
+              <Action density={density} disabled={!snapshot.channel} onPress={onGoLive} tone="secondary">
+                Go Live
+              </Action>
+              <Action
+                density={density}
+                disabled={snapshot.catalog.length < 2}
+                onPress={onChannelUp}
+                tone="secondary"
+              >
+                Channel +
+              </Action>
+              {message ? (
+                <Action density={density} onPress={onRetry} tone="primary">
+                  Retry
+                </Action>
+              ) : null}
+            </View>
+          </TransientOverlay>
+        </>
+      ) : null}
     </View>
   );
 };
