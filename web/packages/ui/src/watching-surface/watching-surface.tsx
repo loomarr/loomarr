@@ -2,19 +2,31 @@ import type { Density } from "@loomarr/design-system";
 import { Action, ActivityIndicator, Surface, Text } from "@loomarr/design-system";
 import type { PlayerSnapshot } from "@loomarr/player";
 import type { ReactNode } from "react";
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
 
 import { ChannelIdentity } from "../identity";
+import { TransientOverlay } from "../overlay";
+
+interface ChannelNumberEntry {
+  channelName?: string;
+  digits: string;
+}
 
 interface WatchingSurfaceProps {
   density: Density;
   loadError?: string;
+  numberEntry?: ChannelNumberEntry;
   onChannelDown: () => void;
   onChannelUp: () => void;
+  onDismissControls: () => void;
+  onGoLive: () => void;
   onOpenGuide: () => void;
   onOpenSurf: () => void;
+  onPause: () => void;
+  onPlay: () => void;
   onPrevious: () => void;
   onRetry: () => void;
+  onShowControls: () => void;
   player: ReactNode;
   snapshot: PlayerSnapshot;
 }
@@ -22,12 +34,18 @@ interface WatchingSurfaceProps {
 const WatchingSurface = ({
   density,
   loadError,
+  numberEntry,
   onChannelDown,
   onChannelUp,
+  onDismissControls,
+  onGoLive,
   onOpenGuide,
   onOpenSurf,
+  onPause,
+  onPlay,
   onPrevious,
   onRetry,
+  onShowControls,
   player,
   snapshot,
 }: WatchingSurfaceProps) => {
@@ -41,6 +59,14 @@ const WatchingSurface = ({
   return (
     <View style={{ backgroundColor: "#000", flex: 1 }}>
       <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>{player}</View>
+      <Pressable
+        accessibilityLabel="Show playback controls"
+        accessibilityRole="button"
+        focusable={density !== "tv"}
+        onPress={onShowControls}
+        pointerEvents={density === "tv" ? "none" : "auto"}
+        style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
+      />
       {!snapshot.channel && !message ? (
         <View style={{ alignItems: "center", flex: 1, justifyContent: "center" }}>
           <ActivityIndicator
@@ -49,16 +75,24 @@ const WatchingSurface = ({
           />
         </View>
       ) : null}
-      <Surface
-        backgroundColor="$surfaceOverlay"
-        borderBottomLeftRadius={0}
-        borderBottomRightRadius={0}
-        bottom={0}
-        gap="$control"
-        left={0}
-        padding="$section"
-        position="absolute"
-        right={0}
+      {numberEntry?.digits ? (
+        <Surface left={0} level="overlay" padding="$control" position="absolute" top={0}>
+          <Text density={density} textRole="title">
+            {`${numberEntry.digits.split("").join(" ")} _`}
+          </Text>
+          {numberEntry.channelName ? (
+            <Text density={density} textRole="metadata">
+              {numberEntry.channelName}
+            </Text>
+          ) : null}
+        </Surface>
+      ) : null}
+      <TransientOverlay
+        autoDismissMs={message || snapshot.status === "tuning" ? undefined : 5_000}
+        density={density}
+        onDismiss={onDismissControls}
+        title="Playback controls"
+        visible={snapshot.overlayVisible || Boolean(message)}
       >
         {snapshot.channel ? (
           <ChannelIdentity
@@ -81,10 +115,21 @@ const WatchingSurface = ({
           </Text>
         ) : null}
         <View style={{ flexDirection: "row", gap: density === "tv" ? 16 : 8 }}>
-          <Action density={density} icon="previous" onPress={onPrevious} tone="secondary">
+          <Action
+            density={density}
+            disabled={!snapshot.previousChannelId}
+            icon="previous"
+            onPress={onPrevious}
+            tone="secondary"
+          >
             Previous
           </Action>
-          <Action density={density} onPress={onChannelDown} tone="secondary">
+          <Action
+            density={density}
+            disabled={snapshot.catalog.length < 2}
+            onPress={onChannelDown}
+            tone="secondary"
+          >
             Channel −
           </Action>
           <Action density={density} icon="guide" onPress={onOpenGuide} tone="secondary">
@@ -93,7 +138,24 @@ const WatchingSurface = ({
           <Action density={density} icon="channels" onPress={onOpenSurf} tone="secondary">
             Surf
           </Action>
-          <Action density={density} onPress={onChannelUp} tone="secondary">
+          {snapshot.status === "paused" ? (
+            <Action density={density} disabled={!snapshot.channel} onPress={onPlay} tone="primary">
+              Play
+            </Action>
+          ) : (
+            <Action density={density} disabled={!snapshot.channel} onPress={onPause} tone="secondary">
+              Pause
+            </Action>
+          )}
+          <Action density={density} disabled={!snapshot.channel} onPress={onGoLive} tone="secondary">
+            Go Live
+          </Action>
+          <Action
+            density={density}
+            disabled={snapshot.catalog.length < 2}
+            onPress={onChannelUp}
+            tone="secondary"
+          >
             Channel +
           </Action>
           {message ? (
@@ -102,10 +164,10 @@ const WatchingSurface = ({
             </Action>
           ) : null}
         </View>
-      </Surface>
+      </TransientOverlay>
     </View>
   );
 };
 
-export type { WatchingSurfaceProps };
+export type { ChannelNumberEntry, WatchingSurfaceProps };
 export { WatchingSurface };

@@ -45,6 +45,7 @@ interface PlayerSnapshot {
   catalog: readonly PlayerChannel[];
   channel?: PlayerChannel;
   error?: string;
+  overlayVisible: boolean;
   previousChannelId?: string;
   recentChannelIds: readonly string[];
   status: PlayerStatus;
@@ -52,6 +53,7 @@ interface PlayerSnapshot {
 }
 
 interface PlayerController {
+  dismissOverlay: () => void;
   dispose: () => void;
   getSnapshot: () => PlayerSnapshot;
   goLive: () => Promise<void>;
@@ -59,6 +61,7 @@ interface PlayerController {
   play: () => Promise<void>;
   previous: () => Promise<void>;
   reconcile: (channels: readonly PlayerChannel[]) => Promise<void>;
+  revealOverlay: () => void;
   retry: () => Promise<void>;
   step: (direction: TuneDirection) => Promise<void>;
   subscribe: (listener: (snapshot: PlayerSnapshot) => void) => () => void;
@@ -89,6 +92,7 @@ const createPlayerController = ({
   let activeRequest: AbortController | undefined;
   let snapshot: PlayerSnapshot = {
     catalog: [],
+    overlayVisible: true,
     recentChannelIds: [],
     status: "empty",
   };
@@ -123,6 +127,7 @@ const createPlayerController = ({
       attemptId,
       catalog: snapshot.catalog,
       channel,
+      overlayVisible: true,
       previousChannelId: recentChannelIds[0],
       recentChannelIds,
       status: "tuning",
@@ -167,6 +172,10 @@ const createPlayerController = ({
   });
 
   return {
+    dismissOverlay: () => {
+      if (disposed || !snapshot.overlayVisible || snapshot.status === "failed") return;
+      publish({ ...snapshot, overlayVisible: false });
+    },
     dispose: () => {
       if (disposed) return;
       disposed = true;
@@ -179,15 +188,17 @@ const createPlayerController = ({
     getSnapshot: () => snapshot,
     goLive: async () => {
       if (disposed || !snapshot.channel) return;
+      publish({ ...snapshot, overlayVisible: true });
       await transport.goLive();
     },
     pause: () => {
       if (disposed || !snapshot.channel) return;
       transport.pause();
-      publish({ ...snapshot, error: undefined, status: "paused" });
+      publish({ ...snapshot, error: undefined, overlayVisible: true, status: "paused" });
     },
     play: async () => {
       if (disposed || !snapshot.channel) return;
+      publish({ ...snapshot, overlayVisible: true });
       await transport.play();
     },
     previous: async () => {
@@ -200,7 +211,12 @@ const createPlayerController = ({
       if (catalog.length === 0) {
         activeRequest?.abort();
         transport.pause();
-        publish({ catalog, recentChannelIds: snapshot.recentChannelIds, status: "empty" });
+        publish({
+          catalog,
+          overlayVisible: true,
+          recentChannelIds: snapshot.recentChannelIds,
+          status: "empty",
+        });
         return;
       }
       const current = catalog.find((channel) => channel.id === snapshot.channel?.id);
@@ -214,6 +230,10 @@ const createPlayerController = ({
     },
     retry: async () => {
       if (snapshot.channel) await tune(snapshot.channel, "retry", true);
+    },
+    revealOverlay: () => {
+      if (disposed || snapshot.overlayVisible) return;
+      publish({ ...snapshot, overlayVisible: true });
     },
     step: async (direction) => {
       const channel = findAdjacent(direction);

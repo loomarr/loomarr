@@ -37,5 +37,5 @@ export type {
   SurfSelection,
 } from "./src/surf-rail";
 export { SurfRail } from "./src/surf-rail";
-export type { WatchingSurfaceProps } from "./src/watching-surface";
+export type { ChannelNumberEntry, WatchingSurfaceProps } from "./src/watching-surface";
 export { WatchingSurface } from "./src/watching-surface";

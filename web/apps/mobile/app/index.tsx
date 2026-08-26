@@ -39,10 +39,15 @@ const MobileWatching = ({
       loadError={loadError}
       onChannelDown={() => void controller.step(-1)}
       onChannelUp={() => void controller.step(1)}
+      onDismissControls={controller.dismissOverlay}
+      onGoLive={() => void controller.goLive()}
       onOpenGuide={() => onNavigate("guide")}
       onOpenSurf={() => onNavigate("surf")}
+      onPause={controller.pause}
+      onPlay={() => void controller.play()}
       onPrevious={() => void controller.previous()}
       onRetry={() => void (loadError ? refresh() : controller.retry())}
+      onShowControls={controller.revealOverlay}
       player={<NativePlayerView style={{ flex: 1 }} transport={transport} />}
       snapshot={snapshot}
     />

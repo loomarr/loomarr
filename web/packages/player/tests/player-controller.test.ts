@@ -160,6 +160,30 @@ describe("player controller", () => {
     expect(controller.getSnapshot()).toMatchObject({ error: "decoder failed", status: "failed" });
   });
 
+  it("owns transient chrome visibility and keeps failures and direct actions visible", async () => {
+    const { controller, emit, transport } = harness();
+    await controller.reconcile(channels);
+    const attemptId = controller.getSnapshot().attemptId!;
+    emit({ attemptId, type: "first-frame" });
+
+    controller.dismissOverlay();
+    expect(controller.getSnapshot().overlayVisible).toBe(false);
+    controller.revealOverlay();
+    expect(controller.getSnapshot().overlayVisible).toBe(true);
+
+    controller.dismissOverlay();
+    controller.pause();
+    expect(controller.getSnapshot()).toMatchObject({ overlayVisible: true, status: "paused" });
+    controller.dismissOverlay();
+    await controller.goLive();
+    expect(controller.getSnapshot().overlayVisible).toBe(true);
+    expect(transport.goLive).toHaveBeenCalledOnce();
+
+    emit({ attemptId, error: "decoder failed", type: "error" });
+    controller.dismissOverlay();
+    expect(controller.getSnapshot()).toMatchObject({ overlayVisible: true, status: "failed" });
+  });
+
   it("synchronously aborts, pauses, unsubscribes, and releases on dispose", async () => {
     const pending = deferred<{ uri: string }>();
     let signal: AbortSignal | undefined;

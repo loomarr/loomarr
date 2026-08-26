@@ -17,6 +17,7 @@
     "@loomarr/design-system": "workspace:*",
     "@loomarr/player": "workspace:*",
     "@loomarr/ui": "workspace:*",
+    "@loomarr/ui-tv": "workspace:*",
     "@react-native-tvos/config-tv": "0.1.6",
     "expo": "~57.0.16",
     "expo-keep-awake": "~57.0.1",

@@ -169,6 +169,9 @@ importers:
       '@loomarr/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@loomarr/ui-tv':
+        specifier: workspace:*
+        version: link:../../packages/ui-tv
       '@react-native-tvos/config-tv':
         specifier: 0.1.6
         version: 0.1.6(expo@57.0.16)

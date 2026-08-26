@@ -9,6 +9,7 @@ const playing: PlayerSnapshot = {
   attemptId: 4,
   catalog: [],
   channel: { id: "seven", inAppPlayable: true, name: "Science Fiction", number: 7 },
+  overlayVisible: true,
   previousChannelId: "six",
   recentChannelIds: ["six"],
   status: "playing",
@@ -23,10 +24,15 @@ const renderSurface = (snapshot: PlayerSnapshot, loadError?: string) =>
         loadError={loadError}
         onChannelDown={vi.fn()}
         onChannelUp={vi.fn()}
+        onDismissControls={vi.fn()}
+        onGoLive={vi.fn()}
         onOpenGuide={vi.fn()}
         onOpenSurf={vi.fn()}
+        onPause={vi.fn()}
+        onPlay={vi.fn()}
         onPrevious={vi.fn()}
         onRetry={vi.fn()}
+        onShowControls={vi.fn()}
         player={<div data-player="one-native-player" />}
         snapshot={snapshot}
       />
@@ -43,6 +49,8 @@ describe("WatchingSurface", () => {
     expect(output).toContain("Guide");
     expect(output).toContain("Surf");
     expect(output).toContain("Channel +");
+    expect(output).toContain("Pause");
+    expect(output).toContain("Go Live");
   });
 
   it("renders tuning and recoverable transport failure without replacing Channel identity", () => {
@@ -54,7 +62,12 @@ describe("WatchingSurface", () => {
   });
 
   it("states authoritative catalog failure and dead air separately", () => {
-    const empty: PlayerSnapshot = { catalog: [], recentChannelIds: [], status: "empty" };
+    const empty: PlayerSnapshot = {
+      catalog: [],
+      overlayVisible: true,
+      recentChannelIds: [],
+      status: "empty",
+    };
     expect(renderSurface(empty)).toContain("No playable channels");
     expect(renderSurface(empty, "Couldn't load channels.")).toContain("Couldn&#x27;t load channels.");
   });

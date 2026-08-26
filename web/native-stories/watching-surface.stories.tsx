@@ -8,6 +8,7 @@ const snapshot: PlayerSnapshot = {
   attemptId: 3,
   catalog: [],
   channel: { id: "seven", inAppPlayable: true, name: "Science Fiction", number: 7 },
+  overlayVisible: true,
   previousChannelId: "six",
   recentChannelIds: ["six"],
   status: "playing",
@@ -20,10 +21,15 @@ const Preview = ({ state = snapshot }: { state?: PlayerSnapshot }) => (
         density={process.env.EXPO_PUBLIC_LOOMARR_STORYBOOK_DENSITY === "tv" ? "tv" : "touch"}
         onChannelDown={() => undefined}
         onChannelUp={() => undefined}
+        onDismissControls={() => undefined}
+        onGoLive={() => undefined}
         onOpenGuide={() => undefined}
         onOpenSurf={() => undefined}
+        onPause={() => undefined}
+        onPlay={() => undefined}
         onPrevious={() => undefined}
         onRetry={() => undefined}
+        onShowControls={() => undefined}
         player={<View style={{ backgroundColor: "#101316", flex: 1 }} />}
         snapshot={state}
       />

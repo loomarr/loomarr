@@ -9,10 +9,11 @@ import { LoomarrProvider } from "@loomarr/design-system";
 import { NativePlayerView, usePairedNativePlayer } from "@loomarr/player/native";
 import type { ClientDestination } from "@loomarr/ui";
 import { ClientShell, clientBackDestination, PairingShell, WatchingSurface } from "@loomarr/ui";
+import { createTvNumberEntryController } from "@loomarr/ui-tv";
 import { useKeepAwake } from "expo-keep-awake";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { BackHandler, useTVEventHandler } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -36,21 +37,45 @@ const TvWatching = ({
     credential,
     onRevoked,
   });
+  const numberEntry = useMemo(
+    () => createTvNumberEntryController({ onCommit: (digits) => void controller.tuneNumber(digits) }),
+    [controller],
+  );
+  const numberEntrySnapshot = useSyncExternalStore(
+    numberEntry.subscribe,
+    numberEntry.getSnapshot,
+    numberEntry.getSnapshot,
+  );
+  useEffect(() => () => numberEntry.dispose(), [numberEntry]);
   useTVEventHandler(({ eventType }) => {
-    if (eventType === "up" || eventType === "channelUp") void controller.step(1);
+    if (numberEntry.pushEvent(eventType)) {
+      controller.revealOverlay();
+    } else if (eventType === "select" && numberEntrySnapshot.digits) {
+      numberEntry.commit();
+    } else if (eventType === "up" || eventType === "channelUp") void controller.step(1);
     else if (eventType === "down" || eventType === "channelDown") void controller.step(-1);
     else if (eventType === "left" || eventType === "menu") onNavigate("surf");
+    else controller.revealOverlay();
   });
+  const numberEntryChannel = snapshot.catalog.find(
+    (channel) => String(channel.number) === numberEntrySnapshot.digits,
+  );
   return (
     <WatchingSurface
       density="tv"
       loadError={loadError}
+      numberEntry={{ channelName: numberEntryChannel?.name, digits: numberEntrySnapshot.digits }}
       onChannelDown={() => void controller.step(-1)}
       onChannelUp={() => void controller.step(1)}
+      onDismissControls={controller.dismissOverlay}
+      onGoLive={() => void controller.goLive()}
       onOpenGuide={() => onNavigate("guide")}
       onOpenSurf={() => onNavigate("surf")}
+      onPause={controller.pause}
+      onPlay={() => void controller.play()}
       onPrevious={() => void controller.previous()}
       onRetry={() => void (loadError ? refresh() : controller.retry())}
+      onShowControls={controller.revealOverlay}
       player={<NativePlayerView style={{ flex: 1 }} transport={transport} />}
       snapshot={snapshot}
     />

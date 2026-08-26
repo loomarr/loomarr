@@ -13,6 +13,13 @@ export {
   tvGuideRowWindow,
 } from "./src/guide-navigation";
 export type {
+  TvNumberEntryController,
+  TvNumberEntryOptions,
+  TvNumberEntrySnapshot,
+  TvNumberEntryTimer,
+} from "./src/number-entry";
+export { createTvNumberEntryController } from "./src/number-entry";
+export type {
   TvSurfActivation,
   TvSurfDirection,
   TvSurfMoveResult,
