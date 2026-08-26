@@ -306,6 +306,11 @@ queues restoration until bounded rows mount, and keeps React Native focus mechan
 selection rules. Populated-device focus proof, mobile-client diagnostic admission, populated artwork
 evidence, and real-device acceptance remain open.
 
+The touch application no longer hard-locks portrait: its Expo orientation is the schema-supported
+`default`, allowing the same safe-area-aware shell to rotate on Android and iOS. This removes a
+configuration blocker from the required portrait/landscape workshop, but does not count as real
+iPhone rotation, scrolling, target, or focus-transfer evidence.
+
 The first physical P4 pass installed a production arm64 release APK on the 4K Shield and paired it
 to the isolated worktree backend over the deployment model's normal plain-HTTP LAN origin. That pass
 caught two native-only gaps: Expo's generated release manifest had not preserved the shipping
