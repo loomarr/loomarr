@@ -68,10 +68,10 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make eval-cert` |  | certify exact starter/adversarial intents; fails on missing config and writes a scorecard |
 | `make eval-matrix` |  | explicitly certify local + OpenRouter generation sequentially (manual, resource-heavy) |
 | `make filler-eval-contract` |  | hermetic filler-admission corpus and selective-risk contracts |
-| `make filler-corpus-commons` |  | freeze the bounded Commons filler rights-yield pilot lane |
-| `make filler-corpus-cdc` |  | freeze the bounded CDC filler rights-yield pilot lane |
-| `make filler-corpus-loc` |  | freeze the bounded LOC filler rights-yield pilot lane |
-| `make filler-corpus-nasa` |  | freeze the bounded NASA filler rights-yield pilot lane |
+| `make filler-corpus-commons` |  | freeze bounded Commons pilot and full-inventory artifacts |
+| `make filler-corpus-cdc` |  | freeze bounded CDC pilot and full-inventory artifacts |
+| `make filler-corpus-loc` |  | freeze bounded LOC pilot and full-inventory artifacts |
+| `make filler-corpus-nasa` |  | freeze bounded NASA pilot and full-inventory artifacts |
 | `make filler-corpus-pilot` |  | lock the qualified metadata-only filler rights-yield pilot |
 | `make filler-corpus-pilot-rights-review` |  | prepare the inert five-lane pilot review packet |
 | `make filler-corpus-pilot-rights-lock` |  | lock completed pilot review into a non-authorizing yield report |

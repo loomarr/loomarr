@@ -3530,6 +3530,14 @@ must show useful coverage of the filler roles the certification corpus needs, su
 promos, bumpers, station IDs, trailers, and PSAs. Rights clarity, API convenience, and inventory
 scale do not by themselves make a source representative.
 
+The LOC, NASA, CDC first-party-page, and Commons commands share one promotion seam: the bounded lane
+remains the ten-case qualification artifact, while an explicitly requested schema-v2 output carries
+the same frozen evidence into full-corpus rights review. Full capture counts stay positive and
+bounded but are not hard-coded to ten; request ceilings must cover the declared item count. The CDC
+adapter still consumes authored first-party page/media pairs and therefore cannot manufacture extra
+cases to meet a quota. Multiple role-specific captures combine only through the strict inventory
+combiner, never by concatenating JSON or discarding their individual ceilings.
+
 Media acquisition consumes a separate rights-review ledger; discovery output is never download
 authority. Every `approved` row binds the inventory digest, authority-qualified case ID, source
 metadata hash, reviewer, review time, rationale, redistribution decision, attribution, and

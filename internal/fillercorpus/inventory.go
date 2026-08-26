@@ -165,6 +165,60 @@ func MergeInventories(inputs ...Inventory) (Inventory, error) {
 	return result, nil
 }
 
+type LaneInventoryOptions struct {
+	SnapshotAt        time.Time
+	Collection        string
+	AllowedMediaHosts []string
+}
+
+// InventoryFromLane promotes one bounded, source-neutral discovery lane into
+// the full rights-review contract without granting download authority.
+func InventoryFromLane(lane Lane, opts LaneInventoryOptions) (Inventory, error) {
+	if opts.SnapshotAt.IsZero() || strings.TrimSpace(lane.Authority) == "" || len(lane.Cases) == 0 {
+		return Inventory{}, fmt.Errorf("promote lane: snapshot, authority, and cases are required")
+	}
+	role := ""
+	for _, item := range lane.Cases {
+		if len(item.RoleHints) == 0 || strings.TrimSpace(item.RoleHints[0]) == "" {
+			return Inventory{}, fmt.Errorf("promote lane: case %q has no primary role hint", item.ItemID)
+		}
+		if role == "" {
+			role = item.RoleHints[0]
+		}
+		if !slices.Contains(item.RoleHints, role) {
+			return Inventory{}, fmt.Errorf("promote lane: case %q does not share capture role %q", item.ItemID, role)
+		}
+	}
+	captureID := NewCaptureID(lane.Authority, opts.Collection, role)
+	result := Inventory{SchemaVersion: InventorySchemaVersion, SnapshotAt: opts.SnapshotAt.UTC(), Captures: []Capture{{
+		CaptureID: captureID, Authority: lane.Authority, Collection: opts.Collection, RoleHint: role, SnapshotAt: opts.SnapshotAt.UTC(),
+		MaxRequests: lane.MaxRequests, RequestsUsed: lane.RequestsUsed, MaxResponseBytes: lane.MaxResponseBytes, ResponseBytes: lane.ResponseBytes,
+		MaxPredictedMediaBytes: lane.MaxPredictedMediaBytes, PredictedMediaBytes: lane.PredictedMediaBytes,
+		MaxWallTimeMS: lane.MaxWallTimeMS, WallTimeMS: lane.WallTimeMS,
+	}}}
+	for _, item := range lane.Cases {
+		result.Cases = append(result.Cases, InventoryCase{
+			CaseID: CaseID(lane.Authority, item.ItemID), CaptureID: captureID, Authority: lane.Authority, ItemID: item.ItemID,
+			Title: item.Title, RoleHints: item.RoleHints, Collection: nonEmptySlice(opts.Collection), LicenseURL: item.LicenseURL,
+			RightsAssertions: item.RightsAssertions, ItemURL: item.ItemURL, MetadataURL: item.MetadataURL,
+			MetadataRetrievedAt: item.MetadataRetrievedAt, MetadataSHA256: item.MetadataSHA256,
+			AllowedMediaHosts: append([]string(nil), opts.AllowedMediaHosts...),
+			Representation:    InventoryRepresentation{Name: item.Representation.Name, URL: item.Representation.URL, MIMEType: item.Representation.MIMEType, Bytes: item.Representation.Bytes, SHA1: item.Representation.SHA1, MD5: item.Representation.MD5},
+		})
+	}
+	if failures := ValidateInventory(result); len(failures) != 0 {
+		return Inventory{}, fmt.Errorf("promote lane: %s", strings.Join(failures, "; "))
+	}
+	return result, nil
+}
+
+func nonEmptySlice(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return []string{value}
+}
+
 func ValidateInventory(value Inventory) []string {
 	var failures []string
 	if value.SchemaVersion != InventorySchemaVersion {

@@ -303,68 +303,74 @@ eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (m
 filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
 	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/
 
-filler-corpus-commons: ## freeze the bounded Commons filler rights-yield pilot lane
+filler-corpus-commons: ## freeze bounded Commons pilot and full-inventory artifacts
 	@eval "$$(./scripts/dev-env.sh export)"; \
 	  $(GO) run ./cmd/filler-corpus-commons \
 	    --category "$${LOOMARR_FILLER_CORPUS_COMMONS_CATEGORY:-Advertising videos}" \
 	    --role-hint "$${LOOMARR_FILLER_CORPUS_COMMONS_ROLE_HINT:-commercial}" \
 	    --out "$${LOOMARR_FILLER_CORPUS_COMMONS_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-commons.json}" \
+	    --inventory-out "$${LOOMARR_FILLER_CORPUS_COMMONS_INVENTORY_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-commons-inventory.json}" \
 	    --cache-dir "$${LOOMARR_FILLER_CORPUS_COMMONS_CACHE:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-commons-cache}" \
 	    --user-agent "$$LOOMARR_FILLER_CORPUS_USER_AGENT" \
+	    --snapshot-at "$$LOOMARR_FILLER_CORPUS_COMMONS_SNAPSHOT_AT" \
 	    --max-requests "$${LOOMARR_FILLER_CORPUS_COMMONS_MAX_REQUESTS:-10}" \
 	    --max-pages "$${LOOMARR_FILLER_CORPUS_COMMONS_MAX_PAGES:-5}" \
-	    --max-items 10 \
+	    --max-items "$${LOOMARR_FILLER_CORPUS_COMMONS_MAX_ITEMS:-10}" \
 	    --max-response-bytes "$${LOOMARR_FILLER_CORPUS_COMMONS_MAX_RESPONSE_BYTES:-33554432}" \
 	    --max-item-bytes "$${LOOMARR_FILLER_CORPUS_COMMONS_MAX_ITEM_BYTES:-536870912}" \
 	    --max-total-bytes "$${LOOMARR_FILLER_CORPUS_COMMONS_MAX_TOTAL_BYTES:-3221225472}" \
 	    --delay "$${LOOMARR_FILLER_CORPUS_COMMONS_DELAY:-250ms}" \
 	    --max-wall-time "$${LOOMARR_FILLER_CORPUS_COMMONS_MAX_WALL_TIME:-2m}"
 
-filler-corpus-cdc: ## freeze the bounded CDC filler rights-yield pilot lane
+filler-corpus-cdc: ## freeze bounded CDC pilot and full-inventory artifacts
 	@eval "$$(./scripts/dev-env.sh export)"; \
 	  $(GO) run ./cmd/filler-corpus-pages \
 	    --in internal/fillercorpus/corpus/seeds/cdc.json \
 	    --out "$${LOOMARR_FILLER_CORPUS_CDC_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-cdc.json}" \
+	    --inventory-out "$${LOOMARR_FILLER_CORPUS_CDC_INVENTORY_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-cdc-inventory.json}" \
 	    --cache-dir "$${LOOMARR_FILLER_CORPUS_CDC_CACHE:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-cdc-cache}" \
 	    --user-agent "$$LOOMARR_FILLER_CORPUS_USER_AGENT" \
+	    --snapshot-at "$$LOOMARR_FILLER_CORPUS_CDC_SNAPSHOT_AT" \
 	    --page-host www.cdc.gov \
 	    --media-host www.cdc.gov \
-	    --max-requests 20 \
-	    --max-items 10 \
+	    --max-requests "$${LOOMARR_FILLER_CORPUS_CDC_MAX_REQUESTS:-20}" \
+	    --max-items "$${LOOMARR_FILLER_CORPUS_CDC_MAX_ITEMS:-10}" \
 	    --max-response-bytes "$${LOOMARR_FILLER_CORPUS_CDC_MAX_RESPONSE_BYTES:-16777216}" \
 	    --max-item-bytes "$${LOOMARR_FILLER_CORPUS_CDC_MAX_ITEM_BYTES:-104857600}" \
 	    --max-total-bytes "$${LOOMARR_FILLER_CORPUS_CDC_MAX_TOTAL_BYTES:-1073741824}" \
 	    --delay "$${LOOMARR_FILLER_CORPUS_CDC_DELAY:-250ms}" \
 	    --max-wall-time "$${LOOMARR_FILLER_CORPUS_CDC_MAX_WALL_TIME:-2m}"
 
-filler-corpus-loc: ## freeze the bounded LOC filler rights-yield pilot lane
+filler-corpus-loc: ## freeze bounded LOC pilot and full-inventory artifacts
 	@eval "$$(./scripts/dev-env.sh export)"; \
 	  $(GO) run ./cmd/filler-corpus-loc \
 	    --query "$$LOOMARR_FILLER_CORPUS_LOC_QUERY" \
 	    --role-hint "$$LOOMARR_FILLER_CORPUS_LOC_ROLE_HINT" \
 	    --out "$${LOOMARR_FILLER_CORPUS_LOC_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-loc.json}" \
+	    --inventory-out "$${LOOMARR_FILLER_CORPUS_LOC_INVENTORY_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-loc-inventory.json}" \
 	    --cache-dir "$${LOOMARR_FILLER_CORPUS_LOC_CACHE:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-loc-cache}" \
 	    --user-agent "$$LOOMARR_FILLER_CORPUS_USER_AGENT" \
 	    --snapshot-at "$$LOOMARR_FILLER_CORPUS_LOC_SNAPSHOT_AT" \
 	    --max-requests "$${LOOMARR_FILLER_CORPUS_LOC_MAX_REQUESTS:-25}" \
-	    --max-items 10 \
+	    --max-items "$${LOOMARR_FILLER_CORPUS_LOC_MAX_ITEMS:-10}" \
 	    --max-response-bytes "$$LOOMARR_FILLER_CORPUS_LOC_MAX_RESPONSE_BYTES" \
 	    --max-item-bytes "$$LOOMARR_FILLER_CORPUS_LOC_MAX_ITEM_BYTES" \
 	    --max-total-bytes "$$LOOMARR_FILLER_CORPUS_LOC_MAX_TOTAL_BYTES" \
 	    --delay "$${LOOMARR_FILLER_CORPUS_LOC_DELAY:-3100ms}" \
 	    --max-wall-time "$${LOOMARR_FILLER_CORPUS_LOC_MAX_WALL_TIME:-3m}"
 
-filler-corpus-nasa: ## freeze the bounded NASA filler rights-yield pilot lane
+filler-corpus-nasa: ## freeze bounded NASA pilot and full-inventory artifacts
 	@eval "$$(./scripts/dev-env.sh export)"; \
 	  $(GO) run ./cmd/filler-corpus-nasa \
 	    --query "$${LOOMARR_FILLER_CORPUS_NASA_QUERY:-trailer}" \
 	    --role-hint "$${LOOMARR_FILLER_CORPUS_NASA_ROLE_HINT:-trailer}" \
 	    --out "$${LOOMARR_FILLER_CORPUS_NASA_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-nasa.json}" \
+	    --inventory-out "$${LOOMARR_FILLER_CORPUS_NASA_INVENTORY_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-nasa-inventory.json}" \
 	    --cache-dir "$${LOOMARR_FILLER_CORPUS_NASA_CACHE:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-nasa-cache}" \
 	    --user-agent "$$LOOMARR_FILLER_CORPUS_USER_AGENT" \
 	    --snapshot-at "$$LOOMARR_FILLER_CORPUS_NASA_SNAPSHOT_AT" \
 	    --max-requests "$${LOOMARR_FILLER_CORPUS_NASA_MAX_REQUESTS:-80}" \
-	    --max-items 10 \
+	    --max-items "$${LOOMARR_FILLER_CORPUS_NASA_MAX_ITEMS:-10}" \
 	    --max-response-bytes "$${LOOMARR_FILLER_CORPUS_NASA_MAX_RESPONSE_BYTES:-33554432}" \
 	    --max-item-bytes "$${LOOMARR_FILLER_CORPUS_NASA_MAX_ITEM_BYTES:-536870912}" \
 	    --max-total-bytes "$${LOOMARR_FILLER_CORPUS_NASA_MAX_TOTAL_BYTES:-3221225472}" \
