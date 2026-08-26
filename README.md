@@ -12,27 +12,13 @@ Loomarr picks a lineup from your library, requests anything missing, schedules i
 breaks, and streams it to your media server as Live TV.
 
 ```mermaid
-graph LR
-  I["<b>Your intent</b><br/><i>one sentence</i>"]
-  P["<b>Proposal</b><br/>lineup + what's missing"]
-  A{"<b>You approve</b>"}
-  C["<b>Channel</b><br/>scheduled with ad breaks"]
-  T["<b>Live TV</b><br/>in Emby / Jellyfin"]
-  Q["<b>Acquire</b><br/>Seerr → Sonarr/Radarr"]
-
-  I --> P
-  P --> A
-  C --> T
-  A --> C
-  A --> Q
-  Q -.->|"fills in as titles arrive"| C
-
-  classDef hi fill:#8a5a1a,stroke:#5c3b10,color:#fff
-  classDef norm fill:#2b3b52,stroke:#1b2736,color:#dbe4ef
-  classDef go fill:#1f6f4a,stroke:#134a31,color:#fff
-  class A hi
-  class T go
-  class I,P,C,Q norm
+flowchart LR
+  intent[Describe a channel] --> proposal[Review a grounded proposal]
+  proposal --> approval{Admin approves?}
+  approval -->|Yes| channel[Build and schedule the channel]
+  approval -->|Request missing titles| acquire[Seerr or Sonarr/Radarr]
+  acquire -->|Titles arrive| channel
+  channel --> live[Watch in Emby or Jellyfin]
 ```
 
 Every pick is a real title from your library or TMDB — the model can't invent one. Nothing
@@ -43,13 +29,14 @@ downloads until an admin approves.
 You need Emby or Jellyfin to run Loomarr. To use its defining describe-a-channel flow, you also
 need TMDB and either Ollama or an OpenAI-compatible provider. Requesters and filler remain optional.
 
-Until `v0.1.0-beta.1` appears in GitHub Releases, this is the release-candidate install contract;
-there is no beta artifact to pull yet.
+Choose an exact version from [GitHub Releases](https://github.com/loomarr/loomarr/releases). The
+example below uses one published beta; keep the version pinned when you upgrade.
 
 ```bash
-git clone --branch v0.1.0-beta.1 --depth 1 https://github.com/loomarr/loomarr && cd loomarr
+VERSION=0.1.0-beta.8
+git clone --branch "v${VERSION}" --depth 1 https://github.com/loomarr/loomarr && cd loomarr
 cp .env.example .env                     # set SERVER_PUBLIC_URL to this host's reachable URL
-LOOMARR_VERSION=0.1.0-beta.1 docker compose -f docker/compose.yaml --profile sqlite up -d
+LOOMARR_VERSION="$VERSION" docker compose -f docker/compose.yaml --profile sqlite up -d
 ```
 
 Open the `SERVER_PUBLIC_URL` you set and follow the wizard. Traefik owns the host's port 8080 by

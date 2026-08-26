@@ -11,22 +11,10 @@ make dev-fe    # Vite HMR, proxying this worktree's backend
 ## Develop against the frontend URL
 
 ```mermaid
-graph LR
-  B["<b>Your browser</b><br/>frontend URL"]
-  V["<b>Vite dev server</b><br/><i>your working copy</i>"]
-  A["<b>Air</b><br/><i>rebuilds Go + Rust together</i>"]
-  E["embedded SPA<br/><i>from last</i> <code>make fe</code>"]
-
-  B --> V
-  V -->|"proxies /v1, /docs, /metrics…"| A
-  A -.->|"also served at :8080"| E
-
-  classDef good fill:#1f6f4a,stroke:#134a31,color:#fff
-  classDef warn fill:#7a2d2d,stroke:#4a1b1b,color:#fff
-  classDef norm fill:#2b3b52,stroke:#1b2736,color:#dbe4ef
-  class V good
-  class E warn
-  class B,A norm
+flowchart LR
+  browser[Browser] -->|Open the frontend URL| vite[Vite: current frontend]
+  vite -->|Proxy API, docs, and metrics| air[Air: current Go and Rust]
+  air -.->|Backend URL only| embedded[Last embedded SPA build]
 ```
 
 The backend URL serves the SPA compiled into the binary at your last `make fe`, not your working copy.

@@ -23,18 +23,19 @@ The *runs:* note on a row lists what each parent pulls in.
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make agent-start` |  | register this worktree and claim shared outputs (TASK=... CLAIMS=a,b) |
+| `make agent-start` |  | register this worktree and its seams (TASK=... CLAIMS=a,b; optional DEPENDS_ON=task) |
 | `make agent-status` |  | list tool-neutral agent sessions across every worktree |
-| `make agent-renew` |  | renew this worktree's claim lease (AGENT_LEASE_HOURS=12) |
+| `make agent-renew` |  | renew this worktree's claim lease (AGENT_LEASE_HOURS=4) |
 | `make agent-prune` |  | remove expired entries from the shared agent registry |
 | `make agent-stop` |  | release this worktree's task and shared-output claims |
 | `make agent-env` |  | show this worktree's isolated ports, database, compose project, and artifact path |
 | `make agent-baseline` |  | run make check once per clean commit/toolchain and share the green result across worktrees |
 | `make agent-verify` |  | run focused changed-file checks (not the final gate; BASE=origin/main) |
-| `make agent-worktree` |  | create + bootstrap a ready-to-use sibling worktree off origin/main (TOPIC=branch; BASE=HEAD to stack) |
+| `make agent-worktree` |  | create, claim, and bootstrap a sibling worktree (TOPIC=... CLAIMS=...; BASE/DEPENDS_ON for stacks) |
 | `make bootstrap` |  | build the Rust worker and prepare frontend, isolated directories, and dev identity |
 | `make doctor` |  | report toolchain drift, worktrees, ports, caches, and misplaced artifacts |
-| `make agent-harness-test` | ✅ | regression-test worktree isolation and shared-output claims |
+| `make agent-harness-test` | ✅ | regression-test coordination, worktree isolation, and shared-output claims <br>*runs:* `agent-assets-verify` |
+| `make agent-assets-verify` |  | verify the curated skill catalog and agent adapters agree |
 | `make compose-verify` |  | verify Traefik, database wiring, and pinned release images |
 | `make release-verify` |  | verify server, Android, and release-note publication policy |
 | `make release-notes-preview` |  | generate validated release notes (TAG required; optional PREVIOUS_TAG and OUTPUT) |

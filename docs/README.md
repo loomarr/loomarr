@@ -1,61 +1,72 @@
-# Loomarr docs
+# Loomarr documentation
 
-Four audiences, kept deliberately separate. All of it renders on GitHub and on the docs site;
-only `help/` is embedded in the binary.
+The docs are organized by reader and authority. Start with the page for the job you are doing;
+do not read the 7,000-line design document as onboarding.
 
-## For operators
+## Find the right document
 
-- **[`install/`](install/index.md)** — what Loomarr needs, the Docker walkthrough, hardware
-  acceleration, upgrading.
-- **[`configuration.md`](configuration.md)** — every setting. **Generated** from the settings
-  registry by `make config-docs`; CI fails on drift. Cite it, don't restate it.
-- **[`integrations/`](integrations/media-server-livetv.md)** — Emby/Jellyfin Live TV wiring.
-
-## For users — `help/`, embedded in the binary
-
-Rendered offline in the app under **Help**, and served at `/v1/docs`. Written lean for a
-household admin: [Quickstart](help/quickstart.md), [Concepts](help/concepts.md),
-[Integrations](help/integrations.md), [Programming](help/programming.md),
-[Filler](help/filler.md), [Member guide](help/member-guide.md),
-[Troubleshooting](help/troubleshooting.md).
-
-Two constraints on this directory specifically:
-
-- **No frontmatter.** `embed.go` derives the title from the first H1, and YAML would render as
-  literal text in the in-app viewer.
-- **No mermaid.** The in-app renderer has no mermaid support, so a diagram would show an
-  operator its own source. Use prose and tables here; diagrams belong in the site-rendered set.
-
-Their **anchors and their claims are both contracts**, and both are tested: `embed_test.go`
-proves every `docHref` the API emits resolves to a real heading, and `claims_test.go` proves the
-pages don't contradict the code.
-
-## For contributors
-
-- **[`dev/`](dev/index.md)** — setup, the dev loop, testing, CI, codegen, and the generated
-  command reference. The single home for these facts.
-
-## For the build team
-
-- **[`design.md`](design.md)** — **the single source of truth** (§1–§22). Doc-first: if code
-  must deviate, update this in the same PR, first.
-- Companion designs, authoritative for their own domains:
-  [`programming-design.md`](programming-design.md) (ChannelPolicy heuristics),
-  [`config-design.md`](config-design.md) (settings subsystem),
-  [`frontend-design.md`](frontend-design.md) (the "Test Card" design system).
-- **[`engineering/`](engineering/)** — dated findings and decision records that support the
-  build. Superseded plans live in [`engineering/archive/`](engineering/archive/README.md) with a
-  banner saying what replaced them.
-- **[`agents/`](agents/domain.md)** — configuration the coding-agent skills read.
-
-Precedence: `design.md` wins on behaviour; each companion wins on its own domain.
-
-## What's generated
-
-Never hand-edit these; each has a verify target that fails CI on drift.
-
-| File | From | Regenerate |
+| Reader or task | Start here | Authority |
 | --- | --- | --- |
-| `configuration.md` | the settings registry | `make config-docs` |
-| `dev/commands.md` | the Makefile + CI workflows | `make dev-docs` |
-| `../api/openapi.yaml` | the Huma definitions | `make openapi` |
+| Install or operate Loomarr | [`install/`](install/index.md) | Supported deployment and operations |
+| Use Loomarr | [`help/`](help/quickstart.md) | Viewer- and admin-facing product behavior |
+| Build and test Loomarr | [`dev/`](dev/index.md) | Contributor workflow and gates |
+| Understand current behavior | [`design.md`](design.md) | Canonical system behavior |
+| Use domain terminology | [`../CONTEXT.md`](../CONTEXT.md) | Canonical vocabulary |
+| Check active or shipped work | [`../PROGRESS.md`](../PROGRESS.md) | Work status and gate evidence |
+| Read current plans and evidence | [`engineering/`](engineering/README.md) | Dated planning and supporting evidence |
+| Read release notes | [`release/`](release/README.md) | Published release contracts |
+
+## User and operator docs
+
+Only `help/` is embedded in the binary and served at `/v1/docs`. It is written for household
+admins and members, works offline, and has two extra constraints:
+
+- no frontmatter, because the first H1 supplies the in-app title;
+- no Mermaid, because the in-app renderer deliberately has no Mermaid runtime.
+
+The help pages' anchors and claims are tested. `embed_test.go` verifies every API-emitted doc link,
+and `claims_test.go` verifies high-risk behavior statements against the code.
+
+`configuration.md` is generated from the typed settings registry. Cite it instead of restating
+setting defaults in hand-written pages.
+
+## Design authority
+
+`design.md` owns product behavior. Companion documents own detail within their named domains:
+
+- [`programming-design.md`](programming-design.md) — Channel Policy and scheduling heuristics;
+- [`config-design.md`](config-design.md) — settings information architecture and persistence;
+- [`frontend-design.md`](frontend-design.md) — shared client architecture and visual system.
+
+If a companion contradicts `design.md`, fix the contradiction in the same PR. Engineering plans and
+research explain a decision or sequence work; they are not competing behavior specifications.
+Superseded plans move to [`engineering/archive/`](engineering/archive/README.md).
+
+## Diagram standard
+
+Use a diagram only when relationships or sequence are materially clearer than prose or a table.
+Every diagram answers one question stated by its surrounding section.
+
+- Prefer a flowchart for flow, a state diagram for lifecycle, and a table for comparisons.
+- Keep labels short and put detail in the prose below.
+- Split a diagram before it becomes a wall of crossed edges.
+- Use Mermaid's current theme; do not hard-code colors or typography that fail in light or dark mode.
+- Do not duplicate a generated inventory in a hand-maintained diagram.
+- Do not put Mermaid in `help/`.
+
+Mermaid source stays in fenced blocks so GitHub and the docs site render the same artifact. If the
+source is not understandable in a pull-request diff, the diagram is too complicated.
+
+## Generated documents
+
+Never edit these by hand:
+
+| File | Source | Regenerate |
+| --- | --- | --- |
+| `configuration.md` | Settings registry | `make config-docs` |
+| `dev/commands.md` | Makefile and CI workflows | `make dev-docs` |
+| `design.md` §2 package map | Go package docs and imports | `make arch-docs` |
+| `../api/openapi.yaml` | Huma route definitions | `make openapi` |
+
+Run `make docs-lint` for structure, relative links, and Loomarr vocabulary. Generated-file verify
+targets guard drift separately.

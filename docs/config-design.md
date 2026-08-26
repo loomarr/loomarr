@@ -1,6 +1,6 @@
 # Loomarr Configuration — Subsystem Design
 
-**Status:** Implemented (settings subsystem PR, 2026-07-15) · companion to `design.md`
+**Status:** Living companion to `design.md`; the settings subsystem is implemented.
 **Precedence:** the main doc (§13, §15) is authoritative for the *decision* — settings live in the app, the environment pins, `env > database > default`. This doc is authoritative for the configuration subsystem's *design*: the registry, resolution semantics, secrets lifecycle, Settings UI, and onboarding integration. Conflicts → main doc wins on policy, this doc on mechanics; fix the loser in the same PR.
 
 ---

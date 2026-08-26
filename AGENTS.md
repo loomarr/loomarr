@@ -20,7 +20,8 @@ From the worktree that will own the change:
 
 ```sh
 make agent-status
-make agent-start TASK=<short-name> CLAIMS=<comma-separated-shared-outputs>
+make agent-worktree TOPIC=<short-name> CLAIMS=<comma-separated-shared-outputs>
+# cd to the printed worktree; it is already registered
 make agent-baseline
 ```
 
@@ -152,3 +153,9 @@ Durable workflows live in `.agents/workflows/`; installed skill bodies live in `
 Agent-specific directories such as `.claude/` contain adapters or symlinks only. A required workflow
 must be usable without a proprietary slash command, home-directory plan, or product-specific worktree
 feature.
+
+One worktree owns implementation and delivery. Use subagents for independent research, competing
+designs, and fresh-context review; they report to the owner unless a separate editing worktree has a
+clear file seam, interface seam, claim set, and merge order. For dependent branches, record
+`DEPENDS_ON` and stack with `BASE=<dependency-branch>`. See `docs/dev/agents.md` and the curated
+catalog in `docs/dev/skills.md`.

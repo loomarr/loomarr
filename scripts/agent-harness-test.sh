@@ -7,7 +7,7 @@ TMP="$(mktemp -d)"
 TMP="$(CDPATH='' cd -- "$TMP" && pwd -P)"
 pids=
 # shellcheck disable=SC2154 # pid is the loop variable inside the trap evaluated at exit.
-trap 'for pid in $pids; do kill "$pid" 2>/dev/null || true; done; rm -rf "$TMP" "$TMP-wt" "$TMP-third"' EXIT INT TERM
+trap 'for pid in $pids; do kill "$pid" 2>/dev/null || true; done; rm -rf "$TMP" "$TMP-wt" "$TMP-third" "$TMP-fourth"' EXIT INT TERM
 
 step() {
 	echo "agent-harness-test: $*"
@@ -93,7 +93,15 @@ rm -f "$TMP/fake-bin/go" "$TMP/fake-bin/cargo"
 
 step 'claims and port conflicts'
 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" start first openapi-client >/dev/null
-LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" status | grep -q 'first.*openapi-client'
+LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" status | grep 'first.*openapi-client' >/dev/null
+if LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/agent.sh" start first visual-baselines >/dev/null 2>&1; then
+	echo 'agent-harness-test: duplicate task was accepted' >&2
+	exit 1
+fi
+if LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/agent.sh" start second visual-baselines missing-task >/dev/null 2>&1; then
+	echo 'agent-harness-test: inactive dependency was accepted' >&2
+	exit 1
+fi
 if LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/agent.sh" start second openapi-client >/dev/null 2>&1; then
 	echo 'agent-harness-test: conflicting claim was accepted' >&2
 	exit 1
@@ -105,6 +113,18 @@ fi
 LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/agent.sh" start second visual-baselines >/dev/null
 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" stop >/dev/null
 LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/agent.sh" stop >/dev/null
+
+# A killed writer cannot leave every future agent waiting on an ownerless registry lock.
+step 'abandoned registry lock recovery'
+state_dir="$(git -C "$TMP" rev-parse --path-format=absolute --git-common-dir)/loomarr-agents"
+mkdir -p "$state_dir/lock"
+printf 'pid=999999\ncreated=1\n' > "$state_dir/lock/owner"
+LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" start after-stale-lock agent-contract >/dev/null
+LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" stop >/dev/null
+mkdir -p "$state_dir/lock"
+touch -t 197001010000 "$state_dir/lock"
+LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" start after-ownerless-lock agent-contract >/dev/null
+LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" stop >/dev/null
 
 # Leases can be extended explicitly, and abandoned entries can be pruned without touching worktrees.
 step 'lease renewal and pruning'
@@ -119,7 +139,7 @@ LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" stop >/dev/null
 
 AGENT_LEASE_HOURS=0 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" start abandoned agent-contract >/dev/null
 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" prune | grep -q 'removed 1 expired session'
-if LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" status | grep -q abandoned; then
+if LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" status | grep abandoned >/dev/null; then
 	echo 'agent-harness-test: prune retained an expired session' >&2
 	exit 1
 fi
@@ -178,11 +198,16 @@ wait_for_repo_pid "$first_pid" loomarr-dev "$TMP"
 wait_for_repo_pid "$second_pid" loomarr-dev "$TMP-wt"
 
 # Worktree creation is product-neutral and does not copy credentials by default.
-step 'worktree creation'
+step 'claimed worktree creation and dependency visibility'
 printf 'SECRET=fixture\n' > "$TMP/.env"
 BASE=HEAD WORKTREE_PATH="$TMP-third" AGENT_WORKTREE_SKIP_BOOTSTRAP=1 LOOMARR_REPO_ROOT="$TMP" \
-	"$SCRIPT_DIR/agent.sh" worktree third >/dev/null
+	"$SCRIPT_DIR/agent.sh" worktree third third-task agent-contract >/dev/null
 [ -d "$TMP-third" ]
 [ ! -e "$TMP-third/.env" ]
+LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" status | grep 'third-task.*agent-contract' >/dev/null
+
+BASE=third WORKTREE_PATH="$TMP-fourth" AGENT_WORKTREE_SKIP_BOOTSTRAP=1 LOOMARR_REPO_ROOT="$TMP" \
+	"$SCRIPT_DIR/agent.sh" worktree fourth fourth-task '' third-task >/dev/null
+LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" status | grep 'fourth-task.*third-task' >/dev/null
 
 echo 'agent-harness-test: ok'

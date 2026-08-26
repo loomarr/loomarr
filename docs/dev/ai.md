@@ -15,6 +15,7 @@ Two different things share the word:
 | `AGENTS.md` | every harness | Canonical directives, session lifecycle, stop points |
 | `CLAUDE.md` | Claude Code | Thin adapter to `AGENTS.md` |
 | `docs/agents/*.md` | the installed skills | Domain vocabulary, issue tracker, triage labels |
+| `docs/dev/skills.md` | contributors and agents | Curated skill catalog and invocation policy |
 | `.agents/workflows/` | every harness | `doc-drift`, `gate-review`, `surface-audit`, `register-check` |
 | `.claude/commands/` | Claude Code | Thin adapters to `.agents/workflows/` |
 | `CONTEXT.md` | everyone | The glossary — what each word means |
@@ -59,7 +60,9 @@ Welcome, same bar as anything else. A few expectations:
   the most common defect in agent-written PRs here.
 - **Say so in the PR body.** It's useful review context, not a mark against it.
 
-For parallel sessions, use the shared registry and worktree harness — see [Agent development](agents.md).
+For parallel sessions, use the shared registry and worktree harness. Keep one implementation owner
+and delegate independent work selectively — see [Agent development](agents.md) and
+[Agent skills](skills.md).
 
 ## As a feature
 

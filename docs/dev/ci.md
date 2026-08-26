@@ -1,58 +1,22 @@
 # CI
 
 ```mermaid
-graph LR
-  C["<b>changes</b><br/><i>diffs the merge base</i>"]
-  GC["<b>go-contracts</b><br/>static · drift · repository contracts"]
-  RC["<b>image-certification</b><br/>release-worker runtime contract"]
-  G["<b>go</b> ×3<br/>race-policy tests only"]
-  P["<b>store-postgres</b>"]
-  F["<b>frontend</b> ×2"]
-  CJS["<b>shared clients</b><br/>lint · test · four JS bundles"]
-  AM["<b>Apple mobile</b><br/>native build · install · launch"]
-  AT["<b>Apple TV</b><br/>native build · install · launch"]
-  W["<b>playwright</b> ×4"]
-  T["<b>tuner</b><br/>three browser engines"]
-  D["<b>docs</b><br/>links · structure · prose"]
-  A["<b>agent-harness-macos</b>"]
-  N["<b>android</b><br/>lint · unit · assemble"]
-  I["<b>image</b><br/>amd64 + arm64"]
-  OK(["<b>ci-ok</b><br/><i>the required check</i>"])
-
-  C -->|"*.go, migrations, docs/help/, scripts/, Makefile"| GC
-  C -->|"same Go inputs"| G
-  C -->|"same Go inputs"| RC
-  C -->|"fail-closed Postgres impact"| P
-  C -->|"web/, Makefile"| F
-  C -->|"Expo apps and shared packages"| CJS
-  C -->|"fail-closed Apple mobile impact"| AM
-  C -->|"fail-closed Apple TV impact"| AT
-  C -->|"fail-closed visual ∪ e2e impact"| W
-  C -->|"fail-closed tuner impact"| T
-  C -->|"docs/, README, docs-site/"| D
-  C --> A
-  C --> N
-  C -->|"all Docker build inputs"| I
-  GC --> OK
-  RC --> OK
-  G --> OK
-  P --> OK
-  F --> OK
-  CJS --> OK
-  AM --> OK
-  AT --> OK
-  W --> OK
-  T --> OK
-  D --> OK
-  A --> OK
-  N --> OK
-  I --> OK
-
-  classDef gate fill:#1f6f4a,stroke:#134a31,color:#fff
-  classDef job fill:#2b3b52,stroke:#1b2736,color:#dbe4ef
-  class OK gate
-  class C,GC,RC,G,P,F,CJS,AM,AT,W,T,D,A,N,I job
+flowchart LR
+  changes[Classify the complete PR diff]
+  changes --> contracts[Contracts and Go]
+  changes --> clients[Web and shared clients]
+  changes --> native[Apple and Android]
+  changes --> runtime[Browser, tuner, and images]
+  changes --> docs[Docs and agent harness]
+  contracts --> required[CI: required aggregate]
+  clients --> required
+  native --> required
+  runtime --> required
+  docs --> required
 ```
+
+Each family contains independently filtered jobs. The required aggregate always runs and checks
+every top-level result, including jobs that correctly skipped.
 
 ## Jobs run only when their inputs changed
 

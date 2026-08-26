@@ -1,5 +1,17 @@
 # PROGRESS journal — archived narrative (through 2026-08)
 
+## 2026-07-13/14 — first live end-to-end smoke
+
+The first run against the maintainer's Emby, Sonarr/Radarr/Seerr, Tunarr, and Ollama stack exposed
+composition seams that package-level gates had missed. The fixes bound approved intents to channel
+lineups, retained real durations, represented in-library and requested titles consistently, fed
+terminal Provisioner events to the Scheduler and SSE bus, resolved media-server items to Tunarr
+program identifiers, expanded series into episodes, and corrected container-volume ownership.
+
+The lasting lesson was to test the Loomarr path end to end rather than prove a dependency with a
+side script. Phase 12.5 in `PROGRESS.md` carries the shipped gate evidence; this journal keeps the
+historical reason that integration phase exists.
+
 > **ARCHIVED — a record, not an instruction.** This is the long-form build journal that used to
 > sit at the top of `PROGRESS.md`, split out on 2026-08-10 because it had grown to roughly 3,500
 > lines and buried the phase table underneath it.
@@ -3672,4 +3684,3 @@ provider (opt-in); (c) Archive.org downloader live HTTP walk (sidecar manual-smo
 conn id 3 left up to catch it — remove after). Phase-0 findings:
 [`docs/engineering/phase-0-findings.md`](../phase-0-findings.md). Deferred captures:
 Sonarr Grab/Download → Phase 6; Emby login success body → Phase 9.
-

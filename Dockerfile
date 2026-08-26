@@ -112,7 +112,7 @@ RUN LOOMARR_RELEASE="${VERSION:-dev}" cargo build --release --locked -p loomarr-
 #
 # ⚠ Digest-pinned. The `@sha256:` is the real pin; the human-readable tag is a hint, and for
 # `stable-slim` a ROLLING one that moves on every Debian point release — a reproducible beta
-# image cannot ride a tag whose contents change under it (first-beta-readiness.md, distribution
+# image cannot ride a tag whose contents change under it (the archived first-beta-readiness plan,
 # integrity). To bump: `docker buildx imagetools inspect debian:stable-slim`, take the new
 # `Digest:`, and update the tag alongside it so the two never disagree. Same for the fe/build/
 # image-worker bases above.

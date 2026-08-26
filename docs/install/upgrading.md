@@ -47,12 +47,12 @@ backup off the Loomarr data volume and, ideally, off the host.
 ## Pull
 
 ```bash
-LOOMARR_VERSION=0.1.0-beta.1 docker compose -f docker/compose.yaml --profile sqlite pull
-LOOMARR_VERSION=0.1.0-beta.1 docker compose -f docker/compose.yaml --profile sqlite up -d
+NEXT_VERSION=0.1.0-beta.8 # replace with the exact release you intend to run
+LOOMARR_VERSION="$NEXT_VERSION" docker compose -f docker/compose.yaml --profile sqlite pull
+LOOMARR_VERSION="$NEXT_VERSION" docker compose -f docker/compose.yaml --profile sqlite up -d
 ```
 
-Replace `0.1.0-beta.1` with the exact version you intend to run. Use the Postgres override files
-from the install guide for a Postgres deployment.
+Use the Postgres override files from the install guide for a Postgres deployment.
 
 Migrations run at boot. Watch the first start:
 

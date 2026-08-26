@@ -1,10 +1,13 @@
-# Virtual Channel Builder — Design Doc
+# Loomarr system design
 
-**Status:** Draft for implementation
-**Audience:** coding agents + maintainer
-**Working name:** `loomarr` — weaves your library into TV channels, and follows the *arr / Servarr naming convention since it lives in that stack (alongside Sonarr/Radarr, which it drives). Container image `loomarr`. Rename freely.
+**Status:** Living source of truth; amend it in the same PR before behavior changes.
 
-> Supersedes the earlier "Channel Content Provisioner" framing. The app's purpose is to **build and maintain virtual TV channels end to end**: from a natural-language intent, through content acquisition, to a live channel on the selected playout backend that stays filled. "Provisioning" is one subsystem of that, not the product.
+**Audience:** Builders and coding agents. User-facing instructions live under
+[`docs/help/`](help/quickstart.md).
+
+Read the section your task cites rather than loading this document end to end. `CONTEXT.md` owns
+vocabulary, `PROGRESS.md` owns work status, and the companion design documents own programming,
+configuration, and frontend detail. This document wins when behavior overlaps.
 
 ---
 
@@ -51,53 +54,35 @@ Sized for a household/homelab, and tests should assume it: **~100k library items
 
 ```mermaid
 flowchart LR
-  User[Human]
-  Web[Web UI]
-  SUG[Suggester]
-  PROV[Provisioner]
-  SCH[Scheduler]
-  MS[(Emby / Jellyfin)]
-  Seerr[Seerr]
-  Arr[Sonarr / Radarr]
-  LLM[LLM: Ollama / OpenAI-compatible]
-  Tunarr[Tunarr]
-  DB[(Postgres / SQLite)]
-  FILL[Filler: catalog + pod assembly]
-  PLAY[Playout: Loomarr's own streams]
-  Clips[/Clip sources: folder, yt-dlp, Archive.org/]
+  human[Household member] --> web[Web and native clients]
+  web -->|Intent| suggest[Suggester]
+  suggest <-->|Grounded search| catalog[Library and TMDB catalog]
+  suggest <-->|Reason and structure| llm[LLM]
+  suggest -->|Proposal| approve{Admin approval}
 
-  User --> Web
-  Web -->|intent| SUG
-  SUG <-->|grounded tool calls| MS
-  SUG <-->|reason| LLM
-  SUG -->|proposal| Web
-  Web -->|approve: acquisitions| PROV
-  Web -->|approve: lineup| SCH
-  PROV -->|request| Seerr --> Arr
-  PROV -->|poll queue: progress / grabbed| Arr
-  PROV -->|library scan + GET /Items lookup| MS
-  PROV -->|available / unavailable &#40;internal events&#41;| SCH
-  SCH -->|build + push channel, filler, flex| Tunarr
-  SCH -->|backfill re-push| Tunarr
-  Web -->|monitor via SSE| PROV
-  PROV <--> DB
-  SCH <--> DB
-  SCH -->|breaks to fill| FILL
-  FILL -->|scan + probe + ingest pipeline| Clips
-  FILL <-->|optional: program uuids| Tunarr
-  MS -->|filler library source| FILL
-  SCH -->|lineup| PLAY
-  PLAY -->|MPEG-TS / HLS| MS
-  FILL <--> DB
+  approve -->|Missing titles| provision[Provisioner]
+  approve -->|Approved lineup| schedule[Scheduler]
+  provision --> requester[Seerr or Sonarr/Radarr]
+  requester --> media[Emby or Jellyfin library]
+  media -->|Availability| provision
+  provision -->|Terminal state| schedule
+
+  sources[Folders and remote clip sources] --> filler[Filler catalog and pod assembly]
+  filler --> schedule
+  schedule --> internal[Internal Playout]
+  schedule --> tunarr[Tunarr]
+  internal --> media
+  tunarr --> media
+  media --> viewers[TVs and browsers]
+
+  store[(SQLite or Postgres)] <--> provision
+  store <--> schedule
+  store <--> filler
 ```
-
-⚠ **`filler` and `playout` were absent from this diagram until 2026-08-10** — the former excluded on purpose ("to keep the diagram legible"), the latter because it arrived later as §9.1. They are the 2nd and 5th largest packages in the tree, so the one picture a newcomer reads first was missing roughly a quarter of the system. Legibility is a real constraint, but the fix for a crowded diagram is a second diagram, not a silent omission.
 
 The subsystems are internally decoupled (clean interfaces) but ship in one binary/container by default. The **provisioner's availability events are now an internal feed to the scheduler** — that's what drives backfill. An *optional* outbound webhook/SSE remains for external consumers, but the primary consumer is `loomarr`'s own scheduler.
 
 **Filler flow (§10).** Every clip arrives through a **filler source**, of which there are four kinds: `folder` (a watched directory), `youtube` (yt-dlp), `archive` (Archive.org), and `library` (a dedicated filler library on the media server). Loomarr **scans and probes the files itself** — `ffprobe` for duration, a sparse content hash for identity — and each clip then travels the **ingest pipeline** (V51b), whose rungs transcode, detect language, transcribe, tag, and split compilations. Tunarr is **optional**: when present it registers the folder as a `local` media source and hands back program uuids for filler-lists, and when absent an install running internal playout still has a complete catalog.
-
-⚠ **This paragraph described the reverse of all three of those facts until 2026-08-10** — it said Tunarr scanned the drop-folder and Loomarr synced its catalog *from* Tunarr, that "the media server is not in the filler path at all", and that ingest ran on a separate image variant (retired-ok). The first was the dependency-runs-the-wrong-way bug `filler.Clip` records as fixed; the second stopped being true when sources became pluggable; the third names something that no longer exists. It is kept here, corrected rather than deleted, because §10 notes this area "keeps being re-decided" and a silent edit loses that.
 
 ### Boundaries (ports)
 Core logic depends only on interfaces; concrete adapters live at the edges.
@@ -143,47 +128,24 @@ Generated from each package's own doc comment and its imports, so it cannot drif
 
 Sizes are deliberately absent — they change on nearly every commit, which would make the drift check red by default and train everyone to regenerate without reading.
 
-##### The spine
+##### Dependency spine
 
-Packages imported by 5 or more others, and how they sit against each other. Everything else in the tree sits on top of this.
+Packages imported by 5 or more others, and their dependencies within the spine. Everything else in the tree sits on top of these packages.
 
-```mermaid
-flowchart TD
-  p_catalog["catalog<br/><small>5 importers</small>"]
-  p_diagnostics["diagnostics<br/><small>8 importers</small>"]
-  p_filler["filler<br/><small>6 importers</small>"]
-  p_httpx["httpx<br/><small>5 importers</small>"]
-  p_library["library<br/><small>7 importers</small>"]
-  p_llm["llm<br/><small>5 importers</small>"]
-  p_metrics["metrics<br/><small>6 importers</small>"]
-  p_provision["provision<br/><small>16 importers</small>"]
-  p_schedule["schedule<br/><small>14 importers</small>"]
-  p_scheduler["scheduler<br/><small>6 importers</small>"]
-  p_store["store<br/><small>14 importers</small>"]
-  p_suggest["suggest<br/><small>6 importers</small>"]
-  p_catalog --> p_library
-  p_catalog --> p_provision
-  p_filler --> p_diagnostics
-  p_filler --> p_llm
-  p_filler --> p_metrics
-  p_httpx --> p_metrics
-  p_library --> p_filler
-  p_library --> p_httpx
-  p_llm --> p_httpx
-  p_llm --> p_metrics
-  p_metrics --> p_provision
-  p_schedule --> p_provision
-  p_scheduler --> p_store
-  p_store --> p_diagnostics
-  p_store --> p_filler
-  p_store --> p_provision
-  p_store --> p_schedule
-  p_suggest --> p_catalog
-  p_suggest --> p_llm
-  p_suggest --> p_provision
-  p_suggest --> p_schedule
-  p_suggest --> p_store
-```
+| Package | Direct importers | Depends on |
+| --- | ---: | --- |
+| `catalog` | 5 | `library`, `provision` |
+| `diagnostics` | 8 | — |
+| `filler` | 6 | `diagnostics`, `llm`, `metrics` |
+| `httpx` | 5 | `metrics` |
+| `library` | 7 | `filler`, `httpx` |
+| `llm` | 5 | `httpx`, `metrics` |
+| `metrics` | 6 | `provision` |
+| `provision` | 16 | — |
+| `schedule` | 14 | `provision` |
+| `scheduler` | 6 | `store` |
+| `store` | 14 | `diagnostics`, `filler`, `provision`, `schedule` |
+| `suggest` | 6 | `catalog`, `llm`, `provision`, `schedule`, `store` |
 
 ##### Every package, by layer
 
@@ -1035,15 +997,11 @@ Evaluation pins these values or writes them into the request so identical inputs
 
 ```mermaid
 flowchart LR
-  Intent[Channel intent: NL + constraints]
-  SUG[Suggester]
-  Cat[Catalog tool: library + TMDB]
-  LLM[LLM: Ollama / OpenAI-compatible]
-  Prop[Proposal: lineup + acquisitions + rationale]
-  Intent --> SUG
-  SUG <-->|grounded tool calls| Cat
-  SUG <-->|reason / structure| LLM
-  SUG --> Prop
+  intent[Intent and explicit context] --> search[Catalog tool searches library and TMDB]
+  search --> candidates[Grounded candidates with real identifiers]
+  candidates --> model[LLM selects and structures]
+  model --> validate[Deterministic validation and scoring]
+  validate --> proposal[Proposal: lineup, acquisitions, and rationale]
 ```
 
 ### Grounding — the critical correctness rule
@@ -6579,10 +6537,9 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
 ---
 
 ## 20. Open questions & follow-ons
-Decisions formerly listed here now have v1 defaults baked into the doc (season precision → `series`, §6; pending-slot policy → pod-fill, §9; backfill placement → `stable`, §9) — all config-overridable. **Pre-publish decisions for the maintainer** (none block the build; coding agents should use placeholders):
-- **License** — pick before publishing (MIT/Apache-2.0 for permissive, GPL-3.0 if you want Jellyfin-style copyleft; Tunarr itself is Zlib).
-- **Name availability** — verify `loomarr` is free on GitHub, Docker Hub, and isn't squatted in the Servarr ecosystem before announcing.
-- **Go module path** — `github.com/<you>/loomarr`; agent builds against a placeholder until set.
+
+The product name is Loomarr, the module path is `github.com/loomarr/loomarr`, and the repository is
+published under the MIT license. Earlier pre-publication placeholders are resolved.
 
 Genuinely future work:
 - **Direct *arr requester** as a Seerr alternative (adds real `Cancel` via un-monitor).
