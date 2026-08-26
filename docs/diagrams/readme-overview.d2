@@ -1,0 +1,24 @@
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 4
+    dark-theme-id: 200
+    pad: 32
+    center: true
+  }
+}
+
+direction: down
+
+intent: Describe a channel
+proposal: Review a grounded proposal
+approval: Admin approves? {shape: diamond}
+channel: Build and schedule the channel
+acquire: Seerr or Sonarr/Radarr
+live: Watch in Emby or Jellyfin
+
+intent -> proposal -> approval
+approval -> channel: Yes
+approval -> acquire: Request missing titles
+acquire -> channel: Titles arrive
+channel -> live

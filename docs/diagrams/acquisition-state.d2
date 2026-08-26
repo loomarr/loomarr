@@ -1,0 +1,43 @@
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 4
+    dark-theme-id: 200
+    pad: 32
+    center: true
+  }
+}
+
+direction: down
+
+classes: {
+  terminal-marker: {
+    shape: circle
+    width: 14
+    height: 14
+    label: ""
+  }
+}
+
+start.class: terminal-marker
+end.class: terminal-marker
+available: Available
+requested: Requested
+wanted: Wanted
+downloading: Downloading
+timeout: Deadline exceeded {shape: diamond}
+unavailable: Unavailable
+
+start -> available: Already in library
+start -> requested: Request accepted
+start -> wanted: Submit failed
+wanted -> requested: Reconcile retry
+requested -> downloading: Webhook Grab
+requested -> available: Library confirms
+downloading -> available: Import confirmed
+requested -> timeout
+downloading -> timeout
+wanted -> timeout
+timeout -> unavailable
+available -> end
+unavailable -> end

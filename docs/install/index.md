@@ -10,15 +10,9 @@ product's defining describe-a-channel flow also requires **TMDB** and an **LLM**
 an OpenAI-compatible provider). Requesters and filler add capabilities; Loomarr degrades without
 them rather than refusing to start.
 
-```mermaid
-flowchart LR
-  library[Emby or Jellyfin library] --> loomarr[Loomarr]
-  suggestions[LLM and TMDB] -.->|Suggestions| loomarr
-  downloads[Seerr or Sonarr/Radarr] -.->|Missing titles| library
-  filler[Filler folder] -.->|Commercials| loomarr
-  loomarr -->|Tuner and guide| library
-  library --> viewers[TVs and browsers]
-```
+![How Loomarr connects media libraries, suggestion and acquisition services, filler, and viewers](../diagrams/generated/install-overview.svg)
+
+*[D2 source](../diagrams/install-overview.d2)*
 
 Without an LLM and a TMDB key, Loomarr can't suggest lineups. Without a requester, it schedules
 only what you already own. Without a filler folder, channels play back to back.

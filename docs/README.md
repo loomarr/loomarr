@@ -22,7 +22,7 @@ Only `help/` is embedded in the binary and served at `/v1/docs`. It is written f
 admins and members, works offline, and has two extra constraints:
 
 - no frontmatter, because the first H1 supplies the in-app title;
-- no Mermaid, because the in-app renderer deliberately has no Mermaid runtime.
+- no generated diagrams, because only the help Markdown is embedded in the binary.
 
 The help pages' anchors and claims are tested. `embed_test.go` verifies every API-emitted doc link,
 and `claims_test.go` verifies high-risk behavior statements against the code.
@@ -47,15 +47,17 @@ Superseded plans move to [`engineering/archive/`](engineering/archive/README.md)
 Use a diagram only when relationships or sequence are materially clearer than prose or a table.
 Every diagram answers one question stated by its surrounding section.
 
-- Prefer a flowchart for flow, a state diagram for lifecycle, and a table for comparisons.
+- Prefer a flow for flow, a state graph for lifecycle, and a table for comparisons.
 - Keep labels short and put detail in the prose below.
 - Split a diagram before it becomes a wall of crossed edges.
-- Use Mermaid's current theme; do not hard-code colors or typography that fail in light or dark mode.
+- Keep editable D2 sources in `diagrams/` and generated SVGs in `diagrams/generated/`.
+- Use the shared D2 light/dark configuration; do not hard-code colors or typography.
 - Do not duplicate a generated inventory in a hand-maintained diagram.
-- Do not put Mermaid in `help/`.
+- Do not put generated diagram references in `help/`.
 
-Mermaid source stays in fenced blocks so GitHub and the docs site render the same artifact. If the
-source is not understandable in a pull-request diff, the diagram is too complicated.
+D2 source and generated SVGs are committed together. GitHub and the docs site display the SVG;
+reviewers read the `.d2` diff and can use GitHub's image diff for the result. If the source is not
+understandable in a pull-request diff, the diagram is too complicated.
 
 ## Generated documents
 
@@ -66,7 +68,8 @@ Never edit these by hand:
 | `configuration.md` | Settings registry | `make config-docs` |
 | `dev/commands.md` | Makefile and CI workflows | `make dev-docs` |
 | `design.md` §2 package map | Go package docs and imports | `make arch-docs` |
+| `diagrams/generated/*.svg` | `diagrams/*.d2` | `make diagrams` |
 | `../api/openapi.yaml` | Huma route definitions | `make openapi` |
 
-Run `make docs-lint` for structure, relative links, and Loomarr vocabulary. Generated-file verify
-targets guard drift separately.
+Run `make docs-lint` for diagrams, structure, relative links, and Loomarr vocabulary. Generated-file
+verify targets guard drift separately.

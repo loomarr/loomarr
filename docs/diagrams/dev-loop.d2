@@ -1,0 +1,20 @@
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 4
+    dark-theme-id: 200
+    pad: 32
+    center: true
+  }
+}
+
+direction: down
+
+browser: Browser
+vite: Vite\ncurrent frontend
+air: Air\ncurrent Go and Rust
+embedded: Last embedded SPA build
+
+browser -> vite: Open the frontend URL
+vite -> air: Proxy API, docs, and metrics
+air -> embedded: Backend URL only {style.stroke-dash: 4}

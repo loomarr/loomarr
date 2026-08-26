@@ -12,19 +12,13 @@
   --sl-color-accent-high: #10291d;
 }
 
-/* Diagrams are rendered client-side into this container (see components/Head.astro).
-   Centred, and allowed to scroll horizontally on their own rather than making the PAGE
-   scroll — a wide architecture diagram on a phone otherwise breaks the whole layout. */
-.mermaid-diagram {
+/* D2 diagrams are committed SVG images. Keep a wide architecture diagram within the article
+   instead of letting it widen the whole page on a phone. */
+.sl-markdown-content img[src$=".svg"] {
   display: block;
-  overflow-x: auto;
-  margin: 1.5rem 0;
-  text-align: center;
-}
-
-.mermaid-diagram svg {
   max-width: 100%;
   height: auto;
+  margin: 1.5rem 0;
 }
 
 /* Wide reference tables — the configuration reference and the generated command list — get

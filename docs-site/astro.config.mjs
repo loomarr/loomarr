@@ -1,12 +1,22 @@
 // @ts-check
 import { defineConfig } from "astro/config";
+import { unified } from "@astrojs/markdown-remark";
 import starlight from "@astrojs/starlight";
+import remarkDiagramPaths from "./src/remark-diagram-paths.mjs";
 
 // Published to GitHub Pages at https://mantonx.github.io/loomarr/. `base` must match the repo
 // name or every internal link 404s on the deployed site while working perfectly in dev.
+const base = "/loomarr";
+
 export default defineConfig({
   site: "https://mantonx.github.io",
-  base: "/loomarr",
+  base,
+  // Serve the canonical diagram tree directly. The remark adapter below maps repository-relative
+  // Markdown paths onto this public tree; no copied diagram directory can drift.
+  publicDir: "../docs/diagrams",
+  markdown: {
+    processor: unified({ remarkPlugins: [[remarkDiagramPaths, { base }]] }),
+  },
   // The docs live outside this directory (see src/content.config.mjs), so Vite needs explicit
   // permission to read them. Without it the build fails on the first file with a scarcely
   // related "outside of Vite serving allow list" error.
@@ -21,14 +31,7 @@ export default defineConfig({
       social: [
         { icon: "github", label: "GitHub", href: "https://github.com/loomarr/loomarr" },
       ],
-      // Mermaid, client-side. Starlight has no native support, and rehype-mermaid renders
-      // through a headless browser — a Playwright download in the docs build is not worth a
-      // diagram (design §14). This renders the same fenced blocks GitHub already renders, so
-      // one source serves both.
       customCss: ["./src/styles/custom.css"],
-      components: {
-        Head: "./src/components/Head.astro",
-      },
       sidebar: [
         {
           label: "Install",

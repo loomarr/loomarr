@@ -1,0 +1,49 @@
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 4
+    dark-theme-id: 200
+    pad: 32
+    center: true
+  }
+}
+
+direction: down
+
+member: Household member
+clients: Web and native clients
+suggester: Grounded suggester
+catalog: Library and TMDB catalog
+llm: LLM
+approval: Admin approval {shape: diamond}
+provisioner: Provisioner
+requester: Seerr or Sonarr/Radarr
+sources: Folders and remote clip sources
+filler: Filler catalog and pod assembly
+scheduler: Scheduler
+internal: Internal Playout
+tunarr: Tunarr
+media: Emby or Jellyfin library
+viewers: TVs and browsers
+store: Durable state\nSQLite or Postgres {shape: cylinder}
+
+member -> clients: Describe a channel
+clients -> suggester: Intent
+catalog -> suggester: Grounded candidates
+llm -> suggester: Selection and structure
+suggester -> approval: Proposal
+approval -> provisioner: Missing titles
+provisioner -> requester
+requester -> media: Acquired titles
+provisioner -> scheduler: Terminal state
+approval -> scheduler: Approved lineup
+sources -> filler
+filler -> scheduler: Pods
+scheduler -> internal
+scheduler -> tunarr
+internal -> media: Tuner and guide
+tunarr -> media: Tuner and guide
+media -> viewers
+store -> provisioner: Jobs {style.stroke-dash: 4}
+store -> filler: Catalog {style.stroke-dash: 4}
+store -> scheduler: Schedules {style.stroke-dash: 4}

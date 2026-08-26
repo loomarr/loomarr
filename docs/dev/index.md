@@ -40,6 +40,7 @@ cmd/openapi/      exports api/openapi.yaml
 cmd/config-docs/  generates docs/configuration.md
 cmd/dev-docs/     generates docs/dev/commands.md
 cmd/arch-docs/    generates the §2 package map
+docs/diagrams/    keeps D2 sources beside generated SVG diagrams
 cmd/seed/         populates a dev store
 
 internal/app/       wires every subsystem from an open store
