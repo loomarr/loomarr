@@ -21,8 +21,7 @@ command -v gh >/dev/null 2>&1 || {
 	exit 1
 }
 
-mapfile -t worktree_paths < <(git -C "$ROOT" worktree list --porcelain | sed -n 's/^worktree //p')
-primary="${worktree_paths[0]}"
+primary="$(git -C "$ROOT" worktree list --porcelain | sed -n 's/^worktree //p' | sed -n '1p')"
 main_ref="${AGENT_GC_MAIN_REF:-origin/main}"
 if [[ -z "${AGENT_GC_MAIN_REF:-}" ]]; then
 	if ! git -C "$primary" fetch --quiet origin main; then
@@ -35,44 +34,30 @@ git -C "$primary" rev-parse --verify --quiet "$main_ref^{commit}" >/dev/null || 
 	exit 1
 }
 
-pr_file="$(mktemp)"
-trap 'rm -f "$pr_file"' EXIT INT TERM
+tmp="$(mktemp -d)"
+pr_file="$tmp/prs"
+active_file="$tmp/active-paths"
+dependency_file="$tmp/dependency-branches"
+: > "$active_file"
+: > "$dependency_file"
+trap 'rm -rf "$tmp"' EXIT INT TERM
 if ! (
 	cd "$ROOT"
 	gh pr list --state all --limit 1000 \
 		--json headRefName,headRefOid,state,mergeCommit,number,url \
-		--jq '.[] | [.headRefName, .headRefOid, .state, (.mergeCommit.oid // ""), (.number | tostring), .url] | @tsv'
+		--jq '.[] | [.headRefName, .headRefOid, .state, (.mergeCommit.oid // ""), (.number | tostring), .url] | join("\u001c")'
 ) > "$pr_file"; then
 	echo 'agent-gc: could not read GitHub PR state; no worktrees were removed' >&2
 	exit 1
 fi
 
-declare -A pr_state=()
-declare -A pr_merge=()
-declare -A pr_number=()
-declare -A branch_seen=()
-while IFS=$'\t' read -r branch head state merge_oid number _url; do
-	[[ -n "$branch" && -n "$head" ]] || continue
-	key="$branch|$head"
-	branch_seen["$branch"]=1
-	# `gh pr list` returns newest first. Preserve the newest exact branch/head match if a
-	# branch name was reused across pull requests.
-	if [[ -z "${pr_state[$key]:-}" ]]; then
-		pr_state["$key"]="$state"
-		pr_merge["$key"]="$merge_oid"
-		pr_number["$key"]="$number"
-	fi
-done < "$pr_file"
-
-declare -A active_paths=()
-declare -A dependency_branches=()
 state_dir="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)/loomarr-agents/sessions"
 for session in "$state_dir"/*; do
 	[[ -f "$session" ]] || continue
 	path="$(sed -n 's/^worktree=//p' "$session")"
-	[[ -n "$path" ]] && active_paths["$path"]=1
+	[[ -z "$path" ]] || printf '%s\n' "$path" >> "$active_file"
 	dependency_branch="$(sed -n 's/^dependency_branch=//p' "$session")"
-	[[ -n "$dependency_branch" ]] && dependency_branches["$dependency_branch"]=1
+	[[ -z "$dependency_branch" ]] || printf '%s\n' "$dependency_branch" >> "$dependency_file"
 done
 
 eligible=0
@@ -100,7 +85,7 @@ running_processes() {
 
 process_worktree() {
 	local path="$1" head="$2" branch_ref="$3" locked="$4"
-	local branch key state merge_oid number status credentials processes
+	local branch pr_line state merge_oid number status credentials processes
 
 	if [[ "$path" == "$primary" ]]; then
 		return 0
@@ -120,11 +105,11 @@ process_worktree() {
 		report_protected detached detached "$path"
 		return
 	fi
-	if [[ -n "${active_paths[$path]:-}" ]]; then
+	if grep -Fqx -- "$path" "$active_file"; then
 		report_protected "$branch" active "$path"
 		return
 	fi
-	if [[ -n "${dependency_branches[$branch]:-}" ]]; then
+	if grep -Fqx -- "$branch" "$dependency_file"; then
 		report_protected "$branch" active-dependency "$path"
 		return
 	fi
@@ -151,17 +136,17 @@ process_worktree() {
 		return
 	fi
 
-	key="$branch|$head"
-	state="${pr_state[$key]:-}"
-	if [[ -z "$state" ]]; then
-		if [[ -n "${branch_seen[$branch]:-}" ]]; then
+	pr_line="$(awk -F '\034' -v branch="$branch" -v head="$head" \
+		'$1 == branch && $2 == head { print; exit }' "$pr_file")"
+	if [[ -z "$pr_line" ]]; then
+		if awk -F '\034' -v branch="$branch" '$1 == branch { found=1; exit } END { exit !found }' "$pr_file"; then
 			report_protected "$branch" head-diverged "$path"
 		else
 			report_protected "$branch" no-pr "$path"
 		fi
 		return
 	fi
-	number="${pr_number[$key]}"
+	IFS=$'\034' read -r _pr_branch _pr_head state merge_oid number _pr_url <<< "$pr_line"
 	case "$state" in
 		OPEN)
 			report_protected "$branch" open-pr "$path" "#$number"
@@ -177,7 +162,6 @@ process_worktree() {
 			return
 			;;
 	esac
-	merge_oid="${pr_merge[$key]}"
 	if [[ -z "$merge_oid" ]] || ! git -C "$primary" merge-base --is-ancestor "$merge_oid" "$main_ref" 2>/dev/null; then
 		report_protected "$branch" merge-not-on-main "$path" "#$number"
 		return

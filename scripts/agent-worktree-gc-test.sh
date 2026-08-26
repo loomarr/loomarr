@@ -72,7 +72,7 @@ pr_row() {
 	state="$3"
 	merge="$4"
 	number="$5"
-	printf '%s\t%s\t%s\t%s\t%s\thttps://example.invalid/pr/%s\n' \
+	printf '%s\034%s\034%s\034%s\034%s\034https://example.invalid/pr/%s\n' \
 		"$branch" "$head" "$state" "$merge" "$number" "$number"
 }
 
