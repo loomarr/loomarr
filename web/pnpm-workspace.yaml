@@ -20,25 +20,34 @@ allowBuilds:
 
 minimumReleaseAgeExclude:
   - brace-expansion@1.1.18
-  - '@expo/cli@57.0.18'
+  - '@expo/cli@57.0.18 || 57.0.19'
   - '@expo/config-plugins@57.0.9'
   - '@expo/config@57.0.9'
   - '@expo/fingerprint@0.20.10'
   - '@expo/image-utils@0.11.5'
-  - '@expo/metro-config@57.0.10'
+  - '@expo/metro-config@57.0.10 || 57.0.11'
   - '@expo/metro-file-map@57.0.2'
-  - '@expo/metro-runtime@57.0.13'
-  - '@expo/prebuild-config@57.0.14'
+  - '@expo/metro-runtime@57.0.13 || 57.0.14'
+  - '@expo/prebuild-config@57.0.14 || 57.0.15'
   - '@expo/require-utils@57.0.5'
-  - '@expo/ui@57.0.13'
-  - babel-preset-expo@57.0.8
-  - expo-asset@57.0.14
-  - expo-constants@57.0.14
-  - expo-modules-autolinking@57.0.11
-  - expo-modules-core@57.0.13
-  - expo-router@57.0.16
+  - '@expo/ui@57.0.13 || 57.0.14'
+  - babel-preset-expo@57.0.8 || 57.0.9
+  - expo-asset@57.0.14 || 57.0.15
+  - expo-constants@57.0.14 || 57.0.15
+  - expo-modules-autolinking@57.0.11 || 57.0.12
+  - expo-modules-core@57.0.13 || 57.0.14
+  - expo-router@57.0.16 || 57.0.17
   - expo-splash-screen@57.0.8
-  - expo@57.0.16
+  - expo@57.0.16 || 57.0.17
+  - '@expo/inline-modules@0.1.7'
+  - '@expo/local-build-cache-provider@57.0.8'
+  - '@expo/log-box@57.0.4'
+  - '@expo/router-server@57.0.8'
+  - expo-file-system@57.0.6
+  - expo-linking@57.0.8
+  - expo-modules-jsi@57.0.6
+  - expo-secure-store@57.0.2
+  - expo-system-ui@57.0.3
 
 # dependency-cruiser intentionally leaves transpilers optional. Declare the
 # analyzer-only compatible compiler beside it so pnpm's isolated linker makes
@@ -90,10 +99,10 @@ overrides:
   # pins, pnpm can auto-fill optional peers with a second React Native Metro context and
   # unsupported Reanimated/Worklets releases that pass JS bundling but fail native C++.
   "@react-native/metro-config": "0.86.2"
-  # Expo 57.0.16 requires constants 57.0.14, while its newest published linking package
-  # still declares ~57.0.13. Resolve both to the SDK catalog version so native builds contain
-  # one constants module instead of two patch-level copies.
-  expo-constants: "57.0.14"
+  # Expo 57.0.17 requires constants 57.0.15, while published dependents may still declare an
+  # older compatible patch. Resolve all of them to the SDK catalog version so native builds
+  # contain one constants module instead of two patch-level copies.
+  expo-constants: "57.0.15"
   react: "19.2.3"
   react-dom: "19.2.3"
   react-native-reanimated: "4.5.1"
