@@ -26,6 +26,24 @@ func TestCommittedPrelingerPilotLaneSatisfiesContract(t *testing.T) {
 	}
 }
 
+func TestCommittedLOCPilotLaneSatisfiesContract(t *testing.T) {
+	raw, err := os.ReadFile("corpus/pilot/loc.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lane Lane
+	if err := json.Unmarshal(raw, &lane); err != nil {
+		t.Fatal(err)
+	}
+	p := validPilot()
+	p.SnapshotAt = time.Date(2026, 8, 26, 13, 15, 0, 0, time.UTC)
+	p.LockedAt = p.SnapshotAt.Add(time.Minute)
+	p.Lanes[1] = lane
+	if failures := ValidatePilot(p); len(failures) != 0 {
+		t.Fatalf("failures = %v", failures)
+	}
+}
+
 func TestValidatePilotRequiresTenBoundedCasesFromEveryQualifiedLane(t *testing.T) {
 	p := validPilot()
 	if failures := ValidatePilot(p); len(failures) != 0 {
