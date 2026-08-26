@@ -1,9 +1,11 @@
+import { openEventStream } from "@loomarr/core/events";
 import type { PairingCredential } from "@loomarr/core/pairing";
 import { createAuthenticatedFetch } from "@loomarr/core/pairing";
 import { createServerVersionSource } from "@loomarr/core/system-version";
 import { createVideoPlayer, type VideoPlayer, VideoView, type VideoViewProps } from "expo-video";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AppState, Image, type ImageProps } from "react-native";
+import { createNativeEventStreamFactory } from "./src/native-event-stream";
 import { createChannelCatalogPort, createPlayUrlSourcePort } from "./src/play-url-source";
 import {
   createPlayerController,
@@ -35,6 +37,7 @@ interface PairedNativeImageProps {
 interface PairedNativePlayerOptions {
   initialTune?: "first" | "none";
   credential: PairingCredential;
+  onChannelEvent?: () => Promise<void> | void;
   onRevoked: () => Promise<void> | void;
   profile?: DevicePlaybackProfile;
 }
@@ -145,6 +148,7 @@ const createExpoVideoTransport = (): NativePlayerTransport =>
 const usePairedNativePlayer = ({
   credential,
   initialTune,
+  onChannelEvent,
   onRevoked,
   profile = conservativeDeviceProfile,
 }: PairedNativePlayerOptions): PairedNativePlayer => {
@@ -208,6 +212,40 @@ const usePairedNativePlayer = ({
     };
   }, [controller, refresh]);
 
+  useEffect(() => {
+    const createStream = createNativeEventStreamFactory({
+      headers: { Authorization: `Bearer ${credential.token}` },
+      onUnauthorized: onRevoked,
+    });
+    let closeStream: (() => void) | undefined;
+    const openStream = () => {
+      if (closeStream) return;
+      closeStream = openEventStream(
+        {
+          onChannel: () => {
+            void refresh();
+            void onChannelEvent?.();
+          },
+        },
+        new URL("/v1/events", credential.serverUrl).toString(),
+        createStream,
+      );
+    };
+    const closeActiveStream = () => {
+      closeStream?.();
+      closeStream = undefined;
+    };
+    if (AppState.currentState === "active") openStream();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") openStream();
+      else closeActiveStream();
+    });
+    return () => {
+      subscription.remove();
+      closeActiveStream();
+    };
+  }, [credential.serverUrl, credential.token, onChannelEvent, onRevoked, refresh]);
+
   return { controller, loadError, refresh, serverVersion, snapshot, transport };
 };
 
@@ -230,6 +268,16 @@ const PairedNativeImage = ({ credential, resizeMode = "cover", style, uri }: Pai
   return source ? <Image resizeMode={resizeMode} source={source} style={style} /> : null;
 };
 
+export type {
+  NativeEventRequest,
+  NativeEventStreamOptions,
+  ParsedEventFrame,
+} from "./src/native-event-stream";
+export {
+  createNativeEventStream,
+  createNativeEventStreamFactory,
+  parseEventFrames,
+} from "./src/native-event-stream";
 export type {
   NativePlayerTransport,
   NativePlayerViewProps,

@@ -293,8 +293,12 @@ interface and tests; the next implementation slices add the selected native adap
 Watching journey, transient chrome, exact TV number-entry buffer, and generated-contract Guide
 controller, authoritative Surf journey, and Watching now/next timeline wired to the production native shells. The TV host now
 supplies the tested bounded Guide row window and TV-specific Surf identity restoration through
-platform-neutral journey seams. Explicit native focus-ref binding, SSE reconciliation, diagnostics,
-populated artwork evidence, and real-device acceptance remain open.
+platform-neutral journey seams. A first-party XHR event-stream adapter supplies authenticated
+`channel` invalidations on React Native, where the built-in fetch transport does not expose the
+streaming body needed by browser EventSource; each frame re-reads the authoritative catalog and
+Guide, reconnects after transient closure, closes in the background, and fails closed through the
+pairing revocation path on 401/403. Explicit native focus-ref binding, diagnostics, populated
+artwork evidence, and real-device acceptance remain open.
 
 The first physical P4 pass installed a production arm64 release APK on the 4K Shield and paired it
 to the isolated worktree backend over the deployment model's normal plain-HTTP LAN origin. That pass

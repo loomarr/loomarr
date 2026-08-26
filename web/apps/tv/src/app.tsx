@@ -107,7 +107,6 @@ const TvWatching = ({
 const TvShell = ({ credential, session }: { credential: PairingCredential; session: PairingSession }) => {
   const [active, setActive] = useState<ClientDestination>("watching");
   const onRevoked = useCallback(() => session.revoked(), [session]);
-  const player = usePairedNativePlayer({ credential, onRevoked });
   const authenticatedFetch = useMemo(
     () => createAuthenticatedFetch(credential, onRevoked),
     [credential, onRevoked],
@@ -116,6 +115,8 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     () => createGuideController({ source: createGuideSourcePort(authenticatedFetch) }),
     [authenticatedFetch],
   );
+  const onChannelEvent = useCallback(() => guide.refresh(), [guide]);
+  const player = usePairedNativePlayer({ credential, onChannelEvent, onRevoked });
   useEffect(() => () => guide.dispose(), [guide]);
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
