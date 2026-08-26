@@ -112,7 +112,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | --- | ---: | --- |
 | `catalog` | 5 | `library`, `provision` |
 | `diagnostics` | 8 | — |
-| `filler` | 6 | `diagnostics`, `llm`, `metrics` |
+| `filler` | 6 | `diagnostics`, `filleradmission`, `llm`, `metrics` |
+| `filleradmission` | 6 | — |
 | `httpx` | 6 | `metrics` |
 | `library` | 7 | `filler`, `httpx` |
 | `llm` | 5 | `httpx`, `metrics` |
@@ -120,7 +121,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `provision` | 16 | — |
 | `schedule` | 14 | `provision` |
 | `scheduler` | 6 | `store` |
-| `store` | 14 | `diagnostics`, `filler`, `provision`, `schedule` |
+| `store` | 14 | `diagnostics`, `filler`, `filleradmission`, `provision`, `schedule` |
 | `suggest` | 6 | `catalog`, `llm`, `provision`, `schedule`, `store` |
 
 ##### Every package, by layer
@@ -135,7 +136,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
-- **`filleradmission`** · 4 importers
+- **`filleradmission`** · 6 importers
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
 - **`fillercorpus`**
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
@@ -158,7 +159,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 1**
 
-- **`fillerdecision`** · 3 importers · → `filleradmission`
+- **`fillerdecision`** · 4 importers · → `filleradmission`
   Owns the durable lifecycle and operator projections for filler-admission results.
 - **`prepared`** · 3 importers · → `diagnostics`, `media`
   Owns immutable, reusable playout publications.
@@ -201,7 +202,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 6**
 
-- **`filler`** · 6 importers · → `diagnostics`, `llm`, `mediatools`, `metrics`, `taxonomy`
+- **`filler`** · 6 importers · → `diagnostics`, `filleradmission`, `fillerdecision`, `llm`, `mediatools`, `metrics`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 
 **Layer 7**
@@ -261,7 +262,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 12**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `diagnostics`, `events`, `filler`, `fillerdecision`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -3357,6 +3358,16 @@ V38 compatibility gate remains the filing authority until the corpus and rollout
 The durable decision projection and unattended cutover are separate changes, so adding this module
 cannot by itself expand what reaches a channel without review.
 
+The ingest ladder places a fail-closed `admission` rung after extraction and immediately before the
+V38 `score` rung. Its first production evidence version records only facts whose provenance the
+current pipeline can prove: successful decoder passage, an explicit content-role token in the
+original filename, and an explicit filename year. It does not translate V38 confidence, persisted
+classifier fields, a source-declared licence URL, or `autoAdmit` into V61 evidence. Consequently an
+ordinary clip initially records an honest missing-rights or missing-corroboration review outcome.
+The rung versions and hashes the complete observation, evaluates it, and persists the immutable V63
+record before `score` may run. If that durable write remains unavailable after bounded retries, the
+pipeline stays parked on `admission`; it never skips the audit and falls through to legacy filing.
+
 Every evaluation durably attributes the clip and evidence hashes, extractor/prompt/schema/taxonomy/
 policy versions, requested and resolved model/provider, modality and derivative bounds, returned
 token categories, provider-reported charged cost, the price snapshot used for local estimation,
@@ -4657,7 +4668,7 @@ appears in the UI without a second edit, and a guard test compares the served li
 way to hide the bug.
 
 ⚠ **A disabled stage is a `skipped` rung, not an absent one.** An install with vision off still has
-an eight-rung pipeline; the rung renders greyed with its reason inline ("Listen — skipped (the
+a nine-rung pipeline; the rung renders greyed with its reason inline ("Listen — skipped (the
 description already says enough)"). A stage that silently does not happen reads as broken, and the
 sentence is what turns a bug report into an answer.
 
@@ -4666,7 +4677,7 @@ frames merge onto the cached row and never assemble it: the bus drops frames for
 by design, a frame for an unknown clip triggers a refetch rather than inserting a half-built row,
 and a terminal frame invalidates `/v1/filler` outright — a filed clip changes the catalog, which
 nobody watching the catalog tab has a pipeline listener for. Only running frames merge, which is
-what keeps forty clips × eight rungs from becoming 320 refetches.
+what keeps forty clips × nine rungs from becoming 360 refetches.
 
 ⚠ **The ordering rule is derived from the ladder, because there is no sequence number.** A frame
 carries no `seq` and no timestamp, so "is this newer than what is shown" is answered by the

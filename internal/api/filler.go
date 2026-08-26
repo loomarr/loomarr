@@ -199,7 +199,7 @@ func (s *Server) registerFiller(api huma.API) {
 type rewindFillerClipInput struct {
 	Body struct {
 		Hash  string `json:"hash" minLength:"1"`
-		From  string `json:"from" enum:"probe,transcode,split,language,transcribe,tag,vision,score"`
+		From  string `json:"from" enum:"probe,transcode,split,language,transcribe,tag,vision,admission,score"`
 		Force bool   `json:"force,omitempty"`
 	}
 }
