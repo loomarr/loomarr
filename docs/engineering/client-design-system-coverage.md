@@ -105,15 +105,17 @@ accessibility shards, and the aggregate CI job, passed on PR #581 before its fin
 local visual run rendered 1,081 cases successfully with one declared skip, and a strict rerun passed
 against the reviewed baselines.
 
-On 2026-08-26, the native TV workshop was generated, compiled as an arm64 React Native Android TV
-development build, installed on the physical Nvidia Shield, and rendered at its 3840x2160 output.
-The TV-specific workshop rail showed the canonical lockup and focus treatment; D-pad Down moved
-focus between story cards and OK selected the focused story. Logcat contained no React Native or
-Android fatal exception. The local captures are retained under
+On 2026-08-26, the native TV workshop was generated and compiled as both arm64 and x86 React Native
+Android TV development builds. The arm64 build installed on the physical Nvidia Shield and rendered
+at its 3840x2160 output; the x86 build installed on the dedicated Android TV emulator and rendered
+at its native 1920x1080 host resolution. In both environments, the TV-specific workshop rail showed
+the canonical lockup and focus treatment, D-pad Down moved focus between story cards, and OK selected
+the focused story. Logcat contained no React Native or Android fatal exception. The local captures
+are retained under
 `.artifacts/primary/design-system-device-evidence/`.
 
-This is not the complete P3.5 exit claim. A 1920x1080 TV-host workshop pass and the real-iPhone
-portrait/landscape workshop evidence remain required.
+This is not the complete P3.5 exit claim. The real-iPhone portrait/landscape workshop evidence
+remains required.
 
 ## Publication gate
 
