@@ -53,9 +53,11 @@ const WatchingSurface = ({
     loadError ??
     (snapshot.status === "empty"
       ? "No playable channels are on this Loomarr yet."
-      : snapshot.status === "failed"
-        ? snapshot.error
-        : undefined);
+      : snapshot.status === "idle"
+        ? "Choose a channel from the Guide or Surf."
+        : snapshot.status === "failed"
+          ? snapshot.error
+          : undefined);
   return (
     <View style={{ backgroundColor: "#000", flex: 1 }}>
       <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>{player}</View>

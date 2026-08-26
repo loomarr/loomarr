@@ -25,6 +25,7 @@ interface NativePlayerViewProps {
 }
 
 interface PairedNativePlayerOptions {
+  initialTune?: "first" | "none";
   credential: PairingCredential;
   onRevoked: () => Promise<void> | void;
   profile?: DevicePlaybackProfile;
@@ -115,6 +116,7 @@ const createExpoVideoTransport = (): NativePlayerTransport =>
 
 const usePairedNativePlayer = ({
   credential,
+  initialTune,
   onRevoked,
   profile = conservativeDeviceProfile,
 }: PairedNativePlayerOptions): PairedNativePlayer => {
@@ -129,11 +131,12 @@ const usePairedNativePlayer = ({
   const controller = useMemo(
     () =>
       createPlayerController({
+        initialTune,
         profile,
         source: createPlayUrlSourcePort({ baseUrl: credential.serverUrl, fetch: authenticatedFetch }),
         transport,
       }),
-    [authenticatedFetch, credential.serverUrl, profile, transport],
+    [authenticatedFetch, credential.serverUrl, initialTune, profile, transport],
   );
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const refresh = useCallback(async () => {

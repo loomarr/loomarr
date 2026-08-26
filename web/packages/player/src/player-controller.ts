@@ -5,7 +5,7 @@ type TuneDirection = -1 | 1;
 
 type TuneReason = "catalog" | "channel" | "number" | "previous" | "retry" | "step";
 
-type PlayerStatus = "empty" | "tuning" | "playing" | "paused" | "failed";
+type PlayerStatus = "empty" | "idle" | "tuning" | "playing" | "paused" | "failed";
 
 type PlayerChannel = Pick<ChannelDTO, "id" | "inAppPlayable" | "name" | "number">;
 
@@ -70,6 +70,7 @@ interface PlayerController {
 }
 
 interface PlayerControllerOptions {
+  initialTune?: "first" | "none";
   profile: DevicePlaybackProfile;
   source: PlayerSourcePort;
   transport: PlayerTransport;
@@ -83,6 +84,7 @@ const playableCatalog = (channels: readonly PlayerChannel[]): PlayerChannel[] =>
     .sort((left, right) => left.number - right.number || left.id.localeCompare(right.id));
 
 const createPlayerController = ({
+  initialTune = "first",
   profile,
   source,
   transport,
@@ -222,6 +224,15 @@ const createPlayerController = ({
       const current = catalog.find((channel) => channel.id === snapshot.channel?.id);
       if (current) {
         publish({ ...snapshot, catalog, channel: current });
+        return;
+      }
+      if (!snapshot.channel && initialTune === "none") {
+        publish({
+          catalog,
+          overlayVisible: true,
+          recentChannelIds: snapshot.recentChannelIds,
+          status: "idle",
+        });
         return;
       }
       publish({ ...snapshot, catalog });

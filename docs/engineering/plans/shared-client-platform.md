@@ -290,8 +290,9 @@ P4 begins on a dependency-stacked branch while P3.5 waits for its real-iPhone wo
 interface and adapter work to proceed, but does not waive the P3.5 evidence or allow P4 to be marked
 complete, adopted, or merged ahead of its dependency. Its first commit adds the Loomarr-owned player
 interface and tests; the next implementation slices add the selected native adapter, production
-Watching journey, transient chrome, and exact TV number-entry buffer. Guide, Surf, authoritative
-programme identity, and real-device acceptance remain open.
+Watching journey, transient chrome, exact TV number-entry buffer, and generated-contract Guide
+controller wired to the production native shells. Surf, complete authoritative programme identity,
+TV focus binding, and real-device acceptance remain open.
 
 After adoption, migration uses route/surface ownership rather than two implementations mounted for
 the same user journey. A surface switches only when its replacement passes its full contract. The

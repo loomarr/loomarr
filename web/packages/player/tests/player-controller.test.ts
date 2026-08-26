@@ -78,6 +78,34 @@ describe("player controller", () => {
     expect(controller.getSnapshot().channel?.id).toBe("thirty");
   });
 
+  it("can load a mobile Guide catalog without tuning before viewer intent", async () => {
+    const listeners = new Set<(event: PlayerTransportEvent) => void>();
+    const transport: PlayerTransport = {
+      dispose: vi.fn(),
+      goLive: vi.fn(),
+      pause: vi.fn(),
+      play: vi.fn(),
+      replace: vi.fn().mockResolvedValue(undefined),
+      subscribe: (listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    };
+    const source: PlayerSourcePort = { mint: vi.fn() };
+    const controller = createPlayerController({
+      initialTune: "none",
+      profile: {},
+      source,
+      transport,
+    });
+
+    await controller.reconcile(channels);
+
+    expect(controller.getSnapshot()).toMatchObject({ catalog: expect.any(Array), status: "idle" });
+    expect(source.mint).not.toHaveBeenCalled();
+    expect(transport.play).not.toHaveBeenCalled();
+  });
+
   it("aborts an older mint and never lets it replace the latest request", async () => {
     const first = deferred<{ uri: string }>();
     const second = deferred<{ uri: string }>();

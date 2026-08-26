@@ -8,11 +8,12 @@ export type {
   GuideExperienceProps,
   GuideFilter,
   GuideFilterOption,
+  GuideJourneyProps,
   GuideLogoRenderer,
   GuideSurfaceProps,
   GuideUnavailableState,
 } from "./src/guide";
-export { GuideExperience, GuideSurface } from "./src/guide";
+export { GuideExperience, GuideJourney, GuideSurface } from "./src/guide";
 export type {
   ChannelIdentityData,
   ChannelIdentityProps,

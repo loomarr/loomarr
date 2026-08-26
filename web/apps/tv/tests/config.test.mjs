@@ -11,3 +11,11 @@ test("keeps the TV proof isolated from the shipping application", async () => {
   assert.ok(config.expo.plugins.includes("../../scripts/with-memory-safe-android-build.cjs"));
   assert.match(config.expo.android.package, /\.prototype$/);
 });
+
+test("runs the authoritative Guide over the still-mounted TV player", async () => {
+  const source = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
+  assert.match(source, /createGuideSourcePort\(authenticatedFetch\)/);
+  assert.match(source, /<TvWatching[^>]+player=\{player\}/);
+  assert.match(source, /<GuideJourney/);
+  assert.match(source, /player\.controller\.tuneChannel\(channelId\)/);
+});
