@@ -61,14 +61,48 @@ acquire_lock() {
 	LOCK="$STATE/lock"
 	i=0
 	until mkdir "$LOCK" 2>/dev/null; do
+		owner_pid="$(field pid "$LOCK/owner" 2>/dev/null || true)"
+		created="$(field created "$LOCK/owner" 2>/dev/null || true)"
+		# A process can die in the few instructions between mkdir and writing owner. The
+		# directory timestamp gives that ownerless lock the same bounded recovery path.
+		case "$created" in
+			''|*[!0-9]*) created="$(stat -c %Y "$LOCK" 2>/dev/null || stat -f %m "$LOCK" 2>/dev/null || true)" ;;
+		esac
+		now="$(date +%s)"
+		case "$created" in
+			''|*[!0-9]*) ;;
+			*)
+				# Registry mutations take milliseconds. Recover only an abandoned lock whose
+				# process is gone and whose age proves this is not a writer between mkdir and
+				# publishing its owner file.
+				if [ $((now - created)) -ge 30 ]; then
+					case "$owner_pid" in
+						''|*[!0-9]*) abandoned=1 ;;
+						*) kill -0 "$owner_pid" 2>/dev/null && abandoned=0 || abandoned=1 ;;
+					esac
+					if [ "$abandoned" -eq 1 ]; then
+						rm -rf "$LOCK"
+						continue
+					fi
+				fi
+				;;
+		esac
 		i=$((i + 1))
-		[ "$i" -ge 100 ] && { echo "agent: timed out waiting for registry lock" >&2; exit 1; }
+		[ "$i" -ge 300 ] && {
+			echo "agent: timed out waiting for registry lock (owner pid=${owner_pid:-unknown}, created=${created:-unknown})" >&2
+			exit 1
+		}
 		sleep 0.1
 	done
-	trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT INT TERM
+	{
+		printf 'pid=%s\n' "$$"
+		printf 'created=%s\n' "$(date +%s)"
+	} > "$LOCK/owner"
+	trap 'rm -f "$LOCK/owner"; rmdir "$LOCK" 2>/dev/null || true' EXIT INT TERM
 }
 
 release_lock() {
+	rm -f "$LOCK/owner"
 	rmdir "$LOCK" 2>/dev/null || true
 	trap - EXIT INT TERM
 }
@@ -76,23 +110,34 @@ release_lock() {
 start_session() {
 	task="${1:-}"
 	claims="$(normalise_claims "${2:-}")"
+	depends_on="${3:-${DEPENDS_ON:-}}"
 	valid_name "$task" || { echo "agent-start: TASK is required and may contain letters, numbers, . _ / -" >&2; exit 2; }
+	[ -z "$depends_on" ] || valid_name "$depends_on" || { echo "agent-start: invalid DEPENDS_ON: $depends_on" >&2; exit 2; }
+	[ "$depends_on" != "$task" ] || { echo "agent-start: TASK cannot depend on itself" >&2; exit 2; }
 	for claim in $(printf '%s' "$claims" | tr ',' ' '); do
 		valid_name "$claim" || { echo "agent-start: invalid claim: $claim" >&2; exit 2; }
 	done
 
 	acquire_lock
 	now="$(date +%s)"
-	lease_hours="${AGENT_LEASE_HOURS:-12}"
+	lease_hours="${AGENT_LEASE_HOURS:-4}"
 	case "$lease_hours" in ''|*[!0-9]*) echo 'agent-start: AGENT_LEASE_HOURS must be an integer' >&2; release_lock; exit 2 ;; esac
 	expires=$((now + lease_hours * 3600))
 	mine="$(session_file)"
 	eval "$("$SCRIPT_DIR/dev-env.sh" export)"
+	dependency_branch=
 	for file in "$STATE"/sessions/*; do
 		[ -f "$file" ] || continue
 		[ "$file" = "$mine" ] && continue
 		other_expires="$(field expires "$file")"
-		[ -n "$other_expires" ] && [ "$other_expires" -lt "$now" ] && { rm -f "$file"; continue; }
+		[ -n "$other_expires" ] && [ "$other_expires" -le "$now" ] && { rm -f "$file"; continue; }
+		other_task="$(field task "$file")"
+		if [ "$other_task" = "$task" ]; then
+			echo "agent-start: task $task is already active in $(field worktree "$file")" >&2
+			release_lock
+			exit 1
+		fi
+		[ "$other_task" != "$depends_on" ] || dependency_branch="$(field branch "$file")"
 		other_claims="$(field claims "$file")"
 		if claims_overlap "$claims" "$other_claims"; then
 			echo "agent-start: claim conflict with task $(field task "$file") in $(field worktree "$file"): $other_claims" >&2
@@ -114,11 +159,24 @@ start_session() {
 			fi
 		done
 	done
+	if [ -n "$depends_on" ]; then
+		if [ -z "$dependency_branch" ]; then
+			echo "agent-start: dependency task $depends_on is not active" >&2
+			release_lock
+			exit 1
+		fi
+		if ! git -C "$ROOT" merge-base --is-ancestor "$dependency_branch" HEAD 2>/dev/null; then
+			echo "agent-start: $task depends on $depends_on, but HEAD is not stacked on branch $dependency_branch; create it with BASE=$dependency_branch" >&2
+			release_lock
+			exit 1
+		fi
+	fi
 
 	branch="$(git -C "$ROOT" symbolic-ref --quiet --short HEAD 2>/dev/null || printf detached)"
 	tmp="$mine.tmp.$$"
 	{
 		printf 'task=%s\n' "$task"
+		printf 'depends_on=%s\n' "$depends_on"
 		printf 'claims=%s\n' "$claims"
 		printf 'worktree=%s\n' "$ROOT"
 		printf 'branch=%s\n' "$branch"
@@ -140,16 +198,25 @@ start_session() {
 status_sessions() {
 	dir="$(state_dir)/sessions"
 	now="$(date +%s)"
-	printf '%-24s %-22s %-20s %s\n' TASK BRANCH CLAIMS WORKTREE
-	printf '%-24s %-22s %-20s %s\n' '------------------------' '----------------------' '--------------------' '--------'
+	printf '%-24s %-20s %-22s %-20s %-9s %s\n' TASK DEPENDS-ON BRANCH CLAIMS LEASE WORKTREE
+	printf '%-24s %-20s %-22s %-20s %-9s %s\n' '------------------------' '--------------------' '----------------------' '--------------------' '---------' '--------'
 	found=0
 	for file in "$dir"/*; do
 		[ -f "$file" ] || continue
 		found=1
 		task="$(field task "$file")"
 		expires="$(field expires "$file")"
-		[ -n "$expires" ] && [ "$expires" -lt "$now" ] && task="$task [expired]"
-		printf '%-24s %-22s %-20s %s\n' "$task" "$(field branch "$file")" "$(field claims "$file")" "$(field worktree "$file")"
+		case "$expires" in
+			''|*[!0-9]*) lease=unknown ;;
+			*)
+				if [ "$expires" -le "$now" ]; then
+					lease=expired
+				else
+					lease="$(((expires - now + 59) / 60))m"
+				fi
+				;;
+		esac
+		printf '%-24s %-20s %-22s %-20s %-9s %s\n' "$task" "$(field depends_on "$file")" "$(field branch "$file")" "$(field claims "$file")" "$lease" "$(field worktree "$file")"
 	done
 	[ "$found" -eq 1 ] || echo '(no registered sessions)'
 }
@@ -168,7 +235,7 @@ stop_session() {
 }
 
 renew_session() {
-	lease_hours="${AGENT_LEASE_HOURS:-12}"
+	lease_hours="${AGENT_LEASE_HOURS:-4}"
 	case "$lease_hours" in ''|*[!0-9]*) echo 'agent-renew: AGENT_LEASE_HOURS must be an integer' >&2; exit 2 ;; esac
 	acquire_lock
 	file="$(session_file)"
@@ -304,6 +371,9 @@ bootstrap() {
 
 worktree() {
 	topic="${1:-}"
+	task="${2:-$topic}"
+	claims="${3:-}"
+	depends_on="${4:-}"
 	valid_name "$topic" || { echo 'agent-worktree: TOPIC is required' >&2; exit 2; }
 	primary="$(git -C "$ROOT" worktree list --porcelain | sed -n 's/^worktree //p' | head -1)"
 	slug="$(printf '%s' "$topic" | tr '/' '-' | tr -cs 'A-Za-z0-9._-' '-')"
@@ -337,6 +407,12 @@ worktree() {
 	fi
 	echo "agent-worktree: branching $topic off $base ($(git -C "$ROOT" rev-parse --short "$base"))" >&2
 	git -C "$ROOT" worktree add "$target" -b "$topic" "$base"
+	# Register before bootstrap. Once the branch exists, its seams must be visible before this
+	# session generates or edits anything another agent could also own.
+	if ! LOOMARR_REPO_ROOT="$target" "$SCRIPT_DIR/agent.sh" start "$task" "$claims" "$depends_on"; then
+		echo "agent-worktree: registration failed; clean unregistered worktree retained at $target" >&2
+		exit 1
+	fi
 	if [ "${COPY_ENV:-0}" = 1 ] && [ -f "$primary/.env" ]; then
 		cp "$primary/.env" "$target/.env"
 		chmod 600 "$target/.env"
@@ -402,7 +478,7 @@ verify_changed() {
 }
 
 case "${1:-}" in
-	start) shift; start_session "${1:-}" "${2:-}" ;;
+	start) shift; start_session "${1:-}" "${2:-}" "${3:-}" ;;
 	status) status_sessions ;;
 	renew) renew_session ;;
 	prune) prune_sessions ;;
@@ -411,10 +487,10 @@ case "${1:-}" in
 	baseline) baseline ;;
 	doctor) doctor ;;
 	bootstrap) bootstrap ;;
-	worktree) shift; worktree "${1:-}" ;;
+	worktree) shift; worktree "${1:-}" "${2:-}" "${3:-}" "${4:-}" ;;
 	verify) verify_changed ;;
 	*)
-		echo 'usage: scripts/agent.sh {start TASK [CLAIMS]|status|renew|prune|stop|env|baseline|doctor|bootstrap|worktree TOPIC|verify}' >&2
+		echo 'usage: scripts/agent.sh {start TASK [CLAIMS] [DEPENDS_ON]|status|renew|prune|stop|env|baseline|doctor|bootstrap|worktree TOPIC [TASK] [CLAIMS] [DEPENDS_ON]|verify}' >&2
 		exit 2
 		;;
 esac

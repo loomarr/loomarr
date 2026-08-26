@@ -1,15 +1,15 @@
-# Triage Labels
+# Triage labels
 
-The skills speak in terms of five canonical triage roles. This file maps those roles to the actual label strings used in this repo's issue tracker.
+The `triage` skill uses five roles. This table maps them to the repository's GitHub labels.
 
-| Label in mattpocock/skills | Label in our tracker | Meaning                                  |
-| -------------------------- | -------------------- | ---------------------------------------- |
-| `needs-triage`             | `needs-triage`       | Maintainer needs to evaluate this issue  |
-| `needs-info`               | `needs-info`         | Waiting on reporter for more information |
-| `ready-for-agent`          | `ready-for-agent`    | Fully specified, ready for an AFK agent  |
-| `ready-for-human`          | `ready-for-human`    | Requires human implementation            |
-| `wontfix`                  | `wontfix`            | Will not be actioned                     |
+| Role | GitHub label | Meaning |
+| --- | --- | --- |
+| Needs triage | `needs-triage` | A maintainer must evaluate the report |
+| Needs information | `needs-info` | The reporter must provide missing evidence or decisions |
+| Ready for an agent | `ready-for-agent` | The issue is bounded, testable, and safe for an owning agent |
+| Ready for a human | `ready-for-human` | The work requires maintainer judgment, credentials, or physical access |
+| Will not fix | `wontfix` | The project has deliberately declined the request |
 
-When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
-
-Edit the right-hand column to match whatever vocabulary you actually use.
+`ready-for-agent` does not bypass `AGENTS.md`: the owning session still checks the roster, claims
+shared seams, establishes a red-capable test where appropriate, runs gates, and publishes through
+the normal pull-request path.

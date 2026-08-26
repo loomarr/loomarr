@@ -77,14 +77,14 @@ help: ## List targets
 
 ## ---- agent / worktree harness --------------------------------------------
 
-.PHONY: agent-start agent-status agent-renew agent-prune agent-stop agent-env agent-baseline agent-verify agent-worktree bootstrap doctor agent-harness-test
-agent-start: ## register this worktree and claim shared outputs (TASK=... CLAIMS=a,b)
-	@./scripts/agent.sh start "$(TASK)" "$(CLAIMS)"
+.PHONY: agent-start agent-status agent-renew agent-prune agent-stop agent-env agent-baseline agent-verify agent-worktree bootstrap doctor agent-harness-test agent-assets-verify
+agent-start: ## register this worktree and its seams (TASK=... CLAIMS=a,b; optional DEPENDS_ON=task)
+	@./scripts/agent.sh start "$(TASK)" "$(CLAIMS)" "$(DEPENDS_ON)"
 
 agent-status: ## list tool-neutral agent sessions across every worktree
 	@./scripts/agent.sh status
 
-agent-renew: ## renew this worktree's claim lease (AGENT_LEASE_HOURS=12)
+agent-renew: ## renew this worktree's claim lease (AGENT_LEASE_HOURS=4)
 	@./scripts/agent.sh renew
 
 agent-prune: ## remove expired entries from the shared agent registry
@@ -102,8 +102,8 @@ agent-baseline: ## run make check once per clean commit/toolchain and share the 
 agent-verify: ## run focused changed-file checks (not the final gate; BASE=origin/main)
 	@BASE="$(or $(BASE),origin/main)" ./scripts/agent.sh verify
 
-agent-worktree: ## create + bootstrap a ready-to-use sibling worktree off origin/main (TOPIC=branch; BASE=HEAD to stack)
-	@COPY_ENV="$(or $(COPY_ENV),0)" BOOTSTRAP_SKIP_FE="$(or $(BOOTSTRAP_SKIP_FE),0)" BASE="$(BASE)" ./scripts/agent.sh worktree "$(TOPIC)"
+agent-worktree: ## create, claim, and bootstrap a sibling worktree (TOPIC=... CLAIMS=...; BASE/DEPENDS_ON for stacks)
+	@COPY_ENV="$(or $(COPY_ENV),0)" BOOTSTRAP_SKIP_FE="$(or $(BOOTSTRAP_SKIP_FE),0)" BASE="$(BASE)" ./scripts/agent.sh worktree "$(TOPIC)" "$(or $(TASK),$(TOPIC))" "$(CLAIMS)" "$(DEPENDS_ON)"
 
 bootstrap: ## build the Rust worker and prepare frontend, isolated directories, and dev identity
 	@./scripts/agent.sh bootstrap
@@ -111,8 +111,11 @@ bootstrap: ## build the Rust worker and prepare frontend, isolated directories, 
 doctor: ## report toolchain drift, worktrees, ports, caches, and misplaced artifacts
 	@./scripts/agent.sh doctor
 
-agent-harness-test: ## regression-test worktree isolation and shared-output claims
+agent-harness-test: agent-assets-verify ## regression-test coordination, worktree isolation, and shared-output claims
 	@./scripts/agent-harness-test.sh
+
+agent-assets-verify: ## verify the curated skill catalog and agent adapters agree
+	@./scripts/check-agent-assets.sh
 
 .PHONY: compose-verify
 compose-verify: ## verify Traefik, database wiring, and pinned release images

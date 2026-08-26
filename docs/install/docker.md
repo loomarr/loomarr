@@ -4,19 +4,20 @@ You'll need Docker Engine on Linux or Docker Desktop on macOS, plus your Emby or
 an admin API key. TMDB and an LLM are also required to create a channel from a sentence; requesters
 and filler can be added later from Settings.
 
-Until `v0.1.0-beta.1` appears in GitHub Releases, the command below is the release-candidate
-contract rather than an available download.
+Choose an exact version from [GitHub Releases](https://github.com/loomarr/loomarr/releases). This
+example uses `0.1.0-beta.8`; keep the version pinned for reproducible installs and rollbacks.
 
 ## Start it
 
 ```bash
-git clone --branch v0.1.0-beta.1 --depth 1 https://github.com/loomarr/loomarr && cd loomarr
+VERSION=0.1.0-beta.8
+git clone --branch "v${VERSION}" --depth 1 https://github.com/loomarr/loomarr && cd loomarr
 cp .env.example .env
 # Edit .env: SERVER_PUBLIC_URL must be a URL this host and your media server can reach.
-LOOMARR_VERSION=0.1.0-beta.1 docker compose -f docker/compose.yaml --profile sqlite up -d
+LOOMARR_VERSION="$VERSION" docker compose -f docker/compose.yaml --profile sqlite up -d
 ```
 
-This pulls the pinned `ghcr.io/loomarr/loomarr:0.1.0-beta.1` image. Linux hosts use the native
+This pulls the pinned `ghcr.io/loomarr/loomarr:0.1.0-beta.8` image. Linux hosts use the native
 amd64 or arm64 manifest. Docker Desktop does the same on Intel or Apple Silicon Macs.
 
 Profiles combine:
@@ -41,7 +42,7 @@ For Postgres, use the explicit database override; a Compose profile can start Po
 change Loomarr's SQLite default by itself:
 
 ```bash
-LOOMARR_VERSION=0.1.0-beta.1 docker compose \
+LOOMARR_VERSION="$VERSION" docker compose \
   -f docker/compose.yaml -f docker/compose.postgres.yaml \
   --profile postgres up -d
 ```

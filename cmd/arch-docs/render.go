@@ -50,7 +50,7 @@ func render(pkgs []Package) string {
 	return b.String()
 }
 
-// renderSpine draws the packages that most of the tree depends on.
+// renderSpine lists the packages that most of the tree depends on.
 func renderSpine(pkgs []Package, fanIn map[string]int) string {
 	spine := map[string]bool{}
 	for _, p := range pkgs {
@@ -63,27 +63,32 @@ func renderSpine(pkgs []Package, fanIn map[string]int) string {
 	}
 
 	var b strings.Builder
-	b.WriteString("##### The spine\n\n")
-	fmt.Fprintf(&b, "Packages imported by %d or more others, and how they sit against each other. ",
+	b.WriteString("##### Dependency spine\n\n")
+	fmt.Fprintf(&b, "Packages imported by %d or more others, and their dependencies within the spine. ",
 		spineFanIn)
-	b.WriteString("Everything else in the tree sits on top of this.\n\n")
-	b.WriteString("```mermaid\nflowchart TD\n")
+	b.WriteString("Everything else in the tree sits on top of these packages.\n\n")
+	b.WriteString("| Package | Direct importers | Depends on |\n")
+	b.WriteString("| --- | ---: | --- |\n")
 
+	byName := make(map[string]Package, len(pkgs))
+	for _, p := range pkgs {
+		byName[p.Name] = p
+	}
 	names := sortedKeys(spine)
 	for _, n := range names {
-		fmt.Fprintf(&b, "  %s[\"%s<br/><small>%d importers</small>\"]\n", nodeID(n), n, fanIn[n])
-	}
-	for _, p := range pkgs {
-		if !spine[p.Name] {
-			continue
-		}
-		for _, dep := range p.Imports {
+		var deps []string
+		for _, dep := range byName[n].Imports {
 			if spine[dep] {
-				fmt.Fprintf(&b, "  %s --> %s\n", nodeID(p.Name), nodeID(dep))
+				deps = append(deps, dep)
 			}
 		}
+		dependencyList := "—"
+		if len(deps) > 0 {
+			dependencyList = codeList(deps)
+		}
+		fmt.Fprintf(&b, "| `%s` | %d | %s |\n", n, fanIn[n], dependencyList)
 	}
-	b.WriteString("```\n\n")
+	b.WriteString("\n")
 	return b.String()
 }
 
@@ -192,17 +197,6 @@ func sortedKeys(m map[string]bool) []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-// nodeID makes a mermaid-safe identifier. Package names here are all lowercase
-// letters today, but a name with a digit or underscore must not break the diagram.
-func nodeID(name string) string {
-	return "p_" + strings.Map(func(r rune) rune {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
-			return r
-		}
-		return '_'
-	}, name)
 }
 
 func codeList(names []string) string {

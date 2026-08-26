@@ -41,7 +41,7 @@ services:
   # This is a deliberately dedicated HTTP edge for the beta. It health-checks
   # Loomarr and owns the host port, but one Loomarr replica remains the supported
   # topology until shared jobs, schedulers, playout, and file state pass the scale
-  # investigation in docs/engineering/plans/first-beta-readiness.md.
+  # investigation archived in docs/engineering/archive/first-beta-readiness.md.
   traefik:
     image: traefik:v3.7.1@sha256:6b9cbca6fac42ab0075f5437d8dc1685cfd188626d8d515839ea94f8b6271c42
     command:

@@ -21,12 +21,15 @@ Add these when you're ready — the wizard shows what each one unlocks:
 
 ## 1. Start it
 
-Until `v0.1.0-beta.1` appears in GitHub Releases, this command documents the release candidate; no
-beta artifact is available to pull yet.
+Clone an exact version from GitHub Releases, copy `.env.example` to `.env`, and set
+`SERVER_PUBLIC_URL`. This example uses `0.1.0-beta.8`; keep your chosen version pinned.
 
 ```bash
+VERSION=0.1.0-beta.8
+git clone --branch "v${VERSION}" --depth 1 https://github.com/loomarr/loomarr.git
+cd loomarr
 cp .env.example .env                     # set SERVER_PUBLIC_URL to this host's reachable URL
-LOOMARR_VERSION=0.1.0-beta.1 docker compose -f docker/compose.yaml --profile sqlite up -d
+LOOMARR_VERSION="$VERSION" docker compose -f docker/compose.yaml --profile sqlite up -d
 ```
 
 For Postgres, add `-f docker/compose.postgres.yaml --profile postgres`. Add `--profile ai` to

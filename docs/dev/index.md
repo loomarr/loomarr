@@ -15,6 +15,7 @@ cross-harness contract and points here for detail.
 | [Commands](commands.md) | Every `make` target — generated, don't hand-edit |
 | [AI in this project](ai.md) | Built with coding agents, and what that expects of a PR |
 | [Agent development](agents.md) | Cross-harness sessions, claims, worktrees, and runtime isolation |
+| [Agent skills](skills.md) | The curated skills, invocation policy, and reasons to delegate |
 
 ## The rules that matter
 

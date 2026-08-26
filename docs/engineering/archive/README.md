@@ -21,6 +21,13 @@ document disagrees with either, the archived one is wrong — that is what being
 | `playout-prior-art-viewra.md` | Lessons from mantonx/viewra, mostly warnings | Same |
 | `design-mock-review-2026-07-20.md` | Screen-by-screen build-vs-prototype review | The v2 mocks; `design/README.md` |
 | `surface-audit-2026-07-26.md` | Capabilities reachable in the API but not the UI | Closed by the PRs it prompted; re-run `/surface-audit` for a current answer |
+| `first-beta-readiness.md` | The first-public-beta ship contract and blocker ledger | Published beta releases and `PROGRESS.md` |
+| `release-native-arm64-2026-08-18.md` | Native per-architecture release image plan | `.github/workflows/release.yml` and its verifier |
+| `durable-first-channel-workflow.md` | Durable proposal-workflow delivery plan | The shipped workflow and `PROGRESS.md` evidence |
+| `v54-filler-refresh-2.md` | Filler refresh programme | The shipped filler system and `PROGRESS.md` evidence |
+| `v59a-image-runtime-certification.md` | Rust image worker certification plan | The retained certification gates and `PROGRESS.md` evidence |
+| `v59b-image-runtime-optimization.md` | Rust image worker optimization plan | The retained benchmarks and `PROGRESS.md` evidence |
+| `shield-client-2026-08-17.md` | Initial Android TV client plan | `docs/native-client-design.md` and the shared-client plan |
 
 ## What is NOT archived, and why
 

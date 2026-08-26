@@ -9,9 +9,8 @@ no behavior, no endpoints, and no decisions.
 
 ⚠ **`docs/design.md` remains the single source of truth** for how the system behaves, and
 its numbered sections (`§7`, `§11`, …) are cited from ~2,600 places in the code. Where a
-term's *behavior* matters, the § reference next to it is the authority. This file exists
-because those definitions are currently spread across 1,700 lines of dense prose, so there
-is nowhere to look up what a word means without reading the section that uses it.
+term's *behavior* matters, the § reference next to it is the authority. This file provides one
+place to look up a term without loading the much larger behavior specification.
 
 ## Language
 

@@ -1,20 +1,19 @@
 # Changelog
 
-All notable changes to Loomarr are documented here. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims to
-follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once it reaches
-its first tagged release.
-
-A release is cut from a successful `main` build by pushing a SemVer `vX.Y.Z` tag; the release
-workflow then publishes a signed multi-arch `ghcr.io/loomarr/loomarr` image. **No tag has been cut
-yet.** The first beta candidate and its remaining blockers are tracked in
-[`docs/engineering/plans/first-beta-readiness.md`](docs/engineering/plans/first-beta-readiness.md).
+Notable Loomarr changes are summarized here. The authoritative, generated history for every
+published beta is [GitHub Releases](https://github.com/loomarr/loomarr/releases); it includes the
+exact commit, artifacts, signatures, SBOM, and provenance for each tag. The release workflow cuts
+signed multi-architecture `ghcr.io/loomarr/loomarr` images from successful `main` builds.
 
 ## [Unreleased]
 
-Pre-1.0. Substantial product and infrastructure exist, but the first-beta ship contract is not yet
-green. `PROGRESS.md` carries phase status; the highlights below describe implemented capability,
-not a release-readiness claim.
+Changes on `main` that have not yet shipped belong here. `PROGRESS.md` carries current initiative
+status; pull requests and GitHub Releases carry the durable delivery record.
+
+## [v0.1.0-beta.1] — 2026-08-18
+
+The first public beta established the installable appliance described below. Later beta fixes and
+incremental capabilities are recorded in [GitHub Releases](https://github.com/loomarr/loomarr/releases).
 
 ### Added
 
@@ -44,4 +43,5 @@ not a release-readiness claim.
 - The release workflow built an image variant against a Dockerfile stage that does
   not exist, which would have failed the first tagged release.
 
-_The first tagged release will snapshot this section under its version._
+[Unreleased]: https://github.com/loomarr/loomarr/commits/main
+[v0.1.0-beta.1]: https://github.com/loomarr/loomarr/releases/tag/v0.1.0-beta.1

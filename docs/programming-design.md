@@ -1,6 +1,6 @@
 # Loomarr Programming Heuristics — Channel Policy Design
 
-**Status:** Draft for implementation · companion to `design.md`
+**Status:** Living companion to `design.md`; implemented policy and future changes are labelled in place.
 **Precedence:** the main doc owns the subsystems (Suggester §8, Scheduler §9); this doc owns the *programming intelligence* that runs between them — what makes a generated channel feel like television instead of a playlist. Conflicts → main doc on architecture, this doc on heuristics; fix the loser in the same PR.
 
 ---
