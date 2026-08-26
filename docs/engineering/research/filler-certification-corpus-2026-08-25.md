@@ -1,7 +1,11 @@
 # Filler certification corpus sources
 
 **Status:** source-selection decision for issues #549 and #555
+
 **Decision date:** 2026-08-25
+
+**Reconciled:** 2026-08-26 against the completed source-yield pilots and
+[`filler-certification-source-qualification-2026-08-26.md`](filler-certification-source-qualification-2026-08-26.md)
 
 ## Decision
 
@@ -20,12 +24,12 @@ controls required by design §10.
 
 | Slice | Cases | Acquisition plan |
 | --- | ---: | --- |
-| Commercials | 35 | 20 item-cleared LOC/Prelinger; 15 commissioned modern masters |
+| Commercials | 35 | 15 item-cleared LOC/Prelinger; 20 commissioned modern masters |
 | Promos | 35 | 15 NASA/LOC; 20 commissioned or directly licensed |
 | Bumpers | 25 | Commissioned or directly licensed |
-| Station IDs | 25 | 20 commissioned or directly licensed; up to 5 confirmed Commons files |
-| Trailers | 35 | 10 Blender, 10 NASA, 10 confirmed Commons, 5 licensed independent works |
-| PSAs | 35 | 20 CDC/federal; 15 LOC/Prelinger |
+| Station IDs | 25 | Commissioned or directly licensed; confirmed Commons files may replace, not expand, this target |
+| Trailers | 35 | 30 item-cleared NASA/LOC/Commons or static open works; 5 directly licensed independent works |
+| PSAs | 35 | 30 item-cleared CDC/federal/LOC/Prelinger; 5 commissioned or directly licensed |
 | Programme excerpts | 20 | Rights-cleared negative controls |
 | Compilations | 15 | Rights-cleared negative or ambiguous controls |
 | Fragments | 15 | Deliberate bounded cuts from approved masters |
@@ -35,10 +39,12 @@ controls required by design §10.
 | Conflicting evidence | 10 | Curated packets over approved masters |
 | Sensitive/policy/rights conflicts | 10 | Curated held or reject cases; never playback authority |
 
-The first metadata-only inventory is bounded to 120 candidates: 35 Prelinger, 25 Library of
-Congress, 25 NASA, 15 CDC, 10 Blender open-movie trailers, and 10 Wikimedia Commons files. Attrition
-is expected. In parallel, acquire at least 75 accepted modern masters across commercials, promos,
-bumpers, and station IDs. The pilot is useful only as a rights-review queue; it cannot certify.
+The source-yield gate is the locked 50-candidate pilot: ten each from Prelinger, Library of Congress,
+NASA, CDC, and Wikimedia Commons. An independent reviewer must approve both rights and product
+relevance for at least five rows in a lane before it can scale into the bounded 155-candidate public
+inventory. In parallel, commission or directly license at least 100 accepted modern positives: 20
+commercials, 20 promos, 25 bumpers, 25 station IDs, 5 trailers, and 5 PSAs. Neither discovery nor the
+pilot is certification or download authority.
 
 ## Source lanes
 
@@ -83,16 +89,6 @@ must be recorded per asset.
 - [CDC public-domain and copyright guidance](https://www.cdc.gov/other/agencymaterials.html)
 - [CDC media resources](https://www.cdc.gov/digital-media-tools/)
 
-### Blender open movies
-
-Use first-party pages for exact open-movie works and their CC BY terms. These provide modern,
-redistributable trailer material with a clear owner-to-work licence chain, subject to the stated
-credit.
-
-- [Blender Studio films](https://studio.blender.org/films/)
-- [Big Buck Bunny copyright](https://peach.blender.org/about/)
-- [Sintel copyright](https://durian.blender.org/about/)
-
 ### Wikimedia Commons
 
 Use the MediaWiki API for category discovery and `imageinfo`/`extmetadata`, then review the exact file
@@ -117,9 +113,12 @@ candidate signals. They never authorize acquisition, model upload, redistributio
 
 ## Execution order
 
-1. Freeze the 120-row metadata inventory with raw-response hashes and hard request/byte ceilings.
-2. Complete rights review; expect and report attrition without backfilling from an unreviewed source.
-3. Acquire and hash only approved media into the external corpus store.
-4. Build similarity clusters before assigning development and holdout splits.
-5. Run two blind semantic label batches and third-party adjudication where they disagree.
-6. Lock the 300-case manifest, then run the bounded provider bakeoff on identical evidence packets.
+1. Independently review every row in the locked five-lane, 50-candidate source-yield pilot.
+2. Scale only lanes with at least five rights-approved, product-relevant pilot rows into the bounded
+   155-candidate public inventory.
+3. Commission or directly license the 100-case modern positive cohort in parallel.
+4. Complete item-level rights review, then acquire and hash approved-only media into the external
+   corpus store.
+5. Build source and similarity clusters before assigning development and holdout splits.
+6. Run two blind semantic label batches and third-party adjudication where they disagree.
+7. Lock the 300-case manifest, then run the bounded provider bakeoff on identical evidence packets.

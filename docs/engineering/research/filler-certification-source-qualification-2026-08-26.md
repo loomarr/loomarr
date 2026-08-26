@@ -22,9 +22,10 @@ corpus should contain:
   should be expected to yield about 90 positives after item-level rights and semantic review, not the
   190 positives by themselves.
 
-The proposed LOC, Prelinger, NASA, CDC, Blender, and Wikimedia Commons mix is viable only as a
-multi-source plan. It is strong for historical commercials, government promos and PSAs, open-film
-trailers, and negative controls. It is weak for current consumer advertising, entertainment promos,
+The active LOC, Prelinger, NASA, CDC, and Wikimedia Commons mix is viable only as a multi-source
+plan. It is strong for historical commercials, government promos and PSAs, some trailers, and
+negative controls. The Blender pilot was rejected after it failed the ten-distinct-live-candidate
+precondition. Public sources remain weak for current consumer advertising, entertainment promos,
 real channel bumpers, and real station IDs. Those gaps require creator/broadcaster agreements; an
 archive proxy or a Loomarr-generated imitation is not a representative substitute.
 
@@ -41,7 +42,7 @@ failure: military public-affairs video is not an adequate stand-in for entertain
 | promo | 35 | 15 | 20 | NASA/LOC and a small confirmed Commons pool plus entertainment/channel promos |
 | bumper | 25 | 0 | 25 | broadcaster/creator masters in real 5/10/15-second forms |
 | station ID | 25 | 0 | 25 | broadcaster/creator masters; confirmed Commons files may replace, not expand, this target |
-| trailer | 35 | 30 | 5 | Blender, NASA, source-verified Commons, and directly licensed independent works |
+| trailer | 35 | 30 | 5 | item-cleared NASA/LOC/Commons or static open works, plus directly licensed independent works |
 | PSA | 35 | 30 | 5 | CDC and item-cleared federal/LOC/Prelinger material plus modern direct masters |
 | **Total** | **190** | **90** | **100** | |
 
@@ -56,7 +57,7 @@ allowed to underfill; the gap moves to direct licensing rather than to a weaker 
 | compilations and mixed roles | 15 | authentic approved reels or deterministic assemblies |
 | fragments and partial end cards | 15 | bounded cuts from approved masters |
 | degraded or corrupt media | 15 | deterministic, recorded transformations |
-| non-filler institutional/educational video | 15 | rights-approved LOC/NASA/Blender material |
+| non-filler institutional/educational video | 15 | rights-approved LOC/NASA/CDC material |
 | adversarial visible, spoken, or metadata instructions | 10 | Loomarr-authored transformations |
 | conflicting evidence, including #545 | 10 | contradictory but reproducible evidence packets |
 | sensitive, policy-prohibited, or rights-conflicted | 10 | explicit reject/hold cases; never playback authority |
@@ -67,7 +68,7 @@ near-duplicate family, or derivative family may cross development and holdout sp
 least 120 independent positive source clusters, and cap one repository at 25% of positive cases and
 one creator/campaign at 10% of any role. These are corpus-diversity controls, not rights rules.
 
-## Qualified source lanes
+## Source lanes assessed
 
 ### 1. Prelinger Archives on Internet Archive: historical ads, promos, and PSAs
 
@@ -312,11 +313,11 @@ media:
 | Wikimedia Commons | 50 | commercial, PSA, ID, trailer, promo candidates |
 | **Total** | **155** | |
 
-Before writing source adapters, send ten representative rows from each lane through independent
-rights review. Continue a lane only if it produces at least five approved, product-relevant items
-without a source-specific lowering of the rights threshold. Freeze the complete inventory only
-after that yield check. A realistic outcome is 60–90 approved public-source positives; acquire the
-rest through the direct cohort.
+Before scaling source adapters, send ten representative rows from each active lane through
+independent rights review. Continue a lane only if it produces at least five approved,
+product-relevant items without a source-specific lowering of the rights threshold. Freeze the
+complete inventory only after that yield check. The public-source target is 90 approved positives;
+any underfill moves to additional direct licensing beyond the 100-case direct minimum.
 
 The metadata-only inventory must have hard item, request, response-byte, predicted-media-byte,
 duration, pagination, retry, and wall-clock ceilings. It stores raw-response hashes and performs no
