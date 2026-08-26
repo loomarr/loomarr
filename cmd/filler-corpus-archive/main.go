@@ -21,6 +21,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/fillercorpus"
 )
 
 const (
@@ -45,6 +47,10 @@ type inventory struct {
 	CacheHits         int         `json:"cacheHits"`
 	SearchSHA256      string      `json:"searchSha256"`
 	SearchRetrievedAt time.Time   `json:"searchRetrievedAt"`
+	MaxResponseBytes  int64       `json:"maxResponseBytes"`
+	ResponseBytes     int64       `json:"responseBytes"`
+	MaxWallTimeMS     int64       `json:"maxWallTimeMs"`
+	WallTimeMS        int64       `json:"wallTimeMs"`
 	Cases             []candidate `json:"cases"`
 }
 
@@ -106,11 +112,11 @@ type archiveFile struct {
 }
 
 type options struct {
-	baseURL, collection, outputPath, cacheDir, userAgent string
-	snapshotAt                                           time.Time
-	maxRequests, maxItems                                int
-	maxItemBytes, maxTotalBytes                          int64
-	delay                                                time.Duration
+	baseURL, collection, query, outputPath, pilotOutputPath, roleHint, cacheDir, userAgent string
+	snapshotAt                                                                             time.Time
+	maxRequests, maxItems                                                                  int
+	maxItemBytes, maxTotalBytes                                                            int64
+	delay, maxWallTime                                                                     time.Duration
 }
 
 func main() {
@@ -121,7 +127,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("filler-corpus-archive", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	collection := flags.String("collection", "", "Archive.org collection identifier")
+	query := flags.String("query", "", "additional bounded Archive.org search clause")
 	outputPath := flags.String("out", "", "output inventory JSON")
+	pilotOutputPath := flags.String("pilot-out", "", "optional source-neutral pilot lane JSON")
+	roleHint := flags.String("role-hint", "", "discovery-only role hint for pilot candidates")
 	cacheDir := flags.String("cache-dir", "", "raw metadata cache directory")
 	userAgent := flags.String("user-agent", "", "descriptive Archive.org User-Agent with contact")
 	snapshotAtText := flags.String("snapshot-at", "", "snapshot time in RFC3339 format")
@@ -130,11 +139,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 	maxItemBytes := flags.Int64("max-item-bytes", 0, "hard per-item predicted media-byte ceiling")
 	maxTotalBytes := flags.Int64("max-total-bytes", 0, "hard predicted media-byte ceiling")
 	delay := flags.Duration("delay", time.Second, "minimum delay between HTTP requests")
+	maxWallTime := flags.Duration("max-wall-time", time.Minute, "hard inventory wall-clock ceiling")
 	baseURL := flags.String("base-url", defaultBaseURL, "Archive.org API base URL")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
-	if *collection == "" || *outputPath == "" || *cacheDir == "" || *userAgent == "" || *snapshotAtText == "" || *maxRequests < 2 || *maxItems <= 0 || *maxItemBytes <= 0 || *maxTotalBytes < *maxItemBytes || *delay < 500*time.Millisecond {
+	if *collection == "" || *outputPath == "" || *cacheDir == "" || *userAgent == "" || *snapshotAtText == "" || *maxRequests < 2 || *maxRequests > 1000 || *maxItems <= 0 || *maxItemBytes <= 0 || *maxTotalBytes < *maxItemBytes || *delay < 500*time.Millisecond || *maxWallTime <= 0 || (*pilotOutputPath != "" && *roleHint == "") {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-archive: collection, output, cache, identified User-Agent, snapshot time, >=2 requests, positive item/total byte ceilings, and >=500ms delay are required")
 		return 2
 	}
@@ -148,12 +158,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	opts := options{
-		baseURL: strings.TrimRight(*baseURL, "/"), collection: *collection,
-		outputPath: *outputPath, cacheDir: *cacheDir, userAgent: *userAgent,
+		baseURL: strings.TrimRight(*baseURL, "/"), collection: *collection, query: strings.TrimSpace(*query),
+		outputPath: *outputPath, pilotOutputPath: *pilotOutputPath, roleHint: strings.TrimSpace(*roleHint), cacheDir: *cacheDir, userAgent: *userAgent,
 		snapshotAt: snapshotAt, maxRequests: *maxRequests, maxItems: *maxItems,
-		maxItemBytes: *maxItemBytes, maxTotalBytes: *maxTotalBytes, delay: *delay,
+		maxItemBytes: *maxItemBytes, maxTotalBytes: *maxTotalBytes, delay: *delay, maxWallTime: *maxWallTime,
 	}
-	result, err := buildInventory(context.Background(), &http.Client{Timeout: time.Minute}, opts)
+	ctx, cancel := context.WithTimeout(context.Background(), opts.maxWallTime)
+	defer cancel()
+	result, err := buildInventory(ctx, &http.Client{Timeout: time.Minute}, opts)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-archive:", err)
 		return 1
@@ -162,16 +174,23 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-archive: write inventory:", err)
 		return 1
 	}
+	if opts.pilotOutputPath != "" {
+		if err := writeJSON(opts.pilotOutputPath, prelingerPilotLane(result, opts.roleHint)); err != nil {
+			_, _ = fmt.Fprintln(stderr, "filler-corpus-archive: write pilot lane:", err)
+			return 1
+		}
+	}
 	_, _ = fmt.Fprintf(stdout, "filler-corpus-archive: froze %d candidates (%d bytes) in %d requests\n", len(result.Cases), result.SelectedBytes, result.RequestsUsed)
 	return 0
 }
 
 func buildInventory(ctx context.Context, client *http.Client, opts options) (inventory, error) {
+	started := time.Now()
 	if err := os.MkdirAll(opts.cacheDir, 0o750); err != nil {
 		return inventory{}, err
 	}
 	requests := 0
-	searchURL, err := archiveSearchURL(opts.baseURL, opts.collection)
+	searchURL, err := archiveSearchURL(opts.baseURL, opts.collection, opts.query)
 	if err != nil {
 		return inventory{}, err
 	}
@@ -202,6 +221,8 @@ func buildInventory(ctx context.Context, client *http.Client, opts options) (inv
 		SchemaVersion: 1, Source: "archive.org", Collection: opts.collection, SnapshotAt: opts.snapshotAt.UTC(),
 		MaxRequests: opts.maxRequests, MaxItems: opts.maxItems, MaxItemBytes: opts.maxItemBytes, MaxTotalBytes: opts.maxTotalBytes,
 		SearchSHA256: sha256Hex(searchBytes), SearchRetrievedAt: searchRetrievedAt,
+		MaxResponseBytes: maxSearchBody + int64(opts.maxRequests-1)*maxMetadataBody,
+		ResponseBytes:    int64(len(searchBytes)), MaxWallTimeMS: opts.maxWallTime.Milliseconds(),
 	}
 	lastRequestAt := time.Time{}
 	if used > 0 {
@@ -234,6 +255,7 @@ func buildInventory(ctx context.Context, client *http.Client, opts options) (inv
 		}
 		metadataURL := opts.baseURL + "/metadata/" + url.PathEscape(ref.id)
 		raw, used, metadataRetrievedAt, err := cachedGet(ctx, client, metadataURL, cacheName, opts.userAgent, maxMetadataBody, requests, opts.maxRequests)
+		result.ResponseBytes += int64(len(raw))
 		if used > 0 {
 			lastRequestAt = time.Now()
 		} else {
@@ -251,19 +273,49 @@ func buildInventory(ctx context.Context, client *http.Client, opts options) (inv
 		result.SelectedBytes += item.File.Bytes
 	}
 	result.RequestsUsed = requests
+	result.WallTimeMS = time.Since(started).Milliseconds()
 	if len(result.Cases) == 0 {
 		return inventory{}, fmt.Errorf("no rights-allowlisted video candidates fit the item and byte ceilings")
 	}
 	return result, nil
 }
 
-func archiveSearchURL(baseURL, collection string) (string, error) {
+func prelingerPilotLane(inv inventory, roleHint string) fillercorpus.Lane {
+	lane := fillercorpus.Lane{
+		Authority: "archive.org/prelinger", MaxRequests: inv.MaxRequests, RequestsUsed: inv.RequestsUsed,
+		MaxResponseBytes: inv.MaxResponseBytes, ResponseBytes: inv.ResponseBytes,
+		MaxPredictedMediaBytes: inv.MaxTotalBytes, PredictedMediaBytes: inv.SelectedBytes,
+		MaxWallTimeMS: inv.MaxWallTimeMS, WallTimeMS: inv.WallTimeMS,
+	}
+	for _, item := range inv.Cases {
+		assertions := append([]string(nil), item.Rights...)
+		assertions = append(assertions, item.PossibleCopyrightStatus...)
+		assertions = append(assertions, "Archive license assertion: "+item.LicenseURL)
+		lane.Cases = append(lane.Cases, fillercorpus.Candidate{
+			ItemID: item.Identifier, Title: item.Title, RoleHints: []string{roleHint}, ItemURL: item.ItemURL,
+			MetadataURL: item.MetadataURL, MetadataRetrievedAt: item.MetadataRetrievedAt,
+			MetadataSHA256: item.MetadataSHA256, RightsAssertions: assertions,
+			LicenseURL: strings.Replace(item.LicenseURL, "http://", "https://", 1),
+			Representation: fillercorpus.Representation{
+				Name: item.File.Name, URL: item.File.URL, MIMEType: "video/mp4", Bytes: item.File.Bytes,
+				SHA1: item.File.SHA1, MD5: item.File.MD5,
+			},
+		})
+	}
+	return lane
+}
+
+func archiveSearchURL(baseURL, collection, query string) (string, error) {
 	u, err := url.Parse(baseURL + "/advancedsearch.php")
 	if err != nil {
 		return "", err
 	}
 	q := u.Query()
-	q.Set("q", "collection:"+collection+" AND mediatype:movies AND licenseurl:*")
+	search := "collection:" + collection + " AND mediatype:movies AND licenseurl:*"
+	if query != "" {
+		search += " AND (" + query + ")"
+	}
+	q.Set("q", search)
 	q.Add("fl[]", "identifier")
 	q.Add("fl[]", "licenseurl")
 	q.Set("rows", "1000")

@@ -317,7 +317,10 @@ filler-corpus-archive: ## freeze a bounded rights-filtered Archive.org corpus in
 	  eval "$$(./scripts/dev-env.sh export)"; \
 	  $(GO) run ./cmd/filler-corpus-archive \
 	    --collection "$$LOOMARR_FILLER_CORPUS_ARCHIVE_COLLECTION" \
+	    --query "$$LOOMARR_FILLER_CORPUS_ARCHIVE_QUERY" \
 	    --out "$${LOOMARR_FILLER_CORPUS_ARCHIVE_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-archive.json}" \
+	    --pilot-out "$$LOOMARR_FILLER_CORPUS_ARCHIVE_PILOT_OUT" \
+	    --role-hint "$$LOOMARR_FILLER_CORPUS_ARCHIVE_ROLE_HINT" \
 	    --cache-dir "$${LOOMARR_FILLER_CORPUS_ARCHIVE_CACHE:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-archive-cache}" \
 	    --user-agent "$${LOOMARR_FILLER_CORPUS_USER_AGENT:-$$LOOMARR_FILLER_CORPUS_ARCHIVE_USER_AGENT}" \
 	    --snapshot-at "$$LOOMARR_FILLER_CORPUS_ARCHIVE_SNAPSHOT_AT" \
@@ -325,7 +328,8 @@ filler-corpus-archive: ## freeze a bounded rights-filtered Archive.org corpus in
 	    --max-items "$$LOOMARR_FILLER_CORPUS_ARCHIVE_MAX_ITEMS" \
 	    --max-item-bytes "$$LOOMARR_FILLER_CORPUS_ARCHIVE_MAX_ITEM_BYTES" \
 	    --max-total-bytes "$$LOOMARR_FILLER_CORPUS_ARCHIVE_MAX_TOTAL_BYTES" \
-	    --delay "$${LOOMARR_FILLER_CORPUS_ARCHIVE_DELAY:-1s}"
+	    --delay "$${LOOMARR_FILLER_CORPUS_ARCHIVE_DELAY:-1s}" \
+	    --max-wall-time "$${LOOMARR_FILLER_CORPUS_ARCHIVE_MAX_WALL_TIME:-1m}"
 
 filler-corpus-download: ## download only rights-approved corpus media under hard ceilings
 	@eval "$$(./scripts/dev-env.sh export)"; \

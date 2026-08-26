@@ -1,0 +1,243 @@
+{
+  "authority": "archive.org/prelinger",
+  "maxRequests": 40,
+  "requestsUsed": 11,
+  "maxResponseBytes": 662700032,
+  "responseBytes": 577187,
+  "maxPredictedMediaBytes": 3221225472,
+  "predictedMediaBytes": 109927824,
+  "maxWallTimeMs": 60000,
+  "wallTimeMs": 11805,
+  "cases": [
+    {
+      "itemId": "aurora_drag_race_set",
+      "title": "Aurora Stunt and Drag Race Set Commercial",
+      "roleHints": [
+        "commercial"
+      ],
+      "itemUrl": "https://archive.org/details/aurora_drag_race_set",
+      "metadataUrl": "https://archive.org/metadata/aurora_drag_race_set",
+      "metadataRetrievedAt": "2026-08-26T12:05:22.982363889Z",
+      "metadataSha256": "ab54b09e691d6b83c4fe338ffad10e8d97648923d022a383387b7507d9eb77b2",
+      "rightsAssertions": [
+        "Archive license assertion: http://creativecommons.org/licenses/publicdomain/"
+      ],
+      "licenseUrl": "https://creativecommons.org/licenses/publicdomain/",
+      "representation": {
+        "name": "aurora_drag_race_set_512kb.mp4",
+        "url": "https://archive.org/download/aurora_drag_race_set/aurora_drag_race_set_512kb.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 4304452,
+        "sha1": "7d91d097d6962bb8066992bcb53535ffcec7329b",
+        "md5": "91a45f2ee1f6f4e8411b738afd7dce77"
+      }
+    },
+    {
+      "itemId": "folgers_13",
+      "title": "Folgers Coffee Commercial #13",
+      "roleHints": [
+        "commercial"
+      ],
+      "itemUrl": "https://archive.org/details/folgers_13",
+      "metadataUrl": "https://archive.org/metadata/folgers_13",
+      "metadataRetrievedAt": "2026-08-26T12:05:24.070363942Z",
+      "metadataSha256": "f1fe67d78fec7083e053192ae1d8332f3bd7957fc69bf14db1a2919b4a3a550b",
+      "rightsAssertions": [
+        "Archive license assertion: http://creativecommons.org/licenses/publicdomain/"
+      ],
+      "licenseUrl": "https://creativecommons.org/licenses/publicdomain/",
+      "representation": {
+        "name": "folgers_13_512kb.mp4",
+        "url": "https://archive.org/download/folgers_13/folgers_13_512kb.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 4468080,
+        "sha1": "1f6631bce3bcd3af27fcafb734b53cf91d2fd0b1",
+        "md5": "bbaae071cc8a9bd0c8e1f1d291b25e98"
+      }
+    },
+    {
+      "itemId": "CrestToothpa_2",
+      "title": "Crest Toothpaste Commercial 2",
+      "roleHints": [
+        "commercial"
+      ],
+      "itemUrl": "https://archive.org/details/CrestToothpa_2",
+      "metadataUrl": "https://archive.org/metadata/CrestToothpa_2",
+      "metadataRetrievedAt": "2026-08-26T12:05:25.180363997Z",
+      "metadataSha256": "7baa46a0f18b6cf4f2bba172002e2c3dbc1f8913a7fc760b92a50984eb518be5",
+      "rightsAssertions": [
+        "Archive license assertion: http://creativecommons.org/licenses/publicdomain/"
+      ],
+      "licenseUrl": "https://creativecommons.org/licenses/publicdomain/",
+      "representation": {
+        "name": "CrestToothpa_2_512kb.mp4",
+        "url": "https://archive.org/download/CrestToothpa_2/CrestToothpa_2_512kb.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 3021103,
+        "sha1": "756e2f53f2daf5a09faa03d202abc9083363239d",
+        "md5": "dae5238fd2b9b777463bd975305bca5c"
+      }
+    },
+    {
+      "itemId": "Dentu-CremeA",
+      "title": "Dentu-Creme Commercial",
+      "roleHints": [
+        "commercial"
+      ],
+      "itemUrl": "https://archive.org/details/Dentu-CremeA",
+      "metadataUrl": "https://archive.org/metadata/Dentu-CremeA",
+      "metadataRetrievedAt": "2026-08-26T12:05:26.285364051Z",
+      "metadataSha256": "c0e3dcc2bce4db68418ad0542223bc6d8bced20b1dac7b15fe4f1a64874e61a9",
+      "rightsAssertions": [
+        "Archive license assertion: http://creativecommons.org/licenses/publicdomain/"
+      ],
+      "licenseUrl": "https://creativecommons.org/licenses/publicdomain/",
+      "representation": {
+        "name": "Dentu-CremeA_512kb.mp4",
+        "url": "https://archive.org/download/Dentu-CremeA/Dentu-CremeA_512kb.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 4344129,
+        "sha1": "520b6c4b574717e807fa2af5225ae27f3e8884f2",
+        "md5": "61f75f9daa548c8d88cba6cab6d61f23"
+      }
+    },
+    {
+      "itemId": "letter_from_an_airline_pilot_1",
+      "title": "Letter From an Airline Pilot  (Part I)",
+      "roleHints": [
+        "commercial"
+      ],
+      "itemUrl": "https://archive.org/details/letter_from_an_airline_pilot_1",
+      "metadataUrl": "https://archive.org/metadata/letter_from_an_airline_pilot_1",
+      "metadataRetrievedAt": "2026-08-26T12:05:27.516364111Z",
+      "metadataSha256": "fc8d02ce77789f907c523389b859b5e9193648d0020f26d72340f1c1debf4851",
+      "rightsAssertions": [
+        "Archive license assertion: http://creativecommons.org/licenses/publicdomain/"
+      ],
+      "licenseUrl": "https://creativecommons.org/licenses/publicdomain/",
+      "representation": {
+        "name": "letter_from_an_airline_pilot_1_512kb.mp4",
+        "url": "https://archive.org/download/letter_from_an_airline_pilot_1/letter_from_an_airline_pilot_1_512kb.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 74099402,
+        "sha1": "995b87b4ef4a99d057cb3fa0ffa4af2c63bc68de",
+        "md5": "02461c46899e23d748a90f18cb79f2e2"
+      }
+    },
+    {
+      "itemId": "LuckyStr1948_2",
+      "title": "Lucky Strike Cigarette Commercial: Square Dance",
+      "roleHints": [
+        "commercial"
+      ],
+      "itemUrl": "https://archive.org/details/LuckyStr1948_2",
+      "metadataUrl": "https://archive.org/metadata/LuckyStr1948_2",
+      "metadataRetrievedAt": "2026-08-26T12:05:28.702364169Z",
+      "metadataSha256": "f39ede17e99bf416ed41e365a57402e0007f192460ace9609941e35d92e77932",
+      "rightsAssertions": [
+        "Archive license assertion: http://creativecommons.org/licenses/publicdomain/"
+      ],
+      "licenseUrl": "https://creativecommons.org/licenses/publicdomain/",
+      "representation": {
+        "name": "LuckyStr1948_2_512kb.mp4",
+        "url": "https://archive.org/download/LuckyStr1948_2/LuckyStr1948_2_512kb.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 4292486,
+        "sha1": "31def2f5b00a1aa211dae513cae686807a401bcc",
+        "md5": "fc4dbaa0ea39b97be6be077f4c38ed91"
+      }
+    },
+    {
+      "itemId": "alexis_lichine_wine",
+      "title": "Alexis Lichine Wine Commercial",
+      "roleHints": [
+        "commercial"
+      ],
+      "itemUrl": "https://archive.org/details/alexis_lichine_wine",
+      "metadataUrl": "https://archive.org/metadata/alexis_lichine_wine",
+      "metadataRetrievedAt": "2026-08-26T12:05:29.791364222Z",
+      "metadataSha256": "b14b830f13aafff92dfacd3b2f4eaae4ebe50229ab49c9755263e3b6694de00c",
+      "rightsAssertions": [
+        "Archive license assertion: http://creativecommons.org/licenses/publicdomain/"
+      ],
+      "licenseUrl": "https://creativecommons.org/licenses/publicdomain/",
+      "representation": {
+        "name": "alexis_lichine_wine_512kb.mp4",
+        "url": "https://archive.org/download/alexis_lichine_wine/alexis_lichine_wine_512kb.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 2175658,
+        "sha1": "f91cbf0b30f3a205ecf2c1a078b915e087ad418e",
+        "md5": "5b53c5612d23c7b07a56ccb2cb596ba8"
+      }
+    },
+    {
+      "itemId": "folgers_6",
+      "title": "Folgers Coffee Commercial #6",
+      "roleHints": [
+        "commercial"
+      ],
+      "itemUrl": "https://archive.org/details/folgers_6",
+      "metadataUrl": "https://archive.org/metadata/folgers_6",
+      "metadataRetrievedAt": "2026-08-26T12:05:30.947364278Z",
+      "metadataSha256": "856932afdf4828bfaa251f2fe3a18a70f58eec7e1a3e0bdb7ce7d3754ae782db",
+      "rightsAssertions": [
+        "Archive license assertion: http://creativecommons.org/licenses/publicdomain/"
+      ],
+      "licenseUrl": "https://creativecommons.org/licenses/publicdomain/",
+      "representation": {
+        "name": "folgers_6_512kb.mp4",
+        "url": "https://archive.org/download/folgers_6/folgers_6_512kb.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 4488626,
+        "sha1": "220b17248d4b4935f48cb56441814885425396d1",
+        "md5": "94105540beb352449740c707d5f4012d"
+      }
+    },
+    {
+      "itemId": "monkeys_uncle",
+      "title": "Monkeys Uncle Toy Commercial",
+      "roleHints": [
+        "commercial"
+      ],
+      "itemUrl": "https://archive.org/details/monkeys_uncle",
+      "metadataUrl": "https://archive.org/metadata/monkeys_uncle",
+      "metadataRetrievedAt": "2026-08-26T12:05:32.113364335Z",
+      "metadataSha256": "9415a036e0af1b0e06da6a1482c3e5560f934842ac477e74cfd4825498796cd9",
+      "rightsAssertions": [
+        "Archive license assertion: http://creativecommons.org/licenses/publicdomain/"
+      ],
+      "licenseUrl": "https://creativecommons.org/licenses/publicdomain/",
+      "representation": {
+        "name": "monkeys_uncle_512kb.mp4",
+        "url": "https://archive.org/download/monkeys_uncle/monkeys_uncle_512kb.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 4391668,
+        "sha1": "9f9406bac2b3fe4de793e1e2f68742ab81e4503e",
+        "md5": "ba24bf5dd5a5931ec31230054b9026bd"
+      }
+    },
+    {
+      "itemId": "ideal_dolls_3",
+      "title": "Ideal Doll Commercial #3",
+      "roleHints": [
+        "commercial"
+      ],
+      "itemUrl": "https://archive.org/details/ideal_dolls_3",
+      "metadataUrl": "https://archive.org/metadata/ideal_dolls_3",
+      "metadataRetrievedAt": "2026-08-26T12:05:33.200364388Z",
+      "metadataSha256": "0c8675aad91898df746a2b14ac3bc3c894cedb0a53c1f4b8fbdca0e63b8499e2",
+      "rightsAssertions": [
+        "Archive license assertion: http://creativecommons.org/licenses/publicdomain/"
+      ],
+      "licenseUrl": "https://creativecommons.org/licenses/publicdomain/",
+      "representation": {
+        "name": "ideal_dolls_3_512kb.mp4",
+        "url": "https://archive.org/download/ideal_dolls_3/ideal_dolls_3_512kb.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 4342220,
+        "sha1": "262af5a383298dd63af2cbfb97c5636a740a2f5b",
+        "md5": "bf401bb902f5346d172d82fad31c4e42"
+      }
+    }
+  ]
+}
