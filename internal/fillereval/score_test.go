@@ -68,12 +68,12 @@ func TestScoreIsDeterministicForCapturedInputs(t *testing.T) {
 	}
 }
 
-func TestScoreRejectsSchemaV4ScalarInference(t *testing.T) {
+func TestScoreRequiresPerAttemptStepForInferenceDecision(t *testing.T) {
 	manifest, predictions := passingCorpus(500)
 	predictions[0].Steps = nil
 	report := Score(manifest, predictions, completeRun())
-	if report.Certified || !containsFailure(report.Failures, "schema v4 inference requires per-attempt steps") {
-		t.Fatalf("scalar v4 inference certified: %v", report.Failures)
+	if report.Certified || !containsFailure(report.Failures, "role, rung, model, provider, and modality attribution are required") {
+		t.Fatalf("step-free inference certified: %v", report.Failures)
 	}
 }
 
@@ -95,8 +95,6 @@ func TestScoreCannotUseDevelopmentCasesToInflateHoldout(t *testing.T) {
 	development := manifest.Cases[len(manifest.Cases)-1]
 	predictions = append(predictions, Prediction{
 		CaseID: development.ID, Verdict: VerdictAdmit, ContentRole: "commercial",
-		Role: "filler_text", Rung: "text", RequestedProvider: "fixture", RequestedModel: "fixture",
-		ResolvedModel: "fixture", ResolvedProvider: "fixture", Modalities: []string{"text"}, Attempts: 1,
 	})
 	if report := Score(manifest, predictions, completeRun()); report.Certified || !containsFailure(report.Failures, "prediction has no corpus case") {
 		t.Fatalf("development prediction entered holdout report: %v", report.Failures)
@@ -183,10 +181,6 @@ func TestFalseSemanticRejectCountsAgainstRejectPrecision(t *testing.T) {
 
 func TestScoreUsesExactNanodollarAccountingByRungAndSlice(t *testing.T) {
 	manifest, predictions := passingCorpus(500)
-	predictions[0].ChargedAmount = "0.0000012300"
-	predictions[0].ChargedCurrency = "USD"
-	predictions[0].ChargedNanoUSD = 1230
-	predictions[0].Rung = "frames"
 	predictions[0].Steps[0].ChargedAmount = "0.0000012300"
 	predictions[0].Steps[0].ChargedCurrency = "USD"
 	predictions[0].Steps[0].ChargedNanoUSD = 1230
@@ -201,7 +195,6 @@ func TestScoreUsesExactNanodollarAccountingByRungAndSlice(t *testing.T) {
 	if len(report.Metrics.Rungs) != 2 || report.Metrics.Rungs[0].Rung != "frames" || report.Metrics.Rungs[0].ChargedNanoUSD != 1230 {
 		t.Fatalf("rung metrics = %+v", report.Metrics.Rungs)
 	}
-	predictions[0].ChargedNanoUSD = 1229
 	predictions[0].Steps[0].ChargedNanoUSD = 1229
 	if report := Score(manifest, predictions, completeRun()); report.Certified || !containsFailure(report.Failures, "projects to 1230") {
 		t.Fatalf("mismatched cost projection certified: %v", report.Failures)
@@ -253,10 +246,10 @@ func TestUSDToNanoCeilRoundsSubNanodollarSpendUp(t *testing.T) {
 
 func TestValidateAccountingPreservesNonUSDCurrencyWithoutInventingFX(t *testing.T) {
 	t.Parallel()
-	if err := validateAccounting(Prediction{ChargedAmount: "0.25", ChargedCurrency: "EUR"}); err != nil {
+	if err := validateAccounting(InferenceStep{ChargedAmount: "0.25", ChargedCurrency: "EUR"}); err != nil {
 		t.Fatalf("provider-reported non-USD charge = %v", err)
 	}
-	if err := validateAccounting(Prediction{ChargedAmount: "0.25", ChargedCurrency: "EUR", ChargedNanoUSD: 250_000_000}); err == nil {
+	if err := validateAccounting(InferenceStep{ChargedAmount: "0.25", ChargedCurrency: "EUR", ChargedNanoUSD: 250_000_000}); err == nil {
 		t.Fatal("non-USD charge accepted an invented USD projection")
 	}
 }
@@ -300,8 +293,7 @@ func passingCorpus(total int) (Manifest, []Prediction) {
 		step := InferenceStep{EvaluationID: "eval-" + id, Role: "filler_text", Rung: "text", RequestedProvider: "fixture", RequestedModel: "fixture", ResolvedModel: "fixture", ResolvedProvider: "fixture", Modalities: []string{"text"}, Attempts: 1, LatencyMS: int64(i)}
 		predictions = append(predictions, Prediction{
 			CaseID: id, Verdict: verdict, RejectClass: class, ContentRole: "commercial", ReviewQuestion: question,
-			Role: "filler_text", Rung: "text", RequestedProvider: "fixture", RequestedModel: "fixture",
-			ResolvedModel: "fixture", ResolvedProvider: "fixture", Modalities: []string{"text"}, Attempts: 1, LatencyMS: int64(i), Steps: []InferenceStep{step},
+			Steps: []InferenceStep{step},
 		})
 	}
 	for i := 0; i < total/4; i++ {

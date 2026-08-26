@@ -113,7 +113,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `catalog` | 5 | `library`, `provision` |
 | `diagnostics` | 8 | — |
 | `filler` | 6 | `diagnostics`, `llm`, `metrics` |
-| `httpx` | 5 | `metrics` |
+| `httpx` | 6 | `metrics` |
 | `library` | 7 | `filler`, `httpx` |
 | `llm` | 5 | `httpx`, `metrics` |
 | `metrics` | 6 | `provision` |
@@ -158,8 +158,6 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 1**
 
-- **`fillerbakeoff`** · 1 importer · → `filleradmission`, `fillereval`
-  Runs bounded, inference-spending filler admission comparisons.
 - **`fillerdecision`** · 3 importers · → `filleradmission`
   Owns the durable lifecycle and operator projections for filler-admission results.
 - **`prepared`** · 3 importers · → `diagnostics`, `media`
@@ -187,11 +185,13 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 4**
 
-- **`httpx`** · 5 importers · → `metrics`
+- **`httpx`** · 6 importers · → `metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 
 **Layer 5**
 
+- **`fillerbakeoff`** · 1 importer · → `filleradmission`, `fillereval`, `httpx`
+  Runs bounded, inference-spending filler admission comparisons.
 - **`llm`** · 5 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
 - **`programmer`** · 3 importers · → `httpx`, `schedule`
@@ -3343,7 +3343,10 @@ policy versions. Decisions carry a stable sorted set of reason codes, the exact 
 that support them, all material conflicts, at most one answerable review question, and the inference
 attribution/usage supplied with the evidence. Every semantic inference attribution is referenced by
 at least one fact, and every fact's inference reference must resolve; unrelated or dangling model
-calls cannot be smuggled into a decision's audit. Invalid schema/taxonomy, failed extraction, unavailable
+calls cannot be smuggled into a decision's audit. The sole exception is an explicit semantic
+abstention: one bounded reason, no evidence, and no operational failure. It remains in the step
+ledger so named escalation and cost accounting are truthful, but it cannot support a decision.
+Invalid schema/taxonomy, failed extraction, unavailable
 provider, retryable error, or exhausted budget returns a separate operational hold and no semantic
 verdict. Model confidence is retained for diagnostics but is never read by admission policy.
 Untrusted evidence values are compared only as data; instruction-looking metadata, OCR, or transcript
@@ -3362,7 +3365,9 @@ metrics remain useful for operations; the durable row is the audit and cost-acco
 
 Certification artifact schema v4 requires the per-inference-step ledger. Earlier scalar schemas are
 rejected: no completed bakeoff artifact depends on them, and preserving speculative compatibility
-would create an untested path that can hide multiple calls behind one terminal attribution.
+would create an untested path that can hide multiple calls behind one terminal attribution. The v4
+prediction wire therefore has no scalar inference fields: every attempted call is a `steps` entry;
+only deterministic outcomes and holds reached before a provider attempt may have none.
 
 The inference-spending bakeoff reads a **raw evidence packet**, never the manifest's reviewed
 `Evidence` or terminal labels. The packet is a closed, content-addressed input containing only

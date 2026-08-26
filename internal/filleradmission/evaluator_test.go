@@ -83,6 +83,39 @@ func TestEvaluatorRequiresRequestedRouteForAttributedInference(t *testing.T) {
 	}
 }
 
+func TestEvaluatorTreatsExplicitSemanticAbstentionAsReviewNotFailure(t *testing.T) {
+	e := mustEvaluator(t)
+	doc := eligibleDocument()
+	doc.Evidence = doc.Evidence[:2]
+	abstention := testAttribution("eval-abstain", "filler_text")
+	abstention.Abstained = true
+	abstention.AbstentionReason = "the supplied transcript contains no supported role fact"
+	doc.Attribution = []Attribution{abstention}
+
+	got := e.Evaluate(doc)
+	if got.Hold != nil || got.Decision == nil || got.Decision.Verdict != VerdictReview {
+		t.Fatalf("result = %+v, want semantic review", got)
+	}
+	if !reflect.DeepEqual(got.Decision.ReasonCodes, []ReasonCode{ReasonMissingContentRole}) {
+		t.Fatalf("reasons = %v", got.Decision.ReasonCodes)
+	}
+}
+
+func TestEvaluatorRejectsEvidenceAttributedToAbstention(t *testing.T) {
+	e := mustEvaluator(t)
+	doc := eligibleDocument()
+	abstention := testAttribution("eval-abstain", "filler_text")
+	abstention.Abstained = true
+	abstention.AbstentionReason = "no supported fact"
+	doc.Attribution = []Attribution{abstention}
+	doc.Evidence[2].EvaluationID = abstention.EvaluationID
+
+	got := e.Evaluate(doc)
+	if got.Hold == nil || got.Hold.Code != HoldEvidenceInvalid {
+		t.Fatalf("result = %+v, want evidence hold", got)
+	}
+}
+
 func TestEvaluatorEscalatesUnresolvedRecordingDateConflict(t *testing.T) {
 	e := mustEvaluator(t)
 	doc := eligibleDocument()

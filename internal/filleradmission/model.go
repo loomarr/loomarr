@@ -2,7 +2,7 @@
 // versioned filler evidence and a catalog-admission decision.
 package filleradmission
 
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 type Claim string
 
@@ -89,6 +89,8 @@ type Attribution struct {
 	LatencyMS         int64      `json:"latencyMs,omitempty"`
 	Attempts          int        `json:"attempts,omitempty"`
 	GenerationID      string     `json:"generationId,omitempty"`
+	Abstained         bool       `json:"abstained,omitempty"`
+	AbstentionReason  string     `json:"abstentionReason,omitempty"`
 }
 
 type OperationalCode string
@@ -124,12 +126,12 @@ type Document struct {
 }
 
 type Policy struct {
-	Version             string
-	TaxonomyVersion     string
-	AllowedProducts     []string
-	AllowedContentRoles []string
-	KnownSensitiveFlags []string
-	ProhibitedFlags     []string
+	Version             string   `json:"version"`
+	TaxonomyVersion     string   `json:"taxonomyVersion"`
+	AllowedProducts     []string `json:"allowedProducts"`
+	AllowedContentRoles []string `json:"allowedContentRoles"`
+	KnownSensitiveFlags []string `json:"knownSensitiveFlags"`
+	ProhibitedFlags     []string `json:"prohibitedFlags"`
 }
 
 type Verdict string

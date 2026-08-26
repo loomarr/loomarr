@@ -150,27 +150,8 @@ type Prediction struct {
 	Conflicts          []Conflict          `json:"conflicts,omitempty"`
 	ReviewQuestion     string              `json:"reviewQuestion,omitempty"`
 	Probability        *float64            `json:"probability,omitempty"`
-	Role               string              `json:"role"`
-	Rung               string              `json:"rung"`
-	RequestedProvider  string              `json:"requestedProvider"`
-	RequestedModel     string              `json:"requestedModel"`
-	ResolvedModel      string              `json:"resolvedModel"`
-	ResolvedProvider   string              `json:"resolvedProvider"`
-	UpstreamProvider   string              `json:"upstreamProvider,omitempty"`
-	Modalities         []string            `json:"modalities"`
-	Derivative         Derivative          `json:"derivative"`
-	Tokens             TokenUsage          `json:"tokens"`
-	ChargedAmount      string              `json:"chargedAmount,omitempty"`
-	ChargedCurrency    string              `json:"chargedCurrency,omitempty"`
-	ChargedNanoUSD     int64               `json:"chargedNanoUsd,omitempty"`
-	EstimatedNanoUSD   int64               `json:"estimatedNanoUsd,omitempty"`
-	Attempts           int                 `json:"attempts"`
-	GenerationID       string              `json:"generationId,omitempty"`
-	LatencyMS          int64               `json:"latencyMs,omitempty"`
 	OperationalFailure string              `json:"operationalFailure,omitempty"`
-	// Steps preserves every inference call in a cascade. Older captured ledgers
-	// may omit it and use the scalar attribution fields above.
-	Steps []InferenceStep `json:"steps,omitempty"`
+	Steps              []InferenceStep     `json:"steps,omitempty"`
 }
 
 // InferenceStep is the immutable accounting envelope for one attempted rung.
@@ -195,6 +176,8 @@ type InferenceStep struct {
 	Attempts           int        `json:"attempts"`
 	GenerationID       string     `json:"generationId,omitempty"`
 	LatencyMS          int64      `json:"latencyMs,omitempty"`
+	Abstained          bool       `json:"abstained,omitempty"`
+	AbstentionReason   string     `json:"abstentionReason,omitempty"`
 	OperationalFailure string     `json:"operationalFailure,omitempty"`
 }
 

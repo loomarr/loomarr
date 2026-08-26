@@ -62,14 +62,12 @@ func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report 
 			continue
 		}
 		delete(byID, c.ID)
-		allowScalar := (prediction.OperationalFailure != "" && !hasScalarInference(prediction)) ||
-			(prediction.Verdict == VerdictReject && prediction.RejectClass == RejectDeterministic && !hasScalarInference(prediction))
-		accounting, accountingFailures := summarizePrediction(prediction, allowScalar)
+		accounting, accountingFailures := summarizePrediction(prediction)
 		for _, failure := range accountingFailures {
 			report.Failures = append(report.Failures, c.ID+": "+failure)
 		}
 		result.Actual = prediction.Verdict
-		zeroInference := len(prediction.Steps) == 0 && prediction.Role == "" && prediction.Attempts == 0
+		zeroInference := len(prediction.Steps) == 0
 		deterministic := zeroInference && prediction.Verdict == VerdictReject && prediction.RejectClass == RejectDeterministic
 		result.Role = accounting.Role
 		result.Rung = accounting.Rung
@@ -276,15 +274,9 @@ func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report 
 	return report
 }
 
-func summarizePrediction(prediction Prediction, allowScalar bool) (InferenceStep, []string) {
+func summarizePrediction(prediction Prediction) (InferenceStep, []string) {
 	if len(prediction.Steps) == 0 {
-		if !allowScalar {
-			return inferenceStepFromPrediction(prediction), []string{"schema v4 inference requires per-attempt steps"}
-		}
-		if err := validateAccounting(prediction); err != nil {
-			return inferenceStepFromPrediction(prediction), []string{err.Error()}
-		}
-		return inferenceStepFromPrediction(prediction), nil
+		return InferenceStep{}, nil
 	}
 	var total InferenceStep
 	seen := make(map[string]struct{}, len(prediction.Steps))
@@ -306,7 +298,10 @@ func summarizePrediction(prediction Prediction, allowScalar bool) (InferenceStep
 		if step.Attempts < 1 {
 			failures = append(failures, prefix+": at least one inference attempt is required")
 		}
-		if err := validateAccounting(predictionFromInferenceStep(step)); err != nil {
+		if step.Abstained != (strings.TrimSpace(step.AbstentionReason) != "") || (step.Abstained && step.OperationalFailure != "") {
+			failures = append(failures, prefix+": semantic abstention requires one reason and cannot be an operational failure")
+		}
+		if err := validateAccounting(step); err != nil {
 			failures = append(failures, prefix+": "+err.Error())
 		}
 		addAccountingValue(&total.Derivative.Bytes, step.Derivative.Bytes, prefix, "derivative bytes", &failures)
@@ -342,44 +337,11 @@ func summarizePrediction(prediction Prediction, allowScalar bool) (InferenceStep
 	return terminal, failures
 }
 
-func hasScalarInference(prediction Prediction) bool {
-	return prediction.Role != "" || prediction.Rung != "" || prediction.RequestedProvider != "" || prediction.RequestedModel != "" ||
-		prediction.ResolvedProvider != "" || prediction.ResolvedModel != "" || prediction.UpstreamProvider != "" || len(prediction.Modalities) > 0 || prediction.Attempts != 0 ||
-		prediction.Derivative != (Derivative{}) || prediction.Tokens != (TokenUsage{}) ||
-		prediction.ChargedAmount != "" || prediction.ChargedCurrency != "" || prediction.ChargedNanoUSD != 0 || prediction.EstimatedNanoUSD != 0 ||
-		prediction.GenerationID != "" || prediction.LatencyMS != 0
-}
-
 func saturatingCost(a, b int64) int64 {
 	if b > 0 && a > math.MaxInt64-b {
 		return math.MaxInt64
 	}
 	return a + b
-}
-
-func inferenceStepFromPrediction(prediction Prediction) InferenceStep {
-	return InferenceStep{
-		Role: prediction.Role, Rung: prediction.Rung, RequestedProvider: prediction.RequestedProvider,
-		RequestedModel: prediction.RequestedModel, ResolvedModel: prediction.ResolvedModel,
-		ResolvedProvider: prediction.ResolvedProvider, UpstreamProvider: prediction.UpstreamProvider, Modalities: prediction.Modalities,
-		Derivative: prediction.Derivative, Tokens: prediction.Tokens, ChargedAmount: prediction.ChargedAmount,
-		ChargedCurrency: prediction.ChargedCurrency, ChargedNanoUSD: prediction.ChargedNanoUSD,
-		EstimatedNanoUSD: prediction.EstimatedNanoUSD, Attempts: prediction.Attempts,
-		GenerationID: prediction.GenerationID, LatencyMS: prediction.LatencyMS,
-		OperationalFailure: prediction.OperationalFailure,
-	}
-}
-
-func predictionFromInferenceStep(step InferenceStep) Prediction {
-	return Prediction{
-		Role: step.Role, Rung: step.Rung, RequestedProvider: step.RequestedProvider,
-		RequestedModel: step.RequestedModel, ResolvedModel: step.ResolvedModel,
-		ResolvedProvider: step.ResolvedProvider, UpstreamProvider: step.UpstreamProvider, Modalities: step.Modalities,
-		Derivative: step.Derivative, Tokens: step.Tokens, ChargedAmount: step.ChargedAmount,
-		ChargedCurrency: step.ChargedCurrency, ChargedNanoUSD: step.ChargedNanoUSD,
-		EstimatedNanoUSD: step.EstimatedNanoUSD, Attempts: step.Attempts,
-		GenerationID: step.GenerationID, LatencyMS: step.LatencyMS,
-	}
 }
 
 func addAccountingValue(dst *int64, value int64, prefix, label string, failures *[]string) {
@@ -391,40 +353,40 @@ func addAccountingValue(dst *int64, value int64, prefix, label string, failures 
 	*dst += value
 }
 
-func validateAccounting(prediction Prediction) error {
+func validateAccounting(step InferenceStep) error {
 	values := []int64{
-		prediction.Derivative.Bytes, prediction.Derivative.DurationMS, prediction.Derivative.Pixels,
-		prediction.Tokens.Prompt, prediction.Tokens.Completion, prediction.Tokens.Reasoning,
-		prediction.Tokens.Cached, prediction.Tokens.CacheWrite, prediction.Tokens.Image,
-		prediction.Tokens.Audio, prediction.Tokens.Video, prediction.ChargedNanoUSD,
-		prediction.EstimatedNanoUSD, prediction.LatencyMS,
+		step.Derivative.Bytes, step.Derivative.DurationMS, step.Derivative.Pixels,
+		step.Tokens.Prompt, step.Tokens.Completion, step.Tokens.Reasoning,
+		step.Tokens.Cached, step.Tokens.CacheWrite, step.Tokens.Image,
+		step.Tokens.Audio, step.Tokens.Video, step.ChargedNanoUSD,
+		step.EstimatedNanoUSD, step.LatencyMS,
 	}
 	for _, value := range values {
 		if value < 0 {
 			return fmt.Errorf("accounting values cannot be negative")
 		}
 	}
-	if prediction.ChargedAmount == "" {
-		if prediction.ChargedCurrency != "" || prediction.ChargedNanoUSD != 0 {
+	if step.ChargedAmount == "" {
+		if step.ChargedCurrency != "" || step.ChargedNanoUSD != 0 {
 			return fmt.Errorf("charged amount, currency, and nanodollars must be present together")
 		}
 		return nil
 	}
-	if prediction.ChargedCurrency == "" {
+	if step.ChargedCurrency == "" {
 		return fmt.Errorf("charged amount requires its provider-reported currency")
 	}
-	if prediction.ChargedCurrency != "USD" {
-		if prediction.ChargedNanoUSD != 0 {
+	if step.ChargedCurrency != "USD" {
+		if step.ChargedNanoUSD != 0 {
 			return fmt.Errorf("non-USD provider charge cannot be projected without an exchange-rate snapshot")
 		}
 		return nil
 	}
-	nano, err := USDToNanoCeil(prediction.ChargedAmount)
+	nano, err := USDToNanoCeil(step.ChargedAmount)
 	if err != nil {
 		return fmt.Errorf("invalid charged amount: %w", err)
 	}
-	if nano != prediction.ChargedNanoUSD {
-		return fmt.Errorf("charged amount projects to %d nanodollars, got %d", nano, prediction.ChargedNanoUSD)
+	if nano != step.ChargedNanoUSD {
+		return fmt.Errorf("charged amount projects to %d nanodollars, got %d", nano, step.ChargedNanoUSD)
 	}
 	return nil
 }

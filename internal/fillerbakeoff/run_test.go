@@ -44,6 +44,33 @@ func TestRunEscalatesOnlyNamedReasonsAndPreservesEveryStep(t *testing.T) {
 	}
 }
 
+func TestRunPreservesSemanticAbstentionAndContinuesNamedEscalation(t *testing.T) {
+	packet := basePacket()
+	root := t.TempDir()
+	data := []byte("frame bytes")
+	if err := os.WriteFile(root+"/frame.jpg", data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(data)
+	packet.Signals = []fillerbakeoff.Signal{{ID: "frame-1", Kind: string(filleradmission.KindFrame), Path: "frame.jpg", SHA256: hex.EncodeToString(sum[:]), Bytes: int64(len(data)), Width: 640, Height: 360}}
+	manifest := manifestFor(packet)
+	extractor := &testkit.FillerBakeoffExtractor{Results: []fillerbakeoff.Extraction{
+		{Attribution: filleradmission.Attribution{EvaluationID: "text-abstain", Role: "filler_text", Rung: "text", RequestedProvider: "fixture", RequestedModel: "filler_text", ResolvedProvider: "fixture", ResolvedModel: "filler_text", Modalities: []string{"text"}, ChargedAmount: "0.0000001", ChargedCurrency: "USD", Attempts: 1, GenerationID: "text-abstain", Abstained: true, AbstentionReason: "no supported role fact"}},
+		extraction("frames-1", "filler_frames", "frames", 200, filleradmission.Evidence{ID: "role-frame", Claim: filleradmission.ClaimContentRole, Value: filleradmission.RoleBumper, Kind: filleradmission.KindFrame, Source: "frame", Derivative: "frame-1", EvaluationID: "frames-1"}),
+	}}
+	cfg := config(t, manifest, packet, extractor, 1000)
+	cfg.CorpusRoot = root
+	cfg.Routes[1].EscalateOn = []filleradmission.ReasonCode{filleradmission.ReasonMissingContentRole}
+	predictions, err := fillerbakeoff.Run(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := predictions[0]
+	if got.Verdict != fillereval.VerdictReview || len(got.Steps) != 2 || !got.Steps[0].Abstained || got.Steps[0].AbstentionReason == "" || got.Steps[1].Abstained {
+		t.Fatalf("prediction = %+v", got)
+	}
+}
+
 func TestRunReservesWorstCaseSpendBeforeCallingNextRung(t *testing.T) {
 	packet := basePacket()
 	manifest := manifestFor(packet)
@@ -205,6 +232,20 @@ func TestRunRejectsOutOfOrderCascade(t *testing.T) {
 	cfg.Routes[0], cfg.Routes[1] = cfg.Routes[1], cfg.Routes[0]
 	if _, err := fillerbakeoff.Run(context.Background(), cfg); err == nil || !strings.Contains(err.Error(), "cascade order") {
 		t.Fatalf("route order error = %v", err)
+	}
+	if len(extractor.Requests) != 0 {
+		t.Fatalf("provider calls = %d", len(extractor.Requests))
+	}
+}
+
+func TestRunRejectsPolicyIdentityDriftBeforeExtraction(t *testing.T) {
+	packet := basePacket()
+	manifest := manifestFor(packet)
+	extractor := &testkit.FillerBakeoffExtractor{}
+	cfg := config(t, manifest, packet, extractor, 1000)
+	cfg.Run.PolicyVersion = "different-policy"
+	if _, err := fillerbakeoff.Run(context.Background(), cfg); err == nil || !strings.Contains(err.Error(), "policy identity") {
+		t.Fatalf("error = %v", err)
 	}
 	if len(extractor.Requests) != 0 {
 		t.Fatalf("provider calls = %d", len(extractor.Requests))
