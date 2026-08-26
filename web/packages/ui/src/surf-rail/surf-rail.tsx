@@ -24,6 +24,9 @@ const findSurfChannel = (
     .find((group) => group.kind === selection.group)
     ?.channels.find((channel) => channel.id === selection.channelId);
 
+const surfIdentityLabel = (clientName: string, clientVersion: string, serverVersion?: string) =>
+  `${clientName} ${clientVersion} · Server ${serverVersion ?? "unavailable"}`;
+
 const SurfRail = ({
   clientName = "Loomarr",
   clientVersion,
@@ -147,10 +150,10 @@ const SurfRail = ({
       </ScrollFrame>
 
       <Text density={density} textAlign="center" textRole="metadata">
-        {`${clientName} ${clientVersion} · Server ${serverVersion ?? "unavailable"}`}
+        {surfIdentityLabel(clientName, clientVersion, serverVersion)}
       </Text>
     </Surface>
   );
 };
 
-export { findSurfChannel, SurfRail, surfRailWidth };
+export { findSurfChannel, SurfRail, surfIdentityLabel, surfRailWidth };

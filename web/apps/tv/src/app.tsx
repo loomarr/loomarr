@@ -27,6 +27,7 @@ import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { BackHandler, useTVEventHandler, View } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
+import appConfig from "../app.json";
 
 const credentialStore = createPairingCredentialStore({
   deleteItem: SecureStore.deleteItemAsync,
@@ -143,7 +144,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
           >
             <SurfJourney
               clientName="Loomarr TV"
-              clientVersion="prototype"
+              clientVersion={appConfig.expo.version}
               controller={guide}
               currentChannelId={player.snapshot.channel?.id}
               density="tv"
@@ -153,6 +154,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
               }}
               playableChannelIds={player.snapshot.catalog.map(({ id }) => id)}
               recentChannelIds={player.snapshot.recentChannelIds}
+              serverVersion={player.serverVersion}
             />
           </ClientShell>
         </View>

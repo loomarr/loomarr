@@ -23,6 +23,7 @@ import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BackHandler, Platform, View } from "react-native";
+import appConfig from "../app.json";
 
 const credentialStore = createPairingCredentialStore({
   deleteItem: SecureStore.deleteItemAsync,
@@ -111,7 +112,7 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
           >
             <SurfJourney
               clientName="Loomarr Mobile"
-              clientVersion="prototype"
+              clientVersion={appConfig.expo.version}
               controller={guide}
               currentChannelId={player.snapshot.channel?.id}
               density="touch"
@@ -121,6 +122,7 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
               }}
               playableChannelIds={player.snapshot.catalog.map(({ id }) => id)}
               recentChannelIds={player.snapshot.recentChannelIds}
+              serverVersion={player.serverVersion}
             />
           </ClientShell>
         </View>

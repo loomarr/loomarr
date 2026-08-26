@@ -1,10 +1,10 @@
 import type { GuideController } from "@loomarr/core/guide";
 import type { Density } from "@loomarr/design-system";
-import { Surface } from "@loomarr/design-system";
+import { Surface, Text } from "@loomarr/design-system";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { StatePanel } from "../state-panel";
 import { restoreSurfSelection, surfGroupsFromGuide } from "./surf-data";
-import { SurfRail } from "./surf-rail";
+import { SurfRail, surfIdentityLabel } from "./surf-rail";
 import type { SurfSelection } from "./surf-rail.type";
 
 interface SurfJourneyProps {
@@ -76,6 +76,9 @@ const SurfJourney = ({
                 : "Loading channels"
           }
         />
+        <Text density={density} textAlign="center" textRole="metadata">
+          {surfIdentityLabel(clientName, clientVersion, serverVersion)}
+        </Text>
       </Surface>
     );
   }

@@ -291,9 +291,8 @@ interface and adapter work to proceed, but does not waive the P3.5 evidence or a
 complete, adopted, or merged ahead of its dependency. Its first commit adds the Loomarr-owned player
 interface and tests; the next implementation slices add the selected native adapter, production
 Watching journey, transient chrome, exact TV number-entry buffer, and generated-contract Guide
-controller and authoritative Surf journey wired to the production native shells. Complete artwork
-and server identity, explicit TV focus binding, SSE reconciliation, diagnostics, and real-device
-acceptance remain open.
+controller and authoritative Surf journey wired to the production native shells. Complete artwork,
+explicit TV focus binding, SSE reconciliation, diagnostics, and real-device acceptance remain open.
 
 The first physical P4 pass installed a production arm64 release APK on the 4K Shield and paired it
 to the isolated worktree backend over the deployment model's normal plain-HTTP LAN origin. That pass
@@ -303,8 +302,11 @@ chrome above Guide and Surf. A shared fail-closed config plugin now applies the 
 both native applications, while `WatchingSurface` can hide only its chrome and keep the one native
 player mounted. After repair, the paired credential survived a force-stop/reinstall and the remote
 traversed the empty Watching, Guide, and Surf routes without hidden playback controls entering the
-accessibility tree. This is useful device evidence, not P4 acceptance: the isolated server had no
-playable channels, so first frame, populated focus traversal, tuning, and recovery remain open.
+accessibility tree. An authenticated generated-contract read now identifies the server alongside
+the native application version even in Surf's empty/error states; a remote device-list revocation
+returned the Shield to the explicit disconnected state, and Pair again completed a fresh handshake.
+This is useful device evidence, not P4 acceptance: the isolated server had no playable channels, so
+first frame, populated focus traversal, tuning, and playback recovery remain open.
 
 After adoption, migration uses route/surface ownership rather than two implementations mounted for
 the same user journey. A surface switches only when its replacement passes its full contract. The

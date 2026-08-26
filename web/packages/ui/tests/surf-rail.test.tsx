@@ -3,7 +3,7 @@ import { surfGroups } from "@loomarr/fixtures";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { SurfRail } from "../index";
+import { SurfRail, surfIdentityLabel } from "../index";
 
 const renderRail = (serverVersion?: string) =>
   renderToStaticMarkup(
@@ -34,5 +34,11 @@ describe("SurfRail", () => {
 
   it("states unavailable server identity honestly", () => {
     expect(renderRail()).toContain("Loomarr TV 0.2.0 · Server unavailable");
+  });
+
+  it("keeps the same identity available to empty and error Surf states", () => {
+    expect(surfIdentityLabel("Loomarr TV", "0.2.0", "dev (modified)")).toBe(
+      "Loomarr TV 0.2.0 · Server dev (modified)",
+    );
   });
 });

@@ -38,6 +38,12 @@ export type {
   SurfRailProps,
   SurfSelection,
 } from "./src/surf-rail";
-export { restoreSurfSelection, SurfJourney, SurfRail, surfGroupsFromGuide } from "./src/surf-rail";
+export {
+  restoreSurfSelection,
+  SurfJourney,
+  SurfRail,
+  surfGroupsFromGuide,
+  surfIdentityLabel,
+} from "./src/surf-rail";
 export type { ChannelNumberEntry, WatchingSurfaceProps } from "./src/watching-surface";
 export { WatchingSurface } from "./src/watching-surface";

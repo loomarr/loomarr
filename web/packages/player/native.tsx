@@ -1,5 +1,6 @@
 import type { PairingCredential } from "@loomarr/core/pairing";
 import { createAuthenticatedFetch } from "@loomarr/core/pairing";
+import { createServerVersionSource } from "@loomarr/core/system-version";
 import { createVideoPlayer, type VideoPlayer, VideoView, type VideoViewProps } from "expo-video";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AppState } from "react-native";
@@ -35,6 +36,7 @@ interface PairedNativePlayer {
   controller: PlayerController;
   loadError?: string;
   refresh: () => Promise<void>;
+  serverVersion?: string;
   snapshot: PlayerSnapshot;
   transport: NativePlayerTransport;
 }
@@ -121,12 +123,14 @@ const usePairedNativePlayer = ({
   profile = conservativeDeviceProfile,
 }: PairedNativePlayerOptions): PairedNativePlayer => {
   const [loadError, setLoadError] = useState<string>();
+  const [serverVersion, setServerVersion] = useState<string>();
   const refreshRequest = useRef<AbortController | undefined>(undefined);
   const authenticatedFetch = useMemo(
     () => createAuthenticatedFetch(credential, onRevoked),
     [credential, onRevoked],
   );
   const catalog = useMemo(() => createChannelCatalogPort(authenticatedFetch), [authenticatedFetch]);
+  const version = useMemo(() => createServerVersionSource(authenticatedFetch), [authenticatedFetch]);
   const transport = useMemo(createExpoVideoTransport, []);
   const controller = useMemo(
     () =>
@@ -147,6 +151,11 @@ const usePairedNativePlayer = ({
       const channels = await catalog.list(request.signal);
       setLoadError(undefined);
       await controller.reconcile(channels);
+      try {
+        setServerVersion(await version.load(request.signal));
+      } catch {
+        if (!request.signal.aborted) setServerVersion(undefined);
+      }
     } catch (error) {
       if (!request.signal.aborted) {
         setLoadError(error instanceof Error ? error.message : "Couldn't load channels.");
@@ -154,7 +163,7 @@ const usePairedNativePlayer = ({
     } finally {
       if (refreshRequest.current === request) refreshRequest.current = undefined;
     }
-  }, [catalog, controller]);
+  }, [catalog, controller, version]);
 
   useEffect(() => {
     void refresh();
@@ -173,7 +182,7 @@ const usePairedNativePlayer = ({
     };
   }, [controller, refresh]);
 
-  return { controller, loadError, refresh, snapshot, transport };
+  return { controller, loadError, refresh, serverVersion, snapshot, transport };
 };
 
 const NativePlayerView = ({ style, transport }: NativePlayerViewProps) => (
