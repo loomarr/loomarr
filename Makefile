@@ -263,7 +263,7 @@ go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must
 test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
 	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ ./internal/api/ -v
 
-.PHONY: eval-contract eval eval-cert eval-matrix filler-corpus-archive filler-corpus-cdc filler-corpus-download filler-corpus-lock filler-corpus-loc filler-corpus-nasa filler-corpus-pilot filler-eval-contract filler-eval-cert
+.PHONY: eval-contract eval eval-cert eval-matrix filler-corpus-archive filler-corpus-cdc filler-corpus-commons filler-corpus-download filler-corpus-lock filler-corpus-loc filler-corpus-nasa filler-corpus-pilot filler-eval-contract filler-eval-cert
 eval-contract: ## hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB
 	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/
 
@@ -301,7 +301,24 @@ eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (m
 	  exit "$$status"
 
 filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
-	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./cmd/filler-cert/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/
+	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./cmd/filler-cert/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/
+
+filler-corpus-commons: ## freeze the bounded Commons filler rights-yield pilot lane
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  $(GO) run ./cmd/filler-corpus-commons \
+	    --category "$${LOOMARR_FILLER_CORPUS_COMMONS_CATEGORY:-Advertising videos}" \
+	    --role-hint "$${LOOMARR_FILLER_CORPUS_COMMONS_ROLE_HINT:-commercial}" \
+	    --out "$${LOOMARR_FILLER_CORPUS_COMMONS_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-commons.json}" \
+	    --cache-dir "$${LOOMARR_FILLER_CORPUS_COMMONS_CACHE:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-commons-cache}" \
+	    --user-agent "$$LOOMARR_FILLER_CORPUS_USER_AGENT" \
+	    --max-requests "$${LOOMARR_FILLER_CORPUS_COMMONS_MAX_REQUESTS:-10}" \
+	    --max-pages "$${LOOMARR_FILLER_CORPUS_COMMONS_MAX_PAGES:-5}" \
+	    --max-items 10 \
+	    --max-response-bytes "$${LOOMARR_FILLER_CORPUS_COMMONS_MAX_RESPONSE_BYTES:-33554432}" \
+	    --max-item-bytes "$${LOOMARR_FILLER_CORPUS_COMMONS_MAX_ITEM_BYTES:-536870912}" \
+	    --max-total-bytes "$${LOOMARR_FILLER_CORPUS_COMMONS_MAX_TOTAL_BYTES:-3221225472}" \
+	    --delay "$${LOOMARR_FILLER_CORPUS_COMMONS_DELAY:-250ms}" \
+	    --max-wall-time "$${LOOMARR_FILLER_CORPUS_COMMONS_MAX_WALL_TIME:-2m}"
 
 filler-corpus-cdc: ## freeze the bounded CDC filler rights-yield pilot lane
 	@eval "$$(./scripts/dev-env.sh export)"; \
@@ -355,11 +372,16 @@ filler-corpus-nasa: ## freeze the bounded NASA filler rights-yield pilot lane
 	    --max-wall-time "$${LOOMARR_FILLER_CORPUS_NASA_MAX_WALL_TIME:-2m}"
 
 filler-corpus-pilot: ## lock the qualified metadata-only filler rights-yield pilot
-	@test -n "$$LOOMARR_FILLER_CORPUS_PILOT_DRAFT" || { echo "filler-corpus-pilot: LOOMARR_FILLER_CORPUS_PILOT_DRAFT is required" >&2; exit 2; }; \
+	@test -n "$$LOOMARR_FILLER_CORPUS_PILOT_SNAPSHOT_AT" || { echo "filler-corpus-pilot: LOOMARR_FILLER_CORPUS_PILOT_SNAPSHOT_AT is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_PILOT_LOCKED_AT" || { echo "filler-corpus-pilot: LOOMARR_FILLER_CORPUS_PILOT_LOCKED_AT is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
 	  $(GO) run ./cmd/filler-corpus-pilot \
-	    --in "$$LOOMARR_FILLER_CORPUS_PILOT_DRAFT" \
+	    --lane internal/fillercorpus/corpus/pilot/prelinger.json \
+	    --lane internal/fillercorpus/corpus/pilot/loc.json \
+	    --lane internal/fillercorpus/corpus/pilot/nasa.json \
+	    --lane internal/fillercorpus/corpus/pilot/cdc.json \
+	    --lane internal/fillercorpus/corpus/pilot/commons.json \
+	    --snapshot-at "$$LOOMARR_FILLER_CORPUS_PILOT_SNAPSHOT_AT" \
 	    --locked-at "$$LOOMARR_FILLER_CORPUS_PILOT_LOCKED_AT" \
 	    --out "$${LOOMARR_FILLER_CORPUS_PILOT_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-pilot.json}"
 

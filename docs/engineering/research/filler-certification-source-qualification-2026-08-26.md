@@ -288,6 +288,14 @@ source/creator, deprecated claims, unexplained multi-licensing, embedded music/f
 **Bounded inventory:** 50 rows: 15 commercial/advertising, 8 PSA, 5 station-ID, 17 trailer, and 5
 promo-like candidates. Expect substantial source-chain and role-label attrition.
 
+**Live pilot outcome (2026-08-26): awaiting independent review.** The direct
+`Category:Advertising videos` root exhausted in two continued category/imageinfo requests; one
+batched MediaInfo request then froze ten deterministic candidates. The run used 3 of 10 requests,
+162,981 response bytes, 448,607,902 predicted media bytes, and 1.0 second. It intentionally retains
+YouTube/Vimeo provenance, trademark restrictions, `License review needed` categories, and missing
+P275/P6216/P7482/P170 claims as review evidence rather than treating category membership or a
+licence string as approval.
+
 ## First bounded inventory and go/no-go review
 
 Freeze **155 metadata-only candidates** before implementing another reusable adapter or downloading

@@ -7,6 +7,7 @@ RETIRED=(
   # encodes, full-film relabeling, or dead media. Individually cleared works belong in the static
   # cohort; a dedicated lane/target would recreate the disproven source assumption.
   'filler-corpus-blender|retired: Blender works may enter the reviewed static cohort, but Blender is not a qualified pilot lane'
+  'LOOMARR_FILLER_CORPUS_PILOT_DRAFT|retired: the pilot lock consumes the exact committed lane artifacts directly'
   # Loomarr publishes Linux amd64/arm64 containers and does not support a native Windows server.
   # These names were assurance surfaces for that unsupported target, not product invariants.
   'windows-playout|retired: Loomarr has no supported native Windows server build'

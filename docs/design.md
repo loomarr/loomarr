@@ -3485,7 +3485,8 @@ links; individually cleared Blender works may still enter the direct/static coho
 (`filler-corpus-blender`; `retired-ok`). Each lane records positive request, response-byte,
 predicted-media-byte, and wall-clock ceilings plus actual usage; every candidate freezes its source
 identity, role hints, metadata hash/time, source rights assertions, and one predicted media
-representation. The strict decoder rejects semantic labels and rights decisions because this pilot
+representation; category-traversed sources also freeze their exact discovery path. The strict
+decoder rejects semantic labels and rights decisions because this pilot
 is discovery evidence only. A lane earns an adapter only after an independent reviewer approves at
 least five product-relevant items without lowering the common rights threshold. No compatibility
 format exists: no completed pilot predates this contract, so the unpopulated six-lane shape is
