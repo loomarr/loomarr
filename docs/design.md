@@ -137,6 +137,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   In-memory event bus behind SSE (§7 /v1/events, §8).
 - **`filleradmission`** · 4 importers
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
+- **`fillercorpus`**
+  Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
 - **`fillereval`** · 1 importer
   Owns the hermetic certification contract for filler admission.
 - **`media`** · 3 importers
@@ -3475,6 +3477,16 @@ hashes, selected representation identity/checksums, and predicted bytes before a
 model call. A partial bounded inventory reports exactly what it saw; it never widens the ceiling or
 treats a truncated search response as complete.
 
+Before a new reusable source adapter is built, a source-neutral **rights-yield pilot** locks exactly
+ten metadata-only candidates from each qualified lane: Prelinger, Library of Congress, NASA, CDC,
+Blender, and Wikimedia Commons. Each lane records positive request, response-byte,
+predicted-media-byte, and wall-clock ceilings plus actual usage; every candidate freezes its source
+identity, role hints, metadata hash/time, source rights assertions, and one predicted media
+representation. The strict decoder rejects semantic labels and rights decisions because this pilot
+is discovery evidence only. A lane earns an adapter only after an independent reviewer approves at
+least five product-relevant items without lowering the common rights threshold. No compatibility
+format exists: no completed pilot predates this contract.
+
 A new corpus-source adapter requires a product-relevance review before implementation. The review
 must show useful coverage of the filler roles the certification corpus needs, such as commercials,
 promos, bumpers, station IDs, trailers, and PSAs. Rights clarity, API convenience, and inventory
@@ -5742,6 +5754,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `filler` | Commercials: the clip catalog and seeded pod assembly (§10) |
 | `filleradmission` | Pure evidence-to-`admit \| reject \| review` policy, with conflicts and operational holds kept outside semantic verdicts (§10 V61) |
 | `fillerbakeoff` | Bounded label-blind provider execution, reason-gated cascades, and immutable per-call accounting before hermetic scoring (§10 V61) |
+| `fillercorpus` | Source-neutral, non-authorizing certification inventory and rights-yield pilot contracts (§10 V61) |
 | `fillerdecision` | Durable admission lifecycle, append-only actions, and server-owned review/activity/diagnostic projections (§10 V63) |
 | `fillereval` | Hermetic filler-admission certification: versioned corpus contracts, selective-risk/cost scoring, and captured-decision replay (§10 V61) |
 | `mediatools` | The ffmpeg/ffprobe/whisper layer — exec calls, output parsers, and the shapes those tools return (§10). Carved out of `filler`; the dependency runs one way and nothing here knows what a clip is |

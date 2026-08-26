@@ -255,13 +255,36 @@ func TestProcessTreeLifecycle(t *testing.T) {
 	}
 }
 
+func TestWaitForHelperPIDWaitsForCompletePublication(t *testing.T) {
+	pidFile := filepath.Join(t.TempDir(), "child.pid")
+	if err := os.WriteFile(pidFile, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		time.Sleep(25 * time.Millisecond)
+		done <- os.WriteFile(pidFile, []byte("1234"), 0o600)
+	}()
+	if got := waitForHelperPID(t, pidFile); got != 1234 {
+		t.Fatalf("pid = %d, want 1234", got)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func waitForHelperPID(t *testing.T, pidFile string) int {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		body, err := os.ReadFile(pidFile)
 		if err == nil {
-			pid, parseErr := strconv.Atoi(strings.TrimSpace(string(body)))
+			published := strings.TrimSpace(string(body))
+			if published == "" {
+				time.Sleep(10 * time.Millisecond)
+				continue
+			}
+			pid, parseErr := strconv.Atoi(published)
 			if parseErr != nil {
 				t.Fatalf("parse child pid: %v", parseErr)
 			}
