@@ -618,9 +618,10 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     (number, direction) => ((number - 1 + direction + 100) % 100) + 1,
     current,
   );
-  const beforeBurstFrames = await page.evaluate(
-    () => performance.getEntriesByName("loomarr:tune:request-to-first-frame").length,
-  );
+  const burstStart = await page.evaluate(() => ({
+    frames: performance.getEntriesByName("loomarr:tune:request-to-first-frame").length,
+    started: performance.now(),
+  }));
   await channelUp(page);
   await page.evaluate((remaining) => {
     for (const direction of remaining) {
@@ -633,7 +634,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   await expect(page).toHaveURL(new RegExp(`/channels/${finalId}/watch$`));
   await page.waitForFunction(
     (count) => performance.getEntriesByName("loomarr:tune:request-to-first-frame").length > count,
-    beforeBurstFrames,
+    burstStart.frames,
   );
   const burst = await page.evaluate((count) => {
     const frames = performance.getEntriesByName(
@@ -649,9 +650,10 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
       finalAttempt: (frames.at(-1)?.detail as { attemptId?: number } | undefined)?.attemptId,
       latestAttempt: Math.max(...requestIds),
     };
-  }, beforeBurstFrames);
+  }, burstStart.frames);
   expect(burst).toMatchObject({ addedFrames: 1, finalAttempt: burst.latestAttempt });
+  await waitForTargetPlaying(page, finalId, burstStart.started);
   await expect(page.locator("video")).toHaveCount(1);
   await expect(page.getByRole("heading", { name: `Watch Channel ${expected}` })).toBeVisible();
-  expect(backend.state.activeManifests.at(-1)).toBe(finalId);
+  await expect.poll(() => backend.state.activeManifests.at(-1)).toBe(finalId);
 });
