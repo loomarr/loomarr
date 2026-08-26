@@ -38,7 +38,7 @@ const GuideWorkshop = ({ density = "touch" }: { density?: "touch" | "tv" }) => {
 };
 
 const meta = {
-  title: "Loomarr/Guide Surface",
+  title: "Loomarr Components/Guide Surface",
   component: GuideWorkshop,
 } satisfies Meta<typeof GuideWorkshop>;
 

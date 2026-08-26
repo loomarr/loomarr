@@ -2,7 +2,7 @@ import { ClientShell } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-native";
 
 const meta = {
-  title: "Loomarr/Client Shell",
+  title: "Loomarr Components/Client Shell",
   component: ClientShell,
   args: {
     active: "guide",

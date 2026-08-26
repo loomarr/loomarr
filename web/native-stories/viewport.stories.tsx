@@ -17,7 +17,7 @@ const NativeViewport = ({ density, insets }: { density: "touch" | "tv"; insets?:
 );
 
 const meta = {
-  title: "Loomarr/Viewport and Safe Areas",
+  title: "Loomarr Foundations/Viewport and Safe Areas",
   component: NativeViewport,
   args: { density: "touch" },
 } satisfies Meta<typeof NativeViewport>;

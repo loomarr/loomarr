@@ -2,7 +2,7 @@ import { BrandLaunch } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-native";
 
 const meta = {
-  title: "Loomarr/Brand Launch",
+  title: "Loomarr Foundations/Brand Launch",
   component: BrandLaunch,
   args: { density: "touch", reducedMotion: false },
 } satisfies Meta<typeof BrandLaunch>;

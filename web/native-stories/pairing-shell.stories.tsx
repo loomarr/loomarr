@@ -49,7 +49,7 @@ const PairingStory = ({ density }: { density: "touch" | "tv" }) => {
 };
 
 const meta = {
-  title: "Loomarr/Pairing Shell",
+  title: "Loomarr Components/Pairing Shell",
   component: PairingStory,
   args: { density: "touch" },
 } satisfies Meta<typeof PairingStory>;

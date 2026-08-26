@@ -17,7 +17,7 @@ const Artwork = () => (
 );
 
 const meta = {
-  title: "Loomarr/Programme Card",
+  title: "Loomarr Components/Programme Card",
   component: ProgrammeCard,
   args: { artwork: <Artwork />, density: "touch", focused: false, programme: classicEpisode },
 } satisfies Meta<typeof ProgrammeCard>;

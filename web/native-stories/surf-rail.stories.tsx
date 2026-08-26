@@ -22,7 +22,7 @@ const SurfWorkshop = ({ density = "touch" }: { density?: "touch" | "tv" }) => {
 };
 
 const meta = {
-  title: "Loomarr/Surf Rail",
+  title: "Loomarr Components/Surf Rail",
   component: SurfWorkshop,
 } satisfies Meta<typeof SurfWorkshop>;
 

@@ -2,7 +2,7 @@ import { StatePanel } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-native";
 
 const meta = {
-  title: "Loomarr/Feedback and Recovery",
+  title: "Loomarr Components/Feedback and Recovery",
   component: StatePanel,
   args: {
     density: "touch",

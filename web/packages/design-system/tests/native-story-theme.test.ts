@@ -25,4 +25,11 @@ describe("native Storybook theme contract", () => {
       /globals:\s*\{\s*theme:\s*"light"\s*\}/,
     );
   });
+
+  it.each(storyFiles)("%s stays grouped by purpose", (name) => {
+    const source = readFileSync(`${nativeStories}/${name}`, "utf8");
+    expect(source, `${name} needs the same browsable grouping as the web workshop`).toMatch(
+      /title:\s*"Loomarr (?:Foundations|Components)\//,
+    );
+  });
 });

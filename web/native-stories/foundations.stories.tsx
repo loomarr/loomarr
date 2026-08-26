@@ -42,7 +42,7 @@ const Foundations = ({
 );
 
 const meta = {
-  title: "Loomarr/Foundations",
+  title: "Loomarr Foundations/Overview",
   component: Foundations,
   args: { density: "touch", reducedMotion: false },
 } satisfies Meta<typeof Foundations>;

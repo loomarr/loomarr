@@ -41,7 +41,7 @@ const NativeLayoutWorkshop = ({ density = "touch" }: { density?: "touch" | "tv" 
 };
 
 const meta = {
-  title: "Loomarr/Layout",
+  title: "Loomarr Foundations/Layout",
   component: NativeLayoutWorkshop,
   args: { density: "touch" },
 } satisfies Meta<typeof NativeLayoutWorkshop>;

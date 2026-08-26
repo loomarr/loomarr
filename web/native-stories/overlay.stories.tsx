@@ -45,7 +45,7 @@ const NativeOverlayWorkshop = ({
 };
 
 const meta = {
-  title: "Loomarr/Overlay",
+  title: "Loomarr Components/Overlay",
   component: NativeOverlayWorkshop,
   args: { density: "touch", kind: "transient" },
 } satisfies Meta<typeof NativeOverlayWorkshop>;

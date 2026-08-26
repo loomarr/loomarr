@@ -2,7 +2,7 @@ import { GuideExperience } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-native";
 
 const meta = {
-  title: "Loomarr/Guide Experience",
+  title: "Loomarr Components/Guide Experience",
   component: GuideExperience,
   args: { density: "touch", onRetry: () => undefined, state: "loading" },
 } satisfies Meta<typeof GuideExperience>;

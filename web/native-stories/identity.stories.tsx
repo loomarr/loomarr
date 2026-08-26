@@ -28,7 +28,7 @@ const NativeIdentityWorkshop = ({ density = "touch" }: { density?: "touch" | "tv
 );
 
 const meta = {
-  title: "Loomarr/Media Identity",
+  title: "Loomarr Components/Media Identity",
   component: NativeIdentityWorkshop,
   args: { density: "touch" },
 } satisfies Meta<typeof NativeIdentityWorkshop>;

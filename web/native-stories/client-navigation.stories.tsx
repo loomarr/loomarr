@@ -18,7 +18,7 @@ const NativeNavigationWorkshop = ({ density = "touch" }: { density?: "touch" | "
 };
 
 const meta = {
-  title: "Loomarr/Client Navigation",
+  title: "Loomarr Components/Client Navigation",
   component: NativeNavigationWorkshop,
   args: { density: "touch" },
 } satisfies Meta<typeof NativeNavigationWorkshop>;

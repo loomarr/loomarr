@@ -50,7 +50,7 @@ const SelectionWorkshop = ({ density = "touch" }: { density?: "touch" | "tv" }) 
 };
 
 const meta = {
-  title: "Loomarr/Selection",
+  title: "Loomarr Foundations/Selection",
   component: SelectionWorkshop,
 } satisfies Meta<typeof SelectionWorkshop>;
 

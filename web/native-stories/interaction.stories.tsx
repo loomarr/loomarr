@@ -44,7 +44,7 @@ const NativeInteractionWorkshop = ({ density = "touch" }: { density?: "touch" | 
 };
 
 const meta = {
-  title: "Loomarr/Interaction",
+  title: "Loomarr Foundations/Interaction",
   component: NativeInteractionWorkshop,
   args: { density: "touch" },
 } satisfies Meta<typeof NativeInteractionWorkshop>;
