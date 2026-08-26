@@ -263,7 +263,7 @@ go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must
 test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
 	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ ./internal/api/ -v
 
-.PHONY: eval-contract eval eval-cert eval-matrix filler-bakeoff-openrouter filler-corpus-archive filler-corpus-cdc filler-corpus-commons filler-corpus-download filler-corpus-inventory filler-corpus-lock filler-corpus-loc filler-corpus-nasa filler-corpus-pilot filler-corpus-pilot-rights-lock filler-corpus-pilot-rights-review filler-eval-contract filler-eval-cert filler-openrouter-snapshot
+.PHONY: eval-contract eval eval-cert eval-matrix filler-bakeoff-openrouter filler-corpus-archive filler-corpus-cdc filler-corpus-commons filler-corpus-direct filler-corpus-download filler-corpus-inventory filler-corpus-lock filler-corpus-loc filler-corpus-nasa filler-corpus-pilot filler-corpus-pilot-rights-lock filler-corpus-pilot-rights-review filler-eval-contract filler-eval-cert filler-openrouter-snapshot
 eval-contract: ## hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB
 	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/
 
@@ -301,7 +301,7 @@ eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (m
 	  exit "$$status"
 
 filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
-	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/
+	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-direct/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/
 
 filler-corpus-commons: ## freeze bounded Commons pilot and full-inventory artifacts
 	@eval "$$(./scripts/dev-env.sh export)"; \
@@ -438,6 +438,21 @@ filler-corpus-inventory: ## combine strict source inventories for mixed-authorit
 	  for path in $$LOOMARR_FILLER_CORPUS_INVENTORIES; do set -- "$$@" --inventory "$$path"; done; \
 	  $(GO) run ./cmd/filler-corpus-inventory "$$@" \
 	    --out "$${LOOMARR_FILLER_CORPUS_INVENTORY:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-inventory.json}"
+
+filler-corpus-direct: ## freeze an authored local cohort with rights and provenance evidence
+	@test -n "$$LOOMARR_FILLER_CORPUS_DIRECT_MANIFEST" || { echo "filler-corpus-direct: LOOMARR_FILLER_CORPUS_DIRECT_MANIFEST is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_DIRECT_ROOT" || { echo "filler-corpus-direct: LOOMARR_FILLER_CORPUS_DIRECT_ROOT is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_DIRECT_SNAPSHOT_AT" || { echo "filler-corpus-direct: LOOMARR_FILLER_CORPUS_DIRECT_SNAPSHOT_AT is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_DIRECT_MAX_BYTES" || { echo "filler-corpus-direct: LOOMARR_FILLER_CORPUS_DIRECT_MAX_BYTES is required" >&2; exit 2; }; \
+	  eval "$$(./scripts/dev-env.sh export)"; \
+	  $(GO) run ./cmd/filler-corpus-direct \
+	    --manifest "$$LOOMARR_FILLER_CORPUS_DIRECT_MANIFEST" \
+	    --root "$$LOOMARR_FILLER_CORPUS_DIRECT_ROOT" \
+	    --out "$${LOOMARR_FILLER_CORPUS_DIRECT_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-direct.json}" \
+	    --snapshot-at "$$LOOMARR_FILLER_CORPUS_DIRECT_SNAPSHOT_AT" \
+	    --max-items "$${LOOMARR_FILLER_CORPUS_DIRECT_MAX_ITEMS:-100}" \
+	    --max-bytes "$$LOOMARR_FILLER_CORPUS_DIRECT_MAX_BYTES" \
+	    --max-wall-time "$${LOOMARR_FILLER_CORPUS_DIRECT_MAX_WALL_TIME:-1m}"
 
 filler-corpus-download: ## download only rights-approved corpus media under hard ceilings
 	@eval "$$(./scripts/dev-env.sh export)"; \

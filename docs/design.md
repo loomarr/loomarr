@@ -3538,6 +3538,17 @@ adapter still consumes authored first-party page/media pairs and therefore canno
 cases to meet a quota. Multiple role-specific captures combine only through the strict inventory
 combiner, never by concatenating JSON or discarding their individual ceilings.
 
+The 100-case direct/static cohort is an authored local capture, not a source adapter and not a
+licence shortcut. Its manifest must contain exactly 20 commercials, 20 promos, 25 bumpers, 25
+station IDs, 5 trailers, and 5 PSAs. Every case names a non-empty regular media file plus separate
+rights and provenance evidence files beneath one declared root. `filler-corpus-direct` resolves
+symlinks, rejects root escapes and quota drift, streams SHA-256 over every file under aggregate byte
+and wall-time ceilings, and emits local transport records into the same strict schema-v2 inventory.
+It never creates media, infers a grant from a directory or collection, or turns authored assertions
+into approval. The combined public-plus-direct inventory still goes through one independent rights
+review; local media is already acquired and is therefore skipped by the network downloader. No
+pre-v2 or direct-manifest compatibility reader exists because no certified artifact consumes one.
+
 Media acquisition consumes a separate rights-review ledger; discovery output is never download
 authority. Every `approved` row binds the inventory digest, authority-qualified case ID, source
 metadata hash, reviewer, review time, rationale, redistribution decision, attribution, and
