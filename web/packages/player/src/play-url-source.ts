@@ -1,0 +1,56 @@
+import { getChannelPlayUrlUrl, getListChannelsUrl } from "@loomarr/api/endpoints/channels";
+import type { ListChannelsOutputBody } from "@loomarr/api/models/listChannelsOutputBody";
+import type { PlayURLOutputBody } from "@loomarr/api/models/playURLOutputBody";
+import type { PlayerChannel, PlayerSourcePort } from "./player-controller";
+
+interface PlayUrlSourceOptions {
+  baseUrl: string;
+  fetch: typeof globalThis.fetch;
+}
+
+interface ChannelCatalogPort {
+  list: (signal: AbortSignal) => Promise<readonly PlayerChannel[]>;
+}
+
+const resolveStreamUrl = (baseUrl: string, response: Pick<PlayURLOutputBody, "relativeUrl" | "url">) => {
+  if (response.relativeUrl.trim()) {
+    return `${baseUrl.replace(/\/+$/, "")}/${response.relativeUrl.replace(/^\/+/, "")}`;
+  }
+  if (response.url.trim()) return response.url;
+  throw new Error("This Loomarr returned no stream address for the channel.");
+};
+
+const createPlayUrlSourcePort = ({ baseUrl, fetch: request }: PlayUrlSourceOptions): PlayerSourcePort => ({
+  mint: async (channel, profile, signal) => {
+    const response = await request(getChannelPlayUrlUrl(channel.id), {
+      body: JSON.stringify(profile),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+      signal,
+    });
+    if (!response.ok) throw new Error(`Couldn't mint a play URL (${response.status}).`);
+    const body = (await response.json()) as PlayURLOutputBody;
+    const expiry = Date.parse(body.expiresAt);
+    return {
+      expiresAt: Number.isFinite(expiry) ? expiry : undefined,
+      uri: resolveStreamUrl(baseUrl, body),
+    };
+  },
+});
+
+const createChannelCatalogPort = (request: typeof globalThis.fetch): ChannelCatalogPort => ({
+  list: async (signal) => {
+    const response = await request(getListChannelsUrl(), { method: "GET", signal });
+    if (!response.ok) throw new Error(`Couldn't load channels (${response.status}).`);
+    const body = (await response.json()) as ListChannelsOutputBody;
+    return body.channels.map(({ id, inAppPlayable, name, number }) => ({
+      id,
+      inAppPlayable,
+      name,
+      number,
+    }));
+  },
+});
+
+export type { ChannelCatalogPort, PlayUrlSourceOptions };
+export { createChannelCatalogPort, createPlayUrlSourcePort, resolveStreamUrl };

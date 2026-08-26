@@ -6,13 +6,14 @@ import {
   validatePairingCredential,
 } from "@loomarr/core/pairing";
 import { LoomarrProvider } from "@loomarr/design-system";
+import { NativePlayerView, usePairedNativePlayer } from "@loomarr/player/native";
 import type { ClientDestination } from "@loomarr/ui";
-import { ClientShell, clientBackDestination, PairingShell } from "@loomarr/ui";
+import { ClientShell, clientBackDestination, PairingShell, WatchingSurface } from "@loomarr/ui";
 import { useKeepAwake } from "expo-keep-awake";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useState } from "react";
-import { BackHandler } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { BackHandler, useTVEventHandler } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 
 const credentialStore = createPairingCredentialStore({
@@ -20,6 +21,41 @@ const credentialStore = createPairingCredentialStore({
   getItem: SecureStore.getItemAsync,
   setItem: SecureStore.setItemAsync,
 });
+
+const TvWatching = ({
+  credential,
+  onNavigate,
+  session,
+}: {
+  credential: PairingCredential;
+  onNavigate: (destination: ClientDestination) => void;
+  session: PairingSession;
+}) => {
+  const onRevoked = useCallback(() => session.revoked(), [session]);
+  const { controller, loadError, refresh, snapshot, transport } = usePairedNativePlayer({
+    credential,
+    onRevoked,
+  });
+  useTVEventHandler(({ eventType }) => {
+    if (eventType === "up" || eventType === "channelUp") void controller.step(1);
+    else if (eventType === "down" || eventType === "channelDown") void controller.step(-1);
+    else if (eventType === "left" || eventType === "menu") onNavigate("surf");
+  });
+  return (
+    <WatchingSurface
+      density="tv"
+      loadError={loadError}
+      onChannelDown={() => void controller.step(-1)}
+      onChannelUp={() => void controller.step(1)}
+      onOpenGuide={() => onNavigate("guide")}
+      onOpenSurf={() => onNavigate("surf")}
+      onPrevious={() => void controller.previous()}
+      onRetry={() => void (loadError ? refresh() : controller.retry())}
+      player={<NativePlayerView style={{ flex: 1 }} transport={transport} />}
+      snapshot={snapshot}
+    />
+  );
+};
 
 const TvShell = ({ credential, session }: { credential: PairingCredential; session: PairingSession }) => {
   const [active, setActive] = useState<ClientDestination>("watching");
@@ -32,7 +68,9 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     });
     return () => subscription.remove();
   }, [active]);
-  return (
+  return active === "watching" ? (
+    <TvWatching credential={credential} onNavigate={setActive} session={session} />
+  ) : (
     <ClientShell
       active={active}
       density="tv"

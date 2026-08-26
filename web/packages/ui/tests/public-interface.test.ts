@@ -15,6 +15,7 @@ import {
   StatePanel,
   SurfRail,
   TransientOverlay,
+  WatchingSurface,
 } from "../index";
 
 describe("ui public interface", () => {
@@ -33,5 +34,6 @@ describe("ui public interface", () => {
     expect(TransientOverlay).toBeTypeOf("function");
     expect(StatePanel).toBeTypeOf("function");
     expect(SurfRail).toBeTypeOf("function");
+    expect(WatchingSurface).toBeTypeOf("function");
   });
 });

@@ -1,6 +1,6 @@
 # Shared client platform migration
 
-**Status:** P0a through P3 merged; P3.5 shared-UI completeness gate is in progress
+**Status:** P0a through P3 merged; P3.5 iPhone evidence pending; dependent P4 implementation started
 **Date:** 2026-08-23  
 **Decision owner:** maintainer  
 **Companion contract:** [`docs/frontend-design.md`](../../frontend-design.md)
@@ -285,6 +285,11 @@ the adoption gate.
 Before P5 adoption, reverting a phase removes only the new workspace applications and shared
 packages. The Go embed, current web assets, Compose app, Play identity, and paired-device records
 remain untouched.
+
+P4 begins on a dependency-stacked branch while P3.5 waits for its real-iPhone workshop. That permits
+interface and adapter work to proceed, but does not waive the P3.5 evidence or allow P4 to be marked
+complete, adopted, or merged ahead of its dependency. Its first commit adds the Loomarr-owned player
+interface and tests; a later commit adds the selected native adapter and production Watching journey.
 
 After adoption, migration uses route/surface ownership rather than two implementations mounted for
 the same user journey. A surface switches only when its replacement passes its full contract. The

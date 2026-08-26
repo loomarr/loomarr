@@ -5,11 +5,12 @@ import {
   PairingSession,
   validatePairingCredential,
 } from "@loomarr/core/pairing";
+import { NativePlayerView, usePairedNativePlayer } from "@loomarr/player/native";
 import type { ClientDestination } from "@loomarr/ui";
-import { ClientShell, clientBackDestination, PairingShell } from "@loomarr/ui";
+import { ClientShell, clientBackDestination, PairingShell, WatchingSurface } from "@loomarr/ui";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { BackHandler, Platform } from "react-native";
 
 const credentialStore = createPairingCredentialStore({
@@ -17,6 +18,36 @@ const credentialStore = createPairingCredentialStore({
   getItem: SecureStore.getItemAsync,
   setItem: SecureStore.setItemAsync,
 });
+
+const MobileWatching = ({
+  credential,
+  onNavigate,
+  session,
+}: {
+  credential: PairingCredential;
+  onNavigate: (destination: ClientDestination) => void;
+  session: PairingSession;
+}) => {
+  const onRevoked = useCallback(() => session.revoked(), [session]);
+  const { controller, loadError, refresh, snapshot, transport } = usePairedNativePlayer({
+    credential,
+    onRevoked,
+  });
+  return (
+    <WatchingSurface
+      density="touch"
+      loadError={loadError}
+      onChannelDown={() => void controller.step(-1)}
+      onChannelUp={() => void controller.step(1)}
+      onOpenGuide={() => onNavigate("guide")}
+      onOpenSurf={() => onNavigate("surf")}
+      onPrevious={() => void controller.previous()}
+      onRetry={() => void (loadError ? refresh() : controller.retry())}
+      player={<NativePlayerView style={{ flex: 1 }} transport={transport} />}
+      snapshot={snapshot}
+    />
+  );
+};
 
 const MobileShell = ({ credential, session }: { credential: PairingCredential; session: PairingSession }) => {
   const [active, setActive] = useState<ClientDestination>("guide");
@@ -29,7 +60,9 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
     });
     return () => subscription.remove();
   }, [active]);
-  return (
+  return active === "watching" ? (
+    <MobileWatching credential={credential} onNavigate={setActive} session={session} />
+  ) : (
     <ClientShell
       active={active}
       density="touch"

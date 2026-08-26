@@ -1,0 +1,41 @@
+{
+  "name": "@loomarr/player",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared Loomarr tuning and playback policy behind platform transport adapters.",
+  "exports": {
+    ".": "./index.ts",
+    "./native": "./native.tsx",
+    "./server": "./server.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@loomarr/api": "workspace:*",
+    "@loomarr/core": "workspace:*"
+  },
+  "devDependencies": {
+    "expo": "~57.0.16",
+    "expo-video": "~57.0.2",
+    "react": "19.2.3",
+    "react-native": "npm:react-native-tvos@0.86.2-0",
+    "typescript": "~6.0.3",
+    "vitest": "^4.1.10"
+  },
+  "peerDependencies": {
+    "expo-video": "~57.0.2",
+    "react": ">=19 <20",
+    "react-native": ">=0.86 <0.87"
+  },
+  "peerDependenciesMeta": {
+    "expo-video": {
+      "optional": true
+    },
+    "react-native": {
+      "optional": true
+    }
+  }
+}

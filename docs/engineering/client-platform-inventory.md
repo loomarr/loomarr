@@ -119,9 +119,12 @@ adapted, not deleted with Compose.
 - The iPhone and iPad composites are not a complete mobile application specification. Setup,
   authentication, error recovery, accessibility, portrait/landscape, and safe-area behavior come
   from the product contract and platform evidence.
-- The current Compose player uses Media3 directly. The React Native native-player adapter is not yet
-  selected; P0b must compare maintained native HLS adapters against Loomarr's signed-URL, live-edge,
-  track, lifecycle, TV-key, and store-build requirements before adding one.
+- The current Compose player uses Media3 directly. The React Native adapter is now selected as Expo
+  SDK 57's `expo-video`, private to `@loomarr/player/native`: it supplies Media3/AVPlayer source and
+  view mechanics while Loomarr retains signed-URL, latest-request-wins, live-edge, overlay, history,
+  diagnostics, and lifecycle policy. Background playback and Picture in Picture stay disabled, and
+  pause/release plus real-device background traversal are mandatory because SDK 57 has a reported
+  audio-after-unmount regression.
 - Tamagui's compiler and TV behavior are evidence questions. Runtime-only Tamagui is the baseline;
   compiler adoption and full migration wait for the recorded P5 gate.
 
