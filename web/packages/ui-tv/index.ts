@@ -1,3 +1,4 @@
+export { createTvGuideFocusRegistry, createTvSurfFocusRegistry, TvFocusRegistry } from "./src/focus-registry";
 export type {
   TvGuideActivation,
   TvGuideFilterOption,

@@ -112,6 +112,35 @@ describe("GuideSurface", () => {
     expect(output).toContain("2 channels · 2 of 2");
   });
 
+  it("selects one airing when schedule block identities repeat across channels", () => {
+    const duplicate = {
+      ...layout.channels[0]!,
+      airings: layout.channels[0]!.airings.map((airing) => ({
+        ...airing,
+        channelId: "shelbyville",
+      })),
+      source: {
+        ...layout.channels[0]!.source,
+        channelId: "shelbyville",
+        name: "Shelbyville Classics",
+        number: 2,
+      },
+    };
+    const output = renderToStaticMarkup(
+      <LoomarrProvider>
+        <GuideSurface
+          density="tv"
+          layout={{ ...layout, channels: [...layout.channels, duplicate] }}
+          onSelectionChange={vi.fn()}
+          selection={selection}
+        />
+      </LoomarrProvider>,
+    );
+
+    // The selected All filter and exactly one airing advertise selected state.
+    expect(output.match(/aria-pressed="true"/g)).toHaveLength(2);
+  });
+
   it.each([
     ["loading", "Loading channels"],
     ["empty", "No channels on air"],

@@ -300,8 +300,11 @@ Guide, reconnects after transient closure, closes in the background, and fails c
 pairing revocation path on 401/403. The bounded generated-contract diagnostics reporter now lives
 in `core` for web/native reuse, and Android TV reports only the server-approved attached, source
 replacement, first-frame, media-error, and detached playback observations; decoder prose and other
-arbitrary client data never cross the boundary. Explicit native focus-ref binding, mobile-client
-diagnostic admission, populated artwork evidence, and real-device acceptance remain open.
+arbitrary client data never cross the boundary. Guide and Surf now pass stable product identities
+through a platform-neutral focus registry; the TV adapter binds those identities to native refs,
+queues restoration until bounded rows mount, and keeps React Native focus mechanics out of shared
+selection rules. Populated-device focus proof, mobile-client diagnostic admission, populated artwork
+evidence, and real-device acceptance remain open.
 
 The first physical P4 pass installed a production arm64 release APK on the 4K Shield and paired it
 to the isolated worktree backend over the deployment model's normal plain-HTTP LAN origin. That pass

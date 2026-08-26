@@ -1,5 +1,6 @@
 import type { ArtworkState, Density } from "@loomarr/design-system";
 import type { ReactNode } from "react";
+import type { FocusTargetRegistry } from "../focus-target";
 
 import type { ChannelIdentityData, ProgrammeIdentityData } from "../identity";
 
@@ -33,6 +34,7 @@ interface SurfRailProps {
   clientName?: string;
   clientVersion: string;
   density?: Density;
+  focusRegistry?: FocusTargetRegistry<SurfSelection>;
   groups: readonly SurfGroupData[];
   onFocusSelection: (selection: SurfSelection) => void;
   onTune: (channelId: string) => void;

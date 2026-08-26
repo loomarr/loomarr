@@ -57,6 +57,7 @@ const GuideSurface = ({
   density = "pointer",
   filter = "all",
   filters = defaultFilters,
+  focusRegistry,
   layout,
   onFilterChange,
   onSelectionChange,
@@ -87,19 +88,26 @@ const GuideSurface = ({
   const grid = (
     <Surface gap="$inline" overflow="hidden" padding="$control" width="100%">
       <View accessibilityLabel="Guide filters" role="toolbar" style={{ flexDirection: "row", gap: 8 }}>
-        {filters.map((option) => (
-          <Action
-            accessibilityLabel={`${option.label} channels`}
-            density={density}
-            disabled={option.disabled}
-            key={option.value}
-            onPress={() => onFilterChange?.(option.value)}
-            selected={filter === option.value}
-            tone="secondary"
-          >
-            {option.label}
-          </Action>
-        ))}
+        {filters.map((option) => {
+          const target = { filter: option.value, kind: "filter" as const };
+          return (
+            <Action
+              accessibilityLabel={`${option.label} channels`}
+              density={density}
+              disabled={option.disabled}
+              hasTVPreferredFocus={
+                density === "tv" && filter === option.value && layout.channels.length === 0
+              }
+              key={option.value}
+              onPress={() => onFilterChange?.(option.value)}
+              ref={(handle) => focusRegistry?.register(target, handle)}
+              selected={filter === option.value}
+              tone="secondary"
+            >
+              {option.label}
+            </Action>
+          );
+        })}
       </View>
 
       <ScrollView
@@ -148,8 +156,16 @@ const GuideSurface = ({
                   </View>
                   <View style={{ flex: 1, minWidth: 0, position: "relative" }}>
                     {channel.airings.map((airing) => {
-                      const selected = airing.scheduleBlockId === selection.scheduleBlockId;
+                      const selected =
+                        channel.source.channelId === selection.channelId &&
+                        airing.scheduleBlockId === selection.scheduleBlockId;
                       const label = guideAiringLabel(airing.source);
+                      const next = {
+                        anchorMs: airing.source.startMs + (airing.source.stopMs - airing.source.startMs) / 2,
+                        channelId: channel.source.channelId,
+                        scheduleBlockId: airing.scheduleBlockId,
+                      };
+                      const target = { kind: "airing" as const, selection: next };
                       return (
                         <Action
                           accessibilityLabel={`${channel.source.name}, ${label}, ${formatGuideTimeRange(
@@ -158,25 +174,14 @@ const GuideSurface = ({
                             layout.timezone,
                           )}`}
                           density={density}
+                          hasTVPreferredFocus={density === "tv" && selected}
                           key={airing.scheduleBlockId}
-                          onFocus={() =>
-                            onSelectionChange({
-                              anchorMs:
-                                airing.source.startMs + (airing.source.stopMs - airing.source.startMs) / 2,
-                              channelId: channel.source.channelId,
-                              scheduleBlockId: airing.scheduleBlockId,
-                            })
-                          }
+                          onFocus={() => onSelectionChange(next)}
                           onPress={() => {
-                            const next = {
-                              anchorMs:
-                                airing.source.startMs + (airing.source.stopMs - airing.source.startMs) / 2,
-                              channelId: channel.source.channelId,
-                              scheduleBlockId: airing.scheduleBlockId,
-                            };
                             onSelectionChange(next);
                             onTune?.(next);
                           }}
+                          ref={(handle) => focusRegistry?.register(target, handle)}
                           selected={selected}
                           style={{
                             height: rowHeight - 4,

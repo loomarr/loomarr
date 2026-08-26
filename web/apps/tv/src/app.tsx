@@ -22,7 +22,13 @@ import {
   WatchingSurface,
   watchingScheduleFromGuide,
 } from "@loomarr/ui";
-import { createTvNumberEntryController, restoreTvSurfSelection, tvGuideRowWindow } from "@loomarr/ui-tv";
+import {
+  createTvGuideFocusRegistry,
+  createTvNumberEntryController,
+  createTvSurfFocusRegistry,
+  restoreTvSurfSelection,
+  tvGuideRowWindow,
+} from "@loomarr/ui-tv";
 import { useKeepAwake } from "expo-keep-awake";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
@@ -116,6 +122,8 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     () => createGuideController({ source: createGuideSourcePort(authenticatedFetch) }),
     [authenticatedFetch],
   );
+  const guideFocusRegistry = useMemo(createTvGuideFocusRegistry, []);
+  const surfFocusRegistry = useMemo(createTvSurfFocusRegistry, []);
   const diagnostics = useMemo(() => {
     if (Platform.OS !== "android") return undefined;
     let reporter: ClientDiagnosticsReporter;
@@ -167,6 +175,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
             }
             controller={guide}
             density="tv"
+            focusRegistry={guideFocusRegistry}
             onTune={(channelId) => {
               void player.controller.tuneChannel(channelId);
               setActive("watching");
@@ -210,6 +219,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
               controller={guide}
               currentChannelId={player.snapshot.channel?.id}
               density="tv"
+              focusRegistry={surfFocusRegistry}
               onTune={(channelId) => {
                 void player.controller.tuneChannel(channelId);
                 setActive("watching");

@@ -31,6 +31,7 @@ const SurfRail = ({
   clientName = "Loomarr",
   clientVersion,
   density = "pointer",
+  focusRegistry,
   groups,
   onFocusSelection,
   onTune,
@@ -134,9 +135,13 @@ const SurfRail = ({
                   <Action
                     accessibilityLabel={`${group.label}, channel ${channel.channelNumber}, ${channel.channelName}`}
                     density={density}
+                    hasTVPreferredFocus={density === "tv" && selected}
                     key={`${group.kind}-${channel.id}`}
                     onFocus={() => onFocusSelection({ channelId: channel.id, group: group.kind })}
                     onPress={() => onTune(channel.id)}
+                    ref={(handle) =>
+                      focusRegistry?.register({ channelId: channel.id, group: group.kind }, handle)
+                    }
                     selected={selected}
                     tone={selected ? "primary" : "secondary"}
                   >

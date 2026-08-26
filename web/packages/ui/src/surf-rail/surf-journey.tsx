@@ -2,6 +2,7 @@ import type { GuideController } from "@loomarr/core/guide";
 import type { Density } from "@loomarr/design-system";
 import { Surface } from "@loomarr/design-system";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import type { FocusTargetRegistry } from "../focus-target";
 import { StatePanel } from "../state-panel";
 import { restoreSurfSelection, surfGroupsFromGuide } from "./surf-data";
 import { SurfRail, surfIdentityLabel } from "./surf-rail";
@@ -13,6 +14,7 @@ interface SurfJourneyProps {
   controller: GuideController;
   currentChannelId?: string;
   density: Density;
+  focusRegistry?: FocusTargetRegistry<SurfSelection>;
   now?: () => number;
   onTune: (channelId: string) => void;
   playableChannelIds: readonly string[];
@@ -32,6 +34,7 @@ const SurfJourney = ({
   controller,
   currentChannelId,
   density,
+  focusRegistry,
   now = Date.now,
   onTune,
   playableChannelIds,
@@ -60,6 +63,12 @@ const SurfJourney = ({
   const resolvedSelection = requestedSelection
     ? restoreSelection(groups, requestedSelection)
     : restoreSurfSelection(groups);
+  const resolvedChannelId = resolvedSelection?.channelId;
+  const resolvedGroup = resolvedSelection?.group;
+  useEffect(() => {
+    if (!resolvedChannelId || !resolvedGroup) return;
+    focusRegistry?.request({ channelId: resolvedChannelId, group: resolvedGroup });
+  }, [focusRegistry, resolvedChannelId, resolvedGroup]);
 
   if (snapshot.status !== "ready" || !resolvedSelection) {
     const kind = snapshot.status === "error" ? "error" : snapshot.status === "empty" ? "empty" : "loading";
@@ -99,6 +108,7 @@ const SurfJourney = ({
       clientName={clientName}
       clientVersion={clientVersion}
       density={density}
+      focusRegistry={focusRegistry}
       groups={groups}
       onFocusSelection={setSelection}
       onTune={onTune}
