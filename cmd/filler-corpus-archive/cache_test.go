@@ -6,7 +6,7 @@ import (
 )
 
 func TestSearchCacheIdentityChangesWithQuery(t *testing.T) {
-	first, err := archiveSearchURL(defaultBaseURL, "classic_tv_commercials")
+	first, err := archiveSearchURL(defaultBaseURL, "classic_tv_commercials", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -15,5 +15,15 @@ func TestSearchCacheIdentityChangesWithQuery(t *testing.T) {
 	secondKey := sha256Hex([]byte(second))[:16]
 	if firstKey == secondKey {
 		t.Fatal("different source queries shared a cache identity")
+	}
+}
+
+func TestArchiveSearchURLAddsEncodedRoleConstraint(t *testing.T) {
+	raw, err := archiveSearchURL(defaultBaseURL, "prelinger", "title:commercial OR subject:advertising")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(raw, "title%3Acommercial") || !strings.Contains(raw, "subject%3Aadvertising") {
+		t.Fatalf("search URL = %s", raw)
 	}
 }

@@ -54,6 +54,24 @@ func TestMetadataFieldsAcceptArchiveStringOrArrayShapes(t *testing.T) {
 	}
 }
 
+func TestPrelingerPilotLaneCarriesBoundedNonAuthorizingEvidence(t *testing.T) {
+	retrieved := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	lane := prelingerPilotLane(inventory{
+		MaxRequests: 20, RequestsUsed: 2, MaxResponseBytes: 1000, ResponseBytes: 500,
+		MaxTotalBytes: 2000, SelectedBytes: 1000, MaxWallTimeMS: 60000, WallTimeMS: 100,
+		Cases: []candidate{{
+			Identifier: "soda-ad", Title: "Soda ad", ItemURL: "https://archive.org/details/soda-ad",
+			MetadataURL: "https://archive.org/metadata/soda-ad", MetadataRetrievedAt: retrieved,
+			MetadataSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			LicenseURL:     "http://creativecommons.org/publicdomain/mark/1.0/", Rights: []string{"uploader assertion"},
+			File: selectedFile{Name: "soda.mp4", URL: "https://archive.org/download/soda-ad/soda.mp4", Bytes: 1000},
+		}},
+	}, "commercial")
+	if lane.Authority != "archive.org/prelinger" || lane.PredictedMediaBytes != 1000 || len(lane.Cases) != 1 || lane.Cases[0].LicenseURL != "https://creativecommons.org/publicdomain/mark/1.0/" || lane.Cases[0].RoleHints[0] != "commercial" || len(lane.Cases[0].RightsAssertions) != 2 {
+		t.Fatalf("lane = %+v", lane)
+	}
+}
+
 func TestRunRequiresHardCeilingsAndIdentity(t *testing.T) {
 	if code := run(nil, testWriter{t}, testWriter{t}); code != 2 {
 		t.Fatalf("exit = %d", code)
