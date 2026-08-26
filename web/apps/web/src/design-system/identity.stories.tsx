@@ -1,10 +1,10 @@
+import { type Density, Screen, Surface, Text } from "@loomarr/design-system";
 import {
   ChannelIdentity,
   type ChannelIdentityData,
   ProgrammeIdentity,
   type ProgrammeIdentityData,
 } from "@loomarr/ui";
-import { type Density, Screen, Surface, Text } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 type IdentityVariant = "long" | "minimal" | "missing-logo" | "representative";

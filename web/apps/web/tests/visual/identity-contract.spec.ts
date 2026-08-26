@@ -8,7 +8,7 @@ test("media identity keeps complete and fallback content inside the viewport", a
   await expect(story.getByText("CA", { exact: true })).toBeVisible();
   await expect(story.getByText("Marge vs. the Monorail", { exact: true })).toBeVisible();
   await expect(story.getByText("7:00–7:30 PM · S04E12", { exact: true })).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(
-    true,
-  );
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth),
+  ).toBe(true);
 });
