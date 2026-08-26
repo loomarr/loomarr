@@ -111,7 +111,11 @@ func capture(ctx context.Context, opts options) (fillercorpus.Lane, error) {
 	if err := os.MkdirAll(opts.cacheDir, 0o750); err != nil {
 		return fillercorpus.Lane{}, err
 	}
-	f, err := fillercorpus.NewSourceClient(fillercorpus.SourceClientConfig{HTTP: &http.Client{Timeout: 30 * time.Second}, CacheDir: opts.cacheDir, UserAgent: opts.userAgent, MaxRequests: opts.maxRequests, MaxResponseBytes: opts.maxResponseBytes, Delay: opts.delay})
+	base, err := url.Parse(opts.baseURL)
+	if err != nil {
+		return fillercorpus.Lane{}, err
+	}
+	f, err := fillercorpus.NewSourceClient(fillercorpus.SourceClientConfig{HTTP: &http.Client{Timeout: 30 * time.Second}, CacheDir: opts.cacheDir, UserAgent: opts.userAgent, MaxRequests: opts.maxRequests, MaxResponseBytes: opts.maxResponseBytes, Delay: opts.delay, AllowedHosts: []string{base.Hostname()}})
 	if err != nil {
 		return fillercorpus.Lane{}, err
 	}

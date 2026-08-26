@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,9 +13,9 @@ import (
 
 func TestSourceClientCachesRawResponseAndRetainsNetworkAccounting(t *testing.T) {
 	calls := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { calls++; _, _ = w.Write([]byte(`{"ok":true}`)) }))
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { calls++; _, _ = w.Write([]byte(`{"ok":true}`)) }))
 	defer server.Close()
-	client, err := NewSourceClient(SourceClientConfig{HTTP: server.Client(), CacheDir: t.TempDir(), UserAgent: "test", MaxRequests: 1, MaxResponseBytes: 100})
+	client, err := NewSourceClient(testSourceConfig(t, server, 1, 100))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,9 +30,9 @@ func TestSourceClientCachesRawResponseAndRetainsNetworkAccounting(t *testing.T) 
 }
 
 func TestSourceClientFailsClosedOnAggregateResponseCeiling(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("too large")) }))
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("too large")) }))
 	defer server.Close()
-	client, err := NewSourceClient(SourceClientConfig{HTTP: server.Client(), CacheDir: t.TempDir(), UserAgent: "test", MaxRequests: 1, MaxResponseBytes: 2})
+	client, err := NewSourceClient(testSourceConfig(t, server, 1, 2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +43,7 @@ func TestSourceClientFailsClosedOnAggregateResponseCeiling(t *testing.T) {
 
 func TestSourceClientCachesBoundedHeadFacts(t *testing.T) {
 	calls := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		if r.Method != http.MethodHead || r.Header.Get("User-Agent") != "test" {
 			t.Fatalf("request = %s user-agent=%q", r.Method, r.Header.Get("User-Agent"))
@@ -51,7 +52,7 @@ func TestSourceClientCachesBoundedHeadFacts(t *testing.T) {
 		w.Header().Set("Content-Length", "123")
 	}))
 	defer server.Close()
-	client, err := NewSourceClient(SourceClientConfig{HTTP: server.Client(), CacheDir: t.TempDir(), UserAgent: "test", MaxRequests: 1, MaxResponseBytes: 1000})
+	client, err := NewSourceClient(testSourceConfig(t, server, 1, 1000))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +72,7 @@ func TestSourceClientCachesBoundedHeadFacts(t *testing.T) {
 
 func TestSourceClientFailsClosedOnUnreadableOrInvalidCache(t *testing.T) {
 	cache := t.TempDir()
-	client, err := NewSourceClient(SourceClientConfig{HTTP: http.DefaultClient, CacheDir: cache, UserAgent: "test", MaxRequests: 1, MaxResponseBytes: 100})
+	client, err := NewSourceClient(SourceClientConfig{HTTP: http.DefaultClient, CacheDir: cache, UserAgent: "test", MaxRequests: 1, MaxResponseBytes: 100, AllowedHosts: []string{"example.invalid"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,4 +84,39 @@ func TestSourceClientFailsClosedOnUnreadableOrInvalidCache(t *testing.T) {
 	if _, _, err := client.Head(context.Background(), rawURL); err == nil {
 		t.Fatal("invalid cached HEAD facts passed")
 	}
+}
+
+func TestSourceClientRejectsUnlistedHostBeforeRequest(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("unexpected request") }))
+	defer server.Close()
+	config := testSourceConfig(t, server, 1, 100)
+	untrusted := "https://example.invalid/cached"
+	if err := os.WriteFile(filepath.Join(config.CacheDir, sourceCacheKey(untrusted)+".json"), []byte(`{"cached":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	config.AllowedHosts = []string{"example.invalid"}
+	client, err := NewSourceClient(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := client.Get(context.Background(), server.URL); err == nil || !strings.Contains(err.Error(), "allowed host") {
+		t.Fatalf("err=%v", err)
+	}
+	config.AllowedHosts = []string{"allowed.invalid"}
+	client, err = NewSourceClient(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := client.Get(context.Background(), untrusted); err == nil || !strings.Contains(err.Error(), "allowed host") {
+		t.Fatalf("cached err=%v", err)
+	}
+}
+
+func testSourceConfig(t *testing.T, server *httptest.Server, maxRequests int, maxBytes int64) SourceClientConfig {
+	t.Helper()
+	u, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return SourceClientConfig{HTTP: server.Client(), CacheDir: t.TempDir(), UserAgent: "test", MaxRequests: maxRequests, MaxResponseBytes: maxBytes, AllowedHosts: []string{u.Hostname()}}
 }

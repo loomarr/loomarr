@@ -112,7 +112,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 func capture(ctx context.Context, opts options) (fillercorpus.Lane, error) {
 	started := time.Now()
-	client, err := fillercorpus.NewSourceClient(fillercorpus.SourceClientConfig{HTTP: &http.Client{Timeout: 30 * time.Second}, CacheDir: opts.cacheDir, UserAgent: opts.userAgent, MaxRequests: opts.maxRequests, MaxResponseBytes: opts.maxResponseBytes, Delay: opts.delay})
+	searchHost, err := url.Parse(opts.searchBase)
+	if err != nil {
+		return fillercorpus.Lane{}, err
+	}
+	client, err := fillercorpus.NewSourceClient(fillercorpus.SourceClientConfig{HTTP: &http.Client{Timeout: 30 * time.Second}, CacheDir: opts.cacheDir, UserAgent: opts.userAgent, MaxRequests: opts.maxRequests, MaxResponseBytes: opts.maxResponseBytes, Delay: opts.delay, AllowedHosts: []string{searchHost.Hostname(), opts.assetHost}})
 	if err != nil {
 		return fillercorpus.Lane{}, err
 	}

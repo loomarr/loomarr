@@ -62,6 +62,24 @@ func TestCommittedNASAPilotLaneSatisfiesContract(t *testing.T) {
 	}
 }
 
+func TestCommittedCDCPilotLaneSatisfiesContract(t *testing.T) {
+	raw, err := os.ReadFile("corpus/pilot/cdc.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lane Lane
+	if err := json.Unmarshal(raw, &lane); err != nil {
+		t.Fatal(err)
+	}
+	p := validPilot()
+	p.SnapshotAt = time.Date(2026, 8, 26, 14, 0, 0, 0, time.UTC)
+	p.LockedAt = p.SnapshotAt.Add(time.Minute)
+	p.Lanes[3] = lane
+	if failures := ValidatePilot(p); len(failures) != 0 {
+		t.Fatalf("failures = %v", failures)
+	}
+}
+
 func TestValidatePilotRequiresTenBoundedCasesFromEveryQualifiedLane(t *testing.T) {
 	p := validPilot()
 	if failures := ValidatePilot(p); len(failures) != 0 {

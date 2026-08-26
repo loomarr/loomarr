@@ -263,7 +263,7 @@ go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must
 test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
 	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ ./internal/api/ -v
 
-.PHONY: eval-contract eval eval-cert eval-matrix filler-corpus-archive filler-corpus-download filler-corpus-lock filler-corpus-loc filler-corpus-nasa filler-corpus-pilot filler-eval-contract filler-eval-cert
+.PHONY: eval-contract eval eval-cert eval-matrix filler-corpus-archive filler-corpus-cdc filler-corpus-download filler-corpus-lock filler-corpus-loc filler-corpus-nasa filler-corpus-pilot filler-eval-contract filler-eval-cert
 eval-contract: ## hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB
 	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/
 
@@ -301,7 +301,24 @@ eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (m
 	  exit "$$status"
 
 filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
-	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./cmd/filler-cert/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/
+	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./cmd/filler-cert/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/
+
+filler-corpus-cdc: ## freeze the bounded CDC filler rights-yield pilot lane
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  $(GO) run ./cmd/filler-corpus-pages \
+	    --in internal/fillercorpus/corpus/seeds/cdc.json \
+	    --out "$${LOOMARR_FILLER_CORPUS_CDC_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-cdc.json}" \
+	    --cache-dir "$${LOOMARR_FILLER_CORPUS_CDC_CACHE:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-cdc-cache}" \
+	    --user-agent "$$LOOMARR_FILLER_CORPUS_USER_AGENT" \
+	    --page-host www.cdc.gov \
+	    --media-host www.cdc.gov \
+	    --max-requests 20 \
+	    --max-items 10 \
+	    --max-response-bytes "$${LOOMARR_FILLER_CORPUS_CDC_MAX_RESPONSE_BYTES:-16777216}" \
+	    --max-item-bytes "$${LOOMARR_FILLER_CORPUS_CDC_MAX_ITEM_BYTES:-104857600}" \
+	    --max-total-bytes "$${LOOMARR_FILLER_CORPUS_CDC_MAX_TOTAL_BYTES:-1073741824}" \
+	    --delay "$${LOOMARR_FILLER_CORPUS_CDC_DELAY:-250ms}" \
+	    --max-wall-time "$${LOOMARR_FILLER_CORPUS_CDC_MAX_WALL_TIME:-2m}"
 
 filler-corpus-loc: ## freeze the bounded LOC filler rights-yield pilot lane
 	@eval "$$(./scripts/dev-env.sh export)"; \
