@@ -263,7 +263,7 @@ go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must
 test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
 	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ ./internal/api/ -v
 
-.PHONY: eval-contract eval eval-cert eval-matrix filler-corpus-archive filler-corpus-download filler-corpus-lock filler-corpus-loc filler-corpus-pilot filler-eval-contract filler-eval-cert
+.PHONY: eval-contract eval eval-cert eval-matrix filler-corpus-archive filler-corpus-download filler-corpus-lock filler-corpus-loc filler-corpus-nasa filler-corpus-pilot filler-eval-contract filler-eval-cert
 eval-contract: ## hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB
 	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/
 
@@ -301,7 +301,7 @@ eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (m
 	  exit "$$status"
 
 filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
-	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./cmd/filler-cert/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/
+	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./cmd/filler-cert/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/
 
 filler-corpus-loc: ## freeze the bounded LOC filler rights-yield pilot lane
 	@eval "$$(./scripts/dev-env.sh export)"; \
@@ -319,6 +319,23 @@ filler-corpus-loc: ## freeze the bounded LOC filler rights-yield pilot lane
 	    --max-total-bytes "$$LOOMARR_FILLER_CORPUS_LOC_MAX_TOTAL_BYTES" \
 	    --delay "$${LOOMARR_FILLER_CORPUS_LOC_DELAY:-3100ms}" \
 	    --max-wall-time "$${LOOMARR_FILLER_CORPUS_LOC_MAX_WALL_TIME:-3m}"
+
+filler-corpus-nasa: ## freeze the bounded NASA filler rights-yield pilot lane
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  $(GO) run ./cmd/filler-corpus-nasa \
+	    --query "$${LOOMARR_FILLER_CORPUS_NASA_QUERY:-trailer}" \
+	    --role-hint "$${LOOMARR_FILLER_CORPUS_NASA_ROLE_HINT:-trailer}" \
+	    --out "$${LOOMARR_FILLER_CORPUS_NASA_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-nasa.json}" \
+	    --cache-dir "$${LOOMARR_FILLER_CORPUS_NASA_CACHE:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-nasa-cache}" \
+	    --user-agent "$$LOOMARR_FILLER_CORPUS_USER_AGENT" \
+	    --snapshot-at "$$LOOMARR_FILLER_CORPUS_NASA_SNAPSHOT_AT" \
+	    --max-requests "$${LOOMARR_FILLER_CORPUS_NASA_MAX_REQUESTS:-80}" \
+	    --max-items 10 \
+	    --max-response-bytes "$${LOOMARR_FILLER_CORPUS_NASA_MAX_RESPONSE_BYTES:-33554432}" \
+	    --max-item-bytes "$${LOOMARR_FILLER_CORPUS_NASA_MAX_ITEM_BYTES:-536870912}" \
+	    --max-total-bytes "$${LOOMARR_FILLER_CORPUS_NASA_MAX_TOTAL_BYTES:-3221225472}" \
+	    --delay "$${LOOMARR_FILLER_CORPUS_NASA_DELAY:-250ms}" \
+	    --max-wall-time "$${LOOMARR_FILLER_CORPUS_NASA_MAX_WALL_TIME:-2m}"
 
 filler-corpus-pilot: ## lock the six-lane metadata-only filler rights-yield pilot
 	@test -n "$$LOOMARR_FILLER_CORPUS_PILOT_DRAFT" || { echo "filler-corpus-pilot: LOOMARR_FILLER_CORPUS_PILOT_DRAFT is required" >&2; exit 2; }; \
