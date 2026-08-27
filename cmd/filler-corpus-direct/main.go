@@ -16,27 +16,20 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filleradmission"
 	"github.com/loomarr/loomarr/internal/fillercorpus"
 )
 
 const (
-	directManifestSchema = 1
-	directAuthority      = "direct-license"
+	directManifestSchema  = 2
+	directAuthorityPrefix = "direct-license/"
 )
-
-var directRoleQuotas = map[string]int{
-	"commercial": 20,
-	"promo":      20,
-	"bumper":     25,
-	"station_id": 25,
-	"trailer":    5,
-	"psa":        5,
-}
 
 var directID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 type manifest struct {
 	SchemaVersion int            `json:"schemaVersion"`
+	Authority     string         `json:"authority"`
 	Cohort        string         `json:"cohort"`
 	RoleQuotas    map[string]int `json:"roleQuotas"`
 	Cases         []manifestCase `json:"cases"`
@@ -52,6 +45,8 @@ type manifestCase struct {
 	LicenseURL       string             `json:"licenseUrl,omitempty"`
 	ItemURL          string             `json:"itemUrl,omitempty"`
 	Creator          []string           `json:"creator,omitempty"`
+	Campaign         string             `json:"campaign"`
+	SourceFamily     string             `json:"sourceFamily"`
 	Date             string             `json:"date,omitempty"`
 	Evidence         []manifestEvidence `json:"evidence"`
 }
@@ -62,13 +57,13 @@ type manifestEvidence struct {
 }
 
 type options struct {
-	manifestPath string
-	root         string
-	out          string
-	snapshotAt   time.Time
-	maxItems     int
-	maxBytes     int64
-	maxWallTime  time.Duration
+	manifestPath  string
+	root          string
+	out           string
+	snapshotAt    time.Time
+	expectedItems int
+	maxBytes      int64
+	maxWallTime   time.Duration
 }
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
@@ -80,18 +75,18 @@ func run(args []string, stdout, stderr io.Writer) int {
 	root := flags.String("root", "", "root containing media and evidence files")
 	out := flags.String("out", "", "strict source-neutral inventory JSON")
 	snapshot := flags.String("snapshot-at", "", "fixed RFC3339 snapshot time")
-	maxItems := flags.Int("max-items", 0, "exact required item count")
+	expectedItems := flags.Int("expected-items", 0, "exact predeclared item count")
 	maxBytes := flags.Int64("max-bytes", 0, "maximum aggregate media and evidence bytes")
 	maxWall := flags.Duration("max-wall-time", 0, "maximum local capture time")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
 	snapshotAt, err := time.Parse(time.RFC3339, *snapshot)
-	if err != nil || *manifestPath == "" || *root == "" || *out == "" || *maxItems <= 0 || *maxBytes <= 0 || *maxWall <= 0 {
-		_, _ = fmt.Fprintln(stderr, "filler-corpus-direct: --manifest, --root, --out, valid --snapshot-at, and positive ceilings are required")
+	if err != nil || *manifestPath == "" || *root == "" || *out == "" || *expectedItems <= 0 || *maxBytes <= 0 || *maxWall <= 0 {
+		_, _ = fmt.Fprintln(stderr, "filler-corpus-direct: --manifest, --root, --out, valid --snapshot-at, positive --expected-items, and positive ceilings are required")
 		return 2
 	}
-	opts := options{manifestPath: *manifestPath, root: *root, out: *out, snapshotAt: snapshotAt.UTC(), maxItems: *maxItems, maxBytes: *maxBytes, maxWallTime: *maxWall}
+	opts := options{manifestPath: *manifestPath, root: *root, out: *out, snapshotAt: snapshotAt.UTC(), expectedItems: *expectedItems, maxBytes: *maxBytes, maxWallTime: *maxWall}
 	started := time.Now()
 	inv, err := freeze(opts)
 	if err != nil {
@@ -126,10 +121,10 @@ func freeze(opts options) (fillercorpus.Inventory, error) {
 	if decoder.Decode(&struct{}{}) != io.EOF {
 		return fillercorpus.Inventory{}, fmt.Errorf("decode manifest: trailing JSON value")
 	}
-	if source.SchemaVersion != directManifestSchema || !directID.MatchString(source.Cohort) || len(source.Cases) != opts.maxItems || opts.maxItems != 100 {
+	if source.SchemaVersion != directManifestSchema || !directID.MatchString(source.Authority) || !directID.MatchString(source.Cohort) || len(source.Cases) != opts.expectedItems {
 		return fillercorpus.Inventory{}, fmt.Errorf("manifest schema, cohort, or exact item count is invalid")
 	}
-	if err := validateRoleQuotas(source.RoleQuotas); err != nil {
+	if err := validateRoleQuotas(source.RoleQuotas, opts.expectedItems); err != nil {
 		return fillercorpus.Inventory{}, err
 	}
 	root, err := filepath.EvalSymlinks(opts.root)
@@ -146,9 +141,10 @@ func freeze(opts options) (fillercorpus.Inventory, error) {
 	seen := map[string]struct{}{}
 	seenMedia := map[string]string{}
 	inv := fillercorpus.Inventory{SchemaVersion: fillercorpus.InventorySchemaVersion, SnapshotAt: opts.snapshotAt}
+	authority := directAuthorityPrefix + source.Authority
 	var totalBytes int64
 	for _, authored := range source.Cases {
-		if !directID.MatchString(authored.ItemID) || strings.TrimSpace(authored.Title) == "" || len(authored.RoleHints) == 0 || strings.TrimSpace(authored.RoleHints[0]) == "" || len(authored.RightsAssertions) == 0 || slices.Contains(authored.RightsAssertions, "") || strings.TrimSpace(authored.MIMEType) == "" {
+		if !directID.MatchString(authored.ItemID) || strings.TrimSpace(authored.Title) == "" || len(authored.RoleHints) == 0 || strings.TrimSpace(authored.RoleHints[0]) == "" || len(authored.Creator) == 0 || slices.Contains(authored.Creator, "") || strings.TrimSpace(authored.Campaign) == "" || strings.TrimSpace(authored.SourceFamily) == "" || len(authored.RightsAssertions) == 0 || slices.Contains(authored.RightsAssertions, "") || strings.TrimSpace(authored.MIMEType) == "" {
 			return fillercorpus.Inventory{}, fmt.Errorf("case %q has incomplete authored identity", authored.ItemID)
 		}
 		if _, duplicate := seen[authored.ItemID]; duplicate {
@@ -188,10 +184,10 @@ func freeze(opts options) (fillercorpus.Inventory, error) {
 		if err != nil {
 			return fillercorpus.Inventory{}, err
 		}
-		captureID := fillercorpus.NewCaptureID(directAuthority, source.Cohort, role)
+		captureID := fillercorpus.NewCaptureID(authority, source.Cohort, role)
 		inv.Cases = append(inv.Cases, fillercorpus.InventoryCase{
-			CaseID: fillercorpus.CaseID(directAuthority, authored.ItemID), CaptureID: captureID, Authority: directAuthority,
-			ItemID: authored.ItemID, Title: authored.Title, RoleHints: append([]string(nil), authored.RoleHints...), Creator: append([]string(nil), authored.Creator...), Date: authored.Date,
+			CaseID: fillercorpus.CaseID(authority, authored.ItemID), CaptureID: captureID, Authority: authority,
+			ItemID: authored.ItemID, Title: authored.Title, RoleHints: append([]string(nil), authored.RoleHints...), Creator: append([]string(nil), authored.Creator...), Campaign: authored.Campaign, SourceFamily: authored.SourceFamily, Date: authored.Date,
 			LicenseURL: authored.LicenseURL, RightsAssertions: append([]string(nil), authored.RightsAssertions...), ItemURL: authored.ItemURL,
 			MetadataRetrievedAt: opts.snapshotAt, MetadataSHA256: fillercorpus.InventorySHA256(identity), Evidence: evidence,
 			Representation: fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportLocal, Name: filepath.Base(media), Path: authored.MediaPath, MIMEType: authored.MIMEType, Bytes: mediaBytes, SHA256: mediaDigest},
@@ -209,8 +205,8 @@ func freeze(opts options) (fillercorpus.Inventory, error) {
 			return fillercorpus.Inventory{}, fmt.Errorf("role %q has %d cases; want %d", role, roleCounts[role], quota)
 		}
 		inv.Captures = append(inv.Captures, fillercorpus.Capture{
-			CaptureID: fillercorpus.NewCaptureID(directAuthority, source.Cohort, role), Transport: fillercorpus.TransportLocal,
-			Authority: directAuthority, Collection: source.Cohort, RoleHint: role, SnapshotAt: opts.snapshotAt,
+			CaptureID: fillercorpus.NewCaptureID(authority, source.Cohort, role), Transport: fillercorpus.TransportLocal,
+			Authority: authority, Collection: source.Cohort, RoleHint: role, SnapshotAt: opts.snapshotAt,
 			MaxPredictedMediaBytes: opts.maxBytes, PredictedMediaBytes: roleBytes[role], MaxWallTimeMS: opts.maxWallTime.Milliseconds(), WallTimeMS: elapsed,
 		})
 	}
@@ -222,14 +218,22 @@ func freeze(opts options) (fillercorpus.Inventory, error) {
 	return inv, nil
 }
 
-func validateRoleQuotas(got map[string]int) error {
-	if len(got) != len(directRoleQuotas) {
-		return fmt.Errorf("role quotas must be the fixed 100-case direct cohort")
+func validateRoleQuotas(got map[string]int, expectedItems int) error {
+	if len(got) == 0 {
+		return fmt.Errorf("at least one role quota is required")
 	}
-	for role, want := range directRoleQuotas {
-		if got[role] != want {
-			return fmt.Errorf("role %q quota is %d; want %d", role, got[role], want)
+	total := 0
+	for role, quota := range got {
+		if !filleradmission.KnownRole(role) {
+			return fmt.Errorf("role quota %q is not a known corpus role", role)
 		}
+		if quota <= 0 {
+			return fmt.Errorf("role %q quota must be positive", role)
+		}
+		total += quota
+	}
+	if total != expectedItems {
+		return fmt.Errorf("role quotas total %d; want exact item count %d", total, expectedItems)
 	}
 	return nil
 }

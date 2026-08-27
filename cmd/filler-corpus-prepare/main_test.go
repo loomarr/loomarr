@@ -94,6 +94,29 @@ func TestPrepareRejectsPerceptualFamilySplitAcrossClusters(t *testing.T) {
 	}
 }
 
+func TestPrepareRejectsCampaignAuthoredAfterAcquisition(t *testing.T) {
+	opts, deriver := preparationFixture(t)
+	raw, err := os.ReadFile(opts.inventoryPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var inv fillercorpus.Inventory
+	if err := json.Unmarshal(raw, &inv); err != nil {
+		t.Fatal(err)
+	}
+	inv.Cases[0].Campaign = ""
+	raw, err = json.Marshal(inv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(opts.inventoryPath, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := prepare(t.Context(), opts, deriver); err == nil || !strings.Contains(err.Error(), "incomplete acquisition provenance") {
+		t.Fatalf("acquisition provenance error = %v", err)
+	}
+}
+
 func TestRealDeriverMeasuresAndBoundsShippingMediaDerivatives(t *testing.T) {
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
@@ -146,7 +169,7 @@ func preparationFixture(t *testing.T) (options, fakeDeriver) {
 			t.Fatal(err)
 		}
 		inv.Captures[0].PredictedMediaBytes += int64(len(media))
-		inv.Cases = append(inv.Cases, fillercorpus.InventoryCase{CaseID: fillercorpus.CaseID(authority, id), CaptureID: captureID, Authority: authority, ItemID: id, Title: "Case " + id, RoleHints: []string{role}, RightsAssertions: []string{"signed redistribution grant"}, MetadataRetrievedAt: snapshot, MetadataSHA256: strings.Repeat(string(rune('a'+index)), 64), Evidence: []fillercorpus.InventoryEvidence{{Kind: "rights", Path: "rights.txt", Bytes: 1, SHA256: strings.Repeat("c", 64)}, {Kind: "provenance", Path: "provenance.txt", Bytes: 1, SHA256: strings.Repeat("d", 64)}}, Representation: fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportLocal, Name: rel, Path: rel, MIMEType: "video/mp4", Bytes: int64(len(media)), SHA256: fillercorpus.InventorySHA256(media)}})
+		inv.Cases = append(inv.Cases, fillercorpus.InventoryCase{CaseID: fillercorpus.CaseID(authority, id), CaptureID: captureID, Authority: authority, ItemID: id, Title: "Case " + id, RoleHints: []string{role}, Creator: []string{"creator-" + id}, Campaign: "campaign-" + id, SourceFamily: "family-" + id, RightsAssertions: []string{"signed redistribution grant"}, MetadataRetrievedAt: snapshot, MetadataSHA256: strings.Repeat(string(rune('a'+index)), 64), Evidence: []fillercorpus.InventoryEvidence{{Kind: "rights", Path: "rights.txt", Bytes: 1, SHA256: strings.Repeat("c", 64)}, {Kind: "provenance", Path: "provenance.txt", Bytes: 1, SHA256: strings.Repeat("d", 64)}}, Representation: fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportLocal, Name: rel, Path: rel, MIMEType: "video/mp4", Bytes: int64(len(media)), SHA256: fillercorpus.InventorySHA256(media)}})
 	}
 	inventoryRaw, err := json.Marshal(inv)
 	if err != nil {
@@ -168,7 +191,7 @@ func preparationFixture(t *testing.T) (options, fakeDeriver) {
 	if err := os.WriteFile(approvalsPath, approvals.Bytes(), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	plan := preparationPlan{SchemaVersion: preparationSchemaVersion, CorpusVersion: "fixture-v1", EvidenceVersion: "evidence-v1", SliceGates: []fillereval.SliceGate{{Slice: "all", MinCases: 2, MinAccuracy: .9, MinAccuracyLower: .5}}, Cases: []plannedCase{{CaseID: inv.Cases[0].CaseID, Split: fillereval.SplitDevelopment, Cluster: "cluster-a", Campaign: "campaign-a", SegmentDurationMS: 30_000, VideoDurationMS: 10_000}, {CaseID: inv.Cases[1].CaseID, Split: fillereval.SplitHoldout, Cluster: "cluster-b", Campaign: "campaign-b", SegmentDurationMS: 30_000, VideoDurationMS: 10_000}}}
+	plan := preparationPlan{SchemaVersion: preparationSchemaVersion, CorpusVersion: "fixture-v1", EvidenceVersion: "evidence-v1", SliceGates: []fillereval.SliceGate{{Slice: "all", MinCases: 2, MinAccuracy: .9, MinAccuracyLower: .5}}, Cases: []plannedCase{{CaseID: inv.Cases[0].CaseID, Split: fillereval.SplitDevelopment, Cluster: "cluster-a", SegmentDurationMS: 30_000, VideoDurationMS: 10_000}, {CaseID: inv.Cases[1].CaseID, Split: fillereval.SplitHoldout, Cluster: "cluster-b", SegmentDurationMS: 30_000, VideoDurationMS: 10_000}}}
 	planPath := filepath.Join(dir, "plan.json")
 	planRaw, _ := json.Marshal(plan)
 	if err := os.WriteFile(planPath, planRaw, 0o600); err != nil {

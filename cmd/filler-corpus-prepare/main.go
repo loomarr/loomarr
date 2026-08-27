@@ -33,7 +33,7 @@ import (
 	"github.com/loomarr/loomarr/internal/mediatools"
 )
 
-const preparationSchemaVersion = 2
+const preparationSchemaVersion = 3
 
 type preparationPlan struct {
 	SchemaVersion   int                    `json:"schemaVersion"`
@@ -47,7 +47,6 @@ type plannedCase struct {
 	CaseID            string           `json:"caseId"`
 	Split             fillereval.Split `json:"split"`
 	Cluster           string           `json:"cluster"`
-	Campaign          string           `json:"campaign"`
 	SegmentStartMS    int64            `json:"segmentStartMs"`
 	SegmentDurationMS int64            `json:"segmentDurationMs"`
 	VideoStartMS      int64            `json:"videoStartMs"`
@@ -199,6 +198,8 @@ func prepare(ctx context.Context, opts options, deriver mediaDeriver) (fillereva
 	holdoutClusters := map[string]string{}
 	campaignSplits := map[string]fillereval.Split{}
 	holdoutCampaigns := map[string]string{}
+	familySplits := map[string]fillereval.Split{}
+	holdoutFamilies := map[string]string{}
 	contentCases := map[string]string{}
 	var perceptualFamilies []perceptualFamily
 	splitCounts := map[fillereval.Split]int{}
@@ -217,8 +218,11 @@ func prepare(ctx context.Context, opts options, deriver mediaDeriver) (fillereva
 			return fillereval.Manifest{}, nil, fmt.Errorf("duplicate plan case %q", planned.CaseID)
 		}
 		seenCases[planned.CaseID] = struct{}{}
-		if planned.Split != fillereval.SplitDevelopment && planned.Split != fillereval.SplitHoldout || strings.TrimSpace(planned.Cluster) == "" || strings.TrimSpace(planned.Campaign) == "" || planned.SegmentStartMS < 0 || planned.SegmentDurationMS <= 0 || planned.VideoStartMS < planned.SegmentStartMS || planned.VideoDurationMS <= 0 || planned.VideoDurationMS > mediatools.HostedVideoMaxDurationMS || planned.VideoStartMS+planned.VideoDurationMS > planned.SegmentStartMS+planned.SegmentDurationMS {
+		if planned.Split != fillereval.SplitDevelopment && planned.Split != fillereval.SplitHoldout || strings.TrimSpace(planned.Cluster) == "" || planned.SegmentStartMS < 0 || planned.SegmentDurationMS <= 0 || planned.VideoStartMS < planned.SegmentStartMS || planned.VideoDurationMS <= 0 || planned.VideoDurationMS > mediatools.HostedVideoMaxDurationMS || planned.VideoStartMS+planned.VideoDurationMS > planned.SegmentStartMS+planned.SegmentDurationMS {
 			return fillereval.Manifest{}, nil, fmt.Errorf("case %q has invalid split, cluster, or bounded spans", planned.CaseID)
+		}
+		if len(item.Creator) == 0 || strings.TrimSpace(item.Campaign) == "" || strings.TrimSpace(item.SourceFamily) == "" {
+			return fillereval.Manifest{}, nil, fmt.Errorf("case %q has incomplete acquisition provenance", planned.CaseID)
 		}
 		if prior, exists := clusterSplits[planned.Cluster]; exists && prior != planned.Split {
 			return fillereval.Manifest{}, nil, fmt.Errorf("cluster %q crosses splits", planned.Cluster)
@@ -230,15 +234,25 @@ func prepare(ctx context.Context, opts options, deriver mediaDeriver) (fillereva
 			}
 			holdoutClusters[planned.Cluster] = planned.CaseID
 		}
-		if prior, exists := campaignSplits[planned.Campaign]; exists && prior != planned.Split {
-			return fillereval.Manifest{}, nil, fmt.Errorf("campaign %q crosses splits", planned.Campaign)
+		if prior, exists := campaignSplits[item.Campaign]; exists && prior != planned.Split {
+			return fillereval.Manifest{}, nil, fmt.Errorf("campaign %q crosses splits", item.Campaign)
 		}
-		campaignSplits[planned.Campaign] = planned.Split
+		campaignSplits[item.Campaign] = planned.Split
 		if planned.Split == fillereval.SplitHoldout {
-			if prior := holdoutCampaigns[planned.Campaign]; prior != "" {
-				return fillereval.Manifest{}, nil, fmt.Errorf("holdout campaign %q repeats cases %q and %q", planned.Campaign, prior, planned.CaseID)
+			if prior := holdoutCampaigns[item.Campaign]; prior != "" {
+				return fillereval.Manifest{}, nil, fmt.Errorf("holdout campaign %q repeats cases %q and %q", item.Campaign, prior, planned.CaseID)
 			}
-			holdoutCampaigns[planned.Campaign] = planned.CaseID
+			holdoutCampaigns[item.Campaign] = planned.CaseID
+		}
+		if prior, exists := familySplits[item.SourceFamily]; exists && prior != planned.Split {
+			return fillereval.Manifest{}, nil, fmt.Errorf("source family %q crosses splits", item.SourceFamily)
+		}
+		familySplits[item.SourceFamily] = planned.Split
+		if planned.Split == fillereval.SplitHoldout {
+			if prior := holdoutFamilies[item.SourceFamily]; prior != "" {
+				return fillereval.Manifest{}, nil, fmt.Errorf("holdout source family %q repeats cases %q and %q", item.SourceFamily, prior, planned.CaseID)
+			}
+			holdoutFamilies[item.SourceFamily] = planned.CaseID
 		}
 		splitCounts[planned.Split]++
 		approval, ok := approved[planned.CaseID]
@@ -332,7 +346,7 @@ func prepare(ctx context.Context, opts options, deriver mediaDeriver) (fillereva
 		preparedCase := fillereval.Case{ID: item.CaseID, Split: planned.Split, Cluster: planned.Cluster, ContentSHA256: hashes.sha256, EvidenceSHA256: evidenceDigest, Source: item.Authority, License: license, Provenance: fillereval.MediaProvenance{
 			Authority: item.Authority, Collection: strings.Join(item.Collection, ", "), ItemID: item.ItemID, ItemRef: itemRef, MetadataRetrievedAt: item.MetadataRetrievedAt, MetadataSHA256: item.MetadataSHA256,
 			EvidenceRef: "inventory:" + inventoryDigest + "#" + item.CaseID, LicenseURL: item.LicenseURL, RightsStatement: strings.Join(item.RightsAssertions, "; ") + "; review basis: " + approval.Basis, RightsDecision: approval.Decision, RightsReviewerID: approval.ReviewerID, RightsReviewedAt: approval.ReviewedAt, Redistributable: approval.Redistributable,
-			Creator: strings.Join(item.Creator, ", "), Campaign: planned.Campaign, SourceFamily: fillercorpus.InventorySHA256([]byte(item.Authority + "\n" + item.ItemID)), RequiredCredit: approval.RequiredCredit, Restrictions: slices.Clone(approval.Restrictions), SourceFilename: item.Representation.Name, SourceRef: sourceRef, SourceBytes: size, SegmentStartMS: planned.SegmentStartMS, SegmentDurationMS: planned.SegmentDurationMS,
+			Creator: strings.Join(item.Creator, ", "), Campaign: item.Campaign, SourceFamily: item.SourceFamily, RequiredCredit: approval.RequiredCredit, Restrictions: slices.Clone(approval.Restrictions), SourceFilename: item.Representation.Name, SourceRef: sourceRef, SourceBytes: size, SegmentStartMS: planned.SegmentStartMS, SegmentDurationMS: planned.SegmentDurationMS,
 		}}
 		if err := fillerbakeoff.ValidatePacketAgainstCase(preparedCase, packet, plan.EvidenceVersion, stageRoot); err != nil {
 			return fillereval.Manifest{}, nil, err

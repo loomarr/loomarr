@@ -443,6 +443,7 @@ filler-corpus-direct: ## freeze an authored local cohort with rights and provena
 	@test -n "$$LOOMARR_FILLER_CORPUS_DIRECT_MANIFEST" || { echo "filler-corpus-direct: LOOMARR_FILLER_CORPUS_DIRECT_MANIFEST is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_DIRECT_ROOT" || { echo "filler-corpus-direct: LOOMARR_FILLER_CORPUS_DIRECT_ROOT is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_DIRECT_SNAPSHOT_AT" || { echo "filler-corpus-direct: LOOMARR_FILLER_CORPUS_DIRECT_SNAPSHOT_AT is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_DIRECT_ITEMS" || { echo "filler-corpus-direct: LOOMARR_FILLER_CORPUS_DIRECT_ITEMS is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_DIRECT_MAX_BYTES" || { echo "filler-corpus-direct: LOOMARR_FILLER_CORPUS_DIRECT_MAX_BYTES is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
 	  $(GO) run ./cmd/filler-corpus-direct \
@@ -450,7 +451,7 @@ filler-corpus-direct: ## freeze an authored local cohort with rights and provena
 	    --root "$$LOOMARR_FILLER_CORPUS_DIRECT_ROOT" \
 	    --out "$${LOOMARR_FILLER_CORPUS_DIRECT_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-direct.json}" \
 	    --snapshot-at "$$LOOMARR_FILLER_CORPUS_DIRECT_SNAPSHOT_AT" \
-	    --max-items "$${LOOMARR_FILLER_CORPUS_DIRECT_MAX_ITEMS:-100}" \
+	    --expected-items "$$LOOMARR_FILLER_CORPUS_DIRECT_ITEMS" \
 	    --max-bytes "$$LOOMARR_FILLER_CORPUS_DIRECT_MAX_BYTES" \
 	    --max-wall-time "$${LOOMARR_FILLER_CORPUS_DIRECT_MAX_WALL_TIME:-1m}"
 

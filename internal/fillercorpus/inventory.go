@@ -15,9 +15,9 @@ import (
 )
 
 // InventorySchemaVersion is deliberately not backward compatible. Schema 1
-// could describe only one Archive.org collection and therefore could not be
-// the certification corpus contract.
-const InventorySchemaVersion = 2
+// could describe only one Archive.org collection; schema 2 let split planning
+// invent campaign and source-family identity after acquisition.
+const InventorySchemaVersion = 3
 
 const (
 	TransportHTTPS = "https"
@@ -71,6 +71,8 @@ type InventoryCase struct {
 	RoleHints               []string                `json:"roleHints"`
 	Collection              []string                `json:"collection,omitempty"`
 	Creator                 []string                `json:"creator,omitempty"`
+	Campaign                string                  `json:"campaign,omitempty"`
+	SourceFamily            string                  `json:"sourceFamily,omitempty"`
 	Date                    string                  `json:"date,omitempty"`
 	LicenseURL              string                  `json:"licenseUrl,omitempty"`
 	RightsAssertions        []string                `json:"rightsAssertions"`
@@ -135,7 +137,7 @@ func InventorySHA256(raw []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// DecodeInventory accepts exactly one strict schema-v2 JSON value. Older
+// DecodeInventory accepts exactly one strict schema-v3 JSON value. Older
 // single-source artifacts fail closed rather than being silently adapted.
 func DecodeInventory(reader io.Reader) (Inventory, error) {
 	var value Inventory

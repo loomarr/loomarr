@@ -307,7 +307,7 @@ func (e *Evaluator) validateValue(fact Evidence) OperationalCode {
 			return HoldEvidenceInvalid
 		}
 	case ClaimContentRole:
-		if !knownRole(fact.Value) {
+		if !KnownRole(fact.Value) {
 			return HoldEvidenceInvalid
 		}
 	case ClaimProduct:
@@ -599,7 +599,8 @@ func validOperationalCode(code OperationalCode) bool {
 	}, code)
 }
 
-func knownRole(role string) bool {
+// KnownRole reports whether role belongs to the admission evidence vocabulary.
+func KnownRole(role string) bool {
 	return slices.Contains([]string{
 		RoleCommercial, RolePromo, RoleBumper, RolePSA, RoleStationID, RoleTrailer, RoleInterstitial,
 		RoleProgrammeExcerpt, RoleCompilation,

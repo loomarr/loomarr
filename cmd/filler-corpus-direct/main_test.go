@@ -22,7 +22,7 @@ func TestRunFreezesLocalMediaAndEvidence(t *testing.T) {
 	writeManifest(t, manifestPath, source)
 	out := filepath.Join(root, "inventory.json")
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"--manifest", manifestPath, "--root", root, "--out", out, "--snapshot-at", "2026-08-26T12:00:00Z", "--max-items", "100", "--max-bytes", "1048576", "--max-wall-time", "1m"}, &stdout, &stderr)
+	code := run([]string{"--manifest", manifestPath, "--root", root, "--out", out, "--snapshot-at", "2026-08-26T12:00:00Z", "--expected-items", "6", "--max-bytes", "1048576", "--max-wall-time", "1m"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("run = %d: %s", code, stderr.String())
 	}
@@ -34,8 +34,11 @@ func TestRunFreezesLocalMediaAndEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(inv.Cases) != 100 || len(inv.Captures) != 6 || inv.Captures[0].Transport != fillercorpus.TransportLocal || len(inv.Cases[0].Evidence) != 2 || len(inv.Cases[0].Representation.SHA256) != 64 {
+	if len(inv.Cases) != 6 || len(inv.Captures) != 6 || inv.Captures[0].Transport != fillercorpus.TransportLocal || len(inv.Cases[0].Evidence) != 2 || len(inv.Cases[0].Representation.SHA256) != 64 {
 		t.Fatalf("inventory = %+v", inv)
+	}
+	if inv.Cases[0].Authority != "direct-license/example-broadcaster" {
+		t.Fatalf("authority = %q", inv.Cases[0].Authority)
 	}
 }
 
@@ -43,13 +46,13 @@ func TestFreezeRejectsQuotaMismatchAndMissingEvidenceKind(t *testing.T) {
 	root := t.TempDir()
 	writeFixture(t, root, "evidence/rights.txt", "license grant")
 	writeFixture(t, root, "evidence/provenance.json", "provenance")
-	opts := options{root: root, snapshotAt: time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC), maxItems: 100, maxBytes: 1 << 20, maxWallTime: time.Minute}
+	opts := options{root: root, snapshotAt: time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC), expectedItems: 6, maxBytes: 1 << 20, maxWallTime: time.Minute}
 
 	source := validManifest(t, root)
-	source.RoleQuotas["commercial"] = 21
+	source.RoleQuotas["commercial"] = 2
 	opts.manifestPath = filepath.Join(root, "quota.json")
 	writeManifest(t, opts.manifestPath, source)
-	if _, err := freeze(opts); err == nil || !strings.Contains(err.Error(), "want 20") {
+	if _, err := freeze(opts); err == nil || !strings.Contains(err.Error(), "role quotas total 7") {
 		t.Fatalf("quota error = %v", err)
 	}
 
@@ -59,6 +62,28 @@ func TestFreezeRejectsQuotaMismatchAndMissingEvidenceKind(t *testing.T) {
 	writeManifest(t, opts.manifestPath, source)
 	if _, err := freeze(opts); err == nil || !strings.Contains(err.Error(), "local media or evidence") {
 		t.Fatalf("evidence error = %v", err)
+	}
+}
+
+func TestRunRejectsRetiredFixedCohortInterface(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--max-items", "100"}, &stdout, &stderr)
+	if code != 2 || !strings.Contains(stderr.String(), "flag provided but not defined: -max-items") {
+		t.Fatalf("run = %d, stderr = %q", code, stderr.String())
+	}
+}
+
+func TestValidateRoleQuotasRejectsUnknownAndNonPositiveRoles(t *testing.T) {
+	for name, quotas := range map[string]map[string]int{
+		"unknown":  {"advert": 1},
+		"zero":     {"commercial": 0},
+		"negative": {"commercial": -1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateRoleQuotas(quotas, 1); err == nil {
+				t.Fatal("validateRoleQuotas accepted an invalid acquisition plan")
+			}
+		})
 	}
 }
 
@@ -79,14 +104,13 @@ func TestFreezeRejectsSymlinkEscape(t *testing.T) {
 
 func validManifest(t *testing.T, root string) manifest {
 	t.Helper()
-	value := manifest{SchemaVersion: directManifestSchema, Cohort: "modern-v1", RoleQuotas: map[string]int{}}
-	for role, quota := range directRoleQuotas {
-		value.RoleQuotas[role] = quota
+	value := manifest{SchemaVersion: directManifestSchema, Authority: "example-broadcaster", Cohort: "authentic-v1", RoleQuotas: map[string]int{"commercial": 1, "promo": 1, "bumper": 1, "station_id": 1, "trailer": 1, "psa": 1}}
+	for role, quota := range value.RoleQuotas {
 		for index := 1; index <= quota; index++ {
 			id := fmt.Sprintf("%s-%03d", role, index)
 			mediaPath := filepath.Join("media", id+".mp4")
 			writeFixture(t, root, mediaPath, "media bytes "+id)
-			value.Cases = append(value.Cases, manifestCase{ItemID: id, Title: id, RoleHints: []string{role}, MediaPath: filepath.ToSlash(mediaPath), MIMEType: "video/mp4", RightsAssertions: []string{"written redistribution grant"}, Evidence: []manifestEvidence{{Kind: "rights", Path: "evidence/rights.txt"}, {Kind: "provenance", Path: "evidence/provenance.json"}}})
+			value.Cases = append(value.Cases, manifestCase{ItemID: id, Title: id, RoleHints: []string{role}, MediaPath: filepath.ToSlash(mediaPath), MIMEType: "video/mp4", RightsAssertions: []string{"written redistribution grant"}, Creator: []string{"Example Broadcaster"}, Campaign: id, SourceFamily: "master-" + id, Evidence: []manifestEvidence{{Kind: "rights", Path: "evidence/rights.txt"}, {Kind: "provenance", Path: "evidence/provenance.json"}}})
 		}
 	}
 	return value
