@@ -30,8 +30,11 @@ test("pins a separate release-like AndroidX benchmark and a paired Guide travers
   assert.match(macrobenchmarkBuildGradle, /id 'com\.android\.test'/);
   assert.match(macrobenchmarkBuildGradle, /matchingFallbacks = \['release'\]/);
   assert.match(macrobenchmarkBuildGradle, /benchmark-macro-junit4:1\.4\.1/);
+  assert.match(macrobenchmarkBuildGradle, /androidx\.test:runner:1\.7\.0/);
   assert.match(macrobenchmarkBuildGradle, /uiautomator:2\.4\.0/);
   assert.match(guideNavigationBenchmark, /CompilationMode\.Ignore\(\)/);
+  assert.match(guideNavigationBenchmark, /ExperimentalMacrobenchmarkApi/);
+  assert.match(guideNavigationBenchmark, /@OptIn\(ExperimentalMacrobenchmarkApi::class\)/);
   assert.match(guideNavigationBenchmark, /By\.desc\("Open programme guide"\)/);
   assert.match(guideNavigationBenchmark, /By\.desc\("Programme guide"\)/);
   assert.match(guideNavigationBenchmark, /repeat\(12\)/);

@@ -36,6 +36,7 @@ android {
 
 dependencies {
     implementation 'androidx.test.ext:junit:1.3.0'
+    implementation 'androidx.test:runner:1.7.0'
     implementation 'androidx.test.uiautomator:uiautomator:2.4.0'
     implementation 'androidx.benchmark:benchmark-macro-junit4:1.4.1'
 }
@@ -48,6 +49,7 @@ const guideNavigationBenchmark = `package media.loomarr.tv.macrobenchmark
 
 import android.os.SystemClock
 import androidx.benchmark.macro.CompilationMode
+import androidx.benchmark.macro.ExperimentalMacrobenchmarkApi
 import androidx.benchmark.macro.FrameTimingMetric
 import androidx.benchmark.macro.junit4.MacrobenchmarkRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -69,6 +71,7 @@ class GuideNavigationBenchmark {
     val benchmarkRule = MacrobenchmarkRule()
 
     @Test
+    @OptIn(ExperimentalMacrobenchmarkApi::class)
     fun guideNavigation() = benchmarkRule.measureRepeated(
         packageName = TARGET_PACKAGE,
         metrics = listOf(FrameTimingMetric()),
