@@ -287,7 +287,9 @@ jobs:
   agent-harness-macos:
     name: Agent harness (macOS)
     needs: changes
-    if: needs.changes.outputs.agent == 'true'
+    # Ordinary PR pushes get fast Linux feedback. Scarce macOS evidence is admitted by the
+    # one-at-a-time merge queue, then retained on main and deliberate manual certification.
+    if: github.event_name != 'pull_request' && needs.changes.outputs.agent == 'true'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -736,7 +738,7 @@ jobs:
   apple-mobile:
     name: Apple mobile — native build + launch
     needs: changes
-    if: needs.changes.outputs.impact_apple_mobile == 'true'
+    if: github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_mobile == 'true'
     # ExpoModulesJSI needs Swift 6.3: Xcode 16.4 cannot load the package and Xcode 26.3
     # rejects its C++ ownership annotations. The macOS 26 image supplies a compatible
     # Xcode 26.4+ toolchain without opting into Xcode 27's mandatory UIScene lifecycle,
@@ -788,7 +790,7 @@ jobs:
   apple-tv:
     name: Apple TV — native build + launch
     needs: changes
-    if: needs.changes.outputs.impact_apple_tv == 'true'
+    if: github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_tv == 'true'
     runs-on: macos-26
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -930,7 +932,7 @@ jobs:
   tuner:
     name: Tuner — Chromium + Firefox + WebKit
     needs: changes
-    if: needs.changes.outputs.impact_tuner == 'true'
+    if: github.event_name != 'pull_request' && needs.changes.outputs.impact_tuner == 'true'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

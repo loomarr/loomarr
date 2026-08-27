@@ -280,7 +280,8 @@ baseline() {
 	state="$(state_dir)/baselines"
 	mkdir -p "$state"
 	toolchain="$(go version) $(rustc --version) $(uname -s)-$(uname -m)"
-	key="$(printf '%s\n%s' "$(git -C "$ROOT" rev-parse HEAD)" "$toolchain" | cksum | awk '{print $1}')"
+	start_head="$(git -C "$ROOT" rev-parse HEAD)"
+	key="$(printf '%s\n%s' "$start_head" "$toolchain" | cksum | awk '{print $1}')"
 	stamp="$state/$key.ok"
 	lock="$state/$key.lock"
 	if [ -f "$stamp" ]; then
@@ -291,6 +292,11 @@ baseline() {
 		trap 'rmdir "$lock" 2>/dev/null || true' EXIT INT TERM
 		echo "agent-baseline: no cached result; running make check"
 		if make -C "$ROOT" check; then
+			if [ "$(git -C "$ROOT" rev-parse HEAD)" != "$start_head" ] ||
+				[ -n "$(git -C "$ROOT" status --porcelain --untracked-files=no)" ]; then
+				echo "agent-baseline: worktree changed during make check; refusing to cache mixed-tree evidence" >&2
+				return 1
+			fi
 			printf '%s\n' "$toolchain" > "$stamp"
 			rmdir "$lock"
 			trap - EXIT INT TERM

@@ -6533,7 +6533,12 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   Apple mobile and Apple TV are separate required jobs with app-specific native build, install, and
   launch commands, and each consumes its dedicated decision. Splitting a matrix must preserve
   compatible cache-key identities and must preserve each native result as a separate aggregate
-  dependency.
+  dependency. Scarce macOS jobs do not run on ordinary pull-request pushes. A required, single-build
+  merge queue admits them after fast pull-request feedback; the same impact decisions run against
+  the generated `merge_group` commit, and the aggregate cannot pass unless every selected native
+  result passes. Main pushes and explicit manual CI retain native coverage. The workflow must keep
+  the `merge_group` trigger, and repository protection must keep the queue active; removing either
+  half is a fail-closed delivery-policy change, not a performance tweak.
 - **State machine:** every transition + the five invariants.
 - **Store conformance:** one suite vs **both** SQLite (temp file) and Postgres (**testcontainers**), incl. `ClaimDue` concurrency (no record claimed twice).
 - **Library conformance:** Emby vs Jellyfin flavors w/ mock transport; correct auth header each.

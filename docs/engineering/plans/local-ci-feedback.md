@@ -17,10 +17,9 @@ Rust, formatting, vet, lint, tagged compilation, Windows compilation, harness, a
 work; only the Go test package list was partitioned.
 
 The repository requires one aggregate `CI` status. On 2026-08-23 its branch protection was changed
-to strict mode while preserving the GitHub Actions app binding, so a pull request must be tested
-against the current `main` before merging. The repository is now organization-owned at
-`loomarr/loomarr`; queue activation remains ready at the workflow level and awaits a repository
-ruleset plus a proven `merge_group` run.
+to strict mode while preserving the GitHub Actions app binding. On 2026-08-27 the organization-owned
+repository activated a required, one-build merge queue for `main`; pull requests now receive fast
+impact-scoped feedback, while scarce macOS evidence runs on the generated current-base merge group.
 
 On 2026-08-24, the next 20 successful pull-request runs were measured from GitHub's run and job
 records. Wall time includes runner queueing; occupied time is the sum of non-skipped job execution;
@@ -218,3 +217,10 @@ gate documentation are amended before the first change that alters required beha
   cross-compile therefore spent assurance time on a platform outside the product contract. They
   are retired together while the structural `ci-ok` verifier continues to require every remaining
   top-level job.
+- A 2026-08-27 burst exposed the next orchestration bottleneck: one client branch launched and
+  superseded roughly a dozen CI runs in under three hours while selected macOS jobs across unrelated
+  PRs queued for tens of minutes to more than two hours. Strict up-to-date protection then made
+  successful long-running PR evidence stale whenever another branch merged. Ruleset `21647889`
+  activates a squash, `ALLGREEN`, one-build/one-merge queue for `main`. Ordinary PR runs no longer
+  admit Apple mobile, Apple TV, tuner, or macOS harness jobs; those remain required on
+  `merge_group`, main, and manual runs, guarded by `VerifyCINativeAdmission`.

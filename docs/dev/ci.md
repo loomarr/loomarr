@@ -7,6 +7,31 @@
 Each family contains independently filtered jobs. The required aggregate always runs and checks
 every top-level result, including jobs that correctly skipped.
 
+## Fast PR feedback, queued native admission
+
+Ordinary pull-request pushes run the affected Linux gates and return the required `CI` result
+without competing for macOS runners. The required `main` merge queue then builds one candidate at a
+time against the current base. On that `merge_group` run, the same fail-closed classifier selects
+Apple mobile, Apple TV, the tuner matrix, and the macOS harness; every selected result remains a
+dependency of `CI`. Main pushes and explicit manual runs retain those jobs too.
+
+This is admission control, not weaker assurance. A pull request cannot merge directly after its fast
+result: it must enter the queue and pass the generated current-base commit. The queue uses squash
+merges, `ALLGREEN`, one concurrent build, one PR per merge, and a three-hour check-response timeout.
+One-at-a-time admission prevents a burst of agent branches from occupying every Apple runner, while
+the queue gives accepted work a stable place in line instead of repeatedly invalidating successful
+strict-mode runs.
+
+The policy has two coupled halves:
+
+- GitHub ruleset **Main merge queue admission** targets `refs/heads/main`.
+- `.github/workflows/ci.yml` triggers on `merge_group` and excludes only ordinary `pull_request`
+  events from scarce macOS jobs.
+
+`releaseverify.VerifyCINativeAdmission` rejects loss of the queue trigger, renewed PR admission, a
+queue-only condition that drops main/manual evidence, or a missing scarce-capacity job. The live
+ruleset is verified through GitHub's branch-rules API when changing repository protection.
+
 ## Jobs run only when their inputs changed
 
 A `changes` job diffs against the merge base and each job gates on its output. It fails safe: no
@@ -131,11 +156,10 @@ green required check while its real job is red.
 Never add a workflow-level `paths:`. A run that doesn't trigger reports no checks, so a required
 check sits "expected" forever and the PR can't merge. Filter per job.
 
-The workflow already handles `merge_group`, but GitHub offers merge queues only to public
-repositories owned by organizations (or qualifying organization-owned private repositories).
-`loomarr/loomarr` is organization-owned. Queue activation is therefore an explicit repository
-ruleset operation; the strict required `CI` check remains the protected current-base boundary until
-the queue is enabled and its first `merge_group` run is proven.
+The workflow handles `merge_group`, and the organization-owned repository requires the merge queue
+through its `main` ruleset. The strict, GitHub-Actions-owned `CI` check remains the protected
+current-base boundary inside the queue. Never remove the queue rule merely to bypass a delayed or
+failing native result.
 
 ## Sharding
 

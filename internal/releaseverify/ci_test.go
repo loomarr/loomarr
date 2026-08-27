@@ -97,15 +97,15 @@ func TestVerifyCIImpactActivation(t *testing.T) {
     if: needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true'
   tuner:
     needs: changes
-    if: needs.changes.outputs.impact_tuner == 'true'
+    if: github.event_name != 'pull_request' && needs.changes.outputs.impact_tuner == 'true'
   apple-mobile:
     needs: changes
-    if: needs.changes.outputs.impact_apple_mobile == 'true'
+    if: github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_mobile == 'true'
     steps:
       - run: make client-apple-simulator CLIENT_APP=mobile
   apple-tv:
     needs: changes
-    if: needs.changes.outputs.impact_apple_tv == 'true'
+    if: github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_tv == 'true'
     steps:
       - run: make client-apple-simulator CLIENT_APP=tv
 `
@@ -185,6 +185,68 @@ func TestVerifyCIImpactActivation(t *testing.T) {
 			}
 			if err := VerifyCIImpactActivation(path); err == nil {
 				t.Fatal("VerifyCIImpactActivation accepted a broken activated-gate contract")
+			}
+		})
+	}
+}
+
+func TestVerifyCINativeAdmission(t *testing.T) {
+	workflow := `on:
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+  agent-harness-macos:
+    if: github.event_name != 'pull_request' && needs.changes.outputs.agent == 'true'
+    runs-on: macos-latest
+  apple-mobile:
+    if: github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_mobile == 'true'
+    runs-on: macos-26
+  apple-tv:
+    if: github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_tv == 'true'
+    runs-on: macos-26
+  tuner:
+    if: github.event_name != 'pull_request' && needs.changes.outputs.impact_tuner == 'true'
+    runs-on: macos-latest
+`
+	path := filepath.Join(t.TempDir(), "ci.yml")
+	if err := os.WriteFile(path, []byte(workflow), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyCINativeAdmission(path); err != nil {
+		t.Fatalf("complete native admission contract: %v", err)
+	}
+
+	mutations := map[string]string{
+		"missing merge-group trigger": strings.Replace(workflow, "  merge_group:\n", "", 1),
+		"ordinary PR consumes Apple capacity": strings.Replace(
+			workflow,
+			"github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_mobile == 'true'",
+			"needs.changes.outputs.impact_apple_mobile == 'true'",
+			1,
+		),
+		"native evidence is queue-only": strings.Replace(
+			workflow,
+			"github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_tv == 'true'",
+			"github.event_name == 'merge_group' && needs.changes.outputs.impact_apple_tv == 'true'",
+			1,
+		),
+		"missing scarce job": strings.Replace(
+			workflow,
+			"  tuner:\n    if: github.event_name != 'pull_request' && needs.changes.outputs.impact_tuner == 'true'\n    runs-on: macos-latest\n",
+			"",
+			1,
+		),
+	}
+	for name, mutated := range mutations {
+		t.Run(name, func(t *testing.T) {
+			if err := os.WriteFile(path, []byte(mutated), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := VerifyCINativeAdmission(path); err == nil {
+				t.Fatal("VerifyCINativeAdmission accepted a broken native admission contract")
 			}
 		})
 	}

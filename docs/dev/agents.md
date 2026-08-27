@@ -118,7 +118,9 @@ alone.
 
 `agent-baseline` caches a successful `make check` by clean commit, Go and Rust toolchains, operating
 system, and architecture. Worktrees at the same commit wait for one proof and reuse it. Dirty trees
-always run the gate and never populate the cache.
+always run the gate and never populate the cache. The harness rechecks the commit and tracked-file
+state after the gate and refuses to cache if implementation began while the baseline was running;
+mixed-tree output is not evidence for either version.
 
 Run small affected tests while editing, formatting and `git diff --check` before commit, then one
 stabilized complete gate for every touched area. CI owns expensive native and platform matrices.

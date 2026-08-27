@@ -181,15 +181,15 @@ func VerifyCIImpactActivation(path string) error {
 		},
 		"tuner": {
 			outputs:   []classifierOutput{{name: "impact_tuner", source: "tuner"}},
-			condition: "needs.changes.outputs.impact_tuner == 'true'",
+			condition: "github.event_name != 'pull_request' && needs.changes.outputs.impact_tuner == 'true'",
 		},
 		"apple-mobile": {
 			outputs:   []classifierOutput{{name: "impact_apple_mobile", source: "apple_mobile"}},
-			condition: "needs.changes.outputs.impact_apple_mobile == 'true'",
+			condition: "github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_mobile == 'true'",
 		},
 		"apple-tv": {
 			outputs:   []classifierOutput{{name: "impact_apple_tv", source: "apple_tv"}},
-			condition: "needs.changes.outputs.impact_apple_tv == 'true'",
+			condition: "github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_tv == 'true'",
 		},
 	}
 	for jobName, gate := range activated {
@@ -245,6 +245,47 @@ func yamlNodeContainsScalar(node *yaml.Node, value string) bool {
 		}
 	}
 	return false
+}
+
+// VerifyCINativeAdmission keeps scarce macOS capacity behind the merge queue.
+// Pull-request CI remains fast feedback; merge-group, main, and manual runs
+// retain the same required native evidence before delivery or release.
+func VerifyCINativeAdmission(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	root, err := parseYAML(data)
+	if err != nil {
+		return err
+	}
+	on, err := requiredMap(root, "on")
+	if err != nil {
+		return errors.New("CI workflow must define triggers")
+	}
+	if _, ok := mappingValue(on, "merge_group"); !ok {
+		return errors.New("CI workflow must trigger for merge groups")
+	}
+	jobs, err := requiredMap(root, "jobs")
+	if err != nil {
+		return err
+	}
+	expected := map[string]string{
+		"agent-harness-macos": "github.event_name != 'pull_request' && needs.changes.outputs.agent == 'true'",
+		"apple-mobile":        "github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_mobile == 'true'",
+		"apple-tv":            "github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_tv == 'true'",
+		"tuner":               "github.event_name != 'pull_request' && needs.changes.outputs.impact_tuner == 'true'",
+	}
+	for jobName, condition := range expected {
+		job, err := requiredMap(jobs, jobName)
+		if err != nil {
+			return fmt.Errorf("CI workflow must define scarce-capacity job %s", jobName)
+		}
+		if got := scalarValue(job, "if"); got != condition {
+			return fmt.Errorf("CI job %s condition %q does not match native admission contract %q", jobName, got, condition)
+		}
+	}
+	return nil
 }
 
 // VerifyCIManualScopes pins the manual-dispatch contract used to certify an
