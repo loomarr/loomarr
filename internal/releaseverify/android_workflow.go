@@ -246,10 +246,10 @@ func verifyAndroidSteps(job *yaml.Node) error {
 	}
 	if scalarValue(steps.Content[4], "if") != "inputs.renderer == 'react-native'" ||
 		scalarValue(steps.Content[5], "if") != "inputs.renderer == 'react-native'" {
-		return errors.New("React Native tooling must run only for the explicit React Native renderer")
+		return errors.New("tooling for React Native must run only for the explicit React Native renderer")
 	}
 	if scalarValue(steps.Content[10], "if") != "inputs.renderer == 'react-native' && inputs.publish_to_play" {
-		return errors.New("React Native publication must require the explicit renderer and publish choice")
+		return errors.New("publication for React Native must require the explicit renderer and publish choice")
 	}
 	if scalarValue(steps.Content[12], "if") != "inputs.publish_to_play" {
 		return errors.New("play publication step must require the explicit publish_to_play input")
@@ -268,7 +268,7 @@ func verifyAndroidStepDetails(steps *yaml.Node) error {
 	adoptionEnv, err := requiredMap(steps.Content[10], "env")
 	if err != nil || len(adoptionEnv.Content) != 2 ||
 		scalarValue(adoptionEnv, "REACT_NATIVE_ADOPTED") != "${{ vars.ANDROID_REACT_NATIVE_ADOPTED }}" {
-		return errors.New("React Native adoption gate must receive only the protected adoption record")
+		return errors.New("adoption gate for React Native must receive only the protected adoption record")
 	}
 	publishEnv, err := requiredMap(steps.Content[12], "env")
 	if err != nil {
