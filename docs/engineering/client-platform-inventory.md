@@ -41,6 +41,32 @@ Controls must communicate their purpose through the platform interaction and acc
 
 ## Current implementation assessment
 
+### 2026-08-26 Compose-to-React-Native presentation checkpoint
+
+A rendered comparison against the shipping Compose references found that the current React Native
+TV application does **not** preserve the shipping presentation. This is not a small token or spacing
+drift: the visible information architecture and composition differ on every primary viewer surface.
+The behavioral seams described below remain useful, but they are not evidence of visual parity.
+
+| Surface | Shipping Compose reference | Current React Native presentation | Checkpoint result |
+| --- | --- | --- | --- |
+| Watching | Full-screen video with a compact transient Channel pill, direct number-entry card, and a two-tier bottom now/next/progress bar; remote hints are quiet text rather than controls | A large titled playback-controls panel containing Channel identity, state copy, and a row of Previous, Channel, Guide, Surf, pause, Go Live, and Retry actions | behavior carried; presentation replaced |
+| Surf | A left-side translucent overlay over the still-visible player; grouped Channel rows expand the focused now/progress detail and Back cancels | A full application shell with brand/server controls, a large focused programme card, and persistent Watching/Guide/Surf navigation | mounted-player rule carried; overlay composition replaced |
+| Guide | A dense edge-to-edge table with fixed Channel/time axes, compact filter strip, six visible rows, and a bottom focus-tracking detail band | A rounded shared surface with large filter actions, programme cards, and persistent destination navigation | selection/tune rules carried; table composition replaced |
+| Navigation | Watching owns direct D-pad/number actions; Guide and Surf are temporary destinations; Back returns to Watching and then Android owns exit | The remote adapter retains those transitions, while shared destination buttons are also rendered as prominent application chrome | behavior mostly carried; navigation presentation replaced |
+| Loading, empty, and failure | Surface-specific centered copy over the playback or Guide canvas | Shared `StatePanel` and playback-control compositions with explicit recovery actions | state meaning carried; presentation replaced |
+
+The comparison uses the committed Roborazzi references under `android/app/src/test/screenshots/`, the
+shipping sources in `android/app/src/main/java/loomarr/media/{guide,navigation,playback}`, and the
+production React Native sources in `web/apps/tv/src` and `web/packages/ui`. Device captures remain
+acceptance evidence, but the committed renderer references make this mismatch reproducible without
+requiring the same television or emulator session.
+
+The Phase-0 direction below currently authorizes that replacement. If the intended migration is
+instead screen-for-screen Compose fidelity before later redesign, this inventory and the parent plan
+must be amended before presentation implementation continues. Until that decision is recorded, the
+current React Native surfaces must not be described as visually matching the shipping application.
+
 ### Keep as product truth
 
 | Existing asset | Why it survives | Target home |
