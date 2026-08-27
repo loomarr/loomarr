@@ -7,6 +7,7 @@ temp_dir=$(mktemp -d)
 trap 'rm -r -- "$temp_dir"' EXIT
 
 "$script_dir/verify-android-native-libraries-test.sh"
+"$script_dir/validate-android-release-source-test.sh"
 
 password=loomarr-ephemeral-release-test
 keystore="$temp_dir/upload.p12"
