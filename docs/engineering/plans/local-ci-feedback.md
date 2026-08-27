@@ -217,6 +217,10 @@ gate documentation are amended before the first change that alters required beha
   serialized mobile native-build target as its own required aggregate dependency, and retains the
   standalone APK. Android TV remains observational so this activation is independently reversible
   and cannot substitute one app's native result for the other.
+- The separate Expo Android TV activation consumes only `impact_expo_android_tv`, runs the existing
+  serialized TV native-build target as its own required aggregate dependency, and retains the TV
+  APK. The independently reversible mobile and TV jobs cannot substitute one app's native result
+  for the other.
 - The supported release artifact is Linux on amd64 and arm64; Windows has no supported native
   distribution. The dedicated Windows runner, its shadow decision, and the local Windows
   cross-compile therefore spent assurance time on a platform outside the product contract. They
