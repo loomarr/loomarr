@@ -19,13 +19,13 @@ import { ScrollView, View } from "react-native";
 import { ChannelIdentity } from "../identity";
 import { ProgrammeCard } from "../programme-card";
 import { StatePanel } from "../state-panel";
-
 import type {
   GuideExperienceProps,
   GuideFilterOption,
   GuideSurfaceProps,
   GuideUnavailableState,
 } from "./guide.type";
+import { TvGuideSurface } from "./guide-tv";
 
 const defaultFilters: readonly GuideFilterOption[] = [
   { label: "All", value: "all" },
@@ -52,7 +52,7 @@ const airingFacts = (airing: GuideSurfaceProps["layout"]["channels"][number]["ai
   ].filter((fact): fact is string => Boolean(fact));
 };
 
-const GuideSurface = ({
+const PointerGuideSurface = ({
   channelWindow,
   density = "pointer",
   filter = "all",
@@ -265,6 +265,13 @@ const GuideSurface = ({
     />
   );
 };
+
+const GuideSurface = (props: GuideSurfaceProps) =>
+  props.density === "tv" ? (
+    <TvGuideSurface {...props} filters={props.filters ?? defaultFilters} />
+  ) : (
+    <PointerGuideSurface {...props} />
+  );
 
 const unavailableGuideCopy: Record<
   GuideUnavailableState,

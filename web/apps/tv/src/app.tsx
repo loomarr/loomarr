@@ -13,7 +13,6 @@ import type { PairedNativePlayer } from "@loomarr/player/native";
 import { NativePlayerView, PairedNativeImage, usePairedNativePlayer } from "@loomarr/player/native";
 import type { ClientDestination } from "@loomarr/ui";
 import {
-  ClientNavigation,
   clientBackDestination,
   GuideJourney,
   PairingShell,
@@ -206,7 +205,6 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
               ) : undefined
             }
           />
-          <ClientNavigation active="guide" density="tv" onNavigate={setActive} />
         </View>
       ) : active === "surf" ? (
         <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>

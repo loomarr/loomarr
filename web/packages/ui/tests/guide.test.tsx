@@ -62,6 +62,23 @@ const markup = () =>
   );
 
 describe("GuideSurface", () => {
+  it("matches the dense Compose TV grid with inline filters and a bottom detail band", () => {
+    const output = renderToStaticMarkup(
+      <LoomarrProvider>
+        <GuideSurface density="tv" layout={layout} onSelectionChange={vi.fn()} selection={selection} />
+      </LoomarrProvider>,
+    );
+    expect(output).toContain(">Guide<");
+    expect(output).toContain("All · 1");
+    expect(output).toContain("★ Favourites · 0");
+    expect(output).toContain("Recent · 0");
+    expect(output).toContain("▲ Filters");
+    expect(output).toContain("CHANNEL");
+    expect(output).toContain("Bart the Mother");
+    expect(output).toContain("S10E03 · 1998 · TV-PG");
+    expect(output).not.toContain("1 channels ·");
+  });
+
   it("renders authoritative channel, programme, episode, and detail facts", () => {
     const output = markup();
     expect(output).toContain("Springfield Classics");
