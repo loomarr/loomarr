@@ -31,6 +31,10 @@ func (f fakeDeriver) Frames(_ context.Context, path string, _, _ int64) ([][]byt
 	}
 	return [][]byte{frame, frame, frame, frame}, nil
 }
+func (f fakeDeriver) Audio(context.Context, string, int64, int64) (audioDerivative, error) {
+	data := []byte("bounded audio derivative")
+	return audioDerivative{Data: data, SHA256: fillercorpus.InventorySHA256(data), DurationMS: 30_000}, nil
+}
 func (f fakeDeriver) Video(context.Context, string, int64, int64) (videoDerivative, error) {
 	data := []byte("bounded video derivative")
 	return videoDerivative{Data: data, SHA256: fillercorpus.InventorySHA256(data), DurationMS: 10_000, Width: 640, Height: 360}, nil
@@ -45,7 +49,10 @@ func TestPrepareFreezesApprovedMediaIntoLabelBlindPackets(t *testing.T) {
 	if len(draft.Cases) != 2 || len(packets) != 2 || draft.Cases[0].Truth != "" || len(draft.Cases[0].LabelReviews) != 0 {
 		t.Fatalf("draft = %+v, packets = %d", draft, len(packets))
 	}
-	if draft.Cases[0].EvidenceSHA256 == "" || draft.Cases[0].Provenance.RightsDecision != "approved" || len(packets[0].Facts) != 2 || len(packets[0].Signals) != 7 {
+	if draft.Kind != fillereval.CorpusDevelopmentSeed {
+		t.Fatalf("draft kind = %q, want development_seed", draft.Kind)
+	}
+	if draft.Cases[0].EvidenceSHA256 == "" || draft.Cases[0].Provenance.RightsDecision != "approved" || len(packets[0].Facts) != 2 || len(packets[0].Signals) != 8 {
 		t.Fatalf("case = %+v packet = %+v", draft.Cases[0], packets[0])
 	}
 	raw, err := json.Marshal(draft)
@@ -68,6 +75,68 @@ func TestPrepareFreezesApprovedMediaIntoLabelBlindPackets(t *testing.T) {
 	}
 }
 
+func TestPrepareDevelopmentUsesEveryApprovedRowAndLeavesHeldRowsInert(t *testing.T) {
+	opts, deriver := preparationFixture(t)
+	mutatePreparationFixture(t, opts, func(inv *fillercorpus.Inventory, decisions []fillercorpus.RightsDecision, plan *preparationPlan) {
+		inv.Cases[0].Creator, inv.Cases[0].Campaign, inv.Cases[0].SourceFamily = nil, "", ""
+		decisions[1].Decision, decisions[1].Redistributable = "held", false
+		plan.Cases = plan.Cases[:1]
+		plan.SliceGates[0].MinCases = 1
+	})
+	opts.minItems, opts.maxItems = 1, 1
+	draft, packets, err := prepare(t.Context(), opts, deriver)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if draft.Kind != fillereval.CorpusDevelopmentSeed || len(draft.Cases) != 1 || len(packets) != 1 || draft.Cases[0].Provenance.Campaign != "" {
+		t.Fatalf("development draft = %+v, packets = %d", draft, len(packets))
+	}
+}
+
+func TestPrepareCertificationRejectsHeldInventoryRows(t *testing.T) {
+	opts, deriver := preparationFixture(t)
+	mutatePreparationFixture(t, opts, func(_ *fillercorpus.Inventory, decisions []fillercorpus.RightsDecision, plan *preparationPlan) {
+		decisions[1].Decision, decisions[1].Redistributable = "held", false
+		plan.Kind = fillereval.CorpusCertification
+		plan.Cases[1].Split = fillereval.SplitHoldout
+		plan.SliceGates[0].MinAccuracyLower = .5
+	})
+	opts.kind = fillereval.CorpusCertification
+	if _, _, err := prepare(t.Context(), opts, deriver); err == nil || !strings.Contains(err.Error(), "requires every inventory case to be approved") {
+		t.Fatalf("certification held-row error = %v", err)
+	}
+}
+
+func TestPrepareRejectsRetiredSchemaThreePlan(t *testing.T) {
+	opts, deriver := preparationFixture(t)
+	mutatePreparationFixture(t, opts, func(_ *fillercorpus.Inventory, _ []fillercorpus.RightsDecision, plan *preparationPlan) {
+		plan.SchemaVersion = 3
+	})
+	if _, _, err := prepare(t.Context(), opts, deriver); err == nil || !strings.Contains(err.Error(), "plan schema") {
+		t.Fatalf("retired schema error = %v", err)
+	}
+}
+
+func TestCorpusKindForProfileRequiresExplicitCurrentProfile(t *testing.T) {
+	for _, test := range []struct {
+		profile string
+		want    fillereval.CorpusKind
+	}{
+		{profileDevelopment, fillereval.CorpusDevelopmentSeed},
+		{profileCertification, fillereval.CorpusCertification},
+	} {
+		got, err := corpusKindForProfile(test.profile)
+		if err != nil || got != test.want {
+			t.Fatalf("profile %q = %q, %v", test.profile, got, err)
+		}
+	}
+	for _, profile := range []string{"", "development_seed", "legacy"} {
+		if _, err := corpusKindForProfile(profile); err == nil {
+			t.Fatalf("profile %q was accepted", profile)
+		}
+	}
+}
+
 func TestPrepareFailsClosedWithoutExactApprovalAndPublishesNoDerivatives(t *testing.T) {
 	opts, deriver := preparationFixture(t)
 	raw, err := os.ReadFile(opts.approvalsPath)
@@ -78,7 +147,7 @@ func TestPrepareFailsClosedWithoutExactApprovalAndPublishesNoDerivatives(t *test
 	if err := os.WriteFile(opts.approvalsPath, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := prepare(t.Context(), opts, deriver); err == nil || !strings.Contains(err.Error(), "lacks a complete redistribution approval") {
+	if _, _, err := prepare(t.Context(), opts, deriver); err == nil || !strings.Contains(err.Error(), "not bound to this inventory") {
 		t.Fatalf("error = %v", err)
 	}
 	if _, err := os.Stat(opts.derivativesRoot); !os.IsNotExist(err) {
@@ -96,22 +165,13 @@ func TestPrepareRejectsPerceptualFamilySplitAcrossClusters(t *testing.T) {
 
 func TestPrepareRejectsCampaignAuthoredAfterAcquisition(t *testing.T) {
 	opts, deriver := preparationFixture(t)
-	raw, err := os.ReadFile(opts.inventoryPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var inv fillercorpus.Inventory
-	if err := json.Unmarshal(raw, &inv); err != nil {
-		t.Fatal(err)
-	}
-	inv.Cases[0].Campaign = ""
-	raw, err = json.Marshal(inv)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(opts.inventoryPath, raw, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	mutatePreparationFixture(t, opts, func(inv *fillercorpus.Inventory, _ []fillercorpus.RightsDecision, plan *preparationPlan) {
+		inv.Cases[0].Campaign = ""
+		plan.Kind = fillereval.CorpusCertification
+		plan.Cases[1].Split = fillereval.SplitHoldout
+		plan.SliceGates[0].MinAccuracyLower = .5
+	})
+	opts.kind = fillereval.CorpusCertification
 	if _, _, err := prepare(t.Context(), opts, deriver); err == nil || !strings.Contains(err.Error(), "incomplete acquisition provenance") {
 		t.Fatalf("acquisition provenance error = %v", err)
 	}
@@ -145,6 +205,10 @@ func TestRealDeriverMeasuresAndBoundsShippingMediaDerivatives(t *testing.T) {
 	video, err := deriver.Video(t.Context(), media, 0, 2_000)
 	if err != nil || video.Width != 640 || video.Height != 360 || video.DurationMS <= 0 || video.DurationMS > 3_000 || len(video.Data) > mediatools.HostedVideoMaxBytes {
 		t.Fatalf("video = %dx%d duration=%d bytes=%d, %v", video.Width, video.Height, video.DurationMS, len(video.Data), err)
+	}
+	audio, err := deriver.Audio(t.Context(), media, 0, 2_000)
+	if err != nil || audio.DurationMS <= 0 || audio.DurationMS > 3_000 || len(audio.Data) <= 44 {
+		t.Fatalf("audio duration=%d bytes=%d, %v", audio.DurationMS, len(audio.Data), err)
 	}
 }
 
@@ -191,7 +255,7 @@ func preparationFixture(t *testing.T) (options, fakeDeriver) {
 	if err := os.WriteFile(approvalsPath, approvals.Bytes(), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	plan := preparationPlan{SchemaVersion: preparationSchemaVersion, CorpusVersion: "fixture-v1", EvidenceVersion: "evidence-v1", SliceGates: []fillereval.SliceGate{{Slice: "all", MinCases: 2, MinAccuracy: .9, MinAccuracyLower: .5}}, Cases: []plannedCase{{CaseID: inv.Cases[0].CaseID, Split: fillereval.SplitDevelopment, Cluster: "cluster-a", SegmentDurationMS: 30_000, VideoDurationMS: 10_000}, {CaseID: inv.Cases[1].CaseID, Split: fillereval.SplitHoldout, Cluster: "cluster-b", SegmentDurationMS: 30_000, VideoDurationMS: 10_000}}}
+	plan := preparationPlan{SchemaVersion: preparationSchemaVersion, Kind: fillereval.CorpusDevelopmentSeed, CorpusVersion: "fixture-v1", EvidenceVersion: "evidence-v1", SliceGates: []fillereval.SliceGate{{Slice: "all", MinCases: 2, MinAccuracy: .9}}, Cases: []plannedCase{{CaseID: inv.Cases[0].CaseID, Split: fillereval.SplitDevelopment, Cluster: "cluster-a", SegmentDurationMS: 30_000, VideoDurationMS: 10_000}, {CaseID: inv.Cases[1].CaseID, Split: fillereval.SplitDevelopment, Cluster: "cluster-b", SegmentDurationMS: 30_000, VideoDurationMS: 10_000}}}
 	planPath := filepath.Join(dir, "plan.json")
 	planRaw, _ := json.Marshal(plan)
 	if err := os.WriteFile(planPath, planRaw, 0o600); err != nil {
@@ -217,5 +281,47 @@ func preparationFixture(t *testing.T) (options, fakeDeriver) {
 	if err := jpeg.Encode(&alternateJPEG, alternate, nil); err != nil {
 		t.Fatal(err)
 	}
-	return options{inventoryPath: inventoryPath, approvalsPath: approvalsPath, planPath: planPath, localRoot: localRoot, remoteRoot: remoteRoot, derivativesRoot: filepath.Join(dir, "derivatives"), preparedAt: snapshot.Add(2 * time.Hour), minItems: 2, maxItems: 2, maxInputBytes: 1024, maxOutputBytes: 1 << 20, maxWallTime: time.Minute}, fakeDeriver{frame: jpegBytes.Bytes(), alternateFrame: alternateJPEG.Bytes()}
+	return options{inventoryPath: inventoryPath, approvalsPath: approvalsPath, planPath: planPath, localRoot: localRoot, remoteRoot: remoteRoot, derivativesRoot: filepath.Join(dir, "derivatives"), kind: fillereval.CorpusDevelopmentSeed, preparedAt: snapshot.Add(2 * time.Hour), minItems: 2, maxItems: 2, maxInputBytes: 1024, maxOutputBytes: 1 << 20, maxWallTime: time.Minute}, fakeDeriver{frame: jpegBytes.Bytes(), alternateFrame: alternateJPEG.Bytes()}
+}
+
+func mutatePreparationFixture(t *testing.T, opts options, mutate func(*fillercorpus.Inventory, []fillercorpus.RightsDecision, *preparationPlan)) {
+	t.Helper()
+	inventoryRaw, err := os.ReadFile(opts.inventoryPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var inv fillercorpus.Inventory
+	if err := json.Unmarshal(inventoryRaw, &inv); err != nil {
+		t.Fatal(err)
+	}
+	decisions, err := readJSONL[fillercorpus.RightsDecision](opts.approvalsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var plan preparationPlan
+	if err := readStrictJSON(opts.planPath, &plan); err != nil {
+		t.Fatal(err)
+	}
+	mutate(&inv, decisions, &plan)
+	inventoryRaw, err = json.Marshal(inv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(opts.inventoryPath, inventoryRaw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	digest := fillercorpus.InventorySHA256(inventoryRaw)
+	for i := range decisions {
+		decisions[i].InventorySHA256 = digest
+	}
+	if err := writeJSONL(opts.approvalsPath, decisions); err != nil {
+		t.Fatal(err)
+	}
+	planRaw, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(opts.planPath, planRaw, 0o600); err != nil {
+		t.Fatal(err)
+	}
 }

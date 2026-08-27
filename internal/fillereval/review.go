@@ -31,9 +31,9 @@ type AdjudicationSubmission struct {
 func LockReviewedManifest(draft Manifest, first, second BlindReviewSet, adjudications []AdjudicationSubmission, lockedAt time.Time) (Manifest, []string) {
 	locked := draft
 	locked.Cases = slices.Clone(draft.Cases)
-	locked.Kind = CorpusCertification
 	locked.LockedAt = lockedAt.UTC()
 	failures := validateUnlabeledDraft(draft)
+	failures = append(failures, validateReviewDraftScale(draft)...)
 	firstByID, firstFailures := unblindSubmissions("first review", draft, first)
 	failures = append(failures, firstFailures...)
 	secondByID, moreFailures := unblindSubmissions("second review", draft, second)
@@ -104,20 +104,44 @@ func LockReviewedManifest(draft Manifest, first, second BlindReviewSet, adjudica
 	}
 	if len(failures) == 0 {
 		failures = append(failures, ValidateManifest(locked)...)
-		failures = append(failures, ValidateCertificationContract(locked)...)
+		if locked.Kind == CorpusCertification {
+			failures = append(failures, ValidateCertificationContract(locked)...)
+		}
 	}
 	return locked, failures
 }
 
 func validateUnlabeledDraft(draft Manifest) []string {
 	var failures []string
-	if draft.SchemaVersion != SchemaVersion || draft.Kind != CorpusCertification || strings.TrimSpace(draft.CorpusVersion) == "" || !draft.LockedAt.IsZero() {
-		failures = append(failures, "draft requires the current certification schema, corpus identity, and no prior lock time")
+	if draft.SchemaVersion != SchemaVersion || draft.Kind != CorpusDevelopmentSeed && draft.Kind != CorpusCertification || strings.TrimSpace(draft.CorpusVersion) == "" || !draft.LockedAt.IsZero() {
+		failures = append(failures, "draft requires the current development_seed or certification schema, corpus identity, and no prior lock time")
 	}
 	for _, c := range draft.Cases {
 		if c.Truth != "" || c.RejectClass != "" || strings.TrimSpace(c.ContentRole) != "" || len(c.Taxonomy) != 0 || len(c.PolicyFlags) != 0 || len(c.Slices) != 0 || len(c.Evidence) != 0 || strings.TrimSpace(c.ReviewQuestion) != "" || len(c.LabelReviews) != 0 || c.Adjudication != nil {
 			failures = append(failures, c.ID+": draft must not contain labels, reviews, or adjudication")
 		}
+	}
+	return failures
+}
+
+func validateReviewDraftScale(draft Manifest) []string {
+	if draft.Kind == CorpusCertification {
+		return ValidateCertificationDraft(draft)
+	}
+	if draft.Kind != CorpusDevelopmentSeed {
+		return nil
+	}
+	var failures []string
+	development := 0
+	for _, c := range draft.Cases {
+		if c.Split != SplitDevelopment {
+			failures = append(failures, c.ID+": development seed may contain only development cases")
+			continue
+		}
+		development++
+	}
+	if development < CertificationMinDevelopment {
+		failures = append(failures, fmt.Sprintf("development seed has %d cases; require at least %d", development, CertificationMinDevelopment))
 	}
 	return failures
 }

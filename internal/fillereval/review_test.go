@@ -53,8 +53,35 @@ func TestLockReviewedManifestPreservesIndependentSubmissions(t *testing.T) {
 	if len(failures) > 0 {
 		t.Fatalf("lock failed: %v", failures)
 	}
-	if len(locked.Cases[0].LabelReviews) != 2 || locked.Cases[0].LabelReviews[0].SubmissionSHA256 == "" {
+	if locked.Kind != CorpusCertification || len(locked.Cases[0].LabelReviews) != 2 || locked.Cases[0].LabelReviews[0].SubmissionSHA256 == "" {
 		t.Fatalf("reviews = %+v", locked.Cases[0].LabelReviews)
+	}
+}
+
+func TestBlindReviewAndLockPreserveDevelopmentSeedKind(t *testing.T) {
+	manifest := developmentReviewCorpus()
+	first, second := submissionsFor(manifest)
+	lockedAt := manifest.LockedAt.Add(time.Hour)
+	clearDraftLabels(&manifest)
+	packet, _, failures := PrepareBlindReview(manifest, "development-blind", rand.New(rand.NewSource(3))) //nolint:gosec // deterministic test entropy
+	if len(failures) > 0 || len(packet.Cases) != CertificationMinDevelopment {
+		t.Fatalf("development packet = %d cases, failures %v", len(packet.Cases), failures)
+	}
+	locked, failures := LockReviewedManifest(manifest, first, second, nil, lockedAt)
+	if len(failures) > 0 {
+		t.Fatalf("development lock failed: %v", failures)
+	}
+	if locked.Kind != CorpusDevelopmentSeed || len(locked.Cases) != CertificationMinDevelopment {
+		t.Fatalf("locked development manifest kind=%q cases=%d", locked.Kind, len(locked.Cases))
+	}
+}
+
+func TestBlindReviewRejectsUndersizedDevelopmentSeed(t *testing.T) {
+	manifest := developmentReviewCorpus()
+	manifest.Cases = manifest.Cases[:CertificationMinDevelopment-1]
+	clearDraftLabels(&manifest)
+	if _, _, failures := PrepareBlindReview(manifest, "too-small", rand.New(rand.NewSource(4))); !containsFailure(failures, "require at least 300") { //nolint:gosec // deterministic test entropy
+		t.Fatalf("undersized development failures = %v", failures)
 	}
 }
 
@@ -136,6 +163,20 @@ func submissionsFor(manifest Manifest) (BlindReviewSet, BlindReviewSet) {
 		second.Submissions = append(second.Submissions, LabelSubmission{Alias: entry.Alias, ReviewerID: "reviewer-b", BatchID: "blind-b", ReviewedAt: manifest.LockedAt.Add(time.Minute), Labels: labels[entry.CaseID]})
 	}
 	return first, second
+}
+
+func developmentReviewCorpus() Manifest {
+	manifest, _ := passingCorpus(CertificationMinHoldout)
+	development := make([]Case, 0, CertificationMinDevelopment)
+	for _, c := range manifest.Cases {
+		if c.Split == SplitDevelopment {
+			development = append(development, c)
+		}
+	}
+	manifest.Kind = CorpusDevelopmentSeed
+	manifest.Cases = development
+	manifest.SliceGates = []SliceGate{{Slice: "contract", MinCases: CertificationMinDevelopment, MinAccuracy: .99}}
+	return manifest
 }
 
 func TestLabelsHashCoversSlices(t *testing.T) {

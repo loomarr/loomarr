@@ -40,10 +40,22 @@ file, and a separate ledger-to-file rehash passed 300/300. One Archive request r
 completed in 283 further requests. The [content-addressed acquisition summary](../evidence/filler-development-acquisition-2026-08-27.json)
 records the external ledgers' digests and the policy boundary.
 
+The approved cohort was prepared on 2026-08-27 as a schema-v5 `development_seed`, not coerced into a
+certification manifest. The preparer rehashed all 5,952,579,028 source bytes, measured at most two
+minutes per case, identified 299 perceptual clusters, and atomically published 300 label-blind packets.
+For 297 usable cases it produced one 16 kHz mono WAV, four JPEG frames, and one at-most-54-second MP4;
+three measured-unusable cases retain only their decoder and source-policy facts. An independent pass
+revalidated every packet digest and all 1,782 derivative files. Two distinct 300-case opaque-alias
+review packets and owner-only maps now bind the same content set; neither semantic label submission is
+complete yet. The [preparation evidence](../evidence/filler-development-preparation-2026-08-27.json)
+records the external artifact digests and real-media boundary findings.
+
 This completes development acquisition, not certification. The Archive policy accepts exact item
 CC/public-domain assertions as operational authority without claiming a chain-of-title warranty. It
 does not admit a case to the scored holdout. The independent 1,126-case holdout, similarity/source
-splits, two blind semantic label batches, and adjudication remain required before the provider matrix.
+splits, two completed blind semantic label submissions, and adjudication remain required before the
+certification provider matrix. The prepared development cohort may support non-certifying model
+selection once its two label submissions are locked.
 
 ## Target mix
 
