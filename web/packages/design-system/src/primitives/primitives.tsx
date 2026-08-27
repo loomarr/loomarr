@@ -124,6 +124,16 @@ const textTones = {
   warning: "$stateWarning",
 } as const;
 
+type TypographyWeight = (typeof typography)[Density][TextRole]["weight"];
+
+/** Keep variable-font weights on web while using weights native system fonts accept. */
+const resolveFontWeight = (weight: TypographyWeight, web = isWeb) => {
+  if (web) return weight;
+  if (weight === "550") return "600";
+  if (weight === "650") return "700";
+  return weight;
+};
+
 const Text = ({ density = "pointer", textRole, tone, ...props }: TextProps) => {
   const value = typography[density][textRole];
   return (
@@ -140,7 +150,7 @@ const Text = ({ density = "pointer", textRole, tone, ...props }: TextProps) => {
       }
       fontFamily={dataRoles.has(textRole) ? "$data" : "$body"}
       fontSize={value.size}
-      fontWeight={value.weight}
+      fontWeight={resolveFontWeight(value.weight)}
       letterSpacing={textRole === "display" ? -0.8 : textRole === "title" ? -0.25 : 0}
       lineHeight={value.lineHeight}
     />
@@ -264,4 +274,4 @@ const ProgressTrack = ({ percent, tone = "primary", ...props }: ProgressTrackPro
 };
 
 export type { ArtworkState, BadgeTone, ScreenProps, TextProps, TextTone };
-export { ArtworkFrame, Badge, FocusSurface, ProgressTrack, Screen, Surface, Text };
+export { ArtworkFrame, Badge, FocusSurface, ProgressTrack, resolveFontWeight, Screen, Surface, Text };
