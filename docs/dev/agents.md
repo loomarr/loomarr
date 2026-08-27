@@ -25,6 +25,44 @@ Claims prevent known collisions; they do not make overlapping implementations sa
 delegating edits, identify the file boundary, interface boundary, delivery owner, and merge order.
 If any of those is unclear, keep one editing agent.
 
+## Supervise a task
+
+Use [the supervisor workflow](../../.agents/workflows/supervise.md) when one agent should coordinate
+several bounded workers. It defines the task graph, worker brief, evidence report, steering loop, and
+integration handoff. The delivery owner remains accountable for the combined diff, final gates, PR,
+and cleanup; a worker reporting `complete` closes only its assigned outcome.
+
+Native subagents are the strongest arrangement because the parent can inspect, steer, wait for, and
+collect its children directly. Independent agent sessions can still participate through the shared
+registry and isolated worktrees, but their conversations are not visible across harnesses. Treat
+their branches, diffs, commits, command results, and structured reports as evidence; do not imply the
+supervisor can read or control an unrelated session.
+
+### tmux
+
+`tmux` is a useful operator interface for independent sessions, not an orchestration protocol. Keep
+the supervisor in one pane and give every editing worker its own registered worktree and pane. A pane
+is not the worker's identity; its unique task name, branch, worktree, and claims are.
+
+Create worktrees through the harness before starting agent processes, then arrange panes with exact
+paths. For example:
+
+```sh
+make agent-worktree TOPIC=worker-a CLAIMS=<owned-seam>
+make agent-worktree TOPIC=worker-b CLAIMS=<different-seam>
+
+tmux new-session -d -s loomarr-supervisor -c /path/to/owning-worktree
+tmux new-window -t loomarr-supervisor -n worker-a -c /path/to/loomarr-worker-a
+tmux new-window -t loomarr-supervisor -n worker-b -c /path/to/loomarr-worker-b
+tmux attach -t loomarr-supervisor
+```
+
+Start the chosen agent interactively in each pane and provide the workflow's worker brief. Use
+`make agent-status` plus the worker report for coordination. Do not treat `tmux capture-pane` output
+as completion evidence or use blind `send-keys` automation as a substitute for an acknowledged
+handoff; prompts, approval overlays, and terminal state make that brittle. Use native subagents when
+live programmatic steering is required.
+
 ## Start a task
 
 Create, register, claim, and bootstrap a fresh sibling worktree in one command:

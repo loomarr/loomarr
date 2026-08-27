@@ -1,0 +1,42 @@
+name: CI / Shared clients — lint + test + browser/iOS/Android/TV bundles
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.26"
+  NODE_VERSION: "22"
+
+jobs:
+  run:
+    name: Shared clients — lint + test + browser/iOS/Android/TV bundles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Enable pnpm (pinned via web/package.json packageManager)
+        run: corepack enable
+      - name: Cache pnpm, Metro, and Turbo work
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.local/share/pnpm/store
+            ${{ runner.temp }}/metro-cache
+            web/.turbo
+          key: clients-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            clients-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}-
+            clients-${{ runner.os }}-
+      - run: make fe-install
+      - run: make fe-codegen
+      - name: Verify the affected client graph
+        env:
+          TMPDIR: ${{ runner.temp }}
+          TURBO_TELEMETRY_DISABLED: "1"
+        run: make clients
+

@@ -1,0 +1,104 @@
+name: CI / Playwright
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.26"
+  NODE_VERSION: "22"
+
+jobs:
+  run:
+    name: Playwright — visual + a11y + e2e (${{ matrix.shard }}/${{ strategy.job-total }})
+    runs-on: ubuntu-latest
+    # Sharded purely for WALL-CLOCK. The shard COUNT below is the only number to change —
+    # the denominator everywhere else derives from `strategy.job-total`, so editing
+    # `matrix.shard` cannot leave a stale `/2` behind in the job name or the make invocation.
+    #
+    # ⚠ THE MEASUREMENTS IN A COMMENT EXPIRE, AND THIS ONE DID. It used to read "624 browser
+    # screenshots … two shards put it at ~3.8 min … a third shard would only make Go the
+    # bottleneck". Every clause had gone stale: measured 2026-08-09 the suite is 389 stories
+    # × 2 viewports (~780 tests), ONE shard takes 8.4–9.1 min, and the Go job it was pegged
+    # against runs 7.2–12.2 min — so "Go becomes the bottleneck" had been true for a long
+    # time and the conclusion drawn from it was backwards. A stale comment cannot fail a
+    # build, which is exactly why the numbers here carry the date they were taken.
+    #
+    # Four, not more: 4 puts the visual suite near ~4.5 min, under the Go job even after it
+    # is sharded. Beyond that the per-shard fixed cost (checkout, pnpm install, codegen, a
+    # storybook build) starts to dominate the screenshots the sharding is meant to split.
+    #
+    # ⚠ Free on a public repo, where standard-runner minutes are not billed — N runners cost
+    # the same as one and finish sooner. Do NOT copy this pattern into a private repo without
+    # re-checking that trade, where it multiplies billed minutes to divide the wait.
+    #
+    # ⚠ Every shard builds its own storybook-static, and that is DELIBERATE. Hoisting it into
+    # one job + upload-artifact looks like the obvious de-duplication and is a net LOSS: the
+    # builds run in PARALLEL, so they cost redundant work but zero wall clock, whereas an
+    # artifact job adds a serial prefix that all N shards then wait on. Measured: the
+    # storybook build is ~11s local, and the suite it feeds is minutes.
+    strategy:
+      fail-fast: false # one shard's failures must not hide the others'
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: corepack enable
+      - name: Cache pnpm store
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+      - run: make fe-install
+      # Generate the orval API client + tokens + routes (all gitignored). Without
+      # this the Storybook/SPA builds can't resolve the generated endpoints on a
+      # clean checkout — `make fe` does this in the frontend job, but fe-visual's
+      # storybook-build does not.
+      - run: make fe-codegen
+      # Both drive the pinned Playwright Docker image (the reference rasterizer,
+      # §5.2), so CI and local snapshots are byte-identical.
+      - name: Visual + a11y over storybook-static
+        run: make fe-visual PW_SHARD=--shard=${{ matrix.shard }}/${{ strategy.job-total }}
+      # ⚠ ONE shard runs e2e, not every shard. It is a 7-test 15s suite with its own
+      # config and no sharding, so running it per-shard would duplicate it for nothing.
+      - name: Wizard e2e smoke vs a mocked backend
+        if: matrix.shard == 1
+        run: make e2e
+      # ⚠ WITHOUT THIS, A RED VISUAL RUN TELLS YOU ALMOST NOTHING. Playwright writes an
+      # `-actual.png`, `-expected.png` and `-diff.png` for every failed screenshot, and this
+      # job used to throw all three away — the log kept only "N pixels (ratio X) are
+      # different", which cannot distinguish an intended restyle from a genuinely broken
+      # render. Diagnosing four red PRs on 2026-08-09 therefore meant cloning each branch,
+      # installing the workspace and re-running the whole suite under Docker locally, purely
+      # to look at images CI had already produced and discarded.
+      #
+      # That distinction is not academic here. One of those failures showed a flat amber
+      # block where the baseline had artwork, which is exactly what this repo's broken-image
+      # bug looks like — and was in fact the CORRECT `srcset` rung, because the story
+      # fixtures use one flat colour per rung on purpose. Log text could never have settled
+      # that; the PNG settled it in seconds.
+      #
+      # `failure()` so a green run uploads nothing: the suite writes ~90 PNGs for 10 failures
+      # and there is no reason to spend storage on runs that had none. `if-no-files-found:
+      # ignore` because a job can fail before Playwright writes anything at all (a bad
+      # storybook build), and an upload step that errors on top of the real failure just
+      # buries it.
+      #
+      # ⚠ The name MUST carry the shard, or the four shards race to upload one artifact name
+      # and only one survives — silently, so the shard you actually wanted is the one missing.
+      - name: Keep the failure images (visual + e2e)
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: playwright-failures-shard-${{ matrix.shard }}
+          path: web/apps/web/test-results/
+          if-no-files-found: ignore
+          # Long enough to debug a PR over a weekend, short enough not to accumulate: these
+          # are screenshots of a failing run, worthless once it is fixed.
+          retention-days: 7

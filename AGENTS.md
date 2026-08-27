@@ -164,4 +164,5 @@ One worktree owns implementation and delivery. Use subagents for independent res
 designs, and fresh-context review; they report to the owner unless a separate editing worktree has a
 clear file seam, interface seam, claim set, and merge order. For dependent branches, record
 `DEPENDS_ON` and stack with `BASE=<dependency-branch>`. See `docs/dev/agents.md` and the curated
-catalog in `docs/dev/skills.md`.
+catalog in `docs/dev/skills.md`. When asked to supervise or coordinate multiple agents, follow
+`.agents/workflows/supervise.md`.

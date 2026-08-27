@@ -1,6 +1,7 @@
 package releaseverify
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -226,6 +227,38 @@ func TestVerifyCIImpactActivation(t *testing.T) {
 				t.Fatal("VerifyCIImpactActivation accepted a broken activated-gate contract")
 			}
 		})
+	}
+}
+
+func TestVerifyCIFamilyWorkflows(t *testing.T) {
+	dir := t.TempDir()
+	workflowDir := filepath.Join(dir, ".github", "workflows")
+	if err := os.MkdirAll(workflowDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var root strings.Builder
+	root.WriteString("jobs:\n")
+	for job, workflow := range ciFamilyWorkflows {
+		fmt.Fprintf(&root, "  %s:\n    uses: ./%s\n", job, workflow)
+		body := "on:\n  workflow_call:\njobs:\n  run:\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n"
+		if err := os.WriteFile(filepath.Join(dir, workflow), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path := filepath.Join(workflowDir, "ci.yml")
+	if err := os.WriteFile(path, []byte(root.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyCIFamilyWorkflows(path); err != nil {
+		t.Fatalf("complete family workflow graph: %v", err)
+	}
+
+	goWorkflow := filepath.Join(workflowDir, "ci-go.yml")
+	if err := os.WriteFile(goWorkflow, []byte("on:\n  push:\njobs:\n  run:\n    runs-on: ubuntu-latest\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyCIFamilyWorkflows(path); err == nil {
+		t.Fatal("VerifyCIFamilyWorkflows accepted a product workflow with an independent trigger")
 	}
 }
 
