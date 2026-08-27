@@ -15,36 +15,38 @@ masters. DVIDS is excluded: its rights posture and API are convenient, but milit
 video does not cover the commercials, promos, bumpers, station IDs, trailers, and PSAs the product
 must distinguish.
 
-The locked corpus target is 300 cases: 190 eligible filler cases and 110 invalid or ambiguous
-controls. Source discovery is not rights approval. Every admitted case still requires the item-level
-rights record, immutable media and metadata hashes, independent semantic labels, and split-cluster
-controls required by design §10.
+The earlier 300-case target is retired: it cannot satisfy the confidence bounds the scorer claims.
+The locked corpus now requires at least 1,426 cases: a separate 300-case development set plus a
+1,126-case holdout with 446 eligible positives, 446 deterministic-invalid controls, 147
+semantic-invalid controls, and 87 ambiguous cases with answerable review questions. Those
+denominators use the scorer's one-sided 95% Wilson method and tolerate one observed error at the
+99% admit/deterministic-reject, 97% semantic-reject, and 95% review-answerability gates.
+
+Source discovery is not rights approval. Every case still requires its item-level rights record,
+immutable media and metadata hashes, independent semantic labels, and split-cluster controls.
 
 ## Target mix
 
-| Slice | Cases | Acquisition plan |
-| --- | ---: | --- |
-| Commercials | 35 | 15 item-cleared LOC/Prelinger; 20 commissioned modern masters |
-| Promos | 35 | 15 NASA/LOC; 20 commissioned or directly licensed |
-| Bumpers | 25 | Commissioned or directly licensed |
-| Station IDs | 25 | Commissioned or directly licensed; confirmed Commons files may replace, not expand, this target |
-| Trailers | 35 | 30 item-cleared NASA/LOC/Commons or static open works; 5 directly licensed independent works |
-| PSAs | 35 | 30 item-cleared CDC/federal/LOC/Prelinger; 5 commissioned or directly licensed |
-| Programme excerpts | 20 | Rights-cleared negative controls |
-| Compilations | 15 | Rights-cleared negative or ambiguous controls |
-| Fragments | 15 | Deliberate bounded cuts from approved masters |
-| Degraded or corrupt media | 15 | Deterministic derivatives from approved masters |
-| Non-filler institutional video | 15 | Rights-cleared negative controls |
-| Adversarial/instruction-bearing media | 10 | Commissioned or deterministic derivatives |
-| Conflicting evidence | 10 | Curated packets over approved masters |
-| Sensitive/policy/rights conflicts | 10 | Curated held or reject cases; never playback authority |
+| Eligible holdout role | Minimum independent cases |
+| --- | ---: |
+| Commercials | 82 |
+| Promos | 82 |
+| Bumpers | 59 |
+| Station IDs | 59 |
+| Trailers | 82 |
+| PSAs | 82 |
 
-The source-yield gate is the locked 50-candidate pilot: ten each from Prelinger, Library of Congress,
-NASA, CDC, and Wikimedia Commons. An independent reviewer must approve both rights and product
-relevance for at least five rows in a lane before it can scale into the bounded 155-candidate public
-inventory. In parallel, commission or directly license at least 100 accepted modern positives: 20
-commercials, 20 promos, 25 bumpers, 25 station IDs, 5 trailers, and 5 PSAs. Neither discovery nor the
-pilot is certification or download authority.
+No holdout cluster, campaign, or source master may contribute more than one case. No creator may supply more than
+10% of a role, and no source may supply more than 25% of eligible holdout cases. Deterministic
+derivatives remain useful controls, but every derivative family is one cluster and cannot inflate an
+independent denominator. Synthetic material cannot stand in for authentic positives.
+
+The source-yield pilot remains discovery evidence only. The
+[content-addressed review summary](../evidence/filler-pilot-rights-review-2026-08-26.json) qualified CDC and
+did not qualify Prelinger, LOC, NASA, or Commons under the common five-of-ten rights-and-relevance
+gate. That result is not acquisition authority and is far short of the authentic, diverse pool this
+contract requires. Directly licensed creator/broadcaster masters are therefore the critical path;
+the former 100-case direct cohort is useful input, not a complete positive denominator.
 
 ## Source lanes
 
@@ -114,11 +116,12 @@ candidate signals. They never authorize acquisition, model upload, redistributio
 ## Execution order
 
 1. Independently review every row in the locked five-lane, 50-candidate source-yield pilot.
-2. Scale only lanes with at least five rights-approved, product-relevant pilot rows into the bounded
-   155-candidate public inventory.
-3. Commission or directly license the 100-case modern positive cohort in parallel.
+2. Scale CDC only; do not build adapters for failed lanes merely because their APIs are convenient.
+3. Commission or directly license enough independent creator/broadcaster masters to satisfy every
+   role, creator, campaign, source, and split constraint above.
 4. Complete item-level rights review, then acquire and hash approved-only media into the external
    corpus store.
 5. Build source and similarity clusters before assigning development and holdout splits.
 6. Run two blind semantic label batches and third-party adjudication where they disagree.
-7. Lock the 300-case manifest, then run the bounded provider bakeoff on identical evidence packets.
+7. Generate separate opaque-alias packets for both reviewers, mechanically unblind their submissions,
+   lock the schema-v5 manifest, then run the bounded provider bakeoff on identical evidence packets.

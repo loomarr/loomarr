@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"path"
 	"slices"
 	"strings"
 	"time"
@@ -17,6 +18,11 @@ import (
 // could describe only one Archive.org collection and therefore could not be
 // the certification corpus contract.
 const InventorySchemaVersion = 2
+
+const (
+	TransportHTTPS = "https"
+	TransportLocal = "local"
+)
 
 var authorityMediaHosts = map[string][]string{
 	"archive.org/prelinger":           {"archive.org", ".archive.org"},
@@ -38,6 +44,7 @@ type Inventory struct {
 
 type Capture struct {
 	CaptureID              string    `json:"captureId"`
+	Transport              string    `json:"transport"`
 	Authority              string    `json:"authority"`
 	Collection             string    `json:"collection,omitempty"`
 	RoleHint               string    `json:"roleHint"`
@@ -73,13 +80,16 @@ type InventoryCase struct {
 	MetadataCache           string                  `json:"metadataCache,omitempty"`
 	MetadataRetrievedAt     time.Time               `json:"metadataRetrievedAt"`
 	MetadataSHA256          string                  `json:"metadataSha256"`
+	Evidence                []InventoryEvidence     `json:"evidence,omitempty"`
 	AllowedMediaHosts       []string                `json:"allowedMediaHosts"`
 	Representation          InventoryRepresentation `json:"representation"`
 }
 
 type InventoryRepresentation struct {
+	Transport  string `json:"transport"`
 	Name       string `json:"name"`
 	URL        string `json:"url"`
+	Path       string `json:"path,omitempty"`
 	MIMEType   string `json:"mimeType"`
 	Origin     string `json:"origin,omitempty"`
 	Bytes      int64  `json:"bytes"`
@@ -89,6 +99,13 @@ type InventoryRepresentation struct {
 	DurationMS int64  `json:"durationMs,omitempty"`
 	Width      int    `json:"width,omitempty"`
 	Height     int    `json:"height,omitempty"`
+}
+
+type InventoryEvidence struct {
+	Kind   string `json:"kind"`
+	Path   string `json:"path"`
+	Bytes  int64  `json:"bytes"`
+	SHA256 string `json:"sha256"`
 }
 
 type RightsDecision struct {
@@ -165,6 +182,60 @@ func MergeInventories(inputs ...Inventory) (Inventory, error) {
 	return result, nil
 }
 
+type LaneInventoryOptions struct {
+	SnapshotAt        time.Time
+	Collection        string
+	AllowedMediaHosts []string
+}
+
+// InventoryFromLane promotes one bounded, source-neutral discovery lane into
+// the full rights-review contract without granting download authority.
+func InventoryFromLane(lane Lane, opts LaneInventoryOptions) (Inventory, error) {
+	if opts.SnapshotAt.IsZero() || strings.TrimSpace(lane.Authority) == "" || len(lane.Cases) == 0 {
+		return Inventory{}, fmt.Errorf("promote lane: snapshot, authority, and cases are required")
+	}
+	role := ""
+	for _, item := range lane.Cases {
+		if len(item.RoleHints) == 0 || strings.TrimSpace(item.RoleHints[0]) == "" {
+			return Inventory{}, fmt.Errorf("promote lane: case %q has no primary role hint", item.ItemID)
+		}
+		if role == "" {
+			role = item.RoleHints[0]
+		}
+		if !slices.Contains(item.RoleHints, role) {
+			return Inventory{}, fmt.Errorf("promote lane: case %q does not share capture role %q", item.ItemID, role)
+		}
+	}
+	captureID := NewCaptureID(lane.Authority, opts.Collection, role)
+	result := Inventory{SchemaVersion: InventorySchemaVersion, SnapshotAt: opts.SnapshotAt.UTC(), Captures: []Capture{{
+		CaptureID: captureID, Transport: TransportHTTPS, Authority: lane.Authority, Collection: opts.Collection, RoleHint: role, SnapshotAt: opts.SnapshotAt.UTC(),
+		MaxRequests: lane.MaxRequests, RequestsUsed: lane.RequestsUsed, MaxResponseBytes: lane.MaxResponseBytes, ResponseBytes: lane.ResponseBytes,
+		MaxPredictedMediaBytes: lane.MaxPredictedMediaBytes, PredictedMediaBytes: lane.PredictedMediaBytes,
+		MaxWallTimeMS: lane.MaxWallTimeMS, WallTimeMS: lane.WallTimeMS,
+	}}}
+	for _, item := range lane.Cases {
+		result.Cases = append(result.Cases, InventoryCase{
+			CaseID: CaseID(lane.Authority, item.ItemID), CaptureID: captureID, Authority: lane.Authority, ItemID: item.ItemID,
+			Title: item.Title, RoleHints: item.RoleHints, Collection: nonEmptySlice(opts.Collection), LicenseURL: item.LicenseURL,
+			RightsAssertions: item.RightsAssertions, ItemURL: item.ItemURL, MetadataURL: item.MetadataURL,
+			MetadataRetrievedAt: item.MetadataRetrievedAt, MetadataSHA256: item.MetadataSHA256,
+			AllowedMediaHosts: append([]string(nil), opts.AllowedMediaHosts...),
+			Representation:    InventoryRepresentation{Transport: TransportHTTPS, Name: item.Representation.Name, URL: item.Representation.URL, MIMEType: item.Representation.MIMEType, Bytes: item.Representation.Bytes, SHA1: item.Representation.SHA1, MD5: item.Representation.MD5},
+		})
+	}
+	if failures := ValidateInventory(result); len(failures) != 0 {
+		return Inventory{}, fmt.Errorf("promote lane: %s", strings.Join(failures, "; "))
+	}
+	return result, nil
+}
+
+func nonEmptySlice(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return []string{value}
+}
+
 func ValidateInventory(value Inventory) []string {
 	var failures []string
 	if value.SchemaVersion != InventorySchemaVersion {
@@ -182,8 +253,7 @@ func ValidateInventory(value Inventory) []string {
 	captures := map[string]Capture{}
 	for _, capture := range value.Captures {
 		if capture.CaptureID != NewCaptureID(capture.Authority, capture.Collection, capture.RoleHint) || strings.TrimSpace(capture.Authority) == "" || strings.TrimSpace(capture.RoleHint) == "" || capture.SnapshotAt.IsZero() || capture.SnapshotAt.After(value.SnapshotAt) ||
-			!validCeiling(capture.MaxRequests, capture.RequestsUsed) ||
-			!validCeiling64(capture.MaxResponseBytes, capture.ResponseBytes) ||
+			!validCaptureTransport(capture) ||
 			!validCeiling64(capture.MaxPredictedMediaBytes, capture.PredictedMediaBytes) ||
 			!validCeiling64(capture.MaxWallTimeMS, capture.WallTimeMS) {
 			failures = append(failures, fmt.Sprintf("capture %q has invalid identity or ceilings", capture.Authority))
@@ -216,24 +286,33 @@ func ValidateInventory(value Inventory) []string {
 		if strings.TrimSpace(item.Title) == "" || len(item.RoleHints) == 0 || slices.Contains(item.RoleHints, "") || len(item.RightsAssertions) == 0 || slices.Contains(item.RightsAssertions, "") || item.MetadataRetrievedAt.IsZero() || item.MetadataRetrievedAt.After(value.SnapshotAt) || !digest(item.MetadataSHA256, 64) {
 			failures = append(failures, fmt.Sprintf("case %q has incomplete frozen metadata", item.CaseID))
 		}
-		if !httpsURL(item.ItemURL) || !httpsURL(item.MetadataURL) || (item.LicenseURL != "" && !httpsURL(item.LicenseURL)) {
+		if (capture.Transport == TransportHTTPS && (!httpsURL(item.ItemURL) || !httpsURL(item.MetadataURL))) ||
+			(capture.Transport == TransportLocal && ((item.ItemURL != "" && !httpsURL(item.ItemURL)) || (item.MetadataURL != "" && !httpsURL(item.MetadataURL)))) ||
+			(item.LicenseURL != "" && !httpsURL(item.LicenseURL)) {
 			failures = append(failures, fmt.Sprintf("case %q has an invalid evidence URL", item.CaseID))
 		}
 		if item.Representation.Bytes <= 0 || strings.TrimSpace(item.Representation.Name) == "" || strings.TrimSpace(item.Representation.MIMEType) == "" || !digestOptional(item.Representation.SHA256, 64) || !digestOptional(item.Representation.SHA1, 40) || !digestOptional(item.Representation.MD5, 32) {
 			failures = append(failures, fmt.Sprintf("case %q has incomplete representation identity", item.CaseID))
 		}
-		if err := ValidateMediaURL(item.Representation.URL, item.AllowedMediaHosts); err != nil {
-			failures = append(failures, fmt.Sprintf("case %q: %v", item.CaseID, err))
+		if item.Representation.Transport != capture.Transport {
+			failures = append(failures, fmt.Sprintf("case %q representation transport does not match its capture", item.CaseID))
 		}
-		knownRules, known := authorityMediaHosts[item.Authority]
-		if !known || len(item.AllowedMediaHosts) == 0 {
-			failures = append(failures, fmt.Sprintf("case %q has no supported authority host policy", item.CaseID))
-		} else {
-			for _, rule := range item.AllowedMediaHosts {
-				if !slices.Contains(knownRules, rule) {
-					failures = append(failures, fmt.Sprintf("case %q declares unsupported media-host rule %q", item.CaseID, rule))
+		if capture.Transport == TransportHTTPS {
+			if err := ValidateMediaURL(item.Representation.URL, item.AllowedMediaHosts); err != nil {
+				failures = append(failures, fmt.Sprintf("case %q: %v", item.CaseID, err))
+			}
+			knownRules, known := authorityMediaHosts[item.Authority]
+			if !known || len(item.AllowedMediaHosts) == 0 {
+				failures = append(failures, fmt.Sprintf("case %q has no supported authority host policy", item.CaseID))
+			} else {
+				for _, rule := range item.AllowedMediaHosts {
+					if !slices.Contains(knownRules, rule) {
+						failures = append(failures, fmt.Sprintf("case %q declares unsupported media-host rule %q", item.CaseID, rule))
+					}
 				}
 			}
+		} else if item.Representation.URL != "" || len(item.AllowedMediaHosts) != 0 || !safeRelativePath(item.Representation.Path) || !digest(item.Representation.SHA256, 64) || !validDirectEvidence(item.Evidence) {
+			failures = append(failures, fmt.Sprintf("case %q has incomplete local media or evidence identity", item.CaseID))
 		}
 		predictedByCapture[item.CaptureID] += item.Representation.Bytes
 	}
@@ -244,6 +323,36 @@ func ValidateInventory(value Inventory) []string {
 	}
 	slices.Sort(failures)
 	return failures
+}
+
+func validCaptureTransport(capture Capture) bool {
+	switch capture.Transport {
+	case TransportHTTPS:
+		return validCeiling(capture.MaxRequests, capture.RequestsUsed) && validCeiling64(capture.MaxResponseBytes, capture.ResponseBytes)
+	case TransportLocal:
+		return capture.MaxRequests == 0 && capture.RequestsUsed == 0 && capture.MaxResponseBytes == 0 && capture.ResponseBytes == 0
+	default:
+		return false
+	}
+}
+
+func validDirectEvidence(evidence []InventoryEvidence) bool {
+	kinds := map[string]bool{}
+	for _, item := range evidence {
+		if (item.Kind != "rights" && item.Kind != "provenance") || !safeRelativePath(item.Path) || item.Bytes <= 0 || !digest(item.SHA256, 64) {
+			return false
+		}
+		kinds[item.Kind] = true
+	}
+	return kinds["rights"] && kinds["provenance"]
+}
+
+func safeRelativePath(value string) bool {
+	if value == "" || strings.Contains(value, "\\") || strings.ContainsRune(value, 0) || strings.HasPrefix(value, "/") {
+		return false
+	}
+	clean := path.Clean(value)
+	return clean == value && clean != "." && clean != ".." && !strings.HasPrefix(clean, "../")
 }
 
 func ValidateMediaURL(rawURL string, allowedHosts []string) error {

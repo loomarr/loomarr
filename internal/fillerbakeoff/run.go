@@ -329,6 +329,12 @@ func validatePacket(c fillereval.Case, packet Packet, evidenceVersion, corpusRoo
 	return nil
 }
 
+// ValidatePacketAgainstCase proves that one label-blind packet is exactly the
+// bounded, content-addressed provider input locked by its draft case.
+func ValidatePacketAgainstCase(c fillereval.Case, packet Packet, evidenceVersion, corpusRoot string) error {
+	return validatePacket(c, packet, evidenceVersion, corpusRoot)
+}
+
 func validSignalKind(kind string) bool {
 	switch filleradmission.EvidenceKind(kind) {
 	case filleradmission.KindRecordingSidecar, filleradmission.KindFilename,

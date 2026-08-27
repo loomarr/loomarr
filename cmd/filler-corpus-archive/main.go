@@ -317,7 +317,7 @@ func sourceNeutralInventory(inv inventory, roleHint string) fillercorpus.Invento
 		SchemaVersion: fillercorpus.InventorySchemaVersion,
 		SnapshotAt:    inv.SnapshotAt,
 		Captures: []fillercorpus.Capture{{
-			CaptureID: captureID, Authority: authority, Collection: inv.Collection, RoleHint: roleHint, SnapshotAt: inv.SnapshotAt,
+			CaptureID: captureID, Transport: fillercorpus.TransportHTTPS, Authority: authority, Collection: inv.Collection, RoleHint: roleHint, SnapshotAt: inv.SnapshotAt,
 			MaxRequests: inv.MaxRequests, RequestsUsed: inv.RequestsUsed,
 			MaxResponseBytes: inv.MaxResponseBytes, ResponseBytes: inv.ResponseBytes,
 			MaxPredictedMediaBytes: inv.MaxTotalBytes, PredictedMediaBytes: inv.SelectedBytes,
@@ -337,7 +337,7 @@ func sourceNeutralInventory(inv inventory, roleHint string) fillercorpus.Invento
 			MetadataCache: item.MetadataCache, MetadataRetrievedAt: item.MetadataRetrievedAt, MetadataSHA256: item.MetadataSHA256,
 			AllowedMediaHosts: []string{"archive.org", ".archive.org"},
 			Representation: fillercorpus.InventoryRepresentation{
-				Name: item.File.Name, URL: item.File.URL, MIMEType: "video/mp4", Origin: item.File.Source,
+				Transport: fillercorpus.TransportHTTPS, Name: item.File.Name, URL: item.File.URL, MIMEType: "video/mp4", Origin: item.File.Source,
 				Bytes: item.File.Bytes, SHA1: item.File.SHA1, MD5: item.File.MD5,
 			},
 		})
