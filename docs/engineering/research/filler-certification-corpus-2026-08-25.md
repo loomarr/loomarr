@@ -1,7 +1,11 @@
 # Filler certification corpus sources
 
 **Status:** source-selection decision for issues #549 and #555
+
 **Decision date:** 2026-08-25
+
+**Reconciled:** 2026-08-26 against the completed source-yield pilots and
+[`filler-certification-source-qualification-2026-08-26.md`](filler-certification-source-qualification-2026-08-26.md)
 
 ## Decision
 
@@ -11,34 +15,38 @@ masters. DVIDS is excluded: its rights posture and API are convenient, but milit
 video does not cover the commercials, promos, bumpers, station IDs, trailers, and PSAs the product
 must distinguish.
 
-The locked corpus target is 300 cases: 190 eligible filler cases and 110 invalid or ambiguous
-controls. Source discovery is not rights approval. Every admitted case still requires the item-level
-rights record, immutable media and metadata hashes, independent semantic labels, and split-cluster
-controls required by design §10.
+The earlier 300-case target is retired: it cannot satisfy the confidence bounds the scorer claims.
+The locked corpus now requires at least 1,426 cases: a separate 300-case development set plus a
+1,126-case holdout with 446 eligible positives, 446 deterministic-invalid controls, 147
+semantic-invalid controls, and 87 ambiguous cases with answerable review questions. Those
+denominators use the scorer's one-sided 95% Wilson method and tolerate one observed error at the
+99% admit/deterministic-reject, 97% semantic-reject, and 95% review-answerability gates.
+
+Source discovery is not rights approval. Every case still requires its item-level rights record,
+immutable media and metadata hashes, independent semantic labels, and split-cluster controls.
 
 ## Target mix
 
-| Slice | Cases | Acquisition plan |
-| --- | ---: | --- |
-| Commercials | 35 | 20 item-cleared LOC/Prelinger; 15 commissioned modern masters |
-| Promos | 35 | 15 NASA/LOC; 20 commissioned or directly licensed |
-| Bumpers | 25 | Commissioned or directly licensed |
-| Station IDs | 25 | 20 commissioned or directly licensed; up to 5 confirmed Commons files |
-| Trailers | 35 | 10 Blender, 10 NASA, 10 confirmed Commons, 5 licensed independent works |
-| PSAs | 35 | 20 CDC/federal; 15 LOC/Prelinger |
-| Programme excerpts | 20 | Rights-cleared negative controls |
-| Compilations | 15 | Rights-cleared negative or ambiguous controls |
-| Fragments | 15 | Deliberate bounded cuts from approved masters |
-| Degraded or corrupt media | 15 | Deterministic derivatives from approved masters |
-| Non-filler institutional video | 15 | Rights-cleared negative controls |
-| Adversarial/instruction-bearing media | 10 | Commissioned or deterministic derivatives |
-| Conflicting evidence | 10 | Curated packets over approved masters |
-| Sensitive/policy/rights conflicts | 10 | Curated held or reject cases; never playback authority |
+| Eligible holdout role | Minimum independent cases |
+| --- | ---: |
+| Commercials | 82 |
+| Promos | 82 |
+| Bumpers | 59 |
+| Station IDs | 59 |
+| Trailers | 82 |
+| PSAs | 82 |
 
-The first metadata-only inventory is bounded to 120 candidates: 35 Prelinger, 25 Library of
-Congress, 25 NASA, 15 CDC, 10 Blender open-movie trailers, and 10 Wikimedia Commons files. Attrition
-is expected. In parallel, acquire at least 75 accepted modern masters across commercials, promos,
-bumpers, and station IDs. The pilot is useful only as a rights-review queue; it cannot certify.
+No holdout cluster, campaign, or source master may contribute more than one case. No creator may supply more than
+10% of a role, and no source may supply more than 25% of eligible holdout cases. Deterministic
+derivatives remain useful controls, but every derivative family is one cluster and cannot inflate an
+independent denominator. Synthetic material cannot stand in for authentic positives.
+
+The source-yield pilot remains discovery evidence only. The
+[content-addressed review summary](../evidence/filler-pilot-rights-review-2026-08-26.json) qualified CDC and
+did not qualify Prelinger, LOC, NASA, or Commons under the common five-of-ten rights-and-relevance
+gate. That result is not acquisition authority and is far short of the authentic, diverse pool this
+contract requires. Directly licensed creator/broadcaster masters are therefore the critical path;
+the former 100-case direct cohort is useful input, not a complete positive denominator.
 
 ## Source lanes
 
@@ -83,16 +91,6 @@ must be recorded per asset.
 - [CDC public-domain and copyright guidance](https://www.cdc.gov/other/agencymaterials.html)
 - [CDC media resources](https://www.cdc.gov/digital-media-tools/)
 
-### Blender open movies
-
-Use first-party pages for exact open-movie works and their CC BY terms. These provide modern,
-redistributable trailer material with a clear owner-to-work licence chain, subject to the stated
-credit.
-
-- [Blender Studio films](https://studio.blender.org/films/)
-- [Big Buck Bunny copyright](https://peach.blender.org/about/)
-- [Sintel copyright](https://durian.blender.org/about/)
-
 ### Wikimedia Commons
 
 Use the MediaWiki API for category discovery and `imageinfo`/`extmetadata`, then review the exact file
@@ -117,9 +115,13 @@ candidate signals. They never authorize acquisition, model upload, redistributio
 
 ## Execution order
 
-1. Freeze the 120-row metadata inventory with raw-response hashes and hard request/byte ceilings.
-2. Complete rights review; expect and report attrition without backfilling from an unreviewed source.
-3. Acquire and hash only approved media into the external corpus store.
-4. Build similarity clusters before assigning development and holdout splits.
-5. Run two blind semantic label batches and third-party adjudication where they disagree.
-6. Lock the 300-case manifest, then run the bounded provider bakeoff on identical evidence packets.
+1. Independently review every row in the locked five-lane, 50-candidate source-yield pilot.
+2. Scale CDC only; do not build adapters for failed lanes merely because their APIs are convenient.
+3. Commission or directly license enough independent creator/broadcaster masters to satisfy every
+   role, creator, campaign, source, and split constraint above.
+4. Complete item-level rights review, then acquire and hash approved-only media into the external
+   corpus store.
+5. Build source and similarity clusters before assigning development and holdout splits.
+6. Run two blind semantic label batches and third-party adjudication where they disagree.
+7. Generate separate opaque-alias packets for both reviewers, mechanically unblind their submissions,
+   lock the schema-v5 manifest, then run the bounded provider bakeoff on identical evidence packets.
