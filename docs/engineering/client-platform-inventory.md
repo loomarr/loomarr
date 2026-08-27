@@ -67,6 +67,28 @@ instead screen-for-screen Compose fidelity before later redesign, this inventory
 must be amended before presentation implementation continues. Until that decision is recorded, the
 current React Native surfaces must not be described as visually matching the shipping application.
 
+### Behavioral parity checkpoint
+
+Presentation choice does not reopen the contracts that already work. The migration keeps the
+following ledger so a later visual correction cannot silently replace product or platform behavior.
+
+| Contract | Compose evidence | React Native evidence | Status / remaining proof |
+| --- | --- | --- | --- |
+| Pairing, least-authority credential storage, confirmed disconnect, and remote revocation | `pairing/PairingClientTest.kt`, `pairing/DeviceStore.kt`, and the shipping paired shell | `core/src/pairing/pairing.test.ts`, `PairingShell`, paired transport tests, and physical-Shield pair/revoke/re-pair traversal | preserved; real-iPhone traversal remains |
+| Watching Up/Channel Up, Down/Channel Down, OK Guide, Left/Menu Surf, and Back delegated to Android | `navigation/TvNavigation.kt` and `TvNavigationTest.kt` | `ui-tv/src/watching-remote` plus `watching-remote.test.ts`; the TV host returns `false` for Back from Watching | preserved; final physical Back exit remains |
+| Exact number tune with a three-digit buffer and 1.2-second commit | `WatchScreen.kt` and `TvNavigationTest.kt` | `ui-tv/src/number-entry` and `number-entry.test.ts` | preserved by interface tests; physical number-key pass remains |
+| One player remains mounted while Guide or Surf is visible | `TvHomeState` keeps Surf over Watching | `WatchingSurface` stays mounted and suppresses only its chrome; `apps/tv/tests/config.test.mjs` and `ui/tests/watching-surface.test.tsx` guard the seam | preserved; visual overlay baseline is undecided |
+| Authoritative Channel order, exact tune, previous Channel, and bounded recent history | `ChannelCatalogTest.kt` and `TuneHistory` | `player-controller.test.ts`, `surf-data.test.ts`, and `surf-navigation.test.ts` | preserved and extended to latest-request-wins reconciliation |
+| Guide selection clamps to real rows/airings, retains a time anchor vertically, skips disabled filters, and tunes one explicit selection | `GuideCursor`, `GuideFocus`, `TimelineTest.kt`, and `GuideClientTest.kt` | `core/src/guide/*test.ts`, `ui-tv/tests/guide-navigation.test.ts`, `focus-registry.test.ts`, and `ui/tests/guide.test.tsx` | interface parity proven; populated remote-repeat and focus soak remain |
+| Surf keeps Favorites, Recent, and All in stable order without inventing unavailable favorites | `channelSections` and `TvNavigationTest.kt` | `surf-data.test.ts`, `surf-rail.test.tsx`, and `surf-navigation.test.ts` | preserved; populated artwork/focus traversal remains |
+| Loading, empty/dead-air, tuning, recoverable failure, and retry remain distinct | `WatchUiState`, `GuideUiState`, and committed screenshots | `state-panel.test.tsx`, `watching-surface.test.tsx`, Guide/Surf journeys, and deterministic native stories | state meaning proven; adopted presentation and device traversal remain |
+| Device bearer never enters HLS or an external artwork origin; 401/403 revokes locally | shipping `PlaybackClient`, `GuideClient`, and `RemoteArtworkTest.kt` | `play-url-source.test.ts`, `native-transport.test.ts`, and `native-event-stream.test.ts` | preserved and fail-closed; final mobile admission remains |
+| Backgrounding stops playback and releases the native player; foregrounding re-reads authority before retuning | Compose activity/player lifecycle | `native-player-lifecycle.test.ts`, `native-transport.test.ts`, and emulator HOME/foreground evidence | emulator proven; physical-Shield background/foreground remains |
+| Android identity, signing, versioning, in-place update, and rollback survive the renderer migration | shipping `loomarr.media` application and Android beta contract | prototype identity remains separate; Compose is retained as rollback through P5 | migration build identity, signed AAB, in-place update, and rollback drill remain |
+
+“Preserved” in this table means the named automated evidence covers the interface contract. It does
+not upgrade missing hardware, distribution, visual, or adoption evidence into completion.
+
 ### Keep as product truth
 
 | Existing asset | Why it survives | Target home |
