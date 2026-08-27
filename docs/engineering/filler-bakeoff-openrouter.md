@@ -1,7 +1,7 @@
 # OpenRouter filler bakeoff
 
 This is the paid, label-blind capture boundary for filler admission. It does not download media,
-read human labels, score results, or authorize production behavior. Run it only after the 300-case
+read human labels, score results, or authorize production behavior. Run it only after the
 certification manifest and its evidence-packet JSONL are locked.
 
 ## Inputs
@@ -13,6 +13,9 @@ certification manifest and its evidence-packet JSONL are locked.
   candidate models through `make filler-openrouter-snapshot`.
 - A schema-v1 run config containing the immutable run identity, admission policy, and ordered routes.
 - `OPENROUTER_API_KEY` in the environment. Credentials never enter the config or output ledger.
+
+The local case ID is a ledger join key, not model evidence. The runner validates it before spend but
+does not include it in provider prompt content; provider-visible facts use only opaque signal IDs.
 
 The run config is strict: unknown or trailing fields fail. One model comparison is one independently
 named config and output ledger; do not put several candidate models behind fallback routing. Use
