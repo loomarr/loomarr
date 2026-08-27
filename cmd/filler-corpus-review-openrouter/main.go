@@ -31,11 +31,25 @@ func run(args []string, stdout, stderr io.Writer) int {
 	baseURL := flags.String("base-url", fillerbakeoff.OpenRouterBaseURL, "OpenRouter API base URL")
 	expectedCases := flags.Int("expected-cases", 300, "exact blind package case count")
 	perCaseTimeout := flags.Duration("per-case-timeout", 5*time.Minute, "hard timeout for each serial review")
-	maxRequests := flags.Int("max-requests", 300, "exact paid request ceiling")
+	maxRequests := flags.Int("max-requests", 301, "hard paid request ceiling, including one reserved recovery attempt")
 	maxSpendNanoUSD := flags.Int64("max-spend-nanousd", 0, "hard total paid spend ceiling in nano-USD")
 	maxChargeNanoUSD := flags.Int64("max-charge-nanousd", 0, "hard reserved per-request charge ceiling in nano-USD")
+	recoverLockSHA256 := flags.String("recover-lock-sha256", "", "explicitly retire a crash-stale active-run lock matching this exact SHA-256, then exit")
 	if err := flags.Parse(args); err != nil {
 		return 2
+	}
+	if *recoverLockSHA256 != "" {
+		if *outputDir == "" {
+			_, _ = fmt.Fprintln(stderr, "filler-corpus-review-openrouter: --out is required for explicit lock recovery")
+			return 2
+		}
+		recovered, err := fillerreview.RecoverOpenRouterReviewLock(*outputDir+".private", *recoverLockSHA256)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "filler-corpus-review-openrouter: recover lock: %v\n", err)
+			return 1
+		}
+		_, _ = fmt.Fprintf(stdout, "filler-corpus-review-openrouter: recovered crash-stale lock to %s; inspect the audit before starting a new run\n", recovered)
+		return 0
 	}
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
 	if apiKey == "" || *packageDir == "" || *transcriptsPath == "" || *snapshotPath == "" || *model == "" || *provider == "" || *providerSlug == "" || *reviewerID == "" || *outputDir == "" || *maxSpendNanoUSD <= 0 || *maxChargeNanoUSD <= 0 {
@@ -53,7 +67,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	runEvidence, submissions, err := fillerreview.RunOpenRouterReview(context.Background(), fillerreview.OpenRouterReviewConfig{
-		PackageDir: *packageDir, Transcripts: transcripts, BaseURL: *baseURL, APIKey: apiKey, Snapshot: snapshot,
+		PackageDir: *packageDir, CheckpointDir: *outputDir + ".private", Transcripts: transcripts, BaseURL: *baseURL, APIKey: apiKey, Snapshot: snapshot,
 		Model: *model, UpstreamProvider: *provider, UpstreamProviderSlug: *providerSlug, ReviewerID: *reviewerID,
 		ExpectedCases: *expectedCases, PerCaseTimeout: *perCaseTimeout, MaxRequests: *maxRequests,
 		MaxSpendNanoUSD: *maxSpendNanoUSD, MaxChargeNanoUSD: *maxChargeNanoUSD,

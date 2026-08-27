@@ -1,7 +1,8 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "purpose": "filler-development-blind-reviewer-runtime-selection",
-  "snapshotAt": "2026-08-27T21:23:00Z",
+  "localSnapshotAt": "2026-08-27T21:23:00Z",
+  "evidenceUpdatedOn": "2026-08-27",
   "certificationEvidence": false,
   "cohort": "development_seed",
   "hardware": {
@@ -50,10 +51,64 @@
       "detail": "The unchanged four-frame request required 9974 prompt tokens, exceeding 8192; at 16384 it did not complete within the two-minute case ceiling."
     }
   ],
+  "hosted": {
+    "contractProbes": [
+      {
+        "reviewerId": "mistral-large-3-contract-probe-v7",
+        "model": "mistralai/mistral-large-2512",
+        "resolvedModel": "mistralai/mistral-large-2512",
+        "upstreamProvider": "Mistral",
+        "upstreamProviderSlug": "mistral/eu",
+        "promptVersion": "filler-blind-review-openrouter-v7",
+        "capabilitySnapshotSha256": "0357c7f1a784843998b8d85016bee15f1db12bf88f023f0c53470ad0694acf74",
+        "cases": 10,
+        "requests": 10,
+        "chargedNanoUsd": 27619900,
+        "reviewRunSha256": "1ec396085cc0c34b183ffed12099c575fae2245e4e4b8ad82e4977dc8bbb63fa",
+        "submissionSha256": "357c15cbcf5a224ebbac6eba1844fef95c93090de4b98128329d32716439fa66",
+        "result": "completed"
+      },
+      {
+        "reviewerId": "llama-4-maverick-contract-probe-v7",
+        "model": "meta-llama/llama-4-maverick",
+        "resolvedModel": "meta-llama/llama-4-maverick-17b-128e-instruct",
+        "upstreamProvider": "DeepInfra",
+        "upstreamProviderSlug": "deepinfra/base",
+        "promptVersion": "filler-blind-review-openrouter-v7",
+        "capabilitySnapshotSha256": "8759c87a57d3fd9d6b135261482b40f7e671dcc4c9ed09f26a11b708c19dc90e",
+        "cases": 10,
+        "requests": 10,
+        "chargedNanoUsd": 8446200,
+        "reviewRunSha256": "66ebb2db5b68879a285b03ea798041402628b350fb7a9615860dc5e2ee062fba",
+        "submissionSha256": "ebec65f466a34acc37624a9e2d4ae3407d91786db46ef130116c52b523e40cd5",
+        "result": "completed"
+      }
+    ],
+    "productionRepros": [
+      {
+        "reviewerId": "llama-4-maverick-reviewer-b-v7",
+        "model": "meta-llama/llama-4-maverick",
+        "resolvedModel": "meta-llama/llama-4-maverick-17b-128e-instruct",
+        "upstreamProvider": "DeepInfra",
+        "upstreamProviderSlug": "deepinfra/base",
+        "promptVersion": "filler-blind-review-openrouter-v7",
+        "capabilitySnapshotSha256": "8759c87a57d3fd9d6b135261482b40f7e671dcc4c9ed09f26a11b708c19dc90e",
+        "expectedCases": 300,
+        "failedAlias": "review-0baec3f8455f5f9242074eace2b69201",
+        "result": "truncated_structured_response",
+        "detail": "decode openrouter review labels: unexpected EOF (contentBytes=972 reasoningBytes=0)",
+        "completedOutputPublished": false,
+        "privateCheckpointAvailable": false,
+        "paidRecoveryAuthorized": false
+      }
+    ]
+  },
   "publication": {
-    "completedLabelSubmissions": 0,
-    "partialLabelSubmissions": 0,
-    "outputDirectoriesPublished": 0
+    "certificationLabelSubmissions": 0,
+    "probeLabelSubmissions": 20,
+    "partialCertificationLabelSubmissions": 0,
+    "certificationOutputDirectoriesPublished": 0,
+    "probeOutputDirectoriesPublished": 2
   },
   "decision": {
     "localPrimaryReviewerSelected": false,

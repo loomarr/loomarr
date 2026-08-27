@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	ReviewRunSchemaVersion    = 1
+	ReviewRunSchemaVersion    = 2
 	OllamaReviewPromptVersion = "filler-blind-review-ollama-v7"
 	maxReviewResponseBytes    = 256 << 10
 )
@@ -40,28 +40,33 @@ type OllamaReviewConfig struct {
 }
 
 type ReviewRun struct {
-	SchemaVersion            int          `json:"schemaVersion"`
-	BatchID                  string       `json:"batchId"`
-	PackageManifestSHA256    string       `json:"packageManifestSha256"`
-	ReviewerID               string       `json:"reviewerId"`
-	Provider                 string       `json:"provider"`
-	Model                    string       `json:"model"`
-	ResolvedModel            string       `json:"resolvedModel"`
-	ModelDigest              string       `json:"modelDigest"`
-	UpstreamProvider         string       `json:"upstreamProvider,omitempty"`
-	UpstreamProviderSlug     string       `json:"upstreamProviderSlug,omitempty"`
-	PromptVersion            string       `json:"promptVersion"`
-	CapabilitySnapshotSHA256 string       `json:"capabilitySnapshotSha256,omitempty"`
-	TranscriptSetSHA256      string       `json:"transcriptSetSha256,omitempty"`
-	CompletedAt              time.Time    `json:"completedAt"`
-	Cases                    int          `json:"cases"`
-	Requests                 int          `json:"requests"`
-	PromptTokens             int64        `json:"promptTokens"`
-	CompletionTokens         int64        `json:"completionTokens"`
-	TotalLatencyMS           int64        `json:"totalLatencyMs"`
-	ChargedNanoUSD           int64        `json:"chargedNanoUsd,omitempty"`
-	Calls                    []ReviewCall `json:"calls"`
-	SubmissionSHA256         string       `json:"submissionSha256"`
+	SchemaVersion            int             `json:"schemaVersion"`
+	BatchID                  string          `json:"batchId"`
+	PackageManifestSHA256    string          `json:"packageManifestSha256"`
+	ReviewerID               string          `json:"reviewerId"`
+	Provider                 string          `json:"provider"`
+	Model                    string          `json:"model"`
+	ResolvedModel            string          `json:"resolvedModel"`
+	ModelDigest              string          `json:"modelDigest"`
+	UpstreamProvider         string          `json:"upstreamProvider,omitempty"`
+	UpstreamProviderSlug     string          `json:"upstreamProviderSlug,omitempty"`
+	PromptVersion            string          `json:"promptVersion"`
+	PromptSHA256             string          `json:"promptSha256"`
+	CapabilitySnapshotSHA256 string          `json:"capabilitySnapshotSha256,omitempty"`
+	TranscriptSetSHA256      string          `json:"transcriptSetSha256,omitempty"`
+	CompletedAt              time.Time       `json:"completedAt"`
+	Cases                    int             `json:"cases"`
+	Requests                 int             `json:"requests"`
+	MaxRequests              int             `json:"maxRequests,omitempty"`
+	PromptTokens             int64           `json:"promptTokens"`
+	CompletionTokens         int64           `json:"completionTokens"`
+	TotalLatencyMS           int64           `json:"totalLatencyMs"`
+	ChargedNanoUSD           int64           `json:"chargedNanoUsd,omitempty"`
+	MaxSpendNanoUSD          int64           `json:"maxSpendNanoUsd,omitempty"`
+	MaxChargeNanoUSD         int64           `json:"maxChargeNanoUsd,omitempty"`
+	Calls                    []ReviewCall    `json:"calls"`
+	Attempts                 []ReviewAttempt `json:"attempts,omitempty"`
+	SubmissionSHA256         string          `json:"submissionSha256"`
 }
 
 type ReviewCall struct {
@@ -73,6 +78,25 @@ type ReviewCall struct {
 	CompletionTokens int64     `json:"completionTokens"`
 	ChargedAmountUSD string    `json:"chargedAmountUsd,omitempty"`
 	ChargedNanoUSD   int64     `json:"chargedNanoUsd,omitempty"`
+	RequestSHA256    string    `json:"requestSha256,omitempty"`
+	Attempt          int       `json:"attempt,omitempty"`
+}
+
+// ReviewAttempt is the immutable paid-request ledger for a hosted review.
+// Failed attempts remain visible so a resumed run cannot reset its ceilings.
+type ReviewAttempt struct {
+	Alias            string    `json:"alias"`
+	Attempt          int       `json:"attempt"`
+	RequestedAt      time.Time `json:"requestedAt"`
+	RequestSHA256    string    `json:"requestSha256"`
+	State            string    `json:"state"`
+	GenerationID     string    `json:"generationId,omitempty"`
+	LatencyMS        int64     `json:"latencyMs"`
+	PromptTokens     int64     `json:"promptTokens,omitempty"`
+	CompletionTokens int64     `json:"completionTokens,omitempty"`
+	ChargedAmountUSD string    `json:"chargedAmountUsd,omitempty"`
+	ChargedNanoUSD   int64     `json:"chargedNanoUsd,omitempty"`
+	SubmissionSHA256 string    `json:"submissionSha256,omitempty"`
 }
 
 type ollamaReviewRequest struct {
@@ -141,7 +165,7 @@ func RunOllamaReview(ctx context.Context, config OllamaReviewConfig) (ReviewRun,
 	if now == nil {
 		now = time.Now
 	}
-	run := ReviewRun{SchemaVersion: ReviewRunSchemaVersion, BatchID: manifest.BatchID, PackageManifestSHA256: manifestSHA256, ReviewerID: config.ReviewerID, Provider: "ollama", Model: config.Model, ResolvedModel: config.Model + "@sha256:" + config.ModelDigest, ModelDigest: config.ModelDigest, PromptVersion: OllamaReviewPromptVersion, TranscriptSetSHA256: transcriptSetSHA256, Cases: len(manifest.Cases)}
+	run := ReviewRun{SchemaVersion: ReviewRunSchemaVersion, BatchID: manifest.BatchID, PackageManifestSHA256: manifestSHA256, ReviewerID: config.ReviewerID, Provider: "ollama", Model: config.Model, ResolvedModel: config.Model + "@sha256:" + config.ModelDigest, ModelDigest: config.ModelDigest, PromptVersion: OllamaReviewPromptVersion, PromptSHA256: hashBytes([]byte(reviewerSystemPrompt)), TranscriptSetSHA256: transcriptSetSHA256, Cases: len(manifest.Cases)}
 	submissions := make([]fillereval.LabelSubmission, 0, len(manifest.Cases))
 	for _, item := range manifest.Cases {
 		caseCtx, cancel := context.WithTimeout(ctx, config.PerCaseTimeout)
@@ -171,8 +195,15 @@ func PublishReview(outputDir string, run ReviewRun, submissions []fillereval.Lab
 	if err != nil {
 		return err
 	}
-	if run.SchemaVersion != ReviewRunSchemaVersion || run.Cases != len(submissions) || run.Requests != len(submissions) || len(run.Calls) != len(submissions) || run.SubmissionSHA256 != hashBytes(labels) || strings.TrimSpace(run.BatchID) == "" || strings.TrimSpace(run.ReviewerID) == "" || strings.TrimSpace(run.ResolvedModel) == "" {
+	if run.SchemaVersion != ReviewRunSchemaVersion || run.Cases != len(submissions) || run.Requests < len(submissions) || len(run.Calls) != len(submissions) || run.SubmissionSHA256 != hashBytes(labels) || strings.TrimSpace(run.BatchID) == "" || strings.TrimSpace(run.ReviewerID) == "" || strings.TrimSpace(run.ResolvedModel) == "" {
 		return fmt.Errorf("review publication does not match its attestation")
+	}
+	if run.Provider == "openrouter" {
+		if err := validateHostedReviewAttestation(run, submissions); err != nil {
+			return err
+		}
+	} else if run.Requests != len(submissions) || len(run.Attempts) != 0 {
+		return fmt.Errorf("local review publication has an unexpected attempt ledger")
 	}
 	for index, submission := range submissions {
 		call := run.Calls[index]
@@ -219,6 +250,89 @@ func PublishReview(outputDir string, run ReviewRun, submissions []fillereval.Lab
 		return err
 	}
 	published = true
+	return nil
+}
+
+func validateHostedReviewAttestation(run ReviewRun, submissions []fillereval.LabelSubmission) error {
+	if !reviewSHA256(run.PackageManifestSHA256) || !reviewSHA256(run.CapabilitySnapshotSHA256) || !reviewSHA256(run.PromptSHA256) || run.Model == "" || run.ResolvedModel == "" || run.UpstreamProvider == "" || run.UpstreamProviderSlug == "" || run.PromptVersion == "" || run.CompletedAt.IsZero() || run.MaxRequests < run.Cases || run.MaxRequests > run.Cases+1 || run.Requests > run.MaxRequests || run.PromptTokens < 0 || run.CompletionTokens < 0 || run.TotalLatencyMS < 0 || run.MaxSpendNanoUSD <= 0 || run.ChargedNanoUSD < 0 || run.ChargedNanoUSD > run.MaxSpendNanoUSD || run.MaxChargeNanoUSD <= 0 || run.MaxChargeNanoUSD > run.MaxSpendNanoUSD || len(run.Attempts) != run.Requests {
+		return fmt.Errorf("hosted review attempt ledger does not match its request count")
+	}
+	type acceptedAttempt struct {
+		attempt ReviewAttempt
+	}
+	accepted := make(map[string]acceptedAttempt, len(submissions))
+	nextAttempt := map[string]int{}
+	var promptTokens, completionTokens, latencyMS, chargedNanoUSD int64
+	for _, attempt := range run.Attempts {
+		nextAttempt[attempt.Alias]++
+		settledCharge, err := fillereval.USDToNanoCeil(attempt.ChargedAmountUSD)
+		if attempt.Alias == "" || attempt.Attempt != nextAttempt[attempt.Alias] || attempt.RequestedAt.IsZero() || !reviewSHA256(attempt.RequestSHA256) || attempt.State == openRouterAttemptReserved || (attempt.State != openRouterAttemptFailed && attempt.State != openRouterAttemptAccepted) || err != nil || settledCharge != attempt.ChargedNanoUSD || attempt.ChargedNanoUSD < 0 || attempt.ChargedNanoUSD > run.MaxChargeNanoUSD || attempt.LatencyMS < 0 || attempt.PromptTokens < 0 || attempt.CompletionTokens < 0 {
+			return fmt.Errorf("hosted review attempt ledger contains an invalid or unsettled attempt")
+		}
+		if promptTokens > run.PromptTokens-attempt.PromptTokens || completionTokens > run.CompletionTokens-attempt.CompletionTokens || latencyMS > run.TotalLatencyMS-attempt.LatencyMS || chargedNanoUSD > run.ChargedNanoUSD-attempt.ChargedNanoUSD {
+			return fmt.Errorf("hosted review attempt accounting exceeds its attestation")
+		}
+		promptTokens += attempt.PromptTokens
+		completionTokens += attempt.CompletionTokens
+		latencyMS += attempt.LatencyMS
+		chargedNanoUSD += attempt.ChargedNanoUSD
+		if attempt.State == openRouterAttemptAccepted {
+			if _, duplicate := accepted[attempt.Alias]; duplicate || attempt.GenerationID == "" || !reviewSHA256(attempt.SubmissionSHA256) {
+				return fmt.Errorf("hosted review attempt ledger contains a duplicate or unbound accepted attempt")
+			}
+			accepted[attempt.Alias] = acceptedAttempt{attempt: attempt}
+		} else if attempt.SubmissionSHA256 != "" {
+			return fmt.Errorf("hosted review failed attempt binds a submission")
+		}
+	}
+	if err := validateHostedReviewAttemptOrder(run.Attempts, submissions); err != nil {
+		return err
+	}
+	if promptTokens != run.PromptTokens || completionTokens != run.CompletionTokens || latencyMS != run.TotalLatencyMS || chargedNanoUSD != run.ChargedNanoUSD || len(accepted) != len(submissions) {
+		return fmt.Errorf("hosted review attempt accounting does not match its attestation")
+	}
+	seen := make(map[string]struct{}, len(submissions))
+	for index, submission := range submissions {
+		if _, duplicate := seen[submission.Alias]; duplicate {
+			return fmt.Errorf("hosted review contains duplicate accepted aliases")
+		}
+		seen[submission.Alias] = struct{}{}
+		bound, ok := accepted[submission.Alias]
+		call := run.Calls[index]
+		attempt := bound.attempt
+		if !ok || attempt.SubmissionSHA256 != submissionSHA256([]fillereval.LabelSubmission{submission}) || call.Alias != submission.Alias || call.Attempt != attempt.Attempt || call.RequestSHA256 != attempt.RequestSHA256 || call.GenerationID != attempt.GenerationID || call.LatencyMS != attempt.LatencyMS || call.PromptTokens != attempt.PromptTokens || call.CompletionTokens != attempt.CompletionTokens || call.ChargedAmountUSD != attempt.ChargedAmountUSD || call.ChargedNanoUSD != attempt.ChargedNanoUSD {
+			return fmt.Errorf("hosted review accepted attempt does not bind its exact submission and call")
+		}
+	}
+	return nil
+}
+
+func validateHostedReviewAttemptOrder(attempts []ReviewAttempt, submissions []fillereval.LabelSubmission) error {
+	attemptIndex := 0
+	for _, submission := range submissions {
+		if attemptIndex >= len(attempts) || attempts[attemptIndex].Alias != submission.Alias {
+			return fmt.Errorf("hosted review attempts do not follow serial submission order")
+		}
+		accepted := 0
+		for attemptIndex < len(attempts) && attempts[attemptIndex].Alias == submission.Alias {
+			attempt := attempts[attemptIndex]
+			if attempt.State == openRouterAttemptAccepted {
+				accepted++
+				if attemptIndex+1 < len(attempts) && attempts[attemptIndex+1].Alias == submission.Alias {
+					return fmt.Errorf("hosted review failed attempts are not contiguous immediately before the final acceptance in serial order")
+				}
+			} else if accepted != 0 {
+				return fmt.Errorf("hosted review failed attempts follow an accepted attempt in serial order")
+			}
+			attemptIndex++
+		}
+		if accepted != 1 {
+			return fmt.Errorf("hosted review serial order lacks one final accepted attempt")
+		}
+	}
+	if attemptIndex != len(attempts) {
+		return fmt.Errorf("hosted review attempt ledger continues beyond serial submission order")
+	}
 	return nil
 }
 

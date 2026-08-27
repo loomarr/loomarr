@@ -614,7 +614,7 @@ filler-corpus-review-openrouter: ## complete one blind package through a bounded
 	    --provider-slug "$$LOOMARR_FILLER_REVIEW_PROVIDER_SLUG" \
 	    --reviewer-id "$$LOOMARR_FILLER_REVIEWER_ID" \
 	    --expected-cases "$${LOOMARR_FILLER_REVIEW_EXPECTED_CASES:-300}" \
-	    --max-requests "$${LOOMARR_FILLER_REVIEW_MAX_REQUESTS:-300}" \
+	    --max-requests "$${LOOMARR_FILLER_REVIEW_MAX_REQUESTS:-301}" \
 	    --max-spend-nanousd "$$LOOMARR_FILLER_REVIEW_MAX_SPEND_NANOUSD" \
 	    --max-charge-nanousd "$$LOOMARR_FILLER_REVIEW_MAX_CHARGE_NANOUSD" \
 	    --per-case-timeout "$${LOOMARR_FILLER_REVIEW_CASE_TIMEOUT:-5m}" \

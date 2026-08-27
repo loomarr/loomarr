@@ -3531,10 +3531,44 @@ to candidate scoring.
 A hosted review run additionally binds one exact upstream route from a capability snapshot no more
 than 24 hours old. It requires image and text input plus strict structured output, zero-data-retention
 eligibility, one provider attempt with fallback disabled, and response metadata proving the selected
-route and catalog canonical model revision. Before every serial request it reserves the configured maximum charge against both the exact
-request count and total nano-USD ceiling; it records the returned generation, tokens, latency, and
-exact charge per case. A missing or mismatched route, usage charge, schema, or case result aborts the
-batch without publishing partial labels.
+route and catalog canonical model revision. Before every serial request it atomically records a
+private `0700` checkpoint reservation, including the package-manifest, transcript-set, capability-
+snapshot, prompt, requested and resolved model, upstream provider/route, reviewer, batch, request-body
+SHA-256, and the unchanged request, per-request charge, and total nano-USD ceilings. Only then may the
+request leave the process. A settled attempt records its generation, tokens, latency, exact charge,
+state, and, when accepted, the hash of its normalized per-case submission; accepted submissions and
+their matching calls are stored in the same `0600` checkpoint. An interrupted request whose exact
+charge cannot be settled remains reserved and blocks automatic recovery rather than being treated as
+free.
+
+Exactly one process owns a hosted-review checkpoint at a time. Before loading checkpoint state, the
+runner creates `<output>.private/active-run.lock` with `O_EXCL`, mode `0600`, and a record binding the
+checkpoint-identity SHA-256, start time, and diagnostic process ID. It holds that lock across every
+load, reservation, persistence write, HTTP request, validation, and return. A competing process fails
+before HTTP. Every normal return verifies that the lock bytes still match the owner's digest, removes
+the lock, and syncs the private directory; a failed release suppresses otherwise completed output.
+A crash deliberately leaves the lock behind. Neither PID existence nor lock age may infer staleness.
+After independently establishing that no owner remains, an operator must run the hosted-review CLI
+with the same `--out` and `--recover-lock-sha256 <exact digest reported by the blocked runner>`; this
+mode makes no provider request, atomically renames the lock to a digest-named recovery audit, and
+exits. A missing or changed digest fails closed.
+
+A resumed hosted review re-hashes every package, transcript, snapshot, prompt, request, and accepted
+submission and requires the checkpoint identity and ceilings to match exactly. Identity drift,
+unknown fields, permissive or symlinked state, duplicate aliases, duplicate accepted attempts,
+unbound calls, and altered hashes fail before HTTP. Previously accepted aliases are never requested
+again. Only the failed alias is retried, as a new separately reserved attempt, and every prior failed
+or accepted request and exact charge continues to consume the original ceilings. The maintained
+300-case route defaults to a hard 301-request ceiling so one failure can be retried; a second failure
+exhausts that fixed recovery allowance, and configuration rejects a ceiling above 301. A missing or
+mismatched route, usage charge, schema, or case result still aborts the batch.
+The private checkpoint is not a label submission: public output appears only when exactly 300 unique
+accepted aliases and their complete settled attempt ledger validate. Published attempts must follow
+submission/package order: all failed attempts for one alias are contiguous immediately before that
+alias's one final accepted attempt, and no later alias may interleave. `labels.jsonl` plus the
+schema-2 `review-run.json` are then published together by one atomic directory rename. There is no
+schema-1 resume adapter: runs created before private request reservation have no trustworthy accepted-
+case or cumulative-charge ledger and must not be treated as resumable evidence.
 
 The maintained review packager turns one such opaque packet into inspectable reviewer evidence; a
 hash-only packet is not a completed review handoff. It consumes the exact draft, reviewer packet,

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,6 +22,7 @@ const OpenRouterReviewPromptVersion = "filler-blind-review-openrouter-v7"
 
 type OpenRouterReviewConfig struct {
 	PackageDir           string
+	CheckpointDir        string
 	Transcripts          []fillerbakeoff.TranscriptArtifact
 	BaseURL              string
 	APIKey               string
@@ -115,7 +117,7 @@ type openRouterReviewResponse struct {
 	} `json:"error"`
 }
 
-func RunOpenRouterReview(ctx context.Context, config OpenRouterReviewConfig) (ReviewRun, []fillereval.LabelSubmission, error) {
+func RunOpenRouterReview(ctx context.Context, config OpenRouterReviewConfig) (run ReviewRun, submissions []fillereval.LabelSubmission, err error) {
 	baseURL, client, now, err := validateOpenRouterReviewConfig(config)
 	if err != nil {
 		return ReviewRun{}, nil, err
@@ -139,46 +141,125 @@ func RunOpenRouterReview(ctx context.Context, config OpenRouterReviewConfig) (Re
 	if err != nil {
 		return ReviewRun{}, nil, err
 	}
-	run := ReviewRun{
+	identity := openRouterCheckpointIdentity{
+		SchemaVersion: openRouterCheckpointSchemaVersion, PackageManifestSHA256: manifestSHA256,
+		CapabilitySnapshotSHA256: fillerbakeoff.OpenRouterSnapshotSHA256(config.Snapshot), TranscriptSetSHA256: transcriptSetSHA256,
+		BaseURL: baseURL, Model: config.Model, ResolvedModel: openRouterReviewModel(config.Snapshot, config.Model).CanonicalSlug,
+		UpstreamProvider: config.UpstreamProvider, UpstreamProviderSlug: config.UpstreamProviderSlug,
+		PromptVersion: OpenRouterReviewPromptVersion, PromptSHA256: hashBytes([]byte(reviewerSystemPrompt)),
+		ReviewerID: config.ReviewerID, BatchID: manifest.BatchID, ExpectedCases: config.ExpectedCases,
+		MaxRequests: config.MaxRequests, MaxSpendNanoUSD: config.MaxSpendNanoUSD, MaxChargeNanoUSD: config.MaxChargeNanoUSD,
+	}
+	activeLock, err := acquireOpenRouterActiveRunLock(config.CheckpointDir, identity, now)
+	if err != nil {
+		return ReviewRun{}, nil, err
+	}
+	defer func() {
+		if releaseErr := activeLock.release(); releaseErr != nil {
+			run = ReviewRun{}
+			submissions = nil
+			err = errors.Join(err, releaseErr)
+		}
+	}()
+	checkpoint, err := loadOpenRouterCheckpoint(config.CheckpointDir, identity)
+	if err != nil {
+		return ReviewRun{}, nil, err
+	}
+	if err := validateOpenRouterCheckpointOrder(checkpoint, manifest.Cases); err != nil {
+		return ReviewRun{}, nil, err
+	}
+	run = ReviewRun{
 		SchemaVersion: ReviewRunSchemaVersion, BatchID: manifest.BatchID, PackageManifestSHA256: manifestSHA256,
 		ReviewerID: config.ReviewerID, Provider: "openrouter", Model: config.Model, ResolvedModel: openRouterReviewModel(config.Snapshot, config.Model).CanonicalSlug,
 		UpstreamProvider: config.UpstreamProvider, UpstreamProviderSlug: config.UpstreamProviderSlug,
 		PromptVersion:            OpenRouterReviewPromptVersion,
-		CapabilitySnapshotSHA256: fillerbakeoff.OpenRouterSnapshotSHA256(config.Snapshot),
-		TranscriptSetSHA256:      transcriptSetSHA256, Cases: len(manifest.Cases),
+		PromptSHA256:             identity.PromptSHA256,
+		CapabilitySnapshotSHA256: identity.CapabilitySnapshotSHA256,
+		TranscriptSetSHA256:      transcriptSetSHA256, Cases: len(manifest.Cases), MaxRequests: config.MaxRequests,
+		MaxSpendNanoUSD: config.MaxSpendNanoUSD, MaxChargeNanoUSD: config.MaxChargeNanoUSD,
 	}
-	submissions := make([]fillereval.LabelSubmission, 0, len(manifest.Cases))
+	accepted := acceptedOpenRouterAliases(checkpoint)
 	for _, item := range manifest.Cases {
-		if run.Requests >= config.MaxRequests || int64(run.Requests+1)*config.MaxChargeNanoUSD > config.MaxSpendNanoUSD {
-			return ReviewRun{}, nil, fmt.Errorf("openrouter review request or spend reservation exhausted before alias %q", item.Alias)
+		if _, ok := accepted[item.Alias]; ok {
+			continue
+		}
+		for _, prior := range checkpoint.Attempts {
+			if prior.Alias == item.Alias && prior.State == openRouterAttemptReserved {
+				return ReviewRun{}, nil, fmt.Errorf("openrouter review alias %q has an unsettled prior request", item.Alias)
+			}
 		}
 		caseCtx, cancel := context.WithTimeout(ctx, config.PerCaseTimeout)
 		started := time.Now()
-		labels, wire, charged, reviewErr := reviewOneOpenRouter(caseCtx, client, baseURL, config, manifest, item, transcripts)
+		attemptNumber := nextOpenRouterAttempt(checkpoint, item.Alias)
+		labels, wire, charged, chargeKnown, requestSHA256, reviewErr := reviewOneOpenRouter(caseCtx, client, baseURL, config, manifest, item, transcripts, func(requestSHA256 string) error {
+			spent, err := openRouterCheckpointSpend(checkpoint)
+			if err != nil {
+				return err
+			}
+			if len(checkpoint.Attempts) >= config.MaxRequests || spent > config.MaxSpendNanoUSD-config.MaxChargeNanoUSD {
+				return fmt.Errorf("openrouter review request or spend reservation exhausted before alias %q", item.Alias)
+			}
+			checkpoint.Attempts = append(checkpoint.Attempts, ReviewAttempt{Alias: item.Alias, Attempt: attemptNumber, RequestedAt: openRouterCheckpointNow(now), RequestSHA256: requestSHA256, State: openRouterAttemptReserved})
+			return persistOpenRouterCheckpoint(config.CheckpointDir, checkpoint)
+		})
 		latencyMS := max(int64(0), time.Since(started).Milliseconds())
 		cancel()
+		if requestSHA256 != "" {
+			attempt := &checkpoint.Attempts[len(checkpoint.Attempts)-1]
+			attempt.GenerationID = wire.ID
+			attempt.LatencyMS = latencyMS
+			attempt.PromptTokens = wire.Usage.PromptTokens
+			attempt.CompletionTokens = wire.Usage.CompletionTokens
+			if chargeKnown {
+				attempt.ChargedAmountUSD = wire.Usage.Cost.String()
+				attempt.ChargedNanoUSD = charged
+				attempt.State = openRouterAttemptFailed
+			}
+		}
 		if reviewErr != nil {
+			if requestSHA256 != "" {
+				if err := persistOpenRouterCheckpoint(config.CheckpointDir, checkpoint); err != nil {
+					return ReviewRun{}, nil, fmt.Errorf("persist failed OpenRouter review attempt: %w", err)
+				}
+			}
 			return ReviewRun{}, nil, fmt.Errorf("review alias %q: %w", item.Alias, reviewErr)
 		}
-		if run.ChargedNanoUSD > config.MaxSpendNanoUSD-charged {
-			return ReviewRun{}, nil, fmt.Errorf("openrouter review exceeded its spend ceiling")
-		}
-		run.Requests++
-		run.PromptTokens += wire.Usage.PromptTokens
-		run.CompletionTokens += wire.Usage.CompletionTokens
-		run.TotalLatencyMS += latencyMS
-		run.ChargedNanoUSD += charged
 		reviewedAt := now().UTC()
-		run.Calls = append(run.Calls, ReviewCall{
-			Alias: item.Alias, ReviewedAt: reviewedAt, GenerationID: wire.ID, LatencyMS: latencyMS,
-			PromptTokens: wire.Usage.PromptTokens, CompletionTokens: wire.Usage.CompletionTokens,
-			ChargedAmountUSD: wire.Usage.Cost.String(), ChargedNanoUSD: charged,
-		})
-		submissions = append(submissions, fillereval.LabelSubmission{
+		submission := fillereval.LabelSubmission{
 			Alias: item.Alias, ReviewerID: config.ReviewerID, BatchID: manifest.BatchID,
 			ReviewedAt: reviewedAt, Labels: fillereval.NormalizeLabels(labels),
-		})
+		}
+		call := ReviewCall{
+			Alias: item.Alias, ReviewedAt: reviewedAt, GenerationID: wire.ID, LatencyMS: latencyMS,
+			PromptTokens: wire.Usage.PromptTokens, CompletionTokens: wire.Usage.CompletionTokens,
+			ChargedAmountUSD: wire.Usage.Cost.String(), ChargedNanoUSD: charged, RequestSHA256: requestSHA256, Attempt: attemptNumber,
+		}
+		checkpoint.Submissions = append(checkpoint.Submissions, submission)
+		checkpoint.Calls = append(checkpoint.Calls, call)
+		attempt := &checkpoint.Attempts[len(checkpoint.Attempts)-1]
+		attempt.State = openRouterAttemptAccepted
+		attempt.SubmissionSHA256 = submissionSHA256([]fillereval.LabelSubmission{submission})
+		if err := persistOpenRouterCheckpoint(config.CheckpointDir, checkpoint); err != nil {
+			return ReviewRun{}, nil, fmt.Errorf("persist accepted OpenRouter review result: %w", err)
+		}
+		accepted[item.Alias] = struct{}{}
 	}
+	if len(checkpoint.Submissions) != len(manifest.Cases) {
+		return ReviewRun{}, nil, fmt.Errorf("OpenRouter review checkpoint has %d accepted cases; package requires %d", len(checkpoint.Submissions), len(manifest.Cases))
+	}
+	for _, attempt := range checkpoint.Attempts {
+		if attempt.State == openRouterAttemptReserved {
+			return ReviewRun{}, nil, fmt.Errorf("OpenRouter review cannot complete with an unsettled request")
+		}
+		run.PromptTokens += attempt.PromptTokens
+		run.CompletionTokens += attempt.CompletionTokens
+		run.TotalLatencyMS += attempt.LatencyMS
+		run.ChargedNanoUSD += attempt.ChargedNanoUSD
+	}
+	run.Requests = len(checkpoint.Attempts)
+	run.Attempts = slices.Clone(checkpoint.Attempts)
+	run.Calls = slices.Clone(checkpoint.Calls)
+	submissions = slices.Clone(checkpoint.Submissions)
 	run.CompletedAt = now().UTC()
 	run.SubmissionSHA256 = submissionSHA256(submissions)
 	return run, submissions, nil
@@ -203,7 +284,7 @@ func validateOpenRouterReviewConfig(config OpenRouterReviewConfig) (string, *htt
 	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (!loopback && (parsed.Scheme != "https" || parsed.Hostname() != "openrouter.ai" || parsed.Path != "/api/v1")) {
 		return "", nil, nil, fmt.Errorf("openrouter blind review requires the canonical HTTPS API base")
 	}
-	if config.APIKey == "" || config.Model == "" || config.UpstreamProvider == "" || config.UpstreamProviderSlug == "" || config.ReviewerID == "" || config.ExpectedCases <= 0 || config.MaxRequests != config.ExpectedCases || config.MaxSpendNanoUSD <= 0 || config.MaxChargeNanoUSD <= 0 || int64(config.MaxRequests) > config.MaxSpendNanoUSD/config.MaxChargeNanoUSD || config.PerCaseTimeout <= 0 {
+	if config.APIKey == "" || strings.TrimSpace(config.CheckpointDir) == "" || config.Model == "" || config.UpstreamProvider == "" || config.UpstreamProviderSlug == "" || config.ReviewerID == "" || config.ExpectedCases <= 0 || config.MaxRequests < config.ExpectedCases || config.MaxRequests > config.ExpectedCases+1 || config.MaxSpendNanoUSD <= 0 || config.MaxChargeNanoUSD <= 0 || config.MaxChargeNanoUSD > config.MaxSpendNanoUSD || config.PerCaseTimeout <= 0 {
 		return "", nil, nil, fmt.Errorf("openrouter blind review requires exact identity and positive request, charge, spend, and timeout ceilings")
 	}
 	if err := validateOpenRouterReviewSnapshot(config, baseURL); err != nil {
@@ -254,10 +335,10 @@ func validateOpenRouterReviewSnapshot(config OpenRouterReviewConfig, baseURL str
 	return fmt.Errorf("openrouter reviewer route is absent, non-ZDR, or lacks strict structured output")
 }
 
-func reviewOneOpenRouter(ctx context.Context, client *http.Client, baseURL string, config OpenRouterReviewConfig, manifest Package, item Case, transcripts map[string]fillerbakeoff.TranscriptArtifact) (fillereval.Labels, openRouterReviewResponse, int64, error) {
+func reviewOneOpenRouter(ctx context.Context, client *http.Client, baseURL string, config OpenRouterReviewConfig, manifest Package, item Case, transcripts map[string]fillerbakeoff.TranscriptArtifact, reserve func(string) error) (fillereval.Labels, openRouterReviewResponse, int64, bool, string, error) {
 	content, images, err := reviewerContent(config.PackageDir, manifest, item, transcripts)
 	if err != nil {
-		return fillereval.Labels{}, openRouterReviewResponse{}, 0, err
+		return fillereval.Labels{}, openRouterReviewResponse{}, 0, false, "", err
 	}
 	parts := []openRouterReviewPart{{Type: "text", Text: content}}
 	for _, image := range images {
@@ -275,11 +356,15 @@ func reviewOneOpenRouter(ctx context.Context, client *http.Client, baseURL strin
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return fillereval.Labels{}, openRouterReviewResponse{}, 0, err
+		return fillereval.Labels{}, openRouterReviewResponse{}, 0, false, "", err
+	}
+	requestSHA256 := hashBytes(body)
+	if err := reserve(requestSHA256); err != nil {
+		return fillereval.Labels{}, openRouterReviewResponse{}, 0, false, "", err
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
-		return fillereval.Labels{}, openRouterReviewResponse{}, 0, err
+		return fillereval.Labels{}, openRouterReviewResponse{}, 0, false, requestSHA256, err
 	}
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Authorization", "Bearer "+config.APIKey)
@@ -288,41 +373,41 @@ func reviewOneOpenRouter(ctx context.Context, client *http.Client, baseURL strin
 	request.Header.Set("X-OpenRouter-Title", "Loomarr filler blind review")
 	response, err := client.Do(request)
 	if err != nil {
-		return fillereval.Labels{}, openRouterReviewResponse{}, 0, err
+		return fillereval.Labels{}, openRouterReviewResponse{}, 0, false, requestSHA256, err
 	}
 	defer func() { _ = response.Body.Close() }()
 	raw, err := io.ReadAll(io.LimitReader(response.Body, maxReviewResponseBytes+1))
 	if err != nil || len(raw) > maxReviewResponseBytes {
-		return fillereval.Labels{}, openRouterReviewResponse{}, 0, fmt.Errorf("openrouter reviewer response exceeded its byte ceiling")
+		return fillereval.Labels{}, openRouterReviewResponse{}, 0, false, requestSHA256, fmt.Errorf("openrouter reviewer response exceeded its byte ceiling")
 	}
 	if response.StatusCode != http.StatusOK {
-		return fillereval.Labels{}, openRouterReviewResponse{}, 0, fmt.Errorf("openrouter reviewer returned status %d: %s", response.StatusCode, boundedReviewMessage(raw))
+		return fillereval.Labels{}, openRouterReviewResponse{}, 0, false, requestSHA256, fmt.Errorf("openrouter reviewer returned status %d: %s", response.StatusCode, boundedReviewMessage(raw))
 	}
 	var wire openRouterReviewResponse
 	if err := decodeProviderReviewJSON(raw, &wire); err != nil {
-		return fillereval.Labels{}, wire, 0, err
+		return fillereval.Labels{}, wire, 0, false, requestSHA256, err
 	}
 	if wire.Error != nil {
-		return fillereval.Labels{}, wire, 0, fmt.Errorf("openrouter reviewer error: %s", strings.TrimSpace(wire.Error.Message))
+		return fillereval.Labels{}, wire, 0, false, requestSHA256, fmt.Errorf("openrouter reviewer error: %s", strings.TrimSpace(wire.Error.Message))
 	}
 	charged, err := fillereval.USDToNanoCeil(wire.Usage.Cost.String())
 	if err != nil || charged < 0 || charged > config.MaxChargeNanoUSD {
-		return fillereval.Labels{}, wire, 0, fmt.Errorf("openrouter reviewer returned missing or out-of-reservation cost")
+		return fillereval.Labels{}, wire, 0, false, requestSHA256, fmt.Errorf("openrouter reviewer returned missing or out-of-reservation cost")
 	}
 	if wire.ID == "" || wire.Model != config.Model || len(wire.Choices) != 1 || wire.Metadata.Attempt != 1 || !validReviewAttemptLedger(wire, config) || !selectedReviewEndpoint(wire, config) {
-		return fillereval.Labels{}, wire, charged, fmt.Errorf("openrouter reviewer response does not bind the requested one-attempt route (generation=%t model=%q choices=%d attempt=%d attempts=%s selected=%s)", wire.ID != "", wire.Model, len(wire.Choices), wire.Metadata.Attempt, reviewAttemptSummary(wire), reviewEndpointSummary(wire))
+		return fillereval.Labels{}, wire, charged, true, requestSHA256, fmt.Errorf("openrouter reviewer response does not bind the requested one-attempt route (generation=%t model=%q choices=%d attempt=%d attempts=%s selected=%s)", wire.ID != "", wire.Model, len(wire.Choices), wire.Metadata.Attempt, reviewAttemptSummary(wire), reviewEndpointSummary(wire))
 	}
 	labels, err := decodeReviewLabels([]byte(wire.Choices[0].Message.Content))
 	if err != nil {
-		return fillereval.Labels{}, wire, charged, fmt.Errorf("decode openrouter review labels: %w (contentBytes=%d reasoningBytes=%d)", err, len(wire.Choices[0].Message.Content), len(wire.Choices[0].Message.Reasoning))
+		return fillereval.Labels{}, wire, charged, true, requestSHA256, fmt.Errorf("decode openrouter review labels: %w (contentBytes=%d reasoningBytes=%d)", err, len(wire.Choices[0].Message.Content), len(wire.Choices[0].Message.Reasoning))
 	}
 	if failures := fillereval.ValidateLabels(labels); len(failures) > 0 {
-		return fillereval.Labels{}, wire, charged, fmt.Errorf("invalid review labels: %s", strings.Join(failures, "; "))
+		return fillereval.Labels{}, wire, charged, true, requestSHA256, fmt.Errorf("invalid review labels: %s", strings.Join(failures, "; "))
 	}
 	if err := validateReviewEvidence(item, labels.Evidence, transcripts); err != nil {
-		return fillereval.Labels{}, wire, charged, err
+		return fillereval.Labels{}, wire, charged, true, requestSHA256, err
 	}
-	return labels, wire, charged, nil
+	return labels, wire, charged, true, requestSHA256, nil
 }
 
 func validReviewAttemptLedger(wire openRouterReviewResponse, config OpenRouterReviewConfig) bool {
