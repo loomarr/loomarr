@@ -16,7 +16,7 @@
     "typecheck": "pnpm -r --parallel typecheck",
     "test": "pnpm -r --parallel test",
     "build": "pnpm codegen && pnpm --filter @loomarr/web build",
-    "clients:check": "turbo run doctor typecheck test --filter=@loomarr/mobile... --filter=@loomarr/tv... && turbo run bundle --filter=@loomarr/mobile --filter=@loomarr/tv && turbo run client-proof --filter=@loomarr/web",
+    "clients:check": "turbo run doctor typecheck test --filter=@loomarr/mobile... --filter=@loomarr/tv... && turbo run bundle --concurrency=1 --filter=@loomarr/mobile --filter=@loomarr/tv && turbo run client-proof --filter=@loomarr/web",
     "native-storybook:check": "sb-rn-get-stories -c .rnstorybook && tsc -p .rnstorybook/tsconfig.json",
     "dev": "pnpm --filter @loomarr/web dev",
     "lint": "biome check && pnpm imports:check && pnpm lint:boundaries",
