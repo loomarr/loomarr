@@ -26,6 +26,7 @@ import {
   createTvGuideFocusRegistry,
   createTvNumberEntryController,
   createTvSurfFocusRegistry,
+  handleTvWatchingRemoteEvent,
   restoreTvSurfSelection,
   tvGuideRowWindow,
 } from "@loomarr/ui-tv";
@@ -79,14 +80,14 @@ const TvWatching = ({
   }, [interactive, numberEntry]);
   useTVEventHandler(({ eventType }) => {
     if (!interactive) return;
-    if (numberEntry.pushEvent(eventType)) {
-      controller.revealOverlay();
-    } else if (eventType === "select" && numberEntrySnapshot.digits) {
-      numberEntry.commit();
-    } else if (eventType === "up" || eventType === "channelUp") void controller.step(1);
-    else if (eventType === "down" || eventType === "channelDown") void controller.step(-1);
-    else if (eventType === "left" || eventType === "menu") onNavigate("surf");
-    else controller.revealOverlay();
+    handleTvWatchingRemoteEvent(eventType, Boolean(numberEntrySnapshot.digits), {
+      commitNumber: numberEntry.commit,
+      enterNumber: numberEntry.pushEvent,
+      openGuide: () => onNavigate("guide"),
+      openSurf: () => onNavigate("surf"),
+      revealOverlay: controller.revealOverlay,
+      step: (direction) => void controller.step(direction),
+    });
   });
   const numberEntryChannel = snapshot.catalog.find(
     (channel) => String(channel.number) === numberEntrySnapshot.digits,

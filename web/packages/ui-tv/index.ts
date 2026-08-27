@@ -31,3 +31,5 @@ export {
   previousSurfChannel,
   restoreTvSurfSelection,
 } from "./src/surf-navigation";
+export type { TvWatchingRemotePort } from "./src/watching-remote";
+export { handleTvWatchingRemoteEvent } from "./src/watching-remote";
