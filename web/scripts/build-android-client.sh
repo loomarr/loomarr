@@ -50,6 +50,7 @@ if [[ "${SCOPE_MARKER}" != "--inside-memory-scope" ]] \
     LOOMARR_ANDROID_CPUSET="${CPUSET}" \
     LOOMARR_ANDROID_NATIVE_JOBS="${NATIVE_JOBS}" \
     ANDROID_HOME="${ANDROID_HOME}" \
+    EXPO_PUBLIC_LOOMARR_URL="${EXPO_PUBLIC_LOOMARR_URL:-}" \
     "${SCRIPT_PATH}" "${APP_NAME}" --inside-memory-scope
 fi
 
@@ -62,6 +63,9 @@ fi
 # device proof, so embed the production JS/assets explicitly while retaining debug-native signing
 # and the faster incremental native build. Keep this below the scope handoff: otherwise the outer
 # and inner script processes both bundle, and the first Metro process escapes the memory limit.
+# Reset Metro's transform cache because EXPO_PUBLIC_* values are compile-time inputs that Metro does
+# not include in its cache key. Without this, rebuilding for another Loomarr server can retain the
+# preceding server URL even though the build command and environment are correct.
 mkdir -p "${APP_DIR}/android/app/src/main/assets" "${APP_DIR}/android/app/src/main/res"
 (
   cd "${APP_DIR}"
@@ -71,7 +75,8 @@ mkdir -p "${APP_DIR}/android/app/src/main/assets" "${APP_DIR}/android/app/src/ma
     --entry-file "${ENTRY_FILE}" \
     --bundle-output android/app/src/main/assets/index.android.bundle \
     --assets-dest android/app/src/main/res \
-    --max-workers 1
+    --max-workers 1 \
+    --reset-cache
 )
 
 cd "${APP_DIR}/android"

@@ -87,9 +87,12 @@ const WatchingSurface = ({
           <Pressable
             accessibilityLabel="Show playback controls"
             accessibilityRole="button"
-            focusable={density !== "tv"}
+            // Keep one focus target mounted after the transient TV chrome unmounts. Android TV's
+            // global event handler only receives D-pad input while the React surface owns focus;
+            // without this target, returning from Guide leaves Watching unable to open Surf.
+            focusable={density !== "tv" || !snapshot.overlayVisible}
             onPress={onShowControls}
-            pointerEvents={density === "tv" ? "none" : "auto"}
+            pointerEvents="auto"
             style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
           />
           {!snapshot.channel && !message ? (

@@ -343,6 +343,18 @@ returned the Shield to the explicit disconnected state, and Pair again completed
 This is useful device evidence, not P4 acceptance: the isolated server had no playable channels, so
 first frame, populated focus traversal, tuning, and playback recovery remain open.
 
+A subsequent isolated-server pass supplied a real internal-playout HLS Channel backed by an H.264/AAC
+fixture. The production-bundled arm64 debug APK paired on the physical Shield, requested the signed play URL,
+initialized Media3, and rendered the first decoded frame with authoritative Channel and programme
+identity. Pressing OK from Watching opened the populated Guide. That traversal exposed a native focus
+gap after Back: once transient chrome unmounted, Watching retained no TV-focusable node and Left could
+not reach the global remote adapter. `WatchingSurface` now keeps its full-screen reveal target
+focusable; a focused interface test pins the target, and the x86 Android TV emulator reproduced the
+Guide → Back → idle → Left sequence with Surf opening over the still-mounted player after repair. The
+same emulator confirmed that HOME releases the Media3 session and ExoPlayer synchronously and that
+foregrounding retains the paired credential and recreates Watching. Full populated-focus soak,
+physical-device background/foreground, and pause/resume/expiry evidence remain open.
+
 A later release traversal used the Shield's real 1920 × 1080 xhdpi output, and therefore the
 contractual 960 × 540dp composition rather than treating physical pixels as layout units. It caught
 Surf's full-height unavailable panel painting over the connection control and quiet version footer.
