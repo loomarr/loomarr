@@ -6,7 +6,7 @@ import { assertSurface, surfaceFromXml, verifyTvEmulatorJourney } from "./verify
 const labels = {
   guide: "Programme guide",
   surf: "Channel surfer",
-  watching: "Show playback controls",
+  watching: "Open programme guide",
 };
 const xml = (description) => `<hierarchy><node content-desc="${description}" /></hierarchy>`;
 

@@ -10,14 +10,14 @@ const surfaceFromXml = (xml) => {
   if (xml.includes("PAIRING CODE")) return "pairing";
   if (xml.includes('content-desc="Programme guide"')) return "guide";
   if (xml.includes('content-desc="Channel surfer"')) return "surf";
-  if (xml.includes('content-desc="Show playback controls"')) return "watching";
+  if (xml.includes('content-desc="Open programme guide"')) return "watching";
   return "unknown";
 };
 
 const assertSurface = (xml, expected) => {
   const actual = surfaceFromXml(xml);
   if (actual !== expected) throw new Error(`expected ${expected} surface; found ${actual}`);
-  if ((expected === "guide" || expected === "surf") && xml.includes("Show playback controls")) {
+  if ((expected === "guide" || expected === "surf") && xml.includes("Open programme guide")) {
     throw new Error(`Watching chrome remained accessible behind ${expected}`);
   }
 };

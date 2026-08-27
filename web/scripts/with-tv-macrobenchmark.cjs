@@ -79,7 +79,7 @@ class GuideNavigationBenchmark {
             startActivityAndWait()
             assertTrue(
                 "The TV client must already be paired and showing Watching before the Shield benchmark",
-                device.wait(Until.hasObject(By.desc("Show playback controls")), WAIT_MS),
+                device.wait(Until.hasObject(By.desc("Open programme guide")), WAIT_MS),
             )
             device.pressDPadCenter()
             assertTrue(

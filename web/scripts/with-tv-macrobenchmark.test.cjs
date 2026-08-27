@@ -32,6 +32,7 @@ test("pins a separate release-like AndroidX benchmark and a paired Guide travers
   assert.match(macrobenchmarkBuildGradle, /benchmark-macro-junit4:1\.4\.1/);
   assert.match(macrobenchmarkBuildGradle, /uiautomator:2\.4\.0/);
   assert.match(guideNavigationBenchmark, /CompilationMode\.Ignore\(\)/);
+  assert.match(guideNavigationBenchmark, /By\.desc\("Open programme guide"\)/);
   assert.match(guideNavigationBenchmark, /By\.desc\("Programme guide"\)/);
   assert.match(guideNavigationBenchmark, /repeat\(12\)/);
   assert.match(guideNavigationBenchmark, /FrameTimingMetric\(\)/);
