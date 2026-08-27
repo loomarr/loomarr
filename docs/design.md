@@ -3548,6 +3548,15 @@ adapter freezes retrieval times, response hashes, selected representation identi
 predicted bytes before any media download or model call. A partial bounded capture reports exactly
 what it saw; it never widens the ceiling or treats a truncated search response as complete.
 
+The non-scoring 300-case development set has one narrower, maintainer-authorized Archive policy. An
+independent reviewer may accept the frozen exact-item assertion as operational acquisition authority
+when search and item metadata agree on CC0, Public Domain Mark, the legacy Creative Commons public-
+domain assertion, CC BY, or CC BY-SA and the capture has already excluded NC/ND. The locked rationale
+must say that this is not a chain-of-title warranty, preserve attribution and ShareAlike obligations,
+and bind the exact representation and metadata hashes. Media stays in the external corpus store.
+This policy cannot qualify a scored holdout case, satisfy source-diversity gates, or authorize Loomarr
+to ship the media; holdout rights continue to require the normal evidence threshold above.
+
 Before a new reusable source adapter is built, a source-neutral **rights-yield pilot** locks exactly
 ten metadata-only candidates from each qualified lane: Prelinger, Library of Congress, NASA, CDC,
 and Wikimedia Commons. Blender is retired as a pilot lane because its live first-party surface could
