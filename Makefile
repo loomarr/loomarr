@@ -77,7 +77,7 @@ help: ## List targets
 
 ## ---- agent / worktree harness --------------------------------------------
 
-.PHONY: agent-start agent-status agent-renew agent-prune agent-stop agent-env agent-baseline agent-verify agent-worktree bootstrap doctor agent-harness-test agent-assets-verify
+.PHONY: agent-start agent-status agent-renew agent-prune agent-stop agent-env agent-baseline agent-verify agent-worktree agent-gc bootstrap doctor agent-harness-test agent-assets-verify
 agent-start: ## register this worktree and its seams (TASK=... CLAIMS=a,b; optional DEPENDS_ON=task)
 	@./scripts/agent.sh start "$(TASK)" "$(CLAIMS)" "$(DEPENDS_ON)"
 
@@ -103,7 +103,12 @@ agent-verify: ## run focused changed-file checks (not the final gate; BASE=origi
 	@BASE="$(or $(BASE),origin/main)" ./scripts/agent.sh verify
 
 agent-worktree: ## create, claim, and bootstrap a sibling worktree (TOPIC=... CLAIMS=...; BASE/DEPENDS_ON for stacks)
-	@COPY_ENV="$(or $(COPY_ENV),0)" BOOTSTRAP_SKIP_FE="$(or $(BOOTSTRAP_SKIP_FE),0)" BASE="$(BASE)" ./scripts/agent.sh worktree "$(TOPIC)" "$(or $(TASK),$(TOPIC))" "$(CLAIMS)" "$(DEPENDS_ON)"
+	@COPY_ENV="$(or $(COPY_ENV),0)" BOOTSTRAP_SKIP_FE="$(or $(BOOTSTRAP_SKIP_FE),0)" BASE="$(BASE)" \
+		AGENT_WORKTREE_LIMIT="$(or $(AGENT_WORKTREE_LIMIT),16)" ALLOW_WORKTREE_BACKLOG="$(or $(ALLOW_WORKTREE_BACKLOG),0)" \
+		./scripts/agent.sh worktree "$(TOPIC)" "$(or $(TASK),$(TOPIC))" "$(CLAIMS)" "$(DEPENDS_ON)"
+
+agent-gc: ## audit worktrees; APPLY=1 retires only exact clean merged PR heads
+	@APPLY="$(or $(APPLY),0)" ./scripts/agent.sh gc
 
 bootstrap: ## build the Rust worker and prepare frontend, isolated directories, and dev identity
 	@./scripts/agent.sh bootstrap
