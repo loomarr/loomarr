@@ -126,18 +126,40 @@ Never run `make smoke*` from an agent session; those commands drive the maintain
 
 ## Finish and clean up
 
-After the PR is published and its required evidence is complete:
+After the PR is merged and its required evidence is complete, release its claims and audit the
+machine:
 
 ```sh
 make agent-stop
+make agent-gc
 ```
 
-Then inspect `make agent-status`, `git worktree list`, and `git status` in the task worktree. Remove
-only a clean, unused worktree. Never remove a worktree with tracked or untracked work, and never
-remove another agent's worktree merely because its registry lease expired.
+`make agent-gc` is read-only by default. It classifies every registered worktree and explains why
+each one is protected or eligible. After reviewing that inventory, one explicit command retires
+every eligible entry:
+
+```sh
+make agent-gc APPLY=1
+```
+
+Eligibility is deliberately strict. The worktree must be secondary, unregistered, unlocked, clean
+including untracked files, free of a copied `.env`, and still at the exact head of a merged GitHub
+PR whose merge commit is present on current `origin/main`. The collector matches PR head OIDs rather
+than relying on `git branch --merged`, which cannot recognize squash-merged branch heads. Active,
+dependent, running, dirty, credential-bearing, divergent, open, closed-unmerged, detached, and
+ambiguous worktrees are reported and retained. Ignored bootstrap/runtime directories are removed
+only after the worktree meets every eligibility rule and the maintainer supplies `APPLY=1`.
+
+The audit requires an authenticated GitHub CLI because squash-merge evidence is not recoverable from
+local branch ancestry. If GitHub or `origin/main` cannot be verified, the command exits without
+removing anything.
+
+Creating another worktree fails when the secondary-worktree count has reached 16. That is a backlog
+tripwire, not a concurrency target: run the audit and resolve its findings first. A maintainer may
+set `ALLOW_WORKTREE_BACKLOG=1` for an intentional exception.
 
 `make doctor` reports toolchain drift, worktrees, addresses, caches, and misplaced artifacts. It
-does not delete anything.
+does not delete anything; `make agent-gc` owns worktree classification and retirement.
 
 ## Skills and durable workflows
 
