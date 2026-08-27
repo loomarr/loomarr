@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -265,11 +266,100 @@ func VerifyCIImpactActivation(path string) error {
 		if _, ok := mappingValue(job, "strategy"); ok {
 			return fmt.Errorf("CI Apple job %s must be a single app-specific job", jobName)
 		}
-		if !yamlNodeContainsScalar(job, command) {
+		implementation, err := resolveCIJobImplementation(path, job)
+		if err != nil {
+			return fmt.Errorf("CI Apple job %s implementation: %w", jobName, err)
+		}
+		if !yamlNodeContainsScalar(implementation, command) {
 			return fmt.Errorf("CI Apple job %s must run %q", jobName, command)
 		}
 	}
 	return nil
+}
+
+var ciFamilyWorkflows = map[string]string{
+	"agent-harness-macos": ".github/workflows/ci-agent.yml",
+	"rust-contracts":      ".github/workflows/ci-rust-contracts.yml",
+	"go-contracts":        ".github/workflows/ci-go-contracts.yml",
+	"image-certification": ".github/workflows/ci-image-certification.yml",
+	"go":                  ".github/workflows/ci-go.yml",
+	"store-postgres":      ".github/workflows/ci-postgres.yml",
+	"frontend":            ".github/workflows/ci-frontend.yml",
+	"clients":             ".github/workflows/ci-clients.yml",
+	"apple-mobile":        ".github/workflows/ci-apple-mobile.yml",
+	"apple-tv":            ".github/workflows/ci-apple-tv.yml",
+	"playwright":          ".github/workflows/ci-playwright.yml",
+	"tuner":               ".github/workflows/ci-tuner.yml",
+	"image":               ".github/workflows/ci-image.yml",
+	"docs":                ".github/workflows/ci-docs.yml",
+	"android":             ".github/workflows/ci-android.yml",
+}
+
+// VerifyCIFamilyWorkflows keeps the root workflow a decision surface instead of allowing
+// product implementations to drift back into it. Each caller owns one explicit local reusable
+// workflow, and that workflow exposes exactly one implementation job through workflow_call.
+func VerifyCIFamilyWorkflows(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	root, err := parseYAML(data)
+	if err != nil {
+		return err
+	}
+	jobs, err := requiredMap(root, "jobs")
+	if err != nil {
+		return err
+	}
+	for jobName, expected := range ciFamilyWorkflows {
+		job, err := requiredMap(jobs, jobName)
+		if err != nil {
+			return fmt.Errorf("CI workflow must define family caller %s", jobName)
+		}
+		uses := scalarValue(job, "uses")
+		if uses != "./"+expected {
+			return fmt.Errorf("CI family caller %s uses %q, want %q", jobName, uses, "./"+expected)
+		}
+		if _, err := resolveCIJobImplementation(path, job); err != nil {
+			return fmt.Errorf("CI family caller %s: %w", jobName, err)
+		}
+	}
+	return nil
+}
+
+func resolveCIJobImplementation(ciPath string, caller *yaml.Node) (*yaml.Node, error) {
+	uses := scalarValue(caller, "uses")
+	if uses == "" {
+		return caller, nil
+	}
+	const prefix = "./.github/workflows/"
+	if !strings.HasPrefix(uses, prefix) || strings.Contains(strings.TrimPrefix(uses, prefix), "/") {
+		return nil, fmt.Errorf("reusable workflow %q must be a direct local workflow", uses)
+	}
+	workflowPath := filepath.Join(filepath.Dir(ciPath), strings.TrimPrefix(uses, prefix))
+	data, err := os.ReadFile(workflowPath)
+	if err != nil {
+		return nil, fmt.Errorf("read reusable workflow: %w", err)
+	}
+	root, err := parseYAML(data)
+	if err != nil {
+		return nil, err
+	}
+	on, err := requiredMap(root, "on")
+	if err != nil || len(on.Content) != 2 {
+		return nil, errors.New("reusable workflow must expose only workflow_call")
+	}
+	if _, ok := mappingValue(on, "workflow_call"); !ok {
+		return nil, errors.New("reusable workflow must expose workflow_call")
+	}
+	jobs, err := requiredMap(root, "jobs")
+	if err != nil || len(jobs.Content) != 2 {
+		return nil, errors.New("reusable workflow must contain exactly one implementation job")
+	}
+	if jobs.Content[1].Kind != yaml.MappingNode {
+		return nil, errors.New("reusable workflow implementation must be a job mapping")
+	}
+	return jobs.Content[1], nil
 }
 
 func yamlNodeContainsScalar(node *yaml.Node, value string) bool {

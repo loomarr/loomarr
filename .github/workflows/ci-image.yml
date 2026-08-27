@@ -1,0 +1,78 @@
+name: CI / Image
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.26"
+  NODE_VERSION: "22"
+
+jobs:
+  run:
+    name: Image — release build (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    # Build each release architecture on a native four-core runner. The old combined amd64
+    # job emulated arm64 through QEMU and spent ~30 minutes compiling the Rust worker; GitHub's
+    # standard arm64 runner makes the same architecture proof without emulation. Keep this a
+    # matrix so the two complete images build in parallel and one architecture cannot answer
+    # for the other.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    # Still cap either native build. GitHub's default is six hours; 45 minutes leaves ample
+    # headroom for a completely cold Docker build without allowing a hung download to run all day.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+      # BOTH matrix entries are required because the bug this job exists for was arch-specific
+      # and release.yml publishes both. Load the one native image without pushing it: the
+      # Dockerfile's own build-time proofs run inside it, then the next step inspects the actual
+      # runtime filesystem and OCI labels rather than trusting Dockerfile prose.
+      #
+      # ⚠ READ the release cache but never write a CI copy. release.yml owns that multi-platform
+      # cache and refreshes it only after publishing a real image. The former `image-ci` scope was
+      # never written anywhere, despite the comment claiming this job consumed the release cache.
+      - name: Build (${{ matrix.platform }})
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: false
+          load: true
+          tags: loomarr-ci:verify
+          # ⚠ READ-ONLY cache, deliberately: there is `cache-from` and NO `cache-to`.
+          # Measured — exporting it cost 462s of a 770s job, MORE than the 303s the arm64
+          # layer it was caching takes to build, because `mode=max` ships every
+          # intermediate layer including the 466MB whisper model. It also spends the 10GB
+          # repo cache quota on ~2GB per run, evicting the Go and pnpm caches that do pay
+          # for themselves.
+          #
+          # It still READS anything release.yml populates, so this is not "no caching" —
+          # it is declining to pay the export cost on every PR. Dockerfile and Rust changes
+          # invalidate only their affected layers; unchanged release layers remain reusable.
+          cache-from: type=gha,scope=release
+
+      - name: Inspect packaged license and notice metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          image=loomarr-ci:verify
+          test "$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.documentation" }}')" = \
+            "https://github.com/loomarr/loomarr/blob/main/THIRD_PARTY_NOTICES.md"
+          test "$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.licenses" }}')" = \
+            "MIT AND GPL-3.0-or-later"
+          container=$(docker create "$image")
+          trap 'docker rm -f "$container" >/dev/null' EXIT
+          docker cp "$container:/usr/share/doc/loomarr/LICENSE" "$RUNNER_TEMP/LICENSE"
+          docker cp "$container:/usr/share/doc/loomarr/THIRD_PARTY_NOTICES.md" "$RUNNER_TEMP/THIRD_PARTY_NOTICES.md"
+          cmp LICENSE "$RUNNER_TEMP/LICENSE"
+          cmp THIRD_PARTY_NOTICES.md "$RUNNER_TEMP/THIRD_PARTY_NOTICES.md"
