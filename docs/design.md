@@ -3511,6 +3511,15 @@ fail closed. Reports carry the exact manifest digest and one-sided Wilson bounds
 rejection, automation, review, and slice accuracy, including an upper bound for review rate. Each
 certification slice gate predeclares both a point threshold and a confidence lower bound.
 
+An open-weight candidate is certified through the same label-blind packet and replay contract, not
+through a separate favorable prompt. A local Ollama route is loopback-only, pins the exact model tag
+and registry digest before inference, disables model thinking for bounded structured extraction,
+uses one attempt at concurrency one, and records prompt/completion tokens plus wall latency. Local
+execution has no provider charge, but still reserves request and execution ceilings; a mutable tag,
+missing digest, non-loopback endpoint, malformed structured response, or exhausted output budget is
+an operational failure. Hosted evidence does not establish quantization quality, resident memory,
+throughput, or appliance suitability, and a successful local load does not establish accuracy.
+
 Source inventory is a separate, non-certifying preflight. Its only live contract is strict
 source-neutral schema v4: one snapshot may combine multiple captures, and every case carries the
 authority, authority-qualified stable case ID, all capture IDs that discovered it, role hints, frozen metadata evidence, exact selected

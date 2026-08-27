@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/cmd/internal/fillerbakeoffio"
 	"github.com/loomarr/loomarr/internal/fillerbakeoff"
 	"github.com/loomarr/loomarr/internal/fillereval"
 )
@@ -30,13 +31,13 @@ func TestReadConfigRejectsUnknownAndTrailingFields(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{"schemaVersion":1,"run":{},"policy":{},"routes":[],"legacy":true}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readStrictJSON[bakeoffConfigFile](path); err == nil || !strings.Contains(err.Error(), "unknown field") {
+	if _, err := fillerbakeoffio.ReadStrictJSON[bakeoffConfigFile](path); err == nil || !strings.Contains(err.Error(), "unknown field") {
 		t.Fatalf("unknown field error = %v", err)
 	}
 	if err := os.WriteFile(path, []byte(`{"schemaVersion":1,"run":{},"policy":{},"routes":[]} {}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readStrictJSON[bakeoffConfigFile](path); err == nil || !strings.Contains(err.Error(), "trailing") {
+	if _, err := fillerbakeoffio.ReadStrictJSON[bakeoffConfigFile](path); err == nil || !strings.Contains(err.Error(), "trailing") {
 		t.Fatalf("trailing error = %v", err)
 	}
 }
@@ -53,7 +54,7 @@ func TestReadPacketsRejectsDuplicateCases(t *testing.T) {
 	if err := os.WriteFile(path, line.Bytes(), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readPackets(path); err == nil || !strings.Contains(err.Error(), "duplicate case") {
+	if _, err := fillerbakeoffio.ReadPackets(path); err == nil || !strings.Contains(err.Error(), "duplicate case") {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -61,7 +62,7 @@ func TestReadPacketsRejectsDuplicateCases(t *testing.T) {
 func TestWritePredictionsIsPrivateJSONL(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "predictions.jsonl")
 	want := []fillereval.Prediction{{CaseID: "case-1", Verdict: fillereval.VerdictReview}}
-	if err := writePredictions(path, want); err != nil {
+	if err := fillerbakeoffio.WritePredictions(path, ".filler-bakeoff-test-*", want); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(path)
@@ -74,7 +75,7 @@ func TestWritePredictionsIsPrivateJSONL(t *testing.T) {
 	if data, _ := os.ReadFile(path); !bytes.Contains(data, []byte(`"caseId":"case-1"`)) || data[len(data)-1] != '\n' {
 		t.Fatalf("output = %q", data)
 	}
-	if err := writePredictions(path, []fillereval.Prediction{{CaseID: "replacement"}}); err == nil {
+	if err := fillerbakeoffio.WritePredictions(path, ".filler-bakeoff-test-*", []fillereval.Prediction{{CaseID: "replacement"}}); err == nil {
 		t.Fatal("immutable ledger was overwritten")
 	}
 	if data, _ := os.ReadFile(path); !bytes.Contains(data, []byte(`"caseId":"case-1"`)) {

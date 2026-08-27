@@ -39,7 +39,8 @@ wouldn't catch it either, since `go build` skips `_test.go` and most tagged file
 | LLM eval | `make eval` | Real intents against a real model | manual |
 | LLM certification | `make eval-cert` | Exact starter/adversarial corpus executed with a versioned scorecard | release/manual |
 | LLM matrix | `make eval-matrix` | Same corpus on local and OpenRouter generation, judged through OpenRouter | release/manual |
-| Filler bakeoff | `make filler-bakeoff-openrouter` | Locked label-blind filler packets through one pinned paid route profile | release/manual |
+| Hosted filler bakeoff | `make filler-bakeoff-openrouter` | Locked label-blind filler packets through one pinned paid route profile | release/manual |
+| Local filler bakeoff | `make filler-bakeoff-ollama` | Same locked packets through one digest-pinned loopback model | release/manual |
 | Rust supply chain | `make rust-audit` | Cargo advisories, licences, and sources | weekly + manual |
 | Rust fuzz | `make rust-fuzz` | Bounded worker protocol and decoder do not crash | weekly + manual |
 | SSO | `make test-sso` | OIDC against real Authelia + Authentik | manual |
