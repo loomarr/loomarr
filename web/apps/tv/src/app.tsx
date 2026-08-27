@@ -83,8 +83,14 @@ const TvWatching = ({
       enterNumber: numberEntry.pushEvent,
       openGuide: () => onNavigate("guide"),
       openSurf: () => onNavigate("surf"),
+      pause: controller.pause,
+      play: () => void controller.play(),
       revealOverlay: controller.revealOverlay,
       step: (direction) => void controller.step(direction),
+      togglePlayback: () => {
+        if (snapshot.status === "paused") void controller.play();
+        else if (snapshot.status === "playing") controller.pause();
+      },
     });
   });
   const numberEntryChannel = snapshot.catalog.find(

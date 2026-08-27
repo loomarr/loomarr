@@ -6,8 +6,11 @@ const remotePort = (): TvWatchingRemotePort => ({
   enterNumber: vi.fn(() => false),
   openGuide: vi.fn(),
   openSurf: vi.fn(),
+  pause: vi.fn(),
+  play: vi.fn(),
   revealOverlay: vi.fn(),
   step: vi.fn(),
+  togglePlayback: vi.fn(),
 });
 
 describe("TV Watching remote", () => {
@@ -55,6 +58,17 @@ describe("TV Watching remote", () => {
 
     expect(port.revealOverlay).toHaveBeenCalledOnce();
     expect(port.openGuide).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["play", "play"],
+    ["pause", "pause"],
+    ["playPause", "togglePlayback"],
+  ] as const)("maps %s to the native playback controller", (eventType, action) => {
+    handleTvWatchingRemoteEvent(eventType, false, port);
+
+    expect(port[action]).toHaveBeenCalledOnce();
+    expect(port.revealOverlay).toHaveBeenCalledOnce();
   });
 
   it("reveals chrome for otherwise unmapped remote activity", () => {

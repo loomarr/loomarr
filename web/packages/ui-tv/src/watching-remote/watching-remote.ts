@@ -27,6 +27,13 @@ const handleTvWatchingRemoteEvent = (
     port.openSurf();
     return;
   }
+  if (eventType === "play" || eventType === "pause" || eventType === "playPause") {
+    if (eventType === "play") port.play();
+    else if (eventType === "pause") port.pause();
+    else port.togglePlayback();
+    port.revealOverlay();
+    return;
+  }
   port.revealOverlay();
 };
 
