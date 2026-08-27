@@ -1,5 +1,6 @@
 export {
   createAuthenticatedFetch,
+  createMigratingPairingCredentialStore,
   createPairingCredentialStore,
   createPairingTransport,
   normalizeServerUrl,

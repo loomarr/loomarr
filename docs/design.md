@@ -1932,7 +1932,11 @@ The reference Shield's historical `tv.loomarr.tv` debug install has a different 
 identity. The first Internal-test build installs alongside it as `loomarr.media`, is paired and
 validated independently, and only then replaces the historical app. Completion requires a second
 Play-delivered release with a higher code to update `loomarr.media` in place while preserving server
-address and pairing state. The release record
+address and pairing state. The React Native replacement therefore reads the Compose client's
+`server_url` and `device_token` DataStore values when SecureStore has no credential, validates the
+same shared credential envelope, and writes SecureStore before publishing a paired state. The
+DataStore values remain read-only and intact through the rollback window; only retirement after the
+accepted update and rollback drill may remove that compatibility reader. The release record
 also carries the Android TV listing/review evidence: TV form-factor opt-in, Tier 3 quality review,
 launcher banner, Play icon, feature graphic, 1280 × 720 TV banner, real TV screenshots, review access
 instructions, and tested rollback/track-halt procedure.

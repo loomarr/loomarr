@@ -3,7 +3,7 @@ import { createGuideController, createGuideSourcePort, type GuideController } fr
 import type { PairingCredential } from "@loomarr/core/pairing";
 import {
   createAuthenticatedFetch,
-  createPairingCredentialStore,
+  createMigratingPairingCredentialStore,
   createPairingTransport,
   PairingSession,
   validatePairingCredential,
@@ -35,11 +35,16 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import { BackHandler, Platform, useTVEventHandler, View } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import appConfig from "../app.json";
+import { legacyPairingSource } from "./legacy-pairing";
 
-const credentialStore = createPairingCredentialStore({
-  deleteItem: SecureStore.deleteItemAsync,
-  getItem: SecureStore.getItemAsync,
-  setItem: SecureStore.setItemAsync,
+const credentialStore = createMigratingPairingCredentialStore({
+  deviceName: "Loomarr TV",
+  legacy: legacyPairingSource,
+  storage: {
+    deleteItem: SecureStore.deleteItemAsync,
+    getItem: SecureStore.getItemAsync,
+    setItem: SecureStore.setItemAsync,
+  },
 });
 
 const TvWatching = ({
