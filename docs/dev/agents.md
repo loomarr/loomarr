@@ -91,7 +91,9 @@ as completion evidence or use blind `send-keys` automation as a substitute for a
 handoff; prompts, approval overlays, and terminal state make that brittle. Use native subagents when
 live programmatic steering is required. When recovering a crashed session, launch or resume it from
 the owning worktree and verify that both the worktree and its Git metadata are writable before it
-continues an in-progress merge or edit.
+continues an in-progress merge or edit. A linked worktree's metadata remains under the primary
+checkout's `.git/worktrees/`; add that exact metadata root when a sandbox supports extra writable
+directories instead of granting the recovered worker the primary checkout.
 
 ## Start a task
 
