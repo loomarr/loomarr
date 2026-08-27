@@ -3376,8 +3376,9 @@ audio, or video derivative references. Every referenced external derivative carr
 measured byte/pixel/duration bounds. Packet identity must match the case's `evidenceSha256`; the
 runner re-opens every derivative beneath one declared corpus root, refuses symlink escapes, and
 verifies its exact bytes and hash. It refuses missing, extra, changed, or label-bearing fields before
-calling a provider. This separation keeps the scorer's answer key out of prompts and makes the exact
-provider input replayable.
+calling a provider. The internal case ID remains a local ledger join and is omitted from provider
+prompt content. This separation keeps the scorer's answer key and identity-correlated shortcuts out
+of prompts and makes the exact provider input replayable.
 
 One bakeoff run accepts a locked manifest, an exact packet set, a versioned admission policy, an
 ordered role/rung route, and positive request/spend/concurrency ceilings; it emits an immutable
