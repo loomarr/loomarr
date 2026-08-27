@@ -121,7 +121,7 @@ if [[ "${ACTION}" == "macrobenchmark" ]]; then
   gradle_task=":macrobenchmark:connectedBenchmarkAndroidTest"
   gradle_node_env="production"
 else
-  gradle_task="assembleDebug"
+  gradle_task=":app:assembleDebug"
   gradle_node_env="development"
 fi
 gradle_command=(./gradlew "${gradle_task}"

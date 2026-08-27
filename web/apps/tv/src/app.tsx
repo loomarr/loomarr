@@ -73,6 +73,10 @@ const TvWatching = ({
     numberEntry.getSnapshot,
   );
   useEffect(() => () => numberEntry.dispose(), [numberEntry]);
+  const openGuideOrCommitNumber = useCallback(() => {
+    if (numberEntry.getSnapshot().digits) numberEntry.commit();
+    else onNavigate("guide");
+  }, [numberEntry, onNavigate]);
   useEffect(() => {
     if (!interactive) numberEntry.cancel();
   }, [interactive, numberEntry]);
@@ -106,7 +110,7 @@ const TvWatching = ({
       onChannelUp={() => void controller.step(1)}
       onDismissControls={controller.dismissOverlay}
       onGoLive={() => void controller.goLive()}
-      onOpenGuide={() => onNavigate("guide")}
+      onOpenGuide={openGuideOrCommitNumber}
       onOpenSurf={() => onNavigate("surf")}
       onPause={controller.pause}
       onPlay={() => void controller.play()}

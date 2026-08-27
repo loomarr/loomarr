@@ -57,6 +57,8 @@ describe("WatchingSurface", () => {
     expect(output).toContain("Left Surf");
     expect(output).toContain("0–9 jump");
     expect(output).toContain("OK Guide");
+    expect(output).toContain('aria-label="Open programme guide"');
+    expect(output).not.toContain('aria-label="Show playback controls"');
     expect(output).not.toContain("Playback controls");
     expect(output).not.toContain("Previous");
     expect(output).not.toContain("Channel −");

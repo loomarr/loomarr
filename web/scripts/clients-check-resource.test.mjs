@@ -23,6 +23,7 @@ describe("shared client resource bounds", () => {
     assert.match(androidBuild, /\/usr\/bin\/ionice -c 2 -n 7/);
     assert.match(androidBuild, /CPUQuota=200%/);
     assert.match(androidBuild, /--max-workers=1/);
+    assert.match(androidBuild, /gradle_task=":app:assembleDebug"/);
   });
 
   it("keeps the Android TV emulator below interactive-desktop limits", () => {

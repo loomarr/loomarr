@@ -16,9 +16,9 @@ const TvWatchingSurface = ({
   numberEntry,
   onDismissControls,
   onGoLive,
+  onOpenGuide,
   onPlay,
   onRetry,
-  onShowControls,
   player,
   snapshot,
   schedule,
@@ -39,10 +39,11 @@ const TvWatchingSurface = ({
       {chromeVisible ? (
         <>
           <Pressable
-            accessibilityLabel="Show playback controls"
+            accessibilityLabel="Open programme guide"
             accessibilityRole="button"
-            focusable={!snapshot.overlayVisible}
-            onPress={onShowControls}
+            focusable={snapshot.status !== "paused" && !recoverableFailure}
+            hasTVPreferredFocus={snapshot.status !== "paused" && !recoverableFailure}
+            onPress={onOpenGuide}
             pointerEvents="auto"
             style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
           />
