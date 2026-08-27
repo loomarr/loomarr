@@ -18,6 +18,7 @@ test("forwards the configured public Loomarr URL into the bounded Android build"
       env: {
         ANDROID_HOME: "/android-sdk",
         EXPO_PUBLIC_LOOMARR_URL: "http://192.0.2.10:18080",
+        LOOMARR_ANDROID_MIN_AVAILABLE_KB: "0",
         PATH: `${bin}:${process.env.PATH}`,
       },
     });
@@ -27,6 +28,20 @@ test("forwards the configured public Loomarr URL into the bounded Android build"
   } finally {
     rmSync(bin, { force: true, recursive: true });
   }
+});
+
+test("refuses a native build before handoff when available memory is below the configured floor", () => {
+  const result = spawnSync("bash", [path.join(__dirname, "build-android-client.sh"), "tv"], {
+    encoding: "utf8",
+    env: {
+      ANDROID_HOME: "/android-sdk",
+      LOOMARR_ANDROID_MIN_AVAILABLE_KB: "999999999",
+      PATH: process.env.PATH,
+    },
+  });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /refusing native build:/);
 });
 
 test("invalidates Metro transforms that contain compile-time public configuration", () => {

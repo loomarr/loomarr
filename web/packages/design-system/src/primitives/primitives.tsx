@@ -274,4 +274,4 @@ const ProgressTrack = ({ percent, tone = "primary", ...props }: ProgressTrackPro
 };
 
 export type { ArtworkState, BadgeTone, ScreenProps, TextProps, TextTone };
-export { ArtworkFrame, Badge, FocusSurface, ProgressTrack, resolveFontWeight, Screen, Surface, Text };
+export { ArtworkFrame, Badge, FocusSurface, ProgressTrack, Screen, Surface, Text };
