@@ -6,8 +6,10 @@ SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)"
 TMP="$(mktemp -d)"
 TMP="$(CDPATH='' cd -- "$TMP" && pwd -P)"
 pids=
+collision_a=
+collision_b=
 # shellcheck disable=SC2154 # pid is the loop variable inside the trap evaluated at exit.
-trap 'for pid in $pids; do kill "$pid" 2>/dev/null || true; done; rm -rf "$TMP" "$TMP-wt" "$TMP-third" "$TMP-fourth" "$TMP-fifth"' EXIT INT TERM
+trap 'for pid in $pids; do kill "$pid" 2>/dev/null || true; done; rm -rf "$TMP" "$TMP-wt" "$TMP-third" "$TMP-fourth" "$TMP-fifth" ${collision_a:-} ${collision_b:-}' EXIT INT TERM
 
 step() {
 	echo "agent-harness-test: $*"
@@ -113,6 +115,36 @@ fi
 LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/agent.sh" start second visual-baselines >/dev/null
 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" stop >/dev/null
 LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/agent.sh" stop >/dev/null
+
+# The deterministic port seed has a finite slot range, so distinct worktree paths can hash to the
+# same preferred slot. The harness finds one collision by pigeonhole rather than depending on the
+# random temp path, then proves worktree creation resolves it instead of blocking another agent.
+step 'deterministic port collision resolution'
+mkdir -p "$TMP/collision-slots"
+candidate=0
+while [ "$candidate" -le 900 ]; do
+	path="$TMP-collision-$candidate"
+	slot=$(( $(printf '%s' "$path" | cksum | awk '{print $1}') % 900 + 1 ))
+	marker="$TMP/collision-slots/$slot"
+	if [ -f "$marker" ]; then
+		collision_a="$(cat "$marker")"
+		collision_b="$path"
+		break
+	fi
+	printf '%s\n' "$path" > "$marker"
+	candidate=$((candidate + 1))
+done
+[ -n "$collision_a" ] && [ -n "$collision_b" ]
+BASE=HEAD WORKTREE_PATH="$collision_a" AGENT_WORKTREE_SKIP_BOOTSTRAP=1 LOOMARR_REPO_ROOT="$TMP" \
+	"$SCRIPT_DIR/agent.sh" worktree collision-one collision-one-task '' >/dev/null
+BASE=HEAD WORKTREE_PATH="$collision_b" AGENT_WORKTREE_SKIP_BOOTSTRAP=1 LOOMARR_REPO_ROOT="$TMP" \
+	"$SCRIPT_DIR/agent.sh" worktree collision-two collision-two-task '' >/dev/null
+LOOMARR_REPO_ROOT="$collision_a" "$SCRIPT_DIR/agent.sh" stop >/dev/null
+LOOMARR_REPO_ROOT="$collision_b" "$SCRIPT_DIR/agent.sh" stop >/dev/null
+rm -f "$collision_a/.agent-data/dev-env-slot" "$collision_b/.agent-data/dev-env-slot"
+rmdir "$collision_a/.agent-data" "$collision_b/.agent-data"
+git -C "$TMP" worktree remove "$collision_a"
+git -C "$TMP" worktree remove "$collision_b"
 
 # A killed writer cannot leave every future agent waiting on an ownerless registry lock.
 step 'abandoned registry lock recovery'

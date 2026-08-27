@@ -106,6 +106,11 @@ Every secondary worktree receives deterministic, distinct values for:
 - the public URL used by internal Playout; and
 - an isolated automatic developer login.
 
+The worktree path chooses a preferred runtime slot. Creation persists that slot under the ignored
+`.agent-data/` directory while holding the shared agent-registry lock; if two paths hash to the same
+preference, it linearly probes to the next free slot. Port isolation therefore does not rely on a
+hash collision being unlikely, and the chosen addresses remain stable after other worktrees leave.
+
 `make agent-env` prints those values. `make dev-be`, `make dev-fe`, `make storybook`, `make dev`, and
 `make dev-gpu` consume them. Vite uses `strictPort`; a collision fails at the advertised address
 instead of silently moving.

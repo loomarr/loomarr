@@ -29,12 +29,63 @@ valid_port() {
 	[ "$1" -ge 1 ] && [ "$1" -le 65535 ]
 }
 
+valid_slot() {
+	case "$1" in
+		''|*[!0-9]*) return 1 ;;
+	esac
+	[ "$1" -ge 1 ] && [ "$1" -le 900 ]
+}
+
+preferred_slot() (
+	checksum="$(printf '%s' "$1" | cksum | awk '{print $1}')"
+	printf '%s\n' $((checksum % 900 + 1))
+)
+
+slot_for_worktree() (
+	worktree="$1"
+	slot_file="$worktree/.agent-data/dev-env-slot"
+	if [ -f "$slot_file" ]; then
+		slot="$(sed -n '1p' "$slot_file")"
+		if valid_slot "$slot"; then
+			printf '%s\n' "$slot"
+			return
+		fi
+	fi
+	preferred_slot "$worktree"
+)
+
 PRIMARY="$(primary_worktree)"
 BRANCH="$(git -C "$ROOT" symbolic-ref --quiet --short HEAD 2>/dev/null || printf 'detached')"
 BRANCH_SLUG="$(slugify "$BRANCH")"
 [ -n "$BRANCH_SLUG" ] || BRANCH_SLUG=worktree
-CHECKSUM="$(printf '%s' "$ROOT" | cksum | awk '{print $1}')"
-SLOT=$((CHECKSUM % 900 + 1))
+SLOT="$(slot_for_worktree "$ROOT")"
+
+allocate_slot() {
+	[ "$ROOT" != "$PRIMARY" ] || return 0
+	slot_file="$ROOT/.agent-data/dev-env-slot"
+	if [ -f "$slot_file" ] && valid_slot "$(sed -n '1p' "$slot_file")"; then
+		return
+	fi
+	used_slots="$({
+		git -C "$ROOT" worktree list --porcelain | sed -n 's/^worktree //p' | while IFS= read -r worktree; do
+			[ "$worktree" = "$ROOT" ] || [ "$worktree" = "$PRIMARY" ] || slot_for_worktree "$worktree"
+		done
+	} | tr '\n' ' ')"
+	candidate="$(preferred_slot "$ROOT")"
+	attempt=0
+	while [ "$attempt" -lt 900 ]; do
+		case " $used_slots " in
+			*" $candidate "*) candidate=$((candidate % 900 + 1)) ;;
+			*) break ;;
+		esac
+		attempt=$((attempt + 1))
+	done
+	[ "$attempt" -lt 900 ] || { echo 'dev-env: no isolated runtime port slots remain' >&2; exit 1; }
+	mkdir -p "$ROOT/.agent-data"
+	tmp="$slot_file.tmp.$$"
+	printf '%s\n' "$candidate" > "$tmp"
+	mv "$tmp" "$slot_file"
+}
 
 if [ "$ROOT" = "$PRIMARY" ]; then
 	INSTANCE=primary
@@ -92,6 +143,9 @@ emit_export() {
 }
 
 case "${1:-show}" in
+	allocate)
+		allocate_slot
+		;;
 	export)
 		emit_export LOOMARR_INSTANCE "$INSTANCE"
 		emit_export LOOMARR_REPO_ROOT "$ROOT"
@@ -128,7 +182,7 @@ case "${1:-show}" in
 		printf '%-22s %s\n' 'dev login' "$dev_login_label"
 		;;
 	*)
-		echo "usage: scripts/dev-env.sh [show|export]" >&2
+		echo "usage: scripts/dev-env.sh [show|export|allocate]" >&2
 		exit 2
 		;;
 esac

@@ -119,6 +119,10 @@ start_session() {
 	done
 
 	acquire_lock
+	# Persist a collision-free runtime slot while holding the same registry lock that guards
+	# session admission. Hashing supplies the stable preference; linear probing resolves the
+	# unavoidable finite-range collision before it can block another agent.
+	"$SCRIPT_DIR/dev-env.sh" allocate
 	now="$(date +%s)"
 	lease_hours="${AGENT_LEASE_HOURS:-4}"
 	case "$lease_hours" in ''|*[!0-9]*) echo 'agent-start: AGENT_LEASE_HOURS must be an integer' >&2; release_lock; exit 2 ;; esac
