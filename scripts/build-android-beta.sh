@@ -4,13 +4,32 @@ set -euo pipefail
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_root=$(cd -- "$script_dir/.." && pwd)
-android_root="$repo_root/android"
 output_dir=${ANDROID_RELEASE_OUTPUT_DIR:-"$repo_root/.artifacts/android-release"}
 package_name=loomarr.media
+renderer=${LOOMARR_ANDROID_RENDERER:-compose}
+
+case "$renderer" in
+	compose) android_root="$repo_root/android" ;;
+	react-native)
+		if [[ -z "${ANDROID_HOME:-}" ]]; then
+			echo 'android release: ANDROID_HOME is required for the React Native renderer' >&2
+			exit 2
+		fi
+		android_root="$repo_root/web/apps/tv/android"
+		;;
+	*)
+		echo "android release: unsupported renderer: $renderer" >&2
+		exit 2
+		;;
+esac
 
 "$script_dir/check-android-release-env.sh"
 
-for command in jq unzip readelf keytool jarsigner sha256sum; do
+required_commands=(jq unzip readelf keytool jarsigner sha256sum)
+if [[ "$renderer" == react-native ]]; then
+	required_commands+=(pnpm)
+fi
+for command in "${required_commands[@]}"; do
 	if ! command -v "$command" >/dev/null 2>&1; then
 		echo "android release: required command is unavailable: $command" >&2
 		exit 1
@@ -42,9 +61,27 @@ if [[ "$keystore_fingerprint" != "$expected_fingerprint" ]]; then
 	exit 1
 fi
 
+if [[ "$renderer" == react-native ]]; then
+	(
+		cd "$repo_root/web"
+		EXPO_TV=1 pnpm --filter @loomarr/tv exec expo prebuild --platform android --no-install
+	)
+fi
+
 (
 	cd "$android_root"
-	./gradlew --no-configuration-cache clean :app:bundleRelease
+	if [[ "$renderer" == react-native ]]; then
+		CMAKE_BUILD_PARALLEL_LEVEL=1 \
+			NODE_ENV=production \
+			EXPO_PUBLIC_LOOMARR_CLIENT_VERSION="$LOOMARR_ANDROID_VERSION_NAME" \
+			./gradlew --no-configuration-cache clean :app:bundleRelease \
+				--no-daemon \
+				--max-workers=1 \
+				-Dorg.gradle.jvmargs=-Xmx1024m \
+				-Pkotlin.compiler.execution.strategy=in-process
+	else
+		./gradlew --no-configuration-cache clean :app:bundleRelease
+	fi
 )
 
 source_aab="$android_root/app/build/outputs/bundle/release/app-release.aab"
@@ -81,33 +118,14 @@ inspection_dir=$(mktemp -d)
 trap 'rm -r -- "$inspection_dir"' EXIT
 unzip -q "$source_aab" 'base/lib/*/*.so' -d "$inspection_dir"
 
+"$script_dir/verify-android-native-libraries.sh" "$inspection_dir/base/lib"
 mapfile -t libraries < <(find "$inspection_dir/base/lib" -type f -name '*.so' -print | sort)
-if ((${#libraries[@]} == 0)); then
-	echo 'android release: bundle inspection found no native libraries' >&2
-	exit 1
-fi
-for abi in arm64-v8a armeabi-v7a x86 x86_64; do
-	if [[ ! -d "$inspection_dir/base/lib/$abi" ]]; then
-		echo "android release: bundle is missing required ABI $abi" >&2
-		exit 1
-	fi
-done
-for library in "${libraries[@]}"; do
-	mapfile -t alignments < <(readelf -lW "$library" | awk '$1 == "LOAD" {print $NF}')
-	if ((${#alignments[@]} == 0)); then
-		echo "android release: no ELF load segments found in ${library#"$inspection_dir/"}" >&2
-		exit 1
-	fi
-	for alignment in "${alignments[@]}"; do
-		if ((alignment < 0x4000)); then
-			echo "android release: ${library#"$inspection_dir/"} has LOAD alignment $alignment below 16 KiB" >&2
-			exit 1
-		fi
-	done
-done
 
 mkdir -p "$output_dir"
 artifact_stem="loomarr-tv-${LOOMARR_ANDROID_VERSION_NAME}-${LOOMARR_ANDROID_VERSION_CODE}"
+if [[ "$renderer" == react-native ]]; then
+	artifact_stem="loomarr-tv-react-native-${LOOMARR_ANDROID_VERSION_NAME}-${LOOMARR_ANDROID_VERSION_CODE}"
+fi
 output_aab="$output_dir/$artifact_stem.aab"
 output_manifest="$output_dir/$artifact_stem.json"
 install -m 0644 "$source_aab" "$output_aab"
@@ -117,6 +135,7 @@ jq -n \
 	--arg package "$package_name" \
 	--arg versionName "$LOOMARR_ANDROID_VERSION_NAME" \
 	--argjson versionCode "$LOOMARR_ANDROID_VERSION_CODE" \
+	--arg renderer "$renderer" \
 	--arg commit "$(git -C "$repo_root" rev-parse HEAD)" \
 	--arg uploadCertificateSha256 "$bundle_fingerprint" \
 	--arg aabSha256 "$bundle_sha256" \
@@ -125,11 +144,13 @@ jq -n \
 	  package: $package,
 	  versionName: $versionName,
 	  versionCode: $versionCode,
+	  renderer: $renderer,
 	  commit: $commit,
 	  uploadCertificateSha256: $uploadCertificateSha256,
 	  aabSha256: $aabSha256,
 	  nativeLibraries: $nativeLibraries,
 	  abis: ["arm64-v8a", "armeabi-v7a", "x86", "x86_64"],
+	  elfLoadAlignmentAbis: ["arm64-v8a", "x86_64"],
 	  elfLoadAlignmentBytes: 16384
 	}' >"$output_manifest"
 

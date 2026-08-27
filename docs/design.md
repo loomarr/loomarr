@@ -1913,11 +1913,20 @@ APK and run lint, unit, screenshot, and assembly gates without release credentia
 manually dispatched workflow runs only from `main` in the protected `android-beta` GitHub
 environment. It decodes the upload keystore only into the runner's temporary directory, disables
 Gradle's configuration cache for the credentialed build, requires all four signing inputs, verifies
-the resulting JAR signature and expected upload-certificate fingerprint, inspects every packaged
-native library for 32/64-bit ABI coverage and 16 KiB ELF load alignment, records the source commit,
-package, name, code, certificate fingerprint, and AAB digest, and retains the signed AAB plus that
-manifest as restricted workflow artifacts. Secrets, keystores, and service-account JSON are never
-repository files or pull-request inputs.
+the resulting JAR signature and expected upload-certificate fingerprint, requires packaged native
+library coverage for both 32-bit and 64-bit Android TV ABIs, and verifies 16 KiB ELF load alignment
+for every `arm64-v8a` and `x86_64` library, matching Android's 16 KiB compatibility procedure. It
+records the source commit, package, name, code, certificate fingerprint, AAB digest, ABI coverage,
+and alignment-checked ABIs, then retains the signed AAB plus that manifest as restricted workflow
+artifacts. Secrets, keystores, and service-account JSON are never repository files or pull-request
+inputs.
+
+The release workflow defaults explicitly to the Compose renderer so adding the replacement cannot
+silently change the shipping artifact. Selecting `react-native` builds the candidate with the same
+permanent package, monotonic version, protected upload key, and evidence checks. It remains
+build-only until the protected `ANDROID_REACT_NATIVE_ADOPTED` environment variable records that the
+required parity, performance, device, update, and rollback gates passed; publication fails closed
+before the Play edit while that adoption record is absent.
 
 Google Play App Signing owns the certificate installed on televisions; Loomarr CI holds only the
 resettable upload key. The developer account owner records and backs up both certificate

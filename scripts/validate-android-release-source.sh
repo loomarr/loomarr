@@ -42,5 +42,10 @@ if ! grep -Fqx $'Android TV — lint + unit + assemble\tsuccess' <<<"$jobs"; the
 	echo 'android release: successful CI run did not execute the Android gate' >&2
 	exit 1
 fi
+if [[ "${LOOMARR_ANDROID_RENDERER:-compose}" == react-native ]] \
+	&& ! grep -Fqx $'Shared clients — lint + test + browser/iOS/Android/TV bundles\tsuccess' <<<"$jobs"; then
+	echo 'android release: React Native source did not execute the shared-client gate' >&2
+	exit 1
+fi
 
 echo "android release: source commit $GITHUB_SHA has a successful Android CI gate"

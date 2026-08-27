@@ -37,6 +37,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-cont
 import appConfig from "../app.json";
 import { legacyPairingSource } from "./legacy-pairing";
 
+const clientVersion = process.env.EXPO_PUBLIC_LOOMARR_CLIENT_VERSION ?? appConfig.expo.version;
 const credentialStore = createMigratingPairingCredentialStore({
   deviceName: "Loomarr TV",
   legacy: legacyPairingSource,
@@ -155,7 +156,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
         if (!response.ok) throw new Error(`Client diagnostics were rejected (${response.status}).`);
       },
       {
-        clientVersion: appConfig.expo.version,
+        clientVersion,
         platform: Platform.constants.Model.toLowerCase().includes("shield") ? "shield_tv" : "android_tv",
         source: "android_tv",
       },
@@ -225,7 +226,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
         <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>
           <SurfJourney
             clientName="Loomarr TV"
-            clientVersion={appConfig.expo.version}
+            clientVersion={clientVersion}
             controller={guide}
             currentChannelId={player.snapshot.channel?.id}
             density="tv"
