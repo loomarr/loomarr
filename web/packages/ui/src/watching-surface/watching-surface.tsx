@@ -1,55 +1,13 @@
-import type { Density } from "@loomarr/design-system";
 import { Action, ActivityIndicator, ProgressTrack, Surface, Text } from "@loomarr/design-system";
-import type { PlayerSnapshot } from "@loomarr/player";
-import type { ReactNode } from "react";
 import { Pressable, View } from "react-native";
 
-import { ChannelIdentity, ProgrammeIdentity, type ProgrammeIdentityData } from "../identity";
+import { ChannelIdentity, ProgrammeIdentity } from "../identity";
 import { TransientOverlay } from "../overlay";
+import type { WatchingSurfaceProps } from "./watching-surface.type";
+import { behindLabel, playbackMessage } from "./watching-surface-state";
+import { TvWatchingSurface } from "./watching-surface-tv";
 
-interface ChannelNumberEntry {
-  channelName?: string;
-  digits: string;
-}
-
-interface WatchingProgrammeData extends ProgrammeIdentityData {
-  progressPercent?: number;
-}
-
-interface WatchingScheduleData {
-  next?: Pick<ProgrammeIdentityData, "timeLabel" | "title">;
-  now?: WatchingProgrammeData;
-}
-
-interface WatchingSurfaceProps {
-  chromeVisible?: boolean;
-  density: Density;
-  loadError?: string;
-  numberEntry?: ChannelNumberEntry;
-  onChannelDown: () => void;
-  onChannelUp: () => void;
-  onDismissControls: () => void;
-  onGoLive: () => void;
-  onOpenGuide: () => void;
-  onOpenSurf: () => void;
-  onPause: () => void;
-  onPlay: () => void;
-  onPrevious: () => void;
-  onRetry: () => void;
-  onShowControls: () => void;
-  player: ReactNode;
-  snapshot: PlayerSnapshot;
-  schedule?: WatchingScheduleData;
-}
-
-const behindLabel = (seconds: number) => {
-  const rounded = Math.max(0, Math.round(seconds));
-  const minutes = Math.floor(rounded / 60);
-  const remainder = String(rounded % 60).padStart(2, "0");
-  return `${minutes}:${remainder} behind`;
-};
-
-const WatchingSurface = ({
+const TouchWatchingSurface = ({
   chromeVisible = true,
   density,
   loadError,
@@ -70,15 +28,7 @@ const WatchingSurface = ({
   schedule,
 }: WatchingSurfaceProps) => {
   const recoverableFailure = Boolean(loadError) || snapshot.status === "failed";
-  const message =
-    loadError ??
-    (snapshot.status === "empty"
-      ? "No playable channels are on this Loomarr yet."
-      : snapshot.status === "idle"
-        ? "Choose a channel from the Guide or Surf."
-        : snapshot.status === "failed"
-          ? snapshot.error
-          : undefined);
+  const message = playbackMessage(snapshot, loadError);
   return (
     <View style={{ backgroundColor: "#000", flex: 1 }}>
       <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>{player}</View>
@@ -231,5 +181,7 @@ const WatchingSurface = ({
   );
 };
 
-export type { ChannelNumberEntry, WatchingProgrammeData, WatchingScheduleData, WatchingSurfaceProps };
+const WatchingSurface = (props: WatchingSurfaceProps) =>
+  props.density === "tv" ? <TvWatchingSurface {...props} /> : <TouchWatchingSurface {...props} />;
+
 export { WatchingSurface };

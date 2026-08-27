@@ -22,12 +22,13 @@ const renderSurface = (
   loadError?: string,
   chromeVisible = true,
   schedule?: Parameters<typeof WatchingSurface>[0]["schedule"],
+  density: Parameters<typeof WatchingSurface>[0]["density"] = "tv",
 ) =>
   renderToStaticMarkup(
     <LoomarrProvider>
       <WatchingSurface
         chromeVisible={chromeVisible}
-        density="tv"
+        density={density}
         loadError={loadError}
         onChannelDown={vi.fn()}
         onChannelUp={vi.fn()}
@@ -48,10 +49,23 @@ const renderSurface = (
   );
 
 describe("WatchingSurface", () => {
-  it("keeps one player mounted behind Channel identity and every explicit tune action", () => {
+  it("keeps one player mounted behind Compose-parity TV chrome and quiet remote hints", () => {
     const output = renderSurface(playing);
     expect(output).toContain("one-native-player");
     expect(output).toContain("Science Fiction");
+    expect(output).toContain("Up/Down tune");
+    expect(output).toContain("Left Surf");
+    expect(output).toContain("0–9 jump");
+    expect(output).toContain("OK Guide");
+    expect(output).not.toContain("Playback controls");
+    expect(output).not.toContain("Previous");
+    expect(output).not.toContain("Channel −");
+    expect(output).not.toContain("Channel +");
+  });
+
+  it("keeps explicit playback and tune actions in the touch adapter", () => {
+    const output = renderSurface(playing, undefined, true, undefined, "touch");
+    expect(output).toContain("one-native-player");
     expect(output).toContain("Previous");
     expect(output).toContain("Channel −");
     expect(output).toContain("Guide");
