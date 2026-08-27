@@ -168,6 +168,26 @@ func VerifyCIImpactActivation(path string) error {
 		outputs   []classifierOutput
 		condition string
 	}{
+		"ci-policy": {
+			outputs:   []classifierOutput{{name: "impact_policy", source: "policy"}},
+			condition: "needs.changes.outputs.impact_policy == 'true'",
+		},
+		"rust-contracts": {
+			outputs:   []classifierOutput{{name: "impact_rust", source: "rust"}},
+			condition: "needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true'",
+		},
+		"go-contracts": {
+			outputs:   []classifierOutput{{name: "impact_contracts", source: "contracts"}},
+			condition: "needs.changes.outputs.impact_contracts == 'true' || needs.changes.outputs.release_candidate == 'true'",
+		},
+		"image-certification": {
+			outputs:   []classifierOutput{{name: "impact_rust", source: "rust"}},
+			condition: "needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true'",
+		},
+		"go": {
+			outputs:   []classifierOutput{{name: "impact_go", source: "go"}},
+			condition: "needs.changes.outputs.impact_go == 'true'",
+		},
 		"store-postgres": {
 			outputs:   []classifierOutput{{name: "impact_postgres", source: "postgres"}},
 			condition: "needs.changes.outputs.impact_postgres == 'true'",
@@ -179,17 +199,37 @@ func VerifyCIImpactActivation(path string) error {
 			},
 			condition: "needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true'",
 		},
+		"frontend": {
+			outputs:   []classifierOutput{{name: "impact_web", source: "web"}},
+			condition: "needs.changes.outputs.impact_web == 'true'",
+		},
+		"clients": {
+			outputs:   []classifierOutput{{name: "impact_clients", source: "clients"}},
+			condition: "needs.changes.outputs.impact_clients == 'true'",
+		},
+		"image": {
+			outputs:   []classifierOutput{{name: "impact_image", source: "image"}},
+			condition: "needs.changes.outputs.impact_image == 'true'",
+		},
+		"docs": {
+			outputs:   []classifierOutput{{name: "impact_docs", source: "docs"}},
+			condition: "needs.changes.outputs.impact_docs == 'true'",
+		},
+		"android": {
+			outputs:   []classifierOutput{{name: "impact_android", source: "android"}},
+			condition: "needs.changes.outputs.impact_android == 'true'",
+		},
 		"tuner": {
 			outputs:   []classifierOutput{{name: "impact_tuner", source: "tuner"}},
-			condition: "needs.changes.outputs.impact_tuner == 'true'",
+			condition: "github.event_name != 'pull_request' && needs.changes.outputs.impact_tuner == 'true'",
 		},
 		"apple-mobile": {
 			outputs:   []classifierOutput{{name: "impact_apple_mobile", source: "apple_mobile"}},
-			condition: "needs.changes.outputs.impact_apple_mobile == 'true'",
+			condition: "github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_mobile == 'true'",
 		},
 		"apple-tv": {
 			outputs:   []classifierOutput{{name: "impact_apple_tv", source: "apple_tv"}},
-			condition: "needs.changes.outputs.impact_apple_tv == 'true'",
+			condition: "github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_tv == 'true'",
 		},
 	}
 	for jobName, gate := range activated {
@@ -245,6 +285,47 @@ func yamlNodeContainsScalar(node *yaml.Node, value string) bool {
 		}
 	}
 	return false
+}
+
+// VerifyCINativeAdmission keeps scarce macOS capacity behind the merge queue.
+// Pull-request CI remains fast feedback; merge-group, main, and manual runs
+// retain the same required native evidence before delivery or release.
+func VerifyCINativeAdmission(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	root, err := parseYAML(data)
+	if err != nil {
+		return err
+	}
+	on, err := requiredMap(root, "on")
+	if err != nil {
+		return errors.New("CI workflow must define triggers")
+	}
+	if _, ok := mappingValue(on, "merge_group"); !ok {
+		return errors.New("CI workflow must trigger for merge groups")
+	}
+	jobs, err := requiredMap(root, "jobs")
+	if err != nil {
+		return err
+	}
+	expected := map[string]string{
+		"agent-harness-macos": "github.event_name != 'pull_request' && needs.changes.outputs.impact_agent == 'true'",
+		"apple-mobile":        "github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_mobile == 'true'",
+		"apple-tv":            "github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_tv == 'true'",
+		"tuner":               "github.event_name != 'pull_request' && needs.changes.outputs.impact_tuner == 'true'",
+	}
+	for jobName, condition := range expected {
+		job, err := requiredMap(jobs, jobName)
+		if err != nil {
+			return fmt.Errorf("CI workflow must define scarce-capacity job %s", jobName)
+		}
+		if got := scalarValue(job, "if"); got != condition {
+			return fmt.Errorf("CI job %s condition %q does not match native admission contract %q", jobName, got, condition)
+		}
+	}
+	return nil
 }
 
 // VerifyCIManualScopes pins the manual-dispatch contract used to certify an

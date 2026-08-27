@@ -156,6 +156,19 @@ PATH="$TMP/fake-bin:$PATH" BASELINE_LOG="$baseline_log" LOOMARR_REPO_ROOT="$TMP-
 	"$SCRIPT_DIR/agent.sh" baseline >/dev/null
 [ "$(wc -l < "$baseline_log" | tr -d ' ')" = 1 ]
 
+# A gate that overlaps an edit cannot publish a green cache entry for the clean commit it started
+# from. This catches agents beginning implementation while their required baseline is still running.
+step 'baseline rejects concurrent edits'
+git -C "$TMP" commit --allow-empty -qm 'new baseline key'
+# shellcheck disable=SC2016 # LOOMARR_REPO_ROOT expands inside the generated fixture.
+printf '%s\n' '#!/usr/bin/env sh' 'printf "changed during baseline\n" >> "$LOOMARR_REPO_ROOT/fixture"' > "$TMP/fake-bin/make"
+chmod +x "$TMP/fake-bin/make"
+if PATH="$TMP/fake-bin:$PATH" LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" baseline >/dev/null 2>&1; then
+	echo 'agent-harness-test: baseline cached a worktree that changed during the gate' >&2
+	exit 1
+fi
+git -C "$TMP" restore fixture
+
 # Focused verification uses the shared classifier and the reverse-dependency closure rather than
 # testing only the directory that happened to contain the edited file. Fake only the expensive
 # command execution; the real classifiers still resolve Loomarr's actual package graph.

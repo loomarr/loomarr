@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "purpose": "filler-development-discovery-summary",
+  "snapshotAt": "2026-08-27T12:32:00Z",
+  "inventorySchemaVersion": 4,
+  "inventorySha256": "0c596308fe16a5486ab4c77b07bf66786ecbd884fa3b0314e10731878597bf22",
+  "rightsWorksheetSha256": "f84738eb536ab1bdaf310927897913ea98a78207d67890f5876f09b3c48ed497",
+  "rightsReviewCsvSha256": "356bfe3822ee45b321ab7f805851d3c3aab6a12373d77283e4291347ee96796b",
+  "downloadAuthority": false,
+  "captures": 12,
+  "uniqueCases": 408,
+  "predictedMediaBytes": 7333280803,
+  "multiCaptureCases": 4,
+  "authorities": [
+    {"authority": "archive.org/classic_tv_commercials", "cases": 151},
+    {"authority": "archive.org/movie_trailers_picfixer", "cases": 60},
+    {"authority": "archive.org/movie_trailers_unsorted", "cases": 60},
+    {"authority": "archive.org/newsandpublicaffairs", "cases": 12},
+    {"authority": "archive.org/vhscommercials", "cases": 125}
+  ],
+  "roleHintMemberships": [
+    {"role": "bumper", "cases": 60},
+    {"role": "commercial", "cases": 60},
+    {"role": "compilation", "cases": 60},
+    {"role": "promo", "cases": 80},
+    {"role": "psa", "cases": 22},
+    {"role": "station_id", "cases": 10},
+    {"role": "trailer", "cases": 120}
+  ],
+  "limitations": [
+    "Role hints are search provenance, not semantic labels.",
+    "Archive uploader metadata and license fields are discovery evidence, not item-level rights approval.",
+    "The inventory and inert worksheet remain external artifacts because they contain acquisition URLs and are not certification fixtures.",
+    "The packet covers development discovery only; it does not supply the independent 1126-case holdout."
+  ]
+}

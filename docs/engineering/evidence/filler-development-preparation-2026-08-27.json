@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "purpose": "filler-development-corpus-preparation-and-blind-packet-generation",
+  "snapshotAt": "2026-08-27T17:19:34Z",
+  "certificationEvidence": false,
+  "cohort": "development_seed",
+  "externalArtifactId": "filler-development-label-prep",
+  "preparation": {
+    "planSchemaVersion": 4,
+    "planSha256": "f483aee6a4e4ca815170509ea6a8cf84367d401590ecff847c3d32844dfc74ff",
+    "corpusVersion": "filler-development-2026-08-27-v1",
+    "evidenceVersion": "filler-evidence-v1",
+    "preparedAt": "2026-08-27T16:53:47Z",
+    "draftSha256": "a806919b6dfcfd1c024a8943a7bb73418f3cc090a4c0ad6ad7fdbfd49b5d63b2",
+    "packetsJsonlSha256": "c5c0137dae944396db1a2d863be31f54381f1ebaa44e7d42eac8202b522ddf79",
+    "cases": 300,
+    "developmentCases": 300,
+    "holdoutCases": 0,
+    "perceptualClusters": 299,
+    "usableCases": 297,
+    "measuredUnusableCases": 3,
+    "sourceBytesRehashed": 5952579028,
+    "segmentHours": 6.835301666666667,
+    "maximumSegmentMs": 120000,
+    "maximumRequestedVideoMs": 54000
+  },
+  "derivatives": {
+    "files": 1782,
+    "bytes": 1345646299,
+    "treeSha256": "3f778e0477749c0916f6ce5b87f789834ee677410d790acada05f78c7013e67a",
+    "audioWav": 297,
+    "jpegFrames": 1188,
+    "mp4Video": 297,
+    "packetDigestAndFileRechecksPassed": 300,
+    "missingContentTypes": 0
+  },
+  "blindReview": {
+    "draftSha256": "a806919b6dfcfd1c024a8943a7bb73418f3cc090a4c0ad6ad7fdbfd49b5d63b2",
+    "contentSetSha256": "10af3af681454b57bbf26d26c71762a5fda9be8a626ae89dddf7a3b56d7b92c6",
+    "batches": [
+      {
+        "batchId": "filler-development-review-a-2026-08-27",
+        "cases": 300,
+        "packetSha256": "fcb10d70c90c64650ae04b5e7ad8fc3a22c6d64418a0a41b30610e4a91fe62c0",
+        "privateMapSha256": "8b420c3d6f480c6970dd4b1ec849ba23643b337d7d0cc799661aca1f12780f9d",
+        "packetMode": "0640",
+        "privateMapMode": "0600"
+      },
+      {
+        "batchId": "filler-development-review-b-2026-08-27",
+        "cases": 300,
+        "packetSha256": "a0cc8faad6d0148e3c54eb569076194a697ab1321cf94d9a04078a27f95e3352",
+        "privateMapSha256": "6131a2fa8b3830e16c88cdf9b2cfc943c91dbe8184e94ce0c22855e7116a52c2",
+        "packetMode": "0640",
+        "privateMapMode": "0600"
+      }
+    ],
+    "independentAliasSets": true,
+    "identicalContentSets": true,
+    "completedLabelSubmissions": 0,
+    "completedAdjudications": 0
+  },
+  "runtimeFindings": [
+    "Two old or variable-frame-rate sources reported mux duration beyond an exact 60-second request.",
+    "The authored direct-video window was reduced to at most 54 seconds while the absolute 60-second provider ceiling remained unchanged.",
+    "Failed attempts removed their staged derivative trees and published no draft or packet artifact."
+  ],
+  "limitations": [
+    "The two opaque review packets and private maps are generated, but neither independent semantic label submission is complete.",
+    "The development manifest remains unlocked and cannot satisfy certification.",
+    "Corpus media, derivatives, draft, packets, and private maps remain external to Git.",
+    "The separate 1126-case holdout, its rights review and acquisition, blind labels, adjudication, provider bakeoff, selected policy score, and shadow evidence remain incomplete."
+  ]
+}
