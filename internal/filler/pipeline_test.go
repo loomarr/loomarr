@@ -235,6 +235,30 @@ func TestPipeline_StagePanicBecomesARecoverableClipFailure(t *testing.T) {
 	}
 }
 
+func TestPipeline_AdmissionAuditFailureNeverFallsThroughToLegacyFiling(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "c1")
+	stages := allStages()
+	stages[filler.StageAdmission].err = errors.New("decision store unavailable")
+
+	p := newPipe(st, asSlice(stages), filler.DefaultBudget())
+	for range filler.MaxAttempts + 1 {
+		if err := p.Advance(context.Background(), "c1"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	row := st.rows["c1"]
+	if row.Stage != filler.StageAdmission || row.Status != filler.StatusFailed ||
+		row.Disposition != filler.DispositionRunning || row.Attempts != filler.MaxAttempts {
+		t.Fatalf("admission failure = %q/%q disposition=%q attempts=%d",
+			row.Stage, row.Status, row.Disposition, row.Attempts)
+	}
+	if stages[filler.StageScore].runs != 0 {
+		t.Fatalf("legacy score ran %d times without a durable shadow decision", stages[filler.StageScore].runs)
+	}
+}
+
 func stage(id filler.StageID) *fakeStage {
 	return &fakeStage{id: id, applies: true, result: filler.StageResult{Verdict: filler.VerdictContinue}}
 }

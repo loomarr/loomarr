@@ -1,5 +1,5 @@
 // Command filler-corpus-commons freezes a bounded, metadata-only Wikimedia
-// Commons rights-yield pilot lane. It grants no rights or download authority.
+// Commons lane and optional full inventory. It grants no rights authority.
 package main
 
 import (
@@ -85,6 +85,7 @@ type pageEvidence struct {
 
 type options struct {
 	apiBase, apiHost, uploadHost, category, roleHint, outputPath, cacheDir, userAgent string
+	snapshotAt                                                                        time.Time
 	maxRequests, maxPages, maxItems                                                   int
 	maxResponseBytes, maxItemBytes, maxTotalBytes                                     int64
 	delay, maxWallTime                                                                time.Duration
@@ -98,9 +99,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	category := flags.String("category", "", "exact Commons category name without prefix")
 	roleHint := flags.String("role-hint", "", "discovery-only role hint")
-	output := flags.String("out", "", "source-neutral pilot lane JSON")
+	output := flags.String("out", "", "bounded source lane JSON")
+	inventoryOutput := flags.String("inventory-out", "", "optional strict full-corpus inventory JSON")
 	cache := flags.String("cache-dir", "", "raw API response cache")
 	userAgent := flags.String("user-agent", "", "descriptive User-Agent with contact")
+	snapshotText := flags.String("snapshot-at", "", "snapshot time in RFC3339 format")
 	maxRequests := flags.Int("max-requests", 0, "hard HTTP request ceiling")
 	maxPages := flags.Int("max-pages", 0, "hard category continuation ceiling")
 	maxItems := flags.Int("max-items", 10, "hard candidate ceiling")
@@ -119,11 +122,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-commons: API endpoint must use HTTPS")
 		return 2
 	}
-	if *category == "" || *roleHint == "" || *output == "" || *cache == "" || *userAgent == "" || *uploadHost == "" || *maxRequests < 2 || *maxRequests > 20 || *maxPages <= 0 || *maxPages > 10 || *maxItems != 10 || *maxResponseBytes <= 0 || *maxItemBytes <= 0 || *maxTotalBytes < *maxItemBytes || *delay < 100*time.Millisecond || *maxWallTime <= 0 {
-		_, _ = fmt.Fprintln(stderr, "filler-corpus-commons: category, role, output, cache, identity, exact hosts, exactly 10 items, bounded requests/pages, positive byte ceilings, >=100ms delay, and wall ceiling are required")
+	if *category == "" || *roleHint == "" || *output == "" || *cache == "" || *userAgent == "" || *snapshotText == "" || *uploadHost == "" || *maxRequests < 2 || *maxRequests > 1000 || *maxPages <= 0 || *maxPages > 100 || *maxItems <= 0 || *maxItems > 50 || *maxResponseBytes <= 0 || *maxItemBytes <= 0 || *maxTotalBytes < *maxItemBytes || *delay < 100*time.Millisecond || *maxWallTime <= 0 {
+		_, _ = fmt.Fprintln(stderr, "filler-corpus-commons: category, role, output, cache, identity, snapshot, exact hosts, 1-50 items, bounded requests/pages, positive byte ceilings, >=100ms delay, and wall ceiling are required")
 		return 2
 	}
-	opts := options{apiBase: apiURL.String(), apiHost: apiURL.Hostname(), uploadHost: *uploadHost, category: *category, roleHint: *roleHint, outputPath: *output, cacheDir: *cache, userAgent: *userAgent, maxRequests: *maxRequests, maxPages: *maxPages, maxItems: *maxItems, maxResponseBytes: *maxResponseBytes, maxItemBytes: *maxItemBytes, maxTotalBytes: *maxTotalBytes, delay: *delay, maxWallTime: *maxWallTime}
+	snapshotAt, err := time.Parse(time.RFC3339, *snapshotText)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "filler-corpus-commons: parse snapshot:", err)
+		return 2
+	}
+	opts := options{apiBase: apiURL.String(), apiHost: apiURL.Hostname(), uploadHost: *uploadHost, category: *category, roleHint: *roleHint, outputPath: *output, cacheDir: *cache, userAgent: *userAgent, snapshotAt: snapshotAt, maxRequests: *maxRequests, maxPages: *maxPages, maxItems: *maxItems, maxResponseBytes: *maxResponseBytes, maxItemBytes: *maxItemBytes, maxTotalBytes: *maxTotalBytes, delay: *delay, maxWallTime: *maxWallTime}
 	ctx, cancel := context.WithTimeout(context.Background(), opts.maxWallTime)
 	defer cancel()
 	lane, err := capture(ctx, opts)
@@ -131,9 +139,24 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-commons:", err)
 		return 1
 	}
+	var inventory *fillercorpus.Inventory
+	if *inventoryOutput != "" {
+		value, err := fillercorpus.InventoryFromLane(lane, fillercorpus.LaneInventoryOptions{SnapshotAt: opts.snapshotAt, Collection: "Category:" + opts.category, AllowedMediaHosts: []string{opts.uploadHost}})
+		if err != nil {
+			_, _ = fmt.Fprintln(stderr, "filler-corpus-commons: inventory:", err)
+			return 1
+		}
+		inventory = &value
+	}
 	if err := writeJSON(opts.outputPath, lane); err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-commons: write:", err)
 		return 1
+	}
+	if inventory != nil {
+		if err := writeJSON(*inventoryOutput, inventory); err != nil {
+			_, _ = fmt.Fprintln(stderr, "filler-corpus-commons: write inventory:", err)
+			return 1
+		}
 	}
 	_, _ = fmt.Fprintf(stdout, "filler-corpus-commons: froze %d candidates (%d predicted bytes) in %d requests\n", len(lane.Cases), lane.PredictedMediaBytes, lane.RequestsUsed)
 	return 0
