@@ -326,7 +326,8 @@ func certificationCase(id string, split fillereval.Split, contentHash, evidenceH
 			Authority: "fixture", ItemID: id, ItemRef: "https://example.invalid/items/" + id,
 			MetadataRetrievedAt: lockedAt, MetadataSHA256: strings.Repeat("d", 64), EvidenceRef: "https://example.invalid/evidence/" + id,
 			RightsStatement: "CC0 fixture", RightsDecision: "approved", RightsReviewerID: "rights",
-			RightsReviewedAt: lockedAt, Redistributable: true, SourceFilename: id + ".mp4",
+			RightsReviewedAt: lockedAt, Redistributable: true, Creator: "creator-" + id,
+			Campaign: "campaign-" + id, SourceFamily: "family-" + id, SourceFilename: id + ".mp4",
 			SourceRef: "https://example.invalid/media/" + id, SourceBytes: 1024, SegmentDurationMS: 30_000,
 		},
 	}

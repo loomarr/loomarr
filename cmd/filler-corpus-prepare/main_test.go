@@ -19,13 +19,17 @@ import (
 	"github.com/loomarr/loomarr/internal/mediatools"
 )
 
-type fakeDeriver struct{ frame []byte }
+type fakeDeriver struct{ frame, alternateFrame []byte }
 
 func (f fakeDeriver) Measure(context.Context, string, int64, int64) (mediaMeasurement, error) {
 	return mediaMeasurement{DurationMS: 30_000, Usable: true, Detail: "duration_ms=30000;no_video=false;no_audio=false;black_percent=0;silence_percent=0"}, nil
 }
-func (f fakeDeriver) Frames(context.Context, string, int64, int64) ([][]byte, error) {
-	return [][]byte{f.frame, f.frame, f.frame, f.frame}, nil
+func (f fakeDeriver) Frames(_ context.Context, path string, _, _ int64) ([][]byte, error) {
+	frame := f.frame
+	if strings.Contains(path, "case-b") && len(f.alternateFrame) > 0 {
+		frame = f.alternateFrame
+	}
+	return [][]byte{frame, frame, frame, frame}, nil
 }
 func (f fakeDeriver) Video(context.Context, string, int64, int64) (videoDerivative, error) {
 	data := []byte("bounded video derivative")
@@ -79,6 +83,14 @@ func TestPrepareFailsClosedWithoutExactApprovalAndPublishesNoDerivatives(t *test
 	}
 	if _, err := os.Stat(opts.derivativesRoot); !os.IsNotExist(err) {
 		t.Fatalf("partial derivatives were published: %v", err)
+	}
+}
+
+func TestPrepareRejectsPerceptualFamilySplitAcrossClusters(t *testing.T) {
+	opts, deriver := preparationFixture(t)
+	deriver.alternateFrame = deriver.frame
+	if _, _, err := prepare(t.Context(), opts, deriver); err == nil || !strings.Contains(err.Error(), "perceptually related") {
+		t.Fatalf("perceptual family leakage error = %v", err)
 	}
 }
 
@@ -156,7 +168,7 @@ func preparationFixture(t *testing.T) (options, fakeDeriver) {
 	if err := os.WriteFile(approvalsPath, approvals.Bytes(), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	plan := preparationPlan{SchemaVersion: preparationSchemaVersion, CorpusVersion: "fixture-v1", EvidenceVersion: "evidence-v1", SliceGates: []fillereval.SliceGate{{Slice: "all", MinCases: 2, MinAccuracy: .9, MinAccuracyLower: .5}}, Cases: []plannedCase{{CaseID: inv.Cases[0].CaseID, Split: fillereval.SplitDevelopment, Cluster: "cluster-a", SegmentDurationMS: 30_000, VideoDurationMS: 10_000}, {CaseID: inv.Cases[1].CaseID, Split: fillereval.SplitHoldout, Cluster: "cluster-b", SegmentDurationMS: 30_000, VideoDurationMS: 10_000}}}
+	plan := preparationPlan{SchemaVersion: preparationSchemaVersion, CorpusVersion: "fixture-v1", EvidenceVersion: "evidence-v1", SliceGates: []fillereval.SliceGate{{Slice: "all", MinCases: 2, MinAccuracy: .9, MinAccuracyLower: .5}}, Cases: []plannedCase{{CaseID: inv.Cases[0].CaseID, Split: fillereval.SplitDevelopment, Cluster: "cluster-a", Campaign: "campaign-a", SegmentDurationMS: 30_000, VideoDurationMS: 10_000}, {CaseID: inv.Cases[1].CaseID, Split: fillereval.SplitHoldout, Cluster: "cluster-b", Campaign: "campaign-b", SegmentDurationMS: 30_000, VideoDurationMS: 10_000}}}
 	planPath := filepath.Join(dir, "plan.json")
 	planRaw, _ := json.Marshal(plan)
 	if err := os.WriteFile(planPath, planRaw, 0o600); err != nil {
@@ -172,5 +184,15 @@ func preparationFixture(t *testing.T) (options, fakeDeriver) {
 	if err := jpeg.Encode(&jpegBytes, img, nil); err != nil {
 		t.Fatal(err)
 	}
-	return options{inventoryPath: inventoryPath, approvalsPath: approvalsPath, planPath: planPath, localRoot: localRoot, remoteRoot: remoteRoot, derivativesRoot: filepath.Join(dir, "derivatives"), preparedAt: snapshot.Add(2 * time.Hour), minItems: 2, maxItems: 2, maxInputBytes: 1024, maxOutputBytes: 1 << 20, maxWallTime: time.Minute}, fakeDeriver{frame: jpegBytes.Bytes()}
+	alternate := image.NewRGBA(image.Rect(0, 0, 64, 36))
+	for y := 0; y < 36; y++ {
+		for x := 0; x < 64; x++ {
+			alternate.Set(x, y, color.RGBA{R: uint8(255 - x), G: uint8(255 - y), B: uint8((x + y) % 255), A: 255})
+		}
+	}
+	var alternateJPEG bytes.Buffer
+	if err := jpeg.Encode(&alternateJPEG, alternate, nil); err != nil {
+		t.Fatal(err)
+	}
+	return options{inventoryPath: inventoryPath, approvalsPath: approvalsPath, planPath: planPath, localRoot: localRoot, remoteRoot: remoteRoot, derivativesRoot: filepath.Join(dir, "derivatives"), preparedAt: snapshot.Add(2 * time.Hour), minItems: 2, maxItems: 2, maxInputBytes: 1024, maxOutputBytes: 1 << 20, maxWallTime: time.Minute}, fakeDeriver{frame: jpegBytes.Bytes(), alternateFrame: alternateJPEG.Bytes()}
 }

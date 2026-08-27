@@ -4,7 +4,7 @@ package fillereval
 
 import "time"
 
-const SchemaVersion = 4
+const SchemaVersion = 5
 
 type CorpusKind string
 
@@ -101,6 +101,8 @@ type MediaProvenance struct {
 	RightsReviewedAt    time.Time `json:"rightsReviewedAt"`
 	Redistributable     bool      `json:"redistributable"`
 	Creator             string    `json:"creator,omitempty"`
+	Campaign            string    `json:"campaign,omitempty"`
+	SourceFamily        string    `json:"sourceFamily,omitempty"`
 	RequiredCredit      string    `json:"requiredCredit,omitempty"`
 	Restrictions        []string  `json:"restrictions,omitempty"`
 	SourceFilename      string    `json:"sourceFilename"`

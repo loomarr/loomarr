@@ -6,7 +6,7 @@ certification manifest and its evidence-packet JSONL are locked.
 
 ## Inputs
 
-- A schema-v4 certification manifest. Only its named `development` or `holdout` split is executed.
+- A schema-v5 certification manifest. Only its named `development` or `holdout` split is executed.
 - One packet JSON object per line. Packet case IDs and hashes must match that split exactly.
 - A corpus root containing the packet's hashed frame, audio, and video derivatives.
 - A schema-v1 OpenRouter snapshot no more than 24 hours older than the run, created from the exact
@@ -37,7 +37,7 @@ the prompt and output schema compiled into the adapter.
     "capabilitySnapshot": "<snapshot SHA-256>",
     "priceSnapshot": "<the same snapshot SHA-256>",
     "generatedAt": "YYYY-MM-DDTHH:MM:SSZ",
-    "maxRequests": 300,
+    "maxRequests": 4000,
     "maxSpendNanoUsd": 5000000000,
     "maxConcurrency": 1
   },
@@ -45,7 +45,7 @@ the prompt and output schema compiled into the adapter.
     "version": "filler-admission-v1",
     "taxonomyVersion": "filler-taxonomy-v1",
     "allowedProducts": ["example-product"],
-    "allowedContentRoles": ["commercial", "bumper", "psa", "station_id"],
+    "allowedContentRoles": ["commercial", "promo", "bumper", "psa", "station_id", "trailer"],
     "knownSensitiveFlags": ["adult", "violence"],
     "prohibitedFlags": ["adult"]
   },

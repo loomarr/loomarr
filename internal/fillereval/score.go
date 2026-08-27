@@ -20,6 +20,9 @@ const oneSided95Z = 1.6448536269514722
 func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report {
 	report := Report{SchemaVersion: SchemaVersion, CorpusVersion: manifest.CorpusVersion, ManifestSHA256: ManifestSHA256(manifest), Run: run}
 	report.Failures = append(report.Failures, ValidateManifest(manifest)...)
+	if manifest.Kind == CorpusCertification {
+		report.Failures = append(report.Failures, ValidateCertificationContract(manifest)...)
+	}
 	byID := make(map[string]Prediction, len(predictions))
 	for _, prediction := range predictions {
 		if _, exists := byID[prediction.CaseID]; exists {
@@ -446,6 +449,8 @@ func ValidateManifest(manifest Manifest) []string {
 	ids := map[string]struct{}{}
 	clusters := map[string]Split{}
 	contentClusters := map[string]string{}
+	campaignSplits := map[string]Split{}
+	familySplits := map[string]Split{}
 	splitCounts := map[Split]int{}
 	if len(manifest.SliceGates) == 0 {
 		failures = append(failures, "at least one safety-critical slice gate is required")
@@ -491,6 +496,8 @@ func ValidateManifest(manifest Manifest) []string {
 		failures = append(failures, validateLabels(prefix, LabelsFromCase(c))...)
 		if manifest.Kind == CorpusCertification {
 			failures = append(failures, validateCertificationCase(prefix, c, manifest.LockedAt)...)
+			failures = append(failures, trackCertificationSplit(prefix, "campaign", strings.TrimSpace(c.Provenance.Campaign), c.Split, campaignSplits)...)
+			failures = append(failures, trackCertificationSplit(prefix, "source family", strings.TrimSpace(c.Provenance.SourceFamily), c.Split, familySplits)...)
 			if previousCluster, exists := contentClusters[c.ContentSHA256]; exists && previousCluster != c.Cluster {
 				failures = append(failures, prefix+": identical content hash appears in a different similarity cluster")
 			} else if c.ContentSHA256 != "" {
@@ -502,6 +509,17 @@ func ValidateManifest(manifest Manifest) []string {
 		failures = append(failures, "certification corpus requires non-empty development and holdout splits")
 	}
 	return failures
+}
+
+func trackCertificationSplit(prefix, name, value string, split Split, seen map[string]Split) []string {
+	if value == "" {
+		return nil
+	}
+	if prior, exists := seen[value]; exists && prior != split {
+		return []string{prefix + ": " + name + " crosses development and holdout"}
+	}
+	seen[value] = split
+	return nil
 }
 
 func validateCertificationCase(prefix string, c Case, lockedAt time.Time) []string {
@@ -521,6 +539,9 @@ func validateCertificationCase(prefix string, c Case, lockedAt time.Time) []stri
 	}
 	if strings.TrimSpace(p.SourceFilename) == "" || strings.TrimSpace(p.SourceRef) == "" || p.SourceBytes <= 0 || p.SegmentStartMS < 0 || p.SegmentDurationMS <= 0 {
 		failures = append(failures, prefix+": source file identity, positive size, and bounded segment are required")
+	}
+	if strings.TrimSpace(p.Campaign) == "" || strings.TrimSpace(p.SourceFamily) == "" {
+		failures = append(failures, prefix+": certification requires campaign and source-family identity")
 	}
 	wantLabelHash := LabelSHA256(c)
 	if len(c.Evidence) == 0 {
@@ -631,29 +652,29 @@ func applyGates(r *Report, gates []SliceGate, eligible, invalid, deterministicRe
 	if r.Metrics.TotalChargedNanoUSD > r.Run.MaxSpendNanoUSD {
 		r.Failures = append(r.Failures, fmt.Sprintf("run charged %d nanodollars; spend ceiling is %d", r.Metrics.TotalChargedNanoUSD, r.Run.MaxSpendNanoUSD))
 	}
-	if r.Metrics.Cases < 300 {
-		r.Failures = append(r.Failures, fmt.Sprintf("corpus has %d cases; certification requires at least 300", r.Metrics.Cases))
+	if r.Metrics.Cases < CertificationMinHoldout {
+		r.Failures = append(r.Failures, fmt.Sprintf("corpus has %d cases; certification requires at least %d independent holdout cases", r.Metrics.Cases, CertificationMinHoldout))
 	}
 	if r.Metrics.AutoAdmit == 0 || r.Metrics.AutoAdmitPrecision < .99 || r.Metrics.AutoAdmitPrecisionLower < .99 {
 		r.Failures = append(r.Failures, fmt.Sprintf("auto-admit precision %.4f (one-sided 95%% lower %.4f), require both >= 0.99", r.Metrics.AutoAdmitPrecision, r.Metrics.AutoAdmitPrecisionLower))
 	}
-	if deterministicRejects == 0 || r.Metrics.DeterministicRejectPrecision < .99 {
-		r.Failures = append(r.Failures, fmt.Sprintf("deterministic reject precision %.4f, require >= 0.99", r.Metrics.DeterministicRejectPrecision))
+	if deterministicRejects == 0 || r.Metrics.DeterministicRejectPrecision < .99 || r.Metrics.DeterministicRejectPrecisionLower < .99 {
+		r.Failures = append(r.Failures, fmt.Sprintf("deterministic reject precision %.4f (one-sided 95%% lower %.4f), require both >= 0.99", r.Metrics.DeterministicRejectPrecision, r.Metrics.DeterministicRejectPrecisionLower))
 	}
-	if semanticRejects == 0 || r.Metrics.SemanticRejectPrecision < .97 {
-		r.Failures = append(r.Failures, fmt.Sprintf("semantic reject precision %.4f, require >= 0.97", r.Metrics.SemanticRejectPrecision))
+	if semanticRejects == 0 || r.Metrics.SemanticRejectPrecision < .97 || r.Metrics.SemanticRejectPrecisionLower < .97 {
+		r.Failures = append(r.Failures, fmt.Sprintf("semantic reject precision %.4f (one-sided 95%% lower %.4f), require both >= 0.97", r.Metrics.SemanticRejectPrecision, r.Metrics.SemanticRejectPrecisionLower))
 	}
-	if eligible == 0 || r.Metrics.ValidAutomation < .90 {
-		r.Failures = append(r.Failures, fmt.Sprintf("valid filler automation %.4f, require >= 0.90", r.Metrics.ValidAutomation))
+	if eligible == 0 || r.Metrics.ValidAutomation < .90 || r.Metrics.ValidAutomationLower < .90 {
+		r.Failures = append(r.Failures, fmt.Sprintf("valid filler automation %.4f (one-sided 95%% lower %.4f), require both >= 0.90", r.Metrics.ValidAutomation, r.Metrics.ValidAutomationLower))
 	}
-	if invalid == 0 || r.Metrics.InvalidAutomation < .95 {
-		r.Failures = append(r.Failures, fmt.Sprintf("invalid input automation %.4f, require >= 0.95", r.Metrics.InvalidAutomation))
+	if invalid == 0 || r.Metrics.InvalidAutomation < .95 || r.Metrics.InvalidAutomationLower < .95 {
+		r.Failures = append(r.Failures, fmt.Sprintf("invalid input automation %.4f (one-sided 95%% lower %.4f), require both >= 0.95", r.Metrics.InvalidAutomation, r.Metrics.InvalidAutomationLower))
 	}
 	if r.Metrics.ReviewRateUpper > .10 {
 		r.Failures = append(r.Failures, fmt.Sprintf("review rate %.4f (one-sided 95%% upper %.4f), require upper <= 0.10", r.Metrics.ReviewRate, r.Metrics.ReviewRateUpper))
 	}
-	if r.Metrics.ReviewRate > 0 && r.Metrics.ReviewAnswerable < .95 {
-		r.Failures = append(r.Failures, fmt.Sprintf("answerable review %.4f, require >= 0.95", r.Metrics.ReviewAnswerable))
+	if r.Metrics.ReviewRate > 0 && (r.Metrics.ReviewAnswerable < .95 || r.Metrics.ReviewAnswerableLower < .95) {
+		r.Failures = append(r.Failures, fmt.Sprintf("answerable review %.4f (one-sided 95%% lower %.4f), require both >= 0.95", r.Metrics.ReviewAnswerable, r.Metrics.ReviewAnswerableLower))
 	}
 	scores := make(map[string]SliceScore, len(r.Slices))
 	for _, score := range r.Slices {

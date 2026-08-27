@@ -83,6 +83,7 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make filler-corpus-rights-review` |  | prepare an inert worksheet from a frozen filler inventory |
 | `make filler-corpus-rights-lock` |  | validate completed rights review CSV into approval JSONL |
 | `make filler-corpus-lock` |  | lock two blind filler-label batches into a certification manifest |
+| `make filler-corpus-review` |  | prepare one opaque randomized filler-label review batch |
 | `make filler-openrouter-snapshot` |  | lock OpenRouter capability, endpoint-price, and ZDR metadata |
 | `make filler-bakeoff-openrouter` |  | capture a bounded label-blind OpenRouter prediction ledger (paid/manual) |
 | `make filler-eval-cert` |  | score captured filler decisions; never contacts a model or media source |
