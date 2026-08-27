@@ -61,7 +61,48 @@ func ReadPackets(path string) (map[string]fillerbakeoff.Packet, error) {
 	return packets, scanner.Err()
 }
 
+func ReadTranscripts(path string) ([]fillerbakeoff.TranscriptArtifact, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = file.Close() }()
+	var transcripts []fillerbakeoff.TranscriptArtifact
+	seen := make(map[string]struct{})
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64*1024), 16*1024*1024)
+	for line := 1; scanner.Scan(); line++ {
+		if len(bytes.TrimSpace(scanner.Bytes())) == 0 {
+			continue
+		}
+		decoder := json.NewDecoder(bytes.NewReader(scanner.Bytes()))
+		decoder.DisallowUnknownFields()
+		var transcript fillerbakeoff.TranscriptArtifact
+		if err := decoder.Decode(&transcript); err != nil {
+			return nil, fmt.Errorf("line %d: %w", line, err)
+		}
+		var trailing any
+		if err := decoder.Decode(&trailing); err != io.EOF {
+			return nil, fmt.Errorf("line %d: trailing JSON value", line)
+		}
+		if _, duplicate := seen[transcript.CaseID]; duplicate {
+			return nil, fmt.Errorf("line %d: duplicate case %q", line, transcript.CaseID)
+		}
+		seen[transcript.CaseID] = struct{}{}
+		transcripts = append(transcripts, transcript)
+	}
+	return transcripts, scanner.Err()
+}
+
 func WritePredictions(path, tempPattern string, predictions []fillereval.Prediction) error {
+	return writeImmutableJSONL(path, tempPattern, predictions)
+}
+
+func WriteTranscripts(path string, transcripts []fillerbakeoff.TranscriptArtifact) error {
+	return writeImmutableJSONL(path, ".filler-bakeoff-transcripts-*", transcripts)
+}
+
+func writeImmutableJSONL[T any](path, tempPattern string, values []T) error {
 	absolute, err := filepath.Abs(path)
 	if err != nil {
 		return err
@@ -86,8 +127,8 @@ func WritePredictions(path, tempPattern string, predictions []fillereval.Predict
 	}
 	encoder := json.NewEncoder(temp)
 	encoder.SetEscapeHTML(false)
-	for _, prediction := range predictions {
-		if err := encoder.Encode(prediction); err != nil {
+	for _, value := range values {
+		if err := encoder.Encode(value); err != nil {
 			return err
 		}
 	}
@@ -95,7 +136,7 @@ func WritePredictions(path, tempPattern string, predictions []fillereval.Predict
 		return err
 	}
 	if err := os.Link(tempName, absolute); err != nil {
-		return fmt.Errorf("publish immutable prediction ledger: %w", err)
+		return fmt.Errorf("publish immutable JSONL ledger: %w", err)
 	}
 	if err := os.Remove(tempName); err != nil {
 		_ = os.Remove(absolute)

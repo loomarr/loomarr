@@ -36,6 +36,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	configPath := flags.String("config", "", "versioned bakeoff route and policy JSON")
 	snapshotPath := flags.String("snapshot", "", "locked OpenRouter capability, price, and ZDR snapshot JSON")
 	corpusRoot := flags.String("corpus-root", "", "root containing packet media derivatives")
+	transcriptsPath := flags.String("transcripts", "", "locked shared transcript JSONL when named by the run")
 	predictionsPath := flags.String("predictions", "", "output immutable predictions JSONL")
 	baseURL := flags.String("base-url", fillerbakeoff.OpenRouterBaseURL, "OpenRouter API base URL")
 	if err := flags.Parse(args); err != nil {
@@ -78,6 +79,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "filler-bakeoff-openrouter: read packets: %v\n", err)
 		return 1
 	}
+	transcripts, err := readRunTranscripts(configFile.Run, *transcriptsPath)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "filler-bakeoff-openrouter: read transcripts: %v\n", err)
+		return 1
+	}
 	policy, err := filleradmission.New(configFile.Policy)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "filler-bakeoff-openrouter: admission policy: %v\n", err)
@@ -89,7 +95,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	predictions, err := fillerbakeoff.Run(context.Background(), fillerbakeoff.Config{
-		Run: configFile.Run, Manifest: manifest, Packets: packets, CorpusRoot: *corpusRoot,
+		Run: configFile.Run, Manifest: manifest, Packets: packets, Transcripts: transcripts, CorpusRoot: *corpusRoot,
 		Policy: policy, Routes: configFile.Routes, Extractor: extractor, Snapshot: &snapshot,
 	})
 	if err != nil {
@@ -102,4 +108,17 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	_, _ = fmt.Fprintf(stdout, "filler-bakeoff-openrouter: captured %d label-blind predictions in %s\n", len(predictions), *predictionsPath)
 	return 0
+}
+
+func readRunTranscripts(run fillereval.RunIdentity, path string) ([]fillerbakeoff.TranscriptArtifact, error) {
+	if run.TranscriptSetSHA256 == "" {
+		if path != "" {
+			return nil, fmt.Errorf("transcript file supplied but run names no transcript set")
+		}
+		return nil, nil
+	}
+	if path == "" {
+		return nil, fmt.Errorf("run names transcript set %s but --transcripts is missing", run.TranscriptSetSHA256)
+	}
+	return fillerbakeoffio.ReadTranscripts(path)
 }

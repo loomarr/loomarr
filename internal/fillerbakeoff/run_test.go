@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -94,6 +95,87 @@ func TestRunRejectsChangedPacketBeforeProviderCall(t *testing.T) {
 	_, err := fillerbakeoff.Run(context.Background(), config(t, manifest, packet, extractor, 1000))
 	if err == nil || !strings.Contains(err.Error(), "evidence packet digest") || len(extractor.Requests) != 0 {
 		t.Fatalf("err = %v calls = %d", err, len(extractor.Requests))
+	}
+}
+
+func TestRunAcceptsLockedDevelopmentManifestForNonCertifyingSelection(t *testing.T) {
+	lockedAt := time.Date(2026, 8, 27, 18, 0, 0, 0, time.UTC)
+	manifest := fillereval.Manifest{
+		SchemaVersion: fillereval.SchemaVersion, Kind: fillereval.CorpusDevelopmentSeed,
+		CorpusVersion: "development-fixture", LockedAt: lockedAt,
+		SliceGates: []fillereval.SliceGate{{Slice: "development", MinCases: fillereval.CertificationMinDevelopment, MinAccuracy: .5}},
+	}
+	packets := make(map[string]fillerbakeoff.Packet, fillereval.CertificationMinDevelopment)
+	for i := 0; i < fillereval.CertificationMinDevelopment; i++ {
+		id := fmt.Sprintf("development-%03d", i)
+		packet := basePacket()
+		packet.CaseID = id
+		packet.ContentSHA256 = fmt.Sprintf("%064x", i+1)
+		packet.Facts[0].Value = filleradmission.UsabilityUnusable
+		packets[id] = packet
+		c := fillereval.Case{
+			ID: id, Split: fillereval.SplitDevelopment, Cluster: id, ContentSHA256: packet.ContentSHA256,
+			EvidenceSHA256: fillerbakeoff.PacketSHA256(packet), Source: "fixture", License: "CC0-1.0",
+			Truth: fillereval.TruthInvalid, RejectClass: fillereval.RejectDeterministic, ContentRole: filleradmission.RoleBumper,
+			Slices: []string{"development"}, Evidence: []fillereval.Evidence{{ID: "unusable", Kind: "decoder", Claim: "media_usability", Value: filleradmission.UsabilityUnusable, Provenance: "blind review"}},
+		}
+		labelHash := fillereval.LabelSHA256(c)
+		c.LabelReviews = []fillereval.LabelReview{
+			{ReviewerID: "reviewer-a", BatchID: "batch-a", ReviewedAt: lockedAt, Independent: true, SubmissionSHA256: labelHash},
+			{ReviewerID: "reviewer-b", BatchID: "batch-b", ReviewedAt: lockedAt, Independent: true, SubmissionSHA256: labelHash},
+		}
+		manifest.Cases = append(manifest.Cases, c)
+	}
+	extractor := &testkit.FillerBakeoffExtractor{}
+	cfg := config(t, manifest, packets["development-000"], extractor, 1000)
+	cfg.Run.EvaluationSplit = fillereval.SplitDevelopment
+	cfg.Packets = packets
+	predictions, err := fillerbakeoff.Run(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(predictions) != fillereval.CertificationMinDevelopment || len(extractor.Requests) != 0 {
+		t.Fatalf("predictions = %d, provider requests = %d", len(predictions), len(extractor.Requests))
+	}
+}
+
+func TestRunInjectsOneLockedSharedTranscriptIntoTextRoutes(t *testing.T) {
+	root := t.TempDir()
+	audio := []byte("verified wav")
+	if err := os.WriteFile(root+"/audio.wav", audio, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	audioHash := sha256.Sum256(audio)
+	packet := basePacket()
+	packet.Signals = []fillerbakeoff.Signal{{
+		ID: "audio", Kind: string(filleradmission.KindAudio), Path: "audio.wav", SHA256: hex.EncodeToString(audioHash[:]),
+		Bytes: int64(len(audio)), DurationMS: 4_000, ContentTypes: []string{"audio/wav"},
+	}}
+	manifest := manifestFor(packet)
+	artifact := fillerbakeoff.TranscriptArtifact{
+		SchemaVersion: fillerbakeoff.TranscriptSchemaVersion, CaseID: packet.CaseID, PacketSHA256: fillerbakeoff.PacketSHA256(packet), EvidenceVersion: packet.EvidenceVersion,
+		AudioSignalID: "audio", AudioSHA256: hex.EncodeToString(audioHash[:]), AudioBytes: int64(len(audio)), AudioDurationMS: 4_000,
+		Engine:      fillerbakeoff.TranscriptEngineIdentity{Provider: "whisper.cpp", ImplementationVersion: "v1.9.2", BinarySHA256: strings.Repeat("b", 64), Model: "ggml-base.en.bin", ModelSHA256: strings.Repeat("c", 64)},
+		GeneratedAt: time.Date(2026, 8, 25, 11, 30, 0, 0, time.UTC), Segments: []fillerbakeoff.TranscriptSegment{{StartMS: 100, EndMS: 1_500, Text: "Tonight at eight."}},
+		Text: "Tonight at eight.", TextSHA256: "f17e68a4911b202d2a8b5a40a13cb63ee097c587186309fac3993084502c1c1b",
+	}
+	extractor := &testkit.FillerBakeoffExtractor{Results: []fillerbakeoff.Extraction{
+		extraction("text-1", "filler_text", "text", 100, filleradmission.Evidence{ID: "role-text", Claim: filleradmission.ClaimContentRole, Value: filleradmission.RoleBumper, Kind: filleradmission.KindTranscript, Source: "transcript", Derivative: "shared-transcript", EvaluationID: "text-1"}),
+	}}
+	cfg := config(t, manifest, packet, extractor, 1000)
+	cfg.CorpusRoot = root
+	cfg.Routes = cfg.Routes[:1]
+	cfg.Transcripts = []fillerbakeoff.TranscriptArtifact{artifact}
+	cfg.Run.TranscriptSetSHA256 = fillerbakeoff.TranscriptSetSHA256(cfg.Transcripts)
+	if _, err := fillerbakeoff.Run(context.Background(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	if len(packet.Signals) != 1 || len(extractor.Requests) != 1 {
+		t.Fatalf("raw signals = %d, requests = %d", len(packet.Signals), len(extractor.Requests))
+	}
+	requestSignals := extractor.Requests[0].Packet.Signals
+	if len(requestSignals) != 1 || requestSignals[0].ID != "shared-transcript" || requestSignals[0].Text != "Tonight at eight." {
+		t.Fatalf("request signals = %+v", requestSignals)
 	}
 }
 

@@ -3536,6 +3536,38 @@ missing digest, non-loopback endpoint, malformed structured response, or exhaust
 an operational failure. Hosted evidence does not establish quantization quality, resident memory,
 throughput, or appliance suitability, and a successful local load does not establish accuracy.
 
+The locked 300-case `development_seed` uses that same packet, policy, route, ceiling, and immutable
+prediction contract for model selection. It may run only after both blind submissions and any needed
+adjudications have been locked into every selected case. Its replay report is always non-certifying:
+development evidence can select a candidate and justify a cascade, but cannot satisfy a holdout gate
+or authorize unattended admission. Rejecting an unlocked or partially reviewed development manifest
+is a pre-provider failure. This is not a compatibility path around certification; it is the explicit
+non-scoring half of the development/holdout experiment.
+
+Shared transcription is a separately locked provider artifact, not text pasted into a mutable packet.
+For each case it binds the exact raw packet digest, audio signal identity/hash/bytes/duration, transcript
+schema and prompt versions, whisper implementation identity, executable SHA-256, model filename and
+SHA-256, generation time, wall latency, timed utterances, canonical joined text, and text SHA-256.
+Generation revalidates the packet and WAV beneath the declared corpus root before invoking the engine,
+runs serially with an explicit per-case timeout, refuses an existing output, and atomically publishes
+only a complete JSONL set. A final spoken decoding window that overlaps the measured WAV tail is clipped
+to that measured duration; a wholly out-of-range window, an extreme tail, or any earlier overlap remains
+invalid. The engine's exact non-speech `[BLANK_AUDIO]` sentinel is discarded rather than treated as
+semantic evidence. A zero-width timed segment is likewise discarded because it has no supported
+location; reversed or overlapping timing remains invalid. A transcript set must revalidate all bindings before any classifier call and
+contains one artifact for every selected
+packet with exactly one certified WAV and no artifact for a packet without audio; ambiguous or
+uncertified audio is invalid. This keeps deterministic unusable/wordless cases in the corpus without
+inventing an audio binding or calling the speech engine. One set is generated once per speech-model candidate and reused
+unchanged across text and vision candidates; classifiers never rerun speech-to-text privately.
+
+The local Ollama adapter supports both text-only and ordered-frame routes through the same evidence
+schema. A frame route maps the already verified JPEG bytes to Ollama's per-message `images` field in
+packet order and exposes only the matching frame signal ids in the untrusted payload. It neither opens
+paths itself nor changes the text-only wire shape. Local vision therefore receives the same four-frame
+ceiling as hosted vision, while a model that cannot accept that unchanged route records an operational
+failure rather than receiving a smaller favorable prompt.
+
 Source inventory is a separate, non-certifying preflight. Its only live contract is strict
 source-neutral schema v4: one snapshot may combine multiple captures, and every case carries the
 authority, authority-qualified stable case ID, all capture IDs that discovered it, role hints, frozen metadata evidence, exact selected

@@ -80,6 +80,26 @@ both required because OpenRouter does not report the selector slug as the select
 
 ## Capture and replay
 
+Generate each shared transcript candidate once before classifier capture. The config locks the split,
+evidence version, generation instant, per-case timeout, whisper.cpp implementation version, executable
+digest, and model digest. The command rehashes every packet WAV and refuses to replace an existing
+ledger.
+
+```sh
+export LOOMARR_FILLER_BAKEOFF_MANIFEST=/absolute/path/manifest.json
+export LOOMARR_FILLER_BAKEOFF_PACKETS=/absolute/path/packets.jsonl
+export LOOMARR_FILLER_BAKEOFF_CONFIG=/absolute/path/transcript-config.json
+export LOOMARR_FILLER_BAKEOFF_CORPUS_ROOT=/absolute/path/corpus
+export LOOMARR_FILLER_WHISPER_PATH=/absolute/path/whisper-cli
+export LOOMARR_FILLER_WHISPER_MODEL=/absolute/path/ggml-base.en.bin
+export LOOMARR_FILLER_BAKEOFF_TRANSCRIPTS=/absolute/path/shared-transcripts.jsonl
+make filler-bakeoff-transcribe
+```
+
+Run every predeclared speech-model candidate into a separate immutable path. Reuse one candidate's
+exact path and `TranscriptSetSHA256` across all classifier cells that consume it; never regenerate it
+per model.
+
 First freeze the exact candidate set. The ZDR endpoint list is authenticated even though this step
 performs no inference or chargeable completion. Use the eight concrete issue #555 candidates unless
 that issue is amended before the run; the command sorts them and refuses aliases or duplicates.
@@ -102,6 +122,7 @@ export LOOMARR_FILLER_BAKEOFF_PACKETS=/absolute/path/packets.jsonl
 export LOOMARR_FILLER_BAKEOFF_CONFIG=/absolute/path/candidate-a.json
 export LOOMARR_FILLER_BAKEOFF_SNAPSHOT=/absolute/path/openrouter-snapshot.json
 export LOOMARR_FILLER_BAKEOFF_CORPUS_ROOT=/absolute/path/corpus
+export LOOMARR_FILLER_BAKEOFF_TRANSCRIPTS=/absolute/path/shared-transcripts.jsonl
 export LOOMARR_FILLER_BAKEOFF_PREDICTIONS=/absolute/path/candidate-a.predictions.jsonl
 make filler-bakeoff-openrouter
 ```
@@ -126,6 +147,10 @@ scorer. The local config has the same shape except it contains exactly one `olla
 `promptVersion: filler-evidence-ollama-v1`, and adds the 64-character `modelDigest` reported by
 Ollama's `/api/tags`. Set `LOOMARR_FILLER_BAKEOFF_BASE_URL` only to the loopback server when it is not
 the default `http://127.0.0.1:11434`.
+
+When `run.transcriptSetSha256` is present, set `LOOMARR_FILLER_BAKEOFF_TRANSCRIPTS` to the exact
+immutable JSONL set for both hosted and local runs. The commands refuse a missing set, a set supplied
+to a run that did not declare one, or any digest/binding mismatch before contacting a classifier.
 
 The adapter verifies the installed tag/digest pair before inference, disables thinking, sends strict
 JSON Schema, and rejects non-loopback endpoints. It records no fictional provider charge; request,

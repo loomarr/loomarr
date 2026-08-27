@@ -95,12 +95,13 @@ type AdmissionEvaluator interface {
 }
 
 type Config struct {
-	Run        fillereval.RunIdentity
-	Manifest   fillereval.Manifest
-	Packets    map[string]Packet
-	CorpusRoot string
-	Policy     AdmissionEvaluator
-	Routes     []Route
-	Extractor  Extractor
-	Snapshot   *OpenRouterSnapshot
+	Run         fillereval.RunIdentity
+	Manifest    fillereval.Manifest
+	Packets     map[string]Packet
+	CorpusRoot  string
+	Policy      AdmissionEvaluator
+	Routes      []Route
+	Extractor   Extractor
+	Snapshot    *OpenRouterSnapshot
+	Transcripts []TranscriptArtifact
 }

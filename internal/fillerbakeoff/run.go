@@ -37,11 +37,17 @@ func Run(ctx context.Context, config Config) ([]fillereval.Prediction, error) {
 	if err := validateConfig(config); err != nil {
 		return nil, err
 	}
-	if config.Manifest.Kind != fillereval.CorpusCertification {
-		return nil, fmt.Errorf("bakeoff requires a locked certification manifest")
+	var manifestFailures []string
+	switch config.Manifest.Kind {
+	case fillereval.CorpusCertification:
+		manifestFailures = fillereval.ValidateManifest(config.Manifest)
+	case fillereval.CorpusDevelopmentSeed:
+		manifestFailures = fillereval.ValidateDevelopmentRun(config.Manifest)
+	default:
+		return nil, fmt.Errorf("bakeoff requires a locked development or certification manifest")
 	}
-	if failures := fillereval.ValidateManifest(config.Manifest); len(failures) > 0 {
-		return nil, fmt.Errorf("invalid bakeoff manifest: %s", strings.Join(failures, "; "))
+	if len(manifestFailures) > 0 {
+		return nil, fmt.Errorf("invalid bakeoff manifest: %s", strings.Join(manifestFailures, "; "))
 	}
 	selected := make(map[string]fillereval.Case)
 	for _, c := range config.Manifest.Cases {
@@ -61,6 +67,10 @@ func Run(ctx context.Context, config Config) ([]fillereval.Prediction, error) {
 			return nil, err
 		}
 	}
+	transcripts, err := validateTranscriptSet(config, selected)
+	if err != nil {
+		return nil, err
+	}
 
 	caseIDs := make([]string, 0, len(selected))
 	for id := range selected {
@@ -71,7 +81,11 @@ func Run(ctx context.Context, config Config) ([]fillereval.Prediction, error) {
 	var spent int64
 	var attempts int
 	for _, id := range caseIDs {
-		prediction, caseSpend, caseAttempts := runCase(ctx, config, config.Packets[id], spent, attempts)
+		packet := config.Packets[id]
+		if transcript, ok := transcripts[id]; ok {
+			packet = withSharedTranscript(packet, transcript)
+		}
+		prediction, caseSpend, caseAttempts := runCase(ctx, config, packet, spent, attempts)
 		spent = saturatingAdd64(spent, caseSpend)
 		attempts = saturatingAddInt(attempts, caseAttempts)
 		predictions = append(predictions, prediction)

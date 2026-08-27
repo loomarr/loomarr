@@ -179,6 +179,33 @@ func developmentReviewCorpus() Manifest {
 	return manifest
 }
 
+func TestValidateDevelopmentRunRequiresACompleteIndependentLabelLock(t *testing.T) {
+	manifest := developmentReviewCorpus()
+	if failures := ValidateDevelopmentRun(manifest); len(failures) > 0 {
+		t.Fatalf("valid development run rejected: %v", failures)
+	}
+
+	tests := []struct {
+		name string
+		edit func(*Manifest)
+		want string
+	}{
+		{name: "unlocked", edit: func(m *Manifest) { m.LockedAt = time.Time{} }, want: "lock time"},
+		{name: "undersized", edit: func(m *Manifest) { m.Cases = m.Cases[:CertificationMinDevelopment-1] }, want: "at least 300"},
+		{name: "holdout case", edit: func(m *Manifest) { m.Cases[0].Split = SplitHoldout }, want: "only development cases"},
+		{name: "one review", edit: func(m *Manifest) { m.Cases[0].LabelReviews = m.Cases[0].LabelReviews[:1] }, want: "two independent label submissions"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			changed := developmentReviewCorpus()
+			test.edit(&changed)
+			if failures := ValidateDevelopmentRun(changed); !containsFailure(failures, test.want) {
+				t.Fatalf("failures = %v, want %q", failures, test.want)
+			}
+		})
+	}
+}
+
 func TestLabelsHashCoversSlices(t *testing.T) {
 	labels := Labels{Truth: TruthEligible, ContentRole: "commercial", Slices: []string{"commercial"}}
 	before := LabelsSHA256(labels)

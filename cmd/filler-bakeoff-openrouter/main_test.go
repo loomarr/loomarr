@@ -59,6 +59,23 @@ func TestReadPacketsRejectsDuplicateCases(t *testing.T) {
 	}
 }
 
+func TestReadTranscriptsRejectsDuplicateCases(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "transcripts.jsonl")
+	transcript := fillerbakeoff.TranscriptArtifact{SchemaVersion: fillerbakeoff.TranscriptSchemaVersion, CaseID: "case-1"}
+	var lines bytes.Buffer
+	if err := writeJSONLine(&lines, transcript); err != nil {
+		t.Fatal(err)
+	}
+	first := append([]byte(nil), lines.Bytes()...)
+	lines.Write(first)
+	if err := os.WriteFile(path, lines.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fillerbakeoffio.ReadTranscripts(path); err == nil || !strings.Contains(err.Error(), "duplicate case") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestWritePredictionsIsPrivateJSONL(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "predictions.jsonl")
 	want := []fillereval.Prediction{{CaseID: "case-1", Verdict: fillereval.VerdictReview}}

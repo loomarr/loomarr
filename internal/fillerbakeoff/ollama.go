@@ -48,8 +48,9 @@ type ollamaBakeoffRequest struct {
 }
 
 type ollamaBakeoffMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role    string   `json:"role"`
+	Content string   `json:"content"`
+	Images  []string `json:"images,omitempty"`
 }
 
 type ollamaBakeoffResponse struct {
@@ -135,13 +136,14 @@ func (o *ollamaExtractor) Extract(ctx context.Context, request Request) (Extract
 	if err != nil {
 		return Extraction{}, err
 	}
-	if len(messages) != 2 || len(messages[0].Content) != 1 || len(messages[1].Content) != 1 || messages[0].Content[0].Type != "text" || messages[1].Content[0].Type != "text" {
-		return Extraction{}, fmt.Errorf("ollama text bakeoff received non-text signals")
+	ollamaMessages, err := toOllamaMessages(messages)
+	if err != nil {
+		return Extraction{}, err
 	}
 	body, err := json.Marshal(ollamaBakeoffRequest{
 		Model: o.model, Stream: false, Think: false, Format: openRouterEvidenceSchema(), KeepAlive: "10m",
 		Options:  map[string]any{"temperature": 0, "num_ctx": 4096, "num_predict": maxOpenRouterOutputTokens},
-		Messages: []ollamaBakeoffMessage{{Role: "system", Content: messages[0].Content[0].Text}, {Role: "user", Content: messages[1].Content[0].Text}},
+		Messages: ollamaMessages,
 	})
 	if err != nil {
 		return Extraction{}, fmt.Errorf("marshal Ollama bakeoff request: %w", err)
@@ -209,13 +211,49 @@ func (o *ollamaExtractor) Extract(ctx context.Context, request Request) (Extract
 
 func (o *ollamaExtractor) validateRequest(request Request) error {
 	route := request.Route
-	if route.Provider != "ollama" || route.Model != o.model || !route.StructuredOutput || route.RequireZDR || route.AllowFallbacks || route.UpstreamProvider != "" || route.UpstreamProviderSlug != "" || !slices.Equal(route.Modalities, []string{"text"}) {
-		return fmt.Errorf("ollama bakeoff requires one digest-pinned local text route")
+	baseValid := route.Provider == "ollama" && route.Model == o.model && route.StructuredOutput && !route.RequireZDR && !route.AllowFallbacks && route.UpstreamProvider == "" && route.UpstreamProviderSlug == ""
+	textRoute := route.Class == RouteText && slices.Equal(route.Modalities, []string{"text"})
+	frameRoute := route.Class == RouteFrames && route.Role == "filler_frames" && slices.Contains(route.Modalities, "image") && !slices.Contains(route.Modalities, "audio") && !slices.Contains(route.Modalities, "video")
+	if !baseValid || (!textRoute && !frameRoute) {
+		return fmt.Errorf("ollama bakeoff requires one digest-pinned local text or frame route")
 	}
 	if len(request.Packet.Signals) == 0 {
 		return fmt.Errorf("ollama bakeoff request carries no signals")
 	}
 	return nil
+}
+
+func toOllamaMessages(messages []openRouterMessage) ([]ollamaBakeoffMessage, error) {
+	if len(messages) != 2 {
+		return nil, fmt.Errorf("ollama bakeoff requires one system and one user message")
+	}
+	converted := make([]ollamaBakeoffMessage, 0, len(messages))
+	for _, message := range messages {
+		var content []string
+		var images []string
+		for _, part := range message.Content {
+			switch part.Type {
+			case "text":
+				content = append(content, part.Text)
+			case "image_url":
+				if part.ImageURL == nil {
+					return nil, fmt.Errorf("ollama frame part has no image data")
+				}
+				encoded, ok := strings.CutPrefix(part.ImageURL.URL, "data:image/jpeg;base64,")
+				if !ok || encoded == "" {
+					return nil, fmt.Errorf("ollama frame part is not inline certified JPEG")
+				}
+				images = append(images, encoded)
+			default:
+				return nil, fmt.Errorf("ollama bakeoff does not support %q parts", part.Type)
+			}
+		}
+		converted = append(converted, ollamaBakeoffMessage{Role: message.Role, Content: strings.Join(content, "\n"), Images: images})
+	}
+	if converted[0].Role != "system" || converted[1].Role != "user" || converted[0].Content == "" || converted[1].Content == "" || len(converted[0].Images) != 0 {
+		return nil, fmt.Errorf("ollama bakeoff received an invalid message envelope")
+	}
+	return converted, nil
 }
 
 var _ Extractor = (*ollamaExtractor)(nil)
