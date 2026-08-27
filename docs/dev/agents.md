@@ -38,6 +38,34 @@ registry and isolated worktrees, but their conversations are not visible across 
 their branches, diffs, commits, command results, and structured reports as evidence; do not imply the
 supervisor can read or control an unrelated session.
 
+### Roles, capability, and reasoning
+
+Assign roles per task rather than making them permanent agent personas. Useful roles include a
+bounded investigator, implementer, adversarial reviewer, or integrator, but each role ends with the
+worker report. A worker waits for the supervisor to stop it or issue another brief; it does not grow
+its own backlog. This keeps ownership with the delivery agent while still providing fresh context.
+
+When the harness supports model and reasoning controls, select them by task shape and record the
+choice in the worker brief:
+
+| Task shape | Default execution |
+| --- | --- |
+| Small task, sequential reasoning, or shared mutable seam | One owning agent; no delegation |
+| Bounded search, triage, or repetitive mechanical work | Faster/lower-cost model or effort when acceptance is objective |
+| Ambiguous multi-step design or implementation | Strong-capability model with enough reasoning for uncertainty |
+| Authorization, safety, integration, or final acceptance | Strong-capability model and high scrutiny |
+| External session without trustworthy controls | Record `uncontrolled`; verify through artifacts and evidence |
+
+Inheritance is the default. Override it only when the expected quality, latency, or cost difference
+is material, and compare alternatives only when they pass the same acceptance gate. Never treat a
+stronger model as broader authority. Do not switch a worker's model during an active checkpoint;
+make the change with its next bounded assignment. During crash recovery, preserve the original model
+and thread when possible so the checkpoint remains coherent.
+
+These rules follow OpenAI's guidance that subagents work best on independent, bounded tasks and that
+model and reasoning settings should be task-dependent. See [Codex subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)
+and [multi-agent workflows](https://developers.openai.com/api/docs/guides/responses-multi-agent).
+
 ### tmux
 
 `tmux` is a useful operator interface for independent sessions, not an orchestration protocol. Keep
@@ -61,7 +89,11 @@ Start the chosen agent interactively in each pane and provide the workflow's wor
 `make agent-status` plus the worker report for coordination. Do not treat `tmux capture-pane` output
 as completion evidence or use blind `send-keys` automation as a substitute for an acknowledged
 handoff; prompts, approval overlays, and terminal state make that brittle. Use native subagents when
-live programmatic steering is required.
+live programmatic steering is required. When recovering a crashed session, launch or resume it from
+the owning worktree and verify that both the worktree and its Git metadata are writable before it
+continues an in-progress merge or edit. A linked worktree's metadata remains under the primary
+checkout's `.git/worktrees/`; add that exact metadata root when a sandbox supports extra writable
+directories instead of granting the recovered worker the primary checkout.
 
 ## Start a task
 

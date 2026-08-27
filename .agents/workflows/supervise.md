@@ -27,6 +27,32 @@ A product's native agent panel shows only its own agent tree. `make agent-status
 cross-harness roster, but it does not expose another session's conversation or reasoning. Report
 that visibility limit instead of implying direct control over an independent session.
 
+## Choose the execution shape
+
+Match concurrency to independent seams, not to the number of available sessions. Keep one agent for
+a small task, a sequential reasoning chain, or edits to shared mutable state. Use a supervisor and
+bounded workers when investigation, review, or implementation can proceed independently and the
+owner can verify each returned result before integration.
+
+Treat roles as temporary missions or review lenses, not permanent agent identities. A worker returns
+control when its brief is complete and does not choose its own next task. The supervisor may then
+stop it or issue a new brief with a different role. This rotation keeps specialized context bounded
+without creating long-lived ownership silos.
+
+Choose model capability and reasoning effort for the task when the harness exposes those controls:
+
+- inherit the supervisor's defaults unless the task shape justifies an override;
+- use stronger capability or higher reasoning for ambiguous multi-step work, safety or authorization
+  review, architectural integration, and final acceptance;
+- use faster or lower-cost execution for bounded read-heavy scans, issue triage, and repetitive
+  mechanical work whose acceptance is objective; and
+- compare speed or cost only among runs that satisfy the same acceptance criteria.
+
+Record the selection and rationale in the brief. Model choice never changes scope, authority, claims,
+tools, stop points, or acceptance. Change it only when issuing a new assignment; preserve the active
+worker's model and context during recovery unless the worker has returned control. For an external
+session whose model cannot be controlled or verified, record `uncontrolled` instead of guessing.
+
 ## Build the task graph
 
 Split the goal only at real seams. For every worker, record:
@@ -54,8 +80,10 @@ Give each worker the smallest complete context, not the supervisor's accumulated
 ```text
 WORKER BRIEF
 task: <unique id>
+role: <temporary mission or review lens>
 outcome: <one sentence>
 mode: <read-only | editing>
+execution: <model/capability and reasoning effort, inherited, or uncontrolled; rationale>
 owner: <task and worktree>
 base: <commit or branch>
 scope: <paths, subsystem, or question>
@@ -88,7 +116,9 @@ Workers return this schema:
 ```text
 WORKER REPORT
 task: <id>
+role: <temporary mission or review lens>
 state: <complete | blocked | needs-review>
+execution: <actual model/capability and reasoning effort, inherited, or uncontrolled>
 branch/worktree: <branch> @ <absolute worktree, or read-only>
 base/head: <commit> / <commit>
 claims: <comma-separated or none>
@@ -119,7 +149,7 @@ SUPERVISION: <goal>
 owner: <task>  branch: <branch>  worktree: <path>
 
 WORKERS
-<task>  <state>  <mode>  <outcome>  <evidence or blocker>
+<task>  <state>  <role>  <mode>  <execution>  <outcome>  <evidence or blocker>
 
 INTEGRATION
 accepted: <worker outputs incorporated>
