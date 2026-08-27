@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -159,7 +160,7 @@ func planDownloads(inv fillercorpus.Inventory, approvals []fillercorpus.RightsDe
 		if approval.InventorySHA256 != opts.inventorySHA256 {
 			return nil, fmt.Errorf("rights-reviewed item %s is not tied to the frozen inventory", approval.CaseID)
 		}
-		if approval.CaptureID != candidate.CaptureID || approval.Authority != candidate.Authority || approval.ItemID != candidate.ItemID {
+		if !slices.Equal(approval.CaptureIDs, candidate.CaptureIDs) || approval.Authority != candidate.Authority || approval.ItemID != candidate.ItemID {
 			return nil, fmt.Errorf("rights-reviewed item %s changes its source identity", approval.CaseID)
 		}
 		if approval.Decision != "approved" && approval.Decision != "held" {

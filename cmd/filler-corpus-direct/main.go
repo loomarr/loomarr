@@ -186,7 +186,7 @@ func freeze(opts options) (fillercorpus.Inventory, error) {
 		}
 		captureID := fillercorpus.NewCaptureID(authority, source.Cohort, role)
 		inv.Cases = append(inv.Cases, fillercorpus.InventoryCase{
-			CaseID: fillercorpus.CaseID(authority, authored.ItemID), CaptureID: captureID, Authority: authority,
+			CaseID: fillercorpus.CaseID(authority, authored.ItemID), CaptureIDs: []string{captureID}, Authority: authority,
 			ItemID: authored.ItemID, Title: authored.Title, RoleHints: append([]string(nil), authored.RoleHints...), Creator: append([]string(nil), authored.Creator...), Campaign: authored.Campaign, SourceFamily: authored.SourceFamily, Date: authored.Date,
 			LicenseURL: authored.LicenseURL, RightsAssertions: append([]string(nil), authored.RightsAssertions...), ItemURL: authored.ItemURL,
 			MetadataRetrievedAt: opts.snapshotAt, MetadataSHA256: fillercorpus.InventorySHA256(identity), Evidence: evidence,

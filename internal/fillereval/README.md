@@ -53,6 +53,10 @@ split planning. The command hashes every unique media payload plus separate righ
 evidence beneath one symlink-safe root and rejects any quota, path, byte, or wall-time violation.
 Certification alone owns the final truth and holdout role quotas.
 Public and direct inventories combine before one independent rights review.
+Schema v4 keeps every bounded capture that found a case. Role-specific searches may overlap only
+when the frozen item metadata and selected representation are identical; the combiner then retains
+the sorted union of capture IDs and discovery hints. Conflicting duplicates and duplicate capture
+identities fail closed. Older single-capture case shapes are rejected rather than adapted.
 
 `make filler-corpus-download` is the separately authorized media step. It accepts only `approved`
 rights rows tied to the exact inventory and metadata SHA-256 values, reviewer, review time, rationale,

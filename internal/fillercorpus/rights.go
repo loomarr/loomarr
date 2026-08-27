@@ -24,7 +24,7 @@ type RightsReviewRow struct {
 	Rank                    int                     `json:"rank"`
 	InventorySHA256         string                  `json:"inventorySha256"`
 	CaseID                  string                  `json:"caseId"`
-	CaptureID               string                  `json:"captureId"`
+	CaptureIDs              []string                `json:"captureIds"`
 	Authority               string                  `json:"authority"`
 	ItemID                  string                  `json:"itemId"`
 	Title                   string                  `json:"title"`
@@ -54,7 +54,7 @@ type RightsReviewRow struct {
 }
 
 var rightsReviewCSVHeader = []string{
-	"rank", "inventory_sha256", "case_id", "capture_id", "authority", "item_id", "metadata_sha256", "title", "role_hints_json", "collection_json", "creator_json", "campaign", "source_family", "date",
+	"rank", "inventory_sha256", "case_id", "capture_ids_json", "authority", "item_id", "metadata_sha256", "title", "role_hints_json", "collection_json", "creator_json", "campaign", "source_family", "date",
 	"license_url", "rights_assertions_json", "possible_copyright_status_json", "item_url", "metadata_url", "metadata_retrieved_at", "evidence_json",
 	"representation_transport", "representation_name", "representation_url", "representation_path", "representation_mime_type", "representation_origin", "representation_bytes", "representation_sha256", "representation_sha1", "representation_md5", "allowed_media_hosts_json",
 	"reviewer_id", "reviewed_at", "decision", "basis", "redistributable", "required_credit", "restrictions_json",
@@ -64,7 +64,7 @@ func RightsReviewCSVHeader() []string { return append([]string(nil), rightsRevie
 
 func RightsReviewRowFromCase(item InventoryCase) RightsReviewRow {
 	return RightsReviewRow{
-		CaseID: item.CaseID, CaptureID: item.CaptureID, Authority: item.Authority, ItemID: item.ItemID, Title: item.Title,
+		CaseID: item.CaseID, CaptureIDs: append([]string(nil), item.CaptureIDs...), Authority: item.Authority, ItemID: item.ItemID, Title: item.Title,
 		RoleHints: item.RoleHints, Collection: item.Collection, Creator: item.Creator, Campaign: item.Campaign, SourceFamily: item.SourceFamily, Date: item.Date,
 		LicenseURL: item.LicenseURL, RightsAssertions: item.RightsAssertions,
 		PossibleCopyrightStatus: item.PossibleCopyrightStatus, ItemURL: item.ItemURL, MetadataURL: item.MetadataURL,
@@ -76,7 +76,7 @@ func RightsReviewRowFromCase(item InventoryCase) RightsReviewRow {
 
 func ImmutableRightsReviewRecord(row RightsReviewRow) []string {
 	return []string{
-		strconv.Itoa(row.Rank), row.InventorySHA256, row.CaseID, row.CaptureID, row.Authority, row.ItemID, row.MetadataSHA256, SpreadsheetSafe(row.Title), JSONCell(row.RoleHints), JSONCell(row.Collection), JSONCell(row.Creator), SpreadsheetSafe(row.Campaign), SpreadsheetSafe(row.SourceFamily), SpreadsheetSafe(row.Date),
+		strconv.Itoa(row.Rank), row.InventorySHA256, row.CaseID, JSONCell(row.CaptureIDs), row.Authority, row.ItemID, row.MetadataSHA256, SpreadsheetSafe(row.Title), JSONCell(row.RoleHints), JSONCell(row.Collection), JSONCell(row.Creator), SpreadsheetSafe(row.Campaign), SpreadsheetSafe(row.SourceFamily), SpreadsheetSafe(row.Date),
 		row.LicenseURL, JSONCell(row.RightsAssertions), JSONCell(row.PossibleCopyrightStatus), row.ItemURL, row.MetadataURL, row.MetadataRetrievedAt.UTC().Format(time.RFC3339), JSONCell(row.Evidence),
 		row.Representation.Transport, SpreadsheetSafe(row.Representation.Name), row.Representation.URL, SpreadsheetSafe(row.Representation.Path), SpreadsheetSafe(row.Representation.MIMEType), SpreadsheetSafe(row.Representation.Origin), strconv.FormatInt(row.Representation.Bytes, 10), row.Representation.SHA256, row.Representation.SHA1, row.Representation.MD5, JSONCell(row.AllowedMediaHosts),
 	}

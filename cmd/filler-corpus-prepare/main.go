@@ -256,7 +256,7 @@ func prepare(ctx context.Context, opts options, deriver mediaDeriver) (fillereva
 		}
 		splitCounts[planned.Split]++
 		approval, ok := approved[planned.CaseID]
-		if !ok || approval.InventorySHA256 != inventoryDigest || approval.Decision != "approved" || !approval.Redistributable || approval.MetadataSHA256 != item.MetadataSHA256 || approval.CaptureID != item.CaptureID || approval.Authority != item.Authority || approval.ItemID != item.ItemID || approval.ReviewerID == "" || strings.TrimSpace(approval.Basis) == "" || approval.ReviewedAt.Before(item.MetadataRetrievedAt) || approval.ReviewedAt.After(opts.preparedAt) {
+		if !ok || approval.InventorySHA256 != inventoryDigest || approval.Decision != "approved" || !approval.Redistributable || approval.MetadataSHA256 != item.MetadataSHA256 || !slices.Equal(approval.CaptureIDs, item.CaptureIDs) || approval.Authority != item.Authority || approval.ItemID != item.ItemID || approval.ReviewerID == "" || strings.TrimSpace(approval.Basis) == "" || approval.ReviewedAt.Before(item.MetadataRetrievedAt) || approval.ReviewedAt.After(opts.preparedAt) {
 			return fillereval.Manifest{}, nil, fmt.Errorf("case %q lacks a complete redistribution approval bound to this inventory", planned.CaseID)
 		}
 		mediaPath, sourceRef, err := mediaPathFor(opts, item)

@@ -3512,19 +3512,26 @@ rejection, automation, review, and slice accuracy, including an upper bound for 
 certification slice gate predeclares both a point threshold and a confidence lower bound.
 
 Source inventory is a separate, non-certifying preflight. Its only live contract is strict
-source-neutral schema v3: one snapshot may combine multiple captures, and every case carries the
-authority, authority-qualified stable case ID, capture ID, role hints, frozen metadata evidence, exact selected
+source-neutral schema v4: one snapshot may combine multiple captures, and every case carries the
+authority, authority-qualified stable case ID, all capture IDs that discovered it, role hints, frozen metadata evidence, exact selected
 representation, acquisition-time campaign and source-family identity when known, and the adapter's
 explicit media-host allowlist. Capture-level request,
 response-byte, predicted-media-byte, and wall-clock ceilings remain visible beside actual usage.
 The combiner strictly decodes every capture artifact, sorts captures and cases by their stable IDs,
-and rejects duplicate capture or case identity before producing the single rights-review input.
+rejects duplicate capture identity, and folds a repeated case only when its frozen metadata and
+representation are identical; the merged case retains the sorted union of capture IDs and discovery
+role hints. Any conflicting repeated case fails closed before producing the single rights-review input.
 The former schema v1 put `source` and `collection` at the document root, so it could represent only
 one Archive.org collection. Schema v2 let a later split plan invent campaign and source-family
-identity instead of freezing that provenance during acquisition. No certified artifact consumes
-either shape; both are rejected rather than adapted or preserved.
+identity instead of freezing that provenance during acquisition. Schema v3 assigned each case to
+only one capture, so legitimate role-specific discovery either duplicated the case or discarded part
+of its provenance. No certified artifact consumes an older shape; all are rejected rather than
+adapted or preserved.
 
-An Archive capture uses one identified serial client, cached raw search/item responses, a minimum
+An Archive capture uses the exact `archive.org/<collection>` authority that bounded its search; it
+never attributes a non-Prelinger item to the Prelinger collection merely because both use the same
+Archive transport. The closed host policy still permits only Archive's HTTPS media hosts for every
+such collection-qualified authority. It uses one identified serial client, cached raw search/item responses, a minimum
 inter-request delay, and explicit request, item, per-item byte, and total predicted-byte ceilings.
 Search-level and item-level licences must agree and NC/ND candidates are excluded, but an allowlisted
 uploader field remains only a candidate: independent rights adjudication is still required. Every
@@ -3563,7 +3570,7 @@ promos, bumpers, station IDs, trailers, and PSAs. Rights clarity, API convenienc
 scale do not by themselves make a source representative.
 
 The LOC, NASA, CDC first-party-page, and Commons commands share one promotion seam: the bounded lane
-remains the ten-case qualification artifact, while an explicitly requested schema-v3 output carries
+remains the ten-case qualification artifact, while an explicitly requested schema-v4 output carries
 the same frozen evidence into full-corpus rights review. Full capture counts stay positive and
 bounded but are not hard-coded to ten; request ceilings must cover the declared item count. The CDC
 adapter still consumes authored first-party page/media pairs and therefore cannot manufacture extra
@@ -3580,7 +3587,7 @@ separate rights and provenance evidence files beneath one declared root, along w
 campaign, and source-family identity that survives rights review unchanged.
 `filler-corpus-direct` resolves symlinks, rejects root escapes and quota drift, streams SHA-256 over
 every file under aggregate byte and wall-time ceilings, and emits local transport records into the
-same strict schema-v3 inventory. It never creates media, infers a grant from a directory or
+same strict schema-v4 inventory. It never creates media, infers a grant from a directory or
 collection, or turns authored assertions into approval. The combined public-plus-direct inventory
 still goes through one independent rights review; local media is already acquired and is therefore
 skipped by the network downloader. No direct-manifest schema-v1 reader or fixed 100-item compatibility
