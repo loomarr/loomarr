@@ -25,6 +25,26 @@ denominators use the scorer's one-sided 95% Wilson method and tolerate one obser
 Source discovery is not rights approval. Every case still requires its item-level rights record,
 immutable media and metadata hashes, independent semantic labels, and split-cluster controls.
 
+## Development acquisition status
+
+The 300-case development cohort was rights-locked and acquired on 2026-08-27. An independent review
+covered all 408 frozen Archive candidates: 300 were approved under the maintainer-authorized,
+development-only Archive policy and 108 were held outside the bounded cohort. The selected set has
+45 bumper, 45 commercial, 47 compilation, 55 promo, 20 PSA, 10 station-ID, and 80 trailer discovery
+memberships. These are source-search hints, not semantic labels.
+
+The downloader acquired all 300 exact representations into the external corpus store: 5,952,579,028
+bytes. It verified every frozen byte count and available source MD5/SHA-1, added a SHA-256 for every
+file, and a separate ledger-to-file rehash passed 300/300. One Archive request returned a transient
+500; the first attempt emitted no ledger, and a resumed pass reused 17 locally reverified files and
+completed in 283 further requests. The [content-addressed acquisition summary](../evidence/filler-development-acquisition-2026-08-27.json)
+records the external ledgers' digests and the policy boundary.
+
+This completes development acquisition, not certification. The Archive policy accepts exact item
+CC/public-domain assertions as operational authority without claiming a chain-of-title warranty. It
+does not admit a case to the scored holdout. The independent 1,126-case holdout, similarity/source
+splits, two blind semantic label batches, and adjudication remain required before the provider matrix.
+
 ## Target mix
 
 | Eligible holdout role | Minimum independent cases |
@@ -109,6 +129,10 @@ An asset may proceed to download and labeling only with one of:
    modification, redistribution, and provider evaluation.
 3. A signed owner agreement bound to the asset checksum.
 4. An item-specific public-domain analysis recorded by the rights reviewer.
+
+For the non-scoring development cohort only, design §10's maintainer-authorized Archive policy also
+permits an independent reviewer to accept the exact frozen CC/public-domain item assertion after the
+capture's search/item agreement and NC/ND checks. This does not lower the holdout threshold.
 
 Uploader assertions, API licence fields, collection membership, and download availability remain
 candidate signals. They never authorize acquisition, model upload, redistribution, or admission.
