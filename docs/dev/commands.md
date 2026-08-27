@@ -68,18 +68,23 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make eval-cert` |  | certify exact starter/adversarial intents; fails on missing config and writes a scorecard |
 | `make eval-matrix` |  | explicitly certify local + OpenRouter generation sequentially (manual, resource-heavy) |
 | `make filler-eval-contract` |  | hermetic filler-admission corpus and selective-risk contracts |
-| `make filler-corpus-commons` |  | freeze the bounded Commons filler rights-yield pilot lane |
-| `make filler-corpus-cdc` |  | freeze the bounded CDC filler rights-yield pilot lane |
-| `make filler-corpus-loc` |  | freeze the bounded LOC filler rights-yield pilot lane |
-| `make filler-corpus-nasa` |  | freeze the bounded NASA filler rights-yield pilot lane |
+| `make filler-corpus-commons` |  | freeze bounded Commons pilot and full-inventory artifacts |
+| `make filler-corpus-cdc` |  | freeze bounded CDC pilot and full-inventory artifacts |
+| `make filler-corpus-loc` |  | freeze bounded LOC pilot and full-inventory artifacts |
+| `make filler-corpus-nasa` |  | freeze bounded NASA pilot and full-inventory artifacts |
 | `make filler-corpus-pilot` |  | lock the qualified metadata-only filler rights-yield pilot |
 | `make filler-corpus-pilot-rights-review` |  | prepare the inert five-lane pilot review packet |
 | `make filler-corpus-pilot-rights-lock` |  | lock completed pilot review into a non-authorizing yield report |
 | `make filler-corpus-archive` |  | freeze a bounded rights-filtered Archive.org corpus inventory |
+| `make filler-corpus-inventory` |  | combine strict source inventories for mixed-authority rights review |
+| `make filler-corpus-direct` |  | freeze an authored local cohort with rights and provenance evidence |
+| `make filler-corpus-prepare` |  | build an unlabeled corpus draft and bounded evidence packets |
 | `make filler-corpus-download` |  | download only rights-approved corpus media under hard ceilings |
 | `make filler-corpus-rights-review` |  | prepare an inert worksheet from a frozen filler inventory |
 | `make filler-corpus-rights-lock` |  | validate completed rights review CSV into approval JSONL |
 | `make filler-corpus-lock` |  | lock two blind filler-label batches into a certification manifest |
+| `make filler-corpus-review` |  | prepare one opaque randomized filler-label review batch |
+| `make filler-openrouter-snapshot` |  | lock OpenRouter capability, endpoint-price, and ZDR metadata |
 | `make filler-bakeoff-openrouter` |  | capture a bounded label-blind OpenRouter prediction ledger (paid/manual) |
 | `make filler-eval-cert` |  | score captured filler decisions; never contacts a model or media source |
 

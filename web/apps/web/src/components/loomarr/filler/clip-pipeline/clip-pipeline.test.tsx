@@ -6,7 +6,17 @@ import type { ClipPipelineVariant } from "./clip-pipeline.type";
 
 // The pipeline strip is the only thing telling an operator that forty downloaded clips are being
 // worked on rather than stuck. Every assertion here is a way it could say something untrue.
-const LADDER = ["probe", "transcode", "split", "language", "transcribe", "tag", "vision", "score"];
+const LADDER = [
+  "probe",
+  "transcode",
+  "split",
+  "language",
+  "transcribe",
+  "tag",
+  "vision",
+  "admission",
+  "score",
+];
 
 // ⚠ `name` is a PROP, not a field on the row: the pipeline block carries no identity or display
 // text, because it is nested inside the clip that already has both.

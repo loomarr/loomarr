@@ -3,6 +3,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 RETIRED=(
+  # The first full-corpus inventory put Archive.org identity at the document root, making mixed
+  # authority certification impossible. No completed certification artifact uses it; schema v2
+  # binds authority to every case and the strict decoder rejects the old shape.
+  '"source": "archive.org"|retired: filler corpus inventory schema v1 was replaced, not adapted; authority belongs on each schema-v2 case'
+  'Source: "archive.org"|retired: do not restore the single-source filler corpus inventory type'
   # The Blender pilot could not produce ten distinct live trailer candidates without duplicate
   # encodes, full-film relabeling, or dead media. Individually cleared works belong in the static
   # cohort; a dedicated lane/target would recreate the disproven source assumption.

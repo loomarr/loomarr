@@ -39,7 +39,7 @@ func TestValidateManifestRejectsSimilarityLeakage(t *testing.T) {
 }
 
 func TestScoreCertifiesOnlyMeasuredSelectiveRiskAndCoverage(t *testing.T) {
-	manifest, predictions := passingCorpus(500)
+	manifest, predictions := passingCorpus(CertificationMinHoldout)
 	report := Score(manifest, predictions, completeRun())
 	if !report.Certified {
 		t.Fatalf("report unexpectedly failed: %v", report.Failures)
@@ -53,7 +53,7 @@ func TestScoreCertifiesOnlyMeasuredSelectiveRiskAndCoverage(t *testing.T) {
 }
 
 func TestScoreIsDeterministicForCapturedInputs(t *testing.T) {
-	manifest, predictions := passingCorpus(500)
+	manifest, predictions := passingCorpus(CertificationMinHoldout)
 	run := completeRun()
 	first := Score(manifest, predictions, run)
 	second := Score(manifest, predictions, run)
@@ -69,7 +69,7 @@ func TestScoreIsDeterministicForCapturedInputs(t *testing.T) {
 }
 
 func TestScoreRequiresPerAttemptStepForInferenceDecision(t *testing.T) {
-	manifest, predictions := passingCorpus(500)
+	manifest, predictions := passingCorpus(CertificationMinHoldout)
 	predictions[0].Steps = nil
 	report := Score(manifest, predictions, completeRun())
 	if report.Certified || !containsFailure(report.Failures, "role, rung, model, provider, and modality attribution are required") {
@@ -78,18 +78,18 @@ func TestScoreRequiresPerAttemptStepForInferenceDecision(t *testing.T) {
 }
 
 func TestScoreRejectsUnsupportedSchema(t *testing.T) {
-	manifest, predictions := passingCorpus(500)
+	manifest, predictions := passingCorpus(CertificationMinHoldout)
 	manifest.SchemaVersion = 3
 	report := Score(manifest, predictions, completeRun())
-	if report.Certified || !containsFailure(report.Failures, "manifest schema 3, want 4") {
+	if report.Certified || !containsFailure(report.Failures, "manifest schema 3, want 5") {
 		t.Fatalf("unsupported schema accepted: %v", report.Failures)
 	}
 }
 
 func TestScoreCannotUseDevelopmentCasesToInflateHoldout(t *testing.T) {
-	manifest, predictions := passingCorpus(500)
+	manifest, predictions := passingCorpus(CertificationMinHoldout)
 	report := Score(manifest, predictions, completeRun())
-	if report.Metrics.Cases != 500 || len(manifest.Cases) <= report.Metrics.Cases {
+	if report.Metrics.Cases != CertificationMinHoldout || len(manifest.Cases) <= report.Metrics.Cases {
 		t.Fatalf("scored %d of %d cases", report.Metrics.Cases, len(manifest.Cases))
 	}
 	development := manifest.Cases[len(manifest.Cases)-1]
@@ -102,7 +102,7 @@ func TestScoreCannotUseDevelopmentCasesToInflateHoldout(t *testing.T) {
 }
 
 func TestCertificationManifestRequiresLockedProvenanceAndIndependentLabels(t *testing.T) {
-	manifest, _ := passingCorpus(500)
+	manifest, _ := passingCorpus(CertificationMinHoldout)
 	manifest.Cases[0].EvidenceSHA256 = ""
 	manifest.Cases[1].Provenance.RightsDecision = ""
 	manifest.Cases[2].LabelReviews = manifest.Cases[2].LabelReviews[:1]
@@ -115,7 +115,7 @@ func TestCertificationManifestRequiresLockedProvenanceAndIndependentLabels(t *te
 }
 
 func TestCertificationManifestRequiresIndependentAdjudicationForDivergentLabels(t *testing.T) {
-	manifest, _ := passingCorpus(500)
+	manifest, _ := passingCorpus(CertificationMinHoldout)
 	manifest.Cases[0].LabelReviews[0].SubmissionSHA256 = strings.Repeat("f", 64)
 	failures := ValidateManifest(manifest)
 	if !containsFailure(failures, "require final adjudication") {
@@ -124,9 +124,9 @@ func TestCertificationManifestRequiresIndependentAdjudicationForDivergentLabels(
 }
 
 func TestScoreFailsWhenCapturedRunExceedsPredeclaredCeilings(t *testing.T) {
-	manifest, predictions := passingCorpus(500)
+	manifest, predictions := passingCorpus(CertificationMinHoldout)
 	run := completeRun()
-	run.MaxRequests = 499
+	run.MaxRequests = CertificationMinHoldout - 1
 	report := Score(manifest, predictions, run)
 	if report.Certified || !containsFailure(report.Failures, "request ceiling") {
 		t.Fatalf("request ceiling did not fail closed: %v", report.Failures)
@@ -134,7 +134,7 @@ func TestScoreFailsWhenCapturedRunExceedsPredeclaredCeilings(t *testing.T) {
 }
 
 func TestScoreFailsClosedOnOperationalFailureAndMissingPrediction(t *testing.T) {
-	manifest, predictions := passingCorpus(400)
+	manifest, predictions := passingCorpus(CertificationMinHoldout)
 	predictions[0].OperationalFailure = "budget exhausted"
 	predictions = predictions[:len(predictions)-1]
 	report := Score(manifest, predictions, completeRun())
@@ -150,7 +150,7 @@ func TestScoreFailsClosedOnOperationalFailureAndMissingPrediction(t *testing.T) 
 }
 
 func TestScoreTreatsConflictAsReviewNotEvidenceForAdmission(t *testing.T) {
-	manifest, predictions := passingCorpus(400)
+	manifest, predictions := passingCorpus(CertificationMinHoldout)
 	manifest.Cases[0].Truth = TruthAmbiguous
 	manifest.Cases[0].ReviewQuestion = "Which year describes this recording?"
 	predictions[0].Verdict = VerdictAdmit
@@ -164,13 +164,13 @@ func TestScoreTreatsConflictAsReviewNotEvidenceForAdmission(t *testing.T) {
 func TestScoreRejectsSmallPerfectCorpus(t *testing.T) {
 	manifest, predictions := passingCorpus(40)
 	report := Score(manifest, predictions, completeRun())
-	if report.Certified || !containsFailure(report.Failures, "at least 300") {
+	if report.Certified || !containsFailure(report.Failures, "at least 1126") {
 		t.Fatalf("small corpus should not certify: %v", report.Failures)
 	}
 }
 
 func TestFalseSemanticRejectCountsAgainstRejectPrecision(t *testing.T) {
-	manifest, predictions := passingCorpus(500)
+	manifest, predictions := passingCorpus(CertificationMinHoldout)
 	predictions[0].Verdict = VerdictReject
 	predictions[0].RejectClass = RejectSemantic
 	report := Score(manifest, predictions, completeRun())
@@ -180,7 +180,7 @@ func TestFalseSemanticRejectCountsAgainstRejectPrecision(t *testing.T) {
 }
 
 func TestScoreUsesExactNanodollarAccountingByRungAndSlice(t *testing.T) {
-	manifest, predictions := passingCorpus(500)
+	manifest, predictions := passingCorpus(CertificationMinHoldout)
 	predictions[0].Steps[0].ChargedAmount = "0.0000012300"
 	predictions[0].Steps[0].ChargedCurrency = "USD"
 	predictions[0].Steps[0].ChargedNanoUSD = 1230
@@ -189,7 +189,7 @@ func TestScoreUsesExactNanodollarAccountingByRungAndSlice(t *testing.T) {
 	if !report.Certified {
 		t.Fatalf("exact accounting failed certification: %v", report.Failures)
 	}
-	if report.Metrics.TotalChargedNanoUSD != 1230 || report.Metrics.CostPerCorrectAutomationNanoUSD != 3 {
+	if report.Metrics.TotalChargedNanoUSD != 1230 || report.Metrics.CostPerCorrectAutomationNanoUSD != 2 {
 		t.Fatalf("cost metrics = %+v", report.Metrics)
 	}
 	if len(report.Metrics.Rungs) != 2 || report.Metrics.Rungs[0].Rung != "frames" || report.Metrics.Rungs[0].ChargedNanoUSD != 1230 {
@@ -202,7 +202,7 @@ func TestScoreUsesExactNanodollarAccountingByRungAndSlice(t *testing.T) {
 }
 
 func TestScorePreservesAndAccountsEveryCascadeStep(t *testing.T) {
-	manifest, predictions := passingCorpus(500)
+	manifest, predictions := passingCorpus(CertificationMinHoldout)
 	predictions[0] = Prediction{
 		CaseID: predictions[0].CaseID, Verdict: VerdictAdmit, ContentRole: "commercial",
 		Steps: []InferenceStep{
@@ -223,7 +223,7 @@ func TestScorePreservesAndAccountsEveryCascadeStep(t *testing.T) {
 }
 
 func TestScoreFailsClosedWhenCascadeAccountingOverflows(t *testing.T) {
-	manifest, predictions := passingCorpus(500)
+	manifest, predictions := passingCorpus(CertificationMinHoldout)
 	predictions[0] = Prediction{
 		CaseID: predictions[0].CaseID, Verdict: VerdictAdmit, ContentRole: "commercial",
 		Steps: []InferenceStep{
@@ -262,25 +262,35 @@ func passingCorpus(total int) (Manifest, []Prediction) {
 		truth, verdict, class := TruthEligible, VerdictAdmit, RejectClass("")
 		question := ""
 		switch {
-		case i >= total*60/100 && i < total*80/100:
+		case total >= CertificationMinHoldout && i >= 446 && i < 892:
 			truth, verdict, class = TruthInvalid, VerdictReject, RejectDeterministic
-		case i >= total*80/100 && i < total*95/100:
+		case total >= CertificationMinHoldout && i >= 892 && i < 1039:
 			truth, verdict, class = TruthInvalid, VerdictReject, RejectSemantic
-		case i >= total*95/100:
+		case total >= CertificationMinHoldout && i >= 1039:
 			truth, verdict, question = TruthAmbiguous, VerdictReview, "Is this a commercial or a programme excerpt?"
+		case total < CertificationMinHoldout && i >= total*60/100 && i < total*80/100:
+			truth, verdict, class = TruthInvalid, VerdictReject, RejectDeterministic
+		case total < CertificationMinHoldout && i >= total*80/100 && i < total*95/100:
+			truth, verdict, class = TruthInvalid, VerdictReject, RejectSemantic
+		case total < CertificationMinHoldout && i >= total*95/100:
+			truth, verdict, question = TruthAmbiguous, VerdictReview, "Is this a commercial or a programme excerpt?"
+		}
+		role := "commercial"
+		if total >= CertificationMinHoldout && truth == TruthEligible {
+			role = certificationRole(i)
 		}
 		id := fmt.Sprintf("case-%03d", i)
 		c := Case{
 			ID: id, Split: SplitHoldout, Cluster: id,
 			ContentSHA256: fmt.Sprintf("%064x", i+1), EvidenceSHA256: fmt.Sprintf("%064x", total+i+1),
-			Source: "fixture", License: "CC0-1.0", Truth: truth, RejectClass: class,
-			ContentRole: "commercial", Slices: []string{"contract"}, ReviewQuestion: question,
-			Evidence: []Evidence{{ID: "truth", Kind: "fixture", Claim: "content_role", Value: "commercial", Provenance: "blind annotation"}},
+			Source: fmt.Sprintf("fixture-%d", i%5), License: "CC0-1.0", Truth: truth, RejectClass: class,
+			ContentRole: role, Slices: []string{"contract"}, ReviewQuestion: question,
+			Evidence: []Evidence{{ID: "truth", Kind: "fixture", Claim: "content_role", Value: role, Provenance: "blind annotation"}},
 			Provenance: MediaProvenance{
-				Authority: "fixture", ItemID: id, ItemURL: "https://example.invalid/items/" + id,
-				MetadataRetrievedAt: lockedAt, MetadataSHA256: strings.Repeat("c", 64), EvidenceURL: "https://example.invalid/metadata/" + id,
+				Authority: "fixture", ItemID: id, ItemRef: "https://example.invalid/items/" + id,
+				MetadataRetrievedAt: lockedAt, MetadataSHA256: strings.Repeat("c", 64), EvidenceRef: "https://example.invalid/metadata/" + id,
 				RightsStatement: "CC0 fixture", RightsDecision: "allowed", RightsReviewerID: "rights-reviewer", RightsReviewedAt: lockedAt,
-				Redistributable: true, SourceFilename: id + ".mp4", SourceURL: "https://example.invalid/media/" + id + ".mp4",
+				Redistributable: true, Creator: "creator-" + id, Campaign: "campaign-" + id, SourceFamily: "family-" + id, SourceFilename: id + ".mp4", SourceRef: "https://example.invalid/media/" + id + ".mp4",
 				SourceBytes: 1024, SegmentDurationMS: 30_000,
 			},
 		}
@@ -292,11 +302,11 @@ func passingCorpus(total int) (Manifest, []Prediction) {
 		manifest.Cases = append(manifest.Cases, c)
 		step := InferenceStep{EvaluationID: "eval-" + id, Role: "filler_text", Rung: "text", RequestedProvider: "fixture", RequestedModel: "fixture", ResolvedModel: "fixture", ResolvedProvider: "fixture", Modalities: []string{"text"}, Attempts: 1, LatencyMS: int64(i)}
 		predictions = append(predictions, Prediction{
-			CaseID: id, Verdict: verdict, RejectClass: class, ContentRole: "commercial", ReviewQuestion: question,
+			CaseID: id, Verdict: verdict, RejectClass: class, ContentRole: role, ReviewQuestion: question,
 			Steps: []InferenceStep{step},
 		})
 	}
-	for i := 0; i < total/4; i++ {
+	for i := 0; i < CertificationMinDevelopment; i++ {
 		id := fmt.Sprintf("development-%03d", i)
 		c := Case{
 			ID: id, Split: SplitDevelopment, Cluster: id,
@@ -304,10 +314,10 @@ func passingCorpus(total int) (Manifest, []Prediction) {
 			Source: "fixture", License: "CC0-1.0", Truth: TruthEligible, ContentRole: "commercial", Slices: []string{"contract"},
 			Evidence: []Evidence{{ID: "truth", Kind: "fixture", Claim: "content_role", Value: "commercial", Provenance: "blind annotation"}},
 			Provenance: MediaProvenance{
-				Authority: "fixture", ItemID: id, ItemURL: "https://example.invalid/items/" + id,
-				MetadataRetrievedAt: lockedAt, MetadataSHA256: strings.Repeat("d", 64), EvidenceURL: "https://example.invalid/metadata/" + id,
+				Authority: "fixture", ItemID: id, ItemRef: "https://example.invalid/items/" + id,
+				MetadataRetrievedAt: lockedAt, MetadataSHA256: strings.Repeat("d", 64), EvidenceRef: "https://example.invalid/metadata/" + id,
 				RightsStatement: "CC0 fixture", RightsDecision: "allowed", RightsReviewerID: "rights-reviewer", RightsReviewedAt: lockedAt,
-				Redistributable: true, SourceFilename: id + ".mp4", SourceURL: "https://example.invalid/media/" + id + ".mp4",
+				Redistributable: true, Creator: "creator-" + id, Campaign: "campaign-" + id, SourceFamily: "family-" + id, SourceFilename: id + ".mp4", SourceRef: "https://example.invalid/media/" + id + ".mp4",
 				SourceBytes: 1024, SegmentDurationMS: 30_000,
 			},
 		}
@@ -321,11 +331,28 @@ func passingCorpus(total int) (Manifest, []Prediction) {
 	return manifest, predictions
 }
 
+func certificationRole(index int) string {
+	switch {
+	case index < 82:
+		return "commercial"
+	case index < 164:
+		return "promo"
+	case index < 223:
+		return "bumper"
+	case index < 282:
+		return "station_id"
+	case index < 364:
+		return "trailer"
+	default:
+		return "psa"
+	}
+}
+
 func completeRun() RunIdentity {
 	return RunIdentity{
 		Profile: "contract", EvaluationSplit: SplitHoldout, EvidenceVersion: "e1", PromptVersion: "p1", TaxonomyVersion: "t1", PolicyVersion: "a1", RolePolicyVersion: "r1",
 		CapabilitySnapshot: "c1", PriceSnapshot: "price1", GeneratedAt: time.Date(2026, time.August, 25, 13, 0, 0, 0, time.UTC),
-		MaxRequests: 1000, MaxSpendNanoUSD: 1_000_000_000, MaxConcurrency: 1,
+		MaxRequests: 2000, MaxSpendNanoUSD: 1_000_000_000, MaxConcurrency: 1,
 	}
 }
 

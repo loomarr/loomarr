@@ -231,6 +231,14 @@ func validateConfig(config Config) error {
 		}
 		previousRank = rank
 	}
+	if slices.ContainsFunc(config.Routes, func(route Route) bool { return route.Provider == "openrouter" }) {
+		if config.Snapshot == nil {
+			return fmt.Errorf("OpenRouter bakeoff routes require a locked capability and price snapshot")
+		}
+		if err := ValidateOpenRouterRunSnapshot(config.Run, config.Routes, *config.Snapshot); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -319,6 +327,12 @@ func validatePacket(c fillereval.Case, packet Packet, evidenceVersion, corpusRoo
 		return fmt.Errorf("case %q evidence packet digest %s does not match manifest", c.ID, got)
 	}
 	return nil
+}
+
+// ValidatePacketAgainstCase proves that one label-blind packet is exactly the
+// bounded, content-addressed provider input locked by its draft case.
+func ValidatePacketAgainstCase(c fillereval.Case, packet Packet, evidenceVersion, corpusRoot string) error {
+	return validatePacket(c, packet, evidenceVersion, corpusRoot)
 }
 
 func validSignalKind(kind string) bool {

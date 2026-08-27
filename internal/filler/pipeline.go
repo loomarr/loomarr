@@ -854,6 +854,15 @@ func (p *Pipeline) persist(ctx context.Context, row ClipPipeline, clip StoreClip
 // the stage has RESOLVED (exhausted its retries and been skipped) so the caller advances.
 func (p *Pipeline) onFailure(row *ClipPipeline, err error) bool {
 	now := p.now().UTC()
+	// Admission persistence is the fail-closed seam before V38 may file a clip. Exhausting ordinary
+	// retries cannot skip it: that would turn a store outage into publication authority. Keep the
+	// clip parked on this rung and retry at the bounded terminal backoff until the audit is durable.
+	if row.Stage == StageAdmission && row.Attempts >= MaxAttempts {
+		row.Attempts = MaxAttempts
+		row.NextRun = now.Add(backoff(MaxAttempts))
+		row.Record(row.Stage, StatusFailed, err.Error(), row.Attempts, now)
+		return false
+	}
 	if row.Attempts < MaxAttempts {
 		// ⚠ No `row.Status = StatusFailed` here: `Record` owns it now (see its doc comment). The
 		// assignment was correct but it was ALSO the reason the same omission on the verdict paths

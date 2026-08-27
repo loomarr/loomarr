@@ -112,7 +112,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | --- | ---: | --- |
 | `catalog` | 5 | `library`, `provision` |
 | `diagnostics` | 8 | — |
-| `filler` | 6 | `diagnostics`, `llm`, `metrics` |
+| `filler` | 6 | `diagnostics`, `filleradmission`, `llm`, `metrics` |
+| `filleradmission` | 6 | — |
 | `httpx` | 6 | `metrics` |
 | `library` | 7 | `filler`, `httpx` |
 | `llm` | 5 | `httpx`, `metrics` |
@@ -120,7 +121,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `provision` | 16 | — |
 | `schedule` | 14 | `provision` |
 | `scheduler` | 6 | `store` |
-| `store` | 14 | `diagnostics`, `filler`, `provision`, `schedule` |
+| `store` | 14 | `diagnostics`, `filler`, `filleradmission`, `provision`, `schedule` |
 | `suggest` | 6 | `catalog`, `llm`, `provision`, `schedule`, `store` |
 
 ##### Every package, by layer
@@ -135,7 +136,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
-- **`filleradmission`** · 4 importers
+- **`filleradmission`** · 6 importers
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
 - **`fillercorpus`**
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
@@ -158,7 +159,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 1**
 
-- **`fillerdecision`** · 3 importers · → `filleradmission`
+- **`fillerdecision`** · 4 importers · → `filleradmission`
   Owns the durable lifecycle and operator projections for filler-admission results.
 - **`prepared`** · 3 importers · → `diagnostics`, `media`
   Owns immutable, reusable playout publications.
@@ -201,7 +202,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 6**
 
-- **`filler`** · 6 importers · → `diagnostics`, `llm`, `mediatools`, `metrics`, `taxonomy`
+- **`filler`** · 6 importers · → `diagnostics`, `filleradmission`, `fillerdecision`, `llm`, `mediatools`, `metrics`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 
 **Layer 7**
@@ -261,7 +262,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 12**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `diagnostics`, `events`, `filler`, `fillerdecision`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -3357,15 +3358,26 @@ V38 compatibility gate remains the filing authority until the corpus and rollout
 The durable decision projection and unattended cutover are separate changes, so adding this module
 cannot by itself expand what reaches a channel without review.
 
+The ingest ladder places a fail-closed `admission` rung after extraction and immediately before the
+V38 `score` rung. Its first production evidence version records only facts whose provenance the
+current pipeline can prove: successful decoder passage, an explicit content-role token in the
+original filename, and an explicit filename year. It does not translate V38 confidence, persisted
+classifier fields, a source-declared licence URL, or `autoAdmit` into V61 evidence. Consequently an
+ordinary clip initially records an honest missing-rights or missing-corroboration review outcome.
+The rung versions and hashes the complete observation, evaluates it, and persists the immutable V63
+record before `score` may run. If that durable write remains unavailable after bounded retries, the
+pipeline stays parked on `admission`; it never skips the audit and falls through to legacy filing.
+
 Every evaluation durably attributes the clip and evidence hashes, extractor/prompt/schema/taxonomy/
 policy versions, requested and resolved model/provider, modality and derivative bounds, returned
 token categories, provider-reported charged cost, the price snapshot used for local estimation,
 latency/retries, reason codes, evidence references, conflicts, and terminal outcome. Aggregate token
 metrics remain useful for operations; the durable row is the audit and cost-accounting truth.
 
-Certification artifact schema v4 requires the per-inference-step ledger. Earlier scalar schemas are
-rejected: no completed bakeoff artifact depends on them, and preserving speculative compatibility
-would create an untested path that can hide multiple calls behind one terminal attribution. The v4
+Certification artifact schema v5 requires the per-inference-step ledger and the corpus-diversity
+identity used by the statistical contract. Earlier schemas are rejected: no completed bakeoff
+artifact depends on them, and preserving speculative compatibility would create an untested path
+that can hide multiple calls behind one terminal attribution or bypass the diversity gate. The v5
 prediction wire therefore has no scalar inference fields: every attempted call is a `steps` entry;
 only deterministic outcomes and holds reached before a provider attempt may have none.
 
@@ -3392,6 +3404,14 @@ tokens, charge, latency, attempts, generation id, and operational failure. The t
 aggregates those steps but never collapses a cascade into one falsely attributed rung.
 Certification routes authorize exactly one provider attempt per invocation; an adapter may not hide
 internal retries inside an aggregate attribution. A retry is a new runner invocation and ledger step.
+
+An OpenRouter certification run is also bound to one immutable metadata snapshot fetched no more
+than 24 hours before its declared run time. The snapshot makes one bounded authenticated ZDR-list
+request plus one bounded endpoint request per concrete candidate and freezes model modalities,
+endpoint selector slug, distinct returned provider name, strict-output parameters, status, exact
+price text, and ZDR membership. Its SHA-256 is both the run's capability and price identity. Every
+route must resolve exactly within that snapshot before media is opened or spend is reserved; a
+human-readable snapshot label, catalog-level capability claim, or provider-family name is not proof.
 
 Routing is reason-driven rather than confidence-driven: deterministic and text evidence run first;
 frames may run only for a predeclared missing/conflicting claim; direct video may run only for a
@@ -3445,23 +3465,40 @@ and any exceeded bound fail closed before a hosted request. This adapter supplie
 does not itself decide or change production admission.
 
 Certification uses a versioned, source/similarity-separated development corpus and locked holdout.
-Near-duplicates cannot cross that split. It reports action-specific precision and coverage,
+The maintained contract requires at least 300 development cases and 1,126 independently clustered
+holdout cases: 446 eligible positives, 446 deterministic-invalid controls, 147 semantic-invalid
+controls, and 87 genuinely ambiguous, answerable-review cases. The eligible positives include at
+least 82 commercials, 82 promos, 59 bumpers, 59 station IDs, 82 trailers, and 82 PSAs. No creator may
+supply more than 10% of one eligible role, and no source may supply more than 25% of
+eligible holdout cases. A holdout similarity cluster, campaign, and source master each contribute
+exactly one case. Preparation derives source-family identity from the source authority and item ID;
+alternate segments, encodes, and derivatives of one master therefore cannot pretend to be independent
+observations. Campaigns and source families cannot cross the development/holdout split, and
+near-duplicates cannot cross it either. It reports action-specific precision and coverage,
 worst-slice results, review answerability, conflicts, schema/grounding/security failures, calibration,
 latency, and total operating cost with confidence bounds. Unattended behavior expands only after the
 predeclared gates in the certification artifact pass: zero observed prohibited admissions,
 instruction escapes, or ungrounded taxonomy values; at least 99% observed auto-admit precision; at
 least 99% deterministic-reject and 97% semantic-reject precision; then at least 90% valid-filler and
 95% invalid-input automation with at most 10% review. Each safety-critical slice has its own gate.
-The point estimates alone do not certify a small corpus.
+Admission, deterministic-reject, semantic-reject, valid/invalid automation, and review-answerability
+gates require both their point estimate and one-sided 95% Wilson lower bound. The precision and
+answerability denominators above let one observed error
+remain within each 99%, 97%, and 95% lower-bound target; two errors do not. The point estimates alone
+do not certify a small corpus.
 
 A certification manifest is itself content-addressed and records its lock time. Every case locks the
 source media and captured evidence packet by SHA-256 plus item-level provenance: source authority,
 stable item and media URLs, retrieved metadata hash/time, exact rights statement, rights decision
 and reviewer, source representation/size, and bounded segment. Redistribution permission is
 explicit; media that cannot be redistributed stays outside Git. A collection name or missing rights
-field never implies permission. Two distinct reviewers in distinct blind-review batches submit
-immutable label hashes covering disposition, reject class, content role, taxonomy, policy flags,
-evidence spans, and any review question. The original blind submissions remain visible. Matching
+field never implies permission. Each semantic reviewer receives an independently shuffled packet
+whose random opaque aliases expose content/evidence hashes and bounded segment coordinates but no
+internal case ID, split, cluster, creator, campaign, source filename, or labels. An owner-only alias
+map binds that batch to the exact draft digest and is required for mechanical unblinding; reviewer
+submissions use aliases, never case IDs. Two distinct reviewers in distinct blind-review batches
+submit immutable label hashes covering disposition, reject class, content role, taxonomy, policy
+flags, evidence spans, and any review question. The original blind submissions remain visible. Matching
 submissions become the final labels directly; a disagreement requires a reasoned final adjudication
 by a third identity. Rights adjudication and semantic labeling are separate records.
 
@@ -3474,14 +3511,24 @@ fail closed. Reports carry the exact manifest digest and one-sided Wilson bounds
 rejection, automation, review, and slice accuracy, including an upper bound for review rate. Each
 certification slice gate predeclares both a point threshold and a confidence lower bound.
 
-Source inventory is a separate, non-certifying preflight. An Archive inventory uses one identified
-serial client, cached raw search/item responses, a minimum inter-request delay, and explicit request,
-item, per-item byte, and total predicted-byte ceilings. Search-level and item-level licences must
-agree and NC/ND candidates are excluded, but an allowlisted uploader field remains only a candidate:
-independent rights adjudication is still required. The inventory freezes retrieval times, response
-hashes, selected representation identity/checksums, and predicted bytes before any media download or
-model call. A partial bounded inventory reports exactly what it saw; it never widens the ceiling or
-treats a truncated search response as complete.
+Source inventory is a separate, non-certifying preflight. Its only live contract is strict
+source-neutral schema v2: one snapshot may combine multiple captures, and every case carries the
+authority, authority-qualified stable case ID, capture ID, role hints, frozen metadata evidence, exact selected
+representation, and the adapter's explicit media-host allowlist. Capture-level request,
+response-byte, predicted-media-byte, and wall-clock ceilings remain visible beside actual usage.
+The combiner strictly decodes every capture artifact, sorts captures and cases by their stable IDs,
+and rejects duplicate capture or case identity before producing the single rights-review input.
+The former schema v1 put `source` and `collection` at the document root, so it could represent only
+one Archive.org collection; no certified artifact consumes it, and it is rejected rather than
+adapted or preserved.
+
+An Archive capture uses one identified serial client, cached raw search/item responses, a minimum
+inter-request delay, and explicit request, item, per-item byte, and total predicted-byte ceilings.
+Search-level and item-level licences must agree and NC/ND candidates are excluded, but an allowlisted
+uploader field remains only a candidate: independent rights adjudication is still required. Every
+adapter freezes retrieval times, response hashes, selected representation identity/checksums, and
+predicted bytes before any media download or model call. A partial bounded capture reports exactly
+what it saw; it never widens the ceiling or treats a truncated search response as complete.
 
 Before a new reusable source adapter is built, a source-neutral **rights-yield pilot** locks exactly
 ten metadata-only candidates from each qualified lane: Prelinger, Library of Congress, NASA, CDC,
@@ -3513,12 +3560,63 @@ must show useful coverage of the filler roles the certification corpus needs, su
 promos, bumpers, station IDs, trailers, and PSAs. Rights clarity, API convenience, and inventory
 scale do not by themselves make a source representative.
 
+The LOC, NASA, CDC first-party-page, and Commons commands share one promotion seam: the bounded lane
+remains the ten-case qualification artifact, while an explicitly requested schema-v2 output carries
+the same frozen evidence into full-corpus rights review. Full capture counts stay positive and
+bounded but are not hard-coded to ten; request ceilings must cover the declared item count. The CDC
+adapter still consumes authored first-party page/media pairs and therefore cannot manufacture extra
+cases to meet a quota. Multiple role-specific captures combine only through the strict inventory
+combiner, never by concatenating JSON or discarding their individual ceilings.
+
+The 100-case direct/static cohort is an authored local capture, not a source adapter and not a
+licence shortcut. Its manifest must contain exactly 20 commercials, 20 promos, 25 bumpers, 25
+station IDs, 5 trailers, and 5 PSAs. Every case names a non-empty regular media file plus separate
+rights and provenance evidence files beneath one declared root. `filler-corpus-direct` resolves
+symlinks, rejects root escapes and quota drift, streams SHA-256 over every file under aggregate byte
+and wall-time ceilings, and emits local transport records into the same strict schema-v2 inventory.
+It never creates media, infers a grant from a directory or collection, or turns authored assertions
+into approval. The combined public-plus-direct inventory still goes through one independent rights
+review; local media is already acquired and is therefore skipped by the network downloader. No
+pre-v2 or direct-manifest compatibility reader exists because no certified artifact consumes one.
+
+Corpus preparation is one fail-closed bridge from the fully approved inventory to blind review and
+provider evaluation. An authored schema-v2 plan may choose only the development/holdout split,
+similarity cluster, campaign identity, source segment, direct-video window, corpus version,
+evidence version, and
+predeclared slice gates. `filler-corpus-prepare` requires that plan and the approval ledger to cover
+every 1,426–1,600 inventory cases exactly once; reopens media beneath separate local/direct and
+download roots; rechecks size and all available SHA-256/SHA-1/MD5 identities; measures the bounded
+segment; and emits source-policy and decoder facts plus source text, four near-full-resolution
+frames, and one at-most-60-second 1280×720 direct-video derivative. It stages derivatives before
+publication and enforces aggregate source bytes, derivative bytes, and wall time. Preparation also
+computes a 64-bit difference hash for each of the four semantic frames. Cases for which at least
+three corresponding frames are within eight bits must share one similarity cluster; later holdout
+validation permits only one case from that cluster. This catches re-encodes and close derivatives at
+the only seam that still has media bytes, while source-family and campaign identity catch shared
+masters that frame sampling misses. The resulting
+draft contains provenance but no semantic truth, evidence labels, or review answer. Each packet is
+validated against its draft digest before either artifact is written; provider input therefore
+cannot acquire a hidden answer key through corpus preparation. No hand-authored packet or older
+preparation shape is accepted.
+
+`filler-corpus-review` derives one reviewer-visible randomized packet and one owner-only alias map
+from that draft. A fresh batch and map are generated independently for each reviewer. The label lock
+accepts only that still-unlocked, wholly unlabeled draft, both exact alias maps, and strict
+current-schema JSON/JSONL; unknown or trailing fields are errors, not compatibility data. It validates both blind
+submissions as complete labels before comparing their canonical hashes, including the submission
+that an adjudicator does not select. A third reviewer therefore resolves a real semantic
+disagreement; adjudication cannot turn an incomplete or malformed second review into evidence of
+independent labeling.
+
 Media acquisition consumes a separate rights-review ledger; discovery output is never download
-authority. Every `approved` row binds the source metadata hash to reviewer, review time, rationale,
-redistribution decision, attribution, and restrictions; `held` rows remain inert. The downloader
-preflights aggregate item and byte ceilings before its first request, stays serial and identified,
-allows redirects only within the source authority, bounds each body by the inventoried size, verifies
-source checksums when present, and adds SHA-256. Media and its download ledger remain external to Git.
+authority. Every `approved` row binds the inventory digest, authority-qualified case ID, source
+metadata hash, reviewer, review time, rationale, redistribution decision, attribution, and
+restrictions; `held` rows remain inert. The downloader preflights aggregate item and byte ceilings
+before its first request, stays serial and identified, checks the initial URL and every redirect
+against both the case's frozen allowlist and the built-in policy for that authority, bounds each body
+by the inventoried size, verifies source checksums when present, and adds SHA-256. Query strings may
+remain when they are part of the exact frozen representation URL; credentials and fragments never
+may. Media and its download ledger remain external to Git.
 An incomplete, stale, oversized, or checksum-mismatched plan fails without producing a completed
 ledger and cannot flow into blind semantic review.
 
@@ -4597,7 +4695,7 @@ appears in the UI without a second edit, and a guard test compares the served li
 way to hide the bug.
 
 ⚠ **A disabled stage is a `skipped` rung, not an absent one.** An install with vision off still has
-an eight-rung pipeline; the rung renders greyed with its reason inline ("Listen — skipped (the
+a nine-rung pipeline; the rung renders greyed with its reason inline ("Listen — skipped (the
 description already says enough)"). A stage that silently does not happen reads as broken, and the
 sentence is what turns a bug report into an answer.
 
@@ -4606,7 +4704,7 @@ frames merge onto the cached row and never assemble it: the bus drops frames for
 by design, a frame for an unknown clip triggers a refetch rather than inserting a half-built row,
 and a terminal frame invalidates `/v1/filler` outright — a filed clip changes the catalog, which
 nobody watching the catalog tab has a pipeline listener for. Only running frames merge, which is
-what keeps forty clips × eight rungs from becoming 320 refetches.
+what keeps forty clips × nine rungs from becoming 360 refetches.
 
 ⚠ **The ordering rule is derived from the ladder, because there is no sequence number.** A frame
 carries no `seq` and no timestamp, so "is this newer than what is shown" is answered by the

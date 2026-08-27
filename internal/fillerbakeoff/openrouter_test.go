@@ -20,6 +20,9 @@ func TestOpenRouterExtractorPinsStrictRouteAndGroundsFacts(t *testing.T) {
 		if request.URL.Path != "/chat/completions" || request.Header.Get("Authorization") != "Bearer secret" || request.Header.Get("X-OpenRouter-Metadata") != "enabled" {
 			t.Errorf("unexpected request identity: %s %#v", request.URL.Path, request.Header)
 		}
+		if request.Header.Get("X-OpenRouter-Title") != "Loomarr filler certification" || request.Header.Get("HTTP-Referer") != "https://github.com/loomarr/loomarr" {
+			t.Error("missing OpenRouter client identity")
+		}
 		if err := json.NewDecoder(request.Body).Decode(&captured); err != nil {
 			t.Fatal(err)
 		}
