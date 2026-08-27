@@ -25,15 +25,17 @@ func run(args []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	draftPath := flags.String("draft", "", "draft manifest with media provenance and evidence hashes")
 	firstPath := flags.String("review-a", "", "first independent label JSONL")
+	firstMapPath := flags.String("map-a", "", "private alias map for the first review")
 	secondPath := flags.String("review-b", "", "second independent label JSONL")
+	secondMapPath := flags.String("map-b", "", "private alias map for the second review")
 	adjudicationsPath := flags.String("adjudications", "", "third-party adjudication JSONL for disagreements")
 	lockedAtText := flags.String("locked-at", "", "manifest lock time in RFC3339 format")
 	outputPath := flags.String("out", "", "locked certification manifest JSON")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
-	if *draftPath == "" || *firstPath == "" || *secondPath == "" || *lockedAtText == "" || *outputPath == "" {
-		_, _ = fmt.Fprintln(stderr, "filler-corpus: --draft, --review-a, --review-b, --locked-at, and --out are required")
+	if *draftPath == "" || *firstPath == "" || *firstMapPath == "" || *secondPath == "" || *secondMapPath == "" || *lockedAtText == "" || *outputPath == "" {
+		_, _ = fmt.Fprintln(stderr, "filler-corpus: --draft, --review-a, --map-a, --review-b, --map-b, --locked-at, and --out are required")
 		return 2
 	}
 	lockedAt, err := time.Parse(time.RFC3339, *lockedAtText)
@@ -51,9 +53,19 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "filler-corpus: read first review: %v\n", err)
 		return 1
 	}
+	firstMap, err := readJSON[fillereval.BlindReviewMap](*firstMapPath)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "filler-corpus: read first alias map: %v\n", err)
+		return 1
+	}
 	second, err := readJSONL[fillereval.LabelSubmission](*secondPath)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "filler-corpus: read second review: %v\n", err)
+		return 1
+	}
+	secondMap, err := readJSON[fillereval.BlindReviewMap](*secondMapPath)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "filler-corpus: read second alias map: %v\n", err)
 		return 1
 	}
 	var adjudications []fillereval.AdjudicationSubmission
@@ -64,7 +76,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 	}
-	locked, failures := fillereval.LockReviewedManifest(draft, first, second, adjudications, lockedAt)
+	locked, failures := fillereval.LockReviewedManifest(draft, fillereval.BlindReviewSet{Map: firstMap, Submissions: first}, fillereval.BlindReviewSet{Map: secondMap, Submissions: second}, adjudications, lockedAt)
 	if len(failures) > 0 {
 		for _, failure := range failures {
 			_, _ = fmt.Fprintln(stderr, "filler-corpus:", failure)

@@ -3374,9 +3374,10 @@ token categories, provider-reported charged cost, the price snapshot used for lo
 latency/retries, reason codes, evidence references, conflicts, and terminal outcome. Aggregate token
 metrics remain useful for operations; the durable row is the audit and cost-accounting truth.
 
-Certification artifact schema v4 requires the per-inference-step ledger. Earlier scalar schemas are
-rejected: no completed bakeoff artifact depends on them, and preserving speculative compatibility
-would create an untested path that can hide multiple calls behind one terminal attribution. The v4
+Certification artifact schema v5 requires the per-inference-step ledger and the corpus-diversity
+identity used by the statistical contract. Earlier schemas are rejected: no completed bakeoff
+artifact depends on them, and preserving speculative compatibility would create an untested path
+that can hide multiple calls behind one terminal attribution or bypass the diversity gate. The v5
 prediction wire therefore has no scalar inference fields: every attempted call is a `steps` entry;
 only deterministic outcomes and holds reached before a provider attempt may have none.
 
@@ -3387,8 +3388,9 @@ audio, or video derivative references. Every referenced external derivative carr
 measured byte/pixel/duration bounds. Packet identity must match the case's `evidenceSha256`; the
 runner re-opens every derivative beneath one declared corpus root, refuses symlink escapes, and
 verifies its exact bytes and hash. It refuses missing, extra, changed, or label-bearing fields before
-calling a provider. This separation keeps the scorer's answer key out of prompts and makes the exact
-provider input replayable.
+calling a provider. The internal case ID remains a local ledger join and is omitted from provider
+prompt content. This separation keeps the scorer's answer key and identity-correlated shortcuts out
+of prompts and makes the exact provider input replayable.
 
 One bakeoff run accepts a locked manifest, an exact packet set, a versioned admission policy, an
 ordered role/rung route, and positive request/spend/concurrency ceilings; it emits an immutable
@@ -3463,23 +3465,40 @@ and any exceeded bound fail closed before a hosted request. This adapter supplie
 does not itself decide or change production admission.
 
 Certification uses a versioned, source/similarity-separated development corpus and locked holdout.
-Near-duplicates cannot cross that split. It reports action-specific precision and coverage,
+The maintained contract requires at least 300 development cases and 1,126 independently clustered
+holdout cases: 446 eligible positives, 446 deterministic-invalid controls, 147 semantic-invalid
+controls, and 87 genuinely ambiguous, answerable-review cases. The eligible positives include at
+least 82 commercials, 82 promos, 59 bumpers, 59 station IDs, 82 trailers, and 82 PSAs. No creator may
+supply more than 10% of one eligible role, and no source may supply more than 25% of
+eligible holdout cases. A holdout similarity cluster, campaign, and source master each contribute
+exactly one case. Preparation derives source-family identity from the source authority and item ID;
+alternate segments, encodes, and derivatives of one master therefore cannot pretend to be independent
+observations. Campaigns and source families cannot cross the development/holdout split, and
+near-duplicates cannot cross it either. It reports action-specific precision and coverage,
 worst-slice results, review answerability, conflicts, schema/grounding/security failures, calibration,
 latency, and total operating cost with confidence bounds. Unattended behavior expands only after the
 predeclared gates in the certification artifact pass: zero observed prohibited admissions,
 instruction escapes, or ungrounded taxonomy values; at least 99% observed auto-admit precision; at
 least 99% deterministic-reject and 97% semantic-reject precision; then at least 90% valid-filler and
 95% invalid-input automation with at most 10% review. Each safety-critical slice has its own gate.
-The point estimates alone do not certify a small corpus.
+Admission, deterministic-reject, semantic-reject, valid/invalid automation, and review-answerability
+gates require both their point estimate and one-sided 95% Wilson lower bound. The precision and
+answerability denominators above let one observed error
+remain within each 99%, 97%, and 95% lower-bound target; two errors do not. The point estimates alone
+do not certify a small corpus.
 
 A certification manifest is itself content-addressed and records its lock time. Every case locks the
 source media and captured evidence packet by SHA-256 plus item-level provenance: source authority,
 stable item and media URLs, retrieved metadata hash/time, exact rights statement, rights decision
 and reviewer, source representation/size, and bounded segment. Redistribution permission is
 explicit; media that cannot be redistributed stays outside Git. A collection name or missing rights
-field never implies permission. Two distinct reviewers in distinct blind-review batches submit
-immutable label hashes covering disposition, reject class, content role, taxonomy, policy flags,
-evidence spans, and any review question. The original blind submissions remain visible. Matching
+field never implies permission. Each semantic reviewer receives an independently shuffled packet
+whose random opaque aliases expose content/evidence hashes and bounded segment coordinates but no
+internal case ID, split, cluster, creator, campaign, source filename, or labels. An owner-only alias
+map binds that batch to the exact draft digest and is required for mechanical unblinding; reviewer
+submissions use aliases, never case IDs. Two distinct reviewers in distinct blind-review batches
+submit immutable label hashes covering disposition, reject class, content role, taxonomy, policy
+flags, evidence spans, and any review question. The original blind submissions remain visible. Matching
 submissions become the final labels directly; a disagreement requires a reasoned final adjudication
 by a third identity. Rights adjudication and semantic labeling are separate records.
 
@@ -3561,21 +3580,29 @@ review; local media is already acquired and is therefore skipped by the network 
 pre-v2 or direct-manifest compatibility reader exists because no certified artifact consumes one.
 
 Corpus preparation is one fail-closed bridge from the fully approved inventory to blind review and
-provider evaluation. An authored schema-v1 plan may choose only the development/holdout split,
-similarity cluster, source segment, direct-video window, corpus version, evidence version, and
+provider evaluation. An authored schema-v2 plan may choose only the development/holdout split,
+similarity cluster, campaign identity, source segment, direct-video window, corpus version,
+evidence version, and
 predeclared slice gates. `filler-corpus-prepare` requires that plan and the approval ledger to cover
-every 300–500 inventory cases exactly once; reopens media beneath separate local/direct and
+every 1,426–1,600 inventory cases exactly once; reopens media beneath separate local/direct and
 download roots; rechecks size and all available SHA-256/SHA-1/MD5 identities; measures the bounded
 segment; and emits source-policy and decoder facts plus source text, four near-full-resolution
 frames, and one at-most-60-second 1280×720 direct-video derivative. It stages derivatives before
-publication and enforces aggregate source bytes, derivative bytes, and wall time. The resulting
+publication and enforces aggregate source bytes, derivative bytes, and wall time. Preparation also
+computes a 64-bit difference hash for each of the four semantic frames. Cases for which at least
+three corresponding frames are within eight bits must share one similarity cluster; later holdout
+validation permits only one case from that cluster. This catches re-encodes and close derivatives at
+the only seam that still has media bytes, while source-family and campaign identity catch shared
+masters that frame sampling misses. The resulting
 draft contains provenance but no semantic truth, evidence labels, or review answer. Each packet is
 validated against its draft digest before either artifact is written; provider input therefore
 cannot acquire a hidden answer key through corpus preparation. No hand-authored packet or older
 preparation shape is accepted.
 
-The label lock accepts only that still-unlocked, wholly unlabeled draft and strict current-schema
-JSON/JSONL; unknown or trailing fields are errors, not compatibility data. It validates both blind
+`filler-corpus-review` derives one reviewer-visible randomized packet and one owner-only alias map
+from that draft. A fresh batch and map are generated independently for each reviewer. The label lock
+accepts only that still-unlocked, wholly unlabeled draft, both exact alias maps, and strict
+current-schema JSON/JSONL; unknown or trailing fields are errors, not compatibility data. It validates both blind
 submissions as complete labels before comparing their canonical hashes, including the submission
 that an adjudicator does not select. A third reviewer therefore resolves a real semantic
 disagreement; adjudication cannot turn an incomplete or malformed second review into evidence of

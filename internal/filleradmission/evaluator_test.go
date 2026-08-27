@@ -36,7 +36,7 @@ func TestEvaluatorAdmitsOnlyCorroboratedPolicyEligibleEvidence(t *testing.T) {
 }
 
 func TestEvaluatorSupportsEveryExistingFillerRoleWithoutInventingAProduct(t *testing.T) {
-	roles := []string{RoleCommercial, RoleBumper, RolePSA, RoleStationID, RoleTrailer, RoleInterstitial}
+	roles := []string{RoleCommercial, RolePromo, RoleBumper, RolePSA, RoleStationID, RoleTrailer, RoleInterstitial}
 	e, err := New(Policy{
 		Version: "admission-v1", TaxonomyVersion: "taxonomy-v1",
 		AllowedProducts: []string{"soda"}, AllowedContentRoles: roles,

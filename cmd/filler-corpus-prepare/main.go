@@ -14,8 +14,10 @@ import (
 	"flag"
 	"fmt"
 	"image"
+	"image/color"
 	_ "image/jpeg"
 	"io"
+	"math/bits"
 	"os"
 	"path/filepath"
 	"slices"
@@ -31,7 +33,7 @@ import (
 	"github.com/loomarr/loomarr/internal/mediatools"
 )
 
-const preparationSchemaVersion = 1
+const preparationSchemaVersion = 2
 
 type preparationPlan struct {
 	SchemaVersion   int                    `json:"schemaVersion"`
@@ -45,6 +47,7 @@ type plannedCase struct {
 	CaseID            string           `json:"caseId"`
 	Split             fillereval.Split `json:"split"`
 	Cluster           string           `json:"cluster"`
+	Campaign          string           `json:"campaign"`
 	SegmentStartMS    int64            `json:"segmentStartMs"`
 	SegmentDurationMS int64            `json:"segmentDurationMs"`
 	VideoStartMS      int64            `json:"videoStartMs"`
@@ -62,6 +65,12 @@ type videoDerivative struct {
 	SHA256        string
 	DurationMS    int64
 	Width, Height int
+}
+
+type perceptualFamily struct {
+	caseID  string
+	cluster string
+	hashes  [4]uint64
 }
 
 type mediaDeriver interface {
@@ -99,8 +108,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	derivativesRoot := flags.String("derivatives-root", "", "external bounded derivative root")
 	preparedText := flags.String("prepared-at", "", "fixed RFC3339 preparation time")
 	ffmpegPath := flags.String("ffmpeg", "ffmpeg", "ffmpeg executable")
-	minItems := flags.Int("min-items", 300, "minimum complete corpus cases")
-	maxItems := flags.Int("max-items", 500, "maximum complete corpus cases")
+	minItems := flags.Int("min-items", fillereval.CertificationMinDevelopment+fillereval.CertificationMinHoldout, "minimum complete corpus cases")
+	maxItems := flags.Int("max-items", 1600, "maximum complete corpus cases")
 	maxInputBytes := flags.Int64("max-input-bytes", 0, "aggregate source-media byte ceiling")
 	maxOutputBytes := flags.Int64("max-output-bytes", 0, "aggregate derivative byte ceiling")
 	maxWall := flags.Duration("max-wall-time", 0, "complete preparation wall-time ceiling")
@@ -108,7 +117,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	preparedAt, err := time.Parse(time.RFC3339, *preparedText)
-	if err != nil || *inventoryPath == "" || *approvalsPath == "" || *planPath == "" || *localRoot == "" || *remoteRoot == "" || *draftOut == "" || *packetsOut == "" || *derivativesRoot == "" || *minItems <= 0 || *maxItems < *minItems || *maxInputBytes <= 0 || *maxOutputBytes <= 0 || *maxWall <= 0 {
+	contractMinimum := fillereval.CertificationMinDevelopment + fillereval.CertificationMinHoldout
+	if err != nil || *inventoryPath == "" || *approvalsPath == "" || *planPath == "" || *localRoot == "" || *remoteRoot == "" || *draftOut == "" || *packetsOut == "" || *derivativesRoot == "" || *minItems < contractMinimum || *maxItems < *minItems || *maxInputBytes <= 0 || *maxOutputBytes <= 0 || *maxWall <= 0 {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-prepare: all paths, valid preparation time, item bounds, byte ceilings, and wall-time ceiling are required")
 		return 2
 	}
@@ -186,7 +196,11 @@ func prepare(ctx context.Context, opts options, deriver mediaDeriver) (fillereva
 	}
 	seenCases := map[string]struct{}{}
 	clusterSplits := map[string]fillereval.Split{}
+	holdoutClusters := map[string]string{}
+	campaignSplits := map[string]fillereval.Split{}
+	holdoutCampaigns := map[string]string{}
 	contentCases := map[string]string{}
+	var perceptualFamilies []perceptualFamily
 	splitCounts := map[fillereval.Split]int{}
 	draft := fillereval.Manifest{SchemaVersion: fillereval.SchemaVersion, Kind: fillereval.CorpusCertification, CorpusVersion: plan.CorpusVersion, SliceGates: slices.Clone(plan.SliceGates)}
 	packets := make([]fillerbakeoff.Packet, 0, len(plan.Cases))
@@ -203,13 +217,29 @@ func prepare(ctx context.Context, opts options, deriver mediaDeriver) (fillereva
 			return fillereval.Manifest{}, nil, fmt.Errorf("duplicate plan case %q", planned.CaseID)
 		}
 		seenCases[planned.CaseID] = struct{}{}
-		if planned.Split != fillereval.SplitDevelopment && planned.Split != fillereval.SplitHoldout || strings.TrimSpace(planned.Cluster) == "" || planned.SegmentStartMS < 0 || planned.SegmentDurationMS <= 0 || planned.VideoStartMS < planned.SegmentStartMS || planned.VideoDurationMS <= 0 || planned.VideoDurationMS > mediatools.HostedVideoMaxDurationMS || planned.VideoStartMS+planned.VideoDurationMS > planned.SegmentStartMS+planned.SegmentDurationMS {
+		if planned.Split != fillereval.SplitDevelopment && planned.Split != fillereval.SplitHoldout || strings.TrimSpace(planned.Cluster) == "" || strings.TrimSpace(planned.Campaign) == "" || planned.SegmentStartMS < 0 || planned.SegmentDurationMS <= 0 || planned.VideoStartMS < planned.SegmentStartMS || planned.VideoDurationMS <= 0 || planned.VideoDurationMS > mediatools.HostedVideoMaxDurationMS || planned.VideoStartMS+planned.VideoDurationMS > planned.SegmentStartMS+planned.SegmentDurationMS {
 			return fillereval.Manifest{}, nil, fmt.Errorf("case %q has invalid split, cluster, or bounded spans", planned.CaseID)
 		}
 		if prior, exists := clusterSplits[planned.Cluster]; exists && prior != planned.Split {
 			return fillereval.Manifest{}, nil, fmt.Errorf("cluster %q crosses splits", planned.Cluster)
 		}
 		clusterSplits[planned.Cluster] = planned.Split
+		if planned.Split == fillereval.SplitHoldout {
+			if prior := holdoutClusters[planned.Cluster]; prior != "" {
+				return fillereval.Manifest{}, nil, fmt.Errorf("holdout cluster %q repeats cases %q and %q", planned.Cluster, prior, planned.CaseID)
+			}
+			holdoutClusters[planned.Cluster] = planned.CaseID
+		}
+		if prior, exists := campaignSplits[planned.Campaign]; exists && prior != planned.Split {
+			return fillereval.Manifest{}, nil, fmt.Errorf("campaign %q crosses splits", planned.Campaign)
+		}
+		campaignSplits[planned.Campaign] = planned.Split
+		if planned.Split == fillereval.SplitHoldout {
+			if prior := holdoutCampaigns[planned.Campaign]; prior != "" {
+				return fillereval.Manifest{}, nil, fmt.Errorf("holdout campaign %q repeats cases %q and %q", planned.Campaign, prior, planned.CaseID)
+			}
+			holdoutCampaigns[planned.Campaign] = planned.CaseID
+		}
 		splitCounts[planned.Split]++
 		approval, ok := approved[planned.CaseID]
 		if !ok || approval.InventorySHA256 != inventoryDigest || approval.Decision != "approved" || !approval.Redistributable || approval.MetadataSHA256 != item.MetadataSHA256 || approval.CaptureID != item.CaptureID || approval.Authority != item.Authority || approval.ItemID != item.ItemID || approval.ReviewerID == "" || strings.TrimSpace(approval.Basis) == "" || approval.ReviewedAt.Before(item.MetadataRetrievedAt) || approval.ReviewedAt.After(opts.preparedAt) {
@@ -248,10 +278,15 @@ func prepare(ctx context.Context, opts options, deriver mediaDeriver) (fillereva
 			if err != nil || len(frames) != 4 {
 				return fillereval.Manifest{}, nil, fmt.Errorf("case %q requires exactly four bounded frames: %w", planned.CaseID, err)
 			}
+			var perceptualHashes [4]uint64
 			for index, frame := range frames {
 				cfg, _, err := image.DecodeConfig(bytes.NewReader(frame))
 				if err != nil || cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width > 1920 {
 					return fillereval.Manifest{}, nil, fmt.Errorf("case %q frame %d is invalid", planned.CaseID, index+1)
+				}
+				perceptualHashes[index], err = perceptualHash(frame)
+				if err != nil {
+					return fillereval.Manifest{}, nil, fmt.Errorf("case %q frame %d perceptual hash: %w", planned.CaseID, index+1, err)
 				}
 				rel := filepath.ToSlash(filepath.Join(filepath.Base(caseDir), fmt.Sprintf("frame-%d.jpg", index+1)))
 				if err := writeArtifact(filepath.Join(stageRoot, filepath.FromSlash(rel)), frame); err != nil {
@@ -261,6 +296,12 @@ func prepare(ctx context.Context, opts options, deriver mediaDeriver) (fillereva
 				outputBytes += int64(len(frame))
 				packet.Signals = append(packet.Signals, fillerbakeoff.Signal{ID: fmt.Sprintf("frame-%d", index+1), Kind: string(filleradmission.KindFrame), Path: rel, SHA256: digest, Bytes: int64(len(frame)), Width: cfg.Width, Height: cfg.Height, AtMS: semanticAt(planned.SegmentStartMS, planned.SegmentDurationMS, index)})
 			}
+			for _, prior := range perceptualFamilies {
+				if perceptuallyRelated(prior.hashes, perceptualHashes) && prior.cluster != planned.Cluster {
+					return fillereval.Manifest{}, nil, fmt.Errorf("case %q is perceptually related to %q but uses a different cluster", planned.CaseID, prior.caseID)
+				}
+			}
+			perceptualFamilies = append(perceptualFamilies, perceptualFamily{caseID: planned.CaseID, cluster: planned.Cluster, hashes: perceptualHashes})
 			video, err := deriver.Video(ctx, mediaPath, planned.VideoStartMS, planned.VideoStartMS+planned.VideoDurationMS)
 			maxMeasuredVideoMS := min(mediatools.HostedVideoMaxDurationMS, planned.VideoDurationMS+1_000)
 			if err != nil || len(video.Data) == 0 || video.DurationMS <= 0 || video.DurationMS > maxMeasuredVideoMS || video.Width <= 0 || video.Height <= 0 || video.Width > 1280 || video.Height > 720 || video.SHA256 != fillercorpus.InventorySHA256(video.Data) {
@@ -291,7 +332,7 @@ func prepare(ctx context.Context, opts options, deriver mediaDeriver) (fillereva
 		preparedCase := fillereval.Case{ID: item.CaseID, Split: planned.Split, Cluster: planned.Cluster, ContentSHA256: hashes.sha256, EvidenceSHA256: evidenceDigest, Source: item.Authority, License: license, Provenance: fillereval.MediaProvenance{
 			Authority: item.Authority, Collection: strings.Join(item.Collection, ", "), ItemID: item.ItemID, ItemRef: itemRef, MetadataRetrievedAt: item.MetadataRetrievedAt, MetadataSHA256: item.MetadataSHA256,
 			EvidenceRef: "inventory:" + inventoryDigest + "#" + item.CaseID, LicenseURL: item.LicenseURL, RightsStatement: strings.Join(item.RightsAssertions, "; ") + "; review basis: " + approval.Basis, RightsDecision: approval.Decision, RightsReviewerID: approval.ReviewerID, RightsReviewedAt: approval.ReviewedAt, Redistributable: approval.Redistributable,
-			Creator: strings.Join(item.Creator, ", "), RequiredCredit: approval.RequiredCredit, Restrictions: slices.Clone(approval.Restrictions), SourceFilename: item.Representation.Name, SourceRef: sourceRef, SourceBytes: size, SegmentStartMS: planned.SegmentStartMS, SegmentDurationMS: planned.SegmentDurationMS,
+			Creator: strings.Join(item.Creator, ", "), Campaign: planned.Campaign, SourceFamily: fillercorpus.InventorySHA256([]byte(item.Authority + "\n" + item.ItemID)), RequiredCredit: approval.RequiredCredit, Restrictions: slices.Clone(approval.Restrictions), SourceFilename: item.Representation.Name, SourceRef: sourceRef, SourceBytes: size, SegmentStartMS: planned.SegmentStartMS, SegmentDurationMS: planned.SegmentDurationMS,
 		}}
 		if err := fillerbakeoff.ValidatePacketAgainstCase(preparedCase, packet, plan.EvidenceVersion, stageRoot); err != nil {
 			return fillereval.Manifest{}, nil, err
@@ -312,6 +353,43 @@ func prepare(ctx context.Context, opts options, deriver mediaDeriver) (fillereva
 	}
 	published = true
 	return draft, packets, nil
+}
+
+func perceptualHash(raw []byte) (uint64, error) {
+	decoded, _, err := image.Decode(bytes.NewReader(raw))
+	if err != nil {
+		return 0, err
+	}
+	bounds := decoded.Bounds()
+	if bounds.Dx() <= 0 || bounds.Dy() <= 0 {
+		return 0, fmt.Errorf("empty image")
+	}
+	var hash uint64
+	bit := 0
+	for y := 0; y < 8; y++ {
+		py := bounds.Min.Y + y*(bounds.Dy()-1)/7
+		for x := 0; x < 8; x++ {
+			leftX := bounds.Min.X + x*(bounds.Dx()-1)/8
+			rightX := bounds.Min.X + (x+1)*(bounds.Dx()-1)/8
+			left := color.GrayModel.Convert(decoded.At(leftX, py)).(color.Gray).Y
+			right := color.GrayModel.Convert(decoded.At(rightX, py)).(color.Gray).Y
+			if left > right {
+				hash |= 1 << bit
+			}
+			bit++
+		}
+	}
+	return hash, nil
+}
+
+func perceptuallyRelated(first, second [4]uint64) bool {
+	matches := 0
+	for i := range first {
+		if bits.OnesCount64(first[i]^second[i]) <= 8 {
+			matches++
+		}
+	}
+	return matches >= 3
 }
 
 func validateSliceGates(gates []fillereval.SliceGate, cases int) error {
