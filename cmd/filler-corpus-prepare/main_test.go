@@ -169,7 +169,7 @@ func preparationFixture(t *testing.T) (options, fakeDeriver) {
 			t.Fatal(err)
 		}
 		inv.Captures[0].PredictedMediaBytes += int64(len(media))
-		inv.Cases = append(inv.Cases, fillercorpus.InventoryCase{CaseID: fillercorpus.CaseID(authority, id), CaptureID: captureID, Authority: authority, ItemID: id, Title: "Case " + id, RoleHints: []string{role}, Creator: []string{"creator-" + id}, Campaign: "campaign-" + id, SourceFamily: "family-" + id, RightsAssertions: []string{"signed redistribution grant"}, MetadataRetrievedAt: snapshot, MetadataSHA256: strings.Repeat(string(rune('a'+index)), 64), Evidence: []fillercorpus.InventoryEvidence{{Kind: "rights", Path: "rights.txt", Bytes: 1, SHA256: strings.Repeat("c", 64)}, {Kind: "provenance", Path: "provenance.txt", Bytes: 1, SHA256: strings.Repeat("d", 64)}}, Representation: fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportLocal, Name: rel, Path: rel, MIMEType: "video/mp4", Bytes: int64(len(media)), SHA256: fillercorpus.InventorySHA256(media)}})
+		inv.Cases = append(inv.Cases, fillercorpus.InventoryCase{CaseID: fillercorpus.CaseID(authority, id), CaptureIDs: []string{captureID}, Authority: authority, ItemID: id, Title: "Case " + id, RoleHints: []string{role}, Creator: []string{"creator-" + id}, Campaign: "campaign-" + id, SourceFamily: "family-" + id, RightsAssertions: []string{"signed redistribution grant"}, MetadataRetrievedAt: snapshot, MetadataSHA256: strings.Repeat(string(rune('a'+index)), 64), Evidence: []fillercorpus.InventoryEvidence{{Kind: "rights", Path: "rights.txt", Bytes: 1, SHA256: strings.Repeat("c", 64)}, {Kind: "provenance", Path: "provenance.txt", Bytes: 1, SHA256: strings.Repeat("d", 64)}}, Representation: fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportLocal, Name: rel, Path: rel, MIMEType: "video/mp4", Bytes: int64(len(media)), SHA256: fillercorpus.InventorySHA256(media)}})
 	}
 	inventoryRaw, err := json.Marshal(inv)
 	if err != nil {
@@ -184,7 +184,7 @@ func preparationFixture(t *testing.T) (options, fakeDeriver) {
 	var approvals bytes.Buffer
 	encoder := json.NewEncoder(&approvals)
 	for _, item := range inv.Cases {
-		if err := encoder.Encode(fillercorpus.RightsDecision{InventorySHA256: digest, CaseID: item.CaseID, CaptureID: item.CaptureID, Authority: item.Authority, ItemID: item.ItemID, MetadataSHA256: item.MetadataSHA256, ReviewerID: "rights-reviewer", ReviewedAt: snapshot.Add(time.Hour), Decision: "approved", Basis: "signed grant inspected", Redistributable: true}); err != nil {
+		if err := encoder.Encode(fillercorpus.RightsDecision{InventorySHA256: digest, CaseID: item.CaseID, CaptureIDs: item.CaptureIDs, Authority: item.Authority, ItemID: item.ItemID, MetadataSHA256: item.MetadataSHA256, ReviewerID: "rights-reviewer", ReviewedAt: snapshot.Add(time.Hour), Decision: "approved", Basis: "signed grant inspected", Redistributable: true}); err != nil {
 			t.Fatal(err)
 		}
 	}

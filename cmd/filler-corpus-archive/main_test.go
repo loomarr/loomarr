@@ -87,8 +87,33 @@ func TestSourceNeutralInventoryEmitsOnlyCurrentSchema(t *testing.T) {
 	}
 }
 
+func TestSourceNeutralInventoryPreservesArchiveCollectionAuthority(t *testing.T) {
+	retrieved := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	inv := inventory{Collection: "vhscommercials", SnapshotAt: retrieved, MaxRequests: 2, RequestsUsed: 1, MaxResponseBytes: 1000, ResponseBytes: 500, MaxTotalBytes: 2000, SelectedBytes: 1000, MaxWallTimeMS: 60000, WallTimeMS: 100, SearchSHA256: strings.Repeat("b", 64), SearchRetrievedAt: retrieved, Cases: []candidate{{Identifier: "station-break", Title: "Station break", Collection: []string{"vhscommercials"}, ItemURL: "https://archive.org/details/station-break", MetadataURL: "https://archive.org/metadata/station-break", MetadataRetrievedAt: retrieved, MetadataSHA256: strings.Repeat("a", 64), LicenseURL: "https://creativecommons.org/publicdomain/mark/1.0/", Rights: []string{"public domain"}, File: selectedFile{Name: "break.mp4", URL: "https://archive.org/download/station-break/break.mp4", Format: "MPEG4", Source: "original", Bytes: 1000}}}}
+
+	got := sourceNeutralInventory(inv, "station_id")
+	if failures := fillercorpus.ValidateInventory(got); len(failures) != 0 {
+		t.Fatalf("inventory failures = %v", failures)
+	}
+	if got.Cases[0].Authority != "archive.org/vhscommercials" || got.Cases[0].CaseID != "archive.org/vhscommercials/station-break" {
+		t.Fatalf("inventory = %+v", got)
+	}
+}
+
 func TestRunRequiresHardCeilingsAndIdentity(t *testing.T) {
 	if code := run(nil, testWriter{t}, testWriter{t}); code != 2 {
+		t.Fatalf("exit = %d", code)
+	}
+}
+
+func TestRunRejectsNonPrelingerPilotOutput(t *testing.T) {
+	args := []string{
+		"--collection", "vhscommercials", "--out", "inventory.json", "--pilot-out", "pilot.json",
+		"--role-hint", "promo", "--cache-dir", "cache", "--user-agent", "identified client",
+		"--snapshot-at", "2026-08-27T12:00:00Z", "--max-requests", "2", "--max-items", "1",
+		"--max-item-bytes", "1", "--max-total-bytes", "1", "--delay", "500ms", "--max-wall-time", "1s",
+	}
+	if code := run(args, testWriter{t}, testWriter{t}); code != 2 {
 		t.Fatalf("exit = %d", code)
 	}
 }

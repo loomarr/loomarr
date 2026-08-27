@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/url"
 	"path"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -16,8 +17,9 @@ import (
 
 // InventorySchemaVersion is deliberately not backward compatible. Schema 1
 // could describe only one Archive.org collection; schema 2 let split planning
-// invent campaign and source-family identity after acquisition.
-const InventorySchemaVersion = 3
+// invent campaign and source-family identity after acquisition; schema 3 could
+// not represent one immutable item discovered by multiple bounded captures.
+const InventorySchemaVersion = 4
 
 const (
 	TransportHTTPS = "https"
@@ -25,11 +27,18 @@ const (
 )
 
 var authorityMediaHosts = map[string][]string{
-	"archive.org/prelinger":           {"archive.org", ".archive.org"},
 	"loc.gov/national-screening-room": {"tile.loc.gov"},
 	"images.nasa.gov":                 {"images-assets.nasa.gov"},
 	"cdc.gov":                         {"www.cdc.gov"},
 	"commons.wikimedia.org":           {"upload.wikimedia.org"},
+}
+
+func mediaHostRules(authority string) ([]string, bool) {
+	if strings.HasPrefix(authority, "archive.org/") && len(strings.TrimPrefix(authority, "archive.org/")) > 0 {
+		return []string{"archive.org", ".archive.org"}, true
+	}
+	rules, ok := authorityMediaHosts[authority]
+	return rules, ok
 }
 
 // Inventory freezes source-neutral candidate identity before rights review or
@@ -64,7 +73,7 @@ type Capture struct {
 
 type InventoryCase struct {
 	CaseID                  string                  `json:"caseId"`
-	CaptureID               string                  `json:"captureId"`
+	CaptureIDs              []string                `json:"captureIds"`
 	Authority               string                  `json:"authority"`
 	ItemID                  string                  `json:"itemId"`
 	Title                   string                  `json:"title"`
@@ -113,7 +122,7 @@ type InventoryEvidence struct {
 type RightsDecision struct {
 	InventorySHA256 string    `json:"inventorySha256"`
 	CaseID          string    `json:"caseId"`
-	CaptureID       string    `json:"captureId"`
+	CaptureIDs      []string  `json:"captureIds"`
 	Authority       string    `json:"authority"`
 	ItemID          string    `json:"itemId"`
 	MetadataSHA256  string    `json:"metadataSha256"`
@@ -137,7 +146,7 @@ func InventorySHA256(raw []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// DecodeInventory accepts exactly one strict schema-v3 JSON value. Older
+// DecodeInventory accepts exactly one strict schema-v4 JSON value. Older
 // single-source artifacts fail closed rather than being silently adapted.
 func DecodeInventory(reader io.Reader) (Inventory, error) {
 	var value Inventory
@@ -166,6 +175,8 @@ func MergeInventories(inputs ...Inventory) (Inventory, error) {
 		return Inventory{}, fmt.Errorf("merge inventories: at least one input is required")
 	}
 	result := Inventory{SchemaVersion: InventorySchemaVersion}
+	captures := make(map[string]struct{})
+	cases := make(map[string]int)
 	for index, input := range inputs {
 		if failures := ValidateInventory(input); len(failures) != 0 {
 			return Inventory{}, fmt.Errorf("merge inventories: input %d: %s", index+1, strings.Join(failures, "; "))
@@ -173,8 +184,29 @@ func MergeInventories(inputs ...Inventory) (Inventory, error) {
 		if input.SnapshotAt.After(result.SnapshotAt) {
 			result.SnapshotAt = input.SnapshotAt
 		}
-		result.Captures = append(result.Captures, input.Captures...)
-		result.Cases = append(result.Cases, input.Cases...)
+		for _, capture := range input.Captures {
+			if _, duplicate := captures[capture.CaptureID]; duplicate {
+				return Inventory{}, fmt.Errorf("merge inventories: duplicate capture %q", capture.CaptureID)
+			}
+			captures[capture.CaptureID] = struct{}{}
+			result.Captures = append(result.Captures, capture)
+		}
+		for _, item := range input.Cases {
+			if existingIndex, duplicate := cases[item.CaseID]; duplicate {
+				existing := result.Cases[existingIndex]
+				if !sameCapturedItem(existing, item) {
+					return Inventory{}, fmt.Errorf("merge inventories: case %q has conflicting frozen identity", item.CaseID)
+				}
+				existing.CaptureIDs = sortedUnion(existing.CaptureIDs, item.CaptureIDs)
+				existing.RoleHints = sortedUnion(existing.RoleHints, item.RoleHints)
+				result.Cases[existingIndex] = existing
+				continue
+			}
+			item.CaptureIDs = sortedUnion(nil, item.CaptureIDs)
+			item.RoleHints = sortedUnion(nil, item.RoleHints)
+			cases[item.CaseID] = len(result.Cases)
+			result.Cases = append(result.Cases, item)
+		}
 	}
 	slices.SortFunc(result.Captures, func(a, b Capture) int { return strings.Compare(a.CaptureID, b.CaptureID) })
 	slices.SortFunc(result.Cases, func(a, b InventoryCase) int { return strings.Compare(a.CaseID, b.CaseID) })
@@ -182,6 +214,18 @@ func MergeInventories(inputs ...Inventory) (Inventory, error) {
 		return Inventory{}, fmt.Errorf("merge inventories: %s", strings.Join(failures, "; "))
 	}
 	return result, nil
+}
+
+func sameCapturedItem(a, b InventoryCase) bool {
+	a.CaptureIDs, b.CaptureIDs = nil, nil
+	a.RoleHints, b.RoleHints = nil, nil
+	return reflect.DeepEqual(a, b)
+}
+
+func sortedUnion(a, b []string) []string {
+	values := append(append([]string(nil), a...), b...)
+	slices.Sort(values)
+	return slices.Compact(values)
 }
 
 type LaneInventoryOptions struct {
@@ -217,7 +261,7 @@ func InventoryFromLane(lane Lane, opts LaneInventoryOptions) (Inventory, error) 
 	}}}
 	for _, item := range lane.Cases {
 		result.Cases = append(result.Cases, InventoryCase{
-			CaseID: CaseID(lane.Authority, item.ItemID), CaptureID: captureID, Authority: lane.Authority, ItemID: item.ItemID,
+			CaseID: CaseID(lane.Authority, item.ItemID), CaptureIDs: []string{captureID}, Authority: lane.Authority, ItemID: item.ItemID,
 			Title: item.Title, RoleHints: item.RoleHints, Collection: nonEmptySlice(opts.Collection), LicenseURL: item.LicenseURL,
 			RightsAssertions: item.RightsAssertions, ItemURL: item.ItemURL, MetadataURL: item.MetadataURL,
 			MetadataRetrievedAt: item.MetadataRetrievedAt, MetadataSHA256: item.MetadataSHA256,
@@ -277,9 +321,20 @@ func ValidateInventory(value Inventory) []string {
 		if item.CaseID != CaseID(item.Authority, item.ItemID) || strings.TrimSpace(item.Authority) == "" || strings.TrimSpace(item.ItemID) == "" {
 			failures = append(failures, fmt.Sprintf("case %q has invalid source-neutral identity", item.CaseID))
 		}
-		capture, ok := captures[item.CaptureID]
-		if !ok || capture.Authority != item.Authority || !slices.Contains(item.RoleHints, capture.RoleHint) {
-			failures = append(failures, fmt.Sprintf("case %q does not match capture %q", item.CaseID, item.CaptureID))
+		if len(item.CaptureIDs) == 0 || !slices.IsSorted(item.CaptureIDs) || len(slices.Compact(append([]string(nil), item.CaptureIDs...))) != len(item.CaptureIDs) {
+			failures = append(failures, fmt.Sprintf("case %q has invalid capture identities", item.CaseID))
+		}
+		transport := ""
+		for _, captureID := range item.CaptureIDs {
+			capture, ok := captures[captureID]
+			if !ok || capture.Authority != item.Authority || !slices.Contains(item.RoleHints, capture.RoleHint) {
+				failures = append(failures, fmt.Sprintf("case %q does not match capture %q", item.CaseID, captureID))
+			} else if transport != "" && transport != capture.Transport {
+				failures = append(failures, fmt.Sprintf("case %q mixes capture transports", item.CaseID))
+			} else {
+				transport = capture.Transport
+			}
+			predictedByCapture[captureID] += item.Representation.Bytes
 		}
 		if _, ok := seen[item.CaseID]; ok {
 			failures = append(failures, fmt.Sprintf("duplicate case %q", item.CaseID))
@@ -288,22 +343,22 @@ func ValidateInventory(value Inventory) []string {
 		if strings.TrimSpace(item.Title) == "" || len(item.RoleHints) == 0 || slices.Contains(item.RoleHints, "") || len(item.RightsAssertions) == 0 || slices.Contains(item.RightsAssertions, "") || item.MetadataRetrievedAt.IsZero() || item.MetadataRetrievedAt.After(value.SnapshotAt) || !digest(item.MetadataSHA256, 64) {
 			failures = append(failures, fmt.Sprintf("case %q has incomplete frozen metadata", item.CaseID))
 		}
-		if (capture.Transport == TransportHTTPS && (!httpsURL(item.ItemURL) || !httpsURL(item.MetadataURL))) ||
-			(capture.Transport == TransportLocal && ((item.ItemURL != "" && !httpsURL(item.ItemURL)) || (item.MetadataURL != "" && !httpsURL(item.MetadataURL)))) ||
+		if (transport == TransportHTTPS && (!httpsURL(item.ItemURL) || !httpsURL(item.MetadataURL))) ||
+			(transport == TransportLocal && ((item.ItemURL != "" && !httpsURL(item.ItemURL)) || (item.MetadataURL != "" && !httpsURL(item.MetadataURL)))) ||
 			(item.LicenseURL != "" && !httpsURL(item.LicenseURL)) {
 			failures = append(failures, fmt.Sprintf("case %q has an invalid evidence URL", item.CaseID))
 		}
 		if item.Representation.Bytes <= 0 || strings.TrimSpace(item.Representation.Name) == "" || strings.TrimSpace(item.Representation.MIMEType) == "" || !digestOptional(item.Representation.SHA256, 64) || !digestOptional(item.Representation.SHA1, 40) || !digestOptional(item.Representation.MD5, 32) {
 			failures = append(failures, fmt.Sprintf("case %q has incomplete representation identity", item.CaseID))
 		}
-		if item.Representation.Transport != capture.Transport {
+		if item.Representation.Transport != transport {
 			failures = append(failures, fmt.Sprintf("case %q representation transport does not match its capture", item.CaseID))
 		}
-		if capture.Transport == TransportHTTPS {
+		if transport == TransportHTTPS {
 			if err := ValidateMediaURL(item.Representation.URL, item.AllowedMediaHosts); err != nil {
 				failures = append(failures, fmt.Sprintf("case %q: %v", item.CaseID, err))
 			}
-			knownRules, known := authorityMediaHosts[item.Authority]
+			knownRules, known := mediaHostRules(item.Authority)
 			if !known || len(item.AllowedMediaHosts) == 0 {
 				failures = append(failures, fmt.Sprintf("case %q has no supported authority host policy", item.CaseID))
 			} else {
@@ -316,7 +371,6 @@ func ValidateInventory(value Inventory) []string {
 		} else if item.Representation.URL != "" || len(item.AllowedMediaHosts) != 0 || !safeRelativePath(item.Representation.Path) || !digest(item.Representation.SHA256, 64) || !validDirectEvidence(item.Evidence) {
 			failures = append(failures, fmt.Sprintf("case %q has incomplete local media or evidence identity", item.CaseID))
 		}
-		predictedByCapture[item.CaptureID] += item.Representation.Bytes
 	}
 	for id, capture := range captures {
 		if predictedByCapture[id] != capture.PredictedMediaBytes {

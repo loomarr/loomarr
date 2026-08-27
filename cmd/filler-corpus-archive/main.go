@@ -152,6 +152,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-archive: collection identifier is unsafe")
 		return 2
 	}
+	if *pilotOutputPath != "" && *collection != "prelinger" {
+		_, _ = fmt.Fprintln(stderr, "filler-corpus-archive: --pilot-out is restricted to the qualified prelinger pilot lane")
+		return 2
+	}
 	snapshotAt, err := time.Parse(time.RFC3339, *snapshotAtText)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "filler-corpus-archive: parse --snapshot-at: %v\n", err)
@@ -311,7 +315,7 @@ func prelingerPilotLane(inv inventory, roleHint string) fillercorpus.Lane {
 }
 
 func sourceNeutralInventory(inv inventory, roleHint string) fillercorpus.Inventory {
-	authority := "archive.org/prelinger"
+	authority := "archive.org/" + inv.Collection
 	captureID := fillercorpus.NewCaptureID(authority, inv.Collection, roleHint)
 	result := fillercorpus.Inventory{
 		SchemaVersion: fillercorpus.InventorySchemaVersion,
@@ -330,7 +334,7 @@ func sourceNeutralInventory(inv inventory, roleHint string) fillercorpus.Invento
 		assertions = append(assertions, item.PossibleCopyrightStatus...)
 		assertions = append(assertions, "Archive license assertion: "+item.LicenseURL)
 		result.Cases = append(result.Cases, fillercorpus.InventoryCase{
-			CaseID: fillercorpus.CaseID(authority, item.Identifier), CaptureID: captureID, Authority: authority, ItemID: item.Identifier,
+			CaseID: fillercorpus.CaseID(authority, item.Identifier), CaptureIDs: []string{captureID}, Authority: authority, ItemID: item.Identifier,
 			Title: item.Title, RoleHints: []string{roleHint}, Collection: item.Collection, Creator: item.Creator, Date: item.Date,
 			LicenseURL: strings.Replace(item.LicenseURL, "http://", "https://", 1), RightsAssertions: assertions,
 			PossibleCopyrightStatus: item.PossibleCopyrightStatus, ItemURL: item.ItemURL, MetadataURL: item.MetadataURL,

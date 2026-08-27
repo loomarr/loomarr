@@ -186,7 +186,7 @@ func parseDecision(row fillercorpus.RightsReviewRow, fields []string, lockedAt t
 		return fillercorpus.RightsDecision{}, fmt.Errorf("the asserted license requires attribution")
 	}
 	return fillercorpus.RightsDecision{
-		InventorySHA256: row.InventorySHA256, CaseID: row.CaseID, CaptureID: row.CaptureID, Authority: row.Authority, ItemID: row.ItemID, MetadataSHA256: row.MetadataSHA256,
+		InventorySHA256: row.InventorySHA256, CaseID: row.CaseID, CaptureIDs: append([]string(nil), row.CaptureIDs...), Authority: row.Authority, ItemID: row.ItemID, MetadataSHA256: row.MetadataSHA256,
 		ReviewerID: reviewerID, ReviewedAt: reviewedAt.UTC(), Decision: decision, Basis: basis,
 		Redistributable: redistributable, RequiredCredit: requiredCredit, Restrictions: restrictions,
 	}, nil
