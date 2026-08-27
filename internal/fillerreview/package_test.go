@@ -169,7 +169,7 @@ func reviewFixture(t *testing.T) fixturePaths {
 		packets = append(packets, packet)
 		draft.Cases = append(draft.Cases, fillereval.Case{
 			ID: id, Split: fillereval.SplitDevelopment, Cluster: "cluster-" + leftPad(i), ContentSHA256: mediaSHA,
-			EvidenceSHA256: fillerbakeoff.PacketSHA256(packet), Source: "archive.org", License: "CC0-1.0",
+			EvidenceSHA256: fillerbakeoff.PacketSHA256(packet), Source: "archive.org/classic_tv_commercials", License: "CC0-1.0",
 			Provenance: fillereval.MediaProvenance{
 				Authority: "archive.org", ItemID: id, ItemRef: "https://example.invalid/" + id,
 				MetadataRetrievedAt: time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC), MetadataSHA256: strings.Repeat("a", 64),
