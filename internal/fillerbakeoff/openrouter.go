@@ -47,12 +47,11 @@ type openRouterExtractor struct {
 }
 
 type openRouterRequest struct {
-	Model               string                   `json:"model"`
-	Messages            []openRouterMessage      `json:"messages"`
-	Provider            openRouterRoute          `json:"provider"`
-	ResponseFormat      openRouterResponseFormat `json:"response_format"`
-	Temperature         int                      `json:"temperature"`
-	MaxCompletionTokens int                      `json:"max_completion_tokens"`
+	Model          string                   `json:"model"`
+	Messages       []openRouterMessage      `json:"messages"`
+	Provider       openRouterRoute          `json:"provider"`
+	ResponseFormat openRouterResponseFormat `json:"response_format"`
+	MaxTokens      int                      `json:"max_tokens"`
 }
 
 type openRouterMessage struct {
@@ -210,7 +209,7 @@ func (o *openRouterExtractor) Extract(ctx context.Context, request Request) (Ext
 		ResponseFormat: openRouterResponseFormat{Type: "json_schema", JSONSchema: openRouterJSONSchema{
 			Name: "filler_evidence", Strict: true, Schema: openRouterEvidenceSchema(),
 		}},
-		Temperature: 0, MaxCompletionTokens: maxOpenRouterOutputTokens,
+		MaxTokens: maxOpenRouterOutputTokens,
 	})
 	if err != nil {
 		return Extraction{}, fmt.Errorf("marshal OpenRouter bakeoff request: %w", err)
@@ -334,17 +333,20 @@ func openRouterMessages(request Request) ([]openRouterMessage, map[string]Signal
 			if !slices.Contains(signal.ContentTypes, "image/jpeg") {
 				return nil, nil, derivative, fmt.Errorf("frame signal %q is not certified JPEG", signal.ID)
 			}
+			parts = append(parts, openRouterPart{Type: "text", Text: "The immediately following image is signal_id " + signal.ID + "."})
 			parts = append(parts, openRouterPart{Type: "image_url", ImageURL: &openRouterMediaURL{URL: "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(data)}})
 		case filleradmission.KindVideo:
 			if !slices.Contains(signal.ContentTypes, "video/mp4") {
 				return nil, nil, derivative, fmt.Errorf("video signal %q is not certified MP4", signal.ID)
 			}
+			parts = append(parts, openRouterPart{Type: "text", Text: "The immediately following video is signal_id " + signal.ID + "."})
 			parts = append(parts, openRouterPart{Type: "video_url", VideoURL: &openRouterMediaURL{URL: "data:video/mp4;base64," + base64.StdEncoding.EncodeToString(data)}})
 		case filleradmission.KindAudio:
 			format, ok := certifiedAudioFormat(signal.ContentTypes)
 			if !ok {
 				return nil, nil, derivative, fmt.Errorf("audio signal %q has no certified inline format", signal.ID)
 			}
+			parts = append(parts, openRouterPart{Type: "text", Text: "The immediately following audio is signal_id " + signal.ID + "."})
 			parts = append(parts, openRouterPart{Type: "input_audio", InputAudio: &openRouterAudio{Data: base64.StdEncoding.EncodeToString(data), Format: format}})
 		default:
 			return nil, nil, derivative, fmt.Errorf("signal %q has unexpected external kind %q", signal.ID, signal.Kind)
