@@ -233,7 +233,7 @@ func validateConfig(config Config) error {
 		if strings.Contains(strings.ToLower(route.Model), "latest") || route.AllowFallbacks {
 			return fmt.Errorf("route[%d] certification requires a concrete model with fallbacks disabled", i)
 		}
-		if route.Provider == "openrouter" && (route.UpstreamProviderSlug == "" || route.UpstreamProvider == "" || !route.StructuredOutput || !route.RequireZDR) {
+		if route.Provider == "openrouter" && (route.ResolvedModel == "" || route.UpstreamProviderSlug == "" || route.UpstreamProvider == "" || !route.StructuredOutput || !route.RequireZDR) {
 			return fmt.Errorf("route[%d] OpenRouter certification requires provider selector and resolved identity pins, structured output, and ZDR", i)
 		}
 		if err := validateEscalation(route); err != nil {
@@ -263,7 +263,7 @@ func validRouteEnvelope(route Route) bool {
 			return false
 		}
 	}
-	return len(route.UpstreamProviderSlug) <= maxFieldBytes && len(route.UpstreamProvider) <= maxFieldBytes && len(route.MarginalValueEvidence) <= maxFieldBytes && len(route.MarginalValueSHA256) <= 64 &&
+	return len(route.ResolvedModel) <= maxFieldBytes && len(route.UpstreamProviderSlug) <= maxFieldBytes && len(route.UpstreamProvider) <= maxFieldBytes && len(route.MarginalValueEvidence) <= maxFieldBytes && len(route.MarginalValueSHA256) <= 64 &&
 		len(route.Modalities) > 0 && len(route.Modalities) <= 8 &&
 		route.MaxChargeNanoUSD > 0 && route.MaxAttempts == 1 &&
 		len(route.EscalateOn) > 0 && len(route.EscalateOn) <= 32

@@ -114,7 +114,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `diagnostics` | 8 | — |
 | `filler` | 6 | `diagnostics`, `filleradmission`, `llm`, `metrics` |
 | `filleradmission` | 7 | — |
-| `httpx` | 6 | `metrics` |
+| `httpx` | 7 | `metrics` |
 | `library` | 7 | `filler`, `httpx` |
 | `llm` | 5 | `httpx`, `metrics` |
 | `metrics` | 6 | `provision` |
@@ -186,7 +186,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 4**
 
-- **`httpx`** · 6 importers · → `metrics`
+- **`httpx`** · 7 importers · → `metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 
 **Layer 5**
@@ -204,7 +204,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`filler`** · 6 importers · → `diagnostics`, `filleradmission`, `fillerdecision`, `llm`, `mediatools`, `metrics`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
-- **`fillerreview`** · → `filleradmission`, `fillerbakeoff`, `fillereval`
+- **`fillerreview`** · → `filleradmission`, `fillerbakeoff`, `fillereval`, `httpx`
   Materializes identity-blind evidence for independent semantic review.
 
 **Layer 7**
@@ -3408,11 +3408,12 @@ Certification routes authorize exactly one provider attempt per invocation; an a
 internal retries inside an aggregate attribution. A retry is a new runner invocation and ledger step.
 
 An OpenRouter certification run is also bound to one immutable metadata snapshot fetched no more
-than 24 hours before its declared run time. The snapshot makes one bounded authenticated ZDR-list
-request plus one bounded endpoint request per concrete candidate and freezes model modalities,
-endpoint selector slug, distinct returned provider name, strict-output parameters, status, exact
-price text, and ZDR membership. Its SHA-256 is both the run's capability and price identity. Every
-route must resolve exactly within that snapshot before media is opened or spend is reserved; a
+than 24 hours before its declared run time. The snapshot makes one bounded authenticated model-catalog
+request, one bounded ZDR-list request, and one bounded endpoint request per concrete candidate. It
+freezes both the requested model ID and catalog canonical revision, model modalities, endpoint
+selector slug, distinct returned provider name, strict-output parameters, status, exact price text,
+and ZDR membership. Its SHA-256 is both the run's capability and price identity. Every route must bind
+its requested and resolved model identities and resolve exactly within that snapshot before media is opened or spend is reserved; a
 human-readable snapshot label, catalog-level capability claim, or provider-family name is not proof.
 
 Routing is reason-driven rather than confidence-driven: deterministic and text evidence run first;
@@ -3503,6 +3504,37 @@ submit immutable label hashes covering disposition, reject class, content role, 
 flags, evidence spans, and any review question. The original blind submissions remain visible. Matching
 submissions become the final labels directly; a disagreement requires a reasoned final adjudication
 by a third identity. Rights adjudication and semantic labeling are separate records.
+
+Eligible and semantic-invalid labels require one role from the closed review vocabulary. A
+deterministic-invalid or ambiguous label may leave the role empty only when the supplied evidence
+cannot establish it; there is no legacy `unknown` role and reviewers never invent a filler type merely
+to fill the field. One bound signal may support multiple distinct evidence claims, such as a
+transcript supporting role, brand, and product; only an exact repeated evidence record is invalid.
+
+A semantic reviewer may be a person or a model-backed review run, but a model-backed identity is
+valid only when a separate immutable attestation binds the exact blind-package manifest, prompt,
+provider, concrete model identity, its local digest or hosted capability-snapshot identity,
+transcript-set identity when used, completion time, per-case
+latency and token accounting, and the completed submission hash. The runner receives only one
+reviewer package, re-hashes every supplied signal, joins a transcript by the package audio hash rather
+than exposing a case ID, runs serially with one attempt and a per-case timeout, and atomically
+publishes the attestation and complete JSONL submission only after all 300 cases validate. Review A
+cannot see review B, either submission, an alias map, source identity, or candidate output. The exact
+model family used for review or adjudication is excluded from every scored candidate and cascade in
+that corpus generation; changing a quantization or provider does not erase that exclusion. A third
+model-backed adjudicator receives only the two completed labels and the same blind evidence for a
+disputed alias, never candidate predictions. Model agreement is therefore review evidence, not an
+automatic claim of truth: the locked development corpus can select candidates but cannot certify
+production, and the independently clustered holdout repeats this label protocol before it is opened
+to candidate scoring.
+
+A hosted review run additionally binds one exact upstream route from a capability snapshot no more
+than 24 hours old. It requires image and text input plus strict structured output, zero-data-retention
+eligibility, one provider attempt with fallback disabled, and response metadata proving the selected
+route and catalog canonical model revision. Before every serial request it reserves the configured maximum charge against both the exact
+request count and total nano-USD ceiling; it records the returned generation, tokens, latency, and
+exact charge per case. A missing or mismatched route, usage charge, schema, or case result aborts the
+batch without publishing partial labels.
 
 The maintained review packager turns one such opaque packet into inspectable reviewer evidence; a
 hash-only packet is not a completed review handoff. It consumes the exact draft, reviewer packet,
