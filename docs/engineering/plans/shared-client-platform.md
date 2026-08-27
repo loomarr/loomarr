@@ -262,8 +262,9 @@ fixtures cover deterministic states, but a mock-only demo does not pass.
   imports and no dependency cycles.
 - The same production source implements the shared primitives and Guide detail content on all three
   targets; platform adapters contain navigation, focus, and player transport differences.
-- A source-sharing report identifies shared, adapter-specific, and duplicated code. Duplicated
-  product rules block adoption; duplicated platform mechanics do not.
+- The [source-sharing report](../client-platform-source-sharing.md) identifies shared,
+  adapter-specific, and duplicated code. Duplicated product rules block adoption; duplicated
+  platform mechanics do not.
 - Removing Tamagui would require replacing the design-system implementation, not editing every
   screen. This deletion test is proved by import-graph enforcement.
 
