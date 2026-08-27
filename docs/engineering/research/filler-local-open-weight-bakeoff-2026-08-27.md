@@ -103,3 +103,28 @@ on the CPU; lower VRAM consumption therefore did not mean better appliance fit.
 6. This local role comparison does not replace the planned hosted model and modality matrix. Audio,
    transcript, frames, and bounded direct-video cells still need the locked corpus, and direct video
    must prove incremental value on named temporal slices before it enters a cascade.
+
+## Provisional local frame feasibility
+
+Three smaller open-weight vision candidates received the identical ordered four-JPEG route through
+the digest-pinned Ollama adapter. This was a transport and hardware feasibility probe on one Jell-O
+commercial, not an accuracy score and not a substitute for the locked 300-case development replay.
+
+| Candidate | Ollama registry digest | Identical route result | Wall latency |
+| --- | --- | --- | ---: |
+| Qwen3-VL 8B Instruct | `0533d74300e4f9bc367d675d4e64ffd073d50ff16a2b4096cc2e8a1cf8c96319` | valid structured response | 8.3 s |
+| MiniCPM-V 4.5 8B | `0c40168f46d1cbf5cec399d8ced34b6d3347a79f69306866efa44203c08eeda3` | valid structured response | 10.7 s |
+| Moondream 2 | `55fc3abd386771e5b5d1bbcc732f3c3f4df6e9f9f08f1131f9cc27ba2d1eec5b` | operational failure: 2,988 request tokens exceeded its hard 2,048-token context | — |
+
+Qwen3-VL and MiniCPM therefore advance to the full local frame comparison. Moondream remains a
+recorded operational failure; shrinking its route would make the comparison favorable rather than
+identical. The current upstream cards identify all three as Apache-2.0
+([Qwen3-VL](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct),
+[MiniCPM-V](https://huggingface.co/openbmb/MiniCPM-V-4_5), and
+[Moondream](https://huggingface.co/vikhyatk/moondream2)), but the exact local package/model provenance
+still has to be locked with the prediction ledger before promotion.
+
+This Ollama lane is ordered frames plus shared transcript, not direct video. A local direct-video cell
+requires a runtime that actually accepts the bounded video derivative under the same packet, ceiling,
+and accounting contract; it cannot be inferred from a model card or represented by denser frame
+sampling.

@@ -207,19 +207,20 @@ type Conflict struct {
 }
 
 type RunIdentity struct {
-	Profile            string    `json:"profile"`
-	EvaluationSplit    Split     `json:"evaluationSplit"`
-	EvidenceVersion    string    `json:"evidenceVersion"`
-	PromptVersion      string    `json:"promptVersion"`
-	TaxonomyVersion    string    `json:"taxonomyVersion"`
-	PolicyVersion      string    `json:"policyVersion"`
-	RolePolicyVersion  string    `json:"rolePolicyVersion"`
-	CapabilitySnapshot string    `json:"capabilitySnapshot"`
-	PriceSnapshot      string    `json:"priceSnapshot"`
-	GeneratedAt        time.Time `json:"generatedAt"`
-	MaxRequests        int       `json:"maxRequests"`
-	MaxSpendNanoUSD    int64     `json:"maxSpendNanoUsd"`
-	MaxConcurrency     int       `json:"maxConcurrency"`
+	Profile             string    `json:"profile"`
+	EvaluationSplit     Split     `json:"evaluationSplit"`
+	EvidenceVersion     string    `json:"evidenceVersion"`
+	PromptVersion       string    `json:"promptVersion"`
+	TaxonomyVersion     string    `json:"taxonomyVersion"`
+	PolicyVersion       string    `json:"policyVersion"`
+	RolePolicyVersion   string    `json:"rolePolicyVersion"`
+	CapabilitySnapshot  string    `json:"capabilitySnapshot"`
+	PriceSnapshot       string    `json:"priceSnapshot"`
+	TranscriptSetSHA256 string    `json:"transcriptSetSha256,omitempty"`
+	GeneratedAt         time.Time `json:"generatedAt"`
+	MaxRequests         int       `json:"maxRequests"`
+	MaxSpendNanoUSD     int64     `json:"maxSpendNanoUsd"`
+	MaxConcurrency      int       `json:"maxConcurrency"`
 }
 
 type Report struct {

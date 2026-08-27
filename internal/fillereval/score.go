@@ -272,8 +272,13 @@ func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report 
 	}
 	sort.Slice(report.Metrics.Rungs, func(i, j int) bool { return report.Metrics.Rungs[i].Rung < report.Metrics.Rungs[j].Rung })
 
-	applyGates(&report, manifest.SliceGates, eligible, invalid, deterministicRejects, semanticRejects, totalAttempts)
-	report.Certified = len(report.Failures) == 0
+	if manifest.Kind == CorpusCertification {
+		applyGates(&report, manifest.SliceGates, eligible, invalid, deterministicRejects, semanticRejects, totalAttempts)
+		report.Certified = len(report.Failures) == 0
+	} else {
+		applyDevelopmentGates(&report, manifest.SliceGates, totalAttempts)
+		report.Certified = false
+	}
 	return report
 }
 
@@ -511,6 +516,30 @@ func ValidateManifest(manifest Manifest) []string {
 	return failures
 }
 
+// ValidateDevelopmentRun proves that a development seed is ready for the
+// non-certifying model-selection run. Draft and partially reviewed corpora are
+// rejected before a provider can see their packet set.
+func ValidateDevelopmentRun(manifest Manifest) []string {
+	var failures []string
+	if manifest.Kind != CorpusDevelopmentSeed {
+		return []string{"development run requires a development_seed manifest"}
+	}
+	failures = append(failures, ValidateManifest(manifest)...)
+	if manifest.LockedAt.IsZero() {
+		failures = append(failures, "development run requires a lock time")
+	}
+	if len(manifest.Cases) < CertificationMinDevelopment {
+		failures = append(failures, fmt.Sprintf("development run has %d cases; require at least %d", len(manifest.Cases), CertificationMinDevelopment))
+	}
+	for _, c := range manifest.Cases {
+		if c.Split != SplitDevelopment {
+			failures = append(failures, c.ID+": development run may contain only development cases")
+		}
+		failures = append(failures, validateLabelLock(c.ID, c, manifest.LockedAt)...)
+	}
+	return failures
+}
+
 func trackCertificationSplit(prefix, name, value string, split Split, seen map[string]Split) []string {
 	if value == "" {
 		return nil
@@ -543,6 +572,12 @@ func validateCertificationCase(prefix string, c Case, lockedAt time.Time) []stri
 	if strings.TrimSpace(p.Campaign) == "" || strings.TrimSpace(p.SourceFamily) == "" {
 		failures = append(failures, prefix+": certification requires campaign and source-family identity")
 	}
+	failures = append(failures, validateLabelLock(prefix, c, lockedAt)...)
+	return failures
+}
+
+func validateLabelLock(prefix string, c Case, lockedAt time.Time) []string {
+	var failures []string
 	wantLabelHash := LabelSHA256(c)
 	if len(c.Evidence) == 0 {
 		failures = append(failures, prefix+": independently reviewed evidence labels are required")
@@ -640,18 +675,7 @@ func containsAll(actual, expected []string) bool {
 }
 
 func applyGates(r *Report, gates []SliceGate, eligible, invalid, deterministicRejects, semanticRejects, totalAttempts int) {
-	if r.Run.Profile == "" || (r.Run.EvaluationSplit != SplitDevelopment && r.Run.EvaluationSplit != SplitHoldout) || r.Run.EvidenceVersion == "" || r.Run.PromptVersion == "" || r.Run.TaxonomyVersion == "" || r.Run.PolicyVersion == "" || r.Run.RolePolicyVersion == "" || r.Run.CapabilitySnapshot == "" || r.Run.PriceSnapshot == "" || r.Run.GeneratedAt.IsZero() {
-		r.Failures = append(r.Failures, "run identity requires profile, evidence, prompt, taxonomy, admission policy, role policy, capability, and price versions")
-	}
-	if r.Run.MaxRequests <= 0 || r.Run.MaxSpendNanoUSD <= 0 || r.Run.MaxConcurrency <= 0 {
-		r.Failures = append(r.Failures, "run identity requires positive request, spend, and concurrency ceilings")
-	}
-	if totalAttempts > r.Run.MaxRequests {
-		r.Failures = append(r.Failures, fmt.Sprintf("run used %d attempts; request ceiling is %d", totalAttempts, r.Run.MaxRequests))
-	}
-	if r.Metrics.TotalChargedNanoUSD > r.Run.MaxSpendNanoUSD {
-		r.Failures = append(r.Failures, fmt.Sprintf("run charged %d nanodollars; spend ceiling is %d", r.Metrics.TotalChargedNanoUSD, r.Run.MaxSpendNanoUSD))
-	}
+	applyRunBounds(r, totalAttempts)
 	if r.Metrics.Cases < CertificationMinHoldout {
 		r.Failures = append(r.Failures, fmt.Sprintf("corpus has %d cases; certification requires at least %d independent holdout cases", r.Metrics.Cases, CertificationMinHoldout))
 	}
@@ -676,6 +700,30 @@ func applyGates(r *Report, gates []SliceGate, eligible, invalid, deterministicRe
 	if r.Metrics.ReviewRate > 0 && (r.Metrics.ReviewAnswerable < .95 || r.Metrics.ReviewAnswerableLower < .95) {
 		r.Failures = append(r.Failures, fmt.Sprintf("answerable review %.4f (one-sided 95%% lower %.4f), require both >= 0.95", r.Metrics.ReviewAnswerable, r.Metrics.ReviewAnswerableLower))
 	}
+	applySliceGates(r, gates)
+}
+
+func applyDevelopmentGates(r *Report, gates []SliceGate, totalAttempts int) {
+	applyRunBounds(r, totalAttempts)
+	applySliceGates(r, gates)
+}
+
+func applyRunBounds(r *Report, totalAttempts int) {
+	if r.Run.Profile == "" || (r.Run.EvaluationSplit != SplitDevelopment && r.Run.EvaluationSplit != SplitHoldout) || r.Run.EvidenceVersion == "" || r.Run.PromptVersion == "" || r.Run.TaxonomyVersion == "" || r.Run.PolicyVersion == "" || r.Run.RolePolicyVersion == "" || r.Run.CapabilitySnapshot == "" || r.Run.PriceSnapshot == "" || r.Run.GeneratedAt.IsZero() {
+		r.Failures = append(r.Failures, "run identity requires profile, evidence, prompt, taxonomy, admission policy, role policy, capability, and price versions")
+	}
+	if r.Run.MaxRequests <= 0 || r.Run.MaxSpendNanoUSD <= 0 || r.Run.MaxConcurrency <= 0 {
+		r.Failures = append(r.Failures, "run identity requires positive request, spend, and concurrency ceilings")
+	}
+	if totalAttempts > r.Run.MaxRequests {
+		r.Failures = append(r.Failures, fmt.Sprintf("run used %d attempts; request ceiling is %d", totalAttempts, r.Run.MaxRequests))
+	}
+	if r.Metrics.TotalChargedNanoUSD > r.Run.MaxSpendNanoUSD {
+		r.Failures = append(r.Failures, fmt.Sprintf("run charged %d nanodollars; spend ceiling is %d", r.Metrics.TotalChargedNanoUSD, r.Run.MaxSpendNanoUSD))
+	}
+}
+
+func applySliceGates(r *Report, gates []SliceGate) {
 	scores := make(map[string]SliceScore, len(r.Slices))
 	for _, score := range r.Slices {
 		scores[score.Slice] = score

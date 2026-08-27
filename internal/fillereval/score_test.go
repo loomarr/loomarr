@@ -38,6 +38,26 @@ func TestValidateManifestRejectsSimilarityLeakage(t *testing.T) {
 	}
 }
 
+func TestScoreDevelopmentRunReportsSelectionMetricsWithoutCertificationGates(t *testing.T) {
+	manifest := developmentReviewCorpus()
+	predictions := make([]Prediction, 0, len(manifest.Cases))
+	for _, c := range manifest.Cases {
+		predictions = append(predictions, Prediction{
+			CaseID: c.ID, Verdict: VerdictAdmit, ContentRole: c.ContentRole, Taxonomy: c.Taxonomy, PolicyFlags: c.PolicyFlags,
+			Steps: []InferenceStep{{
+				EvaluationID: "eval-" + c.ID, Role: "filler_text", Rung: "text", RequestedProvider: "fixture", RequestedModel: "fixture",
+				ResolvedProvider: "fixture", ResolvedModel: "fixture", Modalities: []string{"text"}, Attempts: 1,
+			}},
+		})
+	}
+	run := completeRun()
+	run.EvaluationSplit = SplitDevelopment
+	report := Score(manifest, predictions, run)
+	if report.Certified || report.Metrics.Cases != CertificationMinDevelopment || len(report.Failures) != 0 {
+		t.Fatalf("development report = %+v", report)
+	}
+}
+
 func TestScoreCertifiesOnlyMeasuredSelectiveRiskAndCoverage(t *testing.T) {
 	manifest, predictions := passingCorpus(CertificationMinHoldout)
 	report := Score(manifest, predictions, completeRun())
