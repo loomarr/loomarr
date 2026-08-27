@@ -117,6 +117,18 @@ are retained under
 This is not the complete P3.5 exit claim. The real-iPhone portrait/landscape workshop evidence
 remains required.
 
+## P4 emulator evidence to date
+
+On 2026-08-27, the production x86 React Native TV application paired to an isolated seeded backend
+and rendered authoritative Channel 42 Watching data. The resource-bounded emulator gate passed the
+populated Watching → Guide → Back → Surf → Back journey and HOME/foreground restoration. The
+gate fails closed for hardware, an unpaired client, unlabeled top-level surfaces, or Watching chrome
+remaining accessible behind Guide or Surf. Runtime QA added regression coverage for the Guide root
+label and for returning focus to the Watching OK target after an overlay unmounts.
+
+This emulator pass is P4 evidence, not a substitute for the remaining physical-Shield populated
+soak, time-shift, background/foreground, Macrobenchmark, distribution, update, or rollback gates.
+
 ## Publication gate
 
 During implementation, affected package tests and focused Storybook checks are the normal feedback
