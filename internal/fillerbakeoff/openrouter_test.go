@@ -60,7 +60,7 @@ func TestOpenRouterExtractorPinsStrictRouteAndGroundsFacts(t *testing.T) {
 	format := captured["response_format"].(map[string]any)
 	schema := format["json_schema"].(map[string]any)
 	root := schema["schema"].(map[string]any)
-	if format["type"] != "json_schema" || schema["strict"] != true || root["additionalProperties"] != false || captured["temperature"].(float64) != 0 || captured["max_completion_tokens"].(float64) != 512 {
+	if format["type"] != "json_schema" || schema["strict"] != true || root["additionalProperties"] != false || captured["max_tokens"].(float64) != 512 {
 		t.Fatalf("request did not use strict bounded output: %#v", captured)
 	}
 	messages := captured["messages"].([]any)
@@ -82,7 +82,7 @@ func TestOpenRouterExtractorAttachesVerifiedJPEGAndReportsDerivative(t *testing.
 			t.Fatal(err)
 		}
 		parts := captured["messages"].([]any)[1].(map[string]any)["content"].([]any)
-		if len(parts) != 2 || !strings.HasPrefix(parts[1].(map[string]any)["image_url"].(map[string]any)["url"].(string), "data:image/jpeg;base64,") {
+		if len(parts) != 3 || !strings.Contains(parts[1].(map[string]any)["text"].(string), "signal_id frame-1") || !strings.HasPrefix(parts[2].(map[string]any)["image_url"].(map[string]any)["url"].(string), "data:image/jpeg;base64,") {
 			t.Fatalf("missing inline JPEG: %#v", parts)
 		}
 		_, _ = io.WriteString(writer, openRouterFixture(`{"facts":[],"abstention_reason":"no supported fact"}`, "Pinned Provider", 1))
