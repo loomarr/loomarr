@@ -68,6 +68,7 @@ describe("GuideSurface", () => {
         <GuideSurface density="tv" layout={layout} onSelectionChange={vi.fn()} selection={selection} />
       </LoomarrProvider>,
     );
+    expect(output).toContain('aria-label="Programme guide"');
     expect(output).toContain(">Guide<");
     expect(output).toContain("All · 1");
     expect(output).toContain("★ Favourites · 0");

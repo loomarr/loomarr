@@ -42,7 +42,14 @@ const TvGuideSurface = ({
   const nowPercent = nowMs === undefined ? undefined : ((nowMs - layout.fromMs) / span) * 100;
 
   return (
-    <Surface borderRadius={0} borderWidth={0} flex={1} level="canvas" overflow="hidden">
+    <Surface
+      aria-label="Programme guide"
+      borderRadius={0}
+      borderWidth={0}
+      flex={1}
+      level="canvas"
+      overflow="hidden"
+    >
       <Surface
         alignItems="center"
         backgroundColor="$transparent"
