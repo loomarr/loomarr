@@ -13,8 +13,10 @@ describe("shared client resource bounds", () => {
   it("keeps native Android compilation below interactive-desktop limits", () => {
     assert.match(androidBuild, /LOOMARR_ANDROID_MEMORY_MAX:-3G/);
     assert.match(androidBuild, /LOOMARR_ANDROID_GRADLE_HEAP:-1024m/);
+    assert.match(androidBuild, /LOOMARR_ANDROID_MIN_AVAILABLE_KB:-6291456/);
+    assert.match(androidBuild, /refusing native build/);
     assert.match(androidBuild, /--nice=10/);
-    assert.match(androidBuild, /\/usr\/bin\/ionice -c 3/);
+    assert.match(androidBuild, /\/usr\/bin\/ionice -c 2 -n 7/);
     assert.match(androidBuild, /CPUQuota=200%/);
     assert.match(androidBuild, /--max-workers=1/);
   });

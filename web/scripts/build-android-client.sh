@@ -15,6 +15,7 @@ readonly GRADLE_HEAP="${LOOMARR_ANDROID_GRADLE_HEAP:-1024m}"
 readonly ARCHITECTURES="${LOOMARR_ANDROID_ARCHITECTURES:-arm64-v8a}"
 readonly CPUSET="${LOOMARR_ANDROID_CPUSET:-0-3}"
 readonly NATIVE_JOBS="${LOOMARR_ANDROID_NATIVE_JOBS:-1}"
+readonly MIN_AVAILABLE_KB="${LOOMARR_ANDROID_MIN_AVAILABLE_KB:-6291456}"
 
 if [[ "${APP_NAME}" != "mobile" && "${APP_NAME}" != "tv" ]]; then
   printf 'usage: %s [mobile|tv]\n' "$0" >&2
@@ -28,6 +29,15 @@ fi
 if [[ -z "${ANDROID_HOME:-}" ]]; then
   printf 'ANDROID_HOME must point to the Android SDK\n' >&2
   exit 2
+fi
+
+if [[ "${SCOPE_MARKER}" != "--inside-memory-scope" ]]; then
+  available_kb="$(awk '/^MemAvailable:/ { print $2 }' /proc/meminfo)"
+  if [[ "${available_kb}" -lt "${MIN_AVAILABLE_KB}" ]]; then
+    printf 'refusing native build: %s MiB available; require at least %s MiB\n' \
+      "$((available_kb / 1024))" "$((MIN_AVAILABLE_KB / 1024))" >&2
+    exit 1
+  fi
 fi
 
 if [[ ! -x "${APP_DIR}/android/gradlew" ]]; then
@@ -45,7 +55,7 @@ if [[ "${SCOPE_MARKER}" != "--inside-memory-scope" ]] \
     -p "MemoryHigh=${MEMORY_HIGH}" \
     -p "MemoryMax=${MEMORY_MAX}" \
     -p CPUQuota=200% \
-    /usr/bin/ionice -c 3 /usr/bin/env \
+    /usr/bin/ionice -c 2 -n 7 /usr/bin/env \
     LOOMARR_ANDROID_GRADLE_HEAP="${GRADLE_HEAP}" \
     LOOMARR_ANDROID_ARCHITECTURES="${ARCHITECTURES}" \
     LOOMARR_ANDROID_CPUSET="${CPUSET}" \
