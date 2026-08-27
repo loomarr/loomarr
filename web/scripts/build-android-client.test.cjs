@@ -25,6 +25,7 @@ test("forwards the configured public Loomarr URL into the bounded Android build"
 
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /^EXPO_PUBLIC_LOOMARR_URL=http:\/\/192\.0\.2\.10:18080$/m);
+    assert.match(result.stdout, /^LOOMARR_TAMAGUI_COMPILER=0$/m);
   } finally {
     rmSync(bin, { force: true, recursive: true });
   }

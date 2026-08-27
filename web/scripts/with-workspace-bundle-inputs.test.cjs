@@ -8,6 +8,7 @@ test("adds shared workspace sources to every Android bundle task", () => {
   const generated = addWorkspaceBundleInputs("plugins {\n}\n\nreact {\n}\n");
 
   assert.match(generated, /tasks\.withType\(com\.facebook\.react\.tasks\.BundleHermesCTask\)/);
+  assert.match(generated, /inputs\.property\("loomarrTamaguiCompiler"/);
   assert.match(generated, /rootDir\}\/\.\.\/\.\.\/\.\.\/packages/);
   assert.match(generated, /include "\*\*\/\*\.js".*"\*\*\/\*\.tsx".*"\*\*\/\*\.json"/);
   assert.match(generated, /pnpm-lock\.yaml/);

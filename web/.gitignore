@@ -10,6 +10,8 @@ apps/mobile/dist/
 apps/tv/dist/
 apps/mobile/.expo/
 apps/tv/.expo/
+apps/mobile/.tamagui/
+apps/tv/.tamagui/
 apps/mobile/android/
 apps/mobile/ios/
 apps/tv/android/

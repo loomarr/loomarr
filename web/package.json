@@ -30,6 +30,8 @@
     "@expo/config-plugins": "57.0.8",
     "@storybook/react-native": "10.5.0",
     "@storybook/react-native-ui-lite": "10.5.0",
+    "@tamagui/babel-plugin": "2.7.7",
+    "@tamagui/core": "2.7.7",
     "@types/node": "^26.2.0",
     "@types/react": "~19.2.18",
     "dependency-cruiser": "18.2.0",

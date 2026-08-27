@@ -738,6 +738,10 @@ client-android-debug: fe-api-codegen ## memory-bounded arm64 debug build (CLIENT
 client-tv-macrobenchmark: fe-api-codegen ## physical-Shield Guide frame benchmark with P5 limits
 	cd $(WEB) && ./scripts/build-android-client.sh tv macrobenchmark
 
+.PHONY: client-compiler-benchmark
+client-compiler-benchmark: ## compare serial Android bundles with and without the Tamagui compiler
+	cd $(WEB) && nice -n 10 ionice -c 2 -n 7 node scripts/measure-tamagui-compiler.mjs
+
 .PHONY: client-apple-simulator
 client-apple-simulator: fe-api-codegen ## build and launch an Apple simulator proof (CLIENT_APP=mobile|tv; macOS)
 	cd $(WEB) && ./scripts/test-apple-client.sh $(CLIENT_APP)

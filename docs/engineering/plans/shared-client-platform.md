@@ -256,6 +256,10 @@ fixtures cover deterministic states, but a mock-only demo does not pass.
   does not start encoders for prepared hits.
 - The production slice is measured both with and without the Tamagui compiler. The compiler is
   adopted only if it improves bundle or render evidence and leaves all gates green.
+  Serial one-worker Android exports on 2026-08-26 measured runtime-only versus compiler Hermes
+  bundles at 2,496,641 versus 2,517,056 bytes for TV (+20,415, +0.818%) and 3,686,236 versus
+  3,706,662 bytes for mobile (+20,426, +0.554%). Runtime-only therefore remains the default; the
+  opt-in build mode is retained only for the physical-render comparison before the final decision.
 - Local and CI tasks are affected-aware: native jobs do not run for an unrelated Go-only edit, and
   web-only story changes do not build both native applications unless a shared input changed.
 

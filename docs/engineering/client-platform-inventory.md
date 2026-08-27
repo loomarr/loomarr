@@ -43,18 +43,19 @@ Controls must communicate their purpose through the platform interaction and acc
 
 ### 2026-08-26 Compose-to-React-Native presentation checkpoint
 
-A rendered comparison against the shipping Compose references found that the current React Native
-TV application does **not** preserve the shipping presentation. This is not a small token or spacing
-drift: the visible information architecture and composition differ on every primary viewer surface.
-The behavioral seams described below remain useful, but they are not evidence of visual parity.
+A rendered comparison against the shipping Compose references initially found that the React Native
+TV application did **not** preserve the shipping presentation. The maintainer selected Compose
+parity, and the TV-specific adapters now implement the reference composition rather than the
+rejected generic TV shell. This source checkpoint records that correction; updated emulator and
+physical-device captures are still required before visual parity is accepted.
 
 | Surface | Shipping Compose reference | Current React Native presentation | Checkpoint result |
 | --- | --- | --- | --- |
-| Watching | Full-screen video with a compact transient Channel pill, direct number-entry card, and a two-tier bottom now/next/progress bar; remote hints are quiet text rather than controls | A large titled playback-controls panel containing Channel identity, state copy, and a row of Previous, Channel, Guide, Surf, pause, Go Live, and Retry actions | behavior carried; presentation replaced |
-| Surf | A left-side translucent overlay over the still-visible player; grouped Channel rows expand the focused now/progress detail and Back cancels | A full application shell with brand/server controls, a large focused programme card, and persistent Watching/Guide/Surf navigation | mounted-player rule carried; overlay composition replaced |
-| Guide | A dense edge-to-edge table with fixed Channel/time axes, compact filter strip, six visible rows, and a bottom focus-tracking detail band | A rounded shared surface with large filter actions, programme cards, and persistent destination navigation | selection/tune rules carried; table composition replaced |
-| Navigation | Watching owns direct D-pad/number actions; Guide and Surf are temporary destinations; Back returns to Watching and then Android owns exit | The remote adapter retains those transitions, while shared destination buttons are also rendered as prominent application chrome | behavior mostly carried; navigation presentation replaced |
-| Loading, empty, and failure | Surface-specific centered copy over the playback or Guide canvas | Shared `StatePanel` and playback-control compositions with explicit recovery actions | state meaning carried; presentation replaced |
+| Watching | Full-screen video with a compact transient Channel pill, direct number-entry card, and a two-tier bottom now/next/progress bar; remote hints are quiet text rather than controls | `TvWatchingSurface` now renders the same compact pill, number card, bottom schedule/progress composition, and quiet hints | source and deterministic adapter coverage corrected; device recapture remains |
+| Surf | A left-side translucent overlay over the still-visible player; grouped Channel rows expand the focused now/progress detail and Back cancels | `TvSurfRail` is now a 44% left overlay over the still-mounted player with grouped expanding rows, progress, count, and Back hint | source and deterministic adapter coverage corrected; populated device traversal remains |
+| Guide | A dense edge-to-edge table with fixed Channel/time axes, compact filter strip, six visible rows, and a bottom focus-tracking detail band | `TvGuideSurface` now renders an edge-to-edge fixed-axis table, compact filters, bounded row window, live line, and bottom detail band | source and deterministic adapter coverage corrected; populated device recapture remains |
+| Navigation | Watching owns direct D-pad/number actions; Guide and Surf are temporary destinations; Back returns to Watching and then Android owns exit | TV no longer renders persistent destination chrome; the remote and Back adapters own the same temporary transitions | source and interface tests corrected; final physical Back exit remains |
+| Loading, empty, and failure | Surface-specific centered copy over the playback or Guide canvas | TV journeys retain distinct loading, empty/dead-air, tuning, recoverable failure, retry, and disconnect states without restoring the rejected generic shell | state coverage corrected; device recapture remains |
 
 The comparison uses the committed Roborazzi references under `android/app/src/test/screenshots/`, the
 shipping sources in `android/app/src/main/java/loomarr/media/{guide,navigation,playback}`, and the
@@ -174,8 +175,10 @@ adapted, not deleted with Compose.
   diagnostics, and lifecycle policy. Background playback and Picture in Picture stay disabled, and
   pause/release plus real-device background traversal are mandatory because SDK 57 has a reported
   audio-after-unmount regression.
-- Tamagui's compiler and TV behavior are evidence questions. Runtime-only Tamagui is the baseline;
-  compiler adoption and full migration wait for the recorded P5 gate.
+- Tamagui's compiler and TV behavior are evidence questions. Runtime-only Tamagui remains the
+  baseline after serial Android Hermes exports made the TV bundle 20,415 bytes (+0.818%) and mobile
+  bundle 20,426 bytes (+0.554%) larger with compilation. The opt-in build mode remains only for the
+  physical-render comparison; compiler adoption and full migration still wait for the P5 gate.
 
 ## Inventory conclusion
 

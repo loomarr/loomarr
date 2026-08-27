@@ -19,6 +19,7 @@ function addWorkspaceBundleInputs(contents) {
 
   const workspaceInputs = `${reactBlock}    ${startMarker}
     tasks.withType(com.facebook.react.tasks.BundleHermesCTask).configureEach { task ->
+        task.inputs.property("loomarrTamaguiCompiler", System.getenv("LOOMARR_TAMAGUI_COMPILER") ?: "0")
         task.inputs.files(fileTree("\${rootDir}/../../../packages") {
             include "**/*.js", "**/*.jsx", "**/*.ts", "**/*.tsx", "**/*.json"
             exclude "**/build/**", "**/dist/**", "**/node_modules/**", "**/.turbo/**"

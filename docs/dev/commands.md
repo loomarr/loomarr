@@ -158,6 +158,7 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make clients` | ✅ | lint, test, typecheck, and bundle the shared browser, mobile, and TV scaffold <br>*runs:* `brand-assets-verify` |
 | `make client-android-debug` |  | memory-bounded arm64 debug build (CLIENT_APP=mobile|tv) <br>*runs:* `fe-api-codegen` |
 | `make client-tv-macrobenchmark` |  | physical-Shield Guide frame benchmark with P5 limits <br>*runs:* `fe-api-codegen` |
+| `make client-compiler-benchmark` |  | compare serial Android bundles with and without the Tamagui compiler |
 | `make client-apple-simulator` | ✅ | build and launch an Apple simulator proof (CLIENT_APP=mobile|tv; macOS) <br>*runs:* `fe-api-codegen` |
 | `make storybook` |  | Storybook dev workshop on this worktree's isolated port |
 | `make storybook-build` |  | offline storybook-static build (what fe-visual snapshots) |
