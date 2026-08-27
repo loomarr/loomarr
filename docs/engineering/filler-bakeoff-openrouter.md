@@ -118,3 +118,49 @@ Score each captured ledger separately with `make filler-eval-cert`, using the sa
 ceilings. Compare the resulting reports by the predeclared quality, coverage, safety-slice, latency,
 and cost gates. Do not merge ledgers, tune against holdout labels, or promote a route based only on a
 catalog capability claim.
+
+## Local open-weight comparison
+
+Use `make filler-bakeoff-ollama` with the same manifest, packet set, corpus root, policy, and replay
+scorer. The local config has the same shape except it contains exactly one `ollama` text route, uses
+`promptVersion: filler-evidence-ollama-v1`, and adds the 64-character `modelDigest` reported by
+Ollama's `/api/tags`. Set `LOOMARR_FILLER_BAKEOFF_BASE_URL` only to the loopback server when it is not
+the default `http://127.0.0.1:11434`.
+
+The adapter verifies the installed tag/digest pair before inference, disables thinking, sends strict
+JSON Schema, and rejects non-loopback endpoints. It records no fictional provider charge; request,
+latency, token, and output ceilings still apply. Run local inference at concurrency one on an idle or
+explicitly shared host, record hardware and quantization beside the ledger, then score it separately
+from every hosted ledger.
+
+The local config extends the hosted shape with the installed digest:
+
+```json
+{
+  "schemaVersion": 1,
+  "run": {
+    "promptVersion": "filler-evidence-ollama-v1"
+  },
+  "policy": {},
+  "routes": [
+    {
+      "class": "text",
+      "role": "filler_text",
+      "rung": "text",
+      "provider": "ollama",
+      "model": "gemma4:26b-a4b-it-qat",
+      "modalities": ["text"],
+      "structuredOutput": true,
+      "requireZdr": false,
+      "allowFallbacks": false,
+      "maxChargeNanoUsd": 1,
+      "maxAttempts": 1
+    }
+  ],
+  "modelDigest": "64 lowercase hexadecimal characters from /api/tags"
+}
+```
+
+The abbreviated `run` and `policy` objects above show only the local differences; copy their complete
+locked values from the hosted config. The one-nanodollar route ceiling satisfies the shared finite
+reservation contract and is not recorded as a local provider charge.

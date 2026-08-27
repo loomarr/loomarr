@@ -87,6 +87,7 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make filler-corpus-review` |  | prepare one opaque randomized filler-label review batch |
 | `make filler-openrouter-snapshot` |  | lock OpenRouter capability, endpoint-price, and ZDR metadata |
 | `make filler-bakeoff-openrouter` |  | capture a bounded label-blind OpenRouter prediction ledger (paid/manual) |
+| `make filler-bakeoff-ollama` |  | capture a digest-pinned local filler prediction ledger (manual) |
 | `make filler-eval-cert` |  | score captured filler decisions; never contacts a model or media source |
 
 ## Build / run

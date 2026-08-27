@@ -268,7 +268,7 @@ go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must
 test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
 	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ ./internal/api/ -v
 
-.PHONY: eval-contract eval eval-cert eval-matrix filler-bakeoff-openrouter filler-corpus-archive filler-corpus-cdc filler-corpus-commons filler-corpus-direct filler-corpus-download filler-corpus-inventory filler-corpus-lock filler-corpus-loc filler-corpus-nasa filler-corpus-pilot filler-corpus-pilot-rights-lock filler-corpus-pilot-rights-review filler-corpus-prepare filler-corpus-review filler-eval-contract filler-eval-cert filler-openrouter-snapshot
+.PHONY: eval-contract eval eval-cert eval-matrix filler-bakeoff-ollama filler-bakeoff-openrouter filler-corpus-archive filler-corpus-cdc filler-corpus-commons filler-corpus-direct filler-corpus-download filler-corpus-inventory filler-corpus-lock filler-corpus-loc filler-corpus-nasa filler-corpus-pilot filler-corpus-pilot-rights-lock filler-corpus-pilot-rights-review filler-corpus-prepare filler-corpus-review filler-eval-contract filler-eval-cert filler-openrouter-snapshot
 eval-contract: ## hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB
 	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/
 
@@ -306,7 +306,7 @@ eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (m
 	  exit "$$status"
 
 filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
-	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-direct/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-prepare/ ./cmd/filler-corpus-review/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/
+	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./cmd/filler-bakeoff-ollama/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-direct/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-prepare/ ./cmd/filler-corpus-review/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/
 
 filler-corpus-commons: ## freeze bounded Commons pilot and full-inventory artifacts
 	@eval "$$(./scripts/dev-env.sh export)"; \
@@ -578,6 +578,19 @@ filler-bakeoff-openrouter: ## capture a bounded label-blind OpenRouter predictio
 	    --corpus-root "$$LOOMARR_FILLER_BAKEOFF_CORPUS_ROOT" \
 	    --predictions "$${LOOMARR_FILLER_BAKEOFF_PREDICTIONS:-$$LOOMARR_ARTIFACT_DIR/filler-bakeoff-predictions.jsonl}" \
 	    --base-url "$${LOOMARR_FILLER_BAKEOFF_BASE_URL:-https://openrouter.ai/api/v1}"
+
+filler-bakeoff-ollama: ## capture a digest-pinned local filler prediction ledger (manual)
+	@test -n "$$LOOMARR_FILLER_BAKEOFF_MANIFEST" || { echo "filler-bakeoff-ollama: LOOMARR_FILLER_BAKEOFF_MANIFEST is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_BAKEOFF_PACKETS" || { echo "filler-bakeoff-ollama: LOOMARR_FILLER_BAKEOFF_PACKETS is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_BAKEOFF_CONFIG" || { echo "filler-bakeoff-ollama: LOOMARR_FILLER_BAKEOFF_CONFIG is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_BAKEOFF_CORPUS_ROOT" || { echo "filler-bakeoff-ollama: LOOMARR_FILLER_BAKEOFF_CORPUS_ROOT is required" >&2; exit 2; }; \
+	  $(GO) run ./cmd/filler-bakeoff-ollama \
+	    --manifest "$$LOOMARR_FILLER_BAKEOFF_MANIFEST" \
+	    --packets "$$LOOMARR_FILLER_BAKEOFF_PACKETS" \
+	    --config "$$LOOMARR_FILLER_BAKEOFF_CONFIG" \
+	    --corpus-root "$$LOOMARR_FILLER_BAKEOFF_CORPUS_ROOT" \
+	    --predictions "$${LOOMARR_FILLER_BAKEOFF_PREDICTIONS:-$$LOOMARR_ARTIFACT_DIR/filler-bakeoff-ollama-predictions.jsonl}" \
+	    --base-url "$${LOOMARR_FILLER_BAKEOFF_BASE_URL:-http://127.0.0.1:11434}"
 
 filler-eval-cert: ## score captured filler decisions; never contacts a model or media source
 	@test -n "$$LOOMARR_FILLER_EVAL_PREDICTIONS" || { echo "filler-eval-cert: LOOMARR_FILLER_EVAL_PREDICTIONS is required" >&2; exit 2; }; \

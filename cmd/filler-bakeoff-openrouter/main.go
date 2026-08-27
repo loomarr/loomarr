@@ -3,16 +3,13 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 
+	"github.com/loomarr/loomarr/cmd/internal/fillerbakeoffio"
 	"github.com/loomarr/loomarr/internal/filleradmission"
 	"github.com/loomarr/loomarr/internal/fillerbakeoff"
 	"github.com/loomarr/loomarr/internal/fillereval"
@@ -53,12 +50,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "filler-bakeoff-openrouter: OPENROUTER_API_KEY is required")
 		return 2
 	}
-	manifest, err := readStrictJSON[fillereval.Manifest](*manifestPath)
+	manifest, err := fillerbakeoffio.ReadStrictJSON[fillereval.Manifest](*manifestPath)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "filler-bakeoff-openrouter: read manifest: %v\n", err)
 		return 1
 	}
-	configFile, err := readStrictJSON[bakeoffConfigFile](*configPath)
+	configFile, err := fillerbakeoffio.ReadStrictJSON[bakeoffConfigFile](*configPath)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "filler-bakeoff-openrouter: read config: %v\n", err)
 		return 1
@@ -71,12 +68,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "filler-bakeoff-openrouter: prompt version %q, want %q\n", configFile.Run.PromptVersion, fillerbakeoff.OpenRouterPromptVersion)
 		return 1
 	}
-	snapshot, err := readStrictJSON[fillerbakeoff.OpenRouterSnapshot](*snapshotPath)
+	snapshot, err := fillerbakeoffio.ReadStrictJSON[fillerbakeoff.OpenRouterSnapshot](*snapshotPath)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "filler-bakeoff-openrouter: read snapshot: %v\n", err)
 		return 1
 	}
-	packets, err := readPackets(*packetsPath)
+	packets, err := fillerbakeoffio.ReadPackets(*packetsPath)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "filler-bakeoff-openrouter: read packets: %v\n", err)
 		return 1
@@ -99,100 +96,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "filler-bakeoff-openrouter: run: %v\n", err)
 		return 1
 	}
-	if err := writePredictions(*predictionsPath, predictions); err != nil {
+	if err := fillerbakeoffio.WritePredictions(*predictionsPath, ".filler-bakeoff-*.jsonl", predictions); err != nil {
 		_, _ = fmt.Fprintf(stderr, "filler-bakeoff-openrouter: write predictions: %v\n", err)
 		return 1
 	}
 	_, _ = fmt.Fprintf(stdout, "filler-bakeoff-openrouter: captured %d label-blind predictions in %s\n", len(predictions), *predictionsPath)
 	return 0
-}
-
-func readStrictJSON[T any](path string) (T, error) {
-	var value T
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return value, err
-	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&value); err != nil {
-		return value, err
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		if err == nil {
-			return value, fmt.Errorf("trailing JSON value")
-		}
-		return value, err
-	}
-	return value, nil
-}
-
-func readPackets(path string) (map[string]fillerbakeoff.Packet, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = file.Close() }()
-	packets := make(map[string]fillerbakeoff.Packet)
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 64*1024), 16*1024*1024)
-	for line := 1; scanner.Scan(); line++ {
-		if len(bytes.TrimSpace(scanner.Bytes())) == 0 {
-			continue
-		}
-		packet, err := fillerbakeoff.DecodePacket(bytes.NewReader(scanner.Bytes()))
-		if err != nil {
-			return nil, fmt.Errorf("line %d: %w", line, err)
-		}
-		if _, exists := packets[packet.CaseID]; exists {
-			return nil, fmt.Errorf("line %d: duplicate case %q", line, packet.CaseID)
-		}
-		packets[packet.CaseID] = packet
-	}
-	return packets, scanner.Err()
-}
-
-func writePredictions(path string, predictions []fillereval.Prediction) error {
-	absolute, err := filepath.Abs(path)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(absolute), 0o750); err != nil {
-		return err
-	}
-	temp, err := os.CreateTemp(filepath.Dir(absolute), ".filler-bakeoff-*.jsonl")
-	if err != nil {
-		return err
-	}
-	tempName := temp.Name()
-	ok := false
-	defer func() {
-		_ = temp.Close()
-		if !ok {
-			_ = os.Remove(tempName)
-		}
-	}()
-	if err := temp.Chmod(0o600); err != nil {
-		return err
-	}
-	encoder := json.NewEncoder(temp)
-	encoder.SetEscapeHTML(false)
-	for _, prediction := range predictions {
-		if err := encoder.Encode(prediction); err != nil {
-			return err
-		}
-	}
-	if err := temp.Close(); err != nil {
-		return err
-	}
-	if err := os.Link(tempName, absolute); err != nil {
-		return fmt.Errorf("publish immutable prediction ledger: %w", err)
-	}
-	if err := os.Remove(tempName); err != nil {
-		_ = os.Remove(absolute)
-		return err
-	}
-	ok = true
-	return nil
 }
