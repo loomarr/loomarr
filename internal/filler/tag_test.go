@@ -207,6 +207,15 @@ func untaggedClip(id, name string) filler.StoreClip {
 	return c
 }
 
+func TestTagStage_RunRefusesNilProviderBeforeDependencies(t *testing.T) {
+	stage := filler.NewTagStage(nil, nil, nil, nil)
+
+	_, err := stage.Run(context.Background(), untaggedClip("c1", "Disabled AI tagging"))
+	if err == nil || err.Error() != "AI tagging is not enabled or configured" {
+		t.Fatalf("Run() error = %v, want AI tagging is not enabled or configured", err)
+	}
+}
+
 // A well-formed classification is written with all three tags. The era year
 // appears in the filename, so it is GROUNDED (§10 V34) and lands as a tag.
 func TestTagger_WritesValidClassification(t *testing.T) {
