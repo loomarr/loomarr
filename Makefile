@@ -263,7 +263,7 @@ go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must
 test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
 	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ ./internal/api/ -v
 
-.PHONY: eval-contract eval eval-cert eval-matrix filler-bakeoff-openrouter filler-corpus-archive filler-corpus-cdc filler-corpus-commons filler-corpus-direct filler-corpus-download filler-corpus-inventory filler-corpus-lock filler-corpus-loc filler-corpus-nasa filler-corpus-pilot filler-corpus-pilot-rights-lock filler-corpus-pilot-rights-review filler-eval-contract filler-eval-cert filler-openrouter-snapshot
+.PHONY: eval-contract eval eval-cert eval-matrix filler-bakeoff-openrouter filler-corpus-archive filler-corpus-cdc filler-corpus-commons filler-corpus-direct filler-corpus-download filler-corpus-inventory filler-corpus-lock filler-corpus-loc filler-corpus-nasa filler-corpus-pilot filler-corpus-pilot-rights-lock filler-corpus-pilot-rights-review filler-corpus-prepare filler-corpus-review filler-eval-contract filler-eval-cert filler-openrouter-snapshot
 eval-contract: ## hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB
 	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/
 
@@ -301,7 +301,7 @@ eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (m
 	  exit "$$status"
 
 filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
-	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-direct/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/
+	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-direct/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-prepare/ ./cmd/filler-corpus-review/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/
 
 filler-corpus-commons: ## freeze bounded Commons pilot and full-inventory artifacts
 	@eval "$$(./scripts/dev-env.sh export)"; \
@@ -454,6 +454,33 @@ filler-corpus-direct: ## freeze an authored local cohort with rights and provena
 	    --max-bytes "$$LOOMARR_FILLER_CORPUS_DIRECT_MAX_BYTES" \
 	    --max-wall-time "$${LOOMARR_FILLER_CORPUS_DIRECT_MAX_WALL_TIME:-1m}"
 
+filler-corpus-prepare: ## build an unlabeled corpus draft and bounded evidence packets
+	@test -n "$$LOOMARR_FILLER_CORPUS_INVENTORY" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_INVENTORY is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_RIGHTS_APPROVALS" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_RIGHTS_APPROVALS is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_PREPARATION_PLAN" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_PREPARATION_PLAN is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_LOCAL_ROOT" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_LOCAL_ROOT is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_MEDIA_DIR" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_MEDIA_DIR is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_PREPARED_AT" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_PREPARED_AT is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_PREP_MAX_INPUT_BYTES" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_PREP_MAX_INPUT_BYTES is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_PREP_MAX_OUTPUT_BYTES" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_PREP_MAX_OUTPUT_BYTES is required" >&2; exit 2; }; \
+	  eval "$$(./scripts/dev-env.sh export)"; \
+	  $(GO) run ./cmd/filler-corpus-prepare \
+	    --inventory "$$LOOMARR_FILLER_CORPUS_INVENTORY" \
+	    --rights-approvals "$$LOOMARR_FILLER_CORPUS_RIGHTS_APPROVALS" \
+	    --plan "$$LOOMARR_FILLER_CORPUS_PREPARATION_PLAN" \
+	    --local-root "$$LOOMARR_FILLER_CORPUS_LOCAL_ROOT" \
+	    --remote-root "$$LOOMARR_FILLER_CORPUS_MEDIA_DIR" \
+	    --draft-out "$${LOOMARR_FILLER_CORPUS_DRAFT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-draft.json}" \
+	    --packets-out "$${LOOMARR_FILLER_CORPUS_PACKETS:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-packets.jsonl}" \
+	    --derivatives-root "$${LOOMARR_FILLER_CORPUS_DERIVATIVES:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-derivatives}" \
+	    --prepared-at "$$LOOMARR_FILLER_CORPUS_PREPARED_AT" \
+	    --ffmpeg "$${LOOMARR_FILLER_CORPUS_FFMPEG:-ffmpeg}" \
+	    --min-items "$${LOOMARR_FILLER_CORPUS_PREP_MIN_ITEMS:-1426}" \
+	    --max-items "$${LOOMARR_FILLER_CORPUS_PREP_MAX_ITEMS:-1600}" \
+	    --max-input-bytes "$$LOOMARR_FILLER_CORPUS_PREP_MAX_INPUT_BYTES" \
+	    --max-output-bytes "$$LOOMARR_FILLER_CORPUS_PREP_MAX_OUTPUT_BYTES" \
+	    --max-wall-time "$${LOOMARR_FILLER_CORPUS_PREP_MAX_WALL_TIME:-6h}"
+
 filler-corpus-download: ## download only rights-approved corpus media under hard ceilings
 	@eval "$$(./scripts/dev-env.sh export)"; \
 	  $(GO) run ./cmd/filler-corpus-download \
@@ -476,8 +503,8 @@ filler-corpus-rights-review: ## prepare an inert worksheet from a frozen filler 
 	    --out "$${LOOMARR_FILLER_CORPUS_RIGHTS_WORKSHEET:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-rights-review.json}" \
 	    --csv-out "$${LOOMARR_FILLER_CORPUS_RIGHTS_CSV:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-rights-review.csv}" \
 	    --prepared-at "$$LOOMARR_FILLER_CORPUS_RIGHTS_PREPARED_AT" \
-	    --min-items "$${LOOMARR_FILLER_CORPUS_RIGHTS_MIN_ITEMS:-300}" \
-	    --max-items "$${LOOMARR_FILLER_CORPUS_RIGHTS_MAX_ITEMS:-500}"
+	    --min-items "$${LOOMARR_FILLER_CORPUS_RIGHTS_MIN_ITEMS:-1426}" \
+	    --max-items "$${LOOMARR_FILLER_CORPUS_RIGHTS_MAX_ITEMS:-1600}"
 
 filler-corpus-rights-lock: ## validate completed rights review CSV into approval JSONL
 	@test -n "$$LOOMARR_FILLER_CORPUS_INVENTORY" || { echo "filler-corpus-rights-lock: LOOMARR_FILLER_CORPUS_INVENTORY is required" >&2; exit 2; }; \
@@ -494,16 +521,31 @@ filler-corpus-rights-lock: ## validate completed rights review CSV into approval
 filler-corpus-lock: ## lock two blind filler-label batches into a certification manifest
 	@test -n "$$LOOMARR_FILLER_CORPUS_DRAFT" || { echo "filler-corpus-lock: LOOMARR_FILLER_CORPUS_DRAFT is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_REVIEW_A" || { echo "filler-corpus-lock: LOOMARR_FILLER_CORPUS_REVIEW_A is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_REVIEW_MAP_A" || { echo "filler-corpus-lock: LOOMARR_FILLER_CORPUS_REVIEW_MAP_A is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_REVIEW_B" || { echo "filler-corpus-lock: LOOMARR_FILLER_CORPUS_REVIEW_B is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_REVIEW_MAP_B" || { echo "filler-corpus-lock: LOOMARR_FILLER_CORPUS_REVIEW_MAP_B is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_LOCKED_AT" || { echo "filler-corpus-lock: LOOMARR_FILLER_CORPUS_LOCKED_AT is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_OUT" || { echo "filler-corpus-lock: LOOMARR_FILLER_CORPUS_OUT is required" >&2; exit 2; }; \
 	  $(GO) run ./cmd/filler-corpus \
 	    --draft "$$LOOMARR_FILLER_CORPUS_DRAFT" \
 	    --review-a "$$LOOMARR_FILLER_CORPUS_REVIEW_A" \
+	    --map-a "$$LOOMARR_FILLER_CORPUS_REVIEW_MAP_A" \
 	    --review-b "$$LOOMARR_FILLER_CORPUS_REVIEW_B" \
+	    --map-b "$$LOOMARR_FILLER_CORPUS_REVIEW_MAP_B" \
 	    --adjudications "$$LOOMARR_FILLER_CORPUS_ADJUDICATIONS" \
 	    --locked-at "$$LOOMARR_FILLER_CORPUS_LOCKED_AT" \
 	    --out "$$LOOMARR_FILLER_CORPUS_OUT"
+
+filler-corpus-review: ## prepare one opaque randomized filler-label review batch
+	@test -n "$$LOOMARR_FILLER_CORPUS_DRAFT" || { echo "filler-corpus-review: LOOMARR_FILLER_CORPUS_DRAFT is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_REVIEW_BATCH" || { echo "filler-corpus-review: LOOMARR_FILLER_CORPUS_REVIEW_BATCH is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_REVIEW_PACKET" || { echo "filler-corpus-review: LOOMARR_FILLER_CORPUS_REVIEW_PACKET is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_REVIEW_MAP" || { echo "filler-corpus-review: LOOMARR_FILLER_CORPUS_REVIEW_MAP is required" >&2; exit 2; }; \
+	  $(GO) run ./cmd/filler-corpus-review \
+	    --draft "$$LOOMARR_FILLER_CORPUS_DRAFT" \
+	    --batch-id "$$LOOMARR_FILLER_CORPUS_REVIEW_BATCH" \
+	    --packet-out "$$LOOMARR_FILLER_CORPUS_REVIEW_PACKET" \
+	    --map-out "$$LOOMARR_FILLER_CORPUS_REVIEW_MAP"
 
 filler-openrouter-snapshot: ## lock OpenRouter capability, endpoint-price, and ZDR metadata
 	@test -n "$$OPENROUTER_API_KEY" || { echo "filler-openrouter-snapshot: OPENROUTER_API_KEY is required" >&2; exit 2; }; \
