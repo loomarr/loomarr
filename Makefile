@@ -743,6 +743,10 @@ client-android-debug: fe-api-codegen ## memory-bounded arm64 debug build (CLIENT
 client-tv-macrobenchmark: fe-api-codegen ## physical-Shield Guide frame benchmark with P5 limits
 	cd $(WEB) && ./scripts/build-android-client.sh tv macrobenchmark
 
+.PHONY: client-tv-emulator-journey
+client-tv-emulator-journey: ## paired populated Android TV emulator navigation/lifecycle gate (ANDROID_SERIAL=...)
+	cd $(WEB) && node scripts/verify-tv-emulator-journey.mjs "$(ANDROID_SERIAL)"
+
 .PHONY: client-compiler-benchmark
 client-compiler-benchmark: ## compare serial Android bundles with and without the Tamagui compiler
 	cd $(WEB) && nice -n 10 ionice -c 2 -n 7 node scripts/measure-tamagui-compiler.mjs

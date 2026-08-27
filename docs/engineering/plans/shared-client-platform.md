@@ -382,6 +382,14 @@ same emulator confirmed that HOME releases the Media3 session and ExoPlayer sync
 foregrounding retains the paired credential and recreates Watching. Full populated-focus soak,
 physical-device background/foreground, and pause/resume/expiry evidence remain open.
 
+The dependency branch also supplies `make client-tv-emulator-journey`, a no-build, emulator-only
+acceptance command. It fails closed on hardware, an unpaired client, an unavailable populated Guide
+or Surf surface, or Watching chrome leaking into either sibling route. On an authorized populated
+emulator it drives Watching → Guide → Back → Surf → Back plus HOME/foreground recreation and requires
+the contractual accessibility surface after each transition. Its current isolated-emulator run is
+intentionally red at authorization; approving the displayed pairing code is required before that
+runtime evidence can be recorded.
+
 A later release traversal used the Shield's real 1920 × 1080 xhdpi output, and therefore the
 contractual 960 × 540dp composition rather than treating physical pixels as layout units. It caught
 Surf's full-height unavailable panel painting over the connection control and quiet version footer.
