@@ -19,14 +19,14 @@
   },
   "devDependencies": {
     "expo": "~57.0.17",
-    "expo-video": "~57.0.2",
+    "expo-video": "~57.0.3",
     "react": "19.2.3",
     "react-native": "npm:react-native-tvos@0.86.2-0",
     "typescript": "~6.0.3",
     "vitest": "^4.1.10"
   },
   "peerDependencies": {
-    "expo-video": "~57.0.2",
+    "expo-video": "~57.0.3",
     "react": ">=19 <20",
     "react-native": ">=0.86 <0.87"
   },

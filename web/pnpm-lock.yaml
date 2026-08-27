@@ -118,8 +118,8 @@ importers:
         specifier: ~57.0.3
         version: 57.0.3(expo@57.0.17)(react-native-tvos@0.86.2-0)(react-native-web@0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))
       expo-video:
-        specifier: ~57.0.2
-        version: 57.0.2(expo@57.0.17)(react-native-tvos@0.86.2-0)(react@19.2.3)
+        specifier: ~57.0.3
+        version: 57.0.3(expo@57.0.17)(react-native-tvos@0.86.2-0)(react@19.2.3)
       react:
         specifier: 19.2.3
         version: 19.2.3
@@ -191,8 +191,8 @@ importers:
         specifier: ~57.0.3
         version: 57.0.3(expo@57.0.17)(react-native-tvos@0.86.2-0)(react-native-web@0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))
       expo-video:
-        specifier: ~57.0.2
-        version: 57.0.2(expo@57.0.17)(react-native-tvos@0.86.2-0)(react@19.2.3)
+        specifier: ~57.0.3
+        version: 57.0.3(expo@57.0.17)(react-native-tvos@0.86.2-0)(react@19.2.3)
       react:
         specifier: 19.2.3
         version: 19.2.3
@@ -525,8 +525,8 @@ importers:
         specifier: ~57.0.17
         version: 57.0.17(@babel/core@7.29.7)(@expo/dom-webview@57.0.1)(@expo/metro-runtime@57.0.14)(expo-router@57.0.17)(react-dom@19.2.3(react@19.2.3))(react-native-tvos@0.86.2-0)(react-native-web@0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native-worklets@0.10.1(@babel/core@7.29.7)(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(react-native-tvos@0.86.2-0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
       expo-video:
-        specifier: ~57.0.2
-        version: 57.0.2(expo@57.0.17)(react-native-tvos@0.86.2-0)(react@19.2.3)
+        specifier: ~57.0.3
+        version: 57.0.3(expo@57.0.17)(react-native-tvos@0.86.2-0)(react@19.2.3)
       react:
         specifier: 19.2.3
         version: 19.2.3
@@ -4354,8 +4354,8 @@ packages:
       react-native-web:
         optional: true
 
-  expo-video@57.0.2:
-    resolution: {integrity: sha512-s8KDRpGNWOE7Vx7+1o89hGeXZ3evx00SrQ2+5odYcmvUikNvF59/VuFkg55+YIS981wVQz/07csK6hLAK/w4bQ==}
+  expo-video@57.0.3:
+    resolution: {integrity: sha512-Z+rLdBSzICwoHm/HUxND5fm5nfgqiB+QPWAOKxmA8ScYwvxG1UGjZ6OaayvPc3GkT4aucsbycmFO0uUv/qnIhg==}
     peerDependencies:
       expo: '*'
       react: 19.2.3
@@ -10902,7 +10902,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  expo-video@57.0.2(expo@57.0.17)(react-native-tvos@0.86.2-0)(react@19.2.3):
+  expo-video@57.0.3(expo@57.0.17)(react-native-tvos@0.86.2-0)(react@19.2.3):
     dependencies:
       expo: 57.0.17(@babel/core@7.29.7)(@expo/dom-webview@57.0.1)(@expo/metro-runtime@57.0.14)(expo-router@57.0.17)(react-dom@19.2.3(react@19.2.3))(react-native-tvos@0.86.2-0)(react-native-web@0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native-worklets@0.10.1(@babel/core@7.29.7)(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(react-native-tvos@0.86.2-0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
       react: 19.2.3
