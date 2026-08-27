@@ -18,7 +18,7 @@ func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 func run(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("filler-corpus-review", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	draftPath := flags.String("draft", "", "unlabeled certification draft JSON")
+	draftPath := flags.String("draft", "", "unlabeled development or certification draft JSON")
 	batchID := flags.String("batch-id", "", "unique opaque review batch identity")
 	packetPath := flags.String("packet-out", "", "reviewer-visible blind packet JSON")
 	mapPath := flags.String("map-out", "", "private coordinator alias map JSON")

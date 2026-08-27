@@ -3611,15 +3611,22 @@ still goes through one independent rights review; local media is already acquire
 skipped by the network downloader. No direct-manifest schema-v1 reader or fixed 100-item compatibility
 path exists because no certified artifact consumes one.
 
-Corpus preparation is one fail-closed bridge from the fully approved inventory to blind review and
-provider evaluation. An authored schema-v3 plan may choose only the development/holdout split,
-similarity cluster, source segment, direct-video window, corpus version,
-evidence version, and
-predeclared slice gates. `filler-corpus-prepare` requires that plan and the approval ledger to cover
-every 1,426–1,600 inventory cases exactly once; reopens media beneath separate local/direct and
-download roots; rechecks size and all available SHA-256/SHA-1/MD5 identities; measures the bounded
-segment; and emits source-policy and decoder facts plus source text, four near-full-resolution
-frames, and one at-most-60-second 1280×720 direct-video derivative. It stages derivatives before
+Corpus preparation is one fail-closed bridge from the fully reviewed inventory to blind review and
+provider evaluation. An authored schema-v4 plan explicitly identifies either `development_seed` or
+`certification` and may otherwise choose only the development/holdout split, similarity cluster,
+source segment, direct-video window, corpus version, evidence version, and predeclared slice gates.
+The caller must name the matching preparation profile; a plan cannot silently select it. The
+development profile prepares every and only rights-approved row from the reviewed inventory, requires
+at least 300 cases all in the development split, and leaves held rows inert. Campaign, source-family,
+and creator identities are retained when the source knows them but are not invented merely to prepare
+development evidence. The certification profile requires all 1,426–1,600 inventory rows to be approved
+and covered exactly once, including at least 300 development and 1,126 independently clustered holdout
+cases; it retains the complete acquisition-provenance and confidence-bound requirements. Both profiles
+reopen media beneath separate local/direct and download roots; recheck size and all available
+SHA-256/SHA-1/MD5 identities; measure an at-most-five-minute bounded segment; and emit source-policy
+and decoder facts plus source text, four near-full-resolution frames, one 16 kHz mono WAV of that
+segment for direct-audio and shared transcription lanes, and one at-most-60-second 1280×720
+direct-video derivative. It stages derivatives before
 publication and enforces aggregate source bytes, derivative bytes, and wall time. Preparation also
 computes a 64-bit difference hash for each of the four semantic frames. Cases for which at least
 three corresponding frames are within eight bits must share one similarity cluster; later holdout
@@ -3634,7 +3641,10 @@ cannot acquire a hidden answer key through corpus preparation. No hand-authored 
 preparation shape is accepted.
 
 `filler-corpus-review` derives one reviewer-visible randomized packet and one owner-only alias map
-from that draft. A fresh batch and map are generated independently for each reviewer. The label lock
+from that draft. A fresh batch and map are generated independently for each reviewer. Development
+drafts remain `development_seed` through blind review and label lock and cannot satisfy the
+certification contract; certification drafts alone receive the certification sampling and composition
+checks. The label lock
 accepts only that still-unlocked, wholly unlabeled draft, both exact alias maps, and strict
 current-schema JSON/JSONL; unknown or trailing fields are errors, not compatibility data. It validates both blind
 submissions as complete labels before comparing their canonical hashes, including the submission

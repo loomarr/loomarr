@@ -53,7 +53,7 @@ type BlindReviewSet struct {
 func PrepareBlindReview(draft Manifest, batchID string, randomness io.Reader) (BlindReviewPacket, BlindReviewMap, []string) {
 	batchID = strings.TrimSpace(batchID)
 	failures := validateUnlabeledDraft(draft)
-	failures = append(failures, ValidateCertificationDraft(draft)...)
+	failures = append(failures, validateReviewDraftScale(draft)...)
 	if batchID == "" {
 		failures = append(failures, "blind review batch id is required")
 	}

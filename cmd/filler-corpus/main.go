@@ -1,5 +1,6 @@
-// Command filler-corpus locks two blind label batches into a certification
-// manifest. It never reads media or contacts a source/provider.
+// Command filler-corpus locks two blind label batches while preserving the
+// draft's development or certification kind. It never reads media or contacts
+// a source/provider.
 package main
 
 import (
@@ -30,7 +31,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	secondMapPath := flags.String("map-b", "", "private alias map for the second review")
 	adjudicationsPath := flags.String("adjudications", "", "third-party adjudication JSONL for disagreements")
 	lockedAtText := flags.String("locked-at", "", "manifest lock time in RFC3339 format")
-	outputPath := flags.String("out", "", "locked certification manifest JSON")
+	outputPath := flags.String("out", "", "locked development or certification manifest JSON")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}

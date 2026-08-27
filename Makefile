@@ -461,7 +461,13 @@ filler-corpus-direct: ## freeze an authored local cohort with rights and provena
 	    --max-wall-time "$${LOOMARR_FILLER_CORPUS_DIRECT_MAX_WALL_TIME:-1m}"
 
 filler-corpus-prepare: ## build an unlabeled corpus draft and bounded evidence packets
-	@test -n "$$LOOMARR_FILLER_CORPUS_INVENTORY" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_INVENTORY is required" >&2; exit 2; }; \
+	@test -n "$$LOOMARR_FILLER_CORPUS_PROFILE" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_PROFILE is required" >&2; exit 2; }; \
+	  case "$$LOOMARR_FILLER_CORPUS_PROFILE" in \
+	    development) default_min=300; default_max=300 ;; \
+	    certification) default_min=1426; default_max=1600 ;; \
+	    *) echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_PROFILE must be development or certification" >&2; exit 2 ;; \
+	  esac; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_INVENTORY" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_INVENTORY is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_RIGHTS_APPROVALS" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_RIGHTS_APPROVALS is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_PREPARATION_PLAN" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_PREPARATION_PLAN is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_LOCAL_ROOT" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_LOCAL_ROOT is required" >&2; exit 2; }; \
@@ -471,6 +477,7 @@ filler-corpus-prepare: ## build an unlabeled corpus draft and bounded evidence p
 	  test -n "$$LOOMARR_FILLER_CORPUS_PREP_MAX_OUTPUT_BYTES" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_PREP_MAX_OUTPUT_BYTES is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
 	  $(GO) run ./cmd/filler-corpus-prepare \
+	    --profile "$$LOOMARR_FILLER_CORPUS_PROFILE" \
 	    --inventory "$$LOOMARR_FILLER_CORPUS_INVENTORY" \
 	    --rights-approvals "$$LOOMARR_FILLER_CORPUS_RIGHTS_APPROVALS" \
 	    --plan "$$LOOMARR_FILLER_CORPUS_PREPARATION_PLAN" \
@@ -481,8 +488,8 @@ filler-corpus-prepare: ## build an unlabeled corpus draft and bounded evidence p
 	    --derivatives-root "$${LOOMARR_FILLER_CORPUS_DERIVATIVES:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-derivatives}" \
 	    --prepared-at "$$LOOMARR_FILLER_CORPUS_PREPARED_AT" \
 	    --ffmpeg "$${LOOMARR_FILLER_CORPUS_FFMPEG:-ffmpeg}" \
-	    --min-items "$${LOOMARR_FILLER_CORPUS_PREP_MIN_ITEMS:-1426}" \
-	    --max-items "$${LOOMARR_FILLER_CORPUS_PREP_MAX_ITEMS:-1600}" \
+	    --min-items "$${LOOMARR_FILLER_CORPUS_PREP_MIN_ITEMS:-$$default_min}" \
+	    --max-items "$${LOOMARR_FILLER_CORPUS_PREP_MAX_ITEMS:-$$default_max}" \
 	    --max-input-bytes "$$LOOMARR_FILLER_CORPUS_PREP_MAX_INPUT_BYTES" \
 	    --max-output-bytes "$$LOOMARR_FILLER_CORPUS_PREP_MAX_OUTPUT_BYTES" \
 	    --max-wall-time "$${LOOMARR_FILLER_CORPUS_PREP_MAX_WALL_TIME:-6h}"
