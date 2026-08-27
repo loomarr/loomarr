@@ -213,6 +213,10 @@ gate documentation are amended before the first change that alters required beha
   targets completed in 4m43s and 2m57s. PR #573 merged the correction after a refreshed
   current-main matrix; Expo Android jobs remain unactivated until their exact app/platform
   selectors are introduced in reversible slices.
+- The Expo Android mobile activation consumes only `impact_expo_android_mobile`, runs the existing
+  serialized mobile native-build target as its own required aggregate dependency, and retains the
+  standalone APK. Android TV remains observational so this activation is independently reversible
+  and cannot substitute one app's native result for the other.
 - The supported release artifact is Linux on amd64 and arm64; Windows has no supported native
   distribution. The dedicated Windows runner, its shadow decision, and the local Windows
   cross-compile therefore spent assurance time on a platform outside the product contract. They

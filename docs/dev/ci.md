@@ -69,8 +69,10 @@ iOS, and Expo Android mobile evidence; a TV change selects shared-client, tvOS, 
 Changes to `api`, `core`, `fixtures`, `design-system`, or `ui` select both apps on both native
 platforms because those packages are transitive inputs to both. Browser-only client-proof and
 Turborepo contract changes select the shared JavaScript gate without spending a native runner.
-Apple mobile and Apple TV are active. Expo Android mobile and Expo Android TV remain observational
-until each consumes its independently required job and current-main evidence is proven.
+Apple mobile, Apple TV, and Expo Android mobile are active independent jobs. Expo Android TV remains
+observational until it consumes its own required job and current-main evidence is proven. The Expo
+Android mobile job generates and assembles only the mobile application through the same serialized,
+one-native-worker target used locally and retains its standalone APK as evidence.
 
 ## Per-run measurements
 

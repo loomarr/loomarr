@@ -828,6 +828,53 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  # Android mobile is independently selected so an app-local TV change does not spend this native
+  # build. The dedicated runner does not need the interactive-host memory preflight; Gradle, Kotlin,
+  # CMake, Ninja, and Metro remain serialized by the shared bounded build target.
+  expo-android-mobile:
+    name: Expo Android mobile — native build
+    needs: changes
+    if: needs.changes.outputs.impact_expo_android_mobile == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: corepack enable
+      - name: Cache pnpm store
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+      - name: Cache Expo Android mobile native work
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: expo-android-mobile-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml', 'web/apps/mobile/app.json', 'web/apps/mobile/package.json', 'web/scripts/with-memory-safe-android-build.cjs', 'web/scripts/with-workspace-bundle-inputs.cjs') }}
+          restore-keys: expo-android-mobile-${{ runner.os }}-
+      - run: make fe-install
+      - name: Generate and build the standalone mobile APK
+        env:
+          LOOMARR_ANDROID_MIN_AVAILABLE_KB: "0"
+        run: make client-android-debug CLIENT_APP=mobile
+      - name: Keep the standalone mobile APK
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: expo-android-mobile
+          path: web/apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
   playwright:
     name: Playwright — visual + a11y + e2e (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: changes
@@ -1112,7 +1159,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, release-candidate-scope, full-manual-scope, agent-harness-macos, go-contracts, image-certification, go, store-postgres, frontend, clients, apple-mobile, apple-tv, playwright, tuner, image, docs, android]
+    needs: [changes, release-candidate-scope, full-manual-scope, agent-harness-macos, go-contracts, image-certification, go, store-postgres, frontend, clients, apple-mobile, apple-tv, expo-android-mobile, playwright, tuner, image, docs, android]
     runs-on: ubuntu-latest
     permissions:
       actions: read

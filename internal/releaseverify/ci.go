@@ -191,6 +191,10 @@ func VerifyCIImpactActivation(path string) error {
 			outputs:   []classifierOutput{{name: "impact_apple_tv", source: "apple_tv"}},
 			condition: "needs.changes.outputs.impact_apple_tv == 'true'",
 		},
+		"expo-android-mobile": {
+			outputs:   []classifierOutput{{name: "impact_expo_android_mobile", source: "expo_android_mobile"}},
+			condition: "needs.changes.outputs.impact_expo_android_mobile == 'true'",
+		},
 	}
 	for jobName, gate := range activated {
 		for _, expected := range gate.outputs {
@@ -213,20 +217,21 @@ func VerifyCIImpactActivation(path string) error {
 			return fmt.Errorf("CI job %s condition %q does not match activated contract %q", jobName, condition, gate.condition)
 		}
 	}
-	appleCommands := map[string]string{
-		"apple-mobile": "make client-apple-simulator CLIENT_APP=mobile",
-		"apple-tv":     "make client-apple-simulator CLIENT_APP=tv",
+	nativeCommands := map[string]string{
+		"apple-mobile":        "make client-apple-simulator CLIENT_APP=mobile",
+		"apple-tv":            "make client-apple-simulator CLIENT_APP=tv",
+		"expo-android-mobile": "make client-android-debug CLIENT_APP=mobile",
 	}
-	for jobName, command := range appleCommands {
+	for jobName, command := range nativeCommands {
 		job, err := requiredMap(jobs, jobName)
 		if err != nil {
-			return fmt.Errorf("CI workflow must define split Apple job %s", jobName)
+			return fmt.Errorf("CI workflow must define split native job %s", jobName)
 		}
 		if _, ok := mappingValue(job, "strategy"); ok {
-			return fmt.Errorf("CI Apple job %s must be a single app-specific job", jobName)
+			return fmt.Errorf("CI native job %s must be a single app-specific job", jobName)
 		}
 		if !yamlNodeContainsScalar(job, command) {
-			return fmt.Errorf("CI Apple job %s must run %q", jobName, command)
+			return fmt.Errorf("CI native job %s must run %q", jobName, command)
 		}
 	}
 	return nil

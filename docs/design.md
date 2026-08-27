@@ -6547,7 +6547,11 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   Apple mobile and Apple TV are separate required jobs with app-specific native build, install, and
   launch commands, and each consumes its dedicated decision. Splitting a matrix must preserve
   compatible cache-key identities and must preserve each native result as a separate aggregate
-  dependency.
+  dependency. Expo Android mobile is likewise a separate required job selected only by its
+  dedicated classifier output; it generates and assembles the mobile application through the
+  resource-bounded Loomarr build target rather than treating a Metro bundle or the TV build as
+  Android mobile evidence. Expo Android TV remains observational until its own reversible
+  activation.
 - **State machine:** every transition + the five invariants.
 - **Store conformance:** one suite vs **both** SQLite (temp file) and Postgres (**testcontainers**), incl. `ClaimDue` concurrency (no record claimed twice).
 - **Library conformance:** Emby vs Jellyfin flavors w/ mock transport; correct auth header each.
