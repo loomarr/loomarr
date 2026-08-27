@@ -17,10 +17,20 @@ const (
 // mezzanines produced before quality facts rode the transcode pass; new ingest gets the same facts
 // from Transcode without paying for a second decode.
 func InspectQuality(ctx context.Context, ffmpegPath, file string, durationMs int64, hadAudio bool) (MediaQuality, error) {
-	args := []string{"-nostdin", "-hide_banner", "-nostats", "-v", "info", "-i", file,
-		"-vf", qualityVideoFilters}
+	return InspectQualityIn(ctx, ffmpegPath, file, 0, durationMs, hadAudio)
+}
+
+// InspectQualityIn measures one already-bounded segment without decoding media
+// before it. Returned intervals are relative to that segment.
+func InspectQualityIn(ctx context.Context, ffmpegPath, file string, startMS, endMS int64, hadAudio bool) (MediaQuality, error) {
+	if startMS < 0 || endMS <= startMS {
+		return MediaQuality{}, fmt.Errorf("inspect media quality requires a positive bounded span")
+	}
+	durationMs := endMS - startMS
+	args := []string{"-nostdin", "-hide_banner", "-nostats", "-v", "info", "-ss", msToSeconds(startMS), "-t", msToSeconds(durationMs), "-i", file,
+		"-vf", "setpts=PTS-STARTPTS," + qualityVideoFilters}
 	if hadAudio {
-		args = append(args, "-af", qualityAudioFilter)
+		args = append(args, "-af", "asetpts=PTS-STARTPTS,"+qualityAudioFilter)
 	} else {
 		args = append(args, "-an")
 	}

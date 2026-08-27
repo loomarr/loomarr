@@ -20,6 +20,9 @@ const oneSided95Z = 1.6448536269514722
 func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report {
 	report := Report{SchemaVersion: SchemaVersion, CorpusVersion: manifest.CorpusVersion, ManifestSHA256: ManifestSHA256(manifest), Run: run}
 	report.Failures = append(report.Failures, ValidateManifest(manifest)...)
+	if manifest.Kind == CorpusCertification {
+		report.Failures = append(report.Failures, ValidateCertificationContract(manifest)...)
+	}
 	byID := make(map[string]Prediction, len(predictions))
 	for _, prediction := range predictions {
 		if _, exists := byID[prediction.CaseID]; exists {
@@ -62,14 +65,12 @@ func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report 
 			continue
 		}
 		delete(byID, c.ID)
-		allowScalar := (prediction.OperationalFailure != "" && !hasScalarInference(prediction)) ||
-			(prediction.Verdict == VerdictReject && prediction.RejectClass == RejectDeterministic && !hasScalarInference(prediction))
-		accounting, accountingFailures := summarizePrediction(prediction, allowScalar)
+		accounting, accountingFailures := summarizePrediction(prediction)
 		for _, failure := range accountingFailures {
 			report.Failures = append(report.Failures, c.ID+": "+failure)
 		}
 		result.Actual = prediction.Verdict
-		zeroInference := len(prediction.Steps) == 0 && prediction.Role == "" && prediction.Attempts == 0
+		zeroInference := len(prediction.Steps) == 0
 		deterministic := zeroInference && prediction.Verdict == VerdictReject && prediction.RejectClass == RejectDeterministic
 		result.Role = accounting.Role
 		result.Rung = accounting.Rung
@@ -276,15 +277,9 @@ func Score(manifest Manifest, predictions []Prediction, run RunIdentity) Report 
 	return report
 }
 
-func summarizePrediction(prediction Prediction, allowScalar bool) (InferenceStep, []string) {
+func summarizePrediction(prediction Prediction) (InferenceStep, []string) {
 	if len(prediction.Steps) == 0 {
-		if !allowScalar {
-			return inferenceStepFromPrediction(prediction), []string{"schema v4 inference requires per-attempt steps"}
-		}
-		if err := validateAccounting(prediction); err != nil {
-			return inferenceStepFromPrediction(prediction), []string{err.Error()}
-		}
-		return inferenceStepFromPrediction(prediction), nil
+		return InferenceStep{}, nil
 	}
 	var total InferenceStep
 	seen := make(map[string]struct{}, len(prediction.Steps))
@@ -306,7 +301,10 @@ func summarizePrediction(prediction Prediction, allowScalar bool) (InferenceStep
 		if step.Attempts < 1 {
 			failures = append(failures, prefix+": at least one inference attempt is required")
 		}
-		if err := validateAccounting(predictionFromInferenceStep(step)); err != nil {
+		if step.Abstained != (strings.TrimSpace(step.AbstentionReason) != "") || (step.Abstained && step.OperationalFailure != "") {
+			failures = append(failures, prefix+": semantic abstention requires one reason and cannot be an operational failure")
+		}
+		if err := validateAccounting(step); err != nil {
 			failures = append(failures, prefix+": "+err.Error())
 		}
 		addAccountingValue(&total.Derivative.Bytes, step.Derivative.Bytes, prefix, "derivative bytes", &failures)
@@ -342,44 +340,11 @@ func summarizePrediction(prediction Prediction, allowScalar bool) (InferenceStep
 	return terminal, failures
 }
 
-func hasScalarInference(prediction Prediction) bool {
-	return prediction.Role != "" || prediction.Rung != "" || prediction.RequestedProvider != "" || prediction.RequestedModel != "" ||
-		prediction.ResolvedProvider != "" || prediction.ResolvedModel != "" || prediction.UpstreamProvider != "" || len(prediction.Modalities) > 0 || prediction.Attempts != 0 ||
-		prediction.Derivative != (Derivative{}) || prediction.Tokens != (TokenUsage{}) ||
-		prediction.ChargedAmount != "" || prediction.ChargedCurrency != "" || prediction.ChargedNanoUSD != 0 || prediction.EstimatedNanoUSD != 0 ||
-		prediction.GenerationID != "" || prediction.LatencyMS != 0
-}
-
 func saturatingCost(a, b int64) int64 {
 	if b > 0 && a > math.MaxInt64-b {
 		return math.MaxInt64
 	}
 	return a + b
-}
-
-func inferenceStepFromPrediction(prediction Prediction) InferenceStep {
-	return InferenceStep{
-		Role: prediction.Role, Rung: prediction.Rung, RequestedProvider: prediction.RequestedProvider,
-		RequestedModel: prediction.RequestedModel, ResolvedModel: prediction.ResolvedModel,
-		ResolvedProvider: prediction.ResolvedProvider, UpstreamProvider: prediction.UpstreamProvider, Modalities: prediction.Modalities,
-		Derivative: prediction.Derivative, Tokens: prediction.Tokens, ChargedAmount: prediction.ChargedAmount,
-		ChargedCurrency: prediction.ChargedCurrency, ChargedNanoUSD: prediction.ChargedNanoUSD,
-		EstimatedNanoUSD: prediction.EstimatedNanoUSD, Attempts: prediction.Attempts,
-		GenerationID: prediction.GenerationID, LatencyMS: prediction.LatencyMS,
-		OperationalFailure: prediction.OperationalFailure,
-	}
-}
-
-func predictionFromInferenceStep(step InferenceStep) Prediction {
-	return Prediction{
-		Role: step.Role, Rung: step.Rung, RequestedProvider: step.RequestedProvider,
-		RequestedModel: step.RequestedModel, ResolvedModel: step.ResolvedModel,
-		ResolvedProvider: step.ResolvedProvider, UpstreamProvider: step.UpstreamProvider, Modalities: step.Modalities,
-		Derivative: step.Derivative, Tokens: step.Tokens, ChargedAmount: step.ChargedAmount,
-		ChargedCurrency: step.ChargedCurrency, ChargedNanoUSD: step.ChargedNanoUSD,
-		EstimatedNanoUSD: step.EstimatedNanoUSD, Attempts: step.Attempts,
-		GenerationID: step.GenerationID, LatencyMS: step.LatencyMS,
-	}
 }
 
 func addAccountingValue(dst *int64, value int64, prefix, label string, failures *[]string) {
@@ -391,40 +356,40 @@ func addAccountingValue(dst *int64, value int64, prefix, label string, failures 
 	*dst += value
 }
 
-func validateAccounting(prediction Prediction) error {
+func validateAccounting(step InferenceStep) error {
 	values := []int64{
-		prediction.Derivative.Bytes, prediction.Derivative.DurationMS, prediction.Derivative.Pixels,
-		prediction.Tokens.Prompt, prediction.Tokens.Completion, prediction.Tokens.Reasoning,
-		prediction.Tokens.Cached, prediction.Tokens.CacheWrite, prediction.Tokens.Image,
-		prediction.Tokens.Audio, prediction.Tokens.Video, prediction.ChargedNanoUSD,
-		prediction.EstimatedNanoUSD, prediction.LatencyMS,
+		step.Derivative.Bytes, step.Derivative.DurationMS, step.Derivative.Pixels,
+		step.Tokens.Prompt, step.Tokens.Completion, step.Tokens.Reasoning,
+		step.Tokens.Cached, step.Tokens.CacheWrite, step.Tokens.Image,
+		step.Tokens.Audio, step.Tokens.Video, step.ChargedNanoUSD,
+		step.EstimatedNanoUSD, step.LatencyMS,
 	}
 	for _, value := range values {
 		if value < 0 {
 			return fmt.Errorf("accounting values cannot be negative")
 		}
 	}
-	if prediction.ChargedAmount == "" {
-		if prediction.ChargedCurrency != "" || prediction.ChargedNanoUSD != 0 {
+	if step.ChargedAmount == "" {
+		if step.ChargedCurrency != "" || step.ChargedNanoUSD != 0 {
 			return fmt.Errorf("charged amount, currency, and nanodollars must be present together")
 		}
 		return nil
 	}
-	if prediction.ChargedCurrency == "" {
+	if step.ChargedCurrency == "" {
 		return fmt.Errorf("charged amount requires its provider-reported currency")
 	}
-	if prediction.ChargedCurrency != "USD" {
-		if prediction.ChargedNanoUSD != 0 {
+	if step.ChargedCurrency != "USD" {
+		if step.ChargedNanoUSD != 0 {
 			return fmt.Errorf("non-USD provider charge cannot be projected without an exchange-rate snapshot")
 		}
 		return nil
 	}
-	nano, err := USDToNanoCeil(prediction.ChargedAmount)
+	nano, err := USDToNanoCeil(step.ChargedAmount)
 	if err != nil {
 		return fmt.Errorf("invalid charged amount: %w", err)
 	}
-	if nano != prediction.ChargedNanoUSD {
-		return fmt.Errorf("charged amount projects to %d nanodollars, got %d", nano, prediction.ChargedNanoUSD)
+	if nano != step.ChargedNanoUSD {
+		return fmt.Errorf("charged amount projects to %d nanodollars, got %d", nano, step.ChargedNanoUSD)
 	}
 	return nil
 }
@@ -484,6 +449,8 @@ func ValidateManifest(manifest Manifest) []string {
 	ids := map[string]struct{}{}
 	clusters := map[string]Split{}
 	contentClusters := map[string]string{}
+	campaignSplits := map[string]Split{}
+	familySplits := map[string]Split{}
 	splitCounts := map[Split]int{}
 	if len(manifest.SliceGates) == 0 {
 		failures = append(failures, "at least one safety-critical slice gate is required")
@@ -516,15 +483,6 @@ func ValidateManifest(manifest Manifest) []string {
 		} else {
 			splitCounts[c.Split]++
 		}
-		if c.Truth != TruthEligible && c.Truth != TruthInvalid && c.Truth != TruthAmbiguous {
-			failures = append(failures, prefix+": invalid truth")
-		}
-		if c.Truth == TruthInvalid && c.RejectClass != RejectDeterministic && c.RejectClass != RejectSemantic {
-			failures = append(failures, prefix+": invalid truth requires a reject class")
-		}
-		if c.Truth == TruthAmbiguous && strings.TrimSpace(c.ReviewQuestion) == "" {
-			failures = append(failures, prefix+": ambiguous truth requires a review question")
-		}
 		if strings.TrimSpace(c.Cluster) == "" {
 			failures = append(failures, prefix+": similarity cluster is required")
 		} else if split, exists := clusters[c.Cluster]; exists && split != c.Split {
@@ -535,26 +493,16 @@ func ValidateManifest(manifest Manifest) []string {
 		if strings.TrimSpace(c.Source) == "" || strings.TrimSpace(c.License) == "" {
 			failures = append(failures, prefix+": source and license are required")
 		}
+		failures = append(failures, validateLabels(prefix, LabelsFromCase(c))...)
 		if manifest.Kind == CorpusCertification {
 			failures = append(failures, validateCertificationCase(prefix, c, manifest.LockedAt)...)
+			failures = append(failures, trackCertificationSplit(prefix, "campaign", strings.TrimSpace(c.Provenance.Campaign), c.Split, campaignSplits)...)
+			failures = append(failures, trackCertificationSplit(prefix, "source family", strings.TrimSpace(c.Provenance.SourceFamily), c.Split, familySplits)...)
 			if previousCluster, exists := contentClusters[c.ContentSHA256]; exists && previousCluster != c.Cluster {
 				failures = append(failures, prefix+": identical content hash appears in a different similarity cluster")
 			} else if c.ContentSHA256 != "" {
 				contentClusters[c.ContentSHA256] = c.Cluster
 			}
-		}
-		if len(c.Slices) == 0 {
-			failures = append(failures, prefix+": at least one slice is required")
-		}
-		evidenceIDs := map[string]struct{}{}
-		for _, evidence := range c.Evidence {
-			if evidence.ID == "" || evidence.Kind == "" || evidence.Claim == "" || evidence.Provenance == "" {
-				failures = append(failures, prefix+": evidence requires id, kind, claim, and provenance")
-			}
-			if _, exists := evidenceIDs[evidence.ID]; exists {
-				failures = append(failures, prefix+": duplicate evidence id "+evidence.ID)
-			}
-			evidenceIDs[evidence.ID] = struct{}{}
 		}
 	}
 	if manifest.Kind == CorpusCertification && (splitCounts[SplitDevelopment] == 0 || splitCounts[SplitHoldout] == 0) {
@@ -563,14 +511,25 @@ func ValidateManifest(manifest Manifest) []string {
 	return failures
 }
 
+func trackCertificationSplit(prefix, name, value string, split Split, seen map[string]Split) []string {
+	if value == "" {
+		return nil
+	}
+	if prior, exists := seen[value]; exists && prior != split {
+		return []string{prefix + ": " + name + " crosses development and holdout"}
+	}
+	seen[value] = split
+	return nil
+}
+
 func validateCertificationCase(prefix string, c Case, lockedAt time.Time) []string {
 	var failures []string
 	if !isSHA256(c.ContentSHA256) || !isSHA256(c.EvidenceSHA256) {
 		failures = append(failures, prefix+": certification requires lowercase SHA-256 media and evidence hashes")
 	}
 	p := c.Provenance
-	if strings.TrimSpace(p.Authority) == "" || strings.TrimSpace(p.ItemID) == "" || strings.TrimSpace(p.ItemURL) == "" || p.MetadataRetrievedAt.IsZero() || !isSHA256(p.MetadataSHA256) || strings.TrimSpace(p.EvidenceURL) == "" {
-		failures = append(failures, prefix+": source authority, item identity, metadata retrieval, metadata hash, and evidence URL are required")
+	if strings.TrimSpace(p.Authority) == "" || strings.TrimSpace(p.ItemID) == "" || strings.TrimSpace(p.ItemRef) == "" || p.MetadataRetrievedAt.IsZero() || !isSHA256(p.MetadataSHA256) || strings.TrimSpace(p.EvidenceRef) == "" {
+		failures = append(failures, prefix+": source authority, item identity, metadata retrieval, metadata hash, and evidence reference are required")
 	}
 	if strings.TrimSpace(p.RightsStatement) == "" || strings.TrimSpace(p.RightsDecision) == "" || strings.TrimSpace(p.RightsReviewerID) == "" || p.RightsReviewedAt.IsZero() {
 		failures = append(failures, prefix+": item-level rights evidence and adjudication are required")
@@ -578,8 +537,11 @@ func validateCertificationCase(prefix string, c Case, lockedAt time.Time) []stri
 	if p.MetadataRetrievedAt.After(lockedAt) || p.RightsReviewedAt.After(lockedAt) {
 		failures = append(failures, prefix+": source metadata and rights review cannot postdate the manifest lock")
 	}
-	if strings.TrimSpace(p.SourceFilename) == "" || strings.TrimSpace(p.SourceURL) == "" || p.SourceBytes <= 0 || p.SegmentStartMS < 0 || p.SegmentDurationMS <= 0 {
+	if strings.TrimSpace(p.SourceFilename) == "" || strings.TrimSpace(p.SourceRef) == "" || p.SourceBytes <= 0 || p.SegmentStartMS < 0 || p.SegmentDurationMS <= 0 {
 		failures = append(failures, prefix+": source file identity, positive size, and bounded segment are required")
+	}
+	if strings.TrimSpace(p.Campaign) == "" || strings.TrimSpace(p.SourceFamily) == "" {
+		failures = append(failures, prefix+": certification requires campaign and source-family identity")
 	}
 	wantLabelHash := LabelSHA256(c)
 	if len(c.Evidence) == 0 {
@@ -690,29 +652,29 @@ func applyGates(r *Report, gates []SliceGate, eligible, invalid, deterministicRe
 	if r.Metrics.TotalChargedNanoUSD > r.Run.MaxSpendNanoUSD {
 		r.Failures = append(r.Failures, fmt.Sprintf("run charged %d nanodollars; spend ceiling is %d", r.Metrics.TotalChargedNanoUSD, r.Run.MaxSpendNanoUSD))
 	}
-	if r.Metrics.Cases < 300 {
-		r.Failures = append(r.Failures, fmt.Sprintf("corpus has %d cases; certification requires at least 300", r.Metrics.Cases))
+	if r.Metrics.Cases < CertificationMinHoldout {
+		r.Failures = append(r.Failures, fmt.Sprintf("corpus has %d cases; certification requires at least %d independent holdout cases", r.Metrics.Cases, CertificationMinHoldout))
 	}
 	if r.Metrics.AutoAdmit == 0 || r.Metrics.AutoAdmitPrecision < .99 || r.Metrics.AutoAdmitPrecisionLower < .99 {
 		r.Failures = append(r.Failures, fmt.Sprintf("auto-admit precision %.4f (one-sided 95%% lower %.4f), require both >= 0.99", r.Metrics.AutoAdmitPrecision, r.Metrics.AutoAdmitPrecisionLower))
 	}
-	if deterministicRejects == 0 || r.Metrics.DeterministicRejectPrecision < .99 {
-		r.Failures = append(r.Failures, fmt.Sprintf("deterministic reject precision %.4f, require >= 0.99", r.Metrics.DeterministicRejectPrecision))
+	if deterministicRejects == 0 || r.Metrics.DeterministicRejectPrecision < .99 || r.Metrics.DeterministicRejectPrecisionLower < .99 {
+		r.Failures = append(r.Failures, fmt.Sprintf("deterministic reject precision %.4f (one-sided 95%% lower %.4f), require both >= 0.99", r.Metrics.DeterministicRejectPrecision, r.Metrics.DeterministicRejectPrecisionLower))
 	}
-	if semanticRejects == 0 || r.Metrics.SemanticRejectPrecision < .97 {
-		r.Failures = append(r.Failures, fmt.Sprintf("semantic reject precision %.4f, require >= 0.97", r.Metrics.SemanticRejectPrecision))
+	if semanticRejects == 0 || r.Metrics.SemanticRejectPrecision < .97 || r.Metrics.SemanticRejectPrecisionLower < .97 {
+		r.Failures = append(r.Failures, fmt.Sprintf("semantic reject precision %.4f (one-sided 95%% lower %.4f), require both >= 0.97", r.Metrics.SemanticRejectPrecision, r.Metrics.SemanticRejectPrecisionLower))
 	}
-	if eligible == 0 || r.Metrics.ValidAutomation < .90 {
-		r.Failures = append(r.Failures, fmt.Sprintf("valid filler automation %.4f, require >= 0.90", r.Metrics.ValidAutomation))
+	if eligible == 0 || r.Metrics.ValidAutomation < .90 || r.Metrics.ValidAutomationLower < .90 {
+		r.Failures = append(r.Failures, fmt.Sprintf("valid filler automation %.4f (one-sided 95%% lower %.4f), require both >= 0.90", r.Metrics.ValidAutomation, r.Metrics.ValidAutomationLower))
 	}
-	if invalid == 0 || r.Metrics.InvalidAutomation < .95 {
-		r.Failures = append(r.Failures, fmt.Sprintf("invalid input automation %.4f, require >= 0.95", r.Metrics.InvalidAutomation))
+	if invalid == 0 || r.Metrics.InvalidAutomation < .95 || r.Metrics.InvalidAutomationLower < .95 {
+		r.Failures = append(r.Failures, fmt.Sprintf("invalid input automation %.4f (one-sided 95%% lower %.4f), require both >= 0.95", r.Metrics.InvalidAutomation, r.Metrics.InvalidAutomationLower))
 	}
 	if r.Metrics.ReviewRateUpper > .10 {
 		r.Failures = append(r.Failures, fmt.Sprintf("review rate %.4f (one-sided 95%% upper %.4f), require upper <= 0.10", r.Metrics.ReviewRate, r.Metrics.ReviewRateUpper))
 	}
-	if r.Metrics.ReviewRate > 0 && r.Metrics.ReviewAnswerable < .95 {
-		r.Failures = append(r.Failures, fmt.Sprintf("answerable review %.4f, require >= 0.95", r.Metrics.ReviewAnswerable))
+	if r.Metrics.ReviewRate > 0 && (r.Metrics.ReviewAnswerable < .95 || r.Metrics.ReviewAnswerableLower < .95) {
+		r.Failures = append(r.Failures, fmt.Sprintf("answerable review %.4f (one-sided 95%% lower %.4f), require both >= 0.95", r.Metrics.ReviewAnswerable, r.Metrics.ReviewAnswerableLower))
 	}
 	scores := make(map[string]SliceScore, len(r.Slices))
 	for _, score := range r.Slices {
