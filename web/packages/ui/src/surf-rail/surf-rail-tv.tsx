@@ -1,6 +1,7 @@
 import { FocusSurface, ProgressTrack, ScrollFrame, Surface, Text } from "@loomarr/design-system";
 import { Pressable } from "react-native";
 
+import { DeviceDisconnectAction } from "../device-disconnect";
 import type { SurfChannelData, SurfGroupKind, SurfRailProps } from "./surf-rail.type";
 
 const TvSurfChannel = ({
@@ -90,6 +91,7 @@ const TvSurfRail = ({
   focusRegistry,
   groups,
   onFocusSelection,
+  onDisconnect,
   onTune,
   selection,
   serverVersion,
@@ -156,6 +158,7 @@ const TvSurfRail = ({
               )}
             </Surface>
           ))}
+          {onDisconnect ? <DeviceDisconnectAction density="tv" onDisconnect={onDisconnect} /> : null}
         </ScrollFrame>
         <Text density="tv" textRole="metadata" tone="muted">
           {`${selectedIndex + 1} of ${selectable.length} · ▲▼ browse`}

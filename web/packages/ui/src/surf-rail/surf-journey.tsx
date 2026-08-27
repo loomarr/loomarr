@@ -16,6 +16,7 @@ interface SurfJourneyProps {
   density: Density;
   focusRegistry?: FocusTargetRegistry<SurfSelection>;
   now?: () => number;
+  onDisconnect?: () => Promise<void> | void;
   onTune: (channelId: string) => void;
   playableChannelIds: readonly string[];
   recentChannelIds: readonly string[];
@@ -36,6 +37,7 @@ const SurfJourney = ({
   density,
   focusRegistry,
   now = Date.now,
+  onDisconnect,
   onTune,
   playableChannelIds,
   recentChannelIds,
@@ -112,6 +114,7 @@ const SurfJourney = ({
       focusRegistry={focusRegistry}
       groups={groups}
       onFocusSelection={setSelection}
+      onDisconnect={onDisconnect}
       onTune={onTune}
       renderArtwork={renderArtwork}
       renderChannelLogo={renderChannelLogo}

@@ -22,6 +22,7 @@ test("runs the authoritative Guide over the still-mounted TV player", async () =
   assert.match(source, /tvGuideRowWindow/);
   assert.match(source, /player\.controller\.tuneChannel\(channelId\)/);
   assert.match(source, /<SurfJourney/);
+  assert.match(source, /onDisconnect=\{\(\) => session\.disconnect\(\)\}/);
   assert.match(source, /restoreSelection=\{restoreTvSurfSelection\}/);
   assert.match(source, /clientVersion=\{appConfig\.expo\.version\}/);
   assert.match(source, /serverVersion=\{player\.serverVersion\}/);

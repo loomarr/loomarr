@@ -215,6 +215,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
             currentChannelId={player.snapshot.channel?.id}
             density="tv"
             focusRegistry={surfFocusRegistry}
+            onDisconnect={() => session.disconnect()}
             onTune={(channelId) => {
               void player.controller.tuneChannel(channelId);
               setActive("watching");

@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { SurfRail, surfIdentityLabel } from "../index";
 
-const renderRail = (serverVersion?: string, density: "pointer" | "tv" = "tv") =>
+const renderRail = (serverVersion?: string, density: "pointer" | "tv" = "tv", onDisconnect?: () => void) =>
   renderToStaticMarkup(
     <LoomarrProvider>
       <SurfRail
@@ -14,6 +14,7 @@ const renderRail = (serverVersion?: string, density: "pointer" | "tv" = "tv") =>
         currentChannelId="ch-springfield"
         density={density}
         groups={surfGroups}
+        onDisconnect={onDisconnect}
         onFocusSelection={vi.fn()}
         onTune={vi.fn()}
         selection={{ channelId: "ch-springfield", group: "recent" }}
@@ -47,6 +48,11 @@ describe("SurfRail", () => {
 
   it("states unavailable server identity honestly", () => {
     expect(renderRail()).toContain("Loomarr TV 0.2.0 · Server unavailable");
+  });
+
+  it("keeps confirmed self-disconnect reachable after the TV parity migration", () => {
+    expect(renderRail("0.2.1", "tv", vi.fn())).toContain("Disconnect device");
+    expect(renderRail("0.2.1")).not.toContain("Disconnect device");
   });
 
   it("keeps the same identity available to empty and error Surf states", () => {
