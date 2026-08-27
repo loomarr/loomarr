@@ -4,6 +4,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -112,7 +113,9 @@ func readPredictions(path string) ([]fillereval.Prediction, error) {
 			continue
 		}
 		var prediction fillereval.Prediction
-		if err := json.Unmarshal(scanner.Bytes(), &prediction); err != nil {
+		decoder := json.NewDecoder(bytes.NewReader(scanner.Bytes()))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&prediction); err != nil {
 			return nil, fmt.Errorf("line %d: %w", line, err)
 		}
 		predictions = append(predictions, prediction)

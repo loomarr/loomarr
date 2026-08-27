@@ -44,6 +44,7 @@ type Candidate struct {
 	ItemID              string         `json:"itemId"`
 	Title               string         `json:"title"`
 	RoleHints           []string       `json:"roleHints"`
+	DiscoveryPath       []string       `json:"discoveryPath,omitempty"`
 	ItemURL             string         `json:"itemUrl"`
 	MetadataURL         string         `json:"metadataUrl"`
 	MetadataRetrievedAt time.Time      `json:"metadataRetrievedAt"`
@@ -95,6 +96,9 @@ func ValidatePilot(p Pilot) []string {
 			seenItems[key] = struct{}{}
 			if strings.TrimSpace(c.ItemID) == "" || strings.TrimSpace(c.Title) == "" || len(c.RoleHints) == 0 || c.MetadataRetrievedAt.IsZero() || !digest(c.MetadataSHA256, 64) || len(c.RightsAssertions) == 0 || c.Representation.Bytes <= 0 || strings.TrimSpace(c.Representation.Name) == "" || strings.TrimSpace(c.Representation.MIMEType) == "" || !httpsURL(c.ItemURL) || !httpsURL(c.MetadataURL) || !httpsURL(c.Representation.URL) || (c.LicenseURL != "" && !httpsURL(c.LicenseURL)) {
 				failures = append(failures, fmt.Sprintf("pilot item %q has incomplete frozen metadata", key))
+			}
+			if lane.Authority == "commons.wikimedia.org" && (len(c.DiscoveryPath) == 0 || slices.Contains(c.DiscoveryPath, "")) {
+				failures = append(failures, fmt.Sprintf("pilot item %q is missing its Commons category path", key))
 			}
 			if c.MetadataRetrievedAt.After(p.SnapshotAt) {
 				failures = append(failures, fmt.Sprintf("pilot item %q was retrieved after the snapshot", key))

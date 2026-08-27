@@ -17,17 +17,35 @@ import (
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 
+type laneFiles []string
+
+func (f *laneFiles) String() string { return strings.Join(*f, ",") }
+func (f *laneFiles) Set(value string) error {
+	if value == "" {
+		return fmt.Errorf("lane path cannot be empty")
+	}
+	*f = append(*f, value)
+	return nil
+}
+
 func run(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("filler-corpus-pilot", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	input := flags.String("in", "", "source-neutral pilot draft JSON")
+	var inputs laneFiles
+	flags.Var(&inputs, "lane", "source-neutral lane JSON; repeat once per qualified authority")
 	output := flags.String("out", "", "locked pilot JSON")
+	snapshotAtText := flags.String("snapshot-at", "", "pilot snapshot time in RFC3339 format")
 	lockedAtText := flags.String("locked-at", "", "pilot lock time in RFC3339 format")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
-	if *input == "" || *output == "" || *lockedAtText == "" {
-		_, _ = fmt.Fprintln(stderr, "filler-corpus-pilot: input, output, and lock time are required")
+	if len(inputs) != len(fillercorpus.PilotAuthorities) || *output == "" || *snapshotAtText == "" || *lockedAtText == "" {
+		_, _ = fmt.Fprintf(stderr, "filler-corpus-pilot: exactly %d lanes, output, snapshot time, and lock time are required\n", len(fillercorpus.PilotAuthorities))
+		return 2
+	}
+	snapshotAt, err := time.Parse(time.RFC3339, *snapshotAtText)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "filler-corpus-pilot: parse --snapshot-at:", err)
 		return 2
 	}
 	lockedAt, err := time.Parse(time.RFC3339, *lockedAtText)
@@ -35,28 +53,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-pilot: parse --locked-at:", err)
 		return 2
 	}
-	file, err := os.Open(*input)
-	if err != nil {
-		_, _ = fmt.Fprintln(stderr, "filler-corpus-pilot:", err)
-		return 1
+	pilot := fillercorpus.Pilot{SchemaVersion: fillercorpus.PilotSchemaVersion, SnapshotAt: snapshotAt.UTC(), LockedAt: lockedAt.UTC()}
+	for _, input := range inputs {
+		lane, err := readLane(input)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "filler-corpus-pilot: decode %s: %v\n", input, err)
+			return 1
+		}
+		pilot.Lanes = append(pilot.Lanes, lane)
 	}
-	defer func() { _ = file.Close() }()
-	decoder := json.NewDecoder(io.LimitReader(file, 16<<20))
-	decoder.DisallowUnknownFields()
-	var pilot fillercorpus.Pilot
-	if err := decoder.Decode(&pilot); err != nil {
-		_, _ = fmt.Fprintln(stderr, "filler-corpus-pilot: decode:", err)
-		return 1
-	}
-	if err := rejectTrailing(decoder); err != nil {
-		_, _ = fmt.Fprintln(stderr, "filler-corpus-pilot:", err)
-		return 1
-	}
-	if !pilot.LockedAt.IsZero() {
-		_, _ = fmt.Fprintln(stderr, "filler-corpus-pilot: draft cannot predeclare lock authority")
-		return 1
-	}
-	pilot.LockedAt = lockedAt.UTC()
 	if failures := fillercorpus.ValidatePilot(pilot); len(failures) > 0 {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-pilot:", strings.Join(failures, "; "))
 		return 1
@@ -71,6 +76,24 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	_, _ = fmt.Fprintf(stdout, "filler-corpus-pilot: locked %d non-authorizing candidates across %d lanes\n", candidates, len(pilot.Lanes))
 	return 0
+}
+
+func readLane(filename string) (fillercorpus.Lane, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return fillercorpus.Lane{}, err
+	}
+	defer func() { _ = file.Close() }()
+	decoder := json.NewDecoder(io.LimitReader(file, 16<<20))
+	decoder.DisallowUnknownFields()
+	var lane fillercorpus.Lane
+	if err := decoder.Decode(&lane); err != nil {
+		return fillercorpus.Lane{}, err
+	}
+	if err := rejectTrailing(decoder); err != nil {
+		return fillercorpus.Lane{}, err
+	}
+	return lane, nil
 }
 
 func rejectTrailing(decoder *json.Decoder) error {

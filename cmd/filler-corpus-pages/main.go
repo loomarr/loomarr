@@ -1,6 +1,5 @@
-// Command filler-corpus-pages freezes an explicitly authored, first-party-page
-// pilot lane. It records page and transport evidence but grants no rights or
-// download authority.
+// Command filler-corpus-pages freezes an explicitly authored first-party-page
+// lane and optional full inventory. It records evidence but grants no rights.
 package main
 
 import (
@@ -44,6 +43,7 @@ type seedCase struct {
 
 type options struct {
 	inputPath, outputPath, cacheDir, userAgent, pageHost, mediaHost string
+	snapshotAt                                                      time.Time
 	maxRequests, maxItems                                           int
 	maxResponseBytes, maxItemBytes, maxTotalBytes                   int64
 	delay, maxWallTime                                              time.Duration
@@ -56,9 +56,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("filler-corpus-pages", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	input := flags.String("in", "", "authored first-party page seed JSON")
-	output := flags.String("out", "", "source-neutral pilot lane JSON")
+	output := flags.String("out", "", "bounded source lane JSON")
+	inventoryOutput := flags.String("inventory-out", "", "optional strict full-corpus inventory JSON")
 	cache := flags.String("cache-dir", "", "raw page and HEAD cache")
 	userAgent := flags.String("user-agent", "", "descriptive User-Agent with contact")
+	snapshotText := flags.String("snapshot-at", "", "snapshot time in RFC3339 format")
 	pageHost := flags.String("page-host", "", "exact trusted first-party page host")
 	mediaHost := flags.String("media-host", "", "exact trusted first-party media host")
 	maxRequests := flags.Int("max-requests", 0, "hard HTTP request ceiling")
@@ -71,14 +73,23 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
-	if *input == "" || *output == "" || *cache == "" || *userAgent == "" || *pageHost == "" || *mediaHost == "" || *maxRequests < 20 || *maxRequests > 50 || *maxItems != 10 || *maxResponseBytes <= 0 || *maxItemBytes <= 0 || *maxTotalBytes < *maxItemBytes || *delay < 0 || *maxWallTime <= 0 {
-		_, _ = fmt.Fprintln(stderr, "filler-corpus-pages: input, output, cache, identity, exact hosts, exactly 10 items, 20-50 bounded requests, positive byte ceilings, non-negative delay, and wall ceiling are required")
+	if *input == "" || *output == "" || *cache == "" || *userAgent == "" || *snapshotText == "" || *pageHost == "" || *mediaHost == "" || *maxItems <= 0 || *maxItems > 100 || *maxRequests < 2*(*maxItems) || *maxRequests > 1000 || *maxResponseBytes <= 0 || *maxItemBytes <= 0 || *maxTotalBytes < *maxItemBytes || *delay < 0 || *maxWallTime <= 0 {
+		_, _ = fmt.Fprintln(stderr, "filler-corpus-pages: input, output, cache, identity, snapshot, exact hosts, 1-100 items, sufficient bounded requests, positive byte ceilings, non-negative delay, and wall ceiling are required")
 		return 2
 	}
-	opts := options{inputPath: *input, outputPath: *output, cacheDir: *cache, userAgent: *userAgent, pageHost: *pageHost, mediaHost: *mediaHost, maxRequests: *maxRequests, maxItems: *maxItems, maxResponseBytes: *maxResponseBytes, maxItemBytes: *maxItemBytes, maxTotalBytes: *maxTotalBytes, delay: *delay, maxWallTime: *maxWallTime}
+	snapshotAt, err := time.Parse(time.RFC3339, *snapshotText)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "filler-corpus-pages: parse snapshot:", err)
+		return 2
+	}
+	opts := options{inputPath: *input, outputPath: *output, cacheDir: *cache, userAgent: *userAgent, pageHost: *pageHost, mediaHost: *mediaHost, snapshotAt: snapshotAt, maxRequests: *maxRequests, maxItems: *maxItems, maxResponseBytes: *maxResponseBytes, maxItemBytes: *maxItemBytes, maxTotalBytes: *maxTotalBytes, delay: *delay, maxWallTime: *maxWallTime}
 	draft, err := readSeed(opts.inputPath)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-pages: seed:", err)
+		return 1
+	}
+	if len(draft.Cases) != opts.maxItems {
+		_, _ = fmt.Fprintf(stderr, "filler-corpus-pages: seed has %d cases; --max-items is %d\n", len(draft.Cases), opts.maxItems)
 		return 1
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), opts.maxWallTime)
@@ -88,9 +99,24 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-pages:", err)
 		return 1
 	}
+	var inventory *fillercorpus.Inventory
+	if *inventoryOutput != "" {
+		value, err := fillercorpus.InventoryFromLane(lane, fillercorpus.LaneInventoryOptions{SnapshotAt: opts.snapshotAt, Collection: filepath.Base(opts.inputPath), AllowedMediaHosts: []string{opts.mediaHost}})
+		if err != nil {
+			_, _ = fmt.Fprintln(stderr, "filler-corpus-pages: inventory:", err)
+			return 1
+		}
+		inventory = &value
+	}
 	if err := writeJSON(opts.outputPath, lane); err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-pages: write:", err)
 		return 1
+	}
+	if inventory != nil {
+		if err := writeJSON(*inventoryOutput, inventory); err != nil {
+			_, _ = fmt.Fprintln(stderr, "filler-corpus-pages: write inventory:", err)
+			return 1
+		}
 	}
 	_, _ = fmt.Fprintf(stdout, "filler-corpus-pages: froze %d %s candidates (%d predicted bytes) in %d requests\n", len(lane.Cases), lane.Authority, lane.PredictedMediaBytes, lane.RequestsUsed)
 	return 0
@@ -107,8 +133,8 @@ func readSeed(filename string) (seed, error) {
 	if err := decoder.Decode(&value); err != nil {
 		return seed{}, err
 	}
-	if value.SchemaVersion != seedSchemaVersion || value.Authority == "" || len(value.Cases) != 10 {
-		return seed{}, fmt.Errorf("schema 1, authority, and exactly 10 cases are required")
+	if value.SchemaVersion != seedSchemaVersion || value.Authority == "" || len(value.Cases) == 0 {
+		return seed{}, fmt.Errorf("schema 1, authority, and at least one case are required")
 	}
 	return value, nil
 }

@@ -303,7 +303,7 @@ func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {
 	// wrong answer. Height necessarily comes from the streams, hence both sections.
 	out, err := exec.CommandContext(ctx, bin,
 		"-v", "error",
-		"-show_entries", "format=duration:stream=height,codec_type",
+		"-show_entries", "format=duration:stream=width,height,codec_type",
 		"-of", "json",
 		path,
 	).Output()
@@ -316,6 +316,7 @@ func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {
 			Duration string `json:"duration"`
 		} `json:"format"`
 		Streams []struct {
+			Width     int    `json:"width"`
 			Height    int    `json:"height"`
 			CodecType string `json:"codec_type"`
 		} `json:"streams"`
@@ -340,10 +341,13 @@ func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {
 	// ⚠ No `break` on the video match any more: the loop now answers TWO questions, and stopping
 	// at the first video stream would report `HasAudio: false` for every file that happens to
 	// list its video track first — which is most of them. The whole stream list is cheap.
-	height, hasAudio, hasVideo := 0, false, false
+	width, height, hasAudio, hasVideo := 0, 0, false, false
 	for _, s := range probed.Streams {
 		if s.CodecType == "video" {
 			hasVideo = true
+			if width == 0 && s.Width > 0 {
+				width = s.Width
+			}
 			if height == 0 && s.Height > 0 {
 				height = s.Height
 			}
@@ -355,7 +359,7 @@ func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {
 	// A missing height is not a probe error, because the caller owns the policy decision. ScanDir
 	// and ProbeStage both reject it as an audio-only file; keeping that decision out of FFprobe
 	// also lets callers distinguish "valid media with no video" from "could not inspect media".
-	return Probed{DurationMs: int64(secs * 1000), Height: height, Silent: !hasAudio, NoVideo: !hasVideo}, nil
+	return Probed{DurationMs: int64(secs * 1000), Width: width, Height: height, Silent: !hasAudio, NoVideo: !hasVideo}, nil
 }
 
 // ShardDepth is how many 2-character directory levels a clip is filed under.
