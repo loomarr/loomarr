@@ -80,7 +80,17 @@ const body = (clips: IncomingClipDTO[]): FillerIncomingOutputBody => ({
   rejectedTotal: 0,
   recentlyFiled: [],
   recentlyFiledTotal: 0,
-  stageOrder: ["probe", "transcode", "split", "language", "transcribe", "tag", "vision", "score"],
+  stageOrder: [
+    "probe",
+    "transcode",
+    "split",
+    "language",
+    "transcribe",
+    "tag",
+    "vision",
+    "admission",
+    "score",
+  ],
   total: 0,
 });
 

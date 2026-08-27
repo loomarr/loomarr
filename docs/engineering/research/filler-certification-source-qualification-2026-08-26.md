@@ -8,30 +8,31 @@ the material is semantically correct or legally admissible. No media was downloa
 inference was purchased during this review. This is an engineering provenance policy, not legal
 advice.
 
+**Superseded for corpus size and pilot outcome.** The source observations below remain useful, but
+the 300-case planning arithmetic predates the independent rights-yield review and executable
+statistical contract. The current quota and outcome are recorded in
+[`filler-certification-corpus-2026-08-25.md`](filler-certification-corpus-2026-08-25.md).
+
 ## Decision
 
-No public source can produce a representative 300-case Loomarr corpus by itself. The certifiable
-corpus should contain:
+No public source can produce a representative Loomarr certification corpus by itself. The current
+holdout needs 446 eligible positives across the six product roles plus 593 invalid and 87 ambiguous
+controls, all under independent-cluster and concentration caps. The independent pilot qualified CDC
+only; LOC, Prelinger, NASA, and Wikimedia Commons did not meet the common rights-and-relevance gate.
+The Blender pilot was already rejected after it failed the ten-distinct-live-candidate precondition.
 
-- **190 positive filler cases:** 35 commercials, 35 promos, 25 bumpers, 25 station IDs, 35 trailers,
-  and 35 PSAs;
-- **110 invalid or ambiguous controls:** programme excerpts, compilations, fragments, degraded and
-  corrupt media, non-filler institutional material, adversarial instructions, conflicting evidence,
-  and sensitive or rights-conflicted cases; and
-- at least **100 directly commissioned or directly licensed modern positive cases**. Public sources
-  should be expected to yield about 90 positives after item-level rights and semantic review, not the
-  190 positives by themselves.
-
-The proposed LOC, Prelinger, NASA, CDC, Blender, and Wikimedia Commons mix is viable only as a
-multi-source plan. It is strong for historical commercials, government promos and PSAs, open-film
-trailers, and negative controls. It is weak for current consumer advertising, entertainment promos,
-real channel bumpers, and real station IDs. Those gaps require creator/broadcaster agreements; an
-archive proxy or a Loomarr-generated imitation is not a representative substitute.
+Public sources therefore remain supplementary. Current consumer advertising, entertainment promos,
+real channel bumpers, station IDs, and a sufficiently diverse creator/campaign distribution require
+authentic creator/broadcaster agreements; archive proxies and Loomarr-generated imitations are not
+representative substitutes.
 
 DVIDS remains excluded. Its metadata and public-domain notices do not repair its product-relevance
 failure: military public-affairs video is not an adequate stand-in for entertainment filler.
 
-## Corpus composition
+## Historical sourcing hypothesis
+
+The tables in this section explain what the pre-pilot 300-case plan expected each source to provide.
+They are retained as research provenance, not as current certification quotas.
 
 ### Positive cases
 
@@ -41,7 +42,7 @@ failure: military public-affairs video is not an adequate stand-in for entertain
 | promo | 35 | 15 | 20 | NASA/LOC and a small confirmed Commons pool plus entertainment/channel promos |
 | bumper | 25 | 0 | 25 | broadcaster/creator masters in real 5/10/15-second forms |
 | station ID | 25 | 0 | 25 | broadcaster/creator masters; confirmed Commons files may replace, not expand, this target |
-| trailer | 35 | 30 | 5 | Blender, NASA, source-verified Commons, and directly licensed independent works |
+| trailer | 35 | 30 | 5 | item-cleared NASA/LOC/Commons or static open works, plus directly licensed independent works |
 | PSA | 35 | 30 | 5 | CDC and item-cleared federal/LOC/Prelinger material plus modern direct masters |
 | **Total** | **190** | **90** | **100** | |
 
@@ -56,7 +57,7 @@ allowed to underfill; the gap moves to direct licensing rather than to a weaker 
 | compilations and mixed roles | 15 | authentic approved reels or deterministic assemblies |
 | fragments and partial end cards | 15 | bounded cuts from approved masters |
 | degraded or corrupt media | 15 | deterministic, recorded transformations |
-| non-filler institutional/educational video | 15 | rights-approved LOC/NASA/Blender material |
+| non-filler institutional/educational video | 15 | rights-approved LOC/NASA/CDC material |
 | adversarial visible, spoken, or metadata instructions | 10 | Loomarr-authored transformations |
 | conflicting evidence, including #545 | 10 | contradictory but reproducible evidence packets |
 | sensitive, policy-prohibited, or rights-conflicted | 10 | explicit reject/hold cases; never playback authority |
@@ -67,7 +68,7 @@ near-duplicate family, or derivative family may cross development and holdout sp
 least 120 independent positive source clusters, and cap one repository at 25% of positive cases and
 one creator/campaign at 10% of any role. These are corpus-diversity controls, not rights rules.
 
-## Qualified source lanes
+## Source lanes assessed
 
 ### 1. Prelinger Archives on Internet Archive: historical ads, promos, and PSAs
 
@@ -294,7 +295,9 @@ batched MediaInfo request then froze ten deterministic candidates. The run used 
 162,981 response bytes, 448,607,902 predicted media bytes, and 1.0 second. It intentionally retains
 YouTube/Vimeo provenance, trademark restrictions, `License review needed` categories, and missing
 P275/P6216/P7482/P170 claims as review evidence rather than treating category membership or a
-licence string as approval.
+licence string as approval. Seven rows also freeze the asserted HTTPS `LicenseUrl` structurally;
+public-domain rows without that field retain the exact public-domain and credit assertions instead
+of inventing a URL.
 
 ## First bounded inventory and go/no-go review
 
@@ -310,11 +313,11 @@ media:
 | Wikimedia Commons | 50 | commercial, PSA, ID, trailer, promo candidates |
 | **Total** | **155** | |
 
-Before writing source adapters, send ten representative rows from each lane through independent
-rights review. Continue a lane only if it produces at least five approved, product-relevant items
-without a source-specific lowering of the rights threshold. Freeze the complete inventory only
-after that yield check. A realistic outcome is 60–90 approved public-source positives; acquire the
-rest through the direct cohort.
+Before scaling source adapters, send ten representative rows from each active lane through
+independent rights review. Continue a lane only if it produces at least five approved,
+product-relevant items without a source-specific lowering of the rights threshold. Freeze the
+complete inventory only after that yield check. The public-source target is 90 approved positives;
+any underfill moves to additional direct licensing beyond the 100-case direct minimum.
 
 The metadata-only inventory must have hard item, request, response-byte, predicted-media-byte,
 duration, pagination, retry, and wall-clock ceilings. It stores raw-response hashes and performs no
@@ -421,5 +424,6 @@ Exclude or hold all of the following:
 4. Independently adjudicate rights and acquire/hash approved-only media under existing ceilings.
 5. Build source and perceptual-similarity clusters before assigning development and holdout splits.
 6. Produce two blind semantic-label batches and a third adjudication only for disagreements.
-7. Lock the schema-v4 300-case manifest. Only then run #555's paid, label-blind OpenRouter bakeoff on
+7. Generate independent opaque-alias review packets, lock the schema-v5 manifest with at least 300
+   development and 1,126 holdout cases, then run #555's paid, label-blind OpenRouter bakeoff on
    identical evidence packets and proceed to fictional-media-server shadow certification.

@@ -2549,6 +2549,7 @@ components:
             - transcribe
             - tag
             - vision
+            - admission
             - score
           type: string
         status:
@@ -5983,6 +5984,7 @@ components:
             - transcribe
             - tag
             - vision
+            - admission
             - score
           type: string
         hash:

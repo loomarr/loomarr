@@ -73,6 +73,9 @@ func TestCaptureExhaustsCategoryContinuationAndBatchesMediaInfo(t *testing.T) {
 	if !strings.Contains(strings.Join(lane.Cases[0].RightsAssertions, "\n"), "P7482: null") {
 		t.Fatalf("assertions = %v", lane.Cases[0].RightsAssertions)
 	}
+	if lane.Cases[0].LicenseURL != "https://creativecommons.org/licenses/by/4.0/" {
+		t.Fatalf("license URL = %q", lane.Cases[0].LicenseURL)
+	}
 }
 
 func TestCategoryURLPinsDirectRootVideoEvidence(t *testing.T) {
@@ -89,5 +92,5 @@ func TestCategoryURLPinsDirectRootVideoEvidence(t *testing.T) {
 
 func testPage(base string, id int) commonsPage {
 	pageID := int64(id)
-	return commonsPage{PageID: pageID, Title: "File:Commercial " + strconv.Itoa(id) + ".webm", ImageInfo: []imageInfo{{Timestamp: time.Date(2026, 8, 26, 11, 0, 0, 0, time.UTC), User: "uploader", Size: 100, URL: base + "/media/" + strconv.Itoa(id) + ".webm", DescriptionURL: base + "/wiki/File:" + strconv.Itoa(id), SHA1: strings.Repeat(strconv.Itoa(id%10), 40), MIME: "video/webm", MediaType: "VIDEO", ExtMetadata: map[string]metadataValue{"LicenseShortName": {Value: "CC BY 4.0", Source: "commons-desc-page"}}}}}
+	return commonsPage{PageID: pageID, Title: "File:Commercial " + strconv.Itoa(id) + ".webm", ImageInfo: []imageInfo{{Timestamp: time.Date(2026, 8, 26, 11, 0, 0, 0, time.UTC), User: "uploader", Size: 100, URL: base + "/media/" + strconv.Itoa(id) + ".webm", DescriptionURL: base + "/wiki/File:" + strconv.Itoa(id), SHA1: strings.Repeat(strconv.Itoa(id%10), 40), MIME: "video/webm", MediaType: "VIDEO", ExtMetadata: map[string]metadataValue{"LicenseShortName": {Value: "CC BY 4.0", Source: "commons-desc-page"}, "LicenseUrl": {Value: "https://creativecommons.org/licenses/by/4.0/", Source: "commons-desc-page"}}}}}
 }

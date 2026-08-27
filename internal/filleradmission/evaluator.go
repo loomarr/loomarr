@@ -71,6 +71,12 @@ func New(policy Policy) (*Evaluator, error) {
 	return &Evaluator{policy: policy, sets: sets}, nil
 }
 
+// PolicyIdentity binds an evaluator instance to the immutable versions carried
+// by certification run identity.
+func (e *Evaluator) PolicyIdentity() (policyVersion, taxonomyVersion string) {
+	return e.policy.Version, e.policy.TaxonomyVersion
+}
+
 // Evaluate validates one complete evidence document and returns either a
 // semantic decision or an operational hold. It never returns both.
 func (e *Evaluator) Evaluate(doc Document) Result {
@@ -207,17 +213,17 @@ func (e *Evaluator) validateEnvelope(doc Document) (OperationalCode, string) {
 	if doc.TaxonomyVersion != e.policy.TaxonomyVersion {
 		return HoldTaxonomyInvalid, "taxonomy version does not match evaluator"
 	}
-	seenAttribution := make(map[string]struct{}, len(doc.Attribution))
+	seenAttribution := make(map[string]Attribution, len(doc.Attribution))
 	for _, item := range doc.Attribution {
 		if item.EvaluationID == "" || item.Role == "" || item.RequestedProvider == "" || item.RequestedModel == "" ||
 			!bounded(item.EvaluationID, maxIDBytes) ||
 			!bounded(item.Role, maxIDBytes) || !bounded(item.Rung, maxIDBytes) ||
 			!bounded(item.RequestedProvider, maxIDBytes) || !bounded(item.RequestedModel, maxSourceBytes) ||
 			!bounded(item.ResolvedProvider, maxIDBytes) || !bounded(item.ResolvedModel, maxSourceBytes) ||
-			!bounded(item.UpstreamProvider, maxIDBytes) || !bounded(item.GenerationID, maxIDBytes) ||
+			!bounded(item.UpstreamProvider, maxIDBytes) || !bounded(item.GenerationID, maxIDBytes) || !bounded(item.AbstentionReason, maxDetailBytes) ||
 			!bounded(item.ChargedAmount, maxIDBytes) || !bounded(item.ChargedCurrency, 16) ||
 			len(item.Modalities) > 8 || item.LatencyMS < 0 || item.Attempts < 0 || negativeTokens(item.Tokens) ||
-			((item.ChargedAmount == "") != (item.ChargedCurrency == "")) {
+			((item.ChargedAmount == "") != (item.ChargedCurrency == "")) || (item.Abstained != (strings.TrimSpace(item.AbstentionReason) != "")) {
 			return HoldEvidenceInvalid, "attribution is incomplete or outside its bounds"
 		}
 		for _, modality := range item.Modalities {
@@ -228,21 +234,25 @@ func (e *Evaluator) validateEnvelope(doc Document) (OperationalCode, string) {
 		if _, exists := seenAttribution[item.EvaluationID]; exists {
 			return HoldEvidenceInvalid, "attribution evaluation ids must be unique"
 		}
-		seenAttribution[item.EvaluationID] = struct{}{}
+		seenAttribution[item.EvaluationID] = item
 	}
 	usedAttribution := make(map[string]struct{}, len(seenAttribution))
 	for _, fact := range doc.Evidence {
 		if fact.EvaluationID == "" {
 			continue
 		}
-		if _, exists := seenAttribution[fact.EvaluationID]; !exists {
+		attribution, exists := seenAttribution[fact.EvaluationID]
+		if !exists {
 			return HoldEvidenceInvalid, fmt.Sprintf("evidence %q references unknown inference evaluation", fact.ID)
+		}
+		if attribution.Abstained {
+			return HoldEvidenceInvalid, fmt.Sprintf("evidence %q references an abstained inference evaluation", fact.ID)
 		}
 		usedAttribution[fact.EvaluationID] = struct{}{}
 	}
 	if len(doc.Operational) == 0 {
-		for id := range seenAttribution {
-			if _, used := usedAttribution[id]; !used {
+		for id, attribution := range seenAttribution {
+			if _, used := usedAttribution[id]; !used && !attribution.Abstained {
 				return HoldEvidenceInvalid, fmt.Sprintf("inference evaluation %q is not referenced by evidence", id)
 			}
 		}
@@ -591,13 +601,13 @@ func validOperationalCode(code OperationalCode) bool {
 
 func knownRole(role string) bool {
 	return slices.Contains([]string{
-		RoleCommercial, RoleBumper, RolePSA, RoleStationID, RoleTrailer, RoleInterstitial,
+		RoleCommercial, RolePromo, RoleBumper, RolePSA, RoleStationID, RoleTrailer, RoleInterstitial,
 		RoleProgrammeExcerpt, RoleCompilation,
 	}, role)
 }
 
 func admissibleRole(role string) bool {
-	return slices.Contains([]string{RoleCommercial, RoleBumper, RolePSA, RoleStationID, RoleTrailer, RoleInterstitial}, role)
+	return slices.Contains([]string{RoleCommercial, RolePromo, RoleBumper, RolePSA, RoleStationID, RoleTrailer, RoleInterstitial}, role)
 }
 
 func stringSet(values []string) map[string]struct{} {

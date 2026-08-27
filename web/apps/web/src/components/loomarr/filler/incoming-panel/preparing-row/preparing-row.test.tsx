@@ -4,7 +4,17 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { PreparingRow, sentenceFor } from "./preparing-row";
 
-const LADDER = ["probe", "transcode", "split", "language", "transcribe", "tag", "vision", "score"];
+const LADDER = [
+  "probe",
+  "transcode",
+  "split",
+  "language",
+  "transcribe",
+  "tag",
+  "vision",
+  "admission",
+  "score",
+];
 
 // ⚠ No `needsDecision`: this row only ever renders for a clip the MACHINE still owns. Its sibling
 // in `incoming-panel.tsx` renders the other end of the belt, and the panel picks between them —
