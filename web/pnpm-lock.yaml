@@ -248,6 +248,9 @@ importers:
       '@loomarr/fixtures':
         specifier: workspace:*
         version: link:../../packages/fixtures
+      '@loomarr/player':
+        specifier: workspace:*
+        version: link:../../packages/player
       '@loomarr/tokens':
         specifier: workspace:*
         version: link:../../packages/tokens
@@ -272,9 +275,6 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
-      hls.js:
-        specifier: ^1.7.0
-        version: 1.7.0
       lucide-react:
         specifier: ^1.31.0
         version: 1.31.0(react@19.2.3)
@@ -520,6 +520,9 @@ importers:
       '@loomarr/core':
         specifier: workspace:*
         version: link:../core
+      hls.js:
+        specifier: ^1.7.0
+        version: 1.7.0
     devDependencies:
       expo:
         specifier: ~57.0.17

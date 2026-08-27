@@ -318,6 +318,14 @@ admitted `android_mobile` source/platform pair; the server still derives the pai
 unknown fields, and accepts no arbitrary logs or device labels. Populated-device focus proof,
 populated artwork evidence, and real-device acceptance remain open.
 
+The shipping web Watch route now consumes `@loomarr/player/browser` rather than owning its hls.js
+and native-HLS transport implementation. The public adapter accepts narrow signed-source,
+diagnostic, error-projection, and tune-timing ports; its implementation remains private while the
+route wrapper preserves the existing generated API and application instrumentation. The existing
+twenty playback tests exercise that public entry through the production wrapper, and the production
+web build retains its bundle-size gate. This closes the browser-player source-sharing blocker, not
+the remaining browser presentation migration or P5 device acceptance.
+
 The native player application lifecycle now treats backgrounding as a resource boundary rather than
 only a pause signal. It pauses controller state, removes native listeners, synchronously releases
 the Expo Video player, and renders no stale player view while backgrounded. Foregrounding creates a

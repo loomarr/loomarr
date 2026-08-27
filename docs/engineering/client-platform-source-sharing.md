@@ -15,9 +15,9 @@ found between the two React Native applications. The remaining duplicate product
 are the explicitly retained legacy web and Compose clients; they remain the rollback path until the
 P5 adoption decision and cannot be retired yet.
 
-This audit does not make P5 complete. The browser player adapter, real-iPhone evidence, populated
-TV focus/time-shift soak, physical-device background/foreground recovery, distribution upgrade,
-and the maintainer's recorded adoption decision remain open.
+This audit does not make P5 complete. Real-iPhone evidence, populated TV focus/time-shift soak,
+physical-device background/foreground recovery, distribution upgrade, and the maintainer's
+recorded adoption decision remain open.
 
 ## Module and adapter ownership
 
@@ -27,7 +27,7 @@ and the maintainer's recorded adoption decision remain open.
 | Pairing and authorization | `@loomarr/core/pairing`, `@loomarr/ui` `PairingShell` | SecureStore, browser storage, paired Bearer transport, cookie/CSRF transport | Shared product state and fail-closed recovery; storage and authentication mechanics vary at a real seam. |
 | Guide rules | `@loomarr/core/guide`, `@loomarr/ui` `GuideJourney` | Browser keyboard/DOM, touch, and `@loomarr/ui-tv` focus/window adapters | Shared geometry, identity, selection, refresh, and tune intent. TV row windows and focus refs do not leak into product rules. |
 | Watching and Surf | `@loomarr/player`, `@loomarr/ui` `WatchingSurface` and `SurfJourney` | Touch chrome, Compose-parity TV presentation, D-pad/number entry | Shared catalog, history, tune ordering, now/next, time-shift, and recovery. Presentation adapters differ because distance and input differ. |
-| Playback transport | `@loomarr/player` controller interface | `@loomarr/player/native` Expo Video adapter; browser adapter still open | Native transport is behind the existing seam. The public native entry contains no Expo implementation. |
+| Playback transport | `@loomarr/player` controller interface | `@loomarr/player/native` Expo Video adapter; `@loomarr/player/browser` hls.js/native-HLS adapter | Both shipping transports sit behind public root entries with private implementations. The web Watch route supplies only its generated signed-URL, diagnostic, error-projection, and tune-timing ports. |
 | Diagnostics | `@loomarr/core/client-diagnostics`, `@loomarr/player/native` lifecycle vocabulary | Web keepalive/CSRF sender and paired Android sender identities | Shared bounded queue and event projection. Server admission remains a closed source/platform pair and derives the actor. |
 | Application composition | Shared roots above | Expo Router/safe area on touch; react-native-tvos/remote/overscan on TV | Legitimate adapter composition. Neither application defines Channel, Guide, playback, or pairing rules locally. |
 
@@ -57,8 +57,9 @@ identity, and focus mechanics. These files do not reimplement the rules supplied
 
 - The Compose TV application remains releasable under the permanent Play identity until React
   Native passes P5 and in-place update acceptance.
-- The Tailwind/shadcn web viewer remains the browser rollback path until the shared browser player
-  adapter and route adoption pass.
+- The Tailwind/shadcn web viewer remains the browser rollback path after adopting the shared browser
+  player adapter; its remaining presentation migration and P5/P8 adoption gates still prevent
+  retirement.
 
 These are named migration states, not accepted end-state duplication. P8 deletes each legacy
 consumer and records its retired identifiers after the replacement passes its full contract.
@@ -83,6 +84,8 @@ cd web
 pnpm lint:boundaries
 pnpm --filter @loomarr/player test
 pnpm --filter @loomarr/player typecheck
+pnpm --filter @loomarr/web exec vitest run src/channels/use-hls-player/use-hls-player.test.ts
+pnpm --filter @loomarr/web build
 pnpm --filter @loomarr/mobile typecheck
 pnpm --filter @loomarr/tv typecheck
 ```
