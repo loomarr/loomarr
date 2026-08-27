@@ -224,3 +224,8 @@ gate documentation are amended before the first change that alters required beha
   activates a squash, `ALLGREEN`, one-build/one-merge queue for `main`. Ordinary PR runs no longer
   admit Apple mobile, Apple TV, tuner, or macOS harness jobs; those remain required on
   `merge_group`, main, and manual runs, guarded by `VerifyCINativeAdmission`.
+- The first admission PR exposed a separate over-selection defect before merge: changing the CI
+  workflow itself selected every product family, so unchanged Rust, Android, Apple, frontend,
+  browser, image, Postgres, and Go code rebuilt. The live run was cancelled. CI orchestration now
+  selects a dedicated policy job, every product job consumes its own exact `impact_*` decision, and
+  the whole admission branch is pinned to `docs,agent,policy` by a regression fixture.

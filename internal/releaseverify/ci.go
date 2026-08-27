@@ -168,6 +168,26 @@ func VerifyCIImpactActivation(path string) error {
 		outputs   []classifierOutput
 		condition string
 	}{
+		"ci-policy": {
+			outputs:   []classifierOutput{{name: "impact_policy", source: "policy"}},
+			condition: "needs.changes.outputs.impact_policy == 'true'",
+		},
+		"rust-contracts": {
+			outputs:   []classifierOutput{{name: "impact_rust", source: "rust"}},
+			condition: "needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true'",
+		},
+		"go-contracts": {
+			outputs:   []classifierOutput{{name: "impact_contracts", source: "contracts"}},
+			condition: "needs.changes.outputs.impact_contracts == 'true' || needs.changes.outputs.release_candidate == 'true'",
+		},
+		"image-certification": {
+			outputs:   []classifierOutput{{name: "impact_rust", source: "rust"}},
+			condition: "needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true'",
+		},
+		"go": {
+			outputs:   []classifierOutput{{name: "impact_go", source: "go"}},
+			condition: "needs.changes.outputs.impact_go == 'true'",
+		},
 		"store-postgres": {
 			outputs:   []classifierOutput{{name: "impact_postgres", source: "postgres"}},
 			condition: "needs.changes.outputs.impact_postgres == 'true'",
@@ -178,6 +198,26 @@ func VerifyCIImpactActivation(path string) error {
 				{name: "impact_e2e", source: "e2e"},
 			},
 			condition: "needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true'",
+		},
+		"frontend": {
+			outputs:   []classifierOutput{{name: "impact_web", source: "web"}},
+			condition: "needs.changes.outputs.impact_web == 'true'",
+		},
+		"clients": {
+			outputs:   []classifierOutput{{name: "impact_clients", source: "clients"}},
+			condition: "needs.changes.outputs.impact_clients == 'true'",
+		},
+		"image": {
+			outputs:   []classifierOutput{{name: "impact_image", source: "image"}},
+			condition: "needs.changes.outputs.impact_image == 'true'",
+		},
+		"docs": {
+			outputs:   []classifierOutput{{name: "impact_docs", source: "docs"}},
+			condition: "needs.changes.outputs.impact_docs == 'true'",
+		},
+		"android": {
+			outputs:   []classifierOutput{{name: "impact_android", source: "android"}},
+			condition: "needs.changes.outputs.impact_android == 'true'",
 		},
 		"tuner": {
 			outputs:   []classifierOutput{{name: "impact_tuner", source: "tuner"}},
@@ -271,7 +311,7 @@ func VerifyCINativeAdmission(path string) error {
 		return err
 	}
 	expected := map[string]string{
-		"agent-harness-macos": "github.event_name != 'pull_request' && needs.changes.outputs.agent == 'true'",
+		"agent-harness-macos": "github.event_name != 'pull_request' && needs.changes.outputs.impact_agent == 'true'",
 		"apple-mobile":        "github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_mobile == 'true'",
 		"apple-tv":            "github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_tv == 'true'",
 		"tuner":               "github.event_name != 'pull_request' && needs.changes.outputs.impact_tuner == 'true'",

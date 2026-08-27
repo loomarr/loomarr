@@ -84,17 +84,56 @@ func TestVerifyCIImpactActivation(t *testing.T) {
   changes:
     outputs:
       impact_postgres: ${{ steps.impact.outputs.postgres }}
+      impact_policy: ${{ steps.impact.outputs.policy }}
+      impact_contracts: ${{ steps.impact.outputs.contracts }}
+      impact_rust: ${{ steps.impact.outputs.rust }}
+      impact_go: ${{ steps.impact.outputs.go }}
+      impact_web: ${{ steps.impact.outputs.web }}
+      impact_clients: ${{ steps.impact.outputs.clients }}
+      impact_image: ${{ steps.impact.outputs.image }}
+      impact_docs: ${{ steps.impact.outputs.docs }}
+      impact_android: ${{ steps.impact.outputs.android }}
       impact_visual: ${{ steps.impact.outputs.visual }}
       impact_e2e: ${{ steps.impact.outputs.e2e }}
       impact_tuner: ${{ steps.impact.outputs.tuner }}
       impact_apple_mobile: ${{ steps.impact.outputs.apple_mobile }}
       impact_apple_tv: ${{ steps.impact.outputs.apple_tv }}
+  ci-policy:
+    needs: changes
+    if: needs.changes.outputs.impact_policy == 'true'
+  rust-contracts:
+    needs: changes
+    if: needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true'
+  go-contracts:
+    needs: changes
+    if: needs.changes.outputs.impact_contracts == 'true' || needs.changes.outputs.release_candidate == 'true'
+  image-certification:
+    needs: changes
+    if: needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true'
+  go:
+    needs: changes
+    if: needs.changes.outputs.impact_go == 'true'
   store-postgres:
     needs: changes
     if: needs.changes.outputs.impact_postgres == 'true'
   playwright:
     needs: changes
     if: needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true'
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.impact_web == 'true'
+  clients:
+    needs: changes
+    if: needs.changes.outputs.impact_clients == 'true'
+  image:
+    needs: changes
+    if: needs.changes.outputs.impact_image == 'true'
+  docs:
+    needs: changes
+    if: needs.changes.outputs.impact_docs == 'true'
+  android:
+    needs: changes
+    if: needs.changes.outputs.impact_android == 'true'
   tuner:
     needs: changes
     if: github.event_name != 'pull_request' && needs.changes.outputs.impact_tuner == 'true'
@@ -199,7 +238,7 @@ jobs:
   changes:
     runs-on: ubuntu-latest
   agent-harness-macos:
-    if: github.event_name != 'pull_request' && needs.changes.outputs.agent == 'true'
+    if: github.event_name != 'pull_request' && needs.changes.outputs.impact_agent == 'true'
     runs-on: macos-latest
   apple-mobile:
     if: github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_mobile == 'true'
