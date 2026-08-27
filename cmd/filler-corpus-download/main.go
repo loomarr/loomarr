@@ -177,6 +177,9 @@ func planDownloads(inv fillercorpus.Inventory, approvals []fillercorpus.RightsDe
 		if requiresCredit(candidate.LicenseURL) && strings.TrimSpace(approval.RequiredCredit) == "" {
 			return nil, fmt.Errorf("approved item %s requires attribution", approval.CaseID)
 		}
+		if candidate.Representation.Transport == fillercorpus.TransportLocal {
+			continue
+		}
 		if err := fillercorpus.ValidateMediaURL(candidate.Representation.URL, candidate.AllowedMediaHosts); err != nil {
 			return nil, err
 		}

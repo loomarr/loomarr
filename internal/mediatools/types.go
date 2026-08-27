@@ -53,6 +53,8 @@ type TranscriptSegment struct {
 // the kind of half-populated row that is painful to notice later.
 type Probed struct {
 	DurationMs int64
+	// Width is the VIDEO stream's width in pixels; zero when unavailable.
+	Width int
 	// Height is the VIDEO stream's height in pixels; 0 when the file has no video stream or
 	// the probe could not tell. Quality is derived from it (see QualityFromHeight) rather
 	// than stored raw, because "1080p" is what a person reads and 1088 is what some encoders

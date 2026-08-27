@@ -1,18 +1,21 @@
 # OpenRouter filler bakeoff
 
 This is the paid, label-blind capture boundary for filler admission. It does not download media,
-read human labels, score results, or authorize production behavior. Run it only after the 300-case
+read human labels, score results, or authorize production behavior. Run it only after the
 certification manifest and its evidence-packet JSONL are locked.
 
 ## Inputs
 
-- A schema-v4 certification manifest. Only its named `development` or `holdout` split is executed.
+- A schema-v5 certification manifest. Only its named `development` or `holdout` split is executed.
 - One packet JSON object per line. Packet case IDs and hashes must match that split exactly.
 - A corpus root containing the packet's hashed frame, audio, and video derivatives.
 - A schema-v1 OpenRouter snapshot no more than 24 hours older than the run, created from the exact
   candidate models through `make filler-openrouter-snapshot`.
 - A schema-v1 run config containing the immutable run identity, admission policy, and ordered routes.
 - `OPENROUTER_API_KEY` in the environment. Credentials never enter the config or output ledger.
+
+The local case ID is a ledger join key, not model evidence. The runner validates it before spend but
+does not include it in provider prompt content; provider-visible facts use only opaque signal IDs.
 
 The run config is strict: unknown or trailing fields fail. One model comparison is one independently
 named config and output ledger; do not put several candidate models behind fallback routing. Use
@@ -34,7 +37,7 @@ the prompt and output schema compiled into the adapter.
     "capabilitySnapshot": "<snapshot SHA-256>",
     "priceSnapshot": "<the same snapshot SHA-256>",
     "generatedAt": "YYYY-MM-DDTHH:MM:SSZ",
-    "maxRequests": 300,
+    "maxRequests": 4000,
     "maxSpendNanoUsd": 5000000000,
     "maxConcurrency": 1
   },
@@ -42,7 +45,7 @@ the prompt and output schema compiled into the adapter.
     "version": "filler-admission-v1",
     "taxonomyVersion": "filler-taxonomy-v1",
     "allowedProducts": ["example-product"],
-    "allowedContentRoles": ["commercial", "bumper", "psa", "station_id"],
+    "allowedContentRoles": ["commercial", "promo", "bumper", "psa", "station_id", "trailer"],
     "knownSensitiveFlags": ["adult", "violence"],
     "prohibitedFlags": ["adult"]
   },

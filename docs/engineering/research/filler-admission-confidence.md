@@ -360,8 +360,9 @@ It is not a substitute for representative data or drift monitoring.
 
 ### Corpus and labels
 
-Build a versioned 300–500 clip development corpus, then grow it until each safety-critical slice has
-enough independent examples to support its precision claim. Include:
+Build a versioned 300-case development corpus and a separately locked 1,126-case independent
+holdout. The holdout denominators and diversity caps are fixed by design §10 rather than being grown
+opportunistically until a point estimate looks good. Include:
 
 - product commercials across eras and product categories;
 - promos, bumpers, station IDs, PSAs, and trailers;

@@ -39,6 +39,7 @@ type RightsReviewRow struct {
 	MetadataURL             string                  `json:"metadataUrl"`
 	MetadataRetrievedAt     time.Time               `json:"metadataRetrievedAt"`
 	MetadataSHA256          string                  `json:"metadataSha256"`
+	Evidence                []InventoryEvidence     `json:"evidence,omitempty"`
 	AllowedMediaHosts       []string                `json:"allowedMediaHosts"`
 	Representation          InventoryRepresentation `json:"representation"`
 	ReviewerID              string                  `json:"reviewerId"`
@@ -52,8 +53,8 @@ type RightsReviewRow struct {
 
 var rightsReviewCSVHeader = []string{
 	"rank", "inventory_sha256", "case_id", "capture_id", "authority", "item_id", "metadata_sha256", "title", "role_hints_json", "collection_json", "creator_json", "date",
-	"license_url", "rights_assertions_json", "possible_copyright_status_json", "item_url", "metadata_url", "metadata_retrieved_at",
-	"representation_name", "representation_url", "representation_mime_type", "representation_origin", "representation_bytes", "representation_sha256", "representation_sha1", "representation_md5", "allowed_media_hosts_json",
+	"license_url", "rights_assertions_json", "possible_copyright_status_json", "item_url", "metadata_url", "metadata_retrieved_at", "evidence_json",
+	"representation_transport", "representation_name", "representation_url", "representation_path", "representation_mime_type", "representation_origin", "representation_bytes", "representation_sha256", "representation_sha1", "representation_md5", "allowed_media_hosts_json",
 	"reviewer_id", "reviewed_at", "decision", "basis", "redistributable", "required_credit", "restrictions_json",
 }
 
@@ -65,7 +66,7 @@ func RightsReviewRowFromCase(item InventoryCase) RightsReviewRow {
 		RoleHints: item.RoleHints, Collection: item.Collection, Creator: item.Creator, Date: item.Date,
 		LicenseURL: item.LicenseURL, RightsAssertions: item.RightsAssertions,
 		PossibleCopyrightStatus: item.PossibleCopyrightStatus, ItemURL: item.ItemURL, MetadataURL: item.MetadataURL,
-		MetadataRetrievedAt: item.MetadataRetrievedAt, MetadataSHA256: item.MetadataSHA256,
+		MetadataRetrievedAt: item.MetadataRetrievedAt, MetadataSHA256: item.MetadataSHA256, Evidence: item.Evidence,
 		AllowedMediaHosts: item.AllowedMediaHosts, Representation: item.Representation,
 		Restrictions: []string{},
 	}
@@ -74,8 +75,8 @@ func RightsReviewRowFromCase(item InventoryCase) RightsReviewRow {
 func ImmutableRightsReviewRecord(row RightsReviewRow) []string {
 	return []string{
 		strconv.Itoa(row.Rank), row.InventorySHA256, row.CaseID, row.CaptureID, row.Authority, row.ItemID, row.MetadataSHA256, SpreadsheetSafe(row.Title), JSONCell(row.RoleHints), JSONCell(row.Collection), JSONCell(row.Creator), SpreadsheetSafe(row.Date),
-		row.LicenseURL, JSONCell(row.RightsAssertions), JSONCell(row.PossibleCopyrightStatus), row.ItemURL, row.MetadataURL, row.MetadataRetrievedAt.UTC().Format(time.RFC3339),
-		SpreadsheetSafe(row.Representation.Name), row.Representation.URL, SpreadsheetSafe(row.Representation.MIMEType), SpreadsheetSafe(row.Representation.Origin), strconv.FormatInt(row.Representation.Bytes, 10), row.Representation.SHA256, row.Representation.SHA1, row.Representation.MD5, JSONCell(row.AllowedMediaHosts),
+		row.LicenseURL, JSONCell(row.RightsAssertions), JSONCell(row.PossibleCopyrightStatus), row.ItemURL, row.MetadataURL, row.MetadataRetrievedAt.UTC().Format(time.RFC3339), JSONCell(row.Evidence),
+		row.Representation.Transport, SpreadsheetSafe(row.Representation.Name), row.Representation.URL, SpreadsheetSafe(row.Representation.Path), SpreadsheetSafe(row.Representation.MIMEType), SpreadsheetSafe(row.Representation.Origin), strconv.FormatInt(row.Representation.Bytes, 10), row.Representation.SHA256, row.Representation.SHA1, row.Representation.MD5, JSONCell(row.AllowedMediaHosts),
 	}
 }
 

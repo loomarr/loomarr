@@ -8,31 +8,31 @@ the material is semantically correct or legally admissible. No media was downloa
 inference was purchased during this review. This is an engineering provenance policy, not legal
 advice.
 
+**Superseded for corpus size and pilot outcome.** The source observations below remain useful, but
+the 300-case planning arithmetic predates the independent rights-yield review and executable
+statistical contract. The current quota and outcome are recorded in
+[`filler-certification-corpus-2026-08-25.md`](filler-certification-corpus-2026-08-25.md).
+
 ## Decision
 
-No public source can produce a representative 300-case Loomarr corpus by itself. The certifiable
-corpus should contain:
+No public source can produce a representative Loomarr certification corpus by itself. The current
+holdout needs 446 eligible positives across the six product roles plus 593 invalid and 87 ambiguous
+controls, all under independent-cluster and concentration caps. The independent pilot qualified CDC
+only; LOC, Prelinger, NASA, and Wikimedia Commons did not meet the common rights-and-relevance gate.
+The Blender pilot was already rejected after it failed the ten-distinct-live-candidate precondition.
 
-- **190 positive filler cases:** 35 commercials, 35 promos, 25 bumpers, 25 station IDs, 35 trailers,
-  and 35 PSAs;
-- **110 invalid or ambiguous controls:** programme excerpts, compilations, fragments, degraded and
-  corrupt media, non-filler institutional material, adversarial instructions, conflicting evidence,
-  and sensitive or rights-conflicted cases; and
-- at least **100 directly commissioned or directly licensed modern positive cases**. Public sources
-  should be expected to yield about 90 positives after item-level rights and semantic review, not the
-  190 positives by themselves.
-
-The active LOC, Prelinger, NASA, CDC, and Wikimedia Commons mix is viable only as a multi-source
-plan. It is strong for historical commercials, government promos and PSAs, some trailers, and
-negative controls. The Blender pilot was rejected after it failed the ten-distinct-live-candidate
-precondition. Public sources remain weak for current consumer advertising, entertainment promos,
-real channel bumpers, and real station IDs. Those gaps require creator/broadcaster agreements; an
-archive proxy or a Loomarr-generated imitation is not a representative substitute.
+Public sources therefore remain supplementary. Current consumer advertising, entertainment promos,
+real channel bumpers, station IDs, and a sufficiently diverse creator/campaign distribution require
+authentic creator/broadcaster agreements; archive proxies and Loomarr-generated imitations are not
+representative substitutes.
 
 DVIDS remains excluded. Its metadata and public-domain notices do not repair its product-relevance
 failure: military public-affairs video is not an adequate stand-in for entertainment filler.
 
-## Corpus composition
+## Historical sourcing hypothesis
+
+The tables in this section explain what the pre-pilot 300-case plan expected each source to provide.
+They are retained as research provenance, not as current certification quotas.
 
 ### Positive cases
 
@@ -424,5 +424,6 @@ Exclude or hold all of the following:
 4. Independently adjudicate rights and acquire/hash approved-only media under existing ceilings.
 5. Build source and perceptual-similarity clusters before assigning development and holdout splits.
 6. Produce two blind semantic-label batches and a third adjudication only for disagreements.
-7. Lock the schema-v4 300-case manifest. Only then run #555's paid, label-blind OpenRouter bakeoff on
+7. Generate independent opaque-alias review packets, lock the schema-v5 manifest with at least 300
+   development and 1,126 holdout cases, then run #555's paid, label-blind OpenRouter bakeoff on
    identical evidence packets and proceed to fictional-media-server shadow certification.
