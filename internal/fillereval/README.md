@@ -44,11 +44,15 @@ license metadata still needs independent item-level rights adjudication before i
 manifest, and the command never downloads media or invokes a model.
 
 LOC, NASA, CDC, and Commons adapters promote their bounded discovery lanes through the same strict
-source-neutral inventory contract. `make filler-corpus-direct` adds the fixed 100-case modern
-cohort without pretending a local folder grants rights: it requires 20 commercials, 20 promos, 25
-bumpers, 25 station IDs, 5 trailers, and 5 PSAs; hashes 100 unique media payloads plus separate
-rights and provenance evidence beneath one symlink-safe root; and rejects any quota, path, byte, or
-wall-time violation. Public and direct inventories combine before one independent rights review.
+source-neutral inventory contract. `make filler-corpus-direct` captures a bounded, authored lane
+without pretending a local folder grants rights: its schema-v2 manifest predeclares the exact item
+count, one contracting-owner authority, and positive acquisition quotas for known corpus roles. One
+manifest per owner keeps source concentration measurable instead of collapsing all direct work into
+one generic authority. Every case freezes its creator, campaign, and source-family identity before
+split planning. The command hashes every unique media payload plus separate rights and provenance
+evidence beneath one symlink-safe root and rejects any quota, path, byte, or wall-time violation.
+Certification alone owns the final truth and holdout role quotas.
+Public and direct inventories combine before one independent rights review.
 
 `make filler-corpus-download` is the separately authorized media step. It accepts only `approved`
 rights rows tied to the exact inventory and metadata SHA-256 values, reviewer, review time, rationale,

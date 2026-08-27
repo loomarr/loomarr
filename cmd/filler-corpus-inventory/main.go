@@ -1,4 +1,4 @@
-// Command filler-corpus-inventory deterministically combines strict schema-v2
+// Command filler-corpus-inventory deterministically combines strict schema-v3
 // source captures into one mixed-authority certification inventory.
 package main
 
@@ -30,7 +30,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("filler-corpus-inventory", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	var inputs paths
-	flags.Var(&inputs, "inventory", "strict schema-v2 source inventory; repeat for every capture file")
+	flags.Var(&inputs, "inventory", "strict schema-v3 source inventory; repeat for every capture file")
 	output := flags.String("out", "", "combined mixed-authority inventory JSON")
 	if err := flags.Parse(args); err != nil {
 		return 2
