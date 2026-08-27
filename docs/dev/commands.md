@@ -48,12 +48,12 @@ The *runs:* note on a row lists what each parent pulls in.
 | Target | CI | What it does |
 | --- | --- | --- |
 | `make check` |  | complete local gate: repository contracts plus race-policy-aware unit tests <br>*runs:* `check-static` `test` |
-| `make check-static` | ✅ | repository contracts without the unit-test suite (CI runs this once beside test shards) <br>*runs:* `rust-check` `fmt` `shellcheck` `privacy-verify` `vet` `tags-verify` `vet-tags` `lint` `agent-harness-test` `compose-verify` `release-verify` `go-race-verify` |
-| `make rust-check` |  | format, lint, build, and test the required Rust image worker <br>*runs:* `rust-test-worker` |
+| `make check-static` |  | repository contracts without the unit-test suite (CI runs this once beside test shards) <br>*runs:* `rust-check` `fmt` `shellcheck` `privacy-verify` `vet` `tags-verify` `vet-tags` `lint` `agent-harness-test` `compose-verify` `release-verify` `go-race-verify` |
+| `make rust-check` | ✅ | format, lint, build, and test the required Rust image worker <br>*runs:* `rust-test-worker` |
 | `make rust-test-worker` |  | build the debug Rust image worker required by Go unit tests |
 | `make rust-audit` |  | check Rust advisories, licences, and dependency sources (needs cargo-deny) |
 | `make rust-fuzz` |  | fuzz the bounded Rust image protocol/decoder; optional FUZZ_SECONDS (needs nightly + cargo-fuzz) |
-| `make fmt` |  | gofmt -l (fails if any file needs formatting) |
+| `make fmt` | ✅ | gofmt -l (fails if any file needs formatting) |
 | `make shellcheck` |  | shellcheck every repository shell script |
 | `make privacy-verify` |  | captured private fixture literals must not re-enter the tracked tree |
 | `make vet` |  | go vet |
@@ -188,7 +188,7 @@ The *runs:* note on a row lists what each parent pulls in.
 
 ## What CI runs
 
-`agent-harness-test` · `android-release-test` · `android` · `arch-docs-verify` · `check-static` · `ci-lint` · `client-apple-simulator` · `clients` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `openapi-verify` · `retired-verify` · `test-pg` · `test` · `tuner-e2e-host`
+`agent-harness-test` · `android-release-test` · `android` · `arch-docs-verify` · `ci-lint` · `client-apple-simulator` · `clients` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `fmt` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `openapi-verify` · `retired-verify` · `rust-check` · `test-pg` · `test` · `tuner-e2e-host`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 for example, `check-static` expands to formatting, vet, lint, and repository
