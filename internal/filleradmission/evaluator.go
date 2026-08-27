@@ -601,13 +601,13 @@ func validOperationalCode(code OperationalCode) bool {
 
 func knownRole(role string) bool {
 	return slices.Contains([]string{
-		RoleCommercial, RoleBumper, RolePSA, RoleStationID, RoleTrailer, RoleInterstitial,
+		RoleCommercial, RolePromo, RoleBumper, RolePSA, RoleStationID, RoleTrailer, RoleInterstitial,
 		RoleProgrammeExcerpt, RoleCompilation,
 	}, role)
 }
 
 func admissibleRole(role string) bool {
-	return slices.Contains([]string{RoleCommercial, RoleBumper, RolePSA, RoleStationID, RoleTrailer, RoleInterstitial}, role)
+	return slices.Contains([]string{RoleCommercial, RolePromo, RoleBumper, RolePSA, RoleStationID, RoleTrailer, RoleInterstitial}, role)
 }
 
 func stringSet(values []string) map[string]struct{} {

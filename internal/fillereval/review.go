@@ -10,7 +10,7 @@ import (
 // LabelSubmission is one blind reviewer batch entry. Review files contain
 // labels, not decisions copied from the draft manifest.
 type LabelSubmission struct {
-	CaseID     string    `json:"caseId"`
+	Alias      string    `json:"alias"`
 	ReviewerID string    `json:"reviewerId"`
 	BatchID    string    `json:"batchId"`
 	ReviewedAt time.Time `json:"reviewedAt"`
@@ -28,15 +28,15 @@ type AdjudicationSubmission struct {
 // LockReviewedManifest combines two independently authored review batches.
 // Matching labels become final directly; disagreements require a third-party
 // adjudication. No source media or evidence extraction happens here.
-func LockReviewedManifest(draft Manifest, first, second []LabelSubmission, adjudications []AdjudicationSubmission, lockedAt time.Time) (Manifest, []string) {
+func LockReviewedManifest(draft Manifest, first, second BlindReviewSet, adjudications []AdjudicationSubmission, lockedAt time.Time) (Manifest, []string) {
 	locked := draft
 	locked.Cases = slices.Clone(draft.Cases)
 	locked.Kind = CorpusCertification
 	locked.LockedAt = lockedAt.UTC()
 	failures := validateUnlabeledDraft(draft)
-	firstByID, firstFailures := indexSubmissions("first review", first)
+	firstByID, firstFailures := unblindSubmissions("first review", draft, first)
 	failures = append(failures, firstFailures...)
-	secondByID, moreFailures := indexSubmissions("second review", second)
+	secondByID, moreFailures := unblindSubmissions("second review", draft, second)
 	failures = append(failures, moreFailures...)
 	adjudicationByID, adjudicationFailures := indexAdjudications(adjudications)
 	failures = append(failures, adjudicationFailures...)
@@ -52,7 +52,7 @@ func LockReviewedManifest(draft Manifest, first, second []LabelSubmission, adjud
 			failures = append(failures, c.ID+": both independent review submissions are required")
 			continue
 		}
-		if a.ReviewerID == b.ReviewerID || a.BatchID == b.BatchID {
+		if a.ReviewerID == b.ReviewerID || first.Map.BatchID == second.Map.BatchID {
 			failures = append(failures, c.ID+": reviewers and blind-review batches must be distinct")
 			continue
 		}
@@ -82,8 +82,8 @@ func LockReviewedManifest(draft Manifest, first, second []LabelSubmission, adjud
 		}
 		ApplyLabels(c, finalLabels)
 		c.LabelReviews = []LabelReview{
-			{ReviewerID: a.ReviewerID, BatchID: a.BatchID, ReviewedAt: a.ReviewedAt, Independent: true, SubmissionSHA256: aHash},
-			{ReviewerID: b.ReviewerID, BatchID: b.BatchID, ReviewedAt: b.ReviewedAt, Independent: true, SubmissionSHA256: bHash},
+			{ReviewerID: a.ReviewerID, BatchID: first.Map.BatchID, ReviewedAt: a.ReviewedAt, Independent: true, SubmissionSHA256: aHash},
+			{ReviewerID: b.ReviewerID, BatchID: second.Map.BatchID, ReviewedAt: b.ReviewedAt, Independent: true, SubmissionSHA256: bHash},
 		}
 		c.Adjudication = adjudication
 	}
@@ -104,6 +104,7 @@ func LockReviewedManifest(draft Manifest, first, second []LabelSubmission, adjud
 	}
 	if len(failures) == 0 {
 		failures = append(failures, ValidateManifest(locked)...)
+		failures = append(failures, ValidateCertificationContract(locked)...)
 	}
 	return locked, failures
 }
@@ -158,30 +159,6 @@ func validateLabels(prefix string, labels Labels) []string {
 		evidenceIDs[evidence.ID] = struct{}{}
 	}
 	return failures
-}
-
-func indexSubmissions(name string, submissions []LabelSubmission) (map[string]LabelSubmission, []string) {
-	indexed := make(map[string]LabelSubmission, len(submissions))
-	var failures []string
-	var reviewerID, batchID string
-	for i, submission := range submissions {
-		if strings.TrimSpace(submission.CaseID) == "" || strings.TrimSpace(submission.ReviewerID) == "" || strings.TrimSpace(submission.BatchID) == "" || submission.ReviewedAt.IsZero() {
-			failures = append(failures, fmt.Sprintf("%s[%d]: case, reviewer, batch, and review time are required", name, i))
-			continue
-		}
-		if _, exists := indexed[submission.CaseID]; exists {
-			failures = append(failures, name+": duplicate case "+submission.CaseID)
-			continue
-		}
-		if reviewerID == "" {
-			reviewerID, batchID = submission.ReviewerID, submission.BatchID
-		} else if submission.ReviewerID != reviewerID || submission.BatchID != batchID {
-			failures = append(failures, name+": one file must contain exactly one reviewer and blind-review batch")
-			continue
-		}
-		indexed[submission.CaseID] = submission
-	}
-	return indexed, failures
 }
 
 func indexAdjudications(submissions []AdjudicationSubmission) (map[string]AdjudicationSubmission, []string) {
