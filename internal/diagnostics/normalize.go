@@ -61,7 +61,7 @@ func normalizeLevel(level Level) Level {
 
 func normalizeSource(source Source) Source {
 	switch source {
-	case SourceServer, SourceWeb, SourceAndroidTV:
+	case SourceServer, SourceWeb, SourceAndroidMobile, SourceAndroidTV:
 		return source
 	default:
 		return SourceServer

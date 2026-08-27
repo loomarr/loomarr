@@ -26,4 +26,6 @@ test("runs the authoritative Guide over the still-mounted player", async () => {
   assert.match(source, /watchingScheduleFromGuide/);
   assert.match(source, /schedule=\{schedule\}/);
   assert.match(source, /onChannelEvent/);
+  assert.match(source, /ClientDiagnosticsReporter/);
+  assert.match(source, /source: "android_mobile"/);
 });

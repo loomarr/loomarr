@@ -312,8 +312,10 @@ replacement, first-frame, media-error, and detached playback observations; decod
 arbitrary client data never cross the boundary. Guide and Surf now pass stable product identities
 through a platform-neutral focus registry; the TV adapter binds those identities to native refs,
 queues restoration until bounded rows mount, and keeps React Native focus mechanics out of shared
-selection rules. Populated-device focus proof, mobile-client diagnostic admission, populated artwork
-evidence, and real-device acceptance remain open.
+selection rules. Android mobile now emits the same closed playback lifecycle through an explicitly
+admitted `android_mobile` source/platform pair; the server still derives the paired member, rejects
+unknown fields, and accepts no arbitrary logs or device labels. Populated-device focus proof,
+populated artwork evidence, and real-device acceptance remain open.
 
 The native player application lifecycle now treats backgrounding as a resource boundary rather than
 only a pause signal. It pauses controller state, removes native listeners, synchronously releases

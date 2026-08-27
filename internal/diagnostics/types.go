@@ -16,9 +16,10 @@ const (
 type Source string
 
 const (
-	SourceServer    Source = "server"
-	SourceWeb       Source = "web"
-	SourceAndroidTV Source = "android_tv"
+	SourceServer        Source = "server"
+	SourceWeb           Source = "web"
+	SourceAndroidMobile Source = "android_mobile"
+	SourceAndroidTV     Source = "android_tv"
 )
 
 // Event is the small caller-facing interface for one technical observation. The recorder owns

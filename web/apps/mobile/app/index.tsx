@@ -1,3 +1,4 @@
+import { ClientDiagnosticsReporter } from "@loomarr/core/client-diagnostics";
 import { createGuideController, createGuideSourcePort, type GuideController } from "@loomarr/core/guide";
 import type { PairingCredential } from "@loomarr/core/pairing";
 import {
@@ -87,13 +88,35 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
     () => createGuideController({ source: createGuideSourcePort(authenticatedFetch) }),
     [authenticatedFetch],
   );
+  const diagnostics = useMemo(() => {
+    if (Platform.OS !== "android") return undefined;
+    let reporter: ClientDiagnosticsReporter;
+    reporter = new ClientDiagnosticsReporter(
+      async (events) => {
+        const response = await authenticatedFetch("/v1/diagnostics/client-events", {
+          body: JSON.stringify(reporter.wireBatch(events)),
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        });
+        if (!response.ok) throw new Error(`Client diagnostics were rejected (${response.status}).`);
+      },
+      {
+        clientVersion: appConfig.expo.version,
+        platform: "android_mobile",
+        source: "android_mobile",
+      },
+    );
+    return reporter;
+  }, [authenticatedFetch]);
   const onChannelEvent = useCallback(() => guide.refresh(), [guide]);
   const player = usePairedNativePlayer({
     credential,
+    diagnostics,
     initialTune: "none",
     onChannelEvent,
     onRevoked,
   });
+  useEffect(() => () => diagnostics?.dispose(), [diagnostics]);
   useEffect(() => () => guide.dispose(), [guide]);
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {

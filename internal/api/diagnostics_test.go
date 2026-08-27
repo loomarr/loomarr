@@ -476,6 +476,22 @@ func TestClientDiagnosticsAcceptMemberAndDeriveActor(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil || body.Accepted != 1 {
 		t.Fatalf("response = %+v, err %v", body, err)
 	}
+
+	mobileRequest := httptest.NewRequest(http.MethodPost, "/v1/diagnostics/client-events", strings.NewReader(`{
+		"source":"android_mobile","clientVersion":"0.0.1","platform":"android_mobile",
+		"events":[{"event":"player.ready","occurredAt":1800000000000,
+		"playbackSessionId":"play_mobile","channelId":"ch_1","transport":"native_hls"}]
+	}`))
+	mobileRequest.Header.Set("Authorization", "Bearer "+memberToken)
+	mobileRequest.Header.Set("Content-Type", "application/json")
+	mobileResponse := httptest.NewRecorder()
+	handler.ServeHTTP(mobileResponse, mobileRequest)
+	if mobileResponse.Code != http.StatusAccepted {
+		t.Fatalf("Android mobile status = %d, want 202: %s", mobileResponse.Code, mobileResponse.Body.String())
+	}
+	if gotActor != "member_1" || gotBatch.Source != diagnostics.SourceAndroidMobile || gotBatch.Platform != "android_mobile" {
+		t.Fatalf("Android mobile submission = actor %q batch %+v", gotActor, gotBatch)
+	}
 }
 
 func TestClientDiagnosticsDeriveAPITokenIdentityAndMapModuleErrors(t *testing.T) {

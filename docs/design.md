@@ -855,7 +855,7 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | GET | `/v1/diagnostics/health` | Current Health for the running application generation (admin, §17): server-derived overall state plus ordered startup/continuous checks, observation and freshness times, concise redacted detail, and remediation. The in-memory value remains available when the store is unhealthy; `/readyz` derives from the same required-check state. |
 | POST | `/v1/diagnostics/health/refresh` | Run the same bounded Current Health probe path used by the named System scheduler job (admin, §17). This is an invocation seam, not a second probe implementation. |
 | GET | `/v1/diagnostics/startup-reports` | The current generation's immutable Startup report plus at most 20 retained reports (admin, §17). Startup history explains boot; Current Health answers whether Loomarr is healthy now. |
-| POST | `/v1/diagnostics/client-events` | Rate-limited ingestion of a closed, size-bounded web/Android TV event set (authenticated, §17). The server derives actor and receipt time; this route grants no diagnostic read access. |
+| POST | `/v1/diagnostics/client-events` | Rate-limited ingestion of a closed, size-bounded web/Android mobile/Android TV event set (authenticated, §17). The server derives actor and receipt time; this route grants no diagnostic read access. |
 | POST | `/v1/diagnostics/support-bundle/preview` | Preview the contents, counts, estimated size, and truncation of one bounded Support bundle selection without creating an archive (admin, §17). |
 | POST | `/v1/diagnostics/support-bundle` | Download one redacted, bounded Support bundle assembled from the same explicit time window/category/correlation selection as preview (admin, §17). Download only; future submission is a separate explicit-consent action. |
 | POST | `/v1/system/reload` | Re-probe every configured service without restarting (admin, §9.2, V13) — reuses the **one** `POST /v1/setup/test` probe implementation rather than a second copy, so a reload and the wizard's checklist can never disagree. No downtime: nothing is torn down. |
@@ -6212,8 +6212,8 @@ today. Diagnostic producers additionally carry only the identities they actually
 `playback_session_id`, `channel_id`, `schedule_block_id`, `job_id`, `process_run_id`, `actor_id`, and
 `instance_id`. Empty is an honest unknown; no layer performs extra lookups merely to fill a log.
 
-A web or Android TV playback session uses one opaque `playback_session_id` across source
-replacement and schedule transitions. Client occurrence time and server receipt time remain
+A web, Android mobile, or Android TV playback session uses one opaque `playback_session_id` across
+source replacement and schedule transitions. Client occurrence time and server receipt time remain
 distinct. This makes a server schedule transition, ffmpeg Process run, transport response, and
 player state comparable without pretending device clocks are synchronized.
 
@@ -6251,9 +6251,9 @@ authenticated and rate-limited. The server derives `actor_id`; a client cannot a
 to another person.
 
 `POST /v1/diagnostics/client-events` accepts one batch of 1–20 observations. The batch declares
-`web | android_tv`, a bounded client version, and a bounded platform label. Each observation may
-carry only its occurrence time and the correlation fields it actually knows plus the fields allowed
-for its event name. The initial closed vocabulary is:
+`web | android_mobile | android_tv`, a bounded client version, and a bounded platform label. Each
+observation may carry only its occurrence time and the correlation fields it actually knows plus
+the fields allowed for its event name. The initial closed vocabulary is:
 
 - `client.error_boundary` and `client.unhandled_error` — a bounded error class and named surface,
   never a message, stack, DOM value, or console record;
@@ -6275,11 +6275,11 @@ the existing best-effort recorder; ingestion returns `202` after bounded validat
 never waits for durable storage. Rate limiting is a per-server-derived-actor token bucket refilling
 at 120 observations per minute with a 30-observation burst; a limited batch returns `429` as a whole.
 
-Web and Android TV each keep a 100-observation in-memory queue, send at most 20 every two seconds,
-and drop oldest routine observations before errors when offline or saturated. Delivery uses the
-normal authenticated transport (`fetch` with keepalive and CSRF for web; paired-device Bearer for
-TV), never blocks playback, retries only the retained bounded queue, and does not persist a second
-client-side log.
+Web, Android mobile, and Android TV each keep a 100-observation in-memory queue, send at most 20
+every two seconds, and drop oldest routine observations before errors when offline or saturated.
+Delivery uses the normal authenticated transport (`fetch` with keepalive and CSRF for web;
+paired-device Bearer for Android native clients), never blocks playback, retries only the retained
+bounded queue, and does not persist a second client-side log.
 
 One opaque `schedule_block_id` is deterministically derived by the server from Channel, scheduled
 start, kind, and scheduled content identity. Guide projections and the Process run for that same
