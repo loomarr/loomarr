@@ -2,6 +2,7 @@ import type { GuideController } from "@loomarr/core/guide";
 import type { Density } from "@loomarr/design-system";
 import { Surface } from "@loomarr/design-system";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { DeviceDisconnectAction } from "../device-disconnect";
 import type { FocusTargetRegistry } from "../focus-target";
 import { StatePanel } from "../state-panel";
 import { restoreSurfSelection, surfGroupsFromGuide } from "./surf-data";
@@ -75,7 +76,15 @@ const SurfJourney = ({
   if (snapshot.status !== "ready" || !resolvedSelection) {
     const kind = snapshot.status === "error" ? "error" : snapshot.status === "empty" ? "empty" : "loading";
     return (
-      <Surface borderRadius={0} borderWidth={0} flex={1} justifyContent="center" level="canvas">
+      <Surface
+        alignItems="center"
+        borderRadius={0}
+        borderWidth={0}
+        flex={1}
+        gap="$control"
+        justifyContent="center"
+        level="canvas"
+      >
         <StatePanel
           action={
             kind === "error"
@@ -101,6 +110,13 @@ const SurfJourney = ({
                 : "Loading channels"
           }
         />
+        {onDisconnect ? (
+          <DeviceDisconnectAction
+            density={density}
+            onDisconnect={onDisconnect}
+            preferredFocus={density === "tv" && kind !== "error"}
+          />
+        ) : null}
       </Surface>
     );
   }

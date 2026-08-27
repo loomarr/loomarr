@@ -6,10 +6,16 @@ import { ModalOverlay } from "../overlay";
 interface DeviceDisconnectActionProps {
   density: Density;
   onDisconnect: () => Promise<void> | void;
+  preferredFocus?: boolean;
   serverName?: string;
 }
 
-const DeviceDisconnectAction = ({ density, onDisconnect, serverName }: DeviceDisconnectActionProps) => {
+const DeviceDisconnectAction = ({
+  density,
+  onDisconnect,
+  preferredFocus = false,
+  serverName,
+}: DeviceDisconnectActionProps) => {
   const [confirming, setConfirming] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [disconnectError, setDisconnectError] = useState(false);
@@ -31,7 +37,12 @@ const DeviceDisconnectAction = ({ density, onDisconnect, serverName }: DeviceDis
 
   return (
     <>
-      <Action density={density} onPress={() => setConfirming(true)} tone="secondary">
+      <Action
+        density={density}
+        hasTVPreferredFocus={preferredFocus}
+        onPress={() => setConfirming(true)}
+        tone="secondary"
+      >
         Disconnect device
       </Action>
       <ModalOverlay

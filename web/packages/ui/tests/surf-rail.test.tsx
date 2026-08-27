@@ -1,9 +1,10 @@
+import { createGuideController } from "@loomarr/core/guide";
 import { LoomarrProvider } from "@loomarr/design-system";
 import { surfGroups } from "@loomarr/fixtures";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { SurfRail, surfIdentityLabel } from "../index";
+import { SurfJourney, SurfRail, surfIdentityLabel } from "../index";
 
 const renderRail = (serverVersion?: string, density: "pointer" | "tv" = "tv", onDisconnect?: () => void) =>
   renderToStaticMarkup(
@@ -53,6 +54,30 @@ describe("SurfRail", () => {
   it("keeps confirmed self-disconnect reachable after the TV parity migration", () => {
     expect(renderRail("0.2.1", "tv", vi.fn())).toContain("Disconnect device");
     expect(renderRail("0.2.1")).not.toContain("Disconnect device");
+  });
+
+  it("keeps self-disconnect reachable when the TV catalog is unavailable", () => {
+    const controller = createGuideController({
+      source: { load: () => new Promise(() => undefined) },
+    });
+    const output = renderToStaticMarkup(
+      <LoomarrProvider>
+        <SurfJourney
+          clientName="Loomarr TV"
+          clientVersion="0.2.0"
+          controller={controller}
+          density="tv"
+          onDisconnect={vi.fn()}
+          onTune={vi.fn()}
+          playableChannelIds={[]}
+          recentChannelIds={[]}
+        />
+      </LoomarrProvider>,
+    );
+
+    expect(output).toContain("Loading channels");
+    expect(output).toContain("Disconnect device");
+    controller.dispose();
   });
 
   it("keeps the same identity available to empty and error Surf states", () => {
