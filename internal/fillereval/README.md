@@ -22,7 +22,13 @@ split, so development examples cannot inflate certification.
 Run `make filler-corpus-review` separately for each reviewer. It emits an independently shuffled,
 reviewer-visible packet with random aliases and an owner-only map bound to the exact draft digest.
 The packet excludes internal case IDs, split/cluster assignment, source filename, creator, campaign,
-and labels. Keep each map from its reviewer. `make filler-corpus-lock` combines the draft, both maps,
+and labels. Keep each map from its reviewer. A hash-only packet is not inspectable evidence:
+`make filler-corpus-review-package` joins it privately to the provider evidence packets, verifies every
+hash, and atomically materializes only alias-relative audio, frames, video, and sanitized decoder facts.
+Choose explicit `hardlink` mode on one filesystem or `copy` for a portable package; symlinks are never
+emitted. Source text and identities, rights facts, and the private map stay out of the package. Its
+packet-ordered label template is deliberately invalid until one reviewer fills every line.
+`make filler-corpus-lock` combines the draft, both maps,
 and two independently authored JSONL review batches. Each line has `alias`, `reviewerId`, `batchId`,
 `reviewedAt`, and `labels`; labels
 contain disposition, reject class, content role, taxonomy, policy flags, slices, evidence, and the

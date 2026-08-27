@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "purpose": "filler-development-blind-review-evidence-packaging",
+  "snapshotAt": "2026-08-27T18:01:47Z",
+  "certificationEvidence": false,
+  "cohort": "development_seed",
+  "externalArtifactId": "filler-development-label-prep/reviews",
+  "packageContract": {
+    "schemaVersion": 1,
+    "evidenceVersion": "filler-evidence-v1",
+    "materialization": "hardlink",
+    "draftCanonicalSha256": "6be32bf3a1cba1e926fd93e412b87f9fedb2b8dceb5a26e6d76f03aaaa32de64",
+    "casesPerBatch": 300,
+    "signalsPerBatch": 1782,
+    "decoderFactsPerBatch": 300,
+    "mediaBytesPerBatch": 1345646299,
+    "instructionsSha256": "1d0aa5855f90dbfdd82e40e8069d263db365520e844371d15f937c2b853799d8"
+  },
+  "batches": [
+    {
+      "batchId": "filler-development-review-a-2026-08-27",
+      "reviewPacketCanonicalSha256": "1d4fb7c636070abbb0025c8bf36bddcec7262457405c209df3a81c83830b3669",
+      "packageManifestSha256": "1740dfd096441e931ad379bf854cd50eedd308ad7eb1254e31c36565d3408b2b",
+      "emptyLabelTemplateSha256": "64194ddaf3a63414807c6d933c3a21f668b3bd186ff59dafd1d519a083426d31"
+    },
+    {
+      "batchId": "filler-development-review-b-2026-08-27",
+      "reviewPacketCanonicalSha256": "76c647340902d6f1ee105d9462cdc419767f477bec2a005e8648a2c1b03bc259",
+      "packageManifestSha256": "be56a10197452015bdc4c190d35e5e34cc686debab83ba7ec52c574eb20f7d36",
+      "emptyLabelTemplateSha256": "e0983d57f04d73e3efb2f69464ff9d3b45c971abadb7bca4c81f413cdc15153b"
+    }
+  ],
+  "verification": {
+    "independentAliasSets": true,
+    "aliasOverlap": 0,
+    "symlinks": 0,
+    "materializedFilesRehashed": 3564,
+    "materializedFileFailures": 0,
+    "reviewerManifestIdentityLeakScanPassed": true,
+    "sourceTextSignalsExcluded": true,
+    "sourcePolicyFactsExcluded": true,
+    "decoderLocationsAllowlisted": true,
+    "privateMapsExcluded": true,
+    "packetOrderedTemplates": true,
+    "templatesIntentionallyInvalidUntilCompleted": true
+  },
+  "remaining": {
+    "completedLabelSubmissions": 0,
+    "completedAdjudications": 0,
+    "developmentManifestLocked": false,
+    "holdoutCases": 0
+  },
+  "limitations": [
+    "Evidence packaging makes both blind batches inspectable but does not itself create an independent semantic review.",
+    "Neither empty label template is a completed submission and neither may be treated as gold labels.",
+    "The development corpus cannot certify production behavior, and the separate 1126-case holdout remains required."
+  ]
+}

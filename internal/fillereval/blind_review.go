@@ -52,8 +52,7 @@ type BlindReviewSet struct {
 // owner-only permissions.
 func PrepareBlindReview(draft Manifest, batchID string, randomness io.Reader) (BlindReviewPacket, BlindReviewMap, []string) {
 	batchID = strings.TrimSpace(batchID)
-	failures := validateUnlabeledDraft(draft)
-	failures = append(failures, validateReviewDraftScale(draft)...)
+	failures := ValidateReviewDraft(draft)
 	if batchID == "" {
 		failures = append(failures, "blind review batch id is required")
 	}
