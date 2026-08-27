@@ -24,7 +24,11 @@ const ProgrammeCard = ({
       <ChannelIdentity channel={programme} density={density} logo={channelLogo} />
 
       {programme.progressPercent === undefined ? null : (
-        <ProgressTrack percent={programme.progressPercent} width="100%" />
+        <ProgressTrack
+          accessibilityLabel={programme.title}
+          percent={programme.progressPercent}
+          width="100%"
+        />
       )}
     </FocusSurface>
   );

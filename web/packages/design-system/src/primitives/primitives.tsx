@@ -244,16 +244,27 @@ const ArtworkFrame = ({ children, density = "pointer", state, ...props }: Artwor
   </Surface>
 );
 
-type ProgressTrackProps = Omit<ComponentProps<typeof View>, "children"> & {
+type ProgressTrackProps = Omit<ComponentProps<typeof View>, "accessibilityLabel" | "children"> & {
+  accessibilityLabel: string;
   percent: number;
   tone?: "live" | "primary";
 };
 
-const ProgressTrack = ({ percent, tone = "primary", ...props }: ProgressTrackProps) => {
+const ProgressTrack = ({ accessibilityLabel, percent, tone = "primary", ...props }: ProgressTrackProps) => {
   const bounded = Math.max(0, Math.min(100, percent));
   const accessibilityProps = isWeb
-    ? { "aria-valuemax": 100, "aria-valuemin": 0, "aria-valuenow": bounded, role: "progressbar" as const }
-    : { accessibilityRole: "progressbar" as const, accessibilityValue: { max: 100, min: 0, now: bounded } };
+    ? {
+        "aria-label": accessibilityLabel,
+        "aria-valuemax": 100,
+        "aria-valuemin": 0,
+        "aria-valuenow": bounded,
+        role: "progressbar" as const,
+      }
+    : {
+        accessibilityLabel,
+        accessibilityRole: "progressbar" as const,
+        accessibilityValue: { max: 100, min: 0, now: bounded },
+      };
   return (
     <View
       {...props}

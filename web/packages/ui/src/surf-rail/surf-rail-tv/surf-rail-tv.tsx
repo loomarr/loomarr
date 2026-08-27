@@ -76,7 +76,11 @@ const TvSurfChannel = ({
             ) : null}
           </Surface>
           <Surface backgroundColor="$transparent" borderWidth={0} paddingLeft={64}>
-            <ProgressTrack percent={channel.now?.progressPercent ?? 0} width="100%" />
+            <ProgressTrack
+              accessibilityLabel={channel.now?.title ?? channel.channelName}
+              percent={channel.now?.progressPercent ?? 0}
+              width="100%"
+            />
           </Surface>
         </>
       ) : null}

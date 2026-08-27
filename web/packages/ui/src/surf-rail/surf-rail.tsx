@@ -101,7 +101,12 @@ const PointerSurfRail = ({
             secondaryWidth={density === "tv" ? 360 : 250}
           />
           {selectedChannel.now.progressPercent === undefined ? null : (
-            <ProgressTrack percent={selectedChannel.now.progressPercent} tone="live" width="100%" />
+            <ProgressTrack
+              accessibilityLabel={selectedChannel.now.title}
+              percent={selectedChannel.now.progressPercent}
+              tone="live"
+              width="100%"
+            />
           )}
           {selectedChannel.next ? (
             <Text density={density} numberOfLines={1} textRole="metadata">

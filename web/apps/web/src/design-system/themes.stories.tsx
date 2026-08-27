@@ -29,7 +29,7 @@ const ThemePanel = ({ mode }: { mode: "dark" | "light" }) => (
           Primary copy carries the programme. Secondary copy recedes without becoming illegible.
         </Text>
         <Text textRole="metadata">CHANNEL 07 · 7:00–7:30 PM · S07E02</Text>
-        <ProgressTrack percent={62} width="100%" />
+        <ProgressTrack accessibilityLabel="Programme progress" percent={62} width="100%" />
       </Surface>
 
       <FocusSurface focused gap="$control" padding="$section">

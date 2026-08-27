@@ -116,7 +116,7 @@ const LoadingGallery = ({
           >
             STAGE 2 OF 3 · 68%
           </p>
-          <ProgressTrack percent={68} width="100%" />
+          <ProgressTrack accessibilityLabel="Matching programme artwork" percent={68} width="100%" />
         </section>
       </main>
     </LoomarrProvider>

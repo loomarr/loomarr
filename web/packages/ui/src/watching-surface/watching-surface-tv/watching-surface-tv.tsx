@@ -132,7 +132,12 @@ const TvWatchingSurface = ({
                       </Text>
                     ) : null}
                     {schedule.now.progressPercent === undefined ? null : (
-                      <ProgressTrack percent={schedule.now.progressPercent} tone="live" width="100%" />
+                      <ProgressTrack
+                        accessibilityLabel={schedule.now.title}
+                        percent={schedule.now.progressPercent}
+                        tone="live"
+                        width="100%"
+                      />
                     )}
                   </Surface>
                 ) : null}

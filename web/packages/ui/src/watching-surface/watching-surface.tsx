@@ -86,7 +86,12 @@ const TouchWatchingSurface = ({
               <Surface backgroundColor="$transparent" borderWidth={0} gap="$inline">
                 <ProgrammeIdentity density={density} programme={schedule.now} />
                 {schedule.now.progressPercent === undefined ? null : (
-                  <ProgressTrack percent={schedule.now.progressPercent} tone="live" width="100%" />
+                  <ProgressTrack
+                    accessibilityLabel={schedule.now.title}
+                    percent={schedule.now.progressPercent}
+                    tone="live"
+                    width="100%"
+                  />
                 )}
                 {schedule.next ? (
                   <Text density={density} numberOfLines={1} textRole="metadata">
