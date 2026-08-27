@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "purpose": "pilot-source-qualification-summary",
+  "pilotSha256": "d6f037ec8d11c597d23428c656cfe7c93c7a7244c8ceffe299aaa85067207632",
+  "worksheetSha256": "33c1d77641b66761ba4c24207a5fbc6cf998363cc10afbdb26d97f5059613602",
+  "completedReviewCsvSha256": "a143c188ceeba3a3df1aea79ca021f4bb352afe26730e375c1a4f855e05c66e6",
+  "lockedResultSha256": "8c82452de556fe786cc6ae741f51f82b6551331777287e8bab331abd90675986",
+  "lockedAt": "2026-08-26T23:59:00Z",
+  "reviewerId": "codex-independent-rights-2026-08-26",
+  "independentAttestation": true,
+  "downloadAuthority": false,
+  "lanes": [
+    {"authority": "archive.org/prelinger", "casesReviewed": 10, "rightsApproved": 0, "productRelevant": 9, "approvedAndRelevant": 0, "minimumRequired": 5, "qualifiedForAdapter": false},
+    {"authority": "loc.gov/national-screening-room", "casesReviewed": 10, "rightsApproved": 9, "productRelevant": 2, "approvedAndRelevant": 2, "minimumRequired": 5, "qualifiedForAdapter": false},
+    {"authority": "images.nasa.gov", "casesReviewed": 10, "rightsApproved": 2, "productRelevant": 7, "approvedAndRelevant": 0, "minimumRequired": 5, "qualifiedForAdapter": false},
+    {"authority": "cdc.gov", "casesReviewed": 10, "rightsApproved": 8, "productRelevant": 10, "approvedAndRelevant": 8, "minimumRequired": 5, "qualifiedForAdapter": true},
+    {"authority": "commons.wikimedia.org", "casesReviewed": 10, "rightsApproved": 0, "productRelevant": 9, "approvedAndRelevant": 0, "minimumRequired": 5, "qualifiedForAdapter": false}
+  ]
+}

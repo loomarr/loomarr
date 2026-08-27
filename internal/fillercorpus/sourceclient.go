@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -24,6 +26,7 @@ type SourceClient struct {
 	maxRequests      int
 	maxResponseBytes int64
 	delay            time.Duration
+	allowedHosts     []string
 	requests         int
 	responseBytes    int64
 	lastRequest      time.Time
@@ -36,6 +39,7 @@ type SourceClientConfig struct {
 	MaxRequests      int
 	MaxResponseBytes int64
 	Delay            time.Duration
+	AllowedHosts     []string
 }
 
 // SourceHead is the representation metadata a discovery adapter may use for
@@ -46,16 +50,39 @@ type SourceHead struct {
 }
 
 func NewSourceClient(config SourceClientConfig) (*SourceClient, error) {
-	if config.HTTP == nil || config.CacheDir == "" || config.UserAgent == "" || config.MaxRequests <= 0 || config.MaxResponseBytes <= 0 || config.Delay < 0 {
-		return nil, fmt.Errorf("source client requires HTTP transport, cache, identity, and positive ceilings")
+	if config.HTTP == nil || config.CacheDir == "" || config.UserAgent == "" || config.MaxRequests <= 0 || config.MaxResponseBytes <= 0 || config.Delay < 0 || len(config.AllowedHosts) == 0 {
+		return nil, fmt.Errorf("source client requires HTTP transport, cache, identity, exact hosts, and positive ceilings")
+	}
+	for _, host := range config.AllowedHosts {
+		if host == "" || strings.ContainsAny(host, ":/@") {
+			return nil, fmt.Errorf("source client host allowlist contains invalid host %q", host)
+		}
 	}
 	if err := os.MkdirAll(config.CacheDir, 0o750); err != nil {
 		return nil, err
 	}
-	return &SourceClient{http: config.HTTP, cacheDir: config.CacheDir, userAgent: config.UserAgent, maxRequests: config.MaxRequests, maxResponseBytes: config.MaxResponseBytes, delay: config.Delay}, nil
+	allowedHosts := slices.Clone(config.AllowedHosts)
+	httpClient := *config.HTTP
+	configuredRedirect := httpClient.CheckRedirect
+	httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if !slices.Contains(allowedHosts, req.URL.Hostname()) {
+			return fmt.Errorf("source redirect host %q is not allowed", req.URL.Hostname())
+		}
+		if configuredRedirect != nil {
+			return configuredRedirect(req, via)
+		}
+		if len(via) >= 10 {
+			return fmt.Errorf("stopped after 10 redirects")
+		}
+		return nil
+	}
+	return &SourceClient{http: &httpClient, cacheDir: config.CacheDir, userAgent: config.UserAgent, maxRequests: config.MaxRequests, maxResponseBytes: config.MaxResponseBytes, delay: config.Delay, allowedHosts: allowedHosts}, nil
 }
 
 func (c *SourceClient) Get(ctx context.Context, rawURL string) ([]byte, time.Time, error) {
+	if err := c.validateURL(rawURL); err != nil {
+		return nil, time.Time{}, err
+	}
 	cachePath := filepath.Join(c.cacheDir, sourceCacheKey(rawURL)+".json")
 	if raw, err := os.ReadFile(cachePath); err == nil {
 		if int64(len(raw)) > c.maxResponseBytes-c.responseBytes {
@@ -95,6 +122,9 @@ func (c *SourceClient) Get(ctx context.Context, rawURL string) ([]byte, time.Tim
 
 // Head returns cached or live representation facts without fetching media.
 func (c *SourceClient) Head(ctx context.Context, rawURL string) (SourceHead, time.Time, error) {
+	if err := c.validateURL(rawURL); err != nil {
+		return SourceHead{}, time.Time{}, err
+	}
 	cachePath := filepath.Join(c.cacheDir, sourceCacheKey(rawURL)+".head.json")
 	if raw, err := os.ReadFile(cachePath); err == nil {
 		head, err := decodeSourceHead(raw)
@@ -140,6 +170,9 @@ func (c *SourceClient) Head(ctx context.Context, rawURL string) (SourceHead, tim
 }
 
 func (c *SourceClient) request(ctx context.Context, method, rawURL string) (*http.Response, time.Time, error) {
+	if err := c.validateURL(rawURL); err != nil {
+		return nil, time.Time{}, err
+	}
 	if c.requests >= c.maxRequests {
 		return nil, time.Time{}, fmt.Errorf("request ceiling exhausted")
 	}
@@ -166,6 +199,13 @@ func (c *SourceClient) request(ctx context.Context, method, rawURL string) (*htt
 	return resp, c.lastRequest.UTC(), err
 }
 
+func (c *SourceClient) validateURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Scheme != "https" || u.User != nil || !slices.Contains(c.allowedHosts, u.Hostname()) {
+		return fmt.Errorf("source URL requires HTTPS and an exact allowed host")
+	}
+	return nil
+}
 func decodeSourceHead(raw []byte) (SourceHead, error) {
 	var head SourceHead
 	decoder := json.NewDecoder(strings.NewReader(string(raw)))

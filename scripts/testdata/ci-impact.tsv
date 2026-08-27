@@ -49,4 +49,9 @@ combined-leaf-and-docs	internal/suggest/score.go;docs/dev/testing.md	contracts,g
 filler-eval-corpus	internal/fillereval/corpus/seed-v1.json	contracts,go
 filler-corpus-pilot	internal/fillercorpus/corpus/pilot/prelinger.json	contracts,go
 filler-corpus-nasa	internal/fillercorpus/corpus/pilot/nasa.json	contracts,go
+filler-corpus-cdc	internal/fillercorpus/corpus/pilot/cdc.json;internal/fillercorpus/corpus/seeds/cdc.json	contracts,go
+filler-corpus-commons	internal/fillercorpus/corpus/pilot/commons.json	contracts,go
+filler-corpus-locked	internal/fillercorpus/corpus/pilot/locked.json	contracts,go
+filler-pilot-review	internal/fillercorpus/pilotreview.go	contracts,go,postgres,image
+filler-pilot-review-command	cmd/filler-corpus-pilot-rights-review/main.go;cmd/filler-corpus-pilot-rights-lock/main.go	contracts,go,postgres,image
 filler-eval-doc	internal/fillereval/README.md	docs
