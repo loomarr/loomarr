@@ -4,7 +4,8 @@
 set -euo pipefail
 
 readonly APP_NAME="${1:-mobile}"
-readonly SCOPE_MARKER="${2:-}"
+readonly ACTION="${2:-debug}"
+readonly SCOPE_MARKER="${3:-}"
 WEB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly WEB_ROOT
 readonly SCRIPT_PATH="${WEB_ROOT}/scripts/build-android-client.sh"
@@ -18,7 +19,15 @@ readonly NATIVE_JOBS="${LOOMARR_ANDROID_NATIVE_JOBS:-1}"
 readonly MIN_AVAILABLE_KB="${LOOMARR_ANDROID_MIN_AVAILABLE_KB:-6291456}"
 
 if [[ "${APP_NAME}" != "mobile" && "${APP_NAME}" != "tv" ]]; then
-  printf 'usage: %s [mobile|tv]\n' "$0" >&2
+  printf 'usage: %s [mobile|tv] [debug|macrobenchmark]\n' "$0" >&2
+  exit 2
+fi
+if [[ "${ACTION}" != "debug" && "${ACTION}" != "macrobenchmark" ]]; then
+  printf 'usage: %s [mobile|tv] [debug|macrobenchmark]\n' "$0" >&2
+  exit 2
+fi
+if [[ "${ACTION}" == "macrobenchmark" && "${APP_NAME}" != "tv" ]]; then
+  printf 'macrobenchmark is available only for the TV client\n' >&2
   exit 2
 fi
 if [[ "${APP_NAME}" == "tv" ]]; then
@@ -40,7 +49,8 @@ if [[ "${SCOPE_MARKER}" != "--inside-memory-scope" ]]; then
   fi
 fi
 
-if [[ ! -x "${APP_DIR}/android/gradlew" ]]; then
+if [[ ! -x "${APP_DIR}/android/gradlew" ]] \
+  || [[ "${ACTION}" == "macrobenchmark" && ! -f "${APP_DIR}/android/macrobenchmark/build.gradle" ]]; then
   (
     cd "${WEB_ROOT}"
     pnpm --filter "@loomarr/${APP_NAME}" exec expo prebuild --platform android --no-install
@@ -62,11 +72,24 @@ if [[ "${SCOPE_MARKER}" != "--inside-memory-scope" ]] \
     LOOMARR_ANDROID_NATIVE_JOBS="${NATIVE_JOBS}" \
     ANDROID_HOME="${ANDROID_HOME}" \
     EXPO_PUBLIC_LOOMARR_URL="${EXPO_PUBLIC_LOOMARR_URL:-}" \
-    "${SCRIPT_PATH}" "${APP_NAME}" --inside-memory-scope
+    ANDROID_SERIAL="${ANDROID_SERIAL:-}" \
+    "${SCRIPT_PATH}" "${APP_NAME}" "${ACTION}" --inside-memory-scope
 fi
 
 if [[ "${SCOPE_MARKER}" != "--inside-memory-scope" ]]; then
   printf 'warning: user systemd unavailable; native build has worker limits but no memory ceiling\n' >&2
+fi
+
+if [[ "${ACTION}" == "macrobenchmark" ]]; then
+  if [[ -z "${ANDROID_SERIAL:-}" ]]; then
+    printf 'ANDROID_SERIAL must identify the physical Shield for Macrobenchmark\n' >&2
+    exit 2
+  fi
+  device_model="$(adb -s "${ANDROID_SERIAL}" shell getprop ro.product.model | tr -d '\r')"
+  if [[ ! "${device_model}" =~ SHIELD ]]; then
+    printf 'refusing Macrobenchmark on %s; P5 requires a physical Shield\n' "${device_model:-unknown device}" >&2
+    exit 1
+  fi
 fi
 
 # `assembleDebug` normally expects Metro and therefore produces an APK that opens to React Native's
@@ -77,29 +100,51 @@ fi
 # Reset Metro's transform cache because EXPO_PUBLIC_* values are compile-time inputs that Metro does
 # not include in its cache key. Without this, rebuilding for another Loomarr server can retain the
 # preceding server URL even though the build command and environment are correct.
-mkdir -p "${APP_DIR}/android/app/src/main/assets" "${APP_DIR}/android/app/src/main/res"
-(
-  cd "${APP_DIR}"
-  NODE_ENV=production pnpm exec expo export:embed \
-    --platform android \
-    --dev false \
-    --entry-file "${ENTRY_FILE}" \
-    --bundle-output android/app/src/main/assets/index.android.bundle \
-    --assets-dest android/app/src/main/res \
-    --max-workers 1 \
-    --reset-cache
-)
+if [[ "${ACTION}" == "debug" ]]; then
+  mkdir -p "${APP_DIR}/android/app/src/main/assets" "${APP_DIR}/android/app/src/main/res"
+  (
+    cd "${APP_DIR}"
+    NODE_ENV=production pnpm exec expo export:embed \
+      --platform android \
+      --dev false \
+      --entry-file "${ENTRY_FILE}" \
+      --bundle-output android/app/src/main/assets/index.android.bundle \
+      --assets-dest android/app/src/main/res \
+      --max-workers 1 \
+      --reset-cache
+  )
+fi
 
 cd "${APP_DIR}/android"
-gradle_command=(./gradlew assembleDebug
+if [[ "${ACTION}" == "macrobenchmark" ]]; then
+  gradle_task=":macrobenchmark:connectedBenchmarkAndroidTest"
+  gradle_node_env="production"
+else
+  gradle_task="assembleDebug"
+  gradle_node_env="development"
+fi
+gradle_command=(./gradlew "${gradle_task}"
   --no-daemon \
   --max-workers=1 \
   "-Dorg.gradle.jvmargs=-Xmx${GRADLE_HEAP}" \
   -Pkotlin.compiler.execution.strategy=in-process \
   "-PreactNativeArchitectures=${ARCHITECTURES}")
+if [[ "${ACTION}" == "macrobenchmark" ]]; then
+  gradle_command+=("-Pandroid.enableAdditionalTestOutput=true")
+fi
 if command -v taskset >/dev/null 2>&1; then
-  CMAKE_BUILD_PARALLEL_LEVEL="${NATIVE_JOBS}" NODE_ENV=development \
+  CMAKE_BUILD_PARALLEL_LEVEL="${NATIVE_JOBS}" NODE_ENV="${gradle_node_env}" \
     taskset --cpu-list "${CPUSET}" "${gradle_command[@]}"
 else
-  CMAKE_BUILD_PARALLEL_LEVEL="${NATIVE_JOBS}" NODE_ENV=development "${gradle_command[@]}"
+  CMAKE_BUILD_PARALLEL_LEVEL="${NATIVE_JOBS}" NODE_ENV="${gradle_node_env}" "${gradle_command[@]}"
+fi
+
+if [[ "${ACTION}" == "macrobenchmark" ]]; then
+  report_path="$(find macrobenchmark/build/outputs -type f -name '*benchmarkData.json' -printf '%T@ %p\n' \
+    | sort -nr | head -1 | cut -d' ' -f2-)"
+  if [[ -z "${report_path}" ]]; then
+    printf 'Macrobenchmark completed without a benchmarkData.json report\n' >&2
+    exit 1
+  fi
+  node "${WEB_ROOT}/scripts/verify-tv-macrobenchmark.mjs" "${report_path}"
 fi

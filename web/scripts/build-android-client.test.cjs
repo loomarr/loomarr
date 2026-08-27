@@ -49,3 +49,14 @@ test("invalidates Metro transforms that contain compile-time public configuratio
 
   assert.match(script, /expo export:embed[\s\S]*--reset-cache/);
 });
+
+test("keeps the P5 Guide benchmark inside the same resource limits and rejects non-Shield devices", () => {
+  const script = readFileSync(path.join(__dirname, "build-android-client.sh"), "utf8");
+
+  assert.match(script, /:macrobenchmark:connectedBenchmarkAndroidTest/);
+  assert.match(script, /ANDROID_SERIAL must identify the physical Shield/);
+  assert.match(script, /device_model[\s\S]*SHIELD/);
+  assert.match(script, /verify-tv-macrobenchmark\.mjs/);
+  assert.match(script, /ACTION[\s\S]*--inside-memory-scope/);
+  assert.match(script, /macrobenchmark[\s\S]*gradle_node_env="production"/);
+});

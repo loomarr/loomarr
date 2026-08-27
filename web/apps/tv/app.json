@@ -18,6 +18,7 @@
     "plugins": [
       "../../scripts/with-memory-safe-android-build.cjs",
       "../../scripts/with-workspace-bundle-inputs.cjs",
+      "../../scripts/with-tv-macrobenchmark.cjs",
       [
         "@react-native-tvos/config-tv",
         {

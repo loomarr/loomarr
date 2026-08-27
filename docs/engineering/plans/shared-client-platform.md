@@ -249,6 +249,9 @@ fixtures cover deterministic states, but a mock-only demo does not pass.
   above 1 MiB uncompressed.
 - A Shield Macrobenchmark of repeated Guide navigation records p95 frame duration no greater than
   32 ms, p99 no greater than 50 ms, and zero frozen frames (700 ms or longer).
+  The TV Expo config now generates the separate release-like AndroidX Macrobenchmark module and the
+  memory-bounded runner rejects non-Shield devices and reports outside those limits; the physical
+  Shield report remains required before this item can be marked adopted.
 - Prepared-channel first frame stays within the existing playout tune budget and repeated surfing
   does not start encoders for prepared hits.
 - The production slice is measured both with and without the Tamagui compiler. The compiler is

@@ -10,6 +10,7 @@ test("keeps the TV proof isolated from the shipping application", async () => {
   assert.equal(tvPlugin?.[1].androidTVRequired, true);
   assert.ok(config.expo.plugins.includes("../../scripts/with-memory-safe-android-build.cjs"));
   assert.ok(config.expo.plugins.includes("../../scripts/with-workspace-bundle-inputs.cjs"));
+  assert.ok(config.expo.plugins.includes("../../scripts/with-tv-macrobenchmark.cjs"));
   assert.ok(config.expo.plugins.includes("../../scripts/with-loomarr-android-network.cjs"));
   assert.match(config.expo.android.package, /\.prototype$/);
 });

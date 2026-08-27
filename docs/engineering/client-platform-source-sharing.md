@@ -15,9 +15,9 @@ found between the two React Native applications. The remaining duplicate product
 are the explicitly retained legacy web and Compose clients; they remain the rollback path until the
 P5 adoption decision and cannot be retired yet.
 
-This audit does not make P5 complete. Real-iPhone evidence, populated TV focus/time-shift soak,
-physical-device background/foreground recovery, distribution upgrade, and the maintainer's
-recorded adoption decision remain open.
+This audit does not make P5 complete. Real-iPhone evidence, populated TV focus/time-shift soak, the
+generated Guide Macrobenchmark's physical-Shield result, physical-device background/foreground
+recovery, distribution upgrade, and the maintainer's recorded adoption decision remain open.
 
 ## Module and adapter ownership
 
