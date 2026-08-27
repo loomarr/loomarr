@@ -121,7 +121,7 @@ func (s *makeParseState) parse(path string) error {
 	}
 	rel, err := filepath.Rel(s.root, abs)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return fmt.Errorf("Make include %q escapes repository root %s", path, s.root)
+		return fmt.Errorf("make include %q escapes repository root %s", path, s.root)
 	}
 	if s.stack[abs] {
 		return fmt.Errorf("cyclic Make include at %s", rel)
@@ -144,7 +144,7 @@ func (s *makeParseState) parse(path string) error {
 		if m := includeLine.FindStringSubmatch(line); m != nil {
 			for _, included := range strings.Fields(m[1]) {
 				if strings.ContainsAny(included, "$*?[]{}") || filepath.IsAbs(included) {
-					return fmt.Errorf("Make include %q must be a literal repository-relative path", included)
+					return fmt.Errorf("make include %q must be a literal repository-relative path", included)
 				}
 				// GNU Make resolves include names from its working directory, not from the
 				// directory of the including fragment. Mirror that rule exactly.
