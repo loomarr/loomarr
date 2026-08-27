@@ -118,14 +118,21 @@ and Compose remain legacy implementations during migration; they receive fixes n
 shipping clients healthy but no new shared design authority. They are removed only after adoption
 and parity.
 
-## New visual direction
+## Visual direction and parity order
 
-The replacement has no retro-theme name. It is simply Loomarr's product language:
+The shared product language remains semantic and cross-platform, but the Android TV migration is
+parity-first. On 2026-08-26 the maintainer selected the shipping Compose application and committed
+Roborazzi captures as the presentation baseline. React Native must reproduce those surfaces before a
+later redesign can be proposed; implementation replacement is not permission to replace the look.
 
 - **Content first.** Programme artwork, channel identity, title, episode information, and time are
   visually primary; application chrome recedes.
-- **Watching first on TV.** Playback is the home state. Guide and Surf are transient, edge-to-edge
-  layers over a still-mounted player and dismiss without losing the tuned channel.
+- **Watching first on TV.** Playback is the home state. Guide is an edge-to-edge destination and
+  Surf is the Compose-matching left overlay over a still-mounted player; both dismiss without losing
+  the tuned Channel.
+- **Compose parity before redesign.** Watching chrome, number entry, Surf, Guide, filters, detail,
+  loading, empty, error, focus, and remote hints match the committed 1080p and 4K references. Shared
+  interfaces remain reusable; the TV presentation adapter owns this geometry.
 - **Dark-first, mode-aware surfaces.** Loomarr defaults to the dark broadcast-console presentation
   on first load and fresh install. Light provides an equally intentional daytime presentation, and
   system-following may be offered as an explicit saved choice. Playback may remain black, while
@@ -216,6 +223,8 @@ fixtures cover deterministic states, but a mock-only demo does not pass.
 ### Visual and interaction
 
 - Maintainer-approved captures for desktop web, mobile web, iPhone, 1920x1080 TV, and 3840x2160 TV.
+- Android TV Watching, Surf, Guide, pairing, loading, empty, and failure captures match the committed
+  Compose Roborazzi references before Compose retirement or a later redesign is considered.
 - Guide and player surfaces fill the viewport. Safe-area/overscan padding belongs inside the
   composition and never creates an outer frame.
 - TV focus survives a ten-minute traversal across rows, airings, Guide, Surf, and player controls;
