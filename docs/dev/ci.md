@@ -15,11 +15,19 @@ time against the current base. On that `merge_group` run, the same fail-closed c
 Apple mobile, Apple TV, the tuner matrix, and the macOS harness; every selected result remains a
 dependency of `CI`. Main pushes and explicit manual runs retain those jobs too.
 
-CI orchestration is its own input family. Workflow files, the impact/dispatch/metrics adapters,
-release-policy verifier, agent harness, and design-contract prose select the lightweight **CI
-policy** job (plus docs or the cross-platform harness when those files changed). They do not select
-Rust, Android, Apple, images, browsers, frontend, Postgres, or application Go. Those product jobs run
-only when the classifier identifies an input they consume. Unknown paths still select everything.
+The root workflow owns triggering, classification, admission, manual scopes, and the required
+aggregate. Product job implementations live in family-named reusable workflows, so an edit to one
+family selects only its owning product gate plus the lightweight **CI policy** job. Workflow
+adapters, the release-policy verifier, agent harness, and design-contract prose likewise select
+policy plus only the family they actually affect. They do not select unrelated Rust, Android,
+Apple, image, browser, frontend, Postgres, or application-Go builds. The root workflow selects
+policy, where structural verification covers admission, aggregation, and family wiring without
+rebuilding unchanged products. The root Make interface and unknown paths still select everything.
+
+Make uses the same ownership boundary. The root `Makefile` is the stable interface for shared
+variables, help, and ordered `mk/*.mk` includes; each module owns one command family. The generated
+command reference follows those includes and rejects missing, cyclic, escaping, or duplicate target
+definitions, so splitting the physical files does not split the public command catalog.
 
 This is admission control, not weaker assurance. A pull request cannot merge directly after its fast
 result: it must enter the queue and pass the generated current-base commit. The queue uses squash

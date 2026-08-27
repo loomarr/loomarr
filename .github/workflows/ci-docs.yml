@@ -1,0 +1,61 @@
+name: CI / Docs — links + structure + prose
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.26"
+  NODE_VERSION: "22"
+
+jobs:
+  run:
+    name: Docs — links + structure + prose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # Structure. Globs and rules both live in .markdownlint-cli2.jsonc, so no paths here.
+      - name: Markdown structure
+        run: npx --yes markdownlint-cli2@0.20.0
+
+      # ⚠ --offline is deliberate and must stay. Checking external URLs on every PR imports
+      # the whole internet's link rot as CI flake; the class that has actually broken in this
+      # repo is relative links, twice. See lychee.toml.
+      # ⚠ WIDER than the style checks above, deliberately. A broken link is objectively wrong
+      # anywhere; a style rule is a preference worth applying only to prose someone reads cover
+      # to cover. The narrow set missed a real break — archiving six plans left nine dangling
+      # references in PROGRESS.md, .claude/commands/, design/ and two Go doc comments.
+      # Keep in step with LINK_GLOBS in the Makefile.
+      - name: Links (offline)
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2
+        with:
+          args: >-
+            --offline --no-progress
+            README.md CONTRIBUTING.md CLAUDE.md AGENTS.md CONTEXT.md PROGRESS.md
+            docs 'design/*.md' .agents .claude
+          fail: true
+
+      # Repo vocabulary only — no stock style package. See .vale.ini for why.
+      - name: Prose
+        uses: vale-cli/vale-action@518a9136acc6e6668ce7c00d367051e0941e87ff # v3
+        with:
+          files: '["README.md", "CONTRIBUTING.md", "docs/help", "docs/install", "docs/dev"]'
+          fail_on_error: true
+          version: 3.17.1
+
+      # The site must still build from the docs as committed. It renders docs/** IN PLACE, so
+      # a moved or deleted page breaks the build here rather than on deploy.
+      - name: Docs site builds
+        working-directory: docs-site
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm build
+

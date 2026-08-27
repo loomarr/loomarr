@@ -5809,7 +5809,7 @@ Build-time only — none of this ships in the binary or the image, and none of i
 | Link checking | **`lychee`** (Rust), `--offline` in the PR gate | Catches dangling relative links, a class this repo has shipped twice — `frontend-design.md` pointed at `loomarr-design.md` for months after the rename, and `phase-0-findings.md` linked a findings file that never existed. **`--offline` is deliberate:** checking external URLs on every PR imports the whole internet's link rot as CI flake, and a red build nobody trusts is worse than no check. |
 | Markdown structure | **`markdownlint-cli2`**, lean config | Heading levels, list style, fenced-code languages. Line-length and inline-HTML rules are **off** — `design.md` uses both heavily by design, and a linter that fights the source of truth loses. Scoped to the user-facing and contributor sets. |
 | Prose + terminology | **`Vale`**, custom style only | Machine-enforces this repo's vocabulary, which until now lived only in `CONTEXT.md` and reviewers' heads: **Proposal** (not "suggestion" — §7's rename), and the proper-noun casing that drifts most (Tunarr, Jellyseerr, Emby, TMDB, `ffmpeg`, `yt-dlp`, SQLite, Postgres). ⚠ **The Microsoft and Google packages are deliberately NOT enabled.** Across ~270k words they produce findings in the hundreds, and a gate whose output is skimmed is a gate that has stopped working. |
-| Command reference | **generated** from the Makefile's `## ` comments (`cmd/dev-docs` → `docs/dev/commands.md`) | The same drift-by-copying that `config-docs-verify` solved for settings. The command contract was restated in four files that disagreed — on the Go version, the Node version, what `make fe` runs, and the visual-suite size (stated three ways, none correct). Generation makes the Makefile the one source and `dev-docs-verify` makes CI enforce it. |
+| Command reference | **generated** from the root Make interface and ordered `mk/*.mk` modules' `## ` comments (`cmd/dev-docs` → `docs/dev/commands.md`) | The same drift-by-copying that `config-docs-verify` solved for settings. The command contract was restated in four files that disagreed — on the Go version, the Node version, what `make fe` runs, and the visual-suite size (stated three ways, none correct). Generation makes the Make interface the one source and `dev-docs-verify` makes CI enforce it. |
 
 ### 14.1 Backend structure — the rules, and what they are not
 
@@ -6756,6 +6756,17 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   their classifier decision names a consumed input; unknown paths and classifier failures still
   select all gates. The policy gate actionlints workflows, exercises release verification and the
   agent harness, shellchecks scripts, and runs the Go-owned documentation contracts.
+  Physical orchestration files follow the same ownership graph. The root `Makefile` contains only
+  shared variables, the help interface, and ordered `mk/*.mk` includes; each included module owns
+  one command family, and the command-reference generator follows those includes as the
+  authoritative Make interface. The triggering CI workflow owns classification, admission, manual
+  scopes, and the required aggregate, while product implementations live in family-named reusable
+  workflows. A family workflow change selects its owning product gate plus policy. Changing the
+  root Make interface selects every gate because it can alter every included command; changing the
+  root CI orchestrator selects policy, whose structural verifier rejects changed admission,
+  aggregation, or family wiring without rebuilding unchanged products. Unknown paths still select
+  everything. Generated docs, action pinning, impact fixtures, and the release verifier reject an
+  orphaned module or a caller whose reusable implementation is not covered by its owning decision.
 - **State machine:** every transition + the five invariants.
 - **Store conformance:** one suite vs **both** SQLite (temp file) and Postgres (**testcontainers**), incl. `ClaimDue` concurrency (no record claimed twice).
 - **Library conformance:** Emby vs Jellyfin flavors w/ mock transport; correct auth header each.
