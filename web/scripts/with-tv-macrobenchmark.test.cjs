@@ -37,6 +37,10 @@ test("pins a separate release-like AndroidX benchmark and a paired Guide travers
   assert.match(guideNavigationBenchmark, /@OptIn\(ExperimentalMacrobenchmarkApi::class\)/);
   assert.match(guideNavigationBenchmark, /By\.desc\("Open programme guide"\)/);
   assert.match(guideNavigationBenchmark, /By\.desc\("Programme guide"\)/);
+  assert.match(
+    guideNavigationBenchmark,
+    /if \(device\.hasObject\(By\.desc\("Programme guide"\)\)\) \{[\s\S]*device\.pressBack\(\)/,
+  );
   assert.match(guideNavigationBenchmark, /repeat\(12\)/);
   assert.match(guideNavigationBenchmark, /FrameTimingMetric\(\)/);
 });
