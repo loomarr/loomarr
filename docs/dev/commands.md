@@ -32,6 +32,7 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make agent-baseline` |  | run make check once per clean commit/toolchain and share the green result across worktrees |
 | `make agent-verify` |  | run focused changed-file checks (not the final gate; BASE=origin/main) |
 | `make agent-worktree` |  | create, claim, and bootstrap a sibling worktree (TOPIC=... CLAIMS=...; BASE/DEPENDS_ON for stacks) |
+| `make agent-gc` |  | audit worktrees; APPLY=1 retires only exact clean merged PR heads |
 | `make bootstrap` |  | build the Rust worker and prepare frontend, isolated directories, and dev identity |
 | `make doctor` |  | report toolchain drift, worktrees, ports, caches, and misplaced artifacts |
 | `make agent-harness-test` | ✅ | regression-test coordination, worktree isolation, and shared-output claims <br>*runs:* `agent-assets-verify` |
