@@ -3,14 +3,14 @@ import type { Density } from "@loomarr/design-system";
 import { Surface } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 import { useEffect, useSyncExternalStore } from "react";
-import type { FocusTargetRegistry } from "../focus-target";
-import { GuideExperience } from "./guide";
+import type { FocusTargetRegistry } from "../../focus-target";
+import { GuideExperience } from "../guide";
 import type {
   GuideArtworkRenderer,
   GuideChannelWindow,
   GuideFocusTarget,
   GuideLogoRenderer,
-} from "./guide.type";
+} from "../guide.type";
 
 interface GuideJourneyProps {
   controller: GuideController;

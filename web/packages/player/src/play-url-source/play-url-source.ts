@@ -1,7 +1,7 @@
 import { getChannelPlayUrlUrl, getListChannelsUrl } from "@loomarr/api/endpoints/channels";
 import type { ListChannelsOutputBody } from "@loomarr/api/models/listChannelsOutputBody";
 import type { PlayURLOutputBody } from "@loomarr/api/models/playURLOutputBody";
-import type { PlayerChannel, PlayerSourcePort } from "./player-controller";
+import type { PlayerChannel, PlayerSourcePort } from "../player-controller";
 
 interface PlayUrlSourceOptions {
   baseUrl: string;

@@ -1,5 +1,5 @@
 import type { ClientDiagnosticsReporter } from "@loomarr/core/client-diagnostics";
-import type { PlayerTransportEvent } from "./player-controller";
+import type { PlayerTransportEvent } from "../player-controller";
 
 type NativeDiagnosticsRecorder = Pick<ClientDiagnosticsReporter, "flush" | "record">;
 

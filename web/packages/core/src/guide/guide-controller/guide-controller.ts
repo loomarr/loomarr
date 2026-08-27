@@ -1,6 +1,6 @@
 import { getChannelGuideUrl } from "@loomarr/api/endpoints/channels";
 import type { GuideOutputBody } from "@loomarr/api/models/guideOutputBody";
-import { defaultGuideWindow, guideSelectionForChannel, layoutGuide } from "./guide";
+import { defaultGuideWindow, guideSelectionForChannel, layoutGuide } from "../guide";
 import type { GuideController, GuideControllerOptions, GuideSourcePort } from "./guide-controller.type";
 
 const createGuideSourcePort = (request: typeof globalThis.fetch): GuideSourcePort => ({

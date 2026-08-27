@@ -1,8 +1,8 @@
 import { Action, ActivityIndicator, ProgressTrack, Surface, Text } from "@loomarr/design-system";
 import { useEffect } from "react";
 import { Pressable, View } from "react-native";
-import type { WatchingSurfaceProps } from "./watching-surface.type";
-import { behindLabel, playbackMessage } from "./watching-surface-state";
+import type { WatchingSurfaceProps } from "../watching-surface.type";
+import { behindLabel, playbackMessage } from "../watching-surface-state";
 
 const RemoteHint = ({ children }: { children: string }) => (
   <Text density="tv" textRole="metadata" tone="muted">

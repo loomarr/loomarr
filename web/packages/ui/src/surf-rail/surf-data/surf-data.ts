@@ -6,7 +6,7 @@ import {
   type GuideLayout,
   guideAiringLabel,
 } from "@loomarr/core/guide";
-import type { SurfChannelData, SurfGroupData, SurfSelection } from "./surf-rail.type";
+import type { SurfChannelData, SurfGroupData, SurfSelection } from "../surf-rail.type";
 
 const programmeFacts = (airing: GuideAiringLayout) =>
   [

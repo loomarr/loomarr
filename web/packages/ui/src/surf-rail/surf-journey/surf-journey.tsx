@@ -2,12 +2,12 @@ import type { GuideController } from "@loomarr/core/guide";
 import type { Density } from "@loomarr/design-system";
 import { Surface } from "@loomarr/design-system";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { DeviceDisconnectAction } from "../device-disconnect";
-import type { FocusTargetRegistry } from "../focus-target";
-import { StatePanel } from "../state-panel";
-import { restoreSurfSelection, surfGroupsFromGuide } from "./surf-data";
-import { SurfRail, surfIdentityLabel } from "./surf-rail";
-import type { SurfGroupData, SurfRailProps, SurfSelection } from "./surf-rail.type";
+import { DeviceDisconnectAction } from "../../device-disconnect";
+import type { FocusTargetRegistry } from "../../focus-target";
+import { StatePanel } from "../../state-panel";
+import { restoreSurfSelection, surfGroupsFromGuide } from "../surf-data";
+import { SurfRail, surfIdentityLabel } from "../surf-rail";
+import type { SurfGroupData, SurfRailProps, SurfSelection } from "../surf-rail.type";
 
 interface SurfJourneyProps {
   clientName: string;

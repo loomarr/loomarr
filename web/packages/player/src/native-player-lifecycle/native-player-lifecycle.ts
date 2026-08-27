@@ -1,4 +1,4 @@
-import type { PlayerController } from "./player-controller";
+import type { PlayerController } from "../player-controller";
 
 interface NativeLifecycleTransport {
   resume: () => void;

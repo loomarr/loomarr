@@ -1,1 +1,1 @@
-export * from "./src/system-version/system-version";
+export * from "./src/system-version";

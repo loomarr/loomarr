@@ -7,7 +7,7 @@ import {
 import { Action, ArtworkFrame, Surface, Text } from "@loomarr/design-system";
 import { ScrollView, View } from "react-native";
 
-import type { GuideFilterOption, GuideSurfaceProps } from "./guide.type";
+import type { GuideFilterOption, GuideSurfaceProps } from "../guide.type";
 
 const channelRailPercent = 31;
 const rowHeight = 96;

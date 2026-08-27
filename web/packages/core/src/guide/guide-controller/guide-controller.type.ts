@@ -1,4 +1,4 @@
-import type { GuideLayout, GuideSelection, GuideWindow } from "./guide.type";
+import type { GuideLayout, GuideSelection, GuideWindow } from "../guide.type";
 
 type GuideControllerStatus = "empty" | "error" | "loading" | "ready";
 
