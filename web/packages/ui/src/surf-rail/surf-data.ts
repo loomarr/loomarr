@@ -45,6 +45,7 @@ const surfChannelData = (
           episodeLabel: formatGuideEpisode(now.source.season, now.source.episode),
           facts: programmeFacts(now),
           progressPercent: now.progressRatio === undefined ? undefined : now.progressRatio * 100,
+          remainingLabel: `${Math.max(1, Math.ceil((now.source.stopMs - nowMs) / 60_000))}m left`,
           seriesTitle: now.source.series,
           timeLabel: formatGuideTimeRange(now.source.startMs, now.source.stopMs, timezone),
           title: guideAiringLabel(now.source),

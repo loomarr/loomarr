@@ -14,7 +14,6 @@ import { NativePlayerView, PairedNativeImage, usePairedNativePlayer } from "@loo
 import type { ClientDestination } from "@loomarr/ui";
 import {
   ClientNavigation,
-  ClientShell,
   clientBackDestination,
   GuideJourney,
   PairingShell,
@@ -211,49 +210,41 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
         </View>
       ) : active === "surf" ? (
         <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>
-          <ClientShell
-            active={active}
+          <SurfJourney
+            clientName="Loomarr TV"
+            clientVersion={appConfig.expo.version}
+            controller={guide}
+            currentChannelId={player.snapshot.channel?.id}
             density="tv"
-            onDisconnect={() => session.disconnect()}
-            onNavigate={setActive}
-            serverName={credential.serverUrl}
-          >
-            <SurfJourney
-              clientName="Loomarr TV"
-              clientVersion={appConfig.expo.version}
-              controller={guide}
-              currentChannelId={player.snapshot.channel?.id}
-              density="tv"
-              focusRegistry={surfFocusRegistry}
-              onTune={(channelId) => {
-                void player.controller.tuneChannel(channelId);
-                setActive("watching");
-              }}
-              playableChannelIds={player.snapshot.catalog.map(({ id }) => id)}
-              recentChannelIds={player.snapshot.recentChannelIds}
-              renderArtwork={(channel) =>
-                channel.now?.artworkUri ? (
-                  <PairedNativeImage
-                    credential={credential}
-                    style={{ height: "100%", width: "100%" }}
-                    uri={channel.now.artworkUri}
-                  />
-                ) : undefined
-              }
-              renderChannelLogo={(channel) =>
-                channel.channelLogoUri ? (
-                  <PairedNativeImage
-                    credential={credential}
-                    resizeMode="contain"
-                    style={{ height: "100%", width: "100%" }}
-                    uri={channel.channelLogoUri}
-                  />
-                ) : undefined
-              }
-              restoreSelection={restoreTvSurfSelection}
-              serverVersion={player.serverVersion}
-            />
-          </ClientShell>
+            focusRegistry={surfFocusRegistry}
+            onTune={(channelId) => {
+              void player.controller.tuneChannel(channelId);
+              setActive("watching");
+            }}
+            playableChannelIds={player.snapshot.catalog.map(({ id }) => id)}
+            recentChannelIds={player.snapshot.recentChannelIds}
+            renderArtwork={(channel) =>
+              channel.now?.artworkUri ? (
+                <PairedNativeImage
+                  credential={credential}
+                  style={{ height: "100%", width: "100%" }}
+                  uri={channel.now.artworkUri}
+                />
+              ) : undefined
+            }
+            renderChannelLogo={(channel) =>
+              channel.channelLogoUri ? (
+                <PairedNativeImage
+                  credential={credential}
+                  resizeMode="contain"
+                  style={{ height: "100%", width: "100%" }}
+                  uri={channel.channelLogoUri}
+                />
+              ) : undefined
+            }
+            restoreSelection={restoreTvSurfSelection}
+            serverVersion={player.serverVersion}
+          />
         </View>
       ) : null}
     </View>

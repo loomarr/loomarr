@@ -10,6 +10,7 @@ interface SurfProgrammeData extends ProgrammeIdentityData {
   artworkState: ArtworkState;
   artworkUri?: string;
   progressPercent?: number;
+  remainingLabel?: string;
 }
 
 interface SurfChannelData extends ChannelIdentityData {
@@ -33,6 +34,7 @@ interface SurfSelection {
 interface SurfRailProps {
   clientName?: string;
   clientVersion: string;
+  currentChannelId?: string;
   density?: Density;
   focusRegistry?: FocusTargetRegistry<SurfSelection>;
   groups: readonly SurfGroupData[];

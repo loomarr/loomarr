@@ -11,8 +11,8 @@ import {
 
 import { ChannelIdentity, ProgrammeIdentity } from "../identity";
 import { StatePanel } from "../state-panel";
-
 import type { SurfChannelData, SurfGroupData, SurfRailProps, SurfSelection } from "./surf-rail.type";
+import { TvSurfRail } from "./surf-rail-tv";
 
 const surfRailWidth = (density: Density) => (density === "tv" ? 680 : density === "touch" ? "100%" : 480);
 
@@ -27,7 +27,7 @@ const findSurfChannel = (
 const surfIdentityLabel = (clientName: string, clientVersion: string, serverVersion?: string) =>
   `${clientName} ${clientVersion} · Server ${serverVersion ?? "unavailable"}`;
 
-const SurfRail = ({
+const PointerSurfRail = ({
   clientName = "Loomarr",
   clientVersion,
   density = "pointer",
@@ -160,5 +160,8 @@ const SurfRail = ({
     </Surface>
   );
 };
+
+const SurfRail = (props: SurfRailProps) =>
+  props.density === "tv" ? <TvSurfRail {...props} /> : <PointerSurfRail {...props} />;
 
 export { findSurfChannel, SurfRail, surfIdentityLabel, surfRailWidth };

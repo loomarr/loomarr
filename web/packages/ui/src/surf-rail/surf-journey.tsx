@@ -107,6 +107,7 @@ const SurfJourney = ({
     <SurfRail
       clientName={clientName}
       clientVersion={clientVersion}
+      currentChannelId={currentChannelId}
       density={density}
       focusRegistry={focusRegistry}
       groups={groups}
