@@ -39,6 +39,7 @@ const (
 	EligibilityIneligible = "ineligible"
 
 	RoleCommercial       = "commercial"
+	RolePromo            = "promo"
 	RoleBumper           = "bumper"
 	RolePSA              = "psa"
 	RoleStationID        = "station_id"

@@ -351,8 +351,7 @@ func openRouterMessages(request Request) ([]openRouterMessage, map[string]Signal
 		}
 	}
 	payload, err := json.Marshal(map[string]any{
-		"case_id": request.Packet.CaseID, "reasons": request.Reasons,
-		"prior_evidence": request.Evidence, "signals": textSignals,
+		"reasons": request.Reasons, "prior_evidence": request.Evidence, "signals": textSignals,
 	})
 	if err != nil {
 		return nil, nil, derivative, fmt.Errorf("marshal OpenRouter evidence payload: %w", err)
