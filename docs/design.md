@@ -113,7 +113,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `catalog` | 5 | `library`, `provision` |
 | `diagnostics` | 8 | — |
 | `filler` | 6 | `diagnostics`, `filleradmission`, `llm`, `metrics` |
-| `filleradmission` | 6 | — |
+| `filleradmission` | 7 | — |
 | `httpx` | 6 | `metrics` |
 | `library` | 7 | `filler`, `httpx` |
 | `llm` | 5 | `httpx`, `metrics` |
@@ -136,11 +136,11 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
-- **`filleradmission`** · 6 importers
+- **`filleradmission`** · 7 importers
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
 - **`fillercorpus`**
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
-- **`fillereval`** · 1 importer
+- **`fillereval`** · 2 importers
   Owns the hermetic certification contract for filler admission.
 - **`media`** · 3 importers
   Owns host-wide resources shared by live and background media work.
@@ -191,7 +191,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 5**
 
-- **`fillerbakeoff`** · 1 importer · → `filleradmission`, `fillereval`, `httpx`
+- **`fillerbakeoff`** · 2 importers · → `filleradmission`, `fillereval`, `httpx`
   Runs bounded, inference-spending filler admission comparisons.
 - **`llm`** · 5 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
@@ -204,6 +204,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`filler`** · 6 importers · → `diagnostics`, `filleradmission`, `fillerdecision`, `llm`, `mediatools`, `metrics`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
+- **`fillerreview`** · → `filleradmission`, `fillerbakeoff`, `fillereval`
+  Materializes identity-blind evidence for independent semantic review.
 
 **Layer 7**
 
@@ -3502,6 +3504,20 @@ flags, evidence spans, and any review question. The original blind submissions r
 submissions become the final labels directly; a disagreement requires a reasoned final adjudication
 by a third identity. Rights adjudication and semantic labeling are separate records.
 
+The maintained review packager turns one such opaque packet into inspectable reviewer evidence; a
+hash-only packet is not a completed review handoff. It consumes the exact draft, reviewer packet,
+owner-only alias map, provider evidence-packet JSONL, and external derivative root. Before writing
+anything it verifies every draft, alias, content, evidence-packet, and derivative hash. Its
+reviewer-visible manifest retains only opaque aliases, bounded segment coordinates, sanitized decoder
+facts, and alias-relative audio/frame/video paths; it omits source text, source-policy facts, case IDs,
+split/cluster assignments, titles, filenames, creator, campaign, source family, provenance URLs, and
+the private map. Media is materialized by an explicitly selected hard-link or copy mode, never by a
+symlink, and the output is published atomically only after every materialized file re-hashes correctly.
+The package includes an intentionally invalid empty label JSONL template in packet order so an
+unfilled or partially filled handoff cannot be mistaken for a completed submission. Packaging does
+not call a reviewer, infer labels, or make the two review batches independent; those remain separately
+executed and attested steps.
+
 Certification scores exactly one named split. Development examples cannot inflate locked-holdout
 metrics, and exact or near-duplicate content cannot cross their source/similarity cluster boundary.
 The replay report is deterministic for the same manifest, captured predictions, and explicit run
@@ -5893,7 +5909,7 @@ independently instead of treating every zero-lineup result as a model-quality my
 
 ### 14.2 The package map
 
-`internal/` is **49 flat packages, deliberately** — the grouping below is prose, not directories.
+`internal/` is **50 flat packages, deliberately** — the grouping below is prose, not directories.
 
 Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
 
@@ -5919,6 +5935,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `fillercorpus` | Source-neutral, non-authorizing certification inventory and rights-yield pilot contracts (§10 V61) |
 | `fillerdecision` | Durable admission lifecycle, append-only actions, and server-owned review/activity/diagnostic projections (§10 V63) |
 | `fillereval` | Hermetic filler-admission certification: versioned corpus contracts, selective-risk/cost scoring, and captured-decision replay (§10 V61) |
+| `fillerreview` | Verified identity-blind media packaging for independent semantic label review (§10 V61) |
 | `mediatools` | The ffmpeg/ffprobe/whisper layer — exec calls, output parsers, and the shapes those tools return (§10). Carved out of `filler`; the dependency runs one way and nothing here knows what a clip is |
 | `taxonomy` | The clip tag vocabulary — the operator-editable graph filler grounds tags against and curation matches over (§10 V45a) |
 | `playout` | Loomarr's own streaming engine — lineup to MPEG-TS (§9.1) |

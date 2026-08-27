@@ -268,7 +268,7 @@ go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must
 test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
 	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ ./internal/api/ -v
 
-.PHONY: eval-contract eval eval-cert eval-matrix filler-bakeoff-ollama filler-bakeoff-openrouter filler-corpus-archive filler-corpus-cdc filler-corpus-commons filler-corpus-direct filler-corpus-download filler-corpus-inventory filler-corpus-lock filler-corpus-loc filler-corpus-nasa filler-corpus-pilot filler-corpus-pilot-rights-lock filler-corpus-pilot-rights-review filler-corpus-prepare filler-corpus-review filler-eval-contract filler-eval-cert filler-openrouter-snapshot
+.PHONY: eval-contract eval eval-cert eval-matrix filler-bakeoff-ollama filler-bakeoff-openrouter filler-corpus-archive filler-corpus-cdc filler-corpus-commons filler-corpus-direct filler-corpus-download filler-corpus-inventory filler-corpus-lock filler-corpus-loc filler-corpus-nasa filler-corpus-pilot filler-corpus-pilot-rights-lock filler-corpus-pilot-rights-review filler-corpus-prepare filler-corpus-review filler-corpus-review-package filler-eval-contract filler-eval-cert filler-openrouter-snapshot
 eval-contract: ## hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB
 	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/
 
@@ -559,6 +559,22 @@ filler-corpus-review: ## prepare one opaque randomized filler-label review batch
 	    --batch-id "$$LOOMARR_FILLER_CORPUS_REVIEW_BATCH" \
 	    --packet-out "$$LOOMARR_FILLER_CORPUS_REVIEW_PACKET" \
 	    --map-out "$$LOOMARR_FILLER_CORPUS_REVIEW_MAP"
+
+filler-corpus-review-package: ## materialize one verified identity-blind reviewer evidence package
+	@test -n "$$LOOMARR_FILLER_CORPUS_DRAFT" || { echo "filler-corpus-review-package: LOOMARR_FILLER_CORPUS_DRAFT is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_REVIEW_PACKET" || { echo "filler-corpus-review-package: LOOMARR_FILLER_CORPUS_REVIEW_PACKET is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_REVIEW_MAP" || { echo "filler-corpus-review-package: LOOMARR_FILLER_CORPUS_REVIEW_MAP is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_EVIDENCE_PACKETS" || { echo "filler-corpus-review-package: LOOMARR_FILLER_CORPUS_EVIDENCE_PACKETS is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_DERIVATIVES" || { echo "filler-corpus-review-package: LOOMARR_FILLER_CORPUS_DERIVATIVES is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_REVIEW_PACKAGE" || { echo "filler-corpus-review-package: LOOMARR_FILLER_CORPUS_REVIEW_PACKAGE is required" >&2; exit 2; }; \
+	  $(GO) run ./cmd/filler-corpus-review-package \
+	    --draft "$$LOOMARR_FILLER_CORPUS_DRAFT" \
+	    --review-packet "$$LOOMARR_FILLER_CORPUS_REVIEW_PACKET" \
+	    --alias-map "$$LOOMARR_FILLER_CORPUS_REVIEW_MAP" \
+	    --evidence-packets "$$LOOMARR_FILLER_CORPUS_EVIDENCE_PACKETS" \
+	    --corpus-root "$$LOOMARR_FILLER_CORPUS_DERIVATIVES" \
+	    --out "$$LOOMARR_FILLER_CORPUS_REVIEW_PACKAGE" \
+	    --materialize "$${LOOMARR_FILLER_CORPUS_REVIEW_MATERIALIZE:-hardlink}"
 
 filler-openrouter-snapshot: ## lock OpenRouter capability, endpoint-price, and ZDR metadata
 	@test -n "$$OPENROUTER_API_KEY" || { echo "filler-openrouter-snapshot: OPENROUTER_API_KEY is required" >&2; exit 2; }; \

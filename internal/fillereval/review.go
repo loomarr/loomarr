@@ -32,8 +32,7 @@ func LockReviewedManifest(draft Manifest, first, second BlindReviewSet, adjudica
 	locked := draft
 	locked.Cases = slices.Clone(draft.Cases)
 	locked.LockedAt = lockedAt.UTC()
-	failures := validateUnlabeledDraft(draft)
-	failures = append(failures, validateReviewDraftScale(draft)...)
+	failures := ValidateReviewDraft(draft)
 	firstByID, firstFailures := unblindSubmissions("first review", draft, first)
 	failures = append(failures, firstFailures...)
 	secondByID, moreFailures := unblindSubmissions("second review", draft, second)
@@ -144,6 +143,13 @@ func validateReviewDraftScale(draft Manifest) []string {
 		failures = append(failures, fmt.Sprintf("development seed has %d cases; require at least %d", development, CertificationMinDevelopment))
 	}
 	return failures
+}
+
+// ValidateReviewDraft verifies the complete unlabeled input contract shared by
+// blind packet generation and reviewer evidence packaging.
+func ValidateReviewDraft(draft Manifest) []string {
+	failures := validateUnlabeledDraft(draft)
+	return append(failures, validateReviewDraftScale(draft)...)
 }
 
 func validateLabels(prefix string, labels Labels) []string {
