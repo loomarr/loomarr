@@ -74,7 +74,7 @@ func TestVerifyCIContainerDownloadsRejectsBypasses(t *testing.T) {
 		},
 		"Playwright recipe duplicates image authority": {
 			path:     runnerPath,
-			contents: strings.Replace(runner, "mcr.microsoft.com/playwright:v1.62.0-noble", "mcr.microsoft.com/playwright:other", 1),
+			contents: strings.Replace(runner, "mcr.microsoft.com/playwright:v1.62.1-noble", "mcr.microsoft.com/playwright:other", 1),
 		},
 		"commented Playwright recipe is inactive": {
 			path:     frontendPath,
