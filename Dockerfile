@@ -14,7 +14,7 @@
 # same major CI and contributors certify; a release build is not the place to trial
 # the next Node line. Corepack is separately pinned because it is no longer bundled
 # in newer official Node images.
-FROM --platform=$BUILDPLATFORM node:22.22.2-bookworm-slim@sha256:9f6d5975c7dca860947d3915877f85607946403fc55349f39b4bc3688448bb6e AS fe
+FROM --platform=$BUILDPLATFORM node:26.8.1-bookworm-slim@sha256:367679cf9792759492a486e4aa4b421764d71a9546a6dae8aab81a99eb797b3e AS fe
 RUN npm install -g corepack@0.35.0 && corepack enable
 WORKDIR /src
 COPY web ./web
