@@ -967,6 +967,9 @@ func TestProposal_RefusesPicksItsOwnCeilingCannotAir(t *testing.T) {
 	if len(prop.Refused) != 1 || prop.Refused[0].Item.TMDBID != 5004 || prop.Refused[0].Reason != "over_ceiling" {
 		t.Fatalf("refused = %+v, want the TV-MA pick as over_ceiling", prop.Refused)
 	}
+	if !traceHas(prop.Trace, "movie:tmdb:5004", suggest.DispositionRefused, suggest.ReasonOverCeiling) {
+		t.Fatalf("trace omitted refusal: %+v", prop.Trace)
+	}
 }
 
 // An explicit child-safety promise refuses unrated content before approval. Metadata healing is

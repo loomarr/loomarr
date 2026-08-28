@@ -338,18 +338,30 @@ func mergeDecisionTrace(dst, src *DecisionTrace) {
 		return
 	}
 	dst.Version = src.Version
+	known := make(map[string]bool, len(dst.Candidates))
+	for _, candidate := range dst.Candidates {
+		if candidate.Key != "" {
+			known[candidate.Key] = true
+		}
+	}
 	dst.SurfacedTotal += src.SurfacedTotal
-	dst.RecordedTotal += src.RecordedTotal
 	if src.Terminal != "" {
 		dst.Terminal = src.Terminal
 	}
 	for _, c := range src.Candidates {
+		if c.Key != "" && known[c.Key] {
+			continue
+		}
 		if len(dst.Candidates) >= DecisionTraceMaxCandidates {
 			dst.Truncated = true
 			continue
 		}
 		dst.Candidates = append(dst.Candidates, c)
+		if c.Key != "" {
+			known[c.Key] = true
+		}
 	}
+	dst.RecordedTotal = len(dst.Candidates)
 }
 
 func filterAdjacentFeedback(adjacent []AdjacentContext, signals []FeedbackSignal) []AdjacentContext {
@@ -513,6 +525,11 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	prop.Lineup, prop.Acquisitions, prop.Refused = refuseUnairable(
 		prop.Policy.Audience, prop.Lineup, prop.Acquisitions, intentRequiresChildSafety(intent),
 	)
+	for _, refused := range prop.Refused {
+		if key, err := refused.Item.Key(); err == nil {
+			traceDecision(trace, DecisionCandidate{Key: string(key), Disposition: DispositionRefused, Reason: refused.Reason})
+		}
+	}
 	stampEpisodeSelection(prop.Lineup, intent)
 	stampEpisodeSelection(prop.Acquisitions, intent)
 	stampEpisodeSelection(prop.Alternates, intent)
