@@ -283,17 +283,20 @@ RUN set -eux; \
       apt-get install -y --no-install-recommends intel-media-va-driver; \
     fi; \
     useradd -u 65532 -m -s /usr/sbin/nologin nonroot; \
-    curl -fsSL -o /usr/local/bin/yt-dlp \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+      -o /usr/local/bin/yt-dlp \
       "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/${YTDLP_ASSET}"; \
     echo "${YTDLP_SHA256}  /usr/local/bin/yt-dlp" | sha256sum -c -; \
     chmod +x /usr/local/bin/yt-dlp; \
-    curl -fsSL -o /tmp/deno.zip \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+      -o /tmp/deno.zip \
       "https://github.com/denoland/deno/releases/download/${DENO_VERSION}/deno-${DENO_ARCH}-unknown-linux-gnu.zip"; \
     echo "${DENO_SHA256}  /tmp/deno.zip" | sha256sum -c -; \
     unzip -q /tmp/deno.zip -d /usr/local/bin; \
     chmod +x /usr/local/bin/deno; \
     rm -f /tmp/deno.zip; \
-    curl -fsSL -o /tmp/ffmpeg.tar.xz \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+      -o /tmp/ffmpeg.tar.xz \
       "https://github.com/BtbN/FFmpeg-Builds/releases/download/${FFMPEG_RELEASE}/${FFMPEG_BUILD}.tar.xz"; \
     echo "${FFMPEG_SHA256}  /tmp/ffmpeg.tar.xz" | sha256sum -c -; \
     tar -xJf /tmp/ffmpeg.tar.xz -C /tmp; \
@@ -325,7 +328,8 @@ RUN set -eux; \
     # libgomp1 is an apt dependency, NOT bundled: whisper-cli is OpenMP-threaded and
     # debian:stable-slim does not ship libgomp. Measured — without it the binary aborts
     # at load with "libgomp.so.1: cannot open shared object file".
-    curl -fsSL -o /tmp/whisper.tar.gz \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+      -o /tmp/whisper.tar.gz \
       "https://github.com/ggml-org/whisper.cpp/releases/download/${WHISPER_VERSION}/whisper-bin-ubuntu-${WHISPER_ARCH}.tar.gz"; \
     echo "${WHISPER_SHA256}  /tmp/whisper.tar.gz" | sha256sum -c -; \
     tar -xzf /tmp/whisper.tar.gz -C /tmp; \
@@ -358,11 +362,13 @@ RUN set -eux; \
     # vendored binary rather than the Python package — which is what the gate demanded,
     # and it also rules out `base.en`, a size the plan never measured.
     install -d /usr/local/share/whisper; \
-    curl -fsSL -o /usr/local/share/whisper/ggml-small.en.bin \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+      -o /usr/local/share/whisper/ggml-small.en.bin \
       "https://huggingface.co/ggerganov/whisper.cpp/resolve/${WHISPER_MODEL_REV}/ggml-small.en.bin"; \
     echo "${WHISPER_MODEL_SHA256}  /usr/local/share/whisper/ggml-small.en.bin" | sha256sum -c -; \
     # The language-ID model (§10 V40) — see the ARG comment for why `small.en` cannot do this job.
-    curl -fsSL -o /usr/local/share/whisper/ggml-tiny.bin \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+      -o /usr/local/share/whisper/ggml-tiny.bin \
       "https://huggingface.co/ggerganov/whisper.cpp/resolve/${WHISPER_MODEL_REV}/ggml-tiny.bin"; \
     echo "${WHISPER_LANG_MODEL_SHA256}  /usr/local/share/whisper/ggml-tiny.bin" | sha256sum -c -; \
     apt-get purge -y curl xz-utils unzip; \
