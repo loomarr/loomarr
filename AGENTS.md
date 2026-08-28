@@ -109,8 +109,8 @@ make dev-fe                 # isolated Vite frontend pointed at that backend
 ```
 
 Go 1.26+, the Rust toolchain pinned by `rust-toolchain.toml`, Node 22.x (22.5 minimum), pnpm 11.13.1,
-and Docker are required. ffmpeg/ffprobe are required for playout tests. Lint tools and Air run at
-pinned versions from the harness.
+GNU Make 4.x, and Docker are required. ffmpeg/ffprobe are required for playout tests. Lint tools and
+Air run at pinned versions from the harness.
 
 ## Generated files
 

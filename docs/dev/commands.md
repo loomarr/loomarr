@@ -34,7 +34,7 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make agent-worktree` |  | create, claim, and bootstrap a sibling worktree (TOPIC=... CLAIMS=...; BASE/DEPENDS_ON for stacks) |
 | `make agent-gc` |  | audit worktrees; APPLY=1 retires only exact clean merged PR heads |
 | `make bootstrap` |  | build the Rust worker and prepare frontend, isolated directories, and dev identity |
-| `make doctor` |  | report toolchain drift, worktrees, ports, caches, and misplaced artifacts |
+| `make doctor` |  | verify toolchain and Docker readiness; report worktrees, ports, caches, and artifacts |
 | `make agent-harness-test` | ✅ | regression-test coordination, worktree isolation, and shared-output claims <br>*runs:* `agent-assets-verify` |
 | `make agent-assets-verify` |  | verify the curated skill catalog and agent adapters agree |
 | `make compose-verify` |  | verify Traefik, database wiring, and pinned release images |
@@ -48,7 +48,7 @@ The *runs:* note on a row lists what each parent pulls in.
 | Target | CI | What it does |
 | --- | --- | --- |
 | `make check` |  | complete local gate: repository contracts plus race-policy-aware unit tests <br>*runs:* `check-static` `test` |
-| `make check-static` |  | repository contracts without the unit-test suite (CI runs this once beside test shards) <br>*runs:* `rust-check` `fmt` `shellcheck` `privacy-verify` `vet` `tags-verify` `vet-tags` `lint` `agent-harness-test` `compose-verify` `release-verify` `go-race-verify` |
+| `make check-static` |  | repository contracts without the unit-test suite (CI runs this once beside test shards) <br>*runs:* `rust-check` `fmt` `shellcheck` `privacy-verify` `vet` `platform-vet` `tags-verify` `vet-tags` `lint` `agent-harness-test` `compose-verify` `release-verify` `go-race-verify` |
 | `make rust-check` | ✅ | format, lint, build, and test the required Rust image worker <br>*runs:* `rust-test-worker` |
 | `make rust-test-worker` |  | build the debug Rust image worker required by Go unit tests |
 | `make rust-audit` |  | check Rust advisories, licences, and dependency sources (needs cargo-deny) |
@@ -57,6 +57,7 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make shellcheck` |  | shellcheck every repository shell script |
 | `make privacy-verify` |  | captured private fixture literals must not re-enter the tracked tree |
 | `make vet` |  | go vet |
+| `make platform-vet` |  | go vet the opposite Linux/macOS target to catch platform-only compile drift |
 | `make vet-tags` |  | go vet over custom-tagged sources |
 | `make tags-verify` |  | the Makefile's TAGS list matches every //go:build tag in the tree, both ways |
 | `make lint` |  | golangci-lint v2 (run via `go run` so no global install needed) |

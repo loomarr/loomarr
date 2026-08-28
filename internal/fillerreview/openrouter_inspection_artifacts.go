@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 
 	"github.com/loomarr/loomarr/internal/fillerbakeoff"
 	"golang.org/x/sys/unix"
@@ -124,13 +123,13 @@ func openInspectionArtifactRoot(path string) (*inspectionArtifactRoot, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, fmt.Errorf("artifact directory path is required")
 	}
-	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW|syscall.O_DIRECTORY, 0)
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_DIRECTORY, 0)
 	if err != nil {
 		return nil, err
 	}
 	file := os.NewFile(uintptr(fd), path)
 	if file == nil {
-		_ = syscall.Close(fd)
+		_ = unix.Close(fd)
 		return nil, fmt.Errorf("open artifact directory descriptor")
 	}
 	info, err := file.Stat()
@@ -142,13 +141,13 @@ func openInspectionArtifactRoot(path string) (*inspectionArtifactRoot, error) {
 }
 
 func readInspectionRegular(path string, limit int64) ([]byte, error) {
-	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
 	if err != nil {
 		return nil, err
 	}
 	file := os.NewFile(uintptr(fd), path)
 	if file == nil {
-		_ = syscall.Close(fd)
+		_ = unix.Close(fd)
 		return nil, fmt.Errorf("open artifact file descriptor")
 	}
 	defer func() { _ = file.Close() }()
@@ -200,31 +199,31 @@ func (root *inspectionArtifactRoot) openRegular(relative string) (*os.File, erro
 		return nil, fmt.Errorf("artifact path escapes its rooted directory")
 	}
 	parts := strings.Split(clean, string(filepath.Separator))
-	current, err := syscall.Dup(int(root.file.Fd()))
+	current, err := unix.Dup(int(root.file.Fd()))
 	if err != nil {
 		return nil, err
 	}
 	for _, part := range parts[:len(parts)-1] {
-		next, openErr := syscall.Openat(current, part, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW|syscall.O_DIRECTORY, 0)
-		_ = syscall.Close(current)
+		next, openErr := unix.Openat(current, part, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_DIRECTORY, 0)
+		_ = unix.Close(current)
 		if openErr != nil {
 			return nil, openErr
 		}
-		var stat syscall.Stat_t
-		if statErr := syscall.Fstat(next, &stat); statErr != nil || !exactInspectionStatMode(stat.Mode, true, 0o700) {
-			_ = syscall.Close(next)
+		var stat unix.Stat_t
+		if statErr := unix.Fstat(next, &stat); statErr != nil || !exactInspectionStatMode(uint32(stat.Mode), true, 0o700) {
+			_ = unix.Close(next)
 			return nil, fmt.Errorf("artifact subdirectory must have exact mode 0700")
 		}
 		current = next
 	}
-	fd, err := syscall.Openat(current, parts[len(parts)-1], syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
-	_ = syscall.Close(current)
+	fd, err := unix.Openat(current, parts[len(parts)-1], unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	_ = unix.Close(current)
 	if err != nil {
 		return nil, err
 	}
 	file := os.NewFile(uintptr(fd), relative)
 	if file == nil {
-		_ = syscall.Close(fd)
+		_ = unix.Close(fd)
 		return nil, fmt.Errorf("open rooted artifact descriptor")
 	}
 	return file, nil
@@ -258,31 +257,33 @@ func validateExactInspectionDirectory(directory *os.File, prefix string, allowed
 	}
 	for _, entry := range entries {
 		relative := filepath.Join(prefix, entry.Name())
-		objectFD, err := unix.Openat(int(directory.Fd()), entry.Name(), unix.O_PATH|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+		want, permitted := allowed[filepath.ToSlash(relative)]
+		if !permitted {
+			return fmt.Errorf("object %q is not permitted", filepath.ToSlash(relative))
+		}
+		flags := unix.O_RDONLY | unix.O_NONBLOCK | unix.O_NOFOLLOW | unix.O_CLOEXEC
+		if want == inspectionDirectory {
+			flags |= unix.O_DIRECTORY
+		}
+		objectFD, err := unix.Openat(int(directory.Fd()), entry.Name(), flags, 0)
 		if err != nil {
 			return err
 		}
 		var stat unix.Stat_t
 		statErr := unix.Fstat(objectFD, &stat)
-		want, permitted := allowed[filepath.ToSlash(relative)]
-		if statErr != nil || !permitted {
+		if statErr != nil {
 			_ = unix.Close(objectFD)
-			return fmt.Errorf("object %q is not permitted", filepath.ToSlash(relative))
+			return fmt.Errorf("inspect object %q: %w", filepath.ToSlash(relative), statErr)
 		}
 		switch want {
 		case inspectionDirectory:
-			if !exactInspectionStatMode(stat.Mode, true, 0o700) {
+			if !exactInspectionStatMode(uint32(stat.Mode), true, 0o700) {
 				_ = unix.Close(objectFD)
 				return fmt.Errorf("directory %q must have exact mode 0700", filepath.ToSlash(relative))
 			}
-			childFD, openErr := unix.Openat(objectFD, ".", unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY, 0)
-			_ = unix.Close(objectFD)
-			if openErr != nil {
-				return openErr
-			}
-			child := os.NewFile(uintptr(childFD), relative)
+			child := os.NewFile(uintptr(objectFD), relative)
 			if child == nil {
-				_ = unix.Close(childFD)
+				_ = unix.Close(objectFD)
 				return fmt.Errorf("open child directory inventory descriptor")
 			}
 			err = validateExactInspectionDirectory(child, relative, allowed)
@@ -292,7 +293,7 @@ func validateExactInspectionDirectory(directory *os.File, prefix string, allowed
 			}
 		case inspectionRegular:
 			_ = unix.Close(objectFD)
-			if !exactInspectionStatMode(stat.Mode, false, 0o600) {
+			if !exactInspectionStatMode(uint32(stat.Mode), false, 0o600) {
 				return fmt.Errorf("file %q must be regular with exact mode 0600", filepath.ToSlash(relative))
 			}
 		default:
@@ -329,13 +330,13 @@ func exactInspectionMode(info os.FileInfo, directory bool, perm os.FileMode) boo
 }
 
 func exactInspectionStatMode(mode uint32, directory bool, perm uint32) bool {
-	if mode&0o777 != perm || mode&(syscall.S_ISUID|syscall.S_ISGID|syscall.S_ISVTX) != 0 {
+	if mode&0o777 != perm || mode&(unix.S_ISUID|unix.S_ISGID|unix.S_ISVTX) != 0 {
 		return false
 	}
 	if directory {
-		return mode&syscall.S_IFMT == syscall.S_IFDIR
+		return mode&unix.S_IFMT == unix.S_IFDIR
 	}
-	return mode&syscall.S_IFMT == syscall.S_IFREG
+	return mode&unix.S_IFMT == unix.S_IFREG
 }
 
 func decodeInspectionTranscripts(raw []byte) ([]fillerbakeoff.TranscriptArtifact, error) {

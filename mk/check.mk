@@ -3,7 +3,7 @@
 .PHONY: check check-static
 check: check-static test ## complete local gate: repository contracts plus race-policy-aware unit tests
 
-check-static: rust-check fmt shellcheck privacy-verify vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify ## repository contracts without the unit-test suite (CI runs this once beside test shards)
+check-static: rust-check fmt shellcheck privacy-verify vet platform-vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify ## repository contracts without the unit-test suite (CI runs this once beside test shards)
 
 .PHONY: rust-check rust-test-worker rust-audit rust-fuzz
 rust-check: rust-test-worker ## format, lint, build, and test the required Rust image worker
@@ -39,6 +39,15 @@ privacy-verify: ## captured private fixture literals must not re-enter the track
 .PHONY: vet
 vet: ## go vet
 	$(GO) vet $(PKG)
+
+.PHONY: platform-vet
+platform-vet: ## go vet the opposite Linux/macOS target to catch platform-only compile drift
+	@case "$$($(GO) env GOOS)" in \
+		darwin) GOOS=linux GOARCH=amd64 CGO_ENABLED=0 $(GO) vet $(PKG) ;; \
+		linux) GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 $(GO) vet $(PKG) ;; \
+		*) GOOS=linux GOARCH=amd64 CGO_ENABLED=0 $(GO) vet $(PKG); \
+		   GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 $(GO) vet $(PKG) ;; \
+	esac
 
 .PHONY: vet-tags
 vet-tags: ## go vet over custom-tagged sources
