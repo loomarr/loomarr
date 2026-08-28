@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/fillerbakeoff"
 	"github.com/loomarr/loomarr/internal/fillereval"
 )
 
@@ -44,6 +45,18 @@ type openRouterCheckpoint struct {
 	Attempts    []ReviewAttempt              `json:"attempts"`
 	Submissions []fillereval.LabelSubmission `json:"submissions"`
 	Calls       []ReviewCall                 `json:"calls"`
+}
+
+func buildOpenRouterCheckpointIdentity(config OpenRouterReviewConfig, baseURL, batchID, manifestSHA256, transcriptSetSHA256 string) openRouterCheckpointIdentity {
+	return openRouterCheckpointIdentity{
+		SchemaVersion: openRouterCheckpointSchemaVersion, PackageManifestSHA256: manifestSHA256,
+		CapabilitySnapshotSHA256: fillerbakeoff.OpenRouterSnapshotSHA256(config.Snapshot), TranscriptSetSHA256: transcriptSetSHA256,
+		BaseURL: baseURL, Model: config.Model, ResolvedModel: openRouterReviewModel(config.Snapshot, config.Model).CanonicalSlug,
+		UpstreamProvider: config.UpstreamProvider, UpstreamProviderSlug: config.UpstreamProviderSlug,
+		PromptVersion: OpenRouterReviewPromptVersion, PromptSHA256: hashBytes([]byte(reviewerSystemPrompt)),
+		ReviewerID: config.ReviewerID, BatchID: batchID, ExpectedCases: config.ExpectedCases,
+		MaxRequests: config.MaxRequests, MaxSpendNanoUSD: config.MaxSpendNanoUSD, MaxChargeNanoUSD: config.MaxChargeNanoUSD,
+	}
 }
 
 func loadOpenRouterCheckpoint(dir string, identity openRouterCheckpointIdentity) (openRouterCheckpoint, error) {

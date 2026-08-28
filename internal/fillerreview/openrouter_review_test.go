@@ -16,7 +16,28 @@ import (
 
 	"github.com/loomarr/loomarr/internal/fillerbakeoff"
 	"github.com/loomarr/loomarr/internal/fillereval"
+	"github.com/loomarr/loomarr/internal/testkit/httpfixture"
 )
+
+func TestRunOpenRouterReviewRejectsStaleSnapshotBeforeTransport(t *testing.T) {
+	retrievedAt := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	var requests atomic.Int32
+	client := &http.Client{Transport: httpfixture.RoundTripperFunc(func(*http.Request) (*http.Response, error) {
+		requests.Add(1)
+		return nil, fmt.Errorf("transport must not be reached")
+	})}
+
+	_, _, err := RunOpenRouterReview(context.Background(), OpenRouterReviewConfig{
+		PackageDir: t.TempDir(), CheckpointDir: filepath.Join(t.TempDir(), "private-review-state"),
+		BaseURL: fillerbakeoff.OpenRouterBaseURL, APIKey: "test-only", Snapshot: openRouterReviewSnapshot(fillerbakeoff.OpenRouterBaseURL, retrievedAt),
+		Model: "review/vendor-model", UpstreamProvider: "Provider Route", UpstreamProviderSlug: "provider/route", ReviewerID: "hosted-reviewer-b",
+		ExpectedCases: 1, PerCaseTimeout: time.Second, MaxRequests: 2, MaxSpendNanoUSD: 4_000_000, MaxChargeNanoUSD: 2_000_000,
+		Client: client, Now: func() time.Time { return retrievedAt.Add(25 * time.Hour) },
+	})
+	if err == nil || !strings.Contains(err.Error(), "24-hour window") || requests.Load() != 0 {
+		t.Fatalf("error=%v requests=%d", err, requests.Load())
+	}
+}
 
 func TestRunOpenRouterReviewAllowsOnlyOneConcurrentWriter(t *testing.T) {
 	packageDir, transcript := reviewPackageFixture(t)

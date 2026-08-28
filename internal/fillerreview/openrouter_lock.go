@@ -3,7 +3,6 @@ package fillerreview
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -124,18 +123,9 @@ func RecoverOpenRouterReviewLock(checkpointDir, expectedSHA256 string) (string, 
 }
 
 func readOpenRouterActiveRunLock(path string) ([]byte, error) {
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 || info.Size() < 0 || info.Size() > maxOpenRouterActiveRunLockBytes {
-		return nil, fmt.Errorf("active run lock must be a bounded private regular file")
-	}
-	file, err := os.Open(path)
+	raw, err := readInspectionRegular(path, maxOpenRouterActiveRunLockBytes)
 	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = file.Close() }()
-	raw, err := io.ReadAll(io.LimitReader(file, maxOpenRouterActiveRunLockBytes+1))
-	if err != nil || len(raw) > maxOpenRouterActiveRunLockBytes {
-		return nil, fmt.Errorf("read bounded active run lock")
+		return nil, fmt.Errorf("active run lock must be a bounded regular file with exact mode 0600 and not a symlink: %w", err)
 	}
 	return raw, nil
 }

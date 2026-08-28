@@ -145,15 +145,7 @@ func runOpenRouterReview(ctx context.Context, config OpenRouterReviewConfig, bef
 	if err != nil {
 		return ReviewRun{}, nil, err
 	}
-	identity := openRouterCheckpointIdentity{
-		SchemaVersion: openRouterCheckpointSchemaVersion, PackageManifestSHA256: manifestSHA256,
-		CapabilitySnapshotSHA256: fillerbakeoff.OpenRouterSnapshotSHA256(config.Snapshot), TranscriptSetSHA256: transcriptSetSHA256,
-		BaseURL: baseURL, Model: config.Model, ResolvedModel: openRouterReviewModel(config.Snapshot, config.Model).CanonicalSlug,
-		UpstreamProvider: config.UpstreamProvider, UpstreamProviderSlug: config.UpstreamProviderSlug,
-		PromptVersion: OpenRouterReviewPromptVersion, PromptSHA256: hashBytes([]byte(reviewerSystemPrompt)),
-		ReviewerID: config.ReviewerID, BatchID: manifest.BatchID, ExpectedCases: config.ExpectedCases,
-		MaxRequests: config.MaxRequests, MaxSpendNanoUSD: config.MaxSpendNanoUSD, MaxChargeNanoUSD: config.MaxChargeNanoUSD,
-	}
+	identity := buildOpenRouterCheckpointIdentity(config, baseURL, manifest.BatchID, manifestSHA256, transcriptSetSHA256)
 	activeLock, err := acquireOpenRouterActiveRunLock(config.CheckpointDir, identity, now, beforeCheckpointDirCreate)
 	if err != nil {
 		return ReviewRun{}, nil, err
@@ -309,11 +301,8 @@ func validateOpenRouterReviewConfig(config OpenRouterReviewConfig) (string, *htt
 }
 
 func validateOpenRouterReviewSnapshot(config OpenRouterReviewConfig, baseURL string) error {
-	if err := fillerbakeoff.ValidateOpenRouterSnapshot(config.Snapshot); err != nil {
+	if err := validateOpenRouterReviewSnapshotIdentity(config, baseURL); err != nil {
 		return err
-	}
-	if config.Snapshot.SourceBaseURL != baseURL {
-		return fmt.Errorf("openrouter review snapshot does not bind the request base")
 	}
 	now := time.Now
 	if config.Now != nil {
@@ -322,6 +311,16 @@ func validateOpenRouterReviewSnapshot(config OpenRouterReviewConfig, baseURL str
 	age := now().UTC().Sub(config.Snapshot.RetrievedAt)
 	if age < 0 || age > 24*time.Hour {
 		return fmt.Errorf("openrouter review is outside the snapshot's 24-hour window")
+	}
+	return nil
+}
+
+func validateOpenRouterReviewSnapshotIdentity(config OpenRouterReviewConfig, baseURL string) error {
+	if err := fillerbakeoff.ValidateOpenRouterSnapshot(config.Snapshot); err != nil {
+		return err
+	}
+	if config.Snapshot.SourceBaseURL != baseURL {
+		return fmt.Errorf("openrouter review snapshot does not bind the request base")
 	}
 	for _, model := range config.Snapshot.Models {
 		if model.ID != config.Model {
