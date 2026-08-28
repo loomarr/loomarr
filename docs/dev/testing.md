@@ -73,6 +73,47 @@ and schedule materialization failure, so a low score points at the layer to tune
 remains outside `make check` and certifies only the requested model/provider configuration, catalog
 snapshot, and corpus version in the artifact.
 
+The durable schedule-outcome contract covers an owned curated series, a separate owned holiday
+episode case, and an atomic release-ordered movie franchise. Acquisition-only holiday discoveries
+are not playable evidence. Hermetic Runner tests label their fixed episode identities as synthetic
+test evidence; live certification never copies those expectations. Instead set both
+`LOOMARR_EVAL_LIVE_SCHEDULE=1` and `LOOMARR_EVAL_SCHEDULE_EVIDENCE=/path/to/snapshot.json`. Snapshot
+schema 1 declares a non-empty snapshot id, complete scheduling-relevant Library episode evidence for
+the curated and holiday series, and owned Indiana Jones movie evidence for TMDB collection 84. Both
+series objects must use the exact Key `series:tmdb:456`; substituting another otherwise-consistent
+series snapshot fails before external adapters or providers are used.
+The JSON object has exactly `schemaVersion`, `snapshotId`, `curated`, `holiday`, and `franchise`;
+unknown fields, a second JSON value, or malformed trailing bytes fail. Snapshot ids use only ASCII letters, digits, `.`, `_`, and `-` so
+they are safe in corpus identity. Each series object has exactly `key`, `name`, `libraryItemId`,
+`episodes`, `requiredPrograms`, and `forbiddenPrograms`. Every episode records `libraryItemId`,
+`title`, `durationMs`, `season`, `episode`, and the
+present scheduling signals among `episodeEnd`, `year`, `officialRating`, `communityRating`,
+`overview`, and `tags`. The episode array is the complete ordered `ListEpisodes` result, not a chosen
+subset. The required and forbidden arrays are nonempty, disjoint, refer only to present episode
+identities, and together classify every episode. `franchise` contains `movies` and
+`requiredSequence`; each movie records `key`, `name`, `libraryItemId`, `durationMs`, and
+`collectionId`, while the pinned sequence is exactly TMDB movie Keys 85, 87, and 89 in canonical
+release order and live collection 84.
+Before constructing a generator or judge provider, the eval re-reads Library episodes/runtimes and
+TMDB collection identity and requires an exact match. Preflight never calls the scheduler or selector;
+the later Runner compares production output against the snapshot's pinned concrete oracle. The
+snapshot id is included in the scorecard corpus version. Missing, incomplete, sparse, circular, or
+drifted evidence fails closed before inference.
+Every declared series and movie first crosses the same ownership-binding check:
+`library.LookupDetail` receives its exact TMDB media type/id, must report it present, and must return
+the snapshot's `libraryItemId`. Episode enumeration and movie runtime validation happen only after
+that cross-binding succeeds, so a self-consistent unrelated Library item fails before inference.
+Prepared materializers also enforce exact per-case Lineup ownership: curated and holiday accept only
+their snapshot series Key, and franchise accepts only movie Keys 85, 87, and 89. An extra playable
+Lineup Key is a schedule-stage failure; a missing required Key remains a deterministic failure.
+Acquisition picks are not materialized and are outside this check.
+
+Without the live opt-in, exploration reports one explicit schedule-corpus omission and continues
+with proposal cases. `LOOMARR_EVAL_REQUIRED=1` fails before provider construction unless both the
+opt-in and consistent evidence are present, so `make eval-cert` cannot certify a proposal-only
+subset. Both adapters enter the same pure `schedule.ComputeDesiredAt` projection.
+`make eval-contract` always disables the live test before any adapter is constructed.
+
 `make eval-matrix` prevents tuning to one local model. It requires the ordinary exported `LLM_*`
 configuration plus `OPENROUTER_API_KEY` and `OPENROUTER_MODEL`; `OPENROUTER_JUDGE_MODEL` may select a
 different hosted judge. It writes separate `local` and `openrouter` scorecards from the exact same

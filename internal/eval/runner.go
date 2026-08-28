@@ -13,7 +13,7 @@ import (
 
 const (
 	scorecardSchemaVersion = 4
-	corpusVersion          = "2026-08-23.4"
+	corpusVersion          = "2026-08-27.5"
 )
 
 // Generator is the one external seam the behavioral evaluator needs: production

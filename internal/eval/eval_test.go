@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // TestEvalCorpus runs the whole intent corpus through the REAL suggester against
@@ -27,19 +29,59 @@ func TestEvalCorpus(t *testing.T) {
 		t.Skip("live semantic corpus is disabled in the hermetic contract lane")
 	}
 	required := os.Getenv("LOOMARR_EVAL_REQUIRED") == "1"
+	liveSchedule := os.Getenv("LOOMARR_EVAL_LIVE_SCHEDULE") == "1"
+	if required && !liveSchedule {
+		t.Fatal("LOOMARR_EVAL_LIVE_SCHEDULE=1 is required in certification mode")
+	}
 	if required && os.Getenv("LOOMARR_EVAL_OUT") == "" {
 		t.Fatal("LOOMARR_EVAL_OUT is required in certification mode")
 	}
-	sug, _, observed, err := buildSuggester()
+	ctx, cancel := context.WithTimeout(context.Background(), 18*time.Minute)
+	defer cancel()
+
+	var prepared LiveScheduleCertification
+	var clients evalClients
+	var err error
+	if liveSchedule {
+		evidencePath := os.Getenv("LOOMARR_EVAL_SCHEDULE_EVIDENCE")
+		if evidencePath == "" {
+			t.Fatal("LOOMARR_EVAL_SCHEDULE_EVIDENCE is required when live schedule evaluation is enabled")
+		}
+		snapshot, loadErr := LoadScheduleEvidence(evidencePath)
+		if loadErr != nil {
+			t.Fatalf("live schedule evidence prerequisite: %v", loadErr)
+		}
+		clients, err = buildEvalClients()
+		if err != nil {
+			t.Fatalf("live schedule evidence prerequisite: %v", err)
+		}
+		prepared, err = PrepareLiveScheduleCertification(ctx, snapshot, clients.library, clients.tmdb)
+		if err != nil {
+			t.Fatalf("live schedule evidence prerequisite: %v", err)
+		}
+	}
+	cases, omission, err := evalCases(required, liveSchedule, prepared.Cases)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if omission != "" {
+		t.Log(omission)
+	}
+	var sug *suggest.Suggester
+	var materializer ScheduleMaterializer
+	var observed *observedProvider
+	if liveSchedule {
+		sug, observed, err = buildSuggesterWithClients(clients)
+		materializer = prepared.Materializer
+	} else {
+		sug, materializer, observed, err = buildSuggester()
+	}
 	if err != nil {
 		if required {
 			t.Fatalf("semantic certification is not configured: %v", err)
 		}
 		t.Skipf("eval not configured: %v", err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 18*time.Minute)
-	defer cancel()
-
 	trials := evalTrials(required)
 	provider := os.Getenv("LLM_PROVIDER")
 	if provider == "" {
@@ -58,7 +100,13 @@ func TestEvalCorpus(t *testing.T) {
 		Generator: generatorIdentity,
 		Judge:     judgeIdentity,
 	}).WithObserver(observed).WithJudge(modelJudge{provider: buildJudgeProvider()})
-	card := runner.Run(ctx, Corpus)
+	if liveSchedule {
+		runner = runner.WithMaterializer(materializer)
+	}
+	card := runner.Run(ctx, cases)
+	if liveSchedule {
+		card.CorpusVersion += "+" + prepared.SnapshotID
+	}
 	for _, res := range card.Results {
 		for _, fail := range res.Failures {
 			t.Errorf("%s trial %d: %s", res.Case, res.Trial, fail)
@@ -71,6 +119,20 @@ func TestEvalCorpus(t *testing.T) {
 
 	// Emit a scorecard artifact (stdout + optional file) so a run is inspectable.
 	writeScorecard(t, card, required)
+}
+
+func evalCases(required, liveSchedule bool, liveCases []Case) ([]Case, string, error) {
+	if required && !liveSchedule {
+		return nil, "", fmt.Errorf("LOOMARR_EVAL_LIVE_SCHEDULE=1 is required in certification mode")
+	}
+	cases := append([]Case(nil), Corpus...)
+	if liveSchedule {
+		if len(liveCases) != 3 {
+			return nil, "", fmt.Errorf("live schedule evidence must produce curated, holiday, and franchise cases")
+		}
+		return append(cases, liveCases...), "", nil
+	}
+	return cases, "schedule-outcome corpus omitted; set LOOMARR_EVAL_LIVE_SCHEDULE=1 to materialize owned viewer outcomes", nil
 }
 
 func evalTrials(required bool) int {

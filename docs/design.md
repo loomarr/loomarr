@@ -6009,6 +6009,50 @@ Proposal plus episode evidence to editorial selection, and selected pool plus Po
 schedule. The same public Runner interface owns all three so exploratory and certification modes
 cannot silently test different behavior.
 
+The durable schedule-outcome contract is distinct from the proposal corpus because only an
+already-owned lineup can be materialized. Hermetic Runner tests use explicitly synthetic fixture
+episodes to prove that curated-series inclusions/exclusions, in-Library holiday selection, and an
+atomic release-ordered movie franchise can each pass and fail. Those fixture identities are test
+evidence only and never become live certification expectations.
+
+Live schedule cases instead come from a declared real-Library evidence snapshot. Its closed,
+versioned schema records a safe non-empty snapshot id; the exact series Key, Library item id,
+complete episode evidence, and independently pinned included/excluded concrete identities for
+curated and holiday selection; and the exact owned movie Keys, Library item ids, runtimes, TMDB
+collection id, and independently pinned canonical franchise sequence. Before any generator
+or judge provider is constructed, Loomarr re-reads the declared titles through
+`library.ItemMetadataByID` and `library.ListEpisodes`, resolves every movie through TMDB collection
+identity, and requires an exact match on every scheduling-relevant field. Missing cases, sparse
+curation evidence without nonempty, disjoint include/exclude sets covering every present episode,
+stale episode metadata, unplayable movies, mixed collections, a noncanonical franchise sequence, or
+any other drift fail certification. Preflight never invokes `schedule.ComputeDesiredAt`: the Runner
+compares its later production-scheduler output against those pinned independent expectations. The
+snapshot id is appended to the scorecard corpus version.
+Both live series cases are pinned to the authoritative `series:tmdb:456` Key; a self-consistent
+snapshot substituting any other series identity fails before Library, TMDB, or provider work begins.
+Before accepting episode or runtime evidence, one shared ownership check calls
+`library.LookupDetail` with each exact TMDB media type/id. The title must be present and the returned
+Library item id must equal the snapshot's `libraryItemId`; matching metadata from an unrelated owned
+item cannot satisfy the evidence contract.
+
+Fixture and live `ScheduleMaterializer` adapters call one shared pure projection through
+`schedule.ComputeDesiredAt`. The live adapter bulk-reads owned movie runtime from
+`library.ItemMetadataByID`, enumerates series through `library.ListEpisodes`, and resolves a movie's
+authoritative TMDB collection identity before entering that projection. A snapshot-bound live
+adapter also rejects a Proposal whose Key resolves to a different Library item id.
+The snapshot binding is case-specific and exact: curated and holiday materialization accept only
+their declared series Key, while franchise materialization accepts only TMDB movie Keys 85, 87, and
+89. Any additional playable Lineup Key fails at the schedule stage; missing members remain the
+deterministic `RequireKeys` contract. Acquisitions never enter schedule materialization.
+
+Live schedule materialization is an explicit `LOOMARR_EVAL_LIVE_SCHEDULE=1` opt-in and requires
+`LOOMARR_EVAL_SCHEDULE_EVIDENCE` to name the versioned JSON snapshot above. An exploratory
+run without it runs the proposal corpus, omits the entire schedule-outcome corpus, and reports that
+omission once. Certification mode fails before constructing or calling any provider when the opt-in
+or a valid, consistent snapshot is absent, so a required scorecard cannot silently omit viewer
+outcomes. The hermetic contract lane always uses fixed fixture evidence and never constructs live
+Library, TMDB, generator, or judge adapters.
+
 The subjective judge receives one typed, bounded evidence value from `Runner`; it does not receive
 the raw Proposal or rediscover a schedule. That value keeps lineup and acquisition titles in
 separate ownership sets and records each title's exact grounded key, name/year, source provenance,

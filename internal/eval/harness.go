@@ -26,11 +26,31 @@ import (
 // provider (from LLM_*), real catalog (real library search + real TMDB), real
 // validator — so the eval exercises the production path, not a mock. Returns an
 // error (skips the eval) when the required env isn't configured.
-func buildSuggester() (*suggest.Suggester, *tmdb.Client, *observedProvider, error) {
+func buildSuggester() (*suggest.Suggester, ScheduleMaterializer, *observedProvider, error) {
+	clients, err := buildEvalClients()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	suggester, observed, err := buildSuggesterWithClients(clients)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return suggester, NewLiveScheduleMaterializer(clients.library, clients.tmdb), observed, nil
+}
+
+type evalClients struct {
+	library *library.Client
+	tmdb    *tmdb.Client
+}
+
+// buildEvalClients constructs only evidence adapters. It deliberately cannot
+// construct or call an inference provider, so live schedule preflight can fail
+// closed before any model resource is available to spend.
+func buildEvalClients() (evalClients, error) {
 	libURL := os.Getenv("LIBRARY_URL")
 	libTok := os.Getenv("LIBRARY_TOKEN")
 	if libURL == "" || libTok == "" {
-		return nil, nil, nil, fmt.Errorf("LIBRARY_URL + LIBRARY_TOKEN required for the eval")
+		return evalClients{}, fmt.Errorf("LIBRARY_URL + LIBRARY_TOKEN required for the eval")
 	}
 	flavor := library.Emby
 	if os.Getenv("LIBRARY_FLAVOR") == "jellyfin" {
@@ -40,17 +60,20 @@ func buildSuggester() (*suggest.Suggester, *tmdb.Client, *observedProvider, erro
 
 	tmdbKey := os.Getenv("TMDB_API_KEY")
 	if tmdbKey == "" {
-		return nil, nil, nil, fmt.Errorf("TMDB_API_KEY required for the eval (grounding + discovery)")
+		return evalClients{}, fmt.Errorf("TMDB_API_KEY required for the eval (grounding + discovery)")
 	}
 	tm := tmdb.New(tmdbKey)
-	cat := catalog.New(lib, tm).WithPresence(libPresence{lib})
+	return evalClients{library: lib, tmdb: tm}, nil
+}
 
+func buildSuggesterWithClients(clients evalClients) (*suggest.Suggester, *observedProvider, error) {
+	cat := catalog.New(clients.library, clients.tmdb).WithPresence(libPresence{clients.library})
 	provider := buildProvider()
 	if provider == nil {
-		return nil, nil, nil, fmt.Errorf("LLM not configured (set LLM_PROVIDER/LLM_URL/LLM_MODEL[/LLM_API_KEY])")
+		return nil, nil, fmt.Errorf("LLM not configured (set LLM_PROVIDER/LLM_URL/LLM_MODEL[/LLM_API_KEY])")
 	}
 	observed := &observedProvider{inner: provider}
-	return suggest.New(observed, cat, tm, 10).WithRatings(tm), tm, observed, nil
+	return suggest.New(observed, cat, clients.tmdb, 10).WithRatings(clients.tmdb), observed, nil
 }
 
 // observedProvider records only structural evaluation evidence—tool mode and

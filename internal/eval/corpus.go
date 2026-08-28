@@ -309,3 +309,51 @@ var Corpus = []Case{
 		NoFabrication: true, // every grounded pick must have a real, resolvable id
 	},
 }
+
+// fixtureScheduleCorpus is synthetic evidence used only by hermetic Runner
+// contract tests. Live certification derives different cases from a verified
+// ScheduleEvidenceSnapshot and must never consume these identities.
+var fixtureScheduleCorpus = []Case{
+	{
+		Name: "schedule_classic_simpsons_highlights",
+		Intent: Intent{
+			Description: "Classic Simpsons reruns from the golden era, curated for variety",
+			MustInclude: []string{"The Simpsons"},
+		},
+		MinLineup:      1,
+		RequireKeys:    []provision.Key{"series:tmdb:456"},
+		ExpectOrdering: "syndication",
+		RequireScheduledPrograms: []string{
+			"series:tmdb:456:s01e02", "series:tmdb:456:s01e04",
+			"series:tmdb:456:s01e06", "series:tmdb:456:s01e08",
+		},
+		ForbidScheduledPrograms: []string{"series:tmdb:456:s01e01"},
+	},
+	{
+		Name: "schedule_movie_franchise_release_order",
+		Intent: Intent{
+			Description: "Play the owned Indiana Jones movies together in release order",
+			MustInclude: []string{"Raiders of the Lost Ark", "Indiana Jones and the Temple of Doom", "Indiana Jones and the Last Crusade"},
+		},
+		MinLineup:                3,
+		MinMovies:                3,
+		RequireKeys:              []provision.Key{"movie:tmdb:85", "movie:tmdb:87", "movie:tmdb:89"},
+		RequireScheduledPrograms: []string{"movie:tmdb:85", "movie:tmdb:87", "movie:tmdb:89"},
+		RequireScheduledSequence: []string{"movie:tmdb:85", "movie:tmdb:87", "movie:tmdb:89"},
+	},
+	{
+		Name: "schedule_owned_simpsons_christmas",
+		Intent: Intent{
+			Description: "Christmas episodes of The Simpsons already in my library",
+			MustInclude: []string{"The Simpsons"},
+		},
+		MinLineup:              1,
+		RequireKeys:            []provision.Key{"series:tmdb:456"},
+		ExpectSeasonalMode:     "exclusive",
+		ExpectSeasonalHolidays: []string{"christmas"},
+		RequireScheduledPrograms: []string{
+			"series:tmdb:456:s02e02", "series:tmdb:456:s02e03", "series:tmdb:456:s02e04",
+		},
+		ForbidScheduledPrograms: []string{"series:tmdb:456:s02e01"},
+	},
+}
