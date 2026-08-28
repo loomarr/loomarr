@@ -294,8 +294,9 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 		}
 		return resp.Content, nil
 	}
-	// Ran out of tool rounds without a final turn — treat as empty (repairable).
-	return "", nil
+	// Ran out of tool rounds without a final turn: expose the bounded terminal fact.
+	trace.Terminal = FailureBudgetExhausted
+	return "", NewFailure(FailureBudgetExhausted, *trace, errors.New("suggestion tool-round budget exhausted"))
 }
 
 // runTool executes a model tool call. Only catalog_search is honored; anything

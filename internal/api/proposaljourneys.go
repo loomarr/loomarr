@@ -44,7 +44,7 @@ type ProposalJobAttemptDTO struct {
 }
 
 type ProposalJourneyFailureDTO struct {
-	Code    string                `json:"code" enum:"no_grounded_titles,generation_failed"`
+	Code    string                `json:"code" enum:"no_grounded_titles,selection_empty,budget_exhausted,generation_failed"`
 	Message string                `json:"message"`
 	Trace   suggest.DecisionTrace `json:"trace,omitempty"`
 }

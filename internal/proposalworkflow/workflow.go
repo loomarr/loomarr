@@ -67,6 +67,8 @@ type FailureCode string
 const (
 	FailureNoGroundedTitles FailureCode = "no_grounded_titles"
 	FailureGenerationFailed FailureCode = "generation_failed"
+	FailureSelectionEmpty   FailureCode = "selection_empty"
+	FailureBudgetExhausted  FailureCode = "budget_exhausted"
 )
 
 type Failure struct {
@@ -295,10 +297,14 @@ func safeFailure(code FailureCode, traces ...suggest.DecisionTrace) Failure {
 	if len(traces) > 0 {
 		trace = traces[0]
 	}
-	if code == FailureNoGroundedTitles {
+	if code == FailureNoGroundedTitles || code == FailureSelectionEmpty || code == FailureBudgetExhausted {
+		message := "No grounded titles matched this request. Try again, or edit its description and constraints."
+		if code == FailureBudgetExhausted {
+			message = "This request exceeded the bounded discovery budget. Try again with narrower constraints."
+		}
 		return Failure{
 			Code:    code,
-			Message: "No grounded titles matched this request. Try again, or edit its description and constraints.",
+			Message: message,
 			Trace:   trace,
 		}
 	}

@@ -86,7 +86,7 @@ func (w *Workflow) Fail(ctx context.Context, work Work, code string, diagnostic 
 		return err
 	}
 	boundedCode := FailureCode(code)
-	if boundedCode != FailureNoGroundedTitles {
+	if boundedCode != FailureNoGroundedTitles && boundedCode != FailureSelectionEmpty && boundedCode != FailureBudgetExhausted {
 		boundedCode = FailureGenerationFailed
 	}
 	if w.execution == nil {
