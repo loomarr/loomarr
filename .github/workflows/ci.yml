@@ -458,6 +458,7 @@ jobs:
       - name: Summarize queue, execution, critical path, and runner use
         if: always()
         env:
+          CI_ASSURANCE_LANE: ${{ needs.changes.outputs.lane }}
           GH_TOKEN: ${{ github.token }}
         run: |
           if ! ./scripts/ci-run-metrics.sh >> "$GITHUB_STEP_SUMMARY"; then
