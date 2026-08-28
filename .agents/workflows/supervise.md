@@ -71,6 +71,37 @@ checkpoint; change it only with the next bounded assignment after the worker has
 For an external session whose model cannot be controlled or verified, record `uncontrolled` instead
 of guessing.
 
+## Bound every checkpoint
+
+Treat one implementation assignment or one review pass as a checkpoint with a declared token limit.
+Choose a limit from 100,000 through 200,000 tokens before the checkpoint starts; use 150,000 unless
+the brief gives a concrete reason for another value in that range. The limit covers the worker's
+complete checkpoint, including tool results and corrections as counted by the chosen meter. It does
+not estimate product effort or redefine acceptance.
+
+Use the strongest enforcement the harness actually provides:
+
+1. When it has a native goal or task budget, create the checkpoint with that budget before any edit
+   or review begins and record the native meter as the source.
+2. Otherwise, when worker-scoped usage is visible, record the source and starting value. The
+   supervisor owns the arithmetic and interrupts the worker when the checkpoint reaches its limit.
+3. When usage is unavailable or cannot be attributed to this worker, fail closed for mutation. The
+   worker may perform read-only planning, research, diagnosis, or review, but it may not create,
+   change, delete, commit, push, or publish repository or external state.
+
+Do not infer a worker's usage from an aggregate parent, session, host, billing, or goal total. Do not
+silently raise or reset a live checkpoint's limit. A changed scope, implementation continuation, or
+second review pass is a new checkpoint: collect the current report, decide whether its evidence is
+worth continuing, and issue a fresh brief and budget. Existing unbudgeted editing sessions must stop,
+freeze, and restart under this rule before their next mutation.
+
+Reaching the limit is a mandatory return boundary, not failure and not permission to cut the work
+down until it appears complete. The worker preserves its registered worktree and claims, freezes the
+tree identity, reports accepted evidence and unfinished acceptance clauses, and returns control. The
+supervisor chooses whether to accept the checkpoint, create a new bounded checkpoint, reassign the
+remaining work, or stop the initiative. Never weaken a test, gate, grounding, authorization,
+migration, safety check, or acceptance clause to fit a budget.
+
 ## Build the task graph
 
 Split the goal only at real seams. For every worker, record:
@@ -102,6 +133,7 @@ role: <temporary mission or review lens>
 outcome: <one sentence>
 mode: <read-only | editing>
 execution: <model/capability and reasoning effort, inherited, or uncontrolled; rationale>
+budget: <meter source; limit; start; enforcement: native | supervisor | read-only>
 usage: <source; start; end; delta, or unavailable/uncontrolled>
 tracking: <required issue URL/#>
 phase-evidence: <PROGRESS.md row or none>
@@ -112,13 +144,14 @@ scope: <paths, subsystem, or question>
 do-not-touch: <explicit exclusions>
 acceptance: <verbatim clauses or exact commands>
 return: <required evidence and format>
-stop: <completion or escalation condition>
+stop: <completion, budget limit, or escalation condition>
 ```
 
 Record usage only when the harness exposes a worker-scoped measurement. `source` says where the
 number came from; `start`, `end`, and `delta` are that source's values at the assignment boundaries.
 Use `unavailable` when it cannot be observed and `uncontrolled` when an external session cannot be
-attributed reliably. Never assign an aggregate goal or session total to an individual worker.
+attributed reliably; either value makes the checkpoint read-only. Never assign an aggregate goal or
+session total to an individual worker.
 
 Use the current harness's delegation facility. When it supports agent trees, spawn workers under the
 supervisor so it can inspect, steer, wait, and collect their results. For an independent external
@@ -131,12 +164,14 @@ Keep the main context on decisions and evidence. Do not copy raw exploration log
 
 1. Inspect native agent state and `make agent-status` before assigning follow-up work.
 2. At a meaningful evidence checkpoint, collect the worker report below. Interpret progress by
-   accepted evidence for that checkpoint, never by tokens alone.
+   accepted evidence for that checkpoint, not by tokens alone. The declared token limit is still a
+   mandatory stop boundary even when progress is good.
 3. Check cited files, diffs, commands, exit status, and artifacts. A worker's conclusion is a claim,
    not integration evidence.
-4. Send a bounded correction when evidence is missing or scope drifted. On repeated no-progress,
-   duplicated work, or scope drift, rescope or interrupt the worker; a large usage count alone is
-   never a reason to do so. Reassign only the unfinished portion; do not restart accepted work.
+4. Send a bounded correction when evidence is missing or scope drifted. Below the declared limit,
+   usage alone is not a reason to interrupt; repeated no-progress, duplicated work, or scope drift
+   is. At the limit, interrupt and collect the report. Reassign only the unfinished portion; do not
+   restart accepted work.
 5. Escalate a blocked dependency, contract deviation, authorization change, or overlapping claim.
 6. Wait when no supervisor decision is needed; avoid polling agents merely to produce activity.
 
@@ -148,6 +183,7 @@ task: <id>
 role: <temporary mission or review lens>
 state: <complete | blocked | needs-review>
 execution: <actual model/capability and reasoning effort, inherited, or uncontrolled>
+budget: <meter source; limit; enforcement: native | supervisor | read-only>
 usage: <source; start; end; delta, or unavailable/uncontrolled>
 tracking: <required issue URL/#>
 phase-evidence: <PROGRESS.md row or none>
@@ -156,9 +192,13 @@ branch/worktree: <branch> @ <absolute worktree, or read-only>
 base/head: <commit> / <commit>
 claims: <comma-separated or none>
 changed: <paths or none>
-evidence: <commands with pass/fail and artifact paths>
+freeze: <head OID; dirty-path inventory and digest, or clean>
+gates: <commands run with pass/fail; required gates not run with reason>
+evidence: <accepted artifacts and file:line citations>
 findings: <distilled conclusions with file:line citations>
 blockers: <specific dependency or none>
+stop-reason: <brief complete | budget limit | escalation | blocked>
+remaining: <unfinished acceptance clauses or none>
 next: <recommended supervisor action>
 ```
 
