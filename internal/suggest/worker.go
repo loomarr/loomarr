@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -31,6 +32,7 @@ type ProposalStore interface {
 	CommitSuggestionFailure(ctx context.Context, jobID string, expectedAttempt int, cause, failureCode string, updatedAt time.Time) error
 	RequeueSuggestionJob(ctx context.Context, jobID string, expectedAttempt int, kind, intentJSON, intentHash string, deadline, updatedAt time.Time) error
 	CloneSuggestionSuccess(ctx context.Context, sourceJobID string, job store.Job, proposalID string) (store.Proposal, error)
+	GetChannelByIntentRef(ctx context.Context, intentRef string) (store.Channel, error)
 }
 
 // Service owns submission + the worker pool (§8). It's the seam the API depends
@@ -324,7 +326,12 @@ func (s *Service) runWorkflow(ctx context.Context, work WorkflowWork) {
 	defer cancel()
 	jobCtx = WithProgress(jobCtx, func(p Phase, round int) { s.emitPhase(work.JobID, p, round) })
 
-	proposal, err := s.suggester.Suggest(jobCtx, work.Intent)
+	intent, err := s.executionIntent(jobCtx, work.Kind, work.JobID, work.Intent)
+	if err != nil {
+		s.failWorkflow(ctx, work, err)
+		return
+	}
+	proposal, err := s.suggester.Suggest(jobCtx, intent)
 	if err != nil {
 		s.failWorkflow(ctx, work, err)
 		return
@@ -375,6 +382,11 @@ func (s *Service) runJob(ctx context.Context, job store.Job) {
 		s.failJob(ctx, job, fmt.Errorf("bad intent json: %w", err))
 		return
 	}
+	intent, err := s.executionIntent(jobCtx, job.Kind, job.ID, intent)
+	if err != nil {
+		s.failJob(ctx, job, err)
+		return
+	}
 
 	prop, err := s.suggester.Suggest(jobCtx, intent)
 	if err != nil {
@@ -403,6 +415,26 @@ func (s *Service) runJob(ctx context.Context, job store.Job) {
 	}
 	s.considerAutomaticApproval(ctx, job, p)
 	s.emitPhase(job.ID, PhaseDone, 0)
+}
+
+// executionIntent derives channel feedback scope from durable server-owned work.
+// DiscoveryScopeID is intentionally not serialized, so no caller-controlled Intent
+// can select another channel's feedback at execution time.
+func (s *Service) executionIntent(ctx context.Context, kind, jobID string, intent Intent) (Intent, error) {
+	intent.DiscoveryScopeID = ""
+	if kind != jobKindRecurate {
+		return intent, nil
+	}
+	channel, err := s.store.GetChannelByIntentRef(ctx, jobID)
+	if err != nil {
+		return Intent{}, fmt.Errorf("resolve recurate channel for Proposal Job %q: %w", jobID, err)
+	}
+	if strings.TrimSpace(channel.ID) == "" || channel.IntentRef != jobID || channel.Status == schedule.StatusDetached {
+		return Intent{}, fmt.Errorf("resolve recurate channel for Proposal Job %q: invalid owner id=%q intent_ref=%q status=%q",
+			jobID, channel.ID, channel.IntentRef, channel.Status)
+	}
+	intent.DiscoveryScopeID = channel.ID
+	return intent, nil
 }
 
 // considerAutomaticApproval applies the two optional grants only after the

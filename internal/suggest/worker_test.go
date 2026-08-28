@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/proposalworkflow"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -45,6 +47,45 @@ func buildService(t *testing.T, st suggest.ProposalStore, llmMock *testkit.LLM) 
 	sug := suggest.New(llmMock, cat, tm, 10)
 	return suggest.NewService(st, sug, suggest.Config{Workers: 2, Timeout: time.Second, CacheTTL: time.Hour},
 		idGen(), time.Now, testkit.Logger())
+}
+
+// scopeFeedbackSource observes only the in-memory execution scope supplied at the
+// public FeedbackSource seam. The integration journey owns store ordering,
+// tombstones, deduplication, and event-to-signal projection coverage.
+type scopeFeedbackSource struct {
+	mu      sync.Mutex
+	scopes  []string
+	signals map[string][]suggest.FeedbackSignal
+}
+
+func (s *scopeFeedbackSource) Signals(_ context.Context, intent suggest.Intent) ([]suggest.FeedbackSignal, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.scopes = append(s.scopes, intent.DiscoveryScopeID)
+	return append([]suggest.FeedbackSignal(nil), s.signals[intent.DiscoveryScopeID]...), nil
+}
+
+func (s *scopeFeedbackSource) Scopes() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.scopes...)
+}
+
+type scopeLookupStore struct {
+	store.Store
+	override bool
+	channel  store.Channel
+	err      error
+}
+
+func (s *scopeLookupStore) GetChannelByIntentRef(ctx context.Context, intentRef string) (store.Channel, error) {
+	if s.err != nil {
+		return store.Channel{}, s.err
+	}
+	if s.override {
+		return s.channel, nil
+	}
+	return s.Store.GetChannelByIntentRef(ctx, intentRef)
 }
 
 // Submit caches generated CONTENT from a successful job, never its request
@@ -219,6 +260,268 @@ func TestWorker_NoGroundedTitlesPersistsTypedFailure(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("job did not reach failed state")
+}
+
+func TestWorker_DurableRecurateRestoresChannelFeedbackScope(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	now := time.Now().UTC()
+	if err := st.CreateJob(ctx, store.Job{
+		ID: "job-channel-a", Kind: "suggest", Status: "done", CreatedBy: "admin",
+		IntentJSON: `{"description":"matrix"}`, IntentHash: "matrix", WorkflowVersion: proposalworkflow.WorkflowVersion1,
+		CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
+		ID: "channel-a", Number: 71, Name: "Channel A", Status: schedule.StatusLive, IntentRef: "job-channel-a",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	feedback := &scopeFeedbackSource{signals: map[string][]suggest.FeedbackSignal{
+		"":          {{Target: "movie:tmdb:603", Action: suggest.FeedbackNever}},
+		"channel-a": {{Target: "movie:tmdb:603", Action: suggest.FeedbackSurprise}},
+	}}
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+	)
+	workflow := proposalworkflow.New(st, idGen(), time.Now)
+	ms := testkit.NewMediaServer(t)
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	suggester := suggest.New(llmMock,
+		catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10).
+		WithFeedback(feedback)
+	svc := suggest.NewService(st, suggester,
+		suggest.Config{Workers: 1, Timeout: time.Second, CacheTTL: time.Hour},
+		idGen(), time.Now, testkit.Logger()).WithDurableWorkflow(workflow)
+
+	if _, err := svc.Recurate(ctx, "job-channel-a", suggest.Intent{Description: "matrix"}); err != nil {
+		t.Fatal(err)
+	}
+	requeued, err := st.GetJob(ctx, "job-channel-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(requeued.IntentJSON, "channel-a") || strings.Contains(requeued.IntentJSON, "discoveryScope") {
+		t.Fatalf("durable IntentJSON leaked execution scope: %s", requeued.IntentJSON)
+	}
+
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go svc.Run(runCtx)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		job, getErr := st.GetJob(ctx, "job-channel-a")
+		if getErr != nil {
+			t.Fatal(getErr)
+		}
+		if job.Status == "done" {
+			proposals, listErr := st.ListProposalsByStatus(ctx, "submitted")
+			if listErr != nil || len(proposals) != 1 {
+				t.Fatalf("submitted proposals = %+v, %v", proposals, listErr)
+			}
+			if scopes := feedback.Scopes(); len(scopes) != 1 || scopes[0] != "channel-a" {
+				t.Fatalf("feedback scopes = %v, want [channel-a]", scopes)
+			}
+			return
+		}
+		if job.Status == "failed" {
+			t.Fatalf("durable recurate failed without restored channel feedback: %s", job.LastError)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("durable recurate did not finish")
+}
+
+func TestWorker_DurableRecurateFailsClosedWithoutOneValidOwner(t *testing.T) {
+	tests := []struct {
+		name      string
+		configure func(*scopeLookupStore)
+	}{
+		{name: "missing"},
+		{name: "lookup error", configure: func(st *scopeLookupStore) { st.err = errors.New("channel lookup unavailable") }},
+		{name: "blank channel id", configure: func(st *scopeLookupStore) {
+			st.override = true
+			st.channel = store.Channel{Channel: schedule.Channel{ID: " ", IntentRef: "job-recurate"}}
+		}},
+		{name: "mismatched intent ref", configure: func(st *scopeLookupStore) {
+			st.override = true
+			st.channel = store.Channel{Channel: schedule.Channel{ID: "channel-a", IntentRef: "different-job"}}
+		}},
+		{name: "detached channel", configure: func(st *scopeLookupStore) {
+			st.override = true
+			st.channel = store.Channel{Channel: schedule.Channel{
+				ID: "channel-a", IntentRef: "job-recurate", Status: schedule.StatusDetached,
+			}}
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			base := newStore(t)
+			serviceStore := &scopeLookupStore{Store: base}
+			if tt.configure != nil {
+				tt.configure(serviceStore)
+			}
+			now := time.Now().UTC()
+			if err := base.CreateJob(ctx, store.Job{
+				ID: "job-unrelated", Kind: "suggest", Status: "done", CreatedBy: "admin",
+				IntentJSON: `{"description":"unrelated"}`, IntentHash: "unrelated",
+				WorkflowVersion: proposalworkflow.WorkflowVersion1, CreatedAt: now, UpdatedAt: now,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := base.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
+				ID: "channel-unrelated", Number: 73, Name: "Unrelated Channel",
+				Status: schedule.StatusLive, IntentRef: "job-unrelated",
+			}}); err != nil {
+				t.Fatal(err)
+			}
+			for _, event := range []store.DiscoveryFeedback{
+				{ID: "household-never", ActorID: "admin", Scope: store.FeedbackHousehold,
+					Target: "movie:tmdb:603", Action: store.FeedbackNever, CreatedAt: now},
+				{ID: "unrelated-surprise", ActorID: "admin", Scope: store.FeedbackChannel, ScopeID: "channel-unrelated",
+					Target: "movie:tmdb:603", Action: store.FeedbackSurprise, CreatedAt: now.Add(time.Second)},
+			} {
+				if err := base.AppendDiscoveryFeedback(ctx, event); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := base.CreateJob(ctx, store.Job{
+				ID: "job-recurate", Kind: "recurate", Status: "queued", CreatedBy: "admin",
+				IntentJSON: `{"description":"matrix"}`, IntentHash: "matrix",
+				WorkflowVersion: proposalworkflow.WorkflowVersion1, Deadline: now, CreatedAt: now, UpdatedAt: now,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			llmMock := testkit.NewLLM(testkit.FinalResponse(`{"picks":[]}`))
+			feedback := &scopeFeedbackSource{signals: map[string][]suggest.FeedbackSignal{
+				"":                  {{Target: "movie:tmdb:603", Action: suggest.FeedbackNever}},
+				"channel-unrelated": {{Target: "movie:tmdb:603", Action: suggest.FeedbackSurprise}},
+			}}
+			ms := testkit.NewMediaServer(t)
+			mt := testkit.NewTMDB(t)
+			tm := tmdb.NewWithBase(mt.URL, "key")
+			suggester := suggest.New(llmMock,
+				catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10).
+				WithFeedback(feedback)
+			workflow := proposalworkflow.New(base, idGen(), time.Now)
+			terminal := newDoneEmitter()
+			svc := suggest.NewService(serviceStore, suggester,
+				suggest.Config{Workers: 1, Timeout: time.Second, CacheTTL: time.Hour},
+				idGen(), time.Now, testkit.Logger()).
+				WithDurableWorkflow(workflow).
+				WithProgressEmitter(terminal)
+
+			runCtx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			go svc.Run(runCtx)
+			waitForFailedEvent(t, terminal)
+			if scopes := feedback.Scopes(); len(scopes) != 0 {
+				t.Fatalf("invalid recurate entered feedback/ranking pipeline with scopes %v", scopes)
+			}
+			job, err := base.GetJob(ctx, "job-recurate")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if job.Status != "failed" || !strings.Contains(job.LastError, "resolve recurate channel") {
+				t.Fatalf("ownerless recurate job = status %q error %q", job.Status, job.LastError)
+			}
+			if llmMock.Calls != 0 {
+				t.Fatalf("ownerless recurate reached provider %d times", llmMock.Calls)
+			}
+			if requests := ms.Requests(); len(requests) != 0 {
+				t.Fatalf("ownerless recurate reached Library: %+v", requests)
+			}
+			if requests := mt.Requests(); len(requests) != 0 {
+				t.Fatalf("ownerless recurate reached TMDB: %+v", requests)
+			}
+			proposals, err := base.ListProposalsByCreator(ctx, "admin")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(proposals) != 0 {
+				t.Fatalf("invalid recurate persisted ranked proposals: %+v", proposals)
+			}
+		})
+	}
+}
+
+func TestWorker_DurableFreshAndRefineStayHouseholdScoped(t *testing.T) {
+	tests := []struct {
+		name  string
+		start func(context.Context, *suggest.Service, store.Store) (string, error)
+	}{
+		{name: "fresh", start: func(ctx context.Context, svc *suggest.Service, _ store.Store) (string, error) {
+			return svc.Submit(ctx, suggest.Intent{Description: "matrix", DiscoveryScopeID: "channel-a"}, "admin")
+		}},
+		{name: "refine", start: func(ctx context.Context, svc *suggest.Service, st store.Store) (string, error) {
+			now := time.Now().UTC()
+			if err := st.CreateJob(ctx, store.Job{
+				ID: "job-refine", Kind: "suggest", Status: "done", CreatedBy: "admin",
+				IntentJSON: `{"description":"matrix"}`, IntentHash: "source",
+				WorkflowVersion: proposalworkflow.WorkflowVersion1, CreatedAt: now, UpdatedAt: now,
+			}); err != nil {
+				return "", err
+			}
+			return svc.Refine(ctx, "job-refine", suggest.Intent{Description: "matrix", DiscoveryScopeID: "channel-a"})
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			st := newStore(t)
+			feedback := &scopeFeedbackSource{signals: map[string][]suggest.FeedbackSignal{
+				"":          {{Target: "movie:tmdb:603", Action: suggest.FeedbackNever}},
+				"channel-a": {{Target: "movie:tmdb:603", Action: suggest.FeedbackSurprise}},
+			}}
+			llmMock := testkit.NewLLM(
+				testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
+				testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+			)
+			ms := testkit.NewMediaServer(t)
+			mt := testkit.NewTMDB(t)
+			tm := tmdb.NewWithBase(mt.URL, "key")
+			suggester := suggest.New(llmMock,
+				catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10).
+				WithFeedback(feedback)
+			workflow := proposalworkflow.New(st, func() string { return "job-fresh" }, time.Now)
+			terminal := newDoneEmitter()
+			svc := suggest.NewService(st, suggester,
+				suggest.Config{Workers: 1, Timeout: time.Second, CacheTTL: time.Hour},
+				idGen(), time.Now, testkit.Logger()).
+				WithDurableWorkflow(workflow).
+				WithProgressEmitter(terminal)
+
+			jobID, err := tt.start(ctx, svc, st)
+			if err != nil {
+				t.Fatal(err)
+			}
+			queued, err := st.GetJob(ctx, jobID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(queued.IntentJSON, "channel-a") || strings.Contains(queued.IntentJSON, "discoveryScope") {
+				t.Fatalf("%s durable IntentJSON leaked caller scope: %s", tt.name, queued.IntentJSON)
+			}
+			runCtx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			go svc.Run(runCtx)
+			waitForFailedEvent(t, terminal)
+			job, err := st.GetJob(ctx, jobID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if job.Status != "failed" || !strings.Contains(job.LastError, "no grounded titles") {
+				t.Fatalf("%s used channel feedback: status=%q error=%q", tt.name, job.Status, job.LastError)
+			}
+			if scopes := feedback.Scopes(); len(scopes) != 1 || scopes[0] != "" {
+				t.Fatalf("%s feedback scopes = %v, want household only", tt.name, scopes)
+			}
+		})
+	}
 }
 
 // A hung LLM hits JOB_TIMEOUT and the job fails cleanly; the pool keeps draining
@@ -642,6 +945,12 @@ func TestWorker_RecurateSkipsRequesterAutoApprove(t *testing.T) {
 		ID: "job-recurate", Kind: "suggest", Status: "done", CreatedBy: "grace",
 		IntentJSON: `{"description":"sci-fi"}`,
 	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
+		ID: "channel-recurate", Number: 72, Name: "Recurate Channel",
+		Status: schedule.StatusLive, IntentRef: "job-recurate",
+	}}); err != nil {
 		t.Fatal(err)
 	}
 	llmMock := testkit.NewLLM(
