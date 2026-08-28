@@ -1786,6 +1786,56 @@ components:
       required:
         - dsn
       type: object
+    DecisionCandidate:
+      additionalProperties: false
+      properties:
+        disposition:
+          type: string
+        key:
+          type: string
+        name:
+          type: string
+        ownership:
+          type: string
+        rank:
+          $ref: "#/components/schemas/RankTuple"
+        reason:
+          type: string
+        source:
+          type: string
+      required:
+        - key
+        - ownership
+        - disposition
+        - reason
+      type: object
+    DecisionTrace:
+      additionalProperties: false
+      properties:
+        candidates:
+          items:
+            $ref: "#/components/schemas/DecisionCandidate"
+          type: array
+        recordedTotal:
+          format: int64
+          type: integer
+        surfacedTotal:
+          format: int64
+          type: integer
+        terminal:
+          type: string
+        truncated:
+          type: boolean
+        version:
+          format: int64
+          type: integer
+      required:
+        - version
+        - candidates
+        - surfacedTotal
+        - recordedTotal
+        - truncated
+      type: object
     DenyInputBody:
       additionalProperties: false
       properties:
@@ -5405,12 +5455,15 @@ components:
           type: array
         scores:
           $ref: "#/components/schemas/Scores"
+        trace:
+          $ref: "#/components/schemas/DecisionTrace"
       required:
         - intent
         - lineup
         - acquisitions
         - alternates
         - scores
+        - trace
       type: object
     ProposalDTO:
       additionalProperties: false
@@ -5785,6 +5838,26 @@ components:
         to:
           format: int64
           type: integer
+      type: object
+    RankTuple:
+      additionalProperties: false
+      properties:
+        novelty:
+          format: int64
+          type: integer
+        preference:
+          format: int64
+          type: integer
+        relevance:
+          format: int64
+          type: integer
+        tieKey:
+          type: string
+      required:
+        - relevance
+        - preference
+        - novelty
+        - tieKey
       type: object
     ReadyOutputBody:
       additionalProperties: false

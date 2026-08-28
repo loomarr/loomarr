@@ -20,6 +20,7 @@ const (
 	JudgeMaxScheduledPrograms  = 24
 	JudgeMaxEpisodeTags        = 16
 	JudgeMaxTextRunes          = 512
+	JudgeMaxTraceCandidates    = 64
 )
 
 // JudgeEvidence is the typed audit record passed across the subjective Judge seam.
@@ -33,6 +34,7 @@ type JudgeEvidence struct {
 	Policy            schedule.ProposalPolicy `json:"policy"`
 	Observation       Observation             `json:"observation"`
 	ScheduledPrograms []MaterializedProgram   `json:"scheduledPrograms"`
+	DecisionTrace     suggest.DecisionTrace   `json:"decisionTrace"`
 }
 
 // JudgeTitleEvidence is the grounded, auditable subset of a ProposalItem.
@@ -59,6 +61,10 @@ const (
 // NewJudgeEvidence projects the facts already owned by Runner into the Judge
 // contract. Bounding is enforced here rather than delegated to model adapters.
 func NewJudgeEvidence(c Case, proposal suggest.Proposal, observation Observation, scheduledPrograms []MaterializedProgram) (JudgeEvidence, error) {
+	trace, err := boundedDecisionTrace(proposal.Trace)
+	if err != nil {
+		return JudgeEvidence{}, err
+	}
 	lineup, err := judgeTitles(proposal.Lineup, JudgeOwnershipLibrary)
 	if err != nil {
 		return JudgeEvidence{}, err
@@ -75,7 +81,33 @@ func NewJudgeEvidence(c Case, proposal suggest.Proposal, observation Observation
 		Policy:            proposal.Policy.ProposalPolicy,
 		Observation:       observation,
 		ScheduledPrograms: scheduledPrograms,
+		DecisionTrace:     trace,
 	}), nil
+}
+
+func boundedDecisionTrace(trace suggest.DecisionTrace) (suggest.DecisionTrace, error) {
+	if trace.Version == 0 {
+		return suggest.DecisionTrace{}, nil
+	}
+	if trace.Version != suggest.DecisionTraceVersion || trace.RecordedTotal < len(trace.Candidates) || trace.RecordedTotal > suggest.DecisionTraceMaxCandidates && !trace.Truncated {
+		return suggest.DecisionTrace{}, fmt.Errorf("decision trace mismatch or unbounded trace")
+	}
+	trace.Candidates = append([]suggest.DecisionCandidate(nil), trace.Candidates...)
+	if len(trace.Candidates) > JudgeMaxTraceCandidates {
+		trace.Candidates = trace.Candidates[:JudgeMaxTraceCandidates]
+		trace.Truncated = true
+	}
+	for i := range trace.Candidates {
+		trace.Candidates[i].Key = boundedJudgeText(trace.Candidates[i].Key)
+		trace.Candidates[i].Name = boundedJudgeText(trace.Candidates[i].Name)
+		trace.Candidates[i].Source = boundedJudgeText(trace.Candidates[i].Source)
+		trace.Candidates[i].Ownership = boundedJudgeText(trace.Candidates[i].Ownership)
+		trace.Candidates[i].Disposition = boundedJudgeText(trace.Candidates[i].Disposition)
+		trace.Candidates[i].Reason = boundedJudgeText(trace.Candidates[i].Reason)
+		trace.Candidates[i].Rank.TieKey = boundedJudgeText(trace.Candidates[i].Rank.TieKey)
+	}
+	trace.Terminal = boundedJudgeText(trace.Terminal)
+	return trace, nil
 }
 
 func judgeTitles(items []suggest.ProposalItem, ownership JudgeOwnership) ([]JudgeTitleEvidence, error) {
@@ -107,6 +139,9 @@ func boundJudgeEvidence(evidence JudgeEvidence) JudgeEvidence {
 	evidence.Policy = boundJudgePolicy(evidence.Policy)
 	evidence.Observation.GroundingStage = boundedJudgeText(evidence.Observation.GroundingStage)
 	evidence.ScheduledPrograms = boundScheduledPrograms(evidence.ScheduledPrograms)
+	if trace, err := boundedDecisionTrace(evidence.DecisionTrace); err == nil {
+		evidence.DecisionTrace = trace
+	}
 	return evidence
 }
 

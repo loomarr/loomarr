@@ -57,8 +57,10 @@ type DecisionCandidate struct {
 
 // RankTuple is the exact lexicographic ordering tuple. It is not a scalar score.
 type RankTuple struct {
-	Relevance, Preference, Novelty int
-	TieKey                         string
+	Relevance  int    `json:"relevance"`
+	Preference int    `json:"preference"`
+	Novelty    int    `json:"novelty"`
+	TieKey     string `json:"tieKey"`
 }
 
 const DecisionTraceVersion = 1
