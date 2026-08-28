@@ -1,0 +1,203 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "enabledManagers": [
+    "gomod",
+    "npm",
+    "cargo",
+    "github-actions",
+    "dockerfile",
+    "docker-compose",
+    "custom.regex"
+  ],
+  "dependencyDashboard": true,
+  "timezone": "UTC",
+  "schedule": ["before 6am on monday"],
+  "prConcurrentLimit": 10,
+  "prHourlyLimit": 2,
+  "automergeType": "pr",
+  "platformAutomerge": true,
+  "ignoreTests": false,
+  "minimumReleaseAgeBehaviour": "timestamp-required",
+  "lockFileMaintenance": {
+    "enabled": false
+  },
+  "labels": ["dependencies"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Update repository-owned test container image authorities",
+      "managerFilePatterns": [
+        "/^internal/testkit/(?:postgres|ryuk)image/image\\.txt$/"
+      ],
+      "matchStrings": [
+        "(?<depName>[^\\s:]+(?:/[^\\s:]+)*):(?<currentValue>[^\\s]+)"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Hold every major for explicit dashboard approval",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true,
+      "automerge": false
+    },
+    {
+      "description": "Do not let package managers split repository toolchain upgrades",
+      "matchManagers": ["gomod"],
+      "matchDepTypes": ["golang", "toolchain"],
+      "enabled": false
+    },
+    {
+      "description": "Curate coupled Dockerfile toolchain and snapshot upgrades manually",
+      "matchManagers": ["dockerfile"],
+      "matchPackageNames": ["node", "golang", "rust", "debian"],
+      "enabled": false
+    },
+    {
+      "description": "Curate fixture-coupled and self Compose images manually",
+      "matchManagers": ["docker-compose"],
+      "matchPackageNames": ["chrisbenincasa/tunarr", "ghcr.io/loomarr/loomarr"],
+      "enabled": false
+    },
+    {
+      "description": "Automerge aged stable Go patch releases",
+      "matchManagers": ["gomod"],
+      "matchDepTypes": ["require", "indirect"],
+      "matchCurrentVersion": ">=1.0.0",
+      "matchUpdateTypes": ["patch"],
+      "groupName": "Low-risk Go patches",
+      "postUpdateOptions": ["gomodTidy"],
+      "minimumReleaseAge": "14 days",
+      "automerge": true,
+      "addLabels": ["go"]
+    },
+    {
+      "description": "Review stable Go minor updates together",
+      "matchManagers": ["gomod"],
+      "matchDepTypes": ["require", "indirect"],
+      "matchCurrentVersion": ">=1.0.0",
+      "matchUpdateTypes": ["minor"],
+      "groupName": "Go dependencies",
+      "postUpdateOptions": ["gomodTidy"],
+      "addLabels": ["go"]
+    },
+    {
+      "description": "Review pre-1.0 Go updates together",
+      "matchManagers": ["gomod"],
+      "matchDepTypes": ["require", "indirect"],
+      "matchCurrentVersion": "<1.0.0",
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "Pre-1.0 Go dependencies",
+      "postUpdateOptions": ["gomodTidy"],
+      "addLabels": ["go"]
+    },
+    {
+      "description": "Review Rust image updates together",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "Rust image dependencies"
+    },
+    {
+      "description": "Keep Expo and native compatibility updates atomic",
+      "matchManagers": ["npm"],
+      "matchFileNames": ["web/**"],
+      "matchPackageNames": [
+        "expo",
+        "expo-*",
+        "@expo/config-plugins",
+        "expo-doctor",
+        "react",
+        "react-dom",
+        "react-native",
+        "react-native-reanimated",
+        "react-native-worklets",
+        "react-native-safe-area-context",
+        "react-native-screens",
+        "react-native-svg",
+        "react-native-web"
+      ],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "Expo SDK 57 native"
+    },
+    {
+      "description": "Review TypeScript toolchain updates together",
+      "matchManagers": ["npm"],
+      "matchFileNames": ["web/**"],
+      "matchPackageNames": ["typescript"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "TypeScript toolchain"
+    },
+    {
+      "description": "Review Vite toolchain updates together",
+      "matchManagers": ["npm"],
+      "matchFileNames": ["web/**"],
+      "matchPackageNames": ["vite", "@vitejs/plugin-react"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "Vite toolchain"
+    },
+    {
+      "description": "Automerge aged patches of non-shipping type declarations",
+      "matchManagers": ["npm"],
+      "matchFileNames": ["web/**"],
+      "matchPackageNames": ["@types/node", "@types/qrcode"],
+      "matchUpdateTypes": ["patch"],
+      "groupName": "Low-risk type declaration patches",
+      "minimumReleaseAge": "14 days",
+      "automerge": true
+    },
+    {
+      "description": "Review remaining web non-major updates",
+      "matchManagers": ["npm"],
+      "matchFileNames": ["web/**"],
+      "matchPackageNames": [
+        "!expo",
+        "!expo-*",
+        "!@expo/config-plugins",
+        "!expo-doctor",
+        "!react",
+        "!react-dom",
+        "!react-native",
+        "!react-native-reanimated",
+        "!react-native-worklets",
+        "!react-native-safe-area-context",
+        "!react-native-screens",
+        "!react-native-svg",
+        "!react-native-web",
+        "!typescript",
+        "!vite",
+        "!@vitejs/plugin-react",
+        "!@types/node",
+        "!@types/qrcode"
+      ],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "Routine web dependencies"
+    },
+    {
+      "description": "Review docs-site updates independently from shipping clients",
+      "matchManagers": ["npm"],
+      "matchFileNames": ["docs-site/**"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "Docs site dependencies"
+    },
+    {
+      "description": "GitHub Actions execute privileged CI code and always require review",
+      "matchManagers": ["github-actions"],
+      "automerge": false,
+      "addLabels": ["github_actions"]
+    },
+    {
+      "description": "Container changes always require review and image gates",
+      "matchDatasources": ["docker"],
+      "automerge": false,
+      "addLabels": ["docker"]
+    },
+    {
+      "description": "JavaScript changes carry the existing triage label",
+      "matchManagers": ["npm"],
+      "addLabels": ["javascript"]
+    }
+  ]
+}

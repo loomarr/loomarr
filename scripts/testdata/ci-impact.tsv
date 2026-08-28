@@ -43,6 +43,7 @@ design-contract	docs/design.md	docs,policy
 configuration-contract	docs/configuration.md	docs,policy
 commands-contract	docs/dev/commands.md	docs,policy
 ci-policy-authority	docs/dev/ci.md	docs,policy
+renovate-policy	renovate.json	contracts,policy
 install-contract	docs/install/docker.md	docs,policy
 readme-contract	README.md	docs,policy
 embedded-help	docs/help/quickstart.md	contracts,go,go_full,image,docs

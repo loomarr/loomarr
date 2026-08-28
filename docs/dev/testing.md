@@ -233,10 +233,10 @@ request ceiling, and spend ceiling are locked.
 
 ### Rust dependency review
 
-Dependabot opens one weekly grouped PR for Cargo minor and patch updates across the production and
-fuzz workspaces. Major updates are deliberately excluded: update one direct crate at a time, amend
-the §14 rationale when its capability or cost changes, and compare `Cargo.lock` rather than accepting
-a generated diff blindly. Every Cargo update runs `make rust-audit`, `make rust-check`,
+Renovate opens one weekly grouped PR for Cargo minor and patch updates across the production and
+fuzz workspaces. Major updates require explicit Dependency Dashboard approval: update one direct
+crate at a time, amend the §14 rationale when its capability or cost changes, and compare
+`Cargo.lock` rather than accepting a generated diff blindly. Every Cargo update runs `make rust-audit`, `make rust-check`,
 `make image-cert`, and the amd64/arm64 release build. An advisory ignore requires a reason, an owner,
 and a removal issue in the same PR; an unannotated permanent ignore is not policy.
 
