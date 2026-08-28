@@ -18,7 +18,9 @@ import (
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
-// ErrNotFound is returned by Get* methods when no row matches.
+// ErrNotFound reports that a requested durable identity does not exist. Besides Get* reads,
+// commands whose integrity depends on an existing owner (such as channel-scoped feedback) return
+// it before committing any dependent row.
 var ErrNotFound = errors.New("store: not found")
 
 // ErrTaxonConflict marks a taxonomy mutation that cannot safely apply: create over an existing
@@ -108,6 +110,8 @@ type ChannelStore interface {
 	// a targeted revision-checked write used after the lineup is bound.
 	SetChannelBroadcastCodec(ctx context.Context, id string, expectedRevision int64, codec string) (int64, error)
 	ListChannels(ctx context.Context) ([]Channel, error)
+	// DeleteChannel hard-deletes the revision-matched Channel and only its channel-scoped
+	// discovery feedback in one transaction. A detached Channel is retained through SaveChannel.
 	DeleteChannel(ctx context.Context, id string, expectedRevision int64) error
 	// ⚠ PutChannelIcon/GetChannelIcon were removed in V52 phase 8 with the `channel_icons` retired-ok
 	// table. A channel's icon is an image-service image (§22) and its bytes are addressed by

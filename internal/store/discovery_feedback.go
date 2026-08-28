@@ -42,6 +42,8 @@ type FeedbackFilter struct {
 }
 
 type DiscoveryFeedbackStore interface {
+	// AppendDiscoveryFeedback atomically requires a persisted Channel for channel scope; detached
+	// Channels remain persisted, while a purged or unknown identity returns ErrNotFound.
 	AppendDiscoveryFeedback(context.Context, DiscoveryFeedback) error
 	ListDiscoveryFeedback(context.Context, FeedbackFilter) ([]DiscoveryFeedback, error)
 }
@@ -56,12 +58,37 @@ func (s *sqlStore) AppendDiscoveryFeedback(ctx context.Context, feedback Discove
 	if feedback.CreatedAt.IsZero() {
 		feedback.CreatedAt = time.Now().UTC()
 	}
-	_, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO discovery_feedback
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("append discovery feedback: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if feedback.Scope == FeedbackChannel {
+		// This no-op UPDATE is the one portable ownership lock across the shared SQL path. Postgres
+		// holds the Channel row against DELETE until commit; SQLite acquires its serialized writer
+		// lock. DeleteChannel takes the reciprocal transaction, so either append commits first and
+		// purge removes it, or purge commits first and this reports ErrNotFound.
+		result, err := tx.ExecContext(ctx, s.ph(`UPDATE channels SET id = id WHERE id = ?`), feedback.ScopeID)
+		if err != nil {
+			return fmt.Errorf("append discovery feedback: lock channel: %w", err)
+		}
+		matched, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("append discovery feedback: lock channel affected rows: %w", err)
+		}
+		if matched == 0 {
+			return ErrNotFound
+		}
+	}
+	_, err = tx.ExecContext(ctx, s.ph(`INSERT INTO discovery_feedback
 		(id, actor_id, scope, scope_id, target_key, action, reason, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`), feedback.ID, feedback.ActorID, feedback.Scope,
 		feedback.ScopeID, feedback.Target, feedback.Action, feedback.Reason, feedback.CreatedAt.UnixNano())
 	if err != nil {
 		return fmt.Errorf("append discovery feedback: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("append discovery feedback: commit: %w", err)
 	}
 	return nil
 }

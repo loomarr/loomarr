@@ -6245,6 +6245,17 @@ mutate shared taste. Anonymous callers cannot read or write them.
 The latest event per `(scope, target)` is the effective signal, with channel scope overriding the
 household signal for that channel.
 
+A channel-scoped event names a currently persisted Channel identity. The store checks that identity
+and appends the event or clear tombstone in one transaction; an absent identity returns
+`store.ErrNotFound`, the admin API maps it to the bounded Channel-not-found 404, and no feedback row
+is written. Authorization runs before this existence disclosure, so a member still receives 403.
+Detached Channels remain persisted identities and therefore retain and accept their explicit
+feedback. Hard purge is the identity boundary: deleting a Channel removes only that Channel's scoped
+feedback in the same transaction, while household feedback remains independent. The forward schema
+migration removes only legacy channel-scoped rows whose Channel identity is already absent; active
+and detached Channel feedback and every household event survive. No detach, purge, playback,
+approval, denial, or inactivity infers a feedback event.
+
 Execution scope is server-derived and deliberately absent from persisted Intent JSON and public
 proposal inputs. A durable `kind=recurate` Proposal Job resolves its one current owning Channel from
 the trusted claimed Job id immediately before the worker invokes the Suggester, using the Channel's
