@@ -18,6 +18,7 @@
   "automergeType": "pr",
   "platformAutomerge": true,
   "ignoreTests": false,
+  "internalChecksFilter": "strict",
   "minimumReleaseAgeBehaviour": "timestamp-required",
   "lockFileMaintenance": {
     "enabled": false
@@ -70,38 +71,6 @@
       ],
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"
-    },
-    {
-      "customType": "regex",
-      "description": "Update the pinned yt-dlp release",
-      "managerFilePatterns": ["/^Dockerfile$/"],
-      "matchStrings": [
-        "ARG YTDLP_VERSION=(?<currentValue>\\d+\\.\\d+\\.\\d+)"
-      ],
-      "depNameTemplate": "yt-dlp/yt-dlp",
-      "datasourceTemplate": "github-releases",
-      "extractVersionTemplate": "^v?(?<version>.*)$",
-      "versioningTemplate": "loose"
-    },
-    {
-      "customType": "regex",
-      "description": "Update the pinned Deno release",
-      "managerFilePatterns": ["/^Dockerfile$/"],
-      "matchStrings": ["ARG DENO_VERSION=v(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
-      "depNameTemplate": "denoland/deno",
-      "datasourceTemplate": "github-releases",
-      "extractVersionTemplate": "^v(?<version>.*)$",
-      "versioningTemplate": "semver"
-    },
-    {
-      "customType": "regex",
-      "description": "Update the pinned whisper.cpp release",
-      "managerFilePatterns": ["/^Dockerfile$/"],
-      "matchStrings": ["ARG WHISPER_VERSION=v(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
-      "depNameTemplate": "ggml-org/whisper.cpp",
-      "datasourceTemplate": "github-releases",
-      "extractVersionTemplate": "^v(?<version>.*)$",
-      "versioningTemplate": "semver"
     },
     {
       "customType": "regex",

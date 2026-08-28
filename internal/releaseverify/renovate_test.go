@@ -13,6 +13,7 @@ type renovateConfig struct {
 	AutomergeType              string                `json:"automergeType"`
 	PlatformAutomerge          bool                  `json:"platformAutomerge"`
 	IgnoreTests                bool                  `json:"ignoreTests"`
+	InternalChecksFilter       string                `json:"internalChecksFilter"`
 	MinimumReleaseAgeBehaviour string                `json:"minimumReleaseAgeBehaviour"`
 	LockFileMaintenance        renovateEnabled       `json:"lockFileMaintenance"`
 	CustomManagers             []renovateCustom      `json:"customManagers"`
@@ -57,10 +58,13 @@ func TestRenovateOwnsEveryDependencyEcosystem(t *testing.T) {
 	if config.MinimumReleaseAgeBehaviour != "timestamp-required" {
 		t.Fatalf("minimumReleaseAgeBehaviour = %q", config.MinimumReleaseAgeBehaviour)
 	}
+	if config.InternalChecksFilter != "strict" {
+		t.Fatalf("internalChecksFilter = %q, want strict", config.InternalChecksFilter)
+	}
 	if config.LockFileMaintenance.Enabled {
 		t.Fatal("unscoped lockfile maintenance must remain disabled")
 	}
-	if len(config.CustomManagers) != 8 {
+	if len(config.CustomManagers) != 5 {
 		t.Fatalf("custom managers = %d, want all repository-owned pin managers", len(config.CustomManagers))
 	}
 	manager := customManagerByDescription(t, config.CustomManagers, "Update repository-owned test container image authorities")
@@ -74,9 +78,6 @@ func TestRenovateOwnsEveryDependencyEcosystem(t *testing.T) {
 		"Update pinned Go development tools",
 		"Update pinned npm command-line tools",
 		"Update documentation tool containers",
-		"Update the pinned yt-dlp release",
-		"Update the pinned Deno release",
-		"Update the pinned whisper.cpp release",
 		"Keep the Playwright package and browser image discoverable together",
 	} {
 		_ = customManagerByDescription(t, config.CustomManagers, description)
