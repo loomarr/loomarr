@@ -393,7 +393,15 @@ and inspects the packaged LICENSE/notices and OCI labels. The Dockerfile's build
 the bundled tools; the post-build inspection proves the final runtime filesystem rather than a
 comment or an intermediate stage.
 
-It's also the only job with a `timeout-minutes`; GitHub's default is six hours.
+The image job has a `timeout-minutes` because its release builds are independently bounded; GitHub's
+default is six hours.
+
+The reusable Apple mobile and Apple TV jobs have explicit job limits of 75 and 60 minutes. These
+bounds are evidence-derived from recent successful merge-group runs (mobile: 29:14–50:46, TV:
+16:38–34:49) and cover prebuild, dependency installation, Xcode build, simulator readiness,
+installation, and launch. Review them after at least 20 successful native runs or at the first
+native timeout. A hard timeout can prevent the screenshot step from running; the screenshot remains
+useful for ordinary failures but is not guaranteed after timeout.
 
 It exists because a Dockerfile that could never build for arm64 sat undetected. Build both
 platforms or it can't catch that.
