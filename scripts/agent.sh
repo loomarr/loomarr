@@ -477,7 +477,7 @@ verify_changed() {
 	git -C "$ROOT" rev-parse --verify "$base^{commit}" >/dev/null 2>&1 || { echo "agent-verify: unknown BASE=$base" >&2; exit 2; }
 	changed="$( { git -C "$ROOT" diff --name-only "$base"...HEAD; git -C "$ROOT" diff --name-only; git -C "$ROOT" ls-files --others --exclude-standard; } | sort -u )"
 	[ -n "$changed" ] || { echo 'agent-verify: no changes'; return; }
-	echo 'agent-verify: focused checks only; make check remains the final gate'
+	echo 'agent-verify: affected local evidence selected by CI impact'
 	printf '%s\n' "$changed"
 	scope="$(printf '%s\n' "$changed" | "$SCRIPT_DIR/ci-impact.sh")"
 	selected="$(printf '%s\n' "$scope" | sed -n 's/=true$//p' | paste -sd, -)"
@@ -496,6 +496,9 @@ verify_changed() {
 	fi
 	if printf '%s\n' "$scope" | grep -qx 'agent=true'; then
 		make -C "$ROOT" agent-harness-test
+	fi
+	if printf '%s\n' "$scope" | grep -qx 'policy=true'; then
+		make -C "$ROOT" ci-lint release-verify
 	fi
 	if printf '%s\n' "$scope" | grep -qx 'go=true'; then
 		packages="$(printf '%s\n' "$changed" | "$SCRIPT_DIR/go-impact.sh")"

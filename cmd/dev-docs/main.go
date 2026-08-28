@@ -235,7 +235,8 @@ func render(targets []target) []byte {
 	b.WriteString("**✅ means a workflow invokes that target by name.** A blank cell is not\n")
 	b.WriteString("\"never runs in CI\" — prerequisite targets run through their named parent.\n")
 	b.WriteString("The *runs:* note on a row lists what each parent pulls in.\n\n")
-	b.WriteString("**The default gate is `make check`.** Run it before every push.\n\n")
+	b.WriteString("**Routine local evidence is `make agent-verify BASE=<base>`.** It selects affected checks\n")
+	b.WriteString("from the same impact policy as CI. Reserve `make check` for an explicit complete-repository audit.\n\n")
 
 	// Preserve Makefile order for sections; a stable order keeps the diff readable when
 	// a target is added, which is the whole point of committing generated output.

@@ -212,7 +212,7 @@ git -C "$TMP" add -A
 git -C "$TMP" commit -qm 'focused verification fixture'
 mkdir -p "$TMP/internal/suggest"
 printf 'package suggest\n' > "$TMP/internal/suggest/probe.go"
-verify_log="$TMP/verify-runs"
+verify_log="$TMP-wt/verify-runs"
 real_go="$(command -v go)"
 verify_bin="$TMP-wt/verify-bin"
 mkdir -p "$verify_bin"
@@ -228,6 +228,22 @@ printf '%s\n' "$verify_output" | grep -q 'affected Go packages:'
 grep -q 'make -C .* fmt tags-verify' "$verify_log"
 grep -q 'go test -race .*internal/app.*internal/suggest' "$verify_log"
 rm -rf "$TMP/internal"
+
+# Policy-only changes run policy validation without expanding into the complete repository audit.
+step 'policy-focused verification'
+mkdir -p "$TMP/.github/workflows"
+printf 'name: fixture\n' > "$TMP/.github/workflows/ci.yml"
+: > "$verify_log"
+verify_output="$(PATH="$verify_bin:$PATH" REAL_GO="$real_go" VERIFY_LOG="$verify_log" \
+	BASE=HEAD LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" verify)"
+printf '%s\n' "$verify_output" | grep -q 'affected local evidence selected by CI impact'
+printf '%s\n' "$verify_output" | grep -q 'selected gates: policy'
+grep -q 'make -C .* ci-lint release-verify' "$verify_log"
+if grep -qE ' make check($| )|make -C .* (check|check-static|test)($| )' "$verify_log"; then
+	echo 'agent-harness-test: policy verification expanded into the complete audit' >&2
+	exit 1
+fi
+rm -rf "$TMP/.github"
 
 # Process ownership is the worktree cwd, not the globally shared process name.
 step 'process ownership'
