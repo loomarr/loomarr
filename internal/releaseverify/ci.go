@@ -277,22 +277,24 @@ func VerifyCIImpactActivation(path string) error {
 	return nil
 }
 
-var ciFamilyWorkflows = map[string]string{
-	"agent-harness-macos": ".github/workflows/ci-agent.yml",
-	"rust-contracts":      ".github/workflows/ci-rust-contracts.yml",
-	"go-contracts":        ".github/workflows/ci-go-contracts.yml",
-	"image-certification": ".github/workflows/ci-image-certification.yml",
-	"go":                  ".github/workflows/ci-go.yml",
-	"store-postgres":      ".github/workflows/ci-postgres.yml",
-	"frontend":            ".github/workflows/ci-frontend.yml",
-	"clients":             ".github/workflows/ci-clients.yml",
-	"apple-mobile":        ".github/workflows/ci-apple-mobile.yml",
-	"apple-tv":            ".github/workflows/ci-apple-tv.yml",
-	"playwright":          ".github/workflows/ci-playwright.yml",
-	"tuner":               ".github/workflows/ci-tuner.yml",
-	"image":               ".github/workflows/ci-image.yml",
-	"docs":                ".github/workflows/ci-docs.yml",
-	"android":             ".github/workflows/ci-android.yml",
+func ciFamilyWorkflowAuthorities() map[string]string {
+	return map[string]string{
+		"agent-harness-macos": ".github/workflows/ci-agent.yml",
+		"rust-contracts":      ".github/workflows/ci-rust-contracts.yml",
+		"go-contracts":        ".github/workflows/ci-go-contracts.yml",
+		"image-certification": ".github/workflows/ci-image-certification.yml",
+		"go":                  ".github/workflows/ci-go.yml",
+		"store-postgres":      ".github/workflows/ci-postgres.yml",
+		"frontend":            ".github/workflows/ci-frontend.yml",
+		"clients":             ".github/workflows/ci-clients.yml",
+		"apple-mobile":        ".github/workflows/ci-apple-mobile.yml",
+		"apple-tv":            ".github/workflows/ci-apple-tv.yml",
+		"playwright":          ".github/workflows/ci-playwright.yml",
+		"tuner":               ".github/workflows/ci-tuner.yml",
+		"image":               ".github/workflows/ci-image.yml",
+		"docs":                ".github/workflows/ci-docs.yml",
+		"android":             ".github/workflows/ci-android.yml",
+	}
 }
 
 // VerifyCIFamilyWorkflows keeps the root workflow a decision surface instead of allowing
@@ -311,7 +313,7 @@ func VerifyCIFamilyWorkflows(path string) error {
 	if err != nil {
 		return err
 	}
-	for jobName, expected := range ciFamilyWorkflows {
+	for jobName, expected := range ciFamilyWorkflowAuthorities() {
 		job, err := requiredMap(jobs, jobName)
 		if err != nil {
 			return fmt.Errorf("CI workflow must define family caller %s", jobName)
@@ -320,11 +322,33 @@ func VerifyCIFamilyWorkflows(path string) error {
 		if uses != "./"+expected {
 			return fmt.Errorf("CI family caller %s uses %q, want %q", jobName, uses, "./"+expected)
 		}
-		if _, err := resolveCIJobImplementation(path, job); err != nil {
+		implementation, err := resolveCIJobImplementation(path, job)
+		if err != nil {
 			return fmt.Errorf("CI family caller %s: %w", jobName, err)
+		}
+		if jobName == "go" && !jobRunsExactCommand(implementation, "make test GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}") {
+			return errors.New("CI Go family must run the sharded repository test target")
 		}
 	}
 	return nil
+}
+
+func jobRunsExactCommand(job *yaml.Node, command string) bool {
+	steps, err := requiredSequence(job, "steps")
+	if err != nil {
+		return false
+	}
+	count := 0
+	for _, step := range steps.Content {
+		if step.Kind != yaml.MappingNode {
+			continue
+		}
+		run, ok := mappingValue(step, "run")
+		if ok && run.Kind == yaml.ScalarNode && run.Value == command {
+			count++
+		}
+	}
+	return count == 1
 }
 
 func resolveCIJobImplementation(ciPath string, caller *yaml.Node) (*yaml.Node, error) {

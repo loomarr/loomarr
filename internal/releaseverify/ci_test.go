@@ -238,9 +238,12 @@ func TestVerifyCIFamilyWorkflows(t *testing.T) {
 	}
 	var root strings.Builder
 	root.WriteString("jobs:\n")
-	for job, workflow := range ciFamilyWorkflows {
+	for job, workflow := range ciFamilyWorkflowAuthorities() {
 		fmt.Fprintf(&root, "  %s:\n    uses: ./%s\n", job, workflow)
 		body := "on:\n  workflow_call:\njobs:\n  run:\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n"
+		if job == "go" {
+			body = "on:\n  workflow_call:\njobs:\n  run:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make test GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}\n"
+		}
 		if err := os.WriteFile(filepath.Join(dir, workflow), []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -254,6 +257,36 @@ func TestVerifyCIFamilyWorkflows(t *testing.T) {
 	}
 
 	goWorkflow := filepath.Join(workflowDir, "ci-go.yml")
+	validGoWorkflow, err := os.ReadFile(goWorkflow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withoutReleaseverifyTests := strings.Replace(string(validGoWorkflow), "make test GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}", "true", 1)
+	if err := os.WriteFile(goWorkflow, []byte(withoutReleaseverifyTests), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyCIFamilyWorkflows(path); err == nil {
+		t.Fatal("VerifyCIFamilyWorkflows accepted a Go job that does not run repository package tests")
+	}
+	if err := os.WriteFile(goWorkflow, validGoWorkflow, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	metadataOnly := strings.Replace(
+		string(validGoWorkflow),
+		"      - run: make test GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}",
+		"      - name: make test GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}\n        run: true",
+		1,
+	)
+	if err := os.WriteFile(goWorkflow, []byte(metadataOnly), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyCIFamilyWorkflows(path); err == nil {
+		t.Fatal("VerifyCIFamilyWorkflows accepted the Go test command as metadata instead of execution")
+	}
+	if err := os.WriteFile(goWorkflow, validGoWorkflow, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
 	if err := os.WriteFile(goWorkflow, []byte("on:\n  push:\njobs:\n  run:\n    runs-on: ubuntu-latest\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}

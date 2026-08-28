@@ -38,7 +38,7 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make agent-harness-test` | ✅ | regression-test coordination, worktree isolation, and shared-output claims <br>*runs:* `agent-assets-verify` |
 | `make agent-assets-verify` |  | verify the curated skill catalog and agent adapters agree |
 | `make compose-verify` |  | verify Traefik, database wiring, and pinned release images |
-| `make release-verify` |  | verify server, Android, and release-note publication policy |
+| `make release-verify` |  | verify release, CI acquisition, Android, and publication policy |
 | `make release-notes-preview` |  | generate validated release notes (TAG required; optional PREVIOUS_TAG and OUTPUT) |
 | `make backup-restore-verify` |  | isolated SQLite backup, destructive replacement, restore, and state validation |
 | `make backup-restore-drill` |  | SQLite + Docker-backed Postgres backup/restore drills <br>*runs:* `backup-restore-verify` |
@@ -115,7 +115,8 @@ The *runs:* note on a row lists what each parent pulls in.
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make test-pg` | ✅ | all real-Postgres integration suites (store, backend transition, app; testcontainers; requires Docker) <br>*runs:* `rust-dev-build` |
+| `make ensure-postgres-test-image` |  | use cached Postgres and Ryuk images or pull them with bounded retries |
+| `make test-pg` | ✅ | all real-Postgres integration suites (store, backend transition, app; testcontainers; requires Docker) <br>*runs:* `rust-dev-build` `ensure-postgres-test-image` |
 
 ## OpenAPI (Phase 8)
 
@@ -177,12 +178,13 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make client-apple-simulator` | ✅ | build and launch an Apple simulator proof (CLIENT_APP=mobile|tv; macOS) <br>*runs:* `fe-api-codegen` |
 | `make storybook` |  | Storybook dev workshop on this worktree's isolated port |
 | `make storybook-build` |  | offline storybook-static build (what fe-visual snapshots) |
-| `make fe-visual` | ✅ | Playwright visual + a11y over storybook-static, in the pinned Docker image (§5.2) <br>*runs:* `storybook-build` |
-| `make fe-visual-update` |  | regenerate the committed Linux baselines in the Docker image (sanctioned update path) <br>*runs:* `storybook-build` |
-| `make e2e` | ✅ | wizard e2e smoke vs a mocked backend, in the pinned Docker image (13.3 gate) <br>*runs:* `fe-build` |
-| `make tuner-e2e` |  | 100-Channel tuner controller matrix in Chromium, Firefox, and WebKit (§9.1) <br>*runs:* `fe-build` |
+| `make ensure-playwright-image` |  | use a cached Playwright image or pull it with bounded retries |
+| `make fe-visual` | ✅ | Playwright visual + a11y over storybook-static, in the pinned Docker image (§5.2) <br>*runs:* `storybook-build` `ensure-playwright-image` |
+| `make fe-visual-update` |  | regenerate the committed Linux baselines in the Docker image (sanctioned update path) <br>*runs:* `storybook-build` `ensure-playwright-image` |
+| `make e2e` | ✅ | wizard e2e smoke vs a mocked backend, in the pinned Docker image (13.3 gate) <br>*runs:* `fe-build` `ensure-playwright-image` |
+| `make tuner-e2e` |  | 100-Channel tuner controller matrix in Chromium, Firefox, and WebKit (§9.1) <br>*runs:* `fe-build` `ensure-playwright-image` |
 | `make tuner-e2e-host` | ✅ | 100-Channel tuner controller matrix in host-installed browsers (§9.1) <br>*runs:* `fe-build` |
-| `make e2e-update` |  | regenerate the committed e2e page snapshots (sanctioned update path) <br>*runs:* `fe-build` |
+| `make e2e-update` |  | regenerate the committed e2e page snapshots (sanctioned update path) <br>*runs:* `fe-build` `ensure-playwright-image` |
 
 ## Maintainer smoke (NOT CI)
 

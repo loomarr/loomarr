@@ -72,8 +72,8 @@ test: rust-test-worker eval-contract ## unit tests with their required Rust work
 # is ~500 tests each paying a fresh SQLite open plus migrations, and the fix when this bites again is
 # to share that setup, NOT to raise the number a second time.
 #
-# GO_SHARD is a CI-only passthrough (`make check GO_SHARD=1/2`), the same contract as PW_SHARD:
-# EMPTY by default, so a local `make test` — and `make check` — runs the whole tree. Sharding must
+# GO_SHARD is a CI-only passthrough (`make check GO_SHARD=1/2`): EMPTY by default, so a local
+# `make test` — and `make check` — runs the whole tree. Sharding must
 # never be implicit, or someone runs a fraction of the gate and reads the green as the whole thing.
 # The shard COUNT lives in ci.yml's `matrix.shard`; see scripts/go-shard.sh for the split.
 #

@@ -101,15 +101,19 @@ func TestDomainPackagesDoNotImportTheHTTPFramework(t *testing.T) {
 	}
 }
 
-// Test doubles must never reach the shipped binary. testkit exists so unit tests never touch
-// the network; compiling it into production is a seam that only ever gets wider.
-func TestProductionBinaryDoesNotLinkTestkit(t *testing.T) {
+// Test doubles must never reach a binary. testkit exists so unit tests never touch the
+// network; compiling it into any command is a seam that only ever gets wider.
+func TestProductionCommandsDoNotLinkTestkit(t *testing.T) {
 	pkgs := loomarrPackages(t)
-	linked := reachableFrom(pkgs, modulePath+"/cmd/loomarr")
-
-	if importers := importersOf(pkgs, linked, modulePath+"/internal/testkit"); len(importers) > 0 {
-		t.Errorf("cmd/loomarr links internal/testkit through %v — test doubles must not ship (§14.1)",
-			importers)
+	for packagePath := range pkgs {
+		if !strings.HasPrefix(packagePath, modulePath+"/cmd/") {
+			continue
+		}
+		linked := reachableFrom(pkgs, packagePath)
+		if importers := importersOf(pkgs, linked, modulePath+"/internal/testkit"); len(importers) > 0 {
+			t.Errorf("%s links internal/testkit through %v — test doubles must not ship (§14.1)",
+				packagePath, importers)
+		}
 	}
 }
 

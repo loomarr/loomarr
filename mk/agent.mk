@@ -50,7 +50,7 @@ compose-verify: ## verify Traefik, database wiring, and pinned release images
 	@./scripts/check-compose.sh
 
 .PHONY: release-verify release-notes-preview
-release-verify: ## verify server, Android, and release-note publication policy
+release-verify: ## verify release, CI acquisition, Android, and publication policy
 	@./scripts/check-release-tag.sh --self-test
 	@./scripts/check-release-image-absence.sh --self-test
 	@./scripts/android-version-code.sh --self-test
@@ -68,4 +68,3 @@ backup-restore-verify: ## isolated SQLite backup, destructive replacement, resto
 
 backup-restore-drill: backup-restore-verify ## SQLite + Docker-backed Postgres backup/restore drills
 	$(GO) test -race -tags=integration ./internal/store -run '^TestPostgresBackupRestoreDrill$$' -count=1
-
