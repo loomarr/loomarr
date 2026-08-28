@@ -2,6 +2,7 @@ import { getActOnFillerDecisionMockHandler, getFillerDecisionReviewsMockHandler 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 import { server } from "@/test/msw/server";
@@ -68,6 +69,37 @@ describe("FillerReviewQueue", () => {
       expect(bodies).toEqual([{ actionId: expect.any(String), kind: "abandon", reason: "skip for now" }]),
     );
     expect(await screen.findByText("You're caught up for now")).toBeInTheDocument();
+    expect(screen.getByText(/did not treat them as accepted or rejected/i)).toBeInTheDocument();
+  });
+
+  it("keeps the caught-up confirmation when invalidation refetches an empty queue", async () => {
+    const actions: unknown[] = [];
+    let resolvePostSkipRefetch!: () => void;
+    const postSkipRefetch = new Promise<void>((resolve) => {
+      resolvePostSkipRefetch = resolve;
+    });
+    let reviewRequests = 0;
+    server.use(
+      http.get("*/v1/filler/decisions/reviews", () => {
+        reviewRequests += 1;
+        if (reviewRequests === 1) return HttpResponse.json({ rows: [review], total: 1 });
+        resolvePostSkipRefetch();
+        return HttpResponse.json({ rows: [], total: 0 });
+      }),
+      getActOnFillerDecisionMockHandler(async ({ request }) => {
+        actions.push(await request.json());
+        return { id: "action-skip" };
+      }),
+    );
+    render(<FillerReviewQueue />, { wrapper });
+
+    const skip = await screen.findByRole("button", { name: "Skip for now" });
+    await userEvent.click(skip);
+
+    await waitFor(() => expect(actions).toHaveLength(1));
+    await postSkipRefetch;
+    await waitFor(() => expect(screen.getByText("You're caught up for now")).toBeInTheDocument());
+    expect(screen.queryByText("Nothing needs your attention")).not.toBeInTheDocument();
     expect(screen.getByText(/did not treat them as accepted or rejected/i)).toBeInTheDocument();
   });
 
