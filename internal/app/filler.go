@@ -120,6 +120,9 @@ func (a fillerPipelineClipAdapter) UpsertClip(ctx context.Context, c filler.Stor
 func (a fillerPipelineClipAdapter) ReplaceClipIdentity(ctx context.Context, oldHash string, c filler.StoreClip) error {
 	return a.st.ReplaceClipIdentity(ctx, oldHash, store.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
 }
+func (a fillerPipelineClipAdapter) CommitConditioningPublication(ctx context.Context, publication filler.ConditioningPublication, c filler.StoreClip) error {
+	return a.st.CommitConditioningPublication(ctx, publication, store.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
+}
 func (a fillerPipelineClipAdapter) SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error) {
 	return a.st.SetClipsRemoved(ctx, paths, at)
 }
@@ -549,6 +552,9 @@ func (a fillerSplitStoreAdapter) GetClipTags(ctx context.Context, clipHash strin
 func (a fillerSplitStoreAdapter) SetClipTags(ctx context.Context, clipHash string, leaves []string) error {
 	return a.st.SetClipTags(ctx, clipHash, leaves)
 }
+func (a fillerSplitStoreAdapter) UpsertClipPipeline(ctx context.Context, row filler.ClipPipeline) error {
+	return a.st.UpsertClipPipeline(ctx, row)
+}
 func (a fillerSplitStoreAdapter) ReplaceSplitChildren(ctx context.Context, parentHash string, keepHashes []string, at time.Time) (int, error) {
 	return a.st.ReplaceSplitChildren(ctx, parentHash, keepHashes, at)
 }
@@ -587,11 +593,26 @@ func (a fillerSplitStoreAdapter) UpsertSplitProposal(ctx context.Context, p fill
 func (a fillerSplitStoreAdapter) GetSplitProposal(ctx context.Context, id string) (filler.SplitProposal, error) {
 	return a.st.GetSplitProposal(ctx, id)
 }
+func (a fillerSplitStoreAdapter) AcquireSplitProposalClaim(ctx context.Context, id, token string, at, expiresAt time.Time) (filler.SplitProposal, error) {
+	return a.st.AcquireSplitProposalClaim(ctx, id, token, at, expiresAt)
+}
+func (a fillerSplitStoreAdapter) RenewSplitProposalClaim(ctx context.Context, id, token string, expiresAt time.Time) error {
+	return a.st.RenewSplitProposalClaim(ctx, id, token, expiresAt)
+}
+func (a fillerSplitStoreAdapter) ReleaseSplitProposalClaim(ctx context.Context, id, token string) error {
+	return a.st.ReleaseSplitProposalClaim(ctx, id, token)
+}
 func (a fillerSplitStoreAdapter) DeleteSplitProposal(ctx context.Context, id string) error {
 	return a.st.DeleteSplitProposal(ctx, id)
 }
 func (a fillerSplitStoreAdapter) MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error {
 	return a.st.MarkPipelineFiled(ctx, hash, at)
+}
+func (a fillerSplitStoreAdapter) CompleteSplitConfirmation(ctx context.Context, completion filler.SplitCompletion) (int, error) {
+	return a.st.CompleteSplitConfirmation(ctx, completion)
+}
+func (a fillerSplitStoreAdapter) CompletePartialSplitConfirmation(ctx context.Context, completion filler.SplitPartialCompletion) error {
+	return a.st.CompletePartialSplitConfirmation(ctx, completion)
 }
 
 // ⚠ Translates the store's ErrNotFound into the DOMAIN's ErrProposalGone. `internal/filler` does
@@ -976,37 +997,11 @@ func (a fillerServiceAdapter) ConfirmSplit(ctx context.Context, proposalID strin
 	if a.splitter == nil {
 		return api.ErrSplitUnavailable
 	}
-	// Read the parent identity before Confirm deletes the proposal. The parent remains in the
-	// catalog for lineage (§10 V45), but accepting the remaining proposal is its terminal pipeline
-	// decision: leaving it at `review` makes Incoming claim the reel is still being prepared after
-	// the operator has finished it.
-	proposal, err := a.splitClips.GetSplitProposal(ctx, proposalID)
-	if err != nil {
-		return err
-	}
-	spawned, err := a.splitter.Confirm(ctx, proposalID, segments)
-	if err != nil {
-		return err
-	}
-	now := time.Now
-	if a.now != nil {
-		now = a.now
-	}
-	if err := a.splitClips.MarkPipelineFiled(ctx, proposal.ClipHash, now().UTC()); err != nil {
-		return err
-	}
-	// ⚠ Enrol the cuts, exactly as the split RUNG does (§10 V51b). Without this a segment an
-	// operator confirmed by hand would sit outside the pipeline entirely — never transcoded, never
-	// tagged, never scored — while one the pipeline cut itself ran the full ladder. The manual and
-	// unattended paths must produce the same clip.
-	if a.pipeline != nil {
-		for _, hash := range spawned {
-			if err := a.pipeline.Enrol(ctx, hash); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	// Confirm owns the complete parent/child durable batch, including terminal parent pipeline
+	// filing. The adapter must not add a fallible write after the generation commits: reporting an
+	// error then would invite an operator retry of an operation that already succeeded.
+	_, err := a.splitter.Confirm(ctx, proposalID, segments)
+	return err
 }
 
 // publishSplit emits one split-detection frame (§7, type=filler_split). The

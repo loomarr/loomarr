@@ -2,6 +2,7 @@ package filler_test
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/mediatools"
 )
 
 // fakeSource is a Tunarr local filler source returning a fixed set of raw clips.
@@ -417,6 +419,553 @@ func (r realScanSource) ListLocalClips(ctx context.Context) ([]filler.RawClip, e
 		return filler.Probed{DurationMs: 30_000}, nil
 	})
 	return clips, err
+}
+
+func TestSync_CatalogRebuildRestoresConditioningParentFromSidecar(t *testing.T) {
+	dir := t.TempDir()
+	media := filepath.Join(dir, "reviewed-child.mp4")
+	if err := os.WriteFile(media, []byte("reviewed child bytes that survive a catalog rebuild"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	childHash, err := filler.ClipID(media)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const parentHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	if err := filler.WriteSidecarTags(media, filler.SidecarTags{
+		OriginalName: "Reviewed child",
+		ConditioningLineage: &filler.ConditioningLineage{
+			ChildHash: childHash, ParentHash: parentHash, IntendedStartMs: 12_000, IntendedEndMs: 42_000,
+		},
+	}, false); err != nil {
+		t.Fatal(err)
+	}
+	st := newMemStore()
+	sync := filler.NewSyncer(realScanSource{dir}, st, testLayout(dir), time.Now, discardLog())
+	if _, err := sync.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(st.clips) != 1 {
+		t.Fatalf("rebuilt catalog = %+v, want one child", st.clips)
+	}
+	for _, child := range st.clips {
+		if child.ParentHash != parentHash {
+			t.Fatalf("rebuilt child parent = %q, want sidecar identity %q", child.ParentHash, parentHash)
+		}
+	}
+}
+
+func TestSync_EmptyCatalogRebuildMarksConditioningParentCompositeInEitherScanOrder(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		parentPath string
+		childPath  string
+	}{
+		{name: "child scanned first", parentPath: "z-parent.mp4", childPath: "a-child.mp4"},
+		{name: "parent scanned first", parentPath: "a-parent.mp4", childPath: "z-child.mp4"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			parentFull := filepath.Join(dir, tc.parentPath)
+			childFull := filepath.Join(dir, tc.childPath)
+			if err := os.WriteFile(parentFull, []byte("retained compilation bytes"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(childFull, []byte("reviewed child bytes"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			parentHash, err := filler.ClipID(parentFull)
+			if err != nil {
+				t.Fatal(err)
+			}
+			childHash, err := filler.ClipID(childFull)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := filler.WriteSidecarTags(childFull, filler.SidecarTags{ConditioningLineage: &filler.ConditioningLineage{
+				ChildHash: childHash, ParentHash: parentHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000,
+			}}, false); err != nil {
+				t.Fatal(err)
+			}
+			st := newMemStore()
+			syncer := filler.NewSyncer(realScanSource{dir}, st, testLayout(dir), time.Now, discardLog())
+			if _, err := syncer.Sync(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			parent, found, err := st.GetClip(context.Background(), parentHash)
+			if err != nil || !found || !parent.IsComposite {
+				t.Fatalf("rebuilt parent = %+v, found=%v, err=%v; want retained composite", parent, found, err)
+			}
+			child, found, err := st.GetClip(context.Background(), childHash)
+			if err != nil || !found || child.ParentHash != parentHash {
+				t.Fatalf("rebuilt child = %+v, found=%v, err=%v", child, found, err)
+			}
+		})
+	}
+}
+
+func TestSync_ConditionedChildClearsHoldOnlyWhenRetainedParentResolves(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		parentPath string
+		childPath  string
+		withParent bool
+		parentMode string
+		selfParent bool
+		wantHeld   bool
+	}{
+		{name: "child scanned before parent", parentPath: "z-parent.mp4", childPath: "a-child.mp4", withParent: true},
+		{name: "child scanned after parent", parentPath: "a-parent.mp4", childPath: "z-child.mp4", withParent: true},
+		{name: "parent missing", parentPath: "missing-parent.mp4", childPath: "child.mp4", wantHeld: true},
+		{name: "parent sidecar unreadable", parentPath: "parent.mp4", childPath: "child.mp4", withParent: true, parentMode: "unreadable", wantHeld: true},
+		{name: "parent is itself conditioned lineage", parentPath: "parent.mp4", childPath: "child.mp4", withParent: true, parentMode: "conditioned", wantHeld: true},
+		{name: "child names itself as parent", parentPath: "parent.mp4", childPath: "child.mp4", withParent: true, selfParent: true, wantHeld: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			parentFull := filepath.Join(dir, tc.parentPath)
+			if err := os.WriteFile(parentFull, []byte("retained compilation bytes"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			parentHash, err := filler.ClipID(parentFull)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !tc.withParent {
+				if err := os.Remove(parentFull); err != nil {
+					t.Fatal(err)
+				}
+			}
+			childFull := filepath.Join(dir, tc.childPath)
+			if err := os.WriteFile(childFull, []byte("conditioned child bytes"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			childHash, err := filler.ClipID(childFull)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.parentMode == "unreadable" {
+				parentSidecar := strings.TrimSuffix(parentFull, filepath.Ext(parentFull)) + ".info.json"
+				if err := os.WriteFile(parentSidecar, []byte(`{"loomarr":`), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.parentMode == "conditioned" {
+				if err := filler.WriteSidecarTags(parentFull, filler.SidecarTags{ConditioningLineage: &filler.ConditioningLineage{
+					ChildHash: parentHash, ParentHash: strings.Repeat("b", 64), IntendedStartMs: 1_000, IntendedEndMs: 31_000,
+				}}, false); err != nil {
+					t.Fatal(err)
+				}
+			}
+			lineageParentHash := parentHash
+			if tc.selfParent {
+				lineageParentHash = childHash
+			}
+			const reviewedHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+			before := syncConditioningMeasurement(true)
+			after := syncConditioningMeasurement(false)
+			if err := filler.WriteSidecarTags(childFull, filler.SidecarTags{
+				Mezzanine: mediatools.DefaultMezzanine().ID(),
+				ConditioningLineage: &filler.ConditioningLineage{
+					ChildHash: reviewedHash, ParentHash: lineageParentHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000,
+				},
+				Conditioning: &filler.ConditioningEvidence{
+					BeforeRewriteHash: reviewedHash, AfterRewriteHash: childHash,
+					BeforeRewrite: before, AfterRewrite: after,
+					DerivedParentEdgesAfterRewrite: before.Cuts[0],
+				},
+				MediaQuality: &after.Quality,
+			}, false); err != nil {
+				t.Fatal(err)
+			}
+
+			st := newMemStore()
+			if _, err := filler.NewSyncer(realScanSource{dir}, st, testLayout(dir), time.Now, discardLog()).Sync(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			child, found, err := st.GetClip(context.Background(), childHash)
+			if err != nil || !found || child.Held != tc.wantHeld || child.ParentHash != lineageParentHash {
+				t.Fatalf("rebuilt child = %+v, found=%v, err=%v; held want %v", child, found, err, tc.wantHeld)
+			}
+			if tc.withParent && !tc.wantHeld {
+				parent, found, err := st.GetClip(context.Background(), parentHash)
+				if err != nil || !found || !parent.IsComposite {
+					t.Fatalf("rebuilt parent = %+v, found=%v, err=%v; want retained composite", parent, found, err)
+				}
+			} else if tc.withParent {
+				parent, found, err := st.GetClip(context.Background(), parentHash)
+				if err != nil || !found || parent.IsComposite {
+					t.Fatalf("invalid authority parent = %+v, found=%v, err=%v; must not be promoted", parent, found, err)
+				}
+			}
+		})
+	}
+}
+
+func syncConditioningMeasurement(directEdges bool) mediatools.ConditioningMeasurement {
+	available := func(ms int64) mediatools.OptionalMilliseconds {
+		return mediatools.OptionalMilliseconds{Milliseconds: ms, Available: true}
+	}
+	edge := func(kind mediatools.StreamKind, index int) mediatools.ConditioningCutStream {
+		out := mediatools.ConditioningCutStream{Kind: kind, Index: index}
+		if directEdges {
+			out.StartError, out.EndError = available(0), available(0)
+		}
+		return out
+	}
+	return mediatools.ConditioningMeasurement{
+		ContainerDurationMs: 30_000,
+		Streams: []mediatools.ConditioningStream{
+			{Kind: mediatools.StreamVideo, Index: 0, Start: available(0), Duration: available(30_000), Cadence: &mediatools.Rational{Numerator: 30_000, Denominator: 1001}},
+			{Kind: mediatools.StreamAudio, Index: 1, Start: available(120), Duration: available(29_880)},
+		},
+		AVSkew: mediatools.ConditioningSkew{Start: available(120), End: available(0)},
+		Loudness: mediatools.ConditioningLoudness{IntegratedLUFS: -23, Available: true,
+			TruePeak: mediatools.ConditioningTruePeak{State: mediatools.TruePeakFinite, DBTP: -2}},
+		Quality: mediatools.MediaQuality{EvidenceVersion: mediatools.MediaQualityEvidenceV1,
+			Provenance: mediatools.MediaQualityProvenanceFFmpegDetectors, DurationMs: 30_000},
+		Cuts: []mediatools.ConditioningCutMeasurement{{Intended: mediatools.Interval{StartMs: 1_000, EndMs: 31_000}, Streams: []mediatools.ConditioningCutStream{
+			edge(mediatools.StreamVideo, 0), edge(mediatools.StreamAudio, 1),
+		}}},
+	}
+}
+
+func TestSync_MalformedConditioningLineageCannotBecomeAnAirableTopLevelClip(t *testing.T) {
+	dir := t.TempDir()
+	childFull := filepath.Join(dir, "damaged-child.mp4")
+	if err := os.WriteFile(childFull, []byte("damaged lineage child"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	childHash, err := filler.ClipID(childFull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := filler.WriteSidecarTags(childFull, filler.SidecarTags{ConditioningLineage: &filler.ConditioningLineage{
+		ParentHash: "retained-parent", IntendedStartMs: 12_000, IntendedEndMs: 12_000,
+	}}, false); err != nil {
+		t.Fatal(err)
+	}
+	st := newMemStore()
+	if _, err := filler.NewSyncer(realScanSource{dir}, st, testLayout(dir), time.Now, discardLog()).Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	child, found, err := st.GetClip(context.Background(), childHash)
+	if err != nil || !found || !child.Held || child.ParentHash != "retained-parent" {
+		t.Fatalf("malformed-lineage child = %+v, found=%v, err=%v; want held with parent identity", child, found, err)
+	}
+}
+
+func TestSync_BlankConditioningLineageCannotBecomeAnAirableTopLevelClip(t *testing.T) {
+	dir := t.TempDir()
+	childFull := filepath.Join(dir, "blank-lineage-child.mp4")
+	if err := os.WriteFile(childFull, []byte("blank lineage child"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	childHash, err := filler.ClipID(childFull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := filler.WriteSidecarTags(childFull, filler.SidecarTags{ConditioningLineage: &filler.ConditioningLineage{
+		ChildHash: childHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000,
+	}}, false); err != nil {
+		t.Fatal(err)
+	}
+	st := newMemStore()
+	if _, err := filler.NewSyncer(realScanSource{dir}, st, testLayout(dir), time.Now, discardLog()).Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	child, found, err := st.GetClip(context.Background(), childHash)
+	if err != nil || !found || !child.Held {
+		t.Fatalf("blank-lineage child = %+v, found=%v, err=%v; want held", child, found, err)
+	}
+}
+
+func TestSync_IncompleteConditioningEvidenceRemainsHeldAfterCatalogRebuild(t *testing.T) {
+	dir := t.TempDir()
+	childFull := filepath.Join(dir, "incomplete-restart.mp4")
+	if err := os.WriteFile(childFull, []byte("transformed child without conditioning facts"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	childHash, err := filler.ClipID(childFull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := filler.WriteSidecarTags(childFull, filler.SidecarTags{
+		Mezzanine: mediatools.DefaultMezzanine().ID(),
+		MediaQuality: &filler.MediaQuality{
+			EvidenceVersion: mediatools.MediaQualityEvidenceV1,
+			Provenance:      mediatools.MediaQualityProvenanceFFmpegDetectors,
+			DurationMs:      30_000,
+		},
+		ConditioningLineage: &filler.ConditioningLineage{
+			ChildHash: "reviewed-source-hash", ParentHash: "retained-parent",
+			IntendedStartMs: 1_000, IntendedEndMs: 31_000,
+		},
+	}, false); err != nil {
+		t.Fatal(err)
+	}
+	st := newMemStore()
+	if _, err := filler.NewSyncer(realScanSource{dir}, st, testLayout(dir), time.Now, discardLog()).Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	child, found, err := st.GetClip(context.Background(), childHash)
+	if err != nil || !found || !child.Held || child.ParentHash != "retained-parent" {
+		t.Fatalf("incomplete rebuilt child = %+v, found=%v, err=%v; want held", child, found, err)
+	}
+}
+
+func TestSync_ConditioningStateWithoutLineageCannotBecomeAnAirableTopLevelClip(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		conditioned bool
+		wantHeld    bool
+	}{
+		{name: "conditioning evidence without lineage", conditioned: true, wantHeld: true},
+		{name: "ordinary top-level mezzanine", conditioned: false, wantHeld: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			media := filepath.Join(dir, "clip.mp4")
+			if err := os.WriteFile(media, []byte("clip bytes"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			tags := filler.SidecarTags{Mezzanine: mediatools.DefaultMezzanine().ID()}
+			if tc.conditioned {
+				tags.Conditioning = &filler.ConditioningEvidence{}
+			}
+			if err := filler.WriteSidecarTags(media, tags, false); err != nil {
+				t.Fatal(err)
+			}
+			_, sidecarState := filler.ReadSidecarTagsState(media)
+			if tc.conditioned && sidecarState != filler.SidecarInvalid {
+				t.Fatalf("conditioning without lineage state = %v, want invalid", sidecarState)
+			}
+			if !tc.conditioned && sidecarState != filler.SidecarValid {
+				t.Fatalf("ordinary top-level mezzanine state = %v, want valid", sidecarState)
+			}
+			id, err := filler.ClipID(media)
+			if err != nil {
+				t.Fatal(err)
+			}
+			st := newMemStore()
+			if _, err := filler.NewSyncer(realScanSource{dir}, st, testLayout(dir), time.Now, discardLog()).Sync(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			clip, found, err := st.GetClip(context.Background(), id)
+			if err != nil || !found || clip.Held != tc.wantHeld {
+				t.Fatalf("rebuilt clip = %+v, found=%v, err=%v; held want %v", clip, found, err, tc.wantHeld)
+			}
+		})
+	}
+}
+
+func TestSync_UnreadableOrWrongTypedConditioningStateRemainsHeld(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		sidecar   string
+		wantHeld  bool
+		wantState filler.SidecarReadState
+	}{
+		{name: "corrupt JSON", sidecar: `{"loomarr":`, wantHeld: true, wantState: filler.SidecarInvalid},
+		{name: "conditioned mezzanine omitted lineage", sidecar: `{"loomarr":{"mezzanine":"h264-crf20-aac192","conditioning":{"beforeRewriteHash":"before","afterRewriteHash":"after"}}}`, wantHeld: true, wantState: filler.SidecarInvalid},
+		{name: "conditioned mezzanine null lineage", sidecar: `{"loomarr":{"mezzanine":"h264-crf20-aac192","conditioningLineage":null,"conditioning":{"beforeRewriteHash":"before","afterRewriteHash":"after"}}}`, wantHeld: true, wantState: filler.SidecarInvalid},
+		{name: "conditioned mezzanine blank lineage", sidecar: `{"loomarr":{"mezzanine":"h264-crf20-aac192","conditioningLineage":{},"conditioning":{"beforeRewriteHash":"before","afterRewriteHash":"after"}}}`, wantHeld: true, wantState: filler.SidecarInvalid},
+		{name: "conditioned mezzanine malformed lineage", sidecar: `{"loomarr":{"mezzanine":"h264-crf20-aac192","conditioningLineage":"not-lineage","conditioning":{"beforeRewriteHash":"before","afterRewriteHash":"after"}}}`, wantHeld: true, wantState: filler.SidecarInvalid},
+		{name: "wrong typed lineage", sidecar: `{"loomarr":{"conditioningLineage":"not-lineage"}}`, wantHeld: true, wantState: filler.SidecarInvalid},
+		{name: "wrong typed conditioning evidence", sidecar: `{"loomarr":{"conditioning":[]}}`, wantHeld: true, wantState: filler.SidecarInvalid},
+		{name: "valid ordinary top-level tags", sidecar: `{"loomarr":{"originalName":"ordinary.mp4"}}`, wantHeld: false, wantState: filler.SidecarValid},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			media := filepath.Join(dir, "clip.mp4")
+			if err := os.WriteFile(media, []byte("ordinary or damaged conditioned bytes"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			sidecar := strings.TrimSuffix(media, filepath.Ext(media)) + ".info.json"
+			if err := os.WriteFile(sidecar, []byte(tc.sidecar), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, state := filler.ReadSidecarTagsState(media); state != tc.wantState {
+				t.Fatalf("sidecar state = %v, want %v", state, tc.wantState)
+			}
+			id, err := filler.ClipID(media)
+			if err != nil {
+				t.Fatal(err)
+			}
+			st := newMemStore()
+			if _, err := filler.NewSyncer(realScanSource{dir}, st, testLayout(dir), time.Now, discardLog()).Sync(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			clip, found, err := st.GetClip(context.Background(), id)
+			if err != nil || !found || clip.Held != tc.wantHeld {
+				t.Fatalf("rebuilt clip = %+v, found=%v, err=%v; held want %v", clip, found, err, tc.wantHeld)
+			}
+		})
+	}
+}
+
+func TestSync_OmittedConditioningLineageMemberIsInvalidAndHeld(t *testing.T) {
+	for _, omitted := range []string{"childHash", "parentHash", "intendedStartMs", "intendedEndMs"} {
+		t.Run(omitted, func(t *testing.T) {
+			dir := t.TempDir()
+			media := filepath.Join(dir, "conditioned.mp4")
+			if err := os.WriteFile(media, []byte("conditioned bytes"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			lineage := map[string]any{
+				"childHash": "reviewed-child", "parentHash": "retained-parent",
+				"intendedStartMs": int64(0), "intendedEndMs": int64(30_000),
+			}
+			delete(lineage, omitted)
+			doc := map[string]any{"loomarr": map[string]any{
+				"mezzanine": mediatools.DefaultMezzanine().ID(), "conditioningLineage": lineage,
+			}}
+			raw, err := json.Marshal(doc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sidecar := strings.TrimSuffix(media, filepath.Ext(media)) + ".info.json"
+			if err := os.WriteFile(sidecar, raw, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, state := filler.ReadSidecarTagsState(media); state != filler.SidecarInvalid {
+				t.Fatalf("sidecar state = %v, want invalid when %s is omitted", state, omitted)
+			}
+			id, err := filler.ClipID(media)
+			if err != nil {
+				t.Fatal(err)
+			}
+			st := newMemStore()
+			if _, err := filler.NewSyncer(realScanSource{dir}, st, testLayout(dir), time.Now, discardLog()).Sync(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			clip, found, err := st.GetClip(context.Background(), id)
+			if err != nil || !found || !clip.Held {
+				t.Fatalf("rebuilt clip = %+v, found=%v, err=%v; want held", clip, found, err)
+			}
+		})
+	}
+
+	t.Run("explicit zero start remains valid", func(t *testing.T) {
+		dir := t.TempDir()
+		media := filepath.Join(dir, "explicit-zero.mp4")
+		if err := os.WriteFile(media, []byte("conditioned bytes"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := filler.WriteSidecarTags(media, filler.SidecarTags{ConditioningLineage: &filler.ConditioningLineage{
+			ChildHash: "reviewed-child", ParentHash: "retained-parent", IntendedStartMs: 0, IntendedEndMs: 30_000,
+		}}, false); err != nil {
+			t.Fatal(err)
+		}
+		if _, state := filler.ReadSidecarTagsState(media); state != filler.SidecarValid {
+			t.Fatalf("sidecar state = %v, want valid for explicit zero start", state)
+		}
+	})
+}
+
+func TestReadSidecarTagsState_ConditioningLineageRequiresExactPrimitiveTypes(t *testing.T) {
+	for _, field := range []string{"childHash", "parentHash", "intendedStartMs", "intendedEndMs"} {
+		for _, mutation := range []struct {
+			name  string
+			value any
+		}{
+			{name: "null", value: nil},
+			{name: "wrong scalar type", value: map[string]any{
+				"childHash": 7, "parentHash": 7, "intendedStartMs": "0", "intendedEndMs": "30000",
+			}[field]},
+		} {
+			t.Run(field+"/"+mutation.name, func(t *testing.T) {
+				dir := t.TempDir()
+				media := filepath.Join(dir, "conditioned.mp4")
+				if err := os.WriteFile(media, []byte("conditioned bytes"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				lineage := map[string]any{
+					"childHash": "reviewed-child", "parentHash": "retained-parent",
+					"intendedStartMs": int64(0), "intendedEndMs": int64(30_000),
+				}
+				lineage[field] = mutation.value
+				raw, err := json.Marshal(map[string]any{"loomarr": map[string]any{"conditioningLineage": lineage}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				sidecar := strings.TrimSuffix(media, filepath.Ext(media)) + ".info.json"
+				if err := os.WriteFile(sidecar, raw, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if _, state := filler.ReadSidecarTagsState(media); state != filler.SidecarInvalid {
+					t.Fatalf("sidecar state = %v, want invalid for %s %s", state, field, mutation.name)
+				}
+			})
+		}
+	}
+
+	for _, field := range []string{"intendedStartMs", "intendedEndMs"} {
+		t.Run(field+"/explicit zero is structurally present", func(t *testing.T) {
+			dir := t.TempDir()
+			media := filepath.Join(dir, "conditioned.mp4")
+			if err := os.WriteFile(media, []byte("conditioned bytes"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			lineage := map[string]any{
+				"childHash": "reviewed-child", "parentHash": "retained-parent",
+				"intendedStartMs": int64(1), "intendedEndMs": int64(30_000),
+			}
+			lineage[field] = int64(0)
+			raw, err := json.Marshal(map[string]any{"loomarr": map[string]any{"conditioningLineage": lineage}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(strings.TrimSuffix(media, filepath.Ext(media))+".info.json", raw, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, state := filler.ReadSidecarTagsState(media); state != filler.SidecarValid {
+				t.Fatalf("sidecar state = %v, want structurally valid explicit zero", state)
+			}
+		})
+	}
+}
+
+func TestReadSidecarTagsState_ConditioningEvidenceHashesRequireExactStrings(t *testing.T) {
+	for _, field := range []string{"beforeRewriteHash", "afterRewriteHash"} {
+		for _, mutation := range []struct {
+			name  string
+			value any
+		}{
+			{name: "null", value: nil},
+			{name: "wrong scalar type", value: 7},
+		} {
+			t.Run(field+"/"+mutation.name, func(t *testing.T) {
+				dir := t.TempDir()
+				media := filepath.Join(dir, "conditioned.mp4")
+				if err := os.WriteFile(media, []byte("conditioned bytes"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				conditioning := map[string]any{
+					"beforeRewriteHash": "before", "afterRewriteHash": "after",
+					"beforeRewrite": map[string]any{}, "afterRewrite": map[string]any{},
+					"derivedParentEdgesAfterRewrite": map[string]any{},
+				}
+				conditioning[field] = mutation.value
+				raw, err := json.Marshal(map[string]any{"loomarr": map[string]any{
+					"conditioningLineage": map[string]any{
+						"childHash": "reviewed-child", "parentHash": "retained-parent",
+						"intendedStartMs": int64(0), "intendedEndMs": int64(30_000),
+					},
+					"conditioning": conditioning,
+				}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(strings.TrimSuffix(media, filepath.Ext(media))+".info.json", raw, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if _, state := filler.ReadSidecarTagsState(media); state != filler.SidecarInvalid {
+					t.Fatalf("sidecar state = %v, want invalid for %s %s", state, field, mutation.name)
+				}
+			})
+		}
+	}
 }
 
 // ⚠ THE ordering property. Intake runs BEFORE the listing, so a file dropped in the watch folder

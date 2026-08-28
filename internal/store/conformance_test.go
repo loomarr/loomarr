@@ -94,6 +94,10 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ClipExposureRotation", func(t *testing.T) { testClipExposureRotation(t, newStore) })
 		t.Run("ClipKeyIsHashNotPath", func(t *testing.T) { testClipKeyIsHashNotPath(t, newStore) })
 		t.Run("ClipIdentityReplacement", func(t *testing.T) { testClipIdentityReplacement(t, newStore) })
+		t.Run("ConditioningPublicationCommit", func(t *testing.T) { testConditioningPublicationCommit(t, newStore) })
+		t.Run("ConditioningPublicationFailsClosed", func(t *testing.T) {
+			testConditioningPublicationFailsClosed(t, newStore)
+		})
 		t.Run("ClipIdentityReplacementSameHash", func(t *testing.T) { testClipIdentityReplacementSameHash(t, newStore) })
 		t.Run("ClipFingerprintCache", func(t *testing.T) { testClipFingerprintCache(t, newStore) })
 		t.Run("ClipCounts", func(t *testing.T) { testClipCounts(t, newStore) })
@@ -104,6 +108,13 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ClipTopLevelOnly", func(t *testing.T) { testClipTopLevelOnly(t, newStore) })
 		t.Run("ClipCreatedAt", func(t *testing.T) { testClipCreatedAt(t, newStore) })
 		t.Run("CompositeLineage", func(t *testing.T) { testCompositeLineage(t, newStore) })
+		t.Run("SplitConfirmationAtomic", func(t *testing.T) { testSplitConfirmationAtomic(t, newStore) })
+		t.Run("SplitConfirmationRequiresReviewParent", func(t *testing.T) {
+			testSplitConfirmationRequiresReviewParent(t, newStore)
+		})
+		t.Run("SplitProposalClaimFencesConfirmers", func(t *testing.T) {
+			testSplitProposalClaimFencesConfirmers(t, newStore)
+		})
 		t.Run("FillerSourceRegistry", func(t *testing.T) { testFillerSources(t, newStore) })
 		t.Run("SeededDefaultSources", func(t *testing.T) { testSeededDefaultSources(t, newStore) })
 		t.Run("FillerPulls", func(t *testing.T) { testFillerPulls(t, newStore) })

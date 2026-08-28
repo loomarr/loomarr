@@ -23,6 +23,11 @@ import (
 // it before committing any dependent row.
 var ErrNotFound = errors.New("store: not found")
 
+// ErrConditioningPublicationMismatch reports a pending conditioned publication whose catalog
+// rows are not one of the exact source-only, source-plus-held-reconstruction, or target-only
+// states the owner-bound recovery protocol permits. Callers must hold it for review.
+var ErrConditioningPublicationMismatch = filler.ErrConditioningOwnershipMismatch
+
 // ErrTaxonConflict marks a taxonomy mutation that cannot safely apply: create over an existing
 // slug, or delete of a taxon still directly asserted on clips. The caller should reload/retag,
 // never retry the same write blindly.
@@ -284,6 +289,10 @@ type ClipStore interface {
 	// ReplaceClipIdentity atomically moves every durable reference when an internal transform
 	// changes a clip's content hash (§10). Metadata and operator overrides follow the bytes.
 	ReplaceClipIdentity(ctx context.Context, oldHash string, c Clip) error
+	// CommitConditioningPublication is the exact owner-bound variant used after a conditioned
+	// target is visible. It atomically adopts a held Sync reconstruction, performs an ordinary
+	// source-only re-key, or recognizes the exact target-only post-rekey state (§10 V65).
+	CommitConditioningPublication(ctx context.Context, publication filler.ConditioningPublication, target Clip) error
 	GetClip(ctx context.Context, libraryItemID string) (Clip, error)
 	// GetClipByPath looks a clip up by its location under FILLER_DIR, NOT by its identity.
 	//
@@ -420,6 +429,9 @@ type SplitProposalStore interface {
 	UpsertSplitProposal(ctx context.Context, p filler.SplitProposal) error
 	// GetSplitProposal reads one proposal by id (the review's reconnect truth).
 	GetSplitProposal(ctx context.Context, id string) (filler.SplitProposal, error)
+	AcquireSplitProposalClaim(ctx context.Context, id, token string, at, expiresAt time.Time) (filler.SplitProposal, error)
+	RenewSplitProposalClaim(ctx context.Context, id, token string, expiresAt time.Time) error
+	ReleaseSplitProposalClaim(ctx context.Context, id, token string) error
 	// ListSplitProposals returns every pending proposal, oldest first — the Incoming tab's
 	// "reels" (V35). One read behind that tab, so a restart cannot lose the queue.
 	ListSplitProposals(ctx context.Context) ([]filler.SplitProposal, error)
@@ -428,6 +440,7 @@ type SplitProposalStore interface {
 	// UpdateSplitProposal replaces an EXISTING proposal document; ErrNotFound if the row is gone.
 	// Never inserts — see the implementation for why that matters (§10 V54).
 	UpdateSplitProposal(ctx context.Context, p filler.SplitProposal) error
+	CompletePartialSplitConfirmation(ctx context.Context, completion filler.SplitPartialCompletion) error
 	// ListSweepableSplitProposals finds reels whose leftover cuts nobody reviewed inside the
 	// window AND which have already produced clips — the only ones the sweep may retire (§10 V54).
 	ListSweepableSplitProposals(ctx context.Context, before time.Time) ([]SweepableProposal, error)
@@ -436,6 +449,9 @@ type SplitProposalStore interface {
 	MarkClipReaped(ctx context.Context, hash string, at time.Time) error
 	// MarkPipelineFiled takes a clip off the belt, so a swept reel is not re-proposed forever.
 	MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error
+	// CompleteSplitConfirmation atomically transitions a fully reviewed split proposal, retained
+	// parent, replacement pipelines, and selected child generation (§10 V65).
+	CompleteSplitConfirmation(ctx context.Context, completion filler.SplitCompletion) (int, error)
 
 	// --- The per-clip ingest pipeline (§10 V51b, migration 00044) ---
 	//
