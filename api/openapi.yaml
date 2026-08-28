@@ -2648,6 +2648,11 @@ components:
       properties:
         actionId:
           type: string
+        applicationMode:
+          enum:
+            - shadow
+            - applied
+          type: string
         clipHash:
           type: string
         createdAt:
@@ -2674,6 +2679,7 @@ components:
         - decisionId
         - clipHash
         - kind
+        - applicationMode
         - createdAt
       type: object
     FillerDecisionCountsDTO:

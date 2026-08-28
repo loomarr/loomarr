@@ -3368,6 +3368,13 @@ producer. Omitted or unknown modes fail closed at the domain and store boundary.
 marks every pre-existing decision `shadow`, matching the only production writer that could have created
 one, and keeps `shadow` as the database default for omitted raw inserts.
 
+The member-readable activity projection carries that mode as a required closed `applicationMode`
+wire field. An automatic shadow verdict is presented as `Would admit (shadow)` or
+`Would reject (shadow)` with caution styling; only an applied verdict may use the effect labels
+`Admitted automatically` or `Rejected automatically`. A client that receives an omitted or unknown mode
+presents `Decision mode unavailable` with caution styling and never infers an applied effect.
+Review requests and operator-action labels describe recorded events and do not change with mode.
+
 The ingest ladder places a fail-closed `admission` rung after extraction and immediately before the
 V38 `score` rung. Its first production evidence version records only facts whose provenance the
 current pipeline can prove: successful decoder passage, an explicit content-role token in the

@@ -87,6 +87,7 @@ export const AuditAndCorrection: Story = {
             decisionId: "decision-1",
             clipHash: "abcdef012345",
             kind: "automatic_admit",
+            applicationMode: "shadow",
             createdAt: new Date().toISOString(),
           },
           {
@@ -95,6 +96,7 @@ export const AuditAndCorrection: Story = {
             actionId: "action-2",
             clipHash: "123456abcdef",
             kind: "correction",
+            applicationMode: "shadow",
             createdAt: new Date().toISOString(),
           },
           {
@@ -103,6 +105,7 @@ export const AuditAndCorrection: Story = {
             actionId: "action-3",
             clipHash: "fedcba654321",
             kind: "reversal",
+            applicationMode: "shadow",
             createdAt: new Date().toISOString(),
           },
           {
@@ -111,6 +114,7 @@ export const AuditAndCorrection: Story = {
             actionId: "action-4",
             clipHash: "987654abcdef",
             kind: "review_abandoned",
+            applicationMode: "shadow",
             createdAt: new Date().toISOString(),
           },
         ],

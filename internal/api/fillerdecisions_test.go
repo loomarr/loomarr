@@ -32,6 +32,19 @@ type diagnosticWire struct {
 
 type activityWire struct {
 	ID, ActionID, DecisionID, ClipHash, Kind string
+	ApplicationMode                          string `json:"applicationMode"`
+}
+
+func TestFillerDecisionActivityProjectsApplicationMode(t *testing.T) {
+	srv, st := newServer(t)
+	seedDecisionAPI(t, st)
+
+	res := do(t, srv, http.MethodGet, "/v1/filler/decisions/activity?limit=10", memberToken, "")
+	var activity decisionListBody[activityWire]
+	decodeDecisionResponse(t, res, &activity)
+	if activity.Total != 1 || len(activity.Rows) != 1 || activity.Rows[0].ApplicationMode != "shadow" {
+		t.Fatalf("activity application mode = %+v, want one shadow row", activity)
+	}
 }
 
 func TestFillerDecisionProjectionsSeparateHumanWorkFromDiagnostics(t *testing.T) {
