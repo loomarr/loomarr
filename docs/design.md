@@ -1082,6 +1082,9 @@ and precise locations are redacted. Proposal and First-channel Journey reads exp
 persisted trace under their existing authorization. Evaluators consume this same typed,
 bounded evidence and fail closed on mismatch.
 
+Rank tuple components are integers by contract; no floating-point values are serialized, so
+non-finite-float handling is not part of this typed boundary.
+
 ### Provider abstraction
 One `Suggester` interface; provider by config. **Two adapters, both plain `net/http` (no vendor SDK):**
 - **`ollama`** (native `/api/chat` with tools) — the homelab default: local, private, no cost, and its capability/version API gives the §13 wizard + §8.1 model picker a fast pre-check. On a reasoning model (Qwen3-class), thinking mode is disabled on tool turns — with tools present it otherwise returns empty/leaked-marker output that breaks tool-calls (open Ollama bugs).

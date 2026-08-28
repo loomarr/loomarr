@@ -9,7 +9,7 @@ import (
 
 func TestFailureTraceJSONFailsClosedAndCopiesCandidates(t *testing.T) {
 	trace := suggest.DecisionTrace{Version: suggest.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
-		Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:1", Ownership: "library", Disposition: suggest.DispositionSelected, Reason: "selected"}}}
+		Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:1", Ownership: "library", Rank: suggest.RankTuple{TieKey: "movie:tmdb:1"}, Disposition: suggest.DispositionSelected, Reason: "selected"}}}
 	err := suggest.NewFailure("provider_failure", trace, errors.New("provider detail"))
 	trace.Candidates[0].Key = "mutated"
 	var failure *suggest.Failure

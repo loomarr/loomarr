@@ -82,6 +82,7 @@ const (
 	ReasonAcquisitionCap         = "acquisition_cap"
 	ReasonOverCeiling            = "over_ceiling"
 	ReasonBudgetExhausted        = "budget_exhausted"
+	ReasonNotSelected            = "not_selected"
 	TerminalProviderFailure      = "provider_failure"
 	TerminalGenerationFailure    = "generation_failure"
 	TerminalMalformedExhausted   = "malformed_exhausted"
@@ -111,7 +112,7 @@ func RankGroundedCandidatesWithTrace(intent string, candidates []catalog.Candida
 			trace.Truncated = true
 			continue
 		}
-		trace.Candidates = append(trace.Candidates, DecisionCandidate{Key: string(item.key), Name: item.candidate.Name, Source: string(item.candidate.Source), Ownership: ownership(item.candidate.InLibrary), Rank: RankTuple{Relevance: item.relevance, Preference: item.preference, Novelty: item.novelty, TieKey: string(item.key)}, Disposition: DispositionNotSelected})
+		trace.Candidates = append(trace.Candidates, DecisionCandidate{Key: string(item.key), Name: item.candidate.Name, Source: string(item.candidate.Source), Ownership: ownership(item.candidate.InLibrary), Rank: RankTuple{Relevance: item.relevance, Preference: item.preference, Novelty: item.novelty, TieKey: string(item.key)}, Disposition: DispositionNotSelected, Reason: ReasonNotSelected})
 	}
 	if len(result) == 0 {
 		trace.Terminal = ReasonRetrievalEmpty

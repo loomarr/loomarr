@@ -89,9 +89,6 @@ func boundedDecisionTrace(trace suggest.DecisionTrace) (suggest.DecisionTrace, e
 	if trace.Version == 0 {
 		return suggest.DecisionTrace{}, nil
 	}
-	if trace.Version != suggest.DecisionTraceVersion || trace.RecordedTotal < len(trace.Candidates) || trace.RecordedTotal > suggest.DecisionTraceMaxCandidates && !trace.Truncated {
-		return suggest.DecisionTrace{}, fmt.Errorf("decision trace mismatch or unbounded trace")
-	}
 	trace.Candidates = append([]suggest.DecisionCandidate(nil), trace.Candidates...)
 	if len(trace.Candidates) > JudgeMaxTraceCandidates {
 		trace.Candidates = trace.Candidates[:JudgeMaxTraceCandidates]
@@ -107,6 +104,9 @@ func boundedDecisionTrace(trace suggest.DecisionTrace) (suggest.DecisionTrace, e
 		trace.Candidates[i].Rank.TieKey = boundedJudgeText(trace.Candidates[i].Rank.TieKey)
 	}
 	trace.Terminal = boundedJudgeText(trace.Terminal)
+	if err := suggest.ValidateDecisionTrace(trace); err != nil {
+		return suggest.DecisionTrace{}, fmt.Errorf("decision trace mismatch: %w", err)
+	}
 	return trace, nil
 }
 

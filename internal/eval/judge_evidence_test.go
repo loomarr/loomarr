@@ -288,7 +288,11 @@ func TestRunnerFailsOnWrongTypedJudgeEvidenceWithoutRenderer(t *testing.T) {
 }
 
 func TestJudgeEvidenceCarriesBoundedProposalTraceAndRejectsMismatch(t *testing.T) {
-	proposal := suggest.Proposal{Trace: suggest.DecisionTrace{Version: suggest.DecisionTraceVersion, SurfacedTotal: 65, RecordedTotal: 65, Truncated: true, Candidates: make([]suggest.DecisionCandidate, 65)}}
+	candidates := make([]suggest.DecisionCandidate, 65)
+	for i := range candidates {
+		candidates[i] = suggest.DecisionCandidate{Key: fmt.Sprintf("movie:tmdb:%d", i+1), Ownership: "library", Rank: suggest.RankTuple{TieKey: fmt.Sprintf("movie:tmdb:%d", i+1)}, Disposition: suggest.DispositionNotSelected, Reason: suggest.ReasonNotSelected}
+	}
+	proposal := suggest.Proposal{Trace: suggest.DecisionTrace{Version: suggest.DecisionTraceVersion, SurfacedTotal: 65, RecordedTotal: 65, Truncated: true, Candidates: candidates}}
 	evidence, err := NewJudgeEvidence(Case{Intent: Intent{Description: "x"}}, proposal, Observation{}, nil)
 	if err != nil {
 		t.Fatal(err)

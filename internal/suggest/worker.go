@@ -402,6 +402,10 @@ func (s *Service) runJob(ctx context.Context, job store.Job) {
 		s.failJob(ctx, job, err)
 		return
 	}
+	if err := ValidateDecisionTrace(prop.Trace); err != nil {
+		s.failJob(ctx, job, fmt.Errorf("validate proposal trace: %w", err))
+		return
+	}
 	propBlob, err := json.Marshal(prop)
 	if err != nil {
 		s.failJob(ctx, job, fmt.Errorf("marshal proposal: %w", err))

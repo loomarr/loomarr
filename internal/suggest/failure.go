@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Failure is the public, safe failure seam for one suggestion run. Cause is
@@ -30,7 +32,7 @@ func (f *Failure) Error() string {
 func (f *Failure) Unwrap() error { return f.Cause }
 
 func (f *Failure) TraceJSON() (string, error) {
-	if err := validateDecisionTrace(f.Trace); err != nil {
+	if err := ValidateDecisionTrace(f.Trace); err != nil {
 		return "", fmt.Errorf("invalid suggestion failure trace: %w", err)
 	}
 	blob, err := json.Marshal(f.Trace)
@@ -42,7 +44,11 @@ func (f *Failure) TraceJSON() (string, error) {
 
 const decisionTraceMaxString = 256
 
-func validateDecisionTrace(trace DecisionTrace) error {
+// ValidateDecisionTrace is the shared typed boundary for persisted and evaluated traces.
+func ValidateDecisionTrace(trace DecisionTrace) error {
+	if trace.Version == 0 && len(trace.Candidates) == 0 && trace.Terminal == "" && trace.SurfacedTotal == 0 && trace.RecordedTotal == 0 {
+		return nil // absent trace on pre-v1 proposals
+	}
 	if trace.Version != DecisionTraceVersion || len(trace.Candidates) > DecisionTraceMaxCandidates || trace.SurfacedTotal < 0 || trace.RecordedTotal < 0 || trace.RecordedTotal < len(trace.Candidates) {
 		return fmt.Errorf("invalid version, bounds, or totals")
 	}
@@ -57,6 +63,15 @@ func validateDecisionTrace(trace DecisionTrace) error {
 			if len(value) > decisionTraceMaxString || strings.ContainsRune(value, '\x00') {
 				return fmt.Errorf("invalid %s", name)
 			}
+		}
+		if c.Ownership != "library" && c.Ownership != "acquisition" {
+			return fmt.Errorf("invalid ownership")
+		}
+		if c.Key == "" || c.Rank.TieKey == "" || c.Rank.TieKey != c.Key {
+			return fmt.Errorf("invalid canonical key or tie key")
+		}
+		if _, _, _, ok := provision.ParseKey(provision.Key(c.Key)); !ok {
+			return fmt.Errorf("invalid canonical key")
 		}
 		if !validDispositionReason(c.Disposition, c.Reason) {
 			return fmt.Errorf("invalid disposition/reason")
@@ -81,7 +96,7 @@ func validDispositionReason(disposition, reason string) bool {
 	allowed := map[string]map[string]bool{
 		DispositionSelected:          {"selected": true},
 		DispositionAlternate:         {ReasonAcquisitionCap: true},
-		DispositionNotSelected:       {ReasonNever: true, ReasonOverCeiling: true},
+		DispositionNotSelected:       {ReasonNotSelected: true, ReasonNever: true, ReasonOverCeiling: true},
 		DispositionRefused:           {ReasonOverCeiling: true},
 		DispositionValidationDropped: {ReasonMalformedID: true, ReasonNotSurfaced: true, ReasonValidationDropped: true},
 	}
