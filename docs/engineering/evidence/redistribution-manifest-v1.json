@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "purpose": "traceability evidence only; not corresponding-source retention or legal clearance",
+  "artifacts": [
+    {
+      "name": "ffmpeg",
+      "assets": [
+        {"architecture": "amd64", "asset": "ffmpeg-n8.1.2-44-g7c533d0f86-linux64-gpl-8.1.tar.xz", "asset_url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-16-13-00/ffmpeg-n8.1.2-44-g7c533d0f86-linux64-gpl-8.1.tar.xz", "sha256": "17780994c4679806fb227676f66a0af30c6379afc770324829f48f2a379be558"},
+        {"architecture": "arm64", "asset": "ffmpeg-n8.1.2-44-g7c533d0f86-linuxarm64-gpl-8.1.tar.xz", "asset_url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-16-13-00/ffmpeg-n8.1.2-44-g7c533d0f86-linuxarm64-gpl-8.1.tar.xz", "sha256": "e970a7dd450b440a21126a8bac3a1c95178b6ba05bee2465a4d2a586345c81ac"}
+      ],
+      "upstream": {
+        "release_url": "https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-08-16-13-00",
+        "release_revision": "autobuild-2026-08-16-13-00",
+        "release_commit": "590a6612d7d961e9258429e501619e0b7d7cbedf",
+        "source_url": "https://github.com/FFmpeg/FFmpeg/commit/7c533d0f86f13a06ec93968f6194349665b3536a",
+        "source_revision": "7c533d0f86f13a06ec93968f6194349665b3536a",
+        "build_url": "https://github.com/BtbN/FFmpeg-Builds/tree/590a6612d7d961e9258429e501619e0b7d7cbedf",
+        "build_revision": "590a6612d7d961e9258429e501619e0b7d7cbedf",
+        "build_id": "n8.1.2-44-g7c533d0f86",
+        "license_urls": ["https://github.com/BtbN/FFmpeg-Builds/blob/590a6612d7d961e9258429e501619e0b7d7cbedf/LICENSE", "https://github.com/FFmpeg/FFmpeg/blob/7c533d0f86f13a06ec93968f6194349665b3536a/COPYING.GPLv3"]
+      }
+    },
+    {
+      "name": "yt-dlp",
+      "assets": [
+        {"architecture": "amd64", "asset": "yt-dlp_linux", "asset_url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.07.04/yt-dlp_linux", "sha256": "6bbb3d314cde4febe36e5fa1d55462e29c974f63444e707871834f6d8cc210ae"},
+        {"architecture": "arm64", "asset": "yt-dlp_linux_aarch64", "asset_url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.07.04/yt-dlp_linux_aarch64", "sha256": "b6ce97646773070d7a7ffd6bbbdcaecb47c48483909c54c915bf08a7a9b5e0b1"}
+      ],
+      "upstream": {
+        "release_url": "https://github.com/yt-dlp/yt-dlp/releases/tag/2026.07.04",
+        "release_revision": "2026.07.04",
+        "release_commit": "fdec00e0bf530dc6c3cc7b1dd780e95d9ae460e9",
+        "source_url": "https://github.com/yt-dlp/yt-dlp/tree/fdec00e0bf530dc6c3cc7b1dd780e95d9ae460e9",
+        "source_revision": "fdec00e0bf530dc6c3cc7b1dd780e95d9ae460e9",
+        "build_url": "https://github.com/yt-dlp/yt-dlp/blob/fdec00e0bf530dc6c3cc7b1dd780e95d9ae460e9/bundle/pyinstaller.py",
+        "build_revision": "fdec00e0bf530dc6c3cc7b1dd780e95d9ae460e9",
+        "license_urls": ["https://github.com/yt-dlp/yt-dlp/blob/fdec00e0bf530dc6c3cc7b1dd780e95d9ae460e9/LICENSE", "https://github.com/yt-dlp/yt-dlp/blob/fdec00e0bf530dc6c3cc7b1dd780e95d9ae460e9/THIRD_PARTY_LICENSES.txt", "https://github.com/yt-dlp/yt-dlp/releases/download/2026.07.04/SHA2-256SUMS"]
+      }
+    }
+  ]
+}

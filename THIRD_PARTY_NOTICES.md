@@ -102,6 +102,11 @@ published image must also satisfy every redistributed component's terms. This in
 make a legal conclusion about aggregation or derivative-work status; that conclusion belongs to the
 final redistribution review recorded below.
 
+The versioned [`redistribution-manifest-v1.json`](docs/engineering/evidence/redistribution-manifest-v1.json)
+binds the pinned FFmpeg and yt-dlp asset identities to upstream release, source/build, and license
+references. It is traceability evidence only: it does not retain corresponding source or provide
+source-retention, distribution, or legal clearance.
+
 | Binary | Upstream | License | Notes |
 | --- | --- | --- | --- |
 | `yt-dlp` standalone executable | https://github.com/yt-dlp/yt-dlp | **GPL-3.0-or-later** for the combined executable | The source project is primarily Unlicense, but upstream states that official PyInstaller executables bundle GPLv3+ dependencies and the combined work is GPLv3+. Loomarr ships `yt-dlp_linux` / `yt-dlp_linux_aarch64`, so the executable terms apply. See upstream's [license section](https://github.com/yt-dlp/yt-dlp/blob/master/README.md#license) and [third-party license inventory](https://github.com/yt-dlp/yt-dlp/blob/master/THIRD_PARTY_LICENSES.txt). |

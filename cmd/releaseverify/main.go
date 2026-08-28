@@ -85,5 +85,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "release-verify: notice policy: %v\n", err)
 		os.Exit(1)
 	}
+	if err := releaseverify.VerifyRedistributionManifest(*root); err != nil {
+		fmt.Fprintf(os.Stderr, "release-verify: redistribution manifest: %v\n", err)
+		os.Exit(1)
+	}
 	fmt.Println("release-verify: runtime notices are packaged and unresolved redistribution review stays explicit")
 }
