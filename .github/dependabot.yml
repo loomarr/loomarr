@@ -109,6 +109,15 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    groups:
+      docker-node:
+        patterns: ["node"]
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: cargo
     directories:
