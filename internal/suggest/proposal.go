@@ -183,6 +183,9 @@ type Proposal struct {
 	// ceiling, not to lose the title — and a pick that silently vanished between the model's
 	// answer and the approval screen is indistinguishable from one the model never made.
 	Refused []RefusedPick `json:"refused,omitempty"`
+	// Trace is immutable evidence from the original grounded proposal run. It is
+	// never updated by approval edits or later scheduler/channel decisions.
+	Trace DecisionTrace `json:"trace"`
 }
 
 // RefusedPick is one grounded pick the extracted policy will not air, with the exclusion
