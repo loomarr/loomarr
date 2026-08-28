@@ -26,10 +26,28 @@ const proposal: Proposal = {
   acquisitions: [{ name: "Con Air", year: 1997, mediaType: "movie", inLibrary: false, confidence: 0.81 }],
   alternates: [{ name: "Face/Off", mediaType: "movie", inLibrary: false }],
   scores: { themeFit: 0.88, availabilityRatio: 0.5, eraBalance: 0.6, overall: 0.75 },
-  trace: { version: 1, surfacedTotal: 2, recordedTotal: 2, truncated: false, candidates: [
-    { key: "movie:tmdb: Heat", name: "Heat", ownership: "library", disposition: "selected", reason: "selected" },
-    { key: "movie:tmdb: Face", name: "Face/Off", ownership: "acquisition", disposition: "alternate", reason: "acquisition_cap" },
-  ] },
+  trace: {
+    version: 1,
+    surfacedTotal: 2,
+    recordedTotal: 2,
+    truncated: false,
+    candidates: [
+      {
+        key: "movie:tmdb: Heat",
+        name: "Heat",
+        ownership: "library",
+        disposition: "selected",
+        reason: "selected",
+      },
+      {
+        key: "movie:tmdb: Face",
+        name: "Face/Off",
+        ownership: "acquisition",
+        disposition: "alternate",
+        reason: "acquisition_cap",
+      },
+    ],
+  },
 };
 
 describe("ProposalReview", () => {

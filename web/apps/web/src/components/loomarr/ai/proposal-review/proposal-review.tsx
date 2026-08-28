@@ -200,8 +200,12 @@ const ProposalReview = ({
           <ul className="flex flex-col gap-1 text-muted-foreground text-sm">
             {proposal.trace.candidates.map((candidate) => (
               <li key={`${candidate.key}-${candidate.disposition}`}>
-                <span className="font-medium text-foreground">{candidate.name || candidate.key || "Candidate"}</span>{" "}
-                <span>{candidate.disposition === "selected" ? "selected" : candidate.reason.replaceAll("_", " ")}</span>
+                <span className="font-medium text-foreground">
+                  {candidate.name || candidate.key || "Candidate"}
+                </span>{" "}
+                <span>
+                  {candidate.disposition === "selected" ? "selected" : candidate.reason.replaceAll("_", " ")}
+                </span>
               </li>
             ))}
           </ul>

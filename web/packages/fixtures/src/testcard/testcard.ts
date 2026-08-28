@@ -596,6 +596,7 @@ const proposal: Proposal = {
     { name: "The Rock", year: 1996, mediaType: "movie", inLibrary: false },
   ],
   scores: { themeFit: 0.88, availabilityRatio: 0.67, eraBalance: 0.71, overall: 0.82 },
+  trace: { version: 1, surfacedTotal: 0, recordedTotal: 0, truncated: false, candidates: [] },
 };
 
 const searchResults: SearchResult[] = [
