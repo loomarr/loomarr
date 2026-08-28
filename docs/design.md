@@ -6167,7 +6167,12 @@ full migration or retirement is authorized.
 
 Every "pick one" in this doc is now picked. The agent builds with this stack; deviations require a doc update first.
 
-### Backend (Go 1.26+)
+### Backend (Go 1.27+)
+
+Go 1.27 is the minimum toolchain. Its standard library transparently backs the existing
+`encoding/json` v1 API with the JSON v2 implementation, improving the broad API and persistence
+surface without a wire-format migration. The opt-in profiler also exposes Go 1.27's
+`goroutineleak` profile through the same `LOOMARR_PPROF` gate as the existing pprof routes.
 | Concern | Decision | Why |
 | --- | --- | --- |
 | HTTP router | **stdlib `net/http` ServeMux** (Go 1.22 method+path patterns) via Huma's `humago` adapter | No third-party router; the embedded same-origin SPA also means **no CORS layer at all** |
@@ -6774,7 +6779,7 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 ## 16. Deployment (Docker)
 
 Multi-stage build with a cgo-free static Go server and a separate Rust image-worker executable.
-Toolchain pins: **Go 1.26+**, the exact Rust channel in `rust-toolchain.toml`, and **Node 22.5+** in
+Toolchain pins: **Go 1.27+**, the exact Rust channel in `rust-toolchain.toml`, and **Node 22.5+** in
 the frontend build stage. The runtime remains non-root Debian/glibc because its media executables
 already require that base. The container `HEALTHCHECK` uses the binary's `/v1/readyz` probe;
 readiness additionally requires the bundled
