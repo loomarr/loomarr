@@ -28,6 +28,18 @@ hash, and atomically materializes only alias-relative audio, frames, video, and 
 Choose explicit `hardlink` mode on one filesystem or `copy` for a portable package; symlinks are never
 emitted. Source text and identities, rights facts, and the private map stay out of the package. Its
 packet-ordered label template is deliberately invalid until one reviewer fills every line.
+`make filler-corpus-review-ollama` can complete one such package with a reviewer-only local
+multimodal model. It re-hashes the package, binds transcripts by audio SHA-256 without sending case
+IDs, verifies the concrete Ollama tag and digest, sends four ordered frames plus the shared
+transcript serially, and atomically publishes `labels.jsonl` with `review-run.json`. The attestation
+locks the package, prompt, model, transcript set, latency, tokens, and exact submission hash. Run it
+once per independently shuffled package with distinct reviewer-only model families; those families
+and the adjudicator family are excluded from the scored candidate matrix for that corpus generation.
+`make filler-corpus-review-openrouter` applies the same evidence contract to a fresh capability
+snapshot and one exact ZDR upstream route. It disables fallback, requires strict structured output,
+reserves every request against explicit per-call and total nano-USD ceilings, records the selected
+provider, generation, tokens, latency, and charged amount for every case, and publishes nothing after
+any route, schema, accounting, or timeout failure.
 `make filler-corpus-lock` combines the draft, both maps,
 and two independently authored JSONL review batches. Each line has `alias`, `reviewerId`, `batchId`,
 `reviewedAt`, and `labels`; labels
@@ -135,7 +147,8 @@ OpenRouter or starts local inference.
 label-blind packet JSONL, external derivative root, and strict versioned JSON containing the run,
 admission policy, and ordered routes. It also requires the immutable output of
 `make filler-openrouter-snapshot`; both run snapshot identities must equal that artifact's SHA-256,
-and every route must match a live ZDR endpoint recorded within the preceding 24 hours.
+and every route must match both the requested model ID and catalog canonical revision on a live ZDR
+endpoint recorded within the preceding 24 hours.
 `OPENROUTER_API_KEY` is read only from the environment. The
 adapter performs one request per reserved rung, pins the upstream provider with fallback disabled,
 requires strict structured output and ZDR routing, records OpenRouter routing metadata and exact
