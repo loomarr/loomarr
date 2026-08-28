@@ -8,10 +8,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/mediatools"
 )
 
 // Scanning FILLER_DIR directly (§10, revised by §9.1).
@@ -193,8 +196,8 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 		// Soup Advert" while the `title` field carries just "Campbell's Soup Advert".
 		heuristicName := strings.TrimSuffix(filepath.Base(rel), filepath.Ext(rel))
 		id := ""
-		tags, hasTags := ReadSidecarTags(path)
-		if hasTags {
+		tags, sidecarState := ReadSidecarTagsState(path)
+		if sidecarState == SidecarValid {
 			if tags.OriginalName != "" {
 				heuristicName = strings.TrimSuffix(tags.OriginalName, filepath.Ext(tags.OriginalName))
 			}
@@ -211,12 +214,36 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 			skipped++
 			return nil
 		}
+		parentHash := ""
+		lineageInvalid := false
+		conditioningHold := sidecarState == SidecarInvalid || tags.SupersededByHash != "" ||
+			tags.ConditioningPublication != nil ||
+			(tags.Conditioning != nil && tags.ConditioningLineage == nil)
+		if tags.ConditioningLineage != nil {
+			parentHash = tags.ConditioningLineage.ParentHash
+			lineageInvalid = !validConditioningLineage(tags.ConditioningLineage, parentHash)
+			if !lineageInvalid {
+				if tags.Mezzanine == "" {
+					lineageInvalid = tags.ConditioningLineage.ChildHash != id
+					conditioningHold = !lineageInvalid
+				} else {
+					lineageInvalid = tags.Conditioning == nil || tags.MediaQuality == nil ||
+						validateConditioningPair(*tags.Conditioning, tags.ConditioningLineage.ChildHash, id) != nil ||
+						mediatools.ValidateMediaQualityEvidence(*tags.MediaQuality) != nil ||
+						!reflect.DeepEqual(*tags.MediaQuality, tags.Conditioning.AfterRewrite.Quality)
+				}
+			}
+		}
 
 		clips = append(clips, RawClip{
-			ID:     id,
-			Path:   rel,
-			Name:   name,
-			Source: tags.SourceID,
+			ID:               id,
+			Path:             rel,
+			Name:             name,
+			Source:           tags.SourceID,
+			ParentHash:       parentHash,
+			LineageInvalid:   lineageInvalid,
+			ConditioningHold: conditioningHold,
+			SidecarInvalid:   sidecarState == SidecarInvalid,
 			// Kind + Era from the HEURISTIC name (the filename), NOT the display name — the cheapest
 			// tagging tier (§10). ⚠ Must be `heuristicName`: the display `name` now prefers the
 			// sidecar title, which often drops the year ("Campbell's Soup Advert" has no 1993), and

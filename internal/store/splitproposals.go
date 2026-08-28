@@ -56,16 +56,101 @@ func (s *sqlStore) UpsertSplitProposal(ctx context.Context, p filler.SplitPropos
 	if err != nil {
 		return fmt.Errorf("marshal split proposal document: %w", err)
 	}
-	_, err = s.db.ExecContext(ctx, s.ph(
+	res, err := s.db.ExecContext(ctx, s.ph(
 		`INSERT INTO filler_split_proposals (id, clip_hash, segments_json, created_at)
 		 VALUES (?, ?, ?, ?)
 		 ON CONFLICT(clip_hash) DO UPDATE SET
-		   id=excluded.id, segments_json=excluded.segments_json, created_at=excluded.created_at`),
+		   id=excluded.id, segments_json=excluded.segments_json, created_at=excluded.created_at
+		 WHERE filler_split_proposals.claim_token = ''`),
 		p.ID, p.ClipHash, string(raw), epoch(p.CreatedAt))
 	if err != nil {
 		return fmt.Errorf("upsert split proposal %s: %w", p.ID, err)
 	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("upsert split proposal %s: %w", p.ID, err)
+	}
+	if n != 1 {
+		return s.splitProposalClaimMiss(ctx, p.ID)
+	}
 	return nil
+}
+
+// AcquireSplitProposalClaim obtains or recovers the durable cross-process fence used by Confirm.
+// The token is caller-generated and opaque; the expiry is recovery authority after a crashed
+// owner, while every later mutation still requires the exact current token.
+func (s *sqlStore) AcquireSplitProposalClaim(ctx context.Context, id, token string, at, expiresAt time.Time) (filler.SplitProposal, error) {
+	if id == "" || token == "" || !expiresAt.After(at) {
+		return filler.SplitProposal{}, fmt.Errorf("acquire split proposal claim: id, token, and future expiry are required")
+	}
+	res, err := s.db.ExecContext(ctx, s.ph(
+		`UPDATE filler_split_proposals
+		    SET claim_token = ?, claim_expires_at = ?
+		  WHERE id = ?
+		    AND (claim_token = '' OR claim_expires_at <= ? OR claim_token = ?)`),
+		token, epoch(expiresAt), id, epoch(at), token)
+	if err != nil {
+		return filler.SplitProposal{}, fmt.Errorf("acquire split proposal claim %s: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return filler.SplitProposal{}, fmt.Errorf("acquire split proposal claim %s: %w", id, err)
+	}
+	if n != 1 {
+		return filler.SplitProposal{}, s.splitProposalClaimMiss(ctx, id)
+	}
+	return s.GetSplitProposal(ctx, id)
+}
+
+// RenewSplitProposalClaim extends only the current fencing token. A stale owner cannot lengthen
+// its lease after another process has recovered the proposal.
+func (s *sqlStore) RenewSplitProposalClaim(ctx context.Context, id, token string, expiresAt time.Time) error {
+	if id == "" || token == "" || expiresAt.IsZero() {
+		return fmt.Errorf("renew split proposal claim: id, token, and expiry are required")
+	}
+	res, err := s.db.ExecContext(ctx, s.ph(
+		`UPDATE filler_split_proposals SET claim_expires_at = ? WHERE id = ? AND claim_token = ?`),
+		epoch(expiresAt), id, token)
+	if err != nil {
+		return fmt.Errorf("renew split proposal claim %s: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("renew split proposal claim %s: %w", id, err)
+	}
+	if n != 1 {
+		return s.splitProposalClaimMiss(ctx, id)
+	}
+	return nil
+}
+
+// ReleaseSplitProposalClaim clears only the caller's token. This is safe to defer: after recovery,
+// a stale owner's release cannot unlock the replacement owner's operation.
+func (s *sqlStore) ReleaseSplitProposalClaim(ctx context.Context, id, token string) error {
+	res, err := s.db.ExecContext(ctx, s.ph(
+		`UPDATE filler_split_proposals SET claim_token = '', claim_expires_at = 0 WHERE id = ? AND claim_token = ?`), id, token)
+	if err != nil {
+		return fmt.Errorf("release split proposal claim %s: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("release split proposal claim %s: %w", id, err)
+	}
+	if n != 1 {
+		return s.splitProposalClaimMiss(ctx, id)
+	}
+	return nil
+}
+
+func (s *sqlStore) splitProposalClaimMiss(ctx context.Context, id string) error {
+	var exists int
+	if err := s.db.QueryRowContext(ctx, s.ph(`SELECT 1 FROM filler_split_proposals WHERE id = ?`), id).Scan(&exists); err != nil {
+		if err == sql.ErrNoRows {
+			return ErrNotFound
+		}
+		return fmt.Errorf("read split proposal claim %s: %w", id, err)
+	}
+	return filler.ErrProposalClaimed
 }
 
 // GetSplitProposal reads one proposal by id — the review surface's source of
@@ -203,7 +288,7 @@ func (s *sqlStore) UpdateSplitProposal(ctx context.Context, p filler.SplitPropos
 		return fmt.Errorf("marshal split proposal document: %w", err)
 	}
 	res, err := s.db.ExecContext(ctx, s.ph(
-		`UPDATE filler_split_proposals SET segments_json = ? WHERE id = ?`), string(raw), p.ID)
+		`UPDATE filler_split_proposals SET segments_json = ? WHERE id = ? AND claim_token = ''`), string(raw), p.ID)
 	if err != nil {
 		return fmt.Errorf("update split proposal %s: %w", p.ID, err)
 	}
@@ -212,7 +297,86 @@ func (s *sqlStore) UpdateSplitProposal(ctx context.Context, p filler.SplitPropos
 		return fmt.Errorf("update split proposal %s: %w", p.ID, err)
 	}
 	if n == 0 {
-		return ErrNotFound
+		return s.splitProposalClaimMiss(ctx, p.ID)
+	}
+	return nil
+}
+
+// CompletePartialSplitConfirmation commits one shrunken review document and releases its fence.
+// Filesystem publication remains reversible until this one claimed write succeeds.
+func (s *sqlStore) CompletePartialSplitConfirmation(ctx context.Context, completion filler.SplitPartialCompletion) error {
+	if completion.ClaimToken == "" || completion.Proposal.ID == "" || len(completion.ActivateHashes) == 0 {
+		return fmt.Errorf("complete partial split confirmation: proposal, claim token, and children are required")
+	}
+	seen := make(map[string]struct{}, len(completion.ActivateHashes))
+	for _, hash := range completion.ActivateHashes {
+		if hash == "" {
+			return fmt.Errorf("complete partial split confirmation: child hash is required")
+		}
+		if _, duplicate := seen[hash]; duplicate {
+			return fmt.Errorf("complete partial split confirmation: duplicate child %s", hash)
+		}
+		seen[hash] = struct{}{}
+	}
+	raw, err := marshalSplitProposal(completion.Proposal)
+	if err != nil {
+		return fmt.Errorf("marshal partial split proposal document: %w", err)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("complete partial split confirmation %s: %w", completion.Proposal.ID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	// Fence before touching a child. Besides ordering the operation across processes, making this
+	// the transaction's first guarded write prevents a stale-token error path from querying through
+	// another pooled connection while SQLite still holds this transaction open.
+	claimResult, err := tx.ExecContext(ctx, s.ph(
+		`UPDATE filler_split_proposals SET claim_expires_at = claim_expires_at
+		  WHERE id = ? AND clip_hash = ? AND claim_token = ?`),
+		completion.Proposal.ID, completion.Proposal.ClipHash, completion.ClaimToken)
+	if err != nil {
+		return fmt.Errorf("complete partial split confirmation %s fence claim: %w", completion.Proposal.ID, err)
+	}
+	claimed, err := claimResult.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("complete partial split confirmation %s count claim: %w", completion.Proposal.ID, err)
+	}
+	if claimed != 1 {
+		return filler.ErrProposalClaimed
+	}
+	for _, hash := range completion.ActivateHashes {
+		res, err := tx.ExecContext(ctx, s.ph(
+			`UPDATE filler_clip_pipeline SET disposition = ?, updated_at = ?
+			  WHERE clip_hash = ? AND disposition = ?`),
+			string(filler.DispositionRunning), epoch(completion.At), hash, string(filler.DispositionReview))
+		if err != nil {
+			return fmt.Errorf("complete partial split confirmation %s activate child %s: %w", completion.Proposal.ID, hash, err)
+		}
+		n, countErr := res.RowsAffected()
+		if countErr != nil {
+			return fmt.Errorf("complete partial split confirmation %s count child %s: %w", completion.Proposal.ID, hash, countErr)
+		}
+		if n != 1 {
+			return fmt.Errorf("complete partial split confirmation %s: child %s is not staged for review", completion.Proposal.ID, hash)
+		}
+	}
+	res, err := tx.ExecContext(ctx, s.ph(
+		`UPDATE filler_split_proposals
+		    SET segments_json = ?, claim_token = '', claim_expires_at = 0
+		  WHERE id = ? AND clip_hash = ? AND claim_token = ?`),
+		string(raw), completion.Proposal.ID, completion.Proposal.ClipHash, completion.ClaimToken)
+	if err != nil {
+		return fmt.Errorf("complete partial split confirmation %s: %w", completion.Proposal.ID, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("complete partial split confirmation %s: %w", completion.Proposal.ID, err)
+	}
+	if n != 1 {
+		return filler.ErrProposalClaimed
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("complete partial split confirmation %s: %w", completion.Proposal.ID, err)
 	}
 	return nil
 }
@@ -220,7 +384,7 @@ func (s *sqlStore) UpdateSplitProposal(ctx context.Context, p filler.SplitPropos
 // DeleteSplitProposal removes a proposal — after confirm, and on reject.
 // ErrNotFound for an unknown id, so a caller cannot believe it recorded something.
 func (s *sqlStore) DeleteSplitProposal(ctx context.Context, id string) error {
-	res, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM filler_split_proposals WHERE id = ?`), id)
+	res, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM filler_split_proposals WHERE id = ? AND claim_token = ''`), id)
 	if err != nil {
 		return fmt.Errorf("delete split proposal %s: %w", id, err)
 	}
@@ -229,7 +393,7 @@ func (s *sqlStore) DeleteSplitProposal(ctx context.Context, id string) error {
 		return fmt.Errorf("delete split proposal %s: %w", id, err)
 	}
 	if n == 0 {
-		return ErrNotFound
+		return s.splitProposalClaimMiss(ctx, id)
 	}
 	return nil
 }

@@ -2678,6 +2678,188 @@ store or sidecar, expose an API, or decide what may be reviewed, certified, file
 selected, or played. Those application-journey contracts remain tracked by issue #634 rather than
 being implied by this measurement seam.
 
+**Conditioning evidence joins the durable filler pipeline at its existing boundaries (V65).** A
+confirmed split writes the composite's content identity and the operator-reviewed intended start and
+end beside every child. That lineage survives proposal consumption and a catalog rebuild; a child is
+never matched to a parent by filename, ordering, or duration. At the child's transcode rung, Loomarr
+measures the cut bytes before rewriting and the hidden staged mezzanine after rewriting, comparing
+both artifacts independently with that one preserved parent interval. The replacement sidecar carries
+the lineage and both immutable measurements with the transformed bytes. Catalog reconstruction restores
+the child's parent identity from that same sidecar instead of flattening it into a top-level clip.
+Top-level clips are outside this compilation-conditioning slice. `normalizedLufs` remains only an
+idempotency/target marker: measured integrated LUFS and true peak come from conditioning evidence and
+are never inferred from that marker.
+
+Split confirmation first snapshots the catalogued composite into its private hidden staging area and
+requires that snapshot and the still-owned source name have the catalogued content identity. Every cut
+therefore reads one validated immutable snapshot; source replacement fails closed before any child is
+published or durable review state is consumed. Split confirmation publishes lineage before media. Each
+reviewed child is cut into that hidden staging area on the filler filesystem, hashed there, and given its
+final-bound lineage sidecar before one atomic media publication makes it visible to scanning. Existing
+content-addressed child bytes are reused only after their measured identity matches the staged child.
+A sidecar or identity failure leaves no visible child media. A concurrent
+scan can therefore observe either no child or a child with valid parent identity and a positive intended
+interval, never an unbound top-level clip. Durable `conditioningLineage.childHash` is the reviewed
+stream-copy child's content identity; `beforeRewriteHash` and `afterRewriteHash` bind the two persisted
+measurements to the exact bytes they describe after the replacement is re-keyed.
+
+The catalog identity remains V38c's bounded sparse `ClipID`; V65 does not silently redefine it as a
+full-file digest. At every conditioning ownership or reuse boundary, however, Loomarr compares the
+complete bounded byte streams under one cancellation-aware open: composite source against its private
+snapshot, existing child against the staged cut, child and retained parent against their measurement
+snapshots and still-owned names, and an interrupted transformed output against the current hidden
+output. Matching sparse identities alone never proves those byte pairs equal.
+
+Complete confirmation cuts and sidecars for the entire reviewed generation before publishing any child. It
+then durably writes every child as held and tombstoned, persists reviewed tags, and enrolls every
+child in the non-runnable review disposition. The final-bound sidecars and media links are published
+as a reversible prerequisite: a concurrent scan may see only bound held children, and any later
+publication or completion failure removes every new media link and final sidecar from that attempt.
+One store transaction is the all-or-none durable completion boundary: it marks the retained parent
+composite, files and unholds that parent's clip and pipeline state, activates every replacement child
+pipeline at the probe rung, consumes the reviewed proposal, and selects the replacement generation
+while preserving channel-pinned children. Until that transaction commits, the proposal, parent
+review disposition, and prior selected generation remain unchanged, and replacement pipelines cannot
+run against reversible media. Completion compare-and-swaps a still-held parent and exactly one parent
+pipeline from `review` to `filed`; a missing, already-filed, or otherwise changed parent state rolls the
+whole transaction back rather than treating a zero-row transition as success. The outer application adapter performs no fallible parent-filing write
+after inner confirmation, so a successful response cannot be followed by an ambiguous post-commit
+error.
+
+Confirmation is serialized by a durable, expiring proposal claim acquired before any final sidecar
+or media name is published. The opaque token fences partial proposal updates and the complete store
+transaction; ordinary proposal updates, rejection, and replacement cannot bypass an active claim.
+A clean exit releases only its own token, while a crashed owner is recoverable after the durable
+deadline. The live owner renews immediately before sidecar and media visibility. Every child sidecar
+also records the current publication token solely as filesystem rollback ownership: a recovered
+confirmer takes that ownership after exact byte and lineage validation, and a stale predecessor may
+remove only media whose sidecar still carries its own token. Partial confirmation publishes only
+reversible held/tombstoned children whose pipelines remain in `review`, then one claimed store
+transaction shrinks the proposal, activates exactly those child pipelines, and releases the claim.
+A failed claimed update or child activation rolls those media links back and leaves every replacement
+pipeline non-runnable. Catalog and sidecar preparation for the complete batch precedes the first media
+link; later cut, metadata, catalog, pipeline, or publication failure therefore exposes no ordinary
+child, and any briefly visible bound child remains held/tombstoned and non-runnable through concurrent
+Sync. Rollback removes media before its owner-marked sidecar. If media removal fails, the lineage and
+publication token remain durable quarantine and recovery evidence; rollback never launders surviving
+bytes by deleting that evidence.
+
+Until conditioning evidence is complete, catalog reconstruction also restores a lineage-only child
+as held rather than inferring that operator review was conditioning approval.
+
+This wiring does not grant conditioning policy authority. Measurement errors, missing required stream
+facts, unavailable cut edges, or evidence that cannot be associated with the preserved parent and
+stream identities hold the child for review; they do not manufacture zeroes, silently admit it, or
+rewrite the source in place. Existing media-quality and admission policies consume their own facts and
+retain their existing authority. Transcoding publishes only a fully measured staged replacement, keeps
+the source bytes untouched until the content-addressed replacement and its evidence are durable, and
+never places filler in the prepared-program rendition cache.
+
+A conditioned replacement sidecar carries a closed `pending` publication record binding source and
+target content identities before the target media name becomes visible. Catalog reconstruction treats
+that record as a conditioning hold regardless of otherwise complete evidence. The pending record stays
+through `ReplaceClipIdentity`; only after the durable re-key succeeds may the stage atomically clear it
+and return the measured media-quality disposition. A crash before re-key leaves the source row as the
+only identity owner and retry validates/reuses the pending target; a crash after re-key may clear the
+record only when the source identity is absent and the target row/evidence still match exactly.
+Concurrent Sync can therefore discover a pending target only as held, never as an ordinary duplicate
+or playable clip. Missing, malformed, mismatched, or ambiguously owned pending state remains review.
+
+Before the catalog re-key, the pre-rewrite sidecar durably records the exact replacement identity as
+`supersededByHash`. Successful cleanup removes those obsolete bytes and sidecar. If cleanup fails, the
+source remains preserved but catalog reconstruction treats that explicit saga marker as quarantine and
+holds it out of rotation; a cleanup error can report continuation only after that non-airability fact is
+durable.
+
+The application boundary validates the inspector's returned shape before trusting it. A conditioned
+child requires a positive bounded container duration; exactly one globally indexed audio stream and
+one globally indexed video stream; available start and positive duration for every stream; a positive
+exact cadence for every video stream; available start/end A/V skew; one measured loudness summary with
+a closed finite or digital-silence true-peak state; and exactly one cut comparison containing available
+start/end errors for every presented stream identity. Missing, duplicate, unknown, non-finite, or
+out-of-shape facts are unavailable evidence, not a content-quality threshold. Cancellation follows the
+same review path before publish rather than consuming generic transcode retries.
+
+A re-encode necessarily changes encoded packet hashes, so post-rewrite packet hashes cannot be matched
+directly to the parent without pretending codec output is content identity. Loomarr preserves the raw
+`afterRewrite.cuts` measurement unchanged, including unavailable direct packet edges, and persists a
+separate derived post-rewrite parent-edge projection as `derivedParentEdgesAfterRewrite`: the
+independently matched pre-rewrite parent error plus the measured start/end timeline delta between the
+same closed stream kind/index before and after the owned whole-clip transcode. This field is derived,
+not directly packet-matched evidence. The projection uses checked integer arithmetic, not content
+similarity or a tolerance. Missing stream identity, timing, pre-rewrite edge, or arithmetic safety
+makes the projected edge unavailable and holds the child for review.
+
+The sidecar is also the restart record. A child whose current mezzanine sidecar contains valid lineage,
+complete before/after conditioning, and media-quality evidence reuses those facts without decoding or
+rewriting again. The rung revalidates the persisted shape and still resolves the parent by its preserved
+content identity; missing or malformed restart evidence holds for review instead of being treated as a
+completed transcode or paying for another generation of loss.
+
+Restart and interrupted-publication recovery are identity-bound and fail closed. Lineage requires
+64-character lowercase content hashes and `0 <= intendedStartMs < intendedEndMs`; the parent hash must
+resolve to a retained composite. Conditioning measurements use the mediatools validation contract: one
+globally unique video stream index and one globally unique audio stream index, exact equality of the
+before/after stream identity sets, complete timing/cadence/skew/loudness provenance, and sorted, non-overlapping,
+duplicate-free detector intervals bounded by the measured duration. Media-quality evidence carries its
+closed `evidenceVersion: 1` and `provenance: ffmpeg_detectors` rather than relying on field presence. A
+transformed artifact
+already present at the target content identity is recoverable only when its sidecar contains that exact
+child lineage, complete media-quality and conditioning evidence, and evidence equal to the measurements
+built by the current attempt. A top-level artifact, a different parent or interval, corrupt/incomplete
+metadata, or a failed catalog replacement preserves the source and holds the child for review.
+
+Catalog reconstruction treats valid child lineage as authority that the retained parent is a composite
+and therefore non-airable, regardless of scan order. Blank or malformed lineage holds the discovered
+media out of top-level airability; it never launders a damaged child sidecar into an ordinary clip.
+Sidecar reading is tri-state at this boundary: absence is the ordinary hand-dropped case, valid JSON
+with no conditioning keys is ordinary top-level metadata, and present unreadable JSON, wrong-typed
+Loomarr conditioning state, or a conditioning-lineage object that omits, nulls, or gives the wrong
+JSON primitive type to any required identity or interval member is damage that remains held without
+being overwritten. Required conditioning-evidence hash scalars follow the same strict raw-JSON check
+before typed decoding. An explicit numeric zero remains present and type-valid, distinct from omission
+or null, and later lineage semantics decide whether the interval is valid. A conditioned child clears its reconstruction hold only after the completed scan
+generation contains its exact parent and that parent is a valid retained top-level clip: its sidecar is
+readable, it is not itself conditioned lineage or held by damaged conditioning state, and the child
+derives its composite marker from that clean parent. The ordinary parent starts with
+`is_composite=false`; valid child lineage is the authority that changes it to `is_composite=true`.
+A corrupt, conditioned, missing, or self-referential parent never becomes authority merely because a
+child names its sparse hash; child-first and parent-first traversal therefore cannot change the decision.
+
+Conditioning cancellation is checked after every inspector, probe, transcode, and complete-byte
+comparison boundary, including after the comparison loop itself, and immediately before sidecar or
+media publication and every durable write. A cancelled child returns to the
+existing review/hold path with cancellation recognized by `errors.Is`; no replacement sidecar, media,
+re-key, source cleanup, or later durable operation may follow cancellation.
+
+Derived post-rewrite parent edges are a media-tools operation beside conditioning validation, not
+filler-owned arithmetic. Its one narrow interface validates the measurement pair, preserves raw
+after-rewrite edge unavailability, and returns either checked derived edges or an unavailable-evidence
+error; callers do not duplicate stream matching or millisecond overflow rules.
+
+When loudness normalisation is enabled, the existing transcode path applies the configured target to the
+hidden staged output and conditioning independently measures integrated LUFS and true peak both before
+and after that rewrite. The target-valued `normalizedLufs` marker alone is never completion evidence;
+restart still requires the versioned measurements and every other conditioning invariant above.
+
+Acceptance follows the same seams as production. A hermetic application journey proves parent probe
+and the existing composite-transcode skip, reviewed split confirmation, child enrolment, child
+probe/transcode/quality, durable lineage, pod reconstruction, and the scheduler's exact
+`Airing.Identity`. Tagged ffmpeg acceptance
+separately proves that the selected child is decodable, begins at the requested mid-break offset, and
+returns to decodable program content at the scheduled boundary.
+That tagged proof resolves each segment through the production scheduler/Airing path, encodes finite
+blocks with the production `ProgramArgs`, and joins them through the internal playout block mux. A test
+authored `trim`/`concat` graph is not evidence for the behavior of Loomarr's playout assembly.
+Those playout observations are acceptance evidence, not new conditioning thresholds or admission
+rules. Store-schema and API exposure are deliberately outside V65.
+
+For each reviewed split child, the pre-rewrite conditioning measurement must contain one complete
+packet-matched `Cuts` record for the exact interval carried by that child's immutable lineage. The
+record stores actual-minus-intended start and end errors for every presented stream; unavailable or
+mismatched edge evidence holds the child for review. This is evidence wiring and persistence only:
+V65 defines no acceptable error threshold and performs no automatic correction.
+
 **Language is a job, not an inline check**, and it REJECTS rather than holding (maintainer,
 2026-08-03) — consistent with the other two gates, which drop a file at the boundary and leave a
 log line rather than a queue entry.

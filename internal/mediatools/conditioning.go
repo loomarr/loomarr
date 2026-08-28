@@ -45,30 +45,30 @@ const (
 
 // OptionalMilliseconds distinguishes an observed zero from unavailable evidence.
 type OptionalMilliseconds struct {
-	Milliseconds int64
-	Available    bool
+	Milliseconds int64 `json:"milliseconds"`
+	Available    bool  `json:"available"`
 }
 
 // Rational preserves an exact ffprobe rational such as 30000/1001.
 type Rational struct {
-	Numerator   int64
-	Denominator int64
+	Numerator   int64 `json:"numerator"`
+	Denominator int64 `json:"denominator"`
 }
 
 // ConditioningStream identifies and measures one presented audio or video stream.
 type ConditioningStream struct {
-	Kind     StreamKind
-	Index    int
-	Start    OptionalMilliseconds
-	Duration OptionalMilliseconds
-	Cadence  *Rational
+	Kind     StreamKind           `json:"kind"`
+	Index    int                  `json:"index"`
+	Start    OptionalMilliseconds `json:"start"`
+	Duration OptionalMilliseconds `json:"duration"`
+	Cadence  *Rational            `json:"cadence,omitempty"`
 }
 
 // ConditioningSkew is audio minus video. It remains unavailable unless exactly one presented
 // audio stream and one presented video stream make the pairing unambiguous.
 type ConditioningSkew struct {
-	Start OptionalMilliseconds
-	End   OptionalMilliseconds
+	Start OptionalMilliseconds `json:"start"`
+	End   OptionalMilliseconds `json:"end"`
 }
 
 // ConditioningTruePeakState represents finite true peak, digital silence, or no measurement
@@ -83,15 +83,15 @@ const (
 
 // ConditioningTruePeak contains a finite dBTP only when State is TruePeakFinite.
 type ConditioningTruePeak struct {
-	State ConditioningTruePeakState
-	DBTP  float64
+	State ConditioningTruePeakState `json:"state"`
+	DBTP  float64                   `json:"dbtp,omitempty"`
 }
 
 // ConditioningLoudness contains integrated loudness and an explicitly represented true peak.
 type ConditioningLoudness struct {
-	IntegratedLUFS float64
-	TruePeak       ConditioningTruePeak
-	Available      bool
+	IntegratedLUFS float64              `json:"integratedLufs"`
+	TruePeak       ConditioningTruePeak `json:"truePeak"`
+	Available      bool                 `json:"available"`
 }
 
 // ConditioningRequest names one local artifact, an optional single parent, and up to eight
@@ -104,25 +104,26 @@ type ConditioningRequest struct {
 
 // ConditioningCutMeasurement contains independently matched evidence in request interval order.
 type ConditioningCutMeasurement struct {
-	Streams []ConditioningCutStream
+	Intended Interval                `json:"intended"`
+	Streams  []ConditioningCutStream `json:"streams"`
 }
 
 // ConditioningCutStream contains actual-minus-intended edge errors for one exact stream identity.
 type ConditioningCutStream struct {
-	Kind       StreamKind
-	Index      int
-	StartError OptionalMilliseconds
-	EndError   OptionalMilliseconds
+	Kind       StreamKind           `json:"kind"`
+	Index      int                  `json:"index"`
+	StartError OptionalMilliseconds `json:"startError"`
+	EndError   OptionalMilliseconds `json:"endError"`
 }
 
 // ConditioningMeasurement is evidence only. It carries no verdict or policy threshold.
 type ConditioningMeasurement struct {
-	ContainerDurationMs int64
-	Streams             []ConditioningStream
-	AVSkew              ConditioningSkew
-	Loudness            ConditioningLoudness
-	Quality             MediaQuality
-	Cuts                []ConditioningCutMeasurement
+	ContainerDurationMs int64                        `json:"containerDurationMs"`
+	Streams             []ConditioningStream         `json:"streams"`
+	AVSkew              ConditioningSkew             `json:"avSkew"`
+	Loudness            ConditioningLoudness         `json:"loudness"`
+	Quality             MediaQuality                 `json:"quality"`
+	Cuts                []ConditioningCutMeasurement `json:"cuts,omitempty"`
 }
 
 type conditioningProbeJSON struct {
@@ -266,6 +267,7 @@ func (t *FFmpegTools) MeasureConditioning(ctx context.Context, req ConditioningR
 		if err != nil {
 			return ConditioningMeasurement{}, err
 		}
+		matched.Intended = intended
 		measurement.Cuts = append(measurement.Cuts, matched)
 	}
 	return measurement, nil
@@ -737,7 +739,11 @@ type conditioningDetectorIdentity struct {
 }
 
 func parseConditioningDetectorEvents(raw string, containerDurationMs int64, streams conditioningDetectorStreams) (MediaQuality, error) {
-	quality := MediaQuality{DurationMs: containerDurationMs}
+	quality := MediaQuality{
+		EvidenceVersion: MediaQualityEvidenceV1,
+		Provenance:      MediaQualityProvenanceFFmpegDetectors,
+		DurationMs:      containerDurationMs,
+	}
 	zero := conditioningDetectorScalar{seconds: new(big.Rat)}
 	videoTimeline := conditioningDetectorTimeline{eof: zero}
 	audioTimeline := conditioningDetectorTimeline{eof: zero}
