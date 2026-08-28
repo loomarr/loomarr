@@ -1059,6 +1059,29 @@ An AI that can trigger real downloads must never act on a hallucinated title.
 - Acquisitions re-validated against TMDB (exists) + library (not present) before actionable.
 - Library/TMDB text in prompts is **untrusted**: it must not steer tools, change quotas, or reach secrets; catalog tools are read-only.
 
+### Proposal decision trace v1 (#496)
+
+The exact grounded ranking and proposal decision implementation emits one immutable,
+proposal-scoped `DecisionTrace`. It is original-proposal evidence: approval edits,
+availability changes, cache clones, re-curation, and channel creation never relabel or
+recompute it. A later scheduler trace is owned by `schedule.ComputeDesiredAt` and must not
+be reconstructed from this trace.
+
+Each surfaced grounded candidate has one closed disposition and reason, including selected,
+alternate, not-selected, policy-refused, validation-dropped, acquisition-cap, and terminal
+outcomes such as retrieval-empty, selection-empty, and budget-exhausted. Reasons are facts
+at the seam that made the decision; model rationale is presentation-only and never affects
+deterministic ranking. The published rank is the lexicographic tuple (relevance,
+preference, novelty, canonical key), with its tie-break inputs, not a scalar score.
+
+The trace is versioned, stably ordered, bounded, and carries surfaced/recorded totals and an
+explicit truncation flag. It contains only canonical identity, corpus provenance, ownership,
+safe constraint matches, deterministic rank terms, disposition, and closed reason codes;
+prompts, chain-of-thought, rationale prose, credentials, provider payloads, filesystem paths,
+and precise locations are redacted. Proposal and First-channel Journey reads expose the
+persisted trace under their existing authorization. Evaluators consume this same typed,
+bounded evidence and fail closed on mismatch.
+
 ### Provider abstraction
 One `Suggester` interface; provider by config. **Two adapters, both plain `net/http` (no vendor SDK):**
 - **`ollama`** (native `/api/chat` with tools) — the homelab default: local, private, no cost, and its capability/version API gives the §13 wizard + §8.1 model picker a fast pre-check. On a reasoning model (Qwen3-class), thinking mode is disabled on tool turns — with tools present it otherwise returns empty/leaked-marker output that breaks tool-calls (open Ollama bugs).
