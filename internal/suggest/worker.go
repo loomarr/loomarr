@@ -29,7 +29,7 @@ type ProposalStore interface {
 	ClaimDueJobs(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]store.Job, error)
 	FindJobByIntentHash(ctx context.Context, hash string, since time.Time) (store.Job, error)
 	CommitSuggestionSuccess(ctx context.Context, jobID string, expectedAttempt int, p store.Proposal, updatedAt time.Time) error
-	CommitSuggestionFailure(ctx context.Context, jobID string, expectedAttempt int, cause, failureCode string, updatedAt time.Time) error
+	CommitSuggestionFailure(ctx context.Context, jobID string, expectedAttempt int, cause, failureCode, failureTraceJSON string, updatedAt time.Time) error
 	RequeueSuggestionJob(ctx context.Context, jobID string, expectedAttempt int, kind, intentJSON, intentHash string, deadline, updatedAt time.Time) error
 	CloneSuggestionSuccess(ctx context.Context, sourceJobID string, job store.Job, proposalID string) (store.Proposal, error)
 	GetChannelByIntentRef(ctx context.Context, intentRef string) (store.Channel, error)
@@ -358,7 +358,16 @@ func (s *Service) runWorkflow(ctx context.Context, work WorkflowWork) {
 }
 
 func (s *Service) failWorkflow(ctx context.Context, work WorkflowWork, cause error) {
-	if err := s.workflow.Fail(ctx, work, classifyFailure(cause), cause.Error()); err != nil {
+	traceJSON := ""
+	var failure *Failure
+	if errors.As(cause, &failure) {
+		var err error
+		traceJSON, err = failure.TraceJSON()
+		if err != nil {
+			cause = fmt.Errorf("safe failure trace unavailable: %w", err)
+		}
+	}
+	if err := s.workflow.Fail(ctx, work, classifyFailure(cause), cause.Error(), traceJSON); err != nil {
 		s.log.Info("discarding stale or undurable Proposal Job failure",
 			"job", work.JobID, "attempt", work.Attempt, "cause", cause, "err", err)
 		return
@@ -477,8 +486,17 @@ func (s *Service) considerAutomaticApproval(ctx context.Context, job store.Job, 
 }
 
 func (s *Service) failJob(ctx context.Context, job store.Job, cause error) {
+	traceJSON := ""
+	var failure *Failure
+	if errors.As(cause, &failure) {
+		var err error
+		traceJSON, err = failure.TraceJSON()
+		if err != nil {
+			cause = fmt.Errorf("safe failure trace unavailable: %w", err)
+		}
+	}
 	if err := s.store.CommitSuggestionFailure(
-		ctx, job.ID, job.Attempts, cause.Error(), classifyFailure(cause), s.now(),
+		ctx, job.ID, job.Attempts, cause.Error(), classifyFailure(cause), traceJSON, s.now(),
 	); err != nil {
 		if errors.Is(err, store.ErrJobNotRunning) {
 			s.log.Info("discarding stale suggestion failure", "job", job.ID, "attempt", job.Attempts,
@@ -494,6 +512,10 @@ func (s *Service) failJob(ctx context.Context, job store.Job, cause error) {
 }
 
 func classifyFailure(cause error) string {
+	var failure *Failure
+	if errors.As(cause, &failure) {
+		return failure.Code
+	}
 	if errors.Is(cause, ErrNoGroundedTitles) {
 		return FailureCodeNoGroundedTitles
 	}

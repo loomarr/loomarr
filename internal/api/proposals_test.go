@@ -183,7 +183,7 @@ func TestGetProposalJobClassifiesNoGroundedTitlesWithoutLeakingDiagnostic(t *tes
 	}
 	if err := st.CommitSuggestionFailure(context.Background(), "job-grounding", claimed[0].Attempts,
 		"suggester: no grounded titles found for this intent at https://private.invalid",
-		suggest.FailureCodeNoGroundedTitles, now.Add(time.Second)); err != nil {
+		suggest.FailureCodeNoGroundedTitles, `{"version":1,"terminal":"selection_empty"}`, now.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 

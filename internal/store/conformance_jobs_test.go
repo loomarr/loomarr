@@ -281,7 +281,7 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	}
 	failed = claimed[0]
 	if err := s.CommitSuggestionFailure(ctx, failed.ID, failed.Attempts,
-		"provider unavailable", "generation_failed", now.Add(time.Minute)); err != nil {
+		"provider unavailable", "generation_failed", `{"version":1,"terminal":"selection_empty"}`, now.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	gotFailed, err := s.GetJob(ctx, failed.ID)
@@ -291,6 +291,9 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	if gotFailed.Status != "failed" || gotFailed.LastError != "provider unavailable" ||
 		gotFailed.FailureCode != "generation_failed" || gotFailed.Attempts != 1 {
 		t.Fatalf("failed job lifecycle = %+v", gotFailed)
+	}
+	if gotFailed.FailureTraceJSON != `{"version":1,"terminal":"selection_empty"}` {
+		t.Fatalf("failure trace round-trip = %q", gotFailed.FailureTraceJSON)
 	}
 	if attempts, err := s.ListProposalJobAttempts(ctx, failed.ID); err != nil || len(attempts) != 1 ||
 		attempts[0].Status != "failed" || attempts[0].FailureCode != "generation_failed" ||
@@ -332,7 +335,7 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("stale success = %v, want ErrJobNotRunning", err)
 	}
 	if err := s.CommitSuggestionFailure(ctx, stale.ID, stale.Attempts,
-		"old failure", "generation_failed", now.Add(3*time.Minute)); !errors.Is(err, ErrJobNotRunning) {
+		"old failure", "generation_failed", "", now.Add(3*time.Minute)); !errors.Is(err, ErrJobNotRunning) {
 		t.Fatalf("stale failure = %v, want ErrJobNotRunning", err)
 	}
 	winner, err := s.GetJob(ctx, stale.ID)

@@ -27,6 +27,7 @@ type AttemptFailure struct {
 	Work       Work
 	Code       FailureCode
 	Diagnostic string
+	TraceJSON  string
 }
 
 type executionRepository interface {
@@ -80,7 +81,7 @@ func (w *Workflow) Complete(ctx context.Context, work Work, proposal suggest.Pro
 
 // Fail closes the current Attempt while preserving the private diagnostic only
 // for operator logging. Unknown codes collapse to the bounded general failure.
-func (w *Workflow) Fail(ctx context.Context, work Work, code string, diagnostic string) error {
+func (w *Workflow) Fail(ctx context.Context, work Work, code string, diagnostic string, traceJSON ...string) error {
 	if err := validateWork(work); err != nil {
 		return err
 	}
@@ -91,8 +92,13 @@ func (w *Workflow) Fail(ctx context.Context, work Work, code string, diagnostic 
 	if w.execution == nil {
 		return fmt.Errorf("%w: execution repository unavailable", ErrInvalidState)
 	}
+	trace := ""
+	if len(traceJSON) > 0 {
+		trace = traceJSON[0]
+	}
 	if err := w.execution.FailAttempt(ctx, AttemptFailure{
 		Work: work, Code: boundedCode, Diagnostic: diagnostic,
+		TraceJSON: trace,
 	}); err != nil {
 		return fmt.Errorf("fail Proposal Job %q Attempt %d: %w", work.JobID, work.Attempt, err)
 	}

@@ -236,7 +236,14 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 				temp = temp / 2
 				continue
 			}
-			return prop, buildErr
+			if buildErr != nil {
+				if errors.Is(buildErr, ErrNoGroundedTitles) {
+					trace.Terminal = FailureSelectionEmpty
+					return Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, buildErr)
+				}
+				return Proposal{}, NewFailure(FailureProvider, trace, buildErr)
+			}
+			return prop, nil
 		}
 		if repairs >= maxRepairs {
 			return Proposal{}, fmt.Errorf("suggester: model output not valid after %d repairs: %w", maxRepairs, perr)

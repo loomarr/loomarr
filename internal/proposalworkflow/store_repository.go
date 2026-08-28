@@ -24,7 +24,7 @@ type Store interface {
 	RequeueSuggestionJob(context.Context, string, int, string, string, string, time.Time, time.Time) error
 	ClaimDueJobs(context.Context, time.Time, time.Duration, int) ([]store.Job, error)
 	CommitSuggestionSuccess(context.Context, string, int, store.Proposal, time.Time) error
-	CommitSuggestionFailure(context.Context, string, int, string, string, time.Time) error
+	CommitSuggestionFailure(context.Context, string, int, string, string, string, time.Time) error
 }
 
 func (r *storeRepository) ListIDs(ctx context.Context, ownerID string, all bool, limit int) ([]string, error) {
@@ -91,6 +91,9 @@ func (r *storeRepository) Load(ctx context.Context, jobID string) (Record, error
 	if record.Status == JobFailed {
 		record.FailureCode = FailureCode(snapshot.Job.FailureCode)
 		record.Diagnostic = snapshot.Job.LastError
+		if snapshot.Job.FailureTraceJSON != "" {
+			_ = json.Unmarshal([]byte(snapshot.Job.FailureTraceJSON), &record.FailureTrace)
+		}
 	}
 	return record, nil
 }
@@ -147,7 +150,7 @@ func (r *storeRepository) CompleteAttempt(ctx context.Context, completion Comple
 
 func (r *storeRepository) FailAttempt(ctx context.Context, failure AttemptFailure) error {
 	if err := r.store.CommitSuggestionFailure(
-		ctx, failure.Work.JobID, failure.Work.Attempt, failure.Diagnostic, string(failure.Code), r.now(),
+		ctx, failure.Work.JobID, failure.Work.Attempt, failure.Diagnostic, string(failure.Code), failure.TraceJSON, r.now(),
 	); err != nil {
 		if errors.Is(err, store.ErrJobNotRunning) {
 			return ErrStaleAttempt

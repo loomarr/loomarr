@@ -244,6 +244,9 @@ func TestWorker_NoGroundedTitlesPersistsTypedFailure(t *testing.T) {
 			if job.FailureCode != suggest.FailureCodeNoGroundedTitles {
 				t.Fatalf("failure code = %q, want %q", job.FailureCode, suggest.FailureCodeNoGroundedTitles)
 			}
+			if job.FailureTraceJSON == "" || !strings.Contains(job.FailureTraceJSON, `"selection_empty"`) {
+				t.Fatalf("failure trace = %q", job.FailureTraceJSON)
+			}
 			attempts, listErr := st.ListProposalJobAttempts(context.Background(), jobID)
 			if listErr != nil || len(attempts) != 1 || attempts[0].FailureCode != suggest.FailureCodeNoGroundedTitles {
 				t.Fatalf("failed Attempt history = %+v, %v", attempts, listErr)
@@ -252,7 +255,7 @@ func TestWorker_NoGroundedTitlesPersistsTypedFailure(t *testing.T) {
 			if inspectErr != nil {
 				t.Fatalf("Inspect failed Journey: %v", inspectErr)
 			}
-			if journey.Milestone != proposalworkflow.MilestoneFailed || journey.Failure == nil || journey.Failure.Code != proposalworkflow.FailureNoGroundedTitles {
+			if journey.Milestone != proposalworkflow.MilestoneFailed || journey.Failure == nil || journey.Failure.Code != proposalworkflow.FailureNoGroundedTitles || journey.Failure.Trace.Terminal != suggest.FailureSelectionEmpty {
 				t.Fatalf("failed Journey = %+v", journey)
 			}
 			return
@@ -595,7 +598,7 @@ func (s *lifecycleErrorStore) CommitSuggestionFailure(
 	ctx context.Context,
 	jobID string,
 	expectedAttempt int,
-	cause, failureCode string,
+	cause, failureCode, failureTraceJSON string,
 	updatedAt time.Time,
 ) error {
 	select {
@@ -605,7 +608,7 @@ func (s *lifecycleErrorStore) CommitSuggestionFailure(
 	if s.failureErr != nil {
 		return s.failureErr
 	}
-	return s.Store.CommitSuggestionFailure(ctx, jobID, expectedAttempt, cause, failureCode, updatedAt)
+	return s.Store.CommitSuggestionFailure(ctx, jobID, expectedAttempt, cause, failureCode, failureTraceJSON, updatedAt)
 }
 
 func TestWorker_UndurableFailureEmitsNoTerminalEvent(t *testing.T) {
