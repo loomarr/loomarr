@@ -1,3 +1,4 @@
+import type { EpisodeSelection } from "@loomarr/api/models/episodeSelection";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render as rtlRender, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -53,6 +54,50 @@ const stubApi = () => {
       }
       if (typeof url === "string" && url.includes("/v1/proposals")) {
         return Promise.resolve(jsonResponse({ proposals: [proposal] }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    }),
+  );
+  return approvals;
+};
+
+const stubEpisodePreviewApi = (preview: EpisodeSelection) => {
+  const approvals: unknown[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string, init?: RequestInit) => {
+      if (typeof url === "string" && url.includes("/approve")) {
+        approvals.push(init?.body ? JSON.parse(init.body as string) : undefined);
+        return Promise.resolve(
+          jsonResponse({ status: "approved", enqueued: 1, channelId: "channel-preview" }),
+        );
+      }
+      if (typeof url === "string" && url.includes("/v1/search")) {
+        return Promise.resolve(
+          jsonResponse({
+            candidates: [
+              { name: "Added Series", year: 1989, mediaType: "series", tmdbId: 456, inLibrary: false },
+            ],
+          }),
+        );
+      }
+      if (typeof url === "string" && url.includes("/v1/proposals")) {
+        return Promise.resolve(
+          jsonResponse({
+            proposals: [
+              {
+                id: "p-preview",
+                status: "submitted",
+                episodeSelectionPreview: preview,
+                proposal: {
+                  intent: { description: "Movie-only proposal before a series is added" },
+                  lineup: [{ name: "Heat", mediaType: "movie", tmdbId: 949, inLibrary: true }],
+                  acquisitions: [],
+                },
+              },
+            ],
+          }),
+        );
       }
       return Promise.resolve(jsonResponse({}));
     }),
@@ -118,5 +163,26 @@ describe("ApprovalQueue — edit before approve (V25b)", () => {
 
     await waitFor(() => expect(approvals).toHaveLength(1));
     expect(approvals[0]).toEqual({});
+  });
+
+  it.each<[EpisodeSelection, string]>([
+    [{ mode: "highlights" }, "Curated highlights"],
+    [{ mode: "holiday", holidays: ["christmas"] }, "christmas episodes"],
+    [{ mode: "complete" }, "All episodes"],
+  ])("labels a search-added series from server preview %o", async (preview, label) => {
+    const approvals = stubEpisodePreviewApi(preview);
+    render(<ApprovalQueue />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Review & edit picks/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Add a title/ }));
+    await userEvent.type(screen.getByRole("combobox"), "added series");
+    await userEvent.click(await screen.findByText("Added Series"));
+
+    expect(screen.getByText(label)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /^Approve$/ }));
+    await waitFor(() => expect(approvals).toHaveLength(1));
+    expect(approvals[0]).toEqual({
+      add: [{ name: "Added Series", mediaType: "series", inLibrary: false, year: 1989, tmdbId: 456 }],
+    });
   });
 });

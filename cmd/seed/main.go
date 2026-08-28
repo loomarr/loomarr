@@ -410,8 +410,8 @@ func (a seedAvailability) Resolve(key provision.Key) (string, int64, bool) {
 }
 
 // No seeded series, so episode expansion never yields anything (movies only).
-func (a seedAvailability) ResolveEpisodes(provision.Key) ([]schedule.ResolvedProgram, bool) {
-	return nil, false
+func (a seedAvailability) ResolveEpisodes(provision.Key) schedule.EpisodeResolution {
+	return schedule.EpisodeResolution{}
 }
 
 // pick pairs an in-library ProposalItem with its runtime, which ProposalItem itself

@@ -54,8 +54,8 @@ func (a fillerAdmissionAvailability) Resolve(key provision.Key) (string, int64, 
 	return id, time.Hour.Milliseconds(), ok
 }
 
-func (fillerAdmissionAvailability) ResolveEpisodes(provision.Key) ([]schedule.ResolvedProgram, bool) {
-	return nil, false
+func (fillerAdmissionAvailability) ResolveEpisodes(provision.Key) schedule.EpisodeResolution {
+	return schedule.EpisodeResolution{}
 }
 
 // The score rung and the legacy tag sweep both file through fillerTagStoreAdapter. That admission

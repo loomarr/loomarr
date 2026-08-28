@@ -5431,6 +5431,9 @@ components:
           type: string
         denyReason:
           type: string
+        episodeSelectionPreview:
+          $ref: "#/components/schemas/EpisodeSelection"
+          description: Server-derived episode policy applied to any series added before approval
         id:
           type: string
         jobId:

@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/episodeevidence"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -61,11 +62,12 @@ type ScheduleEpisodeEvidence struct {
 // snapshot evidence and the live Library adapter. Source-field differences are
 // handled before this seam; scheduler facts and defensive copies are not.
 func (e ScheduleEpisodeEvidence) resolvedProgram() schedule.ResolvedProgram {
+	evidence := episodeevidence.Sanitize(e.CommunityRating, e.Overview, e.Tags)
 	return schedule.ResolvedProgram{
 		LibraryItemID: e.LibraryItemID, Title: e.Title, DurationMs: e.DurationMs,
 		Season: e.Season, Episode: e.Episode, EpisodeEnd: e.EpisodeEnd, Year: e.Year,
 		OfficialRating:  schedule.NormalizeRating(e.OfficialRating),
-		CommunityRating: e.CommunityRating, Overview: e.Overview, Tags: slices.Clone(e.Tags),
+		CommunityRating: evidence.CommunityRating, Overview: evidence.Overview, Tags: evidence.Tags,
 	}
 }
 

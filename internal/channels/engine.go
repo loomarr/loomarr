@@ -336,8 +336,11 @@ type storeAvailability struct {
 	mu        sync.Mutex
 	titleMemo map[provision.Key]titleLookup
 	durMemo   map[string]memoEntry[int64]
-	epsMemo   map[string]memoEntry[[]schedule.ResolvedProgram]
-	now       func() time.Time
+	epsMemo   map[string]memoEntry[schedule.EpisodeResolution]
+	// episodeMaxAge keeps cache policy inside this adapter. Nil/zero retains the
+	// documented default while composition can supply the live setting.
+	episodeMaxAge func() time.Duration
+	now           func() time.Time
 }
 
 // memoTTL bounds every memoized answer. Long enough to collapse the repeated resolves within
@@ -398,9 +401,18 @@ func NewStoreAvailability(ctx context.Context, st store.Store, dur DurationResol
 		store: st, ctx: ctx, duration: dur, episodes: eps,
 		titleMemo: map[provision.Key]titleLookup{},
 		durMemo:   map[string]memoEntry[int64]{},
-		epsMemo:   map[string]memoEntry[[]schedule.ResolvedProgram]{},
+		epsMemo:   map[string]memoEntry[schedule.EpisodeResolution]{},
 		now:       time.Now,
 	}
+}
+
+// WithEpisodeMaxAge supplies the live cache-age policy without exposing cache
+// mechanics to schedule.Availability callers or their test adapters.
+func WithEpisodeMaxAge(a Availability, maxAge func() time.Duration) Availability {
+	if sa, ok := a.(*storeAvailability); ok {
+		sa.episodeMaxAge = maxAge
+	}
+	return a
 }
 
 // WithBulkDurations attaches the bulk duration resolver used to prewarm the duration memo
@@ -560,13 +572,13 @@ func (s *storeAvailability) Resolve(key provision.Key) (string, int64, bool) {
 // enumerates the show's episodes from the library. Returns (nil, false) for a
 // non-series, an unavailable series, or when no episode resolver is wired — the
 // series then falls back to a pending slot upstream.
-func (s *storeAvailability) ResolveEpisodes(key provision.Key) ([]schedule.ResolvedProgram, bool) {
+func (s *storeAvailability) ResolveEpisodes(key provision.Key) schedule.EpisodeResolution {
 	if !key.IsSeries() || s.episodes == nil {
-		return nil, false
+		return schedule.EpisodeResolution{}
 	}
 	rec, err := s.title(key)
 	if err != nil || rec.State != provision.Available || rec.LibraryID == "" {
-		return nil, false
+		return schedule.EpisodeResolution{}
 	}
 
 	// THREE tiers, cheapest first. Enumerating a show is the most expensive library call there
@@ -584,17 +596,25 @@ func (s *storeAvailability) ResolveEpisodes(key provision.Key) ([]schedule.Resol
 	s.mu.Lock()
 	if hit, ok := s.epsMemo[rec.LibraryID]; ok && now.Before(hit.exp) {
 		s.mu.Unlock()
-		return hit.val, len(hit.val) > 0
+		return hit.val
 	}
 	s.mu.Unlock()
 
 	// Tier 2. A store read replaces a media-server round-trip: this is the whole point of the
 	// cache. A cached EMPTY list is a HIT, not a miss — ErrNotFound is the only "never asked",
 	// so a genuinely-empty show does not re-enumerate on every request.
+	var cached []schedule.ResolvedProgram
+	var hasCached bool
+	var cacheFresh bool
 	if s.store != nil {
 		if se, err := s.store.GetSeriesEpisodes(s.ctx, rec.LibraryID); err == nil {
-			s.memoEpisodes(rec.LibraryID, se.Episodes, now)
-			return se.Episodes, len(se.Episodes) > 0
+			cached, hasCached = se.Episodes, true
+			cacheFresh = !s.episodeCacheAged(se.FetchedAt, now)
+			if cacheFresh {
+				result := schedule.EpisodeResolution{Programs: cached}
+				s.memoEpisodes(rec.LibraryID, result, now)
+				return result
+			}
 		}
 	}
 
@@ -602,7 +622,14 @@ func (s *storeAvailability) ResolveEpisodes(key provision.Key) ([]schedule.Resol
 	// answer back, so the next request and the next restart both take tier 2.
 	eps, err := s.episodes(s.ctx, rec.LibraryID)
 	if err != nil {
-		eps = nil
+		if hasCached && len(cached) > 0 {
+			result := schedule.EpisodeResolution{Programs: cached, EditorialUnavailable: true}
+			s.memoEpisodes(rec.LibraryID, result, now)
+			return result
+		}
+		result := schedule.EpisodeResolution{}
+		s.memoEpisodes(rec.LibraryID, result, now)
+		return result
 	} else if s.store != nil {
 		// Best-effort: a write failure costs a re-fetch next time, never correctness, so it
 		// must not fail the resolve that is otherwise complete.
@@ -611,18 +638,26 @@ func (s *storeAvailability) ResolveEpisodes(key provision.Key) ([]schedule.Resol
 		})
 	}
 
-	s.memoEpisodes(rec.LibraryID, eps, now)
-	if len(eps) == 0 {
-		return nil, false
+	result := schedule.EpisodeResolution{Programs: eps}
+	s.memoEpisodes(rec.LibraryID, result, now)
+	return result
+}
+
+func (s *storeAvailability) episodeCacheAged(fetchedAt, now time.Time) bool {
+	age := 24 * time.Hour
+	if s.episodeMaxAge != nil {
+		if configured := s.episodeMaxAge(); configured > 0 {
+			age = configured
+		}
 	}
-	return eps, true
+	return fetchedAt.IsZero() || !fetchedAt.After(now.Add(-age))
 }
 
 // memoEpisodes records an episode list in the in-process memo. The empty result is memoized
 // too — see itemDuration for why remembering a miss matters as much as remembering a hit.
-func (s *storeAvailability) memoEpisodes(libraryID string, eps []schedule.ResolvedProgram, now time.Time) {
+func (s *storeAvailability) memoEpisodes(libraryID string, resolution schedule.EpisodeResolution, now time.Time) {
 	s.mu.Lock()
-	s.epsMemo[libraryID] = memoEntry[[]schedule.ResolvedProgram]{val: eps, exp: now.Add(memoTTL)}
+	s.epsMemo[libraryID] = memoEntry[schedule.EpisodeResolution]{val: resolution, exp: now.Add(memoTTL)}
 	s.mu.Unlock()
 }
 
