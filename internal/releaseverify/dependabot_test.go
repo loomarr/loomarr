@@ -91,6 +91,37 @@ func TestDependabotFrontendGroupsRespectCompatibilityBoundaries(t *testing.T) {
 	assertNoGroupOverlap(t, frontend)
 }
 
+func TestDependabotDockerNodeMajorHold(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", ".github", "dependabot.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config dependabotConfig
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		t.Fatal(err)
+	}
+
+	var dockerGroups map[string]dependabotGroup
+	var dockerIgnores []dependabotIgnore
+	dockerUpdateCount := 0
+	for _, update := range config.Updates {
+		if update.PackageEcosystem == "docker" && update.Directory == "/" {
+			dockerUpdateCount++
+			dockerGroups = update.Groups
+			dockerIgnores = update.Ignore
+		}
+	}
+	if dockerUpdateCount != 1 {
+		t.Fatalf("expected exactly one root docker Dependabot update, found %d", dockerUpdateCount)
+	}
+	requireExactSet(t, "docker group names", keys(dockerGroups), []string{"docker-node"})
+	requireExactSet(t, "docker-node patterns", dockerGroups["docker-node"].Patterns, []string{"node"})
+	requireExactSet(t, "docker-node exclusions", dockerGroups["docker-node"].ExcludePatterns, nil)
+	requireExactSet(t, "docker-node update types", dockerGroups["docker-node"].UpdateTypes, []string{"minor", "patch"})
+	requireExactSet(t, "docker major-update ignores", majorIgnores(dockerIgnores), []string{"node"})
+	assertNoGroupOverlap(t, dockerGroups)
+}
+
 func keys(groups map[string]dependabotGroup) []string {
 	result := make([]string, 0, len(groups))
 	for name := range groups {
