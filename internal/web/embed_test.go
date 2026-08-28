@@ -8,9 +8,37 @@ import (
 	"net/http/httptest"
 	"os/exec"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
 )
+
+func TestEmbeddedPrecompressedIsCached(t *testing.T) {
+	assets := fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte("<h1>Loomarr</h1>")},
+		"app.js":     &fstest.MapFile{Data: []byte("immutable asset")},
+	}
+	var calls atomic.Int32
+	cache := compressedCache{compress: func(files fs.FS) map[string][]byte {
+		calls.Add(1)
+		return precompress(files)
+	}}
+	const constructions = 8
+	results := make([]http.Handler, constructions)
+	var group sync.WaitGroup
+	for i := range results {
+		group.Add(1)
+		go func(i int) { defer group.Done(); results[i] = handlerForCached(assets, &cache) }(i)
+	}
+	group.Wait()
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("compressor calls = %d, want 1", got)
+	}
+	if results[0] == nil {
+		t.Fatal("first handler was not constructed")
+	}
+}
 
 // `//go:embed all:dist` does not compile unless the directory exists, so .gitkeep is the
 // one committed file in there (.gitignore un-ignores exactly that path). Vite's
