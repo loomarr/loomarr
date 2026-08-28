@@ -36,7 +36,7 @@ agent-gc: ## audit worktrees; APPLY=1 retires only exact clean merged PR heads
 bootstrap: ## build the Rust worker and prepare frontend, isolated directories, and dev identity
 	@./scripts/agent.sh bootstrap
 
-doctor: ## report toolchain drift, worktrees, ports, caches, and misplaced artifacts
+doctor: ## verify toolchain and Docker readiness; report worktrees, ports, caches, and artifacts
 	@./scripts/agent.sh doctor
 
 agent-harness-test: agent-assets-verify ## regression-test coordination, worktree isolation, and shared-output claims

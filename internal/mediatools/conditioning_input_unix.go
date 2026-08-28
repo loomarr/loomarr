@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"golang.org/x/sys/unix"
@@ -18,6 +19,7 @@ func openConditioningRegularFile(path string) (*os.File, error) {
 	if !filepath.IsAbs(clean) {
 		return nil, fmt.Errorf("conditioning media path is not absolute")
 	}
+	clean = normalizeDarwinSystemAlias(clean)
 	// Hold each opened directory while resolving the next component. An ancestor therefore cannot
 	// be exchanged for a symlink between validation and the final openat call.
 	directoryFD, err := unix.Open(string(filepath.Separator), unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY, 0)
@@ -45,4 +47,21 @@ func openConditioningRegularFile(path string) (*os.File, error) {
 		directoryFD = nextFD
 	}
 	return os.NewFile(uintptr(directoryFD), clean), nil
+}
+
+// macOS exposes these stable system roots as symlinks into /private. Resolve only those OS-owned
+// aliases before descriptor traversal; arbitrary ancestor symlinks remain forbidden.
+func normalizeDarwinSystemAlias(path string) string {
+	if runtime.GOOS != "darwin" {
+		return path
+	}
+	for _, alias := range [][2]string{{"/var", "/private/var"}, {"/tmp", "/private/tmp"}, {"/etc", "/private/etc"}} {
+		if path == alias[0] {
+			return alias[1]
+		}
+		if strings.HasPrefix(path, alias[0]+string(filepath.Separator)) {
+			return alias[1] + strings.TrimPrefix(path, alias[0])
+		}
+	}
+	return path
 }
