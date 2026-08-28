@@ -307,12 +307,153 @@ classify() {
         *) select_gate contracts ;;
       esac
       ;;
+    mk/agent.mk)
+      known=true
+      select_gate contracts
+      select_gate agent
+      select_gate policy
+      ;;
+    mk/check.mk)
+      known=true
+      select_gate contracts
+      select_gate go
+      select_gate go_full
+      select_gate rust
+      select_gate postgres
+      select_gate policy
+      ;;
+    mk/eval.mk)
+      known=true
+      select_gate contracts
+      select_gate go
+      select_gate policy
+      ;;
+    mk/build.mk)
+      known=true
+      select_gate contracts
+      select_gate go
+      select_gate rust
+      select_gate image
+      select_gate agent
+      select_gate policy
+      ;;
+    mk/store.mk)
+      known=true
+      select_gate contracts
+      select_gate go
+      select_gate postgres
+      select_gate policy
+      ;;
+    mk/contracts.mk)
+      known=true
+      select_gate contracts
+      select_gate go
+      select_gate docs
+      select_gate policy
+      ;;
+    mk/docs.mk)
+      known=true
+      select_gate docs
+      select_gate policy
+      ;;
+    mk/frontend.mk)
+      known=true
+      select_gate web
+      select_gate clients
+      select_all_native_clients
+      select_gate visual
+      select_gate e2e
+      select_gate tuner
+      select_gate image
+      select_gate policy
+      ;;
+    mk/smoke.mk)
+      known=true
+      select_gate contracts
+      select_gate policy
+      ;;
+    mk/android.mk)
+      known=true
+      select_gate android
+      select_gate policy
+      ;;
     Makefile)
       known=true
       select_all
       ;;
     .github/workflows/ci.yml)
       known=true
+      select_gate policy
+      ;;
+    .github/workflows/ci-agent.yml)
+      known=true
+      select_gate agent
+      select_gate policy
+      ;;
+    .github/workflows/ci-rust-contracts.yml|.github/workflows/ci-image-certification.yml)
+      known=true
+      select_gate rust
+      select_gate policy
+      ;;
+    .github/workflows/ci-go-contracts.yml)
+      known=true
+      select_gate contracts
+      select_gate policy
+      ;;
+    .github/workflows/ci-go.yml)
+      known=true
+      select_gate go
+      select_gate policy
+      ;;
+    .github/workflows/ci-postgres.yml)
+      known=true
+      select_gate postgres
+      select_gate policy
+      ;;
+    .github/workflows/ci-frontend.yml)
+      known=true
+      select_gate web
+      select_gate policy
+      ;;
+    .github/workflows/ci-clients.yml)
+      known=true
+      select_gate clients
+      select_gate policy
+      ;;
+    .github/workflows/ci-apple-mobile.yml)
+      known=true
+      select_gate apple_mobile
+      select_gate policy
+      ;;
+    .github/workflows/ci-apple-tv.yml)
+      known=true
+      select_gate apple_tv
+      select_gate policy
+      ;;
+    .github/workflows/ci-playwright.yml)
+      known=true
+      select_gate visual
+      select_gate e2e
+      select_gate policy
+      ;;
+    .github/workflows/ci-tuner.yml)
+      known=true
+      select_gate tuner
+      select_gate policy
+      ;;
+    .github/workflows/ci-image.yml)
+      known=true
+      select_gate image
+      select_gate policy
+      ;;
+    .github/workflows/ci-docs.yml)
+      known=true
+      select_gate docs
+      select_gate policy
+      ;;
+    .github/workflows/ci-android.yml)
+      known=true
+      select_gate android
       select_gate policy
       ;;
     .github/workflows/*)

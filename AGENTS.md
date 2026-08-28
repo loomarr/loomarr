@@ -28,6 +28,11 @@ make agent-baseline
 `agent-status` is the cross-harness roster. A product's own agent-list command is supplementary; it
 cannot see agents running in other products. Before starting, resolve any overlapping task or claim.
 
+Supervised workers receive bounded, rotating task roles and return control when the brief is done;
+they do not self-assign follow-up work. Record model and reasoning choices when the harness exposes
+them. Change those choices only at assignment boundaries, and never let them expand the worker's
+authority, scope, claims, tools, or acceptance criteria.
+
 Use claims for scarce outputs whose conflicts are expensive:
 
 - `openapi-client` — `api/openapi.yaml` and the generated orval client
@@ -164,4 +169,5 @@ One worktree owns implementation and delivery. Use subagents for independent res
 designs, and fresh-context review; they report to the owner unless a separate editing worktree has a
 clear file seam, interface seam, claim set, and merge order. For dependent branches, record
 `DEPENDS_ON` and stack with `BASE=<dependency-branch>`. See `docs/dev/agents.md` and the curated
-catalog in `docs/dev/skills.md`.
+catalog in `docs/dev/skills.md`. When asked to supervise or coordinate multiple agents, follow
+`.agents/workflows/supervise.md`.

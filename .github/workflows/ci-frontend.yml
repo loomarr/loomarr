@@ -1,0 +1,51 @@
+name: CI / Frontend
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.26"
+  NODE_VERSION: "22"
+
+jobs:
+  run:
+    name: Frontend — biome + typecheck + unit + build (${{ matrix.shard }}/${{ strategy.job-total }})
+    runs-on: ubuntu-latest
+    # `make fe` was 394s and this job 7.0 min. The jsdom unit suite is the bulk of it ON THIS
+    # RUNNER, which is the part worth spelling out: locally the whole suite is 33.5s (measured
+    # 2026-08-09, 1307 tests over 166 files), and every other stage is small — biome 1.9s,
+    # typecheck 3.6s, vite build 5.0s, storybook 10.3s. What makes it the bulk here is cores.
+    # vitest is the most parallelism-hungry stage in the chain, and a 4-core runner is roughly
+    # a sixth of the dev box it was measured on, so it degrades far more than the rest.
+    #
+    # Everything except the unit tests re-runs in both shards. That is the same trade as the Go
+    # job: parallel, so it costs no wall clock, and it keeps CI running the same `make fe` a
+    # developer runs rather than a bespoke decomposition of it.
+    strategy:
+      fail-fast: false # one shard's failures must not hide the others'
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Enable pnpm (pinned via web/package.json packageManager)
+        run: corepack enable
+      - name: Cache pnpm store
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+      - run: make fe-install
+      - run: make fe FE_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}
+      # Whole-repo and shard-independent — diffing the same generated token artifacts in every
+      # shard would prove the same thing N times. Shard 1, matching the drift checks in the Go
+      # job and e2e in the Playwright job.
+      - name: Token artifacts are committed and current
+        if: matrix.shard == 1
+        run: make fe-tokens-verify
