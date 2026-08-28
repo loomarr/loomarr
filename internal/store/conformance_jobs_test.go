@@ -200,6 +200,7 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
 	job := sampleJob("job-success", "hash-success", now, now)
+	job.FailureTraceJSON = `{"version":1,"terminal":"budget_exhausted"}`
 	if err := s.CreateJob(ctx, job); err != nil {
 		t.Fatal(err)
 	}
@@ -221,6 +222,9 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	}
 	if gotJob.Status != "done" || !gotJob.UpdatedAt.Equal(now.Add(time.Minute)) {
 		t.Fatalf("completed job = status %q updated %v", gotJob.Status, gotJob.UpdatedAt)
+	}
+	if gotJob.FailureTraceJSON != "" {
+		t.Fatalf("successful job retained failure trace: %q", gotJob.FailureTraceJSON)
 	}
 	gotProposal, err := s.GetProposal(ctx, proposal.ID)
 	if err != nil {
@@ -446,6 +450,7 @@ func testCloneSuggestionSuccess(t *testing.T, newStore NewStoreFunc) {
 	cloneJob := sampleJob("job-clone", source.IntentHash, now.Add(time.Minute), now.Add(time.Minute))
 	cloneJob.Status = "done"
 	cloneJob.CreatedBy = "bob"
+	cloneJob.FailureTraceJSON = `{"version":1,"terminal":"provider_failure"}`
 	clone, err := s.CloneSuggestionSuccess(ctx, source.ID, cloneJob, "proposal-clone")
 	if err != nil {
 		t.Fatal(err)
@@ -473,6 +478,9 @@ func testCloneSuggestionSuccess(t *testing.T, newStore NewStoreFunc) {
 	}
 	if gotJob.Status != "done" || gotJob.CreatedBy != "bob" {
 		t.Fatalf("cloned job = %+v", gotJob)
+	}
+	if gotJob.FailureTraceJSON != "" {
+		t.Fatalf("cloned job inherited failed-job trace: %q", gotJob.FailureTraceJSON)
 	}
 
 	// A source job without a proposal is not a cache hit, and the attempted clone

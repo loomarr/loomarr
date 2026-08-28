@@ -14,7 +14,18 @@ type Failure struct {
 	Cause error
 }
 
-func (f *Failure) Error() string { return fmt.Sprintf("suggestion failed: %s", f.Code) }
+func (f *Failure) Error() string {
+	message := map[string]string{
+		FailureSelectionEmpty:       "no grounded titles",
+		FailureCodeNoGroundedTitles: "no grounded titles",
+		FailureBudgetExhausted:      "suggestion budget exhausted",
+		FailureProvider:             "provider failure",
+	}[f.Code]
+	if message == "" {
+		message = "suggestion failure"
+	}
+	return fmt.Sprintf("suggestion failed: %s", message)
+}
 func (f *Failure) Unwrap() error { return f.Cause }
 
 func (f *Failure) TraceJSON() (string, error) {

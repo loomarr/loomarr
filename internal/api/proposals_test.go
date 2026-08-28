@@ -241,7 +241,7 @@ func TestGetProposalProjectsPersistedDecisionTraceForAuthorizedReader(t *testing
 		t.Fatal(err)
 	}
 	resp := do(t, srv, http.MethodGet, "/v1/proposals/trace-proposal", adminToken, "")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET proposal = %d, want 200", resp.StatusCode)
 	}

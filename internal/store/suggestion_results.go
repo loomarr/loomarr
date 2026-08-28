@@ -215,9 +215,9 @@ func (s *sqlStore) CloneSuggestionSuccess(
 		`INSERT INTO jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
 		                    workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
-		job.ID, job.Kind, job.Status, job.IntentJSON, job.IntentHash, job.CreatedBy, job.LastError, job.FailureCode,
+		job.ID, job.Kind, job.Status, job.IntentJSON, job.IntentHash, job.CreatedBy, "", "",
 		workflowVersionForCreate(job.WorkflowVersion), job.ReachedLive, epoch(job.Deadline), job.Attempts,
-		epoch(job.CreatedAt), epoch(job.UpdatedAt), job.FailureTraceJSON); err != nil {
+		epoch(job.CreatedAt), epoch(job.UpdatedAt), ""); err != nil {
 		return Proposal{}, fmt.Errorf("clone suggestion job %s: create job: %w", job.ID, err)
 	}
 
