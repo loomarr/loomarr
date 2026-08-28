@@ -27,6 +27,26 @@ func TestFailureTraceJSONFailsClosedAndCopiesCandidates(t *testing.T) {
 	if _, err := malformedFailure.TraceJSON(); err != nil {
 		t.Fatalf("keyless malformed evidence rejected: %v", err)
 	}
+	for name, trace := range map[string]suggest.DecisionTrace{
+		"keyed malformed evidence":     {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:1", Disposition: suggest.DispositionValidationDropped, Reason: suggest.ReasonMalformedID}}},
+		"keyful not-surfaced evidence": {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:1", Disposition: suggest.DispositionValidationDropped, Reason: suggest.ReasonNotSurfaced}}},
+	} {
+		failureErr := suggest.NewFailure("selection_empty", trace, nil)
+		var traceFailure *suggest.Failure
+		if !errors.As(failureErr, &traceFailure) {
+			t.Fatal("trace outcome lost typed failure")
+		}
+		serializedErr := func() error {
+			_, err := traceFailure.TraceJSON()
+			return err
+		}()
+		if name == "keyed malformed evidence" && serializedErr == nil {
+			t.Fatal("keyed malformed evidence unexpectedly serialized")
+		}
+		if name == "keyful not-surfaced evidence" && serializedErr != nil {
+			t.Fatalf("keyful not-surfaced evidence rejected: %v", serializedErr)
+		}
+	}
 	for name, bad := range map[string]suggest.DecisionTrace{
 		"version":     {Version: 2},
 		"bounds":      {Version: 1, SurfacedTotal: 65, RecordedTotal: 65, Truncated: false},

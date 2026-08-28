@@ -64,10 +64,10 @@ func ValidateDecisionTrace(trace DecisionTrace) error {
 				return fmt.Errorf("invalid %s", name)
 			}
 		}
-		if c.Disposition == DispositionValidationDropped && c.Reason == ReasonMalformedID && c.Key == "" {
-			if c.Name != "" || c.Source != "" || c.Ownership != "" || c.Rank != (RankTuple{}) {
-				return fmt.Errorf("malformed evidence carries identity or rank")
-			}
+		if c.Disposition == DispositionValidationDropped && c.Reason == ReasonMalformedID && c.Key == "" && c.Name == "" && c.Source == "" && c.Ownership == "" && c.Rank == (RankTuple{}) {
+			continue
+		}
+		if c.Disposition == DispositionValidationDropped && c.Reason == ReasonNotSurfaced && c.Key != "" && c.Name == "" && c.Source == "" && c.Ownership == "" && c.Rank == (RankTuple{}) {
 			continue
 		}
 		if c.Ownership != "library" && c.Ownership != "acquisition" {

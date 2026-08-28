@@ -518,6 +518,9 @@ func (s *Service) failJob(ctx context.Context, job store.Job, cause error) {
 func classifyFailure(cause error) string {
 	var failure *Failure
 	if errors.As(cause, &failure) {
+		if errors.Is(failure.Cause, context.DeadlineExceeded) || errors.Is(failure.Cause, context.Canceled) {
+			return FailureCodeGenerationFailed
+		}
 		return failure.Code
 	}
 	if errors.Is(cause, ErrNoGroundedTitles) {
