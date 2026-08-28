@@ -50,19 +50,19 @@ type reusableWorkflowCallerAuthority struct {
 
 func reusableWorkflowCallerAuthorityEntries() map[string]reusableWorkflowCallerAuthority {
 	return map[string]reusableWorkflowCallerAuthority{
-		"agent-harness-macos": {name: "Agent harness (macOS)", condition: "github.event_name != 'pull_request' && needs.changes.outputs.impact_agent == 'true'"},
+		"agent-harness-macos": {name: "Agent harness (macOS)", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_agent == 'true'"},
 		"rust-contracts":      {name: "Rust — repository contracts", condition: "needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true'"},
 		"go-contracts":        {name: "Go — repository contracts", condition: "needs.changes.outputs.impact_contracts == 'true' || needs.changes.outputs.release_candidate == 'true'"},
-		"image-certification": {name: "Rust image — runtime certification", condition: "needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true'"},
-		"go":                  {name: "Go — race-policy tests", condition: "needs.changes.outputs.impact_go == 'true'"},
-		"store-postgres":      {name: "Store conformance (Postgres)", condition: "needs.changes.outputs.impact_postgres == 'true'"},
+		"image-certification": {name: "Rust image — runtime certification", condition: "needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true')"},
+		"go":                  {name: "Go — race-policy tests", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_go == 'true'"},
+		"store-postgres":      {name: "Store conformance (Postgres)", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_postgres == 'true'"},
 		"frontend":            {name: "Frontend — biome + typecheck + unit + build", condition: "needs.changes.outputs.impact_web == 'true'"},
 		"clients":             {name: "Shared clients — lint + test + browser/iOS/Android/TV bundles", condition: "needs.changes.outputs.impact_clients == 'true'"},
-		"apple-mobile":        {name: "Apple mobile — native build + launch", condition: "github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_mobile == 'true'"},
-		"apple-tv":            {name: "Apple TV — native build + launch", condition: "github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_tv == 'true'"},
-		"playwright":          {name: "Playwright — visual + a11y + e2e", condition: "needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true'"},
-		"tuner":               {name: "Tuner — Chromium + Firefox + WebKit", condition: "github.event_name != 'pull_request' && needs.changes.outputs.impact_tuner == 'true'"},
-		"image":               {name: "Image — release build", condition: "needs.changes.outputs.impact_image == 'true'"},
+		"apple-mobile":        {name: "Apple mobile — native build + launch", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_mobile == 'true'"},
+		"apple-tv":            {name: "Apple TV — native build + launch", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_tv == 'true'"},
+		"playwright":          {name: "Playwright — visual + a11y + e2e", condition: "needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true')"},
+		"tuner":               {name: "Tuner — Chromium + Firefox + WebKit", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'"},
+		"image":               {name: "Image — release build", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_image == 'true'"},
 		"docs":                {name: "Docs — links + structure + prose", condition: "needs.changes.outputs.impact_docs == 'true'"},
 		"android":             {name: "Android TV — lint + unit + assemble", condition: "needs.changes.outputs.impact_android == 'true'"},
 	}

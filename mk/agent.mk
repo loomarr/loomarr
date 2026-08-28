@@ -22,7 +22,7 @@ agent-env: ## show this worktree's isolated ports, database, compose project, an
 agent-baseline: ## run make check once per clean commit/toolchain and share the green result across worktrees
 	@./scripts/agent.sh baseline
 
-agent-verify: ## run focused changed-file checks (not the final gate; BASE=origin/main)
+agent-verify: ## run affected local evidence selected by CI impact (BASE=origin/main)
 	@BASE="$(or $(BASE),origin/main)" ./scripts/agent.sh verify
 
 agent-worktree: ## create, claim, and bootstrap a sibling worktree (TOPIC=... CLAIMS=...; BASE/DEPENDS_ON for stacks)

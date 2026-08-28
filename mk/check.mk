@@ -1,7 +1,7 @@
-## ---- the default gate ----------------------------------------------------
+## ---- explicit complete audit --------------------------------------------
 
 .PHONY: check check-static
-check: check-static test ## complete local gate: repository contracts plus race-policy-aware unit tests
+check: check-static test ## explicit complete-repository audit: contracts plus race-policy-aware unit tests
 
 check-static: rust-check fmt shellcheck privacy-verify vet platform-vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify ## repository contracts without the unit-test suite (CI runs this once beside test shards)
 

@@ -3,8 +3,6 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
   # The merge queue dispatches batches as `merge_group`, NOT `pull_request`. Without this
   # trigger the required `CI` check never runs for a queued PR and the queue stalls forever
@@ -50,6 +48,7 @@ jobs:
     name: What changed
     runs-on: ubuntu-latest
     outputs:
+      lane: ${{ steps.filter.outputs.lane }}
       go: ${{ steps.filter.outputs.go }}
       web: ${{ steps.filter.outputs.web }}
       clients: ${{ steps.filter.outputs.clients }}
@@ -100,6 +99,7 @@ jobs:
              || github.event.before }}
         run: |
           set -uo pipefail
+          ./scripts/ci-lane.sh "$EVENT_NAME" "$DISPATCH_SCOPE" >> "$GITHUB_OUTPUT"
           if [ "$EVENT_NAME" = workflow_dispatch ]; then
             ./scripts/ci-dispatch-scope.sh "$DISPATCH_SCOPE" >> "$GITHUB_OUTPUT"
             exit 0
@@ -291,7 +291,7 @@ jobs:
   agent-harness-macos:
     name: Agent harness (macOS)
     needs: changes
-    if: github.event_name != 'pull_request' && needs.changes.outputs.impact_agent == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_agent == 'true'
     uses: ./.github/workflows/ci-agent.yml
 
   release-candidate-scope:
@@ -346,19 +346,19 @@ jobs:
   image-certification:
     name: Rust image — runtime certification
     needs: changes
-    if: needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true')
     uses: ./.github/workflows/ci-image-certification.yml
 
   go:
     name: Go — race-policy tests
     needs: changes
-    if: needs.changes.outputs.impact_go == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_go == 'true'
     uses: ./.github/workflows/ci-go.yml
 
   store-postgres:
     name: Store conformance (Postgres)
     needs: changes
-    if: needs.changes.outputs.impact_postgres == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_postgres == 'true'
     uses: ./.github/workflows/ci-postgres.yml
 
   frontend:
@@ -376,30 +376,30 @@ jobs:
   apple-mobile:
     name: Apple mobile — native build + launch
     needs: changes
-    if: github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_mobile == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_mobile == 'true'
     uses: ./.github/workflows/ci-apple-mobile.yml
 
   # tvOS is independently selected so TV-local changes do not spend the mobile native runner.
   apple-tv:
     name: Apple TV — native build + launch
     needs: changes
-    if: github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_tv == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_tv == 'true'
     uses: ./.github/workflows/ci-apple-tv.yml
 
   playwright:
     name: Playwright — visual + a11y + e2e
     needs: changes
-    if: needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true')
     uses: ./.github/workflows/ci-playwright.yml
   tuner:
     name: Tuner — Chromium + Firefox + WebKit
     needs: changes
-    if: github.event_name != 'pull_request' && needs.changes.outputs.impact_tuner == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'
     uses: ./.github/workflows/ci-tuner.yml
   image:
     name: Image — release build
     needs: changes
-    if: needs.changes.outputs.impact_image == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_image == 'true'
     uses: ./.github/workflows/ci-image.yml
 
   docs:
@@ -433,6 +433,7 @@ jobs:
     steps:
       - name: Every job that ran must have passed
         run: |
+          echo "assurance lane: ${{ needs.changes.outputs.lane }}"
           results='${{ join(needs.*.result, ' ') }}'
           echo "job results: $results"
           for r in $results; do
@@ -457,6 +458,7 @@ jobs:
       - name: Summarize queue, execution, critical path, and runner use
         if: always()
         env:
+          CI_ASSURANCE_LANE: ${{ needs.changes.outputs.lane }}
           GH_TOKEN: ${{ github.token }}
         run: |
           if ! ./scripts/ci-run-metrics.sh >> "$GITHUB_STEP_SUMMARY"; then

@@ -18,6 +18,18 @@ func TestCIImpactClassifier(t *testing.T) {
 	}
 }
 
+func TestCILaneSelector(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Clean(filepath.Join("..", ".."))
+	cmd := exec.Command("bash", filepath.Join("scripts", "ci-lane-test.sh"))
+	cmd.Dir = root
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("CI lane selector contract: %v\n%s", err, output)
+	}
+}
+
 func TestCIRunMetrics(t *testing.T) {
 	t.Parallel()
 

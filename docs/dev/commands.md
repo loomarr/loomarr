@@ -11,7 +11,8 @@ cannot drift from either. `make dev-docs-verify` fails the build if it does.
 "never runs in CI" — prerequisite targets run through their named parent.
 The *runs:* note on a row lists what each parent pulls in.
 
-**The default gate is `make check`.** Run it before every push.
+**Routine local evidence is `make agent-verify BASE=<base>`.** It selects affected checks
+from the same impact policy as CI. Reserve `make check` for an explicit complete-repository audit.
 
 ## General
 
@@ -30,7 +31,7 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make agent-stop` |  | release this worktree's task and shared-output claims |
 | `make agent-env` |  | show this worktree's isolated ports, database, compose project, and artifact path |
 | `make agent-baseline` |  | run make check once per clean commit/toolchain and share the green result across worktrees |
-| `make agent-verify` |  | run focused changed-file checks (not the final gate; BASE=origin/main) |
+| `make agent-verify` |  | run affected local evidence selected by CI impact (BASE=origin/main) |
 | `make agent-worktree` |  | create, claim, and bootstrap a sibling worktree (TOPIC=... CLAIMS=...; BASE/DEPENDS_ON for stacks) |
 | `make agent-gc` |  | audit worktrees; APPLY=1 retires only exact clean merged PR heads |
 | `make bootstrap` |  | build the Rust worker and prepare frontend, isolated directories, and dev identity |
@@ -43,11 +44,11 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make backup-restore-verify` |  | isolated SQLite backup, destructive replacement, restore, and state validation |
 | `make backup-restore-drill` |  | SQLite + Docker-backed Postgres backup/restore drills <br>*runs:* `backup-restore-verify` |
 
-## The default gate
+## Explicit complete audit
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make check` |  | complete local gate: repository contracts plus race-policy-aware unit tests <br>*runs:* `check-static` `test` |
+| `make check` |  | explicit complete-repository audit: contracts plus race-policy-aware unit tests <br>*runs:* `check-static` `test` |
 | `make check-static` |  | repository contracts without the unit-test suite (CI runs this once beside test shards) <br>*runs:* `rust-check` `fmt` `shellcheck` `privacy-verify` `vet` `platform-vet` `tags-verify` `vet-tags` `lint` `agent-harness-test` `compose-verify` `release-verify` `go-race-verify` |
 | `make rust-check` | ✅ | format, lint, build, and test the required Rust image worker <br>*runs:* `rust-test-worker` |
 | `make rust-test-worker` |  | build the debug Rust image worker required by Go unit tests |
