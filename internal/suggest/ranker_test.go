@@ -46,6 +46,9 @@ func TestRankGroundedCandidatesWithTracePublishesExactLexicographicTupleAndBound
 	if !got.Trace.Truncated || got.Trace.SurfacedTotal != DecisionTraceMaxCandidates+1 || len(got.Trace.Candidates) != DecisionTraceMaxCandidates {
 		t.Fatalf("trace bounds = %+v", got.Trace)
 	}
+	if err := ValidateDecisionTrace(got.Trace); err != nil {
+		t.Fatalf("ranker emitted trace rejected by shared validator: %v", err)
+	}
 	for i, item := range got.Trace.Candidates {
 		if item.Rank.TieKey != item.Key || item.Rank.Relevance != 1 || item.Rank.Preference != 0 || item.Rank.Novelty != 1 {
 			t.Fatalf("trace[%d] = %+v; tuple must be independently reconstructable", i, item)

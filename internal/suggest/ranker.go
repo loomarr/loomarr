@@ -66,6 +66,10 @@ type RankTuple struct {
 const DecisionTraceVersion = 1
 const DecisionTraceMaxCandidates = 64
 
+// DecisionTraceMaxTotal bounds all surfaced and recorded facts. Production can
+// surface 576 candidates; the remainder is reserved for adjacent decisions.
+const DecisionTraceMaxTotal = 1024
+
 const (
 	DispositionSelected          = "selected"
 	DispositionAlternate         = "alternate"

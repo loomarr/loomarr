@@ -49,7 +49,7 @@ func ValidateDecisionTrace(trace DecisionTrace) error {
 	if trace.Version == 0 && len(trace.Candidates) == 0 && trace.Terminal == "" && trace.SurfacedTotal == 0 && trace.RecordedTotal == 0 {
 		return nil // absent trace on pre-v1 proposals
 	}
-	if trace.Version != DecisionTraceVersion || len(trace.Candidates) > DecisionTraceMaxCandidates || trace.SurfacedTotal < 0 || trace.RecordedTotal < 0 || trace.RecordedTotal < len(trace.Candidates) {
+	if trace.Version != DecisionTraceVersion || len(trace.Candidates) > DecisionTraceMaxCandidates || trace.SurfacedTotal < 0 || trace.RecordedTotal < 0 || trace.SurfacedTotal > DecisionTraceMaxTotal || trace.RecordedTotal > DecisionTraceMaxTotal || trace.RecordedTotal < len(trace.Candidates) {
 		return fmt.Errorf("invalid version, bounds, or totals")
 	}
 	if trace.SurfacedTotal > DecisionTraceMaxCandidates && !trace.Truncated {
@@ -64,6 +64,12 @@ func ValidateDecisionTrace(trace DecisionTrace) error {
 				return fmt.Errorf("invalid %s", name)
 			}
 		}
+		if c.Disposition == DispositionValidationDropped && c.Reason == ReasonMalformedID && c.Key == "" {
+			if c.Name != "" || c.Source != "" || c.Ownership != "" || c.Rank != (RankTuple{}) {
+				return fmt.Errorf("malformed evidence carries identity or rank")
+			}
+			continue
+		}
 		if c.Ownership != "library" && c.Ownership != "acquisition" {
 			return fmt.Errorf("invalid ownership")
 		}
@@ -72,6 +78,9 @@ func ValidateDecisionTrace(trace DecisionTrace) error {
 		}
 		if _, _, _, ok := provision.ParseKey(provision.Key(c.Key)); !ok {
 			return fmt.Errorf("invalid canonical key")
+		}
+		if c.Rank.Relevance < 0 || c.Rank.Relevance > 1<<31-1 || c.Rank.Preference < -5 || c.Rank.Preference > 3 || c.Rank.Novelty < 0 || c.Rank.Novelty > 1 {
+			return fmt.Errorf("rank tuple outside representation bounds")
 		}
 		if !validDispositionReason(c.Disposition, c.Reason) {
 			return fmt.Errorf("invalid disposition/reason")

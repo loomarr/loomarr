@@ -1082,6 +1082,10 @@ and precise locations are redacted. Proposal and First-channel Journey reads exp
 persisted trace under their existing authorization. Evaluators consume this same typed,
 bounded evidence and fail closed on mismatch.
 
+The independent total bound is 1,024 surfaced or recorded facts: production's 576 maximum tool
+candidates plus bounded headroom for adjacent decision facts. Truncation never permits totals
+above that bound.
+
 Rank tuple components are integers by contract; no floating-point values are serialized, so
 non-finite-float handling is not part of this typed boundary.
 

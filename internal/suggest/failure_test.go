@@ -19,12 +19,22 @@ func TestFailureTraceJSONFailsClosedAndCopiesCandidates(t *testing.T) {
 	if _, err := failure.TraceJSON(); err != nil {
 		t.Fatalf("valid trace rejected: %v", err)
 	}
+	malformed := suggest.NewFailure("selection_empty", suggest.DecisionTrace{Version: 1, SurfacedTotal: 1, RecordedTotal: 2, Candidates: []suggest.DecisionCandidate{{Disposition: suggest.DispositionValidationDropped, Reason: suggest.ReasonMalformedID}}}, nil)
+	var malformedFailure *suggest.Failure
+	if !errors.As(malformed, &malformedFailure) {
+		t.Fatal("malformed outcome lost typed failure")
+	}
+	if _, err := malformedFailure.TraceJSON(); err != nil {
+		t.Fatalf("keyless malformed evidence rejected: %v", err)
+	}
 	for name, bad := range map[string]suggest.DecisionTrace{
-		"version":  {Version: 2},
-		"bounds":   {Version: 1, SurfacedTotal: 65, RecordedTotal: 65, Truncated: false},
-		"totals":   {Version: 1, SurfacedTotal: 1, RecordedTotal: -1},
-		"reason":   {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []suggest.DecisionCandidate{{Disposition: suggest.DispositionSelected, Reason: suggest.ReasonNever}}},
-		"terminal": {Version: 1, Terminal: "provider-secret"},
+		"version":     {Version: 2},
+		"bounds":      {Version: 1, SurfacedTotal: 65, RecordedTotal: 65, Truncated: false},
+		"totals":      {Version: 1, SurfacedTotal: 1, RecordedTotal: -1},
+		"reason":      {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []suggest.DecisionCandidate{{Disposition: suggest.DispositionSelected, Reason: suggest.ReasonNever}}},
+		"terminal":    {Version: 1, Terminal: "provider-secret"},
+		"total-bound": {Version: 1, SurfacedTotal: suggest.DecisionTraceMaxTotal + 1, RecordedTotal: suggest.DecisionTraceMaxTotal + 1, Truncated: true},
+		"rank":        {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:1", Ownership: "library", Rank: suggest.RankTuple{TieKey: "movie:tmdb:1", Preference: 4}, Disposition: suggest.DispositionSelected, Reason: "selected"}}},
 	} {
 		badErr := suggest.NewFailure("provider_failure", bad, nil)
 		var badFailure *suggest.Failure
