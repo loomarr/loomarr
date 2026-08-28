@@ -81,7 +81,7 @@ func workflowActionAuthorityEntries() map[workflowActionKey]string {
 		{workflow: "ci.yml", job: "changes", step: 0}:                    `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1","with":{"fetch-depth":0}}`,
 		{workflow: "ci.yml", job: "ci-ok", step: 1}:                      `{"name":"Check out the timing reporter","if":"always()","continue-on-error":true,"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "image-benchmark.yml", job: "benchmark", step: 0}:     `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
-		{workflow: "image-benchmark.yml", job: "benchmark", step: 1}:     `{"uses":"actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e","with":{"go-version":"1.26","cache":true}}`,
+		{workflow: "image-benchmark.yml", job: "benchmark", step: 1}:     `{"uses":"actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e","with":{"go-version":"1.27","cache":true}}`,
 		{workflow: "image-benchmark.yml", job: "benchmark", step: 5}:     `{"name":"Keep the machine-readable report","if":"always()","uses":"actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a","with":{"name":"rust-image-benchmark-${{ matrix.platform }}","path":"${{ runner.temp }}/image-benchmark-${{ matrix.platform }}.json\n${{ runner.temp }}/image-parallelism-${{ matrix.platform }}/*.json\n","if-no-files-found":"ignore","retention-days":30}}`,
 		{workflow: "pages.yml", job: "build", step: 0}:                   `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "pages.yml", job: "build", step: 1}:                   `{"uses":"actions/setup-node@820762786026740c76f36085b0efc47a31fe5020","with":{"node-version":"22"}}`,

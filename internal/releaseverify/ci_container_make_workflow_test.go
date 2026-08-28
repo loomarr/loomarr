@@ -281,7 +281,7 @@ android:
 			writeFixtureFile(t, filepath.Join(root, ".github", "workflows", "ci-android.yml"), `name: android
 on: push
 env:
-  GO_VERSION: "1.26"
+  GO_VERSION: "1.27"
   NODE_VERSION: "22"
 jobs:
   run:

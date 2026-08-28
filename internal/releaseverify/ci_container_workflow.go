@@ -52,7 +52,7 @@ func verifyPostgresWorkflow(path string) error {
 	}
 	if environment, ok := mappingValue(workflow, "env"); ok {
 		if err := requireExactScalarMap(environment, "workflow environment", map[string]string{
-			"GO_VERSION": "1.26", "NODE_VERSION": "22",
+			"GO_VERSION": "1.27", "NODE_VERSION": "22",
 		}); err != nil {
 			return err
 		}

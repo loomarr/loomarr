@@ -19,6 +19,10 @@ import (
 // devLoginServer builds the auth stack with the dev-login gate in a chosen state, so
 // the negative and positive cases below differ ONLY by that flag (§11/§19).
 func devLoginServer(t *testing.T, devLogin bool, seed func(store.Store)) *httptest.Server {
+	return gatedServer(t, devLogin, false, seed)
+}
+
+func gatedServer(t *testing.T, devLogin, pprofOn bool, seed func(store.Store)) *httptest.Server {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/devlogin.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -45,6 +49,7 @@ func devLoginServer(t *testing.T, devLogin bool, seed func(store.Store)) *httpte
 		Provision:    auth.NewProvisioner(st, lib, func() string { n++; return "local-" + string(rune('a'+n-1)) }, time.Now),
 		CookieSecure: "false",
 		DevLogin:     devLogin,
+		Pprof:        pprofOn,
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -224,8 +229,8 @@ func TestPprofAbsentByDefault(t *testing.T) {
 	// rest of the ops surface, and an install without the flag must serve NEITHER. Checking only
 	// one would leave the other reachable on a change that missed a registration.
 	for _, p := range []string{
-		"/v1/debug/pprof/", "/v1/debug/pprof/profile", "/v1/debug/pprof/heap",
-		"/debug/pprof/", "/debug/pprof/profile", "/debug/pprof/heap",
+		"/v1/debug/pprof/", "/v1/debug/pprof/profile", "/v1/debug/pprof/heap", "/v1/debug/pprof/goroutineleak",
+		"/debug/pprof/", "/debug/pprof/profile", "/debug/pprof/heap", "/debug/pprof/goroutineleak",
 	} {
 		res, err := http.Get(srv.URL + p)
 		if err != nil {
@@ -234,6 +239,21 @@ func TestPprofAbsentByDefault(t *testing.T) {
 		_ = res.Body.Close()
 		if res.StatusCode != http.StatusNotFound {
 			t.Fatalf("%s with LOOMARR_PPROF unset = %d, want 404 (the route must not exist)", p, res.StatusCode)
+		}
+	}
+}
+
+func TestPprofGoroutineLeakProfileWhenEnabled(t *testing.T) {
+	srv := gatedServer(t, false, true, nil)
+
+	for _, p := range []string{"/v1/debug/pprof/goroutineleak", "/debug/pprof/goroutineleak"} {
+		res, err := http.Get(srv.URL + p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = res.Body.Close()
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("%s with LOOMARR_PPROF enabled = %d, want 200", p, res.StatusCode)
 		}
 	}
 }
