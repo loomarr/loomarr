@@ -220,6 +220,7 @@ const stubReachable = () => {
           decisionId: "automatic-admit-decision",
           clipHash: "auto-hash",
           kind: "automatic_admit",
+          applicationMode: "shadow",
           createdAt: "2026-08-25T12:00:00Z",
         },
       ],
@@ -474,10 +475,10 @@ describe("feature-gated panels mount when their flag is on", () => {
     // V35: the queue of clips waiting on a human decision. Same reason as the ingest panel —
     // this suite exists because eight things were built, unit-tested and imported by nothing.
     ["/filler/attention", /is this a toy commercial/i, "the semantic decision queue"],
-    // V63's durable audit half. Automatic admission is normal work, so it belongs in Manage
+    // V63's durable audit half. A shadow admission decision is normal work, so it belongs in Manage
     // activity rather than in the exception queue. Keeping this route-level assertion prevents
     // unattended decisions from becoming invisible when the old Incoming surface is retired.
-    ["/filler/manage", /admitted automatically/i, "the automatic decision activity"],
+    ["/filler/manage", /would admit \(shadow\)/i, "the shadow decision activity"],
     // ⚠ And the tab itself must be reachable FROM the catalog, or the assertions above only
     // prove a deep link works. This is the V1/V17a/V23 failure in tab form.
     ["/filler", /^needs attention$/i, "the decision queue's own entry point"],

@@ -201,6 +201,7 @@ test("a trusted source converges into a channel break without routine approval",
                 decisionId: "decision-1",
                 clipHash: clip.hash,
                 kind: "automatic_admit",
+                applicationMode: "shadow",
                 createdAt: "2026-08-24T04:00:01Z",
               },
             ]
@@ -310,7 +311,7 @@ test("a trusted source converges into a channel break without routine approval",
   await expect(fillerNav.getByRole("link", { name: "Sources" })).toHaveCount(0);
 
   await page.goto("/filler/manage");
-  await expect(page.getByText("Admitted automatically")).toBeVisible();
+  await expect(page.getByText("Would admit (shadow)")).toBeVisible();
 
   await page.goto("/channels/ch-1/filler");
   await expect(page.getByRole("heading", { name: "Saved channel coverage" })).toBeVisible();

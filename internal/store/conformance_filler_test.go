@@ -3248,7 +3248,8 @@ func testFillerAdmissionDecisionAudit(t *testing.T, newStore NewStoreFunc) {
 		return fillerdecision.Record{
 			ID: id, ClipHash: "clip-" + id, EvidenceHash: "evidence-" + id,
 			EvidenceVersion: "e1", SchemaVersion: filleradmission.SchemaVersion,
-			PolicyVersion: "policy-1", TaxonomyVersion: "taxonomy-1", Result: result, CreatedAt: at,
+			PolicyVersion: "policy-1", TaxonomyVersion: "taxonomy-1",
+			ApplicationMode: fillerdecision.ApplicationModeShadow, Result: result, CreatedAt: at,
 		}
 	}
 	semantic := func(verdict filleradmission.Verdict) filleradmission.Result {
@@ -3281,12 +3282,13 @@ func testFillerAdmissionDecisionAudit(t *testing.T, newStore NewStoreFunc) {
 	}
 	wantJSON, _ := json.Marshal(record("d-review", semantic(filleradmission.VerdictReview)).Result)
 	gotJSON, _ := json.Marshal(got.Result)
-	if string(gotJSON) != string(wantJSON) || got.CreatedAt != at {
+	if string(gotJSON) != string(wantJSON) || got.CreatedAt != at || got.ApplicationMode != fillerdecision.ApplicationModeShadow {
 		t.Fatalf("decision round trip = %+v (%s), want canonical %s", got, gotJSON, wantJSON)
 	}
 	second := openSecondConformanceStore(t, s)
 	fromSecond, err := second.GetFillerDecision(ctx, "d-review")
-	if err != nil || fromSecond.Result.Decision == nil || fromSecond.Result.Decision.ReviewQuestion == "" {
+	if err != nil || fromSecond.Result.Decision == nil || fromSecond.Result.Decision.ReviewQuestion == "" ||
+		fromSecond.ApplicationMode != fillerdecision.ApplicationModeShadow {
 		_ = second.Close()
 		t.Fatalf("decision did not survive a fresh store pool: %+v, %v", fromSecond, err)
 	}
@@ -3295,6 +3297,11 @@ func testFillerAdmissionDecisionAudit(t *testing.T, newStore NewStoreFunc) {
 	}
 	if err := s.PutFillerDecision(ctx, record("d-review", semantic(filleradmission.VerdictReview))); err != nil {
 		t.Fatalf("idempotent insert: %v", err)
+	}
+	unknownMode := record("d-unknown-mode", semantic(filleradmission.VerdictAdmit))
+	unknownMode.ApplicationMode = "automatic"
+	if err := s.PutFillerDecision(ctx, unknownMode); !errors.Is(err, fillerdecision.ErrInvalid) {
+		t.Fatalf("unknown application mode = %v, want ErrInvalid", err)
 	}
 	conflict := record("d-review", semantic(filleradmission.VerdictReject))
 	if err := s.PutFillerDecision(ctx, conflict); !errors.Is(err, fillerdecision.ErrConflict) {
@@ -3447,6 +3454,9 @@ func testFillerAdmissionDecisionAudit(t *testing.T, newStore NewStoreFunc) {
 	}
 	kinds := make(map[fillerdecision.ActivityKind]int)
 	for _, item := range activity.Rows {
+		if item.ApplicationMode != fillerdecision.ApplicationModeShadow {
+			t.Fatalf("activity %q application mode = %q, want shadow", item.ID, item.ApplicationMode)
+		}
 		kinds[item.Kind]++
 	}
 	for kind, want := range map[fillerdecision.ActivityKind]int{
