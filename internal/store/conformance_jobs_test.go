@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
@@ -432,7 +433,7 @@ func testCloneSuggestionSuccess(t *testing.T, newStore NewStoreFunc) {
 	}
 	sourceProposal := Proposal{
 		ID: "proposal-source", JobID: source.ID, Status: "approved", CreatedBy: source.CreatedBy,
-		ApprovedBy: "admin", ProposalJSON: `{"lineup":[{"name":"The Matrix"}]}`,
+		ApprovedBy: "admin", ProposalJSON: `{"lineup":[{"name":"The Matrix"}],"trace":{"version":1,"candidates":[{"key":"movie:tmdb:603","ownership":"library","disposition":"selected","reason":"selected"}],"surfacedTotal":1,"recordedTotal":1,"truncated":false}}`,
 		CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.CreateProposal(ctx, sourceProposal); err != nil {
@@ -451,6 +452,17 @@ func testCloneSuggestionSuccess(t *testing.T, newStore NewStoreFunc) {
 	}
 	if clone.CreatedBy != "bob" || clone.ApprovedBy != "" || clone.ProposalJSON != sourceProposal.ProposalJSON {
 		t.Fatalf("cloned proposal lifecycle/payload = %+v", clone)
+	}
+	var roundTrip struct {
+		Trace struct {
+			Version    int `json:"version"`
+			Candidates []struct {
+				Key string `json:"key"`
+			} `json:"candidates"`
+		} `json:"trace"`
+	}
+	if err := json.Unmarshal([]byte(clone.ProposalJSON), &roundTrip); err != nil || roundTrip.Trace.Version != 1 || len(roundTrip.Trace.Candidates) != 1 || roundTrip.Trace.Candidates[0].Key != "movie:tmdb:603" {
+		t.Fatalf("cloned trace did not round-trip: %+v %v", roundTrip, err)
 	}
 	gotJob, err := s.GetJob(ctx, cloneJob.ID)
 	if err != nil {

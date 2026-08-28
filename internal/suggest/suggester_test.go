@@ -68,6 +68,18 @@ func TestGrounding_FabricatedTitleNeverReachesProposal(t *testing.T) {
 	if !foundSpeed {
 		t.Error("the real grounded pick (Speed) should survive as an acquisition")
 	}
+	if !traceHas(prop.Trace, "movie:tmdb:100", suggest.DispositionSelected, "selected") {
+		t.Fatalf("trace must preserve selected decision: %+v", prop.Trace)
+	}
+}
+
+func traceHas(trace suggest.DecisionTrace, key, disposition, reason string) bool {
+	for _, candidate := range trace.Candidates {
+		if candidate.Key == key && candidate.Disposition == disposition && candidate.Reason == reason {
+			return true
+		}
+	}
+	return false
 }
 
 // A pick whose id IS surfaced but does NOT exist on TMDB (withdrawn/bad) is
@@ -630,6 +642,9 @@ func TestGrounding_AcquisitionCapPushesToAlternates(t *testing.T) {
 	}
 	if len(prop.Alternates) != 1 {
 		t.Fatalf("the over-cap pick should become an alternate, got %d", len(prop.Alternates))
+	}
+	if !traceHas(prop.Trace, "movie:tmdb:101", suggest.DispositionAlternate, suggest.ReasonAcquisitionCap) {
+		t.Fatalf("trace must explain acquisition cap: %+v", prop.Trace)
 	}
 }
 

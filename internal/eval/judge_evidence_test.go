@@ -287,6 +287,21 @@ func TestRunnerFailsOnWrongTypedJudgeEvidenceWithoutRenderer(t *testing.T) {
 	}
 }
 
+func TestJudgeEvidenceCarriesBoundedProposalTraceAndRejectsMismatch(t *testing.T) {
+	proposal := suggest.Proposal{Trace: suggest.DecisionTrace{Version: suggest.DecisionTraceVersion, SurfacedTotal: 65, RecordedTotal: 65, Truncated: true, Candidates: make([]suggest.DecisionCandidate, 65)}}
+	evidence, err := NewJudgeEvidence(Case{Intent: Intent{Description: "x"}}, proposal, Observation{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evidence.DecisionTrace.Candidates) != JudgeMaxTraceCandidates || !evidence.DecisionTrace.Truncated {
+		t.Fatalf("trace was not bounded: %+v", evidence.DecisionTrace)
+	}
+	proposal.Trace.Version = suggest.DecisionTraceVersion + 1
+	if _, err := NewJudgeEvidence(Case{Intent: Intent{Description: "x"}}, proposal, Observation{}, nil); err == nil {
+		t.Fatal("mismatched trace version certified")
+	}
+}
+
 func mustJudgeEvidence(t testing.TB, c Case, proposal suggest.Proposal, observation Observation, programs []MaterializedProgram) JudgeEvidence {
 	t.Helper()
 	evidence, err := NewJudgeEvidence(c, proposal, observation, programs)

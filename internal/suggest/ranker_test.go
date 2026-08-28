@@ -36,3 +36,20 @@ func TestRankGroundedCandidatesAppliesExplicitFeedbackDeterministically(t *testi
 		t.Fatalf("feedback ranking = %v, want surprise discovery before demoted related anchor", ids)
 	}
 }
+
+func TestRankGroundedCandidatesWithTracePublishesExactLexicographicTupleAndBound(t *testing.T) {
+	candidates := make([]catalog.Candidate, 0, DecisionTraceMaxCandidates+1)
+	for i := 0; i < DecisionTraceMaxCandidates+1; i++ {
+		candidates = append(candidates, catalog.Candidate{MediaType: provision.Movie, TMDBID: i + 1, Name: "same", Genres: []string{"same"}})
+	}
+	got := RankGroundedCandidatesWithTrace("same", candidates, nil)
+	if !got.Trace.Truncated || got.Trace.SurfacedTotal != DecisionTraceMaxCandidates+1 || len(got.Trace.Candidates) != DecisionTraceMaxCandidates {
+		t.Fatalf("trace bounds = %+v", got.Trace)
+	}
+	for i, item := range got.Trace.Candidates {
+		if item.Rank.TieKey != item.Key || item.Rank.Relevance != 1 || item.Rank.Preference != 0 || item.Rank.Novelty != 1 {
+			t.Fatalf("trace[%d] = %+v; tuple must be independently reconstructable", i, item)
+		}
+		if i > 0 && got.Trace.Candidates[i-1].Rank.TieKey >= item.Rank.TieKey { t.Fatalf("tie keys not stable: %+v", got.Trace.Candidates) }
+	}
+}

@@ -194,6 +194,20 @@ const ProposalReview = ({
         </section>
       )}
 
+      {proposal.trace?.candidates?.length ? (
+        <section aria-label="Decision trace" className="flex flex-col gap-1.5 border-border border-t pt-3">
+          <h3 className="font-mono text-static-400 text-xs uppercase tracking-wide">Why this / why not</h3>
+          <ul className="flex flex-col gap-1 text-muted-foreground text-sm">
+            {proposal.trace.candidates.map((candidate) => (
+              <li key={`${candidate.key}-${candidate.disposition}`}>
+                <span className="font-medium text-foreground">{candidate.name || candidate.key || "Candidate"}</span>{" "}
+                <span>{candidate.disposition === "selected" ? "selected" : candidate.reason.replaceAll("_", " ")}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       {actionable && (
         <footer className="flex flex-col gap-2 border-border border-t pt-4">
           {denying ? (
