@@ -9,7 +9,7 @@ set -euo pipefail
 
 readonly GATES=(
   contracts go go_full rust postgres web clients apple_mobile apple_tv
-  expo_android_mobile expo_android_tv visual e2e tuner image docs agent android
+  expo_android_mobile expo_android_tv visual e2e tuner image docs agent android policy
 )
 
 selected=()
@@ -51,7 +51,10 @@ classify() {
   local known=false
 
   # Product Go. Release images compile and embed these source families.
-  if [[ "$path" == *.go || "$path" == go.mod || "$path" == go.sum ]]; then
+  if [[ "$path" == cmd/releaseverify/*.go || "$path" == internal/releaseverify/*.go ]]; then
+    known=true
+    select_gate policy
+  elif [[ "$path" == *.go || "$path" == go.mod || "$path" == go.sum ]]; then
     known=true
     select_gate contracts
     select_gate go
@@ -250,9 +253,8 @@ classify() {
       ;;
     docs/design.md|docs/configuration.md|docs/dev/commands.md|docs/install/*|README.md)
       known=true
-      select_gate go
-      select_gate go_full
       select_gate docs
+      select_gate policy
       ;;
     docs/*|CHANGELOG.md|CODE_OF_CONDUCT.md|CONTRIBUTING.md|SECURITY.md|CLAUDE.md|AGENTS.md|CONTEXT.md|PROGRESS.md|docs-site/*|.agents/*|.claude/*|.vale|.vale/*|.vale.ini|lychee.toml|.markdownlint*|.github/CODEOWNERS|.github/ISSUE_TEMPLATE/*|.github/PULL_REQUEST_TEMPLATE.md)
       known=true
@@ -295,28 +297,35 @@ classify() {
       ;;
     scripts/*)
       known=true
-      select_gate contracts
       case "$path" in
-        scripts/agent*|scripts/dev-*) select_gate agent ;;
-        scripts/android-*.sh|scripts/build-android-beta.sh|scripts/check-android-release-env.sh|scripts/generate-android-tv-brand.sh|scripts/publish-android-beta.sh|scripts/test-android-release.sh|scripts/validate-android-release-source.sh|scripts/validate-android-release-source-test.sh|scripts/verify-android-native-libraries.sh|scripts/verify-android-native-libraries-test.sh|scripts/testdata/fake-android-release-*.sh) select_gate android ;;
+        scripts/agent*) select_gate agent; select_gate policy ;;
+        scripts/ci-impact*|scripts/ci-dispatch-scope*|scripts/ci-run-metrics*|scripts/testdata/ci-*) select_gate policy ;;
+        scripts/dev-*) select_gate contracts; select_gate agent ;;
+        scripts/android-*.sh|scripts/build-android-beta.sh|scripts/check-android-release-env.sh|scripts/generate-android-tv-brand.sh|scripts/publish-android-beta.sh|scripts/test-android-release.sh|scripts/validate-android-release-source.sh|scripts/validate-android-release-source-test.sh|scripts/verify-android-native-libraries.sh|scripts/verify-android-native-libraries-test.sh|scripts/testdata/fake-android-release-*.sh) select_gate contracts; select_gate android ;;
         scripts/generate-brand-assets.mjs|scripts/check-brand-assets.mjs) select_gate clients ;;
         scripts/check-fe-bundle.mjs) select_gate web; select_gate image ;;
+        *) select_gate contracts ;;
       esac
       ;;
-    Makefile|.github/workflows/ci.yml)
+    Makefile)
       known=true
       select_all
       ;;
     .github/workflows/android-beta.yml)
       known=true
+      select_gate policy
       select_gate contracts
       select_gate android
       select_gate clients
       select_gate expo_android_tv
       ;;
+    .github/workflows/ci.yml)
+      known=true
+      select_gate policy
+      ;;
     .github/workflows/*)
       known=true
-      select_gate contracts
+      select_gate policy
       ;;
     docker/*|.air.toml|.env.example|.golangci.yml|.node-version|.editorconfig|.gitignore|.vscode/*|.github/actionlint.yaml|.github/actionlint.yml|.github/dependabot.yml|skills-lock.json)
       known=true

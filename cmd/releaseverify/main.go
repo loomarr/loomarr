@@ -44,6 +44,11 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Println("release-verify: activated CI gates consume fail-closed specialized decisions")
+	if err := releaseverify.VerifyCINativeAdmission(filepath.Join(*root, ".github", "workflows", "ci.yml")); err != nil {
+		fmt.Fprintf(os.Stderr, "release-verify: CI native admission policy: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("release-verify: scarce macOS jobs are admitted by merge queue, main, or manual CI")
 	if err := releaseverify.VerifyCIManualScopes(filepath.Join(*root, ".github", "workflows", "ci.yml")); err != nil {
 		fmt.Fprintf(os.Stderr, "release-verify: CI manual scope policy: %v\n", err)
 		os.Exit(1)

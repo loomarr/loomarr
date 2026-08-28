@@ -7,6 +7,37 @@
 Each family contains independently filtered jobs. The required aggregate always runs and checks
 every top-level result, including jobs that correctly skipped.
 
+## Fast PR feedback, queued native admission
+
+Ordinary pull-request pushes run the affected Linux gates and return the required `CI` result
+without competing for macOS runners. The required `main` merge queue then builds one candidate at a
+time against the current base. On that `merge_group` run, the same fail-closed classifier selects
+Apple mobile, Apple TV, the tuner matrix, and the macOS harness; every selected result remains a
+dependency of `CI`. Main pushes and explicit manual runs retain those jobs too.
+
+CI orchestration is its own input family. Workflow files, the impact/dispatch/metrics adapters,
+release-policy verifier, agent harness, and design-contract prose select the lightweight **CI
+policy** job (plus docs or the cross-platform harness when those files changed). They do not select
+Rust, Android, Apple, images, browsers, frontend, Postgres, or application Go. Those product jobs run
+only when the classifier identifies an input they consume. Unknown paths still select everything.
+
+This is admission control, not weaker assurance. A pull request cannot merge directly after its fast
+result: it must enter the queue and pass the generated current-base commit. The queue uses squash
+merges, `ALLGREEN`, one concurrent build, one PR per merge, and a three-hour check-response timeout.
+One-at-a-time admission prevents a burst of agent branches from occupying every Apple runner, while
+the queue gives accepted work a stable place in line instead of repeatedly invalidating successful
+strict-mode runs.
+
+The policy has two coupled halves:
+
+- GitHub ruleset **Main merge queue admission** targets `refs/heads/main`.
+- `.github/workflows/ci.yml` triggers on `merge_group` and excludes only ordinary `pull_request`
+  events from scarce macOS jobs.
+
+`releaseverify.VerifyCINativeAdmission` rejects loss of the queue trigger, renewed PR admission, a
+queue-only condition that drops main/manual evidence, or a missing scarce-capacity job. The live
+ruleset is verified through GitHub's branch-rules API when changing repository protection.
+
 ## Jobs run only when their inputs changed
 
 A `changes` job diffs against the merge base and each job gates on its output. It fails safe: no
@@ -49,10 +80,9 @@ top-level jobs with hard-coded app commands, dedicated impact selectors, and ind
 results. Existing cache-key strings are preserved so splitting job identity does not discard
 compatible pnpm, CocoaPods, or ExpoModulesJSI entries.
 
-The existing `go`, `web`, `image`, `docs`, `agent`, and `android` outputs remain authoritative for
-every other job while their specialized results are compared with complete CI outcomes. A missing
-base, classifier failure, or unknown path selects every specialized gate. The manual
-release-candidate scope remains unchanged and excludes Postgres, Playwright, and tuner.
+Every job consumes its dedicated `impact_*` output. A missing base, classifier failure, or unknown
+path selects every specialized gate. The manual release-candidate scope remains unchanged and
+excludes Postgres, Playwright, tuner, and application-client builds.
 
 `scripts/testdata/ci-impact.tsv` records the exact ordered gate set for representative paths and
 multi-path changes across every specialized gate. The classifier contract test compares complete
@@ -69,8 +99,8 @@ iOS, and Expo Android mobile evidence; a TV change selects shared-client, tvOS, 
 Changes to `api`, `core`, `fixtures`, `design-system`, or `ui` select both apps on both native
 platforms because those packages are transitive inputs to both. Browser-only client-proof and
 Turborepo contract changes select the shared JavaScript gate without spending a native runner.
-Apple mobile and Apple TV are active. Expo Android mobile and Expo Android TV remain observational
-until each consumes its independently required job and current-main evidence is proven.
+Apple mobile and Apple TV are active. Expo Android mobile and Expo Android TV remain classifier
+decisions until each has an independently required job and current-main evidence.
 
 ## Per-run measurements
 
@@ -131,11 +161,10 @@ green required check while its real job is red.
 Never add a workflow-level `paths:`. A run that doesn't trigger reports no checks, so a required
 check sits "expected" forever and the PR can't merge. Filter per job.
 
-The workflow already handles `merge_group`, but GitHub offers merge queues only to public
-repositories owned by organizations (or qualifying organization-owned private repositories).
-`loomarr/loomarr` is organization-owned. Queue activation is therefore an explicit repository
-ruleset operation; the strict required `CI` check remains the protected current-base boundary until
-the queue is enabled and its first `merge_group` run is proven.
+The workflow handles `merge_group`, and the organization-owned repository requires the merge queue
+through its `main` ruleset. The strict, GitHub-Actions-owned `CI` check remains the protected
+current-base boundary inside the queue. Never remove the queue rule merely to bypass a delayed or
+failing native result.
 
 ## Sharding
 

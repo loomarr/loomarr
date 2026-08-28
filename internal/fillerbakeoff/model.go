@@ -46,16 +46,17 @@ const (
 )
 
 type Route struct {
-	Class            RouteClass `json:"class"`
-	Role             string     `json:"role"`
-	Rung             string     `json:"rung"`
-	Provider         string     `json:"provider"`
-	Model            string     `json:"model"`
-	UpstreamProvider string     `json:"upstreamProvider,omitempty"`
-	Modalities       []string   `json:"modalities"`
-	StructuredOutput bool       `json:"structuredOutput"`
-	RequireZDR       bool       `json:"requireZdr"`
-	AllowFallbacks   bool       `json:"allowFallbacks"`
+	Class                RouteClass `json:"class"`
+	Role                 string     `json:"role"`
+	Rung                 string     `json:"rung"`
+	Provider             string     `json:"provider"`
+	Model                string     `json:"model"`
+	UpstreamProviderSlug string     `json:"upstreamProviderSlug,omitempty"`
+	UpstreamProvider     string     `json:"upstreamProvider,omitempty"`
+	Modalities           []string   `json:"modalities"`
+	StructuredOutput     bool       `json:"structuredOutput"`
+	RequireZDR           bool       `json:"requireZdr"`
+	AllowFallbacks       bool       `json:"allowFallbacks"`
 	// MarginalValueEvidence names the measured artifact that justified a
 	// premium route's incremental ceiling. It is forbidden on cheaper rungs.
 	MarginalValueEvidence string                       `json:"marginalValueEvidence,omitempty"`
@@ -90,14 +91,17 @@ type Extractor interface {
 
 type AdmissionEvaluator interface {
 	Evaluate(filleradmission.Document) filleradmission.Result
+	PolicyIdentity() (policyVersion, taxonomyVersion string)
 }
 
 type Config struct {
-	Run        fillereval.RunIdentity
-	Manifest   fillereval.Manifest
-	Packets    map[string]Packet
-	CorpusRoot string
-	Policy     AdmissionEvaluator
-	Routes     []Route
-	Extractor  Extractor
+	Run         fillereval.RunIdentity
+	Manifest    fillereval.Manifest
+	Packets     map[string]Packet
+	CorpusRoot  string
+	Policy      AdmissionEvaluator
+	Routes      []Route
+	Extractor   Extractor
+	Snapshot    *OpenRouterSnapshot
+	Transcripts []TranscriptArtifact
 }

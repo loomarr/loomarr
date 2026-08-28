@@ -48,12 +48,12 @@ The *runs:* note on a row lists what each parent pulls in.
 | Target | CI | What it does |
 | --- | --- | --- |
 | `make check` |  | complete local gate: repository contracts plus race-policy-aware unit tests <br>*runs:* `check-static` `test` |
-| `make check-static` | ✅ | repository contracts without the unit-test suite (CI runs this once beside test shards) <br>*runs:* `rust-check` `fmt` `shellcheck` `privacy-verify` `vet` `tags-verify` `vet-tags` `lint` `agent-harness-test` `compose-verify` `release-verify` `go-race-verify` |
-| `make rust-check` |  | format, lint, build, and test the required Rust image worker <br>*runs:* `rust-test-worker` |
+| `make check-static` |  | repository contracts without the unit-test suite (CI runs this once beside test shards) <br>*runs:* `rust-check` `fmt` `shellcheck` `privacy-verify` `vet` `tags-verify` `vet-tags` `lint` `agent-harness-test` `compose-verify` `release-verify` `go-race-verify` |
+| `make rust-check` | ✅ | format, lint, build, and test the required Rust image worker <br>*runs:* `rust-test-worker` |
 | `make rust-test-worker` |  | build the debug Rust image worker required by Go unit tests |
 | `make rust-audit` |  | check Rust advisories, licences, and dependency sources (needs cargo-deny) |
 | `make rust-fuzz` |  | fuzz the bounded Rust image protocol/decoder; optional FUZZ_SECONDS (needs nightly + cargo-fuzz) |
-| `make fmt` |  | gofmt -l (fails if any file needs formatting) |
+| `make fmt` | ✅ | gofmt -l (fails if any file needs formatting) |
 | `make shellcheck` |  | shellcheck every repository shell script |
 | `make privacy-verify` |  | captured private fixture literals must not re-enter the tracked tree |
 | `make vet` |  | go vet |
@@ -69,14 +69,27 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make eval-cert` |  | certify exact starter/adversarial intents; fails on missing config and writes a scorecard |
 | `make eval-matrix` |  | explicitly certify local + OpenRouter generation sequentially (manual, resource-heavy) |
 | `make filler-eval-contract` |  | hermetic filler-admission corpus and selective-risk contracts |
-| `make filler-corpus-loc` |  | freeze the bounded LOC filler rights-yield pilot lane |
-| `make filler-corpus-nasa` |  | freeze the bounded NASA filler rights-yield pilot lane |
-| `make filler-corpus-pilot` |  | lock the six-lane metadata-only filler rights-yield pilot |
+| `make filler-corpus-commons` |  | freeze bounded Commons pilot and full-inventory artifacts |
+| `make filler-corpus-cdc` |  | freeze bounded CDC pilot and full-inventory artifacts |
+| `make filler-corpus-loc` |  | freeze bounded LOC pilot and full-inventory artifacts |
+| `make filler-corpus-nasa` |  | freeze bounded NASA pilot and full-inventory artifacts |
+| `make filler-corpus-pilot` |  | lock the qualified metadata-only filler rights-yield pilot |
+| `make filler-corpus-pilot-rights-review` |  | prepare the inert five-lane pilot review packet |
+| `make filler-corpus-pilot-rights-lock` |  | lock completed pilot review into a non-authorizing yield report |
 | `make filler-corpus-archive` |  | freeze a bounded rights-filtered Archive.org corpus inventory |
+| `make filler-corpus-inventory` |  | combine strict source inventories for mixed-authority rights review |
+| `make filler-corpus-direct` |  | freeze an authored local cohort with rights and provenance evidence |
+| `make filler-corpus-prepare` |  | build an unlabeled corpus draft and bounded evidence packets |
 | `make filler-corpus-download` |  | download only rights-approved corpus media under hard ceilings |
 | `make filler-corpus-rights-review` |  | prepare an inert worksheet from a frozen filler inventory |
 | `make filler-corpus-rights-lock` |  | validate completed rights review CSV into approval JSONL |
 | `make filler-corpus-lock` |  | lock two blind filler-label batches into a certification manifest |
+| `make filler-corpus-review` |  | prepare one opaque randomized filler-label review batch |
+| `make filler-corpus-review-package` |  | materialize one verified identity-blind reviewer evidence package |
+| `make filler-openrouter-snapshot` |  | lock OpenRouter capability, endpoint-price, and ZDR metadata |
+| `make filler-bakeoff-openrouter` |  | capture a bounded label-blind OpenRouter prediction ledger (paid/manual) |
+| `make filler-bakeoff-ollama` |  | capture a digest-pinned local filler prediction ledger (manual) |
+| `make filler-bakeoff-transcribe` |  | capture digest-pinned shared filler transcripts (manual) |
 | `make filler-eval-cert` |  | score captured filler decisions; never contacts a model or media source |
 
 ## Build / run
@@ -191,7 +204,7 @@ The *runs:* note on a row lists what each parent pulls in.
 
 ## What CI runs
 
-`agent-harness-test` · `android-release-test` · `android` · `arch-docs-verify` · `check-static` · `ci-lint` · `client-apple-simulator` · `clients` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `openapi-verify` · `retired-verify` · `test-pg` · `test` · `tuner-e2e-host`
+`agent-harness-test` · `android-release-test` · `android` · `arch-docs-verify` · `ci-lint` · `client-apple-simulator` · `clients` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `fmt` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `openapi-verify` · `retired-verify` · `rust-check` · `test-pg` · `test` · `tuner-e2e-host`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 for example, `check-static` expands to formatting, vet, lint, and repository

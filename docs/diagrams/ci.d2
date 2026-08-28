@@ -10,21 +10,16 @@ vars: {
 
 direction: right
 
-changes: Classify the complete PR diff
-contracts: Contracts and Go
-clients: Web and shared clients
-native: Apple and Android
-runtime: Browser, tuner, and images
-docs: Docs and agent harness
-required: CI\nrequired aggregate {shape: hexagon}
+feedback: Fast PR feedback\nOnly affected gates {shape: hexagon}
+queue: One merge-group\nbuild at a time {shape: queue}
+current: Current-base\ncomplete diff
+native: Apple, tuner,\nmacOS harness
+other: Go, Web, Android,\ndocs, images
+required: Required CI {shape: hexagon}
+main: Main {shape: page}
 
-changes -> contracts
-changes -> clients
-changes -> native
-changes -> runtime
-changes -> docs
-contracts -> required
-clients -> required
-native -> required
-runtime -> required
-docs -> required
+feedback -> queue: eligible
+queue -> current
+current -> native -> required
+current -> other -> required
+required -> main

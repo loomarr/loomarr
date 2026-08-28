@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "purpose": "filler-local-open-weight-development-comparison",
+  "snapshotAt": "2026-08-27T15:46:26Z",
+  "certificationEvidence": false,
+  "condition": "transcript+metadata",
+  "cases": 11,
+  "independentlyAdjudicated": false,
+  "execution": {
+    "runtime": "ollama",
+    "runtimeVersion": "0.32.14",
+    "concurrency": 1,
+    "temperature": 0,
+    "contextTokens": 4096,
+    "outputTokenCeiling": 400,
+    "requestTimeoutMs": 300000,
+    "thinking": false,
+    "structuredOutput": "strict-json-schema"
+  },
+  "hardware": {
+    "gpu": "NVIDIA RTX 3080 Ti",
+    "gpuMemoryMiB": 12288,
+    "cpu": "Intel i9-12900K",
+    "systemMemoryGiB": 32,
+    "swapGiB": 0
+  },
+  "models": [
+    {
+      "model": "gemma4:26b-a4b-it-qat",
+      "digest": "2dd70431afed94dd3688d790443768c1487ed086b57147ff083851116ae4c4e4",
+      "quantization": "Q4_0 QAT",
+      "validResponses": 11,
+      "correctRolesAllCases": 11,
+      "timeouts": 0,
+      "medianLatencyMs": 29074,
+      "maxLatencyMs": 94899,
+      "totalLatencyMs": 384125,
+      "reportedPromptTokens": 4755,
+      "reportedCompletionTokens": 1404,
+      "sampledPeakTotalGpuMemoryMiB": 10852,
+      "decision": "provisional-local-survivor"
+    },
+    {
+      "model": "qwen3.8:27b-q4_K_M",
+      "digest": "25b843619e944cd0ae6069f94ff4e5e26a16e109ccbc0a66a0f05979ed70098e",
+      "quantization": "Q4_K_M",
+      "validResponses": 1,
+      "correctRolesAllCases": 1,
+      "timeouts": 10,
+      "medianLatencyMs": 300027,
+      "maxLatencyMs": 300043,
+      "totalLatencyMs": 3295845,
+      "reportedPromptTokensOnCompletedResponses": 351,
+      "reportedCompletionTokensOnCompletedResponses": 117,
+      "completedResponseTokensPerSecond": 0.4041704029,
+      "sampledPeakTotalGpuMemoryMiB": 9403,
+      "reportedModelVramBytes": 8376706660,
+      "sampledContainerMemoryGiB": 5.19,
+      "coldLoadMs": 33960,
+      "decision": "rejected-on-12gb-profile"
+    }
+  ],
+  "limitations": [
+    "The development sample is title-rich and was not independently adjudicated.",
+    "This comparison measures transcript-plus-metadata role classification, not direct audio, frames, or direct video.",
+    "Timeout calls returned no token accounting, so Qwen token totals include only its completed response.",
+    "A different quantization, runtime, or hardware profile is a distinct route and requires a new measured run.",
+    "The result cannot satisfy issue 555 or certify unattended admission."
+  ]
+}

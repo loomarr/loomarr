@@ -1,5 +1,5 @@
 // Command filler-corpus-loc freezes a bounded, metadata-only Library of
-// Congress pilot lane. It grants no rights or download authority.
+// Congress lane and optional full inventory. It grants no rights authority.
 package main
 
 import (
@@ -66,7 +66,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	query := flags.String("query", "", "LOC collection search text")
 	roleHint := flags.String("role-hint", "", "discovery-only role hint")
-	output := flags.String("out", "", "source-neutral pilot lane JSON")
+	output := flags.String("out", "", "bounded source lane JSON")
+	inventoryOutput := flags.String("inventory-out", "", "optional strict full-corpus inventory JSON")
 	cache := flags.String("cache-dir", "", "raw response cache")
 	userAgent := flags.String("user-agent", "", "descriptive User-Agent with contact")
 	snapshotText := flags.String("snapshot-at", "", "snapshot time in RFC3339 format")
@@ -81,8 +82,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
-	if *query == "" || *roleHint == "" || *output == "" || *cache == "" || *userAgent == "" || *snapshotText == "" || *maxRequests < 11 || *maxRequests > 50 || *maxItems != 10 || *maxResponseBytes <= 0 || *maxItemBytes <= 0 || *maxTotalBytes < *maxItemBytes || *delay < 3*time.Second || *maxWallTime <= 0 {
-		_, _ = fmt.Fprintln(stderr, "filler-corpus-loc: query, role, output, cache, identity, snapshot, exactly 10 items, >=11 bounded requests, positive byte ceilings, >=3s delay, and wall ceiling are required")
+	if *query == "" || *roleHint == "" || *output == "" || *cache == "" || *userAgent == "" || *snapshotText == "" || *maxItems <= 0 || *maxItems > 50 || *maxRequests < *maxItems+1 || *maxRequests > 1000 || *maxResponseBytes <= 0 || *maxItemBytes <= 0 || *maxTotalBytes < *maxItemBytes || *delay < 3*time.Second || *maxWallTime <= 0 {
+		_, _ = fmt.Fprintln(stderr, "filler-corpus-loc: query, role, output, cache, identity, snapshot, 1-50 items, sufficient bounded requests, positive byte ceilings, >=3s delay, and wall ceiling are required")
 		return 2
 	}
 	snapshotAt, err := time.Parse(time.RFC3339, *snapshotText)
@@ -98,9 +99,24 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-loc:", err)
 		return 1
 	}
+	var inventory *fillercorpus.Inventory
+	if *inventoryOutput != "" {
+		value, err := fillercorpus.InventoryFromLane(lane, fillercorpus.LaneInventoryOptions{SnapshotAt: opts.snapshotAt, Collection: opts.query, AllowedMediaHosts: []string{"tile.loc.gov"}})
+		if err != nil {
+			_, _ = fmt.Fprintln(stderr, "filler-corpus-loc: inventory:", err)
+			return 1
+		}
+		inventory = &value
+	}
 	if err := writeJSON(opts.outputPath, lane); err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-loc: write:", err)
 		return 1
+	}
+	if inventory != nil {
+		if err := writeJSON(*inventoryOutput, inventory); err != nil {
+			_, _ = fmt.Fprintln(stderr, "filler-corpus-loc: write inventory:", err)
+			return 1
+		}
 	}
 	_, _ = fmt.Fprintf(stdout, "filler-corpus-loc: froze %d candidates (%d predicted bytes) in %d requests\n", len(lane.Cases), lane.PredictedMediaBytes, lane.RequestsUsed)
 	return 0
@@ -111,7 +127,11 @@ func capture(ctx context.Context, opts options) (fillercorpus.Lane, error) {
 	if err := os.MkdirAll(opts.cacheDir, 0o750); err != nil {
 		return fillercorpus.Lane{}, err
 	}
-	f, err := fillercorpus.NewSourceClient(fillercorpus.SourceClientConfig{HTTP: &http.Client{Timeout: 30 * time.Second}, CacheDir: opts.cacheDir, UserAgent: opts.userAgent, MaxRequests: opts.maxRequests, MaxResponseBytes: opts.maxResponseBytes, Delay: opts.delay})
+	base, err := url.Parse(opts.baseURL)
+	if err != nil {
+		return fillercorpus.Lane{}, err
+	}
+	f, err := fillercorpus.NewSourceClient(fillercorpus.SourceClientConfig{HTTP: &http.Client{Timeout: 30 * time.Second}, CacheDir: opts.cacheDir, UserAgent: opts.userAgent, MaxRequests: opts.maxRequests, MaxResponseBytes: opts.maxResponseBytes, Delay: opts.delay, AllowedHosts: []string{base.Hostname()}})
 	if err != nil {
 		return fillercorpus.Lane{}, err
 	}

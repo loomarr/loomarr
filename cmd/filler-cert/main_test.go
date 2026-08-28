@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/fillereval"
@@ -22,8 +23,7 @@ func TestRunWritesNonCertifyingReportForSmallReplay(t *testing.T) {
 	writeTestJSON(t, manifestPath, manifest)
 	prediction := fillereval.Prediction{
 		CaseID: "eligible", Verdict: fillereval.VerdictAdmit, ContentRole: "commercial",
-		Role: "filler_text", Rung: "text", RequestedProvider: "fixture", RequestedModel: "fixture",
-		ResolvedModel: "fixture", ResolvedProvider: "fixture", Modalities: []string{"text"}, Attempts: 1,
+		Steps: []fillereval.InferenceStep{{EvaluationID: "eval-1", Role: "filler_text", Rung: "text", RequestedProvider: "fixture", RequestedModel: "fixture", ResolvedModel: "fixture", ResolvedProvider: "fixture", Modalities: []string{"text"}, Attempts: 1}},
 	}
 	data, err := json.Marshal(prediction)
 	if err != nil {
@@ -66,6 +66,16 @@ func TestRunRequiresExplicitRunCeilings(t *testing.T) {
 	code := run([]string{"--manifest", "manifest.json", "--predictions", "predictions.jsonl", "--report", "report.json"}, &stdout, &stderr)
 	if code != 2 || !bytes.Contains(stderr.Bytes(), []byte("--max-requests")) {
 		t.Fatalf("exit = %d stderr = %s", code, stderr.String())
+	}
+}
+
+func TestReadPredictionsRejectsRemovedScalarInferenceLedger(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.jsonl")
+	if err := os.WriteFile(path, []byte(`{"caseId":"case-1","verdict":"admit","role":"filler_text","attempts":1}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readPredictions(path); err == nil || !strings.Contains(err.Error(), `unknown field "role"`) {
+		t.Fatalf("error = %v", err)
 	}
 }
 
