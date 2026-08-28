@@ -15,11 +15,20 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 //go:embed all:dist
 var distFS embed.FS
+
+type compressedCache struct {
+	sync.Once
+	compress func(fs.FS) map[string][]byte
+	files    map[string][]byte
+}
+
+var embeddedCompressed compressedCache
 
 // Handler serves the embedded SPA: real files (hashed assets, favicon) are served
 // directly with long-cache headers; every other path falls back to index.html so
@@ -30,7 +39,7 @@ func Handler() http.Handler {
 	if err != nil {
 		return notBuilt()
 	}
-	return handlerFor(sub)
+	return handlerForCached(sub, &embeddedCompressed)
 }
 
 func handlerFor(sub fs.FS) http.Handler {
@@ -38,8 +47,30 @@ func handlerFor(sub fs.FS) http.Handler {
 	if err != nil {
 		return notBuilt() // only .gitkeep present — `make fe` hasn't run
 	}
+	return handlerForWithIndex(sub, index, precompress(sub))
+}
+
+func (c *compressedCache) get(files fs.FS) map[string][]byte {
+	c.Do(func() {
+		compress := c.compress
+		if compress == nil {
+			compress = precompress
+		}
+		c.files = compress(files)
+	})
+	return c.files
+}
+
+func handlerForCached(sub fs.FS, cache *compressedCache) http.Handler {
+	index, err := fs.ReadFile(sub, "index.html")
+	if err != nil {
+		return notBuilt() // only .gitkeep present — `make fe` hasn't run
+	}
+	return handlerForWithIndex(sub, index, cache.get(sub))
+}
+
+func handlerForWithIndex(sub fs.FS, index []byte, compressed map[string][]byte) http.Handler {
 	files := http.FileServer(http.FS(sub))
-	compressed := precompress(sub)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		clean := strings.TrimPrefix(r.URL.Path, "/")
 		if clean != "" && clean != "index.html" {
