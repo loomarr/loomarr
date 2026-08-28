@@ -37,7 +37,7 @@ curl -s http://localhost:8080/v1/system/version | python3 -m json.tool | head -1
 either disagrees, kill the stale process first:
 
 ```bash
-pkill -f 'tmp/loomarr-dev'; pkill -f 'air@v1.67.3'
+pkill -f 'tmp/loomarr-dev'; pkill -f 'air@v1.67.4'
 ```
 
 ## 2. Frontend

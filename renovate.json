@@ -35,6 +35,84 @@
       ],
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Update pinned Go development tools",
+      "managerFilePatterns": ["/^mk/(?:build|check|contracts)\\.mk$/"],
+      "matchStrings": [
+        "github\\.com/(?<depName>air-verse/air)@v(?<currentValue>\\d+\\.\\d+\\.\\d+)",
+        "github\\.com/(?<depName>golangci/golangci-lint)/v2/cmd/golangci-lint@v(?<currentValue>\\d+\\.\\d+\\.\\d+)",
+        "github\\.com/(?<depName>rhysd/actionlint)/cmd/actionlint@v(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "Update pinned npm command-line tools",
+      "managerFilePatterns": ["/^Dockerfile$/", "/^mk/docs\\.mk$/", "/^\\.github/workflows/ci-docs\\.yml$/"],
+      "matchStrings": [
+        "(?<depName>corepack)@(?<currentValue>\\d+\\.\\d+\\.\\d+)",
+        "(?<depName>markdownlint-cli2)@(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "datasourceTemplate": "npm",
+      "versioningTemplate": "npm"
+    },
+    {
+      "customType": "regex",
+      "description": "Update documentation tool containers",
+      "managerFilePatterns": ["/^mk/docs\\.mk$/"],
+      "matchStrings": [
+        "(?<depName>jdkato/vale):(?<currentValue>v\\d+\\.\\d+\\.\\d+)",
+        "(?<depName>terrastruct/d2):(?<currentValue>v\\d+\\.\\d+\\.\\d+)@(?<currentDigest>sha256:[a-f0-9]+)"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Update the pinned yt-dlp release",
+      "managerFilePatterns": ["/^Dockerfile$/"],
+      "matchStrings": [
+        "ARG YTDLP_VERSION=(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "yt-dlp/yt-dlp",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v?(?<version>.*)$",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
+      "description": "Update the pinned Deno release",
+      "managerFilePatterns": ["/^Dockerfile$/"],
+      "matchStrings": ["ARG DENO_VERSION=v(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+      "depNameTemplate": "denoland/deno",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "Update the pinned whisper.cpp release",
+      "managerFilePatterns": ["/^Dockerfile$/"],
+      "matchStrings": ["ARG WHISPER_VERSION=v(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+      "depNameTemplate": "ggml-org/whisper.cpp",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "Keep the Playwright package and browser image discoverable together",
+      "managerFilePatterns": ["/^scripts/run-playwright-container\\.sh$/"],
+      "matchStrings": [
+        "(?<depName>mcr\\.microsoft\\.com/playwright):v(?<currentValue>\\d+\\.\\d+\\.\\d+)-noble"
+      ],
+      "datasourceTemplate": "docker",
+      "extractVersionTemplate": "^v(?<version>\\d+\\.\\d+\\.\\d+)-noble$",
+      "versioningTemplate": "semver"
     }
   ],
   "packageRules": [
@@ -181,6 +259,17 @@
       "matchFileNames": ["docs-site/**"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "Docs site dependencies"
+    },
+    {
+      "description": "Review repository tooling and runtime assets",
+      "matchManagers": ["custom.regex"],
+      "automerge": false
+    },
+    {
+      "description": "Keep the Playwright package and browser image atomic",
+      "matchPackageNames": ["@playwright/test", "mcr.microsoft.com/playwright"],
+      "groupName": "Playwright runtime",
+      "automerge": false
     },
     {
       "description": "GitHub Actions execute privileged CI code and always require review",

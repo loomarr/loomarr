@@ -60,15 +60,26 @@ func TestRenovateOwnsEveryDependencyEcosystem(t *testing.T) {
 	if config.LockFileMaintenance.Enabled {
 		t.Fatal("unscoped lockfile maintenance must remain disabled")
 	}
-	if len(config.CustomManagers) != 1 {
-		t.Fatalf("custom managers = %d, want the test-container authority manager", len(config.CustomManagers))
+	if len(config.CustomManagers) != 8 {
+		t.Fatalf("custom managers = %d, want all repository-owned pin managers", len(config.CustomManagers))
 	}
-	manager := config.CustomManagers[0]
+	manager := customManagerByDescription(t, config.CustomManagers, "Update repository-owned test container image authorities")
 	requireExactSet(t, "test image authority paths", manager.ManagerFilePatterns, []string{
 		"/^internal/testkit/(?:postgres|ryuk)image/image\\.txt$/",
 	})
 	if manager.DatasourceTemplate != "docker" || manager.VersioningTemplate != "docker" {
 		t.Fatalf("test image manager = %+v", manager)
+	}
+	for _, description := range []string{
+		"Update pinned Go development tools",
+		"Update pinned npm command-line tools",
+		"Update documentation tool containers",
+		"Update the pinned yt-dlp release",
+		"Update the pinned Deno release",
+		"Update the pinned whisper.cpp release",
+		"Keep the Playwright package and browser image discoverable together",
+	} {
+		_ = customManagerByDescription(t, config.CustomManagers, description)
 	}
 	if _, err := os.Stat(filepath.Join("..", "..", ".github", "dependabot.yml")); !os.IsNotExist(err) {
 		t.Fatalf("Dependabot config must be retired, stat err = %v", err)
@@ -158,6 +169,17 @@ func ruleByDescription(t *testing.T, rules []renovatePackageRule, description st
 	}
 	t.Fatalf("missing Renovate rule %q", description)
 	return renovatePackageRule{}
+}
+
+func customManagerByDescription(t *testing.T, managers []renovateCustom, description string) renovateCustom {
+	t.Helper()
+	for _, manager := range managers {
+		if manager.Description == description {
+			return manager
+		}
+	}
+	t.Fatalf("missing Renovate custom manager %q", description)
+	return renovateCustom{}
 }
 
 func requireExactSet(t *testing.T, name string, got, want []string) {
