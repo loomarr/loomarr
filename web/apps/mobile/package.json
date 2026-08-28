@@ -13,11 +13,11 @@
     "bundle": "expo export --platform android --output-dir dist/android && expo export --platform ios --output-dir dist/ios"
   },
   "dependencies": {
-    "@loomarr/design-system": "workspace:*",
     "@loomarr/core": "workspace:*",
+    "@loomarr/design-system": "workspace:*",
     "@loomarr/ui": "workspace:*",
-    "expo": "~57.0.17",
-    "expo-constants": "~57.0.15",
+    "expo": "~57.0.18",
+    "expo-constants": "~57.0.16",
     "expo-linking": "~57.0.8",
     "expo-router": "~57.0.17",
     "expo-secure-store": "~57.0.2",
