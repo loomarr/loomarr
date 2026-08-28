@@ -50,6 +50,15 @@ func TestRankGroundedCandidatesWithTracePublishesExactLexicographicTupleAndBound
 		if item.Rank.TieKey != item.Key || item.Rank.Relevance != 1 || item.Rank.Preference != 0 || item.Rank.Novelty != 1 {
 			t.Fatalf("trace[%d] = %+v; tuple must be independently reconstructable", i, item)
 		}
-		if i > 0 && got.Trace.Candidates[i-1].Rank.TieKey >= item.Rank.TieKey { t.Fatalf("tie keys not stable: %+v", got.Trace.Candidates) }
+		if i > 0 && got.Trace.Candidates[i-1].Rank.TieKey >= item.Rank.TieKey {
+			t.Fatalf("tie keys not stable: %+v", got.Trace.Candidates)
+		}
+	}
+}
+
+func TestRankGroundedCandidatesWithTraceClassifiesRetrievalEmpty(t *testing.T) {
+	got := RankGroundedCandidatesWithTrace("nothing", nil, nil)
+	if got.Trace.Version != DecisionTraceVersion || got.Trace.Terminal != ReasonRetrievalEmpty || got.Trace.SurfacedTotal != 0 || got.Trace.RecordedTotal != 0 {
+		t.Fatalf("empty retrieval trace = %+v", got.Trace)
 	}
 }
