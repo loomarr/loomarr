@@ -3568,6 +3568,40 @@ with the same `--out` and `--recover-lock-sha256 <exact digest reported by the b
 mode makes no provider request, atomically renames the lock to a digest-named recovery audit, and
 exits. A missing or changed digest fails closed.
 
+The same CLI has a strictly offline inspection mode only for Reviewer B's exact 300-case hosted-review
+checkpoint. It accepts the exact package, transcript set, historical capability snapshot, route
+identity, prompt identity, and original ceilings; re-hashes and validates all of them plus the exact
+`0700` checkpoint directory, exact regular `0600` checkpoint, complete settled attempt accounting,
+package order, and any bounded exact regular `0600` active lock; and rejects symlinks, other types, and
+all other modes, including setuid, setgid, and sticky bits. The package and checkpoint directories are
+opened without following their final symlink and retained as descriptor roots; package descendants are
+opened component-by-component relative to that root without following symlinks. The package tree is an
+exact closed set of `manifest.json`, its declared instructions and label template, every declared
+signal, and only their required ancestor directories. The checkpoint tree contains exactly
+`checkpoint.json` and, when present, `active-run.lock`. Any other file, directory, symlink, device, or
+special object fails inspection regardless of its mode. The checkpoint,
+optional lock, transcript set, and snapshot are likewise mode-checked and read from the same opened
+descriptors, so a pathname replacement cannot redirect validation to one object and reading to
+another. Historical inspection validates the snapshot's immutable schema, source, model, route,
+capability, privacy, and digest identity but does not apply the live run's 24-hour freshness window.
+The live runner still rejects a snapshot older than 24 hours before constructing or invoking its
+request path. The offline CLI control path has neither credential lookup nor the provider-capable run
+function available to its inspection branch. It never reads a credential, creates a lock, mutates any
+input directory, or constructs a provider client.
+
+Its content-addressed attestation is a sanitized inspection projection only: permitted artifact,
+prompt, checkpoint, identity, and optional active-lock hashes; closed inspection status; aggregate
+case and historical request counts; and historically recorded immutable request/monetary ceilings and
+remaining allowance. Its SHA-256 is independently recomputable from the canonical emitted fields with
+the digest field omitted. It emits no raw batch, reviewer, model, provider, route, or prompt-version value.
+An incomplete checkpoint without a lock is `awaiting_explicit_maintainer_approval`. A present valid
+lock is only `active_run_lock_present`: it proves neither stale ownership nor recovery authority.
+Presence is tracked separately from lock bytes, so an empty `0600` lock is invalid rather than absent.
+Every state reports provider execution unauthorized; inspection authorizes no provider call, recovery
+run, or spend reservation. Missing inputs, identity or ceiling drift, unsafe modes, duplicate or
+out-of-order state, an invalid lock, an unsettled reservation, or unverifiable accounting emit no
+attestation and fail closed.
+
 A resumed hosted review re-hashes every package, transcript, snapshot, prompt, request, and accepted
 submission and requires the checkpoint identity and ceilings to match exactly. Identity drift,
 unknown fields, permissive or symlinked state, duplicate aliases, duplicate accepted attempts,

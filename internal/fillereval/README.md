@@ -40,6 +40,28 @@ snapshot and one exact ZDR upstream route. It disables fallback, requires strict
 reserves every request against explicit per-call and total nano-USD ceilings, records the selected
 provider, generation, tokens, latency, and charged amount for every case, and publishes nothing after
 any route, schema, accounting, or timeout failure.
+The command's `--inspect-checkpoint` mode is the non-spending inspection boundary only for Reviewer B's
+exact 300-case checkpoint. It requires the same local package, transcript, historical snapshot, route
+and prompt identity, and original ceilings, but does not apply the live run's 24-hour snapshot window,
+accept or read a credential, or create a provider client or lock. The checkpoint directory must be
+exactly `0700`; the checkpoint and any active lock must be regular, non-symlinked files at exactly
+`0600`; package directories and artifacts, transcripts, and the snapshot follow the same exact
+`0700`/`0600` rule. Setuid, setgid, sticky, symlinked, and other typed or permission variants fail.
+The package directory contains exactly its manifest, declared instructions and template, declared
+signals, and their required ancestor directories; the checkpoint directory contains exactly its
+checkpoint and optional active lock. Unreferenced files, directories, devices, or other objects fail.
+Every object is validated and read through one retained descriptor or descriptor-rooted open, so a
+pathname replacement cannot switch the bytes after validation. The offline branch has no credential
+lookup or provider-run capability. Successful output is one sanitized, content-addressed JSON object
+containing only permitted hashes, aggregate case and historical request accounting, historically
+recorded immutable ceilings, and remaining allowance. It emits no raw batch, reviewer, model,
+provider, route, or prompt-version value. An incomplete checkpoint always awaits explicit maintainer
+approval. A valid lock reports only that an active lock is present; it does not establish staleness or
+authorize recovery; an empty present lock is invalid and is never treated as absence. Inspection
+authorizes no provider call, recovery run, or spend. Unsafe types or
+modes, identity or ceiling drift, duplicate or out-of-order state, an unsettled reservation, invalid
+accounting, or an invalid lock fails without stdout or input-directory mutation.
+
 `make filler-corpus-lock` combines the draft, both maps,
 and two independently authored JSONL review batches. Each line has `alias`, `reviewerId`, `batchId`,
 `reviewedAt`, and `labels`; labels

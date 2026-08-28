@@ -376,46 +376,77 @@ func validateOllamaReviewConfig(config OllamaReviewConfig) (string, *http.Client
 }
 
 func validateReviewPackage(root string, manifest Package, expectedCases int) error {
-	if manifest.SchemaVersion != SchemaVersion || strings.TrimSpace(manifest.BatchID) == "" || !reviewSHA256(manifest.DraftSHA256) || !reviewSHA256(manifest.ReviewPacketSHA256) || manifest.EvidenceVersion == "" || len(manifest.Cases) != expectedCases {
-		return fmt.Errorf("review package must use the current schema and contain exactly %d cases", expectedCases)
+	artifacts, err := validateReviewPackageStructure(manifest, expectedCases)
+	if err != nil {
+		return err
 	}
-	for _, document := range []struct{ path, digest string }{{manifest.InstructionsPath, manifest.InstructionsSHA256}, {manifest.LabelTemplatePath, manifest.LabelTemplateSHA256}} {
-		path, err := resolveWithin(root, document.path)
-		if err != nil || !reviewSHA256(document.digest) {
-			return fmt.Errorf("review package document path or digest is invalid")
-		}
+	for _, artifact := range artifacts {
+		path, resolveErr := resolveWithin(root, artifact.Path)
 		digest, hashErr := hashFile(path)
-		if hashErr != nil || digest != document.digest {
-			return fmt.Errorf("review package document failed SHA-256 verification")
+		if resolveErr != nil || hashErr != nil || digest != artifact.SHA256 {
+			return fmt.Errorf("%s", artifact.Failure)
 		}
+	}
+	return nil
+}
+
+type reviewPackageArtifact struct {
+	Path    string
+	SHA256  string
+	Failure string
+}
+
+// validateReviewPackageStructure is the single package-shape authority used by
+// both live review and descriptor-rooted offline inspection. Its returned file
+// set is also the offline inspector's exact package-tree allowlist.
+func validateReviewPackageStructure(manifest Package, expectedCases int) ([]reviewPackageArtifact, error) {
+	if manifest.SchemaVersion != SchemaVersion || strings.TrimSpace(manifest.BatchID) == "" || !reviewSHA256(manifest.DraftSHA256) || !reviewSHA256(manifest.ReviewPacketSHA256) || manifest.EvidenceVersion == "" || len(manifest.Cases) != expectedCases {
+		return nil, fmt.Errorf("review package must use the current schema and contain exactly %d cases", expectedCases)
+	}
+	artifacts := make([]reviewPackageArtifact, 0, 2+expectedCases*5)
+	for _, document := range []struct{ path, digest string }{{manifest.InstructionsPath, manifest.InstructionsSHA256}, {manifest.LabelTemplatePath, manifest.LabelTemplateSHA256}} {
+		if _, err := reviewPackageRelativePath(document.path); err != nil || !reviewSHA256(document.digest) {
+			return nil, fmt.Errorf("review package document path or digest is invalid")
+		}
+		artifacts = append(artifacts, reviewPackageArtifact{Path: document.path, SHA256: document.digest, Failure: "review package document failed SHA-256 verification"})
 	}
 	aliases := map[string]struct{}{}
 	for _, item := range manifest.Cases {
 		if _, duplicate := aliases[item.Alias]; duplicate || strings.TrimSpace(item.Alias) == "" || !reviewSHA256(item.ContentSHA256) || !reviewSHA256(item.EvidenceSHA256) || item.SegmentDurationMS <= 0 {
-			return fmt.Errorf("review package contains an invalid or duplicate alias")
+			return nil, fmt.Errorf("review package contains an invalid or duplicate alias")
 		}
 		aliases[item.Alias] = struct{}{}
 		frames := 0
 		signalIDs := map[string]struct{}{}
 		for _, signal := range item.Signals {
 			if _, duplicate := signalIDs[signal.ID]; duplicate || signal.ID == "" || signal.Bytes <= 0 || !reviewSHA256(signal.SHA256) {
-				return fmt.Errorf("review alias %q contains an invalid or duplicate signal", item.Alias)
+				return nil, fmt.Errorf("review alias %q contains an invalid or duplicate signal", item.Alias)
 			}
 			signalIDs[signal.ID] = struct{}{}
-			path, resolveErr := resolveWithin(root, signal.Path)
-			digest, hashErr := hashFile(path)
-			if resolveErr != nil || hashErr != nil || digest != signal.SHA256 {
-				return fmt.Errorf("review alias %q signal %q failed SHA-256 verification", item.Alias, signal.ID)
+			if _, err := reviewPackageRelativePath(signal.Path); err != nil {
+				return nil, fmt.Errorf("review alias %q signal %q failed SHA-256 verification", item.Alias, signal.ID)
 			}
+			artifacts = append(artifacts, reviewPackageArtifact{
+				Path: signal.Path, SHA256: signal.SHA256,
+				Failure: fmt.Sprintf("review alias %q signal %q failed SHA-256 verification", item.Alias, signal.ID),
+			})
 			if signal.Kind == "frame" {
 				frames++
 			}
 		}
 		if frames != 4 && (frames != 0 || len(item.Signals) != 0 || !decoderProvesUnusable(item.DecoderFacts)) {
-			return fmt.Errorf("review alias %q requires exactly four frames", item.Alias)
+			return nil, fmt.Errorf("review alias %q requires exactly four frames", item.Alias)
 		}
 	}
-	return nil
+	return artifacts, nil
+}
+
+func reviewPackageRelativePath(path string) (string, error) {
+	clean := filepath.Clean(path)
+	if path == "" || clean == "." || filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || filepath.ToSlash(clean) != path {
+		return "", fmt.Errorf("review package path is not canonical and relative")
+	}
+	return clean, nil
 }
 
 func verifyReviewModel(ctx context.Context, client *http.Client, baseURL, model, digest string) error {

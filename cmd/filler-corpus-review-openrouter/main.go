@@ -1,5 +1,6 @@
-// Command filler-corpus-review-openrouter completes one independently shuffled
-// blind semantic-review package through one capability-snapshotted paid route.
+// Command filler-corpus-review-openrouter either completes one independently
+// shuffled blind semantic-review package through a capability-snapshotted paid
+// route or inspects an existing private Reviewer-B checkpoint offline.
 package main
 
 import (
@@ -12,12 +13,27 @@ import (
 
 	"github.com/loomarr/loomarr/cmd/internal/fillerbakeoffio"
 	"github.com/loomarr/loomarr/internal/fillerbakeoff"
+	"github.com/loomarr/loomarr/internal/fillereval"
 	"github.com/loomarr/loomarr/internal/fillerreview"
 )
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 
+type paidRunCapabilities struct {
+	getenv              func(string) string
+	runOpenRouterReview func(context.Context, fillerreview.OpenRouterReviewConfig) (fillerreview.ReviewRun, []fillereval.LabelSubmission, error)
+}
+
 func run(args []string, stdout, stderr io.Writer) int {
+	if inspectionRequested(args) {
+		return runOfflineInspection(args, stdout, stderr)
+	}
+	return runPaidReviewOrRecovery(args, stdout, stderr, paidRunCapabilities{
+		getenv: os.Getenv, runOpenRouterReview: fillerreview.RunOpenRouterReview,
+	})
+}
+
+func runPaidReviewOrRecovery(args []string, stdout, stderr io.Writer, capabilities paidRunCapabilities) int {
 	flags := flag.NewFlagSet("filler-corpus-review-openrouter", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	packageDir := flags.String("package", "", "identity-blind reviewer evidence package")
@@ -51,7 +67,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stdout, "filler-corpus-review-openrouter: recovered crash-stale lock to %s; inspect the audit before starting a new run\n", recovered)
 		return 0
 	}
-	apiKey := os.Getenv("OPENROUTER_API_KEY")
+	apiKey := capabilities.getenv("OPENROUTER_API_KEY")
 	if apiKey == "" || *packageDir == "" || *transcriptsPath == "" || *snapshotPath == "" || *model == "" || *provider == "" || *providerSlug == "" || *reviewerID == "" || *outputDir == "" || *maxSpendNanoUSD <= 0 || *maxChargeNanoUSD <= 0 {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-review-openrouter: OPENROUTER_API_KEY and --package, --transcripts, --snapshot, --model, --provider, --provider-slug, --reviewer-id, --out, --max-spend-nanousd, and --max-charge-nanousd are required")
 		return 2
@@ -66,7 +82,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "filler-corpus-review-openrouter: read snapshot: %v\n", err)
 		return 1
 	}
-	runEvidence, submissions, err := fillerreview.RunOpenRouterReview(context.Background(), fillerreview.OpenRouterReviewConfig{
+	runEvidence, submissions, err := capabilities.runOpenRouterReview(context.Background(), fillerreview.OpenRouterReviewConfig{
 		PackageDir: *packageDir, CheckpointDir: *outputDir + ".private", Transcripts: transcripts, BaseURL: *baseURL, APIKey: apiKey, Snapshot: snapshot,
 		Model: *model, UpstreamProvider: *provider, UpstreamProviderSlug: *providerSlug, ReviewerID: *reviewerID,
 		ExpectedCases: *expectedCases, PerCaseTimeout: *perCaseTimeout, MaxRequests: *maxRequests,
