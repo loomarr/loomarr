@@ -234,6 +234,26 @@ func TestGetProposalJobRequiresOwnerOrAdmin(t *testing.T) {
 	}
 }
 
+func TestGetProposalProjectsPersistedDecisionTraceForAuthorizedReader(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	body := `{"trace":{"version":1,"surfacedTotal":1,"recordedTotal":1,"truncated":false,"candidates":[{"key":"movie:tmdb:1","ownership":"library","disposition":"selected","reason":"selected"}]}}`
+	if err := st.CreateProposal(context.Background(), store.Proposal{ID: "trace-proposal", JobID: "trace-job", Status: "submitted", CreatedBy: "alice", ProposalJSON: body}); err != nil {
+		t.Fatal(err)
+	}
+	resp := do(t, srv, http.MethodGet, "/v1/proposals/trace-proposal", adminToken, "")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET proposal = %d, want 200", resp.StatusCode)
+	}
+	var got api.ProposalDTO
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Proposal.Trace.Version != 1 || len(got.Proposal.Trace.Candidates) != 1 {
+		t.Fatalf("proposal trace = %+v", got.Proposal.Trace)
+	}
+}
+
 // THE APPROVAL GATE (§19): approve requires admin. A member (anonymous here /
 // wrong token) gets 403 — and crucially, no title is enqueued.
 func TestApprove_RequiresAdmin_NothingEnqueued(t *testing.T) {
