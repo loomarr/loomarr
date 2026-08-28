@@ -44,7 +44,7 @@ func RunWithFakeDocker(t *testing.T, executable string, args []string, config Fa
 	// The full race-enabled suite can leave these short-lived bash probes waiting for CPU while
 	// many packages compile and test in parallel. Keep a hard deadlock bound, but do not confuse
 	// scheduler contention with a hung helper.
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	result, err := ProbeWithFakeDocker(ctx, executable, args, config)
 	if err != nil {

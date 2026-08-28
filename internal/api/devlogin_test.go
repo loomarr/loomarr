@@ -3,9 +3,11 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -247,13 +249,20 @@ func TestPprofGoroutineLeakProfileWhenEnabled(t *testing.T) {
 	srv := gatedServer(t, false, true, nil)
 
 	for _, p := range []string{"/v1/debug/pprof/goroutineleak", "/debug/pprof/goroutineleak"} {
-		res, err := http.Get(srv.URL + p)
+		res, err := http.Get(srv.URL + p + "?debug=1")
 		if err != nil {
 			t.Fatal(err)
 		}
+		body, readErr := io.ReadAll(res.Body)
 		_ = res.Body.Close()
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
 		if res.StatusCode != http.StatusOK {
 			t.Fatalf("%s with LOOMARR_PPROF enabled = %d, want 200", p, res.StatusCode)
+		}
+		if !strings.Contains(string(body), "goroutineleak profile: total ") {
+			t.Fatalf("%s served the wrong profile: %q", p, body)
 		}
 	}
 }

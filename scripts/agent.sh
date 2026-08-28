@@ -339,6 +339,16 @@ doctor() {
 	tool_version ffmpeg ffmpeg -version || fail=1
 	tool_version ffprobe ffprobe -version || fail=1
 
+	if command -v go >/dev/null 2>&1; then
+		go_release="$(go version | sed -n 's/.* go\([0-9][0-9.]*\).*/\1/p')"
+		go_major="${go_release%%.*}"
+		go_rest="${go_release#*.}"
+		go_minor="${go_rest%%.*}"
+		case "$go_major:$go_minor" in
+			1:27|1:2[89]|1:[3-9][0-9]|[2-9]:*) ;;
+			*) echo "  ERROR: Go 1.27+ is required (found ${go_release:-unknown})"; fail=1 ;;
+		esac
+	fi
 	if command -v node >/dev/null 2>&1; then
 		node_major="$(node -p 'process.versions.node.split(".")[0]')"
 		[ "$node_major" = 22 ] || { echo "  ERROR: Node 22 is required for CI parity (found $node_major)"; fail=1; }

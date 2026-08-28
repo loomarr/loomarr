@@ -477,7 +477,7 @@ classify() {
       known=true
       select_gate policy
       ;;
-    renovate.json|.github/dependabot.yml)
+    renovate.json|.github/dependabot.yml) # retired-ok: deleting the legacy config must still select policy gates
 	  known=true
 	  select_gate contracts
 	  select_gate policy

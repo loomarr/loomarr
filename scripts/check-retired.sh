@@ -3,6 +3,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 RETIRED=(
+  '.github/dependabot.yml|dependency automation is owned by renovate.json; do not restore the legacy bot configuration'
   # The first full-corpus inventory put Archive.org identity at the document root, making mixed
   # authority certification impossible. No completed certification artifact uses it; schema v2
   # binds authority to every case and the strict decoder rejects the old shape.
