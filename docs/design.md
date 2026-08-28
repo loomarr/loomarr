@@ -3360,6 +3360,14 @@ V38 compatibility gate remains the filing authority until the corpus and rollout
 The durable decision projection and unattended cutover are separate changes, so adding this module
 cannot by itself expand what reaches a channel without review.
 
+Every durable filler decision carries a closed `ApplicationMode`: exactly `shadow` or `applied`.
+`shadow` records what the evaluator would decide without granting catalog filing authority;
+`applied` means the decision was the filing authority and its corresponding catalog effect committed.
+All current production decision records are explicitly `shadow`; `applied` is reserved and has no
+producer. Omitted or unknown modes fail closed at the domain and store boundary. The forward migration
+marks every pre-existing decision `shadow`, matching the only production writer that could have created
+one, and keeps `shadow` as the database default for omitted raw inserts.
+
 The ingest ladder places a fail-closed `admission` rung after extraction and immediately before the
 V38 `score` rung. Its first production evidence version records only facts whose provenance the
 current pipeline can prove: successful decoder passage, an explicit content-role token in the

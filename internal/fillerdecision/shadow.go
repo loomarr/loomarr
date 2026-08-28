@@ -74,7 +74,8 @@ func (s *Shadow) Observe(ctx context.Context, observation ShadowObservation) err
 		ID: "shadow-" + hex.EncodeToString(identityDigest[:]), ClipHash: observation.ClipHash,
 		EvidenceHash: evidenceHash, EvidenceVersion: doc.EvidenceVersion,
 		SchemaVersion: doc.SchemaVersion, PolicyVersion: doc.PolicyVersion,
-		TaxonomyVersion: doc.TaxonomyVersion, Result: s.evaluator.Evaluate(doc),
+		TaxonomyVersion: doc.TaxonomyVersion, ApplicationMode: ApplicationModeShadow,
+		Result:    s.evaluator.Evaluate(doc),
 		CreatedAt: observation.ObservedAt.UTC(),
 	}
 	if err := s.writer.Record(ctx, record); err != nil {

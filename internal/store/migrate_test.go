@@ -99,6 +99,45 @@ func TestMigrationProviderScopesEmbeddedMigrations(t *testing.T) {
 	}
 }
 
+func TestFillerDecisionApplicationModeMigrationBackfillsShadow(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "decision-mode.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	provider, err := newMigrationProvider(db, DialectSQLite, "migrations/sqlite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(ctx, 70); err != nil {
+		t.Fatalf("migrate through 70: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO filler_admission_decisions (
+		id, clip_hash, evidence_hash, evidence_version, schema_version, policy_version,
+		taxonomy_version, outcome_kind, verdict, result_json, created_at
+	) VALUES ('pre-mode', 'clip-1', 'evidence-1', 'e1', 2, 'p1', 't1',
+		'semantic', 'admit', '{}', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(ctx, 71); err != nil {
+		t.Fatalf("migrate through 71: %v", err)
+	}
+	var mode string
+	if err := db.QueryRowContext(ctx,
+		`SELECT application_mode FROM filler_admission_decisions WHERE id = 'pre-mode'`).Scan(&mode); err != nil {
+		t.Fatal(err)
+	}
+	if mode != "shadow" {
+		t.Fatalf("pre-migration application mode = %q, want shadow", mode)
+	}
+	if _, err := db.ExecContext(ctx,
+		`UPDATE filler_admission_decisions SET application_mode = 'automatic' WHERE id = 'pre-mode'`); err == nil {
+		t.Fatal("application mode CHECK accepted an unknown value")
+	}
+}
+
 func TestUniqueChannelIntentRefMigrationPreservesDuplicateChannels(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "intent-ref.db"))
