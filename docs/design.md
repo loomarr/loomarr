@@ -6245,6 +6245,16 @@ mutate shared taste. Anonymous callers cannot read or write them.
 The latest event per `(scope, target)` is the effective signal, with channel scope overriding the
 household signal for that channel.
 
+Execution scope is server-derived and deliberately absent from persisted Intent JSON and public
+proposal inputs. A durable `kind=recurate` Proposal Job resolves its one current owning Channel from
+the trusted claimed Job id immediately before the worker invokes the Suggester, using the Channel's
+unique non-empty `intent_ref`; only then does the worker attach the Channel id as in-memory discovery
+scope. A missing, detached, unreadable, empty-id, or mismatched owner fails that Attempt
+before provider or catalog access. Fresh suggestions and manual refines remain household-scoped.
+The admin feedback API's `scopeId` identifies the editorial event being recorded; it never supplies
+or overrides execution scope. This keeps channel feedback effective across durable requeue, claim,
+and process restart without making a client-writable scope an authorization fact.
+
 A single pure deterministic discovery ranker consumes grounded candidate metadata plus effective
 signals. Explicit includes/excludes, grounding, audience safety, approval, and quotas remain outside
 and above it. `never` is a hard candidate exclusion; `keep` protects an existing lineup item from

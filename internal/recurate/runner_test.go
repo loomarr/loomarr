@@ -116,6 +116,23 @@ func TestRunner_RefreshIntentKeepsOriginalNoRefineText(t *testing.T) {
 	}
 }
 
+// The scheduler submits only durable editorial intent. Channel feedback scope is
+// restored later from the claimed Proposal Job id, so this transient handoff must
+// never pretend to be execution authority.
+func TestRunner_RefreshIntentDoesNotClaimFeedbackScope(t *testing.T) {
+	st := newStore(t)
+	seedJob(t, st, "job1", "90s action heroes")
+	seedChannelStatus(t, st, "channel-a", "job1", schedule.StatusLive, &schedule.AutoCurate{}, 1)
+
+	fr := &fakeRefiner{}
+	if _, err := recurate.NewRunner(st, fr, testkit.Logger()).Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if scope := fr.intents["job1"].DiscoveryScopeID; scope != "" {
+		t.Fatalf("scheduler supplied transient feedback scope %q; execution scope must be derived after durable claim", scope)
+	}
+}
+
 // No eligible channels → the runner is a cheap no-op (0 kicked, no error).
 func TestRunner_NoEligibleChannelsIsNoop(t *testing.T) {
 	st := newStore(t)

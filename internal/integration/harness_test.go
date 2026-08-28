@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -40,6 +41,7 @@ type harness struct {
 
 type harnessConfig struct {
 	llm           *testkit.LLM
+	jobWorkers    int
 	seerr         bool
 	connections   bool // false ⇒ fresh install: seed NO connection settings
 	fillerStorage bool // true ⇒ seed only the local filler layout, not external connections
@@ -50,6 +52,8 @@ type harnessOpt func(*harnessConfig)
 
 // withLLM injects a scripted LLM for the suggester (the pipeline journey).
 func withLLM(l *testkit.LLM) harnessOpt { return func(c *harnessConfig) { c.llm = l } }
+
+func withJobWorkers(n int) harnessOpt { return func(c *harnessConfig) { c.jobWorkers = n } }
 
 // withSeerr seeds seerr.url so the Acquisition feature is on.
 func withSeerr() harnessOpt { return func(c *harnessConfig) { c.seerr = true } }
@@ -163,6 +167,9 @@ func (h *harness) seedConnections(cfg harnessConfig) {
 	set("filler.dir", h.t.TempDir())
 	set("channel.reconcile_every", "9999h")
 	set("filler.sync_every", "9999h")
+	if cfg.jobWorkers > 0 {
+		set("job.workers", strconv.Itoa(cfg.jobWorkers))
+	}
 	if h.seerr != nil {
 		set("seerr.url", h.seerr.URL)
 		set("seerr.api_key", "seerr-key")
