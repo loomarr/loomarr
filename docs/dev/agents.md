@@ -32,6 +32,13 @@ several bounded workers. It defines the task graph, worker brief, evidence repor
 integration handoff. The delivery owner remains accountable for the combined diff, final gates, PR,
 and cleanup; a worker reporting `complete` closes only its assigned outcome.
 
+Issues track questions, bugs, and work; `PROGRESS.md` alone owns phase status and gate evidence;
+claims and worktrees lock mutable seams. Every supervised assignment records its required tracking
+issue and issue actions; a `PROGRESS.md` row is additional phase evidence, never a substitute or a
+duplicate state. Search open and closed issues before creating one, and file only confirmed
+current-`main` defects with a viewer-visible repro, evidence, and acceptance criteria. Link research
+and out-of-scope confirmed defects instead of silently expanding the delivery.
+
 Native subagents are the strongest arrangement because the parent can inspect, steer, wait for, and
 collect its children directly. Independent agent sessions can still participate through the shared
 registry and isolated worktrees, but their conversations are not visible across harnesses. Treat
@@ -46,25 +53,28 @@ worker report. A worker waits for the supervisor to stop it or issue another bri
 its own backlog. This keeps ownership with the delivery agent while still providing fresh context.
 
 When the harness supports model and reasoning controls, select them by task shape and record the
-choice in the worker brief:
+choice in the worker brief. The durable supervisor workflow uses capability classes so it remains
+provider-neutral; adapter-specific live model mappings belong outside this contract.
 
 | Task shape | Default execution |
 | --- | --- |
 | Small task, sequential reasoning, or shared mutable seam | One owning agent; no delegation |
-| Bounded search, triage, or repetitive mechanical work | Faster/lower-cost model or effort when acceptance is objective |
-| Ambiguous multi-step design or implementation | Strong-capability model with enough reasoning for uncertainty |
-| Authorization, safety, integration, or final acceptance | Strong-capability model and high scrutiny |
+| Ordinary bounded worker assignment | Balanced capability at Medium reasoning |
+| Bounded search, triage, or repetitive mechanical work | Lower-cost capability when acceptance is objective |
+| Measured ambiguity, security, authorization, migration, integration, or final acceptance | Frontier capability or High reasoning only when the measured need justifies it |
 | External session without trustworthy controls | Record `uncontrolled`; verify through artifacts and evidence |
 
-Inheritance is the default. Override it only when the expected quality, latency, or cost difference
-is material, and compare alternatives only when they pass the same acceptance gate. Never treat a
-stronger model as broader authority. Do not switch a worker's model during an active checkpoint;
-make the change with its next bounded assignment. During crash recovery, preserve the original model
-and thread when possible so the checkpoint remains coherent.
+Use Medium as the balanced default. Record the selected model/capability, reasoning, and rationale;
+do not switch model or reasoning during an active checkpoint. Change it only with the next bounded
+assignment after the worker returns. Record worker-scoped usage as `source`, `start`, `end`, and
+`delta` only when observable; use `unavailable` or `uncontrolled` otherwise, and never attribute an
+aggregate goal/session total to one worker. Accepted checkpoint evidence, not token count alone,
+measures progress. Repeated no-progress, duplicated work, or scope drift requires a rescope or
+interrupt rather than a token-threshold reaction.
 
-These rules follow OpenAI's guidance that subagents work best on independent, bounded tasks and that
-model and reasoning settings should be task-dependent. See [Codex subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)
-and [multi-agent workflows](https://developers.openai.com/api/docs/guides/responses-multi-agent).
+Never treat a stronger model as broader authority. Compare alternatives only when they pass the same
+acceptance gate. During crash recovery, preserve the original model and thread when possible so the
+checkpoint remains coherent.
 
 ### tmux
 
@@ -94,6 +104,13 @@ the owning worktree and verify that both the worktree and its Git metadata are w
 continues an in-progress merge or edit. A linked worktree's metadata remains under the primary
 checkout's `.git/worktrees/`; add that exact metadata root when a sandbox supports extra writable
 directories instead of granting the recovered worker the primary checkout.
+
+## Linux-to-Mac handoff
+
+Use the supervisor workflow's [cross-host handoff barrier](../../.agents/workflows/supervise.md#hand-off-between-linux-and-mac).
+It is canonical for authorized transfer, safe topic/bundle handling, worker shutdown, fresh-Mac
+registration, and issue handoff records. Keep all Linux writers stopped and the Linux branch/reports
+until Mac acceptance completes; host-local registries do not provide cross-host exclusion.
 
 ## Start a task
 
