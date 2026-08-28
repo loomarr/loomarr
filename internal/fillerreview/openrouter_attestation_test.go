@@ -105,7 +105,7 @@ func TestInspectOpenRouterReviewCheckpointUsesClosedInspectionStatus(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	var status OpenRouterReviewInspectionStatus = attestation.Status
+	status := attestation.Status
 	if status != OpenRouterReviewInspectionAwaitingExplicitMaintainerApproval {
 		t.Fatalf("status = %q", status)
 	}
