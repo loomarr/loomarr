@@ -164,6 +164,9 @@ can look stale by design. A bare `go run ./cmd/loomarr` can orphan a stale child
 - Adding a build tag changes the guarded `TAGS` list in the Makefile.
 - Adding a CI build input changes the per-job filter in `.github/workflows/ci.yml`; never add a
   workflow-level `paths:` filter.
+- Pull requests own fast affected feedback; the merge queue owns complete affected integration
+  evidence. Normal queue-produced pushes to `main` publish only and must not restore a third product
+  validation run. Keep `CI` required and strict for both PR and `merge_group` commits.
 - Frontend work uses the Vite server, not the stale SPA embedded on the backend port.
 
 ## Stop points
