@@ -7,13 +7,17 @@
 Each family contains independently filtered jobs. The required aggregate always runs and checks
 every top-level result, including jobs that correctly skipped.
 
-## Fast PR feedback, queued native admission
+## Fast PR feedback, authoritative queued integration
 
-Ordinary pull-request pushes run the affected Linux gates and return the required `CI` result
-without competing for macOS runners. The required `main` merge queue then builds one candidate at a
-time against the current base. On that `merge_group` run, the same fail-closed classifier selects
-Apple mobile, Apple TV, the tuner matrix, and the macOS harness; every selected result remains a
-dependency of `CI`. Main pushes and explicit manual runs retain those jobs too.
+Ordinary pull-request pushes run affected policy, repository-contract, static-analysis,
+compile/type, unit, documentation, shared-client, and Android feedback and return the required `CI`
+result quickly. They do not run race-policy shards, Postgres conformance, Playwright, release-image
+builds, runtime image certification, Apple mobile, Apple TV, the tuner matrix, or the macOS harness.
+The required `main` merge queue then builds one candidate at a time against the current base. That
+`merge_group` run is the authoritative integration lane: the same fail-closed classifier selects
+the complete affected gate set, and every selected result remains a dependency of `CI`. Explicit
+manual runs retain release-candidate and full recovery scopes. A normal queue-produced push to
+`main` runs publication workflows only rather than validating the admitted commit again.
 
 The root workflow owns triggering, classification, admission, manual scopes, and the required
 aggregate. Product job implementations live in family-named reusable workflows, so an edit to one
@@ -36,15 +40,18 @@ One-at-a-time admission prevents a burst of agent branches from occupying every 
 the queue gives accepted work a stable place in line instead of repeatedly invalidating successful
 strict-mode runs.
 
-The policy has two coupled halves:
+The policy has three coupled halves:
 
 - GitHub ruleset **Main merge queue admission** targets `refs/heads/main`.
-- `.github/workflows/ci.yml` triggers on `merge_group` and excludes only ordinary `pull_request`
-  events from scarce macOS jobs.
+- Branch protection applies the strict, Actions-owned `CI` requirement to administrators as well as
+  ordinary contributors, so removing post-merge validation does not create a bypass path.
+- `.github/workflows/ci.yml` triggers on `pull_request`, `merge_group`, and explicit manual dispatch;
+  it does not trigger product validation for a normal `main` push.
 
 `releaseverify.VerifyCINativeAdmission` rejects loss of the queue trigger, renewed PR admission, a
-queue-only condition that drops main/manual evidence, or a missing scarce-capacity job. The live
-ruleset is verified through GitHub's branch-rules API when changing repository protection.
+queue-only condition that drops manual evidence, a restored post-merge product trigger, or a missing
+scarce-capacity job. The live ruleset is verified through GitHub's branch-rules API when changing
+repository protection.
 
 ## Jobs run only when their inputs changed
 
