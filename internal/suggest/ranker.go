@@ -82,7 +82,15 @@ const (
 	ReasonAcquisitionCap         = "acquisition_cap"
 	ReasonOverCeiling            = "over_ceiling"
 	ReasonBudgetExhausted        = "budget_exhausted"
+	TerminalProviderFailure      = "provider_failure"
+	TerminalGenerationFailure    = "generation_failure"
+	TerminalMalformedExhausted   = "malformed_exhausted"
 )
+
+func (t DecisionTrace) Clone() DecisionTrace {
+	t.Candidates = append([]DecisionCandidate(nil), t.Candidates...)
+	return t
+}
 
 type RankedCandidates struct {
 	Candidates []catalog.Candidate

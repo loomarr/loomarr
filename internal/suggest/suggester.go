@@ -246,7 +246,8 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 			return prop, nil
 		}
 		if repairs >= maxRepairs {
-			return Proposal{}, fmt.Errorf("suggester: model output not valid after %d repairs: %w", maxRepairs, perr)
+			trace.Terminal = TerminalMalformedExhausted
+			return Proposal{}, NewFailure(FailureProvider, trace, fmt.Errorf("suggester: model output not valid after %d repairs: %w", maxRepairs, perr))
 		}
 		// Nudge the model to fix its output, and turn the temperature down further
 		// so it adheres to the schema rather than getting creative.
@@ -269,7 +270,8 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 		reportProgress(ctx, PhaseReasoning, round+1)
 		resp, err := s.llm.Chat(ctx, *messages, chatOpts(tools, temp))
 		if err != nil {
-			return "", fmt.Errorf("llm chat: %w", err)
+			trace.Terminal = TerminalProviderFailure
+			return "", NewFailure(FailureProvider, *trace, fmt.Errorf("llm chat: %w", err))
 		}
 		if resp.WantsTools() {
 			reportProgress(ctx, PhaseSearching, round+1)
@@ -440,9 +442,6 @@ func filterByMediaType(cands []catalog.Candidate, mt string) []catalog.Candidate
 // pass the exists re-validation. Unresolvable picks are dropped, never actioned.
 func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalOutput, surfaced map[provision.Key]catalog.Candidate, trace *DecisionTrace) (Proposal, error) {
 	prop := Proposal{Intent: intent, ChannelName: strings.TrimSpace(out.ChannelName), Rationale: out.Rationale}
-	if trace != nil {
-		prop.Trace = *trace
-	}
 	picks := out.Picks
 	acqCount := 0
 	maxAcq := s.maxAcq
@@ -547,6 +546,9 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	// something was wrong on the live smoke (theme fit 43%) and that ambiguity is what a refusal
 	// list replaces with a statement.
 	prop.Scores = score(intent, prop.Lineup, prop.Acquisitions)
+	if trace != nil {
+		prop.Trace = trace.Clone()
+	}
 	return prop, nil
 }
 

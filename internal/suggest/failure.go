@@ -3,6 +3,7 @@ package suggest
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // Failure is the public, safe failure seam for one suggestion run. Cause is
@@ -29,6 +30,9 @@ func (f *Failure) Error() string {
 func (f *Failure) Unwrap() error { return f.Cause }
 
 func (f *Failure) TraceJSON() (string, error) {
+	if err := validateDecisionTrace(f.Trace); err != nil {
+		return "", fmt.Errorf("invalid suggestion failure trace: %w", err)
+	}
 	blob, err := json.Marshal(f.Trace)
 	if err != nil {
 		return "", fmt.Errorf("marshal bounded suggestion failure trace: %w", err)
@@ -36,8 +40,56 @@ func (f *Failure) TraceJSON() (string, error) {
 	return string(blob), nil
 }
 
+const decisionTraceMaxString = 256
+
+func validateDecisionTrace(trace DecisionTrace) error {
+	if trace.Version != DecisionTraceVersion || len(trace.Candidates) > DecisionTraceMaxCandidates || trace.SurfacedTotal < 0 || trace.RecordedTotal < 0 || trace.RecordedTotal < len(trace.Candidates) {
+		return fmt.Errorf("invalid version, bounds, or totals")
+	}
+	if trace.SurfacedTotal > DecisionTraceMaxCandidates && !trace.Truncated {
+		return fmt.Errorf("unbounded surfaced total")
+	}
+	if trace.Terminal != "" && !knownTerminal(trace.Terminal) {
+		return fmt.Errorf("unknown terminal %q", trace.Terminal)
+	}
+	for _, c := range trace.Candidates {
+		for name, value := range map[string]string{"key": c.Key, "name": c.Name, "source": c.Source, "ownership": c.Ownership, "disposition": c.Disposition, "reason": c.Reason, "tieKey": c.Rank.TieKey} {
+			if len(value) > decisionTraceMaxString || strings.ContainsRune(value, '\x00') {
+				return fmt.Errorf("invalid %s", name)
+			}
+		}
+		if !validDispositionReason(c.Disposition, c.Reason) {
+			return fmt.Errorf("invalid disposition/reason")
+		}
+	}
+	return nil
+}
+
+func knownTerminal(value string) bool {
+	switch value {
+	case ReasonRetrievalEmpty, FailureSelectionEmpty, FailureBudgetExhausted, TerminalProviderFailure, TerminalGenerationFailure, TerminalMalformedExhausted:
+		return true
+	default:
+		return false
+	}
+}
+
+func validDispositionReason(disposition, reason string) bool {
+	if disposition == DispositionTerminal {
+		return knownTerminal(reason)
+	}
+	allowed := map[string]map[string]bool{
+		DispositionSelected:          {"selected": true},
+		DispositionAlternate:         {ReasonAcquisitionCap: true},
+		DispositionNotSelected:       {ReasonNever: true, ReasonOverCeiling: true},
+		DispositionRefused:           {ReasonOverCeiling: true},
+		DispositionValidationDropped: {ReasonMalformedID: true, ReasonNotSurfaced: true, ReasonValidationDropped: true},
+	}
+	return allowed[disposition][reason]
+}
+
 func NewFailure(code string, trace DecisionTrace, cause error) error {
-	trace.Candidates = append([]DecisionCandidate(nil), trace.Candidates...)
+	trace = trace.Clone()
 	return &Failure{Code: code, Trace: trace, Cause: cause}
 }
 
