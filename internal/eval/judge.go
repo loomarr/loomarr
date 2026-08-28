@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // judge scores a proposal's SUBJECTIVE quality (0..1) against a case's rubric using
@@ -29,20 +28,35 @@ type JudgeScores struct {
 
 type modelJudge struct{ provider llm.Provider }
 
-func (j modelJudge) Score(ctx context.Context, c Case, prop suggest.Proposal) (JudgeScores, error) {
-	return judge(ctx, j.provider, c, prop)
+func (j modelJudge) Score(ctx context.Context, evidence JudgeEvidence) (JudgeScores, error) {
+	return judge(ctx, j.provider, boundJudgeEvidence(evidence))
 }
 
-func judge(ctx context.Context, j llm.Provider, c Case, prop suggest.Proposal) (JudgeScores, error) {
+func judge(ctx context.Context, j llm.Provider, evidence JudgeEvidence) (JudgeScores, error) {
 	if j == nil {
 		return JudgeScores{}, errors.New("judge is not configured")
 	}
-	if c.JudgeRubric == "" {
+	if evidence.Rubric == "" {
 		return JudgeScores{}, errors.New("judge rubric is empty")
 	}
-	titles := titleList(prop)
+	titles, err := renderJudgeTitles(evidence)
+	if err != nil {
+		return JudgeScores{}, err
+	}
 	if titles == "" {
 		return JudgeScores{}, errors.New("judge cannot score an empty proposal")
+	}
+	policy, err := json.Marshal(evidence.Policy)
+	if err != nil {
+		return JudgeScores{}, fmt.Errorf("marshal judge policy: %w", err)
+	}
+	observation, err := json.Marshal(evidence.Observation)
+	if err != nil {
+		return JudgeScores{}, fmt.Errorf("marshal judge observation: %w", err)
+	}
+	scheduled, err := json.Marshal(evidence.ScheduledPrograms)
+	if err != nil {
+		return JudgeScores{}, fmt.Errorf("marshal judge schedule: %w", err)
 	}
 	prompt := fmt.Sprintf(`You are grading a generated TV-channel lineup for how well it fits a request.
 
@@ -50,7 +64,16 @@ REQUEST: %s
 
 RUBRIC (what a good result looks like): %s
 
-THE LINEUP THAT WAS GENERATED:
+GROUNDED PROPOSAL EVIDENCE:
+%s
+
+EXTRACTED POLICY:
+%s
+
+STRUCTURAL OBSERVATION:
+%s
+
+MATERIALIZED SCHEDULE SAMPLE:
 %s
 
 Score three dimensions from 0.0 to 1.0:
@@ -58,7 +81,7 @@ Score three dimensions from 0.0 to 1.0:
 - serendipity: coherent, defensible discoveries beyond only the most obvious answers. Random or off-theme picks score LOW, not high.
 - overall: the quality of the lineup considering both, with relevance more important.
 Reply with ONLY this JSON: {"overall": <0..1>, "relevance": <0..1>, "serendipity": <0..1>, "reason": "<one sentence>"}`,
-		c.Intent.Description, c.JudgeRubric, titles)
+		evidence.Request, evidence.Rubric, titles, policy, observation, scheduled)
 
 	resp, err := j.Chat(ctx, []llm.Message{
 		{Role: llm.System, Content: "You are a precise, terse evaluation judge. You output only the requested JSON."},
@@ -74,16 +97,28 @@ Reply with ONLY this JSON: {"overall": <0..1>, "relevance": <0..1>, "serendipity
 	return scores, nil
 }
 
-// titleList renders the proposal's grounded titles for the judge to read.
-func titleList(p suggest.Proposal) string {
+func renderJudgeTitles(evidence JudgeEvidence) (string, error) {
 	var b strings.Builder
-	for _, it := range p.Lineup {
-		fmt.Fprintf(&b, "- %s (%d) [in library]\n", it.Name, it.Year)
+	for _, section := range []struct {
+		name  string
+		items []JudgeTitleEvidence
+	}{
+		{name: "LINEUP", items: evidence.Lineup},
+		{name: "ACQUISITIONS", items: evidence.Acquisitions},
+	} {
+		if len(section.items) == 0 {
+			continue
+		}
+		fmt.Fprintf(&b, "%s:\n", section.name)
+		for _, item := range section.items {
+			encoded, err := json.Marshal(item)
+			if err != nil {
+				return "", fmt.Errorf("marshal judge title: %w", err)
+			}
+			fmt.Fprintf(&b, "- %s\n", encoded)
+		}
 	}
-	for _, it := range p.Acquisitions {
-		fmt.Fprintf(&b, "- %s (%d) [to acquire]\n", it.Name, it.Year)
-	}
-	return b.String()
+	return b.String(), nil
 }
 
 func truncate(s string, n int) string {

@@ -46,7 +46,7 @@ func (o *scriptedObserver) Begin() { o.begins++ }
 
 func (o *scriptedObserver) Snapshot(error) Observation { return o.value }
 
-func (j *sequenceJudge) Score(context.Context, Case, suggest.Proposal) (JudgeScores, error) {
+func (j *sequenceJudge) Score(context.Context, JudgeEvidence) (JudgeScores, error) {
 	score := j.scores[j.next]
 	j.next++
 	return score, nil
@@ -282,7 +282,7 @@ func TestJudgeScoreRejectsMissingRequiredScoreFields(t *testing.T) {
 	for name, response := range tests {
 		t.Run(name, func(t *testing.T) {
 			var scorer Judge = modelJudge{provider: testkit.NewLLM(testkit.FinalResponse(response))}
-			if _, err := scorer.Score(context.Background(), caseUnderTest, proposal); err == nil {
+			if _, err := scorer.Score(context.Background(), NewJudgeEvidence(caseUnderTest, proposal, Observation{}, nil)); err == nil {
 				t.Fatalf("Judge.Score accepted output missing %s: %s", name, response)
 			}
 		})
@@ -305,7 +305,7 @@ func TestJudgeScoreRejectsOutOfRangeScores(t *testing.T) {
 	for name, response := range tests {
 		t.Run(name, func(t *testing.T) {
 			var scorer Judge = modelJudge{provider: testkit.NewLLM(testkit.FinalResponse(response))}
-			if _, err := scorer.Score(context.Background(), caseUnderTest, proposal); err == nil {
+			if _, err := scorer.Score(context.Background(), NewJudgeEvidence(caseUnderTest, proposal, Observation{}, nil)); err == nil {
 				t.Fatalf("Judge.Score accepted out-of-range output: %s", response)
 			}
 		})
@@ -324,7 +324,7 @@ func TestJudgeScoreRejectsMissingOrBlankReason(t *testing.T) {
 	for name, response := range tests {
 		t.Run(name, func(t *testing.T) {
 			var scorer Judge = modelJudge{provider: testkit.NewLLM(testkit.FinalResponse(response))}
-			if _, err := scorer.Score(context.Background(), caseUnderTest, proposal); err == nil {
+			if _, err := scorer.Score(context.Background(), NewJudgeEvidence(caseUnderTest, proposal, Observation{}, nil)); err == nil {
 				t.Fatalf("Judge.Score accepted %s reason: %s", name, response)
 			}
 		})

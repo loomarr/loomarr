@@ -6009,6 +6009,19 @@ Proposal plus episode evidence to editorial selection, and selected pool plus Po
 schedule. The same public Runner interface owns all three so exploratory and certification modes
 cannot silently test different behavior.
 
+The subjective judge receives one typed, bounded evidence value from `Runner`; it does not receive
+the raw Proposal or rediscover a schedule. That value keeps lineup and acquisition titles in
+separate ownership sets and records each title's exact grounded key, name/year, source provenance,
+optional rationale/confidence, genres, and rating. It also carries the suggester-extracted
+`ProposalPolicy`, the trial's structural counts and grounding stage, and the ordered concrete program
+identities already returned by `ScheduleMaterializer`. The model prompt renders those facts directly,
+including a deterministic prefix of the materialized program identities; proposal title names are
+not a substitute for scheduled evidence. `JudgeMaxItemsPerOwnership`, `JudgeMaxGenresPerItem`,
+`JudgeMaxPolicyValues`, `JudgeMaxScheduledPrograms`, and `JudgeMaxTextRunes` are the public bounds on
+the two title sets, each title's genres, every open policy collection, the schedule sample, and each
+free-text field respectively. The evidence type has no credential, endpoint, provider-request, or
+provider-response fields, so those values cannot enter the prompt through this seam.
+
 It writes a machine-readable scorecard naming the schema version, corpus version, independent
 requested generator and judge provider/model identities (never credentials), trial configuration,
 every case/trial outcome, and the aggregate certification result. The scorecard has no ambiguous

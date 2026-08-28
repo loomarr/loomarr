@@ -80,10 +80,11 @@ type ScoreRange struct {
 	Max    float64 `json:"max"`
 }
 
-// Judge is the subjective scoring seam. Deterministic requirements never cross
-// it; production supplies an LLM-backed adapter and hermetic tests a scripted one.
+// Judge is the subjective scoring seam. It receives bounded audit evidence after
+// deterministic gates; it never decides those requirements. Production supplies
+// an LLM-backed adapter and hermetic tests a scripted one.
 type Judge interface {
-	Score(context.Context, Case, suggest.Proposal) (JudgeScores, error)
+	Score(context.Context, JudgeEvidence) (JudgeScores, error)
 }
 
 // Observer records bounded structural evidence around one Generator trial.
@@ -191,7 +192,8 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 				result.addFailures(FailureStageJudge, result.JudgeError)
 			}
 			if result.Passed() && c.JudgeRubric != "" {
-				scores, judgeErr := r.judge.Score(ctx, c, prop)
+				evidence := NewJudgeEvidence(c, prop, result.Observation, result.ScheduledPrograms)
+				scores, judgeErr := r.judge.Score(ctx, evidence)
 				if judgeErr != nil {
 					result.JudgeError = judgeErr.Error()
 					result.addFailures(FailureStageJudge, result.JudgeError)
