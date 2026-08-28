@@ -76,15 +76,26 @@ func loadOpenRouterCheckpoint(dir string, identity openRouterCheckpointIdentity)
 }
 
 func ensureOpenRouterCheckpointDir(dir string) error {
+	return ensureOpenRouterCheckpointDirBeforeCreate(dir, nil)
+}
+
+func ensureOpenRouterCheckpointDirBeforeCreate(dir string, beforeCreate func()) error {
 	info, err := os.Lstat(dir)
 	if os.IsNotExist(err) {
 		if err := os.MkdirAll(filepath.Dir(dir), 0o750); err != nil {
 			return fmt.Errorf("create private OpenRouter review checkpoint parent: %w", err)
 		}
-		if err := os.Mkdir(dir, 0o700); err != nil {
+		if beforeCreate != nil {
+			beforeCreate()
+		}
+		if err := os.Mkdir(dir, 0o700); err == nil {
+			return nil
+		} else if !os.IsExist(err) {
 			return fmt.Errorf("create private OpenRouter review checkpoint: %w", err)
 		}
-	} else if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 {
+		info, err = os.Lstat(dir)
+	}
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 {
 		return fmt.Errorf("OpenRouter review checkpoint directory must be private and not a symlink")
 	}
 	return nil

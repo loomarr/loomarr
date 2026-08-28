@@ -118,6 +118,10 @@ type openRouterReviewResponse struct {
 }
 
 func RunOpenRouterReview(ctx context.Context, config OpenRouterReviewConfig) (run ReviewRun, submissions []fillereval.LabelSubmission, err error) {
+	return runOpenRouterReview(ctx, config, nil)
+}
+
+func runOpenRouterReview(ctx context.Context, config OpenRouterReviewConfig, beforeCheckpointDirCreate func()) (run ReviewRun, submissions []fillereval.LabelSubmission, err error) {
 	baseURL, client, now, err := validateOpenRouterReviewConfig(config)
 	if err != nil {
 		return ReviewRun{}, nil, err
@@ -150,7 +154,7 @@ func RunOpenRouterReview(ctx context.Context, config OpenRouterReviewConfig) (ru
 		ReviewerID: config.ReviewerID, BatchID: manifest.BatchID, ExpectedCases: config.ExpectedCases,
 		MaxRequests: config.MaxRequests, MaxSpendNanoUSD: config.MaxSpendNanoUSD, MaxChargeNanoUSD: config.MaxChargeNanoUSD,
 	}
-	activeLock, err := acquireOpenRouterActiveRunLock(config.CheckpointDir, identity, now)
+	activeLock, err := acquireOpenRouterActiveRunLock(config.CheckpointDir, identity, now, beforeCheckpointDirCreate)
 	if err != nil {
 		return ReviewRun{}, nil, err
 	}

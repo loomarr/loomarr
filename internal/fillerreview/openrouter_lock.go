@@ -28,8 +28,8 @@ type openRouterActiveRunLock struct {
 	digest string
 }
 
-func acquireOpenRouterActiveRunLock(dir string, identity openRouterCheckpointIdentity, now func() time.Time) (openRouterActiveRunLock, error) {
-	if err := ensureOpenRouterCheckpointDir(dir); err != nil {
+func acquireOpenRouterActiveRunLock(dir string, identity openRouterCheckpointIdentity, now func() time.Time, beforeCheckpointDirCreate func()) (openRouterActiveRunLock, error) {
+	if err := ensureOpenRouterCheckpointDirBeforeCreate(dir, beforeCheckpointDirCreate); err != nil {
 		return openRouterActiveRunLock{}, err
 	}
 	identityRaw, err := json.Marshal(identity)

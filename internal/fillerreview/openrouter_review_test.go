@@ -35,8 +35,21 @@ func TestRunOpenRouterReviewAllowsOnlyOneConcurrentWriter(t *testing.T) {
 
 	fixedNow := time.Date(2026, 8, 27, 22, 0, 0, 0, time.UTC)
 	var clockCalls atomic.Int32
+	var checkpointDirCreateCalls atomic.Int32
 	snapshotBarrier := make(chan struct{})
 	reservationBarrier := make(chan struct{})
+	checkpointDirCreateBarrier := make(chan struct{})
+	beforeCheckpointDirCreate := func() {
+		switch checkpointDirCreateCalls.Add(1) {
+		case 1:
+			select {
+			case <-checkpointDirCreateBarrier:
+			case <-time.After(time.Second):
+			}
+		case 2:
+			close(checkpointDirCreateBarrier)
+		}
+	}
 	now := func() time.Time {
 		switch clockCalls.Add(1) {
 		case 1:
@@ -68,7 +81,7 @@ func TestRunOpenRouterReviewAllowsOnlyOneConcurrentWriter(t *testing.T) {
 	for range 2 {
 		go func() {
 			<-start
-			_, _, err := RunOpenRouterReview(context.Background(), config)
+			_, _, err := runOpenRouterReview(context.Background(), config, beforeCheckpointDirCreate)
 			results <- err
 		}()
 	}
@@ -91,6 +104,45 @@ func TestRunOpenRouterReviewAllowsOnlyOneConcurrentWriter(t *testing.T) {
 	}
 	if requests.Load() != 1 {
 		t.Fatalf("completed checkpoint was requested again: %d", requests.Load())
+	}
+}
+
+func TestEnsureOpenRouterCheckpointDirRevalidatesConcurrentExistingPath(t *testing.T) {
+	tests := map[string]func(*testing.T, string){
+		"symlink": func(t *testing.T, path string) {
+			t.Helper()
+			target := filepath.Join(t.TempDir(), "target")
+			if err := os.Mkdir(target, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(target, path); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"regular file": func(t *testing.T, path string) {
+			t.Helper()
+			if err := os.WriteFile(path, []byte("not a directory"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"permissive directory": func(t *testing.T, path string) {
+			t.Helper()
+			if err := os.Mkdir(path, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(path, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		},
+	}
+	for name, create := range tests {
+		t.Run(name, func(t *testing.T) {
+			checkpointDir := filepath.Join(t.TempDir(), "private-review-state")
+			err := ensureOpenRouterCheckpointDirBeforeCreate(checkpointDir, func() { create(t, checkpointDir) })
+			if err == nil || !strings.Contains(err.Error(), "must be private and not a symlink") {
+				t.Fatalf("checkpoint directory error = %v", err)
+			}
+		})
 	}
 }
 
