@@ -4,16 +4,19 @@ package eval
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"math"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 const (
-	scorecardSchemaVersion = 4
-	corpusVersion          = "2026-08-27.5"
+	scorecardSchemaVersion = 7
+	corpusVersion          = "2026-08-27.8"
 )
 
 // Generator is the one external seam the behavioral evaluator needs: production
@@ -26,10 +29,11 @@ type Generator interface {
 // RunnerConfig identifies one reproducible evaluation profile. Credentials and
 // provider payloads never enter it or the scorecard.
 type RunnerConfig struct {
-	Trials    int
-	Profile   string
-	Generator ModelIdentity
-	Judge     ModelIdentity
+	Trials         int
+	Profile        string
+	Generator      ModelIdentity
+	Judge          ModelIdentity
+	ResourceBudget ResourceBudget
 }
 
 // ModelIdentity names one inference role without credentials or endpoint data.
@@ -42,11 +46,13 @@ type ModelIdentity struct {
 type FailureStage string
 
 const (
-	FailureStageProposal         FailureStage = "proposal"
+	FailureStageRetrieval        FailureStage = "retrieval"
+	FailureStageGeneration       FailureStage = "generation"
 	FailureStageDeterministic    FailureStage = "deterministic"
 	FailureStageStructuralBudget FailureStage = "structural_budget"
 	FailureStageSchedule         FailureStage = "schedule"
 	FailureStageJudge            FailureStage = "judge"
+	FailureStageBudgetExhausted  FailureStage = "budget_exhausted"
 )
 
 // Scorecard is the versioned machine-readable result of one Runner execution.
@@ -57,6 +63,8 @@ type Scorecard struct {
 	Profile       string               `json:"profile"`
 	Generator     ModelIdentity        `json:"generator"`
 	Judge         ModelIdentity        `json:"judge"`
+	CallBudget    CallBudget           `json:"callBudget"`
+	ResourceUsage ResourceUsage        `json:"resourceUsage"`
 	Certified     bool                 `json:"certified"`
 	FailureCounts map[FailureStage]int `json:"failureCounts"`
 	Results       []Result             `json:"results"`
@@ -70,6 +78,7 @@ type CaseSummary struct {
 	Trials      int        `json:"trials"`
 	Passed      int        `json:"passed"`
 	PassRate    float64    `json:"passRate"`
+	Overall     ScoreRange `json:"overall"`
 	Relevance   ScoreRange `json:"relevance"`
 	Serendipity ScoreRange `json:"serendipity"`
 }
@@ -91,6 +100,26 @@ type Judge interface {
 type Observer interface {
 	Begin()
 	Snapshot(error) Observation
+}
+
+type resourceBoundaryObserver interface {
+	beginResourceRun(ResourceBudget, *resourceAccumulator, *resourceAccumulator)
+}
+
+var errProviderBudgetExhausted = errors.New("evaluation provider budget exhausted")
+
+type providerResourceLedger struct {
+	limits ResourceBudget
+	run    *resourceAccumulator
+	suite  *resourceAccumulator
+}
+
+func (l *providerResourceLedger) beforeCall() string {
+	return resourceBudgetBeforeNextCall(l.limits, l.run, l.suite, true)
+}
+
+func (l *providerResourceLedger) afterCall(call InferenceCall) string {
+	return consumeResourceCalls(l.limits, l.run, l.suite, []InferenceCall{call})
 }
 
 // Runner owns evaluation from grounded generation through deterministic gates.
@@ -128,6 +157,9 @@ func NewRunner(generator Generator, config RunnerConfig) *Runner {
 
 // Run evaluates every case serially for the configured number of trials.
 func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
+	callBudget, budgetErr := computeCallBudget(len(cases), r.config.Trials)
+	callBudget.Resource = r.config.ResourceBudget
+	suiteUsage := newResourceAccumulator()
 	card := Scorecard{
 		SchemaVersion: scorecardSchemaVersion,
 		CorpusVersion: corpusVersion,
@@ -135,43 +167,100 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 		Profile:       r.config.Profile,
 		Generator:     r.config.Generator,
 		Judge:         r.config.Judge,
+		CallBudget:    callBudget,
 		Certified:     len(cases) > 0,
 		FailureCounts: map[FailureStage]int{
-			FailureStageProposal:         0,
+			FailureStageRetrieval:        0,
+			FailureStageGeneration:       0,
 			FailureStageDeterministic:    0,
 			FailureStageStructuralBudget: 0,
 			FailureStageSchedule:         0,
 			FailureStageJudge:            0,
+			FailureStageBudgetExhausted:  0,
 		},
+	}
+	if budgetErr != nil {
+		card.Certified = false
+		return card
 	}
 	for _, c := range cases {
 		passed := 0
-		var relevance, serendipity []float64
+		var overall, relevance, serendipity []float64
 		for trial := 1; trial <= r.config.Trials; trial++ {
+			result := Result{
+				Case: c.Name, Trial: trial,
+				GeneratorCalls: make([]InferenceCall, 0), JudgeCalls: make([]InferenceCall, 0),
+			}
+			runUsage := newResourceAccumulator()
+			boundaryBudget := false
+			var prop suggest.Proposal
+			var err error
+			var materializedPrograms []MaterializedProgram
 			if r.observer != nil {
 				r.observer.Begin()
 			}
-			prop, err := r.generator.Suggest(ctx, mapIntent(c.Intent))
-			result := Result{
-				Case: c.Name, Trial: trial, Lineup: len(prop.Lineup), Acquisitions: len(prop.Acquisitions),
-				Ceiling: string(prop.Policy.Audience.Ceiling), ThemeFit: prop.Scores.ThemeFit,
-				Failures: deterministicChecks(c, prop, err),
-			}
-			if !result.Passed() {
-				result.FailureStage = FailureStageDeterministic
-				if err != nil {
-					result.FailureStage = FailureStageProposal
+			if resourceBudgetEnabled(r.config.ResourceBudget) {
+				boundaryObserver, ok := r.observer.(resourceBoundaryObserver)
+				if !ok {
+					result.addFailures(FailureStageBudgetExhausted, "budget_exhausted: generator provider-boundary observation is required to enforce resource ceilings")
+				} else {
+					boundaryObserver.beginResourceRun(r.config.ResourceBudget, runUsage, suiteUsage)
+					boundaryBudget = true
 				}
 			}
-			if r.observer != nil {
-				result.Observation = r.observer.Snapshot(err)
-				if c.MaxToolCalls > 0 && result.ToolCalls > c.MaxToolCalls {
-					result.addFailures(FailureStageStructuralBudget,
-						fmt.Sprintf("tool calls %d > budget %d", result.ToolCalls, c.MaxToolCalls))
+			if result.Passed() {
+				if budgetMessage := resourceBudgetBeforeNextCall(r.config.ResourceBudget, runUsage, suiteUsage, true); budgetMessage != "" {
+					result.addFailures(FailureStageBudgetExhausted, budgetMessage)
 				}
-				if c.MaxCandidatesSurfaced > 0 && result.CandidatesSurfaced > c.MaxCandidatesSurfaced {
-					result.addFailures(FailureStageStructuralBudget,
-						fmt.Sprintf("candidates surfaced %d > budget %d", result.CandidatesSurfaced, c.MaxCandidatesSurfaced))
+			}
+			if result.Passed() {
+				prop, err = r.generator.Suggest(ctx, mapIntent(c.Intent))
+				result.Lineup = len(prop.Lineup)
+				result.Acquisitions = len(prop.Acquisitions)
+				result.Ceiling = string(prop.Policy.Audience.Ceiling)
+				result.ThemeFit = prop.Scores.ThemeFit
+				result.Failures = deterministicChecks(c, prop, err)
+				if !result.Passed() {
+					result.FailureStage = FailureStageDeterministic
+					if err != nil {
+						result.FailureStage = FailureStageGeneration
+					}
+				}
+				if r.observer != nil {
+					result.Observation = r.observer.Snapshot(err)
+					if err != nil && !errors.Is(err, errProviderBudgetExhausted) {
+						result.FailureStage = groundingFailureStage(result.GroundingStage)
+					}
+					if result.Observation.generatorBudgetErr != "" {
+						if errors.Is(err, errProviderBudgetExhausted) {
+							// The generator surfaced only the ledger refusal, so budget is the
+							// first failed boundary rather than a generation diagnosis.
+							result.FailureStage = FailureStageBudgetExhausted
+							result.Failures = append(result.Failures, result.Observation.generatorBudgetErr)
+						} else {
+							// A real retrieval/generation error remains the first diagnosis,
+							// while the same call's uncertain usage still latches the ledger.
+							result.addFailures(FailureStageBudgetExhausted, result.Observation.generatorBudgetErr)
+						}
+					}
+					result.GeneratorCalls = slices.Clone(result.Observation.generatorCalls)
+					if result.ModelCalls > suggest.ProductionBounds().MaxModelCalls {
+						result.addFailures(FailureStageStructuralBudget,
+							fmt.Sprintf("model calls %d > production bound %d", result.ModelCalls, suggest.ProductionBounds().MaxModelCalls))
+					}
+					if c.MaxToolCalls > 0 && result.ToolCalls > c.MaxToolCalls {
+						result.addFailures(FailureStageStructuralBudget,
+							fmt.Sprintf("tool calls %d > budget %d", result.ToolCalls, c.MaxToolCalls))
+					}
+					if c.MaxCandidatesSurfaced > 0 && result.CandidatesSurfaced > c.MaxCandidatesSurfaced {
+						result.addFailures(FailureStageStructuralBudget,
+							fmt.Sprintf("candidates surfaced %d > budget %d", result.CandidatesSurfaced, c.MaxCandidatesSurfaced))
+					}
+				}
+				if !boundaryBudget {
+					if budgetMessage := consumeGeneratorObservation(r.config.ResourceBudget, runUsage, suiteUsage, result.Observation); budgetMessage != "" {
+						result.addFailures(FailureStageBudgetExhausted, budgetMessage)
+					}
 				}
 			}
 			if err == nil && requiresSchedule(c) {
@@ -182,7 +271,8 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 					if scheduleErr != nil {
 						result.addFailures(FailureStageSchedule, "schedule materialization failed: "+scheduleErr.Error())
 					} else {
-						result.ScheduledPrograms = programs
+						materializedPrograms = programs
+						result.ScheduledPrograms = materializedProgramIdentities(programs)
 						result.addFailures(FailureStageSchedule, scheduledChecks(c, programs)...)
 					}
 				}
@@ -192,36 +282,56 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 				result.addFailures(FailureStageJudge, result.JudgeError)
 			}
 			if result.Passed() && c.JudgeRubric != "" {
-				evidence := NewJudgeEvidence(c, prop, result.Observation, result.ScheduledPrograms)
-				scores, judgeErr := r.judge.Score(ctx, evidence)
-				if judgeErr != nil {
-					result.JudgeError = judgeErr.Error()
+				evidence, evidenceErr := NewJudgeEvidence(c, prop, result.Observation, materializedPrograms)
+				if evidenceErr != nil {
+					result.JudgeError = evidenceErr.Error()
 					result.addFailures(FailureStageJudge, result.JudgeError)
-				} else {
-					result.JudgeScore = scores.Overall
-					result.RelevanceScore = scores.Relevance
-					result.SerendipityScore = scores.Serendipity
-					result.JudgeNote = scores.Reason
-					if c.MinJudgeScore > 0 && scores.Overall < c.MinJudgeScore {
-						result.addFailures(FailureStageJudge,
-							fmt.Sprintf("judge score %.2f < required %.2f: %s", scores.Overall, c.MinJudgeScore, scores.Reason))
+				}
+				if evidenceErr == nil {
+					if budgetMessage := resourceBudgetBeforeNextCall(r.config.ResourceBudget, runUsage, suiteUsage, true); budgetMessage != "" {
+						result.addFailures(FailureStageBudgetExhausted, budgetMessage)
 					}
-					if c.MinRelevanceScore > 0 && scores.Relevance < c.MinRelevanceScore {
-						result.addFailures(FailureStageJudge,
-							fmt.Sprintf("relevance score %.2f < required %.2f: %s", scores.Relevance, c.MinRelevanceScore, scores.Reason))
+				}
+				if evidenceErr == nil && result.Passed() {
+					scores, judgeErr := r.judge.Score(ctx, evidence)
+					result.JudgeCalls = append(result.JudgeCalls, scrubAttribution(scores.Attribution))
+					if budgetMessage := consumeResourceCalls(r.config.ResourceBudget, runUsage, suiteUsage, result.JudgeCalls); budgetMessage != "" {
+						result.addFailures(FailureStageBudgetExhausted, budgetMessage)
 					}
-					if c.MinSerendipityScore > 0 && scores.Serendipity < c.MinSerendipityScore {
-						result.addFailures(FailureStageJudge,
-							fmt.Sprintf("serendipity score %.2f < required %.2f: %s", scores.Serendipity, c.MinSerendipityScore, scores.Reason))
+					if judgeErr == nil {
+						judgeErr = validateJudgeScores(scores)
 					}
-					if scores.Relevance >= 0 {
-						relevance = append(relevance, scores.Relevance)
-					}
-					if scores.Serendipity >= 0 {
-						serendipity = append(serendipity, scores.Serendipity)
+					if judgeErr != nil {
+						result.JudgeError = judgeErr.Error()
+						result.addFailures(FailureStageJudge, result.JudgeError)
+					} else {
+						result.JudgeScore = scores.Overall
+						result.RelevanceScore = scores.Relevance
+						result.SerendipityScore = scores.Serendipity
+						result.JudgeNote = scores.Reason
+						overall = append(overall, scores.Overall)
+						if c.MinJudgeScore > 0 && scores.Overall < c.MinJudgeScore {
+							result.addFailures(FailureStageJudge,
+								fmt.Sprintf("judge score %.2f < required %.2f: %s", scores.Overall, c.MinJudgeScore, scores.Reason))
+						}
+						if c.MinRelevanceScore > 0 && scores.Relevance < c.MinRelevanceScore {
+							result.addFailures(FailureStageJudge,
+								fmt.Sprintf("relevance score %.2f < required %.2f: %s", scores.Relevance, c.MinRelevanceScore, scores.Reason))
+						}
+						if c.MinSerendipityScore > 0 && scores.Serendipity < c.MinSerendipityScore {
+							result.addFailures(FailureStageJudge,
+								fmt.Sprintf("serendipity score %.2f < required %.2f: %s", scores.Serendipity, c.MinSerendipityScore, scores.Reason))
+						}
+						if scores.Relevance >= 0 {
+							relevance = append(relevance, scores.Relevance)
+						}
+						if scores.Serendipity >= 0 {
+							serendipity = append(serendipity, scores.Serendipity)
+						}
 					}
 				}
 			}
+			card.ResourceUsage = suiteUsage.usage()
 			card.Results = append(card.Results, result)
 			if result.Passed() {
 				passed++
@@ -234,15 +344,44 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 		}
 		card.Cases = append(card.Cases, CaseSummary{
 			Case: c.Name, Trials: r.config.Trials, Passed: passed,
-			PassRate:  float64(passed) / float64(r.config.Trials),
-			Relevance: scoreRange(relevance), Serendipity: scoreRange(serendipity),
+			PassRate: float64(passed) / float64(r.config.Trials),
+			Overall:  scoreRange(overall), Relevance: scoreRange(relevance), Serendipity: scoreRange(serendipity),
 		})
 	}
 	return card
 }
 
+func groundingFailureStage(groundingStage string) FailureStage {
+	switch groundingStage {
+	case "no_tool_call", "retrieval_empty":
+		return FailureStageRetrieval
+	default:
+		return FailureStageGeneration
+	}
+}
+
+func validateJudgeScores(scores JudgeScores) error {
+	for _, score := range []struct {
+		name  string
+		value float64
+	}{
+		{name: "overall", value: scores.Overall},
+		{name: "relevance", value: scores.Relevance},
+		{name: "serendipity", value: scores.Serendipity},
+	} {
+		if math.IsNaN(score.value) || math.IsInf(score.value, 0) || score.value < 0 || score.value > 1 {
+			return fmt.Errorf("invalid judge evidence: %s score must be finite and within 0..1", score.name)
+		}
+	}
+	if strings.TrimSpace(scores.Reason) == "" {
+		return fmt.Errorf("invalid judge evidence: reason must be non-blank")
+	}
+	return nil
+}
+
 func requiresSchedule(c Case) bool {
-	return len(c.RequireScheduledPrograms) > 0 || len(c.ForbidScheduledPrograms) > 0 || len(c.RequireScheduledSequence) > 0
+	return len(c.RequireScheduledPrograms) > 0 || len(c.ForbidScheduledPrograms) > 0 || len(c.RequireScheduledSequence) > 0 ||
+		(c.TitleEvidence == TitleEvidenceScheduled && (len(c.RequireTitles) > 0 || len(c.ForbidTitles) > 0))
 }
 
 func scoreRange(values []float64) ScoreRange {
@@ -257,4 +396,194 @@ func scoreRange(values []float64) ScoreRange {
 		median = (values[middle-1] + values[middle]) / 2
 	}
 	return ScoreRange{Min: values[0], Median: median, Max: values[len(values)-1]}
+}
+
+type resourceAccumulator struct {
+	calls     int
+	tokens    int
+	spend     exactDecimal
+	uncertain string
+}
+
+func newResourceAccumulator() *resourceAccumulator {
+	return &resourceAccumulator{spend: zeroDecimal()}
+}
+
+func (a *resourceAccumulator) usage() ResourceUsage {
+	return ResourceUsage{Calls: a.calls, Tokens: a.tokens, Spend: a.spend.String()}
+}
+
+func consumeResourceCalls(limits ResourceBudget, run, suite *resourceAccumulator, calls []InferenceCall) string {
+	if !resourceBudgetEnabled(limits) {
+		return ""
+	}
+	runCalls, ok := checkedAdd(run.calls, len(calls))
+	if !ok {
+		return latchResourceUncertainty(run, suite, "budget_exhausted: per-run call usage overflow")
+	}
+	suiteCalls, ok := checkedAdd(suite.calls, len(calls))
+	if !ok {
+		return latchResourceUncertainty(run, suite, "budget_exhausted: suite call usage overflow")
+	}
+	run.calls, suite.calls = runCalls, suiteCalls
+	for _, call := range calls {
+		tokens, ok := checkedAdd(call.Tokens.Prompt, call.Tokens.Completion)
+		if !ok {
+			return latchResourceUncertainty(run, suite, "budget_exhausted: provider token usage is invalid or overflowing")
+		}
+		if tokenBudgetEnabled(limits) && tokens == 0 {
+			return latchResourceUncertainty(run, suite, "budget_exhausted: provider token usage is missing")
+		}
+		runTokens, ok := checkedAdd(run.tokens, tokens)
+		if !ok {
+			return latchResourceUncertainty(run, suite, "budget_exhausted: per-run token usage overflow")
+		}
+		suiteTokens, ok := checkedAdd(suite.tokens, tokens)
+		if !ok {
+			return latchResourceUncertainty(run, suite, "budget_exhausted: suite token usage overflow")
+		}
+		run.tokens, suite.tokens = runTokens, suiteTokens
+		if call.ChargeStatus == InferenceChargeReported {
+			if call.Charge.Currency != "USD" {
+				return latchResourceUncertainty(run, suite, "budget_exhausted: non-USD provider charge cannot satisfy the declared USD budget")
+			}
+			charge, valid := parseExactDecimal(call.Charge.Amount)
+			if !valid {
+				return latchResourceUncertainty(run, suite, "budget_exhausted: provider charge is invalid")
+			}
+			run.spend = run.spend.add(charge)
+			suite.spend = suite.spend.add(charge)
+		} else if spendBudgetEnabled(limits) && call.RequestedProvider != "ollama" {
+			return latchResourceUncertainty(run, suite, "budget_exhausted: provider spend attribution is missing or invalid")
+		}
+	}
+	return resourceBudgetOverLimit(limits, run, suite)
+}
+
+func consumeGeneratorObservation(limits ResourceBudget, run, suite *resourceAccumulator, observation Observation) string {
+	if !resourceBudgetEnabled(limits) {
+		return ""
+	}
+	if observation.generatorUsageErr != "" {
+		return latchResourceUncertainty(run, suite, "budget_exhausted: "+observation.generatorUsageErr)
+	}
+	runCalls, ok := checkedAdd(run.calls, observation.ModelCalls)
+	if !ok {
+		return latchResourceUncertainty(run, suite, "budget_exhausted: per-run call usage overflow")
+	}
+	suiteCalls, ok := checkedAdd(suite.calls, observation.ModelCalls)
+	if !ok {
+		return latchResourceUncertainty(run, suite, "budget_exhausted: suite call usage overflow")
+	}
+	run.calls, suite.calls = runCalls, suiteCalls
+	if tokenBudgetEnabled(limits) && !observation.generatorTokenKnown {
+		return latchResourceUncertainty(run, suite, "budget_exhausted: generator token usage is missing")
+	}
+	if spendBudgetEnabled(limits) && !observation.generatorSpendKnown {
+		return latchResourceUncertainty(run, suite, "budget_exhausted: generator spend attribution is missing or invalid")
+	}
+	runTokens, ok := checkedAdd(run.tokens, observation.generatorTokens)
+	if !ok {
+		return latchResourceUncertainty(run, suite, "budget_exhausted: per-run token usage overflow")
+	}
+	suiteTokens, ok := checkedAdd(suite.tokens, observation.generatorTokens)
+	if !ok {
+		return latchResourceUncertainty(run, suite, "budget_exhausted: suite token usage overflow")
+	}
+	run.tokens, suite.tokens = runTokens, suiteTokens
+	if observation.generatorSpend.coefficient != nil {
+		run.spend = run.spend.add(observation.generatorSpend)
+		suite.spend = suite.spend.add(observation.generatorSpend)
+	}
+	return resourceBudgetOverLimit(limits, run, suite)
+}
+
+func resourceBudgetBeforeNextCall(limits ResourceBudget, run, suite *resourceAccumulator, includeRun bool) string {
+	if !resourceBudgetEnabled(limits) {
+		return ""
+	}
+	if suite.uncertain != "" {
+		return suite.uncertain
+	}
+	if limits.MaxCallsPerSuite > 0 && suite.calls >= limits.MaxCallsPerSuite {
+		return "budget_exhausted: suite call ceiling reached before provider call"
+	}
+	if limits.MaxTokensPerSuite > 0 && suite.tokens >= limits.MaxTokensPerSuite {
+		return "budget_exhausted: suite token ceiling reached before provider call"
+	}
+	if limits.MaxSpendPerSuite != "" {
+		maxSuiteSpend, valid := parseExactDecimal(limits.MaxSpendPerSuite)
+		if !valid {
+			return "budget_exhausted: suite spend ceiling is invalid"
+		}
+		if suite.spend.cmp(maxSuiteSpend) >= 0 {
+			return "budget_exhausted: suite spend ceiling reached before provider call"
+		}
+	}
+	if includeRun {
+		if limits.MaxCallsPerRun > 0 && run.calls >= limits.MaxCallsPerRun {
+			return "budget_exhausted: per-run call ceiling reached before provider call"
+		}
+		if limits.MaxTokensPerRun > 0 && run.tokens >= limits.MaxTokensPerRun {
+			return "budget_exhausted: per-run token ceiling reached before provider call"
+		}
+		if limits.MaxSpendPerRun != "" {
+			maxRunSpend, valid := parseExactDecimal(limits.MaxSpendPerRun)
+			if !valid {
+				return "budget_exhausted: per-run spend ceiling is invalid"
+			}
+			if run.spend.cmp(maxRunSpend) >= 0 {
+				return "budget_exhausted: per-run spend ceiling reached before provider call"
+			}
+		}
+	}
+	return ""
+}
+
+func latchResourceUncertainty(run, suite *resourceAccumulator, message string) string {
+	if run.uncertain == "" {
+		run.uncertain = message
+	}
+	if suite.uncertain == "" {
+		suite.uncertain = message
+	}
+	return message
+}
+
+func resourceBudgetOverLimit(limits ResourceBudget, run, suite *resourceAccumulator) string {
+	if (limits.MaxCallsPerRun > 0 && run.calls > limits.MaxCallsPerRun) ||
+		(limits.MaxCallsPerSuite > 0 && suite.calls > limits.MaxCallsPerSuite) {
+		return "budget_exhausted: provider calls exceeded a declared ceiling"
+	}
+	if (limits.MaxTokensPerRun > 0 && run.tokens > limits.MaxTokensPerRun) ||
+		(limits.MaxTokensPerSuite > 0 && suite.tokens > limits.MaxTokensPerSuite) {
+		return "budget_exhausted: provider token usage exceeded a declared ceiling"
+	}
+	if limits.MaxSpendPerRun != "" {
+		maxRunSpend, valid := parseExactDecimal(limits.MaxSpendPerRun)
+		if !valid || run.spend.cmp(maxRunSpend) > 0 {
+			return "budget_exhausted: provider spend exceeded an invalid or declared per-run ceiling"
+		}
+	}
+	if limits.MaxSpendPerSuite != "" {
+		maxSuiteSpend, valid := parseExactDecimal(limits.MaxSpendPerSuite)
+		if !valid || suite.spend.cmp(maxSuiteSpend) > 0 {
+			return "budget_exhausted: provider spend exceeded an invalid or declared suite ceiling"
+		}
+	}
+	return ""
+}
+
+func resourceBudgetEnabled(limits ResourceBudget) bool {
+	return limits.MaxCallsPerRun > 0 || limits.MaxCallsPerSuite > 0 ||
+		limits.MaxTokensPerRun > 0 || limits.MaxSpendPerRun != "" ||
+		limits.MaxTokensPerSuite > 0 || limits.MaxSpendPerSuite != ""
+}
+
+func tokenBudgetEnabled(limits ResourceBudget) bool {
+	return limits.MaxTokensPerRun > 0 || limits.MaxTokensPerSuite > 0
+}
+
+func spendBudgetEnabled(limits ResourceBudget) bool {
+	return limits.MaxSpendPerRun != "" || limits.MaxSpendPerSuite != ""
 }

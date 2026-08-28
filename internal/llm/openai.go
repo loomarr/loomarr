@@ -34,6 +34,16 @@ type OpenAI struct {
 	model    string
 	provider string // branded route identity (openrouter, custom, openai)
 	http     *http.Client
+	route    *openRouterChatRoute
+}
+
+// OpenRouterChatConfig pins one certification request to a concrete private
+// OpenRouter route while retaining the shared OpenAI-compatible wire.
+type OpenRouterChatConfig struct {
+	BaseURL          string
+	Model            string
+	APIKey           string
+	UpstreamProvider string
 }
 
 // decodeOpenAIJSON preserves ordinary JSON syntax errors while turning the common "wrong API
@@ -79,18 +89,64 @@ func NewOpenAIForProvider(provider, baseURL, model, apiKey string) *OpenAI {
 	}
 }
 
-func (o *OpenAI) Name() string { return "openai" }
+// NewOpenRouterChat constructs the strict certification lane. Ordinary
+// OpenAI-compatible clients intentionally do not inherit these routing controls.
+func NewOpenRouterChat(cfg OpenRouterChatConfig) (*OpenAI, error) {
+	if strings.TrimSpace(cfg.BaseURL) == "" {
+		return nil, fmt.Errorf("OpenRouter chat requires an API base")
+	}
+	if err := ValidateOpenRouterCertificationRoute(cfg.Model, cfg.UpstreamProvider); err != nil {
+		return nil, err
+	}
+	provider := NewOpenAIForProvider("openrouter", cfg.BaseURL, cfg.Model, cfg.APIKey)
+	provider.route = &openRouterChatRoute{
+		Order: []string{cfg.UpstreamProvider}, AllowFallbacks: false, RequireParameters: true, DataCollection: "deny", ZDR: true,
+	}
+	return provider, nil
+}
+
+// ValidateOpenRouterCertificationRoute is the single fail-closed authority for
+// the immutable model and singleton upstream route used by certification lanes.
+func ValidateOpenRouterCertificationRoute(model, upstreamProvider string) error {
+	rawModel := model
+	model = strings.TrimSpace(model)
+	provider := strings.TrimSpace(upstreamProvider)
+	if model == "" || model != rawModel || len([]rune(model)) > 256 ||
+		strings.Count(model, "/") != 1 || strings.ContainsAny(model, " ,*:") {
+		return fmt.Errorf("OpenRouter certification requires an exact immutable namespaced model")
+	}
+	lowerModel := strings.ToLower(model)
+	if strings.Contains(lowerModel, "latest") || strings.HasSuffix(lowerModel, "/auto") || strings.HasPrefix(lowerModel, "openrouter/") {
+		return fmt.Errorf("OpenRouter certification model %q is a mutable router or alias", model)
+	}
+	if provider == "" || provider != upstreamProvider || len([]rune(provider)) > 128 || strings.Contains(provider, ",") ||
+		provider == "*" || strings.EqualFold(provider, "auto") {
+		return fmt.Errorf("OpenRouter certification requires exactly one concrete upstream provider")
+	}
+	return nil
+}
+
+func (o *OpenAI) Name() string { return o.provider }
 
 // --- wire types (OpenAI /v1/chat/completions) ---
 
 type openaiChatReq struct {
-	Model          string          `json:"model"`
-	Messages       []openaiMessage `json:"messages"`
-	Tools          []openaiTool    `json:"tools,omitempty"`
-	ResponseFormat *openaiRespFmt  `json:"response_format,omitempty"`
-	Temperature    *float64        `json:"temperature,omitempty"`
-	TopP           *float64        `json:"top_p,omitempty"`
-	MaxTokens      int             `json:"max_tokens,omitempty"`
+	Model          string               `json:"model"`
+	Messages       []openaiMessage      `json:"messages"`
+	Tools          []openaiTool         `json:"tools,omitempty"`
+	ResponseFormat *openaiRespFmt       `json:"response_format,omitempty"`
+	Temperature    *float64             `json:"temperature,omitempty"`
+	TopP           *float64             `json:"top_p,omitempty"`
+	MaxTokens      int                  `json:"max_tokens,omitempty"`
+	Provider       *openRouterChatRoute `json:"provider,omitempty"`
+}
+
+type openRouterChatRoute struct {
+	Order             []string `json:"order"`
+	AllowFallbacks    bool     `json:"allow_fallbacks"`
+	RequireParameters bool     `json:"require_parameters"`
+	DataCollection    string   `json:"data_collection"`
+	ZDR               bool     `json:"zdr"`
 }
 
 type openaiRespFmt struct {
@@ -181,6 +237,7 @@ func (o *OpenAI) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 		Temperature: opts.Temperature,
 		TopP:        opts.TopP,
 		MaxTokens:   opts.MaxTokens,
+		Provider:    o.route,
 	}
 	if opts.JSONMode {
 		// Best-effort JSON hint (lenient): a provider that ignores it is fine — the
@@ -235,7 +292,7 @@ func (o *OpenAI) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 		Content:   msg.Content,
 		ToolCalls: fromOpenAIToolCalls(msg.ToolCalls),
 		Attribution: attributionFromWire(o.provider, o.model, out.ID, out.Model, out.Usage,
-			out.OpenRouterMetadata, "", []string{"text"}, time.Since(started)),
+			out.OpenRouterMetadata, []string{"text"}, time.Since(started)),
 	}, nil
 }
 
@@ -246,27 +303,18 @@ func (o *OpenAI) addMetadataHeader(req *http.Request) {
 }
 
 func attributionFromWire(requestedProvider, requestedModel, generationID, reportedModel string,
-	usage openAIUsage, metadata openRouterMetadata, pinnedProvider string, modalities []string,
+	usage openAIUsage, metadata openRouterMetadata, modalities []string,
 	latency time.Duration,
 ) Attribution {
 	resolvedModel := strings.TrimSpace(reportedModel)
-	if resolvedModel == "" {
-		resolvedModel = requestedModel
-	}
-	resolvedProvider := strings.TrimSpace(pinnedProvider)
+	resolvedProvider := ""
 	for _, endpoint := range metadata.Endpoints.Available {
 		if endpoint.Selected {
 			resolvedProvider = endpoint.Provider
 			break
 		}
 	}
-	if resolvedProvider == "" && requestedProvider != "openrouter" {
-		resolvedProvider = requestedProvider
-	}
 	attempts := metadata.Attempt
-	if attempts < 1 {
-		attempts = 1
-	}
 	a := Attribution{
 		RequestedModel: requestedModel, ResolvedModel: resolvedModel,
 		RequestedProvider: requestedProvider, ResolvedProvider: resolvedProvider,
@@ -418,7 +466,7 @@ func (o *OpenAI) AskAboutImages(ctx context.Context, prompt string, jpegs [][]by
 	return Response{
 		Content: strings.TrimSpace(out.Choices[0].Message.Content),
 		Attribution: attributionFromWire(o.provider, o.model, out.ID, out.Model, out.Usage,
-			out.OpenRouterMetadata, "", []string{"text", "image"}, time.Since(started)),
+			out.OpenRouterMetadata, []string{"text", "image"}, time.Since(started)),
 	}, nil
 }
 

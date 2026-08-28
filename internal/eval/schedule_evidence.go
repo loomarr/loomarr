@@ -12,31 +12,12 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
-
-// ScheduleMaterializer carries a grounded Proposal through Loomarr's real pure
-// scheduler and returns the concrete program identities a viewer would receive.
-// The live and fixture adapters differ only in where playable metadata comes from.
-type ScheduleMaterializer interface {
-	Materialize(context.Context, Case, suggest.Proposal) ([]string, error)
-}
-
-// FixtureTitle is the hermetic catalog entry used by behavioral schedule cases.
-// It supplies the same playable facts the live Library adapter supplies without
-// network or inference.
-type FixtureTitle struct {
-	LibraryItemID string
-	DurationMs    int64
-	CollectionID  int
-	Episodes      []schedule.ResolvedProgram
-}
 
 const (
 	scheduleEvidenceSchemaVersion = 1
@@ -76,6 +57,18 @@ type ScheduleEpisodeEvidence struct {
 	Tags            []string `json:"tags,omitempty"`
 }
 
+// resolvedProgram is the single normalized projection shared by declared
+// snapshot evidence and the live Library adapter. Source-field differences are
+// handled before this seam; scheduler facts and defensive copies are not.
+func (e ScheduleEpisodeEvidence) resolvedProgram() schedule.ResolvedProgram {
+	return schedule.ResolvedProgram{
+		LibraryItemID: e.LibraryItemID, Title: e.Title, DurationMs: e.DurationMs,
+		Season: e.Season, Episode: e.Episode, EpisodeEnd: e.EpisodeEnd, Year: e.Year,
+		OfficialRating:  schedule.NormalizeRating(e.OfficialRating),
+		CommunityRating: e.CommunityRating, Overview: e.Overview, Tags: slices.Clone(e.Tags),
+	}
+}
+
 type ScheduleMovieEvidence struct {
 	Key           provision.Key `json:"key"`
 	Name          string        `json:"name"`
@@ -98,13 +91,13 @@ type LiveScheduleCertification struct {
 	Materializer ScheduleMaterializer
 }
 
-func (c LiveScheduleCertification) Case(name string) Case {
+func (c LiveScheduleCertification) Case(name string) (Case, error) {
 	for _, candidate := range c.Cases {
 		if candidate.Name == name {
-			return candidate
+			return candidate, nil
 		}
 	}
-	return Case{}
+	return Case{}, fmt.Errorf("live schedule certification case %q is not declared", name)
 }
 
 // LoadScheduleEvidence reads the closed snapshot format. Unknown fields and
@@ -143,11 +136,11 @@ func PrepareLiveScheduleCertification(ctx context.Context, snapshot ScheduleEvid
 	if lib == nil || tm == nil {
 		return LiveScheduleCertification{}, fmt.Errorf("live schedule evidence requires Library and TMDB clients")
 	}
-	curated, curatedIDs, err := prepareSeriesEvidence(ctx, snapshot.Curated, schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights}, lib, "schedule_classic_simpsons_highlights")
+	curated, curatedIDs, err := prepareSeriesEvidence(ctx, snapshot.Curated, schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights}, lib, "schedule_classic_simpsons_highlights", classicSimpsonsViewerRequest)
 	if err != nil {
 		return LiveScheduleCertification{}, fmt.Errorf("curated schedule evidence: %w", err)
 	}
-	holiday, holidayIDs, err := prepareSeriesEvidence(ctx, snapshot.Holiday, schedule.EpisodeSelection{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}}, lib, "schedule_owned_simpsons_christmas")
+	holiday, holidayIDs, err := prepareSeriesEvidence(ctx, snapshot.Holiday, schedule.EpisodeSelection{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}}, lib, "schedule_owned_simpsons_christmas", simpsonsChristmasViewerRequest)
 	if err != nil {
 		return LiveScheduleCertification{}, fmt.Errorf("holiday schedule evidence: %w", err)
 	}
@@ -166,7 +159,7 @@ func PrepareLiveScheduleCertification(ctx context.Context, snapshot ScheduleEvid
 	}
 	return LiveScheduleCertification{
 		SnapshotID: snapshot.SnapshotID,
-		Cases:      []Case{curated, holiday, franchise},
+		Cases:      withProductionStructuralBounds([]Case{curated, holiday, franchise}),
 		Materializer: snapshotBoundScheduleMaterializer{
 			inner: NewLiveScheduleMaterializer(lib, tm),
 			caseLibraryIDs: map[string]map[provision.Key]string{
@@ -178,7 +171,7 @@ func PrepareLiveScheduleCertification(ctx context.Context, snapshot ScheduleEvid
 	}, nil
 }
 
-func prepareSeriesEvidence(ctx context.Context, evidence ScheduleSeriesEvidence, selection schedule.EpisodeSelection, lib *library.Client, name string) (Case, map[provision.Key]string, error) {
+func prepareSeriesEvidence(ctx context.Context, evidence ScheduleSeriesEvidence, selection schedule.EpisodeSelection, lib *library.Client, name, viewerRequest string) (Case, map[provision.Key]string, error) {
 	if !evidence.Key.IsSeries() || keyTMDBID(evidence.Key) == 0 || evidence.Name == "" || evidence.LibraryItemID == "" || len(evidence.Episodes) == 0 {
 		return Case{}, nil, fmt.Errorf("series identity and complete episode evidence are required")
 	}
@@ -194,12 +187,20 @@ func prepareSeriesEvidence(ctx context.Context, evidence ScheduleSeriesEvidence,
 	if !reflect.DeepEqual(got, want) {
 		return Case{}, nil, fmt.Errorf("snapshot %s drifted from Library episode evidence", evidence.Key)
 	}
-	base := Case{Name: name, Intent: Intent{Description: evidence.Name, MustInclude: []string{evidence.Name}}, MinLineup: 1, RequireKeys: []provision.Key{evidence.Key}}
+	base := Case{Name: name, Intent: Intent{Description: viewerRequest, MustInclude: []string{evidence.Name}}, MinLineup: 1, RequireKeys: []provision.Key{evidence.Key}}
 	if selection.Mode == schedule.EpisodeHighlights {
 		base.ExpectOrdering = "syndication"
+		base.JudgeRubric = "A good viewer outcome is a coherent curated sample of the pinned owned series, using the concrete emitted episode identities and avoiding the pinned exclusions."
+		base.MinJudgeScore = 0.65
+		base.MinRelevanceScore = 0.7
+		base.MinSerendipityScore = 0.3
 	} else {
 		base.ExpectSeasonalMode = "exclusive"
 		base.ExpectSeasonalHolidays = slices.Clone(selection.Holidays)
+		base.JudgeRubric = "A good viewer outcome is an owned, playable Christmas episode sample whose concrete emitted identity fits the holiday request and avoids every pinned non-holiday episode."
+		base.MinJudgeScore = 0.7
+		base.MinRelevanceScore = 0.75
+		base.MinSerendipityScore = 0.2
 	}
 	all := episodeIdentities(evidence.Key, want)
 	if err := validatePinnedEpisodeExpectations(all, evidence.RequiredPrograms, evidence.ForbiddenPrograms); err != nil {
@@ -254,7 +255,7 @@ func prepareFranchiseEvidence(ctx context.Context, evidence ScheduleFranchiseEvi
 	if !slices.Equal(evidence.RequiredSequence, canonical) {
 		return Case{}, nil, fmt.Errorf("franchise requiredSequence must pin canonical release order %v", canonical)
 	}
-	return Case{Name: "schedule_movie_franchise_release_order", Intent: Intent{Description: "Play the owned Indiana Jones movies together in release order", MustInclude: []string{byKey[wantKeys[0]].Name, byKey[wantKeys[1]].Name, byKey[wantKeys[2]].Name}}, MinLineup: 3, MinMovies: 3, RequireKeys: slices.Clone(wantKeys), RequireScheduledPrograms: slices.Clone(canonical), RequireScheduledSequence: slices.Clone(evidence.RequiredSequence)}, bound, nil
+	return Case{Name: "schedule_movie_franchise_release_order", Intent: Intent{Description: "Play the owned Indiana Jones movies together in release order", MustInclude: []string{byKey[wantKeys[0]].Name, byKey[wantKeys[1]].Name, byKey[wantKeys[2]].Name}}, MinLineup: 3, MinMovies: 3, RequireKeys: slices.Clone(wantKeys), RequireScheduledPrograms: slices.Clone(canonical), RequireScheduledSequence: slices.Clone(evidence.RequiredSequence), JudgeRubric: "A good viewer outcome is the complete pinned owned Indiana Jones trilogy emitted atomically in canonical release order, with no interleaved title.", MinJudgeScore: 0.7, MinRelevanceScore: 0.75, MinSerendipityScore: 0.2}, bound, nil
 }
 
 func verifyLibraryOwnershipBinding(ctx context.Context, lib *library.Client, key provision.Key, expectedLibraryItemID string) error {
@@ -312,241 +313,4 @@ func validScheduleSnapshotID(id string) bool {
 		return false
 	}
 	return true
-}
-
-type snapshotBoundScheduleMaterializer struct {
-	inner          ScheduleMaterializer
-	caseLibraryIDs map[string]map[provision.Key]string
-}
-
-func (m snapshotBoundScheduleMaterializer) Materialize(ctx context.Context, c Case, proposal suggest.Proposal) ([]string, error) {
-	allowed, ok := m.caseLibraryIDs[c.Name]
-	if !ok {
-		return nil, fmt.Errorf("live schedule case %q has no snapshot lineup binding", c.Name)
-	}
-	for _, item := range proposal.Lineup {
-		key, err := item.Key()
-		if err != nil {
-			return nil, err
-		}
-		expected, ok := allowed[key]
-		if !ok {
-			return nil, fmt.Errorf("live schedule case %q proposal contains undeclared lineup key %s", c.Name, key)
-		}
-		if item.LibraryItemID != expected {
-			return nil, fmt.Errorf("schedule proposal %s uses Library item %q, snapshot requires %q", key, item.LibraryItemID, expected)
-		}
-	}
-	return m.inner.Materialize(ctx, c, proposal)
-}
-
-func episodeEvidencePrograms(e []ScheduleEpisodeEvidence) []schedule.ResolvedProgram {
-	out := make([]schedule.ResolvedProgram, 0, len(e))
-	for _, x := range e {
-		out = append(out, schedule.ResolvedProgram{LibraryItemID: x.LibraryItemID, Title: x.Title, DurationMs: x.DurationMs, Season: x.Season, Episode: x.Episode, EpisodeEnd: x.EpisodeEnd, Year: x.Year, OfficialRating: schedule.NormalizeRating(x.OfficialRating), CommunityRating: x.CommunityRating, Overview: x.Overview, Tags: slices.Clone(x.Tags)})
-	}
-	return out
-}
-func libraryEpisodePrograms(e []library.Episode) []schedule.ResolvedProgram {
-	out := make([]schedule.ResolvedProgram, 0, len(e))
-	for _, x := range e {
-		out = append(out, schedule.ResolvedProgram{LibraryItemID: x.LibraryItemID, Title: x.Name, DurationMs: x.DurationMs, Season: x.Season, Episode: x.Episode, EpisodeEnd: x.EpisodeEnd, Year: x.ProductionYear, OfficialRating: schedule.NormalizeRating(x.OfficialRating), CommunityRating: x.CommunityRating, Overview: x.Overview, Tags: slices.Clone(x.Tags)})
-	}
-	return out
-}
-func episodeIdentities(key provision.Key, episodes []schedule.ResolvedProgram) []string {
-	out := make([]string, 0, len(episodes))
-	for _, e := range episodes {
-		out = append(out, fmt.Sprintf("%s:s%02de%02d", key, e.Season, e.Episode))
-	}
-	return out
-}
-func keyTMDBID(key provision.Key) int {
-	_, provider, id, ok := provision.ParseKey(key)
-	if !ok || provider != "tmdb" {
-		return 0
-	}
-	return id
-}
-func keyStrings(keys []provision.Key) []string {
-	out := make([]string, len(keys))
-	for i, key := range keys {
-		out[i] = string(key)
-	}
-	return out
-}
-
-type fixtureScheduleMaterializer struct {
-	titles map[provision.Key]FixtureTitle
-}
-
-func NewFixtureScheduleMaterializer(titles map[provision.Key]FixtureTitle) ScheduleMaterializer {
-	return fixtureScheduleMaterializer{titles: titles}
-}
-
-func (m fixtureScheduleMaterializer) Materialize(
-	_ context.Context, c Case, proposal suggest.Proposal,
-) ([]string, error) {
-	return materializeSchedule(c, proposal, m.titles)
-}
-
-type liveScheduleMaterializer struct {
-	library *library.Client
-	tmdb    *tmdb.Client
-}
-
-// NewLiveScheduleMaterializer hydrates already-owned proposal entries through
-// the production Library and TMDB client seams before using the same pure
-// projection as fixture evaluation.
-func NewLiveScheduleMaterializer(lib *library.Client, tm *tmdb.Client) ScheduleMaterializer {
-	return liveScheduleMaterializer{library: lib, tmdb: tm}
-}
-
-func (m liveScheduleMaterializer) Materialize(ctx context.Context, c Case, proposal suggest.Proposal) ([]string, error) {
-	if m.library == nil || m.tmdb == nil {
-		return nil, fmt.Errorf("live schedule materializer requires Library and TMDB clients")
-	}
-	movieIDs := make([]string, 0, len(proposal.Lineup))
-	for _, item := range proposal.Lineup {
-		if item.LibraryItemID == "" {
-			return nil, fmt.Errorf("schedule lineup item %q has no owned library identity", item.Name)
-		}
-		if item.MediaType == provision.Movie {
-			movieIDs = append(movieIDs, item.LibraryItemID)
-		}
-	}
-	metadata, err := m.library.ItemMetadataByID(ctx, movieIDs)
-	if err != nil {
-		return nil, fmt.Errorf("load schedule movie metadata: %w", err)
-	}
-	titles := make(map[provision.Key]FixtureTitle, len(proposal.Lineup))
-	for _, item := range proposal.Lineup {
-		key, keyErr := item.Key()
-		if keyErr != nil {
-			return nil, fmt.Errorf("schedule proposal item %q: %w", item.Name, keyErr)
-		}
-		if item.MediaType == provision.Series {
-			episodes, episodeErr := m.library.ListEpisodes(ctx, item.LibraryItemID)
-			if episodeErr != nil {
-				return nil, fmt.Errorf("load schedule episodes for %s: %w", key, episodeErr)
-			}
-			resolved := make([]schedule.ResolvedProgram, 0, len(episodes))
-			for _, episode := range episodes {
-				resolved = append(resolved, schedule.ResolvedProgram{
-					LibraryItemID: episode.LibraryItemID, Title: episode.Name, DurationMs: episode.DurationMs,
-					Season: episode.Season, Episode: episode.Episode, EpisodeEnd: episode.EpisodeEnd,
-					Year: episode.ProductionYear, OfficialRating: schedule.NormalizeRating(episode.OfficialRating),
-					CommunityRating: episode.CommunityRating, Overview: episode.Overview, Tags: slices.Clone(episode.Tags),
-				})
-			}
-			titles[key] = FixtureTitle{LibraryItemID: item.LibraryItemID, Episodes: resolved}
-			continue
-		}
-		meta, ok := metadata[item.LibraryItemID]
-		if !ok || meta.RuntimeMs <= 0 {
-			return nil, fmt.Errorf("schedule movie %s has no playable runtime metadata", key)
-		}
-		collectionID, collectionErr := m.tmdb.CollectionID(ctx, item.MediaType, item.TMDBID)
-		if collectionErr != nil {
-			return nil, fmt.Errorf("load TMDB collection for %s: %w", key, collectionErr)
-		}
-		titles[key] = FixtureTitle{
-			LibraryItemID: item.LibraryItemID, DurationMs: meta.RuntimeMs, CollectionID: collectionID,
-		}
-	}
-	return materializeSchedule(c, proposal, titles)
-}
-
-// materializeSchedule is the one pure fixture/live projection. All I/O and
-// provider-specific payloads are resolved before this boundary.
-func materializeSchedule(c Case, proposal suggest.Proposal, titles map[provision.Key]FixtureTitle) ([]string, error) {
-	entries := make([]schedule.LineupEntry, 0, len(proposal.Lineup))
-	for _, item := range proposal.Lineup {
-		key, err := item.Key()
-		if err != nil {
-			return nil, fmt.Errorf("schedule proposal item %q: %w", item.Name, err)
-		}
-		fixture, ok := titles[key]
-		if !ok {
-			return nil, fmt.Errorf("schedule fixture has no playable metadata for %s", key)
-		}
-		entries = append(entries, schedule.LineupEntry{
-			Key: key, Title: item.Name, DurationMs: fixture.DurationMs,
-			SeasonMin: item.SeasonMin, SeasonMax: item.SeasonMax,
-			EpisodeSelection: item.EpisodeSelection,
-			OfficialRating:   schedule.NormalizeRating(item.OfficialRating),
-			Genres:           item.Genres, Year: item.Year, CollectionID: fixture.CollectionID,
-		})
-	}
-
-	desired := schedule.ComputeDesiredAt(schedule.Channel{
-		ID: "eval-" + c.Name, Strategy: schedule.Sequential, Shuffle: schedule.ShuffleParams{Seed: 1},
-	}, entries, fixtureAvailability(titles), schedule.PodFill, proposal.Policy, time.Time{})
-	out := make([]string, 0, len(desired.Slots))
-	for _, slot := range desired.Slots {
-		if !slot.IsProgram() {
-			continue
-		}
-		identity := string(slot.Key)
-		if slot.Season > 0 || slot.Episode > 0 {
-			identity += fmt.Sprintf(":s%02de%02d", slot.Season, slot.Episode)
-		}
-		out = append(out, identity)
-	}
-	return out, nil
-}
-
-type fixtureAvailability map[provision.Key]FixtureTitle
-
-func (a fixtureAvailability) Resolve(key provision.Key) (string, int64, bool) {
-	fixture, ok := a[key]
-	if !ok || key.IsSeries() || fixture.LibraryItemID == "" || fixture.DurationMs <= 0 {
-		return "", 0, false
-	}
-	return fixture.LibraryItemID, fixture.DurationMs, true
-}
-
-func (a fixtureAvailability) ResolveEpisodes(key provision.Key) ([]schedule.ResolvedProgram, bool) {
-	fixture, ok := a[key]
-	if !ok || len(fixture.Episodes) == 0 {
-		return nil, false
-	}
-	return slices.Clone(fixture.Episodes), true
-}
-
-func scheduledChecks(c Case, programs []string) []string {
-	if len(c.RequireScheduledPrograms) == 0 && len(c.ForbidScheduledPrograms) == 0 && len(c.RequireScheduledSequence) == 0 {
-		return nil
-	}
-	seen := make(map[string]bool, len(programs))
-	for _, program := range programs {
-		seen[program] = true
-	}
-	var failures []string
-	for _, required := range c.RequireScheduledPrograms {
-		if !seen[required] {
-			failures = append(failures, fmt.Sprintf("required scheduled program %q is missing", required))
-		}
-	}
-	for _, forbidden := range c.ForbidScheduledPrograms {
-		if seen[forbidden] {
-			failures = append(failures, fmt.Sprintf("forbidden scheduled program %q is present", forbidden))
-		}
-	}
-	if len(c.RequireScheduledSequence) > 0 && !containsSequence(programs, c.RequireScheduledSequence) {
-		failures = append(failures, fmt.Sprintf("required scheduled sequence %v is missing from %v", c.RequireScheduledSequence, programs))
-	}
-	return failures
-}
-
-func containsSequence(programs, sequence []string) bool {
-	if len(sequence) > len(programs) {
-		return false
-	}
-	for start := 0; start+len(sequence) <= len(programs); start++ {
-		if slices.Equal(programs[start:start+len(sequence)], sequence) {
-			return true
-		}
-	}
-	return false
 }

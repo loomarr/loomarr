@@ -68,9 +68,9 @@ func buildEvalClients() (evalClients, error) {
 
 func buildSuggesterWithClients(clients evalClients) (*suggest.Suggester, *observedProvider, error) {
 	cat := catalog.New(clients.library, clients.tmdb).WithPresence(libPresence{clients.library})
-	provider := buildProvider()
-	if provider == nil {
-		return nil, nil, fmt.Errorf("LLM not configured (set LLM_PROVIDER/LLM_URL/LLM_MODEL[/LLM_API_KEY])")
+	provider, err := buildProvider()
+	if err != nil {
+		return nil, nil, err
 	}
 	observed := &observedProvider{inner: provider}
 	return suggest.New(observed, cat, clients.tmdb, 10).WithRatings(clients.tmdb), observed, nil
@@ -80,34 +80,77 @@ func buildSuggesterWithClients(clients evalClients) (*suggest.Suggester, *observ
 // candidate counts, never prompts, titles, credentials, or model output. This is
 // what separates retrieval failures from model-selection failures in a scorecard.
 type observedProvider struct {
-	inner llm.Provider
-	mu    sync.Mutex
-	obs   Observation
+	inner  llm.Provider
+	mu     sync.Mutex
+	obs    Observation
+	ledger *providerResourceLedger
 }
 
 type Observation struct {
-	ToolCalls          int    `json:"toolCalls"`
-	TitleCalls         int    `json:"titleCalls"`
-	GenreCalls         int    `json:"genreCalls"`
-	KeywordCalls       int    `json:"keywordCalls"`
-	CandidatesSurfaced int    `json:"candidatesSurfaced"`
-	GroundingStage     string `json:"groundingStage"`
-	toolMessagesSeen   int
-	toolCallsSeen      int
+	ModelCalls          int    `json:"modelCalls"`
+	ToolCalls           int    `json:"toolCalls"`
+	TitleCalls          int    `json:"titleCalls"`
+	GenreCalls          int    `json:"genreCalls"`
+	KeywordCalls        int    `json:"keywordCalls"`
+	CandidatesSurfaced  int    `json:"candidatesSurfaced"`
+	GroundingStage      string `json:"groundingStage"`
+	generatorCalls      []InferenceCall
+	generatorTokens     int
+	generatorSpend      exactDecimal
+	generatorUsageErr   string
+	generatorTokenKnown bool
+	generatorSpendKnown bool
+	generatorBudgetErr  string
+	toolMessagesSeen    int
+	toolCallsSeen       int
 }
 
 func (p *observedProvider) Name() string { return p.inner.Name() }
 
 func (p *observedProvider) Begin() {
 	p.mu.Lock()
-	p.obs = Observation{}
+	p.obs = Observation{generatorSpend: zeroDecimal()}
+	p.ledger = nil
+	p.mu.Unlock()
+}
+
+func (p *observedProvider) beginResourceRun(limits ResourceBudget, run, suite *resourceAccumulator) {
+	p.mu.Lock()
+	p.ledger = &providerResourceLedger{limits: limits, run: run, suite: suite}
 	p.mu.Unlock()
 }
 
 func (p *observedProvider) Chat(ctx context.Context, messages []llm.Message, opts llm.ChatOptions) (llm.Response, error) {
 	p.observeToolCalls(messages)
 	p.observeToolResults(messages)
-	return p.inner.Chat(ctx, messages, opts)
+	p.mu.Lock()
+	ledger := p.ledger
+	if ledger != nil {
+		if message := ledger.beforeCall(); message != "" {
+			p.obs.generatorBudgetErr = message
+			p.mu.Unlock()
+			return llm.Response{}, fmt.Errorf("generator provider call blocked: %w", errProviderBudgetExhausted)
+		}
+	}
+	p.mu.Unlock()
+	response, err := p.inner.Chat(ctx, messages, opts)
+	p.mu.Lock()
+	p.obs.ModelCalls++
+	call := scrubAttribution(response.Attribution)
+	observeGeneratorResourceUsage(&p.obs, call)
+	if len(p.obs.generatorCalls) < suggest.ProductionBounds().MaxModelCalls {
+		p.obs.generatorCalls = append(p.obs.generatorCalls, call)
+	}
+	if ledger != nil {
+		if message := ledger.afterCall(call); message != "" {
+			p.obs.generatorBudgetErr = message
+			if err == nil {
+				err = fmt.Errorf("generator provider usage rejected: %w", errProviderBudgetExhausted)
+			}
+		}
+	}
+	p.mu.Unlock()
+	return response, err
 }
 
 func (p *observedProvider) observeToolCalls(messages []llm.Message) {
@@ -155,6 +198,8 @@ func (p *observedProvider) Snapshot(groundErr error) Observation {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	out := p.obs
+	out.generatorCalls = slices.Clone(p.obs.generatorCalls)
+	out.generatorSpend = p.obs.generatorSpend.clone()
 	switch {
 	case groundErr == nil:
 		out.GroundingStage = "grounded"
@@ -172,6 +217,42 @@ func (p *observedProvider) Snapshot(groundErr error) Observation {
 	return out
 }
 
+func observeGeneratorResourceUsage(observation *Observation, call InferenceCall) {
+	tokens, ok := checkedAdd(call.Tokens.Prompt, call.Tokens.Completion)
+	if !ok {
+		observation.generatorUsageErr = "provider token usage is invalid or overflowing"
+		return
+	}
+	observation.generatorTokens, ok = checkedAdd(observation.generatorTokens, tokens)
+	if !ok {
+		observation.generatorUsageErr = "generator token usage overflow"
+		return
+	}
+	if tokens > 0 {
+		observation.generatorTokenKnown = true
+	}
+	if call.ChargeStatus != InferenceChargeReported {
+		if call.RequestedProvider == "ollama" {
+			observation.generatorSpendKnown = true
+		}
+		return
+	}
+	observation.generatorSpendKnown = true
+	if call.Charge.Currency != "USD" {
+		observation.generatorUsageErr = "non-USD provider charge cannot satisfy the declared USD budget"
+		return
+	}
+	charge, valid := parseExactDecimal(call.Charge.Amount)
+	if !valid {
+		observation.generatorUsageErr = "provider charge is invalid"
+		return
+	}
+	if observation.generatorSpend.coefficient == nil {
+		observation.generatorSpend = zeroDecimal()
+	}
+	observation.generatorSpend = observation.generatorSpend.add(charge)
+}
+
 func stringSliceAny(value any) []any {
 	items, _ := value.([]any)
 	return items
@@ -179,32 +260,49 @@ func stringSliceAny(value any) []any {
 
 // buildProvider mirrors cmd/loomarr's buildProviderFor: Ollama for local, the
 // OpenAI-compatible client otherwise. Driven by env (the same knobs production uses).
-func buildProvider() llm.Provider {
-	prov := os.Getenv("LLM_PROVIDER")
-	url := os.Getenv("LLM_URL")
-	model := os.Getenv("LLM_MODEL")
-	key := os.Getenv("LLM_API_KEY")
-	if model == "" {
-		return nil
+func buildProvider() (llm.Provider, error) {
+	config, _ := certificationRoleConfigsFromEnv()
+	if config.Model == "" {
+		return nil, fmt.Errorf("LLM not configured (set LLM_PROVIDER/LLM_URL/LLM_MODEL[/LLM_API_KEY])")
 	}
-	if prov == "ollama" || prov == "" {
-		return llm.NewOllama(url, model)
-	}
-	return llm.NewOpenAI(url, model, key)
+	return NewCertificationProvider(config)
 }
 
-func buildJudgeProvider() llm.Provider {
-	judgeModel := os.Getenv("LOOMARR_EVAL_JUDGE")
-	if judgeModel == "" {
-		return buildProvider()
+func buildJudgeProvider() (llm.Provider, error) {
+	_, config := certificationRoleConfigsFromEnv()
+	return NewCertificationProvider(config)
+}
+
+func certificationRoleConfigsFromEnv() (CertificationProviderConfig, CertificationProviderConfig) {
+	generator := CertificationProviderConfig{
+		Provider: os.Getenv("LLM_PROVIDER"), BaseURL: os.Getenv("LLM_URL"),
+		Model: os.Getenv("LLM_MODEL"), APIKey: os.Getenv("LLM_API_KEY"),
+		UpstreamProvider: os.Getenv("LOOMARR_EVAL_GENERATOR_UPSTREAM_PROVIDER"),
 	}
-	provider := firstNonEmpty(os.Getenv("LOOMARR_EVAL_JUDGE_PROVIDER"), os.Getenv("LLM_PROVIDER"))
-	url := firstNonEmpty(os.Getenv("LOOMARR_EVAL_JUDGE_URL"), os.Getenv("LLM_URL"))
-	key := firstNonEmpty(os.Getenv("LOOMARR_EVAL_JUDGE_API_KEY"), os.Getenv("LLM_API_KEY"))
-	if provider == "ollama" || provider == "" {
-		return llm.NewOllama(url, judgeModel)
+	judge := CertificationProviderConfig{
+		Provider:         firstNonEmpty(os.Getenv("LOOMARR_EVAL_JUDGE_PROVIDER"), generator.Provider),
+		BaseURL:          firstNonEmpty(os.Getenv("LOOMARR_EVAL_JUDGE_URL"), generator.BaseURL),
+		Model:            firstNonEmpty(os.Getenv("LOOMARR_EVAL_JUDGE"), generator.Model),
+		APIKey:           firstNonEmpty(os.Getenv("LOOMARR_EVAL_JUDGE_API_KEY"), generator.APIKey),
+		UpstreamProvider: os.Getenv("LOOMARR_EVAL_JUDGE_UPSTREAM_PROVIDER"),
 	}
-	return llm.NewOpenAI(url, judgeModel, key)
+	return generator, judge
+}
+
+// CertificationIdentitiesFromEnv resolves the exact role identities written to
+// a scorecard without constructing either provider.
+func CertificationIdentitiesFromEnv() (ModelIdentity, ModelIdentity) {
+	generator, judge := certificationRoleConfigsFromEnv()
+	return ModelIdentity{Provider: normalizedProviderIdentity(generator.Provider), Model: generator.Model},
+		ModelIdentity{Provider: normalizedProviderIdentity(judge.Provider), Model: judge.Model}
+}
+
+func normalizedProviderIdentity(provider string) string {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	if provider == "" {
+		return "ollama"
+	}
+	return provider
 }
 
 func firstNonEmpty(values ...string) string {
@@ -245,20 +343,22 @@ func mapIntent(i Intent) suggest.Intent {
 
 // Result is the scored outcome of one case.
 type Result struct {
-	Case              string       `json:"case"`
-	Trial             int          `json:"trial"`
-	Failures          []string     `json:"failures"` // all evaluation failures; empty means the trial passed
-	FailureStage      FailureStage `json:"failureStage,omitempty"`
-	ThemeFit          float64      `json:"themeFit"`
-	Lineup            int          `json:"lineup"`
-	Acquisitions      int          `json:"acquisitions"`
-	Ceiling           string       `json:"ceiling"` // the extracted policy ceiling
-	JudgeScore        float64      `json:"judgeScore"`
-	RelevanceScore    float64      `json:"relevanceScore"`
-	SerendipityScore  float64      `json:"serendipityScore"`
-	JudgeNote         string       `json:"judgeNote"`
-	JudgeError        string       `json:"judgeError,omitempty"`
-	ScheduledPrograms []string     `json:"scheduledPrograms,omitempty"`
+	Case              string          `json:"case"`
+	Trial             int             `json:"trial"`
+	Failures          []string        `json:"failures"` // all evaluation failures; empty means the trial passed
+	FailureStage      FailureStage    `json:"failureStage,omitempty"`
+	ThemeFit          float64         `json:"themeFit"`
+	Lineup            int             `json:"lineup"`
+	Acquisitions      int             `json:"acquisitions"`
+	Ceiling           string          `json:"ceiling"` // the extracted policy ceiling
+	JudgeScore        float64         `json:"judgeScore"`
+	RelevanceScore    float64         `json:"relevanceScore"`
+	SerendipityScore  float64         `json:"serendipityScore"`
+	JudgeNote         string          `json:"judgeNote"`
+	JudgeError        string          `json:"judgeError,omitempty"`
+	ScheduledPrograms []string        `json:"scheduledPrograms,omitempty"`
+	GeneratorCalls    []InferenceCall `json:"generatorCalls"`
+	JudgeCalls        []InferenceCall `json:"judgeCalls"`
 	Observation
 }
 
@@ -301,6 +401,35 @@ func deterministicChecks(c Case, prop suggest.Proposal, groundErr error) []strin
 	if groundErr != nil {
 		return []string{fmt.Sprintf("grounding failed: %v", groundErr)}
 	}
+	if len(c.RequireTitles) > 0 || len(c.ForbidTitles) > 0 {
+		switch c.TitleEvidence {
+		case TitleEvidenceGrounded:
+			groundedTitles := make(map[string]bool, len(prop.Lineup)+len(prop.Acquisitions))
+			for _, item := range allItems(prop) {
+				groundedTitles[normalizeExactTitle(item.Name)] = true
+			}
+			for _, required := range c.RequireTitles {
+				normalized := normalizeExactTitle(required)
+				if normalized == "" {
+					f = append(f, "required grounded title must not be blank")
+				} else if !groundedTitles[normalized] {
+					f = append(f, fmt.Sprintf("required grounded title %q is missing", required))
+				}
+			}
+			for _, forbidden := range c.ForbidTitles {
+				normalized := normalizeExactTitle(forbidden)
+				if normalized == "" {
+					f = append(f, "forbidden grounded title must not be blank")
+				} else if groundedTitles[normalized] {
+					f = append(f, fmt.Sprintf("forbidden grounded title %q is present", forbidden))
+				}
+			}
+		case TitleEvidenceScheduled:
+			// Scheduled assertions run only after concrete materialization.
+		default:
+			f = append(f, fmt.Sprintf("exact title assertions require a valid evidence scope, got %q", c.TitleEvidence))
+		}
+	}
 
 	if len(prop.Lineup) < c.MinLineup {
 		f = append(f, fmt.Sprintf("lineup %d < required %d", len(prop.Lineup), c.MinLineup))
@@ -336,6 +465,9 @@ func deterministicChecks(c Case, prop suggest.Proposal, groundErr error) []strin
 			movies++
 		case provision.Series:
 			series++
+		}
+		if len(c.AllowedMediaTypes) > 0 && !slices.Contains(c.AllowedMediaTypes, item.MediaType) {
+			f = append(f, fmt.Sprintf("grounded item %q has media type %q outside allowed set %v", item.Name, item.MediaType, c.AllowedMediaTypes))
 		}
 		for _, genre := range item.Genres {
 			genres[strings.ToLower(strings.TrimSpace(genre))] = true
@@ -413,6 +545,10 @@ func deterministicChecks(c Case, prop suggest.Proposal, groundErr error) []strin
 		}
 	}
 	return f
+}
+
+func normalizeExactTitle(title string) string {
+	return strings.ToLower(strings.Join(strings.Fields(title), " "))
 }
 
 func allItems(p suggest.Proposal) []suggest.ProposalItem {

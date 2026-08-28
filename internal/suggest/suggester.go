@@ -123,6 +123,26 @@ func New(provider llm.Provider, cat *catalog.Catalog, v Validator, maxAcq int) *
 // the schema in a couple of nudges won't in ten. Separate from maxToolRounds.
 const maxRepairs = 2
 
+// StructuralBounds is the production Suggester's closed worst-case envelope for
+// one Suggest call. Evaluation and operational diagnostics consume this value so
+// they cannot drift from the actual tool loop by copying private constants.
+type StructuralBounds struct {
+	MaxModelCalls         int
+	MaxToolCalls          int
+	MaxCandidatesSurfaced int
+}
+
+// ProductionBounds returns the one authoritative structural/call envelope for a
+// Suggest invocation: the initial generation, one grounding retry, and each
+// bounded schema repair may each consume the complete tool loop.
+func ProductionBounds() StructuralBounds {
+	maxCalls := maxToolRounds * (maxRepairs + 2)
+	return StructuralBounds{
+		MaxModelCalls: maxCalls, MaxToolCalls: maxCalls,
+		MaxCandidatesSurfaced: maxCalls * catalogSearchLimit,
+	}
+}
+
 const groundingRetryPrompt = `You returned no grounded picks without finding usable catalog candidates. ` +
 	`You MUST call catalog_search now. Use title search for a named title, genre discovery for a genre, ` +
 	`or keywords for a holiday, motif, franchise, or topic. Then select only ids the tool returns.`

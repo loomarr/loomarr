@@ -14,7 +14,24 @@
 // live-smoke script.
 package eval
 
-import "github.com/loomarr/loomarr/internal/provision"
+import (
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/suggest"
+)
+
+const (
+	classicSimpsonsViewerRequest   = "Classic Simpsons reruns from the golden era, curated for variety"
+	simpsonsChristmasViewerRequest = "Christmas episodes of The Simpsons already in my library"
+)
+
+// TitleEvidenceScope identifies which public Runner output owns a case's exact
+// title assertions.
+type TitleEvidenceScope string
+
+const (
+	TitleEvidenceGrounded  TitleEvidenceScope = "grounded"
+	TitleEvidenceScheduled TitleEvidenceScope = "scheduled"
+)
 
 // Case is one evaluation: an intent plus the properties its grounded proposal must
 // satisfy. The deterministic checks are hard gates; the judge rubric guides the
@@ -40,10 +57,16 @@ type Case struct {
 	// RequireKeys are exact grounded identities that must survive into the
 	// actionable Proposal. Named user constraints belong here rather than only in
 	// judge prose or a non-empty count assertion.
-	RequireKeys           []provision.Key
-	ForbidKeys            []provision.Key
+	RequireKeys []provision.Key
+	ForbidKeys  []provision.Key
+	// RequireTitles and ForbidTitles compare normalized complete titles against
+	// the explicitly selected grounded Proposal or materialized schedule evidence.
+	TitleEvidence         TitleEvidenceScope
+	RequireTitles         []string
+	ForbidTitles          []string
 	MinMovies             int
 	MinSeries             int
+	AllowedMediaTypes     []provision.MediaType
 	MinDistinctGenres     int
 	MaxToolCalls          int
 	MaxCandidatesSurfaced int
@@ -108,7 +131,7 @@ type Intent struct {
 // ChannelPolicy must handle: themed discovery, kids-safety extraction, era binding,
 // seasonality, must-include grounding, and an adversarial "unsatisfiable" intent.
 // Add a case here to lock in a behavior; the same cases drive the live smoke.
-var Corpus = []Case{
+var Corpus = withProductionStructuralBounds([]Case{
 	{
 		Name:       "template_saturday_cartoons",
 		TemplateID: "saturday-cartoons",
@@ -157,6 +180,8 @@ var Corpus = []Case{
 		Intent: Intent{Description: "Back-to-back action movies, high energy, keep it PG-13",
 			Tone: "high energy"},
 		MinLineup:           1,
+		MinMovies:           1,
+		AllowedMediaTypes:   []provision.MediaType{provision.Movie},
 		ForbidRatingsAbove:  "PG-13",
 		MinThemeFit:         0.5,
 		JudgeRubric:         "A good result is a fast, high-energy action-movie marathon. Penalize slow dramas, non-action titles, and content inappropriate for a PG-13 ceiling.",
@@ -169,7 +194,10 @@ var Corpus = []Case{
 		Intent:            Intent{Description: "gentle mysteries with no horror; exclude Saw", MustExclude: []string{"Saw"}},
 		MinGrounded:       1,
 		ForbidGenres:      []string{"Horror"},
+		TitleEvidence:     TitleEvidenceGrounded,
+		ForbidTitles:      []string{"Saw"},
 		ForbidTitleTerms:  []string{"Saw"},
+		ForbidKeys:        []provision.Key{"movie:tmdb:176"},
 		JudgeRubric:       "A good result is a gentle mystery lineup with no horror, gore, or Saw title.",
 		MinJudgeScore:     0.65,
 		MinRelevanceScore: 0.7,
@@ -179,14 +207,16 @@ var Corpus = []Case{
 		Intent: Intent{Description: "sci-fi movies", MustInclude: []string{"The Matrix"}},
 		// Grounding must surface The Matrix (a real, well-known title) — it's the
 		// canary that the catalog + grounding loop actually find named titles.
-		MinLineup:   1,
-		RequireKeys: []provision.Key{"movie:tmdb:603"},
-		JudgeRubric: "A good result is science-fiction films and MUST include The Matrix (it was explicitly requested).",
+		MinLineup:     1,
+		RequireKeys:   []provision.Key{"movie:tmdb:603"},
+		TitleEvidence: TitleEvidenceGrounded,
+		RequireTitles: []string{"The Matrix"},
+		JudgeRubric:   "A good result is science-fiction films and MUST include The Matrix (it was explicitly requested).",
 	},
 	{
 		Name: "classic_single_series_curated",
 		Intent: Intent{
-			Description: "Classic Simpsons reruns from the golden era, curated for variety",
+			Description: classicSimpsonsViewerRequest,
 			MustInclude: []string{"The Simpsons"}, MaxAcquire: 1,
 		},
 		MinGrounded:    1,
@@ -290,6 +320,7 @@ var Corpus = []Case{
 			Tone:        "calm", MaxAcquire: 4,
 		},
 		MinAcquisitions:    1,
+		MinDistinctGenres:  2,
 		ExpectCeiling:      "TV-PG",
 		ForbidRatingsAbove: "TV-PG",
 		JudgeRubric: "A good result feels calm, welcoming, and appropriate for shared Sunday-morning viewing, across nature, travel, or food. " +
@@ -308,6 +339,15 @@ var Corpus = []Case{
 		Intent:        Intent{Description: "movies about the quxzptl migration patterns of nonexistent creatures"},
 		NoFabrication: true, // every grounded pick must have a real, resolvable id
 	},
+})
+
+func withProductionStructuralBounds(cases []Case) []Case {
+	bounds := suggest.ProductionBounds()
+	for i := range cases {
+		cases[i].MaxToolCalls = bounds.MaxToolCalls
+		cases[i].MaxCandidatesSurfaced = bounds.MaxCandidatesSurfaced
+	}
+	return cases
 }
 
 // fixtureScheduleCorpus is synthetic evidence used only by hermetic Runner
@@ -317,7 +357,7 @@ var fixtureScheduleCorpus = []Case{
 	{
 		Name: "schedule_classic_simpsons_highlights",
 		Intent: Intent{
-			Description: "Classic Simpsons reruns from the golden era, curated for variety",
+			Description: classicSimpsonsViewerRequest,
 			MustInclude: []string{"The Simpsons"},
 		},
 		MinLineup:      1,
@@ -344,7 +384,7 @@ var fixtureScheduleCorpus = []Case{
 	{
 		Name: "schedule_owned_simpsons_christmas",
 		Intent: Intent{
-			Description: "Christmas episodes of The Simpsons already in my library",
+			Description: simpsonsChristmasViewerRequest,
 			MustInclude: []string{"The Simpsons"},
 		},
 		MinLineup:              1,

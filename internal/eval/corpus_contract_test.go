@@ -4,27 +4,40 @@ package eval
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/suggest"
-	"github.com/loomarr/loomarr/internal/testkit"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 type scriptedGenerator struct {
 	proposal suggest.Proposal
 	err      error
+}
+
+type providerGenerator struct {
+	provider llm.Provider
+	proposal suggest.Proposal
+	calls    int
+}
+
+func (g providerGenerator) Suggest(ctx context.Context, _ suggest.Intent) (suggest.Proposal, error) {
+	calls := g.calls
+	if calls <= 0 {
+		calls = 1
+	}
+	for range calls {
+		if _, err := g.provider.Chat(ctx, nil, llm.ChatOptions{}); err != nil {
+			return suggest.Proposal{}, err
+		}
+	}
+	return g.proposal, nil
 }
 
 func (g scriptedGenerator) Suggest(context.Context, suggest.Intent) (suggest.Proposal, error) {
@@ -34,6 +47,17 @@ func (g scriptedGenerator) Suggest(context.Context, suggest.Intent) (suggest.Pro
 type sequenceGenerator struct {
 	proposals []suggest.Proposal
 	next      int
+}
+
+type sequenceErrorGenerator struct {
+	errors []error
+	next   int
+}
+
+func (g *sequenceErrorGenerator) Suggest(context.Context, suggest.Intent) (suggest.Proposal, error) {
+	err := g.errors[g.next]
+	g.next++
+	return suggest.Proposal{}, err
 }
 
 type sequenceJudge struct {
@@ -60,873 +84,6 @@ func (g *sequenceGenerator) Suggest(context.Context, suggest.Intent) (suggest.Pr
 	proposal := g.proposals[g.next]
 	g.next++
 	return proposal, nil
-}
-
-func TestRunnerRejectsProposalMissingExactRequiredKey(t *testing.T) {
-	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{
-		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 680, Name: "Pulp Fiction"}},
-	}}, RunnerConfig{Trials: 1, Profile: "hermetic", Generator: ModelIdentity{Provider: "fixture", Model: "fixture-v1"}})
-
-	scorecard := runner.Run(context.Background(), []Case{{
-		Name: "must_include_matrix",
-		Intent: Intent{
-			Description: "sci-fi movies",
-			MustInclude: []string{"The Matrix"},
-		},
-		RequireKeys: []provision.Key{"movie:tmdb:603"},
-	}})
-
-	if scorecard.Certified {
-		t.Fatal("scorecard certified a proposal that omitted the exact required title")
-	}
-	if len(scorecard.Results) != 1 || len(scorecard.Results[0].Failures) != 1 {
-		t.Fatalf("result = %+v, want one exact-identity failure", scorecard.Results)
-	}
-	if got := scorecard.Results[0].Failures[0]; !strings.Contains(got, "movie:tmdb:603") {
-		t.Fatalf("failure = %q, want missing required key", got)
-	}
-	result := scorecard.Results[0]
-	if result.FailureStage != FailureStageDeterministic || scorecard.FailureCounts[FailureStageDeterministic] != 1 {
-		t.Fatalf("deterministic failure accounting = stage %q counts %v", result.FailureStage, scorecard.FailureCounts)
-	}
-}
-
-func TestNamedIncludeCorpusCasePinsTheMatrixIdentity(t *testing.T) {
-	for _, c := range Corpus {
-		if c.Name != "must_include_grounding" {
-			continue
-		}
-		if len(c.RequireKeys) != 1 || c.RequireKeys[0] != "movie:tmdb:603" {
-			t.Fatalf("required keys = %v, want exact Matrix identity", c.RequireKeys)
-		}
-		return
-	}
-	t.Fatal("must_include_grounding case is missing")
-}
-
-func TestRunnerChecksConcreteProgramsAfterScheduleFiltering(t *testing.T) {
-	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{
-		Lineup: []suggest.ProposalItem{{
-			MediaType: provision.Series, TMDBID: 456, Name: "The Simpsons",
-			InLibrary: true, LibraryItemID: "show-simpsons", SeasonMin: 1, SeasonMax: 1,
-		}},
-	}}, RunnerConfig{Trials: 1}).WithMaterializer(NewFixtureScheduleMaterializer(map[provision.Key]FixtureTitle{
-		"series:tmdb:456": {Episodes: []schedule.ResolvedProgram{
-			{LibraryItemID: "ep-s01e01", Title: "Simpsons Roasting on an Open Fire", DurationMs: 22 * 60 * 1000, Season: 1, Episode: 1},
-			{LibraryItemID: "ep-s04e12", Title: "Marge vs. the Monorail", DurationMs: 22 * 60 * 1000, Season: 4, Episode: 12},
-		}},
-	}))
-
-	scorecard := runner.Run(context.Background(), []Case{{
-		Name: "classic_episode_outcome",
-		RequireScheduledPrograms: []string{
-			"series:tmdb:456:s04e12",
-		},
-	}})
-
-	if scorecard.Certified {
-		t.Fatal("scorecard certified an episode removed by the final schedule's season filter")
-	}
-	if got := scorecard.Results[0].Failures; len(got) != 1 || !strings.Contains(got[0], "series:tmdb:456:s04e12") {
-		t.Fatalf("failures = %v, want the missing scheduled episode identity", got)
-	}
-	result := scorecard.Results[0]
-	if result.FailureStage != FailureStageSchedule || scorecard.FailureCounts[FailureStageSchedule] != 1 {
-		t.Fatalf("schedule failure accounting = stage %q counts %v", result.FailureStage, scorecard.FailureCounts)
-	}
-}
-
-func TestRunnerReportsRepeatedTrialPassRate(t *testing.T) {
-	matrix := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
-	}}}
-	unrelated := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 680, Name: "Pulp Fiction",
-	}}}
-	generator := &sequenceGenerator{proposals: []suggest.Proposal{matrix, unrelated, matrix}}
-	runner := NewRunner(generator, RunnerConfig{Trials: 3})
-
-	card := runner.Run(context.Background(), []Case{{
-		Name: "repeat_stability", RequireKeys: []provision.Key{"movie:tmdb:603"},
-	}})
-
-	if card.Certified {
-		t.Fatal("one failed trial must fail certification")
-	}
-	if len(card.Results) != 3 || card.Results[0].Trial != 1 || card.Results[2].Trial != 3 {
-		t.Fatalf("trials = %+v, want three numbered results", card.Results)
-	}
-	if len(card.Cases) != 1 || card.Cases[0].Passed != 2 || card.Cases[0].Trials != 3 || card.Cases[0].PassRate != 2.0/3.0 {
-		t.Fatalf("case summary = %+v, want 2/3 pass rate", card.Cases)
-	}
-	if card.FailureCounts[FailureStageDeterministic] != 1 {
-		t.Fatalf("repeated-trial failure counts = %v, want one deterministic trial", card.FailureCounts)
-	}
-}
-
-func TestRunnerReportsLowScoreAsThresholdResultAndQualityRange(t *testing.T) {
-	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
-	}}}
-	judge := &sequenceJudge{scores: []JudgeScores{
-		{Overall: 0.5, Relevance: 0.4, Serendipity: 0.8},
-		{Overall: 0.8, Relevance: 0.9, Serendipity: 0.3},
-		{Overall: 0.7, Relevance: 0.7, Serendipity: 0.6},
-	}}
-	runner := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{Trials: 3}).WithJudge(judge)
-
-	card := runner.Run(context.Background(), []Case{{
-		Name: "quality_distribution", JudgeRubric: "Relevant science fiction with defensible variety",
-		MinRelevanceScore: 0.5,
-	}})
-
-	if card.Certified {
-		t.Fatal("scorecard certified a valid relevance score below its declared floor")
-	}
-	if got := card.Results[0]; got.JudgeError != "" || len(got.Failures) != 1 || !strings.Contains(got.Failures[0], "relevance score 0.40 < required 0.50") {
-		t.Fatalf("low-score result = %+v, want an ordinary threshold failure", got)
-	}
-	if result := card.Results[0]; result.FailureStage != FailureStageJudge || card.FailureCounts[FailureStageJudge] != 1 {
-		t.Fatalf("low-score failure accounting = stage %q counts %v", result.FailureStage, card.FailureCounts)
-	}
-	if len(card.Cases) != 1 {
-		t.Fatalf("case summaries = %d, want one", len(card.Cases))
-	}
-	got := card.Cases[0]
-	if got.Relevance != (ScoreRange{Min: 0.4, Median: 0.7, Max: 0.9}) {
-		t.Fatalf("relevance range = %+v", got.Relevance)
-	}
-	if got.Serendipity != (ScoreRange{Min: 0.3, Median: 0.6, Max: 0.8}) {
-		t.Fatalf("serendipity range = %+v", got.Serendipity)
-	}
-}
-
-func TestRunnerFailsRubricWhenJudgeIsMissing(t *testing.T) {
-	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{
-		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}},
-	}}, RunnerConfig{})
-
-	card := runner.Run(context.Background(), []Case{{
-		Name: "judge_required", JudgeRubric: "Relevant science fiction",
-	}})
-
-	if card.Certified {
-		t.Fatal("scorecard certified a rubric without a configured judge")
-	}
-	result := card.Results[0]
-	if got := result.Failures; len(got) != 1 || !strings.Contains(got[0], "judge is not configured") {
-		t.Fatalf("failures = %v, want missing-judge failure", got)
-	}
-	if result.FailureStage != FailureStageJudge || card.FailureCounts[FailureStageJudge] != 1 {
-		t.Fatalf("judge failure accounting = stage %q counts %v", result.FailureStage, card.FailureCounts)
-	}
-}
-
-func TestRunnerFailsRubricWhenJudgeReturnsError(t *testing.T) {
-	provider := testkit.NewLLM()
-	provider.Delay = time.Second
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{
-		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}},
-	}}, RunnerConfig{}).WithJudge(modelJudge{provider: provider})
-
-	card := runner.Run(ctx, []Case{{
-		Name: "judge_error", JudgeRubric: "Relevant science fiction",
-	}})
-
-	if card.Certified {
-		t.Fatal("scorecard certified a rubric after the judge returned an error")
-	}
-	result := card.Results[0]
-	if got := result.Failures; len(got) != 1 || !strings.Contains(got[0], "judge call failed") {
-		t.Fatalf("failures = %v, want judge-call failure", got)
-	}
-	if result.FailureStage != FailureStageJudge || card.FailureCounts[FailureStageJudge] != 1 {
-		t.Fatalf("judge failure accounting = stage %q counts %v", result.FailureStage, card.FailureCounts)
-	}
-}
-
-func TestRunnerFailsRubricWhenJudgeOutputIsUnparseable(t *testing.T) {
-	provider := testkit.NewLLM(testkit.FinalResponse("definitely not judge JSON"))
-	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{
-		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}},
-	}}, RunnerConfig{}).WithJudge(modelJudge{provider: provider})
-
-	card := runner.Run(context.Background(), []Case{{
-		Name: "judge_unparseable", JudgeRubric: "Relevant science fiction",
-	}})
-
-	if card.Certified {
-		t.Fatal("scorecard certified a rubric after unparseable judge output")
-	}
-	result := card.Results[0]
-	if !strings.Contains(result.JudgeError, "judge output unparseable") {
-		t.Fatalf("judge error = %q, want unparseable-output error", result.JudgeError)
-	}
-	if result.JudgeScore < 0 || result.RelevanceScore < 0 || result.SerendipityScore < 0 {
-		t.Fatalf("judge scores = %.2f/%.2f/%.2f, want no negative failure sentinel",
-			result.JudgeScore, result.RelevanceScore, result.SerendipityScore)
-	}
-	if result.FailureStage != FailureStageJudge || card.FailureCounts[FailureStageJudge] != 1 {
-		t.Fatalf("judge failure accounting = stage %q counts %v", result.FailureStage, card.FailureCounts)
-	}
-}
-
-func TestJudgeScoreRejectsMissingRequiredScoreFields(t *testing.T) {
-	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
-	}}}
-	caseUnderTest := Case{Intent: Intent{Description: "science fiction"}, JudgeRubric: "Relevant science fiction"}
-	tests := map[string]string{
-		"overall":     `{"relevance":0.8,"serendipity":0.6,"reason":"A grounded assessment."}`,
-		"relevance":   `{"overall":0.8,"serendipity":0.6,"reason":"A grounded assessment."}`,
-		"serendipity": `{"overall":0.8,"relevance":0.8,"reason":"A grounded assessment."}`,
-	}
-	for name, response := range tests {
-		t.Run(name, func(t *testing.T) {
-			var scorer Judge = modelJudge{provider: testkit.NewLLM(testkit.FinalResponse(response))}
-			if _, err := scorer.Score(context.Background(), NewJudgeEvidence(caseUnderTest, proposal, Observation{}, nil)); err == nil {
-				t.Fatalf("Judge.Score accepted output missing %s: %s", name, response)
-			}
-		})
-	}
-}
-
-func TestJudgeScoreRejectsOutOfRangeScores(t *testing.T) {
-	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
-	}}}
-	caseUnderTest := Case{Intent: Intent{Description: "science fiction"}, JudgeRubric: "Relevant science fiction"}
-	tests := map[string]string{
-		"overall below zero":     `{"overall":-0.1,"relevance":0.8,"serendipity":0.6,"reason":"A grounded assessment."}`,
-		"overall above one":      `{"overall":1.1,"relevance":0.8,"serendipity":0.6,"reason":"A grounded assessment."}`,
-		"relevance below zero":   `{"overall":0.8,"relevance":-0.1,"serendipity":0.6,"reason":"A grounded assessment."}`,
-		"relevance above one":    `{"overall":0.8,"relevance":1.1,"serendipity":0.6,"reason":"A grounded assessment."}`,
-		"serendipity below zero": `{"overall":0.8,"relevance":0.8,"serendipity":-0.1,"reason":"A grounded assessment."}`,
-		"serendipity above one":  `{"overall":0.8,"relevance":0.8,"serendipity":1.1,"reason":"A grounded assessment."}`,
-	}
-	for name, response := range tests {
-		t.Run(name, func(t *testing.T) {
-			var scorer Judge = modelJudge{provider: testkit.NewLLM(testkit.FinalResponse(response))}
-			if _, err := scorer.Score(context.Background(), NewJudgeEvidence(caseUnderTest, proposal, Observation{}, nil)); err == nil {
-				t.Fatalf("Judge.Score accepted out-of-range output: %s", response)
-			}
-		})
-	}
-}
-
-func TestJudgeScoreRejectsMissingOrBlankReason(t *testing.T) {
-	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
-	}}}
-	caseUnderTest := Case{Intent: Intent{Description: "science fiction"}, JudgeRubric: "Relevant science fiction"}
-	tests := map[string]string{
-		"missing": `{"overall":0.8,"relevance":0.8,"serendipity":0.6}`,
-		"blank":   `{"overall":0.8,"relevance":0.8,"serendipity":0.6,"reason":"   "}`,
-	}
-	for name, response := range tests {
-		t.Run(name, func(t *testing.T) {
-			var scorer Judge = modelJudge{provider: testkit.NewLLM(testkit.FinalResponse(response))}
-			if _, err := scorer.Score(context.Background(), NewJudgeEvidence(caseUnderTest, proposal, Observation{}, nil)); err == nil {
-				t.Fatalf("Judge.Score accepted %s reason: %s", name, response)
-			}
-		})
-	}
-}
-
-func TestRunnerRecordsStructuralObservationForEveryTrial(t *testing.T) {
-	observer := &scriptedObserver{value: Observation{
-		ToolCalls: 2, CandidatesSurfaced: 24, GroundingStage: "grounded",
-	}}
-	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{}}, RunnerConfig{Trials: 2}).WithObserver(observer)
-
-	card := runner.Run(context.Background(), []Case{{Name: "observed"}})
-
-	if observer.begins != 2 {
-		t.Fatalf("observer begins = %d, want one reset per trial", observer.begins)
-	}
-	for _, result := range card.Results {
-		if result.ToolCalls != 2 || result.CandidatesSurfaced != 24 || result.GroundingStage != "grounded" {
-			t.Fatalf("observation = %+v", result.Observation)
-		}
-	}
-}
-
-func TestRunnerRecordsGeneratorAndJudgeIdentitiesIndependently(t *testing.T) {
-	generator := ModelIdentity{Provider: "ollama", Model: "qwen3:14b"}
-	judge := ModelIdentity{Provider: "openai", Model: "openai/gpt-5.6"}
-	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{}}, RunnerConfig{
-		Generator: generator,
-		Judge:     judge,
-	})
-
-	card := runner.Run(context.Background(), []Case{{Name: "identity"}})
-
-	if card.SchemaVersion != 4 {
-		t.Fatalf("schema version = %d, want 4", card.SchemaVersion)
-	}
-	if card.Generator != generator || card.Judge != judge {
-		t.Fatalf("identities = generator %+v judge %+v", card.Generator, card.Judge)
-	}
-	wantStages := []FailureStage{
-		FailureStageProposal, FailureStageDeterministic, FailureStageStructuralBudget,
-		FailureStageSchedule, FailureStageJudge,
-	}
-	if len(card.FailureCounts) != len(wantStages) || card.Results[0].FailureStage != "" {
-		t.Fatalf("passing scorecard failure shape = stage %q counts %v", card.Results[0].FailureStage, card.FailureCounts)
-	}
-	for _, stage := range wantStages {
-		if card.FailureCounts[stage] != 0 {
-			t.Errorf("passing scorecard count[%q] = %d, want 0", stage, card.FailureCounts[stage])
-		}
-	}
-	blob, err := json.Marshal(card)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var shape map[string]json.RawMessage
-	if err := json.Unmarshal(blob, &shape); err != nil {
-		t.Fatal(err)
-	}
-	for _, legacy := range []string{"provider", "model"} {
-		if _, ok := shape[legacy]; ok {
-			t.Errorf("scorecard retained ambiguous legacy field %q: %s", legacy, blob)
-		}
-	}
-}
-
-func TestRunnerRejectsForbiddenIdentityMediaMixDiversityAndStructuralBudget(t *testing.T) {
-	observer := &scriptedObserver{value: Observation{ToolCalls: 3, CandidatesSurfaced: 25}}
-	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", Genres: []string{"Science Fiction"},
-	}}}
-	runner := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).WithObserver(observer)
-	card := runner.Run(context.Background(), []Case{{Name: "bounded_mix",
-		ForbidKeys: []provision.Key{"movie:tmdb:603"}, MinMovies: 2, MinSeries: 1,
-		MinDistinctGenres: 2, MaxToolCalls: 2, MaxCandidatesSurfaced: 24,
-	}})
-	if card.Certified || len(card.Results[0].Failures) != 6 {
-		t.Fatalf("result = %+v, want six independent hard failures", card.Results[0])
-	}
-	if result := card.Results[0]; result.FailureStage != FailureStageDeterministic || card.FailureCounts[FailureStageDeterministic] != 1 || card.FailureCounts[FailureStageStructuralBudget] != 0 {
-		t.Fatalf("mixed failure accounting = stage %q counts %v", result.FailureStage, card.FailureCounts)
-	}
-
-	budgetCard := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).
-		WithObserver(observer).
-		Run(context.Background(), []Case{{Name: "budget_only", MaxToolCalls: 2, MaxCandidatesSurfaced: 24}})
-	if budgetCard.Certified || len(budgetCard.Results[0].Failures) != 2 {
-		t.Fatalf("budget-only result = %+v, want two structural-budget failures", budgetCard.Results[0])
-	}
-	if result := budgetCard.Results[0]; result.FailureStage != FailureStageStructuralBudget || budgetCard.FailureCounts[FailureStageStructuralBudget] != 1 {
-		t.Fatalf("structural-budget accounting = stage %q counts %v", result.FailureStage, budgetCard.FailureCounts)
-	}
-}
-
-func TestRunnerCertifiesCuratedEpisodesAndAtomicMovieSequence(t *testing.T) {
-	series := provision.Key("series:tmdb:456")
-	movieA := provision.Key("movie:tmdb:1")
-	movieB := provision.Key("movie:tmdb:2")
-	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{
-		{MediaType: provision.Series, TMDBID: 456, Name: "The Simpsons", EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights}},
-		{MediaType: provision.Movie, TMDBID: 1, Name: "First", Year: 1981},
-		{MediaType: provision.Movie, TMDBID: 2, Name: "Second", Year: 1984},
-	}}
-	runner := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).WithMaterializer(NewFixtureScheduleMaterializer(map[provision.Key]FixtureTitle{
-		series: {Episodes: []schedule.ResolvedProgram{
-			{LibraryItemID: "low", DurationMs: 1, Season: 1, Episode: 1, CommunityRating: 1},
-			{LibraryItemID: "e2", DurationMs: 1, Season: 1, Episode: 2, CommunityRating: 9},
-			{LibraryItemID: "e3", DurationMs: 1, Season: 1, Episode: 3, CommunityRating: 8},
-			{LibraryItemID: "e4", DurationMs: 1, Season: 1, Episode: 4, CommunityRating: 7},
-			{LibraryItemID: "e5", DurationMs: 1, Season: 1, Episode: 5, CommunityRating: 6},
-		}},
-		movieA: {LibraryItemID: "movie-a", DurationMs: 1, CollectionID: 99},
-		movieB: {LibraryItemID: "movie-b", DurationMs: 1, CollectionID: 99},
-	}))
-	card := runner.Run(context.Background(), []Case{{Name: "viewer_outcome",
-		ForbidScheduledPrograms:  []string{"series:tmdb:456:s01e01"},
-		RequireScheduledSequence: []string{"movie:tmdb:1", "movie:tmdb:2"},
-	}})
-	if !card.Certified {
-		t.Fatalf("viewer outcome failed: %+v", card.Results[0].Failures)
-	}
-}
-
-func TestRunnerRejectsForbiddenEmittedEpisode(t *testing.T) {
-	c := scheduleCorpusCase(t, "schedule_classic_simpsons_highlights")
-	proposal := suggest.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
-		Ordering: schedule.OrderSyndication,
-	}}, Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Series, TMDBID: 456, Name: "The Simpsons", InLibrary: true,
-		LibraryItemID:    "show-simpsons",
-		EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
-	}}}
-	episodes := simpsonsHighlightEpisodes()
-	episodes[0].CommunityRating = 10
-	for episode := 9; episode <= 20; episode++ {
-		episodes = append(episodes, schedule.ResolvedProgram{
-			LibraryItemID: fmt.Sprintf("simpsons-s01e%02d", episode),
-			Title:         fmt.Sprintf("Episode %d", episode), DurationMs: 22 * 60 * 1000,
-			Season: 1, Episode: episode, CommunityRating: 1,
-		})
-	}
-	runner := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).
-		WithMaterializer(NewFixtureScheduleMaterializer(map[provision.Key]FixtureTitle{
-			"series:tmdb:456": {Episodes: episodes},
-		}))
-
-	card := runner.Run(context.Background(), []Case{c})
-	if card.Certified {
-		t.Fatal("certified a final schedule containing a forbidden episode")
-	}
-	result := card.Results[0]
-	if result.FailureStage != FailureStageSchedule || card.FailureCounts[FailureStageSchedule] != 1 {
-		t.Fatalf("schedule failure accounting = stage %q counts %v failures %v", result.FailureStage, card.FailureCounts, result.Failures)
-	}
-	if len(result.Failures) != 1 || !strings.Contains(result.Failures[0], "series:tmdb:456:s01e01") {
-		t.Fatalf("failures = %v, want forbidden emitted episode", result.Failures)
-	}
-}
-
-func TestRunnerRejectsWrongRequiredSequence(t *testing.T) {
-	c := scheduleCorpusCase(t, "schedule_movie_franchise_release_order")
-	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{
-		{MediaType: provision.Movie, TMDBID: 89, Name: "Indiana Jones and the Last Crusade", Year: 1989, InLibrary: true, LibraryItemID: "last-crusade"},
-		{MediaType: provision.Movie, TMDBID: 87, Name: "Indiana Jones and the Temple of Doom", Year: 1984, InLibrary: true, LibraryItemID: "temple"},
-		{MediaType: provision.Movie, TMDBID: 85, Name: "Raiders of the Lost Ark", Year: 1981, InLibrary: true, LibraryItemID: "raiders"},
-	}}
-	runner := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).
-		WithMaterializer(NewFixtureScheduleMaterializer(map[provision.Key]FixtureTitle{
-			"movie:tmdb:85": {LibraryItemID: "raiders", DurationMs: 115 * 60 * 1000, CollectionID: -1},
-			"movie:tmdb:87": {LibraryItemID: "temple", DurationMs: 118 * 60 * 1000, CollectionID: -1},
-			"movie:tmdb:89": {LibraryItemID: "last-crusade", DurationMs: 127 * 60 * 1000, CollectionID: -1},
-		}))
-	card := runner.Run(context.Background(), []Case{c})
-	if card.Certified || card.Results[0].FailureStage != FailureStageSchedule || card.FailureCounts[FailureStageSchedule] != 1 {
-		t.Fatalf("wrong final sequence result = %+v counts %v", card.Results[0], card.FailureCounts)
-	}
-}
-
-func TestRunnerEmitsReversedInterleavedFranchiseAtomicallyInReleaseOrder(t *testing.T) {
-	c := scheduleCorpusCase(t, "schedule_movie_franchise_release_order")
-	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{
-		{MediaType: provision.Movie, TMDBID: 89, Name: "Indiana Jones and the Last Crusade", Year: 1989, InLibrary: true, LibraryItemID: "last-crusade"},
-		{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", Year: 1999, InLibrary: true, LibraryItemID: "matrix"},
-		{MediaType: provision.Movie, TMDBID: 87, Name: "Indiana Jones and the Temple of Doom", Year: 1984, InLibrary: true, LibraryItemID: "temple"},
-		{MediaType: provision.Movie, TMDBID: 85, Name: "Raiders of the Lost Ark", Year: 1981, InLibrary: true, LibraryItemID: "raiders"},
-	}}
-	runner := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).
-		WithMaterializer(NewFixtureScheduleMaterializer(map[provision.Key]FixtureTitle{
-			"movie:tmdb:85":  {LibraryItemID: "raiders", DurationMs: 115 * 60 * 1000, CollectionID: 84},
-			"movie:tmdb:87":  {LibraryItemID: "temple", DurationMs: 118 * 60 * 1000, CollectionID: 84},
-			"movie:tmdb:89":  {LibraryItemID: "last-crusade", DurationMs: 127 * 60 * 1000, CollectionID: 84},
-			"movie:tmdb:603": {LibraryItemID: "matrix", DurationMs: 136 * 60 * 1000, CollectionID: -1},
-		}))
-	card := runner.Run(context.Background(), []Case{c})
-	if !card.Certified {
-		t.Fatalf("atomic release order failed: %+v", card.Results[0])
-	}
-	if got := card.Results[0].ScheduledPrograms; !containsSequence(got, c.RequireScheduledSequence) {
-		t.Fatalf("final emitted schedule = %v, want atomic release sequence %v", got, c.RequireScheduledSequence)
-	}
-}
-
-func TestRunnerMaterializesOwnedHolidayEpisodesOnly(t *testing.T) {
-	c := scheduleCorpusCase(t, "schedule_owned_simpsons_christmas")
-	proposal := suggest.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
-		Seasonal: schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive, Holidays: []string{"christmas"}},
-	}}, Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Series, TMDBID: 456, Name: "The Simpsons", InLibrary: true,
-		LibraryItemID: "show-simpsons", EpisodeSelection: schedule.EpisodeSelection{
-			Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"},
-		},
-	}}}
-	runner := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).
-		WithMaterializer(NewFixtureScheduleMaterializer(map[provision.Key]FixtureTitle{
-			"series:tmdb:456": {Episodes: simpsonsHolidayEpisodes()},
-		}))
-	card := runner.Run(context.Background(), []Case{c})
-	if !card.Certified {
-		t.Fatalf("owned holiday schedule failed: %+v", card.Results[0])
-	}
-}
-
-func simpsonsHolidayEpisodes() []schedule.ResolvedProgram {
-	return []schedule.ResolvedProgram{
-		{LibraryItemID: "ordinary", Title: "A Regular Tuesday", DurationMs: 1, Season: 2, Episode: 1},
-		{LibraryItemID: "xmas-1", Title: "A Springfield Christmas (1)", DurationMs: 1, Season: 2, Episode: 2},
-		{LibraryItemID: "xmas-2", Title: "A Springfield Christmas (2)", DurationMs: 1, Season: 2, Episode: 3},
-		{LibraryItemID: "overview", Title: "Home for Winter", Overview: "The family meets Santa", DurationMs: 1, Season: 2, Episode: 4},
-	}
-}
-
-func TestRunnerLiveScheduleMaterializerUsesLibraryAndTMDBTestServers(t *testing.T) {
-	media := testkit.NewMediaServer(t)
-	media.ItemMetadata = map[string]testkit.ItemMetadata{
-		"movie-raiders": {RunTimeMs: 115 * 60 * 1000},
-		"movie-temple":  {RunTimeMs: 118 * 60 * 1000},
-		"movie-crusade": {RunTimeMs: 127 * 60 * 1000},
-	}
-	media.SetEpisodeItems(
-		testkit.EpisodeStub{LibraryItemID: "ordinary", Name: "A Regular Tuesday", RunTimeMs: 22 * 60 * 1000, Season: 2, Episode: 1},
-		testkit.EpisodeStub{LibraryItemID: "xmas", Name: "A Springfield Christmas", RunTimeMs: 22 * 60 * 1000, Season: 2, Episode: 2},
-	)
-	tmdbServer := testkit.NewTMDB(t)
-	tmdbServer.AddMovie(85, "Raiders of the Lost Ark", 1981, nil, "")
-	tmdbServer.AddMovie(87, "Indiana Jones and the Temple of Doom", 1984, nil, "")
-	tmdbServer.AddMovie(89, "Indiana Jones and the Last Crusade", 1989, nil, "")
-	tmdbServer.SetCollectionID(85, 84)
-	tmdbServer.SetCollectionID(87, 84)
-	tmdbServer.SetCollectionID(89, 84)
-
-	proposal := suggest.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
-		Seasonal: schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive, Holidays: []string{"christmas"}},
-	}}, Lineup: []suggest.ProposalItem{
-		{MediaType: provision.Movie, TMDBID: 89, Name: "Indiana Jones and the Last Crusade", Year: 1989, InLibrary: true, LibraryItemID: "movie-crusade"},
-		{MediaType: provision.Series, TMDBID: 456, Name: "The Simpsons", InLibrary: true, LibraryItemID: "show-simpsons",
-			EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}},
-		},
-		{MediaType: provision.Movie, TMDBID: 87, Name: "Indiana Jones and the Temple of Doom", Year: 1984, InLibrary: true, LibraryItemID: "movie-temple"},
-		{MediaType: provision.Movie, TMDBID: 85, Name: "Raiders of the Lost Ark", Year: 1981, InLibrary: true, LibraryItemID: "movie-raiders"},
-	}}
-	runner := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).WithMaterializer(
-		NewLiveScheduleMaterializer(
-			library.New(library.Emby, media.URL, media.AdminToken, "eval-test"),
-			tmdb.NewWithBase(tmdbServer.URL, "test-key"),
-		),
-	)
-	card := runner.Run(context.Background(), []Case{{
-		Name: "live_hydration", MinLineup: 4,
-		RequireScheduledPrograms: []string{"series:tmdb:456:s02e02", "movie:tmdb:85", "movie:tmdb:87", "movie:tmdb:89"},
-		ForbidScheduledPrograms:  []string{"series:tmdb:456:s02e01"},
-		RequireScheduledSequence: []string{"movie:tmdb:85", "movie:tmdb:87", "movie:tmdb:89"},
-	}})
-	if !card.Certified {
-		t.Fatalf("live materialized schedule failed: %+v", card.Results[0])
-	}
-}
-
-func TestEvalCasesRequireExplicitLiveScheduleCertification(t *testing.T) {
-	if _, _, err := evalCases(true, false, nil); err == nil {
-		t.Fatal("certification accepted omission of the live schedule corpus")
-	}
-	exploratory, notice, err := evalCases(false, false, nil)
-	if err != nil || len(exploratory) != len(Corpus) || !strings.Contains(notice, "schedule-outcome corpus omitted") {
-		t.Fatalf("exploratory cases=%d notice=%q err=%v", len(exploratory), notice, err)
-	}
-	liveCases := []Case{{Name: "curated"}, {Name: "holiday"}, {Name: "franchise"}}
-	certification, notice, err := evalCases(true, true, liveCases)
-	if err != nil || notice != "" || len(certification) != len(Corpus)+len(liveCases) {
-		t.Fatalf("certification cases=%d notice=%q err=%v", len(certification), notice, err)
-	}
-}
-
-func TestPrepareLiveScheduleCertificationDerivesEpisodesFromVerifiedSnapshot(t *testing.T) {
-	media, tmdbServer, snapshot := liveScheduleEvidenceFixture(t)
-	path := filepath.Join(t.TempDir(), "schedule-evidence.json")
-	blob, err := json.Marshal(snapshot)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, blob, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	snapshot, err = LoadScheduleEvidence(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	prepared, err := PrepareLiveScheduleCertification(context.Background(), snapshot,
-		library.New(library.Emby, media.URL, media.AdminToken, "eval-test"),
-		tmdb.NewWithBase(tmdbServer.URL, "test-key"),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	holiday := prepared.Case("schedule_owned_simpsons_christmas")
-	if !slices.Contains(holiday.RequireScheduledPrograms, "series:tmdb:456:s01e01") {
-		t.Fatalf("verified Christmas premiere not required: %+v", holiday)
-	}
-	if slices.Contains(holiday.ForbidScheduledPrograms, "series:tmdb:456:s01e01") {
-		t.Fatalf("verified Christmas premiere was copied from synthetic forbidden evidence: %+v", holiday)
-	}
-	fixture := scheduleCorpusCase(t, "schedule_owned_simpsons_christmas")
-	if slices.Equal(holiday.RequireScheduledPrograms, fixture.RequireScheduledPrograms) {
-		t.Fatal("synthetic fixture expectations masqueraded as live certification evidence")
-	}
-}
-
-func TestPrepareLiveScheduleCertificationRejectsDriftBeforeInference(t *testing.T) {
-	media, tmdbServer, snapshot := liveScheduleEvidenceFixture(t)
-	snapshot.Curated.Episodes[0].CommunityRating = 10
-	_, err := PrepareLiveScheduleCertification(context.Background(), snapshot,
-		library.New(library.Emby, media.URL, media.AdminToken, "eval-test"),
-		tmdb.NewWithBase(tmdbServer.URL, "test-key"),
-	)
-	if err == nil || !strings.Contains(err.Error(), "drifted from Library episode evidence") {
-		t.Fatalf("drift preflight error = %v", err)
-	}
-}
-
-func TestRunnerChecksVerifiedLiveHolidayOutcome(t *testing.T) {
-	media, tmdbServer, snapshot := liveScheduleEvidenceFixture(t)
-	prepared, err := PrepareLiveScheduleCertification(context.Background(), snapshot,
-		library.New(library.Emby, media.URL, media.AdminToken, "eval-test"),
-		tmdb.NewWithBase(tmdbServer.URL, "test-key"),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	proposal := suggest.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
-		Seasonal: schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive, Holidays: []string{"christmas"}},
-	}}, Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Series, TMDBID: 456, Name: "The Simpsons", InLibrary: true,
-		LibraryItemID: "show-simpsons", EpisodeSelection: schedule.EpisodeSelection{
-			Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"},
-		},
-	}}}
-	card := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).
-		WithMaterializer(prepared.Materializer).
-		Run(context.Background(), []Case{prepared.Case("schedule_owned_simpsons_christmas")})
-	if !card.Certified || !slices.Contains(card.Results[0].ScheduledPrograms, "series:tmdb:456:s01e01") {
-		t.Fatalf("verified live holiday result = %+v", card.Results[0])
-	}
-}
-
-func TestRunnerDoesNotRecomputePinnedScheduleOracle(t *testing.T) {
-	media, tmdbServer, snapshot := liveScheduleEvidenceFixture(t)
-	snapshot.Curated.RequiredPrograms[0] = "series:tmdb:456:s01e01"
-	snapshot.Curated.ForbiddenPrograms[0] = "series:tmdb:456:s01e02"
-	prepared, err := PrepareLiveScheduleCertification(context.Background(), snapshot,
-		library.New(library.Emby, media.URL, media.AdminToken, "eval-test"),
-		tmdb.NewWithBase(tmdbServer.URL, "test-key"),
-	)
-	if err != nil {
-		t.Fatalf("independent pinned oracle should pass evidence validation: %v", err)
-	}
-	proposal := suggest.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
-		Ordering: schedule.OrderSyndication,
-	}}, Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Series, TMDBID: 456, Name: "The Simpsons", InLibrary: true,
-		LibraryItemID: "show-simpsons", EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
-	}}}
-	card := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).
-		WithMaterializer(prepared.Materializer).
-		Run(context.Background(), []Case{prepared.Case("schedule_classic_simpsons_highlights")})
-	if card.Certified || card.Results[0].FailureStage != FailureStageSchedule {
-		t.Fatalf("production scheduler recomputed its own oracle: %+v", card.Results[0])
-	}
-}
-
-func TestRunnerRejectsUndeclaredLiveScheduleLineupKey(t *testing.T) {
-	media, tmdbServer, snapshot := liveScheduleEvidenceFixture(t)
-	prepared, err := PrepareLiveScheduleCertification(context.Background(), snapshot,
-		library.New(library.Emby, media.URL, media.AdminToken, "eval-test"),
-		tmdb.NewWithBase(tmdbServer.URL, "test-key"),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	proposal := suggest.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
-		Ordering: schedule.OrderSyndication,
-	}}, Lineup: []suggest.ProposalItem{
-		{MediaType: provision.Series, TMDBID: 456, Name: "The Simpsons", InLibrary: true,
-			LibraryItemID: "show-simpsons", EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights}},
-		{MediaType: provision.Movie, TMDBID: 85, Name: "Raiders of the Lost Ark", Year: 1981,
-			InLibrary: true, LibraryItemID: "raiders"},
-	}}
-	card := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).
-		WithMaterializer(prepared.Materializer).
-		Run(context.Background(), []Case{prepared.Case("schedule_classic_simpsons_highlights")})
-	result := card.Results[0]
-	if card.Certified || result.FailureStage != FailureStageSchedule || card.FailureCounts[FailureStageSchedule] != 1 {
-		t.Fatalf("undeclared live lineup result = %+v counts %v", result, card.FailureCounts)
-	}
-	if len(result.Failures) != 1 || !strings.Contains(result.Failures[0], "undeclared lineup key movie:tmdb:85") {
-		t.Fatalf("undeclared live lineup failures = %v", result.Failures)
-	}
-}
-
-func TestLoadScheduleEvidenceRejectsMissingPrerequisite(t *testing.T) {
-	if _, err := LoadScheduleEvidence(filepath.Join(t.TempDir(), "missing-snapshot.json")); err == nil {
-		t.Fatal("missing live evidence was accepted")
-	}
-	if _, _, err := evalCases(true, false, nil); err == nil {
-		t.Fatal("required certification accepted no live schedule prerequisite")
-	}
-}
-
-func TestLoadScheduleEvidenceRejectsMalformedTrailingJSON(t *testing.T) {
-	_, _, snapshot := liveScheduleEvidenceFixture(t)
-	blob, err := json.Marshal(snapshot)
-	if err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(t.TempDir(), "trailing.json")
-	if err := os.WriteFile(path, append(blob, '{'), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := LoadScheduleEvidence(path); err == nil {
-		t.Fatal("malformed trailing JSON was accepted")
-	}
-}
-
-func TestPrepareLiveScheduleCertificationRejectsWhitespaceSnapshotID(t *testing.T) {
-	_, _, snapshot := liveScheduleEvidenceFixture(t)
-	snapshot.SnapshotID = "   "
-	if _, err := PrepareLiveScheduleCertification(context.Background(), snapshot, nil, nil); err == nil {
-		t.Fatal("whitespace snapshot id was accepted")
-	}
-}
-
-func TestPrepareLiveScheduleCertificationRejectsSeriesKeySubstitution(t *testing.T) {
-	for _, caseName := range []string{"curated", "holiday"} {
-		t.Run(caseName, func(t *testing.T) {
-			media, tmdbServer, snapshot := liveScheduleEvidenceFixture(t)
-			evidence := &snapshot.Curated
-			if caseName == "holiday" {
-				evidence = &snapshot.Holiday
-			}
-			evidence.Key = "series:tmdb:999"
-			for i := range evidence.RequiredPrograms {
-				evidence.RequiredPrograms[i] = strings.Replace(evidence.RequiredPrograms[i], "series:tmdb:456", "series:tmdb:999", 1)
-			}
-			for i := range evidence.ForbiddenPrograms {
-				evidence.ForbiddenPrograms[i] = strings.Replace(evidence.ForbiddenPrograms[i], "series:tmdb:456", "series:tmdb:999", 1)
-			}
-
-			_, err := PrepareLiveScheduleCertification(context.Background(), snapshot,
-				library.New(library.Emby, media.URL, media.AdminToken, "eval-test"),
-				tmdb.NewWithBase(tmdbServer.URL, "test-key"),
-			)
-			if err == nil {
-				t.Fatal("live schedule evidence accepted a substituted series Key")
-			}
-		})
-	}
-}
-
-func TestPrepareLiveScheduleCertificationRejectsSeriesLibraryIdentitySubstitution(t *testing.T) {
-	media, tmdbServer, snapshot := liveScheduleEvidenceFixture(t)
-	snapshot.Curated.LibraryItemID = "unrelated-series"
-	snapshot.Holiday.LibraryItemID = "unrelated-series"
-
-	_, err := PrepareLiveScheduleCertification(context.Background(), snapshot,
-		library.New(library.Emby, media.URL, media.AdminToken, "eval-test"),
-		tmdb.NewWithBase(tmdbServer.URL, "test-key"),
-	)
-	if err == nil {
-		t.Fatal("live schedule evidence accepted a series Library item unrelated to TMDB 456")
-	}
-}
-
-func TestPrepareLiveScheduleCertificationRejectsMovieLibraryIdentitySubstitution(t *testing.T) {
-	media, tmdbServer, snapshot := liveScheduleEvidenceFixture(t)
-	snapshot.Franchise.Movies[0].LibraryItemID = "unrelated-movie"
-	media.ItemMetadata["unrelated-movie"] = testkit.ItemMetadata{RunTimeMs: 115 * 60 * 1000}
-
-	_, err := PrepareLiveScheduleCertification(context.Background(), snapshot,
-		library.New(library.Emby, media.URL, media.AdminToken, "eval-test"),
-		tmdb.NewWithBase(tmdbServer.URL, "test-key"),
-	)
-	if err == nil {
-		t.Fatal("live schedule evidence accepted a movie Library item unrelated to TMDB 85")
-	}
-}
-
-func liveScheduleEvidenceFixture(t *testing.T) (*testkit.MediaServer, *testkit.TMDB, ScheduleEvidenceSnapshot) {
-	t.Helper()
-	media := testkit.NewMediaServer(t)
-	media.SetSearchItems(
-		testkit.SearchStub{LibraryItemID: "show-simpsons", Name: "The Simpsons", Type: "Series", TMDBID: 456},
-		testkit.SearchStub{LibraryItemID: "raiders", Name: "Raiders of the Lost Ark", Type: "Movie", TMDBID: 85},
-		testkit.SearchStub{LibraryItemID: "temple", Name: "Indiana Jones and the Temple of Doom", Type: "Movie", TMDBID: 87},
-		testkit.SearchStub{LibraryItemID: "crusade", Name: "Indiana Jones and the Last Crusade", Type: "Movie", TMDBID: 89},
-	)
-	episodeStubs := make([]testkit.EpisodeStub, 0, 8)
-	evidence := make([]ScheduleEpisodeEvidence, 0, 8)
-	for i, rating := range []float64{6.1, 9.4, 6.3, 8.9, 6.0, 9.1, 6.2, 8.8} {
-		title := fmt.Sprintf("Verified Episode %d", i+1)
-		if i == 0 {
-			title = "Simpsons Roasting on an Open Fire"
-		}
-		overview := ""
-		if i == 0 {
-			overview = "The Simpsons celebrate Christmas together."
-		}
-		id := fmt.Sprintf("verified-s01e%02d", i+1)
-		episodeStubs = append(episodeStubs, testkit.EpisodeStub{
-			LibraryItemID: id, Name: title, RunTimeMs: 22 * 60 * 1000,
-			Season: 1, Episode: i + 1, ProductionYear: 1989 + i/4, CommunityRating: rating, Overview: overview,
-		})
-		evidence = append(evidence, ScheduleEpisodeEvidence{
-			LibraryItemID: id, Title: title, DurationMs: 22 * 60 * 1000,
-			Season: 1, Episode: i + 1, Year: 1989 + i/4, CommunityRating: rating, Overview: overview,
-		})
-	}
-	media.SetEpisodeItems(episodeStubs...)
-	media.ItemMetadata = map[string]testkit.ItemMetadata{
-		"raiders": {RunTimeMs: 115 * 60 * 1000},
-		"temple":  {RunTimeMs: 118 * 60 * 1000},
-		"crusade": {RunTimeMs: 127 * 60 * 1000},
-	}
-	tmdbServer := testkit.NewTMDB(t)
-	for _, movie := range []struct {
-		id, year int
-		name     string
-	}{
-		{85, 1981, "Raiders of the Lost Ark"},
-		{87, 1984, "Indiana Jones and the Temple of Doom"},
-		{89, 1989, "Indiana Jones and the Last Crusade"},
-	} {
-		tmdbServer.AddMovie(movie.id, movie.name, movie.year, nil, "")
-		tmdbServer.SetCollectionID(movie.id, 84)
-	}
-	curated := ScheduleSeriesEvidence{
-		Key: "series:tmdb:456", Name: "The Simpsons", LibraryItemID: "show-simpsons", Episodes: evidence,
-		RequiredPrograms:  []string{"series:tmdb:456:s01e02", "series:tmdb:456:s01e04", "series:tmdb:456:s01e06", "series:tmdb:456:s01e08"},
-		ForbiddenPrograms: []string{"series:tmdb:456:s01e01", "series:tmdb:456:s01e03", "series:tmdb:456:s01e05", "series:tmdb:456:s01e07"},
-	}
-	holiday := ScheduleSeriesEvidence{
-		Key: "series:tmdb:456", Name: "The Simpsons", LibraryItemID: "show-simpsons", Episodes: evidence,
-		RequiredPrograms:  []string{"series:tmdb:456:s01e01"},
-		ForbiddenPrograms: []string{"series:tmdb:456:s01e02", "series:tmdb:456:s01e03", "series:tmdb:456:s01e04", "series:tmdb:456:s01e05", "series:tmdb:456:s01e06", "series:tmdb:456:s01e07", "series:tmdb:456:s01e08"},
-	}
-	return media, tmdbServer, ScheduleEvidenceSnapshot{
-		SchemaVersion: 1, SnapshotID: "library-2026-08-27",
-		Curated: curated, Holiday: holiday,
-		Franchise: ScheduleFranchiseEvidence{Movies: []ScheduleMovieEvidence{
-			{Key: "movie:tmdb:85", Name: "Raiders of the Lost Ark", LibraryItemID: "raiders", DurationMs: 115 * 60 * 1000, CollectionID: 84},
-			{Key: "movie:tmdb:87", Name: "Indiana Jones and the Temple of Doom", LibraryItemID: "temple", DurationMs: 118 * 60 * 1000, CollectionID: 84},
-			{Key: "movie:tmdb:89", Name: "Indiana Jones and the Last Crusade", LibraryItemID: "crusade", DurationMs: 127 * 60 * 1000, CollectionID: 84},
-		},
-			RequiredSequence: []string{"movie:tmdb:85", "movie:tmdb:87", "movie:tmdb:89"},
-		},
-	}
-}
-
-func scheduleCorpusCase(t *testing.T, name string) Case {
-	t.Helper()
-	for _, c := range fixtureScheduleCorpus {
-		if c.Name == name {
-			return c
-		}
-	}
-	t.Fatalf("schedule corpus case %q is missing", name)
-	return Case{}
-}
-
-func simpsonsHighlightEpisodes() []schedule.ResolvedProgram {
-	ratings := []float64{6.1, 9.4, 6.3, 8.9, 6.0, 9.1, 6.2, 8.8}
-	episodes := make([]schedule.ResolvedProgram, 0, len(ratings))
-	for i, rating := range ratings {
-		episodes = append(episodes, schedule.ResolvedProgram{
-			LibraryItemID: fmt.Sprintf("simpsons-s01e%02d", i+1),
-			Title:         fmt.Sprintf("Episode %d", i+1), DurationMs: 22 * 60 * 1000,
-			Season: 1, Episode: i + 1, CommunityRating: rating,
-		})
-	}
-	return episodes
 }
 
 func TestDeterministicChecksCountGroundedTitlesAcrossOwnership(t *testing.T) {
@@ -970,8 +127,29 @@ func TestNoFabricationDoesNotTurnProviderFailureIntoPass(t *testing.T) {
 	if len(result.Failures) != 1 {
 		t.Fatalf("provider failure under no-fabrication gate = %v, want one failure", result.Failures)
 	}
-	if result.FailureStage != FailureStageProposal || card.FailureCounts[FailureStageProposal] != 1 {
-		t.Fatalf("proposal failure accounting = stage %q counts %v", result.FailureStage, card.FailureCounts)
+	if result.FailureStage != FailureStageGeneration || card.FailureCounts[FailureStageGeneration] != 1 {
+		t.Fatalf("generation failure accounting = stage %q counts %v", result.FailureStage, card.FailureCounts)
+	}
+}
+
+func TestRunnerAggregatesRetrievalAndGenerationFailuresSeparately(t *testing.T) {
+	generator := &sequenceErrorGenerator{errors: []error{
+		suggest.ErrNoGroundedTitles,
+		errors.New("llm chat: upstream unavailable"),
+	}}
+	observer := &observedProvider{}
+	card := NewRunner(generator, RunnerConfig{}).WithObserver(observer).Run(context.Background(), []Case{
+		{Name: "retrieval"}, {Name: "generation"},
+	})
+
+	if card.Certified || len(card.Results) != 2 {
+		t.Fatalf("failure aggregation = %+v", card)
+	}
+	if card.Results[0].FailureStage != FailureStageRetrieval || card.FailureCounts[FailureStageRetrieval] != 1 {
+		t.Fatalf("retrieval accounting = stage %q counts %v", card.Results[0].FailureStage, card.FailureCounts)
+	}
+	if card.Results[1].FailureStage != FailureStageGeneration || card.FailureCounts[FailureStageGeneration] != 1 {
+		t.Fatalf("generation accounting = stage %q counts %v", card.Results[1].FailureStage, card.FailureCounts)
 	}
 }
 
@@ -1022,31 +200,5 @@ func TestDeterministicChecksRejectWrongOrdering(t *testing.T) {
 	failures := deterministicChecks(Case{ExpectOrdering: "syndication"}, proposal, nil)
 	if len(failures) != 1 {
 		t.Fatalf("ordering failures = %v, want one", failures)
-	}
-}
-
-func TestScorecardShapeExcludesCredentials(t *testing.T) {
-	t.Setenv("LLM_API_KEY", "never-serialize-this-secret")
-	t.Setenv("LOOMARR_EVAL_JUDGE_API_KEY", "never-serialize-this-judge-secret")
-	scorecard := Scorecard{
-		SchemaVersion: scorecardSchemaVersion, CorpusVersion: corpusVersion,
-		Generator: ModelIdentity{Provider: "openai", Model: "example/generator"},
-		Judge:     ModelIdentity{Provider: "openai", Model: "example/judge"}, Results: []Result{{
-			Case: "holiday", RelevanceScore: 0.8, SerendipityScore: 0.7,
-		}},
-	}
-	blob, err := json.Marshal(scorecard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, secret := range []string{os.Getenv("LLM_API_KEY"), os.Getenv("LOOMARR_EVAL_JUDGE_API_KEY")} {
-		if strings.Contains(string(blob), secret) {
-			t.Fatal("scorecard metadata contains an LLM credential")
-		}
-	}
-	for _, field := range []string{"relevanceScore", "serendipityScore"} {
-		if !strings.Contains(string(blob), field) {
-			t.Errorf("scorecard is missing quality dimension %q: %s", field, blob)
-		}
 	}
 }

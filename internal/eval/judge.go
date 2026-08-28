@@ -24,6 +24,7 @@ type JudgeScores struct {
 	Relevance   float64
 	Serendipity float64
 	Reason      string
+	Attribution llm.Attribution
 }
 
 type modelJudge struct{ provider llm.Provider }
@@ -88,12 +89,13 @@ Reply with ONLY this JSON: {"overall": <0..1>, "relevance": <0..1>, "serendipity
 		{Role: llm.User, Content: prompt},
 	}, llm.ChatOptions{JSONMode: true})
 	if err != nil {
-		return JudgeScores{}, fmt.Errorf("judge call failed: %w", err)
+		return JudgeScores{Attribution: resp.Attribution}, fmt.Errorf("judge call failed: %w", err)
 	}
 	scores, perr := parseJudge(resp.Content)
 	if perr != nil {
-		return JudgeScores{}, fmt.Errorf("judge output unparseable: %w (%q)", perr, truncate(resp.Content, 120))
+		return JudgeScores{Attribution: resp.Attribution}, fmt.Errorf("judge output unparseable: %w (%q)", perr, truncate(resp.Content, 120))
 	}
+	scores.Attribution = resp.Attribution
 	return scores, nil
 }
 

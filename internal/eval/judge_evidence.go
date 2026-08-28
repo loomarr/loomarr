@@ -3,6 +3,7 @@
 package eval
 
 import (
+	"fmt"
 	"slices"
 
 	"github.com/loomarr/loomarr/internal/provision"
@@ -13,11 +14,12 @@ import (
 // The Judge seam stays bounded even when a caller supplies unusually large
 // grounded batches or open policy collections.
 const (
-	JudgeMaxItemsPerOwnership = 16
-	JudgeMaxGenresPerItem     = 8
-	JudgeMaxPolicyValues      = 16
-	JudgeMaxScheduledPrograms = 24
-	JudgeMaxTextRunes         = 512
+	JudgeMaxTitlesPerOwnership = 16
+	JudgeMaxGenresPerItem      = 8
+	JudgeMaxPolicyValues       = 16
+	JudgeMaxScheduledPrograms  = 24
+	JudgeMaxEpisodeTags        = 16
+	JudgeMaxTextRunes          = 512
 )
 
 // JudgeEvidence is the typed audit record passed across the subjective Judge seam.
@@ -30,7 +32,7 @@ type JudgeEvidence struct {
 	Acquisitions      []JudgeTitleEvidence    `json:"acquisitions"`
 	Policy            schedule.ProposalPolicy `json:"policy"`
 	Observation       Observation             `json:"observation"`
-	ScheduledPrograms []string                `json:"scheduledPrograms"`
+	ScheduledPrograms []MaterializedProgram   `json:"scheduledPrograms"`
 }
 
 // JudgeTitleEvidence is the grounded, auditable subset of a ProposalItem.
@@ -56,22 +58,33 @@ const (
 
 // NewJudgeEvidence projects the facts already owned by Runner into the Judge
 // contract. Bounding is enforced here rather than delegated to model adapters.
-func NewJudgeEvidence(c Case, proposal suggest.Proposal, observation Observation, scheduledPrograms []string) JudgeEvidence {
+func NewJudgeEvidence(c Case, proposal suggest.Proposal, observation Observation, scheduledPrograms []MaterializedProgram) (JudgeEvidence, error) {
+	lineup, err := judgeTitles(proposal.Lineup, JudgeOwnershipLibrary)
+	if err != nil {
+		return JudgeEvidence{}, err
+	}
+	acquisitions, err := judgeTitles(proposal.Acquisitions, JudgeOwnershipAcquisition)
+	if err != nil {
+		return JudgeEvidence{}, err
+	}
 	return boundJudgeEvidence(JudgeEvidence{
 		Request:           c.Intent.Description,
 		Rubric:            c.JudgeRubric,
-		Lineup:            judgeTitles(proposal.Lineup, JudgeOwnershipLibrary),
-		Acquisitions:      judgeTitles(proposal.Acquisitions, JudgeOwnershipAcquisition),
+		Lineup:            lineup,
+		Acquisitions:      acquisitions,
 		Policy:            proposal.Policy.ProposalPolicy,
 		Observation:       observation,
 		ScheduledPrograms: scheduledPrograms,
-	})
+	}), nil
 }
 
-func judgeTitles(items []suggest.ProposalItem, ownership JudgeOwnership) []JudgeTitleEvidence {
+func judgeTitles(items []suggest.ProposalItem, ownership JudgeOwnership) ([]JudgeTitleEvidence, error) {
 	out := make([]JudgeTitleEvidence, 0, len(items))
 	for _, item := range items {
-		key, _ := item.Key()
+		key, err := item.Key()
+		if err != nil {
+			return nil, fmt.Errorf("judge evidence item %q has no canonical key: %w", item.Name, err)
+		}
 		evidence := JudgeTitleEvidence{
 			Key: string(key), Name: item.Name, Year: item.Year, Ownership: ownership,
 			Source: item.Source, Rationale: item.Rationale,
@@ -83,7 +96,7 @@ func judgeTitles(items []suggest.ProposalItem, ownership JudgeOwnership) []Judge
 		}
 		out = append(out, evidence)
 	}
-	return out
+	return out, nil
 }
 
 func boundJudgeEvidence(evidence JudgeEvidence) JudgeEvidence {
@@ -93,12 +106,24 @@ func boundJudgeEvidence(evidence JudgeEvidence) JudgeEvidence {
 	evidence.Acquisitions = boundJudgeTitles(evidence.Acquisitions, JudgeOwnershipAcquisition)
 	evidence.Policy = boundJudgePolicy(evidence.Policy)
 	evidence.Observation.GroundingStage = boundedJudgeText(evidence.Observation.GroundingStage)
-	evidence.ScheduledPrograms = boundJudgeStrings(evidence.ScheduledPrograms, JudgeMaxScheduledPrograms)
+	evidence.ScheduledPrograms = boundScheduledPrograms(evidence.ScheduledPrograms)
 	return evidence
 }
 
+func boundScheduledPrograms(programs []MaterializedProgram) []MaterializedProgram {
+	programs = boundedJudgeSlice(programs, JudgeMaxScheduledPrograms)
+	for i := range programs {
+		programs[i].Identity = boundedJudgeText(programs[i].Identity)
+		programs[i].Title = boundedJudgeText(programs[i].Title)
+		programs[i].Rating = boundedJudgeText(programs[i].Rating)
+		programs[i].Overview = boundedJudgeText(programs[i].Overview)
+		programs[i].Tags = boundJudgeStrings(programs[i].Tags, JudgeMaxEpisodeTags)
+	}
+	return programs
+}
+
 func boundJudgeTitles(items []JudgeTitleEvidence, ownership JudgeOwnership) []JudgeTitleEvidence {
-	items = boundedJudgeSlice(items, JudgeMaxItemsPerOwnership)
+	items = boundedJudgeSlice(items, JudgeMaxTitlesPerOwnership)
 	for i := range items {
 		items[i].Key = boundedJudgeText(items[i].Key)
 		items[i].Name = boundedJudgeText(items[i].Name)
