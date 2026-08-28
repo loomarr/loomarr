@@ -35,7 +35,7 @@ type OpenRouter struct {
 func NewOpenRouter(responses ...string) *OpenRouter {
 	o := &OpenRouter{responses: append([]string(nil), responses...)}
 	o.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 		var request OpenRouterRequest
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

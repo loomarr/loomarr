@@ -621,11 +621,3 @@ func withRequiredResourceBudget(options CertificationOptions) CertificationOptio
 	options.MaxSpendPerSuite = "10.00"
 	return options
 }
-
-func baseResourceBudget() ResourceBudget {
-	return ResourceBudget{
-		MaxCallsPerRun: 25, MaxCallsPerSuite: 1000,
-		MaxTokensPerRun: 100, MaxSpendPerRun: "1.00",
-		MaxTokensPerSuite: 1000, MaxSpendPerSuite: "10.00",
-	}
-}

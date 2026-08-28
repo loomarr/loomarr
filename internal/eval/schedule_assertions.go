@@ -8,8 +8,9 @@ import (
 )
 
 func scheduledChecks(c Case, materialized []MaterializedProgram) []string {
-	if len(c.RequireScheduledPrograms) == 0 && len(c.ForbidScheduledPrograms) == 0 && len(c.RequireScheduledSequence) == 0 &&
-		!(c.TitleEvidence == TitleEvidenceScheduled && (len(c.RequireTitles) > 0 || len(c.ForbidTitles) > 0)) {
+	hasProgramAssertions := len(c.RequireScheduledPrograms) > 0 || len(c.ForbidScheduledPrograms) > 0 || len(c.RequireScheduledSequence) > 0
+	hasTitleAssertions := c.TitleEvidence == TitleEvidenceScheduled && (len(c.RequireTitles) > 0 || len(c.ForbidTitles) > 0)
+	if !hasProgramAssertions && !hasTitleAssertions {
 		return nil
 	}
 	programs := materializedProgramIdentities(materialized)

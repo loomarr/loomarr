@@ -107,7 +107,7 @@ func LoadScheduleEvidence(path string) (ScheduleEvidenceSnapshot, error) {
 	if err != nil {
 		return ScheduleEvidenceSnapshot{}, fmt.Errorf("open live schedule evidence: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	decoder := json.NewDecoder(file)
 	decoder.DisallowUnknownFields()
 	var snapshot ScheduleEvidenceSnapshot

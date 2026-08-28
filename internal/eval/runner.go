@@ -231,19 +231,19 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 					if err != nil && !errors.Is(err, errProviderBudgetExhausted) {
 						result.FailureStage = groundingFailureStage(result.GroundingStage)
 					}
-					if result.Observation.generatorBudgetErr != "" {
+					if result.generatorBudgetErr != "" {
 						if errors.Is(err, errProviderBudgetExhausted) {
 							// The generator surfaced only the ledger refusal, so budget is the
 							// first failed boundary rather than a generation diagnosis.
 							result.FailureStage = FailureStageBudgetExhausted
-							result.Failures = append(result.Failures, result.Observation.generatorBudgetErr)
+							result.Failures = append(result.Failures, result.generatorBudgetErr)
 						} else {
 							// A real retrieval/generation error remains the first diagnosis,
 							// while the same call's uncertain usage still latches the ledger.
-							result.addFailures(FailureStageBudgetExhausted, result.Observation.generatorBudgetErr)
+							result.addFailures(FailureStageBudgetExhausted, result.generatorBudgetErr)
 						}
 					}
-					result.GeneratorCalls = slices.Clone(result.Observation.generatorCalls)
+					result.GeneratorCalls = slices.Clone(result.generatorCalls)
 					if result.ModelCalls > suggest.ProductionBounds().MaxModelCalls {
 						result.addFailures(FailureStageStructuralBudget,
 							fmt.Sprintf("model calls %d > production bound %d", result.ModelCalls, suggest.ProductionBounds().MaxModelCalls))
