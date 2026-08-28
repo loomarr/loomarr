@@ -2621,6 +2621,63 @@ before the toggle was turned on, or from a source that bypassed auto-file, are s
 guarantee "every break plays at a consistent level" cannot depend on which clips happened to pass
 through one optional step.
 
+**Conditioning measurement is evidence, never authority (V64).** The media-tools module can inspect
+one bounded local regular-file artifact and, optionally, compare it with one local regular-file
+parent artifact plus up to eight intended cut intervals. A request has at most one parent; individual
+cuts cannot select different parents. It reports container duration; the closed audio/video stream
+kind and index; explicitly available stream start and duration; exact rational video cadence;
+explicitly available audio/video start and end skew; measured integrated loudness and true peak;
+and the same normalised black/silence/freeze intervals used above. A parent comparison reports
+independently observed, signed start and end errors for each presented stream edge and stream index.
+A fully silent presented audio stream remains measurable: true peak is represented by a closed
+finite/negative-infinity state, never a non-finite number or an unavailable stream. It never
+substitutes the requested cut or container duration for an edge it could not match: unavailable is a
+first-class result, not zero.
+
+This inspection has **no verdict, threshold, rewrite, admission, filing, or provider authority**. It
+does not mutate the operator's media. It opens each input once without following links, copies that
+validated regular object into a private per-request snapshot, and runs every container, detector and
+packet inspection against those same captured bytes; replacing the caller's pathname after validation
+cannot mix evidence or redirect a later invocation to a pipe or device. Every pathname component is
+resolved without following a symbolic link or Windows reparse point; rejecting only the basename is
+not sufficient. Resource ceilings are part of its interface: each artifact or parent snapshot is at
+most **1 GiB**, an artifact has at most eight streams, a request has at most eight intended cuts, and
+media is at most 120 seconds. The byte ceiling permits about 71 Mbit/s across the full 120-second
+window—well above the compressed filler inputs this seam measures—while bounding a request with both
+artifact and parent to 2 GiB of private snapshots. The opened object's size is refused before copying,
+and the copy independently caps bytes and observes cancellation so a concurrent size change cannot
+evade the limit. URLs, pipes, devices, directories, missing paths, and other non-regular inputs are
+refused before any media tool runs. A metadata-only preflight compares the container's exact decimal
+duration with 120 seconds before any frame enumeration; exactly 120 seconds is valid and every rational
+value above it is refused without millisecond rounding. The decoded-frame probe is independently
+bounded to a 120.000001-second read interval so a sparse-frame input cannot turn small output into
+unbounded decode work, and caller cancellation remains the returned cancellation identity. Output and
+edge searches are bounded too. Conditioning selects the lowest global stream index of each presented
+kind, maps those exact video/audio streams into
+ffmpeg, and treats each selected stream's decoded-frame EOF (timestamp plus frame duration, or decoded
+audio sample count at its sample rate) as its detector timeline; that decoded EOF is checked exactly
+against 120 seconds before conversion to the returned integer milliseconds:
+black/freeze end at video EOF and silence ends at audio EOF, never at a longer container or sibling-
+stream duration. A selected stream without an independently available positive duration fails closed
+before detector execution. Detector events must match the anchored ffmpeg blackdetect, silencedetect,
+or freezedetect line grammar and fall inside that selected stream's timeline. Every detector kind is
+bound to one exact filter instance, address, and modern/legacy grammar for the measurement; distinct or
+interleaved identities cannot contribute parts of one event. Loudness likewise requires exactly one
+anchored integrated-LUFS summary and one anchored true-peak summary; duplicate, conflicting, or
+suffixed summaries fail closed, including duplicate digital-silence peaks. Every completed event
+carries the detector's duration token, which must equal end minus start within **exactly 1 millisecond**,
+compared as decimal rational values rather than binary floating point, to allow only ffmpeg's decimal
+rendering tolerance. Malformed, oversized, incomplete, duplicate, repeated, inverted, or suffixed tool
+output fails closed rather than producing guessed precision. Conditioning appends exactly one black
+frame and one white frame before the video detectors, guaranteeing a changed frame even when the
+artifact ends frozen on either color.
+Detector timestamps contributed only by those two terminator frames are clamped away at the selected
+video stream's measured EOF and can never become evidence. These are execution limits, not content-quality
+policy. V64 ends at this returned evidence: it does not invoke the filler pipeline, persist to the
+store or sidecar, expose an API, or decide what may be reviewed, certified, filed, admitted, rewritten,
+selected, or played. Those application-journey contracts remain tracked by issue #634 rather than
+being implied by this measurement seam.
+
 **Language is a job, not an inline check**, and it REJECTS rather than holding (maintainer,
 2026-08-03) — consistent with the other two gates, which drop a file at the boundary and leave a
 log line rather than a queue entry.

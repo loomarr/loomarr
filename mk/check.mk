@@ -117,7 +117,8 @@ go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must
 	@./scripts/go-race-policy.sh --verify
 
 .PHONY: test-ffmpeg
-test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
+test-ffmpeg: ## media tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
+	$(GO) test -tags ffmpeg ./internal/mediatools/ ./internal/testkit/ -v
 	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ ./internal/api/ -v
 
 .PHONY: eval-contract eval eval-cert eval-matrix filler-bakeoff-ollama filler-bakeoff-openrouter filler-bakeoff-transcribe filler-corpus-archive filler-corpus-cdc filler-corpus-commons filler-corpus-direct filler-corpus-download filler-corpus-inventory filler-corpus-lock filler-corpus-loc filler-corpus-nasa filler-corpus-pilot filler-corpus-pilot-rights-lock filler-corpus-pilot-rights-review filler-corpus-prepare filler-corpus-review filler-corpus-review-package filler-eval-contract filler-eval-cert filler-openrouter-snapshot
