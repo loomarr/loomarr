@@ -281,7 +281,7 @@ android:
 			writeFixtureFile(t, filepath.Join(root, ".github", "workflows", "ci-android.yml"), `name: android
 on: push
 env:
-  GO_VERSION: "1.26"
+  GO_VERSION: "1.27"
   NODE_VERSION: "22"
 jobs:
   run:
@@ -567,7 +567,7 @@ func TestPlaywrightContainerRunnerBuildsFixedDockerBoundary(t *testing.T) {
 			"-e", "HOME=/tmp", "-e", "CI=1", "-e",
 			"GITHUB_ACTIONS=--pull=always;docker pull attacker.invalid/image:pinned",
 			"-v", root + ":/work", "-w", "/work/web/apps/web",
-			"mcr.microsoft.com/playwright:v1.62.0-noble",
+			"mcr.microsoft.com/playwright:v1.62.1-noble",
 			"node_modules/.bin/playwright", "test", "--config=playwright.e2e.config.ts",
 		}}
 		if !slices.EqualFunc(result.DockerCommands, want, func(left, right []string) bool {
@@ -617,7 +617,7 @@ func TestPlaywrightContainerRunnerBuildsFixedDockerBoundary(t *testing.T) {
 			t.Fatalf("docker commands = %#v, want one", result.DockerCommands)
 		}
 		command := result.DockerCommands[0]
-		image := slices.Index(command, "mcr.microsoft.com/playwright:v1.62.0-noble")
+		image := slices.Index(command, "mcr.microsoft.com/playwright:v1.62.1-noble")
 		shard := slices.Index(command, "--shard=1/4")
 		if image < 0 || shard <= image {
 			t.Fatalf("image/shard boundary = %v", command)

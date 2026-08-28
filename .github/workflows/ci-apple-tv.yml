@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.26"
+  GO_VERSION: "1.27"
   NODE_VERSION: "22"
 
 jobs:
@@ -52,4 +52,3 @@ jobs:
           path: ${{ runner.temp }}/apple-client-tv/
           if-no-files-found: warn
           retention-days: 7
-

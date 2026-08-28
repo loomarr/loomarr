@@ -69,7 +69,7 @@ printf '%s\n' "$overridden" | grep -q 'http://localhost:23456'
 
 step 'doctor checks runtime prerequisites'
 mkdir -p "$TMP/doctor-bin"
-printf '%s\n' '#!/usr/bin/env sh' 'echo "go version go1.26.0 darwin/arm64"' > "$TMP/doctor-bin/go"
+printf '%s\n' '#!/usr/bin/env sh' 'echo "go version go1.27.0 darwin/arm64"' > "$TMP/doctor-bin/go"
 printf '%s\n' '#!/usr/bin/env sh' 'echo "rustc 1.93.0 (fixture)"' > "$TMP/doctor-bin/rustc"
 printf '%s\n' '#!/usr/bin/env sh' 'echo "cargo 1.93.0 (fixture)"' > "$TMP/doctor-bin/cargo"
 # shellcheck disable=SC2016 # The generated fixture expands its own first argument.
@@ -88,6 +88,12 @@ if PATH="$doctor_path" DOCTOR_DOCKER_READY=1 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_D
 fi
 printf '%s\n' '#!/usr/bin/env sh' 'echo "ffprobe version fixture"' > "$TMP/doctor-bin/ffprobe"
 chmod +x "$TMP/doctor-bin/ffprobe"
+printf '%s\n' '#!/usr/bin/env sh' 'echo "go version go1.26.0 darwin/arm64"' > "$TMP/doctor-bin/go"
+if PATH="$doctor_path" DOCTOR_DOCKER_READY=1 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" doctor >/dev/null 2>&1; then
+	echo 'agent-harness-test: doctor accepted Go 1.26' >&2
+	exit 1
+fi
+printf '%s\n' '#!/usr/bin/env sh' 'echo "go version go1.27.0 darwin/arm64"' > "$TMP/doctor-bin/go"
 if PATH="$doctor_path" LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" doctor >/dev/null 2>&1; then
 	echo 'agent-harness-test: doctor accepted an unavailable Docker daemon' >&2
 	exit 1

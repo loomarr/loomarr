@@ -37,7 +37,7 @@ type workflowAuthority struct {
 
 func standardWorkflowEnvironment() map[string]string {
 	return map[string]string{
-		"GO_VERSION":   "1.26",
+		"GO_VERSION":   "1.27",
 		"NODE_VERSION": "22",
 	}
 }

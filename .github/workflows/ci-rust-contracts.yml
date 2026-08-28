@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.26"
+  GO_VERSION: "1.27"
   NODE_VERSION: "22"
 
 jobs:
@@ -19,4 +19,3 @@ jobs:
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.93.0 --profile minimal
       - run: make rust-check
-

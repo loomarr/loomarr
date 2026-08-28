@@ -32,7 +32,7 @@ docs-lint: diagrams-verify docs-lint-md docs-lint-links docs-lint-prose ## D2 + 
 
 .PHONY: docs-lint-md
 docs-lint-md: ## markdown structure (globs + rules live in .markdownlint-cli2.jsonc)
-	npx --yes markdownlint-cli2@0.20.0
+	npx --yes markdownlint-cli2@0.23.2
 
 .PHONY: docs-lint-links
 docs-lint-links: ## relative-link check, offline, over the WIDE set (see lychee.toml for why)

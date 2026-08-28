@@ -4,7 +4,7 @@
 
 | Tool | Version | Pinned in |
 | --- | --- | --- |
-| Go | 1.26+ | `go.mod` |
+| Go | 1.27+ | `go.mod` |
 | Rust | 1.93.x | `rust-toolchain.toml` |
 | Node | 22.x (22.5 minimum) | `.node-version` + `web/package.json` → `engines.node` |
 | pnpm | 11.13.1, via Corepack from the pinned Node installation | `web/package.json` → `packageManager` |
@@ -15,6 +15,9 @@
 
 Node 22.5 is a hard floor: pnpm 11.13 uses the built-in `node:sqlite`, and older versions fail
 with `ERR_UNKNOWN_BUILTIN_MODULE`.
+
+Go 1.27's native macOS toolchain requires macOS 13 or newer. Older macOS releases can still build
+the Linux container through Docker, but they cannot run the supported native contributor toolchain.
 
 Everything else — golangci-lint, actionlint, Air — runs via `go run` at a pinned version, so
 there's nothing to install globally.

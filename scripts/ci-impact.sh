@@ -477,7 +477,12 @@ classify() {
       known=true
       select_gate policy
       ;;
-    docker/*|.air.toml|.env.example|.golangci.yml|.node-version|.editorconfig|.gitignore|.vscode/*|.github/actionlint.yaml|.github/actionlint.yml|.github/dependabot.yml|skills-lock.json)
+    renovate.json|.github/dependabot.yml) # retired-ok: deleting the legacy config must still select policy gates
+	  known=true
+	  select_gate contracts
+	  select_gate policy
+	  ;;
+    docker/*|.air.toml|.env.example|.golangci.yml|.node-version|.editorconfig|.gitignore|.vscode/*|.github/actionlint.yaml|.github/actionlint.yml|skills-lock.json)
       known=true
       select_gate contracts
       case "$path" in
