@@ -43,7 +43,7 @@ func TestRepositoryAppleNativeTimeoutContract(t *testing.T) {
 	jobs := mappingValueMust(t, ci, "jobs")
 	for _, name := range []string{"apple-mobile", "apple-tv"} {
 		job := mappingValueMust(t, jobs, name)
-		want := "github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_" + map[string]string{"apple-mobile": "mobile", "apple-tv": "tv"}[name] + " == 'true'"
+		want := "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_" + map[string]string{"apple-mobile": "mobile", "apple-tv": "tv"}[name] + " == 'true'"
 		if got := yamlScalar(t, job, "if"); got != want {
 			t.Fatalf("CI %s admission condition = %q, want %q", name, got, want)
 		}

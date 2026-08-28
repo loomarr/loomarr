@@ -84,6 +84,7 @@ func TestVerifyCIImpactActivation(t *testing.T) {
 	workflow := `jobs:
   changes:
     outputs:
+      lane: ${{ steps.filter.outputs.lane }}
       impact_postgres: ${{ steps.impact.outputs.postgres }}
       impact_policy: ${{ steps.impact.outputs.policy }}
       impact_contracts: ${{ steps.impact.outputs.contracts }}
@@ -110,16 +111,16 @@ func TestVerifyCIImpactActivation(t *testing.T) {
     if: needs.changes.outputs.impact_contracts == 'true' || needs.changes.outputs.release_candidate == 'true'
   image-certification:
     needs: changes
-    if: needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true')
   go:
     needs: changes
-    if: needs.changes.outputs.impact_go == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_go == 'true'
   store-postgres:
     needs: changes
-    if: needs.changes.outputs.impact_postgres == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_postgres == 'true'
   playwright:
     needs: changes
-    if: needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true')
   frontend:
     needs: changes
     if: needs.changes.outputs.impact_web == 'true'
@@ -128,7 +129,7 @@ func TestVerifyCIImpactActivation(t *testing.T) {
     if: needs.changes.outputs.impact_clients == 'true'
   image:
     needs: changes
-    if: needs.changes.outputs.impact_image == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_image == 'true'
   docs:
     needs: changes
     if: needs.changes.outputs.impact_docs == 'true'
@@ -137,15 +138,15 @@ func TestVerifyCIImpactActivation(t *testing.T) {
     if: needs.changes.outputs.impact_android == 'true'
   tuner:
     needs: changes
-    if: github.event_name != 'pull_request' && needs.changes.outputs.impact_tuner == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'
   apple-mobile:
     needs: changes
-    if: github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_mobile == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_mobile == 'true'
     steps:
       - run: make client-apple-simulator CLIENT_APP=mobile
   apple-tv:
     needs: changes
-    if: github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_tv == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_tv == 'true'
     steps:
       - run: make client-apple-simulator CLIENT_APP=tv
 `
@@ -304,16 +305,16 @@ jobs:
   changes:
     runs-on: ubuntu-latest
   agent-harness-macos:
-    if: github.event_name != 'pull_request' && needs.changes.outputs.impact_agent == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_agent == 'true'
     runs-on: macos-latest
   apple-mobile:
-    if: github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_mobile == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_mobile == 'true'
     runs-on: macos-26
   apple-tv:
-    if: github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_tv == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_tv == 'true'
     runs-on: macos-26
   tuner:
-    if: github.event_name != 'pull_request' && needs.changes.outputs.impact_tuner == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'
     runs-on: macos-latest
 `
 	path := filepath.Join(t.TempDir(), "ci.yml")
@@ -325,22 +326,23 @@ jobs:
 	}
 
 	mutations := map[string]string{
-		"missing merge-group trigger": strings.Replace(workflow, "  merge_group:\n", "", 1),
+		"missing merge-group trigger":   strings.Replace(workflow, "  merge_group:\n", "", 1),
+		"post-merge product validation": strings.Replace(workflow, "  pull_request:\n", "  pull_request:\n  push:\n", 1),
 		"ordinary PR consumes Apple capacity": strings.Replace(
 			workflow,
-			"github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_mobile == 'true'",
+			"needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_mobile == 'true'",
 			"needs.changes.outputs.impact_apple_mobile == 'true'",
 			1,
 		),
-		"native evidence is queue-only": strings.Replace(
+		"manual native evidence lost": strings.Replace(
 			workflow,
-			"github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_tv == 'true'",
+			"needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_tv == 'true'",
 			"github.event_name == 'merge_group' && needs.changes.outputs.impact_apple_tv == 'true'",
 			1,
 		),
 		"missing scarce job": strings.Replace(
 			workflow,
-			"  tuner:\n    if: github.event_name != 'pull_request' && needs.changes.outputs.impact_tuner == 'true'\n    runs-on: macos-latest\n",
+			"  tuner:\n    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'\n    runs-on: macos-latest\n",
 			"",
 			1,
 		),

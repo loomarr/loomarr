@@ -160,6 +160,10 @@ func VerifyCIImpactActivation(path string) error {
 	if err != nil {
 		return errors.New("CI changes job must publish classifier outputs")
 	}
+	lane, ok := mappingValue(outputs, "lane")
+	if !ok || lane.Kind != yaml.ScalarNode || lane.Value != "${{ steps.filter.outputs.lane }}" {
+		return errors.New("CI changes job must publish the assurance lane")
+	}
 
 	type classifierOutput struct {
 		name   string
@@ -183,22 +187,22 @@ func VerifyCIImpactActivation(path string) error {
 		},
 		"image-certification": {
 			outputs:   []classifierOutput{{name: "impact_rust", source: "rust"}},
-			condition: "needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true'",
+			condition: "needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true')",
 		},
 		"go": {
 			outputs:   []classifierOutput{{name: "impact_go", source: "go"}},
-			condition: "needs.changes.outputs.impact_go == 'true'",
+			condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_go == 'true'",
 		},
 		"store-postgres": {
 			outputs:   []classifierOutput{{name: "impact_postgres", source: "postgres"}},
-			condition: "needs.changes.outputs.impact_postgres == 'true'",
+			condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_postgres == 'true'",
 		},
 		"playwright": {
 			outputs: []classifierOutput{
 				{name: "impact_visual", source: "visual"},
 				{name: "impact_e2e", source: "e2e"},
 			},
-			condition: "needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true'",
+			condition: "needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true')",
 		},
 		"frontend": {
 			outputs:   []classifierOutput{{name: "impact_web", source: "web"}},
@@ -210,7 +214,7 @@ func VerifyCIImpactActivation(path string) error {
 		},
 		"image": {
 			outputs:   []classifierOutput{{name: "impact_image", source: "image"}},
-			condition: "needs.changes.outputs.impact_image == 'true'",
+			condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_image == 'true'",
 		},
 		"docs": {
 			outputs:   []classifierOutput{{name: "impact_docs", source: "docs"}},
@@ -222,15 +226,15 @@ func VerifyCIImpactActivation(path string) error {
 		},
 		"tuner": {
 			outputs:   []classifierOutput{{name: "impact_tuner", source: "tuner"}},
-			condition: "github.event_name != 'pull_request' && needs.changes.outputs.impact_tuner == 'true'",
+			condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'",
 		},
 		"apple-mobile": {
 			outputs:   []classifierOutput{{name: "impact_apple_mobile", source: "apple_mobile"}},
-			condition: "github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_mobile == 'true'",
+			condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_mobile == 'true'",
 		},
 		"apple-tv": {
 			outputs:   []classifierOutput{{name: "impact_apple_tv", source: "apple_tv"}},
-			condition: "github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_tv == 'true'",
+			condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_tv == 'true'",
 		},
 	}
 	for jobName, gate := range activated {
@@ -402,8 +406,8 @@ func yamlNodeContainsScalar(node *yaml.Node, value string) bool {
 }
 
 // VerifyCINativeAdmission keeps scarce macOS capacity behind the merge queue.
-// Pull-request CI remains fast feedback; merge-group, main, and manual runs
-// retain the same required native evidence before delivery or release.
+// Pull-request CI remains fast feedback; merge-group and manual runs retain
+// the same required native evidence before delivery or release.
 func VerifyCINativeAdmission(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -420,15 +424,18 @@ func VerifyCINativeAdmission(path string) error {
 	if _, ok := mappingValue(on, "merge_group"); !ok {
 		return errors.New("CI workflow must trigger for merge groups")
 	}
+	if _, ok := mappingValue(on, "push"); ok {
+		return errors.New("CI workflow must not repeat product validation after a queued merge")
+	}
 	jobs, err := requiredMap(root, "jobs")
 	if err != nil {
 		return err
 	}
 	expected := map[string]string{
-		"agent-harness-macos": "github.event_name != 'pull_request' && needs.changes.outputs.impact_agent == 'true'",
-		"apple-mobile":        "github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_mobile == 'true'",
-		"apple-tv":            "github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_tv == 'true'",
-		"tuner":               "github.event_name != 'pull_request' && needs.changes.outputs.impact_tuner == 'true'",
+		"agent-harness-macos": "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_agent == 'true'",
+		"apple-mobile":        "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_mobile == 'true'",
+		"apple-tv":            "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_tv == 'true'",
+		"tuner":               "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'",
 	}
 	for jobName, condition := range expected {
 		job, err := requiredMap(jobs, jobName)
