@@ -1,0 +1,31 @@
+name: CI / Agent harness (macOS)
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.26"
+  NODE_VERSION: "22"
+
+jobs:
+  run:
+    name: Agent harness (macOS)
+    # Ordinary PR pushes get fast Linux feedback. Scarce macOS evidence is admitted by the
+    # one-at-a-time merge queue, then retained on main and deliberate manual certification.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Dependency-aware verification resolves the reverse Go import graph even when its
+      # behavioral harness substitutes fake `go` and `make` commands for the final execution.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      # This exercises the `lsof` process-ownership adapter. Linux runs the same harness through
+      # `make check`, where `/proc` is available.
+      - name: Worktree isolation, claims, leases, and process ownership
+        run: make agent-harness-test
+
