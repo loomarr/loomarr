@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/testkit/postgresimage"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -27,7 +28,7 @@ func startPostgres(t *testing.T) string {
 func startPostgresContainer(t *testing.T) (string, testcontainers.Container) {
 	t.Helper()
 	ctx := context.Background()
-	ctr, err := postgres.Run(ctx, "postgres:16-alpine",
+	ctr, err := postgres.Run(ctx, postgresimage.Name(),
 		postgres.WithDatabase("loomarr"),
 		postgres.WithUsername("loomarr"),
 		postgres.WithPassword("loomarr"),

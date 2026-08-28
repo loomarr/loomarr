@@ -1,6 +1,12 @@
 # name	paths separated by semicolons	expected true gates in classifier order
 leaf-go	internal/suggest/score.go	contracts,go,postgres,image
+releaseverify-production	internal/releaseverify/ci_container_downloads.go	go,policy
+releaseverify-red-tests	internal/releaseverify/ci_container_downloads_test.go	go,policy
+releaseverify-policy-fixtures	internal/releaseverify/testdata/make_policy_normalization.mk;internal/releaseverify/testdata/make_policy_normalization.golden	go,policy
 store-go	internal/store/store.go	contracts,go,postgres,image
+postgres-test-image-authority	internal/testkit/postgresimage/image.txt	contracts,go,go_full,postgres,image,policy
+postgres-test-image-owner	internal/testkit/postgresimage/image.go	contracts,go,go_full,postgres,image,policy
+ryuk-test-image-authority	internal/testkit/ryukimage/image.txt	postgres,policy
 composition-go	internal/app/application.go	contracts,go,go_full,postgres,image
 backend-transition-go	internal/backendtransition/controller.go	contracts,go,postgres,image
 playout-go	internal/playout/session.go	contracts,go,postgres,image
@@ -36,6 +42,7 @@ documentation	docs/dev/testing.md	docs
 design-contract	docs/design.md	docs,policy
 configuration-contract	docs/configuration.md	docs,policy
 commands-contract	docs/dev/commands.md	docs,policy
+ci-policy-authority	docs/dev/ci.md	docs,policy
 install-contract	docs/install/docker.md	docs,policy
 readme-contract	README.md	docs,policy
 embedded-help	docs/help/quickstart.md	contracts,go,go_full,image,docs
@@ -62,7 +69,10 @@ make-docs-module	mk/docs.mk	docs,policy
 make-eval-module	mk/eval.mk	contracts,go,policy
 make-android-module	mk/android.mk	android,policy
 make-frontend-module	mk/frontend.mk	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,policy
-ci-tooling-bundle	.github/workflows/ci.yml;internal/releaseverify/ci.go;cmd/releaseverify/main.go;scripts/agent.sh;docs/dev/ci.md	docs,agent,policy
+container-image-acquisition	scripts/ensure-container-image.sh	contracts,postgres,visual,e2e,tuner,policy
+playwright-container-runner	scripts/run-playwright-container.sh	contracts,visual,e2e,tuner,policy
+ci-policy-bootstrap	.github/workflows/ci.yml	policy
+ci-tooling-bundle	.github/workflows/ci.yml;internal/releaseverify/ci.go;cmd/releaseverify/main.go;scripts/agent.sh;docs/dev/ci.md	go,docs,agent,policy
 dev-compose	docker/compose.dev.yaml	contracts,agent
 production-compose	docker/compose.yaml	contracts,go,go_full
 combined-leaf-and-docs	internal/suggest/score.go;docs/dev/testing.md	contracts,go,postgres,image,docs

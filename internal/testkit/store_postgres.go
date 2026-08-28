@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/testkit/postgresimage"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -29,7 +30,7 @@ func PostgresStores(t testing.TB, count int) []store.Store {
 		t.Fatalf("PostgresStores count = %d, want at least one", count)
 	}
 	ctx := context.Background()
-	container, err := postgres.Run(ctx, "postgres:16-alpine",
+	container, err := postgres.Run(ctx, postgresimage.Name(),
 		postgres.WithDatabase("loomarr"),
 		postgres.WithUsername("loomarr"),
 		postgres.WithPassword("loomarr"),

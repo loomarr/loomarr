@@ -44,6 +44,11 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Println("release-verify: CI product jobs are isolated behind owned reusable workflows")
+	if err := releaseverify.VerifyCIContainerDownloads(*root); err != nil {
+		fmt.Fprintf(os.Stderr, "release-verify: CI container download policy: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("release-verify: CI container acquisition is cached and bounded before product tests")
 	if err := releaseverify.VerifyCIImpactActivation(filepath.Join(*root, ".github", "workflows", "ci.yml")); err != nil {
 		fmt.Fprintf(os.Stderr, "release-verify: CI impact activation policy: %v\n", err)
 		os.Exit(1)

@@ -49,7 +49,8 @@ var (
 	// wildcard expansion are intentionally unsupported: the generator must know exactly which
 	// files define the interface, and must fail rather than silently omit one.
 	includeLine = regexp.MustCompile(`^include\s+(.+?)\s*$`)
-	// `make check`, `make fe-visual PW_SHARD=…`, `make test-pg` inside a workflow.
+	// `make check`, `LOOMARR_PLAYWRIGHT_SHARD=--shard=1/4 make fe-visual`, `make test-pg`
+	// inside a workflow.
 	makeInvocation = regexp.MustCompile(`\bmake\s+([a-z][a-z0-9-]*)`)
 )
 
