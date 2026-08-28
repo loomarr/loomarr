@@ -76,6 +76,27 @@ Never treat a stronger model as broader authority. Compare alternatives only whe
 acceptance gate. During crash recovery, preserve the original model and thread when possible so the
 checkpoint remains coherent.
 
+### Bounded checkpoints
+
+Every supervised implementation assignment and every review pass has a 100,000-to-200,000-token
+checkpoint budget; 150,000 is the default. Record the meter source and starting value in the worker
+brief. Prefer a native goal budget. If the harness exposes only worker-scoped usage, the supervisor
+tracks the delta and interrupts at the limit. If usage is unavailable or cannot be attributed to the
+worker, that checkpoint is read-only: planning, research, diagnosis, and review are allowed, but
+repository and external-state changes are not.
+
+The limit cannot be raised or reset while a checkpoint is active. Continuing implementation,
+changing scope, or running another review pass requires the worker to return a report and the
+supervisor to approve a fresh checkpoint. Stop existing unbudgeted editing sessions and restart them
+under a declared budget before their next mutation.
+
+At the limit, preserve the registered worktree and claims. The worker report records the model and
+reasoning, budget and actual usage, stop reason, remaining acceptance clauses, frozen HEAD and dirty
+path inventory, and every required gate run or not run. A budget is a coordination boundary, never a
+reason to weaken tests, grounding, authorization, migrations, safety checks, or acceptance criteria.
+These fields are portable evidence: tmux panes and host-local token displays are not part of a
+Linux-to-Mac handoff.
+
 ### tmux
 
 `tmux` is a useful operator interface for independent sessions, not an orchestration protocol. Keep

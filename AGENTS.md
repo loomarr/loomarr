@@ -33,6 +33,20 @@ they do not self-assign follow-up work. Record model and reasoning choices when 
 them. Change those choices only at assignment boundaries, and never let them expand the worker's
 authority, scope, claims, tools, or acceptance criteria.
 
+Every supervised implementation or review assignment is one token-bounded checkpoint. Declare a
+limit from 100,000 through 200,000 tokens before the checkpoint starts; use 150,000 by default. Use
+the harness's native goal budget when it has one. Otherwise, when worker-scoped usage is observable,
+record the meter source and starting value and have the supervisor interrupt at the limit. If usage
+cannot be measured or attributed to the worker, permit read-only planning, research, or review only;
+do not begin or resume edits. Follow-up scope and another review pass require a fresh checkpoint and
+budget rather than an increase to the active limit.
+
+Low or Medium reasoning is the default. Use High reasoning or a frontier capability only for a
+written, measured quality need. Hitting a budget stops the checkpoint; it never authorizes weaker
+gates, reduced grounding, narrower acceptance, or skipped safety checks. Preserve the worktree and
+claims and report usage, remaining work, the stop reason, frozen tree identity, and gates run or not
+run as defined in [the supervisor workflow](.agents/workflows/supervise.md).
+
 Use claims for scarce outputs whose conflicts are expensive:
 
 - `openapi-client` — `api/openapi.yaml` and the generated orval client
