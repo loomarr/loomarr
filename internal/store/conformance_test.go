@@ -56,6 +56,10 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 
 	t.Run("Jobs", func(t *testing.T) {
 		t.Run("DiscoveryFeedback", func(t *testing.T) { testDiscoveryFeedback(t, newStore) })
+		t.Run("DiscoveryFeedbackMissingChannel", func(t *testing.T) { testDiscoveryFeedbackMissingChannel(t, newStore) })
+		t.Run("DiscoveryFeedbackHardDelete", func(t *testing.T) { testDiscoveryFeedbackHardDelete(t, newStore) })
+		t.Run("DiscoveryFeedbackDeleteRace", func(t *testing.T) { testDiscoveryFeedbackDeleteRace(t, newStore) })
+		t.Run("DiscoveryFeedbackDetachedChannel", func(t *testing.T) { testDiscoveryFeedbackDetachedChannel(t, newStore) })
 		t.Run("JobRoundTrip", func(t *testing.T) { testJobRoundTrip(t, newStore) })
 		t.Run("ProposalJobListScope", func(t *testing.T) { testProposalJobListScope(t, newStore) })
 		t.Run("ClaimDueJobs", func(t *testing.T) { testClaimDueJobs(t, newStore) })
