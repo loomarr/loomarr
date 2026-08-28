@@ -36,8 +36,8 @@ func (m mapAvail) Resolve(k provision.Key) (string, int64, bool) {
 	id, ok := m[k]
 	return id, 0, ok
 }
-func (m mapAvail) ResolveEpisodes(provision.Key) ([]schedule.ResolvedProgram, bool) {
-	return nil, false
+func (m mapAvail) ResolveEpisodes(provision.Key) schedule.EpisodeResolution {
+	return schedule.EpisodeResolution{}
 }
 
 // seedChannel writes a channel with the given approved lineup, unreconciled.

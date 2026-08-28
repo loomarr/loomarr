@@ -64,6 +64,10 @@ type MediaServer struct {
 	// keeps episode adapter tests on the shared media-server double while allowing
 	// them to exercise fields that the filler fixture does not model.
 	EpisodeItems []EpisodeStub
+	// EpisodeJSON, when set, is the exact raw JSON for each episode object. It is
+	// used only when an adapter contract must preserve duplicate object members or
+	// malformed editorial values that a typed EpisodeStub cannot represent.
+	EpisodeJSON []json.RawMessage
 }
 
 // MediaServerRequest is one captured call to the shared media-server double. Tests that
@@ -107,11 +111,15 @@ type SearchStub struct {
 // EpisodeStub is one Emby/Jellyfin episode returned from a ParentId-scoped
 // /Items query. RunTimeMs is converted to the server's 100-nanosecond ticks.
 type EpisodeStub struct {
-	LibraryItemID   string
-	Name            string
-	RunTimeMs       int64
-	Season          int
-	Episode         int
+	LibraryItemID string
+	Name          string
+	RunTimeMs     int64
+	Season        int
+	// OmitSeason distinguishes an absent provider field from an explicit season 0 special.
+	OmitSeason bool
+	Episode    int
+	// OmitEpisode distinguishes an absent provider field from the invalid numeric zero.
+	OmitEpisode     bool
 	EpisodeEnd      int
 	ProductionYear  int
 	OfficialRating  string
@@ -253,6 +261,12 @@ func NewMediaServer(t testing.TB) *MediaServer {
 		// precedence; the pinned filler fixture remains the default for §10 reads.
 		if pid := r.URL.Query().Get("ParentId"); pid != "" {
 			if strings.EqualFold(r.URL.Query().Get("IncludeItemTypes"), "Episode") {
+				if items := ms.rawEpisodeItems(); items != nil {
+					_ = json.NewEncoder(w).Encode(map[string]any{
+						"Items": items, "TotalRecordCount": len(items),
+					})
+					return
+				}
 				if items := ms.episodeItems(); items != nil {
 					_ = json.NewEncoder(w).Encode(map[string]any{
 						"Items": items, "TotalRecordCount": len(items),
@@ -444,6 +458,29 @@ func (ms *MediaServer) SetEpisodeItems(items ...EpisodeStub) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	ms.EpisodeItems = items
+	ms.EpisodeJSON = nil
+}
+
+// SetRawEpisodeItems sets exact episode-object JSON while keeping the adapter
+// test on the shared media-server boundary. Each value must be one JSON object;
+// the server intentionally does not normalize duplicate members.
+func (ms *MediaServer) SetRawEpisodeItems(items ...string) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	ms.EpisodeItems = nil
+	ms.EpisodeJSON = make([]json.RawMessage, len(items))
+	for i, item := range items {
+		ms.EpisodeJSON[i] = json.RawMessage(item)
+	}
+}
+
+func (ms *MediaServer) rawEpisodeItems() []json.RawMessage {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	if ms.EpisodeJSON == nil {
+		return nil
+	}
+	return append([]json.RawMessage(nil), ms.EpisodeJSON...)
 }
 
 func (ms *MediaServer) episodeItems() []map[string]any {
@@ -456,9 +493,14 @@ func (ms *MediaServer) episodeItems() []map[string]any {
 	for _, e := range ms.EpisodeItems {
 		item := map[string]any{
 			"Id": e.LibraryItemID, "Name": e.Name, "RunTimeTicks": e.RunTimeMs * 10_000,
-			"ParentIndexNumber": e.Season, "IndexNumber": e.Episode,
 			"ProductionYear": e.ProductionYear, "OfficialRating": e.OfficialRating,
 			"CommunityRating": e.CommunityRating, "Overview": e.Overview, "Tags": e.Tags,
+		}
+		if !e.OmitSeason {
+			item["ParentIndexNumber"] = e.Season
+		}
+		if !e.OmitEpisode {
+			item["IndexNumber"] = e.Episode
 		}
 		if e.EpisodeEnd > 0 {
 			item["IndexNumberEnd"] = e.EpisodeEnd

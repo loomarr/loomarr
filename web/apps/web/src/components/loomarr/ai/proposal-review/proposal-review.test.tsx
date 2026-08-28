@@ -54,6 +54,56 @@ describe("ProposalReview", () => {
     expect(screen.getByText("Curated highlights")).toBeInTheDocument();
   });
 
+  it("explains a complete episode deck before approval", () => {
+    const complete: Proposal = {
+      ...proposal,
+      lineup: [
+        {
+          name: "The Simpsons",
+          mediaType: "series",
+          tmdbId: 456,
+          inLibrary: true,
+          episodeSelection: { mode: "complete" },
+        },
+      ],
+    };
+    renderWithTooltip(<ProposalReview proposal={complete} status="submitted" />);
+    expect(screen.getByText("All episodes")).toBeInTheDocument();
+  });
+
+  it("explains omitted legacy series selection as the complete deck", () => {
+    const legacy: Proposal = {
+      ...proposal,
+      lineup: [
+        {
+          name: "The Simpsons",
+          mediaType: "series",
+          tmdbId: 456,
+          inLibrary: true,
+        },
+      ],
+    };
+    renderWithTooltip(<ProposalReview proposal={legacy} status="submitted" />);
+    expect(screen.getByText("All episodes")).toBeInTheDocument();
+  });
+
+  it("explains an unknown legacy series selection as the complete deck", () => {
+    const legacy: Proposal = {
+      ...proposal,
+      lineup: [
+        {
+          name: "The Simpsons",
+          mediaType: "series",
+          tmdbId: 456,
+          inLibrary: true,
+          episodeSelection: { mode: "retired-mode" },
+        },
+      ],
+    };
+    renderWithTooltip(<ProposalReview proposal={legacy} status="submitted" />);
+    expect(screen.getByText("All episodes")).toBeInTheDocument();
+  });
+
   it("gates on approve for an actionable proposal", () => {
     const onApprove = vi.fn();
     renderWithTooltip(<ProposalReview proposal={proposal} status="submitted" onApprove={onApprove} />);

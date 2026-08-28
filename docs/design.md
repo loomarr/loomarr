@@ -134,6 +134,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
 - **`diagnostics`** · 8 importers
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
+- **`episodeevidence`** · 3 importers
+  Owns playable structure and bounded editorial facts used for episode curation.
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
 - **`filleradmission`** · 7 importers
@@ -154,6 +156,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Validates the repository's release publication policy.
 - **`taxonomy`** · 4 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
+- **`textmatch`** · 3 importers
+  Owns deterministic, Unicode-aware whole-word phrase matching.
 - **`web`** · 1 importer
   Embeds the built SPA and serves it same-origin at / (main doc §12).
 
@@ -161,10 +165,10 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`fillerdecision`** · 4 importers · → `filleradmission`
   Owns the durable lifecycle and operator projections for filler-admission results.
+- **`holidayvocab`** · 2 importers · → `textmatch`
+  Owns Loomarr's immutable built-in holiday identities and aliases.
 - **`prepared`** · 3 importers · → `diagnostics`, `media`
   Owns immutable, reusable playout publications.
-- **`schedule`** · 14 importers · → `provision`
-  Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 - **`scheduler`** · 6 importers · → `store`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 
@@ -172,22 +176,24 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`images`** · 4 importers · → `scheduler`
   One pipeline every image in Loomarr travels (§22).
-- **`playout`** · 4 importers · → `diagnostics`, `prepared`, `proctree`, `provision`, `schedule`
-  Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 - **`retention`** · 1 importer · → `diagnostics`, `scheduler`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity rows.
+- **`schedule`** · 14 importers · → `holidayvocab`, `provision`, `textmatch`
+  Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 
 **Layer 3**
 
-- **`mediatools`** · 2 importers · → `diagnostics`, `playout`, `proctree`
-  Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`metrics`** · 6 importers · → `images`, `provision`
   Loomarr's Prometheus surface (design §7 /metrics, §17).
+- **`playout`** · 4 importers · → `diagnostics`, `prepared`, `proctree`, `provision`, `schedule`
+  Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 
 **Layer 4**
 
 - **`httpx`** · 7 importers · → `metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
+- **`mediatools`** · 2 importers · → `diagnostics`, `playout`, `proctree`
+  Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 
 **Layer 5**
 
@@ -211,9 +217,9 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`clipfetch`** · 1 importer · → `filler`
   Downloads filler clips into the drop-folder (design §10, §16).
-- **`library`** · 7 importers · → `filler`, `httpx`
+- **`library`** · 7 importers · → `episodeevidence`, `filler`, `httpx`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`store`** · 14 importers · → `diagnostics`, `filler`, `filleradmission`, `fillerdecision`, `provision`, `schedule`, `taxonomy`
+- **`store`** · 14 importers · → `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `provision`, `schedule`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 **Layer 8**
@@ -241,7 +247,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Prepares an isolated agent worktree for UI development.
 - **`reconcile`** · 1 importer · → `activity`, `library`, `provision`, `requester`, `schedule`, `scheduler`, `store`
   Provisioning backstop (design §4, §7, §18).
-- **`suggest`** · 6 importers · → `catalog`, `llm`, `provision`, `schedule`, `store`
+- **`suggest`** · 6 importers · → `catalog`, `holidayvocab`, `llm`, `provision`, `schedule`, `store`, `textmatch`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
 - **`tmdb`** · 2 importers · → `catalog`, `httpx`, `provision`
   TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.
@@ -250,7 +256,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`binder`** · 2 importers · → `provision`, `schedule`, `store`, `suggest`
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
-- **`eval`** · → `catalog`, `library`, `llm`, `provision`, `schedule`, `suggest`, `tmdb`
+- **`eval`** · → `catalog`, `episodeevidence`, `library`, `llm`, `provision`, `schedule`, `suggest`, `tmdb`
   Loomarr's semantic-evaluation harness (a §14 Go test binary, NOT a service).
 - **`proposalworkflow`** · 2 importers · → `schedule`, `store`, `suggest`
   Owns the durable Proposal Job lifecycle and the authoritative First-channel Journey composed from it.
@@ -390,12 +396,87 @@ benchmarks at 45ms for *200* channels, so it was never the cost).
 becomes a store read. The **library is still the source of truth**; this is a materialized
 answer, never a second opinion:
 
-The cached episode evidence also carries community rating, overview, and tags. An approved series
-entry may persist an `episodeSelection` policy: deterministic `highlights` curation ranks credible
-community ratings, while `holiday` curation matches episode text against only the named built-in
-holidays. The scheduler applies that selector after its never-relaxed audience/era/season filters and
-before ordering. It keeps detected multi-part stories whole, and falls back to the complete safe pool
-when metadata is too sparse to select responsibly, so editorial precision cannot create dead air.
+The cached episode evidence also carries the minimum bounded editorial facts the Library exposes:
+a finite community rating in `(0,10]`, an overview capped at 2,048 Unicode code points, and at most
+16 distinct tags of at most 64 code points each. Invalid ratings become unavailable evidence; text is
+trimmed and bounded by one shared sanitizer at the Library adapter and again at the durable cache
+write/read boundary. A mixed-type tag array is wholly unavailable evidence rather than a partially
+decoded list. The read guard covers pre-contract cache blobs: malformed editorial values become
+empty evidence and unknown fields are ignored, while malformed playable identity/runtime
+still fails the cache read. A cached series episode must be a JSON object in which every required
+playable member is present: a non-blank `LibraryItemID`, `DurationMs > 0`, `Season >= 0`,
+`Episode > 0`, and `EpisodeEnd` either zero or at least `Episode`. Absence is not interpreted as
+an explicit zero, and required numeric members must be JSON numbers rather than null, strings, or
+other scalar types. Every non-null database value is decoded: an empty string, null document,
+null/empty episode object, wrong document/structural shape, or invalid value fails the whole cache
+read before scheduling; only a valid `[]` means a cached empty series. Exact or case-fold duplicate rating/overview/tag members are
+ambiguous editorial evidence and therefore become unavailable after all occurrences are removed;
+they never inherit JSON map iteration or last-member-wins behavior. Exact or case-fold duplicates
+of any required playable member (`LibraryItemID`, `DurationMs`, `Season`, `Episode`, or
+`EpisodeEnd`) instead fail the whole cache read because Loomarr cannot choose between competing
+identity, runtime, or numbering facts. Emby/Jellyfin exposes the aggregate rating
+but not its vote count, so Loomarr does not pretend it has absolute confidence or add scheduler-time
+TMDB calls. A `highlights` decision is relative to the eligible show's own well-covered cohort.
+The live Library adapter decodes each episode through the same evidence codec as the durable cache.
+For rating, overview, and tags, malformed JSON or exact/case-fold duplicate members makes that
+entire field unavailable without discarding neighboring valid episodes; a mixed-type tag array
+never contributes its successfully decoded prefix. Structurally unplayable live episodes are
+omitted: each needs a non-blank item id, positive runtime, and present valid season/episode
+numbering. The durable write interface enforces the same playable contract and rejects the entire
+write before persistence; only editorial evidence is repaired tolerantly. Thus neither a live
+response nor a caller can introduce an unschedulable cache row or launder provider JSON's
+last-member-wins behavior into curation evidence.
+
+Every proposed series in the lineup, acquisitions, **or alternates** persists one closed
+`episodeSelection` mode through Proposal -> approval -> Lineup/substitution: `complete` (the
+default), `highlights`, or `holiday`. An omitted/unknown legacy value is read
+as `complete`. The mode is derived in deterministic code from explicit Intent, never emitted by the
+model: Unicode-normalized whole-word `classic`, `best`, favorites/reruns/curated/highlights select `highlights`; explicit
+chronological/start-to-finish/binge/marathon language selects `complete`; a named built-in holiday
+selects only that holiday, while an explicit generic "holiday episodes/specials" request selects the
+closed built-in holiday vocabulary. `mustExclude` terms remain grounding constraints and never count
+as positive mode cues. Named holidays use the same whole-phrase matcher over all affirmative Intent
+text, including ordinary refine requests such as “add Christmas specials”; substrings such as
+“Christmasland” and “Valentinesque” do not match. Holiday specificity wins over narrative ordering, so a chronological
+Christmas request selects Christmas episodes and then forces that pool to sequential order even if
+the model proposed another ordering.
+One immutable holiday-vocabulary module owns the built-in ids and thematic aliases consumed by both
+Intent recognition and scheduler evidence matching. The scheduler continues to own calendar date
+windows and binds each window to one vocabulary id; it does not maintain a second alias list.
+The Proposal review names the resulting mode (`All episodes`, `Curated highlights`, or the holiday
+episode scope) before approval. The proposal API also returns one server-derived preview selection
+computed from the trusted Intent. The edit UI uses that read-only projection when a search-added
+series has no item selector yet, so a movie-only proposal still explains the series mode before the
+admin approves it. The client neither parses intent cues nor writes the preview. Because the channel lineup edit DTO is intentionally lossy, a
+same-key reorder/display edit preserves the approved episode-selection mode just as it preserves
+the season window and healed scheduling metadata.
+
+Approval is the final server-owned grounding boundary for this mode. Immediately after applying
+an admin's drop/add edit, and before serialising the approved Proposal or planning its Lineup, the
+shared approval gate deterministically re-derives `episodeSelection` for every series in lineup,
+acquisitions, and alternates from the Proposal's original trusted Intent. This stamps series added
+through search, restores a missing mode, and rejects a crafted client-supplied mode by replacement;
+movie items remain selector-free. An alternate therefore cannot later enter a lineup with an
+accidental complete-deck default.
+The client may propose title membership, but it cannot choose the episode selector that scheduling
+will execute.
+
+The scheduler applies the selector after its never-relaxed audience, era, and season filters and
+before seeded ordering/windowing. A standalone episode or detected multi-part story is one atomic
+selection unit. A multi-part unit is rated only when every part has a valid rating, using the
+arithmetic mean of those part ratings; otherwise that unit is unrated. Highlights require at least
+eight units and valid ratings on at least 75% of them. That cohort coverage is the only confidence
+gate the Library evidence supports; Loomarr does not infer per-rating vote confidence the Library
+did not report. The upper rated quartile is selected, with a floor of four units and a cap of 48. Every unit tied
+at the cutoff is included; if that consumes the whole rated cohort or exceeds the cap, selection
+degrades to `complete` rather than making an arbitrary quality claim. Holiday matching uses
+case-folded whole words/phrases across the episode title and bounded overview/tags. No thematic
+match, insufficient rating coverage, an invalid mode, or sparse/legacy cache evidence returns the
+complete already-safe pool. Selection keeps multi-part stories whole and preserves canonical order;
+the existing sequential/shuffle/syndication engine alone decides broadcast order. Thus a fixture
+whose eight episodes have distinct, fully covered ratings can produce four high-rated highlights,
+whereas the same fixture with only five ratings must return all eight; a holiday fixture with one
+Christmas story emits that story, while a fixture with no holiday evidence emits its complete deck.
 
 - **Read path:** `GetSeriesEpisodes(libraryID)`. A miss (or a row older than the staleness
   horizon) falls back to the live call and writes the result back, so a cold cache degrades to
@@ -1204,7 +1285,7 @@ Turns an approved proposal + live availability into a durable, filled channel on
   runtime code has no legacy epoch branch.
 - `Slot`: `program` (library item, once available) | `pending` (awaiting provisioner) | `filler`/`flex`.
 - **Availability resolution** turns an approved lineup entry into a `program` slot: it resolves the entry's key to `(library item id, duration, available)`. Duration comes from the media server (the same `RunTimeTicks` source filler uses, §10) — the approved lineup carries only *what* should play, not its runtime, so the scheduler learns duration at resolution time. A program slot always carries a real `duration > 0`; both internal timeline layout and downstream Tunarr programming require it.
-- **Series expansion.** A movie lineup entry is one playable item → one program slot. A **series** entry is *not* directly playable: a show has no single library item and no single runtime — its **episodes** are the programs. So a `series` entry **expands** at resolution time into one program slot **per episode**, each carrying that episode's own media-server item id and duration (from `RunTimeTicks`). Expansion is the scheduler's job, not the suggester's: the approved lineup stays at the intent level ("this channel plays Seinfeld"), and the scheduler resolves the concrete episodes that exist *now* (so newly-imported episodes join on a later reconcile, consistent with backfill). **Ordering follows the channel strategy** (the same rule as movies): `sequential` → episodes in season/episode order; `shuffle` → episodes shuffled with the channel seed. Episode enumeration comes from the library adapter (`ListEpisodes(showItemID)` → `[]{itemID, durationMs, season, episode}`); a series whose episodes aren't in the library yet resolves to a `pending` slot until they land.
+- **Series expansion.** A movie lineup entry is one playable item → one program slot. A **series** entry is *not* directly playable: a show has no single library item and no single runtime — its **episodes** are the programs. So a `series` entry **expands** at resolution time into one program slot **per episode**, each carrying that episode's own media-server item id and duration (from `RunTimeTicks`). Expansion is the scheduler's job, not the suggester's: the approved lineup stays at the intent level ("this channel plays Seinfeld"), and the scheduler resolves the concrete episodes that exist *now* (so newly-imported episodes join on a later reconcile, consistent with backfill). **Ordering follows the channel strategy** (the same rule as movies): `sequential` → episodes in season/episode order; `shuffle` → episodes shuffled with the channel seed. Episode enumeration comes from the library adapter (`ListEpisodes(showItemID)` → `[]{itemID, durationMs, season, episode}`); a series whose episodes aren't in the library yet resolves to a `pending` slot until they land. A cached list younger than `episodes.max_age` is complete evidence and avoids enumeration. An aged cache always attempts live enumeration: success replaces it with fresh evidence; failure may retain only its valid cached playable identity, runtime, numbering, and safety fields. That retained deck remains playable, but its editorial evidence is unavailable, so highlights and holiday selection deterministically use the complete already-safe pool. An aged empty cache whose refresh fails is unavailable, never a synthetic deck.
   - **Season range (intent-level constraint).** A series entry may carry an optional `SeasonMin`/`SeasonMax` (inclusive; 0 = unbounded on that end) — an intent-level filter for channels like "old-school Simpsons" (seasons 1–10) or "just the classic run." Expansion filters the enumerated episodes to that range (by each episode's season number) before producing slots. It's a property of the *approved lineup entry* (the human's intent), not of availability, so it survives re-syncs and applies uniformly under any strategy. A range that matches no in-library episodes yet → a `pending` slot (same as an unavailable series).
 
 ### Scheduling strategies (shared by both playout backends)
@@ -6099,6 +6180,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | Background job engine | **`github.com/riverqueue/river`** + **`riverdriver/riversqlite`** (v0.41.x) | Replaces the hand-rolled leased scheduler (§18.1) with a real queue: durable job records, retries with backoff, and a run history the Tasks page can show instead of one `last_error` string. ⚠ **SQLite support is officially EXPERIMENTAL** and its schema "may still have a few tweaks" — accepted deliberately (maintainer's call, 2026-07-30) with that risk stated rather than discovered. Uses `modernc.org/sqlite`, already this repo's driver and exactly what River tests against, so no CGO and no driver change. ⚠ **Its schema is applied programmatically via `rivermigrate`, NEVER the `river migrate-up` CLI** — a second migration *system* an operator must run alongside goose is the thing that would make this unshippable. **The honest dependency cost:** 5 direct modules (`river`, `riverdriver`, `riverdriver/riversqlite`, `riverdriver/riverdatabasesql`, `robfig/cron/v3`) plus 5 indirect (`rivershared`, `rivertype`, `lib/pq`, `tidwall/{gjson,sjson}` and their two helpers) — against a hand-rolled scheduler of ~350 lines that worked. Recorded rather than glossed: this is the largest single dependency addition in the project, and §18.1's cron trap is a direct consequence of `robfig/cron` arriving with it. |
 | Sessions | hand-rolled in the Store (random 256-bit token, **SHA-256-hashed at rest**, HttpOnly cookie) | We need revocation-by-user + dual-backend anyway; `scs`/`gorilla` add a dependency for no gain |
 | Local passwords | `golang.org/x/crypto/bcrypt` (DefaultCost) | Local-admin bootstrap + local users (§11 identity rework) need a password hash at rest. bcrypt is the boring, correct choice; already in the module tree transitively — this promotes it to a direct dependency. Session *tokens* stay SHA-256 (fast, high-entropy); only human passwords use bcrypt. |
+| Unicode phrase matching | `golang.org/x/text` (`cases.Fold` + `unicode/norm`) | Episode intent and thematic evidence must match canonically equivalent non-ASCII words without locale guesses. Version `v0.41.0` was already pinned transitively; this promotes the same module/version to direct ownership, adding no module or runtime service. |
 | Rate limiting | `golang.org/x/time/rate`, per-IP+username, in-memory | Login only; per-instance is acceptable v1 |
 | Metrics / logs | `prometheus/client_golang` / `slog` | Standard |
 | Interactive Startup report | **`github.com/jedib0t/go-pretty/v6/table`** | Renders the one Loomarr-owned structured Startup report as a restrained, width-bounded terminal table. It is formatting only: JSON `slog`, persistence, readiness, API, and UI consume the report value directly, and non-interactive output never passes through it. |
@@ -6653,7 +6735,7 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `DIAGNOSTICS_DIR` | `/data/diagnostics` — persistent, diagnostics-owned Process-output files. The path is generation-scoped and applies after restart; changing it cannot split one generation's active Process runs across roots (§17). |
 | `DIAGNOSTICS_RETENTION` | `168h` — how long Diagnostic events and completed Process runs remain available. Active Process runs are exempt regardless of age (§5, §17). |
 | `DIAGNOSTICS_MAX_STORAGE_MB` | `512` — soft global budget for normalized Diagnostic-event payload plus bounded Process-output files. Housekeeping removes the oldest completed evidence until under budget; active Process runs remain protected even when that temporarily leaves the install over budget (§5, §17). |
-| `episodes.max_age` | `24h` — how stale a cached series episode list may be before `channel-maintenance` re-enumerates it (§5). A miss or an aged-out row still falls back to the live library call, so this bounds staleness, never correctness. |
+| `episodes.max_age` | `24h` — how stale a cached series episode list may be before resolution and `channel-maintenance` re-enumerate it (§5). A miss or aged row attempts the live library call. On an aged refresh failure, a non-empty valid cache preserves playable/safety facts but disables editorial subset selection; an empty cache remains unavailable. |
 | `SUGGEST_MAX_ACQUISITIONS` | `10` |
 | `SCHED_WINDOW_HOURS` | `24h` (rolling-window horizon a channel materializes; per-channel/-rule overridable, `0` = the whole run — `programming-design.md` §6.5) |
 | `FILLER_DIR` / `FILLER_SYNC_EVERY` / `FILLER_AI_TAGGING` | **`/data/filler`** / `15m` / `false` (§10). ⚠ **V38c: this is the CLIP FOLDER** — Loomarr's own store, holding `a3/f9/<hash>.mp4` plus sidecars, scanned directly by Loomarr and the only directory Loomarr rearranges. *(It briefly meant "the first watched folder" in V38c's intermediate model, before "Two folders, one pipeline" split arrival from storage. The key kept its name because its meaning — where the clips are — did not change; only the layout did.)* Tunarr-backed channels also receive this folder as a `local` source; that playout integration is not how the catalog discovers files. ⚠ **Defaults inside `/data`, like `DATABASE_URL` and `BACKUP_DIR`** — it was previously empty for no recorded reason, which made filler opt-in by accident: a zero-env install opened the Filler page on a single "no folder configured" empty state, hiding every shipped filler capability behind a config step. Created at generation build if missing (the scanner treats a missing root as fatal by design, so a default that did not exist would swap an honest empty state for a scan error). **Generation-scoped:** a saved replacement is desired immediately but every filesystem consumer keeps the applied root until restart. Changing it selects another library; it never moves the old library implicitly |

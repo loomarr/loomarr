@@ -2,6 +2,8 @@ package channels
 
 import (
 	"context"
+	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -50,8 +52,8 @@ func TestResolveEpisodesPersistsWhatItEnumerated(t *testing.T) {
 	}
 
 	av := NewStoreAvailability(context.Background(), st, nil, eps)
-	if got, ok := av.ResolveEpisodes(key); !ok || len(got) != 2 {
-		t.Fatalf("first resolve = (%d eps, %v), want (2, true)", len(got), ok)
+	if got := av.ResolveEpisodes(key); len(got.Programs) != 2 {
+		t.Fatalf("first resolve = %d eps, want 2", len(got.Programs))
 	}
 	if calls != 1 {
 		t.Fatalf("first resolve made %d library calls, want 1", calls)
@@ -92,9 +94,9 @@ func TestResolveEpisodesServesFromTheStoreWithoutTheLibrary(t *testing.T) {
 	}
 
 	av := NewStoreAvailability(context.Background(), st, nil, eps)
-	got, ok := av.ResolveEpisodes(key)
-	if !ok || len(got) != 2 {
-		t.Fatalf("cached resolve = (%d eps, %v), want (2, true)", len(got), ok)
+	got := av.ResolveEpisodes(key)
+	if len(got.Programs) != 2 {
+		t.Fatalf("cached resolve = %d eps, want 2", len(got.Programs))
 	}
 	if calls != 0 {
 		t.Fatalf("a warm cache made %d library calls, want 0 — the enumeration is back on the request path", calls)
@@ -122,7 +124,7 @@ func TestResolveEpisodesTreatsACachedEmptyListAsAnAnswer(t *testing.T) {
 	}
 
 	av := NewStoreAvailability(context.Background(), st, nil, eps)
-	if _, ok := av.ResolveEpisodes(key); ok {
+	if got := av.ResolveEpisodes(key); len(got.Programs) > 0 {
 		t.Fatal("a show with no episodes must not resolve as available")
 	}
 	if calls != 0 {
@@ -142,8 +144,128 @@ func TestResolveEpisodesFallsBackToTheLibraryOnAColdCache(t *testing.T) {
 	}
 
 	av := NewStoreAvailability(context.Background(), st, nil, eps)
-	got, ok := av.ResolveEpisodes(key)
-	if !ok || len(got) != 2 {
-		t.Fatalf("cold cache = (%d eps, %v), want (2, true) — a cold cache must not empty a channel", len(got), ok)
+	got := av.ResolveEpisodes(key)
+	if len(got.Programs) != 2 {
+		t.Fatalf("cold cache = %d eps, want 2 — a cold cache must not empty a channel", len(got.Programs))
+	}
+}
+
+// This is the public availability → ComputeDesiredAt seam. An aged cache still
+// preserves safe playable identity when the live library cannot enumerate, but
+// never presents its stale editorial evidence as a highlights/holiday subset.
+func TestAgedEpisodeCacheFailureUsesCompleteSafeDeckWithoutEditorialSelection(t *testing.T) {
+	st := availTestStore(t)
+	key := provision.Key("series:tvdb:71663")
+	seedSeries(t, st, key, "show-1")
+	now := time.Date(2026, time.August, 28, 12, 0, 0, 0, time.UTC)
+	episodes := make([]schedule.ResolvedProgram, 0, 8)
+	for i := 1; i <= 8; i++ {
+		episodes = append(episodes, schedule.ResolvedProgram{
+			LibraryItemID:   "ep-" + string(rune('0'+i)),
+			Title:           "Episode",
+			DurationMs:      22 * time.Minute.Milliseconds(),
+			Season:          1,
+			Episode:         i,
+			OfficialRating:  "TV-G",
+			CommunityRating: float64(i),
+			Overview:        "Christmas special",
+		})
+	}
+	if err := st.UpsertSeriesEpisodes(context.Background(), store.SeriesEpisodes{
+		LibraryID: "show-1", Episodes: episodes, FetchedAt: now.Add(-2 * time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	av := WithEpisodeMaxAge(NewStoreAvailability(context.Background(), st, nil,
+		func(context.Context, string) ([]schedule.ResolvedProgram, error) {
+			return nil, errors.New("library unavailable")
+		}), func() time.Duration { return time.Hour })
+	sa := av.(*storeAvailability)
+	sa.now = func() time.Time { return now }
+
+	for _, selection := range []schedule.EpisodeSelection{
+		{Mode: schedule.EpisodeHighlights},
+		{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}},
+	} {
+		desired := schedule.ComputeDesiredAt(schedule.Channel{ID: "channel", Strategy: schedule.Sequential},
+			[]schedule.LineupEntry{{Key: key, Title: "Series", OfficialRating: "TV-G", EpisodeSelection: selection}},
+			av, schedule.PodFill, schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
+				Audience: schedule.AudiencePolicy{Ceiling: "TV-PG"},
+			}}, now)
+		var ids []string
+		for _, slot := range desired.Slots {
+			if slot.IsProgram() {
+				ids = append(ids, slot.LibraryItemID)
+			}
+		}
+		want := []string{"ep-1", "ep-2", "ep-3", "ep-4", "ep-5", "ep-6", "ep-7", "ep-8"}
+		if !slices.Equal(ids, want) {
+			t.Fatalf("%s on failed aged refresh = %v, want full safe deck %v", selection.Mode, ids, want)
+		}
+	}
+}
+
+func TestAgedEmptyEpisodeCacheFailureIsUnavailable(t *testing.T) {
+	st := availTestStore(t)
+	key := provision.Key("series:tvdb:71663")
+	seedSeries(t, st, key, "show-empty")
+	now := time.Date(2026, time.August, 28, 12, 0, 0, 0, time.UTC)
+	if err := st.UpsertSeriesEpisodes(context.Background(), store.SeriesEpisodes{
+		LibraryID: "show-empty", Episodes: nil, FetchedAt: now.Add(-2 * time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	av := WithEpisodeMaxAge(NewStoreAvailability(context.Background(), st, nil,
+		func(context.Context, string) ([]schedule.ResolvedProgram, error) { return nil, errors.New("down") }),
+		func() time.Duration { return time.Hour })
+	sa := av.(*storeAvailability)
+	sa.now = func() time.Time { return now }
+	if got := av.ResolveEpisodes(key); len(got.Programs) != 0 {
+		t.Fatalf("aged empty failed refresh = %+v, want unavailable", got)
+	}
+}
+
+func TestAgedEpisodeCacheRefreshesAndRestoresEditorialSelection(t *testing.T) {
+	st := availTestStore(t)
+	key := provision.Key("series:tvdb:71663")
+	seedSeries(t, st, key, "show-1")
+	now := time.Date(2026, time.August, 28, 12, 0, 0, 0, time.UTC)
+	if err := st.UpsertSeriesEpisodes(context.Background(), store.SeriesEpisodes{
+		LibraryID: "show-1", Episodes: twoEpisodes(), FetchedAt: now.Add(-2 * time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	fresh := make([]schedule.ResolvedProgram, 0, 8)
+	for i := 1; i <= 8; i++ {
+		fresh = append(fresh, schedule.ResolvedProgram{
+			LibraryItemID:   "fresh-" + string(rune('0'+i)),
+			DurationMs:      (22 * time.Minute).Milliseconds(),
+			Season:          1,
+			Episode:         i,
+			CommunityRating: float64(i),
+		})
+	}
+	av := WithEpisodeMaxAge(NewStoreAvailability(context.Background(), st, nil,
+		func(context.Context, string) ([]schedule.ResolvedProgram, error) { return fresh, nil }),
+		func() time.Duration { return time.Hour })
+	sa := av.(*storeAvailability)
+	sa.now = func() time.Time { return now }
+
+	resolution := av.ResolveEpisodes(key)
+	if resolution.EditorialUnavailable || len(resolution.Programs) != len(fresh) {
+		t.Fatalf("refreshed resolution = %+v, want fresh editorial evidence and %d programs", resolution, len(fresh))
+	}
+	stored, err := st.GetSeriesEpisodes(context.Background(), "show-1")
+	if err != nil || !slices.EqualFunc(stored.Episodes, fresh, func(a, b schedule.ResolvedProgram) bool {
+		return a.LibraryItemID == b.LibraryItemID
+	}) {
+		t.Fatalf("fresh cache was not persisted: episodes=%+v err=%v", stored.Episodes, err)
+	}
+	desired := schedule.ComputeDesiredAt(schedule.Channel{ID: "channel", Strategy: schedule.Sequential},
+		[]schedule.LineupEntry{{Key: key, Title: "Series", EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights}}},
+		av, schedule.PodFill, schedule.ChannelPolicy{}, now)
+	if got := desired.ProgramCount(); got != 4 {
+		t.Fatalf("fresh highlights program count = %d, want 4", got)
 	}
 }

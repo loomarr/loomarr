@@ -253,10 +253,10 @@ func (a fixtureAvailability) Resolve(key provision.Key) (string, int64, bool) {
 	return fixture.LibraryItemID, fixture.DurationMs, true
 }
 
-func (a fixtureAvailability) ResolveEpisodes(key provision.Key) ([]schedule.ResolvedProgram, bool) {
+func (a fixtureAvailability) ResolveEpisodes(key provision.Key) schedule.EpisodeResolution {
 	fixture, ok := a[key]
 	if !ok || len(fixture.Episodes) == 0 {
-		return nil, false
+		return schedule.EpisodeResolution{}
 	}
-	return slices.Clone(fixture.Episodes), true
+	return schedule.EpisodeResolution{Programs: slices.Clone(fixture.Episodes)}
 }

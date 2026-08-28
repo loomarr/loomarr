@@ -5,13 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/textmatch"
 )
 
 // catalogToolName is the single tool the model may call. The grounding guarantee
@@ -479,8 +482,9 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	prop.Lineup, prop.Acquisitions, prop.Refused = refuseUnairable(
 		prop.Policy.Audience, prop.Lineup, prop.Acquisitions, intentRequiresChildSafety(intent),
 	)
-	stampEpisodeSelection(prop.Lineup, intent, prop.Policy.Seasonal)
-	stampEpisodeSelection(prop.Acquisitions, intent, prop.Policy.Seasonal)
+	stampEpisodeSelection(prop.Lineup, intent)
+	stampEpisodeSelection(prop.Acquisitions, intent)
+	stampEpisodeSelection(prop.Alternates, intent)
 
 	// ⚠ Scored on what SURVIVED. Scoring the refused picks too would report an availability
 	// ratio and theme fit for a lineup nobody is being offered — the scorecard already half-knew
@@ -547,10 +551,7 @@ func groundPolicy(raw *pickPolicy, lineup, acquisitions []ProposalItem, intent I
 	explicitCeiling := intentExplicitAudienceCeiling(intent)
 	requestedCeiling := stricterCeiling(explicitCeiling, childSafetyCeiling)
 	if raw == nil {
-		return schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
-			Audience: schedule.AudiencePolicy{Ceiling: requestedCeiling},
-			Seasonal: seasonalPolicyForIntent(intent),
-		}}
+		raw = &pickPolicy{}
 	}
 	var p schedule.ChannelPolicy
 
@@ -591,6 +592,12 @@ func groundPolicy(raw *pickPolicy, lineup, acquisitions []ProposalItem, intent I
 	switch schedule.OrderingMode(raw.Ordering) {
 	case schedule.OrderSequential, schedule.OrderShuffle, schedule.OrderSyndication:
 		p.Ordering = schedule.OrderingMode(raw.Ordering)
+	}
+	// Narrative order is an explicit viewer promise, not model discretion. Force
+	// it before applying omitted-order defaults so a model-proposed shuffle cannot
+	// turn "chronological" or "binge" into a mixed deck.
+	if intentRequestsSequential(intent) {
+		p.Ordering = schedule.OrderSequential
 	}
 	// Multi-series default: when the model didn't pick an ordering (or picked an unknown
 	// one → still OrderInherit here) AND the grounded lineup spans more than one series,
@@ -837,19 +844,28 @@ func singleSeriesOnly(groups ...[]ProposalItem) bool {
 }
 
 func intentRequestsCuratedEpisodes(intent Intent) bool {
-	hay := normalizedIntentText(intent)
-	for _, cue := range []string{"classic", "best of", "greatest", "favorite", "favourite", "rerun", "curated", "highlights"} {
-		if strings.Contains(hay, cue) {
-			return true
-		}
-	}
-	return false
+	return intentMatchesAnyCue(intent,
+		"classic", "classics", "best", "greatest", "favorite", "favorites", "favourite", "favourites",
+		"rerun", "reruns", "curated", "highlight", "highlights",
+	)
 }
 
 func intentRequestsSequential(intent Intent) bool {
-	hay := normalizedIntentText(intent)
-	for _, cue := range []string{"chronological", "in order", "start to finish", "from the beginning", "episode order", "binge", "marathon"} {
-		if strings.Contains(hay, cue) {
+	return intentMatchesAnyCue(intent,
+		"chronological", "in order", "start to finish", "from the beginning", "episode order", "binge", "marathon",
+	)
+}
+
+func intentRequestsHolidayEpisodes(intent Intent) bool {
+	return intentMatchesAnyCue(intent,
+		"holiday episode", "holiday episodes", "holiday special", "holiday specials",
+	)
+}
+
+func intentMatchesAnyCue(intent Intent, cues ...string) bool {
+	hay := affirmativeIntentText(intent)
+	for _, cue := range cues {
+		if textmatch.ContainsPhrase(hay, cue) {
 			return true
 		}
 	}
@@ -860,23 +876,37 @@ func intentRequestsSequential(intent Intent) bool {
 // editorial policy. The model never chooses episode identities. A named holiday
 // is more specific than a general highlights cue; explicit narrative ordering
 // disables highlights but can still order a holiday-filtered pool sequentially.
-func stampEpisodeSelection(items []ProposalItem, intent Intent, seasonal schedule.SeasonalPolicy) {
-	selection := schedule.EpisodeSelection{}
-	if len(seasonal.Holidays) > 0 {
+// EpisodeSelectionForIntent is the server-owned series policy preview used by
+// proposal review and the approval gate. Clients may display it but never choose it.
+func EpisodeSelectionForIntent(intent Intent) schedule.EpisodeSelection {
+	selection := schedule.EpisodeSelection{Mode: schedule.EpisodeComplete}
+	if holidays := namedHolidaysIn(affirmativeIntentText(intent)); len(holidays) > 0 {
 		selection = schedule.EpisodeSelection{
-			Mode: schedule.EpisodeHoliday, Holidays: append([]string(nil), seasonal.Holidays...),
+			Mode: schedule.EpisodeHoliday, Holidays: holidays,
 		}
+	} else if intentRequestsHolidayEpisodes(intent) {
+		selection.Mode = schedule.EpisodeHoliday
 	} else if intentRequestsCuratedEpisodes(intent) && !intentRequestsSequential(intent) {
 		selection.Mode = schedule.EpisodeHighlights
 	}
-	if selection.Mode == "" {
-		return
-	}
+	return selection
+}
+
+func stampEpisodeSelection(items []ProposalItem, intent Intent) bool {
+	selection := EpisodeSelectionForIntent(intent)
+	changed := false
 	for i := range items {
+		grounded := schedule.EpisodeSelection{}
 		if items[i].MediaType == provision.Series {
-			items[i].EpisodeSelection = selection
+			grounded = selection
 		}
+		if items[i].EpisodeSelection.Mode != grounded.Mode ||
+			!slices.Equal(items[i].EpisodeSelection.Holidays, grounded.Holidays) {
+			changed = true
+		}
+		items[i].EpisodeSelection = grounded
 	}
+	return changed
 }
 
 // eraAdmittingPicks widens a model-proposed year window just far enough to include the
@@ -988,6 +1018,16 @@ func normalizedIntentText(intent Intent) string {
 	}, " "))
 }
 
+// affirmativeIntentText is the operator's positive editorial request. Negative
+// constraints still participate in grounding and ranking, but must never select
+// the very episode mode they prohibit.
+func affirmativeIntentText(intent Intent) string {
+	return strings.ToLower(strings.Join([]string{
+		intent.Description, intent.Tone, intent.Era, intent.RefineText,
+		strings.Join(intent.MustInclude, " "),
+	}, " "))
+}
+
 // seasonalPolicyForIntent makes an explicitly named holiday deterministic. A
 // holiday channel is exclusive to that holiday; leaving Holidays empty would mean
 // every built-in holiday and would make a Christmas request rotate into Halloween.
@@ -996,35 +1036,22 @@ func seasonalPolicyForIntent(intent Intent) schedule.SeasonalPolicy {
 	// Only treat the refine as a whole-channel identity change when it actually
 	// names a channel transformation; ordinary "add Christmas specials" language
 	// is represented by grounded holiday rules instead.
-	hay := strings.ToLower(strings.Join([]string{
+	hay := strings.Join([]string{
 		intent.Description, intent.Tone, intent.Era, strings.Join(intent.MustInclude, " "),
-	}, " "))
-	refine := strings.ToLower(intent.RefineText)
-	if strings.Contains(refine, "channel") {
+	}, " ")
+	refine := intent.RefineText
+	if textmatch.ContainsPhrase(refine, "channel") {
 		hay += " " + refine
 	}
-	var holidays []string
-	for _, holiday := range []struct {
-		id   string
-		cues []string
-	}{
-		{"halloween", []string{"halloween"}},
-		{"thanksgiving", []string{"thanksgiving"}},
-		{"christmas", []string{"christmas", "xmas", "yuletide"}},
-		{"newyear", []string{"new year's", "new years", "new year", "nye"}},
-		{"valentines", []string{"valentine's", "valentines", "valentine"}},
-	} {
-		for _, cue := range holiday.cues {
-			if strings.Contains(hay, cue) {
-				holidays = append(holidays, holiday.id)
-				break
-			}
-		}
-	}
+	holidays := namedHolidaysIn(hay)
 	if len(holidays) == 0 {
 		return schedule.SeasonalPolicy{}
 	}
 	return schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive, Holidays: holidays}
+}
+
+func namedHolidaysIn(text string) []string {
+	return holidayvocab.MatchIntent(text)
 }
 
 // kidsIntentCues are the substrings that mark a kids/teen intent (§4/§8). Lowercased.

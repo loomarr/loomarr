@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { episodeSelectionLabel } from "../episode-selection-label";
 import type { ProposalReviewProps, ProposalStatus } from "./proposal-review.type";
 
 // ProposalReview — the human-in-the-loop review that fronts the approval gate (§3,
@@ -38,19 +39,6 @@ const seasonWindowLabel = (min?: number, max?: number): string | null => {
   if (lo > 0 && hi > 0) return lo === hi ? `Season ${lo}` : `Seasons ${lo}–${hi}`;
   if (lo > 0) return `From season ${lo}`;
   return `Through season ${hi}`;
-};
-
-const episodeSelectionLabel = (item: ProposalItem): string | null => {
-  switch (item.episodeSelection?.mode) {
-    case "highlights":
-      return "Curated highlights";
-    case "holiday": {
-      const holidays = item.episodeSelection.holidays ?? [];
-      return holidays.length > 0 ? `${holidays.join(", ")} episodes` : "Holiday episodes";
-    }
-    default:
-      return null;
-  }
 };
 
 const ItemRow = ({

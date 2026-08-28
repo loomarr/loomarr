@@ -31,9 +31,9 @@ func (b benchAvail) Resolve(key provision.Key) (string, int64, bool) {
 	return "item-" + string(key), 5_400_000, true // ~90m film
 }
 
-func (b benchAvail) ResolveEpisodes(key provision.Key) ([]ResolvedProgram, bool) {
+func (b benchAvail) ResolveEpisodes(key provision.Key) EpisodeResolution {
 	if !key.IsSeries() || b.episodesPerSeries == 0 {
-		return nil, false
+		return EpisodeResolution{}
 	}
 	eps := make([]ResolvedProgram, 0, b.episodesPerSeries)
 	for i := 1; i <= b.episodesPerSeries; i++ {
@@ -45,7 +45,7 @@ func (b benchAvail) ResolveEpisodes(key provision.Key) ([]ResolvedProgram, bool)
 			Title:         fmt.Sprintf("Episode %d", i),
 		})
 	}
-	return eps, true
+	return EpisodeResolution{Programs: eps}
 }
 
 // movieLineup builds an n-film lineup with the metadata enforcement actually reads (rating,
