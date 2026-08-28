@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	scorecardSchemaVersion = 3
+	scorecardSchemaVersion = 4
 	corpusVersion          = "2026-08-23.4"
 )
 
@@ -26,24 +26,41 @@ type Generator interface {
 // RunnerConfig identifies one reproducible evaluation profile. Credentials and
 // provider payloads never enter it or the scorecard.
 type RunnerConfig struct {
-	Trials   int
-	Profile  string
-	Provider string
-	Model    string
-	Required bool
+	Trials    int
+	Profile   string
+	Generator ModelIdentity
+	Judge     ModelIdentity
 }
+
+// ModelIdentity names one inference role without credentials or endpoint data.
+type ModelIdentity struct {
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
+}
+
+// FailureStage is the closed vocabulary for the first boundary that failed a trial.
+type FailureStage string
+
+const (
+	FailureStageProposal         FailureStage = "proposal"
+	FailureStageDeterministic    FailureStage = "deterministic"
+	FailureStageStructuralBudget FailureStage = "structural_budget"
+	FailureStageSchedule         FailureStage = "schedule"
+	FailureStageJudge            FailureStage = "judge"
+)
 
 // Scorecard is the versioned machine-readable result of one Runner execution.
 type Scorecard struct {
-	SchemaVersion int           `json:"schemaVersion"`
-	CorpusVersion string        `json:"corpusVersion"`
-	GeneratedAt   time.Time     `json:"generatedAt"`
-	Profile       string        `json:"profile"`
-	Provider      string        `json:"provider"`
-	Model         string        `json:"model"`
-	Certified     bool          `json:"certified"`
-	Results       []Result      `json:"results"`
-	Cases         []CaseSummary `json:"cases"`
+	SchemaVersion int                  `json:"schemaVersion"`
+	CorpusVersion string               `json:"corpusVersion"`
+	GeneratedAt   time.Time            `json:"generatedAt"`
+	Profile       string               `json:"profile"`
+	Generator     ModelIdentity        `json:"generator"`
+	Judge         ModelIdentity        `json:"judge"`
+	Certified     bool                 `json:"certified"`
+	FailureCounts map[FailureStage]int `json:"failureCounts"`
+	Results       []Result             `json:"results"`
+	Cases         []CaseSummary        `json:"cases"`
 }
 
 // CaseSummary makes stochastic stability visible rather than collapsing several
@@ -66,7 +83,7 @@ type ScoreRange struct {
 // Judge is the subjective scoring seam. Deterministic requirements never cross
 // it; production supplies an LLM-backed adapter and hermetic tests a scripted one.
 type Judge interface {
-	Score(context.Context, Case, suggest.Proposal) judgeScores
+	Score(context.Context, Case, suggest.Proposal) (JudgeScores, error)
 }
 
 // Observer records bounded structural evidence around one Generator trial.
@@ -115,9 +132,16 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 		CorpusVersion: corpusVersion,
 		GeneratedAt:   time.Now().UTC(),
 		Profile:       r.config.Profile,
-		Provider:      r.config.Provider,
-		Model:         r.config.Model,
+		Generator:     r.config.Generator,
+		Judge:         r.config.Judge,
 		Certified:     len(cases) > 0,
+		FailureCounts: map[FailureStage]int{
+			FailureStageProposal:         0,
+			FailureStageDeterministic:    0,
+			FailureStageStructuralBudget: 0,
+			FailureStageSchedule:         0,
+			FailureStageJudge:            0,
+		},
 	}
 	for _, c := range cases {
 		passed := 0
@@ -130,61 +154,81 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 			result := Result{
 				Case: c.Name, Trial: trial, Lineup: len(prop.Lineup), Acquisitions: len(prop.Acquisitions),
 				Ceiling: string(prop.Policy.Audience.Ceiling), ThemeFit: prop.Scores.ThemeFit,
-				JudgeScore: -1, RelevanceScore: -1, SerendipityScore: -1,
 				Failures: deterministicChecks(c, prop, err),
+			}
+			if !result.Passed() {
+				result.FailureStage = FailureStageDeterministic
+				if err != nil {
+					result.FailureStage = FailureStageProposal
+				}
 			}
 			if r.observer != nil {
 				result.Observation = r.observer.Snapshot(err)
 				if c.MaxToolCalls > 0 && result.ToolCalls > c.MaxToolCalls {
-					result.Failures = append(result.Failures, fmt.Sprintf("tool calls %d > budget %d", result.ToolCalls, c.MaxToolCalls))
+					result.addFailures(FailureStageStructuralBudget,
+						fmt.Sprintf("tool calls %d > budget %d", result.ToolCalls, c.MaxToolCalls))
 				}
 				if c.MaxCandidatesSurfaced > 0 && result.CandidatesSurfaced > c.MaxCandidatesSurfaced {
-					result.Failures = append(result.Failures, fmt.Sprintf("candidates surfaced %d > budget %d", result.CandidatesSurfaced, c.MaxCandidatesSurfaced))
+					result.addFailures(FailureStageStructuralBudget,
+						fmt.Sprintf("candidates surfaced %d > budget %d", result.CandidatesSurfaced, c.MaxCandidatesSurfaced))
 				}
 			}
 			if err == nil && requiresSchedule(c) {
 				if r.materializer == nil {
-					result.Failures = append(result.Failures, "schedule materializer is not configured")
+					result.addFailures(FailureStageSchedule, "schedule materializer is not configured")
 				} else {
 					programs, scheduleErr := r.materializer.Materialize(ctx, c, prop)
 					if scheduleErr != nil {
-						result.Failures = append(result.Failures, "schedule materialization failed: "+scheduleErr.Error())
+						result.addFailures(FailureStageSchedule, "schedule materialization failed: "+scheduleErr.Error())
 					} else {
 						result.ScheduledPrograms = programs
-						result.Failures = append(result.Failures, scheduledChecks(c, programs)...)
+						result.addFailures(FailureStageSchedule, scheduledChecks(c, programs)...)
 					}
 				}
 			}
-			if result.Passed() && c.JudgeRubric != "" && r.judge != nil {
-				scores := r.judge.Score(ctx, c, prop)
-				result.JudgeScore = scores.Overall
-				result.RelevanceScore = scores.Relevance
-				result.SerendipityScore = scores.Serendipity
-				result.JudgeNote = scores.Reason
-				if c.MinJudgeScore > 0 && scores.Overall < c.MinJudgeScore && (r.config.Required || scores.Overall >= 0) {
-					result.Failures = append(result.Failures,
-						fmt.Sprintf("judge score %.2f < required %.2f: %s", scores.Overall, c.MinJudgeScore, scores.Reason))
-				}
-				if c.MinRelevanceScore > 0 && scores.Relevance < c.MinRelevanceScore && (r.config.Required || scores.Relevance >= 0) {
-					result.Failures = append(result.Failures,
-						fmt.Sprintf("relevance score %.2f < required %.2f: %s", scores.Relevance, c.MinRelevanceScore, scores.Reason))
-				}
-				if c.MinSerendipityScore > 0 && scores.Serendipity < c.MinSerendipityScore && (r.config.Required || scores.Serendipity >= 0) {
-					result.Failures = append(result.Failures,
-						fmt.Sprintf("serendipity score %.2f < required %.2f: %s", scores.Serendipity, c.MinSerendipityScore, scores.Reason))
-				}
-				if scores.Relevance >= 0 {
-					relevance = append(relevance, scores.Relevance)
-				}
-				if scores.Serendipity >= 0 {
-					serendipity = append(serendipity, scores.Serendipity)
+			if result.Passed() && c.JudgeRubric != "" && r.judge == nil {
+				result.JudgeError = "judge is not configured"
+				result.addFailures(FailureStageJudge, result.JudgeError)
+			}
+			if result.Passed() && c.JudgeRubric != "" {
+				scores, judgeErr := r.judge.Score(ctx, c, prop)
+				if judgeErr != nil {
+					result.JudgeError = judgeErr.Error()
+					result.addFailures(FailureStageJudge, result.JudgeError)
+				} else {
+					result.JudgeScore = scores.Overall
+					result.RelevanceScore = scores.Relevance
+					result.SerendipityScore = scores.Serendipity
+					result.JudgeNote = scores.Reason
+					if c.MinJudgeScore > 0 && scores.Overall < c.MinJudgeScore {
+						result.addFailures(FailureStageJudge,
+							fmt.Sprintf("judge score %.2f < required %.2f: %s", scores.Overall, c.MinJudgeScore, scores.Reason))
+					}
+					if c.MinRelevanceScore > 0 && scores.Relevance < c.MinRelevanceScore {
+						result.addFailures(FailureStageJudge,
+							fmt.Sprintf("relevance score %.2f < required %.2f: %s", scores.Relevance, c.MinRelevanceScore, scores.Reason))
+					}
+					if c.MinSerendipityScore > 0 && scores.Serendipity < c.MinSerendipityScore {
+						result.addFailures(FailureStageJudge,
+							fmt.Sprintf("serendipity score %.2f < required %.2f: %s", scores.Serendipity, c.MinSerendipityScore, scores.Reason))
+					}
+					if scores.Relevance >= 0 {
+						relevance = append(relevance, scores.Relevance)
+					}
+					if scores.Serendipity >= 0 {
+						serendipity = append(serendipity, scores.Serendipity)
+					}
 				}
 			}
 			card.Results = append(card.Results, result)
 			if result.Passed() {
 				passed++
+			} else {
+				card.Certified = false
+				if result.FailureStage != "" {
+					card.FailureCounts[result.FailureStage]++
+				}
 			}
-			card.Certified = card.Certified && result.Passed()
 		}
 		card.Cases = append(card.Cases, CaseSummary{
 			Case: c.Name, Trials: r.config.Trials, Passed: passed,

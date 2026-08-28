@@ -222,22 +222,34 @@ func mapIntent(i Intent) suggest.Intent {
 
 // Result is the scored outcome of one case.
 type Result struct {
-	Case              string   `json:"case"`
-	Trial             int      `json:"trial"`
-	Failures          []string `json:"failures"` // deterministic gate failures (empty = passed the hard gates)
-	ThemeFit          float64  `json:"themeFit"`
-	Lineup            int      `json:"lineup"`
-	Acquisitions      int      `json:"acquisitions"`
-	Ceiling           string   `json:"ceiling"`          // the extracted policy ceiling
-	JudgeScore        float64  `json:"judgeScore"`       // -1 when the judge didn't run
-	RelevanceScore    float64  `json:"relevanceScore"`   // -1 when the judge didn't run
-	SerendipityScore  float64  `json:"serendipityScore"` // -1 when the judge didn't run
-	JudgeNote         string   `json:"judgeNote"`
-	ScheduledPrograms []string `json:"scheduledPrograms,omitempty"`
+	Case              string       `json:"case"`
+	Trial             int          `json:"trial"`
+	Failures          []string     `json:"failures"` // all evaluation failures; empty means the trial passed
+	FailureStage      FailureStage `json:"failureStage,omitempty"`
+	ThemeFit          float64      `json:"themeFit"`
+	Lineup            int          `json:"lineup"`
+	Acquisitions      int          `json:"acquisitions"`
+	Ceiling           string       `json:"ceiling"` // the extracted policy ceiling
+	JudgeScore        float64      `json:"judgeScore"`
+	RelevanceScore    float64      `json:"relevanceScore"`
+	SerendipityScore  float64      `json:"serendipityScore"`
+	JudgeNote         string       `json:"judgeNote"`
+	JudgeError        string       `json:"judgeError,omitempty"`
+	ScheduledPrograms []string     `json:"scheduledPrograms,omitempty"`
 	Observation
 }
 
 func (r Result) Passed() bool { return len(r.Failures) == 0 }
+
+func (r *Result) addFailures(stage FailureStage, failures ...string) {
+	if len(failures) == 0 {
+		return
+	}
+	if r.FailureStage == "" {
+		r.FailureStage = stage
+	}
+	r.Failures = append(r.Failures, failures...)
+}
 
 // deterministicChecks applies the corpus case's hard expectations to a proposal.
 // These are the assertions a mock could never make — they run against the real

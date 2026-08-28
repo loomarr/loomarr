@@ -45,9 +45,18 @@ func TestEvalCorpus(t *testing.T) {
 	if provider == "" {
 		provider = "ollama"
 	}
+	generatorIdentity := ModelIdentity{Provider: provider, Model: os.Getenv("LLM_MODEL")}
+	judgeIdentity := generatorIdentity
+	if judgeModel := os.Getenv("LOOMARR_EVAL_JUDGE"); judgeModel != "" {
+		judgeIdentity = ModelIdentity{
+			Provider: firstNonEmpty(os.Getenv("LOOMARR_EVAL_JUDGE_PROVIDER"), provider),
+			Model:    judgeModel,
+		}
+	}
 	runner := NewRunner(sug, RunnerConfig{
-		Trials: trials, Required: required, Profile: os.Getenv("LOOMARR_EVAL_PROFILE"),
-		Provider: provider, Model: os.Getenv("LLM_MODEL"),
+		Trials: trials, Profile: os.Getenv("LOOMARR_EVAL_PROFILE"),
+		Generator: generatorIdentity,
+		Judge:     judgeIdentity,
 	}).WithObserver(observed).WithJudge(modelJudge{provider: buildJudgeProvider()})
 	card := runner.Run(ctx, Corpus)
 	for _, res := range card.Results {

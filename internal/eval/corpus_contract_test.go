@@ -10,10 +10,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 type scriptedGenerator struct {
@@ -31,7 +33,7 @@ type sequenceGenerator struct {
 }
 
 type sequenceJudge struct {
-	scores []judgeScores
+	scores []JudgeScores
 	next   int
 }
 
@@ -44,10 +46,10 @@ func (o *scriptedObserver) Begin() { o.begins++ }
 
 func (o *scriptedObserver) Snapshot(error) Observation { return o.value }
 
-func (j *sequenceJudge) Score(context.Context, Case, suggest.Proposal) judgeScores {
+func (j *sequenceJudge) Score(context.Context, Case, suggest.Proposal) (JudgeScores, error) {
 	score := j.scores[j.next]
 	j.next++
-	return score
+	return score, nil
 }
 
 func (g *sequenceGenerator) Suggest(context.Context, suggest.Intent) (suggest.Proposal, error) {
@@ -59,7 +61,7 @@ func (g *sequenceGenerator) Suggest(context.Context, suggest.Intent) (suggest.Pr
 func TestRunnerRejectsProposalMissingExactRequiredKey(t *testing.T) {
 	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{
 		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 680, Name: "Pulp Fiction"}},
-	}}, RunnerConfig{Trials: 1, Profile: "hermetic", Provider: "fixture", Model: "fixture-v1"})
+	}}, RunnerConfig{Trials: 1, Profile: "hermetic", Generator: ModelIdentity{Provider: "fixture", Model: "fixture-v1"}})
 
 	scorecard := runner.Run(context.Background(), []Case{{
 		Name: "must_include_matrix",
@@ -78,6 +80,10 @@ func TestRunnerRejectsProposalMissingExactRequiredKey(t *testing.T) {
 	}
 	if got := scorecard.Results[0].Failures[0]; !strings.Contains(got, "movie:tmdb:603") {
 		t.Fatalf("failure = %q, want missing required key", got)
+	}
+	result := scorecard.Results[0]
+	if result.FailureStage != FailureStageDeterministic || scorecard.FailureCounts[FailureStageDeterministic] != 1 {
+		t.Fatalf("deterministic failure accounting = stage %q counts %v", result.FailureStage, scorecard.FailureCounts)
 	}
 }
 
@@ -120,6 +126,10 @@ func TestRunnerChecksConcreteProgramsAfterScheduleFiltering(t *testing.T) {
 	if got := scorecard.Results[0].Failures; len(got) != 1 || !strings.Contains(got[0], "series:tmdb:456:s04e12") {
 		t.Fatalf("failures = %v, want the missing scheduled episode identity", got)
 	}
+	result := scorecard.Results[0]
+	if result.FailureStage != FailureStageSchedule || scorecard.FailureCounts[FailureStageSchedule] != 1 {
+		t.Fatalf("schedule failure accounting = stage %q counts %v", result.FailureStage, scorecard.FailureCounts)
+	}
 }
 
 func TestRunnerReportsRepeatedTrialPassRate(t *testing.T) {
@@ -145,13 +155,16 @@ func TestRunnerReportsRepeatedTrialPassRate(t *testing.T) {
 	if len(card.Cases) != 1 || card.Cases[0].Passed != 2 || card.Cases[0].Trials != 3 || card.Cases[0].PassRate != 2.0/3.0 {
 		t.Fatalf("case summary = %+v, want 2/3 pass rate", card.Cases)
 	}
+	if card.FailureCounts[FailureStageDeterministic] != 1 {
+		t.Fatalf("repeated-trial failure counts = %v, want one deterministic trial", card.FailureCounts)
+	}
 }
 
-func TestRunnerReportsWorstMedianAndBestQualityAcrossTrials(t *testing.T) {
+func TestRunnerReportsLowScoreAsThresholdResultAndQualityRange(t *testing.T) {
 	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
 	}}}
-	judge := &sequenceJudge{scores: []judgeScores{
+	judge := &sequenceJudge{scores: []JudgeScores{
 		{Overall: 0.5, Relevance: 0.4, Serendipity: 0.8},
 		{Overall: 0.8, Relevance: 0.9, Serendipity: 0.3},
 		{Overall: 0.7, Relevance: 0.7, Serendipity: 0.6},
@@ -160,8 +173,18 @@ func TestRunnerReportsWorstMedianAndBestQualityAcrossTrials(t *testing.T) {
 
 	card := runner.Run(context.Background(), []Case{{
 		Name: "quality_distribution", JudgeRubric: "Relevant science fiction with defensible variety",
+		MinRelevanceScore: 0.5,
 	}})
 
+	if card.Certified {
+		t.Fatal("scorecard certified a valid relevance score below its declared floor")
+	}
+	if got := card.Results[0]; got.JudgeError != "" || len(got.Failures) != 1 || !strings.Contains(got.Failures[0], "relevance score 0.40 < required 0.50") {
+		t.Fatalf("low-score result = %+v, want an ordinary threshold failure", got)
+	}
+	if result := card.Results[0]; result.FailureStage != FailureStageJudge || card.FailureCounts[FailureStageJudge] != 1 {
+		t.Fatalf("low-score failure accounting = stage %q counts %v", result.FailureStage, card.FailureCounts)
+	}
 	if len(card.Cases) != 1 {
 		t.Fatalf("case summaries = %d, want one", len(card.Cases))
 	}
@@ -171,6 +194,140 @@ func TestRunnerReportsWorstMedianAndBestQualityAcrossTrials(t *testing.T) {
 	}
 	if got.Serendipity != (ScoreRange{Min: 0.3, Median: 0.6, Max: 0.8}) {
 		t.Fatalf("serendipity range = %+v", got.Serendipity)
+	}
+}
+
+func TestRunnerFailsRubricWhenJudgeIsMissing(t *testing.T) {
+	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{
+		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}},
+	}}, RunnerConfig{})
+
+	card := runner.Run(context.Background(), []Case{{
+		Name: "judge_required", JudgeRubric: "Relevant science fiction",
+	}})
+
+	if card.Certified {
+		t.Fatal("scorecard certified a rubric without a configured judge")
+	}
+	result := card.Results[0]
+	if got := result.Failures; len(got) != 1 || !strings.Contains(got[0], "judge is not configured") {
+		t.Fatalf("failures = %v, want missing-judge failure", got)
+	}
+	if result.FailureStage != FailureStageJudge || card.FailureCounts[FailureStageJudge] != 1 {
+		t.Fatalf("judge failure accounting = stage %q counts %v", result.FailureStage, card.FailureCounts)
+	}
+}
+
+func TestRunnerFailsRubricWhenJudgeReturnsError(t *testing.T) {
+	provider := testkit.NewLLM()
+	provider.Delay = time.Second
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{
+		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}},
+	}}, RunnerConfig{}).WithJudge(modelJudge{provider: provider})
+
+	card := runner.Run(ctx, []Case{{
+		Name: "judge_error", JudgeRubric: "Relevant science fiction",
+	}})
+
+	if card.Certified {
+		t.Fatal("scorecard certified a rubric after the judge returned an error")
+	}
+	result := card.Results[0]
+	if got := result.Failures; len(got) != 1 || !strings.Contains(got[0], "judge call failed") {
+		t.Fatalf("failures = %v, want judge-call failure", got)
+	}
+	if result.FailureStage != FailureStageJudge || card.FailureCounts[FailureStageJudge] != 1 {
+		t.Fatalf("judge failure accounting = stage %q counts %v", result.FailureStage, card.FailureCounts)
+	}
+}
+
+func TestRunnerFailsRubricWhenJudgeOutputIsUnparseable(t *testing.T) {
+	provider := testkit.NewLLM(testkit.FinalResponse("definitely not judge JSON"))
+	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{
+		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}},
+	}}, RunnerConfig{}).WithJudge(modelJudge{provider: provider})
+
+	card := runner.Run(context.Background(), []Case{{
+		Name: "judge_unparseable", JudgeRubric: "Relevant science fiction",
+	}})
+
+	if card.Certified {
+		t.Fatal("scorecard certified a rubric after unparseable judge output")
+	}
+	result := card.Results[0]
+	if !strings.Contains(result.JudgeError, "judge output unparseable") {
+		t.Fatalf("judge error = %q, want unparseable-output error", result.JudgeError)
+	}
+	if result.JudgeScore < 0 || result.RelevanceScore < 0 || result.SerendipityScore < 0 {
+		t.Fatalf("judge scores = %.2f/%.2f/%.2f, want no negative failure sentinel",
+			result.JudgeScore, result.RelevanceScore, result.SerendipityScore)
+	}
+	if result.FailureStage != FailureStageJudge || card.FailureCounts[FailureStageJudge] != 1 {
+		t.Fatalf("judge failure accounting = stage %q counts %v", result.FailureStage, card.FailureCounts)
+	}
+}
+
+func TestJudgeScoreRejectsMissingRequiredScoreFields(t *testing.T) {
+	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
+		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+	}}}
+	caseUnderTest := Case{Intent: Intent{Description: "science fiction"}, JudgeRubric: "Relevant science fiction"}
+	tests := map[string]string{
+		"overall":     `{"relevance":0.8,"serendipity":0.6,"reason":"A grounded assessment."}`,
+		"relevance":   `{"overall":0.8,"serendipity":0.6,"reason":"A grounded assessment."}`,
+		"serendipity": `{"overall":0.8,"relevance":0.8,"reason":"A grounded assessment."}`,
+	}
+	for name, response := range tests {
+		t.Run(name, func(t *testing.T) {
+			var scorer Judge = modelJudge{provider: testkit.NewLLM(testkit.FinalResponse(response))}
+			if _, err := scorer.Score(context.Background(), caseUnderTest, proposal); err == nil {
+				t.Fatalf("Judge.Score accepted output missing %s: %s", name, response)
+			}
+		})
+	}
+}
+
+func TestJudgeScoreRejectsOutOfRangeScores(t *testing.T) {
+	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
+		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+	}}}
+	caseUnderTest := Case{Intent: Intent{Description: "science fiction"}, JudgeRubric: "Relevant science fiction"}
+	tests := map[string]string{
+		"overall below zero":     `{"overall":-0.1,"relevance":0.8,"serendipity":0.6,"reason":"A grounded assessment."}`,
+		"overall above one":      `{"overall":1.1,"relevance":0.8,"serendipity":0.6,"reason":"A grounded assessment."}`,
+		"relevance below zero":   `{"overall":0.8,"relevance":-0.1,"serendipity":0.6,"reason":"A grounded assessment."}`,
+		"relevance above one":    `{"overall":0.8,"relevance":1.1,"serendipity":0.6,"reason":"A grounded assessment."}`,
+		"serendipity below zero": `{"overall":0.8,"relevance":0.8,"serendipity":-0.1,"reason":"A grounded assessment."}`,
+		"serendipity above one":  `{"overall":0.8,"relevance":0.8,"serendipity":1.1,"reason":"A grounded assessment."}`,
+	}
+	for name, response := range tests {
+		t.Run(name, func(t *testing.T) {
+			var scorer Judge = modelJudge{provider: testkit.NewLLM(testkit.FinalResponse(response))}
+			if _, err := scorer.Score(context.Background(), caseUnderTest, proposal); err == nil {
+				t.Fatalf("Judge.Score accepted out-of-range output: %s", response)
+			}
+		})
+	}
+}
+
+func TestJudgeScoreRejectsMissingOrBlankReason(t *testing.T) {
+	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
+		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+	}}}
+	caseUnderTest := Case{Intent: Intent{Description: "science fiction"}, JudgeRubric: "Relevant science fiction"}
+	tests := map[string]string{
+		"missing": `{"overall":0.8,"relevance":0.8,"serendipity":0.6}`,
+		"blank":   `{"overall":0.8,"relevance":0.8,"serendipity":0.6,"reason":"   "}`,
+	}
+	for name, response := range tests {
+		t.Run(name, func(t *testing.T) {
+			var scorer Judge = modelJudge{provider: testkit.NewLLM(testkit.FinalResponse(response))}
+			if _, err := scorer.Score(context.Background(), caseUnderTest, proposal); err == nil {
+				t.Fatalf("Judge.Score accepted %s reason: %s", name, response)
+			}
+		})
 	}
 }
 
@@ -192,17 +349,74 @@ func TestRunnerRecordsStructuralObservationForEveryTrial(t *testing.T) {
 	}
 }
 
+func TestRunnerRecordsGeneratorAndJudgeIdentitiesIndependently(t *testing.T) {
+	generator := ModelIdentity{Provider: "ollama", Model: "qwen3:14b"}
+	judge := ModelIdentity{Provider: "openai", Model: "openai/gpt-5.6"}
+	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{}}, RunnerConfig{
+		Generator: generator,
+		Judge:     judge,
+	})
+
+	card := runner.Run(context.Background(), []Case{{Name: "identity"}})
+
+	if card.SchemaVersion != 4 {
+		t.Fatalf("schema version = %d, want 4", card.SchemaVersion)
+	}
+	if card.Generator != generator || card.Judge != judge {
+		t.Fatalf("identities = generator %+v judge %+v", card.Generator, card.Judge)
+	}
+	wantStages := []FailureStage{
+		FailureStageProposal, FailureStageDeterministic, FailureStageStructuralBudget,
+		FailureStageSchedule, FailureStageJudge,
+	}
+	if len(card.FailureCounts) != len(wantStages) || card.Results[0].FailureStage != "" {
+		t.Fatalf("passing scorecard failure shape = stage %q counts %v", card.Results[0].FailureStage, card.FailureCounts)
+	}
+	for _, stage := range wantStages {
+		if card.FailureCounts[stage] != 0 {
+			t.Errorf("passing scorecard count[%q] = %d, want 0", stage, card.FailureCounts[stage])
+		}
+	}
+	blob, err := json.Marshal(card)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var shape map[string]json.RawMessage
+	if err := json.Unmarshal(blob, &shape); err != nil {
+		t.Fatal(err)
+	}
+	for _, legacy := range []string{"provider", "model"} {
+		if _, ok := shape[legacy]; ok {
+			t.Errorf("scorecard retained ambiguous legacy field %q: %s", legacy, blob)
+		}
+	}
+}
+
 func TestRunnerRejectsForbiddenIdentityMediaMixDiversityAndStructuralBudget(t *testing.T) {
 	observer := &scriptedObserver{value: Observation{ToolCalls: 3, CandidatesSurfaced: 25}}
-	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{Lineup: []suggest.ProposalItem{{
+	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", Genres: []string{"Science Fiction"},
-	}}}}, RunnerConfig{}).WithObserver(observer)
+	}}}
+	runner := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).WithObserver(observer)
 	card := runner.Run(context.Background(), []Case{{Name: "bounded_mix",
 		ForbidKeys: []provision.Key{"movie:tmdb:603"}, MinMovies: 2, MinSeries: 1,
 		MinDistinctGenres: 2, MaxToolCalls: 2, MaxCandidatesSurfaced: 24,
 	}})
 	if card.Certified || len(card.Results[0].Failures) != 6 {
 		t.Fatalf("result = %+v, want six independent hard failures", card.Results[0])
+	}
+	if result := card.Results[0]; result.FailureStage != FailureStageDeterministic || card.FailureCounts[FailureStageDeterministic] != 1 || card.FailureCounts[FailureStageStructuralBudget] != 0 {
+		t.Fatalf("mixed failure accounting = stage %q counts %v", result.FailureStage, card.FailureCounts)
+	}
+
+	budgetCard := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).
+		WithObserver(observer).
+		Run(context.Background(), []Case{{Name: "budget_only", MaxToolCalls: 2, MaxCandidatesSurfaced: 24}})
+	if budgetCard.Certified || len(budgetCard.Results[0].Failures) != 2 {
+		t.Fatalf("budget-only result = %+v, want two structural-budget failures", budgetCard.Results[0])
+	}
+	if result := budgetCard.Results[0]; result.FailureStage != FailureStageStructuralBudget || budgetCard.FailureCounts[FailureStageStructuralBudget] != 1 {
+		t.Fatalf("structural-budget accounting = stage %q counts %v", result.FailureStage, budgetCard.FailureCounts)
 	}
 }
 
@@ -266,9 +480,18 @@ func TestObservationClassifiesInvalidModelOutputAsGenerationFailure(t *testing.T
 }
 
 func TestNoFabricationDoesNotTurnProviderFailureIntoPass(t *testing.T) {
-	failures := deterministicChecks(Case{NoFabrication: true}, suggest.Proposal{}, errors.New("llm chat: unavailable"))
-	if len(failures) != 1 {
-		t.Fatalf("provider failure under no-fabrication gate = %v, want one failure", failures)
+	runner := NewRunner(scriptedGenerator{err: errors.New("llm chat: unavailable")}, RunnerConfig{})
+	card := runner.Run(context.Background(), []Case{{Name: "provider_failure", NoFabrication: true}})
+
+	if card.Certified {
+		t.Fatal("scorecard certified a provider failure under the no-fabrication gate")
+	}
+	result := card.Results[0]
+	if len(result.Failures) != 1 {
+		t.Fatalf("provider failure under no-fabrication gate = %v, want one failure", result.Failures)
+	}
+	if result.FailureStage != FailureStageProposal || card.FailureCounts[FailureStageProposal] != 1 {
+		t.Fatalf("proposal failure accounting = stage %q counts %v", result.FailureStage, card.FailureCounts)
 	}
 }
 
@@ -324,9 +547,11 @@ func TestDeterministicChecksRejectWrongOrdering(t *testing.T) {
 
 func TestScorecardShapeExcludesCredentials(t *testing.T) {
 	t.Setenv("LLM_API_KEY", "never-serialize-this-secret")
+	t.Setenv("LOOMARR_EVAL_JUDGE_API_KEY", "never-serialize-this-judge-secret")
 	scorecard := Scorecard{
 		SchemaVersion: scorecardSchemaVersion, CorpusVersion: corpusVersion,
-		Provider: "openai", Model: "example/model", Results: []Result{{
+		Generator: ModelIdentity{Provider: "openai", Model: "example/generator"},
+		Judge:     ModelIdentity{Provider: "openai", Model: "example/judge"}, Results: []Result{{
 			Case: "holiday", RelevanceScore: 0.8, SerendipityScore: 0.7,
 		}},
 	}
@@ -334,8 +559,10 @@ func TestScorecardShapeExcludesCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(blob), os.Getenv("LLM_API_KEY")) {
-		t.Fatal("scorecard metadata contains the LLM credential")
+	for _, secret := range []string{os.Getenv("LLM_API_KEY"), os.Getenv("LOOMARR_EVAL_JUDGE_API_KEY")} {
+		if strings.Contains(string(blob), secret) {
+			t.Fatal("scorecard metadata contains an LLM credential")
+		}
 	}
 	for _, field := range []string{"relevanceScore", "serendipityScore"} {
 		if !strings.Contains(string(blob), field) {

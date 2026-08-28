@@ -6009,13 +6009,27 @@ Proposal plus episode evidence to editorial selection, and selected pool plus Po
 schedule. The same public Runner interface owns all three so exploratory and certification modes
 cannot silently test different behavior.
 
-It writes a machine-readable scorecard naming the schema version, corpus version, requested
-provider/model (never credentials), trial configuration, every case/trial outcome, and the
-aggregate certification result. Stochastic cases run serially for an explicit bounded number of
-trials; the scorecard reports pass rate and min/median/max quality rather than hiding variance in one
-point score. Per-case tool-call and surfaced-candidate budgets are deterministic failures, so an
-over-broad retrieval cannot masquerade as quality. The hermetic lane uses fixed candidates and
-episode evidence and remains in the normal gate; real catalog/provider certification stays manual and inference-spending.
+It writes a machine-readable scorecard naming the schema version, corpus version, independent
+requested generator and judge provider/model identities (never credentials), trial configuration,
+every case/trial outcome, and the aggregate certification result. The scorecard has no ambiguous
+top-level provider/model compatibility fields: generator and judge identity are distinct even when
+both roles happen to use the same route. Every non-empty judge rubric makes a successful judge stage
+mandatory in exploratory and certification runs alike, regardless of whether any score floor is
+declared. A missing judge, provider error, or unparseable response is an ordinary stage error and
+fails that trial; it is never encoded as a magic score. A valid score remains in the closed `0..1`
+range, including zero, and fails only the declared overall/relevance/serendipity floor. Successful
+judge evidence must explicitly contain all three scores within that range plus the prompt's non-blank
+reason; missing, null, or out-of-range scores and a missing or blank reason are judge errors, never
+defaulted or clamped values. Schema v4
+records exactly one first-failure stage on every failed trial from the closed vocabulary `proposal`,
+`deterministic`, `structural_budget`, `schedule`, and `judge`; later failures remain visible but never
+replace the first stage. The scorecard aggregates failed-trial counts under those same five labels,
+including zero counts, while passed trials carry no failure stage. Stochastic cases run serially for
+an explicit bounded number of trials; the scorecard reports pass rate and min/median/max quality
+rather than hiding variance in one point score. Per-case tool-call and surfaced-candidate budgets are
+hard failures, so an over-broad retrieval cannot masquerade as quality. The hermetic lane
+uses fixed candidates and episode evidence and remains in the normal gate; real catalog/provider
+certification stays manual and inference-spending.
 Network and inference keep it outside `make check`; a stored scorecard is evidence for one named
 model/catalog snapshot, not a timeless claim that every provider is certified.
 

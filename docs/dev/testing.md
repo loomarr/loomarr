@@ -52,20 +52,26 @@ Store conformance is one suite over two backends — don't fork the assertions p
 
 `make eval` is exploratory and exits cleanly when its real library, TMDB, or LLM configuration is
 absent. `make eval-cert` is an assertion: missing configuration, a skipped/unexecuted case, a hard
-grounding or negative-constraint failure, a required judge failure, or an unwritable scorecard makes
-the command fail. It always bypasses Go's test cache and writes
+grounding or negative-constraint failure, any judge-stage failure for a non-empty rubric, or an
+unwritable scorecard makes the command fail. It always bypasses Go's test cache and writes
 `$LOOMARR_ARTIFACT_DIR/semantic-certification.json` unless `LOOMARR_EVAL_OUT` selects another path.
-The scorecard records its schema/corpus version, requested generator/provider, trial profile, and
-bounded structural observations—never credentials. Hard predicates cover
+The scorecard records its schema/corpus version, separate requested generator and judge
+provider/model identities, trial profile, and bounded structural observations—never credentials or
+ambiguous top-level provider/model compatibility fields. Hard predicates cover
 exact named includes/excludes, holiday policy, rating limits, ownership mix, and concrete scheduled
 programme identities/order; a non-empty Proposal or favorable judge paragraph cannot substitute for
-one. Fixture cases materialize `schedule.DesiredLineup` in the hermetic gate. Real-provider cases run
-serially for an explicit trial count and report pass rate plus min/median/max relevance and
-serendipity: novelty only scores when it remains defensibly on-theme. Per-case tool-call and
-surfaced-candidate budgets fail deterministically. Structural diagnostics record the grounding stage,
-tool mode, candidate count, generation failure, and schedule materialization failure, so a low score
-points at the layer to tune. Real inference still remains outside `make check` and certifies only the
-requested model/provider configuration, catalog snapshot, and corpus version in the artifact.
+one. Every failed trial records its first failure as `proposal`, `deterministic`,
+`structural_budget`, `schedule`, or `judge`, and the scorecard counts failed trials under the same
+five labels; later failures do not rewrite that first-stage diagnosis. Judge evidence requires
+explicit overall, relevance, and serendipity scores in `0..1` plus a non-blank reason; incomplete or
+out-of-range output is a judge failure rather than a defaulted or clamped score. Fixture cases materialize
+`schedule.DesiredLineup` in the hermetic gate. Real-provider cases run serially for an explicit trial
+count and report pass rate plus min/median/max relevance and serendipity: novelty only scores when it
+remains defensibly on-theme. Per-case tool-call and surfaced-candidate budgets fail deterministically.
+Structural diagnostics record the grounding stage, tool mode, candidate count, generation failure,
+and schedule materialization failure, so a low score points at the layer to tune. Real inference still
+remains outside `make check` and certifies only the requested model/provider configuration, catalog
+snapshot, and corpus version in the artifact.
 
 `make eval-matrix` prevents tuning to one local model. It requires the ordinary exported `LLM_*`
 configuration plus `OPENROUTER_API_KEY` and `OPENROUTER_MODEL`; `OPENROUTER_JUDGE_MODEL` may select a
