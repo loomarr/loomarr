@@ -510,6 +510,32 @@ Candidates already visible from here (logged, not v1): dayparting audience ceili
 
 ⚠ **A candidate source is not a heuristic** and does not take the five-point shape above — it has no policy field and no slotting enforcer, because it feeds the *proposal* pipeline (§8/§8.2), not the lineup builder. Its checklist is different: a `catalog.Scope` value, a corpus fetch, entry through the existing grounding + audience + approval chokepoints, and provenance the approval card can show. §8.3 is the worked example.
 
+## 9.1. Discovery certification owns provider-resource uncertainty
+
+The discovery evaluator follows the slice-1 seam in
+[`channel-discovery-next.md`](engineering/plans/channel-discovery-next.md): one public `Runner`
+owns grounded generation, materialized schedule outcomes, judging, and the versioned scorecard.
+Runner and schedule certification tests inject the eval-only semantic recording `Judge`, exercise
+the public `Judge.Score(ctx, JudgeEvidence)` seam, validate the bounded typed evidence received at
+that seam, and assert the resulting scorecard behavior and call count. They never reconstruct
+semantic evidence from a rendered prompt. Production `modelJudge` renderer and provider
+request/response tests are a separate, supplemental wire layer: they can prove serialization,
+routing, parsing, and attribution, but cannot certify schedule semantics or repair, fill in, or
+rebound evidence that `Runner` supplied incorrectly. Prompt-substring assertions and private prompt
+parsers are therefore forbidden as certification evidence.
+The production suggester's provider adapter is therefore also the only honest place to enforce a
+resource ledger around every repair and tool-loop call inside one `Suggest`.
+
+Per-run limits reset for each case trial, while per-suite limits and uncertainty belong to the
+whole `Runner.Run`. With hard token or hosted-USD ceilings, a provider call whose required usage is
+missing makes the suite ledger permanently uncertain; no later generator, tool-loop turn, or judge
+may start. Ollama remains explicitly non-billed, rather than being assigned a fictional charge.
+Failure-stage ownership remains independent of that resource latch: the first retrieval or
+generation diagnosis in the current trial is retained even if its provider response also makes
+accounting uncertain, while later trials fail before generation at `budget_exhausted`. This keeps
+the scorecard's closed first-failure vocabulary diagnostic without allowing uncertain paid work to
+continue.
+
 ## 10. Tests (extends main doc §19 — these join the phase 10/11 gates)
 
 - **Binding:** "seasons 1–10" policy → zero slots outside the range across many seeded cycles; era and genre filters likewise.

@@ -6001,7 +6001,11 @@ require outside-Library proposals where acquisition is allowed. The scorecard re
 serendipity separately: relevance rewards qualifier fidelity, while serendipity rewards coherent
 less-obvious additions without treating randomness as novelty. The corpus uses the real production suggester and
 catalog path. Exact user constraints are code-owned predicates: a named include/exclude, media mix,
-or expected episode cannot be certified by a merely non-empty Proposal or by judge prose. Cases that
+or expected episode cannot be certified by a merely non-empty Proposal or by judge prose. A case's
+`RequireTitles` and `ForbidTitles` use case-insensitive, trimmed, internal-whitespace-normalized whole
+title equality over its explicitly declared `grounded` Proposal or `scheduled` materialization
+evidence; substrings and near titles never satisfy an exact assertion. `ForbidTitleTerms` remains a
+separately named heuristic only for cases that intentionally forbid a term family. Cases that
 make a programming promise are materialized through `schedule.ComputeDesiredAt` with an explicit
 clock/history and assert the concrete program identities/order after expansion, filtering, grouping,
 and placement. The evaluator therefore has three nested contracts: Intent to grounded Proposal,
@@ -6009,13 +6013,170 @@ Proposal plus episode evidence to editorial selection, and selected pool plus Po
 schedule. The same public Runner interface owns all three so exploratory and certification modes
 cannot silently test different behavior.
 
-It writes a machine-readable scorecard naming the schema version, corpus version, requested
-provider/model (never credentials), trial configuration, every case/trial outcome, and the
-aggregate certification result. Stochastic cases run serially for an explicit bounded number of
-trials; the scorecard reports pass rate and min/median/max quality rather than hiding variance in one
-point score. Per-case tool-call and surfaced-candidate budgets are deterministic failures, so an
-over-broad retrieval cannot masquerade as quality. The hermetic lane uses fixed candidates and
-episode evidence and remains in the normal gate; real catalog/provider certification stays manual and inference-spending.
+The durable schedule-outcome contract is distinct from the proposal corpus because only an
+already-owned lineup can be materialized. Hermetic Runner tests use explicitly synthetic fixture
+episodes to prove that curated-series inclusions/exclusions, in-Library holiday selection, and an
+atomic release-ordered movie franchise can each pass and fail. Those fixture identities are test
+evidence only and never become live certification expectations.
+
+Live schedule cases instead come from a declared real-Library evidence snapshot. Its closed,
+versioned schema records a safe non-empty snapshot id; the exact series Key, Library item id,
+complete episode evidence, and independently pinned included/excluded concrete identities for
+curated and holiday selection; and the exact owned movie Keys, Library item ids, runtimes, TMDB
+collection id, and independently pinned canonical franchise sequence. Before any generator
+or judge provider is constructed, Loomarr re-reads the declared titles through
+`library.ItemMetadataByID` and `library.ListEpisodes`, resolves every movie through TMDB collection
+identity, and requires an exact match on every scheduling-relevant field. Missing cases, sparse
+curation evidence without nonempty, disjoint include/exclude sets covering every present episode,
+stale episode metadata, unplayable movies, mixed collections, a noncanonical franchise sequence, or
+any other drift fail certification. Preflight never invokes `schedule.ComputeDesiredAt`: the Runner
+compares its later production-scheduler output against those pinned independent expectations. The
+snapshot id is appended to the scorecard corpus version.
+Both live series cases are pinned to the authoritative `series:tmdb:456` Key; a self-consistent
+snapshot substituting any other series identity fails before Library, TMDB, or provider work begins.
+Their viewer requests remain semantic inputs to the production generator rather than snapshot
+labels: curated requests are exactly `Classic Simpsons reruns from the golden era, curated for
+variety`, and holiday requests are exactly `Christmas episodes of The Simpsons already in my
+library`. The snapshot supplies independent owned-title and episode evidence; it never replaces the
+viewer intent that generation and materialized outcome assertions must satisfy.
+Before accepting episode or runtime evidence, one shared ownership check calls
+`library.LookupDetail` with each exact TMDB media type/id. The title must be present and the returned
+Library item id must equal the snapshot's `libraryItemId`; matching metadata from an unrelated owned
+item cannot satisfy the evidence contract.
+
+Fixture and live `ScheduleMaterializer` adapters call one shared pure projection through
+`schedule.ComputeDesiredAt`. The live adapter bulk-reads owned movie runtime from
+`library.ItemMetadataByID`, enumerates series through `library.ListEpisodes`, and resolves a movie's
+authoritative TMDB collection identity before entering that projection. A snapshot-bound live
+adapter also rejects a Proposal whose Key resolves to a different Library item id.
+The snapshot binding is case-specific and exact: curated and holiday materialization accept only
+their declared series Key, while franchise materialization accepts only TMDB movie Keys 85, 87, and
+89. Any additional playable Lineup Key fails at the schedule stage; missing members remain the
+deterministic `RequireKeys` contract. Acquisitions never enter schedule materialization.
+
+Live schedule materialization is an explicit `LOOMARR_EVAL_LIVE_SCHEDULE=1` opt-in and requires
+`LOOMARR_EVAL_SCHEDULE_EVIDENCE` to name the versioned JSON snapshot above. An exploratory
+run without it runs the proposal corpus, omits the entire schedule-outcome corpus, and reports that
+omission once. Certification mode fails before constructing or calling any provider when the opt-in
+or a valid, consistent snapshot is absent, so a required scorecard cannot silently omit viewer
+outcomes. The hermetic contract lane always uses fixed fixture evidence and never constructs live
+Library, TMDB, generator, or judge adapters.
+
+The subjective judge receives one typed, bounded evidence value from `Runner`; it does not receive
+the raw Proposal or rediscover a schedule. That value keeps lineup and acquisition titles in
+separate ownership sets and records each title's exact grounded key, name/year, source provenance,
+optional rationale/confidence, genres, and rating. It also carries the suggester-extracted
+`ProposalPolicy`, the trial's structural counts and grounding stage, and the ordered concrete program
+identities already returned by `ScheduleMaterializer`. Scheduled episode entries additionally retain
+the bounded grounded title, season/episode range, year, rating, community rating, overview, and tags
+that the scheduler actually materialized. That is the minimum evidence with which a judge can assess
+holiday or highlight intent; an opaque episode identity is not sufficient. The model prompt renders
+those facts directly, including a deterministic prefix of the materialized programs; proposal title
+names are not a substitute for scheduled evidence. A Proposal item whose canonical Key cannot be
+constructed fails the judge stage before any prompt is sent; it never becomes an empty grounded key.
+`JudgeMaxTitlesPerOwnership`, `JudgeMaxGenresPerItem`, `JudgeMaxPolicyValues`,
+`JudgeMaxScheduledPrograms`, `JudgeMaxEpisodeTags`, and `JudgeMaxTextRunes` are the public bounds on
+the two title sets, each title's genres, every open policy collection, the schedule sample, episode
+tags, and each free-text field respectively. The evidence type has no credential, endpoint,
+provider-request, or provider-response fields, so those values cannot enter the prompt through this
+seam.
+
+It writes a machine-readable scorecard naming the schema version, corpus version, independent
+requested generator and judge provider/model identities (never credentials), trial configuration,
+every case/trial outcome, and the aggregate certification result. The scorecard has no ambiguous
+top-level provider/model compatibility fields: generator and judge identity are distinct even when
+both roles happen to use the same route. Every non-empty judge rubric makes a successful judge stage
+mandatory in exploratory and certification runs alike, regardless of whether any score floor is
+declared. A missing judge, provider error, or unparseable response is an ordinary stage error and
+fails that trial; it is never encoded as a magic score. A valid score remains in the closed `0..1`
+range, including zero, and fails only the declared overall/relevance/serendipity floor. Successful
+judge evidence must explicitly contain all three finite scores within that range plus the prompt's
+non-blank reason. `Runner.Run` validates that contract independently of the configured `Judge`, so a
+custom implementation cannot certify NaN, infinity, an out-of-range value, or a blank reason;
+missing, null, or invalid evidence is a judge error, never defaulted or clamped. Schema v7
+records exactly one first-failure stage on every failed trial from the closed vocabulary `retrieval`,
+`generation`, `deterministic`, `structural_budget`, `schedule`, `judge`, and `budget_exhausted`;
+later failures remain visible but never replace the first stage. `no_tool_call` and
+`retrieval_empty` are retrieval failures; provider/model errors, malformed output, and an empty
+selection after surfaced candidates are generation failures. The scorecard aggregates failed-trial
+counts under that same vocabulary, including zero counts, while passed trials carry no failure
+stage. Stochastic cases run serially for
+an explicit bounded number of trials; the scorecard reports pass rate and min/median/max overall
+quality, relevance, and serendipity
+rather than hiding variance in one point score. Per-case tool-call and surfaced-candidate budgets are
+hard failures, so an over-broad retrieval cannot masquerade as quality. The hermetic lane
+uses fixed candidates and episode evidence and remains in the normal gate; real catalog/provider
+certification stays manual and inference-spending.
+
+Before constructing Library, TMDB, generator, or judge clients, every semantic run reports one
+deterministic worst-case call budget: case count, trial count, maximum generator calls, maximum judge
+calls, and their total. Generator calls are `cases × trials ×` the production Suggester's exported
+structural bound; judge calls are at most `cases × trials`. Required certification additionally
+requires positive `LOOMARR_EVAL_MAX_CALLS_PER_RUN` and `LOOMARR_EVAL_MAX_CALLS_PER_SUITE`
+declarations. The per-run ceiling must cover the production generator bound plus one judge call, and
+the suite ceiling must cover the complete computed total and be at least the per-run ceiling.
+Missing, malformed, overflowing, or smaller declarations fail before any client or provider work;
+the former single `LOOMARR_EVAL_MAX_CALLS` name is not accepted. Exploratory evaluation reports the
+same budget without requiring ceilings. Required mode defaults an absent `LOOMARR_EVAL_TRIALS` to three,
+but rejects an explicit malformed, zero, negative, or integer-overflowing value instead of silently
+substituting that default. Every case/trial/call multiplication and total addition is checked; an
+unrepresentable envelope returns an explicit overflow error with no wrapped budget values before
+clients. The same exported Suggester bound supplies every real proposal
+and live-schedule case's nonzero tool-call and candidate-surfacing budgets, so certification cannot
+drift from the production loop by copying private magic numbers. The durable proposal corpus includes
+an exact forbidden grounded Key, an explicit closed movie-only media-type gate, and an intent-backed
+minimum genre-diversity gate; these predicates are not merely test fixtures. A closed media-type gate
+rejects every grounded title outside its declared set.
+
+Required certification also declares positive `LOOMARR_EVAL_MAX_TOKENS_PER_RUN`,
+`LOOMARR_EVAL_MAX_SPEND_PER_RUN`, `LOOMARR_EVAL_MAX_TOKENS`, and
+`LOOMARR_EVAL_MAX_SPEND` ceilings before clients. A run is one case trial and the suite is the complete
+`Runner.Run` execution. Token ceilings count provider-reported prompt plus completion totals without
+double-counting their reasoning/cache/modality detail categories; spend ceilings are exact
+nonnegative decimal USD values and are accumulated without binary floating point. Runner checks the
+shared run/suite ledger with overflow-safe arithmetic before and after every individual generator
+provider call and every judge call, including generator repair/tool-loop calls inside one
+`Suggest`. Reaching a calls/tokens/USD ceiling after one generator call prevents the next provider
+call from starting. Exact-ceiling completion is allowed; one additional call is not. Once a per-run
+ceiling is reached it records `budget_exhausted` and skips that run's judge or later call while a
+later run may use its own allowance; once the suite ceiling is reached no subsequent run starts.
+Token/spend exhaustion has the same behavior. Missing usage is sticky per provider call: reported
+usage from one call can never conceal missing required tokens or hosted spend on another call. With
+a corresponding hard ceiling, one hosted call whose token or spend usage is missing makes the
+shared suite ledger permanently uncertain for that `Runner.Run`: no judge, later trial, or later
+case may start another provider call. The trial that discovers the missing fact records the
+uncertainty as a failure, and subsequent trials fail closed before generation. The scorecard retains
+declared limits and observed totals. This is an execution gate, not post-hoc cost reporting;
+provider attribution that is absent remains explicitly unknown rather than being invented to make
+the ledger appear complete. Missing token or hosted-spend attribution is therefore
+`budget_exhausted` because the ceiling cannot be proven; a local Ollama call remains explicitly
+non-billed without fabricating a provider charge. If the same generator call already failed at
+retrieval or generation, that earlier diagnosis remains the trial's first-failure stage while the
+resource uncertainty still latches the suite and blocks subsequent calls. Exploratory runs may omit
+hard token/spend ceilings but still report observed bounded attribution.
+
+Required certification whose generator or judge wire is local/default Ollama also requires
+`LOOMARR_EVAL_ALLOW_LOCAL=1` before any Library, TMDB, generator, or judge client is built. A hosted
+fully hosted run does not require that local-resource acknowledgement. No target provisions or starts
+Ollama.
+
+Each provider call's reported attribution is projected into bounded, scrubbed scorecard evidence for
+its own role. Generator and judge calls remain separate and retain requested and resolved
+provider/model, every provider-neutral token category, exact decimal charge and currency when
+reported, attempts, and latency. A reported charge is accepted only when its amount is a nonnegative
+plain decimal of at most 64 runes and its currency is a three-letter uppercase ISO-style code. The
+scorecard records `reported`, `missing`, or `invalid` charge status; invalid provider text is discarded
+rather than truncated, copied, or inferred, while a valid decimal string is retained exactly. The
+projection has no credentials, endpoints, prompts, response
+payloads, or generation ids. Missing wire resolution or attempt metadata remains explicitly empty or
+zero: requested identity is never copied into resolved identity, and absence never becomes one
+attempt. Missing attribution remains an explicit all-zero/all-empty call record; the evaluator never
+infers routing, usage, attempts, latency, or cost from configuration. Generator
+evidence is capped by the same exported production call bound and judge evidence by one call per
+trial, so provider output cannot make a scorecard unbounded. The uncapped observed generator-call
+count remains separate from that serialized prefix. Exceeding the production model-call bound fails
+the trial at `structural_budget`; truncation can never hide an overrun behind an apparently complete
+scorecard.
 Network and inference keep it outside `make check`; a stored scorecard is evidence for one named
 model/catalog snapshot, not a timeless claim that every provider is certified.
 
@@ -6036,9 +6197,21 @@ positive signal. Outside-Library candidates receive a novelty tie-break, but rel
 primary rank band. Ranking affects only a later fresh proposal or re-curation proposal. It never
 edits current playout, and no playback/broadcast history is converted into taste.
 `make eval-matrix` runs that unchanged corpus twice—once with the configured local generator and once
-through OpenRouter's OpenAI-compatible endpoint—and writes separate named scorecards. The OpenRouter
-leg requires an explicit model input rather than a moving implicit default. Generator and judge
-identities are independent configuration inputs. Because local
+through OpenRouter's OpenAI-compatible endpoint—and writes separate named scorecards. Both generator
+and judge use the branded `openrouter` adapter, not the generic `openai` identity. Each OpenRouter role
+requires an exact immutable namespaced model slug and exactly one concrete upstream provider before
+any external client is constructed. Router aliases, `latest` aliases, wildcard/automatic providers,
+and comma-separated fallback orders are rejected. Every certification request sends that singleton
+order with fallbacks disabled, parameter support required,
+data collection denied, and zero-data-retention requested. Missing or malformed pinned routing fails
+required certification at preflight. Branded OpenRouter certification additionally requires both
+generator and judge base URLs to equal the canonical `https://openrouter.ai/api/v1`; a blank or
+alternate endpoint fails before client construction. Generic/custom OpenAI-compatible providers
+remain configurable outside this branded lane. Ordinary production fallback/resilience behavior is
+not part of this certification lane. The selected resolved provider/model and provider-reported exact cost remain
+scorecard evidence. Generator and judge models, routes, and identities are independent configuration
+inputs even when the judge model falls back to the generator model; a judge-specific provider never
+inherits the generator's scorecard identity. Because local
 inference competes directly with playback, transcode, memory, and GPU capacity on an appliance,
 the target refuses to start unless the operator explicitly sets `LOOMARR_EVAL_ALLOW_LOCAL=1` after
 confirming the host is idle and has enough headroom. The target never starts, pulls, or configures a

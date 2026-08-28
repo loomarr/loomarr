@@ -4,7 +4,7 @@ eval-contract: ## hermetic semantic-evaluation contracts; never contacts a model
 eval: ## semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate)
 	$(GO) test -tags=eval -v -timeout 20m ./internal/eval/
 
-eval-cert: ## certify exact starter/adversarial intents; fails on missing config and writes a scorecard
+eval-cert: ## certify exact intents and mandatory scheduled viewer outcomes; fails closed and writes a scorecard
 	@eval "$$(./scripts/dev-env.sh export)"; \
 	  report="$${LOOMARR_EVAL_OUT:-$$LOOMARR_ARTIFACT_DIR/semantic-certification.json}"; \
 	  mkdir -p "$$(dirname "$$report")"; \
@@ -14,21 +14,26 @@ eval-cert: ## certify exact starter/adversarial intents; fails on missing config
 eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (manual, resource-heavy)
 	@test -n "$$OPENROUTER_API_KEY" || { echo "eval-matrix: OPENROUTER_API_KEY is required" >&2; exit 2; }; \
 	  test -n "$$OPENROUTER_MODEL" || { echo "eval-matrix: OPENROUTER_MODEL is required" >&2; exit 2; }; \
+	  test -n "$$OPENROUTER_GENERATOR_PROVIDER" || { echo "eval-matrix: OPENROUTER_GENERATOR_PROVIDER is required" >&2; exit 2; }; \
+	  test -n "$$OPENROUTER_JUDGE_PROVIDER" || { echo "eval-matrix: OPENROUTER_JUDGE_PROVIDER is required" >&2; exit 2; }; \
 	  test "$$LOOMARR_EVAL_ALLOW_LOCAL" = "1" || { echo "eval-matrix: refusing local inference; confirm an idle host with sufficient RAM/VRAM, then set LOOMARR_EVAL_ALLOW_LOCAL=1" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
 	  judge_model="$${OPENROUTER_JUDGE_MODEL:-$$OPENROUTER_MODEL}"; \
 	  status=0; \
 	  LOOMARR_EVAL_PROFILE=local \
 	  LOOMARR_EVAL_OUT="$$LOOMARR_ARTIFACT_DIR/semantic-certification-local.json" \
-	  LOOMARR_EVAL_JUDGE="$$judge_model" LOOMARR_EVAL_JUDGE_PROVIDER=openai \
+	  LOOMARR_EVAL_JUDGE="$$judge_model" LOOMARR_EVAL_JUDGE_PROVIDER=openrouter \
+	  LOOMARR_EVAL_JUDGE_UPSTREAM_PROVIDER="$$OPENROUTER_JUDGE_PROVIDER" \
 	  LOOMARR_EVAL_JUDGE_URL=https://openrouter.ai/api/v1 \
 	  LOOMARR_EVAL_JUDGE_API_KEY="$$OPENROUTER_API_KEY" \
 	    $(MAKE) eval-cert || status=$$?; \
-	  LLM_PROVIDER=openai LLM_URL=https://openrouter.ai/api/v1 \
+	  LLM_PROVIDER=openrouter LLM_URL=https://openrouter.ai/api/v1 \
 	  LLM_MODEL="$$OPENROUTER_MODEL" LLM_API_KEY="$$OPENROUTER_API_KEY" \
+	  LOOMARR_EVAL_GENERATOR_UPSTREAM_PROVIDER="$$OPENROUTER_GENERATOR_PROVIDER" \
 	  LOOMARR_EVAL_PROFILE=openrouter \
 	  LOOMARR_EVAL_OUT="$$LOOMARR_ARTIFACT_DIR/semantic-certification-openrouter.json" \
-	  LOOMARR_EVAL_JUDGE="$$judge_model" LOOMARR_EVAL_JUDGE_PROVIDER=openai \
+	  LOOMARR_EVAL_JUDGE="$$judge_model" LOOMARR_EVAL_JUDGE_PROVIDER=openrouter \
+	  LOOMARR_EVAL_JUDGE_UPSTREAM_PROVIDER="$$OPENROUTER_JUDGE_PROVIDER" \
 	  LOOMARR_EVAL_JUDGE_URL=https://openrouter.ai/api/v1 \
 	  LOOMARR_EVAL_JUDGE_API_KEY="$$OPENROUTER_API_KEY" \
 	    $(MAKE) eval-cert || status=$$?; \
