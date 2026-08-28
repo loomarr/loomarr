@@ -51,6 +51,7 @@ type Route struct {
 	Rung                 string     `json:"rung"`
 	Provider             string     `json:"provider"`
 	Model                string     `json:"model"`
+	ResolvedModel        string     `json:"resolvedModel,omitempty"`
 	UpstreamProviderSlug string     `json:"upstreamProviderSlug,omitempty"`
 	UpstreamProvider     string     `json:"upstreamProvider,omitempty"`
 	Modalities           []string   `json:"modalities"`

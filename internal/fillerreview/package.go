@@ -105,7 +105,9 @@ preserving alias and batchId. Use one reviewerId for the entire file and the act
 for each completed review.
 
 truth is eligible, invalid, or ambiguous. invalid requires rejectClass deterministic or semantic;
-other truth values must omit rejectClass. contentRole is always required and is one of commercial,
+other truth values must omit rejectClass. Eligible and semantic-invalid cases require one contentRole;
+deterministic-invalid and ambiguous cases may leave it empty only when the supplied evidence cannot
+establish a role. A non-empty contentRole is one of commercial,
 promo, bumper, psa, station_id, trailer, interstitial, programme_excerpt, or compilation. Use
 ambiguous only when the supplied evidence supports a concrete answerable reviewQuestion.
 

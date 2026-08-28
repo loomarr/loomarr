@@ -25,6 +25,8 @@ func TestFetchOpenRouterSnapshotLocksEndpointIdentityPriceCapabilityAndZDR(t *te
 			t.Error("missing snapshot client identity")
 		}
 		switch request.URL.Path {
+		case "/models":
+			_, _ = io.WriteString(writer, `{"data":[{"id":"vendor/model-1","canonical_slug":"vendor/model-1-20260826","name":"Model One","created":1}]}`)
 		case "/endpoints/zdr":
 			_, _ = io.WriteString(writer, `{"data":[`+snapshotEndpointFixture("vendor/model-1", "Pinned Provider", "pinned-provider/variant")+`]}`)
 		case "/models/vendor/model-1/endpoints":
@@ -42,7 +44,7 @@ func TestFetchOpenRouterSnapshotLocksEndpointIdentityPriceCapabilityAndZDR(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if requests != 2 || snapshot.Requests != 2 || snapshot.ResponseBytes <= 0 || len(snapshot.Models) != 1 || len(snapshot.Models[0].Endpoints) != 1 {
+	if requests != 3 || snapshot.Requests != 3 || snapshot.ResponseBytes <= 0 || len(snapshot.Models) != 1 || snapshot.Models[0].CanonicalSlug != "vendor/model-1-20260826" || len(snapshot.Models[0].Endpoints) != 1 {
 		t.Fatalf("snapshot envelope = %#v requests=%d", snapshot, requests)
 	}
 	endpoint := snapshot.Models[0].Endpoints[0]
@@ -59,7 +61,7 @@ func TestValidateOpenRouterRunSnapshotBindsDigestFreshnessAndRoute(t *testing.T)
 	snapshot := validOpenRouterSnapshot()
 	digest := OpenRouterSnapshotSHA256(snapshot)
 	run := fillereval.RunIdentity{CapabilitySnapshot: digest, PriceSnapshot: digest, GeneratedAt: snapshot.RetrievedAt.Add(time.Hour)}
-	route := Route{Provider: "openrouter", Model: "vendor/model-1", Rung: "text", UpstreamProviderSlug: "pinned-provider/variant", UpstreamProvider: "Pinned Provider", Modalities: []string{"text"}}
+	route := Route{Provider: "openrouter", Model: "vendor/model-1", ResolvedModel: "vendor/model-1-20260826", Rung: "text", UpstreamProviderSlug: "pinned-provider/variant", UpstreamProvider: "Pinned Provider", Modalities: []string{"text"}}
 	if err := ValidateOpenRouterRunSnapshot(run, []Route{route}, snapshot); err != nil {
 		t.Fatal(err)
 	}
@@ -74,6 +76,9 @@ func TestValidateOpenRouterRunSnapshotBindsDigestFreshnessAndRoute(t *testing.T)
 			route.UpstreamProviderSlug = "other"
 		},
 		"provider": func(_ *fillereval.RunIdentity, route *Route, _ *OpenRouterSnapshot) { route.UpstreamProvider = "Other" },
+		"model revision": func(_ *fillereval.RunIdentity, route *Route, _ *OpenRouterSnapshot) {
+			route.ResolvedModel = "vendor/model-1-other"
+		},
 		"modality": func(_ *fillereval.RunIdentity, route *Route, _ *OpenRouterSnapshot) {
 			route.Modalities = []string{"video"}
 		},
@@ -100,6 +105,25 @@ func TestValidateOpenRouterRunSnapshotBindsDigestFreshnessAndRoute(t *testing.T)
 	}
 }
 
+func TestValidateOpenRouterSnapshotPreservesInactiveSiblingRoutes(t *testing.T) {
+	t.Parallel()
+	snapshot := validOpenRouterSnapshot()
+	inactive := snapshot.Models[0].Endpoints[0]
+	inactive.Name = "Inactive Provider | model"
+	inactive.ProviderName = "Inactive Provider"
+	inactive.ProviderSlug = "inactive-provider/variant"
+	inactive.Status = -2
+	snapshot.Models[0].Endpoints = append([]OpenRouterEndpointSnapshot{inactive}, snapshot.Models[0].Endpoints...)
+	if err := ValidateOpenRouterSnapshot(snapshot); err != nil {
+		t.Fatal(err)
+	}
+	run := fillereval.RunIdentity{CapabilitySnapshot: OpenRouterSnapshotSHA256(snapshot), PriceSnapshot: OpenRouterSnapshotSHA256(snapshot), GeneratedAt: snapshot.RetrievedAt.Add(time.Hour)}
+	route := Route{Provider: "openrouter", Model: "vendor/model-1", ResolvedModel: "vendor/model-1-20260826", Rung: "text", UpstreamProviderSlug: inactive.ProviderSlug, UpstreamProvider: inactive.ProviderName, Modalities: []string{"text"}}
+	if err := ValidateOpenRouterRunSnapshot(run, []Route{route}, snapshot); err == nil || !strings.Contains(err.Error(), "not live") {
+		t.Fatalf("inactive selected route error = %v", err)
+	}
+}
+
 func TestFetchOpenRouterSnapshotRejectsMissingZDRCredentialAndRedirect(t *testing.T) {
 	t.Parallel()
 	if _, err := FetchOpenRouterSnapshot(context.Background(), OpenRouterSnapshotConfig{Models: []string{"vendor/model"}, RetrievedAt: time.Now().UTC()}); err == nil || !strings.Contains(err.Error(), "API key") {
@@ -119,9 +143,9 @@ func TestFetchOpenRouterSnapshotRejectsMissingZDRCredentialAndRedirect(t *testin
 
 func validOpenRouterSnapshot() OpenRouterSnapshot {
 	return OpenRouterSnapshot{
-		SchemaVersion: OpenRouterSnapshotSchemaVersion, SourceBaseURL: OpenRouterBaseURL, RetrievedAt: time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC), Requests: 2, ResponseBytes: 100,
+		SchemaVersion: OpenRouterSnapshotSchemaVersion, SourceBaseURL: OpenRouterBaseURL, RetrievedAt: time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC), Requests: 3, ResponseBytes: 100,
 		Models: []OpenRouterModelSnapshot{{
-			ID: "vendor/model-1", Name: "Model One", Created: 1, InputModalities: []string{"image", "text"}, OutputModalities: []string{"text"},
+			ID: "vendor/model-1", CanonicalSlug: "vendor/model-1-20260826", Name: "Model One", Created: 1, InputModalities: []string{"image", "text"}, OutputModalities: []string{"text"},
 			Endpoints: []OpenRouterEndpointSnapshot{{
 				Name: "Pinned Provider | model", ModelID: "vendor/model-1", ProviderName: "Pinned Provider", ProviderSlug: "pinned-provider/variant",
 				Quantization: "fp16", ContextLength: 8192, MaxCompletionTokens: 1024,

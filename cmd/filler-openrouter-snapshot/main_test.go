@@ -25,7 +25,7 @@ func TestRunRequiresInputsAndCredential(t *testing.T) {
 
 func TestWriteSnapshotIsPrivateAndImmutable(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "snapshot.json")
-	snapshot := fillerbakeoff.OpenRouterSnapshot{SchemaVersion: 1, RetrievedAt: time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)}
+	snapshot := fillerbakeoff.OpenRouterSnapshot{SchemaVersion: fillerbakeoff.OpenRouterSnapshotSchemaVersion, RetrievedAt: time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)}
 	if err := writeSnapshot(path, snapshot); err != nil {
 		t.Fatal(err)
 	}
