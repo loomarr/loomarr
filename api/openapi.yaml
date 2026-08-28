@@ -5679,10 +5679,14 @@ components:
         code:
           enum:
             - no_grounded_titles
+            - selection_empty
+            - budget_exhausted
             - generation_failed
           type: string
         message:
           type: string
+        trace:
+          $ref: "#/components/schemas/DecisionTrace"
       required:
         - code
         - message
