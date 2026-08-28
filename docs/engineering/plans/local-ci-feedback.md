@@ -44,7 +44,7 @@ budget miss creates optimization evidence and never skips a gate.
 | Tier | Scope | Budget |
 | --- | --- | --- |
 | Edit | Direct package or frontend test in watch mode | seconds |
-| Pre-push | Affected Go dependency closure and relevant frontend/static checks | 90 seconds p95 |
+| Pre-push | `agent-verify`: affected dependency closure and relevant static/policy checks | 90 seconds p95 |
 | Pull request | Fail-closed, impact-scoped gates running in parallel | 5 minutes p95 for leaf changes |
 | Merge group | Full affected-domain gate against current `main` | 12 minutes p95 |
 | Main, nightly, release | Publication on admitted main; explicit complete audits and release certification | comprehensive |

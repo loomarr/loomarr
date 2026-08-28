@@ -7355,7 +7355,12 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
 ---
 
 ## 19. Testing strategy
-- **Gate composition:** `make check` remains the complete local Go/Rust gate. CI may run its
+- **Gate composition:** `make check` remains the complete explicit local Go/Rust audit; it is not
+  the default edit-loop or pre-publication ritual. Normal local and agent work classifies the
+  changed paths once and runs the affected evidence through `make agent-verify BASE=<base>`; the
+  pull-request fast lane and authoritative merge queue then provide the protected remote evidence.
+  A maintainer requests `make check` deliberately when auditing the complete repository, changing
+  the gate machinery itself, or diagnosing a classifier boundary. CI may run its
   `check-static` contract half and its race-policy-aware `test` half as parallel jobs, and may shard
   the latter or run independent runtime certification beside both, but the required aggregate
   succeeds only when every constituent succeeds. Splitting execution must not delete, skip, or

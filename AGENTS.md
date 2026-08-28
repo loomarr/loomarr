@@ -58,9 +58,11 @@ Use claims for scarce outputs whose conflicts are expensive:
 Add a domain-specific claim when two changes would edit the same interface or DTO. A worktree isolates
 files; the claim identifies the real seam where concurrent work would collide.
 
-During implementation, use `make agent-verify BASE=<base>` for a focused, explicitly non-final check.
-Before pushing, run the complete required gates for the touched areas; `make check` is always the Go
-gate. Renew a long-running claim with `make agent-renew`; clean abandoned expired entries with
+During implementation and before publication, use `make agent-verify BASE=<base>` for the affected
+local evidence. The PR fast lane and merge queue provide the protected final evidence.
+Before pushing, run `make agent-verify BASE=<base>`; the classifier selects the required local
+evidence for the touched areas. Reserve `make check` for an explicitly requested complete audit.
+Renew a long-running claim with `make agent-renew`; clean abandoned expired entries with
 `make agent-prune`. When finished, run `make agent-stop`; after merge, audit and retire completed
 worktrees with `make agent-gc` and an explicitly reviewed `make agent-gc APPLY=1`.
 
@@ -89,7 +91,9 @@ different delivery path.
 
 ## Commands
 
-`make check` is the default gate. One focused test:
+`make check` is the explicit complete-repository audit, not a routine edit-loop or publication
+ritual. Run it only when the task requests a full audit, changes the gate machinery/classifier, or
+needs to diagnose a boundary. One focused test:
 
 ```sh
 go test -race -run TestName ./internal/<pkg>/

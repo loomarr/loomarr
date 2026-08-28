@@ -152,9 +152,10 @@ make agent-start TASK=filler-refresh CLAIMS=openapi-client
 make agent-baseline
 ```
 
-During implementation, `make agent-verify BASE=origin/main` is a focused inner-loop check. It
-reports the changed-file scope and uses the fail-closed CI classifier. It is explicitly not a final
-gate. Run the complete gates for the touched areas once the change stabilizes.
+During implementation and before publication, `make agent-verify BASE=origin/main` is the affected
+local evidence. It reports the changed-file scope and uses the fail-closed CI classifier. The PR
+fast lane and merge queue provide the protected final evidence. Run `make check` only for a
+deliberately requested complete-repository audit or while diagnosing the classifier/gate machinery.
 
 ## Dependent work
 
