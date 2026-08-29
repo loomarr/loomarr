@@ -68,6 +68,9 @@ func ValidateDecisionTrace(trace DecisionTrace) error {
 			continue
 		}
 		if c.Disposition == DispositionValidationDropped && c.Reason == ReasonNotSurfaced && c.Key != "" && c.Name == "" && c.Source == "" && c.Ownership == "" && c.Rank == (RankTuple{}) {
+			if _, _, _, ok := provision.ParseKey(provision.Key(c.Key)); !ok {
+				return fmt.Errorf("invalid canonical key")
+			}
 			continue
 		}
 		if c.Ownership != "library" && c.Ownership != "acquisition" {

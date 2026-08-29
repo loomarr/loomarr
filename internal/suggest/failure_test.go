@@ -48,13 +48,14 @@ func TestFailureTraceJSONFailsClosedAndCopiesCandidates(t *testing.T) {
 		}
 	}
 	for name, bad := range map[string]suggest.DecisionTrace{
-		"version":     {Version: 2},
-		"bounds":      {Version: 1, SurfacedTotal: 65, RecordedTotal: 65, Truncated: false},
-		"totals":      {Version: 1, SurfacedTotal: 1, RecordedTotal: -1},
-		"reason":      {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []suggest.DecisionCandidate{{Disposition: suggest.DispositionSelected, Reason: suggest.ReasonNever}}},
-		"terminal":    {Version: 1, Terminal: "provider-secret"},
-		"total-bound": {Version: 1, SurfacedTotal: suggest.DecisionTraceMaxTotal + 1, RecordedTotal: suggest.DecisionTraceMaxTotal + 1, Truncated: true},
-		"rank":        {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:1", Ownership: "library", Rank: suggest.RankTuple{TieKey: "movie:tmdb:1", Preference: 4}, Disposition: suggest.DispositionSelected, Reason: "selected"}}},
+		"version":                  {Version: 2},
+		"bounds":                   {Version: 1, SurfacedTotal: 65, RecordedTotal: 65, Truncated: false},
+		"totals":                   {Version: 1, SurfacedTotal: 1, RecordedTotal: -1},
+		"reason":                   {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []suggest.DecisionCandidate{{Disposition: suggest.DispositionSelected, Reason: suggest.ReasonNever}}},
+		"terminal":                 {Version: 1, Terminal: "provider-secret"},
+		"total-bound":              {Version: 1, SurfacedTotal: suggest.DecisionTraceMaxTotal + 1, RecordedTotal: suggest.DecisionTraceMaxTotal + 1, Truncated: true},
+		"rank":                     {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:1", Ownership: "library", Rank: suggest.RankTuple{TieKey: "movie:tmdb:1", Preference: 4}, Disposition: suggest.DispositionSelected, Reason: "selected"}}},
+		"invalid not-surfaced key": {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []suggest.DecisionCandidate{{Key: "not-a-canonical-key", Disposition: suggest.DispositionValidationDropped, Reason: suggest.ReasonNotSurfaced}}},
 	} {
 		badErr := suggest.NewFailure("provider_failure", bad, nil)
 		var badFailure *suggest.Failure
