@@ -790,7 +790,9 @@ func testProposalQueues(t *testing.T, newStore NewStoreFunc) {
 		return Proposal{ID: id, JobID: "job-" + id, Status: status, CreatedBy: creator,
 			ProposalJSON: `{"lineup":[]}`, CreatedAt: now, UpdatedAt: now}
 	}
-	_ = s.CreateProposal(ctx, mk("p1", "submitted", "alice"))
+	p1Seed := mk("p1", "submitted", "alice")
+	p1Seed.ProposalJSON = `{"lineup":[],"trace":{"version":1,"candidates":[],"surfacedTotal":0,"recordedTotal":0,"truncated":false}}`
+	_ = s.CreateProposal(ctx, p1Seed)
 	_ = s.CreateProposal(ctx, mk("p2", "submitted", "bob"))
 	_ = s.CreateProposal(ctx, mk("p3", "approved", "alice"))
 
@@ -819,7 +821,7 @@ func testProposalQueues(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	after, _ := s.GetProposal(ctx, "p1")
-	if after.Status != "approved" || after.ApprovedBy != "admin" {
+	if after.Status != "approved" || after.ApprovedBy != "admin" || after.ProposalJSON != p1Seed.ProposalJSON {
 		t.Errorf("approve didn't persist: %+v", after)
 	}
 	if _, err := s.GetProposal(ctx, "missing"); err != ErrNotFound {

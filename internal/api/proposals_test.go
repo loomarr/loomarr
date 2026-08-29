@@ -89,7 +89,7 @@ func seedProposal(t *testing.T, st store.Store, id string) {
 
 func seedProposalAt(t *testing.T, st store.Store, id string, created time.Time) {
 	t.Helper()
-	body := `{"acquisitions":[{"mediaType":"movie","tmdbId":100,"name":"Speed","year":1994}]}`
+	body := `{"acquisitions":[{"mediaType":"movie","tmdbId":100,"name":"Speed","year":1994}],"trace":{"version":1,"candidates":[{"key":"movie:tmdb:100","name":"Speed","ownership":"acquisition","rank":{"tieKey":"movie:tmdb:100"},"disposition":"selected","reason":"selected"}],"surfacedTotal":1,"recordedTotal":1,"truncated":false}}`
 	err := st.CreateProposal(context.Background(), store.Proposal{
 		ID: id, JobID: "job-1", Status: "submitted", CreatedBy: "alice", ProposalJSON: body,
 		CreatedAt: created,
@@ -1080,6 +1080,13 @@ func TestApprove_PersistsTheAuditTrail(t *testing.T) {
 	if p.Status != "approved" {
 		t.Errorf("status = %q, want approved", p.Status)
 	}
+	var approved suggest.Proposal
+	if err := json.Unmarshal([]byte(p.ProposalJSON), &approved); err != nil {
+		t.Fatal(err)
+	}
+	if len(approved.Trace.Candidates) != 1 || approved.Trace.Candidates[0].Key != "movie:tmdb:100" || approved.Trace.Candidates[0].Disposition != suggest.DispositionSelected {
+		t.Fatalf("approval edit rewrote original decision evidence: %+v", approved.Trace)
+	}
 }
 
 // The STORED proposal reflects what was actually approved, not what the model first proposed.
@@ -1097,8 +1104,16 @@ func TestApprove_StoredProposalReflectsTheEdit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(p.ProposalJSON, "Speed") {
-		t.Errorf("the stored proposal still contains the dropped title: %s", p.ProposalJSON)
+	var approved suggest.Proposal
+	if err := json.Unmarshal([]byte(p.ProposalJSON), &approved); err != nil {
+		t.Fatal(err)
+	}
+	for _, items := range [][]suggest.ProposalItem{approved.Lineup, approved.Acquisitions, approved.Alternates} {
+		for _, item := range items {
+			if item.Name == "Speed" {
+				t.Errorf("the approved proposal still contains the dropped title: %+v", approved)
+			}
+		}
 	}
 }
 
