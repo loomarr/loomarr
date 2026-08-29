@@ -63,11 +63,14 @@ func (w *Workflow) Complete(ctx context.Context, work Work, proposal suggest.Pro
 	if err := validateWork(work); err != nil {
 		return suggest.WorkflowProposal{}, err
 	}
-	if len(proposal.Lineup)+len(proposal.Acquisitions) == 0 {
+	if len(proposal.Lineup)+len(proposal.Acquisitions)+len(proposal.Alternates)+len(proposal.Refused) == 0 {
 		return suggest.WorkflowProposal{}, suggest.ErrNoGroundedTitles
 	}
 	if err := validateProposalIdentities(proposal); err != nil {
 		return suggest.WorkflowProposal{}, err
+	}
+	if err := suggest.ValidateDecisionTrace(proposal.Trace); err != nil {
+		return suggest.WorkflowProposal{}, fmt.Errorf("%w: invalid Proposal decision trace: %v", ErrInvalidState, err)
 	}
 	if w.execution == nil {
 		return suggest.WorkflowProposal{}, fmt.Errorf("%w: execution repository unavailable", ErrInvalidState)
@@ -119,6 +122,11 @@ func validateProposalIdentities(proposal suggest.Proposal) error {
 			if _, err := item.Key(); err != nil {
 				return fmt.Errorf("%w: Proposal contains an ungrounded identity: %v", ErrInvalidState, err)
 			}
+		}
+	}
+	for _, refused := range proposal.Refused {
+		if _, err := refused.Item.Key(); err != nil {
+			return fmt.Errorf("%w: Proposal contains an ungrounded refused identity: %v", ErrInvalidState, err)
 		}
 	}
 	return nil

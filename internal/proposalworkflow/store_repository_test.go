@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -171,6 +172,13 @@ func TestStoreWorkflowPersistsPrivateDiagnosticButProjectsSafeFailure(t *testing
 	persisted, err := st.GetJob(ctx, "job-failed")
 	if err != nil || persisted.LastError != diagnostic || persisted.FailureCode != string(FailureNoGroundedTitles) {
 		t.Fatalf("private persisted failure = (%+v, %v)", persisted, err)
+	}
+	persisted.FailureTraceJSON = `{"version":1,"terminal":"private-provider-detail"}`
+	if err := st.UpdateJob(ctx, persisted); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workflow.Inspect(ctx, Viewer{UserID: "member-1"}, "job-failed"); err == nil || !strings.Contains(err.Error(), "validate Proposal Job job-failed failure trace") {
+		t.Fatalf("invalid persisted failure trace did not fail closed: %v", err)
 	}
 }
 

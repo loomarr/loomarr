@@ -358,16 +358,7 @@ func (s *Service) runWorkflow(ctx context.Context, work WorkflowWork) {
 }
 
 func (s *Service) failWorkflow(ctx context.Context, work WorkflowWork, cause error) {
-	cause = normalizeContextFailure(cause)
-	traceJSON := ""
-	var failure *Failure
-	if errors.As(cause, &failure) {
-		var err error
-		traceJSON, err = failure.TraceJSON()
-		if err != nil {
-			cause = fmt.Errorf("safe failure trace unavailable: %w", err)
-		}
-	}
+	traceJSON, cause := persistedFailure(cause)
 	if err := s.workflow.Fail(ctx, work, classifyFailure(cause), cause.Error(), traceJSON); err != nil {
 		s.log.Info("discarding stale or undurable Proposal Job failure",
 			"job", work.JobID, "attempt", work.Attempt, "cause", cause, "err", err)
@@ -491,16 +482,7 @@ func (s *Service) considerAutomaticApproval(ctx context.Context, job store.Job, 
 }
 
 func (s *Service) failJob(ctx context.Context, job store.Job, cause error) {
-	cause = normalizeContextFailure(cause)
-	traceJSON := ""
-	var failure *Failure
-	if errors.As(cause, &failure) {
-		var err error
-		traceJSON, err = failure.TraceJSON()
-		if err != nil {
-			cause = fmt.Errorf("safe failure trace unavailable: %w", err)
-		}
-	}
+	traceJSON, cause := persistedFailure(cause)
 	if err := s.store.CommitSuggestionFailure(
 		ctx, job.ID, job.Attempts, cause.Error(), classifyFailure(cause), traceJSON, s.now(),
 	); err != nil {
@@ -515,6 +497,19 @@ func (s *Service) failJob(ctx context.Context, job store.Job, cause error) {
 	}
 	s.log.Error("suggestion job failed", "job", job.ID, "attempt", job.Attempts, "err", cause)
 	s.emitPhase(job.ID, PhaseFailed, 0)
+}
+
+func persistedFailure(cause error) (string, error) {
+	cause = normalizeContextFailure(cause)
+	var failure *Failure
+	if !errors.As(cause, &failure) {
+		return "", cause
+	}
+	traceJSON, err := failure.TraceJSON()
+	if err != nil {
+		return "", fmt.Errorf("safe failure trace unavailable: %w", err)
+	}
+	return traceJSON, cause
 }
 
 // normalizeContextFailure closes raw and provider-wrapped cancellations at the

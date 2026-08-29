@@ -72,6 +72,26 @@ func TestWorkflowCompleteUsesCurrentAttemptTokenAndRejectsEmptyResult(t *testing
 		repo.completed.Work.Attempt != work.Attempt || len(repo.completed.Proposal.Lineup) != 1 {
 		t.Fatalf("completion = %+v", repo.completed)
 	}
+
+	repo.completed = nil
+	proposal.Trace = suggest.DecisionTrace{Version: suggest.DecisionTraceVersion + 1}
+	if _, err := workflow.Complete(context.Background(), work, proposal); !errors.Is(err, ErrInvalidState) {
+		t.Fatalf("Complete invalid trace error = %v, want ErrInvalidState", err)
+	}
+	if repo.completed != nil {
+		t.Fatal("invalid trace reached repository")
+	}
+
+	repo.completed = nil
+	refusedOnly := suggest.Proposal{Refused: []suggest.RefusedPick{{Item: suggest.ProposalItem{
+		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", InLibrary: true,
+	}, Reason: suggest.ReasonOverCeiling}}}
+	if _, err := workflow.Complete(context.Background(), work, refusedOnly); err != nil {
+		t.Fatalf("Complete refused-only review Proposal: %v", err)
+	}
+	if repo.completed == nil || len(repo.completed.Proposal.Refused) != 1 {
+		t.Fatalf("refused-only review completion = %+v", repo.completed)
+	}
 }
 
 func TestWorkflowCompletePreservesStaleAttemptRejection(t *testing.T) {

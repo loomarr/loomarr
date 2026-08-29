@@ -387,6 +387,7 @@ func cloneProposal(proposal *ProposalRef) *ProposalRef {
 		return nil
 	}
 	clone := *proposal
+	clone.Proposal.Trace = proposal.Proposal.Trace.Clone()
 	return &clone
 }
 
@@ -403,5 +404,6 @@ func cloneFailure(failure *Failure) *Failure {
 		return nil
 	}
 	clone := *failure
+	clone.Trace = failure.Trace.Clone()
 	return &clone
 }
