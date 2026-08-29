@@ -64,10 +64,10 @@ func ValidateDecisionTrace(trace DecisionTrace) error {
 				return fmt.Errorf("invalid %s", name)
 			}
 		}
-		if c.Disposition == DispositionValidationDropped && c.Reason == ReasonMalformedID && c.Key == "" && c.Name == "" && c.Source == "" && c.Ownership == "" && c.Rank == (RankTuple{}) {
+		if c.Disposition == DispositionValidationDropped && c.Reason == ReasonMalformedID && c.Key == "" && c.Name == "" && c.Source == "" && c.Ownership == "" && c.Rank == (RankTuple{}) && c.Constraints == (ConstraintMatches{}) {
 			continue
 		}
-		if c.Disposition == DispositionValidationDropped && c.Reason == ReasonNotSurfaced && c.Key != "" && c.Name == "" && c.Source == "" && c.Ownership == "" && c.Rank == (RankTuple{}) {
+		if c.Disposition == DispositionValidationDropped && c.Reason == ReasonNotSurfaced && c.Key != "" && c.Name == "" && c.Source == "" && c.Ownership == "" && c.Rank == (RankTuple{}) && c.Constraints == (ConstraintMatches{}) {
 			if _, _, _, ok := provision.ParseKey(provision.Key(c.Key)); !ok {
 				return fmt.Errorf("invalid canonical key")
 			}
@@ -85,11 +85,18 @@ func ValidateDecisionTrace(trace DecisionTrace) error {
 		if c.Rank.Relevance < 0 || c.Rank.Relevance > 1<<31-1 || c.Rank.Preference < -5 || c.Rank.Preference > 3 || c.Rank.Novelty < 0 || c.Rank.Novelty > 1 {
 			return fmt.Errorf("rank tuple outside representation bounds")
 		}
+		if (c.Rank.Relevance > 0) != c.Constraints.any() {
+			return fmt.Errorf("constraint matches do not explain relevance")
+		}
 		if !validDispositionReason(c.Disposition, c.Reason) {
 			return fmt.Errorf("invalid disposition/reason")
 		}
 	}
 	return nil
+}
+
+func (m ConstraintMatches) any() bool {
+	return m.Request || m.Tone || m.Era || m.MustInclude || m.MustExclude || m.Refine
 }
 
 func knownTerminal(value string) bool {

@@ -56,6 +56,10 @@ func TestFailureTraceJSONFailsClosedAndCopiesCandidates(t *testing.T) {
 		"terminal":                 {Version: 1, Terminal: "provider-secret"},
 		"total-bound":              {Version: 1, SurfacedTotal: suggest.DecisionTraceMaxTotal + 1, RecordedTotal: suggest.DecisionTraceMaxTotal + 1, Truncated: true},
 		"rank":                     {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:1", Ownership: "library", Rank: suggest.RankTuple{TieKey: "movie:tmdb:1", Preference: 4}, Disposition: suggest.DispositionSelected, Reason: "selected"}}},
+		"relevance without match":  {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:1", Ownership: "library", Rank: suggest.RankTuple{TieKey: "movie:tmdb:1", Relevance: 1}, Disposition: suggest.DispositionSelected, Reason: "selected"}}},
+		"match without relevance":  {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:1", Ownership: "library", Rank: suggest.RankTuple{TieKey: "movie:tmdb:1"}, Constraints: suggest.ConstraintMatches{Request: true}, Disposition: suggest.DispositionSelected, Reason: "selected"}}},
+		"rankless malformed match": {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []suggest.DecisionCandidate{{Constraints: suggest.ConstraintMatches{Tone: true}, Disposition: suggest.DispositionValidationDropped, Reason: suggest.ReasonMalformedID}}},
+		"rankless dropped match":   {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:1", Constraints: suggest.ConstraintMatches{Era: true}, Disposition: suggest.DispositionValidationDropped, Reason: suggest.ReasonNotSurfaced}}},
 		"invalid not-surfaced key": {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []suggest.DecisionCandidate{{Key: "not-a-canonical-key", Disposition: suggest.DispositionValidationDropped, Reason: suggest.ReasonNotSurfaced}}},
 	} {
 		badErr := suggest.NewFailure("provider_failure", bad, nil)

@@ -563,6 +563,10 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	// list replaces with a statement.
 	prop.Scores = score(intent, prop.Lineup, prop.Acquisitions)
 	if trace != nil {
+		// Tool calls contribute evidence, not the run outcome. A later empty or
+		// failed lookup cannot label a proposal that ultimately succeeded from an
+		// earlier catalog result or the adjacency corpus as terminally failed.
+		trace.Terminal = ""
 		prop.Trace = trace.Clone()
 	}
 	return prop, nil

@@ -103,6 +103,23 @@ func TestSuggest_AdjacencySelectionCarriesCompleteTraceFacts(t *testing.T) {
 	}
 }
 
+func TestSuggest_SuccessClearsIntermediateEmptyRetrievalOutcome(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "definitely absent"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+	)
+	prop, err := buildSuggester(t, llmMock).Suggest(context.Background(), suggest.Intent{
+		Description: "science fiction",
+		Adjacent:    []suggest.AdjacentContext{{Key: "movie:tmdb:603", Name: "The Matrix", Year: 1999, Votes: 3}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prop.Trace.Terminal != "" || !traceHas(prop.Trace, "movie:tmdb:603", suggest.DispositionSelected, "selected") {
+		t.Fatalf("successful run retained an intermediate terminal outcome: %+v", prop.Trace)
+	}
+}
+
 func TestSuggest_RetrievalEmptyRemainsDistinctFromSelectionEmpty(t *testing.T) {
 	llmMock := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "definitely absent"}),
