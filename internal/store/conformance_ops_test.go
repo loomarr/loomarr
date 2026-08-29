@@ -330,7 +330,7 @@ func testCounts(t *testing.T, newStore NewStoreFunc) {
 				t.Fatal(err)
 			}
 		} else if err := s.CommitSuggestionFailure(ctx, claimedJob.ID, claimedJob.Attempts,
-			"private", "generation_failed", now); err != nil {
+			"private", "generation_failed", "", now); err != nil {
 			t.Fatal(err)
 		}
 	}

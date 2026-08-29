@@ -573,6 +573,21 @@ This also means adjacency **cannot** be a pure post-processing step bolted onto 
 
 **Deliberately deferred: TMDB `keywords`.** The endpoint works and looks tempting for thematic grouping, but the vocabulary is mixed — a probe across the same channel returned real themes (`dystopia`, `alien`, `creature`, `atomic bomb`) interleaved with mood tags (`excited`, `suspenseful`, `aggressive`), a structural tag (`sequel`), and a location (`los angeles, california`). Using it raw would group films by mood and geography and call it a theme. It needs a curated allowlist or a discriminating heuristic first — that is its own design decision, not a detail of this one. Logged in §9 rather than half-built here.
 
+## 8.4 Proposal trace and scheduler boundary
+
+Proposal explanations are immutable evidence from the suggestion/ranking seam. The trace
+must carry the exact lexicographic rank tuple and tie-break inputs, plus bounded grounded
+dispositions, but must not become a second scoring algorithm or include model rationale as
+deterministic evidence. Approval edits and later channel state do not rewrite its meaning.
+The tuple's integer relevance component and closed request/tone/era/include/exclude/refine match
+booleans are v1's safe explicit-constraint evidence; raw request terms are not copied into each
+candidate trace.
+
+Scheduler explanations are a separate future seam: `schedule.ComputeDesiredAt` owns
+availability, episode selection, ordering, window, placement, and hard-exclusion reasons.
+Those facts may reuse closed reason names, but a proposal trace must never be relabeled as
+current-channel or scheduler evidence.
+
 ## 9. Extensibility — the checklist for "I'm sure I can think of more"
 
 Every future heuristic is added the same way; a heuristic is *done* when all five exist:

@@ -176,7 +176,7 @@ type JobStore interface {
 	// CommitSuggestionFailure moves a running job to failed without rewriting
 	// stale intent or ownership fields. A lost transition leaves the newer
 	// lifecycle untouched.
-	CommitSuggestionFailure(ctx context.Context, jobID string, expectedAttempt int, cause, failureCode string, updatedAt time.Time) error
+	CommitSuggestionFailure(ctx context.Context, jobID string, expectedAttempt int, cause, failureCode, failureTraceJSON string, updatedAt time.Time) error
 	// RequeueSuggestionJob replaces the intent only when the caller's observed
 	// terminal execution is still current. Attempts are preserved; the next claim
 	// increments them to create a new execution token.

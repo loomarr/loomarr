@@ -1377,6 +1377,22 @@ components:
         - evidenceRefs
         - resolved
       type: object
+    ConstraintMatches:
+      additionalProperties: false
+      properties:
+        era:
+          type: boolean
+        mustExclude:
+          type: boolean
+        mustInclude:
+          type: boolean
+        refine:
+          type: boolean
+        request:
+          type: boolean
+        tone:
+          type: boolean
+      type: object
     CoverageCriterionDTO:
       additionalProperties: false
       properties:
@@ -1785,6 +1801,58 @@ components:
           type: string
       required:
         - dsn
+      type: object
+    DecisionCandidate:
+      additionalProperties: false
+      properties:
+        constraints:
+          $ref: "#/components/schemas/ConstraintMatches"
+        disposition:
+          type: string
+        key:
+          type: string
+        name:
+          type: string
+        ownership:
+          type: string
+        rank:
+          $ref: "#/components/schemas/RankTuple"
+        reason:
+          type: string
+        source:
+          type: string
+      required:
+        - key
+        - ownership
+        - disposition
+        - reason
+      type: object
+    DecisionTrace:
+      additionalProperties: false
+      properties:
+        candidates:
+          items:
+            $ref: "#/components/schemas/DecisionCandidate"
+          type: array
+        recordedTotal:
+          format: int64
+          type: integer
+        surfacedTotal:
+          format: int64
+          type: integer
+        terminal:
+          type: string
+        truncated:
+          type: boolean
+        version:
+          format: int64
+          type: integer
+      required:
+        - version
+        - candidates
+        - surfacedTotal
+        - recordedTotal
+        - truncated
       type: object
     DenyInputBody:
       additionalProperties: false
@@ -5405,12 +5473,15 @@ components:
           type: array
         scores:
           $ref: "#/components/schemas/Scores"
+        trace:
+          $ref: "#/components/schemas/DecisionTrace"
       required:
         - intent
         - lineup
         - acquisitions
         - alternates
         - scores
+        - trace
       type: object
     ProposalDTO:
       additionalProperties: false
@@ -5626,10 +5697,14 @@ components:
         code:
           enum:
             - no_grounded_titles
+            - selection_empty
+            - budget_exhausted
             - generation_failed
           type: string
         message:
           type: string
+        trace:
+          $ref: "#/components/schemas/DecisionTrace"
       required:
         - code
         - message
@@ -5785,6 +5860,26 @@ components:
         to:
           format: int64
           type: integer
+      type: object
+    RankTuple:
+      additionalProperties: false
+      properties:
+        novelty:
+          format: int64
+          type: integer
+        preference:
+          format: int64
+          type: integer
+        relevance:
+          format: int64
+          type: integer
+        tieKey:
+          type: string
+      required:
+        - relevance
+        - preference
+        - novelty
+        - tieKey
       type: object
     ReadyOutputBody:
       additionalProperties: false

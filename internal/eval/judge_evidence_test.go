@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestRunnerSendsGroundedPolicyAndStructuralEvidenceToJudge(t *testing.T) {
@@ -284,6 +285,40 @@ func TestRunnerFailsOnWrongTypedJudgeEvidenceWithoutRenderer(t *testing.T) {
 	if card.Certified || result.FailureStage != FailureStageJudge ||
 		result.JudgeNote != semanticJudgeRejected.Reason || judge.CallCount() != 1 {
 		t.Fatalf("wrong typed evidence result = %+v judge calls=%d", result, judge.CallCount())
+	}
+}
+
+func TestJudgeEvidenceCarriesBoundedProposalTraceAndRejectsMismatch(t *testing.T) {
+	candidates := make([]suggest.DecisionCandidate, 65)
+	for i := range candidates {
+		candidates[i] = suggest.DecisionCandidate{Key: fmt.Sprintf("movie:tmdb:%d", i+1), Ownership: "library", Rank: suggest.RankTuple{TieKey: fmt.Sprintf("movie:tmdb:%d", i+1)}, Disposition: suggest.DispositionNotSelected, Reason: suggest.ReasonNotSelected}
+	}
+	proposal := suggest.Proposal{Trace: suggest.DecisionTrace{Version: suggest.DecisionTraceVersion, SurfacedTotal: 65, RecordedTotal: 65, Truncated: true, Candidates: candidates}}
+	evidence, err := NewJudgeEvidence(Case{Intent: Intent{Description: "x"}}, proposal, Observation{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evidence.DecisionTrace.Candidates) != JudgeMaxTraceCandidates || !evidence.DecisionTrace.Truncated {
+		t.Fatalf("trace was not bounded: %+v", evidence.DecisionTrace)
+	}
+	proposal.Trace.Version = suggest.DecisionTraceVersion + 1
+	if _, err := NewJudgeEvidence(Case{Intent: Intent{Description: "x"}}, proposal, Observation{}, nil); err == nil {
+		t.Fatal("mismatched trace version certified")
+	}
+}
+
+func TestModelJudgeRejectsTraceMismatchBeforeCallingProvider(t *testing.T) {
+	provider := testkit.NewLLM(testkit.FinalResponse(`{"overall":1,"relevance":1,"serendipity":1,"reason":"should not run"}`))
+	evidence := JudgeEvidence{
+		Rubric:        "grounded evidence only",
+		Lineup:        []JudgeTitleEvidence{{Key: "movie:tmdb:603", Name: "The Matrix", Ownership: JudgeOwnershipLibrary}},
+		DecisionTrace: suggest.DecisionTrace{Version: suggest.DecisionTraceVersion + 1},
+	}
+	if _, err := (modelJudge{provider: provider}).Score(context.Background(), evidence); err == nil {
+		t.Fatal("model judge accepted a mismatched decision trace")
+	}
+	if provider.Calls != 0 {
+		t.Fatalf("mismatched evidence reached model provider: calls=%d", provider.Calls)
 	}
 }
 

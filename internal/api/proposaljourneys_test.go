@@ -24,7 +24,7 @@ func TestProposalJourneyEndpointReturnsAuthoritativeProjection(t *testing.T) {
 		Attempts: []proposalworkflow.Attempt{{
 			Version: proposalworkflow.WorkflowVersion1, Number: 1, Status: proposalworkflow.AttemptSucceeded,
 		}},
-		Proposal: &proposalworkflow.ProposalRef{ID: "proposal-1", Status: proposalworkflow.ProposalSubmitted},
+		Proposal: &proposalworkflow.ProposalRef{ID: "proposal-1", Status: proposalworkflow.ProposalSubmitted, Proposal: suggest.Proposal{Trace: suggest.DecisionTrace{Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:1", Ownership: "library", Disposition: "selected", Reason: "selected"}}}}},
 		Actions:  []proposalworkflow.Action{proposalworkflow.ActionReview},
 	}}
 	srv := proposalJourneyServer(t, workflow)
@@ -45,6 +45,9 @@ func TestProposalJourneyEndpointReturnsAuthoritativeProjection(t *testing.T) {
 		body.Proposal == nil || body.Proposal.ID != "proposal-1" ||
 		len(body.Actions) != 1 || body.Actions[0] != "review" {
 		t.Fatalf("Journey body = %+v", body)
+	}
+	if body.Proposal.Proposal.Trace.Version != 1 || len(body.Proposal.Proposal.Trace.Candidates) != 1 {
+		t.Fatalf("Journey trace = %+v", body.Proposal.Proposal.Trace)
 	}
 }
 

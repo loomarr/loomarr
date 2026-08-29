@@ -89,7 +89,7 @@ func seedProposal(t *testing.T, st store.Store, id string) {
 
 func seedProposalAt(t *testing.T, st store.Store, id string, created time.Time) {
 	t.Helper()
-	body := `{"acquisitions":[{"mediaType":"movie","tmdbId":100,"name":"Speed","year":1994}]}`
+	body := `{"acquisitions":[{"mediaType":"movie","tmdbId":100,"name":"Speed","year":1994}],"trace":{"version":1,"candidates":[{"key":"movie:tmdb:100","name":"Speed","ownership":"acquisition","rank":{"tieKey":"movie:tmdb:100"},"disposition":"selected","reason":"selected"}],"surfacedTotal":1,"recordedTotal":1,"truncated":false}}`
 	err := st.CreateProposal(context.Background(), store.Proposal{
 		ID: id, JobID: "job-1", Status: "submitted", CreatedBy: "alice", ProposalJSON: body,
 		CreatedAt: created,
@@ -183,7 +183,7 @@ func TestGetProposalJobClassifiesNoGroundedTitlesWithoutLeakingDiagnostic(t *tes
 	}
 	if err := st.CommitSuggestionFailure(context.Background(), "job-grounding", claimed[0].Attempts,
 		"suggester: no grounded titles found for this intent at https://private.invalid",
-		suggest.FailureCodeNoGroundedTitles, now.Add(time.Second)); err != nil {
+		suggest.FailureCodeNoGroundedTitles, `{"version":1,"terminal":"selection_empty"}`, now.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -231,6 +231,26 @@ func TestGetProposalJobRequiresOwnerOrAdmin(t *testing.T) {
 	}
 	if resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs/job-owned", "", ""); resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("anonymous get → %d, want 401", resp.StatusCode)
+	}
+}
+
+func TestGetProposalProjectsPersistedDecisionTraceForAuthorizedReader(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	body := `{"trace":{"version":1,"surfacedTotal":1,"recordedTotal":1,"truncated":false,"candidates":[{"key":"movie:tmdb:1","ownership":"library","disposition":"selected","reason":"selected"}]}}`
+	if err := st.CreateProposal(context.Background(), store.Proposal{ID: "trace-proposal", JobID: "trace-job", Status: "submitted", CreatedBy: "alice", ProposalJSON: body}); err != nil {
+		t.Fatal(err)
+	}
+	resp := do(t, srv, http.MethodGet, "/v1/proposals/trace-proposal", adminToken, "")
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET proposal = %d, want 200", resp.StatusCode)
+	}
+	var got api.ProposalDTO
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Proposal.Trace.Version != 1 || len(got.Proposal.Trace.Candidates) != 1 {
+		t.Fatalf("proposal trace = %+v", got.Proposal.Trace)
 	}
 }
 
@@ -1060,6 +1080,13 @@ func TestApprove_PersistsTheAuditTrail(t *testing.T) {
 	if p.Status != "approved" {
 		t.Errorf("status = %q, want approved", p.Status)
 	}
+	var approved suggest.Proposal
+	if err := json.Unmarshal([]byte(p.ProposalJSON), &approved); err != nil {
+		t.Fatal(err)
+	}
+	if len(approved.Trace.Candidates) != 1 || approved.Trace.Candidates[0].Key != "movie:tmdb:100" || approved.Trace.Candidates[0].Disposition != suggest.DispositionSelected {
+		t.Fatalf("approval edit rewrote original decision evidence: %+v", approved.Trace)
+	}
 }
 
 // The STORED proposal reflects what was actually approved, not what the model first proposed.
@@ -1077,8 +1104,16 @@ func TestApprove_StoredProposalReflectsTheEdit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(p.ProposalJSON, "Speed") {
-		t.Errorf("the stored proposal still contains the dropped title: %s", p.ProposalJSON)
+	var approved suggest.Proposal
+	if err := json.Unmarshal([]byte(p.ProposalJSON), &approved); err != nil {
+		t.Fatal(err)
+	}
+	for _, items := range [][]suggest.ProposalItem{approved.Lineup, approved.Acquisitions, approved.Alternates} {
+		for _, item := range items {
+			if item.Name == "Speed" {
+				t.Errorf("the approved proposal still contains the dropped title: %+v", approved)
+			}
+		}
 	}
 }
 

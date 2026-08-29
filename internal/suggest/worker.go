@@ -29,7 +29,7 @@ type ProposalStore interface {
 	ClaimDueJobs(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]store.Job, error)
 	FindJobByIntentHash(ctx context.Context, hash string, since time.Time) (store.Job, error)
 	CommitSuggestionSuccess(ctx context.Context, jobID string, expectedAttempt int, p store.Proposal, updatedAt time.Time) error
-	CommitSuggestionFailure(ctx context.Context, jobID string, expectedAttempt int, cause, failureCode string, updatedAt time.Time) error
+	CommitSuggestionFailure(ctx context.Context, jobID string, expectedAttempt int, cause, failureCode, failureTraceJSON string, updatedAt time.Time) error
 	RequeueSuggestionJob(ctx context.Context, jobID string, expectedAttempt int, kind, intentJSON, intentHash string, deadline, updatedAt time.Time) error
 	CloneSuggestionSuccess(ctx context.Context, sourceJobID string, job store.Job, proposalID string) (store.Proposal, error)
 	GetChannelByIntentRef(ctx context.Context, intentRef string) (store.Channel, error)
@@ -358,7 +358,8 @@ func (s *Service) runWorkflow(ctx context.Context, work WorkflowWork) {
 }
 
 func (s *Service) failWorkflow(ctx context.Context, work WorkflowWork, cause error) {
-	if err := s.workflow.Fail(ctx, work, classifyFailure(cause), cause.Error()); err != nil {
+	traceJSON, cause := persistedFailure(cause)
+	if err := s.workflow.Fail(ctx, work, classifyFailure(cause), cause.Error(), traceJSON); err != nil {
 		s.log.Info("discarding stale or undurable Proposal Job failure",
 			"job", work.JobID, "attempt", work.Attempt, "cause", cause, "err", err)
 		return
@@ -391,6 +392,10 @@ func (s *Service) runJob(ctx context.Context, job store.Job) {
 	prop, err := s.suggester.Suggest(jobCtx, intent)
 	if err != nil {
 		s.failJob(ctx, job, err)
+		return
+	}
+	if err := ValidateDecisionTrace(prop.Trace); err != nil {
+		s.failJob(ctx, job, fmt.Errorf("validate proposal trace: %w", err))
 		return
 	}
 	propBlob, err := json.Marshal(prop)
@@ -477,8 +482,9 @@ func (s *Service) considerAutomaticApproval(ctx context.Context, job store.Job, 
 }
 
 func (s *Service) failJob(ctx context.Context, job store.Job, cause error) {
+	traceJSON, cause := persistedFailure(cause)
 	if err := s.store.CommitSuggestionFailure(
-		ctx, job.ID, job.Attempts, cause.Error(), classifyFailure(cause), s.now(),
+		ctx, job.ID, job.Attempts, cause.Error(), classifyFailure(cause), traceJSON, s.now(),
 	); err != nil {
 		if errors.Is(err, store.ErrJobNotRunning) {
 			s.log.Info("discarding stale suggestion failure", "job", job.ID, "attempt", job.Attempts,
@@ -493,7 +499,46 @@ func (s *Service) failJob(ctx context.Context, job store.Job, cause error) {
 	s.emitPhase(job.ID, PhaseFailed, 0)
 }
 
+func persistedFailure(cause error) (string, error) {
+	cause = normalizeContextFailure(cause)
+	var failure *Failure
+	if !errors.As(cause, &failure) {
+		return "", cause
+	}
+	traceJSON, err := failure.TraceJSON()
+	if err != nil {
+		return "", fmt.Errorf("safe failure trace unavailable: %w", err)
+	}
+	return traceJSON, cause
+}
+
+// normalizeContextFailure closes raw and provider-wrapped cancellations at the
+// worker boundary. The public failure stays generic while any already-bounded
+// candidate facts survive with the terminal outcome that actually ended the run.
+func normalizeContextFailure(cause error) error {
+	if !errors.Is(cause, context.DeadlineExceeded) && !errors.Is(cause, context.Canceled) {
+		return cause
+	}
+	trace := DecisionTrace{Version: DecisionTraceVersion}
+	var failure *Failure
+	if errors.As(cause, &failure) {
+		trace = failure.Trace.Clone()
+		if trace.Version == 0 {
+			trace.Version = DecisionTraceVersion
+		}
+	}
+	trace.Terminal = TerminalGenerationFailure
+	return NewFailure(FailureCodeGenerationFailed, trace, cause)
+}
+
 func classifyFailure(cause error) string {
+	var failure *Failure
+	if errors.As(cause, &failure) {
+		if errors.Is(failure.Cause, context.DeadlineExceeded) || errors.Is(failure.Cause, context.Canceled) {
+			return FailureCodeGenerationFailed
+		}
+		return failure.Code
+	}
 	if errors.Is(cause, ErrNoGroundedTitles) {
 		return FailureCodeNoGroundedTitles
 	}

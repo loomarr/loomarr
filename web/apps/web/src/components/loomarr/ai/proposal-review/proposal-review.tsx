@@ -1,3 +1,4 @@
+import type { ConstraintMatches } from "@loomarr/api/models/constraintMatches";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import { formatPercent } from "@loomarr/core/format";
 import { Check, Pencil, X } from "lucide-react";
@@ -39,6 +40,19 @@ const seasonWindowLabel = (min?: number, max?: number): string | null => {
   if (lo > 0 && hi > 0) return lo === hi ? `Season ${lo}` : `Seasons ${lo}–${hi}`;
   if (lo > 0) return `From season ${lo}`;
   return `Through season ${hi}`;
+};
+
+const constraintSummary = (matches?: ConstraintMatches): string => {
+  if (!matches) return "";
+  const labels = [
+    matches.request && "request",
+    matches.tone && "tone",
+    matches.era && "era",
+    matches.mustInclude && "required terms",
+    matches.mustExclude && "excluded terms",
+    matches.refine && "refinement",
+  ].filter((label): label is string => Boolean(label));
+  return labels.length > 0 ? ` · matched ${labels.join(", ")}` : "";
 };
 
 const ItemRow = ({
@@ -193,6 +207,25 @@ const ProposalReview = ({
           <p className="text-muted-foreground text-sm">{alternates.map((a) => a.name).join(" · ")}</p>
         </section>
       )}
+
+      {proposal.trace?.candidates?.length ? (
+        <section aria-label="Decision trace" className="flex flex-col gap-1.5 border-border border-t pt-3">
+          <h3 className="font-mono text-static-400 text-xs uppercase tracking-wide">Why this / why not</h3>
+          <ul className="flex flex-col gap-1 text-muted-foreground text-sm">
+            {proposal.trace.candidates.map((candidate) => (
+              <li key={`${candidate.key}-${candidate.disposition}`}>
+                <span className="font-medium text-foreground">
+                  {candidate.name || candidate.key || "Candidate"}
+                </span>{" "}
+                <span>
+                  {candidate.disposition === "selected" ? "selected" : candidate.reason.replaceAll("_", " ")}
+                  {constraintSummary(candidate.constraints)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {actionable && (
         <footer className="flex flex-col gap-2 border-border border-t pt-4">

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -37,7 +38,7 @@ func TestStoreWorkflowSubmissionCacheKeepsCallerLifecycleFresh(t *testing.T) {
 	}
 	grounded := suggest.Proposal{Intent: intent, Lineup: []suggest.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", InLibrary: true,
-	}}}
+	}}, Trace: selectedDecisionTrace("movie:tmdb:603", "The Matrix", "library")}
 	if _, err := workflow.Complete(ctx, work[0], grounded); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +109,7 @@ func TestStoreWorkflowRecoversCrashAndRejectsLateAttemptResult(t *testing.T) {
 
 	proposal := suggest.Proposal{Intent: intent, Lineup: []suggest.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", InLibrary: true,
-	}}}
+	}}, Trace: selectedDecisionTrace("movie:tmdb:603", "The Matrix", "library")}
 	if _, err := workflow.Complete(ctx, first[0], proposal); !errors.Is(err, ErrStaleAttempt) {
 		t.Fatalf("late Attempt completion = %v, want ErrStaleAttempt", err)
 	}
@@ -171,6 +172,13 @@ func TestStoreWorkflowPersistsPrivateDiagnosticButProjectsSafeFailure(t *testing
 	persisted, err := st.GetJob(ctx, "job-failed")
 	if err != nil || persisted.LastError != diagnostic || persisted.FailureCode != string(FailureNoGroundedTitles) {
 		t.Fatalf("private persisted failure = (%+v, %v)", persisted, err)
+	}
+	persisted.FailureTraceJSON = `{"version":1,"terminal":"private-provider-detail"}`
+	if err := st.UpdateJob(ctx, persisted); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workflow.Inspect(ctx, Viewer{UserID: "member-1"}, "job-failed"); err == nil || !strings.Contains(err.Error(), "validate Proposal Job job-failed failure trace") {
+		t.Fatalf("invalid persisted failure trace did not fail closed: %v", err)
 	}
 }
 

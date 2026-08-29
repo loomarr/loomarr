@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -93,9 +94,21 @@ func TestCurator_AtTheCapABetterTitleRetiresTheWeakest(t *testing.T) {
 		[]schedule.LineupEntry{lineupEntry(100, "Airing Title"), lineupEntry(200, "Bench Title")},
 		[]provision.Key{provision.Key("movie:tmdb:100")})
 
-	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
-		acqItem(300, "Much Better Fit", 0.95),
-	})
+	item := acqItem(300, "Much Better Fit", 0.95)
+	body := suggest.Proposal{Acquisitions: []suggest.ProposalItem{item}, Trace: suggest.DecisionTrace{
+		Version: suggest.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
+		Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:300", Name: item.Name, Ownership: "acquisition",
+			Rank: suggest.RankTuple{TieKey: "movie:tmdb:300"}, Disposition: suggest.DispositionSelected, Reason: "selected"}},
+	}}
+	blob, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", ProposalJSON: string(blob), CreatedAt: now, UpdatedAt: now}
+	if err := st.CreateProposal(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
 	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 2})
 
 	d, err := cur.Consider(context.Background(), p)
@@ -108,6 +121,17 @@ func TestCurator_AtTheCapABetterTitleRetiresTheWeakest(t *testing.T) {
 	retired := retiredOf(t, st, "p1")
 	if !retired[provision.Key("movie:tmdb:200")] {
 		t.Error("the weakest retirable title should have been retired")
+	}
+	persisted, err := st.GetProposal(context.Background(), "p1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var after suggest.Proposal
+	if err := json.Unmarshal([]byte(persisted.ProposalJSON), &after); err != nil {
+		t.Fatal(err)
+	}
+	if len(after.Trace.Candidates) != 1 || after.Trace.Candidates[0] != body.Trace.Candidates[0] {
+		t.Fatalf("re-curation rewrote original decision evidence: before=%+v after=%+v", body.Trace, after.Trace)
 	}
 	if retired[provision.Key("movie:tmdb:100")] {
 		t.Error("the AIRING title must never be retired")

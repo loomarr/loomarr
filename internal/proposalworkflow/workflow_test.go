@@ -57,6 +57,22 @@ func TestWorkflowInspectGeneratingIsAuthoritativeAndCallerScoped(t *testing.T) {
 	}
 }
 
+func TestJourneyTraceClonesDoNotAliasRepositoryEvidence(t *testing.T) {
+	t.Parallel()
+
+	trace := suggest.DecisionTrace{Version: suggest.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
+		Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:603"}}}
+	proposal := &ProposalRef{Proposal: suggest.Proposal{Trace: trace}}
+	failure := &Failure{Trace: trace}
+	proposalClone := cloneProposal(proposal)
+	failureClone := cloneFailure(failure)
+	proposalClone.Proposal.Trace.Candidates[0].Key = "mutated-proposal"
+	failureClone.Trace.Candidates[0].Key = "mutated-failure"
+	if proposal.Proposal.Trace.Candidates[0].Key != "movie:tmdb:603" || failure.Trace.Candidates[0].Key != "movie:tmdb:603" {
+		t.Fatalf("caller mutation changed repository evidence: proposal=%+v failure=%+v", proposal, failure)
+	}
+}
+
 func TestWorkflowInspectAwaitingApprovalDerivesRoleSafeActions(t *testing.T) {
 	t.Parallel()
 
