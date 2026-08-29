@@ -36,6 +36,7 @@ const proposal: Proposal = {
         key: "movie:tmdb: Heat",
         name: "Heat",
         ownership: "library",
+        constraints: { request: true, era: true },
         disposition: "selected",
         reason: "selected",
       },
@@ -63,6 +64,7 @@ describe("ProposalReview", () => {
     renderWithTooltip(<ProposalReview proposal={proposal} />);
     expect(screen.getByRole("heading", { name: "Why this / why not" })).toBeInTheDocument();
     expect(screen.getAllByText("Heat").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("selected · matched request, era")).toBeInTheDocument();
     expect(screen.getByText("acquisition cap")).toBeInTheDocument();
   });
 

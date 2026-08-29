@@ -50,6 +50,7 @@ func TestFailureTraceJSONFailsClosedAndCopiesCandidates(t *testing.T) {
 	for name, bad := range map[string]suggest.DecisionTrace{
 		"version":                  {Version: 2},
 		"bounds":                   {Version: 1, SurfacedTotal: 65, RecordedTotal: 65, Truncated: false},
+		"recorded bounds":          {Version: 1, SurfacedTotal: 64, RecordedTotal: 65, Truncated: false},
 		"totals":                   {Version: 1, SurfacedTotal: 1, RecordedTotal: -1},
 		"reason":                   {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []suggest.DecisionCandidate{{Disposition: suggest.DispositionSelected, Reason: suggest.ReasonNever}}},
 		"terminal":                 {Version: 1, Terminal: "provider-secret"},

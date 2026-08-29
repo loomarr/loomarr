@@ -82,7 +82,7 @@ func NewJudgeEvidence(c Case, proposal suggest.Proposal, observation Observation
 		Observation:       observation,
 		ScheduledPrograms: scheduledPrograms,
 		DecisionTrace:     trace,
-	}), nil
+	})
 }
 
 func boundedDecisionTrace(trace suggest.DecisionTrace) (suggest.DecisionTrace, error) {
@@ -131,7 +131,7 @@ func judgeTitles(items []suggest.ProposalItem, ownership JudgeOwnership) ([]Judg
 	return out, nil
 }
 
-func boundJudgeEvidence(evidence JudgeEvidence) JudgeEvidence {
+func boundJudgeEvidence(evidence JudgeEvidence) (JudgeEvidence, error) {
 	evidence.Request = boundedJudgeText(evidence.Request)
 	evidence.Rubric = boundedJudgeText(evidence.Rubric)
 	evidence.Lineup = boundJudgeTitles(evidence.Lineup, JudgeOwnershipLibrary)
@@ -139,10 +139,12 @@ func boundJudgeEvidence(evidence JudgeEvidence) JudgeEvidence {
 	evidence.Policy = boundJudgePolicy(evidence.Policy)
 	evidence.Observation.GroundingStage = boundedJudgeText(evidence.Observation.GroundingStage)
 	evidence.ScheduledPrograms = boundScheduledPrograms(evidence.ScheduledPrograms)
-	if trace, err := boundedDecisionTrace(evidence.DecisionTrace); err == nil {
-		evidence.DecisionTrace = trace
+	trace, err := boundedDecisionTrace(evidence.DecisionTrace)
+	if err != nil {
+		return JudgeEvidence{}, err
 	}
-	return evidence
+	evidence.DecisionTrace = trace
+	return evidence, nil
 }
 
 func boundScheduledPrograms(programs []MaterializedProgram) []MaterializedProgram {

@@ -1082,10 +1082,11 @@ and precise locations are redacted. Proposal and First-channel Journey reads exp
 persisted trace under their existing authorization. Evaluators consume this same typed,
 bounded evidence and fail closed on mismatch.
 
-In v1, safe explicit-constraint evidence is the integer `relevance` component: the count of
-normalized request, tone, era, include, exclude, and refine terms present in grounded title,
-overview, or genre evidence. The trace does not duplicate those caller-authored terms or
-invent a second constraint vocabulary; a zero is the explicit neutral/missing-evidence fact.
+In v1, safe explicit-constraint evidence consists of the integer `relevance` component—the
+count of normalized intent terms present in grounded title, overview, or genre evidence—and
+closed booleans identifying whether request, tone, era, include, exclude, and refine categories
+contributed a match. The trace does not duplicate caller-authored terms or invent a second
+constraint vocabulary; an empty category set and zero relevance are explicit missing-evidence facts.
 
 The independent total bound is 1,024 surfaced or recorded facts: production's 576 maximum tool
 candidates plus bounded headroom for adjacent decision facts. Truncation never permits totals

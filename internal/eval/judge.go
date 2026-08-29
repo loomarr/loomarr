@@ -30,7 +30,11 @@ type JudgeScores struct {
 type modelJudge struct{ provider llm.Provider }
 
 func (j modelJudge) Score(ctx context.Context, evidence JudgeEvidence) (JudgeScores, error) {
-	return judge(ctx, j.provider, boundJudgeEvidence(evidence))
+	bounded, err := boundJudgeEvidence(evidence)
+	if err != nil {
+		return JudgeScores{}, err
+	}
+	return judge(ctx, j.provider, bounded)
 }
 
 func judge(ctx context.Context, j llm.Provider, evidence JudgeEvidence) (JudgeScores, error) {

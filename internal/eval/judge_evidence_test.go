@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestRunnerSendsGroundedPolicyAndStructuralEvidenceToJudge(t *testing.T) {
@@ -303,6 +304,21 @@ func TestJudgeEvidenceCarriesBoundedProposalTraceAndRejectsMismatch(t *testing.T
 	proposal.Trace.Version = suggest.DecisionTraceVersion + 1
 	if _, err := NewJudgeEvidence(Case{Intent: Intent{Description: "x"}}, proposal, Observation{}, nil); err == nil {
 		t.Fatal("mismatched trace version certified")
+	}
+}
+
+func TestModelJudgeRejectsTraceMismatchBeforeCallingProvider(t *testing.T) {
+	provider := testkit.NewLLM(testkit.FinalResponse(`{"overall":1,"relevance":1,"serendipity":1,"reason":"should not run"}`))
+	evidence := JudgeEvidence{
+		Rubric:        "grounded evidence only",
+		Lineup:        []JudgeTitleEvidence{{Key: "movie:tmdb:603", Name: "The Matrix", Ownership: JudgeOwnershipLibrary}},
+		DecisionTrace: suggest.DecisionTrace{Version: suggest.DecisionTraceVersion + 1},
+	}
+	if _, err := (modelJudge{provider: provider}).Score(context.Background(), evidence); err == nil {
+		t.Fatal("model judge accepted a mismatched decision trace")
+	}
+	if provider.Calls != 0 {
+		t.Fatalf("mismatched evidence reached model provider: calls=%d", provider.Calls)
 	}
 }
 

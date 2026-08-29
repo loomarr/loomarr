@@ -69,6 +69,9 @@ func (w *Workflow) Complete(ctx context.Context, work Work, proposal suggest.Pro
 	if err := validateProposalIdentities(proposal); err != nil {
 		return suggest.WorkflowProposal{}, err
 	}
+	if proposal.Trace.Version != suggest.DecisionTraceVersion {
+		return suggest.WorkflowProposal{}, fmt.Errorf("%w: Proposal decision trace version = %d, want %d", ErrInvalidState, proposal.Trace.Version, suggest.DecisionTraceVersion)
+	}
 	if err := suggest.ValidateDecisionTrace(proposal.Trace); err != nil {
 		return suggest.WorkflowProposal{}, fmt.Errorf("%w: invalid Proposal decision trace: %v", ErrInvalidState, err)
 	}

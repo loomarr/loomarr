@@ -119,6 +119,25 @@ func TestSuggest_RetrievalEmptyRemainsDistinctFromSelectionEmpty(t *testing.T) {
 	}
 }
 
+func TestSuggest_RetrievalFailureIsNotReportedAsEmpty(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
+		testkit.FinalResponse(`{"picks":[]}`),
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
+		testkit.FinalResponse(`{"picks":[]}`),
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := buildSuggester(t, llmMock).Suggest(ctx, suggest.Intent{Description: "matrix"})
+	var failure *suggest.Failure
+	if !errors.As(err, &failure) {
+		t.Fatalf("retrieval failure did not return typed failure: %v", err)
+	}
+	if failure.Trace.Terminal != suggest.TerminalProviderFailure {
+		t.Fatalf("retrieval failure was mislabeled: %+v", failure.Trace)
+	}
+}
+
 // A pick whose id IS surfaced but does NOT exist on TMDB (withdrawn/bad) is
 // dropped by the acquisition re-validation (§8).
 func TestGrounding_AcquisitionRevalidatedAgainstTMDB(t *testing.T) {

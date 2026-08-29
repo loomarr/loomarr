@@ -207,7 +207,7 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 		adjacentCandidates = append(adjacentCandidates, cand)
 	}
 	if len(adjacentCandidates) > 0 {
-		adjacentRanked := RankGroundedCandidatesWithTrace(normalizedIntentText(intent), adjacentCandidates, feedback)
+		adjacentRanked := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), adjacentCandidates, feedback)
 		mergeDecisionTrace(&trace, &adjacentRanked.Trace)
 		for _, cand := range adjacentRanked.Candidates {
 			if k, err := cand.Key(); err == nil {
@@ -342,12 +342,12 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 		cands, err = s.catalog.Search(ctx, stringArg(tc.Arguments["query"]), catalog.ScopeAll, catalogSearchLimit)
 	}
 	if err != nil {
-		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: ReasonRetrievalEmpty}
+		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalProviderFailure}
 	}
 	if mtArg != "" {
 		cands = filterByMediaType(cands, mtArg) // narrow to the requested type
 	}
-	ranked := RankGroundedCandidatesWithTrace(normalizedIntentText(intent), cands, feedback)
+	ranked := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), cands, feedback)
 	cands = ranked.Candidates
 	blob, _ := json.Marshal(toolResult(cands))
 	return string(blob), cands, ranked.Trace
@@ -358,20 +358,25 @@ func mergeDecisionTrace(dst, src *DecisionTrace) {
 		return
 	}
 	dst.Version = src.Version
-	known := make(map[string]bool, len(dst.Candidates))
-	for _, candidate := range dst.Candidates {
+	known := make(map[string]int, len(dst.Candidates))
+	for i, candidate := range dst.Candidates {
 		if candidate.Key != "" {
-			known[candidate.Key] = true
+			known[candidate.Key] = i
 		}
 	}
-	dst.SurfacedTotal += src.SurfacedTotal
+	surfacedTotal := dst.SurfacedTotal + src.SurfacedTotal
+	recordedTotal := dst.RecordedTotal + src.RecordedTotal
+	dst.Truncated = dst.Truncated || src.Truncated || surfacedTotal > DecisionTraceMaxTotal || recordedTotal > DecisionTraceMaxTotal
+	dst.SurfacedTotal = min(surfacedTotal, DecisionTraceMaxTotal)
+	dst.RecordedTotal = min(recordedTotal, DecisionTraceMaxTotal)
 	if src.Terminal != "" {
 		dst.Terminal = src.Terminal
-	} else if src.SurfacedTotal > 0 && dst.Terminal == ReasonRetrievalEmpty {
+	} else if src.SurfacedTotal > 0 {
 		dst.Terminal = ""
 	}
 	for _, c := range src.Candidates {
-		if c.Key != "" && known[c.Key] {
+		if i, exists := known[c.Key]; c.Key != "" && exists {
+			dst.Candidates[i] = c
 			continue
 		}
 		if len(dst.Candidates) >= DecisionTraceMaxCandidates {
@@ -380,10 +385,9 @@ func mergeDecisionTrace(dst, src *DecisionTrace) {
 		}
 		dst.Candidates = append(dst.Candidates, c)
 		if c.Key != "" {
-			known[c.Key] = true
+			known[c.Key] = len(dst.Candidates) - 1
 		}
 	}
-	dst.RecordedTotal = len(dst.Candidates)
 }
 
 func filterAdjacentFeedback(adjacent []AdjacentContext, signals []FeedbackSignal) []AdjacentContext {
@@ -577,6 +581,7 @@ func traceDecision(trace *DecisionTrace, update DecisionCandidate) {
 	}
 	if len(trace.Candidates) >= DecisionTraceMaxCandidates {
 		trace.Truncated = true
+		trace.RecordedTotal = min(trace.RecordedTotal+1, DecisionTraceMaxTotal)
 		return
 	}
 	trace.Candidates = append(trace.Candidates, update)
@@ -1105,6 +1110,17 @@ func normalizedIntentText(intent Intent) string {
 		intent.Description, intent.Tone, intent.Era, intent.RefineText,
 		strings.Join(intent.MustInclude, " "), strings.Join(intent.MustExclude, " "),
 	}, " "))
+}
+
+func decisionRankQuery(intent Intent) rankQuery {
+	return rankQuery{
+		request:     wordSet(intent.Description),
+		tone:        wordSet(intent.Tone),
+		era:         wordSet(intent.Era),
+		mustInclude: wordSet(strings.Join(intent.MustInclude, " ")),
+		mustExclude: wordSet(strings.Join(intent.MustExclude, " ")),
+		refine:      wordSet(intent.RefineText),
+	}
 }
 
 // affirmativeIntentText is the operator's positive editorial request. Negative

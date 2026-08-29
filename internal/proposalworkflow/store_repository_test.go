@@ -38,7 +38,7 @@ func TestStoreWorkflowSubmissionCacheKeepsCallerLifecycleFresh(t *testing.T) {
 	}
 	grounded := suggest.Proposal{Intent: intent, Lineup: []suggest.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", InLibrary: true,
-	}}}
+	}}, Trace: selectedDecisionTrace("movie:tmdb:603", "The Matrix", "library")}
 	if _, err := workflow.Complete(ctx, work[0], grounded); err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestStoreWorkflowRecoversCrashAndRejectsLateAttemptResult(t *testing.T) {
 
 	proposal := suggest.Proposal{Intent: intent, Lineup: []suggest.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", InLibrary: true,
-	}}}
+	}}, Trace: selectedDecisionTrace("movie:tmdb:603", "The Matrix", "library")}
 	if _, err := workflow.Complete(ctx, first[0], proposal); !errors.Is(err, ErrStaleAttempt) {
 		t.Fatalf("late Attempt completion = %v, want ErrStaleAttempt", err)
 	}

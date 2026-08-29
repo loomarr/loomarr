@@ -1,3 +1,4 @@
+import type { ConstraintMatches } from "@loomarr/api/models/constraintMatches";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import { formatPercent } from "@loomarr/core/format";
 import { Check, Pencil, X } from "lucide-react";
@@ -39,6 +40,19 @@ const seasonWindowLabel = (min?: number, max?: number): string | null => {
   if (lo > 0 && hi > 0) return lo === hi ? `Season ${lo}` : `Seasons ${lo}–${hi}`;
   if (lo > 0) return `From season ${lo}`;
   return `Through season ${hi}`;
+};
+
+const constraintSummary = (matches?: ConstraintMatches): string => {
+  if (!matches) return "";
+  const labels = [
+    matches.request && "request",
+    matches.tone && "tone",
+    matches.era && "era",
+    matches.mustInclude && "required terms",
+    matches.mustExclude && "excluded terms",
+    matches.refine && "refinement",
+  ].filter((label): label is string => Boolean(label));
+  return labels.length > 0 ? ` · matched ${labels.join(", ")}` : "";
 };
 
 const ItemRow = ({
@@ -205,6 +219,7 @@ const ProposalReview = ({
                 </span>{" "}
                 <span>
                   {candidate.disposition === "selected" ? "selected" : candidate.reason.replaceAll("_", " ")}
+                  {constraintSummary(candidate.constraints)}
                 </span>
               </li>
             ))}

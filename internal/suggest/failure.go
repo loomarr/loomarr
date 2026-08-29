@@ -52,8 +52,8 @@ func ValidateDecisionTrace(trace DecisionTrace) error {
 	if trace.Version != DecisionTraceVersion || len(trace.Candidates) > DecisionTraceMaxCandidates || trace.SurfacedTotal < 0 || trace.RecordedTotal < 0 || trace.SurfacedTotal > DecisionTraceMaxTotal || trace.RecordedTotal > DecisionTraceMaxTotal || trace.RecordedTotal < len(trace.Candidates) {
 		return fmt.Errorf("invalid version, bounds, or totals")
 	}
-	if trace.SurfacedTotal > DecisionTraceMaxCandidates && !trace.Truncated {
-		return fmt.Errorf("unbounded surfaced total")
+	if (trace.SurfacedTotal > DecisionTraceMaxCandidates || trace.RecordedTotal > DecisionTraceMaxCandidates) && !trace.Truncated {
+		return fmt.Errorf("unbounded surfaced or recorded total")
 	}
 	if trace.Terminal != "" && !knownTerminal(trace.Terminal) {
 		return fmt.Errorf("unknown terminal %q", trace.Terminal)

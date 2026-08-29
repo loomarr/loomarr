@@ -579,8 +579,9 @@ Proposal explanations are immutable evidence from the suggestion/ranking seam. T
 must carry the exact lexicographic rank tuple and tie-break inputs, plus bounded grounded
 dispositions, but must not become a second scoring algorithm or include model rationale as
 deterministic evidence. Approval edits and later channel state do not rewrite its meaning.
-The tuple's integer relevance component is also v1's safe explicit-constraint-match evidence;
-raw request terms are not copied into each candidate trace.
+The tuple's integer relevance component and closed request/tone/era/include/exclude/refine match
+booleans are v1's safe explicit-constraint evidence; raw request terms are not copied into each
+candidate trace.
 
 Scheduler explanations are a separate future seam: `schedule.ComputeDesiredAt` owns
 availability, episode selection, ordering, window, placement, and hard-exclusion reasons.

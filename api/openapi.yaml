@@ -1377,6 +1377,22 @@ components:
         - evidenceRefs
         - resolved
       type: object
+    ConstraintMatches:
+      additionalProperties: false
+      properties:
+        era:
+          type: boolean
+        mustExclude:
+          type: boolean
+        mustInclude:
+          type: boolean
+        refine:
+          type: boolean
+        request:
+          type: boolean
+        tone:
+          type: boolean
+      type: object
     CoverageCriterionDTO:
       additionalProperties: false
       properties:
@@ -1789,6 +1805,8 @@ components:
     DecisionCandidate:
       additionalProperties: false
       properties:
+        constraints:
+          $ref: "#/components/schemas/ConstraintMatches"
         disposition:
           type: string
         key:

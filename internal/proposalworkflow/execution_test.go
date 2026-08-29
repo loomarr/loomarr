@@ -63,7 +63,7 @@ func TestWorkflowCompleteUsesCurrentAttemptTokenAndRejectsEmptyResult(t *testing
 
 	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", InLibrary: true,
-	}}}
+	}}, Trace: selectedDecisionTrace("movie:tmdb:603", "The Matrix", "library")}
 	_, err = workflow.Complete(context.Background(), work, proposal)
 	if err != nil {
 		t.Fatalf("Complete grounded Proposal: %v", err)
@@ -71,6 +71,15 @@ func TestWorkflowCompleteUsesCurrentAttemptTokenAndRejectsEmptyResult(t *testing
 	if repo.completed == nil || repo.completed.Work.JobID != work.JobID ||
 		repo.completed.Work.Attempt != work.Attempt || len(repo.completed.Proposal.Lineup) != 1 {
 		t.Fatalf("completion = %+v", repo.completed)
+	}
+
+	repo.completed = nil
+	proposal.Trace = suggest.DecisionTrace{}
+	if _, err := workflow.Complete(context.Background(), work, proposal); !errors.Is(err, ErrInvalidState) {
+		t.Fatalf("Complete absent trace error = %v, want ErrInvalidState", err)
+	}
+	if repo.completed != nil {
+		t.Fatal("absent trace reached repository")
 	}
 
 	repo.completed = nil
@@ -85,7 +94,11 @@ func TestWorkflowCompleteUsesCurrentAttemptTokenAndRejectsEmptyResult(t *testing
 	repo.completed = nil
 	refusedOnly := suggest.Proposal{Refused: []suggest.RefusedPick{{Item: suggest.ProposalItem{
 		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", InLibrary: true,
-	}, Reason: suggest.ReasonOverCeiling}}}
+	}, Reason: suggest.ReasonOverCeiling}}, Trace: suggest.DecisionTrace{
+		Version: suggest.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
+		Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:603", Name: "The Matrix", Ownership: "library",
+			Rank: suggest.RankTuple{TieKey: "movie:tmdb:603"}, Disposition: suggest.DispositionRefused, Reason: suggest.ReasonOverCeiling}},
+	}}
 	if _, err := workflow.Complete(context.Background(), work, refusedOnly); err != nil {
 		t.Fatalf("Complete refused-only review Proposal: %v", err)
 	}
@@ -103,9 +116,17 @@ func TestWorkflowCompletePreservesStaleAttemptRejection(t *testing.T) {
 		Version: WorkflowVersion1, JobID: "job-1", Attempt: 1,
 	}, suggest.Proposal{Lineup: []suggest.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
-	}}})
+	}}, Trace: selectedDecisionTrace("movie:tmdb:603", "The Matrix", "acquisition")})
 	if !errors.Is(err, ErrStaleAttempt) {
 		t.Fatalf("Complete stale Attempt error = %v, want ErrStaleAttempt", err)
+	}
+}
+
+func selectedDecisionTrace(key, name, ownership string) suggest.DecisionTrace {
+	return suggest.DecisionTrace{
+		Version: suggest.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
+		Candidates: []suggest.DecisionCandidate{{Key: key, Name: name, Ownership: ownership,
+			Rank: suggest.RankTuple{TieKey: key}, Disposition: suggest.DispositionSelected, Reason: "selected"}},
 	}
 }
 
