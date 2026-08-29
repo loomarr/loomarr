@@ -151,6 +151,7 @@ const groundingRetryPrompt = `You returned no grounded picks without finding usa
 	`or keywords for a holiday, motif, franchise, or topic. Then select only ids the tool returns.`
 
 func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error) {
+	allAdjacent := intent.Adjacent
 	var feedback []FeedbackSignal
 	if s.feedback != nil {
 		var err error
@@ -182,14 +183,12 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 	// nothing ever checked, which is precisely what grounding prevents.
 	//
 	// The model still chooses. An offered title it ignores is simply not picked.
-	for _, a := range intent.Adjacent {
+	adjacentCandidates := make([]catalog.Candidate, 0, len(allAdjacent))
+	for _, a := range allAdjacent {
 		k := provision.Key(a.Key)
 		mt, provider, id, ok := provision.ParseKey(k)
 		if !ok {
 			continue // an unparseable key could never be acquired; drop rather than offer
-		}
-		if _, already := surfaced[k]; already {
-			continue // a tool result would win anyway; never overwrite richer data
 		}
 		cand := catalog.Candidate{
 			MediaType: mt, Name: a.Name, Year: a.Year, Source: catalog.ScopeAdjacent,
@@ -205,7 +204,16 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 		default:
 			continue
 		}
-		surfaced[k] = cand
+		adjacentCandidates = append(adjacentCandidates, cand)
+	}
+	if len(adjacentCandidates) > 0 {
+		adjacentRanked := RankGroundedCandidatesWithTrace(normalizedIntentText(intent), adjacentCandidates, feedback)
+		mergeDecisionTrace(&trace, &adjacentRanked.Trace)
+		for _, cand := range adjacentRanked.Candidates {
+			if k, err := cand.Key(); err == nil {
+				surfaced[k] = cand
+			}
+		}
 	}
 
 	// Progress is reported from INSIDE generate, at each real transition (§8). It used
@@ -238,7 +246,9 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 			}
 			if buildErr != nil {
 				if errors.Is(buildErr, ErrNoGroundedTitles) {
-					trace.Terminal = FailureSelectionEmpty
+					if trace.Terminal == "" {
+						trace.Terminal = FailureSelectionEmpty
+					}
 					return Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, buildErr)
 				}
 				return Proposal{}, NewFailure(FailureProvider, trace, buildErr)
@@ -357,6 +367,8 @@ func mergeDecisionTrace(dst, src *DecisionTrace) {
 	dst.SurfacedTotal += src.SurfacedTotal
 	if src.Terminal != "" {
 		dst.Terminal = src.Terminal
+	} else if src.SurfacedTotal > 0 && dst.Terminal == ReasonRetrievalEmpty {
+		dst.Terminal = ""
 	}
 	for _, c := range src.Candidates {
 		if c.Key != "" && known[c.Key] {

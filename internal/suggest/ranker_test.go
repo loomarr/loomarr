@@ -35,6 +35,16 @@ func TestRankGroundedCandidatesAppliesExplicitFeedbackDeterministically(t *testi
 	if len(ids) < 2 || ids[0] != 2 || ids[1] != 1 {
 		t.Fatalf("feedback ranking = %v, want surprise discovery before demoted related anchor", ids)
 	}
+	trace := RankGroundedCandidatesWithTrace("space discoveries", candidates, signals).Trace
+	foundNever := false
+	for _, decision := range trace.Candidates {
+		if decision.Key == "movie:tmdb:3" {
+			foundNever = decision.Disposition == DispositionNotSelected && decision.Reason == ReasonNever
+		}
+	}
+	if !foundNever || trace.RecordedTotal != len(candidates) || trace.Terminal != "" {
+		t.Fatalf("never exclusion was not preserved as a bounded decision: %+v", trace)
+	}
 }
 
 func TestRankGroundedCandidatesWithTracePublishesExactLexicographicTupleAndBound(t *testing.T) {

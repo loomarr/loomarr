@@ -82,6 +82,43 @@ func traceHas(trace suggest.DecisionTrace, key, disposition, reason string) bool
 	return false
 }
 
+func TestSuggest_AdjacencySelectionCarriesCompleteTraceFacts(t *testing.T) {
+	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`))
+	prop, err := buildSuggester(t, llmMock).Suggest(context.Background(), suggest.Intent{
+		Description: "science fiction",
+		Adjacent:    []suggest.AdjacentContext{{Key: "movie:tmdb:603", Name: "The Matrix", Year: 1999, Votes: 3}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := suggest.ValidateDecisionTrace(prop.Trace); err != nil {
+		t.Fatalf("adjacency proposal emitted an invalid trace: %+v: %v", prop.Trace, err)
+	}
+	if !traceHas(prop.Trace, "movie:tmdb:603", suggest.DispositionSelected, "selected") {
+		t.Fatalf("adjacency selection is absent from trace: %+v", prop.Trace)
+	}
+	decision := prop.Trace.Candidates[0]
+	if decision.Source != string(catalog.ScopeAdjacent) || decision.Ownership != "acquisition" || decision.Rank.TieKey != decision.Key {
+		t.Fatalf("adjacency trace facts are incomplete: %+v", decision)
+	}
+}
+
+func TestSuggest_RetrievalEmptyRemainsDistinctFromSelectionEmpty(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "definitely absent"}),
+		testkit.FinalResponse(`{"picks":[]}`),
+		testkit.FinalResponse(`{"picks":[]}`),
+	)
+	_, err := buildSuggester(t, llmMock).Suggest(context.Background(), suggest.Intent{Description: "definitely absent"})
+	var failure *suggest.Failure
+	if !errors.As(err, &failure) {
+		t.Fatalf("retrieval-empty result did not return typed failure: %v", err)
+	}
+	if failure.Trace.Terminal != suggest.ReasonRetrievalEmpty {
+		t.Fatalf("retrieval-empty terminal was overwritten: %+v", failure.Trace)
+	}
+}
+
 // A pick whose id IS surfaced but does NOT exist on TMDB (withdrawn/bad) is
 // dropped by the acquisition re-validation (§8).
 func TestGrounding_AcquisitionRevalidatedAgainstTMDB(t *testing.T) {

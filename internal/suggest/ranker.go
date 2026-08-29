@@ -34,6 +34,11 @@ type rankedCandidate struct {
 	novelty    int
 }
 
+type rankedCandidates struct {
+	included []rankedCandidate
+	excluded []rankedCandidate
+}
+
 // DecisionTrace is bounded, immutable evidence from one original proposal run.
 // Callers receive value copies and must not use it as current channel evidence.
 type DecisionTrace struct {
@@ -103,22 +108,27 @@ type RankedCandidates struct {
 }
 
 func RankGroundedCandidatesWithTrace(intent string, candidates []catalog.Candidate, signals []FeedbackSignal) RankedCandidates {
-	// The legacy ordering function remains a compatibility adapter; this seam publishes
-	// the same tuple used by the comparator, without recomputing it downstream.
 	ranked := rankDetailed(intent, candidates, signals)
-	result := make([]catalog.Candidate, 0, len(ranked))
-	for _, item := range ranked {
+	result := make([]catalog.Candidate, 0, len(ranked.included))
+	for _, item := range ranked.included {
 		result = append(result, item.candidate)
 	}
-	trace := DecisionTrace{Version: DecisionTraceVersion, SurfacedTotal: len(candidates), RecordedTotal: len(ranked), Candidates: make([]DecisionCandidate, 0, min(len(ranked), DecisionTraceMaxCandidates))}
-	for _, item := range ranked {
+	recorded := len(ranked.included) + len(ranked.excluded)
+	trace := DecisionTrace{Version: DecisionTraceVersion, SurfacedTotal: len(candidates), RecordedTotal: recorded, Candidates: make([]DecisionCandidate, 0, min(recorded, DecisionTraceMaxCandidates))}
+	appendDecision := func(item rankedCandidate, disposition, reason string) {
 		if len(trace.Candidates) >= DecisionTraceMaxCandidates {
 			trace.Truncated = true
-			continue
+			return
 		}
-		trace.Candidates = append(trace.Candidates, DecisionCandidate{Key: string(item.key), Name: item.candidate.Name, Source: string(item.candidate.Source), Ownership: ownership(item.candidate.InLibrary), Rank: RankTuple{Relevance: item.relevance, Preference: item.preference, Novelty: item.novelty, TieKey: string(item.key)}, Disposition: DispositionNotSelected, Reason: ReasonNotSelected})
+		trace.Candidates = append(trace.Candidates, DecisionCandidate{Key: string(item.key), Name: item.candidate.Name, Source: string(item.candidate.Source), Ownership: ownership(item.candidate.InLibrary), Rank: RankTuple{Relevance: item.relevance, Preference: item.preference, Novelty: item.novelty, TieKey: string(item.key)}, Disposition: disposition, Reason: reason})
 	}
-	if len(result) == 0 {
+	for _, item := range ranked.included {
+		appendDecision(item, DispositionNotSelected, ReasonNotSelected)
+	}
+	for _, item := range ranked.excluded {
+		appendDecision(item, DispositionNotSelected, ReasonNever)
+	}
+	if len(candidates) == 0 {
 		trace.Terminal = ReasonRetrievalEmpty
 	}
 	return RankedCandidates{Candidates: result, Trace: trace}
@@ -136,19 +146,10 @@ func ownership(inLibrary bool) string {
 // above a relevant one. Feedback and novelty only order candidates within the
 // same relevance band; identity is the final deterministic tie-break.
 func RankGroundedCandidates(intent string, candidates []catalog.Candidate, signals []FeedbackSignal) []catalog.Candidate {
-	return rankGroundedCandidates(intent, candidates, signals)
+	return RankGroundedCandidatesWithTrace(intent, candidates, signals).Candidates
 }
 
-func rankGroundedCandidates(intent string, candidates []catalog.Candidate, signals []FeedbackSignal) []catalog.Candidate {
-	ranked := rankDetailed(intent, candidates, signals)
-	out := make([]catalog.Candidate, 0, len(ranked))
-	for _, item := range ranked {
-		out = append(out, item.candidate)
-	}
-	return out
-}
-
-func rankDetailed(intent string, candidates []catalog.Candidate, signals []FeedbackSignal) []rankedCandidate {
+func rankDetailed(intent string, candidates []catalog.Candidate, signals []FeedbackSignal) rankedCandidates {
 	effective := make(map[provision.Key]FeedbackAction, len(signals))
 	lessGenres := map[string]bool{}
 	byKey := make(map[provision.Key]catalog.Candidate, len(candidates))
@@ -166,10 +167,10 @@ func rankDetailed(intent string, candidates []catalog.Candidate, signals []Feedb
 		}
 	}
 	query := wordSet(intent)
-	ranked := make([]rankedCandidate, 0, len(candidates))
+	result := rankedCandidates{included: make([]rankedCandidate, 0, len(candidates))}
 	for _, candidate := range candidates {
 		key, err := candidate.Key()
-		if err != nil || effective[key] == FeedbackNever {
+		if err != nil {
 			continue
 		}
 		preference := 0
@@ -191,11 +192,16 @@ func rankDetailed(intent string, candidates []catalog.Candidate, signals []Feedb
 		if !candidate.InLibrary {
 			novelty = 1
 		}
-		ranked = append(ranked, rankedCandidate{candidate: candidate, key: key,
+		item := rankedCandidate{candidate: candidate, key: key,
 			relevance:  overlap(query, wordSet(candidate.Name+" "+candidate.Overview+" "+strings.Join(candidate.Genres, " "))),
-			preference: preference, novelty: novelty})
+			preference: preference, novelty: novelty}
+		if effective[key] == FeedbackNever {
+			result.excluded = append(result.excluded, item)
+			continue
+		}
+		result.included = append(result.included, item)
 	}
-	slices.SortFunc(ranked, func(a, b rankedCandidate) int {
+	slices.SortFunc(result.included, func(a, b rankedCandidate) int {
 		if order := cmp.Compare(b.relevance, a.relevance); order != 0 {
 			return order
 		}
@@ -207,7 +213,10 @@ func rankDetailed(intent string, candidates []catalog.Candidate, signals []Feedb
 		}
 		return cmp.Compare(string(a.key), string(b.key))
 	})
-	return ranked
+	slices.SortFunc(result.excluded, func(a, b rankedCandidate) int {
+		return cmp.Compare(string(a.key), string(b.key))
+	})
+	return result
 }
 
 func wordSet(text string) map[string]bool {
