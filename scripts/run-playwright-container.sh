@@ -28,17 +28,19 @@ docker_args=(
 
 case "$mode" in
   visual)
-    shard_args=()
+    playwright_args=(
+      docker "${docker_args[@]}" -v "$repo_root/web:/work" -w /work/apps/web "$image"
+      node_modules/.bin/playwright test
+    )
     if [[ -n ${LOOMARR_PLAYWRIGHT_SHARD:-} ]]; then
       if [[ ! $LOOMARR_PLAYWRIGHT_SHARD =~ ^--shard=([1-9][0-9]*)/([1-9][0-9]*)$ ]] ||
         ((BASH_REMATCH[1] > BASH_REMATCH[2])); then
         echo "invalid LOOMARR_PLAYWRIGHT_SHARD: $LOOMARR_PLAYWRIGHT_SHARD" >&2
         exit 2
       fi
-      shard_args=("$LOOMARR_PLAYWRIGHT_SHARD")
+      playwright_args+=("$LOOMARR_PLAYWRIGHT_SHARD")
     fi
-    exec docker "${docker_args[@]}" -v "$repo_root/web:/work" -w /work/apps/web "$image" \
-      node_modules/.bin/playwright test "${shard_args[@]}"
+    exec "${playwright_args[@]}"
     ;;
   visual-update)
     exec docker "${docker_args[@]}" -v "$repo_root/web:/work" -w /work/apps/web "$image" \
