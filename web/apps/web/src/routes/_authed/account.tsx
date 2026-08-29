@@ -44,9 +44,8 @@ const AccountScreen = () => {
   const [confirm, setConfirm] = useState("");
   const [formError, setFormError] = useState("");
 
-  // A media-server account has no Loomarr-side password: the media server owns that
-  // credential and Loomarr never sees it. Say so rather than offering a form that
-  // can only 409 — and rather than implying we could change their Emby password.
+  // A media-server account does not own an independent Loomarr password. Its captured
+  // verifier is an outage fallback, not a credential this page may change.
   const isLocal = user?.local ?? false;
 
   const sessions = usersApi.useListUserSessions(user?.id ?? "", {
@@ -163,8 +162,10 @@ const AccountScreen = () => {
             </>
           ) : (
             <p className="text-muted-foreground text-sm">
-              Your password lives on your media server and Loomarr never sees it. Change it there and the new
-              one works here immediately.
+              Your media server owns this password. Loomarr stores only a non-reversible verifier after a
+              successful sign-in
+              {user?.offlineLogin ? ", so this account can sign in during a media-server outage" : ""}. Change
+              the password on your media server; your next successful sign-in refreshes the verifier.
             </p>
           )}
         </Card>

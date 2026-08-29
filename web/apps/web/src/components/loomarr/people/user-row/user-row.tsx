@@ -58,7 +58,11 @@ const UserRow = ({
           ) : (
             <Server className="size-3" aria-hidden />
           )}
-          {user.local ? "Local account" : "Media-server account"}
+          {user.local
+            ? "Local account"
+            : user.offlineLogin
+              ? "Media-server account · offline login ready"
+              : "Media-server account · sign in once to enable offline login"}
         </p>
       </div>
 

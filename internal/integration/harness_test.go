@@ -255,7 +255,7 @@ func (h *harness) status(method, path, body string, cookie *http.Cookie) int {
 
 // ---- onboarding helpers -------------------------------------------------------
 
-// bootstrap creates the owning admin (real Provisioner + bcrypt) and returns the
+// bootstrap creates the owning admin (real Provisioner + Argon2id) and returns the
 // response status so callers can assert 200 (first) vs 409 (subsequent).
 func (h *harness) bootstrap(user, pass string) int {
 	h.t.Helper()
@@ -281,7 +281,7 @@ func (h *harness) login(user, pass string) *http.Cookie {
 	return nil
 }
 
-// asAdmin bootstraps the owning admin (local bcrypt) once and logs in — the
+// asAdmin bootstraps the owning admin (local Argon2id) once and logs in — the
 // untested bootstrap→local-login chain. Returns the admin session cookie.
 func (h *harness) asAdmin() *http.Cookie {
 	h.t.Helper()

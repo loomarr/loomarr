@@ -13,6 +13,7 @@ const base: UserBody = {
   disabled: false,
   autoApprove: false,
   local: false,
+  offlineLogin: false,
   pendingAcquisitions: 2,
   effectiveQuota: 5,
 };
@@ -35,9 +36,11 @@ type Story = StoryObj<typeof meta>;
 
 const Imported: Story = { args: { user: base } };
 
-// A local user authenticates against a stored bcrypt hash, so password actions mean
+// A local user authenticates against a stored Argon2id hash, so password actions mean
 // something for this row and not for an imported one.
 const Local: Story = { args: { user: { ...base, name: "Ada", local: true } } };
+
+const OfflineReady: Story = { args: { user: { ...base, offlineLogin: true } } };
 
 const Admin: Story = { args: { user: { ...base, role: "admin", autoApprove: true, quota: 0 } } };
 
@@ -50,4 +53,4 @@ const Self: Story = { args: { user: { ...base, role: "admin" }, isSelf: true } }
 const Busy: Story = { args: { user: base, busy: true } };
 
 export default meta;
-export { Admin, Busy, Disabled, Imported, Local, Self };
+export { Admin, Busy, Disabled, Imported, Local, OfflineReady, Self };

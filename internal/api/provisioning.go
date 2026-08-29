@@ -121,7 +121,7 @@ func (s *Server) setupState(ctx context.Context, _ *struct{}) (*setupStateOutput
 type bootstrapInput struct {
 	Body struct {
 		Username string `json:"username" doc:"The owning admin's local username."`
-		Password string `json:"password" doc:"The owning admin's password (bcrypt-hashed at rest)."`
+		Password string `json:"password" doc:"The owning admin's password (Argon2id-hashed at rest)."`
 	}
 }
 
@@ -153,8 +153,7 @@ func (s *Server) bootstrap(ctx context.Context, in *bootstrapInput) (*bootstrapO
 
 type importUsersInput struct {
 	Body struct {
-		IDs       []string `json:"ids" doc:"Media-server user ids to allowlist."`
-		MakeAdmin bool     `json:"makeAdmin,omitempty" doc:"Grant admin to imported users that are media-server admins (default member)."`
+		IDs []string `json:"ids" doc:"Media-server user ids to allowlist. New users copy their media-server admin/member role."`
 	}
 }
 
@@ -170,7 +169,7 @@ func (s *Server) importUsers(ctx context.Context, in *importUsersInput) (*import
 		return nil, errNotImplemented("Media server not connected",
 			"Connect a media server in Settings to import its users.")
 	}
-	n, err := s.provision.Import(ctx, in.Body.IDs, in.Body.MakeAdmin)
+	n, err := s.provision.Import(ctx, in.Body.IDs)
 	if err != nil {
 		return nil, apiErrWithCause(http.StatusBadGateway, "Import failed",
 			"Loomarr couldn't import the selected users. Check the media-server connection and try again.", err)

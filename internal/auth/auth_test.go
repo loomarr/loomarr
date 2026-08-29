@@ -2,12 +2,14 @@ package auth
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var now = time.Date(2026, 7, 13, 20, 0, 0, 0, time.UTC)
@@ -135,7 +137,7 @@ func TestImportedUserLogin_AllowlistEnforced(t *testing.T) {
 	}
 }
 
-// Import assigns admin to media-server admins only when makeAdmin is set (§11).
+// Import copies the media-server role for a new allowlist row (§11).
 // Uses the pinned users_list fixture ids: Fixture Admin (admin) + Fixture Member (member).
 func TestImport_RoleAssignment(t *testing.T) {
 	const (
@@ -149,18 +151,18 @@ func TestImport_RoleAssignment(t *testing.T) {
 	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
 	prov := NewProvisioner(st, lib, seqID(), func() time.Time { return now })
 
-	n, err := prov.Import(ctx, []string{adminID, memberID}, true)
+	n, err := prov.Import(ctx, []string{adminID, memberID})
 	if err != nil || n != 2 {
 		t.Fatalf("import → %d,%v want 2,nil", n, err)
 	}
 	if u, _ := st.GetUser(ctx, adminID); u.Role != store.RoleAdmin {
-		t.Errorf("media-server admin imported with makeAdmin → %v, want admin", u.Role)
+		t.Errorf("media-server admin imported as → %v, want admin", u.Role)
 	}
 	if u, _ := st.GetUser(ctx, memberID); u.Role != store.RoleMember {
 		t.Errorf("non-admin imported → %v, want member", u.Role)
 	}
 	// An id the server doesn't list is skipped, never invented.
-	n2, _ := prov.Import(ctx, []string{"ghost-id"}, true)
+	n2, _ := prov.Import(ctx, []string{"ghost-id"})
 	if n2 != 0 {
 		t.Errorf("importing an unknown id → %d, want 0 (never invent)", n2)
 	}
@@ -176,7 +178,7 @@ func TestBootstrap_OnceOnly(t *testing.T) {
 	if err != nil || u.Role != store.RoleAdmin || u.PasswordHash == "" {
 		t.Fatalf("bootstrap → %+v, %v (want admin with a hash)", u, err)
 	}
-	// A local admin can now log in against the bcrypt hash (no media server).
+	// A local admin can now log in against the Argon2id hash (no media server).
 	mgr := NewManager(st, time.Hour, func() time.Time { return now })
 	svc := NewLoginService(nil, st, mgr, nil, func() time.Time { return now })
 	if _, _, lu, lerr := svc.Login(ctx, "owner", "s3cret-pw", "ip|owner"); lerr != nil || lu.ID != u.ID {
@@ -201,9 +203,115 @@ func importOne(t *testing.T, st store.Store, id, name string, admin bool) {
 	if admin {
 		role = store.RoleAdmin
 	}
-	u := store.User{ID: id, Name: name, Role: role, CreatedAt: now, UpdatedAt: now}
+	u := store.User{ID: id, Name: name, Role: role, MediaServerLinked: true, CreatedAt: now, UpdatedAt: now}
 	if err := st.UpsertUser(context.Background(), u); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestImportedLogin_OnlineCaptureRefreshAndOfflineFallback(t *testing.T) {
+	st := newStore(t)
+	ctx := context.Background()
+	ms := testkit.NewMediaServer(t)
+	t.Cleanup(ms.Close)
+	ms.Accounts = map[string]testkit.Account{
+		"bob": {Password: "first-password", ID: "u-bob"},
+	}
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+	mgr := NewManager(st, time.Hour, func() time.Time { return now })
+	svc := NewLoginService(lib, st, mgr, nil, func() time.Time { return now })
+	importOne(t, st, "u-bob", "bob", false)
+
+	if _, _, _, err := svc.Login(ctx, "bob", "first-password", "online-1"); err != nil {
+		t.Fatalf("first online login: %v", err)
+	}
+	captured, _ := st.GetUser(ctx, "u-bob")
+	if !captured.MediaServerLinked || !verifyPassword(captured.PasswordHash, "first-password") {
+		t.Fatal("successful provider login did not capture an offline Argon2id verifier")
+	}
+
+	// The provider is reachable and authoritative: its rejection must not use the
+	// stale matching verifier after the password changes there.
+	ms.Accounts["bob"] = testkit.Account{Password: "second-password", ID: "u-bob"}
+	if _, _, _, err := svc.Login(ctx, "bob", "first-password", "online-stale"); err != ErrInvalidCredentials {
+		t.Fatalf("reachable provider rejection = %v, want ErrInvalidCredentials", err)
+	}
+	if _, _, _, err := svc.Login(ctx, "bob", "second-password", "online-2"); err != nil {
+		t.Fatalf("login after provider password change: %v", err)
+	}
+	refreshed, _ := st.GetUser(ctx, "u-bob")
+	if !verifyPassword(refreshed.PasswordHash, "second-password") || verifyPassword(refreshed.PasswordHash, "first-password") {
+		t.Fatal("later provider success did not replace the offline verifier")
+	}
+	ms.AuthStatus = 503
+	if _, _, _, err := svc.Login(ctx, "bob", "second-password", "offline-503"); err != nil {
+		t.Fatalf("provider 503 with matching verifier: %v", err)
+	}
+	ms.AuthStatus = 0
+
+	ms.Close() // transport failure: now, and only now, offline verification is allowed.
+	if _, _, _, err := svc.Login(ctx, "bob", "second-password", "offline-good"); err != nil {
+		t.Fatalf("offline matching verifier: %v", err)
+	}
+	if _, _, _, err := svc.Login(ctx, "bob", "wrong-password", "offline-bad"); err != ErrInvalidCredentials {
+		t.Fatalf("offline wrong verifier = %v, want ErrInvalidCredentials", err)
+	}
+	disabled, _ := st.GetUser(ctx, "u-bob")
+	disabled.Disabled = true
+	if err := st.UpsertUser(ctx, disabled); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := svc.Login(ctx, "bob", "second-password", "offline-disabled"); err != ErrInvalidCredentials {
+		t.Fatalf("offline disabled user = %v, want ErrInvalidCredentials", err)
+	}
+}
+
+func TestImportedLogin_OfflineMissingVerifierAndUnimportedFail(t *testing.T) {
+	st := newStore(t)
+	ctx := context.Background()
+	ms := testkit.NewMediaServer(t)
+	ms.Close()
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+	mgr := NewManager(st, time.Hour, func() time.Time { return now })
+	svc := NewLoginService(lib, st, mgr, nil, func() time.Time { return now })
+	importOne(t, st, "u-bob", "bob", false)
+
+	if _, _, _, err := svc.Login(ctx, "bob", "anything", "offline-missing"); err != ErrInvalidCredentials {
+		t.Fatalf("offline missing verifier = %v, want ErrInvalidCredentials", err)
+	}
+	if _, _, _, err := svc.Login(ctx, "unknown", "anything", "offline-unknown"); err != ErrInvalidCredentials {
+		t.Fatalf("offline unimported = %v, want ErrInvalidCredentials", err)
+	}
+	if _, err := st.GetUserByName(ctx, "unknown"); err != store.ErrNotFound {
+		t.Fatalf("offline unimported login created a row: %v", err)
+	}
+}
+
+func TestImportedLogin_ProviderDisablePersistsAndRevokes(t *testing.T) {
+	st := newStore(t)
+	ctx := context.Background()
+	ms := testkit.NewMediaServer(t)
+	t.Cleanup(ms.Close)
+	ms.Accounts = map[string]testkit.Account{"bob": {Password: "password", ID: "u-bob"}}
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+	mgr := NewManager(st, time.Hour, func() time.Time { return now })
+	svc := NewLoginService(lib, st, mgr, nil, func() time.Time { return now })
+	importOne(t, st, "u-bob", "bob", false)
+
+	token, _, _, err := svc.Login(ctx, "bob", "password", "enabled")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms.Accounts["bob"] = testkit.Account{Password: "password", ID: "u-bob", Disabled: true}
+	if _, _, _, err := svc.Login(ctx, "bob", "password", "disabled"); err != ErrInvalidCredentials {
+		t.Fatalf("provider-disabled login = %v, want ErrInvalidCredentials", err)
+	}
+	u, _ := st.GetUser(ctx, "u-bob")
+	if !u.Disabled {
+		t.Fatal("provider disable observed during login was not persisted")
+	}
+	if _, err := mgr.Resolve(ctx, token); err == nil {
+		t.Fatal("session survived provider disable observed during login")
 	}
 }
 
@@ -225,6 +333,51 @@ func TestLoginBadPassword(t *testing.T) {
 
 	if _, _, _, err := svc.Login(context.Background(), "bob", "wrong", "ip|bob"); err != ErrInvalidCredentials {
 		t.Errorf("bad password → %v, want ErrInvalidCredentials", err)
+	}
+}
+
+func TestLocalLogin_UpgradesLegacyBcryptAfterSuccessfulVerification(t *testing.T) {
+	st := newStore(t)
+	ctx := context.Background()
+	legacy, err := bcrypt.GenerateFromPassword([]byte("legacy-password"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertUser(ctx, store.User{
+		ID: "local-legacy", Name: "legacy", Role: store.RoleAdmin, PasswordHash: string(legacy),
+		CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	mgr := NewManager(st, time.Hour, func() time.Time { return now })
+	svc := NewLoginService(nil, st, mgr, nil, func() time.Time { return now })
+
+	if _, _, _, err := svc.Login(ctx, "legacy", "wrong-password", "wrong"); err != ErrInvalidCredentials {
+		t.Fatalf("wrong legacy password = %v, want ErrInvalidCredentials", err)
+	}
+	unchanged, err := st.GetUser(ctx, "local-legacy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unchanged.PasswordHash != string(legacy) {
+		t.Fatal("failed bcrypt verification changed the stored verifier")
+	}
+
+	if _, _, _, err := svc.Login(ctx, "legacy", "legacy-password", "right"); err != nil {
+		t.Fatalf("legacy login: %v", err)
+	}
+	upgraded, err := st.GetUser(ctx, "local-legacy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(upgraded.PasswordHash, "$argon2id$") {
+		t.Fatalf("successful legacy login left verifier as %q, want Argon2id", upgraded.PasswordHash)
+	}
+	if !verifyPassword(upgraded.PasswordHash, "legacy-password") {
+		t.Fatal("upgraded Argon2id verifier does not accept the password")
+	}
+	if _, _, _, err := svc.Login(ctx, "legacy", "legacy-password", "argon"); err != nil {
+		t.Fatalf("login after upgrade: %v", err)
 	}
 }
 

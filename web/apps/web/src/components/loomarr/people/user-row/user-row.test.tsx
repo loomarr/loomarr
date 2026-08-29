@@ -12,6 +12,7 @@ const user = (over: Partial<UserBody> = {}): UserBody => ({
   disabled: false,
   autoApprove: false,
   local: false,
+  offlineLogin: false,
   pendingAcquisitions: 2,
   effectiveQuota: 5,
   ...over,
@@ -23,6 +24,12 @@ describe("UserRow", () => {
     expect(screen.getByText(/local account/i)).toBeInTheDocument();
     rerender(<UserRow user={user({ local: false })} />);
     expect(screen.getByText(/media-server account/i)).toBeInTheDocument();
+  });
+
+  it("reports offline capability without treating a linked user as local", () => {
+    render(<UserRow user={user({ local: false, offlineLogin: true })} />);
+    expect(screen.getByText(/media-server account · offline login ready/i)).toBeInTheDocument();
+    expect(screen.queryByText(/local account/i)).not.toBeInTheDocument();
   });
 
   it("writes each field independently, with no save step", () => {

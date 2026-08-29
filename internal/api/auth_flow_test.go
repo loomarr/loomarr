@@ -1,16 +1,16 @@
 package api_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
-
-	"golang.org/x/crypto/bcrypt"
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/auth"
@@ -61,7 +61,7 @@ func authServer(t *testing.T) (*httptest.Server, store.Store, *testkit.MediaServ
 // allowlist), so the flow tests can log in as an imported user.
 func seedImported(t *testing.T, st store.Store, id, name string, role store.Role) {
 	t.Helper()
-	u := store.User{ID: id, Name: name, Role: role, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	u := store.User{ID: id, Name: name, Role: role, MediaServerLinked: true, CreatedAt: time.Now(), UpdatedAt: time.Now()}
 	if err := st.UpsertUser(context.Background(), u); err != nil {
 		t.Fatal(err)
 	}
@@ -135,10 +135,35 @@ func TestMe(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("me → %d", resp.StatusCode)
 	}
-	var body struct{ ID, Role string }
+	var body struct {
+		ID, Role     string
+		Local        bool `json:"local"`
+		OfflineLogin bool `json:"offlineLogin"`
+	}
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 	if body.ID != "u-kid" || body.Role != "member" {
 		t.Errorf("me = %+v, want u-kid/member", body)
+	}
+	if body.Local || !body.OfflineLogin {
+		t.Errorf("linked account capabilities = local:%v offline:%v, want false/true", body.Local, body.OfflineLogin)
+	}
+}
+
+func TestLoginFailureRedactsSubmittedPassword(t *testing.T) {
+	srv, _, _ := authServer(t)
+	const secret = "credential-must-not-appear"
+	body, _ := json.Marshal(map[string]string{"username": "kid", "password": secret})
+	resp, err := http.Post(srv.URL+"/v1/auth/login", "application/json", strings.NewReader(string(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(responseBody, []byte(secret)) {
+		t.Fatalf("login diagnostic leaked submitted password: %s", responseBody)
 	}
 }
 
@@ -280,19 +305,13 @@ func TestBreakGlassToken(t *testing.T) {
 // the gate: a member must not reach the admin paths, and the self path must not be
 // aimable at anyone else (it takes no target id, by construction).
 
-// seedLocalUser writes a user WITH a bcrypt hash — the credential-path discriminator
-// (§11). The harness otherwise seeds imported users, so a local one is explicit.
+// seedLocalUser creates a local user through the real password service. The
+// harness otherwise seeds imported users, so a local one is explicit.
 func seedLocalUser(t *testing.T, st store.Store, id, name, password string, role store.Role) {
 	t.Helper()
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
+	passwords := auth.NewPasswordService(st, func() string { return id }, time.Now)
+	_, err := passwords.CreateLocal(context.Background(), name, password, role, 0)
 	if err != nil {
-		t.Fatal(err)
-	}
-	u := store.User{
-		ID: id, Name: name, Role: role, PasswordHash: string(hash),
-		CreatedAt: time.Now(), UpdatedAt: time.Now(),
-	}
-	if err := st.UpsertUser(context.Background(), u); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -354,12 +373,11 @@ func TestChangeOwnPassword_WrongCurrentRejected(t *testing.T) {
 	}
 }
 
-// §19: an imported media-server user has no Loomarr-side password. The route says so
-// rather than pretending to succeed — a silent 204 would imply Loomarr had changed
-// their media-server password, which it cannot do.
+// §19: an imported user may have an offline verifier, but does not own an
+// independent Loomarr password. The route must not imply it changed Emby/Jellyfin.
 func TestChangeOwnPassword_ImportedUserConflicts(t *testing.T) {
 	srv, _, _ := authServer(t)
-	member := login(t, srv, "kid", "pw") // seeded as IMPORTED — no hash
+	member := login(t, srv, "kid", "pw") // imported; login captures an offline verifier
 
 	resp := authed(t, http.MethodPost, srv.URL+"/v1/auth/password", member,
 		`{"current":"pw","next":"a-longer-new-pw"}`)
