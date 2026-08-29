@@ -2,6 +2,7 @@ package suggest_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -56,6 +57,12 @@ type scopeFeedbackSource struct {
 	mu      sync.Mutex
 	scopes  []string
 	signals map[string][]suggest.FeedbackSignal
+}
+
+type failingFeedbackSource struct{ err error }
+
+func (s failingFeedbackSource) Signals(context.Context, suggest.Intent) ([]suggest.FeedbackSignal, error) {
+	return nil, s.err
 }
 
 func (s *scopeFeedbackSource) Signals(_ context.Context, intent suggest.Intent) ([]suggest.FeedbackSignal, error) {
@@ -263,6 +270,50 @@ func TestWorker_NoGroundedTitlesPersistsTypedFailure(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("job did not reach failed state")
+}
+
+func TestWorker_DurableWorkflowNormalizesContextFailureTrace(t *testing.T) {
+	for name, cause := range map[string]error{
+		"raw cancellation": context.Canceled,
+		"nested deadline":  fmt.Errorf("provider transport: %w", context.DeadlineExceeded),
+	} {
+		t.Run(name, func(t *testing.T) {
+			st := newStore(t)
+			workflow := proposalworkflow.New(st, func() string { return "workflow-proposal-1" }, time.Now)
+			ms := testkit.NewMediaServer(t)
+			lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+			mt := testkit.NewTMDB(t)
+			tm := tmdb.NewWithBase(mt.URL, "key")
+			sug := suggest.New(testkit.NewLLM(), catalog.New(lib, tm), tm, 10).
+				WithFeedback(failingFeedbackSource{err: cause})
+			terminal := newDoneEmitter()
+			svc := suggest.NewService(st, sug, suggest.Config{Workers: 1, Timeout: time.Second, CacheTTL: time.Hour},
+				idGen(), time.Now, testkit.Logger()).
+				WithDurableWorkflow(workflow).
+				WithProgressEmitter(terminal)
+
+			jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "matrix"}, "alice")
+			if err != nil {
+				t.Fatal(err)
+			}
+			runCtx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			go svc.Run(runCtx)
+			waitForFailedEvent(t, terminal)
+
+			job, err := st.GetJob(context.Background(), jobID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var trace suggest.DecisionTrace
+			if err := json.Unmarshal([]byte(job.FailureTraceJSON), &trace); err != nil {
+				t.Fatalf("context failure trace = %q: %v", job.FailureTraceJSON, err)
+			}
+			if job.FailureCode != suggest.FailureCodeGenerationFailed || trace.Version != suggest.DecisionTraceVersion || trace.Terminal != suggest.TerminalGenerationFailure {
+				t.Fatalf("context failure was not normalized: code=%q trace=%+v", job.FailureCode, trace)
+			}
+		})
+	}
 }
 
 func TestWorker_DurableRecurateRestoresChannelFeedbackScope(t *testing.T) {
@@ -531,9 +582,17 @@ func TestWorker_DurableFreshAndRefineStayHouseholdScoped(t *testing.T) {
 // OTHER jobs (§8 — one hung call can't starve the queue).
 func TestWorker_HungLLMTimesOut_PoolKeepsDraining(t *testing.T) {
 	st := newStore(t)
-	// A slow LLM that exceeds the (short) timeout.
-	slow := testkit.NewLLM(testkit.ToolCallResponse("catalog_search", map[string]any{"query": "x"}))
-	slow.Delay = 2 * time.Second
+	// The first turn surfaces grounded candidates; the second hangs. This proves
+	// timeout normalization preserves safe facts gathered before generation ended.
+	slow := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
+		testkit.FinalResponse(`{"channelName":"Late","picks":[]}`),
+	)
+	slow.OnChat = func() {
+		if slow.Calls == 1 {
+			slow.Delay = 2 * time.Second
+		}
+	}
 	ms := testkit.NewMediaServer(t)
 	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
 	mt := testkit.NewTMDB(t)
@@ -560,6 +619,13 @@ func TestWorker_HungLLMTimesOut_PoolKeepsDraining(t *testing.T) {
 	}
 	if j.FailureCode != suggest.FailureCodeGenerationFailed {
 		t.Errorf("timeout failure code = %q, want bounded generic code", j.FailureCode)
+	}
+	var trace suggest.DecisionTrace
+	if err := json.Unmarshal([]byte(j.FailureTraceJSON), &trace); err != nil {
+		t.Fatalf("timeout failure trace = %q: %v", j.FailureTraceJSON, err)
+	}
+	if trace.Version != suggest.DecisionTraceVersion || trace.Terminal != suggest.TerminalGenerationFailure || len(trace.Candidates) == 0 {
+		t.Fatalf("timeout failure trace did not preserve bounded candidate facts: %+v", trace)
 	}
 }
 

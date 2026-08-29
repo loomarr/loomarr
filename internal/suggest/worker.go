@@ -358,6 +358,7 @@ func (s *Service) runWorkflow(ctx context.Context, work WorkflowWork) {
 }
 
 func (s *Service) failWorkflow(ctx context.Context, work WorkflowWork, cause error) {
+	cause = normalizeContextFailure(cause)
 	traceJSON := ""
 	var failure *Failure
 	if errors.As(cause, &failure) {
@@ -490,6 +491,7 @@ func (s *Service) considerAutomaticApproval(ctx context.Context, job store.Job, 
 }
 
 func (s *Service) failJob(ctx context.Context, job store.Job, cause error) {
+	cause = normalizeContextFailure(cause)
 	traceJSON := ""
 	var failure *Failure
 	if errors.As(cause, &failure) {
@@ -513,6 +515,25 @@ func (s *Service) failJob(ctx context.Context, job store.Job, cause error) {
 	}
 	s.log.Error("suggestion job failed", "job", job.ID, "attempt", job.Attempts, "err", cause)
 	s.emitPhase(job.ID, PhaseFailed, 0)
+}
+
+// normalizeContextFailure closes raw and provider-wrapped cancellations at the
+// worker boundary. The public failure stays generic while any already-bounded
+// candidate facts survive with the terminal outcome that actually ended the run.
+func normalizeContextFailure(cause error) error {
+	if !errors.Is(cause, context.DeadlineExceeded) && !errors.Is(cause, context.Canceled) {
+		return cause
+	}
+	trace := DecisionTrace{Version: DecisionTraceVersion}
+	var failure *Failure
+	if errors.As(cause, &failure) {
+		trace = failure.Trace.Clone()
+		if trace.Version == 0 {
+			trace.Version = DecisionTraceVersion
+		}
+	}
+	trace.Terminal = TerminalGenerationFailure
+	return NewFailure(FailureCodeGenerationFailed, trace, cause)
 }
 
 func classifyFailure(cause error) string {
