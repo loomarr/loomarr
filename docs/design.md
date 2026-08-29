@@ -6167,6 +6167,14 @@ full migration or retirement is authorized.
 
 Every "pick one" in this doc is now picked. The agent builds with this stack; deviations require a doc update first.
 
+**Installed dependency versions are exact, reviewed pins.** Installed-dependency manifest sections
+use one concrete version rather than a semver range, container images and remote CI actions use
+immutable digests or commit SHAs, and Renovate proposes the next exact pin for the repository gates
+to review. Peer ranges remain compatibility contracts rather than selected installations.
+Workspace-local links and an operator-supplied Loomarr release version are the other non-concrete
+manifest references. Platform authorities such as Expo may hold an older compatible pin; the hold
+is documented beside the dependency and remains exact rather than widening into a range.
+
 ### Backend (Go 1.27+)
 
 Go 1.27 is the minimum toolchain. Its standard library transparently backs the existing
@@ -6894,7 +6902,7 @@ postgres backend has no `/data` volume — so the init runs under the `sqlite` p
 ```yaml
 services:
   loomarr-version-check:
-    image: busybox:1.36
+    image: busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
     command: ["sh", "/check-release-tag.sh", "--image-tag", "${LOOMARR_VERSION:?pin an exact released SemVer version}"]
     volumes: ["../scripts/check-release-tag.sh:/check-release-tag.sh:ro"]
 
@@ -6909,7 +6917,7 @@ services:
 
   # sqlite-only: chown the fresh /data volume to the nonroot uid before loomarr starts.
   loomarr-init:
-    image: busybox:1.36
+    image: busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
     profiles: ["sqlite"]
     command: ["sh", "-c", "chown -R 65532:65532 /data"]
     volumes: ["loomarr-data:/data"]
@@ -6948,11 +6956,11 @@ services:
     # depends_on: [postgres]       # postgres profile
 
   # postgres:                      # postgres profile
-  #   image: postgres:16
+  #   image: postgres:16@sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94
   #   environment: { POSTGRES_DB: loomarr, POSTGRES_PASSWORD: ... }
   #   volumes: [pg-data:/var/lib/postgresql/data]
   # ollama:                        # ai profile
-  #   image: ollama/ollama:latest
+  #   image: ollama/ollama:latest@sha256:020e4134285e2ef4d8fd801234176de3b4faadc992a3eb06c8e66a2f9d4c4ba2
   #   volumes: [ollama:/root/.ollama]
   # For in-app clip downloads, mount the drop-folder (the tooling is already
   # in the image — no tag change, no extra service):
