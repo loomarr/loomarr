@@ -64,7 +64,7 @@ packageExtensions:
   # SVG, and safe-area are already supplied at Expo-compatible versions. Its published full-UI
   # peers otherwise make pnpm auto-install a second React Native plus gesture and bottom-sheet
   # modules that the lite UI deliberately does not load.
-  "@storybook/react-native@10.5.0":
+  "@storybook/react-native@10.5.4":
     peerDependenciesMeta:
       "@gorhom/bottom-sheet": { optional: true }
       react: { optional: true }
@@ -81,7 +81,7 @@ packageExtensions:
       react-native-reanimated: { optional: true }
       react-native-safe-area-context: { optional: true }
       react-native-svg: { optional: true }
-  "@storybook/react-native-ui-lite@10.5.0":
+  "@storybook/react-native-ui-lite@10.5.4":
     peerDependenciesMeta:
       react: { optional: true }
       react-native: { optional: true }

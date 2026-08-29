@@ -20,10 +20,10 @@
     "react-native": ">=0.86 <0.87"
   },
   "devDependencies": {
-    "@types/react": "~19.2.2",
+    "@types/react": "19.2.18",
     "react": "19.2.3",
     "react-native": "npm:react-native-tvos@0.86.2-0",
-    "typescript": "~6.0.3",
-    "vitest": "^4.1.11"
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
   }
 }

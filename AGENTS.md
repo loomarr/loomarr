@@ -88,6 +88,12 @@ different delivery path.
 8. Do not preserve legacy formats, schemas, adapters, or code paths speculatively. Keep compatibility
    only for verified live data, active users, or an external contract that cannot be migrated in the
    same change; otherwise migrate or remove the obsolete path.
+9. Pin every installed third-party dependency to one exact reviewed version. Installed-dependency
+   manifest sections must not use semver ranges or floating tags; container images and remote CI
+   actions must use immutable digests or commit SHAs. Peer ranges remain compatibility contracts,
+   not selected installations. Workspace links and operator-supplied Loomarr release variables are
+   the other exceptions. Compatibility authorities such as Expo may require an older exact version;
+   record the hold beside the pin instead of widening its range.
 
 ## Commands
 

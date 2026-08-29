@@ -55,7 +55,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
 
 # Required image renderer (§14, §22). Build natively for each Buildx target so the bundled
 # libwebp and Rust standard library always match the runtime architecture.
-FROM rust:1.97-bookworm@sha256:0e2bcaef56d041a486784e54104a81aebe0da44bd03019bd70bc0401e42e4a97 AS image-worker
+FROM rust:1.98-bookworm@sha256:82150a52ec202c1b14d7817e14516c392bb7f5cfebd88f1ed531cb37ebd39922 AS image-worker
 WORKDIR /src
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY rust ./rust
@@ -116,7 +116,7 @@ RUN LOOMARR_RELEASE="${VERSION:-dev}" cargo build --release --locked -p loomarr-
 # integrity). To bump: `docker buildx imagetools inspect debian:stable-slim`, take the new
 # `Digest:`, and update the tag alongside it so the two never disagree. Same for the fe/build/
 # image-worker bases above.
-FROM debian:stable-slim@sha256:1710bde34461551a19a47c787885ec9ad7058d9a5bead2affb8d088fa2f8502b AS runtime
+FROM debian:stable-slim@sha256:04634311a8d5fc442b6eb06d792293c4f3e2268652ca7634e00ce8ef5cc0a28a AS runtime
 ARG TARGETARCH
 # The Debian package layer is pinned to a snapshot.debian.org timestamp so `apt-get install` below
 # resolves the SAME package versions on every build — the digest-pinned base above fixes the root
@@ -125,18 +125,18 @@ ARG TARGETARCH
 # the two aligned. snapshot.debian.org never removes old versions, so unlike a per-package `=version`
 # pin this does not rot when trixie drops a package on a point release. To bump: move the base-image
 # digest and this timestamp together to a newer snapshot, then rerun the image build + `make test-ffmpeg`.
-ARG DEBIAN_SNAPSHOT=20260803T000000Z
-ARG YTDLP_VERSION=2026.07.04
-ARG DENO_VERSION=v2.9.2
+ARG DEBIAN_SNAPSHOT=20260824T000000Z
+ARG YTDLP_VERSION=2026.08.19
+ARG DENO_VERSION=v2.9.6
 # Release-asset digests were copied from the upstream GitHub release records. Some
 # upstream records are mutable, so the committed checksums — not the record itself —
 # are the fail-closed identity. Keep both architectures explicit: a version tag alone
 # does not stop an asset from being replaced, and one architecture must never inherit
 # the other's checksum.
-ARG YTDLP_AMD64_SHA256=6bbb3d314cde4febe36e5fa1d55462e29c974f63444e707871834f6d8cc210ae
-ARG YTDLP_ARM64_SHA256=b6ce97646773070d7a7ffd6bbbdcaecb47c48483909c54c915bf08a7a9b5e0b1
-ARG DENO_AMD64_SHA256=934d1bd5cb09eaed7f2e4a4fc58208d04a3c5c0fcde9f319d93d735265c67a4a
-ARG DENO_ARM64_SHA256=310b8f48e59964ff18890d35e64f64fb90e8b1cc5d9ebff8c818327d5afb16d2
+ARG YTDLP_AMD64_SHA256=58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46399230a
+ARG YTDLP_ARM64_SHA256=b16e4dab368a816cd05d477d698a605a6ae87ccee1c8ffd38fa21d7254141fcc
+ARG DENO_AMD64_SHA256=394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2
+ARG DENO_ARM64_SHA256=9a46afc6c392c7cd2ff71a31558935545b46408d0e87f7a86908c712721c046e
 # ⚠⚠ DO NOT BUMP THIS WITHOUT RUNNING `make test-ffmpeg` AGAINST THE NEW BUILD.
 #
 # **ffmpeg n9 BREAKS INTERNAL PLAYOUT ENTIRELY** (§9.1), so this pin has a CEILING, not just a

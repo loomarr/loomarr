@@ -15,6 +15,7 @@ type renovateConfig struct {
 	IgnoreTests                bool                  `json:"ignoreTests"`
 	InternalChecksFilter       string                `json:"internalChecksFilter"`
 	MinimumReleaseAgeBehaviour string                `json:"minimumReleaseAgeBehaviour"`
+	RangeStrategy              string                `json:"rangeStrategy"`
 	LockFileMaintenance        renovateEnabled       `json:"lockFileMaintenance"`
 	CustomManagers             []renovateCustom      `json:"customManagers"`
 	PackageRules               []renovatePackageRule `json:"packageRules"`
@@ -50,7 +51,7 @@ type renovatePackageRule struct {
 func TestRenovateOwnsEveryDependencyEcosystem(t *testing.T) {
 	config := readRenovateConfig(t)
 	requireExactSet(t, "enabled managers", config.EnabledManagers, []string{
-		"gomod", "npm", "cargo", "github-actions", "dockerfile", "docker-compose", "custom.regex",
+		"gomod", "npm", "cargo", "gradle", "github-actions", "dockerfile", "docker-compose", "custom.regex",
 	})
 	if config.AutomergeType != "pr" || !config.PlatformAutomerge || config.IgnoreTests {
 		t.Fatalf("native checked PR automerge is required: %+v", config)
@@ -60,6 +61,9 @@ func TestRenovateOwnsEveryDependencyEcosystem(t *testing.T) {
 	}
 	if config.InternalChecksFilter != "strict" {
 		t.Fatalf("internalChecksFilter = %q, want strict", config.InternalChecksFilter)
+	}
+	if config.RangeStrategy != "pin" {
+		t.Fatalf("rangeStrategy = %q, want pin", config.RangeStrategy)
 	}
 	if config.LockFileMaintenance.Enabled {
 		t.Fatal("unscoped lockfile maintenance must remain disabled")

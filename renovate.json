@@ -5,6 +5,7 @@
     "gomod",
     "npm",
     "cargo",
+    "gradle",
     "github-actions",
     "dockerfile",
     "docker-compose",
@@ -24,6 +25,7 @@
     "enabled": false
   },
   "labels": ["dependencies"],
+  "rangeStrategy": "pin",
   "customManagers": [
     {
       "customType": "regex",

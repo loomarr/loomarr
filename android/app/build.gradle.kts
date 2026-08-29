@@ -210,21 +210,21 @@ dependencies {
     // wrappers exist for SCANNING, which needs a camera this app does not have and does not want.
     // Encoding is pure Kotlin/Java, and the matrix is drawn with Compose so the code uses our own
     // tokens rather than a bundled black-on-white bitmap.
-    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.google.zxing:core:3.5.4")
 
-    implementation("androidx.datastore:datastore-preferences:1.1.7")
+    implementation("androidx.datastore:datastore-preferences:1.2.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     // ⚠ org.json lives in the Android framework, and the android.jar on a local unit test's
     // classpath is STUBBED — every method throws "not mocked". The alternative fix,
     // `unitTests.isReturnDefaultValues = true`, makes those stubs return null/0 instead, which
     // would let a parsing bug pass as a null field rather than fail. A real implementation means
     // these tests exercise the parsing they claim to.
-    testImplementation("org.json:json:20240303")
+    testImplementation("org.json:json:20260814")
 
     // ── screenshot tests ────────────────────────────────────────────────────────────────────────
     //
