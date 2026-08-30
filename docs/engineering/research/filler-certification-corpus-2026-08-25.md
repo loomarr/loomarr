@@ -63,6 +63,15 @@ review packets and owner-only maps now bind the same content set; neither semant
 complete yet. The [preparation evidence](../evidence/filler-development-preparation-2026-08-27.json)
 records the external artifact digests and real-media boundary findings.
 
+The 2026-08-30 recovery cohort was separately prepared as a schema-v5 `development_seed`. The
+preparer rehashed all 3,460,859,319 source bytes and published 300 label-blind packets across 300
+clusters. Decoder evidence marked 298 cases usable and two unusable; the usable cases produced 1,788
+derivative files totaling 1,360,022,455 bytes. Two independently randomized opaque review packages
+bind the same 300-case content set, preserve private maps at mode `0600`, and leave their label
+templates empty. The [recovery preparation evidence](../evidence/filler-development-recovery-preparation-2026-08-30.json)
+records the exact input, draft, packet, derivative-tree, and package identities. Neither semantic
+review is complete, and the recovery packets contain no completed era or geography labels.
+
 This completes development acquisition, not certification. The Archive policy accepts exact item
 CC/public-domain assertions as operational authority without claiming a chain-of-title warranty. It
 does not admit a case to the scored holdout. The independent 1,126-case holdout, similarity/source
