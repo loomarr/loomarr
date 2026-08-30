@@ -1095,6 +1095,38 @@ above that bound.
 Rank tuple components are integers by contract; no floating-point values are serialized, so
 non-finite-float handling is not part of this typed boundary.
 
+### Scheduler decision trace v1 (#496)
+
+Every `schedule.ComputeDesiredAt` run also emits a separate bounded, versioned **Scheduler
+decision trace**. This is current cycle evidence: it describes the approved Lineup, live
+availability, Policy, and wall-clock supplied to that exact computation. It is never copied
+from the originating Proposal and never rewrites that Proposal's immutable trace. A saved or
+draft `GET …/cycle` / `POST …/programming/preview` response exposes the trace returned by the
+same computation that produced its slots; handlers may project and cap it, but may not
+reconstruct explanations from Channel state after the fact.
+
+The trace is an ordered stream of facts emitted at the deciding seam. Its closed stages are
+`hard_filter`, `availability`, `episode_selection`, and `placement`. Facts identify a subject
+only by canonical provisioning key plus safe display identity (title and optional season /
+episode), then record a closed outcome/reason and optional zero-based deck/final position.
+Together they distinguish:
+
+- channel scope, audience, active-rule scope, and seasonal refusals;
+- available programs from unavailable titles resolved under `pod_fill` or `coming_soon`;
+- episode season-range and editorial-selection keeps/drops, including an explicit safe
+  full-run fallback when editorial evidence is unavailable or insufficient;
+- the effective ordering mode, relaxation, rolling-window membership, and final cycle
+  placement (including inserted commercial gaps).
+
+Trace metadata records the effective ordering, lossless decimal-string shuffle seed, resolved window duration and
+coarse window index used by `ComputeDesiredAt`. Facts are stable in pipeline order and bounded
+to 1,024 per computation, with 256 slots reserved for placement facts so a long series cannot
+erase the entire “why does this air here?” stage. `factTotal`, `recordedTotal`, and an explicit
+`truncated` flag continue counting after the display bound so truncation cannot look complete. The trace
+contains no prompts, model rationale, credentials, provider payloads, filesystem paths,
+precise user location, or chain-of-thought. Hard audience and scope gates remain the scheduler's
+authority and can never be relaxed to make a trace look more complete.
+
 ### Provider abstraction
 One `Suggester` interface; provider by config. **Two adapters, both plain `net/http` (no vendor SDK):**
 - **`ollama`** (native `/api/chat` with tools) — the homelab default: local, private, no cost, and its capability/version API gives the §13 wizard + §8.1 model picker a fast pre-check. On a reasoning model (Qwen3-class), thinking mode is disabled on tool turns — with tools present it otherwise returns empty/leaked-marker output that breaks tool-calls (open Ollama bugs).
@@ -1336,7 +1368,7 @@ Ad pods, bumpers, and station IDs between programs are what make a channel read 
 - On approval: build the channel from currently-available items; fill the remaining timeline with filler/fallback so it's **live immediately — never dead air**. **Default pending-slot policy: pod-fill** (fill the gap with matched filler); a "coming soon" interstitial card is a config alternative.
 - Subscribe to provisioner availability events (internal). On `available` → place the real title, re-push affected programming. On `unavailable` → substitute permanently: next-ranked candidate from the proposal's `alternates[]` (§8), else the fallback pool. **The fallback pool is defined as** the channel's already-available lineup items (loopable) plus its filler catalog — i.e., "never dead air" concretely means: loop what the channel has, padded with pods.
 - **Backfill placement is stable:** landed titles fill their pending slots in place; there is no global reshuffle of a live channel on backfill — viewers shouldn't see the guide scramble every time a download lands.
-- The desired lineup is built under the channel's **ChannelPolicy** — hard filters (scope, audience fail-closed, seasonal bench) → seeded constraint-aware slotting (separation, ordering) → **relaxation ladder** on shortfall (recorded + surfaced; audience and scope are never relaxed) → pods. Separation is enforced **across the cycle seam** (Tunarr lineups loop, so the last→first adjacency honors the gaps too). The audience filter emits an **exclusion report** (`{overCeiling, unrated, items}`) surfaced at proposal review *and* reconcile, so gaps are visible before approval ("14 excluded: 11 over ceiling, 3 unrated") — the fix (rate the media, or relax the policy) is a human decision. The `programming-design.md` doc is authoritative for the policy schema, the enforce-not-extract split, cycle-wrap separation, seasonality, and the ladder; the `GET /v1/channels/{id}/cycle` cycle preview (§8.1) shows the first N slots with the active-rule attribution for proposal review and the channel's Programming surface.
+- The desired lineup is built under the channel's **ChannelPolicy** — hard filters (scope, audience fail-closed, seasonal bench) → seeded constraint-aware slotting (separation, ordering) → **relaxation ladder** on shortfall (recorded + surfaced; audience and scope are never relaxed) → pods. Separation is enforced **across the cycle seam** (Tunarr lineups loop, so the last→first adjacency honors the gaps too). The audience filter emits an **exclusion report** (`{overCeiling, unrated, items}`) surfaced at proposal review *and* reconcile, so gaps are visible before approval ("14 excluded: 11 over ceiling, 3 unrated") — the fix (rate the media, or relax the policy) is a human decision. The `programming-design.md` doc is authoritative for the policy schema, the enforce-not-extract split, cycle-wrap separation, seasonality, and the ladder; the `GET /v1/channels/{id}/cycle` cycle preview (§8.1) shows the first N slots with active-rule attribution and the scheduler-owned trace for proposal review and the channel's Programming surface.
 - **Policy defaults:** omitted policy fields resolve to **built-in Go constants**. V55 removed the unused registry-default middle tier; per-channel policy is the only operator-authored override.
 - **Ordering has one operator-facing knob (`policy.ordering`), not two.** The canonical 3-tier precedence is **per-rule `How.Ordering` (within that rule's window) > `policy.ordering` > `Channel.Strategy` (the stored default)**. `Channel.Strategy` is the create-time default the suggester/binder seed and is consulted only when `policy.ordering` is unset (inherit); it is **not** a separately-editable field on the channel page — the operator edits `policy.ordering`. (`programming-design.md` §5 is authoritative for the ladder.)
 - Reconciliation is **backend-neutral and idempotent**. Every active channel recomputes and persists its desired lineup, applied policy, status, healed metadata, and next deadline. An internal channel stops there and never calls the `Programmer`; a Tunarr-backed channel additionally diffs the remote channel and applies the minimal API calls. Safe to re-run any time (`/v1/channels/{id}/reconcile`). Internal break eligibility uses Loomarr's local filler catalog (`HasPool`); Tunarr program UUIDs and filler-list attachment are projection details and are never required for internal playout.

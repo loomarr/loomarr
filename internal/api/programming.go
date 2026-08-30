@@ -55,12 +55,13 @@ type previewProgrammingInput struct {
 
 type previewProgrammingOutput struct {
 	Body struct {
-		At         string         `json:"at" doc:"The resolved wall-clock this preview was computed for (RFC3339)"`
-		ActiveRule ActiveRuleDTO  `json:"activeRule"`
-		WindowMs   int64          `json:"windowMs" doc:"Resolved rolling-window horizon in ms (0 = the whole run, no truncation)"`
-		Slots      []CycleSlotDTO `json:"slots" doc:"Leading slots of the resolved cycle, in play order (capped)"`
-		Pods       PodPoolDTO     `json:"pods" doc:"The assembled break pool for the draft filler selection (§10)"`
-		Excluded   ExcludedDTO    `json:"excluded" doc:"What the hard filters REFUSED and why — the answer to \"why isn't X on my channel\" (§4)"`
+		At         string           `json:"at" doc:"The resolved wall-clock this preview was computed for (RFC3339)"`
+		ActiveRule ActiveRuleDTO    `json:"activeRule"`
+		WindowMs   int64            `json:"windowMs" doc:"Resolved rolling-window horizon in ms (0 = the whole run, no truncation)"`
+		Slots      []CycleSlotDTO   `json:"slots" doc:"Leading slots of the resolved cycle, in play order (capped)"`
+		Pods       PodPoolDTO       `json:"pods" doc:"The assembled break pool for the draft filler selection (§10)"`
+		Excluded   ExcludedDTO      `json:"excluded" doc:"What the hard filters REFUSED and why — the answer to \"why isn't X on my channel\" (§4)"`
+		Trace      ScheduleTraceDTO `json:"trace" doc:"Bounded scheduler-owned reasons emitted by the exact draft computation"`
 	}
 }
 
@@ -172,5 +173,6 @@ func (s *Server) previewChannelProgramming(ctx context.Context, in *previewProgr
 	out.Body.Slots = cycleSlotsToDTO(cycle.Slots, cyclePreviewSlotCap)
 	out.Body.Pods = pool
 	out.Body.Excluded = excludedToDTO(cycle.Excluded)
+	out.Body.Trace = scheduleTraceToDTO(cycle.Trace)
 	return out, nil
 }

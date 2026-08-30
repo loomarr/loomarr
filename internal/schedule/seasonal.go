@@ -153,6 +153,10 @@ func isSeasonalForAny(e LineupEntry) bool {
 //     window, run the offSeason fallback (loop the scope w/o the filter,
 //     or dark). The dark case returns an empty set.
 func applySeasonal(entries []LineupEntry, rp ResolvedPolicy, now time.Time) ([]LineupEntry, ExclusionReport) {
+	return applySeasonalWithTrace(entries, rp, now, nil)
+}
+
+func applySeasonalWithTrace(entries []LineupEntry, rp ResolvedPolicy, now time.Time, trace *scheduleTraceBuilder) ([]LineupEntry, ExclusionReport) {
 	var report ExclusionReport
 	if now.IsZero() || rp.Seasonal.Mode == SeasonalOff {
 		return entries, report
@@ -167,6 +171,7 @@ func applySeasonal(entries []LineupEntry, rp ResolvedPolicy, now time.Time) ([]L
 				// Bench everything — the channel goes dark out of window.
 				for _, e := range entries {
 					report.add(e, "out_of_season")
+					trace.add(hardFilterFact(e, OutcomeExcluded, ReasonOutOfSeason))
 				}
 				return nil, report
 			}
@@ -180,6 +185,7 @@ func applySeasonal(entries []LineupEntry, rp ResolvedPolicy, now time.Time) ([]L
 				kept = append(kept, e)
 			} else {
 				report.add(e, "out_of_season")
+				trace.add(hardFilterFact(e, OutcomeExcluded, ReasonOutOfSeason))
 			}
 		}
 		return kept, report
@@ -191,6 +197,7 @@ func applySeasonal(entries []LineupEntry, rp ResolvedPolicy, now time.Time) ([]L
 			// (Christmas in July). A non-seasonal item always passes.
 			if isSeasonalForAny(e) && !isSeasonal(e, active) {
 				report.add(e, "out_of_season")
+				trace.add(hardFilterFact(e, OutcomeExcluded, ReasonOutOfSeason))
 				continue
 			}
 			kept = append(kept, e)

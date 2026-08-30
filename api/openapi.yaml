@@ -5193,6 +5193,9 @@ components:
           items:
             $ref: "#/components/schemas/CycleSlotDTO"
           type: array
+        trace:
+          $ref: "#/components/schemas/ScheduleTraceDTO"
+          description: Bounded scheduler-owned reasons emitted by the exact computation that produced slots
         windowMs:
           description: Resolved rolling-window horizon in ms (0 = the whole run, no truncation)
           format: int64
@@ -5203,6 +5206,7 @@ components:
         - windowMs
         - slots
         - excluded
+        - trace
       type: object
     PreviewDraftPodsInputBody:
       additionalProperties: false
@@ -5302,6 +5306,9 @@ components:
           items:
             $ref: "#/components/schemas/CycleSlotDTO"
           type: array
+        trace:
+          $ref: "#/components/schemas/ScheduleTraceDTO"
+          description: Bounded scheduler-owned reasons emitted by the exact draft computation
         windowMs:
           description: Resolved rolling-window horizon in ms (0 = the whole run, no truncation)
           format: int64
@@ -5313,6 +5320,7 @@ components:
         - slots
         - pods
         - excluded
+        - trace
       type: object
     ProcessDetail:
       additionalProperties: false
@@ -6107,6 +6115,148 @@ components:
           type: string
         separation:
           $ref: "#/components/schemas/SeparationPolicy"
+      type: object
+    ScheduleFactDTO:
+      additionalProperties: false
+      properties:
+        cyclePosition:
+          description: Zero-based final slot position after break insertion
+          format: int64
+          type: integer
+        deckPosition:
+          description: Zero-based position before rolling-window selection
+          format: int64
+          type: integer
+        episode:
+          format: int64
+          type: integer
+        key:
+          description: Canonical provisioning key; empty for a commercial gap
+          type: string
+        outcome:
+          enum:
+            - kept
+            - excluded
+            - available
+            - pending
+            - selected
+            - omitted
+            - placed
+            - windowed_out
+            - inserted
+          type: string
+        reason:
+          enum:
+            - eligible
+            - over_ceiling
+            - unrated
+            - out_of_scope
+            - out_of_rule_scope
+            - out_of_season
+            - available
+            - unavailable_pod_fill
+            - unavailable_coming_soon
+            - complete_selected
+            - highlights_selected
+            - highlights_omitted
+            - holiday_selected
+            - holiday_omitted
+            - full_run_fallback
+            - out_of_season_range
+            - sequential
+            - shuffle
+            - syndication
+            - windowed_out
+            - commercial_break
+          type: string
+        season:
+          format: int64
+          type: integer
+        stage:
+          enum:
+            - hard_filter
+            - availability
+            - episode_selection
+            - placement
+          type: string
+        title:
+          type: string
+      required:
+        - stage
+        - outcome
+        - reason
+      type: object
+    ScheduleRelaxationDTO:
+      additionalProperties: false
+      properties:
+        from:
+          type: string
+        kind:
+          type: string
+        to:
+          type: string
+      required:
+        - kind
+        - from
+        - to
+      type: object
+    ScheduleTraceDTO:
+      additionalProperties: false
+      properties:
+        factTotal:
+          description: Total facts emitted before the display bound
+          format: int64
+          type: integer
+        facts:
+          description: Stable pipeline-ordered decision facts
+          items:
+            $ref: "#/components/schemas/ScheduleFactDTO"
+          type: array
+        ordering:
+          description: Effective ordering mode
+          enum:
+            - sequential
+            - shuffle
+            - syndication
+          type: string
+        recordedTotal:
+          description: Facts included in this response
+          format: int64
+          type: integer
+        relaxations:
+          description: Constraint relaxations applied while placing the deck
+          items:
+            $ref: "#/components/schemas/ScheduleRelaxationDTO"
+          type: array
+        seed:
+          description: Deterministic signed 64-bit ordering seed as a decimal string (lossless in JavaScript)
+          type: string
+        truncated:
+          description: Whether facts were omitted by the bound
+          type: boolean
+        version:
+          description: Scheduler trace schema version
+          format: int64
+          type: integer
+        windowIndex:
+          description: Coarse deterministic window index used to rotate the deck
+          format: int64
+          type: integer
+        windowMs:
+          description: Effective rolling-window duration in ms (0 = whole run)
+          format: int64
+          type: integer
+      required:
+        - version
+        - ordering
+        - seed
+        - windowMs
+        - windowIndex
+        - relaxations
+        - factTotal
+        - recordedTotal
+        - truncated
+        - facts
       type: object
     SchedulingRule:
       additionalProperties: false

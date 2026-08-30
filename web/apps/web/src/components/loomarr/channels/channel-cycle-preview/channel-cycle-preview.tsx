@@ -3,8 +3,10 @@ import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import type { CycleSlotDTO } from "@loomarr/api/models/cycleSlotDTO";
 import type { ExcludedDTO } from "@loomarr/api/models/excludedDTO";
 import { ExcludedItemDTOReason } from "@loomarr/api/models/excludedItemDTOReason";
+import { ScheduleFactDTOReason } from "@loomarr/api/models/scheduleFactDTOReason";
+import type { ScheduleTraceDTO } from "@loomarr/api/models/scheduleTraceDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Clapperboard, Clock, ShieldAlert, Tv } from "lucide-react";
+import { Clapperboard, Clock, ListTree, ShieldAlert, Tv } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -238,6 +240,83 @@ const ExcludedPanel = ({ excluded }: { excluded: ExcludedDTO }) => {
   );
 };
 
+// Closed scheduler vocabulary rendered in operator language. This is intentionally keyed by
+// the generated enum: adding a backend reason must fail FE typechecking until its explanation is
+// written, rather than leaking a machine slug or silently showing a blank row.
+const TRACE_REASON_LABEL: Record<ScheduleFactDTOReason, string> = {
+  [ScheduleFactDTOReason.eligible]: "Passed the channel's safety and scope filters",
+  [ScheduleFactDTOReason.over_ceiling]: "Refused above the audience ceiling",
+  [ScheduleFactDTOReason.unrated]: "Refused because no usable rating was available",
+  [ScheduleFactDTOReason.out_of_scope]: "Refused by the channel's era, genre, collection, or runtime scope",
+  [ScheduleFactDTOReason.out_of_rule_scope]: "Not selected by the rule active at this moment",
+  [ScheduleFactDTOReason.out_of_season]: "Benched outside its seasonal window",
+  [ScheduleFactDTOReason.available]: "Available in the library",
+  [ScheduleFactDTOReason.unavailable_pod_fill]: "Waiting for acquisition; filler holds its place",
+  [ScheduleFactDTOReason.unavailable_coming_soon]: "Waiting for acquisition as a coming-soon slot",
+  [ScheduleFactDTOReason.complete_selected]: "Included by the complete-series episode policy",
+  [ScheduleFactDTOReason.highlights_selected]: "Selected as a series highlight",
+  [ScheduleFactDTOReason.highlights_omitted]: "Omitted by the highlights selector",
+  [ScheduleFactDTOReason.holiday_selected]: "Selected by the holiday episode policy",
+  [ScheduleFactDTOReason.holiday_omitted]: "Omitted by the holiday episode policy",
+  [ScheduleFactDTOReason.full_run_fallback]:
+    "Kept by the safe full-run fallback because editorial evidence could not narrow the series",
+  [ScheduleFactDTOReason.out_of_season_range]: "Outside the approved season range",
+  [ScheduleFactDTOReason.sequential]: "Placed in approved sequential order",
+  [ScheduleFactDTOReason.shuffle]: "Placed by the deterministic shuffle",
+  [ScheduleFactDTOReason.syndication]: "Placed by the deterministic syndication deck",
+  [ScheduleFactDTOReason.windowed_out]: "Rotated out of this rolling window",
+  [ScheduleFactDTOReason.commercial_break]: "Inserted by the channel's commercial-break cadence",
+};
+
+const ScheduleTracePanel = ({ trace }: { trace: ScheduleTraceDTO }) => {
+  if (trace.recordedTotal === 0 && !trace.truncated) return null;
+  const omitted = Math.max(0, trace.factTotal - trace.recordedTotal);
+  return (
+    <Disclosure className="rounded-md border border-border">
+      <div className="flex items-center gap-2 px-3 py-2">
+        <ListTree className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+        <p className="text-sm">
+          <span className="font-medium">
+            {trace.recordedTotal} recorded {trace.recordedTotal === 1 ? "decision" : "decisions"}
+          </span>{" "}
+          <span className="text-muted-foreground">
+            — {trace.ordering} · trace v{trace.version}
+          </span>
+        </p>
+        <Disclosure.Trigger className="ml-auto" label="Show scheduler decisions and reasons" />
+      </div>
+      <Disclosure.Panel className="border-border border-t">
+        {omitted > 0 ? (
+          <p className="border-border border-b px-3 py-2 text-muted-foreground text-xs">
+            {omitted} additional {omitted === 1 ? "decision" : "decisions"} omitted by the trace bound.
+          </p>
+        ) : null}
+        <ul
+          className="scroll-thin flex max-h-72 flex-col divide-y divide-border overflow-y-auto"
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: bounded trace is a keyboard-scrollable region
+          tabIndex={0}
+          aria-label="Scheduler decisions"
+        >
+          {trace.facts.map((fact, i) => (
+            <li
+              // Repeated airings legitimately share key/title/reason; position + index keep rows distinct.
+              // biome-ignore lint/suspicious/noArrayIndexKey: index disambiguates repeated trace facts
+              key={`${fact.stage}-${fact.key ?? "gap"}-${fact.reason}-${fact.cyclePosition ?? "x"}-${i}`}
+              className="flex flex-col gap-0.5 px-3 py-2"
+            >
+              <span className="truncate text-sm">{fact.title || fact.key || "Commercial gap"}</span>
+              <span className="text-muted-foreground text-xs">
+                {TRACE_REASON_LABEL[fact.reason]}
+                {fact.cyclePosition !== undefined ? ` · cycle slot ${fact.cyclePosition + 1}` : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </Disclosure.Panel>
+    </Disclosure>
+  );
+};
+
 // ChannelCyclePreview — the time-travel preview (programming-design §8.1): a pure,
 // read-only look at what would air at a chosen wall-clock, computed by the IDENTICAL
 // ComputeDesiredAt the reconciler runs. Its whole point is making first-match-by-
@@ -394,6 +473,7 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
               is one you ask after looking at what IS on and finding something missing — put
               first, it would read as an error banner on a channel that is working correctly. */}
           <ExcludedPanel excluded={body.excluded} />
+          <ScheduleTracePanel trace={body.trace} />
         </div>
       )}
     </section>

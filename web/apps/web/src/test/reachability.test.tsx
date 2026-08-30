@@ -290,6 +290,18 @@ const stubReachable = () => {
       slots: [],
       activeRule: { id: "r-1", label: "Default", matched: true, priority: 0 },
       excluded: { overCeiling: 0, unrated: 0, items: [] },
+      trace: {
+        version: 1,
+        ordering: "sequential",
+        seed: "0",
+        windowMs: 3_600_000,
+        windowIndex: 0,
+        relaxations: [],
+        factTotal: 0,
+        recordedTotal: 0,
+        truncated: false,
+        facts: [],
+      },
     }),
     getChannelFillerCoverageMockHandler({
       level: "exact",

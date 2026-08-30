@@ -14,6 +14,8 @@ import (
 type DesiredLineup struct {
 	ChannelID string
 	Slots     []Slot
+	// Trace is the bounded scheduler-owned evidence for this exact computation (§8.4).
+	Trace ScheduleTrace
 	// Excluded reports what the audience/scope hard filters dropped (§4), surfaced
 	// at reconcile + proposal so a metadata gap is visible. Empty when nothing was
 	// filtered (or no policy is set).
@@ -268,6 +270,13 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// the caller already has, and it reaches placement through the resolved policy because
 	// that is what placement receives. Empty ⇒ ordering is unchanged from pre-§3.1.
 	rp.LastAired = ch.LastAired
+	window := resolveWindow(rule.Window, policy.Window, ch.DefaultWindow)
+	seed := ch.Shuffle.Seed
+	windowIdx := windowIndex(now, window)
+	// A movie typically emits hard-filter + availability + placement. Use that exact common
+	// shape as the initial capacity; series can grow it, but ordinary channels avoid repeatedly
+	// reallocating the bounded trace on the guide's hot path.
+	trace := newScheduleTrace(rp.Ordering, seed, window.Milliseconds(), windowIdx, len(entries)*3)
 
 	// Hard filters first (§4 audience fail-closed + scope) — the never-relaxed gate.
 	// The rule's WHAT can only NARROW this set (applied next), never widen it. This
@@ -275,15 +284,15 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// library can supply for this channel" means for drift detection (§6.5): a program
 	// rotated out by a rule or the window is still eligible; only a library loss makes a
 	// key drop out of it.
-	channelEligible, report := filterEntries(entries, rp)
+	channelEligible, report := filterEntriesWithTrace(entries, rp, trace)
 
 	// Rule WHAT: intersect the channel scope with the active rule's scope (§6.5). This
 	// is what makes "weekend = only TNG" or "mornings = kids genre" work — it can only
 	// subtract from the already-audience-safe channel-eligible set.
-	eligible := applyRuleScope(channelEligible, rule.What)
+	eligible := applyRuleScopeWithTrace(channelEligible, rule.What, trace)
 	// Seasonal bench/boost (§6): out-of-window seasonal items are benched (removed);
 	// in-window ones are marked for a scheduling boost. A zero clock ⇒ no-op.
-	eligible, seasonalReport := applySeasonal(eligible, rp, now)
+	eligible, seasonalReport := applySeasonalWithTrace(eligible, rp, now, trace)
 	report.merge(seasonalReport)
 
 	// Franchise grouping (§5): tag movie entries sharing a TMDB collection so a franchise
@@ -297,7 +306,7 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// per in-range episode (§9 expansion).
 	slots := make([]Slot, 0, len(eligible))
 	for _, e := range eligible {
-		slots = append(slots, resolveEntry(e, avail, pending, franchiseGroups, rp, &report)...)
+		slots = append(slots, resolveEntryWithTrace(e, avail, pending, franchiseGroups, rp, &report, trace)...)
 	}
 
 	// EligibleKeys: the distinct program keys the library can currently supply, captured
@@ -330,9 +339,6 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// guide isn't re-randomized every window; ROTATION comes from advancing the window
 	// SLICE OFFSET across the ordered deck (windowSlice below), which is what walks the
 	// whole catalog over a full cycle instead of looping a fixed prefix.
-	window := resolveWindow(rule.Window, policy.Window, ch.DefaultWindow)
-	seed := ch.Shuffle.Seed
-
 	// Multi-part atomicity (§5): collapse each two-parter into one super-slot so ordering
 	// can't split or reorder its parts and the window counts the group as one unit. Ordering
 	// + truncation run on the collapsed deck; expandGroups restores the real parts (adjacent,
@@ -349,9 +355,11 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// airs (no starved tail). window <= 0 (WindowFull / unbounded) keeps the whole deck
 	// (backward compat + the "full binge" sentinel). Runs on the collapsed deck, so a
 	// super-slot (two-parter/franchise) is kept whole and never split by the window seam.
-	ordered = windowSlice(ordered, window, windowIndex(now, window))
+	orderedAll := append([]Slot(nil), ordered...)
+	ordered = windowSlice(ordered, window, windowIdx)
 
 	// Expand super-slots back into their real parts now that ordering + windowing are done.
+	orderedAll = expandGroups(orderedAll, expand)
 	ordered = expandGroups(ordered, expand)
 
 	// Breaks: the active rule may suppress them (a marathon runs uninterrupted, §6.5).
@@ -360,9 +368,13 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 		brk.BreaksPerHour = 0
 	}
 
+	finalSlots := interleaveBreaks(brk, ordered)
+	tracePlacement(trace, orderedAll, ordered, finalSlots, rp.Ordering)
+
 	return DesiredLineup{
 		ChannelID:    ch.ID,
-		Slots:        interleaveBreaks(brk, ordered),
+		Slots:        finalSlots,
+		Trace:        trace.finish(applied),
 		Excluded:     report,
 		Applied:      applied,
 		EligibleKeys: eligibleKeys,
@@ -573,10 +585,15 @@ func episodeLabel(e LineupEntry, ep ResolvedProgram) string {
 // episodes exist. report accumulates those drops; pass nil to run the gate without recording
 // (the EligibleKeys pass does, so a drop is not counted twice).
 func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy, franchise map[provision.Key]franchiseTag, rp ResolvedPolicy, report *ExclusionReport) []Slot {
+	return resolveEntryWithTrace(e, avail, policy, franchise, rp, report, nil)
+}
+
+func resolveEntryWithTrace(e LineupEntry, avail Availability, policy PendingPolicy, franchise map[provision.Key]franchiseTag, rp ResolvedPolicy, report *ExclusionReport, trace *scheduleTraceBuilder) []Slot {
 	// A series expands into its episodes (each a program slot).
 	if e.Key.IsSeries() {
 		resolution := avail.ResolveEpisodes(e.Key)
 		if eps := resolution.Programs; len(eps) > 0 {
+			trace.add(ScheduleFact{Stage: StageAvailability, Outcome: OutcomeAvailable, Reason: ReasonAvailable, Key: e.Key, Title: e.Title})
 			// Keep only the in-range episodes (in season/episode order), then tag multi-part
 			// groups over that ordered set (§5) so consecutive-episode detection sees the
 			// real neighbors. inRange preserves order, so parts stay contiguous for detection.
@@ -589,6 +606,7 @@ func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy, franc
 			audienceDropped := 0
 			for _, ep := range eps {
 				if !e.inSeasonRange(ep.Season) { // outside the entry's season range → drop
+					trace.add(episodeFact(e, ep, StageEpisodeSelection, OutcomeOmitted, ReasonOutOfSeasonRange))
 					continue
 				}
 				// Era is a playable-program constraint, not merely a series-entry check. The
@@ -597,6 +615,7 @@ func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy, franc
 				// and older persisted episode caches decode this new field as zero.
 				if ep.Year > 0 && !rp.Scope.Era.Contains(ep.Year) {
 					scopeDropped++
+					trace.add(episodeFact(e, ep, StageHardFilter, OutcomeExcluded, ReasonOutOfScope))
 					if report != nil {
 						report.Items = append(report.Items, ExcludedItem{
 							Key: e.Key, Title: episodeLabel(e, ep), Reason: "out_of_scope",
@@ -611,6 +630,7 @@ func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy, franc
 					switch episodeVerdict(ep.OfficialRating, e.OfficialRating, rp.Ceiling, rp.Unrated) {
 					case verdictOverCeiling:
 						audienceDropped++
+						trace.add(episodeFact(e, ep, StageHardFilter, OutcomeExcluded, ReasonOverCeiling))
 						if report != nil {
 							report.OverCeiling++
 							report.Items = append(report.Items, ExcludedItem{
@@ -620,6 +640,7 @@ func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy, franc
 						continue
 					case verdictUnratedExcluded:
 						audienceDropped++
+						trace.add(episodeFact(e, ep, StageHardFilter, OutcomeExcluded, ReasonUnrated))
 						if report != nil {
 							report.Unrated++
 							report.Items = append(report.Items, ExcludedItem{
@@ -632,9 +653,7 @@ func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy, franc
 				inRange = append(inRange, ep)
 			}
 			assignPartGroups(string(e.Key), inRange)
-			if !resolution.EditorialUnavailable {
-				inRange = selectEpisodes(inRange, e.EpisodeSelection)
-			}
+			inRange = selectEpisodesWithTrace(e, inRange, resolution.EditorialUnavailable, trace)
 			out := make([]Slot, 0, len(inRange))
 			for _, ep := range inRange {
 				out = append(out, Slot{
@@ -675,11 +694,13 @@ func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy, franc
 			// unavailable series), not an empty channel.
 		}
 		// Series with no playable (in-range) episodes yet → a single placeholder.
+		trace.add(pendingAvailabilityFact(e, policy))
 		return []Slot{pendingSlot(e, policy)}
 	}
 
 	// A movie (or any non-series) resolves to a single program slot.
 	if itemID, durationMs, ok := avail.Resolve(e.Key); ok {
+		trace.add(ScheduleFact{Stage: StageAvailability, Outcome: OutcomeAvailable, Reason: ReasonAvailable, Key: e.Key, Title: e.Title})
 		if durationMs == 0 {
 			durationMs = e.DurationMs // fall back to the entry's own duration
 		}
@@ -697,5 +718,19 @@ func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy, franc
 		}
 		return []Slot{slot}
 	}
+	trace.add(pendingAvailabilityFact(e, policy))
 	return []Slot{pendingSlot(e, policy)}
+}
+
+func pendingAvailabilityFact(e LineupEntry, policy PendingPolicy) ScheduleFact {
+	reason := ReasonUnavailablePodFill
+	if policy == ComingSoon {
+		reason = ReasonUnavailableComingSoon
+	}
+	return ScheduleFact{Stage: StageAvailability, Outcome: OutcomePending, Reason: reason, Key: e.Key, Title: e.Title}
+}
+
+func episodeFact(e LineupEntry, ep ResolvedProgram, stage ScheduleStage, outcome ScheduleOutcome, reason ScheduleReason) ScheduleFact {
+	return ScheduleFact{Stage: stage, Outcome: outcome, Reason: reason, Key: e.Key,
+		Title: episodeLabel(e, ep), Season: ep.Season, Episode: ep.Episode}
 }
