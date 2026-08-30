@@ -183,9 +183,9 @@ describe("Users page", () => {
     expect(trigger).toHaveFocus();
   });
 
-  // The import panel is the whole point of §11's "explicit import, never implicit". If it
+  // The import dialog is the whole point of §11's "explicit import, never implicit". If it
   // is not on the page, an admin has no way to grant access at all.
-  it("mounts the import panel with real candidate names", async () => {
+  it("opens the import dialog with real candidate names", async () => {
     stubUsers({
       candidates: [
         { id: "e1", name: "Hopper", imported: false, disabled: false, isAdmin: true },
@@ -193,6 +193,7 @@ describe("Users page", () => {
       ],
     });
     renderAt("/people");
+    await userEvent.click(await screen.findByRole("button", { name: /import from emby\/jellyfin/i }));
     expect(await screen.findByText("Hopper")).toBeInTheDocument();
     // Already-imported accounts stay visible, checked and locked — hiding them reads as
     // "missing", and re-offering them implies a no-op does something.
@@ -206,7 +207,8 @@ describe("Users page", () => {
     });
     renderAt("/people");
 
-    await userEvent.click(await screen.findByText("Hopper"));
+    await userEvent.click(await screen.findByRole("button", { name: /import from emby\/jellyfin/i }));
+    await userEvent.click(await screen.findByLabelText(/^Hopper/));
     expect(screen.queryByLabelText(/grant admin to server admins/i)).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /import 1 account/i }));
 
@@ -219,7 +221,8 @@ describe("Users page", () => {
     stubUsers({ userSync: false });
     renderAt("/people");
     await screen.findByText("Ada");
-    expect(await screen.findByText(/connect emby or jellyfin/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /import from emby\/jellyfin/i }));
+    expect(await screen.findByText(/connect a media server first/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /sync existing/i })).not.toBeInTheDocument();
   });
 
