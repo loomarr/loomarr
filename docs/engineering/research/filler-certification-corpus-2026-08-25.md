@@ -40,6 +40,19 @@ file, and a separate ledger-to-file rehash passed 300/300. One Archive request r
 completed in 283 further requests. The [content-addressed acquisition summary](../evidence/filler-development-acquisition-2026-08-27.json)
 records the external ledgers' digests and the policy boundary.
 
+A separate recovery acquisition was completed on 2026-08-30 after the original external corpus was
+not present on the current development host. Five bounded Archive captures produced 335 candidates;
+an exact development-only rights review approved the 300 smallest reproducibly downloadable
+representations with complete attribution when required. The downloader locked all 300 files
+(3,460,859,319 bytes), and an independent SHA-256 pass revalidated 300/300. This is a replacement
+local development input, not additional evidence for the holdout denominators. It is intentionally
+recorded as role-unbalanced: its discovery hints cover 187 commercials, 100 trailers, and 13 PSAs.
+Only 177 cases carry source date metadata, and the current corpus contract cannot measure country or
+local market. Geographic sourcing and Channel eligibility are tracked by
+[#691](https://github.com/loomarr/loomarr/issues/691). The
+[recovery acquisition summary](../evidence/filler-development-reacquisition-2026-08-30.json) binds
+the external inventory, rights ledger, download ledger, and content-set identities.
+
 The approved cohort was prepared on 2026-08-27 as a schema-v5 `development_seed`, not coerced into a
 certification manifest. The preparer rehashed all 5,952,579,028 source bytes, measured at most two
 minutes per case, identified 299 perceptual clusters, and atomically published 300 label-blind packets.
