@@ -52,6 +52,13 @@ type MediaServer struct {
 	// If nil, GoodUser/GoodPass authenticate as an admin. Lets auth tests model
 	// admin vs member vs disabled logins.
 	Accounts map[string]Account
+	// AuthStatus, when non-zero, forces AuthenticateByName to return that status.
+	// It lets auth tests distinguish authoritative rejection from provider outage.
+	AuthStatus int
+	// Users, when set, is the account list returned by GET /Users. Nil keeps the
+	// pinned Emby fixture; a non-nil slice lets provisioning tests cover mixed
+	// roles and disabled accounts through the real library adapter.
+	Users []MediaServerUser
 	// SearchItems, when set, makes the /Items SearchTerm search RETURN these items
 	// (matched case-insensitively by term substring against a stub's Terms) instead
 	// of the pinned matrix fixture. Each stub carries the real /Items shape incl.
@@ -207,6 +214,14 @@ func tmdbOrEmpty(id int) string {
 type Account struct {
 	Password string
 	ID       string
+	IsAdmin  bool
+	Disabled bool
+}
+
+// MediaServerUser is one account returned by the mock's GET /Users endpoint.
+type MediaServerUser struct {
+	ID       string
+	Name     string
 	IsAdmin  bool
 	Disabled bool
 }
@@ -382,6 +397,26 @@ func NewMediaServer(t testing.TB) *MediaServer {
 	// /Users — list for import/sync (§11).
 	mux.HandleFunc("GET /Users", func(w http.ResponseWriter, r *http.Request) {
 		ms.capture(r)
+		if ms.Users != nil {
+			type policy struct {
+				IsAdministrator bool `json:"IsAdministrator"`
+				IsDisabled      bool `json:"IsDisabled"`
+			}
+			type user struct {
+				ID     string `json:"Id"`
+				Name   string `json:"Name"`
+				Policy policy `json:"Policy"`
+			}
+			users := make([]user, 0, len(ms.Users))
+			for _, u := range ms.Users {
+				users = append(users, user{
+					ID: u.ID, Name: u.Name,
+					Policy: policy{IsAdministrator: u.IsAdmin, IsDisabled: u.Disabled},
+				})
+			}
+			_ = json.NewEncoder(w).Encode(users)
+			return
+		}
 		_, _ = w.Write(Fixture(t, "emby/users_list.json"))
 	})
 
@@ -390,6 +425,10 @@ func NewMediaServer(t testing.TB) *MediaServer {
 		ms.capture(r)
 		var body struct{ Username, Pw string }
 		_ = json.NewDecoder(r.Body).Decode(&body)
+		if ms.AuthStatus != 0 {
+			w.WriteHeader(ms.AuthStatus)
+			return
+		}
 
 		// Configurable accounts take precedence; otherwise the default admin.
 		if ms.Accounts != nil {

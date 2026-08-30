@@ -16,11 +16,9 @@ import type { ImportPanelProps } from "./import-panel.type";
 // (checked and locked) so "why isn't Ada listed?" never becomes a question.
 const ImportPanel = ({ onImported, className }: ImportPanelProps) => {
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [makeAdmin, setMakeAdmin] = useState(false);
 
-  // The sync route is registered only when a media server is configured, so the FE must
-  // read the computed feature set before offering either action — otherwise the button
-  // 404s on an install that has no media server at all.
+  // The route stays registered, while the computed feature set prevents offering an
+  // operation that the live media-server connection cannot currently perform.
   const settings = settingsApi.useSettingsList();
   const available = settings.data?.status === 200 ? Boolean(settings.data.data.features?.user_sync) : false;
 
@@ -69,8 +67,9 @@ const ImportPanel = ({ onImported, className }: ImportPanelProps) => {
         <div>
           <h2 className="font-semibold text-lg">Import from your media server</h2>
           <p className="mt-1 text-muted-foreground text-sm">
-            Pick who may sign in. They authenticate with their existing media-server password. Loomarr never
-            stores it.
+            Pick who may sign in. Their existing media-server password is verified there; after a successful
+            sign-in Loomarr stores only a non-reversible verifier for outage access. Server admins are
+            imported as Loomarr admins initially.
           </p>
         </div>
         <Button
@@ -124,21 +123,11 @@ const ImportPanel = ({ onImported, className }: ImportPanelProps) => {
             })}
           </ul>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 p-4">
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="make-admin"
-                checked={makeAdmin}
-                onChange={(e) => setMakeAdmin(e.target.checked)}
-              />
-              <Label htmlFor="make-admin" className="font-normal text-sm">
-                Grant admin to server admins
-              </Label>
-            </div>
+          <div className="flex justify-end p-4">
             <Button
               size="sm"
               disabled={picked.size === 0 || importUsers.isPending}
-              onClick={() => importUsers.mutate({ data: { ids: [...picked], makeAdmin } })}
+              onClick={() => importUsers.mutate({ data: { ids: [...picked] } })}
             >
               {importUsers.isPending ? "Importing…" : `Import ${pluralize(picked.size, "account")}`}
             </Button>

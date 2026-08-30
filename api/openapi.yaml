@@ -292,7 +292,7 @@ components:
           readOnly: true
           type: string
         password:
-          description: The owning admin's password (bcrypt-hashed at rest).
+          description: The owning admin's password (Argon2id-hashed at rest).
           type: string
         username:
           description: The owning admin's local username.
@@ -3798,13 +3798,10 @@ components:
           readOnly: true
           type: string
         ids:
-          description: Media-server user ids to allowlist.
+          description: Media-server user ids to allowlist. New users copy their media-server admin/member role.
           items:
             type: string
           type: array
-        makeAdmin:
-          description: Grant admin to imported users that are media-server admins (default member).
-          type: boolean
       required:
         - ids
       type: object
@@ -4654,6 +4651,8 @@ components:
           type: boolean
         name:
           type: string
+        offlineLogin:
+          type: boolean
         quota:
           format: int64
           type: integer
@@ -4670,6 +4669,7 @@ components:
         - quota
         - autoApprove
         - local
+        - offlineLogin
       type: object
     NowNextEntry:
       additionalProperties: false
@@ -7845,6 +7845,8 @@ components:
           type: boolean
         name:
           type: string
+        offlineLogin:
+          type: boolean
         pendingAcquisitions:
           format: int64
           type: integer
@@ -7867,6 +7869,7 @@ components:
         - effectiveQuota
         - autoApprove
         - local
+        - offlineLogin
       type: object
     VerboseCapture:
       additionalProperties: false

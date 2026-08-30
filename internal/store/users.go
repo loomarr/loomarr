@@ -24,9 +24,10 @@ type User struct {
 	Disabled    bool
 	Quota       int // pending-acquisition cap; 0 = default
 	AutoApprove bool
-	// PasswordHash is the bcrypt hash for a LOCAL user (§11). Empty ⇒ an IMPORTED
-	// media-server user (credentials verified against the media server, not here).
-	// The empty-vs-set state is the credential-path discriminator.
+	// MediaServerLinked is independent from PasswordHash: an imported user may
+	// carry an offline verifier after a successful provider login (§11).
+	MediaServerLinked bool
+	// PasswordHash is an Argon2id PHC verifier. It is never exposed by the API.
 	PasswordHash string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
@@ -44,7 +45,7 @@ type Session struct {
 
 func (s *sqlStore) GetUser(ctx context.Context, id string) (User, error) {
 	row := s.db.QueryRowContext(ctx, s.ph(
-		`SELECT id, name, role, disabled, quota, auto_approve, password_hash, created_at, updated_at
+		`SELECT id, name, role, disabled, quota, auto_approve, media_server_linked, password_hash, created_at, updated_at
 		 FROM users WHERE id = ?`), id)
 	return scanUser(row)
 }
@@ -58,7 +59,7 @@ func (s *sqlStore) GetUser(ctx context.Context, id string) (User, error) {
 // wins deterministically (ORDER BY id). ErrNotFound when absent.
 func (s *sqlStore) GetUserByName(ctx context.Context, name string) (User, error) {
 	row := s.db.QueryRowContext(ctx, s.ph(
-		`SELECT id, name, role, disabled, quota, auto_approve, password_hash, created_at, updated_at
+		`SELECT id, name, role, disabled, quota, auto_approve, media_server_linked, password_hash, created_at, updated_at
 		 FROM users WHERE name = ? ORDER BY id LIMIT 1`), name)
 	return scanUser(row)
 }
@@ -69,21 +70,22 @@ func (s *sqlStore) UpsertUser(ctx context.Context, u User) error {
 		hash = u.PasswordHash
 	}
 	_, err := s.db.ExecContext(ctx, s.ph(
-		`INSERT INTO users (id, name, role, disabled, quota, auto_approve, password_hash, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO users (id, name, role, disabled, quota, auto_approve, media_server_linked, password_hash, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   name=excluded.name, role=excluded.role, disabled=excluded.disabled,
 		   quota=excluded.quota, auto_approve=excluded.auto_approve,
+		   media_server_linked=excluded.media_server_linked,
 		   password_hash=COALESCE(excluded.password_hash, users.password_hash),
 		   updated_at=excluded.updated_at`),
-		u.ID, u.Name, string(u.Role), u.Disabled, u.Quota, u.AutoApprove, hash,
+		u.ID, u.Name, string(u.Role), u.Disabled, u.Quota, u.AutoApprove, u.MediaServerLinked, hash,
 		epoch(u.CreatedAt), epoch(u.UpdatedAt))
 	return err
 }
 
 func (s *sqlStore) ListUsers(ctx context.Context) ([]User, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(
-		`SELECT id, name, role, disabled, quota, auto_approve, password_hash, created_at, updated_at
+		`SELECT id, name, role, disabled, quota, auto_approve, media_server_linked, password_hash, created_at, updated_at
 		 FROM users ORDER BY name`))
 	if err != nil {
 		return nil, err
@@ -201,7 +203,7 @@ func scanUser(sc scannable) (User, error) {
 	var role string
 	var hash sql.NullString
 	var created, updated int64
-	err := sc.Scan(&u.ID, &u.Name, &role, &u.Disabled, &u.Quota, &u.AutoApprove, &hash, &created, &updated)
+	err := sc.Scan(&u.ID, &u.Name, &role, &u.Disabled, &u.Quota, &u.AutoApprove, &u.MediaServerLinked, &hash, &created, &updated)
 	if err == sql.ErrNoRows {
 		return User{}, ErrNotFound
 	}

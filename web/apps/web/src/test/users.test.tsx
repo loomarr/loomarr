@@ -2,6 +2,7 @@ import type { UserBody } from "@loomarr/api";
 import {
   getCreateLocalUserMockHandler,
   getImportCandidatesMockHandler,
+  getImportUsersMockHandler,
   getListUserSessionsMockHandler,
   getListUsersMockHandler,
   getMeMockHandler,
@@ -77,12 +78,17 @@ const stubUsers = ({
   // resolver proves the request reached that route.
   const patches: unknown[] = [];
   const creates: unknown[] = [];
+  const imports: unknown[] = [];
   const resets: Array<{ id: string; body: unknown }> = [];
 
   server.use(
     getMeMockHandler(who),
     getListUsersMockHandler({ users: [ADA, GRACE] }),
     getImportCandidatesMockHandler({ candidates }),
+    getImportUsersMockHandler(async ({ request }) => {
+      imports.push(await request.json());
+      return { imported: 1 };
+    }),
     getListUserSessionsMockHandler({ sessions }),
     getSyncUsersMockHandler({ synced: 2 }),
     getPatchUserMockHandler(async ({ request }) => {
@@ -105,7 +111,7 @@ const stubUsers = ({
     ...appHandlers(),
   );
 
-  return { patches, creates, resets };
+  return { patches, creates, imports, resets };
 };
 
 const renderAt = (path: string) => {
@@ -136,7 +142,9 @@ describe("Users page", () => {
     // Exact strings, not regexes: a partial matcher also matches the ancestor <div>,
     // which contains the same text plus the user's name.
     expect(screen.getByText("Local account")).toBeInTheDocument();
-    expect(screen.getByText("Media-server account")).toBeInTheDocument();
+    expect(
+      screen.getByText("Media-server account · sign in once to enable offline login"),
+    ).toBeInTheDocument();
   });
 
   it("patches a single field without a save step", async () => {
@@ -188,6 +196,19 @@ describe("Users page", () => {
     // "missing", and re-offering them implies a no-op does something.
     expect(screen.getByText(/already imported/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/lovelace/i)).toBeDisabled();
+  });
+
+  it("imports selected ids without asking the caller to reinterpret server roles", async () => {
+    const { imports } = stubUsers({
+      candidates: [{ id: "e1", name: "Hopper", imported: false, disabled: false, isAdmin: true }],
+    });
+    renderAt("/people");
+
+    await userEvent.click(await screen.findByText("Hopper"));
+    expect(screen.queryByLabelText(/grant admin to server admins/i)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /import 1 account/i }));
+
+    expect(imports).toEqual([{ ids: ["e1"] }]);
   });
 
   // POST /v1/users/sync stays registered while unconfigured and returns the supported

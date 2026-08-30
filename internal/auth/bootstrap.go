@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
-
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -19,21 +17,6 @@ var ErrBootstrapClosed = errors.New("bootstrap already completed")
 
 // ErrInvalidBootstrap is returned for an empty username/password.
 var ErrInvalidBootstrap = errors.New("username and password are required")
-
-// bootstrapCost is the bcrypt cost for stored passwords. DefaultCost (10) is the right
-// balance for a homelab.
-//
-// ⚠ A var, not a const, ONLY so the test suite can lower it — see TestMain in this package.
-// Production never changes it, and nothing reads it from config: a cost knob an operator
-// could turn down is a way to weaken stored credentials by accident, which is exactly the
-// kind of "safety for convenience" trade §3 of AGENTS.md forbids.
-//
-// Why it is worth the seam: bcrypt is deliberately CPU-bound, and under `-race` on a CI
-// runner that cost dominates the entire Go job. Measured on this repo — `internal/api` +
-// `internal/auth` take 79s with `-race` and 3s without, and CI's `internal/api` alone was
-// 102s. The hashing being slow is the POINT in production and pure waste in a test that
-// only needs "the hash verifies".
-var bootstrapCost = bcrypt.DefaultCost
 
 // IDGen mints a unique id for a local user (a Loomarr-owned id space, distinct
 // from media-server ids). Injected for determinism in tests.
@@ -59,7 +42,7 @@ func NewProvisioner(st store.Store, lib UserLister, newID IDGen, now func() time
 
 // Bootstrap creates the first local admin (§11), succeeding only while no admin
 // exists — the first success closes the door (a later call → ErrBootstrapClosed).
-// The password is bcrypt-hashed; a local id is minted (never a media-server id).
+// The password is Argon2id-hashed; a local id is minted (never a media-server id).
 func (p *Provisioner) Bootstrap(ctx context.Context, username, password string) (store.User, error) {
 	username = strings.TrimSpace(username)
 	if username == "" || password == "" {
@@ -78,7 +61,7 @@ func (p *Provisioner) Bootstrap(ctx context.Context, username, password string) 
 	if n > 0 {
 		return store.User{}, ErrBootstrapClosed
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bootstrapCost)
+	hash, err := hashPassword(password)
 	if err != nil {
 		return store.User{}, fmt.Errorf("hash password: %w", err)
 	}
@@ -87,7 +70,7 @@ func (p *Provisioner) Bootstrap(ctx context.Context, username, password string) 
 		ID:           p.newID(),
 		Name:         username,
 		Role:         store.RoleAdmin,
-		PasswordHash: string(hash),
+		PasswordHash: hash,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
@@ -143,11 +126,12 @@ func (p *Provisioner) Candidates(ctx context.Context) ([]Candidate, error) {
 }
 
 // Import upserts the named media-server users as allowlisted rows (§11), the ONLY
-// way a media-server user gains access. ids are media-server user ids; makeAdmin
-// grants admin to those that are media-server admins (else member). Returns the
-// count imported. Un-listed ids are skipped (not invented). Existing local users
-// are never touched (import only concerns media-server ids).
-func (p *Provisioner) Import(ctx context.Context, ids []string, makeAdmin bool) (int, error) {
+// way a media-server user gains access. ids are media-server user ids. A new row
+// copies the source role (server admin ⇒ Loomarr admin; otherwise member), while a
+// re-import preserves the existing Loomarr-owned role. Returns the count imported.
+// Un-listed ids are skipped (not invented). Existing local users are never touched
+// (import only concerns media-server ids).
+func (p *Provisioner) Import(ctx context.Context, ids []string) (int, error) {
 	if p.lib == nil {
 		return 0, errors.New("no media server configured for import")
 	}
@@ -171,16 +155,19 @@ func (p *Provisioner) Import(ctx context.Context, ids []string, makeAdmin bool) 
 			continue // asked to import an id the server doesn't have — skip, never invent
 		}
 		role := store.RoleMember
-		if makeAdmin && su.IsAdmin {
+		if su.IsAdmin {
 			role = store.RoleAdmin
 		}
 		// Preserve an existing row's Loomarr-owned role/quota; only (re)assert
 		// identity + disabled. A brand-new import creates the row.
 		u := store.User{
-			ID: su.ID, Name: su.Name, Role: role, Disabled: su.Disabled,
+			ID: su.ID, Name: su.Name, Role: role, Disabled: su.Disabled, MediaServerLinked: true,
 			CreatedAt: now, UpdatedAt: now,
 		}
 		if existing, gerr := p.store.GetUser(ctx, su.ID); gerr == nil {
+			if !existing.MediaServerLinked {
+				continue // an id collision must not convert a local/SSO row into a provider account
+			}
 			u.Role = existing.Role // keep the admin's earlier role decision
 			u.Quota = existing.Quota
 			u.AutoApprove = existing.AutoApprove

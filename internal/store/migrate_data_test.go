@@ -61,7 +61,7 @@ func seedForMigration(t *testing.T, s Store) {
 	// AutoApprove, deliberately set opposite to Disabled so a transposition shows up.
 	for _, u := range []User{
 		{ID: "u-alice", Name: "alice", Role: RoleAdmin, Disabled: false, AutoApprove: true, PasswordHash: "hash-alice"},
-		{ID: "u-bob", Name: "bob", Role: RoleMember, Disabled: true, AutoApprove: false, PasswordHash: "hash-bob"},
+		{ID: "u-bob", Name: "bob", Role: RoleMember, Disabled: true, AutoApprove: false, MediaServerLinked: true, PasswordHash: "hash-bob"},
 	} {
 		u.CreatedAt, u.UpdatedAt = time.Now(), time.Now()
 		if err := s.UpsertUser(ctx, u); err != nil {
@@ -142,7 +142,7 @@ func TestMigrateSQLiteToPostgres(t *testing.T) {
 	}
 	var sawDisabled, sawEnabled bool
 	for _, u := range users {
-		if u.Name == "bob" && u.Disabled && !u.AutoApprove {
+		if u.Name == "bob" && u.Disabled && !u.AutoApprove && u.MediaServerLinked {
 			sawDisabled = true
 		}
 		if u.Name == "alice" && !u.Disabled && u.AutoApprove {

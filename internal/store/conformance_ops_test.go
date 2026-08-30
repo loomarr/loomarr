@@ -14,6 +14,27 @@ import (
 // Operational tables: the settings KV, session lifecycle, the /metrics count queries,
 // the activity feed, and the retention purge that sweeps the first three.
 
+func testUserCredentialCapabilities(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	s := newStore(t)
+	now := time.Unix(1_700_000_000, 0).UTC()
+	want := User{
+		ID: "linked", Name: "Linked", Role: RoleMember, MediaServerLinked: true,
+		PasswordHash: "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$dGFn", CreatedAt: now, UpdatedAt: now,
+	}
+	if err := s.UpsertUser(ctx, want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetUser(ctx, want.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.MediaServerLinked || got.PasswordHash != want.PasswordHash {
+		t.Fatalf("linked+verifier did not round-trip: %+v", got)
+	}
+}
+
 func testSettings(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()

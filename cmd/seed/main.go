@@ -92,7 +92,7 @@ func main() {
 }
 
 // seedAdmin creates the first local admin through the sanctioned bootstrap path
-// (bcrypt-hashed, Loomarr-owned id). If an admin already exists the bootstrap door
+// (Argon2id-hashed, Loomarr-owned id). If an admin already exists the bootstrap door
 // is closed — we surface that and reuse it rather than forging a second one.
 func seedAdmin(ctx context.Context, st store.Store, usrID func() string) (store.User, error) {
 	// lib=nil: import is unavailable offline; seed only needs the bootstrap path.

@@ -15,6 +15,7 @@ const admin: MeBody = {
   role: "admin",
   disabled: false,
   local: true,
+  offlineLogin: false,
   quota: 0,
   autoApprove: false,
 };
