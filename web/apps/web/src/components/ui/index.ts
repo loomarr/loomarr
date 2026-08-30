@@ -14,6 +14,7 @@ export * from "./nav-tabs";
 export * from "./panel-row";
 export * from "./progress";
 export * from "./select";
+export * from "./sheet";
 export * from "./status-dot";
 export * from "./switch";
 export * from "./tooltip";

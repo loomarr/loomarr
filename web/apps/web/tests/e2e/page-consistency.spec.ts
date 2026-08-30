@@ -14,7 +14,7 @@ const pages = [
   { path: "/filler/incoming", title: "Filler" },
   { path: "/filler/sources", title: "Filler" },
   { path: "/filler/settings", title: "Filler settings" },
-  { path: "/people", title: "Users" },
+  { path: "/people", title: "People" },
   { path: "/settings/connections", title: "Connections" },
   { path: "/settings/ai", title: "AI" },
   { path: "/settings/defaults", title: "Channel defaults" },

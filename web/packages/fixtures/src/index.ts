@@ -2,5 +2,6 @@
 // tests across web and the future mobile app (frontend-design §4.2, §5.2).
 
 export * from "./client-platform";
+export * from "./people";
 export * from "./rule-vocabulary";
 export * from "./testcard";
