@@ -68,8 +68,8 @@ const ImportPanel = ({ onImported, className }: ImportPanelProps) => {
           <h2 className="font-semibold text-lg">Import from your media server</h2>
           <p className="mt-1 text-muted-foreground text-sm">
             Pick who may sign in. Their existing media-server password is verified there; after a successful
-            sign-in Loomarr stores only a non-reversible verifier for outage access. Server admins are imported
-            as Loomarr admins initially.
+            sign-in Loomarr stores only a non-reversible verifier for outage access. Server admins are
+            imported as Loomarr admins initially.
           </p>
         </div>
         <Button

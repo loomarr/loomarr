@@ -14,6 +14,7 @@ import { SourcesTab } from "./sources-tab";
 
 const ADMIN = {
   local: true,
+  offlineLogin: false,
   id: "u1",
   name: "Admin",
   role: "admin",

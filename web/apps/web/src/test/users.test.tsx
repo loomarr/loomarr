@@ -142,7 +142,9 @@ describe("Users page", () => {
     // Exact strings, not regexes: a partial matcher also matches the ancestor <div>,
     // which contains the same text plus the user's name.
     expect(screen.getByText("Local account")).toBeInTheDocument();
-    expect(screen.getByText("Media-server account")).toBeInTheDocument();
+    expect(
+      screen.getByText("Media-server account · sign in once to enable offline login"),
+    ).toBeInTheDocument();
   });
 
   it("patches a single field without a save step", async () => {
