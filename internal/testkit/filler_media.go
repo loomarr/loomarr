@@ -125,7 +125,10 @@ func FillerConditioningMedia(t testing.TB, dir string) FillerConditioningFixture
 		"-map", "0:v:0", "-map", "1:a:0",
 		"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
 		"-g", "300", "-keyint_min", "300", "-sc_threshold", "0",
-		"-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2",
+		// ALAC preserves the fixture's independently known 144000-sample EOF. AAC encoders may
+		// expose one final padded frame (BtbN reports 3008ms), making the fixture describe encoder
+		// delay instead of the selected-stream boundary this test exists to certify.
+		"-c:a", "alac", "-ar", "48000", "-ac", "2",
 		"-movflags", "+faststart", "-y", fixtures.ShortAudio,
 	}
 	runFixtureCommand(t, ffmpeg, shortAudioArgs)

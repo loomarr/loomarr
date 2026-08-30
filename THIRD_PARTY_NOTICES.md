@@ -139,13 +139,15 @@ in the public domain. The image satisfies the license's notice condition by reta
 ### GPL source status (ffmpeg; release blocker)
 
 The `ffmpeg` binary is a **GPL-3.0-or-later** BtbN build from the `n8.1` series. The
-[`Dockerfile`](Dockerfile) now pins it to an **immutable** archive — release
-`autobuild-2026-08-16-13-00`, build `n8.1.2-44-g7c533d0f86`, verified by per-architecture SHA256
+[`Dockerfile`](Dockerfile) pins it to a **retained monthly** archive — release
+`autobuild-2026-07-31-14-10`, build `n8.1.2-34-g9b6c8969e0`, verified by per-architecture SHA256
 (`FFMPEG_AMD64_SHA256` / `FFMPEG_ARM64_SHA256`) exactly as yt-dlp, deno, and whisper are — so the
 bytes in the image are now identified by digest rather than by BtbN's mutable `latest` release.
+The evidence manifest also binds BtbN's pruning policy at the release commit: ordinary daily
+archives expire after the newest 14, while one archive per month is retained for 24 months.
 
 **Still open (release-artifact action, not a Dockerfile change):** record and provide the exact
-corresponding source for that pinned build — the FFmpeg commit `n8.1.2-44-g7c533d0f86`, BtbN's
+corresponding source for that pinned build — the FFmpeg commit `n8.1.2-34-g9b6c8969e0`, BtbN's
 build scripts at that release, and the bundled GPL dependency sources — and confirm `make test-ffmpeg`
 is green against the pinned build on the release commit. The immutable digest is what makes such a
 corresponding-source offer *possible*; retaining the bundle itself is the remaining step.
