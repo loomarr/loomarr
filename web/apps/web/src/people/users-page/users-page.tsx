@@ -5,12 +5,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { CreateLocalDialog } from "@/components/loomarr/people/create-local-dialog";
 import { ImportDialog } from "@/components/loomarr/people/import-dialog";
 import { PeopleRoster } from "@/components/loomarr/people/people-roster";
 import { PersonDetail } from "@/components/loomarr/people/person-detail";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { CreateLocalPanel } from "../create-local-panel";
 
 // UsersPage — the §11 allowlist. You can sign in iff you have a row here, so this screen
 // is the access-control surface: import who may sign in, set what they may spend, and end
@@ -33,6 +33,7 @@ const UsersPage = () => {
   const candidates = usersApi.useImportCandidates({ query: { enabled: importAvailable } });
   const importUsers = usersApi.useImportUsers();
   const syncUsers = usersApi.useSyncUsers();
+  const createLocal = usersApi.useCreateLocalUser();
 
   const patch = usersApi.usePatchUser({
     mutation: {
@@ -79,27 +80,37 @@ const UsersPage = () => {
         title="People"
         description="Who may sign in, what they may spend, and what they may approve. An account grants no access until you add it here: by importing a media-server account, or creating a local one."
         actions={
-          <ImportDialog
-            available={importAvailable}
-            candidates={
-              importAvailable && !candidates.isLoading
-                ? (unwrap(candidates.data, (body) => body.candidates) ?? [])
-                : undefined
-            }
-            candidateError={candidates.error}
-            mutationError={importUsers.error ?? syncUsers.error}
-            importing={importUsers.isPending}
-            syncing={syncUsers.isPending}
-            onRetry={() => candidates.refetch()}
-            onImport={async (ids) => {
-              await importUsers.mutateAsync({ data: { ids } });
-              await Promise.all([invalidate(), candidates.refetch()]);
-            }}
-            onSync={async () => {
-              await syncUsers.mutateAsync();
-              await Promise.all([invalidate(), candidates.refetch()]);
-            }}
-          />
+          <div className="flex flex-wrap gap-2">
+            <CreateLocalDialog
+              error={createLocal.error}
+              creating={createLocal.isPending}
+              onCreate={async (data) => {
+                await createLocal.mutateAsync({ data });
+                await invalidate();
+              }}
+            />
+            <ImportDialog
+              available={importAvailable}
+              candidates={
+                importAvailable && !candidates.isLoading
+                  ? (unwrap(candidates.data, (body) => body.candidates) ?? [])
+                  : undefined
+              }
+              candidateError={candidates.error}
+              mutationError={importUsers.error ?? syncUsers.error}
+              importing={importUsers.isPending}
+              syncing={syncUsers.isPending}
+              onRetry={() => candidates.refetch()}
+              onImport={async (ids) => {
+                await importUsers.mutateAsync({ data: { ids } });
+                await Promise.all([invalidate(), candidates.refetch()]);
+              }}
+              onSync={async () => {
+                await syncUsers.mutateAsync();
+                await Promise.all([invalidate(), candidates.refetch()]);
+              }}
+            />
+          </div>
         }
       />
 
@@ -154,10 +165,6 @@ const UsersPage = () => {
             </SheetContent>
           )}
         </Sheet>
-
-        {/* Two ways into the allowlist, both explicit admin actions (§11): import an
-          existing media-server account, or mint a local one for someone who has none. */}
-        <CreateLocalPanel onCreated={invalidate} />
       </div>
     </div>
   );

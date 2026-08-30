@@ -180,7 +180,7 @@ const PersonDetail = ({
           <p className="text-muted-foreground text-sm">
             {user.local
               ? "Set a replacement Loomarr password and end every session."
-              : "This password is managed by the connected media server."}
+              : "Change this password in the connected media server. Loomarr stores a non-reversible Argon2id verifier for offline login and refreshes it after a successful provider sign-in."}
           </p>
         </div>
         {user.local &&

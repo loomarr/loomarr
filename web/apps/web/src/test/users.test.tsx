@@ -80,10 +80,11 @@ const stubUsers = ({
   const creates: unknown[] = [];
   const imports: unknown[] = [];
   const resets: Array<{ id: string; body: unknown }> = [];
+  const rows = [ADA, GRACE];
 
   server.use(
     getMeMockHandler(who),
-    getListUsersMockHandler({ users: [ADA, GRACE] }),
+    getListUsersMockHandler(() => ({ users: rows })),
     getImportCandidatesMockHandler({ candidates }),
     getImportUsersMockHandler(async ({ request }) => {
       imports.push(await request.json());
@@ -97,7 +98,9 @@ const stubUsers = ({
     }),
     getCreateLocalUserMockHandler(async ({ request }) => {
       creates.push(await request.json());
-      return user({ id: "u3", name: "newcomer", role: "member" });
+      const created = user({ id: "u3", name: "newcomer", role: "member", local: true });
+      rows.push(created);
+      return created;
     }),
     getResetUserPasswordMockHandler(async ({ request, params }) => {
       resets.push({ id: String(params.id), body: await request.json() });
@@ -229,14 +232,15 @@ describe("Users page", () => {
   // V7c: the admin half of local accounts. V7 shipped the endpoints; without these the
   // capability was reachable only by hand-crafting an API call — the same gap the
   // Account screen (V7b) closed on the self-service side.
-  it("mounts the create-local-account panel and sends the typed role", async () => {
+  it("opens the create-local dialog, sends the typed role, and refreshes the roster", async () => {
     // ⚠ The old assertion looked for a POST whose url merely CONTAINED "/v1/users" — which is
     // also true of `/v1/users/import`, `/v1/users/sync` and `/v1/users/u1/password`, all POSTs.
     // It happened to find the right one; it did not assert the right one. `creates` is fed only
     // by the handler bound to `POST /v1/users`.
     const { creates } = stubUsers();
     renderAt("/people");
-    await userEvent.click(await screen.findByRole("button", { name: /create local account/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /add local account/i }));
+    expect(await screen.findByRole("dialog", { name: "Add local account" })).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText(/username/i), "newcomer");
     await userEvent.type(screen.getByLabelText(/^password$/i), "a-good-password");
     await userEvent.click(screen.getByRole("button", { name: /create account/i }));
@@ -244,13 +248,14 @@ describe("Users page", () => {
     expect(creates).toEqual([
       expect.objectContaining({ username: "newcomer", password: "a-good-password", role: "member" }),
     ]);
+    expect(await screen.findByText("newcomer")).toBeInTheDocument();
   });
 
   it("offers Reset password on a local row and not on an imported one", async () => {
     // The row's local/media-server label has always existed to explain "whether a
     // password reset is even meaningful". This is that action — and the negative is the
-    // point: Loomarr never held an imported user's credential, so offering to reset it
-    // would imply it could change their media-server password.
+    // point: the provider owns password changes. Loomarr's offline verifier cannot change
+    // the media-server password, so offering a reset here would imply authority it lacks.
     stubUsers();
     renderAt("/people");
     await userEvent.click(await screen.findByRole("button", { name: "Manage Ada" }));
