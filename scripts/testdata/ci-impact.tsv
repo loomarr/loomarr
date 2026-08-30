@@ -26,6 +26,7 @@ shared-client-fixtures	web/packages/fixtures/src/index.ts	web,clients,apple_mobi
 client-tooling	web/turbo.json	clients
 client-browser-proof	web/apps/web/src/client-platform-proof/client-platform-proof.tsx	clients
 apple-client-script	web/scripts/test-apple-client.sh	contracts,apple_mobile,apple_tv
+apple-client-xcconfig	web/scripts/apple-simulator.xcconfig	contracts,apple_mobile,apple_tv
 expo-android-script	web/scripts/build-android-client.sh	contracts,expo_android_mobile,expo_android_tv
 visual-web	web/apps/web/src/people/users-page/users-page.tsx	web,visual,tuner,image
 visual-baseline	web/apps/web/tests/visual/gallery.spec.ts-snapshots/ai-approvalhistoryrow--approved-desktop-linux.png	web,visual,image
