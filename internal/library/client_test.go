@@ -78,6 +78,9 @@ func TestAuthenticateLoginHeader(t *testing.T) {
 		if _, err := c.AuthenticateByName(context.Background(), ms.GoodUser, ms.GoodPass); err != nil {
 			t.Fatal(err)
 		}
+		if !strings.HasPrefix(ms.LastEmbyAuthz, "MediaBrowser ") {
+			t.Errorf("Emby login header = %q, want MediaBrowser scheme", ms.LastEmbyAuthz)
+		}
 		if !strings.Contains(ms.LastEmbyAuthz, `DeviceId="loomarr-test-device"`) {
 			t.Errorf("Emby login header missing DeviceId: %q", ms.LastEmbyAuthz)
 		}
