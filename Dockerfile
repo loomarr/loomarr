@@ -167,20 +167,25 @@ ARG DENO_ARM64_SHA256=9a46afc6c392c7cd2ff71a31558935545b46408d0e87f7a86908c71272
 # still emits continuous output and exits 0, and the failure presents as "the channel repeats one
 # show" rather than as an error.
 #
-# ffmpeg is pinned to an IMMUTABLE BtbN release + per-arch SHA256, exactly like yt-dlp, deno, and
-# whisper below — a redistributed image must be reproducible and its GPL corresponding-source must
-# identify EXACT bytes, which `latest` (a mutable release whose assets are overwritten) cannot.
+# ffmpeg is pinned to a RETAINED MONTHLY BtbN release + per-arch SHA256, exactly like yt-dlp, deno,
+# and whisper below — a redistributed image must be reproducible and its GPL corresponding-source
+# must identify EXACT bytes, which `latest` (a mutable release whose assets are overwritten) cannot.
+# BtbN prunes all but the latest 14 ordinary autobuilds; only one release per month is retained for
+# 24 months. An arbitrary dated release is therefore NOT immutable. The evidence manifest binds the
+# pin to the exact upstream pruning-policy revision that classifies this archive as monthly-retained.
 #
 # ⚠ STAY ON THE n8.1 SERIES. ffmpeg >= 9 cannot advance a concat demuxer past a chunked entry, which
 # is load-bearing for playout (a channel would freeze on the first commercial-broken programme). This
-# pin is `n8.1.2-44-g7c533d0f86` from the dated release below; the `make test-ffmpeg` playout suite is
-# green against the n8.1 series. To bump: pick a newer `autobuild-YYYY-MM-DD-HH-MM` release that still
-# ships an `n8.1` gpl build, take its exact asset filename, download both arch archives, and update
-# FFMPEG_RELEASE / FFMPEG_BUILD_ID / both SHA256s together — never point any one of them at `latest`.
-ARG FFMPEG_RELEASE=autobuild-2026-08-16-13-00
-ARG FFMPEG_BUILD_ID=n8.1.2-44-g7c533d0f86
-ARG FFMPEG_AMD64_SHA256=17780994c4679806fb227676f66a0af30c6379afc770324829f48f2a379be558
-ARG FFMPEG_ARM64_SHA256=e970a7dd450b440a21126a8bac3a1c95178b6ba05bee2465a4d2a586345c81ac
+# pin is `n8.1.2-34-g9b6c8969e0` from the retained monthly release below; the `make test-ffmpeg`
+# playout suite is green against the n8.1 series. To bump: choose BtbN's retained monthly release
+# for a completed month (normally its final autobuild), confirm the pinned `util/prunetags.sh` policy
+# still keeps it, take its exact n8.1 GPL asset filename, download both architecture archives, and
+# update FFMPEG_RELEASE / FFMPEG_BUILD_ID / both SHA256s + redistribution evidence together — never
+# choose an ordinary daily archive or point any value at `latest`.
+ARG FFMPEG_RELEASE=autobuild-2026-07-31-14-10
+ARG FFMPEG_BUILD_ID=n8.1.2-34-g9b6c8969e0
+ARG FFMPEG_AMD64_SHA256=09fc77be269c7053e438b7e96548e4af97604faf96a42c4a3c56a1ad74c22c0a
+ARG FFMPEG_ARM64_SHA256=177e40c91564dec3840096f3bf1ffe696b94330585972462cfc739fa29fe0e1a
 ARG WHISPER_VERSION=v1.9.1
 ARG WHISPER_AMD64_SHA256=f3bf3b4369a99b54665b0f19b88483b30de27f25963b0414235dea03198515c5
 ARG WHISPER_ARM64_SHA256=e0b66cd551ff6f2a28fabe3c6e89691eea037bb76833493abb9a71ca788994b3
