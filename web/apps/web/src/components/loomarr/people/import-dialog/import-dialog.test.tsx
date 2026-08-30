@@ -1,3 +1,4 @@
+import { ApiError } from "@loomarr/api";
 import type { ImportCandidate } from "@loomarr/api/models/importCandidate";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -76,6 +77,20 @@ describe("ImportDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: "Import 1 account" }));
     await waitFor(() => expect(onImport).toHaveBeenCalledOnce());
     expect(screen.getByRole("button", { name: "Import 1 account" })).toBeEnabled();
+  });
+
+  it("renders a candidate problem without presenting stale accounts as current", () => {
+    renderDialog({
+      candidateError: new ApiError(502, {
+        title: "Media server unavailable",
+        detail: "Try again later.",
+        status: 502,
+      }),
+      onRetry: vi.fn(),
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent("Media server unavailable");
+    expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
   });
 
   it("explains the disconnected state and links to Connections", () => {

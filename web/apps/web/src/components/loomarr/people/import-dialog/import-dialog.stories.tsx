@@ -1,3 +1,4 @@
+import { ApiError } from "@loomarr/api";
 import type { ImportCandidate } from "@loomarr/api/models/importCandidate";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { ImportDialog } from "./import-dialog";
@@ -17,6 +18,7 @@ const meta = {
     candidates: mixedCandidates,
     defaultOpen: true,
     onImport: () => {},
+    onRetry: () => {},
     onSync: () => {},
   },
   parameters: { layout: "fullscreen" },
@@ -39,10 +41,11 @@ const AllImported: Story = {
 const Busy: Story = { args: { importing: true } };
 const ProviderError: Story = {
   args: {
-    candidateError: {
+    candidateError: new ApiError(502, {
       title: "Media server unavailable",
       detail: "Loomarr could not read accounts from Emby. Check the connection and try again.",
-    },
+      status: 502,
+    }),
   },
 };
 

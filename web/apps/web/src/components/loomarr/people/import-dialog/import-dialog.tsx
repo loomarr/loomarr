@@ -163,12 +163,11 @@ const ImportDialog = ({
                 </div>
               </div>
 
-              {candidateError != null && (
-                <ErrorState error={candidateError} onRetry={onRetry} className="p-4" />
-              )}
               {mutationError != null && <ErrorState error={mutationError} className="p-4" />}
 
-              {candidates === undefined ? (
+              {candidateError != null ? (
+                <ErrorState error={candidateError} onRetry={onRetry} className="p-4" />
+              ) : candidates === undefined ? (
                 <div className="grid gap-2" role="status" aria-label="Loading media-server accounts">
                   {[0, 1, 2].map((item) => (
                     <div key={item} className="h-16 animate-pulse rounded-lg border border-border bg-card" />
