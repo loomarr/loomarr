@@ -147,7 +147,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect }: PeopleRosterProps
                   </span>
                   <span className="flex items-center justify-between gap-3 md:block">
                     <span className="text-muted-foreground text-xs md:hidden">Role</span>
-                      <Badge variant={user.role === "admin" ? "tune" : "neutral"}>{user.role}</Badge>
+                    <Badge variant={user.role === "admin" ? "tune" : "neutral"}>{user.role}</Badge>
                   </span>
                   <span className="flex items-center justify-between gap-3 font-mono text-sm tabular-nums md:block">
                     <span className="font-sans text-muted-foreground text-xs md:hidden">Requests</span>
