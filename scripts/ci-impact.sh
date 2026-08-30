@@ -127,7 +127,7 @@ classify() {
       known=true
       select_gate clients
       ;;
-    web/scripts/test-apple-client.sh|web/scripts/filter-react-native-pods-notice.awk|web/scripts/filter-react-native-pods-notice.test.mjs)
+    web/scripts/test-apple-client.sh|web/scripts/test-apple-client.test.mjs|web/scripts/apple-simulator.xcconfig|web/scripts/filter-react-native-pods-notice.awk|web/scripts/filter-react-native-pods-notice.test.mjs)
       known=true
       select_gate contracts
       select_gate apple_mobile
