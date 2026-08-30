@@ -175,8 +175,12 @@ describe("Users page", () => {
     renderAt("/people");
     await screen.findByText("Grace");
 
-    await userEvent.click(screen.getByRole("button", { name: "Manage Grace" }));
+    const trigger = screen.getByRole("button", { name: "Manage Grace" });
+    await userEvent.click(trigger);
     expect(await screen.findByText(/1 active session for Grace/)).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Grace" })).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
   });
 
   // The import panel is the whole point of §11's "explicit import, never implicit". If it
