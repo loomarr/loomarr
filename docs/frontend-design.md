@@ -350,6 +350,13 @@ These suites join **phase 13's gate** in the main doc's build plan.
 - The re-runnable connection checklist is embedded at the top of Connections — Settings *is* the troubleshooting console.
 - Destructive actions live in an isolated danger zone with typed confirmation (`onair` styling).
 
+### People — scan first, manage in context
+- The route title is **People**. Its primary surface is a searchable roster with role and status filters; identity, authentication source, role, request usage, and enabled state remain scannable without opening a record.
+- Selecting a person opens a right-edge detail sheet on desktop and a full-width overlay on narrow screens. Focus is trapped while it is open, Escape and the close control dismiss it, and focus returns to the selected roster item.
+- Access, request policy, active sessions, local-password reset, and account status live in the detail sheet. Each edit persists immediately through its existing endpoint; there is no page-level Save action.
+- Self-demotion and self-disable remain unavailable. Password controls appear only for Loomarr-local credentials, and account disablement is isolated in the sheet's danger zone.
+- Search and filters operate on the loaded roster and expose an explicit no-results state. The mobile roster uses compact cards rather than a horizontally scrolling desktop table.
+
 ### Empty, error, loading
 - **Every list has an empty state with exactly one next action.** "Dead air — create your first channel." · "No clips yet — drop files in the filler folder or point MeTube at a playlist." · "Queue's clear — nothing awaiting approval."
 - Errors: RFC 7807 `title` in a toast (sonner) for mutations, inline field errors via TanStack Form for forms; retry offered only where the operation is idempotent.
