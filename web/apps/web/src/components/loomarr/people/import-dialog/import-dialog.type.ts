@@ -1,4 +1,4 @@
-import type { ImportCandidate } from "@loomarr/api";
+import type { ImportCandidate } from "@loomarr/api/models/importCandidate";
 
 interface ImportDialogProps {
   available: boolean;

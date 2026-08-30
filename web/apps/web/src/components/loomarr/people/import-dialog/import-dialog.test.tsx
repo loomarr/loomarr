@@ -1,4 +1,4 @@
-import type { ImportCandidate } from "@loomarr/api";
+import type { ImportCandidate } from "@loomarr/api/models/importCandidate";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
@@ -59,9 +59,10 @@ describe("ImportDialog", () => {
   });
 
   it("filters the loaded candidate set without selecting hidden rows", async () => {
+    const user = userEvent.setup();
     renderDialog();
-    await userEvent.click(screen.getByRole("combobox", { name: "Show" }));
-    await userEvent.click(screen.getByRole("option", { name: "Already imported" }));
+    await user.click(screen.getByRole("combobox", { name: "Show" }));
+    await user.click(await screen.findByRole("option", { name: "Already imported" }));
     expect(screen.getByText("Margaret Hamilton")).toBeInTheDocument();
     expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument();
     expect(screen.getByText("0 selected · 0 importable shown")).toBeInTheDocument();

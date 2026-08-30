@@ -1,4 +1,4 @@
-import type { ImportCandidate } from "@loomarr/api";
+import type { ImportCandidate } from "@loomarr/api/models/importCandidate";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { ImportDialog } from "./import-dialog";
 
