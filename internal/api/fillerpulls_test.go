@@ -45,6 +45,40 @@ func seedSource(t *testing.T, st store.Store, id, uri string, enabled bool) {
 	}
 }
 
+func TestProposeFillerPull_UsesOnlyGeographicallyEligibleSources(t *testing.T) {
+	srv, st, _ := newFillerServerWithConfig(t, nil, func(key string) string {
+		return map[string]string{"filler.home_country": "US", "filler.home_market": "New York"}[key]
+	})
+	for _, tc := range []struct {
+		id, country, market string
+	}{
+		{"us-wide", "US", ""},
+		{"ny-local", "US", "New York"},
+		{"california", "US", "California"},
+		{"canadian", "CA", ""},
+		{"unknown", "", ""},
+	} {
+		seedSource(t, st, tc.id, "https://archive.org/details/"+tc.id, true)
+		if err := st.SetFillerSourceGeography(t.Context(), tc.id,
+			filler.Geography{Country: tc.country, Market: tc.market}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", res.StatusCode)
+	}
+	body := decodePull(t, res)
+	got := map[string]bool{}
+	for _, row := range body.Plan {
+		got[row.SourceID] = true
+	}
+	if !got["us-wide"] || !got["ny-local"] || len(got) != 2 {
+		t.Fatalf("planned sources = %v, want only US-wide and New York local", got)
+	}
+}
+
 // ⚠ THE safety property. §10's rule is "the machine proposes, a human commits", and this is what
 // makes the first half true: proposing writes a row and downloads NOTHING.
 func TestProposeFillerPull_DownloadsNothing(t *testing.T) {

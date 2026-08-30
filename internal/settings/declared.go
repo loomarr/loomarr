@@ -143,6 +143,21 @@ func breakDuration(v any) error {
 	return nil
 }
 
+func optionalCountryCode(v any) error {
+	s, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("want a country code")
+	}
+	s = strings.ToUpper(strings.TrimSpace(s))
+	if s == "" {
+		return nil
+	}
+	if len(s) != 2 || s[0] < 'A' || s[0] > 'Z' || s[1] < 'A' || s[1] > 'Z' {
+		return fmt.Errorf("want an ISO 3166-1 alpha-2 country code (for example US or CA)")
+	}
+	return nil
+}
+
 // storagePath validates generation-scoped storage roots without importing their owning modules
 // back into settings. Absolute paths keep one generation anchored to an unambiguous root.
 // Refusing the filesystem root prevents a bad edit from turning a bounded subsystem into a walk
@@ -581,6 +596,16 @@ func declared() []Setting {
 		},
 
 		// --- Filler / commercials (§15, Phase 12; §10 redesign — Tunarr-owned) ---
+		{
+			Key: "filler.home_country", Label: "Home country", EnvVar: "FILLER_HOME_COUNTRY", Group: GroupFiller,
+			Kind: KindString, Default: "", Validate: optionalCountryCode,
+			Doc: "Optional ISO two-letter country that constrains automatic filler use. Unknown and foreign clips remain reviewable but do not air. Leave blank to preserve the legacy unrestricted pool until geography is configured.",
+		},
+		{
+			Key: "filler.home_market", Label: "Home local market", EnvVar: "FILLER_HOME_MARKET", Group: GroupFiller,
+			Kind: KindString, Default: "",
+			Doc: "Optional local broadcast market inside the home country, such as New York or Seattle. Local clips must match it exactly; Loomarr never infers it from the guide timezone.",
+		},
 		{
 			// ⚠ Defaults inside /data, like database.url and backup.dir — the documented
 			// volume carries it, so a zero-env `docker run` has a working drop-folder

@@ -144,7 +144,13 @@ func buildFillerSubsystem(
 		func() time.Duration { return set.dur("filler.split.review_window") }, time.Now, log,
 	)))
 	autoFetch := filler.NewFetcher(
-		fetchStoreAdapter{st: st, fetchEvery: func() time.Duration { return set.dur("filler.fetch.every") }},
+		fetchStoreAdapter{
+			st:         st,
+			fetchEvery: func() time.Duration { return set.dur("filler.fetch.every") },
+			home: func() filler.Geography {
+				return filler.Geography{Country: set.str("filler.home_country"), Market: set.str("filler.home_market")}
+			},
+		},
 		registeredSourceEnumerator{youtube: clipfetch.NewYouTubeEnumerator(resolveTool(set.str("ingest.ytdlp_path"), "yt-dlp"))}, adapter, layout.ClipDir(),
 		filler.FetchLimits{
 			MaxPerRun:       func() int { return set.intv("filler.fetch.max_per_run") },

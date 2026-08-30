@@ -61,6 +61,13 @@ type RawClip struct {
 	DurationMs      int64
 	Kind            Kind
 	Era             int // initial era from filename; 0 if none
+	GeographicScope GeographicScope
+	Country         string
+	Market          string
+	Network         string
+	Station         string
+	AirDate         string
+	GeoEvidence     string
 	// Quality is the resolution label ("1080p", "480p") derived from the probed video
 	// height; "" when the file has no video stream or was never re-probed. Display-only —
 	// the guide's pod hover card shows it so a grainy 240p advert is explicable rather
@@ -433,6 +440,9 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 		merged.Name = rc.Name
 		merged.DurationMs = rc.DurationMs
 		merged.Kind = rc.Kind
+		merged.GeographicScope = rc.GeographicScope
+		merged.Country, merged.Market = rc.Country, rc.Market
+		merged.Network, merged.Station, merged.AirDate, merged.GeoEvidence = rc.Network, rc.Station, rc.AirDate, rc.GeoEvidence
 		// Quality is scan-owned like duration: it is a property of the FILE, so a re-encode
 		// that changes the resolution should be reflected, and there is no hand-edited value
 		// to protect. (Contrast the match tags below, which a human or the AI may have set.)
@@ -467,6 +477,9 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 			merged.Category = existing.Category
 			merged.AITagged = existing.AITagged
 			merged.Rating = existing.Rating
+			merged.GeographicScope = existing.GeographicScope
+			merged.Country, merged.Market = existing.Country, existing.Market
+			merged.Network, merged.Station, merged.AirDate, merged.GeoEvidence = existing.Network, existing.Station, existing.AirDate, existing.GeoEvidence
 			merged.Source = existing.Source
 			// The era suggestion (V34) is loomarr-owned too — a scan knows nothing
 			// about it, so it survives like the tags above.

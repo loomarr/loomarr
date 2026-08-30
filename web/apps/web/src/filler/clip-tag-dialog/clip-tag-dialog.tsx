@@ -1,5 +1,6 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
+import type { ClipGeographyDTO } from "@loomarr/api/models/clipGeographyDTO";
 import type { TaxonDTO } from "@loomarr/api/models/taxonDTO";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -54,6 +55,12 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
   // the select's own domain rather than the DTO's — "" is a real option here.
   const [audience, setAudience] = useState<string>(clip?.audience ?? "");
   const [brand, setBrand] = useState(clip?.brand ?? "");
+  const [geoScope, setGeoScope] = useState<ClipGeographyDTO["scope"]>(clip?.geographicScope ?? "unknown");
+  const [country, setCountry] = useState(clip?.country ?? "");
+  const [market, setMarket] = useState(clip?.market ?? "");
+  const [network, setNetwork] = useState(clip?.network ?? "");
+  const [station, setStation] = useState(clip?.station ?? "");
+  const [airDate, setAirDate] = useState(clip?.airDate ?? "");
   // Tags are the operator's chosen taxonomy leaves (§10 V45a) — a SET, not one category. Seeded from
   // the clip's asserted tags; `category` is derived server-side from these, never sent.
   // Never seed this editor from `tags`: that is the full match set, including inherited parents.
@@ -86,6 +93,14 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
         brand: brand.trim(),
         // The tag SET; the server grounds each and derives the category shadow.
         tags,
+        geography: {
+          scope: geoScope,
+          country: geoScope === "unknown" ? undefined : country.trim().toUpperCase(),
+          market: geoScope === "local" ? market.trim() : undefined,
+          network: network.trim() || undefined,
+          station: station.trim() || undefined,
+          airDate: airDate || undefined,
+        },
       },
     });
   };
@@ -173,6 +188,82 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
             </p>
           </div>
         </div>
+
+        <fieldset className="grid grid-cols-1 gap-3 rounded-md border border-border p-3 sm:grid-cols-2">
+          <legend className="px-1 font-medium text-sm">Broadcast geography</legend>
+          <div>
+            <Label htmlFor="tag-geographic-scope">Scope</Label>
+            <Select
+              value={geoScope}
+              onValueChange={(value) => setGeoScope(value as ClipGeographyDTO["scope"])}
+            >
+              <SelectTrigger id="tag-geographic-scope">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="unknown">Unknown — review required</SelectItem>
+                <SelectItem value="national">National</SelectItem>
+                <SelectItem value="local">Local market</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="tag-country">Country code</Label>
+            <Input
+              id="tag-country"
+              maxLength={2}
+              className="uppercase"
+              disabled={geoScope === "unknown"}
+              value={country}
+              onChange={(event) => setCountry(event.target.value.toUpperCase())}
+              placeholder="US"
+            />
+          </div>
+          <div>
+            <Label htmlFor="tag-market">Local market</Label>
+            <Input
+              id="tag-market"
+              maxLength={120}
+              disabled={geoScope !== "local"}
+              value={market}
+              onChange={(event) => setMarket(event.target.value)}
+              placeholder="New York"
+            />
+          </div>
+          <div>
+            <Label htmlFor="tag-network">Network (optional)</Label>
+            <Input
+              id="tag-network"
+              maxLength={120}
+              value={network}
+              onChange={(event) => setNetwork(event.target.value)}
+              placeholder="Fox"
+            />
+          </div>
+          <div>
+            <Label htmlFor="tag-station">Station (optional)</Label>
+            <Input
+              id="tag-station"
+              maxLength={120}
+              value={station}
+              onChange={(event) => setStation(event.target.value)}
+              placeholder="WNYW"
+            />
+          </div>
+          <div>
+            <Label htmlFor="tag-air-date">Air date (optional)</Label>
+            <Input
+              id="tag-air-date"
+              type="date"
+              value={airDate}
+              onChange={(event) => setAirDate(event.target.value)}
+            />
+          </div>
+          <p className="text-muted-foreground text-xs sm:col-span-2">
+            Country and market control where this clip may air. Loomarr records this save as an operator
+            correction and never infers location from timezone.
+          </p>
+        </fieldset>
 
         {/* Tags: the taxonomy vocabulary as toggleable chips, grouped by axis (§10 V45a). This
             REPLACES the free-text category input — a tag must be a real taxon, so a checklist of the

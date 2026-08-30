@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -41,7 +42,7 @@ func TestAddFillerSource_RegistersEnabledAndDownloadsNothing(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
 
 	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/sources",
-		`{"kind":"archive","uri":"https://archive.org/details/classic_tv_commercials"}`, adminToken)
+		`{"kind":"archive","uri":"https://archive.org/details/classic_tv_commercials","country":"us","market":" New   York "}`, adminToken)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", res.StatusCode)
 	}
@@ -75,6 +76,21 @@ func TestAddFillerSource_RegistersEnabledAndDownloadsNothing(t *testing.T) {
 	}
 	if !got[0].Enabled {
 		t.Error("persisted source is disabled")
+	}
+	if got[0].Geography != (filler.Geography{Country: "US", Market: "New York"}) {
+		t.Errorf("persisted geography = %+v", got[0].Geography)
+	}
+}
+
+func TestAddFillerSource_RejectsMarketWithoutCountry(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/sources",
+		`{"kind":"archive","uri":"classic_tv_commercials","market":"New York"}`, adminToken)
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422", res.StatusCode)
+	}
+	if got := registeredSources(t, st); len(got) != 0 {
+		t.Errorf("stored %d sources with an invalid geography", len(got))
 	}
 }
 

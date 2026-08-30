@@ -135,7 +135,10 @@ func src1(t *testing.T, s Store) FillerSource {
 func testClipFilters(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
-	_ = s.UpsertClip(ctx, sampleClip("c1", "Frosted Flakes", filler.Commercial, 1992, filler.Kids, "cereal"))
+	c1 := sampleClip("c1", "Frosted Flakes", filler.Commercial, 1992, filler.Kids, "cereal")
+	c1.GeographicScope, c1.Country, c1.Market = filler.GeographicLocal, "US", "New York"
+	c1.Network, c1.Station, c1.AirDate, c1.GeoEvidence = "Fox", "WNYW", "1992-04-03", "filename: WNYW 1992-04-03"
+	_ = s.UpsertClip(ctx, c1)
 	_ = s.UpsertClip(ctx, sampleClip("c2", "TMNT figures", filler.Commercial, 1994, filler.Kids, "toys"))
 	_ = s.UpsertClip(ctx, sampleClip("b1", "Bumper", filler.Bumper, 1992, filler.General, ""))
 	_ = s.UpsertClip(ctx, sampleClip("u1", "untagged.mp4", filler.Commercial, 0, "", "")) // untagged
@@ -150,6 +153,10 @@ func testClipFilters(t *testing.T, newStore NewStoreFunc) {
 	}
 	if got.DurationMs != 30000 {
 		t.Errorf("duration lost: %d", got.DurationMs)
+	}
+	if got.GeographicScope != filler.GeographicLocal || got.Country != "US" || got.Market != "New York" ||
+		got.Network != "Fox" || got.Station != "WNYW" || got.AirDate != "1992-04-03" || got.GeoEvidence == "" {
+		t.Errorf("geography round-trip mismatch: %+v", got.Clip)
 	}
 	if _, err := s.GetClip(ctx, "nope"); err != ErrNotFound {
 		t.Errorf("GetClip(missing) = %v, want ErrNotFound", err)
@@ -166,6 +173,17 @@ func testClipFilters(t *testing.T, newStore NewStoreFunc) {
 	kids92, _ := s.ListClips(ctx, ClipFilter{Audience: filler.Kids, Era: 1992})
 	if len(kids92) != 1 || kids92[0].Hash != "c1" {
 		t.Errorf("kids+1992 = %+v, want just c1", ids2(kids92))
+	}
+	ny, _ := s.ListClips(ctx, ClipFilter{GeographicScope: filler.GeographicLocal, Country: "us", Market: "new york"})
+	if len(ny) != 1 || ny[0].Hash != "c1" {
+		t.Errorf("US/New York geography = %+v, want just c1", ids2(ny))
+	}
+	if err := s.UpdateClipGeography(ctx, "c1", "national", "CA", "", "CBC", "", "", "operator", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	updated, _ := s.GetClip(ctx, "c1")
+	if updated.GeographicScope != filler.GeographicNational || updated.Country != "CA" || updated.GeoEvidence != "operator" {
+		t.Errorf("updated geography = %+v", updated.Clip)
 	}
 	// Untagged only.
 	untagged, _ := s.ListClips(ctx, ClipFilter{UntaggedOnly: true})
@@ -2407,8 +2425,9 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 		// index on (kind, uri) correctly refuses a second row pointing at the same collection.
 		// The fixture needs its own target; the index is doing its job.
 		ID: "src-1", Kind: "archive", URI: "conformance_fixture_collection",
-		Label:   "Classic TV commercials",
-		License: "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+		Label:     "Classic TV commercials",
+		License:   "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+		Geography: filler.Geography{Country: "US", Market: "New York"},
 		// ⚠ Only ~8% of archive items declare a licence, so the empty case below is the
 		// common one — both are covered.
 		CreatedAt: created,
@@ -2466,6 +2485,15 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	}
 	if added[0].License != src.License {
 		t.Errorf("licence = %q, want %q", added[0].License, src.License)
+	}
+	if added[0].Geography != src.Geography {
+		t.Errorf("source geography = %+v, want %+v", added[0].Geography, src.Geography)
+	}
+	if err := s.SetFillerSourceGeography(ctx, "src-1", filler.Geography{Country: "ca", Market: " Toronto "}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := findSource(t, s, "src-1"); got.Geography != (filler.Geography{Country: "CA", Market: "Toronto"}) {
+		t.Errorf("updated source geography = %+v", got.Geography)
 	}
 	if added[1].License != "" {
 		t.Errorf("unlicensed source has licence %q, want empty (= unknown)", added[1].License)

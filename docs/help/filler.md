@@ -49,6 +49,8 @@ Matching a clip to a channel needs several separate facts:
 - **Kind** — commercial, bumper, station ID, PSA, trailer, or interstitial.
 - **Era** and **audience** — scheduling facts with their own validation.
 - **Brand** — shown only when grounded in the clip's text or picture.
+- **Geography** — national or local applicability, with an explicit country and optional local
+  market. Unknown means review is still needed; it never means local.
 - **Taxonomy tags** — what the clip contains, across products/topics, format, seasonal cues,
   and audience cues.
 
@@ -75,6 +77,23 @@ Untagged commercials are a last-resort rung only for general and late-night chan
 excluded from kids and family channels because an unknown audience must never be treated as safe
 for children. If a themed channel falls back to bumpers, check its **pod preview** and tag the clips.
 
+## Geography
+
+Set **Home country** and, when applicable, **Home local market** in Filler settings. Channels
+inherit those values, and each Channel's Filler section can choose a market without changing the
+installation country. A US/New York Channel
+may use US-national and New York-local Clips; Canadian and California-local Clips remain in the
+catalog but cannot enter that Channel's pool. Geography is never loosened by fallback or a pin.
+
+The Clip editor records national/local scope, country, market, network, station, and air date.
+Enter only facts supported by the filename, source metadata, transcript, visible text, or your own
+knowledge. Unknown or conflicting geography stays unknown. Guide timezone affects display only
+and never supplies a country or market.
+
+Every registered Source also has a country and optional local market. A country-only Source is
+nationwide. Once Home country is configured, Loomarr does not fetch from unclassified, foreign, or
+out-of-market Sources; mark their geography in **Filler → Sources** before using them.
+
 ## If a clip gets stuck
 
 Pipeline stages retry with backoff. Expand a failed row in **Filler → Incoming** to retry that stage
@@ -93,6 +112,7 @@ action. The admin API requires an explicit force flag for it.
 - `FILLER_POD_MAX` — clips per break (default 4)
 - `FILLER_COOLDOWN_SECONDS` — before a clip repeats (default 30)
 - `FILLER_SYNC_EVERY` — catalog re-sync interval (default 15m)
+- `FILLER_HOME_COUNTRY` / `FILLER_HOME_MARKET` — default geography (blank until configured)
 
 ## Preview
 

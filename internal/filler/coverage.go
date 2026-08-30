@@ -23,12 +23,13 @@ package filler
 type Criterion string
 
 const (
-	CriterionEra      Criterion = "era"
-	CriterionAudience Criterion = "audience"
-	CriterionCategory Criterion = "category"
-	CriterionKind     Criterion = "kind"
-	CriterionDuration Criterion = "duration"
-	CriterionQuality  Criterion = "quality"
+	CriterionEra       Criterion = "era"
+	CriterionAudience  Criterion = "audience"
+	CriterionCategory  Criterion = "category"
+	CriterionKind      Criterion = "kind"
+	CriterionDuration  Criterion = "duration"
+	CriterionQuality   Criterion = "quality"
+	CriterionGeography Criterion = "geography"
 )
 
 // CriterionCoverage is one setting and how much of the commercial catalog survives it ON ITS OWN.
@@ -218,6 +219,9 @@ func criterionCoverage(catalog []Clip, w Window, policy Policy) []CriterionCover
 	}
 
 	return []CriterionCoverage{
+		{CriterionGeography, count(func(c Clip) bool {
+			return GeographicallyEligible(c, effectiveGeography(w.Geography, policy.Geography))
+		})},
 		{CriterionEra, count(func(c Clip) bool { return w.Era.Contains(c.Era) })},
 		{CriterionAudience, count(func(c Clip) bool {
 			return len(filterAudienceWithUngrounded([]Clip{c}, w.Audience)) > 0
@@ -258,6 +262,7 @@ func Coverage(catalog []Clip, w Window, policy Policy) CoverageReport {
 	// base — a row that can never say anything.
 	criteria := criterionCoverage(catalog, w, policy)
 
+	catalog = filterGeography(catalog, effectiveGeography(w.Geography, policy.Geography))
 	catalog = filterKinds(catalog, w.Kinds)
 
 	pools := candidatePools(catalog, w, policy)

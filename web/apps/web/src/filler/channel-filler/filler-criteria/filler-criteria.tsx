@@ -90,6 +90,7 @@ const FillerCriteria = ({
   disabled,
   className,
   scopeEra,
+  installationGeography,
 }: {
   selection: FillerSelection;
   onChange: (next: FillerSelection) => void;
@@ -99,6 +100,7 @@ const FillerCriteria = ({
   // the inheritance can be SHOWN — it was applied live by the server and rendered nowhere, so a
   // channel drawing 1990s ads from a blank field looked like it was drawing from everything.
   scopeEra?: { from?: number; to?: number };
+  installationGeography?: { country?: string; market?: string };
 }) => {
   const era = selection.era;
   // ⚠ **Three states, and they are only distinguishable because `era` is a POINTER on the wire.**
@@ -115,11 +117,103 @@ const FillerCriteria = ({
   const kinds = selection.kinds ?? [];
   const productCategories = useProductCategories();
   const [choosingCategories, setChoosingCategories] = useState(false);
+  const fixedCountry = installationGeography?.country?.trim().toUpperCase();
 
   return (
     // Responsive 2-col grid: Era + Audience are cells; Categories (chip cloud) + Clip kinds
     // (checkbox row) span both columns.
     <div className={cn("grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2", className)}>
+      <div className="flex flex-col gap-1.5 sm:col-span-2">
+        <FieldLabel help="Country is a hard boundary. A local market also excludes local clips from every other market; timezone is never used as location.">
+          Geography
+        </FieldLabel>
+        {selection.geography == null ? (
+          <p className="text-muted-foreground text-xs" data-testid="geography-inherited">
+            {installationGeography?.country
+              ? `Following this installation (${installationGeography.country}${installationGeography.market ? ` · ${installationGeography.market}` : ""}).`
+              : "No installation geography is configured; legacy unrestricted matching remains active."}{" "}
+            <button
+              type="button"
+              className="text-signal underline-offset-2 hover:underline disabled:opacity-50"
+              disabled={disabled}
+              onClick={() =>
+                onChange({
+                  ...selection,
+                  geography: {
+                    country: installationGeography?.country ?? "US",
+                    market: installationGeography?.market,
+                  },
+                })
+              }
+            >
+              Set for this channel
+            </button>
+          </p>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="filler-country" className="text-muted-foreground text-xs">
+                  Country code
+                </Label>
+                <Input
+                  id="filler-country"
+                  className="w-28 uppercase"
+                  maxLength={2}
+                  disabled={disabled || Boolean(fixedCountry)}
+                  defaultValue={fixedCountry ?? selection.geography.country}
+                  key={`country-${fixedCountry ?? selection.geography.country}`}
+                  onBlur={(event) =>
+                    onChange({
+                      ...selection,
+                      geography: {
+                        ...selection.geography!,
+                        country: fixedCountry ?? event.target.value.trim().toUpperCase(),
+                      },
+                    })
+                  }
+                />
+              </div>
+              <div className="flex min-w-52 flex-1 flex-col gap-1">
+                <Label htmlFor="filler-market" className="text-muted-foreground text-xs">
+                  Local market (optional)
+                </Label>
+                <Input
+                  id="filler-market"
+                  disabled={disabled}
+                  defaultValue={selection.geography.market ?? ""}
+                  key={`market-${selection.geography.market ?? ""}`}
+                  placeholder="New York"
+                  onBlur={(event) =>
+                    onChange({
+                      ...selection,
+                      geography: {
+                        ...selection.geography!,
+                        country: fixedCountry ?? selection.geography!.country,
+                        market: event.target.value.trim() || undefined,
+                      },
+                    })
+                  }
+                />
+              </div>
+            </div>
+            <p className="text-muted-foreground text-xs">
+              A blank market means country-wide national filler only.{" "}
+              <button
+                type="button"
+                className="text-signal underline-offset-2 hover:underline disabled:opacity-50"
+                disabled={disabled}
+                onClick={() => {
+                  const { geography: _dropped, ...rest } = selection;
+                  onChange(rest);
+                }}
+              >
+                Follow installation geography
+              </button>
+            </p>
+          </>
+        )}
+      </div>
       {/* Era — two commit-on-blur year inputs, the same idiom as the program-scope era.
           Blank on either side means unbounded, not 0. Spans both columns (nested 2-up row). */}
       <div className="flex flex-col gap-1.5 sm:col-span-2">

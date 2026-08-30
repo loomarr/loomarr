@@ -100,10 +100,14 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
   // option is what an operator sees before touching anything.
   const [newSourceKind, setNewSourceKind] = useState<"folder" | "library" | "archive" | "youtube">("library");
   const [newSourceURI, setNewSourceURI] = useState("");
+  const [newSourceCountry, setNewSourceCountry] = useState("");
+  const [newSourceMarket, setNewSourceMarket] = useState("");
   const addSource = fillerApi.useAddFillerSource({
     mutation: {
       onSuccess: () => {
         setNewSourceURI("");
+        setNewSourceCountry("");
+        setNewSourceMarket("");
         toast.success("Source added", { description: "Loomarr will check it on its download schedule." });
         void queryClient.invalidateQueries({ queryKey: fillerApi.getListFillerSourcesQueryKey() });
       },
@@ -330,14 +334,31 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
             onSubmit={(e) => {
               e.preventDefault();
               if (!newSourceURI.trim()) return;
-              addSource.mutate({ data: { kind: newSourceKind, uri: newSourceURI.trim() } });
+              addSource.mutate({
+                data: {
+                  kind: newSourceKind,
+                  uri: newSourceURI.trim(),
+                  country: newSourceCountry.trim().toUpperCase(),
+                  market: newSourceMarket.trim(),
+                },
+              });
             }}
           >
             {/* ⚠ No visible field labels — the mock has none, and the per-kind PLACEHOLDER is the
                 label ("Library name on Jellyfin — e.g. Commercials"). It changes with the kind, so
                 a static label above it would either repeat it or contradict it. `aria-label` keeps
                 both controls named for screen readers, which is what the visible label was for. */}
-            <Select value={newSourceKind} onValueChange={(v) => setNewSourceKind(v as typeof newSourceKind)}>
+            <Select
+              value={newSourceKind}
+              onValueChange={(v) => {
+                const kind = v as typeof newSourceKind;
+                setNewSourceKind(kind);
+                if (kind === "folder" || kind === "library") {
+                  setNewSourceCountry("");
+                  setNewSourceMarket("");
+                }
+              }}
+            >
               <SelectTrigger id="new-source-kind" className="w-45" aria-label="Kind of source to add">
                 <SelectValue />
               </SelectTrigger>
@@ -361,6 +382,26 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
               aria-label={SOURCE_KIND_COPY[newSourceKind].label}
               onChange={(e) => setNewSourceURI(e.target.value)}
             />
+            {(newSourceKind === "archive" || newSourceKind === "youtube") && (
+              <>
+                <Input
+                  className="w-24 font-mono uppercase"
+                  value={newSourceCountry}
+                  maxLength={2}
+                  placeholder="US"
+                  aria-label="Source country code"
+                  onChange={(e) => setNewSourceCountry(e.target.value)}
+                />
+                <Input
+                  className="min-w-40 flex-1"
+                  value={newSourceMarket}
+                  placeholder="Market (optional)"
+                  aria-label="Source local market"
+                  disabled={!newSourceCountry.trim()}
+                  onChange={(e) => setNewSourceMarket(e.target.value)}
+                />
+              </>
+            )}
             <Button type="submit" variant="outline" disabled={addSource.isPending || !newSourceURI.trim()}>
               {addSource.isPending ? "Adding…" : "+ Add source"}
             </Button>
@@ -370,9 +411,9 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
               until the admission gate files it. Name both halves so a successful fetch does not
               look broken merely because Catalog correctly excludes its Incoming clips. */}
           <Caption>
-            Enabled remote sources are checked on their schedule. Grounded, high-confidence clips may be filed
-            automatically when that source allows it; uncertain clips and clips from review-only sources stay
-            in Incoming. Queue one or approve a pull when you want a deliberate batch sooner.
+            Country-only sources are nationwide; add a market for local sources. Once installation geography
+            is configured, unclassified and out-of-market sources are not fetched. Grounded, high-confidence
+            clips may still be filed automatically only when that source allows it.
           </Caption>
         </div>
       )}

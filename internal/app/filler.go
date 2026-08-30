@@ -422,6 +422,7 @@ type fetchStoreAdapter struct {
 	// fetchEvery is the GLOBAL poll interval a source's override resolves against (§10 V38c).
 	// A closure so it hot-applies — an operator changing it expects the next pass to honour it.
 	fetchEvery func() time.Duration
+	home       func() filler.Geography
 }
 
 func (a fetchStoreAdapter) ListFetchSources(ctx context.Context) ([]filler.FetchSource, error) {
@@ -431,6 +432,9 @@ func (a fetchStoreAdapter) ListFetchSources(ctx context.Context) ([]filler.Fetch
 	}
 	out := make([]filler.FetchSource, 0, len(srcs))
 	for _, s := range srcs {
+		if a.home != nil && !s.GeographicallyEligible(a.home()) {
+			continue
+		}
 		// ⚠ The three-state override is resolved HERE, by the store's own method, and handed to
 		// the fetcher already decided (§10 V38c). `FetchEvery` is the single implementation of
 		// nil-vs-0-vs-N; re-deriving it in the fetcher is how the two would drift, and the way

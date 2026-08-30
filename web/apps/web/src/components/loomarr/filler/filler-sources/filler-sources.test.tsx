@@ -93,6 +93,22 @@ describe("FillerSources", () => {
     expect(screen.getByText("0 clips")).toBeInTheDocument();
     expect(screen.queryByText(/not configured/i)).not.toBeInTheDocument();
   });
+
+  it("shows geography review only on remote acquisition sources", () => {
+    const { rerender } = render(
+      <FillerSources
+        sources={[source({ kind: "archive", country: "US", market: "New York" })]}
+        onFetch={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("US · New York")).toBeInTheDocument();
+
+    rerender(<FillerSources sources={[source({ kind: "archive" })]} onFetch={vi.fn()} />);
+    expect(screen.getByText("geography needed")).toBeInTheDocument();
+
+    rerender(<FillerSources sources={[source({ kind: "folder" })]} onFetch={vi.fn()} />);
+    expect(screen.queryByText("geography needed")).not.toBeInTheDocument();
+  });
 });
 
 // --- registered sources as PEER rows (V37; was "remotes nested under the `remote` row", V33) ---

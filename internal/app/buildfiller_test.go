@@ -10,10 +10,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -37,6 +39,40 @@ func TestFillerSourceAdapter_HotEnablesTunarrAnnotation(t *testing.T) {
 	}
 	if client.FillerClipReads != 1 {
 		t.Fatalf("enabled adapter made %d calls, want 1", client.FillerClipReads)
+	}
+}
+
+func TestFetchStoreAdapter_ExcludesUnclassifiedAndOutOfMarketSources(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	for _, tc := range []struct {
+		id, country, market string
+	}{
+		{"us-wide", "US", ""},
+		{"ny-local", "US", "New York"},
+		{"california", "US", "California"},
+		{"canadian", "CA", ""},
+		{"unknown", "", ""},
+	} {
+		src := store.NewFillerSource(tc.id, "archive", tc.id, tc.id, time.Now().UTC())
+		src.Geography = filler.Geography{Country: tc.country, Market: tc.market}
+		if err := st.UpsertFillerSource(t.Context(), src); err != nil {
+			t.Fatal(err)
+		}
+	}
+	adapter := fetchStoreAdapter{
+		st: st, fetchEvery: func() time.Duration { return time.Hour },
+		home: func() filler.Geography { return filler.Geography{Country: "US", Market: "New York"} },
+	}
+	sources, err := adapter.ListFetchSources(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, src := range sources {
+		got[src.ID] = true
+	}
+	if !got["us-wide"] || !got["ny-local"] || len(got) != 2 {
+		t.Fatalf("fetch sources = %v, want only US-wide and New York local", got)
 	}
 }
 

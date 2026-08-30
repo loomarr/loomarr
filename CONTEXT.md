@@ -203,6 +203,28 @@ publication. It is an implementation detail shipped in the Loomarr container, no
 optional integration.
 _Avoid_: image service (that includes the Go-owned domain), daemon, fallback
 
+### Filler geography
+
+**Installation geography**:
+The optional home country and local market that constrain automated filler use across the instance and supply the default for Channels without their own geography.
+_Avoid_: guide timezone, locale, server location
+
+**Channel geography**:
+The country and optional local market whose viewers a Channel is programmed for. It inherits Installation geography; a Channel may choose a market but cannot escape a configured Installation country.
+_Avoid_: station location, timezone, region
+
+**Source geography**:
+The asserted country and optional local market served by a registered filler Source. It constrains acquisition before discovery or download; an unknown Source is ineligible once Installation country is configured.
+_Avoid_: provider location, uploader location, inferred locale
+
+**Geographic scope**:
+Whether a Clip is applicable throughout its country (`national`), only inside one named market (`local`), or is not yet known (`unknown`).
+_Avoid_: region, location type, reach
+
+**Market**:
+An operator-visible local broadcast area within one country, such as New York or Seattle. It is an explicit identity, never inferred from a timezone.
+_Avoid_: timezone, city (a Market may cover more than one city), region
+
 ### People and access
 
 **The allowlist**:

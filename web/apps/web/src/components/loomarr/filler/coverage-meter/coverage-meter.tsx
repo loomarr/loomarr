@@ -64,6 +64,7 @@ const RUNG_LABEL: Record<CoverageDTOLevel, string> = {
 // Criterion labels for the per-setting breakdown (V51f). Keyed by the same union the server
 // sends, so a new criterion is a compile error here rather than a blank row.
 const CRITERION_LABEL: Record<CoverageCriterionDTOCriterion, string> = {
+  geography: "Geography",
   era: "Era",
   audience: "Audience",
   category: "Categories",

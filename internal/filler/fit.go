@@ -27,12 +27,13 @@ import "fmt"
 type FitReason string
 
 const (
-	FitKind     FitReason = "kind"     // the channel does not use this kind of clip
-	FitDuration FitReason = "duration" // too long or too short for this channel's breaks
-	FitQuality  FitReason = "quality"  // below the channel's minimum-quality floor
-	FitCategory FitReason = "category" // the channel narrowed to categories this clip is not in
-	FitAudience FitReason = "audience" // wrong audience, and not a general-audience clip
-	FitExcluded FitReason = "excluded" // the operator excluded it from this channel
+	FitKind      FitReason = "kind"      // the channel does not use this kind of clip
+	FitDuration  FitReason = "duration"  // too long or too short for this channel's breaks
+	FitQuality   FitReason = "quality"   // below the channel's minimum-quality floor
+	FitCategory  FitReason = "category"  // the channel narrowed to categories this clip is not in
+	FitAudience  FitReason = "audience"  // wrong audience, and not a general-audience clip
+	FitGeography FitReason = "geography" // foreign, out-of-market, or unknown geography
+	FitExcluded  FitReason = "excluded"  // the operator excluded it from this channel
 )
 
 // Fit reports how one clip relates to one channel's selection.
@@ -85,6 +86,10 @@ func FitFor(c Clip, w Window, policy Policy) Fit {
 	// pool the clip is removed from.
 	if fit.Excluded {
 		fit.Reason = FitExcluded
+		return fit
+	}
+	if !GeographicallyEligible(c, effectiveGeography(w.Geography, policy.Geography)) {
+		fit.Reason = FitGeography
 		return fit
 	}
 
