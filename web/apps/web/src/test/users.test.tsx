@@ -13,7 +13,7 @@ import {
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { routeTree } from "@/routeTree.gen";
@@ -152,11 +152,10 @@ describe("Users page", () => {
     renderAt("/people");
     await screen.findByText("Grace");
 
-    // Grace's row — the second Role select. Open it, then pick admin from its listbox
-    // (only the opened Select mounts its options, so the query is unambiguous).
-    const roles = screen.getAllByLabelText("Role");
-    await userEvent.click(roles[1] as HTMLElement);
-    await userEvent.click(await screen.findByRole("option", { name: "admin" }));
+    await userEvent.click(screen.getByRole("button", { name: "Manage Grace" }));
+    const detail = await screen.findByRole("dialog", { name: "Grace" });
+    await userEvent.click(within(detail).getByLabelText("Role"));
+    await userEvent.click(await screen.findByRole("option", { name: "Admin" }));
 
     expect(patches, "changing a role should PATCH immediately").toEqual([{ role: "admin" }]);
   });
@@ -176,8 +175,7 @@ describe("Users page", () => {
     renderAt("/people");
     await screen.findByText("Grace");
 
-    const buttons = await screen.findAllByRole("button", { name: /sessions/i });
-    await userEvent.click(buttons[1] as HTMLElement);
+    await userEvent.click(screen.getByRole("button", { name: "Manage Grace" }));
     expect(await screen.findByText(/1 active session for Grace/)).toBeInTheDocument();
   });
 
@@ -248,24 +246,25 @@ describe("Users page", () => {
     // would imply it could change their media-server password.
     stubUsers();
     renderAt("/people");
-    // Wait on a ROW affordance, not on "Ada" — that name also renders in the nav footer
-    // as the signed-in user, so it resolves before the users query settles.
-    await screen.findAllByRole("button", { name: /sessions/i });
-    const resets = screen.getAllByRole("button", { name: /reset password/i });
-    expect(resets).toHaveLength(1); // Ada is local; Grace is imported
+    await userEvent.click(await screen.findByRole("button", { name: "Manage Ada" }));
+    expect(await screen.findByRole("button", { name: /reset password/i })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    await userEvent.click(screen.getByRole("button", { name: "Manage Grace" }));
+    const imported = await screen.findByRole("dialog", { name: "Grace" });
+    expect(within(imported).queryByRole("button", { name: /reset password/i })).not.toBeInTheDocument();
   });
 
   it("sends the new password to the admin reset route", async () => {
     const { resets } = stubUsers();
     renderAt("/people");
-    await screen.findAllByRole("button", { name: /sessions/i });
-    await userEvent.click(screen.getByRole("button", { name: /reset password/i }));
+    await userEvent.click(await screen.findByRole("button", { name: "Manage Ada" }));
+    await userEvent.click(await screen.findByRole("button", { name: /reset password/i }));
     await userEvent.type(await screen.findByLabelText(/new password/i), "an-admin-set-pw");
     await userEvent.click(screen.getByRole("button", { name: /set new password/i }));
 
     // The id comes from the PATH PARAM the resolver parsed, so this pins which user was reset —
     // the old `u.includes("/v1/users/u1/password")` could only confirm the string it was given.
-    expect(resets).toEqual([{ id: "u1", body: { next: "an-admin-set-pw" } }]);
+    await waitFor(() => expect(resets).toEqual([{ id: "u1", body: { next: "an-admin-set-pw" } }]));
   });
 
   it("refuses the page to a member with an explanation, not failed requests", async () => {
