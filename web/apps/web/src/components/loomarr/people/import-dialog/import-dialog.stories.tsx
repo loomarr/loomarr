@@ -19,7 +19,12 @@ const meta = {
     onImport: () => {},
     onSync: () => {},
   },
-  render: (args) => <ImportDialog {...args} portalContainer={document.getElementById("storybook-root")} />,
+  parameters: { layout: "fullscreen" },
+  render: (args) => (
+    <div className="h-screen w-screen">
+      <ImportDialog {...args} portalContainer={document.getElementById("storybook-root")} />
+    </div>
+  ),
 } satisfies Meta<typeof ImportDialog>;
 
 type Story = StoryObj<typeof meta>;
