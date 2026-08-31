@@ -19,6 +19,7 @@ const invitation = (overrides: Partial<InvitationBody> = {}): InvitationBody => 
 describe("InvitationRoster", () => {
   it("composes invitation lifecycle with actionable email delivery state", async () => {
     const onSendEmail = vi.fn();
+    const onShare = vi.fn();
     render(
       <InvitationRoster
         invitations={[
@@ -34,16 +35,19 @@ describe("InvitationRoster", () => {
         ]}
         sendingId={undefined}
         onSendEmail={onSendEmail}
+        onShare={onShare}
       />,
     );
 
     expect(screen.getByText("Email failed")).toBeInTheDocument();
     expect(screen.getByText(/rejected that recipient/i)).toBeInTheDocument();
     expect(screen.getByText("Redeemed")).toBeInTheDocument();
-    expect(screen.getAllByText(/copy or qr/i).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Share QR or link" })).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Retry email to Ada" }));
     expect(onSendEmail).toHaveBeenCalledWith("invitation-1");
+    await userEvent.click(screen.getByRole("button", { name: "Share QR or link" }));
+    expect(onShare).toHaveBeenCalledWith(expect.objectContaining({ id: "invitation-1" }));
   });
 
   it("does not offer email without a contact address or for a terminal invitation", () => {
@@ -54,6 +58,7 @@ describe("InvitationRoster", () => {
           invitation({ id: "invitation-2", username: "Grace", status: "revoked" }),
         ]}
         onSendEmail={() => {}}
+        onShare={() => {}}
       />,
     );
 

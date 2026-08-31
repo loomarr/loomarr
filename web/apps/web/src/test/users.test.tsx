@@ -1,10 +1,12 @@
 import type { UserBody } from "@loomarr/api";
 import {
+  getCreateInvitationMockHandler,
   getCreateLocalUserMockHandler,
   getDeleteUserContactAddressMockHandler,
   getDeleteUserContactReplacementMockHandler,
   getImportCandidatesMockHandler,
   getImportUsersMockHandler,
+  getIssueInvitationGrantMockHandler,
   getListInvitationsMockHandler,
   getListUserSessionsMockHandler,
   getListUsersMockHandler,
@@ -171,6 +173,53 @@ const renderAt = (path: string) => {
 // built, unit-tested, and never actually mounted by any route — the component tests all
 // passed while the feature was absent. Component tests pin behavior; these pin the wiring.
 describe("Users page", () => {
+  it("creates and shares a local invitation through generated endpoints", async () => {
+    stubUsers();
+    const creates: unknown[] = [];
+    const grants: Array<{ id: string; body: unknown }> = [];
+    const expiresAt = Date.UTC(2030, 0, 8);
+    server.use(
+      getCreateInvitationMockHandler(async ({ request }) => {
+        creates.push(await request.json());
+        return {
+          id: "invitation-new",
+          kind: "local",
+          username: "Dorothy",
+          role: "member",
+          status: "pending",
+          createdAt: Date.UTC(2030, 0, 1),
+          expiresAt,
+          contactAddress: { email: "dorothy@example.com", status: "pending", provenance: "admin" },
+        };
+      }),
+      getIssueInvitationGrantMockHandler(async ({ request, params }) => {
+        grants.push({ id: String(params.id), body: await request.json() });
+        return {
+          url: "https://loomarr.example/join#grant=fake-route-test-grant",
+          expiresAt,
+        };
+      }),
+    );
+    renderAt("/people");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Invite person" }));
+    await userEvent.type(screen.getByLabelText("Reserved username"), " Dorothy ");
+    await userEvent.type(screen.getByLabelText("Contact email (optional)"), "dorothy@example.com");
+    await userEvent.click(screen.getByRole("button", { name: "Create invitation" }));
+
+    expect(await screen.findByRole("img", { name: /Scan to accept Dorothy/ })).toBeInTheDocument();
+    expect(creates).toEqual([
+      {
+        kind: "local",
+        username: "Dorothy",
+        contactEmail: "dorothy@example.com",
+        role: "member",
+      },
+    ]);
+    expect(grants).toEqual([{ id: "invitation-new", body: { conveyance: "qr" } }]);
+    expect(screen.queryByText(/fake-route-test-grant/)).not.toBeInTheDocument();
+  });
+
   it("shows invitation delivery state and sends an idempotent email request", async () => {
     stubUsers();
     const sends: Array<{ id: string; body: unknown }> = [];
