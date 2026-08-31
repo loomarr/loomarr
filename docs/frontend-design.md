@@ -345,7 +345,8 @@ These suites join **phase 13's gate** in the main doc's build plan.
 - The finale is the payoff: the guided first channel ends with its `ChannelCard` flipping to **ON AIR** — the product's promise, demonstrated in the first ten minutes.
 
 ### Config that makes sense
-- Settings groups: **Connections · Channels & Playback · AI · Users · Advanced**.
+- Settings' curated pages are **Connections · AI · Defaults · Notifications · System · Security**,
+  with **All settings** as the searchable escape hatch (config-design §5).
 - Per-key provenance: env-pinned fields render locked with a "set via environment" chip; everything else is editable with configure → validate → save (main doc §13/§15). No inputs that look editable but aren't.
 - The re-runnable connection checklist is embedded at the top of Connections — Settings *is* the troubleshooting console.
 - Destructive actions live in an isolated danger zone with typed confirmation (`onair` styling).
@@ -362,6 +363,30 @@ These suites join **phase 13's gate** in the main doc's build plan.
 - Local-account creation is a focused dialog launched from the page header, not a permanent panel below the roster. It is the direct fallback for someone without a media-server account or invitation path: the administrator supplies a username and password, Loomarr stores only its Argon2id verifier, and Loomarr owns later password reset. Member is the default role; creating an administrator requires an explicit choice.
 - The local-account dialog trims usernames and rejects an empty username or a password shorter than eight characters before sending its existing generated request. RFC 7807 problem details remain visible in the dialog. Success clears every field, restores the member default, closes the dialog, and refreshes the roster; Cancel, Escape, and the close control clear the password and return focus to the header action. The dialog is full-width within the mobile gutter and keeps its actions reachable without horizontal overflow.
 - An imported person's detail keeps password reset unavailable because Loomarr cannot change the provider's password. Its copy distinguishes provider ownership from offline readiness: Emby/Jellyfin owns password changes, while successful provider sign-ins create or refresh Loomarr's non-reversible Argon2id verifier for outage login.
+- **Invite person** is a focused admin dialog beside Create local account and Import. It chooses a
+  reserved local username or one exact importable Library account, previews the selected Loomarr role
+  (member by default; administrator explicit), and accepts an optional contact email. Creation does
+  not activate a person. Its ready state names the identity, role, and expiry and offers Copy link,
+  Show QR, Send email when configured, Regenerate, and Revoke without making email a prerequisite.
+- The roster and detail sheet compose Invitation lifecycle with the latest email outcome: Pending,
+  Email delivered, Email failed (with retry), Redeemed, Expired, or Revoked. Delivery failure never
+  removes the Invitation and always preserves QR/copy fallback. Closing or cancelling clears the
+  plaintext grant from component state; it never enters local/session storage, a query key, telemetry,
+  error copy, stories, or fixtures.
+- Invitation QR uses the same design-system presentation as device pairing, including a labelled
+  copy alternative and scan guidance, but its language always says **person invitation** and never
+  device pairing. Regeneration replaces the rendered matrix and announces the change; focus stays on
+  the initiating control rather than jumping to the image.
+- `/join` is a public focused route with no application chrome. It removes the bearer from visible
+  URL/history into memory before rendering, shows reserved identity, role, credential path, and
+  expiry, and requires an explicit Join action. Local redemption collects and confirms a password;
+  imported redemption collects the Library password and authenticates the exact reserved account.
+  Refresh after URL cleanup intentionally cannot recover the bearer and shows a safe restart state.
+  Invalid, expired, revoked, already-used, and concurrent-loser grants share non-enumerating copy.
+- `/forgot-password` and `/reset-password` use the same focused shell. The request confirmation is
+  identical regardless of eligibility; the reset route follows the same bearer cleanup and explicit
+  submission rules as `/join`. Imported-person copy directs password changes to Emby/Jellyfin only
+  after an authenticated person views their own credential details, never from the public response.
 
 ### Empty, error, loading
 - **Every list has an empty state with exactly one next action.** "Dead air — create your first channel." · "No clips yet — drop files in the filler folder or point MeTube at a playlist." · "Queue's clear — nothing awaiting approval."

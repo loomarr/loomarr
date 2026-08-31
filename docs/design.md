@@ -5710,6 +5710,113 @@ Multi-user, **Loomarr-owned identity**: the local `users` table is the source of
 - The `DeviceId` in the media-server login header is stable per install (derived from an instance id generated at first migration), so Loomarr appears as one device in the media server's dashboard.
 - **Machine access:** the generated `API_TOKEN` (config-design §4) authenticates non-human clients (scripts, an external scheduler) via `Authorization: Bearer` and doubles as break-glass admin — it is the escape hatch if the media server is down *and* before any user exists.
 
+### Invitations, contact addresses, and notification delivery
+
+An administrator may admit a new person without choosing or learning that person's password. The
+durable **Invitation** is the admission decision: it reserves one normalized local username or one
+exact Library account id, records the Loomarr role the administrator selected, and remains outside
+the allowlist until redemption. Member is the default; administrator is an explicit choice. Creating
+an Invitation never creates an active `users` row, so an invited imported account cannot bypass the
+flow by signing in to the ordinary provider-login route. The existing direct local-create and
+Library-import actions remain immediate admin-owned alternatives for households that do not need an
+invitation.
+
+The Invitation's lifecycle is `pending → redeemed`, with `expired` and `revoked` terminal exits.
+`delivered` and `failed` are deliberately **not Invitation states**: they describe attempts to tell
+someone about a still-pending admission decision. The People UI composes the lifecycle with the
+latest delivery summary to present actionable pending/delivered/failed/redeemed/expired/revoked
+language without storing one overloaded enum. Expiry is seven days. Regeneration revokes every
+outstanding grant and issues a replacement; explicit revocation invalidates the Invitation and all
+its grants. Redemption is one database transaction that conditionally claims the pending Invitation,
+creates the one allowlist row, consumes the presented grant, and invalidates every sibling grant.
+Concurrent submissions therefore produce one account and one session; losers receive the same safe
+invalid-or-expired response as any unusable grant.
+
+An **Invitation grant** is a random 256-bit bearer capability tied to one Invitation. The URL carries
+the plaintext once; persistence contains only its SHA-256 hash, kind, conveyance, timestamps, and
+Invitation id. Hashing is appropriate here because the input is machine-generated high entropy;
+Argon2id remains exclusive to human passwords. Grants are short-lived, single-use, absent from logs,
+metrics, activity, diagnostics, RFC 7807 bodies, fixtures, browser storage, and durable notification
+records. The public join route moves the bearer from the initial URL into memory and immediately
+replaces browser history with the token-free route. Merely opening or scanning never redeems it: the
+page first shows the reserved identity, role, credential path, and expiry and requires explicit
+consent.
+
+- A local Invitation reserves its username. Redemption collects a new password, hashes it with the
+  same Argon2id policy as direct local creation, creates the user, and issues an ordinary session.
+- An imported Invitation pins the selected Library account id. Redemption authenticates against the
+  Library and rejects a successful response for any other id; on success it creates the imported
+  allowlist row, stores an Argon2id verifier of the supplied password for offline use, discards the
+  provider token as in ordinary login, and issues an ordinary session. A provider rejection is
+  authoritative. Provider unavailability before this first success cannot use an offline verifier
+  that does not exist and leaves the Invitation pending.
+
+An optional **Contact address** belongs to a person or pending Invitation but is not identity. Email
+is never accepted by the login endpoint, never provisions a row, and never changes a Loomarr role.
+Loomarr stores the display address plus a uniqueness key formed by trimming surrounding whitespace,
+parsing exactly one RFC 5322 mailbox, and case-folding both local and domain parts; it performs no
+provider-specific dot or plus rewriting. Verification state and provenance are explicit. Library or
+SSO claims may suggest an address to an administrator but are never silently trusted. Redeeming a
+grant that Loomarr actually conveyed to that same address by email verifies possession; redeeming a
+copied or QR-presented grant does not. Replacing a verified address keeps the old address recovery-
+capable until the replacement is verified, then atomically swaps it; removal requires an authenticated
+person or administrator and leaves no recovery destination.
+
+**Notification delivery is a deep, channel-neutral module.** Callers submit a typed
+**Notification intent** (`account_invitation` and `local_password_recovery` first) with a recipient
+reference and template data; they do not call SMTP or render a message. The notification module owns
+durable work, idempotency, rendering, bounded retries, retention, and one adapter per **Delivery
+means**. Email is the first means. SMS, push, Discord, and general activity notifications remain out
+of scope, but adding one later does not change invitation or recovery callers. Copy and QR are
+**Sharing affordances**, not Delivery means: they present a grant immediately under the
+administrator's control and make no delivery claim.
+
+Each **Delivery attempt** records only the intent id, means, destination reference or redacted
+destination, provider-safe message id when one exists, `queued | sending | delivered | failed |
+suppressed`, timestamps, attempt number, and a bounded scrubbed error classification. It never stores
+a rendered body, password, provider token, session token, SMTP credential, or plaintext bearer URL.
+The worker mints an email-conveyed grant only when an attempt begins and holds the resulting URL in
+memory while rendering plain-text and HTML alternatives. A definitely pre-acceptance transient SMTP
+failure may retry with a fresh grant after invalidating that attempt's unused grant. A timeout or
+disconnect after SMTP may have accepted `DATA` is **ambiguous**: that grant remains valid, the attempt
+is failed with an ambiguous classification, and automatic retry stops. An explicit resend may create
+another sibling grant; either link can redeem the one Invitation, and the successful transaction
+invalidates all others. This favors a possibly duplicated notice over either duplicate accounts or
+silently invalidating mail already in flight.
+
+Retries are fixed policy rather than settings: at most five attempts (initial, then approximately
+1 minute, 5 minutes, 30 minutes, and 2 hours, with bounded jitter) for errors known to precede remote
+acceptance. Permanent recipient/configuration failures and ambiguous acceptance do not auto-retry.
+Terminal intents and attempts are retained for 30 days and purged by housekeeping; active work is
+exempt. Contact addresses persist with their person, while terminal Invitations and hashed grants
+are retained for 30 days for operator diagnosis and then purged. These are bounded product policies,
+not operator tuning knobs.
+
+Password recovery uses the same notification and grant machinery but is not an Invitation. Its
+public request response is identical for unknown, disabled, imported, missing/unverified-contact,
+and eligible accounts. Only an enabled local user with a verified contact gets an email. A recovery
+grant expires after 30 minutes; successful explicit reset writes a new Argon2id verifier and revokes
+all sessions and outstanding recovery grants in one transaction. Imported passwords remain Library-
+owned and never enter this flow. Request and redemption are separately rate-limited, and the existing
+administrator local-password reset remains available.
+
+All links use a configured recipient-reachable `access.public_url`; Loomarr never infers an async or
+QR destination from `Host`, forwarded headers, or the administrator's browser origin. It is distinct
+from `server.public_url`, which is the machine-client address for playout and icons and may be valid
+only inside a container network. Invitation creation may reserve an identity while the address is
+unset, but Loomarr suppresses email and refuses to mint a shareable grant with an actionable
+configuration error until it has a valid absolute `http` or `https` origin. A LAN URL is valid when
+that is where recipients can reach Loomarr; “public” means recipient-reachable, not necessarily
+Internet-exposed.
+
+The existing Loomarr-owned `QrCode` interface and pairing presentation primitive render Invitation
+grants. Device pairing and person Invitation remain separate authorization protocols, stores, routes,
+copy, expiries, and consent actions: reuse stops at the QR matrix and accessible presentation. The
+Invitation UI names the destination and expiry beside the image, provides the full link as a copy
+alternative, never auto-submits after scan, traps/returns focus in its dialog, announces regeneration
+and delivery outcomes through the one polite live region, and is covered at desktop and mobile
+viewports plus forced-colors and axe checks.
+
 ### Paired clients own a revocable device credential
 
 Native phone and TV clients pair through the device-code flow and receive a durable, member-scoped
@@ -6055,7 +6162,7 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 
   ⚠ **The card's per-channel control is an include-set override, not two flags.** It replaces the pin/block pair: channels are checkboxes with a fit note, and **Back to automatic** returns the clip to being placed by the ladder. Pin-and-block let an operator build a state that reads as contradictory ("pinned *and* blocked") which the assembler had to resolve by rule; one set has no such state.
 - **People** (admin, route `/people`) — imported users, roles, quotas, disable, sync-now (§11). "People" rather than "Users" because the list is households and family members, not system accounts.
-- **Settings** (admin, route `/settings`) — **six tabs** (V9, restructured to the v2 mock): *Connections* (media server, requester, Tunarr, TMDB, plus `/readyz` and the re-runnable **connection checklist** of §13 as the troubleshooting console) · *AI* (provider/model, including the in-app **model manager** of §8.1 — probe, catalog, hot-swap, streaming pull) · *Defaults* (only the registry values channels can actually inherit: schedule horizon and break frequency) · *System* — itself sub-tabbed into **Tasks** (the §18.1 job console: cron, last/next run, Run-now) · **Playout** · **Database** · **Backup** · **About** — · *Security* (incl. **secret regeneration**) · *All settings* (every key, searchable). The typed registry, `env > database > default` resolution, runtime lifecycles, the cross-tab save bar, and the secrets lifecycle are `config-design.md`'s domain — **it wins on those mechanics** (§5 carries the page table and the four inline-commit exceptions); this row records only *where the surfaces are*.
+- **Settings** (admin, route `/settings`) — **seven tabs**: *Connections* (media server, requester, Tunarr, TMDB, plus `/readyz` and the re-runnable **connection checklist** of §13 as the troubleshooting console) · *AI* (provider/model, including the in-app **model manager** of §8.1 — probe, catalog, hot-swap, streaming pull) · *Defaults* (only the registry values channels can actually inherit: schedule horizon and break frequency) · *Notifications* (recipient-reachable access URL and outbound email/SMTP, including Send test) · *System* — itself sub-tabbed into **Tasks** (the §18.1 job console: cron, last/next run, Run-now) · **Playout** · **Database** · **Backup** · **About** — · *Security* (incl. **secret regeneration**) · *All settings* (every key, searchable). The typed registry, `env > database > default` resolution, runtime lifecycles, the cross-tab save bar, and the secrets lifecycle are `config-design.md`'s domain — **it wins on those mechanics** (§5 carries the page table and inline-commit exceptions); this row records only *where the surfaces are*.
 - **Account** (route `/account`, any authenticated user) — the signed-in user's own credentials: change password and view/revoke active sessions (§11). Distinct from **People**, which is an admin managing *other* accounts; this is the one settings-shaped surface a member can reach, which is why it sits outside the admin-only `/settings` IA above.
 - **Global search (⌘K)** — command palette over `/v1/search` + channels + help; the single fast entry point. **Hand-rolled, not cmdk** (revised — §12 described shadcn `Command`/cmdk, which was never built and is not a dependency; adding one is a §14 conversation, and the ARIA pattern is small enough not to need it). It implements the combobox/listbox pattern directly: `role="combobox"` on the input, `role="listbox"` over the results, one `role="group"` per scope, and `aria-activedescendant` — so focus stays in the input while ↑/↓/Home/End move the active option and Enter selects it. `Escape` is bound once at the window level (`useCommandShortcut`), never inside the component, so it cannot close twice. The search call deliberately omits `scope`, which the API defaults to `all` — the right corpus for a palette; channels, clips, and help are merged in from their own sources (clips are not a `/v1/search` scope, §7.2).
 
@@ -6153,7 +6260,9 @@ The checklist is backed by `GET /v1/setup/status` (runs all checks, returns stru
 - **Channel templates** — the blank-page killer: a set of one-click starter intents ("90s Saturday Morning Cartoons," "Cozy Mystery Nights," "Late-Night Sci-Fi," "Action Movie Marathon") that prefill the suggestion workspace with a good intent + sensible constraints. Templates ship as embedded JSON in the FE bundle; users edit before running.
 - **Intent-writing hints** — inline examples in the workspace of constraints that work well (era, tone, runtime target, must-include/exclude).
 - **"My proposals" status** — members always see where their submission is: *pending approval → approved → acquiring (3/7 titles) → live on channel 42.* This is the member-facing framing of the Board + channel status.
-- In-app status only for v1; notification agents (email/Discord on approval or channel-live) are future work (§20).
+- Account Invitations and local-password recovery may use the channel-neutral email delivery module
+  defined in §11. Product/activity notifications (approval, channel-live, Discord, SMS, and push)
+  remain future work (§20); the account-notification seam does not imply those policies.
 
 ### Documentation set
 Docs live as markdown in `docs/` in the repo and are **embedded and rendered as an in-app Help section** (same `embed.FS` mechanism as the SPA and `/docs` — works air-gapped, consistent with §7.1's offline rule).
@@ -6236,6 +6345,7 @@ surface without a wire-format migration. The opt-in profiler also exposes Go 1.2
 | Interactive Startup report | **`github.com/jedib0t/go-pretty/v6/table`** | Renders the one Loomarr-owned structured Startup report as a restrained, width-bounded terminal table. It is formatting only: JSON `slog`, persistence, readiness, API, and UI consume the report value directly, and non-interactive output never passes through it. |
 | Unsupported Windows compatibility code | **`golang.org/x/sys/windows`** | A legacy Job Object adapter remains compile-isolated behind the built-in Windows constraint, but Loomarr publishes no native Windows server, makes no Windows lifecycle guarantee, and spends no CI or local-publication gate on it. Retaining the adapter is not a support claim. |
 | OIDC (SSO) | **`github.com/coreos/go-oidc/v3`** (+ `golang.org/x/oauth2`, `github.com/go-jose/go-jose/v4`) | SSO is a third credential path (§11, V8), and OIDC means verifying a signed token against the issuer's published JWKS — discovery, key rotation, `nonce`/`aud`/`exp` validation. Hand-rolling JWT verification is the kind of security code that looks right and is not. **Three modules total**, all current and maintained; `go-jose` does the crypto and `x/oauth2` the code exchange. Deliberately chosen over building forward-auth instead, which needs no dependency but trusts network topology (§11). |
+| SMTP client and message composition | **`github.com/wneessen/go-mail` v0.8.1**, behind Loomarr's notification email adapter | The standard library's `net/smtp` is frozen and deliberately low-level; invitation and recovery delivery need context cancellation, explicit implicit-TLS/STARTTLS/no-TLS policy, authentication discovery, address validation, and correct plain-text + HTML MIME composition. `go-mail` supplies those in one maintained pure-Go client with a small `x/crypto`/`x/text` dependency footprint already present in Loomarr's graph. Product code sees only the Delivery-means port, never this API. Debug SMTP logging stays disabled because protocol traces can contain addresses and authentication material. |
 | Goroutine-leak gate | **`go.uber.org/goleak`** (test-only) | The in-process restart loop (§9.2) is only correct if Build/Run/Shutdown can repeat without accumulating goroutines or stale state, and a leak there is **silent** — it degrades an install over successive restarts rather than failing anything. goleak is the standard detector, test-only (never in a shipped binary), zero runtime cost. Added by V13 alongside the N-iteration restart test, because a prose rule would not have caught it. |
 | LLM clients | **Ollama via plain HTTP** (`/api/chat` with tools) + a hand-written **OpenAI-compatible** client (`/v1/chat/completions` with tools) — both plain `net/http`, no SDK | One OpenAI-compat client covers OpenAI, Gemini (compat endpoint), Groq, Together, OpenRouter, **and** local Ollama's own `/v1` mode — so the model is a config choice, not a per-vendor code fork. Replaces the earlier `anthropics/anthropic-sdk-go` intent (a net dependency *reduction*); Claude is still reachable via OpenRouter. Ollama stays first-class as the local default. |
 | Release-note classification | **OpenRouter structured output via plain `net/http`**, defaulting to `openai/gpt-5-mini`; GitHub remains the source of PR titles, authors, links, contributors, and compare ranges | Release notes get useful, Uptime-Kuma-style sections for pennies per release without another application runtime or SDK. The model may assign only real PR numbers to a closed schema; deterministic Go rejects missing, duplicate, invented, extra, or malformed output and renders only GitHub-authored bullets. Publication fails closed when inference is unavailable. |
@@ -6740,6 +6850,12 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `TUNARR_URL` | `http://tunarr:8000` (Tunarr has no auth; no key config) |
 | `TUNARR_TRANSCODE_CONFIG_ID` | Tunarr transcode-config uuid created channels reference (Phase-0: channel create requires a valid `transcodeConfigId`; empty → resolve the instance `Default` via `GET /api/transcode_configs`, §9) |
 | `SERVER_PUBLIC_URL` | **Re-scoped by §9.1 — no longer icon-only, and no longer Advanced.** Loomarr's own address as your media server *and* Tunarr reach it (e.g. `http://loomarr:8080`). Internal playout serves **every stream segment** from this base, so a wrong value means channels appear in the guide and never play. Still also used for **uploaded** channel icons — the stored icon URL is built from this, never from request headers (Host-injection-safe). Deliberately ONE key rather than a second `playout.public_url`: it is genuinely the server's own address, both callers need the same value, and two keys could drift. Empty → a relative `/v1/channels/{id}/icon` URL for icons (works when Tunarr shares Loomarr's origin); internal playout requires it set. |
+| `ACCESS_PUBLIC_URL` | Empty by default. The absolute `http`/`https` browser origin recipients can reach (for example `https://loomarr.example.test`), used only to construct Invitation and local-recovery links (§11). It is never inferred from request headers or the current browser and is intentionally distinct from `SERVER_PUBLIC_URL`, which may be a container-only machine-client address. Empty suppresses email and shareable-link generation with an actionable Settings → Notifications link; it does not prevent direct account creation/import or storing an Invitation reservation. |
+| `NOTIFICATIONS_EMAIL_ENABLED` | `false`. Enables the email Delivery means only when the public access URL, SMTP host, and sender address are also complete. Disabled or incomplete email suppresses delivery without rolling back an Invitation; QR/copy remain available when `ACCESS_PUBLIC_URL` is configured. |
+| `NOTIFICATIONS_SMTP_HOST` / `NOTIFICATIONS_SMTP_PORT` | Empty / `587`. The outbound SMTP submission endpoint. Host is required when email is enabled; port is validated `1..65535`. |
+| `NOTIFICATIONS_SMTP_SECURITY` | `starttls` (default) / `tls` / `none`. `starttls` requires a successful STARTTLS upgrade and never falls back to cleartext; `tls` is implicit TLS. `none` is an explicit operator choice for a trusted local relay and is labelled insecure. Certificate verification is never disabled by a setting. |
+| `NOTIFICATIONS_SMTP_USERNAME` / `NOTIFICATIONS_SMTP_PASSWORD` | Empty / *(secret)*. Empty username means an unauthenticated relay and requires an empty password. Otherwise the adapter discovers the strongest mutually supported mechanism. The password is replace-only and covered by every config-secret redaction rule. |
+| `NOTIFICATIONS_EMAIL_FROM_ADDRESS` / `NOTIFICATIONS_EMAIL_FROM_NAME` | Empty / `Loomarr`. A single validated mailbox and its display name. The address is required when email is enabled; neither value is recipient-controlled. |
 
 **Playout (§9.1 — added with internal playout).**
 
@@ -7400,6 +7516,30 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
 ---
 
 ## 19. Testing strategy
+- **Invitation and contact store conformance:** one shared suite runs unchanged over SQLite and
+  Postgres. It covers normalized contact uniqueness, reserved local/Library identity collisions,
+  lifecycle transitions, regeneration/revocation, expiry, verified-contact replacement, grant hashes
+  never yielding a usable bearer, and two concurrent redemptions producing exactly one user/session.
+  Migrations are forward-only and upgrade populated users without inventing contact verification.
+- **Access security negatives:** members receive 403 for every Invitation/contact/delivery admin
+  mutation; anonymous callers cannot inspect reservations or delivery status; disabled users lose
+  sessions; unlisted Library accounts remain indistinguishable from bad credentials; imported
+  recovery never sends or resets; public recovery responses do not enumerate eligibility; provider
+  rejection during imported redemption never falls back; and no password, provider/session token,
+  SMTP credential, or plaintext grant appears in SQL fixtures, logs, metrics, diagnostics, activity,
+  RFC 7807 bodies, browser storage, or generated examples.
+- **Notification certification:** a deterministic Delivery-means adapter pins intent idempotency,
+  retry timing/classification, suppression, retention, and ambiguous-acceptance behavior without a
+  network. SMTP integration runs against an in-process protocol server and covers unauthenticated and
+  authenticated submission, required STARTTLS, implicit TLS, certificate rejection, plain-text plus
+  HTML MIME, permanent recipient rejection, pre-acceptance transient retry, ambiguous post-`DATA`
+  disconnect, cancellation, and redaction. Unit tests never contact a real SMTP provider.
+- **Contract and frontend certification:** OpenAPI generation and orval types cover every new route
+  and lifecycle shape. Stories use synthetic non-secret grants and cover configured/unconfigured
+  email, delivery states, local/imported Invitations, invalid public grants, recovery, and QR/copy at
+  desktop and mobile widths. Vitest pins URL cleanup and zero browser persistence; Playwright pins
+  explicit-consent redemption, keyboard/focus return, the shared polite live region, forced colors,
+  axe, and deterministic visual baselines.
 - **Gate composition:** `make check` remains the complete explicit local Go/Rust audit; it is not
   the default edit-loop or pre-publication ritual. Normal local and agent work classifies the
   changed paths once and runs the affected evidence through `make agent-verify BASE=<base>`; the
