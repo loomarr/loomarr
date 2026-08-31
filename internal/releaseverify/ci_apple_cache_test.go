@@ -80,7 +80,11 @@ func TestRepositoryAppleCachePublisherAndConsumersAreTrustBounded(t *testing.T) 
 	publishSteps := mappingValueMust(t, publish, "steps").Content
 	workflowUsesStepIndex(t, publishSteps, "actions/cache/restore")
 	workflowUsesStepIndex(t, publishSteps, "actions/cache/save")
-	workflowRunStepIndex(t, publishSteps, `./web/scripts/validate-apple-compilation-cache.sh produce "$RUNNER_TEMP/apple-compilation-cache.tar.zst"`)
+	preflight := workflowRunStepIndex(t, publishSteps, appleCachePublisherPreflightCommand)
+	build := workflowRunStepIndex(t, publishSteps, `./web/scripts/validate-apple-compilation-cache.sh produce "$RUNNER_TEMP/apple-compilation-cache.tar.zst"`)
+	if preflight >= build {
+		t.Fatal("Apple cache capacity preflight must run before the native builds")
+	}
 
 	for _, workflowName := range []string{"ci-apple-mobile.yml", "ci-apple-tv.yml"} {
 		path := filepath.Join(root, ".github", "workflows", workflowName)

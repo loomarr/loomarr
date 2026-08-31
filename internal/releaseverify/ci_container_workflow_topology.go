@@ -13,7 +13,7 @@ type workflowTopologyAuthority struct {
 func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 	return map[string]workflowTopologyAuthority{
 		"android-beta.yml":            {jobs: map[string]int{"release": 11}},
-		"apple-compilation-cache.yml": {jobs: map[string]int{"publish": 12}},
+		"apple-compilation-cache.yml": {jobs: map[string]int{"publish": 13}},
 		"cache-cleanup.yml":           {jobs: map[string]int{"cleanup": 1}},
 		"ci-agent.yml":                {jobs: map[string]int{"run": 3}},
 		"ci-android.yml":              {jobs: map[string]int{"run": 6}},
