@@ -11,6 +11,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/contact"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
@@ -76,6 +77,10 @@ var ErrChannelConflict = errors.New("store: channel conflict")
 // revision than the row now holds. The row still exists; callers may reload and
 // either reapply their domain merge or surface a conflict to the operator.
 var ErrChannelStale = errors.New("store: stale channel revision")
+
+// ErrContactAddressConflict means the normalized mailbox is already attached to another person
+// or pending replacement. Public recovery must never resolve one address ambiguously.
+var ErrContactAddressConflict = errors.New("store: contact address conflict")
 
 // TitleStore is the provisioning surface (§3–§4).
 type TitleStore interface {
@@ -266,6 +271,14 @@ type UserStore interface {
 	RevokeSession(ctx context.Context, tokenHash string) error
 	RevokeSessionsForUser(ctx context.Context, userID string) error
 	PurgeExpiredSessions(ctx context.Context, now time.Time) (int, error)
+	// Contact addresses are optional and independent from usernames/credential paths (§11).
+	GetContactAddresses(ctx context.Context, userID string) (contact.Set, error)
+	ListContactAddresses(ctx context.Context) ([]contact.Address, error)
+	GetVerifiedContactAddressByNormalized(ctx context.Context, normalized string) (contact.Address, error)
+	PutPendingContactAddress(ctx context.Context, address contact.Address) error
+	VerifyPendingContactAddress(ctx context.Context, userID, normalized string, at time.Time) (contact.Address, error)
+	DeletePendingContactAddress(ctx context.Context, userID string) error
+	DeleteContactAddresses(ctx context.Context, userID string) error
 
 	// Device pairing (§11, Shield P1) — the credential class a keyboard-less client uses. Kept in
 	// this interface rather than a separate one because it is the same concern as sessions: who is

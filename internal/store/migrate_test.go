@@ -142,6 +142,41 @@ func TestUserMediaServerLinkedMigrationBackfillsOldImportedRows(t *testing.T) {
 	}
 }
 
+func TestUserContactAddressMigrationLeavesExistingUsersContactless(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "user-contacts.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	provider, err := newMigrationProvider(db, DialectSQLite, "migrations/sqlite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(ctx, 75); err != nil {
+		t.Fatalf("migrate through 75: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO users (id, name, role, password_hash, media_server_linked)
+		VALUES ('existing', 'Existing user', 'member', NULL, 1)
+	`); err != nil {
+		t.Fatalf("seed existing user: %v", err)
+	}
+	if _, err := provider.UpTo(ctx, 76); err != nil {
+		t.Fatalf("apply contact-address migration: %v", err)
+	}
+
+	var contacts int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM user_contact_addresses WHERE user_id = 'existing'`).Scan(&contacts); err != nil {
+		t.Fatal(err)
+	}
+	if contacts != 0 {
+		t.Fatalf("existing user contacts = %d, want contactless", contacts)
+	}
+}
+
 func TestFillerDecisionApplicationModeMigrationBackfillsShadow(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "decision-mode.db"))

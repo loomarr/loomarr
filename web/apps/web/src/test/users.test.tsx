@@ -1,12 +1,15 @@
 import type { UserBody } from "@loomarr/api";
 import {
   getCreateLocalUserMockHandler,
+  getDeleteUserContactAddressMockHandler,
+  getDeleteUserContactReplacementMockHandler,
   getImportCandidatesMockHandler,
   getImportUsersMockHandler,
   getListUserSessionsMockHandler,
   getListUsersMockHandler,
   getMeMockHandler,
   getPatchUserMockHandler,
+  getPutUserContactAddressMockHandler,
   getResetUserPasswordMockHandler,
   getRevokeSessionMockHandler,
   getSettingsListMockHandler,
@@ -83,6 +86,9 @@ const stubUsers = ({
   const resets: Array<{ id: string; body: unknown }> = [];
   const revokes: string[] = [];
   const syncs: boolean[] = [];
+  const contactUpdates: Array<{ id: string; body: unknown }> = [];
+  const contactRemovals: string[] = [];
+  const replacementCancellations: string[] = [];
   const rows = [ADA, GRACE];
 
   server.use(
@@ -114,6 +120,15 @@ const stubUsers = ({
     getResetUserPasswordMockHandler(async ({ request, params }) => {
       resets.push({ id: String(params.id), body: await request.json() });
     }),
+    getPutUserContactAddressMockHandler(async ({ request, params }) => {
+      contactUpdates.push({ id: String(params.id), body: await request.json() });
+    }),
+    getDeleteUserContactAddressMockHandler(({ params }) => {
+      contactRemovals.push(String(params.id));
+    }),
+    getDeleteUserContactReplacementMockHandler(({ params }) => {
+      replacementCancellations.push(String(params.id));
+    }),
     // ⚠ `user_sync` is a COMPUTED feature, not a setting: the route stays registered while the
     // complete live media-server connection gates the operation, so the page reads the same
     // feature set before offering it.
@@ -123,7 +138,17 @@ const stubUsers = ({
     ...appHandlers(),
   );
 
-  return { patches, creates, imports, resets, revokes, syncs };
+  return {
+    patches,
+    creates,
+    imports,
+    resets,
+    revokes,
+    syncs,
+    contactUpdates,
+    contactRemovals,
+    replacementCancellations,
+  };
 };
 
 const renderAt = (path: string) => {
@@ -182,6 +207,20 @@ describe("Users page", () => {
 
     await waitFor(() =>
       expect(patches).toEqual([{ role: "admin" }, { quota: 7 }, { autoApprove: true }, { disabled: true }]),
+    );
+  });
+
+  it("sends contact changes to the selected person's generated endpoints", async () => {
+    const state = stubUsers();
+    renderAt("/people");
+    await userEvent.click(await screen.findByRole("button", { name: "Manage Grace" }));
+    const detail = await screen.findByRole("dialog", { name: "Grace" });
+    await userEvent.click(within(detail).getByRole("button", { name: "Add email" }));
+    await userEvent.type(within(detail).getByLabelText("Contact email"), "grace@example.com");
+    await userEvent.click(within(detail).getByRole("button", { name: "Save email" }));
+
+    await waitFor(() =>
+      expect(state.contactUpdates).toEqual([{ id: "u2", body: { email: "grace@example.com" } }]),
     );
   });
 
