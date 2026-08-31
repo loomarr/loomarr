@@ -115,13 +115,14 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `filler` | 6 | `diagnostics`, `filleradmission`, `llm`, `metrics` |
 | `filleradmission` | 7 | — |
 | `httpx` | 7 | `metrics` |
+| `invitation` | 5 | — |
 | `library` | 7 | `filler`, `httpx` |
 | `llm` | 5 | `httpx`, `metrics` |
 | `metrics` | 6 | `provision` |
 | `provision` | 16 | — |
 | `schedule` | 14 | `provision` |
 | `scheduler` | 6 | `store` |
-| `store` | 14 | `diagnostics`, `filler`, `filleradmission`, `provision`, `schedule` |
+| `store` | 14 | `diagnostics`, `filler`, `filleradmission`, `invitation`, `provision`, `schedule` |
 | `suggest` | 6 | `catalog`, `llm`, `provision`, `schedule`, `store` |
 
 ##### Every package, by layer
@@ -132,7 +133,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Carries the version stamped into the binary at build time.
 - **`config`** · 1 importer
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
-- **`contact`** · 2 importers
+- **`contact`** · 3 importers
   Owns person contact-address identity and normalization (§11).
 - **`diagnostics`** · 8 importers
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
@@ -171,6 +172,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the durable lifecycle and operator projections for filler-admission results.
 - **`holidayvocab`** · 2 importers · → `textmatch`
   Owns Loomarr's immutable built-in holiday identities and aliases.
+- **`invitation`** · 5 importers · → `contact`
+  Owns administrator admission decisions and their bearer grants (§11).
 - **`prepared`** · 3 importers · → `diagnostics`, `media`
   Owns immutable, reusable playout publications.
 - **`scheduler`** · 6 importers · → `store`
@@ -180,7 +183,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`images`** · 4 importers · → `scheduler`
   One pipeline every image in Loomarr travels (§22).
-- **`retention`** · 1 importer · → `diagnostics`, `notifications`, `scheduler`
+- **`retention`** · 1 importer · → `diagnostics`, `invitation`, `notifications`, `scheduler`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
 - **`schedule`** · 14 importers · → `holidayvocab`, `provision`, `textmatch`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
@@ -223,7 +226,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`library`** · 7 importers · → `episodeevidence`, `filler`, `httpx`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `notifications`, `provision`, `schedule`, `taxonomy`
+- **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `invitation`, `notifications`, `provision`, `schedule`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 **Layer 8**
@@ -242,7 +245,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`setup`** · 1 importer · → `library`
   Owns the operator connection flows (§7, §13): the Live TV wiring and setup-status checklist.
-- **`testkit`** · → `fillerbakeoff`, `images`, `llm`, `notifications`, `playout`, `programmer`, `provision`, `schedule`, `store`
+- **`testkit`** · → `fillerbakeoff`, `images`, `invitation`, `llm`, `notifications`, `playout`, `programmer`, `provision`, `schedule`, `store`
   The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 
 **Layer 9**
@@ -269,12 +272,12 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 11**
 
-- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `images`, `media`, `metrics`, `playout`, `prepared`, `proposalworkflow`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `images`, `invitation`, `media`, `metrics`, `playout`, `prepared`, `proposalworkflow`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 **Layer 12**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `images`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 

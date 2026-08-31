@@ -416,6 +416,27 @@ func TestRegistry_URLNormalization(t *testing.T) {
 	}
 }
 
+func TestAccessPublicURLRequiresAnHTTPOrigin(t *testing.T) {
+	setting, ok := NewRegistry().Get("access.public_url")
+	if !ok {
+		t.Fatal("access.public_url is not declared")
+	}
+	for _, valid := range []string{"https://loomarr.example.test", "http://loomarr.lan:8080/"} {
+		if _, err := setting.parse(valid); err != nil {
+			t.Errorf("valid origin %q: %v", valid, err)
+		}
+	}
+	for _, invalid := range []string{
+		"ftp://loomarr.example.test", "https://user:secret@loomarr.example.test",
+		"https://loomarr.example.test/path", "https://loomarr.example.test?tenant=one",
+		"https://loomarr.example.test#fragment",
+	} {
+		if _, err := setting.parse(invalid); err == nil {
+			t.Errorf("invalid origin %q was accepted", invalid)
+		}
+	}
+}
+
 // KindCron validates via the cron parser (§18.1): a valid 6-field expr passes through; an
 // invalid one is rejected like any bad setting.
 func TestRegistry_CronValidation(t *testing.T) {

@@ -22,7 +22,7 @@ func (r LibraryAccountResolver) ResolveLibraryAccount(
 	}
 	account, ok := r.Accounts[id]
 	if !ok {
-		return invitation.LibraryAccount{}, fmt.Errorf("Library account not found")
+		return invitation.LibraryAccount{}, fmt.Errorf("library account not found")
 	}
 	return account, nil
 }

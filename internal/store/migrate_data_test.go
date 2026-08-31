@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/contact"
+	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -104,6 +106,28 @@ func seedForMigration(t *testing.T, s Store) {
 		t.Fatalf("seed notification: created=%t err=%v", created, err)
 	}
 
+	invited := invitation.Invitation{
+		ID: "migration-invitation", Kind: invitation.KindLocal, Username: "Ada",
+		IdentityKey: "ada", Role: invitation.RoleMember, Status: invitation.StatusPending,
+		CreatedAt: intent.CreatedAt, ExpiresAt: intent.CreatedAt.Add(invitation.Expiry),
+	}
+	address := &contact.Address{
+		OwnerKind: contact.OwnerInvitation, OwnerID: invited.ID, Email: "Ada@Example.com",
+		Normalized: "ada@example.com", Status: contact.StatusPending,
+		Provenance: contact.ProvenanceAdmin, CreatedAt: intent.CreatedAt,
+	}
+	if err := s.CreateInvitation(ctx, invited, address); err != nil {
+		t.Fatalf("seed invitation: %v", err)
+	}
+	grant := invitation.Grant{
+		TokenHash: invitation.HashGrant("migration-bearer"), InvitationID: invited.ID,
+		Kind: invitation.GrantActivation, Conveyance: invitation.ConveyanceEmail,
+		CreatedAt: intent.CreatedAt, ExpiresAt: invited.ExpiresAt,
+	}
+	if err := s.ReplaceInvitationGrant(ctx, invited.ID, grant, grant.CreatedAt); err != nil {
+		t.Fatalf("seed invitation grant: %v", err)
+	}
+
 	// The copier discovers the destination's live column set. Saving twice gives
 	// revision a non-default value, proving it is copied rather than merely filled
 	// by Postgres's migration default.
@@ -183,6 +207,18 @@ func TestMigrateSQLiteToPostgres(t *testing.T) {
 	if err != nil || len(migratedAttempts) != 1 || migratedAttempts[0].Status != notifications.StatusQueued ||
 		migratedAttempts[0].DestinationRef != "migration-contact" {
 		t.Errorf("migrated notification attempts = %+v, err %v", migratedAttempts, err)
+	}
+	migratedInvitation, err := dst.GetInvitation(ctx, "migration-invitation", time.Unix(1_700_000_000, 0).UTC())
+	if err != nil || migratedInvitation.Username != "Ada" || migratedInvitation.Role != invitation.RoleMember {
+		t.Errorf("migrated invitation = %+v, err %v", migratedInvitation, err)
+	}
+	migratedContact, err := dst.GetInvitationContactAddress(ctx, "migration-invitation")
+	if err != nil || migratedContact.Normalized != "ada@example.com" || migratedContact.Status != contact.StatusPending {
+		t.Errorf("migrated invitation contact = %+v, err %v", migratedContact, err)
+	}
+	migratedGrants, err := dst.ListInvitationGrants(ctx, "migration-invitation")
+	if err != nil || len(migratedGrants) != 1 || migratedGrants[0].TokenHash != invitation.HashGrant("migration-bearer") {
+		t.Errorf("migrated invitation grants = %+v, err %v", migratedGrants, err)
 	}
 }
 

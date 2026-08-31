@@ -54,6 +54,12 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `guide.timezone` (`GUIDE_TIMEZONE`) | string | — | Which timezone the TV guide's times are shown in, as an IANA name like America/New_York. Leave empty to use each viewer's own device timezone. |
 | `guide.retention_hours` (`GUIDE_RETENTION_HOURS`) | int | `24` | How far back the TV guide lets you scroll, in hours. Past listings are recomputed from each channel's current lineup, so going too far back would show a schedule that never actually aired. |
 
+## Notifications
+
+| Setting (env) | Kind | Default | Notes |
+| --- | --- | --- | --- |
+| `access.public_url` (`ACCESS_PUBLIC_URL`) | url | — | The absolute browser address invitation and recovery recipients can reach, e.g. https://loomarr.example.com. Copy and QR links require this address; it is never inferred from request headers. |
+
 ## Backup
 
 | Setting (env) | Kind | Default | Notes |

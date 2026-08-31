@@ -2,10 +2,27 @@ package settings
 
 import (
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
 )
+
+func recipientHTTPOrigin(value any) error {
+	raw, ok := value.(string)
+	if !ok {
+		return fmt.Errorf("want an HTTP or HTTPS origin")
+	}
+	if raw == "" {
+		return nil
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
+		parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return fmt.Errorf("want an HTTP or HTTPS origin without credentials, path, query, or fragment")
+	}
+	return nil
+}
 
 // declared is the canonical registry content: every app-managed setting, in the
 // order it appears in design.md §15. This list IS the contract — design.md §15
@@ -251,6 +268,12 @@ func declared() []Setting {
 			Key: "server.public_url", Label: "Loomarr address", EnvVar: "SERVER_PUBLIC_URL", Group: GroupPlayout,
 			Kind: KindURL, Default: "",
 			Doc: "Loomarr's own address as your media server and Tunarr can reach it, e.g. http://loomarr:8080. Internal playout serves every stream segment from this base, so a wrong value means channels appear in the guide and never play. Also used for uploaded channel icons.",
+		},
+
+		{
+			Key: "access.public_url", Label: "Recipient-facing Loomarr address", EnvVar: "ACCESS_PUBLIC_URL", Group: GroupNotifications,
+			Kind: KindURL, Default: "", Validate: recipientHTTPOrigin,
+			Doc: "The absolute browser address invitation and recovery recipients can reach, e.g. https://loomarr.example.com. Copy and QR links require this address; it is never inferred from request headers.",
 		},
 
 		// --- Playout (§9.1, §15 — added by V4) ---

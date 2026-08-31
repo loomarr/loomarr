@@ -1542,6 +1542,39 @@ components:
         - number
         - strategy
       type: object
+    CreateInvitationInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/CreateInvitationInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        contactEmail:
+          maxLength: 320
+          type: string
+        kind:
+          enum:
+            - local
+            - library
+          type: string
+        libraryUserId:
+          maxLength: 200
+          type: string
+        role:
+          description: Defaults to member.
+          enum:
+            - member
+            - admin
+          type: string
+        username:
+          maxLength: 200
+          type: string
+      required:
+        - kind
+      type: object
     CreateLocalUserInputBody:
       additionalProperties: false
       properties:
@@ -4095,6 +4128,104 @@ components:
       required:
         - description
       type: object
+    InvitationBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/InvitationBody.json
+          format: uri
+          readOnly: true
+          type: string
+        contactAddress:
+          $ref: "#/components/schemas/ContactAddressBody"
+        createdAt:
+          description: Unix ms
+          format: int64
+          type: integer
+        displayName:
+          type: string
+        expiresAt:
+          description: Unix ms
+          format: int64
+          type: integer
+        id:
+          type: string
+        kind:
+          enum:
+            - local
+            - library
+          type: string
+        libraryUserId:
+          type: string
+        redeemedBy:
+          type: string
+        role:
+          enum:
+            - member
+            - admin
+          type: string
+        status:
+          enum:
+            - pending
+            - redeemed
+            - expired
+            - revoked
+          type: string
+        terminalAt:
+          description: Unix ms
+          format: int64
+          type: integer
+        username:
+          type: string
+      required:
+        - id
+        - kind
+        - role
+        - status
+        - createdAt
+        - expiresAt
+      type: object
+    IssueInvitationGrantInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/IssueInvitationGrantInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        conveyance:
+          enum:
+            - copy
+            - qr
+          type: string
+      required:
+        - conveyance
+      type: object
+    IssueInvitationGrantOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/IssueInvitationGrantOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        expiresAt:
+          description: Unix ms
+          format: int64
+          type: integer
+        url:
+          description: One-time bearer link. It is returned only by this mutation and is never persisted.
+          type: string
+      required:
+        - url
+        - expiresAt
+      type: object
     JobEvent:
       additionalProperties: false
       properties:
@@ -4517,6 +4648,23 @@ components:
       required:
         - pulls
         - total
+      type: object
+    ListInvitationsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ListInvitationsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        invitations:
+          items:
+            $ref: "#/components/schemas/InvitationBody"
+          type: array
+      required:
+        - invitations
       type: object
     ListOutputBody:
       additionalProperties: false
@@ -11272,6 +11420,125 @@ paths:
       summary: Serve one image rendition
       tags:
         - Images
+  /v1/invitations:
+    get:
+      operationId: list-invitations
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListInvitationsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List person invitations (admin)
+      tags:
+        - invitations
+    post:
+      operationId: create-invitation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInvitationInputBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Invite a person (admin)
+      tags:
+        - invitations
+  /v1/invitations/{id}:
+    delete:
+      operationId: revoke-invitation
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Revoke a person invitation (admin)
+      tags:
+        - invitations
+    get:
+      operationId: get-invitation
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Inspect a person invitation (admin)
+      tags:
+        - invitations
+  /v1/invitations/{id}/grant:
+    post:
+      operationId: issue-invitation-grant
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueInvitationGrantInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueInvitationGrantOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Regenerate a copied or QR invitation link (admin)
+      tags:
+        - invitations
   /v1/jobs:
     get:
       description: Admin only. The scheduler's named jobs with their effective interval, last/next run, result, and running state (§18.1). All timing is server-authored.

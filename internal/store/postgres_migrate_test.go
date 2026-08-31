@@ -17,6 +17,15 @@ func TestPostgresDiscoveryFeedbackOrphanCleanupMigration(t *testing.T) {
 	testDiscoveryFeedbackOrphanCleanupMigration(t, db, DialectPostgres, "migrations/postgres")
 }
 
+func TestPostgresInvitationMigrationPreservesExistingContactAddresses(t *testing.T) {
+	db, err := sql.Open("pgx", startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	testInvitationMigrationPreservesExistingContactAddresses(t, db, DialectPostgres, "migrations/postgres")
+}
+
 func TestPostgresFillerDecisionApplicationModeMigrationBackfillsShadow(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("pgx", startPostgres(t))

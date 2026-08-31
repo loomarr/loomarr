@@ -101,13 +101,13 @@ func (i Invitation) Validate() error {
 		}
 	case KindLibrary:
 		if i.Username != "" {
-			return fmt.Errorf("Library invitation cannot reserve a local username")
+			return fmt.Errorf("library invitation cannot reserve a local username")
 		}
 		if err := identifier("Library user id", i.LibraryUserID); err != nil {
 			return err
 		}
 		if i.IdentityKey != i.LibraryUserID {
-			return fmt.Errorf("Library invitation identity key must be the exact Library id")
+			return fmt.Errorf("library invitation identity key must be the exact Library id")
 		}
 		if err := safeText("display name", i.DisplayName, 200); err != nil {
 			return err

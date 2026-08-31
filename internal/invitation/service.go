@@ -89,10 +89,10 @@ func (s *Service) Create(ctx context.Context, command CreateCommand) (Invitation
 		value.IdentityKey = NormalizeLocalIdentity(value.Username)
 	case KindLibrary:
 		if strings.TrimSpace(command.Username) != "" {
-			return Invitation{}, fmt.Errorf("Library invitation cannot reserve a local username")
+			return Invitation{}, fmt.Errorf("library invitation cannot reserve a local username")
 		}
 		if s.library == nil {
-			return Invitation{}, fmt.Errorf("Library invitation creation requires a connected Library")
+			return Invitation{}, fmt.Errorf("library invitation creation requires a connected Library")
 		}
 		requestedID := strings.TrimSpace(command.LibraryUserID)
 		account, err := s.library.ResolveLibraryAccount(ctx, requestedID)
@@ -198,6 +198,13 @@ func (s *Service) Revoke(ctx context.Context, invitationID string) error {
 
 func (s *Service) Get(ctx context.Context, invitationID string) (Invitation, error) {
 	return s.repository.GetInvitation(ctx, invitationID, s.now().UTC().Truncate(time.Second))
+}
+
+// Contact returns the optional address attached to a pending Invitation. Keeping
+// this read on the module prevents HTTP and notification adapters from reaching
+// through to its persistence representation.
+func (s *Service) Contact(ctx context.Context, invitationID string) (contact.Address, error) {
+	return s.repository.GetInvitationContactAddress(ctx, invitationID)
 }
 
 func (s *Service) List(ctx context.Context) ([]Invitation, error) {
