@@ -21,8 +21,8 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - run: corepack enable
-      - name: Cache pnpm and CocoaPods work
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      - name: Restore pnpm and CocoaPods work
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.local/share/pnpm/store
@@ -53,8 +53,8 @@ jobs:
           fi
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
           echo "store=$store" >> "$GITHUB_OUTPUT"
-      - name: Cache ExpoModulesJSI native slice
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      - name: Restore ExpoModulesJSI native slice
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: web/node_modules/.pnpm/expo-modules-jsi@*/node_modules/expo-modules-jsi/apple/Products
           key: apple-jsi-tv-${{ runner.arch }}-${{ steps.apple-toolchain.outputs.fingerprint }}-${{ hashFiles('web/pnpm-lock.yaml') }}

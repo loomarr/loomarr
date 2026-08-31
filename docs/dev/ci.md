@@ -453,8 +453,8 @@ toolchain/SDK/native-input fingerprint, uses the restore-only cache action, and 
 after zstd and LLVM CAS hash validation. Missing or rejected archives select the unchanged cold
 gate. A valid store that fails during the warm build is quarantined and receives one clean cold
 retry; every architecture, install, launch, screenshot, and liveness assertion still runs. These
-jobs never save the compiler archive, so pull-request and merge-queue refs cannot create sibling
-compiler generations.
+jobs never save the compiler archive, pnpm/CocoaPods work, or ExpoModulesJSI slice, so pull-request
+and merge-queue refs cannot create sibling-scoped Apple generations that later groups cannot read.
 
 ## `ci-ok` is the only required check
 
@@ -495,7 +495,7 @@ Sharding is free on a public repo. Check the bill before copying it into a priva
 - **`actions/cache` never overwrites an existing key.** A cache whose contents track something
   its key doesn't gets written once and frozen. Use a rolling key with `restore-keys`.
 - **The 10GB cap evicts LRU across all refs**, so closed PRs' caches push out live ones.
-  `cache-cleanup.yml` deletes them on close.
+  `cache-cleanup.yml` deletes both `refs/pull/N/merge` and matching merge-queue caches on close.
 
 Apple compilation caching is a validated artifact protocol, not an unchecked DerivedData restore.
 The fingerprint binds the runner OS and architecture, exact Xcode and Swift identities, both
