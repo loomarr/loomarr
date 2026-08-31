@@ -186,7 +186,7 @@ ensure-postgres-test-image:
 rust-dev-build:
 	LOOMARR_RELEASE=dev $(CARGO) build --locked -p loomarr-image
 test-pg: rust-dev-build ensure-postgres-test-image
-	TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX=docker.io TESTCONTAINERS_RYUK_DISABLED=false $(GO) test -race -tags=integration ./internal/store/ ./internal/backendtransition/ ./internal/app/
+	TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX=docker.io TESTCONTAINERS_RYUK_DISABLED=false $(GO) test -race -tags=integration -timeout=20m ./internal/store/ ./internal/backendtransition/ ./internal/app/
 `)
 	_, source, _, _ := runtime.Caller(0)
 	workflowEntries, err := os.ReadDir(filepath.Join(filepath.Dir(source), "..", "..", ".github", "workflows"))

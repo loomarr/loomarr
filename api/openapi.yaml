@@ -5032,6 +5032,22 @@ components:
       required:
         - channels
       type: object
+    PasswordRecoveryBearerInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/PasswordRecoveryBearerInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        grant:
+          format: password
+          type: string
+      required:
+        - grant
+      type: object
     PatchClipInputBody:
       additionalProperties: false
       properties:
@@ -5578,6 +5594,23 @@ components:
         - entries
         - totalMs
         - matchLevel
+      type: object
+    PreviewPasswordRecoveryOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/PreviewPasswordRecoveryOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        expiresAt:
+          description: Unix milliseconds
+          format: int64
+          type: integer
+      required:
+        - expiresAt
       type: object
     PreviewProgrammingInputBody:
       additionalProperties: false
@@ -6264,6 +6297,26 @@ components:
         - grant
         - password
       type: object
+    RedeemPasswordRecoveryInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/RedeemPasswordRecoveryInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        grant:
+          format: password
+          type: string
+        password:
+          format: password
+          type: string
+      required:
+        - grant
+        - password
+      type: object
     RefineChannelInputBody:
       additionalProperties: false
       properties:
@@ -6339,6 +6392,37 @@ components:
         - autoAdmit
         - label
         - uri
+      type: object
+    RequestPasswordRecoveryInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/RequestPasswordRecoveryInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        username:
+          maxLength: 200
+          type: string
+      required:
+        - username
+      type: object
+    RequestPasswordRecoveryOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/RequestPasswordRecoveryOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        message:
+          type: string
+      required:
+        - message
       type: object
     ResetPasswordInputBody:
       additionalProperties: false
@@ -8643,6 +8727,77 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Change your own password
+      tags:
+        - auth
+  /v1/auth/password-recovery/preview:
+    post:
+      operationId: preview-password-recovery
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordRecoveryBearerInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreviewPasswordRecoveryOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Preview a password recovery grant
+      tags:
+        - auth
+  /v1/auth/password-recovery/redeem:
+    post:
+      operationId: redeem-password-recovery
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RedeemPasswordRecoveryInputBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Set a new local password
+      tags:
+        - auth
+  /v1/auth/password-recovery/request:
+    post:
+      operationId: request-password-recovery
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestPasswordRecoveryInputBody"
+        required: true
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestPasswordRecoveryOutputBody"
+          description: Accepted
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Request local password recovery
       tags:
         - auth
   /v1/auth/sso/callback:

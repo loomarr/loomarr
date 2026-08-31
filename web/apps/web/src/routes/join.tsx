@@ -3,7 +3,7 @@ import * as invitationApi from "@loomarr/api/endpoints/invitations";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
-import { clearInvitationGrant, takeInvitationGrantFromLocation } from "@/auth/invitation-grant";
+import { clearAccountActionGrant, takeAccountActionGrantFromLocation } from "@/auth/account-action-grant";
 import { InvitationJoin } from "@/components/loomarr/people/invitation-join";
 import { LoginShell } from "@/components/loomarr/setup/login-shell";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -18,7 +18,7 @@ const JoinScreen = () => {
   const redeem = invitationApi.useRedeemInvitation({
     mutation: {
       onSuccess: async () => {
-        clearInvitationGrant();
+        clearAccountActionGrant();
         await queryClient.invalidateQueries({ queryKey: authApi.getMeQueryKey() });
         router.history.replace("/guide");
       },
@@ -31,7 +31,7 @@ const JoinScreen = () => {
     preview.mutate({ data: { grant } });
   }, [grant, preview.mutate]);
 
-  useEffect(() => () => clearInvitationGrant(), []);
+  useEffect(() => () => clearAccountActionGrant(), []);
 
   return (
     <LoginShell className="py-10">
@@ -53,7 +53,7 @@ const Route = createFileRoute("/join")({
   // This runs before JoinScreen renders, so the fragment is gone from browser
   // history before password controls enter the DOM. The returned value lives only
   // in the route's in-memory context and is cleared when the route unmounts.
-  beforeLoad: () => ({ grant: takeInvitationGrantFromLocation() }),
+  beforeLoad: () => ({ grant: takeAccountActionGrantFromLocation() }),
   component: JoinScreen,
 });
 

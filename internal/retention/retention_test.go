@@ -15,6 +15,8 @@ type retentionStore struct {
 	diagnosticErr      error
 	invitationBefore   time.Time
 	invitationErr      error
+	recoveryBefore     time.Time
+	recoveryErr        error
 	notificationBefore time.Time
 	notificationErr    error
 	sessionsCalled     bool
@@ -40,6 +42,10 @@ func (s *retentionStore) PurgeTerminalInvitations(_ context.Context, before time
 func (s *retentionStore) PurgeTerminalNotifications(_ context.Context, before time.Time) (int, error) {
 	s.notificationBefore = before
 	return 2, s.notificationErr
+}
+func (s *retentionStore) PurgeTerminalPasswordRecoveries(_ context.Context, before time.Time) (int, error) {
+	s.recoveryBefore = before
+	return 1, s.recoveryErr
 }
 func (s *retentionStore) PurgeDiagnostics(_ context.Context, before time.Time, maxBytes int64) (diagnostics.PurgeResult, error) {
 	s.diagnosticBefore = before
@@ -78,6 +84,9 @@ func TestHousekeepingAppliesDiagnosticAgeAndStoragePolicy(t *testing.T) {
 	}
 	if want := now.Add(-30 * 24 * time.Hour); !store.invitationBefore.Equal(want) {
 		t.Fatalf("invitation horizon = %v, want %v", store.invitationBefore, want)
+	}
+	if want := now.Add(-30 * 24 * time.Hour); !store.recoveryBefore.Equal(want) {
+		t.Fatalf("password recovery horizon = %v, want %v", store.recoveryBefore, want)
 	}
 }
 

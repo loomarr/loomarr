@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/recovery"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
@@ -649,6 +650,18 @@ type InvitationStore interface {
 	) (invitation.Invitation, error)
 }
 
+// PasswordRecoveryStore owns local-password recovery lifecycles and hashed grants (§11).
+type PasswordRecoveryStore interface {
+	CreatePasswordRecovery(context.Context, recovery.Record) error
+	GetPasswordRecovery(context.Context, string, time.Time) (recovery.Record, error)
+	GetPasswordRecoveryByGrant(context.Context, string, time.Time) (recovery.Record, error)
+	AddPasswordRecoveryGrant(context.Context, string, recovery.Grant, time.Time) error
+	RevokePasswordRecoveryGrant(context.Context, string, time.Time) error
+	ListPasswordRecoveryGrants(context.Context, string) ([]recovery.Grant, error)
+	RedeemPasswordRecovery(context.Context, string, string, time.Time) (recovery.Record, error)
+	PurgeTerminalPasswordRecoveries(context.Context, time.Time) (int, error)
+}
+
 // DiagnosticStore is the retained technical evidence surface (§5, §17). Activity is deliberately
 // separate: it is a curated product feed, while these records are pageable/filterable diagnostics.
 type DiagnosticStore interface {
@@ -753,6 +766,7 @@ type Store interface {
 	AiringStore
 	ActivityStore
 	InvitationStore
+	PasswordRecoveryStore
 	NotificationStore
 	DiagnosticStore
 	SettingStore

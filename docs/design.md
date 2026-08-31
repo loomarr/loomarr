@@ -111,19 +111,21 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | Package | Direct importers | Depends on |
 | --- | ---: | --- |
 | `catalog` | 5 | `library`, `provision` |
+| `contact` | 5 | — |
 | `diagnostics` | 8 | — |
 | `filler` | 6 | `diagnostics`, `filleradmission`, `llm`, `metrics` |
 | `filleradmission` | 7 | — |
 | `httpx` | 7 | `metrics` |
-| `invitation` | 6 | — |
+| `invitation` | 6 | `contact` |
 | `library` | 7 | `filler`, `httpx` |
 | `llm` | 5 | `httpx`, `metrics` |
 | `metrics` | 6 | `provision` |
 | `notifications` | 5 | — |
 | `provision` | 16 | — |
+| `recovery` | 5 | — |
 | `schedule` | 14 | `provision` |
 | `scheduler` | 6 | `store` |
-| `store` | 14 | `diagnostics`, `filler`, `filleradmission`, `invitation`, `notifications`, `provision`, `schedule` |
+| `store` | 14 | `contact`, `diagnostics`, `filler`, `filleradmission`, `invitation`, `notifications`, `provision`, `recovery`, `schedule` |
 | `suggest` | 6 | `catalog`, `llm`, `provision`, `schedule`, `store` |
 
 ##### Every package, by layer
@@ -134,7 +136,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Carries the version stamped into the binary at build time.
 - **`config`** · 1 importer
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
-- **`contact`** · 3 importers
+- **`contact`** · 5 importers
   Owns person contact-address identity and normalization (§11).
 - **`diagnostics`** · 8 importers
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
@@ -156,6 +158,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Supervises one child process and every descendant it starts.
 - **`provision`** · 16 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
+- **`recovery`** · 5 importers
+  Owns local-password recovery records and their bearer grants (§11).
 - **`releasenotes`**
   Categorizes GitHub-generated release notes without allowing a language model to invent release content.
 - **`releaseverify`**
@@ -184,7 +188,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`images`** · 4 importers · → `scheduler`
   One pipeline every image in Loomarr travels (§22).
-- **`retention`** · 1 importer · → `diagnostics`, `invitation`, `notifications`, `scheduler`
+- **`retention`** · 1 importer · → `diagnostics`, `invitation`, `notifications`, `recovery`, `scheduler`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
 - **`schedule`** · 14 importers · → `holidayvocab`, `provision`, `textmatch`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
@@ -227,14 +231,14 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`library`** · 7 importers · → `episodeevidence`, `filler`, `httpx`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `invitation`, `notifications`, `provision`, `schedule`, `taxonomy`
+- **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `invitation`, `notifications`, `provision`, `recovery`, `schedule`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 **Layer 8**
 
 - **`activity`** · 3 importers · → `store`
   Records what Loomarr did, for the Dashboard's Recent activity feed (§5, §12, V32).
-- **`auth`** · 3 importers · → `invitation`, `library`, `store`
+- **`auth`** · 3 importers · → `contact`, `invitation`, `library`, `recovery`, `store`
   Issues and validates Loomarr sessions (design §11).
 - **`backendtransition`** · 1 importer · → `schedule`, `store`
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
@@ -273,12 +277,12 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 11**
 
-- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `images`, `invitation`, `media`, `metrics`, `notifications`, `playout`, `prepared`, `proposalworkflow`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `images`, `invitation`, `media`, `metrics`, `notifications`, `playout`, `prepared`, `proposalworkflow`, `provision`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 **Layer 12**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `images`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `images`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recovery`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -6741,7 +6745,7 @@ independently instead of treating every zero-lineup result as a model-quality my
 
 ### 14.2 The package map
 
-`internal/` is **52 flat packages, deliberately** — the grouping below is prose, not directories.
+`internal/` is **53 flat packages, deliberately** — the grouping below is prose, not directories.
 
 Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
 
@@ -6798,6 +6802,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `auth` | Sessions and their validation (§11) |
 | `contact` | Contact-address identity, normalization, verification state, and provenance; never login identity (§11) |
 | `notifications` | Typed notification intents, routing policy, durable attempts, bounded retry, and Delivery-means adapters (§11) |
+| `recovery` | Local-password recovery records and high-entropy bearer grants; human passwords remain Argon2id-owned by `auth` (§11) |
 | `events` | The in-memory bus behind SSE (§7) |
 | `media` | Host-wide admission for hardware media work, shared by foreground playout and background preparation (§9.1 V56) |
 | `proctree` | Owns complete child-process trees through Unix process groups on the supported server runtime (§9.1) |
@@ -7613,7 +7618,7 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   everything. Generated docs, action pinning, impact fixtures, and the release verifier reject an
   orphaned module or a caller whose reusable implementation is not covered by its owning decision.
 - **State machine:** every transition + the five invariants.
-- **Store conformance:** one suite vs **both** SQLite (temp file) and Postgres (**testcontainers**), incl. `ClaimDue` concurrency (no record claimed twice).
+- **Store conformance:** one suite vs **both** SQLite (temp file) and Postgres (**testcontainers**), incl. `ClaimDue` concurrency (no record claimed twice). The race-enabled integration target carries an explicit 20-minute Go package timeout: the shared suite repeatedly migrates fresh databases across both dialects and has exceeded Go's implicit 10-minute default on a two-core hosted runner, while a finite doubled ceiling still fails closed on genuine hangs.
 - **Library conformance:** Emby vs Jellyfin flavors w/ mock transport; correct auth header each.
 - **Webhook idempotency/replay:** duplicate/out-of-order events converge.
 - **Scheduler reconcile:** desired-vs-actual against a **mock Tunarr** — idempotent (second reconcile = no-op), minimal-diff, and **backfill** (pending slot filled with filler → real title on `available` → re-push; `unavailable` → substitute). **Event-loss recovery:** drop the availability event entirely and assert the periodic sweep still backfills. Per-channel single-leader claim under concurrency.

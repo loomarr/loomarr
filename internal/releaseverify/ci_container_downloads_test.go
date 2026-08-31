@@ -84,6 +84,10 @@ func TestVerifyCIContainerDownloadsRejectsBypasses(t *testing.T) {
 			path:     storePath,
 			contents: strings.Replace(store, "test-pg: rust-dev-build ensure-postgres-test-image", "test-pg: rust-dev-build", 1),
 		},
+		"Postgres tests drop their explicit package timeout": {
+			path:     storePath,
+			contents: strings.Replace(store, " -timeout=20m", "", 1),
+		},
 		"Postgres Make module duplicates image authority": {
 			path: storePath,
 			contents: strings.Replace(store,

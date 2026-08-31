@@ -63,6 +63,7 @@ type operationsBuild struct {
 	settings           api.SettingsService
 	emailTest          api.EmailTestService
 	invitationDelivery api.InvitationDeliveryService
+	passwordRecovery   api.PasswordRecoveryService
 	liveConfig         func(string) string
 	libraryConfigured  func() bool
 	jobs               api.JobService
@@ -93,7 +94,8 @@ func buildOperations(
 	backups := buildBackups(st, set, registry, log)
 	authResult := buildAuth(st, set, secrets, readGeneratedSecret, libraryClient, log)
 	invitationService, _ := authResult.invitations.(*invitation.Service)
-	invitationDelivery := buildInvitationDelivery(st, set, invitationService, registry)
+	recoveryService := authResult.passwordRecovery
+	accountDelivery := buildAccountDelivery(st, set, invitationService, recoveryService, registry, log)
 	jobs := buildScheduler(rootCtx, st, set, registry, emitter, owner, log)
 	triggerHealth := func(ctx context.Context) {
 		if jobs == nil {
@@ -112,7 +114,8 @@ func buildOperations(
 			refreshSecretRedactor, readGeneratedSecret, triggerHealth, log,
 		),
 		emailTest:          buildEmailTest(st, set),
-		invitationDelivery: invitationDelivery,
+		invitationDelivery: accountDelivery.invitations,
+		passwordRecovery:   accountDelivery.recovery,
 		jobs:               jobs,
 		database:           buildDatabase(st, set, overrides, eventBus),
 		residentLLM:        buildResidentLLM(set, log),
@@ -196,6 +199,7 @@ type authBuild struct {
 	password             api.PasswordService
 	invitations          api.InvitationService
 	invitationRedemption api.InvitationRedemptionService
+	passwordRecovery     *auth.PasswordRecoveryService
 	deviceManager        *auth.DeviceManager
 	deviceLimiter        *auth.RateLimiter
 	playoutSecret        func() string
@@ -250,6 +254,7 @@ func buildAuth(
 	result.invitationRedemption = auth.NewInvitationRedemptionService(
 		st, libraryClient, manager, newID, time.Now,
 	)
+	result.passwordRecovery = auth.NewPasswordRecoveryService(st, newID, nil, time.Now)
 	result.sessions = manager
 	result.deviceManager = auth.NewDeviceManager(st, time.Now)
 	result.deviceLimiter = auth.NewRateLimiter(0.05, 5)
