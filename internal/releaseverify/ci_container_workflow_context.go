@@ -38,15 +38,15 @@ type workflowMatrixEntryAuthority struct {
 func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobContextAuthority {
 	return map[workflowJobContextKey]workflowJobContextAuthority{
 		{workflow: "android-beta.yml", job: "release"}:            {name: "Build and optionally publish Android TV beta", runsOn: "ubuntu-latest", environmentName: "android-beta"},
-		{workflow: "apple-compilation-cache.yml", job: "publish"}: {name: "Publish validated Apple compilation cache", runsOn: "macos-26", timeoutMinutes: 75},
+		{workflow: "apple-compilation-cache.yml", job: "publish"}: {name: "Publish validated Apple compilation cache", runsOn: "xcode-27", timeoutMinutes: 75},
 		{workflow: "cache-cleanup.yml", job: "cleanup"}:           {name: "Drop the closed PR's caches", runsOn: "ubuntu-latest"},
 		{workflow: "ci-agent.yml", job: "run"}:                    {name: "Agent harness (macOS)", runsOn: "macos-latest"},
 		{workflow: "ci-android.yml", job: "run"}:                  {name: "Android TV — lint + unit + assemble", runsOn: "ubuntu-latest"},
-		{workflow: "ci-apple-mobile.yml", job: "run"}:             {name: "Apple mobile — native build + launch", runsOn: "macos-26", timeoutMinutes: 75},
-		{workflow: "ci-apple-tv.yml", job: "run"}:                 {name: "Apple TV — native build + launch", runsOn: "macos-26", timeoutMinutes: 60},
+		{workflow: "ci-apple-mobile.yml", job: "run"}:             {name: "Apple mobile — native build + launch", runsOn: "xcode-27", timeoutMinutes: 75},
+		{workflow: "ci-apple-tv.yml", job: "run"}:                 {name: "Apple TV — native build + launch", runsOn: "xcode-27", timeoutMinutes: 60},
 
-		{workflow: "ci-apple-cache-validation.yml", job: "producer"}: {name: "Apple compilation cache — produce on Xcode 26", runsOn: "macos-26", timeoutMinutes: 75},
-		{workflow: "ci-apple-cache-validation.yml", job: "consumer"}: {name: "Apple compilation cache — consume on distinct Xcode 26 runner", runsOn: "macos-26", needsList: []string{"producer"}, timeoutMinutes: 75},
+		{workflow: "ci-apple-cache-validation.yml", job: "producer"}: {name: "Apple compilation cache — produce on Xcode 27", runsOn: "xcode-27", timeoutMinutes: 75},
+		{workflow: "ci-apple-cache-validation.yml", job: "consumer"}: {name: "Apple compilation cache — consume on distinct Xcode 27 runner", runsOn: "xcode-27", needsList: []string{"producer"}, timeoutMinutes: 75},
 
 		{workflow: "ci-clients.yml", job: "run"}:             {name: "Shared clients — lint + test + browser/iOS/Android/TV bundles", runsOn: "ubuntu-latest"},
 		{workflow: "ci-docs.yml", job: "run"}:                {name: "Docs — links + structure + prose", runsOn: "ubuntu-latest"},

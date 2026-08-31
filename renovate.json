@@ -169,7 +169,7 @@
         "react-native-web"
       ],
       "matchUpdateTypes": ["minor", "patch"],
-      "groupName": "Expo SDK 57 native"
+      "groupName": "Expo SDK 58 native"
     },
     {
       "description": "Review TypeScript toolchain updates together",

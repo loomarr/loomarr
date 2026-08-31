@@ -1,4 +1,4 @@
-// Xcode 26's content-addressable compilation cache survives Expo's clean native regeneration.
+// Xcode 27's content-addressable compilation cache survives Expo's clean native regeneration.
 // The store path is runner-local and supplied by the verifier; the file contents are part of the
 // outer compatibility fingerprint so a build-setting change cannot restore an older cache.
 #include "apple-simulator.xcconfig"

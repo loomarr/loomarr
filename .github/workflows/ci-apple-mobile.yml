@@ -13,12 +13,11 @@ env:
 jobs:
   run:
     name: Apple mobile — native build + launch
-    # ExpoModulesJSI needs Swift 6.3: Xcode 16.4 cannot load the package and Xcode 26.3
-    # rejects its C++ ownership annotations. The macOS 26 image supplies a compatible
-    # Xcode 26.4+ toolchain without opting into Xcode 27's mandatory UIScene lifecycle,
-    # which Expo 57 prebuild does not yet generate. The verifier fails closed on another
-    # Xcode major so a future image-default change cannot silently alter this contract.
-    runs-on: macos-26
+    # iOS 27 requires UIScene adoption at launch. The pinned Expo SDK 58 canary generates
+    # the complete scene lifecycle, and GitHub's dedicated preview image makes that contract
+    # executable instead of merely compiling against the older SDK. The verifier fails closed
+    # on another Xcode major so an image-default change cannot silently alter this proof.
+    runs-on: xcode-27
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

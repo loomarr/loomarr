@@ -22,7 +22,7 @@ cat > "$test_root/bin/xcodebuild" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ "$*" == -version ]]; then
-  printf 'Xcode 26.6\nBuild version 17F113\n'
+  printf 'Xcode 27.0\nBuild version 27A5252f\n'
   exit 0
 fi
 result_bundle=''

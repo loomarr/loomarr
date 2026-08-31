@@ -30,10 +30,22 @@ if [[ -z "${ANDROID_HOME:-}" ]]; then
   exit 2
 fi
 
+EXPO_PACKAGE_JSON="$(
+  cd "${APP_DIR}"
+  node -p "require.resolve('expo/package.json')"
+)"
+readonly EXPO_PACKAGE_JSON
+readonly EXPO_TEMPLATE="${EXPO_PACKAGE_JSON%/package.json}/template.tgz"
+if [[ ! -f "${EXPO_TEMPLATE}" ]]; then
+  printf 'the pinned Expo package does not contain its native template: %s\n' "${EXPO_TEMPLATE}" >&2
+  exit 2
+fi
+
 if [[ ! -x "${APP_DIR}/android/gradlew" ]]; then
   (
     cd "${WEB_ROOT}"
-    pnpm --filter "@loomarr/${APP_NAME}" exec expo prebuild --platform android --no-install
+    pnpm --filter "@loomarr/${APP_NAME}" exec expo prebuild --platform android --no-install \
+      --template "${EXPO_TEMPLATE}"
   )
 fi
 
