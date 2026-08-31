@@ -34,6 +34,14 @@ describe("LoginForm", () => {
     render(<LoginForm onSubmit={vi.fn()} isPending />);
     expect(screen.getByRole("button", { name: /signing in/i })).toBeDisabled();
   });
+
+  it("links local users to self-service password recovery", () => {
+    render(<LoginForm onSubmit={vi.fn()} />);
+    expect(screen.getByRole("link", { name: "Forgot password?" })).toHaveAttribute(
+      "href",
+      "/forgot-password",
+    );
+  });
 });
 
 describe("LoginForm — single sign-on (§11, V8)", () => {

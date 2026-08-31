@@ -50,6 +50,9 @@ type sqlStore struct {
 	// invitationIdentityLocks serialize SQLite admission checks per identity.
 	// Postgres uses a database-wide advisory lock for the same seam.
 	invitationIdentityLocks sync.Map
+	// passwordRecoveryLocks serialize replacement of a person's pending recovery on SQLite.
+	// Postgres uses a database-wide advisory lock for the same seam.
+	passwordRecoveryLocks sync.Map
 	// path is the SQLite file this store is backed by; empty for Postgres. Kept so a
 	// caller can find the data directory without also holding the DSN.
 	path                 string

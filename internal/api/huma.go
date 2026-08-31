@@ -19,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/media"
 	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/recovery"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -42,6 +43,7 @@ type Server struct {
 	invitations          InvitationService
 	invitationDelivery   InvitationDeliveryService
 	invitationRedemption InvitationRedemptionService
+	passwordRecovery     PasswordRecoveryService
 	accessPublicURL      func() string
 	// devices wires /v1/auth/device/* — the pairing handshake a keyboard-less native client uses
 	// (§11, Shield P1). Nil until configured, which 404s the routes rather than half-mounting them.
@@ -838,6 +840,14 @@ type InvitationRedemptionService interface {
 	RedeemLibrary(context.Context, string, string, string) (string, time.Time, store.User, error)
 }
 
+// PasswordRecoveryService is the public, enumeration-safe local credential recovery seam.
+// Bearers remain body-only and successful reset deliberately issues no replacement session.
+type PasswordRecoveryService interface {
+	Request(context.Context, string, string) error
+	Preview(context.Context, string, string) (recovery.Record, error)
+	Redeem(context.Context, string, string, string) error
+}
+
 // SessionManager revokes sessions (logout) and exposes them for admin review (§11).
 type SessionManager interface {
 	Revoke(ctx context.Context, token string) error
@@ -864,6 +874,7 @@ type Options struct {
 	UserSync             UserSyncer                  // POST /v1/users/sync (Phase 9); nil ⇒ route absent
 	Invitations          InvitationService           // /v1/invitations* (§11); nil ⇒ routes absent
 	InvitationRedemption InvitationRedemptionService // public preview and explicit activation (§11)
+	PasswordRecovery     PasswordRecoveryService     // public local-password recovery (§11)
 	// InvitationDelivery adds explicit email send/resend and provider-safe delivery summaries.
 	InvitationDelivery InvitationDeliveryService
 	// AccessPublicURL supplies the recipient-reachable browser origin. It is read

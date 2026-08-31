@@ -107,6 +107,13 @@ const LoginForm = ({
         )}
       </form.Field>
 
+      <a
+        className="-mt-3 self-end text-signal text-sm underline-offset-4 hover:underline"
+        href="/forgot-password"
+      >
+        Forgot password?
+      </a>
+
       <Button type="submit" disabled={isPending}>
         {isPending ? <Loader2 className="animate-spin" aria-hidden /> : <LogIn aria-hidden />}
         {isPending ? "Signing in…" : "Sign in"}

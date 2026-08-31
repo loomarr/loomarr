@@ -1,10 +1,9 @@
-// Invitation grants arrive in the fragment so browsers do not send them to the
-// server with the initial document request. Move the bearer into caller-owned
-// memory and erase it from browser history before any credential field renders.
-// It is intentionally never written to localStorage or sessionStorage (§11).
+// Account-action grants arrive in the fragment so browsers do not send them with the initial
+// document request. Move the bearer into caller-owned memory and erase it from browser history
+// before any credential field renders. It is never written to localStorage or sessionStorage (§11).
 let heldGrant: string | undefined;
 
-const takeInvitationGrantFromLocation = (): string | undefined => {
+const takeAccountActionGrantFromLocation = (): string | undefined => {
   const fragment = window.location.hash.startsWith("#")
     ? window.location.hash.slice(1)
     : window.location.hash;
@@ -20,8 +19,8 @@ const takeInvitationGrantFromLocation = (): string | undefined => {
   return heldGrant;
 };
 
-const clearInvitationGrant = () => {
+const clearAccountActionGrant = () => {
   heldGrant = undefined;
 };
 
-export { clearInvitationGrant, takeInvitationGrantFromLocation };
+export { clearAccountActionGrant, takeAccountActionGrantFromLocation };

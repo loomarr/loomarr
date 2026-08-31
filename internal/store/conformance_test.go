@@ -118,6 +118,26 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		})
 		t.Run("Retention", func(t *testing.T) { testInvitationRetention(t, newStore) })
 	})
+	t.Run("PasswordRecovery", func(t *testing.T) {
+		t.Run("PreviewDoesNotConsume", func(t *testing.T) {
+			testPasswordRecoveryPreviewDoesNotConsume(t, newStore)
+		})
+		t.Run("RedemptionIsAtomic", func(t *testing.T) {
+			testPasswordRecoveryRedemptionIsAtomic(t, newStore)
+		})
+		t.Run("NewRequestSupersedesOld", func(t *testing.T) {
+			testPasswordRecoveryNewRequestSupersedesOld(t, newStore)
+		})
+		t.Run("Retention", func(t *testing.T) {
+			testPasswordRecoveryRetention(t, newStore)
+		})
+		t.Run("DisabledAfterIssueIsUnusable", func(t *testing.T) {
+			testPasswordRecoveryDisabledAfterIssueIsUnusable(t, newStore)
+		})
+		t.Run("ConcurrentRedemption", func(t *testing.T) {
+			testPasswordRecoveryConcurrentRedemption(t, newStore)
+		})
+	})
 
 	t.Run("Filler", func(t *testing.T) {
 		t.Run("ClipRoundTripAndFilters", func(t *testing.T) { testClipFilters(t, newStore) })

@@ -30,6 +30,7 @@ type httpBuild struct {
 	settings           api.SettingsService
 	emailTest          api.EmailTestService
 	invitationDelivery api.InvitationDeliveryService
+	passwordRecovery   api.PasswordRecoveryService
 	liveConfig         func(string) string
 	libraryConfigured  func() bool
 	jobs               api.JobService
@@ -81,6 +82,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		Invitations:          invitationSvc,
 		InvitationRedemption: invitationRedemption,
 		InvitationDelivery:   deps.invitationDelivery,
+		PasswordRecovery:     deps.passwordRecovery,
 		AccessPublicURL: func() string {
 			if liveConfig == nil {
 				return ""
