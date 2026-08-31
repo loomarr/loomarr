@@ -56,6 +56,13 @@ Add environment variable `ANDROID_UPLOAD_CERT_SHA256` with the upload certificat
 fingerprint. The workflow compares it with both the keystore and signed AAB. A wrong key fails before
 publication.
 
+The workflow's **Renderer** input defaults to `compose`. Select `react-native` only to produce an
+explicit migration candidate; it uses the same permanent package and release identity but a distinct
+artifact name and evidence field. React Native publication is locked until the protected environment
+variable `ANDROID_REACT_NATIVE_ADOPTED` is exactly `true`. Add that variable only after the required
+parity, performance, real-device, in-place update, and rollback evidence is accepted. Candidate AABs
+may be built and retained before adoption, but they cannot enter a Play edit.
+
 The service account is invited to Play Console only after the first manual AAB exists. Restrict it
 to `loomarr.media` and testing-track release rights; do not grant account administration or
 Production access. Enable the Google Play Developer API in its Cloud project.
@@ -65,14 +72,16 @@ Production access. Enable the Google Play Developer API in its Cloud project.
 Run **Android TV beta** from `main` with:
 
 - version `0.1.0-beta.1`;
+- renderer `compose` for the bootstrap release;
 - **Publish to Play** disabled; and
 - track `internal`.
 
 The workflow requires the exact `main` commit to have a successful CI run in which the Android job
 actually executed. It then builds with the protected upload key, verifies the signature and
-certificate, checks `loomarr.media`, inspects all packaged native libraries for 32/64-bit ABIs and
-16 KiB ELF alignment, and retains the AAB plus its JSON evidence for 30 days. Download that AAB and
-upload it manually while enrolling in Play App Signing.
+certificate, checks `loomarr.media`, requires packaged native libraries for all four 32/64-bit TV
+ABIs, verifies every `arm64-v8a` and `x86_64` library has 16 KiB ELF alignment, and retains the AAB
+plus its JSON evidence for 30 days. Download that AAB and upload it manually while enrolling in Play
+App Signing.
 
 Do not use Internal App Sharing for acceptance; it re-signs artifacts with a disposable identity and
 does not prove the beta update path.

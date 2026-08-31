@@ -87,7 +87,11 @@ func main() {
 		log.Fatalf("seed: clips: %v", err)
 	}
 
-	fmt.Printf("\nseed complete. Log in at the web UI as %q / %q.\n", adminUser, adminPass)
+	if admin.Name == adminUser {
+		fmt.Printf("\nseed complete. Log in at the web UI as %q / %q.\n", adminUser, adminPass)
+	} else {
+		fmt.Printf("\nseed complete. Reused existing admin %q; use its existing credential.\n", admin.Name)
+	}
 	fmt.Printf("store: %s\n", cfg.DatabaseURL)
 }
 
@@ -105,11 +109,21 @@ func seedAdmin(ctx context.Context, st store.Store, usrID func() string) (store.
 	// Already seeded: bootstrap is once-only. Fetch the existing admin so the rest
 	// of the seed (which needs an admin id for audit) still runs, and warn loudly.
 	existing, gerr := st.GetUserByName(ctx, adminUser)
-	if gerr != nil {
-		return store.User{}, fmt.Errorf("bootstrap failed (%w) and no existing %q admin to reuse: %v", err, adminUser, gerr)
+	if gerr == nil && existing.Role == store.RoleAdmin && !existing.Disabled {
+		log.Printf("seed: admin already exists (%v) — reusing %q; delete the DB to reseed from scratch", err, existing.Name)
+		return existing, nil
 	}
-	log.Printf("seed: admin already exists (%v) — reusing %q; delete the DB to reseed from scratch", err, adminUser)
-	return existing, nil
+	users, listErr := st.ListUsers(ctx)
+	if listErr != nil {
+		return store.User{}, fmt.Errorf("bootstrap failed (%w) and list existing admins: %v", err, listErr)
+	}
+	for _, candidate := range users {
+		if candidate.Role == store.RoleAdmin && !candidate.Disabled {
+			log.Printf("seed: bootstrap already completed (%v) — reusing enabled admin %q", err, candidate.Name)
+			return candidate, nil
+		}
+	}
+	return store.User{}, fmt.Errorf("bootstrap failed (%w) and no enabled admin exists", err)
 }
 
 // seedMember adds one non-admin user. The identity model (§11) has no local-member

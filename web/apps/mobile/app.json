@@ -35,6 +35,8 @@
         }
       ],
       "../../scripts/with-memory-safe-android-build.cjs",
+      "../../scripts/with-workspace-bundle-inputs.cjs",
+      "../../scripts/with-loomarr-android-network.cjs",
       "expo-secure-store"
     ],
     "experiments": {

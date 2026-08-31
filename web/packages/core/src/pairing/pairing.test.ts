@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createAuthenticatedFetch,
+  createMigratingPairingCredentialStore,
   createPairingCredentialStore,
   normalizeServerUrl,
   PairingHttpError,
@@ -20,6 +21,34 @@ const memoryStore = (credential?: PairingCredential) => ({
 });
 
 describe("pairing contract", () => {
+  it("preserves a legacy Android pairing through the renderer update", async () => {
+    let currentValue: string | null = null;
+    const legacyCredential = {
+      serverUrl: "https://loomarr.media/household",
+      token: "compose-device-token",
+    };
+    const legacy = { read: vi.fn(async () => legacyCredential) };
+    const store = createMigratingPairingCredentialStore({
+      deviceName: "Loomarr TV",
+      legacy,
+      storage: {
+        deleteItem: vi.fn(async () => {
+          currentValue = null;
+        }),
+        getItem: vi.fn(async () => currentValue),
+        setItem: vi.fn(async (_key, value) => {
+          currentValue = value;
+        }),
+      },
+    });
+
+    expect(await store.read()).toEqual({
+      deviceName: "Loomarr TV",
+      serverUrl: "https://loomarr.media/household",
+      token: "compose-device-token",
+    });
+    expect(await legacy.read()).toEqual(legacyCredential);
+  });
   it("accepts only origin-like http addresses", () => {
     expect(normalizeServerUrl(" https://loomarr.media/// ")).toBe("https://loomarr.media");
     expect(normalizeServerUrl("https://user:secret@loomarr.media")).toBeUndefined();

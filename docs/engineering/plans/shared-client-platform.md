@@ -1,6 +1,6 @@
 # Shared client platform migration
 
-**Status:** P0a through P3 merged; P3.5 shared-UI completeness gate is in progress
+**Status:** P0a through P3 merged; P3.5 publication complete on #581; dependent P4 implementation restacking for the #727 decision
 **Date:** 2026-08-23  
 **Decision owner:** maintainer  
 **Companion contract:** [`docs/frontend-design.md`](../../frontend-design.md)
@@ -118,14 +118,21 @@ and Compose remain legacy implementations during migration; they receive fixes n
 shipping clients healthy but no new shared design authority. They are removed only after adoption
 and parity.
 
-## New visual direction
+## Visual direction and parity order
 
-The replacement has no retro-theme name. It is simply Loomarr's product language:
+The shared product language remains semantic and cross-platform, but the Android TV migration is
+parity-first. On 2026-08-26 the maintainer selected the shipping Compose application and committed
+Roborazzi captures as the presentation baseline. React Native must reproduce those surfaces before a
+later redesign can be proposed; implementation replacement is not permission to replace the look.
 
 - **Content first.** Programme artwork, channel identity, title, episode information, and time are
   visually primary; application chrome recedes.
-- **Watching first on TV.** Playback is the home state. Guide and Surf are transient, edge-to-edge
-  layers over a still-mounted player and dismiss without losing the tuned channel.
+- **Watching first on TV.** Playback is the home state. Guide is an edge-to-edge destination and
+  Surf is the Compose-matching left overlay over a still-mounted player; both dismiss without losing
+  the tuned Channel.
+- **Compose parity before redesign.** Watching chrome, number entry, Surf, Guide, filters, detail,
+  loading, empty, error, focus, and remote hints match the committed 1080p and 4K references. Shared
+  interfaces remain reusable; the TV presentation adapter owns this geometry.
 - **Dark-first, mode-aware surfaces.** Loomarr defaults to the dark broadcast-console presentation
   on first load and fresh install. Light provides an equally intentional daytime presentation, and
   system-following may be offered as an explicit saved choice. Playback may remain black, while
@@ -216,6 +223,8 @@ fixtures cover deterministic states, but a mock-only demo does not pass.
 ### Visual and interaction
 
 - Maintainer-approved captures for desktop web, mobile web, iPhone, 1920x1080 TV, and 3840x2160 TV.
+- Android TV Watching, Surf, Guide, pairing, loading, empty, and failure captures match the committed
+  Compose Roborazzi references before Compose retirement or a later redesign is considered.
 - Guide and player surfaces fill the viewport. Safe-area/overscan padding belongs inside the
   composition and never creates an outer frame.
 - TV focus survives a ten-minute traversal across rows, airings, Guide, Surf, and player controls;
@@ -240,10 +249,17 @@ fixtures cover deterministic states, but a mock-only demo does not pass.
   above 1 MiB uncompressed.
 - A Shield Macrobenchmark of repeated Guide navigation records p95 frame duration no greater than
   32 ms, p99 no greater than 50 ms, and zero frozen frames (700 ms or longer).
+  The TV Expo config now generates the separate release-like AndroidX Macrobenchmark module and the
+  memory-bounded runner rejects non-Shield devices and reports outside those limits; the physical
+  Shield report remains required before this item can be marked adopted.
 - Prepared-channel first frame stays within the existing playout tune budget and repeated surfing
   does not start encoders for prepared hits.
 - The production slice is measured both with and without the Tamagui compiler. The compiler is
   adopted only if it improves bundle or render evidence and leaves all gates green.
+  Serial one-worker Android exports on 2026-08-26 measured runtime-only versus compiler Hermes
+  bundles at 2,496,641 versus 2,517,056 bytes for TV (+20,415, +0.818%) and 3,686,236 versus
+  3,706,662 bytes for mobile (+20,426, +0.554%). Runtime-only therefore remains the default; the
+  opt-in build mode is retained only for the physical-render comparison before the final decision.
 - Local and CI tasks are affected-aware: native jobs do not run for an unrelated Go-only edit, and
   web-only story changes do not build both native applications unless a shared input changed.
 
@@ -253,14 +269,26 @@ fixtures cover deterministic states, but a mock-only demo does not pass.
   imports and no dependency cycles.
 - The same production source implements the shared primitives and Guide detail content on all three
   targets; platform adapters contain navigation, focus, and player transport differences.
-- A source-sharing report identifies shared, adapter-specific, and duplicated code. Duplicated
-  product rules block adoption; duplicated platform mechanics do not.
+- The [source-sharing report](../client-platform-source-sharing.md) identifies shared,
+  adapter-specific, and duplicated code. Duplicated product rules block adoption; duplicated
+  platform mechanics do not.
 - Removing Tamagui would require replacing the design-system implementation, not editing every
   screen. This deletion test is proved by import-graph enforcement.
 
-The maintainer records **adopt**, **revise and repeat**, or **reject** against every item above in
-[#727](https://github.com/loomarr/loomarr/issues/727). Only `adopt` authorizes the remaining
-migration and retirement phases.
+The maintainer records **adopt**, **revise and repeat**, or **reject** against every item above. Only
+`adopt` authorizes the remaining migration and retirement phases.
+
+### P5 decision — 2026-08-31
+
+**Revise and repeat.** The reconciled vertical slice, emulator journey, package boundaries, player
+tests, browser adapter, production web build, mobile/TV typechecks, and source-sharing/deletion
+contract pass, but the acceptance contract is not yet complete. The failed dimensions are missing
+physical-Shield populated presentation/focus/time-shift/background evidence, a physical-Shield
+Macrobenchmark result, a protected-upload-key candidate manifest, and Play in-place
+update/pairing-preservation/rollback/listing evidence. The next bounded rerun is #727 on a connected
+physical Shield and the protected Play testing track; it must retain Compose as the rollback renderer
+and rerun the final serialized client and hosted-CI gates at that evidence head. This outcome does
+not authorize P6/P7 production migration or P8 retirement.
 
 ## Delivery sequence
 
@@ -276,7 +304,7 @@ the adoption gate.
 | P3 | mobile/TV shells, pairing, confirmed self-disconnect, transport, and navigation adapters; shipping-screen parity inventory and dark-first pairing with canonical lockup and protected-centre branded QR | iPhone and Shield pair/self-disconnect/remote-revocation recovery evidence plus visual parity and QR-decode review |
 | P3.5 | complete the shared design-system, product-UI, and platform-adapter interfaces required by the known web, mobile, and TV surfaces | coverage ledger has no unexplained gaps; web/native Storybooks exercise every supported theme, density, state, interaction, and motion mode; interface, visual, interaction, accessibility, drift, and import-boundary gates pass; real iPhone and 1080p/4K TV workshop evidence recorded |
 | P4 | playback, overlay, Surf, tuning, and previous-channel behavior | real-server first frame and remote/touch/browser traversal |
-| P5 | full vertical-slice evidence and go/no-go decision | every acceptance item above and the explicit outcome in #727 recorded |
+| P5 | full vertical-slice evidence and go/no-go decision | every acceptance item above recorded |
 | P6 | remaining viewer surfaces | route-by-route parity; current clients still releasable |
 | P7 | administrative web surfaces | authorization, forms, accessibility, responsive and visual parity |
 | P8 | retire Tailwind/shadcn and Compose presentation; finish distribution | clean retired identifiers, Play/iOS beta builds, in-place update, complete gates |
@@ -286,6 +314,110 @@ the adoption gate.
 Before P5 adoption, reverting a phase removes only the new workspace applications and shared
 packages. The Go embed, current web assets, Compose app, Play identity, and paired-device records
 remain untouched.
+
+P4 begins on a dependency-stacked branch while P3.5 waits for its real-iPhone workshop. That permits
+interface and adapter work to proceed, but does not waive the P3.5 evidence or allow P4 to be marked
+complete, adopted, or merged ahead of its dependency. Its first commit adds the Loomarr-owned player
+interface and tests; the next implementation slices add the selected native adapter, production
+Watching journey, transient chrome, exact TV number-entry buffer, and generated-contract Guide
+controller, authoritative Surf journey, and Watching now/next timeline wired to the production native shells. The TV host now
+supplies the tested bounded Guide row window and TV-specific Surf identity restoration through
+platform-neutral journey seams. A first-party XHR event-stream adapter supplies authenticated
+`channel` invalidations on React Native, where the built-in fetch transport does not expose the
+streaming body needed by browser EventSource; each frame re-reads the authoritative catalog and
+Guide, reconnects after transient closure, closes in the background, and fails closed through the
+pairing revocation path on 401/403. The bounded generated-contract diagnostics reporter now lives
+in `core` for web/native reuse, and Android TV reports only the server-approved attached, source
+replacement, first-frame, media-error, and detached playback observations; decoder prose and other
+arbitrary client data never cross the boundary. Guide and Surf now pass stable product identities
+through a platform-neutral focus registry; the TV adapter binds those identities to native refs,
+queues restoration until bounded rows mount, and keeps React Native focus mechanics out of shared
+selection rules. Android mobile now emits the same closed playback lifecycle through an explicitly
+admitted `android_mobile` source/platform pair; the server still derives the paired member, rejects
+unknown fields, and accepts no arbitrary logs or device labels. Populated-device focus proof,
+populated artwork evidence, and real-device acceptance remain open.
+
+The shipping web Watch route now consumes `@loomarr/player/browser` rather than owning its hls.js
+and native-HLS transport implementation. The public adapter accepts narrow signed-source,
+diagnostic, error-projection, and tune-timing ports; its implementation remains private while the
+route wrapper preserves the existing generated API and application instrumentation. The existing
+twenty playback tests exercise that public entry through the production wrapper, and the production
+web build retains its bundle-size gate. This closes the browser-player source-sharing blocker, not
+the remaining browser presentation migration or P5 device acceptance.
+
+The native player application lifecycle now treats backgrounding as a resource boundary rather than
+only a pause signal. It pauses controller state, removes native listeners, synchronously releases
+the Expo Video player, and renders no stale player view while backgrounded. Foregrounding creates a
+fresh player, re-reads the authoritative catalog, and force-retunes the remembered Channel only when
+one still exists; the long-lived controller retains previous/recent history. Interface tests pin the
+release/recreation sequence and the no-invented-tune empty case. Real-device background/foreground
+first-frame and audio-silence evidence remains required.
+
+The shared player snapshot now also owns the live-time-shift state consumed by product UI instead of
+leaving it inside a platform player. Expo Video's periodic update supplies the displayed frame's
+programme-date-time and live offset; the native adapter publishes live, paused, or behind mode plus
+the increasing lag and expiry revision. Pause keeps the one player's exact position, resume remains
+behind while that position is inside the fifteen-minute server horizon, an expired position seeks
+and resumes at the safe live edge, and an explicit Go Live does the same without waiting for a
+second Play action. Native now/next uses that displayed-frame clock, and the Watching bar exposes
+lag, meaningful Go Live availability, and expiry recovery. Interface tests cover ordering and the
+bounded fallback; real-device pause/resume/expiry evidence remains required.
+
+The touch application no longer hard-locks portrait: its Expo orientation is the schema-supported
+`default`, allowing the same safe-area-aware shell to rotate on Android and iOS. This removes a
+configuration blocker from the required portrait/landscape workshop, but does not count as real
+iPhone rotation, scrolling, target, or focus-transfer evidence.
+
+The first physical P4 pass installed a production arm64 release APK on the 4K Shield and paired it
+to the isolated worktree backend over the deployment model's normal plain-HTTP LAN origin. That pass
+caught two native-only gaps: Expo's generated release manifest had not preserved the shipping
+client's explicit cleartext opt-in, and the still-mounted Watching surface leaked its transient
+chrome above Guide and Surf. A shared fail-closed config plugin now applies the Android policy to
+both native applications, while `WatchingSurface` can hide only its chrome and keep the one native
+player mounted. After repair, the paired credential survived a force-stop/reinstall and the remote
+traversed the empty Watching, Guide, and Surf routes without hidden playback controls entering the
+accessibility tree. An authenticated generated-contract read now identifies the server alongside
+the native application version even in Surf's empty/error states; a remote device-list revocation
+returned the Shield to the explicit disconnected state, and Pair again completed a fresh handshake.
+This is useful device evidence, not P4 acceptance: the isolated server had no playable channels, so
+first frame, populated focus traversal, tuning, and playback recovery remain open.
+
+A subsequent isolated-server pass supplied a real internal-playout HLS Channel backed by an H.264/AAC
+fixture. The production-bundled arm64 debug APK paired on the physical Shield, requested the signed play URL,
+initialized Media3, and rendered the first decoded frame with authoritative Channel and programme
+identity. Pressing OK from Watching opened the populated Guide. That traversal exposed a native focus
+gap after Back: once transient chrome unmounted, Watching retained no TV-focusable node and Left could
+not reach the global remote adapter. `WatchingSurface` now keeps its full-screen reveal target
+focusable; a focused interface test pins the target, and the x86 Android TV emulator reproduced the
+Guide → Back → idle → Left sequence with Surf opening over the still-mounted player after repair. The
+same emulator confirmed that HOME releases the Media3 session and ExoPlayer synchronously and that
+foregrounding retains the paired credential and recreates Watching. Full populated-focus soak,
+physical-device background/foreground, and pause/resume/expiry evidence remain open.
+
+The dependency branch also supplies `make client-tv-emulator-journey`, a no-build, emulator-only
+acceptance command. It fails closed on hardware, an unpaired client, an unavailable populated Guide
+or Surf surface, or Watching chrome leaking into either sibling route. On an authorized populated
+emulator it drives Watching → Guide → Back → Surf → Back plus HOME/foreground recreation and requires
+the contractual accessibility surface after each transition. Its current isolated-emulator run is
+intentionally red at authorization; approving the displayed pairing code is required before that
+runtime evidence can be recorded.
+
+A later release traversal used the Shield's real 1920 × 1080 xhdpi output, and therefore the
+contractual 960 × 540dp composition rather than treating physical pixels as layout units. It caught
+Surf's full-height unavailable panel painting over the connection control and quiet version footer.
+The shared shell now uses bounded TV spacing and an explicitly compact `StatePanel` composition;
+the footer is part of that panel instead of overflowing as an unrelated sibling. The repaired device
+tree keeps the disconnect control at y=203–252, unavailable content at y=510–726, and navigation at
+y=894–945, with no overlap or React Native/Android runtime error. Watching likewise offers Retry only
+for an actual catalog or transport failure, not for an authoritative empty catalog.
+
+That rebuild exposed a separate distribution hazard: React Native Gradle's default incremental bundle
+inputs stop at each Expo app directory even though Metro resolves Loomarr product code from workspace
+packages. The generated mobile and TV Android projects now add shared JavaScript/TypeScript/JSON,
+workspace package/lock metadata, and the app Metro configuration to every `BundleHermesCTask` input.
+The fail-closed config plugin and generated Gradle proof prevent an incremental release from silently
+retaining stale shared UI. The post-change native assemble still needs repeating under the normal
+Android build sandbox; the resumed restricted sandbox cannot initialize Gradle's local lock listener.
 
 After adoption, migration uses route/surface ownership rather than two implementations mounted for
 the same user journey. A surface switches only when its replacement passes its full contract. The

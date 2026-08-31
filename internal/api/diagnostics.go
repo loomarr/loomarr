@@ -83,7 +83,7 @@ type diagnosticEventsInput struct {
 	Cursor            string                 `query:"cursor" maxLength:"512" doc:"Opaque cursor returned by the previous page"`
 	Order             diagnostics.EventOrder `query:"order" enum:"newest,oldest" default:"newest" doc:"Timeline order"`
 	Level             diagnostics.Level      `query:"level" enum:"debug,info,warn,error" doc:"Exact severity"`
-	Source            diagnostics.Source     `query:"source" enum:"server,web,android_tv" doc:"Exact observing runtime"`
+	Source            diagnostics.Source     `query:"source" enum:"server,web,android_mobile,android_tv" doc:"Exact observing runtime"`
 	Event             string                 `query:"event" maxLength:"128" doc:"Exact stable event name"`
 	Subsystem         string                 `query:"subsystem" maxLength:"128" doc:"Exact subsystem"`
 	RequestID         string                 `query:"requestId" maxLength:"128" doc:"Exact API request correlation id"`

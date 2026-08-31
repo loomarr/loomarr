@@ -3,10 +3,35 @@ package main
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
 )
+
+func TestSeedAdminReusesExistingEnabledAdmin(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, "sqlite://"+t.TempDir()+"/seed.db", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	provisioner := auth.NewProvisioner(st, nil, func() string { return "developer-id" }, time.Now)
+	existing, err := provisioner.Bootstrap(ctx, "developer", "correct horse battery staple")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := seedAdmin(ctx, st, newID("usr"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != existing.ID {
+		t.Fatalf("seed admin ID = %q, want existing %q", got.ID, existing.ID)
+	}
+}
 
 func TestSeedClipsCreatesDistinctTaxonomyReadyCatalog(t *testing.T) {
 	ctx := context.Background()

@@ -1,0 +1,6 @@
+{
+  "platforms": ["android"],
+  "android": {
+    "modules": ["media.loomarr.tv.legacypairing.LegacyPairingModule"]
+  }
+}

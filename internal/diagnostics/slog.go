@@ -179,7 +179,7 @@ func promoteSlogFields(event *Event) {
 	var source string
 	promote(&source, "source")
 	switch Source(source) {
-	case SourceServer, SourceWeb, SourceAndroidTV:
+	case SourceServer, SourceWeb, SourceAndroidMobile, SourceAndroidTV:
 		event.Source = Source(source)
 	case "":
 	default:

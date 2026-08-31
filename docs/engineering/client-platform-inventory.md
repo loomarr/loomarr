@@ -41,6 +41,56 @@ Controls must communicate their purpose through the platform interaction and acc
 
 ## Current implementation assessment
 
+### 2026-08-26 Compose-to-React-Native presentation checkpoint
+
+A rendered comparison against the shipping Compose references initially found that the React Native
+TV application did **not** preserve the shipping presentation. The maintainer selected Compose
+parity, and the TV-specific adapters now implement the reference composition rather than the
+rejected generic TV shell. This source checkpoint records that correction; updated emulator and
+physical-device captures are still required before visual parity is accepted.
+
+| Surface | Shipping Compose reference | Current React Native presentation | Checkpoint result |
+| --- | --- | --- | --- |
+| Watching | Full-screen video with a compact transient Channel pill, direct number-entry card, and a two-tier bottom now/next/progress bar; remote hints are quiet text rather than controls | `TvWatchingSurface` now renders the same compact pill, number card, bottom schedule/progress composition, and quiet hints | source and deterministic adapter coverage corrected; device recapture remains |
+| Surf | A left-side translucent overlay over the still-visible player; grouped Channel rows expand the focused now/progress detail and Back cancels | `TvSurfRail` is now a 44% left overlay over the still-mounted player with grouped expanding rows, progress, count, and Back hint | source and deterministic adapter coverage corrected; populated device traversal remains |
+| Guide | A dense edge-to-edge table with fixed Channel/time axes, compact filter strip, six visible rows, and a bottom focus-tracking detail band | `TvGuideSurface` now renders an edge-to-edge fixed-axis table, compact filters, bounded row window, live line, and bottom detail band | source and deterministic adapter coverage corrected; populated device recapture remains |
+| Navigation | Watching owns direct D-pad/number actions; Guide and Surf are temporary destinations; Back returns to Watching and then Android owns exit | TV no longer renders persistent destination chrome; the remote and Back adapters own the same temporary transitions | source and interface tests corrected; final physical Back exit remains |
+| Loading, empty, and failure | Surface-specific centered copy over the playback or Guide canvas | TV journeys retain distinct loading, empty/dead-air, tuning, recoverable failure, retry, and disconnect states without restoring the rejected generic shell | state coverage corrected; device recapture remains |
+
+The comparison uses the committed Roborazzi references under `android/app/src/test/screenshots/`, the
+shipping sources in `android/app/src/main/java/loomarr/media/{guide,navigation,playback}`, and the
+production React Native sources in `web/apps/tv/src` and `web/packages/ui`. Device captures remain
+acceptance evidence, but the committed renderer references make this mismatch reproducible without
+requiring the same television or emulator session.
+
+The maintainer selected screen-for-screen Compose fidelity first on 2026-08-26. The committed
+Roborazzi references are therefore the Android TV presentation baseline for Watching, Surf, Guide,
+pairing, loading, empty, and failure states. A later redesign remains possible only after the React
+Native shipping path passes those parity gates; it is not part of this migration checkpoint.
+
+### Behavioral parity checkpoint
+
+Presentation choice does not reopen the contracts that already work. The migration keeps the
+following ledger so a later visual correction cannot silently replace product or platform behavior.
+
+| Contract | Compose evidence | React Native evidence | Status / remaining proof |
+| --- | --- | --- | --- |
+| Pairing, least-authority credential storage, confirmed disconnect, and remote revocation | `pairing/PairingClientTest.kt`, `pairing/DeviceStore.kt`, and the shipping paired shell | `core/src/pairing/pairing.test.ts`, `PairingShell`, paired transport tests, shared `DeviceDisconnectAction`, populated/unavailable TV Surf reachability tests, and physical-Shield pair/revoke/re-pair traversal | preserved; the Compose-parity Surf action still needs emulator/Shield D-pad confirmation and real-iPhone traversal remains |
+| Watching Up/Channel Up, Down/Channel Down, OK Guide, Left/Menu Surf, and Back delegated to Android | `navigation/TvNavigation.kt` and `TvNavigationTest.kt` | `ui-tv/src/watching-remote` plus `watching-remote.test.ts`; the TV host returns `false` for Back from Watching | preserved; final physical Back exit remains |
+| Exact number tune with a three-digit buffer and 1.2-second commit | `WatchScreen.kt` and `TvNavigationTest.kt` | `ui-tv/src/number-entry` and `number-entry.test.ts` | preserved by interface tests; physical number-key pass remains |
+| Play, pause, resume-behind, and Go Live keep one player and one shared time-shift state | Compose did not expose the shared DVR contract | `player` live-state tests, native transport tests, Watching state tests, and the `ui-tv` Play/Pause remote adapter | implemented; real-device pause/resume/expiry traversal remains |
+| One player remains mounted while Guide or Surf is visible | `TvHomeState` keeps Surf over Watching | `WatchingSurface` stays mounted and suppresses only its chrome; `apps/tv/tests/config.test.mjs` and `ui/tests/watching-surface.test.tsx` guard the seam | preserved; Surf must regain the Compose left-overlay composition |
+| Authoritative Channel order, exact tune, previous Channel, and bounded recent history | `ChannelCatalogTest.kt` and `TuneHistory` | `player-controller.test.ts`, `surf-data.test.ts`, and `surf-navigation.test.ts` | preserved and extended to latest-request-wins reconciliation |
+| Guide selection clamps to real rows/airings, retains a time anchor vertically, skips disabled filters, and tunes one explicit selection | `GuideCursor`, `GuideFocus`, `TimelineTest.kt`, and `GuideClientTest.kt` | `core/src/guide/*test.ts`, `ui-tv/tests/guide-navigation.test.ts`, `focus-registry.test.ts`, and `ui/tests/guide.test.tsx` | interface parity proven; populated remote-repeat and focus soak remain |
+| Surf keeps Favorites, Recent, and All in stable order without inventing unavailable favorites | `channelSections` and `TvNavigationTest.kt` | `surf-data.test.ts`, `surf-rail.test.tsx`, and `surf-navigation.test.ts` | preserved; populated artwork/focus traversal remains |
+| Loading, empty/dead-air, tuning, recoverable failure, and retry remain distinct | `WatchUiState`, `GuideUiState`, and committed screenshots | `state-panel.test.tsx`, `watching-surface.test.tsx`, Guide/Surf journeys, and deterministic native stories | state meaning proven; adopted presentation and device traversal remain |
+| Device bearer never enters HLS or an external artwork origin; 401/403 revokes locally | shipping `PlaybackClient`, `GuideClient`, and `RemoteArtworkTest.kt` | `play-url-source.test.ts`, `native-transport.test.ts`, and `native-event-stream.test.ts` | preserved and fail-closed; final mobile admission remains |
+| Backgrounding stops playback and releases the native player; foregrounding re-reads authority before retuning | Compose activity/player lifecycle | `native-player-lifecycle.test.ts`, `native-transport.test.ts`, and emulator HOME/foreground evidence | emulator proven; physical-Shield background/foreground remains |
+| Android identity, signing, versioning, in-place update, and rollback survive the renderer migration | shipping `loomarr.media` application and Android beta contract | prototype identity remains separate; Compose remains the release default and rollback renderer; an explicit production React Native prebuild assembled and signed an ephemeral `loomarr.media` AAB with the requested name/code, all four ABIs, and passing 64-bit 16 KiB alignment; the verifier separately requires four-ABI coverage and checks every 64-bit library; publication remains fail-closed behind the protected adoption record; the generated release-like Shield Macrobenchmark harness enforces the P5 Guide p95/p99/frozen-frame limits | protected upload-key build, physical Shield benchmark, Play in-place update, rollback drill, and adoption record remain |
+
+“Preserved” in this table means the named automated evidence covers the interface contract. It does
+not upgrade missing hardware, distribution, visual, or adoption evidence into completion.
+
 ### Keep as product truth
 
 | Existing asset | Why it survives | Target home |
@@ -70,18 +120,18 @@ automatically.
 | web and Android story/screenshot fixtures | consolidate the domain scenario; keep separate renderer baselines at platform dimensions |
 | existing launcher icon, TV banner, and store metadata | preserve identity requirements, then regenerate presentation assets from the adopted visual language |
 
-### Redesign rather than port
+### Redesign only after Android TV parity
 
-| Current area | Evidence | Replacement direction |
+| Current area | Migration direction | Later option after parity |
 | --- | --- | --- |
-| palette and token names | `static-*`, `signal`, and Tailwind aliases expose palette and implementation history more than product intent | semantic roles for surfaces, content, action, state, artwork, focus, distance, and motion |
-| typography scale | web scale is multiplied by 1.5 in generated Kotlin; the result preserves ratios but not a designed ten-foot hierarchy | platform scales behind shared roles, verified at real viewing distance and iPhone accessibility sizes |
-| Watching chrome | current Android reference is visually heavy and the identity banner competes with programme metadata | transient, bottom-anchored, edge-to-edge overlay with channel identity, complete airing facts, progress, and automatic fade |
-| Surf | current Android reference uses roughly half-screen opaque furniture and large empty space | content-density based width, transparent black playback overlay, grouped Favorites/Recent/All, visible focus and progress |
-| Guide | current implementation proves focus and metadata but reads as a large table; artwork is secondary and the time hierarchy is weak | edge-to-edge programme surface, stable channel/time axes, focus-tracking artwork/detail, semantic programme states, explicit filters |
-| channel identity | text/number blocks dominate and logo/artwork treatment differs by client | one ChannelIdentity interface with logo, monogram fallback, number, live state, and distance-specific density |
-| administrative web chrome | Test Card styling is treated as identity even where it adds little to operator comprehension | quieter application shell and purposeful hierarchy; viewer primitives reused only where the intent matches |
-| empty/loading/error treatment | multiple implementations inherit current palette and layout assumptions | shared state interfaces with platform presentation and RFC 7807 mapping |
+| palette and token names | Keep semantic shared roles internally, but the TV adapter must resolve to the committed Compose colors, contrast, opacity, and focus treatment | Evolve semantic values after a separately approved visual change |
+| typography scale | Preserve the Compose ten-foot hierarchy and truncation at both committed 1080p and 4K densities | Revisit platform scales with new reviewed TV captures |
+| Watching chrome | Match the compact top-right Channel pill, top-left number entry, two-tier bottom now/next/progress bar, quiet remote hints, and five-second fade | Explore another chrome composition after parity ships |
+| Surf | Match the left-side translucent rail over the still-visible player, stable group order, focused-row expansion, progress, count, and Back cancel | Rebalance rail width or artwork only with new acceptance references |
+| Guide | Match the dense edge-to-edge table, fixed Channel/time axes, compact filter strip, visible row density, focus treatment, and bottom detail band | Introduce a different Guide hierarchy only as a later redesign |
+| channel identity | Keep one shared identity interface while the TV adapter preserves Compose number/name/live geometry; touch may use its own density adapter | Unify more presentation after both adapters are proven |
+| administrative web chrome | Not governed by the Android TV parity baseline | Continue the planned quieter web shell independently |
+| empty/loading/error treatment | Preserve state meaning through shared interfaces and match the corresponding Compose TV canvas composition | Refine shared state presentation after TV parity |
 
 ### Retire only after parity
 
@@ -119,18 +169,23 @@ adapted, not deleted with Compose.
 - The iPhone and iPad composites are not a complete mobile application specification. Setup,
   authentication, error recovery, accessibility, portrait/landscape, and safe-area behavior come
   from the product contract and platform evidence.
-- The current Compose player uses Media3 directly. The React Native native-player adapter is not yet
-  selected; P0b must compare maintained native HLS adapters against Loomarr's signed-URL, live-edge,
-  track, lifecycle, TV-key, and store-build requirements before adding one.
-- Tamagui's compiler and TV behavior are evidence questions. Runtime-only Tamagui is the baseline;
-  compiler adoption and full migration wait for the recorded P5 gate.
+- The current Compose player uses Media3 directly. The React Native adapter is now selected as Expo
+  SDK 57's `expo-video`, private to `@loomarr/player/native`: it supplies Media3/AVPlayer source and
+  view mechanics while Loomarr retains signed-URL, latest-request-wins, live-edge, overlay, history,
+  diagnostics, and lifecycle policy. Background playback and Picture in Picture stay disabled, and
+  pause/release plus real-device background traversal are mandatory because SDK 57 has a reported
+  audio-after-unmount regression.
+- Tamagui's compiler and TV behavior are evidence questions. Runtime-only Tamagui remains the
+  baseline after serial Android Hermes exports made the TV bundle 20,415 bytes (+0.818%) and mobile
+  bundle 20,426 bytes (+0.554%) larger with compilation. The opt-in build mode remains only for the
+  physical-render comparison; compiler adoption and full migration still wait for the P5 gate.
 
 ## Inventory conclusion
 
-The reusable asset is not the current look. It is the server contract, authorization and pairing
-model, deterministic domain scenarios, tune/Guide behavior, release identity, and the tests that
-describe those guarantees. The new design-system implementation should replace the presentation
-while concentrating those rules behind shared Loomarr interfaces. The Guide-to-Playback slice is
+The reusable asset includes both the server/authorization/navigation contracts and the committed
+Android TV presentation. React Native may replace the implementation, but its TV adapter must first
+preserve the shipping composition while concentrating product rules behind shared Loomarr
+interfaces. Touch and web adapters may use their approved density-specific compositions. The Guide-to-Playback slice is
 large enough to test every risky seam—data, artwork, focus, navigation, playback, overlay state,
 responsive layout, and actual hardware—before the project commits to migrating 213 web view files
 and the shipping TV client.

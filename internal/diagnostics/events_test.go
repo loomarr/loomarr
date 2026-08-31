@@ -102,12 +102,13 @@ func TestEventLogAllowsAllRetainedHistory(t *testing.T) {
 	}), func() time.Time { return now })
 
 	_, err := log.Query(context.Background(), EventQuery{
-		From: 1, To: now.UnixMilli(), Limit: 50, Order: EventOrderOldest,
+		From: 1, To: now.UnixMilli(), Limit: 50, Order: EventOrderOldest, Source: SourceAndroidMobile,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if captured.From != 1 || captured.To != now.UnixMilli() || captured.Limit != 51 || captured.Order != EventOrderOldest {
+	if captured.From != 1 || captured.To != now.UnixMilli() || captured.Limit != 51 ||
+		captured.Order != EventOrderOldest || captured.Source != SourceAndroidMobile {
 		t.Fatalf("retained-history query = %+v", captured)
 	}
 }

@@ -40,6 +40,8 @@ web-tooling	web/apps/web/package.json	web,visual,e2e,tuner,image
 workspace-tooling	web/package.json	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image
 openapi	api/openapi.yaml	contracts,go,go_full,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
 android	android/app/src/main/AndroidManifest.xml	android
+android-native-verifier	scripts/verify-android-native-libraries.sh	contracts,android
+android-release-source-test	scripts/validate-android-release-source-test.sh	contracts,android
 release-image	Dockerfile	contracts,image
 documentation	docs/dev/testing.md	docs
 design-contract	docs/design.md	docs,policy

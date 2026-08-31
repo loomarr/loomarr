@@ -11,10 +11,13 @@ type StatePanelAction = {
 type StatePanelProps = {
   /** Exactly one recovery action keeps an interrupted journey decisive. */
   action?: StatePanelAction;
+  /** Use the reduced vertical composition when the panel shares a bounded app shell. */
+  compact?: boolean;
   description?: string;
   density?: Density;
   icon?: ReactNode;
   kind: StatePanelKind;
+  metadata?: string;
   title: string;
 };
 

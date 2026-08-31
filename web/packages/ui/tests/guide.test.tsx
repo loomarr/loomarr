@@ -62,6 +62,24 @@ const markup = () =>
   );
 
 describe("GuideSurface", () => {
+  it("matches the dense Compose TV grid with inline filters and a bottom detail band", () => {
+    const output = renderToStaticMarkup(
+      <LoomarrProvider>
+        <GuideSurface density="tv" layout={layout} onSelectionChange={vi.fn()} selection={selection} />
+      </LoomarrProvider>,
+    );
+    expect(output).toContain('aria-label="Programme guide"');
+    expect(output).toContain(">Guide<");
+    expect(output).toContain("All · 1");
+    expect(output).toContain("★ Favourites · 0");
+    expect(output).toContain("Recent · 0");
+    expect(output).toContain("▲ Filters");
+    expect(output).toContain("CHANNEL");
+    expect(output).toContain("Bart the Mother");
+    expect(output).toContain("S10E03 · 1998 · TV-PG");
+    expect(output).not.toContain("1 channels ·");
+  });
+
   it("renders authoritative channel, programme, episode, and detail facts", () => {
     const output = markup();
     expect(output).toContain("Springfield Classics");
@@ -77,6 +95,68 @@ describe("GuideSurface", () => {
     expect(output).toContain('aria-label="Favourites channels"');
     expect(output).toContain('aria-label="Recent channels"');
     expect(output.match(/aria-disabled="true"/g)).toHaveLength(2);
+  });
+
+  it("renders only the platform-provided channel window while retaining total position", () => {
+    const secondChannel = {
+      ...layout.channels[0]!,
+      airings: layout.channels[0]!.airings.map((airing) => ({
+        ...airing,
+        channelId: "shelbyville",
+        scheduleBlockId: "news",
+        source: { ...airing.source, scheduleBlockId: "news", title: "Shelbyville News" },
+      })),
+      source: {
+        ...layout.channels[0]!.source,
+        channelId: "shelbyville",
+        name: "Shelbyville News",
+        number: 2,
+      },
+    };
+    const windowedLayout = { ...layout, channels: [...layout.channels, secondChannel] };
+    const output = renderToStaticMarkup(
+      <LoomarrProvider>
+        <GuideSurface
+          channelWindow={{ end: 2, positionLabel: "2 of 2", start: 1 }}
+          layout={windowedLayout}
+          onSelectionChange={vi.fn()}
+          selection={{ anchorMs: 900_000, channelId: "shelbyville", scheduleBlockId: "news" }}
+        />
+      </LoomarrProvider>,
+    );
+
+    expect(output).toContain("Shelbyville News");
+    expect(output).not.toContain("Springfield Classics");
+    expect(output).toContain("2 channels · 2 of 2");
+  });
+
+  it("selects one airing when schedule block identities repeat across channels", () => {
+    const duplicate = {
+      ...layout.channels[0]!,
+      airings: layout.channels[0]!.airings.map((airing) => ({
+        ...airing,
+        channelId: "shelbyville",
+      })),
+      source: {
+        ...layout.channels[0]!.source,
+        channelId: "shelbyville",
+        name: "Shelbyville Classics",
+        number: 2,
+      },
+    };
+    const output = renderToStaticMarkup(
+      <LoomarrProvider>
+        <GuideSurface
+          density="tv"
+          layout={{ ...layout, channels: [...layout.channels, duplicate] }}
+          onSelectionChange={vi.fn()}
+          selection={selection}
+        />
+      </LoomarrProvider>,
+    );
+
+    // The selected All filter and exactly one airing advertise selected state.
+    expect(output.match(/aria-pressed="true"/g)).toHaveLength(2);
   });
 
   it.each([

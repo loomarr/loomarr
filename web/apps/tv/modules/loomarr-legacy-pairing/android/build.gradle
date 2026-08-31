@@ -1,0 +1,19 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'media.loomarr.tv'
+version = '0.0.0'
+
+android {
+  namespace 'media.loomarr.tv.legacypairing'
+  defaultConfig {
+    versionCode 1
+    versionName '0.0.0'
+  }
+}
+
+dependencies {
+  implementation 'androidx.datastore:datastore-preferences:1.1.7'
+}

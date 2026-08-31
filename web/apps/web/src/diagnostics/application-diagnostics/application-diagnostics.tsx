@@ -28,7 +28,7 @@ import { DiagnosticsSplitPane } from "../diagnostics-split-pane";
 
 type EventRange = "all" | "1h" | "6h" | "24h";
 type EventLevel = "all" | "debug" | "info" | "warn" | "error";
-type EventSource = "all" | "server" | "web" | "android_tv";
+type EventSource = "all" | "server" | "web" | "android_mobile" | "android_tv";
 type EventOrder = "newest" | "oldest";
 
 type ApplicationFilters = {
@@ -99,6 +99,7 @@ const levelLabel = (level: EventView["level"]) => {
 
 const sourceLabel = (source: EventView["source"]) => {
   if (source === "server") return "Loomarr";
+  if (source === "android_mobile") return "Android mobile";
   if (source === "android_tv") return "Android TV";
   return "Web player";
 };
@@ -502,6 +503,7 @@ const ApplicationDiagnostics = ({
                 <SelectItem value="all">All sources</SelectItem>
                 <SelectItem value="server">Loomarr</SelectItem>
                 <SelectItem value="web">Web player</SelectItem>
+                <SelectItem value="android_mobile">Android mobile</SelectItem>
                 <SelectItem value="android_tv">Android TV</SelectItem>
               </SelectContent>
             </Select>

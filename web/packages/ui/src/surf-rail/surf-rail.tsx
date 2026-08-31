@@ -11,8 +11,8 @@ import {
 
 import { ChannelIdentity, ProgrammeIdentity } from "../identity";
 import { StatePanel } from "../state-panel";
-
 import type { SurfChannelData, SurfGroupData, SurfRailProps, SurfSelection } from "./surf-rail.type";
+import { TvSurfRail } from "./surf-rail-tv";
 
 const surfRailWidth = (density: Density) => (density === "tv" ? 680 : density === "touch" ? "100%" : 480);
 
@@ -24,9 +24,14 @@ const findSurfChannel = (
     .find((group) => group.kind === selection.group)
     ?.channels.find((channel) => channel.id === selection.channelId);
 
-const SurfRail = ({
+const surfIdentityLabel = (clientName: string, clientVersion: string, serverVersion?: string) =>
+  `${clientName} ${clientVersion} · Server ${serverVersion ?? "unavailable"}`;
+
+const PointerSurfRail = ({
+  clientName = "Loomarr",
   clientVersion,
   density = "pointer",
+  focusRegistry,
   groups,
   onFocusSelection,
   onTune,
@@ -96,7 +101,12 @@ const SurfRail = ({
             secondaryWidth={density === "tv" ? 360 : 250}
           />
           {selectedChannel.now.progressPercent === undefined ? null : (
-            <ProgressTrack percent={selectedChannel.now.progressPercent} tone="live" width="100%" />
+            <ProgressTrack
+              accessibilityLabel={selectedChannel.now.title}
+              percent={selectedChannel.now.progressPercent}
+              tone="live"
+              width="100%"
+            />
           )}
           {selectedChannel.next ? (
             <Text density={density} numberOfLines={1} textRole="metadata">
@@ -130,9 +140,13 @@ const SurfRail = ({
                   <Action
                     accessibilityLabel={`${group.label}, channel ${channel.channelNumber}, ${channel.channelName}`}
                     density={density}
+                    hasTVPreferredFocus={density === "tv" && selected}
                     key={`${group.kind}-${channel.id}`}
                     onFocus={() => onFocusSelection({ channelId: channel.id, group: group.kind })}
                     onPress={() => onTune(channel.id)}
+                    ref={(handle) =>
+                      focusRegistry?.register({ channelId: channel.id, group: group.kind }, handle)
+                    }
                     selected={selected}
                     tone={selected ? "primary" : "secondary"}
                   >
@@ -146,10 +160,13 @@ const SurfRail = ({
       </ScrollFrame>
 
       <Text density={density} textAlign="center" textRole="metadata">
-        {`Loomarr TV ${clientVersion} · Server ${serverVersion ?? "unavailable"}`}
+        {surfIdentityLabel(clientName, clientVersion, serverVersion)}
       </Text>
     </Surface>
   );
 };
 
-export { findSurfChannel, SurfRail, surfRailWidth };
+const SurfRail = (props: SurfRailProps) =>
+  props.density === "tv" ? <TvSurfRail {...props} /> : <PointerSurfRail {...props} />;
+
+export { findSurfChannel, SurfRail, surfIdentityLabel, surfRailWidth };

@@ -27,6 +27,7 @@
     "@loomarr/core": "workspace:*",
     "@loomarr/design-system": "workspace:*",
     "@loomarr/fixtures": "workspace:*",
+    "@loomarr/player": "workspace:*",
     "@loomarr/ui-tv": "workspace:*",
     "@loomarr/tokens": "workspace:*",
     "@loomarr/ui": "workspace:*",

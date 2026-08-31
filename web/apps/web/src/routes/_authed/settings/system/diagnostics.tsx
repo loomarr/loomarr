@@ -23,7 +23,7 @@ const validateSearch = (raw: Record<string, unknown>): Partial<DiagnosticsSearch
   ),
   source: oneOf(
     raw.source,
-    ["all", "server", "web", "android_tv"] as const,
+    ["all", "server", "web", "android_mobile", "android_tv"] as const,
     DEFAULT_APPLICATION_FILTERS.source,
   ),
   subsystem: typeof raw.subsystem === "string" ? raw.subsystem.slice(0, 128) : "",

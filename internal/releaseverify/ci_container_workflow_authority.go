@@ -125,8 +125,21 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 						"LOOMARR_ANDROID_KEY_ALIAS":          "${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}",
 						"LOOMARR_ANDROID_KEY_PASSWORD":       "${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}",
 						"LOOMARR_ANDROID_UPLOAD_CERT_SHA256": "${{ vars.ANDROID_UPLOAD_CERT_SHA256 }}",
+						"LOOMARR_ANDROID_RENDERER":           "${{ inputs.renderer }}",
 					},
-					steps: map[string]workflowStepAuthority{},
+					steps: map[string]workflowStepAuthority{
+						"corepack enable\nmake fe-install\n": exactWorkflowStep(5, "Install the React Native workspace", workflowStepAuthority{
+							targets:           []string{"fe-install"},
+							allowsAcquisition: true,
+							condition:         "inputs.renderer == 'react-native'",
+						}),
+						`test "$REACT_NATIVE_ADOPTED" = true`: exactWorkflowStep(10, "Enforce the React Native adoption gate before Play publication", workflowStepAuthority{
+							condition: "inputs.renderer == 'react-native' && inputs.publish_to_play",
+							environment: map[string]string{
+								"REACT_NATIVE_ADOPTED": "${{ vars.ANDROID_REACT_NATIVE_ADOPTED }}",
+							},
+						}),
+					},
 				},
 			},
 		},

@@ -66,6 +66,9 @@ type PairingKeyValueStorage = {
   getItem(key: string): Promise<string | null>;
   setItem(key: string, value: string): Promise<void>;
 };
+type LegacyPairingCredentialSource = {
+  read(): Promise<Pick<PairingCredential, "serverUrl" | "token"> | undefined>;
+};
 const CREDENTIAL_KEY = "loomarr.paired-device.v1";
 
 const isCredential = (value: unknown): value is PairingCredential => {
@@ -96,6 +99,28 @@ const createPairingCredentialStore = (storage: PairingKeyValueStorage) => ({
   },
   write: (credential: PairingCredential) => storage.setItem(CREDENTIAL_KEY, JSON.stringify(credential)),
 });
+const createMigratingPairingCredentialStore = ({
+  deviceName,
+  legacy,
+  storage,
+}: {
+  deviceName: string;
+  legacy: LegacyPairingCredentialSource;
+  storage: PairingKeyValueStorage;
+}) =>
+  createPairingCredentialStore({
+    deleteItem: storage.deleteItem,
+    async getItem(key) {
+      const current = await storage.getItem(key);
+      if (current) return current;
+      const prior = await legacy.read();
+      if (!prior) return null;
+      const migrated = JSON.stringify({ deviceName, ...prior });
+      await storage.setItem(key, migrated);
+      return migrated;
+    },
+    setItem: storage.setItem,
+  });
 const readJson = async <T>(response: Response): Promise<T> => {
   const body = (await response.json()) as T;
   if (!response.ok)
@@ -337,6 +362,7 @@ class PairingSession {
 
 export {
   createAuthenticatedFetch,
+  createMigratingPairingCredentialStore,
   createPairingCredentialStore,
   createPairingTransport,
   normalizeServerUrl,

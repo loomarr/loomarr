@@ -124,6 +124,16 @@ const textTones = {
   warning: "$stateWarning",
 } as const;
 
+type TypographyWeight = (typeof typography)[Density][TextRole]["weight"];
+
+/** Keep variable-font weights on web while using weights native system fonts accept. */
+const resolveFontWeight = (weight: TypographyWeight, web = isWeb) => {
+  if (web) return weight;
+  if (weight === "550") return "600";
+  if (weight === "650") return "700";
+  return weight;
+};
+
 const Text = ({ density = "pointer", textRole, tone, ...props }: TextProps) => {
   const value = typography[density][textRole];
   return (
@@ -140,7 +150,7 @@ const Text = ({ density = "pointer", textRole, tone, ...props }: TextProps) => {
       }
       fontFamily={dataRoles.has(textRole) ? "$data" : "$body"}
       fontSize={value.size}
-      fontWeight={value.weight}
+      fontWeight={resolveFontWeight(value.weight)}
       letterSpacing={textRole === "display" ? -0.8 : textRole === "title" ? -0.25 : 0}
       lineHeight={value.lineHeight}
     />
@@ -234,15 +244,36 @@ const ArtworkFrame = ({ children, density = "pointer", state, ...props }: Artwor
   </Surface>
 );
 
-type ProgressTrackProps = Omit<ComponentProps<typeof View>, "children"> & {
+type ProgressTrackProps = Omit<ComponentProps<typeof View>, "accessibilityLabel" | "children"> & {
+  accessibilityLabel: string;
   percent: number;
   tone?: "live" | "primary";
 };
 
-const ProgressTrack = ({ percent, tone = "primary", ...props }: ProgressTrackProps) => {
+const ProgressTrack = ({ accessibilityLabel, percent, tone = "primary", ...props }: ProgressTrackProps) => {
   const bounded = Math.max(0, Math.min(100, percent));
+  const accessibilityProps = isWeb
+    ? {
+        "aria-label": accessibilityLabel,
+        "aria-valuemax": 100,
+        "aria-valuemin": 0,
+        "aria-valuenow": bounded,
+        role: "progressbar" as const,
+      }
+    : {
+        accessibilityLabel,
+        accessibilityRole: "progressbar" as const,
+        accessibilityValue: { max: 100, min: 0, now: bounded },
+      };
   return (
-    <View {...props} backgroundColor="$surfaceCanvas" borderRadius="$round" height={4} overflow="hidden">
+    <View
+      {...props}
+      {...accessibilityProps}
+      backgroundColor="$surfaceCanvas"
+      borderRadius="$round"
+      height={4}
+      overflow="hidden"
+    >
       <View
         backgroundColor={tone === "live" ? "$stateLive" : "$actionPrimary"}
         borderRadius="$round"

@@ -1019,6 +1019,7 @@ components:
             - firefox
             - webkit
             - unknown_web
+            - android_mobile
             - android_tv
             - shield_tv
             - unknown_android_tv
@@ -1026,6 +1027,7 @@ components:
         source:
           enum:
             - web
+            - android_mobile
             - android_tv
           type: string
       required:
@@ -2474,6 +2476,7 @@ components:
           enum:
             - server
             - web
+            - android_mobile
             - android_tv
           type: string
         subsystem:
@@ -9389,6 +9392,7 @@ paths:
             enum:
               - server
               - web
+              - android_mobile
               - android_tv
             type: string
         - description: Exact stable event name

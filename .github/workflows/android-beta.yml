@@ -7,6 +7,14 @@ on:
         description: Android SemVer name, such as 0.1.0-beta.1
         required: true
         type: string
+      renderer:
+        description: Shipping renderer; React Native remains build-only until adoption is recorded
+        required: true
+        default: compose
+        type: choice
+        options:
+          - compose
+          - react-native
       publish_to_play:
         description: Publish through the Play Developer API after the manual bootstrap
         required: true
@@ -40,6 +48,7 @@ jobs:
       LOOMARR_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
       LOOMARR_ANDROID_UPLOAD_CERT_SHA256: ${{ vars.ANDROID_UPLOAD_CERT_SHA256 }}
       ANDROID_RELEASE_OUTPUT_DIR: ${{ github.workspace }}/.artifacts/android-release
+      LOOMARR_ANDROID_RENDERER: ${{ inputs.renderer }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -55,14 +64,25 @@ jobs:
 
       - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
 
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        if: inputs.renderer == 'react-native'
+        with:
+          node-version: "22"
+
+      - name: Install the React Native workspace
+        if: inputs.renderer == 'react-native'
+        run: |
+          corepack enable
+          make fe-install
+
       - name: Cache Gradle
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: android-release-${{ runner.os }}-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: android-release-${{ runner.os }}-
+          key: android-release-${{ inputs.renderer }}-${{ runner.os }}-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/wrapper/gradle-wrapper.properties', 'web/apps/tv/**', 'web/packages/**', 'web/scripts/**', 'web/pnpm-lock.yaml') }}
+          restore-keys: android-release-${{ inputs.renderer }}-${{ runner.os }}-
 
       - name: Derive the one release identity
         env:
@@ -86,6 +106,12 @@ jobs:
 
       - name: Build and verify the signed AAB
         run: ./scripts/build-android-beta.sh
+
+      - name: Enforce the React Native adoption gate before Play publication
+        if: inputs.renderer == 'react-native' && inputs.publish_to_play
+        env:
+          REACT_NATIVE_ADOPTED: ${{ vars.ANDROID_REACT_NATIVE_ADOPTED }}
+        run: test "$REACT_NATIVE_ADOPTED" = true
 
       - name: Retain the signed AAB and release evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

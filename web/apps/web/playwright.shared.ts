@@ -12,8 +12,11 @@ import { devices } from "@playwright/test";
 // suites were tuned against.
 //
 // Ceiling of 4 because past that these suites are disk- and browser-startup-bound, not
-// core-bound; floor of 2 so a busy machine still runs them concurrently rather than serially.
-const localWorkers = () => Math.max(2, Math.min(4, Math.floor(freemem() / (1.5 * 1024 ** 3))));
+// core-bound. The floor is deliberately one: forcing two browsers while the machine has less
+// than one worker's memory allowance defeats this guard and can freeze a no-swap workstation.
+const localWorkerCount = (freeBytes: number) =>
+  Math.max(1, Math.min(4, Math.floor(freeBytes / (1.5 * 1024 ** 3))));
+const localWorkers = () => localWorkerCount(freemem());
 
 // ⚠ GATE ON `GITHUB_ACTIONS`, NOT ON `CI`. This is the whole point of the constant.
 //
@@ -74,4 +77,4 @@ const DETERMINISM = {
 const DESKTOP = { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 } };
 const MOBILE = { ...devices["Desktop Chrome"], viewport: { width: 390, height: 844 } };
 
-export { DESKTOP, DETERMINISM, E2E_WORKERS, MOBILE, VISUAL_WORKERS };
+export { DESKTOP, DETERMINISM, E2E_WORKERS, localWorkerCount, MOBILE, VISUAL_WORKERS };

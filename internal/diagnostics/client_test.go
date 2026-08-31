@@ -52,6 +52,32 @@ func TestClientIngestorProjectsOnlyClosedEventFields(t *testing.T) {
 	}
 }
 
+func TestClientIngestorAdmitsOnlyAndroidMobilePlatformForAndroidMobileSource(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0).UTC()
+	ingestor, sink, recorder := clientTestIngestor(t, now)
+	batch := ClientBatch{
+		Source: SourceAndroidMobile, ClientVersion: "0.0.1", Platform: "android_mobile",
+		Events: []ClientObservation{{
+			Event: PlayerReady, OccurredAt: now.UnixMilli(), PlaybackSessionID: "play_1",
+			ChannelID: "ch_1", Transport: "native_hls",
+		}},
+	}
+	if accepted, err := ingestor.Ingest(t.Context(), "member_1", batch); err != nil || accepted != 1 {
+		t.Fatalf("Android mobile Ingest = (%d, %v), want (1, nil)", accepted, err)
+	}
+	batch.Platform = "shield_tv"
+	if _, err := ingestor.Ingest(t.Context(), "member_1", batch); !errors.Is(err, ErrInvalidClientBatch) {
+		t.Fatalf("mismatched Android mobile platform error = %v, want ErrInvalidClientBatch", err)
+	}
+	if err := recorder.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	records := sink.snapshot()
+	if len(records) != 1 || records[0].Source != SourceAndroidMobile {
+		t.Fatalf("Android mobile records = %+v", records)
+	}
+}
+
 func TestClientIngestorRejectsWholeInvalidBatch(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0).UTC()
 	ingestor, sink, recorder := clientTestIngestor(t, now)

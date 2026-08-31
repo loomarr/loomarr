@@ -22,6 +22,9 @@ keystore="$RUNNER_TEMP/loomarr-upload.p12"
 printf '%s' "$ANDROID_UPLOAD_KEYSTORE_BASE64" | base64 --decode > "$keystore"
 echo "LOOMARR_ANDROID_KEYSTORE_PATH=$keystore" >> "$GITHUB_ENV"`,
 	"./scripts/build-android-beta.sh",
+	`corepack enable
+make fe-install`,
+	`test "$REACT_NATIVE_ADOPTED" = true`,
 	`set -euo pipefail
 umask 077
 service_account="$RUNNER_TEMP/google-play-service-account.json"
@@ -107,13 +110,26 @@ func verifyAndroidTrigger(root *yaml.Node) error {
 	if err != nil {
 		return err
 	}
-	if len(inputs.Content) != 6 {
-		return errors.New("android release workflow must expose exactly version_name, publish_to_play, and track")
+	if len(inputs.Content) != 8 {
+		return errors.New("android release workflow must expose exactly version_name, renderer, publish_to_play, and track")
 	}
-	for _, name := range []string{"version_name", "publish_to_play", "track"} {
+	for _, name := range []string{"version_name", "renderer", "publish_to_play", "track"} {
 		if _, err := requiredMap(inputs, name); err != nil {
 			return err
 		}
+	}
+	renderer, _ := requiredMap(inputs, "renderer")
+	if scalarValue(renderer, "type") != "choice" || scalarValue(renderer, "default") != "compose" ||
+		scalarValue(renderer, "required") != "true" {
+		return errors.New("android release renderer must be an explicit Compose-default choice")
+	}
+	rendererOptions, err := requiredSequence(renderer, "options")
+	if err != nil {
+		return err
+	}
+	if len(rendererOptions.Content) != 2 || rendererOptions.Content[0].Value != "compose" ||
+		rendererOptions.Content[1].Value != "react-native" {
+		return errors.New("android release workflow may select only Compose and React Native renderers")
 	}
 	publish, _ := requiredMap(inputs, "publish_to_play")
 	if scalarValue(publish, "type") != "boolean" || scalarValue(publish, "default") != "false" || scalarValue(publish, "required") != "true" {
@@ -172,6 +188,7 @@ func verifyAndroidEnvironment(job *yaml.Node) error {
 		"LOOMARR_ANDROID_KEY_PASSWORD":       "${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}",
 		"LOOMARR_ANDROID_UPLOAD_CERT_SHA256": "${{ vars.ANDROID_UPLOAD_CERT_SHA256 }}",
 		"ANDROID_RELEASE_OUTPUT_DIR":         "${{ github.workspace }}/.artifacts/android-release",
+		"LOOMARR_ANDROID_RENDERER":           "${{ inputs.renderer }}",
 	}
 	if len(env.Content) != len(required)*2 {
 		return errors.New("android release environment contains unaudited keys")
@@ -189,24 +206,27 @@ func verifyAndroidSteps(job *yaml.Node) error {
 	if err != nil {
 		return err
 	}
-	if len(steps.Content) != 11 {
-		return fmt.Errorf("android release job must contain exactly 11 audited steps, found %d", len(steps.Content))
+	if len(steps.Content) != 14 {
+		return fmt.Errorf("android release job must contain exactly 14 audited steps, found %d", len(steps.Content))
 	}
 
 	actions := map[int]string{
-		0: "actions/checkout",
-		2: "actions/setup-java",
-		3: "android-actions/setup-android",
-		4: "actions/cache",
-		8: "actions/upload-artifact",
+		0:  "actions/checkout",
+		2:  "actions/setup-java",
+		3:  "android-actions/setup-android",
+		4:  "actions/setup-node",
+		6:  "actions/cache",
+		11: "actions/upload-artifact",
 	}
 	runs := map[int]string{
 		1:  androidReleaseRuns[0],
-		5:  androidReleaseRuns[1],
-		6:  androidReleaseRuns[2],
-		7:  androidReleaseRuns[3],
-		9:  androidReleaseRuns[4],
+		5:  androidReleaseRuns[4],
+		7:  androidReleaseRuns[1],
+		8:  androidReleaseRuns[2],
+		9:  androidReleaseRuns[3],
 		10: androidReleaseRuns[5],
+		12: androidReleaseRuns[6],
+		13: androidReleaseRuns[7],
 	}
 	for index, step := range steps.Content {
 		if step.Kind != yaml.MappingNode {
@@ -224,10 +244,17 @@ func verifyAndroidSteps(job *yaml.Node) error {
 			}
 		}
 	}
-	if scalarValue(steps.Content[9], "if") != "inputs.publish_to_play" {
+	if scalarValue(steps.Content[4], "if") != "inputs.renderer == 'react-native'" ||
+		scalarValue(steps.Content[5], "if") != "inputs.renderer == 'react-native'" {
+		return errors.New("tooling for React Native must run only for the explicit React Native renderer")
+	}
+	if scalarValue(steps.Content[10], "if") != "inputs.renderer == 'react-native' && inputs.publish_to_play" {
+		return errors.New("publication for React Native must require the explicit renderer and publish choice")
+	}
+	if scalarValue(steps.Content[12], "if") != "inputs.publish_to_play" {
 		return errors.New("play publication step must require the explicit publish_to_play input")
 	}
-	if scalarValue(steps.Content[10], "if") != "always()" {
+	if scalarValue(steps.Content[13], "if") != "always()" {
 		return errors.New("android credential cleanup must run always")
 	}
 	return verifyAndroidStepDetails(steps)
@@ -238,7 +265,12 @@ func verifyAndroidStepDetails(steps *yaml.Node) error {
 	if err != nil || scalarValue(validationEnv, "GH_TOKEN") != "${{ github.token }}" {
 		return errors.New("android source validation must receive only the workflow token")
 	}
-	publishEnv, err := requiredMap(steps.Content[9], "env")
+	adoptionEnv, err := requiredMap(steps.Content[10], "env")
+	if err != nil || len(adoptionEnv.Content) != 2 ||
+		scalarValue(adoptionEnv, "REACT_NATIVE_ADOPTED") != "${{ vars.ANDROID_REACT_NATIVE_ADOPTED }}" {
+		return errors.New("adoption gate for React Native must receive only the protected adoption record")
+	}
+	publishEnv, err := requiredMap(steps.Content[12], "env")
 	if err != nil {
 		return err
 	}
@@ -246,7 +278,7 @@ func verifyAndroidStepDetails(steps *yaml.Node) error {
 		scalarValue(publishEnv, "GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64") != "${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64 }}" {
 		return errors.New("play publisher must receive only the selected track and protected service account")
 	}
-	uploadWith, err := requiredMap(steps.Content[8], "with")
+	uploadWith, err := requiredMap(steps.Content[11], "with")
 	if err != nil {
 		return err
 	}
