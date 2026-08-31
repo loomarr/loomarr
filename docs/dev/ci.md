@@ -440,6 +440,22 @@ a cache that works only within one machine is not eligible for later CI consumpt
 scope is included in `ci-ok` when selected and is skipped for pull requests, merge groups, release
 certification, and `full` dispatches.
 
+After that portability proof is green, `Apple compilation cache` is the only workflow authorized to
+publish compiler results. It is manual-only, refuses every ref except `refs/heads/main`, and builds
+the complete mobile and TV Release install-launch-liveness gates before saving. A restored seed is
+hash-validated before use; the candidate CAS and compressed archive are validated again, and a save
+is refused if its size plus a 512 MiB reserve would exceed the repository's 10 GiB cache budget.
+After a successful save, cleanup is limited to the exact fingerprint prefix on `refs/heads/main` and
+retains one generation. Only this workflow has `actions: write` for the compiler cache.
+
+The ordinary Apple mobile and Apple TV jobs are compiler-cache consumers only. Each computes the
+toolchain/SDK/native-input fingerprint, uses the restore-only cache action, and exposes a store only
+after zstd and LLVM CAS hash validation. Missing or rejected archives select the unchanged cold
+gate. A valid store that fails during the warm build is quarantined and receives one clean cold
+retry; every architecture, install, launch, screenshot, and liveness assertion still runs. These
+jobs never save the compiler archive, so pull-request and merge-queue refs cannot create sibling
+compiler generations.
+
 ## `ci-ok` is the only required check
 
 It always runs and inspects `needs.*.result` explicitly. That has to be explicit: a skipped job

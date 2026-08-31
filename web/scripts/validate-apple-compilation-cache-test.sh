@@ -39,6 +39,7 @@ case "$1" in
     printf 'archive fixture\n' > "$3"
     ;;
   restore)
+    printf 'restore %s %s\n' "$2" "$3" >> "$APPLE_CACHE_VALIDATION_TEST_ROOT/cache-cli.calls"
     if [[ "$2" == *corrupt* ]]; then exit 1; fi
     mkdir "$3"
     printf 'CAS object\n' > "$3/object"
@@ -66,10 +67,30 @@ PATH="$test_root/bin:$PATH" \
   LOOMARR_APPLE_VALIDATION_ROOT="$test_root/consumer" \
   "$validator" consume "$test_root/cache.tar.zst"
 
-want=$'mobile warm populate=1 diagnostics=report probe=\ntv warm populate=1 diagnostics=report probe=\nmobile warm populate=0 diagnostics=hits probe=\ntv warm populate=0 diagnostics=hits probe=\nmobile warm populate=0 diagnostics=hits-and-misses probe=source-change\nmobile cold populate=0 diagnostics=report probe=\ntv cold populate=0 diagnostics=report probe='
+PATH="$test_root/bin:$PATH" \
+  APPLE_CACHE_VALIDATION_TEST_ROOT="$test_root" \
+  LOOMARR_APPLE_CACHE_CLI="$test_root/bin/cache-cli" \
+  LOOMARR_APPLE_CACHE_SEED_ARCHIVE="$test_root/cache.tar.zst" \
+  LOOMARR_APPLE_VALIDATION_ROOT="$test_root/seeded-producer" \
+  "$validator" produce "$test_root/seeded-cache.tar.zst"
+
+cp "$test_root/cache.tar.zst" "$test_root/corrupt-seed.tar.zst"
+PATH="$test_root/bin:$PATH" \
+  APPLE_CACHE_VALIDATION_TEST_ROOT="$test_root" \
+  LOOMARR_APPLE_CACHE_CLI="$test_root/bin/cache-cli" \
+  LOOMARR_APPLE_CACHE_SEED_ARCHIVE="$test_root/corrupt-seed.tar.zst" \
+  LOOMARR_APPLE_VALIDATION_ROOT="$test_root/cold-seeded-producer" \
+  "$validator" produce "$test_root/cold-seeded-cache.tar.zst"
+
+want=$'mobile warm populate=1 diagnostics=report probe=\ntv warm populate=1 diagnostics=report probe=\nmobile warm populate=0 diagnostics=hits probe=\ntv warm populate=0 diagnostics=hits probe=\nmobile warm populate=0 diagnostics=hits-and-misses probe=source-change\nmobile cold populate=0 diagnostics=report probe=\ntv cold populate=0 diagnostics=report probe=\nmobile warm populate=1 diagnostics=report probe=\ntv warm populate=1 diagnostics=report probe=\nmobile warm populate=1 diagnostics=report probe=\ntv warm populate=1 diagnostics=report probe='
 got="$(cat "$test_root/make.calls")"
 if [[ "$got" != "$want" ]]; then
   printf 'validate-apple-compilation-cache-test: call sequence got:\n%s\n' "$got" >&2
+  exit 1
+fi
+
+if [[ "$(cat "$test_root/cache-cli.calls")" != *"restore $test_root/cache.tar.zst $test_root/seeded-producer/store"* ]]; then
+  printf 'validate-apple-compilation-cache-test: publisher seed was not restored\n' >&2
   exit 1
 fi
 

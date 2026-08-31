@@ -1,8 +1,10 @@
 package releaseverify
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -53,6 +55,50 @@ func TestRepositoryAppleCacheValidationIsIsolatedAndPortable(t *testing.T) {
 	workflowRunStepIndex(t, consumerSteps, "./web/scripts/validate-apple-compilation-cache.sh consume \"$RUNNER_TEMP/apple-compilation-cache.tar.zst\"")
 	workflowUsesStepIndex(t, producerSteps, "actions/upload-artifact")
 	workflowUsesStepIndex(t, consumerSteps, "actions/download-artifact")
+}
+
+func TestRepositoryAppleCachePublisherAndConsumersAreTrustBounded(t *testing.T) {
+	_, source, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("cannot resolve repository test path")
+	}
+	root := filepath.Join(filepath.Dir(source), "..", "..")
+	publisherPath := filepath.Join(root, ".github", "workflows", "apple-compilation-cache.yml")
+	publisher := readWorkflowFixture(t, publisherPath)
+	on := mappingValueMust(t, publisher, "on")
+	if _, ok := mappingValue(on, "workflow_dispatch"); !ok || len(on.Content) != 2 {
+		t.Fatal("Apple cache publisher must expose only workflow_dispatch")
+	}
+	permissions := mappingValueMust(t, publisher, "permissions")
+	if yamlScalar(t, permissions, "actions") != "write" || yamlScalar(t, permissions, "contents") != "read" {
+		t.Fatal("Apple cache publisher permissions must be actions:write and contents:read")
+	}
+	publish := mappingValueMust(t, mappingValueMust(t, publisher, "jobs"), "publish")
+	if got := yamlScalar(t, publish, "if"); got != "github.ref == 'refs/heads/main'" {
+		t.Fatalf("Apple cache publisher main guard = %q", got)
+	}
+	publishSteps := mappingValueMust(t, publish, "steps").Content
+	workflowUsesStepIndex(t, publishSteps, "actions/cache/restore")
+	workflowUsesStepIndex(t, publishSteps, "actions/cache/save")
+	workflowRunStepIndex(t, publishSteps, `./web/scripts/validate-apple-compilation-cache.sh produce "$RUNNER_TEMP/apple-compilation-cache.tar.zst"`)
+
+	for _, workflowName := range []string{"ci-apple-mobile.yml", "ci-apple-tv.yml"} {
+		path := filepath.Join(root, ".github", "workflows", workflowName)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		workflow := readWorkflowFixture(t, path)
+		run := mappingValueMust(t, mappingValueMust(t, workflow, "jobs"), "run")
+		steps := mappingValueMust(t, run, "steps").Content
+		workflowUsesStepIndex(t, steps, "actions/cache/restore")
+		if strings.Contains(string(data), "actions/cache/save@") {
+			t.Fatalf("%s must remain restore-only for the compilation cache", workflowName)
+		}
+		if !strings.Contains(string(data), "LOOMARR_APPLE_CACHE_MODE") || !strings.Contains(string(data), "LOOMARR_APPLE_CACHE_STORE") {
+			t.Fatalf("%s does not pass the prepared compilation cache to the full Apple gate", workflowName)
+		}
+	}
 }
 
 func yamlSequenceContains(sequence *yaml.Node, want string) bool {

@@ -454,6 +454,12 @@ classify() {
       select_gate apple_tv
       select_gate policy
       ;;
+    .github/workflows/apple-compilation-cache.yml)
+      known=true
+      select_gate apple_mobile
+      select_gate apple_tv
+      select_gate policy
+      ;;
     .github/workflows/ci-playwright.yml)
       known=true
       select_gate visual

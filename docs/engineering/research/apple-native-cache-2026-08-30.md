@@ -226,10 +226,18 @@ The second hosted run then proved cross-machine reuse directly. On the distinct 
 the mobile Release build reported 1,249 hits and 0 misses, contained only arm64, installed, launched,
 and remained alive. The following TV Release build also succeeded, installed, and launched, but
 CoreSimulator timed out waiting for screenshot surfaces before the verifier reached its counter
-report. That is a simulator-output flake, not a cache failure; the verifier now retries screenshot
-capture a bounded three times while continuing to require a real PNG and every existing runtime
-assertion. The isolated hosted matrix still must complete after that retry before CI consumes the
-cache.
+report. That isolated a simulator-output flake rather than a cache failure; the verifier now retries
+screenshot capture a bounded three times while continuing to require a real PNG and every existing
+runtime assertion.
+
+The third hosted run (Actions run `33356011395`) completed the entire isolated matrix across
+distinct `macos-26` runners. The restored mobile build reported 1,249 hits and 0 misses; TV reported
+1,137 hits and 0 misses. Both passed Release, arm64-only, install, launch, screenshot, and liveness.
+A real Swift source change then reported 543 hits and 4 misses and passed the same mobile runtime
+gate. The deliberately damaged archive was rejected without exposing a store, the dependency
+fingerprint changed, and independent cold mobile and TV builds both passed every runtime assertion.
+This closes the portability, hit-observability, source-invalidation, corruption, and supported-runner
+cold-control questions required before normal CI consumption.
 
 The uncompressed combined CAS remained smaller than either full mobile or TV DerivedData tree alone
 and—more importantly—survived clean native regeneration. That, rather than a particular timing
@@ -329,18 +337,18 @@ criterion.
 
 | Case | Required evidence |
 | --- | --- |
-| Mobile cold | **Locally proven mechanically.** Repeat on `macos-26`: empty project DerivedData and compiler store; Release build/install/launch/liveness and arm64-only assertion pass. |
-| Mobile warm | Repeat on `macos-26`; capture structured `.xcresult` counters demonstrating real cache hits. |
-| TV cold | **Locally proven mechanically.** Repeat on `macos-26` for tvOS. |
-| TV warm | Repeat on `macos-26`; capture structured `.xcresult` counters demonstrating real cache hits. |
-| Source invalidation | **Partially proven.** The changed native input produced new validated CAS content and a live app; automated structured counters must prove misses while unaffected inputs hit. |
+| Mobile cold | **Hosted proof complete.** Empty-store Release build/install/launch/screenshot/liveness and arm64-only assertion passed on `macos-26`. |
+| Mobile warm | **Hosted proof complete.** A distinct runner restored the archive and reported 1,249 hits, 0 misses. |
+| TV cold | **Hosted proof complete.** Empty-store Release build/install/launch/screenshot/liveness and arm64-only assertion passed on `macos-26`. |
+| TV warm | **Hosted proof complete.** A distinct runner restored the archive and reported 1,137 hits, 0 misses. |
+| Source invalidation | **Hosted proof complete.** A real Swift change reported 543 hits and 4 misses and passed the full runtime gate. |
 | Dependency invalidation | **Fingerprint logic proven, build case pending.** Change the lock/native graph; the outer key must change and a cold build must pass. |
 | Toolchain invalidation | **Fingerprint logic proven.** Automate the fixture and prove restore lookup misses before extraction. |
 | SDK/platform invalidation | **Fingerprint logic proven.** Automate both SDK/platform fixtures and prove restore lookup misses before extraction. |
-| Corrupt archive | **Locally proven mechanically.** Automate rejection, quarantine, one cold retry, and the rule preventing a damaged save. |
-| Missing cache | **Mobile and TV cold controls proven.** Automate an unknown-key run through the same fallback path. |
-| Portability | **Locally proven across fresh directories.** Repeat across distinct hosted machines/users on `macos-26`. |
-| Bounds | **Candidate measured.** Automate compressed-size refusal and fixture-test retention at one/two generations plus transient-upload headroom. |
+| Corrupt archive | **Hosted and fixture proof complete.** Rejection exposes no store; quarantine/cold fallback and damaged-save prevention are automated. |
+| Missing cache | **Hosted proof complete.** Mobile and TV passed the same explicit cold path used on a miss. |
+| Portability | **Hosted proof complete.** Producer and consumer were distinct `macos-26` jobs, with non-zero mobile and TV hits. |
+| Bounds | **Automated and measured.** The 1,022,746,710-byte archive fits the ceiling; size refusal, quota reserve, and one/two-generation selectors have fixtures. |
 
 After local success, seed one default-branch cache with manual dispatch and run two distinct
 merge-group refs. Both must report restoring the same `refs/heads/main` generation. GitHub's cache
@@ -362,8 +370,9 @@ cache and that retention stayed within bounds.
    only after both pass. Give only this workflow `actions: write`.
 6. Make PR/merge-group Apple jobs restore-only and remove their Apple cache saves. Preserve ordinary
    dependency installation and every runtime assertion.
-7. Add post-save default-branch retention cleanup, limited by exact key prefix and ref, retaining at
-   most two generations. Test the selector against fixtures before granting deletion permission.
+7. Add post-save default-branch retention cleanup, limited by exact key prefix and ref. Retain one
+   generation under current quota pressure; the fixture-tested selector permits two only if later
+   measurements justify the additional replacement headroom.
 8. Seed from `main`, prove reuse from two distinct merge groups, compare end-to-end critical path
    including transfers, and either keep the cache or revert it if it does not deliver a repeatable
    net benefit.
@@ -376,10 +385,6 @@ green in their stated local or hosted environment.
 - Can retiring obsolete sibling-scoped Apple writers recover enough headroom to upload a replacement
   while retaining the one known-good compiler generation? The initial hosted archive and current
   repository inventory leave room for the first generation, but not that transient replacement.
-- Does `actions/cache` archive/restore preserve every CAS property needed by Xcode 26.6 across two
-  distinct hosted runners? Local tar/zstd transfer and `llvm-cas` validation passed.
-- How many real cache hits remain after Expo's clean project regeneration and CocoaPods integration?
-  The next hosted run will read Xcode's structured `.xcresult` counters instead of Expo's console.
 - Does the nested `ExpoModulesJSI` build inherit Loomarr's compilation-cache setting? It currently
   runs through `env -i` and its own `xcodebuild`; its existing final-XCFramework cache should make
   this irrelevant on a hit, but the prototype must observe it.

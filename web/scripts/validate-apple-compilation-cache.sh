@@ -40,7 +40,7 @@ run_client() {
 }
 
 produce() {
-  local archive="$1" fingerprint
+  local archive="$1" fingerprint seed_archive
   prepare_root
   if [[ -e "$archive" ]]; then
     printf 'apple-cache-validation: archive already exists: %s\n' "$archive" >&2
@@ -48,7 +48,15 @@ produce() {
   fi
   fingerprint="$($cache_cli fingerprint)"
   printf '%s\n' "$fingerprint" > "$validation_root/fingerprint.txt"
-  mkdir "$validation_root/store"
+  seed_archive="${LOOMARR_APPLE_CACHE_SEED_ARCHIVE:-}"
+  if [[ -n "$seed_archive" ]] && [[ -f "$seed_archive" ]]; then
+    if ! "$cache_cli" restore "$seed_archive" "$validation_root/store"; then
+      printf 'apple-cache-validation: seed archive was invalid; populating a clean store\n' >&2
+      mkdir "$validation_root/store"
+    fi
+  else
+    mkdir "$validation_root/store"
+  fi
 
   run_client mobile mobile-populate warm 1 report ''
   run_client tv tv-populate warm 1 report ''

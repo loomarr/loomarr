@@ -64,6 +64,7 @@ ci-clients-workflow	.github/workflows/ci-clients.yml	clients,policy
 ci-apple-mobile-workflow	.github/workflows/ci-apple-mobile.yml	apple_mobile,policy
 ci-apple-tv-workflow	.github/workflows/ci-apple-tv.yml	apple_tv,policy
 ci-apple-cache-validation-workflow	.github/workflows/ci-apple-cache-validation.yml	apple_mobile,apple_tv,policy
+apple-compilation-cache-publisher	.github/workflows/apple-compilation-cache.yml	apple_mobile,apple_tv,policy
 ci-playwright-workflow	.github/workflows/ci-playwright.yml	visual,e2e,policy
 ci-tuner-workflow	.github/workflows/ci-tuner.yml	tuner,policy
 ci-image-workflow	.github/workflows/ci-image.yml	image,policy
