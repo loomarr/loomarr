@@ -141,6 +141,16 @@ type Completion struct {
 	Next              *Attempt
 }
 
+// DeliverySummary is the provider-safe read model composed into the owning domain's UI. It never
+// carries the destination reference, recipient address, rendered body, or bearer grant.
+type DeliverySummary struct {
+	Status            Status
+	AttemptNumber     int
+	OutcomeCode       OutcomeCode
+	ProviderMessageID string
+	UpdatedAt         time.Time
+}
+
 func (c Completion) Validate(current Attempt) error {
 	if err := identifier("attempt id", c.AttemptID); err != nil {
 		return err

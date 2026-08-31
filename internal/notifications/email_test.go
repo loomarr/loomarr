@@ -113,6 +113,7 @@ func TestEmailAdapterMapsOnlyClosedDeliveryOutcomes(t *testing.T) {
 	for name, tc := range map[string]struct {
 		transmission notifications.EmailTransmission
 		want         notifications.Result
+		invalidates  bool
 	}{
 		"accepted": {
 			transmission: notifications.EmailTransmission{State: notifications.EmailAccepted, ProviderMessageID: "provider-42"},
@@ -121,10 +122,12 @@ func TestEmailAdapterMapsOnlyClosedDeliveryOutcomes(t *testing.T) {
 		"temporary before acceptance": {
 			transmission: notifications.EmailTransmission{State: notifications.EmailTransientPreAcceptance},
 			want:         notifications.Result{Status: notifications.StatusFailed, FailureClass: notifications.FailureTransientPreAcceptance, OutcomeCode: notifications.OutcomeTransportUnavailable},
+			invalidates:  true,
 		},
 		"recipient rejected": {
 			transmission: notifications.EmailTransmission{State: notifications.EmailRecipientRejected},
 			want:         notifications.Result{Status: notifications.StatusFailed, FailureClass: notifications.FailurePermanent, OutcomeCode: notifications.OutcomeRecipientRejected},
+			invalidates:  true,
 		},
 		"ambiguous acceptance": {
 			transmission: notifications.EmailTransmission{State: notifications.EmailAcceptanceAmbiguous},
@@ -137,8 +140,15 @@ func TestEmailAdapterMapsOnlyClosedDeliveryOutcomes(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			sender := &fakeEmailSender{result: tc.transmission}
+			invalidations := 0
 			adapter := notifications.NewEmailAdapter(func() notifications.EmailConfig { return config },
-				fakeEmailMaterializer{message: message}, sender)
+				fakeEmailMaterializer{materialized: notifications.MaterializedEmail{
+					Message: message,
+					Invalidate: func(context.Context) error {
+						invalidations++
+						return nil
+					},
+				}}, sender)
 			got := adapter.Deliver(context.Background(), delivery)
 			if got != tc.want {
 				t.Fatalf("result = %+v, want %+v", got, tc.want)
@@ -146,7 +156,65 @@ func TestEmailAdapterMapsOnlyClosedDeliveryOutcomes(t *testing.T) {
 			if len(sender.messages) != 1 || sender.messages[0] != message {
 				t.Fatalf("sender messages = %+v", sender.messages)
 			}
+			wantInvalidations := 0
+			if tc.invalidates {
+				wantInvalidations = 1
+			}
+			if invalidations != wantInvalidations {
+				t.Fatalf("grant invalidations = %d, want %d", invalidations, wantInvalidations)
+			}
 		})
+	}
+}
+
+func TestEmailAdapterStopsRetryWhenPreAcceptanceGrantCannotBeInvalidated(t *testing.T) {
+	config := notifications.EmailConfig{
+		Enabled: true, Host: "smtp.example.com", Port: 587,
+		Security: notifications.EmailSecuritySTARTTLS, FromAddress: "loomarr@example.com",
+	}
+	materializer := fakeEmailMaterializer{materialized: notifications.MaterializedEmail{
+		Message: notifications.EmailMessage{
+			ToAddress: "person@example.com", Subject: "Invitation",
+			TextBody: "Plain text", HTMLBody: "<p>HTML</p>",
+		},
+		Invalidate: func(context.Context) error { return context.DeadlineExceeded },
+	}}
+	sender := &fakeEmailSender{result: notifications.EmailTransmission{State: notifications.EmailTransientPreAcceptance}}
+	adapter := notifications.NewEmailAdapter(func() notifications.EmailConfig { return config }, materializer, sender)
+
+	result := adapter.Deliver(t.Context(), notifications.Delivery{})
+	if result.Status != notifications.StatusFailed || result.FailureClass != notifications.FailureAmbiguous ||
+		result.OutcomeCode != notifications.OutcomeAcceptanceAmbiguous {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestEmailAdapterInvalidatesGrantWhenMaterializedMessageIsInvalid(t *testing.T) {
+	config := notifications.EmailConfig{
+		Enabled: true, Host: "smtp.example.com", Port: 587,
+		Security: notifications.EmailSecuritySTARTTLS, FromAddress: "loomarr@example.com",
+	}
+	invalidations := 0
+	materializer := fakeEmailMaterializer{materialized: notifications.MaterializedEmail{
+		Message: notifications.EmailMessage{ToAddress: "not a mailbox"},
+		Invalidate: func(context.Context) error {
+			invalidations++
+			return nil
+		},
+	}}
+	sender := &fakeEmailSender{}
+	adapter := notifications.NewEmailAdapter(func() notifications.EmailConfig { return config }, materializer, sender)
+
+	result := adapter.Deliver(t.Context(), notifications.Delivery{})
+	if result.Status != notifications.StatusFailed || result.FailureClass != notifications.FailurePermanent ||
+		result.OutcomeCode != notifications.OutcomeConfigurationInvalid {
+		t.Fatalf("result = %+v", result)
+	}
+	if invalidations != 1 {
+		t.Fatalf("grant invalidations = %d, want 1", invalidations)
+	}
+	if len(sender.messages) != 0 {
+		t.Fatal("invalid materialized message reached SMTP sender")
 	}
 }
 
@@ -184,12 +252,12 @@ func TestEmailAdapterSendTestUsesAppliedConfigurationWithoutMaterializingADomain
 }
 
 type fakeEmailMaterializer struct {
-	message notifications.EmailMessage
-	err     error
+	materialized notifications.MaterializedEmail
+	err          error
 }
 
-func (f fakeEmailMaterializer) Materialize(context.Context, notifications.Delivery) (notifications.EmailMessage, error) {
-	return f.message, f.err
+func (f fakeEmailMaterializer) Materialize(context.Context, notifications.Delivery) (notifications.MaterializedEmail, error) {
+	return f.materialized, f.err
 }
 
 type fakeEmailSender struct {

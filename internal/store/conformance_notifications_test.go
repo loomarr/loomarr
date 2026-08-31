@@ -21,6 +21,17 @@ func testNotificationLifecycle(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || !created || createdIntent.ID != intent.ID {
 		t.Fatalf("create notification = %+v, %t, %v", createdIntent, created, err)
 	}
+	byReference, err := s.ListNotificationIntentsByReference(
+		ctx, notifications.ReferenceInvitation, intent.ReferenceID,
+	)
+	if err != nil || len(byReference) != 1 || byReference[0].ID != intent.ID {
+		t.Fatalf("list notification intents by reference = %+v, %v", byReference, err)
+	}
+	if unrelated, err := s.ListNotificationIntentsByReference(
+		ctx, notifications.ReferenceInvitation, "another-invitation",
+	); err != nil || len(unrelated) != 0 {
+		t.Fatalf("unrelated notification intents = %+v, %v", unrelated, err)
+	}
 
 	duplicate := intent
 	duplicate.ID = "intent-duplicate-call"

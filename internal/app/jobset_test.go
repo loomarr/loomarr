@@ -79,6 +79,7 @@ func TestJobSet(t *testing.T) {
 		"images-maintenance | artwork | 0 0 5 * * * | job.images_maintenance.schedule",
 		"library-full-scan | acquisitions | 0 0 3 * * * | job.library_full_scan.schedule",
 		"library-scan | acquisitions | 0 */5 * * * * | job.library_scan.schedule",
+		"notification-delivery | system | */15 * * * * * | job.notification_delivery.schedule",
 		"playout-prepare | playout | 0 * * * * * | job.playout_prepare.schedule",
 		"reconcile | acquisitions | 0 */5 * * * * | job.reconcile.schedule",
 		"seerr-queue-poll | acquisitions | 0 * * * * * | job.seerr_queue_poll.schedule",

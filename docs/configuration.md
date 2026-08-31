@@ -112,6 +112,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `request.ttl` (`REQUEST_TTL`) | duration | `48h` | How long Loomarr keeps trying to request a title before giving up. |
 | `downloading.ttl` (`DOWNLOADING_TTL`) | duration | `12h` | How long a downloading title waits to finish before Loomarr gives up on it. |
 | `job.system_health.schedule` (`JOB_SYSTEM_HEALTH_SCHEDULE`) | cron | `*/30 * * * * *` | How often Loomarr checks its database and configured connections for Current Health (cron). |
+| `job.notification_delivery.schedule` (`JOB_NOTIFICATION_DELIVERY_SCHEDULE`) | cron | `*/15 * * * * *` | How often Loomarr claims queued invitation and recovery messages for delivery (cron). |
 | `job.reconcile.schedule` (`JOB_RECONCILE_SCHEDULE`) | cron | `0 */5 * * * *` | How often Loomarr checks on in-progress downloads (cron). |
 | `job.channel_maintenance.schedule` (`JOB_CHANNEL_MAINTENANCE_SCHEDULE`) | cron | `0 */10 * * * *` | How often Loomarr refreshes series episodes and reconciles live channels with Tunarr (cron). |
 | `job.playout_prepare.schedule` (`JOB_PLAYOUT_PREPARE_SCHEDULE`) | cron | `0 * * * * *` | How often Loomarr looks ahead in accepted channel schedules and prepares the nearest programmes while spare hardware is available. _(advanced)_ |

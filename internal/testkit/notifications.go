@@ -59,6 +59,45 @@ func (f *NotificationRepository) GetNotificationIntent(
 	return intent, nil
 }
 
+func (f *NotificationRepository) ListNotificationIntentsByReference(
+	_ context.Context,
+	kind notifications.ReferenceKind,
+	id string,
+) ([]notifications.Intent, error) {
+	var intents []notifications.Intent
+	for _, intent := range f.Intents {
+		if intent.ReferenceKind == kind && intent.ReferenceID == id {
+			intents = append(intents, intent)
+		}
+	}
+	sort.Slice(intents, func(i, j int) bool {
+		if intents[i].CreatedAt.Equal(intents[j].CreatedAt) {
+			return intents[i].ID > intents[j].ID
+		}
+		return intents[i].CreatedAt.After(intents[j].CreatedAt)
+	})
+	return intents, nil
+}
+
+func (f *NotificationRepository) ListNotificationAttempts(
+	_ context.Context,
+	intentID string,
+) ([]notifications.Attempt, error) {
+	var attempts []notifications.Attempt
+	for _, attempt := range f.Attempts {
+		if attempt.IntentID == intentID {
+			attempts = append(attempts, attempt)
+		}
+	}
+	sort.Slice(attempts, func(i, j int) bool {
+		if attempts[i].AttemptNumber == attempts[j].AttemptNumber {
+			return attempts[i].ID < attempts[j].ID
+		}
+		return attempts[i].AttemptNumber < attempts[j].AttemptNumber
+	})
+	return attempts, nil
+}
+
 func (f *NotificationRepository) ClaimDueNotificationAttempt(
 	_ context.Context,
 	owner string,

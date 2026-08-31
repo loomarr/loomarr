@@ -46,6 +46,9 @@ const peopleFetch =
       return json({ settings: [], features: { user_sync: true } });
     }
     if (url.pathname === "/v1/users/candidates") return json({ candidates });
+    if (url.pathname === "/v1/invitations" && request.method === "GET") {
+      return json({ invitations: [] });
+    }
     if (url.pathname.endsWith("/sessions") && request.method === "GET") return json({ sessions: [] });
     if (url.pathname === "/v1/users" && request.method === "GET") {
       if (roster === "loading") return await new Promise<Response>(() => {});

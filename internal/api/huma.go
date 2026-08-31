@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/media"
+	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -38,8 +39,9 @@ type Server struct {
 	passwords PasswordService
 	userSync  UserSyncer
 	// invitations owns administrator admission decisions and one-time sharing grants (§11).
-	invitations     InvitationService
-	accessPublicURL func() string
+	invitations        InvitationService
+	invitationDelivery InvitationDeliveryService
+	accessPublicURL    func() string
 	// devices wires /v1/auth/device/* — the pairing handshake a keyboard-less native client uses
 	// (§11, Shield P1). Nil until configured, which 404s the routes rather than half-mounting them.
 	devices *auth.DeviceManager
@@ -820,6 +822,13 @@ type InvitationService interface {
 	Revoke(context.Context, string) error
 }
 
+// InvitationDeliveryService composes provider-neutral delivery work beside the Invitation
+// lifecycle. Sending mail never creates or redeems an allowlist row.
+type InvitationDeliveryService interface {
+	SendEmail(context.Context, string, string) (notifications.DeliverySummary, error)
+	LatestEmail(context.Context, string) (notifications.DeliverySummary, error)
+}
+
 // SessionManager revokes sessions (logout) and exposes them for admin review (§11).
 type SessionManager interface {
 	Revoke(ctx context.Context, token string) error
@@ -845,6 +854,8 @@ type Options struct {
 	Sessions     SessionManager    // /v1/auth/logout (Phase 9)
 	UserSync     UserSyncer        // POST /v1/users/sync (Phase 9); nil ⇒ route absent
 	Invitations  InvitationService // /v1/invitations* (§11); nil ⇒ routes absent
+	// InvitationDelivery adds explicit email send/resend and provider-safe delivery summaries.
+	InvitationDelivery InvitationDeliveryService
 	// AccessPublicURL supplies the recipient-reachable browser origin. It is read
 	// at grant issuance so a hot-applied setting takes effect without restart.
 	AccessPublicURL func() string

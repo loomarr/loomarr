@@ -119,10 +119,11 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `library` | 7 | `filler`, `httpx` |
 | `llm` | 5 | `httpx`, `metrics` |
 | `metrics` | 6 | `provision` |
+| `notifications` | 5 | — |
 | `provision` | 16 | — |
 | `schedule` | 14 | `provision` |
 | `scheduler` | 6 | `store` |
-| `store` | 14 | `diagnostics`, `filler`, `filleradmission`, `invitation`, `provision`, `schedule` |
+| `store` | 14 | `diagnostics`, `filler`, `filleradmission`, `invitation`, `notifications`, `provision`, `schedule` |
 | `suggest` | 6 | `catalog`, `llm`, `provision`, `schedule`, `store` |
 
 ##### Every package, by layer
@@ -149,7 +150,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the hermetic certification contract for filler admission.
 - **`media`** · 3 importers
   Owns host-wide resources shared by live and background media work.
-- **`notifications`** · 4 importers
+- **`notifications`** · 5 importers
   Owns channel-neutral notification intents and delivery work (§11).
 - **`proctree`** · 2 importers
   Supervises one child process and every descendant it starts.
@@ -272,7 +273,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 11**
 
-- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `images`, `invitation`, `media`, `metrics`, `playout`, `prepared`, `proposalworkflow`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `images`, `invitation`, `media`, `metrics`, `notifications`, `playout`, `prepared`, `proposalworkflow`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 **Layer 12**
@@ -6867,6 +6868,7 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `NOTIFICATIONS_SMTP_SECURITY` | `starttls` (default) / `tls` / `none`. `starttls` requires a successful STARTTLS upgrade and never falls back to cleartext; `tls` is implicit TLS. `none` is an explicit operator choice for a trusted local relay and is labelled insecure. Certificate verification is never disabled by a setting. |
 | `NOTIFICATIONS_SMTP_USERNAME` / `NOTIFICATIONS_SMTP_PASSWORD` | Empty / *(secret)*. Empty username means an unauthenticated relay and requires an empty password. Otherwise the adapter discovers the strongest mutually supported mechanism. The password is replace-only and covered by every config-secret redaction rule. |
 | `NOTIFICATIONS_EMAIL_FROM_ADDRESS` / `NOTIFICATIONS_EMAIL_FROM_NAME` | Empty / `Loomarr`. A single validated mailbox and its display name. The address is required when email is enabled; neither value is recipient-controlled. |
+| `JOB_NOTIFICATION_DELIVERY_SCHEDULE` | `*/15 * * * * *`. How often the provider-neutral worker claims queued account-message Delivery attempts. The worker drains a bounded batch per run; retry availability remains the fixed policy above rather than another setting. |
 
 **Playout (§9.1 — added with internal playout).**
 
@@ -7518,6 +7520,7 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
 - **Channel maintenance (§5, §9).** A **`channel-maintenance`** job (default every ten minutes) first re-enumerates channel-referenced shows whose cached episode lists have aged past `episodes.max_age`, then rebuilds upcoming schedules and converges each channel's effective playout backend. The stages keep separate failure detail internally but share the operator outcome and cadence: keep live channels current. The episode set is bounded to channel lineups; it is not coupled to acquisition-only library scans.
 - **Backup (§16, SQLite only).** A **`backup`** job (default `0 30 3 * * *`) writes one `VACUUM INTO` snapshot into `backup.dir` and then prunes that directory to the newest `backup.retain` files, matching only the `loomarr-<timestamp>.db` names it writes. Prune runs **after** a successful write, so a failed snapshot never costs the operator a backup they already had. On Postgres it registers as a **disabled job** (below): `WriteBackup` is SQLite-only, so it cannot run there — but an operator whose backup strategy is `pg_dump` should read that as a stated fact, not infer it from an absent row.
 - **Housekeeping (§5, §12, V32).** A **`housekeeping`** job (default daily) removes expired sessions, feed rows older than `activity.retention`, terminal notification intents and attempts past their fixed 30-day window, finished jobs past `JOBS_RETENTION`, and denied proposals past `PROPOSALS_RETENTION`. **Proposals precede jobs**, so the purge never creates an orphaned `proposals.job_id`. All stages are attempted even if one fails; queued/sending notification work, other in-flight work, and the approval audit trail remain exempt.
+- **Account-message delivery (§11).** A **`notification-delivery`** job (default every 15 seconds) claims and executes a bounded batch of queued Delivery attempts. SMTP acceptance classification controls whether a later attempt becomes eligible; changing the job cadence changes only how quickly due work is noticed, never the fixed retry count or delays.
 - **Disabled jobs.** A job may register with a `DisabledReason`. It appears on the Tasks page with that reason and is **never scheduled, never claimed, and refuses "Run now"** (`409`), so "cannot run here" is a property of the job rather than a UI convention a client could ignore.
   - **The alternative was silence, and silence is a claim too.** A conditionally-registered job simply vanishes, which is indistinguishable — from the Tasks page alone — from a job that runs fine and has never failed. For backup specifically, the failure mode of that ambiguity is an operator believing they are covered when they are not.
   - **Disabled is not "off".** It is not operator-settable and carries no enable control: it means *this build/backend cannot run this job*, which no amount of clicking changes. A per-job on/off switch would be a different feature.

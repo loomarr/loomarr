@@ -5,6 +5,7 @@ import {
   getDeleteUserContactReplacementMockHandler,
   getImportCandidatesMockHandler,
   getImportUsersMockHandler,
+  getListInvitationsMockHandler,
   getListUserSessionsMockHandler,
   getListUsersMockHandler,
   getMeMockHandler,
@@ -12,6 +13,7 @@ import {
   getPutUserContactAddressMockHandler,
   getResetUserPasswordMockHandler,
   getRevokeSessionMockHandler,
+  getSendInvitationEmailMockHandler,
   getSettingsListMockHandler,
   getSyncUsersMockHandler,
 } from "@loomarr/api/msw";
@@ -169,6 +171,45 @@ const renderAt = (path: string) => {
 // built, unit-tested, and never actually mounted by any route — the component tests all
 // passed while the feature was absent. Component tests pin behavior; these pin the wiring.
 describe("Users page", () => {
+  it("shows invitation delivery state and sends an idempotent email request", async () => {
+    stubUsers();
+    const sends: Array<{ id: string; body: unknown }> = [];
+    server.use(
+      getListInvitationsMockHandler({
+        invitations: [
+          {
+            id: "invitation-1",
+            kind: "local",
+            username: "Dorothy",
+            role: "member",
+            status: "pending",
+            createdAt: Date.UTC(2030, 0, 1),
+            expiresAt: Date.UTC(2030, 0, 8),
+            contactAddress: { email: "dorothy@example.com", status: "pending", provenance: "admin" },
+            emailDelivery: {
+              status: "failed",
+              outcome: "recipient_rejected",
+              attemptNumber: 1,
+              updatedAt: Date.UTC(2030, 0, 2),
+            },
+          },
+        ],
+      }),
+      getSendInvitationEmailMockHandler(async ({ request, params }) => {
+        sends.push({ id: String(params.id), body: await request.json() });
+        return { status: "queued", attemptNumber: 1, updatedAt: Date.UTC(2030, 0, 3) };
+      }),
+    );
+    renderAt("/people");
+
+    expect(await screen.findByText("Dorothy")).toBeInTheDocument();
+    expect(screen.getByText("Email failed")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Retry email to Dorothy" }));
+    await waitFor(() => expect(sends).toHaveLength(1));
+    expect(sends[0]?.id).toBe("invitation-1");
+    expect(sends[0]?.body).toEqual({ requestId: expect.any(String) });
+  });
+
   it("lists the allowlist with each row's credential path", async () => {
     stubUsers();
     renderAt("/people");

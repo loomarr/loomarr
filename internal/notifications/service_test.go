@@ -124,6 +124,45 @@ func TestRunOnePersistsNoArbitraryAdapterError(t *testing.T) {
 	}
 }
 
+func TestLatestDeliveryComposesNewestIntentAndAttemptForAReference(t *testing.T) {
+	repository := testkit.NewNotificationRepository()
+	now := time.Unix(1_900_000_000, 0)
+	adapter := &testkit.NotificationAdapter{
+		DeliveryMeans: notifications.MeansEmail,
+		Result:        notifications.Result{Status: notifications.StatusDelivered, ProviderMessageID: "safe-42"},
+	}
+	service := notifications.NewService(repository, emailRouter(), []notifications.Adapter{adapter}, sequentialIDs(), func() time.Time { return now })
+	command := notifications.PublishCommand{
+		Topic: notifications.TopicAccountInvitation, RecipientKind: notifications.RecipientInvitation,
+		RecipientID: "invitation-1", ReferenceKind: notifications.ReferenceInvitation,
+		ReferenceID: "invitation-1", Policy: notifications.PolicyMandatoryAccount,
+		IdempotencyKey: "invitation-1:email:first",
+	}
+	if _, _, err := service.Publish(t.Context(), command); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.RunOne(t.Context(), "worker-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	delivered, err := service.LatestDelivery(t.Context(), notifications.ReferenceInvitation, "invitation-1")
+	if err != nil || delivered.Status != notifications.StatusDelivered || delivered.AttemptNumber != 1 ||
+		delivered.ProviderMessageID != "safe-42" {
+		t.Fatalf("delivered summary = %+v, %v", delivered, err)
+	}
+
+	now = now.Add(time.Minute)
+	command.IdempotencyKey = "invitation-1:email:resend"
+	if _, _, err := service.Publish(t.Context(), command); err != nil {
+		t.Fatal(err)
+	}
+	queued, err := service.LatestDelivery(t.Context(), notifications.ReferenceInvitation, "invitation-1")
+	if err != nil || queued.Status != notifications.StatusQueued || queued.AttemptNumber != 1 ||
+		!queued.UpdatedAt.Equal(now) {
+		t.Fatalf("queued summary = %+v, %v", queued, err)
+	}
+}
+
 func emailRouter() testkit.NotificationRouter {
 	return testkit.NotificationRouter{RoutesResult: []notifications.Route{{
 		Means: notifications.MeansEmail, DestinationRef: "contact-1", DestinationRedacted: "a***@example.com",

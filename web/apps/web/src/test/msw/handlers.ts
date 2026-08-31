@@ -20,6 +20,7 @@ import {
   getListDocsMockHandler,
   getListFillerMockHandler,
   getListFillerSourcesMockHandler,
+  getListInvitationsMockHandler,
   getListProposalJobsMockHandler,
   getListProposalsMockHandler,
   getListStartupReportsMockHandler,
@@ -122,6 +123,7 @@ const appHandlers = (): RequestHandler[] => [
   getListProposalJobsMockHandler({ journeys: [] }),
   getListProposalsMockHandler({ proposals: [] }),
   getListUsersMockHandler({ users: [] }),
+  getListInvitationsMockHandler({ invitations: [] }),
   getSettingsListMockHandler({ settings: [], features: {} }),
   // ⚠ `total` is REQUIRED since §10 V51d added paging. This line and that field arrived in two
   // different PRs (#214 added the handler, #203 added the field); each was green against the main
