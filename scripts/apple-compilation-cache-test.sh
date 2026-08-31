@@ -193,6 +193,24 @@ fi
 
 printf '{"active_caches_size_in_bytes":1000,"active_caches_count":2}\n' > "$test_root/usage.json"
 got="$(
+  LOOMARR_APPLE_CACHE_REPOSITORY_BUDGET_BYTES=3000 \
+    LOOMARR_APPLE_CACHE_RESERVE_BYTES=1000 \
+    LOOMARR_APPLE_CACHE_MAX_ARCHIVE_BYTES=1000 \
+    "$cache_cli" admit-capacity "$test_root/usage.json"
+)"
+if [[ "$got" != 'apple-compilation-cache: capacity admitted' ]]; then
+  printf 'apple-compilation-cache-test: capacity output got %s\n' "$got" >&2
+  exit 1
+fi
+if LOOMARR_APPLE_CACHE_REPOSITORY_BUDGET_BYTES=2999 \
+  LOOMARR_APPLE_CACHE_RESERVE_BYTES=1000 \
+  LOOMARR_APPLE_CACHE_MAX_ARCHIVE_BYTES=1000 \
+  "$cache_cli" admit-capacity "$test_root/usage.json" \
+  >/dev/null 2>&1; then
+  printf 'apple-compilation-cache-test: preflight exceeded repository headroom\n' >&2
+  exit 1
+fi
+got="$(
   LOOMARR_APPLE_CACHE_REPOSITORY_BUDGET_BYTES=2000000 \
     LOOMARR_APPLE_CACHE_RESERVE_BYTES=1000 \
     "$cache_cli" admit-save "$archive" "$test_root/usage.json"

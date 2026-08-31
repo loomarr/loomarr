@@ -150,8 +150,8 @@ restore_archive() {
   printf 'apple-compilation-cache: restored %s\n' "$store"
 }
 
-admit_save() {
-  local archive="$1" usage_json="$2" archive_bytes active_bytes projected_bytes
+admit_bytes() {
+  local required_bytes="$1" usage_json="$2" label="$3" active_bytes projected_bytes
   local budget_bytes="${LOOMARR_APPLE_CACHE_REPOSITORY_BUDGET_BYTES:-10737418240}"
   local reserve_bytes="${LOOMARR_APPLE_CACHE_RESERVE_BYTES:-536870912}"
   local max_archive_bytes="${LOOMARR_APPLE_CACHE_MAX_ARCHIVE_BYTES:-1258291200}"
@@ -161,25 +161,40 @@ admit_save() {
       exit 2
     fi
   done
-  if [[ ! -f "$archive" ]] || [[ ! -f "$usage_json" ]]; then
+  if [[ ! -f "$usage_json" ]]; then
+    printf 'apple-compilation-cache: admission inputs are missing\n' >&2
+    exit 1
+  fi
+  active_bytes="$(jq -er '.active_caches_size_in_bytes | select(type == "number" and . >= 0 and floor == .)' "$usage_json")"
+  if (( required_bytes > max_archive_bytes )); then
+    printf 'apple-compilation-cache: archive is %s bytes; ceiling is %s\n' \
+      "$required_bytes" "$max_archive_bytes" >&2
+    exit 1
+  fi
+  projected_bytes=$((active_bytes + required_bytes + reserve_bytes))
+  if (( projected_bytes > budget_bytes )); then
+    printf 'apple-compilation-cache: %s refused; projected use with reserve is %s of %s bytes\n' \
+      "$label" "$projected_bytes" "$budget_bytes" >&2
+    exit 1
+  fi
+  printf 'apple-compilation-cache: %s admitted\n' "$label"
+}
+
+admit_capacity() {
+  local usage_json="$1"
+  local max_archive_bytes="${LOOMARR_APPLE_CACHE_MAX_ARCHIVE_BYTES:-1258291200}"
+  admit_bytes "$max_archive_bytes" "$usage_json" capacity
+}
+
+admit_save() {
+  local archive="$1" usage_json="$2" archive_bytes
+  if [[ ! -f "$archive" ]]; then
     printf 'apple-compilation-cache: admission inputs are missing\n' >&2
     exit 1
   fi
   zstd -t "$archive" >/dev/null
   archive_bytes="$(wc -c < "$archive" | tr -d ' ')"
-  active_bytes="$(jq -er '.active_caches_size_in_bytes | select(type == "number" and . >= 0 and floor == .)' "$usage_json")"
-  if (( archive_bytes > max_archive_bytes )); then
-    printf 'apple-compilation-cache: archive is %s bytes; ceiling is %s\n' \
-      "$archive_bytes" "$max_archive_bytes" >&2
-    exit 1
-  fi
-  projected_bytes=$((active_bytes + archive_bytes + reserve_bytes))
-  if (( projected_bytes > budget_bytes )); then
-    printf 'apple-compilation-cache: save refused; projected use with reserve is %s of %s bytes\n' \
-      "$projected_bytes" "$budget_bytes" >&2
-    exit 1
-  fi
-  printf 'apple-compilation-cache: save admitted\n'
+  admit_bytes "$archive_bytes" "$usage_json" save
 }
 
 retention_plan() {
@@ -275,7 +290,7 @@ diagnostics() {
 }
 
 usage() {
-  printf 'usage: %s fingerprint | validate-store STORE | pack STORE ARCHIVE | restore ARCHIVE STORE | admit-save ARCHIVE USAGE_JSON | retention-plan CACHES_JSON PREFIX REF KEEP | diagnostics LOG REQUIREMENT\n' "$0" >&2
+  printf 'usage: %s fingerprint | validate-store STORE | pack STORE ARCHIVE | restore ARCHIVE STORE | admit-capacity USAGE_JSON | admit-save ARCHIVE USAGE_JSON | retention-plan CACHES_JSON PREFIX REF KEEP | diagnostics LOG REQUIREMENT\n' "$0" >&2
   exit 2
 }
 
@@ -295,6 +310,10 @@ case "${1:-}" in
   restore)
     [[ $# -eq 3 ]] || usage
     restore_archive "$2" "$3"
+    ;;
+  admit-capacity)
+    [[ $# -eq 2 ]] || usage
+    admit_capacity "$2"
     ;;
   admit-save)
     [[ $# -eq 3 ]] || usage
