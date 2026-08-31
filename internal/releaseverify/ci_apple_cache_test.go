@@ -92,6 +92,9 @@ func TestRepositoryAppleCachePublisherAndConsumersAreTrustBounded(t *testing.T) 
 		run := mappingValueMust(t, mappingValueMust(t, workflow, "jobs"), "run")
 		steps := mappingValueMust(t, run, "steps").Content
 		workflowUsesStepIndex(t, steps, "actions/cache/restore")
+		if strings.Contains(string(data), "uses: actions/cache@") {
+			t.Fatalf("%s must not write sibling-scoped dependency caches", workflowName)
+		}
 		if strings.Contains(string(data), "actions/cache/save@") {
 			t.Fatalf("%s must remain restore-only for the compilation cache", workflowName)
 		}
