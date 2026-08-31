@@ -49,6 +49,10 @@ if [[ -z "$result_bundle" ]]; then
   printf 'main xcodebuild did not receive -resultBundlePath\n' >&2
   exit 64
 fi
+if [[ -e "$result_bundle" ]]; then
+  printf 'main xcodebuild received an existing result bundle\n' >&2
+  exit 64
+fi
 mkdir -p "$result_bundle"
 printf 'result bundle fixture\n' > "$result_bundle/build-log"
 printf 'xcodebuild fixture\n'
@@ -78,9 +82,16 @@ case "$1" in
   simctl)
     case "$2" in
       list)
-        printf '{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-27-0":[{"udid":"SIM-1","isAvailable":true,"state":"Booted"}]}}\n'
+        printf 'simulator_list\n' >> "$APPLE_CACHE_TEST_ROOT/command-order"
+        printf '{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-27-0":[{"udid":"SIM-1","isAvailable":true,"state":"Shutdown"}]}}\n'
+        ;;
+      boot)
+        printf 'simulator_boot\n' >> "$APPLE_CACHE_TEST_ROOT/command-order"
         ;;
       bootstatus)
+        printf 'simulator_ready\n' >> "$APPLE_CACHE_TEST_ROOT/command-order"
+        ;;
+      shutdown)
         ;;
       launch)
         printf 'media.loomarr.mobile.prototype: %s\n' "$APPLE_CACHE_TEST_LIVE_PID"
@@ -127,6 +138,7 @@ cat > "$test_root/bin/pnpm" <<'STUB'
 set -euo pipefail
 if [[ "$*" == *'expo prebuild'* ]]; then
   [[ "$*" == *"--template $APPLE_CACHE_TEST_ROOT/expo/template.tgz"* ]]
+  printf 'clean_prebuild\n' >> "$APPLE_CACHE_TEST_ROOT/command-order"
   printf 'prebuild fixture\n'
   exit 0
 fi
@@ -134,6 +146,11 @@ if [[ "$*" != *'expo run:ios'* ]]; then
   printf 'unexpected pnpm invocation: %s\n' "$*" >&2
   exit 64
 fi
+if [[ "$*" != *'--no-install'* ]]; then
+  printf 'expo run:ios did not skip the explicit CocoaPods install: %s\n' "$*" >&2
+  exit 64
+fi
+printf 'expo_run\n' >> "$APPLE_CACHE_TEST_ROOT/command-order"
 count=0
 if [[ -f "$APPLE_CACHE_TEST_ROOT/build-count" ]]; then
   count="$(cat "$APPLE_CACHE_TEST_ROOT/build-count")"
@@ -172,9 +189,34 @@ case "$count" in
 esac
 STUB
 
+cat > "$test_root/bin/pod" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$*" == install ]]
+[[ "$PWD" == */apps/mobile/ios ]]
+[[ "$NODE_ENV" == production ]]
+[[ "$RCT_NO_LAUNCH_PACKAGER" == 1 ]]
+[[ "$REACT_NATIVE_NODE_MODULES_DIR" == */apps/mobile/node_modules ]]
+printf 'pod_install\n' >> "$APPLE_CACHE_TEST_ROOT/command-order"
+STUB
+
 cat > "$test_root/bin/sleep" <<'STUB'
 #!/usr/bin/env bash
 exit 0
+STUB
+
+cat > "$test_root/bin/date" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$*" == +%s ]]
+counter_file="$APPLE_CACHE_TEST_ROOT/clock"
+now=0
+if [[ -f "$counter_file" ]]; then
+  now="$(cat "$counter_file")"
+fi
+now=$((now + 10))
+printf '%s\n' "$now" > "$counter_file"
+printf '%s\n' "$now"
 STUB
 chmod +x "$test_root/bin/"*
 
@@ -228,6 +270,9 @@ find "$test_root/build" -mindepth 1 -depth -delete
 mkdir "$test_root/store"
 printf 'CAS object\n' > "$test_root/store/object"
 unlink "$test_root/build-count"
+: > "$test_root/command-order"
+mkdir -p "$test_root/artifacts/build-warm.xcresult"
+printf 'stale result bundle\n' > "$test_root/artifacts/build-warm.xcresult/stale"
 set +e
 output="$(
   PATH="$test_root/bin:$PATH" \
@@ -255,6 +300,18 @@ if [[ "$(cat "$test_root/build-count")" != 1 ]] \
 fi
 if [[ "$(cat "$test_root/artifacts/cache-diagnostics.env")" != $'hits=1\nmisses=0\nskipped=0' ]]; then
   printf 'test-apple-client-cache-test: warm diagnostics were not verified\n' >&2
+  exit 1
+fi
+if [[ "$(cat "$test_root/artifacts/phase-timings.tsv")" != \
+  $'phase\tduration_seconds\nclean_prebuild\t10\ncocoapods_install\t10\nsimulator_readiness\t50\nnative_build_install\t10\nartifact_runtime_assertions\t10' ]]; then
+  printf 'test-apple-client-cache-test: phase timing artifact got:\n%s\n' \
+    "$(cat "$test_root/artifacts/phase-timings.tsv" 2>/dev/null || true)" >&2
+  exit 1
+fi
+if [[ "$(cat "$test_root/command-order")" != \
+  $'simulator_list\nsimulator_boot\nclean_prebuild\npod_install\nsimulator_ready\nexpo_run' ]]; then
+  printf 'test-apple-client-cache-test: overlap command order got:\n%s\n' \
+    "$(cat "$test_root/command-order")" >&2
   exit 1
 fi
 

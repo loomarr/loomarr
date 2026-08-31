@@ -431,9 +431,9 @@ marker also makes the contract and certification jobs mandatory evidence rather 
 the workflow's overall conclusion.
 
 Select `apple-cache-validation` only while proving the Apple compilation-cache protocol. It runs no
-ordinary product family: one `macos-26` job performs the complete mobile and TV Release
+ordinary product family: one `xcode-27` job performs the complete mobile and TV Release
 install-launch-liveness gates while populating an LLVM CAS, validates and packs that store, and
-transfers it as a one-day workflow artifact. A dependent `macos-26` job restores and validates the
+transfers it as a one-day workflow artifact. A dependent `xcode-27` job restores and validates the
 archive before proving mobile and TV hits, a real Swift source-change hit-and-miss, corrupt-archive
 rejection, fingerprint invalidation, and cold mobile/TV fallback. The runner boundary is deliberate;
 a cache that works only within one machine is not eligible for later CI consumption. This manual
@@ -460,6 +460,19 @@ retry; every architecture, install, launch, screenshot, and liveness assertion s
 jobs never save the compiler archive, and the obsolete pnpm/CocoaPods and ExpoModulesJSI lookup
 steps have no writer and are omitted. Pull-request and merge-queue refs therefore cannot create
 sibling-scoped Apple generations that later groups cannot read.
+
+The Apple verifier starts the selected simulator before Expo's required clean prebuild, then runs
+`pod install` explicitly while the simulator boots. `simctl bootstatus` remains a hard barrier
+before Expo builds, installs, or launches, and `expo run:ios --no-install` skips only the duplicate
+CocoaPods invocation. The uploaded `phase-timings.tsv` records clean prebuild, CocoaPods, simulator
+readiness, native build/install, and artifact/runtime assertions. Simulator readiness contains the
+overlapped prebuild and CocoaPods intervals, so those rows are deliberately not additive.
+
+Do not add a generated `ios`/Pods cache without re-proving both integrity and repository capacity.
+Measured 2026-08-31, one clean mobile native workspace was 981 MiB and compressed to 339 MiB while
+the repository already held 9.11 GiB of its 10 GiB Actions-cache budget. Restoring Pods alone still
+pays CocoaPods project generation; restoring the integrated workspace overwrites clean-prebuild
+authority. Neither seam justified consuming the remaining cache headroom.
 
 ## `ci-ok` is the only required check
 
