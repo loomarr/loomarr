@@ -1,9 +1,10 @@
 # Account invitation and recovery certification — 2026-08-31
 
-This record certifies the stacked implementation for #705 through #716. It covers the contact,
-invitation, notification, SMTP, sharing, activation, and local-recovery slices together. The
-candidate stack ends at `test/account-invitation-certification`; protected CI remains the merge
-gate for each pull request.
+This record certifies the clean certification-only current-main v2 candidate for #705 through #716.
+It covers the contact, invitation, notification, SMTP, sharing, activation, and local-recovery
+slices together. The candidate is `test/account-invitation-certification-v2`, based on current
+`origin/main`. Protected CI remains the merge gate; this record does not claim that the candidate
+has merged or been released.
 
 ## Acceptance evidence
 
@@ -17,7 +18,7 @@ gate for each pull request.
 | Recovery replaces the local credential and revokes sessions and sibling grants | `TestAccountAccessLifecycleCertification`; `TestPasswordRecoveryGrant_RedeemsArgon2idAndCannotBeReused`; recovery store conformance; `tests/e2e/password-recovery.spec.ts` | Passed. The old password and activation session fail after reset; the replacement Argon2id credential succeeds without changing the administrator role. |
 | Secrets never cross durable or presentation boundaries | Combined lifecycle durable-row assertion; invitation/recovery ephemeral-worker tests; `TestBootSettingsRedactsSMTPPasswordFromApplicationLogs`; API problem-detail tests; account-action fragment/storage tests; invitation/recovery E2E storage assertions | Passed. Persistence contains SHA-256 hashes for machine bearers and Argon2id verifiers for human passwords. SMTP credentials, plaintext grants, passwords, and session tokens are absent from durable notification data and reviewed screenshots. |
 | One conformance suite and deterministic external adapters | `make test-pg`; SQLite execution inside `make check`; shared `testkit.MediaServer`; SMTP protocol/classification tests; deterministic sequence sender in account-delivery tests | Passed. The same conformance assertions run for SQLite and Postgres; no unit or certification test uses a live Library or SMTP service. |
-| Generated contracts and complete product gates | `make openapi-verify arch-docs-verify config-docs-verify`; `make check`; `make test-pg`; `make fe`; `make e2e`; `make fe-visual`; `make docs-lint` | Passed locally. Web evidence is 213 Vitest files / 1,679 tests, 14/14 Playwright E2E tests, and 1,031 visual/accessibility checks with one intentional skip. |
+| Generated contracts and complete product gates | `make openapi-verify`; `make arch-docs-verify`; `make config-docs-verify`; `make check`; `make test-pg`; `make fe`; `make e2e`; `make fe-visual`; `make docs-lint`; `make retired-verify`; `make agent-verify BASE=origin/main` | Passed in the fresh integrated run. E2E passed 14/14, and visual/accessibility passed 1,194 checks with 2 intentional skips. |
 
 ## Manual visual review
 
@@ -44,10 +45,13 @@ touch-target assertions for the invitation workflow.
 
 ## Gate results
 
+- Focused race certification: passed (`TestAccountAccessLifecycleCertification`).
 - `make check`: passed, including race-enabled Go tests and repository policy checks.
 - `make test-pg`: passed for `internal/store`, `internal/backendtransition`, and `internal/app`.
-- `make fe`: passed; 213 Web test files and 1,679 tests, production SPA, and Storybook.
+- `make agent-verify BASE=origin/main`: passed.
+- `make openapi-verify`, `make arch-docs-verify`, and `make config-docs-verify`: passed.
+- `make docs-lint` and `make retired-verify`: passed.
+- `make fe`: passed, including the production SPA and Storybook.
 - `make e2e`: passed, 14/14.
-- `make fe-visual`: passed, 1,031 with one intentional skip.
+- `make fe-visual`: passed, 1,194 visual/accessibility checks with 2 intentional skips.
 - OpenAPI, architecture, and configuration generators reproduced byte-identical output.
-- `make docs-lint`: passed with zero Markdown, link, or prose errors.
