@@ -50,6 +50,60 @@ func testInvitationReserveAndList(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+func testInvitationReservationBlocksDirectCreation(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	s := newStore(t)
+	now := time.Unix(1_900_000_000, 0).UTC()
+
+	local := localInvitationFixture("reserved-local", "Grace", now)
+	if err := s.CreateInvitation(ctx, local, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateUserUnlessInvited(ctx, User{
+		ID: "direct-local", Name: " grace ", Role: RoleMember, CreatedAt: now, UpdatedAt: now,
+	}, now); !errors.Is(err, ErrInvitationIdentityConflict) {
+		t.Fatalf("create reserved local user = %v, want ErrInvitationIdentityConflict", err)
+	}
+
+	linked := invitation.Invitation{
+		ID: "reserved-library", Kind: invitation.KindLibrary, LibraryUserID: "library-user-1",
+		DisplayName: "Katherine", IdentityKey: "library-user-1", Role: invitation.RoleMember,
+		Status: invitation.StatusPending, CreatedAt: now, ExpiresAt: now.Add(invitation.Expiry),
+	}
+	if err := s.CreateInvitation(ctx, linked, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateUserUnlessInvited(ctx, User{
+		ID: "library-user-1", Name: "Katherine", Role: RoleMember, MediaServerLinked: true,
+		CreatedAt: now, UpdatedAt: now,
+	}, now); !errors.Is(err, ErrInvitationIdentityConflict) {
+		t.Fatalf("create reserved Library user = %v, want ErrInvitationIdentityConflict", err)
+	}
+
+	if err := s.CreateUserUnlessInvited(ctx, User{
+		ID: "unreserved", Name: "Dorothy", Role: RoleMember, CreatedAt: now, UpdatedAt: now,
+	}, now); err != nil {
+		t.Fatalf("create unreserved user: %v", err)
+	}
+	if _, err := s.GetUser(ctx, "unreserved"); err != nil {
+		t.Fatalf("get unreserved user: %v", err)
+	}
+
+	expired := localInvitationFixture("expired-reservation", "Annie", now.Add(-invitation.Expiry))
+	if err := s.CreateInvitation(ctx, expired, nil); err != nil {
+		t.Fatal(err)
+	}
+	fresh := localInvitationFixture("fresh-reservation", "ANNIE", now)
+	if err := s.CreateInvitation(ctx, fresh, nil); err != nil {
+		t.Fatalf("replace expired reservation: %v", err)
+	}
+	gotExpired, err := s.GetInvitation(ctx, expired.ID, now)
+	if err != nil || gotExpired.Status != invitation.StatusExpired || !gotExpired.TerminalAt.Equal(expired.ExpiresAt) {
+		t.Fatalf("expired reservation = %+v, %v", gotExpired, err)
+	}
+}
+
 func testInvitationContactIsAtomicAndGloballyUnique(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 	ctx := context.Background()

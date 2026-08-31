@@ -95,6 +95,9 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 
 	t.Run("Invitations", func(t *testing.T) {
 		t.Run("ReserveAndListIdentity", func(t *testing.T) { testInvitationReserveAndList(t, newStore) })
+		t.Run("ReservationBlocksDirectCreation", func(t *testing.T) {
+			testInvitationReservationBlocksDirectCreation(t, newStore)
+		})
 		t.Run("ContactIsAtomicAndGloballyUnique", func(t *testing.T) {
 			testInvitationContactIsAtomicAndGloballyUnique(t, newStore)
 		})

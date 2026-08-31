@@ -9,7 +9,7 @@ CREATE TABLE invitations (
     display_name      TEXT NOT NULL DEFAULT '',
     identity_key      TEXT NOT NULL,
     role              TEXT NOT NULL CHECK (role IN ('member', 'admin')),
-    status            TEXT NOT NULL CHECK (status IN ('pending', 'redeemed', 'revoked')),
+    status            TEXT NOT NULL CHECK (status IN ('pending', 'redeemed', 'expired', 'revoked')),
     created_at        BIGINT NOT NULL,
     expires_at        BIGINT NOT NULL,
     terminal_at       BIGINT NOT NULL DEFAULT 0,
@@ -22,6 +22,7 @@ CREATE TABLE invitations (
     CHECK (
         (status = 'pending' AND terminal_at = 0 AND redeemed_by = '') OR
         (status = 'redeemed' AND terminal_at > 0 AND redeemed_by <> '') OR
+        (status = 'expired' AND terminal_at = expires_at AND redeemed_by = '') OR
         (status = 'revoked' AND terminal_at > 0 AND redeemed_by = '')
     )
 );

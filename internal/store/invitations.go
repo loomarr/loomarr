@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/contact"
@@ -34,11 +35,27 @@ func (s *sqlStore) CreateInvitation(
 			return fmt.Errorf("invitation contact must be an unverified admin-supplied address for this invitation")
 		}
 	}
+	return s.withInvitationIdentityLock(ctx, value.Kind, value.IdentityKey, func(ctx context.Context) error {
+		return s.createInvitation(ctx, value, address)
+	})
+}
+
+func (s *sqlStore) createInvitation(
+	ctx context.Context,
+	value invitation.Invitation,
+	address *contact.Address,
+) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("create invitation: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, s.ph(`UPDATE invitations
+		SET status = 'expired', terminal_at = expires_at
+		WHERE kind = ? AND identity_key = ? AND status = 'pending' AND expires_at <= ?`),
+		string(value.Kind), value.IdentityKey, epoch(value.CreatedAt)); err != nil {
+		return fmt.Errorf("create invitation: expire earlier reservation: %w", err)
+	}
 
 	var exists int
 	if value.Kind == invitation.KindLocal {
@@ -84,6 +101,23 @@ func (s *sqlStore) CreateInvitation(
 		return fmt.Errorf("create invitation: commit: %w", err)
 	}
 	return nil
+}
+
+func (s *sqlStore) withInvitationIdentityLock(
+	ctx context.Context,
+	kind invitation.Kind,
+	identityKey string,
+	fn func(context.Context) error,
+) error {
+	key := string(kind) + ":" + identityKey
+	if s.dialect == DialectPostgres {
+		return s.withPostgresAdvisoryLock(ctx, "invitation identity lock", "invitation-identity:", key, fn)
+	}
+	value, _ := s.invitationIdentityLocks.LoadOrStore(key, &sync.Mutex{})
+	lock := value.(*sync.Mutex)
+	lock.Lock()
+	defer lock.Unlock()
+	return fn(ctx)
 }
 
 func (s *sqlStore) GetInvitationContactAddress(

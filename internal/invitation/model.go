@@ -84,7 +84,7 @@ func (i Invitation) Validate() error {
 	if i.Role != RoleMember && i.Role != RoleAdmin {
 		return fmt.Errorf("invalid invitation role %q", i.Role)
 	}
-	if i.Status != StatusPending && i.Status != StatusRedeemed && i.Status != StatusRevoked {
+	if i.Status != StatusPending && i.Status != StatusRedeemed && i.Status != StatusExpired && i.Status != StatusRevoked {
 		return fmt.Errorf("invalid durable invitation status %q", i.Status)
 	}
 	if i.CreatedAt.IsZero() || !i.ExpiresAt.Equal(i.CreatedAt.Add(Expiry)) {
@@ -114,6 +114,24 @@ func (i Invitation) Validate() error {
 		}
 	default:
 		return fmt.Errorf("invalid invitation kind %q", i.Kind)
+	}
+	switch i.Status {
+	case StatusPending:
+		if !i.TerminalAt.IsZero() || i.RedeemedBy != "" {
+			return fmt.Errorf("pending invitation cannot be terminal")
+		}
+	case StatusExpired:
+		if !i.TerminalAt.Equal(i.ExpiresAt) || i.RedeemedBy != "" {
+			return fmt.Errorf("expired invitation terminates at expiry")
+		}
+	case StatusRedeemed:
+		if i.TerminalAt.IsZero() || i.RedeemedBy == "" {
+			return fmt.Errorf("redeemed invitation requires its user and terminal time")
+		}
+	case StatusRevoked:
+		if i.TerminalAt.IsZero() || i.RedeemedBy != "" {
+			return fmt.Errorf("revoked invitation requires only a terminal time")
+		}
 	}
 	return nil
 }
