@@ -51,4 +51,3 @@ dev-docs: ## generate docs/dev/commands.md from this Makefile + the CI workflows
 .PHONY: dev-docs-verify
 dev-docs-verify: dev-docs ## regenerated command reference must match committed (CI red on drift)
 	@git diff --exit-code docs/dev/commands.md
-

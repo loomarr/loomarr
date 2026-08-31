@@ -15,4 +15,3 @@ smoke-livetv: ## Live TV wiring vs a DISPOSABLE Jellyfin (destroyed after — ne
 
 smoke-down: ## tear down the smoke stack (container, volume, temp database)
 	./scripts/smoke.sh down
-
