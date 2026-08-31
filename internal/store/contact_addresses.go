@@ -9,13 +9,14 @@ import (
 	"github.com/loomarr/loomarr/internal/contact"
 )
 
-const contactAddressSelect = `SELECT user_id, email, normalized, status, provenance, created_at, verified_at
- FROM user_contact_addresses`
+const contactAddressSelect = `SELECT owner_kind, owner_id, email, normalized, status, provenance, created_at, verified_at
+ FROM contact_addresses`
 
 // GetContactAddresses returns the verified recovery address and pending replacement for one person.
 // A contactless person returns an empty Set; callers establish user existence independently.
 func (s *sqlStore) GetContactAddresses(ctx context.Context, userID string) (contact.Set, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(contactAddressSelect+` WHERE user_id = ? ORDER BY status`), userID)
+	rows, err := s.db.QueryContext(ctx, s.ph(contactAddressSelect+
+		` WHERE owner_kind = 'user' AND owner_id = ? ORDER BY status`), userID)
 	if err != nil {
 		return contact.Set{}, err
 	}
@@ -26,7 +27,8 @@ func (s *sqlStore) GetContactAddresses(ctx context.Context, userID string) (cont
 // ListContactAddresses returns all current contact state in stable person/status order. It lets the
 // People roster hydrate contact data with one bounded query instead of one query per person.
 func (s *sqlStore) ListContactAddresses(ctx context.Context) ([]contact.Address, error) {
-	rows, err := s.db.QueryContext(ctx, contactAddressSelect+` ORDER BY user_id, status`)
+	rows, err := s.db.QueryContext(ctx, contactAddressSelect+
+		` WHERE owner_kind = 'user' ORDER BY owner_id, status`)
 	if err != nil {
 		return nil, err
 	}
@@ -44,13 +46,13 @@ func (s *sqlStore) ListContactAddresses(ctx context.Context) ([]contact.Address,
 
 func (s *sqlStore) GetVerifiedContactAddressByNormalized(ctx context.Context, normalized string) (contact.Address, error) {
 	return scanContactAddress(s.db.QueryRowContext(ctx, s.ph(contactAddressSelect+
-		` WHERE normalized = ? AND status = 'verified'`), normalized))
+		` WHERE owner_kind = 'user' AND normalized = ? AND status = 'verified'`), normalized))
 }
 
 // PutPendingContactAddress creates or replaces the one unverified candidate. A case-only/display
 // correction of the verified mailbox preserves verification and cancels any pending replacement.
 func (s *sqlStore) PutPendingContactAddress(ctx context.Context, address contact.Address) error {
-	if address.UserID == "" || address.Email == "" || address.Normalized == "" {
+	if address.OwnerKind != contact.OwnerUser || address.OwnerID == "" || address.Email == "" || address.Normalized == "" {
 		return fmt.Errorf("contact address requires user, email, and normalized key")
 	}
 	if address.Provenance != contact.ProvenanceAdmin &&
@@ -64,7 +66,7 @@ func (s *sqlStore) PutPendingContactAddress(ctx context.Context, address contact
 	defer func() { _ = tx.Rollback() }()
 
 	var exists int
-	if err := tx.QueryRowContext(ctx, s.ph(`SELECT 1 FROM users WHERE id = ?`), address.UserID).Scan(&exists); err == sql.ErrNoRows {
+	if err := tx.QueryRowContext(ctx, s.ph(`SELECT 1 FROM users WHERE id = ?`), address.OwnerID).Scan(&exists); err == sql.ErrNoRows {
 		return ErrNotFound
 	} else if err != nil {
 		return err
@@ -72,32 +74,35 @@ func (s *sqlStore) PutPendingContactAddress(ctx context.Context, address contact
 
 	var verifiedNormalized string
 	err = tx.QueryRowContext(ctx, s.ph(
-		`SELECT normalized FROM user_contact_addresses WHERE user_id = ? AND status = 'verified'`),
-		address.UserID).Scan(&verifiedNormalized)
+		`SELECT normalized FROM contact_addresses
+		 WHERE owner_kind = 'user' AND owner_id = ? AND status = 'verified'`),
+		address.OwnerID).Scan(&verifiedNormalized)
 	if err != nil && err != sql.ErrNoRows {
 		return err
 	}
 	if err == nil && verifiedNormalized == address.Normalized {
 		if _, err = tx.ExecContext(ctx, s.ph(
-			`UPDATE user_contact_addresses SET email = ? WHERE user_id = ? AND status = 'verified'`),
-			address.Email, address.UserID); err != nil {
+			`UPDATE contact_addresses SET email = ?
+			 WHERE owner_kind = 'user' AND owner_id = ? AND status = 'verified'`),
+			address.Email, address.OwnerID); err != nil {
 			return err
 		}
 		if _, err = tx.ExecContext(ctx, s.ph(
-			`DELETE FROM user_contact_addresses WHERE user_id = ? AND status = 'pending'`), address.UserID); err != nil {
+			`DELETE FROM contact_addresses
+			 WHERE owner_kind = 'user' AND owner_id = ? AND status = 'pending'`), address.OwnerID); err != nil {
 			return err
 		}
 		return tx.Commit()
 	}
 
 	_, err = tx.ExecContext(ctx, s.ph(
-		`INSERT INTO user_contact_addresses
-		 (user_id, email, normalized, status, provenance, created_at, verified_at)
-		 VALUES (?, ?, ?, 'pending', ?, ?, NULL)
-		 ON CONFLICT(user_id, status) DO UPDATE SET
+		`INSERT INTO contact_addresses
+		 (owner_kind, owner_id, email, normalized, status, provenance, created_at, verified_at)
+		 VALUES ('user', ?, ?, ?, 'pending', ?, ?, NULL)
+		 ON CONFLICT(owner_kind, owner_id, status) DO UPDATE SET
 		 email=excluded.email, normalized=excluded.normalized, provenance=excluded.provenance,
 		 created_at=excluded.created_at, verified_at=NULL`),
-		address.UserID, address.Email, address.Normalized, string(address.Provenance), epoch(address.CreatedAt))
+		address.OwnerID, address.Email, address.Normalized, string(address.Provenance), epoch(address.CreatedAt))
 	if isConstraintViolation(err) {
 		return ErrContactAddressConflict
 	}
@@ -119,17 +124,19 @@ func (s *sqlStore) VerifyPendingContactAddress(
 	defer func() { _ = tx.Rollback() }()
 
 	pending, err := scanContactAddress(tx.QueryRowContext(ctx, s.ph(contactAddressSelect+
-		` WHERE user_id = ? AND status = 'pending' AND normalized = ?`), userID, normalized))
+		` WHERE owner_kind = 'user' AND owner_id = ? AND status = 'pending' AND normalized = ?`), userID, normalized))
 	if err != nil {
 		return contact.Address{}, err
 	}
 	if _, err = tx.ExecContext(ctx, s.ph(
-		`DELETE FROM user_contact_addresses WHERE user_id = ? AND status = 'verified'`), userID); err != nil {
+		`DELETE FROM contact_addresses
+		 WHERE owner_kind = 'user' AND owner_id = ? AND status = 'verified'`), userID); err != nil {
 		return contact.Address{}, err
 	}
 	res, err := tx.ExecContext(ctx, s.ph(
-		`UPDATE user_contact_addresses SET status = 'verified', verified_at = ?
-		 WHERE user_id = ? AND status = 'pending' AND normalized = ?`), epoch(at), userID, normalized)
+		`UPDATE contact_addresses SET status = 'verified', verified_at = ?
+		 WHERE owner_kind = 'user' AND owner_id = ? AND status = 'pending' AND normalized = ?`),
+		epoch(at), userID, normalized)
 	if err != nil {
 		return contact.Address{}, err
 	}
@@ -146,12 +153,14 @@ func (s *sqlStore) VerifyPendingContactAddress(
 
 func (s *sqlStore) DeletePendingContactAddress(ctx context.Context, userID string) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
-		`DELETE FROM user_contact_addresses WHERE user_id = ? AND status = 'pending'`), userID)
+		`DELETE FROM contact_addresses
+		 WHERE owner_kind = 'user' AND owner_id = ? AND status = 'pending'`), userID)
 	return err
 }
 
 func (s *sqlStore) DeleteContactAddresses(ctx context.Context, userID string) error {
-	_, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM user_contact_addresses WHERE user_id = ?`), userID)
+	_, err := s.db.ExecContext(ctx, s.ph(
+		`DELETE FROM contact_addresses WHERE owner_kind = 'user' AND owner_id = ?`), userID)
 	return err
 }
 
@@ -179,7 +188,9 @@ func scanContactAddress(sc scannable) (contact.Address, error) {
 	var status, provenance string
 	var created int64
 	var verified sql.NullInt64
-	err := sc.Scan(&address.UserID, &address.Email, &address.Normalized, &status, &provenance, &created, &verified)
+	var ownerKind string
+	err := sc.Scan(&ownerKind, &address.OwnerID, &address.Email, &address.Normalized,
+		&status, &provenance, &created, &verified)
 	if err == sql.ErrNoRows {
 		return contact.Address{}, ErrNotFound
 	}
@@ -187,6 +198,7 @@ func scanContactAddress(sc scannable) (contact.Address, error) {
 		return contact.Address{}, err
 	}
 	address.Status = contact.Status(status)
+	address.OwnerKind = contact.OwnerKind(ownerKind)
 	address.Provenance = contact.Provenance(provenance)
 	address.CreatedAt = fromEpoch(created)
 	if verified.Valid {

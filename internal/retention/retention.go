@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/scheduler"
 )
@@ -39,6 +40,7 @@ type Store interface {
 	PurgeDeniedProposals(ctx context.Context, before time.Time) (int, error)
 	PurgeFinishedJobs(ctx context.Context, before time.Time) (int, error)
 	PurgeActivity(ctx context.Context, before time.Time) (int, error)
+	PurgeTerminalInvitations(ctx context.Context, before time.Time) (int, error)
 	PurgeTerminalNotifications(ctx context.Context, before time.Time) (int, error)
 	PurgeDiagnostics(ctx context.Context, before time.Time, maxBytes int64) (diagnostics.PurgeResult, error)
 	PurgeExpiredSessions(ctx context.Context, now time.Time) (int, error)
@@ -124,6 +126,19 @@ func (s *Service) PurgeNotifications(ctx context.Context) error {
 	return nil
 }
 
+// PurgeInvitations applies the fixed §11 audit window to terminal and long-expired admission
+// decisions. Active Invitations remain available for redemption.
+func (s *Service) PurgeInvitations(ctx context.Context) error {
+	n, err := s.store.PurgeTerminalInvitations(ctx, s.now().Add(-invitation.Retention))
+	if err != nil {
+		return err
+	}
+	if n > 0 && s.log != nil {
+		s.log.Info("terminal invitations purged", "invitations", n)
+	}
+	return nil
+}
+
 // PurgeDiagnostics enforces both the age window and logical retained-byte budget (§5, §17).
 // Active Process runs are protected by the store contract regardless of age or pressure.
 func (s *Service) PurgeDiagnostics(ctx context.Context) error {
@@ -155,6 +170,9 @@ func (s *Service) Housekeeping(ctx context.Context) error {
 		errs = append(errs, err)
 	}
 	if err := s.PurgeActivity(ctx); err != nil {
+		errs = append(errs, err)
+	}
+	if err := s.PurgeInvitations(ctx); err != nil {
 		errs = append(errs, err)
 	}
 	if err := s.PurgeNotifications(ctx); err != nil {
