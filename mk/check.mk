@@ -2,14 +2,7 @@
 
 .PHONY: verify
 verify: ## run affected local evidence; SCOPE=all runs the comprehensive repository audit
-ifeq ($(SCOPE),)
-	@BASE="$(or $(BASE),origin/main)" ./scripts/agent.sh verify
-else ifeq ($(SCOPE),all)
-	@$(MAKE) check-static test
-else
-	@echo "verify: unknown SCOPE=$(SCOPE) (want empty or all)" >&2
-	@exit 2
-endif
+	@case "$(SCOPE)" in "") BASE="$(or $(BASE),origin/main)" ./scripts/agent.sh verify ;; all) ./scripts/agent.sh verify-all ;; *) echo "verify: unknown SCOPE=$(SCOPE) (want empty or all)" >&2; exit 2 ;; esac
 
 ## ---- explicit complete audit --------------------------------------------
 

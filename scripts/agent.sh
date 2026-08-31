@@ -529,6 +529,10 @@ verify_changed() {
 	fi
 }
 
+verify_all() {
+	exec make -C "$ROOT" check-static test
+}
+
 case "${1:-}" in
 	start) shift; start_session "${1:-}" "${2:-}" "${3:-}" ;;
 	status) status_sessions ;;
@@ -541,9 +545,10 @@ case "${1:-}" in
 	bootstrap) bootstrap ;;
 	worktree) shift; worktree "${1:-}" "${2:-}" "${3:-}" "${4:-}" ;;
 	verify) verify_changed ;;
+	verify-all) verify_all ;;
 	gc) exec "$SCRIPT_DIR/agent-worktree-gc.sh" ;;
 	*)
-		echo 'usage: scripts/agent.sh {start TASK [CLAIMS] [DEPENDS_ON]|status|renew|prune|stop|env|baseline|doctor|bootstrap|worktree TOPIC [TASK] [CLAIMS] [DEPENDS_ON]|verify|gc}' >&2
+		echo 'usage: scripts/agent.sh {start TASK [CLAIMS] [DEPENDS_ON]|status|renew|prune|stop|env|baseline|doctor|bootstrap|worktree TOPIC [TASK] [CLAIMS] [DEPENDS_ON]|verify|verify-all|gc}' >&2
 		exit 2
 		;;
 esac
