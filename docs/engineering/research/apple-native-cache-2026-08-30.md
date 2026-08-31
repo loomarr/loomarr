@@ -204,6 +204,21 @@ not a substitute for the required hosted Xcode 26 proof.
 | Corrupt archive and cold fallback | Truncating a copy of the combined archive made `zstd -t` reject it as a premature end. With compilation caching disabled and a fresh build root, the complete TV proof still passed. The earlier mobile no-cache control also passed completely. |
 | Compatibility fingerprint | A shell prototype hashed OS, architecture, exact Xcode and Swift output, both simulator SDK descriptions, build/cache mode, `pnpm-lock.yaml`, and a schema constant. Perturbing each field independently selected a different SHA-256 prefix. |
 
+The first hosted Xcode 26 portability run clarified the diagnostics seam. Xcode did not emit the
+documented per-job remark text to `xcodebuild`'s console, even though the build result recorded
+cache activity. Its `.xcresult` build-log attachment instead contains aggregate
+`clangCacheHits`/`clangCacheMisses` and `swiftCacheHits`/`swiftCacheMisses` counters. Those structured
+counters are the authoritative hit/miss evidence; console-text matching is not. The producer CAS
+transferred, restored, and passed full hash validation on a distinct hosted runner, and the
+consumer's mobile Release build/install/launch/liveness proof passed, but that run intentionally
+failed because the original console matcher could not prove a hit.
+
+A local Xcode 26.6 tvOS build against that hosted archive then proved the structured parser and the
+full Release/install/launch/liveness path. It reported 0 hits and 1,137 misses from a checkout at a
+different absolute path. This is diagnostic evidence, not a portability verdict: hosted Actions
+runners use the same workspace path, while the local checkout did not. A second hosted run must
+show non-zero structured hit counters before CI consumes the cache.
+
 The uncompressed combined CAS remained smaller than either full mobile or TV DerivedData tree alone
 and—more importantly—survived clean native regeneration. That, rather than a particular timing
 number, is the decisive result. `SWIFT_ENABLE_EXPLICIT_MODULES=YES` was necessary for Swift caching;
@@ -262,7 +277,8 @@ architecture, platform settings, or cache schema must select a different prefix 
 - Delete older generations only after the new cache save succeeds.
 - Refuse to save if the compressed candidate exceeds a measured ceiling chosen after the prototype;
   do not guess the ceiling from uncompressed disk use.
-- Report restored bytes, save bytes, restore/save duration, CAS validation, cache remarks, compile
+- Report restored bytes, save bytes, restore/save duration, CAS validation, structured cache
+  counters, compile
   duration, and the repository-wide cache total in the step summary.
 - Remove the existing Apple saves from PR/merge-group refs once a default-branch reader is proven;
   keep the pnpm/CocoaPods entries restore-only there as well.
@@ -292,16 +308,17 @@ proof to be decided explicitly in the implementation issue.
 ## Validation plan
 
 Automate these experiments on the supported Xcode 26 toolchain before changing CI. Use separate
-empty artifact/build roots for each case and record wall time plus `-showBuildTimingSummary` and raw
-compilation-cache diagnostic remarks; timing is explanatory, not the pass criterion.
+empty artifact/build roots for each case and record wall time plus `-showBuildTimingSummary` and
+Xcode's structured `.xcresult` compilation-cache counters; timing is explanatory, not the pass
+criterion.
 
 | Case | Required evidence |
 | --- | --- |
 | Mobile cold | **Locally proven mechanically.** Repeat on `macos-26`: empty project DerivedData and compiler store; Release build/install/launch/liveness and arm64-only assertion pass. |
-| Mobile warm | **Locally proven except raw remarks.** Repeat on `macos-26`; capture unfiltered diagnostics demonstrating real cache hits. |
+| Mobile warm | Repeat on `macos-26`; capture structured `.xcresult` counters demonstrating real cache hits. |
 | TV cold | **Locally proven mechanically.** Repeat on `macos-26` for tvOS. |
-| TV warm | **Locally proven except raw remarks.** Repeat on `macos-26`; capture unfiltered cache hits. |
-| Source invalidation | **Partially proven.** The changed native input produced new validated CAS content and a live app; automated raw diagnostics must prove that input misses while unaffected inputs hit. |
+| TV warm | Repeat on `macos-26`; capture structured `.xcresult` counters demonstrating real cache hits. |
+| Source invalidation | **Partially proven.** The changed native input produced new validated CAS content and a live app; automated structured counters must prove misses while unaffected inputs hit. |
 | Dependency invalidation | **Fingerprint logic proven, build case pending.** Change the lock/native graph; the outer key must change and a cold build must pass. |
 | Toolchain invalidation | **Fingerprint logic proven.** Automate the fixture and prove restore lookup misses before extraction. |
 | SDK/platform invalidation | **Fingerprint logic proven.** Automate both SDK/platform fixtures and prove restore lookup misses before extraction. |
@@ -323,7 +340,7 @@ cache and that retention stayed within bounds.
    preserve `ONLY_ACTIVE_ARCH=YES`.
 3. Add `warm` and `cold` modes plus a single quarantined clean retry to the Apple verifier; extend
    its source-contract tests before running native builds.
-4. Repeat the full validation matrix on a `macos-26` hosted runner and capture raw cache remarks,
+4. Repeat the full validation matrix on a `macos-26` hosted runner and capture structured cache counters,
    compressed-store size, and transfer timings. Treat the local Xcode 27 prototype only as
    pre-implementation mechanics evidence.
 5. Add a trusted, manually dispatched default-branch warmer that builds mobile then TV and saves
@@ -347,7 +364,7 @@ green in their stated local or hosted environment.
 - Does `actions/cache` archive/restore preserve every CAS property needed by Xcode 26.6 across two
   distinct hosted runners? Local tar/zstd transfer and `llvm-cas` validation passed.
 - How many real cache hits remain after Expo's clean project regeneration and CocoaPods integration?
-  Expo's formatter hid the diagnostic remarks even though restored runs improved materially.
+  The next hosted run will read Xcode's structured `.xcresult` counters instead of Expo's console.
 - Does the nested `ExpoModulesJSI` build inherit Loomarr's compilation-cache setting? It currently
   runs through `env -i` and its own `xcodebuild`; its existing final-XCFramework cache should make
   this irrelevant on a hit, but the prototype must observe it.

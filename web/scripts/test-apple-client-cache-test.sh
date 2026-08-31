@@ -21,8 +21,26 @@ STUB
 cat > "$test_root/bin/xcodebuild" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ "$*" != -version ]]; then exit 64; fi
-printf 'Xcode 26.6\nBuild version 17F113\n'
+if [[ "$*" == -version ]]; then
+  printf 'Xcode 26.6\nBuild version 17F113\n'
+  exit 0
+fi
+result_bundle=''
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == -resultBundlePath ]]; then
+    result_bundle="$2"
+    shift 2
+    continue
+  fi
+  shift
+done
+if [[ -z "$result_bundle" ]]; then
+  printf 'main xcodebuild did not receive -resultBundlePath\n' >&2
+  exit 64
+fi
+mkdir -p "$result_bundle"
+printf 'result bundle fixture\n' > "$result_bundle/build-log"
+printf 'xcodebuild fixture\n'
 STUB
 
 cat > "$test_root/bin/llvm-cas" <<'STUB'
@@ -68,6 +86,19 @@ case "$1" in
   lipo)
     printf 'arm64\n'
     ;;
+  xcresulttool)
+    if [[ "$*" != "xcresulttool get log --path $APPLE_CACHE_TEST_ROOT/artifacts/build-warm.xcresult --type build" ]]; then
+      printf 'unexpected xcresulttool invocation: %s\n' "$*" >&2
+      exit 64
+    fi
+    hits=1
+    misses=0
+    if [[ -n "${LOOMARR_APPLE_CACHE_SOURCE_PROBE:-}" ]]; then
+      misses=1
+    fi
+    printf '{"attachments":[{"data":"{\\"counters\\":{\\"clangCacheHits\\":%s,\\"clangCacheMisses\\":%s}}"}]}' \
+      "$hits" "$misses"
+    ;;
   *)
     printf 'unexpected xcrun invocation: %s\n' "$*" >&2
     exit 64
@@ -96,10 +127,7 @@ case "$count" in
   1)
     [[ "$XCODE_XCCONFIG_FILE" == */apple-compilation-cache.xcconfig ]]
     [[ "$LOOMARR_APPLE_CACHE_STORE" == "$APPLE_CACHE_TEST_ROOT/store" ]]
-    printf "remark: compile job cache hit for 'fixture.o' => 'cas://fixture'\n" >> "$LOOMARR_APPLE_RAW_XCODE_LOG"
-    if [[ -n "${LOOMARR_APPLE_CACHE_SOURCE_PROBE:-}" ]]; then
-      printf "remark: compile job cache miss for 'changed.o'\n" >> "$LOOMARR_APPLE_RAW_XCODE_LOG"
-    fi
+    xcodebuild -workspace Fixture.xcworkspace -scheme Fixture build
     if [[ "${APPLE_CACHE_TEST_WARM_RESULT:-fail}" == pass ]]; then
       if [[ "${LOOMARR_APPLE_CACHE_POPULATE:-0}" == 1 ]]; then
         printf 'CAS object\n' > "$LOOMARR_APPLE_CACHE_STORE/object"
@@ -164,8 +192,8 @@ for log in build-warm.log build-cold.log xcodebuild-warm.log xcodebuild-cold.log
     exit 1
   fi
 done
-if ! grep -F 'remark: compile job cache hit for' "$test_root/artifacts/xcodebuild-warm.log" >/dev/null; then
-  printf 'test-apple-client-cache-test: raw cache diagnostic was not preserved\n' >&2
+if [[ ! -s "$test_root/artifacts/build-warm.xcresult.json" ]]; then
+  printf 'test-apple-client-cache-test: structured cache diagnostics were not preserved\n' >&2
   exit 1
 fi
 for evidence in \

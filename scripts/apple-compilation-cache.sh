@@ -221,19 +221,37 @@ retention_plan() {
 }
 
 diagnostics() {
-  local log="$1" requirement="$2" hits misses skipped
+  local log="$1" requirement="$2" metrics hits misses skipped
   if [[ ! -f "$log" ]]; then
     printf 'apple-compilation-cache: Xcode log is missing: %s\n' "$log" >&2
     exit 1
   fi
-  read -r hits misses skipped < <(
-    awk '
-      /compile job cache hit for/ { hits++ }
-      /compile job cache miss for/ { misses++ }
-      /compile job cache skipped for/ { skipped++ }
-      END { printf "%d %d %d\n", hits, misses, skipped }
-    ' "$log"
-  )
+  metrics="$(jq -er '
+    [
+      .. | objects
+      | .data?
+      | select(type == "string")
+      | fromjson?
+      | .counters?
+      | select(type == "object")
+    ]
+    | add // {}
+    | def count($name):
+        (.[$name] // 0) as $value
+        | if ($value | type) == "number"
+            and $value >= 0
+            and ($value | floor) == $value
+          then $value
+          else error("invalid Xcode cache counter: \($name)")
+          end;
+    [
+      count("clangCacheHits") + count("swiftCacheHits"),
+      count("clangCacheMisses") + count("swiftCacheMisses"),
+      count("clangCacheSkipped") + count("swiftCacheSkipped")
+    ]
+    | @tsv
+  ' "$log")"
+  read -r hits misses skipped <<< "$metrics"
   case "$requirement" in
     hits)
       if (( hits == 0 )); then

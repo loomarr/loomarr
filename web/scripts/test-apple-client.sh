@@ -99,7 +99,30 @@ cat > "$XCODE_CAPTURE_DIR/xcodebuild" <<'XCODEBUILD_CAPTURE'
 set -euo pipefail
 : "${LOOMARR_APPLE_REAL_XCODEBUILD:?}"
 : "${LOOMARR_APPLE_RAW_XCODE_LOG:?}"
-"$LOOMARR_APPLE_REAL_XCODEBUILD" "$@" 2>&1 | tee -a "$LOOMARR_APPLE_RAW_XCODE_LOG"
+
+args=("$@")
+capture_result=false
+for arg in "${args[@]}"; do
+  case "$arg" in
+    -workspace|-project) capture_result=true ;;
+    -resultBundlePath) capture_result=false; break ;;
+  esac
+done
+if [[ "$capture_result" == true && -n "${LOOMARR_APPLE_RESULT_BUNDLE_PATH:-}" ]]; then
+  args+=(-resultBundlePath "$LOOMARR_APPLE_RESULT_BUNDLE_PATH")
+fi
+
+set +e
+"$LOOMARR_APPLE_REAL_XCODEBUILD" "${args[@]}" 2>&1 | tee -a "$LOOMARR_APPLE_RAW_XCODE_LOG"
+build_status="${PIPESTATUS[0]}"
+set -e
+if [[ "$capture_result" == true && -d "${LOOMARR_APPLE_RESULT_BUNDLE_PATH:-}" ]]; then
+  xcrun xcresulttool get log \
+    --path "$LOOMARR_APPLE_RESULT_BUNDLE_PATH" \
+    --type build > "$LOOMARR_APPLE_RESULT_BUNDLE_PATH.json" 2>> "$LOOMARR_APPLE_RAW_XCODE_LOG" || \
+    printf 'apple-client: could not extract xcresult build log\n' >> "$LOOMARR_APPLE_RAW_XCODE_LOG"
+fi
+exit "$build_status"
 XCODEBUILD_CAPTURE
 chmod +x "$XCODE_CAPTURE_DIR/xcodebuild"
 
@@ -185,6 +208,7 @@ run_expo_build() {
         PATH="$XCODE_CAPTURE_DIR:$PATH" \
         LOOMARR_APPLE_REAL_XCODEBUILD="$REAL_XCODEBUILD" \
         LOOMARR_APPLE_RAW_XCODE_LOG="$raw_log" \
+        LOOMARR_APPLE_RESULT_BUNDLE_PATH="$ARTIFACTS_DIR/build-$mode.xcresult" \
         LOOMARR_APPLE_CACHE_STORE="$APPLE_CACHE_STORE" \
         NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 EXPO_TV=1 \
         REACT_NATIVE_NODE_MODULES_DIR="${REACT_NATIVE_MODULES_DIR}" "${command[@]}"
@@ -196,6 +220,7 @@ run_expo_build() {
         PATH="$XCODE_CAPTURE_DIR:$PATH" \
         LOOMARR_APPLE_REAL_XCODEBUILD="$REAL_XCODEBUILD" \
         LOOMARR_APPLE_RAW_XCODE_LOG="$raw_log" \
+        LOOMARR_APPLE_RESULT_BUNDLE_PATH="$ARTIFACTS_DIR/build-$mode.xcresult" \
         LOOMARR_APPLE_CACHE_STORE="$APPLE_CACHE_STORE" \
         NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 \
         REACT_NATIVE_NODE_MODULES_DIR="${REACT_NATIVE_MODULES_DIR}" "${command[@]}"
@@ -300,7 +325,7 @@ if [[ "$warm_succeeded" == true ]]; then
     printf 'apple-client: populated and validated compilation cache\n'
   fi
   "$APPLE_COMPILATION_CACHE_CLI" diagnostics \
-    "$ARTIFACTS_DIR/xcodebuild-warm.log" \
+    "$ARTIFACTS_DIR/build-warm.xcresult.json" \
     "$APPLE_CACHE_DIAGNOSTIC_REQUIREMENT" \
     | tee "$ARTIFACTS_DIR/cache-diagnostics.env"
 fi

@@ -244,14 +244,18 @@ if "$cache_cli" retention-plan \
   exit 1
 fi
 
-cat > "$test_root/xcodebuild.log" <<'LOG'
-/fixture/a.mm: remark: compile job cache hit for 'a.o' => 'cas://a'
-/fixture/b.swift: remark: compile job cache miss for 'b.o'
-/fixture/c.cpp: remark: compile job cache hit for 'c.o' => 'cas://c'
-/fixture/d.m: remark: compile job cache skipped for 'd.o'
-LOG
-got="$("$cache_cli" diagnostics "$test_root/xcodebuild.log" hits-and-misses)"
-want=$'hits=2\nmisses=1\nskipped=1'
+cat > "$test_root/xcodebuild-result.json" <<'JSON'
+{
+  "attachments": [
+    {
+      "data": "{\"counters\":{\"clangCacheHits\":37,\"clangCacheMisses\":4,\"swiftCacheHits\":11,\"swiftCacheMisses\":2},\"taskCounters\":{}}",
+      "uniformTypeIdentifier": "com.apple.dt.ActivityLogSectionAttachment"
+    }
+  ]
+}
+JSON
+got="$("$cache_cli" diagnostics "$test_root/xcodebuild-result.json" hits-and-misses)"
+want=$'hits=48\nmisses=6\nskipped=0'
 if [[ "$got" != "$want" ]]; then
   printf 'apple-compilation-cache-test: diagnostics got:\n%s\n' "$got" >&2
   exit 1
