@@ -141,6 +141,28 @@ are retained under
 This is not the complete P3.5 exit claim. The real-iPhone portrait/landscape workshop evidence
 remains required.
 
+### Real-iPhone workshop capture
+
+The prototype container permits both orientations so the P3.5 workshop can be inspected without
+changing the build between captures. That configuration only removes an evidence blocker: P4/P6
+still own production touch rotation and viewer journeys.
+
+From `web/`, with a supported development iPhone attached, trusted, and visible in
+`xcrun xctrace list devices`, build and launch the workshop on the named device:
+
+```bash
+EXPO_PUBLIC_LOOMARR_STORYBOOK_DENSITY=touch STORYBOOK_ENABLED=true \
+  pnpm --filter @loomarr/mobile exec expo run:ios --device "<device name or UDID>"
+```
+
+Retain the screenshots or recordings and a text manifest under
+`.artifacts/primary/design-system-device-evidence/iphone/`. The manifest records the PR head SHA,
+device model, iOS version, build configuration, capture time, and the stories exercised. Inspect at
+least one dark and one explicit `Light` story in portrait and landscape. Across the applicable
+stories, verify safe areas, touch targets, scrolling, disclosure, gestures, keyboard behavior, and
+focus transfer/return. Summarize the result and honest limits in this ledger, `PROGRESS.md`, PR #581,
+and issue #726; never commit device identifiers or other private device data.
+
 ## Publication gate
 
 During implementation, affected package tests and focused Storybook checks are the normal feedback
