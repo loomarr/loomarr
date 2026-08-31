@@ -55,18 +55,19 @@ type residentLLMBuild struct {
 }
 
 type operationsBuild struct {
-	backups           api.BackupsService
-	restart           api.RestartService
-	bootConfig        *config.Config
-	auth              authBuild
-	guide             api.GuideReader
-	settings          api.SettingsService
-	emailTest         api.EmailTestService
-	liveConfig        func(string) string
-	libraryConfigured func() bool
-	jobs              api.JobService
-	database          api.DatabaseService
-	residentLLM       residentLLMBuild
+	backups            api.BackupsService
+	restart            api.RestartService
+	bootConfig         *config.Config
+	auth               authBuild
+	guide              api.GuideReader
+	settings           api.SettingsService
+	emailTest          api.EmailTestService
+	invitationDelivery api.InvitationDeliveryService
+	liveConfig         func(string) string
+	libraryConfigured  func() bool
+	jobs               api.JobService
+	database           api.DatabaseService
+	residentLLM        residentLLMBuild
 }
 
 func buildOperations(
@@ -90,6 +91,9 @@ func buildOperations(
 ) operationsBuild {
 	restart, bootConfig := buildRestart(overrides, log)
 	backups := buildBackups(st, set, registry, log)
+	authResult := buildAuth(st, set, secrets, readGeneratedSecret, libraryClient, log)
+	invitationService, _ := authResult.invitations.(*invitation.Service)
+	invitationDelivery := buildInvitationDelivery(st, set, invitationService, registry)
 	jobs := buildScheduler(rootCtx, st, set, registry, emitter, owner, log)
 	triggerHealth := func(ctx context.Context) {
 		if jobs == nil {
@@ -101,16 +105,17 @@ func buildOperations(
 	}
 	result := operationsBuild{
 		backups: backups, restart: restart, bootConfig: bootConfig,
-		auth:  buildAuth(st, set, secrets, readGeneratedSecret, libraryClient, log),
+		auth:  authResult,
 		guide: buildGuide(st, set, playoutResolver, appliedBackend),
 		settings: buildSettings(
 			st, set, desiredSet, secrets, libraryClient, tmdbClient,
 			refreshSecretRedactor, readGeneratedSecret, triggerHealth, log,
 		),
-		emailTest:   buildEmailTest(st, set),
-		jobs:        jobs,
-		database:    buildDatabase(st, set, overrides, eventBus),
-		residentLLM: buildResidentLLM(set, log),
+		emailTest:          buildEmailTest(st, set),
+		invitationDelivery: invitationDelivery,
+		jobs:               jobs,
+		database:           buildDatabase(st, set, overrides, eventBus),
+		residentLLM:        buildResidentLLM(set, log),
 	}
 	if st != nil {
 		result.liveConfig = set.str

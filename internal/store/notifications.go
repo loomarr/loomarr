@@ -114,6 +114,28 @@ func (s *sqlStore) GetNotificationIntent(ctx context.Context, id string) (notifi
 	return intent, nil
 }
 
+func (s *sqlStore) ListNotificationIntentsByReference(
+	ctx context.Context,
+	kind notifications.ReferenceKind,
+	id string,
+) ([]notifications.Intent, error) {
+	rows, err := s.db.QueryContext(ctx, s.ph(notificationIntentSelect+
+		` WHERE reference_kind = ? AND reference_id = ? ORDER BY created_at DESC, id DESC`), string(kind), id)
+	if err != nil {
+		return nil, fmt.Errorf("list notification intents by reference: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var intents []notifications.Intent
+	for rows.Next() {
+		intent, err := scanNotificationIntent(rows)
+		if err != nil {
+			return nil, err
+		}
+		intents = append(intents, intent)
+	}
+	return intents, rows.Err()
+}
+
 func (s *sqlStore) ListNotificationAttempts(ctx context.Context, intentID string) ([]notifications.Attempt, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(notificationAttemptSelect+
 		` WHERE intent_id = ? ORDER BY attempt_number, id`), intentID)

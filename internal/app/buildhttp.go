@@ -13,28 +13,29 @@ import (
 )
 
 type httpBuild struct {
-	rootCtx           context.Context
-	store             store.Store
-	log               *slog.Logger
-	overrides         Overrides
-	foundation        foundationBuild
-	channels          channelBuild
-	approval          approvalBuild
-	suggestions       suggestionBuild
-	fillers           fillerBuild
-	auth              authBuild
-	backups           api.BackupsService
-	restart           api.RestartService
-	bootConfig        *config.Config
-	guide             api.GuideReader
-	settings          api.SettingsService
-	emailTest         api.EmailTestService
-	liveConfig        func(string) string
-	libraryConfigured func() bool
-	jobs              api.JobService
-	database          api.DatabaseService
-	residentLLM       residentLLMBuild
-	healthRefresh     api.HealthRefreshService
+	rootCtx            context.Context
+	store              store.Store
+	log                *slog.Logger
+	overrides          Overrides
+	foundation         foundationBuild
+	channels           channelBuild
+	approval           approvalBuild
+	suggestions        suggestionBuild
+	fillers            fillerBuild
+	auth               authBuild
+	backups            api.BackupsService
+	restart            api.RestartService
+	bootConfig         *config.Config
+	guide              api.GuideReader
+	settings           api.SettingsService
+	emailTest          api.EmailTestService
+	invitationDelivery api.InvitationDeliveryService
+	liveConfig         func(string) string
+	libraryConfigured  func() bool
+	jobs               api.JobService
+	database           api.DatabaseService
+	residentLLM        residentLLMBuild
+	healthRefresh      api.HealthRefreshService
 }
 
 func buildHTTP(deps httpBuild) http.Handler {
@@ -68,15 +69,16 @@ func buildHTTP(deps httpBuild) http.Handler {
 	liveConfig, libraryConfigured := deps.liveConfig, deps.libraryConfigured
 	jobsSvc, databaseSvc, residentLLM := deps.jobs, deps.database, deps.residentLLM
 	return api.Router(log, api.Options{
-		Store:        st,
-		Auth:         authorizer,
-		Log:          log,
-		BackupSQLite: backup,
-		Ready:        ready,
-		Login:        loginSvc,
-		Sessions:     sessMgr,
-		Passwords:    passwordSvc,
-		Invitations:  invitationSvc,
+		Store:              st,
+		Auth:               authorizer,
+		Log:                log,
+		BackupSQLite:       backup,
+		Ready:              ready,
+		Login:              loginSvc,
+		Sessions:           sessMgr,
+		Passwords:          passwordSvc,
+		Invitations:        invitationSvc,
+		InvitationDelivery: deps.invitationDelivery,
 		AccessPublicURL: func() string {
 			if liveConfig == nil {
 				return ""

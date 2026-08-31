@@ -1176,6 +1176,11 @@ func declared() []Setting {
 			Doc: "How often Loomarr checks its database and configured connections for Current Health (cron).",
 		},
 		{
+			Key: "job.notification_delivery.schedule", EnvVar: "JOB_NOTIFICATION_DELIVERY_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "*/15 * * * * *",
+			Doc: "How often Loomarr claims queued invitation and recovery messages for delivery (cron).",
+		},
+		{
 			Key: "job.reconcile.schedule", EnvVar: "JOB_RECONCILE_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Default: "0 */5 * * * *",
 			Doc: "How often Loomarr checks on in-progress downloads (cron).",
