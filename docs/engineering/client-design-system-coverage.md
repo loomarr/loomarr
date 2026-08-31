@@ -1,7 +1,7 @@
 # Shared client design-system completeness ledger
 
-**Status:** shared-interface implementation and automated/rendered gates complete; P3.5 iPhone
-device evidence in progress; production adoption remains owned by P4/P6/P7/P8
+**Status:** P3.5 shared-interface publication evidence complete on PR #581; production adoption
+remains owned by P4/P6/P7/P8
 **Owner:** shared client platform
 **Parent plan:**
 [`docs/engineering/plans/shared-client-platform.md`](plans/shared-client-platform.md)
@@ -101,7 +101,7 @@ do not pre-approve P4–P8 or turn their missing evidence green.
 | Player chrome and timeline | `ui` player presentation consuming `player` | The P3.5 vocabulary covers the underlying identity, progress, action, overlay, and responsive primitives; production player composition is intentionally absent from this publication unit | excluded → P4 | P4 owns edge-to-edge anchoring, live/time-shift states, accessible controls, auto-dismiss, and touch/keyboard/remote traversal. |
 | Surf rail | `ui` `SurfRail`; `ui-tv` Surf adapter | Shared rail now preserves the still-mounted playback composition, explicit empty Favourites/Recent/All grouping, authoritative focused now/next identity, artwork fallback, progress, tune intent, honest client/server identity, narrow viewport bounds, and pointer/touch/TV plus light/dark stories; TV logic owns ordered traversal, catalog-change restoration, activation, and valid previous-channel intent | excluded → P4/P6 | P4 connects remote/touch events and focus refs for the vertical slice and proves tune/Back/previous-channel behavior; P6 owns remaining browser/touch/TV parity. |
 | Browser application semantics | web adapters | P3.5 supplies browser adapters for the shared workshop and selection seams; the administrative app intentionally remains on its releasable legacy DOM presentation until adoption | excluded → P7 | P7 migrates routes in cohorts and proves semantic HTML, forms, keyboard, screen-reader, reduced-motion, responsive, and visual parity before retiring the legacy stack. |
-| Touch mechanics | mobile adapters | Pairing shell and destination shell run on iPhone; provider-owned safe-area values feed the shared viewport contract | excluded → P4/P6 | The P3.5 exit still requires the real-iPhone workshop evidence below. P4 proves production vertical-slice touch/rotation/focus; P6 owns remaining gestures and viewer journeys. |
+| Touch mechanics | mobile adapters | Pairing shell and destination shell run on iPhone; provider-owned safe-area values feed the shared viewport contract; the P3.5 workshop now has physical iOS 27 portrait/landscape, Dynamic Island, touch, scroll, disclosure, and keyboard evidence | excluded → P4/P6 | P4 proves production vertical-slice touch/rotation/focus; P6 owns remaining gestures and viewer journeys. |
 | TV mechanics | `ui-tv` root interfaces | P3.5 provides deterministic Guide/Surf navigation controllers, bounded row-window rules, overscan-aware viewport primitives, and remote workshop evidence | excluded → P4/P6 | P4 proves the production vertical slice on 1080p/4K hosts; P6 owns remaining TV journeys, long traversal, and platform handoff. |
 
 ## Required workshop matrix
@@ -125,9 +125,10 @@ implicit exclusion.
 ## P3.5 evidence to date
 
 The protected client matrix, including Apple mobile, Apple TV, the four Playwright visual and
-accessibility shards, and the aggregate CI job, passed on PR #581 before its final rebase. The pinned
-local visual run rendered 1,081 cases successfully with one declared skip, and a strict rerun passed
-against the reviewed baselines.
+accessibility shards, and the aggregate CI job, passed on PR #581 before its final rebase. After the
+iOS 27 runtime reconciliation, the pinned local visual run passed 1,149 cases with one declared skip,
+the frontend suite passed 1,652 tests across 209 files, and the SPA and Storybook production builds
+completed against the reviewed baselines.
 
 On 2026-08-26, the native TV workshop was generated and compiled as both arm64 and x86 React Native
 Android TV development builds. The arm64 build installed on the physical Nvidia Shield and rendered
@@ -138,8 +139,19 @@ the focused story. Logcat contained no React Native or Android fatal exception. 
 are retained under
 `.artifacts/primary/design-system-device-evidence/`.
 
-This is not the complete P3.5 exit claim. The real-iPhone portrait/landscape workshop evidence
-remains required.
+On 2026-08-31, the Release workshop launched and remained healthy on a physical iPhone 17 Pro Max
+running iOS 27 beta 7. Explicit light and default-dark stories were exercised in portrait and
+landscape. The pass covered rotation, the Dynamic Island and every safe edge, touch disclosure,
+scrolling, field focus, keyboard avoidance and dismissal, value persistence, and responsive
+stacked/side-by-side composition. The inspection found two real failures instead of rubber-stamping
+the gate: the launch lockup's fixed native minimum height clipped its tagline in landscape, and the
+Storybook decorator omitted the live iOS safe-area values used by the production root. Both were
+fixed with regression coverage and recaptured successfully. The retained local manifest names the
+accepted and diagnostic captures without recording device, signing-team, or account identifiers.
+
+This completes the P3.5 physical-device exit evidence. It does not certify production viewer
+gestures, Back, native modal focus, assistive-technology behavior, or distribution; those remain the
+explicit P4/P6 and adoption-decision gates below.
 
 ### Real-iPhone workshop capture
 
@@ -147,12 +159,18 @@ The prototype container permits both orientations so the P3.5 workshop can be in
 changing the build between captures. That configuration only removes an evidence blocker: P4/P6
 still own production touch rotation and viewer journeys.
 
-From `web/`, with a supported development iPhone attached, trusted, and visible in
-`xcrun xctrace list devices`, build and launch the workshop on the named device:
+From the repository root, with Xcode 27 selected and a supported development iPhone attached,
+trusted, and visible in `xcrun xctrace list devices`, generate from the template bundled with the
+pinned Expo package, then build and launch the workshop on the named device:
 
 ```bash
+cd web
+EXPO_TEMPLATE="$(cd apps/mobile && node -p \
+  "require.resolve('expo/package.json').replace(/package\.json$/, 'template.tgz')")"
+pnpm --filter @loomarr/mobile exec expo prebuild --platform ios --clean --no-install \
+  --template "$EXPO_TEMPLATE"
 EXPO_PUBLIC_LOOMARR_STORYBOOK_DENSITY=touch STORYBOOK_ENABLED=true \
-  pnpm --filter @loomarr/mobile exec expo run:ios --device "<device name or UDID>"
+  pnpm --filter @loomarr/mobile exec expo run:ios --device "<device name>"
 ```
 
 Retain the screenshots or recordings and a text manifest under
