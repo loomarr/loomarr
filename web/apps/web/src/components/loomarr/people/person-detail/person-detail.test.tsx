@@ -52,4 +52,55 @@ describe("PersonDetail", () => {
     expect(screen.getByText(/argon2id verifier for offline login/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Reset password" })).not.toBeInTheDocument();
   });
+
+  it("adds an unverified contact without presenting it as a login identifier", async () => {
+    const onSetContactAddress = vi.fn().mockResolvedValue(undefined);
+    renderDetail({ onSetContactAddress });
+    expect(screen.getByText(/email never replaces this person's sign-in name/i)).toBeInTheDocument();
+    expect(screen.getByText(/qr and direct account access still work/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Add email" }));
+    await userEvent.type(screen.getByLabelText("Contact email"), "invalid");
+    await userEvent.click(screen.getByRole("button", { name: "Save email" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Enter one complete email address.");
+    expect(onSetContactAddress).not.toHaveBeenCalled();
+
+    await userEvent.clear(screen.getByLabelText("Contact email"));
+    await userEvent.type(screen.getByLabelText("Contact email"), "ada@example.com");
+    await userEvent.click(screen.getByRole("button", { name: "Save email" }));
+    expect(onSetContactAddress).toHaveBeenCalledWith("ada@example.com");
+  });
+
+  it("keeps a verified address recovery-capable while its replacement is pending", async () => {
+    const onCancelContactReplacement = vi.fn().mockResolvedValue(undefined);
+    const onRemoveContactAddress = vi.fn().mockResolvedValue(undefined);
+    render(
+      <PersonDetail
+        user={{
+          ...people.localAdmin,
+          contactAddress: {
+            email: "ada@example.com",
+            status: "verified",
+            provenance: "invitation",
+            verifiedAt: 1_900_000_000_000,
+          },
+          contactReplacement: {
+            email: "ada.new@example.com",
+            status: "pending",
+            provenance: "admin",
+          },
+        }}
+        sessions={[]}
+        onCancelContactReplacement={onCancelContactReplacement}
+        onRemoveContactAddress={onRemoveContactAddress}
+      />,
+    );
+    expect(screen.getByText("Verified")).toBeInTheDocument();
+    expect(screen.getByText("Pending replacement")).toBeInTheDocument();
+    expect(screen.getByText(/verified address above remains recovery-capable/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Cancel replacement" }));
+    expect(onCancelContactReplacement).toHaveBeenCalledOnce();
+    await userEvent.click(screen.getByRole("button", { name: "Remove email" }));
+    expect(onRemoveContactAddress).toHaveBeenCalledOnce();
+  });
 });

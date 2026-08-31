@@ -133,6 +133,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("SettingsKV", func(t *testing.T) { testSettings(t, newStore) })
 		t.Run("SessionLifecycle", func(t *testing.T) { testSessionLifecycle(t, newStore) })
 		t.Run("UserCredentialCapabilities", func(t *testing.T) { testUserCredentialCapabilities(t, newStore) })
+		t.Run("UserContactAddresses", func(t *testing.T) { testUserContactAddresses(t, newStore) })
 		t.Run("ObservabilityCounts", func(t *testing.T) { testCounts(t, newStore) })
 		t.Run("ActivityFeed", func(t *testing.T) { testActivityFeed(t, newStore) })
 		t.Run("Diagnostics", func(t *testing.T) { testDiagnostics(t, newStore) })
