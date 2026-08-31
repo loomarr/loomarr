@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ApprovalQueueItem } from "./approval-queue-item";
@@ -117,5 +118,46 @@ describe("ApprovalQueueItem", () => {
     fireEvent.click(screen.getByRole("button", { name: /show picks/i }));
     fireEvent.click(screen.getByRole("button", { name: "Never" }));
     expect(onFeedback).toHaveBeenCalledWith(expect.objectContaining({ tmdbId: 456 }), "never");
+  });
+
+  it("explains complete and specific episode modes in the mounted edit surface", () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <ApprovalQueueItem
+          title="Episode collections"
+          lineup={[
+            {
+              mediaType: "series",
+              name: "Complete Series",
+              tmdbId: 1,
+              inLibrary: true,
+              episodeSelection: { mode: "complete" },
+            },
+            { mediaType: "series", name: "Legacy Series", tmdbId: 2, inLibrary: true },
+            {
+              mediaType: "series",
+              name: "Christmas Series",
+              tmdbId: 3,
+              inLibrary: true,
+              episodeSelection: { mode: "holiday", holidays: ["christmas"] },
+            },
+            {
+              mediaType: "series",
+              name: "Holiday Series",
+              tmdbId: 4,
+              inLibrary: true,
+              episodeSelection: { mode: "holiday" },
+            },
+          ]}
+          onEdit={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /review & edit picks/i }));
+    expect(screen.getAllByText("All episodes")).toHaveLength(2);
+    expect(screen.getByText("christmas episodes")).toBeInTheDocument();
+    expect(screen.getByText("Holiday episodes")).toBeInTheDocument();
   });
 });

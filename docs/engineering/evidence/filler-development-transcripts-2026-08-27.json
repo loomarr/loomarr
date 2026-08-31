@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "purpose": "filler-development-shared-local-transcript-candidate-capture",
+  "snapshotAt": "2026-08-27T20:41:36Z",
+  "certificationEvidence": false,
+  "cohort": "development_seed",
+  "externalArtifactId": "filler-development-label-prep",
+  "corpus": {
+    "cases": 300,
+    "certifiedWavCases": 297,
+    "casesWithoutAudioArtifacts": 3,
+    "evidenceVersion": "filler-evidence-v1"
+  },
+  "runtime": {
+    "implementation": "whisper.cpp-v1.9.2",
+    "binarySha256": "d0e825af82479affedffedfedd415413f51c2ca8af069172aaa4c0e4c66104d5",
+    "backend": "cpu",
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900K",
+    "systemMemoryBytes": 33371676672,
+    "concurrency": 1,
+    "perCaseTimeoutSeconds": 300
+  },
+  "candidates": [
+    {
+      "model": "ggml-base.en.bin",
+      "modelSha256": "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002",
+      "generatedAt": "2026-08-27T19:12:08Z",
+      "transcriptSetSha256": "250f124629f8582de505090b5c40051cad251ed54ffa77565d480bfeaa15b28b",
+      "jsonlSha256": "c4ab9568f3bf79b61113d33ea39e4b2e7d43a7c5e17c8b8bf7e0858e22380019",
+      "artifacts": 297,
+      "segments": 5369,
+      "wordlessCases": 2,
+      "latencyMs": {
+        "sum": 1362167,
+        "min": 685,
+        "median": 4323,
+        "p95": 8991,
+        "max": 22031
+      }
+    },
+    {
+      "model": "ggml-small.en.bin",
+      "modelSha256": "c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d",
+      "upstreamObjectSha256Matched": true,
+      "generatedAt": "2026-08-27T19:36:08Z",
+      "transcriptSetSha256": "da15c23614a15cbb980625a9d3ccd433c9c84592e9d8be574dc0b9ae012b9e93",
+      "jsonlSha256": "03ba2a9a8e02fe30cff3130cc10754b6fecf88907c549352474667a73dd47844",
+      "artifacts": 297,
+      "segments": 5069,
+      "wordlessCases": 4,
+      "latencyMs": {
+        "sum": 3856546,
+        "min": 2410,
+        "median": 14320,
+        "p95": 22092,
+        "max": 28424
+      }
+    }
+  ],
+  "comparison": {
+    "identicalCanonicalTextCases": 11,
+    "differentCanonicalTextCases": 286,
+    "smallToBaseSummedLatencyRatio": 2.8312,
+    "interpretation": "Transcript disagreement is a downstream model-selection input, not an accuracy score without locked labels."
+  },
+  "validation": {
+    "uniqueCases": true,
+    "completeAudioCoverage": true,
+    "extraCases": 0,
+    "packetBindingMismatches": 0,
+    "audioBindingMismatches": 0,
+    "textDigestMismatches": 0,
+    "invalidTimingCases": 0,
+    "unorderedTimingCases": 0,
+    "mixedEngineIdentities": false,
+    "partialOutputsPublished": 0
+  },
+  "limitations": [
+    "These are development-only provider artifacts and cannot certify admission.",
+    "The two independent blind semantic label submissions and adjudications remain incomplete.",
+    "Transcript disagreement does not identify which speech model is more accurate.",
+    "CPU evidence does not establish CUDA latency, appliance minimums, or production throughput.",
+    "The external transcript JSONL files and corpus media remain outside Git."
+  ]
+}

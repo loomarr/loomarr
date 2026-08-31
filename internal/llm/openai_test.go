@@ -146,6 +146,32 @@ func TestOpenAI_AttributesOpenRouterResolutionUsageAndExactCharge(t *testing.T) 
 	}
 }
 
+func TestOpenRouterAttributionKeepsMissingResolutionAndAttemptsUnknown(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"gen-without-route","choices":[{"message":{"role":"assistant","content":"{}"}}]}`))
+	}))
+	defer srv.Close()
+
+	provider, err := llm.NewOpenRouterChat(llm.OpenRouterChatConfig{
+		BaseURL: srv.URL, Model: "openai/gpt-5-mini-2026-08-07", UpstreamProvider: "OpenAI",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := provider.Chat(context.Background(), []llm.Message{{Role: llm.User, Content: "x"}}, llm.ChatOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := response.Attribution
+	if got.RequestedProvider != "openrouter" || got.RequestedModel != "openai/gpt-5-mini-2026-08-07" {
+		t.Fatalf("requested route = %+v", got)
+	}
+	if got.ResolvedProvider != "" || got.ResolvedModel != "" || got.Attempts != 0 {
+		t.Fatalf("missing wire route was inferred: %+v", got)
+	}
+}
+
 // A syntactically valid but wrong API base commonly returns the provider's HTML marketing page
 // with status 200. The raw JSON decoder error ("invalid character '<'") sends the operator to the
 // model output instead of the setting that is wrong, so name the response type and the URL field.

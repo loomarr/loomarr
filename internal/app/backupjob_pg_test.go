@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/testkit/postgresimage"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -44,7 +45,7 @@ func postJob(t *testing.T, st store.Store, name string) int {
 func startPostgresForApp(t *testing.T) string {
 	t.Helper()
 	ctx := context.Background()
-	ctr, err := postgres.Run(ctx, "postgres:16-alpine",
+	ctr, err := postgres.Run(ctx, postgresimage.Name(),
 		postgres.WithDatabase("loomarr"),
 		postgres.WithUsername("loomarr"),
 		postgres.WithPassword("loomarr"),

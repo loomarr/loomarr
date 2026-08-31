@@ -20,16 +20,17 @@ const localWorkers = () => localWorkerCount(freemem());
 
 // ⚠ GATE ON `GITHUB_ACTIONS`, NOT ON `CI`. This is the whole point of the constant.
 //
-// Every sanctioned Playwright entry point is a make target that runs Docker with
-// `-e CI=$(PW_CI)` and `PW_CI ?= 1` — fe-visual, fe-visual-update, e2e, e2e-update. So `CI` is
-// set on a DEVELOPER'S MACHINE just as it is on the runner: it records the config intent
+// Every sanctioned Playwright entry point reaches the fixed container runner, which sets
+// `CI=1` — fe-visual, fe-visual-update, e2e, e2e-update, and tuner-e2e. So `CI` is set on a
+// DEVELOPER'S MACHINE just as it is on the runner: it records the config intent
 // (behave like CI), not whose hardware this is. Gating the worker count on it therefore hands
 // a 24-core workstation 24 browsers under `make fe-visual-update`, which is exactly the
 // swap-thrash hard-lock this constant exists to prevent — measured going 16GB free to 2GB with
 // swap fully consumed, in about a minute.
 //
-// `GITHUB_ACTIONS` is set by the runner itself and is never forwarded by those make targets,
-// so it distinguishes the MACHINE. That is the question being asked here.
+// `GITHUB_ACTIONS` is set by GitHub and the container runner forwards that exact value as one
+// environment argument without fabricating it locally, so it distinguishes the MACHINE. That is
+// the question being asked here.
 //
 // ⚠ The two suites still do not share a concurrency profile, only a determinism kit. VISUAL is
 // hermetic (static storybook server, stubbed network, no shared state), so the real runner can

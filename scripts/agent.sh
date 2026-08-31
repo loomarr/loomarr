@@ -280,7 +280,8 @@ baseline() {
 	state="$(state_dir)/baselines"
 	mkdir -p "$state"
 	toolchain="$(go version) $(rustc --version) $(uname -s)-$(uname -m)"
-	key="$(printf '%s\n%s' "$(git -C "$ROOT" rev-parse HEAD)" "$toolchain" | cksum | awk '{print $1}')"
+	start_head="$(git -C "$ROOT" rev-parse HEAD)"
+	key="$(printf '%s\n%s' "$start_head" "$toolchain" | cksum | awk '{print $1}')"
 	stamp="$state/$key.ok"
 	lock="$state/$key.lock"
 	if [ -f "$stamp" ]; then
@@ -291,6 +292,11 @@ baseline() {
 		trap 'rmdir "$lock" 2>/dev/null || true' EXIT INT TERM
 		echo "agent-baseline: no cached result; running make check"
 		if make -C "$ROOT" check; then
+			if [ "$(git -C "$ROOT" rev-parse HEAD)" != "$start_head" ] ||
+				[ -n "$(git -C "$ROOT" status --porcelain --untracked-files=no)" ]; then
+				echo "agent-baseline: worktree changed during make check; refusing to cache mixed-tree evidence" >&2
+				return 1
+			fi
 			printf '%s\n' "$toolchain" > "$stamp"
 			rmdir "$lock"
 			trap - EXIT INT TERM
@@ -317,16 +323,32 @@ tool_version() {
 
 doctor() {
 	fail=0
+	docker_available=1
 	echo 'Required toolchain:'
 	tool_version Go go version || fail=1
 	tool_version Rust rustc --version || fail=1
 	tool_version Cargo cargo --version || fail=1
 	tool_version Node node --version || fail=1
 	tool_version pnpm pnpm --version || fail=1
-	tool_version Docker docker --version || fail=1
+	tool_version Make make --version || fail=1
+	tool_version Docker docker --version || { fail=1; docker_available=0; }
+	if [ "$docker_available" = 1 ]; then
+		tool_version 'Docker Compose' docker compose version || fail=1
+	fi
 	tool_version shellcheck shellcheck --version || fail=1
-	tool_version ffmpeg ffmpeg -version || true
+	tool_version ffmpeg ffmpeg -version || fail=1
+	tool_version ffprobe ffprobe -version || fail=1
 
+	if command -v go >/dev/null 2>&1; then
+		go_release="$(go version | sed -n 's/.* go\([0-9][0-9.]*\).*/\1/p')"
+		go_major="${go_release%%.*}"
+		go_rest="${go_release#*.}"
+		go_minor="${go_rest%%.*}"
+		case "$go_major:$go_minor" in
+			1:27|1:2[89]|1:[3-9][0-9]|[2-9]:*) ;;
+			*) echo "  ERROR: Go 1.27+ is required (found ${go_release:-unknown})"; fail=1 ;;
+		esac
+	fi
 	if command -v node >/dev/null 2>&1; then
 		node_major="$(node -p 'process.versions.node.split(".")[0]')"
 		[ "$node_major" = 22 ] || { echo "  ERROR: Node 22 is required for CI parity (found $node_major)"; fail=1; }
@@ -334,8 +356,19 @@ doctor() {
 	if command -v pnpm >/dev/null 2>&1; then
 		[ "$(pnpm --version)" = 11.13.1 ] || { echo "  ERROR: pnpm 11.13.1 is required"; fail=1; }
 	fi
+	if command -v make >/dev/null 2>&1; then
+		make_major="$(make --version | sed -n '1s/.* //p' | cut -d. -f1)"
+		case "$make_major" in ''|*[!0-9]*|0|1|2|3) echo '  ERROR: GNU Make 4.x is required; macOS users should install Homebrew make and put its gnubin directory on PATH'; fail=1 ;; esac
+	fi
 	if command -v rustc >/dev/null 2>&1; then
 		case "$(rustc --version)" in rustc\ 1.93.*) ;; *) echo "  ERROR: Rust 1.93.x is required (see rust-toolchain.toml)"; fail=1 ;; esac
+	fi
+	if [ "$docker_available" = 1 ] && ! docker info >/dev/null 2>&1; then
+		case "$(uname -s)" in
+			Darwin) echo '  ERROR: Docker Desktop is not running; run open -a Docker, wait for it to start, then rerun make doctor' ;;
+			*) echo '  ERROR: the Docker daemon is unavailable; start it, then rerun make doctor' ;;
+		esac
+		fail=1
 	fi
 
 	echo
@@ -444,7 +477,7 @@ verify_changed() {
 	git -C "$ROOT" rev-parse --verify "$base^{commit}" >/dev/null 2>&1 || { echo "agent-verify: unknown BASE=$base" >&2; exit 2; }
 	changed="$( { git -C "$ROOT" diff --name-only "$base"...HEAD; git -C "$ROOT" diff --name-only; git -C "$ROOT" ls-files --others --exclude-standard; } | sort -u )"
 	[ -n "$changed" ] || { echo 'agent-verify: no changes'; return; }
-	echo 'agent-verify: focused checks only; make check remains the final gate'
+	echo 'agent-verify: affected local evidence selected by CI impact'
 	printf '%s\n' "$changed"
 	scope="$(printf '%s\n' "$changed" | "$SCRIPT_DIR/ci-impact.sh")"
 	selected="$(printf '%s\n' "$scope" | sed -n 's/=true$//p' | paste -sd, -)"
@@ -463,6 +496,9 @@ verify_changed() {
 	fi
 	if printf '%s\n' "$scope" | grep -qx 'agent=true'; then
 		make -C "$ROOT" agent-harness-test
+	fi
+	if printf '%s\n' "$scope" | grep -qx 'policy=true'; then
+		make -C "$ROOT" ci-lint release-verify
 	fi
 	if printf '%s\n' "$scope" | grep -qx 'go=true'; then
 		packages="$(printf '%s\n' "$changed" | "$SCRIPT_DIR/go-impact.sh")"

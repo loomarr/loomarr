@@ -90,4 +90,13 @@ func TestVerifyNoticesFailsClosed(t *testing.T) {
 			t.Fatal("VerifyNotices accepted the removed mere-aggregation conclusion")
 		}
 	})
+	t.Run("missing redistribution manifest evidence", func(t *testing.T) {
+		incomplete := strings.Replace(string(complete), "redistribution-manifest-v1.json", "removed-manifest.json", 1)
+		if err := os.WriteFile(noticePath, []byte(incomplete), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := VerifyNotices(root); err == nil {
+			t.Fatal("VerifyNotices accepted removed redistribution manifest evidence")
+		}
+	})
 }

@@ -16,87 +16,47 @@ import (
 	"hash"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/fillercorpus"
 )
 
-type inventory struct {
-	Source string               `json:"source"`
-	Cases  []inventoryCandidate `json:"cases"`
-}
-
-type inventoryCandidate struct {
-	Identifier          string     `json:"identifier"`
-	LicenseURL          string     `json:"licenseUrl"`
-	ItemURL             string     `json:"itemUrl"`
-	MetadataURL         string     `json:"metadataUrl"`
-	MetadataRetrievedAt time.Time  `json:"metadataRetrievedAt"`
-	MetadataSHA256      string     `json:"metadataSha256"`
-	File                sourceFile `json:"file"`
-}
-
-type sourceFile struct {
-	Name   string `json:"name"`
-	URL    string `json:"url"`
-	Format string `json:"format"`
-	Source string `json:"source"`
-	Bytes  int64  `json:"bytes"`
-	SHA1   string `json:"sha1,omitempty"`
-	MD5    string `json:"md5,omitempty"`
-}
-
-type rightsApproval struct {
-	InventorySHA256 string    `json:"inventorySha256"`
-	Identifier      string    `json:"identifier"`
-	MetadataSHA256  string    `json:"metadataSha256"`
-	ReviewerID      string    `json:"reviewerId"`
-	ReviewedAt      time.Time `json:"reviewedAt"`
-	Decision        string    `json:"decision"`
-	Basis           string    `json:"basis"`
-	Redistributable bool      `json:"redistributable"`
-	RequiredCredit  string    `json:"requiredCredit,omitempty"`
-	Restrictions    []string  `json:"restrictions,omitempty"`
-}
-
 type downloadLedger struct {
-	SchemaVersion int              `json:"schemaVersion"`
-	Source        string           `json:"source"`
-	GeneratedAt   time.Time        `json:"generatedAt"`
-	MaxRequests   int              `json:"maxRequests"`
-	RequestsUsed  int              `json:"requestsUsed"`
-	MaxItems      int              `json:"maxItems"`
-	MaxBytes      int64            `json:"maxBytes"`
-	Bytes         int64            `json:"bytes"`
-	Cases         []downloadedCase `json:"cases"`
+	SchemaVersion   int              `json:"schemaVersion"`
+	InventorySHA256 string           `json:"inventorySha256"`
+	GeneratedAt     time.Time        `json:"generatedAt"`
+	MaxRequests     int              `json:"maxRequests"`
+	RequestsUsed    int              `json:"requestsUsed"`
+	MaxItems        int              `json:"maxItems"`
+	MaxBytes        int64            `json:"maxBytes"`
+	Bytes           int64            `json:"bytes"`
+	Cases           []downloadedCase `json:"cases"`
 }
 
 type downloadedCase struct {
-	Identifier          string         `json:"identifier"`
-	LicenseURL          string         `json:"licenseUrl"`
-	ItemURL             string         `json:"itemUrl"`
-	MetadataURL         string         `json:"metadataUrl"`
-	MetadataRetrievedAt time.Time      `json:"metadataRetrievedAt"`
-	MetadataSHA256      string         `json:"metadataSha256"`
-	File                sourceFile     `json:"file"`
-	LocalFile           string         `json:"localFile"`
-	ContentSHA256       string         `json:"contentSha256"`
-	Approval            rightsApproval `json:"approval"`
-	VerifiedAt          time.Time      `json:"verifiedAt"`
+	CaseID              string                               `json:"caseId"`
+	Authority           string                               `json:"authority"`
+	ItemID              string                               `json:"itemId"`
+	LicenseURL          string                               `json:"licenseUrl"`
+	ItemURL             string                               `json:"itemUrl"`
+	MetadataURL         string                               `json:"metadataUrl"`
+	MetadataRetrievedAt time.Time                            `json:"metadataRetrievedAt"`
+	MetadataSHA256      string                               `json:"metadataSha256"`
+	Representation      fillercorpus.InventoryRepresentation `json:"representation"`
+	LocalFile           string                               `json:"localFile"`
+	ContentSHA256       string                               `json:"contentSha256"`
+	Approval            fillercorpus.RightsDecision          `json:"approval"`
+	VerifiedAt          time.Time                            `json:"verifiedAt"`
 }
 
-var (
-	safeIdentifier = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
-	sha256Digest   = regexp.MustCompile(`^[a-f0-9]{64}$`)
-)
-
 type plannedDownload struct {
-	candidate inventoryCandidate
-	approval  rightsApproval
+	candidate fillercorpus.InventoryCase
+	approval  fillercorpus.RightsDecision
 	path      string
 }
 
@@ -149,7 +109,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	opts.inventorySHA256 = inventorySHA256
-	approvals, err := readJSONL[rightsApproval](opts.approvalsPath)
+	approvals, err := readJSONL[fillercorpus.RightsDecision](opts.approvalsPath)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-download: read approvals:", err)
 		return 1
@@ -159,27 +119,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-download:", err)
 		return 1
 	}
-	client := &http.Client{
-		Timeout: 5 * time.Minute,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if req.URL == nil {
-				return fmt.Errorf("refuse redirect without a destination URL")
-			}
-			if req.URL.Scheme != "https" || !archiveHost(req.URL.Hostname()) {
-				return fmt.Errorf("refuse redirect outside archive.org to %s", req.URL.Hostname())
-			}
-			if len(via) >= 5 {
-				return fmt.Errorf("too many redirects")
-			}
-			return nil
-		},
-	}
+	client := &http.Client{Timeout: 5 * time.Minute}
 	ledger, err := executeDownloads(context.Background(), client, plan, opts)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-download:", err)
 		return 1
 	}
-	ledger.Source = inv.Source
+	ledger.InventorySHA256 = inventorySHA256
 	if err := writeJSON(opts.ledgerPath, ledger); err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-download: write ledger:", err)
 		return 1
@@ -188,62 +134,60 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func planDownloads(inv inventory, approvals []rightsApproval, opts options) ([]plannedDownload, error) {
-	if inv.Source != "archive.org" {
-		return nil, fmt.Errorf("unsupported inventory source %q", inv.Source)
+func planDownloads(inv fillercorpus.Inventory, approvals []fillercorpus.RightsDecision, opts options) ([]plannedDownload, error) {
+	if failures := fillercorpus.ValidateInventory(inv); len(failures) != 0 {
+		return nil, fmt.Errorf("invalid inventory: %s", strings.Join(failures, "; "))
 	}
-	byID := make(map[string]inventoryCandidate, len(inv.Cases))
+	byID := make(map[string]fillercorpus.InventoryCase, len(inv.Cases))
 	for _, candidate := range inv.Cases {
-		if !safeIdentifier.MatchString(candidate.Identifier) || strings.Contains(candidate.Identifier, "..") {
-			return nil, fmt.Errorf("unsafe inventory identifier %q", candidate.Identifier)
+		if _, duplicate := byID[candidate.CaseID]; duplicate {
+			return nil, fmt.Errorf("duplicate inventory candidate %s", candidate.CaseID)
 		}
-		if !sha256Digest.MatchString(candidate.MetadataSHA256) || candidate.MetadataRetrievedAt.IsZero() || candidate.File.Bytes <= 0 || strings.TrimSpace(candidate.File.Name) == "" {
-			return nil, fmt.Errorf("inventory candidate %s has incomplete frozen metadata or media identity", candidate.Identifier)
-		}
-		if _, duplicate := byID[candidate.Identifier]; duplicate {
-			return nil, fmt.Errorf("duplicate inventory candidate %s", candidate.Identifier)
-		}
-		byID[candidate.Identifier] = candidate
+		byID[candidate.CaseID] = candidate
 	}
 	seen := map[string]struct{}{}
 	var plan []plannedDownload
 	var bytes int64
 	for _, approval := range approvals {
-		if _, duplicate := seen[approval.Identifier]; duplicate {
-			return nil, fmt.Errorf("duplicate rights decision for %s", approval.Identifier)
+		if _, duplicate := seen[approval.CaseID]; duplicate {
+			return nil, fmt.Errorf("duplicate rights decision for %s", approval.CaseID)
 		}
-		seen[approval.Identifier] = struct{}{}
-		candidate, ok := byID[approval.Identifier]
+		seen[approval.CaseID] = struct{}{}
+		candidate, ok := byID[approval.CaseID]
 		if !ok {
-			return nil, fmt.Errorf("rights-reviewed item %s is absent from the inventory", approval.Identifier)
+			return nil, fmt.Errorf("rights-reviewed item %s is absent from the inventory", approval.CaseID)
 		}
 		if approval.InventorySHA256 != opts.inventorySHA256 {
-			return nil, fmt.Errorf("rights-reviewed item %s is not tied to the frozen inventory", approval.Identifier)
+			return nil, fmt.Errorf("rights-reviewed item %s is not tied to the frozen inventory", approval.CaseID)
+		}
+		if !slices.Equal(approval.CaptureIDs, candidate.CaptureIDs) || approval.Authority != candidate.Authority || approval.ItemID != candidate.ItemID {
+			return nil, fmt.Errorf("rights-reviewed item %s changes its source identity", approval.CaseID)
 		}
 		if approval.Decision != "approved" && approval.Decision != "held" {
-			return nil, fmt.Errorf("rights-reviewed item %s has unknown decision %q", approval.Identifier, approval.Decision)
+			return nil, fmt.Errorf("rights-reviewed item %s has unknown decision %q", approval.CaseID, approval.Decision)
 		}
 		if approval.MetadataSHA256 != candidate.MetadataSHA256 || approval.ReviewerID == "" || approval.ReviewedAt.IsZero() || approval.ReviewedAt.Before(candidate.MetadataRetrievedAt) || approval.ReviewedAt.After(opts.generatedAt) || strings.TrimSpace(approval.Basis) == "" {
-			return nil, fmt.Errorf("rights-reviewed item %s is not tied to its metadata and complete review", approval.Identifier)
+			return nil, fmt.Errorf("rights-reviewed item %s is not tied to its metadata and complete review", approval.CaseID)
 		}
 		if approval.Decision == "held" {
 			continue
 		}
 		if !approval.Redistributable {
-			return nil, fmt.Errorf("approved item %s is not explicitly redistributable", approval.Identifier)
+			return nil, fmt.Errorf("approved item %s is not explicitly redistributable", approval.CaseID)
 		}
 		if requiresCredit(candidate.LicenseURL) && strings.TrimSpace(approval.RequiredCredit) == "" {
-			return nil, fmt.Errorf("approved item %s requires attribution", approval.Identifier)
+			return nil, fmt.Errorf("approved item %s requires attribution", approval.CaseID)
 		}
-		if candidate.File.Source != "" && candidate.File.Source != inv.Source {
-			return nil, fmt.Errorf("inventory candidate %s media source does not match %s", candidate.Identifier, inv.Source)
+		if candidate.Representation.Transport == fillercorpus.TransportLocal {
+			continue
 		}
-		if err := validateSourceURL(candidate.Identifier, candidate.File.URL); err != nil {
+		if err := fillercorpus.ValidateMediaURL(candidate.Representation.URL, candidate.AllowedMediaHosts); err != nil {
 			return nil, err
 		}
-		bytes += candidate.File.Bytes
-		ext := filepath.Ext(candidate.File.Name)
-		plan = append(plan, plannedDownload{candidate: candidate, approval: approval, path: filepath.Join(opts.outputDir, candidate.Identifier+ext)})
+		bytes += candidate.Representation.Bytes
+		ext := filepath.Ext(candidate.Representation.Name)
+		name := fillercorpus.InventorySHA256([]byte(candidate.CaseID))[:16] + ext
+		plan = append(plan, plannedDownload{candidate: candidate, approval: approval, path: filepath.Join(opts.outputDir, name)})
 	}
 	if len(plan) == 0 {
 		return nil, fmt.Errorf("rights ledger approves no media")
@@ -251,7 +195,7 @@ func planDownloads(inv inventory, approvals []rightsApproval, opts options) ([]p
 	if len(plan) > opts.maxItems || bytes > opts.maxBytes {
 		return nil, fmt.Errorf("approved plan has %d items and %d bytes; ceilings are %d and %d", len(plan), bytes, opts.maxItems, opts.maxBytes)
 	}
-	sort.Slice(plan, func(i, j int) bool { return plan[i].candidate.Identifier < plan[j].candidate.Identifier })
+	sort.Slice(plan, func(i, j int) bool { return plan[i].candidate.CaseID < plan[j].candidate.CaseID })
 	return plan, nil
 }
 
@@ -266,7 +210,7 @@ func executeDownloads(ctx context.Context, client *http.Client, plan []plannedDo
 		hashes, size, err := hashFile(item.path)
 		if errors.Is(err, os.ErrNotExist) {
 			if ledger.RequestsUsed >= opts.maxRequests {
-				return downloadLedger{}, fmt.Errorf("request ceiling exhausted before %s", item.candidate.Identifier)
+				return downloadLedger{}, fmt.Errorf("request ceiling exhausted before %s", item.candidate.CaseID)
 			}
 			if !lastRequestAt.IsZero() {
 				wait := opts.delay - time.Since(lastRequestAt)
@@ -286,17 +230,17 @@ func executeDownloads(ctx context.Context, client *http.Client, plan []plannedDo
 			verifiedAt = lastRequestAt.UTC()
 		}
 		if err != nil {
-			return downloadLedger{}, fmt.Errorf("%s: %w", item.candidate.Identifier, err)
+			return downloadLedger{}, fmt.Errorf("%s: %w", item.candidate.CaseID, err)
 		}
-		if size != item.candidate.File.Bytes || !matchesOptional(hashes.sha1, item.candidate.File.SHA1) || !matchesOptional(hashes.md5, item.candidate.File.MD5) {
-			return downloadLedger{}, fmt.Errorf("%s: downloaded bytes or source checksums do not match inventory", item.candidate.Identifier)
+		if size != item.candidate.Representation.Bytes || !matchesOptional(hashes.sha256, item.candidate.Representation.SHA256) || !matchesOptional(hashes.sha1, item.candidate.Representation.SHA1) || !matchesOptional(hashes.md5, item.candidate.Representation.MD5) {
+			return downloadLedger{}, fmt.Errorf("%s: downloaded bytes or source checksums do not match inventory", item.candidate.CaseID)
 		}
 		ledger.Bytes += size
 		ledger.Cases = append(ledger.Cases, downloadedCase{
-			Identifier: item.candidate.Identifier, LicenseURL: item.candidate.LicenseURL,
+			CaseID: item.candidate.CaseID, Authority: item.candidate.Authority, ItemID: item.candidate.ItemID, LicenseURL: item.candidate.LicenseURL,
 			ItemURL: item.candidate.ItemURL, MetadataURL: item.candidate.MetadataURL,
 			MetadataRetrievedAt: item.candidate.MetadataRetrievedAt, MetadataSHA256: item.candidate.MetadataSHA256,
-			File: item.candidate.File, LocalFile: filepath.Base(item.path), ContentSHA256: hashes.sha256,
+			Representation: item.candidate.Representation, LocalFile: filepath.Base(item.path), ContentSHA256: hashes.sha256,
 			Approval: item.approval, VerifiedAt: verifiedAt,
 		})
 	}
@@ -306,12 +250,14 @@ func executeDownloads(ctx context.Context, client *http.Client, plan []plannedDo
 type fileHashes struct{ sha256, sha1, md5 string }
 
 func download(ctx context.Context, client *http.Client, item plannedDownload, userAgent string) (fileHashes, int64, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, item.candidate.File.URL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, item.candidate.Representation.URL, nil)
 	if err != nil {
 		return fileHashes{}, 0, err
 	}
 	req.Header.Set("User-Agent", userAgent)
-	resp, err := client.Do(req)
+	requestClient := *client
+	requestClient.CheckRedirect = redirectPolicy(item.candidate.AllowedMediaHosts)
+	resp, err := requestClient.Do(req)
 	if err != nil {
 		return fileHashes{}, 0, err
 	}
@@ -319,7 +265,7 @@ func download(ctx context.Context, client *http.Client, item plannedDownload, us
 	if resp.StatusCode != http.StatusOK {
 		return fileHashes{}, 0, fmt.Errorf("GET: %s", resp.Status)
 	}
-	if resp.ContentLength > item.candidate.File.Bytes && resp.ContentLength >= 0 {
+	if resp.ContentLength > item.candidate.Representation.Bytes && resp.ContentLength >= 0 {
 		return fileHashes{}, 0, fmt.Errorf("Content-Length exceeds inventory size")
 	}
 	temp, err := os.CreateTemp(filepath.Dir(item.path), ".filler-corpus-download-*")
@@ -337,14 +283,14 @@ func download(ctx context.Context, client *http.Client, item plannedDownload, us
 	if err := temp.Chmod(0o600); err != nil {
 		return fileHashes{}, 0, err
 	}
-	hashes, n, err := copyAndHash(temp, io.LimitReader(resp.Body, item.candidate.File.Bytes+1))
+	hashes, n, err := copyAndHash(temp, io.LimitReader(resp.Body, item.candidate.Representation.Bytes+1))
 	if err != nil {
 		return fileHashes{}, 0, err
 	}
-	if n != item.candidate.File.Bytes {
-		return fileHashes{}, 0, fmt.Errorf("received %d bytes, want %d", n, item.candidate.File.Bytes)
+	if n != item.candidate.Representation.Bytes {
+		return fileHashes{}, 0, fmt.Errorf("received %d bytes, want %d", n, item.candidate.Representation.Bytes)
 	}
-	if !matchesOptional(hashes.sha1, item.candidate.File.SHA1) || !matchesOptional(hashes.md5, item.candidate.File.MD5) {
+	if !matchesOptional(hashes.sha256, item.candidate.Representation.SHA256) || !matchesOptional(hashes.sha1, item.candidate.Representation.SHA1) || !matchesOptional(hashes.md5, item.candidate.Representation.MD5) {
 		return fileHashes{}, 0, fmt.Errorf("source checksums do not match inventory")
 	}
 	if err := temp.Close(); err != nil {
@@ -355,6 +301,21 @@ func download(ctx context.Context, client *http.Client, item plannedDownload, us
 	}
 	ok = true
 	return hashes, n, nil
+}
+
+func redirectPolicy(allowedHosts []string) func(*http.Request, []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		if req.URL == nil {
+			return fmt.Errorf("refuse redirect without a destination URL")
+		}
+		if err := fillercorpus.ValidateMediaURL(req.URL.String(), allowedHosts); err != nil {
+			return fmt.Errorf("refuse redirect: %w", err)
+		}
+		if len(via) >= 5 {
+			return fmt.Errorf("too many redirects")
+		}
+		return nil
+	}
 }
 
 func hashFile(path string) (fileHashes, int64, error) {
@@ -382,33 +343,19 @@ func matchesOptional(actual, expected string) bool {
 	return expected == "" || strings.EqualFold(actual, expected)
 }
 
-func validateSourceURL(identifier, rawURL string) error {
-	u, err := url.Parse(rawURL)
-	if err != nil || u.Scheme != "https" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
-		return fmt.Errorf("%s: invalid Archive.org media URL", identifier)
-	}
-	if !archiveHost(u.Hostname()) || !strings.HasPrefix(u.EscapedPath(), "/download/"+url.PathEscape(identifier)+"/") {
-		return fmt.Errorf("%s: invalid Archive.org media URL", identifier)
-	}
-	return nil
-}
-
-func archiveHost(host string) bool {
-	return host == "archive.org" || strings.HasSuffix(host, ".archive.org")
-}
-
 func requiresCredit(license string) bool {
 	normalized := strings.ToLower(license)
 	return strings.Contains(normalized, "/licenses/by/") || strings.Contains(normalized, "/licenses/by-sa/")
 }
 
-func readInventory(path string) (inventory, string, error) {
-	var value inventory
+func readInventory(path string) (fillercorpus.Inventory, string, error) {
+	var value fillercorpus.Inventory
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return value, "", err
 	}
-	if err := json.Unmarshal(data, &value); err != nil {
+	value, err = fillercorpus.DecodeInventoryBytes(data)
+	if err != nil {
 		return value, "", err
 	}
 	sum := sha256.Sum256(data)

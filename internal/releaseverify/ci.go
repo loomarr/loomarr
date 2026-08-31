@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -159,6 +160,10 @@ func VerifyCIImpactActivation(path string) error {
 	if err != nil {
 		return errors.New("CI changes job must publish classifier outputs")
 	}
+	lane, ok := mappingValue(outputs, "lane")
+	if !ok || lane.Kind != yaml.ScalarNode || lane.Value != "${{ steps.filter.outputs.lane }}" {
+		return errors.New("CI changes job must publish the assurance lane")
+	}
 
 	type classifierOutput struct {
 		name   string
@@ -168,28 +173,68 @@ func VerifyCIImpactActivation(path string) error {
 		outputs   []classifierOutput
 		condition string
 	}{
+		"ci-policy": {
+			outputs:   []classifierOutput{{name: "impact_policy", source: "policy"}},
+			condition: "needs.changes.outputs.impact_policy == 'true'",
+		},
+		"rust-contracts": {
+			outputs:   []classifierOutput{{name: "impact_rust", source: "rust"}},
+			condition: "needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true'",
+		},
+		"go-contracts": {
+			outputs:   []classifierOutput{{name: "impact_contracts", source: "contracts"}},
+			condition: "needs.changes.outputs.impact_contracts == 'true' || needs.changes.outputs.release_candidate == 'true'",
+		},
+		"image-certification": {
+			outputs:   []classifierOutput{{name: "impact_rust", source: "rust"}},
+			condition: "needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true')",
+		},
+		"go": {
+			outputs:   []classifierOutput{{name: "impact_go", source: "go"}},
+			condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_go == 'true'",
+		},
 		"store-postgres": {
 			outputs:   []classifierOutput{{name: "impact_postgres", source: "postgres"}},
-			condition: "needs.changes.outputs.impact_postgres == 'true'",
+			condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_postgres == 'true'",
 		},
 		"playwright": {
 			outputs: []classifierOutput{
 				{name: "impact_visual", source: "visual"},
 				{name: "impact_e2e", source: "e2e"},
 			},
-			condition: "needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true'",
+			condition: "needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true')",
+		},
+		"frontend": {
+			outputs:   []classifierOutput{{name: "impact_web", source: "web"}},
+			condition: "needs.changes.outputs.impact_web == 'true'",
+		},
+		"clients": {
+			outputs:   []classifierOutput{{name: "impact_clients", source: "clients"}},
+			condition: "needs.changes.outputs.impact_clients == 'true'",
+		},
+		"image": {
+			outputs:   []classifierOutput{{name: "impact_image", source: "image"}},
+			condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_image == 'true'",
+		},
+		"docs": {
+			outputs:   []classifierOutput{{name: "impact_docs", source: "docs"}},
+			condition: "needs.changes.outputs.impact_docs == 'true'",
+		},
+		"android": {
+			outputs:   []classifierOutput{{name: "impact_android", source: "android"}},
+			condition: "needs.changes.outputs.impact_android == 'true'",
 		},
 		"tuner": {
 			outputs:   []classifierOutput{{name: "impact_tuner", source: "tuner"}},
-			condition: "needs.changes.outputs.impact_tuner == 'true'",
+			condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'",
 		},
 		"apple-mobile": {
 			outputs:   []classifierOutput{{name: "impact_apple_mobile", source: "apple_mobile"}},
-			condition: "needs.changes.outputs.impact_apple_mobile == 'true'",
+			condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_mobile == 'true'",
 		},
 		"apple-tv": {
 			outputs:   []classifierOutput{{name: "impact_apple_tv", source: "apple_tv"}},
-			condition: "needs.changes.outputs.impact_apple_tv == 'true'",
+			condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_tv == 'true'",
 		},
 		"expo-android-mobile": {
 			outputs:   []classifierOutput{{name: "impact_expo_android_mobile", source: "expo_android_mobile"}},
@@ -230,11 +275,136 @@ func VerifyCIImpactActivation(path string) error {
 		if _, ok := mappingValue(job, "strategy"); ok {
 			return fmt.Errorf("CI native job %s must be a single app-specific job", jobName)
 		}
-		if !yamlNodeContainsScalar(job, command) {
+		implementation, err := resolveCIJobImplementation(path, job)
+		if err != nil {
+			return fmt.Errorf("CI native job %s implementation: %w", jobName, err)
+		}
+		if !yamlNodeContainsScalar(implementation, command) {
 			return fmt.Errorf("CI native job %s must run %q", jobName, command)
 		}
 	}
 	return nil
+}
+
+func ciFamilyWorkflowAuthorities() map[string]string {
+	return map[string]string{
+		"agent-harness-macos": ".github/workflows/ci-agent.yml",
+		"rust-contracts":      ".github/workflows/ci-rust-contracts.yml",
+		"go-contracts":        ".github/workflows/ci-go-contracts.yml",
+		"image-certification": ".github/workflows/ci-image-certification.yml",
+		"go":                  ".github/workflows/ci-go.yml",
+		"store-postgres":      ".github/workflows/ci-postgres.yml",
+		"frontend":            ".github/workflows/ci-frontend.yml",
+		"clients":             ".github/workflows/ci-clients.yml",
+		"apple-mobile":        ".github/workflows/ci-apple-mobile.yml",
+		"apple-tv":            ".github/workflows/ci-apple-tv.yml",
+		"expo-android-mobile": ".github/workflows/ci-expo-android-mobile.yml",
+
+		"apple-cache-validation": ".github/workflows/ci-apple-cache-validation.yml",
+
+		"playwright": ".github/workflows/ci-playwright.yml",
+		"tuner":      ".github/workflows/ci-tuner.yml",
+		"image":      ".github/workflows/ci-image.yml",
+		"docs":       ".github/workflows/ci-docs.yml",
+		"android":    ".github/workflows/ci-android.yml",
+	}
+}
+
+// VerifyCIFamilyWorkflows keeps the root workflow a decision surface instead of allowing
+// product implementations to drift back into it. Each caller owns one explicit local reusable
+// workflow, and that workflow exposes exactly one implementation job through workflow_call.
+func VerifyCIFamilyWorkflows(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	root, err := parseYAML(data)
+	if err != nil {
+		return err
+	}
+	jobs, err := requiredMap(root, "jobs")
+	if err != nil {
+		return err
+	}
+	for jobName, expected := range ciFamilyWorkflowAuthorities() {
+		job, err := requiredMap(jobs, jobName)
+		if err != nil {
+			return fmt.Errorf("CI workflow must define family caller %s", jobName)
+		}
+		uses := scalarValue(job, "uses")
+		if uses != "./"+expected {
+			return fmt.Errorf("CI family caller %s uses %q, want %q", jobName, uses, "./"+expected)
+		}
+		implementation, err := resolveCIJobImplementation(path, job)
+		if err != nil {
+			return fmt.Errorf("CI family caller %s: %w", jobName, err)
+		}
+		if jobName == "go" && !jobRunsExactCommand(implementation, "make test GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}") {
+			return errors.New("CI Go family must run the sharded repository test target")
+		}
+	}
+	return nil
+}
+
+func jobRunsExactCommand(job *yaml.Node, command string) bool {
+	steps, err := requiredSequence(job, "steps")
+	if err != nil {
+		return false
+	}
+	count := 0
+	for _, step := range steps.Content {
+		if step.Kind != yaml.MappingNode {
+			continue
+		}
+		run, ok := mappingValue(step, "run")
+		if ok && run.Kind == yaml.ScalarNode && run.Value == command {
+			count++
+		}
+	}
+	return count == 1
+}
+
+func resolveCIJobImplementation(ciPath string, caller *yaml.Node) (*yaml.Node, error) {
+	uses := scalarValue(caller, "uses")
+	if uses == "" {
+		return caller, nil
+	}
+	const prefix = "./.github/workflows/"
+	if !strings.HasPrefix(uses, prefix) || strings.Contains(strings.TrimPrefix(uses, prefix), "/") {
+		return nil, fmt.Errorf("reusable workflow %q must be a direct local workflow", uses)
+	}
+	workflowPath := filepath.Join(filepath.Dir(ciPath), strings.TrimPrefix(uses, prefix))
+	data, err := os.ReadFile(workflowPath)
+	if err != nil {
+		return nil, fmt.Errorf("read reusable workflow: %w", err)
+	}
+	root, err := parseYAML(data)
+	if err != nil {
+		return nil, err
+	}
+	on, err := requiredMap(root, "on")
+	if err != nil || len(on.Content) != 2 {
+		return nil, errors.New("reusable workflow must expose only workflow_call")
+	}
+	if _, ok := mappingValue(on, "workflow_call"); !ok {
+		return nil, errors.New("reusable workflow must expose workflow_call")
+	}
+	jobs, err := requiredMap(root, "jobs")
+	appleCacheValidation := strings.TrimPrefix(uses, prefix) == "ci-apple-cache-validation.yml"
+	wantJobNodes := 2
+	if appleCacheValidation {
+		// This manual portability proof deliberately crosses a runner boundary: one job
+		// produces the CAS artifact and a dependent job consumes it. Every normal CI family
+		// remains constrained to one implementation job.
+		wantJobNodes = 4
+	}
+	if err != nil || len(jobs.Content) != wantJobNodes {
+		return nil, fmt.Errorf("reusable workflow %s must contain %d implementation job(s), found %d", uses, wantJobNodes/2, len(jobs.Content)/2)
+	}
+	if jobs.Content[1].Kind != yaml.MappingNode {
+		return nil, errors.New("reusable workflow implementation must be a job mapping")
+	}
+	return jobs.Content[1], nil
 }
 
 func yamlNodeContainsScalar(node *yaml.Node, value string) bool {
@@ -250,6 +420,50 @@ func yamlNodeContainsScalar(node *yaml.Node, value string) bool {
 		}
 	}
 	return false
+}
+
+// VerifyCINativeAdmission keeps scarce macOS capacity behind the merge queue.
+// Pull-request CI remains fast feedback; merge-group and manual runs retain
+// the same required native evidence before delivery or release.
+func VerifyCINativeAdmission(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	root, err := parseYAML(data)
+	if err != nil {
+		return err
+	}
+	on, err := requiredMap(root, "on")
+	if err != nil {
+		return errors.New("CI workflow must define triggers")
+	}
+	if _, ok := mappingValue(on, "merge_group"); !ok {
+		return errors.New("CI workflow must trigger for merge groups")
+	}
+	if _, ok := mappingValue(on, "push"); ok {
+		return errors.New("CI workflow must not repeat product validation after a queued merge")
+	}
+	jobs, err := requiredMap(root, "jobs")
+	if err != nil {
+		return err
+	}
+	expected := map[string]string{
+		"agent-harness-macos": "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_agent == 'true'",
+		"apple-mobile":        "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_mobile == 'true'",
+		"apple-tv":            "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_tv == 'true'",
+		"tuner":               "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'",
+	}
+	for jobName, condition := range expected {
+		job, err := requiredMap(jobs, jobName)
+		if err != nil {
+			return fmt.Errorf("CI workflow must define scarce-capacity job %s", jobName)
+		}
+		if got := scalarValue(job, "if"); got != condition {
+			return fmt.Errorf("CI job %s condition %q does not match native admission contract %q", jobName, got, condition)
+		}
+	}
+	return nil
 }
 
 // VerifyCIManualScopes pins the manual-dispatch contract used to certify an
@@ -284,8 +498,8 @@ func VerifyCIManualScopes(path string) error {
 		return errors.New("CI scope input must be a choice defaulting to release-candidate")
 	}
 	options, err := requiredSequence(scope, "options")
-	if err != nil || len(options.Content) != 2 || options.Content[0].Value != "release-candidate" || options.Content[1].Value != "full" {
-		return errors.New("CI scope choices must be release-candidate then full")
+	if err != nil || len(options.Content) != 3 || options.Content[0].Value != "release-candidate" || options.Content[1].Value != "full" || options.Content[2].Value != "apple-cache-validation" {
+		return errors.New("CI scope choices must be release-candidate, full, then apple-cache-validation")
 	}
 
 	jobs, err := requiredMap(root, "jobs")

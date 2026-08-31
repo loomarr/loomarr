@@ -2,17 +2,146 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/contact"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Operational tables: the settings KV, session lifecycle, the /metrics count queries,
 // the activity feed, and the retention purge that sweeps the first three.
+
+func testUserContactAddresses(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	s := newStore(t)
+	now := time.Unix(1_900_000_000, 0)
+
+	email, normalized, err := contact.Normalize("Ada@Example.COM")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending := contact.Address{
+		OwnerKind: contact.OwnerUser, OwnerID: "u1", Email: email, Normalized: normalized,
+		Status: contact.StatusPending, Provenance: contact.ProvenanceAdmin, CreatedAt: now,
+	}
+	if err := s.PutPendingContactAddress(ctx, pending); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("contact for missing user = %v, want ErrNotFound", err)
+	}
+	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: RoleAdmin, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertUser(ctx, User{ID: "u2", Name: "Grace", Role: RoleMember, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PutPendingContactAddress(ctx, pending); err != nil {
+		t.Fatal(err)
+	}
+	set, err := s.GetContactAddresses(ctx, "u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if set.Verified != nil || set.Pending == nil || set.Pending.Normalized != normalized {
+		t.Fatalf("initial contact set = %+v, want pending %q only", set, normalized)
+	}
+	if _, err := s.VerifyPendingContactAddress(ctx, "u1", "stale@example.com", now.Add(time.Minute)); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("stale verification = %v, want ErrNotFound", err)
+	}
+	verifiedAt := now.Add(time.Minute)
+	verified, err := s.VerifyPendingContactAddress(ctx, "u1", normalized, verifiedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verified.Status != contact.StatusVerified || !verified.VerifiedAt.Equal(verifiedAt) {
+		t.Fatalf("verified contact = %+v", verified)
+	}
+	byAddress, err := s.GetVerifiedContactAddressByNormalized(ctx, normalized)
+	if err != nil || byAddress.OwnerID != "u1" {
+		t.Fatalf("verified lookup = %+v, %v", byAddress, err)
+	}
+
+	replacementEmail, replacementKey, err := contact.Normalize("ada.new@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PutPendingContactAddress(ctx, contact.Address{
+		OwnerKind: contact.OwnerUser, OwnerID: "u1", Email: replacementEmail, Normalized: replacementKey,
+		Status: contact.StatusPending, Provenance: contact.ProvenanceSelf, CreatedAt: now.Add(2 * time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	set, err = s.GetContactAddresses(ctx, "u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if set.Verified == nil || set.Verified.Normalized != normalized || set.Pending == nil || set.Pending.Normalized != replacementKey {
+		t.Fatalf("replacement state = %+v; old verified address must remain recovery-capable", set)
+	}
+	if err := s.PutPendingContactAddress(ctx, contact.Address{
+		OwnerKind: contact.OwnerUser, OwnerID: "u2", Email: replacementEmail, Normalized: replacementKey,
+		Status: contact.StatusPending, Provenance: contact.ProvenanceAdmin, CreatedAt: now,
+	}); !errors.Is(err, ErrContactAddressConflict) {
+		t.Fatalf("duplicate normalized address = %v, want ErrContactAddressConflict", err)
+	}
+
+	if _, err := s.VerifyPendingContactAddress(ctx, "u1", replacementKey, now.Add(3*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetVerifiedContactAddressByNormalized(ctx, normalized); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("retired verified lookup = %v, want ErrNotFound", err)
+	}
+	if err := s.PutPendingContactAddress(ctx, contact.Address{
+		OwnerKind: contact.OwnerUser, OwnerID: "u1", Email: "ADA.NEW@example.com", Normalized: replacementKey,
+		Status: contact.StatusPending, Provenance: contact.ProvenanceAdmin, CreatedAt: now.Add(4 * time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	set, err = s.GetContactAddresses(ctx, "u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if set.Pending != nil || set.Verified == nil || set.Verified.Email != "ADA.NEW@example.com" {
+		t.Fatalf("case-only correction = %+v; must preserve verification and cancel replacement", set)
+	}
+
+	all, err := s.ListContactAddresses(ctx)
+	if err != nil || len(all) != 1 {
+		t.Fatalf("ListContactAddresses = %+v, %v; want one verified row", all, err)
+	}
+	if err := s.DeleteContactAddresses(ctx, "u1"); err != nil {
+		t.Fatal(err)
+	}
+	set, err = s.GetContactAddresses(ctx, "u1")
+	if err != nil || set.Verified != nil || set.Pending != nil {
+		t.Fatalf("deleted contact set = %+v, %v", set, err)
+	}
+}
+
+func testUserCredentialCapabilities(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	s := newStore(t)
+	now := time.Unix(1_700_000_000, 0).UTC()
+	want := User{
+		ID: "linked", Name: "Linked", Role: RoleMember, MediaServerLinked: true,
+		PasswordHash: "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$dGFn", CreatedAt: now, UpdatedAt: now,
+	}
+	if err := s.UpsertUser(ctx, want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetUser(ctx, want.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.MediaServerLinked || got.PasswordHash != want.PasswordHash {
+		t.Fatalf("linked+verifier did not round-trip: %+v", got)
+	}
+}
 
 func testSettings(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
@@ -330,7 +459,7 @@ func testCounts(t *testing.T, newStore NewStoreFunc) {
 				t.Fatal(err)
 			}
 		} else if err := s.CommitSuggestionFailure(ctx, claimedJob.ID, claimedJob.Attempts,
-			"private", "generation_failed", now); err != nil {
+			"private", "generation_failed", "", now); err != nil {
 			t.Fatal(err)
 		}
 	}

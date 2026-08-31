@@ -55,6 +55,36 @@ const SETTINGS = [
     ],
   }),
   setting({ key: "job.workers", group: "advanced", kind: "int", value: "2", provenance: "env" }),
+  setting({
+    key: "access.public_url",
+    label: "Recipient-facing Loomarr address",
+    group: "notifications",
+    kind: "url",
+    value: "https://loomarr.example.com",
+  }),
+  setting({
+    key: "notifications.email.enabled",
+    label: "Send email notifications",
+    group: "notifications",
+    kind: "bool",
+    value: "true",
+  }),
+  setting({
+    key: "notifications.smtp.host",
+    label: "SMTP host",
+    group: "notifications",
+    value: "smtp.example.com",
+  }),
+  setting({
+    key: "notifications.smtp.password",
+    label: "SMTP password",
+    group: "notifications",
+    kind: "secret",
+    secret: true,
+    set: true,
+    preview: "…cafe",
+    value: "",
+  }),
 ];
 
 // Every write this page can make, route-bound, with the request SEQUENCE recorded.
@@ -121,6 +151,18 @@ const renderAt = (path: string) => {
 };
 
 describe("Settings", () => {
+  it("exposes recipient links, SMTP configuration, and test delivery on Notifications", async () => {
+    stubSettings();
+    renderAt("/settings/notifications");
+
+    expect(await screen.findByRole("heading", { name: "Notifications" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("Recipient-facing Loomarr address")).toBeInTheDocument();
+    expect(await screen.findByLabelText("SMTP host")).toBeInTheDocument();
+    expect(await screen.findByText("SMTP password")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send test email" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Notifications" })).toHaveAttribute("aria-current", "page");
+  });
+
   it("self-diagnoses each connection on its own block (§5 status-per-block)", async () => {
     stubSettings();
     renderAt("/settings/connections");

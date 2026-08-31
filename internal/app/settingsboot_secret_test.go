@@ -64,3 +64,23 @@ func TestBootSettingsGeneratesOnlyOperationalTokensAndRedactsThem(t *testing.T) 
 		t.Fatal("legacy inert row was loaded as a live generated credential")
 	}
 }
+
+func TestBootSettingsRedactsSMTPPasswordFromApplicationLogs(t *testing.T) {
+	t.Setenv("NOTIFICATIONS_SMTP_PASSWORD", "")
+	st := testkit.MigratedSQLiteStore(t)
+	const password = "smtp-password-that-must-stay-secret"
+	if err := st.SetSetting(context.Background(), "notifications.smtp.password", password); err != nil {
+		t.Fatal(err)
+	}
+
+	var logs bytes.Buffer
+	base := slog.New(slog.NewTextHandler(&logs, nil))
+	_, _, _, log, err := bootSettings(context.Background(), st, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	log.Error("delivery failed", "credential", password)
+	if strings.Contains(logs.String(), password) {
+		t.Fatalf("SMTP password leaked through application logger: %s", logs.String())
+	}
+}

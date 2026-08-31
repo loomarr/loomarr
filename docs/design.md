@@ -112,15 +112,16 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | --- | ---: | --- |
 | `catalog` | 5 | `library`, `provision` |
 | `diagnostics` | 8 | — |
-| `filler` | 6 | `diagnostics`, `llm`, `metrics` |
-| `httpx` | 5 | `metrics` |
+| `filler` | 6 | `diagnostics`, `filleradmission`, `llm`, `metrics` |
+| `filleradmission` | 7 | — |
+| `httpx` | 6 | `metrics` |
 | `library` | 7 | `filler`, `httpx` |
 | `llm` | 5 | `httpx`, `metrics` |
 | `metrics` | 6 | `provision` |
 | `provision` | 16 | — |
 | `schedule` | 14 | `provision` |
 | `scheduler` | 6 | `store` |
-| `store` | 14 | `diagnostics`, `filler`, `provision`, `schedule` |
+| `store` | 14 | `diagnostics`, `filler`, `filleradmission`, `provision`, `schedule` |
 | `suggest` | 6 | `catalog`, `llm`, `provision`, `schedule`, `store` |
 
 ##### Every package, by layer
@@ -135,11 +136,11 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
-- **`filleradmission`** · 4 importers
+- **`filleradmission`** · 7 importers
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
 - **`fillercorpus`**
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
-- **`fillereval`** · 1 importer
+- **`fillereval`** · 2 importers
   Owns the hermetic certification contract for filler admission.
 - **`media`** · 3 importers
   Owns host-wide resources shared by live and background media work.
@@ -158,9 +159,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 1**
 
-- **`fillerbakeoff`** · 1 importer · → `filleradmission`, `fillereval`
-  Runs bounded, inference-spending filler admission comparisons.
-- **`fillerdecision`** · 3 importers · → `filleradmission`
+- **`fillerdecision`** · 4 importers · → `filleradmission`
   Owns the durable lifecycle and operator projections for filler-admission results.
 - **`prepared`** · 3 importers · → `diagnostics`, `media`
   Owns immutable, reusable playout publications.
@@ -187,11 +186,13 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 4**
 
-- **`httpx`** · 5 importers · → `metrics`
+- **`httpx`** · 6 importers · → `metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 
 **Layer 5**
 
+- **`fillerbakeoff`** · 2 importers · → `filleradmission`, `fillereval`, `httpx`
+  Runs bounded, inference-spending filler admission comparisons.
 - **`llm`** · 5 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
 - **`programmer`** · 3 importers · → `httpx`, `schedule`
@@ -201,8 +202,10 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 6**
 
-- **`filler`** · 6 importers · → `diagnostics`, `llm`, `mediatools`, `metrics`, `taxonomy`
+- **`filler`** · 6 importers · → `diagnostics`, `filleradmission`, `fillerdecision`, `llm`, `mediatools`, `metrics`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
+- **`fillerreview`** · → `filleradmission`, `fillerbakeoff`, `fillereval`
+  Materializes identity-blind evidence for independent semantic review.
 
 **Layer 7**
 
@@ -261,7 +264,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 12**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `diagnostics`, `events`, `filler`, `fillerdecision`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -3356,7 +3359,10 @@ policy versions. Decisions carry a stable sorted set of reason codes, the exact 
 that support them, all material conflicts, at most one answerable review question, and the inference
 attribution/usage supplied with the evidence. Every semantic inference attribution is referenced by
 at least one fact, and every fact's inference reference must resolve; unrelated or dangling model
-calls cannot be smuggled into a decision's audit. Invalid schema/taxonomy, failed extraction, unavailable
+calls cannot be smuggled into a decision's audit. The sole exception is an explicit semantic
+abstention: one bounded reason, no evidence, and no operational failure. It remains in the step
+ledger so named escalation and cost accounting are truthful, but it cannot support a decision.
+Invalid schema/taxonomy, failed extraction, unavailable
 provider, retryable error, or exhausted budget returns a separate operational hold and no semantic
 verdict. Model confidence is retained for diagnostics but is never read by admission policy.
 Untrusted evidence values are compared only as data; instruction-looking metadata, OCR, or transcript
@@ -3367,15 +3373,28 @@ V38 compatibility gate remains the filing authority until the corpus and rollout
 The durable decision projection and unattended cutover are separate changes, so adding this module
 cannot by itself expand what reaches a channel without review.
 
+The ingest ladder places a fail-closed `admission` rung after extraction and immediately before the
+V38 `score` rung. Its first production evidence version records only facts whose provenance the
+current pipeline can prove: successful decoder passage, an explicit content-role token in the
+original filename, and an explicit filename year. It does not translate V38 confidence, persisted
+classifier fields, a source-declared licence URL, or `autoAdmit` into V61 evidence. Consequently an
+ordinary clip initially records an honest missing-rights or missing-corroboration review outcome.
+The rung versions and hashes the complete observation, evaluates it, and persists the immutable V63
+record before `score` may run. If that durable write remains unavailable after bounded retries, the
+pipeline stays parked on `admission`; it never skips the audit and falls through to legacy filing.
+
 Every evaluation durably attributes the clip and evidence hashes, extractor/prompt/schema/taxonomy/
 policy versions, requested and resolved model/provider, modality and derivative bounds, returned
 token categories, provider-reported charged cost, the price snapshot used for local estimation,
 latency/retries, reason codes, evidence references, conflicts, and terminal outcome. Aggregate token
 metrics remain useful for operations; the durable row is the audit and cost-accounting truth.
 
-Certification artifact schema v4 requires the per-inference-step ledger. Earlier scalar schemas are
-rejected: no completed bakeoff artifact depends on them, and preserving speculative compatibility
-would create an untested path that can hide multiple calls behind one terminal attribution.
+Certification artifact schema v5 requires the per-inference-step ledger and the corpus-diversity
+identity used by the statistical contract. Earlier schemas are rejected: no completed bakeoff
+artifact depends on them, and preserving speculative compatibility would create an untested path
+that can hide multiple calls behind one terminal attribution or bypass the diversity gate. The v5
+prediction wire therefore has no scalar inference fields: every attempted call is a `steps` entry;
+only deterministic outcomes and holds reached before a provider attempt may have none.
 
 The inference-spending bakeoff reads a **raw evidence packet**, never the manifest's reviewed
 `Evidence` or terminal labels. The packet is a closed, content-addressed input containing only
@@ -3384,8 +3403,9 @@ audio, or video derivative references. Every referenced external derivative carr
 measured byte/pixel/duration bounds. Packet identity must match the case's `evidenceSha256`; the
 runner re-opens every derivative beneath one declared corpus root, refuses symlink escapes, and
 verifies its exact bytes and hash. It refuses missing, extra, changed, or label-bearing fields before
-calling a provider. This separation keeps the scorer's answer key out of prompts and makes the exact
-provider input replayable.
+calling a provider. The internal case ID remains a local ledger join and is omitted from provider
+prompt content. This separation keeps the scorer's answer key and identity-correlated shortcuts out
+of prompts and makes the exact provider input replayable.
 
 One bakeoff run accepts a locked manifest, an exact packet set, a versioned admission policy, an
 ordered role/rung route, and positive request/spend/concurrency ceilings; it emits an immutable
@@ -3399,6 +3419,14 @@ tokens, charge, latency, attempts, generation id, and operational failure. The t
 aggregates those steps but never collapses a cascade into one falsely attributed rung.
 Certification routes authorize exactly one provider attempt per invocation; an adapter may not hide
 internal retries inside an aggregate attribution. A retry is a new runner invocation and ledger step.
+
+An OpenRouter certification run is also bound to one immutable metadata snapshot fetched no more
+than 24 hours before its declared run time. The snapshot makes one bounded authenticated ZDR-list
+request plus one bounded endpoint request per concrete candidate and freezes model modalities,
+endpoint selector slug, distinct returned provider name, strict-output parameters, status, exact
+price text, and ZDR membership. Its SHA-256 is both the run's capability and price identity. Every
+route must resolve exactly within that snapshot before media is opened or spend is reserved; a
+human-readable snapshot label, catalog-level capability claim, or provider-family name is not proof.
 
 Routing is reason-driven rather than confidence-driven: deterministic and text evidence run first;
 frames may run only for a predeclared missing/conflicting claim; direct video may run only for a
@@ -3452,25 +3480,56 @@ and any exceeded bound fail closed before a hosted request. This adapter supplie
 does not itself decide or change production admission.
 
 Certification uses a versioned, source/similarity-separated development corpus and locked holdout.
-Near-duplicates cannot cross that split. It reports action-specific precision and coverage,
+The maintained contract requires at least 300 development cases and 1,126 independently clustered
+holdout cases: 446 eligible positives, 446 deterministic-invalid controls, 147 semantic-invalid
+controls, and 87 genuinely ambiguous, answerable-review cases. The eligible positives include at
+least 82 commercials, 82 promos, 59 bumpers, 59 station IDs, 82 trailers, and 82 PSAs. No creator may
+supply more than 10% of one eligible role, and no source may supply more than 25% of
+eligible holdout cases. A holdout similarity cluster, campaign, and source master each contribute
+exactly one case. Preparation derives source-family identity from the source authority and item ID;
+alternate segments, encodes, and derivatives of one master therefore cannot pretend to be independent
+observations. Campaigns and source families cannot cross the development/holdout split, and
+near-duplicates cannot cross it either. It reports action-specific precision and coverage,
 worst-slice results, review answerability, conflicts, schema/grounding/security failures, calibration,
 latency, and total operating cost with confidence bounds. Unattended behavior expands only after the
 predeclared gates in the certification artifact pass: zero observed prohibited admissions,
 instruction escapes, or ungrounded taxonomy values; at least 99% observed auto-admit precision; at
 least 99% deterministic-reject and 97% semantic-reject precision; then at least 90% valid-filler and
 95% invalid-input automation with at most 10% review. Each safety-critical slice has its own gate.
-The point estimates alone do not certify a small corpus.
+Admission, deterministic-reject, semantic-reject, valid/invalid automation, and review-answerability
+gates require both their point estimate and one-sided 95% Wilson lower bound. The precision and
+answerability denominators above let one observed error
+remain within each 99%, 97%, and 95% lower-bound target; two errors do not. The point estimates alone
+do not certify a small corpus.
 
 A certification manifest is itself content-addressed and records its lock time. Every case locks the
 source media and captured evidence packet by SHA-256 plus item-level provenance: source authority,
 stable item and media URLs, retrieved metadata hash/time, exact rights statement, rights decision
 and reviewer, source representation/size, and bounded segment. Redistribution permission is
 explicit; media that cannot be redistributed stays outside Git. A collection name or missing rights
-field never implies permission. Two distinct reviewers in distinct blind-review batches submit
-immutable label hashes covering disposition, reject class, content role, taxonomy, policy flags,
-evidence spans, and any review question. The original blind submissions remain visible. Matching
+field never implies permission. Each semantic reviewer receives an independently shuffled packet
+whose random opaque aliases expose content/evidence hashes and bounded segment coordinates but no
+internal case ID, split, cluster, creator, campaign, source filename, or labels. An owner-only alias
+map binds that batch to the exact draft digest and is required for mechanical unblinding; reviewer
+submissions use aliases, never case IDs. Two distinct reviewers in distinct blind-review batches
+submit immutable label hashes covering disposition, reject class, content role, taxonomy, policy
+flags, evidence spans, and any review question. The original blind submissions remain visible. Matching
 submissions become the final labels directly; a disagreement requires a reasoned final adjudication
 by a third identity. Rights adjudication and semantic labeling are separate records.
+
+The maintained review packager turns one such opaque packet into inspectable reviewer evidence; a
+hash-only packet is not a completed review handoff. It consumes the exact draft, reviewer packet,
+owner-only alias map, provider evidence-packet JSONL, and external derivative root. Before writing
+anything it verifies every draft, alias, content, evidence-packet, and derivative hash. Its
+reviewer-visible manifest retains only opaque aliases, bounded segment coordinates, sanitized decoder
+facts, and alias-relative audio/frame/video paths; it omits source text, source-policy facts, case IDs,
+split/cluster assignments, titles, filenames, creator, campaign, source family, provenance URLs, and
+the private map. Media is materialized by an explicitly selected hard-link or copy mode, never by a
+symlink, and the output is published atomically only after every materialized file re-hashes correctly.
+The package includes an intentionally invalid empty label JSONL template in packet order so an
+unfilled or partially filled handoff cannot be mistaken for a completed submission. Packaging does
+not call a reviewer, infer labels, or make the two review batches independent; those remain separately
+executed and attested steps.
 
 Certification scores exactly one named split. Development examples cannot inflate locked-holdout
 metrics, and exact or near-duplicate content cannot cross their source/similarity cluster boundary.
@@ -3481,36 +3540,188 @@ fail closed. Reports carry the exact manifest digest and one-sided Wilson bounds
 rejection, automation, review, and slice accuracy, including an upper bound for review rate. Each
 certification slice gate predeclares both a point threshold and a confidence lower bound.
 
-Source inventory is a separate, non-certifying preflight. An Archive inventory uses one identified
-serial client, cached raw search/item responses, a minimum inter-request delay, and explicit request,
-item, per-item byte, and total predicted-byte ceilings. Search-level and item-level licences must
-agree and NC/ND candidates are excluded, but an allowlisted uploader field remains only a candidate:
-independent rights adjudication is still required. The inventory freezes retrieval times, response
-hashes, selected representation identity/checksums, and predicted bytes before any media download or
-model call. A partial bounded inventory reports exactly what it saw; it never widens the ceiling or
-treats a truncated search response as complete.
+An open-weight candidate is certified through the same label-blind packet and replay contract, not
+through a separate favorable prompt. A local Ollama route is loopback-only, pins the exact model tag
+and registry digest before inference, disables model thinking for bounded structured extraction,
+uses one attempt at concurrency one, and records prompt/completion tokens plus wall latency. Local
+execution has no provider charge, but still reserves request and execution ceilings; a mutable tag,
+missing digest, non-loopback endpoint, malformed structured response, or exhausted output budget is
+an operational failure. Hosted evidence does not establish quantization quality, resident memory,
+throughput, or appliance suitability, and a successful local load does not establish accuracy.
+
+The locked 300-case `development_seed` uses that same packet, policy, route, ceiling, and immutable
+prediction contract for model selection. It may run only after both blind submissions and any needed
+adjudications have been locked into every selected case. Its replay report is always non-certifying:
+development evidence can select a candidate and justify a cascade, but cannot satisfy a holdout gate
+or authorize unattended admission. Rejecting an unlocked or partially reviewed development manifest
+is a pre-provider failure. This is not a compatibility path around certification; it is the explicit
+non-scoring half of the development/holdout experiment.
+
+Shared transcription is a separately locked provider artifact, not text pasted into a mutable packet.
+For each case it binds the exact raw packet digest, audio signal identity/hash/bytes/duration, transcript
+schema and prompt versions, whisper implementation identity, executable SHA-256, model filename and
+SHA-256, generation time, wall latency, timed utterances, canonical joined text, and text SHA-256.
+Generation revalidates the packet and WAV beneath the declared corpus root before invoking the engine,
+runs serially with an explicit per-case timeout, refuses an existing output, and atomically publishes
+only a complete JSONL set. A final spoken decoding window that overlaps the measured WAV tail is clipped
+to that measured duration; a wholly out-of-range window, an extreme tail, or any earlier overlap remains
+invalid. The engine's exact non-speech `[BLANK_AUDIO]` sentinel is discarded rather than treated as
+semantic evidence. A zero-width timed segment is likewise discarded because it has no supported
+location; reversed or overlapping timing remains invalid. A transcript set must revalidate all bindings before any classifier call and
+contains one artifact for every selected
+packet with exactly one certified WAV and no artifact for a packet without audio; ambiguous or
+uncertified audio is invalid. This keeps deterministic unusable/wordless cases in the corpus without
+inventing an audio binding or calling the speech engine. One set is generated once per speech-model candidate and reused
+unchanged across text and vision candidates; classifiers never rerun speech-to-text privately.
+
+The local Ollama adapter supports both text-only and ordered-frame routes through the same evidence
+schema. A frame route maps the already verified JPEG bytes to Ollama's per-message `images` field in
+packet order and exposes only the matching frame signal ids in the untrusted payload. It neither opens
+paths itself nor changes the text-only wire shape. Local vision therefore receives the same four-frame
+ceiling as hosted vision, while a model that cannot accept that unchanged route records an operational
+failure rather than receiving a smaller favorable prompt.
+
+Source inventory is a separate, non-certifying preflight. Its only live contract is strict
+source-neutral schema v4: one snapshot may combine multiple captures, and every case carries the
+authority, authority-qualified stable case ID, all capture IDs that discovered it, role hints, frozen metadata evidence, exact selected
+representation, acquisition-time campaign and source-family identity when known, and the adapter's
+explicit media-host allowlist. Capture-level request,
+response-byte, predicted-media-byte, and wall-clock ceilings remain visible beside actual usage.
+The combiner strictly decodes every capture artifact, sorts captures and cases by their stable IDs,
+rejects duplicate capture identity, and folds a repeated case only when its frozen metadata and
+representation are identical; the merged case retains the sorted union of capture IDs and discovery
+role hints. Any conflicting repeated case fails closed before producing the single rights-review input.
+The former schema v1 put `source` and `collection` at the document root, so it could represent only
+one Archive.org collection. Schema v2 let a later split plan invent campaign and source-family
+identity instead of freezing that provenance during acquisition. Schema v3 assigned each case to
+only one capture, so legitimate role-specific discovery either duplicated the case or discarded part
+of its provenance. No certified artifact consumes an older shape; all are rejected rather than
+adapted or preserved.
+
+An Archive capture uses the exact `archive.org/<collection>` authority that bounded its search; it
+never attributes a non-Prelinger item to the Prelinger collection merely because both use the same
+Archive transport. The closed host policy still permits only Archive's HTTPS media hosts for every
+such collection-qualified authority. It uses one identified serial client, cached raw search/item responses, a minimum
+inter-request delay, and explicit request, item, per-item byte, and total predicted-byte ceilings.
+Search-level and item-level licences must agree and NC/ND candidates are excluded, but an allowlisted
+uploader field remains only a candidate: independent rights adjudication is still required. Every
+adapter freezes retrieval times, response hashes, selected representation identity/checksums, and
+predicted bytes before any media download or model call. A partial bounded capture reports exactly
+what it saw; it never widens the ceiling or treats a truncated search response as complete.
+
+The non-scoring 300-case development set has one narrower, maintainer-authorized Archive policy. An
+independent reviewer may accept the frozen exact-item assertion as operational acquisition authority
+when search and item metadata agree on CC0, Public Domain Mark, the legacy Creative Commons public-
+domain assertion, CC BY, or CC BY-SA and the capture has already excluded NC/ND. The locked rationale
+must say that this is not a chain-of-title warranty, preserve attribution and ShareAlike obligations,
+and bind the exact representation and metadata hashes. Media stays in the external corpus store.
+This policy cannot qualify a scored holdout case, satisfy source-diversity gates, or authorize Loomarr
+to ship the media; holdout rights continue to require the normal evidence threshold above.
 
 Before a new reusable source adapter is built, a source-neutral **rights-yield pilot** locks exactly
 ten metadata-only candidates from each qualified lane: Prelinger, Library of Congress, NASA, CDC,
-Blender, and Wikimedia Commons. Each lane records positive request, response-byte,
+and Wikimedia Commons. Blender is retired as a pilot lane because its live first-party surface could
+not supply ten distinct trailer candidates without duplicate encodes, full films, or dead media
+links; individually cleared Blender works may still enter the direct/static cohort
+(`filler-corpus-blender`; `retired-ok`). Each lane records positive request, response-byte,
 predicted-media-byte, and wall-clock ceilings plus actual usage; every candidate freezes its source
 identity, role hints, metadata hash/time, source rights assertions, and one predicted media
-representation. The strict decoder rejects semantic labels and rights decisions because this pilot
+representation; category-traversed sources also freeze their exact discovery path. The strict
+decoder rejects semantic labels and rights decisions because this pilot
 is discovery evidence only. A lane earns an adapter only after an independent reviewer approves at
 least five product-relevant items without lowering the common rights threshold. No compatibility
-format exists: no completed pilot predates this contract.
+format exists: no completed pilot predates this contract, so the unpopulated six-lane shape is
+removed rather than decoded or migrated.
+
+Pilot qualification uses a separate deterministic worksheet bound to the exact locked-pilot
+SHA-256. It presents all fifty frozen rows and neutralizes spreadsheet formula prefixes while
+leaving reviewer identity, review time, independence attestation, rights decision, product
+relevance, rationale, redistribution assessment, credit, and restrictions blank. Locking requires
+one named reviewer, an explicit independence attestation, complete decisions for every row, and no
+immutable-cell changes. A lane qualifies only when at least five of its ten rows are both rights
+approved and product relevant. The resulting yield report says `downloadAuthority: false` at both
+report and decision level; it cannot be supplied to the media downloader and never substitutes for
+the corpus acquisition ledger.
 
 A new corpus-source adapter requires a product-relevance review before implementation. The review
 must show useful coverage of the filler roles the certification corpus needs, such as commercials,
 promos, bumpers, station IDs, trailers, and PSAs. Rights clarity, API convenience, and inventory
 scale do not by themselves make a source representative.
 
+The LOC, NASA, CDC first-party-page, and Commons commands share one promotion seam: the bounded lane
+remains the ten-case qualification artifact, while an explicitly requested schema-v4 output carries
+the same frozen evidence into full-corpus rights review. Full capture counts stay positive and
+bounded but are not hard-coded to ten; request ceilings must cover the declared item count. The CDC
+adapter still consumes authored first-party page/media pairs and therefore cannot manufacture extra
+cases to meet a quota. Multiple role-specific captures combine only through the strict inventory
+combiner, never by concatenating JSON or discarding their individual ceilings.
+
+Direct/static acquisition is an authored local capture, not a source adapter and not a licence
+shortcut. Its schema-v2 manifest predeclares an exact item count and positive quotas for the known
+corpus roles and identifies one contracting owner or first-party origin; separate owners use
+separate manifests so the emitted source authority is not collapsed into a generic direct bucket.
+Those acquisition quotas may describe any bounded lane and do not duplicate the final truth-denominator
+and holdout-role gates owned by certification. Every case names a non-empty regular media file plus
+separate rights and provenance evidence files beneath one declared root, along with non-empty creator,
+campaign, and source-family identity that survives rights review unchanged.
+`filler-corpus-direct` resolves symlinks, rejects root escapes and quota drift, streams SHA-256 over
+every file under aggregate byte and wall-time ceilings, and emits local transport records into the
+same strict schema-v4 inventory. It never creates media, infers a grant from a directory or
+collection, or turns authored assertions into approval. The combined public-plus-direct inventory
+still goes through one independent rights review; local media is already acquired and is therefore
+skipped by the network downloader. No direct-manifest schema-v1 reader or fixed 100-item compatibility
+path exists because no certified artifact consumes one.
+
+Corpus preparation is one fail-closed bridge from the fully reviewed inventory to blind review and
+provider evaluation. An authored schema-v4 plan explicitly identifies either `development_seed` or
+`certification` and may otherwise choose only the development/holdout split, similarity cluster,
+source segment, direct-video window, corpus version, evidence version, and predeclared slice gates.
+The caller must name the matching preparation profile; a plan cannot silently select it. The
+development profile prepares every and only rights-approved row from the reviewed inventory, requires
+at least 300 cases all in the development split, and leaves held rows inert. Campaign, source-family,
+and creator identities are retained when the source knows them but are not invented merely to prepare
+development evidence. The certification profile requires all 1,426–1,600 inventory rows to be approved
+and covered exactly once, including at least 300 development and 1,126 independently clustered holdout
+cases; it retains the complete acquisition-provenance and confidence-bound requirements. Both profiles
+reopen media beneath separate local/direct and download roots; recheck size and all available
+SHA-256/SHA-1/MD5 identities; measure an at-most-five-minute bounded segment; and emit source-policy
+and decoder facts plus source text, four near-full-resolution frames, one 16 kHz mono WAV of that
+segment for direct-audio and shared transcription lanes, and one at-most-60-second 1280×720
+direct-video derivative. It stages derivatives before
+publication and enforces aggregate source bytes, derivative bytes, and wall time. Preparation also
+computes a 64-bit difference hash for each of the four semantic frames. Cases for which at least
+three corresponding frames are within eight bits must share one similarity cluster; later holdout
+validation permits only one case from that cluster. This catches re-encodes and close derivatives at
+the only seam that still has media bytes, while source-family and campaign identity catch shared
+masters that frame sampling misses. The resulting
+draft copies creator, campaign, and source-family provenance from the acquisition inventory rather
+than allowing the split plan to author it. It contains no semantic truth, evidence labels, or review
+answer. Each packet is
+validated against its draft digest before either artifact is written; provider input therefore
+cannot acquire a hidden answer key through corpus preparation. No hand-authored packet or older
+preparation shape is accepted.
+
+`filler-corpus-review` derives one reviewer-visible randomized packet and one owner-only alias map
+from that draft. A fresh batch and map are generated independently for each reviewer. Development
+drafts remain `development_seed` through blind review and label lock and cannot satisfy the
+certification contract; certification drafts alone receive the certification sampling and composition
+checks. The label lock
+accepts only that still-unlocked, wholly unlabeled draft, both exact alias maps, and strict
+current-schema JSON/JSONL; unknown or trailing fields are errors, not compatibility data. It validates both blind
+submissions as complete labels before comparing their canonical hashes, including the submission
+that an adjudicator does not select. A third reviewer therefore resolves a real semantic
+disagreement; adjudication cannot turn an incomplete or malformed second review into evidence of
+independent labeling.
+
 Media acquisition consumes a separate rights-review ledger; discovery output is never download
-authority. Every `approved` row binds the source metadata hash to reviewer, review time, rationale,
-redistribution decision, attribution, and restrictions; `held` rows remain inert. The downloader
-preflights aggregate item and byte ceilings before its first request, stays serial and identified,
-allows redirects only within the source authority, bounds each body by the inventoried size, verifies
-source checksums when present, and adds SHA-256. Media and its download ledger remain external to Git.
+authority. Every `approved` row binds the inventory digest, authority-qualified case ID, source
+metadata hash, reviewer, review time, rationale, redistribution decision, attribution, and
+restrictions; `held` rows remain inert. The downloader preflights aggregate item and byte ceilings
+before its first request, stays serial and identified, checks the initial URL and every redirect
+against both the case's frozen allowlist and the built-in policy for that authority, bounds each body
+by the inventoried size, verifies source checksums when present, and adds SHA-256. Query strings may
+remain when they are part of the exact frozen representation URL; credentials and fragments never
+may. Media and its download ledger remain external to Git.
 An incomplete, stale, oversized, or checksum-mismatched plan fails without producing a completed
 ledger and cannot flow into blind semantic review.
 
@@ -4589,7 +4800,7 @@ appears in the UI without a second edit, and a guard test compares the served li
 way to hide the bug.
 
 ⚠ **A disabled stage is a `skipped` rung, not an absent one.** An install with vision off still has
-an eight-rung pipeline; the rung renders greyed with its reason inline ("Listen — skipped (the
+a nine-rung pipeline; the rung renders greyed with its reason inline ("Listen — skipped (the
 description already says enough)"). A stage that silently does not happen reads as broken, and the
 sentence is what turns a bug report into an answer.
 
@@ -4598,7 +4809,7 @@ frames merge onto the cached row and never assemble it: the bus drops frames for
 by design, a frame for an unknown clip triggers a refetch rather than inserting a half-built row,
 and a terminal frame invalidates `/v1/filler` outright — a filed clip changes the catalog, which
 nobody watching the catalog tab has a pipeline listener for. Only running frames merge, which is
-what keeps forty clips × eight rungs from becoming 320 refetches.
+what keeps forty clips × nine rungs from becoming 360 refetches.
 
 ⚠ **The ordering rule is derived from the ladder, because there is no sequence number.** A frame
 carries no `seq` and no timestamp, so "is this newer than what is shown" is answered by the
@@ -5570,8 +5781,8 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | Shared styling and primitives | **`@tamagui/core` behind Loomarr-owned `design-system` and `ui` modules** | The current system intentionally duplicated component implementations across web and native; the replacement needs one semantic token/theme/variant implementation where product semantics actually match. Core supplies typed universal styling without adopting Tamagui's predesigned UI kit. Direct Tamagui imports outside the design-system implementation fail the import-graph gate, keeping the framework replaceable. The matching `@tamagui/babel-plugin` is a test-only build dependency behind an opt-in environment flag so P5 can compare the same production slice with and without compilation; runtime-only remains the default until bundle and physical-render evidence proves an improvement. |
 | Shared vector rendering and iconography | **`react-native-svg` + `lucide-react-native`, behind Loomarr-owned brand and `Icon` interfaces; `react-native-web` in the browser adapter** | The favicon, app/TV/store identity and in-product glyphs must render from shared geometry on web, iOS, Android, and TV instead of drifting across handwritten SVG, Compose, PNG, and web-only icon packages. `react-native-svg` is Expo's supported cross-platform vector substrate; Lucide supplies one consistent, tree-shakeable outlined glyph family; `react-native-web` is the browser implementation of the native host elements those packages use. Consumers import only Loomarr interfaces, so the family or renderer can be replaced without changing product modules. |
 | Pairing QR rendering | **`qrcode` behind a Loomarr-owned `QrCode` interface** | Pairing must preserve the shipping scan path on web, iOS, Android, Android TV, and Apple TV. The library generates the standards-correct matrix and Loomarr renders that matrix through the already-approved `react-native-svg` substrate; keeping it private to the design system prevents product modules from depending on its API or inventing divergent QR treatments. Hand-writing a QR encoder would add security- and interoperability-sensitive code for no product value, while a React Native wrapper would publish JSX-in-JavaScript that requires client-specific transpiler exceptions. |
-| Native client runtime | **Expo + React Native; `react-native-tvos` for TV builds; Expo Router at the navigation seam** | One maintained React/React Native toolchain serves iOS, Android, Android TV, and Apple TV while preserving platform-specific navigation, focus, safe-area, overscan, and playback adapters. Every Expo app in the monorepo resolves the same React Native TV version to prevent duplicate native runtimes. Expo's supported Reanimated and Worklets versions are direct app dependencies because optional-peer auto-resolution can select native-incompatible releases that JavaScript-only doctor and bundle checks miss. `expo-splash-screen` owns the generated native launch screen so the shared Loomarr startup identity is preserved without checking generated iOS or Android projects into source. The Expo config-plugin API is a direct build dependency because Loomarr's generated Android build limits must not depend on pnpm's transitive layout. The TV app directly owns `expo-keep-awake` so pairing and playback cannot disappear behind the platform ambient screen while the viewer is actively using Loomarr. AndroidX Macrobenchmark, Test, and UIAutomator are pinned test-only dependencies behind the generated TV benchmark module because the P5 Shield frame contract must measure the release-like application out of process rather than infer smoothness from unit tests or an emulator. Local Android builds set Gradle's worker ceiling and `CMAKE_BUILD_PARALLEL_LEVEL`, and the generated root Gradle project registers one-slot CMake compile/link pools for every Android application and library subproject as its plugin is applied. The environment setting bounds `cmake --build`; the generated pools separately govern AGP's direct Ninja invocations for native dependencies such as Reanimated, which otherwise fan out enough compiler processes to pin a 4 GB scope at its memory-high threshold. Generated mobile and TV app projects also add the monorepo's shared JavaScript/TypeScript/JSON packages, workspace package/lock metadata, and the app Metro configuration to Gradle's release-bundle inputs; the upstream task watches only the Expo app directory, which can otherwise mark an incremental build current while Metro-resolved product code is stale. The debug device target also runs Expo's embed generator before Gradle packaging; an `assembleDebug` APK without that step is a Metro client, not a standalone physical-device proof. Apple CI uses GitHub's macOS 26 image with Xcode 26.4 or newer on the 26.x line: ExpoModulesJSI requires Swift 6.3, while Xcode 27's SDK mandates a UIScene lifecycle that Expo 57 prebuild does not yet generate. A fail-closed major-version check keeps the native launch proof on that compatible compiler/SDK contract without carrying an unreleased Expo lifecycle patch. Expo prebuild keeps native projects inspectable and makes local Xcode/Gradle and future store builds possible; EAS is optional distribution infrastructure, not the only build path. |
-| Native HLS playback | **Expo SDK 57's `expo-video` (`~57.0.3`) behind `@loomarr/player/native`** | One supported Expo module binds Android Media3 and Apple AVPlayer for Android, iOS, Android TV, and Apple TV without exposing either native player to product modules. Loomarr owns tune ordering, signed-URL refresh, overlay state, previous-Channel history, diagnostics, and lifecycle policy; the adapter owns only source replacement, decoded-frame/error events, pause/play/live-edge commands, track capability, and its one native view. Background playback and Picture in Picture remain disabled: leaving Watching, backgrounding, disconnecting, or disposing synchronously pauses and releases the player, and a regression test plus real-device background/foreground traversal guards SDK 57's reported audio-after-unmount failure. Android uses the performant `SurfaceView` path because Watching mounts exactly one edge-to-edge player and Loomarr overlays no second video; source headers carry the paired bearer only when the signed URL contract requires them. `react-native-video` was rejected for this phase because its stable line adds another native integration layer and its next interface is beta while Expo already owns the selected runtime and native build matrix. |
+| Native client runtime | **Expo + React Native; `react-native-tvos` for TV builds; Expo Router at the navigation seam** | One maintained React/React Native toolchain serves iOS, Android, Android TV, and Apple TV while preserving platform-specific navigation, focus, safe-area, overscan, and playback adapters. Every Expo app resolves the same React Native TV version. Expo's supported Reanimated and Worklets versions are direct app dependencies; `expo-splash-screen`, the config-plugin API, and TV keep-awake behavior remain explicit owners. AndroidX Macrobenchmark, Test, and UIAutomator are pinned test-only dependencies for the physical-Shield P5 frame contract. Local Android builds bound Gradle, CMake, Ninja, CPU, and memory concurrency, include shared workspace inputs in incremental release bundles, and embed JavaScript before standalone device proofs. Apple CI uses the dedicated Xcode 27 preview image and fails closed on the 27.x major. The apps pin one coordinated Expo SDK 58 canary until SDK 58 is stable because iOS 27 requires UIScene: Expo 57 prebuild crashed before React started, while the pinned SDK 58 build supplies Expo's complete `ExpoAppSceneDelegate` lifecycle and React factory provider. A partial project-local scene patch is rejected because it can launch while bypassing lifecycle, deep-link, or system-UI forwarding. Expo prebuild uses the template bundled in the pinned package and keeps native projects inspectable; EAS remains optional distribution infrastructure. |
+| Native HLS playback | **Expo SDK 58 canary's `expo-video` behind `@loomarr/player/native`** | One coordinated Expo module binds Android Media3 and Apple AVPlayer for Android, iOS, Android TV, and Apple TV without exposing either native player to product modules. Loomarr owns tune ordering, signed-URL refresh, overlay state, previous-Channel history, diagnostics, and lifecycle policy; the adapter owns source replacement, decoded-frame/error events, pause/play/live-edge commands, track capability, and its one native view. Background playback and Picture in Picture remain disabled: leaving Watching, backgrounding, disconnecting, or disposing synchronously pauses and releases the player, with regression tests and required real-device lifecycle traversal. Android uses the performant `SurfaceView` path because Watching mounts exactly one edge-to-edge player. `react-native-video` remains rejected because Expo already owns the selected runtime and native build matrix. |
 | Native paired credential storage | **`expo-secure-store` behind the shared pairing store port** | A revocable device token must survive restarts without entering AsyncStorage or application state. SecureStore uses Android Keystore-backed encrypted preferences and Apple Keychain, supports the TV targets, and is the narrow Expo-native adapter for the shared validated credential envelope. The credential remains member-scoped; corrupt local data is cleared, and only an authoritative 401 removes a valid stored token. |
 | Server state + API client | **TanStack Query** with hooks **generated by `orval`** from `api/openapi.yaml` | One generator yields both types and query/mutation hooks; `openapi-typescript`+`openapi-fetch` rejected only because orval removes more hand-written glue |
 | Wire schemas for validation | **`orval` `client: "zod"`**, a second output block over the same spec → `@loomarr/api/zod` | The form schemas in `packages/core` used to MIRROR wire field names by hand, and it shipped a bug: `intentSchema` said `maxAcquire` where the wire says `maxAcquisitions` (and `runtimeTarget` for `runtimeTargetMin`), so a user's acquisition cap serialized into JSON the server ignored and silently vanished. Each schema is now `.pick()`ed off its generated wire schema, making a lookalike name a **compile error at the schema definition** (`Type 'true' is not assignable to type 'never'`). ⚠ This replaces a hand-written contract test that covered **one** of three schemas with a guarantee that covers all three and every future one — the same "a grep beats a convention" reasoning as `check-retired.sh`. ⚠ **Generation carries names and types, NOT rules:** the spec declares 5 `minimum`, 3 `maximum` and 7 `minLength` in ~9k lines and `maxAcquisitions` has no bounds at all, and OpenAPI has nowhere to put a user-facing message — so trims, lengths, the 0–200 cap and all copy stay hand-authored in `.extend()`, and `confirm` (form-only, never sent) is added there too. Zod stays on v3; `zod@3.25.76` exposes the `./v4` bridge subpath, so v4 remains a separate decision. ⚠ **This row said the mock generator was rejected outright; that was true at V53a and is no longer.** It was rejected for its DATA because it targets OpenAPI 3.0 idioms while this spec is 3.1 — it degraded `type: ["array","null"]` to `arrayElement([[], null])` without descending into `items` (137 never-populated list fields), and `useExamples` reads singular `.example` where Huma emits plural `examples:` (0 of 53 tags used). **V53b removed the first half** by making arrays non-nullable, taking never-populated list mocks to 0; the `useExamples` half remains, which is why it stays unset. See the MSW row below for what is adopted and what is still not trusted. |
@@ -5612,7 +5823,7 @@ Build-time only — none of this ships in the binary or the image, and none of i
 | Link checking | **`lychee`** (Rust), `--offline` in the PR gate | Catches dangling relative links, a class this repo has shipped twice — `frontend-design.md` pointed at `loomarr-design.md` for months after the rename, and `phase-0-findings.md` linked a findings file that never existed. **`--offline` is deliberate:** checking external URLs on every PR imports the whole internet's link rot as CI flake, and a red build nobody trusts is worse than no check. |
 | Markdown structure | **`markdownlint-cli2`**, lean config | Heading levels, list style, fenced-code languages. Line-length and inline-HTML rules are **off** — `design.md` uses both heavily by design, and a linter that fights the source of truth loses. Scoped to the user-facing and contributor sets. |
 | Prose + terminology | **`Vale`**, custom style only | Machine-enforces this repo's vocabulary, which until now lived only in `CONTEXT.md` and reviewers' heads: **Proposal** (not "suggestion" — §7's rename), and the proper-noun casing that drifts most (Tunarr, Jellyseerr, Emby, TMDB, `ffmpeg`, `yt-dlp`, SQLite, Postgres). ⚠ **The Microsoft and Google packages are deliberately NOT enabled.** Across ~270k words they produce findings in the hundreds, and a gate whose output is skimmed is a gate that has stopped working. |
-| Command reference | **generated** from the Makefile's `## ` comments (`cmd/dev-docs` → `docs/dev/commands.md`) | The same drift-by-copying that `config-docs-verify` solved for settings. The command contract was restated in four files that disagreed — on the Go version, the Node version, what `make fe` runs, and the visual-suite size (stated three ways, none correct). Generation makes the Makefile the one source and `dev-docs-verify` makes CI enforce it. |
+| Command reference | **generated** from the root Make interface and ordered `mk/*.mk` modules' `## ` comments (`cmd/dev-docs` → `docs/dev/commands.md`) | The same drift-by-copying that `config-docs-verify` solved for settings. The command contract was restated in four files that disagreed — on the Go version, the Node version, what `make fe` runs, and the visual-suite size (stated three ways, none correct). Generation makes the Make interface the one source and `dev-docs-verify` makes CI enforce it. |
 
 ### 14.1 Backend structure — the rules, and what they are not
 
@@ -5744,7 +5955,7 @@ independently instead of treating every zero-lineup result as a model-quality my
 
 ### 14.2 The package map
 
-`internal/` is **49 flat packages, deliberately** — the grouping below is prose, not directories.
+`internal/` is **50 flat packages, deliberately** — the grouping below is prose, not directories.
 
 Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
 
@@ -5770,6 +5981,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `fillercorpus` | Source-neutral, non-authorizing certification inventory and rights-yield pilot contracts (§10 V61) |
 | `fillerdecision` | Durable admission lifecycle, append-only actions, and server-owned review/activity/diagnostic projections (§10 V63) |
 | `fillereval` | Hermetic filler-admission certification: versioned corpus contracts, selective-risk/cost scoring, and captured-decision replay (§10 V61) |
+| `fillerreview` | Verified identity-blind media packaging for independent semantic label review (§10 V61) |
 | `mediatools` | The ffmpeg/ffprobe/whisper layer — exec calls, output parsers, and the shapes those tools return (§10). Carved out of `filler`; the dependency runs one way and nothing here knows what a clip is |
 | `taxonomy` | The clip tag vocabulary — the operator-editable graph filler grounds tags against and curation matches over (§10 V45a) |
 | `playout` | Loomarr's own streaming engine — lineup to MPEG-TS (§9.1) |
@@ -6547,11 +6759,31 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   Apple mobile and Apple TV are separate required jobs with app-specific native build, install, and
   launch commands, and each consumes its dedicated decision. Splitting a matrix must preserve
   compatible cache-key identities and must preserve each native result as a separate aggregate
-  dependency. Expo Android mobile is likewise a separate required job selected only by its
-  dedicated classifier output; it generates and assembles the mobile application through the
-  resource-bounded Loomarr build target rather than treating a Metro bundle or the TV build as
-  Android mobile evidence. Expo Android TV remains observational until its own reversible
-  activation.
+  dependency. Expo Android mobile is likewise an independently selected required job. Its reusable
+  workflow generates and assembles only the mobile app through the resource-bounded Make target,
+  retains the standalone APK, and remains a constituent of the aggregate; Expo Android TV stays
+  observational until its separate activation. Scarce macOS jobs do not run on ordinary pull-request pushes. A required, single-build
+  merge queue admits them after fast pull-request feedback; the same impact decisions run against
+  the generated `merge_group` commit, and the aggregate cannot pass unless every selected native
+  result passes. Main pushes and explicit manual CI retain native coverage. The workflow must keep
+  the `merge_group` trigger, and repository protection must keep the queue active; removing either
+  half is a fail-closed delivery-policy change, not a performance tweak.
+  CI orchestration and harness inputs select a dedicated policy gate rather than product builds.
+  Rust, Android, Apple, browser, image, frontend, Postgres, and application-Go jobs run only when
+  their classifier decision names a consumed input; unknown paths and classifier failures still
+  select all gates. The policy gate actionlints workflows, exercises release verification and the
+  agent harness, shellchecks scripts, and runs the Go-owned documentation contracts.
+  Physical orchestration files follow the same ownership graph. The root `Makefile` contains only
+  shared variables, the help interface, and ordered `mk/*.mk` includes; each included module owns
+  one command family, and the command-reference generator follows those includes as the
+  authoritative Make interface. The triggering CI workflow owns classification, admission, manual
+  scopes, and the required aggregate, while product implementations live in family-named reusable
+  workflows. A family workflow change selects its owning product gate plus policy. Changing the
+  root Make interface selects every gate because it can alter every included command; changing the
+  root CI orchestrator selects policy, whose structural verifier rejects changed admission,
+  aggregation, or family wiring without rebuilding unchanged products. Unknown paths still select
+  everything. Generated docs, action pinning, impact fixtures, and the release verifier reject an
+  orphaned module or a caller whose reusable implementation is not covered by its owning decision.
 - **State machine:** every transition + the five invariants.
 - **Store conformance:** one suite vs **both** SQLite (temp file) and Postgres (**testcontainers**), incl. `ClaimDue` concurrency (no record claimed twice).
 - **Library conformance:** Emby vs Jellyfin flavors w/ mock transport; correct auth header each.

@@ -15,7 +15,7 @@ func TestNewLayout_NormalizesAndDerivesWatchFolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantRoot := filepath.Join(base, "clips")
+	wantRoot := filepath.Join(resolvedTestDir(t, base), "clips")
 	if err := os.MkdirAll(wantRoot, 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestNewLayout_NormalizesExplicitWatchFolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := filepath.Join(base, "watch"); layout.WatchDir() != want {
+	if want := filepath.Join(resolvedTestDir(t, base), "watch"); layout.WatchDir() != want {
 		t.Errorf("watch dir = %q, want %q", layout.WatchDir(), want)
 	}
 }
@@ -175,8 +175,10 @@ func TestNewLayout_NormalizesSafeSymlinkRootsForTraversal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if layout.ClipDir() != realClip || layout.WatchDir() != realWatch {
-		t.Fatalf("symlink traversal layout = (%q, %q), want (%q, %q)", layout.ClipDir(), layout.WatchDir(), realClip, realWatch)
+	wantClip := resolvedTestDir(t, realClip)
+	wantWatch := resolvedTestDir(t, realWatch)
+	if layout.ClipDir() != wantClip || layout.WatchDir() != wantWatch {
+		t.Fatalf("symlink traversal layout = (%q, %q), want (%q, %q)", layout.ClipDir(), layout.WatchDir(), wantClip, wantWatch)
 	}
 }
 
@@ -196,8 +198,17 @@ func TestNewLayout_NormalizesAliasedNestedWatchToClipTraversal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantClip := filepath.Join(realRoot, "clips")
+	wantClip := filepath.Join(resolvedTestDir(t, realRoot), "clips")
 	if layout.ClipDir() != wantClip || layout.WatchDir() != filepath.Join(wantClip, "inbox") {
 		t.Fatalf("aliased nested layout = (%q, %q), want clip spelling %q/inbox", layout.ClipDir(), layout.WatchDir(), wantClip)
 	}
+}
+
+func resolvedTestDir(t *testing.T, path string) string {
+	t.Helper()
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resolved
 }

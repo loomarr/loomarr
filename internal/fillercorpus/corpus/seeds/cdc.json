@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "authority": "cdc.gov",
+  "cases": [
+    {
+      "itemId": "charge-your-phone",
+      "title": "Charge Your Phone",
+      "roleHints": ["PSA"],
+      "itemUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/charge-your-phone.html",
+      "mediaUrl": "https://www.cdc.gov/wcms/video/low-res/disasters/2023/378637863-ATSDR-PSAs-Charge-your-Phone-1200-by-645.mp4",
+      "rightsAssertions": ["CDC page content-source assertion: National Center for Environmental Health", "CDC agency-material rules require item-level contractor, grantee, third-party, attribution, and non-endorsement review."],
+      "requiredPageText": ["Charge Your Phone", "Content Source:", "National Center for Environmental Health"]
+    },
+    {
+      "itemId": "know-what-to-do-during-a-natural-disaster",
+      "title": "Know How to Find Information During a Natural Disaster",
+      "roleHints": ["PSA"],
+      "itemUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/know-what-to-do-during-a-natural-disaster.html",
+      "mediaUrl": "https://www.cdc.gov/wcms/video/low-res/disasters/2023/21222122Hurricane-alerts-1200x645.mp4",
+      "rightsAssertions": ["CDC page content-source assertion: National Center for Environmental Health", "CDC agency-material rules require item-level contractor, grantee, third-party, attribution, and non-endorsement review."],
+      "requiredPageText": ["Know How to Find Information During a Natural Disaster", "Content Source:", "National Center for Environmental Health"]
+    },
+    {
+      "itemId": "clean-up-safely-after-a-natural-disaster",
+      "title": "Clean Up Safely After a Natural Disaster",
+      "roleHints": ["PSA"],
+      "itemUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/clean-up-safely-after-a-natural-disaster.html",
+      "mediaUrl": "https://www.cdc.gov/wcms/video/low-res/disasters/2023/1155011550Clean-up-safely-1200x645.mp4",
+      "rightsAssertions": ["CDC page content-source assertion: National Center for Environmental Health", "CDC agency-material rules require item-level contractor, grantee, third-party, attribution, and non-endorsement review."],
+      "requiredPageText": ["Clean Up Safely After a Natural Disaster", "Content Source:", "National Center for Environmental Health"]
+    },
+    {
+      "itemId": "use-a-generator-safely",
+      "title": "Use a Generator Safely",
+      "roleHints": ["PSA"],
+      "itemUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/use-a-generator-safely.html",
+      "mediaUrl": "https://www.cdc.gov/wcms/video/low-res/disasters/2023/7640764019-ATSDR-PSAs-Use-a-Generator-Safely-1200-by-645.mp4",
+      "rightsAssertions": ["CDC page content-source assertion: National Center for Environmental Health", "CDC agency-material rules require item-level contractor, grantee, third-party, attribution, and non-endorsement review."],
+      "requiredPageText": ["Use a Generator Safely", "Content Source:", "National Center for Environmental Health"]
+    },
+    {
+      "itemId": "during-hot-weather",
+      "title": "During Hot Weather, Watch for Heat Illness",
+      "roleHints": ["PSA"],
+      "itemUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/during-hot-weather.html",
+      "mediaUrl": "https://www.cdc.gov/wcms/video/low-res/disasters/2023/170641706415-ATSDR-PSAs-During-Hot-Weather-1200-by-645.mp4",
+      "rightsAssertions": ["CDC page content-source assertion: National Center for Environmental Health", "CDC agency-material rules require item-level contractor, grantee, third-party, attribution, and non-endorsement review."],
+      "requiredPageText": ["During Hot Weather, Watch for Heat Illness", "Content Source:", "National Center for Environmental Health"]
+    },
+    {
+      "itemId": "stay-safe-during-a-tornado",
+      "title": "Stay Safe During a Tornado",
+      "roleHints": ["PSA"],
+      "itemUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/stay-safe-during-a-tornado.html",
+      "mediaUrl": "https://www.cdc.gov/wcms/video/low-res/disasters/2023/1709117091tornado-1200x645.mp4",
+      "rightsAssertions": ["CDC page content-source assertion: National Center for Environmental Health", "CDC agency-material rules require item-level contractor, grantee, third-party, attribution, and non-endorsement review."],
+      "requiredPageText": ["Stay Safe During a Tornado", "Content Source:", "National Center for Environmental Health"]
+    },
+    {
+      "itemId": "keep-track-of-nearby-wildfire",
+      "title": "Keep Track of Nearby Wildfire",
+      "roleHints": ["PSA"],
+      "itemUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/keep-track-of-nearby-wildfire.html",
+      "mediaUrl": "https://www.cdc.gov/wcms/video/low-res/disasters/2023/107210725-ATSDR-PSAs-Keep-Track-of-Wildfires-1200-by-645.mp4",
+      "rightsAssertions": ["CDC page content-source assertion: National Center for Environmental Health", "CDC agency-material rules require item-level contractor, grantee, third-party, attribution, and non-endorsement review."],
+      "requiredPageText": ["Keep Track of Nearby Wildfire", "Content Source:", "National Center for Environmental Health"]
+    },
+    {
+      "itemId": "prevent-sweat-in-cold-weather",
+      "title": "Prevent Sweat in Cold Weather",
+      "roleHints": ["PSA"],
+      "itemUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/prevent-sweat-in-cold-weather.html",
+      "mediaUrl": "https://www.cdc.gov/wcms/video/low-res/disasters/2023/5517551712-ATSDR-PSAs-Prevent-sweat-in-cold-weather-1200-by-645.mp4",
+      "rightsAssertions": ["CDC page content-source assertion: National Center for Environmental Health", "CDC agency-material rules require item-level contractor, grantee, third-party, attribution, and non-endorsement review."],
+      "requiredPageText": ["Prevent Sweat in Cold Weather", "Content Source:", "National Center for Environmental Health"]
+    },
+    {
+      "itemId": "talk-to-someone-after-a-disaster",
+      "title": "Talk to Someone After a Disaster",
+      "roleHints": ["PSA"],
+      "itemUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/talk-to-someone-after-a-disaster.html",
+      "mediaUrl": "https://www.cdc.gov/wcms/video/low-res/disasters/2023/7605760522-ATSDR-PSAs-Talk-to-Someone-After-a-Disaster-1200-by-645.mp4",
+      "rightsAssertions": ["CDC page content-source assertion: National Center for Environmental Health", "CDC agency-material rules require item-level contractor, grantee, third-party, attribution, and non-endorsement review."],
+      "requiredPageText": ["Talk to Someone After a Disaster", "Content Source:", "National Center for Environmental Health"]
+    },
+    {
+      "itemId": "use-a-space-heater-safely",
+      "title": "Use a Space Heater Safely",
+      "roleHints": ["PSA"],
+      "itemUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/use-a-space-heater-safely.html",
+      "mediaUrl": "https://www.cdc.gov/wcms/video/low-res/disasters/2023/2798279813-ATSDR-PSAs-Use-a-space-heater-safely-1200-by-645.mp4",
+      "rightsAssertions": ["CDC page content-source assertion: National Center for Environmental Health", "CDC agency-material rules require item-level contractor, grantee, third-party, attribution, and non-endorsement review."],
+      "requiredPageText": ["Use a Space Heater Safely", "Content Source:", "National Center for Environmental Health"]
+    }
+  ]
+}

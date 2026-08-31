@@ -70,17 +70,26 @@ func (m *TMDB) WithRecommendations(graph map[int][]int) *TMDB {
 }
 
 type tmdbTitle struct {
-	ID         int
-	Name       string
-	Year       int
-	Date       string
-	GenreIDs   []int // §8 enrichment: endpoint-specific TMDB genre ids (movie 878 vs TV 10765 for Sci-Fi)
-	KeywordIDs []int
-	Overview   string // short synopsis the model reasons about
+	ID           int
+	CollectionID int
+	Name         string
+	Year         int
+	Date         string
+	GenreIDs     []int // §8 enrichment: endpoint-specific TMDB genre ids (movie 878 vs TV 10765 for Sci-Fi)
+	KeywordIDs   []int
+	Overview     string // short synopsis the model reasons about
 	// USRating is the US content rating the /content_ratings (tv) or /release_dates
 	// (movie) endpoint reports (§389 acquisition enrichment). Empty ⇒ no US rating,
 	// which is the common sparse-coverage case a test may assert is handled.
 	USRating string
+}
+
+// SetCollectionID scripts belongs_to_collection on the public movie detail
+// boundary used by schedule materialization.
+func (m *TMDB) SetCollectionID(movieID, collectionID int) {
+	t := m.movies[movieID]
+	t.ID, t.CollectionID = movieID, collectionID
+	m.movies[movieID] = t
 }
 
 // SetRating scripts a title's US content rating so a test can drive the §389
@@ -269,7 +278,11 @@ func NewTMDB(t testing.TB) *TMDB {
 func (m *TMDB) existsHandler(w http.ResponseWriter, r *http.Request, cat map[int]tmdbTitle) {
 	id := atoiPath(r.PathValue("id"))
 	if t, ok := cat[id]; ok {
-		_ = json.NewEncoder(w).Encode(map[string]any{"id": t.ID, "title": t.Name})
+		row := map[string]any{"id": t.ID, "title": t.Name, "belongs_to_collection": nil}
+		if t.CollectionID > 0 {
+			row["belongs_to_collection"] = map[string]any{"id": t.CollectionID}
+		}
+		_ = json.NewEncoder(w).Encode(row)
 		return
 	}
 	w.WriteHeader(http.StatusNotFound) // fabricated id → 404 (grounding drops it)

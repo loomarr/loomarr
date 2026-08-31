@@ -6,7 +6,7 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Badge } from "@/components/ui/badge";
+import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Disclosure } from "@/components/ui/disclosure";
@@ -22,6 +22,34 @@ const ACTIVITY_LABELS: Record<FillerDecisionActivityWireDTOKind, string> = {
   review_abandoned: "Skipped for later",
   restore: "Restored",
   reversal: "Reversed",
+};
+
+type ActivityPresentation = { label: string; variant: BadgeProps["variant"] };
+
+const activityPresentation = (
+  kind: FillerDecisionActivityWireDTOKind,
+  applicationMode: unknown,
+): ActivityPresentation => {
+  if (kind === "automatic_admit" || kind === "automatic_reject") {
+    if (applicationMode === "shadow") {
+      return {
+        label: kind === "automatic_admit" ? "Would admit (shadow)" : "Would reject (shadow)",
+        variant: "caution",
+      };
+    }
+    if (applicationMode !== "applied") {
+      return { label: "Decision mode unavailable", variant: "caution" };
+    }
+  }
+  return {
+    label: ACTIVITY_LABELS[kind],
+    variant:
+      kind === "automatic_admit" || kind === "review_admit"
+        ? "signal"
+        : kind === "automatic_reject" || kind === "review_reject"
+          ? "neutral"
+          : "caution",
+  };
 };
 
 const FillerManage = ({ onEditTags }: { onEditTags: (hash: string) => void }) => {
@@ -105,28 +133,21 @@ const FillerManage = ({ onEditTags }: { onEditTags: (hash: string) => void }) =>
         ) : null}
         {activity?.rows.length ? (
           <div className="overflow-hidden rounded-lg border border-border">
-            {activity.rows.map((row) => (
-              <div
-                key={row.id}
-                className="flex flex-wrap items-center gap-3 border-border border-b p-3 last:border-b-0"
-              >
-                <Badge
-                  variant={
-                    row.kind === "automatic_admit" || row.kind === "review_admit"
-                      ? "signal"
-                      : row.kind === "automatic_reject" || row.kind === "review_reject"
-                        ? "neutral"
-                        : "caution"
-                  }
+            {activity.rows.map((row) => {
+              const presentation = activityPresentation(row.kind, row.applicationMode);
+              return (
+                <div
+                  key={row.id}
+                  className="flex flex-wrap items-center gap-3 border-border border-b p-3 last:border-b-0"
                 >
-                  {ACTIVITY_LABELS[row.kind]}
-                </Badge>
-                <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground text-xs">
-                  Clip {row.clipHash.slice(0, 12)}…
-                </span>
-                <span className="text-muted-foreground text-xs">{formatRelative(row.createdAt)}</span>
-              </div>
-            ))}
+                  <Badge variant={presentation.variant}>{presentation.label}</Badge>
+                  <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground text-xs">
+                    Clip {row.clipHash.slice(0, 12)}…
+                  </span>
+                  <span className="text-muted-foreground text-xs">{formatRelative(row.createdAt)}</span>
+                </div>
+              );
+            })}
           </div>
         ) : null}
       </section>

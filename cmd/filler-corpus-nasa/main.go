@@ -1,5 +1,5 @@
-// Command filler-corpus-nasa freezes a bounded, metadata-only NASA pilot lane.
-// It grants no rights or download authority.
+// Command filler-corpus-nasa freezes a bounded, metadata-only NASA lane and
+// optional full inventory. It grants no rights authority.
 package main
 
 import (
@@ -69,7 +69,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	query := flags.String("query", "", "NASA image-library search text")
 	roleHint := flags.String("role-hint", "", "discovery-only role hint")
-	output := flags.String("out", "", "source-neutral pilot lane JSON")
+	output := flags.String("out", "", "bounded source lane JSON")
+	inventoryOutput := flags.String("inventory-out", "", "optional strict full-corpus inventory JSON")
 	cache := flags.String("cache-dir", "", "raw response and HEAD cache")
 	userAgent := flags.String("user-agent", "", "descriptive User-Agent with contact")
 	snapshotText := flags.String("snapshot-at", "", "snapshot time in RFC3339 format")
@@ -85,8 +86,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
-	if *query == "" || *roleHint == "" || *output == "" || *cache == "" || *userAgent == "" || *snapshotText == "" || *assetHost == "" || *maxRequests < 21 || *maxRequests > 100 || *maxItems != 10 || *maxResponseBytes <= 0 || *maxItemBytes <= 0 || *maxTotalBytes < *maxItemBytes || *delay < 0 || *maxWallTime <= 0 {
-		_, _ = fmt.Fprintln(stderr, "filler-corpus-nasa: query, role, output, cache, identity, snapshot, exact asset host, exactly 10 items, 21-100 bounded requests, positive byte ceilings, non-negative delay, and wall ceiling are required")
+	if *query == "" || *roleHint == "" || *output == "" || *cache == "" || *userAgent == "" || *snapshotText == "" || *assetHost == "" || *maxItems <= 0 || *maxItems > 50 || *maxRequests < 1+2*(*maxItems) || *maxRequests > 1000 || *maxResponseBytes <= 0 || *maxItemBytes <= 0 || *maxTotalBytes < *maxItemBytes || *delay < 0 || *maxWallTime <= 0 {
+		_, _ = fmt.Fprintln(stderr, "filler-corpus-nasa: query, role, output, cache, identity, snapshot, exact asset host, 1-50 items, sufficient bounded requests, positive byte ceilings, non-negative delay, and wall ceiling are required")
 		return 2
 	}
 	snapshotAt, err := time.Parse(time.RFC3339, *snapshotText)
@@ -102,9 +103,24 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-nasa:", err)
 		return 1
 	}
+	var inventory *fillercorpus.Inventory
+	if *inventoryOutput != "" {
+		value, err := fillercorpus.InventoryFromLane(lane, fillercorpus.LaneInventoryOptions{SnapshotAt: opts.snapshotAt, Collection: opts.query, AllowedMediaHosts: []string{opts.assetHost}})
+		if err != nil {
+			_, _ = fmt.Fprintln(stderr, "filler-corpus-nasa: inventory:", err)
+			return 1
+		}
+		inventory = &value
+	}
 	if err := writeJSON(opts.outputPath, lane); err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-nasa: write:", err)
 		return 1
+	}
+	if inventory != nil {
+		if err := writeJSON(*inventoryOutput, inventory); err != nil {
+			_, _ = fmt.Fprintln(stderr, "filler-corpus-nasa: write inventory:", err)
+			return 1
+		}
 	}
 	_, _ = fmt.Fprintf(stdout, "filler-corpus-nasa: froze %d candidates (%d predicted bytes) in %d requests\n", len(lane.Cases), lane.PredictedMediaBytes, lane.RequestsUsed)
 	return 0
@@ -112,7 +128,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 func capture(ctx context.Context, opts options) (fillercorpus.Lane, error) {
 	started := time.Now()
-	client, err := fillercorpus.NewSourceClient(fillercorpus.SourceClientConfig{HTTP: &http.Client{Timeout: 30 * time.Second}, CacheDir: opts.cacheDir, UserAgent: opts.userAgent, MaxRequests: opts.maxRequests, MaxResponseBytes: opts.maxResponseBytes, Delay: opts.delay})
+	searchHost, err := url.Parse(opts.searchBase)
+	if err != nil {
+		return fillercorpus.Lane{}, err
+	}
+	client, err := fillercorpus.NewSourceClient(fillercorpus.SourceClientConfig{HTTP: &http.Client{Timeout: 30 * time.Second}, CacheDir: opts.cacheDir, UserAgent: opts.userAgent, MaxRequests: opts.maxRequests, MaxResponseBytes: opts.maxResponseBytes, Delay: opts.delay, AllowedHosts: []string{searchHost.Hostname(), opts.assetHost}})
 	if err != nil {
 		return fillercorpus.Lane{}, err
 	}

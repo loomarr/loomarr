@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/loomarr/loomarr/internal/mediatools"
 )
 
 // Info-JSON sidecars (§10). Both ingest paths write one next to every clip they
@@ -176,6 +178,47 @@ type SidecarTags struct {
 	// the meaningful answer "inspected and clean". Keeping it beside the bytes prevents a catalog
 	// rebuild from paying for another full decode or forgetting a prior refusal.
 	MediaQuality *MediaQuality `json:"mediaQuality,omitempty"`
+	// ConditioningLineage binds a reviewed child to the exact composite bytes and intended cut
+	// that produced it. It lives beside the child because split proposals are consumed after
+	// confirmation and the clip table is a rebuildable cache. Nil identifies a top-level clip.
+	ConditioningLineage *ConditioningLineage `json:"conditioningLineage,omitempty"`
+	// Conditioning carries the immutable measurements of the reviewed child before transcode and
+	// of the hidden mezzanine after transcode. It is written before the replacement is published.
+	Conditioning *ConditioningEvidence `json:"conditioning,omitempty"`
+	// ConditioningPublication is the owner-bound quarantine record written before a conditioned
+	// target becomes visible. Sync must hold the target until this exact owner clears it after re-key.
+	ConditioningPublication *ConditioningPublication `json:"conditioningPublication,omitempty"`
+	// SupersededByHash is a durable quarantine marker for pre-rewrite bytes whose catalog identity
+	// was successfully re-keyed but whose source cleanup has not completed.
+	SupersededByHash string `json:"supersededByHash,omitempty"`
+	// SplitPublicationToken is the opaque durable fencing owner of a reviewed split artifact.
+	// Rollback may remove a visible child only while this exact token remains beside it, so a
+	// recovered confirmer cannot lose its bytes to a stale predecessor.
+	SplitPublicationToken string `json:"splitPublicationToken,omitempty"`
+}
+
+type ConditioningPublication struct {
+	State      string `json:"state"`
+	Owner      string `json:"owner"`
+	SourceHash string `json:"sourceHash"`
+	TargetHash string `json:"targetHash"`
+}
+
+// ConditioningLineage is immutable provenance for one operator-reviewed split interval.
+type ConditioningLineage struct {
+	ChildHash       string `json:"childHash"`
+	ParentHash      string `json:"parentHash"`
+	IntendedStartMs int64  `json:"intendedStartMs"`
+	IntendedEndMs   int64  `json:"intendedEndMs"`
+}
+
+// ConditioningEvidence keeps measurements separate from policy decisions and target markers.
+type ConditioningEvidence struct {
+	BeforeRewriteHash              string                                `json:"beforeRewriteHash"`
+	AfterRewriteHash               string                                `json:"afterRewriteHash"`
+	BeforeRewrite                  mediatools.ConditioningMeasurement    `json:"beforeRewrite"`
+	AfterRewrite                   mediatools.ConditioningMeasurement    `json:"afterRewrite"`
+	DerivedParentEdgesAfterRewrite mediatools.ConditioningCutMeasurement `json:"derivedParentEdgesAfterRewrite"`
 }
 
 // WriteSidecarTags records Loomarr's metadata into the clip's info-JSON, preserving everything
@@ -253,21 +296,107 @@ func WriteSidecarTags(mediaPath string, tags SidecarTags, fetched bool) error {
 	return nil
 }
 
-// ReadSidecarTags reads back what Loomarr recorded. Absent or unreadable ⇒ zero tags and false,
-// which the caller treats as "nothing to restore" rather than as an error: a clip with no sidecar
-// is the ordinary case for a hand-dropped file.
+// SidecarReadState preserves the difference between ordinary absence and damaged durable state.
+type SidecarReadState uint8
+
+const (
+	SidecarAbsent SidecarReadState = iota
+	SidecarValid
+	SidecarInvalid
+)
+
+// ReadSidecarTagsState reads the whole sidecar without collapsing corrupt JSON or an invalid
+// Loomarr object into ordinary absence. A valid third-party sidecar with no Loomarr key is valid
+// and returns zero tags; only present malformed state is invalid.
+func ReadSidecarTagsState(mediaPath string) (SidecarTags, SidecarReadState) {
+	raw, err := os.ReadFile(sidecarPathFor(mediaPath))
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return SidecarTags{}, SidecarAbsent
+		}
+		return SidecarTags{}, SidecarInvalid
+	}
+	tags, state, _ := decodeSidecarTags(raw)
+	return tags, state
+}
+
+func decodeSidecarTags(raw []byte) (SidecarTags, SidecarReadState, bool) {
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return SidecarTags{}, SidecarInvalid, false
+	}
+	ours, present := doc[loomarrKey]
+	if !present {
+		return SidecarTags{}, SidecarValid, false
+	}
+	var fields map[string]json.RawMessage
+	if string(ours) == "null" || json.Unmarshal(ours, &fields) != nil || fields == nil {
+		return SidecarTags{}, SidecarInvalid, true
+	}
+	lineageRaw, hasLineage := fields["conditioningLineage"]
+	if _, hasConditioning := fields["conditioning"]; hasConditioning && !hasLineage {
+		return SidecarTags{}, SidecarInvalid, true
+	}
+	if hasLineage {
+		var lineageFields map[string]json.RawMessage
+		if string(lineageRaw) == "null" || json.Unmarshal(lineageRaw, &lineageFields) != nil || lineageFields == nil {
+			return SidecarTags{}, SidecarInvalid, true
+		}
+		if !rawJSONString(lineageFields, "childHash") || !rawJSONString(lineageFields, "parentHash") ||
+			!rawJSONInt64(lineageFields, "intendedStartMs") || !rawJSONInt64(lineageFields, "intendedEndMs") {
+			return SidecarTags{}, SidecarInvalid, true
+		}
+	}
+	if conditioningRaw, hasConditioning := fields["conditioning"]; hasConditioning {
+		var conditioningFields map[string]json.RawMessage
+		if string(conditioningRaw) == "null" || json.Unmarshal(conditioningRaw, &conditioningFields) != nil || conditioningFields == nil ||
+			!rawJSONString(conditioningFields, "beforeRewriteHash") || !rawJSONString(conditioningFields, "afterRewriteHash") {
+			return SidecarTags{}, SidecarInvalid, true
+		}
+	}
+	if publicationRaw, ok := fields["conditioningPublication"]; ok {
+		var publicationFields map[string]json.RawMessage
+		if string(publicationRaw) == "null" || json.Unmarshal(publicationRaw, &publicationFields) != nil || publicationFields == nil ||
+			!rawJSONString(publicationFields, "state") || !rawJSONString(publicationFields, "owner") ||
+			!rawJSONString(publicationFields, "sourceHash") || !rawJSONString(publicationFields, "targetHash") {
+			return SidecarTags{}, SidecarInvalid, true
+		}
+	}
+	var tags SidecarTags
+	if json.Unmarshal(ours, &tags) != nil {
+		return SidecarTags{}, SidecarInvalid, true
+	}
+	return tags, SidecarValid, true
+}
+
+func rawJSONString(fields map[string]json.RawMessage, name string) bool {
+	raw, ok := fields[name]
+	if !ok || string(raw) == "null" {
+		return false
+	}
+	var value string
+	return json.Unmarshal(raw, &value) == nil
+}
+
+func rawJSONInt64(fields map[string]json.RawMessage, name string) bool {
+	raw, ok := fields[name]
+	if !ok || string(raw) == "null" {
+		return false
+	}
+	var value int64
+	return json.Unmarshal(raw, &value) == nil
+}
+
+// ReadSidecarTags retains the historical convenience interface for callers where absence and
+// unreadability have the same non-authoritative meaning. Safety-sensitive rebuild uses the typed
+// state above.
 func ReadSidecarTags(mediaPath string) (SidecarTags, bool) {
 	raw, err := os.ReadFile(sidecarPathFor(mediaPath))
 	if err != nil {
 		return SidecarTags{}, false
 	}
-	var doc struct {
-		Loomarr *SidecarTags `json:"loomarr"`
-	}
-	if err := json.Unmarshal(raw, &doc); err != nil || doc.Loomarr == nil {
-		return SidecarTags{}, false
-	}
-	return *doc.Loomarr, true
+	tags, state, present := decodeSidecarTags(raw)
+	return tags, state == SidecarValid && present
 }
 
 // ReadSidecarTagsFS is ReadSidecarTags against an fs.FS rather than the OS filesystem.
@@ -281,13 +410,8 @@ func ReadSidecarTagsFS(fsys fs.FS, mediaPath string) (SidecarTags, bool) {
 	if err != nil {
 		return SidecarTags{}, false
 	}
-	var doc struct {
-		Loomarr *SidecarTags `json:"loomarr"`
-	}
-	if err := json.Unmarshal(raw, &doc); err != nil || doc.Loomarr == nil {
-		return SidecarTags{}, false
-	}
-	return *doc.Loomarr, true
+	tags, state, present := decodeSidecarTags(raw)
+	return tags, state == SidecarValid && present
 }
 
 // SidecarFetchedByUs reports whether Loomarr downloaded this clip (§10 V38c) — the held/filed

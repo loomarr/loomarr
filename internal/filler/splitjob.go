@@ -7,11 +7,13 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
@@ -27,6 +29,16 @@ var ErrSplitValidation = errors.New("invalid split segments")
 // for one race: split-time grounding is a read-modify-write spanning minutes of vision calls, and
 // a `Confirm` landing inside that window must not be undone by the write that follows.
 var ErrProposalGone = errors.New("filler: the split proposal was resolved while it was being grounded")
+
+// ErrProposalClaimed means another process owns the reviewed proposal's publication lease.
+// Confirm callers must leave the proposal and filesystem untouched and retry after that owner
+// releases the lease or its durable deadline passes.
+var ErrProposalClaimed = errors.New("filler: the split proposal is already being confirmed")
+
+// ErrConditioningOwnershipMismatch means durable conditioning publication evidence no longer
+// belongs to the catalog transition it claims. This is a safe review outcome; infrastructure
+// failures must remain errors so the pipeline retries them.
+var ErrConditioningOwnershipMismatch = errors.New("filler: conditioning publication ownership mismatch")
 
 // The splitter (§10, V34): turns a compilation clip into a REVIEWED set of
 // clips. Propose runs detection and persists a SplitProposal; Confirm writes
@@ -44,6 +56,8 @@ type SplitStore interface {
 	UpsertClip(ctx context.Context, c StoreClip) error
 	GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error)
 	SetClipTags(ctx context.Context, clipHash string, leaves []string) error
+	// UpsertClipPipeline durably enrolls a reviewed child before its media name is published.
+	UpsertClipPipeline(ctx context.Context, row ClipPipeline) error
 	// ReplaceSplitChildren atomically makes keepHashes the airable generation for a parent.
 	// Superseded rows are tombstoned, never deleted; channel-pinned children are retained.
 	ReplaceSplitChildren(ctx context.Context, parentHash string, keepHashes []string, at time.Time) (int, error)
@@ -53,16 +67,46 @@ type SplitStore interface {
 	// SetClipsHeld files the fully resolved composite parent so the catalog can render it as the
 	// non-airable container for its children. A partially resolved proposal remains held.
 	SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error)
+	// MarkPipelineFiled makes full confirmation the terminal owner of the parent pipeline row.
+	// It belongs inside the confirmation saga so the application cannot fail after commit.
+	MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error
+	// CompleteSplitConfirmation atomically consumes one fully reviewed proposal, transitions its
+	// retained parent and replacement pipelines, and selects the replacement generation.
+	CompleteSplitConfirmation(ctx context.Context, completion SplitCompletion) (int, error)
 	// ListTaxa is the taxonomy path (§10 V45a): classify serves this vocabulary to the model and
 	// grounds the answer against it.
 	ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error)
 	UpsertSplitProposal(ctx context.Context, p SplitProposal) error
 	ListSplitProposals(ctx context.Context) ([]SplitProposal, error)
 	GetSplitProposal(ctx context.Context, id string) (SplitProposal, error)
+	AcquireSplitProposalClaim(ctx context.Context, id, token string, at, expiresAt time.Time) (SplitProposal, error)
+	RenewSplitProposalClaim(ctx context.Context, id, token string, expiresAt time.Time) error
+	ReleaseSplitProposalClaim(ctx context.Context, id, token string) error
 	DeleteSplitProposal(ctx context.Context, id string) error
 	// UpdateSplitProposal writes grounding and partial-confirm state onto an existing proposal without
 	// re-detecting. Must NOT insert — a write landing after Confirm would resurrect the proposal.
 	UpdateSplitProposal(ctx context.Context, p SplitProposal) error
+	CompletePartialSplitConfirmation(ctx context.Context, completion SplitPartialCompletion) error
+}
+
+// SplitCompletion is the closed durable commit for one fully reviewed split generation. Media and
+// sidecars are already published reversibly; every field here becomes visible in one transaction.
+type SplitCompletion struct {
+	ProposalID     string
+	ClaimToken     string
+	ParentHash     string
+	ChildHashes    []string
+	ActivateHashes []string
+	At             time.Time
+}
+
+// SplitPartialCompletion is the durable boundary for one partial reviewed generation. Its claim
+// token fences the proposal document update after reversible media publication.
+type SplitPartialCompletion struct {
+	Proposal       SplitProposal
+	ClaimToken     string
+	ActivateHashes []string
+	At             time.Time
 }
 
 // Splitter runs compilation splitting. provider may be nil: rescue and
@@ -611,11 +655,29 @@ func (sp *Splitter) ConfirmSome(ctx context.Context, proposalID string, segments
 	return sp.confirm(ctx, proposalID, segments, hold)
 }
 
+// splitProposalClaimLease is deliberately longer than the bounded local split operation. A crash
+// is recoverable after the deadline; a live owner renews immediately before making sidecars or
+// media visible, so an expired predecessor is fenced before it can publish.
+const splitProposalClaimLease = 30 * time.Minute
+
 func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, hold []SplitSegment) ([]string, error) {
-	p, err := sp.store.GetSplitProposal(ctx, proposalID)
+	if sp.newID == nil {
+		return nil, errors.New("split confirm: claim token generator is required")
+	}
+	claimToken := sp.newID()
+	if claimToken == "" {
+		return nil, errors.New("split confirm: claim token is empty")
+	}
+	claimedAt := sp.now().UTC()
+	p, err := sp.store.AcquireSplitProposalClaim(ctx, proposalID, claimToken, claimedAt, claimedAt.Add(splitProposalClaimLease))
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		_ = sp.store.ReleaseSplitProposalClaim(releaseCtx, proposalID, claimToken)
+	}()
 	if !p.Ready() {
 		return nil, fmt.Errorf("%w: proposal %s is still detecting boundaries", ErrSplitValidation, proposalID)
 	}
@@ -632,21 +694,6 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	if err := validateConfirmedSegments(segments, clip.DurationMs, sp.floor()); err != nil {
 		return nil, err
 	}
-	// A re-split must not make its new generation air beside the old one while a partial proposal
-	// is still unresolved. New hashes are inserted tombstoned below and atomically restored only
-	// when the proposal is fully consumed. Exact reused hashes are already active and harmless.
-	replacing := false
-	if catalog, listErr := sp.store.ListClips(ctx); listErr != nil {
-		return nil, listErr
-	} else {
-		for _, existing := range catalog {
-			if existing.ParentHash == clip.Hash {
-				replacing = true
-				break
-			}
-		}
-	}
-
 	// ⚠ The LOCATION comes from the row, not from the proposal — the same rule (and the same
 	// join) `Propose` states above. The proposal carries an identity; joining a hash onto the
 	// drop dir would build a path that does not exist.
@@ -654,32 +701,31 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	src := filepath.Join(sp.dropDir, clip.Path)
 	parentTags, _ := ReadSidecarTags(src)
 
-	// ⚠ Segments are cut to a TEMPORARY file first, because a clip's identity is the hash of its
-	// CONTENTS and those contents do not exist until ffmpeg has written them. There is no name to
-	// file a cut under until it has been made.
-	//
-	// ⚠ Outside the clip folder deliberately: `ScanDir` walks every directory under it except the
-	// watch folder, so a half-written `.mp4` sitting there would be catalogued mid-confirm as a
-	// clip at a non-shard path — and then pruned on the next sync. `movePath` below is intake's
-	// own helper and carries the EXDEV copy fallback that makes crossing back in safe.
-	tmpDir, err := os.MkdirTemp("", "loomarr-split-")
+	// Segments are cut inside a hidden directory on the filler filesystem. Same-filesystem staging
+	// makes final publication atomic, while ScanDir's dot-directory rule keeps partial bytes out of
+	// the catalog. The final-bound lineage sidecar is linked first; only then does the media name
+	// appear, so scanning cannot observe an unbound child.
+	stageRoot := filepath.Join(sp.dropDir, ".split")
+	if err := os.MkdirAll(stageRoot, 0o700); err != nil {
+		return nil, fmt.Errorf("split confirm: create staging root: %w", err)
+	}
+	tmpDir, err := os.MkdirTemp(stageRoot, "confirm-")
 	if err != nil {
 		return nil, fmt.Errorf("split confirm: temp dir: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
+	sourceSnapshot, err := snapshotSplitComposite(ctx, src, tmpDir, ext, clip.Hash)
+	if err != nil {
+		return nil, err
+	}
 
 	// Cut everything FIRST: a failure mid-confirm leaves the compilation intact
 	// (the proposal is only consumed once every segment exists on disk and in
 	// the catalog), so the operator can fix and retry rather than losing cuts.
-	type written struct {
-		seg  SplitSegment
-		hash string
-		path string
-	}
-	var cuts []written
+	publication := splitPublication{token: claimToken}
 	for i, seg := range segments {
 		tmp := filepath.Join(tmpDir, fmt.Sprintf("seg-%03d%s", i, ext))
-		if err := sp.tools.Cut(ctx, src, seg.StartMs, seg.EndMs, tmp); err != nil {
+		if err := sp.tools.Cut(ctx, sourceSnapshot, seg.StartMs, seg.EndMs, tmp); err != nil {
 			return nil, err
 		}
 		id, err := ClipID(tmp)
@@ -693,34 +739,67 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return nil, fmt.Errorf("split confirm: segment %d: %w", i, err)
 		}
+		childTags := SidecarTags{
+			SourceID:              parentTags.SourceID,
+			AcquisitionID:         parentTags.AcquisitionID,
+			OriginalName:          seg.Name + ext,
+			SplitPublicationToken: claimToken,
+			ConditioningLineage: &ConditioningLineage{
+				ChildHash:       id,
+				ParentHash:      clip.Hash,
+				IntendedStartMs: seg.StartMs,
+				IntendedEndMs:   seg.EndMs,
+			},
+		}
+		if err := WriteSidecarTags(tmp, childTags, false); err != nil {
+			return nil, fmt.Errorf("split confirm: stage segment provenance: %w", err)
+		}
 		// ⚠ An existing destination is a byte-identical cut, not a collision: the path IS the
 		// hash. The old code guarded this with a `-2`, `-3` suffix loop over operator-shaped
-		// names, which content addressing makes both unnecessary and wrong — two identical cuts
-		// are one clip, and giving them separate rows would double-count them in every pool.
-		if _, statErr := os.Stat(dst); statErr != nil {
-			if err := movePath(tmp, dst); err != nil {
-				return nil, fmt.Errorf("split confirm: file segment %d: %w", i, err)
+		// names, which content addressing makes both unnecessary and wrong. Reuse is safe only
+		// when the existing sidecar names this exact reviewed child/parent/interval; the catalog
+		// has one lineage slot and must not silently replace it for identical bytes from elsewhere.
+		if _, statErr := os.Stat(dst); errors.Is(statErr, os.ErrNotExist) {
+		} else if statErr != nil {
+			return nil, fmt.Errorf("split confirm: inspect segment %d: %w", i, statErr)
+		} else {
+			equal, compareErr := exactFileBytesEqual(ctx, tmp, dst, mediatools.ConditioningMaxSnapshotBytes)
+			if compareErr != nil || !equal {
+				return nil, fmt.Errorf("split confirm: existing segment %d bytes do not match identity", i)
 			}
+			existingTags, ok := ReadSidecarTags(dst)
+			if !ok || !reflect.DeepEqual(existingTags.ConditioningLineage, childTags.ConditioningLineage) {
+				return nil, fmt.Errorf("split confirm: existing segment %d is not bound to this reviewed cut", i)
+			}
+			if err := WriteSidecarTags(dst, childTags, false); err != nil {
+				return nil, fmt.Errorf("split confirm: fence existing segment %d: %w", i, err)
+			}
+			publication.cuts = append(publication.cuts, preparedSplitCut{segment: seg, hash: id, path: ClipRelPath(id, ext), staged: tmp, final: dst, existing: true})
+			continue
 		}
-		cuts = append(cuts, written{seg: seg, hash: id, path: ClipRelPath(id, ext)})
+		publication.cuts = append(publication.cuts, preparedSplitCut{segment: seg, hash: id, path: ClipRelPath(id, ext), staged: tmp, final: dst})
 	}
+	if err := validateSplitCompositeOwnership(ctx, src, sourceSnapshot); err != nil {
+		return nil, fmt.Errorf("split confirm: composite source changed while cuts were prepared: %w", err)
+	}
+	if err := sp.store.RenewSplitProposalClaim(ctx, proposalID, claimToken, sp.now().UTC().Add(splitProposalClaimLease)); err != nil {
+		return nil, err
+	}
+	if err := publication.prepare(ctx); err != nil {
+		publication.rollback()
+		return nil, err
+	}
+	defer publication.rollback()
 	now := sp.now().UTC()
 	// ⚠ The hashes are RETURNED, not merely written. The ingest pipeline enrols each one at
 	// `probe` so a fresh segment runs the whole ladder for itself (§10 V51b) — before this, a cut
 	// advert had to wait for whichever of six catalog sweeps happened to reach it next.
-	spawned := make([]string, 0, len(cuts))
-	for _, c := range cuts {
-		spawned = append(spawned, c.hash)
-		// A split creates new media bytes, so it must also create the provenance sidecar that lets
-		// a catalog rebuild reconnect those bytes to their source and acquisition run. The segment
-		// inherits both from the compilation; neither changes its admission policy.
-		if err := WriteSidecarTags(filepath.Join(sp.dropDir, filepath.FromSlash(c.path)), SidecarTags{
-			SourceID:      parentTags.SourceID,
-			AcquisitionID: parentTags.AcquisitionID,
-			OriginalName:  c.seg.Name + ext,
-		}, false); err != nil {
-			return nil, fmt.Errorf("split confirm: record segment provenance: %w", err)
+	spawned := make([]string, 0, len(publication.cuts))
+	for _, c := range publication.cuts {
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
+		spawned = append(spawned, c.hash)
 		nc := StoreClip{UpdatedAt: now}
 		// ⚠ **The identity, and it was MISSING.** `UpsertClip` is `ON CONFLICT(hash) DO UPDATE`,
 		// so every segment used to insert with `hash=''` and each one overwrote the last — a
@@ -729,29 +808,27 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		// pinned, and V51a adds the case.
 		nc.Hash = c.hash
 		nc.Path = c.path
-		nc.Name = c.seg.Name
+		nc.Name = c.segment.Name
 		nc.Kind = clip.Kind
-		nc.DurationMs = c.seg.EndMs - c.seg.StartMs
-		nc.Era = c.seg.Era
-		nc.SuggestedEra = c.seg.SuggestedEra
-		nc.Audience = c.seg.Audience
-		nc.Category = c.seg.Category
+		nc.DurationMs = c.segment.EndMs - c.segment.StartMs
+		nc.Era = c.segment.Era
+		nc.SuggestedEra = c.segment.SuggestedEra
+		nc.Audience = c.segment.Audience
+		nc.Category = c.segment.Category
 		// ⚠ Lineage: each segment points back at the composite it was cut from (§10 V45). This is what
 		// V45 keeps that V34 discarded — provenance ("which break did this advert air in?"), a
 		// re-split when detection improves, and broadcast-context inheritance. `clip.Hash` is the
 		// composite's identity (the parent is kept, below, not deleted).
 		nc.ParentHash = clip.Hash
-		if replacing {
-			// A catalog tombstone is stronger than Held here: the pipeline can process and auto-file
-			// held clips before the proposal is finished. Removed clips cannot air or advance, and
-			// ReplaceSplitChildren restores this generation atomically at final confirmation.
-			nc.RemovedAt = now
-		}
+		// A reviewed child is held and tombstoned before its media name is published. The pipeline
+		// may process it, while ReplaceSplitChildren remains the atomic generation selector.
+		nc.Held = true
+		nc.RemovedAt = now
 		// Persist the transcript the rescue step already produced (§10 V44). Pre-V44 this was
 		// computed to find ad boundaries and then thrown away; it is the richest metadata signal a
 		// split segment has — a segment with no source description still SAYS its brand — so it
 		// carries onto the clip row instead of being re-derived by the transcribe job later.
-		nc.Transcript = c.seg.Transcript
+		nc.Transcript = c.segment.Transcript
 		// Provenance inherits from the compilation: same source, same declared
 		// licence (the segments ARE the source's content), same resolution.
 		nc.Source = clip.Source
@@ -762,16 +839,16 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		// flag records origin, not approval (a manual PATCH still clears it). Includes the taxonomy
 		// tag set (§10 V45a): a segment grounded only on a non-product axis (`psa`, `christmas`) has
 		// an empty Category shadow but real tags, and is still AI-tagged.
-		nc.AITagged = c.seg.Era > 0 || c.seg.Audience != "" || c.seg.Category != "" || len(c.seg.Tags) > 0
+		nc.AITagged = c.segment.Era > 0 || c.segment.Audience != "" || c.segment.Category != "" || len(c.segment.Tags) > 0
 		if err := sp.store.UpsertClip(ctx, nc); err != nil {
 			return nil, err
 		}
 		// Persist grounded proposal tags now that the cut has a stable content hash. Union with an
 		// identical existing clip so deduplication never lets AI erase operator-authored knowledge.
-		segmentTags := append([]string(nil), c.seg.Tags...)
-		if len(segmentTags) == 0 && c.seg.Category != "" {
+		segmentTags := append([]string(nil), c.segment.Tags...)
+		if len(segmentTags) == 0 && c.segment.Category != "" {
 			// Upgrade compatibility for proposals stored before the wire carried the tag set.
-			segmentTags = append(segmentTags, c.seg.Category)
+			segmentTags = append(segmentTags, c.segment.Category)
 		}
 		if len(segmentTags) > 0 {
 			existing, err := sp.store.GetClipTags(ctx, c.hash, true)
@@ -782,6 +859,12 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 				return nil, err
 			}
 		}
+		if err := sp.store.UpsertClipPipeline(ctx, ClipPipeline{
+			ClipHash: c.hash, Stage: StageProbe, Status: StatusQueued,
+			Disposition: DispositionReview, EnrolledAt: now, UpdatedAt: now,
+		}); err != nil {
+			return nil, err
+		}
 	}
 	// ⚠ V45 KEEPS the parent, marking it a composite — it does NOT delete the row or the file (the
 	// reversal of V34). The composite is not airable (pod assembly excludes `is_composite`), so it
@@ -791,9 +874,6 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	//
 	// The file stays on disk too: a re-scan finds it, but UpsertClip omits `is_composite` from its
 	// DO UPDATE list, so the re-synced row keeps its composite mark rather than reverting to airable.
-	if err := sp.store.SetClipComposite(ctx, clip.Hash, true, now); err != nil {
-		return nil, err
-	}
 	// ⚠ **`hold` decides whether the proposal survives, and the CALLER supplies it — it is never
 	// inferred from `segments`** (§10 V54).
 	//
@@ -804,7 +884,7 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	// the operator's edits as leftovers and resurrect a reel they had just finished.
 	currentGeneration := appendUniqueStrings(p.Spawned, spawned...)
 	if len(hold) == 0 {
-		if _, err := sp.store.ReplaceSplitChildren(ctx, clip.Hash, currentGeneration, now); err != nil {
+		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 		// The review disposition held the parent out of every catalog read. Once the proposal is
@@ -812,13 +892,30 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		// generated clips. It remains non-airable because SetClipComposite above is the catalog's
 		// independent airability chokepoint. Keep partial proposals held: their replacement
 		// generation is not committed yet and Incoming still owns the decision.
-		if _, err := sp.store.SetClipsHeld(ctx, []string{clip.Path}, false, false, now); err != nil {
+		if err := sp.store.RenewSplitProposalClaim(ctx, proposalID, claimToken, sp.now().UTC().Add(splitProposalClaimLease)); err != nil {
 			return nil, err
 		}
-		if err := sp.store.DeleteSplitProposal(ctx, proposalID); err != nil {
+		if err := publication.publish(ctx); err != nil {
 			return nil, err
 		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if _, err := sp.store.CompleteSplitConfirmation(ctx, SplitCompletion{
+			ProposalID:     proposalID,
+			ClaimToken:     claimToken,
+			ParentHash:     clip.Hash,
+			ChildHashes:    currentGeneration,
+			ActivateHashes: spawned,
+			At:             now,
+		}); err != nil {
+			return nil, err
+		}
+		publication.retain()
 		return spawned, nil
+	}
+	if err := sp.store.SetClipComposite(ctx, clip.Hash, true, now); err != nil {
+		return nil, err
 	}
 	// Renumber so the review's "#N" runs 1..n rather than showing gaps where the confirmed cuts
 	// used to be. ⚠ NAMES are untouched: "part 7" persists from detection, so a reel confirmed over
@@ -829,15 +926,18 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	}
 	p.Segments = remaining
 	p.Spawned = currentGeneration
-	if err := sp.store.UpdateSplitProposal(ctx, p); err != nil {
-		// ⚠ Already gone means the operator confirmed or rejected the whole reel while this pass
-		// was cutting. The cuts we just made are real and enrolled; there is simply no proposal
-		// left to shrink, which is the other path having finished the job.
-		if errors.Is(err, ErrProposalGone) {
-			return spawned, nil
-		}
+	if err := sp.store.RenewSplitProposalClaim(ctx, proposalID, claimToken, sp.now().UTC().Add(splitProposalClaimLease)); err != nil {
 		return nil, err
 	}
+	if err := publication.publish(ctx); err != nil {
+		return nil, err
+	}
+	if err := sp.store.CompletePartialSplitConfirmation(ctx, SplitPartialCompletion{
+		Proposal: p, ClaimToken: claimToken, ActivateHashes: spawned, At: now,
+	}); err != nil {
+		return nil, err
+	}
+	publication.retain()
 	return spawned, nil
 }
 

@@ -9,13 +9,13 @@ license = "MIT"
 rust-version = "1.93"
 
 [workspace.dependencies]
-base64 = "0.22.1"
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
-fast_image_resize = "6.1.0"
-image = { version = "0.25.10", default-features = false, features = ["avif", "gif", "jpeg", "png", "webp"] }
-png = "0.18.1"
-sha2 = "0.10.9"
-thumbhash = "0.1.0"
-webp = "0.3.1"
-webp-animation = { version = "0.10.0", features = ["static"] }
+base64 = "=0.22.1"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+fast_image_resize = "=6.1.0"
+image = { version = "=0.25.10", default-features = false, features = ["avif", "gif", "jpeg", "png", "webp"] }
+png = "=0.18.1"
+sha2 = "=0.10.9"
+thumbhash = "=0.1.0"
+webp = "=0.3.1"
+webp-animation = { version = "=0.10.0", features = ["static"] }

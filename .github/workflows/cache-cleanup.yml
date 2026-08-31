@@ -3,9 +3,9 @@
 # Why this exists: cache storage is capped at 10GB per repo, and eviction is LRU across
 # the WHOLE repo — so dead caches do not just sit there, they push out live ones. Measured
 # 2026-08-01: the repo sat at 9.94GB of 10GB, and ~5GB of that belonged to eight already
-# closed or merged PRs. A cache scoped to `refs/pull/N/merge` can never be restored again
-# once that PR is closed (cache reads are scoped to the branch and its base), so every byte
-# of it is pure eviction pressure on caches that ARE still being read.
+# closed or merged PRs. Caches scoped to `refs/pull/N/merge` or the merge queue's
+# `refs/heads/gh-readonly-queue/main/pr-N-*` can never be restored again once that PR is
+# closed, so every byte is pure eviction pressure on caches that ARE still being read.
 #
 # GitHub does expire caches after 7 idle days on its own. That is too slow when a single
 # Go build cache is ~470MB and several PRs land in a week — the quota is gone long before
@@ -26,19 +26,20 @@ jobs:
     name: Drop the closed PR's caches
     runs-on: ubuntu-latest
     steps:
-      - name: Delete caches for refs/pull/${{ github.event.pull_request.number }}/merge
+      - name: Delete inaccessible caches for pull request ${{ github.event.pull_request.number }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           REF: refs/pull/${{ github.event.pull_request.number }}/merge
+          QUEUE_REF_PREFIX: refs/heads/gh-readonly-queue/main/pr-${{ github.event.pull_request.number }}-
         run: |
           set -uo pipefail
           # `|| true` on the list: a PR with no caches is the normal case for docs-only
           # work, and it must not fail the job.
           ids=$(gh api "repos/$REPO/actions/caches" --paginate \
-                  -q ".actions_caches[] | select(.ref==\"$REF\") | .id" 2>/dev/null || true)
+                  -q ".actions_caches[] | select(.ref==\"$REF\" or (.ref | startswith(\"$QUEUE_REF_PREFIX\"))) | .id" 2>/dev/null || true)
           if [ -z "$ids" ]; then
-            echo "no caches for $REF"
+            echo "no caches for $REF or $QUEUE_REF_PREFIX*"
             exit 0
           fi
           for id in $ids; do

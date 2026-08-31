@@ -40,8 +40,30 @@ if [[ -z "${ANDROID_HOME:-}" ]]; then
   exit 2
 fi
 
-if [[ "${SCOPE_MARKER}" != "--inside-memory-scope" ]]; then
-  available_kb="$(awk '/^MemAvailable:/ { print $2 }' /proc/meminfo)"
+EXPO_PACKAGE_JSON="$(
+  cd "${APP_DIR}"
+  node -p "require.resolve('expo/package.json')"
+)"
+readonly EXPO_PACKAGE_JSON
+readonly EXPO_TEMPLATE="${EXPO_PACKAGE_JSON%/package.json}/template.tgz"
+if [[ ! -f "${EXPO_TEMPLATE}" ]]; then
+  printf 'the pinned Expo package does not contain its native template: %s\n' "${EXPO_TEMPLATE}" >&2
+  exit 2
+fi
+
+if [[ "${SCOPE_MARKER}" != "--inside-memory-scope" && "${MIN_AVAILABLE_KB}" -gt 0 ]]; then
+  if [[ -r /proc/meminfo ]]; then
+    available_kb="$(awk '/^MemAvailable:/ { print $2 }' /proc/meminfo)"
+  elif command -v vm_stat >/dev/null 2>&1; then
+    available_kb="$(vm_stat | awk '
+      NR == 1 { page_size = $8; gsub(/[^0-9]/, "", page_size) }
+      /^Pages (free|inactive|speculative):/ { gsub(/\./, "", $3); pages += $3 }
+      END { printf "%d", pages * page_size / 1024 }
+    ')"
+  else
+    printf 'refusing native build: cannot determine available memory on this host\n' >&2
+    exit 1
+  fi
   if [[ "${available_kb}" -lt "${MIN_AVAILABLE_KB}" ]]; then
     printf 'refusing native build: %s MiB available; require at least %s MiB\n' \
       "$((available_kb / 1024))" "$((MIN_AVAILABLE_KB / 1024))" >&2
@@ -53,7 +75,8 @@ if [[ ! -x "${APP_DIR}/android/gradlew" ]] \
   || [[ "${ACTION}" == "macrobenchmark" && ! -f "${APP_DIR}/android/macrobenchmark/build.gradle" ]]; then
   (
     cd "${WEB_ROOT}"
-    pnpm --filter "@loomarr/${APP_NAME}" exec expo prebuild --platform android --no-install
+    pnpm --filter "@loomarr/${APP_NAME}" exec expo prebuild --platform android --no-install \
+      --template "${EXPO_TEMPLATE}"
   )
 fi
 

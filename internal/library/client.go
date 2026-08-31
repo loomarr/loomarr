@@ -47,6 +47,15 @@ var (
 	ErrConnectionTokenRequired  = fmt.Errorf("%w: API token is required", ErrConnectionRequired)
 )
 
+var (
+	// ErrCredentialsRejected means the provider was reachable and authoritatively
+	// rejected the submitted credential. Callers must never use an offline fallback.
+	ErrCredentialsRejected = errors.New("media-server credentials rejected")
+	// ErrProviderUnavailable means no authoritative credential decision was made:
+	// transport/timeout failure or a provider 5xx response.
+	ErrProviderUnavailable = errors.New("media server unavailable")
+)
+
 // Client is the shared Emby/Jellyfin adapter. One code path; the flavor only
 // changes header construction (auth.go).
 //
@@ -262,8 +271,8 @@ func (c *Client) AuthenticateByName(ctx context.Context, username, password stri
 	c.flavor().applyLoginAuth(req, c.deviceID) // client-id header, no token yet (§11)
 
 	var out authResponse
-	if err := c.do(req, &out); err != nil {
-		return User{}, err // 401 (bad creds) surfaces here as an error (§11 negative path)
+	if err := c.doAuthenticate(req, &out); err != nil {
+		return User{}, err
 	}
 	c.bestEffortLogout(ctx, out.AccessToken)
 
@@ -273,6 +282,26 @@ func (c *Client) AuthenticateByName(ctx context.Context, username, password stri
 		IsAdmin:  out.User.Policy.IsAdministrator,
 		Disabled: out.User.Policy.IsDisabled,
 	}, nil
+}
+
+func (c *Client) doAuthenticate(req *http.Request, out *authResponse) error {
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrProviderUnavailable, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	switch {
+	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+		return ErrCredentialsRejected
+	case resp.StatusCode >= http.StatusInternalServerError:
+		return fmt.Errorf("%w: status %d", ErrProviderUnavailable, resp.StatusCode)
+	case resp.StatusCode < 200 || resp.StatusCode >= 300:
+		return fmt.Errorf("authenticate media-server user: status %d", resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return fmt.Errorf("decode authentication response: %w", err)
+	}
+	return nil
 }
 
 // userDTO mirrors a /Users list entry (§11).

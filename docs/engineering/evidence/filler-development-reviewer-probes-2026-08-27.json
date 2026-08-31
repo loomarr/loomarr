@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 2,
+  "purpose": "filler-development-blind-reviewer-runtime-selection",
+  "localSnapshotAt": "2026-08-27T21:23:00Z",
+  "evidenceUpdatedOn": "2026-08-27",
+  "certificationEvidence": false,
+  "cohort": "development_seed",
+  "hardware": {
+    "cpu": "Intel Core i9-12900K",
+    "memoryBytes": 33371676672,
+    "gpu": "NVIDIA GeForce RTX 3080 Ti",
+    "gpuMemoryBytes": 12750684160
+  },
+  "runtime": {
+    "provider": "ollama",
+    "image": "ollama/ollama:0.32.14",
+    "baseUrl": "http://127.0.0.1:11437",
+    "concurrency": 1,
+    "promptVersion": "filler-blind-review-ollama-v1",
+    "framesPerUsableCase": 4,
+    "outputTokenCeiling": 4096,
+    "contextTokenCeiling": 16384
+  },
+  "attempts": [
+    {
+      "model": "llama3.2-vision:11b",
+      "digest": "6f2f9757ae97e8a3f8ea33d6adb2b11d93d9a35bef277cd2c0b1b5af8e8d0b1e",
+      "family": "mllama",
+      "result": "runtime_incompatible",
+      "detail": "The registered artifact failed to load because the bundled runner reported unknown model architecture mllama."
+    },
+    {
+      "model": "mistral-small3.1:24b",
+      "digest": "b9aaf0c2586a8ed8105feab808c0f034bd4d346203822f048e2366165a13f4ea",
+      "family": "mistral3",
+      "result": "primary_reviewer_impractical",
+      "detail": "One real four-frame review remained incomplete beyond three minutes and was operator-interrupted; the model remains eligible only for a bounded disagreement sample, not a 300-case primary lane."
+    },
+    {
+      "model": "llava-llama3:8b",
+      "digest": "44c161b1f46523301da9c0cc505afa4a4a0cc62f580581d98a430bb21acd46de",
+      "family": "llama",
+      "result": "structured_output_failure",
+      "detail": "The first real case exhausted both 2048- and 4096-token output ceilings with done_reason length; no submission was accepted."
+    },
+    {
+      "model": "granite3.2-vision:2b",
+      "digest": "3be41a661804ad72cd08269816c5a145f1df6479ad07e2b3a7e29dba575d2669",
+      "family": "granite",
+      "result": "context_and_latency_failure",
+      "detail": "The unchanged four-frame request required 9974 prompt tokens, exceeding 8192; at 16384 it did not complete within the two-minute case ceiling."
+    }
+  ],
+  "hosted": {
+    "contractProbes": [
+      {
+        "reviewerId": "mistral-large-3-contract-probe-v7",
+        "model": "mistralai/mistral-large-2512",
+        "resolvedModel": "mistralai/mistral-large-2512",
+        "upstreamProvider": "Mistral",
+        "upstreamProviderSlug": "mistral/eu",
+        "promptVersion": "filler-blind-review-openrouter-v7",
+        "capabilitySnapshotSha256": "0357c7f1a784843998b8d85016bee15f1db12bf88f023f0c53470ad0694acf74",
+        "cases": 10,
+        "requests": 10,
+        "chargedNanoUsd": 27619900,
+        "reviewRunSha256": "1ec396085cc0c34b183ffed12099c575fae2245e4e4b8ad82e4977dc8bbb63fa",
+        "submissionSha256": "357c15cbcf5a224ebbac6eba1844fef95c93090de4b98128329d32716439fa66",
+        "result": "completed"
+      },
+      {
+        "reviewerId": "llama-4-maverick-contract-probe-v7",
+        "model": "meta-llama/llama-4-maverick",
+        "resolvedModel": "meta-llama/llama-4-maverick-17b-128e-instruct",
+        "upstreamProvider": "DeepInfra",
+        "upstreamProviderSlug": "deepinfra/base",
+        "promptVersion": "filler-blind-review-openrouter-v7",
+        "capabilitySnapshotSha256": "8759c87a57d3fd9d6b135261482b40f7e671dcc4c9ed09f26a11b708c19dc90e",
+        "cases": 10,
+        "requests": 10,
+        "chargedNanoUsd": 8446200,
+        "reviewRunSha256": "66ebb2db5b68879a285b03ea798041402628b350fb7a9615860dc5e2ee062fba",
+        "submissionSha256": "ebec65f466a34acc37624a9e2d4ae3407d91786db46ef130116c52b523e40cd5",
+        "result": "completed"
+      }
+    ],
+    "productionRepros": [
+      {
+        "reviewerId": "llama-4-maverick-reviewer-b-v7",
+        "model": "meta-llama/llama-4-maverick",
+        "resolvedModel": "meta-llama/llama-4-maverick-17b-128e-instruct",
+        "upstreamProvider": "DeepInfra",
+        "upstreamProviderSlug": "deepinfra/base",
+        "promptVersion": "filler-blind-review-openrouter-v7",
+        "capabilitySnapshotSha256": "8759c87a57d3fd9d6b135261482b40f7e671dcc4c9ed09f26a11b708c19dc90e",
+        "expectedCases": 300,
+        "failedAlias": "review-0baec3f8455f5f9242074eace2b69201",
+        "result": "truncated_structured_response",
+        "detail": "decode openrouter review labels: unexpected EOF (contentBytes=972 reasoningBytes=0)",
+        "completedOutputPublished": false,
+        "privateCheckpointAvailable": false,
+        "paidRecoveryAuthorized": false
+      }
+    ]
+  },
+  "publication": {
+    "certificationLabelSubmissions": 0,
+    "probeLabelSubmissions": 20,
+    "partialCertificationLabelSubmissions": 0,
+    "certificationOutputDirectoriesPublished": 0,
+    "probeOutputDirectoriesPublished": 2
+  },
+  "decision": {
+    "localPrimaryReviewerSelected": false,
+    "evidenceRouteShrunk": false,
+    "next": "Use two reviewer-only hosted multimodal model families, with pinned ZDR endpoints and immutable review attestations; keep every reviewer and adjudicator family out of the scored candidate matrix."
+  }
+}

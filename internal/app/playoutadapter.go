@@ -804,6 +804,10 @@ func (r *playoutResolver) airingFiller(
 					}
 				}
 			}
+			remaining := d - into
+			if gap.Remaining > 0 && gap.Remaining < remaining {
+				remaining = gap.Remaining
+			}
 			return playout.Airing{
 				StartedAt:       now.Add(-into),
 				Identity:        e.Hash,
@@ -814,7 +818,7 @@ func (r *playoutResolver) airingFiller(
 				Source:    full,
 				Title:     e.Name,
 				Offset:    into,
-				Remaining: d - into,
+				Remaining: remaining,
 			}, full, nil
 		}
 		into -= d

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,6 +22,31 @@ import (
 // not detection, which internal/filler's own suite covers.
 type splitFakeTools struct {
 	chapters []filler.Chapter
+}
+
+type gatedSplitTools struct {
+	splitFakeTools
+	entered chan struct{}
+	release chan struct{}
+	calls   atomic.Int32
+}
+
+func (f *gatedSplitTools) Cut(ctx context.Context, _ string, start, end int64, out string) error {
+	f.calls.Add(1)
+	if f.entered != nil {
+		select {
+		case f.entered <- struct{}{}:
+		default:
+		}
+	}
+	if f.release != nil {
+		select {
+		case <-f.release:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return os.WriteFile(out, []byte(fmt.Sprintf("cut %d-%d", start, end)), 0o644)
 }
 
 func (f splitFakeTools) Chapters(context.Context, string) ([]filler.Chapter, error) {
@@ -54,14 +80,15 @@ func (f splitFakeTools) Cut(_ context.Context, _ string, start, end int64, out s
 
 // compHash is the seeded compilation's IDENTITY, and compPath its LOCATION.
 //
-// ⚠ **They are deliberately different strings.** This fixture set `Hash` and `Path` to the same
+// ⚠ **They are deliberately different strings while the hash still honestly identifies the
+// fixture bytes.** This fixture set `Hash` and `Path` to the same
 // value, with a comment explaining that Split looks the clip up by id — which made the lookup
 // appear to work no matter which of the two the code passed. Production hashes are 64 hex
 // characters and never equal a path, so every key confusion in the split path was invisible here:
 // `Confirm` looked the compilation up by path against a hash-keyed `GetClip` and could never
 // commit a split at all (§10 V51a). Two distinct values is what makes that class visible.
 const (
-	compHash = "a3f90000000000000000000000000000000000000000000000000000000000c1"
+	compHash = "29cf23eb9e20e675b2ac2de1b2386d117a374be893842d7d4cb291931f0e55f1"
 	compPath = "a3/f9/" + compHash + ".mp4"
 )
 
@@ -97,6 +124,16 @@ func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerSe
 			func() string { n++; return fmt.Sprintf("sp_%d", n) }, time.Now, nil)
 	}
 	return a, st
+}
+
+type markPipelineFiledFailureStore struct {
+	store.Store
+	calls int
+}
+
+func (s *markPipelineFiledFailureStore) MarkPipelineFiled(context.Context, string, time.Time) error {
+	s.calls++
+	return errors.New("injected parent pipeline filing failure")
 }
 
 // Confirm is the operator's terminal decision for the remaining proposal. The composite row stays
@@ -155,6 +192,38 @@ func TestConfirmSplit_FilesParentAfterOperatorAcceptsTheProposal(t *testing.T) {
 		if row.ClipHash == compHash {
 			t.Fatal("confirmed composite still appears on the Incoming conveyor")
 		}
+	}
+}
+
+func TestConfirmSplit_CannotFailAfterTheReviewedGenerationCommits(t *testing.T) {
+	ctx := context.Background()
+	a, st := newSplitAdapter(t, events.NewBus(), true)
+	if _, err := st.SetClipsHeld(ctx, []string{compPath}, true, false, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	proposal, err := a.splitter.Propose(ctx, compHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
+		ClipHash: compHash, Stage: filler.StageSplit, Status: filler.StatusQueued,
+		Disposition: filler.DispositionReview, NextRun: time.Now().UTC(),
+		EnrolledAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	failing := &markPipelineFiledFailureStore{Store: st}
+	a.splitClips = fillerSplitStoreAdapter{st: failing}
+
+	if err := a.ConfirmSplit(ctx, proposal.ID, proposal.Segments); err != nil {
+		t.Fatalf("ConfirmSplit reported a failure after committing the generation: %v", err)
+	}
+	if failing.calls != 0 {
+		t.Fatalf("outer post-commit parent filing calls = %d, want zero", failing.calls)
+	}
+	parent, found, err := st.GetClipPipeline(ctx, compHash)
+	if err != nil || !found || parent.Disposition != filler.DispositionFiled {
+		t.Fatalf("parent pipeline = %+v, found=%v, err=%v; want filed by the inner commit", parent, found, err)
 	}
 }
 
@@ -263,8 +332,8 @@ func TestSplit_ReportsOverTheBusAndPersistsTheProposal(t *testing.T) {
 //     overwrite the last — a 41-segment reel collapsing into a single row.
 //
 // This asserts the outcome an operator actually needs: N reviewed segments become N distinct,
-// airable catalog rows, each pointing back at a parent that is still there.
-func TestConfirmSplit_WritesEverySegmentAsItsOwnRow(t *testing.T) {
+// held and durably enrolled catalog rows, each pointing back at a parent that is still there.
+func TestConfirmSplit_WritesEverySegmentWithRecoverableConditioningLineage(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	st := testkit.MigratedSQLiteStore(t)
@@ -299,19 +368,26 @@ func TestConfirmSplit_WritesEverySegmentAsItsOwnRow(t *testing.T) {
 	if prop.ClipHash != compHash {
 		t.Fatalf("proposal.ClipHash = %q, want the compilation's hash %q", prop.ClipHash, compHash)
 	}
-
-	spawned, err := sp.Confirm(ctx, prop.ID, prop.Segments)
-	if err != nil {
-		t.Fatalf("Confirm: %v — this is the failure that made split review a dead end", err)
-	}
-	// ⚠ The returned hashes are what the pipeline enrols (§10 V51b). An empty slice here means a
-	// confirmed reel produces segments nothing ever prepares — never transcoded, never tagged.
-	if len(spawned) != len(prop.Segments) {
-		t.Errorf("Confirm returned %d hashes for %d segments — every cut must be enrollable",
-			len(spawned), len(prop.Segments))
+	if _, err := st.SetClipsHeld(ctx, []string{compPath}, true, false, time.Now().UTC()); err != nil {
+		t.Fatal(err)
 	}
 
-	clips, err := st.ListClips(ctx, store.ClipFilter{IncludeComposites: true})
+	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
+		ClipHash: compHash, Stage: filler.StageSplit, Status: filler.StatusQueued,
+		Disposition: filler.DispositionReview, NextRun: time.Now().UTC(),
+		EnrolledAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	app := fillerServiceAdapter{
+		splitter: sp, splitClips: fillerSplitStoreAdapter{st: st},
+		pipeline: filler.NewPipeline(st, fillerPipelineClipAdapter{st}, nil, filler.Budget{}, nil, time.Now, nil),
+	}
+	if err := app.ConfirmSplit(ctx, prop.ID, prop.Segments); err != nil {
+		t.Fatalf("ConfirmSplit: %v — this is the failure that made split review a dead end", err)
+	}
+
+	clips, err := st.ListClips(ctx, store.ClipFilter{IncludeComposites: true, IncludeHeld: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,6 +406,10 @@ func TestConfirmSplit_WritesEverySegmentAsItsOwnRow(t *testing.T) {
 			"empty-hash upsert bug (%+v)", len(segments), segments)
 	}
 	seen := map[string]bool{}
+	intendedByName := make(map[string]filler.SplitSegment, len(prop.Segments))
+	for _, intended := range prop.Segments {
+		intendedByName[intended.Name] = intended
+	}
 	for _, s := range segments {
 		if s.Hash == "" {
 			t.Errorf("segment %q has no identity — UpsertClip keys on hash", s.Name)
@@ -342,12 +422,34 @@ func TestConfirmSplit_WritesEverySegmentAsItsOwnRow(t *testing.T) {
 			t.Errorf("segment %q parentHash = %q, want %q — lineage is the point of V45",
 				s.Name, s.ParentHash, compHash)
 		}
+		if !s.Held {
+			t.Errorf("segment %q became airable before conditioning", s.Name)
+		}
 		// Filed where its identity says it lives, and the bytes are actually there.
 		if want := filler.ClipRelPath(s.Hash, ".mp4"); s.Path != want {
 			t.Errorf("segment %q path = %q, want the sharded %q", s.Name, s.Path, want)
 		}
 		if _, err := os.Stat(filepath.Join(drop, s.Path)); err != nil {
 			t.Errorf("segment %q has a catalog row but no file: %v", s.Name, err)
+		}
+		tags, ok := filler.ReadSidecarTags(filepath.Join(drop, s.Path))
+		if !ok {
+			t.Fatalf("segment %q has no durable sidecar", s.Name)
+		}
+		intended := intendedByName[s.Name]
+		if tags.ConditioningLineage == nil {
+			t.Fatalf("segment %q lost its conditioning lineage when the proposal was consumed", s.Name)
+		}
+		if tags.ConditioningLineage.ChildHash != s.Hash ||
+			tags.ConditioningLineage.ParentHash != compHash ||
+			tags.ConditioningLineage.IntendedStartMs != intended.StartMs ||
+			tags.ConditioningLineage.IntendedEndMs != intended.EndMs {
+			t.Errorf("segment %q lineage = %+v, want child %q parent %q interval [%d,%d)",
+				s.Name, tags.ConditioningLineage, s.Hash, compHash, intended.StartMs, intended.EndMs)
+		}
+		if row, found, err := st.GetClipPipeline(ctx, s.Hash); err != nil || !found || row.Stage != filler.StageProbe {
+			t.Errorf("segment %q pipeline = (%+v, %v, %v), want enrolled at probe",
+				s.Name, row, found, err)
 		}
 	}
 
@@ -357,6 +459,71 @@ func TestConfirmSplit_WritesEverySegmentAsItsOwnRow(t *testing.T) {
 	}
 	if !parent.IsComposite {
 		t.Error("the parent survived but is not marked composite — it would still be airable")
+	}
+}
+
+func TestConfirmSplit_DurableClaimAllowsOnlyOnePublisher(t *testing.T) {
+	ctx := context.Background()
+	st := testkit.MigratedSQLiteStore(t)
+	drop := t.TempDir()
+	parentFull := filepath.Join(drop, compPath)
+	if err := os.MkdirAll(filepath.Dir(parentFull), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(parentFull, []byte("compilation"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(1_902_000_000, 0).UTC()
+	parent := store.Clip{Clip: filler.Clip{
+		Hash: compHash, Path: compPath, Name: "reel", Kind: filler.Commercial,
+		DurationMs: 30_000, Held: true,
+	}, UpdatedAt: now}
+	if err := st.UpsertClip(ctx, parent); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
+		ClipHash: compHash, Stage: filler.StageSplit, Status: filler.StatusQueued,
+		Disposition: filler.DispositionReview, EnrolledAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	proposal := filler.SplitProposal{
+		ID: "proposal-concurrent", ClipHash: compHash, CreatedAt: now,
+		Segments: []filler.SplitSegment{{StartMs: 0, EndMs: 30_000, Name: "one"}},
+	}
+	if err := st.UpsertSplitProposal(ctx, proposal); err != nil {
+		t.Fatal(err)
+	}
+
+	firstTools := &gatedSplitTools{entered: make(chan struct{}, 1), release: make(chan struct{})}
+	secondTools := &gatedSplitTools{}
+	first := filler.NewSplitter(fillerSplitStoreAdapter{st: st}, firstTools, nil, drop,
+		func() time.Duration { return 10 * time.Second }, func() string { return "owner-a" }, func() time.Time { return now }, nil)
+	second := filler.NewSplitter(fillerSplitStoreAdapter{st: st}, secondTools, nil, drop,
+		func() time.Duration { return 10 * time.Second }, func() string { return "owner-b" }, func() time.Time { return now }, nil)
+
+	firstErr := make(chan error, 1)
+	go func() {
+		_, err := first.Confirm(ctx, proposal.ID, proposal.Segments)
+		firstErr <- err
+	}()
+	select {
+	case <-firstTools.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first confirmer did not reach its private cut")
+	}
+	if _, err := second.Confirm(ctx, proposal.ID, proposal.Segments); !errors.Is(err, filler.ErrProposalClaimed) {
+		t.Fatalf("second confirm = %v, want ErrProposalClaimed", err)
+	}
+	if got := secondTools.calls.Load(); got != 0 {
+		t.Fatalf("losing confirmer executed %d cuts, want none before filesystem work", got)
+	}
+	close(firstTools.release)
+	if err := <-firstErr; err != nil {
+		t.Fatalf("winning confirm: %v", err)
+	}
+	if _, err := st.GetSplitProposal(ctx, proposal.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("winning confirm retained proposal: %v", err)
 	}
 }
 

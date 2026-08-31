@@ -11,6 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/contact"
+	"github.com/loomarr/loomarr/internal/invitation"
+	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -61,7 +64,7 @@ func seedForMigration(t *testing.T, s Store) {
 	// AutoApprove, deliberately set opposite to Disabled so a transposition shows up.
 	for _, u := range []User{
 		{ID: "u-alice", Name: "alice", Role: RoleAdmin, Disabled: false, AutoApprove: true, PasswordHash: "hash-alice"},
-		{ID: "u-bob", Name: "bob", Role: RoleMember, Disabled: true, AutoApprove: false, PasswordHash: "hash-bob"},
+		{ID: "u-bob", Name: "bob", Role: RoleMember, Disabled: true, AutoApprove: false, MediaServerLinked: true, PasswordHash: "hash-bob"},
 	} {
 		u.CreatedAt, u.UpdatedAt = time.Now(), time.Now()
 		if err := s.UpsertUser(ctx, u); err != nil {
@@ -84,6 +87,45 @@ func seedForMigration(t *testing.T, s Store) {
 
 	if err := s.SetSetting(ctx, "setup.completed", "true"); err != nil {
 		t.Fatalf("seed setting: %v", err)
+	}
+
+	intent := notifications.Intent{
+		ID: "migration-notification", Topic: notifications.TopicAccountInvitation,
+		RecipientKind: notifications.RecipientInvitation, RecipientID: "migration-invitation",
+		ReferenceKind: notifications.ReferenceInvitation, ReferenceID: "migration-invitation",
+		Policy: notifications.PolicyMandatoryAccount, Template: notifications.TemplateData{RecipientName: "Ada"},
+		IdempotencyKey: "migration-invitation:created", CreatedAt: time.Unix(1_700_000_000, 0).UTC(),
+	}
+	attempt := notifications.Attempt{
+		ID: "migration-notification-attempt", IntentID: intent.ID, Means: notifications.MeansEmail,
+		DestinationRef: "migration-contact", DestinationRedacted: "a***@example.com",
+		Status: notifications.StatusQueued, AttemptNumber: 1,
+		AvailableAt: intent.CreatedAt, CreatedAt: intent.CreatedAt,
+	}
+	if _, created, err := s.CreateNotificationIntent(ctx, intent, []notifications.Attempt{attempt}); err != nil || !created {
+		t.Fatalf("seed notification: created=%t err=%v", created, err)
+	}
+
+	invited := invitation.Invitation{
+		ID: "migration-invitation", Kind: invitation.KindLocal, Username: "Ada",
+		IdentityKey: "ada", Role: invitation.RoleMember, Status: invitation.StatusPending,
+		CreatedAt: intent.CreatedAt, ExpiresAt: intent.CreatedAt.Add(invitation.Expiry),
+	}
+	address := &contact.Address{
+		OwnerKind: contact.OwnerInvitation, OwnerID: invited.ID, Email: "Ada@Example.com",
+		Normalized: "ada@example.com", Status: contact.StatusPending,
+		Provenance: contact.ProvenanceAdmin, CreatedAt: intent.CreatedAt,
+	}
+	if err := s.CreateInvitation(ctx, invited, address); err != nil {
+		t.Fatalf("seed invitation: %v", err)
+	}
+	grant := invitation.Grant{
+		TokenHash: invitation.HashGrant("migration-bearer"), InvitationID: invited.ID,
+		Kind: invitation.GrantActivation, Conveyance: invitation.ConveyanceEmail,
+		CreatedAt: intent.CreatedAt, ExpiresAt: invited.ExpiresAt,
+	}
+	if err := s.ReplaceInvitationGrant(ctx, invited.ID, grant, grant.CreatedAt); err != nil {
+		t.Fatalf("seed invitation grant: %v", err)
 	}
 
 	// The copier discovers the destination's live column set. Saving twice gives
@@ -142,7 +184,7 @@ func TestMigrateSQLiteToPostgres(t *testing.T) {
 	}
 	var sawDisabled, sawEnabled bool
 	for _, u := range users {
-		if u.Name == "bob" && u.Disabled && !u.AutoApprove {
+		if u.Name == "bob" && u.Disabled && !u.AutoApprove && u.MediaServerLinked {
 			sawDisabled = true
 		}
 		if u.Name == "alice" && !u.Disabled && u.AutoApprove {
@@ -156,6 +198,27 @@ func TestMigrateSQLiteToPostgres(t *testing.T) {
 
 	if v, err := dst.GetSetting(ctx, "setup.completed"); err != nil || v != "true" {
 		t.Errorf("setup.completed = %q (err %v), want \"true\" — wizard state must survive", v, err)
+	}
+	migratedIntent, err := dst.GetNotificationIntent(ctx, "migration-notification")
+	if err != nil || migratedIntent.Template.RecipientName != "Ada" || !migratedIntent.TerminalAt.IsZero() {
+		t.Errorf("migrated notification intent = %+v, err %v", migratedIntent, err)
+	}
+	migratedAttempts, err := dst.ListNotificationAttempts(ctx, "migration-notification")
+	if err != nil || len(migratedAttempts) != 1 || migratedAttempts[0].Status != notifications.StatusQueued ||
+		migratedAttempts[0].DestinationRef != "migration-contact" {
+		t.Errorf("migrated notification attempts = %+v, err %v", migratedAttempts, err)
+	}
+	migratedInvitation, err := dst.GetInvitation(ctx, "migration-invitation", time.Unix(1_700_000_000, 0).UTC())
+	if err != nil || migratedInvitation.Username != "Ada" || migratedInvitation.Role != invitation.RoleMember {
+		t.Errorf("migrated invitation = %+v, err %v", migratedInvitation, err)
+	}
+	migratedContact, err := dst.GetInvitationContactAddress(ctx, "migration-invitation")
+	if err != nil || migratedContact.Normalized != "ada@example.com" || migratedContact.Status != contact.StatusPending {
+		t.Errorf("migrated invitation contact = %+v, err %v", migratedContact, err)
+	}
+	migratedGrants, err := dst.ListInvitationGrants(ctx, "migration-invitation")
+	if err != nil || len(migratedGrants) != 1 || migratedGrants[0].TokenHash != invitation.HashGrant("migration-bearer") {
+		t.Errorf("migrated invitation grants = %+v, err %v", migratedGrants, err)
 	}
 }
 

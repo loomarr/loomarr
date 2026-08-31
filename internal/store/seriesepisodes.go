@@ -1,13 +1,16 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/episodeevidence"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
 
@@ -53,11 +56,11 @@ func (s *sqlStore) GetSeriesEpisodes(ctx context.Context, libraryID string) (Ser
 		}
 		return SeriesEpisodes{}, fmt.Errorf("get series episodes %s: %w", libraryID, err)
 	}
-	if epsJSON != "" {
-		if err := json.Unmarshal([]byte(epsJSON), &out.Episodes); err != nil {
-			return SeriesEpisodes{}, fmt.Errorf("decode series episodes %s: %w", libraryID, err)
-		}
+	episodes, err := decodeSeriesEpisodes([]byte(epsJSON))
+	if err != nil {
+		return SeriesEpisodes{}, fmt.Errorf("decode series episodes %s: %w", libraryID, err)
 	}
+	out.Episodes = episodes
 	if fetched > 0 {
 		out.FetchedAt = time.Unix(fetched, 0)
 	}
@@ -70,7 +73,12 @@ func (s *sqlStore) GetSeriesEpisodes(ctx context.Context, libraryID string) (Ser
 // merging would preserve episodes the media server no longer reports — a deleted episode would
 // linger in every channel's lineup until someone noticed.
 func (s *sqlStore) UpsertSeriesEpisodes(ctx context.Context, se SeriesEpisodes) error {
-	eps := se.Episodes
+	for i, episode := range se.Episodes {
+		if err := validateCachedEpisode(episode); err != nil {
+			return fmt.Errorf("upsert series episodes %s: episode %d: %w", se.LibraryID, i, err)
+		}
+	}
+	eps := sanitizeSeriesEpisodes(se.Episodes)
 	if eps == nil {
 		eps = []schedule.ResolvedProgram{} // store `[]`, never `null` — see the column default
 	}
@@ -121,15 +129,178 @@ func (s *sqlStore) ListStaleSeriesEpisodes(ctx context.Context, before time.Time
 		if err := rows.Scan(&se.LibraryID, &epsJSON, &fetched); err != nil {
 			return nil, fmt.Errorf("scan stale series episodes: %w", err)
 		}
-		if epsJSON != "" {
-			// A decode failure on ONE row must not fail the sweep: the row is re-fetched
-			// anyway, which is exactly the repair. Leaving Episodes nil is honest.
-			_ = json.Unmarshal([]byte(epsJSON), &se.Episodes)
-		}
+		// A decode failure on ONE row must not fail the sweep: the row is re-fetched
+		// anyway, which is exactly the repair. Leaving Episodes nil is honest.
+		se.Episodes, _ = decodeSeriesEpisodes([]byte(epsJSON))
 		if fetched > 0 {
 			se.FetchedAt = time.Unix(fetched, 0)
 		}
 		out = append(out, se)
 	}
 	return out, rows.Err()
+}
+
+func sanitizeSeriesEpisodes(episodes []schedule.ResolvedProgram) []schedule.ResolvedProgram {
+	if episodes == nil {
+		return nil
+	}
+	out := make([]schedule.ResolvedProgram, len(episodes))
+	copy(out, episodes)
+	for i := range out {
+		evidence := episodeevidence.Sanitize(out[i].CommunityRating, out[i].Overview, out[i].Tags)
+		out[i].CommunityRating = evidence.CommunityRating
+		out[i].Overview = evidence.Overview
+		out[i].Tags = evidence.Tags
+	}
+	return out
+}
+
+func decodeSeriesEpisodes(blob []byte) ([]schedule.ResolvedProgram, error) {
+	if bytes.Equal(bytes.TrimSpace(blob), []byte("null")) {
+		return nil, errors.New("episode cache must be a JSON array, not null")
+	}
+	var encoded []json.RawMessage
+	if err := json.Unmarshal(blob, &encoded); err != nil {
+		return nil, err
+	}
+	out := make([]schedule.ResolvedProgram, 0, len(encoded))
+	for i, raw := range encoded {
+		structural, evidence, err := episodeevidence.DecodeObject(raw)
+		if err != nil {
+			return nil, fmt.Errorf("episode %d: %w", i, err)
+		}
+		fields, err := decodeEpisodeObjectFields(structural)
+		if err != nil {
+			return nil, fmt.Errorf("episode %d: %w", i, err)
+		}
+		structural, err = validateEpisodeStructuralFields(fields)
+		if err != nil {
+			return nil, fmt.Errorf("episode %d: %w", i, err)
+		}
+		var episode schedule.ResolvedProgram
+		if err := json.Unmarshal(structural, &episode); err != nil {
+			return nil, fmt.Errorf("episode %d structural fields: %w", i, err)
+		}
+		if err := validateCachedEpisode(episode); err != nil {
+			return nil, fmt.Errorf("episode %d: %w", i, err)
+		}
+		episode.CommunityRating = evidence.CommunityRating
+		episode.Overview = evidence.Overview
+		episode.Tags = evidence.Tags
+		out = append(out, episode)
+	}
+	return out, nil
+}
+
+type episodeObjectField struct {
+	name  string
+	value json.RawMessage
+}
+
+func decodeEpisodeObjectFields(raw json.RawMessage) ([]episodeObjectField, error) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	opening, err := dec.Token()
+	if err != nil {
+		return nil, err
+	}
+	delim, ok := opening.(json.Delim)
+	if !ok || delim != '{' {
+		return nil, errors.New("episode must be a JSON object")
+	}
+	var fields []episodeObjectField
+	for dec.More() {
+		keyToken, err := dec.Token()
+		if err != nil {
+			return nil, err
+		}
+		name, ok := keyToken.(string)
+		if !ok {
+			return nil, errors.New("episode object member name is not a string")
+		}
+		var value json.RawMessage
+		if err := dec.Decode(&value); err != nil {
+			return nil, err
+		}
+		fields = append(fields, episodeObjectField{name: name, value: value})
+	}
+	closing, err := dec.Token()
+	if err != nil {
+		return nil, err
+	}
+	if delim, ok := closing.(json.Delim); !ok || delim != '}' {
+		return nil, errors.New("episode JSON object is not closed")
+	}
+	return fields, nil
+}
+
+func validateEpisodeStructuralFields(fields []episodeObjectField) ([]byte, error) {
+	structuralCounts := make(map[string]int, 5)
+	var structural bytes.Buffer
+	structural.WriteByte('{')
+	first := true
+	for _, field := range fields {
+		if canonical, required := requiredEpisodeStructuralField(field.name); required {
+			structuralCounts[canonical]++
+			if structuralCounts[canonical] > 1 {
+				return nil, fmt.Errorf("duplicate structural member %s", canonical)
+			}
+			if err := validateEpisodeStructuralJSONType(canonical, field.value); err != nil {
+				return nil, err
+			}
+		}
+		name, err := json.Marshal(field.name)
+		if err != nil {
+			return nil, err
+		}
+		if !first {
+			structural.WriteByte(',')
+		}
+		first = false
+		structural.Write(name)
+		structural.WriteByte(':')
+		structural.Write(field.value)
+	}
+	for _, canonical := range requiredEpisodeStructuralFields {
+		if structuralCounts[canonical] == 0 {
+			return nil, fmt.Errorf("missing structural member %s", canonical)
+		}
+	}
+	structural.WriteByte('}')
+	return structural.Bytes(), nil
+}
+
+var requiredEpisodeStructuralFields = [...]string{"LibraryItemID", "DurationMs", "Season", "Episode", "EpisodeEnd"}
+
+func validateEpisodeStructuralJSONType(name string, value json.RawMessage) error {
+	dec := json.NewDecoder(bytes.NewReader(value))
+	dec.UseNumber()
+	token, err := dec.Token()
+	if err != nil {
+		return fmt.Errorf("structural member %s: %w", name, err)
+	}
+	if name == "LibraryItemID" {
+		if _, ok := token.(string); !ok {
+			return fmt.Errorf("structural member %s must be a JSON string", name)
+		}
+		return nil
+	}
+	if _, ok := token.(json.Number); !ok {
+		return fmt.Errorf("structural member %s must be a JSON number", name)
+	}
+	return nil
+}
+
+func requiredEpisodeStructuralField(name string) (string, bool) {
+	for _, canonical := range requiredEpisodeStructuralFields {
+		if strings.EqualFold(name, canonical) {
+			return canonical, true
+		}
+	}
+	return "", false
+}
+
+func validateCachedEpisode(episode schedule.ResolvedProgram) error {
+	return episodeevidence.ValidatePlayable(
+		episode.LibraryItemID, episode.DurationMs, episode.Season, episode.Episode, episode.EpisodeEnd,
+	)
 }

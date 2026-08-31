@@ -18,6 +18,7 @@ var groupTitles = map[Group]string{
 	GroupPlayout:       "Playout",
 	GroupFiller:        "Filler / commercials",
 	GroupBackup:        "Backup",
+	GroupNotifications: "Notifications",
 	GroupUsersSecurity: "Users & security",
 	GroupSSO:           "Single sign-on",
 	GroupImages:        "Images",

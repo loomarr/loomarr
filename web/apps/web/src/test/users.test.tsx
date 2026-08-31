@@ -1,18 +1,27 @@
 import type { UserBody } from "@loomarr/api";
 import {
+  getCreateInvitationMockHandler,
   getCreateLocalUserMockHandler,
+  getDeleteUserContactAddressMockHandler,
+  getDeleteUserContactReplacementMockHandler,
   getImportCandidatesMockHandler,
+  getImportUsersMockHandler,
+  getIssueInvitationGrantMockHandler,
+  getListInvitationsMockHandler,
   getListUserSessionsMockHandler,
   getListUsersMockHandler,
   getMeMockHandler,
   getPatchUserMockHandler,
+  getPutUserContactAddressMockHandler,
   getResetUserPasswordMockHandler,
+  getRevokeSessionMockHandler,
+  getSendInvitationEmailMockHandler,
   getSettingsListMockHandler,
   getSyncUsersMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { routeTree } from "@/routeTree.gen";
@@ -77,24 +86,52 @@ const stubUsers = ({
   // resolver proves the request reached that route.
   const patches: unknown[] = [];
   const creates: unknown[] = [];
+  const imports: unknown[] = [];
   const resets: Array<{ id: string; body: unknown }> = [];
+  const revokes: string[] = [];
+  const syncs: boolean[] = [];
+  const contactUpdates: Array<{ id: string; body: unknown }> = [];
+  const contactRemovals: string[] = [];
+  const replacementCancellations: string[] = [];
+  const rows = [ADA, GRACE];
 
   server.use(
     getMeMockHandler(who),
-    getListUsersMockHandler({ users: [ADA, GRACE] }),
+    getListUsersMockHandler(() => ({ users: rows })),
     getImportCandidatesMockHandler({ candidates }),
+    getImportUsersMockHandler(async ({ request }) => {
+      imports.push(await request.json());
+      return { imported: 1 };
+    }),
     getListUserSessionsMockHandler({ sessions }),
-    getSyncUsersMockHandler({ synced: 2 }),
+    getSyncUsersMockHandler(() => {
+      syncs.push(true);
+      return { synced: 2 };
+    }),
+    getRevokeSessionMockHandler(({ params }) => {
+      revokes.push(String(params.hash));
+    }),
     getPatchUserMockHandler(async ({ request }) => {
       patches.push(await request.json());
       return { ...GRACE, role: "admin" } satisfies UserBody;
     }),
     getCreateLocalUserMockHandler(async ({ request }) => {
       creates.push(await request.json());
-      return user({ id: "u3", name: "newcomer", role: "member" });
+      const created = user({ id: "u3", name: "newcomer", role: "member", local: true });
+      rows.push(created);
+      return created;
     }),
     getResetUserPasswordMockHandler(async ({ request, params }) => {
       resets.push({ id: String(params.id), body: await request.json() });
+    }),
+    getPutUserContactAddressMockHandler(async ({ request, params }) => {
+      contactUpdates.push({ id: String(params.id), body: await request.json() });
+    }),
+    getDeleteUserContactAddressMockHandler(({ params }) => {
+      contactRemovals.push(String(params.id));
+    }),
+    getDeleteUserContactReplacementMockHandler(({ params }) => {
+      replacementCancellations.push(String(params.id));
     }),
     // ⚠ `user_sync` is a COMPUTED feature, not a setting: the route stays registered while the
     // complete live media-server connection gates the operation, so the page reads the same
@@ -105,7 +142,17 @@ const stubUsers = ({
     ...appHandlers(),
   );
 
-  return { patches, creates, resets };
+  return {
+    patches,
+    creates,
+    imports,
+    resets,
+    revokes,
+    syncs,
+    contactUpdates,
+    contactRemovals,
+    replacementCancellations,
+  };
 };
 
 const renderAt = (path: string) => {
@@ -126,6 +173,92 @@ const renderAt = (path: string) => {
 // built, unit-tested, and never actually mounted by any route — the component tests all
 // passed while the feature was absent. Component tests pin behavior; these pin the wiring.
 describe("Users page", () => {
+  it("creates and shares a local invitation through generated endpoints", async () => {
+    stubUsers();
+    const creates: unknown[] = [];
+    const grants: Array<{ id: string; body: unknown }> = [];
+    const expiresAt = Date.UTC(2030, 0, 8);
+    server.use(
+      getCreateInvitationMockHandler(async ({ request }) => {
+        creates.push(await request.json());
+        return {
+          id: "invitation-new",
+          kind: "local",
+          username: "Dorothy",
+          role: "member",
+          status: "pending",
+          createdAt: Date.UTC(2030, 0, 1),
+          expiresAt,
+          contactAddress: { email: "dorothy@example.com", status: "pending", provenance: "admin" },
+        };
+      }),
+      getIssueInvitationGrantMockHandler(async ({ request, params }) => {
+        grants.push({ id: String(params.id), body: await request.json() });
+        return {
+          url: "https://loomarr.example/join#grant=fake-route-test-grant",
+          expiresAt,
+        };
+      }),
+    );
+    renderAt("/people");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Invite person" }));
+    await userEvent.type(screen.getByLabelText("Reserved username"), " Dorothy ");
+    await userEvent.type(screen.getByLabelText("Contact email (optional)"), "dorothy@example.com");
+    await userEvent.click(screen.getByRole("button", { name: "Create invitation" }));
+
+    expect(await screen.findByRole("img", { name: /Scan to accept Dorothy/ })).toBeInTheDocument();
+    expect(creates).toEqual([
+      {
+        kind: "local",
+        username: "Dorothy",
+        contactEmail: "dorothy@example.com",
+        role: "member",
+      },
+    ]);
+    expect(grants).toEqual([{ id: "invitation-new", body: { conveyance: "qr" } }]);
+    expect(screen.queryByText(/fake-route-test-grant/)).not.toBeInTheDocument();
+  });
+
+  it("shows invitation delivery state and sends an idempotent email request", async () => {
+    stubUsers();
+    const sends: Array<{ id: string; body: unknown }> = [];
+    server.use(
+      getListInvitationsMockHandler({
+        invitations: [
+          {
+            id: "invitation-1",
+            kind: "local",
+            username: "Dorothy",
+            role: "member",
+            status: "pending",
+            createdAt: Date.UTC(2030, 0, 1),
+            expiresAt: Date.UTC(2030, 0, 8),
+            contactAddress: { email: "dorothy@example.com", status: "pending", provenance: "admin" },
+            emailDelivery: {
+              status: "failed",
+              outcome: "recipient_rejected",
+              attemptNumber: 1,
+              updatedAt: Date.UTC(2030, 0, 2),
+            },
+          },
+        ],
+      }),
+      getSendInvitationEmailMockHandler(async ({ request, params }) => {
+        sends.push({ id: String(params.id), body: await request.json() });
+        return { status: "queued", attemptNumber: 1, updatedAt: Date.UTC(2030, 0, 3) };
+      }),
+    );
+    renderAt("/people");
+
+    expect(await screen.findByText("Dorothy")).toBeInTheDocument();
+    expect(screen.getByText("Email failed")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Retry email to Dorothy" }));
+    await waitFor(() => expect(sends).toHaveLength(1));
+    expect(sends[0]?.id).toBe("invitation-1");
+    expect(sends[0]?.body).toEqual({ requestId: expect.any(String) });
+  });
+
   it("lists the allowlist with each row's credential path", async () => {
     stubUsers();
     renderAt("/people");
@@ -136,21 +269,49 @@ describe("Users page", () => {
     // Exact strings, not regexes: a partial matcher also matches the ancestor <div>,
     // which contains the same text plus the user's name.
     expect(screen.getByText("Local account")).toBeInTheDocument();
-    expect(screen.getByText("Media-server account")).toBeInTheDocument();
+    expect(
+      screen.getByText("Media-server account · sign in once to enable offline login"),
+    ).toBeInTheDocument();
   });
 
-  it("patches a single field without a save step", async () => {
+  it("sends exact generated-client patches for every immediate person setting", async () => {
     const { patches } = stubUsers();
     renderAt("/people");
     await screen.findByText("Grace");
 
-    // Grace's row — the second Role select. Open it, then pick admin from its listbox
-    // (only the opened Select mounts its options, so the query is unambiguous).
-    const roles = screen.getAllByLabelText("Role");
-    await userEvent.click(roles[1] as HTMLElement);
-    await userEvent.click(await screen.findByRole("option", { name: "admin" }));
+    await userEvent.click(screen.getByRole("button", { name: "Manage Grace" }));
+    const detail = await screen.findByRole("dialog", { name: "Grace" });
+    await userEvent.click(within(detail).getByLabelText("Role"));
+    await userEvent.click(await screen.findByRole("option", { name: "Admin" }));
+    await waitFor(() => expect(patches).toEqual([{ role: "admin" }]));
 
-    expect(patches, "changing a role should PATCH immediately").toEqual([{ role: "admin" }]);
+    const quota = within(detail).getByLabelText("Quota");
+    await userEvent.clear(quota);
+    await userEvent.type(quota, "7");
+    await userEvent.tab();
+    await waitFor(() => expect(patches).toHaveLength(2));
+
+    await userEvent.click(within(detail).getByLabelText("Auto-approve requests"));
+    await waitFor(() => expect(patches).toHaveLength(3));
+    await userEvent.click(within(detail).getByRole("button", { name: "Disable account" }));
+
+    await waitFor(() =>
+      expect(patches).toEqual([{ role: "admin" }, { quota: 7 }, { autoApprove: true }, { disabled: true }]),
+    );
+  });
+
+  it("sends contact changes to the selected person's generated endpoints", async () => {
+    const state = stubUsers();
+    renderAt("/people");
+    await userEvent.click(await screen.findByRole("button", { name: "Manage Grace" }));
+    const detail = await screen.findByRole("dialog", { name: "Grace" });
+    await userEvent.click(within(detail).getByRole("button", { name: "Add email" }));
+    await userEvent.type(within(detail).getByLabelText("Contact email"), "grace@example.com");
+    await userEvent.click(within(detail).getByRole("button", { name: "Save email" }));
+
+    await waitFor(() =>
+      expect(state.contactUpdates).toEqual([{ id: "u2", body: { email: "grace@example.com" } }]),
+    );
   });
 
   it("opens a user's live sessions", async () => {
@@ -168,14 +329,17 @@ describe("Users page", () => {
     renderAt("/people");
     await screen.findByText("Grace");
 
-    const buttons = await screen.findAllByRole("button", { name: /sessions/i });
-    await userEvent.click(buttons[1] as HTMLElement);
+    const trigger = screen.getByRole("button", { name: "Manage Grace" });
+    await userEvent.click(trigger);
     expect(await screen.findByText(/1 active session for Grace/)).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Grace" })).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
   });
 
-  // The import panel is the whole point of §11's "explicit import, never implicit". If it
+  // The import dialog is the whole point of §11's "explicit import, never implicit". If it
   // is not on the page, an admin has no way to grant access at all.
-  it("mounts the import panel with real candidate names", async () => {
+  it("opens the import dialog with real candidate names", async () => {
     stubUsers({
       candidates: [
         { id: "e1", name: "Hopper", imported: false, disabled: false, isAdmin: true },
@@ -183,11 +347,50 @@ describe("Users page", () => {
       ],
     });
     renderAt("/people");
+    await userEvent.click(await screen.findByRole("button", { name: /import from emby\/jellyfin/i }));
     expect(await screen.findByText("Hopper")).toBeInTheDocument();
     // Already-imported accounts stay visible, checked and locked — hiding them reads as
     // "missing", and re-offering them implies a no-op does something.
     expect(screen.getByText(/already imported/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/lovelace/i)).toBeDisabled();
+  });
+
+  it("imports selected ids without asking the caller to reinterpret server roles", async () => {
+    const { imports } = stubUsers({
+      candidates: [{ id: "e1", name: "Hopper", imported: false, disabled: false, isAdmin: true }],
+    });
+    renderAt("/people");
+
+    await userEvent.click(await screen.findByRole("button", { name: /import from emby\/jellyfin/i }));
+    await userEvent.click(await screen.findByLabelText(/^Hopper/));
+    expect(screen.queryByLabelText(/grant admin to server admins/i)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /import 1 account/i }));
+
+    expect(imports).toEqual([{ ids: ["e1"] }]);
+  });
+
+  it("routes sync and session revocation to their exact generated-client endpoints", async () => {
+    const state = stubUsers({
+      sessions: [
+        {
+          id: "opaque-session-hash",
+          userId: "u2",
+          createdAt: Date.now() - 3_600_000,
+          expiresAt: Date.now() + 3_600_000,
+          current: false,
+        },
+      ],
+    });
+    renderAt("/people");
+
+    await userEvent.click(await screen.findByRole("button", { name: /import from emby\/jellyfin/i }));
+    await userEvent.click(await screen.findByRole("button", { name: "Sync existing" }));
+    expect(state.syncs).toEqual([true]);
+    await userEvent.keyboard("{Escape}");
+
+    await userEvent.click(screen.getByRole("button", { name: "Manage Grace" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+    expect(state.revokes).toEqual(["opaque-session-hash"]);
   });
 
   // POST /v1/users/sync stays registered while unconfigured and returns the supported
@@ -196,21 +399,23 @@ describe("Users page", () => {
     stubUsers({ userSync: false });
     renderAt("/people");
     await screen.findByText("Ada");
-    expect(await screen.findByText(/connect emby or jellyfin/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /import from emby\/jellyfin/i }));
+    expect(await screen.findByText(/connect a media server first/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /sync existing/i })).not.toBeInTheDocument();
   });
 
   // V7c: the admin half of local accounts. V7 shipped the endpoints; without these the
   // capability was reachable only by hand-crafting an API call — the same gap the
   // Account screen (V7b) closed on the self-service side.
-  it("mounts the create-local-account panel and sends the typed role", async () => {
+  it("opens the create-local dialog, sends the typed role, and refreshes the roster", async () => {
     // ⚠ The old assertion looked for a POST whose url merely CONTAINED "/v1/users" — which is
     // also true of `/v1/users/import`, `/v1/users/sync` and `/v1/users/u1/password`, all POSTs.
     // It happened to find the right one; it did not assert the right one. `creates` is fed only
     // by the handler bound to `POST /v1/users`.
     const { creates } = stubUsers();
     renderAt("/people");
-    await userEvent.click(await screen.findByRole("button", { name: /create local account/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /add local account/i }));
+    expect(await screen.findByRole("dialog", { name: "Add local account" })).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText(/username/i), "newcomer");
     await userEvent.type(screen.getByLabelText(/^password$/i), "a-good-password");
     await userEvent.click(screen.getByRole("button", { name: /create account/i }));
@@ -218,33 +423,44 @@ describe("Users page", () => {
     expect(creates).toEqual([
       expect.objectContaining({ username: "newcomer", password: "a-good-password", role: "member" }),
     ]);
+    expect(await screen.findByText("newcomer")).toBeInTheDocument();
   });
 
   it("offers Reset password on a local row and not on an imported one", async () => {
     // The row's local/media-server label has always existed to explain "whether a
     // password reset is even meaningful". This is that action — and the negative is the
-    // point: Loomarr never held an imported user's credential, so offering to reset it
-    // would imply it could change their media-server password.
+    // point: the provider owns password changes. Loomarr's offline verifier cannot change
+    // the media-server password, so offering a reset here would imply authority it lacks.
     stubUsers();
     renderAt("/people");
-    // Wait on a ROW affordance, not on "Ada" — that name also renders in the nav footer
-    // as the signed-in user, so it resolves before the users query settles.
-    await screen.findAllByRole("button", { name: /sessions/i });
-    const resets = screen.getAllByRole("button", { name: /reset password/i });
-    expect(resets).toHaveLength(1); // Ada is local; Grace is imported
+    await userEvent.click(await screen.findByRole("button", { name: "Manage Ada" }));
+    expect(await screen.findByRole("button", { name: /reset password/i })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    await userEvent.click(screen.getByRole("button", { name: "Manage Grace" }));
+    const imported = await screen.findByRole("dialog", { name: "Grace" });
+    expect(within(imported).queryByRole("button", { name: /reset password/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps self-demotion and self-disable unavailable on the routed page", async () => {
+    stubUsers();
+    renderAt("/people");
+    await userEvent.click(await screen.findByRole("button", { name: "Manage Ada" }));
+    const detail = await screen.findByRole("dialog", { name: "Ada" });
+    expect(within(detail).getByLabelText("Role")).toBeDisabled();
+    expect(within(detail).getByRole("button", { name: "Disable account" })).toBeDisabled();
   });
 
   it("sends the new password to the admin reset route", async () => {
     const { resets } = stubUsers();
     renderAt("/people");
-    await screen.findAllByRole("button", { name: /sessions/i });
-    await userEvent.click(screen.getByRole("button", { name: /reset password/i }));
+    await userEvent.click(await screen.findByRole("button", { name: "Manage Ada" }));
+    await userEvent.click(await screen.findByRole("button", { name: /reset password/i }));
     await userEvent.type(await screen.findByLabelText(/new password/i), "an-admin-set-pw");
     await userEvent.click(screen.getByRole("button", { name: /set new password/i }));
 
     // The id comes from the PATH PARAM the resolver parsed, so this pins which user was reset —
     // the old `u.includes("/v1/users/u1/password")` could only confirm the string it was given.
-    expect(resets).toEqual([{ id: "u1", body: { next: "an-admin-set-pw" } }]);
+    await waitFor(() => expect(resets).toEqual([{ id: "u1", body: { next: "an-admin-set-pw" } }]));
   });
 
   it("refuses the page to a member with an explanation, not failed requests", async () => {

@@ -2,6 +2,8 @@ package library
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -76,6 +78,9 @@ func TestAuthenticateLoginHeader(t *testing.T) {
 		if _, err := c.AuthenticateByName(context.Background(), ms.GoodUser, ms.GoodPass); err != nil {
 			t.Fatal(err)
 		}
+		if !strings.HasPrefix(ms.LastEmbyAuthz, "MediaBrowser ") {
+			t.Errorf("Emby login header = %q, want MediaBrowser scheme", ms.LastEmbyAuthz)
+		}
 		if !strings.Contains(ms.LastEmbyAuthz, `DeviceId="loomarr-test-device"`) {
 			t.Errorf("Emby login header missing DeviceId: %q", ms.LastEmbyAuthz)
 		}
@@ -109,9 +114,22 @@ func TestAuthenticateSuccess(t *testing.T) {
 // The §11/§19 negative path: bad password → error (real Emby 401, pinned fixture).
 func TestAuthenticateBadPasswordErrors(t *testing.T) {
 	c, ms := newClient(t, Emby)
-	_, err := c.AuthenticateByName(context.Background(), ms.GoodUser, "wrong-password")
-	if err == nil {
-		t.Fatal("expected error on bad password (§11 negative path)")
+	const password = "wrong-password-must-not-leak"
+	_, err := c.AuthenticateByName(context.Background(), ms.GoodUser, password)
+	if !errors.Is(err, ErrCredentialsRejected) {
+		t.Fatalf("bad password error = %v, want ErrCredentialsRejected", err)
+	}
+	if strings.Contains(err.Error(), password) {
+		t.Fatal("authentication error leaked the submitted password")
+	}
+}
+
+func TestAuthenticateProviderUnavailableErrors(t *testing.T) {
+	c, ms := newClient(t, Emby)
+	ms.AuthStatus = http.StatusServiceUnavailable
+	_, err := c.AuthenticateByName(context.Background(), ms.GoodUser, ms.GoodPass)
+	if !errors.Is(err, ErrProviderUnavailable) {
+		t.Fatalf("provider 503 error = %v, want ErrProviderUnavailable", err)
 	}
 }
 

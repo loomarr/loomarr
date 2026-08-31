@@ -62,6 +62,63 @@ func TestCommittedNASAPilotLaneSatisfiesContract(t *testing.T) {
 	}
 }
 
+func TestCommittedCDCPilotLaneSatisfiesContract(t *testing.T) {
+	raw, err := os.ReadFile("corpus/pilot/cdc.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lane Lane
+	if err := json.Unmarshal(raw, &lane); err != nil {
+		t.Fatal(err)
+	}
+	p := validPilot()
+	p.SnapshotAt = time.Date(2026, 8, 26, 14, 6, 0, 0, time.UTC)
+	p.LockedAt = p.SnapshotAt.Add(time.Minute)
+	p.Lanes[3] = lane
+	if failures := ValidatePilot(p); len(failures) != 0 {
+		t.Fatalf("failures = %v", failures)
+	}
+}
+
+func TestCommittedCommonsPilotLaneSatisfiesContract(t *testing.T) {
+	raw, err := os.ReadFile("corpus/pilot/commons.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lane Lane
+	if err := json.Unmarshal(raw, &lane); err != nil {
+		t.Fatal(err)
+	}
+	p := validPilot()
+	p.SnapshotAt = time.Date(2026, 8, 26, 14, 6, 0, 0, time.UTC)
+	p.LockedAt = p.SnapshotAt.Add(time.Minute)
+	p.Lanes[4] = lane
+	if failures := ValidatePilot(p); len(failures) != 0 {
+		t.Fatalf("failures = %v", failures)
+	}
+}
+
+func TestCommittedLockedPilotSatisfiesContract(t *testing.T) {
+	raw, err := os.ReadFile("corpus/pilot/locked.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pilot Pilot
+	if err := json.Unmarshal(raw, &pilot); err != nil {
+		t.Fatal(err)
+	}
+	if failures := ValidatePilot(pilot); len(failures) != 0 {
+		t.Fatalf("failures = %v", failures)
+	}
+	var cases int
+	for _, lane := range pilot.Lanes {
+		cases += len(lane.Cases)
+	}
+	if cases != 50 {
+		t.Fatalf("cases = %d", cases)
+	}
+}
+
 func TestValidatePilotRequiresTenBoundedCasesFromEveryQualifiedLane(t *testing.T) {
 	p := validPilot()
 	if failures := ValidatePilot(p); len(failures) != 0 {
@@ -85,6 +142,15 @@ func TestValidatePilotRejectsApprovalOrLabelFieldsAtDecodeBoundary(t *testing.T)
 	}
 }
 
+func TestValidatePilotRejectsRetiredBlenderLane(t *testing.T) {
+	p := validPilot()
+	p.Lanes[0].Authority = "blender.org"
+	failures := strings.Join(ValidatePilot(p), "\n")
+	if !strings.Contains(failures, `unknown pilot authority "blender.org"`) {
+		t.Fatalf("failures = %s", failures)
+	}
+}
+
 func validPilot() Pilot {
 	snapshot := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
 	p := Pilot{SchemaVersion: PilotSchemaVersion, SnapshotAt: snapshot, LockedAt: snapshot.Add(time.Hour)}
@@ -92,7 +158,11 @@ func validPilot() Pilot {
 		lane := Lane{Authority: authority, MaxRequests: 20, RequestsUsed: 11, MaxResponseBytes: 1 << 20, ResponseBytes: 1000, MaxPredictedMediaBytes: 10000, PredictedMediaBytes: 10000, MaxWallTimeMS: 60000, WallTimeMS: 1000}
 		for i := range 10 {
 			id := strings.ReplaceAll(authority, "/", "-") + "-" + string(rune('a'+i))
-			lane.Cases = append(lane.Cases, Candidate{ItemID: id, Title: id, RoleHints: []string{"candidate"}, ItemURL: "https://example.com/item/" + id, MetadataURL: "https://example.com/meta/" + id, MetadataRetrievedAt: snapshot, MetadataSHA256: strings.Repeat("a", 64), RightsAssertions: []string{"unreviewed source assertion"}, Representation: Representation{Name: id + ".mp4", URL: "https://example.com/media/" + id, MIMEType: "video/mp4", Bytes: 1000}})
+			candidate := Candidate{ItemID: id, Title: id, RoleHints: []string{"candidate"}, ItemURL: "https://example.com/item/" + id, MetadataURL: "https://example.com/meta/" + id, MetadataRetrievedAt: snapshot, MetadataSHA256: strings.Repeat("a", 64), RightsAssertions: []string{"unreviewed source assertion"}, Representation: Representation{Name: id + ".mp4", URL: "https://example.com/media/" + id, MIMEType: "video/mp4", Bytes: 1000}}
+			if authority == "commons.wikimedia.org" {
+				candidate.DiscoveryPath = []string{"Category:Candidate videos"}
+			}
+			lane.Cases = append(lane.Cases, candidate)
 		}
 		p.Lanes = append(p.Lanes, lane)
 	}

@@ -51,6 +51,9 @@ func (s *UserSync) Sync(ctx context.Context) (int, error) {
 		if err != nil {
 			return n, err
 		}
+		if !existing.MediaServerLinked {
+			continue // an id collision must never turn a local account into provider-owned state
+		}
 		wasEnabled := !existing.Disabled
 		existing.Name = ms.Name
 		existing.Disabled = ms.Disabled

@@ -4,7 +4,7 @@ import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import type { ClipPipelineProps } from "./clip-pipeline.type";
 
-// ClipPipeline — where one clip is in the eight-rung ingest pipeline (§10 V51b/V51e).
+// ClipPipeline — where one clip is in the nine-rung ingest pipeline (§10 V51b/V51e/V61).
 //
 // ⚠ **The copy lives on the frontend, keyed by stage id; the SEQUENCE lives on the server.** The
 // backend sends stable ids (`probe`, `transcode`, …) — the §11 refusal-code precedent — and this
@@ -18,6 +18,7 @@ const COPY: Record<string, { active: string; label: string }> = {
   transcribe: { label: "Listen", active: "Listening" },
   tag: { label: "Work out what it is", active: "Working out what it is" },
   vision: { label: "Look at the picture", active: "Looking at the picture" },
+  admission: { label: "Record the admission check", active: "Recording the admission check" },
   score: { label: "Score it", active: "Scoring it" },
 };
 
@@ -57,7 +58,7 @@ const resolve = (id: string, row: IncomingPipelineDTO): { note?: string; status:
 };
 
 // The pip palette. ⚠ `tune` for in-progress, NOT `suggest` — §2.1 reserves `suggest` as THE AI
-// colour, and only three of these eight rungs are AI. Spending the AI colour on "something is
+// colour, and only three of these nine rungs are AI. Spending the AI colour on "something is
 // happening" would leave nothing to mean "a model decided this".
 const PIP: Record<RungStatus, string> = {
   done: "bg-lock",
@@ -110,7 +111,7 @@ const ClipPipeline = ({ row, name, ladder, variant = "strip", className }: ClipP
   const listName = variant === "strip" ? `Progress for ${name}` : `Stage detail for ${name}`;
 
   // ⚠ ONE `<ol>` with an accessible name, and the pips themselves `aria-hidden`. The alternative —
-  // a tooltip or a `title=` per pip — is 8 × 40 = 320 focusable elements on a full queue, and a
+  // a tooltip or a `title=` per pip — is 9 × 40 = 360 focusable elements on a full queue, and a
   // bare `title` on a 6px span is the "green axe ≠ operable" trap this codebase has already paid
   // for. The keyboard path to the detail is the row's Disclosure trigger, not the strip.
   if (variant === "strip") {

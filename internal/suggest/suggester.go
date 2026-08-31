@@ -5,13 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/textmatch"
 )
 
 // catalogToolName is the single tool the model may call. The grounding guarantee
@@ -123,11 +126,32 @@ func New(provider llm.Provider, cat *catalog.Catalog, v Validator, maxAcq int) *
 // the schema in a couple of nudges won't in ten. Separate from maxToolRounds.
 const maxRepairs = 2
 
+// StructuralBounds is the production Suggester's closed worst-case envelope for
+// one Suggest call. Evaluation and operational diagnostics consume this value so
+// they cannot drift from the actual tool loop by copying private constants.
+type StructuralBounds struct {
+	MaxModelCalls         int
+	MaxToolCalls          int
+	MaxCandidatesSurfaced int
+}
+
+// ProductionBounds returns the one authoritative structural/call envelope for a
+// Suggest invocation: the initial generation, one grounding retry, and each
+// bounded schema repair may each consume the complete tool loop.
+func ProductionBounds() StructuralBounds {
+	maxCalls := maxToolRounds * (maxRepairs + 2)
+	return StructuralBounds{
+		MaxModelCalls: maxCalls, MaxToolCalls: maxCalls,
+		MaxCandidatesSurfaced: maxCalls * catalogSearchLimit,
+	}
+}
+
 const groundingRetryPrompt = `You returned no grounded picks without finding usable catalog candidates. ` +
 	`You MUST call catalog_search now. Use title search for a named title, genre discovery for a genre, ` +
 	`or keywords for a holiday, motif, franchise, or topic. Then select only ids the tool returns.`
 
 func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error) {
+	allAdjacent := intent.Adjacent
 	var feedback []FeedbackSignal
 	if s.feedback != nil {
 		var err error
@@ -148,6 +172,7 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 	// an id the tool never returned. Threaded across the tool loop AND repair
 	// re-asks, so grounding holds even when the final JSON is retried.
 	surfaced := map[provision.Key]catalog.Candidate{}
+	trace := DecisionTrace{Version: DecisionTraceVersion}
 	temp := groundedTemp
 
 	// PRE-SEED the adjacency corpus (§8.3) before generation. These are real catalog
@@ -158,14 +183,12 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 	// nothing ever checked, which is precisely what grounding prevents.
 	//
 	// The model still chooses. An offered title it ignores is simply not picked.
-	for _, a := range intent.Adjacent {
+	adjacentCandidates := make([]catalog.Candidate, 0, len(allAdjacent))
+	for _, a := range allAdjacent {
 		k := provision.Key(a.Key)
 		mt, provider, id, ok := provision.ParseKey(k)
 		if !ok {
 			continue // an unparseable key could never be acquired; drop rather than offer
-		}
-		if _, already := surfaced[k]; already {
-			continue // a tool result would win anyway; never overwrite richer data
 		}
 		cand := catalog.Candidate{
 			MediaType: mt, Name: a.Name, Year: a.Year, Source: catalog.ScopeAdjacent,
@@ -181,7 +204,16 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 		default:
 			continue
 		}
-		surfaced[k] = cand
+		adjacentCandidates = append(adjacentCandidates, cand)
+	}
+	if len(adjacentCandidates) > 0 {
+		adjacentRanked := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), adjacentCandidates, feedback)
+		mergeDecisionTrace(&trace, &adjacentRanked.Trace)
+		for _, cand := range adjacentRanked.Candidates {
+			if k, err := cand.Key(); err == nil {
+				surfaced[k] = cand
+			}
+		}
 	}
 
 	// Progress is reported from INSIDE generate, at each real transition (§8). It used
@@ -198,24 +230,34 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 	repairs := 0
 	groundingRetried := false
 	for {
-		final, err := s.generate(ctx, &messages, tools, surfaced, temp, intent, feedback)
+		final, err := s.generate(ctx, &messages, tools, surfaced, &trace, temp, intent, feedback)
 		if err != nil {
 			return Proposal{}, err
 		}
 		out, perr := parsePicks(final)
 		if perr == nil {
 			reportProgress(ctx, PhaseScoring, 0)
-			prop, buildErr := s.buildProposal(ctx, intent, out, surfaced)
+			prop, buildErr := s.buildProposal(ctx, intent, out, surfaced, &trace)
 			if errors.Is(buildErr, ErrNoGroundedTitles) && len(surfaced) == 0 && !groundingRetried {
 				groundingRetried = true
 				messages = append(messages, llm.Message{Role: llm.User, Content: groundingRetryPrompt})
 				temp = temp / 2
 				continue
 			}
-			return prop, buildErr
+			if buildErr != nil {
+				if errors.Is(buildErr, ErrNoGroundedTitles) {
+					if trace.Terminal == "" {
+						trace.Terminal = FailureSelectionEmpty
+					}
+					return Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, buildErr)
+				}
+				return Proposal{}, NewFailure(FailureProvider, trace, buildErr)
+			}
+			return prop, nil
 		}
 		if repairs >= maxRepairs {
-			return Proposal{}, fmt.Errorf("suggester: model output not valid after %d repairs: %w", maxRepairs, perr)
+			trace.Terminal = TerminalMalformedExhausted
+			return Proposal{}, NewFailure(FailureProvider, trace, fmt.Errorf("suggester: model output not valid after %d repairs: %w", maxRepairs, perr))
 		}
 		// Nudge the model to fix its output, and turn the temperature down further
 		// so it adheres to the schema rather than getting creative.
@@ -229,7 +271,7 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 // turn, appending assistant/tool messages to *messages and recording surfaced
 // candidates for grounding. Returns the final content (possibly empty — the
 // caller's repair loop handles that).
-func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools []llm.ToolSchema, surfaced map[provision.Key]catalog.Candidate, temp float64, intent Intent, feedback []FeedbackSignal) (string, error) {
+func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools []llm.ToolSchema, surfaced map[provision.Key]catalog.Candidate, trace *DecisionTrace, temp float64, intent Intent, feedback []FeedbackSignal) (string, error) {
 	for round := 0; round < maxToolRounds; round++ {
 		// The model turn is about to block — say so BEFORE awaiting it. This is the
 		// slow step (model load + inference), so reporting it afterwards would leave
@@ -238,7 +280,8 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 		reportProgress(ctx, PhaseReasoning, round+1)
 		resp, err := s.llm.Chat(ctx, *messages, chatOpts(tools, temp))
 		if err != nil {
-			return "", fmt.Errorf("llm chat: %w", err)
+			trace.Terminal = TerminalProviderFailure
+			return "", NewFailure(FailureProvider, *trace, fmt.Errorf("llm chat: %w", err))
 		}
 		if resp.WantsTools() {
 			reportProgress(ctx, PhaseSearching, round+1)
@@ -248,7 +291,8 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 			toolCalls := resp.ToolCalls[:1]
 			*messages = append(*messages, assistantToolCallMsg(toolCalls))
 			for _, tc := range toolCalls {
-				result, cands := s.runTool(ctx, tc, intent, feedback)
+				result, cands, rankedTrace := s.runTool(ctx, tc, intent, feedback)
+				mergeDecisionTrace(trace, &rankedTrace)
 				for _, c := range cands {
 					if k, err := c.Key(); err == nil {
 						surfaced[k] = c
@@ -262,17 +306,18 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 		}
 		return resp.Content, nil
 	}
-	// Ran out of tool rounds without a final turn — treat as empty (repairable).
-	return "", nil
+	// Ran out of tool rounds without a final turn: expose the bounded terminal fact.
+	trace.Terminal = FailureBudgetExhausted
+	return "", NewFailure(FailureBudgetExhausted, *trace, errors.New("suggestion tool-round budget exhausted"))
 }
 
 // runTool executes a model tool call. Only catalog_search is honored; anything
 // else returns an error result the model can react to (defense against a model
 // inventing a tool). Returns the JSON result string AND the candidates (so the
 // suggester can track what was surfaced for grounding).
-func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent, feedback []FeedbackSignal) (string, []catalog.Candidate) {
+func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent, feedback []FeedbackSignal) (string, []catalog.Candidate, DecisionTrace) {
 	if tc.Name != catalogToolName {
-		return fmt.Sprintf(`{"error":"unknown tool %q; only %s is available"}`, tc.Name, catalogToolName), nil
+		return fmt.Sprintf(`{"error":"unknown tool %q; only %s is available"}`, tc.Name, catalogToolName), nil, DecisionTrace{}
 	}
 	mtArg, _ := tc.Arguments["media_type"].(string)
 	genres := stringSlice(tc.Arguments["genres"])
@@ -297,14 +342,52 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 		cands, err = s.catalog.Search(ctx, stringArg(tc.Arguments["query"]), catalog.ScopeAll, catalogSearchLimit)
 	}
 	if err != nil {
-		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil
+		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalProviderFailure}
 	}
 	if mtArg != "" {
 		cands = filterByMediaType(cands, mtArg) // narrow to the requested type
 	}
-	cands = RankGroundedCandidates(normalizedIntentText(intent), cands, feedback)
+	ranked := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), cands, feedback)
+	cands = ranked.Candidates
 	blob, _ := json.Marshal(toolResult(cands))
-	return string(blob), cands
+	return string(blob), cands, ranked.Trace
+}
+
+func mergeDecisionTrace(dst, src *DecisionTrace) {
+	if src == nil || src.Version == 0 {
+		return
+	}
+	dst.Version = src.Version
+	known := make(map[string]int, len(dst.Candidates))
+	for i, candidate := range dst.Candidates {
+		if candidate.Key != "" {
+			known[candidate.Key] = i
+		}
+	}
+	surfacedTotal := dst.SurfacedTotal + src.SurfacedTotal
+	recordedTotal := dst.RecordedTotal + src.RecordedTotal
+	dst.Truncated = dst.Truncated || src.Truncated || surfacedTotal > DecisionTraceMaxTotal || recordedTotal > DecisionTraceMaxTotal
+	dst.SurfacedTotal = min(surfacedTotal, DecisionTraceMaxTotal)
+	dst.RecordedTotal = min(recordedTotal, DecisionTraceMaxTotal)
+	if src.Terminal != "" {
+		dst.Terminal = src.Terminal
+	} else if src.SurfacedTotal > 0 {
+		dst.Terminal = ""
+	}
+	for _, c := range src.Candidates {
+		if i, exists := known[c.Key]; c.Key != "" && exists {
+			dst.Candidates[i] = c
+			continue
+		}
+		if len(dst.Candidates) >= DecisionTraceMaxCandidates {
+			dst.Truncated = true
+			continue
+		}
+		dst.Candidates = append(dst.Candidates, c)
+		if c.Key != "" {
+			known[c.Key] = len(dst.Candidates) - 1
+		}
+	}
 }
 
 func filterAdjacentFeedback(adjacent []AdjacentContext, signals []FeedbackSignal) []AdjacentContext {
@@ -373,7 +456,7 @@ func filterByMediaType(cands []catalog.Candidate, mt string) []catalog.Candidate
 // Proposal. This is the grounding chokepoint: a pick survives ONLY if it matches
 // a candidate the tool actually surfaced (real id), and acquisitions must also
 // pass the exists re-validation. Unresolvable picks are dropped, never actioned.
-func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalOutput, surfaced map[provision.Key]catalog.Candidate) (Proposal, error) {
+func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalOutput, surfaced map[provision.Key]catalog.Candidate, trace *DecisionTrace) (Proposal, error) {
 	prop := Proposal{Intent: intent, ChannelName: strings.TrimSpace(out.ChannelName), Rationale: out.Rationale}
 	picks := out.Picks
 	acqCount := 0
@@ -385,10 +468,12 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	for _, p := range picks {
 		key := p.key()
 		if key == "" {
+			traceDecision(trace, DecisionCandidate{Disposition: DispositionValidationDropped, Reason: ReasonMalformedID})
 			continue // no usable id → not grounded, drop
 		}
 		cand, ok := surfaced[provision.Key(key)]
 		if !ok {
+			traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionValidationDropped, Reason: ReasonNotSurfaced})
 			continue // GROUNDING: the model named an id the tool never returned — drop it
 		}
 		item := fromCandidate(cand, p.Rationale, p.Confidence)
@@ -409,11 +494,13 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 
 		if cand.InLibrary {
 			prop.Lineup = append(prop.Lineup, item)
+			traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionSelected, Reason: "selected"})
 			continue
 		}
 		// Acquisition: re-validate it exists on TMDB (§8) and respect the cap.
 		if acqCount >= maxAcq {
 			prop.Alternates = append(prop.Alternates, item) // over-cap picks become alternates
+			traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionAlternate, Reason: ReasonAcquisitionCap})
 			continue
 		}
 		exists, err := s.validator.Exists(ctx, cand.MediaType, cand.TMDBID)
@@ -421,6 +508,7 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 			return Proposal{}, fmt.Errorf("validate acquisition %s: %w", cand.Name, err)
 		}
 		if !exists {
+			traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionValidationDropped, Reason: ReasonValidationDropped})
 			continue // fabricated/withdrawn id → drop
 		}
 		// Enrich the rating from TMDB (§389): the library can't rate a title it doesn't
@@ -433,6 +521,7 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 			}
 		}
 		prop.Acquisitions = append(prop.Acquisitions, item)
+		traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionSelected, Reason: "selected"})
 		acqCount++
 	}
 
@@ -459,15 +548,48 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	prop.Lineup, prop.Acquisitions, prop.Refused = refuseUnairable(
 		prop.Policy.Audience, prop.Lineup, prop.Acquisitions, intentRequiresChildSafety(intent),
 	)
-	stampEpisodeSelection(prop.Lineup, intent, prop.Policy.Seasonal)
-	stampEpisodeSelection(prop.Acquisitions, intent, prop.Policy.Seasonal)
+	for _, refused := range prop.Refused {
+		if key, err := refused.Item.Key(); err == nil {
+			traceDecision(trace, DecisionCandidate{Key: string(key), Disposition: DispositionRefused, Reason: refused.Reason})
+		}
+	}
+	stampEpisodeSelection(prop.Lineup, intent)
+	stampEpisodeSelection(prop.Acquisitions, intent)
+	stampEpisodeSelection(prop.Alternates, intent)
 
 	// ⚠ Scored on what SURVIVED. Scoring the refused picks too would report an availability
 	// ratio and theme fit for a lineup nobody is being offered — the scorecard already half-knew
 	// something was wrong on the live smoke (theme fit 43%) and that ambiguity is what a refusal
 	// list replaces with a statement.
 	prop.Scores = score(intent, prop.Lineup, prop.Acquisitions)
+	if trace != nil {
+		// Tool calls contribute evidence, not the run outcome. A later empty or
+		// failed lookup cannot label a proposal that ultimately succeeded from an
+		// earlier catalog result or the adjacency corpus as terminally failed.
+		trace.Terminal = ""
+		prop.Trace = trace.Clone()
+	}
 	return prop, nil
+}
+
+func traceDecision(trace *DecisionTrace, update DecisionCandidate) {
+	if trace == nil {
+		return
+	}
+	for i := range trace.Candidates {
+		if trace.Candidates[i].Key == update.Key && update.Key != "" {
+			trace.Candidates[i].Disposition = update.Disposition
+			trace.Candidates[i].Reason = update.Reason
+			return
+		}
+	}
+	if len(trace.Candidates) >= DecisionTraceMaxCandidates {
+		trace.Truncated = true
+		trace.RecordedTotal = min(trace.RecordedTotal+1, DecisionTraceMaxTotal)
+		return
+	}
+	trace.Candidates = append(trace.Candidates, update)
+	trace.RecordedTotal++
 }
 
 // refuseUnairable partitions grounded picks against the channel's own final audience policy
@@ -527,10 +649,7 @@ func groundPolicy(raw *pickPolicy, lineup, acquisitions []ProposalItem, intent I
 	explicitCeiling := intentExplicitAudienceCeiling(intent)
 	requestedCeiling := stricterCeiling(explicitCeiling, childSafetyCeiling)
 	if raw == nil {
-		return schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
-			Audience: schedule.AudiencePolicy{Ceiling: requestedCeiling},
-			Seasonal: seasonalPolicyForIntent(intent),
-		}}
+		raw = &pickPolicy{}
 	}
 	var p schedule.ChannelPolicy
 
@@ -571,6 +690,12 @@ func groundPolicy(raw *pickPolicy, lineup, acquisitions []ProposalItem, intent I
 	switch schedule.OrderingMode(raw.Ordering) {
 	case schedule.OrderSequential, schedule.OrderShuffle, schedule.OrderSyndication:
 		p.Ordering = schedule.OrderingMode(raw.Ordering)
+	}
+	// Narrative order is an explicit viewer promise, not model discretion. Force
+	// it before applying omitted-order defaults so a model-proposed shuffle cannot
+	// turn "chronological" or "binge" into a mixed deck.
+	if intentRequestsSequential(intent) {
+		p.Ordering = schedule.OrderSequential
 	}
 	// Multi-series default: when the model didn't pick an ordering (or picked an unknown
 	// one → still OrderInherit here) AND the grounded lineup spans more than one series,
@@ -817,19 +942,28 @@ func singleSeriesOnly(groups ...[]ProposalItem) bool {
 }
 
 func intentRequestsCuratedEpisodes(intent Intent) bool {
-	hay := normalizedIntentText(intent)
-	for _, cue := range []string{"classic", "best of", "greatest", "favorite", "favourite", "rerun", "curated", "highlights"} {
-		if strings.Contains(hay, cue) {
-			return true
-		}
-	}
-	return false
+	return intentMatchesAnyCue(intent,
+		"classic", "classics", "best", "greatest", "favorite", "favorites", "favourite", "favourites",
+		"rerun", "reruns", "curated", "highlight", "highlights",
+	)
 }
 
 func intentRequestsSequential(intent Intent) bool {
-	hay := normalizedIntentText(intent)
-	for _, cue := range []string{"chronological", "in order", "start to finish", "from the beginning", "episode order", "binge", "marathon"} {
-		if strings.Contains(hay, cue) {
+	return intentMatchesAnyCue(intent,
+		"chronological", "in order", "start to finish", "from the beginning", "episode order", "binge", "marathon",
+	)
+}
+
+func intentRequestsHolidayEpisodes(intent Intent) bool {
+	return intentMatchesAnyCue(intent,
+		"holiday episode", "holiday episodes", "holiday special", "holiday specials",
+	)
+}
+
+func intentMatchesAnyCue(intent Intent, cues ...string) bool {
+	hay := affirmativeIntentText(intent)
+	for _, cue := range cues {
+		if textmatch.ContainsPhrase(hay, cue) {
 			return true
 		}
 	}
@@ -840,23 +974,37 @@ func intentRequestsSequential(intent Intent) bool {
 // editorial policy. The model never chooses episode identities. A named holiday
 // is more specific than a general highlights cue; explicit narrative ordering
 // disables highlights but can still order a holiday-filtered pool sequentially.
-func stampEpisodeSelection(items []ProposalItem, intent Intent, seasonal schedule.SeasonalPolicy) {
-	selection := schedule.EpisodeSelection{}
-	if len(seasonal.Holidays) > 0 {
+// EpisodeSelectionForIntent is the server-owned series policy preview used by
+// proposal review and the approval gate. Clients may display it but never choose it.
+func EpisodeSelectionForIntent(intent Intent) schedule.EpisodeSelection {
+	selection := schedule.EpisodeSelection{Mode: schedule.EpisodeComplete}
+	if holidays := namedHolidaysIn(affirmativeIntentText(intent)); len(holidays) > 0 {
 		selection = schedule.EpisodeSelection{
-			Mode: schedule.EpisodeHoliday, Holidays: append([]string(nil), seasonal.Holidays...),
+			Mode: schedule.EpisodeHoliday, Holidays: holidays,
 		}
+	} else if intentRequestsHolidayEpisodes(intent) {
+		selection.Mode = schedule.EpisodeHoliday
 	} else if intentRequestsCuratedEpisodes(intent) && !intentRequestsSequential(intent) {
 		selection.Mode = schedule.EpisodeHighlights
 	}
-	if selection.Mode == "" {
-		return
-	}
+	return selection
+}
+
+func stampEpisodeSelection(items []ProposalItem, intent Intent) bool {
+	selection := EpisodeSelectionForIntent(intent)
+	changed := false
 	for i := range items {
+		grounded := schedule.EpisodeSelection{}
 		if items[i].MediaType == provision.Series {
-			items[i].EpisodeSelection = selection
+			grounded = selection
 		}
+		if items[i].EpisodeSelection.Mode != grounded.Mode ||
+			!slices.Equal(items[i].EpisodeSelection.Holidays, grounded.Holidays) {
+			changed = true
+		}
+		items[i].EpisodeSelection = grounded
 	}
+	return changed
 }
 
 // eraAdmittingPicks widens a model-proposed year window just far enough to include the
@@ -968,6 +1116,27 @@ func normalizedIntentText(intent Intent) string {
 	}, " "))
 }
 
+func decisionRankQuery(intent Intent) rankQuery {
+	return rankQuery{
+		request:     wordSet(intent.Description),
+		tone:        wordSet(intent.Tone),
+		era:         wordSet(intent.Era),
+		mustInclude: wordSet(strings.Join(intent.MustInclude, " ")),
+		mustExclude: wordSet(strings.Join(intent.MustExclude, " ")),
+		refine:      wordSet(intent.RefineText),
+	}
+}
+
+// affirmativeIntentText is the operator's positive editorial request. Negative
+// constraints still participate in grounding and ranking, but must never select
+// the very episode mode they prohibit.
+func affirmativeIntentText(intent Intent) string {
+	return strings.ToLower(strings.Join([]string{
+		intent.Description, intent.Tone, intent.Era, intent.RefineText,
+		strings.Join(intent.MustInclude, " "),
+	}, " "))
+}
+
 // seasonalPolicyForIntent makes an explicitly named holiday deterministic. A
 // holiday channel is exclusive to that holiday; leaving Holidays empty would mean
 // every built-in holiday and would make a Christmas request rotate into Halloween.
@@ -976,35 +1145,22 @@ func seasonalPolicyForIntent(intent Intent) schedule.SeasonalPolicy {
 	// Only treat the refine as a whole-channel identity change when it actually
 	// names a channel transformation; ordinary "add Christmas specials" language
 	// is represented by grounded holiday rules instead.
-	hay := strings.ToLower(strings.Join([]string{
+	hay := strings.Join([]string{
 		intent.Description, intent.Tone, intent.Era, strings.Join(intent.MustInclude, " "),
-	}, " "))
-	refine := strings.ToLower(intent.RefineText)
-	if strings.Contains(refine, "channel") {
+	}, " ")
+	refine := intent.RefineText
+	if textmatch.ContainsPhrase(refine, "channel") {
 		hay += " " + refine
 	}
-	var holidays []string
-	for _, holiday := range []struct {
-		id   string
-		cues []string
-	}{
-		{"halloween", []string{"halloween"}},
-		{"thanksgiving", []string{"thanksgiving"}},
-		{"christmas", []string{"christmas", "xmas", "yuletide"}},
-		{"newyear", []string{"new year's", "new years", "new year", "nye"}},
-		{"valentines", []string{"valentine's", "valentines", "valentine"}},
-	} {
-		for _, cue := range holiday.cues {
-			if strings.Contains(hay, cue) {
-				holidays = append(holidays, holiday.id)
-				break
-			}
-		}
-	}
+	holidays := namedHolidaysIn(hay)
 	if len(holidays) == 0 {
 		return schedule.SeasonalPolicy{}
 	}
 	return schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive, Holidays: holidays}
+}
+
+func namedHolidaysIn(text string) []string {
+	return holidayvocab.MatchIntent(text)
 }
 
 // kidsIntentCues are the substrings that mark a kids/teen intent (§4/§8). Lowercased.

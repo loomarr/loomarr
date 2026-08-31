@@ -68,6 +68,20 @@ func TestApplyLineup_ReplacePreservesByKey(t *testing.T) {
 	}
 }
 
+func TestApplyLineup_ReplacePreservesApprovedEpisodeSelection(t *testing.T) {
+	key := provision.Key("series:tmdb:456")
+	current := []schedule.LineupEntry{{
+		Key: key, Title: "The Simpsons",
+		EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
+	}}
+	incoming := []schedule.LineupEntry{{Key: key, Title: "The Simpsons Classics"}}
+
+	got := schedule.ApplyLineup(current, incoming, schedule.LineupReplace, schedule.ApplyOpts{PreserveByKey: true})
+	if len(got) != 1 || got[0].EpisodeSelection.Mode != schedule.EpisodeHighlights {
+		t.Fatalf("edited lineup selection = %+v, want approved highlights preserved", got)
+	}
+}
+
 // Additive unions fresh onto existing, keeps a not-re-picked title unless Drop reports it
 // off-intent, drops it when Drop says so, and appends genuinely-new picks — existing first.
 func TestApplyLineup_Additive(t *testing.T) {

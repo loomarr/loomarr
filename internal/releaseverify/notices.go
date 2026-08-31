@@ -28,6 +28,8 @@ var noticeTextRequirements = map[string][]string{
 		"Prometheus `NOTICE`",
 		"final qualified legal/NOTICE review",
 		"inventory, not release clearance",
+		"redistribution-manifest-v1.json",
+		"traceability evidence only: it does not retain corresponding source or provide",
 	},
 	"README.md": {
 		"Loomarr source is [MIT](LICENSE)",

@@ -6,8 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
-
+	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -26,12 +25,12 @@ func newPasswordService(t *testing.T) (*PasswordService, store.Store) {
 // seedLocal writes a local user with a known password.
 func seedLocal(t *testing.T, st store.Store, id, name, password string, role store.Role) {
 	t.Helper()
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
+	hash, err := hashPassword(password)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := st.UpsertUser(context.Background(), store.User{
-		ID: id, Name: name, Role: role, PasswordHash: string(hash), CreatedAt: now, UpdatedAt: now,
+		ID: id, Name: name, Role: role, PasswordHash: hash, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -51,10 +50,10 @@ func TestChangePassword_UpdatesHashAndVerifies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte("a-longer-new-pw")) != nil {
+	if !verifyPassword(u.PasswordHash, "a-longer-new-pw") {
 		t.Error("new password does not verify against the stored hash")
 	}
-	if bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte("original-pw")) == nil {
+	if verifyPassword(u.PasswordHash, "original-pw") {
 		t.Error("OLD password still verifies — the hash was not replaced")
 	}
 }
@@ -73,19 +72,17 @@ func TestChangePassword_RequiresCurrentPassword(t *testing.T) {
 	}
 	// And the stored hash must be untouched by the failed attempt.
 	u, _ := st.GetUser(ctx, "u1")
-	if bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte("original-pw")) != nil {
+	if !verifyPassword(u.PasswordHash, "original-pw") {
 		t.Error("a FAILED change still altered the stored hash")
 	}
 }
 
-// §19 negative: an imported media-server user has no Loomarr-side password. Changing
-// it must error rather than silently no-op — a no-op would imply to the caller that
-// their media-server password had been changed, which Loomarr cannot do.
+// §19 negative: an imported media-server user does not own an independent Loomarr
+// password, even after offline capture. Changing it here must error.
 func TestChangePassword_RejectsImportedUser(t *testing.T) {
 	svc, st := newPasswordService(t)
 	ctx := context.Background()
-	// No PasswordHash ⇒ imported (§11's credential-path discriminator).
-	if err := st.UpsertUser(ctx, store.User{ID: "u2", Name: "emby-user", Role: store.RoleMember}); err != nil {
+	if err := st.UpsertUser(ctx, store.User{ID: "u2", Name: "emby-user", Role: store.RoleMember, MediaServerLinked: true}); err != nil {
 		t.Fatal(err)
 	}
 	if err := svc.ChangePassword(ctx, "u2", "anything", "a-longer-new-pw"); !errors.Is(err, ErrNotLocalUser) {
@@ -143,9 +140,9 @@ func TestCreateLocal_AddsAnAllowlistRowWithAHash(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got.PasswordHash == "" {
-		t.Error("created user has no password hash — it would read as an IMPORTED account (§11)")
+		t.Error("created local user has no password verifier")
 	}
-	if bcrypt.CompareHashAndPassword([]byte(got.PasswordHash), []byte("a-good-password")) != nil {
+	if !verifyPassword(got.PasswordHash, "a-good-password") {
 		t.Error("stored hash does not verify against the given password")
 	}
 	if got.Role != store.RoleMember || got.Quota != 5 {
@@ -166,6 +163,21 @@ func TestCreateLocal_RejectsDuplicateUsername(t *testing.T) {
 	// Case differences are still the same name to a human and to login.
 	if _, err := svc.CreateLocal(ctx, "OWNER", "a-good-password", store.RoleMember, 0); !errors.Is(err, ErrDuplicateUsername) {
 		t.Fatalf("case-different duplicate: err = %v, want ErrDuplicateUsername", err)
+	}
+}
+
+func TestCreateLocal_RejectsInvitedUsername(t *testing.T) {
+	svc, st := newPasswordService(t)
+	reserved := invitation.Invitation{
+		ID: "invite-grace", Kind: invitation.KindLocal, Username: "Grace",
+		IdentityKey: invitation.NormalizeLocalIdentity("Grace"), Role: invitation.RoleMember,
+		Status: invitation.StatusPending, CreatedAt: now, ExpiresAt: now.Add(invitation.Expiry),
+	}
+	if err := st.CreateInvitation(context.Background(), reserved, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateLocal(context.Background(), " grace ", "a-good-password", store.RoleMember, 0); !errors.Is(err, ErrDuplicateUsername) {
+		t.Fatalf("err = %v, want ErrDuplicateUsername", err)
 	}
 }
 
@@ -192,7 +204,7 @@ func TestResetPassword_SetsHashAndRevokesTargetSessions(t *testing.T) {
 		t.Fatalf("ResetPassword: %v", err)
 	}
 	u, _ := st.GetUser(ctx, "u1")
-	if bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte("an-admin-set-pw")) != nil {
+	if !verifyPassword(u.PasswordHash, "an-admin-set-pw") {
 		t.Error("reset password does not verify")
 	}
 	if _, err := st.GetSession(ctx, hashToken(tok), now); !errors.Is(err, store.ErrNotFound) {
@@ -205,7 +217,7 @@ func TestResetPassword_SetsHashAndRevokesTargetSessions(t *testing.T) {
 func TestResetPassword_RejectsImportedUser(t *testing.T) {
 	svc, st := newPasswordService(t)
 	ctx := context.Background()
-	if err := st.UpsertUser(ctx, store.User{ID: "u2", Name: "emby-user", Role: store.RoleMember}); err != nil {
+	if err := st.UpsertUser(ctx, store.User{ID: "u2", Name: "emby-user", Role: store.RoleMember, MediaServerLinked: true}); err != nil {
 		t.Fatal(err)
 	}
 	if err := svc.ResetPassword(ctx, "u2", "an-admin-set-pw"); !errors.Is(err, ErrNotLocalUser) {
@@ -218,10 +230,10 @@ func TestResetPassword_RejectsImportedUser(t *testing.T) {
 func TestChangePassword_LeavesRoleAndQuotaAlone(t *testing.T) {
 	svc, st := newPasswordService(t)
 	ctx := context.Background()
-	hash, _ := bcrypt.GenerateFromPassword([]byte("original-pw"), bcrypt.MinCost)
+	hash, _ := hashPassword("original-pw")
 	if err := st.UpsertUser(ctx, store.User{
 		ID: "u1", Name: "member", Role: store.RoleMember, Quota: 3, AutoApprove: true,
-		PasswordHash: string(hash), CreatedAt: now, UpdatedAt: now,
+		PasswordHash: hash, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}

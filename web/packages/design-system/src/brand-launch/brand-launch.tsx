@@ -1,4 +1,4 @@
-import { useTheme, View } from "@tamagui/core";
+import { isWeb, useTheme, View } from "@tamagui/core";
 import { useEffect, useRef } from "react";
 import { Animated, Easing } from "react-native";
 import { BrandWordmark } from "../brand/brand";
@@ -27,6 +27,9 @@ const launchSizes = {
   touch: { barHeight: 11, barWidth: 160, minHeight: 560, word: "medium" },
   tv: { barHeight: 22, barWidth: 320, minHeight: 540, word: "large" },
 } as const;
+
+const resolveBrandLaunchMinHeight = (density: Density, web = isWeb): number | "100%" =>
+  web ? launchSizes[density].minHeight : "100%";
 
 const BrandLaunch = ({
   density = "pointer",
@@ -113,7 +116,7 @@ const BrandLaunch = ({
       backgroundColor="$surfaceCanvas"
       flex={1}
       justifyContent="center"
-      minHeight={sizes.minHeight}
+      minHeight={resolveBrandLaunchMinHeight(density)}
       overflow="hidden"
       position="relative"
       width="100%"
@@ -178,4 +181,4 @@ const BrandLaunch = ({
 };
 
 export type { BrandLaunchProps };
-export { BrandLaunch, brandLaunchMotion };
+export { BrandLaunch, brandLaunchMotion, resolveBrandLaunchMinHeight };

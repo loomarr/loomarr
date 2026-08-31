@@ -37,11 +37,17 @@ func Run(ctx context.Context, config Config) ([]fillereval.Prediction, error) {
 	if err := validateConfig(config); err != nil {
 		return nil, err
 	}
-	if config.Manifest.Kind != fillereval.CorpusCertification {
-		return nil, fmt.Errorf("bakeoff requires a locked certification manifest")
+	var manifestFailures []string
+	switch config.Manifest.Kind {
+	case fillereval.CorpusCertification:
+		manifestFailures = fillereval.ValidateManifest(config.Manifest)
+	case fillereval.CorpusDevelopmentSeed:
+		manifestFailures = fillereval.ValidateDevelopmentRun(config.Manifest)
+	default:
+		return nil, fmt.Errorf("bakeoff requires a locked development or certification manifest")
 	}
-	if failures := fillereval.ValidateManifest(config.Manifest); len(failures) > 0 {
-		return nil, fmt.Errorf("invalid bakeoff manifest: %s", strings.Join(failures, "; "))
+	if len(manifestFailures) > 0 {
+		return nil, fmt.Errorf("invalid bakeoff manifest: %s", strings.Join(manifestFailures, "; "))
 	}
 	selected := make(map[string]fillereval.Case)
 	for _, c := range config.Manifest.Cases {
@@ -61,6 +67,10 @@ func Run(ctx context.Context, config Config) ([]fillereval.Prediction, error) {
 			return nil, err
 		}
 	}
+	transcripts, err := validateTranscriptSet(config, selected)
+	if err != nil {
+		return nil, err
+	}
 
 	caseIDs := make([]string, 0, len(selected))
 	for id := range selected {
@@ -71,7 +81,11 @@ func Run(ctx context.Context, config Config) ([]fillereval.Prediction, error) {
 	var spent int64
 	var attempts int
 	for _, id := range caseIDs {
-		prediction, caseSpend, caseAttempts := runCase(ctx, config, config.Packets[id], spent, attempts)
+		packet := config.Packets[id]
+		if transcript, ok := transcripts[id]; ok {
+			packet = withSharedTranscript(packet, transcript)
+		}
+		prediction, caseSpend, caseAttempts := runCase(ctx, config, packet, spent, attempts)
 		spent = saturatingAdd64(spent, caseSpend)
 		attempts = saturatingAddInt(attempts, caseAttempts)
 		predictions = append(predictions, prediction)
@@ -204,6 +218,10 @@ func validateConfig(config Config) error {
 	if config.Run.Profile == "" || config.Run.EvidenceVersion == "" || config.Run.PromptVersion == "" || config.Run.PolicyVersion == "" || config.Run.TaxonomyVersion == "" || config.Run.RolePolicyVersion == "" || config.Run.CapabilitySnapshot == "" || config.Run.PriceSnapshot == "" || config.Run.GeneratedAt.IsZero() {
 		return fmt.Errorf("bakeoff requires complete version, snapshot, profile, and generation identity")
 	}
+	policyVersion, taxonomyVersion := config.Policy.PolicyIdentity()
+	if policyVersion != config.Run.PolicyVersion || taxonomyVersion != config.Run.TaxonomyVersion {
+		return fmt.Errorf("bakeoff run policy identity does not match the evaluator")
+	}
 	if len(config.Routes) == 0 || len(config.Routes) > maxRoutes {
 		return fmt.Errorf("bakeoff requires between one and %d routes", maxRoutes)
 	}
@@ -215,8 +233,8 @@ func validateConfig(config Config) error {
 		if strings.Contains(strings.ToLower(route.Model), "latest") || route.AllowFallbacks {
 			return fmt.Errorf("route[%d] certification requires a concrete model with fallbacks disabled", i)
 		}
-		if route.Provider == "openrouter" && (route.UpstreamProvider == "" || !route.StructuredOutput || !route.RequireZDR) {
-			return fmt.Errorf("route[%d] OpenRouter certification requires a provider pin, structured output, and ZDR", i)
+		if route.Provider == "openrouter" && (route.ResolvedModel == "" || route.UpstreamProviderSlug == "" || route.UpstreamProvider == "" || !route.StructuredOutput || !route.RequireZDR) {
+			return fmt.Errorf("route[%d] OpenRouter certification requires provider selector and resolved identity pins, structured output, and ZDR", i)
 		}
 		if err := validateEscalation(route); err != nil {
 			return fmt.Errorf("route[%d]: %w", i, err)
@@ -226,6 +244,14 @@ func validateConfig(config Config) error {
 			return fmt.Errorf("route[%d] violates text, frames, video, premium cascade order", i)
 		}
 		previousRank = rank
+	}
+	if slices.ContainsFunc(config.Routes, func(route Route) bool { return route.Provider == "openrouter" }) {
+		if config.Snapshot == nil {
+			return fmt.Errorf("OpenRouter bakeoff routes require a locked capability and price snapshot")
+		}
+		if err := ValidateOpenRouterRunSnapshot(config.Run, config.Routes, *config.Snapshot); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -237,7 +263,7 @@ func validRouteEnvelope(route Route) bool {
 			return false
 		}
 	}
-	return len(route.UpstreamProvider) <= maxFieldBytes && len(route.MarginalValueEvidence) <= maxFieldBytes && len(route.MarginalValueSHA256) <= 64 &&
+	return len(route.ResolvedModel) <= maxFieldBytes && len(route.UpstreamProviderSlug) <= maxFieldBytes && len(route.UpstreamProvider) <= maxFieldBytes && len(route.MarginalValueEvidence) <= maxFieldBytes && len(route.MarginalValueSHA256) <= 64 &&
 		len(route.Modalities) > 0 && len(route.Modalities) <= 8 &&
 		route.MaxChargeNanoUSD > 0 && route.MaxAttempts == 1 &&
 		len(route.EscalateOn) > 0 && len(route.EscalateOn) <= 32
@@ -315,6 +341,12 @@ func validatePacket(c fillereval.Case, packet Packet, evidenceVersion, corpusRoo
 		return fmt.Errorf("case %q evidence packet digest %s does not match manifest", c.ID, got)
 	}
 	return nil
+}
+
+// ValidatePacketAgainstCase proves that one label-blind packet is exactly the
+// bounded, content-addressed provider input locked by its draft case.
+func ValidatePacketAgainstCase(c fillereval.Case, packet Packet, evidenceVersion, corpusRoot string) error {
+	return validatePacket(c, packet, evidenceVersion, corpusRoot)
 }
 
 func validSignalKind(kind string) bool {
@@ -563,6 +595,9 @@ func capturedStep(route Route, extraction Extraction) (fillereval.InferenceStep,
 	} else if a.ChargedCurrency != "" {
 		return fillereval.InferenceStep{}, fmt.Errorf("charged currency has no amount")
 	}
+	if a.Abstained != (strings.TrimSpace(a.AbstentionReason) != "") || (a.Abstained && len(extraction.Evidence) != 0) || (!a.Abstained && len(extraction.Evidence) == 0) {
+		return fillereval.InferenceStep{}, fmt.Errorf("provider must return supported evidence or one explicit semantic abstention")
+	}
 	return fillereval.InferenceStep{
 		EvaluationID: a.EvaluationID, Role: a.Role, Rung: a.Rung,
 		RequestedProvider: a.RequestedProvider, RequestedModel: a.RequestedModel,
@@ -573,6 +608,7 @@ func capturedStep(route Route, extraction Extraction) (fillereval.InferenceStep,
 		ChargedAmount: a.ChargedAmount, ChargedCurrency: a.ChargedCurrency, ChargedNanoUSD: nano,
 		ReservedNanoUSD: route.MaxChargeNanoUSD, EstimatedNanoUSD: extraction.EstimatedNanoUSD, Attempts: a.Attempts,
 		GenerationID: a.GenerationID, LatencyMS: a.LatencyMS,
+		Abstained: a.Abstained, AbstentionReason: a.AbstentionReason,
 	}, nil
 }
 

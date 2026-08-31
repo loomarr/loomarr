@@ -28,7 +28,7 @@ services:
   # so installation and publication cannot drift into different definitions of
   # an exact beta version.
   loomarr-version-check:
-    image: busybox:1.36
+    image: busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
     command:
       - sh
       - /check-release-tag.sh
@@ -77,7 +77,7 @@ services:
   # A new named volume is root-owned; the Debian nonroot binary can't create
   # /data/loomarr.db without this one-shot chown. sqlite-only (postgres has no /data).
   loomarr-init:
-    image: busybox:1.36
+    image: busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
     profiles: ["sqlite"]
     command: ["sh", "-c", "chown -R 65532:65532 /data"]
     volumes: ["loomarr-data:/data"]
@@ -202,7 +202,7 @@ services:
 
   # ---- postgres profile ----
   postgres:
-    image: postgres:16
+    image: postgres:16@sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94
     profiles: ["postgres"]
     environment:
       POSTGRES_DB: loomarr
@@ -222,7 +222,7 @@ services:
   # GPU) — so we do NOT bake in a model. For a truly zero-touch install, set LLM_MODEL and
   # the ollama-pull one-shot below fetches it on first boot; left empty, the wizard picks.
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:latest@sha256:020e4134285e2ef4d8fd801234176de3b4faadc992a3eb06c8e66a2f9d4c4ba2
     profiles: ["ai"]
     volumes: ["ollama:/root/.ollama"]
     restart: unless-stopped
@@ -240,7 +240,7 @@ services:
   # the design-default "the user picks the model" intact while making a fully-scripted,
   # model-included deploy a one-env-var opt-in. Runs to completion, then loomarr can start.
   ollama-pull:
-    image: ollama/ollama:latest
+    image: ollama/ollama:latest@sha256:020e4134285e2ef4d8fd801234176de3b4faadc992a3eb06c8e66a2f9d4c4ba2
     profiles: ["ai"]
     depends_on:
       ollama:

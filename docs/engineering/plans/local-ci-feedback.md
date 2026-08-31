@@ -17,10 +17,9 @@ Rust, formatting, vet, lint, tagged compilation, Windows compilation, harness, a
 work; only the Go test package list was partitioned.
 
 The repository requires one aggregate `CI` status. On 2026-08-23 its branch protection was changed
-to strict mode while preserving the GitHub Actions app binding, so a pull request must be tested
-against the current `main` before merging. The repository is now organization-owned at
-`loomarr/loomarr`; queue activation remains ready at the workflow level and awaits a repository
-ruleset plus a proven `merge_group` run.
+to strict mode while preserving the GitHub Actions app binding. On 2026-08-27 the organization-owned
+repository activated a required, one-build merge queue for `main`; pull requests now receive fast
+impact-scoped feedback, while scarce macOS evidence runs on the generated current-base merge group.
 
 On 2026-08-24, the next 20 successful pull-request runs were measured from GitHub's run and job
 records. Wall time includes runner queueing; occupied time is the sum of non-skipped job execution;
@@ -45,10 +44,10 @@ budget miss creates optimization evidence and never skips a gate.
 | Tier | Scope | Budget |
 | --- | --- | --- |
 | Edit | Direct package or frontend test in watch mode | seconds |
-| Pre-push | Affected Go dependency closure and relevant frontend/static checks | 90 seconds p95 |
+| Pre-push | `agent-verify`: affected dependency closure and relevant static/policy checks | 90 seconds p95 |
 | Pull request | Fail-closed, impact-scoped gates running in parallel | 5 minutes p95 for leaf changes |
 | Merge group | Full affected-domain gate against current `main` | 12 minutes p95 |
-| Main, nightly, release | Complete race, database, browser, architecture, and packaging matrices | comprehensive |
+| Main, nightly, release | Publication on admitted main; explicit complete audits and release certification | comprehensive |
 
 These are feedback budgets, not test timeouts. Exceeding one produces evidence for the next
 optimization; it never skips or kills a correctness gate.
@@ -79,7 +78,8 @@ and Android. The work changes when assurance runs, not whether it exists.
 5. Compare shadow selections with full outcomes and add a regression fixture for every mismatch.
 6. Enable strict merge protection. After the repository transfer, enable and prove the
    already-supported `merge_group` path through an organization repository ruleset.
-7. Activate proportional pull-request gates and retain complete merge/main/nightly/release audits.
+7. Activate proportional pull-request gates, make merge groups authoritative for integration, and
+   retain explicit complete manual/nightly/release audits without repeating them on admitted main.
 8. Publish selected gates, setup/cache/test timings, critical path, and runner-minutes in summaries;
    then profile genuinely slow packages after orchestration waste is gone.
 9. Split the broad client family into shared JavaScript, iOS, tvOS, Expo Android mobile, and Expo
@@ -222,3 +222,17 @@ gate documentation are amended before the first change that alters required beha
   cross-compile therefore spent assurance time on a platform outside the product contract. They
   are retired together while the structural `ci-ok` verifier continues to require every remaining
   top-level job.
+- A 2026-08-27 burst exposed the next orchestration bottleneck: one client branch launched and
+  superseded roughly a dozen CI runs in under three hours while selected macOS jobs across unrelated
+  PRs queued for tens of minutes to more than two hours. Strict up-to-date protection then made
+  successful long-running PR evidence stale whenever another branch merged. Ruleset `21647889`
+  activates a squash, `ALLGREEN`, one-build/one-merge queue for `main`. Ordinary PR runs no longer
+  admit Apple mobile, Apple TV, tuner, or macOS harness jobs; those remain required on
+  `merge_group` and manual runs, guarded by `VerifyCINativeAdmission`. A later lane-ownership
+  correction makes merge groups authoritative for all expensive affected integration gates and
+  removes the redundant product-validation run from queue-produced main pushes.
+- The first admission PR exposed a separate over-selection defect before merge: changing the CI
+  workflow itself selected every product family, so unchanged Rust, Android, Apple, frontend,
+  browser, image, Postgres, and Go code rebuilt. The live run was cancelled. CI orchestration now
+  selects a dedicated policy job, every product job consumes its own exact `impact_*` decision, and
+  the whole admission branch is pinned to `docs,agent,policy` by a regression fixture.

@@ -3,8 +3,62 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestParseMakefileFollowsOrderedIncludes(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "Makefile", "root: ## root target\ninclude mk/go.mk\ninclude mk/docs.mk\n")
+	writeFile(t, dir, "mk/go.mk", "## ---- go gate ----\ncheck: fmt ## check it\n")
+	writeFile(t, dir, "mk/docs.mk", "## ---- docs gate ----\ndocs: ## render docs\n")
+
+	got, err := parseMakefile(filepath.Join(dir, "Makefile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 || got[0].Name != "root" || got[1].Name != "check" || got[2].Name != "docs" {
+		t.Fatalf("targets = %#v; want root, check, docs in include order", got)
+	}
+	if got[1].Section != "go gate" || got[2].Section != "docs gate" {
+		t.Fatalf("included sections were not preserved: %#v", got)
+	}
+}
+
+func TestParseMakefileRejectsUnsafeOrAmbiguousIncludes(t *testing.T) {
+	tests := map[string]struct {
+		root  string
+		files map[string]string
+		want  string
+	}{
+		"missing":  {root: "include mk/missing.mk\n", want: "open Make interface"},
+		"escaping": {root: "include ../outside.mk\n", want: "escapes repository root"},
+		"variable": {root: "include $(MODULES)\n", want: "must be a literal"},
+		"cycle": {
+			root:  "include mk/one.mk\n",
+			files: map[string]string{"mk/one.mk": "include Makefile\n"},
+			want:  "cyclic Make include",
+		},
+		"duplicate target": {
+			root:  "same: ## first\ninclude mk/one.mk\n",
+			files: map[string]string{"mk/one.mk": "same: ## second\n"},
+			want:  "duplicate documented target",
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeFile(t, dir, "Makefile", tc.root)
+			for path, body := range tc.files {
+				writeFile(t, dir, path, body)
+			}
+			_, err := parseMakefile(filepath.Join(dir, "Makefile"))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v; want substring %q", err, tc.want)
+			}
+		})
+	}
+}
 
 // The CI column is a claim about what CI actually runs, and it once overstated itself: these
 // workflows are heavily commented, and a comment mentioning a target made that target report as
@@ -78,7 +132,16 @@ func TestCITargetsAcceptsBothYAMLExtensions(t *testing.T) {
 
 func writeWorkflow(t *testing.T, dir, name, body string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+	writeFile(t, dir, name, body)
+}
+
+func writeFile(t *testing.T, dir, name, body string) {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

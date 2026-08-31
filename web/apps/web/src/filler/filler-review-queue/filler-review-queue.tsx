@@ -181,17 +181,16 @@ const FillerReviewQueue = () => {
         Checking for clips that need judgment…
       </Card>
     );
-  if (body.rows.length === 0) {
-    return (
-      <EmptyState
-        title="Nothing needs your attention"
-        description="Loomarr is handling filler automatically. Automatic admits and rejects are recorded under Manage → Activity."
-      />
-    );
-  }
-
   const visibleRows = body.rows.filter((review) => !abandoned.has(review.id));
   if (visibleRows.length === 0) {
+    if (abandoned.size === 0) {
+      return (
+        <EmptyState
+          title="Nothing needs your attention"
+          description="Loomarr is handling filler automatically. Automatic admits and rejects are recorded under Manage → Activity."
+        />
+      );
+    }
     return (
       <EmptyState
         title="You're caught up for now"

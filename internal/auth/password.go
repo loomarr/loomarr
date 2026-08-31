@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
-
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -25,19 +23,17 @@ import (
 //
 // The §11 invariants are unchanged by any of this:
 //   - The `users` table stays the allowlist and the source of truth.
-//   - A local user is one WITH a password hash; an imported one has none. Creating
-//     a local account adds a row, exactly like import does — it is not a new way to
-//     bypass the allowlist.
-//   - Media-server users have no Loomarr-side password to change. Attempting it is
-//     an error, not a silent no-op that would imply their media-server password had
-//     been altered.
+//   - Provider linkage is explicit. A linked user may carry an offline verifier,
+//     but that does not turn it into a local credential.
+//   - Media-server users cannot change their provider-owned password here.
+//     Attempting it is an error, not a silent no-op that would imply Loomarr had
+//     altered Emby/Jellyfin.
 
 var (
 	// ErrWrongPassword — the current password didn't verify. Deliberately distinct
 	// from "no such user" internally, but callers must surface both identically.
 	ErrWrongPassword = errors.New("auth: current password does not match")
-	// ErrNotLocalUser — the account authenticates against the media server, so
-	// Loomarr holds no hash it could change.
+	// ErrNotLocalUser — the account does not own an independent Loomarr password.
 	ErrNotLocalUser = errors.New("auth: not a local account")
 	// ErrWeakPassword — below the minimum length.
 	ErrWeakPassword = errors.New("auth: password too short")
@@ -47,7 +43,7 @@ var (
 
 // MinPasswordLen is the floor for a Loomarr-stored password. Deliberately modest:
 // this is a household appliance behind a homelab network, and a long minimum
-// pushes people toward reuse. bcrypt handles the rest.
+// pushes people toward reuse. Argon2id handles the rest.
 const MinPasswordLen = 8
 
 // PasswordService owns local-credential mutations. Split from LoginService because
@@ -85,20 +81,20 @@ func (s *PasswordService) ChangePassword(ctx context.Context, userID, current, n
 	if err != nil {
 		return err
 	}
-	if u.PasswordHash == "" {
+	if u.MediaServerLinked || u.PasswordHash == "" {
 		return ErrNotLocalUser // imported: the media server owns this credential
 	}
-	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(current)); err != nil {
+	if valid, _ := verifyStoredLocalPassword(u.PasswordHash, current); !valid {
 		return ErrWrongPassword
 	}
 	if len(next) < MinPasswordLen {
 		return ErrWeakPassword
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(next), bootstrapCost)
+	hash, err := hashPassword(next)
 	if err != nil {
 		return fmt.Errorf("hash password: %w", err)
 	}
-	u.PasswordHash = string(hash)
+	u.PasswordHash = hash
 	u.UpdatedAt = s.now()
 	if err := s.store.UpsertUser(ctx, u); err != nil {
 		return err
@@ -116,7 +112,7 @@ func (s *PasswordService) ChangePassword(ctx context.Context, userID, current, n
 //
 // This is the same kind of write as `POST /v1/users/import`: both add an allowlist
 // row an admin explicitly asked for. The difference is only which credential path
-// the row carries — a bcrypt hash here, none for an imported media-server account.
+// the row carries — local ownership here, media-server linkage for an imported account.
 func (s *PasswordService) CreateLocal(ctx context.Context, username, password string, role store.Role, quota int) (store.User, error) {
 	username = strings.TrimSpace(username)
 	if username == "" {
@@ -142,7 +138,7 @@ func (s *PasswordService) CreateLocal(ctx context.Context, username, password st
 			return store.User{}, ErrDuplicateUsername
 		}
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bootstrapCost)
+	hash, err := hashPassword(password)
 	if err != nil {
 		return store.User{}, fmt.Errorf("hash password: %w", err)
 	}
@@ -152,11 +148,14 @@ func (s *PasswordService) CreateLocal(ctx context.Context, username, password st
 		Name:         username,
 		Role:         role,
 		Quota:        quota,
-		PasswordHash: string(hash),
+		PasswordHash: hash,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
-	if err := s.store.UpsertUser(ctx, u); err != nil {
+	if err := s.store.CreateUserUnlessInvited(ctx, u, now); err != nil {
+		if errors.Is(err, store.ErrInvitationIdentityConflict) {
+			return store.User{}, ErrDuplicateUsername
+		}
 		return store.User{}, err
 	}
 	return u, nil
@@ -175,17 +174,17 @@ func (s *PasswordService) ResetPassword(ctx context.Context, targetUserID, next 
 	if err != nil {
 		return err
 	}
-	if u.PasswordHash == "" {
+	if u.MediaServerLinked || u.PasswordHash == "" {
 		return ErrNotLocalUser // imported: Loomarr never had this credential to reset
 	}
 	if len(next) < MinPasswordLen {
 		return ErrWeakPassword
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(next), bootstrapCost)
+	hash, err := hashPassword(next)
 	if err != nil {
 		return fmt.Errorf("hash password: %w", err)
 	}
-	u.PasswordHash = string(hash)
+	u.PasswordHash = hash
 	u.UpdatedAt = s.now()
 	if err := s.store.UpsertUser(ctx, u); err != nil {
 		return err
