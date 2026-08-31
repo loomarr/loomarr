@@ -4,6 +4,7 @@ interface InvitationRosterProps {
   invitations?: InvitationBody[];
   sendingId?: string;
   onSendEmail: (id: string) => void;
+  onShare: (invitation: InvitationBody) => void;
 }
 
 export type { InvitationRosterProps };

@@ -42,7 +42,7 @@ const invitations: InvitationBody[] = [
 const meta = {
   title: "People/InvitationRoster",
   component: InvitationRoster,
-  args: { invitations, onSendEmail: () => {} },
+  args: { invitations, onSendEmail: () => {}, onShare: () => {} },
   decorators: [widthFrame(960)],
 } satisfies Meta<typeof InvitationRoster>;
 

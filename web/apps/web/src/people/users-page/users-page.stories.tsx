@@ -46,6 +46,9 @@ const peopleFetch =
       return json({ settings: [], features: { user_sync: true } });
     }
     if (url.pathname === "/v1/users/candidates") return json({ candidates });
+    if (url.pathname === "/v1/invitations" && request.method === "GET") {
+      return json({ invitations: [] });
+    }
     if (url.pathname.endsWith("/sessions") && request.method === "GET") return json({ sessions: [] });
     if (url.pathname === "/v1/users" && request.method === "GET") {
       if (roster === "loading") return await new Promise<Response>(() => {});
@@ -103,6 +106,11 @@ const LocalAccountOpen: Story = {
     await userEvent.click(await canvas.findByRole("button", { name: "Add local account" }));
   },
 };
+const InviteOpen: Story = {
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(await canvas.findByRole("button", { name: "Invite person" }));
+  },
+};
 const FilteredEmpty: Story = {
   play: async ({ canvas, userEvent }) => {
     await userEvent.type(await canvas.findByLabelText("Search people"), "No such person");
@@ -113,4 +121,13 @@ const Empty: Story = { args: { roster: "empty" } };
 const Loading: Story = { args: { roster: "loading" } };
 
 export default meta;
-export { Empty, FilteredEmpty, ImportOpen, Loading, LocalAccountOpen, MixedRoster, SelectedOfflineReady };
+export {
+  Empty,
+  FilteredEmpty,
+  ImportOpen,
+  InviteOpen,
+  Loading,
+  LocalAccountOpen,
+  MixedRoster,
+  SelectedOfflineReady,
+};

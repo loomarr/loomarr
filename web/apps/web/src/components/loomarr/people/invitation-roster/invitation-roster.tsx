@@ -32,7 +32,7 @@ const outcomeHint = (outcome?: string) => {
   }
 };
 
-const InvitationRoster = ({ invitations, sendingId, onSendEmail }: InvitationRosterProps) => (
+const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: InvitationRosterProps) => (
   <section aria-labelledby="invitation-roster-title" className="flex flex-col gap-3">
     <div>
       <h2 id="invitation-roster-title" className="font-semibold text-lg">
@@ -110,9 +110,9 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail }: InvitationRos
                         {sendingId === value.id ? "Queuing…" : action}
                       </Button>
                     )}
-                    <span className="inline-flex items-center gap-1.5 px-1 text-muted-foreground text-xs">
-                      <QrCode className="size-4" aria-hidden /> Copy or QR fallback
-                    </span>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => onShare(value)}>
+                      <QrCode className="size-4" aria-hidden /> Share QR or link
+                    </Button>
                   </div>
                 )}
               </div>
