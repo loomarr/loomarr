@@ -46,9 +46,10 @@ describe("PersonDetail", () => {
     expect(onResetPassword).toHaveBeenCalledWith("long-enough");
   });
 
-  it("keeps imported passwords on the media server", () => {
+  it("explains provider-owned password changes and Loomarr's offline verifier", () => {
     render(<PersonDetail user={people.importedMember} sessions={[]} onResetPassword={vi.fn()} />);
-    expect(screen.getByText(/managed by the connected media server/i)).toBeInTheDocument();
+    expect(screen.getByText(/change this password in the connected media server/i)).toBeInTheDocument();
+    expect(screen.getByText(/argon2id verifier for offline login/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Reset password" })).not.toBeInTheDocument();
   });
 });
