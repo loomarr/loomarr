@@ -15,6 +15,13 @@ describe("native Storybook theme contract", () => {
     expect(preview).toContain('context.globals.theme === "light"');
   });
 
+  it("forwards live native safe-area insets to every workshop story", () => {
+    const preview = readFileSync(nativePreview, "utf8");
+    expect(preview).toContain("<SafeAreaProvider>");
+    expect(preview).toContain("const insets = useSafeAreaInsets()");
+    expect(preview).toContain("<LoomarrProvider insets={insets}");
+  });
+
   it("keeps a meaningful set of shared native modules in the workshop", () => {
     expect(storyFiles.length).toBeGreaterThanOrEqual(15);
   });
