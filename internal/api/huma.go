@@ -39,9 +39,10 @@ type Server struct {
 	passwords PasswordService
 	userSync  UserSyncer
 	// invitations owns administrator admission decisions and one-time sharing grants (§11).
-	invitations        InvitationService
-	invitationDelivery InvitationDeliveryService
-	accessPublicURL    func() string
+	invitations          InvitationService
+	invitationDelivery   InvitationDeliveryService
+	invitationRedemption InvitationRedemptionService
+	accessPublicURL      func() string
 	// devices wires /v1/auth/device/* — the pairing handshake a keyboard-less native client uses
 	// (§11, Shield P1). Nil until configured, which 404s the routes rather than half-mounting them.
 	devices *auth.DeviceManager
@@ -829,6 +830,14 @@ type InvitationDeliveryService interface {
 	LatestEmail(context.Context, string) (notifications.DeliverySummary, error)
 }
 
+// InvitationRedemptionService is the public credential-proof seam. Bearers are
+// accepted only in request bodies and never enter a route, query, or durable DTO.
+type InvitationRedemptionService interface {
+	Preview(context.Context, string) (invitation.Invitation, error)
+	RedeemLocal(context.Context, string, string) (string, time.Time, store.User, error)
+	RedeemLibrary(context.Context, string, string, string) (string, time.Time, store.User, error)
+}
+
 // SessionManager revokes sessions (logout) and exposes them for admin review (§11).
 type SessionManager interface {
 	Revoke(ctx context.Context, token string) error
@@ -844,16 +853,17 @@ type BackupStreamer interface {
 
 // Options configures the API server.
 type Options struct {
-	Store        store.Store
-	Auth         Authorizer
-	Log          *slog.Logger
-	BackupSQLite BackupStreamer // nil ⇒ /v1/backup returns 501 (Postgres)
-	Ready        ReadyFunc
-	Login        LoginService      // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent
-	Passwords    PasswordService   // /v1/auth/password + local account create/reset (§11); nil ⇒ routes absent
-	Sessions     SessionManager    // /v1/auth/logout (Phase 9)
-	UserSync     UserSyncer        // POST /v1/users/sync (Phase 9); nil ⇒ route absent
-	Invitations  InvitationService // /v1/invitations* (§11); nil ⇒ routes absent
+	Store                store.Store
+	Auth                 Authorizer
+	Log                  *slog.Logger
+	BackupSQLite         BackupStreamer // nil ⇒ /v1/backup returns 501 (Postgres)
+	Ready                ReadyFunc
+	Login                LoginService                // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent
+	Passwords            PasswordService             // /v1/auth/password + local account create/reset (§11); nil ⇒ routes absent
+	Sessions             SessionManager              // /v1/auth/logout (Phase 9)
+	UserSync             UserSyncer                  // POST /v1/users/sync (Phase 9); nil ⇒ route absent
+	Invitations          InvitationService           // /v1/invitations* (§11); nil ⇒ routes absent
+	InvitationRedemption InvitationRedemptionService // public preview and explicit activation (§11)
 	// InvitationDelivery adds explicit email send/resend and provider-safe delivery summaries.
 	InvitationDelivery InvitationDeliveryService
 	// AccessPublicURL supplies the recipient-reachable browser origin. It is read

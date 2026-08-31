@@ -70,6 +70,9 @@ func errUnauthorized(title, detail string, doc ...string) huma.StatusError {
 func errNotFound(title, detail string, doc ...string) huma.StatusError {
 	return apiErr(http.StatusNotFound, title, detail, doc...)
 }
+func errGone(title, detail string, doc ...string) huma.StatusError {
+	return apiErr(http.StatusGone, title, detail, doc...)
+}
 func errConflict(title, detail string, doc ...string) huma.StatusError {
 	return apiErr(http.StatusConflict, title, detail, doc...)
 }

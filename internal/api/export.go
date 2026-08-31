@@ -39,6 +39,7 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	srv.registerDeviceAuth(humaAPI)
 	srv.registerUsers(humaAPI)
 	srv.registerInvitations(humaAPI)
+	srv.registerInvitationRedemption(humaAPI)
 	srv.registerPasswords(humaAPI)
 	srv.registerChannels(humaAPI)
 	srv.registerPlayout(humaAPI) // Hidden ops — present for register-list parity, absent from the spec (§9.1)

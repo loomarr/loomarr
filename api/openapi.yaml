@@ -4128,6 +4128,22 @@ components:
       required:
         - description
       type: object
+    InvitationBearerInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/InvitationBearerInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        grant:
+          format: password
+          type: string
+      required:
+        - grant
+      type: object
     InvitationBody:
       additionalProperties: false
       properties:
@@ -4232,6 +4248,45 @@ components:
         - status
         - attemptNumber
         - updatedAt
+      type: object
+    InvitationPreviewOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/InvitationPreviewOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        credentialPath:
+          enum:
+            - local_password
+            - library_password
+          type: string
+        displayName:
+          type: string
+        expiresAt:
+          description: Unix milliseconds
+          format: int64
+          type: integer
+        kind:
+          enum:
+            - local
+            - library
+          type: string
+        role:
+          enum:
+            - admin
+            - member
+          type: string
+        username:
+          type: string
+      required:
+        - kind
+        - role
+        - credentialPath
+        - expiresAt
       type: object
     IssueInvitationGrantInputBody:
       additionalProperties: false
@@ -6186,6 +6241,28 @@ components:
       required:
         - ready
         - detail
+      type: object
+    RedeemInvitationInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/RedeemInvitationInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        grant:
+          format: password
+          type: string
+        password:
+          format: password
+          type: string
+        username:
+          type: string
+      required:
+        - grant
+        - password
       type: object
     RefineChannelInputBody:
       additionalProperties: false
@@ -11571,6 +11648,60 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Invite a person (admin)
+      tags:
+        - invitations
+  /v1/invitations/preview:
+    post:
+      operationId: preview-invitation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvitationBearerInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationPreviewOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Preview an invitation without redeeming it
+      tags:
+        - invitations
+  /v1/invitations/redeem:
+    post:
+      operationId: redeem-invitation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RedeemInvitationInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeBody"
+          description: OK
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Prove the invited credential and activate the account
       tags:
         - invitations
   /v1/invitations/{id}:

@@ -62,6 +62,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 	loginSvc, ssoSvc := deps.auth.login, deps.auth.sso
 	sessMgr, userSync := deps.auth.sessions, deps.auth.userSync
 	provisionSvc, passwordSvc, invitationSvc := deps.auth.provision, deps.auth.password, deps.auth.invitations
+	invitationRedemption := deps.auth.invitationRedemption
 	deviceMgr, deviceLimiter := deps.auth.deviceManager, deps.auth.deviceLimiter
 	playoutSecret, playoutSecretCurrent := deps.auth.playoutSecret, deps.auth.playoutSecretCurrent
 	backupsSvc, restartSvc, bootCfg := deps.backups, deps.restart, deps.bootConfig
@@ -69,16 +70,17 @@ func buildHTTP(deps httpBuild) http.Handler {
 	liveConfig, libraryConfigured := deps.liveConfig, deps.libraryConfigured
 	jobsSvc, databaseSvc, residentLLM := deps.jobs, deps.database, deps.residentLLM
 	return api.Router(log, api.Options{
-		Store:              st,
-		Auth:               authorizer,
-		Log:                log,
-		BackupSQLite:       backup,
-		Ready:              ready,
-		Login:              loginSvc,
-		Sessions:           sessMgr,
-		Passwords:          passwordSvc,
-		Invitations:        invitationSvc,
-		InvitationDelivery: deps.invitationDelivery,
+		Store:                st,
+		Auth:                 authorizer,
+		Log:                  log,
+		BackupSQLite:         backup,
+		Ready:                ready,
+		Login:                loginSvc,
+		Sessions:             sessMgr,
+		Passwords:            passwordSvc,
+		Invitations:          invitationSvc,
+		InvitationRedemption: invitationRedemption,
+		InvitationDelivery:   deps.invitationDelivery,
 		AccessPublicURL: func() string {
 			if liveConfig == nil {
 				return ""

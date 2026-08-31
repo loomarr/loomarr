@@ -211,6 +211,107 @@ func testInvitationRegenerateAndRevoke(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+func testInvitationGrantPreviewDoesNotConsume(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	s := newStore(t)
+	now := time.Unix(1_900_000_000, 0).UTC()
+	value := localInvitationFixture("preview", "Grace", now)
+	if err := s.CreateInvitation(ctx, value, nil); err != nil {
+		t.Fatal(err)
+	}
+	grant := invitation.Grant{
+		TokenHash: invitation.HashGrant("preview-plaintext"), InvitationID: value.ID,
+		Kind: invitation.GrantActivation, Conveyance: invitation.ConveyanceQR,
+		CreatedAt: now, ExpiresAt: value.ExpiresAt,
+	}
+	if err := s.ReplaceInvitationGrant(ctx, value.ID, grant, now); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.GetInvitationByGrant(ctx, grant.TokenHash, now.Add(time.Minute))
+	if err != nil || got != value {
+		t.Fatalf("preview invitation = %+v, %v; want %+v", got, err, value)
+	}
+	grants, err := s.ListInvitationGrants(ctx, value.ID)
+	if err != nil || len(grants) != 1 || !grants[0].ConsumedAt.IsZero() || !grants[0].RevokedAt.IsZero() {
+		t.Fatalf("preview mutated grant = %+v, %v", grants, err)
+	}
+}
+
+func testInvitationGrantPreviewRejectsEveryUnusableState(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	s := newStore(t)
+	now := time.Unix(1_900_000_000, 0).UTC()
+
+	if _, err := s.GetInvitationByGrant(ctx, invitation.HashGrant("unknown"), now); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown grant preview = %v, want ErrNotFound", err)
+	}
+
+	revoked := localInvitationFixture("preview-revoked", "Revoked", now)
+	if err := s.CreateInvitation(ctx, revoked, nil); err != nil {
+		t.Fatal(err)
+	}
+	revokedGrant := invitation.Grant{
+		TokenHash: invitation.HashGrant("revoked"), InvitationID: revoked.ID,
+		Kind: invitation.GrantActivation, Conveyance: invitation.ConveyanceCopy,
+		CreatedAt: now, ExpiresAt: revoked.ExpiresAt,
+	}
+	if err := s.ReplaceInvitationGrant(ctx, revoked.ID, revokedGrant, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RevokeInvitationGrant(ctx, revokedGrant.TokenHash, now.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetInvitationByGrant(ctx, revokedGrant.TokenHash, now.Add(2*time.Minute)); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("revoked grant preview = %v, want ErrNotFound", err)
+	}
+
+	expiredAt := now.Add(-invitation.Expiry)
+	expired := localInvitationFixture("preview-expired", "Expired", expiredAt)
+	if err := s.CreateInvitation(ctx, expired, nil); err != nil {
+		t.Fatal(err)
+	}
+	expiredGrant := invitation.Grant{
+		TokenHash: invitation.HashGrant("expired"), InvitationID: expired.ID,
+		Kind: invitation.GrantActivation, Conveyance: invitation.ConveyanceQR,
+		CreatedAt: expiredAt, ExpiresAt: expired.ExpiresAt,
+	}
+	if err := s.ReplaceInvitationGrant(ctx, expired.ID, expiredGrant, expiredAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetInvitationByGrant(ctx, expiredGrant.TokenHash, now); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expired grant preview = %v, want ErrNotFound", err)
+	}
+
+	consumed := localInvitationFixture("preview-consumed", "Consumed", now)
+	if err := s.CreateInvitation(ctx, consumed, nil); err != nil {
+		t.Fatal(err)
+	}
+	consumedGrant := invitation.Grant{
+		TokenHash: invitation.HashGrant("consumed"), InvitationID: consumed.ID,
+		Kind: invitation.GrantActivation, Conveyance: invitation.ConveyanceEmail,
+		CreatedAt: now, ExpiresAt: consumed.ExpiresAt,
+	}
+	if err := s.ReplaceInvitationGrant(ctx, consumed.ID, consumedGrant, now); err != nil {
+		t.Fatal(err)
+	}
+	redeemAt := now.Add(time.Minute)
+	if _, err := s.RedeemInvitation(ctx, consumedGrant.TokenHash, User{
+		ID: "consumed-user", Name: consumed.Username, Role: RoleMember,
+		PasswordHash: "$argon2id$prepared", CreatedAt: redeemAt, UpdatedAt: redeemAt,
+	}, Session{
+		TokenHash: "consumed-session", UserID: "consumed-user",
+		CreatedAt: redeemAt, ExpiresAt: redeemAt.Add(time.Hour),
+	}, redeemAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetInvitationByGrant(ctx, consumedGrant.TokenHash, now.Add(2*time.Minute)); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("consumed grant preview = %v, want ErrNotFound", err)
+	}
+}
+
 func testInvitationConcurrentRedemption(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 	ctx := context.Background()

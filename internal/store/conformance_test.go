@@ -104,6 +104,12 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("RegenerateAndRevokeGrants", func(t *testing.T) {
 			testInvitationRegenerateAndRevoke(t, newStore)
 		})
+		t.Run("GrantPreviewDoesNotConsume", func(t *testing.T) {
+			testInvitationGrantPreviewDoesNotConsume(t, newStore)
+		})
+		t.Run("GrantPreviewRejectsEveryUnusableState", func(t *testing.T) {
+			testInvitationGrantPreviewRejectsEveryUnusableState(t, newStore)
+		})
 		t.Run("ConcurrentRedemption", func(t *testing.T) {
 			testInvitationConcurrentRedemption(t, newStore)
 		})
