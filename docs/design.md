@@ -115,7 +115,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `filler` | 6 | `diagnostics`, `filleradmission`, `llm`, `metrics` |
 | `filleradmission` | 7 | — |
 | `httpx` | 7 | `metrics` |
-| `invitation` | 5 | — |
+| `invitation` | 6 | — |
 | `library` | 7 | `filler`, `httpx` |
 | `llm` | 5 | `httpx`, `metrics` |
 | `metrics` | 6 | `provision` |
@@ -173,7 +173,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the durable lifecycle and operator projections for filler-admission results.
 - **`holidayvocab`** · 2 importers · → `textmatch`
   Owns Loomarr's immutable built-in holiday identities and aliases.
-- **`invitation`** · 5 importers · → `contact`
+- **`invitation`** · 6 importers · → `contact`
   Owns administrator admission decisions and their bearer grants (§11).
 - **`prepared`** · 3 importers · → `diagnostics`, `media`
   Owns immutable, reusable playout publications.
@@ -234,7 +234,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`activity`** · 3 importers · → `store`
   Records what Loomarr did, for the Dashboard's Recent activity feed (§5, §12, V32).
-- **`auth`** · 3 importers · → `library`, `store`
+- **`auth`** · 3 importers · → `invitation`, `library`, `store`
   Issues and validates Loomarr sessions (design §11).
 - **`backendtransition`** · 1 importer · → `schedule`, `store`
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.

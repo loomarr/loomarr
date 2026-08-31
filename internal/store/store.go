@@ -631,6 +631,7 @@ type NotificationStore interface {
 type InvitationStore interface {
 	CreateInvitation(ctx context.Context, value invitation.Invitation, address *contact.Address) error
 	GetInvitation(ctx context.Context, id string, now time.Time) (invitation.Invitation, error)
+	GetInvitationByGrant(ctx context.Context, tokenHash string, now time.Time) (invitation.Invitation, error)
 	ListInvitations(ctx context.Context, now time.Time) ([]invitation.Invitation, error)
 	GetInvitationContactAddress(ctx context.Context, invitationID string) (contact.Address, error)
 	ReplaceInvitationGrant(ctx context.Context, invitationID string, grant invitation.Grant, at time.Time) error

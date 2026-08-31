@@ -441,6 +441,26 @@ func (s *sqlStore) GetInvitation(
 	return effectiveInvitation(value, now), nil
 }
 
+// GetInvitationByGrant resolves only a currently usable activation grant. It is
+// deliberately read-only: opening, previewing, or scanning an invitation must
+// never consume the bearer or admit the reserved identity (§11).
+func (s *sqlStore) GetInvitationByGrant(
+	ctx context.Context,
+	tokenHash string,
+	now time.Time,
+) (invitation.Invitation, error) {
+	const selectByGrant = `SELECT invitations.id, invitations.kind, invitations.username,
+		invitations.library_user_id, invitations.display_name, invitations.identity_key,
+		invitations.role, invitations.status, invitations.created_at, invitations.expires_at,
+		invitations.terminal_at, invitations.redeemed_by FROM invitations`
+	return scanInvitation(s.db.QueryRowContext(ctx, s.ph(selectByGrant+`
+		JOIN invitation_grants g ON g.invitation_id = invitations.id
+		WHERE g.token_hash = ? AND g.grant_kind = 'activation'
+		  AND g.consumed_at = 0 AND g.revoked_at = 0 AND g.expires_at > ?
+		  AND invitations.status = 'pending' AND invitations.expires_at > ?`),
+		tokenHash, epoch(now), epoch(now)))
+}
+
 func (s *sqlStore) ListInvitations(ctx context.Context, now time.Time) ([]invitation.Invitation, error) {
 	rows, err := s.db.QueryContext(ctx, invitationSelect+` ORDER BY created_at DESC, id`)
 	if err != nil {

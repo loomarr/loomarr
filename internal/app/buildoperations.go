@@ -195,6 +195,7 @@ type authBuild struct {
 	provision            api.Provisioner
 	password             api.PasswordService
 	invitations          api.InvitationService
+	invitationRedemption api.InvitationRedemptionService
 	deviceManager        *auth.DeviceManager
 	deviceLimiter        *auth.RateLimiter
 	playoutSecret        func() string
@@ -246,6 +247,9 @@ func buildAuth(
 		invitationLibrary = invitationLibraryResolver{client: libraryClient}
 	}
 	result.invitations = invitation.NewService(st, invitationLibrary, newID, nil, time.Now)
+	result.invitationRedemption = auth.NewInvitationRedemptionService(
+		st, libraryClient, manager, newID, time.Now,
+	)
 	result.sessions = manager
 	result.deviceManager = auth.NewDeviceManager(st, time.Now)
 	result.deviceLimiter = auth.NewRateLimiter(0.05, 5)
