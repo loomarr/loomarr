@@ -188,7 +188,7 @@ func buildHandler(
 		channels: channelsBuilt, approval: approval, suggestions: suggestions, fillers: fillers,
 		auth: operations.auth, backups: operations.backups,
 		restart: operations.restart, bootConfig: operations.bootConfig,
-		guide: operations.guide, settings: operations.settings, liveConfig: operations.liveConfig,
+		guide: operations.guide, settings: operations.settings, emailTest: operations.emailTest, liveConfig: operations.liveConfig,
 		libraryConfigured: operations.libraryConfigured, jobs: operations.jobs,
 		database: operations.database, residentLLM: operations.residentLLM,
 		healthRefresh: healthRunner,

@@ -28,6 +28,7 @@ type httpBuild struct {
 	bootConfig        *config.Config
 	guide             api.GuideReader
 	settings          api.SettingsService
+	emailTest         api.EmailTestService
 	liveConfig        func(string) string
 	libraryConfigured func() bool
 	jobs              api.JobService
@@ -123,6 +124,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		RestartDrift: restartDrift(bootCfg, appliedRestartSettings, canonicalRestartCurrent(desiredSet)),
 		Jobs:         jobsSvc,
 		Settings:     settingsSvc,
+		EmailTest:    deps.emailTest,
 		BackendTransition: currentBackendTransition{
 			controller: backendController, refresh: refreshBackendSettings, desired: desiredBackend,
 		},

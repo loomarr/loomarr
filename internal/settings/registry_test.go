@@ -2,6 +2,7 @@ package settings
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -434,6 +435,72 @@ func TestAccessPublicURLRequiresAnHTTPOrigin(t *testing.T) {
 		if _, err := setting.parse(invalid); err == nil {
 			t.Errorf("invalid origin %q was accepted", invalid)
 		}
+	}
+}
+
+func TestRegistry_EmailDeliverySettings(t *testing.T) {
+	registry := NewRegistry()
+	want := map[string]struct {
+		env          string
+		kind         Kind
+		defaultValue any
+	}{
+		"notifications.email.enabled":      {"NOTIFICATIONS_EMAIL_ENABLED", KindBool, false},
+		"notifications.smtp.host":          {"NOTIFICATIONS_SMTP_HOST", KindString, ""},
+		"notifications.smtp.port":          {"NOTIFICATIONS_SMTP_PORT", KindInt, 587},
+		"notifications.smtp.security":      {"NOTIFICATIONS_SMTP_SECURITY", KindEnum, "starttls"},
+		"notifications.smtp.username":      {"NOTIFICATIONS_SMTP_USERNAME", KindString, ""},
+		"notifications.smtp.password":      {"NOTIFICATIONS_SMTP_PASSWORD", KindSecret, ""},
+		"notifications.email.from_address": {"NOTIFICATIONS_EMAIL_FROM_ADDRESS", KindString, ""},
+		"notifications.email.from_name":    {"NOTIFICATIONS_EMAIL_FROM_NAME", KindString, "Loomarr"},
+	}
+	for key, expected := range want {
+		setting, ok := registry.Get(key)
+		if !ok {
+			t.Errorf("%s is not declared", key)
+			continue
+		}
+		if setting.Group != GroupNotifications || setting.EnvVar != expected.env ||
+			setting.Kind != expected.kind || setting.Default != expected.defaultValue {
+			t.Errorf("%s = group %q env %q kind %q default %#v", key, setting.Group,
+				setting.EnvVar, setting.Kind, setting.Default)
+		}
+	}
+
+	security, ok := registry.Get("notifications.smtp.security")
+	if !ok {
+		t.Fatal("notifications.smtp.security is not declared")
+	}
+	if got := security.EnumValues(); !slices.Equal(got, []string{"starttls", "tls", "none"}) {
+		t.Errorf("SMTP security values = %v", got)
+	}
+
+	port, ok := registry.Get("notifications.smtp.port")
+	if !ok {
+		t.Fatal("notifications.smtp.port is not declared")
+	}
+	for _, invalid := range []string{"0", "65536"} {
+		if _, err := port.parse(invalid); err == nil {
+			t.Errorf("SMTP port accepted %s", invalid)
+		}
+	}
+	for _, valid := range []string{"1", "65535"} {
+		if _, err := port.parse(valid); err != nil {
+			t.Errorf("SMTP port rejected %s: %v", valid, err)
+		}
+	}
+
+	from, ok := registry.Get("notifications.email.from_address")
+	if !ok {
+		t.Fatal("notifications.email.from_address is not declared")
+	}
+	for _, invalid := range []string{"two@example.com,three@example.com", "Display <sender@example.com>", "not-an-address"} {
+		if _, err := from.parse(invalid); err == nil {
+			t.Errorf("sender address accepted %q", invalid)
+		}
+	}
+	if _, err := from.parse("sender@example.com"); err != nil {
+		t.Errorf("sender address rejected: %v", err)
 	}
 }
 
