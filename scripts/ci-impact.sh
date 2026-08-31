@@ -127,7 +127,7 @@ classify() {
       known=true
       select_gate clients
       ;;
-    web/scripts/test-apple-client.sh|web/scripts/test-apple-client.test.mjs|web/scripts/apple-simulator.xcconfig|web/scripts/filter-react-native-pods-notice.awk|web/scripts/filter-react-native-pods-notice.test.mjs)
+    web/scripts/test-apple-client.sh|web/scripts/test-apple-client.test.mjs|web/scripts/test-apple-client-cache-test.sh|web/scripts/apple-simulator.xcconfig|web/scripts/apple-compilation-cache.xcconfig|web/scripts/validate-apple-compilation-cache.sh|web/scripts/validate-apple-compilation-cache-test.sh|web/scripts/filter-react-native-pods-notice.awk|web/scripts/filter-react-native-pods-notice.test.mjs)
       known=true
       select_gate contracts
       select_gate apple_mobile
@@ -314,6 +314,7 @@ classify() {
       known=true
       case "$path" in
         scripts/agent*) select_gate agent; select_gate policy ;;
+        scripts/apple-compilation-cache*) select_gate contracts; select_gate apple_mobile; select_gate apple_tv; select_gate policy ;;
         scripts/ensure-container-image.sh) select_gate contracts; select_gate postgres; select_gate visual; select_gate e2e; select_gate tuner; select_gate policy ;;
         scripts/run-playwright-container.sh) select_gate contracts; select_gate visual; select_gate e2e; select_gate tuner; select_gate policy ;;
         scripts/ci-impact*|scripts/ci-dispatch-scope*|scripts/ci-run-metrics*|scripts/testdata/ci-*) select_gate policy ;;
@@ -444,6 +445,12 @@ classify() {
       ;;
     .github/workflows/ci-apple-tv.yml)
       known=true
+      select_gate apple_tv
+      select_gate policy
+      ;;
+    .github/workflows/ci-apple-cache-validation.yml)
+      known=true
+      select_gate apple_mobile
       select_gate apple_tv
       select_gate policy
       ;;

@@ -37,12 +37,16 @@ type workflowMatrixEntryAuthority struct {
 
 func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobContextAuthority {
 	return map[workflowJobContextKey]workflowJobContextAuthority{
-		{workflow: "android-beta.yml", job: "release"}:       {name: "Build and optionally publish Android TV beta", runsOn: "ubuntu-latest", environmentName: "android-beta"},
-		{workflow: "cache-cleanup.yml", job: "cleanup"}:      {name: "Drop the closed PR's caches", runsOn: "ubuntu-latest"},
-		{workflow: "ci-agent.yml", job: "run"}:               {name: "Agent harness (macOS)", runsOn: "macos-latest"},
-		{workflow: "ci-android.yml", job: "run"}:             {name: "Android TV — lint + unit + assemble", runsOn: "ubuntu-latest"},
-		{workflow: "ci-apple-mobile.yml", job: "run"}:        {name: "Apple mobile — native build + launch", runsOn: "macos-26", timeoutMinutes: 75},
-		{workflow: "ci-apple-tv.yml", job: "run"}:            {name: "Apple TV — native build + launch", runsOn: "macos-26", timeoutMinutes: 60},
+		{workflow: "android-beta.yml", job: "release"}:  {name: "Build and optionally publish Android TV beta", runsOn: "ubuntu-latest", environmentName: "android-beta"},
+		{workflow: "cache-cleanup.yml", job: "cleanup"}: {name: "Drop the closed PR's caches", runsOn: "ubuntu-latest"},
+		{workflow: "ci-agent.yml", job: "run"}:          {name: "Agent harness (macOS)", runsOn: "macos-latest"},
+		{workflow: "ci-android.yml", job: "run"}:        {name: "Android TV — lint + unit + assemble", runsOn: "ubuntu-latest"},
+		{workflow: "ci-apple-mobile.yml", job: "run"}:   {name: "Apple mobile — native build + launch", runsOn: "macos-26", timeoutMinutes: 75},
+		{workflow: "ci-apple-tv.yml", job: "run"}:       {name: "Apple TV — native build + launch", runsOn: "macos-26", timeoutMinutes: 60},
+
+		{workflow: "ci-apple-cache-validation.yml", job: "producer"}: {name: "Apple compilation cache — produce on Xcode 26", runsOn: "macos-26", timeoutMinutes: 75},
+		{workflow: "ci-apple-cache-validation.yml", job: "consumer"}: {name: "Apple compilation cache — consume on distinct Xcode 26 runner", runsOn: "macos-26", needsList: []string{"producer"}, timeoutMinutes: 75},
+
 		{workflow: "ci-clients.yml", job: "run"}:             {name: "Shared clients — lint + test + browser/iOS/Android/TV bundles", runsOn: "ubuntu-latest"},
 		{workflow: "ci-docs.yml", job: "run"}:                {name: "Docs — links + structure + prose", runsOn: "ubuntu-latest"},
 		{workflow: "ci-frontend.yml", job: "run"}:            {name: "Frontend — biome + typecheck + unit + build (${{ matrix.shard }}/${{ strategy.job-total }})", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{shards: []int{1, 2}}},
@@ -61,7 +65,7 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 		{workflow: "ci.yml", job: "changes"}:            {name: "What changed", runsOn: "ubuntu-latest"},
 		{workflow: "ci.yml", job: "ci-ok"}: {
 			name: "CI", runsOn: "ubuntu-latest",
-			needsList: []string{"changes", "release-candidate-scope", "full-manual-scope", "ci-policy", "agent-harness-macos", "rust-contracts", "go-contracts", "image-certification", "go", "store-postgres", "frontend", "clients", "apple-mobile", "apple-tv", "playwright", "tuner", "image", "docs", "android"},
+			needsList: []string{"changes", "release-candidate-scope", "full-manual-scope", "ci-policy", "agent-harness-macos", "rust-contracts", "go-contracts", "image-certification", "go", "store-postgres", "frontend", "clients", "apple-mobile", "apple-tv", "apple-cache-validation", "playwright", "tuner", "image", "docs", "android"},
 		},
 		{workflow: "image-benchmark.yml", job: "benchmark"}: {
 			name: "AVIF ladders (${{ matrix.platform }})", runsOn: "${{ matrix.runner }}", timeoutMinutes: 30,

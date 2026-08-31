@@ -1,0 +1,8 @@
+// Xcode 26's content-addressable compilation cache survives Expo's clean native regeneration.
+// The store path is runner-local and supplied by the verifier; the file contents are part of the
+// outer compatibility fingerprint so a build-setting change cannot restore an older cache.
+#include "apple-simulator.xcconfig"
+COMPILATION_CACHE_ENABLE_CACHING = YES
+COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS = YES
+COMPILATION_CACHE_CAS_PATH = $(LOOMARR_APPLE_CACHE_STORE)
+SWIFT_ENABLE_EXPLICIT_MODULES = YES

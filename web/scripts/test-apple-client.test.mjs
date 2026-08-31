@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 
 const script = readFileSync(new URL("test-apple-client.sh", import.meta.url), "utf8");
 const xcconfig = readFileSync(new URL("apple-simulator.xcconfig", import.meta.url), "utf8");
+const cacheXcconfig = readFileSync(new URL("apple-compilation-cache.xcconfig", import.meta.url), "utf8");
 
 describe("Apple simulator verifier", () => {
   it("builds only the active simulator architecture", () => {
@@ -13,7 +14,22 @@ describe("Apple simulator verifier", () => {
       .filter((line) => line !== "" && !line.startsWith("//"));
 
     assert.deepEqual(settings, ["ONLY_ACTIVE_ARCH = YES"]);
-    assert.equal(script.match(/XCODE_XCCONFIG_FILE="\$\{APPLE_SIMULATOR_XCCONFIG\}"/g)?.length, 2);
+    assert.equal(script.match(/XCODE_XCCONFIG_FILE="\$xcconfig"/g)?.length, 2);
+  });
+
+  it("enables only Xcode's compilation CAS in warm mode", () => {
+    const settings = cacheXcconfig
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "" && !line.startsWith("//"));
+
+    assert.deepEqual(settings, [
+      '#include "apple-simulator.xcconfig"',
+      "COMPILATION_CACHE_ENABLE_CACHING = YES",
+      "COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS = YES",
+      "COMPILATION_CACHE_CAS_PATH = $(LOOMARR_APPLE_CACHE_STORE)",
+      "SWIFT_ENABLE_EXPLICIT_MODULES = YES",
+    ]);
   });
 
   it("fails when the built artifact does not contain exactly the host architecture", () => {

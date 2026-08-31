@@ -1,0 +1,73 @@
+name: CI / Apple compilation cache — portability validation
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.27"
+  NODE_VERSION: "22"
+
+jobs:
+  producer:
+    name: Apple compilation cache — produce on Xcode 26
+    runs-on: macos-26
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: corepack enable
+      - name: Restore pnpm and CocoaPods work
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.local/share/pnpm/store
+            ~/Library/Caches/CocoaPods
+          key: apple-cache-validation-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}-${{ github.run_id }}
+          restore-keys: apple-cache-validation-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}-
+      - run: make fe-install
+      - name: Produce and validate the compilation cache
+        env:
+          LOOMARR_APPLE_CACHE_VALIDATION_ROOT: ${{ runner.temp }}/apple-cache-validation-producer
+        run: ./web/scripts/validate-apple-compilation-cache.sh produce "$RUNNER_TEMP/apple-compilation-cache.tar.zst"
+      - name: Transfer the validated cache to a distinct runner
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: apple-compilation-cache-portability
+          path: ${{ runner.temp }}/apple-compilation-cache.tar.zst
+          if-no-files-found: error
+          retention-days: 1
+
+  consumer:
+    name: Apple compilation cache — consume on distinct Xcode 26 runner
+    needs: [producer]
+    runs-on: macos-26
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: corepack enable
+      - name: Restore pnpm and CocoaPods work
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.local/share/pnpm/store
+            ~/Library/Caches/CocoaPods
+          key: apple-cache-validation-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}-${{ github.run_id }}
+          restore-keys: apple-cache-validation-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}-
+      - run: make fe-install
+      - name: Receive the producer cache
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: apple-compilation-cache-portability
+          path: ${{ runner.temp }}
+      - name: Consume and invalidate the compilation cache
+        env:
+          LOOMARR_APPLE_CACHE_VALIDATION_ROOT: ${{ runner.temp }}/apple-cache-validation-consumer
+        run: ./web/scripts/validate-apple-compilation-cache.sh consume "$RUNNER_TEMP/apple-compilation-cache.tar.zst"
