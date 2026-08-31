@@ -119,9 +119,9 @@ func TestResolveEpisodesMemoizesTheEpisodeEnumeration(t *testing.T) {
 	av := NewStoreAvailability(context.Background(), st, nil, eps)
 
 	for i := 0; i < 25; i++ {
-		got, ok := av.ResolveEpisodes(key)
-		if !ok || len(got) != 2 {
-			t.Fatalf("resolveEpisodes %d = (%d eps, %v), want (2, true)", i, len(got), ok)
+		got := av.ResolveEpisodes(key)
+		if len(got.Programs) != 2 {
+			t.Fatalf("resolveEpisodes %d = %d eps, want 2", i, len(got.Programs))
 		}
 	}
 
@@ -144,7 +144,7 @@ func TestResolveEpisodesMemoizesAnEmptyEnumeration(t *testing.T) {
 
 	av := NewStoreAvailability(context.Background(), st, nil, eps)
 	for i := 0; i < 10; i++ {
-		if _, ok := av.ResolveEpisodes(key); ok {
+		if got := av.ResolveEpisodes(key); len(got.Programs) > 0 {
 			t.Fatal("a show with no episodes must not resolve")
 		}
 	}

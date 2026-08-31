@@ -27,6 +27,7 @@ type AttemptFailure struct {
 	Work       Work
 	Code       FailureCode
 	Diagnostic string
+	TraceJSON  string
 }
 
 type executionRepository interface {
@@ -62,11 +63,17 @@ func (w *Workflow) Complete(ctx context.Context, work Work, proposal suggest.Pro
 	if err := validateWork(work); err != nil {
 		return suggest.WorkflowProposal{}, err
 	}
-	if len(proposal.Lineup)+len(proposal.Acquisitions) == 0 {
+	if len(proposal.Lineup)+len(proposal.Acquisitions)+len(proposal.Alternates)+len(proposal.Refused) == 0 {
 		return suggest.WorkflowProposal{}, suggest.ErrNoGroundedTitles
 	}
 	if err := validateProposalIdentities(proposal); err != nil {
 		return suggest.WorkflowProposal{}, err
+	}
+	if proposal.Trace.Version != suggest.DecisionTraceVersion {
+		return suggest.WorkflowProposal{}, fmt.Errorf("%w: Proposal decision trace version = %d, want %d", ErrInvalidState, proposal.Trace.Version, suggest.DecisionTraceVersion)
+	}
+	if err := suggest.ValidateDecisionTrace(proposal.Trace); err != nil {
+		return suggest.WorkflowProposal{}, fmt.Errorf("%w: invalid Proposal decision trace: %v", ErrInvalidState, err)
 	}
 	if w.execution == nil {
 		return suggest.WorkflowProposal{}, fmt.Errorf("%w: execution repository unavailable", ErrInvalidState)
@@ -80,19 +87,24 @@ func (w *Workflow) Complete(ctx context.Context, work Work, proposal suggest.Pro
 
 // Fail closes the current Attempt while preserving the private diagnostic only
 // for operator logging. Unknown codes collapse to the bounded general failure.
-func (w *Workflow) Fail(ctx context.Context, work Work, code string, diagnostic string) error {
+func (w *Workflow) Fail(ctx context.Context, work Work, code string, diagnostic string, traceJSON ...string) error {
 	if err := validateWork(work); err != nil {
 		return err
 	}
 	boundedCode := FailureCode(code)
-	if boundedCode != FailureNoGroundedTitles {
+	if boundedCode != FailureNoGroundedTitles && boundedCode != FailureSelectionEmpty && boundedCode != FailureBudgetExhausted {
 		boundedCode = FailureGenerationFailed
 	}
 	if w.execution == nil {
 		return fmt.Errorf("%w: execution repository unavailable", ErrInvalidState)
 	}
+	trace := ""
+	if len(traceJSON) > 0 {
+		trace = traceJSON[0]
+	}
 	if err := w.execution.FailAttempt(ctx, AttemptFailure{
 		Work: work, Code: boundedCode, Diagnostic: diagnostic,
+		TraceJSON: trace,
 	}); err != nil {
 		return fmt.Errorf("fail Proposal Job %q Attempt %d: %w", work.JobID, work.Attempt, err)
 	}
@@ -113,6 +125,11 @@ func validateProposalIdentities(proposal suggest.Proposal) error {
 			if _, err := item.Key(); err != nil {
 				return fmt.Errorf("%w: Proposal contains an ungrounded identity: %v", ErrInvalidState, err)
 			}
+		}
+	}
+	for _, refused := range proposal.Refused {
+		if _, err := refused.Item.Key(); err != nil {
+			return fmt.Errorf("%w: Proposal contains an ungrounded refused identity: %v", ErrInvalidState, err)
 		}
 	}
 	return nil

@@ -4,7 +4,7 @@ package fillereval
 
 import "time"
 
-const SchemaVersion = 4
+const SchemaVersion = 5
 
 type CorpusKind string
 
@@ -90,10 +90,10 @@ type MediaProvenance struct {
 	Authority           string    `json:"authority"`
 	Collection          string    `json:"collection,omitempty"`
 	ItemID              string    `json:"itemId"`
-	ItemURL             string    `json:"itemUrl"`
+	ItemRef             string    `json:"itemRef"`
 	MetadataRetrievedAt time.Time `json:"metadataRetrievedAt"`
 	MetadataSHA256      string    `json:"metadataSha256"`
-	EvidenceURL         string    `json:"evidenceUrl"`
+	EvidenceRef         string    `json:"evidenceRef"`
 	LicenseURL          string    `json:"licenseUrl,omitempty"`
 	RightsStatement     string    `json:"rightsStatement"`
 	RightsDecision      string    `json:"rightsDecision"`
@@ -101,10 +101,12 @@ type MediaProvenance struct {
 	RightsReviewedAt    time.Time `json:"rightsReviewedAt"`
 	Redistributable     bool      `json:"redistributable"`
 	Creator             string    `json:"creator,omitempty"`
+	Campaign            string    `json:"campaign,omitempty"`
+	SourceFamily        string    `json:"sourceFamily,omitempty"`
 	RequiredCredit      string    `json:"requiredCredit,omitempty"`
 	Restrictions        []string  `json:"restrictions,omitempty"`
 	SourceFilename      string    `json:"sourceFilename"`
-	SourceURL           string    `json:"sourceUrl"`
+	SourceRef           string    `json:"sourceRef"`
 	SourceBytes         int64     `json:"sourceBytes"`
 	SegmentStartMS      int64     `json:"segmentStartMs,omitempty"`
 	SegmentDurationMS   int64     `json:"segmentDurationMs"`
@@ -150,27 +152,8 @@ type Prediction struct {
 	Conflicts          []Conflict          `json:"conflicts,omitempty"`
 	ReviewQuestion     string              `json:"reviewQuestion,omitempty"`
 	Probability        *float64            `json:"probability,omitempty"`
-	Role               string              `json:"role"`
-	Rung               string              `json:"rung"`
-	RequestedProvider  string              `json:"requestedProvider"`
-	RequestedModel     string              `json:"requestedModel"`
-	ResolvedModel      string              `json:"resolvedModel"`
-	ResolvedProvider   string              `json:"resolvedProvider"`
-	UpstreamProvider   string              `json:"upstreamProvider,omitempty"`
-	Modalities         []string            `json:"modalities"`
-	Derivative         Derivative          `json:"derivative"`
-	Tokens             TokenUsage          `json:"tokens"`
-	ChargedAmount      string              `json:"chargedAmount,omitempty"`
-	ChargedCurrency    string              `json:"chargedCurrency,omitempty"`
-	ChargedNanoUSD     int64               `json:"chargedNanoUsd,omitempty"`
-	EstimatedNanoUSD   int64               `json:"estimatedNanoUsd,omitempty"`
-	Attempts           int                 `json:"attempts"`
-	GenerationID       string              `json:"generationId,omitempty"`
-	LatencyMS          int64               `json:"latencyMs,omitempty"`
 	OperationalFailure string              `json:"operationalFailure,omitempty"`
-	// Steps preserves every inference call in a cascade. Older captured ledgers
-	// may omit it and use the scalar attribution fields above.
-	Steps []InferenceStep `json:"steps,omitempty"`
+	Steps              []InferenceStep     `json:"steps,omitempty"`
 }
 
 // InferenceStep is the immutable accounting envelope for one attempted rung.
@@ -195,6 +178,8 @@ type InferenceStep struct {
 	Attempts           int        `json:"attempts"`
 	GenerationID       string     `json:"generationId,omitempty"`
 	LatencyMS          int64      `json:"latencyMs,omitempty"`
+	Abstained          bool       `json:"abstained,omitempty"`
+	AbstentionReason   string     `json:"abstentionReason,omitempty"`
 	OperationalFailure string     `json:"operationalFailure,omitempty"`
 }
 
@@ -222,19 +207,20 @@ type Conflict struct {
 }
 
 type RunIdentity struct {
-	Profile            string    `json:"profile"`
-	EvaluationSplit    Split     `json:"evaluationSplit"`
-	EvidenceVersion    string    `json:"evidenceVersion"`
-	PromptVersion      string    `json:"promptVersion"`
-	TaxonomyVersion    string    `json:"taxonomyVersion"`
-	PolicyVersion      string    `json:"policyVersion"`
-	RolePolicyVersion  string    `json:"rolePolicyVersion"`
-	CapabilitySnapshot string    `json:"capabilitySnapshot"`
-	PriceSnapshot      string    `json:"priceSnapshot"`
-	GeneratedAt        time.Time `json:"generatedAt"`
-	MaxRequests        int       `json:"maxRequests"`
-	MaxSpendNanoUSD    int64     `json:"maxSpendNanoUsd"`
-	MaxConcurrency     int       `json:"maxConcurrency"`
+	Profile             string    `json:"profile"`
+	EvaluationSplit     Split     `json:"evaluationSplit"`
+	EvidenceVersion     string    `json:"evidenceVersion"`
+	PromptVersion       string    `json:"promptVersion"`
+	TaxonomyVersion     string    `json:"taxonomyVersion"`
+	PolicyVersion       string    `json:"policyVersion"`
+	RolePolicyVersion   string    `json:"rolePolicyVersion"`
+	CapabilitySnapshot  string    `json:"capabilitySnapshot"`
+	PriceSnapshot       string    `json:"priceSnapshot"`
+	TranscriptSetSHA256 string    `json:"transcriptSetSha256,omitempty"`
+	GeneratedAt         time.Time `json:"generatedAt"`
+	MaxRequests         int       `json:"maxRequests"`
+	MaxSpendNanoUSD     int64     `json:"maxSpendNanoUsd"`
+	MaxConcurrency      int       `json:"maxConcurrency"`
 }
 
 type Report struct {

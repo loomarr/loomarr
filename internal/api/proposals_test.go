@@ -89,7 +89,7 @@ func seedProposal(t *testing.T, st store.Store, id string) {
 
 func seedProposalAt(t *testing.T, st store.Store, id string, created time.Time) {
 	t.Helper()
-	body := `{"acquisitions":[{"mediaType":"movie","tmdbId":100,"name":"Speed","year":1994}]}`
+	body := `{"acquisitions":[{"mediaType":"movie","tmdbId":100,"name":"Speed","year":1994}],"trace":{"version":1,"candidates":[{"key":"movie:tmdb:100","name":"Speed","ownership":"acquisition","rank":{"tieKey":"movie:tmdb:100"},"disposition":"selected","reason":"selected"}],"surfacedTotal":1,"recordedTotal":1,"truncated":false}}`
 	err := st.CreateProposal(context.Background(), store.Proposal{
 		ID: id, JobID: "job-1", Status: "submitted", CreatedBy: "alice", ProposalJSON: body,
 		CreatedAt: created,
@@ -183,7 +183,7 @@ func TestGetProposalJobClassifiesNoGroundedTitlesWithoutLeakingDiagnostic(t *tes
 	}
 	if err := st.CommitSuggestionFailure(context.Background(), "job-grounding", claimed[0].Attempts,
 		"suggester: no grounded titles found for this intent at https://private.invalid",
-		suggest.FailureCodeNoGroundedTitles, now.Add(time.Second)); err != nil {
+		suggest.FailureCodeNoGroundedTitles, `{"version":1,"terminal":"selection_empty"}`, now.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -231,6 +231,26 @@ func TestGetProposalJobRequiresOwnerOrAdmin(t *testing.T) {
 	}
 	if resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs/job-owned", "", ""); resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("anonymous get → %d, want 401", resp.StatusCode)
+	}
+}
+
+func TestGetProposalProjectsPersistedDecisionTraceForAuthorizedReader(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	body := `{"trace":{"version":1,"surfacedTotal":1,"recordedTotal":1,"truncated":false,"candidates":[{"key":"movie:tmdb:1","ownership":"library","disposition":"selected","reason":"selected"}]}}`
+	if err := st.CreateProposal(context.Background(), store.Proposal{ID: "trace-proposal", JobID: "trace-job", Status: "submitted", CreatedBy: "alice", ProposalJSON: body}); err != nil {
+		t.Fatal(err)
+	}
+	resp := do(t, srv, http.MethodGet, "/v1/proposals/trace-proposal", adminToken, "")
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET proposal = %d, want 200", resp.StatusCode)
+	}
+	var got api.ProposalDTO
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Proposal.Trace.Version != 1 || len(got.Proposal.Trace.Candidates) != 1 {
+		t.Fatalf("proposal trace = %+v", got.Proposal.Trace)
 	}
 }
 
@@ -499,6 +519,224 @@ func TestApprove_CreatesTheChannelTheIntentDescribes(t *testing.T) {
 	// which is the failure §9 exists to prevent.
 	if len(ch.Lineup) == 0 {
 		t.Error("channel created with an EMPTY lineup — it would play nothing")
+	}
+}
+
+func TestApprove_PersistsProposalEpisodeSelectionToChannelLineup(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	body := `{"intent":{"description":"Classic Simpsons"},` +
+		`"lineup":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons",` +
+		`"inLibrary":true,"libraryItemId":"lib-simpsons",` +
+		`"episodeSelection":{"mode":"highlights"}}],"acquisitions":[]}`
+	if err := st.CreateProposal(context.Background(), store.Proposal{
+		ID: "p-episodes", JobID: "job-episodes", Status: "submitted", ProposalJSON: body,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-episodes/approve", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("approve → %d, want 200", resp.StatusCode)
+	}
+	var out struct {
+		ChannelID string `json:"channelId"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	ch, err := st.GetChannel(context.Background(), out.ChannelID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ch.Lineup) != 1 || ch.Lineup[0].EpisodeSelection.Mode != schedule.EpisodeHighlights {
+		t.Fatalf("approved lineup selection = %+v, want highlights", ch.Lineup)
+	}
+}
+
+func TestApprove_RestampsSearchAddedSeriesFromOriginalIntent(t *testing.T) {
+	tests := []struct {
+		name       string
+		intent     string
+		proposalID string
+		seriesID   int
+		want       schedule.EpisodeSelection
+	}{
+		{
+			name: "classic", intent: "Classic highlights from The Simpsons",
+			proposalID: "p-added-classic", seriesID: 456,
+			want: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
+		},
+		{
+			name: "named holiday", intent: "Christmas episodes from Bob's Burgers",
+			proposalID: "p-added-holiday", seriesID: 32726,
+			want: schedule.EpisodeSelection{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}},
+		},
+		{
+			name: "complete", intent: "Watch The Simpsons chronologically from the beginning",
+			proposalID: "p-added-complete", seriesID: 456,
+			want: schedule.EpisodeSelection{Mode: schedule.EpisodeComplete},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv, st, _ := newSuggestServer(t)
+			body := fmt.Sprintf(`{"intent":{"description":%q},"lineup":[`+
+				`{"mediaType":"movie","tmdbId":603,"name":"The Matrix","inLibrary":true,"libraryItemId":"matrix"}],`+
+				`"acquisitions":[]}`, tt.intent)
+			if err := st.CreateProposal(context.Background(), store.Proposal{
+				ID: tt.proposalID, JobID: "job-" + tt.proposalID, Status: "submitted", ProposalJSON: body,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			previewResp := do(t, srv, http.MethodGet, "/v1/proposals/"+tt.proposalID, adminToken, "")
+			if previewResp.StatusCode != http.StatusOK {
+				t.Fatalf("get proposal → %d, want 200", previewResp.StatusCode)
+			}
+			var preview struct {
+				EpisodeSelectionPreview schedule.EpisodeSelection `json:"episodeSelectionPreview"`
+			}
+			if err := json.NewDecoder(previewResp.Body).Decode(&preview); err != nil {
+				t.Fatal(err)
+			}
+			if got := preview.EpisodeSelectionPreview; got.Mode != tt.want.Mode ||
+				strings.Join(got.Holidays, ",") != strings.Join(tt.want.Holidays, ",") {
+				t.Fatalf("pre-approval selection preview = %+v, want %+v", got, tt.want)
+			}
+			edit := fmt.Sprintf(`{"add":[{"mediaType":"series","tmdbId":%d,"name":"Added Series",`+
+				`"inLibrary":false}]}`, tt.seriesID)
+			resp := do(t, srv, http.MethodPost, "/v1/proposals/"+tt.proposalID+"/approve", adminToken, edit)
+			if resp.StatusCode != http.StatusOK {
+				b, _ := io.ReadAll(resp.Body)
+				t.Fatalf("approve → %d, want 200: %s", resp.StatusCode, b)
+			}
+			var out struct {
+				ChannelID string `json:"channelId"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+				t.Fatal(err)
+			}
+			ch, err := st.GetChannel(context.Background(), out.ChannelID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got schedule.EpisodeSelection
+			for _, item := range ch.Lineup {
+				if item.Key == provision.Key(fmt.Sprintf("series:tmdb:%d", tt.seriesID)) {
+					got = item.EpisodeSelection
+				}
+			}
+			if got.Mode != tt.want.Mode || strings.Join(got.Holidays, ",") != strings.Join(tt.want.Holidays, ",") {
+				t.Fatalf("added series selection = %+v, want %+v", got, tt.want)
+			}
+			approved, err := st.GetProposal(context.Background(), tt.proposalID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var persisted suggest.Proposal
+			if err := json.Unmarshal([]byte(approved.ProposalJSON), &persisted); err != nil {
+				t.Fatal(err)
+			}
+			if len(persisted.Acquisitions) != 1 ||
+				persisted.Acquisitions[0].EpisodeSelection.Mode != tt.want.Mode ||
+				strings.Join(persisted.Acquisitions[0].EpisodeSelection.Holidays, ",") != strings.Join(tt.want.Holidays, ",") {
+				t.Fatalf("persisted added series selection = %+v, want %+v", persisted.Acquisitions, tt.want)
+			}
+		})
+	}
+}
+
+func TestApprove_ReplacesCraftedSeriesModeFromOriginalIntent(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	body := `{"intent":{"description":"Watch The Simpsons chronologically from start to finish"},` +
+		`"lineup":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix",` +
+		`"inLibrary":true,"libraryItemId":"matrix"}],` +
+		`"acquisitions":[]}`
+	if err := st.CreateProposal(context.Background(), store.Proposal{
+		ID: "p-crafted-selection", JobID: "job-crafted-selection", Status: "submitted", ProposalJSON: body,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-crafted-selection/approve", adminToken,
+		`{"add":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons","inLibrary":false,`+
+			`"episodeSelection":{"mode":"holiday","holidays":["christmas"]}}]}`)
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("approve → %d, want 200: %s", resp.StatusCode, b)
+	}
+	var out struct {
+		ChannelID string `json:"channelId"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	ch, err := st.GetChannel(context.Background(), out.ChannelID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ch.Lineup) != 2 {
+		t.Fatalf("approved lineup = %+v, want series and unchanged movie", ch.Lineup)
+	}
+	var seriesFound, movieFound bool
+	for _, item := range ch.Lineup {
+		switch item.Key {
+		case "series:tmdb:456":
+			seriesFound = true
+			if got := item.EpisodeSelection; got.Mode != schedule.EpisodeComplete || len(got.Holidays) != 0 {
+				t.Fatalf("crafted series selection survived approval: %+v", got)
+			}
+		case "movie:tmdb:603":
+			movieFound = true
+			if got := item.EpisodeSelection; got.Mode != "" || len(got.Holidays) != 0 {
+				t.Fatalf("movie episode selection changed: %+v", got)
+			}
+		}
+	}
+	if !seriesFound || !movieFound {
+		t.Fatalf("approved lineup keys = %+v, want series and movie", ch.Lineup)
+	}
+}
+
+func TestApprove_RestampsAlternatesFromOriginalIntent(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	body := `{"intent":{"description":"Classic highlights"},` +
+		`"lineup":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix",` +
+		`"inLibrary":true,"libraryItemId":"matrix"}],"acquisitions":[],` +
+		`"alternates":[` +
+		`{"mediaType":"series","tmdbId":456,"name":"Missing Series Mode","inLibrary":false},` +
+		`{"mediaType":"series","tmdbId":32726,"name":"Crafted Series Mode","inLibrary":false,` +
+		`"episodeSelection":{"mode":"holiday","holidays":["christmas"]}},` +
+		`{"mediaType":"movie","tmdbId":100,"name":"Crafted Movie Mode","inLibrary":false,` +
+		`"episodeSelection":{"mode":"highlights"}}]}`
+	if err := st.CreateProposal(context.Background(), store.Proposal{
+		ID: "p-alternate-selection", JobID: "job-alternate-selection", Status: "submitted", ProposalJSON: body,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-alternate-selection/approve", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("approve → %d, want 200: %s", resp.StatusCode, b)
+	}
+	approved, err := st.GetProposal(context.Background(), "p-alternate-selection")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var persisted suggest.Proposal
+	if err := json.Unmarshal([]byte(approved.ProposalJSON), &persisted); err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.Alternates) != 3 {
+		t.Fatalf("persisted alternates = %+v, want three", persisted.Alternates)
+	}
+	for _, item := range persisted.Alternates[:2] {
+		if got := item.EpisodeSelection; got.Mode != schedule.EpisodeHighlights || len(got.Holidays) != 0 {
+			t.Fatalf("series alternate %q selection = %+v, want highlights", item.Name, got)
+		}
+	}
+	if got := persisted.Alternates[2].EpisodeSelection; got.Mode != "" || len(got.Holidays) != 0 {
+		t.Fatalf("movie alternate retained selector: %+v", got)
 	}
 }
 
@@ -842,6 +1080,13 @@ func TestApprove_PersistsTheAuditTrail(t *testing.T) {
 	if p.Status != "approved" {
 		t.Errorf("status = %q, want approved", p.Status)
 	}
+	var approved suggest.Proposal
+	if err := json.Unmarshal([]byte(p.ProposalJSON), &approved); err != nil {
+		t.Fatal(err)
+	}
+	if len(approved.Trace.Candidates) != 1 || approved.Trace.Candidates[0].Key != "movie:tmdb:100" || approved.Trace.Candidates[0].Disposition != suggest.DispositionSelected {
+		t.Fatalf("approval edit rewrote original decision evidence: %+v", approved.Trace)
+	}
 }
 
 // The STORED proposal reflects what was actually approved, not what the model first proposed.
@@ -859,8 +1104,16 @@ func TestApprove_StoredProposalReflectsTheEdit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(p.ProposalJSON, "Speed") {
-		t.Errorf("the stored proposal still contains the dropped title: %s", p.ProposalJSON)
+	var approved suggest.Proposal
+	if err := json.Unmarshal([]byte(p.ProposalJSON), &approved); err != nil {
+		t.Fatal(err)
+	}
+	for _, items := range [][]suggest.ProposalItem{approved.Lineup, approved.Acquisitions, approved.Alternates} {
+		for _, item := range items {
+			if item.Name == "Speed" {
+				t.Errorf("the approved proposal still contains the dropped title: %+v", approved)
+			}
+		}
 	}
 }
 

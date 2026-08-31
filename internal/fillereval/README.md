@@ -8,24 +8,72 @@ The checked-in `corpus/seed-v1.json` is a schema and regression seed, **not a ce
 It contains synthetic evidence for failure classes such as conflicting years, brief end cards,
 prompt injection, corrupt media, programme excerpts, and ambiguous compilation boundaries. A real
 certification manifest references external, legally usable media by content hash and records source,
-licence, similarity cluster, split, labels, evidence, and slices. Non-redistributable media never
+licence, similarity cluster, campaign, source family, split, labels, evidence, and slices. Non-redistributable media never
 enters git.
 
-Schema v4 distinguishes development seeds from certification manifests and preserves every
-inference step in a multi-rung prediction. A certification case also
+Schema v5 distinguishes development seeds from certification manifests, preserves every inference
+step in a multi-rung prediction, and carries campaign identity for diversity enforcement. A certification case also
 locks its evidence packet and item metadata, records item-level rights adjudication and the bounded
 source segment, and preserves two independent blind-review submission hashes. Matching submissions
 become final directly; divergent submissions require a reasoned third-party adjudication. The report
 records the exact manifest SHA-256 and scores only the explicitly selected development or holdout
 split, so development examples cannot inflate certification.
 
-`make filler-corpus-lock` combines a provenance-complete draft with two independently authored JSONL
-review batches. Each line has `caseId`, `reviewerId`, `batchId`, `reviewedAt`, and `labels`; labels
+Run `make filler-corpus-review` separately for each reviewer. It emits an independently shuffled,
+reviewer-visible packet with random aliases and an owner-only map bound to the exact draft digest.
+The packet excludes internal case IDs, split/cluster assignment, source filename, creator, campaign,
+and labels. Keep each map from its reviewer. A hash-only packet is not inspectable evidence:
+`make filler-corpus-review-package` joins it privately to the provider evidence packets, verifies every
+hash, and atomically materializes only alias-relative audio, frames, video, and sanitized decoder facts.
+Choose explicit `hardlink` mode on one filesystem or `copy` for a portable package; symlinks are never
+emitted. Source text and identities, rights facts, and the private map stay out of the package. Its
+packet-ordered label template is deliberately invalid until one reviewer fills every line.
+`make filler-corpus-review-ollama` can complete one such package with a reviewer-only local
+multimodal model. It re-hashes the package, binds transcripts by audio SHA-256 without sending case
+IDs, verifies the concrete Ollama tag and digest, sends four ordered frames plus the shared
+transcript serially, and atomically publishes `labels.jsonl` with `review-run.json`. The attestation
+locks the package, prompt, model, transcript set, latency, tokens, and exact submission hash. Run it
+once per independently shuffled package with distinct reviewer-only model families; those families
+and the adjudicator family are excluded from the scored candidate matrix for that corpus generation.
+`make filler-corpus-review-openrouter` applies the same evidence contract to a fresh capability
+snapshot and one exact ZDR upstream route. It disables fallback, requires strict structured output,
+reserves every request against explicit per-call and total nano-USD ceilings, records the selected
+provider, generation, tokens, latency, and charged amount for every case, and publishes nothing after
+any route, schema, accounting, or timeout failure.
+The command's `--inspect-checkpoint` mode is the non-spending inspection boundary only for Reviewer B's
+exact 300-case checkpoint. It requires the same local package, transcript, historical snapshot, route
+and prompt identity, and original ceilings, but does not apply the live run's 24-hour snapshot window,
+accept or read a credential, or create a provider client or lock. The checkpoint directory must be
+exactly `0700`; the checkpoint and any active lock must be regular, non-symlinked files at exactly
+`0600`; package directories and artifacts, transcripts, and the snapshot follow the same exact
+`0700`/`0600` rule. Setuid, setgid, sticky, symlinked, and other typed or permission variants fail.
+The package directory contains exactly its manifest, declared instructions and template, declared
+signals, and their required ancestor directories; the checkpoint directory contains exactly its
+checkpoint and optional active lock. Unreferenced files, directories, devices, or other objects fail.
+Every object is validated and read through one retained descriptor or descriptor-rooted open, so a
+pathname replacement cannot switch the bytes after validation. The offline branch has no credential
+lookup or provider-run capability. Successful output is one sanitized, content-addressed JSON object
+containing only permitted hashes, aggregate case and historical request accounting, historically
+recorded immutable ceilings, and remaining allowance. It emits no raw batch, reviewer, model,
+provider, route, or prompt-version value. An incomplete checkpoint always awaits explicit maintainer
+approval. A valid lock reports only that an active lock is present; it does not establish staleness or
+authorize recovery; an empty present lock is invalid and is never treated as absence. Inspection
+authorizes no provider call, recovery run, or spend. Unsafe types or
+modes, identity or ceiling drift, duplicate or out-of-order state, an unsettled reservation, invalid
+accounting, or an invalid lock fails without stdout or input-directory mutation.
+
+`make filler-corpus-lock` combines the draft, both maps,
+and two independently authored JSONL review batches. Each line has `alias`, `reviewerId`, `batchId`,
+`reviewedAt`, and `labels`; labels
 contain disposition, reject class, content role, taxonomy, policy flags, slices, evidence, and the
 answerable review question. A reviewer file must use one identity and one batch throughout. When the
 two canonical label hashes differ, `LOOMARR_FILLER_CORPUS_ADJUDICATIONS` names a third JSONL file with
 `caseId`, a distinct `adjudicatorId`, `adjudicatedAt`, `reason`, and final `labels`. The command writes
-nothing until every draft case is covered and the complete certification manifest validates.
+nothing until every draft case is covered and the complete certification manifest validates. The
+draft must still be unlocked and contain no labels, reviews, or adjudication. Unknown and trailing
+JSON fields fail rather than being retained as an implicit older format, and both blind submissions
+must be complete even when a third reviewer chooses one side of a disagreement. There is no case-ID
+review submission compatibility format because no completed certification artifact consumes one.
 
 `make filler-corpus-archive` is the metadata-only acquisition preflight for Archive.org. It requires
 an identified User-Agent, explicit snapshot time, request/item/per-item-byte/total-byte ceilings, and
@@ -35,30 +83,64 @@ and selects a bounded video representation. Its output is only a candidate inven
 license metadata still needs independent item-level rights adjudication before it can enter a draft
 manifest, and the command never downloads media or invokes a model.
 
+LOC, NASA, CDC, and Commons adapters promote their bounded discovery lanes through the same strict
+source-neutral inventory contract. `make filler-corpus-direct` captures a bounded, authored lane
+without pretending a local folder grants rights: its schema-v2 manifest predeclares the exact item
+count, one contracting-owner authority, and positive acquisition quotas for known corpus roles. One
+manifest per owner keeps source concentration measurable instead of collapsing all direct work into
+one generic authority. Every case freezes its creator, campaign, and source-family identity before
+split planning. The command hashes every unique media payload plus separate rights and provenance
+evidence beneath one symlink-safe root and rejects any quota, path, byte, or wall-time violation.
+Certification alone owns the final truth and holdout role quotas.
+Public and direct inventories combine before one independent rights review.
+Schema v4 keeps every bounded capture that found a case. Role-specific searches may overlap only
+when the frozen item metadata and selected representation are identical; the combiner then retains
+the sorted union of capture IDs and discovery hints. Conflicting duplicates and duplicate capture
+identities fail closed. Older single-capture case shapes are rejected rather than adapted.
+
 `make filler-corpus-download` is the separately authorized media step. It accepts only `approved`
 rights rows tied to the exact inventory and metadata SHA-256 values, reviewer, review time, rationale,
 redistribution decision, attribution, and restrictions; `held` rows remain out of the plan. Before the first request
 it proves the approved count and predicted bytes fit explicit ceilings. Downloads remain serial and identified,
-redirects stay on Archive.org, and bodies cannot exceed their recorded size. Archive SHA-1/MD5 values are
-checked when present, and the external ledger adds a locally computed SHA-256. A
+redirects stay within each authority's frozen and built-in host policy, and bodies cannot exceed
+their recorded size. Source checksums are checked when present, and the external ledger adds a
+locally computed SHA-256. Already-local direct-cohort cases are not downloaded again. A
 failed or stale approval writes no ledger and cannot silently widen the selected corpus.
 
-`make filler-corpus-rights-review` converts a frozen Archive inventory into a deterministic worksheet
+`make filler-corpus-rights-review` converts a frozen mixed-authority inventory into a deterministic worksheet
 bounded by explicit minimum and maximum item counts. It exposes the source assertions and selected
 representation in immutable JSON plus a spreadsheet-safe CSV, but leaves every authority field
 blank. Reviewers edit only `reviewer_id`, `reviewed_at`, `decision`, `basis`, `redistributable`,
-`required_credit`, and `restrictions_json`. The live 2026-08-25 Archive snapshot produced 331 such
-inert rows; this is a review queue, not evidence that any row is legally reusable.
+`required_credit`, and `restrictions_json`. Local rows expose the exact media, rights-evidence, and
+provenance-evidence paths and hashes. This is a review queue, not evidence that any row is legally reusable.
 
 `make filler-corpus-rights-lock` validates the completed CSV against both the original byte-exact
 inventory and the inert JSON worksheet. Every row must be present once, immutable source fields must
 match, decisions must be complete and time-bound, and approved BY/BY-SA media must carry attribution.
 Only a fully valid review is atomically converted to the JSONL consumed by the downloader.
 
+`make filler-corpus-prepare` is the next mechanical boundary. Its required profile and schema-v4 plan
+must both identify either a development seed or a certification corpus. Development preparation uses
+every and only approved row from a fully reviewed inventory and keeps held rows inert; certification
+requires every inventory row to be approved and assigned to the complete development/holdout split.
+It re-hashes every selected source file, measures the
+bounded segment, and stages the four frames, 16 kHz mono audio, and direct-video derivatives under aggregate resource
+ceilings. It writes an unlabeled provenance-complete draft and the exact label-blind packet JSONL
+consumed by the paid runner. The plan cannot contain truth, taxonomy, policy flags, evidence labels,
+or a review answer; those exist only in the two independent review submissions. Blind review and
+locking preserve the draft kind, so development labels cannot be promoted into certification.
+
+`make filler-corpus-pilot-rights-review` prepares the distinct five-lane source-yield review packet
+from the checked-in locked pilot. Its fifty rows bind every source assertion and representation to
+the pilot digest while leaving all reviewer fields blank. `make filler-corpus-pilot-rights-lock`
+requires one independently attested reviewer to complete every row, reports whether each lane has at
+least five rights-approved and product-relevant candidates, and emits `downloadAuthority: false`.
+This qualifies or rejects an adapter lane; it never authorizes acquisition.
+
 `make filler-eval-contract` verifies the scorer and seed. `make filler-eval-cert` scores a JSONL file
 named by `LOOMARR_FILLER_EVAL_PREDICTIONS`; the remaining `LOOMARR_FILLER_EVAL_*` variables identify
 the corpus, selected split, captured run time, every versioned input, and positive request, spend,
-and concurrency ceilings. The scorer is fail-closed: fewer than 300 scored cases, missing or
+and concurrency ceilings. The scorer is fail-closed: fewer than 1,126 independently clustered holdout cases, missing or
 duplicate predictions, cross-split similarity leakage, incomplete attribution, operational failure,
 wrong role/taxonomy, exceeded run ceilings, weak confidence bounds, or a missed
 precision/coverage/review gate produces a
@@ -77,4 +159,19 @@ spend, and concurrency ceilings, accepts only locked certification manifests and
 content-addressed packets, re-hashes external derivatives before spend, escalates through typed
 text/frame/video/premium routes on named evaluator reasons, and writes this package's prediction shape. Multi-rung predictions retain
 one immutable inference step per call so per-rung cost and attempts are not collapsed into the
-terminal route. The replay command itself never contacts OpenRouter or starts local inference.
+terminal route. There is no scalar inference-ledger compatibility shape: schema v5 captures every
+attempt in `steps`, while deterministic outcomes and pre-request holds have no step. An explicit
+semantic abstention is a successful step with a bounded reason and no evidence; it is not rewritten
+as provider failure and cannot be referenced as support. The replay command itself never contacts
+OpenRouter or starts local inference.
+
+`make filler-bakeoff-openrouter` is the paid/manual capture boundary. It consumes a locked manifest,
+label-blind packet JSONL, external derivative root, and strict versioned JSON containing the run,
+admission policy, and ordered routes. It also requires the immutable output of
+`make filler-openrouter-snapshot`; both run snapshot identities must equal that artifact's SHA-256,
+and every route must match both the requested model ID and catalog canonical revision on a live ZDR
+endpoint recorded within the preceding 24 hours.
+`OPENROUTER_API_KEY` is read only from the environment. The
+adapter performs one request per reserved rung, pins the upstream provider with fallback disabled,
+requires strict structured output and ZDR routing, records OpenRouter routing metadata and exact
+`usage.cost`, and writes a private atomic prediction JSONL for separate `filler-eval-cert` replay.

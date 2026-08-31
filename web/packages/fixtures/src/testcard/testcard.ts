@@ -138,7 +138,17 @@ const untaggedAsk: IncomingClipDTO = {
 // DIFFERENT LENGTHS here.** A fixture whose visited list happened to be complete would make the
 // strip look right while it was drawn from the wrong source — the identical shape as the fixture
 // that collapsed two distinct ids onto one string and hid two shipped bugs.
-const stageLadder = ["probe", "transcode", "split", "language", "transcribe", "tag", "vision", "score"];
+const stageLadder = [
+  "probe",
+  "transcode",
+  "split",
+  "language",
+  "transcribe",
+  "tag",
+  "vision",
+  "admission",
+  "score",
+];
 
 // A clip on the rung that cannot measure itself: progress is the -1 sentinel, so the row must
 // show motion without a bar.
@@ -586,6 +596,7 @@ const proposal: Proposal = {
     { name: "The Rock", year: 1996, mediaType: "movie", inLibrary: false },
   ],
   scores: { themeFit: 0.88, availabilityRatio: 0.67, eraBalance: 0.71, overall: 0.82 },
+  trace: { version: 1, surfacedTotal: 0, recordedTotal: 0, truncated: false, candidates: [] },
 };
 
 const searchResults: SearchResult[] = [

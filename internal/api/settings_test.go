@@ -31,6 +31,16 @@ type fakeSettings struct {
 	afterEnvOverride func(string, bool)
 }
 
+type fakeEmailTest struct {
+	destination string
+	result      api.EmailTestResult
+}
+
+func (f *fakeEmailTest) SendTest(_ context.Context, destination string) api.EmailTestResult {
+	f.destination = destination
+	return f.result
+}
+
 func TestSettings_UsesDurableBackendTransitionAfterEffectiveWrites(t *testing.T) {
 	cfg := map[string]string{"playout.backend": schedule.PlayoutBackendInternal}
 	settings := &fakeSettings{
@@ -283,6 +293,57 @@ func newSettingsServer(t *testing.T) (*httptest.Server, *fakeSettings) {
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 	return srv, fs
+}
+
+func TestSettings_SendTestEmailIsAdminOnlyAndProviderSafe(t *testing.T) {
+	st := openTestStore(t, t.TempDir()+"/email-test.db")
+	t.Cleanup(func() { _ = st.Close() })
+	email := &fakeEmailTest{result: api.EmailTestResult{OK: true}}
+	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
+		Store: st, Auth: testAuthorizer{}, Settings: &fakeSettings{}, EmailTest: email,
+		BackendTransition: &testkit.BackendTransition{},
+	})
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+
+	unauthorized := do(t, srv, http.MethodPost, "/v1/notifications/email/test", "",
+		`{"to":"admin@example.com"}`)
+	if unauthorized.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unauthorized = %d", unauthorized.StatusCode)
+	}
+	member := do(t, srv, http.MethodPost, "/v1/notifications/email/test", memberToken,
+		`{"to":"admin@example.com"}`)
+	if member.StatusCode != http.StatusForbidden {
+		t.Fatalf("member = %d", member.StatusCode)
+	}
+
+	response := do(t, srv, http.MethodPost, "/v1/notifications/email/test", adminToken,
+		`{"to":"admin@example.com"}`)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("send test = %d", response.StatusCode)
+	}
+	var body struct {
+		OK      bool   `json:"ok"`
+		Outcome string `json:"outcome"`
+		Hint    string `json:"hint"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if !body.OK || body.Outcome != "" || email.destination != "admin@example.com" {
+		t.Fatalf("body = %+v destination = %q", body, email.destination)
+	}
+
+	email.result = api.EmailTestResult{Outcome: "configuration_invalid"}
+	response = do(t, srv, http.MethodPost, "/v1/notifications/email/test", adminToken,
+		`{"to":"admin@example.com"}`)
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.OK || body.Outcome != "configuration_invalid" || body.Hint == "" ||
+		strings.Contains(strings.ToLower(body.Hint), "password") {
+		t.Fatalf("provider-safe failure = %+v", body)
+	}
 }
 
 // Every settings route is admin-only (config-design §8, §19): a non-admin → 403.

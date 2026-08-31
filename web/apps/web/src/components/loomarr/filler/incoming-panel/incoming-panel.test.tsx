@@ -216,7 +216,17 @@ describe("IncomingPanel confidence and filing", () => {
 
 // The pipeline half (§10 V51b/V51e) — what the machine is still working on.
 describe("IncomingPanel — being prepared", () => {
-  const LADDER = ["probe", "transcode", "split", "language", "transcribe", "tag", "vision", "score"];
+  const LADDER = [
+    "probe",
+    "transcode",
+    "split",
+    "language",
+    "transcribe",
+    "tag",
+    "vision",
+    "admission",
+    "score",
+  ];
 
   // ⚠ No `needsDecision`: the machine still owns these. The pipeline block is NESTED on the clip
   // rather than living in a parallel array — which is what stopped the same clip appearing twice.
@@ -287,7 +297,7 @@ describe("IncomingPanel — being prepared", () => {
     expect(screen.getAllByRole("status")).toHaveLength(1);
   });
 
-  // Collapsed by default: forty clips × eight rungs is 320 lines of moving text.
+  // Collapsed by default: forty clips × nine rungs is 360 lines of moving text.
   //
   // ⚠ Asserted through the ACCESSIBILITY TREE, not `queryByText`. `hiddenUntilFound` leaves the
   // panel in the DOM on purpose — that is what lets find-in-page reach a collapsed row and open

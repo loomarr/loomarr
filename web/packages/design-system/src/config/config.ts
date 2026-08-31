@@ -39,6 +39,30 @@ const themeColors = (mode: keyof typeof semanticThemes) => ({
   artworkScrim: semanticThemes[mode].artwork.scrim,
 });
 
+const tamaguiTheme = (mode: keyof typeof semanticThemes) => {
+  const colors = themeColors(mode);
+
+  return {
+    ...colors,
+    // Theme entries are emitted as CSS custom properties on web. Tamagui does not
+    // resolve one theme entry through another, so aliases here must be concrete
+    // values rather than strings such as "$surfaceCanvas". An unresolved alias also
+    // poisons legacy declarations that consume the same custom-property name (for
+    // example Tailwind's ring-offset shadow reads --background).
+    background: colors.surfaceCanvas,
+    backgroundHover: colors.surfaceRaised,
+    backgroundFocus: colors.surfaceFocus,
+    backgroundPress: colors.surfaceElevated,
+    color: colors.contentPrimary,
+    colorHover: colors.contentPrimary,
+    colorFocus: colors.contentPrimary,
+    colorPress: colors.contentPrimary,
+    borderColor: colors.surfaceElevated,
+    borderColorFocus: colors.actionFocus,
+    outlineColor: colors.actionFocus,
+  };
+};
+
 const tokens = createTokens({
   color: {
     surfaceCanvas: semanticColors.surface.canvas,
@@ -123,34 +147,8 @@ const loomarrConfig = createTamagui({
     data: dataFont,
   },
   themes: {
-    dark: {
-      ...themeColors("dark"),
-      background: "$surfaceCanvas",
-      backgroundHover: "$surfaceRaised",
-      backgroundFocus: "$surfaceFocus",
-      backgroundPress: "$surfaceElevated",
-      color: "$contentPrimary",
-      colorHover: "$contentPrimary",
-      colorFocus: "$contentPrimary",
-      colorPress: "$contentPrimary",
-      borderColor: "$surfaceElevated",
-      borderColorFocus: "$actionFocus",
-      outlineColor: "$actionFocus",
-    },
-    light: {
-      ...themeColors("light"),
-      background: "$surfaceCanvas",
-      backgroundHover: "$surfaceRaised",
-      backgroundFocus: "$surfaceFocus",
-      backgroundPress: "$surfaceElevated",
-      color: "$contentPrimary",
-      colorHover: "$contentPrimary",
-      colorFocus: "$contentPrimary",
-      colorPress: "$contentPrimary",
-      borderColor: "$surfaceElevated",
-      borderColorFocus: "$actionFocus",
-      outlineColor: "$actionFocus",
-    },
+    dark: tamaguiTheme("dark"),
+    light: tamaguiTheme("light"),
   },
   tokens,
   settings: {

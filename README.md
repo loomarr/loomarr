@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/loomarr/loomarr/actions/workflows/ci.yml/badge.svg)](https://github.com/loomarr/loomarr/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Go 1.26](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
+[![Go 1.27](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)](go.mod)
 
 **Describe a TV channel in a sentence. Loomarr builds it, plays it, and keeps it running.**
 
@@ -52,7 +52,7 @@ transcode, or if you already run it. You choose in the wizard, and can override 
 
 ## Develop
 
-Go 1.26+, the Rust toolchain pinned by `rust-toolchain.toml`, Node 22.x, `ffmpeg` and `ffprobe` on `PATH`, Docker for the Postgres and browser
+Go 1.27+, the Rust toolchain pinned by `rust-toolchain.toml`, Node 22.x, `ffmpeg` and `ffprobe` on `PATH`, Docker for the Postgres and browser
 test suites.
 
 ```bash

@@ -1,43 +1,105 @@
 package fillereval
 
 import (
+	"encoding/json"
+	"math/rand"
 	"strings"
 	"testing"
 	"time"
 )
 
-func TestLockReviewedManifestPreservesIndependentSubmissions(t *testing.T) {
-	manifest, _ := passingCorpus(500)
-	for i := range manifest.Cases {
-		manifest.Cases[i].LabelReviews = nil
-		manifest.Cases[i].Adjudication = nil
+func TestPrepareBlindReviewHidesCaseIdentityAndUsesIndependentAliases(t *testing.T) {
+	manifest, _ := passingCorpus(CertificationMinHoldout)
+	clearDraftLabels(&manifest)
+	firstPacket, firstMap, failures := PrepareBlindReview(manifest, "blind-a", rand.New(rand.NewSource(1))) //nolint:gosec // deterministic test entropy
+	if len(failures) > 0 {
+		t.Fatalf("first packet: %v", failures)
 	}
+	secondPacket, _, failures := PrepareBlindReview(manifest, "blind-b", rand.New(rand.NewSource(2))) //nolint:gosec // deterministic test entropy
+	if len(failures) > 0 {
+		t.Fatalf("second packet: %v", failures)
+	}
+	raw, err := json.Marshal(firstPacket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{manifest.Cases[0].ID, "caseId", "sourceFilename", "contentRole", "truth", "cluster", "campaign", "creator"} {
+		if strings.Contains(string(raw), forbidden) {
+			t.Fatalf("review packet leaks %q", forbidden)
+		}
+	}
+	if firstPacket.Cases[0].Alias == secondPacket.Cases[0].Alias || firstMap.DraftSHA256 != ManifestSHA256(manifest) {
+		t.Fatal("review batches did not receive independent aliases bound to the draft")
+	}
+}
+
+func TestLockReviewedManifestRejectsAliasMapFromAnotherDraft(t *testing.T) {
+	manifest, _ := passingCorpus(CertificationMinHoldout)
 	first, second := submissionsFor(manifest)
-	locked, failures := LockReviewedManifest(manifest, first, second, nil, manifest.LockedAt.Add(time.Hour))
+	lockedAt := manifest.LockedAt.Add(time.Hour)
+	clearDraftLabels(&manifest)
+	first.Map.DraftSHA256 = strings.Repeat("f", 64)
+	if _, failures := LockReviewedManifest(manifest, first, second, nil, lockedAt); !containsFailure(failures, "bind this exact draft") {
+		t.Fatalf("foreign alias map accepted: %v", failures)
+	}
+}
+
+func TestLockReviewedManifestPreservesIndependentSubmissions(t *testing.T) {
+	manifest, _ := passingCorpus(CertificationMinHoldout)
+	first, second := submissionsFor(manifest)
+	lockedAt := manifest.LockedAt.Add(time.Hour)
+	clearDraftLabels(&manifest)
+	locked, failures := LockReviewedManifest(manifest, first, second, nil, lockedAt)
 	if len(failures) > 0 {
 		t.Fatalf("lock failed: %v", failures)
 	}
-	if len(locked.Cases[0].LabelReviews) != 2 || locked.Cases[0].LabelReviews[0].SubmissionSHA256 == "" {
+	if locked.Kind != CorpusCertification || len(locked.Cases[0].LabelReviews) != 2 || locked.Cases[0].LabelReviews[0].SubmissionSHA256 == "" {
 		t.Fatalf("reviews = %+v", locked.Cases[0].LabelReviews)
 	}
 }
 
-func TestLockReviewedManifestRequiresThirdPartyAdjudication(t *testing.T) {
-	manifest, _ := passingCorpus(500)
-	for i := range manifest.Cases {
-		manifest.Cases[i].LabelReviews = nil
-		manifest.Cases[i].Adjudication = nil
-	}
+func TestBlindReviewAndLockPreserveDevelopmentSeedKind(t *testing.T) {
+	manifest := developmentReviewCorpus()
 	first, second := submissionsFor(manifest)
-	second[0].Labels.ContentRole = "bumper"
-	if _, failures := LockReviewedManifest(manifest, first, second, nil, manifest.LockedAt.Add(time.Hour)); !containsFailure(failures, "divergent labels require adjudication") {
+	lockedAt := manifest.LockedAt.Add(time.Hour)
+	clearDraftLabels(&manifest)
+	packet, _, failures := PrepareBlindReview(manifest, "development-blind", rand.New(rand.NewSource(3))) //nolint:gosec // deterministic test entropy
+	if len(failures) > 0 || len(packet.Cases) != CertificationMinDevelopment {
+		t.Fatalf("development packet = %d cases, failures %v", len(packet.Cases), failures)
+	}
+	locked, failures := LockReviewedManifest(manifest, first, second, nil, lockedAt)
+	if len(failures) > 0 {
+		t.Fatalf("development lock failed: %v", failures)
+	}
+	if locked.Kind != CorpusDevelopmentSeed || len(locked.Cases) != CertificationMinDevelopment {
+		t.Fatalf("locked development manifest kind=%q cases=%d", locked.Kind, len(locked.Cases))
+	}
+}
+
+func TestBlindReviewRejectsUndersizedDevelopmentSeed(t *testing.T) {
+	manifest := developmentReviewCorpus()
+	manifest.Cases = manifest.Cases[:CertificationMinDevelopment-1]
+	clearDraftLabels(&manifest)
+	if _, _, failures := PrepareBlindReview(manifest, "too-small", rand.New(rand.NewSource(4))); !containsFailure(failures, "require at least 300") { //nolint:gosec // deterministic test entropy
+		t.Fatalf("undersized development failures = %v", failures)
+	}
+}
+
+func TestLockReviewedManifestRequiresThirdPartyAdjudication(t *testing.T) {
+	manifest, _ := passingCorpus(CertificationMinHoldout)
+	first, second := submissionsFor(manifest)
+	lockedAt := manifest.LockedAt.Add(time.Hour)
+	adjudicatedAt := manifest.LockedAt
+	clearDraftLabels(&manifest)
+	second.Submissions[0].Labels.ContentRole = "bumper"
+	if _, failures := LockReviewedManifest(manifest, first, second, nil, lockedAt); !containsFailure(failures, "divergent labels require adjudication") {
 		t.Fatalf("missing adjudication failures = %v", failures)
 	}
 	adjudication := AdjudicationSubmission{
-		CaseID: first[0].CaseID, AdjudicatorID: "reviewer-c", AdjudicatedAt: manifest.LockedAt,
-		Reason: "frame and transcript agree with the commercial label", Labels: first[0].Labels,
+		CaseID: second.Map.Entries[0].CaseID, AdjudicatorID: "reviewer-c", AdjudicatedAt: adjudicatedAt,
+		Reason: "frame and transcript agree with the commercial label", Labels: first.Submissions[0].Labels,
 	}
-	locked, failures := LockReviewedManifest(manifest, first, second, []AdjudicationSubmission{adjudication}, manifest.LockedAt.Add(time.Hour))
+	locked, failures := LockReviewedManifest(manifest, first, second, []AdjudicationSubmission{adjudication}, lockedAt)
 	if len(failures) > 0 || locked.Cases[0].Adjudication == nil {
 		t.Fatalf("adjudicated lock = %+v, %v", locked.Cases[0].Adjudication, failures)
 	}
@@ -46,15 +108,115 @@ func TestLockReviewedManifestRequiresThirdPartyAdjudication(t *testing.T) {
 	}
 }
 
-func submissionsFor(manifest Manifest) ([]LabelSubmission, []LabelSubmission) {
-	first := make([]LabelSubmission, 0, len(manifest.Cases))
-	second := make([]LabelSubmission, 0, len(manifest.Cases))
+func TestLockReviewedManifestRejectsLabelBearingDraft(t *testing.T) {
+	manifest, _ := passingCorpus(CertificationMinHoldout)
+	first, second := submissionsFor(manifest)
+	lockedAt := manifest.LockedAt.Add(time.Hour)
+	clearDraftLabels(&manifest)
+	manifest.Cases[0].Truth = TruthEligible
+	if _, failures := LockReviewedManifest(manifest, first, second, nil, lockedAt); !containsFailure(failures, "draft must not contain labels") {
+		t.Fatalf("label-bearing draft failures = %v", failures)
+	}
+}
+
+func TestLockReviewedManifestValidatesBothBlindSubmissions(t *testing.T) {
+	manifest, _ := passingCorpus(CertificationMinHoldout)
+	first, second := submissionsFor(manifest)
+	lockedAt := manifest.LockedAt.Add(time.Hour)
+	adjudicatedAt := manifest.LockedAt
+	clearDraftLabels(&manifest)
+	second.Submissions[0].Labels = Labels{Truth: TruthInvalid}
+	adjudication := AdjudicationSubmission{CaseID: second.Map.Entries[0].CaseID, AdjudicatorID: "reviewer-c", AdjudicatedAt: adjudicatedAt, Reason: "first review is supported", Labels: first.Submissions[0].Labels}
+	if _, failures := LockReviewedManifest(manifest, first, second, []AdjudicationSubmission{adjudication}, lockedAt); !containsFailure(failures, "second review: invalid truth requires a reject class") || !containsFailure(failures, "second review: at least one slice is required") {
+		t.Fatalf("invalid losing review failures = %v", failures)
+	}
+}
+
+func TestLockReviewedManifestRejectsUnknownContentRole(t *testing.T) {
+	manifest, _ := passingCorpus(CertificationMinHoldout)
+	first, second := submissionsFor(manifest)
+	lockedAt := manifest.LockedAt.Add(time.Hour)
+	clearDraftLabels(&manifest)
+	first.Submissions[0].Labels.ContentRole = "advertisement"
+	second.Submissions[0].Labels.ContentRole = "advertisement"
+
+	if _, failures := LockReviewedManifest(manifest, first, second, nil, lockedAt); !containsFailure(failures, "content role must use the closed review vocabulary") {
+		t.Fatalf("unknown role failures = %v", failures)
+	}
+}
+
+func clearDraftLabels(manifest *Manifest) {
+	manifest.LockedAt = time.Time{}
+	for i := range manifest.Cases {
+		c := &manifest.Cases[i]
+		c.Truth, c.RejectClass, c.ContentRole, c.ReviewQuestion = "", "", "", ""
+		c.Taxonomy, c.PolicyFlags, c.Slices, c.Evidence = nil, nil, nil, nil
+		c.LabelReviews, c.Adjudication = nil, nil
+	}
+}
+
+func submissionsFor(manifest Manifest) (BlindReviewSet, BlindReviewSet) {
+	labels := make(map[string]Labels, len(manifest.Cases))
 	for _, c := range manifest.Cases {
-		labels := LabelsFromCase(c)
-		first = append(first, LabelSubmission{CaseID: c.ID, ReviewerID: "reviewer-a", BatchID: "blind-a", ReviewedAt: manifest.LockedAt, Labels: labels})
-		second = append(second, LabelSubmission{CaseID: c.ID, ReviewerID: "reviewer-b", BatchID: "blind-b", ReviewedAt: manifest.LockedAt.Add(time.Minute), Labels: labels})
+		labels[c.ID] = LabelsFromCase(c)
+	}
+	draft := manifest
+	clearDraftLabels(&draft)
+	_, firstMap, firstFailures := PrepareBlindReview(draft, "blind-a", rand.New(rand.NewSource(1)))   //nolint:gosec // deterministic test entropy
+	_, secondMap, secondFailures := PrepareBlindReview(draft, "blind-b", rand.New(rand.NewSource(2))) //nolint:gosec // deterministic test entropy
+	if len(firstFailures) > 0 || len(secondFailures) > 0 {
+		panic("test blind review preparation failed")
+	}
+	first := BlindReviewSet{Map: firstMap}
+	second := BlindReviewSet{Map: secondMap}
+	for _, entry := range firstMap.Entries {
+		first.Submissions = append(first.Submissions, LabelSubmission{Alias: entry.Alias, ReviewerID: "reviewer-a", BatchID: "blind-a", ReviewedAt: manifest.LockedAt, Labels: labels[entry.CaseID]})
+	}
+	for _, entry := range secondMap.Entries {
+		second.Submissions = append(second.Submissions, LabelSubmission{Alias: entry.Alias, ReviewerID: "reviewer-b", BatchID: "blind-b", ReviewedAt: manifest.LockedAt.Add(time.Minute), Labels: labels[entry.CaseID]})
 	}
 	return first, second
+}
+
+func developmentReviewCorpus() Manifest {
+	manifest, _ := passingCorpus(CertificationMinHoldout)
+	development := make([]Case, 0, CertificationMinDevelopment)
+	for _, c := range manifest.Cases {
+		if c.Split == SplitDevelopment {
+			development = append(development, c)
+		}
+	}
+	manifest.Kind = CorpusDevelopmentSeed
+	manifest.Cases = development
+	manifest.SliceGates = []SliceGate{{Slice: "contract", MinCases: CertificationMinDevelopment, MinAccuracy: .99}}
+	return manifest
+}
+
+func TestValidateDevelopmentRunRequiresACompleteIndependentLabelLock(t *testing.T) {
+	manifest := developmentReviewCorpus()
+	if failures := ValidateDevelopmentRun(manifest); len(failures) > 0 {
+		t.Fatalf("valid development run rejected: %v", failures)
+	}
+
+	tests := []struct {
+		name string
+		edit func(*Manifest)
+		want string
+	}{
+		{name: "unlocked", edit: func(m *Manifest) { m.LockedAt = time.Time{} }, want: "lock time"},
+		{name: "undersized", edit: func(m *Manifest) { m.Cases = m.Cases[:CertificationMinDevelopment-1] }, want: "at least 300"},
+		{name: "holdout case", edit: func(m *Manifest) { m.Cases[0].Split = SplitHoldout }, want: "only development cases"},
+		{name: "one review", edit: func(m *Manifest) { m.Cases[0].LabelReviews = m.Cases[0].LabelReviews[:1] }, want: "two independent label submissions"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			changed := developmentReviewCorpus()
+			test.edit(&changed)
+			if failures := ValidateDevelopmentRun(changed); !containsFailure(failures, test.want) {
+				t.Fatalf("failures = %v, want %q", failures, test.want)
+			}
+		})
+	}
 }
 
 func TestLabelsHashCoversSlices(t *testing.T) {
@@ -84,5 +246,19 @@ func TestLabelsHashIgnoresSetAndEvidenceOrder(t *testing.T) {
 	}
 	if LabelsSHA256(first) != LabelsSHA256(second) {
 		t.Fatal("semantically identical labels produced different hashes")
+	}
+}
+
+func TestValidateLabelsAllowsOneSignalToSupportDistinctClaimsOnly(t *testing.T) {
+	labels := Labels{Truth: TruthEligible, ContentRole: "commercial", Slices: []string{"commercial"}, Evidence: []Evidence{
+		{ID: "transcript-01", Kind: "transcript", Claim: "content_role", Value: "commercial", Provenance: "audio.wav#transcript"},
+		{ID: "transcript-01", Kind: "transcript", Claim: "brand", Value: "Bright Cola", Provenance: "audio.wav#transcript"},
+	}}
+	if failures := ValidateLabels(labels); len(failures) != 0 {
+		t.Fatalf("distinct claims = %v", failures)
+	}
+	labels.Evidence = append(labels.Evidence, labels.Evidence[0])
+	if failures := ValidateLabels(labels); len(failures) != 1 || !strings.Contains(failures[0], "duplicate evidence record") {
+		t.Fatalf("exact duplicate = %v", failures)
 	}
 }

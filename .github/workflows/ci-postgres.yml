@@ -1,0 +1,59 @@
+name: CI / Store conformance (Postgres)
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.27"
+  NODE_VERSION: "22"
+
+jobs:
+  run:
+    name: Store conformance (Postgres)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          # Off for the same reason as the `go` job: the step below owns both Go cache
+          # paths, and leaving setup-go's on would restore/save `~/.cache/go-build` twice
+          # under a go.sum-only (frozen) key.
+          cache: false
+          go-version: ${{ env.GO_VERSION }}
+      # This job was compiling the store test binary from source every run. ⚠ SEPARATE KEY
+      # from the `go` job above, and it must stay separate: this one builds WITHOUT -race,
+      # and race and non-race objects are distinct entries, so sharing a key would have each
+      # job evict the other's work on every run.
+      #
+      # Same rolling-key-plus-weekly-epoch pattern as the `go` job — see the long note there
+      # for why the key must be both unique per run (or it freezes) and epoch-bounded (or it
+      # snowballs). Modules ride along because setup-go no longer caches them.
+      - name: Cache epoch (bounds rolling-cache growth)
+        id: epoch
+        run: echo "week=$(date -u +%GW%V)" >> "$GITHUB_OUTPUT"
+      - name: Restore Go caches (store conformance)
+        id: gocache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: gobuild-pg-${{ runner.os }}-${{ steps.epoch.outputs.week }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
+          restore-keys: |
+            gobuild-pg-${{ runner.os }}-${{ steps.epoch.outputs.week }}-${{ hashFiles('go.sum') }}-
+            gobuild-pg-${{ runner.os }}-${{ steps.epoch.outputs.week }}-
+      # testcontainers uses the Docker daemon preinstalled on ubuntu-latest.
+      - run: make test-pg
+      # main only — see the `go` job's save step for why a PR-scoped save is pure eviction
+      # pressure on caches that are still being read.
+      - name: Save Go caches (main only)
+        if: always() && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ steps.gocache.outputs.cache-primary-key }}

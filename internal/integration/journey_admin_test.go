@@ -16,7 +16,7 @@ import (
 // real composition root (app.Build) exactly as the FE will: bootstrap the
 // owner, log in locally, read settings + feature gates, test a connection, pick a
 // model, then run an intent → approve → channel. Every step protects a seam that
-// no other test exercises end to end (the picker's real Prober, the local-bcrypt
+// no other test exercises end to end (the picker's real Prober, the local-Argon2id
 // login chain, the /setup/test probe, and the whole api.Options wiring driven over
 // HTTP). Grounding depth is covered by TestPipeline_KidsChannel_EndToEnd; here the
 // point is that the composition is wired with no surprises for the frontend.
@@ -54,7 +54,7 @@ func TestJourney_NewAdmin(t *testing.T) {
 		t.Fatalf("second bootstrap → %d, want 409", code)
 	}
 
-	// A2: LOCAL LOGIN (the bcrypt path — never exercised via API before) → session.
+	// A2: LOCAL LOGIN (the Argon2id path — never exercised via API before) → session.
 	admin := h.login("owner", "owner-pass")
 	var me struct {
 		Name string `json:"name"`

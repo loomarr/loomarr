@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -776,6 +777,201 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+// A pending conditioned target may be reconstructed by Sync before the source row is re-keyed.
+// The store adopts that exact held row and moves the source-owned graph in one transaction; the
+// same operation then recognizes the target-only post-rekey state after a process restart.
+func testConditioningPublicationCommit(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_900_634_000, 0).UTC()
+
+	source := sampleClip("conditioning-source", "Reviewed child", filler.Commercial, 1993, filler.Kids, "food")
+	source.ParentHash = "retained-parent"
+	source.Confidence = 91
+	source.Transcript = "source-owned transcript"
+	source.UpdatedAt = now
+	if err := s.UpsertClip(ctx, source); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
+		ClipHash: source.Hash, Stage: filler.StageTranscode, Status: filler.StatusRunning,
+		Disposition: filler.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	target := source
+	target.Hash = "conditioning-target"
+	target.Path = clipPathFor(target.Hash)
+	target.DurationMs = 30_033
+	target.Quality = "480p"
+	target.TunarrProgramID = ""
+	reconstructed := target
+	reconstructed.Name = "reconstructed from sidecar"
+	reconstructed.Held = true
+	reconstructed.Confidence = 0
+	reconstructed.Transcript = ""
+	if err := s.UpsertClip(ctx, reconstructed); err != nil {
+		t.Fatal(err)
+	}
+	publication := filler.ConditioningPublication{
+		State: "pending", Owner: "0123456789abcdef0123456789abcdef",
+		SourceHash: source.Hash, TargetHash: target.Hash,
+	}
+	if err := s.CommitConditioningPublication(ctx, publication, target); err != nil {
+		t.Fatalf("adopt reconstructed target: %v", err)
+	}
+	if _, err := s.GetClip(ctx, source.Hash); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("source identity survived adoption: %v", err)
+	}
+	got, err := s.GetClip(ctx, target.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != source.Name || got.Transcript != source.Transcript || got.Confidence != source.Confidence || got.Held != source.Held {
+		t.Fatalf("adopted target did not inherit source ownership: %+v", got)
+	}
+	if got.Path != target.Path || got.DurationMs != target.DurationMs || got.Quality != target.Quality {
+		t.Fatalf("adopted target lost transformed facts: %+v", got)
+	}
+	if pipeline, found, err := s.GetClipPipeline(ctx, target.Hash); err != nil || !found || pipeline.Stage != filler.StageTranscode {
+		t.Fatalf("adopted target pipeline = %+v, found=%v err=%v", pipeline, found, err)
+	}
+	if err := s.CommitConditioningPublication(ctx, publication, got); err != nil {
+		t.Fatalf("recognize post-rekey target: %v", err)
+	}
+}
+
+// A sidecar's pending publication owns exactly one source/target pair. Any malformed marker or
+// catalog shape outside the three recovery states must leave both the source graph and any
+// reconstructed target untouched for review; guessing which row to retire would lose evidence.
+func testConditioningPublicationFailsClosed(t *testing.T, newStore NewStoreFunc) {
+	for _, tc := range []struct {
+		name          string
+		mutateMarker  func(*filler.ConditioningPublication, *Clip)
+		mutateSource  func(*Clip)
+		mutateTarget  func(*Clip)
+		withTargetRow bool
+		heldTarget    bool
+	}{
+		{
+			name: "owner is absent",
+			mutateMarker: func(publication *filler.ConditioningPublication, _ *Clip) {
+				publication.Owner = ""
+			},
+		},
+		{
+			name: "marker target differs from staged target",
+			mutateMarker: func(publication *filler.ConditioningPublication, _ *Clip) {
+				publication.TargetHash = "other-conditioned-target"
+			},
+		},
+		{
+			name: "marker collapses source and target ownership",
+			mutateMarker: func(publication *filler.ConditioningPublication, _ *Clip) {
+				publication.TargetHash = publication.SourceHash
+			},
+		},
+		{
+			name: "source no longer matches staged lineage",
+			mutateSource: func(source *Clip) {
+				source.ParentHash = "different-retained-parent"
+			},
+		},
+		{
+			name:          "target exists without Sync quarantine",
+			withTargetRow: true,
+		},
+		{
+			name:          "held target does not match pending evidence",
+			withTargetRow: true,
+			heldTarget:    true,
+			mutateTarget: func(target *Clip) {
+				target.Path = "wrong/conditioned-target.mp4"
+			},
+		},
+		{
+			name:          "target-only state is not exact",
+			withTargetRow: true,
+			heldTarget:    true,
+			mutateSource: func(source *Clip) {
+				source.Hash = "absent-conditioning-source"
+			},
+			mutateTarget: func(target *Clip) {
+				target.Held = true
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newStore(t)
+			ctx := context.Background()
+			now := time.Unix(1_900_634_100, 0).UTC()
+
+			source := sampleClip("conditioning-ambiguous-source", "Reviewed child", filler.Commercial, 1993, filler.Kids, "food")
+			source.ParentHash = "retained-parent"
+			source.UpdatedAt = now
+			target := source
+			target.Hash = "conditioning-ambiguous-target"
+			target.Path = clipPathFor(target.Hash)
+			target.DurationMs = 30_033
+			target.Quality = "480p"
+			publication := filler.ConditioningPublication{
+				State: "pending", Owner: "0123456789abcdef0123456789abcdef",
+				SourceHash: source.Hash, TargetHash: target.Hash,
+			}
+			if tc.mutateMarker != nil {
+				tc.mutateMarker(&publication, &target)
+			}
+			if tc.mutateSource != nil {
+				tc.mutateSource(&source)
+			}
+			if source.Hash != publication.SourceHash {
+				// The target-only state deliberately does not install a source catalog row.
+			} else if err := s.UpsertClip(ctx, source); err != nil {
+				t.Fatal(err)
+			}
+			if source.Hash == publication.SourceHash {
+				if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
+					ClipHash: publication.SourceHash, Stage: filler.StageTranscode, Status: filler.StatusRunning,
+					Disposition: filler.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.withTargetRow {
+				reconstructed := target
+				reconstructed.Held = tc.heldTarget
+				if tc.mutateTarget != nil {
+					tc.mutateTarget(&reconstructed)
+				}
+				if err := s.UpsertClip(ctx, reconstructed); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if err := s.CommitConditioningPublication(ctx, publication, target); !errors.Is(err, ErrConditioningPublicationMismatch) {
+				t.Fatalf("CommitConditioningPublication error = %v, want ErrConditioningPublicationMismatch", err)
+			}
+			if source.Hash == publication.SourceHash {
+				got, err := s.GetClip(ctx, publication.SourceHash)
+				if err != nil || got.Hash != source.Hash || got.ParentHash != source.ParentHash || got.Path != source.Path {
+					t.Fatalf("ambiguous publication changed source evidence: %+v, %v", got, err)
+				}
+				if pipeline, found, err := s.GetClipPipeline(ctx, publication.SourceHash); err != nil || !found || pipeline.Stage != filler.StageTranscode {
+					t.Fatalf("ambiguous publication lost source reference: %+v, found=%v, err=%v", pipeline, found, err)
+				}
+			}
+			if tc.withTargetRow {
+				got, err := s.GetClip(ctx, target.Hash)
+				if err != nil || got.Held != tc.heldTarget {
+					t.Fatalf("ambiguous publication changed reconstructed target: %+v, %v", got, err)
+				}
+			}
+		})
+	}
+}
+
 // A transform may legitimately preserve the content hash: remuxing an already-normalized clip
 // can produce byte-for-byte identical output. That is an update to transformed facts, not a
 // re-key, and must not run self-referential updates through unique sibling keys.
@@ -1200,6 +1396,277 @@ func testCompositeLineage(t *testing.T, newStore NewStoreFunc) {
 	}
 	if !containsHash(all, seg1.Hash) {
 		t.Error("superseded seg1 row was deleted instead of tombstoned")
+	}
+}
+
+func testSplitConfirmationAtomic(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_900_000_000, 0).UTC()
+	parent := sampleClip("atomic-parent", "atomic-parent.mp4", filler.Commercial, 1994, filler.General, "")
+	parent.Held = true
+	old := sampleClip("atomic-old", "atomic-old.mp4", filler.Commercial, 1994, filler.General, "")
+	old.ParentHash = parent.Hash
+	first := sampleClip("atomic-first", "atomic-first.mp4", filler.Commercial, 1994, filler.General, "")
+	first.ParentHash = parent.Hash
+	second := sampleClip("atomic-second", "atomic-second.mp4", filler.Commercial, 1994, filler.General, "")
+	second.ParentHash = parent.Hash
+	for _, clip := range []Clip{parent, old, first, second} {
+		if err := s.UpsertClip(ctx, clip); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.SetClipsRemoved(ctx, []string{first.Path, second.Path}, now); err != nil {
+		t.Fatal(err)
+	}
+	parentPipeline := filler.ClipPipeline{
+		ClipHash: parent.Hash, Stage: filler.StageSplit, Status: filler.StatusQueued,
+		Disposition: filler.DispositionReview, NextRun: now.Add(time.Hour),
+		EnrolledAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Minute),
+	}
+	firstPipeline := filler.ClipPipeline{
+		ClipHash: first.Hash, Stage: filler.StageProbe, Status: filler.StatusQueued,
+		Disposition: filler.DispositionReview, EnrolledAt: now, UpdatedAt: now,
+	}
+	if err := s.UpsertClipPipeline(ctx, parentPipeline); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertClipPipeline(ctx, firstPipeline); err != nil {
+		t.Fatal(err)
+	}
+	proposal := filler.SplitProposal{
+		ID: "atomic-proposal", ClipHash: parent.Hash, CreatedAt: now,
+		Segments: []filler.SplitSegment{{StartMs: 0, EndMs: 10_000, Name: "first"}},
+	}
+	if err := s.UpsertSplitProposal(ctx, proposal); err != nil {
+		t.Fatal(err)
+	}
+	completion := filler.SplitCompletion{
+		ProposalID: proposal.ID, ClaimToken: "atomic-owner", ParentHash: parent.Hash,
+		ChildHashes: []string{first.Hash, second.Hash}, ActivateHashes: []string{first.Hash, second.Hash}, At: now,
+	}
+	if _, err := s.AcquireSplitProposalClaim(ctx, proposal.ID, completion.ClaimToken, now, now.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	wrongToken := completion
+	wrongToken.ClaimToken = "stale-owner"
+	if _, err := s.CompleteSplitConfirmation(ctx, wrongToken); !errors.Is(err, filler.ErrProposalClaimed) {
+		t.Fatalf("stale full completion = %v, want ErrProposalClaimed", err)
+	}
+
+	// The missing second pipeline fails after the transaction has updated the parent and first
+	// child. Every one of those statements must roll back with proposal consumption and selection.
+	if _, err := s.CompleteSplitConfirmation(ctx, completion); err == nil {
+		t.Fatal("completion succeeded without every staged child pipeline")
+	}
+	if got, err := s.GetSplitProposal(ctx, proposal.ID); err != nil || got.ClipHash != parent.Hash {
+		t.Fatalf("failed completion consumed proposal: got %+v, err %v", got, err)
+	}
+	gotParent, err := s.GetClip(ctx, parent.Hash)
+	if err != nil || gotParent.IsComposite || !gotParent.Held {
+		t.Fatalf("failed completion changed parent: %+v, %v", gotParent, err)
+	}
+	gotParentPipeline, found, err := s.GetClipPipeline(ctx, parent.Hash)
+	if err != nil || !found || gotParentPipeline.Disposition != filler.DispositionReview {
+		t.Fatalf("failed completion changed parent pipeline: %+v, found=%v err=%v", gotParentPipeline, found, err)
+	}
+	gotFirstPipeline, found, err := s.GetClipPipeline(ctx, first.Hash)
+	if err != nil || !found || gotFirstPipeline.Disposition != filler.DispositionReview {
+		t.Fatalf("failed completion activated first child: %+v, found=%v err=%v", gotFirstPipeline, found, err)
+	}
+	active, err := s.ListClips(ctx, ClipFilter{ParentHash: parent.Hash})
+	if err != nil || !containsHash(active, old.Hash) || containsHash(active, first.Hash) || containsHash(active, second.Hash) {
+		t.Fatalf("failed completion changed selected generation: %+v, %v", active, err)
+	}
+
+	secondPipeline := firstPipeline
+	secondPipeline.ClipHash = second.Hash
+	if err := s.UpsertClipPipeline(ctx, secondPipeline); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CompleteSplitConfirmation(ctx, completion); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetSplitProposal(ctx, proposal.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("committed completion retained proposal: %v", err)
+	}
+	gotParent, err = s.GetClip(ctx, parent.Hash)
+	if err != nil || !gotParent.IsComposite || gotParent.Held {
+		t.Fatalf("committed completion parent = %+v, %v", gotParent, err)
+	}
+	active, err = s.ListClips(ctx, ClipFilter{ParentHash: parent.Hash})
+	if err != nil || containsHash(active, old.Hash) || !containsHash(active, first.Hash) || !containsHash(active, second.Hash) {
+		t.Fatalf("committed selected generation = %+v, %v", active, err)
+	}
+	for _, hash := range []string{first.Hash, second.Hash} {
+		pipeline, found, err := s.GetClipPipeline(ctx, hash)
+		if err != nil || !found || pipeline.Disposition != filler.DispositionRunning {
+			t.Errorf("committed child pipeline %s = %+v, found=%v err=%v", hash, pipeline, found, err)
+		}
+	}
+}
+
+func testSplitConfirmationRequiresReviewParent(t *testing.T, newStore NewStoreFunc) {
+	for _, tc := range []struct {
+		name              string
+		parentDisposition *filler.Disposition
+	}{
+		{name: "missing parent pipeline"},
+		{name: "parent already filed", parentDisposition: func() *filler.Disposition {
+			disposition := filler.DispositionFiled
+			return &disposition
+		}()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newStore(t)
+			ctx := context.Background()
+			now := time.Unix(1_900_100_000, 0).UTC()
+			parent := sampleClip("review-parent", "review-parent.mp4", filler.Commercial, 1994, filler.General, "")
+			parent.Held = true
+			old := sampleClip("review-old", "review-old.mp4", filler.Commercial, 1994, filler.General, "")
+			old.ParentHash = parent.Hash
+			child := sampleClip("review-child", "review-child.mp4", filler.Commercial, 1994, filler.General, "")
+			child.ParentHash = parent.Hash
+			for _, clip := range []Clip{parent, old, child} {
+				if err := s.UpsertClip(ctx, clip); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := s.SetClipsRemoved(ctx, []string{child.Path}, now); err != nil {
+				t.Fatal(err)
+			}
+			childPipeline := filler.ClipPipeline{
+				ClipHash: child.Hash, Stage: filler.StageProbe, Status: filler.StatusQueued,
+				Disposition: filler.DispositionReview, EnrolledAt: now, UpdatedAt: now,
+			}
+			if err := s.UpsertClipPipeline(ctx, childPipeline); err != nil {
+				t.Fatal(err)
+			}
+			if tc.parentDisposition != nil {
+				if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
+					ClipHash: parent.Hash, Stage: filler.StageSplit, Status: filler.StatusQueued,
+					Disposition: *tc.parentDisposition, EnrolledAt: now, UpdatedAt: now,
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			proposal := filler.SplitProposal{
+				ID: "review-proposal", ClipHash: parent.Hash, CreatedAt: now,
+				Segments: []filler.SplitSegment{{StartMs: 0, EndMs: 10_000, Name: "child"}},
+			}
+			if err := s.UpsertSplitProposal(ctx, proposal); err != nil {
+				t.Fatal(err)
+			}
+			const claimToken = "review-owner"
+			if _, err := s.AcquireSplitProposalClaim(ctx, proposal.ID, claimToken, now, now.Add(time.Minute)); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err := s.CompleteSplitConfirmation(ctx, filler.SplitCompletion{
+				ProposalID: proposal.ID, ClaimToken: claimToken, ParentHash: parent.Hash,
+				ChildHashes: []string{child.Hash}, ActivateHashes: []string{child.Hash}, At: now,
+			})
+			if err == nil {
+				t.Fatal("completion succeeded without exactly one review parent pipeline transition")
+			}
+			if got, err := s.GetSplitProposal(ctx, proposal.ID); err != nil || got.ClipHash != parent.Hash {
+				t.Fatalf("failed completion consumed proposal: got %+v, err %v", got, err)
+			}
+			gotParent, err := s.GetClip(ctx, parent.Hash)
+			if err != nil || gotParent.IsComposite || !gotParent.Held {
+				t.Fatalf("failed completion changed held parent: %+v, %v", gotParent, err)
+			}
+			gotChildPipeline, found, err := s.GetClipPipeline(ctx, child.Hash)
+			if err != nil || !found || gotChildPipeline.Disposition != filler.DispositionReview {
+				t.Fatalf("failed completion activated child: %+v, found=%v err=%v", gotChildPipeline, found, err)
+			}
+			active, err := s.ListClips(ctx, ClipFilter{ParentHash: parent.Hash})
+			if err != nil || !containsHash(active, old.Hash) || containsHash(active, child.Hash) {
+				t.Fatalf("failed completion changed selected generation: %+v, %v", active, err)
+			}
+		})
+	}
+}
+
+func testSplitProposalClaimFencesConfirmers(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_901_000_000, 0).UTC()
+	proposal := filler.SplitProposal{
+		ID: "claim-proposal", ClipHash: "claim-parent", CreatedAt: now,
+		Segments: []filler.SplitSegment{{StartMs: 0, EndMs: 10_000, Name: "one"}},
+	}
+	if err := s.UpsertSplitProposal(ctx, proposal); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := s.AcquireSplitProposalClaim(ctx, proposal.ID, "owner-a", now, now.Add(time.Minute))
+	if err != nil || claimed.ID != proposal.ID {
+		t.Fatalf("first claim = %+v, %v", claimed, err)
+	}
+	if _, err := s.AcquireSplitProposalClaim(ctx, proposal.ID, "owner-b", now.Add(time.Second), now.Add(2*time.Minute)); !errors.Is(err, filler.ErrProposalClaimed) {
+		t.Fatalf("concurrent claim = %v, want ErrProposalClaimed", err)
+	}
+
+	changed := proposal
+	changed.Segments = []filler.SplitSegment{{StartMs: 10_000, EndMs: 20_000, Name: "two"}}
+	changed.Spawned = []string{"claim-child"}
+	childPipeline := filler.ClipPipeline{
+		ClipHash: "claim-child", Stage: filler.StageProbe, Status: filler.StatusQueued,
+		Disposition: filler.DispositionReview, EnrolledAt: now, UpdatedAt: now,
+	}
+	if err := s.UpsertClipPipeline(ctx, childPipeline); err != nil {
+		t.Fatal(err)
+	}
+	partial := filler.SplitPartialCompletion{
+		Proposal: changed, ClaimToken: "owner-b", ActivateHashes: []string{"claim-child"}, At: now,
+	}
+	if err := s.CompletePartialSplitConfirmation(ctx, partial); !errors.Is(err, filler.ErrProposalClaimed) {
+		t.Fatalf("losing partial completion = %v, want ErrProposalClaimed", err)
+	}
+	if got, err := s.GetSplitProposal(ctx, proposal.ID); err != nil || !reflect.DeepEqual(got.Segments, proposal.Segments) {
+		t.Fatalf("losing token mutated proposal: %+v, %v", got, err)
+	}
+
+	// Expiry is the crash-recovery path. The new fencing token takes ownership; the stale owner can
+	// neither release nor complete after that transition.
+	claimed, err = s.AcquireSplitProposalClaim(ctx, proposal.ID, "owner-b", now.Add(time.Minute), now.Add(2*time.Minute))
+	if err != nil || claimed.ID != proposal.ID {
+		t.Fatalf("expired claim recovery = %+v, %v", claimed, err)
+	}
+	if err := s.ReleaseSplitProposalClaim(ctx, proposal.ID, "owner-a"); !errors.Is(err, filler.ErrProposalClaimed) {
+		t.Fatalf("stale release = %v, want ErrProposalClaimed", err)
+	}
+	partial.ClaimToken = "owner-a"
+	if err := s.CompletePartialSplitConfirmation(ctx, partial); !errors.Is(err, filler.ErrProposalClaimed) {
+		t.Fatalf("stale completion = %v, want ErrProposalClaimed", err)
+	}
+	partial.ClaimToken = "owner-b"
+	partial.ActivateHashes = []string{"claim-child", "missing-child"}
+	if err := s.CompletePartialSplitConfirmation(ctx, partial); err == nil {
+		t.Fatal("partial completion succeeded without every staged child pipeline")
+	}
+	if pipeline, found, err := s.GetClipPipeline(ctx, "claim-child"); err != nil || !found || pipeline.Disposition != filler.DispositionReview {
+		t.Fatalf("failed partial completion activated first child: %+v, found=%v err=%v", pipeline, found, err)
+	}
+	if got, err := s.GetSplitProposal(ctx, proposal.ID); err != nil || !reflect.DeepEqual(got.Segments, proposal.Segments) {
+		t.Fatalf("failed child activation mutated proposal: %+v, %v", got, err)
+	}
+	partial.ActivateHashes = []string{"claim-child"}
+	if err := s.CompletePartialSplitConfirmation(ctx, partial); err != nil {
+		t.Fatalf("winning partial completion: %v", err)
+	}
+	got, err := s.GetSplitProposal(ctx, proposal.ID)
+	if err != nil || !reflect.DeepEqual(got.Segments, changed.Segments) {
+		t.Fatalf("winning partial completion = %+v, %v", got, err)
+	}
+	if pipeline, found, err := s.GetClipPipeline(ctx, "claim-child"); err != nil || !found || pipeline.Disposition != filler.DispositionRunning {
+		t.Fatalf("winning partial completion pipeline: %+v, found=%v err=%v", pipeline, found, err)
+	}
+	if _, err := s.AcquireSplitProposalClaim(ctx, proposal.ID, "owner-c", now.Add(2*time.Minute), now.Add(3*time.Minute)); err != nil {
+		t.Fatalf("partial completion did not release claim: %v", err)
+	}
+	if err := s.ReleaseSplitProposalClaim(ctx, proposal.ID, "owner-c"); err != nil {
+		t.Fatalf("release current claim: %v", err)
 	}
 }
 
@@ -3248,7 +3715,8 @@ func testFillerAdmissionDecisionAudit(t *testing.T, newStore NewStoreFunc) {
 		return fillerdecision.Record{
 			ID: id, ClipHash: "clip-" + id, EvidenceHash: "evidence-" + id,
 			EvidenceVersion: "e1", SchemaVersion: filleradmission.SchemaVersion,
-			PolicyVersion: "policy-1", TaxonomyVersion: "taxonomy-1", Result: result, CreatedAt: at,
+			PolicyVersion: "policy-1", TaxonomyVersion: "taxonomy-1",
+			ApplicationMode: fillerdecision.ApplicationModeShadow, Result: result, CreatedAt: at,
 		}
 	}
 	semantic := func(verdict filleradmission.Verdict) filleradmission.Result {
@@ -3281,12 +3749,13 @@ func testFillerAdmissionDecisionAudit(t *testing.T, newStore NewStoreFunc) {
 	}
 	wantJSON, _ := json.Marshal(record("d-review", semantic(filleradmission.VerdictReview)).Result)
 	gotJSON, _ := json.Marshal(got.Result)
-	if string(gotJSON) != string(wantJSON) || got.CreatedAt != at {
+	if string(gotJSON) != string(wantJSON) || got.CreatedAt != at || got.ApplicationMode != fillerdecision.ApplicationModeShadow {
 		t.Fatalf("decision round trip = %+v (%s), want canonical %s", got, gotJSON, wantJSON)
 	}
 	second := openSecondConformanceStore(t, s)
 	fromSecond, err := second.GetFillerDecision(ctx, "d-review")
-	if err != nil || fromSecond.Result.Decision == nil || fromSecond.Result.Decision.ReviewQuestion == "" {
+	if err != nil || fromSecond.Result.Decision == nil || fromSecond.Result.Decision.ReviewQuestion == "" ||
+		fromSecond.ApplicationMode != fillerdecision.ApplicationModeShadow {
 		_ = second.Close()
 		t.Fatalf("decision did not survive a fresh store pool: %+v, %v", fromSecond, err)
 	}
@@ -3295,6 +3764,11 @@ func testFillerAdmissionDecisionAudit(t *testing.T, newStore NewStoreFunc) {
 	}
 	if err := s.PutFillerDecision(ctx, record("d-review", semantic(filleradmission.VerdictReview))); err != nil {
 		t.Fatalf("idempotent insert: %v", err)
+	}
+	unknownMode := record("d-unknown-mode", semantic(filleradmission.VerdictAdmit))
+	unknownMode.ApplicationMode = "automatic"
+	if err := s.PutFillerDecision(ctx, unknownMode); !errors.Is(err, fillerdecision.ErrInvalid) {
+		t.Fatalf("unknown application mode = %v, want ErrInvalid", err)
 	}
 	conflict := record("d-review", semantic(filleradmission.VerdictReject))
 	if err := s.PutFillerDecision(ctx, conflict); !errors.Is(err, fillerdecision.ErrConflict) {
@@ -3447,6 +3921,9 @@ func testFillerAdmissionDecisionAudit(t *testing.T, newStore NewStoreFunc) {
 	}
 	kinds := make(map[fillerdecision.ActivityKind]int)
 	for _, item := range activity.Rows {
+		if item.ApplicationMode != fillerdecision.ApplicationModeShadow {
+			t.Fatalf("activity %q application mode = %q, want shadow", item.ID, item.ApplicationMode)
+		}
 		kinds[item.Kind]++
 	}
 	for kind, want := range map[fillerdecision.ActivityKind]int{

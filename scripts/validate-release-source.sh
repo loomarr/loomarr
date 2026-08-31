@@ -46,8 +46,9 @@ require_job() {
 
 require_job "CI"
 for platform in linux/amd64 linux/arm64; do
-  require_job "Image — release build (${platform})"
+  require_job "Image — release build / Image — release build (${platform})"
 done
 require_job "Release candidate — exact main scope"
-require_job "Go + Rust — repository contracts"
-require_job "Rust image — runtime certification"
+require_job "Go — repository contracts / Go — repository contracts"
+require_job "Rust — repository contracts / Rust — repository contracts"
+require_job "Rust image — runtime certification / Rust image — runtime certification"

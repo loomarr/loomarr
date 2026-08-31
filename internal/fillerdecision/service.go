@@ -119,6 +119,9 @@ func validLimit(limit int) (int, error) {
 }
 
 func ValidateRecord(record Record) error {
+	if record.ApplicationMode != ApplicationModeShadow && record.ApplicationMode != ApplicationModeApplied {
+		return fmt.Errorf("%w: application mode must be shadow or applied", ErrInvalid)
+	}
 	for name, value := range map[string]string{
 		"id": record.ID, "clip hash": record.ClipHash, "evidence hash": record.EvidenceHash,
 		"evidence version": record.EvidenceVersion, "policy version": record.PolicyVersion,

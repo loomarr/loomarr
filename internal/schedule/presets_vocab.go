@@ -1,5 +1,7 @@
 package schedule
 
+import "github.com/loomarr/loomarr/internal/holidayvocab"
+
 // The authoring vocabulary served to the rules editor (programming-design §6.6, §8.1). Until
 // now the FE hand-mirrored presets.go BYTE-FOR-BYTE (its presets.ts said "keep in sync") — a
 // standing drift hazard. BuildVocabulary makes the BE the single source: it enumerates the
@@ -56,13 +58,6 @@ var (
 		{"late-night", "Late night (23–2)", "Late night"},
 		{"overnight", "Overnight (2–6)", "Overnight"},
 	}
-	holidayVocab = []struct{ id, label string }{
-		{"christmas", "Christmas"},
-		{"halloween", "Halloween"},
-		{"thanksgiving", "Thanksgiving"},
-		{"newyear", "New Year"},
-		{"valentines", "Valentine's Day"},
-	}
 	whatVocabTokens = []struct{ token, label string }{
 		{"all", "Anything (no extra narrowing)"},
 		{"kids", "Kids-safe genres"},
@@ -88,10 +83,10 @@ func BuildVocabulary() Vocabulary {
 			v.When = append(v.When, WhenVocab{Token: w.token, Label: w.label, ShortLabel: w.short, Predicate: pred, Priority: prio})
 		}
 	}
-	for _, h := range holidayVocab {
-		token := "holiday:" + h.id
+	for _, h := range holidayvocab.Definitions() {
+		token := "holiday:" + h.ID
 		if pred, prio, ok := LowerWhen(token); ok {
-			v.When = append(v.When, WhenVocab{Token: token, Label: h.label, ShortLabel: h.label, Predicate: pred, Priority: prio})
+			v.When = append(v.When, WhenVocab{Token: token, Label: h.Label, ShortLabel: h.Label, Predicate: pred, Priority: prio})
 		}
 	}
 

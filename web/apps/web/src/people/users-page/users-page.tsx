@@ -1,21 +1,22 @@
+import * as invitationsApi from "@loomarr/api/endpoints/invitations";
+import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as usersApi from "@loomarr/api/endpoints/users";
-import type { UserBody } from "@loomarr/api/models/userBody";
-import { toProblem } from "@loomarr/api/mutator";
+import type { CreateInvitationInputBody } from "@loomarr/api/models/createInvitationInputBody";
+import type { InvitationBody } from "@loomarr/api/models/invitationBody";
+import type { IssueInvitationGrantInputBodyConveyance } from "@loomarr/api/models/issueInvitationGrantInputBodyConveyance";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
-import { useId, useState } from "react";
+import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
-import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { SessionList } from "@/components/loomarr/people/session-list";
-import { UserRow } from "@/components/loomarr/people/user-row";
+import { CreateLocalDialog } from "@/components/loomarr/people/create-local-dialog";
+import { ImportDialog } from "@/components/loomarr/people/import-dialog";
+import { InvitationDialog } from "@/components/loomarr/people/invitation-dialog";
+import { InvitationRoster } from "@/components/loomarr/people/invitation-roster";
+import { PeopleRoster } from "@/components/loomarr/people/people-roster";
+import { PersonDetail } from "@/components/loomarr/people/person-detail";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { CreateLocalPanel } from "../create-local-panel";
-import { ImportPanel } from "../import-panel";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 // UsersPage — the §11 allowlist. You can sign in iff you have a row here, so this screen
 // is the access-control surface: import who may sign in, set what they may spend, and end
@@ -27,18 +28,62 @@ const UsersPage = () => {
   const queryClient = useQueryClient();
   const { user: me } = useAuth();
   const [busyUser, setBusyUser] = useState<string>();
-  const [openSessions, setOpenSessions] = useState<UserBody>();
+  const [selectedId, setSelectedId] = useState<string>();
   const [revoking, setRevoking] = useState<string>();
-  // The admin reset path (§11): no current password — that is the point — so it relies
-  // entirely on the caller's admin role, and it is a separate flow from the self-service
-  // change on /account precisely so "prove you know it" never becomes optional.
-  const [resetting, setResetting] = useState<UserBody>();
-  const [newPassword, setNewPassword] = useState("");
-  const [resetError, setResetError] = useState("");
-  const resetId = useId();
+  const [sendingInvitation, setSendingInvitation] = useState<string>();
+  const [sharingInvitation, setSharingInvitation] = useState<InvitationBody>();
 
   const users = usersApi.useListUsers();
   const invalidate = () => queryClient.invalidateQueries({ queryKey: usersApi.getListUsersQueryKey() });
+  const settings = settingsApi.useSettingsList();
+  const importAvailable =
+    settings.data?.status === 200 ? Boolean(settings.data.data.features?.user_sync) : false;
+  const candidates = usersApi.useImportCandidates({ query: { enabled: importAvailable } });
+  const importUsers = usersApi.useImportUsers();
+  const syncUsers = usersApi.useSyncUsers();
+  const createLocal = usersApi.useCreateLocalUser();
+  const invitations = invitationsApi.useListInvitations({ query: { refetchInterval: 5_000 } });
+  const invalidateInvitations = () =>
+    queryClient.invalidateQueries({ queryKey: invitationsApi.getListInvitationsQueryKey() });
+  const sendInvitationEmail = invitationsApi.useSendInvitationEmail({
+    mutation: {
+      onSettled: () => {
+        setSendingInvitation(undefined);
+        void invalidateInvitations();
+      },
+    },
+  });
+  const createInvitation = invitationsApi.useCreateInvitation();
+  const issueInvitationGrant = invitationsApi.useIssueInvitationGrant();
+  const revokeInvitation = invitationsApi.useRevokeInvitation();
+
+  const createInvitationAction = async (data: CreateInvitationInputBody) => {
+    const response = await createInvitation.mutateAsync({ data });
+    if (response.status !== 201) throw response.data;
+    await invalidateInvitations();
+    return response.data;
+  };
+  const issueInvitationGrantAction = async (
+    id: string,
+    conveyance: IssueInvitationGrantInputBodyConveyance,
+  ) => {
+    const response = await issueInvitationGrant.mutateAsync({ id, data: { conveyance } });
+    if (response.status !== 200) throw response.data;
+    return response.data;
+  };
+  const revokeInvitationAction = async (id: string) => {
+    const response = await revokeInvitation.mutateAsync({ id });
+    if (response.status !== 204) throw response.data;
+    await invalidateInvitations();
+  };
+  const sendInvitationEmailAction = async (id: string) => {
+    const response = await sendInvitationEmail.mutateAsync({
+      id,
+      data: { requestId: globalThis.crypto.randomUUID() },
+    });
+    if (response.status !== 202) throw response.data;
+    await invalidateInvitations();
+  };
 
   const patch = usersApi.usePatchUser({
     mutation: {
@@ -49,13 +94,13 @@ const UsersPage = () => {
     },
   });
 
-  const sessions = usersApi.useListUserSessions(openSessions?.id ?? "", {
-    query: { enabled: Boolean(openSessions) },
+  const sessions = usersApi.useListUserSessions(selectedId ?? "", {
+    query: { enabled: Boolean(selectedId) },
   });
   const invalidateSessions = () => {
-    if (openSessions) {
+    if (selectedId) {
       void queryClient.invalidateQueries({
-        queryKey: usersApi.getListUserSessionsQueryKey(openSessions.id),
+        queryKey: usersApi.getListUserSessionsQueryKey(selectedId),
       });
     }
   };
@@ -68,25 +113,10 @@ const UsersPage = () => {
     },
   });
 
-  const resetPassword = usersApi.useResetUserPassword({
-    mutation: {
-      onSuccess: () => {
-        setResetting(undefined);
-        setNewPassword("");
-        setResetError("");
-        // Their sessions are revoked server-side, so the list they might be looking at
-        // is stale the moment this succeeds.
-        invalidateSessions();
-      },
-      onError: (e) => setResetError(toProblem(e).detail ?? "Couldn't reset that password."),
-    },
-  });
-
-  const submitReset = () => {
-    if (newPassword.length < 8) return setResetError("Use at least 8 characters.");
-    setResetError("");
-    if (resetting) resetPassword.mutate({ id: resetting.id, data: { next: newPassword } });
-  };
+  const resetPassword = usersApi.useResetUserPassword();
+  const putContactAddress = usersApi.usePutUserContactAddress();
+  const deleteContactAddress = usersApi.useDeleteUserContactAddress();
+  const deleteContactReplacement = usersApi.useDeleteUserContactReplacement();
 
   const edit = (id: string, body: Record<string, unknown>) => {
     setBusyUser(id);
@@ -95,113 +125,151 @@ const UsersPage = () => {
 
   if (users.error) return <ErrorState error={users.error} onRetry={() => users.refetch()} />;
   const rows = users.data?.status === 200 ? (users.data.data.users ?? []) : undefined;
+  const selected = rows?.find((user) => user.id === selectedId);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader
-        title="Users"
+        title="People"
         description="Who may sign in, what they may spend, and what they may approve. An account grants no access until you add it here: by importing a media-server account, or creating a local one."
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <InvitationDialog
+              libraryAvailable={importAvailable}
+              candidates={
+                importAvailable && !candidates.isLoading
+                  ? (unwrap(candidates.data, (body) => body.candidates) ?? [])
+                  : undefined
+              }
+              onCreate={createInvitationAction}
+              onIssueGrant={issueInvitationGrantAction}
+              onRevoke={revokeInvitationAction}
+              onSendEmail={sendInvitationEmailAction}
+            />
+            <CreateLocalDialog
+              error={createLocal.error}
+              creating={createLocal.isPending}
+              onCreate={async (data) => {
+                await createLocal.mutateAsync({ data });
+                await invalidate();
+              }}
+            />
+            <ImportDialog
+              available={importAvailable}
+              candidates={
+                importAvailable && !candidates.isLoading
+                  ? (unwrap(candidates.data, (body) => body.candidates) ?? [])
+                  : undefined
+              }
+              candidateError={candidates.error}
+              mutationError={importUsers.error ?? syncUsers.error}
+              importing={importUsers.isPending}
+              syncing={syncUsers.isPending}
+              onRetry={() => candidates.refetch()}
+              onImport={async (ids) => {
+                await importUsers.mutateAsync({ data: { ids } });
+                await Promise.all([invalidate(), candidates.refetch()]);
+              }}
+              onSync={async () => {
+                await syncUsers.mutateAsync();
+                await Promise.all([invalidate(), candidates.refetch()]);
+              }}
+            />
+          </div>
+        }
       />
 
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6">
         {patch.error != null && <ErrorState error={patch.error} />}
         {revoke.error != null && <ErrorState error={revoke.error} />}
+        {invitations.error != null && (
+          <ErrorState error={invitations.error} onRetry={() => invitations.refetch()} />
+        )}
+        {sendInvitationEmail.error != null && <ErrorState error={sendInvitationEmail.error} />}
 
-        <Card>
-          {rows === undefined ? (
-            <p className="p-4 text-muted-foreground text-sm">Loading users…</p>
-          ) : rows.length === 0 ? (
-            <EmptyState
-              title="No users yet"
-              description="Import accounts from your media server below, and they can sign in with their existing password."
-            />
-          ) : (
-            rows.map((u) => (
-              <UserRow
-                key={u.id}
-                user={u}
-                busy={busyUser === u.id}
-                isSelf={u.id === me?.id}
-                onRoleChange={(role) => edit(u.id, { role })}
-                onQuotaChange={(quota) => edit(u.id, { quota })}
-                onToggleAutoApprove={(autoApprove) => edit(u.id, { autoApprove })}
-                onToggleDisabled={(disabled) => edit(u.id, { disabled })}
-                onViewSessions={() => setOpenSessions(u)}
-                onResetPassword={() => {
-                  setResetting(u);
-                  setNewPassword("");
-                  setResetError("");
+        <InvitationRoster
+          invitations={unwrap(invitations.data, (body) => body.invitations)}
+          sendingId={sendingInvitation}
+          onSendEmail={(id) => {
+            setSendingInvitation(id);
+            sendInvitationEmail.mutate({ id, data: { requestId: globalThis.crypto.randomUUID() } });
+          }}
+          onShare={setSharingInvitation}
+        />
+
+        {sharingInvitation && (
+          <InvitationDialog
+            open
+            existing={sharingInvitation}
+            libraryAvailable={importAvailable}
+            candidates={[]}
+            onOpenChange={(next) => !next && setSharingInvitation(undefined)}
+            onCreate={createInvitationAction}
+            onIssueGrant={issueInvitationGrantAction}
+            onRevoke={revokeInvitationAction}
+            onSendEmail={sendInvitationEmailAction}
+          />
+        )}
+
+        <PeopleRoster
+          users={rows}
+          selectedId={selectedId}
+          selfId={me?.id}
+          onSelect={(user) => setSelectedId(user.id)}
+        />
+
+        <Sheet
+          open={Boolean(selected)}
+          onOpenChange={(open) => !open && setSelectedId(undefined)}
+          swipeDirection="right"
+        >
+          {selected && (
+            <SheetContent>
+              <SheetHeader>
+                <SheetTitle>{selected.name}</SheetTitle>
+                <SheetDescription>
+                  Manage this person's access, request policy, credentials, and sessions.
+                </SheetDescription>
+              </SheetHeader>
+              <PersonDetail
+                user={selected}
+                busy={busyUser === selected.id}
+                isSelf={selected.id === me?.id}
+                sessionsLoading={sessions.isLoading}
+                sessions={unwrap(sessions.data, (body) => body.sessions) ?? []}
+                revoking={revoking}
+                onRoleChange={(role) => edit(selected.id, { role })}
+                onQuotaChange={(quota) => edit(selected.id, { quota })}
+                onToggleAutoApprove={(autoApprove) => edit(selected.id, { autoApprove })}
+                onToggleDisabled={(disabled) => edit(selected.id, { disabled })}
+                onRevokeSession={(id) => {
+                  setRevoking(id);
+                  revoke.mutate({ hash: id });
+                }}
+                onResetPassword={
+                  selected.local
+                    ? async (next) => {
+                        await resetPassword.mutateAsync({ id: selected.id, data: { next } });
+                        invalidateSessions();
+                      }
+                    : undefined
+                }
+                onSetContactAddress={async (email) => {
+                  await putContactAddress.mutateAsync({ id: selected.id, data: { email } });
+                  await invalidate();
+                }}
+                onRemoveContactAddress={async () => {
+                  await deleteContactAddress.mutateAsync({ id: selected.id });
+                  await invalidate();
+                }}
+                onCancelContactReplacement={async () => {
+                  await deleteContactReplacement.mutateAsync({ id: selected.id });
+                  await invalidate();
                 }}
               />
-            ))
+            </SheetContent>
           )}
-        </Card>
-
-        {/* Admin reset (§11). No current password — that is what distinguishes it from
-          the self-service change on /account — so it leans entirely on the admin role,
-          and every session for the target dies on success. */}
-        {resetting && (
-          <Card className="flex flex-col gap-3 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="font-semibold text-lg">{`Reset password, ${resetting.name}`}</h2>
-              <Button variant="ghost" size="sm" onClick={() => setResetting(undefined)}>
-                Close
-              </Button>
-            </div>
-            <p className="text-muted-foreground text-sm">
-              Set a new password for this account. They'll be signed out everywhere and will need the new one
-              to get back in, so tell them what it is.
-            </p>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={resetId}>New password</Label>
-              <Input
-                id={resetId}
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-              />
-            </div>
-            {resetError && <p className="text-onair-300 text-sm">{resetError}</p>}
-            <div className="flex gap-2">
-              <Button onClick={submitReset} disabled={resetPassword.isPending}>
-                Set new password
-              </Button>
-            </div>
-          </Card>
-        )}
-
-        {openSessions && (
-          <Card className="flex flex-col gap-3 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="font-semibold text-lg">{`Sessions, ${openSessions.name}`}</h2>
-              <Button variant="ghost" size="sm" onClick={() => setOpenSessions(undefined)}>
-                Close
-              </Button>
-            </div>
-            <SessionList
-              userName={openSessions.name}
-              loading={sessions.isLoading}
-              // `?? []` narrows the contract's nullable list (huma infers nullability from
-              // Go's slice type); the handler always initializes it, so null never
-              // actually arrives.
-              sessions={unwrap(sessions.data, (b) => b.sessions) ?? []}
-              revoking={revoking}
-              onRevoke={(id) => {
-                setRevoking(id);
-                revoke.mutate({ hash: id });
-              }}
-            />
-            {/* Disabling is the documented "kill every session now" path (§11), so it is
-              named here rather than duplicated as a separate revoke-all call that the
-              backend would treat differently. */}
-            <p className="text-static-400 text-xs">Disabling this account ends every session immediately.</p>
-          </Card>
-        )}
-
-        {/* Two ways into the allowlist, both explicit admin actions (§11): import an
-          existing media-server account, or mint a local one for someone who has none. */}
-        <CreateLocalPanel onCreated={invalidate} />
-        <ImportPanel onImported={invalidate} />
+        </Sheet>
       </div>
     </div>
   );

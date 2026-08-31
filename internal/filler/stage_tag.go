@@ -2,6 +2,7 @@ package filler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"path/filepath"
@@ -88,6 +89,9 @@ func (s *TagStage) Applies(_ context.Context, c StoreClip) (bool, string) {
 
 // Run classifies the clip and persists what grounded.
 func (s *TagStage) Run(ctx context.Context, c StoreClip) (StageResult, error) {
+	if s.provider == nil {
+		return StageResult{}, errors.New("AI tagging is not enabled or configured")
+	}
 	taxa, err := s.store.ListTaxa(ctx)
 	if err != nil {
 		return StageResult{}, err

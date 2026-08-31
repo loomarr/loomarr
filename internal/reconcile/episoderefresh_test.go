@@ -56,7 +56,9 @@ func TestEpisodeRefreshSnapshotsResolverOnceAcrossRun(t *testing.T) {
 	snapshots := 0
 	primaryResults := make(map[string][]schedule.ResolvedProgram, len(shows))
 	for _, show := range shows {
-		primaryResults[show.libraryID] = []schedule.ResolvedProgram{{LibraryItemID: show.libraryID + "-episode"}}
+		primaryResults[show.libraryID] = []schedule.ResolvedProgram{{
+			LibraryItemID: show.libraryID + "-episode", DurationMs: 1, Episode: 1,
+		}}
 	}
 	primary := libraryfixture.NewEpisodes(primaryResults)
 	rotated := libraryfixture.NewEpisodes(nil)

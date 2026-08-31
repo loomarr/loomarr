@@ -1,11 +1,8 @@
-# CI — mirrors the harness contract (AGENTS.md / design §16):
-# check + openapi-verify + config-docs-verify + test-pg + fe + e2e/visual.
-# Every gate here is a `make` target so local and CI never diverge.
+# CI admission and aggregation (AGENTS.md / design §19). Product implementations live in
+# family-named reusable workflows; every gate still enters through a repository Make target.
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
   # The merge queue dispatches batches as `merge_group`, NOT `pull_request`. Without this
   # trigger the required `CI` check never runs for a queued PR and the queue stalls forever
@@ -21,6 +18,7 @@ on:
         options:
           - release-candidate
           - full
+          - apple-cache-validation
 
 # Least privilege: CI only reads the repo.
 permissions:
@@ -37,7 +35,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 env:
-  GO_VERSION: "1.26"
+  GO_VERSION: "1.27"
   NODE_VERSION: "22"
 
 jobs:
@@ -51,6 +49,7 @@ jobs:
     name: What changed
     runs-on: ubuntu-latest
     outputs:
+      lane: ${{ steps.filter.outputs.lane }}
       go: ${{ steps.filter.outputs.go }}
       web: ${{ steps.filter.outputs.web }}
       clients: ${{ steps.filter.outputs.clients }}
@@ -76,6 +75,7 @@ jobs:
       impact_docs: ${{ steps.impact.outputs.docs }}
       impact_agent: ${{ steps.impact.outputs.agent }}
       impact_android: ${{ steps.impact.outputs.android }}
+      impact_policy: ${{ steps.impact.outputs.policy }}
       release_candidate: ${{ steps.filter.outputs.release_candidate }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -100,6 +100,7 @@ jobs:
              || github.event.before }}
         run: |
           set -uo pipefail
+          ./scripts/ci-lane.sh "$EVENT_NAME" "$DISPATCH_SCOPE" >> "$GITHUB_OUTPUT"
           if [ "$EVENT_NAME" = workflow_dispatch ]; then
             ./scripts/ci-dispatch-scope.sh "$DISPATCH_SCOPE" >> "$GITHUB_OUTPUT"
             exit 0
@@ -115,8 +116,8 @@ jobs:
           changed=$(git diff --name-only "$BASE" HEAD)
           echo "changed files:"; echo "$changed"
 
-          # Makefile and this workflow gate BOTH: they define how every job runs, so a change
-          # to either has to be proven against everything.
+          # This is the legacy broad-family comparison retained in the run summary while the
+          # specialized classifier owns every job. Its values never activate a product build.
           #
           # ⚠ `scripts/` is here because the Go job RUNS scripts from it — `make retired-verify`
           # is `./scripts/check-retired.sh`, and `make tags-verify` is `./scripts/check-tags.sh`.
@@ -218,12 +219,13 @@ jobs:
           fi
           echo "release_candidate=false" >> "$GITHUB_OUTPUT"
 
-      # Postgres and the combined Playwright gate are the first specialized decisions allowed to
-      # skip required work. Every other job remains on its legacy output while its dedicated
-      # decision stays in shadow.
+      # Every product job consumes this classifier directly. CI-policy changes have their own
+      # lightweight gate; they never borrow a product family merely to validate workflow YAML.
       - name: Classify specialized gates
         id: impact
         env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_SCOPE: ${{ inputs.scope || '' }}
           BASE: >-
             ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha
              || github.event_name == 'merge_group' && github.event.merge_group.base_sha
@@ -238,7 +240,10 @@ jobs:
         run: |
           set -uo pipefail
           reason="classified the merge-base diff"
-          if [ -z "${BASE:-}" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            reason="explicit $DISPATCH_SCOPE manual scope"
+            impact="$(./scripts/ci-dispatch-scope.sh "$DISPATCH_SCOPE" impact)"
+          elif [ -z "${BASE:-}" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
              || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             reason="no usable diff base; failed closed"
             impact="$(./scripts/ci-impact.sh --all)"
@@ -255,7 +260,7 @@ jobs:
           {
             echo "### Specialized CI gate decisions"
             echo
-            echo "Postgres, Playwright, tuner, Apple mobile, and Apple TV are active and fail-closed; remaining specialized decisions are observational."
+            echo "Every CI job consumes its fail-closed specialized decision; unknown inputs select all gates."
             echo
             echo "Reason: $reason."
             echo
@@ -287,20 +292,8 @@ jobs:
   agent-harness-macos:
     name: Agent harness (macOS)
     needs: changes
-    if: needs.changes.outputs.agent == 'true'
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      # Dependency-aware verification resolves the reverse Go import graph even when its
-      # behavioral harness substitutes fake `go` and `make` commands for the final execution.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: false
-      # This exercises the `lsof` process-ownership adapter. Linux runs the same harness through
-      # `make check`, where `/proc` is available.
-      - name: Worktree isolation, claims, leases, and process ownership
-        run: make agent-harness-test
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_agent == 'true'
+    uses: ./.github/workflows/ci-agent.yml
 
   release-candidate-scope:
     name: Release candidate — exact main scope
@@ -319,10 +312,10 @@ jobs:
     steps:
       - run: echo 'Running the deliberately requested full CI matrix.'
 
-  go-contracts:
-    name: Go + Rust — repository contracts
+  ci-policy:
+    name: CI policy — workflow, harness, and docs contracts
     needs: changes
-    if: needs.changes.outputs.go == 'true' || needs.changes.outputs.release_candidate == 'true'
+    if: needs.changes.outputs.impact_policy == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -330,550 +323,85 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
-      - name: Install pinned Rust toolchain
-        run: rustup toolchain install 1.93.0 --profile minimal
-      - name: Cache epoch
-        id: epoch
-        run: echo "week=$(date -u +%GW%V)" >> "$GITHUB_OUTPUT"
-      - name: Restore contract caches
-        id: cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-            ~/.cache/golangci-lint
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: go-contracts-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-${{ hashFiles('go.sum', 'Cargo.lock') }}-${{ github.run_id }}
-          restore-keys: |
-            go-contracts-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-${{ hashFiles('go.sum', 'Cargo.lock') }}-
-            go-contracts-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-
-      - name: Static analysis and repository contracts
-        run: make check-static
-      - name: The test shards cover every package
-        run: make go-shard-verify SHARDS=3
-      - name: OpenAPI spec is committed and current
-        run: make openapi-verify
-      - name: Config docs are committed and current
-        run: make config-docs-verify
-      - name: The §2 package map is committed and current
-        run: make arch-docs-verify
-      - name: Command reference is committed and current
-        run: make dev-docs-verify
-      - name: Retired identifiers are gone from prose
-        run: make retired-verify
-      - name: Workflows are valid
-        run: make ci-lint
-      - name: Save contract caches (main only)
-        if: always() && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-            ~/.cache/golangci-lint
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ steps.cache.outputs.cache-primary-key }}
+      - name: Repository policy bootstrap outside Make
+        run: go run ./cmd/releaseverify -root .
+      - name: Workflow and publication policy
+        run: make ci-lint release-verify
+      - name: Agent harness and shell policy
+        run: make agent-harness-test shellcheck
+      - name: Documentation contracts read by Go
+        run: go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify
+
+  rust-contracts:
+    name: Rust — repository contracts
+    needs: changes
+    if: needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true'
+    uses: ./.github/workflows/ci-rust-contracts.yml
+
+  go-contracts:
+    name: Go — repository contracts
+    needs: changes
+    if: needs.changes.outputs.impact_contracts == 'true' || needs.changes.outputs.release_candidate == 'true'
+    uses: ./.github/workflows/ci-go-contracts.yml
 
   image-certification:
     name: Rust image — runtime certification
     needs: changes
-    if: needs.changes.outputs.go == 'true' || needs.changes.outputs.release_candidate == 'true'
-    runs-on: ubuntu-latest
-    # Certification is independent of static repository contracts. It used to start only after
-    # `check-static` finished, adding a measured two minutes to the critical path even though the
-    # two gates share no result. Keep it required through `ci-ok`, but run it in parallel.
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: false
-      - name: Install pinned Rust toolchain
-        run: rustup toolchain install 1.93.0 --profile minimal
-      - name: Certify the release worker against the deterministic real-codec corpus
-        run: IMAGE_CERT_REPORT="$RUNNER_TEMP/image-certification.json" make image-cert
-      - name: Keep the Rust image certification report
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: rust-image-certification
-          path: ${{ runner.temp }}/image-certification.json
-          if-no-files-found: ignore
-          retention-days: 14
+    if: needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true')
+    uses: ./.github/workflows/ci-image-certification.yml
 
   go:
-    name: Go — race-policy tests (${{ matrix.shard }}/${{ strategy.job-total }})
+    name: Go — race-policy tests
     needs: changes
-    if: needs.changes.outputs.go == 'true'
-    runs-on: ubuntu-latest
-    # This job is test-only. Repository-wide contracts run once in `go-contracts`, in parallel;
-    # repeating Rust, lint, vet, harness, cross-compilation, and release checks in every shard spent
-    # runner time and inflated each shard's cache without adding assurance.
-    #
-    # THREE shards, not two. Re-measured 2026-08-18: the per-package -race suite is ~381s but is
-    # dominated by a few packages (internal/app alone is ~125s), so round-robin balance depends on
-    # the split COUNT. Modelled critical path (slowest shard): 2 shards = 237s, 3 = 185s, 4 = 215s
-    # — 4 REGRESSES because round-robin happens to pile app+store+integration onto one shard. 3 is
-    # the measured sweet spot (−22% vs 2). The real floor is internal/app at ~125s, one unsplittable
-    # package; sharding cannot beat it — that needs the per-test SQLite-setup sharing the `test`
-    # target's note describes, tracked separately.
-    #
-    # -race is also SCOPED (scripts/go-race-policy.sh): a short, verified opt-out set of
-    # concurrency-free config/table-test packages runs without the detector. `make go-race-verify`
-    # keeps that list honest; it is fail-safe (race stays ON for anything not explicitly opted out).
-    #
-    # ⚠ Sharding is the one change here that can quietly SHRINK the gate — a split that drops
-    # a package leaves those tests unrun and every shard green. `make go-shard-verify` below
-    # is the guard, and it is not optional.
-    #
-    strategy:
-      fail-fast: false # one shard's failures must not hide the others'
-      matrix:
-        shard: [1, 2, 3]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          # ⚠ DELIBERATELY OFF — the step below owns every Go cache path in this job.
-          # `cache: true` caches `~/go/pkg/mod` AND `~/.cache/go-build` keyed on go.sum,
-          # which is the SAME `~/.cache/go-build` the unified cache rolls. Both on meant
-          # restoring it twice and, whenever go.sum moved, SAVING it twice: measured
-          # 2026-08-09, `Post Cache golangci` 83s ran alongside `Post Run actions/setup-go`
-          # 91s in one job. Worse, setup-go's half is keyed on go.sum alone — exactly the
-          # frozen-key bug the note below exists to prevent — so it re-froze a slice of the
-          # very cache the rolling key was added to keep fresh.
-          cache: false
-      # `make test` builds the real debug image worker its Go tests execute. Install the pinned
-      # toolchain but deliberately do not cache Cargo/target here: the old combined cache reached
-      # 1.36GB and cost longer to restore/save than this focused build. Static Rust checks and
-      # release certification still run once in `go-contracts`.
-      - name: Install pinned Rust toolchain
-        run: rustup toolchain install 1.93.0 --profile minimal
-      # Each test shard keeps only its Go module and compiler caches. Lint and static Rust checks
-      # run in `go-contracts`, so restoring their caches here would spend time and storage on
-      # inputs this job never reads.
-      #
-      # ⚠ THE KEY MUST BE UNIQUE PER RUN, and this is not a style choice. `actions/cache`
-      # NEVER overwrites an existing key — it skips the save when the key already hit. This
-      # path holds `~/.cache/go-build`, whose contents track `.go` SOURCE, but the key used
-      # to be `hashFiles('go.sum')`: so the entry was written once and then frozen while the
-      # source moved under it. Measured — one 473MB entry created 2026-07-31T01:06 was still
-      # being restored days and many source changes later, so `go test -race` recompiled
-      # nearly everything on every run (~224s of the job). `github.run_id` guarantees a miss
-      # on the exact key so the save always happens, while `restore-keys` still restores the
-      # newest prior cache to compile against.
-      #
-      # ⚠ AND A ROLLING KEY MUST BE BOUNDED — the other half of the same trade, and the
-      # failure mode the fix above created. A stable key never re-SAVES; a rolling key never
-      # PRUNES. Neither actions/cache mode evicts anything, so this entry grew purely by
-      # accretion: every run restored the previous one, added to it, and saved the union.
-      # Measured 2026-08-09 it had reached **1.36 GB**, costing 85s to restore (74s of that
-      # spent EXTRACTING, not downloading) plus 83–122s to save — ~168s of a ~10 min job
-      # spent moving a tarball before a single test ran.
-      #
-      # The ISO week in the key is the bound. It rotates on its own, so there is no number
-      # for anyone to remember to bump — this repo has been bitten repeatedly by
-      # hand-maintained lists that drift — and it costs exactly one cold build per week. It
-      # is in the restore-keys prefixes too, deliberately: a prefix that outlived the epoch
-      # would restore the very accumulation the epoch exists to drop.
-      - name: Cache epoch (bounds rolling-cache growth)
-        id: epoch
-        run: echo "week=$(date -u +%GW%V)" >> "$GITHUB_OUTPUT"
-      - name: Restore Go test caches (modules + build)
-        id: gocache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          # ⚠ THE SHARD IS PART OF THE KEY. Each shard compiles a DIFFERENT set of packages, so
-          # a shared key would have them overwrite each other's build objects every run — each
-          # shard restoring a cache built for the other's packages and recompiling its own.
-          # It also makes the save well-defined: without it both shards race to write one key
-          # and whichever lost simply skipped, so half the objects were never cached at all.
-          key: go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-s${{ matrix.shard }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
-          restore-keys: |
-            go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-s${{ matrix.shard }}-${{ hashFiles('go.sum') }}-
-            go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-s${{ matrix.shard }}-
-      # ⚠ ffmpeg is NOT on the runner image, and several filler tests skip without it — the
-      # language gate's span extraction (16kHz mono WAV, the shape whisper requires), the
-      # silence guard, artwork rendering and the clip scan's probe. Measured on this runner
-      # before adding this step: `ffmpeg: MISSING`, and the three `TestExtractSpanWAV_*`
-      # tests reported SKIP while the job stayed green.
-      #
-      # A skip is visible in the log, so this was never a silent hole — but it did mean CI
-      # could not catch a broken `-ar 16000`, which is exactly the flag those tests exist to
-      # pin. The two backends carried byte-identical copies of that invocation with nothing
-      # asserting it, so the gap was worth closing rather than documenting.
-      #
-      # ⚠ `ffmpeg` alone pulls `ffprobe` (same Debian source package), and both are needed:
-      # the tests assert what the extracted file IS by probing it, not merely that ffmpeg
-      # exited 0. `--no-install-recommends` keeps the codec/doc tail off a runner that only
-      # has to decode and re-encode small synthetic WAVs.
-      #
-      # ⚠ The DEBS are cached, not the installed binaries. Copying `/usr/bin/ffmpeg` back into
-      # place would leave its shared libraries behind — ffmpeg links a large tree (libav*,
-      # libx264, …) spread across /usr/lib, so a binary-only cache produces a file that exists
-      # and cannot run. Caching the .debs and letting apt install them keeps the package
-      # manager's own dependency handling and skips only the download, which is the slow part.
-      #
-      # ⚠ Cache what APT ITSELF decides to fetch on THIS runner (~62.8 MB), not a computed
-      # dependency closure. Measured while writing this: `apt-cache depends --recurse` over
-      # ffmpeg resolves 298 packages / 244 MB, because the closure includes base packages the
-      # runner image already has installed. Caching that would spend 244 MB of a 10GB repo-wide
-      # budget to save 38 seconds — worse than no cache at all. `-d` into the apt archive dir
-      # asks apt for the actual delta against what is already there.
-      #
-      # ⚠ A STABLE key, deliberately NOT the rolling `github.run_id` pattern the golangci and
-      # gobuild caches above use. Those cache contents track something their key does not
-      # (`~/.cache/go-build` tracks .go SOURCE), so they must re-save every run. This one's
-      # contents are fully determined by the key — a fixed package set at a runner image
-      # version — exactly like the pnpm caches, which are keyed on the lockfile alone. The
-      # rolling pattern here would write a fresh copy EVERY run into the budget that
-      # `cache-cleanup.yml` exists because the repo already blew through once.
-      #
-      # ⚠ The Ubuntu RELEASE is in the key because the package versions come from the runner
-      # image's apt sources. Without it a runner image bump would restore debs built for the
-      # previous release and the install would fail on unmet dependencies — a red CI whose
-      # cause is a cache entry nobody edited.
-      #
-      # ⚠ Read from `/etc/os-release` into an output, NOT from `env.ImageOS`. That variable is
-      # set by the hosted runner image rather than by Actions itself, so it is not a documented
-      # context (editors flag it, and a self-hosted or changed image can leave it empty) — and
-      # an empty segment does not fail, it silently produces ONE key shared across every image
-      # version, which is precisely the collision this segment exists to prevent.
-      - name: Resolve the runner's Ubuntu release (cache key input)
-        id: os
-        run: |
-          . /etc/os-release
-          test -n "$VERSION_ID"
-          echo "release=$VERSION_ID" >> "$GITHUB_OUTPUT"
-      - name: Cache ffmpeg packages
-        id: ffmpeg-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: ~/ffmpeg-debs
-          key: ffmpeg-debs-${{ runner.os }}-${{ steps.os.outputs.release }}-v1
-      - name: Download ffmpeg packages
-        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
-        run: |
-          sudo apt-get update -qq
-          mkdir -p ~/ffmpeg-debs
-          # -d downloads without installing. Copied out of apt's archive dir rather than
-          # pointed there directly, because that path is root-owned and actions/cache runs
-          # as the runner user.
-          sudo apt-get install -y --no-install-recommends -d -o Dir::Cache::archives="$HOME/apt-debs" ffmpeg \
-            || sudo apt-get install -y --no-install-recommends -d ffmpeg
-          sudo find "$HOME/apt-debs" /var/cache/apt/archives -maxdepth 1 -name '*.deb' \
-            -exec cp -n {} ~/ffmpeg-debs/ \; 2>/dev/null || true
-          sudo chown -R "$USER" ~/ffmpeg-debs
-          echo "cached $(find ~/ffmpeg-debs -name '*.deb' | wc -l) debs, $(du -sh ~/ffmpeg-debs | cut -f1)"
-      # ⚠ apt-get install with the cached debs already in its archive dir, NOT `dpkg -i`. dpkg
-      # processes files in glob order and fails on a package whose dependency has not been
-      # unpacked yet; apt orders them itself. `--no-download` proves the cache is doing the
-      # work — if a deb is missing this fails rather than quietly re-fetching it, which is how
-      # a cache that stopped working would otherwise stay invisible.
-      - name: Install ffmpeg (several filler tests skip without it)
-        run: |
-          sudo cp -n ~/ffmpeg-debs/*.deb /var/cache/apt/archives/ 2>/dev/null || true
-          sudo apt-get install -y --no-install-recommends --no-download ffmpeg \
-            || sudo apt-get install -y --no-install-recommends ffmpeg
-      # ⚠ FAIL LOUDLY if the install silently stopped working. Without this the tests go back
-      # to skipping and the job stays green — the exact "green but not covered" state this
-      # step was added to end, and one nobody would notice because a skip looks like a pass
-      # at a glance.
-      - name: ffmpeg and ffprobe are on PATH
-        run: |
-          command -v ffmpeg
-          command -v ffprobe
-      - run: make test GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}
-      # ⚠ SAVE ONLY ON main, which is why this is cache/save rather than the round-trip
-      # `actions/cache`. A PR's cache is scoped to `refs/pull/N/merge` and can never be
-      # restored again once that PR closes — cache reads are scoped to the branch and its
-      # base — so every PR save wrote ~1.4GB that only ever became eviction pressure on the
-      # caches that ARE read. That is the same 10GB-quota burn `cache-cleanup.yml` exists to
-      # mop up after; not creating the garbage beats deleting it. PRs restore from main's
-      # entry and skip the measured 83–122s save outright.
-      #
-      # `always()` so a RED gate still refreshes the build objects it already produced — the
-      # next run should not recompile from cold merely because an assertion failed.
-      - name: Save Go caches (main only)
-        if: always() && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: ${{ steps.gocache.outputs.cache-primary-key }}
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_go == 'true'
+    uses: ./.github/workflows/ci-go.yml
 
   store-postgres:
     name: Store conformance (Postgres)
     needs: changes
-    if: needs.changes.outputs.impact_postgres == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        with:
-          # Off for the same reason as the `go` job: the step below owns both Go cache
-          # paths, and leaving setup-go's on would restore/save `~/.cache/go-build` twice
-          # under a go.sum-only (frozen) key.
-          cache: false
-          go-version: ${{ env.GO_VERSION }}
-      # This job was compiling the store test binary from source every run. ⚠ SEPARATE KEY
-      # from the `go` job above, and it must stay separate: this one builds WITHOUT -race,
-      # and race and non-race objects are distinct entries, so sharing a key would have each
-      # job evict the other's work on every run.
-      #
-      # Same rolling-key-plus-weekly-epoch pattern as the `go` job — see the long note there
-      # for why the key must be both unique per run (or it freezes) and epoch-bounded (or it
-      # snowballs). Modules ride along because setup-go no longer caches them.
-      - name: Cache epoch (bounds rolling-cache growth)
-        id: epoch
-        run: echo "week=$(date -u +%GW%V)" >> "$GITHUB_OUTPUT"
-      - name: Restore Go caches (store conformance)
-        id: gocache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: gobuild-pg-${{ runner.os }}-${{ steps.epoch.outputs.week }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
-          restore-keys: |
-            gobuild-pg-${{ runner.os }}-${{ steps.epoch.outputs.week }}-${{ hashFiles('go.sum') }}-
-            gobuild-pg-${{ runner.os }}-${{ steps.epoch.outputs.week }}-
-      # testcontainers uses the Docker daemon preinstalled on ubuntu-latest.
-      - run: make test-pg
-      # main only — see the `go` job's save step for why a PR-scoped save is pure eviction
-      # pressure on caches that are still being read.
-      - name: Save Go caches (main only)
-        if: always() && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: ${{ steps.gocache.outputs.cache-primary-key }}
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_postgres == 'true'
+    uses: ./.github/workflows/ci-postgres.yml
 
   frontend:
-    name: Frontend — biome + typecheck + unit + build (${{ matrix.shard }}/${{ strategy.job-total }})
+    name: Frontend — biome + typecheck + unit + build
     needs: changes
-    if: needs.changes.outputs.web == 'true'
-    runs-on: ubuntu-latest
-    # `make fe` was 394s and this job 7.0 min. The jsdom unit suite is the bulk of it ON THIS
-    # RUNNER, which is the part worth spelling out: locally the whole suite is 33.5s (measured
-    # 2026-08-09, 1307 tests over 166 files), and every other stage is small — biome 1.9s,
-    # typecheck 3.6s, vite build 5.0s, storybook 10.3s. What makes it the bulk here is cores.
-    # vitest is the most parallelism-hungry stage in the chain, and a 4-core runner is roughly
-    # a sixth of the dev box it was measured on, so it degrades far more than the rest.
-    #
-    # Everything except the unit tests re-runs in both shards. That is the same trade as the Go
-    # job: parallel, so it costs no wall clock, and it keeps CI running the same `make fe` a
-    # developer runs rather than a bespoke decomposition of it.
-    strategy:
-      fail-fast: false # one shard's failures must not hide the others'
-      matrix:
-        shard: [1, 2]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - name: Enable pnpm (pinned via web/package.json packageManager)
-        run: corepack enable
-      - name: Cache pnpm store
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: ~/.local/share/pnpm/store
-          key: pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
-          restore-keys: pnpm-${{ runner.os }}-
-      - run: make fe-install
-      - run: make fe FE_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}
-      # Whole-repo and shard-independent — diffing the same generated token artifacts in every
-      # shard would prove the same thing N times. Shard 1, matching the drift checks in the Go
-      # job and e2e in the Playwright job.
-      - name: Token artifacts are committed and current
-        if: matrix.shard == 1
-        run: make fe-tokens-verify
+    if: needs.changes.outputs.impact_web == 'true'
+    uses: ./.github/workflows/ci-frontend.yml
 
   clients:
     name: Shared clients — lint + test + browser/iOS/Android/TV bundles
     needs: changes
-    if: needs.changes.outputs.clients == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - name: Enable pnpm (pinned via web/package.json packageManager)
-        run: corepack enable
-      - name: Cache pnpm, Metro, and Turbo work
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: |
-            ~/.local/share/pnpm/store
-            ${{ runner.temp }}/metro-cache
-            web/.turbo
-          key: clients-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}-${{ github.sha }}
-          restore-keys: |
-            clients-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}-
-            clients-${{ runner.os }}-
-      - run: make fe-install
-      - run: make fe-codegen
-      - name: Verify the affected client graph
-        env:
-          TMPDIR: ${{ runner.temp }}
-          TURBO_TELEMETRY_DISABLED: "1"
-        run: make clients
+    if: needs.changes.outputs.impact_clients == 'true'
+    uses: ./.github/workflows/ci-clients.yml
 
   apple-mobile:
     name: Apple mobile — native build + launch
     needs: changes
-    if: needs.changes.outputs.impact_apple_mobile == 'true'
-    # ExpoModulesJSI needs Swift 6.3: Xcode 16.4 cannot load the package and Xcode 26.3
-    # rejects its C++ ownership annotations. The macOS 26 image supplies a compatible
-    # Xcode 26.4+ toolchain without opting into Xcode 27's mandatory UIScene lifecycle,
-    # which Expo 57 prebuild does not yet generate. The verifier fails closed on another
-    # Xcode major so a future image-default change cannot silently alter this contract.
-    runs-on: macos-26
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - run: corepack enable
-      - name: Cache pnpm and CocoaPods work
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: |
-            ~/.local/share/pnpm/store
-            ~/Library/Caches/CocoaPods
-          key: apple-clients-mobile-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
-          restore-keys: apple-clients-mobile-${{ runner.os }}-
-      - run: make fe-install
-      - name: Fingerprint the Apple toolchain
-        id: apple-toolchain
-        run: echo "fingerprint=$(xcodebuild -version | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
-      - name: Cache ExpoModulesJSI native slice
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          # ExpoModulesJSI's build script validates each restored slice against
-          # source, React headers, React Native roots, and the Swift toolchain.
-          # Cache the final XCFramework only; DerivedData is intentionally fresh.
-          path: web/node_modules/.pnpm/expo-modules-jsi@*/node_modules/expo-modules-jsi/apple/Products
-          key: apple-jsi-mobile-${{ runner.arch }}-${{ steps.apple-toolchain.outputs.fingerprint }}-${{ hashFiles('web/pnpm-lock.yaml') }}
-          restore-keys: apple-jsi-mobile-${{ runner.arch }}-${{ steps.apple-toolchain.outputs.fingerprint }}-
-      - name: Generate, build, install, and launch
-        env:
-          LOOMARR_APPLE_ARTIFACTS_DIR: ${{ runner.temp }}/apple-client-mobile
-          LOOMARR_APPLE_BUILD_DIR: ${{ runner.temp }}/apple-build-mobile
-        run: make client-apple-simulator CLIENT_APP=mobile
-      - name: Keep simulator screenshot
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: apple-client-mobile
-          path: ${{ runner.temp }}/apple-client-mobile/
-          if-no-files-found: warn
-          retention-days: 7
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_mobile == 'true'
+    uses: ./.github/workflows/ci-apple-mobile.yml
 
   # tvOS is independently selected so TV-local changes do not spend the mobile native runner.
   apple-tv:
     name: Apple TV — native build + launch
     needs: changes
-    if: needs.changes.outputs.impact_apple_tv == 'true'
-    runs-on: macos-26
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - run: corepack enable
-      - name: Cache pnpm and CocoaPods work
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: |
-            ~/.local/share/pnpm/store
-            ~/Library/Caches/CocoaPods
-          key: apple-clients-tv-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
-          restore-keys: apple-clients-tv-${{ runner.os }}-
-      - run: make fe-install
-      - name: Fingerprint the Apple toolchain
-        id: apple-toolchain
-        run: echo "fingerprint=$(xcodebuild -version | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
-      - name: Cache ExpoModulesJSI native slice
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: web/node_modules/.pnpm/expo-modules-jsi@*/node_modules/expo-modules-jsi/apple/Products
-          key: apple-jsi-tv-${{ runner.arch }}-${{ steps.apple-toolchain.outputs.fingerprint }}-${{ hashFiles('web/pnpm-lock.yaml') }}
-          restore-keys: apple-jsi-tv-${{ runner.arch }}-${{ steps.apple-toolchain.outputs.fingerprint }}-
-      - name: Generate, build, install, and launch
-        env:
-          LOOMARR_APPLE_ARTIFACTS_DIR: ${{ runner.temp }}/apple-client-tv
-          LOOMARR_APPLE_BUILD_DIR: ${{ runner.temp }}/apple-build-tv
-        run: make client-apple-simulator CLIENT_APP=tv
-      - name: Keep simulator screenshot
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: apple-client-tv
-          path: ${{ runner.temp }}/apple-client-tv/
-          if-no-files-found: warn
-          retention-days: 7
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_tv == 'true'
+    uses: ./.github/workflows/ci-apple-tv.yml
+
+  # Manual, isolated proof that an LLVM CAS produced on one supported Apple runner remains
+  # valid and useful on a second runner. Product PR and merge-queue jobs never enter this job.
+  apple-cache-validation:
+    name: Apple compilation cache — supported-toolchain validation
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' && inputs.scope == 'apple-cache-validation'
+    uses: ./.github/workflows/ci-apple-cache-validation.yml
 
   # Android mobile is independently selected so an app-local TV change does not spend this native
-  # build. The dedicated runner does not need the interactive-host memory preflight; Gradle, Kotlin,
-  # CMake, Ninja, and Metro remain serialized by the shared bounded build target.
+  # build. Gradle, Kotlin, CMake, Ninja, and Metro remain serialized by the bounded Make target.
   expo-android-mobile:
     name: Expo Android mobile — native build
     needs: changes
     if: needs.changes.outputs.impact_expo_android_mobile == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4
-        with:
-          distribution: temurin
-          java-version: "21"
-      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - run: corepack enable
-      - name: Cache pnpm store
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: ~/.local/share/pnpm/store
-          key: pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
-          restore-keys: pnpm-${{ runner.os }}-
-      - name: Cache Expo Android mobile native work
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: expo-android-mobile-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml', 'web/apps/mobile/app.json', 'web/apps/mobile/package.json', 'web/scripts/with-memory-safe-android-build.cjs', 'web/scripts/with-workspace-bundle-inputs.cjs') }}
-          restore-keys: expo-android-mobile-${{ runner.os }}-
-      - run: make fe-install
-      - name: Generate and build the standalone mobile APK
-        env:
-          LOOMARR_ANDROID_MIN_AVAILABLE_KB: "0"
-        run: make client-android-debug CLIENT_APP=mobile
-      - name: Keep the standalone mobile APK
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: expo-android-mobile
-          path: web/apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 7
+    uses: ./.github/workflows/ci-expo-android-mobile.yml
 
   # Android TV is independently selected so an app-local mobile change does not spend this native
   # build. It uses the same bounded native target as mobile while retaining its own APK evidence.
@@ -881,169 +409,35 @@ jobs:
     name: Expo Android TV — native build
     needs: changes
     if: needs.changes.outputs.impact_expo_android_tv == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4
-        with:
-          distribution: temurin
-          java-version: "21"
-      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - run: corepack enable
-      - name: Cache pnpm store
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: ~/.local/share/pnpm/store
-          key: pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
-          restore-keys: pnpm-${{ runner.os }}-
-      - name: Cache Expo Android TV native work
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: expo-android-tv-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml', 'web/apps/tv/app.json', 'web/apps/tv/package.json', 'web/scripts/with-memory-safe-android-build.cjs', 'web/scripts/with-workspace-bundle-inputs.cjs') }}
-          restore-keys: expo-android-tv-${{ runner.os }}-
-      - run: make fe-install
-      - name: Generate and build the standalone TV APK
-        env:
-          LOOMARR_ANDROID_MIN_AVAILABLE_KB: "0"
-        run: make client-android-debug CLIENT_APP=tv
-      - name: Keep the standalone TV APK
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: expo-android-tv
-          path: web/apps/tv/android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 7
+    uses: ./.github/workflows/ci-expo-android-tv.yml
 
   playwright:
-    name: Playwright — visual + a11y + e2e (${{ matrix.shard }}/${{ strategy.job-total }})
+    name: Playwright — visual + a11y + e2e
     needs: changes
-    if: needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true'
-    runs-on: ubuntu-latest
-    # Sharded purely for WALL-CLOCK. The shard COUNT below is the only number to change —
-    # the denominator everywhere else derives from `strategy.job-total`, so editing
-    # `matrix.shard` cannot leave a stale `/2` behind in the job name or the make invocation.
-    #
-    # ⚠ THE MEASUREMENTS IN A COMMENT EXPIRE, AND THIS ONE DID. It used to read "624 browser
-    # screenshots … two shards put it at ~3.8 min … a third shard would only make Go the
-    # bottleneck". Every clause had gone stale: measured 2026-08-09 the suite is 389 stories
-    # × 2 viewports (~780 tests), ONE shard takes 8.4–9.1 min, and the Go job it was pegged
-    # against runs 7.2–12.2 min — so "Go becomes the bottleneck" had been true for a long
-    # time and the conclusion drawn from it was backwards. A stale comment cannot fail a
-    # build, which is exactly why the numbers here carry the date they were taken.
-    #
-    # Four, not more: 4 puts the visual suite near ~4.5 min, under the Go job even after it
-    # is sharded. Beyond that the per-shard fixed cost (checkout, pnpm install, codegen, a
-    # storybook build) starts to dominate the screenshots the sharding is meant to split.
-    #
-    # ⚠ Free on a public repo, where standard-runner minutes are not billed — N runners cost
-    # the same as one and finish sooner. Do NOT copy this pattern into a private repo without
-    # re-checking that trade, where it multiplies billed minutes to divide the wait.
-    #
-    # ⚠ Every shard builds its own storybook-static, and that is DELIBERATE. Hoisting it into
-    # one job + upload-artifact looks like the obvious de-duplication and is a net LOSS: the
-    # builds run in PARALLEL, so they cost redundant work but zero wall clock, whereas an
-    # artifact job adds a serial prefix that all N shards then wait on. Measured: the
-    # storybook build is ~11s local, and the suite it feeds is minutes.
-    strategy:
-      fail-fast: false # one shard's failures must not hide the others'
-      matrix:
-        shard: [1, 2, 3, 4]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - run: corepack enable
-      - name: Cache pnpm store
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: ~/.local/share/pnpm/store
-          key: pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
-          restore-keys: pnpm-${{ runner.os }}-
-      - run: make fe-install
-      # Generate the orval API client + tokens + routes (all gitignored). Without
-      # this the Storybook/SPA builds can't resolve the generated endpoints on a
-      # clean checkout — `make fe` does this in the frontend job, but fe-visual's
-      # storybook-build does not.
-      - run: make fe-codegen
-      # Both drive the pinned Playwright Docker image (the reference rasterizer,
-      # §5.2), so CI and local snapshots are byte-identical.
-      - name: Visual + a11y over storybook-static
-        run: make fe-visual PW_SHARD=--shard=${{ matrix.shard }}/${{ strategy.job-total }}
-      # ⚠ ONE shard runs e2e, not every shard. It is a 7-test 15s suite with its own
-      # config and no sharding, so running it per-shard would duplicate it for nothing.
-      - name: Wizard e2e smoke vs a mocked backend
-        if: matrix.shard == 1
-        run: make e2e
-      # ⚠ WITHOUT THIS, A RED VISUAL RUN TELLS YOU ALMOST NOTHING. Playwright writes an
-      # `-actual.png`, `-expected.png` and `-diff.png` for every failed screenshot, and this
-      # job used to throw all three away — the log kept only "N pixels (ratio X) are
-      # different", which cannot distinguish an intended restyle from a genuinely broken
-      # render. Diagnosing four red PRs on 2026-08-09 therefore meant cloning each branch,
-      # installing the workspace and re-running the whole suite under Docker locally, purely
-      # to look at images CI had already produced and discarded.
-      #
-      # That distinction is not academic here. One of those failures showed a flat amber
-      # block where the baseline had artwork, which is exactly what this repo's broken-image
-      # bug looks like — and was in fact the CORRECT `srcset` rung, because the story
-      # fixtures use one flat colour per rung on purpose. Log text could never have settled
-      # that; the PNG settled it in seconds.
-      #
-      # `failure()` so a green run uploads nothing: the suite writes ~90 PNGs for 10 failures
-      # and there is no reason to spend storage on runs that had none. `if-no-files-found:
-      # ignore` because a job can fail before Playwright writes anything at all (a bad
-      # storybook build), and an upload step that errors on top of the real failure just
-      # buries it.
-      #
-      # ⚠ The name MUST carry the shard, or the four shards race to upload one artifact name
-      # and only one survives — silently, so the shard you actually wanted is the one missing.
-      - name: Keep the failure images (visual + e2e)
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: playwright-failures-shard-${{ matrix.shard }}
-          path: web/apps/web/test-results/
-          if-no-files-found: ignore
-          # Long enough to debug a PR over a weekend, short enough not to accumulate: these
-          # are screenshots of a failing run, worthless once it is fixed.
-          retention-days: 7
-
-  # Performance certification needs a clean, representative runner. This used to follow a full
-  # visual shard on Linux, where constrained Playwright WebKit can spend >1s replacing MediaSource
-  # on one persistent video even while fresh-element calibration looks fast. Keep the zero-retry
-  # matrix and absolute budgets, but run it natively on isolated macOS; shipping Safari still owns
-  # the maintainer soak, while this exercises the matching engine family and replacement lifecycle.
+    if: needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true')
+    uses: ./.github/workflows/ci-playwright.yml
   tuner:
     name: Tuner — Chromium + Firefox + WebKit
     needs: changes
-    if: needs.changes.outputs.impact_tuner == 'true'
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - run: corepack enable
-      - run: make fe-install
-      - name: Install pinned browser engines
-        run: cd web && pnpm --filter @loomarr/web exec playwright install chromium firefox webkit
-      - name: 100-Channel controller matrix
-        run: make tuner-e2e-host
-      - name: Keep tuner failure evidence
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: tuner-failures
-          path: web/apps/web/test-results/
-          if-no-files-found: ignore
-          retention-days: 7
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'
+    uses: ./.github/workflows/ci-tuner.yml
+  image:
+    name: Image — release build
+    needs: changes
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_image == 'true'
+    uses: ./.github/workflows/ci-image.yml
+
+  docs:
+    name: Docs — links + structure + prose
+    needs: changes
+    if: needs.changes.outputs.impact_docs == 'true'
+    uses: ./.github/workflows/ci-docs.yml
+
+  android:
+    name: Android TV — lint + unit + assemble
+    needs: changes
+    if: needs.changes.outputs.impact_android == 'true'
+    uses: ./.github/workflows/ci-android.yml
 
   # The single required check. ALWAYS runs, so branch protection has one status that is
   # reliably present whether the jobs above ran or skipped.
@@ -1053,159 +447,10 @@ jobs:
   # would report success while a real job was red. `success` and `skipped` pass; `cancelled` is
   # tolerated (a superseded run or fail-fast collateral — the real failure still reports
   # `failure`); anything else (notably `failure`) fails the gate.
-  image:
-    name: Image — release build (${{ matrix.platform }})
-    needs: changes
-    if: needs.changes.outputs.image == 'true'
-    runs-on: ${{ matrix.runner }}
-    # Build each release architecture on a native four-core runner. The old combined amd64
-    # job emulated arm64 through QEMU and spent ~30 minutes compiling the Rust worker; GitHub's
-    # standard arm64 runner makes the same architecture proof without emulation. Keep this a
-    # matrix so the two complete images build in parallel and one architecture cannot answer
-    # for the other.
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux/amd64
-            runner: ubuntu-24.04
-          - platform: linux/arm64
-            runner: ubuntu-24.04-arm
-    # Still cap either native build. GitHub's default is six hours; 45 minutes leaves ample
-    # headroom for a completely cold Docker build without allowing a hung download to run all day.
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
-      # BOTH matrix entries are required because the bug this job exists for was arch-specific
-      # and release.yml publishes both. Load the one native image without pushing it: the
-      # Dockerfile's own build-time proofs run inside it, then the next step inspects the actual
-      # runtime filesystem and OCI labels rather than trusting Dockerfile prose.
-      #
-      # ⚠ READ the release cache but never write a CI copy. release.yml owns that multi-platform
-      # cache and refreshes it only after publishing a real image. The former `image-ci` scope was
-      # never written anywhere, despite the comment claiming this job consumed the release cache.
-      - name: Build (${{ matrix.platform }})
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
-        with:
-          context: .
-          platforms: ${{ matrix.platform }}
-          push: false
-          load: true
-          tags: loomarr-ci:verify
-          # ⚠ READ-ONLY cache, deliberately: there is `cache-from` and NO `cache-to`.
-          # Measured — exporting it cost 462s of a 770s job, MORE than the 303s the arm64
-          # layer it was caching takes to build, because `mode=max` ships every
-          # intermediate layer including the 466MB whisper model. It also spends the 10GB
-          # repo cache quota on ~2GB per run, evicting the Go and pnpm caches that do pay
-          # for themselves.
-          #
-          # It still READS anything release.yml populates, so this is not "no caching" —
-          # it is declining to pay the export cost on every PR. Dockerfile and Rust changes
-          # invalidate only their affected layers; unchanged release layers remain reusable.
-          cache-from: type=gha,scope=release
-
-      - name: Inspect packaged license and notice metadata
-        shell: bash
-        run: |
-          set -euo pipefail
-          image=loomarr-ci:verify
-          test "$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.documentation" }}')" = \
-            "https://github.com/loomarr/loomarr/blob/main/THIRD_PARTY_NOTICES.md"
-          test "$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.licenses" }}')" = \
-            "MIT AND GPL-3.0-or-later"
-          container=$(docker create "$image")
-          trap 'docker rm -f "$container" >/dev/null' EXIT
-          docker cp "$container:/usr/share/doc/loomarr/LICENSE" "$RUNNER_TEMP/LICENSE"
-          docker cp "$container:/usr/share/doc/loomarr/THIRD_PARTY_NOTICES.md" "$RUNNER_TEMP/THIRD_PARTY_NOTICES.md"
-          cmp LICENSE "$RUNNER_TEMP/LICENSE"
-          cmp THIRD_PARTY_NOTICES.md "$RUNNER_TEMP/THIRD_PARTY_NOTICES.md"
-
-  docs:
-    name: Docs — links + structure + prose
-    runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.docs == 'true'
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      # Structure. Globs and rules both live in .markdownlint-cli2.jsonc, so no paths here.
-      - name: Markdown structure
-        run: npx --yes markdownlint-cli2@0.20.0
-
-      # ⚠ --offline is deliberate and must stay. Checking external URLs on every PR imports
-      # the whole internet's link rot as CI flake; the class that has actually broken in this
-      # repo is relative links, twice. See lychee.toml.
-      # ⚠ WIDER than the style checks above, deliberately. A broken link is objectively wrong
-      # anywhere; a style rule is a preference worth applying only to prose someone reads cover
-      # to cover. The narrow set missed a real break — archiving six plans left nine dangling
-      # references in PROGRESS.md, .claude/commands/, design/ and two Go doc comments.
-      # Keep in step with LINK_GLOBS in the Makefile.
-      - name: Links (offline)
-        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2
-        with:
-          args: >-
-            --offline --no-progress
-            README.md CONTRIBUTING.md CLAUDE.md AGENTS.md CONTEXT.md PROGRESS.md
-            docs 'design/*.md' .agents .claude
-          fail: true
-
-      # Repo vocabulary only — no stock style package. See .vale.ini for why.
-      - name: Prose
-        uses: vale-cli/vale-action@518a9136acc6e6668ce7c00d367051e0941e87ff # v3
-        with:
-          files: '["README.md", "CONTRIBUTING.md", "docs/help", "docs/install", "docs/dev"]'
-          fail_on_error: true
-          version: 3.17.1
-
-      # The site must still build from the docs as committed. It renders docs/** IN PLACE, so
-      # a moved or deleted page breaks the build here rather than on deploy.
-      - name: Docs site builds
-        working-directory: docs-site
-        run: |
-          corepack enable
-          pnpm install --frozen-lockfile
-          pnpm build
-
-  android:
-    name: Android TV — lint + unit + assemble
-    needs: changes
-    if: needs.changes.outputs.android == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      # JDK 21, not the newest available. AGP 8.x does not support JDK 26, and the failure mode is
-      # confusing Kotlin/Gradle daemon errors rather than a version message — so the version is
-      # pinned here to the same one `android/README.md` tells a developer to install.
-      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4
-        with:
-          distribution: temurin
-          java-version: "21"
-      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
-      - name: Cache Gradle
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: gradle-${{ runner.os }}-
-      # One target, so CI runs what a developer runs — the same contract every other job here
-      # keeps by calling `make`.
-      - run: make android
-      - run: make android-release-test
-    # No emulator stage. An emulated boot is minutes of runner time and proves software decoding,
-    # not the hardware decode/passthrough questions that actually need a device — so it would cost
-    # a lot to answer nothing this gate is for.
-
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, release-candidate-scope, full-manual-scope, agent-harness-macos, go-contracts, image-certification, go, store-postgres, frontend, clients, apple-mobile, apple-tv, expo-android-mobile, expo-android-tv, playwright, tuner, image, docs, android]
+    needs: [changes, release-candidate-scope, full-manual-scope, ci-policy, agent-harness-macos, rust-contracts, go-contracts, image-certification, go, store-postgres, frontend, clients, apple-mobile, apple-tv, apple-cache-validation, expo-android-mobile, expo-android-tv, playwright, tuner, image, docs, android]
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -1213,6 +458,7 @@ jobs:
     steps:
       - name: Every job that ran must have passed
         run: |
+          echo "assurance lane: ${{ needs.changes.outputs.lane }}"
           results='${{ join(needs.*.result, ' ') }}'
           echo "job results: $results"
           for r in $results; do
@@ -1237,6 +483,7 @@ jobs:
       - name: Summarize queue, execution, critical path, and runner use
         if: always()
         env:
+          CI_ASSURANCE_LANE: ${{ needs.changes.outputs.lane }}
           GH_TOKEN: ${{ github.token }}
         run: |
           if ! ./scripts/ci-run-metrics.sh >> "$GITHUB_STEP_SUMMARY"; then

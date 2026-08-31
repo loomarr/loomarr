@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "purpose": "filler-development-recovery-preparation-and-blind-review-packaging",
+  "snapshotAt": "2026-08-30T23:23:44Z",
+  "certificationEvidence": false,
+  "cohort": "development_seed",
+  "externalArtifactId": "filler-development-2026-08-30/prepared-v1",
+  "inputs": {
+    "inventorySha256": "d0a171918d1a509e5b75b9be832fcffe950cda3730f0fa3e35ce41719a782558",
+    "rightsApprovalsSha256": "9094d8db5d1c21b5cb7263774bb9ed1c9ced042aee4018cecbdc1ec818f1e8e6",
+    "planSchemaVersion": 4,
+    "planSha256": "4b9f9c3bb5830c1baceb03ad9061d0cd1f3f361ab607ce239c379240171f54f3",
+    "corpusVersion": "filler-development-recovery-2026-08-30-v1",
+    "evidenceVersion": "filler-evidence-v1"
+  },
+  "preparation": {
+    "preparedAt": "2026-08-30T23:03:05Z",
+    "profile": "development",
+    "draftSchemaVersion": 5,
+    "draftSha256": "5014dfce67dc11d63eb1d948e19aff83b3216ce8f8714f743d81d5e31b4c47ca",
+    "canonicalDraftSha256": "113cc248783418a43d48d472ce9e2fe0d3ee00f9086d23d280d600145005f37b",
+    "packetsJsonlSha256": "23ae159384dd4f1d0f47cdbb2b3bfafa6a5bdec8d844f390b82f58c1597dacfa",
+    "cases": 300,
+    "developmentCases": 300,
+    "holdoutCases": 0,
+    "perceptualClusters": 300,
+    "usableCases": 298,
+    "measuredUnusableCases": 2,
+    "sourceBytesRehashed": 3460859319,
+    "segmentHours": 6.333546666666667,
+    "maximumSegmentMs": 120000,
+    "maximumRequestedVideoMs": 54000,
+    "inputByteCeiling": 4000000000,
+    "outputByteCeiling": 2000000000,
+    "wallTimeCeiling": "2h"
+  },
+  "derivatives": {
+    "files": 1788,
+    "bytes": 1360022455,
+    "relativeTreeSha256": "a4e9cc53c6b3dd1aebb000e1b1fea056bc86955d23bed87cc8c046505419c8e1",
+    "audioWav": 298,
+    "jpegFrames": 1192,
+    "mp4Video": 298,
+    "packageDigestAndFileRechecksPassed": 600,
+    "missingContentTypes": 0
+  },
+  "blindReview": {
+    "sortedContentSha256ListSha256": "714af17133a1af5d22c5f9e543816c26afaa66cba0f90ae1e0a4522098ce03fd",
+    "independentAliasSets": true,
+    "identicalContentSets": true,
+    "batches": [
+      {
+        "batchId": "filler-development-recovery-review-a-2026-08-30",
+        "cases": 300,
+        "packageManifestSha256": "eb1d4ae0ad9156ca0248edfa3b24d4ff074eedc13b8e542b1dde9fab6270aba2",
+        "canonicalReviewPacketSha256": "ee93e195d120421f9f67a924fa8669438e6fe8aa7e944cf77b94b4e74e35b905",
+        "labelTemplateSha256": "d2db0d6880825bca9be98f0a49b830ab55f9ef522e64541e2836a54b18643c2b",
+        "packetMode": "0640",
+        "privateMapMode": "0600"
+      },
+      {
+        "batchId": "filler-development-recovery-review-b-2026-08-30",
+        "cases": 300,
+        "packageManifestSha256": "07c596e15f17c5cac52b2d6feb2357521d446b143135c62e7139a01110f8bfb6",
+        "canonicalReviewPacketSha256": "e69a32d968dae45c3ba9febeb99342fae50810980ee51f2e1167236e1ff93088",
+        "labelTemplateSha256": "d2c943e01a6c85103d602d135985c1932d95e32350fa792e82bf7b8865900b00",
+        "packetMode": "0640",
+        "privateMapMode": "0600"
+      }
+    ],
+    "completedLabelSubmissions": 0,
+    "completedAdjudications": 0
+  },
+  "limitations": [
+    "The recovery cohort is role-unbalanced development material and cannot satisfy certification denominators.",
+    "The packets expose source metadata but contain no completed semantic, era, country, or local-market labels.",
+    "Neither independent reviewer has submitted labels, and no disagreements have been adjudicated.",
+    "The development draft is unlocked and cannot satisfy certification.",
+    "The separate 1,126-case holdout, its rights review and acquisition, blind labels, adjudication, and lock remain incomplete.",
+    "No hosted provider, direct-video, or fictional-media-server shadow certification was run, and no provider spend was authorized."
+  ]
+}

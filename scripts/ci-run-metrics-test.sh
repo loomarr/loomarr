@@ -2,9 +2,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-output="$("$ROOT/scripts/ci-run-metrics.sh" "$ROOT/scripts/testdata/ci-run-metrics.json")"
+output="$(CI_ASSURANCE_LANE=merge-queue "$ROOT/scripts/ci-run-metrics.sh" "$ROOT/scripts/testdata/ci-run-metrics.json")"
 
 for expected in \
+  '**Lane:** merge-queue · **Selected jobs:** 3 · **Skipped jobs:** 1' \
   '**End-to-end:** 11.7m' \
   '**Occupied runner time:** 15.5m' \
   '**Longest job:** Apple clients — native build + launch (mobile) (10m)' \

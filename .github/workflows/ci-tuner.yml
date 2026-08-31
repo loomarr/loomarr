@@ -1,0 +1,40 @@
+name: CI / Tuner — Chromium + Firefox + WebKit
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.27"
+  NODE_VERSION: "22"
+
+jobs:
+  run:
+    name: Tuner — Chromium + Firefox + WebKit
+    # Performance certification needs a clean, representative runner. This used to follow a full
+    # visual shard on Linux, where constrained Playwright WebKit can spend >1s replacing MediaSource
+    # on one persistent video even while fresh-element calibration looks fast. Keep the zero-retry
+    # matrix and absolute budgets, but run it natively on isolated macOS; shipping Safari still owns
+    # the maintainer soak, while this exercises the matching engine family and replacement lifecycle.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: corepack enable
+      - run: make fe-install
+      - name: Install pinned browser engines
+        run: cd web && pnpm --filter @loomarr/web exec playwright install chromium firefox webkit
+      - name: 100-Channel controller matrix
+        run: make tuner-e2e-host
+      - name: Keep tuner failure evidence
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: tuner-failures
+          path: web/apps/web/test-results/
+          if-no-files-found: ignore
+          retention-days: 7

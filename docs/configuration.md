@@ -54,6 +54,20 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `guide.timezone` (`GUIDE_TIMEZONE`) | string | — | Which timezone the TV guide's times are shown in, as an IANA name like America/New_York. Leave empty to use each viewer's own device timezone. |
 | `guide.retention_hours` (`GUIDE_RETENTION_HOURS`) | int | `24` | How far back the TV guide lets you scroll, in hours. Past listings are recomputed from each channel's current lineup, so going too far back would show a schedule that never actually aired. |
 
+## Notifications
+
+| Setting (env) | Kind | Default | Notes |
+| --- | --- | --- | --- |
+| `access.public_url` (`ACCESS_PUBLIC_URL`) | url | — | The absolute browser address invitation and recovery recipients can reach, e.g. https://loomarr.example.com. Copy and QR links require this address; it is never inferred from request headers. |
+| `notifications.email.enabled` (`NOTIFICATIONS_EMAIL_ENABLED`) | bool | `false` | Deliver account invitations and recovery messages by email. An incomplete setup suppresses email without affecting copied links, QR codes, or direct account creation. |
+| `notifications.smtp.host` (`NOTIFICATIONS_SMTP_HOST`) | string | — | Hostname of the SMTP submission server. Required when email delivery is enabled. |
+| `notifications.smtp.port` (`NOTIFICATIONS_SMTP_PORT`) | int | `587` | Port of the SMTP submission server, from 1 through 65535. |
+| `notifications.smtp.security` (`NOTIFICATIONS_SMTP_SECURITY`) | enum | `starttls` | STARTTLS requires encryption and never downgrades; TLS connects encrypted immediately. None is only for an explicitly trusted local relay. Certificate verification is always enabled. _(one of: starttls \| tls \| none)_ |
+| `notifications.smtp.username` (`NOTIFICATIONS_SMTP_USERNAME`) | string | — | Username for SMTP authentication. Leave empty only for an unauthenticated relay. |
+| `notifications.smtp.password` (`NOTIFICATIONS_SMTP_PASSWORD`) | secret | (secret) | Password for SMTP authentication. It is write-only, masked on read, and must remain empty for an unauthenticated relay. |
+| `notifications.email.from_address` (`NOTIFICATIONS_EMAIL_FROM_ADDRESS`) | string | — | Mailbox Loomarr sends from, such as loomarr@example.com. Required when email delivery is enabled. |
+| `notifications.email.from_name` (`NOTIFICATIONS_EMAIL_FROM_NAME`) | string | `Loomarr` | Display name shown beside the sender address. |
+
 ## Backup
 
 | Setting (env) | Kind | Default | Notes |
@@ -98,6 +112,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `request.ttl` (`REQUEST_TTL`) | duration | `48h` | How long Loomarr keeps trying to request a title before giving up. |
 | `downloading.ttl` (`DOWNLOADING_TTL`) | duration | `12h` | How long a downloading title waits to finish before Loomarr gives up on it. |
 | `job.system_health.schedule` (`JOB_SYSTEM_HEALTH_SCHEDULE`) | cron | `*/30 * * * * *` | How often Loomarr checks its database and configured connections for Current Health (cron). |
+| `job.notification_delivery.schedule` (`JOB_NOTIFICATION_DELIVERY_SCHEDULE`) | cron | `*/15 * * * * *` | How often Loomarr claims queued invitation and recovery messages for delivery (cron). |
 | `job.reconcile.schedule` (`JOB_RECONCILE_SCHEDULE`) | cron | `0 */5 * * * *` | How often Loomarr checks on in-progress downloads (cron). |
 | `job.channel_maintenance.schedule` (`JOB_CHANNEL_MAINTENANCE_SCHEDULE`) | cron | `0 */10 * * * *` | How often Loomarr refreshes series episodes and reconciles live channels with Tunarr (cron). |
 | `job.playout_prepare.schedule` (`JOB_PLAYOUT_PREPARE_SCHEDULE`) | cron | `0 * * * * *` | How often Loomarr looks ahead in accepted channel schedules and prepares the nearest programmes while spare hardware is available. _(advanced)_ |

@@ -1,6 +1,8 @@
 package filler
 
 import (
+	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -106,4 +108,61 @@ func hashSection(h io.Writer, r io.ReaderAt, offset, n, size int64) error {
 	}
 	_, err = h.Write(buf[:read])
 	return err
+}
+
+// exactFileBytesEqual compares two ownership-boundary artifacts without changing ClipID's sparse
+// catalog contract. Both objects stay open for the complete bounded comparison, and cancellation
+// is observed between every read.
+func exactFileBytesEqual(ctx context.Context, leftPath, rightPath string, maxBytes int64) (bool, error) {
+	left, err := os.Open(leftPath)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = left.Close() }()
+	right, err := os.Open(rightPath)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = right.Close() }()
+	leftInfo, err := left.Stat()
+	if err != nil {
+		return false, err
+	}
+	rightInfo, err := right.Stat()
+	if err != nil {
+		return false, err
+	}
+	if leftInfo.Size() != rightInfo.Size() {
+		return false, nil
+	}
+	if leftInfo.Size() < 0 || maxBytes <= 0 || leftInfo.Size() > maxBytes {
+		return false, fmt.Errorf("exact media comparison exceeds %d bytes", maxBytes)
+	}
+	leftBuf := make([]byte, 64*1024)
+	rightBuf := make([]byte, len(leftBuf))
+	var compared int64
+	for compared < leftInfo.Size() {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+		remaining := leftInfo.Size() - compared
+		chunk := len(leftBuf)
+		if remaining < int64(chunk) {
+			chunk = int(remaining)
+		}
+		if _, err := io.ReadFull(left, leftBuf[:chunk]); err != nil {
+			return false, err
+		}
+		if _, err := io.ReadFull(right, rightBuf[:chunk]); err != nil {
+			return false, err
+		}
+		if !bytes.Equal(leftBuf[:chunk], rightBuf[:chunk]) {
+			return false, nil
+		}
+		compared += int64(chunk)
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	return true, nil
 }

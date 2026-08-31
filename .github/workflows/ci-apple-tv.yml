@@ -1,0 +1,62 @@
+name: CI / Apple TV — native build + launch
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.27"
+  NODE_VERSION: "22"
+
+jobs:
+  run:
+    name: Apple TV — native build + launch
+    runs-on: xcode-27
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: corepack enable
+      - run: make fe-install
+      - name: Fingerprint the Apple toolchain
+        id: apple-toolchain
+        run: echo "fingerprint=$(./scripts/apple-compilation-cache.sh fingerprint)" >> "$GITHUB_OUTPUT"
+      - name: Restore the validated Apple compilation cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ runner.temp }}/apple-compilation-cache.tar.zst
+          key: ${{ steps.apple-toolchain.outputs.fingerprint }}-${{ github.run_id }}
+          restore-keys: ${{ steps.apple-toolchain.outputs.fingerprint }}-
+      - name: Validate the restored Apple compilation cache
+        id: apple-compilation-cache
+        run: |
+          set -euo pipefail
+          mode=cold
+          store="$RUNNER_TEMP/apple-compilation-cache-store"
+          archive="$RUNNER_TEMP/apple-compilation-cache.tar.zst"
+          if [[ -f "$archive" ]] && ./scripts/apple-compilation-cache.sh restore "$archive" "$store"; then
+            mode=warm
+          else
+            rm -f "$archive"
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "store=$store" >> "$GITHUB_OUTPUT"
+      - name: Generate, build, install, and launch
+        env:
+          LOOMARR_APPLE_ARTIFACTS_DIR: ${{ runner.temp }}/apple-client-tv
+          LOOMARR_APPLE_BUILD_DIR: ${{ runner.temp }}/apple-build-tv
+          LOOMARR_APPLE_CACHE_MODE: ${{ steps.apple-compilation-cache.outputs.mode }}
+          LOOMARR_APPLE_CACHE_STORE: ${{ steps.apple-compilation-cache.outputs.store }}
+        run: make client-apple-simulator CLIENT_APP=tv
+      - name: Keep simulator screenshot
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: apple-client-tv
+          path: ${{ runner.temp }}/apple-client-tv/
+          if-no-files-found: warn
+          retention-days: 7

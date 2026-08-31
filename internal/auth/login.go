@@ -5,8 +5,6 @@ import (
 	"errors"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
-
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -51,11 +49,9 @@ func NewLoginService(lib Authenticator, st store.Store, mgr *Manager, limiter Li
 // media-server credentials — there is NO lazy self-provision. Two credential
 // paths land on the one identity:
 //
-//   - LOCAL user (a row whose PasswordHash is set): verify the password against
-//     that bcrypt hash, entirely in-app.
-//   - IMPORTED media-server user (an allowlisted row with no hash): verify the
-//     password against the media server, then confirm the returned id is
-//     allowlisted.
+//   - LOCAL user: verify its Argon2id hash entirely in-app.
+//   - IMPORTED media-server user: prefer the provider, refresh an offline
+//     Argon2id verifier after success, and use it only during unavailability.
 //
 // Every failure — unknown user, wrong password, not-imported, disabled — returns
 // the same ErrInvalidCredentials, so login never reveals which users exist.
@@ -120,26 +116,49 @@ func (s *LoginService) DevLogin(ctx context.Context) (token string, expires time
 }
 
 // authenticate resolves a username to an allowlisted user and verifies the
-// password on the appropriate credential path (§11). A local match (has a hash)
-// verifies in-app; otherwise it delegates to the media server AND confirms the
-// resulting id is allowlisted. Returns ErrInvalidCredentials for every failure.
+// password on the appropriate credential path (§11). Provider linkage is
+// independent from possession of a hash: linked users prefer the provider and
+// use their verifier only when the provider made no authoritative decision.
 func (s *LoginService) authenticate(ctx context.Context, username, password string) (store.User, error) {
-	// Local path: a row with this name that carries a password hash.
-	if local, err := s.store.GetUserByName(ctx, username); err == nil && local.PasswordHash != "" {
-		if bcrypt.CompareHashAndPassword([]byte(local.PasswordHash), []byte(password)) != nil {
-			return store.User{}, ErrInvalidCredentials
-		}
-		return s.refreshOnLogin(ctx, local, local.Name, local.Disabled)
-	} else if err != nil && !errors.Is(err, store.ErrNotFound) {
-		return store.User{}, err
+	existingByName, lookupErr := s.store.GetUserByName(ctx, username)
+	if lookupErr != nil && !errors.Is(lookupErr, store.ErrNotFound) {
+		return store.User{}, lookupErr
+	}
+	if lookupErr == nil && existingByName.Disabled {
+		return store.User{}, ErrInvalidCredentials
 	}
 
-	// Imported path: verify against the media server, then enforce the allowlist.
+	// Local accounts own their verifier and never delegate to the media server.
+	if lookupErr == nil && !existingByName.MediaServerLinked {
+		local := existingByName
+		valid, needsUpgrade := verifyStoredLocalPassword(local.PasswordHash, password)
+		if !valid {
+			return store.User{}, ErrInvalidCredentials
+		}
+		if needsUpgrade {
+			hash, err := hashPassword(password)
+			if err != nil {
+				return store.User{}, err
+			}
+			return s.refreshOnLogin(ctx, local, local.Name, local.Disabled, hash)
+		}
+		return local, nil
+	}
+
+	// Imported path: provider first. No configured provider is an unavailable
+	// provider, so an already-linked user may still use an existing verifier.
 	if s.lib == nil {
-		return store.User{}, ErrInvalidCredentials // no media server configured
+		if lookupErr == nil && existingByName.MediaServerLinked && verifyPassword(existingByName.PasswordHash, password) {
+			return existingByName, nil
+		}
+		return store.User{}, ErrInvalidCredentials
 	}
 	msUser, err := s.lib.AuthenticateByName(ctx, username, password)
 	if err != nil {
+		if errors.Is(err, library.ErrProviderUnavailable) && lookupErr == nil &&
+			existingByName.MediaServerLinked && verifyPassword(existingByName.PasswordHash, password) {
+			return existingByName, nil
+		}
 		return store.User{}, ErrInvalidCredentials
 	}
 	existing, err := s.store.GetUser(ctx, msUser.ID)
@@ -150,20 +169,41 @@ func (s *LoginService) authenticate(ctx context.Context, username, password stri
 	if err != nil {
 		return store.User{}, err
 	}
+	if !existing.MediaServerLinked || existing.Disabled {
+		return store.User{}, ErrInvalidCredentials
+	}
+	if msUser.Disabled {
+		existing.Name = msUser.Name
+		existing.Disabled = true
+		existing.UpdatedAt = s.now()
+		if err := s.store.UpsertUser(ctx, existing); err != nil {
+			return store.User{}, err
+		}
+		if err := s.store.RevokeSessionsForUser(ctx, existing.ID); err != nil {
+			return store.User{}, err
+		}
+		return store.User{}, ErrInvalidCredentials
+	}
+	hash, err := hashPassword(password)
+	if err != nil {
+		return store.User{}, err
+	}
 	// Refresh name + disabled from the source of truth on each login (a
 	// server-side disable takes effect at once); role/quota stay Loomarr-owned.
-	return s.refreshOnLogin(ctx, existing, msUser.Name, msUser.Disabled)
+	return s.refreshOnLogin(ctx, existing, msUser.Name, msUser.Disabled, hash)
 }
 
-// refreshOnLogin persists name/disabled updates observed at login and returns the
-// updated user. Role, quota, and the password hash are preserved (UpsertUser
-// COALESCEs an empty hash), so a media-server refresh never wipes local state.
-func (s *LoginService) refreshOnLogin(ctx context.Context, u store.User, name string, disabled bool) (store.User, error) {
-	if u.Name == name && u.Disabled == disabled {
+// refreshOnLogin persists provider identity state and, when supplied, replaces
+// the offline verifier. Role, quota, and grants remain Loomarr-owned.
+func (s *LoginService) refreshOnLogin(ctx context.Context, u store.User, name string, disabled bool, passwordHash string) (store.User, error) {
+	if u.Name == name && u.Disabled == disabled && (passwordHash == "" || u.PasswordHash == passwordHash) {
 		return u, nil // no change — skip the write
 	}
 	u.Name = name
 	u.Disabled = disabled
+	if passwordHash != "" {
+		u.PasswordHash = passwordHash
+	}
 	u.UpdatedAt = s.now()
 	if err := s.store.UpsertUser(ctx, u); err != nil {
 		return store.User{}, err

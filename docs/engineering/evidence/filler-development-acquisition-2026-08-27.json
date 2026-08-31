@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "purpose": "filler-development-corpus-rights-lock-and-acquisition",
+  "snapshotAt": "2026-08-27T16:24:17Z",
+  "certificationEvidence": false,
+  "cohort": "development",
+  "inventory": {
+    "schemaVersion": 4,
+    "sha256": "0c596308fe16a5486ab4c77b07bf66786ecbd884fa3b0314e10731878597bf22",
+    "cases": 408
+  },
+  "rightsReview": {
+    "worksheetSchemaVersion": 3,
+    "worksheetSha256": "f84738eb536ab1bdaf310927897913ea98a78207d67890f5876f09b3c48ed497",
+    "completedCsvSha256": "10765d3b66ddb112165f622bf337b3eae402c651cb50ba9b1490524caf472a4a",
+    "approvalsJsonlSha256": "4607a1608cdae520b5af22e30ff14c95080f0eb1968765788b84d650652dbcec",
+    "reviewerId": "codex-rights-review-archive-v1",
+    "reviewedAt": "2026-08-27T16:05:21Z",
+    "lockedAt": "2026-08-27T16:05:36Z",
+    "decisions": 408,
+    "approved": 300,
+    "held": 108,
+    "approvedRequiringCredit": 31,
+    "approvedRequiringShareAlike": 1,
+    "policy": "maintainer-authorized-development-archive-explicit-license-v1"
+  },
+  "roleHintMemberships": [
+    {
+      "role": "bumper",
+      "cases": 45
+    },
+    {
+      "role": "commercial",
+      "cases": 45
+    },
+    {
+      "role": "compilation",
+      "cases": 47
+    },
+    {
+      "role": "promo",
+      "cases": 55
+    },
+    {
+      "role": "psa",
+      "cases": 20
+    },
+    {
+      "role": "station_id",
+      "cases": 10
+    },
+    {
+      "role": "trailer",
+      "cases": 80
+    }
+  ],
+  "authorities": [
+    {
+      "authority": "archive.org/classic_tv_commercials",
+      "cases": 116
+    },
+    {
+      "authority": "archive.org/movie_trailers_picfixer",
+      "cases": 39
+    },
+    {
+      "authority": "archive.org/movie_trailers_unsorted",
+      "cases": 41
+    },
+    {
+      "authority": "archive.org/newsandpublicaffairs",
+      "cases": 11
+    },
+    {
+      "authority": "archive.org/vhscommercials",
+      "cases": 93
+    }
+  ],
+  "download": {
+    "authority": true,
+    "externalArtifactId": "filler-development-rights-lock-423",
+    "ledgerSha256": "65374c3973d8456e826e611cf05e72d722808e0eb0d05baf4db7651ec17ec14b",
+    "files": 300,
+    "bytes": 5952579028,
+    "ledgerRequestsUsed": 283,
+    "totalNetworkAttempts": 301,
+    "resumedLocallyVerifiedFiles": 17,
+    "transientHttpFailures": 1,
+    "ledgerToFileSha256RechecksPassed": 300
+  },
+  "limitations": [
+    "The role memberships are discovery provenance and are not semantic labels.",
+    "The development-only Archive policy accepts exact item licence assertions as operational authority and does not represent a chain-of-title warranty.",
+    "The media, completed review, approval ledger, and download ledger remain in the external corpus store and are absent from Git.",
+    "Development cases cannot enter scored holdout denominators.",
+    "The separate 1126-case holdout, similarity clustering, blind semantic reviews, and adjudication remain incomplete."
+  ]
+}

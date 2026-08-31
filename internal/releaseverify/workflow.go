@@ -17,11 +17,13 @@ import (
 
 var actionPin = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?@[0-9a-f]{40}$`)
 
-var allowedReleaseRuns = map[string]struct{}{
-	"./scripts/validate-release-source.sh":                                     {},
-	`./scripts/check-release-image-absence.sh "${IMAGE}:${GITHUB_REF_NAME#v}"`: {},
-	"./scripts/merge-release-digests.sh":                                       {},
-	"./scripts/publish-release-image.sh":                                       {},
+func releaseRunAuthorities() map[string]struct{} {
+	return map[string]struct{}{
+		"./scripts/validate-release-source.sh":                                     {},
+		`./scripts/check-release-image-absence.sh "${IMAGE}:${GITHUB_REF_NAME#v}"`: {},
+		"./scripts/merge-release-digests.sh":                                       {},
+		"./scripts/publish-release-image.sh":                                       {},
+	}
 }
 
 // digestRecordRun matches the build leg's own step that writes its digest to
@@ -678,7 +680,7 @@ func verifyDigestRecordStep(step *yaml.Node) error {
 }
 
 func verifyReleaseRunStep(step *yaml.Node, run string) error {
-	if _, allowed := allowedReleaseRuns[run]; !allowed {
+	if _, allowed := releaseRunAuthorities()[run]; !allowed {
 		return fmt.Errorf("release workflow run step is not an audited helper: %q", run)
 	}
 	if scalarValue(step, "shell") != "bash" {
@@ -735,15 +737,23 @@ func verifyPublisherEnvironment(step *yaml.Node) error {
 }
 
 func verifyOnlyKeys(node *yaml.Node, context string, allowed ...string) error {
-	if node == nil || node.Kind != yaml.MappingNode {
-		return fmt.Errorf("%s must be a mapping", context)
-	}
 	wanted := make(map[string]struct{}, len(allowed))
 	for _, key := range allowed {
 		wanted[key] = struct{}{}
 	}
+	return verifyOnlyKeySet(node, context, wanted)
+}
+
+func verifyOnlyKeySet(node *yaml.Node, context string, wanted map[string]struct{}) error {
+	if node == nil || node.Kind != yaml.MappingNode || len(node.Content)%2 != 0 {
+		return fmt.Errorf("%s must be a mapping", context)
+	}
 	for index := 0; index < len(node.Content); index += 2 {
-		key := node.Content[index].Value
+		keyNode := node.Content[index]
+		if keyNode.Kind != yaml.ScalarNode || keyNode.Value == "" {
+			return fmt.Errorf("%s contains a malformed key", context)
+		}
+		key := keyNode.Value
 		if _, ok := wanted[key]; !ok {
 			return fmt.Errorf("%s contains unaudited key %q", context, key)
 		}

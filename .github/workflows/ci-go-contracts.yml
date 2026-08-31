@@ -1,0 +1,62 @@
+name: CI / Go — repository contracts
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.27"
+  NODE_VERSION: "22"
+
+jobs:
+  run:
+    name: Go — repository contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Cache epoch
+        id: epoch
+        run: echo "week=$(date -u +%GW%V)" >> "$GITHUB_OUTPUT"
+      - name: Restore contract caches
+        id: cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+          key: go-contracts-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.13.2-${{ hashFiles('go.sum', 'Cargo.lock') }}-${{ github.run_id }}
+          restore-keys: |
+            go-contracts-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.13.2-${{ hashFiles('go.sum', 'Cargo.lock') }}-
+            go-contracts-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.13.2-
+      - name: Static analysis and repository contracts
+        run: make fmt shellcheck privacy-verify vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify
+      - name: The test shards cover every package
+        run: make go-shard-verify SHARDS=3
+      - name: OpenAPI spec is committed and current
+        run: make openapi-verify
+      - name: Config docs are committed and current
+        run: make config-docs-verify
+      - name: The §2 package map is committed and current
+        run: make arch-docs-verify
+      - name: Command reference is committed and current
+        run: make dev-docs-verify
+      - name: Retired identifiers are gone from prose
+        run: make retired-verify
+      - name: Workflows are valid
+        run: make ci-lint
+      - name: Save contract caches (main only)
+        if: always() && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+          key: ${{ steps.cache.outputs.cache-primary-key }}

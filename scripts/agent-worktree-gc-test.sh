@@ -43,7 +43,8 @@ printf 'dependent\n' > "$dependent/dependent.txt"
 git -C "$dependent" add dependent.txt
 git -C "$dependent" commit -qm dependent
 runtime="$(add_worktree runtime)"
-cp "$(command -v sleep)" "$runtime/loomarr-dev"
+printf '%s\n' 'package main' 'import "time"' 'func main() { time.Sleep(60 * time.Second) }' > "$tmp/loomarr-dev.go"
+go build -o "$runtime/loomarr-dev" "$tmp/loomarr-dev.go"
 git -C "$runtime" add loomarr-dev
 git -C "$runtime" commit -qm 'runtime fixture'
 

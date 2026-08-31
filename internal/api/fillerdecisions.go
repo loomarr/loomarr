@@ -74,12 +74,13 @@ type fillerDecisionDiagnosticsOutput struct {
 // Marshal-facing fields are separate so Huma documents each name rather than
 // flattening a compact Go declaration into an opaque schema.
 type fillerDecisionActivityWireDTO struct {
-	ID         string                      `json:"id"`
-	ActionID   string                      `json:"actionId,omitempty"`
-	DecisionID string                      `json:"decisionId"`
-	ClipHash   string                      `json:"clipHash"`
-	Kind       fillerdecision.ActivityKind `json:"kind" enum:"automatic_admit,automatic_reject,review_requested,review_admit,review_reject,correction,review_abandoned,restore,reversal"`
-	CreatedAt  time.Time                   `json:"createdAt"`
+	ID              string                         `json:"id"`
+	ActionID        string                         `json:"actionId,omitempty"`
+	DecisionID      string                         `json:"decisionId"`
+	ClipHash        string                         `json:"clipHash"`
+	Kind            fillerdecision.ActivityKind    `json:"kind" enum:"automatic_admit,automatic_reject,review_requested,review_admit,review_reject,correction,review_abandoned,restore,reversal"`
+	ApplicationMode fillerdecision.ApplicationMode `json:"applicationMode" enum:"shadow,applied"`
+	CreatedAt       time.Time                      `json:"createdAt"`
 }
 
 type fillerDecisionActivityOutput struct {
@@ -204,7 +205,7 @@ func (s *Server) fillerDecisionActivity(ctx context.Context, in *fillerDecisionP
 	for _, item := range page.Rows {
 		out.Body.Rows = append(out.Body.Rows, fillerDecisionActivityWireDTO{
 			ID: item.ID, ActionID: item.ActionID, DecisionID: item.DecisionID, ClipHash: item.ClipHash,
-			Kind: item.Kind, CreatedAt: item.CreatedAt,
+			Kind: item.Kind, ApplicationMode: item.ApplicationMode, CreatedAt: item.CreatedAt,
 		})
 	}
 	return out, nil

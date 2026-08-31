@@ -1,6 +1,6 @@
 # Shared client platform migration
 
-**Status:** P0a through P3 merged; P3.5 iPhone evidence pending; dependent P4 implementation started
+**Status:** P0a through P3 merged; P3.5 publication complete on #581; dependent P4 implementation restacking for the #727 decision
 **Date:** 2026-08-23  
 **Decision owner:** maintainer  
 **Companion contract:** [`docs/frontend-design.md`](../../frontend-design.md)

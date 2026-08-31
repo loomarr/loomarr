@@ -1,4 +1,5 @@
 import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
+import type { EpisodeSelection } from "@loomarr/api/models/episodeSelection";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { RefusedPick } from "@loomarr/api/models/refusedPick";
 
@@ -17,6 +18,7 @@ interface ApprovalQueueItemProps {
   // the queue stays scannable; omit to keep the compact row.
   lineup?: ProposalItem[];
   acquisitionItems?: ProposalItem[];
+  episodeSelectionPreview?: EpisodeSelection;
   // Picks the model grounded that this proposal's OWN audience ceiling cannot air (§4, #259).
   //
   // ⚠ Rendered OUTSIDE the "Show picks" disclosure, unlike the picks themselves. The picks are
@@ -28,8 +30,8 @@ interface ApprovalQueueItemProps {
   // the resulting delta, or `undefined` when nothing has been modified. Omit it and the
   // disclosure stays read-only, which is what every non-admin surface wants.
   //
-  // `undefined` is load-bearing, not laziness: the caller must send no body at all in that case
-  // so an unmodified approval is byte-identical to the pre-V25 behaviour (see ProposalEdit).
+  // `undefined` is load-bearing, not laziness: the caller sends no human edit in that case.
+  // The server may still ground a missing/crafted series selector from the original Intent.
   onEdit?: (edit: ApprovalEditDTO | undefined) => void;
   // Explicit household taste only. This never approves, denies, or mutates the
   // current proposal; it shapes a later suggestion through the backend ranker.

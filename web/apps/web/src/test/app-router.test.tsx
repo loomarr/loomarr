@@ -1,11 +1,12 @@
 import type { MeBody } from "@loomarr/api";
-import { getLoginMockHandler } from "@loomarr/api/msw";
+import { getLoginMockHandler, getPreviewInvitationMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
+import { clearInvitationGrant } from "@/auth/invitation-grant";
 import { routeTree } from "@/routeTree.gen";
 import { appHandlers } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
@@ -21,6 +22,7 @@ const ADMIN: MeBody = {
   name: "Ada",
   role: "admin",
   local: true,
+  offlineLogin: false,
   autoApprove: true,
   disabled: false,
   quota: 0,
@@ -67,6 +69,34 @@ const renderApp = (initialPath: string) => {
   // actually navigated rather than leaving the old URL rendering nothing.
   return router;
 };
+
+describe("invitation join route", () => {
+  it("removes the fragment before rendering credentials and previews without redeeming", async () => {
+    clearInvitationGrant();
+    const bearer = "e".repeat(64);
+    const previewBodies: unknown[] = [];
+    window.history.replaceState({}, "", `/join#grant=${bearer}`);
+    server.use(
+      getPreviewInvitationMockHandler(async ({ request }) => {
+        previewBodies.push(await request.json());
+        return {
+          kind: "local",
+          username: "Ada",
+          role: "member",
+          credentialPath: "local_password",
+          expiresAt: Date.now() + 60_000,
+        };
+      }),
+    );
+
+    renderApp("/join");
+
+    expect(await screen.findByLabelText("Create password")).toBeInTheDocument();
+    expect(window.location.hash).toBe("");
+    expect(previewBodies).toEqual([{ grant: bearer }]);
+    expect(screen.getByRole("button", { name: "Activate account" })).toBeInTheDocument();
+  });
+});
 
 describe("app router auth", () => {
   it("bounces a signed-out visitor from a protected route to the login form", async () => {

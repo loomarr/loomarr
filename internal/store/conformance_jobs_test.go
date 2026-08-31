@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
@@ -199,6 +200,7 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
 	job := sampleJob("job-success", "hash-success", now, now)
+	job.FailureTraceJSON = `{"version":1,"terminal":"budget_exhausted"}`
 	if err := s.CreateJob(ctx, job); err != nil {
 		t.Fatal(err)
 	}
@@ -220,6 +222,9 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	}
 	if gotJob.Status != "done" || !gotJob.UpdatedAt.Equal(now.Add(time.Minute)) {
 		t.Fatalf("completed job = status %q updated %v", gotJob.Status, gotJob.UpdatedAt)
+	}
+	if gotJob.FailureTraceJSON != "" {
+		t.Fatalf("successful job retained failure trace: %q", gotJob.FailureTraceJSON)
 	}
 	gotProposal, err := s.GetProposal(ctx, proposal.ID)
 	if err != nil {
@@ -280,7 +285,7 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	}
 	failed = claimed[0]
 	if err := s.CommitSuggestionFailure(ctx, failed.ID, failed.Attempts,
-		"provider unavailable", "generation_failed", now.Add(time.Minute)); err != nil {
+		"provider unavailable", "generation_failed", `{"version":1,"terminal":"selection_empty"}`, now.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	gotFailed, err := s.GetJob(ctx, failed.ID)
@@ -290,6 +295,9 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	if gotFailed.Status != "failed" || gotFailed.LastError != "provider unavailable" ||
 		gotFailed.FailureCode != "generation_failed" || gotFailed.Attempts != 1 {
 		t.Fatalf("failed job lifecycle = %+v", gotFailed)
+	}
+	if gotFailed.FailureTraceJSON != `{"version":1,"terminal":"selection_empty"}` {
+		t.Fatalf("failure trace round-trip = %q", gotFailed.FailureTraceJSON)
 	}
 	if attempts, err := s.ListProposalJobAttempts(ctx, failed.ID); err != nil || len(attempts) != 1 ||
 		attempts[0].Status != "failed" || attempts[0].FailureCode != "generation_failed" ||
@@ -331,7 +339,7 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("stale success = %v, want ErrJobNotRunning", err)
 	}
 	if err := s.CommitSuggestionFailure(ctx, stale.ID, stale.Attempts,
-		"old failure", "generation_failed", now.Add(3*time.Minute)); !errors.Is(err, ErrJobNotRunning) {
+		"old failure", "generation_failed", "", now.Add(3*time.Minute)); !errors.Is(err, ErrJobNotRunning) {
 		t.Fatalf("stale failure = %v, want ErrJobNotRunning", err)
 	}
 	winner, err := s.GetJob(ctx, stale.ID)
@@ -432,7 +440,7 @@ func testCloneSuggestionSuccess(t *testing.T, newStore NewStoreFunc) {
 	}
 	sourceProposal := Proposal{
 		ID: "proposal-source", JobID: source.ID, Status: "approved", CreatedBy: source.CreatedBy,
-		ApprovedBy: "admin", ProposalJSON: `{"lineup":[{"name":"The Matrix"}]}`,
+		ApprovedBy: "admin", ProposalJSON: `{"lineup":[{"name":"The Matrix"}],"trace":{"version":1,"candidates":[{"key":"movie:tmdb:603","ownership":"library","disposition":"selected","reason":"selected"}],"surfacedTotal":1,"recordedTotal":1,"truncated":false}}`,
 		CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.CreateProposal(ctx, sourceProposal); err != nil {
@@ -442,6 +450,7 @@ func testCloneSuggestionSuccess(t *testing.T, newStore NewStoreFunc) {
 	cloneJob := sampleJob("job-clone", source.IntentHash, now.Add(time.Minute), now.Add(time.Minute))
 	cloneJob.Status = "done"
 	cloneJob.CreatedBy = "bob"
+	cloneJob.FailureTraceJSON = `{"version":1,"terminal":"provider_failure"}`
 	clone, err := s.CloneSuggestionSuccess(ctx, source.ID, cloneJob, "proposal-clone")
 	if err != nil {
 		t.Fatal(err)
@@ -452,12 +461,26 @@ func testCloneSuggestionSuccess(t *testing.T, newStore NewStoreFunc) {
 	if clone.CreatedBy != "bob" || clone.ApprovedBy != "" || clone.ProposalJSON != sourceProposal.ProposalJSON {
 		t.Fatalf("cloned proposal lifecycle/payload = %+v", clone)
 	}
+	var roundTrip struct {
+		Trace struct {
+			Version    int `json:"version"`
+			Candidates []struct {
+				Key string `json:"key"`
+			} `json:"candidates"`
+		} `json:"trace"`
+	}
+	if err := json.Unmarshal([]byte(clone.ProposalJSON), &roundTrip); err != nil || roundTrip.Trace.Version != 1 || len(roundTrip.Trace.Candidates) != 1 || roundTrip.Trace.Candidates[0].Key != "movie:tmdb:603" {
+		t.Fatalf("cloned trace did not round-trip: %+v %v", roundTrip, err)
+	}
 	gotJob, err := s.GetJob(ctx, cloneJob.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if gotJob.Status != "done" || gotJob.CreatedBy != "bob" {
 		t.Fatalf("cloned job = %+v", gotJob)
+	}
+	if gotJob.FailureTraceJSON != "" {
+		t.Fatalf("cloned job inherited failed-job trace: %q", gotJob.FailureTraceJSON)
 	}
 
 	// A source job without a proposal is not a cache hit, and the attempted clone
@@ -767,7 +790,9 @@ func testProposalQueues(t *testing.T, newStore NewStoreFunc) {
 		return Proposal{ID: id, JobID: "job-" + id, Status: status, CreatedBy: creator,
 			ProposalJSON: `{"lineup":[]}`, CreatedAt: now, UpdatedAt: now}
 	}
-	_ = s.CreateProposal(ctx, mk("p1", "submitted", "alice"))
+	p1Seed := mk("p1", "submitted", "alice")
+	p1Seed.ProposalJSON = `{"lineup":[],"trace":{"version":1,"candidates":[],"surfacedTotal":0,"recordedTotal":0,"truncated":false}}`
+	_ = s.CreateProposal(ctx, p1Seed)
 	_ = s.CreateProposal(ctx, mk("p2", "submitted", "bob"))
 	_ = s.CreateProposal(ctx, mk("p3", "approved", "alice"))
 
@@ -796,7 +821,7 @@ func testProposalQueues(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	after, _ := s.GetProposal(ctx, "p1")
-	if after.Status != "approved" || after.ApprovedBy != "admin" {
+	if after.Status != "approved" || after.ApprovedBy != "admin" || after.ProposalJSON != p1Seed.ProposalJSON {
 		t.Errorf("approve didn't persist: %+v", after)
 	}
 	if _, err := s.GetProposal(ctx, "missing"); err != ErrNotFound {

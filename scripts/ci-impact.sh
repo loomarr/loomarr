@@ -9,7 +9,7 @@ set -euo pipefail
 
 readonly GATES=(
   contracts go go_full rust postgres web clients apple_mobile apple_tv
-  expo_android_mobile expo_android_tv visual e2e tuner image docs agent android
+  expo_android_mobile expo_android_tv visual e2e tuner image docs agent android policy
 )
 
 selected=()
@@ -51,7 +51,11 @@ classify() {
   local known=false
 
   # Product Go. Release images compile and embed these source families.
-  if [[ "$path" == *.go || "$path" == go.mod || "$path" == go.sum ]]; then
+  if [[ "$path" == cmd/releaseverify/*.go || "$path" == internal/releaseverify/* ]]; then
+    known=true
+    select_gate go
+    select_gate policy
+  elif [[ "$path" == *.go || "$path" == go.mod || "$path" == go.sum ]]; then
     known=true
     select_gate contracts
     select_gate go
@@ -123,7 +127,7 @@ classify() {
       known=true
       select_gate clients
       ;;
-    web/scripts/test-apple-client.sh|web/scripts/filter-react-native-pods-notice.awk|web/scripts/filter-react-native-pods-notice.test.mjs)
+    web/scripts/test-apple-client.sh|web/scripts/test-apple-client.test.mjs|web/scripts/test-apple-client-cache-test.sh|web/scripts/apple-simulator.xcconfig|web/scripts/apple-compilation-cache.xcconfig|web/scripts/validate-apple-compilation-cache.sh|web/scripts/validate-apple-compilation-cache-test.sh|web/scripts/filter-react-native-pods-notice.awk|web/scripts/filter-react-native-pods-notice.test.mjs)
       known=true
       select_gate contracts
       select_gate apple_mobile
@@ -248,11 +252,10 @@ classify() {
       select_gate image
       select_gate docs
       ;;
-    docs/design.md|docs/configuration.md|docs/dev/commands.md|docs/install/*|README.md)
+    docs/design.md|docs/configuration.md|docs/dev/ci.md|docs/dev/commands.md|docs/install/*|README.md)
       known=true
-      select_gate go
-      select_gate go_full
       select_gate docs
+      select_gate policy
       ;;
     docs/*|CHANGELOG.md|CODE_OF_CONDUCT.md|CONTRIBUTING.md|SECURITY.md|CLAUDE.md|AGENTS.md|CONTEXT.md|PROGRESS.md|docs-site/*|.agents/*|.claude/*|.vale|.vale/*|.vale.ini|lychee.toml|.markdownlint*|.github/CODEOWNERS|.github/ISSUE_TEMPLATE/*|.github/PULL_REQUEST_TEMPLATE.md)
       known=true
@@ -261,6 +264,20 @@ classify() {
     design/*)
       known=true
       select_gate docs
+      ;;
+	internal/testkit/postgresimage/image.go|internal/testkit/postgresimage/image.txt)
+		known=true
+		select_gate contracts
+		select_gate go
+		select_gate go_full
+		select_gate postgres
+		select_gate image
+		select_gate policy
+		;;
+	internal/testkit/ryukimage/image.txt)
+		known=true
+		select_gate postgres
+      select_gate policy
       ;;
     internal/testkit/fixtures/*)
       known=true
@@ -295,30 +312,198 @@ classify() {
       ;;
     scripts/*)
       known=true
-      select_gate contracts
       case "$path" in
-        scripts/agent*|scripts/dev-*) select_gate agent ;;
-        scripts/android-*.sh|scripts/build-android-beta.sh|scripts/check-android-release-env.sh|scripts/generate-android-tv-brand.sh|scripts/publish-android-beta.sh|scripts/test-android-release.sh|scripts/validate-android-release-source.sh|scripts/validate-android-release-source-test.sh|scripts/verify-android-native-libraries.sh|scripts/verify-android-native-libraries-test.sh|scripts/testdata/fake-android-release-*.sh) select_gate android ;;
+        scripts/agent*) select_gate agent; select_gate policy ;;
+        scripts/apple-compilation-cache*) select_gate contracts; select_gate apple_mobile; select_gate apple_tv; select_gate policy ;;
+        scripts/ensure-container-image.sh) select_gate contracts; select_gate postgres; select_gate visual; select_gate e2e; select_gate tuner; select_gate policy ;;
+        scripts/run-playwright-container.sh) select_gate contracts; select_gate visual; select_gate e2e; select_gate tuner; select_gate policy ;;
+        scripts/ci-impact*|scripts/ci-dispatch-scope*|scripts/ci-run-metrics*|scripts/testdata/ci-*) select_gate policy ;;
+        scripts/dev-*) select_gate contracts; select_gate agent ;;
+        scripts/android-*.sh|scripts/build-android-beta.sh|scripts/check-android-release-env.sh|scripts/generate-android-tv-brand.sh|scripts/publish-android-beta.sh|scripts/test-android-release.sh|scripts/validate-android-release-source.sh|scripts/validate-android-release-source-test.sh|scripts/verify-android-native-libraries.sh|scripts/verify-android-native-libraries-test.sh|scripts/testdata/fake-android-release-*.sh) select_gate contracts; select_gate android ;;
         scripts/generate-brand-assets.mjs|scripts/check-brand-assets.mjs) select_gate clients ;;
         scripts/check-fe-bundle.mjs) select_gate web; select_gate image ;;
+        *) select_gate contracts ;;
       esac
       ;;
-    Makefile|.github/workflows/ci.yml)
+    mk/agent.mk)
+      known=true
+      select_gate contracts
+      select_gate agent
+      select_gate policy
+      ;;
+    mk/check.mk)
+      known=true
+      select_gate contracts
+      select_gate go
+      select_gate go_full
+      select_gate rust
+      select_gate postgres
+      select_gate policy
+      ;;
+    mk/eval.mk)
+      known=true
+      select_gate contracts
+      select_gate go
+      select_gate policy
+      ;;
+    mk/build.mk)
+      known=true
+      select_gate contracts
+      select_gate go
+      select_gate rust
+      select_gate image
+      select_gate agent
+      select_gate policy
+      ;;
+    mk/store.mk)
+      known=true
+      select_gate contracts
+      select_gate go
+      select_gate postgres
+      select_gate policy
+      ;;
+    mk/contracts.mk)
+      known=true
+      select_gate contracts
+      select_gate go
+      select_gate docs
+      select_gate policy
+      ;;
+    mk/docs.mk)
+      known=true
+      select_gate docs
+      select_gate policy
+      ;;
+    mk/frontend.mk)
+      known=true
+      select_gate web
+      select_gate clients
+      select_all_native_clients
+      select_gate visual
+      select_gate e2e
+      select_gate tuner
+      select_gate image
+      select_gate policy
+      ;;
+    mk/smoke.mk)
+      known=true
+      select_gate contracts
+      select_gate policy
+      ;;
+    mk/android.mk)
+      known=true
+      select_gate android
+      select_gate policy
+      ;;
+    Makefile)
       known=true
       select_all
       ;;
     .github/workflows/android-beta.yml)
       known=true
+      select_gate policy
       select_gate contracts
       select_gate android
       select_gate clients
       select_gate expo_android_tv
       ;;
-    .github/workflows/*)
+    .github/workflows/ci.yml)
+      known=true
+      select_gate policy
+      ;;
+    .github/workflows/ci-agent.yml)
+      known=true
+      select_gate agent
+      select_gate policy
+      ;;
+    .github/workflows/ci-rust-contracts.yml|.github/workflows/ci-image-certification.yml)
+      known=true
+      select_gate rust
+      select_gate policy
+      ;;
+    .github/workflows/ci-go-contracts.yml)
       known=true
       select_gate contracts
+      select_gate policy
       ;;
-    docker/*|.air.toml|.env.example|.golangci.yml|.node-version|.editorconfig|.gitignore|.vscode/*|.github/actionlint.yaml|.github/actionlint.yml|.github/dependabot.yml|skills-lock.json)
+    .github/workflows/ci-go.yml)
+      known=true
+      select_gate go
+      select_gate policy
+      ;;
+    .github/workflows/ci-postgres.yml)
+      known=true
+      select_gate postgres
+      select_gate policy
+      ;;
+    .github/workflows/ci-frontend.yml)
+      known=true
+      select_gate web
+      select_gate policy
+      ;;
+    .github/workflows/ci-clients.yml)
+      known=true
+      select_gate clients
+      select_gate policy
+      ;;
+    .github/workflows/ci-apple-mobile.yml)
+      known=true
+      select_gate apple_mobile
+      select_gate policy
+      ;;
+    .github/workflows/ci-apple-tv.yml)
+      known=true
+      select_gate apple_tv
+      select_gate policy
+      ;;
+    .github/workflows/ci-apple-cache-validation.yml)
+      known=true
+      select_gate apple_mobile
+      select_gate apple_tv
+      select_gate policy
+      ;;
+    .github/workflows/apple-compilation-cache.yml)
+      known=true
+      select_gate apple_mobile
+      select_gate apple_tv
+      select_gate policy
+      ;;
+    .github/workflows/ci-playwright.yml)
+      known=true
+      select_gate visual
+      select_gate e2e
+      select_gate policy
+      ;;
+    .github/workflows/ci-tuner.yml)
+      known=true
+      select_gate tuner
+      select_gate policy
+      ;;
+    .github/workflows/ci-image.yml)
+      known=true
+      select_gate image
+      select_gate policy
+      ;;
+    .github/workflows/ci-docs.yml)
+      known=true
+      select_gate docs
+      select_gate policy
+      ;;
+    .github/workflows/ci-android.yml)
+      known=true
+      select_gate android
+      select_gate policy
+      ;;
+    .github/workflows/*)
+      known=true
+      select_gate policy
+      ;;
+    renovate.json|.github/dependabot.yml) # retired-ok: deleting the legacy config must still select policy gates
+	  known=true
+	  select_gate contracts
+	  select_gate policy
+	  ;;
+    docker/*|.air.toml|.env.example|.golangci.yml|.node-version|.editorconfig|.gitignore|.vscode/*|.github/actionlint.yaml|.github/actionlint.yml|skills-lock.json)
       known=true
       select_gate contracts
       case "$path" in

@@ -21,8 +21,8 @@ const DialogClose = DialogPrimitive.Close;
 // content; they are deleted rather than translated because `tailwindcss-animate` is not a
 // dependency here (see styles.css), so they compiled to nothing. Deleting them must not move a
 // pixel — which makes the visual baselines the check on that claim.
-const DialogContent = ({ className, children, ...props }: DialogContentProps) => (
-  <DialogPrimitive.Portal>
+const DialogContent = ({ className, children, portalContainer, ...props }: DialogContentProps) => (
+  <DialogPrimitive.Portal container={portalContainer}>
     <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-black/60" />
     <DialogPrimitive.Popup
       className={cn(

@@ -1,7 +1,14 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { BrandLockup, BrandMark, brandChroma, brandLaunchMotion, LoomarrProvider } from "../index";
+import {
+  BrandLockup,
+  BrandMark,
+  brandChroma,
+  brandLaunchMotion,
+  LoomarrProvider,
+  resolveBrandLaunchMinHeight,
+} from "../index";
 
 describe("Loomarr brand", () => {
   it("renders the canonical seven-segment chroma bar in order", () => {
@@ -32,6 +39,11 @@ describe("Loomarr brand", () => {
       wordDelay: 220,
       taglineDelay: 320,
     });
+  });
+
+  it("lets the native launch surface shrink to a landscape host", () => {
+    expect(resolveBrandLaunchMinHeight("touch", false)).toBe("100%");
+    expect(resolveBrandLaunchMinHeight("touch", true)).toBe(560);
   });
 
   it("leaves document heading semantics to the screen that owns the lockup", () => {

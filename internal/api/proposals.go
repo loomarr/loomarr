@@ -11,6 +11,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
@@ -128,6 +129,10 @@ type ProposalDTO struct {
 	// the store keeps epoch seconds.
 	ApprovedAt string           `json:"approvedAt,omitempty" doc:"When this was approved (RFC3339)"`
 	Proposal   suggest.Proposal `json:"proposal"`
+	// EpisodeSelectionPreview is a read-only projection from Proposal.Intent. It lets the
+	// approval UI explain a search-added series before approval; the client cannot submit it,
+	// and the approval gate independently re-derives every series item from the same Intent.
+	EpisodeSelectionPreview schedule.EpisodeSelection `json:"episodeSelectionPreview,omitempty" doc:"Server-derived episode policy applied to any series added before approval"`
 }
 
 // rfc3339OrEmpty renders a timestamp for the wire, mapping the ZERO time to "" so `omitempty`
@@ -151,7 +156,7 @@ func proposalToDTO(p store.Proposal) ProposalDTO {
 		ID: p.ID, JobID: p.JobID, Status: p.Status, CreatedBy: p.CreatedBy,
 		ApprovedBy: p.ApprovedBy, DenyReason: p.DenyReason,
 		ModSummary: p.ModSummary, Note: p.Note, ApprovedAt: rfc3339OrEmpty(p.ApprovedAt),
-		Proposal: payload,
+		Proposal: payload, EpisodeSelectionPreview: suggest.EpisodeSelectionForIntent(payload.Intent),
 	}
 }
 
@@ -272,10 +277,10 @@ type approveInput struct {
 // approvalEditFromDTO maps the wire shape to the domain edit, returning nil when nothing was
 // modified.
 //
-// NIL RATHER THAN AN EMPTY STRUCT is deliberate: an unmodified approval must be
-// indistinguishable from the pre-edit behaviour all the way down — same code path, untouched
-// ProposalJSON bytes, empty ModSummary. An empty-but-non-nil edit would still mark the proposal
-// as "approved with modifications: none", which is a different and false claim.
+// NIL RATHER THAN AN EMPTY STRUCT is deliberate: an unmodified approval must carry no human
+// edit and an empty ModSummary. The server approval gate may still canonicalise a missing or
+// crafted series selector from the trusted original Intent; an empty-but-non-nil edit would
+// falsely describe that server grounding as "approved with modifications: none".
 func approvalEditFromDTO(b *ApprovalEditDTO) *suggest.ApprovalEdit {
 	if b == nil || (len(b.Drop) == 0 && len(b.Add) == 0 && b.Note == "") {
 		return nil

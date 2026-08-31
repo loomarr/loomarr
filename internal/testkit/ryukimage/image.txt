@@ -1,0 +1,1 @@
+docker.io/testcontainers/ryuk:0.14.0

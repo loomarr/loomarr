@@ -25,6 +25,7 @@ const proposal: Proposal = {
   acquisitions: [],
   alternates: [],
   scores: { themeFit: 0.9, availabilityRatio: 1, eraBalance: 0.7, overall: 0.85 },
+  trace: { version: 1, surfacedTotal: 0, recordedTotal: 0, truncated: false, candidates: [] },
 };
 
 const journey = (proposalRow?: ProposalDTO): ProposalJourneyDTO => ({

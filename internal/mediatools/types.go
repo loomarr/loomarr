@@ -18,16 +18,28 @@ type Interval struct {
 	EndMs   int64 `json:"endMs"`
 }
 
+// MediaQualityProvenance is the closed producer identity for durable detector facts.
+type MediaQualityProvenance string
+
+const (
+	// MediaQualityEvidenceV1 is the closed schema understood by durable conditioning recovery.
+	MediaQualityEvidenceV1 = 1
+	// MediaQualityProvenanceFFmpegDetectors identifies the owned black/silence/freeze decode.
+	MediaQualityProvenanceFFmpegDetectors MediaQualityProvenance = "ffmpeg_detectors"
+)
+
 // MediaQuality is the measured content inside a playable container. A file can carry valid audio
 // and video streams while every video frame is black, the audio samples are silent, or one damaged
 // frame is repeated for most of the runtime; ffprobe's stream-presence gate cannot see any of
 // those. Intervals are normalised, non-overlapping and clamped to DurationMs before this value is
 // returned or persisted.
 type MediaQuality struct {
-	DurationMs int64      `json:"durationMs"`
-	Black      []Interval `json:"black,omitempty"`
-	Silence    []Interval `json:"silence,omitempty"`
-	Freeze     []Interval `json:"freeze,omitempty"`
+	EvidenceVersion int                    `json:"evidenceVersion,omitempty"`
+	Provenance      MediaQualityProvenance `json:"provenance,omitempty"`
+	DurationMs      int64                  `json:"durationMs"`
+	Black           []Interval             `json:"black,omitempty"`
+	Silence         []Interval             `json:"silence,omitempty"`
+	Freeze          []Interval             `json:"freeze,omitempty"`
 }
 
 // Chapter is one embedded chapter from ffprobe (triage, §10 V34).
@@ -53,6 +65,8 @@ type TranscriptSegment struct {
 // the kind of half-populated row that is painful to notice later.
 type Probed struct {
 	DurationMs int64
+	// Width is the VIDEO stream's width in pixels; zero when unavailable.
+	Width int
 	// Height is the VIDEO stream's height in pixels; 0 when the file has no video stream or
 	// the probe could not tell. Quality is derived from it (see QualityFromHeight) rather
 	// than stored raw, because "1080p" is what a person reads and 1088 is what some encoders

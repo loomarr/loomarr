@@ -18,9 +18,9 @@ const (
 	// LineupReplace: the incoming lineup wins wholesale — an operator PATCH, or a human/
 	// refine approval where a person decided (including to remove titles). With
 	// opts.PreserveByKey, the rich scheduling metadata (duration/rating/runtime/collection,
-	// and the season window when the incoming omits it) is carried forward from the matching
-	// current entry: the read DTO is lossy, so a reorder must not silently wipe a season
-	// scope or a healed rating (§7 PATCH contract).
+	// approved episode selector, and season window) is carried forward from the matching
+	// current entry when the incoming DTO omits it. The read DTO is lossy, so a reorder must
+	// not silently wipe a selector, season scope, or healed rating (§7 PATCH contract).
 	LineupReplace LineupMode = iota
 	// LineupAdditive: unattended auto-curate (§8.2) — union the incoming picks onto the
 	// existing lineup, dropping an existing title only when opts.Drop reports it clearly
@@ -66,8 +66,8 @@ func ApplyLineup(current, incoming []LineupEntry, mode LineupMode, opts ApplyOpt
 
 // applyReplacePreserve replaces with `incoming` but carries each entry's rich scheduling
 // metadata forward from the current entry of the same key (the lossy-DTO guard). Display
-// fields (Title/Year/Genres) always come from `incoming`; a season window comes from
-// `incoming` when it sets one, else from the current entry.
+// fields (Title/Year/Genres) always come from `incoming`; a season window or episode selector
+// comes from `incoming` when it sets one, else from the current entry.
 func applyReplacePreserve(current, incoming []LineupEntry) []LineupEntry {
 	byKey := make(map[provision.Key]LineupEntry, len(current))
 	for _, e := range current {
@@ -102,6 +102,9 @@ func mergePreserve(cur, in LineupEntry) LineupEntry {
 	}
 	if out.SeasonMin == 0 && out.SeasonMax == 0 {
 		out.SeasonMin, out.SeasonMax = cur.SeasonMin, cur.SeasonMax
+	}
+	if out.EpisodeSelection.Mode == "" {
+		out.EpisodeSelection = cur.EpisodeSelection
 	}
 	return out
 }

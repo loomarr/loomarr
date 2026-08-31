@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Loomarr-owned semantic themes and universal primitives, implemented behind Tamagui Core.",
   "exports": {
-    ".": "./index.ts"
+    ".": "./index.ts",
+    "./qr-code-web": "./src/qr-code-web/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -13,9 +14,9 @@
   },
   "dependencies": {
     "@tamagui/core": "2.7.7",
-    "lucide-react-native": "1.33.0",
+    "lucide-react-native": "1.35.0",
     "qrcode": "1.5.4",
-    "react-native-svg": "15.15.4"
+    "react-native-svg": "15.15.5"
   },
   "peerDependencies": {
     "react": ">=19 <20",
@@ -23,13 +24,13 @@
   },
   "devDependencies": {
     "@types/qrcode": "1.5.6",
-    "@types/react": "~19.2.2",
-    "@types/react-dom": "^19.2.4",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "npm:react-native-tvos@0.86.2-0",
     "react-native-web": "0.21.2",
-    "typescript": "~6.0.3",
-    "vitest": "^4.1.10"
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
   }
 }

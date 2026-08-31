@@ -5,39 +5,63 @@ package eval
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // judge scores a proposal's SUBJECTIVE quality (0..1) against a case's rubric using
 // a second LLM call — the question the deterministic checks can't answer ("is this
 // actually a good 90s action lineup?"). It is deliberately separate from the
 // suggester's own model: pass any llm.Provider (the same one is fine for a first
-// pass; a stronger judge model is better). Returns (score, note). A judge error is
-// non-fatal — it returns (-1, reason) and the case is scored on the hard gates only.
-type judgeScores struct {
+// pass; a stronger judge model is better). Judge-stage failures are ordinary
+// errors so they cannot be confused with a valid low score.
+// JudgeScores is one successful subjective assessment in the closed 0..1 range.
+type JudgeScores struct {
 	Overall     float64
 	Relevance   float64
 	Serendipity float64
 	Reason      string
+	Attribution llm.Attribution
 }
 
 type modelJudge struct{ provider llm.Provider }
 
-func (j modelJudge) Score(ctx context.Context, c Case, prop suggest.Proposal) judgeScores {
-	return judge(ctx, j.provider, c, prop)
+func (j modelJudge) Score(ctx context.Context, evidence JudgeEvidence) (JudgeScores, error) {
+	bounded, err := boundJudgeEvidence(evidence)
+	if err != nil {
+		return JudgeScores{}, err
+	}
+	return judge(ctx, j.provider, bounded)
 }
 
-func judge(ctx context.Context, j llm.Provider, c Case, prop suggest.Proposal) judgeScores {
-	if j == nil || c.JudgeRubric == "" {
-		return judgeScores{Overall: -1, Relevance: -1, Serendipity: -1, Reason: "judge skipped (no rubric or no judge model)"}
+func judge(ctx context.Context, j llm.Provider, evidence JudgeEvidence) (JudgeScores, error) {
+	if j == nil {
+		return JudgeScores{}, errors.New("judge is not configured")
 	}
-	titles := titleList(prop)
+	if evidence.Rubric == "" {
+		return JudgeScores{}, errors.New("judge rubric is empty")
+	}
+	titles, err := renderJudgeTitles(evidence)
+	if err != nil {
+		return JudgeScores{}, err
+	}
 	if titles == "" {
-		return judgeScores{Overall: -1, Relevance: -1, Serendipity: -1, Reason: "judge skipped (empty proposal)"}
+		return JudgeScores{}, errors.New("judge cannot score an empty proposal")
+	}
+	policy, err := json.Marshal(evidence.Policy)
+	if err != nil {
+		return JudgeScores{}, fmt.Errorf("marshal judge policy: %w", err)
+	}
+	observation, err := json.Marshal(evidence.Observation)
+	if err != nil {
+		return JudgeScores{}, fmt.Errorf("marshal judge observation: %w", err)
+	}
+	scheduled, err := json.Marshal(evidence.ScheduledPrograms)
+	if err != nil {
+		return JudgeScores{}, fmt.Errorf("marshal judge schedule: %w", err)
 	}
 	prompt := fmt.Sprintf(`You are grading a generated TV-channel lineup for how well it fits a request.
 
@@ -45,7 +69,16 @@ REQUEST: %s
 
 RUBRIC (what a good result looks like): %s
 
-THE LINEUP THAT WAS GENERATED:
+GROUNDED PROPOSAL EVIDENCE:
+%s
+
+EXTRACTED POLICY:
+%s
+
+STRUCTURAL OBSERVATION:
+%s
+
+MATERIALIZED SCHEDULE SAMPLE:
 %s
 
 Score three dimensions from 0.0 to 1.0:
@@ -53,32 +86,45 @@ Score three dimensions from 0.0 to 1.0:
 - serendipity: coherent, defensible discoveries beyond only the most obvious answers. Random or off-theme picks score LOW, not high.
 - overall: the quality of the lineup considering both, with relevance more important.
 Reply with ONLY this JSON: {"overall": <0..1>, "relevance": <0..1>, "serendipity": <0..1>, "reason": "<one sentence>"}`,
-		c.Intent.Description, c.JudgeRubric, titles)
+		evidence.Request, evidence.Rubric, titles, policy, observation, scheduled)
 
 	resp, err := j.Chat(ctx, []llm.Message{
 		{Role: llm.System, Content: "You are a precise, terse evaluation judge. You output only the requested JSON."},
 		{Role: llm.User, Content: prompt},
 	}, llm.ChatOptions{JSONMode: true})
 	if err != nil {
-		return judgeScores{Overall: -1, Relevance: -1, Serendipity: -1, Reason: fmt.Sprintf("judge call failed: %v", err)}
+		return JudgeScores{Attribution: resp.Attribution}, fmt.Errorf("judge call failed: %w", err)
 	}
 	scores, perr := parseJudge(resp.Content)
 	if perr != nil {
-		return judgeScores{Overall: -1, Relevance: -1, Serendipity: -1, Reason: fmt.Sprintf("judge output unparseable: %v (%q)", perr, truncate(resp.Content, 120))}
+		return JudgeScores{Attribution: resp.Attribution}, fmt.Errorf("judge output unparseable: %w (%q)", perr, truncate(resp.Content, 120))
 	}
-	return scores
+	scores.Attribution = resp.Attribution
+	return scores, nil
 }
 
-// titleList renders the proposal's grounded titles for the judge to read.
-func titleList(p suggest.Proposal) string {
+func renderJudgeTitles(evidence JudgeEvidence) (string, error) {
 	var b strings.Builder
-	for _, it := range p.Lineup {
-		fmt.Fprintf(&b, "- %s (%d) [in library]\n", it.Name, it.Year)
+	for _, section := range []struct {
+		name  string
+		items []JudgeTitleEvidence
+	}{
+		{name: "LINEUP", items: evidence.Lineup},
+		{name: "ACQUISITIONS", items: evidence.Acquisitions},
+	} {
+		if len(section.items) == 0 {
+			continue
+		}
+		fmt.Fprintf(&b, "%s:\n", section.name)
+		for _, item := range section.items {
+			encoded, err := json.Marshal(item)
+			if err != nil {
+				return "", fmt.Errorf("marshal judge title: %w", err)
+			}
+			fmt.Fprintf(&b, "- %s\n", encoded)
+		}
 	}
-	for _, it := range p.Acquisitions {
-		fmt.Fprintf(&b, "- %s (%d) [to acquire]\n", it.Name, it.Year)
-	}
-	return b.String()
+	return b.String(), nil
 }
 
 func truncate(s string, n int) string {
@@ -90,31 +136,46 @@ func truncate(s string, n int) string {
 
 // parseJudge extracts {"score":..,"reason":..} from the judge's reply, tolerating a
 // code fence or surrounding prose (same robustness the suggester needs).
-func parseJudge(content string) (judgeScores, error) {
+func parseJudge(content string) (JudgeScores, error) {
 	span := extractObject(content)
 	var out struct {
-		Overall     float64 `json:"overall"`
-		Relevance   float64 `json:"relevance"`
-		Serendipity float64 `json:"serendipity"`
-		Reason      string  `json:"reason"`
+		Overall     *float64 `json:"overall"`
+		Relevance   *float64 `json:"relevance"`
+		Serendipity *float64 `json:"serendipity"`
+		Reason      string   `json:"reason"`
 	}
 	if err := json.Unmarshal([]byte(span), &out); err != nil {
-		return judgeScores{}, err
+		return JudgeScores{}, err
 	}
-	return judgeScores{
-		Overall: clampScore(out.Overall), Relevance: clampScore(out.Relevance),
-		Serendipity: clampScore(out.Serendipity), Reason: out.Reason,
+	if out.Overall == nil {
+		return JudgeScores{}, errors.New("judge output is missing overall")
+	}
+	if out.Relevance == nil {
+		return JudgeScores{}, errors.New("judge output is missing relevance")
+	}
+	if out.Serendipity == nil {
+		return JudgeScores{}, errors.New("judge output is missing serendipity")
+	}
+	reason := strings.TrimSpace(out.Reason)
+	if reason == "" {
+		return JudgeScores{}, errors.New("judge output is missing a non-blank reason")
+	}
+	for _, score := range []struct {
+		name  string
+		value float64
+	}{
+		{name: "overall", value: *out.Overall},
+		{name: "relevance", value: *out.Relevance},
+		{name: "serendipity", value: *out.Serendipity},
+	} {
+		if score.value < 0 || score.value > 1 {
+			return JudgeScores{}, fmt.Errorf("judge output %s score %.4g is outside 0..1", score.name, score.value)
+		}
+	}
+	return JudgeScores{
+		Overall: *out.Overall, Relevance: *out.Relevance,
+		Serendipity: *out.Serendipity, Reason: reason,
 	}, nil
-}
-
-func clampScore(score float64) float64 {
-	if score < 0 {
-		return 0
-	}
-	if score > 1 {
-		return 1
-	}
-	return score
 }
 
 // extractObject returns the outermost {...} span (string/escape aware) — a local

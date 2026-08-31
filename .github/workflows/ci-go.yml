@@ -1,0 +1,216 @@
+name: CI / Go tests
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.27"
+  NODE_VERSION: "22"
+
+jobs:
+  run:
+    name: Go — race-policy tests (${{ matrix.shard }}/${{ strategy.job-total }})
+    runs-on: ubuntu-latest
+    # This job is test-only. Repository-wide contracts run once in `go-contracts`, in parallel;
+    # repeating Rust, lint, vet, harness, cross-compilation, and release checks in every shard spent
+    # runner time and inflated each shard's cache without adding assurance.
+    #
+    # THREE shards, not two. Re-measured 2026-08-18: the per-package -race suite is ~381s but is
+    # dominated by a few packages (internal/app alone is ~125s), so round-robin balance depends on
+    # the split COUNT. Modelled critical path (slowest shard): 2 shards = 237s, 3 = 185s, 4 = 215s
+    # — 4 REGRESSES because round-robin happens to pile app+store+integration onto one shard. 3 is
+    # the measured sweet spot (−22% vs 2). The real floor is internal/app at ~125s, one unsplittable
+    # package; sharding cannot beat it — that needs the per-test SQLite-setup sharing the `test`
+    # target's note describes, tracked separately.
+    #
+    # -race is also SCOPED (scripts/go-race-policy.sh): a short, verified opt-out set of
+    # concurrency-free config/table-test packages runs without the detector. `make go-race-verify`
+    # keeps that list honest; it is fail-safe (race stays ON for anything not explicitly opted out).
+    #
+    # ⚠ Sharding is the one change here that can quietly SHRINK the gate — a split that drops
+    # a package leaves those tests unrun and every shard green. `make go-shard-verify` below
+    # is the guard, and it is not optional.
+    #
+    strategy:
+      fail-fast: false # one shard's failures must not hide the others'
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          # ⚠ DELIBERATELY OFF — the step below owns every Go cache path in this job.
+          # `cache: true` caches `~/go/pkg/mod` AND `~/.cache/go-build` keyed on go.sum,
+          # which is the SAME `~/.cache/go-build` the unified cache rolls. Both on meant
+          # restoring it twice and, whenever go.sum moved, SAVING it twice: measured
+          # 2026-08-09, `Post Cache golangci` 83s ran alongside `Post Run actions/setup-go`
+          # 91s in one job. Worse, setup-go's half is keyed on go.sum alone — exactly the
+          # frozen-key bug the note below exists to prevent — so it re-froze a slice of the
+          # very cache the rolling key was added to keep fresh.
+          cache: false
+      # `make test` builds the real debug image worker its Go tests execute. Install the pinned
+      # toolchain but deliberately do not cache Cargo/target here: the old combined cache reached
+      # 1.36GB and cost longer to restore/save than this focused build. Static Rust checks and
+      # release certification still run once in `go-contracts`.
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.93.0 --profile minimal
+      # Each test shard keeps only its Go module and compiler caches. Lint and static Rust checks
+      # run in `go-contracts`, so restoring their caches here would spend time and storage on
+      # inputs this job never reads.
+      #
+      # ⚠ THE KEY MUST BE UNIQUE PER RUN, and this is not a style choice. `actions/cache`
+      # NEVER overwrites an existing key — it skips the save when the key already hit. This
+      # path holds `~/.cache/go-build`, whose contents track `.go` SOURCE, but the key used
+      # to be `hashFiles('go.sum')`: so the entry was written once and then frozen while the
+      # source moved under it. Measured — one 473MB entry created 2026-07-31T01:06 was still
+      # being restored days and many source changes later, so `go test -race` recompiled
+      # nearly everything on every run (~224s of the job). `github.run_id` guarantees a miss
+      # on the exact key so the save always happens, while `restore-keys` still restores the
+      # newest prior cache to compile against.
+      #
+      # ⚠ AND A ROLLING KEY MUST BE BOUNDED — the other half of the same trade, and the
+      # failure mode the fix above created. A stable key never re-SAVES; a rolling key never
+      # PRUNES. Neither actions/cache mode evicts anything, so this entry grew purely by
+      # accretion: every run restored the previous one, added to it, and saved the union.
+      # Measured 2026-08-09 it had reached **1.36 GB**, costing 85s to restore (74s of that
+      # spent EXTRACTING, not downloading) plus 83–122s to save — ~168s of a ~10 min job
+      # spent moving a tarball before a single test ran.
+      #
+      # The ISO week in the key is the bound. It rotates on its own, so there is no number
+      # for anyone to remember to bump — this repo has been bitten repeatedly by
+      # hand-maintained lists that drift — and it costs exactly one cold build per week. It
+      # is in the restore-keys prefixes too, deliberately: a prefix that outlived the epoch
+      # would restore the very accumulation the epoch exists to drop.
+      - name: Cache epoch (bounds rolling-cache growth)
+        id: epoch
+        run: echo "week=$(date -u +%GW%V)" >> "$GITHUB_OUTPUT"
+      - name: Restore Go test caches (modules + build)
+        id: gocache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          # ⚠ THE SHARD IS PART OF THE KEY. Each shard compiles a DIFFERENT set of packages, so
+          # a shared key would have them overwrite each other's build objects every run — each
+          # shard restoring a cache built for the other's packages and recompiling its own.
+          # It also makes the save well-defined: without it both shards race to write one key
+          # and whichever lost simply skipped, so half the objects were never cached at all.
+          key: go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-s${{ matrix.shard }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
+          restore-keys: |
+            go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-s${{ matrix.shard }}-${{ hashFiles('go.sum') }}-
+            go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-s${{ matrix.shard }}-
+      # ⚠ ffmpeg is NOT on the runner image, and several filler tests skip without it — the
+      # language gate's span extraction (16kHz mono WAV, the shape whisper requires), the
+      # silence guard, artwork rendering and the clip scan's probe. Measured on this runner
+      # before adding this step: `ffmpeg: MISSING`, and the three `TestExtractSpanWAV_*`
+      # tests reported SKIP while the job stayed green.
+      #
+      # A skip is visible in the log, so this was never a silent hole — but it did mean CI
+      # could not catch a broken `-ar 16000`, which is exactly the flag those tests exist to
+      # pin. The two backends carried byte-identical copies of that invocation with nothing
+      # asserting it, so the gap was worth closing rather than documenting.
+      #
+      # ⚠ `ffmpeg` alone pulls `ffprobe` (same Debian source package), and both are needed:
+      # the tests assert what the extracted file IS by probing it, not merely that ffmpeg
+      # exited 0. `--no-install-recommends` keeps the codec/doc tail off a runner that only
+      # has to decode and re-encode small synthetic WAVs.
+      #
+      # ⚠ The DEBS are cached, not the installed binaries. Copying `/usr/bin/ffmpeg` back into
+      # place would leave its shared libraries behind — ffmpeg links a large tree (libav*,
+      # libx264, …) spread across /usr/lib, so a binary-only cache produces a file that exists
+      # and cannot run. Caching the .debs and letting apt install them keeps the package
+      # manager's own dependency handling and skips only the download, which is the slow part.
+      #
+      # ⚠ Cache what APT ITSELF decides to fetch on THIS runner (~62.8 MB), not a computed
+      # dependency closure. Measured while writing this: `apt-cache depends --recurse` over
+      # ffmpeg resolves 298 packages / 244 MB, because the closure includes base packages the
+      # runner image already has installed. Caching that would spend 244 MB of a 10GB repo-wide
+      # budget to save 38 seconds — worse than no cache at all. `-d` into the apt archive dir
+      # asks apt for the actual delta against what is already there.
+      #
+      # ⚠ A STABLE key, deliberately NOT the rolling `github.run_id` pattern the golangci and
+      # gobuild caches above use. Those cache contents track something their key does not
+      # (`~/.cache/go-build` tracks .go SOURCE), so they must re-save every run. This one's
+      # contents are fully determined by the key — a fixed package set at a runner image
+      # version — exactly like the pnpm caches, which are keyed on the lockfile alone. The
+      # rolling pattern here would write a fresh copy EVERY run into the budget that
+      # `cache-cleanup.yml` exists because the repo already blew through once.
+      #
+      # ⚠ The Ubuntu RELEASE is in the key because the package versions come from the runner
+      # image's apt sources. Without it a runner image bump would restore debs built for the
+      # previous release and the install would fail on unmet dependencies — a red CI whose
+      # cause is a cache entry nobody edited.
+      #
+      # ⚠ Read from `/etc/os-release` into an output, NOT from `env.ImageOS`. That variable is
+      # set by the hosted runner image rather than by Actions itself, so it is not a documented
+      # context (editors flag it, and a self-hosted or changed image can leave it empty) — and
+      # an empty segment does not fail, it silently produces ONE key shared across every image
+      # version, which is precisely the collision this segment exists to prevent.
+      - name: Resolve the runner's Ubuntu release (cache key input)
+        id: os
+        run: |
+          . /etc/os-release
+          test -n "$VERSION_ID"
+          echo "release=$VERSION_ID" >> "$GITHUB_OUTPUT"
+      - name: Cache ffmpeg packages
+        id: ffmpeg-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/ffmpeg-debs
+          key: ffmpeg-debs-${{ runner.os }}-${{ steps.os.outputs.release }}-v1
+      - name: Download ffmpeg packages
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -qq
+          mkdir -p ~/ffmpeg-debs
+          # -d downloads without installing. Copied out of apt's archive dir rather than
+          # pointed there directly, because that path is root-owned and actions/cache runs
+          # as the runner user.
+          sudo apt-get install -y --no-install-recommends -d -o Dir::Cache::archives="$HOME/apt-debs" ffmpeg \
+            || sudo apt-get install -y --no-install-recommends -d ffmpeg
+          sudo find "$HOME/apt-debs" /var/cache/apt/archives -maxdepth 1 -name '*.deb' \
+            -exec cp -n {} ~/ffmpeg-debs/ \; 2>/dev/null || true
+          sudo chown -R "$USER" ~/ffmpeg-debs
+          echo "cached $(find ~/ffmpeg-debs -name '*.deb' | wc -l) debs, $(du -sh ~/ffmpeg-debs | cut -f1)"
+      # ⚠ apt-get install with the cached debs already in its archive dir, NOT `dpkg -i`. dpkg
+      # processes files in glob order and fails on a package whose dependency has not been
+      # unpacked yet; apt orders them itself. `--no-download` proves the cache is doing the
+      # work — if a deb is missing this fails rather than quietly re-fetching it, which is how
+      # a cache that stopped working would otherwise stay invisible.
+      - name: Install ffmpeg (several filler tests skip without it)
+        run: |
+          sudo cp -n ~/ffmpeg-debs/*.deb /var/cache/apt/archives/ 2>/dev/null || true
+          sudo apt-get install -y --no-install-recommends --no-download ffmpeg \
+            || sudo apt-get install -y --no-install-recommends ffmpeg
+      # ⚠ FAIL LOUDLY if the install silently stopped working. Without this the tests go back
+      # to skipping and the job stays green — the exact "green but not covered" state this
+      # step was added to end, and one nobody would notice because a skip looks like a pass
+      # at a glance.
+      - name: ffmpeg and ffprobe are on PATH
+        run: |
+          command -v ffmpeg
+          command -v ffprobe
+      - run: make test GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}
+      # ⚠ SAVE ONLY ON main, which is why this is cache/save rather than the round-trip
+      # `actions/cache`. A PR's cache is scoped to `refs/pull/N/merge` and can never be
+      # restored again once that PR closes — cache reads are scoped to the branch and its
+      # base — so every PR save wrote ~1.4GB that only ever became eviction pressure on the
+      # caches that ARE read. That is the same 10GB-quota burn `cache-cleanup.yml` exists to
+      # mop up after; not creating the garbage beats deleting it. PRs restore from main's
+      # entry and skip the measured 83–122s save outright.
+      #
+      # `always()` so a RED gate still refreshes the build objects it already produced — the
+      # next run should not recompile from cold merely because an assertion failed.
+      - name: Save Go caches (main only)
+        if: always() && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ steps.gocache.outputs.cache-primary-key }}

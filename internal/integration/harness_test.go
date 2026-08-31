@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -40,6 +41,7 @@ type harness struct {
 
 type harnessConfig struct {
 	llm           *testkit.LLM
+	jobWorkers    int
 	seerr         bool
 	connections   bool // false ⇒ fresh install: seed NO connection settings
 	fillerStorage bool // true ⇒ seed only the local filler layout, not external connections
@@ -50,6 +52,8 @@ type harnessOpt func(*harnessConfig)
 
 // withLLM injects a scripted LLM for the suggester (the pipeline journey).
 func withLLM(l *testkit.LLM) harnessOpt { return func(c *harnessConfig) { c.llm = l } }
+
+func withJobWorkers(n int) harnessOpt { return func(c *harnessConfig) { c.jobWorkers = n } }
 
 // withSeerr seeds seerr.url so the Acquisition feature is on.
 func withSeerr() harnessOpt { return func(c *harnessConfig) { c.seerr = true } }
@@ -163,6 +167,9 @@ func (h *harness) seedConnections(cfg harnessConfig) {
 	set("filler.dir", h.t.TempDir())
 	set("channel.reconcile_every", "9999h")
 	set("filler.sync_every", "9999h")
+	if cfg.jobWorkers > 0 {
+		set("job.workers", strconv.Itoa(cfg.jobWorkers))
+	}
 	if h.seerr != nil {
 		set("seerr.url", h.seerr.URL)
 		set("seerr.api_key", "seerr-key")
@@ -248,7 +255,7 @@ func (h *harness) status(method, path, body string, cookie *http.Cookie) int {
 
 // ---- onboarding helpers -------------------------------------------------------
 
-// bootstrap creates the owning admin (real Provisioner + bcrypt) and returns the
+// bootstrap creates the owning admin (real Provisioner + Argon2id) and returns the
 // response status so callers can assert 200 (first) vs 409 (subsequent).
 func (h *harness) bootstrap(user, pass string) int {
 	h.t.Helper()
@@ -274,7 +281,7 @@ func (h *harness) login(user, pass string) *http.Cookie {
 	return nil
 }
 
-// asAdmin bootstraps the owning admin (local bcrypt) once and logs in — the
+// asAdmin bootstraps the owning admin (local Argon2id) once and logs in — the
 // untested bootstrap→local-login chain. Returns the admin session cookie.
 func (h *harness) asAdmin() *http.Cookie {
 	h.t.Helper()

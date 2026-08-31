@@ -8,10 +8,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/mediatools"
 )
 
 // Scanning FILLER_DIR directly (§10, revised by §9.1).
@@ -193,8 +196,8 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 		// Soup Advert" while the `title` field carries just "Campbell's Soup Advert".
 		heuristicName := strings.TrimSuffix(filepath.Base(rel), filepath.Ext(rel))
 		id := ""
-		tags, hasTags := ReadSidecarTags(path)
-		if hasTags {
+		tags, sidecarState := ReadSidecarTagsState(path)
+		if sidecarState == SidecarValid {
 			if tags.OriginalName != "" {
 				heuristicName = strings.TrimSuffix(tags.OriginalName, filepath.Ext(tags.OriginalName))
 			}
@@ -211,12 +214,36 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 			skipped++
 			return nil
 		}
+		parentHash := ""
+		lineageInvalid := false
+		conditioningHold := sidecarState == SidecarInvalid || tags.SupersededByHash != "" ||
+			tags.ConditioningPublication != nil ||
+			(tags.Conditioning != nil && tags.ConditioningLineage == nil)
+		if tags.ConditioningLineage != nil {
+			parentHash = tags.ConditioningLineage.ParentHash
+			lineageInvalid = !validConditioningLineage(tags.ConditioningLineage, parentHash)
+			if !lineageInvalid {
+				if tags.Mezzanine == "" {
+					lineageInvalid = tags.ConditioningLineage.ChildHash != id
+					conditioningHold = !lineageInvalid
+				} else {
+					lineageInvalid = tags.Conditioning == nil || tags.MediaQuality == nil ||
+						validateConditioningPair(*tags.Conditioning, tags.ConditioningLineage.ChildHash, id) != nil ||
+						mediatools.ValidateMediaQualityEvidence(*tags.MediaQuality) != nil ||
+						!reflect.DeepEqual(*tags.MediaQuality, tags.Conditioning.AfterRewrite.Quality)
+				}
+			}
+		}
 
 		clips = append(clips, RawClip{
-			ID:     id,
-			Path:   rel,
-			Name:   name,
-			Source: tags.SourceID,
+			ID:               id,
+			Path:             rel,
+			Name:             name,
+			Source:           tags.SourceID,
+			ParentHash:       parentHash,
+			LineageInvalid:   lineageInvalid,
+			ConditioningHold: conditioningHold,
+			SidecarInvalid:   sidecarState == SidecarInvalid,
 			// Kind + Era from the HEURISTIC name (the filename), NOT the display name — the cheapest
 			// tagging tier (§10). ⚠ Must be `heuristicName`: the display `name` now prefers the
 			// sidecar title, which often drops the year ("Campbell's Soup Advert" has no 1993), and
@@ -303,7 +330,7 @@ func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {
 	// wrong answer. Height necessarily comes from the streams, hence both sections.
 	out, err := exec.CommandContext(ctx, bin,
 		"-v", "error",
-		"-show_entries", "format=duration:stream=height,codec_type",
+		"-show_entries", "format=duration:stream=width,height,codec_type",
 		"-of", "json",
 		path,
 	).Output()
@@ -316,6 +343,7 @@ func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {
 			Duration string `json:"duration"`
 		} `json:"format"`
 		Streams []struct {
+			Width     int    `json:"width"`
 			Height    int    `json:"height"`
 			CodecType string `json:"codec_type"`
 		} `json:"streams"`
@@ -340,10 +368,13 @@ func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {
 	// ⚠ No `break` on the video match any more: the loop now answers TWO questions, and stopping
 	// at the first video stream would report `HasAudio: false` for every file that happens to
 	// list its video track first — which is most of them. The whole stream list is cheap.
-	height, hasAudio, hasVideo := 0, false, false
+	width, height, hasAudio, hasVideo := 0, 0, false, false
 	for _, s := range probed.Streams {
 		if s.CodecType == "video" {
 			hasVideo = true
+			if width == 0 && s.Width > 0 {
+				width = s.Width
+			}
 			if height == 0 && s.Height > 0 {
 				height = s.Height
 			}
@@ -355,7 +386,7 @@ func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {
 	// A missing height is not a probe error, because the caller owns the policy decision. ScanDir
 	// and ProbeStage both reject it as an audio-only file; keeping that decision out of FFprobe
 	// also lets callers distinguish "valid media with no video" from "could not inspect media".
-	return Probed{DurationMs: int64(secs * 1000), Height: height, Silent: !hasAudio, NoVideo: !hasVideo}, nil
+	return Probed{DurationMs: int64(secs * 1000), Width: width, Height: height, Silent: !hasAudio, NoVideo: !hasVideo}, nil
 }
 
 // ShardDepth is how many 2-character directory levels a clip is filed under.

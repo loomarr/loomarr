@@ -10,21 +10,38 @@ vars: {
 
 direction: right
 
-changes: Classify the complete PR diff
-contracts: Contracts and Go
-clients: Web and shared clients
-native: Apple and Android
-runtime: Browser, tuner, and images
-docs: Docs and agent harness
-required: CI\nrequired aggregate {shape: hexagon}
+inputs: Change enters CI {
+  shape: oval
+}
 
-changes -> contracts
-changes -> clients
-changes -> native
-changes -> runtime
-changes -> docs
-contracts -> required
-clients -> required
-native -> required
-runtime -> required
-docs -> required
+orchestrator: Root ci.yml owns decisions {
+  classifier: Fail-closed\npath classifier {shape: hexagon}
+  admission: Fast PR feedback or\nauthoritative queue {shape: queue}
+  aggregate: Required CI\naggregate {shape: hexagon}
+
+  classifier -> admission: affected families
+}
+
+families: Reusable family workflows {
+  direction: down
+  policy: Policy + contracts
+  go: Go + Postgres + Rust
+  web: Web + browser + image
+  native: Apple + Android + TV
+  docs: Docs
+}
+
+main: Main {shape: page}
+
+inputs -> orchestrator.classifier
+orchestrator.admission -> families.policy: always when orchestration changes
+orchestrator.admission -> families.go: only owned inputs
+orchestrator.admission -> families.web: only owned inputs
+orchestrator.admission -> families.native: queue or manual
+orchestrator.admission -> families.docs: only owned inputs
+families.policy -> orchestrator.aggregate
+families.go -> orchestrator.aggregate
+families.web -> orchestrator.aggregate
+families.native -> orchestrator.aggregate
+families.docs -> orchestrator.aggregate
+orchestrator.aggregate -> main

@@ -235,7 +235,7 @@ func buildFillerMediaTools(set resolved) *mediatools.FFmpegTools {
 	})
 }
 
-// buildPipeline constructs the ingest pipeline: one driver over eight rungs (§10 V51b).
+// buildPipeline constructs the ingest pipeline: one driver over nine rungs (§10 V51b/V61).
 //
 // ⚠ **This block was measured as an 11-input seam and skipped on that basis. The measurement
 // was wrong, and the way it was wrong is worth keeping.** The window had been drawn at the
@@ -256,7 +256,7 @@ func buildFillerMediaTools(set resolved) *mediatools.FFmpegTools {
 // conditional to "clean up" the nil cases.
 func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, emitter *eventEmitter,
 	splitter *filler.Splitter, taggerProvider llm.Provider, wake *fillerChannelWake,
-	processDiagnostics *diagnostics.ProcessManager) *filler.Pipeline {
+	processDiagnostics *diagnostics.ProcessManager, admissionObserver filler.AdmissionObserver) *filler.Pipeline {
 	// The language gate (§10 V40). Registered unconditionally: `filler.language` empty makes
 	// Run a no-op, so an install that has not opted in pays nothing and the Tasks row still
 	// exists to be seen and paused.
@@ -328,7 +328,7 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 	}
 	// ── The ingest pipeline (§10 V51b) ────────────────────────────────────────────────────
 	//
-	// One driver over eight rungs, replacing `filler-language`, `filler-split`,
+	// One driver over nine rungs, replacing `filler-language`, `filler-split`,
 	// `filler-transcribe` and `filler-vision`.
 	//
 	// ⚠ **Every rung is registered unconditionally, even when the thing it needs is absent.**
@@ -366,7 +366,7 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 					return 0
 				}
 				return lufs
-			}, time.Now).WithDiagnostics(processDiagnostics),
+			}, time.Now).WithConditioning(fillerTools.MeasureConditioning).WithDiagnostics(processDiagnostics),
 		filler.NewLanguageStage(langDetect, fillerLanguageStoreAdapter{st}, clipDir,
 			func() string { return set.str("filler.language") }, time.Now),
 		filler.NewTranscribeStage(fillerTools, fillerTranscribeStoreAdapter{st}, clipDir, fillerDrop,
@@ -374,6 +374,10 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 		filler.NewTagStage(taggerProvider, fillerTagStoreAdapter{st: st, wake: wake}, fillerDrop, time.Now),
 		filler.NewVisionStage(fillerTools, visionProvider, fillerVisionStoreAdapter{st}, clipDir,
 			func() bool { return set.boolv("filler.vision.enabled") }, time.Now),
+		// V61 shadow execution is the fail-closed seam immediately before the V38 compatibility
+		// gate. It records only production facts with known provenance; score remains filing
+		// authority until certification explicitly enables a slice.
+		filler.NewAdmissionStage(admissionObserver),
 		filler.NewScoreStage(fillerTagStoreAdapter{st: st, wake: wake}, &filler.AutoFilePolicy{
 			// ⚠ `boolv`, the FAIL-CLOSED read, not `boolOn`. The two differ only when the
 			// settings service cannot answer, and here that difference is the safety property:

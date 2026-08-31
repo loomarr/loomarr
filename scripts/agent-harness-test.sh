@@ -48,6 +48,7 @@ printf '%s\n' "$secondary" | grep -q 'prepared override.*\.agent-data/prepared'
 printf '%s\n' "$secondary" | grep -q 'public URL override.*http://localhost:'
 secondary_exports="$(LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/dev-env.sh" export)"
 printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_PREPARED_DIR=.*\.agent-data/prepared"
+printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_DIAGNOSTICS_DIR=.*\.agent-data/diagnostics"
 printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_PUBLIC_URL=.*http://localhost:"
 printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_DEV_LOGIN='1'"
 if printf '%s\n' "$(LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/dev-env.sh" export)" | grep -q "LOOMARR_AGENT_DEV_LOGIN='1'"; then
@@ -55,6 +56,7 @@ if printf '%s\n' "$(LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/dev-env.sh" export)" |
 	exit 1
 fi
 grep -q 'PLAYOUT_PREPARED_DIR=.*LOOMARR_AGENT_PREPARED_DIR' "$SCRIPT_DIR/../.air.toml"
+grep -q 'DIAGNOSTICS_DIR=.*LOOMARR_AGENT_DIAGNOSTICS_DIR' "$SCRIPT_DIR/../.air.toml"
 grep -q 'SERVER_PUBLIC_URL=.*LOOMARR_AGENT_PUBLIC_URL' "$SCRIPT_DIR/../.air.toml"
 grep -q 'LOOMARR_DEV_LOGIN=.*LOOMARR_AGENT_DEV_LOGIN' "$SCRIPT_DIR/../.air.toml"
 if printf '%s\n' "$secondary" | grep -q 'http://localhost:8080'; then
@@ -64,6 +66,39 @@ fi
 
 overridden="$(LOOMARR_REPO_ROOT="$TMP-wt" LOOMARR_DEV_PORT=23456 "$SCRIPT_DIR/dev-env.sh" show)"
 printf '%s\n' "$overridden" | grep -q 'http://localhost:23456'
+
+step 'doctor checks runtime prerequisites'
+mkdir -p "$TMP/doctor-bin"
+printf '%s\n' '#!/usr/bin/env sh' 'echo "go version go1.27.0 darwin/arm64"' > "$TMP/doctor-bin/go"
+printf '%s\n' '#!/usr/bin/env sh' 'echo "rustc 1.93.0 (fixture)"' > "$TMP/doctor-bin/rustc"
+printf '%s\n' '#!/usr/bin/env sh' 'echo "cargo 1.93.0 (fixture)"' > "$TMP/doctor-bin/cargo"
+# shellcheck disable=SC2016 # The generated fixture expands its own first argument.
+printf '%s\n' '#!/usr/bin/env sh' 'case "${1:-}" in -p) echo 22 ;; *) echo v22.5.0 ;; esac' > "$TMP/doctor-bin/node"
+printf '%s\n' '#!/usr/bin/env sh' 'echo 11.13.1' > "$TMP/doctor-bin/pnpm"
+printf '%s\n' '#!/usr/bin/env sh' 'echo "GNU Make 4.4.1"' > "$TMP/doctor-bin/make"
+printf '%s\n' '#!/usr/bin/env sh' 'echo "ShellCheck - shell script analysis tool"' > "$TMP/doctor-bin/shellcheck"
+printf '%s\n' '#!/usr/bin/env sh' 'echo "ffmpeg version fixture"' > "$TMP/doctor-bin/ffmpeg"
+# shellcheck disable=SC2016 # DOCTOR_DOCKER_READY expands inside the generated fixture.
+printf '%s\n' '#!/usr/bin/env sh' 'case "${1:-}" in --version) echo "Docker version fixture" ;; info) [ "${DOCTOR_DOCKER_READY:-0}" = 1 ] ;; *) exit 0 ;; esac' > "$TMP/doctor-bin/docker"
+chmod +x "$TMP/doctor-bin/"*
+doctor_path="$TMP/doctor-bin:/usr/bin:/bin"
+if PATH="$doctor_path" DOCTOR_DOCKER_READY=1 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" doctor >/dev/null 2>&1; then
+	echo 'agent-harness-test: doctor accepted a missing ffprobe' >&2
+	exit 1
+fi
+printf '%s\n' '#!/usr/bin/env sh' 'echo "ffprobe version fixture"' > "$TMP/doctor-bin/ffprobe"
+chmod +x "$TMP/doctor-bin/ffprobe"
+printf '%s\n' '#!/usr/bin/env sh' 'echo "go version go1.26.0 darwin/arm64"' > "$TMP/doctor-bin/go"
+if PATH="$doctor_path" DOCTOR_DOCKER_READY=1 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" doctor >/dev/null 2>&1; then
+	echo 'agent-harness-test: doctor accepted Go 1.26' >&2
+	exit 1
+fi
+printf '%s\n' '#!/usr/bin/env sh' 'echo "go version go1.27.0 darwin/arm64"' > "$TMP/doctor-bin/go"
+if PATH="$doctor_path" LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" doctor >/dev/null 2>&1; then
+	echo 'agent-harness-test: doctor accepted an unavailable Docker daemon' >&2
+	exit 1
+fi
+PATH="$doctor_path" DOCTOR_DOCKER_READY=1 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" doctor >/dev/null
 
 step 'secondary dev identity'
 mkdir -p "$TMP/fake-bin"
@@ -156,6 +191,19 @@ PATH="$TMP/fake-bin:$PATH" BASELINE_LOG="$baseline_log" LOOMARR_REPO_ROOT="$TMP-
 	"$SCRIPT_DIR/agent.sh" baseline >/dev/null
 [ "$(wc -l < "$baseline_log" | tr -d ' ')" = 1 ]
 
+# A gate that overlaps an edit cannot publish a green cache entry for the clean commit it started
+# from. This catches agents beginning implementation while their required baseline is still running.
+step 'baseline rejects concurrent edits'
+git -C "$TMP" commit --allow-empty -qm 'new baseline key'
+# shellcheck disable=SC2016 # LOOMARR_REPO_ROOT expands inside the generated fixture.
+printf '%s\n' '#!/usr/bin/env sh' 'printf "changed during baseline\n" >> "$LOOMARR_REPO_ROOT/fixture"' > "$TMP/fake-bin/make"
+chmod +x "$TMP/fake-bin/make"
+if PATH="$TMP/fake-bin:$PATH" LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" baseline >/dev/null 2>&1; then
+	echo 'agent-harness-test: baseline cached a worktree that changed during the gate' >&2
+	exit 1
+fi
+git -C "$TMP" restore fixture
+
 # Focused verification uses the shared classifier and the reverse-dependency closure rather than
 # testing only the directory that happened to contain the edited file. Fake only the expensive
 # command execution; the real classifiers still resolve Loomarr's actual package graph.
@@ -164,7 +212,7 @@ git -C "$TMP" add -A
 git -C "$TMP" commit -qm 'focused verification fixture'
 mkdir -p "$TMP/internal/suggest"
 printf 'package suggest\n' > "$TMP/internal/suggest/probe.go"
-verify_log="$TMP/verify-runs"
+verify_log="$TMP-wt/verify-runs"
 real_go="$(command -v go)"
 verify_bin="$TMP-wt/verify-bin"
 mkdir -p "$verify_bin"
@@ -181,15 +229,33 @@ grep -q 'make -C .* fmt tags-verify' "$verify_log"
 grep -q 'go test -race .*internal/app.*internal/suggest' "$verify_log"
 rm -rf "$TMP/internal"
 
+# Policy-only changes run policy validation without expanding into the complete repository audit.
+step 'policy-focused verification'
+mkdir -p "$TMP/.github/workflows"
+printf 'name: fixture\n' > "$TMP/.github/workflows/ci.yml"
+: > "$verify_log"
+verify_output="$(PATH="$verify_bin:$PATH" REAL_GO="$real_go" VERIFY_LOG="$verify_log" \
+	BASE=HEAD LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" verify)"
+printf '%s\n' "$verify_output" | grep -q 'affected local evidence selected by CI impact'
+printf '%s\n' "$verify_output" | grep -q 'selected gates: policy'
+grep -q 'make -C .* ci-lint release-verify' "$verify_log"
+if grep -qE ' make check($| )|make -C .* (check|check-static|test)($| )' "$verify_log"; then
+	echo 'agent-harness-test: policy verification expanded into the complete audit' >&2
+	exit 1
+fi
+rm -rf "$TMP/.github"
+
 # Process ownership is the worktree cwd, not the globally shared process name.
 step 'process ownership'
+printf '%s\n' 'package main' 'import "time"' 'func main() { time.Sleep(30 * time.Second) }' > "$TMP/loomarr-dev.go"
+go build -o "$TMP/loomarr-dev-fixture" "$TMP/loomarr-dev.go"
 mkdir "$TMP-gone"
-cp "$(command -v sleep)" "$TMP-gone/loomarr-dev"
+cp "$TMP/loomarr-dev-fixture" "$TMP-gone/loomarr-dev"
 ( cd "$TMP-gone" && exec ./loomarr-dev 30 ) & stale_pid=$!; pids="$pids $stale_pid"
 sleep 0.05
 rm -rf "$TMP-gone"
-cp "$(command -v sleep)" "$TMP/loomarr-dev"
-cp "$(command -v sleep)" "$TMP-wt/loomarr-dev"
+cp "$TMP/loomarr-dev-fixture" "$TMP/loomarr-dev"
+cp "$TMP/loomarr-dev-fixture" "$TMP-wt/loomarr-dev"
 ( cd "$TMP" && exec ./loomarr-dev 30 ) & first_pid=$!; pids="$pids $first_pid"
 ( cd "$TMP-wt" && exec ./loomarr-dev 30 ) & second_pid=$!; pids="$pids $second_pid"
 # shellcheck disable=SC1091 # SCRIPT_DIR is resolved at runtime.

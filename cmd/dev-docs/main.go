@@ -1,19 +1,21 @@
-// Command dev-docs generates docs/dev/commands.md from the Makefile's own `## ` doc
-// comments and the CI workflow's `make` invocations. `make dev-docs` runs it;
-// `make dev-docs-verify` diffs the result so the tree goes red when they drift — the
+// Command dev-docs generates docs/dev/commands.md from the Make interface's own `## ` doc
+// comments (including its ordered modules) and CI workflows' `make` invocations.
+// `make dev-docs` runs it; `make dev-docs-verify` diffs the result so the tree goes red
+// when they drift — the
 // same committed-artifact discipline as api/openapi.yaml and docs/configuration.md.
 //
 // WHY THIS EXISTS. The command contract was restated by hand in four files — README.md,
 // contributor and agent entrypoints — and they disagreed with each other and with
-// the tree: the Go version (1.22 vs 1.26), the Node version (20 vs 22.5), what `make fe`
+// the tree: the Go version (1.22 vs 1.27), the Node version (20 vs 22.5), what `make fe`
 // runs ("Storybook browser tests" that do not exist), and the visual-suite size, stated
 // three ways with none correct. Twenty-one targets appeared in none of them, including
 // `make fe-install`, without which the documented clean-clone path simply fails.
 //
 // Prose could not hold this. Every one of those facts already existed in machine-readable
 // form; the only reason they drifted is that a human had to copy them. So they are read:
-// the Makefile is the source for what a target does, and ci.yml is the source for whether
-// CI runs it — which retires the hand-written "CI mirrors: …" list that was itself wrong.
+// the Make interface is the source for what a target does, and workflows are the source
+// for whether CI runs it — which retires the hand-written "CI mirrors: …" list that was
+// itself wrong.
 package main
 
 import (
@@ -43,7 +45,12 @@ var (
 	targetLine = regexp.MustCompile(`^([a-zA-Z0-9_-]+):([^#]*)##\s*(.+)$`)
 	// A section banner: `## ---- the default gate ----------------------------------`
 	sectionLine = regexp.MustCompile(`^##\s*-+\s*(.+?)\s*-+\s*$`)
-	// `make check`, `make fe-visual PW_SHARD=…`, `make test-pg` inside a workflow.
+	// Ordered, literal Make includes are part of the public command surface. Variables and
+	// wildcard expansion are intentionally unsupported: the generator must know exactly which
+	// files define the interface, and must fail rather than silently omit one.
+	includeLine = regexp.MustCompile(`^include\s+(.+?)\s*$`)
+	// `make check`, `LOOMARR_PLAYWRIGHT_SHARD=--shard=1/4 make fe-visual`, `make test-pg`
+	// inside a workflow.
 	makeInvocation = regexp.MustCompile(`\bmake\s+([a-z][a-z0-9-]*)`)
 )
 
@@ -81,44 +88,92 @@ func fail(what string, err error) {
 }
 
 func parseMakefile(path string) ([]target, error) {
-	f, err := os.Open(path) //nolint:gosec // a fixed path in the repo root
+	root, err := filepath.Abs(filepath.Dir(path))
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = f.Close() }()
+	state := makeParseState{
+		root:    root,
+		section: "General",
+		stack:   make(map[string]bool),
+		seen:    make(map[string]string),
+	}
+	if err := state.parse(path); err != nil {
+		return nil, err
+	}
+	if len(state.out) == 0 {
+		return nil, fmt.Errorf("no documented targets found in %s; the parser is broken, not the Makefile", path)
+	}
+	return state.out, nil
+}
 
-	var (
-		out     []target
-		section = "General"
-	)
+type makeParseState struct {
+	root    string
+	section string
+	out     []target
+	stack   map[string]bool
+	seen    map[string]string
+}
+
+func (s *makeParseState) parse(path string) error {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(s.root, abs)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("make include %q escapes repository root %s", path, s.root)
+	}
+	if s.stack[abs] {
+		return fmt.Errorf("cyclic Make include at %s", rel)
+	}
+	f, err := os.Open(abs) //nolint:gosec // constrained to the repository root above
+	if err != nil {
+		return fmt.Errorf("open Make interface %s: %w", rel, err)
+	}
+	defer func() { _ = f.Close() }()
+	s.stack[abs] = true
+	defer delete(s.stack, abs)
+
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if m := sectionLine.FindStringSubmatch(line); m != nil {
-			section = strings.TrimSpace(m[1])
+			s.section = strings.TrimSpace(m[1])
+			continue
+		}
+		if m := includeLine.FindStringSubmatch(line); m != nil {
+			for _, included := range strings.Fields(m[1]) {
+				if strings.ContainsAny(included, "$*?[]{}") || filepath.IsAbs(included) {
+					return fmt.Errorf("make include %q must be a literal repository-relative path", included)
+				}
+				// GNU Make resolves include names from its working directory, not from the
+				// directory of the including fragment. Mirror that rule exactly.
+				if err := s.parse(filepath.Join(s.root, included)); err != nil {
+					return err
+				}
+			}
 			continue
 		}
 		m := targetLine.FindStringSubmatch(line)
 		if m == nil {
 			continue
 		}
-		out = append(out, target{
+		if first, exists := s.seen[m[1]]; exists {
+			return fmt.Errorf("duplicate documented target %q in %s (first defined in %s)", m[1], rel, first)
+		}
+		s.seen[m[1]] = rel
+		s.out = append(s.out, target{
 			Name:    m[1],
 			Deps:    strings.Fields(m[2]),
 			Doc:     strings.TrimSpace(m[3]),
-			Section: section,
+			Section: s.section,
 		})
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, err
+		return err
 	}
-	if len(out) == 0 {
-		// A parser that silently matches nothing would generate an empty page and a
-		// clean `dev-docs-verify` forever after — the vacuous-green failure this repo
-		// keeps rediscovering. Refuse instead.
-		return nil, fmt.Errorf("no documented targets found in %s; the parser is broken, not the Makefile", path)
-	}
-	return out, nil
+	return nil
 }
 
 // ciTargets collects every `make <target>` any workflow invokes. This is what makes the
@@ -169,9 +224,9 @@ func stripYAMLComments(body string) string {
 func render(targets []target) []byte {
 	var b strings.Builder
 	b.WriteString("# Command reference\n\n")
-	b.WriteString("<!-- GENERATED by `make dev-docs` from the Makefile and .github/workflows. DO NOT EDIT. -->\n\n")
+	b.WriteString("<!-- GENERATED by `make dev-docs` from the Make interface and .github/workflows. DO NOT EDIT. -->\n\n")
 	b.WriteString("Every `make` target, its description, and whether CI runs it.\n")
-	b.WriteString("Both columns are read from source — the descriptions from the Makefile's own `##`\n")
+	b.WriteString("Both columns are read from source — the descriptions from the Make interface's own `##`\n")
 	b.WriteString("comments, the CI column from `make` invocations in the workflows — so this page\n")
 	b.WriteString("cannot drift from either. `make dev-docs-verify` fails the build if it does.\n\n")
 	// The CI column is derived from workflow invocations BY NAME, so prerequisite targets such
@@ -180,7 +235,8 @@ func render(targets []target) []byte {
 	b.WriteString("**✅ means a workflow invokes that target by name.** A blank cell is not\n")
 	b.WriteString("\"never runs in CI\" — prerequisite targets run through their named parent.\n")
 	b.WriteString("The *runs:* note on a row lists what each parent pulls in.\n\n")
-	b.WriteString("**The default gate is `make check`.** Run it before every push.\n\n")
+	b.WriteString("**Routine local evidence is `make agent-verify BASE=<base>`.** It selects affected checks\n")
+	b.WriteString("from the same impact policy as CI. Reserve `make check` for an explicit complete-repository audit.\n\n")
 
 	// Preserve Makefile order for sections; a stable order keeps the diff readable when
 	// a target is added, which is the whole point of committing generated output.
