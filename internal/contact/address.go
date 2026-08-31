@@ -26,10 +26,20 @@ const (
 	ProvenanceSelf       Provenance = "self"
 )
 
+// OwnerKind distinguishes an allowlisted person from a pending Invitation. Contact is never
+// identity for either owner.
+type OwnerKind string
+
+const (
+	OwnerUser       OwnerKind = "user"
+	OwnerInvitation OwnerKind = "invitation"
+)
+
 // Address is one durable contact-address candidate. A person may have one verified address and
 // one pending replacement; only the verified address is recovery-capable.
 type Address struct {
-	UserID     string
+	OwnerKind  OwnerKind
+	OwnerID    string
 	Email      string
 	Normalized string
 	Status     Status

@@ -3,7 +3,10 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/invitation"
 )
 
 // Role is a user's authorization level (§11).
@@ -81,6 +84,54 @@ func (s *sqlStore) UpsertUser(ctx context.Context, u User) error {
 		u.ID, u.Name, string(u.Role), u.Disabled, u.Quota, u.AutoApprove, u.MediaServerLinked, hash,
 		epoch(u.CreatedAt), epoch(u.UpdatedAt))
 	return err
+}
+
+func (s *sqlStore) CreateUserUnlessInvited(ctx context.Context, u User, now time.Time) error {
+	kind := invitation.KindLocal
+	identityKey := invitation.NormalizeLocalIdentity(u.Name)
+	if u.MediaServerLinked {
+		kind = invitation.KindLibrary
+		identityKey = u.ID
+	}
+	return s.withInvitationIdentityLock(ctx, kind, identityKey, func(ctx context.Context) error {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("create user: begin: %w", err)
+		}
+		defer func() { _ = tx.Rollback() }()
+		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE invitations
+			SET status = 'expired', terminal_at = expires_at
+			WHERE kind = ? AND identity_key = ? AND status = 'pending' AND expires_at <= ?`),
+			string(kind), identityKey, epoch(now)); err != nil {
+			return fmt.Errorf("create user: expire reservation: %w", err)
+		}
+		var exists int
+		err = tx.QueryRowContext(ctx, s.ph(`SELECT 1 FROM invitations
+			WHERE kind = ? AND identity_key = ? AND status = 'pending' LIMIT 1`),
+			string(kind), identityKey).Scan(&exists)
+		if err == nil {
+			return ErrInvitationIdentityConflict
+		}
+		if err != sql.ErrNoRows {
+			return fmt.Errorf("create user: check reservation: %w", err)
+		}
+		var hash any
+		if u.PasswordHash != "" {
+			hash = u.PasswordHash
+		}
+		_, err = tx.ExecContext(ctx, s.ph(`INSERT INTO users
+			(id, name, role, disabled, quota, auto_approve, media_server_linked, password_hash, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+			u.ID, u.Name, string(u.Role), u.Disabled, u.Quota, u.AutoApprove, u.MediaServerLinked,
+			hash, epoch(u.CreatedAt), epoch(u.UpdatedAt))
+		if err != nil {
+			return fmt.Errorf("create user: insert: %w", err)
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("create user: commit: %w", err)
+		}
+		return nil
+	})
 }
 
 func (s *sqlStore) ListUsers(ctx context.Context) ([]User, error) {

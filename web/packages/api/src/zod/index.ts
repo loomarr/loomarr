@@ -25,6 +25,7 @@ export * from "../../generated/zod/events/events.zod";
 export * from "../../generated/zod/filler/filler.zod";
 export * from "../../generated/zod/help/help.zod";
 export * from "../../generated/zod/images/images.zod";
+export * from "../../generated/zod/invitations/invitations.zod";
 export * from "../../generated/zod/jobs/jobs.zod";
 export * from "../../generated/zod/library/library.zod";
 export * from "../../generated/zod/ops/ops.zod";

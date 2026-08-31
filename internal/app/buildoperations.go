@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/events"
+	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/programmer"
@@ -177,6 +178,7 @@ type authBuild struct {
 	userSync             api.UserSyncer
 	provision            api.Provisioner
 	password             api.PasswordService
+	invitations          api.InvitationService
 	deviceManager        *auth.DeviceManager
 	deviceLimiter        *auth.RateLimiter
 	playoutSecret        func() string
@@ -223,6 +225,11 @@ func buildAuth(
 		}
 	}, st, manager, time.Now, log)
 	result.password = auth.NewPasswordService(st, newID, time.Now)
+	var invitationLibrary invitation.LibraryAccountResolver
+	if libraryClient != nil {
+		invitationLibrary = invitationLibraryResolver{client: libraryClient}
+	}
+	result.invitations = invitation.NewService(st, invitationLibrary, newID, nil, time.Now)
 	result.sessions = manager
 	result.deviceManager = auth.NewDeviceManager(st, time.Now)
 	result.deviceLimiter = auth.NewRateLimiter(0.05, 5)

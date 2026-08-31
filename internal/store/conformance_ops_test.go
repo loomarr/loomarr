@@ -27,7 +27,7 @@ func testUserContactAddresses(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	pending := contact.Address{
-		UserID: "u1", Email: email, Normalized: normalized,
+		OwnerKind: contact.OwnerUser, OwnerID: "u1", Email: email, Normalized: normalized,
 		Status: contact.StatusPending, Provenance: contact.ProvenanceAdmin, CreatedAt: now,
 	}
 	if err := s.PutPendingContactAddress(ctx, pending); !errors.Is(err, ErrNotFound) {
@@ -61,7 +61,7 @@ func testUserContactAddresses(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("verified contact = %+v", verified)
 	}
 	byAddress, err := s.GetVerifiedContactAddressByNormalized(ctx, normalized)
-	if err != nil || byAddress.UserID != "u1" {
+	if err != nil || byAddress.OwnerID != "u1" {
 		t.Fatalf("verified lookup = %+v, %v", byAddress, err)
 	}
 
@@ -70,7 +70,7 @@ func testUserContactAddresses(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	if err := s.PutPendingContactAddress(ctx, contact.Address{
-		UserID: "u1", Email: replacementEmail, Normalized: replacementKey,
+		OwnerKind: contact.OwnerUser, OwnerID: "u1", Email: replacementEmail, Normalized: replacementKey,
 		Status: contact.StatusPending, Provenance: contact.ProvenanceSelf, CreatedAt: now.Add(2 * time.Minute),
 	}); err != nil {
 		t.Fatal(err)
@@ -83,7 +83,7 @@ func testUserContactAddresses(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("replacement state = %+v; old verified address must remain recovery-capable", set)
 	}
 	if err := s.PutPendingContactAddress(ctx, contact.Address{
-		UserID: "u2", Email: replacementEmail, Normalized: replacementKey,
+		OwnerKind: contact.OwnerUser, OwnerID: "u2", Email: replacementEmail, Normalized: replacementKey,
 		Status: contact.StatusPending, Provenance: contact.ProvenanceAdmin, CreatedAt: now,
 	}); !errors.Is(err, ErrContactAddressConflict) {
 		t.Fatalf("duplicate normalized address = %v, want ErrContactAddressConflict", err)
@@ -96,7 +96,7 @@ func testUserContactAddresses(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("retired verified lookup = %v, want ErrNotFound", err)
 	}
 	if err := s.PutPendingContactAddress(ctx, contact.Address{
-		UserID: "u1", Email: "ADA.NEW@example.com", Normalized: replacementKey,
+		OwnerKind: contact.OwnerUser, OwnerID: "u1", Email: "ADA.NEW@example.com", Normalized: replacementKey,
 		Status: contact.StatusPending, Provenance: contact.ProvenanceAdmin, CreatedAt: now.Add(4 * time.Minute),
 	}); err != nil {
 		t.Fatal(err)

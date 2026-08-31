@@ -161,13 +161,13 @@ func (s *Server) listUsers(ctx context.Context, _ *struct{}) (*listUsersOutput, 
 	contactsByUser := make(map[string]contact.Set, len(addresses))
 	for i := range addresses {
 		address := addresses[i]
-		set := contactsByUser[address.UserID]
+		set := contactsByUser[address.OwnerID]
 		if address.Status == contact.StatusVerified {
 			set.Verified = &address
 		} else {
 			set.Pending = &address
 		}
-		contactsByUser[address.UserID] = set
+		contactsByUser[address.OwnerID] = set
 	}
 	out := &listUsersOutput{}
 	out.Body.Users = make([]userBody, 0, len(users))
@@ -199,7 +199,7 @@ func (s *Server) putUserContactAddress(ctx context.Context, in *putUserContactAd
 		return nil, errUnprocessable("Enter one email address", "Use one complete address such as person@example.com.")
 	}
 	err = s.store.PutPendingContactAddress(ctx, contact.Address{
-		UserID: in.ID, Email: email, Normalized: normalized, Status: contact.StatusPending,
+		OwnerKind: contact.OwnerUser, OwnerID: in.ID, Email: email, Normalized: normalized, Status: contact.StatusPending,
 		Provenance: contact.ProvenanceAdmin, CreatedAt: time.Now().UTC(),
 	})
 	if errors.Is(err, store.ErrContactAddressConflict) {

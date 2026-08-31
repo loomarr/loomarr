@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -162,6 +163,21 @@ func TestCreateLocal_RejectsDuplicateUsername(t *testing.T) {
 	// Case differences are still the same name to a human and to login.
 	if _, err := svc.CreateLocal(ctx, "OWNER", "a-good-password", store.RoleMember, 0); !errors.Is(err, ErrDuplicateUsername) {
 		t.Fatalf("case-different duplicate: err = %v, want ErrDuplicateUsername", err)
+	}
+}
+
+func TestCreateLocal_RejectsInvitedUsername(t *testing.T) {
+	svc, st := newPasswordService(t)
+	reserved := invitation.Invitation{
+		ID: "invite-grace", Kind: invitation.KindLocal, Username: "Grace",
+		IdentityKey: invitation.NormalizeLocalIdentity("Grace"), Role: invitation.RoleMember,
+		Status: invitation.StatusPending, CreatedAt: now, ExpiresAt: now.Add(invitation.Expiry),
+	}
+	if err := st.CreateInvitation(context.Background(), reserved, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateLocal(context.Background(), " grace ", "a-good-password", store.RoleMember, 0); !errors.Is(err, ErrDuplicateUsername) {
+		t.Fatalf("err = %v, want ErrDuplicateUsername", err)
 	}
 }
 

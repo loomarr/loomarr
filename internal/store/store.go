@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
+	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/taxonomy"
@@ -82,6 +83,10 @@ var ErrChannelStale = errors.New("store: stale channel revision")
 // ErrContactAddressConflict means the normalized mailbox is already attached to another person
 // or pending replacement. Public recovery must never resolve one address ambiguously.
 var ErrContactAddressConflict = errors.New("store: contact address conflict")
+
+// ErrInvitationIdentityConflict means an allowlist row or active Invitation already owns the
+// reserved local username or exact Library account id.
+var ErrInvitationIdentityConflict = errors.New("store: invitation identity conflict")
 
 // TitleStore is the provisioning surface (§3–§4).
 type TitleStore interface {
@@ -262,6 +267,9 @@ type UserStore interface {
 	GetUser(ctx context.Context, id string) (User, error)
 	// GetUserByName resolves a username to its allowlist row (§11 local login).
 	GetUserByName(ctx context.Context, name string) (User, error)
+	// CreateUserUnlessInvited creates a new allowlist row only when no active
+	// invitation reserves its local username or exact Library account id.
+	CreateUserUnlessInvited(ctx context.Context, u User, now time.Time) error
 	UpsertUser(ctx context.Context, u User) error
 	ListUsers(ctx context.Context) ([]User, error)
 	CountAdmins(ctx context.Context) (int, error)
@@ -618,6 +626,27 @@ type NotificationStore interface {
 	PurgeTerminalNotifications(context.Context, time.Time) (int, error)
 }
 
+// InvitationStore owns administrator admission decisions and hashed grants (§11).
+type InvitationStore interface {
+	CreateInvitation(ctx context.Context, value invitation.Invitation, address *contact.Address) error
+	GetInvitation(ctx context.Context, id string, now time.Time) (invitation.Invitation, error)
+	ListInvitations(ctx context.Context, now time.Time) ([]invitation.Invitation, error)
+	GetInvitationContactAddress(ctx context.Context, invitationID string) (contact.Address, error)
+	ReplaceInvitationGrant(ctx context.Context, invitationID string, grant invitation.Grant, at time.Time) error
+	AddInvitationGrant(ctx context.Context, invitationID string, grant invitation.Grant, at time.Time) error
+	RevokeInvitationGrant(ctx context.Context, tokenHash string, at time.Time) error
+	ListInvitationGrants(ctx context.Context, invitationID string) ([]invitation.Grant, error)
+	RevokeInvitation(ctx context.Context, invitationID string, at time.Time) error
+	PurgeTerminalInvitations(ctx context.Context, before time.Time) (int, error)
+	RedeemInvitation(
+		ctx context.Context,
+		grantHash string,
+		user User,
+		session Session,
+		at time.Time,
+	) (invitation.Invitation, error)
+}
+
 // DiagnosticStore is the retained technical evidence surface (§5, §17). Activity is deliberately
 // separate: it is a curated product feed, while these records are pageable/filterable diagnostics.
 type DiagnosticStore interface {
@@ -721,6 +750,7 @@ type Store interface {
 	SplitProposalStore
 	AiringStore
 	ActivityStore
+	InvitationStore
 	NotificationStore
 	DiagnosticStore
 	SettingStore

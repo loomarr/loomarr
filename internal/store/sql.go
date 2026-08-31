@@ -47,6 +47,9 @@ type sqlStore struct {
 	// approval ordering. SQLite is single-instance; Postgres uses advisory locks.
 	// Entries are bounded by the household user count (§1) and live with the store.
 	approvalLocks sync.Map
+	// invitationIdentityLocks serialize SQLite admission checks per identity.
+	// Postgres uses a database-wide advisory lock for the same seam.
+	invitationIdentityLocks sync.Map
 	// path is the SQLite file this store is backed by; empty for Postgres. Kept so a
 	// caller can find the data directory without also holding the DSN.
 	path                 string

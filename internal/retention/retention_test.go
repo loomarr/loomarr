@@ -13,6 +13,8 @@ type retentionStore struct {
 	diagnosticBefore   time.Time
 	diagnosticMax      int64
 	diagnosticErr      error
+	invitationBefore   time.Time
+	invitationErr      error
 	notificationBefore time.Time
 	notificationErr    error
 	sessionsCalled     bool
@@ -31,6 +33,10 @@ func (d *retentionDiagnostics) Purge(_ context.Context, before time.Time, max in
 func (*retentionStore) PurgeDeniedProposals(context.Context, time.Time) (int, error) { return 0, nil }
 func (*retentionStore) PurgeFinishedJobs(context.Context, time.Time) (int, error)    { return 0, nil }
 func (*retentionStore) PurgeActivity(context.Context, time.Time) (int, error)        { return 0, nil }
+func (s *retentionStore) PurgeTerminalInvitations(_ context.Context, before time.Time) (int, error) {
+	s.invitationBefore = before
+	return 3, s.invitationErr
+}
 func (s *retentionStore) PurgeTerminalNotifications(_ context.Context, before time.Time) (int, error) {
 	s.notificationBefore = before
 	return 2, s.notificationErr
@@ -69,6 +75,9 @@ func TestHousekeepingAppliesDiagnosticAgeAndStoragePolicy(t *testing.T) {
 	}
 	if want := now.Add(-30 * 24 * time.Hour); !store.notificationBefore.Equal(want) {
 		t.Fatalf("notification horizon = %v, want %v", store.notificationBefore, want)
+	}
+	if want := now.Add(-30 * 24 * time.Hour); !store.invitationBefore.Equal(want) {
+		t.Fatalf("invitation horizon = %v, want %v", store.invitationBefore, want)
 	}
 }
 
@@ -113,6 +122,24 @@ func TestHousekeepingAttemptsLaterStagesAfterNotificationFailure(t *testing.T) {
 	}
 	if store.diagnosticBefore.IsZero() || !store.sessionsCalled {
 		t.Fatal("notification failure stopped later housekeeping stages")
+	}
+}
+
+func TestHousekeepingAttemptsLaterStagesAfterInvitationFailure(t *testing.T) {
+	want := errors.New("invitation store unavailable")
+	store := &retentionStore{invitationErr: want}
+	service := New(store, Windows{
+		Proposals: func() time.Duration { return time.Hour }, Jobs: func() time.Duration { return time.Hour },
+		Activity: func() time.Duration { return time.Hour }, Diagnostics: func() time.Duration { return time.Hour },
+		DiagnosticsMaxBytes: func() int64 { return 1 },
+	}, time.Now, nil)
+
+	err := service.Housekeeping(context.Background())
+	if !errors.Is(err, want) {
+		t.Fatalf("Housekeeping error = %v, want invitation error", err)
+	}
+	if store.notificationBefore.IsZero() || store.diagnosticBefore.IsZero() || !store.sessionsCalled {
+		t.Fatal("invitation failure stopped later housekeeping stages")
 	}
 }
 

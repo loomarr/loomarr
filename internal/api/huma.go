@@ -13,8 +13,10 @@ import (
 	"github.com/loomarr/loomarr/internal/activity"
 	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/contact"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
+	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/media"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -35,6 +37,9 @@ type Server struct {
 	sessions  SessionManager
 	passwords PasswordService
 	userSync  UserSyncer
+	// invitations owns administrator admission decisions and one-time sharing grants (§11).
+	invitations     InvitationService
+	accessPublicURL func() string
 	// devices wires /v1/auth/device/* — the pairing handshake a keyboard-less native client uses
 	// (§11, Shield P1). Nil until configured, which 404s the routes rather than half-mounting them.
 	devices *auth.DeviceManager
@@ -794,6 +799,17 @@ type PasswordService interface {
 	ResetPassword(ctx context.Context, targetUserID, next string) error
 }
 
+// InvitationService is the narrow administrator-facing seam of the Invitation module.
+// Durable grant hashes and provider lookup mechanics remain behind it.
+type InvitationService interface {
+	Create(context.Context, invitation.CreateCommand) (invitation.Invitation, error)
+	Get(context.Context, string) (invitation.Invitation, error)
+	List(context.Context) ([]invitation.Invitation, error)
+	Contact(context.Context, string) (contact.Address, error)
+	Regenerate(context.Context, string, invitation.Conveyance) (invitation.IssuedGrant, error)
+	Revoke(context.Context, string) error
+}
+
 // SessionManager revokes sessions (logout) and exposes them for admin review (§11).
 type SessionManager interface {
 	Revoke(ctx context.Context, token string) error
@@ -814,10 +830,14 @@ type Options struct {
 	Log          *slog.Logger
 	BackupSQLite BackupStreamer // nil ⇒ /v1/backup returns 501 (Postgres)
 	Ready        ReadyFunc
-	Login        LoginService    // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent
-	Passwords    PasswordService // /v1/auth/password + local account create/reset (§11); nil ⇒ routes absent
-	Sessions     SessionManager  // /v1/auth/logout (Phase 9)
-	UserSync     UserSyncer      // POST /v1/users/sync (Phase 9); nil ⇒ route absent
+	Login        LoginService      // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent
+	Passwords    PasswordService   // /v1/auth/password + local account create/reset (§11); nil ⇒ routes absent
+	Sessions     SessionManager    // /v1/auth/logout (Phase 9)
+	UserSync     UserSyncer        // POST /v1/users/sync (Phase 9); nil ⇒ route absent
+	Invitations  InvitationService // /v1/invitations* (§11); nil ⇒ routes absent
+	// AccessPublicURL supplies the recipient-reachable browser origin. It is read
+	// at grant issuance so a hot-applied setting takes effect without restart.
+	AccessPublicURL func() string
 	// Devices wires /v1/auth/device/* (§11, Shield P1); nil ⇒ routes absent.
 	Devices *auth.DeviceManager
 	// DeviceLimiter bounds pairing starts and code-approval attempts; nil ⇒ unlimited, which is

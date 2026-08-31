@@ -8,6 +8,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/auth"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // registerProvisioning mounts the identity-provisioning routes (§11): first-run
@@ -170,6 +171,10 @@ func (s *Server) importUsers(ctx context.Context, in *importUsersInput) (*import
 			"Connect a media server in Settings to import its users.")
 	}
 	n, err := s.provision.Import(ctx, in.Body.IDs)
+	if errors.Is(err, store.ErrInvitationIdentityConflict) {
+		return nil, errConflict("Person already invited",
+			"That Library account has a pending invitation. Revoke it before importing the account directly.")
+	}
 	if err != nil {
 		return nil, apiErrWithCause(http.StatusBadGateway, "Import failed",
 			"Loomarr couldn't import the selected users. Check the media-server connection and try again.", err)
