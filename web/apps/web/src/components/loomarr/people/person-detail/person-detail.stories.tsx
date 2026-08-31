@@ -15,6 +15,7 @@ const Local: Story = {};
 const Imported: Story = { args: { user: people.offlineReady, onResetPassword: undefined } };
 const Disabled: Story = { args: { user: people.disabled } };
 const Self: Story = { args: { isSelf: true } };
+const Busy: Story = { args: { busy: true } };
 
 export default meta;
-export { Disabled, Imported, Local, Self };
+export { Busy, Disabled, Imported, Local, Self };
