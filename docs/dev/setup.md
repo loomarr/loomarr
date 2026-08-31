@@ -11,7 +11,7 @@
 | GNU Make | 4.x | Make parser policy and the repository harness |
 | ffmpeg + ffprobe | on `PATH` | — |
 | Docker | for Postgres and browser suites | — |
-| shellcheck | on `PATH` | `make check` validates every `scripts/*.sh` file |
+| shellcheck | on `PATH` | comprehensive verification validates every `scripts/*.sh` file |
 
 Node 22.5 is a hard floor: pnpm 11.13 uses the built-in `node:sqlite`, and older versions fail
 with `ERR_UNKNOWN_BUILTIN_MODULE`.
@@ -44,7 +44,7 @@ Run `make doctor` after Docker Desktop reports that its engine is running. The f
 in this repository installs the toolchain and components pinned by `rust-toolchain.toml`; the first
 Go, Rust and frontend gates also populate their dependency caches.
 
-ffmpeg is needed because Loomarr streams its own channels by default. `make check` stays
+ffmpeg is needed because Loomarr streams its own channels by default. Comprehensive verification stays
 hermetic and needs neither binary; only `make test-ffmpeg` runs them.
 
 ```bash
@@ -57,10 +57,13 @@ sudo pacman -S ffmpeg        # Arch
 
 ```bash
 git clone https://github.com/loomarr/loomarr && cd loomarr
-make doctor         # exact toolchain + local-state diagnostics
-make bootstrap      # pnpm install + codegen
-make agent-baseline # make check, shared by clean worktrees at this commit
+make doctor    # exact toolchain + local-state diagnostics
+make bootstrap # pnpm install + codegen
 ```
+
+Setup prepares the workspace; it does not audit the entire repository. Use focused tests for the
+area you change and `make verify BASE=origin/main` before pushing. `make agent-baseline` remains an
+opt-in, shared `make verify SCOPE=all` proof when a complete audit is deliberately required.
 
 What each target does is in the [command reference](commands.md), generated from the Makefile.
 

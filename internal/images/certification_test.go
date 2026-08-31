@@ -19,7 +19,7 @@ func TestCertifyReportsARealStaticLadder(t *testing.T) {
 	}
 
 	limits := DefaultCertificationLimits()
-	// make check exercises the intentionally unoptimized debug worker while Go packages run in
+	// Comprehensive verification exercises the intentionally unoptimized debug worker while Go packages run in
 	// parallel. This test owns report correctness; the isolated make image-cert release-profile
 	// gate owns the design's 10-second static ceiling.
 	limits.StaticMaxDuration = time.Minute

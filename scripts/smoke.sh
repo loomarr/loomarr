@@ -3,7 +3,7 @@
 #
 # Stands up a THROWAWAY install — its own database and its own Tunarr container — and
 # drives it with Playwright against the operator's REAL media server, TMDB, and Ollama.
-# The deliberate opposite of `make check`/`make e2e`, which mock every external service:
+# The deliberate opposite of comprehensive verification and `make e2e`, which mock every external service:
 # it exists because the per-phase gates have been green while the seams between them were
 # unwired (§21 phase 12.5), and because a bug that only appears with a real settings
 # service will never show up in a mocked suite.

@@ -75,7 +75,7 @@ func TestCITargetsIgnoresCommentedInvocations(t *testing.T) {
 		"    steps:\n" +
 		"      # Drift is already covered by `make dev-docs-verify`, so there is no need to\n" +
 		"      # run `make tags-verify` as a separate step here.\n" +
-		"      - run: make check\n" +
+		"      - run: make verify SCOPE=all\n" +
 		"      - name: spec drift\n" +
 		"        run: make openapi-verify\n"
 	writeWorkflow(t, dir, "ci.yml", workflow)
@@ -85,7 +85,7 @@ func TestCITargetsIgnoresCommentedInvocations(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, want := range []string{"check", "openapi-verify"} {
+	for _, want := range []string{"verify", "openapi-verify"} {
 		if _, ok := got[want]; !ok {
 			t.Errorf("%q is invoked by a real step but went undetected — the CI column would understate coverage", want)
 		}
@@ -101,14 +101,14 @@ func TestCITargetsIgnoresCommentedInvocations(t *testing.T) {
 // mentioning `make something` must not manufacture a CI claim.
 func TestCITargetsReadsOnlyYAML(t *testing.T) {
 	dir := t.TempDir()
-	writeWorkflow(t, dir, "ci.yml", "    - run: make check\n")
+	writeWorkflow(t, dir, "ci.yml", "    - run: make verify SCOPE=all\n")
 	writeWorkflow(t, dir, "notes.md", "We should probably wire `make e2e` in here one day.\n")
 
 	got, err := ciTargets(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := got["check"]; !ok {
+	if _, ok := got["verify"]; !ok {
 		t.Error("ci.yml step was not detected")
 	}
 	if _, ok := got["e2e"]; ok {

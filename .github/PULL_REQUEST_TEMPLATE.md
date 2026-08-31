@@ -6,7 +6,7 @@
 
 ## Checklist
 
-- [ ] `make check` passes (and any other gate this PR touches — see the table in CONTRIBUTING.md)
+- [ ] `make verify BASE=origin/main` passes (and any specialized gate this PR touches)
 - [ ] Docs updated **first** if behavior deviates from `docs/design.md` (doc-first rule)
 - [ ] No new dependency, or one added with a §14 rationale in the same PR
 - [ ] Generated files regenerated, not hand-edited (`make openapi` / orval / migrations forward-only)

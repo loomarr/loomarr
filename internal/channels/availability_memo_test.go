@@ -195,7 +195,7 @@ func TestMemoExpiresSoAvailabilityCanChange(t *testing.T) {
 }
 
 // The memo is shared mutable state and the guide resolves channels concurrently, so this must
-// be race-free. Run under `-race` (make check does) this fails loudly if the mutex goes away.
+// be race-free. Run under `-race` (comprehensive verification does) this fails loudly if the mutex goes away.
 func TestAvailabilityMemoIsSafeUnderConcurrentResolve(t *testing.T) {
 	st := availTestStore(t)
 	keys := []provision.Key{"movie:tmdb:1", "movie:tmdb:2", "movie:tmdb:3"}

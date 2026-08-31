@@ -1211,7 +1211,7 @@ func declared() []Setting {
 		{
 			// ⚠ A scheduler Job's `ScheduleKey` MUST be declared here — `Resolve` panics on an
 			// undeclared key, so a job registered without its row takes the whole app down at
-			// boot. Caught by `make check`, which is the right place, but the coupling is easy
+			// boot. Caught by comprehensive verification, which is the right place, but the coupling is easy
 			// to miss when adding a job.
 			//
 			// Distinct from `filler.fetch.every`, which is the operator-facing "how often" in the

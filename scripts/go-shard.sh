@@ -64,7 +64,7 @@ if [ "${1:-}" = "--verify" ]; then
   exit 1
 fi
 
-# No spec: the whole tree. This is the DEFAULT on purpose — a local `make check` must run the
+# No spec: the whole tree. This is the DEFAULT on purpose — `make verify SCOPE=all` must run the
 # entire suite. Sharding is never implicit, or someone runs a fraction of the gate and reads
 # the green as the whole thing.
 spec="${1:-}"

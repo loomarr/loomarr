@@ -17,7 +17,7 @@ import (
 // TestEvalCorpus runs the whole intent corpus through the REAL suggester against
 // the REAL configured LLM + catalog, applying the deterministic hard gates and an
 // optional judge score. It is gated behind the `eval` build tag so it never runs
-// under `make check`. Run it with:
+// under comprehensive verification. Run it with:
 //
 //	make eval        # or: go test -tags=eval -v -timeout 20m ./internal/eval/
 //

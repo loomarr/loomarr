@@ -1723,7 +1723,7 @@ a replacement; until then their names and removal conditions stay in the phase r
 
 The V56 gate is: existing MPEG-TS and HLS route behavior passes through the one Playout interface;
 two Channels resolving one source/rendition reuse one publication; incomplete or stale publications
-are unreachable; a failed publish leaves the previous complete publication readable; and `make check`
+are unreachable; a failed publish leaves the previous complete publication readable; and comprehensive verification
 plus store conformance remain green. Safari Web activation and later native-TV adapters are later
 delivery gates and do not change this module shape.
 
@@ -6673,7 +6673,7 @@ trial, so provider output cannot make a scorecard unbounded. The uncapped observ
 count remains separate from that serialized prefix. Exceeding the production model-call bound fails
 the trial at `structural_budget`; truncation can never hide an overrun behind an apparently complete
 scorecard.
-Network and inference keep it outside `make check`; a stored scorecard is evidence for one named
+Network and inference keep it outside comprehensive verification; a stored scorecard is evidence for one named
 model/catalog snapshot, not a timeless claim that every provider is certified.
 
 **Discovery feedback is explicit household editorial state, never inferred viewing behavior.**
@@ -7560,11 +7560,14 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   desktop and mobile widths. Vitest pins URL cleanup and zero browser persistence; Playwright pins
   explicit-consent redemption, keyboard/focus return, the shared polite live region, forced colors,
   axe, and deterministic visual baselines.
-- **Gate composition:** `make check` remains the complete explicit local Go/Rust audit; it is not
-  the default edit-loop or pre-publication ritual. Normal local and agent work classifies the
-  changed paths once and runs the affected evidence through `make agent-verify BASE=<base>`; the
+- **Gate composition:** `make verify` is the single local verification interface. Its default is
+  affected evidence; `make verify SCOPE=all` is the complete explicit local Go/Rust audit and is not
+  the default edit-loop, task-start, or pre-publication ritual. Normal local and agent work uses
+  focused tests while editing, then classifies the changed paths once and runs the affected evidence
+  through the tool-neutral `make verify BASE=<base>`; `make agent-verify` remains a compatibility
+  alias. The
   pull-request fast lane and authoritative merge queue then provide the protected remote evidence.
-  A maintainer requests `make check` deliberately when auditing the complete repository, changing
+  A maintainer requests `make verify SCOPE=all` deliberately when auditing the complete repository, changing
   the gate machinery itself, or diagnosing a classifier boundary. CI may run its
   `check-static` contract half and its race-policy-aware `test` half as parallel jobs, and may shard
   the latter or run independent runtime certification beside both, but the required aggregate
@@ -8133,7 +8136,7 @@ under the worktree artifact directory. The current baseline deliberately perform
 per missing AVIF Rendition, matching the background job shape that later batching will replace.
 
 The benchmark is opt-in locally and manually dispatched on native amd64 and arm64 CI runners. It is
-not part of `make check` and has no wall-clock pass/fail threshold: shared-runner timing is comparative
+not part of comprehensive verification and has no wall-clock pass/fail threshold: shared-runner timing is comparative
 evidence, not a product SLO or correctness gate. Comparisons are valid only for the same corpus,
 recipe, release profile, architecture, and CPU profile. `make image-cert` remains the authority for
 protocol, output, and resource-ceiling correctness.

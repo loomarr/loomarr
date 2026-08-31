@@ -15,7 +15,7 @@ import (
 // This file holds the REAL downloaders — the ones that touch the network and the
 // yt-dlp binary. They are behind the Downloader interface so the Ingestor's
 // orchestration is unit-tested with fakes and these are exercised only in the
-// sidecar's manual smoke (they are not part of the core `make check` gate;
+// sidecar's manual smoke (they are not part of comprehensive verification;
 // AGENTS.md: unit tests never touch the network).
 
 // YtDlpDownloader shells out to the bundled yt-dlp (with ffmpeg for

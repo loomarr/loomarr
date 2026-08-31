@@ -13,7 +13,7 @@ import (
 // Adding, removing or re-pointing a package without regenerating fails here, so §2
 // cannot quietly go stale the way its filler-flow paragraph did.
 //
-// Runs under `make check`, not only under `make arch-docs-verify`: a gate that lives
+// Runs under comprehensive verification, not only under `make arch-docs-verify`: a gate that lives
 // only in a Makefile target is one CI-config edit away from never running.
 func TestArchDocs_NoDrift(t *testing.T) {
 	root := repoRoot(t)

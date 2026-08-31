@@ -22,7 +22,6 @@ From the worktree that will own the change:
 make agent-status
 make agent-worktree TOPIC=<short-name> CLAIMS=<comma-separated-shared-outputs>
 # cd to the printed worktree; it is already registered
-make agent-baseline
 ```
 
 `agent-status` is the cross-harness roster. A product's own agent-list command is supplementary; it
@@ -58,10 +57,11 @@ Use claims for scarce outputs whose conflicts are expensive:
 Add a domain-specific claim when two changes would edit the same interface or DTO. A worktree isolates
 files; the claim identifies the real seam where concurrent work would collide.
 
-During implementation and before publication, use `make agent-verify BASE=<base>` for the affected
-local evidence. The PR fast lane and merge queue provide the protected final evidence.
-Before pushing, run `make agent-verify BASE=<base>`; the classifier selects the required local
-evidence for the touched areas. Reserve `make check` for an explicitly requested complete audit.
+During implementation, run the smallest focused test that covers the edit. Before pushing, run
+`make verify BASE=<base>`; the classifier selects affected local evidence through the same fail-closed
+impact policy as CI. The PR fast lane and merge queue provide the protected final evidence. Reserve
+`make verify SCOPE=all` and `make agent-baseline` for an explicitly requested complete audit, changes to the
+gate/classifier machinery, or diagnosis of a classifier boundary—not merely because a task started.
 Renew a long-running claim with `make agent-renew`; clean abandoned expired entries with
 `make agent-prune`. When finished, run `make agent-stop`; after merge, audit and retire completed
 worktrees with `make agent-gc` and an explicitly reviewed `make agent-gc APPLY=1`.
@@ -97,9 +97,9 @@ different delivery path.
 
 ## Commands
 
-`make check` is the explicit complete-repository audit, not a routine edit-loop or publication
-ritual. Run it only when the task requests a full audit, changes the gate machinery/classifier, or
-needs to diagnose a boundary. One focused test:
+`make verify` is the single local verification interface. Its default is affected evidence;
+`SCOPE=all` is the explicit complete-repository audit. Use the comprehensive scope only when the task
+requests it, changes the gate machinery/classifier, or needs to diagnose a boundary. One focused test:
 
 ```sh
 go test -race -run TestName ./internal/<pkg>/
@@ -113,6 +113,7 @@ Useful local interfaces:
 ```sh
 make doctor                 # toolchain, worktrees, ports, caches, artifacts
 make bootstrap              # pnpm install + codegen + local directories
+make verify BASE=<base>     # affected local evidence before push
 make agent-env              # this worktree's runtime addresses
 make dev-be                 # isolated backend with Air
 make dev-fe                 # isolated Vite frontend pointed at that backend
