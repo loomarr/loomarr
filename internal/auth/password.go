@@ -152,7 +152,10 @@ func (s *PasswordService) CreateLocal(ctx context.Context, username, password st
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
-	if err := s.store.UpsertUser(ctx, u); err != nil {
+	if err := s.store.CreateUserUnlessInvited(ctx, u, now); err != nil {
+		if errors.Is(err, store.ErrInvitationIdentityConflict) {
+			return store.User{}, ErrDuplicateUsername
+		}
 		return store.User{}, err
 	}
 	return u, nil

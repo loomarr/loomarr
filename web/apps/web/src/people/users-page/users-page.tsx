@@ -64,6 +64,9 @@ const UsersPage = () => {
   });
 
   const resetPassword = usersApi.useResetUserPassword();
+  const putContactAddress = usersApi.usePutUserContactAddress();
+  const deleteContactAddress = usersApi.useDeleteUserContactAddress();
+  const deleteContactReplacement = usersApi.useDeleteUserContactReplacement();
 
   const edit = (id: string, body: Record<string, unknown>) => {
     setBusyUser(id);
@@ -161,6 +164,18 @@ const UsersPage = () => {
                       }
                     : undefined
                 }
+                onSetContactAddress={async (email) => {
+                  await putContactAddress.mutateAsync({ id: selected.id, data: { email } });
+                  await invalidate();
+                }}
+                onRemoveContactAddress={async () => {
+                  await deleteContactAddress.mutateAsync({ id: selected.id });
+                  await invalidate();
+                }}
+                onCancelContactReplacement={async () => {
+                  await deleteContactReplacement.mutateAsync({ id: selected.id });
+                  await invalidate();
+                }}
               />
             </SheetContent>
           )}

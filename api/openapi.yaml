@@ -1393,6 +1393,31 @@ components:
         tone:
           type: boolean
       type: object
+    ContactAddressBody:
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+        provenance:
+          enum:
+            - admin
+            - invitation
+            - self
+          type: string
+        status:
+          enum:
+            - pending
+            - verified
+          type: string
+        verifiedAt:
+          description: Unix ms; absent until possession is verified
+          format: int64
+          type: integer
+      required:
+        - email
+        - status
+        - provenance
+      type: object
     CoverageCriterionDTO:
       additionalProperties: false
       properties:
@@ -1516,6 +1541,39 @@ components:
         - name
         - number
         - strategy
+      type: object
+    CreateInvitationInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/CreateInvitationInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        contactEmail:
+          maxLength: 320
+          type: string
+        kind:
+          enum:
+            - local
+            - library
+          type: string
+        libraryUserId:
+          maxLength: 200
+          type: string
+        role:
+          description: Defaults to member.
+          enum:
+            - member
+            - admin
+          type: string
+        username:
+          maxLength: 200
+          type: string
+      required:
+        - kind
       type: object
     CreateLocalUserInputBody:
       additionalProperties: false
@@ -4070,6 +4128,104 @@ components:
       required:
         - description
       type: object
+    InvitationBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/InvitationBody.json
+          format: uri
+          readOnly: true
+          type: string
+        contactAddress:
+          $ref: "#/components/schemas/ContactAddressBody"
+        createdAt:
+          description: Unix ms
+          format: int64
+          type: integer
+        displayName:
+          type: string
+        expiresAt:
+          description: Unix ms
+          format: int64
+          type: integer
+        id:
+          type: string
+        kind:
+          enum:
+            - local
+            - library
+          type: string
+        libraryUserId:
+          type: string
+        redeemedBy:
+          type: string
+        role:
+          enum:
+            - member
+            - admin
+          type: string
+        status:
+          enum:
+            - pending
+            - redeemed
+            - expired
+            - revoked
+          type: string
+        terminalAt:
+          description: Unix ms
+          format: int64
+          type: integer
+        username:
+          type: string
+      required:
+        - id
+        - kind
+        - role
+        - status
+        - createdAt
+        - expiresAt
+      type: object
+    IssueInvitationGrantInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/IssueInvitationGrantInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        conveyance:
+          enum:
+            - copy
+            - qr
+          type: string
+      required:
+        - conveyance
+      type: object
+    IssueInvitationGrantOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/IssueInvitationGrantOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        expiresAt:
+          description: Unix ms
+          format: int64
+          type: integer
+        url:
+          description: One-time bearer link. It is returned only by this mutation and is never persisted.
+          type: string
+      required:
+        - url
+        - expiresAt
+      type: object
     JobEvent:
       additionalProperties: false
       properties:
@@ -4493,6 +4649,23 @@ components:
         - pulls
         - total
       type: object
+    ListInvitationsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ListInvitationsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        invitations:
+          items:
+            $ref: "#/components/schemas/InvitationBody"
+          type: array
+      required:
+        - invitations
+      type: object
     ListOutputBody:
       additionalProperties: false
       properties:
@@ -4670,6 +4843,52 @@ components:
         - autoApprove
         - local
         - offlineLogin
+      type: object
+    NotificationsEmailTestInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/NotificationsEmailTestInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        to:
+          description: One destination mailbox for this test message.
+          maxLength: 320
+          minLength: 3
+          type: string
+      required:
+        - to
+      type: object
+    NotificationsEmailTestOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/NotificationsEmailTestOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        hint:
+          type: string
+        ok:
+          type: boolean
+        outcome:
+          enum:
+            - delivery_disabled
+            - destination_unavailable
+            - recipient_rejected
+            - configuration_invalid
+            - means_unavailable
+            - transport_unavailable
+            - acceptance_ambiguous
+            - cancelled
+          type: string
+      required:
+        - ok
       type: object
     NowNextEntry:
       additionalProperties: false
@@ -5850,6 +6069,24 @@ components:
         - why
         - estimateClips
         - dropped
+      type: object
+    PutUserContactAddressInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/PutUserContactAddressInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        email:
+          description: One mailbox; never a login identifier.
+          maxLength: 320
+          minLength: 3
+          type: string
+      required:
+        - email
       type: object
     Range:
       additionalProperties: false
@@ -7834,6 +8071,10 @@ components:
           type: string
         autoApprove:
           type: boolean
+        contactAddress:
+          $ref: "#/components/schemas/ContactAddressBody"
+        contactReplacement:
+          $ref: "#/components/schemas/ContactAddressBody"
         disabled:
           type: boolean
         effectiveQuota:
@@ -11225,6 +11466,125 @@ paths:
       summary: Serve one image rendition
       tags:
         - Images
+  /v1/invitations:
+    get:
+      operationId: list-invitations
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListInvitationsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List person invitations (admin)
+      tags:
+        - invitations
+    post:
+      operationId: create-invitation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInvitationInputBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Invite a person (admin)
+      tags:
+        - invitations
+  /v1/invitations/{id}:
+    delete:
+      operationId: revoke-invitation
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Revoke a person invitation (admin)
+      tags:
+        - invitations
+    get:
+      operationId: get-invitation
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Inspect a person invitation (admin)
+      tags:
+        - invitations
+  /v1/invitations/{id}/grant:
+    post:
+      operationId: issue-invitation-grant
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueInvitationGrantInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueInvitationGrantOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Regenerate a copied or QR invitation link (admin)
+      tags:
+        - invitations
   /v1/jobs:
     get:
       description: Admin only. The scheduler's named jobs with their effective interval, last/next run, result, and running state (§18.1). All timing is server-authored.
@@ -11368,6 +11728,32 @@ paths:
       summary: Prometheus metrics
       tags:
         - ops
+  /v1/notifications/email/test:
+    post:
+      description: Admin only. Sends one message through the currently applied SMTP configuration and returns only a closed, provider-safe outcome.
+      operationId: notifications-email-test
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationsEmailTestInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationsEmailTestOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Send a test email
+      tags:
+        - notifications
   /v1/playout/guide.xml:
     get:
       operationId: playout-guide
@@ -13032,6 +13418,74 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Update a user's role/quota/disabled (admin)
+      tags:
+        - users
+  /v1/users/{id}/contact-address:
+    delete:
+      operationId: delete-user-contact-address
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Remove a user's contact email (admin)
+      tags:
+        - users
+    put:
+      operationId: put-user-contact-address
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutUserContactAddressInputBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Add or replace a user's contact email (admin)
+      tags:
+        - users
+  /v1/users/{id}/contact-address/replacement:
+    delete:
+      operationId: delete-user-contact-replacement
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Cancel a pending contact-email replacement (admin)
       tags:
         - users
   /v1/users/{id}/password:

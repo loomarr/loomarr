@@ -64,6 +64,7 @@ const (
 	GroupPlayout       Group = "playout"
 	GroupFiller        Group = "filler"
 	GroupBackup        Group = "backup"
+	GroupNotifications Group = "notifications"
 	GroupUsersSecurity Group = "users_security"
 	// GroupSSO is its own group rather than more keys in users_security (§11, V8): the
 	// Security page renders one block per group, and provider settings sitting unlabelled

@@ -3,6 +3,8 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/auth"
+	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -247,6 +250,28 @@ func TestImport_BulkMapsSourceRoles(t *testing.T) {
 	}
 	if _, exists := roles["unknown"]; exists {
 		t.Error("unknown media-server id was invented locally")
+	}
+}
+
+func TestImport_RejectsAccountReservedByInvitation(t *testing.T) {
+	const accountID = "media-invited"
+	srv, st := provServerWithUsers(t, []testkit.MediaServerUser{{ID: accountID, Name: "Invited"}})
+	now := time.Unix(1_900_000_000, 0).UTC()
+	if err := st.CreateInvitation(context.Background(), invitation.Invitation{
+		ID: "pending-import", Kind: invitation.KindLibrary, LibraryUserID: accountID,
+		DisplayName: "Invited", IdentityKey: accountID, Role: invitation.RoleMember,
+		Status: invitation.StatusPending, CreatedAt: now, ExpiresAt: now.Add(invitation.Expiry),
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	resp := do(t, srv, http.MethodPost, "/v1/users/import", adminToken,
+		`{"ids":["`+accountID+`"]}`)
+	if resp.StatusCode != http.StatusConflict {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("import reserved account = %d %s, want 409", resp.StatusCode, body)
+	}
+	if _, err := st.GetUser(context.Background(), accountID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("reserved import created user: %v", err)
 	}
 }
 

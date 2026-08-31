@@ -32,3 +32,15 @@ func TestVerifyCIContainerDownloadsBindsCacheCleanupWorkflowIdentityAndTrigger(t
 		})
 	}
 }
+
+func TestRepositoryCacheCleanupCoversPullRequestAndMergeQueueRefs(t *testing.T) {
+	source := readRepositoryWorkflow(t, "cache-cleanup.yml")
+	for _, want := range []string{
+		"refs/pull/${{ github.event.pull_request.number }}/merge",
+		"refs/heads/gh-readonly-queue/main/pr-${{ github.event.pull_request.number }}-",
+	} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("cache cleanup does not cover %s", want)
+		}
+	}
+}

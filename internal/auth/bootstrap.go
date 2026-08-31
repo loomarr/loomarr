@@ -74,7 +74,7 @@ func (p *Provisioner) Bootstrap(ctx context.Context, username, password string) 
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
-	if err := p.store.UpsertUser(ctx, u); err != nil {
+	if err := p.store.CreateUserUnlessInvited(ctx, u, now); err != nil {
 		return store.User{}, err
 	}
 	return u, nil
@@ -164,7 +164,8 @@ func (p *Provisioner) Import(ctx context.Context, ids []string) (int, error) {
 			ID: su.ID, Name: su.Name, Role: role, Disabled: su.Disabled, MediaServerLinked: true,
 			CreatedAt: now, UpdatedAt: now,
 		}
-		if existing, gerr := p.store.GetUser(ctx, su.ID); gerr == nil {
+		existing, gerr := p.store.GetUser(ctx, su.ID)
+		if gerr == nil {
 			if !existing.MediaServerLinked {
 				continue // an id collision must not convert a local/SSO row into a provider account
 			}
@@ -172,9 +173,17 @@ func (p *Provisioner) Import(ctx context.Context, ids []string) (int, error) {
 			u.Quota = existing.Quota
 			u.AutoApprove = existing.AutoApprove
 			u.CreatedAt = existing.CreatedAt
+		} else if !errors.Is(gerr, store.ErrNotFound) {
+			return imported, gerr
 		}
-		if err := p.store.UpsertUser(ctx, u); err != nil {
-			return imported, err
+		var writeErr error
+		if gerr == nil {
+			writeErr = p.store.UpsertUser(ctx, u)
+		} else {
+			writeErr = p.store.CreateUserUnlessInvited(ctx, u, now)
+		}
+		if writeErr != nil {
+			return imported, writeErr
 		}
 		imported++
 	}

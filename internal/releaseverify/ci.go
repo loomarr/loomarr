@@ -293,11 +293,14 @@ func ciFamilyWorkflowAuthorities() map[string]string {
 		"clients":             ".github/workflows/ci-clients.yml",
 		"apple-mobile":        ".github/workflows/ci-apple-mobile.yml",
 		"apple-tv":            ".github/workflows/ci-apple-tv.yml",
-		"playwright":          ".github/workflows/ci-playwright.yml",
-		"tuner":               ".github/workflows/ci-tuner.yml",
-		"image":               ".github/workflows/ci-image.yml",
-		"docs":                ".github/workflows/ci-docs.yml",
-		"android":             ".github/workflows/ci-android.yml",
+
+		"apple-cache-validation": ".github/workflows/ci-apple-cache-validation.yml",
+
+		"playwright": ".github/workflows/ci-playwright.yml",
+		"tuner":      ".github/workflows/ci-tuner.yml",
+		"image":      ".github/workflows/ci-image.yml",
+		"docs":       ".github/workflows/ci-docs.yml",
+		"android":    ".github/workflows/ci-android.yml",
 	}
 }
 
@@ -381,8 +384,16 @@ func resolveCIJobImplementation(ciPath string, caller *yaml.Node) (*yaml.Node, e
 		return nil, errors.New("reusable workflow must expose workflow_call")
 	}
 	jobs, err := requiredMap(root, "jobs")
-	if err != nil || len(jobs.Content) != 2 {
-		return nil, errors.New("reusable workflow must contain exactly one implementation job")
+	appleCacheValidation := strings.TrimPrefix(uses, prefix) == "ci-apple-cache-validation.yml"
+	wantJobNodes := 2
+	if appleCacheValidation {
+		// This manual portability proof deliberately crosses a runner boundary: one job
+		// produces the CAS artifact and a dependent job consumes it. Every normal CI family
+		// remains constrained to one implementation job.
+		wantJobNodes = 4
+	}
+	if err != nil || len(jobs.Content) != wantJobNodes {
+		return nil, fmt.Errorf("reusable workflow %s must contain %d implementation job(s), found %d", uses, wantJobNodes/2, len(jobs.Content)/2)
 	}
 	if jobs.Content[1].Kind != yaml.MappingNode {
 		return nil, errors.New("reusable workflow implementation must be a job mapping")
@@ -481,8 +492,8 @@ func VerifyCIManualScopes(path string) error {
 		return errors.New("CI scope input must be a choice defaulting to release-candidate")
 	}
 	options, err := requiredSequence(scope, "options")
-	if err != nil || len(options.Content) != 2 || options.Content[0].Value != "release-candidate" || options.Content[1].Value != "full" {
-		return errors.New("CI scope choices must be release-candidate then full")
+	if err != nil || len(options.Content) != 3 || options.Content[0].Value != "release-candidate" || options.Content[1].Value != "full" || options.Content[2].Value != "apple-cache-validation" {
+		return errors.New("CI scope choices must be release-candidate, full, then apple-cache-validation")
 	}
 
 	jobs, err := requiredMap(root, "jobs")

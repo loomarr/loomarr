@@ -14,6 +14,9 @@ interface PersonDetailProps {
   onToggleAutoApprove?: (autoApprove: boolean) => void;
   onRevokeSession?: (id: string) => void;
   onResetPassword?: (next: string) => Promise<void>;
+  onSetContactAddress?: (email: string) => Promise<void>;
+  onRemoveContactAddress?: () => Promise<void>;
+  onCancelContactReplacement?: () => Promise<void>;
 }
 
 export type { PersonDetailProps };

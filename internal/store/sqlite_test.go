@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
@@ -43,6 +44,38 @@ func newSQLiteStore(t *testing.T) Store {
 // identical call for Postgres.
 func TestSQLiteConformance(t *testing.T) {
 	RunConformance(t, newSQLiteStore)
+}
+
+func TestNotificationWorkSurvivesStoreRestart(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "notification-restart.db")
+	dsn := "sqlite://" + path
+	now := time.Unix(1_900_000_000, 0)
+	st, err := Open(ctx, dsn, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent, attempts := notificationFixture("restart", now, notifications.StatusQueued)
+	if _, _, err := st.CreateNotificationIntent(ctx, intent, attempts); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := Open(ctx, dsn, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = reopened.Close() }()
+	got, err := reopened.GetNotificationIntent(ctx, intent.ID)
+	if err != nil || got.IdempotencyKey != intent.IdempotencyKey {
+		t.Fatalf("intent after restart = %+v, %v", got, err)
+	}
+	gotAttempts, err := reopened.ListNotificationAttempts(ctx, intent.ID)
+	if err != nil || len(gotAttempts) != 1 || gotAttempts[0].Status != notifications.StatusQueued {
+		t.Fatalf("attempt after restart = %+v, %v", gotAttempts, err)
+	}
 }
 
 func TestLegacySeriesEpisodeEvidenceIsSanitizedBeforeScheduling(t *testing.T) {

@@ -2,10 +2,52 @@ package settings
 
 import (
 	"fmt"
+	"net/mail"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
 )
+
+func recipientHTTPOrigin(value any) error {
+	raw, ok := value.(string)
+	if !ok {
+		return fmt.Errorf("want an HTTP or HTTPS origin")
+	}
+	if raw == "" {
+		return nil
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
+		parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return fmt.Errorf("want an HTTP or HTTPS origin without credentials, path, query, or fragment")
+	}
+	return nil
+}
+
+func smtpPort(value any) error {
+	port, ok := value.(int)
+	if !ok || port < 1 || port > 65535 {
+		return fmt.Errorf("want a port from 1 through 65535")
+	}
+	return nil
+}
+
+func mailboxAddress(value any) error {
+	raw, ok := value.(string)
+	if !ok {
+		return fmt.Errorf("want one mailbox address")
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	parsed, err := mail.ParseAddress(raw)
+	if err != nil || parsed.Name != "" || parsed.Address != raw {
+		return fmt.Errorf("want one address such as loomarr@example.com, without a display name")
+	}
+	return nil
+}
 
 // declared is the canonical registry content: every app-managed setting, in the
 // order it appears in design.md §15. This list IS the contract — design.md §15
@@ -251,6 +293,57 @@ func declared() []Setting {
 			Key: "server.public_url", Label: "Loomarr address", EnvVar: "SERVER_PUBLIC_URL", Group: GroupPlayout,
 			Kind: KindURL, Default: "",
 			Doc: "Loomarr's own address as your media server and Tunarr can reach it, e.g. http://loomarr:8080. Internal playout serves every stream segment from this base, so a wrong value means channels appear in the guide and never play. Also used for uploaded channel icons.",
+		},
+
+		{
+			Key: "access.public_url", Label: "Recipient-facing Loomarr address", EnvVar: "ACCESS_PUBLIC_URL", Group: GroupNotifications,
+			Kind: KindURL, Default: "", Validate: recipientHTTPOrigin,
+			Doc: "The absolute browser address invitation and recovery recipients can reach, e.g. https://loomarr.example.com. Copy and QR links require this address; it is never inferred from request headers.",
+		},
+		{
+			Key: "notifications.email.enabled", Label: "Send email notifications", EnvVar: "NOTIFICATIONS_EMAIL_ENABLED", Group: GroupNotifications,
+			Kind: KindBool, Default: false,
+			Doc: "Deliver account invitations and recovery messages by email. An incomplete setup suppresses email without affecting copied links, QR codes, or direct account creation.",
+		},
+		{
+			Key: "notifications.smtp.host", Label: "SMTP host", EnvVar: "NOTIFICATIONS_SMTP_HOST", Group: GroupNotifications,
+			Kind: KindString, Default: "",
+			Doc: "Hostname of the SMTP submission server. Required when email delivery is enabled.",
+		},
+		{
+			Key: "notifications.smtp.port", Label: "SMTP port", EnvVar: "NOTIFICATIONS_SMTP_PORT", Group: GroupNotifications,
+			Kind: KindInt, Default: 587, Validate: smtpPort,
+			Doc: "Port of the SMTP submission server, from 1 through 65535.",
+		},
+		{
+			Key: "notifications.smtp.security", Label: "SMTP security", EnvVar: "NOTIFICATIONS_SMTP_SECURITY", Group: GroupNotifications,
+			Kind: KindEnum, Enum: []EnumOption{
+				opt("starttls", "STARTTLS (required)"),
+				opt("tls", "TLS"),
+				opt("none", "None (insecure local relay)"),
+			},
+			Default: "starttls",
+			Doc:     "STARTTLS requires encryption and never downgrades; TLS connects encrypted immediately. None is only for an explicitly trusted local relay. Certificate verification is always enabled.",
+		},
+		{
+			Key: "notifications.smtp.username", Label: "SMTP username", EnvVar: "NOTIFICATIONS_SMTP_USERNAME", Group: GroupNotifications,
+			Kind: KindString, Default: "",
+			Doc: "Username for SMTP authentication. Leave empty only for an unauthenticated relay.",
+		},
+		{
+			Key: "notifications.smtp.password", Label: "SMTP password", EnvVar: "NOTIFICATIONS_SMTP_PASSWORD", Group: GroupNotifications,
+			Kind: KindSecret, Default: "",
+			Doc: "Password for SMTP authentication. It is write-only, masked on read, and must remain empty for an unauthenticated relay.",
+		},
+		{
+			Key: "notifications.email.from_address", Label: "Sender address", EnvVar: "NOTIFICATIONS_EMAIL_FROM_ADDRESS", Group: GroupNotifications,
+			Kind: KindString, Default: "", Validate: mailboxAddress,
+			Doc: "Mailbox Loomarr sends from, such as loomarr@example.com. Required when email delivery is enabled.",
+		},
+		{
+			Key: "notifications.email.from_name", Label: "Sender name", EnvVar: "NOTIFICATIONS_EMAIL_FROM_NAME", Group: GroupNotifications,
+			Kind: KindString, Default: "Loomarr",
+			Doc: "Display name shown beside the sender address.",
 		},
 
 		// --- Playout (§9.1, §15 — added by V4) ---

@@ -115,13 +115,14 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `filler` | 6 | `diagnostics`, `filleradmission`, `llm`, `metrics` |
 | `filleradmission` | 7 | — |
 | `httpx` | 7 | `metrics` |
+| `invitation` | 5 | — |
 | `library` | 7 | `filler`, `httpx` |
 | `llm` | 5 | `httpx`, `metrics` |
 | `metrics` | 6 | `provision` |
 | `provision` | 16 | — |
 | `schedule` | 14 | `provision` |
 | `scheduler` | 6 | `store` |
-| `store` | 14 | `diagnostics`, `filler`, `filleradmission`, `provision`, `schedule` |
+| `store` | 14 | `diagnostics`, `filler`, `filleradmission`, `invitation`, `provision`, `schedule` |
 | `suggest` | 6 | `catalog`, `llm`, `provision`, `schedule`, `store` |
 
 ##### Every package, by layer
@@ -132,6 +133,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Carries the version stamped into the binary at build time.
 - **`config`** · 1 importer
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
+- **`contact`** · 3 importers
+  Owns person contact-address identity and normalization (§11).
 - **`diagnostics`** · 8 importers
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`episodeevidence`** · 3 importers
@@ -146,6 +149,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the hermetic certification contract for filler admission.
 - **`media`** · 3 importers
   Owns host-wide resources shared by live and background media work.
+- **`notifications`** · 4 importers
+  Owns channel-neutral notification intents and delivery work (§11).
 - **`proctree`** · 2 importers
   Supervises one child process and every descendant it starts.
 - **`provision`** · 16 importers
@@ -167,6 +172,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the durable lifecycle and operator projections for filler-admission results.
 - **`holidayvocab`** · 2 importers · → `textmatch`
   Owns Loomarr's immutable built-in holiday identities and aliases.
+- **`invitation`** · 5 importers · → `contact`
+  Owns administrator admission decisions and their bearer grants (§11).
 - **`prepared`** · 3 importers · → `diagnostics`, `media`
   Owns immutable, reusable playout publications.
 - **`scheduler`** · 6 importers · → `store`
@@ -176,8 +183,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`images`** · 4 importers · → `scheduler`
   One pipeline every image in Loomarr travels (§22).
-- **`retention`** · 1 importer · → `diagnostics`, `scheduler`
-  Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity rows.
+- **`retention`** · 1 importer · → `diagnostics`, `invitation`, `notifications`, `scheduler`
+  Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
 - **`schedule`** · 14 importers · → `holidayvocab`, `provision`, `textmatch`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 
@@ -219,7 +226,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`library`** · 7 importers · → `episodeevidence`, `filler`, `httpx`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`store`** · 14 importers · → `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `provision`, `schedule`, `taxonomy`
+- **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `invitation`, `notifications`, `provision`, `schedule`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 **Layer 8**
@@ -238,7 +245,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`setup`** · 1 importer · → `library`
   Owns the operator connection flows (§7, §13): the Live TV wiring and setup-status checklist.
-- **`testkit`** · → `fillerbakeoff`, `images`, `llm`, `playout`, `programmer`, `provision`, `schedule`, `store`
+- **`testkit`** · → `fillerbakeoff`, `images`, `invitation`, `llm`, `notifications`, `playout`, `programmer`, `provision`, `schedule`, `store`
   The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 
 **Layer 9**
@@ -265,12 +272,12 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 11**
 
-- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `images`, `media`, `metrics`, `playout`, `prepared`, `proposalworkflow`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `images`, `invitation`, `media`, `metrics`, `playout`, `prepared`, `proposalworkflow`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 **Layer 12**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `images`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -594,6 +601,8 @@ and adjacency candidates (`programming-design.md` §8.2/§8.3) exist to supply.
 State accumulates; the daily **housekeeping** task enforces retention so a year-old install isn't dragging a landfill:
 - **Sessions:** sliding TTL, `SESSION_TTL` default 30d; expired rows purged. (Without this, sessions live forever — both a growth and a security problem.)
 - **Activity:** feed rows purged after `activity.retention` (default 30d) by the `housekeeping` job (§18.1, V32).
+- **Notifications:** terminal intents and their delivery attempts are purged after the fixed 30-day
+  product window (§11); queued and sending work is never purged as stale data.
 - **Diagnostics:** Diagnostic events and completed Process runs are purged after
   `diagnostics.retention` (default 7d). A second `diagnostics.max_storage_mb` budget (default 512
   MiB) bounds normalized database payload plus process-output files even inside that window. The
@@ -6731,7 +6740,7 @@ independently instead of treating every zero-lineup result as a model-quality my
 
 ### 14.2 The package map
 
-`internal/` is **50 flat packages, deliberately** — the grouping below is prose, not directories.
+`internal/` is **52 flat packages, deliberately** — the grouping below is prose, not directories.
 
 Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
 
@@ -6786,6 +6795,8 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `activity` | Records what Loomarr did, for the Dashboard feed (§5, §12) — written at each domain transition, never off the lossy event bus |
 | `diagnostics` | Records bounded, redacted technical evidence for operator and support investigation (§5, §17) |
 | `auth` | Sessions and their validation (§11) |
+| `contact` | Contact-address identity, normalization, verification state, and provenance; never login identity (§11) |
+| `notifications` | Typed notification intents, routing policy, durable attempts, bounded retry, and Delivery-means adapters (§11) |
 | `events` | The in-memory bus behind SSE (§7) |
 | `media` | Host-wide admission for hardware media work, shared by foreground playout and background preparation (§9.1 V56) |
 | `proctree` | Owns complete child-process trees through Unix process groups on the supported server runtime (§9.1) |
@@ -7506,7 +7517,7 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
 - **Seerr queue poller (§6, seerr provider only).** When the provider is Seerr, a **`seerr-queue-poll`** job (default every 1m) shares the same poller but a different source: Seerr exposes no download *queue*, so it cannot report a byte percentage. Instead one `GET /api/v1/media?filter=processing` returns Seerr's coarse per-title lifecycle enum, correlated to in-flight titles by TMDB id. `PROCESSING`/`PARTIALLY_AVAILABLE` are **`Grabbed`** → `downloading` and persist a **coarse `download_status` label** ("Downloading" / "Partly available") with `progress` left **0** (indeterminate — never a fabricated percentage); `PENDING` and `AVAILABLE` are not grabbed (`AVAILABLE` is the library scan's flip). Observed caveat: Jellyseerr's `downloadStatus` array *can* carry the arr's size/sizeleft, but it is empty on the deployments seen, so this path deliberately reads only the enum. The UI shows the label as the acquiring entry's chip text (no progress bar, since there's no percentage). Both pollers register mutually exclusively (a provider is arr XOR seerr).
 - **Channel maintenance (§5, §9).** A **`channel-maintenance`** job (default every ten minutes) first re-enumerates channel-referenced shows whose cached episode lists have aged past `episodes.max_age`, then rebuilds upcoming schedules and converges each channel's effective playout backend. The stages keep separate failure detail internally but share the operator outcome and cadence: keep live channels current. The episode set is bounded to channel lineups; it is not coupled to acquisition-only library scans.
 - **Backup (§16, SQLite only).** A **`backup`** job (default `0 30 3 * * *`) writes one `VACUUM INTO` snapshot into `backup.dir` and then prunes that directory to the newest `backup.retain` files, matching only the `loomarr-<timestamp>.db` names it writes. Prune runs **after** a successful write, so a failed snapshot never costs the operator a backup they already had. On Postgres it registers as a **disabled job** (below): `WriteBackup` is SQLite-only, so it cannot run there — but an operator whose backup strategy is `pg_dump` should read that as a stated fact, not infer it from an absent row.
-- **Housekeeping (§5, §12, V32).** A **`housekeeping`** job (default daily) removes expired sessions, feed rows older than `activity.retention`, finished jobs past `JOBS_RETENTION`, and denied proposals past `PROPOSALS_RETENTION`. **Proposals precede jobs**, so the purge never creates an orphaned `proposals.job_id`. All stages are attempted even if one fails; in-flight work and the approval audit trail remain exempt.
+- **Housekeeping (§5, §12, V32).** A **`housekeeping`** job (default daily) removes expired sessions, feed rows older than `activity.retention`, terminal notification intents and attempts past their fixed 30-day window, finished jobs past `JOBS_RETENTION`, and denied proposals past `PROPOSALS_RETENTION`. **Proposals precede jobs**, so the purge never creates an orphaned `proposals.job_id`. All stages are attempted even if one fails; queued/sending notification work, other in-flight work, and the approval audit trail remain exempt.
 - **Disabled jobs.** A job may register with a `DisabledReason`. It appears on the Tasks page with that reason and is **never scheduled, never claimed, and refuses "Run now"** (`409`), so "cannot run here" is a property of the job rather than a UI convention a client could ignore.
   - **The alternative was silence, and silence is a claim too.** A conditionally-registered job simply vanishes, which is indistinguishable — from the Tasks page alone — from a job that runs fine and has never failed. For backup specifically, the failure mode of that ambiguity is an operator believing they are covered when they are not.
   - **Disabled is not "off".** It is not operator-settable and carries no enable control: it means *this build/backend cannot run this job*, which no amount of clicking changes. A per-job on/off switch would be a different feature.

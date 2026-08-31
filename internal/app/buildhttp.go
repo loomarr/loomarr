@@ -28,6 +28,7 @@ type httpBuild struct {
 	bootConfig        *config.Config
 	guide             api.GuideReader
 	settings          api.SettingsService
+	emailTest         api.EmailTestService
 	liveConfig        func(string) string
 	libraryConfigured func() bool
 	jobs              api.JobService
@@ -59,7 +60,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 	backup, authorizer := deps.auth.backup, deps.auth.authorizer
 	loginSvc, ssoSvc := deps.auth.login, deps.auth.sso
 	sessMgr, userSync := deps.auth.sessions, deps.auth.userSync
-	provisionSvc, passwordSvc := deps.auth.provision, deps.auth.password
+	provisionSvc, passwordSvc, invitationSvc := deps.auth.provision, deps.auth.password, deps.auth.invitations
 	deviceMgr, deviceLimiter := deps.auth.deviceManager, deps.auth.deviceLimiter
 	playoutSecret, playoutSecretCurrent := deps.auth.playoutSecret, deps.auth.playoutSecretCurrent
 	backupsSvc, restartSvc, bootCfg := deps.backups, deps.restart, deps.bootConfig
@@ -67,14 +68,21 @@ func buildHTTP(deps httpBuild) http.Handler {
 	liveConfig, libraryConfigured := deps.liveConfig, deps.libraryConfigured
 	jobsSvc, databaseSvc, residentLLM := deps.jobs, deps.database, deps.residentLLM
 	return api.Router(log, api.Options{
-		Store:               st,
-		Auth:                authorizer,
-		Log:                 log,
-		BackupSQLite:        backup,
-		Ready:               ready,
-		Login:               loginSvc,
-		Sessions:            sessMgr,
-		Passwords:           passwordSvc,
+		Store:        st,
+		Auth:         authorizer,
+		Log:          log,
+		BackupSQLite: backup,
+		Ready:        ready,
+		Login:        loginSvc,
+		Sessions:     sessMgr,
+		Passwords:    passwordSvc,
+		Invitations:  invitationSvc,
+		AccessPublicURL: func() string {
+			if liveConfig == nil {
+				return ""
+			}
+			return liveConfig("access.public_url")
+		},
 		UserSync:            userSync,
 		Devices:             deviceMgr,
 		DeviceLimiter:       deviceLimiter,
@@ -116,6 +124,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		RestartDrift: restartDrift(bootCfg, appliedRestartSettings, canonicalRestartCurrent(desiredSet)),
 		Jobs:         jobsSvc,
 		Settings:     settingsSvc,
+		EmailTest:    deps.emailTest,
 		BackendTransition: currentBackendTransition{
 			controller: backendController, refresh: refreshBackendSettings, desired: desiredBackend,
 		},

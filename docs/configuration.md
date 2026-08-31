@@ -54,6 +54,20 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `guide.timezone` (`GUIDE_TIMEZONE`) | string | — | Which timezone the TV guide's times are shown in, as an IANA name like America/New_York. Leave empty to use each viewer's own device timezone. |
 | `guide.retention_hours` (`GUIDE_RETENTION_HOURS`) | int | `24` | How far back the TV guide lets you scroll, in hours. Past listings are recomputed from each channel's current lineup, so going too far back would show a schedule that never actually aired. |
 
+## Notifications
+
+| Setting (env) | Kind | Default | Notes |
+| --- | --- | --- | --- |
+| `access.public_url` (`ACCESS_PUBLIC_URL`) | url | — | The absolute browser address invitation and recovery recipients can reach, e.g. https://loomarr.example.com. Copy and QR links require this address; it is never inferred from request headers. |
+| `notifications.email.enabled` (`NOTIFICATIONS_EMAIL_ENABLED`) | bool | `false` | Deliver account invitations and recovery messages by email. An incomplete setup suppresses email without affecting copied links, QR codes, or direct account creation. |
+| `notifications.smtp.host` (`NOTIFICATIONS_SMTP_HOST`) | string | — | Hostname of the SMTP submission server. Required when email delivery is enabled. |
+| `notifications.smtp.port` (`NOTIFICATIONS_SMTP_PORT`) | int | `587` | Port of the SMTP submission server, from 1 through 65535. |
+| `notifications.smtp.security` (`NOTIFICATIONS_SMTP_SECURITY`) | enum | `starttls` | STARTTLS requires encryption and never downgrades; TLS connects encrypted immediately. None is only for an explicitly trusted local relay. Certificate verification is always enabled. _(one of: starttls \| tls \| none)_ |
+| `notifications.smtp.username` (`NOTIFICATIONS_SMTP_USERNAME`) | string | — | Username for SMTP authentication. Leave empty only for an unauthenticated relay. |
+| `notifications.smtp.password` (`NOTIFICATIONS_SMTP_PASSWORD`) | secret | (secret) | Password for SMTP authentication. It is write-only, masked on read, and must remain empty for an unauthenticated relay. |
+| `notifications.email.from_address` (`NOTIFICATIONS_EMAIL_FROM_ADDRESS`) | string | — | Mailbox Loomarr sends from, such as loomarr@example.com. Required when email delivery is enabled. |
+| `notifications.email.from_name` (`NOTIFICATIONS_EMAIL_FROM_NAME`) | string | `Loomarr` | Display name shown beside the sender address. |
+
 ## Backup
 
 | Setting (env) | Kind | Default | Notes |

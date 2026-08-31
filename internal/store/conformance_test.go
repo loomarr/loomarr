@@ -86,6 +86,33 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("LookupByNonID", func(t *testing.T) { testLookupByNonID(t, newStore) })
 	})
 
+	t.Run("Notifications", func(t *testing.T) {
+		t.Run("LifecycleAndIdempotency", func(t *testing.T) { testNotificationLifecycle(t, newStore) })
+		t.Run("ExpiredLeaseIsAmbiguous", func(t *testing.T) { testNotificationExpiredLease(t, newStore) })
+		t.Run("ConcurrentClaim", func(t *testing.T) { testNotificationConcurrentClaim(t, newStore) })
+		t.Run("Retention", func(t *testing.T) { testNotificationRetention(t, newStore) })
+	})
+
+	t.Run("Invitations", func(t *testing.T) {
+		t.Run("ReserveAndListIdentity", func(t *testing.T) { testInvitationReserveAndList(t, newStore) })
+		t.Run("ReservationBlocksDirectCreation", func(t *testing.T) {
+			testInvitationReservationBlocksDirectCreation(t, newStore)
+		})
+		t.Run("ContactIsAtomicAndGloballyUnique", func(t *testing.T) {
+			testInvitationContactIsAtomicAndGloballyUnique(t, newStore)
+		})
+		t.Run("RegenerateAndRevokeGrants", func(t *testing.T) {
+			testInvitationRegenerateAndRevoke(t, newStore)
+		})
+		t.Run("ConcurrentRedemption", func(t *testing.T) {
+			testInvitationConcurrentRedemption(t, newStore)
+		})
+		t.Run("SiblingGrantLifecycle", func(t *testing.T) {
+			testInvitationSiblingGrantLifecycle(t, newStore)
+		})
+		t.Run("Retention", func(t *testing.T) { testInvitationRetention(t, newStore) })
+	})
+
 	t.Run("Filler", func(t *testing.T) {
 		t.Run("ClipRoundTripAndFilters", func(t *testing.T) { testClipFilters(t, newStore) })
 		t.Run("ClipTagsAndPrune", func(t *testing.T) { testClipTagsAndPrune(t, newStore) })
@@ -133,6 +160,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("SettingsKV", func(t *testing.T) { testSettings(t, newStore) })
 		t.Run("SessionLifecycle", func(t *testing.T) { testSessionLifecycle(t, newStore) })
 		t.Run("UserCredentialCapabilities", func(t *testing.T) { testUserCredentialCapabilities(t, newStore) })
+		t.Run("UserContactAddresses", func(t *testing.T) { testUserContactAddresses(t, newStore) })
 		t.Run("ObservabilityCounts", func(t *testing.T) { testCounts(t, newStore) })
 		t.Run("ActivityFeed", func(t *testing.T) { testActivityFeed(t, newStore) })
 		t.Run("Diagnostics", func(t *testing.T) { testDiagnostics(t, newStore) })

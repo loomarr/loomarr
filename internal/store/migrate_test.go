@@ -142,6 +142,87 @@ func TestUserMediaServerLinkedMigrationBackfillsOldImportedRows(t *testing.T) {
 	}
 }
 
+func TestUserContactAddressMigrationLeavesExistingUsersContactless(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "user-contacts.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	provider, err := newMigrationProvider(db, DialectSQLite, "migrations/sqlite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(ctx, 75); err != nil {
+		t.Fatalf("migrate through 75: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO users (id, name, role, password_hash, media_server_linked)
+		VALUES ('existing', 'Existing user', 'member', NULL, 1)
+	`); err != nil {
+		t.Fatalf("seed existing user: %v", err)
+	}
+	if _, err := provider.UpTo(ctx, 76); err != nil {
+		t.Fatalf("apply contact-address migration: %v", err)
+	}
+
+	var contacts int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM user_contact_addresses WHERE user_id = 'existing'`).Scan(&contacts); err != nil {
+		t.Fatal(err)
+	}
+	if contacts != 0 {
+		t.Fatalf("existing user contacts = %d, want contactless", contacts)
+	}
+}
+
+func TestNotificationMigrationAddsEmptyDurableQueueWithoutChangingUsers(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "notifications.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	provider, err := newMigrationProvider(db, DialectSQLite, "migrations/sqlite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(ctx, 76); err != nil {
+		t.Fatalf("migrate through 76: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO users (id, name, role, password_hash, media_server_linked)
+		VALUES ('existing', 'Existing user', 'member', NULL, 1)
+	`); err != nil {
+		t.Fatalf("seed existing user: %v", err)
+	}
+	if _, err := provider.UpTo(ctx, 77); err != nil {
+		t.Fatalf("apply notification migration: %v", err)
+	}
+
+	for _, table := range []struct{ name, query string }{
+		{"notification_intents", `SELECT COUNT(*) FROM notification_intents`},
+		{"notification_delivery_attempts", `SELECT COUNT(*) FROM notification_delivery_attempts`},
+	} {
+		var rows int
+		if err := db.QueryRowContext(ctx, table.query).Scan(&rows); err != nil {
+			t.Fatalf("query %s: %v", table.name, err)
+		}
+		if rows != 0 {
+			t.Fatalf("new %s rows = %d, want empty", table.name, rows)
+		}
+	}
+	var users int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE id = 'existing'`).Scan(&users); err != nil {
+		t.Fatal(err)
+	}
+	if users != 1 {
+		t.Fatalf("existing users after notification migration = %d, want 1", users)
+	}
+}
+
 func TestFillerDecisionApplicationModeMigrationBackfillsShadow(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "decision-mode.db"))

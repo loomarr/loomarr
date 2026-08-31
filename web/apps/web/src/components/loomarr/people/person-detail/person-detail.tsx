@@ -1,5 +1,5 @@
 import { toProblem } from "@loomarr/api/mutator";
-import { KeyRound, Server } from "lucide-react";
+import { KeyRound, Mail, Server } from "lucide-react";
 import { useId, useState } from "react";
 import { SessionList } from "@/components/loomarr/people/session-list";
 import { Badge } from "@/components/ui/badge";
@@ -23,15 +23,23 @@ const PersonDetail = ({
   onToggleAutoApprove,
   onRevokeSession,
   onResetPassword,
+  onSetContactAddress,
+  onRemoveContactAddress,
+  onCancelContactReplacement,
 }: PersonDetailProps) => {
   const roleId = useId();
   const quotaId = useId();
   const autoId = useId();
   const passwordId = useId();
+  const contactId = useId();
   const [resetOpen, setResetOpen] = useState(false);
   const [password, setPassword] = useState("");
   const [resetError, setResetError] = useState("");
   const [resetting, setResetting] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
+  const [contactEmail, setContactEmail] = useState("");
+  const [contactError, setContactError] = useState("");
+  const [contactSaving, setContactSaving] = useState(false);
 
   const submitReset = async () => {
     if (!onResetPassword) return;
@@ -49,6 +57,45 @@ const PersonDetail = ({
       setResetError(toProblem(error).detail ?? "Couldn't reset that password.");
     } finally {
       setResetting(false);
+    }
+  };
+
+  const openContact = () => {
+    setContactEmail(user.contactReplacement?.email ?? user.contactAddress?.email ?? "");
+    setContactError("");
+    setContactOpen(true);
+  };
+
+  const submitContact = async () => {
+    if (!onSetContactAddress) return;
+    const email = contactEmail.trim();
+    if (!email.includes("@") || email.startsWith("@") || email.endsWith("@")) {
+      setContactError("Enter one complete email address.");
+      return;
+    }
+    setContactError("");
+    setContactSaving(true);
+    try {
+      await onSetContactAddress(email);
+      setContactEmail("");
+      setContactOpen(false);
+    } catch (error) {
+      setContactError(toProblem(error).detail ?? "Couldn't save that contact email.");
+    } finally {
+      setContactSaving(false);
+    }
+  };
+
+  const runContactAction = async (action: (() => Promise<void>) | undefined) => {
+    if (!action) return;
+    setContactError("");
+    setContactSaving(true);
+    try {
+      await action();
+    } catch (error) {
+      setContactError(toProblem(error).detail ?? "Couldn't update that contact email.");
+    } finally {
+      setContactSaving(false);
     }
   };
 
@@ -74,6 +121,120 @@ const PersonDetail = ({
               ? "Media-server credentials · offline login ready"
               : "Media-server credentials · sign in once to enable offline login"}
         </p>
+      </section>
+
+      <section
+        aria-labelledby="person-contact"
+        className="flex flex-col gap-3 border-static-800 border-t pt-6"
+      >
+        <div>
+          <h3 id="person-contact" className="font-semibold">
+            Contact
+          </h3>
+          <p className="text-muted-foreground text-sm">
+            Optional account messages only. Email never replaces this person's sign-in name.
+          </p>
+        </div>
+
+        {user.contactAddress ? (
+          <div className="flex flex-col gap-2 rounded-md border border-static-800 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Mail className="size-4 text-muted-foreground" aria-hidden />
+              <span className="break-all text-sm">{user.contactAddress.email}</span>
+              <Badge variant={user.contactAddress.status === "verified" ? "lock" : "neutral"}>
+                {user.contactAddress.status === "verified" ? "Verified" : "Unverified"}
+              </Badge>
+            </div>
+            <p className="text-muted-foreground text-xs">
+              {user.contactAddress.status === "verified"
+                ? "Verified for local-password recovery."
+                : "Not recovery-capable until the person verifies possession."}
+            </p>
+          </div>
+        ) : (
+          <p className="text-muted-foreground text-sm">
+            No contact email. QR and direct account access still work.
+          </p>
+        )}
+
+        {user.contactReplacement && (
+          <div className="flex flex-col gap-2 rounded-md border border-suggest-700/50 bg-suggest-950/20 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="break-all text-sm">{user.contactReplacement.email}</span>
+              <Badge variant="suggest">Pending replacement</Badge>
+            </div>
+            <p className="text-muted-foreground text-xs">
+              The verified address above remains recovery-capable until this replacement is verified.
+            </p>
+            <Button
+              variant="ghost"
+              className="self-start"
+              disabled={contactSaving}
+              onClick={() => void runContactAction(onCancelContactReplacement)}
+            >
+              Cancel replacement
+            </Button>
+          </div>
+        )}
+
+        {contactOpen ? (
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={contactId}>Contact email</Label>
+              <Input
+                id={contactId}
+                type="email"
+                autoComplete="off"
+                value={contactEmail}
+                onChange={(event) => setContactEmail(event.target.value)}
+              />
+            </div>
+            <p className="text-muted-foreground text-xs">
+              Saving creates an unverified address. Invitation or verification delivery will prove possession.
+            </p>
+            {contactError && (
+              <p className="text-onair-300 text-sm" role="alert">
+                {contactError}
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => void submitContact()} disabled={contactSaving}>
+                Save email
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setContactOpen(false);
+                  setContactEmail("");
+                  setContactError("");
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={openContact} disabled={contactSaving}>
+              <Mail aria-hidden />
+              {user.contactAddress ? "Change email" : "Add email"}
+            </Button>
+            {user.contactAddress && (
+              <Button
+                variant="ghost"
+                disabled={contactSaving}
+                onClick={() => void runContactAction(onRemoveContactAddress)}
+              >
+                Remove email
+              </Button>
+            )}
+          </div>
+        )}
+        {!contactOpen && contactError && (
+          <p className="text-onair-300 text-sm" role="alert">
+            {contactError}
+          </p>
+        )}
       </section>
 
       <section

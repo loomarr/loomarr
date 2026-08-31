@@ -18,6 +18,7 @@ on:
         options:
           - release-candidate
           - full
+          - apple-cache-validation
 
 # Least privilege: CI only reads the repo.
 permissions:
@@ -386,6 +387,14 @@ jobs:
     if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_tv == 'true'
     uses: ./.github/workflows/ci-apple-tv.yml
 
+  # Manual, isolated proof that an LLVM CAS produced on one supported Apple runner remains
+  # valid and useful on a second runner. Product PR and merge-queue jobs never enter this job.
+  apple-cache-validation:
+    name: Apple compilation cache — supported-toolchain validation
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' && inputs.scope == 'apple-cache-validation'
+    uses: ./.github/workflows/ci-apple-cache-validation.yml
+
   playwright:
     name: Playwright — visual + a11y + e2e
     needs: changes
@@ -425,7 +434,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, release-candidate-scope, full-manual-scope, ci-policy, agent-harness-macos, rust-contracts, go-contracts, image-certification, go, store-postgres, frontend, clients, apple-mobile, apple-tv, playwright, tuner, image, docs, android]
+    needs: [changes, release-candidate-scope, full-manual-scope, ci-policy, agent-harness-macos, rust-contracts, go-contracts, image-certification, go, store-postgres, frontend, clients, apple-mobile, apple-tv, apple-cache-validation, playwright, tuner, image, docs, android]
     runs-on: ubuntu-latest
     permissions:
       actions: read
