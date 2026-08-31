@@ -216,8 +216,20 @@ failed because the original console matcher could not prove a hit.
 A local Xcode 26.6 tvOS build against that hosted archive then proved the structured parser and the
 full Release/install/launch/liveness path. It reported 0 hits and 1,137 misses from a checkout at a
 different absolute path. This is diagnostic evidence, not a portability verdict: hosted Actions
-runners use the same workspace path, while the local checkout did not. A second hosted run must
-show non-zero structured hit counters before CI consumes the cache.
+runners use the same workspace path, while the local checkout did not. At that point, a second
+hosted run still needed non-zero structured hit counters. A subsequent fresh-DerivedData
+build at that same local checkout path reported 1,096 hits and 41 misses and succeeded, proving the
+restored CAS and structured counter gate work when the compilation inputs—including absolute source
+paths—match.
+
+The second hosted run then proved cross-machine reuse directly. On the distinct consumer runner,
+the mobile Release build reported 1,249 hits and 0 misses, contained only arm64, installed, launched,
+and remained alive. The following TV Release build also succeeded, installed, and launched, but
+CoreSimulator timed out waiting for screenshot surfaces before the verifier reached its counter
+report. That is a simulator-output flake, not a cache failure; the verifier now retries screenshot
+capture a bounded three times while continuing to require a real PNG and every existing runtime
+assertion. The isolated hosted matrix still must complete after that retry before CI consumes the
+cache.
 
 The uncompressed combined CAS remained smaller than either full mobile or TV DerivedData tree alone
 and—more importantly—survived clean native regeneration. That, rather than a particular timing
@@ -283,9 +295,12 @@ architecture, platform settings, or cache schema must select a different prefix 
 - Remove the existing Apple saves from PR/merge-group refs once a default-branch reader is proven;
   keep the pnpm/CocoaPods entries restore-only there as well.
 
-The exact byte ceiling is unresolved. The repository is already beyond the default quota, so it
-must be set from measured compressed CAS size and leave headroom for Go, pnpm, Gradle, CodeQL, and
-release caches.
+The hosted archive measured 1,022,746,710 bytes. A second inventory during implementation reported
+8,360,892,985 active cache bytes. One archive plus the 512 MiB reserve fits beneath the 10 GiB
+budget; retaining that generation while uploading its replacement would not. Start with one
+generation. A later replacement must wait for natural headroom or remove only the obsolete
+sibling-scoped Apple entries after their writers have been retired; it must not pre-delete the last
+known-good compiler generation or evict unrelated Go, pnpm, Gradle, CodeQL, or release caches.
 
 ### Clean fallback
 
@@ -358,9 +373,9 @@ green in their stated local or hosted environment.
 
 ## Unresolved questions
 
-- What compressed-size ceiling and retention count leave enough measured repository headroom for a
-  replacement upload without evicting unrelated live caches? The local combined candidate was 986
-  MB, but GitHub's archive and hosted toolchain may differ.
+- Can retiring obsolete sibling-scoped Apple writers recover enough headroom to upload a replacement
+  while retaining the one known-good compiler generation? The initial hosted archive and current
+  repository inventory leave room for the first generation, but not that transient replacement.
 - Does `actions/cache` archive/restore preserve every CAS property needed by Xcode 26.6 across two
   distinct hosted runners? Local tar/zstd transfer and `llvm-cas` validation passed.
 - How many real cache hits remain after Expo's clean project regeneration and CocoaPods integration?

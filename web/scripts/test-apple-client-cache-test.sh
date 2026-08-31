@@ -75,6 +75,11 @@ case "$1" in
         printf 'media.loomarr.mobile.prototype: %s\n' "$APPLE_CACHE_TEST_LIVE_PID"
         ;;
       io)
+        if [[ ! -e "$5.attempted" ]]; then
+          : > "$5.attempted"
+          printf 'Timeout waiting for screen surfaces\n' >&2
+          exit 60
+        fi
         printf 'PNG fixture\n' > "$5"
         ;;
       *)

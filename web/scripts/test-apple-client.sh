@@ -304,7 +304,23 @@ if [[ ! "${launch_pid}" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 sleep 5
-xcrun simctl io "${simulator_id}" screenshot "${ARTIFACTS_DIR}/${APP_NAME}.png"
+readonly SCREENSHOT_PATH="${ARTIFACTS_DIR}/${APP_NAME}.png"
+capture_screenshot() {
+  local attempt
+  for attempt in 1 2 3; do
+    if xcrun simctl io "${simulator_id}" screenshot "$SCREENSHOT_PATH"; then
+      return
+    fi
+    if (( attempt < 3 )); then
+      printf 'apple-client: screenshot attempt %d failed; retrying\n' "$attempt" >&2
+      sleep 2
+    fi
+  done
+  printf 'apple-client: could not capture %s simulator screenshot after 3 attempts\n' \
+    "$APP_NAME" >&2
+  return 1
+}
+capture_screenshot
 # `simctl launch` returns the simulator application's host PID. Check it from the
 # host: simulator runtime command-line binaries are not guaranteed to be runnable
 # through `simctl spawn` (tvOS 26.4's /bin/kill is a macOS binary, for example).
