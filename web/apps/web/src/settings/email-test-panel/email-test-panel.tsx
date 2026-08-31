@@ -1,4 +1,5 @@
 import * as notificationsApi from "@loomarr/api/endpoints/notifications";
+import { MailCheck } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,13 +20,20 @@ const EmailTestPanel = () => {
   };
 
   return (
-    <section className="rounded-lg border border-border p-4">
-      <h2 className="font-medium text-sm">Test email delivery</h2>
-      <p className="mt-1 text-muted-foreground text-sm leading-relaxed">
-        Sends a harmless message through the settings currently applied by Loomarr. Save changes first so the
-        test checks exactly what is shown above.
-      </p>
-      <form className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={submit}>
+    <section className="rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6">
+      <div className="flex gap-3">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-lock/10 text-lock">
+          <MailCheck className="size-4" aria-hidden />
+        </span>
+        <div className="min-w-0">
+          <h2 className="font-semibold text-lg">Test email delivery</h2>
+          <p className="mt-1 text-muted-foreground text-sm leading-relaxed">
+            Send a harmless message through the settings currently applied by Loomarr.
+          </p>
+        </div>
+      </div>
+
+      <form className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={submit}>
         <label className="min-w-0 flex-1 text-sm" htmlFor="email-test-recipient">
           <span className="mb-1.5 block font-medium">Test recipient</span>
           <Input

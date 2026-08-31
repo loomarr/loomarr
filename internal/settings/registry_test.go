@@ -465,6 +465,15 @@ func TestRegistry_EmailDeliverySettings(t *testing.T) {
 			t.Errorf("%s = group %q env %q kind %q default %#v", key, setting.Group,
 				setting.EnvVar, setting.Kind, setting.Default)
 		}
+		if key == "notifications.email.enabled" {
+			if setting.Presentation != PresentationSwitch {
+				t.Errorf("%s presentation = %q, want switch", key, setting.Presentation)
+			}
+			continue
+		}
+		if allowed := setting.ShowWhen["notifications.email.enabled"]; !slices.Equal(allowed, []string{"true"}) {
+			t.Errorf("%s should ShowWhen notifications.email.enabled=true, got %v", key, setting.ShowWhen)
+		}
 	}
 
 	security, ok := registry.Get("notifications.smtp.security")

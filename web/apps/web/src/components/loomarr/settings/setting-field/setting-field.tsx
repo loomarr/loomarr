@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import type { SettingFieldProps } from "./setting-field.type";
@@ -91,6 +92,18 @@ const SettingField = ({
 
   const control = () => {
     if (entry.kind === "bool") {
+      if (entry.presentation === "switch") {
+        return (
+          <Switch
+            id={id}
+            checked={value === "true"}
+            disabled={pinned || disabledReason !== undefined}
+            aria-describedby={describedBy}
+            aria-labelledby={labelledBy}
+            onChange={(event) => onChange(String(event.target.checked))}
+          />
+        );
+      }
       return (
         <Checkbox
           id={id}

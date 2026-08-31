@@ -78,6 +78,22 @@ describe("SettingField", () => {
     expect(onChange).toHaveBeenCalledWith("h");
   });
 
+  it("renders a registry-declared boolean switch with accessible state", async () => {
+    const onChange = vi.fn();
+    render(
+      <SettingField
+        entry={entry({ key: "notifications.email.enabled", kind: "bool", presentation: "switch" })}
+        value="false"
+        onChange={onChange}
+      />,
+    );
+
+    const control = screen.getByRole("switch", { name: "Notifications email enabled" });
+    expect(control).not.toBeChecked();
+    await userEvent.click(control);
+    expect(onChange).toHaveBeenCalledWith("true");
+  });
+
   it("locks an env-pinned field and says so", () => {
     render(<SettingField entry={entry({ provenance: "env" })} value="http://x" onChange={vi.fn()} />);
     expect(screen.getByLabelText("Library URL")).toBeDisabled();

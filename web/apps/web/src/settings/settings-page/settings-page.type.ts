@@ -30,6 +30,14 @@ interface SettingsBlock {
   // blocks collapse when their check passes. Maintainer's call: the notice reads as belonging to
   // TMDB, which a page-level footer under four unrelated blocks did not.
   footer?: ReactNode;
+  // A bordered surface for a focused workflow decision. Most settings pages remain flat; pages
+  // such as Notifications use cards to separate outcomes rather than presenting one field wall.
+  surface?: "plain" | "card";
+}
+
+interface SettingsRenderContext {
+  liveValue: (key: string) => string;
+  setEdit: (key: string, value: string) => void;
 }
 
 interface SettingsPageProps {
@@ -38,19 +46,14 @@ interface SettingsPageProps {
   blocks: SettingsBlock[];
   entries: SettingEntry[];
   // Rendered above the blocks — Connections puts the re-runnable checklist here (§5).
-  children?: ReactNode;
+  children?: ReactNode | ((ctx: SettingsRenderContext) => ReactNode);
   // Rendered below the blocks, for things that read as a consequence of the settings
   // above: the AI page's model picker only makes sense once a provider is chosen. A
   // render prop so the footer can react to LIVE edits — it receives `liveValue(key)`,
   // the current value of any key honoring unsaved edits (so the model picker hides the
   // instant the provider dropdown flips to OpenAI, not only after Save). A plain
   // ReactNode is still accepted for footers that need no live state.
-  footer?:
-    | ReactNode
-    | ((ctx: {
-        liveValue: (key: string) => string;
-        setEdit: (key: string, value: string) => void;
-      }) => ReactNode);
+  footer?: ReactNode | ((ctx: SettingsRenderContext) => ReactNode);
 }
 
-export type { SettingsBlock, SettingsPageProps };
+export type { SettingsBlock, SettingsPageProps, SettingsRenderContext };

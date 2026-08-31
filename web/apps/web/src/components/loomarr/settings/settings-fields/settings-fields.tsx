@@ -17,8 +17,8 @@ import type { SettingsFieldsProps } from "./settings-fields.type";
 // Kinds that need the FULL row width in the 2-col grid: secrets (the masked value + Replace
 // button), urls (long addresses), and string_list. The compact controls (bool/int/enum) sit
 // two-per-row.
-const spansFullWidth = (kind: string, secret: boolean): boolean =>
-  secret || kind === "url" || kind === "string_list";
+const spansFullWidth = (kind: string, secret: boolean, presentation?: string): boolean =>
+  secret || kind === "url" || kind === "string_list" || presentation === "switch";
 
 const SettingsFields = ({
   entries,
@@ -68,7 +68,9 @@ const SettingsFields = ({
             disabledReason={disabledReasons?.[entry.key]}
             descriptionId={descriptionIds?.[entry.key]}
             onEnvOverride={onEnvOverride ? (enabled) => onEnvOverride(entry.key, enabled) : undefined}
-            className={spansFullWidth(entry.kind, entry.secret) ? "sm:col-span-2" : undefined}
+            className={
+              spansFullWidth(entry.kind, entry.secret, entry.presentation) ? "sm:col-span-2" : undefined
+            }
           />
         ),
       )}

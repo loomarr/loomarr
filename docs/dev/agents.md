@@ -101,7 +101,9 @@ Linux-to-Mac handoff.
 
 `tmux` is a useful operator interface for independent sessions, not an orchestration protocol. Keep
 the supervisor in one pane and give every editing worker its own registered worktree and pane. A pane
-is not the worker's identity; its unique task name, branch, worktree, and claims are.
+is not the worker's identity; its unique task name, branch, worktree, and claims are. Keep the panes
+in the current supervisor window unless the maintainer explicitly asks for separate windows, and
+enable mouse mode so the layout can be focused, resized, and scrolled directly.
 
 Create worktrees through the harness before starting agent processes, then arrange panes with exact
 paths. For example:
@@ -111,12 +113,17 @@ make agent-worktree TOPIC=worker-a CLAIMS=<owned-seam>
 make agent-worktree TOPIC=worker-b CLAIMS=<different-seam>
 
 tmux new-session -d -s loomarr-supervisor -c /path/to/owning-worktree
-tmux new-window -t loomarr-supervisor -n worker-a -c /path/to/loomarr-worker-a
-tmux new-window -t loomarr-supervisor -n worker-b -c /path/to/loomarr-worker-b
+tmux set-option -t loomarr-supervisor mouse on
+tmux split-window -t loomarr-supervisor -h -c /path/to/loomarr-worker-a
+tmux select-pane -T worker-a
+tmux split-window -t loomarr-supervisor -v -c /path/to/loomarr-worker-b
+tmux select-pane -T worker-b
 tmux attach -t loomarr-supervisor
 ```
 
-Start the chosen agent interactively in each pane and provide the workflow's worker brief. Use
+Start the chosen agent interactively in each pane so its chat composer remains available, then
+provide the workflow's worker brief. Do not use a one-shot batch command for visible supervision
+unless the maintainer explicitly requests batch execution. Use
 `make agent-status` plus the worker report for coordination. Do not treat `tmux capture-pane` output
 as completion evidence or use blind `send-keys` automation as a substitute for an acknowledged
 handoff; prompts, approval overlays, and terminal state make that brittle. Use native subagents when

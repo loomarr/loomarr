@@ -158,6 +158,16 @@ supervisor so it can inspect, steer, wait, and collect their results. For an ind
 session, provide the brief through the available channel and treat its registry, branch, worktree,
 commits, and reports as observable evidence rather than assuming live steering.
 
+## Present interactive tmux supervision
+
+When the maintainer asks for visible tmux supervision, keep the supervisor and all workers as
+clearly titled panes in the current tmux window unless the maintainer explicitly requests separate
+windows. Enable tmux mouse mode so the maintainer can focus panes, resize them, and inspect
+scrollback. Launch each worker with an interactive agent session so its chat composer remains
+available for follow-up messages; do not substitute a one-shot batch command merely because its
+output is visible in a pane. Show the pane roster after launch and leave completed panes visibly
+stopped until the supervisor reports or reassigns them.
+
 ## Supervision loop
 
 Keep the main context on decisions and evidence. Do not copy raw exploration logs into it.
