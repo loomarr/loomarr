@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { EmailTestPanel } from "@/settings/email-test-panel";
 import { NotificationReadiness } from "@/settings/notification-readiness";
 import { SettingsPage } from "@/settings/settings-page";
@@ -12,14 +12,6 @@ const NotificationSettings = () => {
       description="Set up the ways people receive invitations and recover access to Loomarr."
       entries={entries}
       blocks={[
-        {
-          group: "notifications",
-          title: "Share invitation and recovery links",
-          description:
-            "Use the browser address recipients can actually reach. Loomarr uses it for copied links and QR codes and never guesses it from an administrator's browser.",
-          keys: ["access.public_url"],
-          surface: "card",
-        },
         {
           group: "notifications",
           title: "Email account messages",
@@ -42,7 +34,19 @@ const NotificationSettings = () => {
         liveValue("notifications.email.enabled") === "true" ? <EmailTestPanel /> : null
       }
     >
-      {({ liveValue }) => <NotificationReadiness liveValue={liveValue} />}
+      {({ liveValue }) => (
+        <NotificationReadiness
+          liveValue={liveValue}
+          linkAction={
+            <Link
+              to="/settings/general"
+              className="mt-2 inline-flex font-medium text-signal text-sm underline-offset-4 hover:underline"
+            >
+              Manage in General settings
+            </Link>
+          }
+        />
+      )}
     </SettingsPage>
   );
 };

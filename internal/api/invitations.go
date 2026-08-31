@@ -160,7 +160,7 @@ func (s *Server) issueInvitationGrant(ctx context.Context, in *issueInvitationGr
 	base, err := recipientOrigin(s.accessPublicURL)
 	if err != nil {
 		return nil, errUnprocessable("Recipient address required",
-			"Set the recipient-reachable address in Settings → Notifications before creating a link.")
+			"Set the recipient-reachable address in Settings → General before creating a link.")
 	}
 	issued, err := s.invitations.Regenerate(ctx, in.ID, invitation.Conveyance(in.Body.Conveyance))
 	if err != nil {

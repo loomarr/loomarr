@@ -58,7 +58,7 @@ const SETTINGS = [
   setting({
     key: "access.public_url",
     label: "Recipient-facing Loomarr address",
-    group: "notifications",
+    group: "general",
     kind: "url",
     value: "https://loomarr.example.com",
   }),
@@ -128,7 +128,7 @@ const SETTINGS = [
 // The old version derived order from indices into `fetchMock.mock.calls` filtered by url
 // substring — which is order in the STUB, and the stub matched `/v1/settings` for the PATCH and
 // `/v1/setup/test` for the test with no route binding behind either.
-const stubSettings = () => {
+const stubSettings = (settings = SETTINGS) => {
   const seq: string[] = [];
   const patches: unknown[] = [];
   const connects: string[] = [];
@@ -152,7 +152,7 @@ const stubSettings = () => {
       // shape the API cannot produce — and passing.
       return { results: [] };
     }),
-    getSettingsListMockHandler({ features: {}, settings: SETTINGS }),
+    getSettingsListMockHandler({ features: {}, settings }),
     // Registered so the negative assertion below has something to be negative ABOUT. If the FE
     // ever calls it, `connects` is non-empty and the test says why; if this handler were absent
     // the unhandled-request guard would fail the test instead, which is a fine second net but a
@@ -185,7 +185,7 @@ const renderAt = (path: string) => {
 };
 
 describe("Settings", () => {
-  it("exposes recipient links, SMTP configuration, and test delivery on Notifications", async () => {
+  it("shows global link readiness, SMTP configuration, and test delivery on Notifications", async () => {
     stubSettings();
     renderAt("/settings/notifications");
 
@@ -193,14 +193,58 @@ describe("Settings", () => {
     expect(screen.getByRole("heading", { name: "Account delivery readiness" })).toBeInTheDocument();
     expect(await screen.findByText("Ready to share")).toBeInTheDocument();
     expect(await screen.findByText("Ready to test")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Share invitation and recovery links" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Email account messages" })).toBeInTheDocument();
-    expect(await screen.findByLabelText("Recipient-facing Loomarr address")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Recipient-facing Loomarr address")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Manage in General settings" })).toHaveAttribute(
+      "href",
+      "/settings/general",
+    );
     expect(screen.getByRole("switch", { name: "Send email notifications" })).toBeChecked();
     expect(await screen.findByLabelText("SMTP host")).toBeInTheDocument();
     expect(await screen.findByText("SMTP password")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send test email" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Notifications" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("owns the recipient-facing Loomarr address on General settings", async () => {
+    stubSettings();
+    renderAt("/settings/general");
+
+    expect(await screen.findByRole("heading", { name: "General" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Share invitation and recovery links" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Defaults to the browser address you're using now. Change it if recipients reach Loomarr at a different address. Loomarr uses the saved value for copied links, QR codes, and account email.",
+      ),
+    ).toBeInTheDocument();
+    expect(await screen.findByLabelText("Recipient-facing Loomarr address")).toHaveValue(
+      "https://loomarr.example.com",
+    );
+    expect(screen.getByRole("link", { name: "General" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("defaults an unset recipient-facing address to the current browser origin", async () => {
+    stubSettings(
+      SETTINGS.map((entry) => (entry.key === "access.public_url" ? { ...entry, value: "" } : entry)),
+    );
+    renderAt("/settings/general");
+
+    expect(await screen.findByLabelText("Recipient-facing Loomarr address")).toHaveValue(
+      window.location.origin,
+    );
+  });
+
+  it("does not replace an environment-managed recipient address with the browser origin", async () => {
+    stubSettings(
+      SETTINGS.map((entry) =>
+        entry.key === "access.public_url" ? { ...entry, provenance: "env" as const, value: "" } : entry,
+      ),
+    );
+    renderAt("/settings/general");
+
+    expect(await screen.findByLabelText("Recipient-facing Loomarr address")).toHaveValue("");
   });
 
   it("keeps SMTP details and the test form quiet until email delivery is on", async () => {

@@ -13,6 +13,7 @@ var groupTitles = map[Group]string{
 	GroupRequester:     "Connections — Requester",
 	GroupTunarr:        "Connections — Tunarr",
 	GroupTMDB:          "Connections — TMDB",
+	GroupGeneral:       "General",
 	GroupAI:            "AI",
 	GroupChannels:      "Channels & playback",
 	GroupPlayout:       "Playout",
