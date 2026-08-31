@@ -17,8 +17,8 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 		"cache-cleanup.yml":           {jobs: map[string]int{"cleanup": 1}},
 		"ci-agent.yml":                {jobs: map[string]int{"run": 3}},
 		"ci-android.yml":              {jobs: map[string]int{"run": 6}},
-		"ci-apple-mobile.yml":         {jobs: map[string]int{"run": 11}},
-		"ci-apple-tv.yml":             {jobs: map[string]int{"run": 11}},
+		"ci-apple-mobile.yml":         {jobs: map[string]int{"run": 9}},
+		"ci-apple-tv.yml":             {jobs: map[string]int{"run": 9}},
 
 		"ci-apple-cache-validation.yml": {jobs: map[string]int{"producer": 7, "consumer": 7}},
 

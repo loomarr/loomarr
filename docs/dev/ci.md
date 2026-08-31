@@ -453,8 +453,9 @@ toolchain/SDK/native-input fingerprint, uses the restore-only cache action, and 
 after zstd and LLVM CAS hash validation. Missing or rejected archives select the unchanged cold
 gate. A valid store that fails during the warm build is quarantined and receives one clean cold
 retry; every architecture, install, launch, screenshot, and liveness assertion still runs. These
-jobs never save the compiler archive, pnpm/CocoaPods work, or ExpoModulesJSI slice, so pull-request
-and merge-queue refs cannot create sibling-scoped Apple generations that later groups cannot read.
+jobs never save the compiler archive, and the obsolete pnpm/CocoaPods and ExpoModulesJSI lookup
+steps have no writer and are omitted. Pull-request and merge-queue refs therefore cannot create
+sibling-scoped Apple generations that later groups cannot read.
 
 ## `ci-ok` is the only required check
 

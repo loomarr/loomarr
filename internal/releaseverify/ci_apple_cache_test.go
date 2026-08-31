@@ -98,6 +98,9 @@ func TestRepositoryAppleCachePublisherAndConsumersAreTrustBounded(t *testing.T) 
 		if strings.Contains(string(data), "actions/cache/save@") {
 			t.Fatalf("%s must remain restore-only for the compilation cache", workflowName)
 		}
+		if strings.Contains(string(data), "apple-clients-") || strings.Contains(string(data), "apple-jsi-") {
+			t.Fatalf("%s must not perform dependency-cache lookups with no trusted writer", workflowName)
+		}
 		if !strings.Contains(string(data), "LOOMARR_APPLE_CACHE_MODE") || !strings.Contains(string(data), "LOOMARR_APPLE_CACHE_STORE") {
 			t.Fatalf("%s does not pass the prepared compilation cache to the full Apple gate", workflowName)
 		}

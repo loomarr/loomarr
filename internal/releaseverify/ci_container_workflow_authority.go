@@ -176,10 +176,10 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			"make android-release-test": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"android-release-test"}}),
 		}),
 		"ci-apple-mobile.yml": standardRunWorkflow(map[string]workflowStepAuthority{
-			"make fe-install":                exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}}),
-			appleCacheFingerprintCommand:     exactWorkflowStep(5, "Fingerprint the Apple toolchain", workflowStepAuthority{}),
-			appleCacheConsumerPrepareCommand: exactWorkflowStep(7, "Validate the restored Apple compilation cache", workflowStepAuthority{}),
-			"make client-apple-simulator CLIENT_APP=mobile": exactWorkflowStep(9, "Generate, build, install, and launch", workflowStepAuthority{
+			"make fe-install":                exactWorkflowStep(3, "", workflowStepAuthority{targets: []string{"fe-install"}}),
+			appleCacheFingerprintCommand:     exactWorkflowStep(4, "Fingerprint the Apple toolchain", workflowStepAuthority{}),
+			appleCacheConsumerPrepareCommand: exactWorkflowStep(6, "Validate the restored Apple compilation cache", workflowStepAuthority{}),
+			"make client-apple-simulator CLIENT_APP=mobile": exactWorkflowStep(7, "Generate, build, install, and launch", workflowStepAuthority{
 				targets: []string{"client-apple-simulator"},
 				environment: map[string]string{
 					"LOOMARR_APPLE_ARTIFACTS_DIR": "${{ runner.temp }}/apple-client-mobile",
@@ -190,10 +190,10 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			}),
 		}),
 		"ci-apple-tv.yml": standardRunWorkflow(map[string]workflowStepAuthority{
-			"make fe-install":                exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}}),
-			appleCacheFingerprintCommand:     exactWorkflowStep(5, "Fingerprint the Apple toolchain", workflowStepAuthority{}),
-			appleCacheConsumerPrepareCommand: exactWorkflowStep(7, "Validate the restored Apple compilation cache", workflowStepAuthority{}),
-			"make client-apple-simulator CLIENT_APP=tv": exactWorkflowStep(9, "Generate, build, install, and launch", workflowStepAuthority{
+			"make fe-install":                exactWorkflowStep(3, "", workflowStepAuthority{targets: []string{"fe-install"}}),
+			appleCacheFingerprintCommand:     exactWorkflowStep(4, "Fingerprint the Apple toolchain", workflowStepAuthority{}),
+			appleCacheConsumerPrepareCommand: exactWorkflowStep(6, "Validate the restored Apple compilation cache", workflowStepAuthority{}),
+			"make client-apple-simulator CLIENT_APP=tv": exactWorkflowStep(7, "Generate, build, install, and launch", workflowStepAuthority{
 				targets: []string{"client-apple-simulator"},
 				environment: map[string]string{
 					"LOOMARR_APPLE_ARTIFACTS_DIR": "${{ runner.temp }}/apple-client-tv",
