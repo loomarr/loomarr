@@ -4,7 +4,15 @@ set -euo pipefail
 web_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 verifier="$web_root/scripts/test-apple-client.sh"
 test_root="$(mktemp -d /tmp/apple-client-cache-test.XXXXXX)"
-trap 'find "$test_root" -mindepth 1 -depth -delete; rmdir "$test_root"' EXIT
+cleanup() {
+  if [[ -f "$test_root/generated-ios-created" ]]; then
+    find "$web_root/apps/mobile/ios" -mindepth 1 -depth -delete
+    rmdir "$web_root/apps/mobile/ios"
+  fi
+  find "$test_root" -mindepth 1 -depth -delete
+  rmdir "$test_root"
+}
+trap cleanup EXIT
 mkdir -p "$test_root/bin" "$test_root/store" "$test_root/artifacts" "$test_root/build" "$test_root/expo"
 printf 'CAS object\n' > "$test_root/store/object"
 printf 'template fixture\n' > "$test_root/expo/template.tgz"
@@ -138,6 +146,10 @@ cat > "$test_root/bin/pnpm" <<'STUB'
 set -euo pipefail
 if [[ "$*" == *'expo prebuild'* ]]; then
   [[ "$*" == *"--template $APPLE_CACHE_TEST_ROOT/expo/template.tgz"* ]]
+  if [[ ! -d "$PWD/apps/mobile/ios" ]]; then
+    mkdir -p "$PWD/apps/mobile/ios"
+    : > "$APPLE_CACHE_TEST_ROOT/generated-ios-created"
+  fi
   printf 'clean_prebuild\n' >> "$APPLE_CACHE_TEST_ROOT/command-order"
   printf 'prebuild fixture\n'
   exit 0
