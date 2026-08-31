@@ -14,9 +14,9 @@
 #
 # It targets the loomarr-dev binary + air by PROCESS NAME (comm), not `pgrep -f 'air@…'`.
 #
-# ⚠ THE ROOT-CAUSE FIX (this cost days): `make dev-be` runs `go run …/air@v1.67.3`, which COMPILES
+# ⚠ THE ROOT-CAUSE FIX (this cost days): `make dev-be` runs `go run …/air@v1.67.4`, which COMPILES
 # and execs a child whose comm is just `air` — and Air in turn execs `./tmp/loomarr-dev` (comm
-# `loomarr-dev`). Neither child carries the `air@v1.67.3` string, so `pgrep -f 'air@v1.67.3'` MISSES
+# `loomarr-dev`). Neither child carries the `air@v1.67.4` string, so `pgrep -f 'air@v1.67.4'` MISSES
 # the actually-running processes. Every "kill by pgrep -f" left the real Air + binary alive, which
 # is how zombies serving stale code accumulated across a session. Detect + kill by `comm` instead.
 

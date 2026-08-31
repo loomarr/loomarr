@@ -3,6 +3,8 @@ package schedule
 import (
 	"strings"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/holidayvocab"
 )
 
 // Seasonality (programming-design §6): holiday-aware programming. Detection is
@@ -19,8 +21,7 @@ import (
 // holiday is one entry in the built-in calendar (§6). Windows + keyword sets ship
 // as DATA, not code; custom/regional holidays are future work.
 type holiday struct {
-	id       string
-	keywords []string
+	id string
 	// window reports the holiday's [start, end] for a given year (some windows
 	// straddle a year boundary, e.g. New Year).
 	window func(year int) (start, end time.Time)
@@ -30,29 +31,24 @@ type holiday struct {
 // substring against an entry's TITLE — never its genres (see isSeasonal for why).
 var builtinCalendar = []holiday{
 	{
-		id:       "halloween",
-		keywords: []string{"halloween", "spooky", "haunted", "ghost", "witch", "horror"},
-		window:   fixedWindow(time.October, 1, time.October, 31),
+		id:     "halloween",
+		window: fixedWindow(time.October, 1, time.October, 31),
 	},
 	{
-		id:       "thanksgiving",
-		keywords: []string{"thanksgiving", "turkey day"},
-		window:   fixedWindow(time.November, 15, time.November, 30),
+		id:     "thanksgiving",
+		window: fixedWindow(time.November, 15, time.November, 30),
 	},
 	{
-		id:       "christmas",
-		keywords: []string{"christmas", "xmas", "santa", "holiday", "noel", "yuletide"},
-		window:   fixedWindow(time.December, 1, time.December, 26),
+		id:     "christmas",
+		window: fixedWindow(time.December, 1, time.December, 26),
 	},
 	{
-		id:       "newyear",
-		keywords: []string{"new year", "new year's", "hogmanay"},
-		window:   newYearWindow,
+		id:     "newyear",
+		window: newYearWindow,
 	},
 	{
-		id:       "valentines",
-		keywords: []string{"valentine", "valentine's"},
-		window:   fixedWindow(time.February, 1, time.February, 14),
+		id:     "valentines",
+		window: fixedWindow(time.February, 1, time.February, 14),
 	},
 }
 
@@ -60,7 +56,7 @@ var builtinCalendar = []holiday{
 func fixedWindow(startMonth time.Month, startDay int, endMonth time.Month, endDay int) func(int) (time.Time, time.Time) {
 	return func(year int) (time.Time, time.Time) {
 		start := time.Date(year, startMonth, startDay, 0, 0, 0, 0, time.UTC)
-		end := time.Date(year, endMonth, endDay, 23, 59, 59, 0, time.UTC)
+		end := time.Date(year, endMonth, endDay+1, 0, 0, 0, 0, time.UTC).Add(-time.Nanosecond)
 		return start, end
 	}
 }
@@ -70,7 +66,7 @@ func fixedWindow(startMonth time.Month, startDay int, endMonth time.Month, endDa
 // early-Jan date; inWindow checks both the current and prior year's window.
 func newYearWindow(year int) (time.Time, time.Time) {
 	start := time.Date(year, time.December, 27, 0, 0, 0, 0, time.UTC)
-	end := time.Date(year+1, time.January, 2, 23, 59, 59, 0, time.UTC)
+	end := time.Date(year+1, time.January, 3, 0, 0, 0, 0, time.UTC).Add(-time.Nanosecond)
 	return start, end
 }
 
@@ -129,7 +125,7 @@ func holidayActive(h holiday, now time.Time) bool {
 func isSeasonal(e LineupEntry, holidays []holiday) bool {
 	hay := strings.ToLower(e.Title)
 	for _, h := range holidays {
-		for _, kw := range h.keywords {
+		for _, kw := range holidayvocab.EvidenceAliases(h.id) {
 			if strings.Contains(hay, kw) {
 				return true
 			}

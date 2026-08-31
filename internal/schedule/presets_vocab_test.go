@@ -3,6 +3,8 @@ package schedule
 import (
 	"reflect"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/holidayvocab"
 )
 
 // The vocabulary is only trustworthy if every token it ships lowers, through the SAME Lower*
@@ -12,8 +14,8 @@ import (
 func TestVocabulary_TokensLowerToTheirCarriedValues(t *testing.T) {
 	v := BuildVocabulary()
 
-	if len(v.When) != len(whenVocabTokens)+len(holidayVocab) {
-		t.Fatalf("WHEN vocab dropped a token: got %d, want %d", len(v.When), len(whenVocabTokens)+len(holidayVocab))
+	if len(v.When) != len(whenVocabTokens)+len(holidayvocab.Definitions()) {
+		t.Fatalf("WHEN vocab dropped a token: got %d, want %d", len(v.When), len(whenVocabTokens)+len(holidayvocab.Definitions()))
 	}
 	for _, w := range v.When {
 		pred, prio, ok := LowerWhen(w.Token)
@@ -51,6 +53,18 @@ func TestVocabulary_TokensLowerToTheirCarriedValues(t *testing.T) {
 		scope, _, _ := LowerWhat(w.Token)
 		if (scope == nil) != (w.Scope == nil) {
 			t.Errorf("WHAT token %q: vocab scope-nil=%v disagrees with LowerWhat scope-nil=%v", w.Token, w.Scope == nil, scope == nil)
+		}
+	}
+}
+
+func TestBuiltinCalendarCoversEveryOwnedHolidayIdentity(t *testing.T) {
+	definitions := holidayvocab.Definitions()
+	if len(builtinCalendar) != len(definitions) {
+		t.Fatalf("calendar has %d windows for %d owned holiday ids", len(builtinCalendar), len(definitions))
+	}
+	for _, definition := range definitions {
+		if !knownHoliday(definition.ID) {
+			t.Fatalf("owned holiday %q has no scheduler calendar window", definition.ID)
 		}
 	}
 }

@@ -74,18 +74,19 @@ type userBody struct {
 	// never has to re-derive the fallback and disagree with the server about it.
 	EffectiveQuota int  `json:"effectiveQuota"`
 	AutoApprove    bool `json:"autoApprove"`
-	// Local reports the credential path (§11): true ⇒ a Loomarr-native user verified
-	// against a stored bcrypt hash; false ⇒ an imported media-server user verified
-	// against Emby/Jellyfin. The UI needs this to label rows and to explain why a
-	// password action applies to some users and not others. The hash itself is never
-	// exposed — only whether one exists.
+	// Local reports ownership of the credential, independently from whether a
+	// linked account has an offline verifier (§11).
 	Local bool `json:"local"`
+	// OfflineLogin reports that a media-server-linked account has captured a
+	// verifier and can authenticate during provider unavailability.
+	OfflineLogin bool `json:"offlineLogin"`
 }
 
 func toUserBody(u store.User) userBody {
 	return userBody{
 		ID: u.ID, Name: u.Name, Role: string(u.Role), Disabled: u.Disabled,
-		Quota: u.Quota, AutoApprove: u.AutoApprove, Local: u.PasswordHash != "",
+		Quota: u.Quota, AutoApprove: u.AutoApprove, Local: !u.MediaServerLinked && u.PasswordHash != "",
+		OfflineLogin: u.MediaServerLinked && u.PasswordHash != "",
 	}
 }
 

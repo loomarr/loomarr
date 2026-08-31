@@ -16,7 +16,7 @@ inputs: Change enters CI {
 
 orchestrator: Root ci.yml owns decisions {
   classifier: Fail-closed\npath classifier {shape: hexagon}
-  admission: PR feedback or\none-at-a-time queue {shape: queue}
+  admission: Fast PR feedback or\nauthoritative queue {shape: queue}
   aggregate: Required CI\naggregate {shape: hexagon}
 
   classifier -> admission: affected families
@@ -37,7 +37,7 @@ inputs -> orchestrator.classifier
 orchestrator.admission -> families.policy: always when orchestration changes
 orchestrator.admission -> families.go: only owned inputs
 orchestrator.admission -> families.web: only owned inputs
-orchestrator.admission -> families.native: queue, main, or manual
+orchestrator.admission -> families.native: queue or manual
 orchestrator.admission -> families.docs: only owned inputs
 families.policy -> orchestrator.aggregate
 families.go -> orchestrator.aggregate

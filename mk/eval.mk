@@ -4,7 +4,7 @@ eval-contract: ## hermetic semantic-evaluation contracts; never contacts a model
 eval: ## semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate)
 	$(GO) test -tags=eval -v -timeout 20m ./internal/eval/
 
-eval-cert: ## certify exact starter/adversarial intents; fails on missing config and writes a scorecard
+eval-cert: ## certify exact intents and mandatory scheduled viewer outcomes; fails closed and writes a scorecard
 	@eval "$$(./scripts/dev-env.sh export)"; \
 	  report="$${LOOMARR_EVAL_OUT:-$$LOOMARR_ARTIFACT_DIR/semantic-certification.json}"; \
 	  mkdir -p "$$(dirname "$$report")"; \
@@ -14,28 +14,33 @@ eval-cert: ## certify exact starter/adversarial intents; fails on missing config
 eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (manual, resource-heavy)
 	@test -n "$$OPENROUTER_API_KEY" || { echo "eval-matrix: OPENROUTER_API_KEY is required" >&2; exit 2; }; \
 	  test -n "$$OPENROUTER_MODEL" || { echo "eval-matrix: OPENROUTER_MODEL is required" >&2; exit 2; }; \
+	  test -n "$$OPENROUTER_GENERATOR_PROVIDER" || { echo "eval-matrix: OPENROUTER_GENERATOR_PROVIDER is required" >&2; exit 2; }; \
+	  test -n "$$OPENROUTER_JUDGE_PROVIDER" || { echo "eval-matrix: OPENROUTER_JUDGE_PROVIDER is required" >&2; exit 2; }; \
 	  test "$$LOOMARR_EVAL_ALLOW_LOCAL" = "1" || { echo "eval-matrix: refusing local inference; confirm an idle host with sufficient RAM/VRAM, then set LOOMARR_EVAL_ALLOW_LOCAL=1" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
 	  judge_model="$${OPENROUTER_JUDGE_MODEL:-$$OPENROUTER_MODEL}"; \
 	  status=0; \
 	  LOOMARR_EVAL_PROFILE=local \
 	  LOOMARR_EVAL_OUT="$$LOOMARR_ARTIFACT_DIR/semantic-certification-local.json" \
-	  LOOMARR_EVAL_JUDGE="$$judge_model" LOOMARR_EVAL_JUDGE_PROVIDER=openai \
+	  LOOMARR_EVAL_JUDGE="$$judge_model" LOOMARR_EVAL_JUDGE_PROVIDER=openrouter \
+	  LOOMARR_EVAL_JUDGE_UPSTREAM_PROVIDER="$$OPENROUTER_JUDGE_PROVIDER" \
 	  LOOMARR_EVAL_JUDGE_URL=https://openrouter.ai/api/v1 \
 	  LOOMARR_EVAL_JUDGE_API_KEY="$$OPENROUTER_API_KEY" \
 	    $(MAKE) eval-cert || status=$$?; \
-	  LLM_PROVIDER=openai LLM_URL=https://openrouter.ai/api/v1 \
+	  LLM_PROVIDER=openrouter LLM_URL=https://openrouter.ai/api/v1 \
 	  LLM_MODEL="$$OPENROUTER_MODEL" LLM_API_KEY="$$OPENROUTER_API_KEY" \
+	  LOOMARR_EVAL_GENERATOR_UPSTREAM_PROVIDER="$$OPENROUTER_GENERATOR_PROVIDER" \
 	  LOOMARR_EVAL_PROFILE=openrouter \
 	  LOOMARR_EVAL_OUT="$$LOOMARR_ARTIFACT_DIR/semantic-certification-openrouter.json" \
-	  LOOMARR_EVAL_JUDGE="$$judge_model" LOOMARR_EVAL_JUDGE_PROVIDER=openai \
+	  LOOMARR_EVAL_JUDGE="$$judge_model" LOOMARR_EVAL_JUDGE_PROVIDER=openrouter \
+	  LOOMARR_EVAL_JUDGE_UPSTREAM_PROVIDER="$$OPENROUTER_JUDGE_PROVIDER" \
 	  LOOMARR_EVAL_JUDGE_URL=https://openrouter.ai/api/v1 \
 	  LOOMARR_EVAL_JUDGE_API_KEY="$$OPENROUTER_API_KEY" \
 	    $(MAKE) eval-cert || status=$$?; \
 	  exit "$$status"
 
 filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
-	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./cmd/filler-bakeoff-ollama/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-bakeoff-transcribe/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-direct/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-prepare/ ./cmd/filler-corpus-review/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/
+	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./internal/fillerreview/ ./cmd/filler-bakeoff-ollama/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-bakeoff-transcribe/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-direct/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-prepare/ ./cmd/filler-corpus-review/ ./cmd/filler-corpus-review-ollama/ ./cmd/filler-corpus-review-openrouter/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/
 
 filler-corpus-commons: ## freeze bounded Commons pilot and full-inventory artifacts
 	@eval "$$(./scripts/dev-env.sh export)"; \
@@ -305,6 +310,51 @@ filler-corpus-review-package: ## materialize one verified identity-blind reviewe
 	    --out "$$LOOMARR_FILLER_CORPUS_REVIEW_PACKAGE" \
 	    --materialize "$${LOOMARR_FILLER_CORPUS_REVIEW_MATERIALIZE:-hardlink}"
 
+filler-corpus-review-ollama: ## complete one blind package with a digest-pinned local reviewer
+	@test -n "$$LOOMARR_FILLER_REVIEW_PACKAGE" || { echo "filler-corpus-review-ollama: LOOMARR_FILLER_REVIEW_PACKAGE is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_REVIEW_TRANSCRIPTS" || { echo "filler-corpus-review-ollama: LOOMARR_FILLER_REVIEW_TRANSCRIPTS is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_REVIEW_MODEL" || { echo "filler-corpus-review-ollama: LOOMARR_FILLER_REVIEW_MODEL is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_REVIEW_MODEL_DIGEST" || { echo "filler-corpus-review-ollama: LOOMARR_FILLER_REVIEW_MODEL_DIGEST is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_REVIEWER_ID" || { echo "filler-corpus-review-ollama: LOOMARR_FILLER_REVIEWER_ID is required" >&2; exit 2; }; \
+	  $(GO) run ./cmd/filler-corpus-review-ollama \
+	    --package "$$LOOMARR_FILLER_REVIEW_PACKAGE" \
+	    --transcripts "$$LOOMARR_FILLER_REVIEW_TRANSCRIPTS" \
+	    --model "$$LOOMARR_FILLER_REVIEW_MODEL" \
+	    --model-digest "$$LOOMARR_FILLER_REVIEW_MODEL_DIGEST" \
+	    --reviewer-id "$$LOOMARR_FILLER_REVIEWER_ID" \
+	    --expected-cases "$${LOOMARR_FILLER_REVIEW_EXPECTED_CASES:-300}" \
+	    --per-case-timeout "$${LOOMARR_FILLER_REVIEW_CASE_TIMEOUT:-5m}" \
+	    --base-url "$${LOOMARR_FILLER_REVIEW_BASE_URL:-http://127.0.0.1:11434}" \
+	    --out "$${LOOMARR_FILLER_REVIEW_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-completed-review}"
+
+filler-corpus-review-openrouter: ## complete one blind package through a bounded pinned hosted reviewer
+	@test -n "$$OPENROUTER_API_KEY" || { echo "filler-corpus-review-openrouter: OPENROUTER_API_KEY is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_REVIEW_PACKAGE" || { echo "filler-corpus-review-openrouter: LOOMARR_FILLER_REVIEW_PACKAGE is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_REVIEW_TRANSCRIPTS" || { echo "filler-corpus-review-openrouter: LOOMARR_FILLER_REVIEW_TRANSCRIPTS is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_REVIEW_SNAPSHOT" || { echo "filler-corpus-review-openrouter: LOOMARR_FILLER_REVIEW_SNAPSHOT is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_REVIEW_MODEL" || { echo "filler-corpus-review-openrouter: LOOMARR_FILLER_REVIEW_MODEL is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_REVIEW_PROVIDER" || { echo "filler-corpus-review-openrouter: LOOMARR_FILLER_REVIEW_PROVIDER is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_REVIEW_PROVIDER_SLUG" || { echo "filler-corpus-review-openrouter: LOOMARR_FILLER_REVIEW_PROVIDER_SLUG is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_REVIEWER_ID" || { echo "filler-corpus-review-openrouter: LOOMARR_FILLER_REVIEWER_ID is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_REVIEW_MAX_SPEND_NANOUSD" || { echo "filler-corpus-review-openrouter: LOOMARR_FILLER_REVIEW_MAX_SPEND_NANOUSD is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_REVIEW_MAX_CHARGE_NANOUSD" || { echo "filler-corpus-review-openrouter: LOOMARR_FILLER_REVIEW_MAX_CHARGE_NANOUSD is required" >&2; exit 2; }; \
+	  eval "$$(./scripts/dev-env.sh export)"; \
+	  $(GO) run ./cmd/filler-corpus-review-openrouter \
+	    --package "$$LOOMARR_FILLER_REVIEW_PACKAGE" \
+	    --transcripts "$$LOOMARR_FILLER_REVIEW_TRANSCRIPTS" \
+	    --snapshot "$$LOOMARR_FILLER_REVIEW_SNAPSHOT" \
+	    --model "$$LOOMARR_FILLER_REVIEW_MODEL" \
+	    --provider "$$LOOMARR_FILLER_REVIEW_PROVIDER" \
+	    --provider-slug "$$LOOMARR_FILLER_REVIEW_PROVIDER_SLUG" \
+	    --reviewer-id "$$LOOMARR_FILLER_REVIEWER_ID" \
+	    --expected-cases "$${LOOMARR_FILLER_REVIEW_EXPECTED_CASES:-300}" \
+	    --max-requests "$${LOOMARR_FILLER_REVIEW_MAX_REQUESTS:-301}" \
+	    --max-spend-nanousd "$$LOOMARR_FILLER_REVIEW_MAX_SPEND_NANOUSD" \
+	    --max-charge-nanousd "$$LOOMARR_FILLER_REVIEW_MAX_CHARGE_NANOUSD" \
+	    --per-case-timeout "$${LOOMARR_FILLER_REVIEW_CASE_TIMEOUT:-5m}" \
+	    --base-url "$${LOOMARR_FILLER_REVIEW_BASE_URL:-https://openrouter.ai/api/v1}" \
+	    --out "$${LOOMARR_FILLER_REVIEW_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-completed-review}"
+
 filler-openrouter-snapshot: ## lock OpenRouter capability, endpoint-price, and ZDR metadata
 	@test -n "$$OPENROUTER_API_KEY" || { echo "filler-openrouter-snapshot: OPENROUTER_API_KEY is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_OPENROUTER_MODELS" || { echo "filler-openrouter-snapshot: LOOMARR_FILLER_OPENROUTER_MODELS is required" >&2; exit 2; }; \
@@ -387,4 +437,3 @@ filler-eval-cert: ## score captured filler decisions; never contacts a model or 
 	    --max-requests "$$LOOMARR_FILLER_EVAL_MAX_REQUESTS" \
 	    --max-spend-nano-usd "$$LOOMARR_FILLER_EVAL_MAX_SPEND_NANO_USD" \
 	    --max-concurrency "$$LOOMARR_FILLER_EVAL_MAX_CONCURRENCY"
-

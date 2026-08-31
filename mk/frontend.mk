@@ -39,9 +39,9 @@ fe-lint: ## Biome lint + format check (web/)
 fe-lint-fix: ## Biome autofix — format + safe lint fixes (web/)
 	cd $(WEB) && pnpm biome check --write
 
-# FE_SHARD is a CI-only passthrough (`make fe FE_SHARD=1/2`), same contract as GO_SHARD and
-# PW_SHARD: EMPTY by default so a local `make fe` runs the whole suite. The shard COUNT lives
-# in ci.yml's `matrix.shard`.
+# FE_SHARD is a CI-only passthrough (`make fe FE_SHARD=1/2`), with the same empty-by-default
+# contract as GO_SHARD and the visual suite's separately validated shard input. A local `make fe`
+# runs the whole suite. The shard COUNT lives in ci.yml's `matrix.shard`.
 #
 # ⚠ ONLY apps/web is sharded, and that is not arbitrary. 166 of the 172 test files live there;
 # the other three packages hold 12 between them. More importantly `packages/core` and
@@ -98,97 +98,55 @@ storybook-build: ## offline storybook-static build (what fe-visual snapshots)
 # browsers match exactly. The container reuses the host's (JS-only) node_modules read
 # through the bind mount and the browsers baked into the image — no in-container install,
 # so the host's macOS binaries are never touched.
-# ⚠ `docker run` inherits NOTHING from the host environment, so the container has to be TOLD it
-# is in CI. Without it `process.env.CI` is undefined inside the image: the worker count falls back
-# to Playwright's half-the-cores default, AND `forbidOnly` never applies — so a stray `test.only`
-# silently narrows the suite while passing.
+# `scripts/run-playwright-container.sh` owns the pinned image and every Docker argument before it.
+# Make deliberately interpolates no caller-controlled value into these recipes: environment and
+# command-line variables therefore cannot add Docker flags, replace the image, or escape into a
+# second host command. The runner fixes CI=1, safely forwards GITHUB_ACTIONS as one array element,
+# and validates the optional shard before adding it after the image boundary.
 #
-# ⚠ **This was `-e CI` (bare) and that forwards NOTHING when `CI` is unset on the host** — which
-# is every local run. So locally the suite ran 12 workers on a 24-core box and `forbidOnly` was
-# OFF, while CI ran with both. `?=` keeps it overridable (`make fe-visual PW_CI=`), and an
-# exported `CI=true` still wins.
-#
-# ⚠ **The win here is CONSISTENCY, not speed** — measured 2026-08-02, and the measurement is worth
-# recording because the obvious assumption is wrong: doubling the workers took the visual suite
-# from 96s to 86s, about 10%. 706 fast screenshot tests are not worker-bound; something else
-# (container I/O, the static server, per-test context setup) is already the floor. Do not reach
-# for more parallelism here expecting a large win — and GPU passthrough is a dead end for the same
-# reason, since these are static pages with no video, WebGL or canvas to rasterize.
-#
-# What it DOES buy is a local gate that behaves like CI: all cores, and `test.only` refused in
-# both places rather than only one.
-PW_CI ?= 1
+# Old public variables are explicitly unexported so recursive command-line values cannot execute
+# merely while Make constructs a recipe environment. They are no longer supported interfaces.
+unexport PW_DOCKER_USER PW_CI PW_REAL_CI PW_IMAGE PW_SHARD
 
-# ⚠ Forwarded so the CONTAINER can tell a real runner from a developer's desktop. `CI=1` above
-# is deliberately set for local runs too (that is the whole point of PW_CI), so inside the
-# container `CI` says "behave like CI" and cannot answer "whose hardware is this".
-#
-# playwright.shared.ts needs that second answer, because worker count is a MEMORY decision:
-# a 24-core workstation given cpus() workers boots 24 browsers and swap-thrashes into a hard
-# lock, measured going from 16GB free to 2GB in about a minute under fe-visual-update. It is
-# empty locally and `true` on the runner, which GitHub sets and this Makefile never fabricates.
-#
-# Everything else PW_CI buys is unchanged — notably `forbidOnly`, so `test.only` is still
-# refused locally exactly as it is in CI.
-PW_REAL_CI ?= $(GITHUB_ACTIONS)
-PW_IMAGE := mcr.microsoft.com/playwright:v1.62.0-noble
+.PHONY: ensure-playwright-image
+ensure-playwright-image: ## use a cached Playwright image or pull it with bounded retries
+	./scripts/run-playwright-container.sh ensure
 
-# PW_SHARD is a CI-only passthrough (`make fe-visual PW_SHARD=--shard=1/4`). Empty by
-# default, so a local `make fe-visual` still runs the WHOLE suite — sharding must never
-# be the default, or someone runs half the gate and reads it as green. CI splits the
-# suite across runners purely for wall-clock, and public-repo standard runners are free,
-# so N runners cost the same as one and finish sooner.
+# LOOMARR_PLAYWRIGHT_SHARD is an environment-only CI passthrough
+# (`LOOMARR_PLAYWRIGHT_SHARD=--shard=1/4 make fe-visual`). Empty by default, so a local
+# `make fe-visual` still runs the WHOLE suite. The runner accepts only N/M positive integers with
+# N <= M; it never evaluates the value as Make or shell syntax.
 #
 # ⚠ The shard COUNT lives in ci.yml's `matrix.shard` and nowhere else — the denominator is
 # derived there from `strategy.job-total`. Do not write a specific N into this file: the
 # "1/2" that used to be in the line above outlived the 2-shard config it described.
-PW_SHARD ?=
-
-# ⚠ Run the container AS THE HOST USER, or everything it writes into the bind mount is owned by
-# root. The Playwright image runs as root by default, so `test-results/` and its per-test artifacts
-# land root-owned in a directory the host user cannot delete — and the symptom shows up far from
-# the cause: `git worktree remove` half-fails ("Permission denied"), git DEREGISTERS the worktree
-# anyway, and ~550MB per worktree is stranded on disk with no git record that it exists. Three
-# worktrees had accumulated 1.7GB that way before this flag was added.
-#
-# ⚠ `HOME=/tmp` rides along and is not optional. As a non-root uid the container's default HOME is
-# `/root`, which is not writable, so anything wanting a cache/config dir fails in a way that reads
-# like a Playwright bug rather than a permissions one. `/tmp` is writable for any uid.
-#
-# The browsers themselves are unaffected: they live in /ms-playwright, which is world-readable.
-PW_DOCKER_USER ?= --user $(shell id -u):$(shell id -g) -e HOME=/tmp
 
 .PHONY: fe-visual
-fe-visual: storybook-build ## Playwright visual + a11y over storybook-static, in the pinned Docker image (§5.2)
-	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -e GITHUB_ACTIONS=$(PW_REAL_CI) -v "$(PWD)/web:/work" -w /work/apps/web $(PW_IMAGE) \
-		node_modules/.bin/playwright test $(PW_SHARD)
+fe-visual: storybook-build ensure-playwright-image ## Playwright visual + a11y over storybook-static, in the pinned Docker image (§5.2)
+	./scripts/run-playwright-container.sh visual
 
 .PHONY: fe-visual-update
-fe-visual-update: storybook-build ## regenerate the committed Linux baselines in the Docker image (sanctioned update path)
-	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -e GITHUB_ACTIONS=$(PW_REAL_CI) -v "$(PWD)/web:/work" -w /work/apps/web $(PW_IMAGE) \
-		node_modules/.bin/playwright test --update-snapshots
+fe-visual-update: storybook-build ensure-playwright-image ## regenerate the committed Linux baselines in the Docker image (sanctioned update path)
+	./scripts/run-playwright-container.sh visual-update
 
 # The e2e suite drives the REAL embedded SPA build, which Vite writes to
 # internal/web/dist — OUTSIDE web/. So unlike fe-visual it mounts the repo ROOT, and
 # runs from /work/web/apps/web (node_modules still resolves up to /work/web).
 .PHONY: e2e
-e2e: fe-build ## wizard e2e smoke vs a mocked backend, in the pinned Docker image (13.3 gate)
-	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -e GITHUB_ACTIONS=$(PW_REAL_CI) -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
-		node_modules/.bin/playwright test --config=playwright.e2e.config.ts
+e2e: fe-build ensure-playwright-image ## wizard e2e smoke vs a mocked backend, in the pinned Docker image (13.3 gate)
+	./scripts/run-playwright-container.sh e2e
 
 .PHONY: tuner-e2e
-tuner-e2e: fe-build ## 100-Channel tuner controller matrix in Chromium, Firefox, and WebKit (§9.1)
-	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -e GITHUB_ACTIONS=$(PW_REAL_CI) -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
-		node_modules/.bin/playwright test --config=playwright.tuner.config.ts
+tuner-e2e: fe-build ensure-playwright-image ## 100-Channel tuner controller matrix in Chromium, Firefox, and WebKit (§9.1)
+	./scripts/run-playwright-container.sh tuner-e2e
 
 .PHONY: tuner-e2e-host
 tuner-e2e-host: fe-build ## 100-Channel tuner controller matrix in host-installed browsers (§9.1)
 	cd web/apps/web && node_modules/.bin/playwright test --config=playwright.tuner.config.ts
 
 .PHONY: e2e-update
-e2e-update: fe-build ## regenerate the committed e2e page snapshots (sanctioned update path)
-	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -e GITHUB_ACTIONS=$(PW_REAL_CI) -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
-		node_modules/.bin/playwright test --config=playwright.e2e.config.ts --update-snapshots
+e2e-update: fe-build ensure-playwright-image ## regenerate the committed e2e page snapshots (sanctioned update path)
+	./scripts/run-playwright-container.sh e2e-update
 
 # Just the SPA build the e2e suite serves (a subset of `make fe`, so the gate doesn't
 # rebuild Storybook or re-run the unit suite to check a flow).

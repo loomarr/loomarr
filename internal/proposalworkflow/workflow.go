@@ -67,11 +67,14 @@ type FailureCode string
 const (
 	FailureNoGroundedTitles FailureCode = "no_grounded_titles"
 	FailureGenerationFailed FailureCode = "generation_failed"
+	FailureSelectionEmpty   FailureCode = "selection_empty"
+	FailureBudgetExhausted  FailureCode = "budget_exhausted"
 )
 
 type Failure struct {
 	Code    FailureCode
 	Message string
+	Trace   suggest.DecisionTrace
 }
 
 type ProposalStatus string
@@ -124,9 +127,10 @@ type Record struct {
 	FailureCode FailureCode
 	// Diagnostic is retained for operator logs and deliberately never copied to
 	// the caller-visible Journey.
-	Diagnostic string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	Diagnostic   string
+	FailureTrace suggest.DecisionTrace
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 // Viewer carries authenticated identity resolved by the caller. Admin is an
@@ -235,7 +239,7 @@ func (w *Workflow) Inspect(ctx context.Context, viewer Viewer, jobID string) (Jo
 		}
 	case JobFailed:
 		milestone = MilestoneFailed
-		failure := safeFailure(record.FailureCode)
+		failure := safeFailure(record.FailureCode, record.FailureTrace)
 		actions = []Action{ActionRetry}
 		if failure.Code == FailureNoGroundedTitles {
 			actions = []Action{ActionEdit, ActionRetry}
@@ -288,16 +292,26 @@ func journeyFrom(record Record, milestone Milestone, actions []Action, failure *
 	}
 }
 
-func safeFailure(code FailureCode) Failure {
-	if code == FailureNoGroundedTitles {
+func safeFailure(code FailureCode, traces ...suggest.DecisionTrace) Failure {
+	var trace suggest.DecisionTrace
+	if len(traces) > 0 {
+		trace = traces[0]
+	}
+	if code == FailureNoGroundedTitles || code == FailureSelectionEmpty || code == FailureBudgetExhausted {
+		message := "No grounded titles matched this request. Try again, or edit its description and constraints."
+		if code == FailureBudgetExhausted {
+			message = "This request exceeded the bounded discovery budget. Try again with narrower constraints."
+		}
 		return Failure{
 			Code:    code,
-			Message: "No grounded titles matched this request. Try again, or edit its description and constraints.",
+			Message: message,
+			Trace:   trace,
 		}
 	}
 	return Failure{
 		Code:    FailureGenerationFailed,
 		Message: "Loomarr couldn't generate this channel. Try again later.",
+		Trace:   trace,
 	}
 }
 
@@ -373,6 +387,7 @@ func cloneProposal(proposal *ProposalRef) *ProposalRef {
 		return nil
 	}
 	clone := *proposal
+	clone.Proposal.Trace = proposal.Proposal.Trace.Clone()
 	return &clone
 }
 
@@ -389,5 +404,6 @@ func cloneFailure(failure *Failure) *Failure {
 		return nil
 	}
 	clone := *failure
+	clone.Trace = failure.Trace.Clone()
 	return &clone
 }

@@ -33,6 +33,20 @@ they do not self-assign follow-up work. Record model and reasoning choices when 
 them. Change those choices only at assignment boundaries, and never let them expand the worker's
 authority, scope, claims, tools, or acceptance criteria.
 
+Every supervised implementation or review assignment is one token-bounded checkpoint. Declare a
+limit from 100,000 through 200,000 tokens before the checkpoint starts; use 150,000 by default. Use
+the harness's native goal budget when it has one. Otherwise, when worker-scoped usage is observable,
+record the meter source and starting value and have the supervisor interrupt at the limit. If usage
+cannot be measured or attributed to the worker, permit read-only planning, research, or review only;
+do not begin or resume edits. Follow-up scope and another review pass require a fresh checkpoint and
+budget rather than an increase to the active limit.
+
+Low or Medium reasoning is the default. Use High reasoning or a frontier capability only for a
+written, measured quality need. Hitting a budget stops the checkpoint; it never authorizes weaker
+gates, reduced grounding, narrower acceptance, or skipped safety checks. Preserve the worktree and
+claims and report usage, remaining work, the stop reason, frozen tree identity, and gates run or not
+run as defined in [the supervisor workflow](.agents/workflows/supervise.md).
+
 Use claims for scarce outputs whose conflicts are expensive:
 
 - `openapi-client` — `api/openapi.yaml` and the generated orval client
@@ -44,9 +58,11 @@ Use claims for scarce outputs whose conflicts are expensive:
 Add a domain-specific claim when two changes would edit the same interface or DTO. A worktree isolates
 files; the claim identifies the real seam where concurrent work would collide.
 
-During implementation, use `make agent-verify BASE=<base>` for a focused, explicitly non-final check.
-Before pushing, run the complete required gates for the touched areas; `make check` is always the Go
-gate. Renew a long-running claim with `make agent-renew`; clean abandoned expired entries with
+During implementation and before publication, use `make agent-verify BASE=<base>` for the affected
+local evidence. The PR fast lane and merge queue provide the protected final evidence.
+Before pushing, run `make agent-verify BASE=<base>`; the classifier selects the required local
+evidence for the touched areas. Reserve `make check` for an explicitly requested complete audit.
+Renew a long-running claim with `make agent-renew`; clean abandoned expired entries with
 `make agent-prune`. When finished, run `make agent-stop`; after merge, audit and retire completed
 worktrees with `make agent-gc` and an explicitly reviewed `make agent-gc APPLY=1`.
 
@@ -72,10 +88,18 @@ different delivery path.
 8. Do not preserve legacy formats, schemas, adapters, or code paths speculatively. Keep compatibility
    only for verified live data, active users, or an external contract that cannot be migrated in the
    same change; otherwise migrate or remove the obsolete path.
+9. Pin every installed third-party dependency to one exact reviewed version. Installed-dependency
+   manifest sections must not use semver ranges or floating tags; container images and remote CI
+   actions must use immutable digests or commit SHAs. Peer ranges remain compatibility contracts,
+   not selected installations. Workspace links and operator-supplied Loomarr release variables are
+   the other exceptions. Compatibility authorities such as Expo may require an older exact version;
+   record the hold beside the pin instead of widening its range.
 
 ## Commands
 
-`make check` is the default gate. One focused test:
+`make check` is the explicit complete-repository audit, not a routine edit-loop or publication
+ritual. Run it only when the task requests a full audit, changes the gate machinery/classifier, or
+needs to diagnose a boundary. One focused test:
 
 ```sh
 go test -race -run TestName ./internal/<pkg>/
@@ -94,9 +118,9 @@ make dev-be                 # isolated backend with Air
 make dev-fe                 # isolated Vite frontend pointed at that backend
 ```
 
-Go 1.26+, the Rust toolchain pinned by `rust-toolchain.toml`, Node 22.x (22.5 minimum), pnpm 11.13.1,
-and Docker are required. ffmpeg/ffprobe are required for playout tests. Lint tools and Air run at
-pinned versions from the harness.
+Go 1.27+, the Rust toolchain pinned by `rust-toolchain.toml`, Node 22.x (22.5 minimum), pnpm 11.13.1,
+GNU Make 4.x, and Docker are required. ffmpeg/ffprobe are required for playout tests. Lint tools and
+Air run at pinned versions from the harness.
 
 ## Generated files
 
@@ -150,6 +174,9 @@ can look stale by design. A bare `go run ./cmd/loomarr` can orphan a stale child
 - Adding a build tag changes the guarded `TAGS` list in the Makefile.
 - Adding a CI build input changes the per-job filter in `.github/workflows/ci.yml`; never add a
   workflow-level `paths:` filter.
+- Pull requests own fast affected feedback; the merge queue owns complete affected integration
+  evidence. Normal queue-produced pushes to `main` publish only and must not restore a third product
+  validation run. Keep `CI` required and strict for both PR and `merge_group` commits.
 - Frontend work uses the Vite server, not the stale SPA embedded on the backend port.
 
 ## Stop points

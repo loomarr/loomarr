@@ -71,6 +71,7 @@ const PROPOSAL: ProposalDTO = {
     alternates: [],
     scores: { themeFit: 0.9, availabilityRatio: 1, eraBalance: 0.7, overall: 0.85 },
     rationale: "Grounded against your library.",
+    trace: { version: 1, surfacedTotal: 0, recordedTotal: 0, truncated: false, candidates: [] },
   },
 };
 

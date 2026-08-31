@@ -13,20 +13,21 @@ import (
 // carry the suggest.Intent / suggest.Proposal so the store stays domain-neutral
 // (like titles.title_json). IntentHash is the cache key.
 type Job struct {
-	ID              string
-	Kind            string // "suggest" (human/user flow) or "recurate" (scheduled channel grant)
-	Status          string // queued | running | done | failed
-	IntentJSON      string
-	IntentHash      string
-	CreatedBy       string
-	LastError       string
-	FailureCode     string
-	WorkflowVersion int
-	ReachedLive     bool
-	Deadline        time.Time
-	Attempts        int
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID               string
+	Kind             string // "suggest" (human/user flow) or "recurate" (scheduled channel grant)
+	Status           string // queued | running | done | failed
+	IntentJSON       string
+	IntentHash       string
+	CreatedBy        string
+	LastError        string
+	FailureCode      string
+	FailureTraceJSON string
+	WorkflowVersion  int
+	ReachedLive      bool
+	Deadline         time.Time
+	Attempts         int
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 const ProposalWorkflowVersion = 1
@@ -85,11 +86,11 @@ type Proposal struct {
 func (s *sqlStore) CreateJob(ctx context.Context, j Job) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
 		`INSERT INTO jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
-		                    workflow_version, reached_live, deadline, attempts, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+			workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		j.ID, j.Kind, j.Status, j.IntentJSON, j.IntentHash, j.CreatedBy, j.LastError, j.FailureCode,
 		workflowVersionForCreate(j.WorkflowVersion), j.ReachedLive, epoch(j.Deadline), j.Attempts,
-		epoch(j.CreatedAt), epoch(j.UpdatedAt))
+		epoch(j.CreatedAt), epoch(j.UpdatedAt), j.FailureTraceJSON)
 	if err != nil {
 		return fmt.Errorf("create job %s: %w", j.ID, err)
 	}
@@ -97,7 +98,7 @@ func (s *sqlStore) CreateJob(ctx context.Context, j Job) error {
 }
 
 const jobSelect = `SELECT id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
-	workflow_version, reached_live, deadline, attempts, created_at, updated_at FROM jobs`
+	workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json FROM jobs`
 
 func (s *sqlStore) GetJob(ctx context.Context, id string) (Job, error) {
 	return scanJob(s.db.QueryRowContext(ctx, s.ph(jobSelect+` WHERE id = ?`), id))
@@ -151,7 +152,7 @@ func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, 
 
 	row := tx.QueryRowContext(ctx, s.ph(
 		`SELECT j.id, j.kind, j.status, j.intent_json, j.intent_hash, j.created_by, j.last_error, j.failure_code,
-		        j.workflow_version, j.reached_live, j.deadline, j.attempts, j.created_at, j.updated_at,
+		        j.workflow_version, j.reached_live, j.deadline, j.attempts, j.created_at, j.updated_at, j.failure_trace_json,
 		        p.id, p.job_id, p.status, p.created_by, p.approved_by, p.deny_reason,
 		        p.mod_summary, p.note, p.proposal_json, p.approved_at, p.created_at, p.updated_at
 		   FROM jobs j
@@ -177,7 +178,7 @@ func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, 
 	err = row.Scan(
 		&out.Job.ID, &out.Job.Kind, &out.Job.Status, &out.Job.IntentJSON, &out.Job.IntentHash,
 		&out.Job.CreatedBy, &out.Job.LastError, &out.Job.FailureCode, &out.Job.WorkflowVersion, &out.Job.ReachedLive,
-		&deadline, &out.Job.Attempts, &jobCreatedAt, &jobUpdatedAt,
+		&deadline, &out.Job.Attempts, &jobCreatedAt, &jobUpdatedAt, &out.Job.FailureTraceJSON,
 		&pID, &pJobID, &pStatus, &pCreatedBy, &pApprovedBy, &pDenyReason,
 		&pModSummary, &pNote, &pJSON, &pApprovedAt, &pCreatedAt, &pUpdatedAt,
 	)
@@ -218,9 +219,9 @@ func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, 
 func (s *sqlStore) UpdateJob(ctx context.Context, j Job) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
 		`UPDATE jobs SET kind=?, status=?, intent_json=?, intent_hash=?, created_by=?,
-		   last_error=?, failure_code=?, workflow_version=?, reached_live=?, deadline=?, attempts=?, updated_at=? WHERE id=?`),
+		   last_error=?, failure_code=?, workflow_version=?, reached_live=?, deadline=?, attempts=?, updated_at=?, failure_trace_json=? WHERE id=?`),
 		j.Kind, j.Status, j.IntentJSON, j.IntentHash, j.CreatedBy, j.LastError, j.FailureCode,
-		j.WorkflowVersion, j.ReachedLive, epoch(j.Deadline), j.Attempts, epoch(j.UpdatedAt), j.ID)
+		j.WorkflowVersion, j.ReachedLive, epoch(j.Deadline), j.Attempts, epoch(j.UpdatedAt), j.FailureTraceJSON, j.ID)
 	if err != nil {
 		return fmt.Errorf("update job %s: %w", j.ID, err)
 	}
@@ -363,7 +364,7 @@ func scanJob(sc scannable) (Job, error) {
 		deadline, createdAt, updatedAt int64
 	)
 	err := sc.Scan(&j.ID, &j.Kind, &j.Status, &j.IntentJSON, &j.IntentHash, &j.CreatedBy,
-		&j.LastError, &j.FailureCode, &j.WorkflowVersion, &j.ReachedLive, &deadline, &j.Attempts, &createdAt, &updatedAt)
+		&j.LastError, &j.FailureCode, &j.WorkflowVersion, &j.ReachedLive, &deadline, &j.Attempts, &createdAt, &updatedAt, &j.FailureTraceJSON)
 	if err == sql.ErrNoRows {
 		return Job{}, ErrNotFound
 	}

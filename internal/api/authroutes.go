@@ -73,9 +73,12 @@ type meBody struct {
 	// exposes for other people. Without it the app could label everyone else's
 	// account as local-or-media-server but not yours — exactly backwards for the
 	// Account screen, where the only account that matters is your own. It decides
-	// whether to offer a change-password form or explain that the media server owns
-	// that credential. The hash itself is never exposed, only whether one exists.
+	// whether to offer an independent change-password form. Provider linkage, not
+	// the presence of an offline verifier, is the discriminator.
 	Local bool `json:"local"`
+	// OfflineLogin is true for a linked account after Loomarr has captured a
+	// verifier from a successful media-server login.
+	OfflineLogin bool `json:"offlineLogin"`
 }
 type meOutput struct {
 	SetCookie http.Cookie `header:"Set-Cookie"`
@@ -102,7 +105,9 @@ func (s *Server) handleLogin(ctx context.Context, in *loginInput) (*meOutput, er
 	metrics.LoginResult(true)
 	out := &meOutput{
 		SetCookie: s.sessionCookie(r, token, expires),
-		Body:      meBody{ID: u.ID, Name: u.Name, Role: string(u.Role), Disabled: u.Disabled, Quota: u.Quota, AutoApprove: u.AutoApprove, Local: u.PasswordHash != ""},
+		Body: meBody{ID: u.ID, Name: u.Name, Role: string(u.Role), Disabled: u.Disabled, Quota: u.Quota,
+			AutoApprove: u.AutoApprove, Local: !u.MediaServerLinked && u.PasswordHash != "",
+			OfflineLogin: u.MediaServerLinked && u.PasswordHash != ""},
 	}
 	return out, nil
 }
@@ -132,7 +137,9 @@ func (s *Server) handleDevLogin(ctx context.Context, _ *struct{}) (*meOutput, er
 	slog.WarnContext(ctx, "dev login used — credential check bypassed", "user", u.Name, "id", u.ID)
 	return &meOutput{
 		SetCookie: s.sessionCookie(r, token, expires),
-		Body:      meBody{ID: u.ID, Name: u.Name, Role: string(u.Role), Disabled: u.Disabled, Quota: u.Quota, AutoApprove: u.AutoApprove, Local: u.PasswordHash != ""},
+		Body: meBody{ID: u.ID, Name: u.Name, Role: string(u.Role), Disabled: u.Disabled, Quota: u.Quota,
+			AutoApprove: u.AutoApprove, Local: !u.MediaServerLinked && u.PasswordHash != "",
+			OfflineLogin: u.MediaServerLinked && u.PasswordHash != ""},
 	}, nil
 }
 
@@ -160,7 +167,7 @@ func (s *Server) handleMe(ctx context.Context, _ *struct{}) (*meOnlyOutput, erro
 	}
 	return &meOnlyOutput{Body: meBody{
 		ID: u.ID, Name: u.Name, Role: string(u.Role), Disabled: u.Disabled, Quota: u.Quota, AutoApprove: u.AutoApprove,
-		Local: u.PasswordHash != "",
+		Local: !u.MediaServerLinked && u.PasswordHash != "", OfflineLogin: u.MediaServerLinked && u.PasswordHash != "",
 	}}, nil
 }
 

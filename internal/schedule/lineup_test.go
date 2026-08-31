@@ -18,8 +18,8 @@ func (m mapAvail) Resolve(k provision.Key) (string, int64, bool) {
 	id, ok := m[k]
 	return id, 0, ok // duration 0 ⇒ ComputeDesired falls back to the entry's own
 }
-func (m mapAvail) ResolveEpisodes(provision.Key) ([]schedule.ResolvedProgram, bool) {
-	return nil, false // movie-only fake; series expansion tested via seriesAvail
+func (m mapAvail) ResolveEpisodes(provision.Key) schedule.EpisodeResolution {
+	return schedule.EpisodeResolution{} // movie-only fake; series expansion tested via seriesAvail
 }
 
 // durAvail is an Availability that also supplies a resolved duration, to test
@@ -33,8 +33,8 @@ func (m durAvail) Resolve(k provision.Key) (string, int64, bool) {
 	v, ok := m[k]
 	return v.id, v.dur, ok
 }
-func (m durAvail) ResolveEpisodes(provision.Key) ([]schedule.ResolvedProgram, bool) {
-	return nil, false
+func (m durAvail) ResolveEpisodes(provision.Key) schedule.EpisodeResolution {
+	return schedule.EpisodeResolution{}
 }
 
 // seriesAvail is an Availability that expands series keys into episode programs,
@@ -55,9 +55,8 @@ func (s seriesAvail) Resolve(k provision.Key) (string, int64, bool) {
 	v, ok := s.movies[k]
 	return v.id, v.dur, ok
 }
-func (s seriesAvail) ResolveEpisodes(k provision.Key) ([]schedule.ResolvedProgram, bool) {
-	eps, ok := s.episodes[k]
-	return eps, ok && len(eps) > 0
+func (s seriesAvail) ResolveEpisodes(k provision.Key) schedule.EpisodeResolution {
+	return schedule.EpisodeResolution{Programs: s.episodes[k]}
 }
 
 // newSeriesAvail builds a seriesAvail from a string-keyed episode map (convenience
@@ -132,6 +131,50 @@ func TestComputeDesiredHighlightsSelectsRatedEpisodePoolBeforeOrdering(t *testin
 	}
 }
 
+func TestComputeDesiredHighlightsSchedulesDeterministicVariedDeck(t *testing.T) {
+	key := provision.Key("series:tmdb:456")
+	episodes := make([]schedule.ResolvedProgram, 0, 12)
+	for episode, rating := range []float64{5.1, 9.9, 5.2, 9.8, 5.3, 9.7, 5.4, 9.6, 5.5, 9.5, 5.6, 9.4} {
+		episodes = append(episodes, schedule.ResolvedProgram{
+			LibraryItemID: fmt.Sprintf("ep-%d", episode+1), Title: fmt.Sprintf("Episode %d", episode+1),
+			DurationMs: 1, Season: 1, Episode: episode + 1, CommunityRating: rating,
+		})
+	}
+	ch := seqChannel()
+	ch.Shuffle.Seed = 492
+	policy := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Ordering: schedule.OrderSyndication}}
+	lineup := []schedule.LineupEntry{{
+		Key: key, Title: "The Simpsons", EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
+	}}
+	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes})
+
+	ids := func(got schedule.DesiredLineup) []string {
+		var out []string
+		for _, slot := range got.Slots {
+			if slot.IsProgram() {
+				out = append(out, slot.LibraryItemID)
+			}
+		}
+		return out
+	}
+	first := ids(schedule.ComputeDesiredAt(ch, lineup, avail, schedule.PodFill, policy, time.Time{}))
+	second := ids(schedule.ComputeDesiredAt(ch, lineup, avail, schedule.PodFill, policy, time.Time{}))
+	canonical := []string{"ep-2", "ep-4", "ep-6", "ep-8"}
+	if !slices.Equal(first, second) {
+		t.Fatalf("same seed produced %v then %v", first, second)
+	}
+	sorted := append([]string(nil), first...)
+	slices.Sort(sorted)
+	wantSet := append([]string(nil), canonical...)
+	slices.Sort(wantSet)
+	if !slices.Equal(sorted, wantSet) {
+		t.Fatalf("varied highlight deck selected %v, want set %v", first, canonical)
+	}
+	if slices.Equal(first, canonical) {
+		t.Fatalf("syndication left highlights in canonical episode order: %v", first)
+	}
+}
+
 func TestComputeDesiredHolidaySelectionUsesEpisodeEvidenceAndKeepsPartsTogether(t *testing.T) {
 	key := provision.Key("series:tmdb:456")
 	episodes := []schedule.ResolvedProgram{
@@ -158,6 +201,55 @@ func TestComputeDesiredHolidaySelectionUsesEpisodeEvidenceAndKeepsPartsTogether(
 	}
 }
 
+func TestComputeDesiredHolidaySelectionMatchesWholeEpisodeTerms(t *testing.T) {
+	key := provision.Key("series:tmdb:456")
+	episodes := []schedule.ResolvedProgram{
+		{LibraryItemID: "near-match", Title: "The Ghostwriter", DurationMs: 1, Season: 1, Episode: 1},
+		{LibraryItemID: "match", Title: "A Ghost Story", DurationMs: 1, Season: 1, Episode: 2},
+		{LibraryItemID: "ordinary", Title: "The New Neighbor", DurationMs: 1, Season: 1, Episode: 3},
+	}
+	got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{
+		Key: key, Title: "Series", EpisodeSelection: schedule.EpisodeSelection{
+			Mode: schedule.EpisodeHoliday, Holidays: []string{"halloween"},
+		},
+	}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill,
+		schedule.ChannelPolicy{}, time.Time{})
+
+	var ids []string
+	for _, slot := range got.Slots {
+		if slot.IsProgram() {
+			ids = append(ids, slot.LibraryItemID)
+		}
+	}
+	if want := []string{"match"}; !slices.Equal(ids, want) {
+		t.Fatalf("whole-term holiday matches = %v, want %v", ids, want)
+	}
+}
+
+func TestComputeDesiredHolidaySelectionUsesIntentKnownNewYearAlias(t *testing.T) {
+	key := provision.Key("series:tmdb:456")
+	episodes := []schedule.ResolvedProgram{
+		{LibraryItemID: "nye", Title: "The NYE Party", DurationMs: 1, Season: 1, Episode: 1},
+		{LibraryItemID: "ordinary", Title: "The New Neighbor", DurationMs: 1, Season: 1, Episode: 2},
+	}
+	got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{
+		Key: key, Title: "Series", EpisodeSelection: schedule.EpisodeSelection{
+			Mode: schedule.EpisodeHoliday, Holidays: []string{"newyear"},
+		},
+	}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill,
+		schedule.ChannelPolicy{}, time.Time{})
+
+	var ids []string
+	for _, slot := range got.Slots {
+		if slot.IsProgram() {
+			ids = append(ids, slot.LibraryItemID)
+		}
+	}
+	if want := []string{"nye"}; !slices.Equal(ids, want) {
+		t.Fatalf("shared New Year alias programs = %v, want %v", ids, want)
+	}
+}
+
 func TestComputeDesiredEpisodeSelectionFallsBackWhenEvidenceIsSparse(t *testing.T) {
 	key := provision.Key("series:tmdb:456")
 	episodes := []schedule.ResolvedProgram{
@@ -171,6 +263,200 @@ func TestComputeDesiredEpisodeSelectionFallsBackWhenEvidenceIsSparse(t *testing.
 		schedule.ChannelPolicy{}, time.Time{})
 	if got.ProgramCount() != 3 {
 		t.Fatalf("sparse ratings produced %d programs, want safe full-pool fallback of 3", got.ProgramCount())
+	}
+}
+
+func TestComputeDesiredHighlightsRequiresRepresentativeRatingCoverage(t *testing.T) {
+	key := provision.Key("series:tmdb:456")
+	episodes := make([]schedule.ResolvedProgram, 0, 8)
+	for i, rating := range []float64{9.5, 9.2, 8.9, 8.6, 8.3, 0, 0, 0} {
+		episodes = append(episodes, schedule.ResolvedProgram{
+			LibraryItemID:   fmt.Sprintf("ep-%d", i+1),
+			Title:           fmt.Sprintf("Episode %d", i+1),
+			DurationMs:      22 * 60 * 1000,
+			Season:          1,
+			Episode:         i + 1,
+			CommunityRating: rating,
+		})
+	}
+
+	got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{
+		Key: key, Title: "The Simpsons",
+		EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
+	}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill,
+		schedule.ChannelPolicy{}, time.Time{})
+
+	if got.ProgramCount() != 8 {
+		t.Fatalf("five rated episodes narrowed an eight-episode deck to %d, want complete deck", got.ProgramCount())
+	}
+}
+
+func TestComputeDesiredHighlightsRejectsInvalidRatings(t *testing.T) {
+	key := provision.Key("series:tmdb:456")
+	episodes := make([]schedule.ResolvedProgram, 0, 8)
+	for i, rating := range []float64{11, 9.2, 8.9, 8.6, 8.3, 8.0, 7.7, 7.4} {
+		episodes = append(episodes, schedule.ResolvedProgram{
+			LibraryItemID:   fmt.Sprintf("ep-%d", i+1),
+			Title:           fmt.Sprintf("Episode %d", i+1),
+			DurationMs:      22 * 60 * 1000,
+			Season:          1,
+			Episode:         i + 1,
+			CommunityRating: rating,
+		})
+	}
+
+	got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{
+		Key: key, Title: "The Simpsons",
+		EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
+	}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill,
+		schedule.ChannelPolicy{}, time.Time{})
+
+	if got.ProgramCount() != 4 {
+		t.Fatalf("highlight deck has %d programs, want four from the valid cohort", got.ProgramCount())
+	}
+	for _, slot := range got.Slots {
+		if slot.LibraryItemID == "ep-1" {
+			t.Fatal("out-of-range rating was selected as a highlight")
+		}
+	}
+}
+
+func TestComputeDesiredHighlightsDoesNotBreakQualityTiesArbitrarily(t *testing.T) {
+	key := provision.Key("series:tmdb:456")
+	episodes := make([]schedule.ResolvedProgram, 0, 8)
+	for i := range 8 {
+		episodes = append(episodes, schedule.ResolvedProgram{
+			LibraryItemID:   fmt.Sprintf("ep-%d", i+1),
+			Title:           fmt.Sprintf("Episode %d", i+1),
+			DurationMs:      22 * 60 * 1000,
+			Season:          1,
+			Episode:         i + 1,
+			CommunityRating: 8,
+		})
+	}
+
+	got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{
+		Key: key, Title: "The Simpsons",
+		EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
+	}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill,
+		schedule.ChannelPolicy{}, time.Time{})
+
+	if got.ProgramCount() != 8 {
+		t.Fatalf("equal ratings produced an arbitrary %d-episode subset, want complete deck", got.ProgramCount())
+	}
+}
+
+func TestComputeDesiredHighlightsCapAndTieOverCapFallback(t *testing.T) {
+	key := provision.Key("series:tmdb:456")
+	makeEpisodes := func(tieAtCap bool) []schedule.ResolvedProgram {
+		episodes := make([]schedule.ResolvedProgram, 193)
+		for i := range episodes {
+			rating := 10 - float64(i)/1000
+			if tieAtCap && i == 48 {
+				rating = episodes[47].CommunityRating
+			}
+			episodes[i] = schedule.ResolvedProgram{
+				LibraryItemID: fmt.Sprintf("ep-%03d", i+1), Title: fmt.Sprintf("Episode %d", i+1),
+				DurationMs: 1, Season: 1, Episode: i + 1, CommunityRating: rating,
+			}
+		}
+		return episodes
+	}
+	compute := func(episodes []schedule.ResolvedProgram) schedule.DesiredLineup {
+		return schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{
+			Key: key, Title: "Long Series",
+			EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
+		}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill,
+			schedule.ChannelPolicy{}, time.Time{})
+	}
+
+	if got := compute(makeEpisodes(false)); got.ProgramCount() != 48 {
+		t.Fatalf("bounded highlight deck has %d programs, want cap of 48", got.ProgramCount())
+	}
+	if got := compute(makeEpisodes(true)); got.ProgramCount() != 193 {
+		t.Fatalf("tie crossing highlight cap produced %d programs, want complete fallback of 193", got.ProgramCount())
+	}
+}
+
+func TestComputeDesiredHolidayNoMatchFallsBackToCompletePool(t *testing.T) {
+	key := provision.Key("series:tmdb:456")
+	episodes := []schedule.ResolvedProgram{
+		{LibraryItemID: "ep-1", Title: "Ordinary One", DurationMs: 1, Season: 1, Episode: 1},
+		{LibraryItemID: "ep-2", Title: "Ordinary Two", DurationMs: 1, Season: 1, Episode: 2},
+		{LibraryItemID: "ep-3", Title: "Ordinary Three", DurationMs: 1, Season: 1, Episode: 3},
+	}
+	got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{
+		Key: key, Title: "Series",
+		EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}},
+	}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill,
+		schedule.ChannelPolicy{}, time.Time{})
+
+	var ids []string
+	for _, slot := range got.Slots {
+		if slot.IsProgram() {
+			ids = append(ids, slot.LibraryItemID)
+		}
+	}
+	if want := []string{"ep-1", "ep-2", "ep-3"}; !slices.Equal(ids, want) {
+		t.Fatalf("holiday no-match programs = %v, want complete pool %v", ids, want)
+	}
+}
+
+func TestComputeDesiredUnknownEpisodeModeFallsBackToCompletePool(t *testing.T) {
+	key := provision.Key("series:tmdb:456")
+	episodes := []schedule.ResolvedProgram{
+		{LibraryItemID: "ep-1", Title: "One", DurationMs: 1, Season: 1, Episode: 1},
+		{LibraryItemID: "ep-2", Title: "Two", DurationMs: 1, Season: 1, Episode: 2},
+	}
+	got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{
+		Key: key, Title: "Series",
+		EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeSelectionMode("retired-mode")},
+	}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill,
+		schedule.ChannelPolicy{}, time.Time{})
+
+	var ids []string
+	for _, slot := range got.Slots {
+		if slot.IsProgram() {
+			ids = append(ids, slot.LibraryItemID)
+		}
+	}
+	if want := []string{"ep-1", "ep-2"}; !slices.Equal(ids, want) {
+		t.Fatalf("unknown-mode programs = %v, want complete pool %v", ids, want)
+	}
+}
+
+func TestComputeDesiredHighlightsRanksMultipartStoryAsOneUnit(t *testing.T) {
+	key := provision.Key("series:tmdb:456")
+	episodes := []schedule.ResolvedProgram{
+		{LibraryItemID: "part-1", Title: "A Tale of Two Springfields (1)", DurationMs: 1, Season: 7, Episode: 1, CommunityRating: 9.9},
+		{LibraryItemID: "part-2", Title: "A Tale of Two Springfields (2)", DurationMs: 1, Season: 7, Episode: 2, CommunityRating: 9.8},
+	}
+	for i, rating := range []float64{9.7, 9.6, 9.5, 7.4, 7.3, 7.2, 7.1} {
+		episodes = append(episodes, schedule.ResolvedProgram{
+			LibraryItemID:   fmt.Sprintf("standalone-%d", i+1),
+			Title:           fmt.Sprintf("Standalone %d", i+1),
+			DurationMs:      1,
+			Season:          7,
+			Episode:         i + 3,
+			CommunityRating: rating,
+		})
+	}
+
+	got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{
+		Key: key, Title: "The Simpsons",
+		EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
+	}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill,
+		schedule.ChannelPolicy{}, time.Time{})
+
+	var ids []string
+	for _, slot := range got.Slots {
+		if slot.IsProgram() {
+			ids = append(ids, slot.LibraryItemID)
+		}
+	}
+	want := []string{"part-1", "part-2", "standalone-1", "standalone-2", "standalone-3"}
+	if !slices.Equal(ids, want) {
+		t.Fatalf("multipart highlight units = %v, want %v", ids, want)
 	}
 }
 

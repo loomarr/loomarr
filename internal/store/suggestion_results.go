@@ -31,7 +31,7 @@ func (s *sqlStore) CommitSuggestionSuccess(
 	defer func() { _ = tx.Rollback() }()
 
 	result, err := tx.ExecContext(ctx, s.ph(
-		`UPDATE jobs SET status='done', last_error='', failure_code='', updated_at=?
+		`UPDATE jobs SET status='done', last_error='', failure_code='', failure_trace_json='', updated_at=?
 		  WHERE id=? AND status='running' AND attempts=? AND created_by=?`),
 		epoch(updatedAt), jobID, expectedAttempt, p.CreatedBy)
 	if err != nil {
@@ -109,7 +109,7 @@ func (s *sqlStore) RequeueSuggestionJob(
 ) error {
 	result, err := s.db.ExecContext(ctx, s.ph(
 		`UPDATE jobs
-		    SET kind=?, status='queued', intent_json=?, intent_hash=?, last_error='', failure_code='', deadline=?, updated_at=?
+			SET kind=?, status='queued', intent_json=?, intent_hash=?, last_error='', failure_code='', failure_trace_json='', deadline=?, updated_at=?
 		  WHERE id=? AND status IN ('done', 'failed') AND attempts=?`),
 		kind, intentJSON, intentHash, epoch(deadline), epoch(updatedAt), jobID, expectedAttempt)
 	if err != nil {
@@ -140,7 +140,7 @@ func (s *sqlStore) CommitSuggestionFailure(
 	ctx context.Context,
 	jobID string,
 	expectedAttempt int,
-	cause, failureCode string,
+	cause, failureCode, failureTraceJSON string,
 	updatedAt time.Time,
 ) error {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -151,9 +151,9 @@ func (s *sqlStore) CommitSuggestionFailure(
 
 	result, err := tx.ExecContext(ctx, s.ph(
 		`UPDATE jobs
-		    SET status='failed', last_error=?, failure_code=?, updated_at=?
+		    SET status='failed', last_error=?, failure_code=?, failure_trace_json=?, updated_at=?
 		  WHERE id=? AND status='running' AND attempts=?`),
-		cause, failureCode, epoch(updatedAt), jobID, expectedAttempt)
+		cause, failureCode, failureTraceJSON, epoch(updatedAt), jobID, expectedAttempt)
 	if err != nil {
 		return fmt.Errorf("fail suggestion job %s: transition: %w", jobID, err)
 	}
@@ -213,11 +213,11 @@ func (s *sqlStore) CloneSuggestionSuccess(
 	// snapshot instead of failing a deferred read-to-write upgrade.
 	if _, err := tx.ExecContext(ctx, s.ph(
 		`INSERT INTO jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
-		                    workflow_version, reached_live, deadline, attempts, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
-		job.ID, job.Kind, job.Status, job.IntentJSON, job.IntentHash, job.CreatedBy, job.LastError, job.FailureCode,
+		                    workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+		job.ID, job.Kind, job.Status, job.IntentJSON, job.IntentHash, job.CreatedBy, "", "",
 		workflowVersionForCreate(job.WorkflowVersion), job.ReachedLive, epoch(job.Deadline), job.Attempts,
-		epoch(job.CreatedAt), epoch(job.UpdatedAt)); err != nil {
+		epoch(job.CreatedAt), epoch(job.UpdatedAt), ""); err != nil {
 		return Proposal{}, fmt.Errorf("clone suggestion job %s: create job: %w", job.ID, err)
 	}
 

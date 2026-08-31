@@ -3,6 +3,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 RETIRED=(
+  '.github/dependabot.yml|dependency automation is owned by renovate.json; do not restore the legacy bot configuration'
   # The first full-corpus inventory put Archive.org identity at the document root, making mixed
   # authority certification impossible. No completed certification artifact uses it; schema v2
   # binds authority to every case and the strict decoder rejects the old shape.
@@ -250,6 +251,7 @@ RETIRED=(
 	'HasAVIFEncoder|worker startup self-test is the image capability gate'
   'AVIFEncoder|AVIF encoding is owned by the required loomarr-image Rust worker'
 	'check-release-notices.sh|retired: releaseverify owns notice policy directly; do not restore the duplicate middle-man wrapper'
+  'SetBcryptCostForTests|the mutable bcrypt cost test hook was removed; bcrypt is read-only legacy verification (§11/§14)'
 )
 # ⚠ `internal/store/migrations/` is exempt, and it is the one exemption that is forced rather than
 # chosen. A migration that CREATES a table names it, and §16 makes applied migrations immutable —

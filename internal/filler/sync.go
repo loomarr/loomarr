@@ -38,6 +38,21 @@ type RawClip struct {
 	// Source is the registered source id restored from Loomarr's sidecar. Empty is a hand-copied
 	// or legacy clip and resolves through the folder source policy.
 	Source string
+	// ParentHash is restored only from Loomarr's conditioning lineage sidecar. It reconnects a
+	// reviewed child to its composite after the rebuildable clip catalog is empty.
+	ParentHash string
+	// LineageInvalid keeps a damaged child fail-closed during catalog reconstruction. ParentHash
+	// may still name the retained parent, but the child remains held until its sidecar is repaired.
+	LineageInvalid bool
+	// ConditioningHold keeps a valid lineage-only child and malformed conditioning state out of
+	// rotation across an empty-catalog rebuild until complete post-rewrite evidence exists.
+	ConditioningHold bool
+	// SidecarInvalid prevents catalog repair from overwriting or laundering unreadable durable
+	// metadata. The clip is held until an operator repairs the sidecar.
+	SidecarInvalid bool
+	// IsComposite is derived for retained parents from valid child lineage before any rows are
+	// written, so filesystem traversal order cannot briefly make the parent airable.
+	IsComposite bool
 	// TunarrProgramID is set only when the clip was ALSO seen through Tunarr's local
 	// source, so Tunarr-backed channels can still build filler-lists. Empty on an
 	// install with no Tunarr, which is a supported configuration, not a degraded one.
@@ -359,6 +374,31 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 		return SyncResult{}, fmt.Errorf("list filler clips: %w", err)
 	}
 
+	rawByID := make(map[string]int, len(raw))
+	for i := range raw {
+		rawByID[raw[i].ID] = i
+	}
+	for i := range raw {
+		rc := &raw[i]
+		if rc.ParentHash == "" || rc.LineageInvalid {
+			continue
+		}
+		parentIndex, found := rawByID[rc.ParentHash]
+		if !found || rc.ParentHash == rc.ID {
+			rc.ConditioningHold = true
+			continue
+		}
+		parent := &raw[parentIndex]
+		if parent.ParentHash != "" || parent.LineageInvalid || parent.ConditioningHold || parent.SidecarInvalid {
+			rc.ConditioningHold = true
+			continue
+		}
+		// A clean retained top-level parent is expected to arrive as non-composite in an empty
+		// catalog. The valid child lineage is the durable authority that derives this marker;
+		// requiring it beforehand would make reconstruction impossible.
+		parent.IsComposite = true
+	}
+
 	res := SyncResult{Total: len(raw)}
 	keep := make([]string, 0, len(raw))
 	for _, rc := range raw {
@@ -387,6 +427,8 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 		merged := StoreClip{UpdatedAt: s.now()}
 		merged.Hash = rc.ID
 		merged.Path = rc.Path
+		merged.ParentHash = rc.ParentHash
+		merged.IsComposite = rc.IsComposite
 		// Scan-owned fields (always taken fresh — the filesystem is source of truth).
 		merged.Name = rc.Name
 		merged.DurationMs = rc.DurationMs
@@ -440,6 +482,7 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 			merged.Held = existing.Held
 			merged.Confidence = existing.Confidence
 			merged.AutoFiled = existing.AutoFiled
+			merged.IsComposite = existing.IsComposite || rc.IsComposite
 			// ⚠ Play counters are PRESERVED, not re-derived: a scan knows nothing about what
 			// aired. Belt and braces with UpsertClip's ON CONFLICT list, which also omits them
 			// — either one alone would be enough, but a future edit to either that forgot the
@@ -482,6 +525,9 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 			merged.Held = s.wasFetchedByUs(rc.Path)
 			res.Added++
 		}
+		if rc.LineageInvalid || rc.ConditioningHold {
+			merged.Held = true
+		}
 		if err := s.store.UpsertClip(ctx, merged); err != nil {
 			return res, fmt.Errorf("upsert clip %s: %w", rc.ID, err)
 		}
@@ -510,6 +556,9 @@ func (s *Syncer) repairOpaqueDisplayName(rc RawClip, existing StoreClip, found b
 		grounded = existing.Clip
 	}
 	rc.Name = groundedRepairName(grounded)
+	if rc.SidecarInvalid {
+		return rc, true, nil
+	}
 	full := filepath.Join(s.dir, filepath.FromSlash(rc.Path))
 	tags, _ := ReadSidecarTags(full)
 	if tags.OriginalName == "" || isHashDisplayName(tags.OriginalName) {
@@ -543,6 +592,9 @@ func (s *Syncer) repairLegacyContentPath(rc RawClip, existing StoreClip, found b
 	ext := filepath.Ext(rc.Path)
 	canonical := filepath.ToSlash(ClipRelPath(rc.ID, ext))
 	if rc.Path == canonical {
+		return rc, false, nil
+	}
+	if rc.SidecarInvalid {
 		return rc, false, nil
 	}
 	oldFull := filepath.Join(s.dir, filepath.FromSlash(rc.Path))

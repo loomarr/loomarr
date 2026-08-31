@@ -21,6 +21,7 @@ const ADMIN: MeBody = {
   name: "Ada",
   role: "admin",
   local: true,
+  offlineLogin: false,
   autoApprove: true,
   disabled: false,
   quota: 0,

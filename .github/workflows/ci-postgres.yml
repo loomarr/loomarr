@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.26"
+  GO_VERSION: "1.27"
   NODE_VERSION: "22"
 
 jobs:
@@ -57,4 +57,3 @@ jobs:
             ~/go/pkg/mod
             ~/.cache/go-build
           key: ${{ steps.gocache.outputs.cache-primary-key }}
-

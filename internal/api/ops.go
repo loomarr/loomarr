@@ -124,11 +124,12 @@ func (s *Server) registerOps(api huma.API, pprofOn bool) {
 		{"pprof-profile", "/debug/pprof/profile", pprof.Profile},
 		{"pprof-symbol", "/debug/pprof/symbol", pprof.Symbol},
 		{"pprof-trace", "/debug/pprof/trace", pprof.Trace},
+		{"pprof-goroutineleak", "/debug/pprof/goroutineleak", pprof.Handler("goroutineleak").ServeHTTP},
 	} {
 		// Hidden even on the canonical path: the profiler is a debugging tool that exists only
 		// when a flag is set, so publishing it in the spec would advertise a surface most
 		// installs do not have. Registered by explicit path rather than by prefix so the set is
-		// exactly these five, and pprof.Index serves its own links off the trailing-slash route.
+		// exactly these six, and pprof.Index serves its own links off the trailing-slash route.
 		rawOp[struct{}](api, hiddenOp(p.id, http.MethodGet, "/v1"+p.path, "Go profiler"), RolePublic, p.h)
 		rawOpAlias(api, p.id, http.MethodGet, p.path, RolePublic, p.h)
 	}

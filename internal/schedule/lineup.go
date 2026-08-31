@@ -89,10 +89,20 @@ type Availability interface {
 	Resolve(key provision.Key) (libraryItemID string, durationMs int64, available bool)
 
 	// ResolveEpisodes expands a SERIES key into its episode programs, in
-	// season/episode order (§9 series expansion). Returns (nil, false) for a
-	// non-series key or a series with no playable episodes yet (→ pending slot).
-	// Each episode carries its own library item id + duration. Side-effect free.
-	ResolveEpisodes(key provision.Key) (episodes []ResolvedProgram, available bool)
+	// season/episode order (§9 series expansion). A result with no programs is
+	// unavailable (→ pending slot). Each episode carries its own library item id
+	// + duration. Side-effect free.
+	ResolveEpisodes(key provision.Key) EpisodeResolution
+}
+
+// EpisodeResolution is the complete answer at the series-resolution seam. It
+// keeps cache-refresh detail behind Availability while making the one fact the
+// scheduler needs explicit: whether editorial evidence is current enough to
+// narrow an otherwise safe playable deck. The zero value permits editorial
+// selection so ordinary adapters need not learn cache policy.
+type EpisodeResolution struct {
+	Programs             []ResolvedProgram
+	EditorialUnavailable bool
 }
 
 // ResolvedProgram is one concrete playable program (a movie or a single episode)
@@ -565,7 +575,8 @@ func episodeLabel(e LineupEntry, ep ResolvedProgram) string {
 func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy, franchise map[provision.Key]franchiseTag, rp ResolvedPolicy, report *ExclusionReport) []Slot {
 	// A series expands into its episodes (each a program slot).
 	if e.Key.IsSeries() {
-		if eps, ok := avail.ResolveEpisodes(e.Key); ok && len(eps) > 0 {
+		resolution := avail.ResolveEpisodes(e.Key)
+		if eps := resolution.Programs; len(eps) > 0 {
 			// Keep only the in-range episodes (in season/episode order), then tag multi-part
 			// groups over that ordered set (§5) so consecutive-episode detection sees the
 			// real neighbors. inRange preserves order, so parts stay contiguous for detection.
@@ -621,7 +632,9 @@ func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy, franc
 				inRange = append(inRange, ep)
 			}
 			assignPartGroups(string(e.Key), inRange)
-			inRange = selectEpisodes(inRange, e.EpisodeSelection)
+			if !resolution.EditorialUnavailable {
+				inRange = selectEpisodes(inRange, e.EpisodeSelection)
+			}
 			out := make([]Slot, 0, len(inRange))
 			for _, ep := range inRange {
 				out = append(out, Slot{

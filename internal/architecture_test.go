@@ -101,15 +101,19 @@ func TestDomainPackagesDoNotImportTheHTTPFramework(t *testing.T) {
 	}
 }
 
-// Test doubles must never reach the shipped binary. testkit exists so unit tests never touch
-// the network; compiling it into production is a seam that only ever gets wider.
-func TestProductionBinaryDoesNotLinkTestkit(t *testing.T) {
+// Test doubles must never reach a binary. testkit exists so unit tests never touch the
+// network; compiling it into any command is a seam that only ever gets wider.
+func TestProductionCommandsDoNotLinkTestkit(t *testing.T) {
 	pkgs := loomarrPackages(t)
-	linked := reachableFrom(pkgs, modulePath+"/cmd/loomarr")
-
-	if importers := importersOf(pkgs, linked, modulePath+"/internal/testkit"); len(importers) > 0 {
-		t.Errorf("cmd/loomarr links internal/testkit through %v — test doubles must not ship (§14.1)",
-			importers)
+	for packagePath := range pkgs {
+		if !strings.HasPrefix(packagePath, modulePath+"/cmd/") {
+			continue
+		}
+		linked := reachableFrom(pkgs, packagePath)
+		if importers := importersOf(pkgs, linked, modulePath+"/internal/testkit"); len(importers) > 0 {
+			t.Errorf("%s links internal/testkit through %v — test doubles must not ship (§14.1)",
+				packagePath, importers)
+		}
 	}
 }
 
@@ -170,8 +174,8 @@ func TestNoLoomarrPackageLinksTestingIntoTheBinary(t *testing.T) {
 // The §14.2 package map lists every package. A map that silently goes stale is worse than no
 // map: it reads as authoritative while quietly omitting whatever was added last.
 //
-// This checks PRESENCE, not prose — the one-line description is a human's job, and asserting on
-// its wording would make the gate fire on every honest edit.
+// This checks PRESENCE, not prose — the one-line description is generated from each package's
+// doc comment, and asserting on its wording would make the gate fire on every honest edit.
 func TestPackageMapListsEveryPackage(t *testing.T) {
 	doc, err := os.ReadFile(filepath.Join("..", "docs", "design.md"))
 	if err != nil {
@@ -185,7 +189,21 @@ func TestPackageMapListsEveryPackage(t *testing.T) {
 		if !e.IsDir() {
 			continue
 		}
-		if !strings.Contains(string(doc), "| `"+e.Name()+"` |") {
+		files, err := os.ReadDir(filepath.Join(".", e.Name()))
+		if err != nil {
+			t.Fatalf("read internal/%s: %v", e.Name(), err)
+		}
+		hasProductionGo := false
+		for _, f := range files {
+			if !f.IsDir() && strings.HasSuffix(f.Name(), ".go") && !strings.HasSuffix(f.Name(), "_test.go") {
+				hasProductionGo = true
+				break
+			}
+		}
+		if !hasProductionGo {
+			continue
+		}
+		if !strings.Contains(string(doc), "**`"+e.Name()+"`**") {
 			t.Errorf("internal/%s is missing from the §14.2 package map — add a row saying what it does",
 				e.Name())
 		}

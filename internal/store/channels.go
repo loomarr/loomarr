@@ -285,6 +285,11 @@ func (s *sqlStore) ListChannels(ctx context.Context) ([]Channel, error) {
 }
 
 func (s *sqlStore) DeleteChannel(ctx context.Context, id string, expectedRevision int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("delete channel %s: begin: %w", id, err)
+	}
+	defer func() { _ = tx.Rollback() }()
 	if s.dialect == DialectPostgres {
 		payload, err := marshalInvalidation(Invalidation{Kind: InvalidationChannel, ChannelID: id,
 			Status: schedule.StatusDetached})
@@ -292,18 +297,18 @@ func (s *sqlStore) DeleteChannel(ctx context.Context, id string, expectedRevisio
 			return err
 		}
 		var notified any
-		err = s.db.QueryRowContext(ctx,
+		err = tx.QueryRowContext(ctx,
 			`DELETE FROM channels WHERE id = $1 AND revision = $2
 			 RETURNING pg_notify('`+postgresInvalidationChannel+`', $3)`,
 			id, expectedRevision, payload).Scan(&notified)
 		if errors.Is(err, sql.ErrNoRows) {
-			return channelRevisionMiss(ctx, s.db, s.ph, id, expectedRevision)
+			return channelRevisionMiss(ctx, tx, s.ph, id, expectedRevision)
 		}
 		if err != nil {
 			return err
 		}
 	} else {
-		result, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM channels WHERE id = ? AND revision = ?`), id, expectedRevision)
+		result, err := tx.ExecContext(ctx, s.ph(`DELETE FROM channels WHERE id = ? AND revision = ?`), id, expectedRevision)
 		if err != nil {
 			return err
 		}
@@ -312,8 +317,15 @@ func (s *sqlStore) DeleteChannel(ctx context.Context, id string, expectedRevisio
 			return fmt.Errorf("delete channel %s: affected rows: %w", id, err)
 		}
 		if deleted == 0 {
-			return channelRevisionMiss(ctx, s.db, s.ph, id, expectedRevision)
+			return channelRevisionMiss(ctx, tx, s.ph, id, expectedRevision)
 		}
+	}
+	if _, err := tx.ExecContext(ctx, s.ph(
+		`DELETE FROM discovery_feedback WHERE scope = ? AND scope_id = ?`), FeedbackChannel, id); err != nil {
+		return fmt.Errorf("delete channel %s feedback: %w", id, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("delete channel %s: commit: %w", id, err)
 	}
 	// Best-effort: drop the channel's image refs so its icon becomes collectable.
 	//

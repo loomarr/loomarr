@@ -150,6 +150,6 @@ func (o *OpenAI) AskAboutAudio(ctx context.Context, req AudioRequest) (Response,
 	return Response{
 		Content: strings.TrimSpace(out.Choices[0].Message.Content),
 		Attribution: attributionFromWire(o.provider, model, out.ID, out.Model, out.Usage,
-			out.OpenRouterMetadata, "", []string{"text", "audio"}, time.Since(started)),
+			out.OpenRouterMetadata, []string{"text", "audio"}, time.Since(started)),
 	}, nil
 }

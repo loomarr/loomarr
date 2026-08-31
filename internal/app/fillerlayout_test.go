@@ -21,7 +21,10 @@ func TestBuild_FillerLayoutChangesOnlyAcrossGenerations(t *testing.T) {
 	unsetForTest(t, "FILLER_DIR")
 	unsetForTest(t, "FILLER_WATCH_DIR")
 
-	root := t.TempDir()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	dsn := "sqlite://" + filepath.Join(root, "layout.db")
 	appliedA := filepath.Join(root, "clips-a")
 	watchA := filepath.Join(root, "watch-a")

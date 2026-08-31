@@ -25,10 +25,18 @@ const (
 	OutcomeOperational OutcomeKind = "operational"
 )
 
+type ApplicationMode string
+
+const (
+	ApplicationModeShadow  ApplicationMode = "shadow"
+	ApplicationModeApplied ApplicationMode = "applied"
+)
+
 type Record struct {
 	ID, ClipHash, EvidenceHash                      string
 	EvidenceVersion, PolicyVersion, TaxonomyVersion string
 	SchemaVersion                                   int
+	ApplicationMode                                 ApplicationMode
 	Result                                          filleradmission.Result
 	CreatedAt                                       time.Time
 }
@@ -184,6 +192,7 @@ const (
 type ActivityItem struct {
 	ID, ActionID, DecisionID, ClipHash, ActorID, Reason string
 	Kind                                                ActivityKind
+	ApplicationMode                                     ApplicationMode
 	CreatedAt                                           time.Time
 }
 

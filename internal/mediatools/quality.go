@@ -47,10 +47,12 @@ func InspectQualityIn(ctx context.Context, ffmpegPath, file string, startMS, end
 
 func qualityFromDetectorOutput(stderr string, durationMs int64) MediaQuality {
 	return MediaQuality{
-		DurationMs: durationMs,
-		Black:      normaliseIntervals(parseBlackdetect(stderr), durationMs),
-		Silence:    normaliseIntervals(parseSilencedetect(stderr), durationMs),
-		Freeze:     normaliseIntervals(parseFreezedetect(stderr), durationMs),
+		EvidenceVersion: MediaQualityEvidenceV1,
+		Provenance:      MediaQualityProvenanceFFmpegDetectors,
+		DurationMs:      durationMs,
+		Black:           normaliseIntervals(parseBlackdetect(stderr), durationMs),
+		Silence:         normaliseIntervals(parseSilencedetect(stderr), durationMs),
+		Freeze:          normaliseIntervals(parseFreezedetect(stderr), durationMs),
 	}
 }
 

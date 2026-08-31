@@ -258,8 +258,9 @@ fixtures cover deterministic states, but a mock-only demo does not pass.
 - Removing Tamagui would require replacing the design-system implementation, not editing every
   screen. This deletion test is proved by import-graph enforcement.
 
-The maintainer records **adopt**, **revise and repeat**, or **reject** against every item above. Only
-`adopt` authorizes the remaining migration and retirement phases.
+The maintainer records **adopt**, **revise and repeat**, or **reject** against every item above in
+[#727](https://github.com/loomarr/loomarr/issues/727). Only `adopt` authorizes the remaining
+migration and retirement phases.
 
 ## Delivery sequence
 
@@ -275,7 +276,7 @@ the adoption gate.
 | P3 | mobile/TV shells, pairing, confirmed self-disconnect, transport, and navigation adapters; shipping-screen parity inventory and dark-first pairing with canonical lockup and protected-centre branded QR | iPhone and Shield pair/self-disconnect/remote-revocation recovery evidence plus visual parity and QR-decode review |
 | P3.5 | complete the shared design-system, product-UI, and platform-adapter interfaces required by the known web, mobile, and TV surfaces | coverage ledger has no unexplained gaps; web/native Storybooks exercise every supported theme, density, state, interaction, and motion mode; interface, visual, interaction, accessibility, drift, and import-boundary gates pass; real iPhone and 1080p/4K TV workshop evidence recorded |
 | P4 | playback, overlay, Surf, tuning, and previous-channel behavior | real-server first frame and remote/touch/browser traversal |
-| P5 | full vertical-slice evidence and go/no-go decision | every acceptance item above recorded |
+| P5 | full vertical-slice evidence and go/no-go decision | every acceptance item above and the explicit outcome in #727 recorded |
 | P6 | remaining viewer surfaces | route-by-route parity; current clients still releasable |
 | P7 | administrative web surfaces | authorization, forms, accessibility, responsive and visual parity |
 | P8 | retire Tailwind/shadcn and Compose presentation; finish distribution | clean retired identifiers, Play/iOS beta builds, in-place update, complete gates |

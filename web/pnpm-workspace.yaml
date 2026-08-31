@@ -20,12 +20,13 @@ allowBuilds:
 
 minimumReleaseAgeExclude:
   - brace-expansion@1.1.18
-  - '@expo/cli@57.0.18 || 57.0.19'
+  - '@expo/cli@57.0.18 || 57.0.19 || 57.0.20'
   - '@expo/config-plugins@57.0.9'
   - '@expo/config@57.0.9'
   - '@expo/fingerprint@0.20.10'
+  - '@expo/fingerprint@0.20.11'
   - '@expo/image-utils@0.11.5'
-  - '@expo/metro-config@57.0.10 || 57.0.11'
+  - '@expo/metro-config@57.0.10 || 57.0.11 || 57.0.12'
   - '@expo/metro-file-map@57.0.2'
   - '@expo/metro-runtime@57.0.13 || 57.0.14'
   - '@expo/prebuild-config@57.0.14 || 57.0.15'
@@ -34,11 +35,14 @@ minimumReleaseAgeExclude:
   - babel-preset-expo@57.0.8 || 57.0.9
   - expo-asset@57.0.14 || 57.0.15
   - expo-constants@57.0.14 || 57.0.15
+  - expo-constants@57.0.16
   - expo-modules-autolinking@57.0.11 || 57.0.12
   - expo-modules-core@57.0.13 || 57.0.14
   - expo-router@57.0.16 || 57.0.17
   - expo-splash-screen@57.0.8
-  - expo@57.0.16 || 57.0.17
+  - expo@57.0.16 || 57.0.17 || 57.0.18
+  - '@expo/env@2.4.3'
+  - expo-font@57.0.2
   - '@expo/inline-modules@0.1.7'
   - '@expo/local-build-cache-provider@57.0.8'
   - '@expo/log-box@57.0.4'
@@ -60,7 +64,7 @@ packageExtensions:
   # SVG, and safe-area are already supplied at Expo-compatible versions. Its published full-UI
   # peers otherwise make pnpm auto-install a second React Native plus gesture and bottom-sheet
   # modules that the lite UI deliberately does not load.
-  "@storybook/react-native@10.5.0":
+  "@storybook/react-native@10.5.4":
     peerDependenciesMeta:
       "@gorhom/bottom-sheet": { optional: true }
       react: { optional: true }
@@ -77,7 +81,7 @@ packageExtensions:
       react-native-reanimated: { optional: true }
       react-native-safe-area-context: { optional: true }
       react-native-svg: { optional: true }
-  "@storybook/react-native-ui-lite@10.5.0":
+  "@storybook/react-native-ui-lite@10.5.4":
     peerDependenciesMeta:
       react: { optional: true }
       react-native: { optional: true }
@@ -102,7 +106,7 @@ overrides:
   # Expo 57.0.17 requires constants 57.0.15, while published dependents may still declare an
   # older compatible patch. Resolve all of them to the SDK catalog version so native builds
   # contain one constants module instead of two patch-level copies.
-  expo-constants: "57.0.15"
+  expo-constants: "57.0.16"
   react: "19.2.3"
   react-dom: "19.2.3"
   react-native-reanimated: "4.5.1"

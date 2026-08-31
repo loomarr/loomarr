@@ -169,8 +169,11 @@ func validateLabels(prefix string, labels Labels) []string {
 	if labels.Truth != TruthAmbiguous && strings.TrimSpace(labels.ReviewQuestion) != "" {
 		failures = append(failures, prefix+": only ambiguous truth may carry a review question")
 	}
-	if strings.TrimSpace(labels.ContentRole) == "" {
-		failures = append(failures, prefix+": content role is required")
+	roleMayBeUnresolved := (labels.Truth == TruthInvalid && labels.RejectClass == RejectDeterministic) || labels.Truth == TruthAmbiguous
+	if labels.ContentRole == "" && !roleMayBeUnresolved {
+		failures = append(failures, prefix+": eligible and semantic-invalid truth require a content role")
+	} else if labels.ContentRole != "" && !validReviewContentRole(labels.ContentRole) {
+		failures = append(failures, prefix+": content role must use the closed review vocabulary")
 	}
 	if len(labels.Slices) == 0 {
 		failures = append(failures, prefix+": at least one slice is required")
@@ -178,17 +181,34 @@ func validateLabels(prefix string, labels Labels) []string {
 	if len(labels.Evidence) == 0 {
 		failures = append(failures, prefix+": at least one evidence label is required")
 	}
-	evidenceIDs := map[string]struct{}{}
+	evidenceRows := map[string]struct{}{}
 	for _, evidence := range labels.Evidence {
 		if evidence.ID == "" || evidence.Kind == "" || evidence.Claim == "" || evidence.Provenance == "" {
 			failures = append(failures, prefix+": evidence requires id, kind, claim, and provenance")
 		}
-		if _, exists := evidenceIDs[evidence.ID]; exists {
-			failures = append(failures, prefix+": duplicate evidence id "+evidence.ID)
+		key := strings.Join([]string{evidence.ID, evidence.Kind, evidence.Claim, evidence.Value, evidence.Provenance, fmt.Sprint(evidence.AtMS)}, "\x00")
+		if _, exists := evidenceRows[key]; exists {
+			failures = append(failures, prefix+": duplicate evidence record "+evidence.ID)
 		}
-		evidenceIDs[evidence.ID] = struct{}{}
+		evidenceRows[key] = struct{}{}
 	}
 	return failures
+}
+
+// ValidateLabels applies the same strict semantic-label contract used by the
+// manifest lock so review runners can reject malformed submissions before
+// publishing them.
+func ValidateLabels(labels Labels) []string {
+	return validateLabels("labels", labels)
+}
+
+func validReviewContentRole(role string) bool {
+	switch role {
+	case "commercial", "promo", "bumper", "psa", "station_id", "trailer", "interstitial", "programme_excerpt", "compilation":
+		return true
+	default:
+		return false
+	}
 }
 
 func indexAdjudications(submissions []AdjudicationSubmission) (map[string]AdjudicationSubmission, []string) {

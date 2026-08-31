@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -407,10 +409,38 @@ func testSeriesEpisodes(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("unknown show = %v, want ErrNotFound", err)
 	}
 
+	for i, tt := range []struct {
+		name    string
+		episode schedule.ResolvedProgram
+	}{
+		{name: "blank identity", episode: schedule.ResolvedProgram{DurationMs: 1, Season: 1, Episode: 1}},
+		{name: "zero runtime", episode: schedule.ResolvedProgram{LibraryItemID: "ep", Season: 1, Episode: 1}},
+		{name: "negative runtime", episode: schedule.ResolvedProgram{LibraryItemID: "ep", DurationMs: -1, Season: 1, Episode: 1}},
+		{name: "negative season", episode: schedule.ResolvedProgram{LibraryItemID: "ep", DurationMs: 1, Season: -1, Episode: 1}},
+		{name: "missing or zero episode", episode: schedule.ResolvedProgram{LibraryItemID: "ep", DurationMs: 1, Season: 1}},
+		{name: "negative episode", episode: schedule.ResolvedProgram{LibraryItemID: "ep", DurationMs: 1, Season: 1, Episode: -1}},
+		{name: "negative episode end", episode: schedule.ResolvedProgram{LibraryItemID: "ep", DurationMs: 1, Season: 1, Episode: 1, EpisodeEnd: -1}},
+		{name: "episode end before episode", episode: schedule.ResolvedProgram{LibraryItemID: "ep", DurationMs: 1, Season: 1, Episode: 2, EpisodeEnd: 1}},
+	} {
+		t.Run("RejectsUnplayableWrite/"+tt.name, func(t *testing.T) {
+			libraryID := fmt.Sprintf("invalid-show-%d", i)
+			err := st.UpsertSeriesEpisodes(ctx, SeriesEpisodes{LibraryID: libraryID, Episodes: []schedule.ResolvedProgram{tt.episode}})
+			if err == nil {
+				t.Fatalf("structurally unplayable episode was persisted: %+v", tt.episode)
+			}
+			if _, err := st.GetSeriesEpisodes(ctx, libraryID); !errors.Is(err, ErrNotFound) {
+				t.Fatalf("rejected write left a cache row: %v", err)
+			}
+		})
+	}
+
 	fetched := time.Now().Truncate(time.Second)
 	eps := []schedule.ResolvedProgram{
-		{LibraryItemID: "ep-1", Title: "Pilot", DurationMs: 1_320_000, Season: 1, Episode: 1, Year: 1993},
+		{LibraryItemID: "ep-1", Title: "Pilot", DurationMs: 1_320_000, Season: 1, Episode: 1, Year: 1993,
+			CommunityRating: 9.1, Overview: "A Christmas homecoming", Tags: []string{"holiday", "family"}},
 		{LibraryItemID: "ep-2", Title: "Second", DurationMs: 1_320_000, Season: 1, Episode: 2, EpisodeEnd: 3},
+		{LibraryItemID: "ep-3", Title: "Third", DurationMs: 1_320_000, Season: 1, Episode: 4,
+			CommunityRating: 11, Overview: strings.Repeat("x", 2050), Tags: append([]string{"holiday"}, make([]string, 20)...)},
 	}
 	if err := st.UpsertSeriesEpisodes(ctx, SeriesEpisodes{LibraryID: "show-a", Episodes: eps, FetchedAt: fetched}); err != nil {
 		t.Fatal(err)
@@ -420,15 +450,23 @@ func testSeriesEpisodes(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Episodes) != 2 || got.Episodes[0].LibraryItemID != "ep-1" {
+	if len(got.Episodes) != 3 || got.Episodes[0].LibraryItemID != "ep-1" {
 		t.Fatalf("round-trip lost episodes: %+v", got.Episodes)
 	}
 	if got.Episodes[0].Year != 1993 {
 		t.Fatalf("Year = %d, want 1993 (episode era must survive the cache blob)", got.Episodes[0].Year)
 	}
+	if got.Episodes[0].CommunityRating != 9.1 || got.Episodes[0].Overview != "A Christmas homecoming" ||
+		len(got.Episodes[0].Tags) != 2 || got.Episodes[0].Tags[0] != "holiday" || got.Episodes[0].Tags[1] != "family" {
+		t.Fatalf("editorial evidence did not survive the cache blob: %+v", got.Episodes[0])
+	}
 	// EpisodeEnd is the multi-part span (§5) — a field a naive round-trip silently drops.
 	if got.Episodes[1].EpisodeEnd != 3 {
 		t.Fatalf("EpisodeEnd = %d, want 3 (multi-part span must survive the blob)", got.Episodes[1].EpisodeEnd)
+	}
+	if got.Episodes[2].CommunityRating != 0 || len([]rune(got.Episodes[2].Overview)) != 2048 ||
+		len(got.Episodes[2].Tags) != 1 {
+		t.Fatalf("durable write/read did not sanitize episode evidence: %+v", got.Episodes[2])
 	}
 	if !got.FetchedAt.Equal(fetched) {
 		t.Fatalf("FetchedAt = %v, want %v", got.FetchedAt, fetched)
@@ -438,7 +476,9 @@ func testSeriesEpisodes(t *testing.T, newStore NewStoreFunc) {
 	// an episode it no longer reports must disappear rather than linger in every lineup.
 	if err := st.UpsertSeriesEpisodes(ctx, SeriesEpisodes{
 		LibraryID: "show-a",
-		Episodes:  []schedule.ResolvedProgram{{LibraryItemID: "ep-1", Title: "Pilot", DurationMs: 1_320_000}},
+		Episodes: []schedule.ResolvedProgram{{
+			LibraryItemID: "ep-1", Title: "Pilot", DurationMs: 1_320_000, Season: 1, Episode: 1,
+		}},
 		FetchedAt: fetched,
 	}); err != nil {
 		t.Fatal(err)

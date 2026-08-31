@@ -92,7 +92,7 @@ func main() {
 }
 
 // seedAdmin creates the first local admin through the sanctioned bootstrap path
-// (bcrypt-hashed, Loomarr-owned id). If an admin already exists the bootstrap door
+// (Argon2id-hashed, Loomarr-owned id). If an admin already exists the bootstrap door
 // is closed — we surface that and reuse it rather than forging a second one.
 func seedAdmin(ctx context.Context, st store.Store, usrID func() string) (store.User, error) {
 	// lib=nil: import is unavailable offline; seed only needs the bootstrap path.
@@ -410,8 +410,8 @@ func (a seedAvailability) Resolve(key provision.Key) (string, int64, bool) {
 }
 
 // No seeded series, so episode expansion never yields anything (movies only).
-func (a seedAvailability) ResolveEpisodes(provision.Key) ([]schedule.ResolvedProgram, bool) {
-	return nil, false
+func (a seedAvailability) ResolveEpisodes(provision.Key) schedule.EpisodeResolution {
+	return schedule.EpisodeResolution{}
 }
 
 // pick pairs an in-library ProposalItem with its runtime, which ProposalItem itself

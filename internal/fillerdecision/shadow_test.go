@@ -52,6 +52,9 @@ func TestShadowObserveBuildsOneStableDurableEvaluation(t *testing.T) {
 	if first.ID == "" || first.EvidenceHash == "" || first.CreatedAt != at {
 		t.Fatalf("record identity = %+v", first)
 	}
+	if first.ApplicationMode != ApplicationModeShadow {
+		t.Fatalf("record application mode = %q, want %q", first.ApplicationMode, ApplicationModeShadow)
+	}
 	if first.SchemaVersion != filleradmission.SchemaVersion ||
 		first.EvidenceVersion != "production-shadow-evidence-v1" ||
 		first.PolicyVersion != "production-shadow-v1" ||

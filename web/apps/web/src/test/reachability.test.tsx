@@ -220,6 +220,7 @@ const stubReachable = () => {
           decisionId: "automatic-admit-decision",
           clipHash: "auto-hash",
           kind: "automatic_admit",
+          applicationMode: "shadow",
           createdAt: "2026-08-25T12:00:00Z",
         },
       ],
@@ -459,7 +460,7 @@ describe("feature-gated panels mount when their flag is on", () => {
     // and losing it leaves §11's unusual model (most apps DO auto-create) reading as an
     // oversight.
     ["/settings/security", /does not create an account here/i, "the SSO scope note"],
-    ["/people", /import from your media server/i, "the §11 import panel"],
+    ["/people", /import from emby\/jellyfin/i, "the §11 import dialog trigger"],
     // ⚠ The ingest panel moved to INCOMING (V35). Discover was retired as a tab — finding
     // clips is now something you do to a source — and the download tooling went with the tab
     // that is about how clips ARRIVE. Keeping this pointed at a real URL is what stops a tab
@@ -474,10 +475,10 @@ describe("feature-gated panels mount when their flag is on", () => {
     // V35: the queue of clips waiting on a human decision. Same reason as the ingest panel —
     // this suite exists because eight things were built, unit-tested and imported by nothing.
     ["/filler/attention", /is this a toy commercial/i, "the semantic decision queue"],
-    // V63's durable audit half. Automatic admission is normal work, so it belongs in Manage
+    // V63's durable audit half. A shadow admission decision is normal work, so it belongs in Manage
     // activity rather than in the exception queue. Keeping this route-level assertion prevents
     // unattended decisions from becoming invisible when the old Incoming surface is retired.
-    ["/filler/manage", /admitted automatically/i, "the automatic decision activity"],
+    ["/filler/manage", /would admit \(shadow\)/i, "the shadow decision activity"],
     // ⚠ And the tab itself must be reachable FROM the catalog, or the assertions above only
     // prove a deep link works. This is the V1/V17a/V23 failure in tab form.
     ["/filler", /^needs attention$/i, "the decision queue's own entry point"],

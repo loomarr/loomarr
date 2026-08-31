@@ -51,8 +51,9 @@ classify() {
   local known=false
 
   # Product Go. Release images compile and embed these source families.
-  if [[ "$path" == cmd/releaseverify/*.go || "$path" == internal/releaseverify/*.go ]]; then
+  if [[ "$path" == cmd/releaseverify/*.go || "$path" == internal/releaseverify/* ]]; then
     known=true
+    select_gate go
     select_gate policy
   elif [[ "$path" == *.go || "$path" == go.mod || "$path" == go.sum ]]; then
     known=true
@@ -126,7 +127,7 @@ classify() {
       known=true
       select_gate clients
       ;;
-    web/scripts/test-apple-client.sh|web/scripts/filter-react-native-pods-notice.awk|web/scripts/filter-react-native-pods-notice.test.mjs)
+    web/scripts/test-apple-client.sh|web/scripts/test-apple-client.test.mjs|web/scripts/apple-simulator.xcconfig|web/scripts/filter-react-native-pods-notice.awk|web/scripts/filter-react-native-pods-notice.test.mjs)
       known=true
       select_gate contracts
       select_gate apple_mobile
@@ -251,7 +252,7 @@ classify() {
       select_gate image
       select_gate docs
       ;;
-    docs/design.md|docs/configuration.md|docs/dev/commands.md|docs/install/*|README.md)
+    docs/design.md|docs/configuration.md|docs/dev/ci.md|docs/dev/commands.md|docs/install/*|README.md)
       known=true
       select_gate docs
       select_gate policy
@@ -263,6 +264,20 @@ classify() {
     design/*)
       known=true
       select_gate docs
+      ;;
+	internal/testkit/postgresimage/image.go|internal/testkit/postgresimage/image.txt)
+		known=true
+		select_gate contracts
+		select_gate go
+		select_gate go_full
+		select_gate postgres
+		select_gate image
+		select_gate policy
+		;;
+	internal/testkit/ryukimage/image.txt)
+		known=true
+		select_gate postgres
+      select_gate policy
       ;;
     internal/testkit/fixtures/*)
       known=true
@@ -299,6 +314,8 @@ classify() {
       known=true
       case "$path" in
         scripts/agent*) select_gate agent; select_gate policy ;;
+        scripts/ensure-container-image.sh) select_gate contracts; select_gate postgres; select_gate visual; select_gate e2e; select_gate tuner; select_gate policy ;;
+        scripts/run-playwright-container.sh) select_gate contracts; select_gate visual; select_gate e2e; select_gate tuner; select_gate policy ;;
         scripts/ci-impact*|scripts/ci-dispatch-scope*|scripts/ci-run-metrics*|scripts/testdata/ci-*) select_gate policy ;;
         scripts/dev-*) select_gate contracts; select_gate agent ;;
         scripts/android-*.sh|scripts/build-android-beta.sh|scripts/check-android-release-env.sh|scripts/generate-android-tv-brand.sh|scripts/publish-android-beta.sh|scripts/test-android-release.sh|scripts/validate-android-release-source.sh) select_gate android ;;
@@ -460,7 +477,12 @@ classify() {
       known=true
       select_gate policy
       ;;
-    docker/*|.air.toml|.env.example|.golangci.yml|.node-version|.editorconfig|.gitignore|.vscode/*|.github/actionlint.yaml|.github/actionlint.yml|.github/dependabot.yml|skills-lock.json)
+    renovate.json|.github/dependabot.yml) # retired-ok: deleting the legacy config must still select policy gates
+	  known=true
+	  select_gate contracts
+	  select_gate policy
+	  ;;
+    docker/*|.air.toml|.env.example|.golangci.yml|.node-version|.editorconfig|.gitignore|.vscode/*|.github/actionlint.yaml|.github/actionlint.yml|skills-lock.json)
       known=true
       select_gate contracts
       case "$path" in

@@ -21,8 +21,11 @@ prime directive. For now the adapter follows §6 (split); this option is recorde
 ## AuthenticateByName (for §11 user login) — header shape pinned
 
 - Endpoint: `POST /Users/AuthenticateByName`, body `{"Username","Pw"}`.
-- Requires the `X-Emby-Authorization` (Emby) / `Authorization: MediaBrowser …` (Jellyfin,
-  even without a token) header carrying `Client/Device/DeviceId/Version`.
+- Requires `X-Emby-Authorization: MediaBrowser …` (Emby) / `Authorization: MediaBrowser …`
+  (Jellyfin, even without a token) carrying `Client/Device/DeviceId/Version`. The `MediaBrowser`
+  scheme is required for both flavors: Emby 4.10.0.25 was observed accepting a password and then
+  returning HTTP 400 from session issuance with `ArgumentNullException (appName)` when the scheme
+  was omitted.
 - Verified: bad password with a valid header → **401** + plaintext body
   `"Invalid username or password. Please try again."` (fixture `auth_badpw_response.json`).
   This is the exact negative-path Phase 9's auth tests assert.

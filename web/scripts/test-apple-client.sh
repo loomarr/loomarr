@@ -8,6 +8,7 @@ readonly WEB_ROOT
 readonly APP_DIR="${WEB_ROOT}/apps/${APP_NAME}"
 readonly ARTIFACTS_DIR="${LOOMARR_APPLE_ARTIFACTS_DIR:-${WEB_ROOT}/../.artifacts/apple-client/${APP_NAME}}"
 readonly BUILD_DIR="${LOOMARR_APPLE_BUILD_DIR:-${ARTIFACTS_DIR}/build}"
+readonly APPLE_SIMULATOR_XCCONFIG="${WEB_ROOT}/scripts/apple-simulator.xcconfig"
 
 filter_react_native_pods_notice() {
   awk -f "${WEB_ROOT}/scripts/filter-react-native-pods-notice.awk"
@@ -104,16 +105,38 @@ readonly REACT_NATIVE_MODULES_DIR="${APP_DIR}/node_modules"
 if [[ "${APP_NAME}" == "tv" ]]; then
   (
     cd "${APP_DIR}"
-    NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 EXPO_TV=1 \
+    XCODE_XCCONFIG_FILE="${APPLE_SIMULATOR_XCCONFIG}" \
+      NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 EXPO_TV=1 \
       REACT_NATIVE_NODE_MODULES_DIR="${REACT_NATIVE_MODULES_DIR}" "${expo_run[@]}"
   ) 2>&1 | filter_react_native_pods_notice
 else
   (
     cd "${APP_DIR}"
-    NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 \
+    XCODE_XCCONFIG_FILE="${APPLE_SIMULATOR_XCCONFIG}" \
+      NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 \
       REACT_NATIVE_NODE_MODULES_DIR="${REACT_NATIVE_MODULES_DIR}" "${expo_run[@]}"
   ) 2>&1 | filter_react_native_pods_notice
 fi
+
+# Release simulator builds default to every standard architecture. Hosted Apple jobs run on one
+# architecture and launch on the same host, so compiling another slice only duplicates the native
+# dependency graph. The xcconfig scopes the override to this simulator proof; fail closed if Expo or
+# Xcode stops honoring it instead of silently returning to a universal binary.
+readonly APP_BINARY="${BUILD_DIR}/${SCHEME}.app/${SCHEME}"
+if [[ ! -f "${APP_BINARY}" ]]; then
+  printf 'apple-client: built executable is missing: %s\n' "${APP_BINARY}" >&2
+  exit 1
+fi
+HOST_ARCH="$(uname -m)"
+readonly HOST_ARCH
+APP_ARCHS="$(xcrun lipo -archs "${APP_BINARY}")"
+readonly APP_ARCHS
+if [[ "${APP_ARCHS}" != "${HOST_ARCH}" ]]; then
+  printf 'apple-client: expected only host architecture %s; built %s\n' \
+    "${HOST_ARCH}" "${APP_ARCHS}" >&2
+  exit 1
+fi
+printf 'apple-client: %s simulator executable contains only %s\n' "${APP_NAME}" "${HOST_ARCH}"
 
 # Expo owns dependency installation, CocoaPods, compilation, installation, and
 # initial launch. Relaunch once to obtain the host PID used by the liveness check.

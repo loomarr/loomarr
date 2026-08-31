@@ -69,7 +69,8 @@ every production route uses them. The delivery sequence keeps that evidence stag
 
 - **P4** owns the first production Guide-to-playback slice, player transport/chrome, and its real
   touch/TV behavior;
-- **P5** owns the explicit `adopt`, `revise and repeat`, or `reject` decision;
+- **P5** and [#727](https://github.com/loomarr/loomarr/issues/727) own the explicit `adopt`,
+  `revise and repeat`, or `reject` decision;
 - **P6** owns remaining viewer-surface production parity;
 - **P7** owns administrative-web migration and browser form/accessibility parity; and
 - **P8** owns retirement of Tailwind/shadcn/Base UI and the Compose presentation after parity.

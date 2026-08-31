@@ -1,9 +1,9 @@
-## ---- the default gate ----------------------------------------------------
+## ---- explicit complete audit --------------------------------------------
 
 .PHONY: check check-static
-check: check-static test ## complete local gate: repository contracts plus race-policy-aware unit tests
+check: check-static test ## explicit complete-repository audit: contracts plus race-policy-aware unit tests
 
-check-static: rust-check fmt shellcheck privacy-verify vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify ## repository contracts without the unit-test suite (CI runs this once beside test shards)
+check-static: rust-check fmt shellcheck privacy-verify vet platform-vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify ## repository contracts without the unit-test suite (CI runs this once beside test shards)
 
 .PHONY: rust-check rust-test-worker rust-audit rust-fuzz
 rust-check: rust-test-worker ## format, lint, build, and test the required Rust image worker
@@ -40,6 +40,15 @@ privacy-verify: ## captured private fixture literals must not re-enter the track
 vet: ## go vet
 	$(GO) vet $(PKG)
 
+.PHONY: platform-vet
+platform-vet: ## go vet the opposite Linux/macOS target to catch platform-only compile drift
+	@case "$$($(GO) env GOOS)" in \
+		darwin) GOOS=linux GOARCH=amd64 CGO_ENABLED=0 $(GO) vet $(PKG) ;; \
+		linux) GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 $(GO) vet $(PKG) ;; \
+		*) GOOS=linux GOARCH=amd64 CGO_ENABLED=0 $(GO) vet $(PKG); \
+		   GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 $(GO) vet $(PKG) ;; \
+	esac
+
 .PHONY: vet-tags
 vet-tags: ## go vet over custom-tagged sources
 	$(GO) vet -tags '$(CUSTOM_TAGS)' $(PKG)
@@ -56,7 +65,7 @@ tags-verify: ## the Makefile's TAGS list matches every //go:build tag in the tre
 # the tree — one of those WOULD be dropped by this flag, silently creating the blind spot this
 # change exists to close. Re-check before adding a negated tag.
 lint: ## golangci-lint v2 (run via `go run` so no global install needed)
-	$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run --build-tags '$(TAGS_CSV)'
+	$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 run --build-tags '$(TAGS_CSV)'
 
 .PHONY: test
 test: rust-test-worker eval-contract ## unit tests with their required Rust worker (never touch the network — §19)
@@ -72,8 +81,8 @@ test: rust-test-worker eval-contract ## unit tests with their required Rust work
 # is ~500 tests each paying a fresh SQLite open plus migrations, and the fix when this bites again is
 # to share that setup, NOT to raise the number a second time.
 #
-# GO_SHARD is a CI-only passthrough (`make check GO_SHARD=1/2`), the same contract as PW_SHARD:
-# EMPTY by default, so a local `make test` — and `make check` — runs the whole tree. Sharding must
+# GO_SHARD is a CI-only passthrough (`make check GO_SHARD=1/2`): EMPTY by default, so a local
+# `make test` — and `make check` — runs the whole tree. Sharding must
 # never be implicit, or someone runs a fraction of the gate and reads the green as the whole thing.
 # The shard COUNT lives in ci.yml's `matrix.shard`; see scripts/go-shard.sh for the split.
 #
@@ -117,7 +126,8 @@ go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must
 	@./scripts/go-race-policy.sh --verify
 
 .PHONY: test-ffmpeg
-test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
+test-ffmpeg: ## media tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
+	$(GO) test -tags ffmpeg ./internal/mediatools/ ./internal/testkit/ -v
 	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ ./internal/api/ -v
 
 .PHONY: eval-contract eval eval-cert eval-matrix filler-bakeoff-ollama filler-bakeoff-openrouter filler-bakeoff-transcribe filler-corpus-archive filler-corpus-cdc filler-corpus-commons filler-corpus-direct filler-corpus-download filler-corpus-inventory filler-corpus-lock filler-corpus-loc filler-corpus-nasa filler-corpus-pilot filler-corpus-pilot-rights-lock filler-corpus-pilot-rights-review filler-corpus-prepare filler-corpus-review filler-corpus-review-package filler-eval-contract filler-eval-cert filler-openrouter-snapshot

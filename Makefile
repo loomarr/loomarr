@@ -31,8 +31,8 @@ DOC_GLOBS := README.md CONTRIBUTING.md docs/help docs/install docs/dev
 LINK_GLOBS := README.md CONTRIBUTING.md CLAUDE.md AGENTS.md CONTEXT.md PROGRESS.md docs 'design/*.md' .agents .claude
 
 # CI-only shard passthrough for `make test` / `make check` (e.g. GO_SHARD=1/2). Empty by
-# default — see the note on the `test` target, and PW_SHARD for the same contract on the
-# visual suite. Never set this in a local gate run.
+# default — see the note on the `test` target. The visual suite's separate environment-only
+# shard input is documented in mk/frontend.mk. Never set this in a local gate run.
 GO_SHARD ?=
 
 # Build-tagged sources are INVISIBLE to `go vet ./...` and to golangci-lint, because both ask

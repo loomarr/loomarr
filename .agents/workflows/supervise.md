@@ -27,6 +27,23 @@ A product's native agent panel shows only its own agent tree. `make agent-status
 cross-harness roster, but it does not expose another session's conversation or reasoning. Report
 that visibility limit instead of implying direct control over an independent session.
 
+## Track work in GitHub
+
+GitHub issues track questions, bugs, and work; `PROGRESS.md` alone owns phase status and gate
+evidence; claims and worktrees lock mutable seams. An issue is required for every supervised
+research, work, implementation, or review assignment. A `PROGRESS.md` row may add a phase-evidence
+pointer, but never substitutes for the issue or duplicates its phase state.
+
+Every worker brief and report carries its required issue URL/number and issue actions, including an
+open and closed-issue search, a linked issue, a created issue, a comment, or `none` with its reason.
+Search open and closed issues before creating one.
+
+File only a confirmed current-`main` bug: include its viewer-visible symptom, reproduction,
+evidence, and acceptance criteria. Do not file speculation. Link research findings and conclusions to
+the tracking issue and, when the result needs to outlive the report, a durable Markdown record. File
+or link an out-of-scope confirmed defect instead of silently fixing it. Implementation, PR, and
+cross-host handoff reports retain their tracking issue pointers.
+
 ## Choose the execution shape
 
 Match concurrency to independent seams, not to the number of available sessions. Keep one agent for
@@ -41,17 +58,49 @@ without creating long-lived ownership silos.
 
 Choose model capability and reasoning effort for the task when the harness exposes those controls:
 
-- inherit the supervisor's defaults unless the task shape justifies an override;
-- use stronger capability or higher reasoning for ambiguous multi-step work, safety or authorization
-  review, architectural integration, and final acceptance;
-- use faster or lower-cost execution for bounded read-heavy scans, issue triage, and repetitive
-  mechanical work whose acceptance is objective; and
+- use the balanced capability tier at Medium reasoning as the default;
+- use a lower-cost tier for bounded read-heavy scans, issue triage, and repetitive mechanical work
+  whose acceptance is objective;
+- use frontier capability or High reasoning only for measured ambiguity, security, authorization,
+  migration, integration, or final-acceptance work; and
 - compare speed or cost only among runs that satisfy the same acceptance criteria.
 
 Record the selection and rationale in the brief. Model choice never changes scope, authority, claims,
-tools, stop points, or acceptance. Change it only when issuing a new assignment; preserve the active
-worker's model and context during recovery unless the worker has returned control. For an external
-session whose model cannot be controlled or verified, record `uncontrolled` instead of guessing.
+tools, stop points, or acceptance. Do not switch a model or reasoning setting during an active
+checkpoint; change it only with the next bounded assignment after the worker has returned control.
+For an external session whose model cannot be controlled or verified, record `uncontrolled` instead
+of guessing.
+
+## Bound every checkpoint
+
+Treat one implementation assignment or one review pass as a checkpoint with a declared token limit.
+Choose a limit from 100,000 through 200,000 tokens before the checkpoint starts; use 150,000 unless
+the brief gives a concrete reason for another value in that range. The limit covers the worker's
+complete checkpoint, including tool results and corrections as counted by the chosen meter. It does
+not estimate product effort or redefine acceptance.
+
+Use the strongest enforcement the harness actually provides:
+
+1. When it has a native goal or task budget, create the checkpoint with that budget before any edit
+   or review begins and record the native meter as the source.
+2. Otherwise, when worker-scoped usage is visible, record the source and starting value. The
+   supervisor owns the arithmetic and interrupts the worker when the checkpoint reaches its limit.
+3. When usage is unavailable or cannot be attributed to this worker, fail closed for mutation. The
+   worker may perform read-only planning, research, diagnosis, or review, but it may not create,
+   change, delete, commit, push, or publish repository or external state.
+
+Do not infer a worker's usage from an aggregate parent, session, host, billing, or goal total. Do not
+silently raise or reset a live checkpoint's limit. A changed scope, implementation continuation, or
+second review pass is a new checkpoint: collect the current report, decide whether its evidence is
+worth continuing, and issue a fresh brief and budget. Existing unbudgeted editing sessions must stop,
+freeze, and restart under this rule before their next mutation.
+
+Reaching the limit is a mandatory return boundary, not failure and not permission to cut the work
+down until it appears complete. The worker preserves its registered worktree and claims, freezes the
+tree identity, reports accepted evidence and unfinished acceptance clauses, and returns control. The
+supervisor chooses whether to accept the checkpoint, create a new bounded checkpoint, reassign the
+remaining work, or stop the initiative. Never weaken a test, gate, grounding, authorization,
+migration, safety check, or acceptance clause to fit a budget.
 
 ## Build the task graph
 
@@ -84,14 +133,25 @@ role: <temporary mission or review lens>
 outcome: <one sentence>
 mode: <read-only | editing>
 execution: <model/capability and reasoning effort, inherited, or uncontrolled; rationale>
+budget: <meter source; limit; start; enforcement: native | supervisor | read-only>
+usage: <source; start; end; delta, or unavailable/uncontrolled>
+tracking: <required issue URL/#>
+phase-evidence: <PROGRESS.md row or none>
+issue-actions: <searched open/closed; linked/created/commented, or none with reason>
 owner: <task and worktree>
 base: <commit or branch>
 scope: <paths, subsystem, or question>
 do-not-touch: <explicit exclusions>
 acceptance: <verbatim clauses or exact commands>
 return: <required evidence and format>
-stop: <completion or escalation condition>
+stop: <completion, budget limit, or escalation condition>
 ```
+
+Record usage only when the harness exposes a worker-scoped measurement. `source` says where the
+number came from; `start`, `end`, and `delta` are that source's values at the assignment boundaries.
+Use `unavailable` when it cannot be observed and `uncontrolled` when an external session cannot be
+attributed reliably; either value makes the checkpoint read-only. Never assign an aggregate goal or
+session total to an individual worker.
 
 Use the current harness's delegation facility. When it supports agent trees, spawn workers under the
 supervisor so it can inspect, steer, wait, and collect their results. For an independent external
@@ -103,11 +163,15 @@ commits, and reports as observable evidence rather than assuming live steering.
 Keep the main context on decisions and evidence. Do not copy raw exploration logs into it.
 
 1. Inspect native agent state and `make agent-status` before assigning follow-up work.
-2. At a meaningful boundary, collect the worker report below.
+2. At a meaningful evidence checkpoint, collect the worker report below. Interpret progress by
+   accepted evidence for that checkpoint, not by tokens alone. The declared token limit is still a
+   mandatory stop boundary even when progress is good.
 3. Check cited files, diffs, commands, exit status, and artifacts. A worker's conclusion is a claim,
    not integration evidence.
-4. Send a bounded correction when evidence is missing or scope drifted. Reassign only the unfinished
-   portion; do not restart accepted work.
+4. Send a bounded correction when evidence is missing or scope drifted. Below the declared limit,
+   usage alone is not a reason to interrupt; repeated no-progress, duplicated work, or scope drift
+   is. At the limit, interrupt and collect the report. Reassign only the unfinished portion; do not
+   restart accepted work.
 5. Escalate a blocked dependency, contract deviation, authorization change, or overlapping claim.
 6. Wait when no supervisor decision is needed; avoid polling agents merely to produce activity.
 
@@ -119,18 +183,133 @@ task: <id>
 role: <temporary mission or review lens>
 state: <complete | blocked | needs-review>
 execution: <actual model/capability and reasoning effort, inherited, or uncontrolled>
+budget: <meter source; limit; enforcement: native | supervisor | read-only>
+usage: <source; start; end; delta, or unavailable/uncontrolled>
+tracking: <required issue URL/#>
+phase-evidence: <PROGRESS.md row or none>
+issue-actions: <searched open/closed; linked/created/commented, or none with reason>
 branch/worktree: <branch> @ <absolute worktree, or read-only>
 base/head: <commit> / <commit>
 claims: <comma-separated or none>
 changed: <paths or none>
-evidence: <commands with pass/fail and artifact paths>
+freeze: <head OID; dirty-path inventory and digest, or clean>
+gates: <commands run with pass/fail; required gates not run with reason>
+evidence: <accepted artifacts and file:line citations>
 findings: <distilled conclusions with file:line citations>
 blockers: <specific dependency or none>
+stop-reason: <brief complete | budget limit | escalation | blocked>
+remaining: <unfinished acceptance clauses or none>
 next: <recommended supervisor action>
 ```
 
 `complete` means the assigned outcome and evidence are complete, not that the initiative is merged,
 released, or accepted. Only the supervisor may make the initiative-level completion claim.
+
+## Hand off between Linux and Mac
+
+A cross-host handoff is a stop-the-world barrier, not another orchestration channel. Linux and Mac
+must never write the same deliverable simultaneously. Before Linux releases the work, stop or wait
+for every worker, collect its final `WORKER REPORT`, reconcile `make agent-status`, and add the
+handoff record to the tracking issue. Do not hand off merely because a pane is idle. Local registries
+cannot enforce cross-host exclusion; the barrier and durable issue handoff record do.
+
+The tracking issue contains this required record. Keep it current through the Linux stop and Mac
+acceptance; `issue-actions` preserves searched, linked, created, and commented outcomes.
+
+```text
+HANDOFF RECORD
+tracking: <required issue URL/#>
+issue-actions: <searched open/closed; linked/created/commented, or none with reason>
+topic: <exact branch name>
+task: <exact task name>
+claims: <exact comma-separated values, or empty explicitly>
+linux-head: <full commit OID>
+transfer: <authorized push/PR URL, or bundle filename + SHA-256 digest>
+dirty-paths: <resolved/retained path-by-path disposition, or none>
+stopped-linux-writers: <worker ids and owner after make agent-stop>
+mac-verified-head: <full commit OID>
+mac-owner: <task and worktree>
+```
+
+In every fresh Linux or Mac shell, copy the exact `topic`, `task`, and `claims` values from this
+record; never assume inherited environment values. `claims` may be empty, but it must be set
+explicitly. Before any ref, push, fetch, or worktree command, validate the required values:
+
+```sh
+topic='<exact topic from handoff record>'
+task='<exact task from handoff record>'
+claims='<exact claims from handoff record; empty is explicit>'
+[ -n "$topic" ] && [ -n "$task" ] || exit 1
+git check-ref-format --branch "$topic" >/dev/null || exit 1
+```
+
+On Linux, from the delivery worktree, verify the intended transfer and make every intended tracked
+change a commit. Resolve or explicitly retain dirty and untracked paths; neither is silently handed
+to Mac. Validate the topic before using it as a ref, and derive transfer filenames only from a safe
+HEAD-derived handoff id. Use one authorized transfer route:
+
+```sh
+make agent-status || exit 1
+git status --short || exit 1
+git diff --check || exit 1
+git log --oneline origin/main..HEAD || exit 1
+git add <intended-paths> || exit 1
+git commit -m "<handoff-ready change>" || exit 1
+git check-ref-format --branch "$topic" >/dev/null || exit 1
+test "$(git branch --show-current)" = "$topic" || exit 1
+handoff_id=$(git rev-parse --verify --short=12 HEAD) || exit 1
+
+# Only with authorization to publish this branch or PR:
+git push origin "refs/heads/$topic:refs/heads/$topic" || exit 1
+
+# Or, when a push/PR is not authorized, create a named bundle for secure copying:
+bundle="loomarr-handoff-$handoff_id.bundle"
+git bundle create "$bundle" "$topic" ^origin/main || exit 1
+sha256sum "$bundle" > "$bundle.sha256" || exit 1
+```
+
+Transfer the bundle and its checksum through an authorized secure channel, then verify the checksum
+on Mac before fetching it. Name and checksum build/test artifacts separately; transfer only the
+artifacts explicitly needed for acceptance. Private evidence, `.env` files, and credentials are
+never copied by default. tmux panes, local registries, claims, caches, ports, and ignored generated
+outputs are host-local and must be recreated or re-established on Mac. Once the transfer is verified,
+Mac tells Linux to stop. Every Linux writer, including the owner, then runs `make agent-stop` before
+Mac edits begin.
+
+On Mac, start from a fresh clone and re-establish the task before any edit. For a pushed branch:
+
+```sh
+git clone <authorized-repository-url> loomarr || exit 1
+cd loomarr || exit 1
+git check-ref-format --branch "$topic" >/dev/null || exit 1
+git fetch origin "refs/heads/$topic:refs/remotes/origin/$topic" || exit 1
+make doctor || exit 1
+make agent-worktree TOPIC="$topic" BASE="origin/$topic" TASK="$task" CLAIMS="$claims" || exit 1
+# cd to the worktree path printed by the harness; do not derive a path from $topic.
+cd <harness-printed-worktree> || exit 1
+make agent-status || exit 1
+test "$(git rev-parse HEAD)" = "$(git rev-parse "origin/$topic")" || exit 1
+git diff --exit-code "origin/$topic...HEAD" || exit 1
+make agent-baseline || exit 1
+```
+
+For a securely copied bundle, verify and fetch it before the same `make doctor` sequence:
+
+```sh
+bundle=<securely-copied-bundle-path>
+git check-ref-format --branch "$topic" >/dev/null || exit 1
+expected=$(awk '{print $1}' "$bundle.sha256") || exit 1
+actual=$(shasum -a 256 "$bundle" | awk '{print $1}') || exit 1
+test "$actual" = "$expected" || exit 1
+git bundle verify "$bundle" || exit 1
+git fetch "$bundle" "refs/heads/$topic:refs/remotes/origin/$topic" || exit 1
+```
+
+`make agent-worktree` registers `TASK` and the same claims before bootstrap; do not add a second
+`make agent-start`. Confirm the registration and claims with `make agent-status`, resolve any
+conflict, and update the tracking issue with Mac's verified head before editing. Preserve the Linux
+branch, bundle (if used), and all worker reports until Mac has completed acceptance. The Mac owner
+alone may resume writing after this barrier.
 
 ## Integrate and deliver
 

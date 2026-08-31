@@ -190,6 +190,7 @@ const ApprovalQueue = () => {
               acquisitions={p.proposal.acquisitions?.length ?? 0}
               lineup={p.proposal.lineup ?? []}
               acquisitionItems={p.proposal.acquisitions ?? []}
+              episodeSelectionPreview={p.episodeSelectionPreview}
               // What the proposal's own audience ceiling refused (§4, #259) — shown on the card
               // itself, because it changes what approving this row gets you.
               refused={p.proposal.refused ?? []}
@@ -207,7 +208,8 @@ const ApprovalQueue = () => {
               // because the edit is a parameter to the one approval gate, not a mutation of the
               // proposal (§7 / D-K). An unmodified row sends `{}`, exactly as it always has:
               // the handler maps a body with no drops, adds or note to a nil edit, so approving
-              // untouched stays byte-identical to the pre-V25 behaviour.
+              // untouched carries no human modification; the server may still canonicalise a
+              // missing/crafted series selector from the proposal's original Intent.
               onApprove={() => approve.mutate({ id: p.id, data: edits[p.id] ?? {} })}
               onDeny={(reason) => deny.mutate({ id: p.id, data: { reason } })}
             />

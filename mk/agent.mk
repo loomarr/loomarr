@@ -22,7 +22,7 @@ agent-env: ## show this worktree's isolated ports, database, compose project, an
 agent-baseline: ## run make check once per clean commit/toolchain and share the green result across worktrees
 	@./scripts/agent.sh baseline
 
-agent-verify: ## run focused changed-file checks (not the final gate; BASE=origin/main)
+agent-verify: ## run affected local evidence selected by CI impact (BASE=origin/main)
 	@BASE="$(or $(BASE),origin/main)" ./scripts/agent.sh verify
 
 agent-worktree: ## create, claim, and bootstrap a sibling worktree (TOPIC=... CLAIMS=...; BASE/DEPENDS_ON for stacks)
@@ -36,7 +36,7 @@ agent-gc: ## audit worktrees; APPLY=1 retires only exact clean merged PR heads
 bootstrap: ## build the Rust worker and prepare frontend, isolated directories, and dev identity
 	@./scripts/agent.sh bootstrap
 
-doctor: ## report toolchain drift, worktrees, ports, caches, and misplaced artifacts
+doctor: ## verify toolchain and Docker readiness; report worktrees, ports, caches, and artifacts
 	@./scripts/agent.sh doctor
 
 agent-harness-test: agent-assets-verify ## regression-test coordination, worktree isolation, and shared-output claims
@@ -50,7 +50,7 @@ compose-verify: ## verify Traefik, database wiring, and pinned release images
 	@./scripts/check-compose.sh
 
 .PHONY: release-verify release-notes-preview
-release-verify: ## verify server, Android, and release-note publication policy
+release-verify: ## verify release, CI acquisition, Android, and publication policy
 	@./scripts/check-release-tag.sh --self-test
 	@./scripts/check-release-image-absence.sh --self-test
 	@./scripts/android-version-code.sh --self-test
@@ -68,4 +68,3 @@ backup-restore-verify: ## isolated SQLite backup, destructive replacement, resto
 
 backup-restore-drill: backup-restore-verify ## SQLite + Docker-backed Postgres backup/restore drills
 	$(GO) test -race -tags=integration ./internal/store -run '^TestPostgresBackupRestoreDrill$$' -count=1
-

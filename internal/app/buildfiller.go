@@ -366,7 +366,7 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 					return 0
 				}
 				return lufs
-			}, time.Now).WithDiagnostics(processDiagnostics),
+			}, time.Now).WithConditioning(fillerTools.MeasureConditioning).WithDiagnostics(processDiagnostics),
 		filler.NewLanguageStage(langDetect, fillerLanguageStoreAdapter{st}, clipDir,
 			func() string { return set.str("filler.language") }, time.Now),
 		filler.NewTranscribeStage(fillerTools, fillerTranscribeStoreAdapter{st}, clipDir, fillerDrop,

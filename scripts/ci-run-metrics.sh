@@ -22,7 +22,7 @@ else
     '{run: $run, jobs: [$pages[].jobs[]]}')"
 fi
 
-jq -r '
+jq -r --arg lane "${CI_ASSURANCE_LANE:-unknown}" '
   def seconds_between($start; $finish):
     (($finish | fromdateiso8601) - ($start | fromdateiso8601));
   def minutes:
@@ -31,6 +31,8 @@ jq -r '
     gsub("[|]"; "\\|");
 
   .run.created_at as $run_created
+  | ([.jobs[] | select(.conclusion != "skipped")] | length) as $selected_jobs
+  | ([.jobs[] | select(.conclusion == "skipped")] | length) as $skipped_jobs
   | [
       .jobs[]
       | select(.conclusion != "skipped")
@@ -48,6 +50,9 @@ jq -r '
   | ($jobs | max_by(.completed_at)) as $last
   | (if $last == null then 0 else seconds_between($run_created; $last.completed_at) end) as $wall_seconds
   | "## CI timing and runner use",
+    "",
+    ("**Lane:** " + $lane + " · **Selected jobs:** " + ($selected_jobs | tostring)
+      + " · **Skipped jobs:** " + ($skipped_jobs | tostring)),
     "",
     ("**End-to-end:** " + ($wall_seconds | minutes)
       + " · **Occupied runner time:** " + ($runner_seconds | minutes)

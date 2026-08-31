@@ -757,7 +757,7 @@ type Provisioner interface {
 	// Bootstrap creates the first local admin, once (ErrBootstrapClosed after).
 	Bootstrap(ctx context.Context, username, password string) (store.User, error)
 	// Import allowlists the named media-server user ids (admin-only).
-	Import(ctx context.Context, ids []string, makeAdmin bool) (int, error)
+	Import(ctx context.Context, ids []string) (int, error)
 	// Candidates lists media-server accounts available to import, each flagged with
 	// whether it is already allowlisted (§11). Read-only — listing never provisions.
 	Candidates(ctx context.Context) ([]auth.Candidate, error)
@@ -785,7 +785,7 @@ type PasswordService interface {
 	// ChangePassword is the SELF path: proves the current password, then replaces it
 	// and revokes every session for that user.
 	ChangePassword(ctx context.Context, userID, current, next string) error
-	// CreateLocal mints a local account — an allowlist row carrying a bcrypt hash.
+	// CreateLocal mints a local account — an allowlist row carrying an Argon2id hash.
 	// Admin-only at the route layer; the same kind of explicit write as Import.
 	CreateLocal(ctx context.Context, username, password string, role store.Role, quota int) (store.User, error)
 	// ResetPassword is the ADMIN path: no current password (that's the point), so it

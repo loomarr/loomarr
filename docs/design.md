@@ -114,7 +114,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `diagnostics` | 8 | — |
 | `filler` | 6 | `diagnostics`, `filleradmission`, `llm`, `metrics` |
 | `filleradmission` | 7 | — |
-| `httpx` | 6 | `metrics` |
+| `httpx` | 7 | `metrics` |
 | `library` | 7 | `filler`, `httpx` |
 | `llm` | 5 | `httpx`, `metrics` |
 | `metrics` | 6 | `provision` |
@@ -134,6 +134,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
 - **`diagnostics`** · 8 importers
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
+- **`episodeevidence`** · 3 importers
+  Owns playable structure and bounded editorial facts used for episode curation.
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
 - **`filleradmission`** · 7 importers
@@ -154,6 +156,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Validates the repository's release publication policy.
 - **`taxonomy`** · 4 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
+- **`textmatch`** · 3 importers
+  Owns deterministic, Unicode-aware whole-word phrase matching.
 - **`web`** · 1 importer
   Embeds the built SPA and serves it same-origin at / (main doc §12).
 
@@ -161,10 +165,10 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`fillerdecision`** · 4 importers · → `filleradmission`
   Owns the durable lifecycle and operator projections for filler-admission results.
+- **`holidayvocab`** · 2 importers · → `textmatch`
+  Owns Loomarr's immutable built-in holiday identities and aliases.
 - **`prepared`** · 3 importers · → `diagnostics`, `media`
   Owns immutable, reusable playout publications.
-- **`schedule`** · 14 importers · → `provision`
-  Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 - **`scheduler`** · 6 importers · → `store`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 
@@ -172,22 +176,24 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`images`** · 4 importers · → `scheduler`
   One pipeline every image in Loomarr travels (§22).
-- **`playout`** · 4 importers · → `diagnostics`, `prepared`, `proctree`, `provision`, `schedule`
-  Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 - **`retention`** · 1 importer · → `diagnostics`, `scheduler`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity rows.
+- **`schedule`** · 14 importers · → `holidayvocab`, `provision`, `textmatch`
+  Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 
 **Layer 3**
 
-- **`mediatools`** · 2 importers · → `diagnostics`, `playout`, `proctree`
-  Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`metrics`** · 6 importers · → `images`, `provision`
   Loomarr's Prometheus surface (design §7 /metrics, §17).
+- **`playout`** · 4 importers · → `diagnostics`, `prepared`, `proctree`, `provision`, `schedule`
+  Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 
 **Layer 4**
 
-- **`httpx`** · 6 importers · → `metrics`
+- **`httpx`** · 7 importers · → `metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
+- **`mediatools`** · 2 importers · → `diagnostics`, `playout`, `proctree`
+  Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 
 **Layer 5**
 
@@ -204,16 +210,16 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`filler`** · 6 importers · → `diagnostics`, `filleradmission`, `fillerdecision`, `llm`, `mediatools`, `metrics`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
-- **`fillerreview`** · → `filleradmission`, `fillerbakeoff`, `fillereval`
+- **`fillerreview`** · → `filleradmission`, `fillerbakeoff`, `fillereval`, `httpx`
   Materializes identity-blind evidence for independent semantic review.
 
 **Layer 7**
 
 - **`clipfetch`** · 1 importer · → `filler`
   Downloads filler clips into the drop-folder (design §10, §16).
-- **`library`** · 7 importers · → `filler`, `httpx`
+- **`library`** · 7 importers · → `episodeevidence`, `filler`, `httpx`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`store`** · 14 importers · → `diagnostics`, `filler`, `filleradmission`, `fillerdecision`, `provision`, `schedule`, `taxonomy`
+- **`store`** · 14 importers · → `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `provision`, `schedule`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 **Layer 8**
@@ -241,7 +247,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Prepares an isolated agent worktree for UI development.
 - **`reconcile`** · 1 importer · → `activity`, `library`, `provision`, `requester`, `schedule`, `scheduler`, `store`
   Provisioning backstop (design §4, §7, §18).
-- **`suggest`** · 6 importers · → `catalog`, `llm`, `provision`, `schedule`, `store`
+- **`suggest`** · 6 importers · → `catalog`, `holidayvocab`, `llm`, `provision`, `schedule`, `store`, `textmatch`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
 - **`tmdb`** · 2 importers · → `catalog`, `httpx`, `provision`
   TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.
@@ -250,7 +256,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`binder`** · 2 importers · → `provision`, `schedule`, `store`, `suggest`
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
-- **`eval`** · → `catalog`, `library`, `llm`, `provision`, `schedule`, `suggest`, `tmdb`
+- **`eval`** · → `catalog`, `episodeevidence`, `library`, `llm`, `provision`, `schedule`, `suggest`, `tmdb`
   Loomarr's semantic-evaluation harness (a §14 Go test binary, NOT a service).
 - **`proposalworkflow`** · 2 importers · → `schedule`, `store`, `suggest`
   Owns the durable Proposal Job lifecycle and the authoritative First-channel Journey composed from it.
@@ -390,12 +396,87 @@ benchmarks at 45ms for *200* channels, so it was never the cost).
 becomes a store read. The **library is still the source of truth**; this is a materialized
 answer, never a second opinion:
 
-The cached episode evidence also carries community rating, overview, and tags. An approved series
-entry may persist an `episodeSelection` policy: deterministic `highlights` curation ranks credible
-community ratings, while `holiday` curation matches episode text against only the named built-in
-holidays. The scheduler applies that selector after its never-relaxed audience/era/season filters and
-before ordering. It keeps detected multi-part stories whole, and falls back to the complete safe pool
-when metadata is too sparse to select responsibly, so editorial precision cannot create dead air.
+The cached episode evidence also carries the minimum bounded editorial facts the Library exposes:
+a finite community rating in `(0,10]`, an overview capped at 2,048 Unicode code points, and at most
+16 distinct tags of at most 64 code points each. Invalid ratings become unavailable evidence; text is
+trimmed and bounded by one shared sanitizer at the Library adapter and again at the durable cache
+write/read boundary. A mixed-type tag array is wholly unavailable evidence rather than a partially
+decoded list. The read guard covers pre-contract cache blobs: malformed editorial values become
+empty evidence and unknown fields are ignored, while malformed playable identity/runtime
+still fails the cache read. A cached series episode must be a JSON object in which every required
+playable member is present: a non-blank `LibraryItemID`, `DurationMs > 0`, `Season >= 0`,
+`Episode > 0`, and `EpisodeEnd` either zero or at least `Episode`. Absence is not interpreted as
+an explicit zero, and required numeric members must be JSON numbers rather than null, strings, or
+other scalar types. Every non-null database value is decoded: an empty string, null document,
+null/empty episode object, wrong document/structural shape, or invalid value fails the whole cache
+read before scheduling; only a valid `[]` means a cached empty series. Exact or case-fold duplicate rating/overview/tag members are
+ambiguous editorial evidence and therefore become unavailable after all occurrences are removed;
+they never inherit JSON map iteration or last-member-wins behavior. Exact or case-fold duplicates
+of any required playable member (`LibraryItemID`, `DurationMs`, `Season`, `Episode`, or
+`EpisodeEnd`) instead fail the whole cache read because Loomarr cannot choose between competing
+identity, runtime, or numbering facts. Emby/Jellyfin exposes the aggregate rating
+but not its vote count, so Loomarr does not pretend it has absolute confidence or add scheduler-time
+TMDB calls. A `highlights` decision is relative to the eligible show's own well-covered cohort.
+The live Library adapter decodes each episode through the same evidence codec as the durable cache.
+For rating, overview, and tags, malformed JSON or exact/case-fold duplicate members makes that
+entire field unavailable without discarding neighboring valid episodes; a mixed-type tag array
+never contributes its successfully decoded prefix. Structurally unplayable live episodes are
+omitted: each needs a non-blank item id, positive runtime, and present valid season/episode
+numbering. The durable write interface enforces the same playable contract and rejects the entire
+write before persistence; only editorial evidence is repaired tolerantly. Thus neither a live
+response nor a caller can introduce an unschedulable cache row or launder provider JSON's
+last-member-wins behavior into curation evidence.
+
+Every proposed series in the lineup, acquisitions, **or alternates** persists one closed
+`episodeSelection` mode through Proposal -> approval -> Lineup/substitution: `complete` (the
+default), `highlights`, or `holiday`. An omitted/unknown legacy value is read
+as `complete`. The mode is derived in deterministic code from explicit Intent, never emitted by the
+model: Unicode-normalized whole-word `classic`, `best`, favorites/reruns/curated/highlights select `highlights`; explicit
+chronological/start-to-finish/binge/marathon language selects `complete`; a named built-in holiday
+selects only that holiday, while an explicit generic "holiday episodes/specials" request selects the
+closed built-in holiday vocabulary. `mustExclude` terms remain grounding constraints and never count
+as positive mode cues. Named holidays use the same whole-phrase matcher over all affirmative Intent
+text, including ordinary refine requests such as “add Christmas specials”; substrings such as
+“Christmasland” and “Valentinesque” do not match. Holiday specificity wins over narrative ordering, so a chronological
+Christmas request selects Christmas episodes and then forces that pool to sequential order even if
+the model proposed another ordering.
+One immutable holiday-vocabulary module owns the built-in ids and thematic aliases consumed by both
+Intent recognition and scheduler evidence matching. The scheduler continues to own calendar date
+windows and binds each window to one vocabulary id; it does not maintain a second alias list.
+The Proposal review names the resulting mode (`All episodes`, `Curated highlights`, or the holiday
+episode scope) before approval. The proposal API also returns one server-derived preview selection
+computed from the trusted Intent. The edit UI uses that read-only projection when a search-added
+series has no item selector yet, so a movie-only proposal still explains the series mode before the
+admin approves it. The client neither parses intent cues nor writes the preview. Because the channel lineup edit DTO is intentionally lossy, a
+same-key reorder/display edit preserves the approved episode-selection mode just as it preserves
+the season window and healed scheduling metadata.
+
+Approval is the final server-owned grounding boundary for this mode. Immediately after applying
+an admin's drop/add edit, and before serialising the approved Proposal or planning its Lineup, the
+shared approval gate deterministically re-derives `episodeSelection` for every series in lineup,
+acquisitions, and alternates from the Proposal's original trusted Intent. This stamps series added
+through search, restores a missing mode, and rejects a crafted client-supplied mode by replacement;
+movie items remain selector-free. An alternate therefore cannot later enter a lineup with an
+accidental complete-deck default.
+The client may propose title membership, but it cannot choose the episode selector that scheduling
+will execute.
+
+The scheduler applies the selector after its never-relaxed audience, era, and season filters and
+before seeded ordering/windowing. A standalone episode or detected multi-part story is one atomic
+selection unit. A multi-part unit is rated only when every part has a valid rating, using the
+arithmetic mean of those part ratings; otherwise that unit is unrated. Highlights require at least
+eight units and valid ratings on at least 75% of them. That cohort coverage is the only confidence
+gate the Library evidence supports; Loomarr does not infer per-rating vote confidence the Library
+did not report. The upper rated quartile is selected, with a floor of four units and a cap of 48. Every unit tied
+at the cutoff is included; if that consumes the whole rated cohort or exceeds the cap, selection
+degrades to `complete` rather than making an arbitrary quality claim. Holiday matching uses
+case-folded whole words/phrases across the episode title and bounded overview/tags. No thematic
+match, insufficient rating coverage, an invalid mode, or sparse/legacy cache evidence returns the
+complete already-safe pool. Selection keeps multi-part stories whole and preserves canonical order;
+the existing sequential/shuffle/syndication engine alone decides broadcast order. Thus a fixture
+whose eight episodes have distinct, fully covered ratings can produce four high-rated highlights,
+whereas the same fixture with only five ratings must return all eight; a holiday fixture with one
+Christmas story emits that story, while a fixture with no holiday evidence emits its complete deck.
 
 - **Read path:** `GetSeriesEpisodes(libraryID)`. A miss (or a row older than the staleness
   horizon) falls back to the live call and writes the result back, so a cold cache degrades to
@@ -715,7 +796,7 @@ Both return `[]SearchResult` (the existing shape carrying `LibraryItemID` + `TMD
 
 ⚠ **Collections are not the small hand-curated set the name suggests.** A real library returns ~125, roughly 90% of them auto-generated one-per-franchise groupings ("Alien Collection"), because Kometa and similar tools write them in bulk. Any UI over this must assume hundreds and rank the hand-made ones first (§12); a flat list buries the handful that carry a decision.
 
-**User auth & listing (for §11):** `POST /Users/AuthenticateByName` (body `{Username, Pw}`) validates a user's credentials — Jellyfin requires the `Authorization: MediaBrowser Client="…", Device="…", DeviceId="…", Version="…"` header on this request even without a token; Emby accepts the equivalent `X-Emby-Authorization`. `GET /Users` with the admin `LIBRARY_TOKEN` lists users (id, name, `Policy.IsAdministrator`, `Policy.IsDisabled`) for import/sync. Both live in the same flavored adapter as `Lookup`.
+**User auth & listing (for §11):** `POST /Users/AuthenticateByName` (body `{Username, Pw}`) validates a user's credentials — Jellyfin requires the `Authorization: MediaBrowser Client="…", Device="…", DeviceId="…", Version="…"` header on this request even without a token; Emby requires the equivalent `X-Emby-Authorization: MediaBrowser Client="…", Device="…", DeviceId="…", Version="…"` value, including the `MediaBrowser` scheme. `GET /Users` with the admin `LIBRARY_TOKEN` lists users (id, name, `Policy.IsAdministrator`, `Policy.IsDisabled`) for import/sync. Both live in the same flavored adapter as `Lookup`.
 
 ### Requester — Seerr (default) or direct Sonarr/Radarr
 
@@ -978,6 +1059,42 @@ An AI that can trigger real downloads must never act on a hallucinated title.
 - Acquisitions re-validated against TMDB (exists) + library (not present) before actionable.
 - Library/TMDB text in prompts is **untrusted**: it must not steer tools, change quotas, or reach secrets; catalog tools are read-only.
 
+### Proposal decision trace v1 (#496)
+
+The exact grounded ranking and proposal decision implementation emits one immutable,
+proposal-scoped `DecisionTrace`. It is original-proposal evidence: approval edits,
+availability changes, cache clones, re-curation, and channel creation never relabel or
+recompute it. A later scheduler trace is owned by `schedule.ComputeDesiredAt` and must not
+be reconstructed from this trace.
+
+Each surfaced grounded candidate has one closed disposition and reason, including selected,
+alternate, not-selected, policy-refused, validation-dropped, acquisition-cap, and terminal
+outcomes such as retrieval-empty, selection-empty, and budget-exhausted. Reasons are facts
+at the seam that made the decision; model rationale is presentation-only and never affects
+deterministic ranking. The published rank is the lexicographic tuple (relevance,
+preference, novelty, canonical key), with its tie-break inputs, not a scalar score.
+
+The trace is versioned, stably ordered, bounded, and carries surfaced/recorded totals and an
+explicit truncation flag. It contains only canonical identity, corpus provenance, ownership,
+safe constraint matches, deterministic rank terms, disposition, and closed reason codes;
+prompts, chain-of-thought, rationale prose, credentials, provider payloads, filesystem paths,
+and precise locations are redacted. Proposal and First-channel Journey reads expose the
+persisted trace under their existing authorization. Evaluators consume this same typed,
+bounded evidence and fail closed on mismatch.
+
+In v1, safe explicit-constraint evidence consists of the integer `relevance` component—the
+count of normalized intent terms present in grounded title, overview, or genre evidence—and
+closed booleans identifying whether request, tone, era, include, exclude, and refine categories
+contributed a match. The trace does not duplicate caller-authored terms or invent a second
+constraint vocabulary; an empty category set and zero relevance are explicit missing-evidence facts.
+
+The independent total bound is 1,024 surfaced or recorded facts: production's 576 maximum tool
+candidates plus bounded headroom for adjacent decision facts. Truncation never permits totals
+above that bound.
+
+Rank tuple components are integers by contract; no floating-point values are serialized, so
+non-finite-float handling is not part of this typed boundary.
+
 ### Provider abstraction
 One `Suggester` interface; provider by config. **Two adapters, both plain `net/http` (no vendor SDK):**
 - **`ollama`** (native `/api/chat` with tools) — the homelab default: local, private, no cost, and its capability/version API gives the §13 wizard + §8.1 model picker a fast pre-check. On a reasoning model (Qwen3-class), thinking mode is disabled on tool turns — with tools present it otherwise returns empty/leaked-marker output that breaks tool-calls (open Ollama bugs).
@@ -1204,7 +1321,7 @@ Turns an approved proposal + live availability into a durable, filled channel on
   runtime code has no legacy epoch branch.
 - `Slot`: `program` (library item, once available) | `pending` (awaiting provisioner) | `filler`/`flex`.
 - **Availability resolution** turns an approved lineup entry into a `program` slot: it resolves the entry's key to `(library item id, duration, available)`. Duration comes from the media server (the same `RunTimeTicks` source filler uses, §10) — the approved lineup carries only *what* should play, not its runtime, so the scheduler learns duration at resolution time. A program slot always carries a real `duration > 0`; both internal timeline layout and downstream Tunarr programming require it.
-- **Series expansion.** A movie lineup entry is one playable item → one program slot. A **series** entry is *not* directly playable: a show has no single library item and no single runtime — its **episodes** are the programs. So a `series` entry **expands** at resolution time into one program slot **per episode**, each carrying that episode's own media-server item id and duration (from `RunTimeTicks`). Expansion is the scheduler's job, not the suggester's: the approved lineup stays at the intent level ("this channel plays Seinfeld"), and the scheduler resolves the concrete episodes that exist *now* (so newly-imported episodes join on a later reconcile, consistent with backfill). **Ordering follows the channel strategy** (the same rule as movies): `sequential` → episodes in season/episode order; `shuffle` → episodes shuffled with the channel seed. Episode enumeration comes from the library adapter (`ListEpisodes(showItemID)` → `[]{itemID, durationMs, season, episode}`); a series whose episodes aren't in the library yet resolves to a `pending` slot until they land.
+- **Series expansion.** A movie lineup entry is one playable item → one program slot. A **series** entry is *not* directly playable: a show has no single library item and no single runtime — its **episodes** are the programs. So a `series` entry **expands** at resolution time into one program slot **per episode**, each carrying that episode's own media-server item id and duration (from `RunTimeTicks`). Expansion is the scheduler's job, not the suggester's: the approved lineup stays at the intent level ("this channel plays Seinfeld"), and the scheduler resolves the concrete episodes that exist *now* (so newly-imported episodes join on a later reconcile, consistent with backfill). **Ordering follows the channel strategy** (the same rule as movies): `sequential` → episodes in season/episode order; `shuffle` → episodes shuffled with the channel seed. Episode enumeration comes from the library adapter (`ListEpisodes(showItemID)` → `[]{itemID, durationMs, season, episode}`); a series whose episodes aren't in the library yet resolves to a `pending` slot until they land. A cached list younger than `episodes.max_age` is complete evidence and avoids enumeration. An aged cache always attempts live enumeration: success replaces it with fresh evidence; failure may retain only its valid cached playable identity, runtime, numbering, and safety fields. That retained deck remains playable, but its editorial evidence is unavailable, so highlights and holiday selection deterministically use the complete already-safe pool. An aged empty cache whose refresh fails is unavailable, never a synthetic deck.
   - **Season range (intent-level constraint).** A series entry may carry an optional `SeasonMin`/`SeasonMax` (inclusive; 0 = unbounded on that end) — an intent-level filter for channels like "old-school Simpsons" (seasons 1–10) or "just the classic run." Expansion filters the enumerated episodes to that range (by each episode's season number) before producing slots. It's a property of the *approved lineup entry* (the human's intent), not of availability, so it survives re-syncs and applies uniformly under any strategy. A range that matches no in-library episodes yet → a `pending` slot (same as an unavailable series).
 
 ### Scheduling strategies (shared by both playout backends)
@@ -2621,6 +2738,245 @@ before the toggle was turned on, or from a source that bypassed auto-file, are s
 guarantee "every break plays at a consistent level" cannot depend on which clips happened to pass
 through one optional step.
 
+**Conditioning measurement is evidence, never authority (V64).** The media-tools module can inspect
+one bounded local regular-file artifact and, optionally, compare it with one local regular-file
+parent artifact plus up to eight intended cut intervals. A request has at most one parent; individual
+cuts cannot select different parents. It reports container duration; the closed audio/video stream
+kind and index; explicitly available stream start and duration; exact rational video cadence;
+explicitly available audio/video start and end skew; measured integrated loudness and true peak;
+and the same normalised black/silence/freeze intervals used above. A parent comparison reports
+independently observed, signed start and end errors for each presented stream edge and stream index.
+A fully silent presented audio stream remains measurable: true peak is represented by a closed
+finite/negative-infinity state, never a non-finite number or an unavailable stream. It never
+substitutes the requested cut or container duration for an edge it could not match: unavailable is a
+first-class result, not zero.
+
+This inspection has **no verdict, threshold, rewrite, admission, filing, or provider authority**. It
+does not mutate the operator's media. It opens each input once without following links, copies that
+validated regular object into a private per-request snapshot, and runs every container, detector and
+packet inspection against those same captured bytes; replacing the caller's pathname after validation
+cannot mix evidence or redirect a later invocation to a pipe or device. Every pathname component is
+resolved without following a symbolic link or Windows reparse point; rejecting only the basename is
+not sufficient. Resource ceilings are part of its interface: each artifact or parent snapshot is at
+most **1 GiB**, an artifact has at most eight streams, a request has at most eight intended cuts, and
+media is at most 120 seconds. The byte ceiling permits about 71 Mbit/s across the full 120-second
+window—well above the compressed filler inputs this seam measures—while bounding a request with both
+artifact and parent to 2 GiB of private snapshots. The opened object's size is refused before copying,
+and the copy independently caps bytes and observes cancellation so a concurrent size change cannot
+evade the limit. URLs, pipes, devices, directories, missing paths, and other non-regular inputs are
+refused before any media tool runs. A metadata-only preflight compares the container's exact decimal
+duration with 120 seconds before any frame enumeration; exactly 120 seconds is valid and every rational
+value above it is refused without millisecond rounding. The decoded-frame probe is independently
+bounded to a 120.000001-second read interval so a sparse-frame input cannot turn small output into
+unbounded decode work, and caller cancellation remains the returned cancellation identity. Output and
+edge searches are bounded too. Conditioning selects the lowest global stream index of each presented
+kind, maps those exact video/audio streams into
+ffmpeg, and treats each selected stream's decoded-frame EOF (timestamp plus frame duration, or decoded
+audio sample count at its sample rate) as its detector timeline; that decoded EOF is checked exactly
+against 120 seconds before conversion to the returned integer milliseconds:
+black/freeze end at video EOF and silence ends at audio EOF, never at a longer container or sibling-
+stream duration. A selected stream without an independently available positive duration fails closed
+before detector execution. Detector events must match the anchored ffmpeg blackdetect, silencedetect,
+or freezedetect line grammar and fall inside that selected stream's timeline. Every detector kind is
+bound to one exact filter instance, address, and modern/legacy grammar for the measurement; distinct or
+interleaved identities cannot contribute parts of one event. Loudness likewise requires exactly one
+anchored integrated-LUFS summary and one anchored true-peak summary; duplicate, conflicting, or
+suffixed summaries fail closed, including duplicate digital-silence peaks. Every completed event
+carries the detector's duration token, which must equal end minus start within **exactly 1 millisecond**,
+compared as decimal rational values rather than binary floating point, to allow only ffmpeg's decimal
+rendering tolerance. Malformed, oversized, incomplete, duplicate, repeated, inverted, or suffixed tool
+output fails closed rather than producing guessed precision. Conditioning appends exactly one black
+frame and one white frame before the video detectors, guaranteeing a changed frame even when the
+artifact ends frozen on either color.
+Detector timestamps contributed only by those two terminator frames are clamped away at the selected
+video stream's measured EOF and can never become evidence. These are execution limits, not content-quality
+policy. V64 ends at this returned evidence: it does not invoke the filler pipeline, persist to the
+store or sidecar, expose an API, or decide what may be reviewed, certified, filed, admitted, rewritten,
+selected, or played. Those application-journey contracts remain tracked by issue #634 rather than
+being implied by this measurement seam.
+
+**Conditioning evidence joins the durable filler pipeline at its existing boundaries (V65).** A
+confirmed split writes the composite's content identity and the operator-reviewed intended start and
+end beside every child. That lineage survives proposal consumption and a catalog rebuild; a child is
+never matched to a parent by filename, ordering, or duration. At the child's transcode rung, Loomarr
+measures the cut bytes before rewriting and the hidden staged mezzanine after rewriting, comparing
+both artifacts independently with that one preserved parent interval. The replacement sidecar carries
+the lineage and both immutable measurements with the transformed bytes. Catalog reconstruction restores
+the child's parent identity from that same sidecar instead of flattening it into a top-level clip.
+Top-level clips are outside this compilation-conditioning slice. `normalizedLufs` remains only an
+idempotency/target marker: measured integrated LUFS and true peak come from conditioning evidence and
+are never inferred from that marker.
+
+Split confirmation first snapshots the catalogued composite into its private hidden staging area and
+requires that snapshot and the still-owned source name have the catalogued content identity. Every cut
+therefore reads one validated immutable snapshot; source replacement fails closed before any child is
+published or durable review state is consumed. Split confirmation publishes lineage before media. Each
+reviewed child is cut into that hidden staging area on the filler filesystem, hashed there, and given its
+final-bound lineage sidecar before one atomic media publication makes it visible to scanning. Existing
+content-addressed child bytes are reused only after their measured identity matches the staged child.
+A sidecar or identity failure leaves no visible child media. A concurrent
+scan can therefore observe either no child or a child with valid parent identity and a positive intended
+interval, never an unbound top-level clip. Durable `conditioningLineage.childHash` is the reviewed
+stream-copy child's content identity; `beforeRewriteHash` and `afterRewriteHash` bind the two persisted
+measurements to the exact bytes they describe after the replacement is re-keyed.
+
+The catalog identity remains V38c's bounded sparse `ClipID`; V65 does not silently redefine it as a
+full-file digest. At every conditioning ownership or reuse boundary, however, Loomarr compares the
+complete bounded byte streams under one cancellation-aware open: composite source against its private
+snapshot, existing child against the staged cut, child and retained parent against their measurement
+snapshots and still-owned names, and an interrupted transformed output against the current hidden
+output. Matching sparse identities alone never proves those byte pairs equal.
+
+Complete confirmation cuts and sidecars for the entire reviewed generation before publishing any child. It
+then durably writes every child as held and tombstoned, persists reviewed tags, and enrolls every
+child in the non-runnable review disposition. The final-bound sidecars and media links are published
+as a reversible prerequisite: a concurrent scan may see only bound held children, and any later
+publication or completion failure removes every new media link and final sidecar from that attempt.
+One store transaction is the all-or-none durable completion boundary: it marks the retained parent
+composite, files and unholds that parent's clip and pipeline state, activates every replacement child
+pipeline at the probe rung, consumes the reviewed proposal, and selects the replacement generation
+while preserving channel-pinned children. Until that transaction commits, the proposal, parent
+review disposition, and prior selected generation remain unchanged, and replacement pipelines cannot
+run against reversible media. Completion compare-and-swaps a still-held parent and exactly one parent
+pipeline from `review` to `filed`; a missing, already-filed, or otherwise changed parent state rolls the
+whole transaction back rather than treating a zero-row transition as success. The outer application adapter performs no fallible parent-filing write
+after inner confirmation, so a successful response cannot be followed by an ambiguous post-commit
+error.
+
+Confirmation is serialized by a durable, expiring proposal claim acquired before any final sidecar
+or media name is published. The opaque token fences partial proposal updates and the complete store
+transaction; ordinary proposal updates, rejection, and replacement cannot bypass an active claim.
+A clean exit releases only its own token, while a crashed owner is recoverable after the durable
+deadline. The live owner renews immediately before sidecar and media visibility. Every child sidecar
+also records the current publication token solely as filesystem rollback ownership: a recovered
+confirmer takes that ownership after exact byte and lineage validation, and a stale predecessor may
+remove only media whose sidecar still carries its own token. Partial confirmation publishes only
+reversible held/tombstoned children whose pipelines remain in `review`, then one claimed store
+transaction shrinks the proposal, activates exactly those child pipelines, and releases the claim.
+A failed claimed update or child activation rolls those media links back and leaves every replacement
+pipeline non-runnable. Catalog and sidecar preparation for the complete batch precedes the first media
+link; later cut, metadata, catalog, pipeline, or publication failure therefore exposes no ordinary
+child, and any briefly visible bound child remains held/tombstoned and non-runnable through concurrent
+Sync. Rollback removes media before its owner-marked sidecar. If media removal fails, the lineage and
+publication token remain durable quarantine and recovery evidence; rollback never launders surviving
+bytes by deleting that evidence.
+
+Until conditioning evidence is complete, catalog reconstruction also restores a lineage-only child
+as held rather than inferring that operator review was conditioning approval.
+
+This wiring does not grant conditioning policy authority. Measurement errors, missing required stream
+facts, unavailable cut edges, or evidence that cannot be associated with the preserved parent and
+stream identities hold the child for review; they do not manufacture zeroes, silently admit it, or
+rewrite the source in place. Existing media-quality and admission policies consume their own facts and
+retain their existing authority. Transcoding publishes only a fully measured staged replacement, keeps
+the source bytes untouched until the content-addressed replacement and its evidence are durable, and
+never places filler in the prepared-program rendition cache.
+
+A conditioned replacement sidecar carries a closed `pending` publication record binding source and
+target content identities before the target media name becomes visible. Catalog reconstruction treats
+that record as a conditioning hold regardless of otherwise complete evidence. The pending record stays
+through `ReplaceClipIdentity`; only after the durable re-key succeeds may the stage atomically clear it
+and return the measured media-quality disposition. A crash before re-key leaves the source row as the
+only identity owner and retry validates/reuses the pending target; a crash after re-key may clear the
+record only when the source identity is absent and the target row/evidence still match exactly.
+Concurrent Sync can therefore discover a pending target only as held, never as an ordinary duplicate
+or playable clip. Missing, malformed, mismatched, or ambiguously owned pending state remains review.
+
+Before the catalog re-key, the pre-rewrite sidecar durably records the exact replacement identity as
+`supersededByHash`. Successful cleanup removes those obsolete bytes and sidecar. If cleanup fails, the
+source remains preserved but catalog reconstruction treats that explicit saga marker as quarantine and
+holds it out of rotation; a cleanup error can report continuation only after that non-airability fact is
+durable.
+
+The application boundary validates the inspector's returned shape before trusting it. A conditioned
+child requires a positive bounded container duration; exactly one globally indexed audio stream and
+one globally indexed video stream; available start and positive duration for every stream; a positive
+exact cadence for every video stream; available start/end A/V skew; one measured loudness summary with
+a closed finite or digital-silence true-peak state; and exactly one cut comparison containing available
+start/end errors for every presented stream identity. Missing, duplicate, unknown, non-finite, or
+out-of-shape facts are unavailable evidence, not a content-quality threshold. Cancellation follows the
+same review path before publish rather than consuming generic transcode retries.
+
+A re-encode necessarily changes encoded packet hashes, so post-rewrite packet hashes cannot be matched
+directly to the parent without pretending codec output is content identity. Loomarr preserves the raw
+`afterRewrite.cuts` measurement unchanged, including unavailable direct packet edges, and persists a
+separate derived post-rewrite parent-edge projection as `derivedParentEdgesAfterRewrite`: the
+independently matched pre-rewrite parent error plus the measured start/end timeline delta between the
+same closed stream kind/index before and after the owned whole-clip transcode. This field is derived,
+not directly packet-matched evidence. The projection uses checked integer arithmetic, not content
+similarity or a tolerance. Missing stream identity, timing, pre-rewrite edge, or arithmetic safety
+makes the projected edge unavailable and holds the child for review.
+
+The sidecar is also the restart record. A child whose current mezzanine sidecar contains valid lineage,
+complete before/after conditioning, and media-quality evidence reuses those facts without decoding or
+rewriting again. The rung revalidates the persisted shape and still resolves the parent by its preserved
+content identity; missing or malformed restart evidence holds for review instead of being treated as a
+completed transcode or paying for another generation of loss.
+
+Restart and interrupted-publication recovery are identity-bound and fail closed. Lineage requires
+64-character lowercase content hashes and `0 <= intendedStartMs < intendedEndMs`; the parent hash must
+resolve to a retained composite. Conditioning measurements use the mediatools validation contract: one
+globally unique video stream index and one globally unique audio stream index, exact equality of the
+before/after stream identity sets, complete timing/cadence/skew/loudness provenance, and sorted, non-overlapping,
+duplicate-free detector intervals bounded by the measured duration. Media-quality evidence carries its
+closed `evidenceVersion: 1` and `provenance: ffmpeg_detectors` rather than relying on field presence. A
+transformed artifact
+already present at the target content identity is recoverable only when its sidecar contains that exact
+child lineage, complete media-quality and conditioning evidence, and evidence equal to the measurements
+built by the current attempt. A top-level artifact, a different parent or interval, corrupt/incomplete
+metadata, or a failed catalog replacement preserves the source and holds the child for review.
+
+Catalog reconstruction treats valid child lineage as authority that the retained parent is a composite
+and therefore non-airable, regardless of scan order. Blank or malformed lineage holds the discovered
+media out of top-level airability; it never launders a damaged child sidecar into an ordinary clip.
+Sidecar reading is tri-state at this boundary: absence is the ordinary hand-dropped case, valid JSON
+with no conditioning keys is ordinary top-level metadata, and present unreadable JSON, wrong-typed
+Loomarr conditioning state, or a conditioning-lineage object that omits, nulls, or gives the wrong
+JSON primitive type to any required identity or interval member is damage that remains held without
+being overwritten. Required conditioning-evidence hash scalars follow the same strict raw-JSON check
+before typed decoding. An explicit numeric zero remains present and type-valid, distinct from omission
+or null, and later lineage semantics decide whether the interval is valid. A conditioned child clears its reconstruction hold only after the completed scan
+generation contains its exact parent and that parent is a valid retained top-level clip: its sidecar is
+readable, it is not itself conditioned lineage or held by damaged conditioning state, and the child
+derives its composite marker from that clean parent. The ordinary parent starts with
+`is_composite=false`; valid child lineage is the authority that changes it to `is_composite=true`.
+A corrupt, conditioned, missing, or self-referential parent never becomes authority merely because a
+child names its sparse hash; child-first and parent-first traversal therefore cannot change the decision.
+
+Conditioning cancellation is checked after every inspector, probe, transcode, and complete-byte
+comparison boundary, including after the comparison loop itself, and immediately before sidecar or
+media publication and every durable write. A cancelled child returns to the
+existing review/hold path with cancellation recognized by `errors.Is`; no replacement sidecar, media,
+re-key, source cleanup, or later durable operation may follow cancellation.
+
+Derived post-rewrite parent edges are a media-tools operation beside conditioning validation, not
+filler-owned arithmetic. Its one narrow interface validates the measurement pair, preserves raw
+after-rewrite edge unavailability, and returns either checked derived edges or an unavailable-evidence
+error; callers do not duplicate stream matching or millisecond overflow rules.
+
+When loudness normalisation is enabled, the existing transcode path applies the configured target to the
+hidden staged output and conditioning independently measures integrated LUFS and true peak both before
+and after that rewrite. The target-valued `normalizedLufs` marker alone is never completion evidence;
+restart still requires the versioned measurements and every other conditioning invariant above.
+
+Acceptance follows the same seams as production. A hermetic application journey proves parent probe
+and the existing composite-transcode skip, reviewed split confirmation, child enrolment, child
+probe/transcode/quality, durable lineage, pod reconstruction, and the scheduler's exact
+`Airing.Identity`. Tagged ffmpeg acceptance
+separately proves that the selected child is decodable, begins at the requested mid-break offset, and
+returns to decodable program content at the scheduled boundary.
+That tagged proof resolves each segment through the production scheduler/Airing path, encodes finite
+blocks with the production `ProgramArgs`, and joins them through the internal playout block mux. A test
+authored `trim`/`concat` graph is not evidence for the behavior of Loomarr's playout assembly.
+Those playout observations are acceptance evidence, not new conditioning thresholds or admission
+rules. Store-schema and API exposure are deliberately outside V65.
+
+For each reviewed split child, the pre-rewrite conditioning measurement must contain one complete
+packet-matched `Cuts` record for the exact interval carried by that child's immutable lineage. The
+record stores actual-minus-intended start and end errors for every presented stream; unavailable or
+mismatched edge evidence holds the child for review. This is evidence wiring and persistence only:
+V65 defines no acceptable error threshold and performs no automatic correction.
+
 **Language is a job, not an inline check**, and it REJECTS rather than holding (maintainer,
 2026-08-03) — consistent with the other two gates, which drop a file at the boundary and leave a
 log line rather than a queue entry.
@@ -3360,6 +3716,21 @@ V38 compatibility gate remains the filing authority until the corpus and rollout
 The durable decision projection and unattended cutover are separate changes, so adding this module
 cannot by itself expand what reaches a channel without review.
 
+Every durable filler decision carries a closed `ApplicationMode`: exactly `shadow` or `applied`.
+`shadow` records what the evaluator would decide without granting catalog filing authority;
+`applied` means the decision was the filing authority and its corresponding catalog effect committed.
+All current production decision records are explicitly `shadow`; `applied` is reserved and has no
+producer. Omitted or unknown modes fail closed at the domain and store boundary. The forward migration
+marks every pre-existing decision `shadow`, matching the only production writer that could have created
+one, and keeps `shadow` as the database default for omitted raw inserts.
+
+The member-readable activity projection carries that mode as a required closed `applicationMode`
+wire field. An automatic shadow verdict is presented as `Would admit (shadow)` or
+`Would reject (shadow)` with caution styling; only an applied verdict may use the effect labels
+`Admitted automatically` or `Rejected automatically`. A client that receives an omitted or unknown mode
+presents `Decision mode unavailable` with caution styling and never infers an applied effect.
+Review requests and operator-action labels describe recorded events and do not change with mode.
+
 The ingest ladder places a fail-closed `admission` rung after extraction and immediately before the
 V38 `score` rung. Its first production evidence version records only facts whose provenance the
 current pipeline can prove: successful decoder passage, an explicit content-role token in the
@@ -3408,11 +3779,12 @@ Certification routes authorize exactly one provider attempt per invocation; an a
 internal retries inside an aggregate attribution. A retry is a new runner invocation and ledger step.
 
 An OpenRouter certification run is also bound to one immutable metadata snapshot fetched no more
-than 24 hours before its declared run time. The snapshot makes one bounded authenticated ZDR-list
-request plus one bounded endpoint request per concrete candidate and freezes model modalities,
-endpoint selector slug, distinct returned provider name, strict-output parameters, status, exact
-price text, and ZDR membership. Its SHA-256 is both the run's capability and price identity. Every
-route must resolve exactly within that snapshot before media is opened or spend is reserved; a
+than 24 hours before its declared run time. The snapshot makes one bounded authenticated model-catalog
+request, one bounded ZDR-list request, and one bounded endpoint request per concrete candidate. It
+freezes both the requested model ID and catalog canonical revision, model modalities, endpoint
+selector slug, distinct returned provider name, strict-output parameters, status, exact price text,
+and ZDR membership. Its SHA-256 is both the run's capability and price identity. Every route must bind
+its requested and resolved model identities and resolve exactly within that snapshot before media is opened or spend is reserved; a
 human-readable snapshot label, catalog-level capability claim, or provider-family name is not proof.
 
 Routing is reason-driven rather than confidence-driven: deterministic and text evidence run first;
@@ -3503,6 +3875,105 @@ submit immutable label hashes covering disposition, reject class, content role, 
 flags, evidence spans, and any review question. The original blind submissions remain visible. Matching
 submissions become the final labels directly; a disagreement requires a reasoned final adjudication
 by a third identity. Rights adjudication and semantic labeling are separate records.
+
+Eligible and semantic-invalid labels require one role from the closed review vocabulary. A
+deterministic-invalid or ambiguous label may leave the role empty only when the supplied evidence
+cannot establish it; there is no legacy `unknown` role and reviewers never invent a filler type merely
+to fill the field. One bound signal may support multiple distinct evidence claims, such as a
+transcript supporting role, brand, and product; only an exact repeated evidence record is invalid.
+
+A semantic reviewer may be a person or a model-backed review run, but a model-backed identity is
+valid only when a separate immutable attestation binds the exact blind-package manifest, prompt,
+provider, concrete model identity, its local digest or hosted capability-snapshot identity,
+transcript-set identity when used, completion time, per-case
+latency and token accounting, and the completed submission hash. The runner receives only one
+reviewer package, re-hashes every supplied signal, joins a transcript by the package audio hash rather
+than exposing a case ID, runs serially with one attempt and a per-case timeout, and atomically
+publishes the attestation and complete JSONL submission only after all 300 cases validate. Review A
+cannot see review B, either submission, an alias map, source identity, or candidate output. The exact
+model family used for review or adjudication is excluded from every scored candidate and cascade in
+that corpus generation; changing a quantization or provider does not erase that exclusion. A third
+model-backed adjudicator receives only the two completed labels and the same blind evidence for a
+disputed alias, never candidate predictions. Model agreement is therefore review evidence, not an
+automatic claim of truth: the locked development corpus can select candidates but cannot certify
+production, and the independently clustered holdout repeats this label protocol before it is opened
+to candidate scoring.
+
+A hosted review run additionally binds one exact upstream route from a capability snapshot no more
+than 24 hours old. It requires image and text input plus strict structured output, zero-data-retention
+eligibility, one provider attempt with fallback disabled, and response metadata proving the selected
+route and catalog canonical model revision. Before every serial request it atomically records a
+private `0700` checkpoint reservation, including the package-manifest, transcript-set, capability-
+snapshot, prompt, requested and resolved model, upstream provider/route, reviewer, batch, request-body
+SHA-256, and the unchanged request, per-request charge, and total nano-USD ceilings. Only then may the
+request leave the process. A settled attempt records its generation, tokens, latency, exact charge,
+state, and, when accepted, the hash of its normalized per-case submission; accepted submissions and
+their matching calls are stored in the same `0600` checkpoint. An interrupted request whose exact
+charge cannot be settled remains reserved and blocks automatic recovery rather than being treated as
+free.
+
+Exactly one process owns a hosted-review checkpoint at a time. Before loading checkpoint state, the
+runner creates `<output>.private/active-run.lock` with `O_EXCL`, mode `0600`, and a record binding the
+checkpoint-identity SHA-256, start time, and diagnostic process ID. It holds that lock across every
+load, reservation, persistence write, HTTP request, validation, and return. A competing process fails
+before HTTP. Every normal return verifies that the lock bytes still match the owner's digest, removes
+the lock, and syncs the private directory; a failed release suppresses otherwise completed output.
+A crash deliberately leaves the lock behind. Neither PID existence nor lock age may infer staleness.
+After independently establishing that no owner remains, an operator must run the hosted-review CLI
+with the same `--out` and `--recover-lock-sha256 <exact digest reported by the blocked runner>`; this
+mode makes no provider request, atomically renames the lock to a digest-named recovery audit, and
+exits. A missing or changed digest fails closed.
+
+The same CLI has a strictly offline inspection mode only for Reviewer B's exact 300-case hosted-review
+checkpoint. It accepts the exact package, transcript set, historical capability snapshot, route
+identity, prompt identity, and original ceilings; re-hashes and validates all of them plus the exact
+`0700` checkpoint directory, exact regular `0600` checkpoint, complete settled attempt accounting,
+package order, and any bounded exact regular `0600` active lock; and rejects symlinks, other types, and
+all other modes, including setuid, setgid, and sticky bits. The package and checkpoint directories are
+opened without following their final symlink and retained as descriptor roots; package descendants are
+opened component-by-component relative to that root without following symlinks. The package tree is an
+exact closed set of `manifest.json`, its declared instructions and label template, every declared
+signal, and only their required ancestor directories. The checkpoint tree contains exactly
+`checkpoint.json` and, when present, `active-run.lock`. Any other file, directory, symlink, device, or
+special object fails inspection regardless of its mode. The checkpoint,
+optional lock, transcript set, and snapshot are likewise mode-checked and read from the same opened
+descriptors, so a pathname replacement cannot redirect validation to one object and reading to
+another. Historical inspection validates the snapshot's immutable schema, source, model, route,
+capability, privacy, and digest identity but does not apply the live run's 24-hour freshness window.
+The live runner still rejects a snapshot older than 24 hours before constructing or invoking its
+request path. The offline CLI control path has neither credential lookup nor the provider-capable run
+function available to its inspection branch. It never reads a credential, creates a lock, mutates any
+input directory, or constructs a provider client.
+
+Its content-addressed attestation is a sanitized inspection projection only: permitted artifact,
+prompt, checkpoint, identity, and optional active-lock hashes; closed inspection status; aggregate
+case and historical request counts; and historically recorded immutable request/monetary ceilings and
+remaining allowance. Its SHA-256 is independently recomputable from the canonical emitted fields with
+the digest field omitted. It emits no raw batch, reviewer, model, provider, route, or prompt-version value.
+An incomplete checkpoint without a lock is `awaiting_explicit_maintainer_approval`. A present valid
+lock is only `active_run_lock_present`: it proves neither stale ownership nor recovery authority.
+Presence is tracked separately from lock bytes, so an empty `0600` lock is invalid rather than absent.
+Every state reports provider execution unauthorized; inspection authorizes no provider call, recovery
+run, or spend reservation. Missing inputs, identity or ceiling drift, unsafe modes, duplicate or
+out-of-order state, an invalid lock, an unsettled reservation, or unverifiable accounting emit no
+attestation and fail closed.
+
+A resumed hosted review re-hashes every package, transcript, snapshot, prompt, request, and accepted
+submission and requires the checkpoint identity and ceilings to match exactly. Identity drift,
+unknown fields, permissive or symlinked state, duplicate aliases, duplicate accepted attempts,
+unbound calls, and altered hashes fail before HTTP. Previously accepted aliases are never requested
+again. Only the failed alias is retried, as a new separately reserved attempt, and every prior failed
+or accepted request and exact charge continues to consume the original ceilings. The maintained
+300-case route defaults to a hard 301-request ceiling so one failure can be retried; a second failure
+exhausts that fixed recovery allowance, and configuration rejects a ceiling above 301. A missing or
+mismatched route, usage charge, schema, or case result still aborts the batch.
+The private checkpoint is not a label submission: public output appears only when exactly 300 unique
+accepted aliases and their complete settled attempt ledger validate. Published attempts must follow
+submission/package order: all failed attempts for one alias are contiguous immediately before that
+alias's one final accepted attempt, and no later alias may interleave. `labels.jsonl` plus the
+schema-2 `review-run.json` are then published together by one atomic directory rename. There is no
+schema-1 resume adapter: runs created before private request reservation have no trustworthy accepted-
+case or cumulative-charge ledger and must not be treated as resumable evidence.
 
 The maintained review packager turns one such opaque packet into inspectable reviewer evidence; a
 hash-only packet is not a completed review handoff. It consumes the exact draft, reviewer packet,
@@ -5221,22 +5692,130 @@ Core: `FILLER_DIR` (Loomarr's own clip folder, scanned directly; on a Tunarr-bac
 
 ## 11. Users, authentication & permissions
 
-Multi-user, **Loomarr-owned identity**: the local `users` table is the source of truth (the allowlist — you can sign in iff you have a row), and roles gate the actions that spend real resources. **Three** credential paths land on that one identity: **local** users authenticate against a Loomarr-stored bcrypt hash; **imported** media-server users authenticate against Emby/Jellyfin (Loomarr never stores their password); and **SSO** users authenticate against an OIDC provider (V8, below). All three resolve to the same allowlist — a credential proves who you are, the `users` row decides whether you may enter. A media-server account grants no access until an admin has **explicitly imported** it — signing in is not self-provisioning.
+Multi-user, **Loomarr-owned identity**: the local `users` table is the source of truth (the allowlist — you can sign in iff you have a row), and roles gate the actions that spend real resources. **Three** credential paths land on that one identity: **local** users authenticate against a Loomarr-stored Argon2id verifier; **imported** media-server users authenticate against Emby/Jellyfin and gain an offline Argon2id fallback after their first successful provider login; and **SSO** users authenticate against an OIDC provider (V8, below). Loomarr stores only non-reversible password verifiers, never plaintext or reversible password material. All three resolve to the same allowlist — a credential proves who you are, the `users` row decides whether you may enter. A media-server account grants no access until an admin has **explicitly imported** it — signing in is not self-provisioning.
 
 *This replaces the earlier "first media-server admin to sign in claims the instance / users created lazily on first login" model. The reason: identity should be Loomarr's to own, so an install works with zero media-server config, and access is an admin decision, not a side effect of who happens to hold a media-server account.*
 
 ### Identity is the DB; credentials are per-user
-- The `users` table (keyed by user id) is the **allowlist and source of truth**. Each row carries an optional `password_hash` (bcrypt): set ⇒ a **local** user (verified in-app); null ⇒ an **imported** media-server user (verified against the media server). Role/quota/disabled are Loomarr-owned regardless of credential path. The credential path itself is exposed as `local` on the user body (hash set ⇒ true) so the UI can label rows and explain why password actions apply to some users and not others — the hash is never exposed, only whether one exists.
+- The `users` table (keyed by user id) is the **allowlist and source of truth**. `media_server_linked` records provider linkage independently from the optional Argon2id `password_hash`: a local account is not linked and owns its verifier; an imported account is linked and may also carry a verifier captured from a successful provider login for offline fallback. Role/quota/disabled are Loomarr-owned regardless of credential path. APIs expose credential capabilities (`local` and offline fallback availability), never the hash.
 - A login attempt for a username with **no matching row is rejected** (`invalid credentials`, indistinguishable from a wrong password) — an un-imported media-server user is denied *even with valid Emby credentials*. There is no lazy self-provision.
 
 ### Authentication
-- **Local users:** `POST /v1/auth/login` verifies the password against the row's bcrypt `password_hash` (constant-time; a missing hash never verifies).
+- **Local users:** `POST /v1/auth/login` verifies the password against the row's Argon2id `password_hash` (constant-time; a missing or malformed hash never verifies). A pre-Argon2 local row may still carry bcrypt: Loomarr accepts that format only as a read-only compatibility path and, after a successful verification, immediately replaces it with Argon2id. Failed verification never changes the row, and no code path writes a new bcrypt hash.
 - **Dev login (development only, default OFF):** `POST /v1/auth/dev-login` issues an ordinary admin session with no credential, so a maintainer working on the UI is not locked out by a wedged backend or a forgotten password. It is **gated by a server-side environment variable, `LOOMARR_DEV_LOGIN=1`** — deliberately *not* a build-time flag, because a bundler constant travels inside the artifact and the same `dist/` could ship to production carrying the bypass. An operator must set the variable on the server; the default is closed. When unset the route is **not registered at all** and returns 404 — indistinguishable from a build that never had it (§19 pins this as a negative test). It selects the **lowest-id existing admin** and never creates, promotes, or enables a user: it is a shortcut past the *credential check*, never past the allowlist (§11's invariant holds — you can sign in iff you have a row). It refuses when no admin row exists, rather than bootstrapping one. Boot **WARNs on every startup** while the flag is on, because a bypass nobody remembers enabling is the failure mode worth shouting about. When the server advertises that this route is mounted, the web login route calls it once automatically; a failure falls back to the visible dev-login button rather than looping. The repository's secondary-worktree harness is the only automatic provisioning companion: `make bootstrap` opens that worktree's already-isolated SQLite database, creates a random-password `developer` through the same first-admin `Provisioner` used by the wizard, writes `setup.completed=true`, and enables the server-side dev-login gate. The primary worktree is untouched, and `AGENT_DEV_IDENTITY=0` preserves a genuinely unclaimed database for wizard work. Thus neither the endpoint nor application startup gains a user-creation path. It is not a credential path in the sense the other three are — it is a sanctioned bypass of the *credential check*, for the maintainer's dev loop, and must never be reachable in a shipped install. (The phrase "the only sanctioned third credential path" here predated SSO, V8; the distinction that matters is bypass-vs-credential, not the count.)
-- **Imported media-server users:** verification delegates to `POST {LIBRARY_URL}/Users/AuthenticateByName` (shared Emby/Jellyfin endpoint). On success the server returns an `AccessToken` + `User`; Loomarr verifies, **discards** the media-server token (best-effort `POST /Sessions/Logout`), and — critically — only proceeds if the user id is already an allowlisted row. Media-server passwords are never persisted or logged.
-- **Flavor quirk (encode in the adapter):** Jellyfin requires a client-identification authorization header **on the login request itself** — `Authorization: MediaBrowser Client="Loomarr", Device="…", DeviceId="…", Version="…"` — even before any token exists. Emby accepts the equivalent `X-Emby-Authorization` header. Extend the existing flavor-specific auth handling (§6) rather than special-casing.
+- **Imported media-server users:** verification delegates to `POST {LIBRARY_URL}/Users/AuthenticateByName` (shared Emby/Jellyfin endpoint). On success the server returns an `AccessToken` + `User`; Loomarr verifies, **discards** the media-server token (best-effort `POST /Sessions/Logout`), confirms the user id is already allowlisted, refreshes identity/disabled state, and replaces the offline Argon2id verifier with a hash of the supplied password. A provider 401/403 is authoritative and never falls back. Only transport failure, timeout, or provider 5xx may check the stored verifier. Missing/wrong verifiers fail closed; locally disabled users are rejected in every mode. Passwords and media-server tokens are never logged.
+- **Credential migration:** the forward-only migration that introduces `media_server_linked` backfills it for rows whose old-schema `password_hash` is `NULL`; under the former invariant those are imported media-server accounts. Existing local bcrypt verifiers cannot be converted without the password, so they use the successful-login upgrade above. Imported users begin without an offline verifier and acquire one only after a successful provider login.
+- **Flavor quirk (encode in the adapter):** Jellyfin requires a client-identification authorization header **on the login request itself** — `Authorization: MediaBrowser Client="Loomarr", Device="…", DeviceId="…", Version="…"` — even before any token exists. Emby requires the equivalent `X-Emby-Authorization: MediaBrowser Client="Loomarr", Device="…", DeviceId="…", Version="…"` value; omitting the `MediaBrowser` scheme can validate the password but fail Emby session issuance. Extend the existing flavor-specific auth handling (§6) rather than special-casing.
 - Either path issues Loomarr's **own session**: an opaque random 256-bit token in an HTTP-only, `SameSite=Strict` cookie. The token is **SHA-256-hashed at rest** and resolved against its database row on every request; it is not signed configuration and a DB read never yields a usable cookie. Sessions are therefore revocable **and reviewable** — `GET /v1/users/{id}/sessions` lists a user's live sessions for an admin, `DELETE /v1/sessions/{hash}` ends one — and disabling a user kills their sessions immediately; sliding `SESSION_TTL` (§5) expires idle ones. Cookies set `Secure` per `cookie.secure=auto|always|never` (`auto` honors direct TLS or `X-Forwarded-Proto: https` from a reverse proxy — plain-HTTP LAN installs still work). Mutating routes additionally require a static `X-Loomarr-Csrf: 1` header — combined with `SameSite=Strict`, that closes form-based CSRF cheaply. Rate-limit login attempts, keyed on the client IP. **Forwarding headers are trusted only when `security.trust_proxy=true`.** By default Loomarr uses the socket peer address for both the login rate-limit key and `cookie.secure=auto`, so a direct client cannot forge `X-Forwarded-For` to rotate past the throttle or `X-Forwarded-Proto: http` to downgrade its own cookie. An operator who terminates TLS or NATs client IPs at a reverse proxy sets `trust_proxy=true` to restore `X-Forwarded-For` (first hop) and `X-Forwarded-Proto` handling; behind a proxy the peer address is the proxy's, so trusting the header is correct there and only there.
 - The `DeviceId` in the media-server login header is stable per install (derived from an instance id generated at first migration), so Loomarr appears as one device in the media server's dashboard.
 - **Machine access:** the generated `API_TOKEN` (config-design §4) authenticates non-human clients (scripts, an external scheduler) via `Authorization: Bearer` and doubles as break-glass admin — it is the escape hatch if the media server is down *and* before any user exists.
+
+### Invitations, contact addresses, and notification delivery
+
+An administrator may admit a new person without choosing or learning that person's password. The
+durable **Invitation** is the admission decision: it reserves one normalized local username or one
+exact Library account id, records the Loomarr role the administrator selected, and remains outside
+the allowlist until redemption. Member is the default; administrator is an explicit choice. Creating
+an Invitation never creates an active `users` row, so an invited imported account cannot bypass the
+flow by signing in to the ordinary provider-login route. The existing direct local-create and
+Library-import actions remain immediate admin-owned alternatives for households that do not need an
+invitation.
+
+The Invitation's lifecycle is `pending → redeemed`, with `expired` and `revoked` terminal exits.
+`delivered` and `failed` are deliberately **not Invitation states**: they describe attempts to tell
+someone about a still-pending admission decision. The People UI composes the lifecycle with the
+latest delivery summary to present actionable pending/delivered/failed/redeemed/expired/revoked
+language without storing one overloaded enum. Expiry is seven days. Regeneration revokes every
+outstanding grant and issues a replacement; explicit revocation invalidates the Invitation and all
+its grants. Redemption is one database transaction that conditionally claims the pending Invitation,
+creates the one allowlist row, consumes the presented grant, and invalidates every sibling grant.
+Concurrent submissions therefore produce one account and one session; losers receive the same safe
+invalid-or-expired response as any unusable grant.
+
+An **Invitation grant** is a random 256-bit bearer capability tied to one Invitation. The URL carries
+the plaintext once; persistence contains only its SHA-256 hash, kind, conveyance, timestamps, and
+Invitation id. Hashing is appropriate here because the input is machine-generated high entropy;
+Argon2id remains exclusive to human passwords. Grants are short-lived, single-use, absent from logs,
+metrics, activity, diagnostics, RFC 7807 bodies, fixtures, browser storage, and durable notification
+records. The public join route moves the bearer from the initial URL into memory and immediately
+replaces browser history with the token-free route. Merely opening or scanning never redeems it: the
+page first shows the reserved identity, role, credential path, and expiry and requires explicit
+consent.
+
+- A local Invitation reserves its username. Redemption collects a new password, hashes it with the
+  same Argon2id policy as direct local creation, creates the user, and issues an ordinary session.
+- An imported Invitation pins the selected Library account id. Redemption authenticates against the
+  Library and rejects a successful response for any other id; on success it creates the imported
+  allowlist row, stores an Argon2id verifier of the supplied password for offline use, discards the
+  provider token as in ordinary login, and issues an ordinary session. A provider rejection is
+  authoritative. Provider unavailability before this first success cannot use an offline verifier
+  that does not exist and leaves the Invitation pending.
+
+An optional **Contact address** belongs to a person or pending Invitation but is not identity. Email
+is never accepted by the login endpoint, never provisions a row, and never changes a Loomarr role.
+Loomarr stores the display address plus a uniqueness key formed by trimming surrounding whitespace,
+parsing exactly one RFC 5322 mailbox, and case-folding both local and domain parts; it performs no
+provider-specific dot or plus rewriting. Verification state and provenance are explicit. Library or
+SSO claims may suggest an address to an administrator but are never silently trusted. Redeeming a
+grant that Loomarr actually conveyed to that same address by email verifies possession; redeeming a
+copied or QR-presented grant does not. Replacing a verified address keeps the old address recovery-
+capable until the replacement is verified, then atomically swaps it; removal requires an authenticated
+person or administrator and leaves no recovery destination.
+
+**Notification delivery is a deep, channel-neutral module.** Callers submit a typed
+**Notification intent** (`account_invitation` and `local_password_recovery` first) with a recipient
+reference and template data; they do not call SMTP or render a message. The notification module owns
+durable work, idempotency, rendering, bounded retries, retention, and one adapter per **Delivery
+means**. Email is the first means. SMS, push, Discord, and general activity notifications remain out
+of scope, but adding one later does not change invitation or recovery callers. Copy and QR are
+**Sharing affordances**, not Delivery means: they present a grant immediately under the
+administrator's control and make no delivery claim.
+
+Each **Delivery attempt** records only the intent id, means, destination reference or redacted
+destination, provider-safe message id when one exists, `queued | sending | delivered | failed |
+suppressed`, timestamps, attempt number, and a bounded scrubbed error classification. It never stores
+a rendered body, password, provider token, session token, SMTP credential, or plaintext bearer URL.
+The worker mints an email-conveyed grant only when an attempt begins and holds the resulting URL in
+memory while rendering plain-text and HTML alternatives. A definitely pre-acceptance transient SMTP
+failure may retry with a fresh grant after invalidating that attempt's unused grant. A timeout or
+disconnect after SMTP may have accepted `DATA` is **ambiguous**: that grant remains valid, the attempt
+is failed with an ambiguous classification, and automatic retry stops. An explicit resend may create
+another sibling grant; either link can redeem the one Invitation, and the successful transaction
+invalidates all others. This favors a possibly duplicated notice over either duplicate accounts or
+silently invalidating mail already in flight.
+
+Retries are fixed policy rather than settings: at most five attempts (initial, then approximately
+1 minute, 5 minutes, 30 minutes, and 2 hours, with bounded jitter) for errors known to precede remote
+acceptance. Permanent recipient/configuration failures and ambiguous acceptance do not auto-retry.
+Terminal intents and attempts are retained for 30 days and purged by housekeeping; active work is
+exempt. Contact addresses persist with their person, while terminal Invitations and hashed grants
+are retained for 30 days for operator diagnosis and then purged. These are bounded product policies,
+not operator tuning knobs.
+
+Password recovery uses the same notification and grant machinery but is not an Invitation. Its
+public request response is identical for unknown, disabled, imported, missing/unverified-contact,
+and eligible accounts. Only an enabled local user with a verified contact gets an email. A recovery
+grant expires after 30 minutes; successful explicit reset writes a new Argon2id verifier and revokes
+all sessions and outstanding recovery grants in one transaction. Imported passwords remain Library-
+owned and never enter this flow. Request and redemption are separately rate-limited, and the existing
+administrator local-password reset remains available.
+
+All links use a configured recipient-reachable `access.public_url`; Loomarr never infers an async or
+QR destination from `Host`, forwarded headers, or the administrator's browser origin. It is distinct
+from `server.public_url`, which is the machine-client address for playout and icons and may be valid
+only inside a container network. Invitation creation may reserve an identity while the address is
+unset, but Loomarr suppresses email and refuses to mint a shareable grant with an actionable
+configuration error until it has a valid absolute `http` or `https` origin. A LAN URL is valid when
+that is where recipients can reach Loomarr; “public” means recipient-reachable, not necessarily
+Internet-exposed.
+
+The existing Loomarr-owned `QrCode` interface and pairing presentation primitive render Invitation
+grants. Device pairing and person Invitation remain separate authorization protocols, stores, routes,
+copy, expiries, and consent actions: reuse stops at the QR matrix and accessible presentation. The
+Invitation UI names the destination and expiry beside the image, provides the full link as a copy
+alternative, never auto-submits after scan, traps/returns focus in its dialog, announces regeneration
+and delivery outcomes through the one polite live region, and is covered at desktop and mobile
+viewports plus forced-colors and axe checks.
 
 ### Paired clients own a revocable device credential
 
@@ -5384,7 +5963,7 @@ Internal playout (§9.1) serves segments to a **television**, which cannot hold 
 *Comparison:* `API_TOKEN` is break-glass **admin** — full authority, one secret, for a human or a script acting as one. `playout_token` is the opposite: no authority beyond reading streams, held by an appliance. They are separate secrets and must not be conflated.
 
 ### Explicit import & sync (admin-only, never implicit)
-- `GET {LIBRARY_URL}/Users` with Loomarr's admin `library.token` lists server users; `GET /v1/users/candidates` (admin-only) surfaces that list to the UI with an `imported` flag per account, so picking is a choice from real names rather than pasted ids. `POST /v1/users/import` (admin-only) takes an explicit set of media-server user ids and upserts them as allowlisted rows (`password_hash` null; media-server admins may map to `admin` at the importing admin's choice, default `member`). This is the **only** way a media-server user gains access.
+- `GET {LIBRARY_URL}/Users` with Loomarr's admin `library.token` lists server users; `GET /v1/users/candidates` (admin-only) surfaces that list to the UI with an `imported` flag per account, so picking is a choice from real names rather than pasted ids. `POST /v1/users/import` (admin-only) takes an explicit set of media-server user ids and upserts them as allowlisted rows (`password_hash` null). On a **new** import the source role is copied deterministically: an Emby/Jellyfin administrator becomes a Loomarr `admin`, and every other account becomes a `member`. Re-importing an existing row preserves its Loomarr-owned role, quota, and grants, so an idempotent retry cannot undo a later admin decision. This is the **only** way a media-server user gains access.
 - `POST /v1/users/sync` (and a periodic sync, same pattern as the filler catalog) refreshes **already-imported** users: name + disabled state from the source. It **never adds** new users — sync reconciles the allowlist, import defines it. The route and its adapter are always registered; the live, complete `{flavor, url, token}` connection gates each operation, so an empty or cleared connection returns the supported unconfigured response instead of turning the committed route into a boot-dependent 404. The computed `user_sync` feature (config-design §7) follows that same complete-connection predicate. Users disabled/deleted server-side are disabled in Loomarr on next sync, and their sessions revoked. Local users are untouched by sync.
 
 ### Roles & quotas (v1: deliberately simple)
@@ -5447,7 +6026,7 @@ concern, opposite fail-safe defaults — which is what an unshared rule decays i
 shared guard has one answer: no authorizer ⇒ denied.
 
 ### Bootstrap — first-run local admin
-First run creates a **Loomarr-native admin** with a local username + bcrypt password, working with **zero media-server config**: `POST /v1/setup/bootstrap` (username, password) succeeds **exactly once** — only while `CountAdmins() == 0` — and creates the owning admin (`password_hash` set). It is unauthenticated *because* it is gated on "no admin exists yet"; the first success closes the door (a second call 409s), and the wizard (§13) drives it as its first step. `API_TOKEN` works throughout as break-glass, including to run bootstrap in automation. Media-server users are added afterward via explicit import — the bootstrap admin does the importing.
+First run creates a **Loomarr-native admin** with a local username + Argon2id password verifier, working with **zero media-server config**: `POST /v1/setup/bootstrap` (username, password) succeeds **exactly once** — only while `CountAdmins() == 0` — and creates the owning admin (`password_hash` set, `media_server_linked=false`). It is unauthenticated *because* it is gated on "no admin exists yet"; the first success closes the door (a second call 409s), and the wizard (§13) drives it as its first step. `API_TOKEN` works throughout as break-glass, including to run bootstrap in automation. Media-server users are added afterward via explicit import — the bootstrap admin does the importing.
 
 ---
 
@@ -5464,7 +6043,7 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
   [`frontend-design.md`](frontend-design.md) must pass before full migration or retirement of the
   shipping web and Compose clients.
 - **Typed hooks generated by `orval` from committed `api/openapi.yaml`** — the payoff of §7.1: no hand-written types or fetch glue; contract changes become TypeScript compile errors. The `@loomarr/api` root barrel exposes generated DTOs through a **type-only** star export and explicitly re-exports only the generated enum objects the UI uses as runtime values. A normal DTO import must not make Vite fetch every generated model module before auth and the Guide can start; this is a development first-paint invariant, not merely bundle tidiness.
-- **Decided: embed** built assets in the Go binary (`embed.FS`), served at `/` → single self-contained container (§16), same-origin (no CORS). Compressible representations are gzip-compressed once when the web handler is constructed and selected through `Accept-Encoding`; hashed assets keep their immutable one-year cache while the SPA document remains `no-store`. A separate SSR container is future work if ever needed.
+- **Decided: embed** built assets in the Go binary (`embed.FS`), served at `/` → single self-contained container (§16), same-origin (no CORS). Compressible representations are gzip-compressed once per process and selected through `Accept-Encoding`; hashed assets keep their immutable one-year cache while the SPA document remains `no-store`. A separate SSR container is future work if ever needed.
 - **Live updates** via SSE `/v1/events` (native `EventSource` hook).
 
 ### Views
@@ -5583,7 +6162,7 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 
   ⚠ **The card's per-channel control is an include-set override, not two flags.** It replaces the pin/block pair: channels are checkboxes with a fit note, and **Back to automatic** returns the clip to being placed by the ladder. Pin-and-block let an operator build a state that reads as contradictory ("pinned *and* blocked") which the assembler had to resolve by rule; one set has no such state.
 - **People** (admin, route `/people`) — imported users, roles, quotas, disable, sync-now (§11). "People" rather than "Users" because the list is households and family members, not system accounts.
-- **Settings** (admin, route `/settings`) — **six tabs** (V9, restructured to the v2 mock): *Connections* (media server, requester, Tunarr, TMDB, plus `/readyz` and the re-runnable **connection checklist** of §13 as the troubleshooting console) · *AI* (provider/model, including the in-app **model manager** of §8.1 — probe, catalog, hot-swap, streaming pull) · *Defaults* (only the registry values channels can actually inherit: schedule horizon and break frequency) · *System* — itself sub-tabbed into **Tasks** (the §18.1 job console: cron, last/next run, Run-now) · **Playout** · **Database** · **Backup** · **About** — · *Security* (incl. **secret regeneration**) · *All settings* (every key, searchable). The typed registry, `env > database > default` resolution, runtime lifecycles, the cross-tab save bar, and the secrets lifecycle are `config-design.md`'s domain — **it wins on those mechanics** (§5 carries the page table and the four inline-commit exceptions); this row records only *where the surfaces are*.
+- **Settings** (admin, route `/settings`) — **seven tabs**: *Connections* (media server, requester, Tunarr, TMDB, plus `/readyz` and the re-runnable **connection checklist** of §13 as the troubleshooting console) · *AI* (provider/model, including the in-app **model manager** of §8.1 — probe, catalog, hot-swap, streaming pull) · *Defaults* (only the registry values channels can actually inherit: schedule horizon and break frequency) · *Notifications* (recipient-reachable access URL and outbound email/SMTP, including Send test) · *System* — itself sub-tabbed into **Tasks** (the §18.1 job console: cron, last/next run, Run-now) · **Playout** · **Database** · **Backup** · **About** — · *Security* (incl. **secret regeneration**) · *All settings* (every key, searchable). The typed registry, `env > database > default` resolution, runtime lifecycles, the cross-tab save bar, and the secrets lifecycle are `config-design.md`'s domain — **it wins on those mechanics** (§5 carries the page table and inline-commit exceptions); this row records only *where the surfaces are*.
 - **Account** (route `/account`, any authenticated user) — the signed-in user's own credentials: change password and view/revoke active sessions (§11). Distinct from **People**, which is an admin managing *other* accounts; this is the one settings-shaped surface a member can reach, which is why it sits outside the admin-only `/settings` IA above.
 - **Global search (⌘K)** — command palette over `/v1/search` + channels + help; the single fast entry point. **Hand-rolled, not cmdk** (revised — §12 described shadcn `Command`/cmdk, which was never built and is not a dependency; adding one is a §14 conversation, and the ARIA pattern is small enough not to need it). It implements the combobox/listbox pattern directly: `role="combobox"` on the input, `role="listbox"` over the results, one `role="group"` per scope, and `aria-activedescendant` — so focus stays in the input while ↑/↓/Home/End move the active option and Enter selects it. `Escape` is bound once at the window level (`useCommandShortcut`), never inside the component, so it cannot close twice. The search call deliberately omits `scope`, which the API defaults to `all` — the right corpus for a palette; channels, clips, and help are merged in from their own sources (clips are not a `/v1/search` scope, §7.2).
 
@@ -5681,7 +6260,9 @@ The checklist is backed by `GET /v1/setup/status` (runs all checks, returns stru
 - **Channel templates** — the blank-page killer: a set of one-click starter intents ("90s Saturday Morning Cartoons," "Cozy Mystery Nights," "Late-Night Sci-Fi," "Action Movie Marathon") that prefill the suggestion workspace with a good intent + sensible constraints. Templates ship as embedded JSON in the FE bundle; users edit before running.
 - **Intent-writing hints** — inline examples in the workspace of constraints that work well (era, tone, runtime target, must-include/exclude).
 - **"My proposals" status** — members always see where their submission is: *pending approval → approved → acquiring (3/7 titles) → live on channel 42.* This is the member-facing framing of the Board + channel status.
-- In-app status only for v1; notification agents (email/Discord on approval or channel-live) are future work (§20).
+- Account Invitations and local-password recovery may use the channel-neutral email delivery module
+  defined in §11. Product/activity notifications (approval, channel-live, Discord, SMS, and push)
+  remain future work (§20); the account-notification seam does not imply those policies.
 
 ### Documentation set
 Docs live as markdown in `docs/` in the repo and are **embedded and rendered as an in-app Help section** (same `embed.FS` mechanism as the SPA and `/docs` — works air-gapped, consistent with §7.1's offline rule).
@@ -5732,7 +6313,20 @@ full migration or retirement is authorized.
 
 Every "pick one" in this doc is now picked. The agent builds with this stack; deviations require a doc update first.
 
-### Backend (Go 1.26+)
+**Installed dependency versions are exact, reviewed pins.** Installed-dependency manifest sections
+use one concrete version rather than a semver range, container images and remote CI actions use
+immutable digests or commit SHAs, and Renovate proposes the next exact pin for the repository gates
+to review. Peer ranges remain compatibility contracts rather than selected installations.
+Workspace-local links and an operator-supplied Loomarr release version are the other non-concrete
+manifest references. Platform authorities such as Expo may hold an older compatible pin; the hold
+is documented beside the dependency and remains exact rather than widening into a range.
+
+### Backend (Go 1.27+)
+
+Go 1.27 is the minimum toolchain. Its standard library transparently backs the existing
+`encoding/json` v1 API with the JSON v2 implementation, improving the broad API and persistence
+surface without a wire-format migration. The opt-in profiler also exposes Go 1.27's
+`goroutineleak` profile through the same `LOOMARR_PPROF` gate as the existing pprof routes.
 | Concern | Decision | Why |
 | --- | --- | --- |
 | HTTP router | **stdlib `net/http` ServeMux** (Go 1.22 method+path patterns) via Huma's `humago` adapter | No third-party router; the embedded same-origin SPA also means **no CORS layer at all** |
@@ -5742,14 +6336,16 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | Migrations | **`goose`** with `embed.FS`, per-dialect dirs | Simple embedded-FS story; golang-migrate rejected as heavier for no gain here |
 | Jobs | **hand-rolled jobs table in the Store** + in-process worker | Forced, not preferred: River is Postgres-only, Asynq needs Redis — both break the SQLite promise. Claiming reuses the `SKIP LOCKED` pattern |
 | Scheduled-job cron | **`github.com/adhocore/gronx`** (parse + next-tick) | The job scheduler (§18.1) exposes Sonarr/Overseerr-style **cron** schedules (6-field, seconds-leading). Correct cron next-time (DST, ranges, `*/n`, day-of-week vs day-of-month) is fiddly to hand-roll; gronx is a **pure-Go, zero-transitive-dependency** parser/next-tick lib — the minimal add for correctness. Used only to validate a job's cron setting and compute its next run. |
-| Background job engine | **`github.com/riverqueue/river`** + **`riverdriver/riversqlite`** (v0.41.x) | Replaces the hand-rolled leased scheduler (§18.1) with a real queue: durable job records, retries with backoff, and a run history the Tasks page can show instead of one `last_error` string. ⚠ **SQLite support is officially EXPERIMENTAL** and its schema "may still have a few tweaks" — accepted deliberately (maintainer's call, 2026-07-30) with that risk stated rather than discovered. Uses `modernc.org/sqlite`, already this repo's driver and exactly what River tests against, so no CGO and no driver change. ⚠ **Its schema is applied programmatically via `rivermigrate`, NEVER the `river migrate-up` CLI** — a second migration *system* an operator must run alongside goose is the thing that would make this unshippable. **The honest dependency cost:** 5 direct modules (`river`, `riverdriver`, `riverdriver/riversqlite`, `riverdriver/riverdatabasesql`, `robfig/cron/v3`) plus 5 indirect (`rivershared`, `rivertype`, `lib/pq`, `tidwall/{gjson,sjson}` and their two helpers) — against a hand-rolled scheduler of ~350 lines that worked. Recorded rather than glossed: this is the largest single dependency addition in the project, and §18.1's cron trap is a direct consequence of `robfig/cron` arriving with it. |
+| Background job engine | **`github.com/riverqueue/river`** + **`riverdriver/riversqlite`** (v0.45.x) | Replaces the hand-rolled leased scheduler (§18.1) with a real queue: durable job records, retries with backoff, and a run history the Tasks page can show instead of one `last_error` string. ⚠ **SQLite support is officially EXPERIMENTAL** and its schema "may still have a few tweaks" — accepted deliberately (maintainer's call, 2026-07-30) with that risk stated rather than discovered. Uses `modernc.org/sqlite`, already this repo's driver and exactly what River tests against, so no CGO and no driver change. ⚠ **Its schema is applied programmatically via `rivermigrate`, NEVER the `river migrate-up` CLI** — a second migration *system* an operator must run alongside goose is the thing that would make this unshippable. **The honest dependency cost:** 5 direct modules (`river`, `riverdriver`, `riverdriver/riversqlite`, `riverdriver/riverdatabasesql`, `robfig/cron/v3`) plus 5 indirect (`rivershared`, `rivertype`, `lib/pq`, `tidwall/{gjson,sjson}` and their two helpers) — against a hand-rolled scheduler of ~350 lines that worked. Recorded rather than glossed: this is the largest single dependency addition in the project, and §18.1's cron trap is a direct consequence of `robfig/cron` arriving with it. |
 | Sessions | hand-rolled in the Store (random 256-bit token, **SHA-256-hashed at rest**, HttpOnly cookie) | We need revocation-by-user + dual-backend anyway; `scs`/`gorilla` add a dependency for no gain |
-| Local passwords | `golang.org/x/crypto/bcrypt` (DefaultCost) | Local-admin bootstrap + local users (§11 identity rework) need a password hash at rest. bcrypt is the boring, correct choice; already in the module tree transitively — this promotes it to a direct dependency. Session *tokens* stay SHA-256 (fast, high-entropy); only human passwords use bcrypt. |
+| Human passwords | `golang.org/x/crypto/argon2` (Argon2id v=19; 64 MiB, 3 passes, 4 lanes; 16-byte salt; 32-byte tag), with `x/crypto/bcrypt` read-only for legacy verification | Local accounts and media-server offline fallback need a memory-hard, non-reversible verifier. One bounded PHC parser owns encoding and rejects unsupported or oversized parameters before allocation. Existing bcrypt rows upgrade to Argon2id immediately after their next successful local login; bcrypt is never written. `x/crypto` is already a direct dependency. Session *tokens* stay SHA-256 (fast, high-entropy); only human passwords use Argon2id. |
+| Unicode phrase matching | `golang.org/x/text` (`cases.Fold` + `unicode/norm`) | Episode intent and thematic evidence must match canonically equivalent non-ASCII words without locale guesses. Version `v0.41.0` was already pinned transitively; this promotes the same module/version to direct ownership, adding no module or runtime service. |
 | Rate limiting | `golang.org/x/time/rate`, per-IP+username, in-memory | Login only; per-instance is acceptable v1 |
 | Metrics / logs | `prometheus/client_golang` / `slog` | Standard |
 | Interactive Startup report | **`github.com/jedib0t/go-pretty/v6/table`** | Renders the one Loomarr-owned structured Startup report as a restrained, width-bounded terminal table. It is formatting only: JSON `slog`, persistence, readiness, API, and UI consume the report value directly, and non-interactive output never passes through it. |
 | Unsupported Windows compatibility code | **`golang.org/x/sys/windows`** | A legacy Job Object adapter remains compile-isolated behind the built-in Windows constraint, but Loomarr publishes no native Windows server, makes no Windows lifecycle guarantee, and spends no CI or local-publication gate on it. Retaining the adapter is not a support claim. |
 | OIDC (SSO) | **`github.com/coreos/go-oidc/v3`** (+ `golang.org/x/oauth2`, `github.com/go-jose/go-jose/v4`) | SSO is a third credential path (§11, V8), and OIDC means verifying a signed token against the issuer's published JWKS — discovery, key rotation, `nonce`/`aud`/`exp` validation. Hand-rolling JWT verification is the kind of security code that looks right and is not. **Three modules total**, all current and maintained; `go-jose` does the crypto and `x/oauth2` the code exchange. Deliberately chosen over building forward-auth instead, which needs no dependency but trusts network topology (§11). |
+| SMTP client and message composition | **`github.com/wneessen/go-mail` v0.8.1**, behind Loomarr's notification email adapter | The standard library's `net/smtp` is frozen and deliberately low-level; invitation and recovery delivery need context cancellation, explicit implicit-TLS/STARTTLS/no-TLS policy, authentication discovery, address validation, and correct plain-text + HTML MIME composition. `go-mail` supplies those in one maintained pure-Go client with a small `x/crypto`/`x/text` dependency footprint already present in Loomarr's graph. Product code sees only the Delivery-means port, never this API. Debug SMTP logging stays disabled because protocol traces can contain addresses and authentication material. |
 | Goroutine-leak gate | **`go.uber.org/goleak`** (test-only) | The in-process restart loop (§9.2) is only correct if Build/Run/Shutdown can repeat without accumulating goroutines or stale state, and a leak there is **silent** — it degrades an install over successive restarts rather than failing anything. goleak is the standard detector, test-only (never in a shipped binary), zero runtime cost. Added by V13 alongside the N-iteration restart test, because a prose rule would not have caught it. |
 | LLM clients | **Ollama via plain HTTP** (`/api/chat` with tools) + a hand-written **OpenAI-compatible** client (`/v1/chat/completions` with tools) — both plain `net/http`, no SDK | One OpenAI-compat client covers OpenAI, Gemini (compat endpoint), Groq, Together, OpenRouter, **and** local Ollama's own `/v1` mode — so the model is a config choice, not a per-vendor code fork. Replaces the earlier `anthropics/anthropic-sdk-go` intent (a net dependency *reduction*); Claude is still reachable via OpenRouter. Ollama stays first-class as the local default. |
 | Release-note classification | **OpenRouter structured output via plain `net/http`**, defaulting to `openai/gpt-5-mini`; GitHub remains the source of PR titles, authors, links, contributors, and compare ranges | Release notes get useful, Uptime-Kuma-style sections for pennies per release without another application runtime or SDK. The model may assign only real PR numbers to a closed schema; deterministic Go rejects missing, duplicate, invented, extra, or malformed output and renders only GitHub-authored bullets. Publication fails closed when inference is unavailable. |
@@ -5886,7 +6482,11 @@ require outside-Library proposals where acquisition is allowed. The scorecard re
 serendipity separately: relevance rewards qualifier fidelity, while serendipity rewards coherent
 less-obvious additions without treating randomness as novelty. The corpus uses the real production suggester and
 catalog path. Exact user constraints are code-owned predicates: a named include/exclude, media mix,
-or expected episode cannot be certified by a merely non-empty Proposal or by judge prose. Cases that
+or expected episode cannot be certified by a merely non-empty Proposal or by judge prose. A case's
+`RequireTitles` and `ForbidTitles` use case-insensitive, trimmed, internal-whitespace-normalized whole
+title equality over its explicitly declared `grounded` Proposal or `scheduled` materialization
+evidence; substrings and near titles never satisfy an exact assertion. `ForbidTitleTerms` remains a
+separately named heuristic only for cases that intentionally forbid a term family. Cases that
 make a programming promise are materialized through `schedule.ComputeDesiredAt` with an explicit
 clock/history and assert the concrete program identities/order after expansion, filtering, grouping,
 and placement. The evaluator therefore has three nested contracts: Intent to grounded Proposal,
@@ -5894,13 +6494,170 @@ Proposal plus episode evidence to editorial selection, and selected pool plus Po
 schedule. The same public Runner interface owns all three so exploratory and certification modes
 cannot silently test different behavior.
 
-It writes a machine-readable scorecard naming the schema version, corpus version, requested
-provider/model (never credentials), trial configuration, every case/trial outcome, and the
-aggregate certification result. Stochastic cases run serially for an explicit bounded number of
-trials; the scorecard reports pass rate and min/median/max quality rather than hiding variance in one
-point score. Per-case tool-call and surfaced-candidate budgets are deterministic failures, so an
-over-broad retrieval cannot masquerade as quality. The hermetic lane uses fixed candidates and
-episode evidence and remains in the normal gate; real catalog/provider certification stays manual and inference-spending.
+The durable schedule-outcome contract is distinct from the proposal corpus because only an
+already-owned lineup can be materialized. Hermetic Runner tests use explicitly synthetic fixture
+episodes to prove that curated-series inclusions/exclusions, in-Library holiday selection, and an
+atomic release-ordered movie franchise can each pass and fail. Those fixture identities are test
+evidence only and never become live certification expectations.
+
+Live schedule cases instead come from a declared real-Library evidence snapshot. Its closed,
+versioned schema records a safe non-empty snapshot id; the exact series Key, Library item id,
+complete episode evidence, and independently pinned included/excluded concrete identities for
+curated and holiday selection; and the exact owned movie Keys, Library item ids, runtimes, TMDB
+collection id, and independently pinned canonical franchise sequence. Before any generator
+or judge provider is constructed, Loomarr re-reads the declared titles through
+`library.ItemMetadataByID` and `library.ListEpisodes`, resolves every movie through TMDB collection
+identity, and requires an exact match on every scheduling-relevant field. Missing cases, sparse
+curation evidence without nonempty, disjoint include/exclude sets covering every present episode,
+stale episode metadata, unplayable movies, mixed collections, a noncanonical franchise sequence, or
+any other drift fail certification. Preflight never invokes `schedule.ComputeDesiredAt`: the Runner
+compares its later production-scheduler output against those pinned independent expectations. The
+snapshot id is appended to the scorecard corpus version.
+Both live series cases are pinned to the authoritative `series:tmdb:456` Key; a self-consistent
+snapshot substituting any other series identity fails before Library, TMDB, or provider work begins.
+Their viewer requests remain semantic inputs to the production generator rather than snapshot
+labels: curated requests are exactly `Classic Simpsons reruns from the golden era, curated for
+variety`, and holiday requests are exactly `Christmas episodes of The Simpsons already in my
+library`. The snapshot supplies independent owned-title and episode evidence; it never replaces the
+viewer intent that generation and materialized outcome assertions must satisfy.
+Before accepting episode or runtime evidence, one shared ownership check calls
+`library.LookupDetail` with each exact TMDB media type/id. The title must be present and the returned
+Library item id must equal the snapshot's `libraryItemId`; matching metadata from an unrelated owned
+item cannot satisfy the evidence contract.
+
+Fixture and live `ScheduleMaterializer` adapters call one shared pure projection through
+`schedule.ComputeDesiredAt`. The live adapter bulk-reads owned movie runtime from
+`library.ItemMetadataByID`, enumerates series through `library.ListEpisodes`, and resolves a movie's
+authoritative TMDB collection identity before entering that projection. A snapshot-bound live
+adapter also rejects a Proposal whose Key resolves to a different Library item id.
+The snapshot binding is case-specific and exact: curated and holiday materialization accept only
+their declared series Key, while franchise materialization accepts only TMDB movie Keys 85, 87, and
+89. Any additional playable Lineup Key fails at the schedule stage; missing members remain the
+deterministic `RequireKeys` contract. Acquisitions never enter schedule materialization.
+
+Live schedule materialization is an explicit `LOOMARR_EVAL_LIVE_SCHEDULE=1` opt-in and requires
+`LOOMARR_EVAL_SCHEDULE_EVIDENCE` to name the versioned JSON snapshot above. An exploratory
+run without it runs the proposal corpus, omits the entire schedule-outcome corpus, and reports that
+omission once. Certification mode fails before constructing or calling any provider when the opt-in
+or a valid, consistent snapshot is absent, so a required scorecard cannot silently omit viewer
+outcomes. The hermetic contract lane always uses fixed fixture evidence and never constructs live
+Library, TMDB, generator, or judge adapters.
+
+The subjective judge receives one typed, bounded evidence value from `Runner`; it does not receive
+the raw Proposal or rediscover a schedule. That value keeps lineup and acquisition titles in
+separate ownership sets and records each title's exact grounded key, name/year, source provenance,
+optional rationale/confidence, genres, and rating. It also carries the suggester-extracted
+`ProposalPolicy`, the trial's structural counts and grounding stage, and the ordered concrete program
+identities already returned by `ScheduleMaterializer`. Scheduled episode entries additionally retain
+the bounded grounded title, season/episode range, year, rating, community rating, overview, and tags
+that the scheduler actually materialized. That is the minimum evidence with which a judge can assess
+holiday or highlight intent; an opaque episode identity is not sufficient. The model prompt renders
+those facts directly, including a deterministic prefix of the materialized programs; proposal title
+names are not a substitute for scheduled evidence. A Proposal item whose canonical Key cannot be
+constructed fails the judge stage before any prompt is sent; it never becomes an empty grounded key.
+`JudgeMaxTitlesPerOwnership`, `JudgeMaxGenresPerItem`, `JudgeMaxPolicyValues`,
+`JudgeMaxScheduledPrograms`, `JudgeMaxEpisodeTags`, and `JudgeMaxTextRunes` are the public bounds on
+the two title sets, each title's genres, every open policy collection, the schedule sample, episode
+tags, and each free-text field respectively. The evidence type has no credential, endpoint,
+provider-request, or provider-response fields, so those values cannot enter the prompt through this
+seam.
+
+It writes a machine-readable scorecard naming the schema version, corpus version, independent
+requested generator and judge provider/model identities (never credentials), trial configuration,
+every case/trial outcome, and the aggregate certification result. The scorecard has no ambiguous
+top-level provider/model compatibility fields: generator and judge identity are distinct even when
+both roles happen to use the same route. Every non-empty judge rubric makes a successful judge stage
+mandatory in exploratory and certification runs alike, regardless of whether any score floor is
+declared. A missing judge, provider error, or unparseable response is an ordinary stage error and
+fails that trial; it is never encoded as a magic score. A valid score remains in the closed `0..1`
+range, including zero, and fails only the declared overall/relevance/serendipity floor. Successful
+judge evidence must explicitly contain all three finite scores within that range plus the prompt's
+non-blank reason. `Runner.Run` validates that contract independently of the configured `Judge`, so a
+custom implementation cannot certify NaN, infinity, an out-of-range value, or a blank reason;
+missing, null, or invalid evidence is a judge error, never defaulted or clamped. Schema v7
+records exactly one first-failure stage on every failed trial from the closed vocabulary `retrieval`,
+`generation`, `deterministic`, `structural_budget`, `schedule`, `judge`, and `budget_exhausted`;
+later failures remain visible but never replace the first stage. `no_tool_call` and
+`retrieval_empty` are retrieval failures; provider/model errors, malformed output, and an empty
+selection after surfaced candidates are generation failures. The scorecard aggregates failed-trial
+counts under that same vocabulary, including zero counts, while passed trials carry no failure
+stage. Stochastic cases run serially for
+an explicit bounded number of trials; the scorecard reports pass rate and min/median/max overall
+quality, relevance, and serendipity
+rather than hiding variance in one point score. Per-case tool-call and surfaced-candidate budgets are
+hard failures, so an over-broad retrieval cannot masquerade as quality. The hermetic lane
+uses fixed candidates and episode evidence and remains in the normal gate; real catalog/provider
+certification stays manual and inference-spending.
+
+Before constructing Library, TMDB, generator, or judge clients, every semantic run reports one
+deterministic worst-case call budget: case count, trial count, maximum generator calls, maximum judge
+calls, and their total. Generator calls are `cases × trials ×` the production Suggester's exported
+structural bound; judge calls are at most `cases × trials`. Required certification additionally
+requires positive `LOOMARR_EVAL_MAX_CALLS_PER_RUN` and `LOOMARR_EVAL_MAX_CALLS_PER_SUITE`
+declarations. The per-run ceiling must cover the production generator bound plus one judge call, and
+the suite ceiling must cover the complete computed total and be at least the per-run ceiling.
+Missing, malformed, overflowing, or smaller declarations fail before any client or provider work;
+the former single `LOOMARR_EVAL_MAX_CALLS` name is not accepted. Exploratory evaluation reports the
+same budget without requiring ceilings. Required mode defaults an absent `LOOMARR_EVAL_TRIALS` to three,
+but rejects an explicit malformed, zero, negative, or integer-overflowing value instead of silently
+substituting that default. Every case/trial/call multiplication and total addition is checked; an
+unrepresentable envelope returns an explicit overflow error with no wrapped budget values before
+clients. The same exported Suggester bound supplies every real proposal
+and live-schedule case's nonzero tool-call and candidate-surfacing budgets, so certification cannot
+drift from the production loop by copying private magic numbers. The durable proposal corpus includes
+an exact forbidden grounded Key, an explicit closed movie-only media-type gate, and an intent-backed
+minimum genre-diversity gate; these predicates are not merely test fixtures. A closed media-type gate
+rejects every grounded title outside its declared set.
+
+Required certification also declares positive `LOOMARR_EVAL_MAX_TOKENS_PER_RUN`,
+`LOOMARR_EVAL_MAX_SPEND_PER_RUN`, `LOOMARR_EVAL_MAX_TOKENS`, and
+`LOOMARR_EVAL_MAX_SPEND` ceilings before clients. A run is one case trial and the suite is the complete
+`Runner.Run` execution. Token ceilings count provider-reported prompt plus completion totals without
+double-counting their reasoning/cache/modality detail categories; spend ceilings are exact
+nonnegative decimal USD values and are accumulated without binary floating point. Runner checks the
+shared run/suite ledger with overflow-safe arithmetic before and after every individual generator
+provider call and every judge call, including generator repair/tool-loop calls inside one
+`Suggest`. Reaching a calls/tokens/USD ceiling after one generator call prevents the next provider
+call from starting. Exact-ceiling completion is allowed; one additional call is not. Once a per-run
+ceiling is reached it records `budget_exhausted` and skips that run's judge or later call while a
+later run may use its own allowance; once the suite ceiling is reached no subsequent run starts.
+Token/spend exhaustion has the same behavior. Missing usage is sticky per provider call: reported
+usage from one call can never conceal missing required tokens or hosted spend on another call. With
+a corresponding hard ceiling, one hosted call whose token or spend usage is missing makes the
+shared suite ledger permanently uncertain for that `Runner.Run`: no judge, later trial, or later
+case may start another provider call. The trial that discovers the missing fact records the
+uncertainty as a failure, and subsequent trials fail closed before generation. The scorecard retains
+declared limits and observed totals. This is an execution gate, not post-hoc cost reporting;
+provider attribution that is absent remains explicitly unknown rather than being invented to make
+the ledger appear complete. Missing token or hosted-spend attribution is therefore
+`budget_exhausted` because the ceiling cannot be proven; a local Ollama call remains explicitly
+non-billed without fabricating a provider charge. If the same generator call already failed at
+retrieval or generation, that earlier diagnosis remains the trial's first-failure stage while the
+resource uncertainty still latches the suite and blocks subsequent calls. Exploratory runs may omit
+hard token/spend ceilings but still report observed bounded attribution.
+
+Required certification whose generator or judge wire is local/default Ollama also requires
+`LOOMARR_EVAL_ALLOW_LOCAL=1` before any Library, TMDB, generator, or judge client is built. A hosted
+fully hosted run does not require that local-resource acknowledgement. No target provisions or starts
+Ollama.
+
+Each provider call's reported attribution is projected into bounded, scrubbed scorecard evidence for
+its own role. Generator and judge calls remain separate and retain requested and resolved
+provider/model, every provider-neutral token category, exact decimal charge and currency when
+reported, attempts, and latency. A reported charge is accepted only when its amount is a nonnegative
+plain decimal of at most 64 runes and its currency is a three-letter uppercase ISO-style code. The
+scorecard records `reported`, `missing`, or `invalid` charge status; invalid provider text is discarded
+rather than truncated, copied, or inferred, while a valid decimal string is retained exactly. The
+projection has no credentials, endpoints, prompts, response
+payloads, or generation ids. Missing wire resolution or attempt metadata remains explicitly empty or
+zero: requested identity is never copied into resolved identity, and absence never becomes one
+attempt. Missing attribution remains an explicit all-zero/all-empty call record; the evaluator never
+infers routing, usage, attempts, latency, or cost from configuration. Generator
+evidence is capped by the same exported production call bound and judge evidence by one call per
+trial, so provider output cannot make a scorecard unbounded. The uncapped observed generator-call
+count remains separate from that serialized prefix. Exceeding the production model-call bound fails
+the trial at `structural_budget`; truncation can never hide an overrun behind an apparently complete
+scorecard.
 Network and inference keep it outside `make check`; a stored scorecard is evidence for one named
 model/catalog snapshot, not a timeless claim that every provider is certified.
 
@@ -5912,6 +6669,27 @@ mutate shared taste. Anonymous callers cannot read or write them.
 The latest event per `(scope, target)` is the effective signal, with channel scope overriding the
 household signal for that channel.
 
+A channel-scoped event names a currently persisted Channel identity. The store checks that identity
+and appends the event or clear tombstone in one transaction; an absent identity returns
+`store.ErrNotFound`, the admin API maps it to the bounded Channel-not-found 404, and no feedback row
+is written. Authorization runs before this existence disclosure, so a member still receives 403.
+Detached Channels remain persisted identities and therefore retain and accept their explicit
+feedback. Hard purge is the identity boundary: deleting a Channel removes only that Channel's scoped
+feedback in the same transaction, while household feedback remains independent. The forward schema
+migration removes only legacy channel-scoped rows whose Channel identity is already absent; active
+and detached Channel feedback and every household event survive. No detach, purge, playback,
+approval, denial, or inactivity infers a feedback event.
+
+Execution scope is server-derived and deliberately absent from persisted Intent JSON and public
+proposal inputs. A durable `kind=recurate` Proposal Job resolves its one current owning Channel from
+the trusted claimed Job id immediately before the worker invokes the Suggester, using the Channel's
+unique non-empty `intent_ref`; only then does the worker attach the Channel id as in-memory discovery
+scope. A missing, detached, unreadable, empty-id, or mismatched owner fails that Attempt
+before provider or catalog access. Fresh suggestions and manual refines remain household-scoped.
+The admin feedback API's `scopeId` identifies the editorial event being recorded; it never supplies
+or overrides execution scope. This keeps channel feedback effective across durable requeue, claim,
+and process restart without making a client-writable scope an authorization fact.
+
 A single pure deterministic discovery ranker consumes grounded candidate metadata plus effective
 signals. Explicit includes/excludes, grounding, audience safety, approval, and quotas remain outside
 and above it. `never` is a hard candidate exclusion; `keep` protects an existing lineup item from
@@ -5921,9 +6699,21 @@ positive signal. Outside-Library candidates receive a novelty tie-break, but rel
 primary rank band. Ranking affects only a later fresh proposal or re-curation proposal. It never
 edits current playout, and no playback/broadcast history is converted into taste.
 `make eval-matrix` runs that unchanged corpus twice—once with the configured local generator and once
-through OpenRouter's OpenAI-compatible endpoint—and writes separate named scorecards. The OpenRouter
-leg requires an explicit model input rather than a moving implicit default. Generator and judge
-identities are independent configuration inputs. Because local
+through OpenRouter's OpenAI-compatible endpoint—and writes separate named scorecards. Both generator
+and judge use the branded `openrouter` adapter, not the generic `openai` identity. Each OpenRouter role
+requires an exact immutable namespaced model slug and exactly one concrete upstream provider before
+any external client is constructed. Router aliases, `latest` aliases, wildcard/automatic providers,
+and comma-separated fallback orders are rejected. Every certification request sends that singleton
+order with fallbacks disabled, parameter support required,
+data collection denied, and zero-data-retention requested. Missing or malformed pinned routing fails
+required certification at preflight. Branded OpenRouter certification additionally requires both
+generator and judge base URLs to equal the canonical `https://openrouter.ai/api/v1`; a blank or
+alternate endpoint fails before client construction. Generic/custom OpenAI-compatible providers
+remain configurable outside this branded lane. Ordinary production fallback/resilience behavior is
+not part of this certification lane. The selected resolved provider/model and provider-reported exact cost remain
+scorecard evidence. Generator and judge models, routes, and identities are independent configuration
+inputs even when the judge model falls back to the generator model; a judge-specific provider never
+inherits the generator's scorecard identity. Because local
 inference competes directly with playback, transcode, memory, and GPU capacity on an appliance,
 the target refuses to start unless the operator explicitly sets `LOOMARR_EVAL_ALLOW_LOCAL=1` after
 confirming the host is idle and has enough headroom. The target never starts, pulls, or configures a
@@ -6060,6 +6850,12 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `TUNARR_URL` | `http://tunarr:8000` (Tunarr has no auth; no key config) |
 | `TUNARR_TRANSCODE_CONFIG_ID` | Tunarr transcode-config uuid created channels reference (Phase-0: channel create requires a valid `transcodeConfigId`; empty → resolve the instance `Default` via `GET /api/transcode_configs`, §9) |
 | `SERVER_PUBLIC_URL` | **Re-scoped by §9.1 — no longer icon-only, and no longer Advanced.** Loomarr's own address as your media server *and* Tunarr reach it (e.g. `http://loomarr:8080`). Internal playout serves **every stream segment** from this base, so a wrong value means channels appear in the guide and never play. Still also used for **uploaded** channel icons — the stored icon URL is built from this, never from request headers (Host-injection-safe). Deliberately ONE key rather than a second `playout.public_url`: it is genuinely the server's own address, both callers need the same value, and two keys could drift. Empty → a relative `/v1/channels/{id}/icon` URL for icons (works when Tunarr shares Loomarr's origin); internal playout requires it set. |
+| `ACCESS_PUBLIC_URL` | Empty by default. The absolute `http`/`https` browser origin recipients can reach (for example `https://loomarr.example.test`), used only to construct Invitation and local-recovery links (§11). It is never inferred from request headers or the current browser and is intentionally distinct from `SERVER_PUBLIC_URL`, which may be a container-only machine-client address. Empty suppresses email and shareable-link generation with an actionable Settings → Notifications link; it does not prevent direct account creation/import or storing an Invitation reservation. |
+| `NOTIFICATIONS_EMAIL_ENABLED` | `false`. Enables the email Delivery means only when the public access URL, SMTP host, and sender address are also complete. Disabled or incomplete email suppresses delivery without rolling back an Invitation; QR/copy remain available when `ACCESS_PUBLIC_URL` is configured. |
+| `NOTIFICATIONS_SMTP_HOST` / `NOTIFICATIONS_SMTP_PORT` | Empty / `587`. The outbound SMTP submission endpoint. Host is required when email is enabled; port is validated `1..65535`. |
+| `NOTIFICATIONS_SMTP_SECURITY` | `starttls` (default) / `tls` / `none`. `starttls` requires a successful STARTTLS upgrade and never falls back to cleartext; `tls` is implicit TLS. `none` is an explicit operator choice for a trusted local relay and is labelled insecure. Certificate verification is never disabled by a setting. |
+| `NOTIFICATIONS_SMTP_USERNAME` / `NOTIFICATIONS_SMTP_PASSWORD` | Empty / *(secret)*. Empty username means an unauthenticated relay and requires an empty password. Otherwise the adapter discovers the strongest mutually supported mechanism. The password is replace-only and covered by every config-secret redaction rule. |
+| `NOTIFICATIONS_EMAIL_FROM_ADDRESS` / `NOTIFICATIONS_EMAIL_FROM_NAME` | Empty / `Loomarr`. A single validated mailbox and its display name. The address is required when email is enabled; neither value is recipient-controlled. |
 
 **Playout (§9.1 — added with internal playout).**
 
@@ -6105,7 +6901,7 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `DIAGNOSTICS_DIR` | `/data/diagnostics` — persistent, diagnostics-owned Process-output files. The path is generation-scoped and applies after restart; changing it cannot split one generation's active Process runs across roots (§17). |
 | `DIAGNOSTICS_RETENTION` | `168h` — how long Diagnostic events and completed Process runs remain available. Active Process runs are exempt regardless of age (§5, §17). |
 | `DIAGNOSTICS_MAX_STORAGE_MB` | `512` — soft global budget for normalized Diagnostic-event payload plus bounded Process-output files. Housekeeping removes the oldest completed evidence until under budget; active Process runs remain protected even when that temporarily leaves the install over budget (§5, §17). |
-| `episodes.max_age` | `24h` — how stale a cached series episode list may be before `channel-maintenance` re-enumerates it (§5). A miss or an aged-out row still falls back to the live library call, so this bounds staleness, never correctness. |
+| `episodes.max_age` | `24h` — how stale a cached series episode list may be before resolution and `channel-maintenance` re-enumerate it (§5). A miss or aged row attempts the live library call. On an aged refresh failure, a non-empty valid cache preserves playable/safety facts but disables editorial subset selection; an empty cache remains unavailable. |
 | `SUGGEST_MAX_ACQUISITIONS` | `10` |
 | `SCHED_WINDOW_HOURS` | `24h` (rolling-window horizon a channel materializes; per-channel/-rule overridable, `0` = the whole run — `programming-design.md` §6.5) |
 | `FILLER_DIR` / `FILLER_SYNC_EVERY` / `FILLER_AI_TAGGING` | **`/data/filler`** / `15m` / `false` (§10). ⚠ **V38c: this is the CLIP FOLDER** — Loomarr's own store, holding `a3/f9/<hash>.mp4` plus sidecars, scanned directly by Loomarr and the only directory Loomarr rearranges. *(It briefly meant "the first watched folder" in V38c's intermediate model, before "Two folders, one pipeline" split arrival from storage. The key kept its name because its meaning — where the clips are — did not change; only the layout did.)* Tunarr-backed channels also receive this folder as a `local` source; that playout integration is not how the catalog discovers files. ⚠ **Defaults inside `/data`, like `DATABASE_URL` and `BACKUP_DIR`** — it was previously empty for no recorded reason, which made filler opt-in by accident: a zero-env install opened the Filler page on a single "no folder configured" empty state, hiding every shipped filler capability behind a config step. Created at generation build if missing (the scanner treats a missing root as fatal by design, so a default that did not exist would swap an honest empty state for a scan error). **Generation-scoped:** a saved replacement is desired immediately but every filesystem consumer keeps the applied root until restart. Changing it selects another library; it never moves the old library implicitly |
@@ -6144,7 +6940,7 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 ## 16. Deployment (Docker)
 
 Multi-stage build with a cgo-free static Go server and a separate Rust image-worker executable.
-Toolchain pins: **Go 1.26+**, the exact Rust channel in `rust-toolchain.toml`, and **Node 22.5+** in
+Toolchain pins: **Go 1.27+**, the exact Rust channel in `rust-toolchain.toml`, and **Node 22.5+** in
 the frontend build stage. The runtime remains non-root Debian/glibc because its media executables
 already require that base. The container `HEALTHCHECK` uses the binary's `/v1/readyz` probe;
 readiness additionally requires the bundled
@@ -6259,7 +7055,7 @@ postgres backend has no `/data` volume — so the init runs under the `sqlite` p
 ```yaml
 services:
   loomarr-version-check:
-    image: busybox:1.36
+    image: busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
     command: ["sh", "/check-release-tag.sh", "--image-tag", "${LOOMARR_VERSION:?pin an exact released SemVer version}"]
     volumes: ["../scripts/check-release-tag.sh:/check-release-tag.sh:ro"]
 
@@ -6274,7 +7070,7 @@ services:
 
   # sqlite-only: chown the fresh /data volume to the nonroot uid before loomarr starts.
   loomarr-init:
-    image: busybox:1.36
+    image: busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
     profiles: ["sqlite"]
     command: ["sh", "-c", "chown -R 65532:65532 /data"]
     volumes: ["loomarr-data:/data"]
@@ -6313,11 +7109,11 @@ services:
     # depends_on: [postgres]       # postgres profile
 
   # postgres:                      # postgres profile
-  #   image: postgres:16
+  #   image: postgres:16@sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94
   #   environment: { POSTGRES_DB: loomarr, POSTGRES_PASSWORD: ... }
   #   volumes: [pg-data:/var/lib/postgresql/data]
   # ollama:                        # ai profile
-  #   image: ollama/ollama:latest
+  #   image: ollama/ollama:latest@sha256:020e4134285e2ef4d8fd801234176de3b4faadc992a3eb06c8e66a2f9d4c4ba2
   #   volumes: [ollama:/root/.ollama]
   # For in-app clip downloads, mount the drop-folder (the tooling is already
   # in the image — no tag change, no extra service):
@@ -6720,7 +7516,36 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
 ---
 
 ## 19. Testing strategy
-- **Gate composition:** `make check` remains the complete local Go/Rust gate. CI may run its
+- **Invitation and contact store conformance:** one shared suite runs unchanged over SQLite and
+  Postgres. It covers normalized contact uniqueness, reserved local/Library identity collisions,
+  lifecycle transitions, regeneration/revocation, expiry, verified-contact replacement, grant hashes
+  never yielding a usable bearer, and two concurrent redemptions producing exactly one user/session.
+  Migrations are forward-only and upgrade populated users without inventing contact verification.
+- **Access security negatives:** members receive 403 for every Invitation/contact/delivery admin
+  mutation; anonymous callers cannot inspect reservations or delivery status; disabled users lose
+  sessions; unlisted Library accounts remain indistinguishable from bad credentials; imported
+  recovery never sends or resets; public recovery responses do not enumerate eligibility; provider
+  rejection during imported redemption never falls back; and no password, provider/session token,
+  SMTP credential, or plaintext grant appears in SQL fixtures, logs, metrics, diagnostics, activity,
+  RFC 7807 bodies, browser storage, or generated examples.
+- **Notification certification:** a deterministic Delivery-means adapter pins intent idempotency,
+  retry timing/classification, suppression, retention, and ambiguous-acceptance behavior without a
+  network. SMTP integration runs against an in-process protocol server and covers unauthenticated and
+  authenticated submission, required STARTTLS, implicit TLS, certificate rejection, plain-text plus
+  HTML MIME, permanent recipient rejection, pre-acceptance transient retry, ambiguous post-`DATA`
+  disconnect, cancellation, and redaction. Unit tests never contact a real SMTP provider.
+- **Contract and frontend certification:** OpenAPI generation and orval types cover every new route
+  and lifecycle shape. Stories use synthetic non-secret grants and cover configured/unconfigured
+  email, delivery states, local/imported Invitations, invalid public grants, recovery, and QR/copy at
+  desktop and mobile widths. Vitest pins URL cleanup and zero browser persistence; Playwright pins
+  explicit-consent redemption, keyboard/focus return, the shared polite live region, forced colors,
+  axe, and deterministic visual baselines.
+- **Gate composition:** `make check` remains the complete explicit local Go/Rust audit; it is not
+  the default edit-loop or pre-publication ritual. Normal local and agent work classifies the
+  changed paths once and runs the affected evidence through `make agent-verify BASE=<base>`; the
+  pull-request fast lane and authoritative merge queue then provide the protected remote evidence.
+  A maintainer requests `make check` deliberately when auditing the complete repository, changing
+  the gate machinery itself, or diagnosing a classifier boundary. CI may run its
   `check-static` contract half and its race-policy-aware `test` half as parallel jobs, and may shard
   the latter or run independent runtime certification beside both, but the required aggregate
   succeeds only when every constituent succeeds. Splitting execution must not delete, skip, or
@@ -6745,12 +7570,18 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   Apple mobile and Apple TV are separate required jobs with app-specific native build, install, and
   launch commands, and each consumes its dedicated decision. Splitting a matrix must preserve
   compatible cache-key identities and must preserve each native result as a separate aggregate
-  dependency. Scarce macOS jobs do not run on ordinary pull-request pushes. A required, single-build
-  merge queue admits them after fast pull-request feedback; the same impact decisions run against
-  the generated `merge_group` commit, and the aggregate cannot pass unless every selected native
-  result passes. Main pushes and explicit manual CI retain native coverage. The workflow must keep
-  the `merge_group` trigger, and repository protection must keep the queue active; removing either
-  half is a fail-closed delivery-policy change, not a performance tweak.
+  dependency. Pull requests are the fast-feedback lane: they retain affected policy, repository,
+  static-analysis, compile/type, unit, documentation, shared-client, and Android feedback, but do
+  not repeat race-policy shards, Postgres conformance, Playwright, release-image builds, runtime
+  image certification, or scarce macOS jobs. The required, single-build merge queue is the
+  authoritative integration lane. The same fail-closed impact decisions run against the generated
+  `merge_group` commit, and the aggregate cannot pass unless every selected full gate succeeds.
+  Explicit manual CI retains release-candidate and full recovery scopes. A normal queue-produced
+  push to main runs publication workflows only; it does not launch product validation for a third
+  time. The workflow must keep the `merge_group` trigger, repository protection must keep the queue
+  active and apply to administrators, and normal changes may not bypass that admission boundary.
+  Removing any of those coupled protections is a fail-closed delivery-policy change, not a
+  performance tweak.
   CI orchestration and harness inputs select a dedicated policy gate rather than product builds.
   Rust, Android, Apple, browser, image, frontend, Postgres, and application-Go jobs run only when
   their classifier decision names a consumed input; unknown paths and classifier failures still
@@ -6777,7 +7608,7 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
 - **Search:** `/v1/search` fans out to mock media server + mock TMDB + clip store; `in_library` flags correct; a member can search (read-only) but adding a missing title still routes through submit→approve; scope filters honored.
 - **Suggestion grounding (critical):** mock LLM returns fabricated titles → **zero** unresolvable items reach a proposal, **nothing** unapproved reaches `/v1/titles`; already-present acquisitions filtered; `auto_approve` respects quota; output validates against schema.
 - **Filler & pods:** catalog sync from a **mock media server's** filler library lands clips with duration + metadata; pod assembly is **seeded-deterministic** (seed = channel + window, so tests reproduce exactly) and respects era/audience matching, category variety, density, and no-repeat-in-window; the fallback ladder degrades gracefully to a bumper card; filler never appears as a lineup "program". Grounding applies to AI tagging and pod assembly (only real catalog clips).
-- **Auth & roles:** bootstrap creates the first local admin and succeeds **exactly once** (a second call 409s while an admin exists); a **local** user logs in against its bcrypt hash; an **imported** media-server user logs in against a mock media server with the correct flavor header (MediaBrowser vs X-Emby-Authorization); an **un-imported** media-server user is **rejected even with valid credentials** (the allowlist — no lazy self-provision); passwords/media-server tokens never persisted; import is admin-only and creates rows, sync refreshes but **never adds**; `member` cannot hit approve/admin routes **or `POST /v1/titles`** (403 — the approval bypass is closed); disabling a user (directly or via sync of a server-disabled user) revokes their sessions immediately; `API_TOKEN` grants break-glass admin; ⚠ **an SSO identity with no allowlist row is rejected even with a valid provider token** (§11 V8 — the direct analogue of the un-imported media-server case), and no SSO login path creates a row.
+- **Auth & roles:** bootstrap creates the first local admin and succeeds **exactly once** (a second call 409s while an admin exists); a **local** user logs in against its Argon2id verifier (or upgrades a successfully verified legacy bcrypt row to Argon2id in the same login); an **imported** media-server user prefers provider auth, refreshes its verifier after success, falls back only during provider unavailability, and never falls back after provider rejection; an **un-imported** media-server user is **rejected even with valid credentials** (the allowlist — no lazy self-provision); plaintext passwords/media-server tokens are never persisted; import is admin-only and creates rows, sync refreshes but **never adds**; `member` cannot hit approve/admin routes **or `POST /v1/titles`** (403 — the approval bypass is closed); disabling a user (directly or via sync of a server-disabled user) revokes their sessions immediately; `API_TOKEN` grants break-glass admin; ⚠ **an SSO identity with no allowlist row is rejected even with a valid provider token** (§11 V8 — the direct analogue of the un-imported media-server case), and no SSO login path creates a row.
 - **Onboarding:** `GET /v1/setup/status` reports each integration pass/fail correctly against mocks (including the Tunarr media-source-matches-library check); a Sonarr/Radarr `Test` webhook with minimal payload is acked and flips the handshake check; a failing check carries an actionable hint + doc link.
 - **API contract:** `/openapi.json` valid 3.1; served spec == committed `api/openapi.yaml` (fail CI on drift); spec `State` enum == code enum; `/docs` renders offline.
 - **Frontend:** typed-client generation compiles; e2e smoke of approve flow vs mocked backend; SSE board updates on simulated `available`.
@@ -6836,7 +7667,7 @@ Each phase ends green (compiles + its tests pass) before the next.
 6. **Requester + availability.** Seerr requester (201/409 ok) or direct Sonarr/Radarr (§6); availability by **library scan** (poll, not webhook — §4/§18.1) + the arr queue poller (progress + grabbed); library-confirm-before-available, idempotency tests. *(The inbound `/hooks/arr` webhook this phase originally shipped has been retired in favor of polling — see the webhook-retirement arc.)*
 7. **Provisioning reconciler + janitor.** Ticker → `ClaimDue` → retry `wanted`, library re-check (deadline backstop), deadline give-up + `Cancel`; retention sweeps (§5: sessions, jobs, proposals).
 8. **Self-documenting API.** Huma v2 on `humago` (§7.1, §14); `/v1/titles*`, `/v1/events`, `/openapi.*`, `/docs`, ops; `GET /v1/backup` (SQLite `VACUUM INTO`); `make openapi` + committed `api/openapi.yaml`; contract tests.
-9. **Users & auth (§11).** Session issuance/middleware, `/v1/auth/*` + `/v1/users*`, **local-admin bootstrap (once) + explicit media-server import (allowlist; un-imported → 403) + local bcrypt credential path**, user sync (periodic + on-demand; refreshes imported users, never adds), role enforcement on all mutating routes, `API_TOKEN` break-glass, login rate-limit. **Auth & roles tests are the gate.** *(The identity model was reworked from the earlier claim-on-login/lazy-provision design — see §11.)*
+9. **Users & auth (§11).** Session issuance/middleware, `/v1/auth/*` + `/v1/users*`, **local-admin bootstrap (once) + explicit media-server import (allowlist; un-imported → 403) + Argon2id local/offline credential verification**, user sync (periodic + on-demand; refreshes imported users, never adds), role enforcement on all mutating routes, `API_TOKEN` break-glass, login rate-limit. **Auth & roles tests are the gate.** *(The identity model was reworked from the earlier claim-on-login/lazy-provision design — see §11.)*
 10. **Scheduler + Tunarr (the point).** `Channel`/`DesiredLineup`/`Slot`; Tunarr `Programmer` adapter; desired-vs-actual reconcile + **periodic sweep with slot revalidation** (`CHANNEL_RECONCILE_EVERY`, §9 drift + ownership + TZ); **backfill** consuming provisioning events (sweep-backed); basic Flex/filler-list plumbing; `/v1/channels*`. **Live TV wiring (§6):** wires Tunarr as an M3U tuner + XMLTV guide source in the media server (idempotent enumerate-first), a `/v1/setup/status` "wired?" check, and a best-effort guide-refresh poke after channel-affecting reconciles (§9). *Phase 10 shipped this behind a manual `POST` route; it was later removed in favour of auto-wiring on a Connections save, since an idempotent action fully derived from the connection had nothing to decide — `retired-ok`.* **Maintainer-supervised live capture (Phase-0 style, folded here):** pin the accepted `/LiveTv/TunerHosts` + `/LiveTv/ListingProviders` request/response payloads and the guide-refresh task id from the real Emby/Jellyfin into `internal/testkit/fixtures/`; adapter written against the pins, not memory. Reconcile-against-mock-Tunarr tests **and the idempotent-connect second-call-no-op test** are the gate.
 11. **Suggester (§8).** `Suggester` + Ollama and the OpenAI-compatible client (hosted OR Ollama's own `/v1`); in-app provider/model selection (§8.1: probe, catalog, hot-swap); catalog tool (library+TMDB) w/ tool-calling; grounding + validation; deterministic scoring; persisted jobs (store worker + `ClaimDueJobs`) + proposals + SSE; `/v1/proposals*` + `/v1/system/llm*`; expose Catalog as `GET /v1/search` (§7.2). **Grounding tests are the gate.**
 12. **Commercials & filler (§10).** Catalog sync by scanning Loomarr's own `FILLER_DIR` (`/v1/filler/sync` + periodic), with Tunarr registration only for Tunarr-backed playout; clip metadata + tag editing; pod assembly with era/audience matching, category variety, density, no-repeat, and the fallback ladder; optional AI text-signal tagging job; the in-core ingest job (yt-dlp/Archive → drop-folder), whose tooling ships in the single image (§16 — the `loomarr:filler` variant this line used to name no longer exists). **Filler-never-a-program + pod-matching tests are the gate.**

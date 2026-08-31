@@ -19,11 +19,16 @@ import (
 // provServer builds the provisioning stack (bootstrap + import + login) over a
 // mock media server, with NO users seeded (so bootstrap is open).
 func provServer(t *testing.T) (*httptest.Server, store.Store) {
+	return provServerWithUsers(t, nil)
+}
+
+func provServerWithUsers(t *testing.T, users []testkit.MediaServerUser) (*httptest.Server, store.Store) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/prov.db")
 	t.Cleanup(func() { _ = st.Close() })
 
 	ms := testkit.NewMediaServer(t)
+	ms.Users = users
 	t.Cleanup(ms.Close)
 	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
 	mgr := auth.NewManager(st, time.Hour, time.Now)
@@ -135,7 +140,7 @@ func TestImport_AdminCreatesAllowlist(t *testing.T) {
 	srv, st := provServer(t)
 
 	resp := do(t, srv, http.MethodPost, "/v1/users/import", adminToken,
-		`{"ids":["`+memberID+`"],"makeAdmin":true}`)
+		`{"ids":["`+memberID+`"]}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("admin import → %d, want 200", resp.StatusCode)
 	}
@@ -150,6 +155,98 @@ func TestImport_AdminCreatesAllowlist(t *testing.T) {
 	}
 	if _, err := st.GetUser(context.Background(), adminID); err != store.ErrNotFound {
 		t.Errorf("un-imported user must have NO row: %v", err)
+	}
+}
+
+// A bulk import copies the source role on first import without asking each caller
+// to remember a make-admin switch. The wizard posts exactly this ids-only shape;
+// if the role decision lives in the UI, the same Emby admin becomes a member or
+// admin depending on which import screen the operator happened to use.
+func TestImport_BulkMapsSourceRoles(t *testing.T) {
+	const (
+		mattID     = "media-admin"
+		chrisID    = "media-member"
+		disabledID = "media-disabled"
+	)
+	srv, st := provServerWithUsers(t, []testkit.MediaServerUser{
+		{ID: mattID, Name: "Matt", IsAdmin: true},
+		{ID: chrisID, Name: "Chris"},
+		{ID: disabledID, Name: "Disabled", Disabled: true},
+	})
+
+	resp := do(t, srv, http.MethodPost, "/v1/users/import", adminToken,
+		`{"ids":["`+mattID+`","`+chrisID+`","`+disabledID+`","`+chrisID+`","unknown"]}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("bulk import → %d, want 200", resp.StatusCode)
+	}
+	var imported struct{ Imported int }
+	if err := json.NewDecoder(resp.Body).Decode(&imported); err != nil {
+		t.Fatalf("decode import: %v", err)
+	}
+	if imported.Imported != 3 {
+		t.Fatalf("imported = %d, want 3 (duplicates deduplicated; unknown ids skipped)", imported.Imported)
+	}
+
+	// Loomarr-owned choices made after import survive a repeat import. The media
+	// server remains authoritative only for identity and disabled state.
+	member, err := st.GetUser(context.Background(), mattID)
+	if err != nil {
+		t.Fatalf("get imported admin: %v", err)
+	}
+	if member.Role != store.RoleAdmin {
+		t.Fatalf("media-server admin initial role = %q, want admin", member.Role)
+	}
+	member.Role = store.RoleMember
+	member.Quota = 7
+	member.AutoApprove = true
+	if err := st.UpsertUser(context.Background(), member); err != nil {
+		t.Fatalf("customize imported admin: %v", err)
+	}
+	resp = do(t, srv, http.MethodPost, "/v1/users/import", adminToken,
+		`{"ids":["`+mattID+`"]}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("repeat import → %d, want 200", resp.StatusCode)
+	}
+	preserved, err := st.GetUser(context.Background(), mattID)
+	if err != nil {
+		t.Fatalf("get re-imported admin: %v", err)
+	}
+	if preserved.Role != store.RoleMember || preserved.Quota != 7 || !preserved.AutoApprove {
+		t.Errorf("re-import overwrote Loomarr choices: role=%q quota=%d autoApprove=%v",
+			preserved.Role, preserved.Quota, preserved.AutoApprove)
+	}
+
+	resp = do(t, srv, http.MethodGet, "/v1/users", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list users → %d, want 200", resp.StatusCode)
+	}
+	var listed struct {
+		Users []struct {
+			ID       string `json:"id"`
+			Role     string `json:"role"`
+			Disabled bool   `json:"disabled"`
+		} `json:"users"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&listed); err != nil {
+		t.Fatalf("decode users: %v", err)
+	}
+	roles := make(map[string]string, len(listed.Users))
+	disabled := make(map[string]bool, len(listed.Users))
+	for _, u := range listed.Users {
+		roles[u.ID] = u.Role
+		disabled[u.ID] = u.Disabled
+	}
+	if roles[mattID] != "member" {
+		t.Errorf("re-imported customized admin role = %q, want preserved member", roles[mattID])
+	}
+	if roles[chrisID] != "member" {
+		t.Errorf("media-server member role = %q, want member", roles[chrisID])
+	}
+	if !disabled[disabledID] {
+		t.Error("disabled media-server account was not imported disabled")
+	}
+	if _, exists := roles["unknown"]; exists {
+		t.Error("unknown media-server id was invented locally")
 	}
 }
 

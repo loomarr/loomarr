@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.26"
+  GO_VERSION: "1.27"
   NODE_VERSION: "22"
 
 jobs:
@@ -19,6 +19,7 @@ jobs:
     # which Expo 57 prebuild does not yet generate. The verifier fails closed on another
     # Xcode major so a future image-default change cannot silently alter this contract.
     runs-on: macos-26
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7

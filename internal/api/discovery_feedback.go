@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -86,6 +87,9 @@ func (s *Server) appendDiscoveryFeedback(ctx context.Context, scope store.Feedba
 		ActorID: actor, Scope: scope, ScopeID: scopeID, Target: target, Action: action,
 		Reason: strings.TrimSpace(reason), CreatedAt: time.Now().UTC()}
 	if err := s.store.AppendDiscoveryFeedback(ctx, feedback); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+		}
 		return nil, err
 	}
 	return &discoveryFeedbackOutput{Body: feedbackDTO(feedback)}, nil

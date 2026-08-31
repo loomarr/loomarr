@@ -137,6 +137,6 @@ func (o *OpenAI) TranscribeAudio(ctx context.Context, req TranscriptionRequest) 
 	return TranscriptionResult{
 		Segments: segments,
 		Attribution: attributionFromWire(o.provider, model, out.ID, out.Model, out.Usage,
-			out.OpenRouterMetadata, "", []string{"audio", "text"}, time.Since(started)),
+			out.OpenRouterMetadata, []string{"audio", "text"}, time.Since(started)),
 	}, nil
 }
