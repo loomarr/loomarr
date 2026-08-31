@@ -126,9 +126,11 @@ implicit exclusion.
 
 The protected client matrix, including Apple mobile, Apple TV, the four Playwright visual and
 accessibility shards, and the aggregate CI job, passed on PR #581 before its final rebase. After the
-iOS 27 runtime reconciliation, the pinned local visual run passed 1,149 cases with one declared skip,
-the frontend suite passed 1,652 tests across 209 files, and the SPA and Storybook production builds
-completed against the reviewed baselines.
+iOS 27 runtime reconciliation and merge of current `main`, the pinned local visual run passed 1,182
+cases with two declared skips, the frontend suite passed 1,665 tests across 211 files, and the SPA
+and Storybook production builds completed against the reviewed baselines. That reconciliation also
+moved Storybook theme application before paint so browser-native controls cannot capture a light
+`color-scheme` baseline inside an otherwise dark workshop surface.
 
 On 2026-08-26, the native TV workshop was generated and compiled as both arm64 and x86 React Native
 Android TV development builds. The arm64 build installed on the physical Nvidia Shield and rendered
