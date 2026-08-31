@@ -5,8 +5,19 @@ web_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 verifier="$web_root/scripts/test-apple-client.sh"
 test_root="$(mktemp -d /tmp/apple-client-cache-test.XXXXXX)"
 trap 'find "$test_root" -mindepth 1 -depth -delete; rmdir "$test_root"' EXIT
-mkdir -p "$test_root/bin" "$test_root/store" "$test_root/artifacts" "$test_root/build"
+mkdir -p "$test_root/bin" "$test_root/store" "$test_root/artifacts" "$test_root/build" "$test_root/expo"
 printf 'CAS object\n' > "$test_root/store/object"
+printf 'template fixture\n' > "$test_root/expo/template.tgz"
+
+cat > "$test_root/bin/node" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$*" != "-p require.resolve('expo/package.json')" ]]; then
+  printf 'unexpected node invocation: %s\n' "$*" >&2
+  exit 64
+fi
+printf '%s/expo/package.json\n' "$APPLE_CACHE_TEST_ROOT"
+STUB
 
 cat > "$test_root/bin/uname" <<'STUB'
 #!/usr/bin/env bash
@@ -22,7 +33,7 @@ cat > "$test_root/bin/xcodebuild" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ "$*" == -version ]]; then
-  printf 'Xcode 26.6\nBuild version 17F113\n'
+  printf 'Xcode 27.0\nBuild version 27A5252f\n'
   exit 0
 fi
 result_bundle=''
@@ -67,7 +78,7 @@ case "$1" in
   simctl)
     case "$2" in
       list)
-        printf '{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-26-5":[{"udid":"SIM-1","isAvailable":true,"state":"Booted"}]}}\n'
+        printf '{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-27-0":[{"udid":"SIM-1","isAvailable":true,"state":"Booted"}]}}\n'
         ;;
       bootstatus)
         ;;
@@ -115,6 +126,7 @@ cat > "$test_root/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ "$*" == *'expo prebuild'* ]]; then
+  [[ "$*" == *"--template $APPLE_CACHE_TEST_ROOT/expo/template.tgz"* ]]
   printf 'prebuild fixture\n'
   exit 0
 fi

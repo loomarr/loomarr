@@ -43,8 +43,8 @@ func TestRepositoryAppleCacheValidationIsIsolatedAndPortable(t *testing.T) {
 	validationJobs := mappingValueMust(t, workflow, "jobs")
 	producer := mappingValueMust(t, validationJobs, "producer")
 	consumer := mappingValueMust(t, validationJobs, "consumer")
-	if yamlScalar(t, producer, "runs-on") != "macos-26" || yamlScalar(t, consumer, "runs-on") != "macos-26" {
-		t.Fatal("Apple cache portability must use two supported macos-26 jobs")
+	if yamlScalar(t, producer, "runs-on") != "xcode-27" || yamlScalar(t, consumer, "runs-on") != "xcode-27" {
+		t.Fatal("Apple cache portability must use two supported Xcode 27 jobs")
 	}
 	if !yamlSequenceContains(mappingValueMust(t, consumer, "needs"), "producer") {
 		t.Fatal("Apple cache consumer does not depend on the producer runner")

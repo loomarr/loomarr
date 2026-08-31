@@ -20,13 +20,13 @@ cat > "$test_root/bin/xcodebuild" <<'STUB'
 set -euo pipefail
 case "$*" in
   -version)
-    printf '%b' "${APPLE_CACHE_TEST_XCODE_VERSION:-Xcode 26.6\\nBuild version 17F113\\n}"
+    printf '%b' "${APPLE_CACHE_TEST_XCODE_VERSION:-Xcode 27.0\\nBuild version 27A5252f\\n}"
     ;;
   '-version -sdk iphonesimulator')
-    printf '%b' "${APPLE_CACHE_TEST_IOS_SDK:-iPhoneSimulator26.5.sdk - iOS Simulator 26.5\\n}"
+    printf '%b' "${APPLE_CACHE_TEST_IOS_SDK:-iPhoneSimulator27.0.sdk - iOS Simulator 27.0\\n}"
     ;;
   '-version -sdk appletvsimulator')
-    printf '%b' "${APPLE_CACHE_TEST_TV_SDK:-AppleTVSimulator26.5.sdk - tvOS Simulator 26.5\\n}"
+    printf '%b' "${APPLE_CACHE_TEST_TV_SDK:-AppleTVSimulator27.0.sdk - tvOS Simulator 27.0\\n}"
     ;;
   *)
     printf 'unexpected xcodebuild invocation: %s\n' "$*" >&2
@@ -40,7 +40,7 @@ cat > "$test_root/bin/xcrun" <<'STUB'
 set -euo pipefail
 case "$*" in
   'swiftc --version')
-    printf '%b' "${APPLE_CACHE_TEST_SWIFT_VERSION:-Apple Swift version 6.3.3\\nTarget: arm64-apple-macosx26.0\\n}"
+    printf '%b' "${APPLE_CACHE_TEST_SWIFT_VERSION:-Apple Swift version 6.4\\nTarget: arm64-apple-macosx27.0\\n}"
     ;;
   '--find llvm-cas')
     printf '%s/bin/llvm-cas\n' "$APPLE_CACHE_TEST_ROOT"
@@ -80,7 +80,7 @@ fingerprint_with() {
 }
 
 got="$(fingerprint_with)"
-want=apple-compilation-cache-v1-c8573f56dcb8bdb0c8b47d2d910535b4d9ce08a4a9ba9ffacc29315769db4a0c
+want=apple-compilation-cache-v1-cc3909d3cd54ff912c7ec365df2f98b81efeeb56d5293bc7504dca0c1ba204b7
 if [[ "$got" != "$want" ]]; then
   printf 'apple-compilation-cache-test: fingerprint got %s, want %s\n' "$got" "$want" >&2
   exit 1
@@ -104,7 +104,7 @@ fi
 for invalidation in \
   'RUNNER_OS=changed-os' \
   'RUNNER_ARCH=changed-arch' \
-  'APPLE_CACHE_TEST_XCODE_VERSION=Xcode 26.7\nBuild version changed\n' \
+  'APPLE_CACHE_TEST_XCODE_VERSION=Xcode 27.1\nBuild version changed\n' \
   'APPLE_CACHE_TEST_SWIFT_VERSION=Apple Swift version changed\n' \
   'APPLE_CACHE_TEST_IOS_SDK=iPhoneSimulator changed\n' \
   'APPLE_CACHE_TEST_TV_SDK=AppleTVSimulator changed\n'; do

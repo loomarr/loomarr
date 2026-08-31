@@ -1,2 +1,2 @@
 export { ClientShell } from "./client-shell";
-export type { ClientDestination, ClientShellProps } from "./client-shell.type";
+export type { ClientShellProps } from "./client-shell.type";

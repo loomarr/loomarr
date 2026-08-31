@@ -1,9 +1,7 @@
-export type { ActionProps, ArtworkState, BadgeTone, FieldProps, TextProps } from "./primitives";
+export type { ArtworkState, BadgeTone, ScreenProps, TextProps, TextTone } from "./primitives";
 export {
-  Action,
   ArtworkFrame,
   Badge,
-  Field,
   FocusSurface,
   ProgressTrack,
   Screen,

@@ -136,7 +136,7 @@ func TestRenovatePreservesCompatibilityGroupsAndToolchainHolds(t *testing.T) {
 		"react-native-reanimated", "react-native-worklets", "react-native-safe-area-context",
 		"react-native-screens", "react-native-svg", "react-native-web",
 	})
-	if native.GroupName != "Expo SDK 57 native" {
+	if native.GroupName != "Expo SDK 58 native" {
 		t.Fatalf("native group = %q", native.GroupName)
 	}
 

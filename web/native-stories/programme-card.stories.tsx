@@ -17,7 +17,7 @@ const Artwork = () => (
 );
 
 const meta = {
-  title: "Loomarr/Programme Card",
+  title: "Loomarr Components/Programme Card",
   component: ProgrammeCard,
   args: { artwork: <Artwork />, density: "touch", focused: false, programme: classicEpisode },
 } satisfies Meta<typeof ProgrammeCard>;
@@ -26,6 +26,7 @@ type Story = StoryObj<typeof meta>;
 const Touch: Story = {};
 const TvFocused: Story = { args: { density: "tv", focused: true } };
 const MissingArtwork: Story = { args: { artwork: undefined, programme: missingArtworkEpisode } };
+const Light: Story = { globals: { theme: "light" } };
 
 export default meta;
-export { MissingArtwork, Touch, TvFocused };
+export { Light, MissingArtwork, Touch, TvFocused };

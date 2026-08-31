@@ -1,6 +1,6 @@
 import type { Density } from "@loomarr/design-system";
+import type { ClientDestination } from "../client-navigation";
 
-type ClientDestination = "watching" | "guide" | "surf";
 type ClientShellProps = {
   active: ClientDestination;
   density: Density;
@@ -9,4 +9,4 @@ type ClientShellProps = {
   serverName?: string;
 };
 
-export type { ClientDestination, ClientShellProps };
+export type { ClientShellProps };

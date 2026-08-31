@@ -86,8 +86,19 @@ readonly REAL_XCODEBUILD
 xcodebuild -version
 xcrun swift --version
 xcode_version="$(xcodebuild -version | awk 'NR == 1 { print $2 }')"
-if [[ ! "${xcode_version}" =~ ^26\. ]]; then
-  printf 'Apple client verification requires Xcode 26.x; found %s\n' "${xcode_version}" >&2
+if [[ ! "${xcode_version}" =~ ^27\. ]]; then
+  printf 'Apple client verification requires Xcode 27.x; found %s\n' "${xcode_version}" >&2
+  exit 2
+fi
+
+EXPO_PACKAGE_JSON="$(
+  cd "${APP_DIR}"
+  node -p "require.resolve('expo/package.json')"
+)"
+readonly EXPO_PACKAGE_JSON
+readonly EXPO_TEMPLATE="${EXPO_PACKAGE_JSON%/package.json}/template.tgz"
+if [[ ! -f "${EXPO_TEMPLATE}" ]]; then
+  printf 'the pinned Expo package does not contain its native template: %s\n' "${EXPO_TEMPLATE}" >&2
   exit 2
 fi
 
@@ -129,12 +140,14 @@ chmod +x "$XCODE_CAPTURE_DIR/xcodebuild"
 if [[ "${APP_NAME}" == "tv" ]]; then
   (
     cd "${WEB_ROOT}"
-    EXPO_TV=1 pnpm --filter @loomarr/tv exec expo prebuild --platform ios --clean --no-install
+    EXPO_TV=1 pnpm --filter @loomarr/tv exec expo prebuild --platform ios --clean --no-install \
+      --template "${EXPO_TEMPLATE}"
   )
 else
   (
     cd "${WEB_ROOT}"
-    pnpm --filter @loomarr/mobile exec expo prebuild --platform ios --clean --no-install
+    pnpm --filter @loomarr/mobile exec expo prebuild --platform ios --clean --no-install \
+      --template "${EXPO_TEMPLATE}"
   )
 fi
 

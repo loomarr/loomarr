@@ -4,7 +4,16 @@ import type { LucideIcon } from "lucide-react-native";
 import { iconography } from "../tokens";
 
 type IconSize = keyof typeof iconography.size;
-type IconTone = "danger" | "disabled" | "info" | "muted" | "primary" | "secondary" | "success" | "warning";
+type IconTone =
+  | "danger"
+  | "disabled"
+  | "info"
+  | "inverse"
+  | "muted"
+  | "primary"
+  | "secondary"
+  | "success"
+  | "warning";
 type AccessibleIcon = { accessibilityLabel: string; decorative?: false };
 type DecorativeIcon = { accessibilityLabel?: never; decorative: true };
 
@@ -26,6 +35,7 @@ const Icon = ({
     danger: theme.stateDanger.val,
     disabled: theme.actionDisabled.val,
     info: theme.stateInfo.val,
+    inverse: theme.contentInverse.val,
     muted: theme.contentMuted.val,
     primary: theme.actionPrimary.val,
     secondary: theme.contentSecondary.val,

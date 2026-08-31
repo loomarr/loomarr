@@ -1,27 +1,54 @@
-import { styled, Text as TamaguiText, useTheme, View } from "@tamagui/core";
-import { type ComponentProps, type ReactNode, useState } from "react";
-import { Pressable, TextInput } from "react-native";
+import { isWeb, styled, Text as TamaguiText, View } from "@tamagui/core";
+import type { ComponentProps, ReactNode } from "react";
 
 import { type Density, type TextRole, typography } from "../tokens";
+import { resolveViewportInsets, useViewportInsets } from "../viewport";
 
-const Screen = styled(View, {
+const ScreenFrame = styled(View, {
   name: "LoomarrScreen",
   flex: 1,
   width: "100%",
-  minHeight: "100%",
+  minHeight: isWeb ? "100vh" : "100%",
   backgroundColor: "$surfaceCanvas",
-  padding: "$screen",
-  variants: {
-    density: {
-      pointer: { padding: "$screen" },
-      touch: { padding: "$section" },
-      tv: { padding: 48 },
-    },
-  } as const,
-  defaultVariants: {
-    density: "pointer",
-  },
 });
+
+type ScreenFrameProps = ComponentProps<typeof ScreenFrame>;
+type ScreenProps = Omit<
+  ScreenFrameProps,
+  | "padding"
+  | "paddingBlock"
+  | "paddingBlockEnd"
+  | "paddingBlockStart"
+  | "paddingBottom"
+  | "paddingEnd"
+  | "paddingHorizontal"
+  | "paddingInline"
+  | "paddingInlineEnd"
+  | "paddingInlineStart"
+  | "paddingLeft"
+  | "paddingRight"
+  | "paddingStart"
+  | "paddingTop"
+  | "paddingVertical"
+> & { density?: Density };
+
+/**
+ * Edge-to-edge application frame whose content always stays inside platform insets and the
+ * distance-appropriate Loomarr gutter. Insets are supplied once by LoomarrProvider.
+ */
+const Screen = ({ density = "pointer", ...props }: ScreenProps) => {
+  const platformInsets = useViewportInsets();
+  const insets = resolveViewportInsets(density, platformInsets);
+  return (
+    <ScreenFrame
+      {...props}
+      paddingBottom={insets.bottom}
+      paddingLeft={insets.left}
+      paddingRight={insets.right}
+      paddingTop={insets.top}
+    />
+  );
+};
 
 const Surface = styled(View, {
   name: "LoomarrSurface",
@@ -64,28 +91,52 @@ const FocusSurface = styled(Surface, {
 });
 
 type TamaguiTextProps = ComponentProps<typeof TamaguiText>;
+type TextTone =
+  | "danger"
+  | "info"
+  | "inverse"
+  | "live"
+  | "muted"
+  | "primary"
+  | "secondary"
+  | "success"
+  | "warning";
 type TextProps = Omit<
   TamaguiTextProps,
   "color" | "fontFamily" | "fontSize" | "fontWeight" | "letterSpacing" | "lineHeight" | "role"
 > & {
   density?: Density;
   textRole: TextRole;
+  tone?: TextTone;
 };
 
 const dataRoles = new Set<TextRole>(["metadata", "time", "channelNumber"]);
 const mutedRoles = new Set<TextRole>(["label", "metadata", "time"]);
+const textTones = {
+  danger: "$stateDanger",
+  info: "$stateInfo",
+  inverse: "$contentInverse",
+  live: "$stateLive",
+  muted: "$contentMuted",
+  primary: "$contentPrimary",
+  secondary: "$contentSecondary",
+  success: "$stateSuccess",
+  warning: "$stateWarning",
+} as const;
 
-const Text = ({ density = "pointer", textRole, ...props }: TextProps) => {
+const Text = ({ density = "pointer", textRole, tone, ...props }: TextProps) => {
   const value = typography[density][textRole];
   return (
     <TamaguiText
       {...props}
       color={
-        textRole === "channelNumber"
-          ? "$actionPrimary"
-          : mutedRoles.has(textRole)
-            ? "$contentSecondary"
-            : "$contentPrimary"
+        tone
+          ? textTones[tone]
+          : textRole === "channelNumber"
+            ? "$actionPrimary"
+            : mutedRoles.has(textRole)
+              ? "$contentSecondary"
+              : "$contentPrimary"
       }
       fontFamily={dataRoles.has(textRole) ? "$data" : "$body"}
       fontSize={value.size}
@@ -188,108 +239,6 @@ type ProgressTrackProps = Omit<ComponentProps<typeof View>, "children"> & {
   tone?: "live" | "primary";
 };
 
-const ActionFrame = styled(Pressable, {
-  name: "LoomarrAction",
-  alignItems: "center",
-  borderRadius: "$control",
-  borderWidth: 2,
-  justifyContent: "center",
-  paddingHorizontal: "$control",
-  focusStyle: {
-    borderColor: "$actionFocus",
-    outlineColor: "$actionFocus",
-    outlineStyle: "solid",
-    outlineWidth: 3,
-  },
-  pressStyle: { opacity: 0.82, scale: 0.98 },
-  variants: {
-    tone: {
-      danger: { backgroundColor: "$stateDanger", borderColor: "$stateDanger" },
-      primary: { backgroundColor: "$actionPrimary", borderColor: "$actionPrimary" },
-      secondary: { backgroundColor: "$surfaceElevated", borderColor: "$borderDecorative" },
-    },
-  } as const,
-  defaultVariants: { tone: "primary" },
-});
-
-type ActionProps = Omit<ComponentProps<typeof ActionFrame>, "children" | "tone"> & {
-  children: ReactNode;
-  density?: Density;
-  tone?: "danger" | "primary" | "secondary";
-};
-
-const Action = ({
-  children,
-  density = "pointer",
-  onBlur,
-  onFocus,
-  tone = "primary",
-  ...props
-}: ActionProps) => {
-  const [focused, setFocused] = useState(false);
-  return (
-    <ActionFrame
-      {...props}
-      borderColor={focused ? "$actionFocus" : undefined}
-      borderWidth={focused ? 4 : 2}
-      minHeight={density === "tv" ? 64 : density === "touch" ? 48 : 40}
-      onBlur={(event) => {
-        setFocused(false);
-        onBlur?.(event);
-      }}
-      onFocus={(event) => {
-        setFocused(true);
-        onFocus?.(event);
-      }}
-      scale={focused ? 1.025 : 1}
-      tone={tone}
-    >
-      <TamaguiText
-        color={tone === "secondary" ? "$contentPrimary" : "$contentInverse"}
-        fontFamily="$body"
-        fontSize={typography[density].label.size}
-        fontWeight="700"
-      >
-        {children}
-      </TamaguiText>
-    </ActionFrame>
-  );
-};
-
-type FieldProps = ComponentProps<typeof TextInput> & { density?: Density };
-const Field = ({ density = "pointer", onBlur, onFocus, style, ...props }: FieldProps) => {
-  const theme = useTheme();
-  const [focused, setFocused] = useState(false);
-  return (
-    <TextInput
-      {...props}
-      onBlur={(event) => {
-        setFocused(false);
-        onBlur?.(event);
-      }}
-      onFocus={(event) => {
-        setFocused(true);
-        onFocus?.(event);
-      }}
-      placeholderTextColor={theme.contentMuted.val}
-      style={[
-        {
-          backgroundColor: theme.surfaceCanvas.val,
-          borderColor: focused ? theme.actionFocus.val : theme.borderDecorative.val,
-          borderRadius: 8,
-          borderWidth: focused ? 3 : 2,
-          color: theme.contentPrimary.val,
-          fontFamily: typography.family.data.native,
-          fontSize: typography[density].body.size,
-          minHeight: density === "tv" ? 64 : density === "touch" ? 48 : 40,
-          paddingHorizontal: 16,
-        },
-        style,
-      ]}
-    />
-  );
-};
-
 const ProgressTrack = ({ percent, tone = "primary", ...props }: ProgressTrackProps) => {
   const bounded = Math.max(0, Math.min(100, percent));
   return (
@@ -304,5 +253,5 @@ const ProgressTrack = ({ percent, tone = "primary", ...props }: ProgressTrackPro
   );
 };
 
-export type { ActionProps, ArtworkState, BadgeTone, FieldProps, TextProps };
-export { Action, ArtworkFrame, Badge, Field, FocusSurface, ProgressTrack, Screen, Surface, Text };
+export type { ArtworkState, BadgeTone, ScreenProps, TextProps, TextTone };
+export { ArtworkFrame, Badge, FocusSurface, ProgressTrack, Screen, Surface, Text };

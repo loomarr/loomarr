@@ -7,6 +7,16 @@ const xcconfig = readFileSync(new URL("apple-simulator.xcconfig", import.meta.ur
 const cacheXcconfig = readFileSync(new URL("apple-compilation-cache.xcconfig", import.meta.url), "utf8");
 
 describe("Apple simulator verifier", () => {
+  it("fails closed unless the iOS 27 scene-lifecycle toolchain is active", () => {
+    assert.match(script, /xcode_version.*\^27\\\./s);
+    assert.match(script, /requires Xcode 27\.x/);
+  });
+
+  it("generates from the template inside the pinned Expo package", () => {
+    assert.match(script, /require\.resolve\('expo\/package\.json'\)/);
+    assert.equal(script.match(/--template "\$\{EXPO_TEMPLATE\}"/g)?.length, 2);
+  });
+
   it("builds only the active simulator architecture", () => {
     const settings = xcconfig
       .split("\n")

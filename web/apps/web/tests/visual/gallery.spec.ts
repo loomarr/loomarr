@@ -101,11 +101,18 @@ for (const story of stories) {
     // Visual regression (§5.1): snapshot the component element itself, not the full
     // centered page — a fullPage shot re-centers with fractional margins run-to-run,
     // shifting text AA and flaking the 0.001 diff. Committed baseline, 0.001 diff ratio.
-    await expect(page.locator("#storybook-root")).toHaveScreenshot(`${story.id}.png`);
+    // Portal stories render their actual module beside #storybook-root. React Native Web's Modal
+    // gives that portal one dialog root spanning the viewport, so target it directly rather than
+    // broadening every story back to the fractional full-page screenshots avoided above.
+    const portalStory = story.tags?.includes("portal");
+    const snapshotTarget = portalStory ? page.getByRole("dialog") : page.locator("#storybook-root");
+    await expect(snapshotTarget).toHaveScreenshot(`${story.id}.png`);
 
     // Accessibility (§5.3): zero serious/critical violations. The region/landmark rule
     // (moderate) is expected on bare component stories, so only serious+ is blocking.
-    const results = await analyzeWhenFree(page);
+    const results = portalStory
+      ? await new AxeBuilder({ page }).include('[role="dialog"]').analyze()
+      : await analyzeWhenFree(page);
     const blocking = results.violations.filter(
       (violation) => violation.impact === "serious" || violation.impact === "critical",
     );

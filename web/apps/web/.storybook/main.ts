@@ -18,7 +18,7 @@ const reactNativeSvgWeb = fileURLToPath(
 // a Playwright pass over `storybook build` output (`storybook-static`). Chromatic rejected.
 const config: StorybookConfig = {
   stories: ["../src/**/*.stories.@(ts|tsx)"],
-  addons: ["@storybook/addon-a11y"],
+  addons: ["@storybook/addon-a11y", "@storybook/addon-themes"],
   // ⚠ **`srcset` cannot be exercised with a data: URI, and this directory is why.** A base64 data
   // URI ALWAYS contains a comma (`data:image/png;base64,…`) and a comma is srcset's candidate
   // separator, so a data-URI candidate is unloadable — every UI/Image story rendered an <img> at

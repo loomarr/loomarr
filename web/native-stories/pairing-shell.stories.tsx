@@ -49,7 +49,7 @@ const PairingStory = ({ density }: { density: "touch" | "tv" }) => {
 };
 
 const meta = {
-  title: "Loomarr/Pairing Shell",
+  title: "Loomarr Components/Pairing Shell",
   component: PairingStory,
   args: { density: "touch" },
 } satisfies Meta<typeof PairingStory>;
@@ -57,6 +57,7 @@ const meta = {
 type Story = StoryObj<typeof meta>;
 const Touch: Story = {};
 const Tv: Story = { args: { density: "tv" } };
+const Light: Story = { globals: { theme: "light" } };
 
 export default meta;
-export { Touch, Tv };
+export { Light, Touch, Tv };

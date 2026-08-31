@@ -1,4 +1,4 @@
-import { LoomarrProvider, semanticColors, semanticThemes } from "@loomarr/design-system";
+import { semanticColors } from "@loomarr/design-system";
 import { classicEpisode, missingArtworkEpisode } from "@loomarr/fixtures";
 import { ProgrammeCard } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -22,16 +22,11 @@ const meta = {
   title: "Loomarr Components/Programme Card",
   component: ProgrammeCard,
   decorators: [
-    (Story, context) => {
-      const theme = context.parameters.loomarrTheme === "light" ? "light" : "dark";
-      return (
-        <LoomarrProvider theme={theme}>
-          <div style={{ background: semanticThemes[theme].surface.canvas, minHeight: "100vh", padding: 48 }}>
-            <Story />
-          </div>
-        </LoomarrProvider>
-      );
-    },
+    (Story) => (
+      <div style={{ boxSizing: "border-box", minHeight: "100vh", padding: 48 }}>
+        <Story />
+      </div>
+    ),
   ],
   parameters: { layout: "fullscreen" },
 } satisfies Meta<typeof ProgrammeCard>;
@@ -48,7 +43,7 @@ const TvFocused: Story = {
 const MissingArtwork: Story = { args: { density: "pointer", programme: missingArtworkEpisode } };
 const LightFocused: Story = {
   args: { artwork: <Artwork />, density: "pointer", focused: true, programme: classicEpisode },
-  parameters: { loomarrTheme: "light" },
+  globals: { theme: "light" },
 };
 
 export default meta;

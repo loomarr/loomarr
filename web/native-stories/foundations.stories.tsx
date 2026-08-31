@@ -42,7 +42,7 @@ const Foundations = ({
 );
 
 const meta = {
-  title: "Loomarr/Foundations",
+  title: "Loomarr Foundations/Overview",
   component: Foundations,
   args: { density: "touch", reducedMotion: false },
 } satisfies Meta<typeof Foundations>;
@@ -51,6 +51,7 @@ type Story = StoryObj<typeof meta>;
 const Touch: Story = {};
 const Tv: Story = { args: { density: "tv" } };
 const ReducedMotion: Story = { args: { reducedMotion: true } };
+const Light: Story = { globals: { theme: "light" } };
 
 export default meta;
-export { ReducedMotion, Touch, Tv };
+export { Light, ReducedMotion, Touch, Tv };
