@@ -124,6 +124,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | --- | --- | --- |
 | `make ensure-postgres-test-image` |  | use cached Postgres and Ryuk images or pull them with bounded retries |
 | `make test-pg` | ✅ | all real-Postgres integration suites (store, backend transition, app; testcontainers; requires Docker) <br>*runs:* `rust-dev-build` `ensure-postgres-test-image` |
+| `make test-db-lifecycle` |  | certify Postgres conformance plus fresh-PG and SQLite→PG deployment lifecycles (Docker) <br>*runs:* `test-pg` |
 
 ## OpenAPI (Phase 8)
 
