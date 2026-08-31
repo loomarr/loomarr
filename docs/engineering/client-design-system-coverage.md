@@ -1,6 +1,6 @@
 # Shared client design-system completeness ledger
 
-**Status:** P3.5 shared-interface publication evidence complete on PR #581; P4 production adoption evidence remains in progress
+**Status:** P3.5 shared-interface publication complete; P5 decision is revise and repeat pending physical-Shield and Play evidence
 **Owner:** shared client platform  
 **Parent plan:**
 [`docs/engineering/plans/shared-client-platform.md`](plans/shared-client-platform.md)
@@ -152,6 +152,17 @@ label and for returning focus to the Watching OK target after an overlay unmount
 
 This emulator pass is P4 evidence, not a substitute for the remaining physical-Shield populated
 soak, time-shift, background/foreground, Macrobenchmark, distribution, update, or rollback gates.
+
+## P5 decision
+
+The 2026-08-31 decision is **revise and repeat**, not adopt. On the reconciled #607 head, the
+source-sharing/deletion verification passed over 2,666 modules and 4,524 dependency edges with no
+boundary violations; player tests passed 30/30, the browser-player adapter passed 20/20, mobile and
+TV typechecks passed, and the production web bundle stayed inside its initial-load budget. The
+remaining acceptance dimensions have no substitute in simulator evidence: populated physical-Shield
+presentation/focus/time-shift/background behavior, the Shield Macrobenchmark, the protected-key
+candidate manifest, and Play update/pairing-preservation/rollback/listing proof. #727 owns that
+bounded rerun. Broader viewer/web migration and Compose retirement remain blocked.
 
 ## Publication gate
 

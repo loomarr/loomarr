@@ -278,6 +278,18 @@ fixtures cover deterministic states, but a mock-only demo does not pass.
 The maintainer records **adopt**, **revise and repeat**, or **reject** against every item above. Only
 `adopt` authorizes the remaining migration and retirement phases.
 
+### P5 decision — 2026-08-31
+
+**Revise and repeat.** The reconciled vertical slice, emulator journey, package boundaries, player
+tests, browser adapter, production web build, mobile/TV typechecks, and source-sharing/deletion
+contract pass, but the acceptance contract is not yet complete. The failed dimensions are missing
+physical-Shield populated presentation/focus/time-shift/background evidence, a physical-Shield
+Macrobenchmark result, a protected-upload-key candidate manifest, and Play in-place
+update/pairing-preservation/rollback/listing evidence. The next bounded rerun is #727 on a connected
+physical Shield and the protected Play testing track; it must retain Compose as the rollback renderer
+and rerun the final serialized client and hosted-CI gates at that evidence head. This outcome does
+not authorize P6/P7 production migration or P8 retirement.
+
 ## Delivery sequence
 
 One row is one PR-sized phase. Later phases may be refined after evidence, but they may not collapse
