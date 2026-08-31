@@ -8,6 +8,7 @@ import {
   getMeMockHandler,
   getPatchUserMockHandler,
   getResetUserPasswordMockHandler,
+  getRevokeSessionMockHandler,
   getSettingsListMockHandler,
   getSyncUsersMockHandler,
 } from "@loomarr/api/msw";
@@ -80,6 +81,8 @@ const stubUsers = ({
   const creates: unknown[] = [];
   const imports: unknown[] = [];
   const resets: Array<{ id: string; body: unknown }> = [];
+  const revokes: string[] = [];
+  const syncs: boolean[] = [];
   const rows = [ADA, GRACE];
 
   server.use(
@@ -91,7 +94,13 @@ const stubUsers = ({
       return { imported: 1 };
     }),
     getListUserSessionsMockHandler({ sessions }),
-    getSyncUsersMockHandler({ synced: 2 }),
+    getSyncUsersMockHandler(() => {
+      syncs.push(true);
+      return { synced: 2 };
+    }),
+    getRevokeSessionMockHandler(({ params }) => {
+      revokes.push(String(params.hash));
+    }),
     getPatchUserMockHandler(async ({ request }) => {
       patches.push(await request.json());
       return { ...GRACE, role: "admin" } satisfies UserBody;
@@ -114,7 +123,7 @@ const stubUsers = ({
     ...appHandlers(),
   );
 
-  return { patches, creates, imports, resets };
+  return { patches, creates, imports, resets, revokes, syncs };
 };
 
 const renderAt = (path: string) => {
@@ -150,7 +159,7 @@ describe("Users page", () => {
     ).toBeInTheDocument();
   });
 
-  it("patches a single field without a save step", async () => {
+  it("sends exact generated-client patches for every immediate person setting", async () => {
     const { patches } = stubUsers();
     renderAt("/people");
     await screen.findByText("Grace");
@@ -159,8 +168,21 @@ describe("Users page", () => {
     const detail = await screen.findByRole("dialog", { name: "Grace" });
     await userEvent.click(within(detail).getByLabelText("Role"));
     await userEvent.click(await screen.findByRole("option", { name: "Admin" }));
+    await waitFor(() => expect(patches).toEqual([{ role: "admin" }]));
 
-    expect(patches, "changing a role should PATCH immediately").toEqual([{ role: "admin" }]);
+    const quota = within(detail).getByLabelText("Quota");
+    await userEvent.clear(quota);
+    await userEvent.type(quota, "7");
+    await userEvent.tab();
+    await waitFor(() => expect(patches).toHaveLength(2));
+
+    await userEvent.click(within(detail).getByLabelText("Auto-approve requests"));
+    await waitFor(() => expect(patches).toHaveLength(3));
+    await userEvent.click(within(detail).getByRole("button", { name: "Disable account" }));
+
+    await waitFor(() =>
+      expect(patches).toEqual([{ role: "admin" }, { quota: 7 }, { autoApprove: true }, { disabled: true }]),
+    );
   });
 
   it("opens a user's live sessions", async () => {
@@ -218,6 +240,30 @@ describe("Users page", () => {
     expect(imports).toEqual([{ ids: ["e1"] }]);
   });
 
+  it("routes sync and session revocation to their exact generated-client endpoints", async () => {
+    const state = stubUsers({
+      sessions: [
+        {
+          id: "opaque-session-hash",
+          userId: "u2",
+          createdAt: Date.now() - 3_600_000,
+          expiresAt: Date.now() + 3_600_000,
+          current: false,
+        },
+      ],
+    });
+    renderAt("/people");
+
+    await userEvent.click(await screen.findByRole("button", { name: /import from emby\/jellyfin/i }));
+    await userEvent.click(await screen.findByRole("button", { name: "Sync existing" }));
+    expect(state.syncs).toEqual([true]);
+    await userEvent.keyboard("{Escape}");
+
+    await userEvent.click(screen.getByRole("button", { name: "Manage Grace" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+    expect(state.revokes).toEqual(["opaque-session-hash"]);
+  });
+
   // POST /v1/users/sync stays registered while unconfigured and returns the supported
   // unavailable result, so the FE reads the computed feature set instead of offering a dead end.
   it("explains rather than offering import when no media server is connected", async () => {
@@ -264,6 +310,15 @@ describe("Users page", () => {
     await userEvent.click(screen.getByRole("button", { name: "Manage Grace" }));
     const imported = await screen.findByRole("dialog", { name: "Grace" });
     expect(within(imported).queryByRole("button", { name: /reset password/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps self-demotion and self-disable unavailable on the routed page", async () => {
+    stubUsers();
+    renderAt("/people");
+    await userEvent.click(await screen.findByRole("button", { name: "Manage Ada" }));
+    const detail = await screen.findByRole("dialog", { name: "Ada" });
+    expect(within(detail).getByLabelText("Role")).toBeDisabled();
+    expect(within(detail).getByRole("button", { name: "Disable account" })).toBeDisabled();
   });
 
   it("sends the new password to the admin reset route", async () => {
