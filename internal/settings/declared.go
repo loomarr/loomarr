@@ -302,17 +302,17 @@ func declared() []Setting {
 		},
 		{
 			Key: "notifications.email.enabled", Label: "Send email notifications", EnvVar: "NOTIFICATIONS_EMAIL_ENABLED", Group: GroupNotifications,
-			Kind: KindBool, Default: false,
+			Kind: KindBool, Presentation: PresentationSwitch, Default: false,
 			Doc: "Deliver account invitations and recovery messages by email. An incomplete setup suppresses email without affecting copied links, QR codes, or direct account creation.",
 		},
 		{
 			Key: "notifications.smtp.host", Label: "SMTP host", EnvVar: "NOTIFICATIONS_SMTP_HOST", Group: GroupNotifications,
-			Kind: KindString, Default: "",
+			Kind: KindString, Default: "", ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
 			Doc: "Hostname of the SMTP submission server. Required when email delivery is enabled.",
 		},
 		{
 			Key: "notifications.smtp.port", Label: "SMTP port", EnvVar: "NOTIFICATIONS_SMTP_PORT", Group: GroupNotifications,
-			Kind: KindInt, Default: 587, Validate: smtpPort,
+			Kind: KindInt, Default: 587, Validate: smtpPort, ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
 			Doc: "Port of the SMTP submission server, from 1 through 65535.",
 		},
 		{
@@ -322,27 +322,27 @@ func declared() []Setting {
 				opt("tls", "TLS"),
 				opt("none", "None (insecure local relay)"),
 			},
-			Default: "starttls",
-			Doc:     "STARTTLS requires encryption and never downgrades; TLS connects encrypted immediately. None is only for an explicitly trusted local relay. Certificate verification is always enabled.",
+			Default: "starttls", ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
+			Doc: "STARTTLS requires encryption and never downgrades; TLS connects encrypted immediately. None is only for an explicitly trusted local relay. Certificate verification is always enabled.",
 		},
 		{
 			Key: "notifications.smtp.username", Label: "SMTP username", EnvVar: "NOTIFICATIONS_SMTP_USERNAME", Group: GroupNotifications,
-			Kind: KindString, Default: "",
+			Kind: KindString, Default: "", ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
 			Doc: "Username for SMTP authentication. Leave empty only for an unauthenticated relay.",
 		},
 		{
 			Key: "notifications.smtp.password", Label: "SMTP password", EnvVar: "NOTIFICATIONS_SMTP_PASSWORD", Group: GroupNotifications,
-			Kind: KindSecret, Default: "",
+			Kind: KindSecret, Default: "", ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
 			Doc: "Password for SMTP authentication. It is write-only, masked on read, and must remain empty for an unauthenticated relay.",
 		},
 		{
 			Key: "notifications.email.from_address", Label: "Sender address", EnvVar: "NOTIFICATIONS_EMAIL_FROM_ADDRESS", Group: GroupNotifications,
-			Kind: KindString, Default: "", Validate: mailboxAddress,
+			Kind: KindString, Default: "", Validate: mailboxAddress, ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
 			Doc: "Mailbox Loomarr sends from, such as loomarr@example.com. Required when email delivery is enabled.",
 		},
 		{
 			Key: "notifications.email.from_name", Label: "Sender name", EnvVar: "NOTIFICATIONS_EMAIL_FROM_NAME", Group: GroupNotifications,
-			Kind: KindString, Default: "Loomarr",
+			Kind: KindString, Default: "Loomarr", ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
 			Doc: "Display name shown beside the sender address.",
 		},
 

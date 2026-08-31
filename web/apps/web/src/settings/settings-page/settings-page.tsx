@@ -9,6 +9,7 @@ import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
 import { ConnectionBlock } from "@/components/loomarr/setup/connection-block";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { useSettingsEdits } from "../settings-edits";
 import type { SettingsPageProps } from "./settings-page.type";
 
@@ -153,7 +154,7 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
       <PageHeader title={title} description={description} />
 
       <div className="flex flex-1 flex-col gap-8 overflow-auto p-6">
-        {children}
+        {typeof children === "function" ? children({ liveValue, setEdit }) : children}
 
         {/* Preserve the declared information hierarchy. A prior two-pass renderer moved every
             checked block before every ordinary one, which put the 45-field Filler operation
@@ -203,7 +204,13 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
             );
           }
           return (
-            <section key={block.title} className="flex flex-col gap-4">
+            <section
+              key={block.title}
+              className={cn(
+                "flex flex-col gap-4",
+                block.surface === "card" && "rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6",
+              )}
+            >
               <div>
                 <h2 className="font-semibold text-lg">{block.title}</h2>
                 {block.description && <p className="text-muted-foreground text-sm">{block.description}</p>}

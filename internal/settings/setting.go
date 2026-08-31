@@ -38,6 +38,7 @@ const (
 	PresentationBytes    Presentation = "bytes"
 	PresentationPath     Presentation = "path"
 	PresentationLanguage Presentation = "language"
+	PresentationSwitch   Presentation = "switch"
 )
 
 // ApplyTiming says when a persisted setting becomes the running value. The zero
