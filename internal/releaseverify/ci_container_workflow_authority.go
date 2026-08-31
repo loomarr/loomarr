@@ -65,6 +65,49 @@ const cacheCleanupWorkflowCommand = "set -uo pipefail\n" +
 	"  fi\n" +
 	"done\n"
 
+const appleCacheFingerprintCommand = `echo "fingerprint=$(./scripts/apple-compilation-cache.sh fingerprint)" >> "$GITHUB_OUTPUT"`
+
+const appleCacheConsumerPrepareCommand = `set -euo pipefail
+mode=cold
+store="$RUNNER_TEMP/apple-compilation-cache-store"
+archive="$RUNNER_TEMP/apple-compilation-cache.tar.zst"
+if [[ -f "$archive" ]] && ./scripts/apple-compilation-cache.sh restore "$archive" "$store"; then
+  mode=warm
+else
+  rm -f "$archive"
+fi
+echo "mode=$mode" >> "$GITHUB_OUTPUT"
+echo "store=$store" >> "$GITHUB_OUTPUT"
+`
+
+const appleCachePublisherSeedCommand = `set -euo pipefail
+archive="$RUNNER_TEMP/apple-compilation-cache.tar.zst"
+seed="$RUNNER_TEMP/apple-compilation-cache-seed.tar.zst"
+if [[ -f "$archive" ]]; then
+  mv "$archive" "$seed"
+  echo "archive=$seed" >> "$GITHUB_OUTPUT"
+else
+  echo "archive=" >> "$GITHUB_OUTPUT"
+fi
+`
+
+const appleCachePublisherAdmissionCommand = `set -euo pipefail
+gh api "repos/$REPO/actions/cache/usage" > "$RUNNER_TEMP/apple-cache-usage.json"
+./scripts/apple-compilation-cache.sh admit-save \
+  "$RUNNER_TEMP/apple-compilation-cache.tar.zst" \
+  "$RUNNER_TEMP/apple-cache-usage.json"
+`
+
+const appleCachePublisherRetentionCommand = `set -euo pipefail
+inventory="$RUNNER_TEMP/apple-cache-inventory.json"
+gh api "repos/$REPO/actions/caches?per_page=100&ref=refs/heads/main" > "$inventory"
+while read -r id; do
+  [[ -n "$id" ]] || continue
+  gh api -X DELETE "repos/$REPO/actions/caches/$id"
+done < <(./scripts/apple-compilation-cache.sh retention-plan \
+  "$inventory" "$PREFIX" refs/heads/main 1)
+`
+
 func workflowRunAuthorityEntries() map[string]workflowAuthority {
 	return map[string]workflowAuthority{
 		"android-beta.yml": {
@@ -79,6 +122,30 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 						"LOOMARR_ANDROID_UPLOAD_CERT_SHA256": "${{ vars.ANDROID_UPLOAD_CERT_SHA256 }}",
 					},
 					steps: map[string]workflowStepAuthority{},
+				},
+			},
+		},
+		"apple-compilation-cache.yml": {
+			environment: standardWorkflowEnvironment(),
+			permissions: map[string]string{"actions": "write", "contents": "read"},
+			jobs: map[string]workflowJobAuthority{
+				"publish": {
+					condition: "github.ref == 'refs/heads/main'",
+					steps: map[string]workflowStepAuthority{
+						"make fe-install":              exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
+						appleCacheFingerprintCommand:   exactWorkflowStep(5, "Fingerprint the Apple toolchain", workflowStepAuthority{}),
+						appleCachePublisherSeedCommand: exactWorkflowStep(7, "Isolate the optional seed generation", workflowStepAuthority{}),
+						`./web/scripts/validate-apple-compilation-cache.sh produce "$RUNNER_TEMP/apple-compilation-cache.tar.zst"`: exactWorkflowStep(8, "Build and validate the candidate generation", workflowStepAuthority{allowsAcquisition: true, environment: map[string]string{
+							"LOOMARR_APPLE_CACHE_SEED_ARCHIVE":    "${{ steps.seed.outputs.archive }}",
+							"LOOMARR_APPLE_CACHE_VALIDATION_ROOT": "${{ runner.temp }}/apple-cache-publisher",
+						}}),
+						appleCachePublisherAdmissionCommand: exactWorkflowStep(9, "Enforce repository cache headroom", workflowStepAuthority{environment: map[string]string{
+							"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "REPO": "${{ github.repository }}",
+						}}),
+						appleCachePublisherRetentionCommand: exactWorkflowStep(11, "Retain only the newest generation for this fingerprint", workflowStepAuthority{environment: map[string]string{
+							"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "REPO": "${{ github.repository }}", "PREFIX": "${{ steps.apple-toolchain.outputs.fingerprint }}",
+						}}),
+					},
 				},
 			},
 		},
@@ -108,25 +175,47 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			"make android-release-test": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"android-release-test"}}),
 		}),
 		"ci-apple-mobile.yml": standardRunWorkflow(map[string]workflowStepAuthority{
-			"make fe-install": exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}}),
-			"make client-apple-simulator CLIENT_APP=mobile": exactWorkflowStep(7, "Generate, build, install, and launch", workflowStepAuthority{
+			"make fe-install":                exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}}),
+			appleCacheFingerprintCommand:     exactWorkflowStep(5, "Fingerprint the Apple toolchain", workflowStepAuthority{}),
+			appleCacheConsumerPrepareCommand: exactWorkflowStep(7, "Validate the restored Apple compilation cache", workflowStepAuthority{}),
+			"make client-apple-simulator CLIENT_APP=mobile": exactWorkflowStep(9, "Generate, build, install, and launch", workflowStepAuthority{
 				targets: []string{"client-apple-simulator"},
 				environment: map[string]string{
 					"LOOMARR_APPLE_ARTIFACTS_DIR": "${{ runner.temp }}/apple-client-mobile",
 					"LOOMARR_APPLE_BUILD_DIR":     "${{ runner.temp }}/apple-build-mobile",
+					"LOOMARR_APPLE_CACHE_MODE":    "${{ steps.apple-compilation-cache.outputs.mode }}",
+					"LOOMARR_APPLE_CACHE_STORE":   "${{ steps.apple-compilation-cache.outputs.store }}",
 				},
 			}),
 		}),
 		"ci-apple-tv.yml": standardRunWorkflow(map[string]workflowStepAuthority{
-			"make fe-install": exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}}),
-			"make client-apple-simulator CLIENT_APP=tv": exactWorkflowStep(7, "Generate, build, install, and launch", workflowStepAuthority{
+			"make fe-install":                exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}}),
+			appleCacheFingerprintCommand:     exactWorkflowStep(5, "Fingerprint the Apple toolchain", workflowStepAuthority{}),
+			appleCacheConsumerPrepareCommand: exactWorkflowStep(7, "Validate the restored Apple compilation cache", workflowStepAuthority{}),
+			"make client-apple-simulator CLIENT_APP=tv": exactWorkflowStep(9, "Generate, build, install, and launch", workflowStepAuthority{
 				targets: []string{"client-apple-simulator"},
 				environment: map[string]string{
 					"LOOMARR_APPLE_ARTIFACTS_DIR": "${{ runner.temp }}/apple-client-tv",
 					"LOOMARR_APPLE_BUILD_DIR":     "${{ runner.temp }}/apple-build-tv",
+					"LOOMARR_APPLE_CACHE_MODE":    "${{ steps.apple-compilation-cache.outputs.mode }}",
+					"LOOMARR_APPLE_CACHE_STORE":   "${{ steps.apple-compilation-cache.outputs.store }}",
 				},
 			}),
 		}),
+		"ci-apple-cache-validation.yml": {
+			environment: standardWorkflowEnvironment(),
+			permissions: standardWorkflowPermissions(),
+			jobs: map[string]workflowJobAuthority{
+				"producer": {steps: map[string]workflowStepAuthority{
+					"make fe-install": exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
+					`./web/scripts/validate-apple-compilation-cache.sh produce "$RUNNER_TEMP/apple-compilation-cache.tar.zst"`: exactWorkflowStep(5, "Produce and validate the compilation cache", workflowStepAuthority{allowsAcquisition: true, environment: map[string]string{"LOOMARR_APPLE_CACHE_VALIDATION_ROOT": "${{ runner.temp }}/apple-cache-validation-producer"}}),
+				}},
+				"consumer": {steps: map[string]workflowStepAuthority{
+					"make fe-install": exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
+					`./web/scripts/validate-apple-compilation-cache.sh consume "$RUNNER_TEMP/apple-compilation-cache.tar.zst"`: exactWorkflowStep(6, "Consume and invalidate the compilation cache", workflowStepAuthority{allowsAcquisition: true, environment: map[string]string{"LOOMARR_APPLE_CACHE_VALIDATION_ROOT": "${{ runner.temp }}/apple-cache-validation-consumer"}}),
+				}},
+			},
+		},
 		"ci-clients.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make fe-install": exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}}),
 			"make fe-codegen": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-codegen"}}),

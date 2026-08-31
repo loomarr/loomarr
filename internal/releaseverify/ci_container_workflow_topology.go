@@ -12,12 +12,16 @@ type workflowTopologyAuthority struct {
 
 func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 	return map[string]workflowTopologyAuthority{
-		"android-beta.yml":           {jobs: map[string]int{"release": 11}},
-		"cache-cleanup.yml":          {jobs: map[string]int{"cleanup": 1}},
-		"ci-agent.yml":               {jobs: map[string]int{"run": 3}},
-		"ci-android.yml":             {jobs: map[string]int{"run": 6}},
-		"ci-apple-mobile.yml":        {jobs: map[string]int{"run": 9}},
-		"ci-apple-tv.yml":            {jobs: map[string]int{"run": 9}},
+		"android-beta.yml":            {jobs: map[string]int{"release": 11}},
+		"apple-compilation-cache.yml": {jobs: map[string]int{"publish": 12}},
+		"cache-cleanup.yml":           {jobs: map[string]int{"cleanup": 1}},
+		"ci-agent.yml":                {jobs: map[string]int{"run": 3}},
+		"ci-android.yml":              {jobs: map[string]int{"run": 6}},
+		"ci-apple-mobile.yml":         {jobs: map[string]int{"run": 11}},
+		"ci-apple-tv.yml":             {jobs: map[string]int{"run": 11}},
+
+		"ci-apple-cache-validation.yml": {jobs: map[string]int{"producer": 7, "consumer": 7}},
+
 		"ci-clients.yml":             {jobs: map[string]int{"run": 7}},
 		"ci-docs.yml":                {jobs: map[string]int{"run": 6}},
 		"ci-frontend.yml":            {jobs: map[string]int{"run": 7}},
@@ -32,7 +36,7 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 		"ci.yml": {jobs: map[string]int{
 			"changes": 3, "agent-harness-macos": 0, "release-candidate-scope": 1, "full-manual-scope": 1,
 			"ci-policy": 6, "rust-contracts": 0, "go-contracts": 0, "image-certification": 0, "go": 0,
-			"store-postgres": 0, "frontend": 0, "clients": 0, "apple-mobile": 0, "apple-tv": 0,
+			"store-postgres": 0, "frontend": 0, "clients": 0, "apple-mobile": 0, "apple-tv": 0, "apple-cache-validation": 0,
 			"playwright": 0, "tuner": 0, "image": 0, "docs": 0, "android": 0, "ci-ok": 3,
 		}},
 		"image-benchmark.yml":  {jobs: map[string]int{"benchmark": 6}},
@@ -60,11 +64,14 @@ func reusableWorkflowCallerAuthorityEntries() map[string]reusableWorkflowCallerA
 		"clients":             {name: "Shared clients — lint + test + browser/iOS/Android/TV bundles", condition: "needs.changes.outputs.impact_clients == 'true'"},
 		"apple-mobile":        {name: "Apple mobile — native build + launch", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_mobile == 'true'"},
 		"apple-tv":            {name: "Apple TV — native build + launch", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_tv == 'true'"},
-		"playwright":          {name: "Playwright — visual + a11y + e2e", condition: "needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true')"},
-		"tuner":               {name: "Tuner — Chromium + Firefox + WebKit", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'"},
-		"image":               {name: "Image — release build", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_image == 'true'"},
-		"docs":                {name: "Docs — links + structure + prose", condition: "needs.changes.outputs.impact_docs == 'true'"},
-		"android":             {name: "Android TV — lint + unit + assemble", condition: "needs.changes.outputs.impact_android == 'true'"},
+
+		"apple-cache-validation": {name: "Apple compilation cache — supported-toolchain validation", condition: "github.event_name == 'workflow_dispatch' && inputs.scope == 'apple-cache-validation'"},
+
+		"playwright": {name: "Playwright — visual + a11y + e2e", condition: "needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true')"},
+		"tuner":      {name: "Tuner — Chromium + Firefox + WebKit", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'"},
+		"image":      {name: "Image — release build", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_image == 'true'"},
+		"docs":       {name: "Docs — links + structure + prose", condition: "needs.changes.outputs.impact_docs == 'true'"},
+		"android":    {name: "Android TV — lint + unit + assemble", condition: "needs.changes.outputs.impact_android == 'true'"},
 	}
 }
 

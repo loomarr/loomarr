@@ -1,0 +1,93 @@
+name: Apple compilation cache
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: apple-compilation-cache-main
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: "1.27"
+  NODE_VERSION: "22"
+
+jobs:
+  publish:
+    name: Publish validated Apple compilation cache
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-26
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: corepack enable
+      - name: Restore pnpm and CocoaPods work
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.local/share/pnpm/store
+            ~/Library/Caches/CocoaPods
+          key: apple-cache-publisher-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}-${{ github.run_id }}
+          restore-keys: apple-clients-mobile-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}-
+      - run: make fe-install
+      - name: Fingerprint the Apple toolchain
+        id: apple-toolchain
+        run: echo "fingerprint=$(./scripts/apple-compilation-cache.sh fingerprint)" >> "$GITHUB_OUTPUT"
+      - name: Restore the latest validated generation
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ runner.temp }}/apple-compilation-cache.tar.zst
+          key: ${{ steps.apple-toolchain.outputs.fingerprint }}-${{ github.run_id }}
+          restore-keys: ${{ steps.apple-toolchain.outputs.fingerprint }}-
+      - name: Isolate the optional seed generation
+        id: seed
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/apple-compilation-cache.tar.zst"
+          seed="$RUNNER_TEMP/apple-compilation-cache-seed.tar.zst"
+          if [[ -f "$archive" ]]; then
+            mv "$archive" "$seed"
+            echo "archive=$seed" >> "$GITHUB_OUTPUT"
+          else
+            echo "archive=" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build and validate the candidate generation
+        env:
+          LOOMARR_APPLE_CACHE_SEED_ARCHIVE: ${{ steps.seed.outputs.archive }}
+          LOOMARR_APPLE_CACHE_VALIDATION_ROOT: ${{ runner.temp }}/apple-cache-publisher
+        run: ./web/scripts/validate-apple-compilation-cache.sh produce "$RUNNER_TEMP/apple-compilation-cache.tar.zst"
+      - name: Enforce repository cache headroom
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPO/actions/cache/usage" > "$RUNNER_TEMP/apple-cache-usage.json"
+          ./scripts/apple-compilation-cache.sh admit-save \
+            "$RUNNER_TEMP/apple-compilation-cache.tar.zst" \
+            "$RUNNER_TEMP/apple-cache-usage.json"
+      - name: Publish the validated generation
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ runner.temp }}/apple-compilation-cache.tar.zst
+          key: ${{ steps.apple-toolchain.outputs.fingerprint }}-${{ github.run_id }}
+      - name: Retain only the newest generation for this fingerprint
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PREFIX: ${{ steps.apple-toolchain.outputs.fingerprint }}
+        run: |
+          set -euo pipefail
+          inventory="$RUNNER_TEMP/apple-cache-inventory.json"
+          gh api "repos/$REPO/actions/caches?per_page=100&ref=refs/heads/main" > "$inventory"
+          while read -r id; do
+            [[ -n "$id" ]] || continue
+            gh api -X DELETE "repos/$REPO/actions/caches/$id"
+          done < <(./scripts/apple-compilation-cache.sh retention-plan \
+            "$inventory" "$PREFIX" refs/heads/main 1)

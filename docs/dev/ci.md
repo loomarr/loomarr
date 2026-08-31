@@ -16,7 +16,8 @@ builds, runtime image certification, Apple mobile, Apple TV, the tuner matrix, o
 The required `main` merge queue then builds one candidate at a time against the current base. That
 `merge_group` run is the authoritative integration lane: the same fail-closed classifier selects
 the complete affected gate set, and every selected result remains a dependency of `CI`. Explicit
-manual runs retain release-candidate and full recovery scopes. A normal queue-produced push to
+manual runs retain release-candidate and full recovery scopes plus an isolated Apple compilation
+cache portability scope. A normal queue-produced push to
 `main` runs publication workflows only rather than validating the admitted commit again.
 
 The root workflow owns triggering, classification, admission, manual scopes, and the required
@@ -271,9 +272,11 @@ exact-looking command. An exact command is authorized only at the scalar node in
 malformed or metadata-only YAML shape receives no exemption.
 Job-level `uses:` is rejected except for the root CI workflow's exact local family calls. Those
 calls admit exactly `name`, `needs`, `if`, and `uses` at their source-bound values and are closed by
-`VerifyCIFamilyWorkflows`: each job must name its registered local workflow,
-the target must expose only `workflow_call`, and it must contain exactly one implementation job;
-the implementation workflow is then scanned independently by this container policy. Remote,
+`VerifyCIFamilyWorkflows`: each job must name its registered local workflow and the target must
+expose only `workflow_call`. Product families contain exactly one implementation job. The isolated
+Apple cache portability workflow is the sole registered exception: its exact producer and dependent
+consumer jobs prove transfer across distinct runners. Every implementation job is scanned
+independently by this container policy. Remote,
 renamed, additional, or otherwise unresolved reusable workflows fail closed.
 
 The workflow topology is itself an authority: the checked-in workflow filenames, job names, step
@@ -427,6 +430,32 @@ client, and unrelated platform matrices cannot become release prerequisites. The
 marker also makes the contract and certification jobs mandatory evidence rather than relying only on
 the workflow's overall conclusion.
 
+Select `apple-cache-validation` only while proving the Apple compilation-cache protocol. It runs no
+ordinary product family: one `macos-26` job performs the complete mobile and TV Release
+install-launch-liveness gates while populating an LLVM CAS, validates and packs that store, and
+transfers it as a one-day workflow artifact. A dependent `macos-26` job restores and validates the
+archive before proving mobile and TV hits, a real Swift source-change hit-and-miss, corrupt-archive
+rejection, fingerprint invalidation, and cold mobile/TV fallback. The runner boundary is deliberate;
+a cache that works only within one machine is not eligible for later CI consumption. This manual
+scope is included in `ci-ok` when selected and is skipped for pull requests, merge groups, release
+certification, and `full` dispatches.
+
+After that portability proof is green, `Apple compilation cache` is the only workflow authorized to
+publish compiler results. It is manual-only, refuses every ref except `refs/heads/main`, and builds
+the complete mobile and TV Release install-launch-liveness gates before saving. A restored seed is
+hash-validated before use; the candidate CAS and compressed archive are validated again, and a save
+is refused if its size plus a 512 MiB reserve would exceed the repository's 10 GiB cache budget.
+After a successful save, cleanup is limited to the exact fingerprint prefix on `refs/heads/main` and
+retains one generation. Only this workflow has `actions: write` for the compiler cache.
+
+The ordinary Apple mobile and Apple TV jobs are compiler-cache consumers only. Each computes the
+toolchain/SDK/native-input fingerprint, uses the restore-only cache action, and exposes a store only
+after zstd and LLVM CAS hash validation. Missing or rejected archives select the unchanged cold
+gate. A valid store that fails during the warm build is quarantined and receives one clean cold
+retry; every architecture, install, launch, screenshot, and liveness assertion still runs. These
+jobs never save the compiler archive, so pull-request and merge-queue refs cannot create sibling
+compiler generations.
+
 ## `ci-ok` is the only required check
 
 It always runs and inspects `needs.*.result` explicitly. That has to be explicit: a skipped job
@@ -467,6 +496,15 @@ Sharding is free on a public repo. Check the bill before copying it into a priva
   its key doesn't gets written once and frozen. Use a rolling key with `restore-keys`.
 - **The 10GB cap evicts LRU across all refs**, so closed PRs' caches push out live ones.
   `cache-cleanup.yml` deletes them on close.
+
+Apple compilation caching is a validated artifact protocol, not an unchecked DerivedData restore.
+The fingerprint binds the runner OS and architecture, exact Xcode and Swift identities, both
+simulator SDKs, Release build settings, and the pnpm lockfile. Restores are decompressed into a
+temporary path and accepted only after the installed `llvm-cas` verifies hashes; failed warm builds
+quarantine that exact store and retry the complete gate once in cold mode. Archive size, repository
+cache usage, unrelated-cache headroom, and main-ref retention are checked before any trusted writer
+may save. PR and merge-queue consumers remain restore-only, and a warm-required validation cannot
+turn its cold fallback into a passing cache claim.
 
 ## Hand-maintained lists, and what guards them
 

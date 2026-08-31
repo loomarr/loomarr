@@ -27,6 +27,8 @@ client-tooling	web/turbo.json	clients
 client-browser-proof	web/apps/web/src/client-platform-proof/client-platform-proof.tsx	clients
 apple-client-script	web/scripts/test-apple-client.sh	contracts,apple_mobile,apple_tv
 apple-client-xcconfig	web/scripts/apple-simulator.xcconfig	contracts,apple_mobile,apple_tv
+apple-compilation-cache-cli	scripts/apple-compilation-cache.sh;scripts/apple-compilation-cache-test.sh	contracts,apple_mobile,apple_tv,policy
+apple-compilation-cache-verifier	web/scripts/test-apple-client-cache-test.sh;web/scripts/apple-compilation-cache.xcconfig;web/scripts/validate-apple-compilation-cache.sh;web/scripts/validate-apple-compilation-cache-test.sh	contracts,apple_mobile,apple_tv
 expo-android-script	web/scripts/build-android-client.sh	contracts,expo_android_mobile,expo_android_tv
 visual-web	web/apps/web/src/people/users-page/users-page.tsx	web,visual,tuner,image
 visual-baseline	web/apps/web/tests/visual/gallery.spec.ts-snapshots/ai-approvalhistoryrow--approved-desktop-linux.png	web,visual,image
@@ -61,6 +63,8 @@ ci-frontend-workflow	.github/workflows/ci-frontend.yml	web,policy
 ci-clients-workflow	.github/workflows/ci-clients.yml	clients,policy
 ci-apple-mobile-workflow	.github/workflows/ci-apple-mobile.yml	apple_mobile,policy
 ci-apple-tv-workflow	.github/workflows/ci-apple-tv.yml	apple_tv,policy
+ci-apple-cache-validation-workflow	.github/workflows/ci-apple-cache-validation.yml	apple_mobile,apple_tv,policy
+apple-compilation-cache-publisher	.github/workflows/apple-compilation-cache.yml	apple_mobile,apple_tv,policy
 ci-playwright-workflow	.github/workflows/ci-playwright.yml	visual,e2e,policy
 ci-tuner-workflow	.github/workflows/ci-tuner.yml	tuner,policy
 ci-image-workflow	.github/workflows/ci-image.yml	image,policy
