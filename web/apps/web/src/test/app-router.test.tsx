@@ -1,12 +1,18 @@
 import type { MeBody } from "@loomarr/api";
-import { getLoginMockHandler, getPreviewInvitationMockHandler } from "@loomarr/api/msw";
+import {
+  getLoginMockHandler,
+  getPreviewInvitationMockHandler,
+  getPreviewPasswordRecoveryMockHandler,
+  getRedeemPasswordRecoveryMockHandler,
+  getRequestPasswordRecoveryMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
-import { clearInvitationGrant } from "@/auth/invitation-grant";
+import { clearAccountActionGrant } from "@/auth/account-action-grant";
 import { routeTree } from "@/routeTree.gen";
 import { appHandlers } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
@@ -72,7 +78,7 @@ const renderApp = (initialPath: string) => {
 
 describe("invitation join route", () => {
   it("removes the fragment before rendering credentials and previews without redeeming", async () => {
-    clearInvitationGrant();
+    clearAccountActionGrant();
     const bearer = "e".repeat(64);
     const previewBodies: unknown[] = [];
     window.history.replaceState({}, "", `/join#grant=${bearer}`);
@@ -95,6 +101,56 @@ describe("invitation join route", () => {
     expect(window.location.hash).toBe("");
     expect(previewBodies).toEqual([{ grant: bearer }]);
     expect(screen.getByRole("button", { name: "Activate account" })).toBeInTheDocument();
+  });
+});
+
+describe("password recovery routes", () => {
+  it("submits a generic request without revealing eligibility", async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      getRequestPasswordRecoveryMockHandler(async ({ request }) => {
+        bodies.push(await request.json());
+        return { message: "If that account can be recovered here, Loomarr will send an email." };
+      }),
+    );
+    renderApp("/forgot-password");
+    await userEvent.type(await screen.findByLabelText("Username"), "Ada");
+    await userEvent.click(screen.getByRole("button", { name: /email reset link/i }));
+    expect(await screen.findByRole("status")).toHaveTextContent(/if that account can be recovered here/i);
+    expect(bodies).toEqual([{ username: "Ada" }]);
+  });
+
+  it("cleans the reset bearer before credentials render and resets only on explicit submit", async () => {
+    clearAccountActionGrant();
+    const bearer = "f".repeat(64);
+    const previews: unknown[] = [];
+    const redemptions: unknown[] = [];
+    window.history.replaceState({}, "", `/reset-password#grant=${bearer}`);
+    server.use(
+      getPreviewPasswordRecoveryMockHandler(async ({ request }) => {
+        previews.push(await request.json());
+        return { expiresAt: Date.now() + 60_000 };
+      }),
+      getRedeemPasswordRecoveryMockHandler(async ({ request }) => {
+        redemptions.push(await request.json());
+      }),
+    );
+
+    renderApp("/reset-password");
+    expect(await screen.findByLabelText("New password")).toBeInTheDocument();
+    expect(window.location.hash).toBe("");
+    expect(localStorage.length).toBe(0);
+    expect(sessionStorage.length).toBe(0);
+    expect(previews).toEqual([{ grant: bearer }]);
+    expect(redemptions).toEqual([]);
+
+    await userEvent.type(screen.getByLabelText("New password"), "replacement-password");
+    await userEvent.type(screen.getByLabelText("Confirm new password"), "replacement-password");
+    await userEvent.click(screen.getByRole("button", { name: "Reset password" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      /every existing session has been signed out/i,
+    );
+    expect(redemptions).toEqual([{ grant: bearer, password: "replacement-password" }]);
   });
 });
 

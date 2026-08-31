@@ -21,6 +21,7 @@ import (
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/recovery"
 	"github.com/loomarr/loomarr/internal/scheduler"
 )
 
@@ -42,6 +43,7 @@ type Store interface {
 	PurgeActivity(ctx context.Context, before time.Time) (int, error)
 	PurgeTerminalInvitations(ctx context.Context, before time.Time) (int, error)
 	PurgeTerminalNotifications(ctx context.Context, before time.Time) (int, error)
+	PurgeTerminalPasswordRecoveries(ctx context.Context, before time.Time) (int, error)
 	PurgeDiagnostics(ctx context.Context, before time.Time, maxBytes int64) (diagnostics.PurgeResult, error)
 	PurgeExpiredSessions(ctx context.Context, now time.Time) (int, error)
 }
@@ -139,6 +141,18 @@ func (s *Service) PurgeInvitations(ctx context.Context) error {
 	return nil
 }
 
+// PurgePasswordRecoveries applies the same fixed 30-day account-security audit window.
+func (s *Service) PurgePasswordRecoveries(ctx context.Context) error {
+	n, err := s.store.PurgeTerminalPasswordRecoveries(ctx, s.now().Add(-recovery.Retention))
+	if err != nil {
+		return err
+	}
+	if n > 0 && s.log != nil {
+		s.log.Info("terminal password recoveries purged", "recoveries", n)
+	}
+	return nil
+}
+
 // PurgeDiagnostics enforces both the age window and logical retained-byte budget (§5, §17).
 // Active Process runs are protected by the store contract regardless of age or pressure.
 func (s *Service) PurgeDiagnostics(ctx context.Context) error {
@@ -175,6 +189,9 @@ func (s *Service) Housekeeping(ctx context.Context) error {
 	if err := s.PurgeInvitations(ctx); err != nil {
 		errs = append(errs, err)
 	}
+	if err := s.PurgePasswordRecoveries(ctx); err != nil {
+		errs = append(errs, err)
+	}
 	if err := s.PurgeNotifications(ctx); err != nil {
 		errs = append(errs, err)
 	}
@@ -193,7 +210,7 @@ func (s *Service) Housekeeping(ctx context.Context) error {
 func (s *Service) Job() scheduler.Job {
 	return scheduler.Job{
 		Name: "housekeeping", Group: scheduler.GroupSystem, Title: "Clean up old data",
-		Description: "Removes expired sessions, old activity, diagnostics and notifications, denied requests, and completed jobs after their retention periods.",
+		Description: "Removes expired sessions, old activity, invitations, password recoveries, diagnostics and notifications, denied requests, and completed jobs after their retention periods.",
 		DefaultCron: "0 30 4 * * *", ScheduleKey: "job.housekeeping.schedule",
 		Run: s.Housekeeping,
 	}

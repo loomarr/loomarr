@@ -5,11 +5,14 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/loomarr/loomarr/internal/auth"
+	"github.com/loomarr/loomarr/internal/contact"
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/scheduler"
@@ -67,18 +70,29 @@ func (c *invitationDeliveryCoordinator) LatestEmail(
 
 type invitationEmailRouter struct {
 	invitations *invitation.Service
+	recovery    *auth.PasswordRecoveryService
 	config      func() notifications.EmailConfig
 }
 
 func (r invitationEmailRouter) Routes(ctx context.Context, intent notifications.Intent) ([]notifications.Route, error) {
-	if intent.Topic != notifications.TopicAccountInvitation || intent.RecipientKind != notifications.RecipientInvitation {
-		return nil, fmt.Errorf("invitation email router received unsupported intent")
-	}
 	route := notifications.Route{
-		Means: notifications.MeansEmail, DestinationRef: "invitation:" + intent.RecipientID,
+		Means:               notifications.MeansEmail,
 		DestinationRedacted: "unavailable",
 	}
-	address, err := r.invitations.Contact(ctx, intent.RecipientID)
+	var address contact.Address
+	var err error
+	switch {
+	case intent.Topic == notifications.TopicAccountInvitation &&
+		intent.RecipientKind == notifications.RecipientInvitation && r.invitations != nil:
+		route.DestinationRef = "invitation:" + intent.RecipientID
+		address, err = r.invitations.Contact(ctx, intent.RecipientID)
+	case intent.Topic == notifications.TopicLocalPasswordRecovery &&
+		intent.RecipientKind == notifications.RecipientPerson && r.recovery != nil:
+		route.DestinationRef = "person:" + intent.RecipientID
+		address, err = r.recovery.Contact(ctx, intent.RecipientID)
+	default:
+		return nil, fmt.Errorf("account email router received unsupported intent")
+	}
 	if errors.Is(err, store.ErrNotFound) {
 		route.Suppressed = notifications.OutcomeDestinationUnavailable
 		return []notifications.Route{route}, nil
@@ -95,6 +109,7 @@ func (r invitationEmailRouter) Routes(ctx context.Context, intent notifications.
 
 type invitationEmailMaterializer struct {
 	invitations *invitation.Service
+	recovery    *auth.PasswordRecoveryService
 	publicURL   func() string
 }
 
@@ -102,31 +117,65 @@ func (m invitationEmailMaterializer) Materialize(
 	ctx context.Context,
 	delivery notifications.Delivery,
 ) (notifications.MaterializedEmail, error) {
-	if delivery.Intent.Topic != notifications.TopicAccountInvitation ||
-		delivery.Intent.ReferenceKind != notifications.ReferenceInvitation ||
-		delivery.Attempt.DestinationRef != "invitation:"+delivery.Intent.ReferenceID {
-		return notifications.MaterializedEmail{}, fmt.Errorf("invalid invitation email delivery references")
+	var address contact.Address
+	var issuedPlaintext string
+	var expiresAt time.Time
+	var actionPath string
+	var revoke func(context.Context) error
+	var err error
+	switch {
+	case delivery.Intent.Topic == notifications.TopicAccountInvitation &&
+		delivery.Intent.ReferenceKind == notifications.ReferenceInvitation &&
+		delivery.Attempt.DestinationRef == "invitation:"+delivery.Intent.ReferenceID &&
+		m.invitations != nil:
+		address, err = m.invitations.Contact(ctx, delivery.Intent.ReferenceID)
+		if err == nil {
+			issued, issueErr := m.invitations.IssueSibling(ctx, delivery.Intent.ReferenceID, invitation.ConveyanceEmail)
+			err = issueErr
+			issuedPlaintext, expiresAt = issued.Plaintext, issued.ExpiresAt
+			revoke = func(revokeCtx context.Context) error {
+				return m.invitations.RevokeIssuedGrant(revokeCtx, issuedPlaintext)
+			}
+			actionPath = "/join#grant="
+		}
+	case delivery.Intent.Topic == notifications.TopicLocalPasswordRecovery &&
+		delivery.Intent.ReferenceKind == notifications.ReferenceRecovery &&
+		delivery.Attempt.DestinationRef == "person:"+delivery.Intent.RecipientID &&
+		m.recovery != nil:
+		address, err = m.recovery.Contact(ctx, delivery.Intent.RecipientID)
+		if err == nil {
+			issued, issueErr := m.recovery.IssueGrant(ctx, delivery.Intent.ReferenceID)
+			err = issueErr
+			issuedPlaintext, expiresAt = issued.Plaintext, issued.ExpiresAt
+			revoke = func(revokeCtx context.Context) error {
+				return m.recovery.RevokeIssuedGrant(revokeCtx, issuedPlaintext)
+			}
+			actionPath = "/reset-password#grant="
+		}
+	default:
+		return notifications.MaterializedEmail{}, fmt.Errorf("invalid account email delivery references")
 	}
-	address, err := m.invitations.Contact(ctx, delivery.Intent.ReferenceID)
 	if errors.Is(err, store.ErrNotFound) {
 		return notifications.MaterializedEmail{}, notifications.ErrEmailDestinationUnavailable
 	}
 	if err != nil {
 		return notifications.MaterializedEmail{}, err
 	}
-	origin, err := recipientOriginValue(m.publicURL)
 	if err != nil {
 		return notifications.MaterializedEmail{}, err
 	}
-	issued, err := m.invitations.IssueSibling(ctx, delivery.Intent.ReferenceID, invitation.ConveyanceEmail)
+	origin, err := recipientOriginValue(m.publicURL)
 	if err != nil {
+		if revoke != nil {
+			_ = revoke(ctx)
+		}
 		return notifications.MaterializedEmail{}, err
 	}
 	invalidate := func(revokeCtx context.Context) error {
-		return m.invitations.RevokeIssuedGrant(revokeCtx, issued.Plaintext)
+		return revoke(revokeCtx)
 	}
-	actionURL := origin + "/join#grant=" + url.QueryEscape(issued.Plaintext)
-	content, err := notifications.RenderAccountEmail(delivery.Intent, actionURL, issued.ExpiresAt)
+	actionURL := origin + actionPath + url.QueryEscape(issuedPlaintext)
+	content, err := notifications.RenderAccountEmail(delivery.Intent, actionURL, expiresAt)
 	if err != nil {
 		_ = invalidate(ctx)
 		return notifications.MaterializedEmail{}, err
@@ -185,24 +234,39 @@ func redactMailbox(address string) string {
 	return string(first) + "***@" + domain
 }
 
-func buildInvitationDelivery(
+type accountDeliveryBuild struct {
+	invitations *invitationDeliveryCoordinator
+	recovery    *passwordRecoveryCoordinator
+}
+
+func buildAccountDelivery(
 	st store.Store,
 	set resolved,
 	invitationService *invitation.Service,
+	recoveryService *auth.PasswordRecoveryService,
 	registry *scheduler.Registry,
-) *invitationDeliveryCoordinator {
-	if st == nil || set.svc == nil || invitationService == nil {
-		return nil
+	log *slog.Logger,
+) accountDeliveryBuild {
+	if st == nil || set.svc == nil || invitationService == nil || recoveryService == nil {
+		return accountDeliveryBuild{}
 	}
 	materializer := invitationEmailMaterializer{
-		invitations: invitationService, publicURL: func() string { return set.str("access.public_url") },
+		invitations: invitationService, recovery: recoveryService,
+		publicURL: func() string { return set.str("access.public_url") },
 	}
 	adapter := notifications.NewEmailAdapter(set.emailConfig, materializer, notifications.NewSMTPSender(15*time.Second))
 	service := notifications.NewService(st, invitationEmailRouter{
-		invitations: invitationService, config: set.emailConfig,
+		invitations: invitationService, recovery: recoveryService, config: set.emailConfig,
 	}, []notifications.Adapter{adapter}, newID, time.Now)
 	if registry != nil {
 		registry.Add(notificationDeliveryJob(service))
 	}
-	return &invitationDeliveryCoordinator{invitations: invitationService, notifications: service}
+	return accountDeliveryBuild{
+		invitations: &invitationDeliveryCoordinator{invitations: invitationService, notifications: service},
+		recovery: &passwordRecoveryCoordinator{
+			recovery: recoveryService, notifications: service,
+			requestLimiter: auth.NewRateLimiter(0.05, 3), redeemLimiter: auth.NewRateLimiter(0.1, 5),
+			log: log,
+		},
+	}
 }
