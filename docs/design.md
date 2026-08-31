@@ -7618,7 +7618,7 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   everything. Generated docs, action pinning, impact fixtures, and the release verifier reject an
   orphaned module or a caller whose reusable implementation is not covered by its owning decision.
 - **State machine:** every transition + the five invariants.
-- **Store conformance:** one suite vs **both** SQLite (temp file) and Postgres (**testcontainers**), incl. `ClaimDue` concurrency (no record claimed twice).
+- **Store conformance:** one suite vs **both** SQLite (temp file) and Postgres (**testcontainers**), incl. `ClaimDue` concurrency (no record claimed twice). The race-enabled integration target carries an explicit 20-minute Go package timeout: the shared suite repeatedly migrates fresh databases across both dialects and has exceeded Go's implicit 10-minute default on a two-core hosted runner, while a finite doubled ceiling still fails closed on genuine hangs.
 - **Library conformance:** Emby vs Jellyfin flavors w/ mock transport; correct auth header each.
 - **Webhook idempotency/replay:** duplicate/out-of-order events converge.
 - **Scheduler reconcile:** desired-vs-actual against a **mock Tunarr** — idempotent (second reconcile = no-op), minimal-diff, and **backfill** (pending slot filled with filler → real title on `available` → re-push; `unavailable` → substitute). **Event-loss recovery:** drop the availability event entirely and assert the periodic sweep still backfills. Per-channel single-leader claim under concurrency.

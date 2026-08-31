@@ -90,7 +90,7 @@ func VerifyCIContainerDownloads(root string) error {
 		return fmt.Errorf("postgres target test-pg: %w", err)
 	}
 	if err := verifyProtectedMakeTarget(repositoryMake, "test-pg", []string{
-		`TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX=docker.io TESTCONTAINERS_RYUK_DISABLED=false $(GO) test -race -tags=integration ./internal/store/ ./internal/backendtransition/ ./internal/app/`,
+		`TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX=docker.io TESTCONTAINERS_RYUK_DISABLED=false $(GO) test -race -tags=integration -timeout=20m ./internal/store/ ./internal/backendtransition/ ./internal/app/`,
 	}); err != nil {
 		return fmt.Errorf("postgres target test-pg: %w", err)
 	}
