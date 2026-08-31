@@ -260,6 +260,12 @@ const createHlsController = (HlsController: typeof Hls): Hls =>
     backBufferLength: 900,
   });
 
+const createPlaybackSessionID = () => {
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  return `web_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+};
+
 function useBrowserHlsPlayer({
   attempt,
   channelId,
@@ -267,9 +273,7 @@ function useBrowserHlsPlayer({
   mintSource,
   recordDiagnostic,
 }: BrowserHlsPlayerOptions): UseBrowserHlsPlayer {
-  const playbackSessionIDRef = useRef(
-    globalThis.crypto?.randomUUID?.() ?? `web_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-  );
+  const playbackSessionIDRef = useRef(createPlaybackSessionID());
   const channelIdentityRef = useRef(channelId);
   const replacedChannelRef = useRef<string | undefined>(undefined);
   if (channelIdentityRef.current !== channelId) {

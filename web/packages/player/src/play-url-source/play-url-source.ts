@@ -12,9 +12,21 @@ interface ChannelCatalogPort {
   list: (signal: AbortSignal) => Promise<readonly PlayerChannel[]>;
 }
 
+const trimLeadingSlashes = (value: string) => {
+  let start = 0;
+  while (start < value.length && value.charCodeAt(start) === 47) start++;
+  return value.slice(start);
+};
+
+const trimTrailingSlashes = (value: string) => {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end--;
+  return value.slice(0, end);
+};
+
 const resolveStreamUrl = (baseUrl: string, response: Pick<PlayURLOutputBody, "relativeUrl" | "url">) => {
   if (response.relativeUrl.trim()) {
-    return `${baseUrl.replace(/\/+$/, "")}/${response.relativeUrl.replace(/^\/+/, "")}`;
+    return `${trimTrailingSlashes(baseUrl)}/${trimLeadingSlashes(response.relativeUrl)}`;
   }
   if (response.url.trim()) return response.url;
   throw new Error("This Loomarr returned no stream address for the channel.");
