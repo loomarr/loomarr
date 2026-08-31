@@ -1,6 +1,9 @@
 import * as invitationsApi from "@loomarr/api/endpoints/invitations";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as usersApi from "@loomarr/api/endpoints/users";
+import type { CreateInvitationInputBody } from "@loomarr/api/models/createInvitationInputBody";
+import type { InvitationBody } from "@loomarr/api/models/invitationBody";
+import type { IssueInvitationGrantInputBodyConveyance } from "@loomarr/api/models/issueInvitationGrantInputBodyConveyance";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -8,6 +11,7 @@ import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { CreateLocalDialog } from "@/components/loomarr/people/create-local-dialog";
 import { ImportDialog } from "@/components/loomarr/people/import-dialog";
+import { InvitationDialog } from "@/components/loomarr/people/invitation-dialog";
 import { InvitationRoster } from "@/components/loomarr/people/invitation-roster";
 import { PeopleRoster } from "@/components/loomarr/people/people-roster";
 import { PersonDetail } from "@/components/loomarr/people/person-detail";
@@ -27,6 +31,7 @@ const UsersPage = () => {
   const [selectedId, setSelectedId] = useState<string>();
   const [revoking, setRevoking] = useState<string>();
   const [sendingInvitation, setSendingInvitation] = useState<string>();
+  const [sharingInvitation, setSharingInvitation] = useState<InvitationBody>();
 
   const users = usersApi.useListUsers();
   const invalidate = () => queryClient.invalidateQueries({ queryKey: usersApi.getListUsersQueryKey() });
@@ -48,6 +53,37 @@ const UsersPage = () => {
       },
     },
   });
+  const createInvitation = invitationsApi.useCreateInvitation();
+  const issueInvitationGrant = invitationsApi.useIssueInvitationGrant();
+  const revokeInvitation = invitationsApi.useRevokeInvitation();
+
+  const createInvitationAction = async (data: CreateInvitationInputBody) => {
+    const response = await createInvitation.mutateAsync({ data });
+    if (response.status !== 201) throw response.data;
+    await invalidateInvitations();
+    return response.data;
+  };
+  const issueInvitationGrantAction = async (
+    id: string,
+    conveyance: IssueInvitationGrantInputBodyConveyance,
+  ) => {
+    const response = await issueInvitationGrant.mutateAsync({ id, data: { conveyance } });
+    if (response.status !== 200) throw response.data;
+    return response.data;
+  };
+  const revokeInvitationAction = async (id: string) => {
+    const response = await revokeInvitation.mutateAsync({ id });
+    if (response.status !== 204) throw response.data;
+    await invalidateInvitations();
+  };
+  const sendInvitationEmailAction = async (id: string) => {
+    const response = await sendInvitationEmail.mutateAsync({
+      id,
+      data: { requestId: globalThis.crypto.randomUUID() },
+    });
+    if (response.status !== 202) throw response.data;
+    await invalidateInvitations();
+  };
 
   const patch = usersApi.usePatchUser({
     mutation: {
@@ -98,6 +134,18 @@ const UsersPage = () => {
         description="Who may sign in, what they may spend, and what they may approve. An account grants no access until you add it here: by importing a media-server account, or creating a local one."
         actions={
           <div className="flex flex-wrap gap-2">
+            <InvitationDialog
+              libraryAvailable={importAvailable}
+              candidates={
+                importAvailable && !candidates.isLoading
+                  ? (unwrap(candidates.data, (body) => body.candidates) ?? [])
+                  : undefined
+              }
+              onCreate={createInvitationAction}
+              onIssueGrant={issueInvitationGrantAction}
+              onRevoke={revokeInvitationAction}
+              onSendEmail={sendInvitationEmailAction}
+            />
             <CreateLocalDialog
               error={createLocal.error}
               creating={createLocal.isPending}
@@ -146,7 +194,22 @@ const UsersPage = () => {
             setSendingInvitation(id);
             sendInvitationEmail.mutate({ id, data: { requestId: globalThis.crypto.randomUUID() } });
           }}
+          onShare={setSharingInvitation}
         />
+
+        {sharingInvitation && (
+          <InvitationDialog
+            open
+            existing={sharingInvitation}
+            libraryAvailable={importAvailable}
+            candidates={[]}
+            onOpenChange={(next) => !next && setSharingInvitation(undefined)}
+            onCreate={createInvitationAction}
+            onIssueGrant={issueInvitationGrantAction}
+            onRevoke={revokeInvitationAction}
+            onSendEmail={sendInvitationEmailAction}
+          />
+        )}
 
         <PeopleRoster
           users={rows}
