@@ -7055,7 +7055,12 @@ images/package inputs, and final legal review remain beta blockers.
 - **artifact preflight:** an unprofiled one-shot service validates `LOOMARR_VERSION` with the release
   workflow's strict SemVer/OCI policy before Loomarr starts. Empty, malformed, overlong, and mutable
   aliases such as `latest` fail the deployment rather than silently selecting a moving artifact.
-- **sqlite:** just `loomarr` + a `/data` volume for the DB file.
+- **sqlite:** just `loomarr` + a `/data` volume for the DB file. The base Compose file deliberately
+  does **not** export `DATABASE_URL`: Loomarr's own bootstrap default selects
+  `sqlite:///data/loomarr.db`, leaving the key unpinned so the in-app atomic migration can commit a
+  PostgreSQL target into `/data/bootstrap.json` and restart onto it. Exporting the same SQLite value
+  from Compose would look equivalent at first boot but would make that supported switchover
+  impossible because environment always outranks the bootstrap file.
 - **postgres:** `docker/compose.postgres.yaml` replaces Loomarr's SQLite default with an explicit
   Postgres DSN and waits for `postgres:16` to become healthy. A profile can add a service but cannot
   conditionally replace another service's environment; `--profile postgres` without the override is
@@ -7103,7 +7108,6 @@ services:
         condition: service_completed_successfully   # sqlite profile only
         required: false                             # postgres profile skips it
     environment:
-      DATABASE_URL: ${DATABASE_URL}
       SERVER_PUBLIC_URL: ${SERVER_PUBLIC_URL:?set the Traefik URL}
       LIBRARY_FLAVOR: ${LIBRARY_FLAVOR}
       LIBRARY_URL: ${LIBRARY_URL}
@@ -7623,6 +7627,15 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   orphaned module or a caller whose reusable implementation is not covered by its owning decision.
 - **State machine:** every transition + the five invariants.
 - **Store conformance:** one suite vs **both** SQLite (temp file) and Postgres (**testcontainers**), incl. `ClaimDue` concurrency (no record claimed twice). The race-enabled integration target carries an explicit 20-minute Go package timeout: the shared suite repeatedly migrates fresh databases across both dialects and has exceeded Go's implicit 10-minute default on a two-core hosted runner, while a finite doubled ceiling still fails closed on genuine hangs.
+- **Database lifecycle certification:** `make test-db-lifecycle` first runs that complete Postgres
+  gate, then builds the shipped Loomarr image and drives isolated Compose projects through the real
+  Traefik/HTTP boundary. It proves a fresh PostgreSQL install can write and restart; a populated
+  SQLite install can preflight, back up, drain, copy, verify, persist its bootstrap target, restart,
+  preserve authentication and application reads, accept PostgreSQL writes, and roll back; target
+  failures recover on SQLite; a killed mid-copy process leaves SQLite usable and can retry after the
+  disposable target is cleared; and an in-flight write drains into the snapshot while new admission
+  closes for the maintenance window. Direct SQL is restricted to fixture setup and independent
+  row-count, schema-version, and foreign-key fidelity checks.
 - **Library conformance:** Emby vs Jellyfin flavors w/ mock transport; correct auth header each.
 - **Webhook idempotency/replay:** duplicate/out-of-order events converge.
 - **Scheduler reconcile:** desired-vs-actual against a **mock Tunarr** — idempotent (second reconcile = no-op), minimal-diff, and **backfill** (pending slot filled with filler → real title on `available` → re-push; `unavailable` → substitute). **Event-loss recovery:** drop the availability event entirely and assert the periodic sweep still backfills. Per-channel single-leader claim under concurrency.

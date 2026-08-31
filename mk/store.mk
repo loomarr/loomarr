@@ -18,3 +18,7 @@ test-pg: rust-dev-build ensure-postgres-test-image ## all real-Postgres integrat
 # an exit code, and a missing -tags=integration printing `ok … [no tests to run]`. A test existing,
 # compiling, and EXECUTING are three separate facts.
 	TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX=docker.io TESTCONTAINERS_RYUK_DISABLED=false $(GO) test -race -tags=integration -timeout=20m ./internal/store/ ./internal/backendtransition/ ./internal/app/
+
+.PHONY: test-db-lifecycle
+test-db-lifecycle: test-pg ## certify Postgres conformance plus fresh-PG and SQLite→PG deployment lifecycles (Docker)
+	$(GO) test -count=1 -tags=integration -timeout=40m -run '^TestDatabaseLifecycle' ./internal/integration/

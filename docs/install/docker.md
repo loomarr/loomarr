@@ -28,6 +28,12 @@ Profiles combine:
 | `postgres` | A Postgres container, selected with `docker/compose.postgres.yaml` |
 | `ai` | A local Ollama. Omit it if you use a hosted provider or run Ollama already |
 
+The SQLite deployment intentionally leaves `DATABASE_URL` out of the container environment.
+Loomarr's built-in default still selects `/data/loomarr.db`, while leaving the key unpinned lets the
+in-app database migration write its PostgreSQL target to `/data/bootstrap.json` and restart onto it.
+Set `DATABASE_URL` yourself only when you want launch configuration—not Loomarr—to remain the
+authority for database selection.
+
 Open `SERVER_PUBLIC_URL` and follow the wizard — see [Quickstart](../help/quickstart.md). The
 supported Compose topology publishes Traefik on host port 8080; Loomarr's port 8080 is private.
 Set `LOOMARR_HTTP_PORT` in `.env` if the host must publish a different port, and include that port

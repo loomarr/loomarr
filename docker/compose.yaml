@@ -52,7 +52,7 @@ services:
       - --ping.entrypoint=health
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
-      - --providers.docker.constraints=Label(`com.mantonx.loomarr.edge`,`true`)
+      - --providers.docker.constraints=Label(`media.loomarr.edge`,`true`)
     ports: ["${LOOMARR_HTTP_BIND:-0.0.0.0}:${LOOMARR_HTTP_PORT:-8080}:8080"]
     volumes:
       # The Docker provider discovers only explicitly-labelled services. The
@@ -102,7 +102,10 @@ services:
         condition: service_completed_successfully
         required: false
     environment:
-      DATABASE_URL: ${DATABASE_URL:-sqlite:///data/loomarr.db}
+      # DATABASE_URL is deliberately absent here. The binary's bootstrap default
+      # selects sqlite:///data/loomarr.db without pinning the key, so the in-app
+      # SQLite→Postgres migration can persist its target and restart onto it. The
+      # Postgres deployment overlay supplies an explicit URL for fresh PG installs.
       LIBRARY_FLAVOR: ${LIBRARY_FLAVOR}
       LIBRARY_URL: ${LIBRARY_URL}
       LIBRARY_TOKEN: ${LIBRARY_TOKEN}
@@ -171,7 +174,7 @@ services:
     restart: unless-stopped
     networks: [default, edge]
     labels:
-      com.mantonx.loomarr.edge: "true"
+      media.loomarr.edge: "true"
       traefik.enable: "true"
       traefik.docker.network: ${LOOMARR_EDGE_NETWORK:-loomarr-edge}
       traefik.http.routers.loomarr.entrypoints: web

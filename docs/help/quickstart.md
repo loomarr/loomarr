@@ -35,6 +35,11 @@ LOOMARR_VERSION="$VERSION" docker compose -f docker/compose.yaml --profile sqlit
 For Postgres, add `-f docker/compose.postgres.yaml --profile postgres`. Add `--profile ai` to
 either database command to run a local Ollama alongside it.
 
+The SQLite command does not export `DATABASE_URL`; Loomarr still defaults to `/data/loomarr.db`.
+That omission is what keeps the in-app SQLite-to-Postgres migration able to persist its selection
+and restart onto PostgreSQL. An explicit environment value remains authoritative and disables that
+in-app switchover.
+
 > Inside Docker, `localhost` means the container. Reach other services by name
 > (`http://emby:8096`) or your host's LAN IP.
 >
