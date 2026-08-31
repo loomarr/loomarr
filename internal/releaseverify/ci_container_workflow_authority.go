@@ -231,6 +231,13 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				environment: map[string]string{"LOOMARR_ANDROID_MIN_AVAILABLE_KB": "0"},
 			}),
 		}),
+		"ci-expo-android-tv.yml": standardRunWorkflow(map[string]workflowStepAuthority{
+			"make fe-install": exactWorkflowStep(7, "", workflowStepAuthority{targets: []string{"fe-install"}}),
+			"make client-android-debug CLIENT_APP=tv": exactWorkflowStep(8, "Generate and build the standalone TV APK", workflowStepAuthority{
+				targets:     []string{"client-android-debug"},
+				environment: map[string]string{"LOOMARR_ANDROID_MIN_AVAILABLE_KB": "0"},
+			}),
+		}),
 		"ci-apple-cache-validation.yml": {
 			environment: standardWorkflowEnvironment(),
 			permissions: standardWorkflowPermissions(),

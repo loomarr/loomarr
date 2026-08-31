@@ -240,6 +240,10 @@ func VerifyCIImpactActivation(path string) error {
 			outputs:   []classifierOutput{{name: "impact_expo_android_mobile", source: "expo_android_mobile"}},
 			condition: "needs.changes.outputs.impact_expo_android_mobile == 'true'",
 		},
+		"expo-android-tv": {
+			outputs:   []classifierOutput{{name: "impact_expo_android_tv", source: "expo_android_tv"}},
+			condition: "needs.changes.outputs.impact_expo_android_tv == 'true'",
+		},
 	}
 	for jobName, gate := range activated {
 		for _, expected := range gate.outputs {
@@ -266,6 +270,7 @@ func VerifyCIImpactActivation(path string) error {
 		"apple-mobile":        "make client-apple-simulator CLIENT_APP=mobile",
 		"apple-tv":            "make client-apple-simulator CLIENT_APP=tv",
 		"expo-android-mobile": "make client-android-debug CLIENT_APP=mobile",
+		"expo-android-tv":     "make client-android-debug CLIENT_APP=tv",
 	}
 	for jobName, command := range nativeCommands {
 		job, err := requiredMap(jobs, jobName)
@@ -299,6 +304,7 @@ func ciFamilyWorkflowAuthorities() map[string]string {
 		"apple-mobile":        ".github/workflows/ci-apple-mobile.yml",
 		"apple-tv":            ".github/workflows/ci-apple-tv.yml",
 		"expo-android-mobile": ".github/workflows/ci-expo-android-mobile.yml",
+		"expo-android-tv":     ".github/workflows/ci-expo-android-tv.yml",
 
 		"apple-cache-validation": ".github/workflows/ci-apple-cache-validation.yml",
 

@@ -101,6 +101,7 @@ func TestVerifyCIImpactActivation(t *testing.T) {
       impact_apple_mobile: ${{ steps.impact.outputs.apple_mobile }}
       impact_apple_tv: ${{ steps.impact.outputs.apple_tv }}
       impact_expo_android_mobile: ${{ steps.impact.outputs.expo_android_mobile }}
+      impact_expo_android_tv: ${{ steps.impact.outputs.expo_android_tv }}
   ci-policy:
     needs: changes
     if: needs.changes.outputs.impact_policy == 'true'
@@ -155,6 +156,11 @@ func TestVerifyCIImpactActivation(t *testing.T) {
     if: needs.changes.outputs.impact_expo_android_mobile == 'true'
     steps:
       - run: make client-android-debug CLIENT_APP=mobile
+  expo-android-tv:
+    needs: changes
+    if: needs.changes.outputs.impact_expo_android_tv == 'true'
+    steps:
+      - run: make client-android-debug CLIENT_APP=tv
 `
 	path := filepath.Join(t.TempDir(), "ci.yml")
 	if err := os.WriteFile(path, []byte(workflow), 0o600); err != nil {
@@ -226,6 +232,14 @@ func TestVerifyCIImpactActivation(t *testing.T) {
 		),
 		"detached Expo Android mobile output": strings.Replace(workflow, "steps.impact.outputs.expo_android_mobile", "steps.filter.outputs.clients", 1),
 		"Expo Android mobile runs TV":         strings.Replace(workflow, "client-android-debug CLIENT_APP=mobile", "client-android-debug CLIENT_APP=tv", 1),
+		"legacy Expo Android TV selector": strings.Replace(
+			workflow,
+			"needs.changes.outputs.impact_expo_android_tv == 'true'",
+			"needs.changes.outputs.clients == 'true'",
+			1,
+		),
+		"detached Expo Android TV output": strings.Replace(workflow, "steps.impact.outputs.expo_android_tv", "steps.filter.outputs.clients", 1),
+		"Expo Android TV runs mobile":     strings.Replace(workflow, "client-android-debug CLIENT_APP=tv", "client-android-debug CLIENT_APP=mobile", 1),
 		"restored Apple matrix": strings.Replace(
 			workflow,
 			"  apple-mobile:\n    needs: changes",
