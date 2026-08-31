@@ -135,7 +135,8 @@ type Server struct {
 	restartDrift func() []string
 	// settings wires /v1/settings* + secrets regeneration (config-design §8);
 	// nil ⇒ routes 501. Implemented by a thin adapter over settings.Service.
-	settings SettingsService
+	settings  SettingsService
+	emailTest EmailTestService
 	// backendTransition owns the durable setting mutation -> prepare -> publish -> retire
 	// workflow for playout backend and URL changes. It serializes that entire workflow
 	// across replicas; failures after mutation remain non-fatal follow-on failures.
@@ -294,6 +295,15 @@ type SettingsService interface {
 	RevealSecret(ctx context.Context, name string) (value string, err error)
 	// Test runs one named connection check (config-design §8, powers Test buttons).
 	Test(ctx context.Context, check string) (ok bool, hint string)
+}
+
+type EmailTestResult struct {
+	OK      bool
+	Outcome string
+}
+
+type EmailTestService interface {
+	SendTest(context.Context, string) EmailTestResult
 }
 
 // BackendTransitioner is the one deep settings consequence for playout publication. The
@@ -903,6 +913,7 @@ type Options struct {
 	RestartDrift      func() []string
 	Jobs              JobService                                       // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
 	Settings          SettingsService                                  // /v1/settings* (config-design §8); nil ⇒ routes 501
+	EmailTest         EmailTestService                                 // administrator SMTP test delivery (§11)
 	BackendTransition BackendTransitioner                              // durable backend prepare/publish/retire coordinator
 	BackendCheckpoint func(context.Context) (BackendCheckpoint, error) // durable checkpoint, once per operation
 	Guide             GuideReader                                      // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next

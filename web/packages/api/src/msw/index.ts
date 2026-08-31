@@ -26,6 +26,7 @@ export * from "../../generated/endpoints/images/images.msw";
 export * from "../../generated/endpoints/invitations/invitations.msw";
 export * from "../../generated/endpoints/jobs/jobs.msw";
 export * from "../../generated/endpoints/library/library.msw";
+export * from "../../generated/endpoints/notifications/notifications.msw";
 export * from "../../generated/endpoints/ops/ops.msw";
 export * from "../../generated/endpoints/playout/playout.msw";
 export * from "../../generated/endpoints/proposal-jobs/proposal-jobs.msw";

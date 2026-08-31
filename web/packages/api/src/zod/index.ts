@@ -28,6 +28,7 @@ export * from "../../generated/zod/images/images.zod";
 export * from "../../generated/zod/invitations/invitations.zod";
 export * from "../../generated/zod/jobs/jobs.zod";
 export * from "../../generated/zod/library/library.zod";
+export * from "../../generated/zod/notifications/notifications.zod";
 export * from "../../generated/zod/ops/ops.zod";
 export * from "../../generated/zod/playout/playout.zod";
 export * from "../../generated/zod/proposal-jobs/proposal-jobs.zod";

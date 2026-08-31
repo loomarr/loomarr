@@ -61,7 +61,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		healthRefresh:     opts.HealthRefresh,
 		systemLLM:         opts.SystemLLM, database: opts.Database, backups: opts.Backups, restart: opts.Restart, activity: opts.Activity, sso: opts.SSO,
 		restartDrift: opts.RestartDrift,
-		settings:     opts.Settings, backendTransition: opts.BackendTransition,
+		settings:     opts.Settings, emailTest: opts.EmailTest, backendTransition: opts.BackendTransition,
 		backendCheckpoint: opts.BackendCheckpoint,
 		provision:         opts.Provision, guide: opts.Guide,
 		liveConfig: opts.LiveConfig, liveConfigInt: opts.LiveConfigInt,

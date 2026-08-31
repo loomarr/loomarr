@@ -20,6 +20,7 @@ export * as imagesApi from "../generated/endpoints/images/images";
 export * as invitationsApi from "../generated/endpoints/invitations/invitations";
 export * as jobsApi from "../generated/endpoints/jobs/jobs";
 export * as libraryApi from "../generated/endpoints/library/library";
+export * as notificationsApi from "../generated/endpoints/notifications/notifications";
 export * as opsApi from "../generated/endpoints/ops/ops";
 export * as playoutApi from "../generated/endpoints/playout/playout";
 export * as proposalJobsApi from "../generated/endpoints/proposal-jobs/proposal-jobs";

@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/scheduler"
 	"github.com/loomarr/loomarr/internal/settings"
@@ -60,6 +61,7 @@ type operationsBuild struct {
 	auth              authBuild
 	guide             api.GuideReader
 	settings          api.SettingsService
+	emailTest         api.EmailTestService
 	liveConfig        func(string) string
 	libraryConfigured func() bool
 	jobs              api.JobService
@@ -105,6 +107,7 @@ func buildOperations(
 			st, set, desiredSet, secrets, libraryClient, tmdbClient,
 			refreshSecretRedactor, readGeneratedSecret, triggerHealth, log,
 		),
+		emailTest:   buildEmailTest(st, set),
 		jobs:        jobs,
 		database:    buildDatabase(st, set, overrides, eventBus),
 		residentLLM: buildResidentLLM(set, log),
@@ -114,6 +117,14 @@ func buildOperations(
 		result.libraryConfigured = set.libraryConfigured
 	}
 	return result
+}
+
+func buildEmailTest(st store.Store, set resolved) api.EmailTestService {
+	if st == nil || set.svc == nil {
+		return nil
+	}
+	adapter := notifications.NewEmailAdapter(set.emailConfig, nil, notifications.NewSMTPSender(15*time.Second))
+	return emailTestAdapter{adapter: adapter}
 }
 
 func buildResidentLLM(set resolved, log *slog.Logger) residentLLMBuild {
