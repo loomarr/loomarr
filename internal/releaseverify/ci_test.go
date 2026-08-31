@@ -242,9 +242,10 @@ func TestVerifyCIFamilyWorkflows(t *testing.T) {
 	for job, workflow := range ciFamilyWorkflowAuthorities() {
 		fmt.Fprintf(&root, "  %s:\n    uses: ./%s\n", job, workflow)
 		body := "on:\n  workflow_call:\njobs:\n  run:\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n"
-		if job == "go" {
+		switch job {
+		case "go":
 			body = "on:\n  workflow_call:\njobs:\n  run:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make test GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}\n"
-		} else if job == "apple-cache-validation" {
+		case "apple-cache-validation":
 			body = "on:\n  workflow_call:\njobs:\n  producer:\n    runs-on: macos-26\n    steps:\n      - run: true\n  consumer:\n    needs: producer\n    runs-on: macos-26\n    steps:\n      - run: true\n"
 		}
 		if err := os.WriteFile(filepath.Join(dir, workflow), []byte(body), 0o600); err != nil {
