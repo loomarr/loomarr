@@ -15,9 +15,10 @@ found between the two React Native applications. The remaining duplicate product
 are the explicitly retained legacy web and Compose clients; they remain the rollback path until the
 P5 adoption decision and cannot be retired yet.
 
-This audit does not make P5 complete. Real-iPhone evidence, populated TV focus/time-shift soak, the
-generated Guide Macrobenchmark's physical-Shield result, physical-device background/foreground
-recovery, distribution upgrade, and the maintainer's recorded adoption decision remain open.
+This audit does not make P5 complete. P3.5 real-iPhone evidence is complete. Populated TV
+focus/time-shift soak, the generated Guide Macrobenchmark's physical-Shield result, physical-device
+background/foreground recovery, and protected distribution/update/rollback evidence remain open;
+the 2026-08-31 P5 outcome is therefore **revise and repeat**.
 
 ## Module and adapter ownership
 
@@ -92,3 +93,9 @@ pnpm --filter @loomarr/tv typecheck
 
 The import-boundary gate rejects application or sibling-package deep imports, dependency cycles,
 and product imports of Tamagui. Tests cross the same package entry points as callers.
+
+The commands above passed on 2026-08-31 at the reconciled #607 head: dependency-cruiser traversed
+2,666 modules and 4,524 dependencies with zero violations; player tests passed 30/30; the browser
+player adapter passed 20/20; the player, mobile, and TV typechecks passed; and the production web
+build passed its initial-load budget. This proves the source-sharing and deletion seam, but it does
+not replace the physical-Shield or Play evidence required by #727.
