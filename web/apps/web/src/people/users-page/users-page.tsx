@@ -1,3 +1,4 @@
+import * as invitationsApi from "@loomarr/api/endpoints/invitations";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as usersApi from "@loomarr/api/endpoints/users";
 import { unwrap } from "@loomarr/api/unwrap";
@@ -7,6 +8,7 @@ import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { CreateLocalDialog } from "@/components/loomarr/people/create-local-dialog";
 import { ImportDialog } from "@/components/loomarr/people/import-dialog";
+import { InvitationRoster } from "@/components/loomarr/people/invitation-roster";
 import { PeopleRoster } from "@/components/loomarr/people/people-roster";
 import { PersonDetail } from "@/components/loomarr/people/person-detail";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
@@ -24,6 +26,7 @@ const UsersPage = () => {
   const [busyUser, setBusyUser] = useState<string>();
   const [selectedId, setSelectedId] = useState<string>();
   const [revoking, setRevoking] = useState<string>();
+  const [sendingInvitation, setSendingInvitation] = useState<string>();
 
   const users = usersApi.useListUsers();
   const invalidate = () => queryClient.invalidateQueries({ queryKey: usersApi.getListUsersQueryKey() });
@@ -34,6 +37,17 @@ const UsersPage = () => {
   const importUsers = usersApi.useImportUsers();
   const syncUsers = usersApi.useSyncUsers();
   const createLocal = usersApi.useCreateLocalUser();
+  const invitations = invitationsApi.useListInvitations({ query: { refetchInterval: 5_000 } });
+  const invalidateInvitations = () =>
+    queryClient.invalidateQueries({ queryKey: invitationsApi.getListInvitationsQueryKey() });
+  const sendInvitationEmail = invitationsApi.useSendInvitationEmail({
+    mutation: {
+      onSettled: () => {
+        setSendingInvitation(undefined);
+        void invalidateInvitations();
+      },
+    },
+  });
 
   const patch = usersApi.usePatchUser({
     mutation: {
@@ -120,6 +134,19 @@ const UsersPage = () => {
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6">
         {patch.error != null && <ErrorState error={patch.error} />}
         {revoke.error != null && <ErrorState error={revoke.error} />}
+        {invitations.error != null && (
+          <ErrorState error={invitations.error} onRetry={() => invitations.refetch()} />
+        )}
+        {sendInvitationEmail.error != null && <ErrorState error={sendInvitationEmail.error} />}
+
+        <InvitationRoster
+          invitations={unwrap(invitations.data, (body) => body.invitations)}
+          sendingId={sendingInvitation}
+          onSendEmail={(id) => {
+            setSendingInvitation(id);
+            sendInvitationEmail.mutate({ id, data: { requestId: globalThis.crypto.randomUUID() } });
+          }}
+        />
 
         <PeopleRoster
           users={rows}

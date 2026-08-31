@@ -196,6 +196,21 @@ func (s *Service) Revoke(ctx context.Context, invitationID string) error {
 	return s.repository.RevokeInvitation(ctx, invitationID, s.now().UTC().Truncate(time.Second))
 }
 
+// RevokeIssuedGrant invalidates one grant known to have remained local because delivery failed
+// before remote acceptance. Callers retain the plaintext only in memory; persistence receives its
+// one-way hash.
+func (s *Service) RevokeIssuedGrant(ctx context.Context, plaintext string) error {
+	if len(plaintext) != 64 {
+		return fmt.Errorf("revoke invitation grant: expected 256-bit hexadecimal token")
+	}
+	if _, err := hex.DecodeString(plaintext); err != nil {
+		return fmt.Errorf("revoke invitation grant: expected 256-bit hexadecimal token")
+	}
+	return s.repository.RevokeInvitationGrant(
+		ctx, HashGrant(plaintext), s.now().UTC().Truncate(time.Second),
+	)
+}
+
 func (s *Service) Get(ctx context.Context, invitationID string) (Invitation, error) {
 	return s.repository.GetInvitation(ctx, invitationID, s.now().UTC().Truncate(time.Second))
 }

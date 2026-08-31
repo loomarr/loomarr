@@ -15,8 +15,46 @@ var (
 type Repository interface {
 	CreateNotificationIntent(context.Context, Intent, []Attempt) (Intent, bool, error)
 	GetNotificationIntent(context.Context, string) (Intent, error)
+	ListNotificationIntentsByReference(context.Context, ReferenceKind, string) ([]Intent, error)
+	ListNotificationAttempts(context.Context, string) ([]Attempt, error)
 	ClaimDueNotificationAttempt(context.Context, string, time.Time, time.Duration) (Attempt, error)
 	CompleteNotificationAttempt(context.Context, Completion) error
+}
+
+// LatestDelivery returns the newest explicit delivery request and its newest attempt. Invitation
+// lifecycle remains owned by invitation; this read model describes only the effort to convey it.
+func (s *Service) LatestDelivery(
+	ctx context.Context,
+	referenceKind ReferenceKind,
+	referenceID string,
+) (DeliverySummary, error) {
+	intents, err := s.repository.ListNotificationIntentsByReference(ctx, referenceKind, referenceID)
+	if err != nil {
+		return DeliverySummary{}, err
+	}
+	if len(intents) == 0 {
+		return DeliverySummary{}, ErrNotFound
+	}
+	attempts, err := s.repository.ListNotificationAttempts(ctx, intents[0].ID)
+	if err != nil {
+		return DeliverySummary{}, err
+	}
+	if len(attempts) == 0 {
+		return DeliverySummary{}, ErrNotFound
+	}
+	latest := attempts[len(attempts)-1]
+	updatedAt := latest.CreatedAt
+	if !latest.StartedAt.IsZero() {
+		updatedAt = latest.StartedAt
+	}
+	if !latest.FinishedAt.IsZero() {
+		updatedAt = latest.FinishedAt
+	}
+	return DeliverySummary{
+		Status: latest.Status, AttemptNumber: latest.AttemptNumber,
+		OutcomeCode: latest.OutcomeCode, ProviderMessageID: latest.ProviderMessageID,
+		UpdatedAt: updatedAt,
+	}, nil
 }
 
 // Router owns recipient policy and destination resolution. Domain callers do not select a means.

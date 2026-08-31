@@ -620,6 +620,7 @@ type ActivityStore interface {
 type NotificationStore interface {
 	CreateNotificationIntent(context.Context, notifications.Intent, []notifications.Attempt) (notifications.Intent, bool, error)
 	GetNotificationIntent(context.Context, string) (notifications.Intent, error)
+	ListNotificationIntentsByReference(context.Context, notifications.ReferenceKind, string) ([]notifications.Intent, error)
 	ListNotificationAttempts(context.Context, string) ([]notifications.Attempt, error)
 	ClaimDueNotificationAttempt(context.Context, string, time.Time, time.Duration) (notifications.Attempt, error)
 	CompleteNotificationAttempt(context.Context, notifications.Completion) error

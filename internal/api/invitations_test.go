@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -12,10 +13,19 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/invitation"
+	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func invitationServer(t *testing.T, publicURL string) (*httptest.Server, string) {
+	return invitationServerWithDelivery(t, publicURL, nil)
+}
+
+func invitationServerWithDelivery(
+	t *testing.T,
+	publicURL string,
+	delivery api.InvitationDeliveryService,
+) (*httptest.Server, string) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/invitations.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -32,11 +42,28 @@ func invitationServer(t *testing.T, publicURL string) (*httptest.Server, string)
 	)
 	handler := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler),
-		Invitations: service, AccessPublicURL: func() string { return publicURL },
+		Invitations: service, InvitationDelivery: delivery,
+		AccessPublicURL: func() string { return publicURL },
 	})
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 	return srv, bearer
+}
+
+type fakeInvitationDelivery struct {
+	invitationID string
+	requestID    string
+	result       notifications.DeliverySummary
+}
+
+func (f *fakeInvitationDelivery) SendEmail(_ context.Context, invitationID, requestID string) (notifications.DeliverySummary, error) {
+	f.invitationID = invitationID
+	f.requestID = requestID
+	return f.result, nil
+}
+
+func (f *fakeInvitationDelivery) LatestEmail(context.Context, string) (notifications.DeliverySummary, error) {
+	return f.result, nil
 }
 
 func TestInvitations_AdminLifecycleAndBearerMinimization(t *testing.T) {
@@ -125,5 +152,51 @@ func TestInvitationGrantRequiresConfiguredRecipientURL(t *testing.T) {
 	contents, _ := io.ReadAll(shared.Body)
 	if shared.StatusCode != http.StatusUnprocessableEntity || strings.Contains(string(contents), bearer) {
 		t.Fatalf("share without access URL = %d %s", shared.StatusCode, contents)
+	}
+}
+
+func TestInvitationEmailIsAnExplicitIdempotentAdminAction(t *testing.T) {
+	now := time.Unix(1_900_000_000, 0).UTC()
+	delivery := &fakeInvitationDelivery{result: notifications.DeliverySummary{
+		Status: notifications.StatusQueued, AttemptNumber: 1, UpdatedAt: now,
+	}}
+	srv, _ := invitationServerWithDelivery(t, "https://loomarr.example.test", delivery)
+	created := do(t, srv, http.MethodPost, "/v1/invitations", adminToken,
+		`{"kind":"local","username":"Ada","contactEmail":"ada@example.com"}`)
+	if created.StatusCode != http.StatusCreated {
+		t.Fatalf("create = %d", created.StatusCode)
+	}
+
+	for name, tc := range map[string]struct {
+		token string
+		want  int
+	}{
+		"anonymous": {token: "", want: http.StatusUnauthorized},
+		"member":    {token: memberToken, want: http.StatusForbidden},
+	} {
+		response := do(t, srv, http.MethodPost, "/v1/invitations/invitation-1/email", tc.token,
+			`{"requestId":"operator-action-42"}`)
+		if response.StatusCode != tc.want {
+			t.Fatalf("%s send = %d, want %d", name, response.StatusCode, tc.want)
+		}
+	}
+
+	response := do(t, srv, http.MethodPost, "/v1/invitations/invitation-1/email", adminToken,
+		`{"requestId":"operator-action-42"}`)
+	if response.StatusCode != http.StatusAccepted {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("admin send = %d %s", response.StatusCode, body)
+	}
+	var body struct {
+		Status        string `json:"status"`
+		AttemptNumber int    `json:"attemptNumber"`
+		UpdatedAt     int64  `json:"updatedAt"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Status != "queued" || body.AttemptNumber != 1 || body.UpdatedAt != now.UnixMilli() ||
+		delivery.invitationID != "invitation-1" || delivery.requestID != "operator-action-42" {
+		t.Fatalf("delivery response = %+v, call = %q %q", body, delivery.invitationID, delivery.requestID)
 	}
 }

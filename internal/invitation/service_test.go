@@ -132,6 +132,31 @@ func TestServiceAddsSiblingDeliveryGrantAndRevokesTheAdmissionDecision(t *testin
 	}
 }
 
+func TestServiceRevokesOneIssuedGrantAfterDefiniteDeliveryFailure(t *testing.T) {
+	now := time.Unix(1_900_000_000, 0)
+	repository := testkit.MigratedSQLiteStore(t)
+	service := invitation.NewService(repository, nil, sequentialIDs(),
+		func() (string, error) { return strings.Repeat("ab", 32), nil }, func() time.Time { return now })
+	created, err := service.Create(t.Context(), invitation.CreateCommand{Kind: invitation.KindLocal, Username: "Ada"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	issued, err := service.IssueSibling(t.Context(), created.ID, invitation.ConveyanceEmail)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.RevokeIssuedGrant(t.Context(), issued.Plaintext); err != nil {
+		t.Fatal(err)
+	}
+	grants, err := repository.ListInvitationGrants(t.Context(), created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(grants) != 1 || grants[0].RevokedAt.IsZero() || grants[0].TokenHash != invitation.HashGrant(issued.Plaintext) {
+		t.Fatalf("revoked grant = %+v", grants)
+	}
+}
+
 func sequentialIDs() func() string {
 	n := 0
 	return func() string {

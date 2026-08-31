@@ -201,7 +201,15 @@ func validateBareMailbox(raw string) error {
 var ErrEmailDestinationUnavailable = errors.New("notifications: email destination unavailable")
 
 type EmailMaterializer interface {
-	Materialize(context.Context, Delivery) (EmailMessage, error)
+	Materialize(context.Context, Delivery) (MaterializedEmail, error)
+}
+
+// MaterializedEmail exists only for one claimed attempt. Invalidate revokes any bearer grant
+// minted while rendering when SMTP proves the message was not accepted. Neither the message nor
+// the callback crosses the durable notification boundary.
+type MaterializedEmail struct {
+	Message    EmailMessage
+	Invalidate func(context.Context) error
 }
 
 type EmailTransmissionState string
@@ -247,14 +255,33 @@ func (a *EmailAdapter) Deliver(ctx context.Context, delivery Delivery) Result {
 	if err := config.Validate(); err != nil || a.materializer == nil || a.sender == nil {
 		return emailConfigurationFailure()
 	}
-	message, err := a.materializer.Materialize(ctx, delivery)
+	materialized, err := a.materializer.Materialize(ctx, delivery)
 	if errors.Is(err, ErrEmailDestinationUnavailable) {
 		return Result{Status: StatusFailed, FailureClass: FailurePermanent, OutcomeCode: OutcomeDestinationUnavailable}
 	}
-	if err != nil || message.Validate() != nil {
+	if err != nil {
 		return emailConfigurationFailure()
 	}
-	return resultForEmailTransmission(a.sender.Send(ctx, config, message))
+	if materialized.Message.Validate() != nil {
+		if materialized.Invalidate != nil {
+			if err := materialized.Invalidate(ctx); err != nil {
+				return Result{Status: StatusFailed, FailureClass: FailureAmbiguous, OutcomeCode: OutcomeAcceptanceAmbiguous}
+			}
+		}
+		return emailConfigurationFailure()
+	}
+	transmission := a.sender.Send(ctx, config, materialized.Message)
+	if emailDefinitelyNotAccepted(transmission.State) && materialized.Invalidate != nil {
+		if err := materialized.Invalidate(ctx); err != nil {
+			return Result{Status: StatusFailed, FailureClass: FailureAmbiguous, OutcomeCode: OutcomeAcceptanceAmbiguous}
+		}
+	}
+	return resultForEmailTransmission(transmission)
+}
+
+func emailDefinitelyNotAccepted(state EmailTransmissionState) bool {
+	return state == EmailTransientPreAcceptance || state == EmailRecipientRejected ||
+		state == EmailConfigurationRejected
 }
 
 func (a *EmailAdapter) SendTest(ctx context.Context, destination string) Result {
