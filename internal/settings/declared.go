@@ -296,9 +296,9 @@ func declared() []Setting {
 		},
 
 		{
-			Key: "access.public_url", Label: "Recipient-facing Loomarr address", EnvVar: "ACCESS_PUBLIC_URL", Group: GroupNotifications,
+			Key: "access.public_url", Label: "Recipient-facing Loomarr address", EnvVar: "ACCESS_PUBLIC_URL", Group: GroupGeneral,
 			Kind: KindURL, Default: "", Validate: recipientHTTPOrigin,
-			Doc: "The absolute browser address invitation and recovery recipients can reach, e.g. https://loomarr.example.com. Copy and QR links require this address; it is never inferred from request headers.",
+			Doc: "The absolute browser address invitation and recovery recipients can reach, e.g. https://loomarr.example.com. General suggests the current browser origin when this is empty; save a different address when recipients reach Loomarr elsewhere. The server never infers it from request headers.",
 		},
 		{
 			Key: "notifications.email.enabled", Label: "Send email notifications", EnvVar: "NOTIFICATIONS_EMAIL_ENABLED", Group: GroupNotifications,

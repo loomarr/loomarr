@@ -1,8 +1,10 @@
 import { Link2, Mail } from "lucide-react";
+import type { ReactNode } from "react";
 import { StatusDot } from "@/components/ui/status-dot";
 
 interface NotificationReadinessProps {
   liveValue: (key: string) => string;
+  linkAction?: ReactNode;
 }
 
 const isRecipientOrigin = (raw: string): boolean => {
@@ -24,7 +26,7 @@ const isRecipientOrigin = (raw: string): boolean => {
 
 const isMailbox = (raw: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw.trim());
 
-const NotificationReadiness = ({ liveValue }: NotificationReadinessProps) => {
+const NotificationReadiness = ({ liveValue, linkAction }: NotificationReadinessProps) => {
   const linksReady = isRecipientOrigin(liveValue("access.public_url"));
   const emailEnabled = liveValue("notifications.email.enabled") === "true";
   const port = Number(liveValue("notifications.smtp.port"));
@@ -91,6 +93,7 @@ const NotificationReadiness = ({ liveValue }: NotificationReadinessProps) => {
                 ? "Copied links and QR codes will open the configured Loomarr address."
                 : "Add the browser address recipients can reach to enable copy and QR sharing."}
             </p>
+            {linkAction}
           </div>
         </div>
 

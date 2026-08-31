@@ -345,7 +345,7 @@ These suites join **phase 13's gate** in the main doc's build plan.
 - The finale is the payoff: the guided first channel ends with its `ChannelCard` flipping to **ON AIR** — the product's promise, demonstrated in the first ten minutes.
 
 ### Config that makes sense
-- Settings' curated pages are **Connections · AI · Defaults · Notifications · System · Security**,
+- Settings' curated pages are **General · Connections · AI · Defaults · Notifications · System · Security**,
   with **All settings** as the searchable escape hatch (config-design §5).
 - Per-key provenance: env-pinned fields render locked with a "set via environment" chip; everything else is editable with configure → validate → save (main doc §13/§15). No inputs that look editable but aren't.
 - The re-runnable connection checklist is embedded at the top of Connections — Settings *is* the troubleshooting console.

@@ -422,6 +422,12 @@ func TestAccessPublicURLRequiresAnHTTPOrigin(t *testing.T) {
 	if !ok {
 		t.Fatal("access.public_url is not declared")
 	}
+	if setting.Group != GroupGeneral {
+		t.Fatalf("group = %q, want %q", setting.Group, GroupGeneral)
+	}
+	if setting.EnvVar != "ACCESS_PUBLIC_URL" {
+		t.Fatalf("env var = %q, want ACCESS_PUBLIC_URL", setting.EnvVar)
+	}
 	for _, valid := range []string{"https://loomarr.example.test", "http://loomarr.lan:8080/"} {
 		if _, err := setting.parse(valid); err != nil {
 			t.Errorf("valid origin %q: %v", valid, err)

@@ -60,6 +60,7 @@ const (
 	GroupRequester     Group = "connections.requester"
 	GroupTunarr        Group = "connections.tunarr"
 	GroupTMDB          Group = "connections.tmdb"
+	GroupGeneral       Group = "general"
 	GroupAI            Group = "ai"
 	GroupChannels      Group = "channels"
 	GroupPlayout       Group = "playout"

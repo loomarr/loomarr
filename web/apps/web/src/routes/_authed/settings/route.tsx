@@ -12,11 +12,12 @@ import { SettingsSaveBarHost } from "@/settings/settings-save-bar-host";
 // nav is a HORIZONTAL tab bar (not a vertical rail beside the app's sidebar — two parallel
 // menus read as cluttered); each page is its own route, so the tabs are real links with
 // native active-state + deep-linking.
-// Six pages (config-design §5, restructured in V9 to the v2 mock). System is itself sub-tabbed
+// Curated pages (config-design §5, restructured in V9 to the v2 mock). System is itself sub-tabbed
 // — Tasks · Playout · Database · Backup · About — because those are all "the machine" rather
 // than "the product", and giving each its own top-level tab buried the four an operator
 // actually configures under five they touch once.
 const PAGES = [
+  { to: "/settings/general", label: "General" },
   { to: "/settings/connections", label: "Connections" },
   { to: "/settings/ai", label: "AI" },
   { to: "/settings/defaults", label: "Defaults" },
