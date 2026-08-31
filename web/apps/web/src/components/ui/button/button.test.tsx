@@ -14,6 +14,14 @@ describe("Button", () => {
     expect(screen.getByRole("button", { name: "Nope" })).toBeDisabled();
   });
 
+  it("keeps a visible control boundary when forced colors replace filled backgrounds", () => {
+    render(<Button>Create invitation</Button>);
+    expect(screen.getByRole("button", { name: "Create invitation" })).toHaveClass(
+      "forced-colors:border",
+      "forced-colors:border-current",
+    );
+  });
+
   it("renders as the supplied element when `render` is set", () => {
     render(<Button render={<a href="/channels" />}>Go</Button>);
 

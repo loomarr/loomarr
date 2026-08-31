@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -28,9 +29,10 @@ type ProposalStore interface {
 	ClaimDueJobs(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]store.Job, error)
 	FindJobByIntentHash(ctx context.Context, hash string, since time.Time) (store.Job, error)
 	CommitSuggestionSuccess(ctx context.Context, jobID string, expectedAttempt int, p store.Proposal, updatedAt time.Time) error
-	CommitSuggestionFailure(ctx context.Context, jobID string, expectedAttempt int, cause, failureCode string, updatedAt time.Time) error
+	CommitSuggestionFailure(ctx context.Context, jobID string, expectedAttempt int, cause, failureCode, failureTraceJSON string, updatedAt time.Time) error
 	RequeueSuggestionJob(ctx context.Context, jobID string, expectedAttempt int, kind, intentJSON, intentHash string, deadline, updatedAt time.Time) error
 	CloneSuggestionSuccess(ctx context.Context, sourceJobID string, job store.Job, proposalID string) (store.Proposal, error)
+	GetChannelByIntentRef(ctx context.Context, intentRef string) (store.Channel, error)
 }
 
 // Service owns submission + the worker pool (§8). It's the seam the API depends
@@ -324,7 +326,12 @@ func (s *Service) runWorkflow(ctx context.Context, work WorkflowWork) {
 	defer cancel()
 	jobCtx = WithProgress(jobCtx, func(p Phase, round int) { s.emitPhase(work.JobID, p, round) })
 
-	proposal, err := s.suggester.Suggest(jobCtx, work.Intent)
+	intent, err := s.executionIntent(jobCtx, work.Kind, work.JobID, work.Intent)
+	if err != nil {
+		s.failWorkflow(ctx, work, err)
+		return
+	}
+	proposal, err := s.suggester.Suggest(jobCtx, intent)
 	if err != nil {
 		s.failWorkflow(ctx, work, err)
 		return
@@ -351,7 +358,8 @@ func (s *Service) runWorkflow(ctx context.Context, work WorkflowWork) {
 }
 
 func (s *Service) failWorkflow(ctx context.Context, work WorkflowWork, cause error) {
-	if err := s.workflow.Fail(ctx, work, classifyFailure(cause), cause.Error()); err != nil {
+	traceJSON, cause := persistedFailure(cause)
+	if err := s.workflow.Fail(ctx, work, classifyFailure(cause), cause.Error(), traceJSON); err != nil {
 		s.log.Info("discarding stale or undurable Proposal Job failure",
 			"job", work.JobID, "attempt", work.Attempt, "cause", cause, "err", err)
 		return
@@ -375,10 +383,19 @@ func (s *Service) runJob(ctx context.Context, job store.Job) {
 		s.failJob(ctx, job, fmt.Errorf("bad intent json: %w", err))
 		return
 	}
+	intent, err := s.executionIntent(jobCtx, job.Kind, job.ID, intent)
+	if err != nil {
+		s.failJob(ctx, job, err)
+		return
+	}
 
 	prop, err := s.suggester.Suggest(jobCtx, intent)
 	if err != nil {
 		s.failJob(ctx, job, err)
+		return
+	}
+	if err := ValidateDecisionTrace(prop.Trace); err != nil {
+		s.failJob(ctx, job, fmt.Errorf("validate proposal trace: %w", err))
 		return
 	}
 	propBlob, err := json.Marshal(prop)
@@ -403,6 +420,26 @@ func (s *Service) runJob(ctx context.Context, job store.Job) {
 	}
 	s.considerAutomaticApproval(ctx, job, p)
 	s.emitPhase(job.ID, PhaseDone, 0)
+}
+
+// executionIntent derives channel feedback scope from durable server-owned work.
+// DiscoveryScopeID is intentionally not serialized, so no caller-controlled Intent
+// can select another channel's feedback at execution time.
+func (s *Service) executionIntent(ctx context.Context, kind, jobID string, intent Intent) (Intent, error) {
+	intent.DiscoveryScopeID = ""
+	if kind != jobKindRecurate {
+		return intent, nil
+	}
+	channel, err := s.store.GetChannelByIntentRef(ctx, jobID)
+	if err != nil {
+		return Intent{}, fmt.Errorf("resolve recurate channel for Proposal Job %q: %w", jobID, err)
+	}
+	if strings.TrimSpace(channel.ID) == "" || channel.IntentRef != jobID || channel.Status == schedule.StatusDetached {
+		return Intent{}, fmt.Errorf("resolve recurate channel for Proposal Job %q: invalid owner id=%q intent_ref=%q status=%q",
+			jobID, channel.ID, channel.IntentRef, channel.Status)
+	}
+	intent.DiscoveryScopeID = channel.ID
+	return intent, nil
 }
 
 // considerAutomaticApproval applies the two optional grants only after the
@@ -445,8 +482,9 @@ func (s *Service) considerAutomaticApproval(ctx context.Context, job store.Job, 
 }
 
 func (s *Service) failJob(ctx context.Context, job store.Job, cause error) {
+	traceJSON, cause := persistedFailure(cause)
 	if err := s.store.CommitSuggestionFailure(
-		ctx, job.ID, job.Attempts, cause.Error(), classifyFailure(cause), s.now(),
+		ctx, job.ID, job.Attempts, cause.Error(), classifyFailure(cause), traceJSON, s.now(),
 	); err != nil {
 		if errors.Is(err, store.ErrJobNotRunning) {
 			s.log.Info("discarding stale suggestion failure", "job", job.ID, "attempt", job.Attempts,
@@ -461,7 +499,46 @@ func (s *Service) failJob(ctx context.Context, job store.Job, cause error) {
 	s.emitPhase(job.ID, PhaseFailed, 0)
 }
 
+func persistedFailure(cause error) (string, error) {
+	cause = normalizeContextFailure(cause)
+	var failure *Failure
+	if !errors.As(cause, &failure) {
+		return "", cause
+	}
+	traceJSON, err := failure.TraceJSON()
+	if err != nil {
+		return "", fmt.Errorf("safe failure trace unavailable: %w", err)
+	}
+	return traceJSON, cause
+}
+
+// normalizeContextFailure closes raw and provider-wrapped cancellations at the
+// worker boundary. The public failure stays generic while any already-bounded
+// candidate facts survive with the terminal outcome that actually ended the run.
+func normalizeContextFailure(cause error) error {
+	if !errors.Is(cause, context.DeadlineExceeded) && !errors.Is(cause, context.Canceled) {
+		return cause
+	}
+	trace := DecisionTrace{Version: DecisionTraceVersion}
+	var failure *Failure
+	if errors.As(cause, &failure) {
+		trace = failure.Trace.Clone()
+		if trace.Version == 0 {
+			trace.Version = DecisionTraceVersion
+		}
+	}
+	trace.Terminal = TerminalGenerationFailure
+	return NewFailure(FailureCodeGenerationFailed, trace, cause)
+}
+
 func classifyFailure(cause error) string {
+	var failure *Failure
+	if errors.As(cause, &failure) {
+		if errors.Is(failure.Cause, context.DeadlineExceeded) || errors.Is(failure.Cause, context.Canceled) {
+			return FailureCodeGenerationFailed
+		}
+		return failure.Code
+	}
 	if errors.Is(cause, ErrNoGroundedTitles) {
 		return FailureCodeNoGroundedTitles
 	}

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { episodeSelectionLabel } from "../episode-selection-label";
 import { ProposalEdit } from "../proposal-edit";
 import type { ApprovalQueueItemProps } from "./approval-queue-item.type";
 
@@ -38,8 +39,7 @@ const PickRow = ({
         {kind === "lineup" ? "In library" : "Will acquire"}
       </Badge>
       {window && <Badge variant="tune">{window}</Badge>}
-      {item.episodeSelection?.mode === "highlights" && <Badge variant="suggest">Curated highlights</Badge>}
-      {item.episodeSelection?.mode === "holiday" && <Badge variant="suggest">Holiday episodes</Badge>}
+      {episodeSelectionLabel(item) && <Badge variant="suggest">{episodeSelectionLabel(item)}</Badge>}
       {onFeedback && (
         <fieldset className="ml-auto flex flex-wrap gap-1 border-0 p-0">
           <legend className="sr-only">Taste feedback for {item.name}</legend>
@@ -81,6 +81,7 @@ const ApprovalQueueItem = ({
   denyReason,
   lineup,
   acquisitionItems,
+  episodeSelectionPreview,
   refused,
   onEdit,
   onFeedback,
@@ -222,6 +223,7 @@ const ApprovalQueueItem = ({
                 className="mt-2"
                 lineup={lineup ?? []}
                 acquisitions={acquisitionItems ?? []}
+                episodeSelectionPreview={episodeSelectionPreview}
                 disabled={status === "approving"}
                 onChange={onEdit}
                 onFeedback={onFeedback}

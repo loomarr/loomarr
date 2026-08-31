@@ -132,6 +132,19 @@ func TestLockReviewedManifestValidatesBothBlindSubmissions(t *testing.T) {
 	}
 }
 
+func TestLockReviewedManifestRejectsUnknownContentRole(t *testing.T) {
+	manifest, _ := passingCorpus(CertificationMinHoldout)
+	first, second := submissionsFor(manifest)
+	lockedAt := manifest.LockedAt.Add(time.Hour)
+	clearDraftLabels(&manifest)
+	first.Submissions[0].Labels.ContentRole = "advertisement"
+	second.Submissions[0].Labels.ContentRole = "advertisement"
+
+	if _, failures := LockReviewedManifest(manifest, first, second, nil, lockedAt); !containsFailure(failures, "content role must use the closed review vocabulary") {
+		t.Fatalf("unknown role failures = %v", failures)
+	}
+}
+
 func clearDraftLabels(manifest *Manifest) {
 	manifest.LockedAt = time.Time{}
 	for i := range manifest.Cases {
@@ -233,5 +246,19 @@ func TestLabelsHashIgnoresSetAndEvidenceOrder(t *testing.T) {
 	}
 	if LabelsSHA256(first) != LabelsSHA256(second) {
 		t.Fatal("semantically identical labels produced different hashes")
+	}
+}
+
+func TestValidateLabelsAllowsOneSignalToSupportDistinctClaimsOnly(t *testing.T) {
+	labels := Labels{Truth: TruthEligible, ContentRole: "commercial", Slices: []string{"commercial"}, Evidence: []Evidence{
+		{ID: "transcript-01", Kind: "transcript", Claim: "content_role", Value: "commercial", Provenance: "audio.wav#transcript"},
+		{ID: "transcript-01", Kind: "transcript", Claim: "brand", Value: "Bright Cola", Provenance: "audio.wav#transcript"},
+	}}
+	if failures := ValidateLabels(labels); len(failures) != 0 {
+		t.Fatalf("distinct claims = %v", failures)
+	}
+	labels.Evidence = append(labels.Evidence, labels.Evidence[0])
+	if failures := ValidateLabels(labels); len(failures) != 1 || !strings.Contains(failures[0], "duplicate evidence record") {
+		t.Fatalf("exact duplicate = %v", failures)
 	}
 }

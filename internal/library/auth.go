@@ -31,7 +31,7 @@ func (f Flavor) applyTokenAuth(r *http.Request, token, deviceID string) {
 func (f Flavor) applyLoginAuth(r *http.Request, deviceID string) {
 	switch f {
 	case Emby:
-		r.Header.Set("X-Emby-Authorization", mediaBrowserParams(deviceID))
+		r.Header.Set("X-Emby-Authorization", mediaBrowserHeader(deviceID, ""))
 	case Jellyfin:
 		r.Header.Set("Authorization", mediaBrowserHeader(deviceID, ""))
 	}

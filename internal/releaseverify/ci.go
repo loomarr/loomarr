@@ -160,6 +160,10 @@ func VerifyCIImpactActivation(path string) error {
 	if err != nil {
 		return errors.New("CI changes job must publish classifier outputs")
 	}
+	lane, ok := mappingValue(outputs, "lane")
+	if !ok || lane.Kind != yaml.ScalarNode || lane.Value != "${{ steps.filter.outputs.lane }}" {
+		return errors.New("CI changes job must publish the assurance lane")
+	}
 
 	type classifierOutput struct {
 		name   string
@@ -183,22 +187,22 @@ func VerifyCIImpactActivation(path string) error {
 		},
 		"image-certification": {
 			outputs:   []classifierOutput{{name: "impact_rust", source: "rust"}},
-			condition: "needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true'",
+			condition: "needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true')",
 		},
 		"go": {
 			outputs:   []classifierOutput{{name: "impact_go", source: "go"}},
-			condition: "needs.changes.outputs.impact_go == 'true'",
+			condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_go == 'true'",
 		},
 		"store-postgres": {
 			outputs:   []classifierOutput{{name: "impact_postgres", source: "postgres"}},
-			condition: "needs.changes.outputs.impact_postgres == 'true'",
+			condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_postgres == 'true'",
 		},
 		"playwright": {
 			outputs: []classifierOutput{
 				{name: "impact_visual", source: "visual"},
 				{name: "impact_e2e", source: "e2e"},
 			},
-			condition: "needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true'",
+			condition: "needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true')",
 		},
 		"frontend": {
 			outputs:   []classifierOutput{{name: "impact_web", source: "web"}},
@@ -210,7 +214,7 @@ func VerifyCIImpactActivation(path string) error {
 		},
 		"image": {
 			outputs:   []classifierOutput{{name: "impact_image", source: "image"}},
-			condition: "needs.changes.outputs.impact_image == 'true'",
+			condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_image == 'true'",
 		},
 		"docs": {
 			outputs:   []classifierOutput{{name: "impact_docs", source: "docs"}},
@@ -222,15 +226,15 @@ func VerifyCIImpactActivation(path string) error {
 		},
 		"tuner": {
 			outputs:   []classifierOutput{{name: "impact_tuner", source: "tuner"}},
-			condition: "github.event_name != 'pull_request' && needs.changes.outputs.impact_tuner == 'true'",
+			condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'",
 		},
 		"apple-mobile": {
 			outputs:   []classifierOutput{{name: "impact_apple_mobile", source: "apple_mobile"}},
-			condition: "github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_mobile == 'true'",
+			condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_mobile == 'true'",
 		},
 		"apple-tv": {
 			outputs:   []classifierOutput{{name: "impact_apple_tv", source: "apple_tv"}},
-			condition: "github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_tv == 'true'",
+			condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_tv == 'true'",
 		},
 	}
 	for jobName, gate := range activated {
@@ -277,22 +281,27 @@ func VerifyCIImpactActivation(path string) error {
 	return nil
 }
 
-var ciFamilyWorkflows = map[string]string{
-	"agent-harness-macos": ".github/workflows/ci-agent.yml",
-	"rust-contracts":      ".github/workflows/ci-rust-contracts.yml",
-	"go-contracts":        ".github/workflows/ci-go-contracts.yml",
-	"image-certification": ".github/workflows/ci-image-certification.yml",
-	"go":                  ".github/workflows/ci-go.yml",
-	"store-postgres":      ".github/workflows/ci-postgres.yml",
-	"frontend":            ".github/workflows/ci-frontend.yml",
-	"clients":             ".github/workflows/ci-clients.yml",
-	"apple-mobile":        ".github/workflows/ci-apple-mobile.yml",
-	"apple-tv":            ".github/workflows/ci-apple-tv.yml",
-	"playwright":          ".github/workflows/ci-playwright.yml",
-	"tuner":               ".github/workflows/ci-tuner.yml",
-	"image":               ".github/workflows/ci-image.yml",
-	"docs":                ".github/workflows/ci-docs.yml",
-	"android":             ".github/workflows/ci-android.yml",
+func ciFamilyWorkflowAuthorities() map[string]string {
+	return map[string]string{
+		"agent-harness-macos": ".github/workflows/ci-agent.yml",
+		"rust-contracts":      ".github/workflows/ci-rust-contracts.yml",
+		"go-contracts":        ".github/workflows/ci-go-contracts.yml",
+		"image-certification": ".github/workflows/ci-image-certification.yml",
+		"go":                  ".github/workflows/ci-go.yml",
+		"store-postgres":      ".github/workflows/ci-postgres.yml",
+		"frontend":            ".github/workflows/ci-frontend.yml",
+		"clients":             ".github/workflows/ci-clients.yml",
+		"apple-mobile":        ".github/workflows/ci-apple-mobile.yml",
+		"apple-tv":            ".github/workflows/ci-apple-tv.yml",
+
+		"apple-cache-validation": ".github/workflows/ci-apple-cache-validation.yml",
+
+		"playwright": ".github/workflows/ci-playwright.yml",
+		"tuner":      ".github/workflows/ci-tuner.yml",
+		"image":      ".github/workflows/ci-image.yml",
+		"docs":       ".github/workflows/ci-docs.yml",
+		"android":    ".github/workflows/ci-android.yml",
+	}
 }
 
 // VerifyCIFamilyWorkflows keeps the root workflow a decision surface instead of allowing
@@ -311,7 +320,7 @@ func VerifyCIFamilyWorkflows(path string) error {
 	if err != nil {
 		return err
 	}
-	for jobName, expected := range ciFamilyWorkflows {
+	for jobName, expected := range ciFamilyWorkflowAuthorities() {
 		job, err := requiredMap(jobs, jobName)
 		if err != nil {
 			return fmt.Errorf("CI workflow must define family caller %s", jobName)
@@ -320,11 +329,33 @@ func VerifyCIFamilyWorkflows(path string) error {
 		if uses != "./"+expected {
 			return fmt.Errorf("CI family caller %s uses %q, want %q", jobName, uses, "./"+expected)
 		}
-		if _, err := resolveCIJobImplementation(path, job); err != nil {
+		implementation, err := resolveCIJobImplementation(path, job)
+		if err != nil {
 			return fmt.Errorf("CI family caller %s: %w", jobName, err)
+		}
+		if jobName == "go" && !jobRunsExactCommand(implementation, "make test GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}") {
+			return errors.New("CI Go family must run the sharded repository test target")
 		}
 	}
 	return nil
+}
+
+func jobRunsExactCommand(job *yaml.Node, command string) bool {
+	steps, err := requiredSequence(job, "steps")
+	if err != nil {
+		return false
+	}
+	count := 0
+	for _, step := range steps.Content {
+		if step.Kind != yaml.MappingNode {
+			continue
+		}
+		run, ok := mappingValue(step, "run")
+		if ok && run.Kind == yaml.ScalarNode && run.Value == command {
+			count++
+		}
+	}
+	return count == 1
 }
 
 func resolveCIJobImplementation(ciPath string, caller *yaml.Node) (*yaml.Node, error) {
@@ -353,8 +384,16 @@ func resolveCIJobImplementation(ciPath string, caller *yaml.Node) (*yaml.Node, e
 		return nil, errors.New("reusable workflow must expose workflow_call")
 	}
 	jobs, err := requiredMap(root, "jobs")
-	if err != nil || len(jobs.Content) != 2 {
-		return nil, errors.New("reusable workflow must contain exactly one implementation job")
+	appleCacheValidation := strings.TrimPrefix(uses, prefix) == "ci-apple-cache-validation.yml"
+	wantJobNodes := 2
+	if appleCacheValidation {
+		// This manual portability proof deliberately crosses a runner boundary: one job
+		// produces the CAS artifact and a dependent job consumes it. Every normal CI family
+		// remains constrained to one implementation job.
+		wantJobNodes = 4
+	}
+	if err != nil || len(jobs.Content) != wantJobNodes {
+		return nil, fmt.Errorf("reusable workflow %s must contain %d implementation job(s), found %d", uses, wantJobNodes/2, len(jobs.Content)/2)
 	}
 	if jobs.Content[1].Kind != yaml.MappingNode {
 		return nil, errors.New("reusable workflow implementation must be a job mapping")
@@ -378,8 +417,8 @@ func yamlNodeContainsScalar(node *yaml.Node, value string) bool {
 }
 
 // VerifyCINativeAdmission keeps scarce macOS capacity behind the merge queue.
-// Pull-request CI remains fast feedback; merge-group, main, and manual runs
-// retain the same required native evidence before delivery or release.
+// Pull-request CI remains fast feedback; merge-group and manual runs retain
+// the same required native evidence before delivery or release.
 func VerifyCINativeAdmission(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -396,15 +435,18 @@ func VerifyCINativeAdmission(path string) error {
 	if _, ok := mappingValue(on, "merge_group"); !ok {
 		return errors.New("CI workflow must trigger for merge groups")
 	}
+	if _, ok := mappingValue(on, "push"); ok {
+		return errors.New("CI workflow must not repeat product validation after a queued merge")
+	}
 	jobs, err := requiredMap(root, "jobs")
 	if err != nil {
 		return err
 	}
 	expected := map[string]string{
-		"agent-harness-macos": "github.event_name != 'pull_request' && needs.changes.outputs.impact_agent == 'true'",
-		"apple-mobile":        "github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_mobile == 'true'",
-		"apple-tv":            "github.event_name != 'pull_request' && needs.changes.outputs.impact_apple_tv == 'true'",
-		"tuner":               "github.event_name != 'pull_request' && needs.changes.outputs.impact_tuner == 'true'",
+		"agent-harness-macos": "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_agent == 'true'",
+		"apple-mobile":        "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_mobile == 'true'",
+		"apple-tv":            "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_tv == 'true'",
+		"tuner":               "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'",
 	}
 	for jobName, condition := range expected {
 		job, err := requiredMap(jobs, jobName)
@@ -450,8 +492,8 @@ func VerifyCIManualScopes(path string) error {
 		return errors.New("CI scope input must be a choice defaulting to release-candidate")
 	}
 	options, err := requiredSequence(scope, "options")
-	if err != nil || len(options.Content) != 2 || options.Content[0].Value != "release-candidate" || options.Content[1].Value != "full" {
-		return errors.New("CI scope choices must be release-candidate then full")
+	if err != nil || len(options.Content) != 3 || options.Content[0].Value != "release-candidate" || options.Content[1].Value != "full" || options.Content[2].Value != "apple-cache-validation" {
+		return errors.New("CI scope choices must be release-candidate, full, then apple-cache-validation")
 	}
 
 	jobs, err := requiredMap(root, "jobs")

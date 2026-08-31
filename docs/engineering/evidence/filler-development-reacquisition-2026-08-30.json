@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "purpose": "filler-development-corpus-recovery-acquisition",
+  "snapshotAt": "2026-08-30T14:34:57Z",
+  "certificationEvidence": false,
+  "cohort": "development_recovery",
+  "externalArtifactId": "filler-development-2026-08-30",
+  "inventory": {
+    "schemaVersion": 4,
+    "sha256": "d0a171918d1a509e5b75b9be832fcffe950cda3730f0fa3e35ce41719a782558",
+    "captures": 5,
+    "candidates": 335,
+    "predictedBytes": 8216430604
+  },
+  "rightsReview": {
+    "worksheetSchemaVersion": 3,
+    "reviewerId": "codex-rights-review-archive-development-v3",
+    "reviewedAt": "2026-08-30T14:00:00Z",
+    "lockedAt": "2026-08-30T14:01:00Z",
+    "decisions": 335,
+    "approved": 300,
+    "held": 35,
+    "approvedRequiringCredit": 27,
+    "approvalsSha256": "9094d8db5d1c21b5cb7263774bb9ed1c9ced042aee4018cecbdc1ec818f1e8e6",
+    "selection": "The 300 smallest candidates with an exact CC0/public-domain assertion, or an allowed attribution licence plus captured creator attribution; every representation is at most 70,000,644 bytes."
+  },
+  "download": {
+    "ledgerSchemaVersion": 1,
+    "ledgerSha256": "f622ac2a1557676e1a3395f0e4ffa684b8f2f952b12285a96a6bf991f97c8eb0",
+    "contentSetSha256": "e6ac60e8df8d6b415340e8bc27a59160bee6c73354b1615a79f160e3f7af9c7e",
+    "files": 300,
+    "bytes": 3460859319,
+    "maximumRepresentationBytes": 70000644,
+    "finalResumeRequestsUsed": 51,
+    "independentSha256RechecksPassed": 300,
+    "independentSha256RechecksFailed": 0
+  },
+  "roleHintMemberships": [
+    {"role": "commercial", "cases": 187},
+    {"role": "psa", "cases": 13},
+    {"role": "trailer", "cases": 100}
+  ],
+  "authorities": [
+    {"authority": "archive.org/classic_tv_commercials", "cases": 97},
+    {"authority": "archive.org/movie_trailers_picfixer", "cases": 50},
+    {"authority": "archive.org/movie_trailers_unsorted", "cases": 50},
+    {"authority": "archive.org/newsandpublicaffairs", "cases": 13},
+    {"authority": "archive.org/vhscommercials", "cases": 90}
+  ],
+  "coverage": {
+    "sourceDatePresent": 177,
+    "sourceDateMissing": 123,
+    "geographyMeasurable": false,
+    "geographyIssue": "https://github.com/loomarr/loomarr/issues/691"
+  },
+  "limitations": [
+    "Discovery role hints are source-search provenance, not semantic labels, and this recovery cohort is not balanced across every filler role.",
+    "Source date metadata is incomplete; an exact recording year and derived era still require grounded evidence or operator confirmation.",
+    "The current corpus and Clip contracts cannot represent country, geographic scope, or local market, so this cohort cannot prove geography-safe sourcing or scheduling.",
+    "The development-only Archive policy accepts exact item licence assertions as operational authority and is not a chain-of-title warranty or shipped-media authority.",
+    "The recovered media and private ledgers remain outside Git. The cohort has not been prepared, blind-labeled, adjudicated, or locked as a semantic manifest.",
+    "The separate 1,126-case holdout and bounded provider and shadow matrices remain incomplete."
+  ]
+}

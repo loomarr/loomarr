@@ -34,6 +34,7 @@ describe("useAuth", () => {
     server.use(
       getMeMockHandler({
         local: true,
+        offlineLogin: false,
         id: "u1",
         name: "Ada",
         role: "admin",
@@ -64,6 +65,7 @@ describe("useAuth", () => {
     server.use(
       getMeMockHandler({
         local: true,
+        offlineLogin: false,
         id: "u2",
         name: "Bo",
         role: "member",

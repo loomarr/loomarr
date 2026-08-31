@@ -2,8 +2,11 @@ package library
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/url"
+
+	"github.com/loomarr/loomarr/internal/episodeevidence"
 )
 
 // Episode enumeration (§9 series expansion). A series lineup pick is not directly
@@ -63,6 +66,23 @@ type episodeItem struct {
 	Tags            []string `json:"Tags"`
 }
 
+func (e *episodeItem) UnmarshalJSON(raw []byte) error {
+	structural, evidence, err := episodeevidence.DecodeObject(raw)
+	if err != nil {
+		return err
+	}
+	type wireEpisodeItem episodeItem
+	var decoded wireEpisodeItem
+	if err := json.Unmarshal(structural, &decoded); err != nil {
+		return err
+	}
+	*e = episodeItem(decoded)
+	e.CommunityRating = evidence.CommunityRating
+	e.Overview = evidence.Overview
+	e.Tags = evidence.Tags
+	return nil
+}
+
 type episodesResponse struct {
 	Items []episodeItem `json:"Items"`
 }
@@ -74,9 +94,9 @@ type episodesResponse struct {
 //	           &SortBy=ParentIndexNumber,IndexNumber
 //
 // Returned in season/episode order. Duration comes from RunTimeTicks (the core
-// never probes media). Episodes with no positive runtime are dropped — a program
-// slot needs duration > 0 (Tunarr rejects ≤ 0), so a runtime-less episode can't
-// be scheduled.
+// never probes media). Items without a non-blank id, positive runtime, present
+// season/episode numbers, or valid numbering are dropped before projection: a
+// program slot cannot safely invent any of those playable facts.
 func (c *Client) ListEpisodes(ctx context.Context, showItemID string) ([]Episode, error) {
 	c, err := c.operation()
 	if err != nil {
@@ -103,28 +123,30 @@ func (c *Client) ListEpisodes(ctx context.Context, showItemID string) ([]Episode
 	eps := make([]Episode, 0, len(out.Items))
 	for _, it := range out.Items {
 		dur := it.RunTimeTicks / ticksPerMs
-		if dur <= 0 {
-			continue // unplayable as a program slot (Tunarr requires duration > 0)
+		if it.SeasonNumber == nil || it.EpisodeNum == nil {
+			continue
 		}
+		end := 0
+		if it.EpisodeEnd != nil {
+			end = *it.EpisodeEnd
+		}
+		if episodeevidence.ValidatePlayable(it.ID, dur, *it.SeasonNumber, *it.EpisodeNum, end) != nil {
+			continue
+		}
+		evidence := episodeevidence.Sanitize(it.CommunityRating, it.Overview, it.Tags)
 		e := Episode{
 			LibraryItemID:   it.ID,
 			Name:            it.Name,
 			DurationMs:      dur,
 			ProductionYear:  it.ProductionYear,
 			OfficialRating:  it.OfficialRating,
-			CommunityRating: it.CommunityRating,
-			Overview:        it.Overview,
-			Tags:            append([]string(nil), it.Tags...),
+			CommunityRating: evidence.CommunityRating,
+			Overview:        evidence.Overview,
+			Tags:            evidence.Tags,
 		}
-		if it.SeasonNumber != nil {
-			e.Season = *it.SeasonNumber
-		}
-		if it.EpisodeNum != nil {
-			e.Episode = *it.EpisodeNum
-		}
-		if it.EpisodeEnd != nil {
-			e.EpisodeEnd = *it.EpisodeEnd
-		}
+		e.Season = *it.SeasonNumber
+		e.Episode = *it.EpisodeNum
+		e.EpisodeEnd = end
 		eps = append(eps, e)
 	}
 	return eps, nil

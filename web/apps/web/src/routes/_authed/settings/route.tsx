@@ -20,6 +20,7 @@ const PAGES = [
   { to: "/settings/connections", label: "Connections" },
   { to: "/settings/ai", label: "AI" },
   { to: "/settings/defaults", label: "Defaults" },
+  { to: "/settings/notifications", label: "Notifications" },
   { to: "/settings/system", label: "System" },
   { to: "/settings/security", label: "Security" },
   { to: "/settings/all", label: "All settings" },

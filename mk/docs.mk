@@ -2,8 +2,8 @@
 
 # Structure, links, prose, and generated diagrams. Nothing needs a global install:
 # markdownlint comes from npx, and the remaining tools run from pinned Docker images — the
-# same approach as PW_IMAGE, and the reason a contributor can run the doc gate without a
-# toolchain of its own.
+# the same pinned-container approach as the Playwright runner, and the reason a contributor can
+# run the doc gate without a toolchain of its own.
 #
 # ⚠ lychee runs OFFLINE deliberately. Checking external URLs on every PR imports the whole
 # internet's link rot as CI flake, and a red build nobody can fix stops being a gate.
@@ -32,7 +32,7 @@ docs-lint: diagrams-verify docs-lint-md docs-lint-links docs-lint-prose ## D2 + 
 
 .PHONY: docs-lint-md
 docs-lint-md: ## markdown structure (globs + rules live in .markdownlint-cli2.jsonc)
-	npx --yes markdownlint-cli2@0.20.0
+	npx --yes markdownlint-cli2@0.23.2
 
 .PHONY: docs-lint-links
 docs-lint-links: ## relative-link check, offline, over the WIDE set (see lychee.toml for why)
@@ -41,4 +41,3 @@ docs-lint-links: ## relative-link check, offline, over the WIDE set (see lychee.
 .PHONY: docs-lint-prose
 docs-lint-prose: ## repo vocabulary + proper-noun casing (.vale.ini — no stock style package)
 	$(DOCKER_DOC) $(VALE_IMAGE) $(DOC_GLOBS)
-

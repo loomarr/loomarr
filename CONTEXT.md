@@ -214,6 +214,41 @@ A media-server account an admin explicitly added to the allowlist. Signing in is
 self-provisioning (§11).
 _Avoid_: synced, linked, connected
 
+**Contact address**:
+An optional destination attached to a person for account messages. It has its own verification
+and provenance; it is never a username, credential, or reason to admit someone (§11).
+_Avoid_: login email, account email, identity
+
+**Invitation**:
+An administrator's durable decision to reserve one local or imported identity and admit it with a
+specific Loomarr role after explicit redemption (§11). It is not the link that carries that decision.
+_Avoid_: invite link, registration, user
+
+**Invitation grant**:
+One expiring, single-use bearer capability for redeeming an Invitation. Only its hash is durable;
+email, copied-link, and QR presentation are ways a grant may reach a person (§11).
+_Avoid_: invitation, token (too broad), device code
+
+**Notification intent**:
+A durable, channel-neutral request for Loomarr to tell one recipient about a typed domain event,
+such as an account Invitation or local-password recovery (§11).
+_Avoid_: email, message, job
+
+**Delivery means**:
+One configured way to execute a Notification intent. Email is the first means; later means do not
+change the callers that create intents (§11).
+_Avoid_: provider, notification type, channel (already a television Channel)
+
+**Delivery attempt**:
+One bounded execution of a Notification intent through one Delivery means, with a safe outcome and
+retry classification but no credential or bearer URL (§11).
+_Avoid_: notification, send, retry
+
+**Sharing affordance**:
+An immediate, administrator-controlled presentation of an Invitation grant, currently copy or QR.
+It is not a Delivery means and creates no claim that Loomarr contacted the recipient (§11).
+_Avoid_: notification, delivery, device pairing
+
 ### Operations
 
 **Activity**:

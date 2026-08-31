@@ -1,6 +1,12 @@
 # name	paths separated by semicolons	expected true gates in classifier order
 leaf-go	internal/suggest/score.go	contracts,go,postgres,image
+releaseverify-production	internal/releaseverify/ci_container_downloads.go	go,policy
+releaseverify-red-tests	internal/releaseverify/ci_container_downloads_test.go	go,policy
+releaseverify-policy-fixtures	internal/releaseverify/testdata/make_policy_normalization.mk;internal/releaseverify/testdata/make_policy_normalization.golden	go,policy
 store-go	internal/store/store.go	contracts,go,postgres,image
+postgres-test-image-authority	internal/testkit/postgresimage/image.txt	contracts,go,go_full,postgres,image,policy
+postgres-test-image-owner	internal/testkit/postgresimage/image.go	contracts,go,go_full,postgres,image,policy
+ryuk-test-image-authority	internal/testkit/ryukimage/image.txt	postgres,policy
 composition-go	internal/app/application.go	contracts,go,go_full,postgres,image
 backend-transition-go	internal/backendtransition/controller.go	contracts,go,postgres,image
 playout-go	internal/playout/session.go	contracts,go,postgres,image
@@ -20,6 +26,9 @@ shared-client-fixtures	web/packages/fixtures/src/index.ts	web,clients,apple_mobi
 client-tooling	web/turbo.json	clients
 client-browser-proof	web/apps/web/src/client-platform-proof/client-platform-proof.tsx	clients
 apple-client-script	web/scripts/test-apple-client.sh	contracts,apple_mobile,apple_tv
+apple-client-xcconfig	web/scripts/apple-simulator.xcconfig	contracts,apple_mobile,apple_tv
+apple-compilation-cache-cli	scripts/apple-compilation-cache.sh;scripts/apple-compilation-cache-test.sh	contracts,apple_mobile,apple_tv,policy
+apple-compilation-cache-verifier	web/scripts/test-apple-client-cache-test.sh;web/scripts/apple-compilation-cache.xcconfig;web/scripts/validate-apple-compilation-cache.sh;web/scripts/validate-apple-compilation-cache-test.sh	contracts,apple_mobile,apple_tv
 expo-android-script	web/scripts/build-android-client.sh	contracts,expo_android_mobile,expo_android_tv
 visual-web	web/apps/web/src/people/users-page/users-page.tsx	web,visual,tuner,image
 visual-baseline	web/apps/web/tests/visual/gallery.spec.ts-snapshots/ai-approvalhistoryrow--approved-desktop-linux.png	web,visual,image
@@ -38,6 +47,8 @@ documentation	docs/dev/testing.md	docs
 design-contract	docs/design.md	docs,policy
 configuration-contract	docs/configuration.md	docs,policy
 commands-contract	docs/dev/commands.md	docs,policy
+ci-policy-authority	docs/dev/ci.md	docs,policy
+renovate-policy	renovate.json	contracts,policy
 install-contract	docs/install/docker.md	docs,policy
 readme-contract	README.md	docs,policy
 embedded-help	docs/help/quickstart.md	contracts,go,go_full,image,docs
@@ -54,6 +65,8 @@ ci-frontend-workflow	.github/workflows/ci-frontend.yml	web,policy
 ci-clients-workflow	.github/workflows/ci-clients.yml	clients,policy
 ci-apple-mobile-workflow	.github/workflows/ci-apple-mobile.yml	apple_mobile,policy
 ci-apple-tv-workflow	.github/workflows/ci-apple-tv.yml	apple_tv,policy
+ci-apple-cache-validation-workflow	.github/workflows/ci-apple-cache-validation.yml	apple_mobile,apple_tv,policy
+apple-compilation-cache-publisher	.github/workflows/apple-compilation-cache.yml	apple_mobile,apple_tv,policy
 ci-playwright-workflow	.github/workflows/ci-playwright.yml	visual,e2e,policy
 ci-tuner-workflow	.github/workflows/ci-tuner.yml	tuner,policy
 ci-image-workflow	.github/workflows/ci-image.yml	image,policy
@@ -64,7 +77,10 @@ make-docs-module	mk/docs.mk	docs,policy
 make-eval-module	mk/eval.mk	contracts,go,policy
 make-android-module	mk/android.mk	android,policy
 make-frontend-module	mk/frontend.mk	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,policy
-ci-tooling-bundle	.github/workflows/ci.yml;internal/releaseverify/ci.go;cmd/releaseverify/main.go;scripts/agent.sh;docs/dev/ci.md	docs,agent,policy
+container-image-acquisition	scripts/ensure-container-image.sh	contracts,postgres,visual,e2e,tuner,policy
+playwright-container-runner	scripts/run-playwright-container.sh	contracts,visual,e2e,tuner,policy
+ci-policy-bootstrap	.github/workflows/ci.yml	policy
+ci-tooling-bundle	.github/workflows/ci.yml;internal/releaseverify/ci.go;cmd/releaseverify/main.go;scripts/agent.sh;docs/dev/ci.md	go,docs,agent,policy
 dev-compose	docker/compose.dev.yaml	contracts,agent
 production-compose	docker/compose.yaml	contracts,go,go_full
 combined-leaf-and-docs	internal/suggest/score.go;docs/dev/testing.md	contracts,go,postgres,image,docs

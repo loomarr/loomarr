@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { SearchCommand } from "../../shell";
+import { episodeSelectionLabel } from "../episode-selection-label";
 import type { ProposalEditProps } from "./proposal-edit.type";
 
 // ProposalEdit — edit-before-approve (V25b, design.md §7.2 / D-K). An admin drops titles they
@@ -36,6 +37,7 @@ type Keyed = { item: ProposalItem; key: string; kind: "lineup" | "acquire" };
 const ProposalEdit = ({
   lineup,
   acquisitions,
+  episodeSelectionPreview,
   onChange,
   onFeedback,
   disabled,
@@ -155,11 +157,8 @@ const ProposalEdit = ({
                 <Badge variant={kind === "lineup" ? "lock" : "tune"}>
                   {kind === "lineup" ? "In library" : "Will acquire"}
                 </Badge>
-                {item.episodeSelection?.mode === "highlights" && (
-                  <Badge variant="suggest">Curated highlights</Badge>
-                )}
-                {item.episodeSelection?.mode === "holiday" && (
-                  <Badge variant="suggest">Holiday episodes</Badge>
+                {episodeSelectionLabel(item, episodeSelectionPreview) && (
+                  <Badge variant="suggest">{episodeSelectionLabel(item, episodeSelectionPreview)}</Badge>
                 )}
                 {onFeedback && !isDropped && (
                   <div className="flex gap-1">
@@ -210,6 +209,9 @@ const ProposalEdit = ({
                   ) : null}
                 </span>
                 <Badge variant="suggest">Added</Badge>
+                {episodeSelectionLabel(item, episodeSelectionPreview) && (
+                  <Badge variant="suggest">{episodeSelectionLabel(item, episodeSelectionPreview)}</Badge>
+                )}
                 <Button
                   variant="ghost"
                   size="icon"

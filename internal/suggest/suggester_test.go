@@ -3,6 +3,7 @@ package suggest_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
@@ -66,6 +67,91 @@ func TestGrounding_FabricatedTitleNeverReachesProposal(t *testing.T) {
 	}
 	if !foundSpeed {
 		t.Error("the real grounded pick (Speed) should survive as an acquisition")
+	}
+	if !traceHas(prop.Trace, "movie:tmdb:100", suggest.DispositionSelected, "selected") {
+		t.Fatalf("trace must preserve selected decision: %+v", prop.Trace)
+	}
+}
+
+func traceHas(trace suggest.DecisionTrace, key, disposition, reason string) bool {
+	for _, candidate := range trace.Candidates {
+		if candidate.Key == key && candidate.Disposition == disposition && candidate.Reason == reason {
+			return true
+		}
+	}
+	return false
+}
+
+func TestSuggest_AdjacencySelectionCarriesCompleteTraceFacts(t *testing.T) {
+	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`))
+	prop, err := buildSuggester(t, llmMock).Suggest(context.Background(), suggest.Intent{
+		Description: "science fiction",
+		Adjacent:    []suggest.AdjacentContext{{Key: "movie:tmdb:603", Name: "The Matrix", Year: 1999, Votes: 3}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := suggest.ValidateDecisionTrace(prop.Trace); err != nil {
+		t.Fatalf("adjacency proposal emitted an invalid trace: %+v: %v", prop.Trace, err)
+	}
+	if !traceHas(prop.Trace, "movie:tmdb:603", suggest.DispositionSelected, "selected") {
+		t.Fatalf("adjacency selection is absent from trace: %+v", prop.Trace)
+	}
+	decision := prop.Trace.Candidates[0]
+	if decision.Source != string(catalog.ScopeAdjacent) || decision.Ownership != "acquisition" || decision.Rank.TieKey != decision.Key {
+		t.Fatalf("adjacency trace facts are incomplete: %+v", decision)
+	}
+}
+
+func TestSuggest_SuccessClearsIntermediateEmptyRetrievalOutcome(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "definitely absent"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+	)
+	prop, err := buildSuggester(t, llmMock).Suggest(context.Background(), suggest.Intent{
+		Description: "science fiction",
+		Adjacent:    []suggest.AdjacentContext{{Key: "movie:tmdb:603", Name: "The Matrix", Year: 1999, Votes: 3}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prop.Trace.Terminal != "" || !traceHas(prop.Trace, "movie:tmdb:603", suggest.DispositionSelected, "selected") {
+		t.Fatalf("successful run retained an intermediate terminal outcome: %+v", prop.Trace)
+	}
+}
+
+func TestSuggest_RetrievalEmptyRemainsDistinctFromSelectionEmpty(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "definitely absent"}),
+		testkit.FinalResponse(`{"picks":[]}`),
+		testkit.FinalResponse(`{"picks":[]}`),
+	)
+	_, err := buildSuggester(t, llmMock).Suggest(context.Background(), suggest.Intent{Description: "definitely absent"})
+	var failure *suggest.Failure
+	if !errors.As(err, &failure) {
+		t.Fatalf("retrieval-empty result did not return typed failure: %v", err)
+	}
+	if failure.Trace.Terminal != suggest.ReasonRetrievalEmpty {
+		t.Fatalf("retrieval-empty terminal was overwritten: %+v", failure.Trace)
+	}
+}
+
+func TestSuggest_RetrievalFailureIsNotReportedAsEmpty(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
+		testkit.FinalResponse(`{"picks":[]}`),
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
+		testkit.FinalResponse(`{"picks":[]}`),
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := buildSuggester(t, llmMock).Suggest(ctx, suggest.Intent{Description: "matrix"})
+	var failure *suggest.Failure
+	if !errors.As(err, &failure) {
+		t.Fatalf("retrieval failure did not return typed failure: %v", err)
+	}
+	if failure.Trace.Terminal != suggest.TerminalProviderFailure {
+		t.Fatalf("retrieval failure was mislabeled: %+v", failure.Trace)
 	}
 }
 
@@ -192,11 +278,11 @@ func TestSuggest_ClassicSingleSeriesUsesCuratedSyndication(t *testing.T) {
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	llmMock := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "simpsons"}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons","seasonMin":1,"seasonMax":10}],"policy":{"ordering":"sequential"}}`),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons","seasonMin":1,"seasonMax":10}]}`),
 	)
 	s := suggest.New(llmMock, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
 
-	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Classic Simpsons episodes"})
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Simpsons classics"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,6 +297,31 @@ func TestSuggest_ClassicSingleSeriesUsesCuratedSyndication(t *testing.T) {
 	}
 }
 
+func TestSuggest_BestSingleSeriesSelectsHighlights(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(testkit.SearchStub{
+		Terms: []string{"simpsons"}, LibraryItemID: "lib-simpsons", Name: "The Simpsons",
+		Type: "Series", Year: 1989, TMDBID: 456, Genres: []string{"Animation"}, OfficialRating: "TV-PG",
+	})
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	s := suggest.New(testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "simpsons"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons"}]}`),
+	), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Best Simpsons episodes"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Lineup) != 1 || prop.Lineup[0].EpisodeSelection.Mode != schedule.EpisodeHighlights {
+		t.Fatalf("best-episode selection = %+v, want highlights", prop.Lineup)
+	}
+	if prop.Policy.Ordering != schedule.OrderSyndication {
+		t.Fatalf("raw-nil best ordering = %q, want syndication", prop.Policy.Ordering)
+	}
+}
+
 func TestSuggest_ExplicitChronologicalSingleSeriesStaysSequential(t *testing.T) {
 	ms := testkit.NewMediaServer(t)
 	ms.SetSearchItems(testkit.SearchStub{
@@ -221,7 +332,7 @@ func TestSuggest_ExplicitChronologicalSingleSeriesStaysSequential(t *testing.T) 
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	llmMock := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "simpsons"}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons","seasonMin":1,"seasonMax":10}],"policy":{"ordering":"sequential"}}`),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons","seasonMin":1,"seasonMax":10}]}`),
 	)
 	s := suggest.New(llmMock, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
 
@@ -232,8 +343,75 @@ func TestSuggest_ExplicitChronologicalSingleSeriesStaysSequential(t *testing.T) 
 	if prop.Policy.Ordering != "sequential" {
 		t.Fatalf("ordering = %q, want explicit chronological request to stay sequential", prop.Policy.Ordering)
 	}
-	if len(prop.Lineup) != 1 || prop.Lineup[0].EpisodeSelection.Mode != "" {
-		t.Fatalf("chronological request unexpectedly selected an episode subset: %+v", prop.Lineup)
+	if len(prop.Lineup) != 1 || prop.Lineup[0].EpisodeSelection.Mode != schedule.EpisodeComplete {
+		t.Fatalf("chronological request selection = %+v, want explicit complete deck", prop.Lineup)
+	}
+}
+
+func TestSuggest_CuratedCueDoesNotMatchInsideAnotherWord(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(testkit.SearchStub{
+		Terms: []string{"concerts"}, LibraryItemID: "lib-concerts", Name: "Great Concerts",
+		Type: "Series", Year: 1990, TMDBID: 456,
+	})
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	s := suggest.New(testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "concerts"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"Great Concerts"}]}`),
+	), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Classical concerts"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Lineup) != 1 || prop.Lineup[0].EpisodeSelection.Mode != schedule.EpisodeComplete {
+		t.Fatalf("classical intent selection = %+v, want complete deck", prop.Lineup)
+	}
+	if prop.Policy.Ordering != schedule.OrderInherit {
+		t.Fatalf("ordinary omitted-policy ordering = %q, want inherit", prop.Policy.Ordering)
+	}
+}
+
+func TestSuggest_EpisodeModeIgnoresNegativeConstraints(t *testing.T) {
+	tests := []struct {
+		name   string
+		intent suggest.Intent
+		want   schedule.EpisodeSelectionMode
+	}{
+		{
+			name:   "excluded binge does not suppress classics",
+			intent: suggest.Intent{Description: "Classic Simpsons", MustExclude: []string{"binge"}},
+			want:   schedule.EpisodeHighlights,
+		},
+		{
+			name:   "excluded holiday episodes do not select holidays",
+			intent: suggest.Intent{Description: "Simpsons episodes", MustExclude: []string{"holiday episodes"}},
+			want:   schedule.EpisodeComplete,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ms := testkit.NewMediaServer(t)
+			ms.SetSearchItems(testkit.SearchStub{
+				Terms: []string{"simpsons"}, LibraryItemID: "lib-simpsons", Name: "The Simpsons",
+				Type: "Series", Year: 1989, TMDBID: 456,
+			})
+			mt := testkit.NewTMDB(t)
+			tm := tmdb.NewWithBase(mt.URL, "key")
+			s := suggest.New(testkit.NewLLM(
+				testkit.ToolCallResponse("catalog_search", map[string]any{"query": "simpsons"}),
+				testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons"}]}`),
+			), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+
+			prop, err := s.Suggest(context.Background(), tt.intent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(prop.Lineup) != 1 || prop.Lineup[0].EpisodeSelection.Mode != tt.want {
+				t.Fatalf("episode selection = %+v, want %q", prop.Lineup, tt.want)
+			}
+		})
 	}
 }
 
@@ -254,6 +432,124 @@ func TestSuggest_NamedHolidaySeriesSelectsMatchingEpisodes(t *testing.T) {
 	selection := prop.Lineup[0].EpisodeSelection
 	if selection.Mode != schedule.EpisodeHoliday || len(selection.Holidays) != 1 || selection.Holidays[0] != "christmas" {
 		t.Fatalf("holiday episode selection = %+v, want Christmas", selection)
+	}
+}
+
+func TestSuggest_NamedHolidayEpisodeSelectionUsesAffirmativeWholePhrases(t *testing.T) {
+	tests := []struct {
+		name   string
+		intent suggest.Intent
+		want   schedule.EpisodeSelection
+	}{
+		{
+			name: "ordinary refine text names Christmas",
+			intent: suggest.Intent{
+				Description: "Classic Simpsons", RefineText: "add Christmas specials",
+			},
+			want: schedule.EpisodeSelection{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}},
+		},
+		{
+			name:   "scheduler-known Christmas alias names Christmas",
+			intent: suggest.Intent{Description: "Santa specials from The Simpsons"},
+			want:   schedule.EpisodeSelection{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}},
+		},
+		{
+			name:   "Christmasland is not Christmas",
+			intent: suggest.Intent{Description: "Christmasland Simpsons episodes"},
+			want:   schedule.EpisodeSelection{Mode: schedule.EpisodeComplete},
+		},
+		{
+			name:   "Valentinesque is not Valentines",
+			intent: suggest.Intent{Description: "Valentinesque Simpsons episodes"},
+			want:   schedule.EpisodeSelection{Mode: schedule.EpisodeComplete},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ms := testkit.NewMediaServer(t)
+			ms.SetSearchItems(testkit.SearchStub{Terms: []string{"simpsons"}, LibraryItemID: "lib-simpsons",
+				Name: "The Simpsons", Type: "Series", Year: 1989, TMDBID: 456})
+			mt := testkit.NewTMDB(t)
+			tm := tmdb.NewWithBase(mt.URL, "key")
+			s := suggest.New(testkit.NewLLM(
+				testkit.ToolCallResponse("catalog_search", map[string]any{"query": "simpsons"}),
+				testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons"}]}`),
+			), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+
+			prop, err := s.Suggest(context.Background(), tt.intent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(prop.Lineup) != 1 {
+				t.Fatalf("lineup = %+v, want one series", prop.Lineup)
+			}
+			got := prop.Lineup[0].EpisodeSelection
+			if got.Mode != tt.want.Mode || strings.Join(got.Holidays, ",") != strings.Join(tt.want.Holidays, ",") {
+				t.Fatalf("episode selection = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSuggest_GenericHolidaySeriesSelectsBuiltInHolidayEpisodes(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(testkit.SearchStub{Terms: []string{"simpsons"}, LibraryItemID: "lib-simpsons",
+		Name: "The Simpsons", Type: "Series", Year: 1989, TMDBID: 456})
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	s := suggest.New(testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "simpsons"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons"}]}`),
+	), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Simpsons holiday episodes"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection := prop.Lineup[0].EpisodeSelection
+	if selection.Mode != schedule.EpisodeHoliday || len(selection.Holidays) != 0 {
+		t.Fatalf("generic holiday selection = %+v, want all built-in holidays", selection)
+	}
+}
+
+func TestSuggest_ModelSeasonalPolicyCannotChooseHolidayEpisodes(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(testkit.SearchStub{Terms: []string{"simpsons"}, LibraryItemID: "lib-simpsons",
+		Name: "The Simpsons", Type: "Series", Year: 1989, TMDBID: 456})
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	s := suggest.New(testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "simpsons"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons"}],`+
+			`"policy":{"seasonal":{"mode":"exclusive","holidays":["christmas"]}}}`),
+	), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Simpsons episodes"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Lineup) != 1 || prop.Lineup[0].EpisodeSelection.Mode != schedule.EpisodeComplete {
+		t.Fatalf("model seasonal policy chose episode mode: %+v", prop.Lineup)
+	}
+}
+
+func TestSuggest_UndeclaredSeasonalCueKeepsCompleteEpisodes(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(testkit.SearchStub{Terms: []string{"simpsons"}, LibraryItemID: "lib-simpsons",
+		Name: "The Simpsons", Type: "Series", Year: 1989, TMDBID: 456})
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	s := suggest.New(testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "simpsons"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons"}]}`),
+	), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Simpsons seasonal episodes"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Lineup) != 1 || prop.Lineup[0].EpisodeSelection.Mode != schedule.EpisodeComplete {
+		t.Fatalf("undeclared seasonal cue selected episode mode: %+v", prop.Lineup)
 	}
 }
 
@@ -419,6 +715,46 @@ func TestGrounding_AcquisitionCapPushesToAlternates(t *testing.T) {
 	}
 	if len(prop.Alternates) != 1 {
 		t.Fatalf("the over-cap pick should become an alternate, got %d", len(prop.Alternates))
+	}
+	if !traceHas(prop.Trace, "movie:tmdb:101", suggest.DispositionAlternate, suggest.ReasonAcquisitionCap) {
+		t.Fatalf("trace must explain acquisition cap: %+v", prop.Trace)
+	}
+}
+
+func TestSuggest_GroundsEpisodeSelectionAcrossSeriesAlternates(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "alpha series"}),
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "beta series"}),
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "companion movie"}),
+		testkit.FinalResponse(`{"picks":[
+			{"mediaType":"series","tmdbId":200,"name":"Alpha Series"},
+			{"mediaType":"series","tmdbId":201,"name":"Beta Series"},
+			{"mediaType":"movie","tmdbId":202,"name":"Companion Movie"}
+		]}`),
+	)
+	ms := testkit.NewMediaServer(t)
+	mt := testkit.NewTMDB(t)
+	mt.AddSeries(200, "Alpha Series", 1990, nil, "")
+	mt.AddSeries(201, "Beta Series", 1991, nil, "")
+	mt.AddMovie(202, "Companion Movie", 1992, nil, "")
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	s := suggest.New(llmMock, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 1)
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Classic highlights"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Acquisitions) != 1 || prop.Acquisitions[0].EpisodeSelection.Mode != schedule.EpisodeHighlights {
+		t.Fatalf("series acquisition selection = %+v, want highlights", prop.Acquisitions)
+	}
+	if len(prop.Alternates) != 2 {
+		t.Fatalf("alternates = %+v, want series and movie", prop.Alternates)
+	}
+	if got := prop.Alternates[0].EpisodeSelection; got.Mode != schedule.EpisodeHighlights {
+		t.Fatalf("series alternate selection = %+v, want highlights", got)
+	}
+	if got := prop.Alternates[1].EpisodeSelection; got.Mode != "" || len(got.Holidays) != 0 {
+		t.Fatalf("movie alternate received episode selection: %+v", got)
 	}
 }
 
@@ -703,6 +1039,9 @@ func TestProposal_RefusesPicksItsOwnCeilingCannotAir(t *testing.T) {
 	}
 	if len(prop.Refused) != 1 || prop.Refused[0].Item.TMDBID != 5004 || prop.Refused[0].Reason != "over_ceiling" {
 		t.Fatalf("refused = %+v, want the TV-MA pick as over_ceiling", prop.Refused)
+	}
+	if !traceHas(prop.Trace, "movie:tmdb:5004", suggest.DispositionRefused, suggest.ReasonOverCeiling) {
+		t.Fatalf("trace omitted refusal: %+v", prop.Trace)
 	}
 }
 

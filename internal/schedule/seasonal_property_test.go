@@ -299,7 +299,7 @@ func TestSeasonal_NewYearBoundary_AlwaysActive(t *testing.T) {
 }
 
 // TestSeasonal_NewYearWindow_Shape: newYearWindow(year) is exactly
-// [Dec 27 year 00:00, Jan 2 year+1 23:59:59], straddling the boundary. Fuzz over
+// [Dec 27 year 00:00, the final nanosecond of Jan 2 year+1], straddling the boundary. Fuzz over
 // years to catch any off-by-year regression. (Supports invariant 4.)
 func TestSeasonal_NewYearWindow_Shape(t *testing.T) {
 	g := rand.New(rand.NewSource(0x0517)) //nolint:gosec
@@ -308,7 +308,7 @@ func TestSeasonal_NewYearWindow_Shape(t *testing.T) {
 		start, end := newYearWindow(year)
 
 		wantStart := time.Date(year, time.December, 27, 0, 0, 0, 0, time.UTC)
-		wantEnd := time.Date(year+1, time.January, 2, 23, 59, 59, 0, time.UTC)
+		wantEnd := time.Date(year+1, time.January, 3, 0, 0, 0, 0, time.UTC).Add(-time.Nanosecond)
 		if !start.Equal(wantStart) {
 			t.Fatalf("trial %d: newYearWindow(%d) start=%s want %s", trial, year, start, wantStart)
 		}

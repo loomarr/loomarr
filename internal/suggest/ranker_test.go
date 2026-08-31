@@ -35,4 +35,83 @@ func TestRankGroundedCandidatesAppliesExplicitFeedbackDeterministically(t *testi
 	if len(ids) < 2 || ids[0] != 2 || ids[1] != 1 {
 		t.Fatalf("feedback ranking = %v, want surprise discovery before demoted related anchor", ids)
 	}
+	trace := RankGroundedCandidatesWithTrace("space discoveries", candidates, signals).Trace
+	foundNever := false
+	for _, decision := range trace.Candidates {
+		if decision.Key == "movie:tmdb:3" {
+			foundNever = decision.Disposition == DispositionNotSelected && decision.Reason == ReasonNever
+		}
+	}
+	if !foundNever || trace.RecordedTotal != len(candidates) || trace.Terminal != "" {
+		t.Fatalf("never exclusion was not preserved as a bounded decision: %+v", trace)
+	}
+}
+
+func TestRankGroundedCandidatesWithTracePublishesExactLexicographicTupleAndBound(t *testing.T) {
+	candidates := make([]catalog.Candidate, 0, DecisionTraceMaxCandidates+1)
+	for i := 0; i < DecisionTraceMaxCandidates+1; i++ {
+		candidates = append(candidates, catalog.Candidate{MediaType: provision.Movie, TMDBID: i + 1, Name: "same", Genres: []string{"same"}})
+	}
+	got := RankGroundedCandidatesWithTrace("same", candidates, nil)
+	if !got.Trace.Truncated || got.Trace.SurfacedTotal != DecisionTraceMaxCandidates+1 || len(got.Trace.Candidates) != DecisionTraceMaxCandidates {
+		t.Fatalf("trace bounds = %+v", got.Trace)
+	}
+	if err := ValidateDecisionTrace(got.Trace); err != nil {
+		t.Fatalf("ranker emitted trace rejected by shared validator: %v", err)
+	}
+	for i, item := range got.Trace.Candidates {
+		if item.Rank.TieKey != item.Key || item.Rank.Relevance != 1 || item.Rank.Preference != 0 || item.Rank.Novelty != 1 {
+			t.Fatalf("trace[%d] = %+v; tuple must be independently reconstructable", i, item)
+		}
+		if i > 0 && got.Trace.Candidates[i-1].Rank.TieKey >= item.Rank.TieKey {
+			t.Fatalf("tie keys not stable: %+v", got.Trace.Candidates)
+		}
+	}
+}
+
+func TestRankGroundedCandidatesWithTraceClassifiesRetrievalEmpty(t *testing.T) {
+	got := RankGroundedCandidatesWithTrace("nothing", nil, nil)
+	if got.Trace.Version != DecisionTraceVersion || got.Trace.Terminal != ReasonRetrievalEmpty || got.Trace.SurfacedTotal != 0 || got.Trace.RecordedTotal != 0 {
+		t.Fatalf("empty retrieval trace = %+v", got.Trace)
+	}
+}
+
+func TestDecisionRankQueryRecordsMatchedConstraintCategoriesWithoutRawTerms(t *testing.T) {
+	intent := Intent{
+		Description: "science fiction", Tone: "energetic", Era: "1990s",
+		MustInclude: []string{"matrix"}, MustExclude: []string{"comedy"}, RefineText: "more sequels",
+	}
+	candidate := catalog.Candidate{
+		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix sequel",
+		Overview: "An energetic 1990s science fiction story with more sequels",
+	}
+	got := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), []catalog.Candidate{candidate}, nil).Trace.Candidates[0]
+	want := ConstraintMatches{Request: true, Tone: true, Era: true, MustInclude: true, Refine: true}
+	if got.Constraints != want || got.Rank.Relevance != 7 {
+		t.Fatalf("constraint evidence = %+v relevance=%d, want %+v relevance=7", got.Constraints, got.Rank.Relevance, want)
+	}
+}
+
+func TestMergeDecisionTracePreservesPreTruncationTotalsAndLatestDuplicateFacts(t *testing.T) {
+	dst := DecisionTrace{Version: DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
+		Candidates: []DecisionCandidate{{Key: "movie:tmdb:603", Source: string(catalog.ScopeAdjacent)}}}
+	src := DecisionTrace{Version: DecisionTraceVersion, SurfacedTotal: 70, RecordedTotal: 70, Truncated: true,
+		Candidates: []DecisionCandidate{
+			{Key: "movie:tmdb:603", Source: string(catalog.ScopeAll)},
+			{Key: "movie:tmdb:604", Source: string(catalog.ScopeAll)},
+		}}
+	mergeDecisionTrace(&dst, &src)
+	if dst.SurfacedTotal != 71 || dst.RecordedTotal != 71 || !dst.Truncated || len(dst.Candidates) != 2 {
+		t.Fatalf("merged bounds = %+v", dst)
+	}
+	if dst.Candidates[0].Source != string(catalog.ScopeAll) {
+		t.Fatalf("latest decision facts did not replace adjacency facts: %+v", dst.Candidates[0])
+	}
+
+	full := DecisionTrace{Version: DecisionTraceVersion, RecordedTotal: DecisionTraceMaxCandidates,
+		Candidates: make([]DecisionCandidate, DecisionTraceMaxCandidates)}
+	traceDecision(&full, DecisionCandidate{Disposition: DispositionValidationDropped, Reason: ReasonMalformedID})
+	if full.RecordedTotal != DecisionTraceMaxCandidates+1 || !full.Truncated {
+		t.Fatalf("truncated decision total = %+v", full)
+	}
 }

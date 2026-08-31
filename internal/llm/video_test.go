@@ -61,7 +61,7 @@ func TestOpenRouterVideoSendsBoundedBase64OnPinnedPrivateRoute(t *testing.T) {
 	if resp.Content != `{"kind":"commercial"}` {
 		t.Fatalf("content = %q", resp.Content)
 	}
-	if resp.Attribution.ResolvedProvider != "Google AI Studio" || resp.Attribution.Tokens.Prompt != 99 || resp.Attribution.Charge == nil || resp.Attribution.Charge.Amount != "0.0042" {
+	if resp.Attribution.ResolvedProvider != "" || resp.Attribution.Attempts != 0 || resp.Attribution.Tokens.Prompt != 99 || resp.Attribution.Charge == nil || resp.Attribution.Charge.Amount != "0.0042" {
 		t.Fatalf("attribution = %+v", resp.Attribution)
 	}
 

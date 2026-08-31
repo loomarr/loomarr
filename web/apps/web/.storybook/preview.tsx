@@ -2,7 +2,7 @@ import { LoomarrProvider, resolveLoomarrTheme, semanticThemes } from "@loomarr/d
 import { withThemeFromJSXProvider } from "@storybook/addon-themes";
 import type { Preview } from "@storybook/react-vite";
 import type { PropsWithChildren } from "react";
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 import { useColorScheme } from "react-native";
 // Same imports as the app entry (main.tsx) — self-hosted Geist (§2.2) + the Test Card
 // theme — so stories render in the real design system, offline and deterministic. The
@@ -19,7 +19,10 @@ const WorkshopThemeProvider = ({ children, theme }: PropsWithChildren<{ theme: W
   const resolvedTheme = resolveLoomarrTheme(theme.mode, systemTheme);
   const colors = semanticThemes[resolvedTheme];
 
-  useEffect(() => {
+  // Browser-native controls read `color-scheme` during paint. Apply the resolved workshop
+  // theme before that paint so a newly captured baseline cannot race between light and dark
+  // radio/checkbox chrome while the surrounding Loomarr surface is already dark.
+  useLayoutEffect(() => {
     document.documentElement.style.colorScheme = resolvedTheme;
     document.body.style.backgroundColor = colors.surface.canvas;
     document.body.style.color = colors.content.primary;

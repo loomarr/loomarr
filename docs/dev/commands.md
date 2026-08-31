@@ -11,7 +11,8 @@ cannot drift from either. `make dev-docs-verify` fails the build if it does.
 "never runs in CI" — prerequisite targets run through their named parent.
 The *runs:* note on a row lists what each parent pulls in.
 
-**The default gate is `make check`.** Run it before every push.
+**Routine local evidence is `make agent-verify BASE=<base>`.** It selects affected checks
+from the same impact policy as CI. Reserve `make check` for an explicit complete-repository audit.
 
 ## General
 
@@ -30,25 +31,25 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make agent-stop` |  | release this worktree's task and shared-output claims |
 | `make agent-env` |  | show this worktree's isolated ports, database, compose project, and artifact path |
 | `make agent-baseline` |  | run make check once per clean commit/toolchain and share the green result across worktrees |
-| `make agent-verify` |  | run focused changed-file checks (not the final gate; BASE=origin/main) |
+| `make agent-verify` |  | run affected local evidence selected by CI impact (BASE=origin/main) |
 | `make agent-worktree` |  | create, claim, and bootstrap a sibling worktree (TOPIC=... CLAIMS=...; BASE/DEPENDS_ON for stacks) |
 | `make agent-gc` |  | audit worktrees; APPLY=1 retires only exact clean merged PR heads |
 | `make bootstrap` |  | build the Rust worker and prepare frontend, isolated directories, and dev identity |
-| `make doctor` |  | report toolchain drift, worktrees, ports, caches, and misplaced artifacts |
+| `make doctor` |  | verify toolchain and Docker readiness; report worktrees, ports, caches, and artifacts |
 | `make agent-harness-test` | ✅ | regression-test coordination, worktree isolation, and shared-output claims <br>*runs:* `agent-assets-verify` |
 | `make agent-assets-verify` |  | verify the curated skill catalog and agent adapters agree |
 | `make compose-verify` |  | verify Traefik, database wiring, and pinned release images |
-| `make release-verify` |  | verify server, Android, and release-note publication policy |
+| `make release-verify` |  | verify release, CI acquisition, Android, and publication policy |
 | `make release-notes-preview` |  | generate validated release notes (TAG required; optional PREVIOUS_TAG and OUTPUT) |
 | `make backup-restore-verify` |  | isolated SQLite backup, destructive replacement, restore, and state validation |
 | `make backup-restore-drill` |  | SQLite + Docker-backed Postgres backup/restore drills <br>*runs:* `backup-restore-verify` |
 
-## The default gate
+## Explicit complete audit
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make check` |  | complete local gate: repository contracts plus race-policy-aware unit tests <br>*runs:* `check-static` `test` |
-| `make check-static` |  | repository contracts without the unit-test suite (CI runs this once beside test shards) <br>*runs:* `rust-check` `fmt` `shellcheck` `privacy-verify` `vet` `tags-verify` `vet-tags` `lint` `agent-harness-test` `compose-verify` `release-verify` `go-race-verify` |
+| `make check` |  | explicit complete-repository audit: contracts plus race-policy-aware unit tests <br>*runs:* `check-static` `test` |
+| `make check-static` |  | repository contracts without the unit-test suite (CI runs this once beside test shards) <br>*runs:* `rust-check` `fmt` `shellcheck` `privacy-verify` `vet` `platform-vet` `tags-verify` `vet-tags` `lint` `agent-harness-test` `compose-verify` `release-verify` `go-race-verify` |
 | `make rust-check` | ✅ | format, lint, build, and test the required Rust image worker <br>*runs:* `rust-test-worker` |
 | `make rust-test-worker` |  | build the debug Rust image worker required by Go unit tests |
 | `make rust-audit` |  | check Rust advisories, licences, and dependency sources (needs cargo-deny) |
@@ -57,16 +58,17 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make shellcheck` |  | shellcheck every repository shell script |
 | `make privacy-verify` |  | captured private fixture literals must not re-enter the tracked tree |
 | `make vet` |  | go vet |
+| `make platform-vet` |  | go vet the opposite Linux/macOS target to catch platform-only compile drift |
 | `make vet-tags` |  | go vet over custom-tagged sources |
 | `make tags-verify` |  | the Makefile's TAGS list matches every //go:build tag in the tree, both ways |
 | `make lint` |  | golangci-lint v2 (run via `go run` so no global install needed) |
 | `make test` | ✅ | unit tests with their required Rust worker (never touch the network — §19) <br>*runs:* `rust-test-worker` `eval-contract` |
 | `make go-shard-verify` | ✅ | the GO_SHARD split must be a PARTITION of go list ./... (CI red on drift) |
 | `make go-race-verify` |  | every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must be a real package |
-| `make test-ffmpeg` |  | playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`) |
+| `make test-ffmpeg` |  | media tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`) |
 | `make eval-contract` |  | hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB |
 | `make eval` |  | semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate) |
-| `make eval-cert` |  | certify exact starter/adversarial intents; fails on missing config and writes a scorecard |
+| `make eval-cert` |  | certify exact intents and mandatory scheduled viewer outcomes; fails closed and writes a scorecard |
 | `make eval-matrix` |  | explicitly certify local + OpenRouter generation sequentially (manual, resource-heavy) |
 | `make filler-eval-contract` |  | hermetic filler-admission corpus and selective-risk contracts |
 | `make filler-corpus-commons` |  | freeze bounded Commons pilot and full-inventory artifacts |
@@ -86,6 +88,8 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make filler-corpus-lock` |  | lock two blind filler-label batches into a certification manifest |
 | `make filler-corpus-review` |  | prepare one opaque randomized filler-label review batch |
 | `make filler-corpus-review-package` |  | materialize one verified identity-blind reviewer evidence package |
+| `make filler-corpus-review-ollama` |  | complete one blind package with a digest-pinned local reviewer |
+| `make filler-corpus-review-openrouter` |  | complete one blind package through a bounded pinned hosted reviewer |
 | `make filler-openrouter-snapshot` |  | lock OpenRouter capability, endpoint-price, and ZDR metadata |
 | `make filler-bakeoff-openrouter` |  | capture a bounded label-blind OpenRouter prediction ledger (paid/manual) |
 | `make filler-bakeoff-ollama` |  | capture a digest-pinned local filler prediction ledger (manual) |
@@ -113,7 +117,8 @@ The *runs:* note on a row lists what each parent pulls in.
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make test-pg` | ✅ | all real-Postgres integration suites (store, backend transition, app; testcontainers; requires Docker) <br>*runs:* `rust-dev-build` |
+| `make ensure-postgres-test-image` |  | use cached Postgres and Ryuk images or pull them with bounded retries |
+| `make test-pg` | ✅ | all real-Postgres integration suites (store, backend transition, app; testcontainers; requires Docker) <br>*runs:* `rust-dev-build` `ensure-postgres-test-image` |
 
 ## OpenAPI (Phase 8)
 
@@ -178,12 +183,13 @@ The *runs:* note on a row lists what each parent pulls in.
 | `make client-apple-simulator` | ✅ | build and launch an Apple simulator proof (CLIENT_APP=mobile|tv; macOS) <br>*runs:* `fe-api-codegen` |
 | `make storybook` |  | Storybook dev workshop on this worktree's isolated port |
 | `make storybook-build` |  | offline storybook-static build (what fe-visual snapshots) |
-| `make fe-visual` | ✅ | Playwright visual + a11y over storybook-static, in the pinned Docker image (§5.2) <br>*runs:* `storybook-build` |
-| `make fe-visual-update` |  | regenerate the committed Linux baselines in the Docker image (sanctioned update path) <br>*runs:* `storybook-build` |
-| `make e2e` | ✅ | wizard e2e smoke vs a mocked backend, in the pinned Docker image (13.3 gate) <br>*runs:* `fe-build` |
-| `make tuner-e2e` |  | 100-Channel tuner controller matrix in Chromium, Firefox, and WebKit (§9.1) <br>*runs:* `fe-build` |
+| `make ensure-playwright-image` |  | use a cached Playwright image or pull it with bounded retries |
+| `make fe-visual` | ✅ | Playwright visual + a11y over storybook-static, in the pinned Docker image (§5.2) <br>*runs:* `storybook-build` `ensure-playwright-image` |
+| `make fe-visual-update` |  | regenerate the committed Linux baselines in the Docker image (sanctioned update path) <br>*runs:* `storybook-build` `ensure-playwright-image` |
+| `make e2e` | ✅ | wizard e2e smoke vs a mocked backend, in the pinned Docker image (13.3 gate) <br>*runs:* `fe-build` `ensure-playwright-image` |
+| `make tuner-e2e` |  | 100-Channel tuner controller matrix in Chromium, Firefox, and WebKit (§9.1) <br>*runs:* `fe-build` `ensure-playwright-image` |
 | `make tuner-e2e-host` | ✅ | 100-Channel tuner controller matrix in host-installed browsers (§9.1) <br>*runs:* `fe-build` |
-| `make e2e-update` |  | regenerate the committed e2e page snapshots (sanctioned update path) <br>*runs:* `fe-build` |
+| `make e2e-update` |  | regenerate the committed e2e page snapshots (sanctioned update path) <br>*runs:* `fe-build` `ensure-playwright-image` |
 
 ## Maintainer smoke (NOT CI)
 

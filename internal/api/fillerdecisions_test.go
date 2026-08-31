@@ -32,6 +32,19 @@ type diagnosticWire struct {
 
 type activityWire struct {
 	ID, ActionID, DecisionID, ClipHash, Kind string
+	ApplicationMode                          string `json:"applicationMode"`
+}
+
+func TestFillerDecisionActivityProjectsApplicationMode(t *testing.T) {
+	srv, st := newServer(t)
+	seedDecisionAPI(t, st)
+
+	res := do(t, srv, http.MethodGet, "/v1/filler/decisions/activity?limit=10", memberToken, "")
+	var activity decisionListBody[activityWire]
+	decodeDecisionResponse(t, res, &activity)
+	if activity.Total != 1 || len(activity.Rows) != 1 || activity.Rows[0].ApplicationMode != "shadow" {
+		t.Fatalf("activity application mode = %+v, want one shadow row", activity)
+	}
 }
 
 func TestFillerDecisionProjectionsSeparateHumanWorkFromDiagnostics(t *testing.T) {
@@ -217,14 +230,16 @@ func TestFillerDecisionProjectionsUseLatestOutcomeWithoutErasingHistory(t *testi
 	for _, record := range []fillerdecision.Record{
 		{
 			ID: "hold-old", ClipHash: "clip-recovered", EvidenceHash: "evidence-old",
-			EvidenceVersion: "e1", SchemaVersion: 1, PolicyVersion: "p1", TaxonomyVersion: "t1", CreatedAt: at,
+			EvidenceVersion: "e1", SchemaVersion: 1, PolicyVersion: "p1", TaxonomyVersion: "t1",
+			ApplicationMode: fillerdecision.ApplicationModeShadow, CreatedAt: at,
 			Result: filleradmission.Result{Hold: &filleradmission.Hold{
 				Code: filleradmission.HoldProviderUnavailable, Retryable: true,
 			}},
 		},
 		{
 			ID: "admit-new", ClipHash: "clip-recovered", EvidenceHash: "evidence-new",
-			EvidenceVersion: "e1", SchemaVersion: 1, PolicyVersion: "p1", TaxonomyVersion: "t1", CreatedAt: at.Add(time.Second),
+			EvidenceVersion: "e1", SchemaVersion: 1, PolicyVersion: "p1", TaxonomyVersion: "t1",
+			ApplicationMode: fillerdecision.ApplicationModeShadow, CreatedAt: at.Add(time.Second),
 			Result: filleradmission.Result{Decision: &filleradmission.Decision{
 				Verdict: filleradmission.VerdictAdmit, ReasonCodes: []filleradmission.ReasonCode{filleradmission.ReasonEvidenceSatisfied},
 			}},
@@ -255,7 +270,8 @@ func seedDecisionAPI(t *testing.T, st store.Store) {
 	at := time.Date(2026, 8, 25, 5, 0, 0, 0, time.UTC)
 	if err := st.PutFillerDecision(t.Context(), fillerdecision.Record{
 		ID: "review-1", ClipHash: "clip-review", EvidenceHash: "evidence-review",
-		EvidenceVersion: "e1", SchemaVersion: 1, PolicyVersion: "p1", TaxonomyVersion: "t1", CreatedAt: at,
+		EvidenceVersion: "e1", SchemaVersion: 1, PolicyVersion: "p1", TaxonomyVersion: "t1",
+		ApplicationMode: fillerdecision.ApplicationModeShadow, CreatedAt: at,
 		Result: filleradmission.Result{Decision: &filleradmission.Decision{
 			Verdict:        filleradmission.VerdictReview,
 			ReasonCodes:    []filleradmission.ReasonCode{filleradmission.ReasonConflictRecordingDate},
@@ -267,7 +283,8 @@ func seedDecisionAPI(t *testing.T, st store.Store) {
 	}
 	if err := st.PutFillerDecision(t.Context(), fillerdecision.Record{
 		ID: "hold-1", ClipHash: "clip-hold", EvidenceHash: "evidence-hold",
-		EvidenceVersion: "e1", SchemaVersion: 1, PolicyVersion: "p1", TaxonomyVersion: "t1", CreatedAt: at.Add(time.Second),
+		EvidenceVersion: "e1", SchemaVersion: 1, PolicyVersion: "p1", TaxonomyVersion: "t1",
+		ApplicationMode: fillerdecision.ApplicationModeShadow, CreatedAt: at.Add(time.Second),
 		Result: filleradmission.Result{Hold: &filleradmission.Hold{
 			Code:   filleradmission.HoldProviderUnavailable,
 			Detail: "provider-secret failed while opening /private/path", Retryable: true,

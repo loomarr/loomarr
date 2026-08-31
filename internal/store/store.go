@@ -11,15 +11,25 @@ import (
 	"errors"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/contact"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
+	"github.com/loomarr/loomarr/internal/invitation"
+	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
-// ErrNotFound is returned by Get* methods when no row matches.
+// ErrNotFound reports that a requested durable identity does not exist. Besides Get* reads,
+// commands whose integrity depends on an existing owner (such as channel-scoped feedback) return
+// it before committing any dependent row.
 var ErrNotFound = errors.New("store: not found")
+
+// ErrConditioningPublicationMismatch reports a pending conditioned publication whose catalog
+// rows are not one of the exact source-only, source-plus-held-reconstruction, or target-only
+// states the owner-bound recovery protocol permits. Callers must hold it for review.
+var ErrConditioningPublicationMismatch = filler.ErrConditioningOwnershipMismatch
 
 // ErrTaxonConflict marks a taxonomy mutation that cannot safely apply: create over an existing
 // slug, or delete of a taxon still directly asserted on clips. The caller should reload/retag,
@@ -70,6 +80,14 @@ var ErrChannelConflict = errors.New("store: channel conflict")
 // either reapply their domain merge or surface a conflict to the operator.
 var ErrChannelStale = errors.New("store: stale channel revision")
 
+// ErrContactAddressConflict means the normalized mailbox is already attached to another person
+// or pending replacement. Public recovery must never resolve one address ambiguously.
+var ErrContactAddressConflict = errors.New("store: contact address conflict")
+
+// ErrInvitationIdentityConflict means an allowlist row or active Invitation already owns the
+// reserved local username or exact Library account id.
+var ErrInvitationIdentityConflict = errors.New("store: invitation identity conflict")
+
 // TitleStore is the provisioning surface (§3–§4).
 type TitleStore interface {
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
@@ -108,6 +126,8 @@ type ChannelStore interface {
 	// a targeted revision-checked write used after the lineup is bound.
 	SetChannelBroadcastCodec(ctx context.Context, id string, expectedRevision int64, codec string) (int64, error)
 	ListChannels(ctx context.Context) ([]Channel, error)
+	// DeleteChannel hard-deletes the revision-matched Channel and only its channel-scoped
+	// discovery feedback in one transaction. A detached Channel is retained through SaveChannel.
 	DeleteChannel(ctx context.Context, id string, expectedRevision int64) error
 	// ⚠ PutChannelIcon/GetChannelIcon were removed in V52 phase 8 with the `channel_icons` retired-ok
 	// table. A channel's icon is an image-service image (§22) and its bytes are addressed by
@@ -167,7 +187,7 @@ type JobStore interface {
 	// CommitSuggestionFailure moves a running job to failed without rewriting
 	// stale intent or ownership fields. A lost transition leaves the newer
 	// lifecycle untouched.
-	CommitSuggestionFailure(ctx context.Context, jobID string, expectedAttempt int, cause, failureCode string, updatedAt time.Time) error
+	CommitSuggestionFailure(ctx context.Context, jobID string, expectedAttempt int, cause, failureCode, failureTraceJSON string, updatedAt time.Time) error
 	// RequeueSuggestionJob replaces the intent only when the caller's observed
 	// terminal execution is still current. Attempts are preserved; the next claim
 	// increments them to create a new execution token.
@@ -247,6 +267,9 @@ type UserStore interface {
 	GetUser(ctx context.Context, id string) (User, error)
 	// GetUserByName resolves a username to its allowlist row (§11 local login).
 	GetUserByName(ctx context.Context, name string) (User, error)
+	// CreateUserUnlessInvited creates a new allowlist row only when no active
+	// invitation reserves its local username or exact Library account id.
+	CreateUserUnlessInvited(ctx context.Context, u User, now time.Time) error
 	UpsertUser(ctx context.Context, u User) error
 	ListUsers(ctx context.Context) ([]User, error)
 	CountAdmins(ctx context.Context) (int, error)
@@ -257,6 +280,14 @@ type UserStore interface {
 	RevokeSession(ctx context.Context, tokenHash string) error
 	RevokeSessionsForUser(ctx context.Context, userID string) error
 	PurgeExpiredSessions(ctx context.Context, now time.Time) (int, error)
+	// Contact addresses are optional and independent from usernames/credential paths (§11).
+	GetContactAddresses(ctx context.Context, userID string) (contact.Set, error)
+	ListContactAddresses(ctx context.Context) ([]contact.Address, error)
+	GetVerifiedContactAddressByNormalized(ctx context.Context, normalized string) (contact.Address, error)
+	PutPendingContactAddress(ctx context.Context, address contact.Address) error
+	VerifyPendingContactAddress(ctx context.Context, userID, normalized string, at time.Time) (contact.Address, error)
+	DeletePendingContactAddress(ctx context.Context, userID string) error
+	DeleteContactAddresses(ctx context.Context, userID string) error
 
 	// Device pairing (§11, Shield P1) — the credential class a keyboard-less client uses. Kept in
 	// this interface rather than a separate one because it is the same concern as sessions: who is
@@ -280,6 +311,10 @@ type ClipStore interface {
 	// ReplaceClipIdentity atomically moves every durable reference when an internal transform
 	// changes a clip's content hash (§10). Metadata and operator overrides follow the bytes.
 	ReplaceClipIdentity(ctx context.Context, oldHash string, c Clip) error
+	// CommitConditioningPublication is the exact owner-bound variant used after a conditioned
+	// target is visible. It atomically adopts a held Sync reconstruction, performs an ordinary
+	// source-only re-key, or recognizes the exact target-only post-rekey state (§10 V65).
+	CommitConditioningPublication(ctx context.Context, publication filler.ConditioningPublication, target Clip) error
 	GetClip(ctx context.Context, libraryItemID string) (Clip, error)
 	// GetClipByPath looks a clip up by its location under FILLER_DIR, NOT by its identity.
 	//
@@ -416,6 +451,9 @@ type SplitProposalStore interface {
 	UpsertSplitProposal(ctx context.Context, p filler.SplitProposal) error
 	// GetSplitProposal reads one proposal by id (the review's reconnect truth).
 	GetSplitProposal(ctx context.Context, id string) (filler.SplitProposal, error)
+	AcquireSplitProposalClaim(ctx context.Context, id, token string, at, expiresAt time.Time) (filler.SplitProposal, error)
+	RenewSplitProposalClaim(ctx context.Context, id, token string, expiresAt time.Time) error
+	ReleaseSplitProposalClaim(ctx context.Context, id, token string) error
 	// ListSplitProposals returns every pending proposal, oldest first — the Incoming tab's
 	// "reels" (V35). One read behind that tab, so a restart cannot lose the queue.
 	ListSplitProposals(ctx context.Context) ([]filler.SplitProposal, error)
@@ -424,6 +462,7 @@ type SplitProposalStore interface {
 	// UpdateSplitProposal replaces an EXISTING proposal document; ErrNotFound if the row is gone.
 	// Never inserts — see the implementation for why that matters (§10 V54).
 	UpdateSplitProposal(ctx context.Context, p filler.SplitProposal) error
+	CompletePartialSplitConfirmation(ctx context.Context, completion filler.SplitPartialCompletion) error
 	// ListSweepableSplitProposals finds reels whose leftover cuts nobody reviewed inside the
 	// window AND which have already produced clips — the only ones the sweep may retire (§10 V54).
 	ListSweepableSplitProposals(ctx context.Context, before time.Time) ([]SweepableProposal, error)
@@ -432,6 +471,9 @@ type SplitProposalStore interface {
 	MarkClipReaped(ctx context.Context, hash string, at time.Time) error
 	// MarkPipelineFiled takes a clip off the belt, so a swept reel is not re-proposed forever.
 	MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error
+	// CompleteSplitConfirmation atomically transitions a fully reviewed split proposal, retained
+	// parent, replacement pipelines, and selected child generation (§10 V65).
+	CompleteSplitConfirmation(ctx context.Context, completion filler.SplitCompletion) (int, error)
 
 	// --- The per-clip ingest pipeline (§10 V51b, migration 00044) ---
 	//
@@ -574,6 +616,39 @@ type ActivityStore interface {
 	PurgeActivity(ctx context.Context, before time.Time) (int, error)
 }
 
+// NotificationStore owns provider-neutral intents and bounded delivery work (§11).
+type NotificationStore interface {
+	CreateNotificationIntent(context.Context, notifications.Intent, []notifications.Attempt) (notifications.Intent, bool, error)
+	GetNotificationIntent(context.Context, string) (notifications.Intent, error)
+	ListNotificationIntentsByReference(context.Context, notifications.ReferenceKind, string) ([]notifications.Intent, error)
+	ListNotificationAttempts(context.Context, string) ([]notifications.Attempt, error)
+	ClaimDueNotificationAttempt(context.Context, string, time.Time, time.Duration) (notifications.Attempt, error)
+	CompleteNotificationAttempt(context.Context, notifications.Completion) error
+	PurgeTerminalNotifications(context.Context, time.Time) (int, error)
+}
+
+// InvitationStore owns administrator admission decisions and hashed grants (§11).
+type InvitationStore interface {
+	CreateInvitation(ctx context.Context, value invitation.Invitation, address *contact.Address) error
+	GetInvitation(ctx context.Context, id string, now time.Time) (invitation.Invitation, error)
+	GetInvitationByGrant(ctx context.Context, tokenHash string, now time.Time) (invitation.Invitation, error)
+	ListInvitations(ctx context.Context, now time.Time) ([]invitation.Invitation, error)
+	GetInvitationContactAddress(ctx context.Context, invitationID string) (contact.Address, error)
+	ReplaceInvitationGrant(ctx context.Context, invitationID string, grant invitation.Grant, at time.Time) error
+	AddInvitationGrant(ctx context.Context, invitationID string, grant invitation.Grant, at time.Time) error
+	RevokeInvitationGrant(ctx context.Context, tokenHash string, at time.Time) error
+	ListInvitationGrants(ctx context.Context, invitationID string) ([]invitation.Grant, error)
+	RevokeInvitation(ctx context.Context, invitationID string, at time.Time) error
+	PurgeTerminalInvitations(ctx context.Context, before time.Time) (int, error)
+	RedeemInvitation(
+		ctx context.Context,
+		grantHash string,
+		user User,
+		session Session,
+		at time.Time,
+	) (invitation.Invitation, error)
+}
+
 // DiagnosticStore is the retained technical evidence surface (§5, §17). Activity is deliberately
 // separate: it is a curated product feed, while these records are pageable/filterable diagnostics.
 type DiagnosticStore interface {
@@ -677,6 +752,8 @@ type Store interface {
 	SplitProposalStore
 	AiringStore
 	ActivityStore
+	InvitationStore
+	NotificationStore
 	DiagnosticStore
 	SettingStore
 	CountStore

@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.26"
+  GO_VERSION: "1.27"
   NODE_VERSION: "22"
 
 jobs:
@@ -64,7 +64,7 @@ jobs:
       # Both drive the pinned Playwright Docker image (the reference rasterizer,
       # §5.2), so CI and local snapshots are byte-identical.
       - name: Visual + a11y over storybook-static
-        run: make fe-visual PW_SHARD=--shard=${{ matrix.shard }}/${{ strategy.job-total }}
+        run: LOOMARR_PLAYWRIGHT_SHARD=--shard=${{ matrix.shard }}/${{ strategy.job-total }} make fe-visual
       # ⚠ ONE shard runs e2e, not every shard. It is a 7-test 15s suite with its own
       # config and no sharding, so running it per-shard would duplicate it for nothing.
       - name: Wizard e2e smoke vs a mocked backend

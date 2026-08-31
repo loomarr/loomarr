@@ -44,8 +44,9 @@ type ProposalJobAttemptDTO struct {
 }
 
 type ProposalJourneyFailureDTO struct {
-	Code    string `json:"code" enum:"no_grounded_titles,generation_failed"`
-	Message string `json:"message"`
+	Code    string                `json:"code" enum:"no_grounded_titles,selection_empty,budget_exhausted,generation_failed"`
+	Message string                `json:"message"`
+	Trace   suggest.DecisionTrace `json:"trace,omitempty"`
 }
 
 type ProposalJourneyProposalDTO struct {
@@ -184,5 +185,5 @@ func proposalJourneyFailureDTO(failure *proposalworkflow.Failure) *ProposalJourn
 	if failure == nil {
 		return nil
 	}
-	return &ProposalJourneyFailureDTO{Code: string(failure.Code), Message: failure.Message}
+	return &ProposalJourneyFailureDTO{Code: string(failure.Code), Message: failure.Message, Trace: failure.Trace}
 }

@@ -75,7 +75,7 @@ func TestRunMeasuresTheCurrentIconAVIFLadderThroughTheWorkerProtocol(t *testing.
 	if profile.Role != "icon" || len(profile.Samples) != 1 {
 		t.Fatalf("profile = %+v", profile)
 	}
-	if profile.SourceSHA256 != "5e3f7a75ad5f3e19b331274eb13c800ad8c9637492450edd4a6f2255c25f0bac" {
+	if profile.SourceSHA256 != "2ee6f81813dbef6fce95e6ae0fc6a6dca97c6aec74d8f97db7d9d727f2e4f8d7" {
 		t.Errorf("source SHA-256 = %q, want the synthetic-role-v1 icon source", profile.SourceSHA256)
 	}
 	if got, want := profile.Widths, []int{92, 185, 500}; !equalInts(got, want) {

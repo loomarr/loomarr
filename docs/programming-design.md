@@ -196,17 +196,84 @@ The one heuristic where an error is a *harm*, not an aesthetic bug — so it fai
 - `syndication` (default for TV) — random **without repeats until the eligible pool exhausts**, then reshuffle (a "deck deal"): the authentic weekday-rerun texture, and it makes `episodeNoRepeat` nearly free because the deck *is* a no-repeat structure. Each deck reshuffles under `seed XOR deckIndex` so successive decks differ yet every deck is deterministic for a given channel seed (the §7-mandated reproducibility).
 - **Omitted `ordering` inherits the channel's `Strategy`.** A channel created without an explicit policy ordering keeps its existing `sequential`/`shuffle` behavior — the syndication default applies only when a policy explicitly requests it (or a template ships it). This keeps policy adoption non-breaking for existing channels.
 - **One operator knob, one canonical precedence ladder.** Ordering resolves in exactly this order: **per-rule `How.Ordering` (within that rule's active window, §6.5) > `policy.ordering` > `Channel.Strategy` (the create-time stored default)**. `policy.ordering` is *the* operator-facing knob (edited in Programming → How it's ordered); `Channel.Strategy` is the default the binder seeds and is consulted only on inherit — it is **not** a second editable field (design.md §9). A rule's `How` overrides only for the slots that rule governs; outside any rule window, the base `policy.ordering` applies. This is the single ladder that makes "three ways to express ordering" read as one.
-- **Rerun curation and narrative order are different promises.** A channel whose lineup is several series (a "Star Trek" franchise channel) defaults to `syndication` so the shows intermix instead of playing one to completion. A clearly curated single-series intent (`classic Simpsons`, `best episodes`, favorites, highlights, reruns) also resolves to `syndication`: its eligible season window is a pool to curate into a deterministic no-repeat deck, not an instruction to start at S1E1. Explicit chronological, start-to-finish, binge, or marathon language still resolves to `sequential` and wins over that fallback. One series plus movies is not inferred as either case. This episodic rule does **not** loosen the movie-franchise floor above: films sharing a TMDB collection remain one atomic, in-release-order block even when the surrounding channel is shuffled or syndicated. The prompt guides the model, and `groundPolicy` enforces the two deterministic fallbacks so a small model cannot turn a rerun request into a box-set binge.
-- **Episode selection precedes episode ordering.** A curated single-series request also stamps an
-  `episodeSelection` policy onto that series entry. `highlights` selects a bounded, deterministic
-  pool from media-server community ratings after the hard season, era, and audience filters run;
-  `holiday` selects episodes whose title, overview, or tags match the explicitly named built-in
-  holidays. Selection never relaxes a safety/scope rejection, runs before syndication/shuffle, and
-  expands an entire detected multi-part group when any member is selected. Sparse metadata falls
-  back to the complete already-eligible episode pool: weak evidence may reduce curation quality but
-  must never manufacture dead air. Explicit chronological/binge language suppresses a general
-  `highlights` selector and therefore retains the complete canonical episode run; an explicitly
-  named holiday may still select that holiday's episodes and order that selected pool sequentially.
+- **Rerun curation and narrative order are different promises.** A channel whose lineup is several series (a "Star Trek" franchise channel) defaults to `syndication` so the shows intermix instead of playing one to completion. A clearly curated single-series intent (`classic Simpsons`, `best episodes`, favorites, highlights, reruns) also resolves to `syndication`: its eligible season window is a pool to curate into a deterministic no-repeat deck, not an instruction to start at S1E1. Explicit chronological, start-to-finish, binge, or marathon language forces `sequential`, even when the model proposed shuffle or syndication. One series plus movies is not inferred as either case. This episodic rule does **not** loosen the movie-franchise floor above: films sharing a TMDB collection remain one atomic, in-release-order block even when the surrounding channel is shuffled or syndicated. The prompt guides the model, and `groundPolicy` enforces both deterministic outcomes so a small model cannot turn a rerun request into a box-set binge or a binge into a mixed deck.
+- **Episode selection precedes episode ordering.** Every proposed series carries one proposal-owned
+  closed mode through approval into its Lineup entry: `complete`, `highlights`, or `holiday`.
+  Omitted/unknown legacy data means `complete`. Code derives the mode from explicit Intent after
+  grounding; the model never names episodes or chooses the mode. Whole-word `classic`/`best` plus
+  favorites, reruns, curated, or highlights language selects `highlights`; explicit chronological,
+  start-to-finish, binge, or marathon language selects `complete`. A named built-in holiday selects
+  only that holiday; explicit generic “holiday episodes/specials” selects across the closed built-in
+  holiday vocabulary. Named holiday detection uses the shared Unicode-normalized whole-phrase
+  matcher over every affirmative Intent field, including ordinary refine text such as “add
+  Christmas specials”; “Christmasland” and “Valentinesque” are not holiday cues. `mustExclude`
+  remains a negative grounding constraint and cannot trigger or
+  suppress a positive episode mode. Holiday specificity wins over narrative ordering, so a chronological
+  Christmas request selects Christmas episodes and orders only that pool sequentially.
+  Built-in holiday ids and aliases have one immutable domain owner shared by Intent recognition and
+  scheduler evidence/calendar matching. Calendar dates remain scheduler-owned and bind to those ids;
+  no caller carries a parallel alias table.
+
+  Editorial selection requires current editorial evidence. An episode-resolution result carries the
+  safe playable deck and whether that evidence is available, rather than encoding freshness by
+  blanking episode fields or asking schedulers to inspect cache state. An aged cache is live-refreshed;
+  if refresh fails, a non-empty valid cached deck remains subject to the same season, era, and audience
+  filters but `highlights` and `holiday` use that complete safe deck. An aged empty cache with failed
+  refresh is unavailable. Fresh and successfully refreshed decks permit their declared editorial mode.
+
+  Selection receives the pool only after season, era, and audience gates. It treats each standalone
+  episode or detected multi-part story as one atomic unit, and returns units in canonical order for
+  the existing ordering engine to place. A multi-part unit is rated only when every part has a valid
+  rating, using the arithmetic mean of its part ratings; one missing/invalid part makes the unit
+  unrated. `highlights` uses the Library's aggregate community rating
+  only as a relative cohort signal: at least eight units must exist, at least 75% must carry a finite
+  rating in `(0,10]`, and the chosen pool is the upper rated quartile with a four-unit floor and a
+  48-unit cap. All units tied at the cutoff are included; a tie that consumes the rated cohort or
+  exceeds the cap falls back to `complete`. The 75% floor prevents a sparse rated minority from
+  defining “best”; four keeps a usable rerun deck; 48 bounds long-running series. Emby/Jellyfin does
+  not expose rating vote counts, so cohort coverage is the only supported confidence gate: this
+  slice makes no absolute-confidence claim and performs no scheduler-time enrichment call.
+
+  One episode-evidence codec owns the rating and text/tag domain. The Library adapter and durable
+  `SeriesEpisodes` cache both decode provider/cache JSON through it, while durable writes invoke the
+  same sanitizer, so neither live responses nor legacy blobs can bypass newer bounds. Malformed
+  editorial rating/text/tag JSON becomes unavailable evidence and unknown fields are ignored. A
+  malformed mixed-type tag array makes the entire tag field unavailable; no successfully decoded
+  prefix survives. Exact or Unicode-case-fold duplicate editorial
+  members are also unavailable: the decoder preserves/counts object-member occurrences instead of
+  accepting a map-iteration or last-member winner. Editorial corruption does not discard neighboring
+  valid live episodes, while malformed playable structure still omits that live item. Every cached series episode must be an object
+  in which each required playable member is present: a non-blank Library item id, positive runtime,
+  non-negative season, positive episode number, and an episode end of zero or at least the starting
+  episode. Absence is not interpreted as an explicit zero, and every required numeric member must
+  have an actual JSON number type. Every non-null database value is decoded: an empty string, null
+  document, wrong document shape, null/empty rows, exact or case-fold duplicates of those required playable members, and malformed or
+  invalid playable identity, numbering, or runtime fail the whole cache read because scheduling
+  cannot safely invent those facts or emit a blank/zero-duration slot.
+  The Library adapter drops live items without a non-blank id, positive runtime, or present valid
+  season/episode numbering. The durable write interface rejects the entire write when the same
+  playable contract is violated; editorial repair remains tolerant. A valid `[]` alone represents
+  an enumerated series with no playable episodes.
+
+  `holiday` matches normalized whole words/phrases in the episode title and bounded overview/tags,
+  restricted to the selected holiday ids (empty means all built-ins). A no-match holiday request,
+  fewer than six rated units in an eight-episode fixture, malformed mode, or sparse/legacy cache row
+  returns the complete already-safe pool. Selection never restores an audience/scope rejection and
+  never manufactures dead air. Proposal review renders the mode before approval as `All episodes`,
+  `Curated highlights`, or the named/generic holiday episode scope.
+
+  `ApplyLineup` same-key replacement preserves the approved mode when the lossy lineup edit DTO
+  omits it. Reordering or renaming a series therefore cannot silently reset highlights/holiday to
+  complete. At approval, after all search additions and drops, the one server approval gate
+  re-stamps every series in the lineup, acquisitions, and alternates from the Proposal's original
+  Intent before Proposal serialisation and Lineup binding. Generation applies the same grounding to
+  all three collections, so an alternate promoted later cannot silently default to a complete deck.
+  Missing or client-injected modes therefore cannot cross the approval boundary; movies remain
+  selector-free because episode selection does not apply to them.
+  Before approval, the proposal API exposes one read-only selection preview derived server-side
+  from the same trusted Intent. Search-added series rows render that preview even when the proposal
+  originally contained only movies. The client does not parse cues or submit the projection;
+  approval still re-derives and replaces every series selector before persistence.
 
 ## 6. Seasonality ("holiday episodes at holiday time — and only then")
 
@@ -386,6 +453,9 @@ When the eligible pool can't satisfy the policy (small library ∩ tight scope �
 
 - **Suggester (§8):** output contract gains `policy` (schema above), grounded like everything else; templates ship pre-filled policies ("90s Saturday Morning" carries `TV-Y7` + era + genres out of the box); intent-hint copy teaches the constraint vocabulary.
 - **Proposal review + channel editor (§12):** policy renders as editable chips (ceiling, seasons, era, ordering, seasonal mode) + the exclusion report (§4) + a **cycle preview** (§8.1 `GET …/cycle?at=` — first N slots with the active-rule attribution) so "did old-school bind?" and "what airs Saturday 9am?" are answerable by looking.
+  Every series row also names its proposal-owned episode-selection mode before approval: all
+  episodes, curated highlights, or the explicit holiday scope. The review explains the selector;
+  it does not let the client choose episode identities or bypass the deterministic binder.
   - ⚠ **The exclusion report reaches the CHANNEL EDITOR only; proposal review still does not show it.** Both preview endpoints (`GET …/cycle` and `POST …/programming/preview`) carry `excluded` — counts plus a per-item reason — and the cycle-preview panel renders it under the schedule. This half of the sentence was aspirational for as long as the type existed: `ComputeDesiredAt` filled the report on **every reconcile** and every caller discarded it, so a title the ceiling refused was invisible product-wide, and diagnosing one meant querying the media server by hand. **Reconcile still discards its copy** — it has no column and no event to put one in, and the preview recomputes the identical report from the same pure builder. Both remaining gaps are real and named rather than implied. The same chip surface is the **per-channel rules editor** (§8.1) on the channel page (§7 `PATCH .../{id}` writes `policy_json`); omitted chips inherit the built-in default (§9), and `audience` + explicit `scope` are shown as never-relaxed safety fields.
 - **Filler is part of the channel editor too (§10):** `policy.filler` (the `FillerSelection`) is edited on the channel page alongside the rules chips — theme criteria (era/audience/category/kinds) + pinned/excluded clips — with a live pod sandbox (`POST …/pods/preview`) that re-assembles the actual break against the unsaved draft before Apply. It also rides `policy_json`, so it round-trips and inherits the same "omitted = any" default; a new channel seeds its filler era from `scope.era`.
 - **Lineup builder (§9):** hard filters → eligible pool → seeded constraint-aware slotting (greedy with backtracking is sufficient at envelope scale) → relaxation ladder on failure → pods → push. The periodic sweep re-evaluates policy (seasonal windows roll, library grows, relaxations un-relax when the pool recovers).
@@ -419,6 +489,13 @@ A channel built from an intent shouldn't be frozen at build time — as the libr
   this run, and ordinary/manual refine jobs never reach the auto-curate grant. Without that
   discriminator, a requester grant could bypass the channel quality/cap thresholds, while a
   human refine on an opted-in channel could be silently treated as unattended work.
+  Discovery-feedback scope follows the same durable authority: immediately before generation the
+  worker resolves the one current Channel whose unique non-empty `intent_ref` equals the trusted
+  claimed Job id and attaches that Channel id only to the in-memory Intent. The serializer never
+  persists this execution field. Missing, detached, unreadable, empty, or mismatched ownership
+  fails the Attempt before catalog or provider access; fresh suggestions and manual refines use
+  household feedback only. An admin may name a Channel when recording an editorial feedback event,
+  but that event field is not execution authority.
 - **Library-aware + intent-weighted.** The fresh proposal already classifies picks. Re-curation leans on it: an **in-library** title that fits the intent is added to the lineup immediately (already `available` → airs next rotation, **zero acquisition, no approval needed** — it's a lineup extension, like a manual add). A **net-new** (not-in-library) title is only *requested* if its intent-fit **score clears a quality bar** (`recurate.min_score`) **and** the channel isn't at its **title cap** (`recurate.max_titles`); candidates are ranked by score and the top ones taken. Both knobs are global settings (`env > db > default`) with an **optional per-channel override** on the opt-in, so a channel can be more or less permissive than the fleet default.
 - **Additive lineup binding — auto-curate ADDS, humans REPLACE.** This split lives in the `ChannelBinder`, keyed on the proposal's `approvedBy` audit field. A **human-in-the-loop** approval (manual approve, or a manual refine the operator drove) **replaces** the lineup — a person decided, including to remove titles. **Scheduled auto-curate** runs unattended, so it is **non-destructive**: it UNIONS the refreshed proposal's picks onto the channel's existing lineup and **keeps every still-available title the refresh merely didn't re-pick** (an LLM is stochastic; omission is not a decision to remove). Without this, weekly re-curation would *churn* — silently dropping good, available, on-theme titles nobody chose to drop. **Conservative pruning** is the one exception: auto-curate drops an existing title only when it is **clearly off-intent** — it has **genuinely left the library** (state `unavailable`), or the intent's `mustExclude` names it. A title that is still `available` (or an acquisition still in flight — `wanted`/`requested`/`downloading`) is never dropped by re-curation. Every drop is logged. So re-curation grows a channel toward its intent and prunes only the clearly-wrong; a refresh that finds nothing better leaves the channel exactly as it was.
 - **Retirement at the cap — the turnstile (§8.2a).** Additive binding plus a title cap has an end state nobody chose: a channel grows to `recurate.max_titles` and then **freezes permanently**. `room` reaches 0, every future candidate is dropped, and re-curation keeps running, keeps spending tokens, and can never change anything again. Observed on the dev "1980s Action Heroes": 25 → 27 → 30 → 34 titles against a cap of 40, with nothing ever leaving. Growing and frozen were the only two states; neither is rotation.
@@ -496,6 +573,21 @@ This also means adjacency **cannot** be a pure post-processing step bolted onto 
 
 **Deliberately deferred: TMDB `keywords`.** The endpoint works and looks tempting for thematic grouping, but the vocabulary is mixed — a probe across the same channel returned real themes (`dystopia`, `alien`, `creature`, `atomic bomb`) interleaved with mood tags (`excited`, `suspenseful`, `aggressive`), a structural tag (`sequel`), and a location (`los angeles, california`). Using it raw would group films by mood and geography and call it a theme. It needs a curated allowlist or a discriminating heuristic first — that is its own design decision, not a detail of this one. Logged in §9 rather than half-built here.
 
+## 8.4 Proposal trace and scheduler boundary
+
+Proposal explanations are immutable evidence from the suggestion/ranking seam. The trace
+must carry the exact lexicographic rank tuple and tie-break inputs, plus bounded grounded
+dispositions, but must not become a second scoring algorithm or include model rationale as
+deterministic evidence. Approval edits and later channel state do not rewrite its meaning.
+The tuple's integer relevance component and closed request/tone/era/include/exclude/refine match
+booleans are v1's safe explicit-constraint evidence; raw request terms are not copied into each
+candidate trace.
+
+Scheduler explanations are a separate future seam: `schedule.ComputeDesiredAt` owns
+availability, episode selection, ordering, window, placement, and hard-exclusion reasons.
+Those facts may reuse closed reason names, but a proposal trace must never be relabeled as
+current-channel or scheduler evidence.
+
 ## 9. Extensibility — the checklist for "I'm sure I can think of more"
 
 Every future heuristic is added the same way; a heuristic is *done* when all five exist:
@@ -509,6 +601,32 @@ Every future heuristic is added the same way; a heuristic is *done* when all fiv
 Candidates already visible from here (logged, not v1): dayparting audience ceilings (stricter mornings), episode-quality floors (community ratings), "premiere" slotting for newly-landed backfill, per-holiday custom calendars, inter-channel dedup (don't air the same movie on two channels the same night), **thematic grouping from TMDB `keywords`** (blocked on separating real themes from mood tags and locations — see §8.3), **director/cast blocks from TMDB `credits`** ("a John Carpenter night" — the data is clean, the open question is whether it's a rule `What` or an ordering mode), and a **recency constraint** ("nothing re-aired within N days"), which needs an aired-history signal Loomarr does not yet record.
 
 ⚠ **A candidate source is not a heuristic** and does not take the five-point shape above — it has no policy field and no slotting enforcer, because it feeds the *proposal* pipeline (§8/§8.2), not the lineup builder. Its checklist is different: a `catalog.Scope` value, a corpus fetch, entry through the existing grounding + audience + approval chokepoints, and provenance the approval card can show. §8.3 is the worked example.
+
+## 9.1. Discovery certification owns provider-resource uncertainty
+
+The discovery evaluator follows the slice-1 seam in
+[`channel-discovery-next.md`](engineering/plans/channel-discovery-next.md): one public `Runner`
+owns grounded generation, materialized schedule outcomes, judging, and the versioned scorecard.
+Runner and schedule certification tests inject the eval-only semantic recording `Judge`, exercise
+the public `Judge.Score(ctx, JudgeEvidence)` seam, validate the bounded typed evidence received at
+that seam, and assert the resulting scorecard behavior and call count. They never reconstruct
+semantic evidence from a rendered prompt. Production `modelJudge` renderer and provider
+request/response tests are a separate, supplemental wire layer: they can prove serialization,
+routing, parsing, and attribution, but cannot certify schedule semantics or repair, fill in, or
+rebound evidence that `Runner` supplied incorrectly. Prompt-substring assertions and private prompt
+parsers are therefore forbidden as certification evidence.
+The production suggester's provider adapter is therefore also the only honest place to enforce a
+resource ledger around every repair and tool-loop call inside one `Suggest`.
+
+Per-run limits reset for each case trial, while per-suite limits and uncertainty belong to the
+whole `Runner.Run`. With hard token or hosted-USD ceilings, a provider call whose required usage is
+missing makes the suite ledger permanently uncertain; no later generator, tool-loop turn, or judge
+may start. Ollama remains explicitly non-billed, rather than being assigned a fictional charge.
+Failure-stage ownership remains independent of that resource latch: the first retrieval or
+generation diagnosis in the current trial is retained even if its provider response also makes
+accounting uncertain, while later trials fail before generation at `budget_exhausted`. This keeps
+the scorecard's closed first-failure vocabulary diagnostic without allowing uncertain paid work to
+continue.
 
 ## 10. Tests (extends main doc §19 — these join the phase 10/11 gates)
 

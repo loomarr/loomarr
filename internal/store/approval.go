@@ -221,7 +221,7 @@ type proposalApprovalTxReader struct {
 
 func (r proposalApprovalTxReader) GetUser(ctx context.Context, id string) (User, error) {
 	return scanUser(r.tx.QueryRowContext(ctx, r.s.ph(
-		`SELECT id, name, role, disabled, quota, auto_approve, password_hash, created_at, updated_at
+		`SELECT id, name, role, disabled, quota, auto_approve, media_server_linked, password_hash, created_at, updated_at
 		 FROM users WHERE id = ?`), id))
 }
 

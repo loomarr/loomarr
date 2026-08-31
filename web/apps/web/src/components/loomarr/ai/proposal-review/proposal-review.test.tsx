@@ -26,15 +26,46 @@ const proposal: Proposal = {
   acquisitions: [{ name: "Con Air", year: 1997, mediaType: "movie", inLibrary: false, confidence: 0.81 }],
   alternates: [{ name: "Face/Off", mediaType: "movie", inLibrary: false }],
   scores: { themeFit: 0.88, availabilityRatio: 0.5, eraBalance: 0.6, overall: 0.75 },
+  trace: {
+    version: 1,
+    surfacedTotal: 2,
+    recordedTotal: 2,
+    truncated: false,
+    candidates: [
+      {
+        key: "movie:tmdb: Heat",
+        name: "Heat",
+        ownership: "library",
+        constraints: { request: true, era: true },
+        disposition: "selected",
+        reason: "selected",
+      },
+      {
+        key: "movie:tmdb: Face",
+        name: "Face/Off",
+        ownership: "acquisition",
+        disposition: "alternate",
+        reason: "acquisition_cap",
+      },
+    ],
+  },
 };
 
 describe("ProposalReview", () => {
   it("separates in-library lineup from acquisitions and shows scores", () => {
     renderWithTooltip(<ProposalReview proposal={proposal} />);
-    expect(screen.getByText("Heat")).toBeInTheDocument();
+    expect(screen.getAllByText("Heat").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("In library")).toBeInTheDocument();
     expect(screen.getByText("Will acquire")).toBeInTheDocument();
     expect(screen.getByText("88%")).toBeInTheDocument();
+  });
+
+  it("renders deterministic why-this and why-not evidence from the trace", () => {
+    renderWithTooltip(<ProposalReview proposal={proposal} />);
+    expect(screen.getByRole("heading", { name: "Why this / why not" })).toBeInTheDocument();
+    expect(screen.getAllByText("Heat").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("selected · matched request, era")).toBeInTheDocument();
+    expect(screen.getByText("acquisition cap")).toBeInTheDocument();
   });
 
   it("explains episode selection before approval", () => {
@@ -52,6 +83,56 @@ describe("ProposalReview", () => {
     };
     renderWithTooltip(<ProposalReview proposal={curated} status="submitted" />);
     expect(screen.getByText("Curated highlights")).toBeInTheDocument();
+  });
+
+  it("explains a complete episode deck before approval", () => {
+    const complete: Proposal = {
+      ...proposal,
+      lineup: [
+        {
+          name: "The Simpsons",
+          mediaType: "series",
+          tmdbId: 456,
+          inLibrary: true,
+          episodeSelection: { mode: "complete" },
+        },
+      ],
+    };
+    renderWithTooltip(<ProposalReview proposal={complete} status="submitted" />);
+    expect(screen.getByText("All episodes")).toBeInTheDocument();
+  });
+
+  it("explains omitted legacy series selection as the complete deck", () => {
+    const legacy: Proposal = {
+      ...proposal,
+      lineup: [
+        {
+          name: "The Simpsons",
+          mediaType: "series",
+          tmdbId: 456,
+          inLibrary: true,
+        },
+      ],
+    };
+    renderWithTooltip(<ProposalReview proposal={legacy} status="submitted" />);
+    expect(screen.getByText("All episodes")).toBeInTheDocument();
+  });
+
+  it("explains an unknown legacy series selection as the complete deck", () => {
+    const legacy: Proposal = {
+      ...proposal,
+      lineup: [
+        {
+          name: "The Simpsons",
+          mediaType: "series",
+          tmdbId: 456,
+          inLibrary: true,
+          episodeSelection: { mode: "retired-mode" },
+        },
+      ],
+    };
+    renderWithTooltip(<ProposalReview proposal={legacy} status="submitted" />);
+    expect(screen.getByText("All episodes")).toBeInTheDocument();
   });
 
   it("gates on approve for an actionable proposal", () => {

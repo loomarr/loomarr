@@ -155,6 +155,20 @@ func (a *Approver) approveDurably(
 	if aerr != nil {
 		return ApprovalResult{}, aerr
 	}
+	// The edit surface controls title membership, not scheduler semantics. Re-ground every
+	// series from the Proposal's original Intent after additions/drops, at this one approval
+	// boundary shared by manual, bulk, and automatic approval. This also repairs a missing or
+	// crafted selector before either the durable approved JSON or the binder can observe it.
+	selectionChanged := stampEpisodeSelection(body.Lineup, body.Intent)
+	selectionChanged = stampEpisodeSelection(body.Acquisitions, body.Intent) || selectionChanged
+	selectionChanged = stampEpisodeSelection(body.Alternates, body.Intent) || selectionChanged
+	if selectionChanged {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			return ApprovalResult{}, fmt.Errorf("approve: re-serialising grounded episode selection: %w", err)
+		}
+		editedJSON = string(raw)
+	}
 	if summary != "" {
 		p.ModSummary = summary
 	}
@@ -280,8 +294,9 @@ func (a *Approver) afterApprovalCommitted(ctx context.Context, channelID string)
 // stored bytes should be left exactly as they were.
 func applyEdit(body *Proposal, edit *ApprovalEdit) (summary string, editedJSON string, err error) {
 	if edit.isEmpty() {
-		// An unmodified approval leaves ProposalJSON untouched, so its bytes stay
-		// byte-identical to what the approver actually reviewed.
+		// An unmodified approval leaves ProposalJSON untouched here. The enclosing
+		// approval gate may still re-serialise it if a series selector is missing or
+		// conflicts with the original Intent; already-grounded proposals keep their bytes.
 		return "", "", nil
 	}
 

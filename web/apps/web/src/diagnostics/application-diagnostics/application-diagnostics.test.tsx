@@ -125,7 +125,7 @@ describe("ApplicationDiagnostics", () => {
     });
 
     await userEvent.click(screen.getByRole("combobox", { name: "Log order" }));
-    await userEvent.click(screen.getByRole("option", { name: "Oldest first" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Oldest first" }));
     expect(onFiltersChange).toHaveBeenLastCalledWith(expect.objectContaining({ order: "oldest" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Newer" })).toBeEnabled());
     expect(screen.getByRole("button", { name: "Older" })).toBeDisabled();

@@ -19,22 +19,29 @@
     "@loomarr/ui": "workspace:*",
     "@loomarr/ui-tv": "workspace:*",
     "@react-native-tvos/config-tv": "0.1.6",
-    "expo": "~57.0.17",
-    "expo-keep-awake": "~57.0.1",
-    "expo-secure-store": "~57.0.2",
-    "expo-status-bar": "~57.0.1",
-    "expo-system-ui": "~57.0.3",
-    "expo-video": "~57.0.3",
+    "expo": "58.0.0-canary-20260812-27f94d4",
+    "expo-keep-awake": "58.0.0-canary-20260812-27f94d4",
+    "expo-secure-store": "58.0.0-canary-20260812-27f94d4",
+    "expo-status-bar": "58.0.0-canary-20260812-27f94d4",
+    "expo-system-ui": "58.0.0-canary-20260812-27f94d4",
+    "expo-video": "58.0.0-canary-20260812-27f94d4",
     "react": "19.2.3",
     "react-native": "npm:react-native-tvos@0.86.2-0",
     "react-native-reanimated": "4.5.1",
-    "react-native-safe-area-context": "~5.7.0",
+    "react-native-safe-area-context": "5.7.0",
     "react-native-worklets": "0.10.1"
   },
   "devDependencies": {
     "@loomarr/fixtures": "workspace:*",
-    "@types/react": "~19.2.2",
-    "expo-doctor": "1.20.2",
-    "typescript": "~6.0.3"
+    "@types/react": "19.2.18",
+    "expo-doctor": "1.20.4",
+    "typescript": "7.0.2"
+  },
+  "expo": {
+    "install": {
+      "exclude": [
+        "typescript"
+      ]
+    }
   }
 }

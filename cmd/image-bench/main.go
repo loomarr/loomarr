@@ -3,15 +3,18 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"hash/adler32"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/jpeg"
-	"image/png"
 	"io"
 	"os"
 	"path/filepath"
@@ -373,7 +376,7 @@ func writeBenchmarkSource(path string, profile benchmarkProfile) error {
 		}
 	}()
 	if profile.sourceFormat == "png" {
-		err = png.Encode(file, img)
+		err = encodeStableBenchmarkPNG(file, img)
 	} else {
 		err = jpeg.Encode(file, img, &jpeg.Options{Quality: 90})
 	}
@@ -385,6 +388,72 @@ func writeBenchmarkSource(path string, profile benchmarkProfile) error {
 	}
 	encoded = true
 	return nil
+}
+
+func encodeStableBenchmarkPNG(out io.Writer, img *image.NRGBA) error {
+	if _, err := out.Write([]byte("\x89PNG\r\n\x1a\n")); err != nil {
+		return err
+	}
+	header := make([]byte, 13)
+	binary.BigEndian.PutUint32(header[0:4], uint32(img.Bounds().Dx()))
+	binary.BigEndian.PutUint32(header[4:8], uint32(img.Bounds().Dy()))
+	header[8] = 8 // bit depth
+	header[9] = 6 // RGBA
+	if err := writeBenchmarkPNGChunk(out, "IHDR", header); err != nil {
+		return err
+	}
+	var raw bytes.Buffer
+	for y := range img.Bounds().Dy() {
+		if err := raw.WriteByte(0); err != nil { // fixed None row filter
+			return err
+		}
+		start := y * img.Stride
+		if _, err := raw.Write(img.Pix[start : start+img.Bounds().Dx()*4]); err != nil {
+			return err
+		}
+	}
+	if err := writeBenchmarkPNGChunk(out, "IDAT", storedBenchmarkZlib(raw.Bytes())); err != nil {
+		return err
+	}
+	return writeBenchmarkPNGChunk(out, "IEND", nil)
+}
+
+func storedBenchmarkZlib(raw []byte) []byte {
+	// A hand-written stored-block stream keeps corpus bytes independent of changes to Go's
+	// flate implementation. 0x7801 is the zlib header for a 32 KiB window and fastest level.
+	checksum := adler32.Checksum(raw)
+	encoded := make([]byte, 0, len(raw)+(len(raw)/65_535+1)*5+6)
+	encoded = append(encoded, 0x78, 0x01)
+	for len(raw) > 0 {
+		blockSize := min(len(raw), 65_535)
+		if blockSize == len(raw) {
+			encoded = append(encoded, 0x01)
+		} else {
+			encoded = append(encoded, 0x00)
+		}
+		length := uint16(blockSize)
+		encoded = binary.LittleEndian.AppendUint16(encoded, length)
+		encoded = binary.LittleEndian.AppendUint16(encoded, ^length)
+		encoded = append(encoded, raw[:blockSize]...)
+		raw = raw[blockSize:]
+	}
+	return binary.BigEndian.AppendUint32(encoded, checksum)
+}
+
+func writeBenchmarkPNGChunk(out io.Writer, kind string, data []byte) error {
+	if err := binary.Write(out, binary.BigEndian, uint32(len(data))); err != nil {
+		return err
+	}
+	if _, err := io.WriteString(out, kind); err != nil {
+		return err
+	}
+	if _, err := out.Write(data); err != nil {
+		return err
+	}
+	digest := crc32.NewIEEE()
+	_, _ = io.WriteString(digest, kind)
+	_, _ = digest.Write(data)
+	return binary.Write(out, binary.BigEndian, digest.Sum32())
 }
 
 func summarizeProfile(profile benchmarkProfile) profileSummary {

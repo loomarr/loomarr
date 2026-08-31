@@ -6,7 +6,14 @@ export type {
   BrandTone,
   BrandWordmarkProps,
 } from "./src/brand";
-export { BrandLaunch, BrandLockup, BrandMark, BrandWordmark, brandLaunchMotion } from "./src/brand";
+export {
+  BrandLaunch,
+  BrandLockup,
+  BrandMark,
+  BrandWordmark,
+  brandLaunchMotion,
+  resolveBrandLaunchMinHeight,
+} from "./src/brand";
 export type { IconName, IconProps, IconSize, IconTone } from "./src/icon";
 export { Icon, icons } from "./src/icon";
 export type {

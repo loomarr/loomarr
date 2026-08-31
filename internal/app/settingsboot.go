@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/requester"
 	"github.com/loomarr/loomarr/internal/settings"
@@ -127,6 +128,34 @@ func (r resolved) boolv(key string) bool {
 		return b
 	}
 	return false
+}
+
+func (r resolved) emailConfig() notifications.EmailConfig {
+	if r.svc == nil {
+		return notifications.EmailConfig{}
+	}
+	values := r.svc.ResolveMany(
+		"notifications.email.enabled",
+		"notifications.smtp.host",
+		"notifications.smtp.port",
+		"notifications.smtp.security",
+		"notifications.smtp.username",
+		"notifications.smtp.password",
+		"notifications.email.from_address",
+		"notifications.email.from_name",
+	)
+	stringValue := func(key string) string {
+		value, _ := values[key].Value.(string)
+		return value
+	}
+	boolValue, _ := values["notifications.email.enabled"].Value.(bool)
+	port, _ := values["notifications.smtp.port"].Value.(int)
+	return notifications.EmailConfig{
+		Enabled: boolValue, Host: stringValue("notifications.smtp.host"), Port: port,
+		Security: notifications.EmailSecurity(stringValue("notifications.smtp.security")),
+		Username: stringValue("notifications.smtp.username"), Password: stringValue("notifications.smtp.password"),
+		FromAddress: stringValue("notifications.email.from_address"), FromName: stringValue("notifications.email.from_name"),
+	}
 }
 
 // freeze captures a coherent generation-scoped snapshot. Persistence remains

@@ -9,13 +9,13 @@
 # placeholder and serves a "not built" notice — the UI would be missing. Runs on
 # the BUILD platform (native), never emulated: the output is portable static assets.
 # codegen reads the committed api/openapi.yaml (orval) — no running server needed.
-# Node 22.22.2 satisfies the repository's >=22.5 <23 contract and includes the
+# Node 22.23.2 satisfies the repository's >=22.5 <23 contract and includes the
 # built-in `node:sqlite` pnpm 11.13 uses for its store index. Keep the image on the
 # same major CI and contributors certify; a release build is not the place to trial
 # the next Node line. Corepack is separately pinned because it is no longer bundled
 # in newer official Node images.
-FROM --platform=$BUILDPLATFORM node:22.22.2-bookworm-slim@sha256:9f6d5975c7dca860947d3915877f85607946403fc55349f39b4bc3688448bb6e AS fe
-RUN npm install -g corepack@0.35.0 && corepack enable
+FROM --platform=$BUILDPLATFORM node:22.23.2-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5 AS fe
+RUN npm install -g corepack@0.36.0 && corepack enable
 WORKDIR /src
 COPY web ./web
 COPY api/openapi.yaml ./api/openapi.yaml
@@ -30,7 +30,7 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 # Cross-compile the cgo-free binary on the BUILD platform for the TARGET arch —
 # far faster than compiling under QEMU emulation, and correct because the static
 # pure-Go build has no arch-specific C toolchain to satisfy.
-FROM --platform=$BUILDPLATFORM golang:1.26-bookworm@sha256:116d58cbd88c1297624acc6e967a060012422bacf9930927e23fb719189c6f36 AS build
+FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:ded31c68586d2e49e760acc2e65a884b23d032e9bbbed0ae0c55abd3fcaf4452 AS build
 ARG TARGETARCH
 WORKDIR /src
 # Cache modules first.
@@ -55,7 +55,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
 
 # Required image renderer (§14, §22). Build natively for each Buildx target so the bundled
 # libwebp and Rust standard library always match the runtime architecture.
-FROM rust:1.97-bookworm@sha256:0e2bcaef56d041a486784e54104a81aebe0da44bd03019bd70bc0401e42e4a97 AS image-worker
+FROM rust:1.98-bookworm@sha256:82150a52ec202c1b14d7817e14516c392bb7f5cfebd88f1ed531cb37ebd39922 AS image-worker
 WORKDIR /src
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY rust ./rust
@@ -116,7 +116,7 @@ RUN LOOMARR_RELEASE="${VERSION:-dev}" cargo build --release --locked -p loomarr-
 # integrity). To bump: `docker buildx imagetools inspect debian:stable-slim`, take the new
 # `Digest:`, and update the tag alongside it so the two never disagree. Same for the fe/build/
 # image-worker bases above.
-FROM debian:stable-slim@sha256:1710bde34461551a19a47c787885ec9ad7058d9a5bead2affb8d088fa2f8502b AS runtime
+FROM debian:stable-slim@sha256:04634311a8d5fc442b6eb06d792293c4f3e2268652ca7634e00ce8ef5cc0a28a AS runtime
 ARG TARGETARCH
 # The Debian package layer is pinned to a snapshot.debian.org timestamp so `apt-get install` below
 # resolves the SAME package versions on every build — the digest-pinned base above fixes the root
@@ -125,18 +125,18 @@ ARG TARGETARCH
 # the two aligned. snapshot.debian.org never removes old versions, so unlike a per-package `=version`
 # pin this does not rot when trixie drops a package on a point release. To bump: move the base-image
 # digest and this timestamp together to a newer snapshot, then rerun the image build + `make test-ffmpeg`.
-ARG DEBIAN_SNAPSHOT=20260803T000000Z
-ARG YTDLP_VERSION=2026.07.04
-ARG DENO_VERSION=v2.9.2
+ARG DEBIAN_SNAPSHOT=20260824T000000Z
+ARG YTDLP_VERSION=2026.08.19
+ARG DENO_VERSION=v2.9.6
 # Release-asset digests were copied from the upstream GitHub release records. Some
 # upstream records are mutable, so the committed checksums — not the record itself —
 # are the fail-closed identity. Keep both architectures explicit: a version tag alone
 # does not stop an asset from being replaced, and one architecture must never inherit
 # the other's checksum.
-ARG YTDLP_AMD64_SHA256=6bbb3d314cde4febe36e5fa1d55462e29c974f63444e707871834f6d8cc210ae
-ARG YTDLP_ARM64_SHA256=b6ce97646773070d7a7ffd6bbbdcaecb47c48483909c54c915bf08a7a9b5e0b1
-ARG DENO_AMD64_SHA256=934d1bd5cb09eaed7f2e4a4fc58208d04a3c5c0fcde9f319d93d735265c67a4a
-ARG DENO_ARM64_SHA256=310b8f48e59964ff18890d35e64f64fb90e8b1cc5d9ebff8c818327d5afb16d2
+ARG YTDLP_AMD64_SHA256=58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46399230a
+ARG YTDLP_ARM64_SHA256=b16e4dab368a816cd05d477d698a605a6ae87ccee1c8ffd38fa21d7254141fcc
+ARG DENO_AMD64_SHA256=394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2
+ARG DENO_ARM64_SHA256=9a46afc6c392c7cd2ff71a31558935545b46408d0e87f7a86908c712721c046e
 # ⚠⚠ DO NOT BUMP THIS WITHOUT RUNNING `make test-ffmpeg` AGAINST THE NEW BUILD.
 #
 # **ffmpeg n9 BREAKS INTERNAL PLAYOUT ENTIRELY** (§9.1), so this pin has a CEILING, not just a
@@ -167,20 +167,25 @@ ARG DENO_ARM64_SHA256=310b8f48e59964ff18890d35e64f64fb90e8b1cc5d9ebff8c818327d5a
 # still emits continuous output and exits 0, and the failure presents as "the channel repeats one
 # show" rather than as an error.
 #
-# ffmpeg is pinned to an IMMUTABLE BtbN release + per-arch SHA256, exactly like yt-dlp, deno, and
-# whisper below — a redistributed image must be reproducible and its GPL corresponding-source must
-# identify EXACT bytes, which `latest` (a mutable release whose assets are overwritten) cannot.
+# ffmpeg is pinned to a RETAINED MONTHLY BtbN release + per-arch SHA256, exactly like yt-dlp, deno,
+# and whisper below — a redistributed image must be reproducible and its GPL corresponding-source
+# must identify EXACT bytes, which `latest` (a mutable release whose assets are overwritten) cannot.
+# BtbN prunes all but the latest 14 ordinary autobuilds; only one release per month is retained for
+# 24 months. An arbitrary dated release is therefore NOT immutable. The evidence manifest binds the
+# pin to the exact upstream pruning-policy revision that classifies this archive as monthly-retained.
 #
 # ⚠ STAY ON THE n8.1 SERIES. ffmpeg >= 9 cannot advance a concat demuxer past a chunked entry, which
 # is load-bearing for playout (a channel would freeze on the first commercial-broken programme). This
-# pin is `n8.1.2-44-g7c533d0f86` from the dated release below; the `make test-ffmpeg` playout suite is
-# green against the n8.1 series. To bump: pick a newer `autobuild-YYYY-MM-DD-HH-MM` release that still
-# ships an `n8.1` gpl build, take its exact asset filename, download both arch archives, and update
-# FFMPEG_RELEASE / FFMPEG_BUILD_ID / both SHA256s together — never point any one of them at `latest`.
-ARG FFMPEG_RELEASE=autobuild-2026-08-16-13-00
-ARG FFMPEG_BUILD_ID=n8.1.2-44-g7c533d0f86
-ARG FFMPEG_AMD64_SHA256=17780994c4679806fb227676f66a0af30c6379afc770324829f48f2a379be558
-ARG FFMPEG_ARM64_SHA256=e970a7dd450b440a21126a8bac3a1c95178b6ba05bee2465a4d2a586345c81ac
+# pin is `n8.1.2-34-g9b6c8969e0` from the retained monthly release below; the `make test-ffmpeg`
+# playout suite is green against the n8.1 series. To bump: choose BtbN's retained monthly release
+# for a completed month (normally its final autobuild), confirm the pinned `util/prunetags.sh` policy
+# still keeps it, take its exact n8.1 GPL asset filename, download both architecture archives, and
+# update FFMPEG_RELEASE / FFMPEG_BUILD_ID / both SHA256s + redistribution evidence together — never
+# choose an ordinary daily archive or point any value at `latest`.
+ARG FFMPEG_RELEASE=autobuild-2026-07-31-14-10
+ARG FFMPEG_BUILD_ID=n8.1.2-34-g9b6c8969e0
+ARG FFMPEG_AMD64_SHA256=09fc77be269c7053e438b7e96548e4af97604faf96a42c4a3c56a1ad74c22c0a
+ARG FFMPEG_ARM64_SHA256=177e40c91564dec3840096f3bf1ffe696b94330585972462cfc739fa29fe0e1a
 ARG WHISPER_VERSION=v1.9.1
 ARG WHISPER_AMD64_SHA256=f3bf3b4369a99b54665b0f19b88483b30de27f25963b0414235dea03198515c5
 ARG WHISPER_ARM64_SHA256=e0b66cd551ff6f2a28fabe3c6e89691eea037bb76833493abb9a71ca788994b3
@@ -283,17 +288,20 @@ RUN set -eux; \
       apt-get install -y --no-install-recommends intel-media-va-driver; \
     fi; \
     useradd -u 65532 -m -s /usr/sbin/nologin nonroot; \
-    curl -fsSL -o /usr/local/bin/yt-dlp \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+      -o /usr/local/bin/yt-dlp \
       "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/${YTDLP_ASSET}"; \
     echo "${YTDLP_SHA256}  /usr/local/bin/yt-dlp" | sha256sum -c -; \
     chmod +x /usr/local/bin/yt-dlp; \
-    curl -fsSL -o /tmp/deno.zip \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+      -o /tmp/deno.zip \
       "https://github.com/denoland/deno/releases/download/${DENO_VERSION}/deno-${DENO_ARCH}-unknown-linux-gnu.zip"; \
     echo "${DENO_SHA256}  /tmp/deno.zip" | sha256sum -c -; \
     unzip -q /tmp/deno.zip -d /usr/local/bin; \
     chmod +x /usr/local/bin/deno; \
     rm -f /tmp/deno.zip; \
-    curl -fsSL -o /tmp/ffmpeg.tar.xz \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+      -o /tmp/ffmpeg.tar.xz \
       "https://github.com/BtbN/FFmpeg-Builds/releases/download/${FFMPEG_RELEASE}/${FFMPEG_BUILD}.tar.xz"; \
     echo "${FFMPEG_SHA256}  /tmp/ffmpeg.tar.xz" | sha256sum -c -; \
     tar -xJf /tmp/ffmpeg.tar.xz -C /tmp; \
@@ -325,7 +333,8 @@ RUN set -eux; \
     # libgomp1 is an apt dependency, NOT bundled: whisper-cli is OpenMP-threaded and
     # debian:stable-slim does not ship libgomp. Measured — without it the binary aborts
     # at load with "libgomp.so.1: cannot open shared object file".
-    curl -fsSL -o /tmp/whisper.tar.gz \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+      -o /tmp/whisper.tar.gz \
       "https://github.com/ggml-org/whisper.cpp/releases/download/${WHISPER_VERSION}/whisper-bin-ubuntu-${WHISPER_ARCH}.tar.gz"; \
     echo "${WHISPER_SHA256}  /tmp/whisper.tar.gz" | sha256sum -c -; \
     tar -xzf /tmp/whisper.tar.gz -C /tmp; \
@@ -358,11 +367,13 @@ RUN set -eux; \
     # vendored binary rather than the Python package — which is what the gate demanded,
     # and it also rules out `base.en`, a size the plan never measured.
     install -d /usr/local/share/whisper; \
-    curl -fsSL -o /usr/local/share/whisper/ggml-small.en.bin \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+      -o /usr/local/share/whisper/ggml-small.en.bin \
       "https://huggingface.co/ggerganov/whisper.cpp/resolve/${WHISPER_MODEL_REV}/ggml-small.en.bin"; \
     echo "${WHISPER_MODEL_SHA256}  /usr/local/share/whisper/ggml-small.en.bin" | sha256sum -c -; \
     # The language-ID model (§10 V40) — see the ARG comment for why `small.en` cannot do this job.
-    curl -fsSL -o /usr/local/share/whisper/ggml-tiny.bin \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+      -o /usr/local/share/whisper/ggml-tiny.bin \
       "https://huggingface.co/ggerganov/whisper.cpp/resolve/${WHISPER_MODEL_REV}/ggml-tiny.bin"; \
     echo "${WHISPER_LANG_MODEL_SHA256}  /usr/local/share/whisper/ggml-tiny.bin" | sha256sum -c -; \
     apt-get purge -y curl xz-utils unzip; \

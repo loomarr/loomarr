@@ -1,6 +1,6 @@
 # Shared client design-system completeness ledger
 
-**Status:** implementation and automated/rendered gates complete; P3.5 device evidence in progress
+**Status:** P3.5 shared-interface publication evidence complete on PR #581; P4 production adoption evidence remains in progress
 **Owner:** shared client platform  
 **Parent plan:**
 [`docs/engineering/plans/shared-client-platform.md`](plans/shared-client-platform.md)
@@ -31,7 +31,9 @@ light state; a source gate prevents a later module from silently becoming dark-o
 
 P3.5 is complete only when all of these rules hold:
 
-1. Every row below is **proven** or has a maintainer-approved exclusion with a named later owner.
+1. Every shared interface promised by P3.5 is **proven**, or has an explicit scope exclusion with a
+   named later owner. An exclusion may defer production integration or real-device acceptance; it
+   may not hide a missing shared interface promised by P3.5.
 2. Product rules are implemented once behind root interfaces in `@loomarr/design-system`,
    `@loomarr/ui`, `@loomarr/core`, or `@loomarr/player`; callers do not deep-import implementations.
 3. Platform mechanics live in adapters only where at least two implementations prove the seam:
@@ -54,6 +56,19 @@ Status vocabulary:
 - **legacy** — only the shipping web or Compose implementation exists;
 - **missing** — no implementation exists at the target seam;
 - **claimed** — an active workstream owns the seam, but unmerged work is not completion evidence.
+- **excluded → Pn** — the P3.5 interface exists, while the named later phase owns production
+  integration, platform mechanics, or real-device acceptance.
+
+## P3.5 scope resolution
+
+P3.5 certifies the reusable visual language, root interfaces, adapters already proven by two real
+implementations, and their workshop contracts. It does not certify that every production route uses
+them. P4 owns the first production Guide-to-playback slice and player behavior; P5 and
+[#727](https://github.com/loomarr/loomarr/issues/727) own the explicit adopt, revise-and-repeat, or
+reject decision; P6 owns remaining viewer parity; P7 owns administrative-web migration; and P8 owns
+retirement of the legacy web and Compose presentations. The partial rows below describe the P4
+branch's additional implementation and remaining evidence; they do not retroactively weaken the
+published P3.5 interface contract or pre-approve adoption.
 
 ## Initial coverage audit
 
@@ -77,7 +92,7 @@ Status vocabulary:
 | Player chrome and timeline | `ui` player presentation consuming `player`; `ui-tv` number-entry and remote-playback adapters | Shared `WatchingSurface` keeps one supplied player mounted behind Channel identity, authoritative generated-Guide now/next identity and accessible live progress, tuning/error/dead-air feedback, bounded transient chrome, pause/Play/Go Live, and explicit previous/channel/Guide/Surf actions across touch/TV native stories; Retry appears only for a recoverable catalog or transport failure, never inertly for authoritative dead air. Native now/next follows the shared displayed-frame clock while delayed, the bar labels Live or the increasing paused/behind lag, exposes Go Live only away from the edge, and explains expiry fallback; deterministic native workshop stories cover all four states. It can suppress only chrome while sibling journeys cover the still-mounted player, regression-pinning a leak found on the physical Shield. The TV adapter retains the exact three-digit/1.2-second number-entry contract and maps the platform's distinct Play, Pause, and Play/Pause events into the one player while revealing state feedback | partial | Keep timeline identity fresh through reconciliation and prove touch/keyboard/remote traversal at every required viewport |
 | Surf rail | `ui` `SurfRail` and `SurfJourney`; `ui-tv` Surf adapter | The production mobile/TV rail now preserves the still-mounted player, filters the authoritative Guide against the server-declared playable catalog, keeps empty Favourites honest, derives Recent/All with now/next/progress, restores selection by identity, and tunes through the shared player. The TV host binds the restored group/channel identity to native refs through the same queued platform registry used by Guide. Back cancels the overlay, and confirmed self-disconnect remains D-pad reachable after its Channel groups. Generated server version plus the native app-config version remain visible in populated and unavailable states and are proven on the physical Shield; mapped artwork/logo paths use the same origin-locked native renderer as Guide | partial | Prove populated focus restoration, artwork, catalog refresh, tune, previous-channel, confirmed disconnect, and viewport behavior on browser, touch device, emulator, and Shield |
 | Browser application semantics | web adapters | Mature legacy DOM controls and accessibility coverage exist, but most do not implement shared root interfaces | legacy | Shared modules retain semantic HTML, keyboard, screen-reader, reduced-motion, and responsive behavior without product-rule duplication |
-| Touch mechanics | mobile adapters | Pairing shell and destination shell run on iPhone, provider-owned native insets feed shared viewport primitives, and the touch Expo application permits both portrait and landscape instead of hard-locking portrait; safe-area and gesture contracts are not general modules | partial | Real iPhone portrait/landscape rotation evidence for insets, targets, scrolling, gestures, keyboard, and focus transfer |
+| Touch mechanics | mobile adapters | Pairing shell and destination shell run on iPhone, provider-owned native insets feed shared viewport primitives, and the touch Expo application permits portrait and landscape. The P3.5 workshop has physical iOS 27 portrait/landscape, Dynamic Island, touch, scroll, disclosure, and keyboard evidence; the production P4 journey remains unaccepted | partial | P4/P6 prove production touch rotation, viewer gestures, native modal focus, and assistive-technology behavior |
 | TV mechanics | `ui-tv` root interfaces | A production arm64 release APK pairs over plain-HTTP LAN on the physical 4K Shield, persists its credential across process restart, and accepts D-pad/OK traversal through empty Watching, Guide, and Surf; exact number-entry buffering is interface-tested. Guide and Surf now register rendered native actions by stable product identity and queue focus restoration until a bounded row mounts; unit coverage pins immediate, delayed, and unmounted-handle behavior | partial | Populated physical 4K Shield plus 1080p host evidence for Back, number keys, focus restoration, remote repeat, overscan, and ten-minute traversal |
 
 ## Required workshop matrix
@@ -101,9 +116,12 @@ implicit exclusion.
 ## P3.5 evidence to date
 
 The protected client matrix, including Apple mobile, Apple TV, the four Playwright visual and
-accessibility shards, and the aggregate CI job, passed on PR #581 before its final rebase. The pinned
-local visual run rendered 1,081 cases successfully with one declared skip, and a strict rerun passed
-against the reviewed baselines.
+accessibility shards, and the aggregate CI job, passed on PR #581 before its final reconciliation.
+After the iOS 27 runtime update and merge of current `main`, the pinned local visual run passed 1,182
+cases with two declared skips, the frontend suite passed 1,665 tests across 211 files, and the SPA
+and Storybook production builds completed against reviewed baselines. Storybook now applies the
+resolved browser color scheme before paint so native controls cannot race into a light baseline on
+an otherwise dark surface.
 
 On 2026-08-26, the native TV workshop was generated and compiled as both arm64 and x86 React Native
 Android TV development builds. The arm64 build installed on the physical Nvidia Shield and rendered
@@ -114,8 +132,14 @@ the focused story. Logcat contained no React Native or Android fatal exception. 
 are retained under
 `.artifacts/primary/design-system-device-evidence/`.
 
-This is not the complete P3.5 exit claim. The real-iPhone portrait/landscape workshop evidence
-remains required.
+On 2026-08-31, the Release workshop launched and remained healthy on a physical iPhone 17 Pro Max
+running iOS 27 beta 7. Explicit-light and default-dark stories were exercised in portrait and
+landscape across the Dynamic Island and every safe edge, touch disclosure, scrolling, field focus,
+keyboard avoidance/dismissal, value persistence, and responsive composition. The inspection found
+and corrected a landscape launch-height clipping bug and missing live iOS safe-area propagation;
+both were recaptured successfully with regression coverage. This completes P3.5 physical-device
+evidence, but does not certify production viewer gestures, Back behavior, native modal focus,
+assistive technology, or distribution.
 
 ## P4 emulator evidence to date
 

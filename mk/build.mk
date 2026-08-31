@@ -73,7 +73,7 @@ dev-be: rust-dev-build ## backend with live reload (Air) — rebuilds + restarts
 	  sh scripts/dev-be-guard.sh; \
 	  sh -c 'if [ "$${DEV_BE_NO_WATCHDOG:-0}" != "1" ]; then \
 	      sh scripts/dev-be-watchdog.sh & wd=$$!; trap "kill $$wd 2>/dev/null" EXIT INT TERM; fi; \
-	    exec $(GO) run github.com/air-verse/air@v1.67.3'
+	    exec $(GO) run github.com/air-verse/air@v1.67.4'
 	@# ⚠ STALE-BINARY WATCHDOG (scripts/dev-be-watchdog.sh). Even with `.air.toml`'s
 	@# stop_on_error=false + poll=true, Air can still end up ALIVE but not rebuilding (poll loop
 	@# stalled) — serving a frozen binary while your saves do nothing. Config can't detect its own

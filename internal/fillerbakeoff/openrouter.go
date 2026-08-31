@@ -287,10 +287,10 @@ func (o *openRouterExtractor) Extract(ctx context.Context, request Request) (Ext
 
 func validateOpenRouterRequest(request Request) error {
 	route := request.Route
-	if route.Provider != "openrouter" || route.UpstreamProviderSlug == "" || route.UpstreamProvider == "" || !route.StructuredOutput || !route.RequireZDR || route.AllowFallbacks {
+	if route.Provider != "openrouter" || route.ResolvedModel == "" || route.UpstreamProviderSlug == "" || route.UpstreamProvider == "" || !route.StructuredOutput || !route.RequireZDR || route.AllowFallbacks {
 		return fmt.Errorf("OpenRouter bakeoff requires one pinned, ZDR, structured-output route without fallback")
 	}
-	if before, after, ok := strings.Cut(route.Model, "/"); !ok || before == "" || after == "" || strings.Contains(strings.ToLower(route.Model), "latest") {
+	if before, after, ok := strings.Cut(route.Model, "/"); !ok || before == "" || after == "" || strings.Contains(strings.ToLower(route.Model), "latest") || strings.Contains(strings.ToLower(route.ResolvedModel), "latest") {
 		return fmt.Errorf("OpenRouter bakeoff requires a concrete namespaced model")
 	}
 	if len(request.Packet.Signals) == 0 {
@@ -416,7 +416,7 @@ func openRouterAttribution(route Route, wire openRouterResponse, latency time.Du
 	a := filleradmission.Attribution{
 		EvaluationID: wire.ID, Role: route.Role, Rung: route.Rung,
 		RequestedProvider: route.Provider, RequestedModel: route.Model,
-		ResolvedProvider: route.Provider, ResolvedModel: wire.Model, UpstreamProvider: route.UpstreamProvider,
+		ResolvedProvider: route.Provider, ResolvedModel: route.ResolvedModel, UpstreamProvider: route.UpstreamProvider,
 		Modalities: slices.Clone(route.Modalities), Attempts: wire.Metadata.Attempt,
 		GenerationID: wire.ID, LatencyMS: latencyMS,
 		Tokens: filleradmission.TokenUsage{
@@ -450,12 +450,12 @@ func openRouterAttribution(route Route, wire openRouterResponse, latency time.Du
 			selectedModel = endpoint.Model
 		}
 	}
-	if selected != route.UpstreamProvider || selectedModel != route.Model {
+	if selected != route.UpstreamProvider || selectedModel != route.ResolvedModel {
 		return a, fmt.Errorf("OpenRouter resolved upstream %q, reserved %q", selected, route.UpstreamProvider)
 	}
 	if len(wire.Metadata.Attempts) > 0 {
 		attempt := wire.Metadata.Attempts[0]
-		if len(wire.Metadata.Attempts) != 1 || attempt.Provider != selected || attempt.Model != route.Model || attempt.Status != http.StatusOK {
+		if len(wire.Metadata.Attempts) != 1 || attempt.Provider != selected || attempt.Model != route.ResolvedModel || attempt.Status != http.StatusOK {
 			return a, fmt.Errorf("OpenRouter attempt ledger does not match the selected route")
 		}
 	}

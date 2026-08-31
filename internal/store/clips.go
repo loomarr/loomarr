@@ -346,6 +346,16 @@ func (s *sqlStore) ReplaceClipIdentity(ctx context.Context, oldHash string, c Cl
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if err := s.replaceClipIdentityTx(ctx, tx, oldHash, c); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("replace clip identity %s: %w", oldHash, err)
+	}
+	return nil
+}
+
+func (s *sqlStore) replaceClipIdentityTx(ctx context.Context, tx *sql.Tx, oldHash string, c Clip) error {
 	res, err := tx.ExecContext(ctx, s.ph(`UPDATE clips
 		SET hash = ?, path = ?, tunarr_program_id = NULL, duration_ms = ?, quality = ?, updated_at = ?
 		WHERE hash = ?`), c.Hash, c.Path, c.DurationMs, c.Quality, epoch(c.UpdatedAt), oldHash)
@@ -360,6 +370,10 @@ func (s *sqlStore) ReplaceClipIdentity(ctx context.Context, oldHash string, c Cl
 		return ErrNotFound
 	}
 
+	return s.rekeyClipReferencesTx(ctx, tx, oldHash, c.Hash)
+}
+
+func (s *sqlStore) rekeyClipReferencesTx(ctx context.Context, tx *sql.Tx, oldHash, newHash string) error {
 	refs := []struct {
 		query string
 		args  []any
@@ -367,22 +381,151 @@ func (s *sqlStore) ReplaceClipIdentity(ctx context.Context, oldHash string, c Cl
 		// Fingerprints describe the OLD bytes. Never re-key derived evidence onto the new content
 		// identity; the first de-dup pass that sees the replacement computes it again.
 		{`DELETE FROM filler_clip_fingerprints WHERE clip_hash = ?`, []any{oldHash}},
-		{`UPDATE clip_tags SET clip_hash = ? WHERE clip_hash = ?`, []any{c.Hash, oldHash}},
-		{`UPDATE filler_clip_pipeline SET clip_hash = ? WHERE clip_hash = ?`, []any{c.Hash, oldHash}},
-		{`UPDATE filler_split_proposals SET clip_hash = ? WHERE clip_hash = ?`, []any{c.Hash, oldHash}},
-		{`UPDATE clips SET parent_hash = ? WHERE parent_hash = ?`, []any{c.Hash, oldHash}},
-		{`UPDATE image_refs SET owner_id = ? WHERE owner_kind = ? AND owner_id = ?`, []any{c.Hash, "clip", oldHash}},
+		{`UPDATE clip_tags SET clip_hash = ? WHERE clip_hash = ?`, []any{newHash, oldHash}},
+		{`UPDATE filler_clip_pipeline SET clip_hash = ? WHERE clip_hash = ?`, []any{newHash, oldHash}},
+		{`UPDATE filler_split_proposals SET clip_hash = ? WHERE clip_hash = ?`, []any{newHash, oldHash}},
+		{`UPDATE clips SET parent_hash = ? WHERE parent_hash = ?`, []any{newHash, oldHash}},
+		{`UPDATE image_refs SET owner_id = ? WHERE owner_kind = ? AND owner_id = ?`, []any{newHash, "clip", oldHash}},
 	}
 	for _, ref := range refs {
 		if _, err := tx.ExecContext(ctx, s.ph(ref.query), ref.args...); err != nil {
 			return fmt.Errorf("replace clip identity %s references: %w", oldHash, err)
 		}
 	}
-	if err := s.rekeyChannelClipRefs(ctx, tx, oldHash, c.Hash); err != nil {
+	if err := s.rekeyChannelClipRefs(ctx, tx, oldHash, newHash); err != nil {
 		return fmt.Errorf("replace clip identity %s channel references: %w", oldHash, err)
 	}
+	return nil
+}
+
+// CommitConditioningPublication closes the catalog half of the owner-bound filesystem saga.
+// The pending sidecar has already proved the exact source/target byte pair. This transaction
+// permits only the three catalog shapes that proof can own: an ordinary source-only re-key, a
+// source plus the held row Sync reconstructed from that sidecar, or the exact target-only state
+// left by a re-key that committed before process loss.
+func (s *sqlStore) CommitConditioningPublication(ctx context.Context, publication filler.ConditioningPublication, target Clip) error {
+	if publication.State != "pending" || publication.Owner == "" || publication.SourceHash == "" ||
+		publication.TargetHash == "" || publication.SourceHash == publication.TargetHash ||
+		publication.TargetHash != target.Hash || target.Path == "" {
+		return ErrConditioningPublicationMismatch
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("commit conditioning publication %s: %w", publication.TargetHash, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	type catalogState struct {
+		found       bool
+		path        string
+		parentHash  string
+		held        bool
+		removedAt   int64
+		isComposite bool
+	}
+	states := map[string]*catalogState{
+		publication.SourceHash: {},
+		publication.TargetHash: {},
+	}
+	query := `SELECT hash, path, parent_hash, held, removed_at, is_composite
+		FROM clips WHERE hash IN (?, ?)`
+	if s.dialect == DialectPostgres {
+		query += ` FOR UPDATE`
+	}
+	rows, err := tx.QueryContext(ctx, s.ph(query), publication.SourceHash, publication.TargetHash)
+	if err != nil {
+		return fmt.Errorf("commit conditioning publication %s classify: %w", publication.TargetHash, err)
+	}
+	for rows.Next() {
+		var hash string
+		var state catalogState
+		if err := rows.Scan(&hash, &state.path, &state.parentHash, &state.held, &state.removedAt, &state.isComposite); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("commit conditioning publication %s classify: %w", publication.TargetHash, err)
+		}
+		state.found = true
+		states[hash] = &state
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("commit conditioning publication %s classify: %w", publication.TargetHash, err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("commit conditioning publication %s classify: %w", publication.TargetHash, err)
+	}
+	sourceState := states[publication.SourceHash]
+	targetState := states[publication.TargetHash]
+	targetRemovedAt := epoch(target.RemovedAt)
+
+	// The durable re-key already won. Exact filesystem evidence plus source absence and an exact
+	// target row make clearing the still-owned marker idempotent; no catalog write is needed.
+	if !sourceState.found {
+		if targetState.found && targetState.path == target.Path && targetState.parentHash == target.ParentHash &&
+			targetState.held == target.Held && targetState.removedAt == targetRemovedAt &&
+			targetState.isComposite == target.IsComposite {
+			return nil
+		}
+		return ErrConditioningPublicationMismatch
+	}
+
+	// The source row must still describe the owner whose metadata the staged target carries.
+	if sourceState.parentHash != target.ParentHash || sourceState.held != target.Held ||
+		sourceState.removedAt != targetRemovedAt || sourceState.isComposite != target.IsComposite {
+		return ErrConditioningPublicationMismatch
+	}
+
+	if !targetState.found {
+		if err := s.replaceClipIdentityTx(ctx, tx, publication.SourceHash, target); err != nil {
+			return err
+		}
+	} else {
+		// Sync may reconstruct only this exact quarantine row. Keep that row in place and adopt it;
+		// there is never a delete-then-reinsert window for the content-addressed target identity.
+		if targetState.path != target.Path || targetState.parentHash != target.ParentHash ||
+			!targetState.held || targetState.removedAt != 0 || targetState.isComposite {
+			return ErrConditioningPublicationMismatch
+		}
+		res, err := tx.ExecContext(ctx, s.ph(`UPDATE clips SET
+			(name, kind, era, audience, category, rating, source, ai_tagged, license,
+			 thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript,
+			 brand, visible_text, vision_tagged, is_composite, parent_hash, play_count,
+			 last_played_at, suggested_era, removed_at, held, confidence, auto_filed,
+			 created_at, reaped_at) =
+			(SELECT name, kind, era, audience, category, rating, source, ai_tagged, license,
+			 thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript,
+			 brand, visible_text, vision_tagged, is_composite, parent_hash, play_count,
+			 last_played_at, suggested_era, removed_at, held, confidence, auto_filed,
+			 created_at, reaped_at FROM clips WHERE hash = ?),
+			path = ?, tunarr_program_id = NULL, duration_ms = ?, quality = ?, updated_at = ?
+			WHERE hash = ? AND path = ? AND parent_hash = ? AND held = ? AND removed_at = ? AND is_composite = ?`),
+			publication.SourceHash, target.Path, target.DurationMs, target.Quality, epoch(target.UpdatedAt),
+			publication.TargetHash, target.Path, target.ParentHash, true, int64(0), false)
+		if err != nil {
+			return fmt.Errorf("commit conditioning publication %s adopt target: %w", publication.TargetHash, err)
+		}
+		if n, countErr := res.RowsAffected(); countErr != nil || n != 1 {
+			if countErr != nil {
+				return fmt.Errorf("commit conditioning publication %s count target: %w", publication.TargetHash, countErr)
+			}
+			return ErrConditioningPublicationMismatch
+		}
+		if err := s.rekeyClipReferencesTx(ctx, tx, publication.SourceHash, publication.TargetHash); err != nil {
+			return err
+		}
+		res, err = tx.ExecContext(ctx, s.ph(`DELETE FROM clips WHERE hash = ?`), publication.SourceHash)
+		if err != nil {
+			return fmt.Errorf("commit conditioning publication %s retire source: %w", publication.TargetHash, err)
+		}
+		if n, countErr := res.RowsAffected(); countErr != nil || n != 1 {
+			if countErr != nil {
+				return fmt.Errorf("commit conditioning publication %s count source: %w", publication.TargetHash, countErr)
+			}
+			return ErrConditioningPublicationMismatch
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("replace clip identity %s: %w", oldHash, err)
+		return fmt.Errorf("commit conditioning publication %s: %w", publication.TargetHash, err)
 	}
 	return nil
 }
@@ -1176,7 +1319,17 @@ func (s *sqlStore) ReplaceSplitChildren(ctx context.Context, parentHash string, 
 		return 0, fmt.Errorf("replace split children %s: %w", parentHash, err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	n, err := s.replaceSplitChildrenTx(ctx, tx, parentHash, keepHashes, at)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("replace split children %s: %w", parentHash, err)
+	}
+	return n, nil
+}
 
+func (s *sqlStore) replaceSplitChildrenTx(ctx context.Context, tx *sql.Tx, parentHash string, keepHashes []string, at time.Time) (int, error) {
 	query := `SELECT policy_json FROM channels`
 	if s.dialect == DialectPostgres {
 		query += ` FOR UPDATE`
@@ -1255,9 +1408,6 @@ func (s *sqlStore) ReplaceSplitChildren(ctx context.Context, parentHash string, 
 	n, err := res.RowsAffected()
 	if err != nil {
 		return 0, fmt.Errorf("replace split children %s count retired: %w", parentHash, err)
-	}
-	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("replace split children %s: %w", parentHash, err)
 	}
 	return int(n), nil
 }

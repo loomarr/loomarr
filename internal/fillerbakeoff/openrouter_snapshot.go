@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	OpenRouterSnapshotSchemaVersion = 1
+	OpenRouterSnapshotSchemaVersion = 2
 	maxSnapshotModels               = 16
 	maxSnapshotEndpoints            = 256
 	maxSnapshotResponseBytes        = 8 << 20
@@ -40,6 +40,7 @@ type OpenRouterSnapshot struct {
 
 type OpenRouterModelSnapshot struct {
 	ID               string                       `json:"id"`
+	CanonicalSlug    string                       `json:"canonicalSlug"`
 	Name             string                       `json:"name"`
 	Created          int64                        `json:"created"`
 	InputModalities  []string                     `json:"inputModalities"`
@@ -85,6 +86,15 @@ type openRouterEndpointsResponse struct {
 	} `json:"data"`
 }
 
+type openRouterModelsResponse struct {
+	Data []struct {
+		ID            string `json:"id"`
+		CanonicalSlug string `json:"canonical_slug"`
+		Name          string `json:"name"`
+		Created       int64  `json:"created"`
+	} `json:"data"`
+}
+
 type openRouterZDRResponse struct {
 	Data []openRouterEndpointWire `json:"data"`
 }
@@ -104,8 +114,9 @@ type openRouterEndpointWire struct {
 	SupportsImplicitCaching bool                       `json:"supports_implicit_caching"`
 }
 
-// FetchOpenRouterSnapshot performs one bounded ZDR-list request and one bounded
-// endpoint request per concrete model. It performs no inference.
+// FetchOpenRouterSnapshot performs one bounded model-catalog request, one
+// bounded ZDR-list request, and one bounded endpoint request per requested
+// model. It performs no inference.
 func FetchOpenRouterSnapshot(ctx context.Context, config OpenRouterSnapshotConfig) (OpenRouterSnapshot, error) {
 	baseURL, client, err := openRouterMetadataTransport(config)
 	if err != nil {
@@ -120,8 +131,30 @@ func FetchOpenRouterSnapshot(ctx context.Context, config OpenRouterSnapshotConfi
 	}
 	snapshot := OpenRouterSnapshot{SchemaVersion: OpenRouterSnapshotSchemaVersion, SourceBaseURL: baseURL, RetrievedAt: config.RetrievedAt.UTC()}
 	var totalBytes int64
+	var catalog openRouterModelsResponse
+	read, err := getOpenRouterJSON(ctx, client, baseURL+"/models", config.APIKey, &catalog)
+	if err != nil {
+		return OpenRouterSnapshot{}, fmt.Errorf("fetch OpenRouter model catalog: %w", err)
+	}
+	snapshot.Requests++
+	totalBytes += read
+	catalogModels := make(map[string]struct {
+		canonicalSlug string
+		name          string
+		created       int64
+	}, len(catalog.Data))
+	for _, model := range catalog.Data {
+		if _, duplicate := catalogModels[model.ID]; duplicate {
+			return OpenRouterSnapshot{}, fmt.Errorf("OpenRouter model catalog repeats %q", model.ID)
+		}
+		catalogModels[model.ID] = struct {
+			canonicalSlug string
+			name          string
+			created       int64
+		}{model.CanonicalSlug, model.Name, model.Created}
+	}
 	var zdr openRouterZDRResponse
-	read, err := getOpenRouterJSON(ctx, client, baseURL+"/endpoints/zdr", config.APIKey, &zdr)
+	read, err = getOpenRouterJSON(ctx, client, baseURL+"/endpoints/zdr", config.APIKey, &zdr)
 	if err != nil {
 		return OpenRouterSnapshot{}, fmt.Errorf("fetch OpenRouter ZDR endpoints: %w", err)
 	}
@@ -132,6 +165,10 @@ func FetchOpenRouterSnapshot(ctx context.Context, config OpenRouterSnapshotConfi
 		zdrKeys[openRouterEndpointKey(endpoint)] = struct{}{}
 	}
 	for _, modelID := range models {
+		catalogModel, ok := catalogModels[modelID]
+		if !ok || catalogModel.canonicalSlug == "" {
+			return OpenRouterSnapshot{}, fmt.Errorf("OpenRouter model catalog omitted canonical identity for %q", modelID)
+		}
 		var response openRouterEndpointsResponse
 		modelPath := strings.Join([]string{url.PathEscape(strings.Split(modelID, "/")[0]), url.PathEscape(strings.Split(modelID, "/")[1])}, "/")
 		read, err := getOpenRouterJSON(ctx, client, baseURL+"/models/"+modelPath+"/endpoints", config.APIKey, &response)
@@ -143,11 +180,11 @@ func FetchOpenRouterSnapshot(ctx context.Context, config OpenRouterSnapshotConfi
 			return OpenRouterSnapshot{}, fmt.Errorf("OpenRouter snapshot responses exceed %d-byte total ceiling", maxSnapshotTotalBytes)
 		}
 		totalBytes += read
-		if response.Data.ID != modelID {
+		if response.Data.ID != modelID || response.Data.Name != catalogModel.name || response.Data.Created != catalogModel.created {
 			return OpenRouterSnapshot{}, fmt.Errorf("OpenRouter endpoint response for %q returned model %q", modelID, response.Data.ID)
 		}
 		model := OpenRouterModelSnapshot{
-			ID: modelID, Name: response.Data.Name, Created: response.Data.Created,
+			ID: modelID, CanonicalSlug: catalogModel.canonicalSlug, Name: response.Data.Name, Created: response.Data.Created,
 			InputModalities:  sortedUnique(response.Data.Architecture.InputModalities),
 			OutputModalities: sortedUnique(response.Data.Architecture.OutputModalities),
 		}
@@ -304,13 +341,14 @@ func ValidateOpenRouterSnapshot(snapshot OpenRouterSnapshot) error {
 	if snapshot.SchemaVersion != OpenRouterSnapshotSchemaVersion || sourceErr != nil || parsedSource.Host == "" || snapshot.RetrievedAt.IsZero() || snapshot.RetrievedAt.Location() != time.UTC {
 		return fmt.Errorf("OpenRouter snapshot requires schema %d and a UTC retrieval time", OpenRouterSnapshotSchemaVersion)
 	}
-	if len(snapshot.Models) == 0 || len(snapshot.Models) > maxSnapshotModels || snapshot.Requests != len(snapshot.Models)+1 || snapshot.ResponseBytes <= 0 || snapshot.ResponseBytes > maxSnapshotTotalBytes {
+	if len(snapshot.Models) == 0 || len(snapshot.Models) > maxSnapshotModels || snapshot.Requests != len(snapshot.Models)+2 || snapshot.ResponseBytes <= 0 || snapshot.ResponseBytes > maxSnapshotTotalBytes {
 		return fmt.Errorf("OpenRouter snapshot has invalid bounded request, response, or model counts")
 	}
 	modelIDs := make([]string, 0, len(snapshot.Models))
 	for _, model := range snapshot.Models {
 		modelIDs = append(modelIDs, model.ID)
-		if model.ID == "" || model.Name == "" || model.Created <= 0 || len(model.Endpoints) == 0 || len(model.Endpoints) > maxSnapshotEndpoints || !canonicalStrings(model.InputModalities) || !canonicalStrings(model.OutputModalities) || !slices.Contains(model.OutputModalities, "text") {
+		canonicalOwner, canonicalName, canonical := strings.Cut(model.CanonicalSlug, "/")
+		if model.ID == "" || !canonical || canonicalOwner == "" || canonicalName == "" || strings.Contains(strings.ToLower(model.CanonicalSlug), "latest") || model.Name == "" || model.Created <= 0 || len(model.Endpoints) == 0 || len(model.Endpoints) > maxSnapshotEndpoints || !canonicalStrings(model.InputModalities) || !canonicalStrings(model.OutputModalities) || !slices.Contains(model.OutputModalities, "text") {
 			return fmt.Errorf("OpenRouter snapshot model %q has an invalid bounded identity or architecture", model.ID)
 		}
 		seenEndpoints := make(map[string]struct{}, len(model.Endpoints))
@@ -325,7 +363,7 @@ func ValidateOpenRouterSnapshot(snapshot OpenRouterSnapshot) error {
 				return fmt.Errorf("OpenRouter snapshot model %q repeats endpoint %q", model.ID, endpoint.ProviderSlug)
 			}
 			seenEndpoints[key] = struct{}{}
-			if endpoint.Name == "" || endpoint.ModelID != model.ID || endpoint.ProviderName == "" || endpoint.ProviderSlug == "" || endpoint.ContextLength <= 0 || endpoint.MaxCompletionTokens < 0 || endpoint.MaxPromptTokens < 0 || endpoint.Status < 0 || !canonicalStrings(endpoint.SupportedParameters) || len(endpoint.Pricing) == 0 || len(endpoint.Pricing) > 32 {
+			if endpoint.Name == "" || endpoint.ModelID != model.ID || endpoint.ProviderName == "" || endpoint.ProviderSlug == "" || endpoint.ContextLength <= 0 || endpoint.MaxCompletionTokens < 0 || endpoint.MaxPromptTokens < 0 || !canonicalStrings(endpoint.SupportedParameters) || len(endpoint.Pricing) == 0 || len(endpoint.Pricing) > 32 {
 				return fmt.Errorf("OpenRouter snapshot model %q has an invalid endpoint", model.ID)
 			}
 			for name, price := range endpoint.Pricing {
@@ -366,6 +404,9 @@ func ValidateOpenRouterRunSnapshot(run fillereval.RunIdentity, routes []Route, s
 		model, ok := snapshotModel(snapshot, route.Model)
 		if !ok {
 			return fmt.Errorf("OpenRouter route model %q is absent from the locked snapshot", route.Model)
+		}
+		if route.ResolvedModel != model.CanonicalSlug {
+			return fmt.Errorf("OpenRouter route model %q does not bind canonical revision %q", route.Model, model.CanonicalSlug)
 		}
 		endpoint, ok := snapshotEndpoint(model, route.UpstreamProviderSlug, route.UpstreamProvider)
 		if !ok {

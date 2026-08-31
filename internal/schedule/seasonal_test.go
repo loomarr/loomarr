@@ -96,6 +96,50 @@ func TestSeasonal_Exclusive(t *testing.T) {
 	}
 }
 
+func TestComputeDesiredAt_ChristmasEndDayIncludesFractionalSecond(t *testing.T) {
+	entries := []schedule.LineupEntry{ratedEntry("movie:tmdb:1", "Christmas Special", "", 2026)}
+	avail := mapAvail{"movie:tmdb:1": "l1"}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Seasonal: schedule.SeasonalPolicy{
+		Mode: schedule.SeasonalExclusive, Holidays: []string{"christmas"}, OffSeason: schedule.OffSeasonDark,
+	}}}
+
+	endOfDay := time.Date(2026, time.December, 26, 23, 59, 59, 500_000_000, time.UTC)
+	if got := programKeys(schedule.ComputeDesiredAt(seasonalChannel(), entries, avail, schedule.PodFill, p, endOfDay)); !hasKey(got, "movie:tmdb:1") {
+		t.Fatalf("Christmas Special must remain scheduled at %s, got %v", endOfDay, got)
+	}
+	finalNanosecond := time.Date(2026, time.December, 26, 23, 59, 59, 999_999_999, time.UTC)
+	if got := programKeys(schedule.ComputeDesiredAt(seasonalChannel(), entries, avail, schedule.PodFill, p, finalNanosecond)); !hasKey(got, "movie:tmdb:1") {
+		t.Fatalf("Christmas Special must remain scheduled at the final nanosecond of %s, got %v", finalNanosecond.Format("2006-01-02"), got)
+	}
+
+	nextDay := time.Date(2026, time.December, 27, 0, 0, 0, 0, time.UTC)
+	if got := programKeys(schedule.ComputeDesiredAt(seasonalChannel(), entries, avail, schedule.PodFill, p, nextDay)); len(got) != 0 {
+		t.Fatalf("Christmas Special must be out of window at %s, got %v", nextDay, got)
+	}
+}
+
+func TestComputeDesiredAt_NewYearEndDayIncludesFractionalSecond(t *testing.T) {
+	entries := []schedule.LineupEntry{ratedEntry("movie:tmdb:2", "New Year's Special", "", 2026)}
+	avail := mapAvail{"movie:tmdb:2": "l2"}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Seasonal: schedule.SeasonalPolicy{
+		Mode: schedule.SeasonalExclusive, Holidays: []string{"newyear"}, OffSeason: schedule.OffSeasonDark,
+	}}}
+
+	endOfDay := time.Date(2027, time.January, 2, 23, 59, 59, 500_000_000, time.UTC)
+	if got := programKeys(schedule.ComputeDesiredAt(seasonalChannel(), entries, avail, schedule.PodFill, p, endOfDay)); !hasKey(got, "movie:tmdb:2") {
+		t.Fatalf("New Year's Special must remain scheduled at %s, got %v", endOfDay, got)
+	}
+	finalNanosecond := time.Date(2027, time.January, 2, 23, 59, 59, 999_999_999, time.UTC)
+	if got := programKeys(schedule.ComputeDesiredAt(seasonalChannel(), entries, avail, schedule.PodFill, p, finalNanosecond)); !hasKey(got, "movie:tmdb:2") {
+		t.Fatalf("New Year's Special must remain scheduled at the final nanosecond of %s, got %v", finalNanosecond.Format("2006-01-02"), got)
+	}
+
+	nextDay := time.Date(2027, time.January, 3, 0, 0, 0, 0, time.UTC)
+	if got := programKeys(schedule.ComputeDesiredAt(seasonalChannel(), entries, avail, schedule.PodFill, p, nextDay)); len(got) != 0 {
+		t.Fatalf("New Year's Special must be out of window at %s, got %v", nextDay, got)
+	}
+}
+
 // ⚠ THE OUTAGE THIS EXISTS FOR. Detection used to hay over title + genres, and `horror`
 // is in the Halloween keyword set — so on a year-round horror channel EVERY entry
 // detected as seasonal and `auto` mode benched all of them for the eleven months

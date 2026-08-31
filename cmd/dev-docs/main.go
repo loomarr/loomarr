@@ -6,7 +6,7 @@
 //
 // WHY THIS EXISTS. The command contract was restated by hand in four files — README.md,
 // contributor and agent entrypoints — and they disagreed with each other and with
-// the tree: the Go version (1.22 vs 1.26), the Node version (20 vs 22.5), what `make fe`
+// the tree: the Go version (1.22 vs 1.27), the Node version (20 vs 22.5), what `make fe`
 // runs ("Storybook browser tests" that do not exist), and the visual-suite size, stated
 // three ways with none correct. Twenty-one targets appeared in none of them, including
 // `make fe-install`, without which the documented clean-clone path simply fails.
@@ -49,7 +49,8 @@ var (
 	// wildcard expansion are intentionally unsupported: the generator must know exactly which
 	// files define the interface, and must fail rather than silently omit one.
 	includeLine = regexp.MustCompile(`^include\s+(.+?)\s*$`)
-	// `make check`, `make fe-visual PW_SHARD=…`, `make test-pg` inside a workflow.
+	// `make check`, `LOOMARR_PLAYWRIGHT_SHARD=--shard=1/4 make fe-visual`, `make test-pg`
+	// inside a workflow.
 	makeInvocation = regexp.MustCompile(`\bmake\s+([a-z][a-z0-9-]*)`)
 )
 
@@ -234,7 +235,8 @@ func render(targets []target) []byte {
 	b.WriteString("**✅ means a workflow invokes that target by name.** A blank cell is not\n")
 	b.WriteString("\"never runs in CI\" — prerequisite targets run through their named parent.\n")
 	b.WriteString("The *runs:* note on a row lists what each parent pulls in.\n\n")
-	b.WriteString("**The default gate is `make check`.** Run it before every push.\n\n")
+	b.WriteString("**Routine local evidence is `make agent-verify BASE=<base>`.** It selects affected checks\n")
+	b.WriteString("from the same impact policy as CI. Reserve `make check` for an explicit complete-repository audit.\n\n")
 
 	// Preserve Makefile order for sections; a stable order keeps the diff readable when
 	// a target is added, which is the whole point of committing generated output.

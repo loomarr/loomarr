@@ -66,19 +66,29 @@ func newToken() (string, error) {
 // Issue creates a session for a user and returns the plaintext cookie token
 // (stored only as its hash). Caller sets the cookie.
 func (m *Manager) Issue(ctx context.Context, userID string) (token string, expires time.Time, err error) {
-	token, err = newToken()
+	token, session, err := m.prepare(userID)
 	if err != nil {
 		return "", time.Time{}, err
+	}
+	err = m.store.CreateSession(ctx, session)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	return token, session.ExpiresAt, nil
+}
+
+// prepare creates the plaintext/stored halves of a session without persisting
+// either. Invitation redemption uses this to commit the account and session in
+// the same database transaction; ordinary login persists it immediately above.
+func (m *Manager) prepare(userID string) (string, store.Session, error) {
+	token, err := newToken()
+	if err != nil {
+		return "", store.Session{}, err
 	}
 	now := m.now()
-	expires = now.Add(m.ttl)
-	err = m.store.CreateSession(ctx, store.Session{
-		TokenHash: hashToken(token), UserID: userID, CreatedAt: now, ExpiresAt: expires,
-	})
-	if err != nil {
-		return "", time.Time{}, err
-	}
-	return token, expires, nil
+	return token, store.Session{
+		TokenHash: hashToken(token), UserID: userID, CreatedAt: now, ExpiresAt: now.Add(m.ttl),
+	}, nil
 }
 
 // Resolve validates a cookie token → the user, sliding the session's expiry. It

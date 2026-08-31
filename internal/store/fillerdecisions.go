@@ -14,7 +14,7 @@ import (
 )
 
 const fillerDecisionSelect = `SELECT id, clip_hash, evidence_hash, evidence_version,
-	schema_version, policy_version, taxonomy_version, result_json, created_at
+	schema_version, policy_version, taxonomy_version, application_mode, result_json, created_at
 	FROM filler_admission_decisions`
 
 func (s *sqlStore) PutFillerDecision(ctx context.Context, record fillerdecision.Record) error {
@@ -34,10 +34,10 @@ func (s *sqlStore) PutFillerDecision(ctx context.Context, record fillerdecision.
 
 	res, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_admission_decisions (
 		id, clip_hash, evidence_hash, evidence_version, schema_version, policy_version,
-		taxonomy_version, outcome_kind, verdict, hold_code, retryable, result_json, created_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`),
+		taxonomy_version, application_mode, outcome_kind, verdict, hold_code, retryable, result_json, created_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`),
 		record.ID, record.ClipHash, record.EvidenceHash, record.EvidenceVersion,
-		record.SchemaVersion, record.PolicyVersion, record.TaxonomyVersion, kind, verdict,
+		record.SchemaVersion, record.PolicyVersion, record.TaxonomyVersion, record.ApplicationMode, kind, verdict,
 		holdCode, retryable, string(payload), fillerDecisionEpoch(record.CreatedAt))
 	if err != nil {
 		return fmt.Errorf("insert filler decision: %w", err)
@@ -107,7 +107,8 @@ func sameFillerDecision(existing, proposed fillerdecision.Record, payload []byte
 	return err == nil && existing.ID == proposed.ID && existing.ClipHash == proposed.ClipHash &&
 		existing.EvidenceHash == proposed.EvidenceHash && existing.EvidenceVersion == proposed.EvidenceVersion &&
 		existing.SchemaVersion == proposed.SchemaVersion && existing.PolicyVersion == proposed.PolicyVersion &&
-		existing.TaxonomyVersion == proposed.TaxonomyVersion && fillerDecisionEpoch(existing.CreatedAt) == fillerDecisionEpoch(proposed.CreatedAt) &&
+		existing.TaxonomyVersion == proposed.TaxonomyVersion && existing.ApplicationMode == proposed.ApplicationMode &&
+		fillerDecisionEpoch(existing.CreatedAt) == fillerDecisionEpoch(proposed.CreatedAt) &&
 		string(existingPayload) == string(payload)
 }
 
@@ -127,7 +128,8 @@ func scanFillerDecision(sc scannable) (fillerdecision.Record, error) {
 	var payload string
 	var createdAt int64
 	if err := sc.Scan(&record.ID, &record.ClipHash, &record.EvidenceHash, &record.EvidenceVersion,
-		&record.SchemaVersion, &record.PolicyVersion, &record.TaxonomyVersion, &payload, &createdAt); err != nil {
+		&record.SchemaVersion, &record.PolicyVersion, &record.TaxonomyVersion, &record.ApplicationMode,
+		&payload, &createdAt); err != nil {
 		return fillerdecision.Record{}, err
 	}
 	if err := json.Unmarshal([]byte(payload), &record.Result); err != nil {
@@ -426,19 +428,19 @@ func (s *sqlStore) ListFillerDecisionActivity(ctx context.Context, cursor filler
 	}
 	base := `SELECT 'decision:' || d.id AS event_id, '' AS action_id, d.id AS decision_id, d.clip_hash, '' AS actor_id,
 		'' AS reason, CASE d.verdict WHEN 'admit' THEN 'automatic_admit' WHEN 'reject' THEN 'automatic_reject'
-		ELSE 'review_requested' END AS event_kind, d.created_at
+		ELSE 'review_requested' END AS event_kind, d.application_mode, d.created_at
 		FROM filler_admission_decisions d WHERE d.outcome_kind = 'semantic'
 		UNION ALL
 		SELECT 'action:' || a.id, a.id, a.decision_id, d.clip_hash, a.actor_id, a.reason,
 		CASE a.kind WHEN 'admit' THEN 'review_admit' WHEN 'reject' THEN 'review_reject'
 		WHEN 'correct' THEN 'correction' WHEN 'abandon' THEN 'review_abandoned'
-		WHEN 'restore' THEN 'restore' ELSE 'reversal' END, a.created_at
+		WHEN 'restore' THEN 'restore' ELSE 'reversal' END, d.application_mode, a.created_at
 		FROM filler_admission_actions a JOIN filler_admission_decisions d ON d.id = a.decision_id`
 	var total int
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM (`+base+`) activity_count`).Scan(&total); err != nil {
 		return fillerdecision.ActivityPage{}, fmt.Errorf("count filler decision activity: %w", err)
 	}
-	query := `SELECT event_id, action_id, decision_id, clip_hash, actor_id, reason, event_kind, created_at FROM (` + base + `) activity`
+	query := `SELECT event_id, action_id, decision_id, clip_hash, actor_id, reason, event_kind, application_mode, created_at FROM (` + base + `) activity`
 	var args []any
 	if !cursor.BeforeCreatedAt.IsZero() {
 		if cursor.BeforeID == "" {
@@ -459,7 +461,8 @@ func (s *sqlStore) ListFillerDecisionActivity(ctx context.Context, cursor filler
 	for rows.Next() {
 		var item fillerdecision.ActivityItem
 		var createdAt int64
-		if err := rows.Scan(&item.ID, &item.ActionID, &item.DecisionID, &item.ClipHash, &item.ActorID, &item.Reason, &item.Kind, &createdAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.ActionID, &item.DecisionID, &item.ClipHash, &item.ActorID, &item.Reason,
+			&item.Kind, &item.ApplicationMode, &createdAt); err != nil {
 			return fillerdecision.ActivityPage{}, err
 		}
 		item.CreatedAt = fromFillerDecisionEpoch(createdAt)

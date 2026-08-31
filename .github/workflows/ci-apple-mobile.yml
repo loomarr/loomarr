@@ -7,49 +7,54 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.26"
+  GO_VERSION: "1.27"
   NODE_VERSION: "22"
 
 jobs:
   run:
     name: Apple mobile — native build + launch
-    # ExpoModulesJSI needs Swift 6.3: Xcode 16.4 cannot load the package and Xcode 26.3
-    # rejects its C++ ownership annotations. The macOS 26 image supplies a compatible
-    # Xcode 26.4+ toolchain without opting into Xcode 27's mandatory UIScene lifecycle,
-    # which Expo 57 prebuild does not yet generate. The verifier fails closed on another
-    # Xcode major so a future image-default change cannot silently alter this contract.
-    runs-on: macos-26
+    # iOS 27 requires UIScene adoption at launch. The pinned Expo SDK 58 canary generates
+    # the complete scene lifecycle, and GitHub's dedicated preview image makes that contract
+    # executable instead of merely compiling against the older SDK. The verifier fails closed
+    # on another Xcode major so an image-default change cannot silently alter this proof.
+    runs-on: xcode-27
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
       - run: corepack enable
-      - name: Cache pnpm and CocoaPods work
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: |
-            ~/.local/share/pnpm/store
-            ~/Library/Caches/CocoaPods
-          key: apple-clients-mobile-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
-          restore-keys: apple-clients-mobile-${{ runner.os }}-
       - run: make fe-install
       - name: Fingerprint the Apple toolchain
         id: apple-toolchain
-        run: echo "fingerprint=$(xcodebuild -version | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
-      - name: Cache ExpoModulesJSI native slice
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        run: echo "fingerprint=$(./scripts/apple-compilation-cache.sh fingerprint)" >> "$GITHUB_OUTPUT"
+      - name: Restore the validated Apple compilation cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
-          # ExpoModulesJSI's build script validates each restored slice against
-          # source, React headers, React Native roots, and the Swift toolchain.
-          # Cache the final XCFramework only; DerivedData is intentionally fresh.
-          path: web/node_modules/.pnpm/expo-modules-jsi@*/node_modules/expo-modules-jsi/apple/Products
-          key: apple-jsi-mobile-${{ runner.arch }}-${{ steps.apple-toolchain.outputs.fingerprint }}-${{ hashFiles('web/pnpm-lock.yaml') }}
-          restore-keys: apple-jsi-mobile-${{ runner.arch }}-${{ steps.apple-toolchain.outputs.fingerprint }}-
+          path: ${{ runner.temp }}/apple-compilation-cache.tar.zst
+          key: ${{ steps.apple-toolchain.outputs.fingerprint }}-${{ github.run_id }}
+          restore-keys: ${{ steps.apple-toolchain.outputs.fingerprint }}-
+      - name: Validate the restored Apple compilation cache
+        id: apple-compilation-cache
+        run: |
+          set -euo pipefail
+          mode=cold
+          store="$RUNNER_TEMP/apple-compilation-cache-store"
+          archive="$RUNNER_TEMP/apple-compilation-cache.tar.zst"
+          if [[ -f "$archive" ]] && ./scripts/apple-compilation-cache.sh restore "$archive" "$store"; then
+            mode=warm
+          else
+            rm -f "$archive"
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "store=$store" >> "$GITHUB_OUTPUT"
       - name: Generate, build, install, and launch
         env:
           LOOMARR_APPLE_ARTIFACTS_DIR: ${{ runner.temp }}/apple-client-mobile
           LOOMARR_APPLE_BUILD_DIR: ${{ runner.temp }}/apple-build-mobile
+          LOOMARR_APPLE_CACHE_MODE: ${{ steps.apple-compilation-cache.outputs.mode }}
+          LOOMARR_APPLE_CACHE_STORE: ${{ steps.apple-compilation-cache.outputs.store }}
         run: make client-apple-simulator CLIENT_APP=mobile
       - name: Keep simulator screenshot
         if: always()

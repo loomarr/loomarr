@@ -1,16 +1,16 @@
 package api_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
-
-	"golang.org/x/crypto/bcrypt"
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/auth"
@@ -61,7 +61,7 @@ func authServer(t *testing.T) (*httptest.Server, store.Store, *testkit.MediaServ
 // allowlist), so the flow tests can log in as an imported user.
 func seedImported(t *testing.T, st store.Store, id, name string, role store.Role) {
 	t.Helper()
-	u := store.User{ID: id, Name: name, Role: role, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	u := store.User{ID: id, Name: name, Role: role, MediaServerLinked: true, CreatedAt: time.Now(), UpdatedAt: time.Now()}
 	if err := st.UpsertUser(context.Background(), u); err != nil {
 		t.Fatal(err)
 	}
@@ -135,10 +135,35 @@ func TestMe(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("me → %d", resp.StatusCode)
 	}
-	var body struct{ ID, Role string }
+	var body struct {
+		ID, Role     string
+		Local        bool `json:"local"`
+		OfflineLogin bool `json:"offlineLogin"`
+	}
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 	if body.ID != "u-kid" || body.Role != "member" {
 		t.Errorf("me = %+v, want u-kid/member", body)
+	}
+	if body.Local || !body.OfflineLogin {
+		t.Errorf("linked account capabilities = local:%v offline:%v, want false/true", body.Local, body.OfflineLogin)
+	}
+}
+
+func TestLoginFailureRedactsSubmittedPassword(t *testing.T) {
+	srv, _, _ := authServer(t)
+	const secret = "credential-must-not-appear"
+	body, _ := json.Marshal(map[string]string{"username": "kid", "password": secret})
+	resp, err := http.Post(srv.URL+"/v1/auth/login", "application/json", strings.NewReader(string(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(responseBody, []byte(secret)) {
+		t.Fatalf("login diagnostic leaked submitted password: %s", responseBody)
 	}
 }
 
@@ -152,12 +177,120 @@ func TestMemberForbiddenOnAdminRoutes(t *testing.T) {
 		{http.MethodDelete, "/v1/titles/movie:tmdb:1", ""},
 		{http.MethodGet, "/v1/users", ""},
 		{http.MethodPatch, "/v1/users/u-boss", `{"role":"member"}`},
+		{http.MethodPut, "/v1/users/u-boss/contact-address", `{"email":"boss@example.com"}`},
+		{http.MethodDelete, "/v1/users/u-boss/contact-address", ""},
+		{http.MethodDelete, "/v1/users/u-boss/contact-address/replacement", ""},
 	}
 	for _, tc := range cases {
 		resp := authed(t, tc.method, srv.URL+tc.path, member, tc.body)
 		if resp.StatusCode != http.StatusForbidden {
 			t.Errorf("member %s %s → %d, want 403 (§19)", tc.method, tc.path, resp.StatusCode)
 		}
+	}
+}
+
+func TestUserContactAddressLifecycle(t *testing.T) {
+	srv, st, _ := authServer(t)
+	admin := login(t, srv, "boss", "pw")
+	ctx := context.Background()
+
+	resp := authed(t, http.MethodPut, srv.URL+"/v1/users/u-kid/contact-address", admin,
+		`{"email":" Kid@Example.COM "}`)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("put contact → %d, want 204", resp.StatusCode)
+	}
+	_ = resp.Body.Close()
+
+	resp = authed(t, http.MethodGet, srv.URL+"/v1/users", admin, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list users → %d", resp.StatusCode)
+	}
+	var listed struct {
+		Users []struct {
+			ID             string `json:"id"`
+			ContactAddress *struct {
+				Email, Status, Provenance string
+			} `json:"contactAddress"`
+			ContactReplacement *struct {
+				Email, Status string
+			} `json:"contactReplacement"`
+		} `json:"users"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&listed); err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	var kidContact string
+	for _, u := range listed.Users {
+		if u.ID == "u-kid" && u.ContactAddress != nil {
+			kidContact = u.ContactAddress.Email + "/" + u.ContactAddress.Status + "/" + u.ContactAddress.Provenance
+		}
+	}
+	if kidContact != "Kid@Example.COM/pending/admin" {
+		t.Fatalf("pending contact = %q", kidContact)
+	}
+
+	if _, err := st.VerifyPendingContactAddress(ctx, "u-kid", "kid@example.com", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	resp = authed(t, http.MethodPut, srv.URL+"/v1/users/u-kid/contact-address", admin,
+		`{"email":"new-kid@example.com"}`)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("put replacement → %d", resp.StatusCode)
+	}
+	_ = resp.Body.Close()
+	set, err := st.GetContactAddresses(ctx, "u-kid")
+	if err != nil || set.Verified == nil || set.Verified.Normalized != "kid@example.com" ||
+		set.Pending == nil || set.Pending.Normalized != "new-kid@example.com" {
+		t.Fatalf("replacement store state = %+v, %v", set, err)
+	}
+
+	resp = authed(t, http.MethodPut, srv.URL+"/v1/users/u-boss/contact-address", admin,
+		`{"email":"NEW-KID@example.com"}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("duplicate contact → %d, want 409", resp.StatusCode)
+	}
+	_ = resp.Body.Close()
+
+	resp = authed(t, http.MethodDelete, srv.URL+"/v1/users/u-kid/contact-address/replacement", admin, "")
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("cancel replacement → %d, want 204", resp.StatusCode)
+	}
+	_ = resp.Body.Close()
+	set, err = st.GetContactAddresses(ctx, "u-kid")
+	if err != nil || set.Verified == nil || set.Pending != nil {
+		t.Fatalf("cancelled replacement = %+v, %v", set, err)
+	}
+
+	resp = authed(t, http.MethodDelete, srv.URL+"/v1/users/u-kid/contact-address", admin, "")
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("remove contact → %d, want 204", resp.StatusCode)
+	}
+	_ = resp.Body.Close()
+	set, err = st.GetContactAddresses(ctx, "u-kid")
+	if err != nil || set.Verified != nil || set.Pending != nil {
+		t.Fatalf("removed contact = %+v, %v", set, err)
+	}
+}
+
+func TestContactEmailIsNotALoginIdentifier(t *testing.T) {
+	srv, _, _ := authServer(t)
+	admin := login(t, srv, "boss", "pw")
+	resp := authed(t, http.MethodPut, srv.URL+"/v1/users/u-kid/contact-address", admin,
+		`{"email":"kid@example.com"}`)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("put contact → %d", resp.StatusCode)
+	}
+	_ = resp.Body.Close()
+
+	body, _ := json.Marshal(map[string]string{"username": "kid@example.com", "password": "pw"})
+	resp, err := http.Post(srv.URL+"/v1/auth/login", "application/json", strings.NewReader(string(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("contact-email login → %d, want 401", resp.StatusCode)
 	}
 }
 
@@ -224,6 +357,12 @@ func TestUserSyncAdmin(t *testing.T) {
 	srv, st, _ := authServer(t)
 	before, _ := st.ListUsers(context.Background())
 	admin := login(t, srv, "boss", "pw")
+	contactResp := authed(t, http.MethodPut, srv.URL+"/v1/users/u-kid/contact-address", admin,
+		`{"email":"kid@example.com"}`)
+	if contactResp.StatusCode != http.StatusNoContent {
+		t.Fatalf("put contact before sync → %d", contactResp.StatusCode)
+	}
+	_ = contactResp.Body.Close()
 	resp := authed(t, http.MethodPost, srv.URL+"/v1/users/sync", admin, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("sync → %d, want 200", resp.StatusCode)
@@ -234,6 +373,10 @@ func TestUserSyncAdmin(t *testing.T) {
 	}
 	if len(after) != 2 {
 		t.Errorf("expected exactly the 2 seeded users, got %d", len(after))
+	}
+	contacts, err := st.GetContactAddresses(context.Background(), "u-kid")
+	if err != nil || contacts.Pending == nil || contacts.Pending.Normalized != "kid@example.com" {
+		t.Errorf("sync replaced provider-independent contact state: %+v, %v", contacts, err)
 	}
 }
 
@@ -280,19 +423,13 @@ func TestBreakGlassToken(t *testing.T) {
 // the gate: a member must not reach the admin paths, and the self path must not be
 // aimable at anyone else (it takes no target id, by construction).
 
-// seedLocalUser writes a user WITH a bcrypt hash — the credential-path discriminator
-// (§11). The harness otherwise seeds imported users, so a local one is explicit.
+// seedLocalUser creates a local user through the real password service. The
+// harness otherwise seeds imported users, so a local one is explicit.
 func seedLocalUser(t *testing.T, st store.Store, id, name, password string, role store.Role) {
 	t.Helper()
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
+	passwords := auth.NewPasswordService(st, func() string { return id }, time.Now)
+	_, err := passwords.CreateLocal(context.Background(), name, password, role, 0)
 	if err != nil {
-		t.Fatal(err)
-	}
-	u := store.User{
-		ID: id, Name: name, Role: role, PasswordHash: string(hash),
-		CreatedAt: time.Now(), UpdatedAt: time.Now(),
-	}
-	if err := st.UpsertUser(context.Background(), u); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -354,12 +491,11 @@ func TestChangeOwnPassword_WrongCurrentRejected(t *testing.T) {
 	}
 }
 
-// §19: an imported media-server user has no Loomarr-side password. The route says so
-// rather than pretending to succeed — a silent 204 would imply Loomarr had changed
-// their media-server password, which it cannot do.
+// §19: an imported user may have an offline verifier, but does not own an
+// independent Loomarr password. The route must not imply it changed Emby/Jellyfin.
 func TestChangeOwnPassword_ImportedUserConflicts(t *testing.T) {
 	srv, _, _ := authServer(t)
-	member := login(t, srv, "kid", "pw") // seeded as IMPORTED — no hash
+	member := login(t, srv, "kid", "pw") // imported; login captures an offline verifier
 
 	resp := authed(t, http.MethodPost, srv.URL+"/v1/auth/password", member,
 		`{"current":"pw","next":"a-longer-new-pw"}`)

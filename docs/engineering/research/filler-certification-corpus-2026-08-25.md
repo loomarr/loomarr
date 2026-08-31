@@ -40,6 +40,19 @@ file, and a separate ledger-to-file rehash passed 300/300. One Archive request r
 completed in 283 further requests. The [content-addressed acquisition summary](../evidence/filler-development-acquisition-2026-08-27.json)
 records the external ledgers' digests and the policy boundary.
 
+A separate recovery acquisition was completed on 2026-08-30 after the original external corpus was
+not present on the current development host. Five bounded Archive captures produced 335 candidates;
+an exact development-only rights review approved the 300 smallest reproducibly downloadable
+representations with complete attribution when required. The downloader locked all 300 files
+(3,460,859,319 bytes), and an independent SHA-256 pass revalidated 300/300. This is a replacement
+local development input, not additional evidence for the holdout denominators. It is intentionally
+recorded as role-unbalanced: its discovery hints cover 187 commercials, 100 trailers, and 13 PSAs.
+Only 177 cases carry source date metadata, and the current corpus contract cannot measure country or
+local market. Geographic sourcing and Channel eligibility are tracked by
+[#691](https://github.com/loomarr/loomarr/issues/691). The
+[recovery acquisition summary](../evidence/filler-development-reacquisition-2026-08-30.json) binds
+the external inventory, rights ledger, download ledger, and content-set identities.
+
 The approved cohort was prepared on 2026-08-27 as a schema-v5 `development_seed`, not coerced into a
 certification manifest. The preparer rehashed all 5,952,579,028 source bytes, measured at most two
 minutes per case, identified 299 perceptual clusters, and atomically published 300 label-blind packets.
@@ -49,6 +62,15 @@ revalidated every packet digest and all 1,782 derivative files. Two distinct 300
 review packets and owner-only maps now bind the same content set; neither semantic label submission is
 complete yet. The [preparation evidence](../evidence/filler-development-preparation-2026-08-27.json)
 records the external artifact digests and real-media boundary findings.
+
+The 2026-08-30 recovery cohort was separately prepared as a schema-v5 `development_seed`. The
+preparer rehashed all 3,460,859,319 source bytes and published 300 label-blind packets across 300
+clusters. Decoder evidence marked 298 cases usable and two unusable; the usable cases produced 1,788
+derivative files totaling 1,360,022,455 bytes. Two independently randomized opaque review packages
+bind the same 300-case content set, preserve private maps at mode `0600`, and leave their label
+templates empty. The [recovery preparation evidence](../evidence/filler-development-recovery-preparation-2026-08-30.json)
+records the exact input, draft, packet, derivative-tree, and package identities. Neither semantic
+review is complete, and the recovery packets contain no completed era or geography labels.
 
 This completes development acquisition, not certification. The Archive policy accepts exact item
 CC/public-domain assertions as operational authority without claiming a chain-of-title warranty. It

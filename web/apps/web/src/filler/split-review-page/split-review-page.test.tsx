@@ -30,6 +30,7 @@ const ADMIN = {
   name: "Ada",
   role: "admin" as const,
   local: true,
+  offlineLogin: false,
   autoApprove: true,
   disabled: false,
   quota: 0,

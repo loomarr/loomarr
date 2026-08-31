@@ -222,6 +222,24 @@ func TestAiringNow_BreakWalksThePodByOffset(t *testing.T) {
 	}
 }
 
+func TestAiringNow_FillerCannotCrossTheScheduledBreakBoundary(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	r := fillerResolver(t, dir, filler.Pod{Entries: []filler.PodEntry{
+		{Path: clipAt("long-ad.mp4"), Name: "long ad", DurationMs: 60_000},
+	}})
+	base := testPlayoutAnchor()
+	r.now = func() time.Time { return base.Add(5 * time.Second) }
+
+	airing, _, err := r.AiringNow(context.Background(), "ch1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if airing.Offset != 5*time.Second || airing.Remaining != 25*time.Second {
+		t.Fatalf("filler Airing = %+v, want offset 5s and the scheduled break's 25s remainder", airing)
+	}
+}
+
 // No pool ⇒ the offline card, not an error. A channel with no commercials must still tune.
 func TestAiringNow_BreakWithNoPodIsNotAnError(t *testing.T) {
 	t.Parallel()

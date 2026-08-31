@@ -74,7 +74,7 @@ func (s *Server) changePassword(ctx context.Context, in *changePasswordInput) (*
 		return nil, errUnauthorized("That didn't match", "Your current password isn't right. Try again.")
 	case errors.Is(err, auth.ErrNotLocalUser):
 		return nil, errConflict("Password lives elsewhere",
-			"This account signs in with your media server, so Loomarr never stores its password — change it there and the new one works here immediately.")
+			"This account's password is owned by your media server. Change it there; the next successful sign-in refreshes Loomarr's offline verifier.")
 	case errors.Is(err, auth.ErrWeakPassword):
 		return nil, errUnprocessable("Password too short", "Use at least 8 characters.")
 	case err != nil:
@@ -136,7 +136,7 @@ func (s *Server) resetUserPassword(ctx context.Context, in *resetPasswordInput) 
 		return nil, errNotFound("No such user", "That account doesn't exist — it may have been removed.")
 	case errors.Is(err, auth.ErrNotLocalUser):
 		return nil, errConflict("Nothing to reset",
-			"This account signs in with your media server, so Loomarr never held its password.")
+			"This account's password is owned by your media server and cannot be reset independently in Loomarr.")
 	case errors.Is(err, auth.ErrWeakPassword):
 		return nil, errUnprocessable("Password too short", "Use at least 8 characters.")
 	case err != nil:
