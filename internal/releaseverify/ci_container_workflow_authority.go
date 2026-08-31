@@ -50,9 +50,9 @@ const cacheCleanupWorkflowCommand = "set -uo pipefail\n" +
 	"# `|| true` on the list: a PR with no caches is the normal case for docs-only\n" +
 	"# work, and it must not fail the job.\n" +
 	"ids=$(gh api \"repos/$REPO/actions/caches\" --paginate \\\n" +
-	"        -q \".actions_caches[] | select(.ref==\\\"$REF\\\") | .id\" 2>/dev/null || true)\n" +
+	"        -q \".actions_caches[] | select(.ref==\\\"$REF\\\" or (.ref | startswith(\\\"$QUEUE_REF_PREFIX\\\"))) | .id\" 2>/dev/null || true)\n" +
 	"if [ -z \"$ids\" ]; then\n" +
-	"  echo \"no caches for $REF\"\n" +
+	"  echo \"no caches for $REF or $QUEUE_REF_PREFIX*\"\n" +
 	"  exit 0\n" +
 	"fi\n" +
 	"for id in $ids; do\n" +
@@ -156,11 +156,12 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			jobs: map[string]workflowJobAuthority{
 				"cleanup": {
 					steps: map[string]workflowStepAuthority{
-						cacheCleanupWorkflowCommand: exactWorkflowStep(0, "Delete caches for refs/pull/${{ github.event.pull_request.number }}/merge", workflowStepAuthority{
+						cacheCleanupWorkflowCommand: exactWorkflowStep(0, "Delete inaccessible caches for pull request ${{ github.event.pull_request.number }}", workflowStepAuthority{
 							environment: map[string]string{
-								"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}",
-								"REPO":     "${{ github.repository }}",
-								"REF":      "refs/pull/${{ github.event.pull_request.number }}/merge",
+								"GH_TOKEN":         "${{ secrets.GITHUB_TOKEN }}",
+								"REPO":             "${{ github.repository }}",
+								"REF":              "refs/pull/${{ github.event.pull_request.number }}/merge",
+								"QUEUE_REF_PREFIX": "refs/heads/gh-readonly-queue/main/pr-${{ github.event.pull_request.number }}-",
 							},
 						}),
 					},

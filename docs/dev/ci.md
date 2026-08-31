@@ -495,7 +495,7 @@ Sharding is free on a public repo. Check the bill before copying it into a priva
 - **`actions/cache` never overwrites an existing key.** A cache whose contents track something
   its key doesn't gets written once and frozen. Use a rolling key with `restore-keys`.
 - **The 10GB cap evicts LRU across all refs**, so closed PRs' caches push out live ones.
-  `cache-cleanup.yml` deletes them on close.
+  `cache-cleanup.yml` deletes both `refs/pull/N/merge` and matching merge-queue caches on close.
 
 Apple compilation caching is a validated artifact protocol, not an unchecked DerivedData restore.
 The fingerprint binds the runner OS and architecture, exact Xcode and Swift identities, both
