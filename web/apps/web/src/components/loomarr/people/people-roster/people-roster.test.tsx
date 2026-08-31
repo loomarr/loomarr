@@ -32,4 +32,10 @@ describe("PeopleRoster", () => {
     await userEvent.type(screen.getByLabelText("Search people"), "Nobody");
     expect(screen.getByText("No matching people")).toBeInTheDocument();
   });
+
+  it("points an empty roster to the page-header actions", () => {
+    render(<PeopleRoster users={[]} onSelect={() => {}} />);
+    expect(screen.getByText(/use the actions above/i)).toBeInTheDocument();
+    expect(screen.queryByText(/create a local account below/i)).not.toBeInTheDocument();
+  });
 });

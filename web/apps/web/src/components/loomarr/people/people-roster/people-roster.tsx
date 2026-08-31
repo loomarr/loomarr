@@ -99,7 +99,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect }: PeopleRosterProps
       ) : users.length === 0 ? (
         <EmptyState
           title="No people yet"
-          description="Import a media-server account or create a local account below."
+          description="Use the actions above to import a media-server account or add a local one."
         />
       ) : filtered.length === 0 ? (
         <div className="rounded-lg border border-border bg-card p-6 text-center">

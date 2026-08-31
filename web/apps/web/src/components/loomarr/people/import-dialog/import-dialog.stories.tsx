@@ -39,6 +39,21 @@ const AllImported: Story = {
   args: { candidates: mixedCandidates.map((candidate) => ({ ...candidate, imported: true })) },
 };
 const Busy: Story = { args: { importing: true } };
+const Selection: Story = {
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(await canvas.findByLabelText(/^Ada Lovelace/));
+    await canvas.findByText("1 selected · 3 importable shown");
+  },
+};
+const MutationError: Story = {
+  args: {
+    mutationError: new ApiError(502, {
+      title: "Import failed",
+      detail: "Emby stopped responding. Your selection is still available to retry.",
+      status: 502,
+    }),
+  },
+};
 const ProviderError: Story = {
   args: {
     candidateError: new ApiError(502, {
@@ -50,4 +65,4 @@ const ProviderError: Story = {
 };
 
 export default meta;
-export { AllImported, Busy, Disconnected, Empty, Loading, Mixed, ProviderError };
+export { AllImported, Busy, Disconnected, Empty, Loading, Mixed, MutationError, ProviderError, Selection };
