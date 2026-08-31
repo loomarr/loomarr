@@ -445,6 +445,10 @@ publish compiler results. It is manual-only, refuses every ref except `refs/head
 the complete mobile and TV Release install-launch-liveness gates before saving. A restored seed is
 hash-validated before use; the candidate CAS and compressed archive are validated again, and a save
 is refused if its size plus a 512 MiB reserve would exceed the repository's 10 GiB cache budget.
+Before installing dependencies or starting either native build, the writer also requires enough
+live headroom for the maximum permitted archive plus that reserve; this conservative preflight
+avoids spending the full cold-build window on a candidate that cannot possibly be published. The
+post-build admission still uses the archive's exact compressed size.
 After a successful save, cleanup is limited to the exact fingerprint prefix on `refs/heads/main` and
 retains one generation. Only this workflow has `actions: write` for the compiler cache.
 

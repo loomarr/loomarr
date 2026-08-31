@@ -67,6 +67,11 @@ const cacheCleanupWorkflowCommand = "set -uo pipefail\n" +
 
 const appleCacheFingerprintCommand = `echo "fingerprint=$(./scripts/apple-compilation-cache.sh fingerprint)" >> "$GITHUB_OUTPUT"`
 
+const appleCachePublisherPreflightCommand = `set -euo pipefail
+gh api "repos/$REPO/actions/cache/usage" > "$RUNNER_TEMP/apple-cache-usage.json"
+./scripts/apple-compilation-cache.sh admit-capacity "$RUNNER_TEMP/apple-cache-usage.json"
+`
+
 const appleCacheConsumerPrepareCommand = `set -euo pipefail
 mode=cold
 store="$RUNNER_TEMP/apple-compilation-cache-store"
@@ -132,17 +137,20 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				"publish": {
 					condition: "github.ref == 'refs/heads/main'",
 					steps: map[string]workflowStepAuthority{
-						"make fe-install":              exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
-						appleCacheFingerprintCommand:   exactWorkflowStep(5, "Fingerprint the Apple toolchain", workflowStepAuthority{}),
-						appleCachePublisherSeedCommand: exactWorkflowStep(7, "Isolate the optional seed generation", workflowStepAuthority{}),
-						`./web/scripts/validate-apple-compilation-cache.sh produce "$RUNNER_TEMP/apple-compilation-cache.tar.zst"`: exactWorkflowStep(8, "Build and validate the candidate generation", workflowStepAuthority{allowsAcquisition: true, environment: map[string]string{
+						appleCachePublisherPreflightCommand: exactWorkflowStep(1, "Preflight repository cache headroom", workflowStepAuthority{environment: map[string]string{
+							"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "REPO": "${{ github.repository }}",
+						}}),
+						"make fe-install":              exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
+						appleCacheFingerprintCommand:   exactWorkflowStep(6, "Fingerprint the Apple toolchain", workflowStepAuthority{}),
+						appleCachePublisherSeedCommand: exactWorkflowStep(8, "Isolate the optional seed generation", workflowStepAuthority{}),
+						`./web/scripts/validate-apple-compilation-cache.sh produce "$RUNNER_TEMP/apple-compilation-cache.tar.zst"`: exactWorkflowStep(9, "Build and validate the candidate generation", workflowStepAuthority{allowsAcquisition: true, environment: map[string]string{
 							"LOOMARR_APPLE_CACHE_SEED_ARCHIVE":    "${{ steps.seed.outputs.archive }}",
 							"LOOMARR_APPLE_CACHE_VALIDATION_ROOT": "${{ runner.temp }}/apple-cache-publisher",
 						}}),
-						appleCachePublisherAdmissionCommand: exactWorkflowStep(9, "Enforce repository cache headroom", workflowStepAuthority{environment: map[string]string{
+						appleCachePublisherAdmissionCommand: exactWorkflowStep(10, "Enforce repository cache headroom", workflowStepAuthority{environment: map[string]string{
 							"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "REPO": "${{ github.repository }}",
 						}}),
-						appleCachePublisherRetentionCommand: exactWorkflowStep(11, "Retain only the newest generation for this fingerprint", workflowStepAuthority{environment: map[string]string{
+						appleCachePublisherRetentionCommand: exactWorkflowStep(12, "Retain only the newest generation for this fingerprint", workflowStepAuthority{environment: map[string]string{
 							"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "REPO": "${{ github.repository }}", "PREFIX": "${{ steps.apple-toolchain.outputs.fingerprint }}",
 						}}),
 					},
