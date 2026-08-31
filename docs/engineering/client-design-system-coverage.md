@@ -2,7 +2,7 @@
 
 **Status:** shared-interface implementation and automated/rendered gates complete; P3.5 iPhone
 device evidence in progress; production adoption remains owned by P4/P6/P7/P8
-**Owner:** shared client platform  
+**Owner:** shared client platform
 **Parent plan:**
 [`docs/engineering/plans/shared-client-platform.md`](plans/shared-client-platform.md)
 **Shipping-surface inventory:**

@@ -1,9 +1,9 @@
 # Client design-system reconciliation
 
-**Date:** 2026-08-30  
+**Date:** 2026-08-30
 **Snapshot:** `origin/main` at `f7ed19fbb60f507b552bc2f30b13e6cb8315b07c`; PR #581 at
 `5c903446f65fc049d99083a5d333a360a92200f3`; PR #607 at
-`1e3a7edabdd47cf023cf2747dc9435284a553df7`  
+`1e3a7edabdd47cf023cf2747dc9435284a553df7`
 **Scope:** shared design system, production adoption, branch reconciliation, acceptance evidence,
 and existing GitHub work. This is a read-only audit; it does not amend the plan or open issues.
 
