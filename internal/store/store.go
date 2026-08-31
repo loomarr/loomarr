@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
+	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
@@ -607,6 +608,16 @@ type ActivityStore interface {
 	PurgeActivity(ctx context.Context, before time.Time) (int, error)
 }
 
+// NotificationStore owns provider-neutral intents and bounded delivery work (§11).
+type NotificationStore interface {
+	CreateNotificationIntent(context.Context, notifications.Intent, []notifications.Attempt) (notifications.Intent, bool, error)
+	GetNotificationIntent(context.Context, string) (notifications.Intent, error)
+	ListNotificationAttempts(context.Context, string) ([]notifications.Attempt, error)
+	ClaimDueNotificationAttempt(context.Context, string, time.Time, time.Duration) (notifications.Attempt, error)
+	CompleteNotificationAttempt(context.Context, notifications.Completion) error
+	PurgeTerminalNotifications(context.Context, time.Time) (int, error)
+}
+
 // DiagnosticStore is the retained technical evidence surface (§5, §17). Activity is deliberately
 // separate: it is a curated product feed, while these records are pageable/filterable diagnostics.
 type DiagnosticStore interface {
@@ -710,6 +721,7 @@ type Store interface {
 	SplitProposalStore
 	AiringStore
 	ActivityStore
+	NotificationStore
 	DiagnosticStore
 	SettingStore
 	CountStore

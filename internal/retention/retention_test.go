@@ -10,10 +10,12 @@ import (
 )
 
 type retentionStore struct {
-	diagnosticBefore time.Time
-	diagnosticMax    int64
-	diagnosticErr    error
-	sessionsCalled   bool
+	diagnosticBefore   time.Time
+	diagnosticMax      int64
+	diagnosticErr      error
+	notificationBefore time.Time
+	notificationErr    error
+	sessionsCalled     bool
 }
 
 type retentionDiagnostics struct {
@@ -29,6 +31,10 @@ func (d *retentionDiagnostics) Purge(_ context.Context, before time.Time, max in
 func (*retentionStore) PurgeDeniedProposals(context.Context, time.Time) (int, error) { return 0, nil }
 func (*retentionStore) PurgeFinishedJobs(context.Context, time.Time) (int, error)    { return 0, nil }
 func (*retentionStore) PurgeActivity(context.Context, time.Time) (int, error)        { return 0, nil }
+func (s *retentionStore) PurgeTerminalNotifications(_ context.Context, before time.Time) (int, error) {
+	s.notificationBefore = before
+	return 2, s.notificationErr
+}
 func (s *retentionStore) PurgeDiagnostics(_ context.Context, before time.Time, maxBytes int64) (diagnostics.PurgeResult, error) {
 	s.diagnosticBefore = before
 	s.diagnosticMax = maxBytes
@@ -61,6 +67,9 @@ func TestHousekeepingAppliesDiagnosticAgeAndStoragePolicy(t *testing.T) {
 	if store.diagnosticMax != 512*1024*1024 {
 		t.Fatalf("diagnostic budget = %d, want 512 MiB", store.diagnosticMax)
 	}
+	if want := now.Add(-30 * 24 * time.Hour); !store.notificationBefore.Equal(want) {
+		t.Fatalf("notification horizon = %v, want %v", store.notificationBefore, want)
+	}
 }
 
 func TestHousekeepingAttemptsLaterStagesAfterDiagnosticFailure(t *testing.T) {
@@ -82,6 +91,28 @@ func TestHousekeepingAttemptsLaterStagesAfterDiagnosticFailure(t *testing.T) {
 	}
 	if !store.sessionsCalled {
 		t.Fatal("diagnostic failure stopped later session cleanup")
+	}
+}
+
+func TestHousekeepingAttemptsLaterStagesAfterNotificationFailure(t *testing.T) {
+	want := errors.New("notification store unavailable")
+	store := &retentionStore{notificationErr: want}
+	service := New(store, Windows{
+		Proposals: func() time.Duration { return time.Hour },
+		Jobs:      func() time.Duration { return time.Hour },
+		Activity:  func() time.Duration { return time.Hour },
+		Diagnostics: func() time.Duration {
+			return time.Hour
+		},
+		DiagnosticsMaxBytes: func() int64 { return 1 },
+	}, time.Now, nil)
+
+	err := service.Housekeeping(context.Background())
+	if !errors.Is(err, want) {
+		t.Fatalf("Housekeeping error = %v, want notification error", err)
+	}
+	if store.diagnosticBefore.IsZero() || !store.sessionsCalled {
+		t.Fatal("notification failure stopped later housekeeping stages")
 	}
 }
 
