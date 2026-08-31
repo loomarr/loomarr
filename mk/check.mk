@@ -1,8 +1,19 @@
+## ---- proportional local verification -----------------------------------
+
+.PHONY: verify
+verify: ## run affected local evidence; SCOPE=all runs the comprehensive repository audit
+ifeq ($(SCOPE),)
+	@BASE="$(or $(BASE),origin/main)" ./scripts/agent.sh verify
+else ifeq ($(SCOPE),all)
+	@$(MAKE) check-static test
+else
+	@echo "verify: unknown SCOPE=$(SCOPE) (want empty or all)" >&2
+	@exit 2
+endif
+
 ## ---- explicit complete audit --------------------------------------------
 
-.PHONY: check check-static
-check: check-static test ## explicit complete-repository audit: contracts plus race-policy-aware unit tests
-
+.PHONY: check-static
 check-static: rust-check fmt shellcheck privacy-verify vet platform-vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify ## repository contracts without the unit-test suite (CI runs this once beside test shards)
 
 .PHONY: rust-check rust-test-worker rust-audit rust-fuzz
@@ -81,8 +92,8 @@ test: rust-test-worker eval-contract ## unit tests with their required Rust work
 # is ~500 tests each paying a fresh SQLite open plus migrations, and the fix when this bites again is
 # to share that setup, NOT to raise the number a second time.
 #
-# GO_SHARD is a CI-only passthrough (`make check GO_SHARD=1/2`): EMPTY by default, so a local
-# `make test` — and `make check` — runs the whole tree. Sharding must
+# GO_SHARD is a CI-only passthrough (`make test GO_SHARD=1/2`): EMPTY by default, so a local
+# `make test` — and `make verify SCOPE=all` — runs the whole tree. Sharding must
 # never be implicit, or someone runs a fraction of the gate and reads the green as the whole thing.
 # The shard COUNT lives in ci.yml's `matrix.shard`; see scripts/go-shard.sh for the split.
 #
@@ -126,7 +137,7 @@ go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must
 	@./scripts/go-race-policy.sh --verify
 
 .PHONY: test-ffmpeg
-test-ffmpeg: ## media tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
+test-ffmpeg: ## media tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in comprehensive verification)
 	$(GO) test -tags ffmpeg ./internal/mediatools/ ./internal/testkit/ -v
 	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ ./internal/api/ -v
 

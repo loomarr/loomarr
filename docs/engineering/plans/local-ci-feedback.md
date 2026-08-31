@@ -44,7 +44,7 @@ budget miss creates optimization evidence and never skips a gate.
 | Tier | Scope | Budget |
 | --- | --- | --- |
 | Edit | Direct package or frontend test in watch mode | seconds |
-| Pre-push | `agent-verify`: affected dependency closure and relevant static/policy checks | 90 seconds p95 |
+| Pre-push | `make verify`: affected dependency closure and relevant static/policy checks | 90 seconds p95 |
 | Pull request | Fail-closed, impact-scoped gates running in parallel | 5 minutes p95 for leaf changes |
 | Merge group | Full affected-domain gate against current `main` | 12 minutes p95 |
 | Main, nightly, release | Publication on admitted main; explicit complete audits and release certification | comprehensive |
@@ -71,7 +71,7 @@ and Android. The work changes when assurance runs, not whether it exists.
 ## Delivery
 
 1. Add the classifier and exhaustive table/known-path tests without changing CI behavior.
-2. Make `agent-verify` consume it and calculate reverse Go dependencies.
+2. Make affected local verification consume it and calculate reverse Go dependencies.
 3. Split global Go contracts from sharded race tests so global work runs once.
 4. Add specialized Postgres, Windows, Rust, visual, e2e, tuner, image, and Android decisions in
    shadow mode while the old jobs still run.

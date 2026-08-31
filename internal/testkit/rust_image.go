@@ -9,7 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/images/rustgen"
 )
 
-// RustImageRenderer opens the same required worker used in production. `make check` builds it
+// RustImageRenderer opens the same required worker used in production. Comprehensive verification builds it
 // before Go tests; using the real executable here keeps protocol and pixel behavior from drifting
 // behind an in-process fake.
 func RustImageRenderer(t testing.TB) *rustgen.Generator {

@@ -19,11 +19,10 @@ agent-stop: ## release this worktree's task and shared-output claims
 agent-env: ## show this worktree's isolated ports, database, compose project, and artifact path
 	@./scripts/agent.sh env
 
-agent-baseline: ## run make check once per clean commit/toolchain and share the green result across worktrees
+agent-baseline: ## share one cached make verify SCOPE=all result per clean commit/toolchain
 	@./scripts/agent.sh baseline
 
-agent-verify: ## run affected local evidence selected by CI impact (BASE=origin/main)
-	@BASE="$(or $(BASE),origin/main)" ./scripts/agent.sh verify
+agent-verify: verify ## compatibility alias for make verify
 
 agent-worktree: ## create, claim, and bootstrap a sibling worktree (TOPIC=... CLAIMS=...; BASE/DEPENDS_ON for stacks)
 	@COPY_ENV="$(or $(COPY_ENV),0)" BOOTSTRAP_SKIP_FE="$(or $(BOOTSTRAP_SKIP_FE),0)" BASE="$(BASE)" \

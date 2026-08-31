@@ -155,7 +155,7 @@ jobs:
             echo "docs=false" >> "$GITHUB_OUTPUT"
           fi
           # The tool-neutral harness has a small macOS contract test below. Linux is already
-          # exercised by `make check`; this output prevents unrelated product changes from
+          # exercised by comprehensive verification; this output prevents unrelated product changes from
           # spending a macOS runner while keeping every harness input covered.
           if echo "$changed" | grep -qE '^scripts/|^Makefile$|^AGENTS\.md$|^CLAUDE\.md$|^\.agents/|^\.claude/|^\.node-version$|^docker/compose\.dev|^web/package\.json$|^web/apps/web/vite\.config\.ts$|^docs/dev/'; then
             echo "agent=true" >> "$GITHUB_OUTPUT"

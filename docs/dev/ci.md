@@ -499,7 +499,7 @@ failing native result.
 
 Go tests, frontend and Playwright split across runners for wall-clock only. Repository-wide Go and
 Rust contracts run once in `go-contracts`, in parallel with three test-only Go shards and the
-independent release-worker certification. Their union is the same assurance as local `make check`
+independent release-worker certification. Their union is the same assurance as `make verify SCOPE=all`
 plus the existing CI-only certification. The `ci-ok` aggregate requires every job, so moving a
 contract out of the test shards cannot make it optional.
 
@@ -531,9 +531,9 @@ that fails when it drifts, and all three run in CI:
 
 | List | Guard | Runs via |
 | --- | --- | --- |
-| `TAGS` in the Makefile | `scripts/check-tags.sh` | `make tags-verify`, part of `make check` |
+| `TAGS` in the Makefile | `scripts/check-tags.sh` | `make tags-verify`, part of comprehensive verification |
 | Retired identifiers | `scripts/check-retired.sh` | `make retired-verify`, its own CI step |
-| Release-image source-family probes | `releaseverify.VerifyCIImageInputs` | `make release-verify`, part of `make check` |
+| Release-image source-family probes | `releaseverify.VerifyCIImageInputs` | `make release-verify`, part of comprehensive verification |
 
 `tags-verify` compares the tags in `//go:build` lines against `TAGS` and fails **both ways**:
 
@@ -556,5 +556,5 @@ RustSec advisories, approved SPDX licences, and untrusted sources, then fuzzes t
 JSON-to-decoder boundary under nightly libFuzzer. A crash retains its reproducer for 30 days.
 
 This job is allowed to be expensive and network-sensitive. The fast deterministic protections stay
-in `make check`: Cargo lock enforcement, clippy/tests, and `#![forbid(unsafe_code)]` on Loomarr-owned
+in comprehensive verification: Cargo lock enforcement, clippy/tests, and `#![forbid(unsafe_code)]` on Loomarr-owned
 shipping crates.

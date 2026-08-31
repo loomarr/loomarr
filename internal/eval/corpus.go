@@ -8,7 +8,7 @@
 // (b) an optional judge-model score for the subjective "is this a good lineup?"
 // question.
 //
-// It is gated behind the `eval` build tag so it NEVER runs under `make check` (which
+// It is gated behind the `eval` build tag so it NEVER runs under comprehensive verification (which
 // stays hermetic, §19). Run it with `make eval` (or `go test -tags=eval ./internal/eval/`)
 // with LLM_* + LIBRARY_* + TMDB_API_KEY configured. The same corpus doubles as the
 // live-smoke script.

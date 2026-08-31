@@ -3,17 +3,22 @@
 Unit tests never touch the network. External services are mocked through `internal/testkit` —
 extend it rather than writing a private mock.
 
-## The gate
+## The routine loop
 
 ```bash
-make check    # the gate
+go test -race -run TestName ./internal/<pkg>/ # while editing
+make verify BASE=origin/main                  # once the change is stable
 ```
 
-Green here should mean green in CI.
+`make verify` classifies the diff through the same fail-closed impact policy as CI and runs the
+affected local evidence. Pull-request and merge-queue lanes provide protected remote evidence.
 
-The steps it runs are listed in the [command reference](commands.md), which is generated from the
-Makefile — so it can't drift from what `check` actually does. Enumerating them here could, and
-did.
+`make verify SCOPE=all` is the explicit complete-repository audit. Run it when a maintainer requests a full
+audit, when changing the gate/classifier machinery, or when diagnosing a selection boundary. It is
+not a task-start ritual, an edit-loop command, or a requirement for every Go change.
+
+The checks selected by each Make target are listed in the [command reference](commands.md), which is
+generated from the Makefile so it cannot drift. Enumerating them here could, and did.
 
 ### `make vet-tags` isn't redundant
 
@@ -76,7 +81,7 @@ count and report pass rate plus min/median/max overall quality, relevance, and s
 remains defensibly on-theme. Per-case tool-call and surfaced-candidate budgets fail deterministically.
 Structural diagnostics record the grounding stage, tool mode, candidate count, generation failure,
 and schedule materialization failure, so a low score points at the layer to tune. Real inference still
-remains outside `make check` and certifies only the requested model/provider configuration, catalog
+remains outside comprehensive verification and certifies only the requested model/provider configuration, catalog
 snapshot, and corpus version in the artifact.
 
 Every run prints and records a deterministic worst-case call budget before constructing any Library,

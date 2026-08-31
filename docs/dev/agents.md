@@ -148,7 +148,6 @@ Create, register, claim, and bootstrap a fresh sibling worktree in one command:
 make agent-status
 make agent-worktree TOPIC=filler-refresh CLAIMS=openapi-client
 cd ../loomarr-filler-refresh
-make agent-baseline
 ```
 
 Registration happens before bootstrap, closing the old gap where a worktree existed and generated
@@ -156,13 +155,13 @@ files before it appeared in the roster. If the worktree already exists, register
 
 ```sh
 make agent-start TASK=filler-refresh CLAIMS=openapi-client
-make agent-baseline
 ```
 
-During implementation and before publication, `make agent-verify BASE=origin/main` is the affected
-local evidence. It reports the changed-file scope and uses the fail-closed CI classifier. The PR
-fast lane and merge queue provide the protected final evidence. Run `make check` only for a
-deliberately requested complete-repository audit or while diagnosing the classifier/gate machinery.
+During implementation, run focused tests for the edited surface. Before publication,
+`make verify BASE=origin/main` reports the changed-file scope and runs affected local evidence through
+the fail-closed CI classifier. The PR fast lane and merge queue provide the protected final evidence.
+Run `make verify SCOPE=all` or `make agent-baseline` only for a deliberately requested complete-repository audit,
+changes to classifier/gate machinery, or boundary diagnosis—not merely because a worktree is new.
 
 ## Dependent work
 
@@ -232,14 +231,15 @@ alone.
 
 ## Baselines and gates
 
-`agent-baseline` caches a successful `make check` by clean commit, Go and Rust toolchains, operating
-system, and architecture. Worktrees at the same commit wait for one proof and reuse it. Dirty trees
+`agent-baseline` is an opt-in complete audit. It caches a successful `make verify SCOPE=all` by clean commit,
+Go and Rust toolchains, operating system, and architecture. Worktrees at the same commit wait for one
+proof and reuse it. Dirty trees
 always run the gate and never populate the cache. The harness rechecks the commit and tracked-file
 state after the gate and refuses to cache if implementation began while the baseline was running;
 mixed-tree output is not evidence for either version.
 
-Run small affected tests while editing, formatting and `git diff --check` before commit, then one
-stabilized complete gate for every touched area. CI owns expensive native and platform matrices.
+Run small affected tests while editing, formatting and `git diff --check` before commit, then
+`make verify BASE=<base>` once the diff is stable. CI owns expensive native and platform matrices.
 Never run `make smoke*` from an agent session; those commands drive the maintainer's live stack.
 
 ## Finish and clean up

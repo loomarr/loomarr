@@ -18,8 +18,8 @@ be restated here and in three other files, and the copies drifted apart. One hom
 
 - **`docs/design.md` is the single source of truth.** If a change needs to deviate, update the
   doc in the *same PR, before the code*. Doc and code must never disagree silently.
-- **Gates are hard.** `make check` and CI must be green. Never weaken, skip or stub a test to
-  make a gate pass — if a gate can't pass, the design or the code is wrong. Fix one of them.
+- **Gates are hard.** Never weaken, skip or stub a selected local or CI gate to make it pass — if a
+  gate can't pass, the design or the code is wrong. Fix one of them.
 - **New dependencies are fine when they genuinely help** — add a row to `docs/design.md` §14 in
   the same PR with a one-line rationale. Prefer something already in the tree, and a focused
   library over a framework.
@@ -33,17 +33,23 @@ be restated here and in three other files, and the copies drifted apart. One hom
 
 ## Before you open a PR
 
-Run the gates your change touches:
+Use focused tests while editing, then run `make verify BASE=origin/main` once the change is stable.
+It selects affected local evidence through the same fail-closed impact policy as CI. Run a
+specialized gate directly when the change needs evidence beyond that local fast path:
 
 | Change | Run |
 | --- | --- |
-| Go code | `make check` |
+| Go code | focused `go test -race` while editing; `make verify BASE=origin/main` before push |
 | API surface | `make openapi-verify` |
 | Settings | `make config-docs-verify` |
 | Makefile / workflows | `make dev-docs-verify` and `make ci-lint` |
 | Documentation | `make docs-lint` |
 | Store | `make test-pg` (Docker) |
 | Frontend | `make fe`, plus `make fe-visual` and `make e2e` for UI |
+
+`make verify SCOPE=all` is the explicit complete-repository audit. Use it when deliberately auditing
+the whole tree, changing gate/classifier machinery, or diagnosing a selection boundary—not for every
+change.
 
 ⚠ `make ci-lint` needs `shellcheck` on `PATH`. Without it, actionlint silently skips the shell
 half and exits 0 locally while CI fails.

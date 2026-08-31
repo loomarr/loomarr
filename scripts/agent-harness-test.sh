@@ -13,6 +13,25 @@ step() {
 	echo "agent-harness-test: $*"
 }
 
+step 'single verification interface'
+project_root="$SCRIPT_DIR/.."
+fast_verify="$(make -C "$project_root" -n verify BASE=origin/main)"
+compat_verify="$(make -C "$project_root" -n agent-verify BASE=origin/main)"
+[ "$fast_verify" = "$compat_verify" ] || {
+	echo 'agent-harness-test: agent-verify does not delegate exactly to verify' >&2
+	exit 1
+}
+all_verify="$(make -C "$project_root" -n verify SCOPE=all)"
+printf '%s\n' "$all_verify" | grep -q 'make check-static test'
+if make -C "$project_root" verify SCOPE=invalid >/dev/null 2>&1; then
+	echo 'agent-harness-test: invalid verification scope silently selected a gate' >&2
+	exit 1
+fi
+if make -C "$project_root" -n check >/dev/null 2>&1; then
+	echo 'agent-harness-test: retired make check target is still callable' >&2
+	exit 1
+fi
+
 wait_for_repo_pid() {
 	expected_pid="$1"
 	comm="$2"
@@ -239,7 +258,7 @@ verify_output="$(PATH="$verify_bin:$PATH" REAL_GO="$real_go" VERIFY_LOG="$verify
 printf '%s\n' "$verify_output" | grep -q 'affected local evidence selected by CI impact'
 printf '%s\n' "$verify_output" | grep -q 'selected gates: policy'
 grep -q 'make -C .* ci-lint release-verify' "$verify_log"
-if grep -qE ' make check($| )|make -C .* (check|check-static|test)($| )' "$verify_log"; then
+if grep -qE 'make -C .* (verify .*SCOPE=all|check-static|test)($| )' "$verify_log"; then
 	echo 'agent-harness-test: policy verification expanded into the complete audit' >&2
 	exit 1
 fi

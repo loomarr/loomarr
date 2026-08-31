@@ -30,7 +30,7 @@ DOC_GLOBS := README.md CONTRIBUTING.md docs/help docs/install docs/dev
 # covers. Anything that can hold a relative link to a doc belongs here.
 LINK_GLOBS := README.md CONTRIBUTING.md CLAUDE.md AGENTS.md CONTEXT.md PROGRESS.md docs 'design/*.md' .agents .claude
 
-# CI-only shard passthrough for `make test` / `make check` (e.g. GO_SHARD=1/2). Empty by
+# CI-only shard passthrough for `make test` / comprehensive verification (e.g. GO_SHARD=1/2). Empty by
 # default — see the note on the `test` target. The visual suite's separate environment-only
 # shard input is documented in mk/frontend.mk. Never set this in a local gate run.
 GO_SHARD ?=
@@ -48,7 +48,7 @@ GO_SHARD ?=
 # never blind here — it globs with `find`, not the build system.
 #
 # ⚠ The CUSTOM tags are NOT run as tests by the gate. They guard work needing real ffmpeg
-# (`ffmpeg`), a real LLM (`eval`) or Docker (`integration`); `make check` stays hermetic
+# (`ffmpeg`), a real LLM (`eval`) or Docker (`integration`); comprehensive verification stays hermetic
 # (§19). The gate is only that they still COMPILE — which is free: measured 0.4s warm, and
 # 3.2s for a never-before-seen tag set, because tags only recompile packages whose file
 # selection actually changed.

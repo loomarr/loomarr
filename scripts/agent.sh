@@ -275,7 +275,7 @@ prune_sessions() {
 baseline() {
 	if [ -n "$(git -C "$ROOT" status --porcelain --untracked-files=no)" ]; then
 		echo "agent-baseline: tracked files are dirty; running the gate without caching"
-		exec make -C "$ROOT" check
+		exec make -C "$ROOT" verify SCOPE=all
 	fi
 	state="$(state_dir)/baselines"
 	mkdir -p "$state"
@@ -285,16 +285,16 @@ baseline() {
 	stamp="$state/$key.ok"
 	lock="$state/$key.lock"
 	if [ -f "$stamp" ]; then
-		echo "agent-baseline: reusing green make check for $(git -C "$ROOT" rev-parse --short HEAD)"
+		echo "agent-baseline: reusing green comprehensive verification for $(git -C "$ROOT" rev-parse --short HEAD)"
 		return
 	fi
 	if mkdir "$lock" 2>/dev/null; then
 		trap 'rmdir "$lock" 2>/dev/null || true' EXIT INT TERM
-		echo "agent-baseline: no cached result; running make check"
-		if make -C "$ROOT" check; then
+		echo "agent-baseline: no cached result; running make verify SCOPE=all"
+		if make -C "$ROOT" verify SCOPE=all; then
 			if [ "$(git -C "$ROOT" rev-parse HEAD)" != "$start_head" ] ||
 				[ -n "$(git -C "$ROOT" status --porcelain --untracked-files=no)" ]; then
-				echo "agent-baseline: worktree changed during make check; refusing to cache mixed-tree evidence" >&2
+				echo "agent-baseline: worktree changed during comprehensive verification; refusing to cache mixed-tree evidence" >&2
 				return 1
 			fi
 			printf '%s\n' "$toolchain" > "$stamp"
@@ -435,7 +435,7 @@ worktree() {
 	# primary happens to be parked on — a stale or unrelated one — so the new work sits on the wrong
 	# base and every rebase fights history it never meant to touch. Fetching first also picks up
 	# merges that landed while you worked. `BASE=HEAD` (or BASE=<ref>) opts into deliberate stacking
-	# on the current branch or an explicit ref. Same BASE convention as `make agent-verify`.
+	# on the current branch or an explicit ref. Same BASE convention as `make verify`.
 	#
 	# The origin/main default degrades gracefully: an offline dev, a fresh clone mid-fetch, or a repo
 	# whose remote is named differently (or a hermetic test repo with no remote) all fall back to HEAD
@@ -474,14 +474,14 @@ worktree() {
 
 verify_changed() {
 	base="${BASE:-origin/main}"
-	git -C "$ROOT" rev-parse --verify "$base^{commit}" >/dev/null 2>&1 || { echo "agent-verify: unknown BASE=$base" >&2; exit 2; }
+	git -C "$ROOT" rev-parse --verify "$base^{commit}" >/dev/null 2>&1 || { echo "verify: unknown BASE=$base" >&2; exit 2; }
 	changed="$( { git -C "$ROOT" diff --name-only "$base"...HEAD; git -C "$ROOT" diff --name-only; git -C "$ROOT" ls-files --others --exclude-standard; } | sort -u )"
-	[ -n "$changed" ] || { echo 'agent-verify: no changes'; return; }
-	echo 'agent-verify: affected local evidence selected by CI impact'
+	[ -n "$changed" ] || { echo 'verify: no changes'; return; }
+	echo 'verify: affected local evidence selected by CI impact'
 	printf '%s\n' "$changed"
 	scope="$(printf '%s\n' "$changed" | "$SCRIPT_DIR/ci-impact.sh")"
 	selected="$(printf '%s\n' "$scope" | sed -n 's/=true$//p' | paste -sd, -)"
-	echo "agent-verify: selected gates: $selected"
+	echo "verify: selected gates: $selected"
 
 	if printf '%s\n' "$scope" | grep -qx 'contracts=true'; then
 		if printf '%s\n' "$changed" | grep -qE '\.go$|^go\.(mod|sum)$'; then
@@ -502,8 +502,8 @@ verify_changed() {
 	fi
 	if printf '%s\n' "$scope" | grep -qx 'go=true'; then
 		packages="$(printf '%s\n' "$changed" | "$SCRIPT_DIR/go-impact.sh")"
-		[ -n "$packages" ] || { echo 'agent-verify: Go selected but package closure is empty' >&2; exit 1; }
-		echo "agent-verify: affected Go packages: $(printf '%s\n' "$packages" | wc -l | tr -d ' ')"
+		[ -n "$packages" ] || { echo 'verify: Go selected but package closure is empty' >&2; exit 1; }
+		echo "verify: affected Go packages: $(printf '%s\n' "$packages" | wc -l | tr -d ' ')"
 		traced="$(printf '%s\n' "$packages" | "$SCRIPT_DIR/go-race-policy.sh" --race)"
 		untraced="$(printf '%s\n' "$packages" | "$SCRIPT_DIR/go-race-policy.sh" --no-race)"
 		if [ -n "$traced" ]; then

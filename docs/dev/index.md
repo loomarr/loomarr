@@ -21,7 +21,9 @@ cross-harness contract and points here for detail.
 
 1. **`docs/design.md` is the source of truth.** If code must deviate, update the doc in the same
    PR, first.
-2. **Gates are hard.** `make check` must be green. Never weaken a test to pass one.
+2. **Gates are hard.** Never weaken a selected local or CI gate to pass it. Use focused tests while
+   editing and `make verify BASE=origin/main` before pushing; reserve `make verify SCOPE=all` for a deliberate
+   complete-repository audit.
 3. **Generated files are never hand-edited** — `api/openapi.yaml`, `docs/configuration.md`,
    `docs/dev/commands.md`, the orval client, token artifacts. Migrations are forward-only.
 4. **Tests never touch the network.** Mock through `internal/testkit`; extend it rather than

@@ -47,7 +47,7 @@ dev: ## dev compose stack (external deps: tunarr-dev; portable Mac/Linux, CPU tr
 
 .PHONY: test-sso
 test-sso: ## SSO against REAL Authelia + Authentik containers (requires Docker)
-	@# Not in `make check`: §19 keeps the default suite Docker-free, like test-pg.
+	@# Not in comprehensive verification: §19 keeps the default suite Docker-free, like test-pg.
 	@#
 	@# TWO providers, because each found a bug the other could not. Authelia: profile claims
 	@# live at userinfo, not in the id_token, so every login against a default install was

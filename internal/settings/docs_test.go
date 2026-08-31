@@ -10,7 +10,7 @@ import (
 // The generated config docs must match the committed docs/configuration.md
 // (config-design §2, the OpenAPI-style drift gate). A registry change without a
 // `make config-docs` regen fails here — the same contract discipline as
-// openapi-verify, enforced under `make check` too (not only in the Makefile).
+// openapi-verify, enforced under comprehensive verification too (not only in the Makefile).
 func TestConfigDocs_NoDrift(t *testing.T) {
 	// Walk up to the repo root (where docs/ lives) from the package dir.
 	root := repoRoot(t)
