@@ -103,6 +103,21 @@ if [[ ! -f "${EXPO_TEMPLATE}" ]]; then
 fi
 
 mkdir -p "${ARTIFACTS_DIR}" "${BUILD_DIR}"
+readonly PHASE_TIMINGS_FILE="${ARTIFACTS_DIR}/phase-timings.tsv"
+printf 'phase\tduration_seconds\n' > "$PHASE_TIMINGS_FILE"
+record_phase_timing() {
+  local phase="$1" started_at="$2" finished_at duration
+  finished_at="$(date +%s)"
+  if [[ ! "$started_at" =~ ^[0-9]+$ || ! "$finished_at" =~ ^[0-9]+$ \
+    || "$finished_at" -lt "$started_at" ]]; then
+    printf 'apple-client: invalid timing for phase %s: %s..%s\n' \
+      "$phase" "$started_at" "$finished_at" >&2
+    exit 1
+  fi
+  duration=$((finished_at - started_at))
+  printf '%s\t%s\n' "$phase" "$duration" >> "$PHASE_TIMINGS_FILE"
+  printf 'apple-client: phase %s completed in %ss\n' "$phase" "$duration"
+}
 readonly XCODE_CAPTURE_DIR="${ARTIFACTS_DIR}/xcodebuild-capture"
 mkdir -p "$XCODE_CAPTURE_DIR"
 cat > "$XCODE_CAPTURE_DIR/xcodebuild" <<'XCODEBUILD_CAPTURE'
@@ -137,29 +152,7 @@ exit "$build_status"
 XCODEBUILD_CAPTURE
 chmod +x "$XCODE_CAPTURE_DIR/xcodebuild"
 
-if [[ "${APP_NAME}" == "tv" ]]; then
-  (
-    cd "${WEB_ROOT}"
-    EXPO_TV=1 pnpm --filter @loomarr/tv exec expo prebuild --platform ios --clean --no-install \
-      --template "${EXPO_TEMPLATE}"
-  )
-else
-  (
-    cd "${WEB_ROOT}"
-    pnpm --filter @loomarr/mobile exec expo prebuild --platform ios --clean --no-install \
-      --template "${EXPO_TEMPLATE}"
-  )
-fi
-
-if [[ -n "$APPLE_CACHE_SOURCE_PROBE" ]]; then
-  probe_file="${APPLE_CACHE_SOURCE_PROBE_FILE:-${APP_DIR}/ios/${SCHEME}/AppDelegate.swift}"
-  if [[ ! -f "$probe_file" ]]; then
-    printf 'apple-client: source invalidation probe file is missing: %s\n' "$probe_file" >&2
-    exit 1
-  fi
-  printf '\n// Loomarr cache invalidation probe: %s\n' "$APPLE_CACHE_SOURCE_PROBE" >> "$probe_file"
-fi
-
+simulator_started_at="$(date +%s)"
 simulator_json="$(xcrun simctl list devices available --json)"
 simulator_id="$(jq -r --arg runtime "${RUNTIME_TOKEN}" '
   [.devices | to_entries[] | select(.key | contains($runtime)) | .value[] | select(.isAvailable)]
@@ -184,23 +177,67 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+
+prebuild_started_at="$(date +%s)"
+if [[ "${APP_NAME}" == "tv" ]]; then
+  (
+    cd "${WEB_ROOT}"
+    EXPO_TV=1 pnpm --filter @loomarr/tv exec expo prebuild --platform ios --clean --no-install \
+      --template "${EXPO_TEMPLATE}"
+  )
+else
+  (
+    cd "${WEB_ROOT}"
+    pnpm --filter @loomarr/mobile exec expo prebuild --platform ios --clean --no-install \
+      --template "${EXPO_TEMPLATE}"
+  )
+fi
+record_phase_timing clean_prebuild "$prebuild_started_at"
+
+if [[ -n "$APPLE_CACHE_SOURCE_PROBE" ]]; then
+  probe_file="${APPLE_CACHE_SOURCE_PROBE_FILE:-${APP_DIR}/ios/${SCHEME}/AppDelegate.swift}"
+  if [[ ! -f "$probe_file" ]]; then
+    printf 'apple-client: source invalidation probe file is missing: %s\n' "$probe_file" >&2
+    exit 1
+  fi
+  printf '\n// Loomarr cache invalidation probe: %s\n' "$APPLE_CACHE_SOURCE_PROBE" >> "$probe_file"
+fi
+
+# react-native-svg resolves React Native from CocoaPods' installation root. The workspace uses
+# the react-native-tvos npm alias, so Node follows the app's `react-native` symlink to a physical
+# `react-native-tvos` directory and the podspec cannot infer the alias on its own. Give native
+# podspecs the app-local node_modules directory, where the canonical symlink is present.
+readonly REACT_NATIVE_MODULES_DIR="${APP_DIR}/node_modules"
+cocoapods_started_at="$(date +%s)"
+if [[ "${APP_NAME}" == "tv" ]]; then
+  (
+    cd "${APP_DIR}/ios"
+    NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 EXPO_TV=1 \
+      REACT_NATIVE_NODE_MODULES_DIR="${REACT_NATIVE_MODULES_DIR}" pod install
+  )
+else
+  (
+    cd "${APP_DIR}/ios"
+    NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 \
+      REACT_NATIVE_NODE_MODULES_DIR="${REACT_NATIVE_MODULES_DIR}" pod install
+  )
+fi
+record_phase_timing cocoapods_install "$cocoapods_started_at"
+
 xcrun simctl bootstatus "${simulator_id}" -b
+record_phase_timing simulator_readiness "$simulator_started_at"
 
 expo_run=(
   pnpm exec expo run:ios
   --scheme "${SCHEME}"
   --configuration Release
   --device "${simulator_id}"
+  --no-install
   --no-bundler
   --output "${BUILD_DIR}"
 )
-# react-native-svg resolves React Native from CocoaPods' installation root. The workspace uses
-# the react-native-tvos npm alias, so Node follows the app's `react-native` symlink to a physical
-# `react-native-tvos` directory and the podspec cannot infer the alias on its own. Give native
-# podspecs the app-local node_modules directory, where the canonical symlink is present.
-readonly REACT_NATIVE_MODULES_DIR="${APP_DIR}/node_modules"
 run_expo_build() {
-  local mode="$1" xcconfig logfile raw_log
+  local mode="$1" xcconfig logfile raw_log result_bundle
   local -a command=("${expo_run[@]}")
   case "$mode" in
     warm)
@@ -213,6 +250,10 @@ run_expo_build() {
   esac
   logfile="$ARTIFACTS_DIR/build-$mode.log"
   raw_log="$ARTIFACTS_DIR/xcodebuild-$mode.log"
+  result_bundle="$ARTIFACTS_DIR/build-$mode.xcresult"
+  if [[ -e "$result_bundle" ]]; then
+    find "$result_bundle" -depth -delete
+  fi
   : > "$raw_log"
   if [[ "${APP_NAME}" == "tv" ]]; then
     (
@@ -221,7 +262,7 @@ run_expo_build() {
         PATH="$XCODE_CAPTURE_DIR:$PATH" \
         LOOMARR_APPLE_REAL_XCODEBUILD="$REAL_XCODEBUILD" \
         LOOMARR_APPLE_RAW_XCODE_LOG="$raw_log" \
-        LOOMARR_APPLE_RESULT_BUNDLE_PATH="$ARTIFACTS_DIR/build-$mode.xcresult" \
+        LOOMARR_APPLE_RESULT_BUNDLE_PATH="$result_bundle" \
         LOOMARR_APPLE_CACHE_STORE="$APPLE_CACHE_STORE" \
         NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 EXPO_TV=1 \
         REACT_NATIVE_NODE_MODULES_DIR="${REACT_NATIVE_MODULES_DIR}" "${command[@]}"
@@ -233,7 +274,7 @@ run_expo_build() {
         PATH="$XCODE_CAPTURE_DIR:$PATH" \
         LOOMARR_APPLE_REAL_XCODEBUILD="$REAL_XCODEBUILD" \
         LOOMARR_APPLE_RAW_XCODE_LOG="$raw_log" \
-        LOOMARR_APPLE_RESULT_BUNDLE_PATH="$ARTIFACTS_DIR/build-$mode.xcresult" \
+        LOOMARR_APPLE_RESULT_BUNDLE_PATH="$result_bundle" \
         LOOMARR_APPLE_CACHE_STORE="$APPLE_CACHE_STORE" \
         NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 \
         REACT_NATIVE_NODE_MODULES_DIR="${REACT_NATIVE_MODULES_DIR}" "${command[@]}"
@@ -257,6 +298,7 @@ quarantine_cache() {
 warm_fallback=false
 warm_succeeded=false
 build_mode="$APPLE_CACHE_MODE"
+native_build_started_at="$(date +%s)"
 if [[ "$build_mode" == warm ]]; then
   if [[ -z "$APPLE_CACHE_STORE" ]]; then
     printf 'apple-client: warm mode requires LOOMARR_APPLE_CACHE_STORE\n' >&2
@@ -286,11 +328,13 @@ if [[ "$build_mode" == warm ]]; then
 else
   run_expo_build cold
 fi
+record_phase_timing native_build_install "$native_build_started_at"
 
 # Release simulator builds default to every standard architecture. Hosted Apple jobs run on one
 # architecture and launch on the same host, so compiling another slice only duplicates the native
 # dependency graph. The xcconfig scopes the override to this simulator proof; fail closed if Expo or
 # Xcode stops honoring it instead of silently returning to a universal binary.
+runtime_assertions_started_at="$(date +%s)"
 readonly APP_BINARY="${BUILD_DIR}/${SCHEME}.app/${SCHEME}"
 if [[ ! -f "${APP_BINARY}" ]]; then
   printf 'apple-client: built executable is missing: %s\n' "${APP_BINARY}" >&2
@@ -348,6 +392,7 @@ if ! /bin/kill -0 "${launch_pid}"; then
 fi
 printf 'apple-client: %s built, installed, launched, and remained alive on %s\n' \
   "${APP_NAME}" "${simulator_id}"
+record_phase_timing artifact_runtime_assertions "$runtime_assertions_started_at"
 if [[ "$warm_succeeded" == true ]]; then
   if [[ "$APPLE_CACHE_POPULATE" == 1 ]]; then
     "$APPLE_COMPILATION_CACHE_CLI" validate-store "$APPLE_CACHE_STORE" >/dev/null
