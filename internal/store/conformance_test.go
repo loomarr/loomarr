@@ -86,6 +86,13 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("LookupByNonID", func(t *testing.T) { testLookupByNonID(t, newStore) })
 	})
 
+	t.Run("Notifications", func(t *testing.T) {
+		t.Run("LifecycleAndIdempotency", func(t *testing.T) { testNotificationLifecycle(t, newStore) })
+		t.Run("ExpiredLeaseIsAmbiguous", func(t *testing.T) { testNotificationExpiredLease(t, newStore) })
+		t.Run("ConcurrentClaim", func(t *testing.T) { testNotificationConcurrentClaim(t, newStore) })
+		t.Run("Retention", func(t *testing.T) { testNotificationRetention(t, newStore) })
+	})
+
 	t.Run("Filler", func(t *testing.T) {
 		t.Run("ClipRoundTripAndFilters", func(t *testing.T) { testClipFilters(t, newStore) })
 		t.Run("ClipTagsAndPrune", func(t *testing.T) { testClipTagsAndPrune(t, newStore) })

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -86,6 +87,23 @@ func seedForMigration(t *testing.T, s Store) {
 		t.Fatalf("seed setting: %v", err)
 	}
 
+	intent := notifications.Intent{
+		ID: "migration-notification", Topic: notifications.TopicAccountInvitation,
+		RecipientKind: notifications.RecipientInvitation, RecipientID: "migration-invitation",
+		ReferenceKind: notifications.ReferenceInvitation, ReferenceID: "migration-invitation",
+		Policy: notifications.PolicyMandatoryAccount, Template: notifications.TemplateData{RecipientName: "Ada"},
+		IdempotencyKey: "migration-invitation:created", CreatedAt: time.Unix(1_700_000_000, 0).UTC(),
+	}
+	attempt := notifications.Attempt{
+		ID: "migration-notification-attempt", IntentID: intent.ID, Means: notifications.MeansEmail,
+		DestinationRef: "migration-contact", DestinationRedacted: "a***@example.com",
+		Status: notifications.StatusQueued, AttemptNumber: 1,
+		AvailableAt: intent.CreatedAt, CreatedAt: intent.CreatedAt,
+	}
+	if _, created, err := s.CreateNotificationIntent(ctx, intent, []notifications.Attempt{attempt}); err != nil || !created {
+		t.Fatalf("seed notification: created=%t err=%v", created, err)
+	}
+
 	// The copier discovers the destination's live column set. Saving twice gives
 	// revision a non-default value, proving it is copied rather than merely filled
 	// by Postgres's migration default.
@@ -156,6 +174,15 @@ func TestMigrateSQLiteToPostgres(t *testing.T) {
 
 	if v, err := dst.GetSetting(ctx, "setup.completed"); err != nil || v != "true" {
 		t.Errorf("setup.completed = %q (err %v), want \"true\" — wizard state must survive", v, err)
+	}
+	migratedIntent, err := dst.GetNotificationIntent(ctx, "migration-notification")
+	if err != nil || migratedIntent.Template.RecipientName != "Ada" || !migratedIntent.TerminalAt.IsZero() {
+		t.Errorf("migrated notification intent = %+v, err %v", migratedIntent, err)
+	}
+	migratedAttempts, err := dst.ListNotificationAttempts(ctx, "migration-notification")
+	if err != nil || len(migratedAttempts) != 1 || migratedAttempts[0].Status != notifications.StatusQueued ||
+		migratedAttempts[0].DestinationRef != "migration-contact" {
+		t.Errorf("migrated notification attempts = %+v, err %v", migratedAttempts, err)
 	}
 }
 

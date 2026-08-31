@@ -1,5 +1,5 @@
 // Package retention owns the scheduled purges that keep the accumulating tables bounded
-// (§5, §18.1): finished jobs, denied proposals, and old activity rows.
+// (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
 //
 // ⚠ **Why its own package rather than a method on the store.** The purge is a POLICY — what
 // may be deleted, in what order, and after how long — while the store owns the SQL that
@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/scheduler"
 )
 
@@ -33,11 +34,12 @@ type Windows struct {
 
 // Store is the destructive persistence role behind retention policy. The
 // composite store remains at the composition root; this module can delete only
-// the four record classes its interface names.
+// the record classes its interface names.
 type Store interface {
 	PurgeDeniedProposals(ctx context.Context, before time.Time) (int, error)
 	PurgeFinishedJobs(ctx context.Context, before time.Time) (int, error)
 	PurgeActivity(ctx context.Context, before time.Time) (int, error)
+	PurgeTerminalNotifications(ctx context.Context, before time.Time) (int, error)
 	PurgeDiagnostics(ctx context.Context, before time.Time, maxBytes int64) (diagnostics.PurgeResult, error)
 	PurgeExpiredSessions(ctx context.Context, now time.Time) (int, error)
 }
@@ -109,6 +111,19 @@ func (s *Service) PurgeActivity(ctx context.Context) error {
 	return nil
 }
 
+// PurgeNotifications applies the fixed §11 product policy. It is deliberately not a setting:
+// terminal notification evidence is retained for 30 days while queued/sending work is exempt.
+func (s *Service) PurgeNotifications(ctx context.Context) error {
+	n, err := s.store.PurgeTerminalNotifications(ctx, s.now().Add(-notifications.Retention))
+	if err != nil {
+		return err
+	}
+	if n > 0 && s.log != nil {
+		s.log.Info("terminal notifications purged", "intents", n)
+	}
+	return nil
+}
+
 // PurgeDiagnostics enforces both the age window and logical retained-byte budget (§5, §17).
 // Active Process runs are protected by the store contract regardless of age or pressure.
 func (s *Service) PurgeDiagnostics(ctx context.Context) error {
@@ -142,6 +157,9 @@ func (s *Service) Housekeeping(ctx context.Context) error {
 	if err := s.PurgeActivity(ctx); err != nil {
 		errs = append(errs, err)
 	}
+	if err := s.PurgeNotifications(ctx); err != nil {
+		errs = append(errs, err)
+	}
 	if err := s.PurgeDiagnostics(ctx); err != nil {
 		errs = append(errs, err)
 	}
@@ -157,7 +175,7 @@ func (s *Service) Housekeeping(ctx context.Context) error {
 func (s *Service) Job() scheduler.Job {
 	return scheduler.Job{
 		Name: "housekeeping", Group: scheduler.GroupSystem, Title: "Clean up old data",
-		Description: "Removes expired sessions, old activity and diagnostics, denied requests, and completed jobs after their retention periods.",
+		Description: "Removes expired sessions, old activity, diagnostics and notifications, denied requests, and completed jobs after their retention periods.",
 		DefaultCron: "0 30 4 * * *", ScheduleKey: "job.housekeeping.schedule",
 		Run: s.Housekeeping,
 	}
