@@ -100,4 +100,13 @@ describe("play URL source", () => {
       "no stream address",
     );
   });
+
+  it("joins relative stream addresses with repeated slashes in linear time", () => {
+    expect(
+      resolveStreamUrl("https://paired.test////", {
+        relativeUrl: "////v1/playout/hls/channel.m3u8",
+        url: "",
+      }),
+    ).toBe("https://paired.test/v1/playout/hls/channel.m3u8");
+  });
 });
