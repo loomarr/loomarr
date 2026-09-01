@@ -5777,13 +5777,34 @@ capable until the replacement is verified, then atomically swaps it; removal req
 person or administrator and leaves no recovery destination.
 
 **Notification delivery is a deep, channel-neutral module.** Callers submit a typed
-**Notification intent** (`account_invitation` and `local_password_recovery` first) with a recipient
-reference and template data; they do not call SMTP or render a message. The notification module owns
-durable work, idempotency, rendering, bounded retries, retention, and one adapter per **Delivery
-means**. Email is the first means. SMS, push, Discord, and general activity notifications remain out
-of scope, but adding one later does not change invitation or recovery callers. Copy and QR are
-**Sharing affordances**, not Delivery means: they present a grant immediately under the
+**Notification intent** with a recipient reference and bounded template data; they do not select a
+provider, call SMTP/HTTP, or render a message. The notification module owns routing, durable work,
+idempotency, rendering, bounded retries, retention, and one adapter per **Delivery means**. Copy and
+QR are **Sharing affordances**, not Delivery means: they present a grant immediately under the
 administrator's control and make no delivery claim.
+
+Two policy classes share that interface without weakening account security:
+
+- **Mandatory account delivery** is `account_invitation` or `local_password_recovery`, addressed to
+  one Invitation or person. It remains email-only, ignores product-notification preferences, and
+  retains the grant-materialization and ambiguous-acceptance rules below.
+- **Configurable product delivery** is one of `proposal_submitted`, `proposal_approved`,
+  `proposal_declined`, `acquisition_available`, `acquisition_gave_up`, `channel_live`, or
+  `channel_degraded`. Its audience is exactly one person, the current set of eligible approvers, or
+  operators. Its reference is the Proposal, Title, or Channel whose transition caused the intent.
+  Bounded display data may preserve the event-time name and safe explanatory summary needed to make
+  a later delivery useful; it never contains a rendered body, address, credential, bearer URL,
+  provider payload, or arbitrary error text.
+
+The closed Delivery-means vocabulary is `email`, `webhook`, `discord`, `ntfy`, `gotify`, `apprise`,
+`pushover`, `telegram`, `mattermost`, `matrix`, `web_push`, `mqtt`, and `slack`. A vocabulary entry
+does not claim that its adapter or destination UI is already available: unsupported means terminate
+with the existing bounded `means_unavailable` outcome. The Router, not a domain caller, expands one
+intent into zero or more destination routes; adding or removing an adapter therefore never changes
+Proposal, provisioning, or Channel interfaces. Existing installations begin with no configurable
+product routes, so an upgrade cannot emit a backlog storm. Product-event publication is best-effort
+after the authoritative domain transition and never rolls that transition back; the routing phase
+must document any source-of-truth backstop it uses rather than implying cross-module transactionality.
 
 Each **Delivery attempt** records only the intent id, means, destination reference or redacted
 destination, provider-safe message id when one exists, `queued | sending | delivered | failed |
@@ -6275,9 +6296,10 @@ The checklist is backed by `GET /v1/setup/status` (runs all checks, returns stru
 - **Channel templates** — the blank-page killer: a set of one-click starter intents ("90s Saturday Morning Cartoons," "Cozy Mystery Nights," "Late-Night Sci-Fi," "Action Movie Marathon") that prefill the suggestion workspace with a good intent + sensible constraints. Templates ship as embedded JSON in the FE bundle; users edit before running.
 - **Intent-writing hints** — inline examples in the workspace of constraints that work well (era, tone, runtime target, must-include/exclude).
 - **"My proposals" status** — members always see where their submission is: *pending approval → approved → acquiring (3/7 titles) → live on channel 42.* This is the member-facing framing of the Board + channel status.
-- Account Invitations and local-password recovery may use the channel-neutral email delivery module
-  defined in §11. Product/activity notifications (approval, channel-live, Discord, SMS, and push)
-  remain future work (§20); the account-notification seam does not imply those policies.
+- Account Invitations and local-password recovery use the mandatory account-email policy defined in
+  §11. Configurable product notifications use that same durable module for Proposal review,
+  acquisition outcomes, and Channel live/degraded transitions. Users and operators receive only the
+  event/audience combinations selected by routing policy; existing installations default to none.
 
 ### Documentation set
 Docs live as markdown in `docs/` in the repo and are **embedded and rendered as an in-app Help section** (same `embed.FS` mechanism as the SPA and `/docs` — works air-gapped, consistent with §7.1's offline rule).
@@ -7659,7 +7681,6 @@ published under the MIT license. Earlier pre-publication placeholders are resolv
 Genuinely future work:
 - **Direct *arr requester** as a Seerr alternative (adds real `Cancel` via un-monitor).
 - **Local (non-media-server) accounts** and finer-grained permissions beyond admin/member (§11's v1 keeps two roles).
-- **Notification agents** (email/Discord/webhook on approval, channel-live, give-ups) — Seerr users will expect these; v1 is in-app status only (§13).
 - ~~**DB-backed settings UI** as an alternative to env-only config, if demand warrants the dual-source complexity (§13's wizard deliberately validates rather than stores).~~ **Resolved and superseded** by `config-design.md`: settings are DB-backed with `env > database > default` resolution, and the wizard **writes** through the same `PATCH` path as Settings (configure → validate → save → advance). The parenthetical above described the opposite rule and was dead text.
 - ~~**Vision-based filler tagging** beyond text-signal + transcript classification.~~ **Resolved:**
   keyframe vision is a bounded pipeline stage and a compilation-segment grounder. Both use the live
