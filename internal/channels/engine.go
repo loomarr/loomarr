@@ -257,10 +257,11 @@ func (e *Engine) WithPods(p PodFiller) *Engine {
 
 // ChannelNotifier publishes a UI-facing "channel changed" signal (an SSE `channel`
 // frame). A local interface so the channels package needn't import internal/events;
-// the composition root adapts the event bus. `status` is the channel's Loomarr-side
-// status after the reconcile, so a subscriber can update without a refetch if it wants.
+// the composition root adapts the event bus. The status pair lets downstream product
+// notifications distinguish a real transition from an ordinary reconciliation while
+// UI subscribers still receive every committed change.
 type ChannelNotifier interface {
-	ChannelChanged(channelID, status string)
+	ChannelChanged(channelID, previousStatus, status string)
 }
 
 // ScheduleInvalidator retires an internal-playout session whose durable cycle

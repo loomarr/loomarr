@@ -107,13 +107,13 @@ func (e *eventEmitter) SuggestionPhase(jobID, phase string, round int) {
 // ChannelChanged publishes a `channel` frame after a reconcile so the Channels/detail
 // pages update live — the "no manual rebuild" model (§9). Satisfies
 // channels.ChannelNotifier. Best-effort: GET /v1/channels is the truth on load.
-func (e *eventEmitter) ChannelChanged(channelID, status string) {
+func (e *eventEmitter) ChannelChanged(channelID, previousStatus, status string) {
 	e.bus.Publish(events.Event{
 		Type:    "channel",
 		Payload: api.ChannelEvent{ChannelID: channelID, Status: status},
 	})
 	if coordinator := e.notifications.Load(); coordinator != nil {
-		coordinator.ChannelChanged(channelID, status)
+		coordinator.ChannelChanged(channelID, previousStatus, status)
 	}
 }
 
