@@ -138,12 +138,18 @@ func (s *Service) Publish(ctx context.Context, command PublishCommand) (Intent, 
 		return Intent{}, false, fmt.Errorf("route notification intent: %w", err)
 	}
 	if len(routes) == 0 {
-		return Intent{}, false, fmt.Errorf("route notification intent: no delivery decision")
+		if intent.Policy != PolicyConfigurable {
+			return Intent{}, false, fmt.Errorf("route notification intent: no delivery decision")
+		}
+		return s.repository.CreateNotificationIntent(ctx, intent, nil)
 	}
 	attempts := make([]Attempt, 0, len(routes))
 	for _, route := range routes {
 		if err := route.Validate(); err != nil {
 			return Intent{}, false, fmt.Errorf("route notification intent: %w", err)
+		}
+		if intent.Policy == PolicyMandatoryAccount && route.Means != MeansEmail {
+			return Intent{}, false, fmt.Errorf("route notification intent: mandatory account delivery requires email")
 		}
 		attempt := Attempt{
 			ID: s.newID(), IntentID: intent.ID, Means: route.Means,

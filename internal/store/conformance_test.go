@@ -88,6 +88,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 
 	t.Run("Notifications", func(t *testing.T) {
 		t.Run("LifecycleAndIdempotency", func(t *testing.T) { testNotificationLifecycle(t, newStore) })
+		t.Run("ProductVocabulary", func(t *testing.T) { testNotificationProductVocabulary(t, newStore) })
 		t.Run("ExpiredLeaseIsAmbiguous", func(t *testing.T) { testNotificationExpiredLease(t, newStore) })
 		t.Run("ConcurrentClaim", func(t *testing.T) { testNotificationConcurrentClaim(t, newStore) })
 		t.Run("Retention", func(t *testing.T) { testNotificationRetention(t, newStore) })
