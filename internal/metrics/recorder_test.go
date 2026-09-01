@@ -1,17 +1,73 @@
 package metrics_test
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/images/rustgen"
 	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/provision"
 )
+
+type changingStoreCounts struct {
+	mu        sync.Mutex
+	titles    map[provision.State]int
+	jobs      map[string]int
+	oldest    map[string]time.Time
+	titleErr  error
+	oldestErr error
+}
+
+func (c *changingStoreCounts) CountTitlesByState(context.Context) (map[provision.State]int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.titles, c.titleErr
+}
+
+func (c *changingStoreCounts) CountJobsByStatus(context.Context) (map[string]int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.jobs, nil
+}
+
+func (c *changingStoreCounts) OldestProposalJobsByStatus(context.Context) (map[string]time.Time, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.oldest, c.oldestErr
+}
+
+func (*changingStoreCounts) CountProposalJobAttemptsByStatus(context.Context) (map[string]int, error) {
+	return nil, nil
+}
+
+func (*changingStoreCounts) CountFailedProposalJobsByCode(context.Context) (map[string]int, error) {
+	return nil, nil
+}
+
+func (*changingStoreCounts) CountActiveSessions(context.Context, time.Time) (int, error) {
+	return 0, nil
+}
+
+func (c *changingStoreCounts) failTitlesAndSetJobs(jobs map[string]int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.titleErr = errors.New("database unavailable")
+	c.jobs = jobs
+}
+
+func (c *changingStoreCounts) failOldestProposalJobs() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.oldestErr = errors.New("database unavailable")
+}
 
 func TestRecorderScrapeIdentifiesBuildBackendAndRuntime(t *testing.T) {
 	recorder := metrics.New(metrics.Options{
@@ -59,6 +115,107 @@ func TestRecorderScrapeInitializesAndIsolatesKnownLoginOutcomes(t *testing.T) {
 	} {
 		if !strings.Contains(secondBody, want) {
 			t.Errorf("fresh generation scrape does not contain %q", want)
+		}
+	}
+}
+
+func TestRecorderScrapePreservesLastSuccessfulSourceWhileOthersRefresh(t *testing.T) {
+	counts := &changingStoreCounts{
+		titles: map[provision.State]int{provision.Requested: 2},
+		jobs:   map[string]int{"queued": 3},
+	}
+	recorder := metrics.New(metrics.Options{Store: counts, Now: func() time.Time {
+		return time.Unix(1_800_000_000, 0).UTC()
+	}})
+
+	first := scrape(t, recorder)
+	for _, want := range []string{
+		`loomarr_titles{state="requested"} 2`,
+		`loomarr_jobs{status="queued"} 3`,
+	} {
+		if !strings.Contains(first, want) {
+			t.Fatalf("first scrape does not contain %q", want)
+		}
+	}
+
+	counts.failTitlesAndSetJobs(map[string]int{"queued": 5})
+	second := scrape(t, recorder)
+	for _, want := range []string{
+		`loomarr_titles{state="requested"} 2`,
+		`loomarr_jobs{status="queued"} 5`,
+		`loomarr_metrics_scrape_errors_total{source="titles"} 1`,
+	} {
+		if !strings.Contains(second, want) {
+			t.Errorf("second scrape does not contain %q", want)
+		}
+	}
+	if strings.Contains(second, `loomarr_jobs{status="queued"} 3`) {
+		t.Error("second scrape retained stale Jobs after its source succeeded")
+	}
+}
+
+func TestRecorderScrapePreservesExactProposalAgeWhenSourceFails(t *testing.T) {
+	start := time.Unix(1_800_000_000, 0).UTC()
+	now := start
+	counts := &changingStoreCounts{
+		oldest: map[string]time.Time{"queued": start.Add(-90 * time.Second)},
+	}
+	recorder := metrics.New(metrics.Options{Store: counts, Now: func() time.Time { return now }})
+
+	first := scrape(t, recorder)
+	if want := `loomarr_proposal_job_oldest_age_seconds{status="queued"} 90`; !strings.Contains(first, want) {
+		t.Fatalf("first scrape does not contain %q", want)
+	}
+
+	now = start.Add(30 * time.Second)
+	counts.failOldestProposalJobs()
+	second := scrape(t, recorder)
+	for _, want := range []string{
+		`loomarr_proposal_job_oldest_age_seconds{status="queued"} 90`,
+		`loomarr_metrics_scrape_errors_total{source="proposal_job_age"} 1`,
+	} {
+		if !strings.Contains(second, want) {
+			t.Errorf("second scrape does not contain %q", want)
+		}
+	}
+	if strings.Contains(second, `loomarr_proposal_job_oldest_age_seconds{status="queued"} 120`) {
+		t.Error("second scrape recomputed proposal age from a stale timestamp")
+	}
+}
+
+func TestRecorderConcurrentScrapesSynchronizeSuccessfulSnapshots(t *testing.T) {
+	counts := &changingStoreCounts{
+		titles: map[provision.State]int{provision.Available: 4},
+		jobs:   map[string]int{"running": 2},
+	}
+	recorder := metrics.New(metrics.Options{Store: counts})
+
+	const scrapes = 16
+	start := make(chan struct{})
+	results := make(chan string, scrapes)
+	var wg sync.WaitGroup
+	for range scrapes {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			response := httptest.NewRecorder()
+			recorder.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+			results <- response.Body.String()
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+
+	for body := range results {
+		for _, want := range []string{
+			`loomarr_titles{state="available"} 4`,
+			`loomarr_jobs{status="running"} 2`,
+		} {
+			if !strings.Contains(body, want) {
+				t.Errorf("concurrent scrape does not contain %q", want)
+			}
 		}
 	}
 }

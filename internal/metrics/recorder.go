@@ -307,7 +307,7 @@ func New(options Options) *Recorder {
 			imageMetrics.operations.WithLabelValues(kind, result)
 		}
 	}
-	registry.MustRegister(build, authLogins, storeErrors, httpMetrics.requests, httpMetrics.duration,
+	registry.MustRegister(build, authLogins, httpMetrics.requests, httpMetrics.duration,
 		httpMetrics.inFlight, httpMetrics.fanout, imageMetrics.operations, imageMetrics.duration,
 		imageMetrics.inputBytes, imageMetrics.outputBytes, imageMetrics.peakRSS,
 		imageMetrics.queueWait, imageMetrics.inFlight, outboundMetrics.requests,
@@ -323,6 +323,8 @@ func New(options Options) *Recorder {
 			now = time.Now
 		}
 		registry.MustRegister(newStoreCollectorWithErrors(options.Store, now, storeErrors))
+	} else {
+		registry.MustRegister(storeErrors)
 	}
 	if options.DatabaseStats != nil {
 		registry.MustRegister(newDatabaseCollector(options.DatabaseStats))

@@ -2,6 +2,8 @@ package metrics
 
 import (
 	"context"
+	"maps"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -50,9 +52,35 @@ type storeCollector struct {
 	proposalOldestAge *prometheus.Desc
 	proposalAttempts  *prometheus.Desc
 	proposalFailures  *prometheus.Desc
+	lastTitles        lastSuccessful[map[provision.State]int]
+	lastJobs          lastSuccessful[map[string]int]
+	lastSessions      lastSuccessful[int]
+	lastProposalAge   lastSuccessful[map[string]float64]
+	lastAttempts      lastSuccessful[map[string]int]
+	lastFailures      lastSuccessful[map[string]int]
+}
+
+type lastSuccessful[T any] struct {
+	mu      sync.RWMutex
+	value   T
+	present bool
+}
+
+func (s *lastSuccessful[T]) use(value T, err error) (T, bool) {
+	if err == nil {
+		s.mu.Lock()
+		s.value = value
+		s.present = true
+		s.mu.Unlock()
+		return value, true
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.value, s.present
 }
 
 func (c *storeCollector) Describe(ch chan<- *prometheus.Desc) {
+	c.scrapeErrors.Describe(ch)
 	ch <- c.titles
 	ch <- c.jobs
 	ch <- c.sessions
@@ -64,62 +92,93 @@ func (c *storeCollector) Describe(ch chan<- *prometheus.Desc) {
 func (c *storeCollector) Collect(ch chan<- prometheus.Metric) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if byState, err := c.counts.CountTitlesByState(ctx); err != nil {
+	byState, err := c.counts.CountTitlesByState(ctx)
+	if err != nil {
 		c.scrapeErrors.WithLabelValues("titles").Inc()
 	} else {
+		byState = maps.Clone(byState)
+	}
+	if byState, ok := c.lastTitles.use(byState, err); ok {
 		for _, st := range knownStates {
 			ch <- prometheus.MustNewConstMetric(c.titles, prometheus.GaugeValue,
 				float64(byState[st]), string(st))
 		}
 	}
 
-	if byStatus, err := c.counts.CountJobsByStatus(ctx); err != nil {
+	byStatus, err := c.counts.CountJobsByStatus(ctx)
+	if err != nil {
 		c.scrapeErrors.WithLabelValues("jobs").Inc()
 	} else {
+		byStatus = maps.Clone(byStatus)
+	}
+	if byStatus, ok := c.lastJobs.use(byStatus, err); ok {
 		for _, status := range knownJobStatuses {
 			ch <- prometheus.MustNewConstMetric(c.jobs, prometheus.GaugeValue,
 				float64(byStatus[status]), status)
 		}
 	}
 
-	if n, err := c.counts.CountActiveSessions(ctx, c.now()); err != nil {
+	n, err := c.counts.CountActiveSessions(ctx, c.now())
+	if err != nil {
 		c.scrapeErrors.WithLabelValues("sessions").Inc()
-	} else {
+	}
+	if n, ok := c.lastSessions.use(n, err); ok {
 		ch <- prometheus.MustNewConstMetric(c.sessions, prometheus.GaugeValue, float64(n))
 	}
 
-	if oldest, err := c.counts.OldestProposalJobsByStatus(ctx); err != nil {
+	oldest, err := c.counts.OldestProposalJobsByStatus(ctx)
+	if err != nil {
 		c.scrapeErrors.WithLabelValues("proposal_job_age").Inc()
-	} else {
+	}
+	var proposalAge map[string]float64
+	if err == nil {
 		now := c.now()
+		proposalAge = make(map[string]float64, 2)
 		for _, status := range []string{"queued", "running"} {
-			age := 0.0
 			if createdAt, ok := oldest[status]; ok {
-				age = max(0, now.Sub(createdAt).Seconds())
+				proposalAge[status] = max(0, now.Sub(createdAt).Seconds())
 			}
-			ch <- prometheus.MustNewConstMetric(c.proposalOldestAge, prometheus.GaugeValue, age, status)
+		}
+	}
+	if proposalAge, ok := c.lastProposalAge.use(proposalAge, err); ok {
+		for _, status := range []string{"queued", "running"} {
+			ch <- prometheus.MustNewConstMetric(c.proposalOldestAge, prometheus.GaugeValue,
+				proposalAge[status], status)
 		}
 	}
 
-	if raw, err := c.counts.CountProposalJobAttemptsByStatus(ctx); err != nil {
+	rawAttempts, err := c.counts.CountProposalJobAttemptsByStatus(ctx)
+	if err != nil {
 		c.scrapeErrors.WithLabelValues("proposal_job_attempts").Inc()
 	} else {
-		bounded := boundCounts(raw, knownProposalAttemptOutcomes[:len(knownProposalAttemptOutcomes)-1])
+		rawAttempts = maps.Clone(rawAttempts)
+	}
+	if rawAttempts, ok := c.lastAttempts.use(rawAttempts, err); ok {
+		bounded := boundCounts(rawAttempts, knownProposalAttemptOutcomes[:len(knownProposalAttemptOutcomes)-1])
 		for _, outcome := range knownProposalAttemptOutcomes {
 			ch <- prometheus.MustNewConstMetric(c.proposalAttempts, prometheus.GaugeValue,
 				float64(bounded[outcome]), outcome)
 		}
 	}
 
-	if raw, err := c.counts.CountFailedProposalJobsByCode(ctx); err != nil {
+	rawFailures, err := c.counts.CountFailedProposalJobsByCode(ctx)
+	if err != nil {
 		c.scrapeErrors.WithLabelValues("proposal_job_failures").Inc()
 	} else {
-		bounded := boundCounts(raw, knownProposalFailureCodes[:len(knownProposalFailureCodes)-1])
+		rawFailures = maps.Clone(rawFailures)
+	}
+	if rawFailures, ok := c.lastFailures.use(rawFailures, err); ok {
+		bounded := boundCounts(rawFailures, knownProposalFailureCodes[:len(knownProposalFailureCodes)-1])
 		for _, code := range knownProposalFailureCodes {
 			ch <- prometheus.MustNewConstMetric(c.proposalFailures, prometheus.GaugeValue,
 				float64(bounded[code]), code)
 		}
 	}
+
+	// The registry gathers registered collectors concurrently. Emitting the
+	// error counters from this collector keeps each scrape's query results and
+	// counter values in one ordered collection pass.
+	c.scrapeErrors.Collect(ch)
 }
 
 func boundCounts(raw map[string]int, known []string) map[string]int {
