@@ -37,4 +37,8 @@ jq -e '
   (.services.grafana.volumes | any(.type == "volume" and .target == "/var/lib/grafana" and .read_only != true))
 ' <<<"$rendered" >/dev/null
 
+make -C "$repo_root" -n observability-dev | grep -q 'scripts/observability-dev.sh up'
+make -C "$repo_root" -n observability-dev-down | grep -q 'scripts/observability-dev.sh down'
+make -C "$repo_root" -n observability-dev-test | grep -q 'scripts/observability-dev-runtime-test.sh'
+
 echo 'observability-dev-test: isolated Compose topology is wired'
