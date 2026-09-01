@@ -94,13 +94,21 @@ The subsystem names above map **many-to-many** onto package names, and four pack
 
 Two further traps worth naming: **`internal/programmer`** is the port for pushing a channel to Tunarr, and is unrelated to **`docs/programming-design.md`**, which is about `ChannelPolicy` heuristics. And §2's **"Provisioner"** is not one package — it is `provision` + `reconcile` + `requester` + `store`; §9's **"Scheduler"** is `schedule` + `channels` + `programmer`, and does *not* include `scheduler`.
 
+**The generated inventory is recursive and exact.** Every directory below `internal/` that
+contains non-test Go source appears under its full module-relative identity, including nested
+packages such as `images/rustgen` and `testkit/httpfixture`. An import edge points to that exact
+package; it is never collapsed onto the first directory segment. Filesystem nesting records Go
+package identity only — it does not claim a domain/adapters/platform hierarchy. The generator and
+its coverage gate derive this complete set from source, so no hand-maintained package count or
+roster is authoritative.
+
 ---
 
 <!-- BEGIN GENERATED: package-map — `make arch-docs`. DO NOT EDIT BY HAND. -->
 
 #### Package map
 
-Generated from each package's own doc comment and its imports, so it cannot drift from the code the way a hand-maintained list does. **Layer** is derived: the longest path from that package to one with no internal dependencies. It is the measured layering, not an aspirational one.
+Generated recursively from each package's own doc comment and exact internal imports, using full paths below `internal/`, so it cannot drift from the code the way a hand-maintained list does. **Layer** is derived: the longest path from that package to one with no internal dependencies. It is the measured layering, not an aspirational one.
 
 Sizes are deliberately absent — they change on nearly every commit, which would make the drift check red by default and train everyone to regenerate without reading.
 
@@ -110,20 +118,20 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 | Package | Direct importers | Depends on |
 | --- | ---: | --- |
-| `catalog` | 5 | `library`, `provision` |
+| `catalog` | 6 | `library`, `provision` |
 | `contact` | 5 | — |
 | `diagnostics` | 8 | — |
 | `filler` | 6 | `diagnostics`, `filleradmission`, `llm` |
 | `filleradmission` | 7 | — |
 | `httpx` | 7 | `metrics` |
 | `invitation` | 6 | `contact` |
-| `library` | 7 | `filler`, `httpx`, `metrics` |
+| `library` | 8 | `filler`, `httpx`, `metrics` |
 | `llm` | 5 | `httpx`, `metrics` |
 | `metrics` | 8 | `provision` |
 | `notifications` | 5 | — |
-| `provision` | 16 | — |
+| `provision` | 17 | — |
 | `recovery` | 5 | — |
-| `schedule` | 14 | `provision` |
+| `schedule` | 15 | `provision` |
 | `scheduler` | 6 | `store` |
 | `store` | 14 | `contact`, `diagnostics`, `filler`, `filleradmission`, `invitation`, `notifications`, `provision`, `recovery`, `schedule` |
 | `suggest` | 6 | `catalog`, `llm`, `provision`, `schedule`, `store` |
@@ -150,11 +158,13 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
 - **`fillereval`** · 2 importers
   Owns the hermetic certification contract for filler admission.
+- **`images/rustgen`** · 4 importers
+  Concrete adapter for Loomarr's required Rust image worker (§22).
 - **`media`** · 3 importers
   Owns host-wide resources shared by live and background media work.
 - **`proctree`** · 3 importers
   Supervises one child process and every descendant it starts.
-- **`provision`** · 16 importers
+- **`provision`** · 17 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
 - **`recovery`** · 5 importers
   Owns local-password recovery records and their bearer grants (§11).
@@ -166,6 +176,10 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Encrypts database-backed secrets with installation-key-wrapped data keys and supports safe key rotation and replacement.
 - **`taxonomy`** · 4 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
+- **`testkit/httpfixture`**
+  Shared no-network HTTP test seams without importing any application adapter.
+- **`testkit/postgresimage`** · 1 importer
+  Owns the single image reference used by Postgres testcontainers and the Make pre-pull that runs before those tests.
 - **`textmatch`** · 3 importers
   Owns deterministic, Unicode-aware whole-word phrase matching.
 - **`web`** · 1 importer
@@ -179,64 +193,55 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns Loomarr's immutable built-in holiday identities and aliases.
 - **`invitation`** · 6 importers · → `contact`
   Owns administrator admission decisions and their bearer grants (§11).
+- **`metrics`** · 8 importers · → `images/rustgen`, `provision`
+  Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
 - **`notifications`** · 5 importers · → `secretprotection`
   Owns channel-neutral notification intents and delivery work (§11).
 - **`prepared`** · 3 importers · → `diagnostics`, `media`
   Owns immutable, reusable playout publications.
-- **`scheduler`** · 6 importers · → `store`
-  Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 
 **Layer 2**
 
-- **`images`** · 4 importers · → `scheduler`
-  One pipeline every image in Loomarr travels (§22).
-- **`retention`** · 1 importer · → `diagnostics`, `invitation`, `notifications`, `recovery`, `scheduler`
-  Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
-- **`schedule`** · 14 importers · → `holidayvocab`, `provision`, `textmatch`
+- **`httpx`** · 7 importers · → `metrics`
+  Shared outbound HTTP client factory (design §6, §21 phase 1).
+- **`schedule`** · 15 importers · → `holidayvocab`, `provision`, `textmatch`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 
 **Layer 3**
-
-- **`metrics`** · 8 importers · → `images`, `provision`
-  Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
-- **`playout`** · 4 importers · → `diagnostics`, `prepared`, `proctree`, `provision`, `schedule`
-  Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
-
-**Layer 4**
-
-- **`httpx`** · 7 importers · → `metrics`
-  Shared outbound HTTP client factory (design §6, §21 phase 1).
-- **`mediatools`** · 2 importers · → `diagnostics`, `playout`, `proctree`
-  Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
-
-**Layer 5**
 
 - **`fillerbakeoff`** · 2 importers · → `filleradmission`, `fillereval`, `httpx`
   Runs bounded, inference-spending filler admission comparisons.
 - **`llm`** · 5 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
+- **`playout`** · 4 importers · → `diagnostics`, `prepared`, `proctree`, `provision`, `schedule`
+  Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 - **`programmer`** · 3 importers · → `httpx`, `metrics`, `schedule`
   Programmer boundary (design §6/§9): the port the scheduler drives to make a Loomarr channel real, plus its only v1 implementation, a thin hand-written Tunarr client (§6: "hand-write a thin client against only the endpoints we use" — not codegen against Tunarr's churny pre-1.0 spec).
 - **`requester`** · 2 importers · → `httpx`, `metrics`, `provision`
   Requester port (design §2, §6): it asks a downstream service to acquire a title.
 
-**Layer 6**
+**Layer 4**
+
+- **`fillerreview`** · → `filleradmission`, `fillerbakeoff`, `fillereval`, `httpx`
+  Materializes identity-blind evidence for independent semantic review.
+- **`mediatools`** · 2 importers · → `diagnostics`, `playout`, `proctree`
+  Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
+
+**Layer 5**
 
 - **`filler`** · 6 importers · → `diagnostics`, `filleradmission`, `fillerdecision`, `llm`, `mediatools`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
-- **`fillerreview`** · → `filleradmission`, `fillerbakeoff`, `fillereval`, `httpx`
-  Materializes identity-blind evidence for independent semantic review.
 
-**Layer 7**
+**Layer 6**
 
 - **`clipfetch`** · 1 importer · → `filler`, `proctree`
   Downloads filler clips into the drop-folder (design §10, §16).
-- **`library`** · 7 importers · → `episodeevidence`, `filler`, `httpx`, `metrics`
+- **`library`** · 8 importers · → `episodeevidence`, `filler`, `httpx`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
 - **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `invitation`, `notifications`, `provision`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
-**Layer 8**
+**Layer 7**
 
 - **`activity`** · 3 importers · → `store`
   Records what Loomarr did, for the Dashboard's Recent activity feed (§5, §12, V32).
@@ -244,29 +249,39 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Issues and validates Loomarr sessions (design §11).
 - **`backendtransition`** · 1 importer · → `schedule`, `store`
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
-- **`catalog`** · 5 importers · → `library`, `provision`
+- **`catalog`** · 6 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
-- **`channels`** · 2 importers · → `filler`, `programmer`, `provision`, `schedule`, `scheduler`, `store`
-  Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
+- **`scheduler`** · 6 importers · → `store`
+  Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 - **`settings`** · 1 importer · → `library`
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`setup`** · 1 importer · → `library`
   Owns the operator connection flows (§7, §13): the Live TV wiring and setup-status checklist.
-- **`testkit`** · → `fillerbakeoff`, `images`, `invitation`, `llm`, `notifications`, `playout`, `programmer`, `provision`, `schedule`, `store`
+- **`testkit`** · → `fillerbakeoff`, `images/rustgen`, `invitation`, `llm`, `notifications`, `playout`, `programmer`, `provision`, `schedule`, `store`, `testkit/postgresimage`
   The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
+- **`testkit/libraryfixture`** · → `library`, `schedule`
+  No-network adapters for library-facing tests.
 
-**Layer 9**
+**Layer 8**
 
+- **`channels`** · 2 importers · → `filler`, `programmer`, `provision`, `schedule`, `scheduler`, `store`
+  Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
 - **`devbootstrap`** · → `auth`, `store`
   Prepares an isolated agent worktree for UI development.
+- **`images`** · 2 importers · → `images/rustgen`, `scheduler`
+  One pipeline every image in Loomarr travels (§22).
 - **`reconcile`** · 1 importer · → `activity`, `library`, `provision`, `requester`, `schedule`, `scheduler`, `store`
   Provisioning backstop (design §4, §7, §18).
+- **`retention`** · 1 importer · → `diagnostics`, `invitation`, `notifications`, `recovery`, `scheduler`
+  Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
 - **`suggest`** · 6 importers · → `catalog`, `holidayvocab`, `llm`, `provision`, `schedule`, `store`, `textmatch`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
+- **`testkit/catalogfixture`** · → `catalog`, `provision`
+  Shared no-network adapters for catalog tests.
 - **`tmdb`** · 2 importers · → `catalog`, `httpx`, `metrics`, `provision`
   TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.
 
-**Layer 10**
+**Layer 9**
 
 - **`binder`** · 2 importers · → `provision`, `schedule`, `store`, `suggest`
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
@@ -277,14 +292,14 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 - **`recurate`** · 1 importer · → `catalog`, `provision`, `schedule`, `scheduler`, `store`, `suggest`
   Scheduled channel re-curation (programming-design §8.2): a self-updating channel that periodically re-evaluates its intent against the current library and evolves its lineup — preferring in-library matches, weighting net-new acquisitions by quality + intent, and NEVER bypassing the approval gate.
 
-**Layer 11**
+**Layer 10**
 
 - **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `images`, `invitation`, `media`, `metrics`, `notifications`, `playout`, `prepared`, `proposalworkflow`, `provision`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
-**Layer 12**
+**Layer 11**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `images`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recovery`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `images`, `images/rustgen`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recovery`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -6576,10 +6591,19 @@ Recorded after a full sweep of `internal/`, because two of the rules below exist
 
 **What holds, and is worth keeping:**
 
-- **The dependency direction is one-way.** No domain package imports `internal/api`; `internal/app` is the only composition root. Verified, not assumed — a domain package that needs an API type is a sign the type belongs in the domain.
+- **The dependency direction is one-way.** No production package outside the explicit inbound,
+  composition, and test-infrastructure exceptions imports `internal/api` or the Huma server
+  framework; `internal/app` is the only composition root. The gate discovers every production
+  package recursively and subtracts a small named exception set whose members and rationales are
+  asserted. A new package therefore enters the rule automatically. A domain package that needs an
+  API type is a sign the type belongs in the domain.
 - **`internal/testkit` never reaches production.** `go list -deps ./cmd/loomarr` must not contain it. Test doubles compiled into the shipped binary is a seam that only ever gets wider.
 
-  ⚠ **`testing` itself DOES reach the binary, through exactly one package, and that is now pinned rather than merely true.** `internal/store`'s conformance suite (7 files, ~4,450 lines — 42% of the non-test package) is ordinary package code on purpose: both backend drivers must import `RunConformance`, SQLite in-package and Postgres behind a build tag, so the assertions cannot live in `_test.go`. `flag` follows `testing` in. The principle above is right, so `TestOnlyStoreLinksTestingIntoTheBinary` names the one permitted package and fails on a second — the exemption cannot spread by precedent. The exit is known and unblocked: verified 2026-08-10 that the suite references **zero** unexported store identifiers, so it can move to a sibling package the binary never reaches. That is a ~4,450-line mechanical move across the tree's highest-churn files, so it is sequenced, not taken opportunistically.
+  **No Loomarr production package has a `testing` exemption.** The Store conformance suite already
+  lives in `_test.go` files, which remain visible to both backend test drivers without linking the
+  test framework into the application. The source graph gate enforces the absence of `testing`
+  from every Loomarr package reachable from `cmd/loomarr`; third-party River test helpers remain
+  outside that actionable scope.
 - **Every package carries a package doc.** They are the orientation for a subsystem whose invariants are not obvious from its types — `internal/playout` (added in this sweep) is the clearest case: the block-supervisor mechanism, the wall-clock rule, and the drop-the-viewer-not-the-message inversion are all invisible from the function signatures.
 - **`panic` is for boot-time programmer error only** — a duplicate settings key, an undeclared job name. Never for a runtime condition an operator could cause.
 - **A file that has accreted past ~600 lines gets split along its seams, not arbitrarily.** `api/channels.go` was 1082 lines / 15 handlers / 25 DTOs and became four files: CRUD, wire shape + mapping, the now/next strip, and the preview surfaces. The tell that the split was real: `podToPoolDTO` and friends were already shared with `programming.go` and `guide.go`, so they had never been channel-lifecycle code — they were just living in the channel-lifecycle file.
@@ -6914,9 +6938,17 @@ independently instead of treating every zero-lineup result as a model-quality my
 
 ### 14.2 The package map
 
-`internal/` is **53 flat packages, deliberately** — the grouping below is prose, not directories.
+The recursive generated map in §2 is the authoritative package inventory. Package identity is the
+full path below `internal/`; real nested packages remain distinct nodes and exact dependency
+targets. This section deliberately carries no package count or complete roster because either would
+duplicate the generated authority and drift.
 
-Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
+Moving packages under artificial `internal/{domain,adapters,platform}/` directories was considered
+and rejected on evidence: several adapters correctly import domain packages (`tmdb`→`provision`,
+`requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so those folders would
+announce a layering the code does not have. Existing nesting such as `images/rustgen` and
+`testkit/httpfixture` remains visible because it is real package identity, not because it implies
+that rejected taxonomy.
 
 Go packages already carry a name, a compiler-enforced import list, and a doc. A directory above them would lengthen every import path and enforce nothing. (Contrast the frontend, where folders *were* worth adding: 46 React components in one directory have no enforced boundary at all, which is why they had grown `channel-*`/`guide-*` filename prefixes — a naming convention doing a filesystem's job. There, folders replaced a convention with structure. Here the structure is already there.)
 

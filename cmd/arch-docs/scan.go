@@ -5,6 +5,7 @@ import (
 	"go/doc"
 	"go/parser"
 	"go/token"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -37,34 +38,48 @@ type Package struct {
 	Layer int
 }
 
-// scan parses every package under internal/ and returns them sorted by name.
+// scan parses every package recursively under internal/ and returns them sorted by
+// full module-relative name.
 //
 // Uses go/parser rather than golang.org/x/tools/go/packages: everything needed here
 // (doc comment, import paths) is in the syntax tree, and x/tools is only a transitive
 // dependency today. Promoting it to a direct one would be a §14 conversation for a
 // capability the standard library already provides.
 func scan(root string) ([]Package, error) {
-	entries, err := os.ReadDir(root)
+	byName := map[string]*Package{}
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !entry.IsDir() {
+			return nil
+		}
+		if path != root && (entry.Name() == "testdata" || entry.Name() == "vendor" ||
+			strings.HasPrefix(entry.Name(), ".") || strings.HasPrefix(entry.Name(), "_")) {
+			return filepath.SkipDir
+		}
+
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		name := filepath.ToSlash(relative)
+		if name == "." {
+			return nil
+		}
+		p, err := scanOne(path, name)
+		if err != nil {
+			return err
+		}
+		// A directory with no non-test Go files has no production surface to
+		// describe. Its children are still walked because they may be packages.
+		if p != nil {
+			byName[name] = p
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
-	}
-
-	byName := map[string]*Package{}
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		p, err := scanOne(filepath.Join(root, e.Name()), e.Name())
-		if err != nil {
-			return nil, err
-		}
-		// A directory with no non-test Go files (internal/integration is one) has no
-		// production surface to describe. Skipping keeps it out of the map rather
-		// than rendering an empty row that reads like an omission.
-		if p == nil {
-			continue
-		}
-		byName[e.Name()] = p
 	}
 
 	// Drop edges to packages that are not in the map (test-only dirs), so a rendered
@@ -140,8 +155,8 @@ func scanOne(dir, name string) (*Package, error) {
 	return &Package{Name: name, Synopsis: synopsis, Imports: deps}, nil
 }
 
-// collectInternalImports records every internal/<pkg> this file imports, except
-// itself (a subpackage importing its parent would otherwise self-edge).
+// collectInternalImports records the exact internal package this file imports,
+// except itself.
 func collectInternalImports(f *ast.File, self string, into map[string]bool) {
 	for _, spec := range f.Imports {
 		path := strings.Trim(spec.Path.Value, `"`)
@@ -149,12 +164,10 @@ func collectInternalImports(f *ast.File, self string, into map[string]bool) {
 		if !ok {
 			continue
 		}
-		// internal/foo/bar counts as a dependency on foo.
-		top, _, _ := strings.Cut(rest, "/")
-		if top == "" || top == self {
+		if rest == "" || rest == self {
 			continue
 		}
-		into[top] = true
+		into[rest] = true
 	}
 }
 
@@ -185,10 +198,8 @@ func assignLayers(byName map[string]*Package) {
 		return max
 	}
 
-	// The graph is collapsed to top-level domains, so distinct acyclic Go packages can become a
-	// cycle here (for example app/subpackage A → metrics and metrics → app/subpackage B). Traverse
-	// roots in a stable order so the defensive cycle break cannot make generated docs depend on
-	// randomized map iteration.
+	// Traverse roots in a stable order so even the defensive cycle break cannot make generated
+	// docs depend on randomized map iteration.
 	names := make([]string, 0, len(byName))
 	for name := range byName {
 		names = append(names, name)
