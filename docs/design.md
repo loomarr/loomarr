@@ -5857,6 +5857,32 @@ interfaces return a redacted summary and credential-present flags, never credent
 URLs, push keys, contact addresses, or rendered content. Provider adapters resolve the complete
 destination only after an attempt is claimed.
 
+**Provider setup is one short, provider-led workflow.** In **Settings → Notifications**, an
+administrator sees one list containing SMTP, webhook, Slack, Discord, and every other supported
+provider. **Add provider** first asks for the provider type, then renders only that provider's named
+fields and the compatible event checkboxes. Save creates the configured provider directly; there is
+no user-visible draft stage. A saved provider may be edited, enabled or disabled, deleted, and sent
+an optional test from the same row. SMTP is a provider in this list and has no separate settings
+card, test panel, or setup path.
+
+The server owns a closed **Provider definition** for each Delivery means: display name, field keys,
+labels, input kinds, requiredness, safe defaults, sensitivity, validation, and supported events. A
+write submits values for those defined field keys through one settings object. The server rejects
+unknown fields and splits ordinary values from sensitive material according to its definition; the
+client cannot label a token, password, private key, or credential-bearing URL as ordinary
+configuration. Reads return ordinary values plus per-secret configured flags, never secret values.
+On edit, omission of a sensitive field preserves it and an explicit clear action removes it. The UI
+may use the returned definition to render provider-specific controls, but it never receives or
+reconstructs the storage classification.
+
+Destination scope, audience selection, recipient lookup, and configuration-versus-credential
+storage are internal routing concepts. The common Settings form does not expose them. Installation
+provider ownership comes from the authenticated administrator and recipient policy comes from the
+selected event plus the intent's authoritative audience. Personal Web Push subscription ownership
+comes from the authenticated member's explicit browser opt-in. Neither path accepts a caller-chosen
+owner, scope, or audience. Existing installations still begin with no product-event subscriptions,
+so the simplified setup does not create an upgrade notification storm.
+
 Proposal approval records requester provenance for every approved Title and the intent-bound Channel
 inside the same local transaction as the decision. That durable `(reference, person)` relation is the
 source-of-truth backstop used by later acquisition and Channel transitions; notification publication
@@ -6265,7 +6291,7 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 
   ⚠ **The card's per-channel control is an include-set override, not two flags.** It replaces the pin/block pair: channels are checkboxes with a fit note, and **Back to automatic** returns the clip to being placed by the ladder. Pin-and-block let an operator build a state that reads as contradictory ("pinned *and* blocked") which the assembler had to resolve by rule; one set has no such state.
 - **People** (admin, route `/people`) — imported users, roles, quotas, disable, sync-now (§11). "People" rather than "Users" because the list is households and family members, not system accounts.
-- **Settings** (admin, route `/settings`) — **seven tabs**: *Connections* (media server, requester, Tunarr, TMDB, plus `/readyz` and the re-runnable **connection checklist** of §13 as the troubleshooting console) · *AI* (provider/model, including the in-app **model manager** of §8.1 — probe, catalog, hot-swap, streaming pull) · *Defaults* (only the registry values channels can actually inherit: schedule horizon and break frequency) · *Notifications* (recipient-reachable access URL and outbound email/SMTP, including Send test) · *System* — itself sub-tabbed into **Tasks** (the §18.1 job console: cron, last/next run, Run-now) · **Playout** · **Database** · **Backup** · **About** — · *Security* (incl. **secret regeneration**) · *All settings* (every key, searchable). The typed registry, `env > database > default` resolution, runtime lifecycles, the cross-tab save bar, and the secrets lifecycle are `config-design.md`'s domain — **it wins on those mechanics** (§5 carries the page table and inline-commit exceptions); this row records only *where the surfaces are*.
+- **Settings** (admin, route `/settings`) — **seven tabs**: *Connections* (media server, requester, Tunarr, TMDB, plus `/readyz` and the re-runnable **connection checklist** of §13 as the troubleshooting console) · *AI* (provider/model, including the in-app **model manager** of §8.1 — probe, catalog, hot-swap, streaming pull) · *Defaults* (only the registry values channels can actually inherit: schedule horizon and break frequency) · *Notifications* (one provider list and **Add provider** flow for SMTP, webhook, Slack, Discord, and every other supported means; choose provider → enter its fields → select events → save → optional test) · *System* — itself sub-tabbed into **Tasks** (the §18.1 job console: cron, last/next run, Run-now) · **Playout** · **Database** · **Backup** · **About** — · *Security* (incl. **secret regeneration**) · *All settings* (every key, searchable). The typed registry, `env > database > default` resolution, runtime lifecycles, the cross-tab save bar, and the secrets lifecycle are `config-design.md`'s domain — **it wins on those mechanics** (§5 carries the page table and inline-commit exceptions); this row records only *where the surfaces are*.
 - **Account** (route `/account`, any authenticated user) — the signed-in user's own credentials: change password and view/revoke active sessions (§11). Distinct from **People**, which is an admin managing *other* accounts; this is the one settings-shaped surface a member can reach, which is why it sits outside the admin-only `/settings` IA above.
 - **Global search (⌘K)** — command palette over `/v1/search` + channels + help; the single fast entry point. **Hand-rolled, not cmdk** (revised — §12 described shadcn `Command`/cmdk, which was never built and is not a dependency; adding one is a §14 conversation, and the ARIA pattern is small enough not to need it). It implements the combobox/listbox pattern directly: `role="combobox"` on the input, `role="listbox"` over the results, one `role="group"` per scope, and `aria-activedescendant` — so focus stays in the input while ↑/↓/Home/End move the active option and Enter selects it. `Escape` is bound once at the window level (`useCommandShortcut`), never inside the component, so it cannot close twice. The search call deliberately omits `scope`, which the API defaults to `all` — the right corpus for a palette; channels, clips, and help are merged in from their own sources (clips are not a `/v1/search` scope, §7.2).
 
