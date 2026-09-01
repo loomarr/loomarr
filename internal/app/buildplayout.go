@@ -367,6 +367,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 			return lifecycleGate == nil || lifecycleGate.Available()
 		},
 		Eligible: durablePlayoutEligibility,
+		Observer: deps.metrics,
 	})
 	playoutSvc = origin
 

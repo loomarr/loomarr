@@ -105,6 +105,7 @@ type Origin struct {
 	prepared preparedDelivery
 	sessions sessionAttacher
 	hls      hlsOrigin
+	observer OriginObserver
 
 	// lifecycleMu orders admission plus attachment against fail-closed StopAll. The atomic
 	// availability callback alone is insufficient: a tune could observe true, then attach after
@@ -145,6 +146,12 @@ type OriginDependencies struct {
 	// an HTTP request admitted just before a remote commit cannot attach after that commit's stop.
 	// Nil preserves the SQLite single-replica path's existing local lifecycle behavior.
 	Eligible func(context.Context, string) (bool, error)
+	Observer OriginObserver
+}
+
+// OriginObserver receives bounded fallback transitions without Channel identity.
+type OriginObserver interface {
+	PlayoutFallback(reason string)
 }
 
 // NewOrigin assembles prepared delivery and the current bounded live fallback behind one seam.
@@ -166,6 +173,7 @@ func NewOrigin(deps OriginDependencies) *Origin {
 	o := newOrigin(prepared, sessions, hls)
 	o.available = deps.Available
 	o.eligible = deps.Eligible
+	o.observer = deps.Observer
 	return o
 }
 
@@ -257,6 +265,9 @@ func (o *Origin) Tune(ctx context.Context, request TuneRequest) (Presentation, e
 		if err != nil {
 			release()
 			return Presentation{}, fmt.Errorf("playout: read manifest: %w", err)
+		}
+		if o.prepared != nil && o.observer != nil {
+			o.observer.PlayoutFallback("prepared_to_live")
 		}
 		return Presentation{Manifest: manifest, Release: release}, nil
 	default:

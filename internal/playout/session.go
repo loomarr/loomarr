@@ -201,6 +201,7 @@ type Manager struct {
 type SessionObserver interface {
 	PlayoutSessionStarted(result string)
 	PlayoutSessionActive(delta int)
+	PlayoutProcessFailure(stage string)
 }
 
 // ProcessRunID returns the opaque diagnostic identity of one ready session, if observed.
@@ -380,6 +381,8 @@ func (m *Manager) acquire(ctx context.Context, key sessionKey) (*Session, error)
 			result := "spawn_error"
 			if errors.Is(s.initErr, context.Canceled) {
 				result = "canceled"
+			} else {
+				m.observer.PlayoutProcessFailure("parent")
 			}
 			m.observer.PlayoutSessionStarted(result)
 		}

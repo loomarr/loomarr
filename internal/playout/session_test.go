@@ -135,6 +135,21 @@ func TestManagerPublishesSessionLifecycleToGenerationMetrics(t *testing.T) {
 	assertMetricsContain(t, recorder, `loomarr_playout_sessions_active 0`)
 }
 
+func TestManagerPublishesParentProcessFailure(t *testing.T) {
+	recorder := metrics.New(metrics.Options{})
+	manager := NewManager(func(context.Context, string, EncodePlan) (*Process, error) {
+		return nil, errors.New("ffmpeg refused to start")
+	}, func() int { return 4 }, time.Minute, nil).WithObserver(recorder)
+
+	if _, _, err := manager.Attach(t.Context(), "private-channel-id", PlanFull); err == nil {
+		t.Fatal("Attach succeeded, want spawn failure")
+	}
+	assertMetricsContain(t, recorder,
+		`loomarr_playout_session_starts_total{result="spawn_error"} 1`,
+		`loomarr_playout_process_failures_total{stage="parent"} 1`,
+	)
+}
+
 func assertMetricsContain(t *testing.T, recorder *metrics.Recorder, wants ...string) {
 	t.Helper()
 	response := httptest.NewRecorder()
