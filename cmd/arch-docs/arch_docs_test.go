@@ -83,10 +83,13 @@ import _ "github.com/loomarr/loomarr/internal/nested/leaf"
 	writeGoFixture(t, root, "nested/leaf/leaf.go", `// Package leaf is the nested leaf fixture.
 package leaf
 `)
-	writeGoFixture(t, root, "nested/child/child.go", `// Package child imports a top-level package.
+	writeGoFixture(t, root, "nested/nested.go", `// Package nested is the parent fixture.
+package nested
+`)
+	writeGoFixture(t, root, "nested/child/child.go", `// Package child imports its parent package.
 package child
 
-import _ "github.com/loomarr/loomarr/internal/top"
+import _ "github.com/loomarr/loomarr/internal/nested"
 `)
 	writeGoFixture(t, root, "testonly/only_test.go", `package testonly
 `)
@@ -96,7 +99,8 @@ import _ "github.com/loomarr/loomarr/internal/top"
 		t.Fatalf("scan fixture tree: %v", err)
 	}
 	want := []Package{
-		{Name: "nested/child", Synopsis: "Imports a top-level package.", Imports: []string{"top"}, Layer: 2},
+		{Name: "nested", Synopsis: "Parent fixture.", Imports: []string{}},
+		{Name: "nested/child", Synopsis: "Imports its parent package.", Imports: []string{"nested"}, Layer: 1},
 		{Name: "nested/leaf", Synopsis: "Nested leaf fixture.", Imports: []string{}},
 		{Name: "top", Synopsis: "Top-level fixture.", Imports: []string{"nested/leaf"}, Layer: 1},
 	}
