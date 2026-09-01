@@ -2,9 +2,12 @@ import * as notificationsApi from "@loomarr/api/endpoints/notifications";
 import type { NotificationProviderDTO } from "@loomarr/api/models/notificationProviderDTO";
 import type { NotificationProviderFieldDTO } from "@loomarr/api/models/notificationProviderFieldDTO";
 import type { NotificationProviderTypeDTO } from "@loomarr/api/models/notificationProviderTypeDTO";
+import { notificationProviderFormSchema } from "@loomarr/core/schemas";
+import { useForm } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { BellRing, Plus, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -26,24 +29,29 @@ const useRefresh = () => {
 
 const FieldInput = ({
   field,
+  inputId,
   value,
   configured,
   cleared,
+  error,
   onChange,
   onClear,
 }: {
   field: NotificationProviderFieldDTO;
+  inputId: string;
   value: string;
   configured: boolean;
   cleared: boolean;
+  error?: string;
   onChange: (value: string) => void;
   onClear: () => void;
 }) => {
+  const errorId = `${inputId}-error`;
   if (field.kind === "toggle") {
     return (
-      <label className="flex items-center gap-2 text-sm" htmlFor={`provider-field-${field.key}`}>
+      <label className="flex items-center gap-2 text-sm" htmlFor={inputId}>
         <Checkbox
-          id={`provider-field-${field.key}`}
+          id={inputId}
           checked={value === "true"}
           onChange={(event) => onChange(event.target.checked ? "true" : "false")}
         />
@@ -53,15 +61,17 @@ const FieldInput = ({
   }
   return (
     <div className="grid gap-1.5">
-      <Label htmlFor={`provider-field-${field.key}`}>
+      <Label htmlFor={inputId}>
         {field.label}
         {field.required ? " *" : ""}
       </Label>
       {field.kind === "select" ? (
         <select
-          id={`provider-field-${field.key}`}
+          id={inputId}
           className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
           value={value}
+          aria-invalid={error ? "true" : undefined}
+          aria-describedby={error ? errorId : undefined}
           onChange={(event) => onChange(event.target.value)}
         >
           {(field.options ?? []).map((option) => (
@@ -72,14 +82,21 @@ const FieldInput = ({
         </select>
       ) : (
         <Input
-          id={`provider-field-${field.key}`}
+          id={inputId}
           type={field.sensitive || field.kind === "password" ? "password" : field.kind}
           value={value}
           disabled={cleared}
           autoComplete={field.sensitive ? "new-password" : undefined}
+          aria-invalid={error ? "true" : undefined}
+          aria-describedby={error ? errorId : undefined}
           onChange={(event) => onChange(event.target.value)}
         />
       )}
+      {error ? (
+        <p id={errorId} className="text-onair-300 text-sm" role="alert">
+          {error}
+        </p>
+      ) : null}
       {field.sensitive && configured ? (
         <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
           <span>{cleared ? "Will be cleared when saved." : "Configured — leave blank to keep it."}</span>
@@ -97,146 +114,218 @@ const ProviderForm = ({
   definition,
   provider,
   pending,
+  error,
   onCancel,
   onSave,
 }: {
   definition: NotificationProviderTypeDTO;
   provider?: NotificationProviderDTO;
   pending: boolean;
+  error?: unknown;
   onCancel: () => void;
   onSave: (value: {
     label: string;
     events: string[];
     enabled: boolean;
     settings: Record<string, string>;
-  }) => void | Promise<void>;
+  }) => Promise<void>;
 }) => {
+  const idPrefix = useId();
   const stored = useMemo(
     () => new Map(provider?.settings.map((setting) => [setting.key, setting])),
     [provider],
   );
-  const [label, setLabel] = useState(provider?.label ?? definition.name);
-  const [events, setEvents] = useState<string[]>(provider?.events ?? []);
-  const [enabled, setEnabled] = useState(provider?.enabled ?? true);
-  const [values, setValues] = useState<Record<string, string>>(() =>
-    Object.fromEntries(
-      definition.fields.map((field) => [
-        field.key,
-        field.sensitive ? "" : (stored.get(field.key)?.value ?? field.default ?? ""),
-      ]),
-    ),
+  const schema = useMemo(
+    () =>
+      notificationProviderFormSchema(
+        definition.fields.filter((field) => field.required).map(({ key, label }) => ({ key, label })),
+        definition.fields
+          .filter((field) => field.sensitive && stored.get(field.key)?.secretConfigured === true)
+          .map((field) => field.key),
+      ),
+    [definition.fields, stored],
   );
-  const [clearedSecrets, setClearedSecrets] = useState<Set<string>>(new Set());
-
-  const complete =
-    label.trim() !== "" &&
-    events.length > 0 &&
-    definition.fields.every((field) => {
-      if (!field.required) return true;
-      if (!field.sensitive) return (values[field.key] ?? "").trim() !== "";
-      return (
-        (values[field.key] ?? "").trim() !== "" ||
-        (stored.get(field.key)?.secretConfigured === true && !clearedSecrets.has(field.key))
-      );
-    });
-
-  const submit = () => {
-    const settings: Record<string, string> = {};
-    for (const field of definition.fields) {
-      const value = values[field.key] ?? "";
-      if (field.sensitive) {
-        if (clearedSecrets.has(field.key)) settings[field.key] = "";
-        else if (value !== "") settings[field.key] = value;
-      } else {
-        settings[field.key] = value;
+  const form = useForm({
+    defaultValues: {
+      label: provider?.label ?? definition.name,
+      events: provider?.events ?? [],
+      enabled: provider?.enabled ?? true,
+      settings: Object.fromEntries(
+        definition.fields.map((field) => [
+          field.key,
+          field.sensitive ? "" : (stored.get(field.key)?.value ?? field.default ?? ""),
+        ]),
+      ),
+      clearedSecrets: [] as string[],
+    },
+    validators: { onSubmit: schema },
+    onSubmit: async ({ value }) => {
+      const settings: Record<string, string> = {};
+      for (const field of definition.fields) {
+        const setting = value.settings[field.key] ?? "";
+        if (field.sensitive) {
+          if (value.clearedSecrets.includes(field.key)) settings[field.key] = "";
+          else if (setting !== "") settings[field.key] = setting;
+        } else {
+          settings[field.key] = setting;
+        }
       }
-    }
-    void onSave({ label: label.trim(), events, enabled, settings });
-  };
+      await onSave({
+        label: value.label.trim(),
+        events: value.events,
+        enabled: value.enabled,
+        settings,
+      });
+    },
+  });
 
   return (
-    <Card className="grid gap-5 p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="font-semibold">{provider ? `Edit ${provider.label}` : `Add ${definition.name}`}</h3>
-          <p className="mt-1 text-muted-foreground text-sm">
-            Enter the provider settings, choose events, and save.
-          </p>
+    <form
+      noValidate
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.handleSubmit().catch(() => undefined);
+      }}
+    >
+      <Card className="grid gap-5 p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="font-semibold">
+              {provider ? `Edit ${provider.label}` : `Add ${definition.name}`}
+            </h3>
+            <p className="mt-1 text-muted-foreground text-sm">
+              Enter the provider settings, choose events, and save.
+            </p>
+          </div>
+          <Button type="button" variant="ghost" size="sm" onClick={onCancel} aria-label="Close provider form">
+            <X className="size-4" aria-hidden />
+          </Button>
         </div>
-        <Button type="button" variant="ghost" size="sm" onClick={onCancel} aria-label="Close provider form">
-          <X className="size-4" aria-hidden />
-        </Button>
-      </div>
 
-      <div className="grid gap-1.5">
-        <Label htmlFor="provider-label">Label *</Label>
-        <Input id="provider-label" value={label} onChange={(event) => setLabel(event.target.value)} />
-      </div>
+        {error != null ? <ErrorState error={error} /> : null}
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        {definition.fields.map((field) => (
-          <FieldInput
-            key={field.key}
-            field={field}
-            value={values[field.key] ?? ""}
-            configured={stored.get(field.key)?.secretConfigured === true}
-            cleared={clearedSecrets.has(field.key)}
-            onChange={(value) => {
-              setValues((current) => ({ ...current, [field.key]: value }));
-              setClearedSecrets((current) => {
-                const next = new Set(current);
-                next.delete(field.key);
-                return next;
-              });
-            }}
-            onClear={() =>
-              setClearedSecrets((current) => {
-                const next = new Set(current);
-                if (next.has(field.key)) next.delete(field.key);
-                else next.add(field.key);
-                return next;
-              })
-            }
-          />
-        ))}
-      </div>
+        <form.Field name="label">
+          {(field) => {
+            const fieldError = field.state.meta.errors[0]?.message;
+            const inputId = `${idPrefix}-provider-label`;
+            return (
+              <div className="grid gap-1.5">
+                <Label htmlFor={inputId}>Label *</Label>
+                <Input
+                  id={inputId}
+                  name={field.name}
+                  value={field.state.value}
+                  aria-invalid={fieldError ? "true" : undefined}
+                  aria-describedby={fieldError ? `${inputId}-error` : undefined}
+                  onBlur={field.handleBlur}
+                  onChange={(event) => field.handleChange(event.target.value)}
+                />
+                {fieldError ? (
+                  <p id={`${inputId}-error`} className="text-onair-300 text-sm" role="alert">
+                    {fieldError}
+                  </p>
+                ) : null}
+              </div>
+            );
+          }}
+        </form.Field>
 
-      <fieldset className="grid gap-2 sm:grid-cols-2">
-        <legend className="mb-2 font-medium text-sm">Events *</legend>
-        {definition.events.map((event) => (
-          <label className="flex items-center gap-2 text-sm" key={event} htmlFor={`provider-event-${event}`}>
-            <Checkbox
-              id={`provider-event-${event}`}
-              checked={events.includes(event)}
-              onChange={(input) =>
-                setEvents((current) =>
-                  input.target.checked ? [...current, event] : current.filter((item) => item !== event),
-                )
-              }
-            />
-            {words(event)}
-          </label>
-        ))}
-      </fieldset>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {definition.fields.map((field) => (
+            <form.Field name={`settings.${field.key}`} key={field.key}>
+              {(settingField) => (
+                <form.Subscribe selector={(state) => state.values.clearedSecrets}>
+                  {(clearedSecrets) => (
+                    <FieldInput
+                      field={field}
+                      inputId={`${idPrefix}-provider-field-${field.key}`}
+                      value={settingField.state.value}
+                      configured={stored.get(field.key)?.secretConfigured === true}
+                      cleared={clearedSecrets.includes(field.key)}
+                      error={settingField.state.meta.errors[0]?.message}
+                      onChange={(value) => {
+                        settingField.handleChange(value);
+                        form.setFieldValue("clearedSecrets", (current) =>
+                          current.filter((key) => key !== field.key),
+                        );
+                      }}
+                      onClear={() =>
+                        form.setFieldValue("clearedSecrets", (current) =>
+                          current.includes(field.key)
+                            ? current.filter((key) => key !== field.key)
+                            : [...current, field.key],
+                        )
+                      }
+                    />
+                  )}
+                </form.Subscribe>
+              )}
+            </form.Field>
+          ))}
+        </div>
 
-      <label className="flex items-center gap-2 text-sm" htmlFor="provider-enabled">
-        <Checkbox
-          id="provider-enabled"
-          checked={enabled}
-          onChange={(event) => setEnabled(event.target.checked)}
-        />
-        Enable provider
-      </label>
+        <form.Field name="events">
+          {(field) => (
+            <fieldset className="grid gap-2 sm:grid-cols-2">
+              <legend className="mb-2 font-medium text-sm">Events *</legend>
+              {definition.events.map((event) => {
+                const inputId = `${idPrefix}-provider-event-${event}`;
+                return (
+                  <label className="flex items-center gap-2 text-sm" key={event} htmlFor={inputId}>
+                    <Checkbox
+                      id={inputId}
+                      checked={field.state.value.includes(event)}
+                      onChange={(input) =>
+                        field.handleChange(
+                          input.target.checked
+                            ? [...field.state.value, event]
+                            : field.state.value.filter((item) => item !== event),
+                        )
+                      }
+                    />
+                    {words(event)}
+                  </label>
+                );
+              })}
+              {field.state.meta.errors[0] ? (
+                <p className="text-onair-300 text-sm sm:col-span-2" role="alert">
+                  {field.state.meta.errors[0].message}
+                </p>
+              ) : null}
+            </fieldset>
+          )}
+        </form.Field>
 
-      <div className="flex flex-wrap gap-2">
-        <Button disabled={!complete || pending} onClick={submit}>
-          Save provider
-        </Button>
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Cancel
-        </Button>
-      </div>
-    </Card>
+        <form.Field name="enabled">
+          {(field) => {
+            const inputId = `${idPrefix}-provider-enabled`;
+            return (
+              <label className="flex items-center gap-2 text-sm" htmlFor={inputId}>
+                <Checkbox
+                  id={inputId}
+                  checked={field.state.value}
+                  onChange={(event) => field.handleChange(event.target.checked)}
+                />
+                Enable provider
+              </label>
+            );
+          }}
+        </form.Field>
+
+        <div className="flex flex-wrap gap-2">
+          <form.Subscribe selector={(state) => state.isSubmitting}>
+            {(submitting) => (
+              <Button type="submit" disabled={pending || submitting}>
+                Save provider
+              </Button>
+            )}
+          </form.Subscribe>
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+        </div>
+      </Card>
+    </form>
   );
 };
 
@@ -250,6 +339,7 @@ const WebPushForm = ({
   provider,
   publicKey,
   pending,
+  error,
   onCancel,
   onSave,
 }: {
@@ -257,16 +347,16 @@ const WebPushForm = ({
   provider?: NotificationProviderDTO;
   publicKey?: string;
   pending: boolean;
+  error?: unknown;
   onCancel: () => void;
   onSave: (value: {
     label: string;
     events: string[];
     enabled: boolean;
     settings: Record<string, string>;
-  }) => void | Promise<void>;
+  }) => Promise<void>;
 }) => {
-  const [label, setLabel] = useState(provider?.label ?? "This browser");
-  const [events, setEvents] = useState<string[]>(provider?.events ?? []);
+  const idPrefix = useId();
   const [message, setMessage] = useState("");
   const [enabling, setEnabling] = useState(false);
   const supported =
@@ -275,10 +365,7 @@ const WebPushForm = ({
     "serviceWorker" in navigator &&
     "PushManager" in window;
 
-  const saveExisting = () =>
-    onSave({ label: label.trim(), events, enabled: provider?.enabled ?? true, settings: {} });
-
-  const enableBrowser = async () => {
+  const enableBrowser = async (label: string, events: string[]) => {
     if (!supported || !publicKey) {
       setMessage("Browser notifications are not available in this browser or connection.");
       return;
@@ -307,7 +394,7 @@ const WebPushForm = ({
         throw new Error("The browser returned an incomplete Push subscription.");
       }
       await onSave({
-        label: label.trim(),
+        label,
         events,
         enabled: true,
         settings: { endpoint: value.endpoint, p256dh: value.keys.p256dh, auth: value.keys.auth },
@@ -320,60 +407,124 @@ const WebPushForm = ({
     }
   };
 
+  const form = useForm({
+    defaultValues: {
+      label: provider?.label ?? "This browser",
+      events: provider?.events ?? [],
+      enabled: provider?.enabled ?? true,
+      settings: {} as Record<string, string>,
+      clearedSecrets: [] as string[],
+    },
+    validators: { onSubmit: notificationProviderFormSchema([]) },
+    onSubmit: async ({ value }) => {
+      const label = value.label.trim();
+      if (provider) {
+        await onSave({ label, events: value.events, enabled: value.enabled, settings: {} });
+      } else {
+        await enableBrowser(label, value.events);
+      }
+    },
+  });
+
   return (
-    <Card className="grid gap-5 p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="font-semibold">{provider ? `Edit ${provider.label}` : "Add Browser Push"}</h3>
-          <p className="mt-1 text-muted-foreground text-sm">
-            Loomarr asks this browser for permission only when you enable it below.
-          </p>
+    <form
+      noValidate
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.handleSubmit().catch(() => undefined);
+      }}
+    >
+      <Card className="grid gap-5 p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="font-semibold">{provider ? `Edit ${provider.label}` : "Add Browser Push"}</h3>
+            <p className="mt-1 text-muted-foreground text-sm">
+              Loomarr asks this browser for permission only when you enable it below.
+            </p>
+          </div>
+          <Button type="button" variant="ghost" size="sm" onClick={onCancel} aria-label="Close provider form">
+            <X className="size-4" aria-hidden />
+          </Button>
         </div>
-        <Button type="button" variant="ghost" size="sm" onClick={onCancel} aria-label="Close provider form">
-          <X className="size-4" aria-hidden />
-        </Button>
-      </div>
-      <div className="grid gap-1.5">
-        <Label htmlFor="provider-label">Label *</Label>
-        <Input id="provider-label" value={label} onChange={(event) => setLabel(event.target.value)} />
-      </div>
-      <fieldset className="grid gap-2 sm:grid-cols-2">
-        <legend className="mb-2 font-medium text-sm">Events *</legend>
-        {definition.events.map((event) => (
-          <label className="flex items-center gap-2 text-sm" key={event} htmlFor={`provider-event-${event}`}>
-            <Checkbox
-              id={`provider-event-${event}`}
-              checked={events.includes(event)}
-              onChange={(input) =>
-                setEvents((current) =>
-                  input.target.checked ? [...current, event] : current.filter((item) => item !== event),
-                )
-              }
-            />
-            {words(event)}
-          </label>
-        ))}
-      </fieldset>
-      <p className="text-muted-foreground text-sm">
-        Locked-screen previews say only that Loomarr has a new notification. Open Loomarr to see details.
-      </p>
-      <div className="flex flex-wrap gap-2">
-        <Button
-          disabled={!label.trim() || events.length === 0 || pending || enabling}
-          onClick={() => void (provider ? saveExisting() : enableBrowser())}
-        >
-          {provider ? "Save provider" : "Enable this browser"}
-        </Button>
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Cancel
-        </Button>
-      </div>
-      {message ? (
-        <p className="text-sm" role={message.includes("could not") ? "alert" : "status"} aria-live="polite">
-          {message}
+        {error != null ? <ErrorState error={error} /> : null}
+        <form.Field name="label">
+          {(field) => {
+            const inputId = `${idPrefix}-provider-label`;
+            const fieldError = field.state.meta.errors[0]?.message;
+            return (
+              <div className="grid gap-1.5">
+                <Label htmlFor={inputId}>Label *</Label>
+                <Input
+                  id={inputId}
+                  name={field.name}
+                  value={field.state.value}
+                  aria-invalid={fieldError ? "true" : undefined}
+                  aria-describedby={fieldError ? `${inputId}-error` : undefined}
+                  onBlur={field.handleBlur}
+                  onChange={(event) => field.handleChange(event.target.value)}
+                />
+                {fieldError ? (
+                  <p id={`${inputId}-error`} className="text-onair-300 text-sm" role="alert">
+                    {fieldError}
+                  </p>
+                ) : null}
+              </div>
+            );
+          }}
+        </form.Field>
+        <form.Field name="events">
+          {(field) => (
+            <fieldset className="grid gap-2 sm:grid-cols-2">
+              <legend className="mb-2 font-medium text-sm">Events *</legend>
+              {definition.events.map((event) => {
+                const inputId = `${idPrefix}-provider-event-${event}`;
+                return (
+                  <label className="flex items-center gap-2 text-sm" key={event} htmlFor={inputId}>
+                    <Checkbox
+                      id={inputId}
+                      checked={field.state.value.includes(event)}
+                      onChange={(input) =>
+                        field.handleChange(
+                          input.target.checked
+                            ? [...field.state.value, event]
+                            : field.state.value.filter((item) => item !== event),
+                        )
+                      }
+                    />
+                    {words(event)}
+                  </label>
+                );
+              })}
+              {field.state.meta.errors[0] ? (
+                <p className="text-onair-300 text-sm sm:col-span-2" role="alert">
+                  {field.state.meta.errors[0].message}
+                </p>
+              ) : null}
+            </fieldset>
+          )}
+        </form.Field>
+        <p className="text-muted-foreground text-sm">
+          Locked-screen previews say only that Loomarr has a new notification. Open Loomarr to see details.
         </p>
-      ) : null}
-    </Card>
+        <div className="flex flex-wrap gap-2">
+          <form.Subscribe selector={(state) => state.isSubmitting}>
+            {(submitting) => (
+              <Button type="submit" disabled={pending || enabling || submitting}>
+                {provider ? "Save provider" : "Enable this browser"}
+              </Button>
+            )}
+          </form.Subscribe>
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+        </div>
+        {message ? (
+          <p className="text-sm" role={message.includes("could not") ? "alert" : "status"} aria-live="polite">
+            {message}
+          </p>
+        ) : null}
+      </Card>
+    </form>
   );
 };
 
@@ -384,9 +535,12 @@ const ProviderRow = ({
   provider: NotificationProviderDTO;
   definition?: NotificationProviderTypeDTO;
 }) => {
+  const idPrefix = useId();
   const refresh = useRefresh();
   const [editing, setEditing] = useState(false);
   const [message, setMessage] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const update = notificationsApi.useNotificationProvidersUpdate({
     mutation: {
       onSuccess: () => {
@@ -394,7 +548,6 @@ const ProviderRow = ({
         setMessage("Provider saved.");
         void refresh();
       },
-      onError: () => setMessage("Loomarr could not save this provider."),
     },
   });
   const remove = notificationsApi.useNotificationProvidersDelete({
@@ -406,9 +559,10 @@ const ProviderRow = ({
             .then((registration) => registration?.pushManager.getSubscription())
             .then((subscription) => subscription?.unsubscribe());
         }
+        setConfirmingDelete(false);
+        setDeleteConfirmation("");
         void refresh();
       },
-      onError: () => setMessage("Loomarr could not delete this provider."),
     },
   });
   const test = notificationsApi.useNotificationProvidersTest({
@@ -417,7 +571,6 @@ const ProviderRow = ({
         if (response.status === 202) setMessage(response.data.hint);
         void refresh();
       },
-      onError: () => setMessage("Loomarr could not queue the provider test."),
     },
   });
 
@@ -429,6 +582,7 @@ const ProviderRow = ({
             definition={definition}
             provider={provider}
             pending={update.isPending}
+            error={update.error}
             onCancel={() => setEditing(false)}
             onSave={async (value) => {
               await update.mutateAsync({ id: provider.id, data: value });
@@ -439,8 +593,11 @@ const ProviderRow = ({
             definition={definition}
             provider={provider}
             pending={update.isPending}
+            error={update.error}
             onCancel={() => setEditing(false)}
-            onSave={(value) => update.mutate({ id: provider.id, data: value })}
+            onSave={async (value) => {
+              await update.mutateAsync({ id: provider.id, data: value });
+            }}
           />
         )}
       </li>
@@ -469,41 +626,79 @@ const ProviderRow = ({
               </p>
             ) : null}
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-              Edit
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!provider.enabled || test.isPending}
-              onClick={() => test.mutate({ id: provider.id, data: { requestId: crypto.randomUUID() } })}
-            >
-              Send test
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={update.isPending}
-              onClick={() =>
-                update.mutate({
-                  id: provider.id,
-                  data: { label: provider.label, events: provider.events, enabled: !provider.enabled },
-                })
-              }
-            >
-              {provider.enabled ? "Disable" : "Enable"}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={remove.isPending}
-              onClick={() => remove.mutate({ id: provider.id })}
-            >
-              Delete
-            </Button>
-          </div>
+          {!confirmingDelete ? (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+                Edit
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!provider.enabled || test.isPending}
+                onClick={() => test.mutate({ id: provider.id, data: { requestId: crypto.randomUUID() } })}
+              >
+                Send test
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={update.isPending}
+                onClick={() =>
+                  update.mutate({
+                    id: provider.id,
+                    data: { label: provider.label, events: provider.events, enabled: !provider.enabled },
+                  })
+                }
+              >
+                {provider.enabled ? "Disable" : "Enable"}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setConfirmingDelete(true)}>
+                Delete
+              </Button>
+            </div>
+          ) : null}
         </div>
+        {confirmingDelete ? (
+          <div className="mt-4 grid gap-3 rounded-md border border-onair-tint-15 bg-onair-tint-15 p-3">
+            <div>
+              <p className="text-sm">Delete {provider.label} and stop sending its notifications?</p>
+              <p className="mt-1 text-onair-300 text-xs">This can't be undone.</p>
+            </div>
+            <div className="grid max-w-sm gap-1.5">
+              <Label htmlFor={`${idPrefix}-delete-confirmation`}>Type {provider.label} to confirm</Label>
+              <Input
+                id={`${idPrefix}-delete-confirmation`}
+                value={deleteConfirmation}
+                autoComplete="off"
+                onChange={(event) => setDeleteConfirmation(event.target.value)}
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={deleteConfirmation !== provider.label || remove.isPending}
+                onClick={() => remove.mutate({ id: provider.id })}
+              >
+                Delete provider
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={remove.isPending}
+                onClick={() => {
+                  setConfirmingDelete(false);
+                  setDeleteConfirmation("");
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : null}
+        {update.error != null || remove.error != null || test.error != null ? (
+          <ErrorState className="mt-3" error={update.error ?? remove.error ?? test.error} />
+        ) : null}
         {message ? (
           <p className="mt-3 text-sm" role="status" aria-live="polite">
             {message}
@@ -534,7 +729,6 @@ const NotificationDestinationsPanel = () => {
         setMessage("Provider saved. You can send a test now.");
         void refresh();
       },
-      onError: () => setMessage("Loomarr could not save this provider."),
     },
   });
 
@@ -611,6 +805,7 @@ const NotificationDestinationsPanel = () => {
                   typesQuery.data?.status === 200 ? typesQuery.data.data.webPushPublicKey : undefined
                 }
                 pending={create.isPending}
+                error={create.error}
                 onCancel={() => setAdding(false)}
                 onSave={async (value) => {
                   await create.mutateAsync({ data: { type: definition.type as never, ...value } });
@@ -621,8 +816,11 @@ const NotificationDestinationsPanel = () => {
                 key={definition.type}
                 definition={definition}
                 pending={create.isPending}
+                error={create.error}
                 onCancel={() => setAdding(false)}
-                onSave={(value) => create.mutate({ data: { type: definition.type as never, ...value } })}
+                onSave={async (value) => {
+                  await create.mutateAsync({ data: { type: definition.type as never, ...value } });
+                }}
               />
             )
           ) : null}
