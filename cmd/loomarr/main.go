@@ -313,7 +313,7 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 	// End generation-owned work and long-lived SSE streams before draining HTTP. Request
 	// contexts are independent, so the accepted migration response can still finish.
 	cancelRoot()
-	drainErr := drainGeneration(shutdownCtx, srv.Shutdown, nil, application.Shutdown)
+	drainErr := drainGeneration(shutdownCtx, srv.Shutdown, application.Quiesce, application.Shutdown)
 	if drainErr != nil {
 		// A drain that timed out is worth reporting, but on a restart it must not abort
 		// the loop: the generation is finished either way, and refusing to come back up

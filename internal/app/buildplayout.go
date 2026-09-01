@@ -369,6 +369,10 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		Eligible: durablePlayoutEligibility,
 		Observer: deps.metrics,
 	})
+	owner.addQuiesce(func(context.Context) error {
+		origin.Quiesce()
+		return nil
+	})
 	playoutSvc = origin
 
 	// The durable backend checkpoint is initialized synchronously before any request can
