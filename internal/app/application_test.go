@@ -131,3 +131,51 @@ func TestApplicationQuiesceStopsNetworkResourcesBeforeFinalizers(t *testing.T) {
 		t.Fatalf("events after shutdown = %v, want %v", got, want)
 	}
 }
+
+func TestApplicationQuiesceCanBeWaitedAgainAfterCallerTimeout(t *testing.T) {
+	lifecycle := newGenerationLifecycle(t.Context())
+	application := &Application{lifecycle: lifecycle}
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	lifecycle.addQuiesce(func(context.Context) error {
+		close(entered)
+		<-release
+		return nil
+	})
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Millisecond)
+	defer cancel()
+	first := make(chan error, 1)
+	go func() { first <- application.Quiesce(ctx) }()
+	<-entered
+	if err := <-first; !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("first Quiesce error = %v, want deadline exceeded", err)
+	}
+	close(release)
+	if err := application.Quiesce(t.Context()); err != nil {
+		t.Fatalf("second Quiesce: %v", err)
+	}
+}
+
+func TestApplicationQuiesceRejectsLateLifecycleRegistration(t *testing.T) {
+	lifecycle := newGenerationLifecycle(t.Context())
+	application := &Application{lifecycle: lifecycle}
+	if err := application.Quiesce(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	for name, register := range map[string]func(){
+		"worker":    func() { lifecycle.goRun(func(context.Context) {}) },
+		"quiescer":  func() { lifecycle.addQuiesce(func(context.Context) error { return nil }) },
+		"finalizer": func() { lifecycle.addStop(func(context.Context) error { return nil }) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Fatal("late lifecycle registration did not panic")
+				}
+			}()
+			register()
+		})
+	}
+}
