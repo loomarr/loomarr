@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "purpose": "filler-development-model-only-label-lock-audit",
+  "recordedAt": "2026-08-31T22:49:04-04:00",
+  "externalArtifactId": "filler-development-2026-08-30",
+  "developmentOnly": true,
+  "inputs": {
+    "draftRawSha256": "5014dfce67dc11d63eb1d948e19aff83b3216ce8f8714f743d81d5e31b4c47ca",
+    "cases": 300,
+    "clusters": 300
+  },
+  "reviewA": {
+    "kind": "hosted-model",
+    "reviewerId": "mistral-large-3-recovery-reviewer-a-v1",
+    "model": "mistralai/mistral-large-2512",
+    "upstreamProvider": "Mistral",
+    "cases": 300,
+    "requests": 300,
+    "chargedNanoUsd": 766220400,
+    "labelsRawSha256": "f79822856a9a6ca64c6addacf28dea55b87ffeb0d4589fcd923f57c9cd72ed09",
+    "runRawSha256": "773f09a7c4c96eec3a2d51d6de516de8d0a249d6a690cc62d745bca856433ef8"
+  },
+  "reviewB": {
+    "kind": "hosted-model-composite",
+    "modelFamily": "gemini-2.5-flash",
+    "components": 3,
+    "cases": 300,
+    "attempts": 304,
+    "failedAttempts": 4,
+    "chargedNanoUsd": 759456780,
+    "labelsRawSha256": "2a8a98fa2b862a50a2c483f9715a454dbcb9883e02586635aa2989db8342990b",
+    "compositionRawSha256": "6d054a6b9ee85e2ea6f8fb20e144ab62fd84172768c0f092544bf293676b8686"
+  },
+  "agreement": {
+    "cases": 300,
+    "exactFullLabels": 0,
+    "truth": 176,
+    "contentRole": 158,
+    "truthAndContentRole": 130,
+    "reviewAEligibleReviewBInvalid": 124
+  },
+  "adjudication": {
+    "kind": "local-model-composite",
+    "model": "gemma4:8b_q4_k_m",
+    "modelDigest": "c6eb396dbd5992bbe3f5cdb947e8bbc0ee413d7c17e2beaae69f5d569cf982eb",
+    "components": 3,
+    "cases": 300,
+    "adjudicationsRawSha256": "22bf511b28d00fcdad625518032f4a499f91cf44a5de3935938bccb7e9befd05",
+    "compositionRawSha256": "ba1d56622c5334cc697de2037f68a5e4d0c0cd6ae4616b5afef2758ad4f227a4"
+  },
+  "lockedManifest": {
+    "schemaVersion": 5,
+    "corpusVersion": "filler-development-recovery-2026-08-30-v1",
+    "cases": 300,
+    "lockedAt": "2026-08-31T04:48:17Z",
+    "rawSha256": "6457fa5fa48df9ea8951c93c7c6f8434cff99c61fcd76d8f7f80df9668fe51f1",
+    "canonicalManifestSha256": "8fe0e0f8e9322fc9bf356b219516f26fa922f7f6a15e46e2b0d7968e6d649653",
+    "reproduction": "byte-identical"
+  },
+  "decision": {
+    "mechanicallyComplete": true,
+    "acceptedDevelopmentTruth": false,
+    "certificationEvidence": false,
+    "reason": "The two model reviewers disagree materially on safety-critical truth and content role, every case required a model adjudicator, and the later 32-case temporal challenge found invalid matched controls. Mechanical lock validity does not establish label correctness.",
+    "next": [
+      "factor temporal unit structure from semantic role and re-run the 32-case diagnostic through independent model roles in issue 786",
+      "relabel all 300 cases with the repaired model-led contract and calibrate it on a 48-case independent human sample in issue 787",
+      "retain the mechanically valid model-only lock as rejected candidate-label history until the calibrated replacement passes development gates"
+    ]
+  },
+  "limitations": [
+    "No private alias map, media, raw label row, or source identity is committed by this audit.",
+    "Agreement counts compare the two immutable model submissions before adjudication; they do not score either model against human truth.",
+    "The 300-case corpus is development-only and cannot certify the separate 1126-case holdout or unattended admission.",
+    "This takeover audit made no provider request and authorized no new spend."
+  ]
+}
