@@ -77,6 +77,8 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make eval-cert` |  | certify exact intents and mandatory scheduled viewer outcomes; fails closed and writes a scorecard |
 | `make eval-matrix` |  | explicitly certify local + OpenRouter generation sequentially (manual, resource-heavy) |
 | `make filler-eval-contract` |  | hermetic filler-admission corpus and selective-risk contracts |
+| `make filler-temporal-assess-ollama` |  | assess the sealed temporal challenge with a digest-pinned local model |
+| `make filler-temporal-compare` |  | compare two independent temporal assessment sets without inference |
 | `make filler-corpus-commons` |  | freeze bounded Commons pilot and full-inventory artifacts |
 | `make filler-corpus-cdc` |  | freeze bounded CDC pilot and full-inventory artifacts |
 | `make filler-corpus-loc` |  | freeze bounded LOC pilot and full-inventory artifacts |

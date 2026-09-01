@@ -146,6 +146,13 @@ wrong role/taxonomy, exceeded run ceilings, weak confidence bounds, or a missed
 precision/coverage/review gate produces a
 non-certifying report and nonzero exit.
 
+`make filler-temporal-assess-ollama` runs the non-certifying 32-case temporal challenge through one
+digest-pinned local model family. It verifies the identity-blind package and every frame, asks the
+unit question first, asks the role question only for standalone units, and publishes an immutable
+assessment set with a per-call ledger. Run a distinct model family into a second output, then use
+`make filler-temporal-compare` to produce the deterministic unit/role disagreement and calibration
+report. Operational failures remain failures and neither command changes corpus truth.
+
 Predictions record the inference role/rung, requested and resolved route, derivative bounds, detailed
 token categories, attempts, generation id, and the provider's exact charged decimal alongside an
 integer nanodollar projection. A failed call with missing or malformed settlement keeps those charge
