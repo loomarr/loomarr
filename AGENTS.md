@@ -32,6 +32,13 @@ they do not self-assign follow-up work. Record model and reasoning choices when 
 them. Change those choices only at assignment boundaries, and never let them expand the worker's
 authority, scope, claims, tools, or acceptance criteria.
 
+For genuinely independent bounded work, use visible worker panes freely when the maintainer asks
+for supervised coordination. After accepting a worker report, immediately reassign that pane to a
+ready independent task or close it; retain it only through report capture and acknowledgement.
+Show and audit the pane and cross-harness rosters after launch, accepted report, reassignment, and
+closure. The steady state is the supervisor plus active workers, never accumulated idle panes. The
+supervisor workflow preserves the interactive-session and tmux details.
+
 Every supervised implementation or review assignment is one token-bounded checkpoint. Declare a
 limit from 100,000 through 200,000 tokens before the checkpoint starts; use 150,000 by default. Use
 the harness's native goal budget when it has one. Otherwise, when worker-scoped usage is observable,

@@ -133,6 +133,13 @@ continues an in-progress merge or edit. A linked worktree's metadata remains und
 checkout's `.git/worktrees/`; add that exact metadata root when a sandbox supports extra writable
 directories instead of granting the recovered worker the primary checkout.
 
+Use panes freely for genuinely independent bounded work, but not as a display of unused capacity.
+After launch, show and audit both the tmux pane roster and `make agent-status`. A completed pane
+remains only through capture and acknowledgement of its report. Once that report is accepted,
+immediately reassign the pane to a ready independent task or close it, then show and audit both
+rosters again. Repeat the audit after every accepted report, reassignment, and closure; the steady
+state is the supervisor plus active workers.
+
 ## Linux-to-Mac handoff
 
 Use the supervisor workflow's [cross-host handoff barrier](../../.agents/workflows/supervise.md#hand-off-between-linux-and-mac).
