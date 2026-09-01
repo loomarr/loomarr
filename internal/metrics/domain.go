@@ -80,6 +80,7 @@ func (s *lastSuccessful[T]) use(value T, err error) (T, bool) {
 }
 
 func (c *storeCollector) Describe(ch chan<- *prometheus.Desc) {
+	c.scrapeErrors.Describe(ch)
 	ch <- c.titles
 	ch <- c.jobs
 	ch <- c.sessions
@@ -173,6 +174,11 @@ func (c *storeCollector) Collect(ch chan<- prometheus.Metric) {
 				float64(bounded[code]), code)
 		}
 	}
+
+	// The registry gathers registered collectors concurrently. Emitting the
+	// error counters from this collector keeps each scrape's query results and
+	// counter values in one ordered collection pass.
+	c.scrapeErrors.Collect(ch)
 }
 
 func boundCounts(raw map[string]int, known []string) map[string]int {

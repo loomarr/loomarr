@@ -47,6 +47,15 @@ func testStoreCollector(counts StoreCounts, now func() time.Time) *storeCollecto
 	return newStoreCollectorWithErrors(counts, now, errors)
 }
 
+var storeGaugeNames = []string{
+	"loomarr_active_sessions",
+	"loomarr_jobs",
+	"loomarr_proposal_job_attempts",
+	"loomarr_proposal_job_failures",
+	"loomarr_proposal_job_oldest_age_seconds",
+	"loomarr_titles",
+}
+
 // The collector emits every known state/status even when the store reports none,
 // so a dimension that empties out reads 0 rather than dropping off the graph.
 func TestStoreCollectorZeroFills(t *testing.T) {
@@ -93,7 +102,7 @@ loomarr_titles{state="requested"} 2
 loomarr_titles{state="unavailable"} 0
 loomarr_titles{state="wanted"} 0
 `
-	if err := testutil.CollectAndCompare(c, strings.NewReader(want)); err != nil {
+	if err := testutil.CollectAndCompare(c, strings.NewReader(want), storeGaugeNames...); err != nil {
 		t.Error(err)
 	}
 }
@@ -102,7 +111,7 @@ loomarr_titles{state="wanted"} 0
 func TestStoreCollectorScrapeError(t *testing.T) {
 	c := testStoreCollector(fakeCounts{err: errors.New("db down")},
 		func() time.Time { return time.Unix(0, 0).UTC() })
-	if n := testutil.CollectAndCount(c); n != 0 {
+	if n := testutil.CollectAndCount(c, storeGaugeNames...); n != 0 {
 		t.Errorf("on store error the collector emitted %d metrics, want 0", n)
 	}
 }
