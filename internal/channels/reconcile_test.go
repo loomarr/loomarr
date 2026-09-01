@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -70,6 +71,19 @@ func newEngineForBackend(
 	}, func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, testkit.Logger())
 }
 
+type recordedChannelChange struct {
+	previousStatus string
+	status         string
+}
+
+type recordingChannelNotifier struct {
+	changes []recordedChannelChange
+}
+
+func (n *recordingChannelNotifier) ChannelChanged(_ string, previousStatus, status string) {
+	n.changes = append(n.changes, recordedChannelChange{previousStatus: previousStatus, status: status})
+}
+
 // --- §19 gate tests ---
 
 // A fresh channel with all content available reconciles to a live Tunarr channel;
@@ -78,7 +92,8 @@ func TestReconcile_CreatesThenIdempotent(t *testing.T) {
 	st := newStore(t)
 	tun := testkit.NewTunarr()
 	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
-	e := newEngine(st, tun, avail, nil)
+	notifier := &recordingChannelNotifier{}
+	e := newEngine(st, tun, avail, nil).WithNotifier(notifier)
 	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
 
 	// First reconcile: creates the Tunarr channel + pushes the lineup.
@@ -109,6 +124,13 @@ func TestReconcile_CreatesThenIdempotent(t *testing.T) {
 	}
 	if tun.Pushes != 1 {
 		t.Errorf("idempotent reconcile re-pushed lineup: %d pushes (want 1)", tun.Pushes)
+	}
+	wantChanges := []recordedChannelChange{
+		{previousStatus: string(schedule.StatusBuilding), status: string(schedule.StatusLive)},
+		{previousStatus: string(schedule.StatusLive), status: string(schedule.StatusLive)},
+	}
+	if !slices.Equal(notifier.changes, wantChanges) {
+		t.Fatalf("channel change signals = %+v, want %+v", notifier.changes, wantChanges)
 	}
 }
 

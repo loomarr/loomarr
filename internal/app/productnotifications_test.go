@@ -75,24 +75,36 @@ func TestProductNotificationJourneyRoutesOnlyConfiguredAudiencesWithStableDedupl
 
 	coordinator.ProposalSubmitted(t.Context(), proposal)
 	coordinator.ProposalApproved(t.Context(), proposal, "admin-1")
-	coordinator.ChannelChanged("channel-1", string(schedule.StatusLive))
+	coordinator.ChannelChanged("channel-1", string(schedule.StatusBuilding), string(schedule.StatusLive))
 	coordinator.ProposalSubmitted(t.Context(), proposal)
 	coordinator.ProposalApproved(t.Context(), proposal, "admin-1")
-	coordinator.ChannelChanged("channel-1", string(schedule.StatusLive))
+	source.channel.Revision++
+	coordinator.ChannelChanged("channel-1", string(schedule.StatusLive), string(schedule.StatusLive))
+	source.channel.Revision++
+	coordinator.ChannelChanged("channel-1", string(schedule.StatusLive), string(schedule.StatusDrifted))
+	source.channel.Revision++
+	coordinator.ChannelChanged("channel-1", string(schedule.StatusDrifted), string(schedule.StatusEmpty))
+	source.channel.Revision++
+	coordinator.ChannelChanged("channel-1", string(schedule.StatusEmpty), string(schedule.StatusLive))
 
-	if len(repository.Intents) != 4 || len(repository.Attempts) != 4 {
-		t.Fatalf("journey created %d intents and %d attempts, want four configured routes", len(repository.Intents), len(repository.Attempts))
+	if len(repository.Intents) != 8 || len(repository.Attempts) != 7 {
+		t.Fatalf("journey created %d intents and %d attempts, want eight transition intents and seven configured routes",
+			len(repository.Intents), len(repository.Attempts))
 	}
 	wantRoutes := map[string]string{
 		string(notifications.TopicProposalSubmitted) + ":" + string(notifications.RecipientApprovers): "approver-slack",
 		string(notifications.TopicProposalApproved) + ":" + string(notifications.RecipientPerson):     "requester-browser",
 		string(notifications.TopicChannelLive) + ":" + string(notifications.RecipientPerson):          "requester-browser",
 		string(notifications.TopicChannelLive) + ":" + string(notifications.RecipientOperators):       "operator-mqtt",
+		string(notifications.TopicChannelDegraded) + ":" + string(notifications.RecipientOperators):   "unconfigured-discord",
 	}
 	for _, intent := range repository.Intents {
 		key := string(intent.Topic) + ":" + string(intent.RecipientKind)
 		wantDestination, ok := wantRoutes[key]
 		if !ok {
+			if intent.Topic == notifications.TopicChannelDegraded && intent.RecipientKind == notifications.RecipientPerson {
+				continue
+			}
 			t.Fatalf("unexpected journey intent %+v", intent)
 		}
 		matched := false
@@ -115,5 +127,16 @@ func TestProposalSubjectTruncatesLongUnicodeWithoutBreakingUTF8(t *testing.T) {
 	subject := proposalSubject(proposal)
 	if len(subject) > 200 || subject == "Channel proposal" {
 		t.Fatalf("unicode subject = %q (%d bytes)", subject, len(subject))
+	}
+}
+
+func TestChannelNotificationTopicCollapsesDegradedStatuses(t *testing.T) {
+	drifted, driftedOK := channelNotificationTopic(string(schedule.StatusDrifted))
+	empty, emptyOK := channelNotificationTopic(string(schedule.StatusEmpty))
+	if !driftedOK || !emptyOK || drifted != notifications.TopicChannelDegraded || empty != drifted {
+		t.Fatalf("degraded topics = (%q, %t), (%q, %t)", drifted, driftedOK, empty, emptyOK)
+	}
+	if _, ok := channelNotificationTopic(string(schedule.StatusBuilding)); ok {
+		t.Fatal("building must not be a product notification state")
 	}
 }

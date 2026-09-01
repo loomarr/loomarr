@@ -142,6 +142,7 @@ func (e *Engine) reconcileOnce(
 	if opts.inheritedOnly && schedule.HasExplicitPlayoutBackend(ch.Policy) {
 		return nil // a concurrent operator pin wins over a fleet-default transition
 	}
+	previousStatus := ch.Status
 	// Resolve ONCE for this attempt from the same channel snapshot all work below uses.
 	// A policy edit that changes the backend advances the row revision, so the final
 	// SaveChannel CAS restarts from that new truth. The global value is live and not
@@ -355,7 +356,7 @@ func (e *Engine) reconcileOnce(
 	// "self-maintaining" model, §9). Best-effort: nil notifier / a dropped frame is a
 	// latency concern, never a correctness one (GET /v1/channels is the truth on load).
 	if e.notify != nil {
-		e.notify.ChannelChanged(ch.ID, string(ch.Status))
+		e.notify.ChannelChanged(ch.ID, string(previousStatus), string(ch.Status))
 	}
 
 	// 7: media-server freshness (best-effort; never fails reconcile). A committed local

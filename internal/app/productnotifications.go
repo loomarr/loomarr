@@ -58,23 +58,19 @@ func (c *productNotificationCoordinator) Provisioned(ctx context.Context, event 
 	c.logPublicationFailure(err, "title", string(event.Key), topic)
 }
 
-func (c *productNotificationCoordinator) ChannelChanged(channelID, status string) {
+func (c *productNotificationCoordinator) ChannelChanged(channelID, previousStatus, status string) {
 	if c == nil || c.publisher == nil || c.source == nil {
+		return
+	}
+	previousTopic, previousNotifiable := channelNotificationTopic(previousStatus)
+	topic, notifiable := channelNotificationTopic(status)
+	if !notifiable || (previousNotifiable && previousTopic == topic) {
 		return
 	}
 	ctx := context.Background()
 	channel, err := c.source.GetChannel(ctx, channelID)
 	if err != nil {
 		c.logPublicationFailure(err, "channel", channelID, "")
-		return
-	}
-	var topic notifications.Topic
-	switch schedule.ChannelStatus(status) {
-	case schedule.StatusLive:
-		topic = notifications.TopicChannelLive
-	case schedule.StatusDrifted, schedule.StatusEmpty:
-		topic = notifications.TopicChannelDegraded
-	default:
 		return
 	}
 	people, err := c.source.ListNotificationReferenceRecipients(ctx, notifications.ReferenceChannel, channelID)
@@ -85,6 +81,17 @@ func (c *productNotificationCoordinator) ChannelChanged(channelID, status string
 		})
 	}
 	c.logPublicationFailure(err, "channel", channelID, topic)
+}
+
+func channelNotificationTopic(status string) (notifications.Topic, bool) {
+	switch schedule.ChannelStatus(status) {
+	case schedule.StatusLive:
+		return notifications.TopicChannelLive, true
+	case schedule.StatusDrifted, schedule.StatusEmpty:
+		return notifications.TopicChannelDegraded, true
+	default:
+		return "", false
+	}
 }
 
 func (c *productNotificationCoordinator) publishProposal(
