@@ -1,6 +1,10 @@
 package notifications
 
-import "fmt"
+import (
+	"fmt"
+	"net/url"
+	"strings"
+)
 
 // ProviderFieldKind is a presentation hint for one server-defined provider field. It does not
 // control persistence; Sensitive is authoritative and is interpreted only by the server.
@@ -103,6 +107,9 @@ func (d ProviderDefinition) Classify(settings map[string]string) (map[string]str
 		if !ok {
 			return nil, nil, fmt.Errorf("provider %q does not define field %q", d.Means, key)
 		}
+		if err := validateProviderFieldStorage(field, value); err != nil {
+			return nil, nil, err
+		}
 		if field.Sensitive {
 			credentials[key] = value
 		} else {
@@ -110,6 +117,17 @@ func (d ProviderDefinition) Classify(settings map[string]string) (map[string]str
 		}
 	}
 	return configuration, credentials, nil
+}
+
+func validateProviderFieldStorage(field ProviderField, value string) error {
+	if field.Sensitive || field.Kind != ProviderFieldURL || strings.TrimSpace(value) == "" {
+		return nil
+	}
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if strings.Contains(value, "?") || (err == nil && parsed.User != nil) {
+		return fmt.Errorf("ordinary provider URL field %q cannot contain credentials or query parameters", field.Key)
+	}
+	return nil
 }
 
 // Redact returns ordered form state without ever projecting sensitive values.

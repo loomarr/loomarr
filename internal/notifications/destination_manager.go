@@ -266,6 +266,9 @@ func mergeDestinationSettings(
 		if !exists {
 			return nil, nil, fmt.Errorf("provider %q does not define field %q", means, key)
 		}
+		if err := validateProviderFieldStorage(field, value); err != nil {
+			return nil, nil, err
+		}
 		target := configuration
 		if field.Sensitive {
 			target = credentials

@@ -94,6 +94,42 @@ func TestProviderDefinitionRejectsUnknownFields(t *testing.T) {
 	}
 }
 
+func TestProviderDefinitionRejectsQueryStringsInOrdinaryURLFields(t *testing.T) {
+	tests := []struct {
+		means notifications.Means
+		field string
+	}{
+		{means: notifications.MeansNtfy, field: "baseUrl"},
+		{means: notifications.MeansGotify, field: "serverUrl"},
+		{means: notifications.MeansApprise, field: "baseUrl"},
+		{means: notifications.MeansMatrix, field: "homeserverUrl"},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.means), func(t *testing.T) {
+			definition, ok := notifications.ProviderDefinitionFor(tt.means)
+			if !ok {
+				t.Fatalf("provider definition %q is missing", tt.means)
+			}
+			if _, _, err := definition.Classify(map[string]string{
+				tt.field: "https://notify.example.test/base?token=must-not-be-plaintext",
+			}); err == nil {
+				t.Fatalf("ordinary URL field %q accepted a credential-bearing query", tt.field)
+			}
+		})
+	}
+
+	webhook, ok := notifications.ProviderDefinitionFor(notifications.MeansWebhook)
+	if !ok {
+		t.Fatal("Webhook provider definition is missing")
+	}
+	configuration, credentials, err := webhook.Classify(map[string]string{
+		"url": "https://hooks.example.test/receive?token=encrypted",
+	})
+	if err != nil || len(configuration) != 0 || credentials["url"] == "" {
+		t.Fatalf("sensitive webhook URL classification = %#v, %#v, %v", configuration, credentials, err)
+	}
+}
+
 func TestProviderDefinitionReturnsOnlySafeFieldState(t *testing.T) {
 	definition, ok := notifications.ProviderDefinitionFor(notifications.MeansEmail)
 	if !ok {
