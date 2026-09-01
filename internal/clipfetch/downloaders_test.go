@@ -24,7 +24,7 @@ func TestYtDlpDownloaderCancellationStopsCompleteProcessTree(t *testing.T) {
 	childPID := waitForHelperPID(t, childPIDFile)
 	t.Cleanup(func() { killTestProcess(childPID) })
 	cancel()
-	waitForDownload(t, result)
+	_ = waitForDownload(t, result)
 
 	assertProcessGone(t, parentPID)
 	assertProcessGone(t, childPID)
