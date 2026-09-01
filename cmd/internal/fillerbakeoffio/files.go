@@ -102,6 +102,51 @@ func WriteTranscripts(path string, transcripts []fillerbakeoff.TranscriptArtifac
 	return writeImmutableJSONL(path, ".filler-bakeoff-transcripts-*", transcripts)
 }
 
+// WriteImmutableJSON publishes one indented JSON artifact without replacing an
+// existing path. Evaluation evidence is append-only at the filesystem seam.
+func WriteImmutableJSON(path, tempPattern string, value any) error {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(absolute), 0o750); err != nil {
+		return err
+	}
+	temp, err := os.CreateTemp(filepath.Dir(absolute), tempPattern)
+	if err != nil {
+		return err
+	}
+	tempName := temp.Name()
+	ok := false
+	defer func() {
+		_ = temp.Close()
+		if !ok {
+			_ = os.Remove(tempName)
+		}
+	}()
+	if err := temp.Chmod(0o600); err != nil {
+		return err
+	}
+	encoder := json.NewEncoder(temp)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(value); err != nil {
+		return err
+	}
+	if err := temp.Close(); err != nil {
+		return err
+	}
+	if err := os.Link(tempName, absolute); err != nil {
+		return fmt.Errorf("publish immutable JSON artifact: %w", err)
+	}
+	if err := os.Remove(tempName); err != nil {
+		_ = os.Remove(absolute)
+		return err
+	}
+	ok = true
+	return nil
+}
+
 func writeImmutableJSONL[T any](path, tempPattern string, values []T) error {
 	absolute, err := filepath.Abs(path)
 	if err != nil {
