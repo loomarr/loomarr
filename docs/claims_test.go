@@ -88,15 +88,19 @@ var backtickSpan = regexp.MustCompile("`([^`\n]+)`")
 // declare. Each needs a reason; this list is the place a reader looks to find out why a variable
 // is "real but absent", and it must not become a junk drawer for typos.
 var envVarsOutsideTheRegistry = map[string]string{
-	"PLAYOUT_RENDER_DEVICE": "compose-only — it drives the `devices:` mapping; the app never reads it",
-	"PLAYOUT_FONT_PATH":     "read directly via os.Getenv in internal/playout/font.go",
-	"FILLER_DROP_DIR":       "development-only — dev-env selects the host folder mounted into Tunarr",
-	"MEDIA_SERVER_IP":       "compose-only — dev Tunarr's extra_hosts entry",
-	"LOOMARR_VERSION":       "compose-only — selects the pinned GHCR image tag",
-	"LOOMARR_HTTP_BIND":     "compose-only — selects the address where Traefik publishes HTTP",
-	"LOOMARR_HTTP_PORT":     "compose-only — selects Traefik's published host port",
-	"PROMETHEUS_URL":        "Grafana provisioning-only — selects the Prometheus datasource URL; Loomarr never reads it",
-	"API_TOKEN":             "generated secret (internal/settings/secrets.go SecretAPI), not a registry row — an operator may pin it via env to script /v1/backup, so the install docs name it",
+	"PLAYOUT_RENDER_DEVICE":                "compose-only — it drives the `devices:` mapping; the app never reads it",
+	"PLAYOUT_FONT_PATH":                    "read directly via os.Getenv in internal/playout/font.go",
+	"FILLER_DROP_DIR":                      "development-only — dev-env selects the host folder mounted into Tunarr",
+	"MEDIA_SERVER_IP":                      "compose-only — dev Tunarr's extra_hosts entry",
+	"LOOMARR_VERSION":                      "compose-only — selects the pinned GHCR image tag",
+	"LOOMARR_HTTP_BIND":                    "compose-only — selects the address where Traefik publishes HTTP",
+	"LOOMARR_HTTP_PORT":                    "compose-only — selects Traefik's published host port",
+	"PROMETHEUS_URL":                       "Grafana provisioning-only — selects the Prometheus datasource URL; Loomarr never reads it",
+	"API_TOKEN":                            "generated secret (internal/settings/secrets.go SecretAPI), not a registry row — an operator may pin it via env to script /v1/backup, so the install docs name it",
+	"LOOMARR_ENCRYPTION_KEY":               "boot-only installation key read directly by internal/secretprotection before settings can load",
+	"LOOMARR_ENCRYPTION_KEY_FILE":          "boot-only installation-key file path read directly by internal/secretprotection",
+	"LOOMARR_ENCRYPTION_KEY_PREVIOUS":      "one-boot prior installation key used by internal/secretprotection for atomic key replacement",
+	"LOOMARR_ENCRYPTION_KEY_PREVIOUS_FILE": "one-boot prior installation-key file path used by internal/secretprotection for atomic key replacement",
 }
 
 // scanEnvVars checks every backticked SCREAMING_SNAKE token in one document and reports how many
