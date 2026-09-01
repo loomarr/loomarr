@@ -7856,6 +7856,13 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   weaken an assertion; `go-shard-verify` proves the test shards remain an exact partition of
   `go list ./...`. The release verifier also requires every top-level job in `ci.yml` to appear in
   `ci-ok.needs`; adding a job without aggregating its result fails closed.
+  The captured-private-fixture regression guard remains one repository contract behind the stable
+  `privacy-verify` Make interface. It enumerates the tracked tree once, extracts only the candidate
+  shapes represented by the original capture audit, case-folds and SHA-256 fingerprints candidates
+  in process, and reports only the stored label plus digest on a match. The plaintext private values
+  are never checked in, emitted, or passed through one host process per candidate. Fixture-only
+  household names and profile PINs remain scoped to the four audited response fixtures; widening
+  those shapes to ordinary prose would turn a precise regression guard into a generic secret scan.
 - **Proportional CI selection:** pull-request jobs may consume dedicated path-impact decisions only
   after their classifier has run in shadow, its complete path-to-gate sets are pinned by exact
   fixtures, and an activation verifier rejects falling back to the replaced broad selector. A

@@ -1,5 +1,6 @@
-// Command releaseverify checks that the release chain cannot publish something nobody signed.
-// `make release-verify` runs it over .github/workflows plus the packaged runtime notices.
+// Command releaseverify owns repository publication and captured-fixture policy checks.
+// `make release-verify` runs the publication checks over .github/workflows plus the packaged
+// runtime notices; `make privacy-verify` selects only the captured-fixture regression guard.
 //
 // It enforces the things the workflow YAML cannot state about itself: actions are pinned to
 // immutable references, CI builds the image from the inputs it claims to, every pinned asset
@@ -24,7 +25,16 @@ import (
 
 func main() {
 	root := flag.String("root", ".", "repository root")
+	privateFixturesOnly := flag.Bool("private-fixtures-only", false, "check captured private fixture fingerprints only")
 	flag.Parse()
+	if *privateFixturesOnly {
+		if err := releaseverify.VerifyPrivateFixtures(*root); err != nil {
+			fmt.Fprintf(os.Stderr, "privacy-verify: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("private-fixture guard: captured private literals are absent")
+		return
+	}
 
 	if err := releaseverify.VerifyActions(filepath.Join(*root, ".github", "workflows")); err != nil {
 		fmt.Fprintf(os.Stderr, "release-verify: action policy: %v\n", err)
