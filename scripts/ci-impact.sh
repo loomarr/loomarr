@@ -240,6 +240,10 @@ classify() {
       select_gate contracts
       select_gate image
       ;;
+    observability/*)
+      known=true
+      select_gate contracts
+      ;;
     .dockerignore)
       known=true
       select_gate image
