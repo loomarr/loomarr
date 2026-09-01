@@ -23,6 +23,7 @@
 // `LoginBody`). Scalar constraint constants kept their camelCase (`changePasswordBodyNextMin`),
 // so the casing here is not a blanket rule — it tracks what the generator emits per symbol.
 import { LoginBody } from "@loomarr/api/zod/auth";
+import { NotificationProvidersUpdateBody } from "@loomarr/api/zod/notifications";
 import { SubmitProposalBody } from "@loomarr/api/zod/proposals";
 import { BootstrapBody } from "@loomarr/api/zod/setup";
 import { z } from "zod";
@@ -71,4 +72,46 @@ const loginSchema = LoginBody.pick({ username: true, password: true }).extend({
   password: z.string().min(1, "Enter your password."),
 });
 
-export { bootstrapSchema, intentSchema, loginSchema };
+interface NotificationProviderRequiredField {
+  key: string;
+  label: string;
+}
+
+// Notification providers share one dynamic form. The server supplies provider-specific fields,
+// while this schema owns the stable label/events/settings contract. `clearedSecrets` is form-only:
+// it lets validation distinguish an intentionally cleared required secret from an omitted secret
+// that the update endpoint must preserve.
+const notificationProviderFormBase = NotificationProvidersUpdateBody.pick({
+  enabled: true,
+  events: true,
+  label: true,
+  settings: true,
+}).extend({
+  label: z.string().trim().min(1, "Enter a label.").max(120, "Use 120 characters or fewer."),
+  events: z.array(z.string()).min(1, "Choose at least one event."),
+  settings: z.record(z.string(), z.string()),
+  clearedSecrets: z.array(z.string()),
+});
+
+const notificationProviderFormSchema = (
+  requiredFields: NotificationProviderRequiredField[],
+  configuredSecretKeys: string[] = [],
+) => {
+  const configured = new Set(configuredSecretKeys);
+  return notificationProviderFormBase.superRefine((value, context) => {
+    for (const field of requiredFields) {
+      const supplied = (value.settings[field.key] ?? "").trim() !== "";
+      const preserved = configured.has(field.key) && !value.clearedSecrets.includes(field.key);
+      if (!supplied && !preserved) {
+        context.addIssue({
+          code: "custom",
+          message: `Enter ${field.label}.`,
+          path: ["settings", field.key],
+        });
+      }
+    }
+  });
+};
+
+export type { NotificationProviderRequiredField };
+export { bootstrapSchema, intentSchema, loginSchema, notificationProviderFormSchema };

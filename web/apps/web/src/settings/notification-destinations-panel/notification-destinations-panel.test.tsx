@@ -147,7 +147,7 @@ describe("NotificationDestinationsPanel", () => {
     );
   });
 
-  it("edits ordinary choices without resending a configured secret and can delete", async () => {
+  it("edits ordinary choices without resending a configured secret and confirms deletion", async () => {
     let update: Record<string, unknown> | undefined;
     let deleted = false;
     server.use(
@@ -175,7 +175,66 @@ describe("NotificationDestinationsPanel", () => {
     expect(JSON.stringify(update)).not.toContain("webhookUrl");
 
     await userEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    expect(deleted).toBe(false);
+    await userEvent.type(screen.getByLabelText("Type Operations Slack to confirm"), "Operations Slack");
+    await userEvent.click(screen.getByRole("button", { name: "Delete provider" }));
     await waitFor(() => expect(deleted).toBe(true));
+  });
+
+  it("keeps labels associated with unique controls when add and edit forms are both open", async () => {
+    server.use(
+      providerTypeHandler,
+      http.get("*/v1/notifications/providers", () => HttpResponse.json({ providers: [provider] })),
+    );
+    render(<NotificationDestinationsPanel />, { wrapper });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Add provider" }));
+    await userEvent.selectOptions(screen.getByLabelText("Provider"), "slack");
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    const labelInputs = screen.getAllByLabelText("Label *");
+    expect(labelInputs).toHaveLength(2);
+    expect(new Set(labelInputs.map((input) => input.id)).size).toBe(2);
+
+    const eventInputs = screen.getAllByLabelText("Channel Degraded");
+    expect(eventInputs).toHaveLength(2);
+    expect(new Set(eventInputs.map((input) => input.id)).size).toBe(2);
+  });
+
+  it("validates provider fields on submit and renders provider-safe API problem details", async () => {
+    server.use(
+      providerTypeHandler,
+      http.get("*/v1/notifications/providers", () => HttpResponse.json({ providers: [] })),
+      http.post("*/v1/notifications/providers", () =>
+        HttpResponse.json(
+          {
+            type: "https://loomarr.dev/problems/notification-provider-invalid",
+            title: "Provider settings rejected",
+            status: 422,
+            detail: "The Slack webhook could not be accepted.",
+          },
+          { status: 422, headers: { "Content-Type": "application/problem+json" } },
+        ),
+      ),
+    );
+    render(<NotificationDestinationsPanel />, { wrapper });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Add provider" }));
+    await userEvent.selectOptions(screen.getByLabelText("Provider"), "slack");
+    await userEvent.click(screen.getByRole("button", { name: "Save provider" }));
+
+    expect(await screen.findByText("Choose at least one event.")).toBeInTheDocument();
+    expect(screen.getByText("Enter Slack webhook URL.")).toBeInTheDocument();
+
+    await userEvent.type(
+      screen.getByLabelText("Slack webhook URL *"),
+      "https://hooks.slack.com/services/secret",
+    );
+    await userEvent.click(screen.getByLabelText("Channel Degraded"));
+    await userEvent.click(screen.getByRole("button", { name: "Save provider" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Provider settings rejected");
+    expect(screen.getByRole("alert")).toHaveTextContent("The Slack webhook could not be accepted.");
   });
 
   it("requests browser permission only from the explicit Browser Push action", async () => {
