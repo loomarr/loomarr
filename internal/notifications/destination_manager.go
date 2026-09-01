@@ -18,13 +18,16 @@ type Principal struct {
 }
 
 type DestinationCommand struct {
-	Means         Means
-	Label         string
-	Scope         DestinationScope
-	OwnerID       string
-	Audience      RecipientKind
-	Topics        []Topic
-	Enabled       bool
+	Means    Means
+	Label    string
+	Scope    DestinationScope
+	OwnerID  string
+	Audience RecipientKind
+	Topics   []Topic
+	Enabled  bool
+	// Settings is the one public provider input object. When supplied, the server-owned provider
+	// definition classifies every field into Configuration or Credentials.
+	Settings      map[string]string
 	Configuration map[string]string
 	// A nil Credentials update preserves the stored credentials; a non-nil empty map explicitly
 	// clears them. Create treats nil as empty. Credential values never appear in summaries.
@@ -36,6 +39,7 @@ type DestinationUpdateCommand struct {
 	Audience      RecipientKind
 	Topics        []Topic
 	Enabled       bool
+	Settings      *map[string]string
 	Configuration *map[string]string
 	Credentials   *map[string]string
 }
@@ -113,7 +117,13 @@ func (m *DestinationManager) Create(
 		Enabled: command.Enabled, Configuration: cloneStringMap(command.Configuration),
 		CreatedAt: now, UpdatedAt: now,
 	}
-	if command.Credentials != nil {
+	if command.Settings != nil {
+		configuration, credentials, err := classifyDestinationSettings(command.Means, command.Settings)
+		if err != nil {
+			return DestinationSummary{}, err
+		}
+		destination.Configuration, destination.Credentials = configuration, credentials
+	} else if command.Credentials != nil {
 		destination.Credentials = cloneStringMap(*command.Credentials)
 	}
 	if err := destination.Validate(); err != nil {
@@ -185,6 +195,14 @@ func (m *DestinationManager) Update(
 	if command.Configuration != nil {
 		configuration = cloneStringMap(*command.Configuration)
 	}
+	if command.Settings != nil {
+		configuration, credentials, err = mergeDestinationSettings(
+			current.Means, configuration, credentials, *command.Settings,
+		)
+		if err != nil {
+			return DestinationSummary{}, err
+		}
+	}
 	updated := Destination{
 		ID: current.ID, Means: current.Means, Label: command.Label, Scope: current.Scope,
 		OwnerID: current.OwnerID, Audience: command.Audience, Topics: append([]Topic(nil), command.Topics...),
@@ -201,6 +219,50 @@ func (m *DestinationManager) Update(
 		return DestinationSummary{}, err
 	}
 	return updated.Summary(), nil
+}
+
+func classifyDestinationSettings(means Means, settings map[string]string) (map[string]string, map[string]string, error) {
+	definition, ok := ProviderDefinitionFor(means)
+	if !ok {
+		return nil, nil, ErrMeansUnavailable
+	}
+	return definition.Classify(settings)
+}
+
+func mergeDestinationSettings(
+	means Means,
+	configuration map[string]string,
+	credentials map[string]string,
+	settings map[string]string,
+) (map[string]string, map[string]string, error) {
+	definition, ok := ProviderDefinitionFor(means)
+	if !ok {
+		return nil, nil, ErrMeansUnavailable
+	}
+	configuration = cloneStringMap(configuration)
+	credentials = cloneStringMap(credentials)
+	if configuration == nil {
+		configuration = make(map[string]string)
+	}
+	if credentials == nil {
+		credentials = make(map[string]string)
+	}
+	for key, value := range settings {
+		field, exists := definition.Field(key)
+		if !exists {
+			return nil, nil, fmt.Errorf("provider %q does not define field %q", means, key)
+		}
+		target := configuration
+		if field.Sensitive {
+			target = credentials
+		}
+		if value == "" {
+			delete(target, key)
+		} else {
+			target[key] = value
+		}
+	}
+	return configuration, credentials, nil
 }
 
 func (m *DestinationManager) Delete(ctx context.Context, principal Principal, id string) error {

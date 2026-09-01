@@ -19,35 +19,35 @@ func (s *Server) registerNotificationDestinations(api huma.API) {
 		Tags:        []string{"notifications"},
 	}, RoleAdmin), s.notificationProviderTypesList)
 	huma.Register(api, withRole(huma.Operation{
-		OperationID: "notification-destinations-list", Method: http.MethodGet,
-		Path: "/v1/notifications/destinations", Summary: "List visible notification destinations",
-		Description: "Returns redacted destination summaries. Administrators see installation destinations; each person sees only their own email and Web Push destinations.",
+		OperationID: "notification-providers-list", Method: http.MethodGet,
+		Path: "/v1/notifications/providers", Summary: "List notification providers",
+		Description: "Returns the configured provider list with safe field values, write-only secret status, selected events, and delivery health.",
 		Tags:        []string{"notifications"},
-	}, RoleMember), s.notificationDestinationsList)
+	}, RoleAdmin), s.notificationDestinationsList)
 	huma.Register(api, withRole(huma.Operation{
-		OperationID: "notification-destinations-create", Method: http.MethodPost,
-		Path: "/v1/notifications/destinations", Summary: "Create a notification destination",
-		Description: "Credentials are write-only. Only administrators may create installation destinations; a person destination always belongs to the authenticated person.",
+		OperationID: "notification-providers-create", Method: http.MethodPost,
+		Path: "/v1/notifications/providers", Summary: "Add a notification provider",
+		Description: "Adds one provider from its server-defined settings and selected events. Sensitive fields are classified and stored by the server and remain write-only.",
 		Tags:        []string{"notifications"}, DefaultStatus: http.StatusCreated,
-	}, RoleMember), s.notificationDestinationCreate)
+	}, RoleAdmin), s.notificationDestinationCreate)
 	huma.Register(api, withRole(huma.Operation{
-		OperationID: "notification-destinations-update", Method: http.MethodPut,
-		Path: "/v1/notifications/destinations/{id}", Summary: "Update a notification destination",
-		Description: "Omitting credentials preserves the stored value; sending an empty credentials object explicitly clears it.",
+		OperationID: "notification-providers-update", Method: http.MethodPut,
+		Path: "/v1/notifications/providers/{id}", Summary: "Update a notification provider",
+		Description: "Omitting a sensitive setting preserves it; sending that field with an empty value clears it.",
 		Tags:        []string{"notifications"},
-	}, RoleMember), s.notificationDestinationUpdate)
+	}, RoleAdmin), s.notificationDestinationUpdate)
 	huma.Register(api, withRole(huma.Operation{
-		OperationID: "notification-destinations-delete", Method: http.MethodDelete,
-		Path: "/v1/notifications/destinations/{id}", Summary: "Delete a notification destination",
+		OperationID: "notification-providers-delete", Method: http.MethodDelete,
+		Path: "/v1/notifications/providers/{id}", Summary: "Delete a notification provider",
 		Description: "Queued attempts suppress at execution when their destination no longer exists; delivery history remains redacted and unchanged.",
 		Tags:        []string{"notifications"}, DefaultStatus: http.StatusNoContent,
-	}, RoleMember), s.notificationDestinationDelete)
+	}, RoleAdmin), s.notificationDestinationDelete)
 	huma.Register(api, withRole(huma.Operation{
-		OperationID: "notification-destinations-test", Method: http.MethodPost,
-		Path: "/v1/notifications/destinations/{id}/test", Summary: "Queue a notification destination test",
+		OperationID: "notification-providers-test", Method: http.MethodPost,
+		Path: "/v1/notifications/providers/{id}/test", Summary: "Queue a notification provider test",
 		Description: "Queues a distinct test-delivery intent. Acceptance means Loomarr durably accepted the handoff, not that the provider confirmed final delivery.",
 		Tags:        []string{"notifications"}, DefaultStatus: http.StatusAccepted,
-	}, RoleMember), s.notificationDestinationTest)
+	}, RoleAdmin), s.notificationDestinationTest)
 }
 
 type NotificationProviderFieldOptionDTO struct {
@@ -113,29 +113,29 @@ func (s *Server) notificationProviderTypesList(
 }
 
 type notificationDestinationWrite struct {
-	Means         notifications.Means            `json:"means" enum:"email,webhook,discord,ntfy,gotify,apprise,pushover,telegram,mattermost,matrix,web_push,mqtt,slack"`
-	Label         string                         `json:"label" minLength:"1" maxLength:"120"`
-	Scope         notifications.DestinationScope `json:"scope" enum:"installation,person"`
-	Audience      notifications.RecipientKind    `json:"audience" enum:"person,approvers,operators"`
-	Topics        []notifications.Topic          `json:"topics" minItems:"1"`
-	Enabled       bool                           `json:"enabled"`
-	Configuration map[string]string              `json:"configuration,omitempty"`
-	Credentials   *map[string]string             `json:"credentials,omitempty" doc:"Write-only provider credentials. Omit on update to preserve; send an empty object to clear."`
+	Type     notifications.Means   `json:"type" enum:"email,webhook,discord,ntfy,gotify,apprise,pushover,telegram,mattermost,matrix,web_push,mqtt,slack"`
+	Label    string                `json:"label" minLength:"1" maxLength:"120"`
+	Events   []notifications.Topic `json:"events" minItems:"1"`
+	Enabled  bool                  `json:"enabled"`
+	Settings map[string]string     `json:"settings"`
 }
 
-type NotificationDestinationDTO struct {
-	ID                    string                            `json:"id"`
-	Means                 notifications.Means               `json:"means"`
-	Label                 string                            `json:"label"`
-	Scope                 notifications.DestinationScope    `json:"scope"`
-	OwnerID               string                            `json:"ownerId,omitempty"`
-	Audience              notifications.RecipientKind       `json:"audience"`
-	Topics                []notifications.Topic             `json:"topics"`
-	Enabled               bool                              `json:"enabled"`
-	CredentialsConfigured bool                              `json:"credentialsConfigured"`
-	CreatedAt             time.Time                         `json:"createdAt"`
-	UpdatedAt             time.Time                         `json:"updatedAt"`
-	Health                *NotificationDestinationHealthDTO `json:"health,omitempty"`
+type NotificationProviderSettingDTO struct {
+	Key              string `json:"key"`
+	Value            string `json:"value,omitempty"`
+	SecretConfigured bool   `json:"secretConfigured"`
+}
+
+type NotificationProviderDTO struct {
+	ID        string                            `json:"id"`
+	Type      notifications.Means               `json:"type"`
+	Label     string                            `json:"label"`
+	Events    []notifications.Topic             `json:"events"`
+	Enabled   bool                              `json:"enabled"`
+	Settings  []NotificationProviderSettingDTO  `json:"settings"`
+	CreatedAt time.Time                         `json:"createdAt"`
+	UpdatedAt time.Time                         `json:"updatedAt"`
+	Health    *NotificationDestinationHealthDTO `json:"health,omitempty"`
 }
 
 type NotificationDestinationHealthDTO struct {
@@ -148,27 +148,25 @@ type NotificationDestinationHealthDTO struct {
 
 type notificationDestinationsListOutput struct {
 	Body struct {
-		Destinations []NotificationDestinationDTO `json:"destinations"`
+		Providers []NotificationProviderDTO `json:"providers"`
 	}
 }
 
 type notificationDestinationCreateInput struct{ Body notificationDestinationWrite }
-type notificationDestinationCreateOutput struct{ Body NotificationDestinationDTO }
+type notificationDestinationCreateOutput struct{ Body NotificationProviderDTO }
 
 type notificationDestinationUpdateWrite struct {
-	Label         string                      `json:"label" minLength:"1" maxLength:"120"`
-	Audience      notifications.RecipientKind `json:"audience" enum:"person,approvers,operators"`
-	Topics        []notifications.Topic       `json:"topics" minItems:"1"`
-	Enabled       bool                        `json:"enabled"`
-	Configuration *map[string]string          `json:"configuration,omitempty" doc:"Omit to preserve the stored provider-safe configuration; send an empty object to clear."`
-	Credentials   *map[string]string          `json:"credentials,omitempty" doc:"Write-only provider credentials. Omit to preserve; send an empty object to clear."`
+	Label    string                `json:"label" minLength:"1" maxLength:"120"`
+	Events   []notifications.Topic `json:"events" minItems:"1"`
+	Enabled  bool                  `json:"enabled"`
+	Settings *map[string]string    `json:"settings,omitempty" doc:"Changed provider fields. Omit sensitive fields to preserve them; send an empty value to clear one."`
 }
 
 type notificationDestinationUpdateInput struct {
 	ID   string `path:"id"`
 	Body notificationDestinationUpdateWrite
 }
-type notificationDestinationUpdateOutput struct{ Body NotificationDestinationDTO }
+type notificationDestinationUpdateOutput struct{ Body NotificationProviderDTO }
 type notificationDestinationDeleteInput struct {
 	ID string `path:"id"`
 }
@@ -198,9 +196,9 @@ func (s *Server) notificationDestinationsList(
 		return nil, notificationDestinationError(err)
 	}
 	out := &notificationDestinationsListOutput{}
-	out.Body.Destinations = make([]NotificationDestinationDTO, 0, len(summaries))
+	out.Body.Providers = make([]NotificationProviderDTO, 0, len(summaries))
 	for _, summary := range summaries {
-		out.Body.Destinations = append(out.Body.Destinations, notificationDestinationDTO(summary))
+		out.Body.Providers = append(out.Body.Providers, notificationDestinationDTO(summary))
 	}
 	return out, nil
 }
@@ -213,14 +211,10 @@ func (s *Server) notificationDestinationCreate(
 		return nil, errNotImplemented("Notification destinations unavailable", "Destination management isn't available in this Loomarr process.")
 	}
 	principal := notificationPrincipal(ctx)
-	ownerID := ""
-	if in.Body.Scope == notifications.ScopePerson {
-		ownerID = principal.PersonID
-	}
 	summary, err := s.notificationDestinations.Create(ctx, principal, notifications.DestinationCommand{
-		Means: in.Body.Means, Label: in.Body.Label, Scope: in.Body.Scope, OwnerID: ownerID,
-		Audience: in.Body.Audience, Topics: in.Body.Topics, Enabled: in.Body.Enabled,
-		Configuration: in.Body.Configuration, Credentials: in.Body.Credentials,
+		Means: in.Body.Type, Label: in.Body.Label, Scope: notifications.ScopeInstallation,
+		Audience: notifications.RecipientOperators, Topics: in.Body.Events, Enabled: in.Body.Enabled,
+		Settings: in.Body.Settings,
 	})
 	if err != nil {
 		return nil, notificationDestinationError(err)
@@ -236,8 +230,8 @@ func (s *Server) notificationDestinationUpdate(
 		return nil, errNotImplemented("Notification destinations unavailable", "Destination management isn't available in this Loomarr process.")
 	}
 	summary, err := s.notificationDestinations.Update(ctx, notificationPrincipal(ctx), in.ID, notifications.DestinationUpdateCommand{
-		Label: in.Body.Label, Audience: in.Body.Audience, Topics: in.Body.Topics, Enabled: in.Body.Enabled,
-		Configuration: in.Body.Configuration, Credentials: in.Body.Credentials,
+		Label: in.Body.Label, Audience: notifications.RecipientOperators,
+		Topics: in.Body.Events, Enabled: in.Body.Enabled, Settings: in.Body.Settings,
 	})
 	if err != nil {
 		return nil, notificationDestinationError(err)
@@ -281,12 +275,16 @@ func notificationPrincipal(ctx context.Context) notifications.Principal {
 	return principal
 }
 
-func notificationDestinationDTO(summary notifications.DestinationSummary) NotificationDestinationDTO {
-	dto := NotificationDestinationDTO{
-		ID: summary.ID, Means: summary.Means, Label: summary.Label, Scope: summary.Scope,
-		OwnerID: summary.OwnerID, Audience: summary.Audience, Topics: summary.Topics,
-		Enabled: summary.Enabled, CredentialsConfigured: summary.CredentialsConfigured,
-		CreatedAt: summary.CreatedAt, UpdatedAt: summary.UpdatedAt,
+func notificationDestinationDTO(summary notifications.DestinationSummary) NotificationProviderDTO {
+	dto := NotificationProviderDTO{
+		ID: summary.ID, Type: summary.Means, Label: summary.Label, Events: summary.Topics,
+		Enabled: summary.Enabled, CreatedAt: summary.CreatedAt, UpdatedAt: summary.UpdatedAt,
+		Settings: make([]NotificationProviderSettingDTO, 0, len(summary.Settings)),
+	}
+	for _, setting := range summary.Settings {
+		dto.Settings = append(dto.Settings, NotificationProviderSettingDTO{
+			Key: setting.Key, Value: setting.Value, SecretConfigured: setting.SecretConfigured,
+		})
 	}
 	if summary.Health != nil {
 		health := NotificationDestinationHealthDTO{

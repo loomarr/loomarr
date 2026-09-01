@@ -51,6 +51,50 @@ func TestDestinationManagerKeepsCredentialsWriteOnlyAndScopesMemberReads(t *test
 	}
 }
 
+func TestDestinationManagerClassifiesAndRedactsTheUnifiedProviderSettings(t *testing.T) {
+	repository := testkit.NewNotificationRepository()
+	now := time.Unix(1_900_000_000, 0)
+	manager := notifications.NewDestinationManager(repository, nil, sequentialDestinationIDs(), func() time.Time { return now })
+	admin := notifications.Principal{PersonID: "admin-1", Administrator: true}
+	summary, err := manager.Create(t.Context(), admin, notifications.DestinationCommand{
+		Means: notifications.MeansEmail, Label: "Household SMTP", Scope: notifications.ScopeInstallation,
+		Audience: notifications.RecipientOperators, Topics: []notifications.Topic{notifications.TopicProposalApproved},
+		Settings: map[string]string{
+			"host": "mail.example.test", "port": "587", "password": "never-return-this",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := repository.GetNotificationDestination(t.Context(), summary.ID)
+	if err != nil || stored.Configuration["host"] != "mail.example.test" ||
+		stored.Credentials["password"] != "never-return-this" {
+		t.Fatalf("stored provider settings = %+v, %v", stored, err)
+	}
+	var password notifications.ProviderFieldState
+	for _, state := range summary.Settings {
+		if state.Key == "password" {
+			password = state
+		}
+	}
+	if password.Value != "" || !password.SecretConfigured {
+		t.Fatalf("password state = %+v", password)
+	}
+	changes := map[string]string{"host": "relay.example.test"}
+	updated, err := manager.Update(t.Context(), admin, summary.ID, notifications.DestinationUpdateCommand{
+		Label: "Household SMTP", Audience: notifications.RecipientOperators,
+		Topics: []notifications.Topic{notifications.TopicProposalApproved}, Settings: &changes,
+	})
+	if err != nil || !updated.CredentialsConfigured {
+		t.Fatalf("updated provider = %+v, %v", updated, err)
+	}
+	stored, err = repository.GetNotificationDestination(t.Context(), summary.ID)
+	if err != nil || stored.Configuration["host"] != "relay.example.test" ||
+		stored.Credentials["password"] != "never-return-this" {
+		t.Fatalf("updated provider settings = %+v, %v", stored, err)
+	}
+}
+
 func TestDestinationManagerRejectsMemberInstallationAndCrossPersonWrites(t *testing.T) {
 	manager := notifications.NewDestinationManager(
 		testkit.NewNotificationRepository(), nil, sequentialDestinationIDs(), time.Now,

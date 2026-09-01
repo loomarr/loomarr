@@ -52,7 +52,7 @@ func (acceptingDestinationTester) PublishDestinationTest(
 	return notifications.DestinationTestResult{IntentID: "intent-test-1", Created: true}, nil
 }
 
-func TestNotificationDestinationsAdminCRUDIsRedactedAndMembersCannotManageInstallationScope(t *testing.T) {
+func TestNotificationProvidersUseOneRedactedAdminWorkflow(t *testing.T) {
 	st := openTestStore(t, t.TempDir()+"/notification-destinations.db")
 	t.Cleanup(func() { _ = st.Close() })
 	now := time.Unix(1_900_000_000, 0)
@@ -66,25 +66,29 @@ func TestNotificationDestinationsAdminCRUDIsRedactedAndMembersCannotManageInstal
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 
-	body := `{"means":"slack","label":"Operations Slack","scope":"installation","audience":"operators","topics":["channel_degraded"],"enabled":true,"configuration":{"channel":"alerts"},"credentials":{"token":"never-return-this"}}`
-	member := do(t, srv, http.MethodPost, "/v1/notifications/destinations", memberToken, body)
+	body := `{"type":"slack","label":"Operations Slack","events":["channel_degraded"],"enabled":true,"settings":{"webhookUrl":"https://hooks.slack.com/services/never-return-this"}}`
+	member := do(t, srv, http.MethodPost, "/v1/notifications/providers", memberToken, body)
 	if member.StatusCode != http.StatusForbidden {
-		t.Fatalf("member create installation destination = %d", member.StatusCode)
+		t.Fatalf("member create provider = %d", member.StatusCode)
 	}
-	created := do(t, srv, http.MethodPost, "/v1/notifications/destinations", adminToken, body)
+	created := do(t, srv, http.MethodPost, "/v1/notifications/providers", adminToken, body)
 	if created.StatusCode != http.StatusCreated {
-		t.Fatalf("admin create destination = %d: %s", created.StatusCode, readBody(t, created))
+		t.Fatalf("admin create provider = %d: %s", created.StatusCode, readBody(t, created))
 	}
 	createdBody := readBody(t, created)
-	if strings.Contains(createdBody, "never-return-this") || !strings.Contains(createdBody, `"credentialsConfigured":true`) {
+	if strings.Contains(createdBody, "never-return-this") ||
+		!strings.Contains(createdBody, `"key":"webhookUrl"`) ||
+		!strings.Contains(createdBody, `"secretConfigured":true`) ||
+		strings.Contains(createdBody, `"scope"`) || strings.Contains(createdBody, `"audience"`) ||
+		strings.Contains(createdBody, `"configuration"`) || strings.Contains(createdBody, `"credentials"`) {
 		t.Fatalf("create response was not redacted: %s", createdBody)
 	}
 	stored, err := st.GetNotificationDestination(t.Context(), "destination-1")
-	if err != nil || stored.Credentials["token"] != "never-return-this" {
+	if err != nil || stored.Credentials["webhookUrl"] != "https://hooks.slack.com/services/never-return-this" {
 		t.Fatalf("stored destination = %+v, %v", stored.Summary(), err)
 	}
-	updateBody := `{"label":"On-call Slack","audience":"operators","topics":["channel_degraded"],"enabled":true,"configuration":{"channel":"on-call"}}`
-	updated := do(t, srv, http.MethodPut, "/v1/notifications/destinations/destination-1", adminToken, updateBody)
+	updateBody := `{"label":"On-call Slack","events":["channel_degraded"],"enabled":true}`
+	updated := do(t, srv, http.MethodPut, "/v1/notifications/providers/destination-1", adminToken, updateBody)
 	if updated.StatusCode != http.StatusOK {
 		t.Fatalf("admin update destination = %d: %s", updated.StatusCode, readBody(t, updated))
 	}
@@ -93,10 +97,10 @@ func TestNotificationDestinationsAdminCRUDIsRedactedAndMembersCannotManageInstal
 		t.Fatalf("update response was not redacted: %s", updatedBody)
 	}
 	stored, err = st.GetNotificationDestination(t.Context(), "destination-1")
-	if err != nil || stored.Credentials["token"] != "never-return-this" || stored.Configuration["channel"] != "on-call" {
+	if err != nil || stored.Credentials["webhookUrl"] != "https://hooks.slack.com/services/never-return-this" {
 		t.Fatalf("updated stored destination = %+v, %v", stored.Summary(), err)
 	}
-	testDelivery := do(t, srv, http.MethodPost, "/v1/notifications/destinations/destination-1/test", adminToken, `{"requestId":"request-1"}`)
+	testDelivery := do(t, srv, http.MethodPost, "/v1/notifications/providers/destination-1/test", adminToken, `{"requestId":"request-1"}`)
 	if testDelivery.StatusCode != http.StatusAccepted {
 		t.Fatalf("admin test destination = %d: %s", testDelivery.StatusCode, readBody(t, testDelivery))
 	}
@@ -105,26 +109,17 @@ func TestNotificationDestinationsAdminCRUDIsRedactedAndMembersCannotManageInstal
 		strings.Contains(strings.ToLower(testBody), "delivered") {
 		t.Fatalf("destination test did not distinguish queued handoff: %s", testBody)
 	}
-	adminList := do(t, srv, http.MethodGet, "/v1/notifications/destinations", adminToken, "")
+	adminList := do(t, srv, http.MethodGet, "/v1/notifications/providers", adminToken, "")
 	adminListBody := readBody(t, adminList)
 	if adminList.StatusCode != http.StatusOK || !strings.Contains(adminListBody, `"health":{"queuedCount":0,"terminalFailureCount":0}`) {
 		t.Fatalf("admin destination health = %d: %s", adminList.StatusCode, adminListBody)
 	}
 
-	memberList := do(t, srv, http.MethodGet, "/v1/notifications/destinations", memberToken, "")
-	if memberList.StatusCode != http.StatusOK {
-		t.Fatalf("member list = %d", memberList.StatusCode)
+	memberList := do(t, srv, http.MethodGet, "/v1/notifications/providers", memberToken, "")
+	if memberList.StatusCode != http.StatusForbidden {
+		t.Fatalf("member list = %d, want 403", memberList.StatusCode)
 	}
-	var listed struct {
-		Destinations []json.RawMessage `json:"destinations"`
-	}
-	if err := json.NewDecoder(memberList.Body).Decode(&listed); err != nil {
-		t.Fatal(err)
-	}
-	if len(listed.Destinations) != 0 {
-		t.Fatalf("member saw installation destinations: %s", listed.Destinations)
-	}
-	deleted := do(t, srv, http.MethodDelete, "/v1/notifications/destinations/destination-1", adminToken, "")
+	deleted := do(t, srv, http.MethodDelete, "/v1/notifications/providers/destination-1", adminToken, "")
 	if deleted.StatusCode != http.StatusNoContent {
 		t.Fatalf("admin delete destination = %d", deleted.StatusCode)
 	}

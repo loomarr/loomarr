@@ -44,6 +44,7 @@ type DestinationSummary struct {
 	Topics                []Topic
 	Enabled               bool
 	CredentialsConfigured bool
+	Settings              []ProviderFieldState
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
 	Health                *DestinationHealth
@@ -122,10 +123,12 @@ func (d Destination) Validate() error {
 }
 
 func (d Destination) Summary() DestinationSummary {
+	definition, _ := ProviderDefinitionFor(d.Means)
 	return DestinationSummary{
 		ID: d.ID, Means: d.Means, Label: d.Label, Scope: d.Scope, OwnerID: d.OwnerID,
 		Audience: d.Audience, Topics: append([]Topic(nil), d.Topics...), Enabled: d.Enabled,
 		CredentialsConfigured: len(d.Credentials) > 0, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
+		Settings: definition.Redact(d.Configuration, d.Credentials),
 	}
 }
 
