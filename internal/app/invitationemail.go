@@ -166,27 +166,20 @@ func (r invitationEmailRouter) Routes(ctx context.Context, intent notifications.
 type invitationEmailMaterializer struct {
 	invitations *invitation.Service
 	recovery    *auth.PasswordRecoveryService
-	contacts    contactAddressReader
+	contacts    productEmailRecipientReader
 	publicURL   func() string
 }
 
-type contactAddressReader interface {
+type productEmailRecipientReader interface {
 	GetContactAddresses(context.Context, string) (contact.Set, error)
+	ListUsers(context.Context) ([]store.User, error)
 }
 
 func (m invitationEmailMaterializer) Materialize(
 	ctx context.Context,
 	delivery notifications.Delivery,
 ) (notifications.MaterializedEmail, error) {
-	if delivery.Intent.Policy == notifications.PolicyConfigurable &&
-		delivery.Intent.RecipientKind == notifications.RecipientPerson && m.contacts != nil {
-		addresses, err := m.contacts.GetContactAddresses(ctx, delivery.Intent.RecipientID)
-		if err != nil || addresses.Verified == nil {
-			if errors.Is(err, store.ErrNotFound) || addresses.Verified == nil {
-				return notifications.MaterializedEmail{}, notifications.ErrEmailDestinationUnavailable
-			}
-			return notifications.MaterializedEmail{}, err
-		}
+	if delivery.Intent.Policy == notifications.PolicyConfigurable && m.contacts != nil {
 		link := ""
 		if origin, originErr := recipientOriginValue(m.publicURL); originErr == nil {
 			link = productNotificationLink(origin, delivery.Intent)
@@ -195,10 +188,54 @@ func (m invitationEmailMaterializer) Materialize(
 		if err != nil {
 			return notifications.MaterializedEmail{}, err
 		}
-		return notifications.MaterializedEmail{Message: notifications.EmailMessage{
-			ToAddress: addresses.Verified.Email, Subject: content.Subject,
-			TextBody: content.TextBody, HTMLBody: content.HTMLBody,
-		}}, nil
+		if delivery.Intent.RecipientKind == notifications.RecipientPerson {
+			addresses, addressErr := m.contacts.GetContactAddresses(ctx, delivery.Intent.RecipientID)
+			if addressErr != nil {
+				if errors.Is(addressErr, store.ErrNotFound) {
+					return notifications.MaterializedEmail{}, notifications.ErrEmailDestinationUnavailable
+				}
+				return notifications.MaterializedEmail{}, addressErr
+			}
+			if addresses.Verified == nil {
+				return notifications.MaterializedEmail{}, notifications.ErrEmailDestinationUnavailable
+			}
+			return notifications.MaterializedEmail{Message: notifications.EmailMessage{
+				ToAddress: addresses.Verified.Email, Subject: content.Subject,
+				TextBody: content.TextBody, HTMLBody: content.HTMLBody,
+			}}, nil
+		}
+		if delivery.Intent.RecipientKind != notifications.RecipientApprovers &&
+			delivery.Intent.RecipientKind != notifications.RecipientOperators {
+			return notifications.MaterializedEmail{}, notifications.ErrEmailDestinationUnavailable
+		}
+		users, listErr := m.contacts.ListUsers(ctx)
+		if listErr != nil {
+			return notifications.MaterializedEmail{}, listErr
+		}
+		messages := make([]notifications.EmailMessage, 0, len(users))
+		for _, user := range users {
+			if user.Disabled || user.Role != store.RoleAdmin {
+				continue
+			}
+			addresses, addressErr := m.contacts.GetContactAddresses(ctx, user.ID)
+			if addressErr != nil {
+				if errors.Is(addressErr, store.ErrNotFound) {
+					continue
+				}
+				return notifications.MaterializedEmail{}, addressErr
+			}
+			if addresses.Verified == nil {
+				continue
+			}
+			messages = append(messages, notifications.EmailMessage{
+				ToAddress: addresses.Verified.Email, ToName: user.Name, Subject: content.Subject,
+				TextBody: content.TextBody, HTMLBody: content.HTMLBody,
+			})
+		}
+		if len(messages) == 0 {
+			return notifications.MaterializedEmail{}, notifications.ErrEmailDestinationUnavailable
+		}
+		return notifications.MaterializedEmail{Messages: messages}, nil
 	}
 	var address contact.Address
 	var issuedPlaintext string

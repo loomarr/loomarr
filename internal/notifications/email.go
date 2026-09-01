@@ -239,7 +239,10 @@ type EmailMaterializer interface {
 // minted while rendering when SMTP proves the message was not accepted. Neither the message nor
 // the callback crosses the durable notification boundary.
 type MaterializedEmail struct {
-	Message    EmailMessage
+	Message EmailMessage
+	// Messages contains the independently addressed copies for an audience notification. Account
+	// messages continue to use Message because their bearer invalidation is one-recipient-only.
+	Messages   []EmailMessage
 	Invalidate func(context.Context) error
 }
 
@@ -314,7 +317,14 @@ func (a *EmailAdapter) Deliver(ctx context.Context, delivery Delivery) Result {
 	if err != nil {
 		return emailConfigurationFailure()
 	}
-	if materialized.Message.Validate() != nil {
+	messages := materialized.Messages
+	if len(messages) == 0 {
+		messages = []EmailMessage{materialized.Message}
+	}
+	for _, message := range messages {
+		if message.Validate() == nil {
+			continue
+		}
 		if materialized.Invalidate != nil {
 			if err := materialized.Invalidate(ctx); err != nil {
 				return Result{Status: StatusFailed, FailureClass: FailureAmbiguous, OutcomeCode: OutcomeAcceptanceAmbiguous}
@@ -322,13 +332,31 @@ func (a *EmailAdapter) Deliver(ctx context.Context, delivery Delivery) Result {
 		}
 		return emailConfigurationFailure()
 	}
-	transmission := a.sender.Send(ctx, config, materialized.Message)
-	if emailDefinitelyNotAccepted(transmission.State) && materialized.Invalidate != nil {
-		if err := materialized.Invalidate(ctx); err != nil {
+	var accepted int
+	var acceptedID string
+	for _, message := range messages {
+		transmission := a.sender.Send(ctx, config, message)
+		if transmission.State == EmailAccepted {
+			accepted++
+			if acceptedID == "" {
+				acceptedID = transmission.ProviderMessageID
+			}
+			continue
+		}
+		if accepted > 0 {
 			return Result{Status: StatusFailed, FailureClass: FailureAmbiguous, OutcomeCode: OutcomeAcceptanceAmbiguous}
 		}
+		if emailDefinitelyNotAccepted(transmission.State) && materialized.Invalidate != nil {
+			if err := materialized.Invalidate(ctx); err != nil {
+				return Result{Status: StatusFailed, FailureClass: FailureAmbiguous, OutcomeCode: OutcomeAcceptanceAmbiguous}
+			}
+		}
+		return resultForEmailTransmission(transmission)
 	}
-	return resultForEmailTransmission(transmission)
+	if len(messages) > 1 {
+		acceptedID = fmt.Sprintf("smtp-%d", len(messages))
+	}
+	return Result{Status: StatusDelivered, ProviderMessageID: acceptedID}
 }
 
 func emailConfigFromProvider(configuration, credentials map[string]string) (EmailConfig, error) {

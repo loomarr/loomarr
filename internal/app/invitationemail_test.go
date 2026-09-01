@@ -232,6 +232,59 @@ func TestPasswordRecoveryEmailUsesSharedWorkerAndKeepsBearerEphemeral(t *testing
 	}
 }
 
+func TestProductEmailMaterializerResolvesVerifiedEnabledAdministratorsForGroupEvents(t *testing.T) {
+	ctx := t.Context()
+	st := testkit.MigratedSQLiteStore(t)
+	now := time.Unix(1_900_000_000, 0).UTC()
+	for _, candidate := range []struct {
+		id, name, email string
+		role            store.Role
+		disabled        bool
+	}{
+		{"admin-ada", "Ada", "ada@example.com", store.RoleAdmin, false},
+		{"admin-grace", "Grace", "grace@example.com", store.RoleAdmin, false},
+		{"member", "Member", "member@example.com", store.RoleMember, false},
+		{"disabled-admin", "Disabled", "disabled@example.com", store.RoleAdmin, true},
+	} {
+		if err := st.UpsertUser(ctx, store.User{
+			ID: candidate.id, Name: candidate.name, Role: candidate.role, Disabled: candidate.disabled,
+			CreatedAt: now, UpdatedAt: now,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		email, normalized, err := contact.Normalize(candidate.email)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := st.PutPendingContactAddress(ctx, contact.Address{
+			OwnerKind: contact.OwnerUser, OwnerID: candidate.id, Email: email, Normalized: normalized,
+			Status: contact.StatusPending, Provenance: contact.ProvenanceAdmin, CreatedAt: now,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.VerifyPendingContactAddress(ctx, candidate.id, normalized, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	materialized, err := (invitationEmailMaterializer{
+		contacts: st, publicURL: func() string { return "https://loomarr.example" },
+	}).Materialize(ctx, notifications.Delivery{Intent: notifications.Intent{
+		ID: "intent-group", Topic: notifications.TopicProposalSubmitted,
+		RecipientKind: notifications.RecipientApprovers, RecipientID: "approvers",
+		ReferenceKind: notifications.ReferenceProposal, ReferenceID: "proposal-1",
+		Policy:         notifications.PolicyConfigurable,
+		Template:       notifications.TemplateData{SubjectName: "A proposal needs approval"},
+		IdempotencyKey: "proposal-1:submitted", CreatedAt: now,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(materialized.Messages) != 2 || materialized.Messages[0].ToAddress != "ada@example.com" ||
+		materialized.Messages[1].ToAddress != "grace@example.com" {
+		t.Fatalf("group recipients = %+v", materialized.Messages)
+	}
+}
+
 type sequenceEmailSender struct {
 	results  []notifications.EmailTransmission
 	messages []notifications.EmailMessage

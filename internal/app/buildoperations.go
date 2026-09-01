@@ -110,6 +110,9 @@ func buildOperations(
 	providerAdapters, providerValidators := notifications.NewHTTPProviderAdapters(
 		overrides.NotificationHTTP, func() string { return set.str("access.public_url") },
 	)
+	mqttAdapter := notifications.NewMQTTAdapter(func() string { return set.str("access.public_url") })
+	providerAdapters = append(providerAdapters, mqttAdapter)
+	providerValidators = append(providerValidators, mqttAdapter)
 	accountDelivery := buildAccountDelivery(
 		st, destinationRepository, providerAdapters, set, invitationService, recoveryService, registry, log,
 	)

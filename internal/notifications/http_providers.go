@@ -263,14 +263,7 @@ func webhookRequest(configuration, credentials map[string]string, message Provid
 	if err != nil {
 		return providerRequest{}, err
 	}
-	payload := map[string]any{
-		"version": 1, "eventId": message.EventID, "eventType": message.EventType,
-		"occurredAt": message.Occurred.Format(time.RFC3339), "severity": message.Severity,
-		"subject": message.Title, "summary": message.Body,
-	}
-	if message.Link != "" {
-		payload["link"] = message.Link
-	}
+	payload := providerEventPayload(message)
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return providerRequest{}, fmt.Errorf("encode notification payload")
@@ -286,6 +279,18 @@ func webhookRequest(configuration, credentials map[string]string, message Provid
 		headers.Set("X-Loomarr-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
 	}
 	return post(target, headers, body), nil
+}
+
+func providerEventPayload(message ProviderMessage) map[string]any {
+	payload := map[string]any{
+		"version": 1, "eventId": message.EventID, "eventType": message.EventType,
+		"occurredAt": message.Occurred.Format(time.RFC3339), "severity": message.Severity,
+		"subject": message.Title, "summary": message.Body,
+	}
+	if message.Link != "" {
+		payload["link"] = message.Link
+	}
+	return payload
 }
 
 func discordRequest(credentials map[string]string, message ProviderMessage) (providerRequest, error) {
