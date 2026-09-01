@@ -222,12 +222,8 @@ func (r resolved) arrConns() requester.ArrConns {
 
 // requesterFor builds the Requester the composition root uses, branching on
 // requester.provider (§6): the direct Sonarr/Radarr adapter when "arr", else Seerr.
-func (r resolved) requesterFor() requester.Requester {
-	return r.requesterForObserved(nil)
-}
-
-func (r resolved) requesterForObserved(recorder *metrics.Recorder) requester.Requester {
-	if a := r.arrRequesterObserved(recorder); a != nil {
+func (r resolved) requesterFor(recorder *metrics.Recorder) requester.Requester {
+	if a := r.arrRequester(recorder); a != nil {
 		return a
 	}
 	return requester.NewSeerrDynamicObserved(r.seerrConn(), recorder)
@@ -236,11 +232,7 @@ func (r resolved) requesterForObserved(recorder *metrics.Recorder) requester.Req
 // arrRequester returns the concrete direct-arr requester when requester.provider=arr, else nil.
 // The queue poller (§18.1) needs the concrete *Arr for its QueueStatus capability, which the
 // Requester interface doesn't expose.
-func (r resolved) arrRequester() *requester.Arr {
-	return r.arrRequesterObserved(nil)
-}
-
-func (r resolved) arrRequesterObserved(recorder *metrics.Recorder) *requester.Arr {
+func (r resolved) arrRequester(recorder *metrics.Recorder) *requester.Arr {
 	if r.str("requester.provider") != "arr" {
 		return nil
 	}
@@ -252,11 +244,7 @@ func (r resolved) arrRequesterObserved(recorder *metrics.Recorder) *requester.Ar
 // needs the concrete *Seerr for its QueueStatus capability (coarse status from /media), which the
 // Requester interface doesn't expose. Only meaningful once seerr.url is set — an unconfigured
 // Seerr QueueStatus just errors and the poll pass is a harmless no-op.
-func (r resolved) seerrRequester() *requester.Seerr {
-	return r.seerrRequesterObserved(nil)
-}
-
-func (r resolved) seerrRequesterObserved(recorder *metrics.Recorder) *requester.Seerr {
+func (r resolved) seerrRequester(recorder *metrics.Recorder) *requester.Seerr {
 	if r.str("requester.provider") == "arr" {
 		return nil
 	}

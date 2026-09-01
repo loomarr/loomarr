@@ -30,7 +30,7 @@ func buildProvisioning(
 	if st == nil {
 		return nil
 	}
-	reconciler := reconcile.NewDynamic(st, set.requesterForObserved(metricRecorder), func() reconcile.LibraryLookup {
+	reconciler := reconcile.NewDynamic(st, set.requesterFor(metricRecorder), func() reconcile.LibraryLookup {
 		return libraryClient.Snapshot()
 	}, emitter, reconcile.Config{
 		RequestTTL: set.dur("request.ttl"), DownloadingTTL: set.dur("downloading.ttl"),
@@ -57,11 +57,11 @@ func buildProvisioning(
 		return set.dur("episodes.max_age")
 	}, time.Now, log)
 
-	if arr := set.arrRequesterObserved(metricRecorder); arr != nil {
+	if arr := set.arrRequester(metricRecorder); arr != nil {
 		queuePoll := reconcile.NewQueuePoll(st, arr, emitter, set.dur("downloading.ttl"), time.Now, log)
 		jobs.Add(queuePoll.Job("arr-queue-poll", "Poll Sonarr and Radarr",
 			"Updates acquisition progress and detects stalled downloads from Sonarr and Radarr."))
-	} else if seerr := set.seerrRequesterObserved(metricRecorder); seerr != nil {
+	} else if seerr := set.seerrRequester(metricRecorder); seerr != nil {
 		queuePoll := reconcile.NewQueuePoll(st, seerr, emitter, set.dur("downloading.ttl"), time.Now, log)
 		jobs.Add(queuePoll.Job("seerr-queue-poll", "Poll Seerr acquisitions",
 			"Updates requested titles from the coarse acquisition states reported by Seerr."))

@@ -207,7 +207,7 @@ func activeFillerProvider(set resolved, recorder *metrics.Recorder) llm.Provider
 	if sel.URL == "" {
 		return nil
 	}
-	return buildProviderForObserved(sel, recorder)
+	return buildProviderFor(sel, recorder)
 }
 
 // buildFillerMediaTools selects local whisper or hosted timed transcription behind the same

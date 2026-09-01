@@ -43,7 +43,7 @@ const (
 func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus, log *slog.Logger, metricRecorder *metrics.Recorder) (llm.Provider, api.SystemLLMService) {
 	sel := resolveSelection(set)
 	sw := llm.NewSwappable(func(selection llm.Selection) llm.Provider {
-		return buildProviderForObserved(selection, metricRecorder)
+		return buildProviderFor(selection, metricRecorder)
 	}, sel)
 
 	// Preload the model at boot (§8.2) so the first channel someone describes doesn't
@@ -156,11 +156,7 @@ func warm(ctx context.Context, w llm.Warmer, log *slog.Logger) {
 
 // buildProviderFor is the Swappable factory: build the concrete provider for a
 // Selection. Ollama for local, the OpenAI-compatible client for everything else.
-func buildProviderFor(sel llm.Selection) llm.Provider {
-	return buildProviderForObserved(sel, nil)
-}
-
-func buildProviderForObserved(sel llm.Selection, recorder *metrics.Recorder) llm.Provider {
+func buildProviderFor(sel llm.Selection, recorder *metrics.Recorder) llm.Provider {
 	if sel.Provider == "ollama" || sel.Provider == "" {
 		// KeepAlive is local-only (§8.2) — a hosted endpoint has no residency to manage,
 		// which is why it's applied here rather than in the shared construction below.
