@@ -349,6 +349,35 @@ func ValidatePacketAgainstCase(c fillereval.Case, packet Packet, evidenceVersion
 	return validatePacket(c, packet, evidenceVersion, corpusRoot)
 }
 
+// ValidatePacketReferenceBinding verifies the immutable packet identity and
+// deterministic fact namespace without reading external media derivatives.
+// Reference-cohort screening uses this narrower boundary only to validate
+// evidence references; it does not authorize inference or admission.
+func ValidatePacketReferenceBinding(c fillereval.Case, packet Packet, evidenceVersion string) error {
+	if packet.SchemaVersion != PacketSchemaVersion || packet.CaseID != c.ID || packet.EvidenceVersion != evidenceVersion || packet.ContentSHA256 != c.ContentSHA256 {
+		return fmt.Errorf("case %q evidence packet identity does not match run and manifest", c.ID)
+	}
+	if len(packet.Facts) > maxPacketFacts || len(packet.Signals) > maxPacketSignals {
+		return fmt.Errorf("case %q evidence packet exceeds bounded item counts", c.ID)
+	}
+	seen := make(map[string]struct{}, len(packet.Facts))
+	for _, fact := range packet.Facts {
+		validDeterministic := fact.Claim == filleradmission.ClaimMediaUsability && fact.Kind == filleradmission.KindDecoder ||
+			fact.Claim == filleradmission.ClaimSourceLicense && fact.Kind == filleradmission.KindSourcePolicy
+		if fact.ID == "" || !validDeterministic || fact.EvaluationID != "" {
+			return fmt.Errorf("case %q packet facts may contain only named deterministic decoder and source-policy evidence", c.ID)
+		}
+		if _, duplicate := seen[fact.ID]; duplicate {
+			return fmt.Errorf("case %q packet contains duplicate fact id %q", c.ID, fact.ID)
+		}
+		seen[fact.ID] = struct{}{}
+	}
+	if got := PacketSHA256(packet); got != c.EvidenceSHA256 {
+		return fmt.Errorf("case %q evidence packet digest %s does not match manifest", c.ID, got)
+	}
+	return nil
+}
+
 func validSignalKind(kind string) bool {
 	switch filleradmission.EvidenceKind(kind) {
 	case filleradmission.KindRecordingSidecar, filleradmission.KindFilename,

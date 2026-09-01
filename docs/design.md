@@ -113,8 +113,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `catalog` | 5 | `library`, `provision` |
 | `contact` | 5 | — |
 | `diagnostics` | 8 | — |
-| `filler` | 6 | `diagnostics`, `filleradmission`, `llm`, `metrics` |
-| `filleradmission` | 7 | — |
+| `filler` | 6 | `diagnostics`, `filleradmission`, `llm`, `metrics`, `taxonomy` |
+| `filleradmission` | 8 | — |
 | `httpx` | 7 | `metrics` |
 | `invitation` | 6 | `contact` |
 | `library` | 7 | `filler`, `httpx` |
@@ -125,8 +125,9 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `recovery` | 5 | — |
 | `schedule` | 14 | `provision` |
 | `scheduler` | 6 | `store` |
-| `store` | 14 | `contact`, `diagnostics`, `filler`, `filleradmission`, `invitation`, `notifications`, `provision`, `recovery`, `schedule` |
+| `store` | 14 | `contact`, `diagnostics`, `filler`, `filleradmission`, `invitation`, `notifications`, `provision`, `recovery`, `schedule`, `taxonomy` |
 | `suggest` | 6 | `catalog`, `llm`, `provision`, `schedule`, `store` |
+| `taxonomy` | 5 | — |
 
 ##### Every package, by layer
 
@@ -144,11 +145,11 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns playable structure and bounded editorial facts used for episode curation.
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
-- **`filleradmission`** · 7 importers
+- **`filleradmission`** · 8 importers
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
-- **`fillercorpus`**
+- **`fillercorpus`** · 1 importer
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
-- **`fillereval`** · 2 importers
+- **`fillereval`** · 3 importers
   Owns the hermetic certification contract for filler admission.
 - **`media`** · 3 importers
   Owns host-wide resources shared by live and background media work.
@@ -164,7 +165,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Categorizes GitHub-generated release notes without allowing a language model to invent release content.
 - **`releaseverify`**
   Validates the repository's release publication policy.
-- **`taxonomy`** · 4 importers
+- **`taxonomy`** · 5 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
 - **`textmatch`** · 3 importers
   Owns deterministic, Unicode-aware whole-word phrase matching.
@@ -204,12 +205,12 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`httpx`** · 7 importers · → `metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
-- **`mediatools`** · 2 importers · → `diagnostics`, `playout`, `proctree`
+- **`mediatools`** · 3 importers · → `diagnostics`, `playout`, `proctree`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 
 **Layer 5**
 
-- **`fillerbakeoff`** · 2 importers · → `filleradmission`, `fillereval`, `httpx`
+- **`fillerbakeoff`** · 3 importers · → `filleradmission`, `fillereval`, `httpx`
   Runs bounded, inference-spending filler admission comparisons.
 - **`llm`** · 5 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
@@ -222,6 +223,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`filler`** · 6 importers · → `diagnostics`, `filleradmission`, `fillerdecision`, `llm`, `mediatools`, `metrics`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
+- **`fillerreference`** · → `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `mediatools`, `taxonomy`
+  Owns the deterministic pre-screen for the production-ready filler reference cohort.
 - **`fillerreview`** · → `filleradmission`, `fillerbakeoff`, `fillereval`, `httpx`
   Materializes identity-blind evidence for independent semantic review.
 
@@ -2789,7 +2792,10 @@ ffmpeg, and treats each selected stream's decoded-frame EOF (timestamp plus fram
 audio sample count at its sample rate) as its detector timeline; that decoded EOF is checked exactly
 against 120 seconds before conversion to the returned integer milliseconds:
 black/freeze end at video EOF and silence ends at audio EOF, never at a longer container or sibling-
-stream duration. A selected stream without an independently available positive duration fails closed
+stream duration. Each selected stream is probed independently under the same byte cap. The compact
+frame parser owns only the ordered timestamp/duration-or-sample-count scalar prefix requested from
+ffprobe; codec tags and side-data that ffprobe appends despite that projection are bounded by the
+same cap and ignored because they cannot contribute timing evidence. A selected stream without an independently available positive duration fails closed
 before detector execution. Detector events must match the anchored ffmpeg blackdetect, silencedetect,
 or freezedetect line grammar and fall inside that selected stream's timeline. Every detector kind is
 bound to one exact filter instance, address, and modern/legacy grammar for the measurement; distinct or
@@ -2798,12 +2804,16 @@ anchored integrated-LUFS summary and one anchored true-peak summary; duplicate, 
 suffixed summaries fail closed, including duplicate digital-silence peaks. Every completed event
 carries the detector's duration token, which must equal end minus start within **exactly 1 millisecond**,
 compared as decimal rational values rather than binary floating point, to allow only ffmpeg's decimal
-rendering tolerance. Malformed, oversized, incomplete, duplicate, repeated, inverted, or suffixed tool
+rendering tolerance. Malformed, oversized, incomplete, duplicate, repeated, inverted, or suffixed detector
 output fails closed rather than producing guessed precision. Conditioning appends exactly one black
 frame and one white frame before the video detectors, guaranteeing a changed frame even when the
 artifact ends frozen on either color.
-Detector timestamps contributed only by those two terminator frames are clamped away at the selected
-video stream's measured EOF and can never become evidence. These are execution limits, not content-quality
+The parser bounds their possible timestamp extension from the exact final decoded-video timestamp
+step (falling back to the declared cadence when fewer than two frame timestamps exist), because ffmpeg
+uses that terminal step for a sparse-VFR input rather than inventing a nominal cadence. A detector end
+may differ from the independently decoded EOF by at most one millisecond of decimal rendering before
+that bound is applied. Detector timestamps contributed only by those two terminator frames are clamped
+away at the selected video stream's measured EOF and can never become evidence. These are execution limits, not content-quality
 policy. V64 ends at this returned evidence: it does not invoke the filler pipeline, persist to the
 store or sidecar, expose an API, or decide what may be reviewed, certified, filed, admitted, rewritten,
 selected, or played. Those application-journey contracts remain tracked by issue #634 rather than
@@ -4028,6 +4038,25 @@ development evidence can select a candidate and justify a cascade, but cannot sa
 or authorize unattended admission. Rejecting an unlocked or partially reviewed development manifest
 is a pre-provider failure. This is not a compatibility path around certification; it is the explicit
 non-scoring half of the development/holdout experiment.
+
+The production-reference audit composes that immutable development manifest with one separate,
+versioned, negative-only content-review artifact. The review binds the exact manifest digest and
+keys every finding by unique content SHA-256, never by case ID, filename, collection, uploader text,
+or source title. Each finding cites at least two distinct in-clip frame, transcript, OCR, audio, or
+video evidence rows already bound into that exact manifest case. The audit rejects an unknown or
+duplicate content identity, a missing or mismatched evidence row, an unsupported evidence kind or
+closed reason, a future review time, or any artifact/input digest mismatch before screening. A valid
+finding may only exclude the exact bytes; it cannot admit, relabel, add taxonomy, mutate the locked
+manifest, or satisfy later human playback acceptance. The ordinary policy remains general for every
+unlisted case. Positive source and segment duration are also required: zero-duration media is
+unusable even when an upstream fact calls it usable. The audit owns the exact raw manifest, packet,
+mapping, acquisition-ledger, and content-review bytes: it strictly decodes them, rejects duplicate
+object keys at every depth plus unknown fields and trailing values, and derives their recorded
+SHA-256 identities itself rather than accepting caller assertions. A usable decoder fact requires
+`no_video=false`, `no_audio=false`, segment bounds wholly inside the positive source duration, and
+exactly one valid hashed, positive-byte, positive-duration, positive-dimension `video/mp4` evidence
+presentation. Missing streams or a missing/malformed presentation are unusable; impossible segment
+bounds invalidate the audit rather than being reinterpreted as a hold.
 
 Shared transcription is a separately locked provider artifact, not text pasted into a mutable packet.
 For each case it binds the exact raw packet digest, audio signal identity/hash/bytes/duration, transcript
