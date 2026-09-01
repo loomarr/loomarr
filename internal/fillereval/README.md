@@ -167,7 +167,13 @@ original two-model comparison, verifies that the immutable selection is exactly 
 projection, validates the hosted result and all evidence references, and reports per-axis whether the
 third model preserved an agreement control, matched either local model, matched neither, or could not
 be compared. It reports operational failures and unclear claims separately. The report deliberately
-does not call any model truth or recommend promotion without independent calibration labels.
+does not call any model truth or recommend promotion without independent calibration labels. Its
+versioned disposition policy is declared before the hosted run: fewer than three agreement controls
+or either missing dispute axis repairs the selection; an operational failure repeats only the bounded
+hosted calibration; and any semantic abstention, broken control, novel claim, non-comparable claim,
+or mixed local support repairs the evidence or prompt. Only preserved controls plus unanimous local
+support on each dispute axis permits revising the assessor mix and repeating the complete 32-case
+diagnostic. The disposition never authorizes the 300-case relabel directly.
 
 Predictions record the inference role/rung, requested and resolved route, derivative bounds, detailed
 token categories, attempts, generation id, and the provider's exact charged decimal alongside an

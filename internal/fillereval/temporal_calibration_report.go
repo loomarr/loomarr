@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	TemporalCalibrationReportSchemaVersion   = 1
-	TemporalCalibrationReportContractVersion = "filler-temporal-calibration-report-v1"
+	TemporalCalibrationReportSchemaVersion   = 2
+	TemporalCalibrationReportContractVersion = "filler-temporal-calibration-report-v2"
 )
 
 type TemporalCalibrationRelation string
@@ -51,6 +51,7 @@ type TemporalCalibrationReport struct {
 	ThirdUnits                 []TemporalCalibrationValueCount    `json:"thirdUnits"`
 	ThirdRoles                 []TemporalCalibrationValueCount    `json:"thirdRoles"`
 	CaseResults                []TemporalCalibrationCaseResult    `json:"caseResults"`
+	Disposition                TemporalCalibrationDisposition     `json:"disposition"`
 }
 
 type TemporalCalibrationRelationCount struct {
@@ -157,6 +158,7 @@ func AnalyzeTemporalCalibration(selection TemporalCalibrationSelection, selectio
 	report.RoleRelations = calibrationRelationCounts(roleRelations)
 	report.ThirdUnits = calibrationValueCounts(thirdUnits)
 	report.ThirdRoles = calibrationValueCounts(thirdRoles)
+	report.Disposition = temporalCalibrationDisposition(report)
 	return report, nil
 }
 
