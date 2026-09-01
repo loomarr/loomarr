@@ -94,7 +94,8 @@ for the LLM. Details in [`docs/design.md`](docs/design.md) §14.
   runtime, and bounded domain signals. See [Monitoring](docs/install/monitoring.md) for scraping and
   the source-controlled Grafana overview.
 - **Backup** — `GET /v1/backup` for SQLite; a mode-`0600` `pg_dump --format=custom` archive for
-  Postgres. Backups contain secrets; restore procedures are in the install and upgrade guides.
+  Postgres. Stored credentials are encrypted, and the external installation key must be preserved
+  separately. Restore procedures are in the install and upgrade guides.
 
 ## Contributing
 

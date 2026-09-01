@@ -74,5 +74,6 @@ as titles arrive.
 ## Upgrading
 
 Migrations only run forward, so back up first. SQLite backups come from `GET /v1/backup`; for
-Postgres create a custom archive with `umask 077; pg_dump --format=custom`. Backups hold secrets;
-keep them mode `0600`. The [upgrade guide](../install/upgrading.md) has the restore procedure.
+Postgres create a custom archive with `umask 077; pg_dump --format=custom`. Database credentials are
+encrypted, but a restore also needs the installation key kept outside that backup. Keep both safe
+and separate. The [upgrade guide](../install/upgrading.md) has the restore procedure.

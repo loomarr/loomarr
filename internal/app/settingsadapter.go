@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/requester"
+	"github.com/loomarr/loomarr/internal/secretprotection"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tmdb"
@@ -29,10 +30,11 @@ import (
 // before they reach here — a value never crosses this boundary except a freshly
 // regenerated DISPLAYABLE one (§4).
 type settingsAdapter struct {
-	svc     *settings.Service
-	secrets *settings.Secrets
-	store   store.Store
-	log     *slog.Logger
+	svc        *settings.Service
+	secrets    *settings.Secrets
+	store      store.Store
+	log        *slog.Logger
+	protection *secretprotection.Manager
 	// refreshRedactor re-snapshots every generated and app-managed secret after a
 	// mutation. It is intentionally callback-only: the adapter never receives or
 	// exposes the redactor's values.
@@ -45,9 +47,17 @@ type settingsAdapter struct {
 }
 
 // storePersister adapts store.Store to settings.Persister (the PATCH write path).
-type storePersister struct{ st store.Store }
+type storePersister struct {
+	st         store.Store
+	protection *secretprotection.Manager
+}
 
 func (p storePersister) Apply(ctx context.Context, batch settings.PersistenceBatch) error {
+	if p.protection != nil {
+		if err := p.protection.Refresh(ctx); err != nil {
+			return err
+		}
+	}
 	storeBatch := store.SettingBatch{
 		Upserts:   make([]store.SettingMutation, 0, len(batch.Upserts)),
 		Deletes:   append([]string(nil), batch.Deletes...),
@@ -55,8 +65,16 @@ func (p storePersister) Apply(ctx context.Context, batch settings.PersistenceBat
 		UpdatedAt: batch.UpdatedAt,
 	}
 	for _, row := range batch.Upserts {
+		value := row.Value
+		if p.protection != nil && protectedSetting(settings.NewRegistry(), row.Key) {
+			var err error
+			value, err = p.protection.Seal(settingRecord(row.Key), []byte(value))
+			if err != nil {
+				return err
+			}
+		}
 		storeBatch.Upserts = append(storeBatch.Upserts, store.SettingMutation{
-			Key: row.Key, Value: row.Value,
+			Key: row.Key, Value: value,
 		})
 	}
 	return p.st.ApplySettingBatch(ctx, storeBatch)
@@ -96,7 +114,7 @@ func (a settingsAdapter) List(ctx context.Context) []api.SettingEntry {
 }
 
 func (a settingsAdapter) Patch(ctx context.Context, edits map[string]string, updatedBy string) []api.SettingResult {
-	results, err := a.svc.Patch(ctx, storePersister{st: a.store}, edits, updatedBy)
+	results, err := a.svc.Patch(ctx, storePersister{st: a.store, protection: a.protection}, edits, updatedBy)
 	if a.refreshRedactor != nil {
 		a.refreshRedactor()
 	}
@@ -119,7 +137,7 @@ func (a settingsAdapter) Patch(ctx context.Context, edits map[string]string, upd
 // Clear is the explicit unset (config-design §8) — the only way to drop a secret,
 // since an empty-string PATCH on one is rejected as replace-only (§9).
 func (a settingsAdapter) Clear(ctx context.Context, key string) api.SettingResult {
-	res, err := a.svc.Clear(ctx, storePersister{st: a.store}, key)
+	res, err := a.svc.Clear(ctx, storePersister{st: a.store, protection: a.protection}, key)
 	if a.refreshRedactor != nil {
 		a.refreshRedactor()
 	}
@@ -134,7 +152,7 @@ func (a settingsAdapter) Clear(ctx context.Context, key string) api.SettingResul
 
 // SetEnvOverride is §3.1's unlock: claim a key for the app, or hand it back.
 func (a settingsAdapter) SetEnvOverride(ctx context.Context, key string, on bool, updatedBy string) api.SettingResult {
-	st, err := a.svc.SetEnvOverride(ctx, storePersister{st: a.store}, key, on, updatedBy)
+	st, err := a.svc.SetEnvOverride(ctx, storePersister{st: a.store, protection: a.protection}, key, on, updatedBy)
 	if a.refreshRedactor != nil {
 		a.refreshRedactor()
 	}

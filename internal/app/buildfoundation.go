@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/secretprotection"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tmdb"
@@ -46,6 +47,7 @@ type foundationBuild struct {
 	startupReports         *diagnostics.StartupReports
 	instanceID             string
 	metrics                *metrics.Recorder
+	protection             *secretprotection.Manager
 }
 
 // buildFoundation creates the shared roots consumed by later subsystem builders. The returned
@@ -107,7 +109,14 @@ func buildFoundation(
 		result.startupReports = diagnostics.NewStartupReports(result.startup, st, time.Now)
 	}
 	if st != nil {
-		set, secrets, redactor, redactedLog, err := bootSettings(context.Background(), st, log)
+		protection, err := buildSecretProtection(rootCtx, st, overrides.EncryptionDataDir)
+		if err != nil {
+			result.startup.Complete(diagnostics.StartupCheckGeneratedSecrets, diagnostics.StartupFailed,
+				"database secret protection could not be initialized", "/settings/system/security", "")
+			return foundationBuild{}, err
+		}
+		result.protection = protection
+		set, secrets, redactor, redactedLog, err := bootSettings(context.Background(), st, protection, log)
 		if err != nil {
 			result.startup.Complete(diagnostics.StartupCheckGeneratedSecrets, diagnostics.StartupFailed,
 				"settings and generated secrets could not be initialized", "/settings/system/diagnostics", "")

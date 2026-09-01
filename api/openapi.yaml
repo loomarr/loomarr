@@ -2328,6 +2328,31 @@ components:
         - slug
         - title
       type: object
+    EncryptionStatus:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/EncryptionStatus.json
+          format: uri
+          readOnly: true
+          type: string
+        dataKeyCount:
+          description: Active and retained readable data keys
+          format: int64
+          type: integer
+        enabled:
+          description: Whether database secret encryption is active
+          type: boolean
+        installationKeyFingerprint:
+          description: Non-secret installation-key fingerprint
+          type: string
+      required:
+        - enabled
+        - installationKeyFingerprint
+        - dataKeyCount
+      type: object
     EnqueueInputBody:
       additionalProperties: false
       properties:
@@ -13388,6 +13413,42 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Restart Loomarr in place
+      tags:
+        - system
+  /v1/system/security/encryption:
+    get:
+      description: Admin only. Reports the non-secret installation-key fingerprint and retained data-key count.
+      operationId: system-encryption-status
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EncryptionStatus"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Database secret-encryption status
+      tags:
+        - system
+  /v1/system/security/encryption/rotate:
+    post:
+      description: Admin only. New secret writes immediately use a fresh data key; prior keys remain readable.
+      operationId: system-encryption-rotate-data-key
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Rotate the active data-encryption key
       tags:
         - system
   /v1/system/services:
