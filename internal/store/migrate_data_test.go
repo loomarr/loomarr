@@ -550,10 +550,7 @@ func TestMigrateLeavesTheSourceUntouched(t *testing.T) {
 	src := newSQLiteStore(t)
 	seedForMigration(t, src)
 
-	before, err := VerifyParity(ctx, src, src)
-	if err != nil {
-		t.Fatalf("count source: %v", err)
-	}
+	before := paritySnapshot(t, ctx, src)
 
 	dst, err := openPostgresForDataMigration(ctx, startPostgres(t))
 	if err != nil {
@@ -565,10 +562,7 @@ func TestMigrateLeavesTheSourceUntouched(t *testing.T) {
 		t.Fatalf("migrate: %v", err)
 	}
 
-	after, err := VerifyParity(ctx, src, src)
-	if err != nil {
-		t.Fatalf("recount source: %v", err)
-	}
+	after := paritySnapshot(t, ctx, src)
 	if len(before) != len(after) {
 		t.Fatalf("source table count changed: %d -> %d", len(before), len(after))
 	}
@@ -578,6 +572,23 @@ func TestMigrateLeavesTheSourceUntouched(t *testing.T) {
 				before[i].Table, before[i].Source, after[i].Source)
 		}
 	}
+}
+
+func paritySnapshot(t *testing.T, ctx context.Context, st Store) []TableStat {
+	t.Helper()
+	s, ok := st.(*sqlStore)
+	if !ok {
+		t.Fatalf("snapshot source is %T, want SQL store", st)
+	}
+	tables, err := userTables(ctx, s)
+	if err != nil {
+		t.Fatalf("list source tables: %v", err)
+	}
+	stats, err := verifyParity(ctx, s.db, s.db, tables)
+	if err != nil {
+		t.Fatalf("count source: %v", err)
+	}
+	return stats
 }
 
 // Migrating onto the same dialect is refused — it is never what someone meant, and

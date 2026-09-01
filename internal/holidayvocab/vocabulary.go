@@ -80,8 +80,3 @@ func EvidenceAliases(id string) []string {
 	}
 	return nil
 }
-
-// Known reports whether id belongs to the closed built-in vocabulary.
-func Known(id string) bool {
-	return len(EvidenceAliases(id)) > 0
-}

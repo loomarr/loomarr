@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/playout"
@@ -242,7 +243,7 @@ func TestFillerConditioningJourneyFFmpeg_MidBreakClipReturnsToDecodableProgram(t
 		}
 		transport.Write(encoded)
 	}
-	mux, err := playout.StartPiped(ctx, ffmpeg, playout.BlockMuxArgs(), nil, nil)
+	mux, err := playout.StartPipedObserved(ctx, ffmpeg, playout.BlockMuxArgs(), nil, nil, nil, diagnostics.ProcessSpec{})
 	if err != nil {
 		t.Fatal(err)
 	}
