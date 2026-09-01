@@ -6,8 +6,10 @@ SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)"
 TMP="$(mktemp -d)"
 TMP="$(CDPATH='' cd -- "$TMP" && pwd -P)"
 pids=
+collision_a=
+collision_b=
 # shellcheck disable=SC2154 # pid is the loop variable inside the trap evaluated at exit.
-trap 'for pid in $pids; do kill "$pid" 2>/dev/null || true; done; rm -rf "$TMP" "$TMP-wt" "$TMP-third" "$TMP-fourth" "$TMP-fifth"' EXIT INT TERM
+trap 'for pid in $pids; do kill "$pid" 2>/dev/null || true; done; rm -rf "$TMP" "$TMP-wt" "$TMP-third" "$TMP-fourth" "$TMP-fifth"; [ -z "$collision_a" ] || rm -rf "$collision_a"; [ -z "$collision_b" ] || rm -rf "$collision_b"' EXIT INT TERM
 
 step() {
 	echo "agent-harness-test: $*"
@@ -176,6 +178,59 @@ fi
 LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/agent.sh" start second visual-baselines >/dev/null
 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" stop >/dev/null
 LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/agent.sh" stop >/dev/null
+
+# Two worktrees that share the legacy path-checksum slot must both register, even when their
+# starts race. Their final allocation remains stable when the worktree resolves its environment
+# again after registration.
+step 'collision-safe atomic port allocation'
+collision_pair="$(
+	i=1
+	while [ "$i" -le 901 ]; do
+		path="$TMP-collision-$i"
+		slot="$(printf '%s' "$path" | cksum | awk '{print $1 % 900 + 1}')"
+		printf '%s\t%s\n' "$slot" "$path"
+		i=$((i + 1))
+	done | sort -n | awk '$1 == previous { print previous_path; print $2; exit } { previous=$1; previous_path=$2 }'
+)"
+collision_a="$(printf '%s\n' "$collision_pair" | sed -n '1p')"
+collision_b="$(printf '%s\n' "$collision_pair" | sed -n '2p')"
+if [ -z "$collision_a" ] || [ -z "$collision_b" ]; then
+	echo 'agent-harness-test: could not construct a legacy checksum collision' >&2
+	exit 1
+fi
+git -C "$TMP" worktree add -q "$collision_a" -b collision-a
+git -C "$TMP" worktree add -q "$collision_b" -b collision-b
+
+a_output="$TMP/collision-a.out"
+b_output="$TMP/collision-b.out"
+(LOOMARR_REPO_ROOT="$collision_a" "$SCRIPT_DIR/agent.sh" start collision-a-task collision-a-claim >"$a_output" 2>&1) & a_pid=$!
+(LOOMARR_REPO_ROOT="$collision_b" "$SCRIPT_DIR/agent.sh" start collision-b-task collision-b-claim >"$b_output" 2>&1) & b_pid=$!
+pids="$pids $a_pid $b_pid"
+a_status=0
+b_status=0
+wait "$a_pid" || a_status=$?
+wait "$b_pid" || b_status=$?
+if [ "$a_status" -ne 0 ] || [ "$b_status" -ne 0 ]; then
+	cat "$a_output" "$b_output" >&2
+	echo "agent-harness-test: colliding concurrent starts failed ($a_status, $b_status)" >&2
+	exit 1
+fi
+
+a_exports="$(LOOMARR_REPO_ROOT="$collision_a" "$SCRIPT_DIR/dev-env.sh" export)"
+b_exports="$(LOOMARR_REPO_ROOT="$collision_b" "$SCRIPT_DIR/dev-env.sh" export)"
+[ "$a_exports" = "$(LOOMARR_REPO_ROOT="$collision_a" "$SCRIPT_DIR/dev-env.sh" export)" ]
+for name in LOOMARR_DEV_PORT LOOMARR_FE_PORT LOOMARR_STORYBOOK_PORT TUNARR_DEV_PORT; do
+	a_port="$(printf '%s\n' "$a_exports" | sed -n "s/export $name='\([0-9][0-9]*\)'/\1/p")"
+	b_port="$(printf '%s\n' "$b_exports" | sed -n "s/export $name='\([0-9][0-9]*\)'/\1/p")"
+	if [ -z "$a_port" ] || [ -z "$b_port" ] || [ "$a_port" = "$b_port" ]; then
+		echo "agent-harness-test: colliding worktrees share $name=$a_port" >&2
+		exit 1
+	fi
+done
+LOOMARR_REPO_ROOT="$collision_a" "$SCRIPT_DIR/agent.sh" stop >/dev/null
+LOOMARR_REPO_ROOT="$collision_b" "$SCRIPT_DIR/agent.sh" stop >/dev/null
+git -C "$TMP" worktree remove "$collision_a"
+git -C "$TMP" worktree remove "$collision_b"
 
 # A killed writer cannot leave every future agent waiting on an ownerless registry lock.
 step 'abandoned registry lock recovery'
