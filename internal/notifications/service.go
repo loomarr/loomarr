@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -229,8 +230,14 @@ func (s *Service) RunOne(ctx context.Context, owner string) (bool, error) {
 
 	delivery := Delivery{Intent: intent, Attempt: attempt}
 	result := Result{Status: StatusFailed, FailureClass: FailurePermanent, OutcomeCode: OutcomeMeansUnavailable}
-	if intent.Policy == PolicyConfigurable {
-		destination, destinationErr := s.repository.GetNotificationDestination(ctx, attempt.DestinationRef)
+	destinationID := attempt.DestinationRef
+	usesConfiguredDestination := intent.Policy == PolicyConfigurable
+	if intent.Policy == PolicyMandatoryAccount && strings.HasPrefix(destinationID, "provider:") {
+		usesConfiguredDestination = true
+		destinationID = strings.TrimPrefix(destinationID, "provider:")
+	}
+	if usesConfiguredDestination {
+		destination, destinationErr := s.repository.GetNotificationDestination(ctx, destinationID)
 		if errors.Is(destinationErr, ErrNotFound) || (destinationErr == nil && !destination.Enabled) {
 			result = Result{Status: StatusSuppressed, OutcomeCode: OutcomeDestinationUnavailable}
 		} else if destinationErr != nil {

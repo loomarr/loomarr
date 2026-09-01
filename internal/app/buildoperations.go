@@ -3,8 +3,10 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -95,13 +97,16 @@ func buildOperations(
 	log *slog.Logger,
 	metricRecorder *metrics.Recorder,
 	protection *secretprotection.Manager,
-) operationsBuild {
+) (operationsBuild, error) {
 	restart, bootConfig := buildRestart(overrides, log)
 	backups := buildBackups(st, set, registry, log)
 	authResult := buildAuth(st, set, secrets, readGeneratedSecret, libraryClient, log)
 	invitationService, _ := authResult.invitations.(*invitation.Service)
 	recoveryService := authResult.passwordRecovery
 	destinationRepository := notifications.NewProtectedDestinationRepository(st, protection)
+	if err := migrateLegacySMTPProvider(rootCtx, destinationRepository, set); err != nil {
+		return operationsBuild{}, fmt.Errorf("migrate SMTP notification provider: %w", err)
+	}
 	providerAdapters, providerValidators := notifications.NewHTTPProviderAdapters(
 		overrides.NotificationHTTP, func() string { return set.str("access.public_url") },
 	)
@@ -141,7 +146,42 @@ func buildOperations(
 		result.liveConfig = set.str
 		result.libraryConfigured = set.libraryConfigured
 	}
-	return result
+	return result, nil
+}
+
+func migrateLegacySMTPProvider(
+	ctx context.Context,
+	repository notifications.DestinationRepository,
+	set resolved,
+) error {
+	if repository == nil || set.svc == nil {
+		return nil
+	}
+	existing, err := repository.ListNotificationDestinations(ctx)
+	if err != nil {
+		return err
+	}
+	for _, destination := range existing {
+		if destination.Means == notifications.MeansEmail {
+			return nil
+		}
+	}
+	config := set.emailConfig()
+	if strings.TrimSpace(config.Host) == "" && strings.TrimSpace(config.FromAddress) == "" &&
+		config.Username == "" && config.Password == "" {
+		return nil
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	return repository.SaveNotificationDestination(ctx, notifications.Destination{
+		ID: "smtp-legacy", Means: notifications.MeansEmail, Label: "SMTP",
+		Scope: notifications.ScopeInstallation, Audience: notifications.RecipientOperators,
+		Enabled: config.Enabled,
+		Configuration: map[string]string{
+			"host": config.Host, "port": strconv.Itoa(config.Port), "security": string(config.Security),
+			"fromAddress": config.FromAddress, "fromName": config.FromName, "username": config.Username,
+		},
+		Credentials: map[string]string{"password": config.Password}, CreatedAt: now, UpdatedAt: now,
+	})
 }
 
 func buildNotificationDestinations(

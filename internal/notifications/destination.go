@@ -128,7 +128,11 @@ func (d Destination) Validate() error {
 		return fmt.Errorf("invalid destination scope %q", d.Scope)
 	}
 	if len(d.Topics) == 0 {
-		return fmt.Errorf("destination requires at least one topic")
+		// A migrated SMTP provider may initially serve mandatory Invitation and recovery mail only.
+		// Product events remain opt-in, so migration must not invent subscriptions.
+		if d.Means != MeansEmail || d.Scope != ScopeInstallation {
+			return fmt.Errorf("destination requires at least one topic")
+		}
 	}
 	seen := make(map[Topic]struct{}, len(d.Topics))
 	definition, _ := ProviderDefinitionFor(d.Means)

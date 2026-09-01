@@ -182,12 +182,15 @@ func buildHandler(
 	healthRunner := newCurrentHealthRunner(foundation.startup, st, set, healthProbes)
 	jobReg.Add(healthRunner.Job())
 
-	operations := buildOperations(
+	operations, err := buildOperations(
 		rootCtx, st, set, desiredSet, secrets, readGeneratedSecret, refreshSecretRedactor,
 		libraryClient, tmdbClient, eventBus, emitter, jobReg, owner, playoutRes,
 		appliedBackendContext, ov, log, foundation.metrics,
 		foundation.protection,
 	)
+	if err != nil {
+		return nil, nil, err
+	}
 	emitter.setNotifications(operations.productNotifications)
 	if playoutRes != nil {
 		setResidentVRAM(operations.residentLLM.probe)

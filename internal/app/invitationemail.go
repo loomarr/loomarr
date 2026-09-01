@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -69,9 +70,10 @@ func (c *invitationDeliveryCoordinator) LatestEmail(
 }
 
 type invitationEmailRouter struct {
-	invitations *invitation.Service
-	recovery    *auth.PasswordRecoveryService
-	config      func() notifications.EmailConfig
+	invitations  *invitation.Service
+	recovery     *auth.PasswordRecoveryService
+	destinations notifications.DestinationSource
+	config       func() notifications.EmailConfig
 }
 
 type combinedNotificationRouter struct {
@@ -133,7 +135,29 @@ func (r invitationEmailRouter) Routes(ctx context.Context, intent notifications.
 		return nil, err
 	}
 	route.DestinationRedacted = redactMailbox(address.Email)
-	if r.config == nil || !r.config().Enabled {
+	if r.destinations == nil {
+		if r.config == nil || !r.config().Enabled {
+			route.Suppressed = notifications.OutcomeDeliveryDisabled
+		}
+		return []notifications.Route{route}, nil
+	}
+	destinations, listErr := r.destinations.ListNotificationDestinations(ctx)
+	if listErr != nil {
+		return nil, listErr
+	}
+	sort.Slice(destinations, func(i, j int) bool {
+		if destinations[i].CreatedAt.Equal(destinations[j].CreatedAt) {
+			return destinations[i].ID < destinations[j].ID
+		}
+		return destinations[i].CreatedAt.Before(destinations[j].CreatedAt)
+	})
+	for _, destination := range destinations {
+		if destination.Means == notifications.MeansEmail && destination.Enabled {
+			route.DestinationRef = "provider:" + destination.ID
+			return []notifications.Route{route}, nil
+		}
+	}
+	if len(destinations) == 0 || route.Suppressed == notifications.OutcomeNone {
 		route.Suppressed = notifications.OutcomeDeliveryDisabled
 	}
 	return []notifications.Route{route}, nil
@@ -185,7 +209,6 @@ func (m invitationEmailMaterializer) Materialize(
 	switch {
 	case delivery.Intent.Topic == notifications.TopicAccountInvitation &&
 		delivery.Intent.ReferenceKind == notifications.ReferenceInvitation &&
-		delivery.Attempt.DestinationRef == "invitation:"+delivery.Intent.ReferenceID &&
 		m.invitations != nil:
 		address, err = m.invitations.Contact(ctx, delivery.Intent.ReferenceID)
 		if err == nil {
@@ -199,7 +222,6 @@ func (m invitationEmailMaterializer) Materialize(
 		}
 	case delivery.Intent.Topic == notifications.TopicLocalPasswordRecovery &&
 		delivery.Intent.ReferenceKind == notifications.ReferenceRecovery &&
-		delivery.Attempt.DestinationRef == "person:"+delivery.Intent.RecipientID &&
 		m.recovery != nil:
 		address, err = m.recovery.Contact(ctx, delivery.Intent.RecipientID)
 		if err == nil {
@@ -324,7 +346,7 @@ func buildAccountDelivery(
 	repository := notificationServiceRepository{Store: st, destinations: destinations}
 	service := notifications.NewService(repository, combinedNotificationRouter{
 		account: invitationEmailRouter{
-			invitations: invitationService, recovery: recoveryService, config: set.emailConfig,
+			invitations: invitationService, recovery: recoveryService, destinations: destinations,
 		},
 		product: notifications.NewDestinationRouter(destinations, currentNotificationEligibility{users: st}),
 	}, adapters, newID, time.Now)

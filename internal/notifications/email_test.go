@@ -218,6 +218,50 @@ func TestEmailAdapterInvalidatesGrantWhenMaterializedMessageIsInvalid(t *testing
 	}
 }
 
+func TestEmailAdapterUsesTheEncryptedProviderSettingsForProductDelivery(t *testing.T) {
+	sender := &fakeEmailSender{result: notifications.EmailTransmission{State: notifications.EmailAccepted}}
+	materializer := fakeEmailMaterializer{materialized: notifications.MaterializedEmail{Message: notifications.EmailMessage{
+		ToAddress: "person@example.com", Subject: "Loomarr: Channel live",
+		TextBody: "Channel is live", HTMLBody: "<p>Channel is live</p>",
+	}}}
+	adapter := notifications.NewEmailAdapter(nil, materializer, sender)
+	destination := notifications.Destination{
+		Means: notifications.MeansEmail,
+		Configuration: map[string]string{
+			"host": "smtp.provider.test", "port": "465", "security": "tls",
+			"fromAddress": "loomarr@example.com", "fromName": "Loomarr", "username": "mailer",
+		},
+		Credentials: map[string]string{"password": "provider-password"},
+	}
+	result := adapter.Deliver(t.Context(), notifications.Delivery{Destination: &destination})
+	if result.Status != notifications.StatusDelivered || len(sender.configs) != 1 {
+		t.Fatalf("result/configs = %+v/%+v", result, sender.configs)
+	}
+	config := sender.configs[0]
+	if config.Host != "smtp.provider.test" || config.Port != 465 ||
+		config.Security != notifications.EmailSecurityTLS || config.Password != "provider-password" {
+		t.Fatalf("SMTP provider config = %+v", config)
+	}
+	if err := adapter.ValidateDestination(destination.Configuration, destination.Credentials); err != nil {
+		t.Fatalf("valid SMTP provider rejected: %v", err)
+	}
+}
+
+func TestRenderProductEmailEscapesContentAndIncludesStableLink(t *testing.T) {
+	content, err := notifications.RenderProductEmail(notifications.Intent{
+		Topic: notifications.TopicChannelDegraded, Policy: notifications.PolicyConfigurable,
+		Template: notifications.TemplateData{SubjectName: `<Channel & Friends>`, Summary: `Needs "attention"`},
+	}, "https://loomarr.example/channels/channel-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(content.TextBody, "https://loomarr.example/channels/channel-1") ||
+		strings.Contains(content.HTMLBody, "<Channel & Friends>") ||
+		!strings.Contains(content.HTMLBody, "&lt;Channel &amp; Friends&gt;") {
+		t.Fatalf("product email = %+v", content)
+	}
+}
+
 func TestEmailAdapterSendTestUsesAppliedConfigurationWithoutMaterializingADomainGrant(t *testing.T) {
 	sender := &fakeEmailSender{result: notifications.EmailTransmission{State: notifications.EmailAccepted, ProviderMessageID: "provider-42"}}
 	config := notifications.EmailConfig{
@@ -263,9 +307,11 @@ func (f fakeEmailMaterializer) Materialize(context.Context, notifications.Delive
 type fakeEmailSender struct {
 	result   notifications.EmailTransmission
 	messages []notifications.EmailMessage
+	configs  []notifications.EmailConfig
 }
 
-func (f *fakeEmailSender) Send(_ context.Context, _ notifications.EmailConfig, message notifications.EmailMessage) notifications.EmailTransmission {
+func (f *fakeEmailSender) Send(_ context.Context, config notifications.EmailConfig, message notifications.EmailMessage) notifications.EmailTransmission {
+	f.configs = append(f.configs, config)
 	f.messages = append(f.messages, message)
 	return f.result
 }
