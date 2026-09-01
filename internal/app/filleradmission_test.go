@@ -249,6 +249,7 @@ func TestTrustedFillerSourceConvergesIntoChannelBreak(t *testing.T) {
 		acquisitions: st,
 		newID:        func() string { return "acq-trusted" },
 		now:          func() time.Time { return time.Unix(1_800_000_001, 0).UTC() },
+		start:        testInteractiveOperationLauncher,
 		afterIngest: func(ctx context.Context) error {
 			admit, err := allows(ctx, source.ID)
 			if err != nil || !admit {

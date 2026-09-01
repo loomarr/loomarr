@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // fakeSystemLLM is a scriptable SystemLLMService for the API-layer tests.
@@ -54,6 +56,12 @@ func (f *fakeSystemLLM) Discover(_ context.Context) ([]api.DiscoverModelView, er
 
 func serverWithSystemLLM(t *testing.T, svc api.SystemLLMService) *httptest.Server {
 	t.Helper()
+	srv, _ := serverWithSystemLLMStore(t, svc)
+	return srv
+}
+
+func serverWithSystemLLMStore(t *testing.T, svc api.SystemLLMService) (*httptest.Server, store.Store) {
+	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/api.db")
 	t.Cleanup(func() { _ = st.Close() })
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
@@ -64,7 +72,7 @@ func serverWithSystemLLM(t *testing.T, svc api.SystemLLMService) *httptest.Serve
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, st
 }
 
 // All /v1/system/llm* routes require admin (§8.1: model selection can trigger a
@@ -78,6 +86,7 @@ func TestSystemLLM_RequiresAdmin(t *testing.T) {
 		{http.MethodPost, "/v1/system/llm/select", `{"model":"qwen3:8b"}`},
 		{http.MethodPost, "/v1/system/llm/test", `{"provider":"openrouter"}`},
 		{http.MethodPost, "/v1/system/llm/pull", `{"model":"qwen3:8b"}`},
+		{http.MethodGet, "/v1/system/llm/pull-operations/job-1", ""},
 	} {
 		resp := do(t, srv, tc.method, tc.path, "", tc.body) // no token
 		if resp.StatusCode != http.StatusUnauthorized {
@@ -266,6 +275,43 @@ func TestSystemLLM_Pull(t *testing.T) {
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 	if body.JobID == "" || svc.pulled != "qwen3.5:9b" {
 		t.Errorf("pull jobID=%q pulled=%q", body.JobID, svc.pulled)
+	}
+}
+
+func TestSystemLLM_PullOperationRecoversProgressWithoutEvents(t *testing.T) {
+	srv, st := serverWithSystemLLMStore(t, &fakeSystemLLM{})
+	now := time.Now().UTC()
+	operation := store.InteractiveOperation{
+		ID: "pull-1", Kind: store.InteractiveOperationLLMPull, Subject: "qwen3:8b",
+		Status: store.InteractiveOperationRunning, Percent: 42, Completed: 420, Total: 1000,
+		StartedAt: now.Add(-time.Minute), UpdatedAt: now,
+	}
+	if err := st.UpsertInteractiveOperation(t.Context(), operation); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodGet, "/v1/system/llm/pull-operations/pull-1", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get pull operation -> %d", resp.StatusCode)
+	}
+	var got struct {
+		JobID     string `json:"jobId"`
+		Model     string `json:"model"`
+		Status    string `json:"status"`
+		Percent   int    `json:"percent"`
+		Completed int64  `json:"completed"`
+		Total     int64  `json:"total"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.JobID != operation.ID || got.Model != operation.Subject || got.Status != string(operation.Status) || got.Percent != 42 || got.Completed != 420 || got.Total != 1000 {
+		t.Fatalf("pull operation = %+v, want durable progress", got)
+	}
+
+	resp = do(t, srv, http.MethodGet, "/v1/system/llm/pull-operations/missing", adminToken, "")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("missing pull operation -> %d, want 404", resp.StatusCode)
 	}
 }
 

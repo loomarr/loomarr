@@ -536,6 +536,14 @@ type FillerAcquisitionStore interface {
 	ListAcquisitionRuns(ctx context.Context, limit int, at time.Time) ([]filler.AcquisitionRun, error)
 }
 
+// InteractiveOperationStore is the reconnect truth for request-launched asynchronous work. It
+// stores snapshots only; recurring/distributed scheduling remains owned by ScheduledJobStore.
+type InteractiveOperationStore interface {
+	UpsertInteractiveOperation(ctx context.Context, operation InteractiveOperation) error
+	GetInteractiveOperation(ctx context.Context, id string) (InteractiveOperation, error)
+	RecoverInterruptedInteractiveOperations(ctx context.Context, at time.Time) (int, error)
+}
+
 // FillerInferenceStore owns append-only call attribution and the atomic budget
 // reservation that must succeed before hosted inference starts (§10 V62).
 type FillerInferenceStore interface {
@@ -774,6 +782,7 @@ type Store interface {
 	FillerSourceStore
 	FillerPullStore
 	FillerAcquisitionStore
+	InteractiveOperationStore
 	FillerInferenceStore
 	FillerDecisionStore
 	SplitProposalStore

@@ -1131,6 +1131,44 @@ func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
 	}
 }
 
+func TestGetFillerSplitOperation_RecoversTerminalResultWithoutEvents(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	now := time.Now().UTC()
+	operation := store.InteractiveOperation{
+		ID: "split-job-1", Kind: store.InteractiveOperationFillerSplit, Subject: "clip-hash",
+		Status: store.InteractiveOperationSuccess, ResultID: "sp_1",
+		StartedAt: now.Add(-time.Minute), CompletedAt: now, UpdatedAt: now,
+	}
+	if err := st.UpsertInteractiveOperation(t.Context(), operation); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodGet, "/v1/filler/split-operations/split-job-1", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get split operation -> %d", resp.StatusCode)
+	}
+	var got struct {
+		JobID      string `json:"jobId"`
+		Status     string `json:"status"`
+		ProposalID string `json:"proposalId"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.JobID != operation.ID || got.Status != string(operation.Status) || got.ProposalID != operation.ResultID {
+		t.Fatalf("split operation = %+v, want terminal proposal result", got)
+	}
+
+	resp = do(t, srv, http.MethodGet, "/v1/filler/split-operations/missing", adminToken, "")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("missing split operation -> %d, want 404", resp.StatusCode)
+	}
+	resp = do(t, srv, http.MethodGet, "/v1/filler/split-operations/split-job-1", "", "")
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("member split operation -> %d, want 401", resp.StatusCode)
+	}
+}
+
 // Confirm maps the splitter's sentinels: 422 for a rejected edit, 404 for a
 // missing proposal — and reports how many clips it wrote.
 func TestConfirmFillerSplit_Route(t *testing.T) {

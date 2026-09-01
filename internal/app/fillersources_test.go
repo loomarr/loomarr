@@ -28,6 +28,38 @@ type recordingClipIngestor struct {
 	result  clipfetch.Result
 }
 
+type blockingClipIngestor struct {
+	started   chan struct{}
+	cancelled chan struct{}
+}
+
+func testInteractiveOperationLauncher(
+	timeout time.Duration,
+	run func(context.Context) error,
+	complete func(context.Context, error),
+) error {
+	go func() {
+		ctx := context.Background()
+		if timeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, timeout)
+			defer cancel()
+		}
+		err := run(ctx)
+		if complete != nil {
+			complete(context.Background(), err)
+		}
+	}()
+	return nil
+}
+
+func (b blockingClipIngestor) Run(ctx context.Context, _ []clipfetch.Source) clipfetch.Result {
+	close(b.started)
+	<-ctx.Done()
+	close(b.cancelled)
+	return clipfetch.Result{}
+}
+
 func (r recordingClipIngestor) Run(_ context.Context, sources []clipfetch.Source) clipfetch.Result {
 	r.sources <- append([]clipfetch.Source(nil), sources...)
 	return r.result
@@ -234,6 +266,7 @@ func TestIngest_SuccessCataloguesTheDownloadedFilesImmediately(t *testing.T) {
 	a := fillerServiceAdapter{
 		fetcher: successfulClipIngestor{},
 		newID:   func() string { return "job-1" },
+		start:   testInteractiveOperationLauncher,
 		afterIngest: func(context.Context) error {
 			prepared <- struct{}{}
 			return nil
@@ -260,6 +293,7 @@ func TestIngest_PersistsLifecycleAndCarriesAcquisitionToDownloader(t *testing.T)
 	a := fillerServiceAdapter{
 		fetcher: fetched, acquisitions: recordingAcquisitions{runs: runs},
 		newID: func() string { return "acq-17" }, now: func() time.Time { return fixed },
+		start: testInteractiveOperationLauncher,
 	}
 
 	jobID, err := a.IngestSource(t.Context(), "archive:classic", []string{
@@ -312,6 +346,47 @@ func TestIngest_RefusesAJobThatCannotBePersisted(t *testing.T) {
 	}
 }
 
+func TestIngest_IsOwnedByApplicationGenerationNotRequest(t *testing.T) {
+	lifecycle := newGenerationLifecycle(t.Context())
+	application := &Application{lifecycle: lifecycle}
+	started := make(chan struct{})
+	cancelled := make(chan struct{})
+	runs := make(chan filler.AcquisitionRun, 3)
+	a := fillerServiceAdapter{
+		fetcher:      blockingClipIngestor{started: started, cancelled: cancelled},
+		acquisitions: recordingAcquisitions{runs: runs},
+		newID:        func() string { return "acq-owned" },
+		start:        lifecycle.startInteractiveOperation,
+	}
+
+	requestCtx, disconnect := context.WithCancel(t.Context())
+	if _, err := a.Ingest(requestCtx, []string{"https://archive.org/details/one"}); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if run := <-runs; run.Status != filler.AcquisitionQueued {
+		t.Fatalf("first run = %q, want queued", run.Status)
+	}
+	<-started
+	disconnect()
+	select {
+	case <-cancelled:
+		t.Fatal("request disconnect cancelled the accepted acquisition")
+	default:
+	}
+
+	if err := application.Shutdown(t.Context()); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+	<-cancelled
+	if run := <-runs; run.Status != filler.AcquisitionRunning {
+		t.Fatalf("second run = %q, want running", run.Status)
+	}
+	terminal := <-runs
+	if terminal.Status != filler.AcquisitionError || terminal.Error == "" || terminal.CompletedAt.IsZero() {
+		t.Fatalf("terminal run = %+v, want durable cancellation error", terminal)
+	}
+}
+
 func TestIngest_RefusesAnEmptyAcquisition(t *testing.T) {
 	a := fillerServiceAdapter{fetcher: successfulClipIngestor{}, newID: func() string { return "acq-17" }}
 	if _, err := a.Ingest(t.Context(), nil); err == nil {
@@ -325,6 +400,7 @@ func TestIngestPull_PreservesPerTargetSourcesUnderOneRun(t *testing.T) {
 	a := fillerServiceAdapter{
 		fetcher: fetched, acquisitions: recordingAcquisitions{runs: runs},
 		newID: func() string { return "acq-17" },
+		start: testInteractiveOperationLauncher,
 	}
 
 	_, err := a.IngestPull(t.Context(), "pull-7", []filler.AcquisitionTarget{

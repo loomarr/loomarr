@@ -92,8 +92,8 @@ const RolePicker = ({
 // catalog is what you've pulled plus a machine-ranked browse, never a hardcoded list. A
 // hosted (OpenAI-compatible) provider instead gets a live model picker over its /models.
 //
-// Pull progress exists ONLY on the SSE stream (`llm_pull` frames), so it comes through
-// the shared event fan-out — the same reason the Suggest workspace does.
+// Pull progress is authoritative at the operation GET returned by POST /pull. `llm_pull` SSE
+// frames only accelerate that polling path, so a dropped frame or reconnect loses nothing.
 //
 // `provider` is the LIVE (possibly unsaved) provider from the settings form, so the right
 // surface appears the instant the dropdown flips — it doesn't wait for Save, matching how
@@ -128,6 +128,7 @@ const AiModelSettings = ({
   // A failed download must SAY so. Clearing the progress on error looked identical to
   // success, leaving the operator to notice the row still said "Download".
   const [pullError, setPullError] = useState<string>();
+  const [pullJobId, setPullJobId] = useState<string>();
 
   const isHosted = provider === "openai";
   // Status carries BOTH the local catalog and the hosted-provider catalog, so it's always
@@ -154,38 +155,69 @@ const AiModelSettings = ({
 
   const select = systemApi.useSystemLlmSelect({ mutation: { onSuccess: modelChanged } });
   const testProvider = systemApi.useSystemLlmTest();
-  const pull = systemApi.useSystemLlmPull();
+  const pull = systemApi.useSystemLlmPull({
+    mutation: {
+      onSuccess: (response) => {
+        const body = unwrap(response);
+        if (body?.jobId) setPullJobId(body.jobId);
+      },
+    },
+  });
+  const pullOperation = systemApi.useSystemLlmPullOperation(pullJobId ?? "", {
+    query: {
+      enabled: Boolean(pullJobId),
+      retry: false,
+      refetchInterval: pullJobId ? 1_000 : false,
+    },
+  });
 
   // The compatible-to-download list: the BE ranks popular HF models against this
   // machine's VRAM. Fetched only on the Ollama branch (a hosted provider downloads
   // nothing); a pull success invalidates it so a freshly-pulled model leaves the list.
   const discover = systemApi.useSystemLlmDiscover({ query: { retry: false, enabled: !isHosted } });
 
+  const operation = unwrap(pullOperation.data);
+  useEffect(() => {
+    if (!operation || !pullJobId || operation.jobId !== pullJobId) return;
+    if (operation.status === "error") {
+      setPullError(operation.error ?? `Downloading ${operation.model} failed.`);
+      setPulling(undefined);
+      setPullJobId(undefined);
+      return;
+    }
+    if (operation.status === "success") {
+      setPulling(undefined);
+      setPullJobId(undefined);
+      void queryClient.invalidateQueries({ queryKey: systemApi.getSystemLlmStatusQueryKey() });
+      void queryClient.invalidateQueries({ queryKey: systemApi.getSystemLlmDiscoverQueryKey() });
+      return;
+    }
+    setPulling({
+      tag: operation.model,
+      percent: operation.percent >= 0 ? operation.percent : undefined,
+    });
+  }, [operation, pullJobId, queryClient]);
+
   useLoomarrEventListener({
     onLlmPull: (e) => {
       if (!e.model) return;
+      if (pullJobId && e.jobId && e.jobId !== pullJobId) return;
       if (e.status === "error") {
         setPullError(e.error ?? `Downloading ${e.model} failed.`);
-        setPulling(undefined);
-        return;
-      }
-      // A successful terminal frame refreshes both surfaces: the freshly-pulled model
-      // appears in the installed list and leaves the download list, no reload needed.
-      if (e.status === "success") {
-        setPulling(undefined);
-        void invalidate();
-        void queryClient.invalidateQueries({
-          queryKey: systemApi.getSystemLlmDiscoverQueryKey(),
-        });
-        return;
       }
       setPulling({ tag: e.model, percent: e.percent && e.percent >= 0 ? e.percent : undefined });
+      if (pullJobId) {
+        void queryClient.invalidateQueries({
+          queryKey: systemApi.getSystemLlmPullOperationQueryKey(pullJobId),
+        });
+      }
     },
   });
 
   const startPull = (model: string) => {
     setPullError(undefined);
     setPulling({ tag: model });
+    setPullJobId(undefined);
     pull.mutate({ data: { model } });
   };
 
