@@ -22,6 +22,16 @@ shell_quote() {
 	printf "'"
 }
 
+registered_slot() {
+	# Registration is authoritative once allocation moves a worktree off its legacy checksum slot.
+	# Later dev commands must resolve that same tuple without extra shell state.
+	common="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 1
+	key="$(printf '%s' "$ROOT" | cksum | awk '{print $1}')"
+	file="$common/loomarr-agents/sessions/$key"
+	[ -f "$file" ] || return 1
+	sed -n 's/^slot=//p' "$file" | head -1
+}
+
 valid_port() {
 	case "$1" in
 		''|*[!0-9]*) return 1 ;;
@@ -34,7 +44,16 @@ BRANCH="$(git -C "$ROOT" symbolic-ref --quiet --short HEAD 2>/dev/null || printf
 BRANCH_SLUG="$(slugify "$BRANCH")"
 [ -n "$BRANCH_SLUG" ] || BRANCH_SLUG=worktree
 CHECKSUM="$(printf '%s' "$ROOT" | cksum | awk '{print $1}')"
-SLOT=$((CHECKSUM % 900 + 1))
+DEFAULT_SLOT=$((CHECKSUM % 900 + 1))
+REGISTERED_SLOT="$(registered_slot || true)"
+SLOT="${REGISTERED_SLOT:-${LOOMARR_AGENT_SLOT_OVERRIDE:-$DEFAULT_SLOT}}"
+case "$SLOT" in
+	''|*[!0-9]*) echo "dev-env: invalid agent port slot: $SLOT" >&2; exit 2 ;;
+esac
+[ "$SLOT" -ge 1 ] && [ "$SLOT" -le 900 ] || {
+	echo "dev-env: invalid agent port slot: $SLOT" >&2
+	exit 2
+}
 
 if [ "$ROOT" = "$PRIMARY" ]; then
 	INSTANCE=primary
@@ -104,6 +123,7 @@ emit_export() {
 case "${1:-show}" in
 	export)
 		emit_export LOOMARR_INSTANCE "$INSTANCE"
+		emit_export LOOMARR_AGENT_SLOT "$SLOT"
 		emit_export LOOMARR_REPO_ROOT "$ROOT"
 		emit_export LOOMARR_DEV_PORT "$BACKEND_PORT"
 		emit_export LOOMARR_FE_PORT "$FRONTEND_PORT"
