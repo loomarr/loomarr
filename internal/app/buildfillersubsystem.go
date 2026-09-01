@@ -40,6 +40,7 @@ func buildFillerSubsystem(
 	channelService api.ChannelService,
 	processDiagnostics *diagnostics.ProcessManager,
 	metricRecorder *metrics.Recorder,
+	owner *generationLifecycle,
 ) fillerBuild {
 	var result fillerBuild
 	if st == nil {
@@ -100,6 +101,7 @@ func buildFillerSubsystem(
 	adapter := fillerServiceAdapter{
 		syncer: syncer, tagger: tagger, fetcher: fetcher,
 		bus: eventBus, log: log, newID: newID, timeout: set.dur("ingest.timeout"),
+		start:   owner.startInteractiveOperation,
 		sources: st, acquisitions: st, readiness: st, now: time.Now,
 		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st, wake: wake},
 	}

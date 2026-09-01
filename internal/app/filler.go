@@ -650,6 +650,7 @@ type fillerServiceAdapter struct {
 	log         *slog.Logger
 	newID       func() string
 	timeout     time.Duration
+	start       interactiveOperationLauncher
 	// sources registers what an operator added, so the Sources tab can show where clips
 	// came from. Narrow interface, not the whole store: this adapter has no other reason
 	// to reach persistence.
@@ -819,6 +820,9 @@ func (a fillerServiceAdapter) ingest(
 	if len(targets) == 0 {
 		return "", errors.New("filler acquisition requires at least one target")
 	}
+	if a.start == nil {
+		return "", errors.New("filler acquisition lifecycle is not configured")
+	}
 	jobID := a.newID()
 	sources := make([]clipfetch.Source, 0, len(targets))
 	for _, target := range targets {
@@ -843,49 +847,46 @@ func (a fillerServiceAdapter) ingest(
 			return "", fmt.Errorf("queue filler acquisition: %w", err)
 		}
 	}
-	go func() {
-		// Deliberately NOT the request context: the HTTP response has already been
-		// written, so tying the download to it would cancel every ingest the moment the
-		// client disconnected. The timeout below is what bounds the work instead.
-		bg := context.Background()
-		if a.timeout > 0 {
-			var cancel context.CancelFunc
-			bg, cancel = context.WithTimeout(bg, a.timeout*time.Duration(len(sources)))
-			defer cancel()
-		}
+	var res clipfetch.Result
+	operationTimeout := a.timeout * time.Duration(len(sources))
+	err := a.start(operationTimeout, func(operationCtx context.Context) error {
 		run.Status = filler.AcquisitionRunning
 		run.UpdatedAt = now().UTC()
-		a.persistAcquisition(run)
+		a.persistAcquisition(operationCtx, run)
 		a.publishIngest(jobID, "starting", clipfetch.Result{}, "")
-		res := a.fetcher.Run(bg, sources)
+		res = a.fetcher.Run(operationCtx, sources)
 		run.Fetched, run.Skipped = res.Fetched, res.Skipped
 		run.Failed, run.Empty = res.Failed, res.Empty
+		if err := operationCtx.Err(); err != nil {
+			return err
+		}
 		if res.Failed > 0 && res.Fetched == 0 {
-			// Every source failed — report it as an error rather than a success with
-			// zeroes, which reads as "nothing to download" and hides a bad URL or an
-			// expired yt-dlp.
-			run.Status = filler.AcquisitionError
-			run.Error = "every source failed; check the URLs and the yt-dlp version"
-			run.CompletedAt, run.UpdatedAt = now().UTC(), now().UTC()
-			a.persistAcquisition(run)
-			a.publishIngest(jobID, "error", res, run.Error)
-			return
+			return errors.New("every source failed; check the URLs and the yt-dlp version")
 		}
 		if a.afterIngest != nil {
-			if err := a.afterIngest(bg); err != nil {
-				run.Status = filler.AcquisitionError
-				run.Error = "downloaded files could not be catalogued; the scheduled sync will retry: " + err.Error()
-				run.CompletedAt, run.UpdatedAt = now().UTC(), now().UTC()
-				a.persistAcquisition(run)
-				a.publishIngest(jobID, "error", res, run.Error)
-				return
+			if err := a.afterIngest(operationCtx); err != nil {
+				return fmt.Errorf("downloaded files could not be catalogued; the scheduled sync will retry: %w", err)
 			}
 		}
-		run.Status = filler.AcquisitionSuccess
+		return nil
+	}, func(completionCtx context.Context, runErr error) {
+		if runErr != nil {
+			run.Status = filler.AcquisitionError
+			run.Error = runErr.Error()
+		} else {
+			run.Status = filler.AcquisitionSuccess
+		}
 		run.CompletedAt, run.UpdatedAt = now().UTC(), now().UTC()
-		a.persistAcquisition(run)
-		a.publishIngest(jobID, "success", res, "")
-	}()
+		a.persistAcquisition(completionCtx, run)
+		a.publishIngest(jobID, string(run.Status), res, run.Error)
+	})
+	if err != nil {
+		run.Status = filler.AcquisitionError
+		run.Error = err.Error()
+		run.CompletedAt, run.UpdatedAt = now().UTC(), now().UTC()
+		a.persistAcquisition(ctx, run)
+		return "", err
+	}
 	return jobID, nil
 }
 
@@ -902,15 +903,12 @@ func commonAcquisitionSource(targets []filler.AcquisitionTarget) string {
 	return sourceID
 }
 
-func (a fillerServiceAdapter) persistAcquisition(run filler.AcquisitionRun) {
+func (a fillerServiceAdapter) persistAcquisition(ctx context.Context, run filler.AcquisitionRun) {
 	if a.acquisitions == nil {
 		return
 	}
 	// The run was durably queued before the goroutine started. Later snapshots are best-effort:
 	// a transient store failure must not cancel downloaded bytes or bypass pipeline reconciliation.
-	// Use an independent bounded context because the download timeout may have fired already.
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 	if err := a.acquisitions.UpsertAcquisitionRun(ctx, run); err != nil && a.log != nil {
 		a.log.Error("could not persist filler acquisition state",
 			"acquisition", run.ID, "status", run.Status, "err", err)

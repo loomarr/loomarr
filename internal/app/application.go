@@ -16,6 +16,12 @@ var ErrApplicationQuiescing = errors.New("application generation is quiescing")
 
 const interactiveOperationCompletionTimeout = 5 * time.Second
 
+type interactiveOperationLauncher func(
+	time.Duration,
+	func(context.Context) error,
+	func(context.Context, error),
+) error
+
 // Application is one fully wired Loomarr generation. The process owns the listener, signals,
 // and store; Application owns the handler and every generation-scoped worker built behind it.
 type Application struct {
