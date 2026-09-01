@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -32,7 +33,12 @@ func NewSeerr(baseURL, apiKey string) *Seerr {
 // via conn (config-design §3 hot-apply). The composition root passes a closure
 // over the settings snapshot.
 func NewSeerrDynamic(conn func() (baseURL, apiKey string)) *Seerr {
-	return &Seerr{conn: conn, http: httpx.NewNamed("seerr", httpx.TimeoutSeerr)}
+	return NewSeerrDynamicObserved(conn, nil)
+}
+
+// NewSeerrDynamicObserved binds operational requests to one application generation.
+func NewSeerrDynamicObserved(conn func() (baseURL, apiKey string), recorder *metrics.Recorder) *Seerr {
+	return &Seerr{conn: conn, http: httpx.NewNamedObserved("seerr", httpx.TimeoutSeerr, recorder)}
 }
 
 func (s *Seerr) baseURL() string { u, _ := s.conn(); return strings.TrimRight(u, "/") }

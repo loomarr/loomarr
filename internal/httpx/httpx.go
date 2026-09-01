@@ -45,13 +45,10 @@ func New(timeout time.Duration) *http.Client {
 	return newClient(timeout, newTransport(), nil)
 }
 
-// NewNamed is New plus outbound metrics: the returned client's transport is
-// wrapped so every request records latency + result under `target` (§17). Use it
-// for the request/response RPC clients each adapter builds (target = the service
-// name: "tunarr", "library", "llm", …); health probes stay on plain New to keep
-// the metric to the operational RPC path.
-func NewNamed(target string, timeout time.Duration) *http.Client {
-	return newNamedClient(target, timeout, newTransport())
+// NewNamed retains the standalone/test constructor without process-global metrics.
+// Application composition uses NewNamedObserved with its generation Recorder.
+func NewNamed(_ string, timeout time.Duration) *http.Client {
+	return newClient(timeout, newTransport(), nil)
 }
 
 // NewNamedObserved is NewNamed bound to one application generation's Recorder.
@@ -101,17 +98,6 @@ func newClient(
 		Transport:     newRetryTransport(next, onRetry),
 		CheckRedirect: getOnlyRedirects,
 	}
-}
-
-func newNamedClient(target string, timeout time.Duration, next http.RoundTripper) *http.Client {
-	c := newClient(timeout, next, func(reason metrics.OutboundRetryReason) {
-		metrics.OutboundRetried(target, reason)
-	})
-	// Instrumentation stays outside the retry transport: latency, request count,
-	// status, and inbound fan-out describe one logical request. The retry counter
-	// above accounts separately for each additional attempt.
-	c.Transport = metrics.InstrumentTransport(target, c.Transport)
-	return c
 }
 
 func newNamedObservedClient(

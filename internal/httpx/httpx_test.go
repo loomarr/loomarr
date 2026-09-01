@@ -62,14 +62,14 @@ func TestNewStreaming_HasNoWholeRequestTimeout(t *testing.T) {
 	}
 }
 
-func TestNewNamedIsTransparent(t *testing.T) {
+func TestNamedClientIsTransparent(t *testing.T) {
 	transport := httpfixture.RoundTripperFunc(func(*http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Body:       io.NopCloser(strings.NewReader("ok")),
 		}, nil
 	})
-	c := newNamedClient("test-target", 5*time.Second, transport)
+	c := newClient(5*time.Second, transport, nil)
 	if c.Timeout != 5*time.Second {
 		t.Fatalf("NewNamed timeout = %v, want 5s", c.Timeout)
 	}

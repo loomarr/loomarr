@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/metrics"
 )
 
 // now is the clock for stamping a new channel's loop anchor (StartTime). A package var so
@@ -78,10 +79,19 @@ func New(baseURL, transcodeConfigID string) *Tunarr {
 // operation (config-design §3 hot-apply). The composition root passes a closure
 // over the settings snapshot.
 func NewDynamic(config func() Config) *Tunarr {
+	return newDynamic(config, nil)
+}
+
+// NewDynamicObserved binds operational Tunarr requests to one application generation.
+func NewDynamicObserved(config func() Config, recorder *metrics.Recorder) *Tunarr {
+	return newDynamic(config, recorder)
+}
+
+func newDynamic(config func() Config, recorder *metrics.Recorder) *Tunarr {
 	t := &Tunarr{
 		config:   config,
-		http:     httpx.NewNamed("tunarr", httpx.TimeoutTunarr),
-		bulkHTTP: httpx.NewNamed("tunarr-bulk", httpx.TimeoutTunarrBulk),
+		http:     httpx.NewNamedObserved("tunarr", httpx.TimeoutTunarr, recorder),
+		bulkHTTP: httpx.NewNamedObserved("tunarr-bulk", httpx.TimeoutTunarrBulk, recorder),
 	}
 	t.resolver = &contentResolver{refresh: t.buildContentIndex}
 	return t

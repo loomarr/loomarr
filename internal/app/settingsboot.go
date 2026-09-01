@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/requester"
@@ -222,20 +223,28 @@ func (r resolved) arrConns() requester.ArrConns {
 // requesterFor builds the Requester the composition root uses, branching on
 // requester.provider (§6): the direct Sonarr/Radarr adapter when "arr", else Seerr.
 func (r resolved) requesterFor() requester.Requester {
-	if a := r.arrRequester(); a != nil {
+	return r.requesterForObserved(nil)
+}
+
+func (r resolved) requesterForObserved(recorder *metrics.Recorder) requester.Requester {
+	if a := r.arrRequesterObserved(recorder); a != nil {
 		return a
 	}
-	return requester.NewSeerrDynamic(r.seerrConn())
+	return requester.NewSeerrDynamicObserved(r.seerrConn(), recorder)
 }
 
 // arrRequester returns the concrete direct-arr requester when requester.provider=arr, else nil.
 // The queue poller (§18.1) needs the concrete *Arr for its QueueStatus capability, which the
 // Requester interface doesn't expose.
 func (r resolved) arrRequester() *requester.Arr {
+	return r.arrRequesterObserved(nil)
+}
+
+func (r resolved) arrRequesterObserved(recorder *metrics.Recorder) *requester.Arr {
 	if r.str("requester.provider") != "arr" {
 		return nil
 	}
-	return requester.NewArr(r.arrConns())
+	return requester.NewArrObserved(r.arrConns(), recorder)
 }
 
 // seerrRequester returns the concrete Seerr requester when Seerr is the active provider (the
@@ -244,10 +253,14 @@ func (r resolved) arrRequester() *requester.Arr {
 // Requester interface doesn't expose. Only meaningful once seerr.url is set — an unconfigured
 // Seerr QueueStatus just errors and the poll pass is a harmless no-op.
 func (r resolved) seerrRequester() *requester.Seerr {
+	return r.seerrRequesterObserved(nil)
+}
+
+func (r resolved) seerrRequesterObserved(recorder *metrics.Recorder) *requester.Seerr {
 	if r.str("requester.provider") == "arr" {
 		return nil
 	}
-	return requester.NewSeerrDynamic(r.seerrConn())
+	return requester.NewSeerrDynamicObserved(r.seerrConn(), recorder)
 }
 
 // tunarrConfig snapshots every live Tunarr setting together at the start of one

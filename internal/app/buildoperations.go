@@ -110,7 +110,7 @@ func buildOperations(
 	result := operationsBuild{
 		backups: backups, restart: restart, bootConfig: bootConfig,
 		auth:  authResult,
-		guide: buildGuide(st, set, playoutResolver, appliedBackend),
+		guide: buildGuide(st, set, playoutResolver, appliedBackend, metricRecorder),
 		settings: buildSettings(
 			st, set, desiredSet, secrets, libraryClient, tmdbClient,
 			refreshSecretRedactor, readGeneratedSecret, triggerHealth, log,
@@ -277,6 +277,7 @@ func buildGuide(
 	set resolved,
 	playoutResolver *playoutResolver,
 	appliedBackend func(context.Context) (string, error),
+	metricRecorder *metrics.Recorder,
 ) api.GuideReader {
 	if st == nil {
 		return nil
@@ -287,7 +288,7 @@ func buildGuide(
 	}
 	return nowNextRouter{
 		tunarr: guideAdapter{
-			tunarr: programmer.NewDynamic(set.tunarrConfig()), window: 2 * time.Hour,
+			tunarr: programmer.NewDynamicObserved(set.tunarrConfig(), metricRecorder), window: 2 * time.Hour,
 		},
 		internal: internalGuide, channels: st, appliedBackend: appliedBackend, window: 2 * time.Hour,
 	}

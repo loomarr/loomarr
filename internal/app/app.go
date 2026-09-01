@@ -140,7 +140,7 @@ func buildHandler(
 	jobReg, activityRec := foundation.jobs, foundation.activity
 
 	episodeRefresh := buildProvisioning(st, set, libraryClient, emitter, jobReg, activityRec,
-		foundation.processDiagnostics, log)
+		foundation.processDiagnostics, log, foundation.metrics)
 
 	channelsBuilt, err := buildChannels(
 		rootCtx, st, set, ov, owner, capturePlayoutResolver, libraryClient, secrets,

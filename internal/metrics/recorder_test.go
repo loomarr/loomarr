@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/images/rustgen"
 	"github.com/loomarr/loomarr/internal/metrics"
 )
 
@@ -122,6 +123,61 @@ func TestRecorderRecordsLLMTokensWithoutProviderOrModelLabels(t *testing.T) {
 	for _, want := range []string{
 		`loomarr_llm_tokens_total{kind="prompt"} 21`,
 		`loomarr_llm_tokens_total{kind="completion"} 8`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("scrape does not contain %q", want)
+		}
+	}
+}
+
+func TestRecorderHTTPUsesMatchedRouteAndCountsOutboundFanout(t *testing.T) {
+	recorder := metrics.New(metrics.Options{})
+	transport := recorder.InstrumentTransport("library", roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("ok"))}, nil
+	}))
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/items/{id}", func(w http.ResponseWriter, request *http.Request) {
+		for range 2 {
+			response, err := transport.RoundTrip(request.Clone(request.Context()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = response.Body.Close()
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	handler := recorder.FanoutMiddleware(recorder.Middleware(mux))
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/v1/items/private-id", nil))
+
+	body := scrape(t, recorder)
+	if strings.Contains(body, "private-id") {
+		t.Fatalf("scrape leaked raw request path:\n%s", body)
+	}
+	for _, want := range []string{
+		`loomarr_http_requests_total{code="204",method="GET",route="/v1/items/{id}"} 1`,
+		`loomarr_http_outbound_fanout_sum{method="GET",route="/v1/items/{id}"} 2`,
+		`loomarr_outbound_requests_total{code="200",target="library"} 2`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("scrape does not contain %q", want)
+		}
+	}
+}
+
+func TestRecorderBoundsImageWorkerDimensions(t *testing.T) {
+	recorder := metrics.New(metrics.Options{})
+	recorder.ImageWorkerObserved(rustgen.Observation{
+		Kind: "private-operation", Result: "secret failure", Duration: time.Millisecond,
+	})
+	recorder.ImageWorkerQueueWait("private-class", time.Millisecond)
+
+	body := scrape(t, recorder)
+	if strings.Contains(body, "private-operation") || strings.Contains(body, "secret failure") || strings.Contains(body, "private-class") {
+		t.Fatalf("scrape leaked arbitrary image-worker labels:\n%s", body)
+	}
+	for _, want := range []string{
+		`loomarr_image_worker_operations_total{kind="other",result="other"} 1`,
+		`loomarr_image_worker_queue_wait_seconds_count{class="other"} 1`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("scrape does not contain %q", want)

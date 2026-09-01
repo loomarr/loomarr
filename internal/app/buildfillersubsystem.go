@@ -90,7 +90,7 @@ func buildFillerSubsystem(
 		}
 	}
 
-	fillerProgrammer := programmer.NewDynamic(set.tunarrConfig())
+	fillerProgrammer := programmer.NewDynamicObserved(set.tunarrConfig(), metricRecorder)
 	wake := &fillerChannelWake{st: st, channels: channelService, log: log}
 	result.taxonomy = taxonomyEditor{store: st, wake: wake}
 	syncer := buildSyncer(st, set, layout, log, fillerProgrammer, libraryClient)

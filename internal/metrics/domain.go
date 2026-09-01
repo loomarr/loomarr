@@ -2,13 +2,9 @@ package metrics
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -41,36 +37,12 @@ var (
 	knownProposalFailureCodes    = []string{"no_grounded_titles", "generation_failed", "other"}
 )
 
-var (
-	// logins counts login attempts by outcome (§17 logins success/failure).
-	logins = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loomarr", Subsystem: "auth", Name: "logins_total",
-		Help: "Login attempts by result.",
-	}, []string{"result"})
-
-	// storeScrapeErrors records when a state-gauge query fails during a scrape,
-	// so a silently-empty gauge is distinguishable from a broken one.
-	storeScrapeErrors = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loomarr", Subsystem: "metrics", Name: "scrape_errors_total",
-		Help: "Store queries that failed during a /metrics scrape, by source.",
-	}, []string{"source"})
-)
-
-// LoginResult records a login outcome (§17). success is true when credentials
-// verified and a session was issued.
-func LoginResult(success bool) {
-	result := "failure"
-	if success {
-		result = "success"
-	}
-	logins.WithLabelValues(result).Inc()
-}
-
 // storeCollector emits the state gauges by querying the store at scrape time.
 // Reading on scrape (not on every mutation) keeps the gauges correct without
 // threading a recorder through the provisioning, job, and session write paths.
 type storeCollector struct {
-	binding           atomic.Pointer[storeCollectorBinding]
+	counts            StoreCounts
+	now               func() time.Time
 	scrapeErrors      *prometheus.CounterVec
 	titles            *prometheus.Desc
 	jobs              *prometheus.Desc
@@ -78,13 +50,6 @@ type storeCollector struct {
 	proposalOldestAge *prometheus.Desc
 	proposalAttempts  *prometheus.Desc
 	proposalFailures  *prometheus.Desc
-}
-
-// storeCollectorBinding is published as one immutable value so a scrape never
-// combines a generation's store with another generation's clock.
-type storeCollectorBinding struct {
-	counts StoreCounts
-	now    func() time.Time
 }
 
 func (c *storeCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -99,9 +64,7 @@ func (c *storeCollector) Describe(ch chan<- *prometheus.Desc) {
 func (c *storeCollector) Collect(ch chan<- prometheus.Metric) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	binding := c.binding.Load()
-
-	if byState, err := binding.counts.CountTitlesByState(ctx); err != nil {
+	if byState, err := c.counts.CountTitlesByState(ctx); err != nil {
 		c.scrapeErrors.WithLabelValues("titles").Inc()
 	} else {
 		for _, st := range knownStates {
@@ -110,7 +73,7 @@ func (c *storeCollector) Collect(ch chan<- prometheus.Metric) {
 		}
 	}
 
-	if byStatus, err := binding.counts.CountJobsByStatus(ctx); err != nil {
+	if byStatus, err := c.counts.CountJobsByStatus(ctx); err != nil {
 		c.scrapeErrors.WithLabelValues("jobs").Inc()
 	} else {
 		for _, status := range knownJobStatuses {
@@ -119,16 +82,16 @@ func (c *storeCollector) Collect(ch chan<- prometheus.Metric) {
 		}
 	}
 
-	if n, err := binding.counts.CountActiveSessions(ctx, binding.now()); err != nil {
+	if n, err := c.counts.CountActiveSessions(ctx, c.now()); err != nil {
 		c.scrapeErrors.WithLabelValues("sessions").Inc()
 	} else {
 		ch <- prometheus.MustNewConstMetric(c.sessions, prometheus.GaugeValue, float64(n))
 	}
 
-	if oldest, err := binding.counts.OldestProposalJobsByStatus(ctx); err != nil {
+	if oldest, err := c.counts.OldestProposalJobsByStatus(ctx); err != nil {
 		c.scrapeErrors.WithLabelValues("proposal_job_age").Inc()
 	} else {
-		now := binding.now()
+		now := c.now()
 		for _, status := range []string{"queued", "running"} {
 			age := 0.0
 			if createdAt, ok := oldest[status]; ok {
@@ -138,7 +101,7 @@ func (c *storeCollector) Collect(ch chan<- prometheus.Metric) {
 		}
 	}
 
-	if raw, err := binding.counts.CountProposalJobAttemptsByStatus(ctx); err != nil {
+	if raw, err := c.counts.CountProposalJobAttemptsByStatus(ctx); err != nil {
 		c.scrapeErrors.WithLabelValues("proposal_job_attempts").Inc()
 	} else {
 		bounded := boundCounts(raw, knownProposalAttemptOutcomes[:len(knownProposalAttemptOutcomes)-1])
@@ -148,7 +111,7 @@ func (c *storeCollector) Collect(ch chan<- prometheus.Metric) {
 		}
 	}
 
-	if raw, err := binding.counts.CountFailedProposalJobsByCode(ctx); err != nil {
+	if raw, err := c.counts.CountFailedProposalJobsByCode(ctx); err != nil {
 		c.scrapeErrors.WithLabelValues("proposal_job_failures").Inc()
 	} else {
 		bounded := boundCounts(raw, knownProposalFailureCodes[:len(knownProposalFailureCodes)-1])
@@ -177,18 +140,14 @@ func boundCounts(raw map[string]int, known []string) map[string]int {
 	return out
 }
 
-// newStoreCollector builds the collector with its metric descriptors. Split from
-// registration so tests can gather it through a private registry.
-func newStoreCollector(counts StoreCounts, now func() time.Time) *storeCollector {
-	return newStoreCollectorWithErrors(counts, now, storeScrapeErrors)
-}
-
 func newStoreCollectorWithErrors(
 	counts StoreCounts,
 	now func() time.Time,
 	scrapeErrors *prometheus.CounterVec,
 ) *storeCollector {
 	c := &storeCollector{
+		counts:       counts,
+		now:          now,
 		scrapeErrors: scrapeErrors,
 		titles: prometheus.NewDesc("loomarr_titles",
 			"Provisioning records currently in each state.", []string{"state"}, nil),
@@ -203,36 +162,5 @@ func newStoreCollectorWithErrors(
 		proposalFailures: prometheus.NewDesc("loomarr_proposal_job_failures",
 			"Retained failed Proposal Jobs by bounded requester-safe code.", []string{"code"}, nil),
 	}
-	c.rebind(counts, now)
 	return c
-}
-
-func (c *storeCollector) rebind(counts StoreCounts, now func() time.Time) {
-	c.binding.Store(&storeCollectorBinding{counts: counts, now: now})
-}
-
-// RegisterStoreCollector wires the state-gauge collector into the default
-// registry so /metrics includes it. App generations rebuild their stores while
-// the registry lives for the process, so a duplicate registration rebinds the
-// existing collector to the new store. Any other error is returned for the
-// caller to log.
-func RegisterStoreCollector(counts StoreCounts, now func() time.Time) error {
-	return registerStoreCollector(prometheus.DefaultRegisterer, counts, now)
-}
-
-func registerStoreCollector(reg prometheus.Registerer, counts StoreCounts, now func() time.Time) error {
-	candidate := newStoreCollector(counts, now)
-	if err := reg.Register(candidate); err != nil {
-		var already prometheus.AlreadyRegisteredError
-		if errors.As(err, &already) {
-			existing, ok := already.ExistingCollector.(*storeCollector)
-			if !ok {
-				return fmt.Errorf("store metric descriptors already owned by %T", already.ExistingCollector)
-			}
-			existing.rebind(counts, now)
-			return nil
-		}
-		return err
-	}
-	return nil
 }

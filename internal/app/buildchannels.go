@@ -141,7 +141,7 @@ func buildChannels(
 	var chanNumbers binder.NumberSource
 	if st != nil {
 		lib := libraryClient
-		prog := programmer.NewDynamic(set.tunarrConfig())
+		prog := programmer.NewDynamicObserved(set.tunarrConfig(), metricRecorder)
 		// Every production caller supplies an explicit URL snapshot from the durable checkpoint.
 		// The connector's fixed fallback is empty so accidentally using a compatibility helper
 		// fails closed instead of publishing a process-local target.
