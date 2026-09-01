@@ -169,8 +169,9 @@ func TestProviderDefinitionsOfferOnlyEventsTheirRecipientModelCanDeliver(t *test
 	if !ok {
 		t.Fatal("Pushover provider definition is missing")
 	}
-	if pushover.MemberOwned || !hasProviderTopic(pushover, notifications.TopicProposalApproved) {
-		t.Fatal("Pushover must be an installation provider that can deliver requester events")
+	if pushover.MemberOwned || hasProviderTopic(pushover, notifications.TopicProposalApproved) ||
+		hasProviderTopic(pushover, notifications.TopicProposalDeclined) {
+		t.Fatal("installation Pushover must not offer requester-only events")
 	}
 }
 

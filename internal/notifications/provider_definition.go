@@ -195,7 +195,7 @@ var providerDefinitions = []ProviderDefinition{
 		},
 	},
 	{
-		Means: MeansPushover, Name: "Pushover", Topics: productProviderTopics,
+		Means: MeansPushover, Name: "Pushover", Topics: sharedProviderTopics,
 		Fields: []ProviderField{
 			field("applicationToken", "Application token", ProviderFieldPassword, true, true),
 			field("recipientKey", "User or group key", ProviderFieldPassword, true, true),
