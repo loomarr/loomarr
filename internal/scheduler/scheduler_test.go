@@ -4,11 +4,15 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -141,6 +145,38 @@ func TestReconcileSeedsAndRuns(t *testing.T) {
 	}
 	if j.LastResult != "ok" {
 		t.Errorf("last_result = %q, want ok", j.LastResult)
+	}
+}
+
+func TestRunPublishesJobLifecycleToGenerationMetrics(t *testing.T) {
+	st := newFakeStore()
+	clk := &fakeClock{t: time.Unix(1000, 0)}
+	reg := NewRegistry().Add(Job{
+		Name: "health-check", Group: GroupSystem, Title: "Check health",
+		Description: "Checks dependencies.", DefaultCron: everyMinute,
+		Run: func(context.Context) error { return nil },
+	})
+	recorder := metrics.New(metrics.Options{})
+	scheduler := New(st, reg, nil, clk.now, testLog()).WithObserver(recorder)
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	go scheduler.Run(ctx)
+	waitFor(t, func() bool {
+		job, err := st.GetScheduledJob(ctx, "health-check")
+		return err == nil && job.LastResult == "ok"
+	})
+
+	scrape := httptest.NewRecorder()
+	recorder.Handler().ServeHTTP(scrape, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	for _, want := range []string{
+		`loomarr_scheduler_job_executions_total{job="health-check",result="success",trigger="scheduled"} 1`,
+		`loomarr_scheduler_job_duration_seconds_count{job="health-check"} 1`,
+		`loomarr_scheduler_jobs_running{job="health-check"} 0`,
+		`loomarr_scheduler_job_last_success_timestamp_seconds{job="health-check"} 1000`,
+	} {
+		if !strings.Contains(scrape.Body.String(), want) {
+			t.Errorf("generation scrape does not contain %q", want)
+		}
 	}
 }
 

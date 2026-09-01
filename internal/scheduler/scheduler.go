@@ -10,6 +10,7 @@ package scheduler
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -173,6 +174,14 @@ type ScheduleStore interface {
 // Notifier receives a job-changed signal after each run, for the SSE bus (optional).
 type Notifier interface{ JobChanged(name string) }
 
+// Observer receives bounded Job lifecycle facts. The metrics Recorder satisfies
+// it without exposing Prometheus collectors to the scheduler.
+type Observer interface {
+	SchedulerJobs(names []string)
+	SchedulerJobStarted(name string)
+	SchedulerJobFinished(name, result, trigger string, duration time.Duration, finishedAt time.Time)
+}
+
 // ScheduleFn resolves a job's effective cron expression from its settings key, falling back
 // to def when unset (so a schedule is edited in the settings registry, hot-applied).
 type ScheduleFn func(key, def string) string
@@ -206,6 +215,7 @@ type Scheduler struct {
 	now      func() time.Time
 	log      *slog.Logger
 	notifier Notifier
+	observer Observer
 	// river is the execution engine once StartRiver has run (§14, §18.1). Nil until then —
 	// and nil in unit tests, which drive tick()/execute() directly rather than standing up a
 	// queue, so the scheduler's own behaviour stays testable without a database.
@@ -238,6 +248,15 @@ func New(st ScheduleStore, reg *Registry, schedule ScheduleFn, now func() time.T
 
 // WithNotifier wires an SSE notifier (optional). Returns s for chaining.
 func (s *Scheduler) WithNotifier(n Notifier) *Scheduler { s.notifier = n; return s }
+
+// WithObserver binds Job lifecycle observations and initializes the sealed Job set.
+func (s *Scheduler) WithObserver(observer Observer) *Scheduler {
+	s.observer = observer
+	if observer != nil {
+		observer.SchedulerJobs(append([]string(nil), s.order...))
+	}
+	return s
+}
 
 // effectiveCron is the job's configured cron expression, or its default when unset/invalid.
 func (s *Scheduler) effectiveCron(j Job) string {
@@ -350,14 +369,17 @@ func (s *Scheduler) tick(ctx context.Context) {
 		if j.Disabled() {
 			continue
 		}
-		go s.execute(ctx, j)
+		go s.execute(ctx, j, false)
 	}
 }
 
 // execute runs one job and persists the outcome + next run.
-func (s *Scheduler) execute(ctx context.Context, j Job) jobExecutionOutput {
+func (s *Scheduler) execute(ctx context.Context, j Job, manual bool) jobExecutionOutput {
 	s.setRunning(j.Name, true)
 	defer s.setRunning(j.Name, false)
+	if s.observer != nil {
+		s.observer.SchedulerJobStarted(j.Name)
+	}
 
 	start := s.now()
 	err := s.safeRun(ctx, j)
@@ -389,6 +411,23 @@ func (s *Scheduler) execute(ctx context.Context, j Job) jobExecutionOutput {
 	duration := now.Sub(start).Milliseconds()
 	if duration < 0 {
 		duration = 0
+	}
+	metricResult := "success"
+	var panicFailure *panicError
+	switch {
+	case errors.As(err, &panicFailure):
+		metricResult = "panic"
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(ctx.Err(), context.DeadlineExceeded):
+		metricResult = "timeout"
+	case err != nil:
+		metricResult = "error"
+	}
+	if s.observer != nil {
+		trigger := "scheduled"
+		if manual {
+			trigger = "manual"
+		}
+		s.observer.SchedulerJobFinished(j.Name, metricResult, trigger, now.Sub(start), now)
 	}
 	return jobExecutionOutput{
 		StartedAt: start, FinishedAt: now, DurationMs: duration, Result: result, Error: errText,

@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/media"
+	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/prepared"
 	"github.com/loomarr/loomarr/internal/scheduler"
@@ -55,6 +56,7 @@ type playoutDeps struct {
 	transportBackend      func(context.Context) (string, error)
 	log                   *slog.Logger
 	processDiagnostics    *diagnostics.ProcessManager
+	metrics               *metrics.Recorder
 }
 
 func buildPlayout(deps playoutDeps) (playoutBuild, error) {
@@ -138,7 +140,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		playoutBudget,
 		playout.DefaultGrace,
 		log,
-	)
+	).WithObserver(deps.metrics)
 	// A committed internal Desired-cycle change must retire the encoder reading the
 	// previous cycle. The next tune starts from the new wall-clock position; peer
 	// Postgres replicas receive the same cutover through durable invalidations.

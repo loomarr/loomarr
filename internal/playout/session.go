@@ -191,9 +191,16 @@ type Manager struct {
 	// to arbitrary code while holding m.mu is how a deadlock gets built between two packages
 	// that never mention each other.
 	onChange func()
+	observer SessionObserver
 
 	mu       sync.Mutex
 	sessions map[sessionKey]*Session
+}
+
+// SessionObserver receives bounded lifecycle facts without Channel or plan identity.
+type SessionObserver interface {
+	PlayoutSessionStarted(result string)
+	PlayoutSessionActive(delta int)
 }
 
 // ProcessRunID returns the opaque diagnostic identity of one ready session, if observed.
@@ -218,6 +225,12 @@ func (m *Manager) ProcessRunID(channelID string, plan EncodePlan) string {
 // OnChange registers the session-set change hook. Called once during composition, before any
 // viewer can attach.
 func (m *Manager) OnChange(fn func()) { m.onChange = fn }
+
+// WithObserver binds one application generation's session lifecycle observer.
+func (m *Manager) WithObserver(observer SessionObserver) *Manager {
+	m.observer = observer
+	return m
+}
 
 // notifyChange fires the hook if one is registered. Never called with m.mu held.
 func (m *Manager) notifyChange() {
@@ -339,6 +352,9 @@ func (m *Manager) acquire(ctx context.Context, key sessionKey) (*Session, error)
 	newCost := key.plan.EstimatedCost()
 	if !Admit(m.budget(), m.committedCost, newCost) {
 		m.mu.Unlock()
+		if m.observer != nil {
+			m.observer.PlayoutSessionStarted("capacity")
+		}
 		return nil, ErrAtCapacity
 	}
 	// Reserve the slot with a not-yet-spawned placeholder, then spawn outside the lock.
@@ -360,7 +376,18 @@ func (m *Manager) acquire(ctx context.Context, key sessionKey) (*Session, error)
 			s.cost = 0
 		}
 		m.mu.Unlock()
+		if m.observer != nil {
+			result := "spawn_error"
+			if errors.Is(s.initErr, context.Canceled) {
+				result = "canceled"
+			}
+			m.observer.PlayoutSessionStarted(result)
+		}
 		return nil, s.initErr
+	}
+	if m.observer != nil {
+		m.observer.PlayoutSessionStarted("success")
+		m.observer.PlayoutSessionActive(1)
 	}
 	m.notifyChange()
 	return s, nil
@@ -727,12 +754,17 @@ func (m *Manager) Stop() {
 // Stop that ran the map-delete first): only a still-present, identical session is subtracted.
 func (m *Manager) forget(key sessionKey) {
 	m.mu.Lock()
+	removed := false
 	if s := m.sessions[key]; s != nil {
 		m.committedCost -= s.cost
 		s.cost = 0
 		delete(m.sessions, key)
+		removed = true
 	}
 	m.mu.Unlock()
+	if removed && m.observer != nil {
+		m.observer.PlayoutSessionActive(-1)
+	}
 	m.notifyChange()
 }
 

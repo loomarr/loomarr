@@ -35,6 +35,9 @@ type Recorder struct {
 	http       recorderHTTP
 	images     recorderImages
 	outbound   recorderOutbound
+	scheduler  recorderScheduler
+	playout    recorderPlayout
+	channels   recorderChannels
 }
 
 type recorderHTTP struct {
@@ -58,6 +61,26 @@ type recorderOutbound struct {
 	requests *prometheus.CounterVec
 	duration *prometheus.HistogramVec
 	retries  *prometheus.CounterVec
+}
+
+type recorderScheduler struct {
+	executions  *prometheus.CounterVec
+	duration    *prometheus.HistogramVec
+	running     *prometheus.GaugeVec
+	lastSuccess *prometheus.GaugeVec
+}
+
+type recorderPlayout struct {
+	sessionsActive prometheus.Gauge
+	sessionStarts  *prometheus.CounterVec
+	processFailure *prometheus.CounterVec
+	fallbacks      *prometheus.CounterVec
+}
+
+type recorderChannels struct {
+	reconciles    *prometheus.CounterVec
+	duration      prometheus.Histogram
+	substitutions prometheus.Counter
 }
 
 // New constructs an isolated generation registry with Loomarr identity and the
@@ -168,6 +191,70 @@ func New(options Options) *Recorder {
 			Help: "Outbound HTTP retry attempts by target service and bounded reason.",
 		}, []string{"target", "reason"}),
 	}
+	schedulerMetrics := recorderScheduler{
+		executions: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loomarr", Subsystem: "scheduler", Name: "job_executions_total",
+			Help: "Named Job executions by bounded result and trigger.",
+		}, []string{"job", "result", "trigger"}),
+		duration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: "loomarr", Subsystem: "scheduler", Name: "job_duration_seconds",
+			Help:    "Named Job execution wall-clock duration in seconds.",
+			Buckets: []float64{0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 300, 1800},
+		}, []string{"job"}),
+		running: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "loomarr", Subsystem: "scheduler", Name: "jobs_running",
+			Help: "Named Jobs currently executing in this application generation.",
+		}, []string{"job"}),
+		lastSuccess: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "loomarr", Subsystem: "scheduler", Name: "job_last_success_timestamp_seconds",
+			Help: "Unix timestamp of the last successful named Job execution.",
+		}, []string{"job"}),
+	}
+	playoutMetrics := recorderPlayout{
+		sessionsActive: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "loomarr", Subsystem: "playout", Name: "sessions_active",
+			Help: "Internal Playout sessions active in this application generation.",
+		}),
+		sessionStarts: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loomarr", Subsystem: "playout", Name: "session_starts_total",
+			Help: "Internal Playout session starts by bounded result.",
+		}, []string{"result"}),
+		processFailure: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loomarr", Subsystem: "playout", Name: "process_failures_total",
+			Help: "Internal Playout process failures by bounded stage.",
+		}, []string{"stage"}),
+		fallbacks: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loomarr", Subsystem: "playout", Name: "fallbacks_total",
+			Help: "Internal Playout fallback transitions by bounded reason.",
+		}, []string{"reason"}),
+	}
+	channelMetrics := recorderChannels{
+		reconciles: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loomarr", Subsystem: "channel", Name: "reconciles_total",
+			Help: "Channel reconciles by result.",
+		}, []string{"result"}),
+		duration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: "loomarr", Subsystem: "channel", Name: "reconcile_duration_seconds",
+			Help:    "Wall-clock of a single Channel reconcile in seconds.",
+			Buckets: []float64{0.05, 0.1, 0.5, 1, 2.5, 5, 10, 30, 60},
+		}),
+		substitutions: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "loomarr", Subsystem: "channel", Name: "slot_substitutions_total",
+			Help: "Scheduled programs demoted to a placeholder because the Title vanished.",
+		}),
+	}
+	for _, result := range []string{"success", "error"} {
+		channelMetrics.reconciles.WithLabelValues(result)
+	}
+	for _, result := range []string{"success", "capacity", "spawn_error", "canceled", "other"} {
+		playoutMetrics.sessionStarts.WithLabelValues(result)
+	}
+	for _, stage := range []string{"parent", "program", "filler", "hls", "probe", "other"} {
+		playoutMetrics.processFailure.WithLabelValues(stage)
+	}
+	for _, reason := range []string{"hardware_to_software", "prepared_to_live", "file_to_stream", "other"} {
+		playoutMetrics.fallbacks.WithLabelValues(reason)
+	}
 	for _, target := range []string{
 		"tunarr", "tmdb", "library", "seerr", "arr", "llm",
 		"filler_review", "filler_bakeoff", "other",
@@ -185,7 +272,11 @@ func New(options Options) *Recorder {
 		httpMetrics.inFlight, httpMetrics.fanout, imageMetrics.operations, imageMetrics.duration,
 		imageMetrics.inputBytes, imageMetrics.outputBytes, imageMetrics.peakRSS,
 		imageMetrics.queueWait, imageMetrics.inFlight, outboundMetrics.requests,
-		outboundMetrics.duration, outboundMetrics.retries)
+		outboundMetrics.duration, outboundMetrics.retries, schedulerMetrics.executions,
+		schedulerMetrics.duration, schedulerMetrics.running, schedulerMetrics.lastSuccess,
+		playoutMetrics.sessionsActive, playoutMetrics.sessionStarts,
+		playoutMetrics.processFailure, playoutMetrics.fallbacks,
+		channelMetrics.reconciles, channelMetrics.duration, channelMetrics.substitutions)
 	if options.Store != nil {
 		now := options.Now
 		if now == nil {
@@ -204,6 +295,9 @@ func New(options Options) *Recorder {
 		http:       httpMetrics,
 		images:     imageMetrics,
 		outbound:   outboundMetrics,
+		scheduler:  schedulerMetrics,
+		playout:    playoutMetrics,
+		channels:   channelMetrics,
 	}
 }
 
@@ -341,5 +435,79 @@ func outboundTargetLabel(target string) string {
 		return "filler_bakeoff"
 	default:
 		return "other"
+	}
+}
+
+// SchedulerJobs initializes the sealed code-defined Job set to explicit zeroes.
+func (r *Recorder) SchedulerJobs(jobs []string) {
+	for _, job := range jobs {
+		for _, result := range []string{"success", "error", "timeout", "panic"} {
+			for _, trigger := range []string{"scheduled", "manual"} {
+				r.scheduler.executions.WithLabelValues(job, result, trigger)
+			}
+		}
+		r.scheduler.running.WithLabelValues(job).Set(0)
+		r.scheduler.lastSuccess.WithLabelValues(job).Set(0)
+	}
+}
+
+// SchedulerJobStarted records one Job entering its execution boundary.
+func (r *Recorder) SchedulerJobStarted(job string) {
+	r.scheduler.running.WithLabelValues(job).Inc()
+}
+
+// SchedulerJobFinished records one bounded outcome and balances the running gauge.
+func (r *Recorder) SchedulerJobFinished(
+	job, result, trigger string,
+	duration time.Duration,
+	finishedAt time.Time,
+) {
+	result = closedLabel(result, "success", "error", "timeout", "panic")
+	trigger = closedLabel(trigger, "scheduled", "manual")
+	r.scheduler.running.WithLabelValues(job).Dec()
+	r.scheduler.executions.WithLabelValues(job, result, trigger).Inc()
+	r.scheduler.duration.WithLabelValues(job).Observe(max(0, duration.Seconds()))
+	if result == "success" {
+		r.scheduler.lastSuccess.WithLabelValues(job).Set(float64(finishedAt.Unix()))
+	}
+}
+
+// PlayoutSessionStarted records one bounded session-start outcome.
+func (r *Recorder) PlayoutSessionStarted(result string) {
+	result = closedLabel(result, "success", "capacity", "spawn_error", "canceled")
+	r.playout.sessionStarts.WithLabelValues(result).Inc()
+}
+
+// PlayoutSessionActive applies a balanced live-session transition.
+func (r *Recorder) PlayoutSessionActive(delta int) {
+	r.playout.sessionsActive.Add(float64(delta))
+}
+
+// PlayoutProcessFailure records one bounded process stage failure.
+func (r *Recorder) PlayoutProcessFailure(stage string) {
+	stage = closedLabel(stage, "parent", "program", "filler", "hls", "probe")
+	r.playout.processFailure.WithLabelValues(stage).Inc()
+}
+
+// PlayoutFallback records one bounded degradation transition.
+func (r *Recorder) PlayoutFallback(reason string) {
+	reason = closedLabel(reason, "hardware_to_software", "prepared_to_live", "file_to_stream")
+	r.playout.fallbacks.WithLabelValues(reason).Inc()
+}
+
+// ChannelReconciled records one complete reconcile outcome and duration.
+func (r *Recorder) ChannelReconciled(duration time.Duration, success bool) {
+	result := "error"
+	if success {
+		result = "success"
+	}
+	r.channels.reconciles.WithLabelValues(result).Inc()
+	r.channels.duration.Observe(max(0, duration.Seconds()))
+}
+
+// ChannelSlotSubstitutions records Titles demoted after Library drift.
+func (r *Recorder) ChannelSlotSubstitutions(count int) {
+	if count > 0 {
+		r.channels.substitutions.Add(float64(count))
 	}
 }

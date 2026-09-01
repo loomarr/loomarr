@@ -114,7 +114,7 @@ func (w *riverWorker) Work(ctx context.Context, rj *river.Job[jobArgs]) error {
 	if paused, err := w.s.isPaused(ctx, j.Name); err == nil && paused && !rj.Args.Manual {
 		return nil
 	}
-	out := w.s.execute(ctx, j)
+	out := w.s.execute(ctx, j, rj.Args.Manual)
 	// River owns the durable execution rows. Recording Loomarr's outcome here lets a failed
 	// task remain a completed queue item (the next cron tick is its retry policy) while still
 	// preserving the operator-visible failure in that execution's history.

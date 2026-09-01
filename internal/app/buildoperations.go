@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/scheduler"
@@ -89,6 +90,7 @@ func buildOperations(
 	appliedBackend func(context.Context) (string, error),
 	overrides Overrides,
 	log *slog.Logger,
+	metricRecorder *metrics.Recorder,
 ) operationsBuild {
 	restart, bootConfig := buildRestart(overrides, log)
 	backups := buildBackups(st, set, registry, log)
@@ -96,7 +98,7 @@ func buildOperations(
 	invitationService, _ := authResult.invitations.(*invitation.Service)
 	recoveryService := authResult.passwordRecovery
 	accountDelivery := buildAccountDelivery(st, set, invitationService, recoveryService, registry, log)
-	jobs := buildScheduler(rootCtx, st, set, registry, emitter, owner, log)
+	jobs := buildScheduler(rootCtx, st, set, registry, emitter, owner, log, metricRecorder)
 	triggerHealth := func(ctx context.Context) {
 		if jobs == nil {
 			return
@@ -321,6 +323,7 @@ func buildScheduler(
 	emitter *eventEmitter,
 	owner *generationLifecycle,
 	log *slog.Logger,
+	metricRecorder *metrics.Recorder,
 ) api.JobService {
 	if st == nil {
 		return nil
@@ -330,7 +333,7 @@ func buildScheduler(
 			return configured
 		}
 		return fallback
-	}, time.Now, log).WithNotifier(emitter)
+	}, time.Now, log).WithNotifier(emitter).WithObserver(metricRecorder)
 	service.SeedRegistry(rootCtx)
 	if pool := store.PoolOf(st); pool != nil {
 		stop, err := service.StartRiver(rootCtx, st, pool, log)

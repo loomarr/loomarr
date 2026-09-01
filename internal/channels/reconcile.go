@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -91,7 +90,11 @@ func (e *Engine) reconcile(ctx context.Context, channelID string, opts reconcile
 	// §17 reconcile-loop latency + channel-reconcile counter. e.now() is the
 	// injected clock, so the duration is deterministic (0) under a fixed-time test.
 	start := e.now()
-	defer func() { metrics.ReconcileObserved(e.now().Sub(start), err == nil) }()
+	defer func() {
+		if e.metrics != nil {
+			e.metrics.ChannelReconciled(e.now().Sub(start), err == nil)
+		}
+	}()
 
 	// A reconcile performs remote work from a local channel snapshot. An approval or
 	// operator edit may legitimately advance that snapshot while the remote calls are
@@ -225,7 +228,9 @@ func (e *Engine) reconcileOnce(
 	// it as StatusDrifted so the Channels view flags it.
 	staleCount := staleProgramCount(ch.Desired, desired.EligibleKeys)
 	drifted := staleCount > 0
-	metrics.SlotSubstitutions(staleCount) // §17: no-op when 0
+	if e.metrics != nil {
+		e.metrics.ChannelSlotSubstitutions(staleCount)
+	}
 	nextStatus := e.statusFor(desired, drifted)
 	// Anchor a new channel at the instant its first playable deck becomes live.
 	// Once set, every later reconcile and backend transition preserves it.

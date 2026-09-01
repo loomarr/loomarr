@@ -145,7 +145,7 @@ func buildHandler(
 	channelsBuilt, err := buildChannels(
 		rootCtx, st, set, ov, owner, capturePlayoutResolver, libraryClient, secrets,
 		readGeneratedSecret, eventBus, emitter, activityRec, jobReg, episodeRefresh, fillerLayout, log,
-		foundation.processDiagnostics,
+		foundation.processDiagnostics, foundation.metrics,
 	)
 	if err != nil {
 		return nil, nil, err
@@ -178,7 +178,7 @@ func buildHandler(
 	operations := buildOperations(
 		rootCtx, st, set, desiredSet, secrets, readGeneratedSecret, refreshSecretRedactor,
 		libraryClient, tmdbClient, eventBus, emitter, jobReg, owner, playoutRes,
-		appliedBackendContext, ov, log,
+		appliedBackendContext, ov, log, foundation.metrics,
 	)
 	if playoutRes != nil {
 		setResidentVRAM(operations.residentLLM.probe)
