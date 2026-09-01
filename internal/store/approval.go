@@ -180,10 +180,39 @@ func (s *sqlStore) commitProposalApproval(
 		}
 		return 0, fmt.Errorf("approve proposal %s: %w", p.ID, err)
 	}
+	if p.CreatedBy != "" {
+		for _, item := range encoded {
+			if err := insertNotificationReferenceRecipient(
+				ctx, tx, s.ph, "title", string(item.record.Key), p.CreatedBy, epoch(p.UpdatedAt),
+			); err != nil {
+				return 0, fmt.Errorf("approve proposal %s: record title notification provenance: %w", p.ID, err)
+			}
+		}
+		if err := insertNotificationReferenceRecipient(
+			ctx, tx, s.ph, "channel", commit.Channel.ID, p.CreatedBy, epoch(p.UpdatedAt),
+		); err != nil {
+			return 0, fmt.Errorf("approve proposal %s: record channel notification provenance: %w", p.ID, err)
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("approve proposal %s: commit: %w", p.ID, err)
 	}
 	return enqueued, nil
+}
+
+func insertNotificationReferenceRecipient(
+	ctx context.Context,
+	tx *sql.Tx,
+	placeholder func(string) string,
+	referenceKind, referenceID, personID string,
+	createdAt int64,
+) error {
+	_, err := tx.ExecContext(ctx, placeholder(`INSERT INTO notification_reference_recipients
+		(reference_kind, reference_id, person_id, created_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT (reference_kind, reference_id, person_id) DO NOTHING`),
+		referenceKind, referenceID, personID, createdAt)
+	return err
 }
 
 func approvalOrderKey(p Proposal) string {

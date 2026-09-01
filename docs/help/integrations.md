@@ -74,6 +74,104 @@ also sends a short audio sample when selected.
 Required. Grounds suggestions and supplies ratings for titles you don't own yet. Set
 `TMDB_API_KEY` — [get a key](https://www.themoviedb.org/settings/api).
 
+## Notifications
+
+**Settings → Notifications** has one provider list. SMTP uses the same setup as Slack, Discord,
+webhook, and every other provider:
+
+1. Click **Add provider**.
+2. Choose SMTP, Slack, Discord, or another supported provider.
+3. Enter that provider's settings.
+4. Select which events it receives.
+5. Save.
+6. Optionally send a test.
+
+Only fields for the chosen provider appear. Loomarr decides which fields are sensitive, encrypts
+their values in the database, and never returns them to the browser. Editing a provider shows only
+whether each sensitive field is configured; leave it unchanged to preserve it or explicitly clear
+it before saving.
+
+Account invitations and password recovery remain mandatory security messages even though SMTP is
+configured through this same provider list; product-event selections do not suppress those account
+messages. A successful **Test** means Loomarr queued a provider handoff, not that a remote service or
+device displayed it. Each provider row shows its last accepted handoff, a safe failure category, and
+queued or failed counts.
+
+### Provider settings
+
+| Provider | What to enter |
+| --- | --- |
+| SMTP | Submission host, port, TLS policy, sender address/name, and optional username/password. `None` is only for a trusted local relay. |
+| Webhook | HTTPS endpoint plus optional bearer token and HMAC signing secret. Loomarr sends a versioned JSON event and an `X-Loomarr-Event-ID`. |
+| Slack | Incoming webhook URL from Slack. |
+| Discord | Incoming webhook URL from Discord. |
+| ntfy | Server URL and topic; optionally a username and password/token. |
+| Gotify | Server URL and application token. |
+| Apprise | Apprise API URL and either a stored configuration key or a stateless destination URL; optionally an API token. |
+| Pushover | Application token and user/group key; optionally a device. |
+| Telegram Bot | Bot token and chat ID; optionally a topic/thread ID. |
+| Mattermost | Incoming webhook URL. |
+| Matrix | Homeserver URL, room ID, and access token. |
+| MQTT | `mqtt://` or `mqtts://` broker URL, base topic, QoS 0/1, retain choice, and optional username/password. `mqtts://` verifies the broker certificate. |
+| Browser Push | No keys to paste. Choose events, then click **Enable this browser**. The browser permission prompt appears only then. |
+
+### Provider notes
+
+- **Slack, Discord, and Mattermost:** create an incoming webhook in the destination channel, paste
+  its URL into Loomarr, save, and send a test. To rotate it, create a replacement webhook, update
+  the provider, test it, then revoke the old webhook. Loomarr needs no bot, OAuth, or inbound access.
+- **ntfy:** use a hard-to-guess topic with authentication, especially on `ntfy.sh`; public topics can
+  be read by anyone who knows their name. For self-hosting, create the user/token in ntfy and enter
+  the same credentials here. Routine events use priority 3 and a `tv` tag; degraded/gave-up events
+  use priority 4 and a `warning` tag.
+- **Gotify:** create an application in Gotify and paste that application's token. Tests should open
+  Loomarr when clicked. Rotate or revoke access by replacing or deleting the Gotify application
+  token, then update and retest the provider.
+- **Apprise:** run Apprise API separately; Loomarr does not install or operate it. A minimal setup is
+  an Apprise configuration such as `loomarr.yml` with a service URL under `urls:`, saved in Apprise
+  under a key such as `household`; enter the Apprise base URL and that key in Loomarr. Stateless mode
+  instead accepts one Apprise destination URL as a write-only value. Apprise and every downstream
+  service it targets are inside your trust boundary: they receive the notification content and
+  Loomarr confirms only the API handoff, not every fan-out result.
+- **Pushover:** create a Pushover application, then enter its application token and your user or
+  delivery-group key. Pushover requires an account and may require a one-time client-platform
+  purchase; consult Pushover for current terms. Loomarr never uses emergency priority.
+- **Telegram:** create a bot with BotFather, add it to the direct chat or group, obtain the numeric
+  chat ID, and optionally enter a forum topic/thread ID. The bot must be allowed to post. Rotate the
+  token through BotFather, update the provider, and send another test.
+- **Matrix:** invite a dedicated bot/user to the room and use that account's access token. Loomarr
+  sends ordinary `m.room.message` text; end-to-end encrypted rooms are not supported. Rotate the
+  account token, update the provider, and test before revoking the old token.
+- **MQTT:** Loomarr derives a stable client ID from the provider and publishes below
+  `<base topic>/<event type>`. Messages are not retained by default; enabling retain can replay an
+  old alert as though it were current. `mqtts://` verifies the broker certificate. Home Assistant
+  can subscribe without giving Loomarr any Home Assistant credential:
+
+  ```yaml
+  automation:
+    - alias: Loomarr degraded channel
+      triggers:
+        - trigger: mqtt
+          topic: home/loomarr/channel_degraded
+      actions:
+        - action: notify.mobile_app_phone
+          data:
+            title: "{{ trigger.payload_json.subject }}"
+            message: "{{ trigger.payload_json.summary }}"
+  ```
+
+Browser Push belongs to the signed-in person and to that browser subscription. Members see only
+their own Browser Push providers; administrators also see the installation providers they manage.
+Loomarr stores the Push endpoint and browser keys encrypted and shows only the device label. A
+locked-screen preview says only that a Loomarr notification is available. Deleting the provider
+unsubscribes the current browser when possible; an expired subscription is disabled automatically.
+
+The retired `event.webhook_url` setting was an inbound callback from Sonarr/Radarr, not an outbound
+notification target, so it is not migrated into this provider list. Outbound Webhook providers are
+created here and use the durable notification queue. Existing SMTP settings are imported once into
+an SMTP provider with their secrets encrypted; review its event selections and send a test after an
+upgrade.
+
 ## Requester — Seerr (or Sonarr/Radarr)
 
 Optional. How Loomarr downloads missing titles. Without it, channels still play what you

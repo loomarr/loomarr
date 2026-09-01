@@ -13,6 +13,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
@@ -29,6 +30,9 @@ type Overrides struct {
 	Startup    *diagnostics.Startup
 	Programmer programmer.Programmer // nil ⇒ programmer.NewDynamic(live Tunarr config)
 	LLM        llm.Provider          // nil ⇒ the Swappable from buildLLM
+	// NotificationHTTP redirects provider requests to a hermetic transport in composition tests.
+	// nil uses the bounded production HTTP client owned by notifications.
+	NotificationHTTP notifications.HTTPDoer
 	// TMDBBaseURL redirects the real dynamic TMDB adapter to an in-process external
 	// service double. The credential still comes from live settings; accepting a
 	// prebuilt client here used to freeze its key at boot and bypass composition.
@@ -158,7 +162,7 @@ func buildHandler(
 	playoutRes, chanNumbers := channelsBuilt.playoutResolver, channelsBuilt.channelNumbers
 	setResidentVRAM := channelsBuilt.setResidentVRAM
 
-	approval := buildApproval(st, channelSvc, playoutRes, activityRec, chanNumbers, log)
+	approval := buildApproval(st, channelSvc, playoutRes, activityRec, chanNumbers, emitter, log)
 	proposalApprover := approval.approver
 
 	suggestions, err := buildSuggestions(
@@ -178,11 +182,16 @@ func buildHandler(
 	healthRunner := newCurrentHealthRunner(foundation.startup, st, set, healthProbes)
 	jobReg.Add(healthRunner.Job())
 
-	operations := buildOperations(
+	operations, err := buildOperations(
 		rootCtx, st, set, desiredSet, secrets, readGeneratedSecret, refreshSecretRedactor,
 		libraryClient, tmdbClient, eventBus, emitter, jobReg, owner, playoutRes,
 		appliedBackendContext, ov, log, foundation.metrics,
+		foundation.protection,
 	)
+	if err != nil {
+		return nil, nil, err
+	}
+	emitter.setNotifications(operations.productNotifications)
 	if playoutRes != nil {
 		setResidentVRAM(operations.residentLLM.probe)
 	}
@@ -193,7 +202,9 @@ func buildHandler(
 		auth: operations.auth, backups: operations.backups,
 		restart: operations.restart, bootConfig: operations.bootConfig,
 		guide: operations.guide, settings: operations.settings, emailTest: operations.emailTest,
-		invitationDelivery: operations.invitationDelivery, passwordRecovery: operations.passwordRecovery,
+		notificationDestinations: operations.notificationDestinations,
+		webPushPublicKey:         operations.webPushPublicKey,
+		invitationDelivery:       operations.invitationDelivery, passwordRecovery: operations.passwordRecovery,
 		liveConfig:        operations.liveConfig,
 		libraryConfigured: operations.libraryConfigured, jobs: operations.jobs,
 		database: operations.database, residentLLM: operations.residentLLM,

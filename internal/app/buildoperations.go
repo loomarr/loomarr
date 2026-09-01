@@ -3,8 +3,10 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +21,7 @@ import (
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/secretprotection"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tmdb"
@@ -56,20 +59,23 @@ type residentLLMBuild struct {
 }
 
 type operationsBuild struct {
-	backups            api.BackupsService
-	restart            api.RestartService
-	bootConfig         *config.Config
-	auth               authBuild
-	guide              api.GuideReader
-	settings           api.SettingsService
-	emailTest          api.EmailTestService
-	invitationDelivery api.InvitationDeliveryService
-	passwordRecovery   api.PasswordRecoveryService
-	liveConfig         func(string) string
-	libraryConfigured  func() bool
-	jobs               api.JobService
-	database           api.DatabaseService
-	residentLLM        residentLLMBuild
+	backups                  api.BackupsService
+	restart                  api.RestartService
+	bootConfig               *config.Config
+	auth                     authBuild
+	guide                    api.GuideReader
+	settings                 api.SettingsService
+	emailTest                api.EmailTestService
+	notificationDestinations api.NotificationDestinationService
+	webPushPublicKey         string
+	productNotifications     *productNotificationCoordinator
+	invitationDelivery       api.InvitationDeliveryService
+	passwordRecovery         api.PasswordRecoveryService
+	liveConfig               func(string) string
+	libraryConfigured        func() bool
+	jobs                     api.JobService
+	database                 api.DatabaseService
+	residentLLM              residentLLMBuild
 }
 
 func buildOperations(
@@ -91,13 +97,35 @@ func buildOperations(
 	overrides Overrides,
 	log *slog.Logger,
 	metricRecorder *metrics.Recorder,
-) operationsBuild {
+	protection *secretprotection.Manager,
+) (operationsBuild, error) {
 	restart, bootConfig := buildRestart(overrides, log)
 	backups := buildBackups(st, set, registry, log)
 	authResult := buildAuth(st, set, secrets, readGeneratedSecret, libraryClient, log)
 	invitationService, _ := authResult.invitations.(*invitation.Service)
 	recoveryService := authResult.passwordRecovery
-	accountDelivery := buildAccountDelivery(st, set, invitationService, recoveryService, registry, log)
+	destinationRepository := notifications.NewProtectedDestinationRepository(st, protection)
+	if err := migrateLegacySMTPProvider(rootCtx, destinationRepository, set); err != nil {
+		return operationsBuild{}, fmt.Errorf("migrate SMTP notification provider: %w", err)
+	}
+	providerAdapters, providerValidators := notifications.NewHTTPProviderAdapters(
+		overrides.NotificationHTTP, func() string { return set.str("access.public_url") },
+	)
+	mqttAdapter := notifications.NewMQTTAdapter(func() string { return set.str("access.public_url") })
+	providerAdapters = append(providerAdapters, mqttAdapter)
+	providerValidators = append(providerValidators, mqttAdapter)
+	if secrets != nil {
+		identity := secrets.WebPushIdentity()
+		webPushAdapter := notifications.NewWebPushAdapter(notifications.WebPushIdentity{
+			PublicKey: identity.PublicKey, PrivateKey: identity.PrivateKey,
+		}, overrides.NotificationHTTP, func() string { return set.str("access.public_url") })
+		providerAdapters = append(providerAdapters, webPushAdapter)
+		providerValidators = append(providerValidators, webPushAdapter)
+	}
+	accountDelivery := buildAccountDelivery(
+		st, destinationRepository, providerAdapters, set, invitationService, recoveryService, registry, log,
+	)
+	providerValidators = append(accountDelivery.validators, providerValidators...)
 	jobs := buildScheduler(rootCtx, st, set, registry, emitter, owner, log, metricRecorder)
 	triggerHealth := func(ctx context.Context) {
 		if jobs == nil {
@@ -115,18 +143,71 @@ func buildOperations(
 			st, set, desiredSet, secrets, libraryClient, tmdbClient,
 			refreshSecretRedactor, readGeneratedSecret, triggerHealth, log,
 		),
-		emailTest:          buildEmailTest(st, set),
-		invitationDelivery: accountDelivery.invitations,
-		passwordRecovery:   accountDelivery.recovery,
-		jobs:               jobs,
-		database:           buildDatabase(st, set, overrides, eventBus),
-		residentLLM:        buildResidentLLM(set, log),
+		emailTest: buildEmailTest(st, set),
+		notificationDestinations: buildNotificationDestinations(
+			destinationRepository, providerValidators, accountDelivery.service,
+		),
+		productNotifications: &productNotificationCoordinator{publisher: accountDelivery.product, source: st, log: log},
+		invitationDelivery:   accountDelivery.invitations,
+		passwordRecovery:     accountDelivery.recovery,
+		jobs:                 jobs,
+		database:             buildDatabase(st, set, overrides, eventBus),
+		residentLLM:          buildResidentLLM(set, log),
+	}
+	if secrets != nil {
+		result.webPushPublicKey = secrets.WebPushIdentity().PublicKey
 	}
 	if st != nil {
 		result.liveConfig = set.str
 		result.libraryConfigured = set.libraryConfigured
 	}
-	return result
+	return result, nil
+}
+
+func migrateLegacySMTPProvider(
+	ctx context.Context,
+	repository notifications.DestinationRepository,
+	set resolved,
+) error {
+	if repository == nil || set.svc == nil {
+		return nil
+	}
+	existing, err := repository.ListNotificationDestinations(ctx)
+	if err != nil {
+		return err
+	}
+	for _, destination := range existing {
+		if destination.Means == notifications.MeansEmail {
+			return nil
+		}
+	}
+	config := set.emailConfig()
+	if strings.TrimSpace(config.Host) == "" && strings.TrimSpace(config.FromAddress) == "" &&
+		config.Username == "" && config.Password == "" {
+		return nil
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	return repository.SaveNotificationDestination(ctx, notifications.Destination{
+		ID: "smtp-legacy", Means: notifications.MeansEmail, Label: "SMTP",
+		Scope: notifications.ScopeInstallation, Audience: notifications.RecipientOperators,
+		Enabled: config.Enabled,
+		Configuration: map[string]string{
+			"host": config.Host, "port": strconv.Itoa(config.Port), "security": string(config.Security),
+			"fromAddress": config.FromAddress, "fromName": config.FromName, "username": config.Username,
+		},
+		Credentials: map[string]string{"password": config.Password}, CreatedAt: now, UpdatedAt: now,
+	})
+}
+
+func buildNotificationDestinations(
+	repository notifications.DestinationRepository,
+	validators []notifications.DestinationValidator,
+	tester notifications.DestinationTester,
+) api.NotificationDestinationService {
+	if repository == nil {
+		return nil
+	}
+	return notifications.NewDestinationManager(repository, validators, newID, time.Now).WithTester(tester)
 }
 
 func buildEmailTest(st store.Store, set resolved) api.EmailTestService {

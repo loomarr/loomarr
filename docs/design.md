@@ -162,8 +162,6 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Concrete adapter for Loomarr's required Rust image worker (§22).
 - **`media`** · 3 importers
   Owns host-wide resources shared by live and background media work.
-- **`notifications`** · 5 importers
-  Owns channel-neutral notification intents and delivery work (§11).
 - **`proctree`** · 3 importers
   Supervises one child process and every descendant it starts.
 - **`provision`** · 17 importers
@@ -174,7 +172,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Categorizes GitHub-generated release notes without allowing a language model to invent release content.
 - **`releaseverify`**
   Validates the repository's release publication policy.
-- **`secretprotection`** · 2 importers
+- **`secretprotection`** · 3 importers
   Encrypts database-backed secrets with installation-key-wrapped data keys and supports safe key rotation and replacement.
 - **`taxonomy`** · 4 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
@@ -197,6 +195,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns administrator admission decisions and their bearer grants (§11).
 - **`metrics`** · 8 importers · → `images/rustgen`, `provision`
   Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
+- **`notifications`** · 5 importers · → `secretprotection`
+  Owns channel-neutral notification intents and delivery work (§11).
 - **`prepared`** · 3 importers · → `diagnostics`, `media`
   Owns immutable, reusable playout publications.
 
@@ -5865,6 +5865,82 @@ Proposal, provisioning, or Channel interfaces. Existing installations begin with
 product routes, so an upgrade cannot emit a backlog storm. Product-event publication is best-effort
 after the authoritative domain transition and never rolls that transition back; the routing phase
 must document any source-of-truth backstop it uses rather than implying cross-module transactionality.
+There is no periodic replay of Proposal-decision notifications: a process crash after the decision
+commits but before publication can omit that notice, which is preferable to making approval depend
+on an external delivery subsystem. The requester-provenance relation below is the durable backstop
+for later Title and Channel transitions, whose stable identities make an explicit replay idempotent.
+
+A **Notification destination** is the durable routing record. It owns one Delivery means, a
+human-readable label, enabled state, a closed set of compatible topics and audiences, provider-safe
+configuration, and write-only credentials. An installation destination is administrator-owned and
+may address only the `approvers` or `operators` audiences. A person destination is owned by exactly
+one person and is limited to verified-contact email or that person's Web Push subscriptions. It may
+select person lifecycle topics or a group topic the owner is currently authorized to observe; the
+Router rechecks that authorization at event time, so disabling or demoting the owner removes the
+route without rewriting preferences. Members may manage and test only their own permitted person
+destinations; only administrators may manage installation destinations or inspect shared failures. List and read
+interfaces return a redacted summary and credential-present flags, never credential values, bearer
+URLs, push keys, contact addresses, or rendered content. Provider adapters resolve the complete
+destination only after an attempt is claimed.
+
+**Provider setup is one short, provider-led workflow.** In **Settings → Notifications**, an
+administrator sees one list containing SMTP, webhook, Slack, Discord, and every other supported
+installation provider; a member sees that person's Browser Push subscriptions on the same page.
+**Add provider** first asks for the provider type, then renders only that provider's named
+fields and the compatible event checkboxes. Save creates the configured provider directly; there is
+no user-visible draft stage. A saved provider may be edited, enabled or disabled, deleted, and sent
+an optional test from the same row. SMTP is a provider in this list and has no separate settings
+card, test panel, or setup path.
+
+The server owns a closed **Provider definition** for each Delivery means: display name, field keys,
+labels, input kinds, requiredness, safe defaults, sensitivity, validation, and supported events. A
+write submits values for those defined field keys through one settings object. The server rejects
+unknown fields and splits ordinary values from sensitive material according to its definition; the
+client cannot label a token, password, private key, or credential-bearing URL as ordinary
+configuration. Reads return ordinary values plus per-secret configured flags, never secret values.
+On edit, omission of a sensitive field preserves it and an explicit clear action removes it. The UI
+may use the returned definition to render provider-specific controls, but it never receives or
+reconstructs the storage classification.
+
+The classified credential map is serialized and sealed as one record-bound envelope before it
+crosses the database port. The destination table stores only that opaque envelope; it has no
+plaintext credential JSON column. Data-key rotation reseals these envelopes alongside protected
+settings, while old keys remain readable until the pass completes.
+
+Destination scope, audience selection, recipient lookup, and configuration-versus-credential
+storage are internal routing concepts. The common Settings form does not expose them. Installation
+provider ownership comes from the authenticated administrator and recipient policy comes from the
+selected event plus the intent's authoritative audience. Personal Web Push subscription ownership
+comes from the authenticated member's explicit browser opt-in. Neither path accepts a caller-chosen
+owner, scope, or audience. Existing installations still begin with no product-event subscriptions,
+so the simplified setup does not create an upgrade notification storm.
+
+Browser Push is the provider-led exception to ordinary text fields. Choosing it from **Add
+provider** shows an explicit **Enable this browser** action; only that user gesture may ask the user
+agent for notification permission and create a Push subscription. Loomarr binds the endpoint and
+its `p256dh`/authentication values to the authenticated person, encrypts all three in the ordinary
+destination credential envelope, and returns only a device label and configured state. The service
+worker always displays a notification, uses a deliberately low-detail locked-screen preview, and
+opens only a server-produced same-origin route. Unsubscribe removes both the browser subscription
+and the destination. HTTP 404/410 from the Push service disables the destination so it cannot form
+a retry storm. One installation VAPID P-256 identity is generated idempotently, its private key is
+protected as secret material, and only its public key crosses the API for `PushManager.subscribe`.
+
+Proposal approval records requester provenance for every approved Title and the intent-bound Channel
+inside the same local transaction as the decision. That durable `(reference, person)` relation is the
+source-of-truth backstop used by later acquisition and Channel transitions; notification publication
+may be retried from it after a crash without guessing ownership from mutable display data.
+
+The Router matches an enabled destination's topic and audience to an intent and persists only the
+destination id and safe label on its Delivery attempt. Disabling or deleting a destination does not
+rewrite history or cancel a sending attempt; a queued attempt that has not begun resolves to a
+terminal `destination_unavailable` suppression. A destination test is its own `delivery_test`
+notification intent referencing the destination, not a fabricated Proposal, acquisition, or Channel
+transition. Administrator reads expose only a payload-free health aggregate per destination: last
+accepted handoff time, last bounded failure outcome and time, queued count, and terminal-failure
+count. “Accepted” means the configured provider accepted Loomarr's handoff; neither tests nor health
+claim that an end-user device displayed the message. Existing installations migrate with no
+destinations and no person preferences.
 
 Each **Delivery attempt** records only the intent id, means, destination reference or redacted
 destination, provider-safe message id when one exists, `queued | sending | delivered | failed |
@@ -5881,7 +5957,8 @@ silently invalidating mail already in flight.
 
 Retries are fixed policy rather than settings: at most five attempts (initial, then approximately
 1 minute, 5 minutes, 30 minutes, and 2 hours, with bounded jitter) for errors known to precede remote
-acceptance. Permanent recipient/configuration failures and ambiguous acceptance do not auto-retry.
+acceptance. A valid provider `Retry-After` hint may lengthen the next wait, but is clamped to two
+hours and never adds attempts. Permanent recipient/configuration failures and ambiguous acceptance do not auto-retry.
 Terminal intents and attempts are retained for 30 days and purged by housekeeping; active work is
 exempt. Contact addresses persist with their person, while terminal Invitations and hashed grants
 are retained for 30 days for operator diagnosis and then purged. These are bounded product policies,
@@ -6258,7 +6335,7 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 
   ⚠ **The card's per-channel control is an include-set override, not two flags.** It replaces the pin/block pair: channels are checkboxes with a fit note, and **Back to automatic** returns the clip to being placed by the ladder. Pin-and-block let an operator build a state that reads as contradictory ("pinned *and* blocked") which the assembler had to resolve by rule; one set has no such state.
 - **People** (admin, route `/people`) — imported users, roles, quotas, disable, sync-now (§11). "People" rather than "Users" because the list is households and family members, not system accounts.
-- **Settings** (admin, route `/settings`) — **seven tabs**: *Connections* (media server, requester, Tunarr, TMDB, plus `/readyz` and the re-runnable **connection checklist** of §13 as the troubleshooting console) · *AI* (provider/model, including the in-app **model manager** of §8.1 — probe, catalog, hot-swap, streaming pull) · *Defaults* (only the registry values channels can actually inherit: schedule horizon and break frequency) · *Notifications* (recipient-reachable access URL and outbound email/SMTP, including Send test) · *System* — itself sub-tabbed into **Tasks** (the §18.1 job console: cron, last/next run, Run-now) · **Playout** · **Database** · **Backup** · **About** — · *Security* (incl. **secret regeneration**) · *All settings* (every key, searchable). The typed registry, `env > database > default` resolution, runtime lifecycles, the cross-tab save bar, and the secrets lifecycle are `config-design.md`'s domain — **it wins on those mechanics** (§5 carries the page table and inline-commit exceptions); this row records only *where the surfaces are*.
+- **Settings** (admin, route `/settings`) — **seven tabs**: *Connections* (media server, requester, Tunarr, TMDB, plus `/readyz` and the re-runnable **connection checklist** of §13 as the troubleshooting console) · *AI* (provider/model, including the in-app **model manager** of §8.1 — probe, catalog, hot-swap, streaming pull) · *Defaults* (only the registry values channels can actually inherit: schedule horizon and break frequency) · *Notifications* (one provider list and **Add provider** flow for SMTP, webhook, Slack, Discord, and every other supported means; choose provider → enter its fields → select events → save → optional test) · *System* — itself sub-tabbed into **Tasks** (the §18.1 job console: cron, last/next run, Run-now) · **Playout** · **Database** · **Backup** · **About** — · *Security* (incl. **secret regeneration**) · *All settings* (every key, searchable). The typed registry, `env > database > default` resolution, runtime lifecycles, the cross-tab save bar, and the secrets lifecycle are `config-design.md`'s domain — **it wins on those mechanics** (§5 carries the page table and inline-commit exceptions); this row records only *where the surfaces are*.
 - **Account** (route `/account`, any authenticated user) — the signed-in user's own credentials: change password and view/revoke active sessions (§11). Distinct from **People**, which is an admin managing *other* accounts; this is the one settings-shaped surface a member can reach, which is why it sits outside the admin-only `/settings` IA above.
 - **Global search (⌘K)** — command palette over `/v1/search` + channels + help; the single fast entry point. **Hand-rolled, not cmdk** (revised — §12 described shadcn `Command`/cmdk, which was never built and is not a dependency; adding one is a §14 conversation, and the ARIA pattern is small enough not to need it). It implements the combobox/listbox pattern directly: `role="combobox"` on the input, `role="listbox"` over the results, one `role="group"` per scope, and `aria-activedescendant` — so focus stays in the input while ↑/↓/Home/End move the active option and Enter selects it. `Escape` is bound once at the window level (`useCommandShortcut`), never inside the component, so it cannot close twice. The search call deliberately omits `scope`, which the API defaults to `all` — the right corpus for a palette; channels, clips, and help are merged in from their own sources (clips are not a `/v1/search` scope, §7.2).
 
@@ -6444,6 +6521,7 @@ surface without a wire-format migration. The opt-in profiler also exposes Go 1.2
 | Unsupported Windows compatibility code | **`golang.org/x/sys/windows`** | A legacy Job Object adapter remains compile-isolated behind the built-in Windows constraint, but Loomarr publishes no native Windows server, makes no Windows lifecycle guarantee, and spends no CI or local-publication gate on it. Retaining the adapter is not a support claim. |
 | OIDC (SSO) | **`github.com/coreos/go-oidc/v3`** (+ `golang.org/x/oauth2`, `github.com/go-jose/go-jose/v4`) | SSO is a third credential path (§11, V8), and OIDC means verifying a signed token against the issuer's published JWKS — discovery, key rotation, `nonce`/`aud`/`exp` validation. Hand-rolling JWT verification is the kind of security code that looks right and is not. **Three modules total**, all current and maintained; `go-jose` does the crypto and `x/oauth2` the code exchange. Deliberately chosen over building forward-auth instead, which needs no dependency but trusts network topology (§11). |
 | SMTP client and message composition | **`github.com/wneessen/go-mail` v0.8.1**, behind Loomarr's notification email adapter | The standard library's `net/smtp` is frozen and deliberately low-level; invitation and recovery delivery need context cancellation, explicit implicit-TLS/STARTTLS/no-TLS policy, authentication discovery, address validation, and correct plain-text + HTML MIME composition. `go-mail` supplies those in one maintained pure-Go client with a small `x/crypto`/`x/text` dependency footprint already present in Loomarr's graph. Product code sees only the Delivery-means port, never this API. Debug SMTP logging stays disabled because protocol traces can contain addresses and authentication material. |
+| Browser Web Push encryption and VAPID | **`github.com/SherClockHolmes/webpush-go` v1.4.0**, behind Loomarr's Web Push adapter | RFC 8291 payload encryption and RFC 8292 VAPID combine ECDH, HKDF, AES-GCM record framing, and signed authorization with browser-specific interoperability details; implementing that security protocol locally would create substantial unaudited crypto code. The library is pure Go, exposes context and HTTP-client seams for bounded hermetic tests, uses the required `aes128gcm` content coding, and reuses Loomarr's existing `x/crypto` graph. Subscription endpoints and keys remain inside Loomarr's encrypted destination boundary, and provider response bodies never escape the adapter. |
 | Goroutine-leak gate | **`go.uber.org/goleak`** (test-only) | The in-process restart loop (§9.2) is only correct if Build/Run/Shutdown can repeat without accumulating goroutines or stale state, and a leak there is **silent** — it degrades an install over successive restarts rather than failing anything. goleak is the standard detector, test-only (never in a shipped binary), zero runtime cost. Added by V13 alongside the N-iteration restart test, because a prose rule would not have caught it. |
 | LLM clients | **Ollama via plain HTTP** (`/api/chat` with tools) + a hand-written **OpenAI-compatible** client (`/v1/chat/completions` with tools) — both plain `net/http`, no SDK | One OpenAI-compat client covers OpenAI, Gemini (compat endpoint), Groq, Together, OpenRouter, **and** local Ollama's own `/v1` mode — so the model is a config choice, not a per-vendor code fork. Replaces the earlier `anthropics/anthropic-sdk-go` intent (a net dependency *reduction*); Claude is still reachable via OpenRouter. Ollama stays first-class as the local default. |
 | Release-note classification | **OpenRouter structured output via plain `net/http`**, defaulting to `openai/gpt-5-mini`; GitHub remains the source of PR titles, authors, links, contributors, and compare ranges | Release notes get useful, Uptime-Kuma-style sections for pennies per release without another application runtime or SDK. The model may assign only real PR numbers to a closed schema; deterministic Go rejects missing, duplicate, invented, extra, or malformed output and renders only GitHub-authored bullets. Publication fails closed when inference is unavailable. |

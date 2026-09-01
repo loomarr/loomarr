@@ -2,8 +2,10 @@ package settings
 
 import (
 	"context"
+	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"sync"
 )
@@ -57,9 +59,19 @@ type Secrets struct {
 	store SecretStore
 	env   func(string) (string, bool)
 
-	mu     sync.RWMutex
-	values map[GeneratedSecret]string // resolved live values (for redaction + reads)
+	mu      sync.RWMutex
+	values  map[GeneratedSecret]string // resolved live values (for redaction + reads)
+	webPush WebPushIdentity
 }
+
+// WebPushIdentity is the installation's stable RFC 8292 application-server identity. The public
+// key is returned to browsers during explicit subscription; PrivateKey never crosses that API.
+type WebPushIdentity struct {
+	PrivateKey string `json:"privateKey"`
+	PublicKey  string `json:"publicKey"`
+}
+
+const webPushIdentityKey = "secret.web_push_vapid_identity"
 
 // allGenerated is the fixed set, in display order.
 func allGenerated() []GeneratedSecret {
@@ -81,7 +93,80 @@ func NewSecrets(ctx context.Context, store SecretStore, env func(string) (string
 		}
 		s.values[g] = v
 	}
+	if err := s.resolveWebPushIdentity(ctx); err != nil {
+		return nil, err
+	}
 	return s, nil
+}
+
+func (s *Secrets) resolveWebPushIdentity(ctx context.Context) error {
+	resolve := func(lockCtx context.Context) error {
+		if raw, ok, err := s.store.Get(lockCtx, webPushIdentityKey); err != nil {
+			return fmt.Errorf("read Web Push identity: %w", err)
+		} else if ok {
+			identity, decodeErr := decodeWebPushIdentity(raw)
+			if decodeErr != nil {
+				return decodeErr
+			}
+			s.webPush = identity
+			return nil
+		}
+		identity, err := generateWebPushIdentity()
+		if err != nil {
+			return err
+		}
+		raw, err := json.Marshal(identity)
+		if err != nil {
+			return fmt.Errorf("encode Web Push identity: %w", err)
+		}
+		if err := s.store.Set(lockCtx, webPushIdentityKey, string(raw)); err != nil {
+			return fmt.Errorf("persist Web Push identity: %w", err)
+		}
+		s.webPush = identity
+		return nil
+	}
+	if locker, ok := s.store.(interface {
+		WithLock(context.Context, string, func(context.Context) error) error
+	}); ok {
+		return locker.WithLock(ctx, webPushIdentityKey, resolve)
+	}
+	return resolve(ctx)
+}
+
+func generateWebPushIdentity() (WebPushIdentity, error) {
+	private, err := ecdh.P256().GenerateKey(rand.Reader)
+	if err != nil {
+		return WebPushIdentity{}, fmt.Errorf("generate Web Push identity: %w", err)
+	}
+	return WebPushIdentity{
+		PrivateKey: base64.RawURLEncoding.EncodeToString(private.Bytes()),
+		PublicKey:  base64.RawURLEncoding.EncodeToString(private.PublicKey().Bytes()),
+	}, nil
+}
+
+func decodeWebPushIdentity(raw string) (WebPushIdentity, error) {
+	var identity WebPushIdentity
+	if err := json.Unmarshal([]byte(raw), &identity); err != nil {
+		return WebPushIdentity{}, fmt.Errorf("decode Web Push identity: %w", err)
+	}
+	privateBytes, privateErr := base64.RawURLEncoding.DecodeString(identity.PrivateKey)
+	publicBytes, publicErr := base64.RawURLEncoding.DecodeString(identity.PublicKey)
+	curve := ecdh.P256()
+	private, privateKeyErr := curve.NewPrivateKey(privateBytes)
+	public, publicKeyErr := curve.NewPublicKey(publicBytes)
+	if privateErr != nil || publicErr != nil || privateKeyErr != nil || publicKeyErr != nil {
+		return WebPushIdentity{}, fmt.Errorf("decode Web Push identity: invalid P-256 key pair")
+	}
+	if !private.PublicKey().Equal(public) {
+		return WebPushIdentity{}, fmt.Errorf("decode Web Push identity: public and private keys do not match")
+	}
+	return identity, nil
+}
+
+func (s *Secrets) WebPushIdentity() WebPushIdentity {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.webPush
 }
 
 // resolveOrMint returns env > db, minting + persisting a fresh value if neither
@@ -183,6 +268,9 @@ func (s *Secrets) RedactionValues() []string {
 		if v != "" {
 			out = append(out, v)
 		}
+	}
+	if s.webPush.PrivateKey != "" {
+		out = append(out, s.webPush.PrivateKey)
 	}
 	return out
 }

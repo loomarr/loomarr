@@ -143,8 +143,11 @@ type Server struct {
 	restartDrift func() []string
 	// settings wires /v1/settings* + secrets regeneration (config-design §8);
 	// nil ⇒ routes 501. Implemented by a thin adapter over settings.Service.
-	settings  SettingsService
-	emailTest EmailTestService
+	settings                 SettingsService
+	emailTest                EmailTestService
+	notificationDestinations NotificationDestinationService
+	webPushPublicKey         string
+	proposalNotifications    suggest.ProposalNotifier
 	// backendTransition owns the durable setting mutation -> prepare -> publish -> retire
 	// workflow for playout backend and URL changes. It serializes that entire workflow
 	// across replicas; failures after mutation remain non-fatal follow-on failures.
@@ -312,6 +315,14 @@ type EmailTestResult struct {
 
 type EmailTestService interface {
 	SendTest(context.Context, string) EmailTestResult
+}
+
+type NotificationDestinationService interface {
+	Create(context.Context, notifications.Principal, notifications.DestinationCommand) (notifications.DestinationSummary, error)
+	List(context.Context, notifications.Principal) ([]notifications.DestinationSummary, error)
+	Update(context.Context, notifications.Principal, string, notifications.DestinationUpdateCommand) (notifications.DestinationSummary, error)
+	Delete(context.Context, notifications.Principal, string) error
+	Test(context.Context, notifications.Principal, string, string) (notifications.DestinationTestResult, error)
 }
 
 // BackendTransitioner is the one deep settings consequence for playout publication. The
@@ -947,16 +958,19 @@ type Options struct {
 	Restart RestartService
 	// RestartDrift names bootstrap and app-managed generation settings waiting on a restart
 	// (config-design §3).
-	RestartDrift      func() []string
-	Jobs              JobService                                       // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
-	Settings          SettingsService                                  // /v1/settings* (config-design §8); nil ⇒ routes 501
-	EmailTest         EmailTestService                                 // administrator SMTP test delivery (§11)
-	BackendTransition BackendTransitioner                              // durable backend prepare/publish/retire coordinator
-	BackendCheckpoint func(context.Context) (BackendCheckpoint, error) // durable checkpoint, once per operation
-	Guide             GuideReader                                      // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
-	Provision         Provisioner                                      // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
-	Approver          ProposalApprover                                 // atomic proposal + titles + channel gate (§7); required for approval
-	Binder            ChannelBinder                                    // explicit channel intent/number helpers; not the approval gate
+	RestartDrift             func() []string
+	Jobs                     JobService                                       // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
+	Settings                 SettingsService                                  // /v1/settings* (config-design §8); nil ⇒ routes 501
+	EmailTest                EmailTestService                                 // administrator SMTP test delivery (§11)
+	NotificationDestinations NotificationDestinationService                   // redacted product-delivery routing (§11)
+	WebPushPublicKey         string                                           // public half of the generated VAPID identity (§11)
+	ProposalNotifications    suggest.ProposalNotifier                         // best-effort product lifecycle publication (§11)
+	BackendTransition        BackendTransitioner                              // durable backend prepare/publish/retire coordinator
+	BackendCheckpoint        func(context.Context) (BackendCheckpoint, error) // durable checkpoint, once per operation
+	Guide                    GuideReader                                      // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
+	Provision                Provisioner                                      // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
+	Approver                 ProposalApprover                                 // atomic proposal + titles + channel gate (§7); required for approval
+	Binder                   ChannelBinder                                    // explicit channel intent/number helpers; not the approval gate
 	// PlayoutObserver supplies operational snapshots and program progress.
 	PlayoutObserver PlayoutObserver
 	// PreparedObserver supplies prepared readiness and retention status without rescanning.

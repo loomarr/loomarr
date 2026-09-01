@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -69,9 +70,49 @@ func (c *invitationDeliveryCoordinator) LatestEmail(
 }
 
 type invitationEmailRouter struct {
-	invitations *invitation.Service
-	recovery    *auth.PasswordRecoveryService
-	config      func() notifications.EmailConfig
+	invitations  *invitation.Service
+	recovery     *auth.PasswordRecoveryService
+	destinations notifications.DestinationSource
+	config       func() notifications.EmailConfig
+}
+
+type combinedNotificationRouter struct {
+	account notifications.Router
+	product notifications.Router
+}
+
+func (r combinedNotificationRouter) Routes(ctx context.Context, intent notifications.Intent) ([]notifications.Route, error) {
+	if intent.Policy == notifications.PolicyMandatoryAccount {
+		return r.account.Routes(ctx, intent)
+	}
+	return r.product.Routes(ctx, intent)
+}
+
+type currentNotificationEligibility struct{ users store.UserStore }
+
+func (e currentNotificationEligibility) Eligible(
+	ctx context.Context,
+	audience notifications.RecipientKind,
+	personID string,
+) (bool, error) {
+	if e.users == nil || (audience != notifications.RecipientPerson &&
+		audience != notifications.RecipientApprovers && audience != notifications.RecipientOperators) {
+		return false, nil
+	}
+	user, err := e.users.GetUser(ctx, personID)
+	if errors.Is(err, store.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if user.Disabled {
+		return false, nil
+	}
+	if audience == notifications.RecipientPerson {
+		return true, nil
+	}
+	return user.Role == store.RoleAdmin, nil
 }
 
 func (r invitationEmailRouter) Routes(ctx context.Context, intent notifications.Intent) ([]notifications.Route, error) {
@@ -101,7 +142,29 @@ func (r invitationEmailRouter) Routes(ctx context.Context, intent notifications.
 		return nil, err
 	}
 	route.DestinationRedacted = redactMailbox(address.Email)
-	if r.config == nil || !r.config().Enabled {
+	if r.destinations == nil {
+		if r.config == nil || !r.config().Enabled {
+			route.Suppressed = notifications.OutcomeDeliveryDisabled
+		}
+		return []notifications.Route{route}, nil
+	}
+	destinations, listErr := r.destinations.ListNotificationDestinations(ctx)
+	if listErr != nil {
+		return nil, listErr
+	}
+	sort.Slice(destinations, func(i, j int) bool {
+		if destinations[i].CreatedAt.Equal(destinations[j].CreatedAt) {
+			return destinations[i].ID < destinations[j].ID
+		}
+		return destinations[i].CreatedAt.Before(destinations[j].CreatedAt)
+	})
+	for _, destination := range destinations {
+		if destination.Means == notifications.MeansEmail && destination.Enabled {
+			route.DestinationRef = "provider:" + destination.ID
+			return []notifications.Route{route}, nil
+		}
+	}
+	if len(destinations) == 0 || route.Suppressed == notifications.OutcomeNone {
 		route.Suppressed = notifications.OutcomeDeliveryDisabled
 	}
 	return []notifications.Route{route}, nil
@@ -110,13 +173,77 @@ func (r invitationEmailRouter) Routes(ctx context.Context, intent notifications.
 type invitationEmailMaterializer struct {
 	invitations *invitation.Service
 	recovery    *auth.PasswordRecoveryService
+	contacts    productEmailRecipientReader
 	publicURL   func() string
+}
+
+type productEmailRecipientReader interface {
+	GetContactAddresses(context.Context, string) (contact.Set, error)
+	ListUsers(context.Context) ([]store.User, error)
 }
 
 func (m invitationEmailMaterializer) Materialize(
 	ctx context.Context,
 	delivery notifications.Delivery,
 ) (notifications.MaterializedEmail, error) {
+	if delivery.Intent.Policy == notifications.PolicyConfigurable && m.contacts != nil {
+		link := ""
+		if origin, originErr := recipientOriginValue(m.publicURL); originErr == nil {
+			link = productNotificationLink(origin, delivery.Intent)
+		}
+		content, err := notifications.RenderProductEmail(delivery.Intent, link)
+		if err != nil {
+			return notifications.MaterializedEmail{}, err
+		}
+		if delivery.Intent.RecipientKind == notifications.RecipientPerson {
+			addresses, addressErr := m.contacts.GetContactAddresses(ctx, delivery.Intent.RecipientID)
+			if addressErr != nil {
+				if errors.Is(addressErr, store.ErrNotFound) {
+					return notifications.MaterializedEmail{}, notifications.ErrEmailDestinationUnavailable
+				}
+				return notifications.MaterializedEmail{}, addressErr
+			}
+			if addresses.Verified == nil {
+				return notifications.MaterializedEmail{}, notifications.ErrEmailDestinationUnavailable
+			}
+			return notifications.MaterializedEmail{Message: notifications.EmailMessage{
+				ToAddress: addresses.Verified.Email, Subject: content.Subject,
+				TextBody: content.TextBody, HTMLBody: content.HTMLBody,
+			}}, nil
+		}
+		if delivery.Intent.RecipientKind != notifications.RecipientApprovers &&
+			delivery.Intent.RecipientKind != notifications.RecipientOperators {
+			return notifications.MaterializedEmail{}, notifications.ErrEmailDestinationUnavailable
+		}
+		users, listErr := m.contacts.ListUsers(ctx)
+		if listErr != nil {
+			return notifications.MaterializedEmail{}, listErr
+		}
+		messages := make([]notifications.EmailMessage, 0, len(users))
+		for _, user := range users {
+			if user.Disabled || user.Role != store.RoleAdmin {
+				continue
+			}
+			addresses, addressErr := m.contacts.GetContactAddresses(ctx, user.ID)
+			if addressErr != nil {
+				if errors.Is(addressErr, store.ErrNotFound) {
+					continue
+				}
+				return notifications.MaterializedEmail{}, addressErr
+			}
+			if addresses.Verified == nil {
+				continue
+			}
+			messages = append(messages, notifications.EmailMessage{
+				ToAddress: addresses.Verified.Email, ToName: user.Name, Subject: content.Subject,
+				TextBody: content.TextBody, HTMLBody: content.HTMLBody,
+			})
+		}
+		if len(messages) == 0 {
+			return notifications.MaterializedEmail{}, notifications.ErrEmailDestinationUnavailable
+		}
+		return notifications.MaterializedEmail{Messages: messages}, nil
+	}
 	var address contact.Address
 	var issuedPlaintext string
 	var expiresAt time.Time
@@ -126,7 +253,6 @@ func (m invitationEmailMaterializer) Materialize(
 	switch {
 	case delivery.Intent.Topic == notifications.TopicAccountInvitation &&
 		delivery.Intent.ReferenceKind == notifications.ReferenceInvitation &&
-		delivery.Attempt.DestinationRef == "invitation:"+delivery.Intent.ReferenceID &&
 		m.invitations != nil:
 		address, err = m.invitations.Contact(ctx, delivery.Intent.ReferenceID)
 		if err == nil {
@@ -140,7 +266,6 @@ func (m invitationEmailMaterializer) Materialize(
 		}
 	case delivery.Intent.Topic == notifications.TopicLocalPasswordRecovery &&
 		delivery.Intent.ReferenceKind == notifications.ReferenceRecovery &&
-		delivery.Attempt.DestinationRef == "person:"+delivery.Intent.RecipientID &&
 		m.recovery != nil:
 		address, err = m.recovery.Contact(ctx, delivery.Intent.RecipientID)
 		if err == nil {
@@ -237,10 +362,15 @@ func redactMailbox(address string) string {
 type accountDeliveryBuild struct {
 	invitations *invitationDeliveryCoordinator
 	recovery    *passwordRecoveryCoordinator
+	product     *notifications.ProductPublisher
+	service     *notifications.Service
+	validators  []notifications.DestinationValidator
 }
 
 func buildAccountDelivery(
 	st store.Store,
+	destinations notifications.DestinationRepository,
+	providerAdapters []notifications.Adapter,
 	set resolved,
 	invitationService *invitation.Service,
 	recoveryService *auth.PasswordRecoveryService,
@@ -252,21 +382,68 @@ func buildAccountDelivery(
 	}
 	materializer := invitationEmailMaterializer{
 		invitations: invitationService, recovery: recoveryService,
+		contacts:  st,
 		publicURL: func() string { return set.str("access.public_url") },
 	}
 	adapter := notifications.NewEmailAdapter(set.emailConfig, materializer, notifications.NewSMTPSender(15*time.Second))
-	service := notifications.NewService(st, invitationEmailRouter{
-		invitations: invitationService, recovery: recoveryService, config: set.emailConfig,
-	}, []notifications.Adapter{adapter}, newID, time.Now)
+	adapters := append([]notifications.Adapter{adapter}, providerAdapters...)
+	repository := notificationServiceRepository{Store: st, destinations: destinations}
+	service := notifications.NewService(repository, combinedNotificationRouter{
+		account: invitationEmailRouter{
+			invitations: invitationService, recovery: recoveryService, destinations: destinations,
+		},
+		product: notifications.NewDestinationRouter(destinations, currentNotificationEligibility{users: st}),
+	}, adapters, newID, time.Now)
 	if registry != nil {
 		registry.Add(notificationDeliveryJob(service))
 	}
 	return accountDeliveryBuild{
 		invitations: &invitationDeliveryCoordinator{invitations: invitationService, notifications: service},
+		product:     notifications.NewProductPublisher(service),
+		service:     service,
+		validators:  []notifications.DestinationValidator{adapter},
 		recovery: &passwordRecoveryCoordinator{
 			recovery: recoveryService, notifications: service,
 			requestLimiter: auth.NewRateLimiter(0.05, 3), redeemLimiter: auth.NewRateLimiter(0.1, 5),
 			log: log,
 		},
 	}
+}
+
+func productNotificationLink(origin string, intent notifications.Intent) string {
+	switch intent.ReferenceKind {
+	case notifications.ReferenceProposal:
+		return origin + "/queue/approval"
+	case notifications.ReferenceChannel:
+		return origin + "/channels/" + url.PathEscape(intent.ReferenceID)
+	case notifications.ReferenceTitle:
+		return origin + "/queue/flight"
+	default:
+		return origin
+	}
+}
+
+type notificationServiceRepository struct {
+	store.Store
+	destinations notifications.DestinationRepository
+}
+
+func (r notificationServiceRepository) GetNotificationDestination(
+	ctx context.Context,
+	id string,
+) (notifications.Destination, error) {
+	return r.destinations.GetNotificationDestination(ctx, id)
+}
+
+func (r notificationServiceRepository) RetireNotificationDestination(ctx context.Context, id string) error {
+	destination, err := r.destinations.GetNotificationDestination(ctx, id)
+	if err != nil {
+		return err
+	}
+	if !destination.Enabled {
+		return nil
+	}
+	destination.Enabled = false
+	destination.UpdatedAt = time.Now().UTC().Truncate(time.Second)
+	return r.destinations.SaveNotificationDestination(ctx, destination)
 }

@@ -65,9 +65,12 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		healthRefresh:     opts.HealthRefresh,
 		systemLLM:         opts.SystemLLM, database: opts.Database, encryption: opts.Encryption, backups: opts.Backups, restart: opts.Restart, activity: opts.Activity, sso: opts.SSO,
 		restartDrift: opts.RestartDrift,
-		settings:     opts.Settings, emailTest: opts.EmailTest, backendTransition: opts.BackendTransition,
-		backendCheckpoint: opts.BackendCheckpoint,
-		provision:         opts.Provision, guide: opts.Guide,
+		settings:     opts.Settings, emailTest: opts.EmailTest,
+		notificationDestinations: opts.NotificationDestinations, backendTransition: opts.BackendTransition,
+		webPushPublicKey:      opts.WebPushPublicKey,
+		proposalNotifications: opts.ProposalNotifications,
+		backendCheckpoint:     opts.BackendCheckpoint,
+		provision:             opts.Provision, guide: opts.Guide,
 		liveConfig: opts.LiveConfig, liveConfigInt: opts.LiveConfigInt,
 		libraryConfigured: opts.LibraryConfigured,
 		liveConfigBoolOn:  opts.LiveConfigBoolOn, ready: ready,
@@ -124,6 +127,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerSystemRestart(humaAPI)
 	srv.registerDashboardPanels(humaAPI)
 	srv.registerSettings(humaAPI)
+	srv.registerNotificationDestinations(humaAPI)
 	srv.registerHelp(humaAPI)
 	srv.registerEvents(humaAPI) // §8 SSE — typed frames, nil-guarded on the bus
 	srv.registerSSO(humaAPI)    // §11 V8 redirects, nil-guarded on the provider

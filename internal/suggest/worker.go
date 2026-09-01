@@ -56,6 +56,18 @@ type Service struct {
 	// from `auto` (per-user quota); this one is authorized by the channel's AutoCurate opt-in.
 	autoCurate ChannelAutoCurator
 	workflow   DurableWorkflow
+	notify     ProposalNotifier
+}
+
+type ProposalNotifier interface {
+	ProposalSubmitted(context.Context, store.Proposal)
+	ProposalApproved(context.Context, store.Proposal, string)
+	ProposalDeclined(context.Context, store.Proposal)
+}
+
+func (s *Service) WithProposalNotifier(notifier ProposalNotifier) *Service {
+	s.notify = notifier
+	return s
 }
 
 // WithDurableWorkflow routes worker lifecycle transitions through the deep
@@ -417,6 +429,9 @@ func (s *Service) runJob(ctx context.Context, job store.Job) {
 		}
 		s.failJob(ctx, job, fmt.Errorf("persist proposal: %w", err))
 		return
+	}
+	if s.notify != nil {
+		s.notify.ProposalSubmitted(ctx, p)
 	}
 	s.considerAutomaticApproval(ctx, job, p)
 	s.emitPhase(job.ID, PhaseDone, 0)

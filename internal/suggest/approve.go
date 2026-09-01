@@ -87,6 +87,12 @@ type Approver struct {
 	store    ApproveStore
 	channels ChannelBinder
 	now      func() time.Time
+	notify   ProposalNotifier
+}
+
+func (a *Approver) WithProposalNotifier(notifier ProposalNotifier) *Approver {
+	a.notify = notifier
+	return a
 }
 
 // NewApprover constructs the shared approval gate used by manual approval, the per-user grant,
@@ -269,6 +275,9 @@ func (a *Approver) approveDurably(
 		}
 	}
 
+	if a.notify != nil {
+		a.notify.ProposalApproved(ctx, p, ch.ID)
+	}
 	return ApprovalResult{Enqueued: enqueued, ChannelID: ch.ID}, nil
 }
 

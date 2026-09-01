@@ -26,6 +26,8 @@ import {
   getListStartupReportsMockHandler,
   getListTitlesMockHandler,
   getListUsersMockHandler,
+  getNotificationProvidersListMockHandler,
+  getNotificationProviderTypesListMockHandler,
   getSettingsListMockHandler,
   getSetupStateMockHandler,
   getSetupStatusMockHandler,
@@ -131,6 +133,8 @@ const appHandlers = (): RequestHandler[] => [
   getListUsersMockHandler({ users: [] }),
   getListInvitationsMockHandler({ invitations: [] }),
   getSettingsListMockHandler({ settings: [], features: {} }),
+  getNotificationProviderTypesListMockHandler({ providers: [] }),
+  getNotificationProvidersListMockHandler({ providers: [] }),
   // ⚠ `total` is REQUIRED since §10 V51d added paging. This line and that field arrived in two
   // different PRs (#214 added the handler, #203 added the field); each was green against the main
   // it branched from, and together they did not typecheck — main went red on the second merge.

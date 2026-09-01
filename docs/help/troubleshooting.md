@@ -30,6 +30,37 @@ contains wrapped data-encryption keys; the installation key stays outside it.
 A full host or volume copy containing both the database and installation key is outside this
 protection boundary. Encryption here protects a database or database-only backup by itself.
 
+## Notification providers
+
+**Settings:** Notifications
+
+- **A test stays queued** — the notification worker runs about every 15 seconds. Refresh the
+  provider row; its safe health summary will show acceptance or a bounded failure category.
+- **Configuration invalid** — edit the provider and check every required field. Sensitive fields
+  are write-only: a blank field preserves a configured value unless you explicitly clear it.
+- **Transport unavailable** — verify that the provider host is reachable from Loomarr's container.
+  For MQTT, `localhost` is the container itself and `mqtts://` requires a certificate valid for the
+  broker hostname.
+- **Recipient rejected** — replace the upstream token, webhook, room/chat identifier, SMTP
+  credentials, or Push permission. Loomarr never returns the rejected credential in its error.
+- **Browser Push is unavailable** — Push requires browser support and a secure context (HTTPS, or
+  localhost for development). Permission is requested only after **Enable this browser**. If it was
+  denied, change the site's notification permission in the browser; ordinary Loomarr use continues.
+- **Browser Push stopped after working** — browsers and Push services can expire a subscription.
+  Loomarr disables a subscription reported gone instead of retrying it; delete that provider and
+  add Browser Push again from the affected browser.
+- **A webhook or token was revoked** — create or rotate the credential at Slack, Discord,
+  Mattermost, Gotify, Telegram, or Matrix; update the provider and send a test before revoking the
+  old credential. A write-only URL or token cannot be recovered from Loomarr. Matrix also requires
+  an unencrypted room and a token whose user has joined it.
+- **Apprise accepted only some fan-out targets** — the Loomarr test confirms the Apprise handoff,
+  not each downstream receipt. Check the Apprise service logs and configuration; downstream
+  credentials remain in that operator-managed service.
+- **ntfy or MQTT behaves unexpectedly** — verify the ntfy topic and authentication together; a
+  public hosted topic is not private merely because its name is obscure. For MQTT, confirm the
+  broker scheme/port, TLS trust, credentials, base topic, QoS, and retain setting. A retained test
+  remains on the broker until replaced or cleared.
+
 ## Media server
 
 **Check:** `media_server` · **Settings:** Connections → Media server
