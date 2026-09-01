@@ -129,6 +129,98 @@ func testNotificationLifecycle(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+func testNotificationProductVocabulary(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	s := newStore(t)
+	now := time.Unix(1_900_000_000, 0)
+	intent := notifications.Intent{
+		ID: "intent-product", Topic: notifications.TopicChannelLive,
+		RecipientKind: notifications.RecipientPerson, RecipientID: "user-1",
+		ReferenceKind: notifications.ReferenceChannel, ReferenceID: "channel-1",
+		Policy: notifications.PolicyConfigurable,
+		Template: notifications.TemplateData{
+			RecipientName: "Ada", SubjectName: "Saturday Cartoons", Summary: "Your Channel is live.",
+		},
+		IdempotencyKey: "channel-1:live:user-1", CreatedAt: now,
+	}
+	means := []notifications.Means{
+		notifications.MeansEmail, notifications.MeansWebhook, notifications.MeansDiscord,
+		notifications.MeansNtfy, notifications.MeansGotify, notifications.MeansApprise,
+		notifications.MeansPushover, notifications.MeansTelegram, notifications.MeansMattermost,
+		notifications.MeansMatrix, notifications.MeansWebPush, notifications.MeansMQTT,
+		notifications.MeansSlack,
+	}
+	attempts := make([]notifications.Attempt, 0, len(means))
+	for index, means := range means {
+		attempts = append(attempts, notifications.Attempt{
+			ID: fmt.Sprintf("attempt-product-%d", index+1), IntentID: intent.ID, Means: means,
+			DestinationRef: "destination-" + string(means), DestinationRedacted: "Configured " + string(means),
+			Status: notifications.StatusQueued, AttemptNumber: 1, AvailableAt: now, CreatedAt: now,
+		})
+	}
+	if _, created, err := s.CreateNotificationIntent(ctx, intent, attempts); err != nil || !created {
+		t.Fatalf("create product notification = %t, %v", created, err)
+	}
+	stored, err := s.GetNotificationIntent(ctx, intent.ID)
+	if err != nil || stored.Topic != notifications.TopicChannelLive ||
+		stored.RecipientKind != notifications.RecipientPerson || stored.ReferenceKind != notifications.ReferenceChannel ||
+		stored.Policy != notifications.PolicyConfigurable || stored.Template != intent.Template {
+		t.Fatalf("stored product intent = %+v, %v", stored, err)
+	}
+	attempts, err = s.ListNotificationAttempts(ctx, intent.ID)
+	if err != nil || len(attempts) != len(means) {
+		t.Fatalf("stored product attempts = %+v, %v", attempts, err)
+	}
+	storedMeans := make(map[notifications.Means]bool, len(attempts))
+	for _, attempt := range attempts {
+		storedMeans[attempt.Means] = true
+	}
+	for _, means := range means {
+		if !storedMeans[means] {
+			t.Errorf("delivery means %q did not round-trip", means)
+		}
+	}
+
+	unrouted := notifications.Intent{
+		ID: "intent-product-unrouted", Topic: notifications.TopicProposalSubmitted,
+		RecipientKind: notifications.RecipientApprovers, RecipientID: "approvers",
+		ReferenceKind: notifications.ReferenceProposal, ReferenceID: "proposal-1",
+		Policy:         notifications.PolicyConfigurable,
+		Template:       notifications.TemplateData{SubjectName: "Sunday Mysteries"},
+		IdempotencyKey: "proposal-1:submitted:approvers", CreatedAt: now,
+	}
+	createdIntent, created, err := s.CreateNotificationIntent(ctx, unrouted, nil)
+	if err != nil || !created || !createdIntent.TerminalAt.Equal(now) {
+		t.Fatalf("create unrouted product fact = %+v, %t, %v", createdIntent, created, err)
+	}
+	if attempts, err := s.ListNotificationAttempts(ctx, unrouted.ID); err != nil || len(attempts) != 0 {
+		t.Fatalf("unrouted product attempts = %+v, %v", attempts, err)
+	}
+
+	remaining := []notifications.Intent{
+		{ID: "intent-approved", Topic: notifications.TopicProposalApproved, RecipientKind: notifications.RecipientPerson,
+			RecipientID: "user-1", ReferenceKind: notifications.ReferenceProposal, ReferenceID: "proposal-2"},
+		{ID: "intent-declined", Topic: notifications.TopicProposalDeclined, RecipientKind: notifications.RecipientPerson,
+			RecipientID: "user-1", ReferenceKind: notifications.ReferenceProposal, ReferenceID: "proposal-3"},
+		{ID: "intent-available", Topic: notifications.TopicAcquisitionAvailable, RecipientKind: notifications.RecipientPerson,
+			RecipientID: "user-1", ReferenceKind: notifications.ReferenceTitle, ReferenceID: "movie:tmdb:603"},
+		{ID: "intent-gave-up", Topic: notifications.TopicAcquisitionGaveUp, RecipientKind: notifications.RecipientOperators,
+			RecipientID: "operators", ReferenceKind: notifications.ReferenceTitle, ReferenceID: "movie:tmdb:604"},
+		{ID: "intent-degraded", Topic: notifications.TopicChannelDegraded, RecipientKind: notifications.RecipientOperators,
+			RecipientID: "operators", ReferenceKind: notifications.ReferenceChannel, ReferenceID: "channel-2"},
+	}
+	for _, candidate := range remaining {
+		candidate.Policy = notifications.PolicyConfigurable
+		candidate.Template = notifications.TemplateData{SubjectName: "Safe subject"}
+		candidate.IdempotencyKey = candidate.ID + ":created"
+		candidate.CreatedAt = now
+		if _, created, err := s.CreateNotificationIntent(ctx, candidate, nil); err != nil || !created {
+			t.Errorf("create %s product fact = %t, %v", candidate.Topic, created, err)
+		}
+	}
+}
+
 func testNotificationExpiredLease(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 	ctx := context.Background()

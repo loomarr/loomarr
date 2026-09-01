@@ -223,6 +223,56 @@ func TestNotificationMigrationAddsEmptyDurableQueueWithoutChangingUsers(t *testi
 	}
 }
 
+func TestNotificationProductVocabularyMigrationPreservesAccountDelivery(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "notification-product-vocabulary.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	provider, err := newMigrationProvider(db, DialectSQLite, "migrations/sqlite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(ctx, 80); err != nil {
+		t.Fatalf("migrate through 80: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO notification_intents
+			(id, topic, recipient_kind, recipient_id, reference_kind, reference_id,
+			 recipient_policy, template_json, idempotency_key, created_at, terminal_at)
+		VALUES
+			('intent-existing', 'account_invitation', 'invitation', 'invitation-existing',
+			 'invitation', 'invitation-existing', 'mandatory_account',
+			 '{"recipientName":"Ada"}', 'invitation-existing:created', 1900000000, 0);
+		INSERT INTO notification_delivery_attempts
+			(id, intent_id, means, destination_ref, destination_redacted, status,
+			 attempt_number, available_at, created_at)
+		VALUES
+			('attempt-existing', 'intent-existing', 'email', 'contact-existing',
+			 'a***@example.com', 'queued', 1, 1900000000, 1900000000)
+	`); err != nil {
+		t.Fatalf("seed account delivery: %v", err)
+	}
+	if _, err := provider.UpTo(ctx, 81); err != nil {
+		t.Fatalf("apply product vocabulary migration: %v", err)
+	}
+
+	var topic, template, means, status string
+	if err := db.QueryRowContext(ctx, `
+		SELECT intent.topic, intent.template_json, attempt.means, attempt.status
+		FROM notification_intents intent
+		JOIN notification_delivery_attempts attempt ON attempt.intent_id = intent.id
+		WHERE intent.id = 'intent-existing'
+	`).Scan(&topic, &template, &means, &status); err != nil {
+		t.Fatal(err)
+	}
+	if topic != "account_invitation" || template != `{"recipientName":"Ada"}` || means != "email" || status != "queued" {
+		t.Fatalf("preserved delivery = topic %q template %q means %q status %q", topic, template, means, status)
+	}
+}
+
 func TestFillerDecisionApplicationModeMigrationBackfillsShadow(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "decision-mode.db"))

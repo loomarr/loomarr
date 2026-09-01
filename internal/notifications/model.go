@@ -16,6 +16,13 @@ type Topic string
 const (
 	TopicAccountInvitation     Topic = "account_invitation"
 	TopicLocalPasswordRecovery Topic = "local_password_recovery"
+	TopicProposalSubmitted     Topic = "proposal_submitted"
+	TopicProposalApproved      Topic = "proposal_approved"
+	TopicProposalDeclined      Topic = "proposal_declined"
+	TopicAcquisitionAvailable  Topic = "acquisition_available"
+	TopicAcquisitionGaveUp     Topic = "acquisition_gave_up"
+	TopicChannelLive           Topic = "channel_live"
+	TopicChannelDegraded       Topic = "channel_degraded"
 )
 
 type RecipientKind string
@@ -23,6 +30,8 @@ type RecipientKind string
 const (
 	RecipientInvitation RecipientKind = "invitation"
 	RecipientPerson     RecipientKind = "person"
+	RecipientApprovers  RecipientKind = "approvers"
+	RecipientOperators  RecipientKind = "operators"
 )
 
 type ReferenceKind string
@@ -30,6 +39,9 @@ type ReferenceKind string
 const (
 	ReferenceInvitation ReferenceKind = "invitation"
 	ReferenceRecovery   ReferenceKind = "recovery"
+	ReferenceProposal   ReferenceKind = "proposal"
+	ReferenceTitle      ReferenceKind = "title"
+	ReferenceChannel    ReferenceKind = "channel"
 )
 
 // RecipientPolicy distinguishes account/security delivery from future preference-controlled topics.
@@ -42,7 +54,21 @@ const (
 
 type Means string
 
-const MeansEmail Means = "email"
+const (
+	MeansEmail      Means = "email"
+	MeansWebhook    Means = "webhook"
+	MeansDiscord    Means = "discord"
+	MeansNtfy       Means = "ntfy"
+	MeansGotify     Means = "gotify"
+	MeansApprise    Means = "apprise"
+	MeansPushover   Means = "pushover"
+	MeansTelegram   Means = "telegram"
+	MeansMattermost Means = "mattermost"
+	MeansMatrix     Means = "matrix"
+	MeansWebPush    Means = "web_push"
+	MeansMQTT       Means = "mqtt"
+	MeansSlack      Means = "slack"
+)
 
 type Status string
 
@@ -82,10 +108,13 @@ const (
 	OutcomeWorkerInterrupted      OutcomeCode = "worker_interrupted"
 )
 
-// TemplateData is intentionally narrow. Secure values remain on the referenced domain record and
-// are materialized only in memory when an attempt begins.
+// TemplateData is intentionally narrow. Account secrets remain on the referenced domain record and
+// are materialized only in memory when an attempt begins; product fields preserve bounded event-time
+// display text, never a rendered body or provider payload.
 type TemplateData struct {
 	RecipientName string `json:"recipientName,omitempty"`
+	SubjectName   string `json:"subjectName,omitempty"`
+	Summary       string `json:"summary,omitempty"`
 }
 
 type Intent struct {
@@ -198,20 +227,36 @@ func (i Intent) Validate() error {
 	if err := identifier("idempotency key", i.IdempotencyKey); err != nil {
 		return err
 	}
-	if i.Policy != PolicyMandatoryAccount && i.Policy != PolicyConfigurable {
-		return fmt.Errorf("invalid recipient policy %q", i.Policy)
-	}
-	if i.Policy != PolicyMandatoryAccount {
-		return fmt.Errorf("topic %q does not support configurable recipient policy", i.Topic)
-	}
 	switch i.Topic {
 	case TopicAccountInvitation:
+		if i.Policy != PolicyMandatoryAccount {
+			return fmt.Errorf("account invitation requires mandatory account policy")
+		}
 		if i.RecipientKind != RecipientInvitation || i.ReferenceKind != ReferenceInvitation || i.RecipientID != i.ReferenceID {
 			return fmt.Errorf("account invitation must reference its invitation recipient")
 		}
 	case TopicLocalPasswordRecovery:
+		if i.Policy != PolicyMandatoryAccount {
+			return fmt.Errorf("local password recovery requires mandatory account policy")
+		}
 		if i.RecipientKind != RecipientPerson || i.ReferenceKind != ReferenceRecovery {
 			return fmt.Errorf("local password recovery must reference a person and recovery record")
+		}
+	case TopicProposalSubmitted:
+		if err := i.validateProduct(RecipientApprovers, ReferenceProposal); err != nil {
+			return err
+		}
+	case TopicProposalApproved, TopicProposalDeclined:
+		if err := i.validateProduct(RecipientPerson, ReferenceProposal); err != nil {
+			return err
+		}
+	case TopicAcquisitionAvailable, TopicAcquisitionGaveUp:
+		if err := i.validateProductAudience(ReferenceTitle); err != nil {
+			return err
+		}
+	case TopicChannelLive, TopicChannelDegraded:
+		if err := i.validateProductAudience(ReferenceChannel); err != nil {
+			return err
 		}
 	default:
 		return fmt.Errorf("invalid notification topic %q", i.Topic)
@@ -222,11 +267,46 @@ func (i Intent) Validate() error {
 	if err := safeText("recipient name", i.Template.RecipientName, 200); err != nil {
 		return err
 	}
+	if err := safeText("subject name", i.Template.SubjectName, 200); err != nil {
+		return err
+	}
+	if err := safeText("summary", i.Template.Summary, 500); err != nil {
+		return err
+	}
+	if i.Policy == PolicyMandatoryAccount && (i.Template.SubjectName != "" || i.Template.Summary != "") {
+		return fmt.Errorf("account notification cannot persist product display data")
+	}
+	if i.Policy == PolicyConfigurable && i.Template.SubjectName == "" {
+		return fmt.Errorf("product notification requires a subject name")
+	}
 	return nil
 }
 
+func (i Intent) validateProduct(recipient RecipientKind, reference ReferenceKind) error {
+	if i.Policy != PolicyConfigurable {
+		return fmt.Errorf("product notification requires configurable policy")
+	}
+	if i.RecipientKind != recipient || i.ReferenceKind != reference {
+		return fmt.Errorf("topic %q requires %q recipient and %q reference", i.Topic, recipient, reference)
+	}
+	if recipient == RecipientApprovers && i.RecipientID != string(RecipientApprovers) {
+		return fmt.Errorf("approver audience requires the canonical recipient id")
+	}
+	if recipient == RecipientOperators && i.RecipientID != string(RecipientOperators) {
+		return fmt.Errorf("operator audience requires the canonical recipient id")
+	}
+	return nil
+}
+
+func (i Intent) validateProductAudience(reference ReferenceKind) error {
+	if i.RecipientKind != RecipientPerson && i.RecipientKind != RecipientOperators {
+		return fmt.Errorf("topic %q requires a person or operator audience", i.Topic)
+	}
+	return i.validateProduct(i.RecipientKind, reference)
+}
+
 func (r Route) Validate() error {
-	if r.Means != MeansEmail {
+	if !validMeans(r.Means) {
 		return fmt.Errorf("invalid delivery means %q", r.Means)
 	}
 	if err := identifier("destination reference", r.DestinationRef); err != nil {
@@ -242,6 +322,17 @@ func (r Route) Validate() error {
 		return fmt.Errorf("invalid suppression code %q", r.Suppressed)
 	}
 	return nil
+}
+
+func validMeans(means Means) bool {
+	switch means {
+	case MeansEmail, MeansWebhook, MeansDiscord, MeansNtfy, MeansGotify, MeansApprise,
+		MeansPushover, MeansTelegram, MeansMattermost, MeansMatrix, MeansWebPush,
+		MeansMQTT, MeansSlack:
+		return true
+	default:
+		return false
+	}
 }
 
 func (a Attempt) Validate() error {

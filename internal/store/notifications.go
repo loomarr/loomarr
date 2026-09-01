@@ -27,7 +27,7 @@ func (s *sqlStore) CreateNotificationIntent(
 	if err := intent.Validate(); err != nil {
 		return notifications.Intent{}, false, fmt.Errorf("validate notification intent: %w", err)
 	}
-	if len(attempts) == 0 {
+	if len(attempts) == 0 && intent.Policy != notifications.PolicyConfigurable {
 		return notifications.Intent{}, false, fmt.Errorf("notification intent requires a delivery decision")
 	}
 	allTerminal := true

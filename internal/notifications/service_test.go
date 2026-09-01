@@ -59,6 +59,93 @@ func TestPublishPersistsSuppressionWithoutCallingAnAdapter(t *testing.T) {
 	}
 }
 
+func TestConfigurableProductIntentRoutesToIndependentDeliveryMeans(t *testing.T) {
+	repository := testkit.NewNotificationRepository()
+	now := time.Unix(1_900_000_000, 0)
+	discord := &testkit.NotificationAdapter{
+		DeliveryMeans: notifications.MeansDiscord,
+		Result:        notifications.Result{Status: notifications.StatusDelivered, ProviderMessageID: "discord-safe-1"},
+	}
+	router := testkit.NotificationRouter{RoutesResult: []notifications.Route{
+		{Means: notifications.MeansDiscord, DestinationRef: "destination-discord", DestinationRedacted: "Family Discord"},
+		{Means: notifications.MeansWebhook, DestinationRef: "destination-webhook", DestinationRedacted: "Automation webhook"},
+	}}
+	service := notifications.NewService(repository, router, []notifications.Adapter{discord}, sequentialIDs(), func() time.Time { return now })
+
+	intent, created, err := service.Publish(t.Context(), productCommand())
+	if err != nil || !created {
+		t.Fatalf("publish product intent = %+v, %t, %v", intent, created, err)
+	}
+	if len(repository.Intents) != 1 || len(repository.Attempts) != 2 {
+		t.Fatalf("durable fan-out = %d intents, %d attempts", len(repository.Intents), len(repository.Attempts))
+	}
+	for range 2 {
+		if ran, runErr := service.RunOne(t.Context(), "worker-1"); runErr != nil || !ran {
+			t.Fatalf("run product delivery = %t, %v", ran, runErr)
+		}
+	}
+	if len(discord.Calls) != 1 {
+		t.Fatalf("Discord adapter calls = %d, want one", len(discord.Calls))
+	}
+	attempts, err := repository.ListNotificationAttempts(t.Context(), intent.ID)
+	if err != nil || len(attempts) != 2 {
+		t.Fatalf("product attempts = %+v, %v", attempts, err)
+	}
+	statuses := map[notifications.Means]notifications.Attempt{}
+	for _, attempt := range attempts {
+		statuses[attempt.Means] = attempt
+	}
+	if statuses[notifications.MeansDiscord].Status != notifications.StatusDelivered ||
+		statuses[notifications.MeansWebhook].Status != notifications.StatusFailed ||
+		statuses[notifications.MeansWebhook].OutcomeCode != notifications.OutcomeMeansUnavailable {
+		t.Fatalf("independent outcomes = %+v", statuses)
+	}
+}
+
+func TestMandatoryAccountIntentRejectsANonEmailRoute(t *testing.T) {
+	repository := testkit.NewNotificationRepository()
+	router := testkit.NotificationRouter{RoutesResult: []notifications.Route{{
+		Means: notifications.MeansDiscord, DestinationRef: "destination-discord", DestinationRedacted: "Family Discord",
+	}}}
+	service := notifications.NewService(repository, router, nil, sequentialIDs(), func() time.Time {
+		return time.Unix(1_900_000_000, 0)
+	})
+	if _, _, err := service.Publish(t.Context(), recoveryCommand()); err == nil {
+		t.Fatal("mandatory account intent accepted a non-email route")
+	}
+	if len(repository.Intents) != 0 || len(repository.Attempts) != 0 {
+		t.Fatal("invalid account route reached persistence")
+	}
+}
+
+func TestConfigurableProductIntentPersistsWhenNoDestinationMatches(t *testing.T) {
+	repository := testkit.NewNotificationRepository()
+	service := notifications.NewService(
+		repository, testkit.NotificationRouter{}, nil, sequentialIDs(),
+		func() time.Time { return time.Unix(1_900_000_000, 0) },
+	)
+	intent, created, err := service.Publish(t.Context(), productCommand())
+	if err != nil || !created {
+		t.Fatalf("publish unrouted product intent = %+v, %t, %v", intent, created, err)
+	}
+	if intent.TerminalAt.IsZero() || len(repository.Intents) != 1 || len(repository.Attempts) != 0 {
+		t.Fatalf("unrouted durable fact = %+v, %d intents, %d attempts", intent, len(repository.Intents), len(repository.Attempts))
+	}
+	if ran, runErr := service.RunOne(t.Context(), "worker-1"); runErr != nil || ran {
+		t.Fatalf("run unrouted product intent = %t, %v", ran, runErr)
+	}
+}
+
+func TestMandatoryAccountIntentStillRequiresADeliveryDecision(t *testing.T) {
+	service := notifications.NewService(
+		testkit.NewNotificationRepository(), testkit.NotificationRouter{}, nil, sequentialIDs(),
+		func() time.Time { return time.Unix(1_900_000_000, 0) },
+	)
+	if _, _, err := service.Publish(t.Context(), recoveryCommand()); err == nil {
+		t.Fatal("mandatory account intent accepted no delivery decision")
+	}
+}
+
 func TestRunOneRetriesOnlyDefinitelyPreAcceptanceFailure(t *testing.T) {
 	repository := testkit.NewNotificationRepository()
 	now := time.Unix(1_900_000_000, 0)
@@ -174,6 +261,15 @@ func recoveryCommand() notifications.PublishCommand {
 		Topic: notifications.TopicLocalPasswordRecovery, RecipientKind: notifications.RecipientPerson,
 		RecipientID: "user-1", ReferenceKind: notifications.ReferenceRecovery, ReferenceID: "recovery-1",
 		Policy: notifications.PolicyMandatoryAccount, IdempotencyKey: "recovery-1:created",
+	}
+}
+
+func productCommand() notifications.PublishCommand {
+	return notifications.PublishCommand{
+		Topic: notifications.TopicChannelLive, RecipientKind: notifications.RecipientPerson,
+		RecipientID: "user-1", ReferenceKind: notifications.ReferenceChannel, ReferenceID: "channel-1",
+		Policy: notifications.PolicyConfigurable, Template: notifications.TemplateData{SubjectName: "Saturday Cartoons"},
+		IdempotencyKey: "channel-1:live:user-1",
 	}
 }
 
