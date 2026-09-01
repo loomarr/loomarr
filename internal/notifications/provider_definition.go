@@ -137,6 +137,14 @@ var productProviderTopics = []Topic{
 	TopicChannelDegraded,
 }
 
+var sharedProviderTopics = []Topic{
+	TopicProposalSubmitted,
+	TopicAcquisitionAvailable,
+	TopicAcquisitionGaveUp,
+	TopicChannelLive,
+	TopicChannelDegraded,
+}
+
 var providerDefinitions = []ProviderDefinition{
 	{
 		Means: MeansEmail, Name: "SMTP", Topics: productProviderTopics,
@@ -153,7 +161,7 @@ var providerDefinitions = []ProviderDefinition{
 		},
 	},
 	{
-		Means: MeansWebhook, Name: "Webhook", Topics: productProviderTopics,
+		Means: MeansWebhook, Name: "Webhook", Topics: sharedProviderTopics,
 		Fields: []ProviderField{
 			field("url", "Webhook URL", ProviderFieldURL, true, true),
 			field("bearerToken", "Bearer token", ProviderFieldPassword, false, true),
@@ -162,7 +170,7 @@ var providerDefinitions = []ProviderDefinition{
 	},
 	webhookDefinition(MeansDiscord, "Discord", "Discord webhook URL"),
 	{
-		Means: MeansNtfy, Name: "ntfy", Topics: productProviderTopics,
+		Means: MeansNtfy, Name: "ntfy", Topics: sharedProviderTopics,
 		Fields: []ProviderField{
 			field("baseUrl", "Server URL", ProviderFieldURL, true, false),
 			field("topic", "Topic", ProviderFieldPassword, true, true),
@@ -171,14 +179,14 @@ var providerDefinitions = []ProviderDefinition{
 		},
 	},
 	{
-		Means: MeansGotify, Name: "Gotify", Topics: productProviderTopics,
+		Means: MeansGotify, Name: "Gotify", Topics: sharedProviderTopics,
 		Fields: []ProviderField{
 			field("serverUrl", "Server URL", ProviderFieldURL, true, false),
 			field("applicationToken", "Application token", ProviderFieldPassword, true, true),
 		},
 	},
 	{
-		Means: MeansApprise, Name: "Apprise API", Topics: productProviderTopics,
+		Means: MeansApprise, Name: "Apprise API", Topics: sharedProviderTopics,
 		Fields: []ProviderField{
 			field("baseUrl", "Apprise API URL", ProviderFieldURL, true, false),
 			field("configurationKey", "Configuration key", ProviderFieldPassword, false, true),
@@ -187,7 +195,7 @@ var providerDefinitions = []ProviderDefinition{
 		},
 	},
 	{
-		Means: MeansPushover, Name: "Pushover", Topics: productProviderTopics,
+		Means: MeansPushover, Name: "Pushover", Topics: productProviderTopics, MemberOwned: true,
 		Fields: []ProviderField{
 			field("applicationToken", "Application token", ProviderFieldPassword, true, true),
 			field("recipientKey", "User or group key", ProviderFieldPassword, true, true),
@@ -195,7 +203,7 @@ var providerDefinitions = []ProviderDefinition{
 		},
 	},
 	{
-		Means: MeansTelegram, Name: "Telegram Bot", Topics: productProviderTopics,
+		Means: MeansTelegram, Name: "Telegram Bot", Topics: sharedProviderTopics,
 		Fields: []ProviderField{
 			field("botToken", "Bot token", ProviderFieldPassword, true, true),
 			field("chatId", "Chat ID", ProviderFieldPassword, true, true),
@@ -204,7 +212,7 @@ var providerDefinitions = []ProviderDefinition{
 	},
 	webhookDefinition(MeansMattermost, "Mattermost", "Incoming webhook URL"),
 	{
-		Means: MeansMatrix, Name: "Matrix", Topics: productProviderTopics,
+		Means: MeansMatrix, Name: "Matrix", Topics: sharedProviderTopics,
 		Fields: []ProviderField{
 			field("homeserverUrl", "Homeserver URL", ProviderFieldURL, true, false),
 			field("roomId", "Room ID", ProviderFieldPassword, true, true),
@@ -213,7 +221,7 @@ var providerDefinitions = []ProviderDefinition{
 	},
 	{Means: MeansWebPush, Name: "Browser Push", Topics: productProviderTopics, MemberOwned: true},
 	{
-		Means: MeansMQTT, Name: "MQTT", Topics: productProviderTopics,
+		Means: MeansMQTT, Name: "MQTT", Topics: sharedProviderTopics,
 		Fields: []ProviderField{
 			field("brokerUrl", "Broker URL", ProviderFieldPassword, true, true),
 			field("username", "Username", ProviderFieldText, false, false),
@@ -251,7 +259,7 @@ func field(key, label string, kind ProviderFieldKind, required, sensitive bool) 
 
 func webhookDefinition(means Means, name, label string) ProviderDefinition {
 	return ProviderDefinition{
-		Means: means, Name: name, Topics: productProviderTopics,
+		Means: means, Name: name, Topics: sharedProviderTopics,
 		Fields: []ProviderField{field("webhookUrl", label, ProviderFieldURL, true, true)},
 	}
 }

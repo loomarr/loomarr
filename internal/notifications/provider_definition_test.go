@@ -143,3 +143,34 @@ func TestCredentialBearingProviderLocationsAreAlwaysSensitive(t *testing.T) {
 		}
 	}
 }
+
+func TestProviderDefinitionsOfferOnlyEventsTheirRecipientModelCanDeliver(t *testing.T) {
+	smtp, ok := notifications.ProviderDefinitionFor(notifications.MeansEmail)
+	if !ok {
+		t.Fatal("SMTP provider definition is missing")
+	}
+	slack, ok := notifications.ProviderDefinitionFor(notifications.MeansSlack)
+	if !ok {
+		t.Fatal("Slack provider definition is missing")
+	}
+	if !hasProviderTopic(smtp, notifications.TopicProposalApproved) {
+		t.Fatal("SMTP must offer requester-addressed events")
+	}
+	if hasProviderTopic(slack, notifications.TopicProposalApproved) ||
+		hasProviderTopic(slack, notifications.TopicProposalDeclined) {
+		t.Fatal("a shared Slack destination must not offer requester-only events")
+	}
+	if !hasProviderTopic(slack, notifications.TopicProposalSubmitted) ||
+		!hasProviderTopic(slack, notifications.TopicChannelDegraded) {
+		t.Fatal("Slack must offer approver and operator events")
+	}
+}
+
+func hasProviderTopic(definition notifications.ProviderDefinition, want notifications.Topic) bool {
+	for _, topic := range definition.Topics {
+		if topic == want {
+			return true
+		}
+	}
+	return false
+}
