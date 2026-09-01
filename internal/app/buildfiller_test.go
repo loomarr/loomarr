@@ -93,7 +93,7 @@ func TestHostedLanguageAsker_UsesTheSelectedProvidersNamespacedKey(t *testing.T)
 		"llm.model":              "audio-model",
 		"llm.api_key.openrouter": "provider-secret",
 	})
-	asker := hostedLanguageAsker(set)
+	asker := hostedLanguageAsker(set, nil)
 	if asker == nil {
 		t.Fatal("hosted language asker is nil for a configured provider")
 	}
@@ -134,7 +134,7 @@ func TestHostedTranscriber_UsesTheSelectedProvidersNamespacedKey(t *testing.T) {
 		"filler.transcribe.model":    "openai/whisper-large-v3",
 	})
 
-	segments, err := buildFillerMediaTools(set).Transcribe(context.Background(), "clip.mp4", 0, 1_000)
+	segments, err := buildFillerMediaTools(set, nil).Transcribe(context.Background(), "clip.mp4", 0, 1_000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestFillerTagger_UsesTheSelectedProvidersNamespacedKey(t *testing.T) {
 		"llm.model":              "openai/gpt-4o-mini",
 		"llm.api_key.openrouter": "provider-secret",
 	})
-	provider, _ := buildTagger(nil, set, filler.Layout{}, nil, nil)
+	provider, _ := buildTagger(nil, set, filler.Layout{}, nil, nil, nil)
 	if provider == nil {
 		t.Fatal("tagger provider is nil for configured OpenRouter")
 	}

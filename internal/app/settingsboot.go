@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/requester"
@@ -221,21 +222,21 @@ func (r resolved) arrConns() requester.ArrConns {
 
 // requesterFor builds the Requester the composition root uses, branching on
 // requester.provider (§6): the direct Sonarr/Radarr adapter when "arr", else Seerr.
-func (r resolved) requesterFor() requester.Requester {
-	if a := r.arrRequester(); a != nil {
+func (r resolved) requesterFor(recorder *metrics.Recorder) requester.Requester {
+	if a := r.arrRequester(recorder); a != nil {
 		return a
 	}
-	return requester.NewSeerrDynamic(r.seerrConn())
+	return requester.NewSeerrDynamicObserved(r.seerrConn(), recorder)
 }
 
 // arrRequester returns the concrete direct-arr requester when requester.provider=arr, else nil.
 // The queue poller (§18.1) needs the concrete *Arr for its QueueStatus capability, which the
 // Requester interface doesn't expose.
-func (r resolved) arrRequester() *requester.Arr {
+func (r resolved) arrRequester(recorder *metrics.Recorder) *requester.Arr {
 	if r.str("requester.provider") != "arr" {
 		return nil
 	}
-	return requester.NewArr(r.arrConns())
+	return requester.NewArrObserved(r.arrConns(), recorder)
 }
 
 // seerrRequester returns the concrete Seerr requester when Seerr is the active provider (the
@@ -243,11 +244,11 @@ func (r resolved) arrRequester() *requester.Arr {
 // needs the concrete *Seerr for its QueueStatus capability (coarse status from /media), which the
 // Requester interface doesn't expose. Only meaningful once seerr.url is set — an unconfigured
 // Seerr QueueStatus just errors and the poll pass is a harmless no-op.
-func (r resolved) seerrRequester() *requester.Seerr {
+func (r resolved) seerrRequester(recorder *metrics.Recorder) *requester.Seerr {
 	if r.str("requester.provider") == "arr" {
 		return nil
 	}
-	return requester.NewSeerrDynamic(r.seerrConn())
+	return requester.NewSeerrDynamicObserved(r.seerrConn(), recorder)
 }
 
 // tunarrConfig snapshots every live Tunarr setting together at the start of one

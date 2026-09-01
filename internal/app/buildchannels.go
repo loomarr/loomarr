@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/media"
+	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/reconcile"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -54,6 +55,7 @@ func buildChannels(
 	eventBus *events.Bus, emitter *eventEmitter, activityRec *activity.Recorder,
 	jobReg *scheduler.Registry, episodeRefresh *reconcile.EpisodeRefresh, fillerLayout filler.Layout,
 	log *slog.Logger, processDiagnostics *diagnostics.ProcessManager,
+	metricRecorder *metrics.Recorder,
 ) (channelBuild, error) {
 	// Scheduler + Tunarr (§9, Phase 10): the channel reconcile engine + periodic
 	// sweep, plus the Live TV wiring connector (guide-refresh poker). Wired when a
@@ -139,7 +141,7 @@ func buildChannels(
 	var chanNumbers binder.NumberSource
 	if st != nil {
 		lib := libraryClient
-		prog := programmer.NewDynamic(set.tunarrConfig())
+		prog := programmer.NewDynamicObserved(set.tunarrConfig(), metricRecorder)
 		// Every production caller supplies an explicit URL snapshot from the durable checkpoint.
 		// The connector's fixed fallback is empty so accidentally using a compatibility helper
 		// fails closed instead of publishing a process-local target.
@@ -235,7 +237,7 @@ func buildChannels(
 			// global fallback, while schedule.PlaysInternally applies a channel's policy override.
 			// This keeps ordinary reconcile aligned with the fleet barrier during a transition.
 			ResolvePlayoutBackendContext: reconcileBackendContext,
-		}, time.Now, log)
+		}, time.Now, log).WithMetrics(metricRecorder)
 		// Heal an entry that reached the scheduler unrated once its title is in the
 		// library (§389 amendment): without this a fail-closed audience ceiling drops
 		// it and the channel plays nothing (§9). Uses the same library client the
@@ -273,6 +275,7 @@ func buildChannels(
 			resolveDesiredBackend: resolveDesiredBackend, appliedBackend: appliedBackendContext,
 			transportBackend: transportBackendContext, log: log,
 			processDiagnostics: processDiagnostics,
+			metrics:            metricRecorder,
 		})
 		if err != nil {
 			return channelBuild{}, err

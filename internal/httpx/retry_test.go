@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/testkit/httpfixture"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 func retryResponse(status int, body string) *http.Response {
@@ -438,9 +438,8 @@ func TestInstrumentedRetryCountsOneLogicalRequest(t *testing.T) {
 		httpfixture.Step{Response: retryResponse(http.StatusOK, "ok")},
 	)
 	retry, _ := deterministicRetry(script)
-	instrumented := metrics.InstrumentTransport(target, retry)
-	beforeOK := gatheredCounter(t, "loomarr_outbound_requests_total", target, "200")
-	beforeUnavailable := gatheredCounter(t, "loomarr_outbound_requests_total", target, "503")
+	recorder := metrics.New(metrics.Options{})
+	instrumented := recorder.InstrumentTransport(target, retry)
 	req, _ := http.NewRequest(http.MethodGet, "http://service/", nil)
 	resp, err := instrumented.RoundTrip(req)
 	if err != nil {
@@ -450,11 +449,14 @@ func TestInstrumentedRetryCountsOneLogicalRequest(t *testing.T) {
 	if script.Calls() != 2 {
 		t.Fatalf("attempts = %d, want 2", script.Calls())
 	}
-	if got := gatheredCounter(t, "loomarr_outbound_requests_total", target, "200"); got != beforeOK+1 {
-		t.Fatalf("logical 200 count = %v, want %v", got, beforeOK+1)
+	scrape := httptest.NewRecorder()
+	recorder.Handler().ServeHTTP(scrape, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body := scrape.Body.String()
+	if !strings.Contains(body, `loomarr_outbound_requests_total{code="200",target="other"} 1`) {
+		t.Fatalf("logical 200 request missing from scrape:\n%s", body)
 	}
-	if got := gatheredCounter(t, "loomarr_outbound_requests_total", target, "503"); got != beforeUnavailable {
-		t.Fatalf("intermediate 503 count = %v, want unchanged %v", got, beforeUnavailable)
+	if strings.Contains(body, `loomarr_outbound_requests_total{code="503",target="other"}`) {
+		t.Fatalf("intermediate 503 was counted as a logical request:\n%s", body)
 	}
 }
 
@@ -499,27 +501,4 @@ func (b *trackingBody) Read(p []byte) (int, error) {
 func (b *trackingBody) Close() error {
 	b.closed = true
 	return nil
-}
-
-func gatheredCounter(t *testing.T, name, target, code string) float64 {
-	t.Helper()
-	families, err := prometheus.DefaultGatherer.Gather()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, family := range families {
-		if family.GetName() != name {
-			continue
-		}
-		for _, metric := range family.Metric {
-			labels := map[string]string{}
-			for _, pair := range metric.Label {
-				labels[pair.GetName()] = pair.GetValue()
-			}
-			if labels["target"] == target && labels["code"] == code {
-				return metric.GetCounter().GetValue()
-			}
-		}
-	}
-	return 0
 }

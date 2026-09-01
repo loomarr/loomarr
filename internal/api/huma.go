@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/media"
+	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/recovery"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -28,9 +29,10 @@ import (
 // Server holds the API dependencies and builds the Huma API on a stdlib mux
 // (§7.1, §14: code-first OpenAPI 3.1 via humago — no third-party router).
 type Server struct {
-	store store.Store
-	auth  Authorizer
-	log   *slog.Logger
+	store   store.Store
+	auth    Authorizer
+	log     *slog.Logger
+	metrics *metrics.Recorder
 	// backupSQLite is set when the store is the SQLite backend (GET /v1/backup —
 	// §16). Nil for Postgres, which returns 501 + a pg_dump docs pointer.
 	backupSQLite BackupStreamer
@@ -866,6 +868,7 @@ type Options struct {
 	Store                store.Store
 	Auth                 Authorizer
 	Log                  *slog.Logger
+	Metrics              *metrics.Recorder
 	BackupSQLite         BackupStreamer // nil ⇒ /v1/backup returns 501 (Postgres)
 	Ready                ReadyFunc
 	Login                LoginService                // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent

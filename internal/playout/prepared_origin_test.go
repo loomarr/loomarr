@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/prepared"
 )
 
@@ -209,11 +210,14 @@ func TestOriginPreparedHitBypassesLiveAndMissFallsBack(t *testing.T) {
 		t.Fatalf("shared prepared Tune = (%q, %v), live channel=%q", gotAgain.Manifest, err, hls.channel)
 	}
 
+	recorder := metrics.New(metrics.Options{})
 	missOrigin := newOrigin(newPreparedOrigin(lib, fixedPreparedResolver{ok: false}), nil, hls)
+	missOrigin.observer = recorder
 	got, err = missOrigin.Tune(t.Context(), TuneRequest{ChannelID: "fallback", Plan: PlanBaseline, Delivery: DeliveryHLS})
 	if err != nil || string(got.Manifest) != "live" || hls.channel != "fallback" {
 		t.Fatalf("fallback Tune = (%q, %v), live channel=%q", got.Manifest, err, hls.channel)
 	}
+	assertMetricsContain(t, recorder, `loomarr_playout_fallbacks_total{reason="prepared_to_live"} 1`)
 
 	hls.channel = ""
 	_, err = missOrigin.Tune(t.Context(), TuneRequest{

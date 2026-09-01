@@ -41,6 +41,7 @@ workspace-tooling	web/package.json	web,clients,apple_mobile,apple_tv,expo_androi
 openapi	api/openapi.yaml	contracts,go,go_full,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
 android	android/app/src/main/AndroidManifest.xml	android
 release-image	Dockerfile	contracts,image
+observability-bundle	observability/metrics-manifest.txt	contracts
 documentation	docs/dev/testing.md	docs
 design-contract	docs/design.md	docs,policy
 configuration-contract	docs/configuration.md	docs,policy

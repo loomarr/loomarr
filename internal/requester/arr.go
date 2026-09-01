@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -47,11 +48,16 @@ type ArrConns struct {
 
 // NewArr builds the direct-arr requester from per-app connection resolvers.
 func NewArr(c ArrConns) *Arr {
+	return NewArrObserved(c, nil)
+}
+
+// NewArrObserved binds operational Sonarr/Radarr requests to one application generation.
+func NewArrObserved(c ArrConns, recorder *metrics.Recorder) *Arr {
 	return &Arr{
 		sonarr: c.Sonarr, radarr: c.Radarr,
 		sonarrQualityProfile: c.SonarrQualityProfile, sonarrRootFolder: c.SonarrRootFolder,
 		radarrQualityProfile: c.RadarrQualityProfile, radarrRootFolder: c.RadarrRootFolder,
-		http: httpx.NewNamed("arr", httpx.TimeoutArr),
+		http: httpx.NewNamedObserved("arr", httpx.TimeoutArr, recorder),
 	}
 }
 

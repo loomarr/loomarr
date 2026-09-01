@@ -3,10 +3,15 @@ package playout
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/metrics"
 )
 
 // A fake encoder: a pipe we can write "video" into, wrapped in the same Process the real
@@ -108,6 +113,51 @@ func TestAttach_OneEncoderServesManyViewers(t *testing.T) {
 	}
 	if n := m.ActiveCount(); n != 1 {
 		t.Errorf("ActiveCount = %d, want 1", n)
+	}
+}
+
+func TestManagerPublishesSessionLifecycleToGenerationMetrics(t *testing.T) {
+	spawn, _ := newFakeSpawner(t)
+	recorder := metrics.New(metrics.Options{})
+	manager := NewManager(spawn, func() int { return 4 }, time.Minute, nil).WithObserver(recorder)
+	t.Cleanup(manager.Stop)
+
+	_, _, err := manager.Attach(t.Context(), "private-channel-id", PlanFull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertMetricsContain(t, recorder,
+		`loomarr_playout_sessions_active 1`,
+		`loomarr_playout_session_starts_total{result="success"} 1`,
+	)
+
+	manager.Stop()
+	assertMetricsContain(t, recorder, `loomarr_playout_sessions_active 0`)
+}
+
+func TestManagerPublishesParentProcessFailure(t *testing.T) {
+	recorder := metrics.New(metrics.Options{})
+	manager := NewManager(func(context.Context, string, EncodePlan) (*Process, error) {
+		return nil, errors.New("ffmpeg refused to start")
+	}, func() int { return 4 }, time.Minute, nil).WithObserver(recorder)
+
+	if _, _, err := manager.Attach(t.Context(), "private-channel-id", PlanFull); err == nil {
+		t.Fatal("Attach succeeded, want spawn failure")
+	}
+	assertMetricsContain(t, recorder,
+		`loomarr_playout_session_starts_total{result="spawn_error"} 1`,
+		`loomarr_playout_process_failures_total{stage="parent"} 1`,
+	)
+}
+
+func assertMetricsContain(t *testing.T, recorder *metrics.Recorder, wants ...string) {
+	t.Helper()
+	response := httptest.NewRecorder()
+	recorder.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	for _, want := range wants {
+		if !strings.Contains(response.Body.String(), want) {
+			t.Errorf("generation scrape does not contain %q", want)
+		}
 	}
 }
 

@@ -1,0 +1,138 @@
+{
+  "annotations": {"list": []},
+  "description": "Operational overview for one or more Loomarr application generations.",
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
+      "id": 1,
+      "targets": [{"expr": "sum(rate(loomarr_http_requests_total[$__rate_interval]))", "legendFormat": "requests", "refId": "A"}],
+      "title": "HTTP request rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"max": 1, "min": 0, "unit": "percentunit"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0},
+      "id": 2,
+      "targets": [{"expr": "sum(rate(loomarr_http_requests_total{code=~\"5..\"}[$__rate_interval])) / clamp_min(sum(rate(loomarr_http_requests_total[$__rate_interval])), 0.001)", "legendFormat": "5xx ratio", "refId": "A"}],
+      "title": "HTTP error ratio",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
+      "id": 3,
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le) (rate(loomarr_http_request_duration_seconds_bucket[$__rate_interval])))", "legendFormat": "p95", "refId": "A"}],
+      "title": "HTTP latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "id": 4,
+      "targets": [
+        {"expr": "sum by (target, code) (rate(loomarr_outbound_requests_total[$__rate_interval]))", "legendFormat": "{{target}} {{code}}", "refId": "A"},
+        {"expr": "sum by (target, reason) (rate(loomarr_outbound_retries_total[$__rate_interval]))", "legendFormat": "{{target}} retry {{reason}}", "refId": "B"}
+      ],
+      "title": "Dependency requests and retries",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"min": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "id": 5,
+      "targets": [
+        {"expr": "loomarr_database_connections", "legendFormat": "{{state}}", "refId": "A"},
+        {"expr": "loomarr_database_max_open_connections", "legendFormat": "maximum", "refId": "B"},
+        {"expr": "rate(loomarr_database_connection_waits_total[$__rate_interval])", "legendFormat": "waits/s", "refId": "C"}
+      ],
+      "title": "Database pool",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"min": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "id": 6,
+      "targets": [
+        {"expr": "sum by (job, result) (increase(loomarr_scheduler_job_executions_total[$__rate_interval]))", "legendFormat": "{{job}} {{result}}", "refId": "A"},
+        {"expr": "loomarr_scheduler_jobs_running", "legendFormat": "{{job}} running", "refId": "B"}
+      ],
+      "title": "Scheduled Jobs",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"min": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "id": 7,
+      "targets": [
+        {"expr": "loomarr_playout_sessions_active", "legendFormat": "active sessions", "refId": "A"},
+        {"expr": "sum by (stage) (increase(loomarr_playout_process_failures_total[$__rate_interval]))", "legendFormat": "{{stage}} failures", "refId": "B"},
+        {"expr": "sum by (reason) (increase(loomarr_playout_fallbacks_total[$__rate_interval]))", "legendFormat": "{{reason}} fallback", "refId": "C"}
+      ],
+      "title": "Internal Playout",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"min": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 24},
+      "id": 8,
+      "targets": [{"expr": "loomarr_titles", "legendFormat": "{{state}}", "refId": "A"}, {"expr": "loomarr_jobs", "legendFormat": "proposal {{status}}", "refId": "B"}],
+      "title": "Acquisition and proposal state",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"min": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 24},
+      "id": 9,
+      "targets": [{"expr": "sum by (match_level) (increase(loomarr_filler_pods_total[$__rate_interval]))", "legendFormat": "{{match_level}}", "refId": "A"}, {"expr": "sum by (kind) (rate(loomarr_llm_tokens_total[$__rate_interval]))", "legendFormat": "LLM {{kind}}", "refId": "B"}],
+      "title": "Generation quality and usage",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"min": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 24},
+      "id": 10,
+      "targets": [{"expr": "loomarr_image_worker_in_flight", "legendFormat": "in flight", "refId": "A"}, {"expr": "sum by (kind, result) (increase(loomarr_image_worker_operations_total[$__rate_interval]))", "legendFormat": "{{kind}} {{result}}", "refId": "B"}],
+      "title": "Image worker",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 41,
+  "tags": ["loomarr"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "label": "Prometheus",
+        "name": "DS_PROMETHEUS",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": {"from": "now-6h", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Loomarr Overview",
+  "uid": "loomarr-overview",
+  "version": 1
+}

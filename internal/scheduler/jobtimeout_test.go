@@ -96,7 +96,7 @@ func TestJobTimeout_CancelsTheWorkThatOverruns(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), (&riverWorker{s: s}).
 		Timeout(&river.Job[jobArgs]{Args: jobArgs{Name: "overrun"}}))
 	defer cancel()
-	s.execute(ctx, j)
+	s.execute(ctx, j, false)
 
 	if !sawCancel.Load() {
 		t.Fatal("the job ran to completion past its ceiling — its context was never cancelled")

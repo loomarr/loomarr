@@ -5,8 +5,6 @@ import (
 	"log/slog"
 	"sort"
 	"time"
-
-	"github.com/loomarr/loomarr/internal/metrics"
 )
 
 // PodAdapter implements the scheduler's PodFiller port (§10): it loads the clip
@@ -38,8 +36,14 @@ type PodAdapter struct {
 	// package already resolves per call for exactly this reason. This is the same fix applied one
 	// layer out: the DOMAIN functions still take a plain `Policy` value — they are pure and their
 	// tests stay literal — and only the boundary that owns a settings service resolves it.
-	policy func() Policy
-	log    *slog.Logger
+	policy  func() Policy
+	log     *slog.Logger
+	metrics PodMetrics
+}
+
+// PodMetrics observes only attached pods; previews deliberately do not count.
+type PodMetrics interface {
+	FillerPodAssembled(matchLevel string)
 }
 
 // pol resolves the current policy. A nil resolver means "no policy" (the zero value), which is
@@ -86,6 +90,12 @@ type Selection struct {
 // next pod rather than at the next restart. Pass nil for "no policy" — the zero value.
 func NewPodAdapter(catalog CatalogReader, exposures ExposureReader, policy func() Policy, log *slog.Logger) *PodAdapter {
 	return &PodAdapter{catalog: catalog, exposures: exposures, policy: policy, log: log}
+}
+
+// WithMetrics binds generation-scoped observations without coupling filler to Prometheus.
+func (a *PodAdapter) WithMetrics(observer PodMetrics) *PodAdapter {
+	a.metrics = observer
+	return a
 }
 
 // poolGapMs is the notional window Assemble fills to size the channel's clip pool.
@@ -160,7 +170,9 @@ func (a *PodAdapter) BuildFillerList(ctx context.Context, channelID string, seed
 	// Recorded here (the attach path) not in Preview, so UI previews don't inflate
 	// it; skipped when the catalog is empty (a zero-value MatchLevel).
 	if pod.MatchLevel != "" {
-		metrics.FillerPodAssembled(string(pod.MatchLevel))
+		if a.metrics != nil {
+			a.metrics.FillerPodAssembled(string(pod.MatchLevel))
+		}
 	}
 	ids := make([]string, 0, len(pod.Entries))
 	for _, e := range pod.Entries {

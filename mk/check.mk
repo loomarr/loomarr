@@ -7,7 +7,11 @@ verify: ## run affected local evidence; SCOPE=all runs the comprehensive reposit
 ## ---- explicit complete audit --------------------------------------------
 
 .PHONY: check-static
-check-static: rust-check fmt shellcheck privacy-verify vet platform-vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify ## repository contracts without the unit-test suite (CI runs this once beside test shards)
+check-static: rust-check fmt shellcheck privacy-verify observability-verify vet platform-vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify ## repository contracts without the unit-test suite (CI runs this once beside test shards)
+
+.PHONY: observability-verify
+observability-verify: ## validate the metric manifest, Prometheus rules, and Grafana provisioning (needs Docker and jq)
+	@./scripts/verify-observability.sh
 
 .PHONY: rust-check rust-test-worker rust-audit rust-fuzz
 rust-check: rust-test-worker ## format, lint, build, and test the required Rust image worker
