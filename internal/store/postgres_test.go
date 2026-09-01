@@ -7,9 +7,15 @@ package store
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
+	"net/url"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/loomarr/loomarr/internal/testkit/postgresimage"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -18,7 +24,7 @@ import (
 
 // startPostgres spins up an ephemeral Postgres via testcontainers (§14, §19) and
 // returns its DSN. One container is shared across the suite's sub-tests; each
-// sub-test still gets a freshly-migrated store on its own schema via newStore.
+// assertion gets a private database cloned from one migrated, boot-seeded template.
 func startPostgres(t *testing.T) string {
 	t.Helper()
 	dsn, _ := startPostgresContainer(t)
@@ -48,6 +54,107 @@ func startPostgresContainer(t *testing.T) (string, testcontainers.Container) {
 	return dsn, ctr
 }
 
+type postgresConformanceOpenFunc func(context.Context, string, bool) (Store, error)
+
+func postgresDSNDatabase(dsn string) (string, error) {
+	u, err := url.Parse(dsn)
+	if err != nil {
+		return "", fmt.Errorf("parse postgres DSN: %w", err)
+	}
+	if u.Scheme != "postgres" && u.Scheme != "postgresql" {
+		return "", fmt.Errorf("parse postgres DSN: unexpected scheme %q", u.Scheme)
+	}
+	database, err := url.PathUnescape(strings.TrimPrefix(u.EscapedPath(), "/"))
+	if err != nil {
+		return "", fmt.Errorf("decode postgres database name: %w", err)
+	}
+	if database == "" || strings.Contains(database, "/") {
+		return "", fmt.Errorf("parse postgres DSN: invalid database path %q", u.Path)
+	}
+	return database, nil
+}
+
+func postgresDSNWithDatabase(dsn, database string) (string, error) {
+	u, err := url.Parse(dsn)
+	if err != nil {
+		return "", fmt.Errorf("parse postgres DSN: %w", err)
+	}
+	u.Path = "/" + database
+	u.RawPath = ""
+	return u.String(), nil
+}
+
+func newPostgresConformanceStoreFactory(t *testing.T, dsn string) NewStoreFunc {
+	t.Helper()
+	return newPostgresConformanceStoreFactoryWithOpen(t, dsn, Open)
+}
+
+// newPostgresConformanceStoreFactoryWithOpen migrates and boot-seeds the container's original
+// database once, closes every connection to it (CREATE DATABASE ... TEMPLATE requires that), then
+// hides database cloning and cleanup behind the same NewStoreFunc the shared assertions already use.
+// Each returned Store owns a distinct database and still uses the production Postgres adapter.
+func newPostgresConformanceStoreFactoryWithOpen(t *testing.T, dsn string, open postgresConformanceOpenFunc) NewStoreFunc {
+	t.Helper()
+	ctx := context.Background()
+	templateDatabase, err := postgresDSNDatabase(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	template, err := open(ctx, dsn, true)
+	if err != nil {
+		t.Fatalf("build migrated postgres template: %v", err)
+	}
+	if err := template.Close(); err != nil {
+		t.Fatalf("close migrated postgres template: %v", err)
+	}
+
+	adminDSN, err := postgresDSNWithDatabase(dsn, "postgres")
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err := sql.Open("pgx", adminDSN)
+	if err != nil {
+		t.Fatalf("open postgres maintenance connection: %v", err)
+	}
+	if err := admin.PingContext(ctx); err != nil {
+		_ = admin.Close()
+		t.Fatalf("ping postgres maintenance connection: %v", err)
+	}
+	t.Cleanup(func() { _ = admin.Close() })
+
+	var sequence atomic.Uint64
+	return func(t *testing.T) Store {
+		t.Helper()
+		cloneDatabase := fmt.Sprintf("loomarr_conformance_%06d", sequence.Add(1))
+		cloneIdentifier := pgx.Identifier{cloneDatabase}.Sanitize()
+		templateIdentifier := pgx.Identifier{templateDatabase}.Sanitize()
+		if _, err := admin.ExecContext(ctx, "CREATE DATABASE "+cloneIdentifier+" WITH TEMPLATE "+templateIdentifier); err != nil {
+			t.Fatalf("clone migrated postgres template: %v", err)
+		}
+
+		cloneDSN, err := postgresDSNWithDatabase(dsn, cloneDatabase)
+		if err != nil {
+			_, _ = admin.ExecContext(ctx, "DROP DATABASE "+cloneIdentifier+" WITH (FORCE)")
+			t.Fatal(err)
+		}
+		st, err := open(ctx, cloneDSN, false)
+		if err != nil {
+			_, _ = admin.ExecContext(ctx, "DROP DATABASE "+cloneIdentifier+" WITH (FORCE)")
+			t.Fatalf("open cloned postgres store: %v", err)
+		}
+		t.Cleanup(func() {
+			if err := st.Close(); err != nil {
+				t.Errorf("close cloned postgres store: %v", err)
+			}
+			if _, err := admin.ExecContext(context.Background(), "DROP DATABASE "+cloneIdentifier+" WITH (FORCE)"); err != nil {
+				t.Errorf("drop cloned postgres database: %v", err)
+			}
+		})
+		return st
+	}
+}
+
 // TestPostgresConformance runs the SAME suite as SQLite (AGENTS.md: one suite,
 // two backends — never forked). The concurrent-claim case is the point: it
 // exercises real FOR UPDATE SKIP LOCKED row locking, which SQLite can't.
@@ -55,60 +162,14 @@ func startPostgresContainer(t *testing.T) (string, testcontainers.Container) {
 // Requires Docker; run via `make test-pg` (guarded off the default `make test`).
 func TestPostgresConformance(t *testing.T) {
 	dsn := startPostgres(t)
-
-	newStore := func(t *testing.T) Store {
-		t.Helper()
-		// Each sub-test migrates fresh. The migrations DROP+CREATE via goose on a
-		// clean container database; sub-tests within one run share the DB but the
-		// suite's assertions are written to be independent (distinct keys).
-		s, err := Open(context.Background(), dsn, true)
-		if err != nil {
-			t.Fatalf("open postgres store: %v", err)
-		}
-		t.Cleanup(func() {
-			// Reset the shared database by DROPPING THE SCHEMA, so the next sub-test's Open
-			// re-runs every migration against an empty database.
-			//
-			// ⚠ **This replaces a hand-written TRUNCATE list, and the reason is worth keeping.**
-			// The list read `titles, settings, channels, sessions, users, jobs, proposals, clips`
-			// under a comment asking the next person to keep it in step with the schema. By the
-			// time V52 arrived it covered roughly eight of twenty tables — and the failure it
-			// produced was the worst kind: rows from earlier sub-tests survived into later ones,
-			// so any assertion over a GLOBAL query passed on SQLite (which hands every sub-test a
-			// fresh file) and failed only on Postgres.
-			//
-			// ⚠ **But the list was not purely drift, and simply completing it is WRONG.**
-			// `filler_sources` and the taxonomy carry rows a MIGRATION seeds; truncating those
-			// destroys fixture data nothing puts back, which is exactly what completing the list
-			// did — it turned two Filler failures on. Nothing in the literal distinguished
-			// "omitted by accident" from "omitted on purpose".
-			//
-			// Dropping the schema sidesteps both problems instead of balancing them: seeded rows
-			// come back because the seeding migration runs again, new tables are covered the day
-			// they exist, and the semantics finally MATCH the SQLite path (a genuinely fresh
-			// database per sub-test) rather than approximating it.
-			pg := s.(*sqlStore)
-			ctx := context.Background()
-			// CASCADE takes the foreign keys with it; recreating public restores the default
-			// search_path the next connection expects. goose's bookkeeping table goes too, which
-			// is what makes the migrations re-run rather than being skipped as already-applied.
-			_, _ = pg.db.ExecContext(ctx, "DROP SCHEMA public CASCADE")
-			_, _ = pg.db.ExecContext(ctx, "CREATE SCHEMA public")
-			_ = s.Close()
-		})
-		return s
-	}
+	newStore := newPostgresConformanceStoreFactory(t, dsn)
 
 	RunConformance(t, newStore)
 
 	t.Run("ApprovalQuotaAcrossIndependentPools", func(t *testing.T) {
-		primary, err := Open(context.Background(), dsn, true)
+		primary := newStore(t)
+		secondary, err := openPostgres(context.Background(), primary.(*sqlStore).dsn)
 		if err != nil {
-			t.Fatalf("open primary postgres store: %v", err)
-		}
-		secondary, err := openPostgres(context.Background(), dsn)
-		if err != nil {
-			_ = primary.Close()
 			t.Fatalf("open independent postgres pool: %v", err)
 		}
 		// One connection per independent pool makes the old starvation shape
@@ -116,13 +177,7 @@ func TestPostgresConformance(t *testing.T) {
 		// transaction connection while the contender waits on its own.
 		primary.(*sqlStore).db.SetMaxOpenConns(1)
 		secondary.db.SetMaxOpenConns(1)
-		t.Cleanup(func() {
-			_ = secondary.Close()
-			pg := primary.(*sqlStore)
-			_, _ = pg.db.ExecContext(context.Background(), "DROP SCHEMA public CASCADE")
-			_, _ = pg.db.ExecContext(context.Background(), "CREATE SCHEMA public")
-			_ = primary.Close()
-		})
+		t.Cleanup(func() { _ = secondary.Close() })
 
 		testProposalAutoApprovalQuotaAcrossStores(t, primary, secondary)
 	})

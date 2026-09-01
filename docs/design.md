@@ -7868,6 +7868,14 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   driver, WAL configuration, schema, seeds, and Store implementation. Dedicated startup, migration,
   downgrade, historical-data, and restart tests continue to create and migrate their own databases;
   the template is a conformance-fixture optimization, never a production migration shortcut.
+  PostgreSQL conformance follows the same isolation contract through its native database seam: one
+  closed, fully migrated and boot-seeded template database is cloned into a distinct database for
+  every assertion, and each clone is opened through the production PostgreSQL adapter without
+  replaying migrations. Clone cleanup closes the Store before force-dropping only that disposable
+  database from a separate maintenance connection. The template is never mutated, and dedicated
+  PostgreSQL migration, preflight, and data-migration tests continue to create and migrate fresh
+  databases. Real database cloning preserves PostgreSQL locking, independent pools, constraints,
+  schema, and seeds; it removes repeated fixture construction, not backend fidelity.
   The captured-private-fixture regression guard remains one repository contract behind the stable
   `privacy-verify` Make interface. It enumerates the tracked tree once, extracts only the candidate
   shapes represented by the original capture audit, case-folds and SHA-256 fingerprints candidates
@@ -7922,7 +7930,7 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   everything. Generated docs, action pinning, impact fixtures, and the release verifier reject an
   orphaned module or a caller whose reusable implementation is not covered by its owning decision.
 - **State machine:** every transition + the five invariants.
-- **Store conformance:** one suite vs **both** SQLite (temp file) and Postgres (**testcontainers**), incl. `ClaimDue` concurrency (no record claimed twice). The race-enabled integration target carries an explicit 20-minute Go package timeout: the shared suite repeatedly migrates fresh databases across both dialects and has exceeded Go's implicit 10-minute default on a two-core hosted runner, while a finite doubled ceiling still fails closed on genuine hangs.
+- **Store conformance:** one suite vs **both** SQLite (private temp-file clones) and Postgres (**testcontainers**, private database clones), incl. `ClaimDue` concurrency (no record claimed twice). Both template factories migrate and boot-seed once, then open each isolated clone through its production adapter without migration replay; dedicated migration and lifecycle tests retain fresh databases. The race-enabled integration target carries an explicit 20-minute Go package timeout because the complete store package has exceeded Go's implicit 10-minute default on a two-core hosted runner, while a finite doubled ceiling still fails closed on genuine hangs.
 - **Database lifecycle certification:** `make test-db-lifecycle` first runs that complete Postgres
   gate, then builds the shipped Loomarr image and drives isolated Compose projects through the real
   Traefik/HTTP boundary. It proves a fresh PostgreSQL install can write and restart; a populated

@@ -542,6 +542,18 @@ database. Routing those helpers through the existing isolated migrated fixture r
 package profile to 4.19s (94.4%). Tests that exercise startup, migration, downgrade, historical data,
 or restart behavior must continue to open and migrate fresh databases.
 
+PostgreSQL conformance also uses an isolated template, but through PostgreSQL's own database-clone
+interface rather than file copying. Seven successful merge-queue samples put the real-Postgres step
+between 8m20s and 14m18s; `internal/store` dominated every sample at 366–722 package-seconds while
+backend transition and app ran concurrently. The local race profile measured 124.43s for the full
+integration-tagged store package and 46.23s for Postgres conformance. Its factory had dropped and
+recreated `public`, then replayed all 86 migrations for every assertion. Migrating and boot-seeding
+one closed template, creating a private database from it per assertion, and opening each clone
+through the production Postgres adapter reduced the exact profile to 85.46s / 6.85s (−31.3% and
+−85.2%). Clone cleanup closes the Store before a maintenance connection force-drops only the named
+disposable database. Migration, preflight, and cross-backend data-migration tests still create fresh
+databases; queue evidence remains the proportional gate.
+
 Sharding is free on a public repo. Check the bill before copying it into a private one.
 
 ## Caching
