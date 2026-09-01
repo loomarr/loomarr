@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/secretprotection"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
@@ -31,9 +34,14 @@ func TestBootSettingsGeneratesOnlyOperationalTokensAndRedactsThem(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	webPushIdentity, err := json.Marshal(secrets.WebPushIdentity())
+	if err != nil {
+		t.Fatal(err)
+	}
 	want := map[string]string{
-		"secret.api_token":     secrets.Value(settings.SecretAPI),
-		"secret.playout_token": secrets.Value(settings.SecretPlayout),
+		"secret.api_token":               secrets.Value(settings.SecretAPI),
+		"secret.playout_token":           secrets.Value(settings.SecretPlayout),
+		"secret.web_push_vapid_identity": string(webPushIdentity),
 	}
 	rows, err := st.ListSettings(context.Background())
 	if err != nil {
@@ -55,7 +63,8 @@ func TestBootSettingsGeneratesOnlyOperationalTokensAndRedactsThem(t *testing.T) 
 		log.Info("credential", "value", value)
 	}
 	if strings.Contains(logs.String(), want["secret.api_token"]) ||
-		strings.Contains(logs.String(), want["secret.playout_token"]) {
+		strings.Contains(logs.String(), want["secret.playout_token"]) ||
+		strings.Contains(logs.String(), secrets.WebPushIdentity().PrivateKey) {
 		t.Fatalf("generated token leaked through boot logger: %s", logs.String())
 	}
 
@@ -177,6 +186,21 @@ func TestEncryptionServiceRotatesAndReencryptsStoredSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	destinations := notifications.NewProtectedDestinationRepository(st, protection)
+	now := time.Unix(1_900_000_000, 0).UTC()
+	if err := destinations.SaveNotificationDestination(context.Background(), notifications.Destination{
+		ID: "slack-rotation", Means: notifications.MeansSlack, Label: "Slack",
+		Scope: notifications.ScopeInstallation, Audience: notifications.RecipientOperators,
+		Topics: []notifications.Topic{notifications.TopicChannelDegraded}, Enabled: false,
+		Credentials: map[string]string{"webhookUrl": "https://hooks.slack.test/rotation-secret"},
+		CreatedAt:   now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	destinationBefore, err := st.GetNotificationDestinationRecord(context.Background(), "slack-rotation")
+	if err != nil {
+		t.Fatal(err)
+	}
 	service := encryptionService{manager: protection, store: st}
 	if err := service.RotateDataKey(context.Background()); err != nil {
 		t.Fatal(err)
@@ -192,6 +216,21 @@ func TestEncryptionServiceRotatesAndReencryptsStoredSettings(t *testing.T) {
 	plain, err := protection.Open(settingRecord("notifications.smtp.password"), after)
 	if err != nil || string(plain) != "smtp-before-rotation" {
 		t.Fatalf("rotated setting = (%q, %v)", plain, err)
+	}
+	destinationAfter, err := st.GetNotificationDestinationRecord(context.Background(), "slack-rotation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	destinationBeforeParts := strings.Split(destinationBefore.CredentialsEncrypted, ":")
+	destinationAfterParts := strings.Split(destinationAfter.CredentialsEncrypted, ":")
+	if len(destinationBeforeParts) < 4 || len(destinationAfterParts) < 4 ||
+		destinationBeforeParts[2] == destinationAfterParts[2] {
+		t.Fatalf("destination did not move to rotated key: before=%q after=%q",
+			destinationBefore.CredentialsEncrypted, destinationAfter.CredentialsEncrypted)
+	}
+	opened, err := destinations.GetNotificationDestination(context.Background(), "slack-rotation")
+	if err != nil || opened.Credentials["webhookUrl"] != "https://hooks.slack.test/rotation-secret" {
+		t.Fatalf("rotated destination = (%q, %v)", opened.Credentials["webhookUrl"], err)
 	}
 }
 

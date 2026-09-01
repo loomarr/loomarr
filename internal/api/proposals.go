@@ -459,6 +459,9 @@ func (s *Server) denyProposal(ctx context.Context, in *denyInput) (*denyOutput, 
 	} else if err != nil {
 		return nil, err
 	}
+	if s.proposalNotifications != nil {
+		s.proposalNotifications.ProposalDeclined(ctx, p)
+	}
 	out := &denyOutput{}
 	out.Body.Status = "denied"
 	return out, nil

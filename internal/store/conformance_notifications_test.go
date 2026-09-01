@@ -221,6 +221,91 @@ func testNotificationProductVocabulary(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+func testNotificationDestinations(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	s := newStore(t)
+	now := time.Unix(1_900_000_000, 0)
+	destination := notifications.DestinationRecord{
+		ID: "destination-slack", Means: notifications.MeansSlack, Label: "Operations Slack",
+		Scope: notifications.ScopeInstallation, Audience: notifications.RecipientOperators,
+		Topics:  []notifications.Topic{notifications.TopicChannelDegraded, notifications.TopicAcquisitionGaveUp},
+		Enabled: true, Configuration: map[string]string{"channel": "alerts"},
+		CredentialsEncrypted: "opaque-envelope-1", CreatedAt: now, UpdatedAt: now,
+	}
+	if err := s.SaveNotificationDestinationRecord(ctx, destination); err != nil {
+		t.Fatalf("save destination: %v", err)
+	}
+	stored, err := s.GetNotificationDestinationRecord(ctx, destination.ID)
+	if err != nil || stored.ID != destination.ID || stored.Means != destination.Means ||
+		stored.Label != destination.Label || stored.Scope != destination.Scope || stored.Audience != destination.Audience ||
+		!stored.Enabled || len(stored.Topics) != 2 || stored.Configuration["channel"] != "alerts" ||
+		stored.CredentialsEncrypted != "opaque-envelope-1" {
+		t.Fatalf("stored destination = %+v, %v", stored, err)
+	}
+	listed, err := s.ListNotificationDestinationRecords(ctx)
+	if err != nil || len(listed) != 1 || listed[0].ID != destination.ID {
+		t.Fatalf("listed destinations = %+v, %v", listed, err)
+	}
+
+	destination.Enabled = false
+	destination.CredentialsEncrypted = "opaque-envelope-2"
+	destination.UpdatedAt = now.Add(time.Minute)
+	if err := s.SaveNotificationDestinationRecord(ctx, destination); err != nil {
+		t.Fatalf("update destination: %v", err)
+	}
+	stored, err = s.GetNotificationDestinationRecord(ctx, destination.ID)
+	if err != nil || stored.Enabled || stored.CredentialsEncrypted != "opaque-envelope-2" ||
+		!stored.CreatedAt.Equal(now) || !stored.UpdatedAt.Equal(now.Add(time.Minute)) {
+		t.Fatalf("updated destination = %+v, %v", stored, err)
+	}
+	testIntent := notifications.Intent{
+		ID: "intent-destination-test", Topic: notifications.TopicDeliveryTest,
+		RecipientKind: notifications.RecipientOperators, RecipientID: destination.ID,
+		ReferenceKind: notifications.ReferenceDestination, ReferenceID: destination.ID,
+		Policy:         notifications.PolicyConfigurable,
+		Template:       notifications.TemplateData{SubjectName: "Test notification"},
+		IdempotencyKey: "destination-test:request-1", CreatedAt: now.Add(2 * time.Minute),
+	}
+	testAttempt := notifications.Attempt{
+		ID: "attempt-destination-test", IntentID: testIntent.ID, Means: destination.Means,
+		DestinationRef: destination.ID, DestinationRedacted: destination.Label,
+		Status: notifications.StatusQueued, AttemptNumber: 1,
+		AvailableAt: testIntent.CreatedAt, CreatedAt: testIntent.CreatedAt,
+	}
+	if _, created, err := s.CreateNotificationIntent(ctx, testIntent, []notifications.Attempt{testAttempt}); err != nil || !created {
+		t.Fatalf("create destination test intent = %t, %v", created, err)
+	}
+	health, err := s.ListNotificationDestinationHealth(ctx)
+	if err != nil || health[destination.ID].QueuedCount != 1 {
+		t.Fatalf("queued destination health = %+v, %v", health, err)
+	}
+	claimed, err := s.ClaimDueNotificationAttempt(ctx, "health-worker", testIntent.CreatedAt, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failedAt := testIntent.CreatedAt.Add(time.Second)
+	if err := s.CompleteNotificationAttempt(ctx, notifications.Completion{
+		AttemptID: claimed.ID, LeaseOwner: "health-worker", Status: notifications.StatusFailed,
+		FailureClass: notifications.FailurePermanent, OutcomeCode: notifications.OutcomeConfigurationInvalid,
+		FinishedAt: failedAt,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	health, err = s.ListNotificationDestinationHealth(ctx)
+	gotHealth := health[destination.ID]
+	if err != nil || gotHealth.QueuedCount != 0 || gotHealth.TerminalFailureCount != 1 ||
+		gotHealth.LastFailureOutcome != notifications.OutcomeConfigurationInvalid || !gotHealth.LastFailureAt.Equal(failedAt) {
+		t.Fatalf("failed destination health = %+v, %v", gotHealth, err)
+	}
+	if err := s.DeleteNotificationDestination(ctx, destination.ID); err != nil {
+		t.Fatalf("delete destination: %v", err)
+	}
+	if _, err := s.GetNotificationDestinationRecord(ctx, destination.ID); !errors.Is(err, notifications.ErrNotFound) {
+		t.Fatalf("get deleted destination: %v", err)
+	}
+}
+
 func testNotificationExpiredLease(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 	ctx := context.Background()

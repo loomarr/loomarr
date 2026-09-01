@@ -22,6 +22,7 @@ func buildApproval(
 	playoutResolver *playoutResolver,
 	activityRecorder *activity.Recorder,
 	channelNumbers binder.NumberSource,
+	notifier suggest.ProposalNotifier,
 	log *slog.Logger,
 ) approvalBuild {
 	if st == nil {
@@ -43,6 +44,6 @@ func buildApproval(
 		channelBinder = channelBinder.WithChannelNumbers(channelNumbers)
 	}
 	return approvalBuild{
-		binder: channelBinder, approver: suggest.NewApprover(st, channelBinder, time.Now),
+		binder: channelBinder, approver: suggest.NewApprover(st, channelBinder, time.Now).WithProposalNotifier(notifier),
 	}
 }

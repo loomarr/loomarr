@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // eventEmitter is the composition-root fan-out for provisioning domain events
@@ -30,8 +31,9 @@ import (
 // while setEngine writes it once during setup, so it's an atomic.Pointer (race-
 // free lock-free read; a pre-wire event simply misses the backfill sink).
 type eventEmitter struct {
-	engine atomic.Pointer[channels.Engine]
-	bus    *events.Bus
+	engine        atomic.Pointer[channels.Engine]
+	notifications atomic.Pointer[productNotificationCoordinator]
+	bus           *events.Bus
 
 	// clipSeen throttles intra-stage filler progress, keyed by clip hash. See FillerClipStage.
 	clipMu   sync.Mutex
@@ -46,6 +48,27 @@ type clipFrameMark struct {
 
 // setEngine wires the scheduler backfill sink once the engine exists.
 func (e *eventEmitter) setEngine(eng *channels.Engine) { e.engine.Store(eng) }
+func (e *eventEmitter) setNotifications(coordinator *productNotificationCoordinator) {
+	e.notifications.Store(coordinator)
+}
+
+func (e *eventEmitter) ProposalSubmitted(ctx context.Context, proposal store.Proposal) {
+	if coordinator := e.notifications.Load(); coordinator != nil {
+		coordinator.ProposalSubmitted(ctx, proposal)
+	}
+}
+
+func (e *eventEmitter) ProposalApproved(ctx context.Context, proposal store.Proposal, channelID string) {
+	if coordinator := e.notifications.Load(); coordinator != nil {
+		coordinator.ProposalApproved(ctx, proposal, channelID)
+	}
+}
+
+func (e *eventEmitter) ProposalDeclined(ctx context.Context, proposal store.Proposal) {
+	if coordinator := e.notifications.Load(); coordinator != nil {
+		coordinator.ProposalDeclined(ctx, proposal)
+	}
+}
 
 // Emit fans a terminal provisioning event to the scheduler backfill and the SSE
 // bus. It never blocks on either (OnAvailability logs its own per-channel errors;
@@ -58,6 +81,9 @@ func (e *eventEmitter) Emit(ctx context.Context, ev provision.DomainEvent) {
 		Type:    "title",
 		Payload: api.TitleEvent{Key: string(ev.Key), State: string(ev.State), Name: ev.Title.Name},
 	})
+	if coordinator := e.notifications.Load(); coordinator != nil {
+		coordinator.Provisioned(ctx, ev)
+	}
 }
 
 // SuggestionPhase publishes one generation-progress frame (§8, type=suggestion)
@@ -86,6 +112,9 @@ func (e *eventEmitter) ChannelChanged(channelID, status string) {
 		Type:    "channel",
 		Payload: api.ChannelEvent{ChannelID: channelID, Status: status},
 	})
+	if coordinator := e.notifications.Load(); coordinator != nil {
+		coordinator.ChannelChanged(channelID, status)
+	}
 }
 
 // JobChanged publishes a `job` frame whenever a scheduled job's state changes (running →

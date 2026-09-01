@@ -1,0 +1,186 @@
+package notifications
+
+import (
+	"fmt"
+	"time"
+)
+
+// DestinationScope distinguishes administrator-owned shared delivery from one person's verified
+// contact or browser subscription. Scope is part of authorization and cannot be inferred from means.
+type DestinationScope string
+
+const (
+	ScopeInstallation DestinationScope = "installation"
+	ScopePerson       DestinationScope = "person"
+)
+
+// Destination is the complete module-internal routing record. Configuration and Credentials are
+// resolved only after an attempt is claimed; API read models must use DestinationSummary instead.
+type Destination struct {
+	ID            string
+	Means         Means
+	Label         string
+	Scope         DestinationScope
+	OwnerID       string
+	Audience      RecipientKind
+	Topics        []Topic
+	Enabled       bool
+	Configuration map[string]string
+	Credentials   map[string]string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+// DestinationRecord is the persistence-safe form of a destination. The database layer only
+// handles an opaque credential envelope; plaintext credentials exist solely in Destination at
+// the notification module boundary after authenticated decryption.
+type DestinationRecord struct {
+	ID                   string
+	Means                Means
+	Label                string
+	Scope                DestinationScope
+	OwnerID              string
+	Audience             RecipientKind
+	Topics               []Topic
+	Enabled              bool
+	Configuration        map[string]string
+	CredentialsEncrypted string
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+}
+
+func (r DestinationRecord) Validate() error {
+	if r.CredentialsEncrypted == "" {
+		return fmt.Errorf("destination record requires encrypted credentials")
+	}
+	return destinationFromRecord(r).Validate()
+}
+
+// DestinationSummary is safe to return to management callers. It deliberately carries neither
+// provider configuration nor credentials; provider-specific surfaces add independently redacted
+// fields when their adapter is implemented.
+type DestinationSummary struct {
+	ID                    string
+	Means                 Means
+	Label                 string
+	Scope                 DestinationScope
+	OwnerID               string
+	Audience              RecipientKind
+	Topics                []Topic
+	Enabled               bool
+	CredentialsConfigured bool
+	Settings              []ProviderFieldState
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+	Health                *DestinationHealth
+}
+
+// DestinationHealth is a payload-free, credential-free operational aggregate. OutcomeCode is a
+// closed vocabulary; provider error strings and message content never enter this read model.
+type DestinationHealth struct {
+	LastSuccessAt        time.Time
+	LastFailureAt        time.Time
+	LastFailureOutcome   OutcomeCode
+	QueuedCount          int
+	TerminalFailureCount int
+}
+
+func (d Destination) Validate() error {
+	if err := identifier("destination id", d.ID); err != nil {
+		return err
+	}
+	if !validMeans(d.Means) {
+		return fmt.Errorf("invalid delivery means %q", d.Means)
+	}
+	if d.Label == "" {
+		return fmt.Errorf("destination requires a label")
+	}
+	if err := safeText("destination label", d.Label, 120); err != nil {
+		return err
+	}
+	if d.CreatedAt.IsZero() || d.UpdatedAt.IsZero() || d.UpdatedAt.Before(d.CreatedAt) {
+		return fmt.Errorf("destination requires ordered created and updated times")
+	}
+	switch d.Scope {
+	case ScopeInstallation:
+		if d.OwnerID != "" {
+			return fmt.Errorf("installation destination cannot have a person owner")
+		}
+		if d.Audience != RecipientApprovers && d.Audience != RecipientOperators {
+			return fmt.Errorf("installation destination requires an approver or operator audience")
+		}
+		definition, ok := ProviderDefinitionFor(d.Means)
+		if !ok || definition.MemberOwned {
+			return fmt.Errorf("installation destination cannot use member-owned delivery means %q", d.Means)
+		}
+	case ScopePerson:
+		if err := identifier("destination owner", d.OwnerID); err != nil {
+			return err
+		}
+		if d.Audience != RecipientPerson && d.Audience != RecipientApprovers && d.Audience != RecipientOperators {
+			return fmt.Errorf("person destination requires a supported audience")
+		}
+		definition, ok := ProviderDefinitionFor(d.Means)
+		if d.Means != MeansEmail && (!ok || !definition.MemberOwned) {
+			return fmt.Errorf("person destination requires email or web push")
+		}
+	default:
+		return fmt.Errorf("invalid destination scope %q", d.Scope)
+	}
+	if len(d.Topics) == 0 {
+		// A migrated SMTP provider may initially serve mandatory Invitation and recovery mail only.
+		// Product events remain opt-in, so migration must not invent subscriptions.
+		if d.Means != MeansEmail || d.Scope != ScopeInstallation {
+			return fmt.Errorf("destination requires at least one topic")
+		}
+	}
+	seen := make(map[Topic]struct{}, len(d.Topics))
+	definition, _ := ProviderDefinitionFor(d.Means)
+	for _, topic := range d.Topics {
+		if _, exists := seen[topic]; exists {
+			return fmt.Errorf("destination topic %q is duplicated", topic)
+		}
+		seen[topic] = struct{}{}
+		if !providerSupportsTopic(definition, topic) {
+			return fmt.Errorf("provider %q does not support topic %q", d.Means, topic)
+		}
+	}
+	if err := validateDestinationValues("configuration", d.Configuration, 100, 4000); err != nil {
+		return err
+	}
+	return validateDestinationValues("credentials", d.Credentials, 20, 8000)
+}
+
+func (d Destination) Summary() DestinationSummary {
+	definition, _ := ProviderDefinitionFor(d.Means)
+	return DestinationSummary{
+		ID: d.ID, Means: d.Means, Label: d.Label, Scope: d.Scope, OwnerID: d.OwnerID,
+		Audience: d.Audience, Topics: append([]Topic(nil), d.Topics...), Enabled: d.Enabled,
+		CredentialsConfigured: len(d.Credentials) > 0, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
+		Settings: definition.Redact(d.Configuration, d.Credentials),
+	}
+}
+
+func providerSupportsTopic(definition ProviderDefinition, topic Topic) bool {
+	for _, supported := range definition.Topics {
+		if supported == topic {
+			return true
+		}
+	}
+	return false
+}
+
+func validateDestinationValues(name string, values map[string]string, limit, valueLimit int) error {
+	if len(values) > limit {
+		return fmt.Errorf("destination %s has too many fields", name)
+	}
+	for key, value := range values {
+		if err := identifier("destination "+name+" key", key); err != nil {
+			return err
+		}
+		if err := safeText("destination "+name+" value", value, valueLimit); err != nil {
+			return err
+		}
+	}
+	return nil
+}

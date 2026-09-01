@@ -62,6 +62,20 @@ func TestPublishPersistsSuppressionWithoutCallingAnAdapter(t *testing.T) {
 func TestConfigurableProductIntentRoutesToIndependentDeliveryMeans(t *testing.T) {
 	repository := testkit.NewNotificationRepository()
 	now := time.Unix(1_900_000_000, 0)
+	for _, destination := range []notifications.Destination{
+		{ID: "destination-discord", Means: notifications.MeansDiscord, Label: "Family Discord",
+			Scope: notifications.ScopeInstallation, Audience: notifications.RecipientOperators,
+			Topics: []notifications.Topic{notifications.TopicChannelDegraded}, Enabled: true,
+			CreatedAt: now, UpdatedAt: now},
+		{ID: "destination-webhook", Means: notifications.MeansWebhook, Label: "Automation webhook",
+			Scope: notifications.ScopeInstallation, Audience: notifications.RecipientOperators,
+			Topics: []notifications.Topic{notifications.TopicChannelDegraded}, Enabled: true,
+			CreatedAt: now, UpdatedAt: now},
+	} {
+		if err := repository.SaveNotificationDestination(t.Context(), destination); err != nil {
+			t.Fatal(err)
+		}
+	}
 	discord := &testkit.NotificationAdapter{
 		DeliveryMeans: notifications.MeansDiscord,
 		Result:        notifications.Result{Status: notifications.StatusDelivered, ProviderMessageID: "discord-safe-1"},
@@ -72,7 +86,12 @@ func TestConfigurableProductIntentRoutesToIndependentDeliveryMeans(t *testing.T)
 	}}
 	service := notifications.NewService(repository, router, []notifications.Adapter{discord}, sequentialIDs(), func() time.Time { return now })
 
-	intent, created, err := service.Publish(t.Context(), productCommand())
+	command := productCommand()
+	command.Topic = notifications.TopicChannelDegraded
+	command.RecipientKind = notifications.RecipientOperators
+	command.RecipientID = "operators"
+	command.IdempotencyKey = "channel-1:degraded:operators"
+	intent, created, err := service.Publish(t.Context(), command)
 	if err != nil || !created {
 		t.Fatalf("publish product intent = %+v, %t, %v", intent, created, err)
 	}
@@ -99,6 +118,52 @@ func TestConfigurableProductIntentRoutesToIndependentDeliveryMeans(t *testing.T)
 		statuses[notifications.MeansWebhook].Status != notifications.StatusFailed ||
 		statuses[notifications.MeansWebhook].OutcomeCode != notifications.OutcomeMeansUnavailable {
 		t.Fatalf("independent outcomes = %+v", statuses)
+	}
+}
+
+func TestQueuedProductDeliverySuppressesWhenDestinationIsDisabled(t *testing.T) {
+	repository := testkit.NewNotificationRepository()
+	now := time.Unix(1_900_000_000, 0)
+	destination := notifications.Destination{
+		ID: "destination-discord", Means: notifications.MeansDiscord, Label: "Family Discord",
+		Scope: notifications.ScopeInstallation, Audience: notifications.RecipientOperators,
+		Topics: []notifications.Topic{notifications.TopicChannelDegraded}, Enabled: true,
+		Credentials: map[string]string{"token": "secret"}, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := repository.SaveNotificationDestination(t.Context(), destination); err != nil {
+		t.Fatal(err)
+	}
+	adapter := &testkit.NotificationAdapter{
+		DeliveryMeans: notifications.MeansDiscord,
+		Result:        notifications.Result{Status: notifications.StatusDelivered},
+	}
+	service := notifications.NewService(repository, testkit.NotificationRouter{RoutesResult: []notifications.Route{{
+		Means: notifications.MeansDiscord, DestinationRef: destination.ID, DestinationRedacted: destination.Label,
+	}}}, []notifications.Adapter{adapter}, sequentialIDs(), func() time.Time { return now })
+	command := productCommand()
+	command.Topic = notifications.TopicChannelDegraded
+	command.RecipientKind = notifications.RecipientOperators
+	command.RecipientID = "operators"
+	command.IdempotencyKey = "channel-1:degraded:operators"
+	intent, created, err := service.Publish(t.Context(), command)
+	if err != nil || !created {
+		t.Fatalf("publish = %+v, %t, %v", intent, created, err)
+	}
+	destination.Enabled = false
+	destination.UpdatedAt = now.Add(time.Minute)
+	if err := repository.SaveNotificationDestination(t.Context(), destination); err != nil {
+		t.Fatal(err)
+	}
+	if ran, runErr := service.RunOne(t.Context(), "worker-1"); runErr != nil || !ran {
+		t.Fatalf("run disabled destination = %t, %v", ran, runErr)
+	}
+	if len(adapter.Calls) != 0 {
+		t.Fatal("disabled destination reached its adapter")
+	}
+	attempts, err := repository.ListNotificationAttempts(t.Context(), intent.ID)
+	if err != nil || len(attempts) != 1 || attempts[0].Status != notifications.StatusSuppressed ||
+		attempts[0].OutcomeCode != notifications.OutcomeDestinationUnavailable {
+		t.Fatalf("disabled destination attempts = %+v, %v", attempts, err)
 	}
 }
 
@@ -188,6 +253,29 @@ func TestRunOneRetriesOnlyDefinitelyPreAcceptanceFailure(t *testing.T) {
 	}
 }
 
+func TestRunOneHonorsBoundedProviderRetryHint(t *testing.T) {
+	repository := testkit.NewNotificationRepository()
+	now := time.Unix(1_900_000_000, 0)
+	adapter := &testkit.NotificationAdapter{
+		DeliveryMeans: notifications.MeansEmail,
+		Result: notifications.Result{
+			Status: notifications.StatusFailed, FailureClass: notifications.FailureTransientPreAcceptance,
+			OutcomeCode: notifications.OutcomeTransportUnavailable, RetryAfter: 24 * time.Hour,
+		},
+	}
+	service := notifications.NewService(repository, emailRouter(), []notifications.Adapter{adapter}, sequentialIDs(), func() time.Time { return now })
+	if _, _, err := service.Publish(t.Context(), recoveryCommand()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.RunOne(t.Context(), "worker-1"); err != nil {
+		t.Fatal(err)
+	}
+	next := repository.Completions[0].Next
+	if next == nil || !next.AvailableAt.Equal(now.Add(2*time.Hour)) {
+		t.Fatalf("retry = %+v, want bounded provider delay", next)
+	}
+}
+
 func TestRunOnePersistsNoArbitraryAdapterError(t *testing.T) {
 	repository := testkit.NewNotificationRepository()
 	now := time.Unix(1_900_000_000, 0)
@@ -248,6 +336,89 @@ func TestLatestDeliveryComposesNewestIntentAndAttemptForAReference(t *testing.T)
 		!queued.UpdatedAt.Equal(now) {
 		t.Fatalf("queued summary = %+v, %v", queued, err)
 	}
+}
+
+func TestServicePublishesDestinationTestAsItsOwnIntentAndDirectRoute(t *testing.T) {
+	repository := testkit.NewNotificationRepository()
+	now := time.Date(2026, 8, 31, 19, 0, 0, 0, time.UTC)
+	destination := notifications.Destination{
+		ID: "destination-1", Means: notifications.MeansSlack, Label: "Operations",
+		Scope: notifications.ScopeInstallation, Audience: notifications.RecipientOperators,
+		Topics: []notifications.Topic{notifications.TopicChannelDegraded}, Enabled: true,
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := repository.SaveNotificationDestination(t.Context(), destination); err != nil {
+		t.Fatal(err)
+	}
+	service := notifications.NewService(repository, rejectingRouter{}, nil, sequentialIDs(), func() time.Time { return now })
+
+	result, err := service.PublishDestinationTest(t.Context(), destination, "request-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IntentID != "id-1" || !result.Created {
+		t.Fatalf("result = %+v", result)
+	}
+	intent, err := repository.GetNotificationIntent(t.Context(), result.IntentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if intent.Topic != notifications.TopicDeliveryTest || intent.ReferenceKind != notifications.ReferenceDestination || intent.ReferenceID != destination.ID {
+		t.Fatalf("test intent = %+v", intent)
+	}
+	attempts, err := repository.ListNotificationAttempts(t.Context(), intent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(attempts) != 1 || attempts[0].DestinationRef != destination.ID || attempts[0].Means != notifications.MeansSlack {
+		t.Fatalf("test attempts = %+v", attempts)
+	}
+}
+
+func TestServiceRetiresGoneWebPushDestinationAfterTerminalCompletion(t *testing.T) {
+	repository := testkit.NewNotificationRepository()
+	now := time.Unix(1_900_000_000, 0).UTC()
+	destination := notifications.Destination{
+		ID: "browser-1", Means: notifications.MeansWebPush, Label: "This browser",
+		Scope: notifications.ScopePerson, OwnerID: "user-1", Audience: notifications.RecipientPerson,
+		Topics: []notifications.Topic{notifications.TopicProposalApproved}, Enabled: true,
+		Credentials: map[string]string{"endpoint": "encrypted-at-the-real-boundary"},
+		CreatedAt:   now, UpdatedAt: now,
+	}
+	if err := repository.SaveNotificationDestination(t.Context(), destination); err != nil {
+		t.Fatal(err)
+	}
+	adapter := &testkit.NotificationAdapter{DeliveryMeans: notifications.MeansWebPush, Result: notifications.Result{
+		Status: notifications.StatusFailed, FailureClass: notifications.FailurePermanent,
+		OutcomeCode: notifications.OutcomeDestinationUnavailable,
+	}}
+	service := notifications.NewService(repository, testkit.NotificationRouter{RoutesResult: []notifications.Route{{
+		Means: notifications.MeansWebPush, DestinationRef: destination.ID, DestinationRedacted: destination.Label,
+	}}}, []notifications.Adapter{adapter}, sequentialIDs(), func() time.Time { return now })
+	if _, _, err := service.Publish(t.Context(), notifications.PublishCommand{
+		Topic: notifications.TopicProposalApproved, RecipientKind: notifications.RecipientPerson,
+		RecipientID: "user-1", ReferenceKind: notifications.ReferenceProposal, ReferenceID: "proposal-1",
+		Policy: notifications.PolicyConfigurable, Template: notifications.TemplateData{SubjectName: "Approved"},
+		IdempotencyKey: "approved:user-1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if ran, err := service.RunOne(t.Context(), "worker-1"); err != nil || !ran {
+		t.Fatalf("run = %t, %v", ran, err)
+	}
+	retired, err := repository.GetNotificationDestination(t.Context(), destination.ID)
+	if err != nil || retired.Enabled {
+		t.Fatalf("retired destination = %+v, %v", retired, err)
+	}
+	if len(repository.Completions) != 1 || repository.Completions[0].Next != nil {
+		t.Fatalf("completion retried gone subscription: %+v", repository.Completions)
+	}
+}
+
+type rejectingRouter struct{}
+
+func (rejectingRouter) Routes(context.Context, notifications.Intent) ([]notifications.Route, error) {
+	return nil, fmt.Errorf("ordinary router must not receive destination tests")
 }
 
 func emailRouter() testkit.NotificationRouter {

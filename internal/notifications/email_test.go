@@ -218,6 +218,87 @@ func TestEmailAdapterInvalidatesGrantWhenMaterializedMessageIsInvalid(t *testing
 	}
 }
 
+func TestEmailAdapterUsesTheEncryptedProviderSettingsForProductDelivery(t *testing.T) {
+	sender := &fakeEmailSender{result: notifications.EmailTransmission{State: notifications.EmailAccepted}}
+	materializer := fakeEmailMaterializer{materialized: notifications.MaterializedEmail{Message: notifications.EmailMessage{
+		ToAddress: "person@example.com", Subject: "Loomarr: Channel live",
+		TextBody: "Channel is live", HTMLBody: "<p>Channel is live</p>",
+	}}}
+	adapter := notifications.NewEmailAdapter(nil, materializer, sender)
+	destination := notifications.Destination{
+		Means: notifications.MeansEmail,
+		Configuration: map[string]string{
+			"host": "smtp.provider.test", "port": "465", "security": "tls",
+			"fromAddress": "loomarr@example.com", "fromName": "Loomarr", "username": "mailer",
+		},
+		Credentials: map[string]string{"password": "provider-password"},
+	}
+	result := adapter.Deliver(t.Context(), notifications.Delivery{Destination: &destination})
+	if result.Status != notifications.StatusDelivered || len(sender.configs) != 1 {
+		t.Fatalf("result/configs = %+v/%+v", result, sender.configs)
+	}
+	config := sender.configs[0]
+	if config.Host != "smtp.provider.test" || config.Port != 465 ||
+		config.Security != notifications.EmailSecurityTLS || config.Password != "provider-password" {
+		t.Fatalf("SMTP provider config = %+v", config)
+	}
+	if err := adapter.ValidateDestination(destination.Configuration, destination.Credentials); err != nil {
+		t.Fatalf("valid SMTP provider rejected: %v", err)
+	}
+}
+
+func TestEmailAdapterSendsEveryMaterializedGroupRecipient(t *testing.T) {
+	sender := &fakeEmailSender{result: notifications.EmailTransmission{State: notifications.EmailAccepted}}
+	adapter := notifications.NewEmailAdapter(nil, fakeEmailMaterializer{materialized: notifications.MaterializedEmail{
+		Messages: []notifications.EmailMessage{
+			{ToAddress: "ada@example.com", Subject: "Loomarr event", TextBody: "Event", HTMLBody: "<p>Event</p>"},
+			{ToAddress: "grace@example.com", Subject: "Loomarr event", TextBody: "Event", HTMLBody: "<p>Event</p>"},
+		},
+	}}, sender)
+	destination := notifications.Destination{Means: notifications.MeansEmail, Configuration: map[string]string{
+		"host": "smtp.example.test", "port": "587", "security": "starttls", "fromAddress": "loomarr@example.com",
+	}}
+	result := adapter.Deliver(t.Context(), notifications.Delivery{Destination: &destination})
+	if result.Status != notifications.StatusDelivered || len(sender.messages) != 2 ||
+		sender.messages[0].ToAddress != "ada@example.com" || sender.messages[1].ToAddress != "grace@example.com" {
+		t.Fatalf("result/messages = %+v/%+v", result, sender.messages)
+	}
+}
+
+func TestEmailAdapterTreatsPartialGroupAcceptanceAsAmbiguous(t *testing.T) {
+	sender := &sequenceEmailSenderForAdapter{results: []notifications.EmailTransmission{
+		{State: notifications.EmailAccepted}, {State: notifications.EmailRecipientRejected},
+	}}
+	adapter := notifications.NewEmailAdapter(nil, fakeEmailMaterializer{materialized: notifications.MaterializedEmail{
+		Messages: []notifications.EmailMessage{
+			{ToAddress: "ada@example.com", Subject: "Event", TextBody: "Event", HTMLBody: "<p>Event</p>"},
+			{ToAddress: "invalid@example.com", Subject: "Event", TextBody: "Event", HTMLBody: "<p>Event</p>"},
+		},
+	}}, sender)
+	destination := notifications.Destination{Means: notifications.MeansEmail, Configuration: map[string]string{
+		"host": "smtp.example.test", "port": "587", "security": "starttls", "fromAddress": "loomarr@example.com",
+	}}
+	result := adapter.Deliver(t.Context(), notifications.Delivery{Destination: &destination})
+	if result.FailureClass != notifications.FailureAmbiguous || result.OutcomeCode != notifications.OutcomeAcceptanceAmbiguous {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestRenderProductEmailEscapesContentAndIncludesStableLink(t *testing.T) {
+	content, err := notifications.RenderProductEmail(notifications.Intent{
+		Topic: notifications.TopicChannelDegraded, Policy: notifications.PolicyConfigurable,
+		Template: notifications.TemplateData{SubjectName: `<Channel & Friends>`, Summary: `Needs "attention"`},
+	}, "https://loomarr.example/channels/channel-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(content.TextBody, "https://loomarr.example/channels/channel-1") ||
+		strings.Contains(content.HTMLBody, "<Channel & Friends>") ||
+		!strings.Contains(content.HTMLBody, "&lt;Channel &amp; Friends&gt;") {
+		t.Fatalf("product email = %+v", content)
+	}
+}
+
 func TestEmailAdapterSendTestUsesAppliedConfigurationWithoutMaterializingADomainGrant(t *testing.T) {
 	sender := &fakeEmailSender{result: notifications.EmailTransmission{State: notifications.EmailAccepted, ProviderMessageID: "provider-42"}}
 	config := notifications.EmailConfig{
@@ -263,9 +344,23 @@ func (f fakeEmailMaterializer) Materialize(context.Context, notifications.Delive
 type fakeEmailSender struct {
 	result   notifications.EmailTransmission
 	messages []notifications.EmailMessage
+	configs  []notifications.EmailConfig
 }
 
-func (f *fakeEmailSender) Send(_ context.Context, _ notifications.EmailConfig, message notifications.EmailMessage) notifications.EmailTransmission {
+type sequenceEmailSenderForAdapter struct {
+	results []notifications.EmailTransmission
+}
+
+func (s *sequenceEmailSenderForAdapter) Send(
+	context.Context, notifications.EmailConfig, notifications.EmailMessage,
+) notifications.EmailTransmission {
+	result := s.results[0]
+	s.results = s.results[1:]
+	return result
+}
+
+func (f *fakeEmailSender) Send(_ context.Context, config notifications.EmailConfig, message notifications.EmailMessage) notifications.EmailTransmission {
+	f.configs = append(f.configs, config)
 	f.messages = append(f.messages, message)
 	return f.result
 }

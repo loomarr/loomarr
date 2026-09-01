@@ -11,18 +11,104 @@ import (
 // NotificationRepository is the shared in-memory delivery-work double. It models only the
 // repository contract needed by notification service tests; SQL behavior belongs to conformance.
 type NotificationRepository struct {
-	Intents     map[string]notifications.Intent
-	ByKey       map[string]string
-	Attempts    map[string]notifications.Attempt
-	Completions []notifications.Completion
+	Destinations map[string]notifications.Destination
+	Intents      map[string]notifications.Intent
+	ByKey        map[string]string
+	Attempts     map[string]notifications.Attempt
+	Completions  []notifications.Completion
 }
 
 func NewNotificationRepository() *NotificationRepository {
 	return &NotificationRepository{
-		Intents:  make(map[string]notifications.Intent),
-		ByKey:    make(map[string]string),
-		Attempts: make(map[string]notifications.Attempt),
+		Destinations: make(map[string]notifications.Destination),
+		Intents:      make(map[string]notifications.Intent),
+		ByKey:        make(map[string]string),
+		Attempts:     make(map[string]notifications.Attempt),
 	}
+}
+
+func (f *NotificationRepository) SaveNotificationDestination(
+	_ context.Context,
+	destination notifications.Destination,
+) error {
+	if err := destination.Validate(); err != nil {
+		return err
+	}
+	if current, ok := f.Destinations[destination.ID]; ok {
+		destination.CreatedAt = current.CreatedAt
+	}
+	f.Destinations[destination.ID] = destination
+	return nil
+}
+
+func (f *NotificationRepository) GetNotificationDestination(
+	_ context.Context,
+	id string,
+) (notifications.Destination, error) {
+	destination, ok := f.Destinations[id]
+	if !ok {
+		return notifications.Destination{}, notifications.ErrNotFound
+	}
+	return destination, nil
+}
+
+func (f *NotificationRepository) ListNotificationDestinations(
+	_ context.Context,
+) ([]notifications.Destination, error) {
+	destinations := make([]notifications.Destination, 0, len(f.Destinations))
+	for _, destination := range f.Destinations {
+		destinations = append(destinations, destination)
+	}
+	sort.Slice(destinations, func(i, j int) bool { return destinations[i].ID < destinations[j].ID })
+	return destinations, nil
+}
+
+func (f *NotificationRepository) ListNotificationDestinationHealth(
+	_ context.Context,
+) (map[string]notifications.DestinationHealth, error) {
+	health := make(map[string]notifications.DestinationHealth, len(f.Destinations))
+	for id := range f.Destinations {
+		value := notifications.DestinationHealth{}
+		for _, attempt := range f.Attempts {
+			if attempt.DestinationRef != id {
+				continue
+			}
+			switch attempt.Status {
+			case notifications.StatusQueued:
+				value.QueuedCount++
+			case notifications.StatusDelivered:
+				if attempt.FinishedAt.After(value.LastSuccessAt) {
+					value.LastSuccessAt = attempt.FinishedAt
+				}
+			case notifications.StatusFailed:
+				value.TerminalFailureCount++
+				if attempt.FinishedAt.After(value.LastFailureAt) {
+					value.LastFailureAt = attempt.FinishedAt
+					value.LastFailureOutcome = attempt.OutcomeCode
+				}
+			}
+		}
+		health[id] = value
+	}
+	return health, nil
+}
+
+func (f *NotificationRepository) DeleteNotificationDestination(_ context.Context, id string) error {
+	if _, ok := f.Destinations[id]; !ok {
+		return notifications.ErrNotFound
+	}
+	delete(f.Destinations, id)
+	return nil
+}
+
+func (f *NotificationRepository) RetireNotificationDestination(_ context.Context, id string) error {
+	destination, ok := f.Destinations[id]
+	if !ok {
+		return notifications.ErrNotFound
+	}
+	destination.Enabled = false
+	f.Destinations[id] = destination
+	return nil
 }
 
 func (f *NotificationRepository) CreateNotificationIntent(

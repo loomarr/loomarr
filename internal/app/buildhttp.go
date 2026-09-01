@@ -13,30 +13,32 @@ import (
 )
 
 type httpBuild struct {
-	rootCtx            context.Context
-	store              store.Store
-	log                *slog.Logger
-	overrides          Overrides
-	foundation         foundationBuild
-	channels           channelBuild
-	approval           approvalBuild
-	suggestions        suggestionBuild
-	fillers            fillerBuild
-	auth               authBuild
-	backups            api.BackupsService
-	restart            api.RestartService
-	bootConfig         *config.Config
-	guide              api.GuideReader
-	settings           api.SettingsService
-	emailTest          api.EmailTestService
-	invitationDelivery api.InvitationDeliveryService
-	passwordRecovery   api.PasswordRecoveryService
-	liveConfig         func(string) string
-	libraryConfigured  func() bool
-	jobs               api.JobService
-	database           api.DatabaseService
-	residentLLM        residentLLMBuild
-	healthRefresh      api.HealthRefreshService
+	rootCtx                  context.Context
+	store                    store.Store
+	log                      *slog.Logger
+	overrides                Overrides
+	foundation               foundationBuild
+	channels                 channelBuild
+	approval                 approvalBuild
+	suggestions              suggestionBuild
+	fillers                  fillerBuild
+	auth                     authBuild
+	backups                  api.BackupsService
+	restart                  api.RestartService
+	bootConfig               *config.Config
+	guide                    api.GuideReader
+	settings                 api.SettingsService
+	emailTest                api.EmailTestService
+	notificationDestinations api.NotificationDestinationService
+	webPushPublicKey         string
+	invitationDelivery       api.InvitationDeliveryService
+	passwordRecovery         api.PasswordRecoveryService
+	liveConfig               func(string) string
+	libraryConfigured        func() bool
+	jobs                     api.JobService
+	database                 api.DatabaseService
+	residentLLM              residentLLMBuild
+	healthRefresh            api.HealthRefreshService
 }
 
 func buildHTTP(deps httpBuild) http.Handler {
@@ -129,10 +131,13 @@ func buildHTTP(deps httpBuild) http.Handler {
 		HealthRefresh:       deps.healthRefresh,
 		// The baseline for "has a restart-scoped setting changed?" is what THIS
 		// generation booted with, captured here rather than per call (config-design §3).
-		RestartDrift: restartDrift(bootCfg, appliedRestartSettings, canonicalRestartCurrent(desiredSet)),
-		Jobs:         jobsSvc,
-		Settings:     settingsSvc,
-		EmailTest:    deps.emailTest,
+		RestartDrift:             restartDrift(bootCfg, appliedRestartSettings, canonicalRestartCurrent(desiredSet)),
+		Jobs:                     jobsSvc,
+		Settings:                 settingsSvc,
+		EmailTest:                deps.emailTest,
+		NotificationDestinations: deps.notificationDestinations,
+		WebPushPublicKey:         deps.webPushPublicKey,
+		ProposalNotifications:    deps.foundation.emitter,
 		BackendTransition: currentBackendTransition{
 			controller: backendController, refresh: refreshBackendSettings, desired: desiredBackend,
 		},

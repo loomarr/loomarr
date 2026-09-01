@@ -61,7 +61,7 @@ func TestAccountAccessLifecycleCertification(t *testing.T) {
 		publicURL:   func() string { return "https://loomarr.example" },
 	}, sender)
 	sequence := 0
-	notificationService := notifications.NewService(st, invitationEmailRouter{
+	notificationService := notifications.NewService(notificationRepositoryForTest(t, st), invitationEmailRouter{
 		invitations: invitationService,
 		recovery:    recoveryService,
 		config:      config,

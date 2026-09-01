@@ -372,3 +372,11 @@ func (a secretStoreAdapter) Set(ctx context.Context, k, v string) error {
 	}
 	return a.st.SetSetting(ctx, k, envelope)
 }
+
+func (a secretStoreAdapter) WithLock(
+	ctx context.Context,
+	key string,
+	fn func(context.Context) error,
+) error {
+	return a.st.WithSettingLock(ctx, key, fn)
+}
