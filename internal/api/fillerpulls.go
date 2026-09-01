@@ -284,7 +284,7 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 			return nil, errConflict("A source in this pull is no longer available",
 				"“"+row.Name+"” has been switched off or removed since this pull was proposed. Dismiss it and propose a new one.")
 		}
-		targets = append(targets, filler.AcquisitionTarget{SourceID: src.ID, URL: src.URI})
+		targets = append(targets, filler.AcquisitionTarget{SourceID: src.ID, Kind: src.Kind, URL: src.URI})
 	}
 
 	// THE gate's other half: the work goes through the ordinary ingest job. A pull never

@@ -2757,6 +2757,25 @@ all fail toward doing less:
    growing must be able to see which ceiling stopped it. A crawler that quietly does nothing is
    indistinguishable from one that is broken.
 
+**Archive.org and YouTube are peer acquisition partners, not a primary source and a fallback.**
+Every registered remote is enumerated by its explicit `kind`: Archive uses the bounded collection
+API, while YouTube uses yt-dlp's listing-only flat-playlist mode. The fetcher never guesses a
+registered source's provider from a returned URL. The operator adding a YouTube playlist or
+channel is the bounded authorization to enumerate that target; Loomarr does not perform global
+YouTube search, follow recommendations, or crawl beyond it. Enumeration downloads no media and
+is capped before its per-item URLs enter the ordinary ingest path. Both partners then share the
+same per-source limit, catalog and disk ceilings, acquisition record, held lifecycle, provenance
+sidecar, cleanup pipeline, and admission authority. Missing YouTube licence metadata remains
+unknown rather than becoming either permission or a rejection; the source URL, uploader metadata,
+acquisition id, sidecar, and content hash remain the evidence trail.
+
+⚠ **The explicit kind is load-bearing at both boundaries.** A registered YouTube source once
+passed through the Archive collection enumerator because the fetcher accepted only one untyped
+discoverer; approved pull targets later re-inferred their downloader from URL. Both make the row's
+stored `kind` decorative and allow discovery and download to disagree. Registered work now carries
+the kind through enumeration and acquisition. URL inference remains only for a one-off URL an admin
+typed directly, where no registered source policy exists.
+
 The report is a **live measurement**, not a remembered fetch result: the filler status read counts
 the tracked catalog (including held clips already on disk) and measures the storage root against the same configured bounds the fetcher
 uses. The UI names the bound and its current/maximum values. This makes "nothing new arrived" an

@@ -82,9 +82,12 @@ type FetchStore interface {
 	MarkFetched(ctx context.Context, id string, at time.Time) error
 }
 
-// FetchDiscoverer lists what a source currently offers.
-type FetchDiscoverer interface {
-	DiscoverCollection(ctx context.Context, ref string, limit int) ([]DiscoveredRef, int, error)
+// SourceEnumerator lists what one registered source currently offers without downloading media.
+// The whole FetchSource crosses this seam because Kind is authoritative: Archive and YouTube are
+// peer lanes, and inferring a provider from an enumerated item's URL would let listing disagree
+// with the registered source policy.
+type SourceEnumerator interface {
+	Enumerate(ctx context.Context, source FetchSource, limit int) ([]DiscoveredRef, int, error)
 }
 
 // DiscoveredRef is one item a source offers — an id stable enough to dedupe on, and the URL to
@@ -99,13 +102,13 @@ type DiscoveredRef struct {
 // ⚠ The SAME path a queued search result or an approved pull uses. A second downloader is the
 // shape §10 rejects by name, and it is how one route would quietly stop honouring the lifecycle.
 type FetchIngestor interface {
-	IngestSource(ctx context.Context, sourceID string, urls []string) (string, error)
+	IngestSource(ctx context.Context, sourceID, sourceKind string, urls []string) (string, error)
 }
 
 // Fetcher polls registered sources.
 type Fetcher struct {
 	store   FetchStore
-	disc    FetchDiscoverer
+	enum    SourceEnumerator
 	ingest  FetchIngestor
 	dir     string
 	limits  FetchLimits
@@ -117,9 +120,9 @@ type Fetcher struct {
 
 // NewFetcher builds the auto-fetch job. `enabled` reports whether auto-fetch is on at all
 // (`filler.fetch.every` > 0); nil means always on.
-func NewFetcher(store FetchStore, disc FetchDiscoverer, ingest FetchIngestor, dir string, limits FetchLimits, log *slog.Logger) *Fetcher {
+func NewFetcher(store FetchStore, enumerator SourceEnumerator, ingest FetchIngestor, dir string, limits FetchLimits, log *slog.Logger) *Fetcher {
 	return &Fetcher{
-		store: store, disc: disc, ingest: ingest, dir: dir, limits: limits, log: log,
+		store: store, enum: enumerator, ingest: ingest, dir: dir, limits: limits, log: log,
 		statFS: dirSizeBytes, now: time.Now,
 	}
 }
@@ -275,7 +278,7 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 		// Over-list so that a page full of already-held items still yields new ones. Without
 		// this a source whose first N items are all catalogued would report "nothing new"
 		// forever while the rest of the collection sat unfetched.
-		items, _, derr := f.disc.DiscoverCollection(ctx, src.URI, perRun*4)
+		items, _, derr := f.enum.Enumerate(ctx, src, perRun*4)
 		if derr != nil {
 			if !scheduled {
 				return res, fmt.Errorf("list source %q: %w", src.ID, derr)
@@ -300,7 +303,7 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 		if len(urls) == 0 {
 			continue
 		}
-		if _, ierr := f.ingest.IngestSource(ctx, src.ID, urls); ierr != nil {
+		if _, ierr := f.ingest.IngestSource(ctx, src.ID, src.Kind, urls); ierr != nil {
 			if !scheduled {
 				return res, fmt.Errorf("queue source %q: %w", src.ID, ierr)
 			}
@@ -358,12 +361,33 @@ func (f *Fetcher) logStop(which string, have, max int) {
 // fetchKey normalises an archive id or a clip path to the same comparable token, so a catalogued
 // clip is recognised as the item it came from.
 //
-// ⚠ Compares BASENAMES without extension. A downloaded clip lands as `<id>.mp4` (possibly in a
-// subdirectory), so comparing raw strings would never match and every item would re-download on
-// every pass — the loop this normalisation exists to prevent.
+// ⚠ Compares BASENAMES without extension. Archive clips land as `<id> - <file>`; yt-dlp's
+// documented output template lands as `<title> [<id>].mp4` (possibly in a subdirectory).
+// Comparing raw strings would never match either form and every item would re-download on every
+// pass.
 func fetchKey(s string) string {
 	base := filepath.Base(s)
-	return strings.ToLower(strings.TrimSuffix(base, filepath.Ext(base)))
+	base = strings.TrimSuffix(base, filepath.Ext(base))
+	if start := strings.LastIndex(base, " ["); start >= 0 && strings.HasSuffix(base, "]") {
+		base = base[start+2 : len(base)-1]
+	} else if id, _, ok := strings.Cut(base, " - "); ok && isArchiveID(id) {
+		base = id
+	}
+	return strings.ToLower(base)
+}
+
+// isArchiveID limits Archive filename extraction to the identifier spelling emitted by Archive.
+// Without this check any ordinary name containing " - " could be reduced to an unrelated prefix.
+func isArchiveID(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '.' && r != '_' && r != '-' {
+			return false
+		}
+	}
+	return true
 }
 
 // dirSizeBytes sums the drop-folder. Walk errors are skipped rather than fatal: an unreadable
