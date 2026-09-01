@@ -521,6 +521,17 @@ through the serpentine assignment models 766/683/816 package-seconds instead of 
 partition guard proves coverage, while `TestGoShardUsesSerpentineRows` independently pins the
 alternating assignment.
 
+Within the SQLite store package, conformance assertions clone one closed, fully migrated template
+database rather than replaying the complete migration history for every assertion. The 2026-09-01
+profile measured 169.3s for the package and 134.3s for SQLite conformance: 131 fresh stores each
+replayed 86 migrations, more than 11,000 migration applications in one run. Every clone remains a
+private file opened through the production SQLite adapter. Migration ordering, boot seeding,
+downgrade behavior, historical data, and restart behavior retain dedicated fresh-migration tests;
+Postgres conformance remains unchanged. Re-running the exact race profile with the cloned fixture
+reduced the package to 40.3s and SQLite conformance to 6.2s (−76.2% and −95.4%, respectively). Five
+consecutive race-enabled conformance/factory runs remained green, followed by the unchanged real
+Postgres integration gate over store, backend transition, and app.
+
 Sharding is free on a public repo. Check the bill before copying it into a private one.
 
 ## Caching

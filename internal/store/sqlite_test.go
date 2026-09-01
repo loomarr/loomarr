@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -40,10 +42,62 @@ func newSQLiteStore(t *testing.T) Store {
 	return s
 }
 
+type sqliteConformanceOpenFunc func(context.Context, string, bool) (Store, error)
+
+// newSQLiteConformanceStoreFactory migrates and boot-seeds one clean SQLite database, then gives
+// every conformance assertion a byte-for-byte private copy. The assertions still open the copied
+// file through the production SQLite adapter (including WAL and connection pragmas), but they do
+// not replay the complete forward-only migration history 131 times in one suite run.
+//
+// Dedicated migration, startup, downgrade, historical-data, and restart tests deliberately keep
+// using newSQLiteStore/Open(..., true): this fixture is only the already-current-schema starting
+// point for backend-agnostic Store behavior.
+func newSQLiteConformanceStoreFactory(t *testing.T) NewStoreFunc {
+	return newSQLiteConformanceStoreFactoryWithOpen(t, Open)
+}
+
+func newSQLiteConformanceStoreFactoryWithOpen(t *testing.T, open sqliteConformanceOpenFunc) NewStoreFunc {
+	t.Helper()
+	ctx := context.Background()
+	dir := t.TempDir()
+	templatePath := filepath.Join(dir, "conformance-template.db")
+	template, err := open(ctx, "sqlite://"+templatePath, true)
+	if err != nil {
+		t.Fatalf("create sqlite conformance template: %v", err)
+	}
+	templateSQL := template.(*sqlStore)
+	if _, err := templateSQL.db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+		_ = template.Close()
+		t.Fatalf("checkpoint sqlite conformance template: %v", err)
+	}
+	if err := template.Close(); err != nil {
+		t.Fatalf("close sqlite conformance template: %v", err)
+	}
+	templateBytes, err := os.ReadFile(templatePath)
+	if err != nil {
+		t.Fatalf("read sqlite conformance template: %v", err)
+	}
+
+	var sequence atomic.Uint64
+	return func(t *testing.T) Store {
+		t.Helper()
+		path := filepath.Join(dir, fmt.Sprintf("conformance-%d.db", sequence.Add(1)))
+		if err := os.WriteFile(path, templateBytes, 0o600); err != nil {
+			t.Fatalf("clone sqlite conformance template: %v", err)
+		}
+		s, err := open(context.Background(), "sqlite://"+path, false)
+		if err != nil {
+			t.Fatalf("open cloned sqlite conformance store: %v", err)
+		}
+		t.Cleanup(func() { _ = s.Close() })
+		return s
+	}
+}
+
 // TestSQLiteConformance runs the shared suite against SQLite. Phase 4 adds the
 // identical call for Postgres.
 func TestSQLiteConformance(t *testing.T) {
-	RunConformance(t, newSQLiteStore)
+	RunConformance(t, newSQLiteConformanceStoreFactory(t))
 }
 
 func TestNotificationWorkSurvivesStoreRestart(t *testing.T) {

@@ -7862,6 +7862,12 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   coverage-preserving regression to straight round-robin cannot silently restore the measured
   imbalance. The release verifier also requires every top-level job in `ci.yml` to appear in
   `ci-ok.needs`; adding a job without aggregating its result fails closed.
+  SQLite store conformance builds one fully migrated, boot-seeded, clean template database per
+  suite run, closes it, and gives every assertion a private file copy opened without replaying
+  migrations. The copied stores remain physically isolated and exercise the same production SQLite
+  driver, WAL configuration, schema, seeds, and Store implementation. Dedicated startup, migration,
+  downgrade, historical-data, and restart tests continue to create and migrate their own databases;
+  the template is a conformance-fixture optimization, never a production migration shortcut.
   The captured-private-fixture regression guard remains one repository contract behind the stable
   `privacy-verify` Make interface. It enumerates the tracked tree once, extracts only the candidate
   shapes represented by the original capture audit, case-folds and SHA-256 fingerprints candidates
