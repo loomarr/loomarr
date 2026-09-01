@@ -77,6 +77,6 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "filler-temporal-calibration-report: publish:", err)
 		return 1
 	}
-	_, _ = fmt.Fprintf(stdout, "filler-temporal-calibration-report: %d cases, %d operational failures, %d/%d agreement controls preserved; %s\n", report.Cases, report.OperationalFailures, report.AgreementControlsPreserved, report.AgreementControls, *outputPath)
+	_, _ = fmt.Fprintf(stdout, "filler-temporal-calibration-report: %d cases, %d operational failures, %d/%d agreement controls preserved; next=%s; fullCorpusRelabelAllowed=%t; %s\n", report.Cases, report.OperationalFailures, report.AgreementControlsPreserved, report.AgreementControls, report.Disposition.NextAction, report.Disposition.FullCorpusRelabelAllowed, *outputPath)
 	return 0
 }

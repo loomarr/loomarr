@@ -48,6 +48,9 @@ func TestAnalyzeTemporalCalibrationReportsRelationsWithoutInventingTruth(t *test
 	if countCalibrationRelation(report.UnitRelations, TemporalCalibrationMatchedFirst) != 1 || countCalibrationRelation(report.RoleRelations, TemporalCalibrationMatchedSecond) != 1 || countCalibrationRelation(report.UnitRelations, TemporalCalibrationAgreementBroken) != 1 {
 		t.Fatalf("relation counts = unit %+v role %+v", report.UnitRelations, report.RoleRelations)
 	}
+	if report.Disposition.NextAction != TemporalCalibrationRepairSelection || report.Disposition.FullCorpusRelabelAllowed {
+		t.Fatalf("disposition = %+v", report.Disposition)
+	}
 }
 
 func TestAnalyzeTemporalCalibrationRejectsSelectionAndFamilyDrift(t *testing.T) {
