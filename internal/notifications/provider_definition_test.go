@@ -164,6 +164,13 @@ func TestProviderDefinitionsOfferOnlyEventsTheirRecipientModelCanDeliver(t *test
 		!hasProviderTopic(slack, notifications.TopicChannelDegraded) {
 		t.Fatal("Slack must offer approver and operator events")
 	}
+	pushover, ok := notifications.ProviderDefinitionFor(notifications.MeansPushover)
+	if !ok {
+		t.Fatal("Pushover provider definition is missing")
+	}
+	if pushover.MemberOwned || !hasProviderTopic(pushover, notifications.TopicProposalApproved) {
+		t.Fatal("Pushover must be an installation provider that can deliver requester events")
+	}
 }
 
 func hasProviderTopic(definition notifications.ProviderDefinition, want notifications.Topic) bool {

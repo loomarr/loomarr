@@ -88,6 +88,8 @@ func installationDestinationMatches(means Means, topic Topic, recipient Recipien
 	switch topic {
 	case TopicProposalSubmitted:
 		return recipient == RecipientApprovers
+	case TopicProposalApproved, TopicProposalDeclined:
+		return means == MeansPushover && recipient == RecipientPerson
 	case TopicAcquisitionAvailable, TopicAcquisitionGaveUp, TopicChannelLive, TopicChannelDegraded:
 		return recipient == RecipientOperators
 	default:

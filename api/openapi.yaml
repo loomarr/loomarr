@@ -4945,56 +4945,6 @@ components:
         - local
         - offlineLogin
       type: object
-    NotificationDestinationDTO:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/NotificationDestinationDTO.json
-          format: uri
-          readOnly: true
-          type: string
-        audience:
-          type: string
-        createdAt:
-          format: date-time
-          type: string
-        credentialsConfigured:
-          type: boolean
-        enabled:
-          type: boolean
-        health:
-          $ref: "#/components/schemas/NotificationDestinationHealthDTO"
-        id:
-          type: string
-        label:
-          type: string
-        means:
-          type: string
-        ownerId:
-          type: string
-        scope:
-          type: string
-        topics:
-          items:
-            type: string
-          type: array
-        updatedAt:
-          format: date-time
-          type: string
-      required:
-        - id
-        - means
-        - label
-        - scope
-        - audience
-        - topics
-        - enabled
-        - credentialsConfigured
-        - createdAt
-        - updatedAt
-      type: object
     NotificationDestinationHealthDTO:
       additionalProperties: false
       properties:
@@ -5065,37 +5015,25 @@ components:
           format: uri
           readOnly: true
           type: string
-        audience:
-          enum:
-            - person
-            - approvers
-            - operators
-          type: string
-        configuration:
-          additionalProperties:
-            type: string
-          description: Omit to preserve the stored provider-safe configuration; send an empty object to clear.
-          type: object
-        credentials:
-          additionalProperties:
-            type: string
-          description: Write-only provider credentials. Omit to preserve; send an empty object to clear.
-          type: object
         enabled:
           type: boolean
-        label:
-          maxLength: 120
-          minLength: 1
-          type: string
-        topics:
+        events:
           items:
             type: string
           minItems: 1
           type: array
+        label:
+          maxLength: 120
+          minLength: 1
+          type: string
+        settings:
+          additionalProperties:
+            type: string
+          description: Changed provider fields. Omit sensitive fields to preserve them; send an empty value to clear one.
+          type: object
       required:
         - label
-        - audience
-        - topics
+        - events
         - enabled
       type: object
     NotificationDestinationWrite:
@@ -5108,28 +5046,22 @@ components:
           format: uri
           readOnly: true
           type: string
-        audience:
-          enum:
-            - person
-            - approvers
-            - operators
-          type: string
-        configuration:
-          additionalProperties:
-            type: string
-          type: object
-        credentials:
-          additionalProperties:
-            type: string
-          description: Write-only provider credentials. Omit on update to preserve; send an empty object to clear.
-          type: object
         enabled:
           type: boolean
+        events:
+          items:
+            type: string
+          minItems: 1
+          type: array
         label:
           maxLength: 120
           minLength: 1
           type: string
-        means:
+        settings:
+          additionalProperties:
+            type: string
+          type: object
+        type:
           enum:
             - email
             - webhook
@@ -5145,23 +5077,12 @@ components:
             - mqtt
             - slack
           type: string
-        scope:
-          enum:
-            - installation
-            - person
-          type: string
-        topics:
-          items:
-            type: string
-          minItems: 1
-          type: array
       required:
-        - means
+        - type
         - label
-        - scope
-        - audience
-        - topics
+        - events
         - enabled
+        - settings
       type: object
     NotificationDestinationsListOutputBody:
       additionalProperties: false
@@ -5173,12 +5094,156 @@ components:
           format: uri
           readOnly: true
           type: string
-        destinations:
+        providers:
           items:
-            $ref: "#/components/schemas/NotificationDestinationDTO"
+            $ref: "#/components/schemas/NotificationProviderDTO"
           type: array
       required:
-        - destinations
+        - providers
+      type: object
+    NotificationProviderDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/NotificationProviderDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        createdAt:
+          format: date-time
+          type: string
+        enabled:
+          type: boolean
+        events:
+          items:
+            type: string
+          type: array
+        health:
+          $ref: "#/components/schemas/NotificationDestinationHealthDTO"
+        id:
+          type: string
+        label:
+          type: string
+        settings:
+          items:
+            $ref: "#/components/schemas/NotificationProviderSettingDTO"
+          type: array
+        type:
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      required:
+        - id
+        - type
+        - label
+        - events
+        - enabled
+        - settings
+        - createdAt
+        - updatedAt
+      type: object
+    NotificationProviderFieldDTO:
+      additionalProperties: false
+      properties:
+        default:
+          type: string
+        description:
+          type: string
+        key:
+          type: string
+        kind:
+          enum:
+            - text
+            - password
+            - url
+            - number
+            - select
+            - toggle
+          type: string
+        label:
+          type: string
+        options:
+          items:
+            $ref: "#/components/schemas/NotificationProviderFieldOptionDTO"
+          type: array
+        required:
+          type: boolean
+        sensitive:
+          type: boolean
+      required:
+        - key
+        - label
+        - kind
+        - required
+        - sensitive
+      type: object
+    NotificationProviderFieldOptionDTO:
+      additionalProperties: false
+      properties:
+        label:
+          type: string
+        value:
+          type: string
+      required:
+        - value
+        - label
+      type: object
+    NotificationProviderSettingDTO:
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        secretConfigured:
+          type: boolean
+        value:
+          type: string
+      required:
+        - key
+        - secretConfigured
+      type: object
+    NotificationProviderTypeDTO:
+      additionalProperties: false
+      properties:
+        events:
+          items:
+            type: string
+          type: array
+        fields:
+          items:
+            $ref: "#/components/schemas/NotificationProviderFieldDTO"
+          type: array
+        memberOwned:
+          type: boolean
+        name:
+          type: string
+        type:
+          type: string
+      required:
+        - type
+        - name
+        - fields
+        - events
+        - memberOwned
+      type: object
+    NotificationProviderTypesListOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/NotificationProviderTypesListOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        providers:
+          items:
+            $ref: "#/components/schemas/NotificationProviderTypeDTO"
+          type: array
+      required:
+        - providers
       type: object
     NotificationsEmailTestInputBody:
       additionalProperties: false
@@ -12344,10 +12409,56 @@ paths:
       summary: Prometheus metrics
       tags:
         - ops
-  /v1/notifications/destinations:
+  /v1/notifications/email/test:
+    post:
+      description: Admin only. Sends one message through the currently applied SMTP configuration and returns only a closed, provider-safe outcome.
+      operationId: notifications-email-test
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationsEmailTestInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationsEmailTestOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Send a test email
+      tags:
+        - notifications
+  /v1/notifications/provider-types:
     get:
-      description: Returns redacted destination summaries. Administrators see installation destinations; each person sees only their own email and Web Push destinations.
-      operationId: notification-destinations-list
+      description: Returns the server-owned provider fields and compatible events used to render the Add provider form. No configured values or credentials are returned.
+      operationId: notification-provider-types-list
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationProviderTypesListOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List notification provider types
+      tags:
+        - notifications
+  /v1/notifications/providers:
+    get:
+      description: Returns the configured provider list with safe field values, write-only secret status, selected events, and delivery health.
+      operationId: notification-providers-list
       responses:
         "200":
           content:
@@ -12361,12 +12472,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: List visible notification destinations
+      summary: List notification providers
       tags:
         - notifications
     post:
-      description: Credentials are write-only. Only administrators may create installation destinations; a person destination always belongs to the authenticated person.
-      operationId: notification-destinations-create
+      description: Adds one provider from its server-defined settings and selected events. Sensitive fields are classified and stored by the server and remain write-only.
+      operationId: notification-providers-create
       requestBody:
         content:
           application/json:
@@ -12378,7 +12489,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/NotificationDestinationDTO"
+                $ref: "#/components/schemas/NotificationProviderDTO"
           description: Created
         default:
           content:
@@ -12386,13 +12497,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Create a notification destination
+      summary: Add a notification provider
       tags:
         - notifications
-  /v1/notifications/destinations/{id}:
+  /v1/notifications/providers/{id}:
     delete:
       description: Queued attempts suppress at execution when their destination no longer exists; delivery history remains redacted and unchanged.
-      operationId: notification-destinations-delete
+      operationId: notification-providers-delete
       parameters:
         - in: path
           name: id
@@ -12408,12 +12519,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Delete a notification destination
+      summary: Delete a notification provider
       tags:
         - notifications
     put:
-      description: Omitting credentials preserves the stored value; sending an empty credentials object explicitly clears it.
-      operationId: notification-destinations-update
+      description: Omitting a sensitive setting preserves it; sending that field with an empty value clears it.
+      operationId: notification-providers-update
       parameters:
         - in: path
           name: id
@@ -12431,7 +12542,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/NotificationDestinationDTO"
+                $ref: "#/components/schemas/NotificationProviderDTO"
           description: OK
         default:
           content:
@@ -12439,13 +12550,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Update a notification destination
+      summary: Update a notification provider
       tags:
         - notifications
-  /v1/notifications/destinations/{id}/test:
+  /v1/notifications/providers/{id}/test:
     post:
       description: Queues a distinct test-delivery intent. Acceptance means Loomarr durably accepted the handoff, not that the provider confirmed final delivery.
-      operationId: notification-destinations-test
+      operationId: notification-providers-test
       parameters:
         - in: path
           name: id
@@ -12471,33 +12582,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Queue a notification destination test
-      tags:
-        - notifications
-  /v1/notifications/email/test:
-    post:
-      description: Admin only. Sends one message through the currently applied SMTP configuration and returns only a closed, provider-safe outcome.
-      operationId: notifications-email-test
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/NotificationsEmailTestInputBody"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/NotificationsEmailTestOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Send a test email
+      summary: Queue a notification provider test
       tags:
         - notifications
   /v1/playout/guide.xml:

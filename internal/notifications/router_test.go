@@ -143,6 +143,21 @@ func TestDestinationRouterUsesSMTPAsOneRecipientAwareProvider(t *testing.T) {
 	}
 }
 
+func TestDestinationRouterUsesPushoverForRequesterEvents(t *testing.T) {
+	now := time.Unix(1_900_000_000, 0)
+	source := destinationSource{destinations: []notifications.Destination{{
+		ID: "pushover", Means: notifications.MeansPushover, Label: "Household Pushover",
+		Scope: notifications.ScopeInstallation, Audience: notifications.RecipientOperators,
+		Topics: []notifications.Topic{notifications.TopicProposalApproved}, Enabled: true,
+		CreatedAt: now, UpdatedAt: now,
+	}}}
+	routes, err := notifications.NewDestinationRouter(source, nil).Routes(t.Context(),
+		productIntent(now, notifications.TopicProposalApproved, notifications.RecipientPerson, "member-1"))
+	if err != nil || len(routes) != 1 || routes[0].DestinationRef != "pushover" {
+		t.Fatalf("Pushover requester route = %+v, %v", routes, err)
+	}
+}
+
 func productIntent(now time.Time, topic notifications.Topic, kind notifications.RecipientKind, id string) notifications.Intent {
 	return notifications.Intent{
 		ID: "intent-" + string(kind), Topic: topic, RecipientKind: kind, RecipientID: id,

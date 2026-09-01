@@ -185,24 +185,17 @@ const renderAt = (path: string) => {
 };
 
 describe("Settings", () => {
-  it("shows global link readiness, SMTP configuration, and test delivery on Notifications", async () => {
+  it("shows one notification provider list with SMTP as a peer provider", async () => {
     stubSettings();
     renderAt("/settings/notifications");
 
     expect(await screen.findByRole("heading", { name: "Notifications" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Account delivery readiness" })).toBeInTheDocument();
-    expect(await screen.findByText("Ready to share")).toBeInTheDocument();
-    expect(await screen.findByText("Ready to test")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Email account messages" })).toBeInTheDocument();
-    expect(screen.queryByLabelText("Recipient-facing Loomarr address")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Manage in General settings" })).toHaveAttribute(
-      "href",
-      "/settings/general",
-    );
-    expect(screen.getByRole("switch", { name: "Send email notifications" })).toBeChecked();
-    expect(await screen.findByLabelText("SMTP host")).toBeInTheDocument();
-    expect(await screen.findByText("SMTP password")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Send test email" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Notification providers" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add provider" })).toBeInTheDocument();
+    expect(screen.getByText(/Add SMTP, Slack, Discord, or another provider/i)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Email account messages" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: "Send email notifications" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Send test email" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Notifications" })).toHaveAttribute("aria-current", "page");
   });
 
@@ -247,18 +240,14 @@ describe("Settings", () => {
     expect(await screen.findByLabelText("Recipient-facing Loomarr address")).toHaveValue("");
   });
 
-  it("keeps SMTP details and the test form quiet until email delivery is on", async () => {
+  it("keeps routing implementation details out of notification setup", async () => {
     stubSettings();
     renderAt("/settings/notifications");
 
-    const email = await screen.findByRole("switch", { name: "Send email notifications" });
-    await userEvent.click(email);
-
-    expect(email).not.toBeChecked();
-    expect(screen.queryByLabelText("SMTP host")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Send test email" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Test email delivery" })).not.toBeInTheDocument();
-    expect(screen.getByText("Email is off")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Notification providers" })).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(
+      /destination draft|audience|installation scope|credentials map/i,
+    );
   });
 
   it("self-diagnoses each connection on its own block (§5 status-per-block)", async () => {

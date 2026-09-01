@@ -76,22 +76,26 @@ Required. Grounds suggestions and supplies ratings for titles you don't own yet.
 
 ## Notifications
 
-**Settings → Notifications** has two separate delivery paths:
+**Settings → Notifications** has one provider list. SMTP uses the same setup as Slack, Discord,
+webhook, and every other provider:
 
-- SMTP sends account invitations and password-recovery messages. These security messages are not
-  controlled by product-event preferences.
-- Product notification destinations send selected Proposal, acquisition, and Channel events.
-  Administrators own shared destinations and choose either the Approvers or Operators audience.
+1. Click **Add provider**.
+2. Choose SMTP, Slack, Discord, or another supported provider.
+3. Enter that provider's settings.
+4. Select which events it receives.
+5. Save.
+6. Optionally send a test.
 
-Create a destination draft, choose only the events that audience should observe, then complete the
-provider-specific fields before enabling it. Provider credentials are write-only: Loomarr reports
-whether credentials exist, but never returns their values to the browser.
+Only fields for the chosen provider appear. Loomarr decides which fields are sensitive, encrypts
+their values in the database, and never returns them to the browser. Editing a provider shows only
+whether each sensitive field is configured; leave it unchanged to preserve it or explicitly clear
+it before saving.
 
-An enabled destination offers **Test**. A successful click means the test was queued for provider
-handoff; it does not claim that a phone, browser, or remote service displayed the message. The
-destination card shows the last accepted handoff, a safe failure category, and queued or failed
-counts. Disabling or deleting a destination suppresses its queued, unsent work when a worker next
-claims it; an in-progress handoff is not rewritten.
+Account invitations and password recovery remain mandatory security messages even though SMTP is
+configured through this same provider list; product-event selections do not suppress those account
+messages. A successful **Test** means Loomarr queued a provider handoff, not that a remote service or
+device displayed it. Each provider row shows its last accepted handoff, a safe failure category, and
+queued or failed counts.
 
 ## Requester — Seerr (or Sonarr/Radarr)
 

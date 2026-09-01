@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
@@ -15,15 +15,33 @@ const wrapper = ({ children }: { children: ReactNode }) => (
   </QueryClientProvider>
 );
 
-const destination = {
-  id: "destination-1",
-  means: "slack",
+const providerTypes = [
+  {
+    type: "email",
+    name: "SMTP",
+    memberOwned: false,
+    events: ["proposal_submitted", "proposal_approved", "channel_degraded"],
+    fields: [
+      { key: "host", label: "SMTP host", kind: "text", required: true, sensitive: false },
+      { key: "password", label: "Password", kind: "password", required: false, sensitive: true },
+    ],
+  },
+  {
+    type: "slack",
+    name: "Slack",
+    memberOwned: false,
+    events: ["proposal_submitted", "acquisition_gave_up", "channel_degraded"],
+    fields: [{ key: "webhookUrl", label: "Slack webhook URL", kind: "url", required: true, sensitive: true }],
+  },
+];
+
+const provider = {
+  id: "provider-1",
+  type: "slack",
   label: "Operations Slack",
-  scope: "installation",
-  audience: "operators",
-  topics: ["channel_degraded"],
+  events: ["channel_degraded"],
   enabled: true,
-  credentialsConfigured: true,
+  settings: [{ key: "webhookUrl", secretConfigured: true }],
   createdAt: "2026-08-31T18:00:00Z",
   updatedAt: "2026-08-31T18:00:00Z",
   health: {
@@ -35,12 +53,17 @@ const destination = {
   },
 };
 
+const providerTypeHandler = http.get("*/v1/notifications/provider-types", () =>
+  HttpResponse.json({ providers: providerTypes }),
+);
+
 describe("NotificationDestinationsPanel", () => {
-  it("renders redacted health and queues a test without claiming final delivery", async () => {
+  it("shows redacted provider health and queues a test without claiming delivery", async () => {
     let requestID = "";
     server.use(
-      http.get("*/v1/notifications/destinations", () => HttpResponse.json({ destinations: [destination] })),
-      http.post("*/v1/notifications/destinations/destination-1/test", async ({ request }) => {
+      providerTypeHandler,
+      http.get("*/v1/notifications/providers", () => HttpResponse.json({ providers: [provider] })),
+      http.post("*/v1/notifications/providers/provider-1/test", async ({ request }) => {
         requestID = ((await request.json()) as { requestId: string }).requestId;
         return HttpResponse.json(
           {
@@ -53,77 +76,84 @@ describe("NotificationDestinationsPanel", () => {
       }),
     );
 
-    render(<NotificationDestinationsPanel scope="installation" />, { wrapper });
+    render(<NotificationDestinationsPanel />, { wrapper });
 
     expect(await screen.findByText("Operations Slack")).toBeInTheDocument();
-    expect(screen.getByText("2 queued · 1 failed")).toBeInTheDocument();
+    expect(screen.getByText(/2 queued · 1 failed/i)).toBeInTheDocument();
     expect(screen.getByText(/transport unavailable/i)).toBeInTheDocument();
-    expect(document.body).not.toHaveTextContent(/token|credential value|payload/i);
+    expect(document.body).not.toHaveTextContent(/hooks\.slack|credential value|payload/i);
 
-    await userEvent.click(screen.getByRole("button", { name: "Test Operations Slack" }));
+    await userEvent.click(screen.getByRole("button", { name: "Send test" }));
     expect(await screen.findByRole("status")).toHaveTextContent("queued");
     expect(screen.getByRole("status")).not.toHaveTextContent(/delivered|sent successfully/i);
     expect(requestID).not.toBe("");
   });
 
-  it("creates a disabled provider draft with selected audience-compatible events", async () => {
+  it("adds a configured provider in the single provider-settings-events flow", async () => {
     let created: Record<string, unknown> | undefined;
     server.use(
-      http.get("*/v1/notifications/destinations", () => HttpResponse.json({ destinations: [] })),
-      http.post("*/v1/notifications/destinations", async ({ request }) => {
+      providerTypeHandler,
+      http.get("*/v1/notifications/providers", () => HttpResponse.json({ providers: [] })),
+      http.post("*/v1/notifications/providers", async ({ request }) => {
         created = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({ ...destination, ...created, id: "destination-2" }, { status: 201 });
+        return HttpResponse.json(
+          { ...provider, ...created, id: "provider-2", settings: [] },
+          { status: 201 },
+        );
       }),
     );
-    render(<NotificationDestinationsPanel scope="installation" />, { wrapper });
+    render(<NotificationDestinationsPanel />, { wrapper });
 
-    await userEvent.type(await screen.findByLabelText("Destination label"), "Living room alerts");
+    await userEvent.click(await screen.findByRole("button", { name: "Add provider" }));
     await userEvent.selectOptions(screen.getByLabelText("Provider"), "slack");
-    await userEvent.selectOptions(screen.getByLabelText("Audience"), "operators");
-    await userEvent.click(screen.getByLabelText("Channel degraded"));
-    await userEvent.click(screen.getByRole("button", { name: "Create destination draft" }));
+    await userEvent.clear(screen.getByLabelText("Label *"));
+    await userEvent.type(screen.getByLabelText("Label *"), "Living room alerts");
+    await userEvent.type(
+      screen.getByLabelText("Slack webhook URL *"),
+      "https://hooks.slack.com/services/secret",
+    );
+    await userEvent.click(screen.getByLabelText("Channel Degraded"));
+    await userEvent.click(screen.getByRole("button", { name: "Save provider" }));
 
     await waitFor(() =>
       expect(created).toEqual({
-        means: "slack",
+        type: "slack",
         label: "Living room alerts",
-        scope: "installation",
-        audience: "operators",
-        topics: ["channel_degraded"],
-        enabled: false,
+        events: ["channel_degraded"],
+        enabled: true,
+        settings: { webhookUrl: "https://hooks.slack.com/services/secret" },
       }),
     );
   });
 
-  it("updates policy without sending write-only provider fields and can delete", async () => {
+  it("edits ordinary choices without resending a configured secret and can delete", async () => {
     let update: Record<string, unknown> | undefined;
     let deleted = false;
     server.use(
-      http.get("*/v1/notifications/destinations", () => HttpResponse.json({ destinations: [destination] })),
-      http.put("*/v1/notifications/destinations/destination-1", async ({ request }) => {
+      providerTypeHandler,
+      http.get("*/v1/notifications/providers", () => HttpResponse.json({ providers: [provider] })),
+      http.put("*/v1/notifications/providers/provider-1", async ({ request }) => {
         update = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({ ...destination, ...update });
+        return HttpResponse.json({ ...provider, ...update });
       }),
-      http.delete("*/v1/notifications/destinations/destination-1", () => {
+      http.delete("*/v1/notifications/providers/provider-1", () => {
         deleted = true;
         return new HttpResponse(null, { status: 204 });
       }),
     );
-    render(<NotificationDestinationsPanel scope="installation" />, { wrapper });
+    render(<NotificationDestinationsPanel />, { wrapper });
 
-    await userEvent.click(await screen.findByRole("button", { name: "Edit Operations Slack" }));
-    await userEvent.clear(screen.getByLabelText("Edit label"));
-    await userEvent.type(screen.getByLabelText("Edit label"), "On-call Slack");
-    const row = screen.getByRole("heading", { name: "On-call Slack" }).closest("li");
-    if (!row) throw new Error("destination row missing");
-    await userEvent.click(within(row).getByLabelText("Acquisition gave up"));
-    await userEvent.click(screen.getByRole("button", { name: "Save On-call Slack" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    await userEvent.clear(screen.getByLabelText("Label *"));
+    await userEvent.type(screen.getByLabelText("Label *"), "On-call Slack");
+    await userEvent.click(screen.getByLabelText("Acquisition Gave Up"));
+    await userEvent.click(screen.getByRole("button", { name: "Save provider" }));
 
     await waitFor(() => expect(update?.label).toBe("On-call Slack"));
-    expect(update).not.toHaveProperty("configuration");
-    expect(update).not.toHaveProperty("credentials");
+    expect(update).toMatchObject({ settings: {} });
+    expect(JSON.stringify(update)).not.toContain("webhookUrl");
 
-    await userEvent.click(screen.getByRole("button", { name: "Delete On-call Slack" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Delete" }));
     await waitFor(() => expect(deleted).toBe(true));
   });
 });

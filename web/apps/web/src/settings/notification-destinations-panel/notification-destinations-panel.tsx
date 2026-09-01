@@ -1,7 +1,9 @@
 import * as notificationsApi from "@loomarr/api/endpoints/notifications";
-import type { NotificationDestinationDTO } from "@loomarr/api/models/notificationDestinationDTO";
+import type { NotificationProviderDTO } from "@loomarr/api/models/notificationProviderDTO";
+import type { NotificationProviderFieldDTO } from "@loomarr/api/models/notificationProviderFieldDTO";
+import type { NotificationProviderTypeDTO } from "@loomarr/api/models/notificationProviderTypeDTO";
 import { useQueryClient } from "@tanstack/react-query";
-import { BellRing, Plus } from "lucide-react";
+import { BellRing, Plus, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,121 +12,283 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-type DestinationScope = "installation" | "person";
-type Audience = "person" | "approvers" | "operators";
-
-const installationProviders = [
-  "webhook",
-  "discord",
-  "ntfy",
-  "gotify",
-  "apprise",
-  "pushover",
-  "telegram",
-  "mattermost",
-  "matrix",
-  "mqtt",
-  "slack",
-] as const;
-const personalProviders = ["email", "web_push"] as const;
-
-const topics = [
-  ["proposal_submitted", "Proposal submitted", ["approvers"]],
-  ["proposal_approved", "Proposal approved", ["person"]],
-  ["proposal_declined", "Proposal declined", ["person"]],
-  ["acquisition_available", "Acquisition available", ["person", "operators"]],
-  ["acquisition_gave_up", "Acquisition gave up", ["person", "operators"]],
-  ["channel_live", "Channel live", ["person", "operators"]],
-  ["channel_degraded", "Channel degraded", ["person", "operators"]],
-] as const;
-
 const words = (value: string) =>
   value
     .split("_")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 
-const compatibleTopics = (audience: Audience) =>
-  topics.filter(([, , audiences]) => (audiences as readonly string[]).includes(audience));
-
 const useRefresh = () => {
   const queryClient = useQueryClient();
   return () =>
-    queryClient.invalidateQueries({ queryKey: notificationsApi.getNotificationDestinationsListQueryKey() });
+    queryClient.invalidateQueries({ queryKey: notificationsApi.getNotificationProvidersListQueryKey() });
 };
 
-const TopicChoices = ({
-  audience,
-  selected,
+const FieldInput = ({
+  field,
+  value,
+  configured,
+  cleared,
   onChange,
-  prefix,
+  onClear,
 }: {
-  audience: Audience;
-  selected: string[];
-  onChange: (topics: string[]) => void;
-  prefix: string;
-}) => (
-  <fieldset className="grid gap-2 sm:grid-cols-2">
-    <legend className="mb-2 font-medium text-sm">Events</legend>
-    {compatibleTopics(audience).map(([value, label]) => (
-      <label className="flex items-center gap-2 text-sm" key={value} htmlFor={`${prefix}-${value}`}>
+  field: NotificationProviderFieldDTO;
+  value: string;
+  configured: boolean;
+  cleared: boolean;
+  onChange: (value: string) => void;
+  onClear: () => void;
+}) => {
+  if (field.kind === "toggle") {
+    return (
+      <label className="flex items-center gap-2 text-sm" htmlFor={`provider-field-${field.key}`}>
         <Checkbox
-          id={`${prefix}-${value}`}
-          checked={selected.includes(value)}
-          onChange={(event) =>
-            onChange(
-              event.target.checked ? [...selected, value] : selected.filter((topic) => topic !== value),
-            )
-          }
+          id={`provider-field-${field.key}`}
+          checked={value === "true"}
+          onChange={(event) => onChange(event.target.checked ? "true" : "false")}
         />
-        {label}
+        {field.label}
       </label>
-    ))}
-  </fieldset>
-);
+    );
+  }
+  return (
+    <div className="grid gap-1.5">
+      <Label htmlFor={`provider-field-${field.key}`}>
+        {field.label}
+        {field.required ? " *" : ""}
+      </Label>
+      {field.kind === "select" ? (
+        <select
+          id={`provider-field-${field.key}`}
+          className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          {(field.options ?? []).map((option) => (
+            <option value={option.value} key={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <Input
+          id={`provider-field-${field.key}`}
+          type={field.sensitive || field.kind === "password" ? "password" : field.kind}
+          value={value}
+          disabled={cleared}
+          autoComplete={field.sensitive ? "new-password" : undefined}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      )}
+      {field.sensitive && configured ? (
+        <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
+          <span>{cleared ? "Will be cleared when saved." : "Configured — leave blank to keep it."}</span>
+          <Button type="button" variant="ghost" size="sm" onClick={onClear}>
+            {cleared ? "Keep saved value" : `Clear ${field.label}`}
+          </Button>
+        </div>
+      ) : null}
+      {field.description ? <p className="text-muted-foreground text-xs">{field.description}</p> : null}
+    </div>
+  );
+};
 
-const DestinationRow = ({ destination }: { destination: NotificationDestinationDTO }) => {
+const ProviderForm = ({
+  definition,
+  provider,
+  pending,
+  onCancel,
+  onSave,
+}: {
+  definition: NotificationProviderTypeDTO;
+  provider?: NotificationProviderDTO;
+  pending: boolean;
+  onCancel: () => void;
+  onSave: (value: {
+    label: string;
+    events: string[];
+    enabled: boolean;
+    settings: Record<string, string>;
+  }) => void;
+}) => {
+  const stored = useMemo(
+    () => new Map(provider?.settings.map((setting) => [setting.key, setting])),
+    [provider],
+  );
+  const [label, setLabel] = useState(provider?.label ?? definition.name);
+  const [events, setEvents] = useState<string[]>(provider?.events ?? []);
+  const [enabled, setEnabled] = useState(provider?.enabled ?? true);
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      definition.fields.map((field) => [
+        field.key,
+        field.sensitive ? "" : (stored.get(field.key)?.value ?? field.default ?? ""),
+      ]),
+    ),
+  );
+  const [clearedSecrets, setClearedSecrets] = useState<Set<string>>(new Set());
+
+  const complete =
+    label.trim() !== "" &&
+    events.length > 0 &&
+    definition.fields.every((field) => {
+      if (!field.required) return true;
+      if (!field.sensitive) return (values[field.key] ?? "").trim() !== "";
+      return (
+        (values[field.key] ?? "").trim() !== "" ||
+        (stored.get(field.key)?.secretConfigured === true && !clearedSecrets.has(field.key))
+      );
+    });
+
+  const submit = () => {
+    const settings: Record<string, string> = {};
+    for (const field of definition.fields) {
+      const value = values[field.key] ?? "";
+      if (field.sensitive) {
+        if (clearedSecrets.has(field.key)) settings[field.key] = "";
+        else if (value !== "") settings[field.key] = value;
+      } else {
+        settings[field.key] = value;
+      }
+    }
+    onSave({ label: label.trim(), events, enabled, settings });
+  };
+
+  return (
+    <Card className="grid gap-5 p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="font-semibold">{provider ? `Edit ${provider.label}` : `Add ${definition.name}`}</h3>
+          <p className="mt-1 text-muted-foreground text-sm">
+            Enter the provider settings, choose events, and save.
+          </p>
+        </div>
+        <Button type="button" variant="ghost" size="sm" onClick={onCancel} aria-label="Close provider form">
+          <X className="size-4" aria-hidden />
+        </Button>
+      </div>
+
+      <div className="grid gap-1.5">
+        <Label htmlFor="provider-label">Label *</Label>
+        <Input id="provider-label" value={label} onChange={(event) => setLabel(event.target.value)} />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        {definition.fields.map((field) => (
+          <FieldInput
+            key={field.key}
+            field={field}
+            value={values[field.key] ?? ""}
+            configured={stored.get(field.key)?.secretConfigured === true}
+            cleared={clearedSecrets.has(field.key)}
+            onChange={(value) => {
+              setValues((current) => ({ ...current, [field.key]: value }));
+              setClearedSecrets((current) => {
+                const next = new Set(current);
+                next.delete(field.key);
+                return next;
+              });
+            }}
+            onClear={() =>
+              setClearedSecrets((current) => {
+                const next = new Set(current);
+                if (next.has(field.key)) next.delete(field.key);
+                else next.add(field.key);
+                return next;
+              })
+            }
+          />
+        ))}
+      </div>
+
+      <fieldset className="grid gap-2 sm:grid-cols-2">
+        <legend className="mb-2 font-medium text-sm">Events *</legend>
+        {definition.events.map((event) => (
+          <label className="flex items-center gap-2 text-sm" key={event} htmlFor={`provider-event-${event}`}>
+            <Checkbox
+              id={`provider-event-${event}`}
+              checked={events.includes(event)}
+              onChange={(input) =>
+                setEvents((current) =>
+                  input.target.checked ? [...current, event] : current.filter((item) => item !== event),
+                )
+              }
+            />
+            {words(event)}
+          </label>
+        ))}
+      </fieldset>
+
+      <label className="flex items-center gap-2 text-sm" htmlFor="provider-enabled">
+        <Checkbox
+          id="provider-enabled"
+          checked={enabled}
+          onChange={(event) => setEnabled(event.target.checked)}
+        />
+        Enable provider
+      </label>
+
+      <div className="flex flex-wrap gap-2">
+        <Button disabled={!complete || pending} onClick={submit}>
+          Save provider
+        </Button>
+        <Button type="button" variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </Card>
+  );
+};
+
+const ProviderRow = ({
+  provider,
+  definition,
+}: {
+  provider: NotificationProviderDTO;
+  definition?: NotificationProviderTypeDTO;
+}) => {
   const refresh = useRefresh();
   const [editing, setEditing] = useState(false);
-  const [label, setLabel] = useState(destination.label);
-  const [audience, setAudience] = useState<Audience>(destination.audience as Audience);
-  const [selectedTopics, setSelectedTopics] = useState(destination.topics);
-  const [enabled, setEnabled] = useState(destination.enabled);
   const [message, setMessage] = useState("");
-  const update = notificationsApi.useNotificationDestinationsUpdate({
+  const update = notificationsApi.useNotificationProvidersUpdate({
     mutation: {
-      onSuccess: (response) => {
-        if (response.status === 200) setEnabled(response.data.enabled);
+      onSuccess: () => {
         setEditing(false);
-        setMessage("Destination updated.");
+        setMessage("Provider saved.");
+        void refresh();
       },
-      onError: () => setMessage("Loomarr could not update this destination."),
+      onError: () => setMessage("Loomarr could not save this provider."),
     },
   });
-  const remove = notificationsApi.useNotificationDestinationsDelete({
+  const remove = notificationsApi.useNotificationProvidersDelete({
     mutation: {
       onSuccess: () => void refresh(),
-      onError: () => setMessage("Loomarr could not delete this destination."),
+      onError: () => setMessage("Loomarr could not delete this provider."),
     },
   });
-  const test = notificationsApi.useNotificationDestinationsTest({
+  const test = notificationsApi.useNotificationProvidersTest({
     mutation: {
       onSuccess: (response) => {
         if (response.status === 202) setMessage(response.data.hint);
         void refresh();
       },
-      onError: () => setMessage("Loomarr could not queue the destination test."),
+      onError: () => setMessage("Loomarr could not queue the provider test."),
     },
   });
 
-  const save = (nextEnabled = enabled) => {
-    if (!label.trim() || selectedTopics.length === 0) return;
-    update.mutate({
-      id: destination.id,
-      data: { label: label.trim(), audience, topics: selectedTopics, enabled: nextEnabled },
-    });
-  };
-  const health = destination.health;
+  if (editing && definition) {
+    return (
+      <li>
+        <ProviderForm
+          definition={definition}
+          provider={provider}
+          pending={update.isPending}
+          onCancel={() => setEditing(false)}
+          onSave={(value) => update.mutate({ id: provider.id, data: value })}
+        />
+      </li>
+    );
+  }
 
   return (
     <li>
@@ -132,98 +296,57 @@ const DestinationRow = ({ destination }: { destination: NotificationDestinationD
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="font-medium">{label}</h3>
-              <Badge variant={enabled ? "signal" : "neutral"}>{enabled ? "Enabled" : "Draft"}</Badge>
-              <Badge variant="neutral">{words(destination.means)}</Badge>
+              <h3 className="font-medium">{provider.label}</h3>
+              <Badge variant={provider.enabled ? "signal" : "neutral"}>
+                {provider.enabled ? "Enabled" : "Disabled"}
+              </Badge>
+              <Badge variant="neutral">{definition?.name ?? words(provider.type)}</Badge>
             </div>
-            <p className="mt-1 text-muted-foreground text-sm">
-              {words(audience)} · {selectedTopics.map(words).join(", ")}
-            </p>
-            {health ? (
-              <div className="mt-2 text-muted-foreground text-xs">
-                <p>
-                  {health.queuedCount} queued · {health.terminalFailureCount} failed
-                </p>
-                {health.lastSuccessAt ? (
-                  <p>Last accepted {new Date(health.lastSuccessAt).toLocaleString()}</p>
-                ) : null}
-                {health.lastFailureOutcome ? <p>Last failure: {words(health.lastFailureOutcome)}</p> : null}
-              </div>
+            <p className="mt-1 text-muted-foreground text-sm">{provider.events.map(words).join(", ")}</p>
+            {provider.health ? (
+              <p className="mt-2 text-muted-foreground text-xs">
+                {provider.health.queuedCount} queued · {provider.health.terminalFailureCount} failed
+                {provider.health.lastFailureOutcome
+                  ? ` · Last failure: ${words(provider.health.lastFailureOutcome)}`
+                  : ""}
+              </p>
             ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => setEditing((value) => !value)}>
-              Edit {label}
+            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+              Edit
             </Button>
             <Button
               variant="outline"
               size="sm"
-              disabled={!enabled || test.isPending}
-              onClick={() => test.mutate({ id: destination.id, data: { requestId: crypto.randomUUID() } })}
+              disabled={!provider.enabled || test.isPending}
+              onClick={() => test.mutate({ id: provider.id, data: { requestId: crypto.randomUUID() } })}
             >
-              Test {label}
+              Send test
             </Button>
-            <Button variant="outline" size="sm" disabled={update.isPending} onClick={() => save(!enabled)}>
-              {enabled ? "Disable" : "Enable"} {label}
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={update.isPending}
+              onClick={() =>
+                update.mutate({
+                  id: provider.id,
+                  data: { label: provider.label, events: provider.events, enabled: !provider.enabled },
+                })
+              }
+            >
+              {provider.enabled ? "Disable" : "Enable"}
             </Button>
             <Button
               variant="ghost"
               size="sm"
               disabled={remove.isPending}
-              onClick={() => remove.mutate({ id: destination.id })}
+              onClick={() => remove.mutate({ id: provider.id })}
             >
-              Delete {label}
+              Delete
             </Button>
           </div>
         </div>
-
-        {editing ? (
-          <div className="mt-4 grid gap-4 border-border border-t pt-4">
-            <div className="grid gap-1.5">
-              <Label htmlFor={`edit-label-${destination.id}`}>Edit label</Label>
-              <Input
-                id={`edit-label-${destination.id}`}
-                value={label}
-                onChange={(event) => setLabel(event.target.value)}
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor={`edit-audience-${destination.id}`}>Edit audience</Label>
-              <select
-                id={`edit-audience-${destination.id}`}
-                className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-                value={audience}
-                onChange={(event) => {
-                  const next = event.target.value as Audience;
-                  setAudience(next);
-                  setSelectedTopics([]);
-                }}
-              >
-                {destination.scope === "installation" ? (
-                  <>
-                    <option value="operators">Operators</option>
-                    <option value="approvers">Approvers</option>
-                  </>
-                ) : (
-                  <option value="person">Me</option>
-                )}
-              </select>
-            </div>
-            <TopicChoices
-              audience={audience}
-              selected={selectedTopics}
-              onChange={setSelectedTopics}
-              prefix={`edit-${destination.id}`}
-            />
-            <Button
-              className="w-fit"
-              disabled={!label.trim() || selectedTopics.length === 0 || update.isPending}
-              onClick={() => save()}
-            >
-              Save {label}
-            </Button>
-          </div>
-        ) : null}
         {message ? (
           <p className="mt-3 text-sm" role="status" aria-live="polite">
             {message}
@@ -234,151 +357,114 @@ const DestinationRow = ({ destination }: { destination: NotificationDestinationD
   );
 };
 
-const NotificationDestinationsPanel = ({ scope }: { scope: DestinationScope }) => {
-  const query = notificationsApi.useNotificationDestinationsList();
+const NotificationDestinationsPanel = () => {
+  const typesQuery = notificationsApi.useNotificationProviderTypesList();
+  const providersQuery = notificationsApi.useNotificationProvidersList();
   const refresh = useRefresh();
-  const destinations = useMemo(
-    () =>
-      query.data?.status === 200 ? query.data.data.destinations.filter((item) => item.scope === scope) : [],
-    [query.data, scope],
-  );
-  const [label, setLabel] = useState("");
-  const [provider, setProvider] = useState(scope === "installation" ? "slack" : "email");
-  const [audience, setAudience] = useState<Audience>(scope === "installation" ? "operators" : "person");
-  const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
+  const [adding, setAdding] = useState(false);
+  const [selectedType, setSelectedType] = useState("email");
   const [message, setMessage] = useState("");
-  const create = notificationsApi.useNotificationDestinationsCreate({
+  const definitions = useMemo(
+    () =>
+      typesQuery.data?.status === 200
+        ? typesQuery.data.data.providers.filter((provider) => !provider.memberOwned)
+        : [],
+    [typesQuery.data],
+  );
+  const providers = providersQuery.data?.status === 200 ? providersQuery.data.data.providers : [];
+  const definition = definitions.find((item) => item.type === selectedType) ?? definitions[0];
+  const create = notificationsApi.useNotificationProvidersCreate({
     mutation: {
       onSuccess: () => {
-        setLabel("");
-        setSelectedTopics([]);
-        setMessage("Destination draft created. Add its provider details before enabling it.");
+        setAdding(false);
+        setMessage("Provider saved. You can send a test now.");
         void refresh();
       },
-      onError: () => setMessage("Loomarr could not create this destination draft."),
+      onError: () => setMessage("Loomarr could not save this provider."),
     },
   });
-  const providers = scope === "installation" ? installationProviders : personalProviders;
 
   return (
-    <section className="grid gap-4" aria-labelledby={`notification-destinations-${scope}`}>
-      <div className="flex gap-3">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-signal/10 text-signal">
-          <BellRing className="size-4" aria-hidden />
-        </span>
-        <div>
-          <h2 id={`notification-destinations-${scope}`} className="font-semibold text-lg">
-            {scope === "installation" ? "Product notification destinations" : "Your notifications"}
-          </h2>
-          <p className="mt-1 text-muted-foreground text-sm">
-            {scope === "installation"
-              ? "Route selected product events to shared provider destinations. Credentials stay write-only."
-              : "Choose the product events Loomarr may send only to your verified contact or browser."}
-          </p>
+    <section className="grid gap-4" aria-labelledby="notification-providers-title">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex gap-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-signal/10 text-signal">
+            <BellRing className="size-4" aria-hidden />
+          </span>
+          <div>
+            <h2 id="notification-providers-title" className="font-semibold text-lg">
+              Notification providers
+            </h2>
+            <p className="mt-1 text-muted-foreground text-sm">
+              Add SMTP, Slack, Discord, or another provider, then choose the events it receives.
+            </p>
+          </div>
         </div>
+        {!adding ? (
+          <Button onClick={() => setAdding(true)}>
+            <Plus className="size-4" aria-hidden /> Add provider
+          </Button>
+        ) : null}
       </div>
 
-      {query.isLoading ? <p className="text-muted-foreground text-sm">Loading destinations…</p> : null}
-      {query.isError ? (
+      {providersQuery.isLoading || typesQuery.isLoading ? (
+        <p className="text-muted-foreground text-sm">Loading providers…</p>
+      ) : null}
+      {providersQuery.isError || typesQuery.isError ? (
         <p className="text-destructive text-sm" role="alert">
-          Destinations could not be loaded.
+          Providers could not be loaded.
         </p>
       ) : null}
-      {!query.isLoading && destinations.length === 0 ? (
+      {!providersQuery.isLoading && providers.length === 0 ? (
         <p className="rounded-lg border border-border border-dashed p-4 text-muted-foreground text-sm">
-          No {scope === "installation" ? "shared" : "personal"} product notification destinations yet.
+          No notification providers yet.
         </p>
       ) : null}
+
       <ul className="grid gap-3">
-        {destinations.map((destination) => (
-          <DestinationRow destination={destination} key={destination.id} />
+        {providers.map((provider) => (
+          <ProviderRow
+            provider={provider}
+            definition={definitions.find((item) => item.type === provider.type)}
+            key={provider.id}
+          />
         ))}
       </ul>
 
-      <Card className="grid gap-4 p-4">
-        <div className="flex items-center gap-2">
-          <Plus className="size-4 text-signal" aria-hidden />
-          <h3 className="font-medium">New destination draft</h3>
-        </div>
-        <p className="text-muted-foreground text-sm">
-          Save routing preferences now. A destination stays disabled until its provider details are complete.
-        </p>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div className="grid gap-1.5">
-            <Label htmlFor={`destination-label-${scope}`}>Destination label</Label>
-            <Input
-              id={`destination-label-${scope}`}
-              value={label}
-              onChange={(event) => setLabel(event.target.value)}
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor={`destination-provider-${scope}`}>Provider</Label>
+      {adding ? (
+        <div className="grid gap-4">
+          <div className="grid max-w-sm gap-1.5">
+            <Label htmlFor="provider-type">Provider</Label>
             <select
-              id={`destination-provider-${scope}`}
+              id="provider-type"
               className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-              value={provider}
-              onChange={(event) => setProvider(event.target.value)}
+              value={definition?.type ?? ""}
+              onChange={(event) => setSelectedType(event.target.value)}
             >
-              {providers.map((value) => (
-                <option value={value} key={value}>
-                  {words(value)}
+              {definitions.map((item) => (
+                <option value={item.type} key={item.type}>
+                  {item.name}
                 </option>
               ))}
             </select>
           </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor={`destination-audience-${scope}`}>Audience</Label>
-            <select
-              id={`destination-audience-${scope}`}
-              className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-              value={audience}
-              onChange={(event) => {
-                setAudience(event.target.value as Audience);
-                setSelectedTopics([]);
-              }}
-            >
-              {scope === "installation" ? (
-                <>
-                  <option value="operators">Operators</option>
-                  <option value="approvers">Approvers</option>
-                </>
-              ) : (
-                <option value="person">Me</option>
-              )}
-            </select>
-          </div>
+          {definition ? (
+            <ProviderForm
+              key={definition.type}
+              definition={definition}
+              pending={create.isPending}
+              onCancel={() => setAdding(false)}
+              onSave={(value) => create.mutate({ data: { type: definition.type as never, ...value } })}
+            />
+          ) : null}
         </div>
-        <TopicChoices
-          audience={audience}
-          selected={selectedTopics}
-          onChange={setSelectedTopics}
-          prefix={`new-${scope}`}
-        />
-        <Button
-          className="w-fit"
-          disabled={!label.trim() || selectedTopics.length === 0 || create.isPending}
-          onClick={() =>
-            create.mutate({
-              data: {
-                means: provider as never,
-                label: label.trim(),
-                scope,
-                audience,
-                topics: selectedTopics,
-                enabled: false,
-              },
-            })
-          }
-        >
-          Create destination draft
-        </Button>
-        {message ? (
-          <p className="text-sm" role="status" aria-live="polite">
-            {message}
-          </p>
-        ) : null}
-      </Card>
+      ) : null}
+
+      {message ? (
+        <p className="text-sm" role="status" aria-live="polite">
+          {message}
+        </p>
+      ) : null}
     </section>
   );
 };

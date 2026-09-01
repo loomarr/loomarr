@@ -7,13 +7,11 @@ type State = "empty" | "healthy" | "failed";
 
 const destination = {
   id: "destination-story",
-  means: "slack",
+  type: "slack",
   label: "Operations Slack",
-  scope: "installation",
-  audience: "operators",
-  topics: ["acquisition_gave_up", "channel_degraded"],
+  events: ["acquisition_gave_up", "channel_degraded"],
   enabled: true,
-  credentialsConfigured: true,
+  settings: [{ key: "webhookUrl", secretConfigured: true }],
   createdAt: "2026-08-31T18:00:00Z",
   updatedAt: "2026-08-31T18:00:00Z",
 };
@@ -22,8 +20,32 @@ const storyFetch =
   (state: State): typeof fetch =>
   async (input, init) => {
     const request = input instanceof Request ? input : new Request(input, init);
-    if (new URL(request.url).pathname === "/v1/notifications/destinations") {
-      const destinations =
+    if (new URL(request.url).pathname === "/v1/notifications/provider-types") {
+      return new Response(
+        JSON.stringify({
+          providers: [
+            {
+              type: "slack",
+              name: "Slack",
+              memberOwned: false,
+              events: ["proposal_submitted", "acquisition_gave_up", "channel_degraded"],
+              fields: [
+                {
+                  key: "webhookUrl",
+                  label: "Slack webhook URL",
+                  kind: "url",
+                  required: true,
+                  sensitive: true,
+                },
+              ],
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    if (new URL(request.url).pathname === "/v1/notifications/providers") {
+      const providers =
         state === "empty"
           ? []
           : [
@@ -40,7 +62,7 @@ const storyFetch =
                     : { queuedCount: 0, terminalFailureCount: 0, lastSuccessAt: "2026-08-31T19:00:00Z" },
               },
             ];
-      return new Response(JSON.stringify({ destinations }), {
+      return new Response(JSON.stringify({ providers }), {
         status: 200,
         headers: { "content-type": "application/json" },
       });
@@ -58,7 +80,7 @@ const StorySurface = ({ state }: { state: State }) => {
     <QueryClientProvider client={client}>
       <div className="min-h-screen bg-background p-6 text-foreground">
         <div className="mx-auto max-w-3xl">
-          <NotificationDestinationsPanel scope="installation" />
+          <NotificationDestinationsPanel />
         </div>
       </div>
     </QueryClientProvider>
