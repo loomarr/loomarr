@@ -29,6 +29,12 @@ Apple, image, browser, frontend, Postgres, or application-Go builds. The root wo
 policy, where structural verification covers admission, aggregation, and family wiring without
 rebuilding unchanged products. The root Make interface and unknown paths still select everything.
 
+The Go repository-contract job keeps the stable `make privacy-verify` interface, but its captured
+fixture guard is one in-process tracked-tree scan in `releaseverify`. The previous shell loop
+started hashing processes for every unique candidate and measured 54 seconds locally by itself;
+the same case-folded SHA-256 policy now measures about two seconds, reports only labels and digests,
+and keeps household-name/profile-PIN candidates restricted to the four audited response fixtures.
+
 Make uses the same ownership boundary. The root `Makefile` is the stable interface for shared
 variables, help, and ordered `mk/*.mk` includes; each module owns one command family. The generated
 command reference follows those includes and rejects missing, cyclic, escaping, or duplicate target
