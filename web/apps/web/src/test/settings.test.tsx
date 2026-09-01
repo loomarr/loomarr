@@ -6,6 +6,7 @@ import {
   getSetupTestMockHandler,
   getSystemLlmDiscoverMockHandler,
   getSystemLlmPullMockHandler,
+  getSystemLlmPullOperationMockHandler,
   getSystemLlmStatusMockHandler,
   getTunarrConnectMockHandler,
 } from "@loomarr/api/msw";
@@ -424,7 +425,18 @@ describe("AI model pull", () => {
         ],
         hosted: [],
       }),
-      getSystemLlmPullMockHandler(),
+      getSystemLlmPullMockHandler({ jobId: "pull-error" }),
+      getSystemLlmPullOperationMockHandler({
+        jobId: "pull-error",
+        model: "qwen3:8b",
+        status: "error",
+        percent: -1,
+        completed: 0,
+        total: 0,
+        error: "no space left on device",
+        startedAt: "2026-09-01T12:00:00Z",
+        updatedAt: "2026-09-01T12:01:00Z",
+      }),
       // ⚠ FOUND BY THE GUARD. The AI settings page fetches the downloadable-model catalogue on
       // mount, and the old `json({})` catch-all answered it with an empty object — so the whole
       // discover path ran against `{}` with `models` undefined and nothing said so. Same endpoint,
@@ -459,6 +471,53 @@ describe("AI model pull", () => {
     } as MessageEvent);
 
     expect(await screen.findByText(/no space left on device/i)).toBeInTheDocument();
+  });
+
+  it("recovers a terminal download after the SSE frame is dropped", async () => {
+    server.use(
+      getMeMockHandler(me()),
+      getSystemLlmStatusMockHandler({
+        local: true,
+        reachable: true,
+        provider: "ollama",
+        model: "",
+        catalog: [
+          {
+            tag: "qwen3:8b",
+            label: "Qwen3 8B",
+            approxVramGiB: 5,
+            fit: "fits",
+            pulled: false,
+            recommended: true,
+            runtimeOk: true,
+            tools: true,
+            vision: false,
+            why: "Good fit.",
+          },
+        ],
+        hosted: [],
+      }),
+      getSystemLlmPullMockHandler({ jobId: "pull-1" }),
+      getSystemLlmPullOperationMockHandler({
+        jobId: "pull-1",
+        model: "qwen3:8b",
+        status: "error",
+        percent: 42,
+        completed: 420,
+        total: 1000,
+        error: "download interrupted by restart",
+        startedAt: "2026-09-01T12:00:00Z",
+        updatedAt: "2026-09-01T12:01:00Z",
+      }),
+      getSystemLlmDiscoverMockHandler({ models: [], sourceOk: true }),
+      getSettingsListMockHandler({ features: {}, settings: SETTINGS }),
+      ...appHandlers(),
+    );
+
+    renderAt("/settings/ai");
+    await userEvent.click(await screen.findByRole("button", { name: /download/i }));
+
+    expect(await screen.findByText(/download interrupted by restart/i)).toBeInTheDocument();
   });
 });
 

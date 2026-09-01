@@ -7584,10 +7584,51 @@ components:
           readOnly: true
           type: string
         jobId:
-          description: Detection job — progress streams on /v1/events as filler_split frames; the proposal id arrives in the terminal frame
+          description: Detection operation id — read /v1/filler/split-operations/{jobId}; filler_split events only accelerate progress
           type: string
       required:
         - jobId
+      type: object
+    SplitOperationDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/SplitOperationDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        clipHash:
+          type: string
+        completedAt:
+          format: date-time
+          type: string
+        error:
+          type: string
+        jobId:
+          type: string
+        proposalId:
+          type: string
+        startedAt:
+          format: date-time
+          type: string
+        status:
+          enum:
+            - queued
+            - running
+            - success
+            - error
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      required:
+        - jobId
+        - clipHash
+        - status
+        - startedAt
+        - updatedAt
       type: object
     SplitProposal:
       additionalProperties: false
@@ -7887,7 +7928,7 @@ components:
           readOnly: true
           type: string
         jobId:
-          description: Poll progress on /v1/events (type=llm_pull)
+          description: Read progress from /v1/system/llm/pull-operations/{jobId}; llm_pull events only accelerate display
           type: string
       required:
         - jobId
@@ -7926,6 +7967,57 @@ components:
           type: string
       required:
         - model
+      type: object
+    SystemLLMPullOperationDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/SystemLLMPullOperationDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        completed:
+          format: int64
+          type: integer
+        completedAt:
+          format: date-time
+          type: string
+        error:
+          type: string
+        jobId:
+          type: string
+        model:
+          type: string
+        percent:
+          format: int64
+          type: integer
+        startedAt:
+          format: date-time
+          type: string
+        status:
+          enum:
+            - queued
+            - running
+            - success
+            - error
+          type: string
+        total:
+          format: int64
+          type: integer
+        updatedAt:
+          format: date-time
+          type: string
+      required:
+        - jobId
+        - model
+        - status
+        - percent
+        - completed
+        - total
+        - startedAt
+        - updatedAt
       type: object
     SystemLLMSelectInputBody:
       additionalProperties: false
@@ -11739,6 +11831,32 @@ paths:
       summary: Propose splits for a compilation clip
       tags:
         - filler
+  /v1/filler/split-operations/{jobId}:
+    get:
+      description: Admin only. Authoritative reconnect state for the jobId returned by POST /v1/filler/split. A successful operation carries the proposalId to read from /v1/filler/splits/{proposalId}; SSE is latency-only.
+      operationId: get-filler-split-operation
+      parameters:
+        - in: path
+          name: jobId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SplitOperationDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Read split-detection progress and outcome
+      tags:
+        - filler
   /v1/filler/splits/{proposalId}:
     get:
       description: Admin only (§10, V34). The review surface's source of truth on SSE reconnect — the same pattern as /v1/proposals/{id}.
@@ -13758,6 +13876,32 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Download a local model
+      tags:
+        - system
+  /v1/system/llm/pull-operations/{jobId}:
+    get:
+      description: Admin only. Authoritative reconnect state for the jobId returned by POST /v1/system/llm/pull. SSE llm_pull frames only accelerate progress display.
+      operationId: system-llm-pull-operation
+      parameters:
+        - in: path
+          name: jobId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemLLMPullOperationDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Read local-model download progress and outcome
       tags:
         - system
   /v1/system/llm/select:

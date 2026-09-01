@@ -179,3 +179,81 @@ func TestApplicationQuiesceRejectsLateLifecycleRegistration(t *testing.T) {
 		})
 	}
 }
+
+func TestApplicationShutdownOwnsInteractiveOperations(t *testing.T) {
+	lifecycle := newGenerationLifecycle(t.Context())
+	application := &Application{lifecycle: lifecycle}
+	started := make(chan struct{})
+	cancelled := make(chan struct{})
+	release := make(chan struct{})
+
+	if err := lifecycle.startInteractiveOperation(time.Minute, func(ctx context.Context) error {
+		close(started)
+		<-ctx.Done()
+		close(cancelled)
+		<-release
+		return ctx.Err()
+	}, nil); err != nil {
+		t.Fatalf("start interactive operation: %v", err)
+	}
+	<-started
+
+	shutdown := make(chan error, 1)
+	go func() { shutdown <- application.Shutdown(t.Context()) }()
+	<-cancelled
+	select {
+	case err := <-shutdown:
+		t.Fatalf("Shutdown returned before the operation stopped: %v", err)
+	default:
+	}
+	close(release)
+	if err := <-shutdown; err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+
+	if err := lifecycle.startInteractiveOperation(time.Minute, func(context.Context) error { return nil }, nil); !errors.Is(err, ErrApplicationQuiescing) {
+		t.Fatalf("late start error = %v, want %v", err, ErrApplicationQuiescing)
+	}
+	if err := application.Shutdown(t.Context()); err != nil {
+		t.Fatalf("second Shutdown: %v", err)
+	}
+}
+
+func TestApplicationShutdownWaitsForBoundedInteractiveOperationCompletion(t *testing.T) {
+	lifecycle := newGenerationLifecycle(t.Context())
+	application := &Application{lifecycle: lifecycle}
+	working := make(chan struct{})
+	completing := make(chan struct{})
+	release := make(chan struct{})
+
+	if err := lifecycle.startInteractiveOperation(time.Minute, func(ctx context.Context) error {
+		close(working)
+		<-ctx.Done()
+		return ctx.Err()
+	}, func(ctx context.Context, runErr error) {
+		if !errors.Is(runErr, context.Canceled) {
+			t.Errorf("operation error = %v, want cancellation", runErr)
+		}
+		if err := ctx.Err(); err != nil {
+			t.Errorf("completion context already cancelled: %v", err)
+		}
+		close(completing)
+		<-release
+	}); err != nil {
+		t.Fatalf("start interactive operation: %v", err)
+	}
+	<-working
+
+	shutdown := make(chan error, 1)
+	go func() { shutdown <- application.Shutdown(t.Context()) }()
+	<-completing
+	select {
+	case err := <-shutdown:
+		t.Fatalf("Shutdown returned before terminal completion: %v", err)
+	default:
+	}
+	close(release)
+	if err := <-shutdown; err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+}
