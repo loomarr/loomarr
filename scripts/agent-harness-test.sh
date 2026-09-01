@@ -194,10 +194,10 @@ collision_pair="$(
 )"
 collision_a="$(printf '%s\n' "$collision_pair" | sed -n '1p')"
 collision_b="$(printf '%s\n' "$collision_pair" | sed -n '2p')"
-[ -n "$collision_a" ] && [ -n "$collision_b" ] || {
+if [ -z "$collision_a" ] || [ -z "$collision_b" ]; then
 	echo 'agent-harness-test: could not construct a legacy checksum collision' >&2
 	exit 1
-}
+fi
 git -C "$TMP" worktree add -q "$collision_a" -b collision-a
 git -C "$TMP" worktree add -q "$collision_b" -b collision-b
 
@@ -222,10 +222,10 @@ b_exports="$(LOOMARR_REPO_ROOT="$collision_b" "$SCRIPT_DIR/dev-env.sh" export)"
 for name in LOOMARR_DEV_PORT LOOMARR_FE_PORT LOOMARR_STORYBOOK_PORT TUNARR_DEV_PORT; do
 	a_port="$(printf '%s\n' "$a_exports" | sed -n "s/export $name='\([0-9][0-9]*\)'/\1/p")"
 	b_port="$(printf '%s\n' "$b_exports" | sed -n "s/export $name='\([0-9][0-9]*\)'/\1/p")"
-	[ -n "$a_port" ] && [ -n "$b_port" ] && [ "$a_port" != "$b_port" ] || {
+	if [ -z "$a_port" ] || [ -z "$b_port" ] || [ "$a_port" = "$b_port" ]; then
 		echo "agent-harness-test: colliding worktrees share $name=$a_port" >&2
 		exit 1
-	}
+	fi
 done
 LOOMARR_REPO_ROOT="$collision_a" "$SCRIPT_DIR/agent.sh" stop >/dev/null
 LOOMARR_REPO_ROOT="$collision_b" "$SCRIPT_DIR/agent.sh" stop >/dev/null

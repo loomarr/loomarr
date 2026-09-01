@@ -50,10 +50,10 @@ SLOT="${REGISTERED_SLOT:-${LOOMARR_AGENT_SLOT_OVERRIDE:-$DEFAULT_SLOT}}"
 case "$SLOT" in
 	''|*[!0-9]*) echo "dev-env: invalid agent port slot: $SLOT" >&2; exit 2 ;;
 esac
-[ "$SLOT" -ge 1 ] && [ "$SLOT" -le 900 ] || {
+if [ "$SLOT" -lt 1 ] || [ "$SLOT" -gt 900 ]; then
 	echo "dev-env: invalid agent port slot: $SLOT" >&2
 	exit 2
-}
+fi
 
 if [ "$ROOT" = "$PRIMARY" ]; then
 	INSTANCE=primary
