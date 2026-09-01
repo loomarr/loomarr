@@ -75,6 +75,41 @@ func TestArchDocs_CoversEveryPackage(t *testing.T) {
 	}
 }
 
+func TestScan_RecursesWithExactPackageIdentity(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "internal")
+	writeGoFixture(t, root, "top/top.go", `// Package top is the top-level fixture.
+package top
+
+import _ "github.com/loomarr/loomarr/internal/nested/leaf"
+`)
+	writeGoFixture(t, root, "nested/leaf/leaf.go", `// Package leaf is the nested leaf fixture.
+package leaf
+`)
+	writeGoFixture(t, root, "nested/child/child.go", `// Package child imports a top-level package.
+package child
+
+import _ "github.com/loomarr/loomarr/internal/top"
+`)
+	writeGoFixture(t, root, "testonly/only_test.go", `package testonly
+`)
+
+	got, err := scan(root)
+	if err != nil {
+		t.Fatalf("scan fixture tree: %v", err)
+	}
+	want := []Package{
+		{Name: "nested/child", Synopsis: "Imports a top-level package.", Imports: []string{"top"}, Layer: 2},
+		{Name: "nested/leaf", Synopsis: "Nested leaf fixture.", Imports: []string{}},
+		{Name: "top", Synopsis: "Top-level fixture.", Imports: []string{"nested/leaf"}, Layer: 1},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("scan()\n got %#v\nwant %#v", got, want)
+	}
+	if block := render(got); strings.Contains(block, "**`testonly`**") {
+		t.Error("render included a directory containing only test Go files")
+	}
+}
+
 // A half-present marker pair must ERROR, never regenerate. This is the one path where
 // a bug would delete hand-written prose from the source-of-truth document, so it is
 // tested directly rather than trusted.
@@ -186,5 +221,16 @@ func repoRoot(t *testing.T) string {
 			t.Fatal("go.mod not found walking up from " + dir)
 		}
 		dir = parent
+	}
+}
+
+func writeGoFixture(t *testing.T, root, relative, content string) {
+	t.Helper()
+	path := filepath.Join(root, filepath.FromSlash(relative))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("create fixture directory: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write fixture %s: %v", relative, err)
 	}
 }
