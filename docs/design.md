@@ -2445,6 +2445,24 @@ loop — `for { app := Build(); app.Run(); app.Shutdown() }` — and a restart r
 current iteration so the next one constructs a fresh store, handler, scheduler and HTTP server.
 Same PID, no re-exec, **no supervisor required**.
 
+**A generation drains in two application phases around the HTTP wait.** First, it closes
+generation admission, cancels generation-owned work and event streams, and synchronously
+**quiesces network-facing resources whose active responses cannot finish by themselves**. Internal
+MPEG-TS sessions and live HLS remuxes are the canonical quiescers: an endless tuned response exits
+only when its session closes, while `http.Server.Shutdown` waits for that response. Quiescence must
+therefore precede HTTP drain or the two sides wait on each other until the shared deadline. After
+HTTP has drained, the application **finalizes** schedulers, diagnostics, workers, scratch roots and
+other owned resources in reverse construction order while their dependencies and the store remain
+open. The store closes only after finalization; a replacement generation cannot start earlier.
+
+Quiescers are a distinct, narrow lifecycle registry rather than ordinary finalizers run early.
+They are idempotent, safe under signal, operator restart, database migration and repeated calls,
+and reject new admission before taking their snapshot. A caller may wait again after its context
+expires. Ordinary finite handlers retain normal graceful-drain semantics, and diagnostics,
+scheduler infrastructure and the store are not torn down while they may still serve those
+handlers. SQLite and PostgreSQL follow this same ordering; PostgreSQL invalidation cancellation is
+additional fail-closed protection, not the mechanism that makes shutdown complete.
+
 **A generation is also the application boundary for storage topology.** Registry persistence and
 runtime application are deliberately separate for `filler.dir` + `filler.watch_dir`: saving either
 records the desired layout immediately, while the running generation keeps one immutable applied
