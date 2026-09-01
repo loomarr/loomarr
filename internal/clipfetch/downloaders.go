@@ -8,23 +8,62 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/proctree"
 )
 
 // This file holds the REAL downloaders — the ones that touch the network and the
 // yt-dlp binary. They are behind the Downloader interface so the Ingestor's
-// orchestration is unit-tested with fakes and these are exercised only in the
-// sidecar's manual smoke (they are not part of comprehensive verification;
-// AGENTS.md: unit tests never touch the network).
+// orchestration is unit-tested with fakes. The yt-dlp process boundary is tested
+// offline with a repository-built executable; Archive HTTP remains behind its
+// test server boundary (AGENTS.md: unit tests never touch the network).
 
 // YtDlpDownloader shells out to the bundled yt-dlp (with ffmpeg for
 // post-processing) to fetch a YouTube playlist/video into the drop-folder,
 // preserving the info-JSON sidecar yt-dlp writes (the source title/description
-// the core's AI tagging reads as text signals, §10).
+// the core's AI tagging reads as text signals, §10). The shared process-tree
+// supervisor owns yt-dlp and every ffmpeg or Deno descendant (§9.1).
 type YtDlpDownloader struct {
 	ytDlpPath  string
 	ffmpegPath string
+}
+
+const ytDlpDiagnosticLimit = 64 << 10
+
+type diagnosticTail struct {
+	mu        sync.Mutex
+	data      []byte
+	limit     int
+	truncated bool
+}
+
+func (b *diagnosticTail) Write(p []byte) (int, error) {
+	written := len(p)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if len(p) >= b.limit {
+		b.data = append(b.data[:0], p[len(p)-b.limit:]...)
+		b.truncated = true
+		return written, nil
+	}
+	if overflow := len(b.data) + len(p) - b.limit; overflow > 0 {
+		copy(b.data, b.data[overflow:])
+		b.data = b.data[:len(b.data)-overflow]
+		b.truncated = true
+	}
+	b.data = append(b.data, p...)
+	return written, nil
+}
+
+func (b *diagnosticTail) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.truncated {
+		return "[... yt-dlp output truncated ...]\n" + string(b.data)
+	}
+	return string(b.data)
 }
 
 // NewYtDlpDownloader builds the yt-dlp downloader.
@@ -32,7 +71,7 @@ func NewYtDlpDownloader(ytDlpPath, ffmpegPath string) *YtDlpDownloader {
 	return &YtDlpDownloader{ytDlpPath: ytDlpPath, ffmpegPath: ffmpegPath}
 }
 
-// Download runs yt-dlp for one source. It writes video + `.info.json` sidecars
+// Download runs supervised yt-dlp for one source. It writes video + `.info.json` sidecars
 // into dropDir and uses --download-archive so a re-run skips already-fetched
 // items (idempotent ingest). It does NOT parse per-item results (deliberately
 // dumb — the media server scans the folder and the core syncs from there); it
@@ -50,9 +89,22 @@ func (d *YtDlpDownloader) Download(ctx context.Context, src Source, dropDir stri
 		"-o", dropDir + "/%(title)s [%(id)s].%(ext)s",
 		src.URL,
 	}
-	cmd := exec.CommandContext(ctx, d.ytDlpPath, args...)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return 0, 0, fmt.Errorf("yt-dlp %s: %w: %s", src.URL, err, string(out))
+	cmd := exec.Command(d.ytDlpPath, args...)
+	out := diagnosticTail{limit: ytDlpDiagnosticLimit}
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	supervisor, err := proctree.Start(ctx, cmd)
+	if err != nil {
+		return 0, 0, fmt.Errorf("yt-dlp %s: %w: %s", src.URL, err, out.String())
+	}
+	err = supervisor.Wait()
+	if supervisor.Stopped() {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return 0, 0, fmt.Errorf("yt-dlp %s: %w: %s", src.URL, ctxErr, out.String())
+		}
+	}
+	if err != nil {
+		return 0, 0, fmt.Errorf("yt-dlp %s: %w: %s", src.URL, err, out.String())
 	}
 	// ⚠ **Mark what we just downloaded as OURS** — the held/filed fork's only signal (§10 V38c).
 	// A clip Loomarr fetched waits in Incoming for a human; one an operator dropped in is filed on
