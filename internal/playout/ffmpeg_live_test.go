@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
 
@@ -105,7 +106,7 @@ func TestLive_TestCardProducesValidMpegTsWithAudio(t *testing.T) {
 // descending bitrate" and still be rejected by an encoder — only ffmpeg knows.
 func TestLive_EveryLadderRungEncodes(t *testing.T) {
 	bin := ffmpegBin(t)
-	enc := Detect(context.Background(), bin, DefaultProfile(), "").Chosen
+	enc := DetectObserved(context.Background(), bin, DefaultProfile(), "", nil).Chosen
 	t.Logf("verifying ladders against %s", enc)
 
 	for _, tier := range []Tier{TierQuality, TierBalanced, TierEfficient} {
@@ -136,7 +137,7 @@ func TestLive_EveryLadderRungEncodes(t *testing.T) {
 // having encoded with it.
 func TestLive_DetectChoosesSomethingThatActuallyWorks(t *testing.T) {
 	bin := ffmpegBin(t)
-	c := Detect(context.Background(), bin, DefaultProfile(), "")
+	c := DetectObserved(context.Background(), bin, DefaultProfile(), "", nil)
 
 	if c.Chosen == "" {
 		t.Fatal("Detect returned no encoder — software is always a valid answer")
@@ -182,7 +183,7 @@ func TestLive_DetectChoosesSomethingThatActuallyWorks(t *testing.T) {
 // A failed probe must carry ffmpeg's own message, not a category we invented — that text is
 // what the wizard's transcode check shows an operator.
 func TestLive_FailedProbesCarryFfmpegsOwnMessage(t *testing.T) {
-	c := Detect(context.Background(), ffmpegBin(t), DefaultProfile(), "")
+	c := DetectObserved(context.Background(), ffmpegBin(t), DefaultProfile(), "", nil)
 	for _, x := range c.All {
 		if x.Works || x.Err == "" {
 			continue
@@ -222,7 +223,7 @@ func TestLive_ProgramArgsNormalizeRealContent(t *testing.T) {
 	out := t.TempDir() + "/program.ts"
 
 	p := DefaultProfile()
-	enc := Detect(context.Background(), bin, p, "").Chosen
+	enc := DetectObserved(context.Background(), bin, p, "", nil).Chosen
 	p.Encoder = enc
 	t.Logf("normalizing real content with %s", enc)
 
@@ -359,7 +360,7 @@ func TestLive_BaselineSessionKeepsOneFormatAcrossBlockBoundary(t *testing.T) {
 	}
 
 	joined := dir + "/channel.ts"
-	proc, err := StartPiped(ctx, bin, BlockMuxArgs(), nil, nil)
+	proc, err := StartPipedObserved(ctx, bin, BlockMuxArgs(), nil, nil, nil, diagnostics.ProcessSpec{})
 	if err != nil {
 		t.Fatalf("channel mux start: %v", err)
 	}
@@ -714,7 +715,7 @@ func TestLive_HDRSourceIsTonemappedAndLabelledSDR(t *testing.T) {
 	}
 
 	p := DefaultProfile()
-	p.Encoder = Detect(context.Background(), bin, p, "").Chosen
+	p.Encoder = DetectObserved(context.Background(), bin, p, "", nil).Chosen
 
 	run := func(name string, spec ProgramSpec) string {
 		t.Helper()

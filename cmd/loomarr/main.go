@@ -223,6 +223,7 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 	// integration harness also calls, so tests exercise the REAL wiring (§21).
 	application, err := app.Build(rootCtx, st, log, app.Overrides{
 		Startup:                startup,
+		EncryptionDataDir:      config.ConventionalDataDir,
 		DevLogin:               cfg.DevLogin,
 		Pprof:                  cfg.Pprof,
 		Restart:                lifecycle.RequestRestart,

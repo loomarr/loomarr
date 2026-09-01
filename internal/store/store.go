@@ -19,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/recovery"
+	"github.com/loomarr/loomarr/internal/secretprotection"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
@@ -703,6 +704,9 @@ type SettingStore interface {
 	// one transaction. Readers therefore observe either the complete old settings
 	// generation or the complete new one (config-design §8).
 	ApplySettingBatch(ctx context.Context, batch SettingBatch) error
+	// RewriteSettingValues atomically replaces values without changing their
+	// audit metadata or authority. Startup uses it to encrypt legacy plaintext.
+	RewriteSettingValues(ctx context.Context, rows []SettingMutation) error
 	// UpsertSetting writes an override, stamping updated_at (epoch) and updated_by
 	// (the admin who changed it; empty ⇒ NULL for env/migration/system writes).
 	// This is the audited write path; SetSetting stays the un-audited system path
@@ -718,6 +722,16 @@ type SettingStore interface {
 	// being taken over, so unlocking does not blank the setting; empty for secrets,
 	// which never seed). Existing rows keep their stored value.
 	SetSettingEnvOverride(ctx context.Context, key string, on bool, seed, by string) error
+}
+
+// SecretProtectionStore owns wrapped data-encryption key persistence. Raw key
+// material never crosses this seam.
+type SecretProtectionStore interface {
+	EnsureInstallationKeyFingerprint(context.Context, string) error
+	EnsureSecretDataKey(context.Context, secretprotection.WrappedDataKey) (secretprotection.WrappedDataKey, error)
+	RotateSecretDataKey(context.Context, secretprotection.WrappedDataKey) error
+	ListSecretDataKeys(context.Context) ([]secretprotection.WrappedDataKey, error)
+	ReplaceWrappedDataKeys(context.Context, string, string, []secretprotection.WrappedDataKey) error
 }
 
 // CountStore is the §17 /metrics state gauges. Read on scrape by the metrics
@@ -776,6 +790,7 @@ type Store interface {
 	NotificationStore
 	DiagnosticStore
 	SettingStore
+	SecretProtectionStore
 	CountStore
 	ImageStore
 	DiscoveryFeedbackStore

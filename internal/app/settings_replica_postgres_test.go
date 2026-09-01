@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/secretprotection"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -26,7 +28,8 @@ func TestTrackedPostgresReplicaSettingsRefreshObservesOtherStoreBatch(t *testing
 		t.Fatal(err)
 	}
 	baseLog := slog.New(slog.NewTextHandler(io.Discard, nil))
-	set, _, _, _, err := bootSettings(ctx, stores[1], baseLog)
+	protection := testSecretProtection(t, stores[1])
+	set, _, _, _, err := bootSettings(ctx, stores[1], protection, baseLog)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,16 +46,18 @@ func TestTrackedPostgresReplicaSettingsRefreshObservesOtherStoreBatch(t *testing
 	}
 
 	batchAt := time.Unix(1_700_000_000, 0).UTC()
-	if err := stores[0].ApplySettingBatch(ctx, store.SettingBatch{
-		Upserts: []store.SettingMutation{
+	if err := (storePersister{st: stores[0], protection: protection}).Apply(ctx, settings.PersistenceBatch{
+		Upserts: []settings.PersistedSetting{
 			{Key: "library.flavor", Value: "jellyfin"},
 			{Key: "library.url", Value: "http://new:8096"},
 			{Key: "library.token", Value: "new-token"},
-		},
-		UpdatedAt: batchAt,
-		UpdatedBy: "replica-a",
+		}, UpdatedAt: batchAt, UpdatedBy: "replica-a",
 	}); err != nil {
 		t.Fatal(err)
+	}
+	storedToken, err := stores[0].GetSetting(ctx, "library.token")
+	if err != nil || storedToken == "new-token" || !secretprotection.IsEnvelope(storedToken) {
+		t.Fatalf("Postgres stored token = (%q, %v), want encrypted envelope", storedToken, err)
 	}
 
 	ticker := time.NewTicker(5 * time.Millisecond)

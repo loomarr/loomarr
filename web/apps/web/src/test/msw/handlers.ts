@@ -31,6 +31,7 @@ import {
   getSettingsListMockHandler,
   getSetupStateMockHandler,
   getSetupStatusMockHandler,
+  getSystemEncryptionStatusMockHandler,
   getSystemLlmDiscoverMockHandler,
   getSystemLlmStatusMockHandler,
   getSystemVersionMockHandler,
@@ -107,6 +108,11 @@ const appHandlers = (): RequestHandler[] => [
   // the honest default: a test that cares about devices overrides this, and every other test that
   // merely renders the page gets the "no devices yet" state rather than an unhandled request.
   getDeviceListMockHandler({ devices: [] }),
+  getSystemEncryptionStatusMockHandler({
+    enabled: true,
+    installationKeyFingerprint: "sha256:test-installation-key",
+    dataKeyCount: 1,
+  }),
   getListChannelsMockHandler({ channels: [] }),
   // A single channel read &mdash; the channel-detail routes fetch this by id.
   getGetChannelMockHandler(channel()),

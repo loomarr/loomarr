@@ -38,11 +38,21 @@ umask 077
   mv "$archive.partial" "$archive"
 ```
 
-Backups contain secrets: session keys, API tokens, and every credential you entered.
+Database backups contain encrypted credentials and wrapped data keys, but not the external
+installation key needed to decrypt them.
 
 The application backup is database-only. Copy `/data` separately if you need operator-uploaded
 images or filler files; cached artwork and prepared media can be regenerated. Keep at least one
 backup off the Loomarr data volume and, ideally, off the host.
+
+Preserve `/data/encryption.key` separately from the database backup, or preserve the external
+`LOOMARR_ENCRYPTION_KEY` / `_FILE` secret used by every replica. A database restore cannot recover
+stored credentials without that same installation key.
+
+To replace the key deliberately, supply the new current key and the old key through
+`LOOMARR_ENCRYPTION_KEY_PREVIOUS` (or `_PREVIOUS_FILE`) for one successful boot. Loomarr rewraps the
+database data keys atomically. Remove the previous-key input afterward; it is maintenance material,
+not a permanent fallback.
 
 ## Pull
 

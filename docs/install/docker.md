@@ -81,14 +81,17 @@ copy of that volume:
 
 | Path | Contents |
 | --- | --- |
-| `/data/loomarr.db` | Database — accounts, channels, settings, secrets |
+| `/data/loomarr.db` | Database — accounts, channels, settings, encrypted secrets |
+| `/data/encryption.key` | Installation key — required to restore encrypted database secrets |
 | `/data/filler/` | Commercial and bumper clips |
 | `/data/images/` | Cached artwork |
 | `/data/prepared/` | Reusable prepared programme media for instant channel changes |
 
-The database backup contains accounts, channels, settings, and secrets. It does not contain filler
-files, prepared media, cached artwork, or operator-uploaded images. Copy the `/data` volume as part
-of host-level backup if those files matter; cached and prepared derivatives can be regenerated.
+The database backup contains accounts, channels, settings, encrypted secrets, and wrapped data
+keys. It deliberately does not contain `/data/encryption.key`. Preserve that key separately: losing
+it makes stored credentials unrecoverable. The backup also omits filler files, prepared media,
+cached artwork, and operator-uploaded images. Copy the `/data` volume as part of host-level backup
+if those files matter; cached and prepared derivatives can be regenerated.
 
 Prepared media is bounded by the hot-applied `PLAYOUT_PREPARED_BUDGET_GB` soft cap (512 GiB by
 default). Keep enough free space for one programme beyond the cap because packaging commits before

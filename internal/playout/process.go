@@ -89,13 +89,9 @@ func StartObserved(ctx context.Context, bin string, args []string, log *slog.Log
 	return startProcess(ctx, bin, args, log, onProgress, false, manager, spec)
 }
 
-// StartPiped launches ffmpeg with caller-owned stdin. The returned Process owns both pipe ends;
-// closing Stdin is the clean EOF signal that lets the mux flush and exit.
-func StartPiped(ctx context.Context, bin string, args []string, log *slog.Logger, onProgress func(Progress)) (*Process, error) {
-	return startProcess(ctx, bin, args, log, onProgress, true, nil, diagnostics.ProcessSpec{})
-}
-
-// StartPipedObserved is StartPiped with best-effort Process-run diagnostics.
+// StartPipedObserved launches ffmpeg with caller-owned stdin and best-effort Process-run diagnostics.
+// The returned Process owns both pipe ends; closing Stdin is the clean EOF signal that lets the mux
+// flush and exit. Pass a nil manager and zero spec when diagnostics are not needed.
 func StartPipedObserved(ctx context.Context, bin string, args []string, log *slog.Logger, onProgress func(Progress),
 	manager *diagnostics.ProcessManager, spec diagnostics.ProcessSpec,
 ) (*Process, error) {

@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/requester"
+	"github.com/loomarr/loomarr/internal/secretprotection"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -26,8 +27,9 @@ var envLookup = os.LookupEnv
 // through the live snapshot unless freeze pins a generation-scoped key. Connection
 // getters are returned as closures so adapters read them per operation.
 type resolved struct {
-	svc    *settings.Service
-	frozen map[string]settings.Resolved
+	svc        *settings.Service
+	frozen     map[string]settings.Resolved
+	protection *secretprotection.Manager
 }
 
 type generatedSecretValues interface {
@@ -287,10 +289,10 @@ func (r resolved) tunarrConfig() func() programmer.Config {
 // generated secrets (idempotent), and the redactor wired into slog. It returns the
 // resolved-config facade, the secrets, and the redactor so the caller can feed the
 // redactor the app-managed secret values too and refresh it after a secret change.
-func bootSettings(ctx context.Context, st store.Store, baseLog *slog.Logger) (resolved, *settings.Secrets, *settings.Redactor, *slog.Logger, error) {
+func bootSettings(ctx context.Context, st store.Store, protection *secretprotection.Manager, baseLog *slog.Logger) (resolved, *settings.Secrets, *settings.Redactor, *slog.Logger, error) {
 	reg := settings.NewRegistry()
 	loader := settings.StoreLoader{List: func(ctx context.Context) ([]settings.SettingRow, error) {
-		rows, err := st.ListSettings(ctx)
+		rows, err := loadProtectedSettings(ctx, st, reg, protection)
 		if err != nil {
 			return nil, err
 		}
@@ -308,7 +310,7 @@ func bootSettings(ctx context.Context, st store.Store, baseLog *slog.Logger) (re
 	if err != nil {
 		return resolved{}, nil, nil, baseLog, err
 	}
-	secrets, err := settings.NewSecrets(ctx, secretStoreAdapter{st}, envLookup)
+	secrets, err := settings.NewSecrets(ctx, secretStoreAdapter{st: st, protection: protection}, envLookup)
 	if err != nil {
 		return resolved{}, nil, nil, baseLog, err
 	}
@@ -316,7 +318,7 @@ func bootSettings(ctx context.Context, st store.Store, baseLog *slog.Logger) (re
 	// logged (config-design §4). Seed it with the generated secrets + the resolved
 	// app-managed secret settings; refreshSecrets updates it after a change.
 	red := settings.NewRedactor()
-	r := resolved{svc: svc}
+	r := resolved{svc: svc, protection: protection}
 	red.Set(collectSecrets(reg, svc, secrets))
 	log := slog.New(red.Handler(baseLog.Handler()))
 	return r, secrets, red, log, nil
@@ -338,7 +340,10 @@ func collectSecrets(reg *settings.Registry, svc *settings.Service, secrets *sett
 }
 
 // secretStoreAdapter adapts store.Store to settings.SecretStore.
-type secretStoreAdapter struct{ st store.Store }
+type secretStoreAdapter struct {
+	st         store.Store
+	protection *secretprotection.Manager
+}
 
 func (a secretStoreAdapter) Get(ctx context.Context, k string) (string, bool, error) {
 	v, err := a.st.GetSetting(ctx, k)
@@ -348,8 +353,22 @@ func (a secretStoreAdapter) Get(ctx context.Context, k string) (string, bool, er
 	if err != nil {
 		return "", false, err
 	}
-	return v, true, nil
+	if !secretprotection.IsEnvelope(v) {
+		return "", false, fmt.Errorf("generated secret %q is not protected", k)
+	}
+	plain, err := a.protection.OpenLatest(ctx, settingRecord(k), v)
+	if err != nil {
+		return "", false, err
+	}
+	return string(plain), true, nil
 }
 func (a secretStoreAdapter) Set(ctx context.Context, k, v string) error {
-	return a.st.SetSetting(ctx, k, v)
+	if err := a.protection.Refresh(ctx); err != nil {
+		return err
+	}
+	envelope, err := a.protection.Seal(settingRecord(k), []byte(v))
+	if err != nil {
+		return err
+	}
+	return a.st.SetSetting(ctx, k, envelope)
 }

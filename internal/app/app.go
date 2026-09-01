@@ -21,6 +21,9 @@ import (
 // Overrides injects the two in-process boundaries (the Tunarr push target and the
 // LLM provider) for tests. Both nil ⇒ the real URL-built adapters (production).
 type Overrides struct {
+	// EncryptionDataDir is the boot-configured directory for the generated
+	// installation key. Empty derives it from SQLite and otherwise uses /data.
+	EncryptionDataDir string
 	// Startup is the process-owned report for this application generation. nil creates a minimal
 	// embedded-build report so /readyz still derives from the same state object in tests.
 	Startup    *diagnostics.Startup

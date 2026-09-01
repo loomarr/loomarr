@@ -63,7 +63,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		clientDiagnostics: opts.ClientDiagnostics,
 		startupReports:    opts.StartupReports,
 		healthRefresh:     opts.HealthRefresh,
-		systemLLM:         opts.SystemLLM, database: opts.Database, backups: opts.Backups, restart: opts.Restart, activity: opts.Activity, sso: opts.SSO,
+		systemLLM:         opts.SystemLLM, database: opts.Database, encryption: opts.Encryption, backups: opts.Backups, restart: opts.Restart, activity: opts.Activity, sso: opts.SSO,
 		restartDrift: opts.RestartDrift,
 		settings:     opts.Settings, emailTest: opts.EmailTest,
 		notificationDestinations: opts.NotificationDestinations, backendTransition: opts.BackendTransition,
@@ -121,6 +121,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerPlayoutStatus(humaAPI) // §9.1 V47: playout status projection
 	srv.registerSystemLLM(humaAPI)
 	srv.registerSystemDatabase(humaAPI)
+	srv.registerSystemSecurity(humaAPI)
 	srv.registerSystemBackups(humaAPI)
 	srv.registerSystemRestart(humaAPI)
 	srv.registerDashboardPanels(humaAPI)

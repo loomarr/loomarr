@@ -116,6 +116,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		Taxonomy:            taxonomyEditor,
 		SystemLLM:           systemLLM,
 		Database:            databaseSvc,
+		Encryption:          buildEncryptionService(st, deps.foundation.protection),
 		Backups:             backupsSvc,
 		SSO:                 ssoSvc,
 		Restart:             restartSvc,

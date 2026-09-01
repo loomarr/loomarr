@@ -61,7 +61,7 @@
 //
 // # Encoding
 //
-// Detect() TRIAL-ENCODES each candidate rather than trusting `ffmpeg -encoders`, which happily
+// DetectObserved TRIAL-ENCODES each candidate rather than trusting `ffmpeg -encoders`, which happily
 // lists encoders the hardware cannot run — the trap that took a live channel down when a host
 // advertised h264_vulkan and the container had no /dev/dri. Nine encoder families are supported
 // with per-family argument vocabularies; software is always the floor, never a failure.

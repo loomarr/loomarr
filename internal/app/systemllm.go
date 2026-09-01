@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/secretprotection"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -80,7 +81,7 @@ func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus
 		swap:       sw,
 		ollamaBase: func() string { return ollamaBase(set) }, // resolved live per probe/pull
 		saveSettings: func(ctx context.Context, edits map[string]string) error {
-			results, err := set.svc.Patch(ctx, storePersister{st: st}, edits, "system")
+			results, err := set.svc.Patch(ctx, storePersister{st: st, protection: set.protection}, edits, "system")
 			if err != nil {
 				return err
 			}
@@ -96,7 +97,7 @@ func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus
 			}
 			return nil
 		},
-		store: st,
+		store: st, protection: set.protection,
 		bus:   bus,
 		log:   log,
 		newID: newID,
@@ -230,6 +231,7 @@ type systemLLMService struct {
 	// react to this write, and it never fired for the same reason.
 	saveSettings func(ctx context.Context, edits map[string]string) error
 	store        store.Store
+	protection   *secretprotection.Manager
 	bus          *events.Bus
 	log          *slog.Logger
 	newID        func() string
@@ -339,7 +341,7 @@ func (s *systemLLMService) hostedCatalog(ctx context.Context, active llm.Selecti
 // storedKeyFor returns the persisted key for a hosted provider, or "" if none. The
 // key is namespaced per provider so switching providers doesn't reuse the wrong key.
 func (s *systemLLMService) storedKeyFor(ctx context.Context, provider string) string {
-	if v, err := s.store.GetSetting(ctx, setLLMAPIKey+"."+provider); err == nil {
+	if v, err := readProtectedSetting(ctx, s.store, s.protection, setLLMAPIKey+"."+provider); err == nil {
 		return v
 	}
 	// A provider configured through the ordinary settings form initially has the
@@ -457,7 +459,7 @@ func (s *systemLLMService) selectHosted(ctx context.Context, provider, baseURL, 
 	}
 	// Persist the key namespaced per provider so each provider keeps its own.
 	if apiKey != "" {
-		if err := s.store.SetSetting(ctx, setLLMAPIKey+"."+provider, apiKey); err != nil {
+		if err := writeProtectedSetting(ctx, s.store, s.protection, setLLMAPIKey+"."+provider, apiKey); err != nil {
 			return err
 		}
 	}

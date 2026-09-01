@@ -101,7 +101,8 @@ type Server struct {
 	systemLLM SystemLLMService
 	// database wires /v1/system/database* — the SQLite→PostgreSQL migration stepper
 	// (§18, V11); nil ⇒ routes 501.
-	database DatabaseService
+	database   DatabaseService
+	encryption EncryptionService
 	// backups wires /v1/system/backups* — the backups on disk (§16, V12); nil ⇒ routes
 	// 501, which is the Postgres case (in-app backup is SQLite-only by design).
 	backups BackupsService
@@ -928,7 +929,8 @@ type Options struct {
 	// Database backs /v1/system/database* — the SQLite→PostgreSQL migration stepper
 	// (§18, V11). Production wires it on both backends so a reconnect can observe the
 	// successful cutover; nil is reserved for embeddings without migration status.
-	Database DatabaseService
+	Database   DatabaseService
+	Encryption EncryptionService
 	// Backups backs /v1/system/backups* — listing, downloading and writing the backups
 	// on disk (§16, V12). nil ⇒ routes 501 (a Postgres install wires it nil).
 	Backups BackupsService
