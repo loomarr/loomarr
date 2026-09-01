@@ -1,7 +1,7 @@
 package notifications_test
 
 import (
-	"crypto/elliptic"
+	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
 	"io"
@@ -116,18 +116,17 @@ func TestWebPushValidationRejectsNonHTTPSOrInvalidSubscriptionKeys(t *testing.T)
 
 func validWebPushCredentials(t *testing.T) map[string]string {
 	t.Helper()
-	private, x, y, err := elliptic.GenerateKey(elliptic.P256(), rand.Reader)
+	private, err := ecdh.P256().GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = private
 	auth := make([]byte, 16)
 	if _, err := io.ReadFull(rand.Reader, auth); err != nil {
 		t.Fatal(err)
 	}
 	return map[string]string{
 		"endpoint": "https://push.example.test/subscription/secret",
-		"p256dh":   base64.RawURLEncoding.EncodeToString(elliptic.Marshal(elliptic.P256(), x, y)),
+		"p256dh":   base64.RawURLEncoding.EncodeToString(private.PublicKey().Bytes()),
 		"auth":     base64.RawURLEncoding.EncodeToString(auth),
 	}
 }

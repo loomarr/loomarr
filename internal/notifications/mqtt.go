@@ -62,7 +62,7 @@ func (a *MQTTAdapter) Deliver(ctx context.Context, delivery Delivery) Result {
 		}
 		return providerTransientFailure()
 	}
-	defer connection.Close()
+	defer func() { _ = connection.Close() }()
 	if deadline, ok := deliveryCtx.Deadline(); ok {
 		_ = connection.SetDeadline(deadline)
 	}

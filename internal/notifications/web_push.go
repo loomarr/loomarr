@@ -2,7 +2,7 @@ package notifications
 
 import (
 	"context"
-	"crypto/elliptic"
+	"crypto/ecdh"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -39,26 +39,25 @@ func (*WebPushAdapter) Means() Means { return MeansWebPush }
 
 func (a *WebPushAdapter) ValidateDestination(_ map[string]string, credentials map[string]string) error {
 	if a == nil || a.identity.PublicKey == "" || a.identity.PrivateKey == "" {
-		return fmt.Errorf("Browser Push identity is unavailable")
+		return fmt.Errorf("browser push identity is unavailable")
 	}
 	endpoint, err := url.Parse(credentials["endpoint"])
 	if err != nil || endpoint.Scheme != "https" || endpoint.Host == "" || endpoint.User != nil || endpoint.Fragment != "" {
-		return fmt.Errorf("Browser Push requires an HTTPS subscription endpoint")
+		return fmt.Errorf("browser push requires an HTTPS subscription endpoint")
 	}
 	if address := net.ParseIP(endpoint.Hostname()); address != nil && !publicWebPushAddress(address) {
-		return fmt.Errorf("Browser Push endpoint must use a public Push service")
+		return fmt.Errorf("browser push endpoint must use a public push service")
 	}
 	publicKey, err := decodeWebPushValue(credentials["p256dh"])
 	if err != nil || len(publicKey) != 65 {
-		return fmt.Errorf("Browser Push public key is invalid")
+		return fmt.Errorf("browser push public key is invalid")
 	}
-	x, _ := elliptic.Unmarshal(elliptic.P256(), publicKey)
-	if x == nil {
-		return fmt.Errorf("Browser Push public key is invalid")
+	if _, err := ecdh.P256().NewPublicKey(publicKey); err != nil {
+		return fmt.Errorf("browser push public key is invalid")
 	}
 	auth, err := decodeWebPushValue(credentials["auth"])
 	if err != nil || len(auth) < 16 || len(auth) > 64 {
-		return fmt.Errorf("Browser Push authentication secret is invalid")
+		return fmt.Errorf("browser push authentication secret is invalid")
 	}
 	return nil
 }
@@ -78,7 +77,7 @@ func safeWebPushHTTPClient() *http.Client {
 			}
 			for _, candidate := range addresses {
 				if !publicWebPushAddress(candidate.IP) {
-					return nil, fmt.Errorf("Web Push service resolved to a non-public address")
+					return nil, fmt.Errorf("web push service resolved to a non-public address")
 				}
 			}
 			return dialer.DialContext(ctx, network, net.JoinHostPort(addresses[0].IP.String(), port))

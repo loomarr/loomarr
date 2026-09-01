@@ -2,13 +2,11 @@ package settings
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
+	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"math/big"
 	"sync"
 )
 
@@ -136,15 +134,13 @@ func (s *Secrets) resolveWebPushIdentity(ctx context.Context) error {
 }
 
 func generateWebPushIdentity() (WebPushIdentity, error) {
-	private, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	private, err := ecdh.P256().GenerateKey(rand.Reader)
 	if err != nil {
 		return WebPushIdentity{}, fmt.Errorf("generate Web Push identity: %w", err)
 	}
-	privateBytes := private.D.FillBytes(make([]byte, 32))
-	publicBytes := elliptic.Marshal(elliptic.P256(), private.X, private.Y)
 	return WebPushIdentity{
-		PrivateKey: base64.RawURLEncoding.EncodeToString(privateBytes),
-		PublicKey:  base64.RawURLEncoding.EncodeToString(publicBytes),
+		PrivateKey: base64.RawURLEncoding.EncodeToString(private.Bytes()),
+		PublicKey:  base64.RawURLEncoding.EncodeToString(private.PublicKey().Bytes()),
 	}, nil
 }
 
@@ -155,13 +151,13 @@ func decodeWebPushIdentity(raw string) (WebPushIdentity, error) {
 	}
 	privateBytes, privateErr := base64.RawURLEncoding.DecodeString(identity.PrivateKey)
 	publicBytes, publicErr := base64.RawURLEncoding.DecodeString(identity.PublicKey)
-	x, y := elliptic.Unmarshal(elliptic.P256(), publicBytes)
-	if privateErr != nil || publicErr != nil || len(privateBytes) != 32 || x == nil ||
-		new(big.Int).SetBytes(privateBytes).Sign() == 0 {
+	curve := ecdh.P256()
+	private, privateKeyErr := curve.NewPrivateKey(privateBytes)
+	public, publicKeyErr := curve.NewPublicKey(publicBytes)
+	if privateErr != nil || publicErr != nil || privateKeyErr != nil || publicKeyErr != nil {
 		return WebPushIdentity{}, fmt.Errorf("decode Web Push identity: invalid P-256 key pair")
 	}
-	wantX, wantY := elliptic.P256().ScalarBaseMult(privateBytes)
-	if wantX.Cmp(x) != 0 || wantY.Cmp(y) != 0 {
+	if !private.PublicKey().Equal(public) {
 		return WebPushIdentity{}, fmt.Errorf("decode Web Push identity: public and private keys do not match")
 	}
 	return identity, nil

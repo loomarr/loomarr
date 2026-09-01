@@ -19,7 +19,7 @@ func TestMQTTAdapterPublishesVersionedEventAndWaitsForQoSOneAck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	type captured struct {
 		connect []byte
@@ -32,7 +32,7 @@ func TestMQTTAdapterPublishesVersionedEventAndWaitsForQoSOneAck(t *testing.T) {
 		if acceptErr != nil {
 			return
 		}
-		defer connection.Close()
+		defer func() { _ = connection.Close() }()
 		reader := bufio.NewReader(connection)
 		_, connect, readErr := readMQTTPacket(reader)
 		if readErr != nil {
@@ -123,13 +123,13 @@ func TestMQTTAdapterClassifiesBrokerAuthenticationRejection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	go func() {
 		connection, acceptErr := listener.Accept()
 		if acceptErr != nil {
 			return
 		}
-		defer connection.Close()
+		defer func() { _ = connection.Close() }()
 		_, _, _ = readMQTTPacket(bufio.NewReader(connection))
 		_, _ = connection.Write([]byte{0x20, 0x02, 0x00, 0x05}) // not authorized
 	}()

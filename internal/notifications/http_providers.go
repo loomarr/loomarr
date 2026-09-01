@@ -306,7 +306,7 @@ func providerEventPayload(message ProviderMessage) map[string]any {
 func discordRequest(credentials map[string]string, message ProviderMessage) (providerRequest, error) {
 	target, err := providerURL(credentials["webhookUrl"], true, []string{"discord.com", "discordapp.com"})
 	if err != nil || !strings.Contains(target.Path, "/api/webhooks/") {
-		return providerRequest{}, fmt.Errorf("Discord requires an official incoming webhook URL")
+		return providerRequest{}, fmt.Errorf("discord incoming webhook URL must use an official host and path")
 	}
 	content := safeMentionText(message.Title + "\n" + message.Body)
 	if message.Link != "" {
@@ -322,7 +322,7 @@ func discordRequest(credentials map[string]string, message ProviderMessage) (pro
 func slackRequest(credentials map[string]string, message ProviderMessage) (providerRequest, error) {
 	target, err := providerURL(credentials["webhookUrl"], true, []string{"hooks.slack.com", "hooks.slack-gov.com"})
 	if err != nil || !strings.HasPrefix(target.Path, "/services/") {
-		return providerRequest{}, fmt.Errorf("Slack requires an official incoming webhook URL")
+		return providerRequest{}, fmt.Errorf("slack incoming webhook URL must use an official host and path")
 	}
 	text := safeMentionText(message.Title + "\n" + message.Body)
 	if message.Link != "" {
@@ -340,7 +340,7 @@ func slackRequest(credentials map[string]string, message ProviderMessage) (provi
 func mattermostRequest(credentials map[string]string, message ProviderMessage) (providerRequest, error) {
 	target, err := providerURL(credentials["webhookUrl"], false, nil)
 	if err != nil || !strings.Contains(target.Path, "/hooks/") {
-		return providerRequest{}, fmt.Errorf("Mattermost requires an incoming webhook URL")
+		return providerRequest{}, fmt.Errorf("mattermost incoming webhook URL must contain a hooks path")
 	}
 	text := safeMentionText(message.Title + "\n" + message.Body)
 	if message.Link != "" {
@@ -410,7 +410,7 @@ func appriseRequest(configuration, credentials map[string]string, message Provid
 	}
 	key, destination := credentials["configurationKey"], credentials["destinationUrl"]
 	if (key == "") == (destination == "") {
-		return providerRequest{}, fmt.Errorf("Apprise requires either a configuration key or destination URL")
+		return providerRequest{}, fmt.Errorf("apprise requires either a configuration key or destination URL")
 	}
 	if key != "" {
 		base.Path = strings.TrimRight(base.Path, "/") + "/notify/" + url.PathEscape(key)
@@ -460,7 +460,7 @@ func pushoverRequest(credentials map[string]string, message ProviderMessage) (pr
 func telegramRequest(credentials map[string]string, message ProviderMessage) (providerRequest, error) {
 	token := credentials["botToken"]
 	if token == "" || strings.ContainsAny(token, "/?#") {
-		return providerRequest{}, fmt.Errorf("Telegram requires a valid bot token")
+		return providerRequest{}, fmt.Errorf("telegram requires a valid bot token")
 	}
 	target, _ := url.Parse("https://api.telegram.org/bot" + token + "/sendMessage")
 	payload := map[string]any{
@@ -470,7 +470,7 @@ func telegramRequest(credentials map[string]string, message ProviderMessage) (pr
 	if thread := credentials["threadId"]; thread != "" {
 		value, err := strconv.ParseInt(thread, 10, 64)
 		if err != nil {
-			return providerRequest{}, fmt.Errorf("Telegram thread ID must be a number")
+			return providerRequest{}, fmt.Errorf("telegram thread ID must be a number")
 		}
 		payload["message_thread_id"] = value
 	}
@@ -498,7 +498,7 @@ func matrixRequest(configuration, credentials map[string]string, message Provide
 	}
 	room := credentials["roomId"]
 	if room == "" {
-		return providerRequest{}, fmt.Errorf("Matrix requires a room ID")
+		return providerRequest{}, fmt.Errorf("matrix requires a room ID")
 	}
 	base = base.JoinPath("_matrix", "client", "v3", "rooms", room, "send", "m.room.message", message.EventID)
 	body, _ := json.Marshal(map[string]string{"msgtype": "m.text", "body": truncate(joinBodyLink(message), 4000)})
