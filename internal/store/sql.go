@@ -43,6 +43,9 @@ type sqlStore struct {
 	// explicitly single-instance, so the process is the complete lock domain.
 	// Postgres does not use this mutex; it takes a database-wide advisory lock.
 	settingLock sync.Mutex
+	// secretKeyLock serializes SQLite DEK initialization and rotation. PostgreSQL
+	// additionally takes a transaction-scoped advisory lock across replicas.
+	secretKeyLock sync.Mutex
 	// approvalLocks is the SQLite implementation of requester-scoped proposal
 	// approval ordering. SQLite is single-instance; Postgres uses advisory locks.
 	// Entries are bounded by the household user count (§1) and live with the store.
@@ -354,6 +357,39 @@ func (s *sqlStore) ApplySettingBatch(ctx context.Context, batch SettingBatch) (r
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit setting batch: %w", err)
+	}
+	return nil
+}
+
+// RewriteSettingValues updates only the durable value columns. Audit identity,
+// timestamps, and environment authority remain exactly as the operator set them.
+func (s *sqlStore) RewriteSettingValues(ctx context.Context, rows []SettingMutation) (retErr error) {
+	if err := validateSettingBatch(SettingBatch{Upserts: rows}); err != nil {
+		return err
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin setting value rewrite: %w", err)
+	}
+	defer func() {
+		if retErr != nil {
+			retErr = errors.Join(retErr, tx.Rollback())
+		}
+	}()
+	for _, row := range rows {
+		result, err := tx.ExecContext(ctx, s.ph(`UPDATE settings SET value = ? WHERE key = ?`), row.Value, row.Key)
+		if err != nil {
+			return fmt.Errorf("rewrite setting %q: %w", row.Key, err)
+		}
+		if affected, err := result.RowsAffected(); err != nil || affected != 1 {
+			return fmt.Errorf("rewrite setting %q: row disappeared", row.Key)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit setting value rewrite: %w", err)
 	}
 	return nil
 }

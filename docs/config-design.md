@@ -17,7 +17,8 @@ Loomarr's model is the *arr convention with one addition:
 
 **The storage-tier rule (so future keys self-classify):** a setting is **bootstrap** iff it is
 needed before the database opens or shapes the process envelope that must exist before the app
-graph can be built — `DATABASE_URL`, `AUTO_MIGRATE`, `LISTEN_ADDR`, `LOG_LEVEL`, `TZ`. Everything
+graph can be built — `DATABASE_URL`, `AUTO_MIGRATE`, `LISTEN_ADDR`, `LOG_LEVEL`, `TZ`, and the
+installation encryption key that must be available before any secret-bearing row is decoded. Everything
 else is app-managed and env-pinnable. That answers **where a value is stored**, not **when a saved
 value is safe to apply**: app-managed settings still classify into the runtime lifecycles in §3.
 
@@ -31,6 +32,22 @@ value is safe to apply**: app-managed settings still classify into the runtime l
 - **Absent file = today's behaviour exactly.** This tier adds a lookup, never a requirement.
 - `bootstrap.json` lives in the data directory (beside the SQLite file), written atomically at `0600`: it decides where the database *is*, so a half-written one would leave the next boot unable to find its own data, and `DATABASE_URL` routinely carries a password. Secrets the app can mint itself (`API_TOKEN`, `PLAYOUT_TOKEN`) are **generated**, never demanded.
   - ⚠ **The file is SEARCHED across two directories, and that is load-bearing** (V11). `DataDirFor` is scheme-dependent — the SQLite file's own directory for `sqlite://`, the conventional `/data` for `postgres://` — so a SQLite→PostgreSQL migration *moved where the next boot looked for the file*. With the database anywhere other than `/data`, the file recording the switch was written beside the SQLite database and then never read again: the app booted back onto SQLite, having apparently migrated successfully. The switch silently undid itself. Reads now try the database's own directory first (an operator who pinned a SQLite path meant that one), then `/data`; writes are unchanged, so an existing install's file keeps being found and nothing has to move. A malformed file still fails the boot rather than falling through to the next directory — a file that exists and is wrong is an operator error to surface, not a reason to quietly use a different one.
+
+**The installation-key tier is separate from `bootstrap.json`.** `LOOMARR_ENCRYPTION_KEY` or
+`LOOMARR_ENCRYPTION_KEY_FILE` supplies one base64url-encoded 256-bit key; setting both is an
+ambiguous boot error. When neither is set, Loomarr atomically creates `/data/encryption.key` at
+mode `0600` and uses it on later boots. The database stores only a non-secret fingerprint, so a
+second PostgreSQL replica with a different local file fails before reading credentials rather
+than writing unreadable ciphertext. Multi-replica deployments therefore mount the same key file
+or inject the same environment secret into every replica. The key file is deliberately not part
+of a database-only backup: losing it makes encrypted credentials unrecoverable, while copying it
+beside that backup collapses the protection to the security of the combined copy.
+
+Installation-key replacement is an explicit one-boot maintenance flow. Set the new key through the
+ordinary current-key variable and the existing key through `LOOMARR_ENCRYPTION_KEY_PREVIOUS` or its
+`_FILE` form. Loomarr verifies the previous fingerprint, atomically rewraps every DEK under the new
+key, and updates the fingerprint; after a successful boot, remove the previous-key input. Providing
+both previous forms is an error, and a wrong previous key changes nothing.
 
 **The per-channel tier (added with `programming-design.md`):** a policy instance is channel
 *data*, stored on the channel row, edited in proposal review / the channel editor, and never
@@ -251,6 +268,34 @@ appear on another machine. SQLite remains one replica by contract.
 
 **Generation:** 256-bit random, base64url, created idempotently inside the first-migration transaction (alongside the instance id).
 
+**Encryption at rest uses envelope encryption.** One deep secret-protection module owns the
+versioned storage envelope, key wrapping, authenticated encryption, rotation, and safe errors.
+It generates data-encryption keys (DEKs), wraps them with the installation key (the KEK), and
+stores only wrapped DEKs in the database. Secret values use AES-256-GCM with a fresh nonce and
+authenticated context containing the record kind, stable record identity, and field name. Copying
+ciphertext between two settings or notification destinations therefore fails closed.
+
+One DEK is active for new writes. Retired wrapped DEKs remain readable until every referenced
+value is re-encrypted; rotation activates a fresh DEK before that bounded migration begins. An
+installation-key replacement rewraps DEKs while old and new key material are deliberately present
+for the maintenance operation and does not rewrite every secret value. Key identifiers, versions,
+nonces, ciphertext, and fingerprints are never themselves treated as credentials, but none may
+appear in ordinary logs, activity, diagnostics, metrics, or problem bodies.
+
+The protected set is every reversibly stored database secret: generated operational secrets,
+registry `KindSecret` values (including SMTP, Library, requester, TMDB, LLM, and SSO credentials),
+and notification-provider secret fields such as tokens, passwords, private keys, and
+credential-bearing webhook URLs. Provider definitions classify fields; a client-provided generic
+map cannot downgrade a secret to plaintext configuration. Sessions, device credentials,
+Invitation grants, and password-recovery grants remain one-way hashes and are not encrypted.
+
+The first encryption-aware startup migrates legacy plaintext setting secrets transactionally after
+the installation key and initial wrapped DEK are valid. A versioned envelope makes the migration
+idempotent. Missing keys, authentication failure, unknown envelope versions, or incomplete
+migration stop readiness without clearing or overwriting durable values. Rewriting rows cannot
+erase plaintext already present in old backups, replicas, SQLite free pages, or WAL history;
+operators whose threat model includes those artifacts rotate the upstream credentials after upgrade.
+
 **Display policy (Sonarr-model, differentiated by purpose):**
 - `API_TOKEN` and `PLAYOUT_TOKEN` are *operational values you must paste elsewhere* — viewable on demand by admins (eye toggle + copy button), exactly like Sonarr's API key.
 - Integration secrets you *entered* (Emby token, Seerr key, TMDB, LLM key) — masked after save (`set · …a1b2` preview), replace-only. The API returns `{set: true, preview, provenance}` — never the value. (The §8.1 hosted `llm.api_key.<provider>` keys follow this exact rule: stored, previewed, never echoed by any GET.)
@@ -283,7 +328,7 @@ Sonarr's shape, Test Card's skin (FE doc §6 provenance rules apply):
 | **Defaults** | The registry values channels can actually inherit today: rolling schedule horizon and filler break frequency. Changing one affects every existing channel still following it; explicit channel choices stay unchanged. Filler ingestion/storage/automation live with the Filler workflow. | — |
 | **Notifications** | A readiness summary consumes global `access.public_url` state and links to its General editor; it does not own that setting. A dedicated switch progressively reveals SMTP endpoint/security/authentication and sender identity only when email is enabled. SMS and product/activity notifications are not presented as available. | **Send test email** validates the currently saved values without queuing a domain Notification intent; its recipient is entered in the action and is never persisted as a setting. Unsaved edits disable the action so the test cannot imply it checked values that are not yet active. |
 | **System** | The machine, not the product. Sub-tabs: **Tasks** · **Playback** (current streaming owner/health first; then engine/address, picture/sound, live capacity, guide, and advanced encoder/storage/path overrides) · **Database** · **Backup** (schedule, retention, destination, files) · **Storage** (image location, remote-artwork policy, upload/cache bounds) · **About**. “Playback” is the user-facing label for the `playout` domain. Playback distinguishes Loomarr-owned controls from Tunarr-owned transcode profiles; it does not duplicate Tunarr's profile editor. | per sub-tab where testable |
-| **Security** | Sign-in lifetime · advanced cookie transport policy · **Generated secrets panel** (view/copy/regenerate per §4) · SSO once V8 lands | — |
+| **Security** | Sign-in lifetime · advanced cookie transport policy · **Generated secrets panel** (view/copy/regenerate per §4) · database-encryption status and non-secret installation-key fingerprint · data-key rotation · SSO once V8 lands. Installation-key material is never entered or revealed in the UI. | — |
 | **All settings** | Every key, searchable by key **and** group **and** value, with an `ADV` chip reflecting `Setting.Advanced` (V10). The escape hatch: an operator who knows a key's name should never have to guess which page owns it. Rows are **editable in place** — see below. | — |
 
 ⚠ **This table was AMENDED (V9) to the v2 mock's structure**, and the change is a restructure

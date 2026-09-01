@@ -94,6 +94,24 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("Retention", func(t *testing.T) { testNotificationRetention(t, newStore) })
 	})
 
+	t.Run("SecretProtection", func(t *testing.T) {
+		t.Run("InstallationKeyFingerprint", func(t *testing.T) {
+			testInstallationKeyFingerprint(t, newStore)
+		})
+		t.Run("InitialDataKeyIsIdempotent", func(t *testing.T) {
+			testInitialSecretDataKey(t, newStore)
+		})
+		t.Run("RotationKeepsPriorKeysReadable", func(t *testing.T) {
+			testRotateSecretDataKey(t, newStore)
+		})
+		t.Run("SettingRewritePreservesAudit", func(t *testing.T) {
+			testRewriteSettingValuesPreservesAudit(t, newStore)
+		})
+		t.Run("InstallationKeyReplacementIsAtomic", func(t *testing.T) {
+			testReplaceWrappedDataKeysIsAtomic(t, newStore)
+		})
+	})
+
 	t.Run("Invitations", func(t *testing.T) {
 		t.Run("ReserveAndListIdentity", func(t *testing.T) { testInvitationReserveAndList(t, newStore) })
 		t.Run("ReservationBlocksDirectCreation", func(t *testing.T) {

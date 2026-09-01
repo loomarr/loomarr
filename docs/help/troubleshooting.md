@@ -9,6 +9,27 @@ server is already sending. Add sections freely; rename with care.
 
 Every red check in the setup wizard links to a section here.
 
+## Database secret encryption
+
+**Settings:** Security → Database secret encryption
+
+Loomarr encrypts recoverable credentials before writing them to SQLite or PostgreSQL. The database
+contains wrapped data-encryption keys; the installation key stays outside it.
+
+- **Installation key does not match database** — restore the `encryption.key` file that belonged to
+  this database, or supply the same key through `LOOMARR_ENCRYPTION_KEY` or
+  `LOOMARR_ENCRYPTION_KEY_FILE`. Do not delete the database or key file and retry: Loomarr fails
+  closed because a different key cannot recover the credentials.
+- **Restored database cannot start** — a database-only backup deliberately omits the installation
+  key. Restore that key separately. Losing it makes the stored credentials unrecoverable; replace
+  the database or re-enter credentials only through a deliberate recovery process.
+- **A database was exposed before this upgrade** — rewriting live rows cannot erase plaintext from
+  old backups, replicas, filesystem snapshots, SQLite free pages, or WAL history. Rotate upstream
+  credentials if those older copies may have been exposed.
+
+A full host or volume copy containing both the database and installation key is outside this
+protection boundary. Encryption here protects a database or database-only backup by itself.
+
 ## Media server
 
 **Check:** `media_server` · **Settings:** Connections → Media server

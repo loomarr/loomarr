@@ -1,4 +1,5 @@
 export * from "./ai-model-settings";
+export * from "./encryption-settings";
 export * from "./provider-title";
 export * from "./secrets-settings";
 export * from "./settings-edits";

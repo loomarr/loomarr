@@ -84,8 +84,8 @@ func (s *sqlStore) WriteBackup(ctx context.Context, dir string) (BackupFile, err
 	if _, err := s.db.ExecContext(ctx, "VACUUM INTO ?", path); err != nil {
 		return BackupFile{}, fmt.Errorf("vacuum into %s: %w", path, err)
 	}
-	// 0600: a backup carries every secret the instance holds (§16) — the generated
-	// playout token, the API token, stored provider keys.
+	// 0600: credentials are encrypted, but the backup still carries sensitive
+	// account and operational data and every wrapped data key (§16).
 	if err := os.Chmod(path, 0o600); err != nil {
 		return BackupFile{}, fmt.Errorf("chmod %s: %w", path, err)
 	}

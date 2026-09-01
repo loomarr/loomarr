@@ -310,7 +310,7 @@ func buildSettings(
 		return nil
 	}
 	return settingsAdapter{
-		svc: set.svc, secrets: secrets, store: st, log: log,
+		svc: set.svc, secrets: secrets, store: st, log: log, protection: set.protection,
 		tests: connectionTests(desiredSet, libraryClient, tmdbClient), refreshRedactor: refreshRedactor,
 		readSecret: readSecret, triggerHealth: triggerHealth,
 	}

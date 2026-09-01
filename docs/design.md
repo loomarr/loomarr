@@ -6379,6 +6379,7 @@ surface without a wire-format migration. The opt-in profiler also exposes Go 1.2
 | Unicode phrase matching | `golang.org/x/text` (`cases.Fold` + `unicode/norm`) | Episode intent and thematic evidence must match canonically equivalent non-ASCII words without locale guesses. Version `v0.41.0` was already pinned transitively; this promotes the same module/version to direct ownership, adding no module or runtime service. |
 | Rate limiting | `golang.org/x/time/rate`, per-IP+username, in-memory | Login only; per-instance is acceptable v1 |
 | Metrics / logs | `prometheus/client_golang` / `slog` | Standard |
+| Database secret encryption | Go standard-library `crypto/aes`, `crypto/cipher`, `crypto/rand`, and `crypto/sha256` behind Loomarr's secret-protection module | Grafana-style envelope encryption needs authenticated encryption, secure randomness, and a non-secret installation-key fingerprint; the standard library supplies the complete primitive set, so no new cryptography dependency or runtime enters the release. |
 | Interactive Startup report | **`github.com/jedib0t/go-pretty/v6/table`** | Renders the one Loomarr-owned structured Startup report as a restrained, width-bounded terminal table. It is formatting only: JSON `slog`, persistence, readiness, API, and UI consume the report value directly, and non-interactive output never passes through it. |
 | Unsupported Windows compatibility code | **`golang.org/x/sys/windows`** | A legacy Job Object adapter remains compile-isolated behind the built-in Windows constraint, but Loomarr publishes no native Windows server, makes no Windows lifecycle guarantee, and spends no CI or local-publication gate on it. Retaining the adapter is not a support claim. |
 | OIDC (SSO) | **`github.com/coreos/go-oidc/v3`** (+ `golang.org/x/oauth2`, `github.com/go-jose/go-jose/v4`) | SSO is a third credential path (§11, V8), and OIDC means verifying a signed token against the issuer's published JWKS — discovery, key rotation, `nonce`/`aud`/`exp` validation. Hand-rolling JWT verification is the kind of security code that looks right and is not. **Three modules total**, all current and maintained; `go-jose` does the crypto and `x/oauth2` the code exchange. Deliberately chosen over building forward-auth instead, which needs no dependency but trusts network topology (§11). |
@@ -6869,8 +6870,25 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `AUTO_MIGRATE` | no | `true` |
 | `LISTEN_ADDR` / `LOG_LEVEL` | no | `:8080` / `info` |
 | `TZ` | no | container time zone; time-slot schedules computed here (§9) |
+| `LOOMARR_ENCRYPTION_KEY` / `LOOMARR_ENCRYPTION_KEY_FILE` | no | Base64url 32-byte installation key, or a file containing it. Both set is an error. Neither set atomically creates `/data/encryption.key` at `0600`. Every PostgreSQL replica must share the same key; the database retains only its fingerprint. |
+| `LOOMARR_ENCRYPTION_KEY_PREVIOUS` / `LOOMARR_ENCRYPTION_KEY_PREVIOUS_FILE` | no | One-boot installation-key replacement input. Supply the old key here and the new key through the ordinary current-key variable; Loomarr atomically rewraps all DEKs, then this input must be removed. Both previous forms set is an error. |
 
 **Zero required env** for a SQLite first run: `docker run -v loomarr-data:/data loomarr` → wizard.
+
+### Database secret encryption
+
+Every reversibly stored database secret is sealed through one Grafana-style envelope-encryption
+module before persistence. Versioned AES-256-GCM ciphertext is authenticated against its record
+kind, stable identity, and field name. Wrapped data-encryption keys live in the database; the
+installation key that wraps them does not. Database-only backups therefore contain ciphertext but
+require the separately preserved installation key to restore credentials. A wrong or missing key,
+unknown envelope, or failed authentication prevents readiness and never clears the value.
+
+Data-key rotation activates a fresh key for new writes before existing ciphertext is migrated.
+Installation-key replacement rewraps the data keys while old and new material are explicitly
+available for that maintenance operation. The Security page exposes encryption status, a non-secret
+fingerprint, and data-key rotation only; provider setup never exposes key management. Full host or
+volume compromise containing both database and installation key is outside this protection boundary.
 
 ### Generated secrets (created at first migration; view/regenerate in Settings; env override optional)
 
@@ -6916,7 +6934,7 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 
 | Env | Meaning / default |
 | --- | --- |
-| `BACKUP_SCHEDULE` | `0 30 3 * * *` — nightly database backup. It contains settings, channels, people, and generated secrets, so treat the file as a credential. It does not contain filler, prepared media, cached artwork, or operator image uploads; protect `/data` separately when those files matter. |
+| `BACKUP_SCHEDULE` | `0 30 3 * * *` — nightly database backup. It contains settings, channels, people, encrypted secrets, and wrapped DEKs, but not the external installation key. It does not contain filler, prepared media, cached artwork, or operator image uploads; protect `/data` separately when those files matter. |
 | `BACKUP_RETAIN` | `7` — how many to keep before pruning the oldest. |
 | `BACKUP_DIR` | `/data/backups` — inside the documented volume by default; point elsewhere to keep backups off the database's disk. |
 | `LLM_PROVIDER` / `LLM_URL` / `LLM_MODEL` | `ollama` \| `openai` / base URL / model id. **`LLM_PROVIDER` is load-bearing** (selects the client). For `openai`, `LLM_URL` is the OpenAI-compatible **base URL** (a hosted `…/v1`, or Ollama's own `http://ollama:11434/v1`). Local default: `ollama` + `qwen3:8b` (or `qwen3:14b` at **Q6_K** — stock Q4 degrades tool-calling/JSON). **Initial defaults only:** an in-app selection (§8.1) persisted to the settings store (`llm.provider`/`llm.url`/`llm.model` + per-provider secret `llm.api_key.<provider>`) **overrides** them and hot-swaps the running suggester, so a UI choice survives a reboot without editing env. |

@@ -37,7 +37,15 @@ func (r *Registry) Markdown() []byte {
 	b.WriteString("<!-- The registry (internal/settings/declared.go) is the contract; design.md §15 is the human mirror. -->\n\n")
 	b.WriteString("Every setting resolves **`env > database > default`** (config-design §3). ")
 	b.WriteString("An env var that is set **pins** the value and locks its UI field. ")
-	b.WriteString("Secrets are stored masked and never echoed (config-design §4).\n\n")
+	b.WriteString("Secrets are encrypted before database persistence, masked on read, and never echoed (config-design §4).\n\n")
+	b.WriteString("## Bootstrap — Database secret protection\n\n")
+	b.WriteString("`LOOMARR_ENCRYPTION_KEY` supplies a 32-byte installation key as unpadded base64url; ")
+	b.WriteString("`LOOMARR_ENCRYPTION_KEY_FILE` points to a file containing the same value. Set only one. ")
+	b.WriteString("When neither is set, Loomarr creates `/data/encryption.key` with mode `0600`. ")
+	b.WriteString("Every PostgreSQL replica must use the same key, and database backups require it to recover stored credentials.\n\n")
+	b.WriteString("To replace the installation key, supply the new current key and provide the old key for one boot through ")
+	b.WriteString("`LOOMARR_ENCRYPTION_KEY_PREVIOUS` or `LOOMARR_ENCRYPTION_KEY_PREVIOUS_FILE`. ")
+	b.WriteString("Remove the previous-key input after Loomarr starts successfully.\n\n")
 
 	for _, g := range r.Groups() {
 		title := groupTitles[g]
