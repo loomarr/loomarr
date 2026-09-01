@@ -113,13 +113,13 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `catalog` | 5 | `library`, `provision` |
 | `contact` | 5 | — |
 | `diagnostics` | 8 | — |
-| `filler` | 6 | `diagnostics`, `filleradmission`, `llm`, `metrics` |
+| `filler` | 6 | `diagnostics`, `filleradmission`, `llm` |
 | `filleradmission` | 7 | — |
 | `httpx` | 7 | `metrics` |
 | `invitation` | 6 | `contact` |
-| `library` | 7 | `filler`, `httpx` |
+| `library` | 7 | `filler`, `httpx`, `metrics` |
 | `llm` | 5 | `httpx`, `metrics` |
-| `metrics` | 6 | `provision` |
+| `metrics` | 8 | `provision` |
 | `notifications` | 5 | — |
 | `provision` | 16 | — |
 | `recovery` | 5 | — |
@@ -195,8 +195,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 3**
 
-- **`metrics`** · 6 importers · → `images`, `provision`
-  Loomarr's Prometheus surface (design §7 /metrics, §17).
+- **`metrics`** · 8 importers · → `images`, `provision`
+  Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
 - **`playout`** · 4 importers · → `diagnostics`, `prepared`, `proctree`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 
@@ -213,14 +213,14 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Runs bounded, inference-spending filler admission comparisons.
 - **`llm`** · 5 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
-- **`programmer`** · 3 importers · → `httpx`, `schedule`
+- **`programmer`** · 3 importers · → `httpx`, `metrics`, `schedule`
   Programmer boundary (design §6/§9): the port the scheduler drives to make a Loomarr channel real, plus its only v1 implementation, a thin hand-written Tunarr client (§6: "hand-write a thin client against only the endpoints we use" — not codegen against Tunarr's churny pre-1.0 spec).
-- **`requester`** · 2 importers · → `httpx`, `provision`
+- **`requester`** · 2 importers · → `httpx`, `metrics`, `provision`
   Requester port (design §2, §6): it asks a downstream service to acquire a title.
 
 **Layer 6**
 
-- **`filler`** · 6 importers · → `diagnostics`, `filleradmission`, `fillerdecision`, `llm`, `mediatools`, `metrics`, `taxonomy`
+- **`filler`** · 6 importers · → `diagnostics`, `filleradmission`, `fillerdecision`, `llm`, `mediatools`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 - **`fillerreview`** · → `filleradmission`, `fillerbakeoff`, `fillereval`, `httpx`
   Materializes identity-blind evidence for independent semantic review.
@@ -229,7 +229,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`clipfetch`** · 1 importer · → `filler`
   Downloads filler clips into the drop-folder (design §10, §16).
-- **`library`** · 7 importers · → `episodeevidence`, `filler`, `httpx`
+- **`library`** · 7 importers · → `episodeevidence`, `filler`, `httpx`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
 - **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `invitation`, `notifications`, `provision`, `recovery`, `schedule`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
@@ -244,7 +244,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
 - **`catalog`** · 5 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
-- **`channels`** · 2 importers · → `filler`, `metrics`, `programmer`, `provision`, `schedule`, `scheduler`, `store`
+- **`channels`** · 2 importers · → `filler`, `programmer`, `provision`, `schedule`, `scheduler`, `store`
   Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
 - **`settings`** · 1 importer · → `library`
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
@@ -261,7 +261,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Provisioning backstop (design §4, §7, §18).
 - **`suggest`** · 6 importers · → `catalog`, `holidayvocab`, `llm`, `provision`, `schedule`, `store`, `textmatch`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
-- **`tmdb`** · 2 importers · → `catalog`, `httpx`, `provision`
+- **`tmdb`** · 2 importers · → `catalog`, `httpx`, `metrics`, `provision`
   TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.
 
 **Layer 10**

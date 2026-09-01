@@ -1,3 +1,4 @@
+// Package metrics owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
 package metrics
 
 import (
