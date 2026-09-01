@@ -12,7 +12,6 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/auth"
-	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -235,7 +234,7 @@ func (s *Server) ssoCallback(w http.ResponseWriter, r *http.Request) {
 			// ⚠ THE ALLOWLIST refusing a verified identity (§11). Logged WITH the claims —
 			// the operator's question is "which name arrived, and why is there no row for
 			// it?", and they cannot answer it from a redirect.
-			metrics.LoginResult(false)
+			s.metrics.LoginResult(false)
 			s.log.Info("sso: no account for this identity",
 				"matched_on", claims.MatchName(), "sub", claims.Subject, "email", claims.Email)
 			s.redirectToLogin(w, r, "sso_no_account")
@@ -246,7 +245,7 @@ func (s *Server) ssoCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	metrics.LoginResult(true)
+	s.metrics.LoginResult(true)
 	cookie := s.sessionCookie(r, token, expires)
 	http.SetCookie(w, &cookie)
 	s.log.Info("sso login", "user", u.ID, "matched_on", claims.MatchName())

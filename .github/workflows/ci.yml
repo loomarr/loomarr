@@ -138,7 +138,7 @@ jobs:
           # it is GENERATED and the Go job verifies it (`make dev-docs-verify`). Its inputs —
           # the Makefile and this workflow — already trigger the job, but a hand-edit to the
           # generated file itself would otherwise sail past the only check that reads it.
-          if echo "$changed" | grep -qE '\.go$|^go\.(mod|sum)$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|^docs/help/|^docs/design\.md$|^docs/dev/commands\.md$|^scripts/|^Makefile$|^\.github/workflows/'; then
+          if echo "$changed" | grep -qE '\.go$|^go\.(mod|sum)$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|^observability/|^docs/help/|^docs/design\.md$|^docs/dev/commands\.md$|^scripts/|^Makefile$|^\.github/workflows/'; then
             echo "go=true" >> "$GITHUB_OUTPUT"
           else
             echo "go=false" >> "$GITHUB_OUTPUT"

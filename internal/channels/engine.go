@@ -102,8 +102,9 @@ type Engine struct {
 	scheduleInvalidator ScheduleInvalidator
 	// acts records operator-facing facts that must outlive a log line (§9 V54) — currently the
 	// automatic renumber when Tunarr already occupies a channel's number. Optional/nil-safe.
-	acts ActivityRecorder
-	log  *slog.Logger
+	acts    ActivityRecorder
+	metrics MetricsObserver
+	log     *slog.Logger
 
 	policy            schedule.PendingPolicy
 	reconcileTTLFor   func() time.Duration                  // live minimum delay before the next sweep eligibility
@@ -115,6 +116,12 @@ type Engine struct {
 
 	mu    sync.Mutex
 	locks map[string]*sync.Mutex // per-channel-id mutex (§18)
+}
+
+// MetricsObserver receives bounded reconcile facts without Channel identity.
+type MetricsObserver interface {
+	ChannelReconciled(duration time.Duration, success bool)
+	ChannelSlotSubstitutions(count int)
 }
 
 // Config parameterizes the engine (from §15).
@@ -286,6 +293,12 @@ type ActivityRecorder interface {
 // exactly the gap that made a stranded channel take source-reading to diagnose (§9 V54).
 func (e *Engine) WithActivity(a ActivityRecorder) *Engine {
 	e.acts = a
+	return e
+}
+
+// WithMetrics binds one application generation's bounded reconcile observer.
+func (e *Engine) WithMetrics(observer MetricsObserver) *Engine {
+	e.metrics = observer
 	return e
 }
 

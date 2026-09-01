@@ -308,7 +308,7 @@ its own installation budget because provider controls may differ by account type
 requests can overshoot some aggregate budgets.
 
 The existing `LLMTokens` Prometheus counter deliberately supports external price derivation because
-rates drift ([`counters.go`](../../../internal/metrics/counters.go)). Preserve that metric, but add
+rates drift ([`recorder.go`](../../../internal/metrics/recorder.go)). Preserve that metric, but add
 a durable per-evaluation usage record with:
 
 - clip/evidence evaluation ID and rung;

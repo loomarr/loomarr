@@ -34,7 +34,9 @@ window to ship a fix before any public write-up.
   `/healthz`, `/readyz`, `/metrics` aliases) are intentionally unauthenticated on
   the LAN — their consumers are container runtimes and scrape jobs, which hold no
   session. This is declared per route as `RolePublic`, so the unauthenticated
-  surface is one greppable list rather than an absence you have to infer.
+  surface is one greppable list rather than an absence you have to infer. Metrics
+  expose aggregate operational state; keep the listener on a private scrape
+  network or add TLS and authentication at an operator-managed edge.
 - The published image bundles third-party binaries (`yt-dlp`, `ffmpeg`, `ffprobe`, `deno`, and
   `whisper-cli` with its shared libraries and model data) pinned by the `Dockerfile`;
   vulnerabilities in those upstreams are best

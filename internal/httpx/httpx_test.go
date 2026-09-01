@@ -4,10 +4,12 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/testkit/httpfixture"
 )
 
@@ -60,14 +62,14 @@ func TestNewStreaming_HasNoWholeRequestTimeout(t *testing.T) {
 	}
 }
 
-func TestNewNamedIsTransparent(t *testing.T) {
+func TestNamedClientIsTransparent(t *testing.T) {
 	transport := httpfixture.RoundTripperFunc(func(*http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Body:       io.NopCloser(strings.NewReader("ok")),
 		}, nil
 	})
-	c := newNamedClient("test-target", 5*time.Second, transport)
+	c := newClient(5*time.Second, transport, nil)
 	if c.Timeout != 5*time.Second {
 		t.Fatalf("NewNamed timeout = %v, want 5s", c.Timeout)
 	}
@@ -82,6 +84,27 @@ func TestNewNamedIsTransparent(t *testing.T) {
 	}
 	if string(body) != "ok" {
 		t.Fatalf("body = %q, want ok", body)
+	}
+}
+
+func TestNewNamedObservedRecordsIntoTheSuppliedGeneration(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(upstream.Close)
+	recorder := metrics.New(metrics.Options{})
+
+	response, err := NewNamedObserved("library", time.Second, recorder).Get(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+
+	scrape := httptest.NewRecorder()
+	recorder.Handler().ServeHTTP(scrape, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	want := `loomarr_outbound_requests_total{code="204",target="library"} 1`
+	if !strings.Contains(scrape.Body.String(), want) {
+		t.Errorf("generation scrape does not contain %q", want)
 	}
 }
 

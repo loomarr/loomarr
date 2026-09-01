@@ -113,13 +113,13 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `catalog` | 5 | `library`, `provision` |
 | `contact` | 5 | — |
 | `diagnostics` | 8 | — |
-| `filler` | 6 | `diagnostics`, `filleradmission`, `llm`, `metrics` |
+| `filler` | 6 | `diagnostics`, `filleradmission`, `llm` |
 | `filleradmission` | 7 | — |
 | `httpx` | 7 | `metrics` |
 | `invitation` | 6 | `contact` |
-| `library` | 7 | `filler`, `httpx` |
+| `library` | 7 | `filler`, `httpx`, `metrics` |
 | `llm` | 5 | `httpx`, `metrics` |
-| `metrics` | 6 | `provision` |
+| `metrics` | 8 | `provision` |
 | `notifications` | 5 | — |
 | `provision` | 16 | — |
 | `recovery` | 5 | — |
@@ -195,8 +195,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 3**
 
-- **`metrics`** · 6 importers · → `images`, `provision`
-  Loomarr's Prometheus surface (design §7 /metrics, §17).
+- **`metrics`** · 8 importers · → `images`, `provision`
+  Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
 - **`playout`** · 4 importers · → `diagnostics`, `prepared`, `proctree`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 
@@ -213,14 +213,14 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Runs bounded, inference-spending filler admission comparisons.
 - **`llm`** · 5 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
-- **`programmer`** · 3 importers · → `httpx`, `schedule`
+- **`programmer`** · 3 importers · → `httpx`, `metrics`, `schedule`
   Programmer boundary (design §6/§9): the port the scheduler drives to make a Loomarr channel real, plus its only v1 implementation, a thin hand-written Tunarr client (§6: "hand-write a thin client against only the endpoints we use" — not codegen against Tunarr's churny pre-1.0 spec).
-- **`requester`** · 2 importers · → `httpx`, `provision`
+- **`requester`** · 2 importers · → `httpx`, `metrics`, `provision`
   Requester port (design §2, §6): it asks a downstream service to acquire a title.
 
 **Layer 6**
 
-- **`filler`** · 6 importers · → `diagnostics`, `filleradmission`, `fillerdecision`, `llm`, `mediatools`, `metrics`, `taxonomy`
+- **`filler`** · 6 importers · → `diagnostics`, `filleradmission`, `fillerdecision`, `llm`, `mediatools`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 - **`fillerreview`** · → `filleradmission`, `fillerbakeoff`, `fillereval`, `httpx`
   Materializes identity-blind evidence for independent semantic review.
@@ -229,7 +229,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`clipfetch`** · 1 importer · → `filler`
   Downloads filler clips into the drop-folder (design §10, §16).
-- **`library`** · 7 importers · → `episodeevidence`, `filler`, `httpx`
+- **`library`** · 7 importers · → `episodeevidence`, `filler`, `httpx`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
 - **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `invitation`, `notifications`, `provision`, `recovery`, `schedule`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
@@ -244,7 +244,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
 - **`catalog`** · 5 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
-- **`channels`** · 2 importers · → `filler`, `metrics`, `programmer`, `provision`, `schedule`, `scheduler`, `store`
+- **`channels`** · 2 importers · → `filler`, `programmer`, `provision`, `schedule`, `scheduler`, `store`
   Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
 - **`settings`** · 1 importer · → `library`
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
@@ -261,7 +261,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Provisioning backstop (design §4, §7, §18).
 - **`suggest`** · 6 importers · → `catalog`, `holidayvocab`, `llm`, `provision`, `schedule`, `store`, `textmatch`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
-- **`tmdb`** · 2 importers · → `catalog`, `httpx`, `provision`
+- **`tmdb`** · 2 importers · → `catalog`, `httpx`, `metrics`, `provision`
   TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.
 
 **Layer 10**
@@ -2478,10 +2478,10 @@ a correctness constraint the compiler cannot enforce:
   one. The same applies to the mux, the store handle, and the scheduler.
 - **Global registries are the loud failure.** `prometheus.MustRegister`, `http.HandleFunc` on
   `DefaultServeMux`, `expvar.Publish` and `sql.Register` all panic on a second registration.
-  Loomarr uses **none** of them except Prometheus. The store collector is registered once for the
-  process and atomically rebound to each generation's live store; merely tolerating
-  `AlreadyRegisteredError` would leave later scrapes querying the previous generation's closed
-  handle.
+  Loomarr uses none of them. Prometheus is generation-scoped: `internal/metrics.Recorder` owns a
+  private registry and the application replaces the Recorder with the rest of the generation.
+  A process-global default registry or collector would make a later scrape observe stale state and
+  is forbidden by the metrics contract in §17.
 - ⚠ **`sync.Once` is the quiet failure**, and the one to watch: a package-level `Once` guarding a
   resource makes iteration 2 inherit iteration 1's closed handle, with no panic and no log line.
   Every `sync.Once` in this repo is closure-local or a struct field, so it rebuilds with its
@@ -7493,7 +7493,54 @@ selection invalidates the preview and disables download until the replacement pr
 
 ### Metrics and health
 
-- **Metrics (Prometheus):** records by state; requests submitted / give-ups; webhook events by type; library-lookup + reconcile-loop latency; **channel reconciles, Tunarr API latency/errors, slots pending-vs-filled per channel**; LLM latency + (hosted) token/cost, proposals generated, acquisitions proposed/approved/rejected, grounding-dropped candidates; filler clips synced/tagged/untagged, pod fallback-ladder depth (how often matching degrades), and actual internal-playout rotation airings by bounded repeat/cooldown state; logins (success/failure) and active sessions; job queue depth + janitor purge counts; slot-drift substitutions; Diagnostic events dropped by reason/source and retained Diagnostic/process-output bytes. Outbound request count and latency wrap the retrying transport, so four attempts remain **one logical request** in those series; `loomarr_outbound_retries_total{target,reason}` separately counts each actual additional attempt with a bounded reason (`transport`, `408`, `429`, `500`, `502`, `503`, or `504`).
+- **Metrics (Prometheus) are an operator contract, not a domain-event mirror.** One generation-scoped
+  `internal/metrics.Recorder` owns a private Prometheus registry, the Go/process collectors, the
+  exposition handler, HTTP middleware, store collection, and every label classifier. The
+  composition root constructs one Recorder per application generation and gives callers narrow
+  semantic callbacks; callers never select collectors or supply arbitrary label values. A restart
+  therefore replaces the complete registry rather than rebinding a process-global collector to a
+  new Store.
+
+  `/v1/metrics` and its permanent `/metrics` alias expose that registry without application
+  authentication on the trusted-LAN listener (§7). A deployment must put that listener on a private
+  scrape network or harden its operator edge; Loomarr does not add Prometheus-specific credentials.
+  The surface contains aggregate operational state and must never expose a username, email, Title,
+  Channel id, media id, request id, URL, path, prompt, raw error, secret, or other caller-controlled
+  value in a label or HELP string.
+
+  These are the required families. A labelled counter with a closed value set initializes its known
+  combinations to zero; a histogram does not invent an observation. `job` is the sealed scheduler
+  registry's code-defined name. Every other label value is a closed enum owned by the Recorder;
+  unexpected values collapse to `other` rather than creating a series.
+
+  | Operator question | Families and labels |
+  | --- | --- |
+  | Which build and database backend am I scraping? | `loomarr_build_info{version,revision,database}` (constant `1`) |
+  | Is inbound HTTP failing, slow, saturated, or causing excessive dependency fan-out? | `loomarr_http_requests_total{method,route,code}`, `loomarr_http_request_duration_seconds{method,route}`, `loomarr_http_requests_in_flight`, `loomarr_http_outbound_fanout{method,route}`; `route` is the matched route template, never the request path, and an unknown method becomes `other` |
+  | Which dependency is failing or slow, and how much instability do retries hide? | `loomarr_outbound_requests_total{target,code}`, `loomarr_outbound_request_duration_seconds{target}`, `loomarr_outbound_retries_total{target,reason}`; count/latency wrap one logical retrying request while retries count each additional attempt, and reason is `transport`, `408`, `429`, `500`, `502`, `503`, or `504` |
+  | Is the database pool saturated or churning? | `loomarr_database_connections{state}`, `loomarr_database_max_open_connections`, `loomarr_database_connection_waits_total`, `loomarr_database_connection_wait_duration_seconds_total`, `loomarr_database_connections_closed_total{reason}`; `state` is `open`, `in_use`, or `idle`, and `reason` is `idle_limit`, `idle_time`, or `lifetime` |
+  | Is acquisition or Proposal work stuck? | compatibility gauges `loomarr_titles{state}`, `loomarr_jobs{status}`, `loomarr_proposal_job_oldest_age_seconds{status}`, `loomarr_proposal_job_attempts{outcome}`, `loomarr_proposal_job_failures{code}`, plus `loomarr_active_sessions`; these are current retained-object counts, not cumulative events |
+  | Are named Jobs running and completing on time? | `loomarr_scheduler_job_executions_total{job,result,trigger}`, `loomarr_scheduler_job_duration_seconds{job}`, `loomarr_scheduler_jobs_running{job}`, `loomarr_scheduler_job_last_success_timestamp_seconds{job}`; `result` is `success`, `error`, `timeout`, or `panic`, and `trigger` is `scheduled` or `manual` |
+  | Are Channel reconciles healthy? | `loomarr_channel_reconciles_total{result}`, `loomarr_channel_reconcile_duration_seconds`, `loomarr_channel_slot_substitutions_total`; result is `success` or `error` |
+  | Is internal Playout serving viewers and surviving process failures? | `loomarr_playout_sessions_active`, `loomarr_playout_session_starts_total{result}`, `loomarr_playout_process_failures_total{stage}`, `loomarr_playout_fallbacks_total{reason}`; labels are bounded lifecycle outcomes/stages, never Channel, programme, client, Process-run, or file identities |
+  | Are authentication, LLM usage, filler selection, and Image work healthy? | `loomarr_auth_logins_total{result}`, `loomarr_llm_tokens_total{kind}`, `loomarr_filler_pods_total{match_level}`, `loomarr_filler_rotation_airings_total{repeat,cooldown}`, and the `loomarr_image_worker_*` operation, duration, byte, queue-wait, memory, and in-flight families; their dimensions are closed enums |
+  | Did live store-backed collection fail? | `loomarr_metrics_scrape_errors_total{source}`; collection failure preserves the previous successful values and increments the bounded source |
+
+  Family name, type, unit, label names, and label-value domains are compatibility commitments.
+  Additive families and closed values are compatible. A family never changes type or unit in place.
+  A rename dual-emits old and new names from the same observation for one documented release line;
+  the old HELP is marked deprecated and is removed only in a planned breaking release. The four
+  five historical state-gauge names above remain until such a migration is deliberately scheduled.
+
+  Loomarr ships one source-controlled, file-provisionable Grafana **Overview** dashboard with a
+  stable UID and a Prometheus datasource variable, plus optional Prometheus recording and alert-rule
+  examples. The dashboard is read-only source (`allowUiUpdates: false`): provisioning overwrites UI
+  edits. Prometheus, Alertmanager, and Grafana are not required Loomarr services and are not added to
+  default Compose. `make observability-verify` checks the metric manifest, hostile-label exclusions,
+  dashboard query references, rule syntax/behavior, and provisioning in pinned test containers.
+  Additional dashboards need a distinct operator workflow; traces, hosted-model dollar estimates,
+  stack retention, alert routing, credentials, and published monitoring ports are explicitly out of
+  scope.
 - **Readiness** is Current Health's required-check projection: required startup evidence must pass,
   continuously observed required checks must remain fresh, and sustained required-check failures make
   readiness false while liveness remains true. Optional warnings/failures/staleness produce

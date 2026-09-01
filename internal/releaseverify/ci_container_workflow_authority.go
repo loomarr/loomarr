@@ -251,6 +251,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			"make dev-docs-verify":          exactWorkflowStep(9, "Command reference is committed and current", workflowStepAuthority{targets: []string{"dev-docs-verify"}}),
 			"make retired-verify":           exactWorkflowStep(10, "Retired identifiers are gone from prose", workflowStepAuthority{targets: []string{"retired-verify"}}),
 			"make ci-lint":                  exactWorkflowStep(11, "Workflows are valid", workflowStepAuthority{targets: []string{"ci-lint"}}),
+			"make observability-verify":     exactWorkflowStep(12, "Observability artifacts are provisionable", workflowStepAuthority{targets: []string{"observability-verify"}, allowsAcquisition: true}),
 		}),
 		"ci-go.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make test GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}": exactWorkflowStep(10, "", workflowStepAuthority{targets: []string{"test"}}),

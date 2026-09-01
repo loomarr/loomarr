@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -39,9 +40,11 @@ const (
 // selection hot-swaps it with no restart) plus the SystemLLMService that powers
 // /v1/system/llm* (§8.1). The active selection is the persisted settings (if any)
 // overlaid on the LLM_* env defaults, so a UI choice survives reboots.
-func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus, log *slog.Logger) (llm.Provider, api.SystemLLMService) {
+func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus, log *slog.Logger, metricRecorder *metrics.Recorder) (llm.Provider, api.SystemLLMService) {
 	sel := resolveSelection(set)
-	sw := llm.NewSwappable(buildProviderFor, sel)
+	sw := llm.NewSwappable(func(selection llm.Selection) llm.Provider {
+		return buildProviderFor(selection, metricRecorder)
+	}, sel)
 
 	// Preload the model at boot (§8.2) so the first channel someone describes doesn't
 	// pay the ~9s cold load. Backgrounded and best-effort: startup must not block on a
@@ -153,13 +156,13 @@ func warm(ctx context.Context, w llm.Warmer, log *slog.Logger) {
 
 // buildProviderFor is the Swappable factory: build the concrete provider for a
 // Selection. Ollama for local, the OpenAI-compatible client for everything else.
-func buildProviderFor(sel llm.Selection) llm.Provider {
+func buildProviderFor(sel llm.Selection, recorder *metrics.Recorder) llm.Provider {
 	if sel.Provider == "ollama" || sel.Provider == "" {
 		// KeepAlive is local-only (§8.2) — a hosted endpoint has no residency to manage,
 		// which is why it's applied here rather than in the shared construction below.
-		return llm.NewOllama(sel.URL, sel.Model).WithKeepAlive(sel.KeepAlive)
+		return llm.NewOllama(sel.URL, sel.Model).WithKeepAlive(sel.KeepAlive).WithMetrics(recorder)
 	}
-	return llm.NewOpenAIForProvider(sel.Provider, sel.URL, sel.Model, sel.APIKey)
+	return llm.NewOpenAIForProvider(sel.Provider, sel.URL, sel.Model, sel.APIKey).WithMetrics(recorder)
 }
 
 // resolveSelection reads the active LLM selection from the settings service

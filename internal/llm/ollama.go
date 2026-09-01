@@ -30,6 +30,16 @@ type Ollama struct {
 	// does not — see Warm.
 	guessedModel bool
 	http         *http.Client
+	metrics      *metrics.Recorder
+}
+
+// WithMetrics binds this provider to one application generation's observations.
+func (o *Ollama) WithMetrics(recorder *metrics.Recorder) *Ollama {
+	o.metrics = recorder
+	if recorder != nil {
+		o.http = httpx.NewNamedObserved("llm", httpx.TimeoutLLM, recorder)
+	}
+	return o
 }
 
 // NewOllama builds an Ollama provider. baseURL e.g. http://ollama:11434. Residency
@@ -170,7 +180,9 @@ func (o *Ollama) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return Response{}, fmt.Errorf("decode ollama response: %w", err)
 	}
-	metrics.LLMTokens(out.PromptEvalCount, out.EvalCount) // §17: no-op on 0
+	if o.metrics != nil {
+		o.metrics.LLMTokens(out.PromptEvalCount, out.EvalCount)
+	}
 
 	return Response{
 		Content:   out.Message.Content,
@@ -240,7 +252,9 @@ func (o *Ollama) AskAboutImages(ctx context.Context, prompt string, jpegs [][]by
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return Response{}, fmt.Errorf("decode ollama vision response: %w", err)
 	}
-	metrics.LLMTokens(out.PromptEvalCount, out.EvalCount) // §17: no-op on 0
+	if o.metrics != nil {
+		o.metrics.LLMTokens(out.PromptEvalCount, out.EvalCount)
+	}
 	return Response{
 		Content: strings.TrimSpace(out.Message.Content),
 		Attribution: Attribution{

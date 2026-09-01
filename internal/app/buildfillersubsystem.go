@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filleradmission"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/scheduler"
 	"github.com/loomarr/loomarr/internal/store"
@@ -38,6 +39,7 @@ func buildFillerSubsystem(
 	playoutResolver *playoutResolver,
 	channelService api.ChannelService,
 	processDiagnostics *diagnostics.ProcessManager,
+	metricRecorder *metrics.Recorder,
 ) fillerBuild {
 	var result fillerBuild
 	if st == nil {
@@ -88,13 +90,13 @@ func buildFillerSubsystem(
 		}
 	}
 
-	fillerProgrammer := programmer.NewDynamic(set.tunarrConfig())
+	fillerProgrammer := programmer.NewDynamicObserved(set.tunarrConfig(), metricRecorder)
 	wake := &fillerChannelWake{st: st, channels: channelService, log: log}
 	result.taxonomy = taxonomyEditor{store: st, wake: wake}
 	syncer := buildSyncer(st, set, layout, log, fillerProgrammer, libraryClient)
-	taggerProvider, tagger := buildTagger(st, set, layout, log, wake)
+	taggerProvider, tagger := buildTagger(st, set, layout, log, wake, metricRecorder)
 	fetcher := buildFetcher(set, layout, log)
-	splitter := buildSplitter(st, set, layout, log, wake)
+	splitter := buildSplitter(st, set, layout, log, wake, metricRecorder)
 	adapter := fillerServiceAdapter{
 		syncer: syncer, tagger: tagger, fetcher: fetcher,
 		bus: eventBus, log: log, newID: newID, timeout: set.dur("ingest.timeout"),
@@ -102,7 +104,7 @@ func buildFillerSubsystem(
 		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st, wake: wake},
 	}
 
-	pods := buildPodAdapter(st, set, log)
+	pods := buildPodAdapter(st, set, log).WithMetrics(metricRecorder)
 	result.preview = podPreviewAdapter{store: st, pods: pods}
 	adapter.pool = result.preview.Pool
 	if playoutResolver != nil {
@@ -117,7 +119,7 @@ func buildFillerSubsystem(
 	log.Info("filler catalog sync registered", "dir", layout.ClipDir(),
 		"every", set.dur("filler.sync_every"), "ai_tagging", set.boolv("filler.ai_tagging"))
 	pipeline := buildPipeline(st, set, layout, log, emitter, splitter, taggerProvider, wake,
-		processDiagnostics, admissionObserver)
+		processDiagnostics, admissionObserver, metricRecorder)
 	jobs.Add(fillerPipelineJob(pipeline))
 	adapter.pipeline = pipeline
 	adapter.afterIngest = func(ctx context.Context) error {

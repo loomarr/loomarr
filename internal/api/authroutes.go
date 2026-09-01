@@ -11,7 +11,6 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/auth"
-	"github.com/loomarr/loomarr/internal/metrics"
 )
 
 // registerAuth mounts /v1/auth/* (§11). login and logout manage the session
@@ -96,13 +95,13 @@ func (s *Server) handleLogin(ctx context.Context, in *loginInput) (*meOutput, er
 			// them into the credential success/failure ratio.
 			return nil, errTooManyRequests("Too many attempts", "You've tried to sign in too many times. Wait a moment and try again.")
 		case errors.Is(err, auth.ErrInvalidCredentials):
-			metrics.LoginResult(false)
+			s.metrics.LoginResult(false)
 			return nil, errUnauthorized("Sign-in failed", "That username and password don't match. Check them and try again.")
 		default:
 			return nil, err
 		}
 	}
-	metrics.LoginResult(true)
+	s.metrics.LoginResult(true)
 	out := &meOutput{
 		SetCookie: s.sessionCookie(r, token, expires),
 		Body: meBody{ID: u.ID, Name: u.Name, Role: string(u.Role), Disabled: u.Disabled, Quota: u.Quota,
@@ -133,7 +132,7 @@ func (s *Server) handleDevLogin(ctx context.Context, _ *struct{}) (*meOutput, er
 	}
 	// Counted as a successful login: it really did mint a session, and a metric that
 	// quietly omits some sign-ins is worse than one that includes an unusual path.
-	metrics.LoginResult(true)
+	s.metrics.LoginResult(true)
 	slog.WarnContext(ctx, "dev login used — credential check bypassed", "user", u.Name, "id", u.ID)
 	return &meOutput{
 		SetCookie: s.sessionCookie(r, token, expires),

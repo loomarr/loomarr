@@ -140,12 +140,12 @@ func buildHandler(
 	jobReg, activityRec := foundation.jobs, foundation.activity
 
 	episodeRefresh := buildProvisioning(st, set, libraryClient, emitter, jobReg, activityRec,
-		foundation.processDiagnostics, log)
+		foundation.processDiagnostics, log, foundation.metrics)
 
 	channelsBuilt, err := buildChannels(
 		rootCtx, st, set, ov, owner, capturePlayoutResolver, libraryClient, secrets,
 		readGeneratedSecret, eventBus, emitter, activityRec, jobReg, episodeRefresh, fillerLayout, log,
-		foundation.processDiagnostics,
+		foundation.processDiagnostics, foundation.metrics,
 	)
 	if err != nil {
 		return nil, nil, err
@@ -161,13 +161,14 @@ func buildHandler(
 	suggestions, err := buildSuggestions(
 		rootCtx, st, set, ov, eventBus, emitter, jobReg, fillerLayout, activityRec, log,
 		libraryClient, tmdbClient, channelSvc, proposalApprover, owner,
+		foundation.metrics,
 	)
 	if err != nil {
 		return nil, nil, err
 	}
 	fillers := buildFillerSubsystem(
 		st, set, fillerLayout, log, libraryClient, eventBus, emitter, jobReg, playoutRes, channelSvc,
-		foundation.processDiagnostics,
+		foundation.processDiagnostics, foundation.metrics,
 	)
 	healthProbes := connectionTests(set, libraryClient, tmdbClient)
 	completeStartupIntegrations(rootCtx, foundation.startup, set, healthProbes)
@@ -177,7 +178,7 @@ func buildHandler(
 	operations := buildOperations(
 		rootCtx, st, set, desiredSet, secrets, readGeneratedSecret, refreshSecretRedactor,
 		libraryClient, tmdbClient, eventBus, emitter, jobReg, owner, playoutRes,
-		appliedBackendContext, ov, log,
+		appliedBackendContext, ov, log, foundation.metrics,
 	)
 	if playoutRes != nil {
 		setResidentVRAM(operations.residentLLM.probe)

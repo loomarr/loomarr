@@ -60,6 +60,7 @@ type openRouterVideo struct {
 	model            string
 	upstreamProvider string
 	http             *http.Client
+	metrics          *metrics.Recorder
 }
 
 type openRouterVideoRequest struct {
@@ -95,6 +96,15 @@ type openRouterVideoRoute struct {
 // NewOpenRouterVideo constructs a direct-video adapter only for an explicitly
 // advertised capability. Thin or image-only metadata fails closed.
 func NewOpenRouterVideo(cfg OpenRouterVideoConfig) (VideoProvider, error) {
+	return newOpenRouterVideo(cfg, nil)
+}
+
+// NewOpenRouterVideoObserved binds the direct-video adapter to one application generation.
+func NewOpenRouterVideoObserved(cfg OpenRouterVideoConfig, recorder *metrics.Recorder) (VideoProvider, error) {
+	return newOpenRouterVideo(cfg, recorder)
+}
+
+func newOpenRouterVideo(cfg OpenRouterVideoConfig, recorder *metrics.Recorder) (VideoProvider, error) {
 	if cfg.ProviderKey != "openrouter" {
 		return nil, fmt.Errorf("direct hosted video is certified only for OpenRouter")
 	}
@@ -122,7 +132,7 @@ func NewOpenRouterVideo(cfg OpenRouterVideoConfig) (VideoProvider, error) {
 	}
 	return &openRouterVideo{
 		baseURL: baseURL, apiKey: cfg.APIKey, model: model, upstreamProvider: upstream,
-		http: httpx.NewNamed("llm-video", httpx.TimeoutLLM),
+		http: httpx.NewNamedObserved("llm-video", httpx.TimeoutLLM, recorder), metrics: recorder,
 	}, nil
 }
 
@@ -200,7 +210,9 @@ func (o *openRouterVideo) AskAboutVideo(ctx context.Context, prompt string, vide
 	if len(out.Choices) == 0 {
 		return Response{}, fmt.Errorf("video chat: no choices")
 	}
-	metrics.LLMTokens(out.Usage.PromptTokens, out.Usage.CompletionTokens)
+	if o.metrics != nil {
+		o.metrics.LLMTokens(out.Usage.PromptTokens, out.Usage.CompletionTokens)
+	}
 	return Response{
 		Content: strings.TrimSpace(out.Choices[0].Message.Content),
 		Attribution: attributionFromWire("openrouter", o.model, out.ID, out.Model, out.Usage,

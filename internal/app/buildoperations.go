@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/scheduler"
@@ -89,6 +90,7 @@ func buildOperations(
 	appliedBackend func(context.Context) (string, error),
 	overrides Overrides,
 	log *slog.Logger,
+	metricRecorder *metrics.Recorder,
 ) operationsBuild {
 	restart, bootConfig := buildRestart(overrides, log)
 	backups := buildBackups(st, set, registry, log)
@@ -96,7 +98,7 @@ func buildOperations(
 	invitationService, _ := authResult.invitations.(*invitation.Service)
 	recoveryService := authResult.passwordRecovery
 	accountDelivery := buildAccountDelivery(st, set, invitationService, recoveryService, registry, log)
-	jobs := buildScheduler(rootCtx, st, set, registry, emitter, owner, log)
+	jobs := buildScheduler(rootCtx, st, set, registry, emitter, owner, log, metricRecorder)
 	triggerHealth := func(ctx context.Context) {
 		if jobs == nil {
 			return
@@ -108,7 +110,7 @@ func buildOperations(
 	result := operationsBuild{
 		backups: backups, restart: restart, bootConfig: bootConfig,
 		auth:  authResult,
-		guide: buildGuide(st, set, playoutResolver, appliedBackend),
+		guide: buildGuide(st, set, playoutResolver, appliedBackend, metricRecorder),
 		settings: buildSettings(
 			st, set, desiredSet, secrets, libraryClient, tmdbClient,
 			refreshSecretRedactor, readGeneratedSecret, triggerHealth, log,
@@ -275,6 +277,7 @@ func buildGuide(
 	set resolved,
 	playoutResolver *playoutResolver,
 	appliedBackend func(context.Context) (string, error),
+	metricRecorder *metrics.Recorder,
 ) api.GuideReader {
 	if st == nil {
 		return nil
@@ -285,7 +288,7 @@ func buildGuide(
 	}
 	return nowNextRouter{
 		tunarr: guideAdapter{
-			tunarr: programmer.NewDynamic(set.tunarrConfig()), window: 2 * time.Hour,
+			tunarr: programmer.NewDynamicObserved(set.tunarrConfig(), metricRecorder), window: 2 * time.Hour,
 		},
 		internal: internalGuide, channels: st, appliedBackend: appliedBackend, window: 2 * time.Hour,
 	}
@@ -321,6 +324,7 @@ func buildScheduler(
 	emitter *eventEmitter,
 	owner *generationLifecycle,
 	log *slog.Logger,
+	metricRecorder *metrics.Recorder,
 ) api.JobService {
 	if st == nil {
 		return nil
@@ -330,7 +334,7 @@ func buildScheduler(
 			return configured
 		}
 		return fallback
-	}, time.Now, log).WithNotifier(emitter)
+	}, time.Now, log).WithNotifier(emitter).WithObserver(metricRecorder)
 	service.SeedRegistry(rootCtx)
 	if pool := store.PoolOf(st); pool != nil {
 		stop, err := service.StartRiver(rootCtx, st, pool, log)

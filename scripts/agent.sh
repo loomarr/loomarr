@@ -493,6 +493,9 @@ verify_changed() {
 		if printf '%s\n' "$changed" | grep -q '^docs/help/'; then
 			make -C "$ROOT" retired-verify
 		fi
+		if printf '%s\n' "$changed" | grep -qE '^observability/|^scripts/verify-observability\.sh$|^mk/check\.mk$'; then
+			make -C "$ROOT" observability-verify
+		fi
 	fi
 	if printf '%s\n' "$scope" | grep -qx 'agent=true'; then
 		make -C "$ROOT" agent-harness-test

@@ -83,9 +83,10 @@ type codecWriter interface {
 }
 
 type playoutResolver struct {
-	engine cyclePreviewer
-	lib    *library.Client
-	now    func() time.Time
+	engine  cyclePreviewer
+	lib     *library.Client
+	now     func() time.Time
+	metrics *metrics.Recorder
 	// titles resolves a block's acquisition record for the grid's provenance line. Nil ⇒ the
 	// line is simply absent, which is the right degradation: a guide without provenance is
 	// still a guide.
@@ -795,7 +796,9 @@ func (r *playoutResolver) airingFiller(
 			// swallowed by design, so the miss was silent — the guard is `PodEntry.Hash` now
 			// existing at all, plus the store's ClipKeyIsHashNotPath conformance test.
 			if into == 0 && e.Hash != "" {
-				metrics.FillerRotationAired(e.RecentRepeat, e.RecentRepeat && !e.RotationPinned, e.RotationPinned)
+				if r.metrics != nil {
+					r.metrics.FillerRotationAired(e.RecentRepeat, e.RecentRepeat && !e.RotationPinned, e.RotationPinned)
+				}
 				if r.clipPlays != nil {
 					if err := r.clipPlays.RecordClipPlay(ctx, channelID, e.Hash, now); err != nil {
 						// Telemetry, never correctness: a failed count must not stop a break from

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"time"
@@ -44,6 +45,7 @@ type foundationBuild struct {
 	startup                *diagnostics.Startup
 	startupReports         *diagnostics.StartupReports
 	instanceID             string
+	metrics                *metrics.Recorder
 }
 
 // buildFoundation creates the shared roots consumed by later subsystem builders. The returned
@@ -56,6 +58,19 @@ func buildFoundation(
 	owner *generationLifecycle,
 ) (foundationBuild, error) {
 	result := foundationBuild{}
+	info := buildinfo.Get()
+	database := string(store.DialectOf(st))
+	if database == "" {
+		database = "unavailable"
+	}
+	var databaseStats func() sql.DBStats
+	if pool := store.PoolOf(st); pool != nil {
+		databaseStats = pool.Stats
+	}
+	result.metrics = metrics.New(metrics.Options{
+		Version: info.Version, Revision: info.Commit, Database: database,
+		Store: st, Now: time.Now, DatabaseStats: databaseStats,
+	})
 	instanceID := ""
 	fallbackLog := log
 	var secretRedactor *settings.Redactor
@@ -92,10 +107,6 @@ func buildFoundation(
 		result.startupReports = diagnostics.NewStartupReports(result.startup, st, time.Now)
 	}
 	if st != nil {
-		if err := metrics.RegisterStoreCollector(st, time.Now); err != nil {
-			log.Warn("metrics: store collector not registered", "err", err)
-		}
-
 		set, secrets, redactor, redactedLog, err := bootSettings(context.Background(), st, log)
 		if err != nil {
 			result.startup.Complete(diagnostics.StartupCheckGeneratedSecrets, diagnostics.StartupFailed,
@@ -117,12 +128,12 @@ func buildFoundation(
 		result.log = redactedLog
 		fallbackLog = redactedLog
 		secretRedactor = redactor
-		result.libraryClient = library.NewDynamic(result.set.libraryConn(), instanceID)
+		result.libraryClient = library.NewDynamicObserved(result.set.libraryConn(), instanceID, result.metrics)
 		key := func() string { return result.set.str("tmdb.api_key") }
 		if overrides.TMDBBaseURL != "" {
-			result.tmdbClient = tmdb.NewDynamicWithBase(overrides.TMDBBaseURL, key)
+			result.tmdbClient = tmdb.NewDynamicWithBaseObserved(overrides.TMDBBaseURL, key, result.metrics)
 		} else {
-			result.tmdbClient = tmdb.NewDynamic(key)
+			result.tmdbClient = tmdb.NewDynamicObserved(key, result.metrics)
 		}
 		result.refreshSecretRedactor = func() {
 			redactor.Set(collectSecrets(settings.NewRegistry(), result.set.svc, secrets))

@@ -3,12 +3,16 @@ package channels_test
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -145,6 +149,31 @@ func TestReconcile_InternalMaterializesWithoutProgrammer(t *testing.T) {
 	wantDeadline := time.Unix(1_800_000_000, 0).UTC().Add(10 * time.Minute)
 	if !ch.ReconcileDeadline.Equal(wantDeadline) {
 		t.Fatalf("deadline = %v, want %v", ch.ReconcileDeadline, wantDeadline)
+	}
+}
+
+func TestReconcilePublishesOutcomeToGenerationMetrics(t *testing.T) {
+	st := newStore(t)
+	recorder := metrics.New(metrics.Options{})
+	engine := newEngineForBackend(st, nil, mapAvail{"movie:tmdb:1": "lib-1"}, nil,
+		func() string { return schedule.PlayoutBackendInternal }).WithMetrics(recorder)
+	seedChannel(t, st, "private-channel-id", 5, entry("movie:tmdb:1", "A"))
+
+	if err := engine.Reconcile(t.Context(), "private-channel-id"); err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	recorder.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	for _, want := range []string{
+		`loomarr_channel_reconciles_total{result="success"} 1`,
+		`loomarr_channel_reconcile_duration_seconds_count 1`,
+	} {
+		if !strings.Contains(response.Body.String(), want) {
+			t.Errorf("generation scrape does not contain %q", want)
+		}
+	}
+	if strings.Contains(response.Body.String(), "private-channel-id") {
+		t.Fatal("generation scrape leaked a Channel id")
 	}
 }
 

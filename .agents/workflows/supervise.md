@@ -160,30 +160,40 @@ commits, and reports as observable evidence rather than assuming live steering.
 
 ## Present interactive tmux supervision
 
-When the maintainer asks for visible tmux supervision, keep the supervisor and all workers as
-clearly titled panes in the current tmux window unless the maintainer explicitly requests separate
-windows. Enable tmux mouse mode so the maintainer can focus panes, resize them, and inspect
-scrollback. Launch each worker with an interactive agent session so its chat composer remains
-available for follow-up messages; do not substitute a one-shot batch command merely because its
-output is visible in a pane. Show the pane roster after launch and leave completed panes visibly
-stopped until the supervisor reports or reassigns them.
+When the maintainer asks for visible tmux supervision, use clearly titled worker panes freely for
+genuinely independent bounded work, while keeping the supervisor and all workers in the current
+tmux window unless the maintainer explicitly requests separate windows. Enable tmux mouse mode so
+the maintainer can focus panes, resize them, and inspect scrollback. Launch each worker with an
+interactive agent session so its chat composer remains available for follow-up messages; do not
+substitute a one-shot batch command merely because its output is visible in a pane.
+
+After launch, show and audit the pane roster and `make agent-status` roster. A completed pane stays
+only until its report has been captured and acknowledged. After accepting that report, immediately
+reassign the pane to a ready, independent bounded task or close it; do not retain idle panes to fill
+capacity. Show and audit both rosters again after every accepted report, reassignment, and closure.
+The steady-state layout is the supervisor plus active workers.
 
 ## Supervision loop
 
 Keep the main context on decisions and evidence. Do not copy raw exploration logs into it.
 
-1. Inspect native agent state and `make agent-status` before assigning follow-up work.
+1. Inspect native agent state and `make agent-status` before assigning follow-up work. In visible
+   tmux supervision, show the pane roster too.
 2. At a meaningful evidence checkpoint, collect the worker report below. Interpret progress by
    accepted evidence for that checkpoint, not by tokens alone. The declared token limit is still a
    mandatory stop boundary even when progress is good.
 3. Check cited files, diffs, commands, exit status, and artifacts. A worker's conclusion is a claim,
    not integration evidence.
-4. Send a bounded correction when evidence is missing or scope drifted. Below the declared limit,
+4. When the report is accepted in visible tmux supervision, immediately reassign the pane only to a
+   ready independent bounded task, or close it. Retain it only through capture and acknowledgement
+   of that report; never leave it idle. Show and audit the pane roster and `make agent-status` after
+   the accepted report and again after the reassignment or closure.
+5. Send a bounded correction when evidence is missing or scope drifted. Below the declared limit,
    usage alone is not a reason to interrupt; repeated no-progress, duplicated work, or scope drift
    is. At the limit, interrupt and collect the report. Reassign only the unfinished portion; do not
    restart accepted work.
-5. Escalate a blocked dependency, contract deviation, authorization change, or overlapping claim.
-6. Wait when no supervisor decision is needed; avoid polling agents merely to produce activity.
+6. Escalate a blocked dependency, contract deviation, authorization change, or overlapping claim.
+7. Wait when no supervisor decision is needed; avoid polling agents merely to produce activity.
 
 Workers return this schema:
 

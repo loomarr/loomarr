@@ -6,8 +6,6 @@ import (
 	"net/http/pprof"
 
 	"github.com/danielgtaylor/huma/v2"
-
-	"github.com/loomarr/loomarr/internal/metrics"
 )
 
 // Operational endpoints (§7, §17, §18): liveness, readiness, Prometheus, the profiler, and the
@@ -60,6 +58,10 @@ type readyOutput struct {
 
 // registerOps mounts the operational surface. `pprofOn` gates the profiler routes.
 func (s *Server) registerOps(api huma.API, pprofOn bool) {
+	metricsHandler := http.NotFoundHandler()
+	if s.metrics != nil {
+		metricsHandler = s.metrics.Handler()
+	}
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "healthz", Method: http.MethodGet, Path: "/v1/healthz",
 		Summary: "Liveness probe",
@@ -89,8 +91,8 @@ func (s *Server) registerOps(api huma.API, pprofOn bool) {
 		Description: "Public, no credential — a scrape job holds no session. Go runtime collectors " +
 			"plus Loomarr's §17 series. Also served at `/metrics`.",
 		Tags: []string{"ops"},
-	}, "Prometheus text exposition.", "text/plain"), RolePublic, metrics.Handler().ServeHTTP)
-	rawOpAlias(api, "metrics", http.MethodGet, "/metrics", RolePublic, metrics.Handler().ServeHTTP)
+	}, "Prometheus text exposition.", "text/plain"), RolePublic, metricsHandler.ServeHTTP)
+	rawOpAlias(api, "metrics", http.MethodGet, "/metrics", RolePublic, metricsHandler.ServeHTTP)
 
 	// The offline API reference (§7.1). Huma's built-in docs page loads Stoplight from a CDN,
 	// which breaks air-gapped LAN installs, so cfg.DocsPath is blanked and this serves a

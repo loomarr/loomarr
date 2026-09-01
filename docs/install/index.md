@@ -59,5 +59,6 @@ encoding there.
 
 - [Docker install](docker.md)
 - [Hardware acceleration](hardware.md)
+- [Monitoring](monitoring.md)
 - [Upgrading](upgrading.md)
 - [All settings](../configuration.md)
