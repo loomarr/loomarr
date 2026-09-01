@@ -2478,10 +2478,10 @@ a correctness constraint the compiler cannot enforce:
   one. The same applies to the mux, the store handle, and the scheduler.
 - **Global registries are the loud failure.** `prometheus.MustRegister`, `http.HandleFunc` on
   `DefaultServeMux`, `expvar.Publish` and `sql.Register` all panic on a second registration.
-  Loomarr uses **none** of them except Prometheus. The store collector is registered once for the
-  process and atomically rebound to each generation's live store; merely tolerating
-  `AlreadyRegisteredError` would leave later scrapes querying the previous generation's closed
-  handle.
+  Loomarr uses none of them. Prometheus is generation-scoped: `internal/metrics.Recorder` owns a
+  private registry and the application replaces the Recorder with the rest of the generation.
+  A process-global default registry or collector would make a later scrape observe stale state and
+  is forbidden by the metrics contract in §17.
 - ⚠ **`sync.Once` is the quiet failure**, and the one to watch: a package-level `Once` guarding a
   resource makes iteration 2 inherit iteration 1's closed handle, with no panic and no log line.
   Every `sync.Once` in this repo is closure-local or a struct field, so it rebuilds with its
@@ -7471,7 +7471,54 @@ selection invalidates the preview and disables download until the replacement pr
 
 ### Metrics and health
 
-- **Metrics (Prometheus):** records by state; requests submitted / give-ups; webhook events by type; library-lookup + reconcile-loop latency; **channel reconciles, Tunarr API latency/errors, slots pending-vs-filled per channel**; LLM latency + (hosted) token/cost, proposals generated, acquisitions proposed/approved/rejected, grounding-dropped candidates; filler clips synced/tagged/untagged, pod fallback-ladder depth (how often matching degrades), and actual internal-playout rotation airings by bounded repeat/cooldown state; logins (success/failure) and active sessions; job queue depth + janitor purge counts; slot-drift substitutions; Diagnostic events dropped by reason/source and retained Diagnostic/process-output bytes. Outbound request count and latency wrap the retrying transport, so four attempts remain **one logical request** in those series; `loomarr_outbound_retries_total{target,reason}` separately counts each actual additional attempt with a bounded reason (`transport`, `408`, `429`, `500`, `502`, `503`, or `504`).
+- **Metrics (Prometheus) are an operator contract, not a domain-event mirror.** One generation-scoped
+  `internal/metrics.Recorder` owns a private Prometheus registry, the Go/process collectors, the
+  exposition handler, HTTP middleware, store collection, and every label classifier. The
+  composition root constructs one Recorder per application generation and gives callers narrow
+  semantic callbacks; callers never select collectors or supply arbitrary label values. A restart
+  therefore replaces the complete registry rather than rebinding a process-global collector to a
+  new Store.
+
+  `/v1/metrics` and its permanent `/metrics` alias expose that registry without application
+  authentication on the trusted-LAN listener (§7). A deployment must put that listener on a private
+  scrape network or harden its operator edge; Loomarr does not add Prometheus-specific credentials.
+  The surface contains aggregate operational state and must never expose a username, email, Title,
+  Channel id, media id, request id, URL, path, prompt, raw error, secret, or other caller-controlled
+  value in a label or HELP string.
+
+  These are the required families. A labelled counter with a closed value set initializes its known
+  combinations to zero; a histogram does not invent an observation. `job` is the sealed scheduler
+  registry's code-defined name. Every other label value is a closed enum owned by the Recorder;
+  unexpected values collapse to `other` rather than creating a series.
+
+  | Operator question | Families and labels |
+  | --- | --- |
+  | Which build and database backend am I scraping? | `loomarr_build_info{version,revision,database}` (constant `1`) |
+  | Is inbound HTTP failing, slow, saturated, or causing excessive dependency fan-out? | `loomarr_http_requests_total{method,route,code}`, `loomarr_http_request_duration_seconds{method,route}`, `loomarr_http_requests_in_flight`, `loomarr_http_outbound_fanout{method,route}`; `route` is the matched route template, never the request path, and an unknown method becomes `other` |
+  | Which dependency is failing or slow, and how much instability do retries hide? | `loomarr_outbound_requests_total{target,code}`, `loomarr_outbound_request_duration_seconds{target}`, `loomarr_outbound_retries_total{target,reason}`; count/latency wrap one logical retrying request while retries count each additional attempt, and reason is `transport`, `408`, `429`, `500`, `502`, `503`, or `504` |
+  | Is the database pool saturated or churning? | `loomarr_database_connections{state}`, `loomarr_database_max_open_connections`, `loomarr_database_connection_waits_total`, `loomarr_database_connection_wait_duration_seconds_total`, `loomarr_database_connections_closed_total{reason}`; `state` is `open`, `in_use`, or `idle`, and `reason` is `idle_limit`, `idle_time`, or `lifetime` |
+  | Is acquisition or Proposal work stuck? | compatibility gauges `loomarr_titles{state}`, `loomarr_jobs{status}`, `loomarr_proposal_job_oldest_age_seconds{status}`, `loomarr_proposal_job_attempts{outcome}`, `loomarr_proposal_job_failures{code}`, plus `loomarr_active_sessions`; these are current retained-object counts, not cumulative events |
+  | Are named Jobs running and completing on time? | `loomarr_scheduler_job_executions_total{job,result,trigger}`, `loomarr_scheduler_job_duration_seconds{job}`, `loomarr_scheduler_jobs_running{job}`, `loomarr_scheduler_job_last_success_timestamp_seconds{job}`; `result` is `success`, `error`, `timeout`, or `panic`, and `trigger` is `scheduled` or `manual` |
+  | Are Channel reconciles healthy? | `loomarr_channel_reconciles_total{result}`, `loomarr_channel_reconcile_duration_seconds`, `loomarr_channel_slot_substitutions_total`; result is `success` or `error` |
+  | Is internal Playout serving viewers and surviving process failures? | `loomarr_playout_sessions_active`, `loomarr_playout_session_starts_total{result}`, `loomarr_playout_process_failures_total{stage}`, `loomarr_playout_fallbacks_total{reason}`; labels are bounded lifecycle outcomes/stages, never Channel, programme, client, Process-run, or file identities |
+  | Are authentication, LLM usage, filler selection, and Image work healthy? | `loomarr_auth_logins_total{result}`, `loomarr_llm_tokens_total{kind}`, `loomarr_filler_pods_total{match_level}`, `loomarr_filler_rotation_airings_total{repeat,cooldown}`, and the `loomarr_image_worker_*` operation, duration, byte, queue-wait, memory, and in-flight families; their dimensions are closed enums |
+  | Did live store-backed collection fail? | `loomarr_metrics_scrape_errors_total{source}`; collection failure preserves the previous successful values and increments the bounded source |
+
+  Family name, type, unit, label names, and label-value domains are compatibility commitments.
+  Additive families and closed values are compatible. A family never changes type or unit in place.
+  A rename dual-emits old and new names from the same observation for one documented release line;
+  the old HELP is marked deprecated and is removed only in a planned breaking release. The four
+  five historical state-gauge names above remain until such a migration is deliberately scheduled.
+
+  Loomarr ships one source-controlled, file-provisionable Grafana **Overview** dashboard with a
+  stable UID and a Prometheus datasource variable, plus optional Prometheus recording and alert-rule
+  examples. The dashboard is read-only source (`allowUiUpdates: false`): provisioning overwrites UI
+  edits. Prometheus, Alertmanager, and Grafana are not required Loomarr services and are not added to
+  default Compose. `make observability-verify` checks the metric manifest, hostile-label exclusions,
+  dashboard query references, rule syntax/behavior, and provisioning in pinned test containers.
+  Additional dashboards need a distinct operator workflow; traces, hosted-model dollar estimates,
+  stack retention, alert routing, credentials, and published monitoring ports are explicitly out of
+  scope.
 - **Readiness** is Current Health's required-check projection: required startup evidence must pass,
   continuously observed required checks must remain fresh, and sustained required-check failures make
   readiness false while liveness remains true. Optional warnings/failures/staleness produce
