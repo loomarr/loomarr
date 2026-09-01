@@ -34,8 +34,9 @@ func render(pkgs []Package) string {
 
 	b.WriteString(beginMarker + "\n\n")
 	b.WriteString("#### Package map\n\n")
-	b.WriteString("Generated from each package's own doc comment and its imports, so it cannot drift ")
-	b.WriteString("from the code the way a hand-maintained list does. **Layer** is derived: the longest ")
+	b.WriteString("Generated recursively from each package's own doc comment and exact internal imports, ")
+	b.WriteString("using full paths below `internal/`, so it cannot drift from the code the way a ")
+	b.WriteString("hand-maintained list does. **Layer** is derived: the longest ")
 	b.WriteString("path from that package to one with no internal dependencies. It is the measured ")
 	b.WriteString("layering, not an aspirational one.\n\n")
 	b.WriteString("Sizes are deliberately absent — they change on nearly every commit, which would make ")
