@@ -7853,8 +7853,14 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   `check-static` contract half and its race-policy-aware `test` half as parallel jobs, and may shard
   the latter or run independent runtime certification beside both, but the required aggregate
   succeeds only when every constituent succeeds. Splitting execution must not delete, skip, or
-  weaken an assertion; `go-shard-verify` proves the test shards remain an exact partition of
-  `go list ./...`. The release verifier also requires every top-level job in `ci.yml` to appear in
+  weaken an assertion. Go package shards consume the alphabetic `go list ./...` stream in rows the
+  width of the shard count and alternate each row's direction. This serpentine distribution avoids
+  a recurring every-N phase alignment without introducing a hand-maintained package-cost table;
+  adding or removing a package still fails safe because every package remains assigned by the
+  current tree. `go-shard-verify` proves the test shards remain an exact partition of
+  `go list ./...`, and the release-verification suite pins the alternating assignment itself so a
+  coverage-preserving regression to straight round-robin cannot silently restore the measured
+  imbalance. The release verifier also requires every top-level job in `ci.yml` to appear in
   `ci-ok.needs`; adding a job without aggregating its result fails closed.
   The captured-private-fixture regression guard remains one repository contract behind the stable
   `privacy-verify` Make interface. It enumerates the tracked tree once, extracts only the candidate

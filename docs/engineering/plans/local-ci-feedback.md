@@ -118,6 +118,15 @@ gate documentation are amended before the first change that alters required beha
   5m39s critical path while release-worker certification completed in 2m50s and the cached Go
   shards completed in 2m21s, 3m09s, and 2m24s. This establishes the pre-activation baseline for
   observing specialized decisions without allowing them to skip any current job.
+- PR #799's authoritative merge-group run exposed a new cold-run imbalance after later suite growth:
+  the three Go test steps took 11m57s, 6m30s, and 5m40s. Reported package durations totaled
+  1058/683/523 seconds under straight round-robin because `app`, `channels`, and `store` aligned on
+  shard 1. Alternating each N-wide package row models 766/683/816 seconds from the same evidence,
+  with no maintained cost table and no change to the three-runner count or exact-partition guard.
+- That run also confirmed all rolling Go caches missed and their queue saves correctly skipped.
+  GitHub's default-branch cache policy rules out `merge_group`/`workflow_run` promotion. A trusted
+  `push` warmer would repeat substantial compiler/linter work after the authoritative queue, so the
+  bounded next optimization is shard assignment rather than adding a third validation lane.
 - The specialized classifier now publishes shadow `impact_*` decisions and a comparison table in
   the `changes` job summary. Legacy broad outputs remain the only selectors until shadow evidence
   and regression fixtures establish that every affected gate is retained.

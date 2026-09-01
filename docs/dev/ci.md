@@ -512,6 +512,15 @@ contract out of the test shards cannot make it optional.
 `make go-shard-verify` runs in `go-contracts` and asserts the Go shards are a true partition of
 `go list ./...` — a split that drops a package would otherwise pass by not running it.
 
+The Go partition is serpentine over the alphabetic package stream: an N-package row assigns
+left-to-right, the next right-to-left, and so on. This keeps assignment derived from the current tree
+without a package-cost table, but breaks the every-N phase alignment straight round-robin can create.
+The 2026-09-01 merge-group run placed `internal/app`, `internal/channels`, and `internal/store` on
+shard 1: its test step took 11m57s versus 6m30s and 5m40s. Replaying the reported package durations
+through the serpentine assignment models 766/683/816 package-seconds instead of 1058/683/523. The
+partition guard proves coverage, while `TestGoShardUsesSerpentineRows` independently pins the
+alternating assignment.
+
 Sharding is free on a public repo. Check the bill before copying it into a private one.
 
 ## Caching
@@ -520,6 +529,13 @@ Sharding is free on a public repo. Check the bill before copying it into a priva
   its key doesn't gets written once and frozen. Use a rolling key with `restore-keys`.
 - **The 10GB cap evicts LRU across all refs**, so closed PRs' caches push out live ones.
   `cache-cleanup.yml` deletes both `refs/pull/N/merge` and matching merge-queue caches on close.
+- **Default-branch cache writes require a trusted trigger.** GitHub permits a default-branch writer
+  from `push` or `workflow_dispatch`, but `merge_group` and `workflow_run` cannot promote their
+  outputs into that scope. The Go cache-save conditions therefore remain useful only for a deliberate
+  manual run on `main`; ordinary PR and queue runs are restore-only. Do not add a post-queue artifact
+  promotion workflow: GitHub makes that cache scope read-only, and a `push` warmer that repeats the
+  expensive compiler/linter work would violate the publication-only main lane. Reconsider a warmer
+  only with measured evidence that a bounded preparation step saves more work than it adds.
 
 Apple compilation caching is a validated artifact protocol, not an unchecked DerivedData restore.
 The fingerprint binds the runner OS and architecture, exact Xcode and Swift identities, both

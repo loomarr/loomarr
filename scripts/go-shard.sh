@@ -3,16 +3,18 @@
 # `make test` across runners for wall-clock. See the GO_SHARD note in the Makefile.
 #
 #   ./scripts/go-shard.sh          -> "./..."   (the whole tree — the default, always)
-#   ./scripts/go-shard.sh 2/3      -> the 2nd of 3 round-robin slices of `go list ./...`
+#   ./scripts/go-shard.sh 2/3      -> the 2nd of 3 serpentine slices of `go list ./...`
 #   ./scripts/go-shard.sh --verify 3
 #                                  -> assert the 3 slices reconstruct `go list ./...` exactly
 #
-# ⚠ ROUND-ROBIN, NOT CONTIGUOUS BLOCKS, and not a cost table. `go list` is alphabetical, so
-# contiguous blocks would pile `internal/a*` into shard 1 and leave the tail idle. Round-robin
-# interleaves, which spreads the expensive packages (measured 2026-08-09: store 48s, images 36s,
-# api 36s, integration 31s, auth 30s) across shards without anyone maintaining a list of what is
-# slow. A hand-written cost table is the thing this repo keeps getting bitten by — it would be
-# correct the day it was written and wrong by the next phase.
+# ⚠ SERPENTINE, NOT CONTIGUOUS BLOCKS or straight round-robin, and not a cost table. `go list` is
+# alphabetical, so contiguous blocks pile related packages together. Straight round-robin can
+# create an every-N phase alignment: measured 2026-09-01, three of the heaviest current packages
+# (`app`, `channels`, and `store`) all landed on shard 1, whose hosted test step took 11m57s while
+# the peers took 6m30s and 5m40s. Grouping the same stream into N-wide rows and alternating each
+# row's direction retains automatic assignment while breaking that alignment. Against the exact
+# hosted package timings, the modeled totals move from 1058/683/523s to 766/683/816s. A hand-written
+# package-cost table would be correct only on the day it was written and then drift silently.
 #
 # ⚠ THE --verify MODE IS NOT OPTIONAL DECORATION. A sharding bug that DROPS a package does not
 # fail anything: the dropped tests simply never run and every shard stays green, which is the
@@ -26,11 +28,19 @@ cd "$ROOT"
 # One `go list` per invocation, reused: it walks the module and is far from free.
 packages() { go list ./...; }
 
-# Shard i of n, 1-indexed. NR is awk's 1-based record number, so shard i takes the records
-# where (NR-1) % n == i-1, i.e. NR % n == i % n (which lands shard n on NR % n == 0).
+# Shard i of n, 1-indexed. Read each N-package row left-to-right, then right-to-left, alternating.
+# For three shards the assignments are 1,2,3 / 3,2,1 / 1,2,3 ... . Every complete row contributes
+# one package to every shard, while adjacent alphabetical groups do not keep the same phase.
 slice() {
   local index="$1" total="$2"
-  packages | awk -v i="$index" -v n="$total" 'NR % n == (i % n)'
+  packages | awk -v i="$index" -v n="$total" '
+    {
+      row = int((NR - 1) / n)
+      offset = (NR - 1) % n
+      shard = (row % 2 == 0) ? offset + 1 : n - offset
+      if (shard == i) print
+    }
+  '
 }
 
 usage() {
