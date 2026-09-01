@@ -12,6 +12,10 @@ import (
 	"github.com/loomarr/loomarr/internal/store"
 )
 
+var ErrApplicationQuiescing = errors.New("application generation is quiescing")
+
+const interactiveOperationCompletionTimeout = 5 * time.Second
+
 // Application is one fully wired Loomarr generation. The process owns the listener, signals,
 // and store; Application owns the handler and every generation-scoped worker built behind it.
 type Application struct {
@@ -120,6 +124,45 @@ func (l *generationLifecycle) goRun(run func(context.Context)) {
 		defer l.wg.Done()
 		run(l.ctx)
 	}()
+}
+
+// startInteractiveOperation accepts request-triggered work into this application generation.
+// Callers cannot supply the request context: accepted work is intentionally independent of an
+// HTTP disconnect and is instead bounded by the generation plus its operation-specific timeout.
+func (l *generationLifecycle) startInteractiveOperation(
+	timeout time.Duration,
+	run func(context.Context) error,
+	complete func(context.Context, error),
+) error {
+	if run == nil {
+		return nil
+	}
+	l.mu.Lock()
+	if l.closed {
+		l.mu.Unlock()
+		return ErrApplicationQuiescing
+	}
+	l.wg.Add(1)
+	l.mu.Unlock()
+	go func() {
+		defer l.wg.Done()
+		ctx := l.ctx
+		if timeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, timeout)
+			defer cancel()
+		}
+		runErr := run(ctx)
+		if complete == nil {
+			return
+		}
+		completionCtx, completionCancel := context.WithTimeout(
+			context.WithoutCancel(l.ctx), interactiveOperationCompletionTimeout,
+		)
+		defer completionCancel()
+		complete(completionCtx, runErr)
+	}()
+	return nil
 }
 
 // addStop registers teardown for a resource that is not represented by a worker function.
