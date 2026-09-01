@@ -1,7 +1,28 @@
 # Model-led filler identification plan
 
 Date: 2026-08-31
-Status: proposed execution plan for #548, #549, #555, #786, and #787
+Status: active execution plan for #548, #549, #555, #786, and #787; the local diagnostic gate
+failed and the full-corpus run is paused pending bounded third-family calibration
+
+## Current execution evidence
+
+PR #793 shipped the factored unit/role schema, strict evidence validation, deterministic comparison,
+and two digest-pinned local assessment paths. Gemma 4 and Qwen3.5 each completed the same 32-case
+identity-blind package with no operational failures. Their deterministic report found:
+
+- 22/32 unit-structure agreements;
+- 7/22 role agreements among cases where role was comparable;
+- 7/32 exact agreements; and
+- 25/32 cases requiring adjudication.
+
+That is a systemic diagnostic failure, not development truth. It activates the stop rule below: do
+not scale either local assessor or their adjudication rate to all 300 cases. A deterministic 15-case
+selection now covers four unit disagreements, eight role disagreements, and three agreement controls
+(selection SHA-256 `acfb309e7e09ea6efa868e0530c5fc0c642707e277c86dcbc8b006b00f89455f`).
+PR #804 shipped a serial, snapshot-bound, zero-data-retention hosted runner with hard request,
+per-request, and total-spend ceilings. PR #807 shipped the inference-free three-assessor report. The
+Qwen3.8 run remains deliberately unexecuted until its bounded provider spend is explicitly
+authorized.
 
 ## Decision
 
@@ -91,6 +112,11 @@ modality is an operational hold, never `invalid` and never an automatic admissio
 
 Gate: the same inputs produce byte-identical packets and scoring; every disagreement is assigned to a
 named structural or role confusion; no free-form taxonomy difference counts as a role disagreement.
+
+Implementation and reproducibility passed. Model agreement did not. Phase 0 therefore remains at its
+declared repair boundary: use the 15-case third-family calibration to distinguish weak local models
+from weak evidence/prompt structure, then revise only the failing contract slice before any 300-case
+run.
 
 ### Phase 1 — model-led 300-case relabel
 
@@ -185,11 +211,15 @@ authority.
 
 ## Immediate work order
 
-1. Correct #786 and #787 so they no longer assign 332 blind labels to the maintainer.
-2. Implement the factored assessment schema and disagreement report against the existing artifacts.
-3. Run the 32-case model-led diagnostic.
-4. Run the two-family 300-case relabel only after the diagnostic contract is sound.
-5. Build the 48-case calibration package and commission its independent review.
-6. Use the resulting development truth to run #555; keep production in shadow until the separate
+1. Complete: #786 and #787 no longer assign 332 blind labels to the maintainer.
+2. Complete in #793: implement the factored assessment schema, evidence validation, and deterministic
+   disagreement report.
+3. In progress: the 32-case local diagnostic completed and failed its agreement gate; #804 and #807
+   prepared a bounded Qwen3.8 third-family calibration over the deterministic 15-case slice. Execute
+   it only after explicit spend authorization, then classify the failure as model, prompt, or
+   evidence-route weakness.
+4. Pending the repaired Phase 0 gate: run the two-family 300-case relabel. Do not substitute mass
+   adjudication for a passing diagnostic.
+5. Pending Phase 1: build the 48-case calibration package and commission its independent review.
+6. Pending calibrated development truth: run #555 and keep production in shadow until the separate
    holdout passes.
-
