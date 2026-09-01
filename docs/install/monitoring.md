@@ -44,10 +44,11 @@ bounded as a Library and household grow.
 
 ## Use the supplied Grafana dashboard
 
-The repository's `observability/grafana/loomarr-overview.json` is one portable operational
+The repository's `observability/grafana/dashboards/loomarr-overview.json` is one portable operational
 overview. It uses a Prometheus datasource variable, so it does not assume a datasource UID. The
-companion provider example in `observability/grafana/provisioning/` provisions the dashboard from
-disk with a stable UID and disables UI updates.
+companion files in `observability/grafana/provisioning/` provision the dashboard and a Prometheus
+datasource from disk. Set `PROMETHEUS_URL` in Grafana's environment to the URL Grafana can use to
+reach Prometheus. The dashboard has a stable UID and disables UI updates.
 
 Copy those files into an existing Grafana deployment and select the Prometheus datasource when the
 dashboard opens. File provisioning is authoritative: replacing the JSON during an upgrade
@@ -57,6 +58,10 @@ locally maintained variant.
 Optional recording and alert-rule examples live in `observability/prometheus/`. They do not install
 Alertmanager, choose notification destinations, or impose a retention policy. Review thresholds
 against the capacity and traffic of your installation before loading them.
+
+Run `make observability-verify` after changing the manifest, dashboard, provisioning, or rules. It
+uses pinned Prometheus and Grafana containers to check rule behavior and prove Grafana can load the
+dashboard by its UID.
 
 Loomarr does not add Prometheus, Grafana, Alertmanager, credentials, storage, or monitoring ports to
 its default Compose topology. These artifacts integrate with an observability stack you already
