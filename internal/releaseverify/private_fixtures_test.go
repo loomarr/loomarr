@@ -11,8 +11,9 @@ import (
 func TestVerifyPrivateFixturesRejectsTrackedCaseVariantWithoutDisclosingIt(t *testing.T) {
 	t.Parallel()
 
+	candidate := strings.ToUpper(privateFixtureDomainSentinel())
 	root := trackedFixtureRepository(t, map[string]string{
-		"notes.txt": "CaPtUrEd-FiXtUrE.GuArD.InVaLiD\n",
+		"notes.txt": candidate + "\n",
 	})
 
 	err := VerifyPrivateFixtures(root)
@@ -22,7 +23,7 @@ func TestVerifyPrivateFixturesRejectsTrackedCaseVariantWithoutDisclosingIt(t *te
 	if !strings.Contains(err.Error(), "private-fixture regression sentinel") {
 		t.Fatalf("error %q does not identify the matched fingerprint label", err)
 	}
-	if strings.Contains(strings.ToLower(err.Error()), "captured-fixture.guard.invalid") {
+	if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(candidate)) {
 		t.Fatalf("error %q disclosed the matched candidate", err)
 	}
 }
@@ -31,7 +32,7 @@ func TestVerifyPrivateFixturesIgnoresUntrackedCandidates(t *testing.T) {
 	t.Parallel()
 
 	root := trackedFixtureRepository(t, map[string]string{"tracked.txt": "safe\n"})
-	if err := os.WriteFile(filepath.Join(root, "untracked.txt"), []byte("captured-fixture.guard.invalid\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "untracked.txt"), []byte(privateFixtureDomainSentinel()+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -44,7 +45,7 @@ func TestVerifyPrivateFixturesIgnoresTrackedFilesRemovedFromTheWorkingTree(t *te
 	t.Parallel()
 
 	root := trackedFixtureRepository(t, map[string]string{
-		"removed.txt": "captured-fixture.guard.invalid\n",
+		"removed.txt": privateFixtureDomainSentinel() + "\n",
 	})
 	if err := os.Remove(filepath.Join(root, "removed.txt")); err != nil {
 		t.Fatal(err)
@@ -70,6 +71,10 @@ func TestVerifyPrivateFixturesScopesCapturedProfileFieldsToAuditedFixtures(t *te
 	if err := VerifyPrivateFixtures(ordinaryRoot); err != nil {
 		t.Fatalf("VerifyPrivateFixtures widened fixture-only fields to ordinary tracked prose: %v", err)
 	}
+}
+
+func privateFixtureDomainSentinel() string {
+	return "captured-fixture" + ".guard" + ".invalid"
 }
 
 func trackedFixtureRepository(t *testing.T, files map[string]string) string {
