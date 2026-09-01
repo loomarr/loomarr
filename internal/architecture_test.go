@@ -19,20 +19,25 @@ func TestInboundDependencyRuleIncludesNewNestedProductionPackages(t *testing.T) 
 	nested := modulePath + "/internal/newdomain/nested"
 	safe := modulePath + "/internal/safe"
 	testOnly := modulePath + "/internal/testonly"
+	wire := modulePath + "/internal/wire"
 	pkgs := map[string]*build.Package{
 		api:      {GoFiles: []string{"api.go"}},
 		app:      {GoFiles: []string{"app.go"}, Imports: []string{api}},
 		nested:   {GoFiles: []string{"domain.go"}, Imports: []string{api}},
 		safe:     {GoFiles: []string{"safe.go"}},
 		testOnly: {TestGoFiles: []string{"only_test.go"}, Imports: []string{api}},
+		wire:     {GoFiles: []string{"wire.go"}, Imports: []string{"github.com/danielgtaylor/huma/v2/sse"}},
 	}
 
 	roots := inboundDependencyRulePackages(pkgs)
-	if want := []string{nested, safe}; !reflect.DeepEqual(roots, want) {
+	if want := []string{nested, safe, wire}; !reflect.DeepEqual(roots, want) {
 		t.Fatalf("rule packages = %v, want %v", roots, want)
 	}
 	if got, want := packagesReaching(pkgs, roots, api), []string{nested}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("packages reaching api = %v, want %v", got, want)
+	}
+	if got, want := importersOfPackageFamily(pkgs, reachableFrom(pkgs, wire), "github.com/danielgtaylor/huma/v2"), []string{wire}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("packages importing Huma family = %v, want %v", got, want)
 	}
 }
 
