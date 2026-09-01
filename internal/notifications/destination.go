@@ -83,8 +83,9 @@ func (d Destination) Validate() error {
 		if d.Audience != RecipientApprovers && d.Audience != RecipientOperators {
 			return fmt.Errorf("installation destination requires an approver or operator audience")
 		}
-		if d.Means == MeansEmail || d.Means == MeansWebPush {
-			return fmt.Errorf("installation destination cannot use person delivery means %q", d.Means)
+		definition, ok := ProviderDefinitionFor(d.Means)
+		if !ok || definition.MemberOwned {
+			return fmt.Errorf("installation destination cannot use member-owned delivery means %q", d.Means)
 		}
 	case ScopePerson:
 		if err := identifier("destination owner", d.OwnerID); err != nil {
@@ -93,7 +94,8 @@ func (d Destination) Validate() error {
 		if d.Audience != RecipientPerson && d.Audience != RecipientApprovers && d.Audience != RecipientOperators {
 			return fmt.Errorf("person destination requires a supported audience")
 		}
-		if d.Means != MeansEmail && d.Means != MeansWebPush {
+		definition, ok := ProviderDefinitionFor(d.Means)
+		if d.Means != MeansEmail && (!ok || !definition.MemberOwned) {
 			return fmt.Errorf("person destination requires email or web push")
 		}
 	default:
@@ -103,13 +105,14 @@ func (d Destination) Validate() error {
 		return fmt.Errorf("destination requires at least one topic")
 	}
 	seen := make(map[Topic]struct{}, len(d.Topics))
+	definition, _ := ProviderDefinitionFor(d.Means)
 	for _, topic := range d.Topics {
 		if _, exists := seen[topic]; exists {
 			return fmt.Errorf("destination topic %q is duplicated", topic)
 		}
 		seen[topic] = struct{}{}
-		if !topicSupportsAudience(topic, d.Audience) {
-			return fmt.Errorf("topic %q does not support audience %q", topic, d.Audience)
+		if !providerSupportsTopic(definition, topic) {
+			return fmt.Errorf("provider %q does not support topic %q", d.Means, topic)
 		}
 	}
 	if err := validateDestinationValues("configuration", d.Configuration, 100, 4000); err != nil {
@@ -126,17 +129,13 @@ func (d Destination) Summary() DestinationSummary {
 	}
 }
 
-func topicSupportsAudience(topic Topic, audience RecipientKind) bool {
-	switch topic {
-	case TopicProposalSubmitted:
-		return audience == RecipientApprovers
-	case TopicProposalApproved, TopicProposalDeclined:
-		return audience == RecipientPerson
-	case TopicAcquisitionAvailable, TopicAcquisitionGaveUp, TopicChannelLive, TopicChannelDegraded:
-		return audience == RecipientPerson || audience == RecipientOperators
-	default:
-		return false
+func providerSupportsTopic(definition ProviderDefinition, topic Topic) bool {
+	for _, supported := range definition.Topics {
+		if supported == topic {
+			return true
+		}
 	}
+	return false
 }
 
 func validateDestinationValues(name string, values map[string]string, limit, valueLimit int) error {

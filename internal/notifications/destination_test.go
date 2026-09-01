@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-func TestDestinationValidationPinsScopeAudienceAndTopics(t *testing.T) {
+func TestDestinationValidationPinsOwnershipAndProviderTopics(t *testing.T) {
 	now := time.Unix(1_900_000_000, 0)
 	cases := []Destination{
 		{
@@ -56,9 +56,9 @@ func TestDestinationValidationPinsScopeAudienceAndTopics(t *testing.T) {
 		t.Fatal("person destination accepted no owner")
 	}
 	invalid = cases[1]
-	invalid.Topics = []Topic{TopicChannelDegraded}
+	invalid.Topics = []Topic{TopicProposalApproved}
 	if err := invalid.Validate(); err == nil {
-		t.Fatal("approver destination accepted an operator topic")
+		t.Fatal("shared provider accepted a requester-only topic")
 	}
 	invalid = cases[0]
 	invalid.Topics = nil

@@ -42,11 +42,17 @@ func (r *DestinationRouter) Routes(ctx context.Context, intent Intent) ([]Route,
 		if err := destination.Validate(); err != nil {
 			return nil, fmt.Errorf("validate notification destination %q: %w", destination.ID, err)
 		}
-		if !destination.Enabled || destination.Audience != intent.RecipientKind ||
-			!destinationHasTopic(destination, intent.Topic) {
+		if !destination.Enabled || !destinationHasTopic(destination, intent.Topic) {
 			continue
 		}
-		if destination.Scope == ScopePerson {
+		if destination.Scope == ScopeInstallation {
+			if !installationDestinationMatches(destination.Means, intent.Topic, intent.RecipientKind) {
+				continue
+			}
+		} else {
+			if destination.Audience != intent.RecipientKind {
+				continue
+			}
 			if intent.RecipientKind == RecipientPerson {
 				if destination.OwnerID != intent.RecipientID {
 					continue
@@ -70,6 +76,23 @@ func (r *DestinationRouter) Routes(ctx context.Context, intent Intent) ([]Route,
 		})
 	}
 	return routes, nil
+}
+
+func installationDestinationMatches(means Means, topic Topic, recipient RecipientKind) bool {
+	// SMTP is one installation provider but remains recipient-aware: the adapter resolves the
+	// intent's verified contact after claim. Shared endpoints receive only the canonical group
+	// intent for an event, avoiding one duplicate delivery per affected requester.
+	if means == MeansEmail {
+		return true
+	}
+	switch topic {
+	case TopicProposalSubmitted:
+		return recipient == RecipientApprovers
+	case TopicAcquisitionAvailable, TopicAcquisitionGaveUp, TopicChannelLive, TopicChannelDegraded:
+		return recipient == RecipientOperators
+	default:
+		return false
+	}
 }
 
 func destinationHasTopic(destination Destination, topic Topic) bool {

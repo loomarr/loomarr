@@ -108,3 +108,46 @@ func TestDestinationRouterRechecksPersonalGroupEligibilityAtEventTime(t *testing
 		t.Fatalf("personal approver routes = %+v, %v", routes, err)
 	}
 }
+
+func TestDestinationRouterDerivesSharedAudienceFromTheEvent(t *testing.T) {
+	now := time.Unix(1_900_000_000, 0)
+	source := destinationSource{destinations: []notifications.Destination{{
+		ID: "shared", Means: notifications.MeansSlack, Label: "Household Slack",
+		Scope: notifications.ScopeInstallation, Audience: notifications.RecipientApprovers,
+		Topics: []notifications.Topic{notifications.TopicAcquisitionAvailable}, Enabled: true,
+		CreatedAt: now, UpdatedAt: now,
+	}}}
+	router := notifications.NewDestinationRouter(source, nil)
+	person := productIntent(now, notifications.TopicAcquisitionAvailable, notifications.RecipientPerson, "member-1")
+	if routes, err := router.Routes(t.Context(), person); err != nil || len(routes) != 0 {
+		t.Fatalf("shared routes for requester intent = %+v, %v", routes, err)
+	}
+	operators := productIntent(now, notifications.TopicAcquisitionAvailable, notifications.RecipientOperators, "operators")
+	if routes, err := router.Routes(t.Context(), operators); err != nil || len(routes) != 1 || routes[0].DestinationRef != "shared" {
+		t.Fatalf("shared routes for operator intent = %+v, %v", routes, err)
+	}
+}
+
+func TestDestinationRouterUsesSMTPAsOneRecipientAwareProvider(t *testing.T) {
+	now := time.Unix(1_900_000_000, 0)
+	source := destinationSource{destinations: []notifications.Destination{{
+		ID: "smtp", Means: notifications.MeansEmail, Label: "Household email",
+		Scope: notifications.ScopeInstallation, Audience: notifications.RecipientOperators,
+		Topics: []notifications.Topic{notifications.TopicProposalApproved}, Enabled: true,
+		CreatedAt: now, UpdatedAt: now,
+	}}}
+	routes, err := notifications.NewDestinationRouter(source, nil).Routes(t.Context(),
+		productIntent(now, notifications.TopicProposalApproved, notifications.RecipientPerson, "member-1"))
+	if err != nil || len(routes) != 1 || routes[0].DestinationRef != "smtp" {
+		t.Fatalf("SMTP requester route = %+v, %v", routes, err)
+	}
+}
+
+func productIntent(now time.Time, topic notifications.Topic, kind notifications.RecipientKind, id string) notifications.Intent {
+	return notifications.Intent{
+		ID: "intent-" + string(kind), Topic: topic, RecipientKind: kind, RecipientID: id,
+		ReferenceKind: notifications.ReferenceTitle, ReferenceID: "reference-1",
+		Policy: notifications.PolicyConfigurable, Template: notifications.TemplateData{SubjectName: "Cartoons"},
+		IdempotencyKey: "event:" + string(topic) + ":" + string(kind) + ":" + id, CreatedAt: now,
+	}
+}
