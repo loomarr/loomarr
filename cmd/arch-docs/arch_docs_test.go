@@ -1,9 +1,11 @@
 package main
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -37,41 +39,37 @@ func TestArchDocs_NoDrift(t *testing.T) {
 	}
 }
 
-// Every package under internal/ must appear in the generated map. This is the same
-// guarantee TestPackageMapListsEveryPackage gives for the hand-written §14.2 table,
-// asserted here against the generated block so the two cannot disagree about what
-// exists.
+// The committed generated block is an exact set inventory: every source package is
+// present, including nested packages, and no removed package survives as a stale row.
+// Source discovery here is deliberately independent of scan(), so one recursive-walk
+// bug cannot make both the generator and its coverage gate agree on the same omission.
 func TestArchDocs_CoversEveryPackage(t *testing.T) {
 	root := repoRoot(t)
-	pkgs, err := scan(filepath.Join(root, "internal"))
+	source, err := productionPackageNames(filepath.Join(root, "internal"))
 	if err != nil {
-		t.Fatalf("scan: %v", err)
+		t.Fatalf("discover source packages: %v", err)
 	}
-	block := render(pkgs)
+	doc, err := os.ReadFile(filepath.Join(root, "docs", "design.md"))
+	if err != nil {
+		t.Fatalf("read design.md: %v", err)
+	}
+	rendered := renderedPackageNames(string(doc))
+	missing, stale := packageInventoryDiff(source, rendered)
+	if len(missing) > 0 || len(stale) > 0 {
+		t.Errorf("generated package inventory differs from source\nmissing: %v\nstale: %v", missing, stale)
+	}
+}
 
-	entries, err := os.ReadDir(filepath.Join(root, "internal"))
-	if err != nil {
-		t.Fatalf("read internal/: %v", err)
+func TestPackageInventoryDiffReportsMissingAndStale(t *testing.T) {
+	missing, stale := packageInventoryDiff(
+		map[string]bool{"images": true, "images/rustgen": true},
+		map[string]bool{"images": true, "removed": true},
+	)
+	if !reflect.DeepEqual(missing, []string{"images/rustgen"}) {
+		t.Fatalf("missing = %v, want [images/rustgen]", missing)
 	}
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		// A directory with no non-test Go files is deliberately absent from the map
-		// (internal/integration); scan() drops it, so only assert on what it kept.
-		found := false
-		for _, p := range pkgs {
-			if p.Name == e.Name() {
-				found = true
-				break
-			}
-		}
-		if !found {
-			continue
-		}
-		if !strings.Contains(block, "**`"+e.Name()+"`**") {
-			t.Errorf("internal/%s is missing from the generated package map", e.Name())
-		}
+	if !reflect.DeepEqual(stale, []string{"removed"}) {
+		t.Fatalf("stale = %v, want [removed]", stale)
 	}
 }
 
@@ -233,4 +231,75 @@ func writeGoFixture(t *testing.T, root, relative, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write fixture %s: %v", relative, err)
 	}
+}
+
+func productionPackageNames(root string) (map[string]bool, error) {
+	names := map[string]bool{}
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !entry.IsDir() {
+			return nil
+		}
+		if path != root && (entry.Name() == "testdata" || entry.Name() == "vendor" ||
+			strings.HasPrefix(entry.Name(), ".") || strings.HasPrefix(entry.Name(), "_")) {
+			return filepath.SkipDir
+		}
+		entries, err := os.ReadDir(path)
+		if err != nil {
+			return err
+		}
+		for _, child := range entries {
+			if child.IsDir() || !strings.HasSuffix(child.Name(), ".go") || strings.HasSuffix(child.Name(), "_test.go") {
+				continue
+			}
+			relative, err := filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+			if relative != "." {
+				names[filepath.ToSlash(relative)] = true
+			}
+			break
+		}
+		return nil
+	})
+	return names, err
+}
+
+func renderedPackageNames(doc string) map[string]bool {
+	names := map[string]bool{}
+	start := strings.Index(doc, beginMarker)
+	end := strings.Index(doc, endMarker)
+	if start < 0 || end <= start {
+		return names
+	}
+	for _, line := range strings.Split(doc[start:end], "\n") {
+		const prefix = "- **`"
+		if !strings.HasPrefix(line, prefix) {
+			continue
+		}
+		name, _, ok := strings.Cut(strings.TrimPrefix(line, prefix), "`**")
+		if ok && name != "" {
+			names[name] = true
+		}
+	}
+	return names
+}
+
+func packageInventoryDiff(source, rendered map[string]bool) (missing, stale []string) {
+	for name := range source {
+		if !rendered[name] {
+			missing = append(missing, name)
+		}
+	}
+	for name := range rendered {
+		if !source[name] {
+			stale = append(stale, name)
+		}
+	}
+	sort.Strings(missing)
+	sort.Strings(stale)
+	return missing, stale
 }
