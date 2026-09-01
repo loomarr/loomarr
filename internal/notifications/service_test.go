@@ -253,6 +253,29 @@ func TestRunOneRetriesOnlyDefinitelyPreAcceptanceFailure(t *testing.T) {
 	}
 }
 
+func TestRunOneHonorsBoundedProviderRetryHint(t *testing.T) {
+	repository := testkit.NewNotificationRepository()
+	now := time.Unix(1_900_000_000, 0)
+	adapter := &testkit.NotificationAdapter{
+		DeliveryMeans: notifications.MeansEmail,
+		Result: notifications.Result{
+			Status: notifications.StatusFailed, FailureClass: notifications.FailureTransientPreAcceptance,
+			OutcomeCode: notifications.OutcomeTransportUnavailable, RetryAfter: 24 * time.Hour,
+		},
+	}
+	service := notifications.NewService(repository, emailRouter(), []notifications.Adapter{adapter}, sequentialIDs(), func() time.Time { return now })
+	if _, _, err := service.Publish(t.Context(), recoveryCommand()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.RunOne(t.Context(), "worker-1"); err != nil {
+		t.Fatal(err)
+	}
+	next := repository.Completions[0].Next
+	if next == nil || !next.AvailableAt.Equal(now.Add(2*time.Hour)) {
+		t.Fatalf("retry = %+v, want bounded provider delay", next)
+	}
+}
+
 func TestRunOnePersistsNoArbitraryAdapterError(t *testing.T) {
 	repository := testkit.NewNotificationRepository()
 	now := time.Unix(1_900_000_000, 0)
@@ -349,6 +372,46 @@ func TestServicePublishesDestinationTestAsItsOwnIntentAndDirectRoute(t *testing.
 	}
 	if len(attempts) != 1 || attempts[0].DestinationRef != destination.ID || attempts[0].Means != notifications.MeansSlack {
 		t.Fatalf("test attempts = %+v", attempts)
+	}
+}
+
+func TestServiceRetiresGoneWebPushDestinationAfterTerminalCompletion(t *testing.T) {
+	repository := testkit.NewNotificationRepository()
+	now := time.Unix(1_900_000_000, 0).UTC()
+	destination := notifications.Destination{
+		ID: "browser-1", Means: notifications.MeansWebPush, Label: "This browser",
+		Scope: notifications.ScopePerson, OwnerID: "user-1", Audience: notifications.RecipientPerson,
+		Topics: []notifications.Topic{notifications.TopicProposalApproved}, Enabled: true,
+		Credentials: map[string]string{"endpoint": "encrypted-at-the-real-boundary"},
+		CreatedAt:   now, UpdatedAt: now,
+	}
+	if err := repository.SaveNotificationDestination(t.Context(), destination); err != nil {
+		t.Fatal(err)
+	}
+	adapter := &testkit.NotificationAdapter{DeliveryMeans: notifications.MeansWebPush, Result: notifications.Result{
+		Status: notifications.StatusFailed, FailureClass: notifications.FailurePermanent,
+		OutcomeCode: notifications.OutcomeDestinationUnavailable,
+	}}
+	service := notifications.NewService(repository, testkit.NotificationRouter{RoutesResult: []notifications.Route{{
+		Means: notifications.MeansWebPush, DestinationRef: destination.ID, DestinationRedacted: destination.Label,
+	}}}, []notifications.Adapter{adapter}, sequentialIDs(), func() time.Time { return now })
+	if _, _, err := service.Publish(t.Context(), notifications.PublishCommand{
+		Topic: notifications.TopicProposalApproved, RecipientKind: notifications.RecipientPerson,
+		RecipientID: "user-1", ReferenceKind: notifications.ReferenceProposal, ReferenceID: "proposal-1",
+		Policy: notifications.PolicyConfigurable, Template: notifications.TemplateData{SubjectName: "Approved"},
+		IdempotencyKey: "approved:user-1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if ran, err := service.RunOne(t.Context(), "worker-1"); err != nil || !ran {
+		t.Fatalf("run = %t, %v", ran, err)
+	}
+	retired, err := repository.GetNotificationDestination(t.Context(), destination.ID)
+	if err != nil || retired.Enabled {
+		t.Fatalf("retired destination = %+v, %v", retired, err)
+	}
+	if len(repository.Completions) != 1 || repository.Completions[0].Next != nil {
+		t.Fatalf("completion retried gone subscription: %+v", repository.Completions)
 	}
 }
 

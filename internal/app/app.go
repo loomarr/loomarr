@@ -203,6 +203,7 @@ func buildHandler(
 		restart: operations.restart, bootConfig: operations.bootConfig,
 		guide: operations.guide, settings: operations.settings, emailTest: operations.emailTest,
 		notificationDestinations: operations.notificationDestinations,
+		webPushPublicKey:         operations.webPushPublicKey,
 		invitationDelivery:       operations.invitationDelivery, passwordRecovery: operations.passwordRecovery,
 		liveConfig:        operations.liveConfig,
 		libraryConfigured: operations.libraryConfigured, jobs: operations.jobs,

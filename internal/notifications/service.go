@@ -23,6 +23,10 @@ type Repository interface {
 	CompleteNotificationAttempt(context.Context, Completion) error
 }
 
+type DestinationRetirer interface {
+	RetireNotificationDestination(context.Context, string) error
+}
+
 // LatestDelivery returns the newest explicit delivery request and its newest attempt. Invitation
 // lifecycle remains owned by invitation; this read model describes only the effort to convey it.
 func (s *Service) LatestDelivery(
@@ -82,6 +86,9 @@ type Result struct {
 	ProviderMessageID string
 	FailureClass      FailureClass
 	OutcomeCode       OutcomeCode
+	// RetryAfter is an adapter-supplied lower bound for the next attempt. It is meaningful only
+	// for definitely pre-acceptance transient failures and is clamped by the service policy.
+	RetryAfter time.Duration
 }
 
 type PublishCommand struct {
@@ -264,6 +271,9 @@ func (s *Service) RunOne(ctx context.Context, owner string) (bool, error) {
 	}
 	if result.Status == StatusFailed && result.FailureClass == FailureTransientPreAcceptance {
 		if delay, ok := RetryDelay(intent.ID, attempt.AttemptNumber+1); ok {
+			if hint := boundedProviderRetryAfter(result.RetryAfter); hint > delay {
+				delay = hint
+			}
 			next := Attempt{
 				ID: s.newID(), IntentID: intent.ID, Means: attempt.Means,
 				DestinationRef: attempt.DestinationRef, DestinationRedacted: attempt.DestinationRedacted,
@@ -276,5 +286,23 @@ func (s *Service) RunOne(ctx context.Context, owner string) (bool, error) {
 	if err := s.repository.CompleteNotificationAttempt(ctx, completion); err != nil {
 		return true, err
 	}
+	if attempt.Means == MeansWebPush && result.OutcomeCode == OutcomeDestinationUnavailable {
+		if retirer, ok := s.repository.(DestinationRetirer); ok {
+			if err := retirer.RetireNotificationDestination(ctx, destinationID); err != nil && !errors.Is(err, ErrNotFound) {
+				return true, fmt.Errorf("retire unavailable Web Push destination: %w", err)
+			}
+		}
+	}
 	return true, nil
+}
+
+func boundedProviderRetryAfter(delay time.Duration) time.Duration {
+	if delay <= 0 {
+		return 0
+	}
+	const maximum = 2 * time.Hour
+	if delay > maximum {
+		return maximum
+	}
+	return delay
 }

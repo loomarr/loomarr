@@ -194,7 +194,11 @@ func (m *DestinationManager) Update(
 	if err := authorizeDestinationWrite(principal, current.Scope, current.OwnerID); err != nil {
 		return DestinationSummary{}, err
 	}
-	if err := authorizeDestinationAudience(principal, current.Scope, command.Audience); err != nil {
+	audience := command.Audience
+	if audience == "" {
+		audience = current.Audience
+	}
+	if err := authorizeDestinationAudience(principal, current.Scope, audience); err != nil {
 		return DestinationSummary{}, err
 	}
 	credentials := current.Credentials
@@ -215,7 +219,7 @@ func (m *DestinationManager) Update(
 	}
 	updated := Destination{
 		ID: current.ID, Means: current.Means, Label: command.Label, Scope: current.Scope,
-		OwnerID: current.OwnerID, Audience: command.Audience, Topics: append([]Topic(nil), command.Topics...),
+		OwnerID: current.OwnerID, Audience: audience, Topics: append([]Topic(nil), command.Topics...),
 		Enabled: command.Enabled, Configuration: configuration,
 		Credentials: credentials, CreatedAt: current.CreatedAt, UpdatedAt: m.now().UTC().Truncate(time.Second),
 	}

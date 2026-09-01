@@ -219,7 +219,14 @@ var providerDefinitions = []ProviderDefinition{
 			field("accessToken", "Access token", ProviderFieldPassword, true, true),
 		},
 	},
-	{Means: MeansWebPush, Name: "Browser Push", Topics: productProviderTopics, MemberOwned: true},
+	{
+		Means: MeansWebPush, Name: "Browser Push", Topics: productProviderTopics, MemberOwned: true,
+		Fields: []ProviderField{
+			field("endpoint", "Push endpoint", ProviderFieldPassword, true, true),
+			field("p256dh", "Browser public key", ProviderFieldPassword, true, true),
+			field("auth", "Browser authentication secret", ProviderFieldPassword, true, true),
+		},
+	},
 	{
 		Means: MeansMQTT, Name: "MQTT", Topics: sharedProviderTopics,
 		Fields: []ProviderField{

@@ -129,6 +129,7 @@ func TestCredentialBearingProviderLocationsAreAlwaysSensitive(t *testing.T) {
 		notifications.MeansTelegram:   "chatId",
 		notifications.MeansMattermost: "webhookUrl",
 		notifications.MeansMatrix:     "roomId",
+		notifications.MeansWebPush:    "endpoint",
 		notifications.MeansMQTT:       "brokerUrl",
 		notifications.MeansSlack:      "webhookUrl",
 	}

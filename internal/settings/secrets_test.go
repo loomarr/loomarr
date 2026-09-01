@@ -55,6 +55,10 @@ func TestSecrets_IdempotentAcrossRestarts(t *testing.T) {
 			t.Errorf("%s not idempotent: %q != %q", g, s1.Value(g), s2.Value(g))
 		}
 	}
+	if s1.WebPushIdentity().PrivateKey == "" || s1.WebPushIdentity().PublicKey == "" ||
+		s1.WebPushIdentity() != s2.WebPushIdentity() {
+		t.Fatalf("Web Push identity was not generated idempotently: %#v %#v", s1.WebPushIdentity(), s2.WebPushIdentity())
+	}
 }
 
 // An env-supplied secret wins and is NOT persisted (it's pinned — config-design §4).
@@ -203,16 +207,18 @@ func TestSecrets_FeedRedactor(t *testing.T) {
 		t.Fatal(err)
 	}
 	vals := s.RedactionValues()
-	if len(vals) != len(allGenerated()) {
-		t.Fatalf("expected %d generated secret values, got %d", len(allGenerated()), len(vals))
+	if len(vals) != len(allGenerated())+1 {
+		t.Fatalf("expected %d generated secret values, got %d", len(allGenerated())+1, len(vals))
 	}
 	var buf bytes.Buffer
 	r := NewRedactor()
 	r.Set(vals)
 	log := slog.New(r.Handler(slog.NewTextHandler(&buf, nil)))
 	log.Info("token is " + s.Value(SecretAPI))
-	if strings.Contains(buf.String(), s.Value(SecretAPI)) {
-		t.Fatalf("generated API token leaked:\n%s", buf.String())
+	log.Info("VAPID key is " + s.WebPushIdentity().PrivateKey)
+	if strings.Contains(buf.String(), s.Value(SecretAPI)) ||
+		strings.Contains(buf.String(), s.WebPushIdentity().PrivateKey) {
+		t.Fatalf("generated secret leaked:\n%s", buf.String())
 	}
 }
 

@@ -30,6 +30,7 @@ type httpBuild struct {
 	settings                 api.SettingsService
 	emailTest                api.EmailTestService
 	notificationDestinations api.NotificationDestinationService
+	webPushPublicKey         string
 	invitationDelivery       api.InvitationDeliveryService
 	passwordRecovery         api.PasswordRecoveryService
 	liveConfig               func(string) string
@@ -135,6 +136,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		Settings:                 settingsSvc,
 		EmailTest:                deps.emailTest,
 		NotificationDestinations: deps.notificationDestinations,
+		WebPushPublicKey:         deps.webPushPublicKey,
 		ProposalNotifications:    deps.foundation.emitter,
 		BackendTransition: currentBackendTransition{
 			controller: backendController, refresh: refreshBackendSettings, desired: desiredBackend,

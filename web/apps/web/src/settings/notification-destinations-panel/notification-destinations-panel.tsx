@@ -109,7 +109,7 @@ const ProviderForm = ({
     events: string[];
     enabled: boolean;
     settings: Record<string, string>;
-  }) => void;
+  }) => void | Promise<void>;
 }) => {
   const stored = useMemo(
     () => new Map(provider?.settings.map((setting) => [setting.key, setting])),
@@ -151,7 +151,7 @@ const ProviderForm = ({
         settings[field.key] = value;
       }
     }
-    onSave({ label: label.trim(), events, enabled, settings });
+    void onSave({ label: label.trim(), events, enabled, settings });
   };
 
   return (
@@ -240,6 +240,143 @@ const ProviderForm = ({
   );
 };
 
+const decodeApplicationServerKey = (value: string) => {
+  const padded = `${value.replaceAll("-", "+").replaceAll("_", "/")}${"=".repeat((4 - (value.length % 4)) % 4)}`;
+  return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
+};
+
+const WebPushForm = ({
+  definition,
+  provider,
+  publicKey,
+  pending,
+  onCancel,
+  onSave,
+}: {
+  definition: NotificationProviderTypeDTO;
+  provider?: NotificationProviderDTO;
+  publicKey?: string;
+  pending: boolean;
+  onCancel: () => void;
+  onSave: (value: {
+    label: string;
+    events: string[];
+    enabled: boolean;
+    settings: Record<string, string>;
+  }) => void | Promise<void>;
+}) => {
+  const [label, setLabel] = useState(provider?.label ?? "This browser");
+  const [events, setEvents] = useState<string[]>(provider?.events ?? []);
+  const [message, setMessage] = useState("");
+  const [enabling, setEnabling] = useState(false);
+  const supported =
+    typeof window !== "undefined" &&
+    "Notification" in window &&
+    "serviceWorker" in navigator &&
+    "PushManager" in window;
+
+  const saveExisting = () =>
+    onSave({ label: label.trim(), events, enabled: provider?.enabled ?? true, settings: {} });
+
+  const enableBrowser = async () => {
+    if (!supported || !publicKey) {
+      setMessage("Browser notifications are not available in this browser or connection.");
+      return;
+    }
+    setEnabling(true);
+    setMessage("");
+    let subscription: PushSubscription | undefined;
+    try {
+      const registration = await navigator.serviceWorker.register("/push-worker.js");
+      const permission =
+        Notification.permission === "default"
+          ? await Notification.requestPermission()
+          : Notification.permission;
+      if (permission !== "granted") {
+        setMessage("Notification permission was not granted. Nothing else in Loomarr is affected.");
+        return;
+      }
+      subscription =
+        (await registration.pushManager.getSubscription()) ??
+        (await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: decodeApplicationServerKey(publicKey),
+        }));
+      const value = subscription.toJSON();
+      if (!value.endpoint || !value.keys?.p256dh || !value.keys.auth) {
+        throw new Error("The browser returned an incomplete Push subscription.");
+      }
+      await onSave({
+        label: label.trim(),
+        events,
+        enabled: true,
+        settings: { endpoint: value.endpoint, p256dh: value.keys.p256dh, auth: value.keys.auth },
+      });
+    } catch {
+      if (!provider && subscription) await subscription.unsubscribe().catch(() => false);
+      setMessage("Loomarr could not enable notifications for this browser.");
+    } finally {
+      setEnabling(false);
+    }
+  };
+
+  return (
+    <Card className="grid gap-5 p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="font-semibold">{provider ? `Edit ${provider.label}` : "Add Browser Push"}</h3>
+          <p className="mt-1 text-muted-foreground text-sm">
+            Loomarr asks this browser for permission only when you enable it below.
+          </p>
+        </div>
+        <Button type="button" variant="ghost" size="sm" onClick={onCancel} aria-label="Close provider form">
+          <X className="size-4" aria-hidden />
+        </Button>
+      </div>
+      <div className="grid gap-1.5">
+        <Label htmlFor="provider-label">Label *</Label>
+        <Input id="provider-label" value={label} onChange={(event) => setLabel(event.target.value)} />
+      </div>
+      <fieldset className="grid gap-2 sm:grid-cols-2">
+        <legend className="mb-2 font-medium text-sm">Events *</legend>
+        {definition.events.map((event) => (
+          <label className="flex items-center gap-2 text-sm" key={event} htmlFor={`provider-event-${event}`}>
+            <Checkbox
+              id={`provider-event-${event}`}
+              checked={events.includes(event)}
+              onChange={(input) =>
+                setEvents((current) =>
+                  input.target.checked ? [...current, event] : current.filter((item) => item !== event),
+                )
+              }
+            />
+            {words(event)}
+          </label>
+        ))}
+      </fieldset>
+      <p className="text-muted-foreground text-sm">
+        Locked-screen previews say only that Loomarr has a new notification. Open Loomarr to see details.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          disabled={!label.trim() || events.length === 0 || pending || enabling}
+          onClick={() => void (provider ? saveExisting() : enableBrowser())}
+        >
+          {provider ? "Save provider" : "Enable this browser"}
+        </Button>
+        <Button type="button" variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+      {message ? (
+        <p className="text-sm" role={message.includes("could not") ? "alert" : "status"} aria-live="polite">
+          {message}
+        </p>
+      ) : null}
+    </Card>
+  );
+};
+
 const ProviderRow = ({
   provider,
   definition,
@@ -262,7 +399,15 @@ const ProviderRow = ({
   });
   const remove = notificationsApi.useNotificationProvidersDelete({
     mutation: {
-      onSuccess: () => void refresh(),
+      onSuccess: () => {
+        if (provider.type === "web_push" && "serviceWorker" in navigator) {
+          void navigator.serviceWorker
+            .getRegistration()
+            .then((registration) => registration?.pushManager.getSubscription())
+            .then((subscription) => subscription?.unsubscribe());
+        }
+        void refresh();
+      },
       onError: () => setMessage("Loomarr could not delete this provider."),
     },
   });
@@ -279,13 +424,25 @@ const ProviderRow = ({
   if (editing && definition) {
     return (
       <li>
-        <ProviderForm
-          definition={definition}
-          provider={provider}
-          pending={update.isPending}
-          onCancel={() => setEditing(false)}
-          onSave={(value) => update.mutate({ id: provider.id, data: value })}
-        />
+        {provider.type === "web_push" ? (
+          <WebPushForm
+            definition={definition}
+            provider={provider}
+            pending={update.isPending}
+            onCancel={() => setEditing(false)}
+            onSave={async (value) => {
+              await update.mutateAsync({ id: provider.id, data: value });
+            }}
+          />
+        ) : (
+          <ProviderForm
+            definition={definition}
+            provider={provider}
+            pending={update.isPending}
+            onCancel={() => setEditing(false)}
+            onSave={(value) => update.mutate({ id: provider.id, data: value })}
+          />
+        )}
       </li>
     );
   }
@@ -365,10 +522,7 @@ const NotificationDestinationsPanel = () => {
   const [selectedType, setSelectedType] = useState("email");
   const [message, setMessage] = useState("");
   const definitions = useMemo(
-    () =>
-      typesQuery.data?.status === 200
-        ? typesQuery.data.data.providers.filter((provider) => !provider.memberOwned)
-        : [],
+    () => (typesQuery.data?.status === 200 ? typesQuery.data.data.providers : []),
     [typesQuery.data],
   );
   const providers = providersQuery.data?.status === 200 ? providersQuery.data.data.providers : [];
@@ -449,13 +603,28 @@ const NotificationDestinationsPanel = () => {
             </select>
           </div>
           {definition ? (
-            <ProviderForm
-              key={definition.type}
-              definition={definition}
-              pending={create.isPending}
-              onCancel={() => setAdding(false)}
-              onSave={(value) => create.mutate({ data: { type: definition.type as never, ...value } })}
-            />
+            definition.type === "web_push" ? (
+              <WebPushForm
+                key={definition.type}
+                definition={definition}
+                publicKey={
+                  typesQuery.data?.status === 200 ? typesQuery.data.data.webPushPublicKey : undefined
+                }
+                pending={create.isPending}
+                onCancel={() => setAdding(false)}
+                onSave={async (value) => {
+                  await create.mutateAsync({ data: { type: definition.type as never, ...value } });
+                }}
+              />
+            ) : (
+              <ProviderForm
+                key={definition.type}
+                definition={definition}
+                pending={create.isPending}
+                onCancel={() => setAdding(false)}
+                onSave={(value) => create.mutate({ data: { type: definition.type as never, ...value } })}
+              />
+            )
           ) : null}
         </div>
       ) : null}

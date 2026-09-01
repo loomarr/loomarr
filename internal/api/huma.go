@@ -146,6 +146,7 @@ type Server struct {
 	settings                 SettingsService
 	emailTest                EmailTestService
 	notificationDestinations NotificationDestinationService
+	webPushPublicKey         string
 	proposalNotifications    suggest.ProposalNotifier
 	// backendTransition owns the durable setting mutation -> prepare -> publish -> retire
 	// workflow for playout backend and URL changes. It serializes that entire workflow
@@ -962,6 +963,7 @@ type Options struct {
 	Settings                 SettingsService                                  // /v1/settings* (config-design §8); nil ⇒ routes 501
 	EmailTest                EmailTestService                                 // administrator SMTP test delivery (§11)
 	NotificationDestinations NotificationDestinationService                   // redacted product-delivery routing (§11)
+	WebPushPublicKey         string                                           // public half of the generated VAPID identity (§11)
 	ProposalNotifications    suggest.ProposalNotifier                         // best-effort product lifecycle publication (§11)
 	BackendTransition        BackendTransitioner                              // durable backend prepare/publish/retire coordinator
 	BackendCheckpoint        func(context.Context) (BackendCheckpoint, error) // durable checkpoint, once per operation

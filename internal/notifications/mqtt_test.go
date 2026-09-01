@@ -117,6 +117,33 @@ func TestMQTTAdapterClassifiesConnectionAndProtocolFailures(t *testing.T) {
 	}
 }
 
+func TestMQTTAdapterClassifiesBrokerAuthenticationRejection(t *testing.T) {
+	t.Parallel()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	go func() {
+		connection, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			return
+		}
+		defer connection.Close()
+		_, _, _ = readMQTTPacket(bufio.NewReader(connection))
+		_, _ = connection.Write([]byte{0x20, 0x02, 0x00, 0x05}) // not authorized
+	}()
+	adapter := notifications.NewMQTTAdapter(nil)
+	destination := providerDestination(notifications.MeansMQTT, map[string]string{
+		"username": "loomarr", "baseTopic": "loomarr", "qos": "1", "retain": "false",
+	}, map[string]string{"brokerUrl": "mqtt://" + listener.Addr().String(), "password": "wrong"})
+	result := adapter.Deliver(t.Context(), providerDelivery(&destination))
+	if result.FailureClass != notifications.FailurePermanent ||
+		result.OutcomeCode != notifications.OutcomeRecipientRejected {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
 func readMQTTPacket(reader *bufio.Reader) (byte, []byte, error) {
 	header, err := reader.ReadByte()
 	if err != nil {

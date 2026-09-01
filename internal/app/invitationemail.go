@@ -95,7 +95,8 @@ func (e currentNotificationEligibility) Eligible(
 	audience notifications.RecipientKind,
 	personID string,
 ) (bool, error) {
-	if e.users == nil || (audience != notifications.RecipientApprovers && audience != notifications.RecipientOperators) {
+	if e.users == nil || (audience != notifications.RecipientPerson &&
+		audience != notifications.RecipientApprovers && audience != notifications.RecipientOperators) {
 		return false, nil
 	}
 	user, err := e.users.GetUser(ctx, personID)
@@ -105,7 +106,13 @@ func (e currentNotificationEligibility) Eligible(
 	if err != nil {
 		return false, err
 	}
-	return !user.Disabled && user.Role == store.RoleAdmin, nil
+	if user.Disabled {
+		return false, nil
+	}
+	if audience == notifications.RecipientPerson {
+		return true, nil
+	}
+	return user.Role == store.RoleAdmin, nil
 }
 
 func (r invitationEmailRouter) Routes(ctx context.Context, intent notifications.Intent) ([]notifications.Route, error) {
@@ -426,4 +433,17 @@ func (r notificationServiceRepository) GetNotificationDestination(
 	id string,
 ) (notifications.Destination, error) {
 	return r.destinations.GetNotificationDestination(ctx, id)
+}
+
+func (r notificationServiceRepository) RetireNotificationDestination(ctx context.Context, id string) error {
+	destination, err := r.destinations.GetNotificationDestination(ctx, id)
+	if err != nil {
+		return err
+	}
+	if !destination.Enabled {
+		return nil
+	}
+	destination.Enabled = false
+	destination.UpdatedAt = time.Now().UTC().Truncate(time.Second)
+	return r.destinations.SaveNotificationDestination(ctx, destination)
 }

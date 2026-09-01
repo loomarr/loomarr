@@ -1,5 +1,6 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
+import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { NavTabs } from "@/components/ui/nav-tabs";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -29,19 +30,23 @@ const PAGES = [
 
 const SettingsLayout = () => {
   useDocumentTitle("Settings");
-  const settings = settingsApi.useSettingsList({ query: { retry: false } });
+  const { isAdmin } = useAuth();
   // ⚠ Read BEFORE the error early-return below: a hook after a conditional return is skipped on
   // that path, which React reports as "rendered fewer hooks than expected" and replaces the page
   // with an error boundary. (The same trap `filler-page.tsx` records hitting.)
   const { pathname } = useLocation();
+  const memberNotifications = !isAdmin && pathname.startsWith("/settings/notifications");
+  const settings = settingsApi.useSettingsList({ query: { enabled: isAdmin, retry: false } });
 
-  if (settings.error) {
+  if (settings.error && !memberNotifications) {
     return (
       <div className="p-6">
         <ErrorState error={settings.error} onRetry={() => settings.refetch()} />
       </div>
     );
   }
+
+  const visiblePages = isAdmin ? PAGES : PAGES.filter((page) => page.to === "/settings/notifications");
 
   return (
     // ⚠ The provider wraps the OUTLET, which is what makes the save bar cross-tab: the buffer
@@ -61,8 +66,8 @@ const SettingsLayout = () => {
           label="Settings"
           linkComponent={Link}
           className="bg-background px-6 pt-2"
-          tabs={PAGES.map((p) => ({ id: p.to, label: p.label, to: p.to }))}
-          activeId={PAGES.find((p) => pathname.startsWith(p.to))?.to ?? PAGES[0].to}
+          tabs={visiblePages.map((p) => ({ id: p.to, label: p.label, to: p.to }))}
+          activeId={visiblePages.find((p) => pathname.startsWith(p.to))?.to ?? visiblePages[0]?.to}
         />
         <div className="min-w-0 flex-1 overflow-hidden">
           <Outlet />

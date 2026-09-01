@@ -426,7 +426,7 @@ func validFailure(class FailureClass) bool {
 
 func validFailureCode(code OutcomeCode) bool {
 	return code == OutcomeMeansUnavailable || code == OutcomeRecipientRejected ||
-		code == OutcomeConfigurationInvalid || code == OutcomeTransportUnavailable ||
+		code == OutcomeDestinationUnavailable || code == OutcomeConfigurationInvalid || code == OutcomeTransportUnavailable ||
 		code == OutcomeAcceptanceAmbiguous || code == OutcomeCancelled || code == OutcomeWorkerInterrupted
 }
 

@@ -91,7 +91,7 @@ func TestDestinationRouterRechecksPersonalGroupEligibilityAtEventTime(t *testing
 			Topics: []notifications.Topic{notifications.TopicProposalSubmitted}, Enabled: true,
 			CreatedAt: now, UpdatedAt: now},
 		{ID: "demoted", Means: notifications.MeansWebPush, Label: "Former approver",
-			Scope: notifications.ScopePerson, OwnerID: "user-2", Audience: notifications.RecipientApprovers,
+			Scope: notifications.ScopePerson, OwnerID: "user-2", Audience: notifications.RecipientPerson,
 			Topics: []notifications.Topic{notifications.TopicProposalSubmitted}, Enabled: true,
 			CreatedAt: now, UpdatedAt: now},
 	}}
@@ -106,6 +106,48 @@ func TestDestinationRouterRechecksPersonalGroupEligibilityAtEventTime(t *testing
 	})
 	if err != nil || len(routes) != 1 || routes[0].DestinationRef != "eligible" {
 		t.Fatalf("personal approver routes = %+v, %v", routes, err)
+	}
+}
+
+func TestDestinationRouterRoutesGroupEventToEligiblePersonalBrowser(t *testing.T) {
+	now := time.Unix(1_900_000_000, 0)
+	source := destinationSource{destinations: []notifications.Destination{{
+		ID: "admin-browser", Means: notifications.MeansWebPush, Label: "Admin browser",
+		Scope: notifications.ScopePerson, OwnerID: "admin-1", Audience: notifications.RecipientPerson,
+		Topics: []notifications.Topic{notifications.TopicProposalSubmitted}, Enabled: true,
+		CreatedAt: now, UpdatedAt: now,
+	}}}
+	routes, err := notifications.NewDestinationRouter(source, audienceEligibility{
+		"approvers:admin-1": true,
+	}).Routes(t.Context(), notifications.Intent{
+		ID: "intent-submitted", Topic: notifications.TopicProposalSubmitted,
+		RecipientKind: notifications.RecipientApprovers, RecipientID: "approvers",
+		ReferenceKind: notifications.ReferenceProposal, ReferenceID: "proposal-1",
+		Policy: notifications.PolicyConfigurable, Template: notifications.TemplateData{SubjectName: "Review"},
+		IdempotencyKey: "proposal-1:submitted", CreatedAt: now,
+	})
+	if err != nil || len(routes) != 1 || routes[0].DestinationRef != "admin-browser" {
+		t.Fatalf("personal browser routes = %+v, %v", routes, err)
+	}
+}
+
+func TestDestinationRouterStopsPersonalPushAfterUserIsDisabled(t *testing.T) {
+	now := time.Unix(1_900_000_000, 0)
+	source := destinationSource{destinations: []notifications.Destination{{
+		ID: "disabled-browser", Means: notifications.MeansWebPush, Label: "Former member browser",
+		Scope: notifications.ScopePerson, OwnerID: "user-1", Audience: notifications.RecipientPerson,
+		Topics: []notifications.Topic{notifications.TopicProposalApproved}, Enabled: true,
+		CreatedAt: now, UpdatedAt: now,
+	}}}
+	routes, err := notifications.NewDestinationRouter(source, audienceEligibility{}).Routes(t.Context(), notifications.Intent{
+		ID: "intent-disabled", Topic: notifications.TopicProposalApproved,
+		RecipientKind: notifications.RecipientPerson, RecipientID: "user-1",
+		ReferenceKind: notifications.ReferenceProposal, ReferenceID: "proposal-1",
+		Policy: notifications.PolicyConfigurable, Template: notifications.TemplateData{SubjectName: "Approved"},
+		IdempotencyKey: "proposal-1:approved:user-1", CreatedAt: now,
+	})
+	if err != nil || len(routes) != 0 {
+		t.Fatalf("disabled person routes = %+v, %v", routes, err)
 	}
 }
 

@@ -4,7 +4,15 @@ import type { ComponentType, ReactNode } from "react";
 // type-checked against the route tree.
 // `/channels` and `/suggest` are absent because the routes are: both folded into
 // `/guide`, which is now the channels surface AND the origination door (§12).
-type NavTo = "/dashboard" | "/guide" | "/queue" | "/filler" | "/people" | "/settings" | "/help";
+type NavTo =
+  | "/dashboard"
+  | "/guide"
+  | "/queue"
+  | "/filler"
+  | "/people"
+  | "/settings"
+  | "/settings/notifications"
+  | "/help";
 
 interface NavItem {
   to: NavTo;

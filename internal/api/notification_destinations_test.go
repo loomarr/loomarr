@@ -124,8 +124,9 @@ func TestNotificationProvidersUseOneRedactedAdminWorkflow(t *testing.T) {
 	}
 
 	memberList := do(t, srv, http.MethodGet, "/v1/notifications/providers", memberToken, "")
-	if memberList.StatusCode != http.StatusForbidden {
-		t.Fatalf("member list = %d, want 403", memberList.StatusCode)
+	memberListBody := readBody(t, memberList)
+	if memberList.StatusCode != http.StatusOK || !strings.Contains(memberListBody, `"providers":[]`) {
+		t.Fatalf("member list = %d: %s", memberList.StatusCode, memberListBody)
 	}
 	deleted := do(t, srv, http.MethodDelete, "/v1/notifications/providers/destination-1", adminToken, "")
 	if deleted.StatusCode != http.StatusNoContent {
@@ -139,8 +140,10 @@ func TestNotificationProviderTypesDriveTheAdminFormWithoutSecretValues(t *testin
 	t.Cleanup(srv.Close)
 
 	member := do(t, srv, http.MethodGet, "/v1/notifications/provider-types", memberToken, "")
-	if member.StatusCode != http.StatusForbidden {
-		t.Fatalf("member provider types = %d, want 403", member.StatusCode)
+	memberBody := readBody(t, member)
+	if member.StatusCode != http.StatusOK || !strings.Contains(memberBody, `"type":"web_push"`) ||
+		strings.Contains(memberBody, `"type":"slack"`) {
+		t.Fatalf("member provider types = %d: %s", member.StatusCode, memberBody)
 	}
 	response := do(t, srv, http.MethodGet, "/v1/notifications/provider-types", adminToken, "")
 	if response.StatusCode != http.StatusOK {
@@ -176,5 +179,51 @@ func TestNotificationProviderTypesDriveTheAdminFormWithoutSecretValues(t *testin
 	}
 	if !slackWebhookSensitive {
 		t.Fatal("Slack webhook URL is not identified as a sensitive server-owned field")
+	}
+}
+
+func TestNotificationProvidersBindBrowserPushToTheAuthenticatedMember(t *testing.T) {
+	st := openTestStore(t, t.TempDir()+"/member-web-push.db")
+	t.Cleanup(func() { _ = st.Close() })
+	protection, err := secretprotection.NewManager(t.Context(), st, secretprotection.ManagerOptions{
+		InstallationKey: secretprotection.InstallationKey{0x52},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := notifications.NewProtectedDestinationRepository(st, protection)
+	manager := notifications.NewDestinationManager(repository, []notifications.DestinationValidator{
+		acceptingDestinationValidator{means: notifications.MeansWebPush},
+	}, func() string { return "browser-1" }, time.Now)
+	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
+		Store: st, Auth: notificationAuthorizer{}, NotificationDestinations: manager,
+		WebPushPublicKey: "public-vapid-key",
+	})
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+
+	body := `{"type":"web_push","label":"Living room browser","events":["proposal_approved"],"enabled":true,"settings":{"endpoint":"https://push.example.test/secret","p256dh":"browser-public","auth":"browser-auth"}}`
+	created := do(t, srv, http.MethodPost, "/v1/notifications/providers", memberToken, body)
+	if created.StatusCode != http.StatusCreated {
+		t.Fatalf("member Web Push create = %d: %s", created.StatusCode, readBody(t, created))
+	}
+	stored, err := repository.GetNotificationDestination(t.Context(), "browser-1")
+	if err != nil || stored.Scope != notifications.ScopePerson || stored.OwnerID != "member-1" ||
+		stored.Audience != notifications.RecipientPerson || stored.Credentials["endpoint"] == "" {
+		t.Fatalf("stored Web Push destination = %+v, %v", stored.Summary(), err)
+	}
+	updated := do(t, srv, http.MethodPut, "/v1/notifications/providers/browser-1", memberToken,
+		`{"label":"Laptop browser","events":["proposal_approved"],"enabled":true}`)
+	if updated.StatusCode != http.StatusOK {
+		t.Fatalf("member Web Push update = %d: %s", updated.StatusCode, readBody(t, updated))
+	}
+	adminList := do(t, srv, http.MethodGet, "/v1/notifications/providers", adminToken, "")
+	if body := readBody(t, adminList); strings.Contains(body, "Living room browser") {
+		t.Fatalf("another administrator saw a member subscription: %s", body)
+	}
+	memberList := do(t, srv, http.MethodGet, "/v1/notifications/providers", memberToken, "")
+	if body := readBody(t, memberList); !strings.Contains(body, "Laptop browser") ||
+		strings.Contains(body, "push.example.test") || strings.Contains(body, "browser-auth") {
+		t.Fatalf("member Web Push list was not scoped/redacted: %s", body)
 	}
 }

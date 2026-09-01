@@ -58,6 +58,7 @@ const ADMIN_NAV: NavItem[] = [
 const MEMBER_NAV: NavItem[] = [
   { to: "/guide", label: "Guide", icon: CalendarClock },
   { to: "/queue", label: "My requests", icon: LayoutGrid },
+  { to: "/settings/notifications", label: "Notifications", icon: Settings },
   { to: "/help", label: "Help", icon: ListChecks },
 ];
 

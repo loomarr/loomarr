@@ -1,7 +1,10 @@
 package notifications_test
 
 import (
-	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -21,6 +24,7 @@ type capturedProviderRequest struct {
 type providerDoer struct {
 	status   int
 	response string
+	header   http.Header
 	request  capturedProviderRequest
 	err      error
 }
@@ -34,8 +38,26 @@ func (d *providerDoer) Do(request *http.Request) (*http.Response, error) {
 		return nil, d.err
 	}
 	return &http.Response{
-		StatusCode: d.status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(d.response)),
+		StatusCode: d.status, Header: d.header.Clone(), Body: io.NopCloser(strings.NewReader(d.response)),
 	}, nil
+}
+
+func TestWebhookSignatureCoversTheExactVersionedPayload(t *testing.T) {
+	t.Parallel()
+	doer := &providerDoer{status: http.StatusNoContent}
+	adapter := httpAdapter(t, notifications.MeansWebhook, doer)
+	destination := providerDestination(notifications.MeansWebhook, nil, map[string]string{
+		"url": "https://example.test/hooks/loomarr", "hmacSecret": "hmac-value",
+	})
+	if result := adapter.Deliver(t.Context(), providerDelivery(&destination)); result.Status != notifications.StatusDelivered {
+		t.Fatalf("result = %+v", result)
+	}
+	mac := hmac.New(sha256.New, []byte("hmac-value"))
+	_, _ = mac.Write([]byte(doer.request.body))
+	want := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+	if got := doer.request.header.Get("X-Loomarr-Signature"); got != want {
+		t.Fatalf("signature = %q, want %q", got, want)
+	}
 }
 
 func TestHTTPProviderAdaptersBuildDocumentedRequests(t *testing.T) {
@@ -130,6 +152,99 @@ func TestHTTPProviderAdapterClassifiesBoundedOutcomes(t *testing.T) {
 	}
 }
 
+func TestEveryHTTPProviderUsesCommonRateLimitAndTransportClassification(t *testing.T) {
+	t.Parallel()
+	providers := []struct {
+		means         notifications.Means
+		configuration map[string]string
+		credentials   map[string]string
+	}{
+		{notifications.MeansWebhook, nil, map[string]string{"url": "https://example.test/hook"}},
+		{notifications.MeansDiscord, nil, map[string]string{"webhookUrl": "https://discord.com/api/webhooks/1/secret"}},
+		{notifications.MeansNtfy, map[string]string{"baseUrl": "https://ntfy.example.test"}, map[string]string{"topic": "private"}},
+		{notifications.MeansGotify, map[string]string{"serverUrl": "https://gotify.example.test"}, map[string]string{"applicationToken": "token"}},
+		{notifications.MeansApprise, map[string]string{"baseUrl": "https://apprise.example.test"}, map[string]string{"configurationKey": "home"}},
+		{notifications.MeansPushover, nil, map[string]string{"applicationToken": "app", "recipientKey": "user"}},
+		{notifications.MeansTelegram, nil, map[string]string{"botToken": "1:token", "chatId": "123"}},
+		{notifications.MeansMattermost, nil, map[string]string{"webhookUrl": "https://mattermost.example.test/hooks/secret"}},
+		{notifications.MeansMatrix, map[string]string{"homeserverUrl": "https://matrix.example.test"}, map[string]string{"roomId": "!room:example.test", "accessToken": "token"}},
+		{notifications.MeansSlack, nil, map[string]string{"webhookUrl": "https://hooks.slack.com/services/T/B/secret"}},
+	}
+	for _, provider := range providers {
+		provider := provider
+		t.Run(string(provider.means), func(t *testing.T) {
+			t.Parallel()
+			destination := providerDestination(provider.means, provider.configuration, provider.credentials)
+			doer := &providerDoer{status: http.StatusTooManyRequests, response: "rate limited"}
+			result := httpAdapter(t, provider.means, doer).Deliver(t.Context(), providerDelivery(&destination))
+			if result.FailureClass != notifications.FailureTransientPreAcceptance {
+				t.Fatalf("rate limit result = %+v", result)
+			}
+			doer.err = errors.New("transport unavailable")
+			result = httpAdapter(t, provider.means, doer).Deliver(t.Context(), providerDelivery(&destination))
+			if result.FailureClass != notifications.FailureTransientPreAcceptance ||
+				result.OutcomeCode != notifications.OutcomeTransportUnavailable {
+				t.Fatalf("transport result = %+v", result)
+			}
+		})
+	}
+}
+
+func TestTelegramDirectGroupAndTopicRequests(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name, chatID, threadID, want string
+	}{
+		{"direct", "12345", "", `"chat_id":"12345"`},
+		{"group", "-12345", "", `"chat_id":"-12345"`},
+		{"topic", "-10012345", "77", `"message_thread_id":77`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			doer := &providerDoer{status: http.StatusOK, response: `{"ok":true,"result":{"message_id":1}}`}
+			adapter := httpAdapter(t, notifications.MeansTelegram, doer)
+			destination := providerDestination(notifications.MeansTelegram, nil, map[string]string{
+				"botToken": "1:token", "chatId": test.chatID, "threadId": test.threadID,
+			})
+			if result := adapter.Deliver(t.Context(), providerDelivery(&destination)); result.Status != notifications.StatusDelivered {
+				t.Fatalf("result = %+v", result)
+			}
+			if !strings.Contains(doer.request.body, test.want) {
+				t.Fatalf("body = %s, want %s", doer.request.body, test.want)
+			}
+		})
+	}
+}
+
+func TestHTTPProviderAdapterCarriesBoundedRateLimitHint(t *testing.T) {
+	t.Parallel()
+	doer := &providerDoer{
+		status: http.StatusTooManyRequests, response: "slow down",
+		header: http.Header{"Retry-After": []string{"999999"}},
+	}
+	adapter := httpAdapter(t, notifications.MeansDiscord, doer)
+	destination := providerDestination(notifications.MeansDiscord, nil, map[string]string{
+		"webhookUrl": "https://discord.com/api/webhooks/123/secret",
+	})
+	result := adapter.Deliver(t.Context(), providerDelivery(&destination))
+	if result.FailureClass != notifications.FailureTransientPreAcceptance || result.RetryAfter != 2*time.Hour {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestApprisePartialFanoutFailureIsAmbiguous(t *testing.T) {
+	t.Parallel()
+	adapter := httpAdapter(t, notifications.MeansApprise, &providerDoer{
+		status: http.StatusInternalServerError, response: `{"error":"One or more notification could not be sent"}`,
+	})
+	destination := providerDestination(notifications.MeansApprise, map[string]string{
+		"baseUrl": "https://apprise.example.test",
+	}, map[string]string{"configurationKey": "household"})
+	result := adapter.Deliver(t.Context(), providerDelivery(&destination))
+	if result.FailureClass != notifications.FailureAmbiguous || result.OutcomeCode != notifications.OutcomeAcceptanceAmbiguous {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
 func TestHTTPProviderValidationRejectsLookalikeAndIncompleteDestinations(t *testing.T) {
 	t.Parallel()
 	adapter := httpAdapter(t, notifications.MeansSlack, &providerDoer{})
@@ -187,4 +302,3 @@ func providerDelivery(destination *notifications.Destination) notifications.Deli
 }
 
 var _ notifications.HTTPDoer = (*providerDoer)(nil)
-var _ = context.Background

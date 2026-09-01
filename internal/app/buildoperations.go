@@ -67,6 +67,7 @@ type operationsBuild struct {
 	settings                 api.SettingsService
 	emailTest                api.EmailTestService
 	notificationDestinations api.NotificationDestinationService
+	webPushPublicKey         string
 	productNotifications     *productNotificationCoordinator
 	invitationDelivery       api.InvitationDeliveryService
 	passwordRecovery         api.PasswordRecoveryService
@@ -113,6 +114,14 @@ func buildOperations(
 	mqttAdapter := notifications.NewMQTTAdapter(func() string { return set.str("access.public_url") })
 	providerAdapters = append(providerAdapters, mqttAdapter)
 	providerValidators = append(providerValidators, mqttAdapter)
+	if secrets != nil {
+		identity := secrets.WebPushIdentity()
+		webPushAdapter := notifications.NewWebPushAdapter(notifications.WebPushIdentity{
+			PublicKey: identity.PublicKey, PrivateKey: identity.PrivateKey,
+		}, overrides.NotificationHTTP, func() string { return set.str("access.public_url") })
+		providerAdapters = append(providerAdapters, webPushAdapter)
+		providerValidators = append(providerValidators, webPushAdapter)
+	}
 	accountDelivery := buildAccountDelivery(
 		st, destinationRepository, providerAdapters, set, invitationService, recoveryService, registry, log,
 	)
@@ -144,6 +153,9 @@ func buildOperations(
 		jobs:                 jobs,
 		database:             buildDatabase(st, set, overrides, eventBus),
 		residentLLM:          buildResidentLLM(set, log),
+	}
+	if secrets != nil {
+		result.webPushPublicKey = secrets.WebPushIdentity().PublicKey
 	}
 	if st != nil {
 		result.liveConfig = set.str

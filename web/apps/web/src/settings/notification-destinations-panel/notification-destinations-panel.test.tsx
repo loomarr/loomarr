@@ -3,7 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
 import { NotificationDestinationsPanel } from "./notification-destinations-panel";
 
@@ -33,6 +33,23 @@ const providerTypes = [
     events: ["proposal_submitted", "acquisition_gave_up", "channel_degraded"],
     fields: [{ key: "webhookUrl", label: "Slack webhook URL", kind: "url", required: true, sensitive: true }],
   },
+  {
+    type: "web_push",
+    name: "Browser Push",
+    memberOwned: true,
+    events: ["proposal_approved", "proposal_declined", "channel_live"],
+    fields: [
+      { key: "endpoint", label: "Push endpoint", kind: "password", required: true, sensitive: true },
+      { key: "p256dh", label: "Browser public key", kind: "password", required: true, sensitive: true },
+      {
+        key: "auth",
+        label: "Browser authentication secret",
+        kind: "password",
+        required: true,
+        sensitive: true,
+      },
+    ],
+  },
 ];
 
 const provider = {
@@ -54,8 +71,12 @@ const provider = {
 };
 
 const providerTypeHandler = http.get("*/v1/notifications/provider-types", () =>
-  HttpResponse.json({ providers: providerTypes }),
+  HttpResponse.json({ providers: providerTypes, webPushPublicKey: "B".repeat(87) }),
 );
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("NotificationDestinationsPanel", () => {
   it("shows redacted provider health and queues a test without claiming delivery", async () => {
@@ -155,5 +176,57 @@ describe("NotificationDestinationsPanel", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "Delete" }));
     await waitFor(() => expect(deleted).toBe(true));
+  });
+
+  it("requests browser permission only from the explicit Browser Push action", async () => {
+    const requestPermission = vi.fn(async () => "granted" as NotificationPermission);
+    const subscribe = vi.fn(async () => ({
+      toJSON: () => ({
+        endpoint: "https://push.example.test/subscription/secret",
+        keys: { p256dh: "browser-public-key", auth: "browser-auth-secret" },
+      }),
+      unsubscribe: vi.fn(async () => true),
+    }));
+    const register = vi.fn(async () => ({
+      pushManager: { getSubscription: vi.fn(async () => null), subscribe },
+    }));
+    vi.stubGlobal("Notification", { permission: "default", requestPermission });
+    vi.stubGlobal("PushManager", class {});
+    const navigatorWithServiceWorker = Object.create(navigator) as Navigator;
+    Object.defineProperty(navigatorWithServiceWorker, "serviceWorker", { value: { register } });
+    vi.stubGlobal("navigator", navigatorWithServiceWorker);
+    let created: Record<string, unknown> | undefined;
+    server.use(
+      providerTypeHandler,
+      http.get("*/v1/notifications/providers", () => HttpResponse.json({ providers: [] })),
+      http.post("*/v1/notifications/providers", async ({ request }) => {
+        created = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ ...provider, ...created, id: "browser-1", settings: [] }, { status: 201 });
+      }),
+    );
+    render(<NotificationDestinationsPanel />, { wrapper });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Add provider" }));
+    await userEvent.selectOptions(screen.getByLabelText("Provider"), "web_push");
+    expect(requestPermission).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("Push endpoint *")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText("Proposal Approved"));
+    await userEvent.click(screen.getByRole("button", { name: "Enable this browser" }));
+
+    await waitFor(() => expect(created).toBeDefined());
+    expect(requestPermission).toHaveBeenCalledOnce();
+    expect(register).toHaveBeenCalledWith("/push-worker.js");
+    expect(subscribe).toHaveBeenCalledWith(expect.objectContaining({ userVisibleOnly: true }));
+    expect(created).toEqual({
+      type: "web_push",
+      label: "This browser",
+      events: ["proposal_approved"],
+      enabled: true,
+      settings: {
+        endpoint: "https://push.example.test/subscription/secret",
+        p256dh: "browser-public-key",
+        auth: "browser-auth-secret",
+      },
+    });
   });
 });

@@ -17,37 +17,37 @@ func (s *Server) registerNotificationDestinations(api huma.API) {
 		Path: "/v1/notifications/provider-types", Summary: "List notification provider types",
 		Description: "Returns the server-owned provider fields and compatible events used to render the Add provider form. No configured values or credentials are returned.",
 		Tags:        []string{"notifications"},
-	}, RoleAdmin), s.notificationProviderTypesList)
+	}, RoleMember), s.notificationProviderTypesList)
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "notification-providers-list", Method: http.MethodGet,
 		Path: "/v1/notifications/providers", Summary: "List notification providers",
 		Description: "Returns the configured provider list with safe field values, write-only secret status, selected events, and delivery health.",
 		Tags:        []string{"notifications"},
-	}, RoleAdmin), s.notificationDestinationsList)
+	}, RoleMember), s.notificationDestinationsList)
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "notification-providers-create", Method: http.MethodPost,
 		Path: "/v1/notifications/providers", Summary: "Add a notification provider",
 		Description: "Adds one provider from its server-defined settings and selected events. Sensitive fields are classified and stored by the server and remain write-only.",
 		Tags:        []string{"notifications"}, DefaultStatus: http.StatusCreated,
-	}, RoleAdmin), s.notificationDestinationCreate)
+	}, RoleMember), s.notificationDestinationCreate)
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "notification-providers-update", Method: http.MethodPut,
 		Path: "/v1/notifications/providers/{id}", Summary: "Update a notification provider",
 		Description: "Omitting a sensitive setting preserves it; sending that field with an empty value clears it.",
 		Tags:        []string{"notifications"},
-	}, RoleAdmin), s.notificationDestinationUpdate)
+	}, RoleMember), s.notificationDestinationUpdate)
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "notification-providers-delete", Method: http.MethodDelete,
 		Path: "/v1/notifications/providers/{id}", Summary: "Delete a notification provider",
 		Description: "Queued attempts suppress at execution when their destination no longer exists; delivery history remains redacted and unchanged.",
 		Tags:        []string{"notifications"}, DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.notificationDestinationDelete)
+	}, RoleMember), s.notificationDestinationDelete)
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "notification-providers-test", Method: http.MethodPost,
 		Path: "/v1/notifications/providers/{id}/test", Summary: "Queue a notification provider test",
 		Description: "Queues a distinct test-delivery intent. Acceptance means Loomarr durably accepted the handoff, not that the provider confirmed final delivery.",
 		Tags:        []string{"notifications"}, DefaultStatus: http.StatusAccepted,
-	}, RoleAdmin), s.notificationDestinationTest)
+	}, RoleMember), s.notificationDestinationTest)
 }
 
 type NotificationProviderFieldOptionDTO struct {
@@ -76,18 +76,23 @@ type NotificationProviderTypeDTO struct {
 
 type notificationProviderTypesListOutput struct {
 	Body struct {
-		Providers []NotificationProviderTypeDTO `json:"providers"`
+		Providers        []NotificationProviderTypeDTO `json:"providers"`
+		WebPushPublicKey string                        `json:"webPushPublicKey,omitempty"`
 	}
 }
 
 func (s *Server) notificationProviderTypesList(
-	context.Context,
-	*struct{},
+	ctx context.Context,
+	_ *struct{},
 ) (*notificationProviderTypesListOutput, error) {
 	out := &notificationProviderTypesListOutput{}
+	out.Body.WebPushPublicKey = s.webPushPublicKey
 	definitions := notifications.ProviderDefinitions()
 	out.Body.Providers = make([]NotificationProviderTypeDTO, 0, len(definitions))
 	for _, definition := range definitions {
+		if roleFrom(ctx) != RoleAdmin && !definition.MemberOwned {
+			continue
+		}
 		provider := NotificationProviderTypeDTO{
 			Type: definition.Means, Name: definition.Name,
 			Events:      append([]notifications.Topic(nil), definition.Topics...),
@@ -211,9 +216,17 @@ func (s *Server) notificationDestinationCreate(
 		return nil, errNotImplemented("Notification destinations unavailable", "Destination management isn't available in this Loomarr process.")
 	}
 	principal := notificationPrincipal(ctx)
+	scope := notifications.ScopeInstallation
+	ownerID := ""
+	audience := notifications.RecipientOperators
+	if definition, ok := notifications.ProviderDefinitionFor(in.Body.Type); ok && definition.MemberOwned {
+		scope = notifications.ScopePerson
+		ownerID = principal.PersonID
+		audience = notifications.RecipientPerson
+	}
 	summary, err := s.notificationDestinations.Create(ctx, principal, notifications.DestinationCommand{
-		Means: in.Body.Type, Label: in.Body.Label, Scope: notifications.ScopeInstallation,
-		Audience: notifications.RecipientOperators, Topics: in.Body.Events, Enabled: in.Body.Enabled,
+		Means: in.Body.Type, Label: in.Body.Label, Scope: scope, OwnerID: ownerID,
+		Audience: audience, Topics: in.Body.Events, Enabled: in.Body.Enabled,
 		Settings: in.Body.Settings,
 	})
 	if err != nil {
@@ -230,7 +243,7 @@ func (s *Server) notificationDestinationUpdate(
 		return nil, errNotImplemented("Notification destinations unavailable", "Destination management isn't available in this Loomarr process.")
 	}
 	summary, err := s.notificationDestinations.Update(ctx, notificationPrincipal(ctx), in.ID, notifications.DestinationUpdateCommand{
-		Label: in.Body.Label, Audience: notifications.RecipientOperators,
+		Label:  in.Body.Label,
 		Topics: in.Body.Events, Enabled: in.Body.Enabled, Settings: in.Body.Settings,
 	})
 	if err != nil {

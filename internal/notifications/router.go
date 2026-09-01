@@ -49,6 +49,14 @@ func (r *DestinationRouter) Routes(ctx context.Context, intent Intent) ([]Route,
 			if !installationDestinationMatches(destination.Means, intent.Topic, intent.RecipientKind) {
 				continue
 			}
+		} else if destination.Means == MeansWebPush {
+			matches, matchErr := r.personalWebPushMatches(ctx, destination, intent)
+			if matchErr != nil {
+				return nil, matchErr
+			}
+			if !matches {
+				continue
+			}
 		} else {
 			if destination.Audience != intent.RecipientKind {
 				continue
@@ -56,6 +64,15 @@ func (r *DestinationRouter) Routes(ctx context.Context, intent Intent) ([]Route,
 			if intent.RecipientKind == RecipientPerson {
 				if destination.OwnerID != intent.RecipientID {
 					continue
+				}
+				if r.eligibility != nil {
+					eligible, eligibilityErr := r.eligibility.Eligible(ctx, intent.RecipientKind, destination.OwnerID)
+					if eligibilityErr != nil {
+						return nil, fmt.Errorf("resolve person eligibility for %q: %w", destination.OwnerID, eligibilityErr)
+					}
+					if !eligible {
+						continue
+					}
 				}
 			} else {
 				if r.eligibility == nil {
@@ -76,6 +93,28 @@ func (r *DestinationRouter) Routes(ctx context.Context, intent Intent) ([]Route,
 		})
 	}
 	return routes, nil
+}
+
+func (r *DestinationRouter) personalWebPushMatches(
+	ctx context.Context,
+	destination Destination,
+	intent Intent,
+) (bool, error) {
+	if intent.RecipientKind == RecipientPerson {
+		if destination.OwnerID != intent.RecipientID {
+			return false, nil
+		}
+	} else if intent.RecipientKind != RecipientApprovers && intent.RecipientKind != RecipientOperators {
+		return false, nil
+	}
+	if r.eligibility == nil {
+		return intent.RecipientKind == RecipientPerson, nil
+	}
+	eligible, err := r.eligibility.Eligible(ctx, intent.RecipientKind, destination.OwnerID)
+	if err != nil {
+		return false, fmt.Errorf("resolve %s eligibility for %q: %w", intent.RecipientKind, destination.OwnerID, err)
+	}
+	return eligible, nil
 }
 
 func installationDestinationMatches(means Means, topic Topic, recipient RecipientKind) bool {

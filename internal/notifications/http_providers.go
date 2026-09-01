@@ -135,6 +135,9 @@ func (a *HTTPProviderAdapter) Deliver(ctx context.Context, delivery Delivery) Re
 		return Result{Status: StatusFailed, FailureClass: FailureAmbiguous, OutcomeCode: OutcomeAcceptanceAmbiguous}
 	}
 	if response.StatusCode >= 200 && response.StatusCode < 300 {
+		if a.means == MeansApprise && response.StatusCode == http.StatusNoContent {
+			return Result{Status: StatusFailed, FailureClass: FailurePermanent, OutcomeCode: OutcomeDestinationUnavailable}
+		}
 		providerID := ""
 		if spec.accept != nil {
 			var accepted bool
@@ -147,7 +150,14 @@ func (a *HTTPProviderAdapter) Deliver(ctx context.Context, delivery Delivery) Re
 	}
 	if response.StatusCode == http.StatusRequestTimeout || response.StatusCode == http.StatusTooEarly ||
 		response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= 500 {
-		return providerTransientFailure()
+		// Apprise may fan out before reporting that one downstream target failed. Retrying a 5xx
+		// could therefore duplicate already accepted messages, so its server failures are ambiguous.
+		if a.means == MeansApprise && response.StatusCode >= 500 {
+			return Result{Status: StatusFailed, FailureClass: FailureAmbiguous, OutcomeCode: OutcomeAcceptanceAmbiguous}
+		}
+		result := providerTransientFailure()
+		result.RetryAfter = providerRetryAfter(response.Header.Get("Retry-After"), time.Now())
+		return result
 	}
 	if response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusGone {
 		return Result{Status: StatusFailed, FailureClass: FailurePermanent, OutcomeCode: OutcomeDestinationUnavailable}
@@ -351,8 +361,10 @@ func ntfyRequest(configuration, credentials map[string]string, message ProviderM
 	headers.Set("Title", truncate(message.Title, 250))
 	if message.Severity == "warning" {
 		headers.Set("Priority", "4")
+		headers.Set("Tags", "warning")
 	} else {
 		headers.Set("Priority", "3")
+		headers.Set("Tags", "tv")
 	}
 	if message.Link != "" {
 		headers.Set("Click", message.Link)
@@ -379,9 +391,15 @@ func gotifyRequest(configuration, credentials map[string]string, message Provide
 	if message.Severity == "warning" {
 		priority = 5
 	}
-	body, _ := json.Marshal(map[string]any{
+	payload := map[string]any{
 		"title": truncate(message.Title, 250), "message": truncate(joinBodyLink(message), 4000), "priority": priority,
-	})
+	}
+	if message.Link != "" {
+		payload["extras"] = map[string]any{
+			"client::notification": map[string]any{"click": map[string]string{"url": message.Link}},
+		}
+	}
+	body, _ := json.Marshal(payload)
 	return post(target, headers, body), nil
 }
 
@@ -560,4 +578,22 @@ func providerConfigurationFailure() Result {
 
 func providerTransientFailure() Result {
 	return Result{Status: StatusFailed, FailureClass: FailureTransientPreAcceptance, OutcomeCode: OutcomeTransportUnavailable}
+}
+
+func providerRetryAfter(value string, now time.Time) time.Duration {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	if seconds, err := strconv.ParseInt(value, 10, 64); err == nil {
+		if seconds <= 0 {
+			return 0
+		}
+		return boundedProviderRetryAfter(time.Duration(seconds) * time.Second)
+	}
+	when, err := http.ParseTime(value)
+	if err != nil {
+		return 0
+	}
+	return boundedProviderRetryAfter(when.Sub(now))
 }

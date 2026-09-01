@@ -101,6 +101,16 @@ func (f *NotificationRepository) DeleteNotificationDestination(_ context.Context
 	return nil
 }
 
+func (f *NotificationRepository) RetireNotificationDestination(_ context.Context, id string) error {
+	destination, ok := f.Destinations[id]
+	if !ok {
+		return notifications.ErrNotFound
+	}
+	destination.Enabled = false
+	f.Destinations[id] = destination
+	return nil
+}
+
 func (f *NotificationRepository) CreateNotificationIntent(
 	_ context.Context,
 	intent notifications.Intent,

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"log/slog"
 	"strings"
 	"testing"
@@ -33,9 +34,14 @@ func TestBootSettingsGeneratesOnlyOperationalTokensAndRedactsThem(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	webPushIdentity, err := json.Marshal(secrets.WebPushIdentity())
+	if err != nil {
+		t.Fatal(err)
+	}
 	want := map[string]string{
-		"secret.api_token":     secrets.Value(settings.SecretAPI),
-		"secret.playout_token": secrets.Value(settings.SecretPlayout),
+		"secret.api_token":               secrets.Value(settings.SecretAPI),
+		"secret.playout_token":           secrets.Value(settings.SecretPlayout),
+		"secret.web_push_vapid_identity": string(webPushIdentity),
 	}
 	rows, err := st.ListSettings(context.Background())
 	if err != nil {
@@ -57,7 +63,8 @@ func TestBootSettingsGeneratesOnlyOperationalTokensAndRedactsThem(t *testing.T) 
 		log.Info("credential", "value", value)
 	}
 	if strings.Contains(logs.String(), want["secret.api_token"]) ||
-		strings.Contains(logs.String(), want["secret.playout_token"]) {
+		strings.Contains(logs.String(), want["secret.playout_token"]) ||
+		strings.Contains(logs.String(), secrets.WebPushIdentity().PrivateKey) {
 		t.Fatalf("generated token leaked through boot logger: %s", logs.String())
 	}
 

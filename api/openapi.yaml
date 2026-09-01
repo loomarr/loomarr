@@ -5267,6 +5267,8 @@ components:
           items:
             $ref: "#/components/schemas/NotificationProviderTypeDTO"
           type: array
+        webPushPublicKey:
+          type: string
       required:
         - providers
       type: object
