@@ -162,6 +162,13 @@ and asks at most one unit plus one conditional role question per selected case. 
 and per-request charge ceilings are mandatory. The hosted model digest is the immutable capability
 snapshot digest; the result is diagnostic evidence only and cannot certify or mutate corpus truth.
 
+`make filler-temporal-calibration-report` is the inference-free interpretation step. It replays the
+original two-model comparison, verifies that the immutable selection is exactly its deterministic
+projection, validates the hosted result and all evidence references, and reports per-axis whether the
+third model preserved an agreement control, matched either local model, matched neither, or could not
+be compared. It reports operational failures and unclear claims separately. The report deliberately
+does not call any model truth or recommend promotion without independent calibration labels.
+
 Predictions record the inference role/rung, requested and resolved route, derivative bounds, detailed
 token categories, attempts, generation id, and the provider's exact charged decimal alongside an
 integer nanodollar projection. A failed call with missing or malformed settlement keeps those charge
