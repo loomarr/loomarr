@@ -45,6 +45,16 @@ dev: ## dev compose stack (external deps: tunarr-dev; portable Mac/Linux, CPU tr
 	  echo "dev: $$COMPOSE_PROJECT_NAME — Tunarr http://localhost:$$TUNARR_DEV_PORT"; \
 	  docker compose -p "$$COMPOSE_PROJECT_NAME" -f docker/compose.dev.yaml up -d
 
+.PHONY: observability-dev observability-dev-down observability-dev-test
+observability-dev: ## seed SQLite if needed, then start isolated local Prometheus + Grafana
+	@./scripts/observability-dev.sh up
+
+observability-dev-down: ## stop this worktree's local observability stack (preserves its data)
+	@./scripts/observability-dev.sh down
+
+observability-dev-test: ## prove seeded Loomarr metrics and Grafana provisioning over real Docker + HTTP
+	@./scripts/observability-dev-runtime-test.sh
+
 .PHONY: test-sso
 test-sso: ## SSO against REAL Authelia + Authentik containers (requires Docker)
 	@# Not in comprehensive verification: §19 keeps the default suite Docker-free, like test-pg.

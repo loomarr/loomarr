@@ -7091,6 +7091,15 @@ images/package inputs, and final legal review remain beta blockers.
 - **ai:** adds a local **Ollama** service (skip if using a hosted OpenAI-compatible provider or an external Ollama). The service ships **ready-to-use but model-less** — model choice is the wizard's job (§8.1: it depends on the user's GPU), so no model is baked in. Three deploy affordances, all optional and design-aligned: (1) a **healthcheck + `depends_on` gate** so `loomarr` waits for Ollama before its first probe (no transient "AI host unreachable" on first load) — the `depends_on` is `required:false`, so a hosted/external-LLM deploy that omits the `ai` profile skips it; (2) **opt-in GPU passthrough** via a separate overlay (`docker/compose.gpu.yaml`, NVIDIA + nvidia-container-toolkit; mirrors the dev Tunarr overlay) — without it Ollama runs on CPU (works, but slow); (3) **opt-in model preload** — set `LLM_MODEL` and a one-shot `ollama-pull` fetches it on first boot for a zero-wizard-step install; left empty (the default), the wizard picks the model, preserving the §8.1 "the user picks" default.
 **Filler ingest needs no profile, no tag, and no service.** The vendored yt-dlp + ffmpeg + deno ship in the single image (§16), so in-app clip downloads work out of the box — mount a drop-folder and go. *Revised: this supersedes both the `filler` compose profile and the opt-in `loomarr:filler` tag that replaced it; see §10's history note for why the question moved three times (retired-ok).*
 
+**Local observability is a separate development topology, never a release profile.** An explicit
+developer command may seed the same worktree-isolated SQLite store used by `make dev-be`, then start
+version-pinned Prometheus and Grafana containers that scrape that host backend. Its Compose project,
+published loopback ports, generated scrape configuration, and persistent volumes derive from the
+worktree identity, so two worktrees do not share monitoring state or collide. It mounts the shipped
+dashboard and optional rules read-only, provides an explicit non-destructive teardown, and tolerates
+the backend starting after the containers. The topology does not run Loomarr, Tunarr, Alertmanager,
+or an external integration, and it is absent from `docker/compose.yaml` and every release profile.
+
 The image is **non-root** (Debian `nonroot`, uid 65532). A freshly-created named
 volume is owned by `root:root`, so under the sqlite backend the container cannot create
 `/data/loomarr.db` (`SQLITE_CANTOPEN`) on first run. Fix it **in compose**, not by running
@@ -7538,9 +7547,12 @@ selection invalidates the preview and disables download until the replacement pr
   edits. Prometheus, Alertmanager, and Grafana are not required Loomarr services and are not added to
   default Compose. `make observability-verify` checks the metric manifest, hostile-label exclusions,
   dashboard query references, rule syntax/behavior, and provisioning in pinned test containers.
-  Additional dashboards need a distinct operator workflow; traces, hosted-model dollar estimates,
-  stack retention, alert routing, credentials, and published monitoring ports are explicitly out of
-  scope.
+  `make observability-dev` is the one development-only exception: it seeds the isolated local SQLite
+  store when absent and starts the pinned monitoring containers from §16 against `make dev-be`.
+  A Docker/HTTP smoke test must prove the Prometheus target is healthy, a seeded current-state metric
+  is queryable, and Grafana serves the stable dashboard UID. Additional dashboards need a distinct
+  operator workflow; traces, hosted-model dollar estimates, production stack retention, alert
+  routing, credentials, and production monitoring ports are explicitly out of scope.
 - **Readiness** is Current Health's required-check projection: required startup evidence must pass,
   continuously observed required checks must remain fresh, and sustained required-check failures make
   readiness false while liveness remains true. Optional warnings/failures/staleness produce
