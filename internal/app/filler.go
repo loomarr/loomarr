@@ -943,27 +943,23 @@ func (a fillerServiceAdapter) Split(ctx context.Context, clipID string) (string,
 	if a.splitter == nil {
 		return "", api.ErrSplitUnavailable
 	}
+	if a.start == nil {
+		return "", errors.New("filler split lifecycle is not configured")
+	}
 	if _, found, err := a.splitClips.GetClip(ctx, clipID); err != nil {
 		return "", err
 	} else if !found {
 		return "", store.ErrNotFound
 	}
 	jobID := a.newID()
-	go func() {
-		// Deliberately NOT the request context, for the same reason as Ingest: the
-		// response is already written, and detection must not die with the tab.
-		bg := context.Background()
-		if a.timeout > 0 {
-			var cancel context.CancelFunc
-			bg, cancel = context.WithTimeout(bg, a.timeout)
-			defer cancel()
-		}
+	var proposal *filler.SplitProposal
+	err := a.start(a.timeout, func(operationCtx context.Context) error {
 		a.publishSplit(jobID, clipID, "running", "", 0, "")
-		p, err := a.splitter.Propose(bg, clipID)
+		p, err := a.splitter.Propose(operationCtx, clipID)
 		if err != nil {
-			a.publishSplit(jobID, clipID, "error", "", 0, err.Error())
-			return
+			return err
 		}
+		proposal = p
 		// ⚠ Un-park the reel, for the same reason ConfirmSplit enrols its cuts (§10 V54a): the
 		// operator-triggered path must leave the clip where the unattended one would. A reel parked
 		// at `split`/`review` is claimed by nothing — `ListPipelineWork` takes `running` only — so
@@ -981,10 +977,19 @@ func (a fillerServiceAdapter) Split(ctx context.Context, clipID string) (string,
 		// whose proposal is saved. `Requeue` logs its own outcome, and the failure mode is the
 		// state the reel was already in: parked, reviewable by hand, nothing lost.
 		if a.pipeline != nil {
-			_, _ = a.pipeline.Requeue(bg, clipID)
+			_, _ = a.pipeline.Requeue(operationCtx, clipID)
 		}
-		a.publishSplit(jobID, clipID, "success", p.ID, len(p.Segments), "")
-	}()
+		return nil
+	}, func(_ context.Context, runErr error) {
+		if runErr != nil {
+			a.publishSplit(jobID, clipID, "error", "", 0, runErr.Error())
+			return
+		}
+		a.publishSplit(jobID, clipID, "success", proposal.ID, len(proposal.Segments), "")
+	})
+	if err != nil {
+		return "", err
+	}
 	return jobID, nil
 }
 

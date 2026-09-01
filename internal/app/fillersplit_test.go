@@ -24,6 +24,24 @@ type splitFakeTools struct {
 	chapters []filler.Chapter
 }
 
+type blockingSplitTools struct {
+	splitFakeTools
+	started   chan struct{}
+	cancelled chan struct{}
+	release   chan struct{}
+}
+
+func (b blockingSplitTools) Chapters(ctx context.Context, _ string) ([]filler.Chapter, error) {
+	close(b.started)
+	select {
+	case <-ctx.Done():
+		close(b.cancelled)
+		return nil, ctx.Err()
+	case <-b.release:
+		return nil, errors.New("released test split")
+	}
+}
+
 type gatedSplitTools struct {
 	splitFakeTools
 	entered chan struct{}
@@ -105,6 +123,7 @@ func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerSe
 	a := fillerServiceAdapter{
 		bus: bus, newID: func() string { return "job-1" }, timeout: time.Minute,
 		splitClips: fillerSplitStoreAdapter{st: st},
+		start:      testInteractiveOperationLauncher,
 	}
 	if withSplitter {
 		drop := t.TempDir()
@@ -124,6 +143,60 @@ func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerSe
 			func() string { n++; return fmt.Sprintf("sp_%d", n) }, time.Now, nil)
 	}
 	return a, st
+}
+
+func TestSplit_IsOwnedByApplicationGenerationNotRequest(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	if err := st.UpsertClip(t.Context(), store.Clip{Clip: filler.Clip{
+		Hash: compHash, Path: compPath, Name: "1987.mp4", DurationMs: 61_000,
+	}, UpdatedAt: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	drop := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(drop, filepath.Dir(compPath)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(drop, compPath), []byte("compilation"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan struct{})
+	cancelled := make(chan struct{})
+	release := make(chan struct{})
+	defer close(release)
+	tools := blockingSplitTools{
+		started: started, cancelled: cancelled, release: release,
+	}
+	splitter := filler.NewSplitter(fillerSplitStoreAdapter{st: st}, tools, nil, drop,
+		func() time.Duration { return 10 * time.Second }, func() string { return "sp-owned" }, time.Now, nil)
+	lifecycle := newGenerationLifecycle(t.Context())
+	application := &Application{lifecycle: lifecycle}
+	a := fillerServiceAdapter{
+		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st},
+		newID: func() string { return "split-owned" }, timeout: time.Minute,
+		start: lifecycle.startInteractiveOperation,
+	}
+	requestCtx, disconnect := context.WithCancel(t.Context())
+	if _, err := a.Split(requestCtx, compHash); err != nil {
+		t.Fatalf("Split: %v", err)
+	}
+	<-started
+	disconnect()
+	select {
+	case <-cancelled:
+		t.Fatal("request disconnect cancelled accepted split detection")
+	default:
+	}
+
+	shutdown := make(chan error, 1)
+	go func() { shutdown <- application.Shutdown(t.Context()) }()
+	select {
+	case err := <-shutdown:
+		t.Fatalf("Shutdown returned before split detection stopped: %v", err)
+	case <-cancelled:
+	}
+	if err := <-shutdown; err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
 }
 
 type markPipelineFiledFailureStore struct {
