@@ -36,7 +36,7 @@ jobs:
             go-contracts-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.13.2-${{ hashFiles('go.sum', 'Cargo.lock') }}-
             go-contracts-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.13.2-
       - name: Static analysis and repository contracts
-        run: make fmt shellcheck privacy-verify observability-verify vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify
+        run: make fmt shellcheck privacy-verify vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify
       - name: The test shards cover every package
         run: make go-shard-verify SHARDS=3
       - name: OpenAPI spec is committed and current
@@ -51,6 +51,8 @@ jobs:
         run: make retired-verify
       - name: Workflows are valid
         run: make ci-lint
+      - name: Observability artifacts are provisionable
+        run: make observability-verify
       - name: Save contract caches (main only)
         if: always() && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
