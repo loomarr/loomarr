@@ -55,6 +55,29 @@ claims_overlap() {
 	return 1
 }
 
+exported_port() {
+	case "$1" in
+		backend) name=LOOMARR_DEV_PORT ;;
+		frontend) name=LOOMARR_FE_PORT ;;
+		storybook) name=LOOMARR_STORYBOOK_PORT ;;
+		tunarr) name=TUNARR_DEV_PORT ;;
+		prometheus) name=PROMETHEUS_DEV_PORT ;;
+		grafana) name=GRAFANA_DEV_PORT ;;
+	esac
+	printf '%s\n' "$candidate_exports" | sed -n "s/export $name='\([0-9][0-9]*\)'/\1/p"
+}
+
+port_was_explicit() {
+	case "$1" in
+		backend) [ "$explicit_backend" -eq 1 ] ;;
+		frontend) [ "$explicit_frontend" -eq 1 ] ;;
+		storybook) [ "$explicit_storybook" -eq 1 ] ;;
+		tunarr) [ "$explicit_tunarr" -eq 1 ] ;;
+		prometheus) [ "$explicit_prometheus" -eq 1 ] ;;
+		grafana) [ "$explicit_grafana" -eq 1 ] ;;
+	esac
+}
+
 acquire_lock() {
 	STATE="$(state_dir)"
 	mkdir -p "$STATE/sessions" "$STATE/baselines"
@@ -117,6 +140,12 @@ start_session() {
 	for claim in $(printf '%s' "$claims" | tr ',' ' '); do
 		valid_name "$claim" || { echo "agent-start: invalid claim: $claim" >&2; exit 2; }
 	done
+	explicit_backend=0; [ "${LOOMARR_DEV_PORT+x}" = x ] && explicit_backend=1
+	explicit_frontend=0; [ "${LOOMARR_FE_PORT+x}" = x ] && explicit_frontend=1
+	explicit_storybook=0; [ "${LOOMARR_STORYBOOK_PORT+x}" = x ] && explicit_storybook=1
+	explicit_tunarr=0; [ "${TUNARR_DEV_PORT+x}" = x ] && explicit_tunarr=1
+	explicit_prometheus=0; [ "${PROMETHEUS_DEV_PORT+x}" = x ] && explicit_prometheus=1
+	explicit_grafana=0; [ "${GRAFANA_DEV_PORT+x}" = x ] && explicit_grafana=1
 
 	acquire_lock
 	now="$(date +%s)"
@@ -124,7 +153,8 @@ start_session() {
 	case "$lease_hours" in ''|*[!0-9]*) echo 'agent-start: AGENT_LEASE_HOURS must be an integer' >&2; release_lock; exit 2 ;; esac
 	expires=$((now + lease_hours * 3600))
 	mine="$(session_file)"
-	eval "$("$SCRIPT_DIR/dev-env.sh" export)"
+	initial_exports="$("$SCRIPT_DIR/dev-env.sh" export)"
+	initial_slot="$(printf '%s\n' "$initial_exports" | sed -n "s/export LOOMARR_AGENT_SLOT='\([0-9][0-9]*\)'/\1/p")"
 	dependency_branch=
 	for file in "$STATE"/sessions/*; do
 		[ -f "$file" ] || continue
@@ -144,20 +174,6 @@ start_session() {
 			release_lock
 			exit 1
 		fi
-		for port_name in backend frontend storybook tunarr; do
-			other_port="$(field "$port_name" "$file")"
-			case "$port_name" in
-				backend) this_port="$LOOMARR_DEV_PORT" ;;
-				frontend) this_port="$LOOMARR_FE_PORT" ;;
-				storybook) this_port="$LOOMARR_STORYBOOK_PORT" ;;
-				tunarr) this_port="$TUNARR_DEV_PORT" ;;
-			esac
-			if [ -n "$other_port" ] && [ "$other_port" = "$this_port" ]; then
-				echo "agent-start: $port_name port $this_port conflicts with task $(field task "$file")" >&2
-				release_lock
-				exit 1
-			fi
-		done
 	done
 	if [ -n "$depends_on" ]; then
 		if [ -z "$dependency_branch" ]; then
@@ -172,6 +188,55 @@ start_session() {
 		fi
 	fi
 
+	primary="$(git -C "$ROOT" worktree list --porcelain | sed -n 's/^worktree //p' | head -1)"
+	primary="$(CDPATH='' cd -- "$primary" && pwd -P)"
+	# Selection and the session-file rename both happen while the registry lock is held. Concurrent
+	# starts therefore see either the old registry or the completed allocation, never the same free
+	# candidate. Keep candidate exports inert until one wins so a rejected probe cannot become the
+	# next probe's apparent explicit override.
+	candidate="$initial_slot"
+	attempt=0
+	while :; do
+		candidate_exports="$(LOOMARR_AGENT_SLOT_OVERRIDE="$candidate" "$SCRIPT_DIR/dev-env.sh" export)"
+		conflict_name=
+		conflict_port=
+		conflict_task=
+		conflict_explicit=0
+		for file in "$STATE"/sessions/*; do
+			[ -f "$file" ] || continue
+			[ "$file" = "$mine" ] && continue
+			for this_name in backend frontend storybook tunarr prometheus grafana; do
+				this_port="$(exported_port "$this_name")"
+				for other_name in backend frontend storybook tunarr prometheus grafana; do
+					other_port="$(field "$other_name" "$file")"
+					if [ -n "$other_port" ] && [ "$other_port" = "$this_port" ]; then
+						conflict_name="$this_name"
+						conflict_port="$this_port"
+						conflict_task="$(field task "$file")"
+						port_was_explicit "$this_name" && conflict_explicit=1
+						break 3
+					fi
+				done
+			done
+		done
+		if [ -z "$conflict_name" ]; then
+			eval "$candidate_exports"
+			break
+		fi
+		if [ "$conflict_explicit" -eq 1 ] || [ "$ROOT" = "$primary" ]; then
+			echo "agent-start: $conflict_name port $conflict_port conflicts with task $conflict_task" >&2
+			release_lock
+			exit 1
+		fi
+		attempt=$((attempt + 1))
+		if [ "$attempt" -ge 900 ]; then
+			echo 'agent-start: no automatic worktree port tuple is available' >&2
+			release_lock
+			exit 1
+		fi
+		candidate=$((candidate % 900 + 1))
+	done
+
 	branch="$(git -C "$ROOT" symbolic-ref --quiet --short HEAD 2>/dev/null || printf detached)"
 	tmp="$mine.tmp.$$"
 	{
@@ -182,10 +247,13 @@ start_session() {
 		printf 'worktree=%s\n' "$ROOT"
 		printf 'branch=%s\n' "$branch"
 		printf 'instance=%s\n' "$LOOMARR_INSTANCE"
+		printf 'slot=%s\n' "$LOOMARR_AGENT_SLOT"
 		printf 'backend=%s\n' "$LOOMARR_DEV_PORT"
 		printf 'frontend=%s\n' "$LOOMARR_FE_PORT"
 		printf 'storybook=%s\n' "$LOOMARR_STORYBOOK_PORT"
 		printf 'tunarr=%s\n' "$TUNARR_DEV_PORT"
+		printf 'prometheus=%s\n' "$PROMETHEUS_DEV_PORT"
+		printf 'grafana=%s\n' "$GRAFANA_DEV_PORT"
 		printf 'started=%s\n' "$now"
 		printf 'expires=%s\n' "$expires"
 	} > "$tmp"
