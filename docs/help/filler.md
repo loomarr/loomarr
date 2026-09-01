@@ -99,6 +99,12 @@ action. The admin API requires an explicit force flag for it.
 Each channel has a **pod preview** showing exactly what plays in its breaks — the same
 computation the scheduler uses. It's the fastest way to check your tags are matching.
 
+When Loomarr creates a Channel from an approved description, it starts the filler selection from
+the same grounded era and audience policy. Kids and family rating boundaries therefore begin with
+kids- or family-safe filler instead of the whole catalog; a broader or unspecified audience begins
+at general-audience filler. Product categories are not guessed from program genres. Once you edit
+the selection, your choice remains authoritative through later refinement and automatic curation.
+
 ## Recordings of several adverts
 
 A file holding twenty adverts back to back is a **recording**, not a clip — it can't play in a

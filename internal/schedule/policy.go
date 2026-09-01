@@ -59,9 +59,9 @@ type ProposalPolicy struct {
 type OperatorPolicy struct {
 	// Filler is the channel's per-channel commercial-break selection (§10): which
 	// filler the channel draws from (theme) plus specific clips to always/never use.
-	// A pointer so an omitted selection serializes nothing and means "any" (the whole
-	// catalog — the additive default). Edited on the channel page; seeded from Scope.Era
-	// at channel creation.
+	// A pointer so an omitted selection serializes nothing. Generated channels receive
+	// a one-time seed from SeedFillerSelection at first approval; after that this is
+	// operator-owned, and a present empty selection deliberately means "any".
 	Filler *FillerSelection `json:"filler,omitempty"`
 	// BreaksPerHour overrides the global commercial-break density for THIS channel (§10, V51f).
 	//
@@ -199,18 +199,48 @@ type AutoCurate struct {
 }
 
 // FillerSelection is a channel's per-channel filler choice (§10). Every field is
-// optional; an empty/absent field means "any", so the zero selection is the whole
-// catalog (the prior global-pool behavior). The theme fields (Era/Audience/Categories/
-// Kinds) narrow which clips are eligible; Pinned/Excluded are per-clip overrides on top.
+// optional. An absent Era inherits the Channel scope; an explicitly open range means
+// any era. Other empty theme fields mean "any". Pinned/Excluded are per-clip overrides.
 // Enum values mirror the filler package's wire strings deliberately — the policy model
 // validates its own closed sets and imports nothing (see the other enums here).
 type FillerSelection struct {
-	Era        *Range   `json:"era,omitempty"`        // year window; nil = any. Seeded from Scope.Era at create.
+	Era        *Range   `json:"era,omitempty"`        // year window; nil = inherit Scope.Era at derivation.
 	Audience   string   `json:"audience,omitempty"`   // "" = any; else kids|family|general|late_night
 	Categories []string `json:"categories,omitempty"` // empty = any; else a subset of the closed category set
 	Kinds      []string `json:"kinds,omitempty"`      // empty = the default kinds; else the chosen subset
-	Pinned     []string `json:"pinned,omitempty"`     // TunarrProgramIDs always included (a top-priority pool)
-	Excluded   []string `json:"excluded,omitempty"`   // TunarrProgramIDs never used (wins over Pinned)
+	Pinned     []string `json:"pinned,omitempty"`     // clip hashes always included (a top-priority pool)
+	Excluded   []string `json:"excluded,omitempty"`   // clip hashes never used (wins over Pinned)
+}
+
+// SeedFillerSelection hands the approved proposal's grounded scheduling facts to the
+// operator-owned filler policy when a generated Channel is first created.
+//
+// This is deliberately a one-time seed, not a live resolver. A later refine or
+// re-curation may refresh ProposalPolicy, but it must never overwrite a present
+// FillerSelection—including an explicitly empty one chosen by the operator.
+//
+// Scope genres do not map to filler product taxonomy, and ProposalPolicy carries no
+// grounded filler kind assertion. Those fields therefore remain empty instead of being
+// invented. A broad or absent content-rating ceiling resolves to general rather than
+// unrestricted or late-night filler; only child/family ceilings narrow further.
+func SeedFillerSelection(policy ProposalPolicy) *FillerSelection {
+	seed := &FillerSelection{Audience: fillerAudienceForCeiling(policy.Audience.Ceiling)}
+	if policy.Scope.Era != nil {
+		era := *policy.Scope.Era
+		seed.Era = &era
+	}
+	return seed
+}
+
+func fillerAudienceForCeiling(ceiling Rating) string {
+	switch NormalizeRating(string(ceiling)) {
+	case "TV-Y", "TV-Y7":
+		return "kids"
+	case "G", "TV-G", "PG", "TV-PG":
+		return "family"
+	default:
+		return "general"
+	}
 }
 
 // The closed sets FillerSelection validates against (mirrors internal/filler wire

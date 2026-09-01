@@ -206,14 +206,16 @@ func (r *rig) awaitProposal(t *testing.T, jobID string) (string, suggest.Proposa
 }
 
 // seedFillerClips lands a catalog of matched commercials + bumpers as a Tunarr sync
-// would (identity = Tunarr program uuid) — 90s, general/kids audience.
+// would. Content hash is the catalog identity; Tunarr's program uuid is the playback
+// handle for the same distinct clip.
 func seedFillerClips(t *testing.T, st store.Store) {
 	t.Helper()
 	clips := []filler.Clip{
-		{TunarrProgramID: "bump-1", Name: "Bumper", Kind: filler.Bumper, Era: 1992, Audience: filler.Kids, DurationMs: 5000, Source: "tunarr-local"},
-		{TunarrProgramID: "ad-1", Name: "Cereal ad", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "cereal", DurationMs: 30000, Source: "tunarr-local"},
-		{TunarrProgramID: "ad-2", Name: "Toy ad", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "toys", DurationMs: 30000, Source: "tunarr-local"},
-		{TunarrProgramID: "ad-3", Name: "Snack ad", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "snacks", DurationMs: 30000, Source: "tunarr-local"},
+		{Hash: strings.Repeat("1", 64), TunarrProgramID: "bump-1", Name: "Bumper", Kind: filler.Bumper, Era: 1992, Audience: filler.Kids, DurationMs: 5000, Source: "tunarr-local"},
+		{Hash: strings.Repeat("2", 64), TunarrProgramID: "ad-1", Name: "Cereal ad", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "cereal", DurationMs: 30000, Source: "tunarr-local"},
+		{Hash: strings.Repeat("3", 64), TunarrProgramID: "ad-2", Name: "Toy ad", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "toys", DurationMs: 30000, Source: "tunarr-local"},
+		{Hash: strings.Repeat("4", 64), TunarrProgramID: "ad-3", Name: "Snack ad", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "snacks", DurationMs: 30000, Source: "tunarr-local"},
+		{Hash: strings.Repeat("5", 64), TunarrProgramID: "ad-adult", Name: "Late-night ad", Kind: filler.Commercial, Era: 1992, Audience: filler.LateNight, Category: "alcohol", DurationMs: 30000, Source: "tunarr-local"},
 	}
 	for _, c := range clips {
 		if err := st.UpsertClip(context.Background(), store.Clip{Clip: c, UpdatedAt: time.Unix(1_800_000_000, 0)}); err != nil {
@@ -354,6 +356,9 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 	if ch.Policy.Audience.Ceiling != "TV-Y7" {
 		t.Fatalf("channel should carry the TV-Y7 policy, got %q", ch.Policy.Audience.Ceiling)
 	}
+	if ch.Policy.Filler == nil || ch.Policy.Filler.Audience != "kids" {
+		t.Fatalf("approved kids intent did not seed a kids-safe filler selection: %+v", ch.Policy.Filler)
+	}
 	if ch.TunarrID == "" {
 		t.Fatal("server-assigned TunarrID not persisted")
 	}
@@ -398,6 +403,9 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 		t.Error("no filler-list attached — commercials never reached Tunarr")
 	}
 	for _, id := range pool {
+		if id == "ad-adult" {
+			t.Fatal("late-night commercial reached a TV-Y7 kids Channel filler list")
+		}
 		if !strings.HasPrefix(id, "ad-") && !strings.HasPrefix(id, "bump-") {
 			t.Errorf("filler-list has an ungrounded clip id %q", id)
 		}
