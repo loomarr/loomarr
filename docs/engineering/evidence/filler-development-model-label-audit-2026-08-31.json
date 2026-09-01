@@ -63,9 +63,9 @@
     "certificationEvidence": false,
     "reason": "The two model reviewers disagree materially on safety-critical truth and content role, every case required a model adjudicator, and the later 32-case temporal challenge found invalid matched controls. Mechanical lock validity does not establish label correctness.",
     "next": [
-      "complete the identity-blind 32-case human temporal re-adjudication in issue 786",
-      "complete a fresh identity-blind 300-case human audit in issue 787",
-      "replace or explicitly reject the model-only lock before another candidate matrix"
+      "factor temporal unit structure from semantic role and re-run the 32-case diagnostic through independent model roles in issue 786",
+      "relabel all 300 cases with the repaired model-led contract and calibrate it on a 48-case independent human sample in issue 787",
+      "retain the mechanically valid model-only lock as rejected candidate-label history until the calibrated replacement passes development gates"
     ]
   },
   "limitations": [
