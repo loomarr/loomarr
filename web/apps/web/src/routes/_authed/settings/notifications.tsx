@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { EmailTestPanel } from "@/settings/email-test-panel";
+import { NotificationDestinationsPanel } from "@/settings/notification-destinations-panel";
 import { NotificationReadiness } from "@/settings/notification-readiness";
 import { SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
@@ -35,17 +36,20 @@ const NotificationSettings = () => {
       }
     >
       {({ liveValue }) => (
-        <NotificationReadiness
-          liveValue={liveValue}
-          linkAction={
-            <Link
-              to="/settings/general"
-              className="mt-2 inline-flex font-medium text-signal text-sm underline-offset-4 hover:underline"
-            >
-              Manage in General settings
-            </Link>
-          }
-        />
+        <div className="grid gap-6">
+          <NotificationReadiness
+            liveValue={liveValue}
+            linkAction={
+              <Link
+                to="/settings/general"
+                className="mt-2 inline-flex font-medium text-signal text-sm underline-offset-4 hover:underline"
+              >
+                Manage in General settings
+              </Link>
+            }
+          />
+          <NotificationDestinationsPanel scope="installation" />
+        </div>
       )}
     </SettingsPage>
   );

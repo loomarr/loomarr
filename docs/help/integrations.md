@@ -74,6 +74,25 @@ also sends a short audio sample when selected.
 Required. Grounds suggestions and supplies ratings for titles you don't own yet. Set
 `TMDB_API_KEY` — [get a key](https://www.themoviedb.org/settings/api).
 
+## Notifications
+
+**Settings → Notifications** has two separate delivery paths:
+
+- SMTP sends account invitations and password-recovery messages. These security messages are not
+  controlled by product-event preferences.
+- Product notification destinations send selected Proposal, acquisition, and Channel events.
+  Administrators own shared destinations and choose either the Approvers or Operators audience.
+
+Create a destination draft, choose only the events that audience should observe, then complete the
+provider-specific fields before enabling it. Provider credentials are write-only: Loomarr reports
+whether credentials exist, but never returns their values to the browser.
+
+An enabled destination offers **Test**. A successful click means the test was queued for provider
+handoff; it does not claim that a phone, browser, or remote service displayed the message. The
+destination card shows the last accepted handoff, a safe failure category, and queued or failed
+counts. Disabling or deleting a destination suppresses its queued, unsent work when a worker next
+claims it; an in-progress handoff is not rewritten.
+
 ## Requester — Seerr (or Sonarr/Radarr)
 
 Optional. How Loomarr downloads missing titles. Without it, channels still play what you

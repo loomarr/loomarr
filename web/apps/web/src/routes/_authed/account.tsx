@@ -13,6 +13,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { NotificationDestinationsPanel } from "@/settings/notification-destinations-panel";
 
 // Your account (§11). The self-service half of local account management: change your
 // own password, see where you're signed in, and revoke a session.
@@ -205,6 +206,8 @@ const AccountScreen = () => {
             ))}
           </ul>
         </Card>
+
+        <NotificationDestinationsPanel scope="person" />
       </div>
     </div>
   );

@@ -74,6 +74,38 @@ type invitationEmailRouter struct {
 	config      func() notifications.EmailConfig
 }
 
+type combinedNotificationRouter struct {
+	account notifications.Router
+	product notifications.Router
+}
+
+func (r combinedNotificationRouter) Routes(ctx context.Context, intent notifications.Intent) ([]notifications.Route, error) {
+	if intent.Policy == notifications.PolicyMandatoryAccount {
+		return r.account.Routes(ctx, intent)
+	}
+	return r.product.Routes(ctx, intent)
+}
+
+type currentNotificationEligibility struct{ users store.UserStore }
+
+func (e currentNotificationEligibility) Eligible(
+	ctx context.Context,
+	audience notifications.RecipientKind,
+	personID string,
+) (bool, error) {
+	if e.users == nil || (audience != notifications.RecipientApprovers && audience != notifications.RecipientOperators) {
+		return false, nil
+	}
+	user, err := e.users.GetUser(ctx, personID)
+	if errors.Is(err, store.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return !user.Disabled && user.Role == store.RoleAdmin, nil
+}
+
 func (r invitationEmailRouter) Routes(ctx context.Context, intent notifications.Intent) ([]notifications.Route, error) {
 	route := notifications.Route{
 		Means:               notifications.MeansEmail,
@@ -237,6 +269,8 @@ func redactMailbox(address string) string {
 type accountDeliveryBuild struct {
 	invitations *invitationDeliveryCoordinator
 	recovery    *passwordRecoveryCoordinator
+	product     *notifications.ProductPublisher
+	service     *notifications.Service
 }
 
 func buildAccountDelivery(
@@ -255,14 +289,19 @@ func buildAccountDelivery(
 		publicURL: func() string { return set.str("access.public_url") },
 	}
 	adapter := notifications.NewEmailAdapter(set.emailConfig, materializer, notifications.NewSMTPSender(15*time.Second))
-	service := notifications.NewService(st, invitationEmailRouter{
-		invitations: invitationService, recovery: recoveryService, config: set.emailConfig,
+	service := notifications.NewService(st, combinedNotificationRouter{
+		account: invitationEmailRouter{
+			invitations: invitationService, recovery: recoveryService, config: set.emailConfig,
+		},
+		product: notifications.NewDestinationRouter(st, currentNotificationEligibility{users: st}),
 	}, []notifications.Adapter{adapter}, newID, time.Now)
 	if registry != nil {
 		registry.Add(notificationDeliveryJob(service))
 	}
 	return accountDeliveryBuild{
 		invitations: &invitationDeliveryCoordinator{invitations: invitationService, notifications: service},
+		product:     notifications.NewProductPublisher(service),
+		service:     service,
 		recovery: &passwordRecoveryCoordinator{
 			recovery: recoveryService, notifications: service,
 			requestLimiter: auth.NewRateLimiter(0.05, 3), redeemLimiter: auth.NewRateLimiter(0.1, 5),

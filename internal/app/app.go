@@ -155,7 +155,7 @@ func buildHandler(
 	playoutRes, chanNumbers := channelsBuilt.playoutResolver, channelsBuilt.channelNumbers
 	setResidentVRAM := channelsBuilt.setResidentVRAM
 
-	approval := buildApproval(st, channelSvc, playoutRes, activityRec, chanNumbers, log)
+	approval := buildApproval(st, channelSvc, playoutRes, activityRec, chanNumbers, emitter, log)
 	proposalApprover := approval.approver
 
 	suggestions, err := buildSuggestions(
@@ -180,6 +180,7 @@ func buildHandler(
 		libraryClient, tmdbClient, eventBus, emitter, jobReg, owner, playoutRes,
 		appliedBackendContext, ov, log, foundation.metrics,
 	)
+	emitter.setNotifications(operations.productNotifications)
 	if playoutRes != nil {
 		setResidentVRAM(operations.residentLLM.probe)
 	}
@@ -190,7 +191,8 @@ func buildHandler(
 		auth: operations.auth, backups: operations.backups,
 		restart: operations.restart, bootConfig: operations.bootConfig,
 		guide: operations.guide, settings: operations.settings, emailTest: operations.emailTest,
-		invitationDelivery: operations.invitationDelivery, passwordRecovery: operations.passwordRecovery,
+		notificationDestinations: operations.notificationDestinations,
+		invitationDelivery:       operations.invitationDelivery, passwordRecovery: operations.passwordRecovery,
 		liveConfig:        operations.liveConfig,
 		libraryConfigured: operations.libraryConfigured, jobs: operations.jobs,
 		database: operations.database, residentLLM: operations.residentLLM,

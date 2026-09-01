@@ -56,20 +56,22 @@ type residentLLMBuild struct {
 }
 
 type operationsBuild struct {
-	backups            api.BackupsService
-	restart            api.RestartService
-	bootConfig         *config.Config
-	auth               authBuild
-	guide              api.GuideReader
-	settings           api.SettingsService
-	emailTest          api.EmailTestService
-	invitationDelivery api.InvitationDeliveryService
-	passwordRecovery   api.PasswordRecoveryService
-	liveConfig         func(string) string
-	libraryConfigured  func() bool
-	jobs               api.JobService
-	database           api.DatabaseService
-	residentLLM        residentLLMBuild
+	backups                  api.BackupsService
+	restart                  api.RestartService
+	bootConfig               *config.Config
+	auth                     authBuild
+	guide                    api.GuideReader
+	settings                 api.SettingsService
+	emailTest                api.EmailTestService
+	notificationDestinations api.NotificationDestinationService
+	productNotifications     *productNotificationCoordinator
+	invitationDelivery       api.InvitationDeliveryService
+	passwordRecovery         api.PasswordRecoveryService
+	liveConfig               func(string) string
+	libraryConfigured        func() bool
+	jobs                     api.JobService
+	database                 api.DatabaseService
+	residentLLM              residentLLMBuild
 }
 
 func buildOperations(
@@ -115,18 +117,29 @@ func buildOperations(
 			st, set, desiredSet, secrets, libraryClient, tmdbClient,
 			refreshSecretRedactor, readGeneratedSecret, triggerHealth, log,
 		),
-		emailTest:          buildEmailTest(st, set),
-		invitationDelivery: accountDelivery.invitations,
-		passwordRecovery:   accountDelivery.recovery,
-		jobs:               jobs,
-		database:           buildDatabase(st, set, overrides, eventBus),
-		residentLLM:        buildResidentLLM(set, log),
+		emailTest:                buildEmailTest(st, set),
+		notificationDestinations: buildNotificationDestinations(st, accountDelivery.service),
+		productNotifications:     &productNotificationCoordinator{publisher: accountDelivery.product, source: st, log: log},
+		invitationDelivery:       accountDelivery.invitations,
+		passwordRecovery:         accountDelivery.recovery,
+		jobs:                     jobs,
+		database:                 buildDatabase(st, set, overrides, eventBus),
+		residentLLM:              buildResidentLLM(set, log),
 	}
 	if st != nil {
 		result.liveConfig = set.str
 		result.libraryConfigured = set.libraryConfigured
 	}
 	return result
+}
+
+func buildNotificationDestinations(st store.Store, tester notifications.DestinationTester) api.NotificationDestinationService {
+	if st == nil {
+		return nil
+	}
+	// Provider issues register their validators here as their adapters land. Until then an admin
+	// may save disabled drafts, while enabling an unavailable or incomplete provider fails closed.
+	return notifications.NewDestinationManager(st, nil, newID, time.Now).WithTester(tester)
 }
 
 func buildEmailTest(st store.Store, set resolved) api.EmailTestService {

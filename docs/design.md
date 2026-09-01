@@ -5805,6 +5805,39 @@ Proposal, provisioning, or Channel interfaces. Existing installations begin with
 product routes, so an upgrade cannot emit a backlog storm. Product-event publication is best-effort
 after the authoritative domain transition and never rolls that transition back; the routing phase
 must document any source-of-truth backstop it uses rather than implying cross-module transactionality.
+There is no periodic replay of Proposal-decision notifications: a process crash after the decision
+commits but before publication can omit that notice, which is preferable to making approval depend
+on an external delivery subsystem. The requester-provenance relation below is the durable backstop
+for later Title and Channel transitions, whose stable identities make an explicit replay idempotent.
+
+A **Notification destination** is the durable routing record. It owns one Delivery means, a
+human-readable label, enabled state, a closed set of compatible topics and audiences, provider-safe
+configuration, and write-only credentials. An installation destination is administrator-owned and
+may address only the `approvers` or `operators` audiences. A person destination is owned by exactly
+one person and is limited to verified-contact email or that person's Web Push subscriptions. It may
+select person lifecycle topics or a group topic the owner is currently authorized to observe; the
+Router rechecks that authorization at event time, so disabling or demoting the owner removes the
+route without rewriting preferences. Members may manage only their own permitted person destinations; only
+administrators may manage installation destinations, inspect failures, or send tests. List and read
+interfaces return a redacted summary and credential-present flags, never credential values, bearer
+URLs, push keys, contact addresses, or rendered content. Provider adapters resolve the complete
+destination only after an attempt is claimed.
+
+Proposal approval records requester provenance for every approved Title and the intent-bound Channel
+inside the same local transaction as the decision. That durable `(reference, person)` relation is the
+source-of-truth backstop used by later acquisition and Channel transitions; notification publication
+may be retried from it after a crash without guessing ownership from mutable display data.
+
+The Router matches an enabled destination's topic and audience to an intent and persists only the
+destination id and safe label on its Delivery attempt. Disabling or deleting a destination does not
+rewrite history or cancel a sending attempt; a queued attempt that has not begun resolves to a
+terminal `destination_unavailable` suppression. A destination test is its own `delivery_test`
+notification intent referencing the destination, not a fabricated Proposal, acquisition, or Channel
+transition. Administrator reads expose only a payload-free health aggregate per destination: last
+accepted handoff time, last bounded failure outcome and time, queued count, and terminal-failure
+count. “Accepted” means the configured provider accepted Loomarr's handoff; neither tests nor health
+claim that an end-user device displayed the message. Existing installations migrate with no
+destinations and no person preferences.
 
 Each **Delivery attempt** records only the intent id, means, destination reference or redacted
 destination, provider-safe message id when one exists, `queued | sending | delivered | failed |

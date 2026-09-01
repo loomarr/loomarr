@@ -105,6 +105,7 @@ func buildSuggestions(
 		Workers: set.intv("job.workers"), Timeout: set.dur("job.timeout"), CacheTTL: 24 * time.Hour,
 	}, newID, time.Now, log).
 		WithProgressEmitter(emitter).
+		WithProposalNotifier(emitter).
 		WithDurableWorkflow(result.durableWorkflow)
 	service = service.WithAutoApprove(suggest.NewAutoApprover(
 		st, approver, func(context.Context) int { return set.intv("suggest.max_acquisitions") }, log,

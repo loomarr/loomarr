@@ -37,3 +37,13 @@ The more specific the theme, the tighter the channel. "Good movies" grounds poor
   the next refresh.
 
 Channels keep maintaining themselves — nothing to do once they're live.
+
+## Your notifications
+
+Open **Your account → Your notifications** to choose product events Loomarr may send to you. A
+personal destination belongs only to your account and can use only your verified contact address or
+your own browser subscription. You cannot enter somebody else's address or subscribe yourself to
+administrator-only events.
+
+Existing installations start with no product-event subscriptions. Nothing is sent until you or an
+administrator deliberately creates and enables a destination.

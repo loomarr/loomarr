@@ -1,0 +1,245 @@
+package notifications_test
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/testkit"
+)
+
+type destinationValidator struct {
+	means notifications.Means
+	err   error
+}
+
+func (v destinationValidator) Means() notifications.Means { return v.means }
+
+func (v destinationValidator) ValidateDestination(map[string]string, map[string]string) error {
+	return v.err
+}
+
+func TestDestinationManagerKeepsCredentialsWriteOnlyAndScopesMemberReads(t *testing.T) {
+	repository := testkit.NewNotificationRepository()
+	now := time.Unix(1_900_000_000, 0)
+	manager := notifications.NewDestinationManager(
+		repository, []notifications.DestinationValidator{destinationValidator{means: notifications.MeansWebPush}},
+		sequentialDestinationIDs(), func() time.Time { return now },
+	)
+	credentials := map[string]string{"privateKey": "never-return-this"}
+	summary, err := manager.Create(t.Context(), notifications.Principal{PersonID: "user-1"}, notifications.DestinationCommand{
+		Means: notifications.MeansWebPush, Label: "This browser", Scope: notifications.ScopePerson,
+		OwnerID: "user-1", Audience: notifications.RecipientPerson,
+		Topics: []notifications.Topic{notifications.TopicChannelLive}, Enabled: true,
+		Configuration: map[string]string{"endpointHost": "push.example"}, Credentials: &credentials,
+	})
+	if err != nil || !summary.CredentialsConfigured {
+		t.Fatalf("create personal destination = %+v, %v", summary, err)
+	}
+	stored, err := repository.GetNotificationDestination(t.Context(), summary.ID)
+	if err != nil || stored.Credentials["privateKey"] != "never-return-this" {
+		t.Fatalf("stored personal destination = %+v, %v", stored.Summary(), err)
+	}
+	if summaries, err := manager.List(t.Context(), notifications.Principal{PersonID: "user-2"}); err != nil || len(summaries) != 0 {
+		t.Fatalf("other member summaries = %+v, %v", summaries, err)
+	}
+	if summaries, err := manager.List(t.Context(), notifications.Principal{PersonID: "user-1"}); err != nil ||
+		len(summaries) != 1 || !summaries[0].CredentialsConfigured {
+		t.Fatalf("owner summaries = %+v, %v", summaries, err)
+	}
+}
+
+func TestDestinationManagerRejectsMemberInstallationAndCrossPersonWrites(t *testing.T) {
+	manager := notifications.NewDestinationManager(
+		testkit.NewNotificationRepository(), nil, sequentialDestinationIDs(), time.Now,
+	)
+	member := notifications.Principal{PersonID: "user-1"}
+	if _, err := manager.Create(t.Context(), member, notifications.DestinationCommand{
+		Means: notifications.MeansSlack, Label: "Operations", Scope: notifications.ScopeInstallation,
+		Audience: notifications.RecipientOperators, Topics: []notifications.Topic{notifications.TopicChannelDegraded},
+	}); !errors.Is(err, notifications.ErrForbidden) {
+		t.Fatalf("member installation create = %v", err)
+	}
+	if _, err := manager.Create(t.Context(), member, notifications.DestinationCommand{
+		Means: notifications.MeansEmail, Label: "Someone else", Scope: notifications.ScopePerson,
+		OwnerID: "user-2", Audience: notifications.RecipientPerson,
+		Topics: []notifications.Topic{notifications.TopicProposalApproved},
+	}); !errors.Is(err, notifications.ErrForbidden) {
+		t.Fatalf("cross-person create = %v", err)
+	}
+	if _, err := manager.Create(t.Context(), member, notifications.DestinationCommand{
+		Means: notifications.MeansEmail, Label: "Approver mail", Scope: notifications.ScopePerson,
+		OwnerID: "user-1", Audience: notifications.RecipientApprovers,
+		Topics: []notifications.Topic{notifications.TopicProposalSubmitted},
+	}); !errors.Is(err, notifications.ErrForbidden) {
+		t.Fatalf("member group-audience create = %v", err)
+	}
+}
+
+func TestDestinationManagerPreventsEnablingIncompleteOrUnavailableProvider(t *testing.T) {
+	repository := testkit.NewNotificationRepository()
+	now := time.Unix(1_900_000_000, 0)
+	manager := notifications.NewDestinationManager(
+		repository,
+		[]notifications.DestinationValidator{destinationValidator{means: notifications.MeansSlack, err: errors.New("token required")}},
+		sequentialDestinationIDs(), func() time.Time { return now },
+	)
+	admin := notifications.Principal{PersonID: "admin-1", Administrator: true}
+	command := notifications.DestinationCommand{
+		Means: notifications.MeansSlack, Label: "Operations", Scope: notifications.ScopeInstallation,
+		Audience: notifications.RecipientOperators, Topics: []notifications.Topic{notifications.TopicChannelDegraded},
+		Enabled: true,
+	}
+	if _, err := manager.Create(t.Context(), admin, command); err == nil {
+		t.Fatal("enabled incomplete provider was accepted")
+	}
+	command.Enabled = false
+	if _, err := manager.Create(t.Context(), admin, command); err != nil {
+		t.Fatalf("disabled draft = %v", err)
+	}
+	command.Means = notifications.MeansDiscord
+	command.Enabled = true
+	if _, err := manager.Create(t.Context(), admin, command); !errors.Is(err, notifications.ErrMeansUnavailable) {
+		t.Fatalf("enabled unavailable provider = %v", err)
+	}
+}
+
+func TestDestinationManagerUpdatePreservesWriteOnlyCredentialsAndOwnership(t *testing.T) {
+	repository := testkit.NewNotificationRepository()
+	now := time.Unix(1_900_000_000, 0)
+	manager := notifications.NewDestinationManager(
+		repository, []notifications.DestinationValidator{destinationValidator{means: notifications.MeansWebPush}},
+		sequentialDestinationIDs(), func() time.Time { return now },
+	)
+	credentials := map[string]string{"privateKey": "preserve-me"}
+	created, err := manager.Create(t.Context(), notifications.Principal{PersonID: "user-1"}, notifications.DestinationCommand{
+		Means: notifications.MeansWebPush, Label: "Browser", Scope: notifications.ScopePerson,
+		OwnerID: "user-1", Audience: notifications.RecipientPerson,
+		Topics: []notifications.Topic{notifications.TopicChannelLive}, Enabled: true,
+		Credentials: &credentials,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Minute)
+	updated, err := manager.Update(t.Context(), notifications.Principal{PersonID: "user-1"}, created.ID, notifications.DestinationUpdateCommand{
+		Label: "Living-room browser", Audience: notifications.RecipientPerson,
+		Topics: []notifications.Topic{notifications.TopicChannelLive}, Enabled: true,
+		Credentials: nil,
+	})
+	if err != nil || updated.Label != "Living-room browser" || !updated.CredentialsConfigured {
+		t.Fatalf("update destination = %+v, %v", updated, err)
+	}
+	stored, err := repository.GetNotificationDestination(t.Context(), created.ID)
+	if err != nil || stored.Credentials["privateKey"] != "preserve-me" || !stored.UpdatedAt.Equal(now) {
+		t.Fatalf("updated stored destination = %+v, %v", stored.Summary(), err)
+	}
+	if _, err := manager.Update(t.Context(), notifications.Principal{PersonID: "user-2"}, created.ID, notifications.DestinationUpdateCommand{
+		Label: "Stolen", Audience: notifications.RecipientPerson,
+		Topics: []notifications.Topic{notifications.TopicChannelLive},
+	}); !errors.Is(err, notifications.ErrForbidden) {
+		t.Fatalf("cross-person update = %v", err)
+	}
+	if err := manager.Delete(t.Context(), notifications.Principal{PersonID: "user-2"}, created.ID); !errors.Is(err, notifications.ErrForbidden) {
+		t.Fatalf("cross-person delete = %v", err)
+	}
+	if err := manager.Delete(t.Context(), notifications.Principal{PersonID: "user-1"}, created.ID); err != nil {
+		t.Fatalf("owner delete = %v", err)
+	}
+}
+
+func TestDestinationManagerQueuesDistinctTestIntentWithoutExposingDestination(t *testing.T) {
+	repository := testkit.NewNotificationRepository()
+	now := time.Date(2026, 8, 31, 18, 0, 0, 0, time.UTC)
+	manager := notifications.NewDestinationManager(
+		repository, []notifications.DestinationValidator{destinationValidator{means: notifications.MeansSlack}},
+		sequentialDestinationIDs(), func() time.Time { return now },
+	)
+	created, err := manager.Create(t.Context(), notifications.Principal{PersonID: "admin-1", Administrator: true}, notifications.DestinationCommand{
+		Means: notifications.MeansSlack, Label: "Operations", Scope: notifications.ScopeInstallation,
+		Audience: notifications.RecipientOperators, Topics: []notifications.Topic{notifications.TopicChannelDegraded}, Enabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tester := &recordingDestinationTester{}
+	manager.WithTester(tester)
+
+	result, err := manager.Test(t.Context(), notifications.Principal{PersonID: "admin-1", Administrator: true}, created.ID, "request-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IntentID != "test-intent-1" || !result.Created {
+		t.Fatalf("test result = %+v", result)
+	}
+	if tester.destination.ID != created.ID || tester.requestID != "request-1" {
+		t.Fatalf("tester call = destination %+v request %q", tester.destination, tester.requestID)
+	}
+	if _, err := manager.Test(t.Context(), notifications.Principal{PersonID: "member-1"}, created.ID, "request-2"); !errors.Is(err, notifications.ErrForbidden) {
+		t.Fatalf("member test error = %v, want forbidden", err)
+	}
+}
+
+func TestDestinationManagerExposesRedactedHealthOnlyToAdministrators(t *testing.T) {
+	repository := testkit.NewNotificationRepository()
+	now := time.Date(2026, 8, 31, 20, 0, 0, 0, time.UTC)
+	installation := notifications.Destination{
+		ID: "installation-1", Means: notifications.MeansSlack, Label: "Operations",
+		Scope: notifications.ScopeInstallation, Audience: notifications.RecipientOperators,
+		Topics: []notifications.Topic{notifications.TopicChannelDegraded}, Enabled: true, CreatedAt: now, UpdatedAt: now,
+	}
+	personal := notifications.Destination{
+		ID: "personal-1", Means: notifications.MeansWebPush, Label: "Browser", Scope: notifications.ScopePerson,
+		OwnerID: "member-1", Audience: notifications.RecipientPerson,
+		Topics: []notifications.Topic{notifications.TopicProposalApproved}, Enabled: true, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := repository.SaveNotificationDestination(t.Context(), installation); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.SaveNotificationDestination(t.Context(), personal); err != nil {
+		t.Fatal(err)
+	}
+	repository.Attempts["failed-1"] = notifications.Attempt{
+		ID: "failed-1", IntentID: "intent-1", Means: notifications.MeansSlack,
+		DestinationRef: installation.ID, DestinationRedacted: installation.Label,
+		Status: notifications.StatusFailed, AttemptNumber: 1, AvailableAt: now, CreatedAt: now,
+		FinishedAt: now.Add(time.Minute), FailureClass: notifications.FailurePermanent,
+		OutcomeCode: notifications.OutcomeConfigurationInvalid,
+	}
+	manager := notifications.NewDestinationManager(repository, nil, sequentialDestinationIDs(), func() time.Time { return now })
+
+	adminList, err := manager.List(t.Context(), notifications.Principal{PersonID: "admin-1", Administrator: true})
+	if err != nil || len(adminList) != 1 || adminList[0].Health == nil ||
+		adminList[0].Health.LastFailureOutcome != notifications.OutcomeConfigurationInvalid {
+		t.Fatalf("admin health = %+v, %v", adminList, err)
+	}
+	memberList, err := manager.List(t.Context(), notifications.Principal{PersonID: "member-1"})
+	if err != nil || len(memberList) != 1 || memberList[0].Health != nil {
+		t.Fatalf("member health = %+v, %v", memberList, err)
+	}
+}
+
+type recordingDestinationTester struct {
+	destination notifications.Destination
+	requestID   string
+}
+
+func (t *recordingDestinationTester) PublishDestinationTest(
+	_ context.Context,
+	destination notifications.Destination,
+	requestID string,
+) (notifications.DestinationTestResult, error) {
+	t.destination = destination
+	t.requestID = requestID
+	return notifications.DestinationTestResult{IntentID: "test-intent-1", Created: true}, nil
+}
+
+func sequentialDestinationIDs() func() string {
+	n := 0
+	return func() string {
+		n++
+		return "destination-generated-" + string(rune('0'+n))
+	}
+}

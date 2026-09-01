@@ -23,6 +23,7 @@ const (
 	TopicAcquisitionGaveUp     Topic = "acquisition_gave_up"
 	TopicChannelLive           Topic = "channel_live"
 	TopicChannelDegraded       Topic = "channel_degraded"
+	TopicDeliveryTest          Topic = "delivery_test"
 )
 
 type RecipientKind string
@@ -37,11 +38,12 @@ const (
 type ReferenceKind string
 
 const (
-	ReferenceInvitation ReferenceKind = "invitation"
-	ReferenceRecovery   ReferenceKind = "recovery"
-	ReferenceProposal   ReferenceKind = "proposal"
-	ReferenceTitle      ReferenceKind = "title"
-	ReferenceChannel    ReferenceKind = "channel"
+	ReferenceInvitation  ReferenceKind = "invitation"
+	ReferenceRecovery    ReferenceKind = "recovery"
+	ReferenceProposal    ReferenceKind = "proposal"
+	ReferenceTitle       ReferenceKind = "title"
+	ReferenceChannel     ReferenceKind = "channel"
+	ReferenceDestination ReferenceKind = "destination"
 )
 
 // RecipientPolicy distinguishes account/security delivery from future preference-controlled topics.
@@ -257,6 +259,14 @@ func (i Intent) Validate() error {
 	case TopicChannelLive, TopicChannelDegraded:
 		if err := i.validateProductAudience(ReferenceChannel); err != nil {
 			return err
+		}
+	case TopicDeliveryTest:
+		if i.Policy != PolicyConfigurable || i.ReferenceKind != ReferenceDestination ||
+			i.ReferenceID != i.RecipientID {
+			return fmt.Errorf("delivery test must reference its destination")
+		}
+		if i.RecipientKind != RecipientPerson && i.RecipientKind != RecipientApprovers && i.RecipientKind != RecipientOperators {
+			return fmt.Errorf("delivery test requires a supported destination audience")
 		}
 	default:
 		return fmt.Errorf("invalid notification topic %q", i.Topic)

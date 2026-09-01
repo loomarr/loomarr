@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
@@ -897,6 +898,20 @@ func testProposalApprovalAtomic(t *testing.T, newStore NewStoreFunc) {
 	bound, err := s.GetChannel(ctx, "ch-approval")
 	if err != nil || bound.IntentRef != proposal.JobID || bound.Number != 101 {
 		t.Errorf("approved channel = (%+v, %v)", bound, err)
+	}
+	for _, reference := range []struct {
+		kind notifications.ReferenceKind
+		id   string
+	}{
+		{notifications.ReferenceTitle, string(existing.Key)},
+		{notifications.ReferenceTitle, string(available.Key)},
+		{notifications.ReferenceTitle, string(wanted.Key)},
+		{notifications.ReferenceChannel, bound.ID},
+	} {
+		recipients, err := s.ListNotificationReferenceRecipients(ctx, reference.kind, reference.id)
+		if err != nil || len(recipients) != 1 || recipients[0] != "member" {
+			t.Errorf("notification provenance %s/%s = %+v, %v", reference.kind, reference.id, recipients, err)
+		}
 	}
 
 	loser := Proposal{ID: "denied", JobID: "job-denied", Status: "denied", ProposalJSON: `{}`, CreatedAt: now, UpdatedAt: now}

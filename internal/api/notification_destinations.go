@@ -1,0 +1,252 @@
+package api
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"time"
+
+	"github.com/danielgtaylor/huma/v2"
+
+	"github.com/loomarr/loomarr/internal/notifications"
+)
+
+func (s *Server) registerNotificationDestinations(api huma.API) {
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "notification-destinations-list", Method: http.MethodGet,
+		Path: "/v1/notifications/destinations", Summary: "List visible notification destinations",
+		Description: "Returns redacted destination summaries. Administrators see installation destinations; each person sees only their own email and Web Push destinations.",
+		Tags:        []string{"notifications"},
+	}, RoleMember), s.notificationDestinationsList)
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "notification-destinations-create", Method: http.MethodPost,
+		Path: "/v1/notifications/destinations", Summary: "Create a notification destination",
+		Description: "Credentials are write-only. Only administrators may create installation destinations; a person destination always belongs to the authenticated person.",
+		Tags:        []string{"notifications"}, DefaultStatus: http.StatusCreated,
+	}, RoleMember), s.notificationDestinationCreate)
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "notification-destinations-update", Method: http.MethodPut,
+		Path: "/v1/notifications/destinations/{id}", Summary: "Update a notification destination",
+		Description: "Omitting credentials preserves the stored value; sending an empty credentials object explicitly clears it.",
+		Tags:        []string{"notifications"},
+	}, RoleMember), s.notificationDestinationUpdate)
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "notification-destinations-delete", Method: http.MethodDelete,
+		Path: "/v1/notifications/destinations/{id}", Summary: "Delete a notification destination",
+		Description: "Queued attempts suppress at execution when their destination no longer exists; delivery history remains redacted and unchanged.",
+		Tags:        []string{"notifications"}, DefaultStatus: http.StatusNoContent,
+	}, RoleMember), s.notificationDestinationDelete)
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "notification-destinations-test", Method: http.MethodPost,
+		Path: "/v1/notifications/destinations/{id}/test", Summary: "Queue a notification destination test",
+		Description: "Queues a distinct test-delivery intent. Acceptance means Loomarr durably accepted the handoff, not that the provider confirmed final delivery.",
+		Tags:        []string{"notifications"}, DefaultStatus: http.StatusAccepted,
+	}, RoleMember), s.notificationDestinationTest)
+}
+
+type notificationDestinationWrite struct {
+	Means         notifications.Means            `json:"means" enum:"email,webhook,discord,ntfy,gotify,apprise,pushover,telegram,mattermost,matrix,web_push,mqtt,slack"`
+	Label         string                         `json:"label" minLength:"1" maxLength:"120"`
+	Scope         notifications.DestinationScope `json:"scope" enum:"installation,person"`
+	Audience      notifications.RecipientKind    `json:"audience" enum:"person,approvers,operators"`
+	Topics        []notifications.Topic          `json:"topics" minItems:"1"`
+	Enabled       bool                           `json:"enabled"`
+	Configuration map[string]string              `json:"configuration,omitempty"`
+	Credentials   *map[string]string             `json:"credentials,omitempty" doc:"Write-only provider credentials. Omit on update to preserve; send an empty object to clear."`
+}
+
+type NotificationDestinationDTO struct {
+	ID                    string                            `json:"id"`
+	Means                 notifications.Means               `json:"means"`
+	Label                 string                            `json:"label"`
+	Scope                 notifications.DestinationScope    `json:"scope"`
+	OwnerID               string                            `json:"ownerId,omitempty"`
+	Audience              notifications.RecipientKind       `json:"audience"`
+	Topics                []notifications.Topic             `json:"topics"`
+	Enabled               bool                              `json:"enabled"`
+	CredentialsConfigured bool                              `json:"credentialsConfigured"`
+	CreatedAt             time.Time                         `json:"createdAt"`
+	UpdatedAt             time.Time                         `json:"updatedAt"`
+	Health                *NotificationDestinationHealthDTO `json:"health,omitempty"`
+}
+
+type NotificationDestinationHealthDTO struct {
+	LastSuccessAt        *time.Time                `json:"lastSuccessAt,omitempty"`
+	LastFailureAt        *time.Time                `json:"lastFailureAt,omitempty"`
+	LastFailureOutcome   notifications.OutcomeCode `json:"lastFailureOutcome,omitempty"`
+	QueuedCount          int                       `json:"queuedCount"`
+	TerminalFailureCount int                       `json:"terminalFailureCount"`
+}
+
+type notificationDestinationsListOutput struct {
+	Body struct {
+		Destinations []NotificationDestinationDTO `json:"destinations"`
+	}
+}
+
+type notificationDestinationCreateInput struct{ Body notificationDestinationWrite }
+type notificationDestinationCreateOutput struct{ Body NotificationDestinationDTO }
+
+type notificationDestinationUpdateWrite struct {
+	Label         string                      `json:"label" minLength:"1" maxLength:"120"`
+	Audience      notifications.RecipientKind `json:"audience" enum:"person,approvers,operators"`
+	Topics        []notifications.Topic       `json:"topics" minItems:"1"`
+	Enabled       bool                        `json:"enabled"`
+	Configuration *map[string]string          `json:"configuration,omitempty" doc:"Omit to preserve the stored provider-safe configuration; send an empty object to clear."`
+	Credentials   *map[string]string          `json:"credentials,omitempty" doc:"Write-only provider credentials. Omit to preserve; send an empty object to clear."`
+}
+
+type notificationDestinationUpdateInput struct {
+	ID   string `path:"id"`
+	Body notificationDestinationUpdateWrite
+}
+type notificationDestinationUpdateOutput struct{ Body NotificationDestinationDTO }
+type notificationDestinationDeleteInput struct {
+	ID string `path:"id"`
+}
+type notificationDestinationTestInput struct {
+	ID   string `path:"id"`
+	Body struct {
+		RequestID string `json:"requestId" minLength:"1" maxLength:"100" doc:"Caller-generated key that makes a repeated test request idempotent."`
+	}
+}
+type notificationDestinationTestOutput struct {
+	Body struct {
+		IntentID string `json:"intentId"`
+		Queued   bool   `json:"queued"`
+		Hint     string `json:"hint"`
+	}
+}
+
+func (s *Server) notificationDestinationsList(
+	ctx context.Context,
+	_ *struct{},
+) (*notificationDestinationsListOutput, error) {
+	if s.notificationDestinations == nil {
+		return nil, errNotImplemented("Notification destinations unavailable", "Destination management isn't available in this Loomarr process.")
+	}
+	summaries, err := s.notificationDestinations.List(ctx, notificationPrincipal(ctx))
+	if err != nil {
+		return nil, notificationDestinationError(err)
+	}
+	out := &notificationDestinationsListOutput{}
+	out.Body.Destinations = make([]NotificationDestinationDTO, 0, len(summaries))
+	for _, summary := range summaries {
+		out.Body.Destinations = append(out.Body.Destinations, notificationDestinationDTO(summary))
+	}
+	return out, nil
+}
+
+func (s *Server) notificationDestinationCreate(
+	ctx context.Context,
+	in *notificationDestinationCreateInput,
+) (*notificationDestinationCreateOutput, error) {
+	if s.notificationDestinations == nil {
+		return nil, errNotImplemented("Notification destinations unavailable", "Destination management isn't available in this Loomarr process.")
+	}
+	principal := notificationPrincipal(ctx)
+	ownerID := ""
+	if in.Body.Scope == notifications.ScopePerson {
+		ownerID = principal.PersonID
+	}
+	summary, err := s.notificationDestinations.Create(ctx, principal, notifications.DestinationCommand{
+		Means: in.Body.Means, Label: in.Body.Label, Scope: in.Body.Scope, OwnerID: ownerID,
+		Audience: in.Body.Audience, Topics: in.Body.Topics, Enabled: in.Body.Enabled,
+		Configuration: in.Body.Configuration, Credentials: in.Body.Credentials,
+	})
+	if err != nil {
+		return nil, notificationDestinationError(err)
+	}
+	return &notificationDestinationCreateOutput{Body: notificationDestinationDTO(summary)}, nil
+}
+
+func (s *Server) notificationDestinationUpdate(
+	ctx context.Context,
+	in *notificationDestinationUpdateInput,
+) (*notificationDestinationUpdateOutput, error) {
+	if s.notificationDestinations == nil {
+		return nil, errNotImplemented("Notification destinations unavailable", "Destination management isn't available in this Loomarr process.")
+	}
+	summary, err := s.notificationDestinations.Update(ctx, notificationPrincipal(ctx), in.ID, notifications.DestinationUpdateCommand{
+		Label: in.Body.Label, Audience: in.Body.Audience, Topics: in.Body.Topics, Enabled: in.Body.Enabled,
+		Configuration: in.Body.Configuration, Credentials: in.Body.Credentials,
+	})
+	if err != nil {
+		return nil, notificationDestinationError(err)
+	}
+	return &notificationDestinationUpdateOutput{Body: notificationDestinationDTO(summary)}, nil
+}
+
+func (s *Server) notificationDestinationDelete(ctx context.Context, in *notificationDestinationDeleteInput) (*struct{}, error) {
+	if s.notificationDestinations == nil {
+		return nil, errNotImplemented("Notification destinations unavailable", "Destination management isn't available in this Loomarr process.")
+	}
+	if err := s.notificationDestinations.Delete(ctx, notificationPrincipal(ctx), in.ID); err != nil {
+		return nil, notificationDestinationError(err)
+	}
+	return nil, nil
+}
+
+func (s *Server) notificationDestinationTest(
+	ctx context.Context,
+	in *notificationDestinationTestInput,
+) (*notificationDestinationTestOutput, error) {
+	if s.notificationDestinations == nil {
+		return nil, errNotImplemented("Notification destinations unavailable", "Destination testing isn't available in this Loomarr process.")
+	}
+	result, err := s.notificationDestinations.Test(ctx, notificationPrincipal(ctx), in.ID, in.Body.RequestID)
+	if err != nil {
+		return nil, notificationDestinationError(err)
+	}
+	out := &notificationDestinationTestOutput{}
+	out.Body.IntentID = result.IntentID
+	out.Body.Queued = true
+	out.Body.Hint = "Test notification queued. Check delivery health for the final provider result."
+	return out, nil
+}
+
+func notificationPrincipal(ctx context.Context) notifications.Principal {
+	principal := notifications.Principal{Administrator: roleFrom(ctx) == RoleAdmin}
+	if user, ok := userFrom(ctx); ok {
+		principal.PersonID = user.ID
+	}
+	return principal
+}
+
+func notificationDestinationDTO(summary notifications.DestinationSummary) NotificationDestinationDTO {
+	dto := NotificationDestinationDTO{
+		ID: summary.ID, Means: summary.Means, Label: summary.Label, Scope: summary.Scope,
+		OwnerID: summary.OwnerID, Audience: summary.Audience, Topics: summary.Topics,
+		Enabled: summary.Enabled, CredentialsConfigured: summary.CredentialsConfigured,
+		CreatedAt: summary.CreatedAt, UpdatedAt: summary.UpdatedAt,
+	}
+	if summary.Health != nil {
+		health := NotificationDestinationHealthDTO{
+			LastFailureOutcome: summary.Health.LastFailureOutcome, QueuedCount: summary.Health.QueuedCount,
+			TerminalFailureCount: summary.Health.TerminalFailureCount,
+		}
+		if !summary.Health.LastSuccessAt.IsZero() {
+			value := summary.Health.LastSuccessAt
+			health.LastSuccessAt = &value
+		}
+		if !summary.Health.LastFailureAt.IsZero() {
+			value := summary.Health.LastFailureAt
+			health.LastFailureAt = &value
+		}
+		dto.Health = &health
+	}
+	return dto
+}
+
+func notificationDestinationError(err error) error {
+	switch {
+	case errors.Is(err, notifications.ErrForbidden):
+		return apiErr(http.StatusForbidden, "Notification destination unavailable", "You can manage only installation destinations allowed for your role and personal destinations owned by your account.")
+	case errors.Is(err, notifications.ErrNotFound):
+		return errNotFound("Notification destination not found", "That notification destination doesn't exist or has already been deleted.")
+	case errors.Is(err, notifications.ErrMeansUnavailable):
+		return errUnprocessable("Notification provider unavailable", "That provider cannot be enabled until its adapter is available and fully configured.")
+	default:
+		return errUnprocessable("Notification destination is invalid", "Check the provider, audience, selected events, and required configuration, then try again.")
+	}
+}
