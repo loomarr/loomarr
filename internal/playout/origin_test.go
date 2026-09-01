@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -116,6 +117,40 @@ func TestOriginLifecycleGateFailsClosedAndStopAllIsReusable(t *testing.T) {
 	if err != nil || stream.Stream == nil {
 		t.Fatalf("Tune after lifecycle recovery = (%#v, %v)", stream, err)
 	}
+}
+
+type quiescingSessions struct {
+	stream chan []byte
+	once   sync.Once
+}
+
+func (s *quiescingSessions) Attach(context.Context, string, EncodePlan) (<-chan []byte, func(), error) {
+	return s.stream, func() {}, nil
+}
+func (*quiescingSessions) StopChannel(string) {}
+func (s *quiescingSessions) Stop()            { s.once.Do(func() { close(s.stream) }) }
+
+func TestOriginQuiesceEndsActiveStreamAndPermanentlyClosesAdmission(t *testing.T) {
+	t.Parallel()
+	sessions := &quiescingSessions{stream: make(chan []byte)}
+	origin := newOrigin(nil, sessions, nil)
+
+	presentation, err := origin.Tune(context.Background(), TuneRequest{
+		ChannelID: "ch-one", Plan: PlanFull, Delivery: DeliveryMPEGTS,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	origin.Quiesce()
+	if _, open := <-presentation.Stream; open {
+		t.Fatal("active stream remained open after Origin.Quiesce")
+	}
+	if _, err := origin.Tune(context.Background(), TuneRequest{
+		ChannelID: "ch-one", Plan: PlanFull, Delivery: DeliveryMPEGTS,
+	}); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("Tune after quiesce error = %v, want ErrUnavailable", err)
+	}
+	origin.Quiesce()
 }
 
 func TestOriginNormalizesOptionalNilDependencies(t *testing.T) {

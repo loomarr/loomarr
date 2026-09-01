@@ -154,7 +154,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns host-wide resources shared by live and background media work.
 - **`notifications`** · 5 importers
   Owns channel-neutral notification intents and delivery work (§11).
-- **`proctree`** · 2 importers
+- **`proctree`** · 3 importers
   Supervises one child process and every descendant it starts.
 - **`provision`** · 16 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
@@ -229,7 +229,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 7**
 
-- **`clipfetch`** · 1 importer · → `filler`
+- **`clipfetch`** · 1 importer · → `filler`, `proctree`
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`library`** · 7 importers · → `episodeevidence`, `filler`, `httpx`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
@@ -2446,6 +2446,24 @@ projects a planner-owned snapshot; it never rescans schedules or the filesystem 
 loop — `for { app := Build(); app.Run(); app.Shutdown() }` — and a restart request ends the
 current iteration so the next one constructs a fresh store, handler, scheduler and HTTP server.
 Same PID, no re-exec, **no supervisor required**.
+
+**A generation drains in two application phases around the HTTP wait.** First, it closes
+generation admission, cancels generation-owned work and event streams, and synchronously
+**quiesces network-facing resources whose active responses cannot finish by themselves**. Internal
+MPEG-TS sessions and live HLS remuxes are the canonical quiescers: an endless tuned response exits
+only when its session closes, while `http.Server.Shutdown` waits for that response. Quiescence must
+therefore precede HTTP drain or the two sides wait on each other until the shared deadline. After
+HTTP has drained, the application **finalizes** schedulers, diagnostics, workers, scratch roots and
+other owned resources in reverse construction order while their dependencies and the store remain
+open. The store closes only after finalization; a replacement generation cannot start earlier.
+
+Quiescers are a distinct, narrow lifecycle registry rather than ordinary finalizers run early.
+They are idempotent, safe under signal, operator restart, database migration and repeated calls,
+and reject new admission before taking their snapshot. A caller may wait again after its context
+expires. Ordinary finite handlers retain normal graceful-drain semantics, and diagnostics,
+scheduler infrastructure and the store are not torn down while they may still serve those
+handlers. SQLite and PostgreSQL follow this same ordering; PostgreSQL invalidation cancellation is
+additional fail-closed protection, not the mechanism that makes shutdown complete.
 
 **A generation is also the application boundary for storage topology.** Registry persistence and
 runtime application are deliberately separate for `filler.dir` + `filler.watch_dir`: saving either
