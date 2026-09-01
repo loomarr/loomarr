@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -24,13 +23,7 @@ import (
 
 func newStore(t *testing.T) store.Store {
 	t.Helper()
-	dsn := "sqlite://" + filepath.Join(t.TempDir(), "test.db")
-	s, err := store.Open(context.Background(), dsn, true)
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	t.Cleanup(func() { _ = s.Close() })
-	return s
+	return testkit.MigratedSQLiteStore(t)
 }
 
 // mapAvail is a mutable Availability tests drive to simulate content landing.
