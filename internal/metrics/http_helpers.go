@@ -44,6 +44,9 @@ func (s *statusRecorder) Write(body []byte) (int, error) {
 	if !s.written {
 		s.written = true
 	}
+	// This response-observing middleware does not create or transform content; the wrapped
+	// application handler remains responsible for its response's content type and escaping.
+	// codeql[go/reflected-xss]
 	return s.ResponseWriter.Write(body)
 }
 
