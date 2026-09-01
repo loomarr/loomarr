@@ -99,15 +99,21 @@ func buildServeShutdown(t *testing.T, generation int) {
 			t.Errorf("generation %d: /metrics missing %s; collector retained an old store", generation, family)
 		}
 	}
-	srv.Close()
-
-	// Teardown in runOnce's order: cancel background work, then release the store.
+	// Teardown in runOnce's two-phase order: cancel background work and quiesce network resources,
+	// drain HTTP, finalize the generation, then release the store through the defer above.
 	cancel()
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer shutdownCancel()
+	if err := application.Quiesce(shutdownCtx); err != nil {
+		t.Fatalf("generation %d: quiesce application: %v", generation, err)
+	}
+	if err := srv.Config.Shutdown(shutdownCtx); err != nil {
+		t.Fatalf("generation %d: drain HTTP: %v", generation, err)
+	}
 	if err := application.Shutdown(shutdownCtx); err != nil {
 		t.Fatalf("generation %d: shutdown application: %v", generation, err)
 	}
+	srv.Close()
 }
 
 // settle waits for cancelled goroutines to exit, stopping as soon as the count holds
