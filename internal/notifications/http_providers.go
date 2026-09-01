@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/loomarr/loomarr/internal/httpx"
 )
 
 const (
@@ -53,17 +55,7 @@ type HTTPProviderAdapter struct {
 
 func NewHTTPProviderAdapters(client HTTPDoer, publicURL func() string) ([]Adapter, []DestinationValidator) {
 	if client == nil {
-		client = &http.Client{
-			Timeout: 15 * time.Second,
-			CheckRedirect: func(request *http.Request, via []*http.Request) error {
-				if len(via) >= 3 || len(via) == 0 ||
-					!strings.EqualFold(request.URL.Hostname(), via[0].URL.Hostname()) ||
-					(via[0].URL.Scheme == "https" && request.URL.Scheme != "https") {
-					return http.ErrUseLastResponse
-				}
-				return nil
-			},
-		}
+		client = httpx.NewNamed("notification-provider", httpx.TimeoutNotifications)
 	}
 	means := []Means{
 		MeansWebhook, MeansDiscord, MeansNtfy, MeansGotify, MeansApprise, MeansPushover,

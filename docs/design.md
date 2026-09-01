@@ -123,12 +123,12 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `diagnostics` | 8 | — |
 | `filler` | 6 | `diagnostics`, `filleradmission`, `llm` |
 | `filleradmission` | 7 | — |
-| `httpx` | 7 | `metrics` |
+| `httpx` | 9 | `metrics` |
 | `invitation` | 6 | `contact` |
 | `library` | 8 | `filler`, `httpx`, `metrics` |
 | `llm` | 5 | `httpx`, `metrics` |
 | `metrics` | 8 | `provision` |
-| `notifications` | 5 | — |
+| `notifications` | 5 | `httpx` |
 | `provision` | 17 | — |
 | `recovery` | 5 | — |
 | `schedule` | 15 | `provision` |
@@ -195,14 +195,12 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns administrator admission decisions and their bearer grants (§11).
 - **`metrics`** · 8 importers · → `images/rustgen`, `provision`
   Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
-- **`notifications`** · 5 importers · → `secretprotection`
-  Owns channel-neutral notification intents and delivery work (§11).
 - **`prepared`** · 3 importers · → `diagnostics`, `media`
   Owns immutable, reusable playout publications.
 
 **Layer 2**
 
-- **`httpx`** · 7 importers · → `metrics`
+- **`httpx`** · 9 importers · → `metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 - **`schedule`** · 15 importers · → `holidayvocab`, `provision`, `textmatch`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
@@ -213,6 +211,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Runs bounded, inference-spending filler admission comparisons.
 - **`llm`** · 5 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
+- **`notifications`** · 5 importers · → `httpx`, `secretprotection`
+  Owns channel-neutral notification intents and delivery work (§11).
 - **`playout`** · 4 importers · → `diagnostics`, `prepared`, `proctree`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 - **`programmer`** · 3 importers · → `httpx`, `metrics`, `schedule`
@@ -299,7 +299,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 11**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `images`, `images/rustgen`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recovery`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `httpx`, `images`, `images/rustgen`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recovery`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
