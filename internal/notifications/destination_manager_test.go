@@ -95,6 +95,28 @@ func TestDestinationManagerClassifiesAndRedactsTheUnifiedProviderSettings(t *tes
 	}
 }
 
+func TestDestinationManagerRejectsQueryStringsWhenUpdatingOrdinaryProviderURLs(t *testing.T) {
+	repository := testkit.NewNotificationRepository()
+	now := time.Unix(1_900_000_000, 0)
+	manager := notifications.NewDestinationManager(repository, nil, sequentialDestinationIDs(), func() time.Time { return now })
+	admin := notifications.Principal{PersonID: "admin-1", Administrator: true}
+	created, err := manager.Create(t.Context(), admin, notifications.DestinationCommand{
+		Means: notifications.MeansNtfy, Label: "Household ntfy", Scope: notifications.ScopeInstallation,
+		Audience: notifications.RecipientOperators, Topics: []notifications.Topic{notifications.TopicChannelDegraded},
+		Settings: map[string]string{"baseUrl": "https://notify.example.test", "topic": "private-topic"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	changes := map[string]string{"baseUrl": "https://notify.example.test?token=must-not-be-plaintext"}
+	if _, err := manager.Update(t.Context(), admin, created.ID, notifications.DestinationUpdateCommand{
+		Label: "Household ntfy", Audience: notifications.RecipientOperators,
+		Topics: []notifications.Topic{notifications.TopicChannelDegraded}, Settings: &changes,
+	}); err == nil {
+		t.Fatal("provider update accepted a credential-bearing ordinary URL")
+	}
+}
+
 func TestDestinationManagerRejectsMemberInstallationAndCrossPersonWrites(t *testing.T) {
 	manager := notifications.NewDestinationManager(
 		testkit.NewNotificationRepository(), nil, sequentialDestinationIDs(), time.Now,
