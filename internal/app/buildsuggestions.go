@@ -95,7 +95,7 @@ func buildSuggestions(
 		store: st, tmdb: tmdbClient, images: result.images, fetch: result.imageFetcher, log: log,
 	}
 
-	provider, systemLLM := buildLLM(rootCtx, set, st, eventBus, log)
+	provider, systemLLM := buildLLM(rootCtx, set, st, eventBus, log, metricRecorder)
 	if overrides.LLM != nil {
 		provider = overrides.LLM
 	}

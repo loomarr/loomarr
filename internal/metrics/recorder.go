@@ -39,6 +39,7 @@ type Recorder struct {
 	playout    recorderPlayout
 	channels   recorderChannels
 	filler     recorderFiller
+	llm        recorderLLM
 }
 
 type recorderHTTP struct {
@@ -87,6 +88,10 @@ type recorderChannels struct {
 type recorderFiller struct {
 	pods    *prometheus.CounterVec
 	airings *prometheus.CounterVec
+}
+
+type recorderLLM struct {
+	tokens *prometheus.CounterVec
 }
 
 // New constructs an isolated generation registry with Loomarr identity and the
@@ -259,6 +264,12 @@ func New(options Options) *Recorder {
 			Help: "Actual filler clip airings by repeat state and cooldown pressure.",
 		}, []string{"repeat", "cooldown"}),
 	}
+	llmMetrics := recorderLLM{
+		tokens: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loomarr", Subsystem: "llm", Name: "tokens_total",
+			Help: "LLM tokens consumed by grounded generation, by kind.",
+		}, []string{"kind"}),
+	}
 	for _, result := range []string{"success", "error"} {
 		channelMetrics.reconciles.WithLabelValues(result)
 	}
@@ -273,6 +284,9 @@ func New(options Options) *Recorder {
 	}
 	for _, level := range []string{"exact", "widened", "audience", "bumper_card", "other"} {
 		fillerMetrics.pods.WithLabelValues(level)
+	}
+	for _, kind := range []string{"prompt", "completion"} {
+		llmMetrics.tokens.WithLabelValues(kind)
 	}
 	for _, repeat := range []string{"fresh", "repeat"} {
 		for _, cooldown := range []string{"ready", "relaxed", "override"} {
@@ -301,7 +315,7 @@ func New(options Options) *Recorder {
 		playoutMetrics.sessionsActive, playoutMetrics.sessionStarts,
 		playoutMetrics.processFailure, playoutMetrics.fallbacks,
 		channelMetrics.reconciles, channelMetrics.duration, channelMetrics.substitutions,
-		fillerMetrics.pods, fillerMetrics.airings)
+		fillerMetrics.pods, fillerMetrics.airings, llmMetrics.tokens)
 	if options.Store != nil {
 		now := options.Now
 		if now == nil {
@@ -324,6 +338,7 @@ func New(options Options) *Recorder {
 		playout:    playoutMetrics,
 		channels:   channelMetrics,
 		filler:     fillerMetrics,
+		llm:        llmMetrics,
 	}
 }
 
@@ -557,4 +572,14 @@ func (r *Recorder) FillerRotationAired(repeated, relaxed, pinned bool) {
 		cooldown = "relaxed"
 	}
 	r.filler.airings.WithLabelValues(repeat, cooldown).Inc()
+}
+
+// LLMTokens records the provider-reported aggregate token categories.
+func (r *Recorder) LLMTokens(promptTokens, completionTokens int) {
+	if promptTokens > 0 {
+		r.llm.tokens.WithLabelValues("prompt").Add(float64(promptTokens))
+	}
+	if completionTokens > 0 {
+		r.llm.tokens.WithLabelValues("completion").Add(float64(completionTokens))
+	}
 }

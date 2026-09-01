@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -38,11 +39,11 @@ import (
 // the `if` rather than living inside the tagger. Nil for both is the honest un-opted-in state,
 // and every reader treats it that way — the manual sweep becomes a no-op, and the rung reports
 // "no language model is configured" on each clip's ladder rather than silently doing nothing.
-func buildTagger(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, wake *fillerChannelWake) (llm.Provider, *filler.Tagger) {
+func buildTagger(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, wake *fillerChannelWake, recorder *metrics.Recorder) (llm.Provider, *filler.Tagger) {
 	if !set.boolv("filler.ai_tagging") {
 		return nil, nil
 	}
-	provider := activeFillerProvider(set)
+	provider := activeFillerProvider(set, recorder)
 	if provider == nil {
 		return nil, nil
 	}
@@ -183,15 +184,15 @@ func buildFetcher(set resolved, layout filler.Layout, log *slog.Logger) *clipfet
 //
 // The LLM provider wires whenever one is configured — splitting's rescue and classification are
 // operator-invoked, so they are not gated by `filler.ai_tagging`, which gates the batch job.
-func buildSplitter(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, wake *fillerChannelWake) *filler.Splitter {
+func buildSplitter(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, wake *fillerChannelWake, recorder *metrics.Recorder) *filler.Splitter {
 	dir := layout.ClipDir()
 	if dir == "" {
 		return nil
 	}
 
-	splitProvider := activeFillerProvider(set)
+	splitProvider := activeFillerProvider(set, recorder)
 
-	tools := buildFillerMediaTools(set)
+	tools := buildFillerMediaTools(set, recorder)
 
 	// The same live minimum is enforced during detection and at the scan boundary (§10 V34).
 	return filler.NewSplitter(fillerSplitStoreAdapter{st: st, wake: wake}, tools, splitProvider, dir,
@@ -201,18 +202,18 @@ func buildSplitter(st store.Store, set resolved, layout filler.Layout, log *slog
 // activeFillerProvider resolves the same branded provider selection as the AI surface. OpenRouter
 // credentials live under llm.api_key.openrouter rather than the legacy base key; every filler text
 // path must therefore build from Selection instead of reconstructing the wire from registry rows.
-func activeFillerProvider(set resolved) llm.Provider {
+func activeFillerProvider(set resolved, recorder *metrics.Recorder) llm.Provider {
 	sel := resolveSelection(set)
 	if sel.URL == "" {
 		return nil
 	}
-	return buildProviderFor(sel)
+	return buildProviderForObserved(sel, recorder)
 }
 
 // buildFillerMediaTools selects local whisper or hosted timed transcription behind the same
 // MediaTools interface. Every selector is a closure: changing provider, model, URL or key applies
 // to the next span without restarting, matching the rest of the filler settings contract.
-func buildFillerMediaTools(set resolved) *mediatools.FFmpegTools {
+func buildFillerMediaTools(set resolved, recorder *metrics.Recorder) *mediatools.FFmpegTools {
 	ffmpegPath := set.str("playout.ffmpeg_path")
 	tools := mediatools.NewFFmpegTools(ffmpegPath, filler.FFprobePathNextTo(ffmpegPath),
 		set.str("ingest.whisper_path"), set.str("ingest.whisper_model"), "")
@@ -223,7 +224,7 @@ func buildFillerMediaTools(set resolved) *mediatools.FFmpegTools {
 			if sel.URL == "" {
 				return nil
 			}
-			return hostedSTTAdapter{llm.NewOpenAIForProvider(sel.Provider, sel.URL, set.str("filler.transcribe.model"), sel.APIKey)}
+			return hostedSTTAdapter{llm.NewOpenAIForProvider(sel.Provider, sel.URL, set.str("filler.transcribe.model"), sel.APIKey).WithMetrics(recorder)}
 		},
 		Model: func() string { return set.str("filler.transcribe.model") },
 	}
@@ -256,7 +257,8 @@ func buildFillerMediaTools(set resolved) *mediatools.FFmpegTools {
 // conditional to "clean up" the nil cases.
 func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, emitter *eventEmitter,
 	splitter *filler.Splitter, taggerProvider llm.Provider, wake *fillerChannelWake,
-	processDiagnostics *diagnostics.ProcessManager, admissionObserver filler.AdmissionObserver) *filler.Pipeline {
+	processDiagnostics *diagnostics.ProcessManager, admissionObserver filler.AdmissionObserver,
+	recorder *metrics.Recorder) *filler.Pipeline {
 	// The language gate (§10 V40). Registered unconditionally: `filler.language` empty makes
 	// Run a no-op, so an install that has not opted in pays nothing and the Tasks row still
 	// exists to be seen and paused.
@@ -286,7 +288,7 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 		// Everything else in this feature reads live; the one setting that decides whether the
 		// backend can work at all must too.
 		langDetect = filler.NewHostedLanguage(
-			func() filler.AudioAsker { return hostedLanguageAsker(set) },
+			func() filler.AudioAsker { return hostedLanguageAsker(set, recorder) },
 			func() string { return set.str("llm.model") },
 			set.str("playout.ffmpeg_path"), "")
 	} else {
@@ -300,7 +302,7 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 	}
 	// The ffmpeg tooling the metadata rungs share (a core runtime dep — NOT the ingest pair, so
 	// they run on files already on disk regardless of whether yt-dlp is present).
-	fillerTools := buildFillerMediaTools(set)
+	fillerTools := buildFillerMediaTools(set, recorder)
 
 	// The generation's clip-root FS reads the info-JSON sidecars ingest writes beside each clip.
 	// nil ⇒ every clip reads as thin-sourced and filename-only tagged.
@@ -316,7 +318,7 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 	// was indistinguishable from one with vision switched off.
 	var visionProvider llm.VisionProvider
 	if set.boolv("filler.vision.enabled") {
-		h := &hotVisionProvider{set: set, log: log}
+		h := &hotVisionProvider{set: set, log: log, metrics: recorder}
 		// Resolve ONCE at boot purely to report it. A failure here is not fatal — the operator may
 		// fix the setting without restarting, which is the entire point of resolving per call —
 		// but it must not be silent, because this is the diagnosis for "grounding never runs".
@@ -447,12 +449,12 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 // base key here made the main picker work while the filler language request was sent without the
 // selected provider's key. Custom OpenAI-compatible endpoints may legitimately need no key; URL,
 // not credential presence, is therefore the availability boundary.
-func hostedLanguageAsker(set resolved) filler.AudioAsker {
+func hostedLanguageAsker(set resolved, recorder *metrics.Recorder) filler.AudioAsker {
 	sel := resolveSelection(set)
 	if sel.URL == "" {
 		return nil // not configured ⇒ the gate keeps every clip
 	}
-	return audioAskerAdapter{llm.NewOpenAIForProvider(sel.Provider, sel.URL, sel.Model, sel.APIKey)}
+	return audioAskerAdapter{llm.NewOpenAIForProvider(sel.Provider, sel.URL, sel.Model, sel.APIKey).WithMetrics(recorder)}
 }
 
 // buildPodAdapter constructs the pod assembler: the thing that picks which commercials fill a
@@ -565,8 +567,9 @@ func visionEndpoint(set resolved) visionWiring {
 // ⚠ Memoised on the RESOLVED WIRING, not built per call. Rebuilding would discard the HTTP
 // connection pool on every segment — 60 of them in one pass at the default `max_split_vision`.
 type hotVisionProvider struct {
-	set resolved
-	log *slog.Logger
+	set     resolved
+	log     *slog.Logger
+	metrics *metrics.Recorder
 
 	mu   sync.Mutex
 	last visionWiring
@@ -599,9 +602,9 @@ func (h *hotVisionProvider) resolve() (llm.VisionProvider, error) {
 	var p llm.VisionProvider
 	switch v.provider {
 	case "openai":
-		p = llm.NewOpenAIForProvider(v.identity, v.url, v.model, v.key)
+		p = llm.NewOpenAIForProvider(v.identity, v.url, v.model, v.key).WithMetrics(h.metrics)
 	case "ollama":
-		p = llm.NewOllama(v.url, v.model)
+		p = llm.NewOllama(v.url, v.model).WithMetrics(h.metrics)
 	default:
 		return nil, fmt.Errorf("provider %q has no vision path", v.provider)
 	}

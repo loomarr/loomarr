@@ -10,8 +10,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/loomarr/loomarr/internal/metrics"
 )
 
 // Hosted speech-to-text over the OpenAI-compatible transcription endpoint (§10). OpenRouter uses
@@ -133,7 +131,9 @@ func (o *OpenAI) TranscribeAudio(ctx context.Context, req TranscriptionRequest) 
 	if len(segments) == 0 && strings.TrimSpace(out.Text) != "" {
 		return TranscriptionResult{}, fmt.Errorf("audio transcription returned text without segment timestamps")
 	}
-	metrics.LLMTokens(out.Usage.PromptTokens, out.Usage.CompletionTokens)
+	if o.metrics != nil {
+		o.metrics.LLMTokens(out.Usage.PromptTokens, out.Usage.CompletionTokens)
+	}
 	return TranscriptionResult{
 		Segments: segments,
 		Attribution: attributionFromWire(o.provider, model, out.ID, out.Model, out.Usage,

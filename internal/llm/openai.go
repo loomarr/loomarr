@@ -35,6 +35,16 @@ type OpenAI struct {
 	provider string // branded route identity (openrouter, custom, openai)
 	http     *http.Client
 	route    *openRouterChatRoute
+	metrics  *metrics.Recorder
+}
+
+// WithMetrics binds this provider to one application generation's observations.
+func (o *OpenAI) WithMetrics(recorder *metrics.Recorder) *OpenAI {
+	o.metrics = recorder
+	if recorder != nil {
+		o.http = httpx.NewNamedObserved("llm", httpx.TimeoutLLM, recorder)
+	}
+	return o
 }
 
 // OpenRouterChatConfig pins one certification request to a concrete private
@@ -286,7 +296,9 @@ func (o *OpenAI) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 	if len(out.Choices) == 0 {
 		return Response{}, fmt.Errorf("openai chat: empty choices")
 	}
-	metrics.LLMTokens(out.Usage.PromptTokens, out.Usage.CompletionTokens) // §17: no-op on 0
+	if o.metrics != nil {
+		o.metrics.LLMTokens(out.Usage.PromptTokens, out.Usage.CompletionTokens)
+	}
 	msg := out.Choices[0].Message
 	return Response{
 		Content:   msg.Content,
@@ -462,7 +474,9 @@ func (o *OpenAI) AskAboutImages(ctx context.Context, prompt string, jpegs [][]by
 	if len(out.Choices) == 0 {
 		return Response{}, fmt.Errorf("vision chat: no choices")
 	}
-	metrics.LLMTokens(out.Usage.PromptTokens, out.Usage.CompletionTokens) // §17: no-op on 0
+	if o.metrics != nil {
+		o.metrics.LLMTokens(out.Usage.PromptTokens, out.Usage.CompletionTokens)
+	}
 	return Response{
 		Content: strings.TrimSpace(out.Choices[0].Message.Content),
 		Attribution: attributionFromWire(o.provider, o.model, out.ID, out.Model, out.Usage,

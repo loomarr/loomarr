@@ -10,8 +10,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/loomarr/loomarr/internal/metrics"
 )
 
 // Audio input over the OpenAI-compatible chat API (§8.1, for §10 V40's language gate).
@@ -146,7 +144,9 @@ func (o *OpenAI) AskAboutAudio(ctx context.Context, req AudioRequest) (Response,
 	if len(out.Choices) == 0 {
 		return Response{}, fmt.Errorf("audio chat: no choices")
 	}
-	metrics.LLMTokens(out.Usage.PromptTokens, out.Usage.CompletionTokens)
+	if o.metrics != nil {
+		o.metrics.LLMTokens(out.Usage.PromptTokens, out.Usage.CompletionTokens)
+	}
 	return Response{
 		Content: strings.TrimSpace(out.Choices[0].Message.Content),
 		Attribution: attributionFromWire(o.provider, model, out.ID, out.Model, out.Usage,

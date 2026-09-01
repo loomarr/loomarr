@@ -114,6 +114,21 @@ func TestRecorderBoundsFillerMatchLevelAndRecordsRotationState(t *testing.T) {
 	}
 }
 
+func TestRecorderRecordsLLMTokensWithoutProviderOrModelLabels(t *testing.T) {
+	recorder := metrics.New(metrics.Options{})
+	recorder.LLMTokens(21, 8)
+
+	body := scrape(t, recorder)
+	for _, want := range []string{
+		`loomarr_llm_tokens_total{kind="prompt"} 21`,
+		`loomarr_llm_tokens_total{kind="completion"} 8`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("scrape does not contain %q", want)
+		}
+	}
+}
+
 func TestRecorderScrapeReportsLiveDatabasePoolStats(t *testing.T) {
 	recorder := metrics.New(metrics.Options{
 		DatabaseStats: func() sql.DBStats {

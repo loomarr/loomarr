@@ -94,9 +94,9 @@ func buildFillerSubsystem(
 	wake := &fillerChannelWake{st: st, channels: channelService, log: log}
 	result.taxonomy = taxonomyEditor{store: st, wake: wake}
 	syncer := buildSyncer(st, set, layout, log, fillerProgrammer, libraryClient)
-	taggerProvider, tagger := buildTagger(st, set, layout, log, wake)
+	taggerProvider, tagger := buildTagger(st, set, layout, log, wake, metricRecorder)
 	fetcher := buildFetcher(set, layout, log)
-	splitter := buildSplitter(st, set, layout, log, wake)
+	splitter := buildSplitter(st, set, layout, log, wake, metricRecorder)
 	adapter := fillerServiceAdapter{
 		syncer: syncer, tagger: tagger, fetcher: fetcher,
 		bus: eventBus, log: log, newID: newID, timeout: set.dur("ingest.timeout"),
@@ -119,7 +119,7 @@ func buildFillerSubsystem(
 	log.Info("filler catalog sync registered", "dir", layout.ClipDir(),
 		"every", set.dur("filler.sync_every"), "ai_tagging", set.boolv("filler.ai_tagging"))
 	pipeline := buildPipeline(st, set, layout, log, emitter, splitter, taggerProvider, wake,
-		processDiagnostics, admissionObserver)
+		processDiagnostics, admissionObserver, metricRecorder)
 	jobs.Add(fillerPipelineJob(pipeline))
 	adapter.pipeline = pipeline
 	adapter.afterIngest = func(ctx context.Context) error {
