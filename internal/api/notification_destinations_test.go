@@ -129,3 +129,49 @@ func TestNotificationDestinationsAdminCRUDIsRedactedAndMembersCannotManageInstal
 		t.Fatalf("admin delete destination = %d", deleted.StatusCode)
 	}
 }
+
+func TestNotificationProviderTypesDriveTheAdminFormWithoutSecretValues(t *testing.T) {
+	h := api.Router(slog.New(slog.DiscardHandler), api.Options{Auth: notificationAuthorizer{}})
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+
+	member := do(t, srv, http.MethodGet, "/v1/notifications/provider-types", memberToken, "")
+	if member.StatusCode != http.StatusForbidden {
+		t.Fatalf("member provider types = %d, want 403", member.StatusCode)
+	}
+	response := do(t, srv, http.MethodGet, "/v1/notifications/provider-types", adminToken, "")
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("admin provider types = %d: %s", response.StatusCode, readBody(t, response))
+	}
+	var body struct {
+		Providers []struct {
+			Type   notifications.Means `json:"type"`
+			Name   string              `json:"name"`
+			Fields []struct {
+				Key       string `json:"key"`
+				Sensitive bool   `json:"sensitive"`
+				Value     string `json:"value"`
+			} `json:"fields"`
+		} `json:"providers"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Providers) != 13 || body.Providers[0].Type != notifications.MeansEmail || body.Providers[0].Name != "SMTP" {
+		t.Fatalf("provider definitions = %+v", body.Providers)
+	}
+	var slackWebhookSensitive bool
+	for _, provider := range body.Providers {
+		for _, field := range provider.Fields {
+			if field.Value != "" {
+				t.Fatalf("provider metadata leaked a field value: %s.%s", provider.Type, field.Key)
+			}
+			if provider.Type == notifications.MeansSlack && field.Key == "webhookUrl" {
+				slackWebhookSensitive = field.Sensitive
+			}
+		}
+	}
+	if !slackWebhookSensitive {
+		t.Fatal("Slack webhook URL is not identified as a sensitive server-owned field")
+	}
+}

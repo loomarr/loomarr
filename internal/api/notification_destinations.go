@@ -13,6 +13,12 @@ import (
 
 func (s *Server) registerNotificationDestinations(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
+		OperationID: "notification-provider-types-list", Method: http.MethodGet,
+		Path: "/v1/notifications/provider-types", Summary: "List notification provider types",
+		Description: "Returns the server-owned provider fields and compatible events used to render the Add provider form. No configured values or credentials are returned.",
+		Tags:        []string{"notifications"},
+	}, RoleAdmin), s.notificationProviderTypesList)
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "notification-destinations-list", Method: http.MethodGet,
 		Path: "/v1/notifications/destinations", Summary: "List visible notification destinations",
 		Description: "Returns redacted destination summaries. Administrators see installation destinations; each person sees only their own email and Web Push destinations.",
@@ -42,6 +48,68 @@ func (s *Server) registerNotificationDestinations(api huma.API) {
 		Description: "Queues a distinct test-delivery intent. Acceptance means Loomarr durably accepted the handoff, not that the provider confirmed final delivery.",
 		Tags:        []string{"notifications"}, DefaultStatus: http.StatusAccepted,
 	}, RoleMember), s.notificationDestinationTest)
+}
+
+type NotificationProviderFieldOptionDTO struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
+type NotificationProviderFieldDTO struct {
+	Key         string                               `json:"key"`
+	Label       string                               `json:"label"`
+	Kind        notifications.ProviderFieldKind      `json:"kind" enum:"text,password,url,number,select,toggle"`
+	Required    bool                                 `json:"required"`
+	Sensitive   bool                                 `json:"sensitive"`
+	Default     string                               `json:"default,omitempty"`
+	Options     []NotificationProviderFieldOptionDTO `json:"options,omitempty"`
+	Description string                               `json:"description,omitempty"`
+}
+
+type NotificationProviderTypeDTO struct {
+	Type        notifications.Means            `json:"type"`
+	Name        string                         `json:"name"`
+	Fields      []NotificationProviderFieldDTO `json:"fields"`
+	Events      []notifications.Topic          `json:"events"`
+	MemberOwned bool                           `json:"memberOwned"`
+}
+
+type notificationProviderTypesListOutput struct {
+	Body struct {
+		Providers []NotificationProviderTypeDTO `json:"providers"`
+	}
+}
+
+func (s *Server) notificationProviderTypesList(
+	context.Context,
+	*struct{},
+) (*notificationProviderTypesListOutput, error) {
+	out := &notificationProviderTypesListOutput{}
+	definitions := notifications.ProviderDefinitions()
+	out.Body.Providers = make([]NotificationProviderTypeDTO, 0, len(definitions))
+	for _, definition := range definitions {
+		provider := NotificationProviderTypeDTO{
+			Type: definition.Means, Name: definition.Name,
+			Events:      append([]notifications.Topic(nil), definition.Topics...),
+			MemberOwned: definition.MemberOwned,
+			Fields:      make([]NotificationProviderFieldDTO, 0, len(definition.Fields)),
+		}
+		for _, field := range definition.Fields {
+			item := NotificationProviderFieldDTO{
+				Key: field.Key, Label: field.Label, Kind: field.Kind, Required: field.Required,
+				Sensitive: field.Sensitive, Default: field.Default, Description: field.Description,
+				Options: make([]NotificationProviderFieldOptionDTO, 0, len(field.Options)),
+			}
+			for _, option := range field.Options {
+				item.Options = append(item.Options, NotificationProviderFieldOptionDTO{
+					Value: option.Value, Label: option.Label,
+				})
+			}
+			provider.Fields = append(provider.Fields, item)
+		}
+		out.Body.Providers = append(out.Body.Providers, provider)
+	}
+	return out, nil
 }
 
 type notificationDestinationWrite struct {
