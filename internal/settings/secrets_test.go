@@ -200,6 +200,29 @@ func TestRedactor_AppliesCurrentSecretsToPreBoundAndGroupedAttributes(t *testing
 	}
 }
 
+func TestRedactor_RefreshesIndependentSecretSourcesWithoutDroppingTheOthers(t *testing.T) {
+	const (
+		settingsSecret = "settings-secret-canary"
+		providerSecret = "provider-secret-canary"
+		rotatedSecret  = "rotated-settings-secret"
+	)
+	var buf bytes.Buffer
+	r := NewRedactor()
+	r.Set([]string{settingsSecret})
+	r.SetSource("notification-destinations", []string{providerSecret})
+	r.Set([]string{rotatedSecret})
+	log := slog.New(r.Handler(slog.NewTextHandler(&buf, nil)))
+
+	log.Info("credentials", "provider", providerSecret, "settings", rotatedSecret, "old", settingsSecret)
+	out := buf.String()
+	if strings.Contains(out, providerSecret) || strings.Contains(out, rotatedSecret) {
+		t.Fatalf("independently refreshed secret leaked: %s", out)
+	}
+	if !strings.Contains(out, settingsSecret) {
+		t.Fatalf("replaced settings source remained active: %s", out)
+	}
+}
+
 // The generated tokens feed the Redactor (config-design §4).
 func TestSecrets_FeedRedactor(t *testing.T) {
 	s, err := NewSecrets(context.Background(), newMemSecretStore(), noEnv)

@@ -3,6 +3,7 @@ package settings
 import (
 	"context"
 	"log/slog"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -13,8 +14,9 @@ import (
 // secret settings (Emby token, Seerr key, …) so no secret — minted or entered —
 // leaks into logs, error bodies, or /v1/setup/status.
 type Redactor struct {
-	mu     sync.RWMutex
-	values []string // non-empty secret values to scrub
+	mu      sync.RWMutex
+	sources map[string][]string
+	values  []string // flattened, non-empty secret values to scrub
 }
 
 // NewRedactor builds an empty redactor. Sources register their secrets via Set.
@@ -25,6 +27,14 @@ func NewRedactor() *Redactor { return &Redactor{} }
 // sufficiently-long values are tracked — a 1-char "secret" would scrub every
 // line to noise; the floor avoids pathological redaction.
 func (r *Redactor) Set(values []string) {
+	r.SetSource("settings", values)
+}
+
+// SetSource replaces one source's tracked values without disturbing secrets registered by other
+// subsystems. This keeps a settings refresh from dropping provider credentials, and lets a
+// provider refresh replace only its own snapshot. Longer values are matched first so one secret
+// that prefixes another cannot leave an unredacted suffix behind.
+func (r *Redactor) SetSource(source string, values []string) {
 	filtered := make([]string, 0, len(values))
 	for _, v := range values {
 		if len(v) >= 8 { // secrets are 256-bit/entered keys — never this short by accident
@@ -32,7 +42,27 @@ func (r *Redactor) Set(values []string) {
 		}
 	}
 	r.mu.Lock()
-	r.values = filtered
+	if r.sources == nil {
+		r.sources = make(map[string][]string)
+	}
+	if len(filtered) == 0 {
+		delete(r.sources, source)
+	} else {
+		r.sources[source] = filtered
+	}
+	unique := make(map[string]struct{})
+	flattened := make([]string, 0)
+	for _, sourceValues := range r.sources {
+		for _, value := range sourceValues {
+			if _, exists := unique[value]; exists {
+				continue
+			}
+			unique[value] = struct{}{}
+			flattened = append(flattened, value)
+		}
+	}
+	sort.Slice(flattened, func(i, j int) bool { return len(flattened[i]) > len(flattened[j]) })
+	r.values = flattened
 	r.mu.Unlock()
 }
 
