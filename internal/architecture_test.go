@@ -1,11 +1,36 @@
 package internal_test
 
 import (
+	"go/build"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestInboundDependencyRuleIncludesNewNestedProductionPackages(t *testing.T) {
+	api := modulePath + "/internal/api"
+	app := modulePath + "/internal/app"
+	nested := modulePath + "/internal/newdomain/nested"
+	safe := modulePath + "/internal/safe"
+	testOnly := modulePath + "/internal/testonly"
+	pkgs := map[string]*build.Package{
+		api:      {GoFiles: []string{"api.go"}},
+		app:      {GoFiles: []string{"app.go"}, Imports: []string{api}},
+		nested:   {GoFiles: []string{"domain.go"}, Imports: []string{api}},
+		safe:     {GoFiles: []string{"safe.go"}},
+		testOnly: {TestGoFiles: []string{"only_test.go"}, Imports: []string{api}},
+	}
+
+	roots := inboundDependencyRulePackages(pkgs)
+	if want := []string{nested, safe}; !reflect.DeepEqual(roots, want) {
+		t.Fatalf("rule packages = %v, want %v", roots, want)
+	}
+	if got, want := packagesReaching(pkgs, roots, api), []string{nested}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("packages reaching api = %v, want %v", got, want)
+	}
+}
 
 // ARCHITECTURE GATE (design §14.1).
 //
