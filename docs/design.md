@@ -152,8 +152,6 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the hermetic certification contract for filler admission.
 - **`media`** · 3 importers
   Owns host-wide resources shared by live and background media work.
-- **`notifications`** · 5 importers
-  Owns channel-neutral notification intents and delivery work (§11).
 - **`proctree`** · 3 importers
   Supervises one child process and every descendant it starts.
 - **`provision`** · 16 importers
@@ -164,7 +162,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Categorizes GitHub-generated release notes without allowing a language model to invent release content.
 - **`releaseverify`**
   Validates the repository's release publication policy.
-- **`secretprotection`** · 2 importers
+- **`secretprotection`** · 3 importers
   Encrypts database-backed secrets with installation-key-wrapped data keys and supports safe key rotation and replacement.
 - **`taxonomy`** · 4 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
@@ -181,6 +179,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns Loomarr's immutable built-in holiday identities and aliases.
 - **`invitation`** · 6 importers · → `contact`
   Owns administrator admission decisions and their bearer grants (§11).
+- **`notifications`** · 5 importers · → `secretprotection`
+  Owns channel-neutral notification intents and delivery work (§11).
 - **`prepared`** · 3 importers · → `diagnostics`, `media`
   Owns immutable, reusable playout publications.
 - **`scheduler`** · 6 importers · → `store`
