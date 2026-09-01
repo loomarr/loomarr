@@ -40,7 +40,7 @@ eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (m
 	  exit "$$status"
 
 filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
-	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./internal/fillerreview/ ./cmd/filler-bakeoff-ollama/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-bakeoff-transcribe/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-direct/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-prepare/ ./cmd/filler-corpus-review/ ./cmd/filler-corpus-review-ollama/ ./cmd/filler-corpus-review-openrouter/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/ ./cmd/filler-temporal-assess-ollama/ ./cmd/filler-temporal-compare/
+	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./internal/fillerreview/ ./cmd/filler-bakeoff-ollama/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-bakeoff-transcribe/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-direct/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-prepare/ ./cmd/filler-corpus-review/ ./cmd/filler-corpus-review-ollama/ ./cmd/filler-corpus-review-openrouter/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/ ./cmd/filler-temporal-assess-ollama/ ./cmd/filler-temporal-assess-openrouter/ ./cmd/filler-temporal-compare/ ./cmd/filler-temporal-select/
 
 filler-temporal-assess-ollama: ## assess the sealed temporal challenge with a digest-pinned local model
 	@test -n "$$LOOMARR_FILLER_TEMPORAL_PACKAGE" || { echo "filler-temporal-assess-ollama: LOOMARR_FILLER_TEMPORAL_PACKAGE is required" >&2; exit 2; }; \
@@ -69,6 +69,47 @@ filler-temporal-compare: ## compare two independent temporal assessment sets wit
 	    --second "$$LOOMARR_FILLER_TEMPORAL_SECOND" \
 	    --expected-cases "$${LOOMARR_FILLER_TEMPORAL_EXPECTED_CASES:-32}" \
 	    --out "$${LOOMARR_FILLER_TEMPORAL_COMPARE_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-temporal-comparison.json}"
+
+filler-temporal-select: ## derive an immutable stratified temporal calibration selection without inference
+	@test -n "$$LOOMARR_FILLER_TEMPORAL_PACKAGE" || { echo "filler-temporal-select: LOOMARR_FILLER_TEMPORAL_PACKAGE is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_TEMPORAL_FIRST" || { echo "filler-temporal-select: LOOMARR_FILLER_TEMPORAL_FIRST is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_TEMPORAL_SECOND" || { echo "filler-temporal-select: LOOMARR_FILLER_TEMPORAL_SECOND is required" >&2; exit 2; }; \
+	  $(GO) run ./cmd/filler-temporal-select \
+	    --package "$$LOOMARR_FILLER_TEMPORAL_PACKAGE" \
+	    --first "$$LOOMARR_FILLER_TEMPORAL_FIRST" \
+	    --second "$$LOOMARR_FILLER_TEMPORAL_SECOND" \
+	    --expected-cases "$${LOOMARR_FILLER_TEMPORAL_EXPECTED_CASES:-32}" \
+	    --out "$${LOOMARR_FILLER_TEMPORAL_SELECTION_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-temporal-calibration-selection.json}"
+
+filler-temporal-assess-openrouter: ## run a bounded paid temporal calibration on an exact snapshotted route
+	@test -n "$$OPENROUTER_API_KEY" || { echo "filler-temporal-assess-openrouter: OPENROUTER_API_KEY is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_TEMPORAL_PACKAGE" || { echo "filler-temporal-assess-openrouter: LOOMARR_FILLER_TEMPORAL_PACKAGE is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_TEMPORAL_SELECTION" || { echo "filler-temporal-assess-openrouter: LOOMARR_FILLER_TEMPORAL_SELECTION is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_TEMPORAL_OPENROUTER_SNAPSHOT" || { echo "filler-temporal-assess-openrouter: LOOMARR_FILLER_TEMPORAL_OPENROUTER_SNAPSHOT is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_TEMPORAL_MODEL" || { echo "filler-temporal-assess-openrouter: LOOMARR_FILLER_TEMPORAL_MODEL is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_TEMPORAL_MODEL_FAMILY" || { echo "filler-temporal-assess-openrouter: LOOMARR_FILLER_TEMPORAL_MODEL_FAMILY is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_TEMPORAL_PROVIDER" || { echo "filler-temporal-assess-openrouter: LOOMARR_FILLER_TEMPORAL_PROVIDER is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_TEMPORAL_PROVIDER_SLUG" || { echo "filler-temporal-assess-openrouter: LOOMARR_FILLER_TEMPORAL_PROVIDER_SLUG is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_TEMPORAL_ASSESSOR_ID" || { echo "filler-temporal-assess-openrouter: LOOMARR_FILLER_TEMPORAL_ASSESSOR_ID is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_TEMPORAL_MAX_REQUESTS" || { echo "filler-temporal-assess-openrouter: LOOMARR_FILLER_TEMPORAL_MAX_REQUESTS is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_TEMPORAL_MAX_SPEND_NANOUSD" || { echo "filler-temporal-assess-openrouter: LOOMARR_FILLER_TEMPORAL_MAX_SPEND_NANOUSD is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_TEMPORAL_MAX_CHARGE_NANOUSD" || { echo "filler-temporal-assess-openrouter: LOOMARR_FILLER_TEMPORAL_MAX_CHARGE_NANOUSD is required" >&2; exit 2; }; \
+	  $(GO) run ./cmd/filler-temporal-assess-openrouter \
+	    --package "$$LOOMARR_FILLER_TEMPORAL_PACKAGE" \
+	    --selection "$$LOOMARR_FILLER_TEMPORAL_SELECTION" \
+	    --snapshot "$$LOOMARR_FILLER_TEMPORAL_OPENROUTER_SNAPSHOT" \
+	    --model "$$LOOMARR_FILLER_TEMPORAL_MODEL" \
+	    --model-family "$$LOOMARR_FILLER_TEMPORAL_MODEL_FAMILY" \
+	    --provider "$$LOOMARR_FILLER_TEMPORAL_PROVIDER" \
+	    --provider-slug "$$LOOMARR_FILLER_TEMPORAL_PROVIDER_SLUG" \
+	    --assessor-id "$$LOOMARR_FILLER_TEMPORAL_ASSESSOR_ID" \
+	    --expected-package-cases "$${LOOMARR_FILLER_TEMPORAL_EXPECTED_CASES:-32}" \
+	    --expected-calibration-cases "$${LOOMARR_FILLER_TEMPORAL_EXPECTED_CALIBRATION_CASES:-15}" \
+	    --per-case-timeout "$${LOOMARR_FILLER_TEMPORAL_CASE_TIMEOUT:-5m}" \
+	    --max-requests "$$LOOMARR_FILLER_TEMPORAL_MAX_REQUESTS" \
+	    --max-spend-nanousd "$$LOOMARR_FILLER_TEMPORAL_MAX_SPEND_NANOUSD" \
+	    --max-charge-nanousd "$$LOOMARR_FILLER_TEMPORAL_MAX_CHARGE_NANOUSD" \
+	    --out "$${LOOMARR_FILLER_TEMPORAL_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-temporal-openrouter-result.json}"
 
 filler-corpus-commons: ## freeze bounded Commons pilot and full-inventory artifacts
 	@eval "$$(./scripts/dev-env.sh export)"; \

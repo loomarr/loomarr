@@ -27,7 +27,7 @@ type openRouterActiveRunLock struct {
 	digest string
 }
 
-func acquireOpenRouterActiveRunLock(dir string, identity openRouterCheckpointIdentity, now func() time.Time, beforeCheckpointDirCreate func()) (openRouterActiveRunLock, error) {
+func acquireOpenRouterActiveRunLock(dir string, identity any, now func() time.Time, beforeCheckpointDirCreate func()) (openRouterActiveRunLock, error) {
 	if err := ensureOpenRouterCheckpointDirBeforeCreate(dir, beforeCheckpointDirCreate); err != nil {
 		return openRouterActiveRunLock{}, err
 	}
@@ -39,10 +39,10 @@ func acquireOpenRouterActiveRunLock(dir string, identity openRouterCheckpointIde
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if os.IsExist(err) {
 		digest := existingOpenRouterActiveRunLockDigest(path)
-		return openRouterActiveRunLock{}, fmt.Errorf("OpenRouter review active run lock exists (sha256=%s); explicit operator recovery is required", digest)
+		return openRouterActiveRunLock{}, fmt.Errorf("OpenRouter active run lock exists (sha256=%s); explicit operator recovery is required", digest)
 	}
 	if err != nil {
-		return openRouterActiveRunLock{}, fmt.Errorf("create OpenRouter review active run lock: %w", err)
+		return openRouterActiveRunLock{}, fmt.Errorf("create OpenRouter active run lock: %w", err)
 	}
 	created := true
 	defer func() {
@@ -61,13 +61,13 @@ func acquireOpenRouterActiveRunLock(dir string, identity openRouterCheckpointIde
 	}
 	raw = append(raw, '\n')
 	if _, err := file.Write(raw); err != nil {
-		return openRouterActiveRunLock{}, fmt.Errorf("write OpenRouter review active run lock: %w", err)
+		return openRouterActiveRunLock{}, fmt.Errorf("write OpenRouter active run lock: %w", err)
 	}
 	if err := file.Sync(); err != nil {
-		return openRouterActiveRunLock{}, fmt.Errorf("sync OpenRouter review active run lock: %w", err)
+		return openRouterActiveRunLock{}, fmt.Errorf("sync OpenRouter active run lock: %w", err)
 	}
 	if err := file.Close(); err != nil {
-		return openRouterActiveRunLock{}, fmt.Errorf("close OpenRouter review active run lock: %w", err)
+		return openRouterActiveRunLock{}, fmt.Errorf("close OpenRouter active run lock: %w", err)
 	}
 	if err := syncOpenRouterReviewDir(dir); err != nil {
 		return openRouterActiveRunLock{}, err

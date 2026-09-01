@@ -1,12 +1,9 @@
 package fillerreview
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"slices"
@@ -39,82 +36,6 @@ type OpenRouterReviewConfig struct {
 	AllowInsecureTestURL bool
 	Client               *http.Client
 	Now                  func() time.Time
-}
-
-type openRouterReviewRequest struct {
-	Model          string                    `json:"model"`
-	Messages       []openRouterReviewMessage `json:"messages"`
-	Provider       openRouterReviewRoute     `json:"provider"`
-	ResponseFormat openRouterReviewFormat    `json:"response_format"`
-	MaxTokens      int                       `json:"max_tokens"`
-}
-
-type openRouterReviewMessage struct {
-	Role    string                 `json:"role"`
-	Content []openRouterReviewPart `json:"content"`
-}
-
-type openRouterReviewPart struct {
-	Type     string                    `json:"type"`
-	Text     string                    `json:"text,omitempty"`
-	ImageURL *openRouterReviewMediaURL `json:"image_url,omitempty"`
-}
-
-type openRouterReviewMediaURL struct {
-	URL string `json:"url"`
-}
-
-type openRouterReviewRoute struct {
-	Order             []string `json:"order"`
-	AllowFallbacks    bool     `json:"allow_fallbacks"`
-	RequireParameters bool     `json:"require_parameters"`
-	DataCollection    string   `json:"data_collection"`
-	ZDR               bool     `json:"zdr"`
-}
-
-type openRouterReviewFormat struct {
-	Type       string                     `json:"type"`
-	JSONSchema openRouterReviewJSONSchema `json:"json_schema"`
-}
-
-type openRouterReviewJSONSchema struct {
-	Name   string         `json:"name"`
-	Strict bool           `json:"strict"`
-	Schema map[string]any `json:"schema"`
-}
-
-type openRouterReviewResponse struct {
-	ID      string `json:"id"`
-	Model   string `json:"model"`
-	Choices []struct {
-		Message struct {
-			Content   string `json:"content"`
-			Reasoning string `json:"reasoning"`
-		} `json:"message"`
-	} `json:"choices"`
-	Usage struct {
-		PromptTokens     int64       `json:"prompt_tokens"`
-		CompletionTokens int64       `json:"completion_tokens"`
-		Cost             json.Number `json:"cost"`
-	} `json:"usage"`
-	Metadata struct {
-		Attempt   int `json:"attempt"`
-		Endpoints struct {
-			Available []struct {
-				Provider string `json:"provider"`
-				Model    string `json:"model"`
-				Selected bool   `json:"selected"`
-			} `json:"available"`
-		} `json:"endpoints"`
-		Attempts []struct {
-			Provider string `json:"provider"`
-			Model    string `json:"model"`
-			Status   int    `json:"status"`
-		} `json:"attempts"`
-	} `json:"openrouter_metadata"`
-	Error *struct {
-		Message string `json:"message"`
-	} `json:"error"`
 }
 
 func RunOpenRouterReview(ctx context.Context, config OpenRouterReviewConfig) (run ReviewRun, submissions []fillereval.LabelSubmission, err error) {
@@ -200,7 +121,8 @@ func runOpenRouterReview(ctx context.Context, config OpenRouterReviewConfig, bef
 		})
 		latencyMS := max(int64(0), time.Since(started).Milliseconds())
 		cancel()
-		if requestSHA256 != "" {
+		reserved := requestSHA256 != "" && len(checkpoint.Attempts) > 0 && checkpoint.Attempts[len(checkpoint.Attempts)-1].Alias == item.Alias && checkpoint.Attempts[len(checkpoint.Attempts)-1].RequestSHA256 == requestSHA256
+		if reserved {
 			attempt := &checkpoint.Attempts[len(checkpoint.Attempts)-1]
 			attempt.GenerationID = wire.ID
 			attempt.LatencyMS = latencyMS
@@ -213,7 +135,7 @@ func runOpenRouterReview(ctx context.Context, config OpenRouterReviewConfig, bef
 			}
 		}
 		if reviewErr != nil {
-			if requestSHA256 != "" {
+			if reserved {
 				if err := persistOpenRouterCheckpoint(config.CheckpointDir, checkpoint); err != nil {
 					return ReviewRun{}, nil, fmt.Errorf("persist failed OpenRouter review attempt: %w", err)
 				}
@@ -343,115 +265,32 @@ func reviewOneOpenRouter(ctx context.Context, client *http.Client, baseURL strin
 	if err != nil {
 		return fillereval.Labels{}, openRouterReviewResponse{}, 0, false, "", err
 	}
-	parts := []openRouterReviewPart{{Type: "text", Text: content}}
-	for _, image := range images {
-		parts = append(parts, openRouterReviewPart{Type: "image_url", ImageURL: &openRouterReviewMediaURL{URL: "data:image/jpeg;base64," + image}})
-	}
-	payload := openRouterReviewRequest{
-		Model: config.Model,
-		Messages: []openRouterReviewMessage{
-			{Role: "system", Content: []openRouterReviewPart{{Type: "text", Text: reviewerSystemPrompt}}},
-			{Role: "user", Content: parts},
-		},
-		Provider:       openRouterReviewRoute{Order: []string{config.UpstreamProviderSlug}, RequireParameters: true, DataCollection: "deny", ZDR: true},
-		ResponseFormat: openRouterReviewFormat{Type: "json_schema", JSONSchema: openRouterReviewJSONSchema{Name: "filler_blind_review", Strict: true, Schema: reviewLabelsSchema(item)}},
-		MaxTokens:      4096,
-	}
-	body, err := json.Marshal(payload)
+	result, err := callOpenRouterStructured(ctx, client, baseURL, openRouterStructuredCallConfig{
+		APIKey: config.APIKey, Model: config.Model, ResolvedModel: openRouterReviewModel(config.Snapshot, config.Model).CanonicalSlug,
+		UpstreamProvider: config.UpstreamProvider, ProviderSlug: config.UpstreamProviderSlug,
+		SchemaName: "filler_blind_review", Schema: reviewLabelsSchema(item), SystemPrompt: reviewerSystemPrompt,
+		Content: content, Images: images, MaxTokens: 4096, MaxChargeNanoUSD: config.MaxChargeNanoUSD,
+		Title: "Loomarr filler blind review", Reserve: reserve,
+	})
 	if err != nil {
-		return fillereval.Labels{}, openRouterReviewResponse{}, 0, false, "", err
+		return fillereval.Labels{}, result.Wire, result.ChargedNanoUSD, result.ChargeKnown, result.RequestSHA256, err
 	}
-	requestSHA256 := hashBytes(body)
-	if err := reserve(requestSHA256); err != nil {
-		return fillereval.Labels{}, openRouterReviewResponse{}, 0, false, "", err
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/chat/completions", bytes.NewReader(body))
+	labels, err := decodeReviewLabels([]byte(result.StructuredOutput))
 	if err != nil {
-		return fillereval.Labels{}, openRouterReviewResponse{}, 0, false, requestSHA256, err
-	}
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Authorization", "Bearer "+config.APIKey)
-	request.Header.Set("X-OpenRouter-Metadata", "enabled")
-	request.Header.Set("HTTP-Referer", "https://github.com/loomarr/loomarr")
-	request.Header.Set("X-OpenRouter-Title", "Loomarr filler blind review")
-	response, err := client.Do(request)
-	if err != nil {
-		return fillereval.Labels{}, openRouterReviewResponse{}, 0, false, requestSHA256, err
-	}
-	defer func() { _ = response.Body.Close() }()
-	raw, err := io.ReadAll(io.LimitReader(response.Body, maxReviewResponseBytes+1))
-	if err != nil || len(raw) > maxReviewResponseBytes {
-		return fillereval.Labels{}, openRouterReviewResponse{}, 0, false, requestSHA256, fmt.Errorf("openrouter reviewer response exceeded its byte ceiling")
-	}
-	if response.StatusCode != http.StatusOK {
-		return fillereval.Labels{}, openRouterReviewResponse{}, 0, false, requestSHA256, fmt.Errorf("openrouter reviewer returned status %d: %s", response.StatusCode, boundedReviewMessage(raw))
-	}
-	var wire openRouterReviewResponse
-	if err := decodeProviderReviewJSON(raw, &wire); err != nil {
-		return fillereval.Labels{}, wire, 0, false, requestSHA256, err
-	}
-	if wire.Error != nil {
-		return fillereval.Labels{}, wire, 0, false, requestSHA256, fmt.Errorf("openrouter reviewer error: %s", strings.TrimSpace(wire.Error.Message))
-	}
-	charged, err := fillereval.USDToNanoCeil(wire.Usage.Cost.String())
-	if err != nil || charged < 0 || charged > config.MaxChargeNanoUSD {
-		return fillereval.Labels{}, wire, 0, false, requestSHA256, fmt.Errorf("openrouter reviewer returned missing or out-of-reservation cost")
-	}
-	if wire.ID == "" || wire.Model != config.Model || len(wire.Choices) != 1 || wire.Metadata.Attempt != 1 || !validReviewAttemptLedger(wire, config) || !selectedReviewEndpoint(wire, config) {
-		return fillereval.Labels{}, wire, charged, true, requestSHA256, fmt.Errorf("openrouter reviewer response does not bind the requested one-attempt route (generation=%t model=%q choices=%d attempt=%d attempts=%s selected=%s)", wire.ID != "", wire.Model, len(wire.Choices), wire.Metadata.Attempt, reviewAttemptSummary(wire), reviewEndpointSummary(wire))
-	}
-	labels, err := decodeReviewLabels([]byte(wire.Choices[0].Message.Content))
-	if err != nil {
-		return fillereval.Labels{}, wire, charged, true, requestSHA256, fmt.Errorf("decode openrouter review labels: %w (contentBytes=%d reasoningBytes=%d)", err, len(wire.Choices[0].Message.Content), len(wire.Choices[0].Message.Reasoning))
+		return fillereval.Labels{}, result.Wire, result.ChargedNanoUSD, true, result.RequestSHA256, fmt.Errorf("decode openrouter review labels: %w (contentBytes=%d reasoningBytes=%d)", err, len(result.StructuredOutput), len(result.Wire.Choices[0].Message.Reasoning))
 	}
 	if failures := fillereval.ValidateLabels(labels); len(failures) > 0 {
-		return fillereval.Labels{}, wire, charged, true, requestSHA256, fmt.Errorf("invalid review labels: %s", strings.Join(failures, "; "))
+		return fillereval.Labels{}, result.Wire, result.ChargedNanoUSD, true, result.RequestSHA256, fmt.Errorf("invalid review labels: %s", strings.Join(failures, "; "))
 	}
 	if err := validateReviewEvidence(item, labels.Evidence, transcripts); err != nil {
-		return fillereval.Labels{}, wire, charged, true, requestSHA256, err
+		return fillereval.Labels{}, result.Wire, result.ChargedNanoUSD, true, result.RequestSHA256, err
 	}
-	return labels, wire, charged, true, requestSHA256, nil
+	return labels, result.Wire, result.ChargedNanoUSD, true, result.RequestSHA256, nil
 }
 
 func validReviewAttemptLedger(wire openRouterReviewResponse, config OpenRouterReviewConfig) bool {
-	if len(wire.Metadata.Attempts) == 0 {
-		return true
-	}
-	if len(wire.Metadata.Attempts) != 1 {
-		return false
-	}
-	attempt := wire.Metadata.Attempts[0]
-	return attempt.Provider == config.UpstreamProvider && attempt.Model == openRouterReviewModel(config.Snapshot, config.Model).CanonicalSlug && attempt.Status >= 200 && attempt.Status < 300
-}
-
-func reviewAttemptSummary(wire openRouterReviewResponse) string {
-	parts := make([]string, 0, len(wire.Metadata.Attempts))
-	for _, attempt := range wire.Metadata.Attempts {
-		parts = append(parts, fmt.Sprintf("%q/%q/%d", attempt.Provider, attempt.Model, attempt.Status))
-	}
-	return "[" + strings.Join(parts, ",") + "]"
-}
-
-func reviewEndpointSummary(wire openRouterReviewResponse) string {
-	parts := make([]string, 0, len(wire.Metadata.Endpoints.Available))
-	for _, endpoint := range wire.Metadata.Endpoints.Available {
-		if endpoint.Selected {
-			parts = append(parts, fmt.Sprintf("%q/%q", endpoint.Provider, endpoint.Model))
-		}
-	}
-	return "[" + strings.Join(parts, ",") + "]"
-}
-
-func selectedReviewEndpoint(wire openRouterReviewResponse, config OpenRouterReviewConfig) bool {
-	selected := 0
-	for _, endpoint := range wire.Metadata.Endpoints.Available {
-		if !endpoint.Selected {
-			continue
-		}
-		selected++
-		if endpoint.Provider != config.UpstreamProvider || endpoint.Model != openRouterReviewModel(config.Snapshot, config.Model).CanonicalSlug {
-			return false
-		}
-	}
-	return selected == 1
+	return validStructuredAttemptLedger(wire, openRouterStructuredCallConfig{
+		ResolvedModel:    openRouterReviewModel(config.Snapshot, config.Model).CanonicalSlug,
+		UpstreamProvider: config.UpstreamProvider,
+	})
 }

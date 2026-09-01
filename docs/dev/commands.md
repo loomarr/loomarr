@@ -79,6 +79,8 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make filler-eval-contract` |  | hermetic filler-admission corpus and selective-risk contracts |
 | `make filler-temporal-assess-ollama` |  | assess the sealed temporal challenge with a digest-pinned local model |
 | `make filler-temporal-compare` |  | compare two independent temporal assessment sets without inference |
+| `make filler-temporal-select` |  | derive an immutable stratified temporal calibration selection without inference |
+| `make filler-temporal-assess-openrouter` |  | run a bounded paid temporal calibration on an exact snapshotted route |
 | `make filler-corpus-commons` |  | freeze bounded Commons pilot and full-inventory artifacts |
 | `make filler-corpus-cdc` |  | freeze bounded CDC pilot and full-inventory artifacts |
 | `make filler-corpus-loc` |  | freeze bounded LOC pilot and full-inventory artifacts |
