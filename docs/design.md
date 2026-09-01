@@ -94,6 +94,14 @@ The subsystem names above map **many-to-many** onto package names, and four pack
 
 Two further traps worth naming: **`internal/programmer`** is the port for pushing a channel to Tunarr, and is unrelated to **`docs/programming-design.md`**, which is about `ChannelPolicy` heuristics. And §2's **"Provisioner"** is not one package — it is `provision` + `reconcile` + `requester` + `store`; §9's **"Scheduler"** is `schedule` + `channels` + `programmer`, and does *not* include `scheduler`.
 
+**The generated inventory is recursive and exact.** Every directory below `internal/` that
+contains non-test Go source appears under its full module-relative identity, including nested
+packages such as `images/rustgen` and `testkit/httpfixture`. An import edge points to that exact
+package; it is never collapsed onto the first directory segment. Filesystem nesting records Go
+package identity only — it does not claim a domain/adapters/platform hierarchy. The generator and
+its coverage gate derive this complete set from source, so no hand-maintained package count or
+roster is authoritative.
+
 ---
 
 <!-- BEGIN GENERATED: package-map — `make arch-docs`. DO NOT EDIT BY HAND. -->
@@ -6498,10 +6506,19 @@ Recorded after a full sweep of `internal/`, because two of the rules below exist
 
 **What holds, and is worth keeping:**
 
-- **The dependency direction is one-way.** No domain package imports `internal/api`; `internal/app` is the only composition root. Verified, not assumed — a domain package that needs an API type is a sign the type belongs in the domain.
+- **The dependency direction is one-way.** No production package outside the explicit inbound,
+  composition, and test-infrastructure exceptions imports `internal/api` or the Huma server
+  framework; `internal/app` is the only composition root. The gate discovers every production
+  package recursively and subtracts a small named exception set whose members and rationales are
+  asserted. A new package therefore enters the rule automatically. A domain package that needs an
+  API type is a sign the type belongs in the domain.
 - **`internal/testkit` never reaches production.** `go list -deps ./cmd/loomarr` must not contain it. Test doubles compiled into the shipped binary is a seam that only ever gets wider.
 
-  ⚠ **`testing` itself DOES reach the binary, through exactly one package, and that is now pinned rather than merely true.** `internal/store`'s conformance suite (7 files, ~4,450 lines — 42% of the non-test package) is ordinary package code on purpose: both backend drivers must import `RunConformance`, SQLite in-package and Postgres behind a build tag, so the assertions cannot live in `_test.go`. `flag` follows `testing` in. The principle above is right, so `TestOnlyStoreLinksTestingIntoTheBinary` names the one permitted package and fails on a second — the exemption cannot spread by precedent. The exit is known and unblocked: verified 2026-08-10 that the suite references **zero** unexported store identifiers, so it can move to a sibling package the binary never reaches. That is a ~4,450-line mechanical move across the tree's highest-churn files, so it is sequenced, not taken opportunistically.
+  **No Loomarr production package has a `testing` exemption.** The Store conformance suite already
+  lives in `_test.go` files, which remain visible to both backend test drivers without linking the
+  test framework into the application. The source graph gate enforces the absence of `testing`
+  from every Loomarr package reachable from `cmd/loomarr`; third-party River test helpers remain
+  outside that actionable scope.
 - **Every package carries a package doc.** They are the orientation for a subsystem whose invariants are not obvious from its types — `internal/playout` (added in this sweep) is the clearest case: the block-supervisor mechanism, the wall-clock rule, and the drop-the-viewer-not-the-message inversion are all invisible from the function signatures.
 - **`panic` is for boot-time programmer error only** — a duplicate settings key, an undeclared job name. Never for a runtime condition an operator could cause.
 - **A file that has accreted past ~600 lines gets split along its seams, not arbitrarily.** `api/channels.go` was 1082 lines / 15 handlers / 25 DTOs and became four files: CRUD, wire shape + mapping, the now/next strip, and the preview surfaces. The tell that the split was real: `podToPoolDTO` and friends were already shared with `programming.go` and `guide.go`, so they had never been channel-lifecycle code — they were just living in the channel-lifecycle file.
@@ -6836,9 +6853,17 @@ independently instead of treating every zero-lineup result as a model-quality my
 
 ### 14.2 The package map
 
-`internal/` is **53 flat packages, deliberately** — the grouping below is prose, not directories.
+The recursive generated map in §2 is the authoritative package inventory. Package identity is the
+full path below `internal/`; real nested packages remain distinct nodes and exact dependency
+targets. This section deliberately carries no package count or complete roster because either would
+duplicate the generated authority and drift.
 
-Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
+Moving packages under artificial `internal/{domain,adapters,platform}/` directories was considered
+and rejected on evidence: several adapters correctly import domain packages (`tmdb`→`provision`,
+`requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so those folders would
+announce a layering the code does not have. Existing nesting such as `images/rustgen` and
+`testkit/httpfixture` remains visible because it is real package identity, not because it implies
+that rejected taxonomy.
 
 Go packages already carry a name, a compiler-enforced import list, and a doc. A directory above them would lengthen every import path and enforce nothing. (Contrast the frontend, where folders *were* worth adding: 46 React components in one directory have no enforced boundary at all, which is why they had grown `channel-*`/`guide-*` filename prefixes — a naming convention doing a filesystem's job. There, folders replaced a convention with structure. Here the structure is already there.)
 
