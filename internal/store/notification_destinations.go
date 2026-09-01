@@ -11,12 +11,12 @@ import (
 )
 
 const notificationDestinationSelect = `SELECT id, means, label, scope, owner_id, audience,
-	topics_json, enabled, configuration_json, credentials_json, created_at, updated_at
+	topics_json, enabled, configuration_json, credentials_encrypted, created_at, updated_at
 	FROM notification_destinations`
 
-func (s *sqlStore) SaveNotificationDestination(ctx context.Context, destination notifications.Destination) error {
+func (s *sqlStore) SaveNotificationDestinationRecord(ctx context.Context, destination notifications.DestinationRecord) error {
 	if err := destination.Validate(); err != nil {
-		return fmt.Errorf("validate notification destination: %w", err)
+		return fmt.Errorf("validate notification destination record: %w", err)
 	}
 	topicsJSON, err := json.Marshal(destination.Topics)
 	if err != nil {
@@ -26,13 +26,9 @@ func (s *sqlStore) SaveNotificationDestination(ctx context.Context, destination 
 	if err != nil {
 		return fmt.Errorf("encode notification destination configuration: %w", err)
 	}
-	credentialsJSON, err := json.Marshal(orEmptyStringMap(destination.Credentials))
-	if err != nil {
-		return fmt.Errorf("encode notification destination credentials: %w", err)
-	}
 	_, err = s.db.ExecContext(ctx, s.ph(`INSERT INTO notification_destinations
 		(id, means, label, scope, owner_id, audience, topics_json, enabled,
-		 configuration_json, credentials_json, created_at, updated_at)
+		 configuration_json, credentials_encrypted, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
 			means = excluded.means,
@@ -43,36 +39,36 @@ func (s *sqlStore) SaveNotificationDestination(ctx context.Context, destination 
 			topics_json = excluded.topics_json,
 			enabled = excluded.enabled,
 			configuration_json = excluded.configuration_json,
-			credentials_json = excluded.credentials_json,
+			credentials_encrypted = excluded.credentials_encrypted,
 			updated_at = excluded.updated_at`),
 		destination.ID, destination.Means, destination.Label, destination.Scope, destination.OwnerID,
 		destination.Audience, string(topicsJSON), notificationBool(destination.Enabled), string(configurationJSON),
-		string(credentialsJSON), epoch(destination.CreatedAt), epoch(destination.UpdatedAt))
+		destination.CredentialsEncrypted, epoch(destination.CreatedAt), epoch(destination.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("save notification destination: %w", err)
 	}
 	return nil
 }
 
-func (s *sqlStore) GetNotificationDestination(ctx context.Context, id string) (notifications.Destination, error) {
-	destination, err := scanNotificationDestination(s.db.QueryRowContext(
+func (s *sqlStore) GetNotificationDestinationRecord(ctx context.Context, id string) (notifications.DestinationRecord, error) {
+	destination, err := scanNotificationDestinationRecord(s.db.QueryRowContext(
 		ctx, s.ph(notificationDestinationSelect+` WHERE id = ?`), id,
 	))
 	if err != nil {
-		return notifications.Destination{}, err
+		return notifications.DestinationRecord{}, err
 	}
 	return destination, nil
 }
 
-func (s *sqlStore) ListNotificationDestinations(ctx context.Context) ([]notifications.Destination, error) {
+func (s *sqlStore) ListNotificationDestinationRecords(ctx context.Context) ([]notifications.DestinationRecord, error) {
 	rows, err := s.db.QueryContext(ctx, notificationDestinationSelect+` ORDER BY updated_at DESC, id ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("list notification destinations: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	destinations := make([]notifications.Destination, 0)
+	destinations := make([]notifications.DestinationRecord, 0)
 	for rows.Next() {
-		destination, scanErr := scanNotificationDestination(rows)
+		destination, scanErr := scanNotificationDestinationRecord(rows)
 		if scanErr != nil {
 			return nil, scanErr
 		}
@@ -133,18 +129,18 @@ func (s *sqlStore) DeleteNotificationDestination(ctx context.Context, id string)
 	return nil
 }
 
-func scanNotificationDestination(sc scannable) (notifications.Destination, error) {
-	var destination notifications.Destination
-	var means, scope, audience, topicsJSON, configurationJSON, credentialsJSON string
+func scanNotificationDestinationRecord(sc scannable) (notifications.DestinationRecord, error) {
+	var destination notifications.DestinationRecord
+	var means, scope, audience, topicsJSON, configurationJSON string
 	var enabled int
 	var createdAt, updatedAt int64
 	if err := sc.Scan(
 		&destination.ID, &means, &destination.Label, &scope, &destination.OwnerID, &audience,
-		&topicsJSON, &enabled, &configurationJSON, &credentialsJSON, &createdAt, &updatedAt,
+		&topicsJSON, &enabled, &configurationJSON, &destination.CredentialsEncrypted, &createdAt, &updatedAt,
 	); errors.Is(err, sql.ErrNoRows) {
-		return notifications.Destination{}, notifications.ErrNotFound
+		return notifications.DestinationRecord{}, notifications.ErrNotFound
 	} else if err != nil {
-		return notifications.Destination{}, fmt.Errorf("scan notification destination: %w", err)
+		return notifications.DestinationRecord{}, fmt.Errorf("scan notification destination: %w", err)
 	}
 	destination.Means = notifications.Means(means)
 	destination.Scope = notifications.DestinationScope(scope)
@@ -153,13 +149,10 @@ func scanNotificationDestination(sc scannable) (notifications.Destination, error
 	destination.CreatedAt = fromEpoch(createdAt)
 	destination.UpdatedAt = fromEpoch(updatedAt)
 	if err := json.Unmarshal([]byte(topicsJSON), &destination.Topics); err != nil {
-		return notifications.Destination{}, fmt.Errorf("decode notification destination topics: %w", err)
+		return notifications.DestinationRecord{}, fmt.Errorf("decode notification destination topics: %w", err)
 	}
 	if err := json.Unmarshal([]byte(configurationJSON), &destination.Configuration); err != nil {
-		return notifications.Destination{}, fmt.Errorf("decode notification destination configuration: %w", err)
-	}
-	if err := json.Unmarshal([]byte(credentialsJSON), &destination.Credentials); err != nil {
-		return notifications.Destination{}, fmt.Errorf("decode notification destination credentials: %w", err)
+		return notifications.DestinationRecord{}, fmt.Errorf("decode notification destination configuration: %w", err)
 	}
 	return destination, nil
 }

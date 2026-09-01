@@ -275,6 +275,7 @@ type accountDeliveryBuild struct {
 
 func buildAccountDelivery(
 	st store.Store,
+	destinations notifications.DestinationRepository,
 	set resolved,
 	invitationService *invitation.Service,
 	recoveryService *auth.PasswordRecoveryService,
@@ -289,11 +290,12 @@ func buildAccountDelivery(
 		publicURL: func() string { return set.str("access.public_url") },
 	}
 	adapter := notifications.NewEmailAdapter(set.emailConfig, materializer, notifications.NewSMTPSender(15*time.Second))
-	service := notifications.NewService(st, combinedNotificationRouter{
+	repository := notificationServiceRepository{Store: st, destinations: destinations}
+	service := notifications.NewService(repository, combinedNotificationRouter{
 		account: invitationEmailRouter{
 			invitations: invitationService, recovery: recoveryService, config: set.emailConfig,
 		},
-		product: notifications.NewDestinationRouter(st, currentNotificationEligibility{users: st}),
+		product: notifications.NewDestinationRouter(destinations, currentNotificationEligibility{users: st}),
 	}, []notifications.Adapter{adapter}, newID, time.Now)
 	if registry != nil {
 		registry.Add(notificationDeliveryJob(service))
@@ -308,4 +310,16 @@ func buildAccountDelivery(
 			log: log,
 		},
 	}
+}
+
+type notificationServiceRepository struct {
+	store.Store
+	destinations notifications.DestinationRepository
+}
+
+func (r notificationServiceRepository) GetNotificationDestination(
+	ctx context.Context,
+	id string,
+) (notifications.Destination, error) {
+	return r.destinations.GetNotificationDestination(ctx, id)
 }

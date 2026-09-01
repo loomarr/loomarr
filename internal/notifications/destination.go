@@ -31,6 +31,31 @@ type Destination struct {
 	UpdatedAt     time.Time
 }
 
+// DestinationRecord is the persistence-safe form of a destination. The database layer only
+// handles an opaque credential envelope; plaintext credentials exist solely in Destination at
+// the notification module boundary after authenticated decryption.
+type DestinationRecord struct {
+	ID                   string
+	Means                Means
+	Label                string
+	Scope                DestinationScope
+	OwnerID              string
+	Audience             RecipientKind
+	Topics               []Topic
+	Enabled              bool
+	Configuration        map[string]string
+	CredentialsEncrypted string
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+}
+
+func (r DestinationRecord) Validate() error {
+	if r.CredentialsEncrypted == "" {
+		return fmt.Errorf("destination record requires encrypted credentials")
+	}
+	return destinationFromRecord(r).Validate()
+}
+
 // DestinationSummary is safe to return to management callers. It deliberately carries neither
 // provider configuration nor credentials; provider-specific surfaces add independently redacted
 // fields when their adapter is implemented.

@@ -19,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/secretprotection"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tmdb"
@@ -93,13 +94,17 @@ func buildOperations(
 	overrides Overrides,
 	log *slog.Logger,
 	metricRecorder *metrics.Recorder,
+	protection *secretprotection.Manager,
 ) operationsBuild {
 	restart, bootConfig := buildRestart(overrides, log)
 	backups := buildBackups(st, set, registry, log)
 	authResult := buildAuth(st, set, secrets, readGeneratedSecret, libraryClient, log)
 	invitationService, _ := authResult.invitations.(*invitation.Service)
 	recoveryService := authResult.passwordRecovery
-	accountDelivery := buildAccountDelivery(st, set, invitationService, recoveryService, registry, log)
+	destinationRepository := notifications.NewProtectedDestinationRepository(st, protection)
+	accountDelivery := buildAccountDelivery(
+		st, destinationRepository, set, invitationService, recoveryService, registry, log,
+	)
 	jobs := buildScheduler(rootCtx, st, set, registry, emitter, owner, log, metricRecorder)
 	triggerHealth := func(ctx context.Context) {
 		if jobs == nil {
@@ -118,7 +123,7 @@ func buildOperations(
 			refreshSecretRedactor, readGeneratedSecret, triggerHealth, log,
 		),
 		emailTest:                buildEmailTest(st, set),
-		notificationDestinations: buildNotificationDestinations(st, accountDelivery.service),
+		notificationDestinations: buildNotificationDestinations(destinationRepository, accountDelivery.service),
 		productNotifications:     &productNotificationCoordinator{publisher: accountDelivery.product, source: st, log: log},
 		invitationDelivery:       accountDelivery.invitations,
 		passwordRecovery:         accountDelivery.recovery,
@@ -133,13 +138,16 @@ func buildOperations(
 	return result
 }
 
-func buildNotificationDestinations(st store.Store, tester notifications.DestinationTester) api.NotificationDestinationService {
-	if st == nil {
+func buildNotificationDestinations(
+	repository notifications.DestinationRepository,
+	tester notifications.DestinationTester,
+) api.NotificationDestinationService {
+	if repository == nil {
 		return nil
 	}
 	// Provider issues register their validators here as their adapters land. Until then an admin
 	// may save disabled drafts, while enabling an unavailable or incomplete provider fails closed.
-	return notifications.NewDestinationManager(st, nil, newID, time.Now).WithTester(tester)
+	return notifications.NewDestinationManager(repository, nil, newID, time.Now).WithTester(tester)
 }
 
 func buildEmailTest(st store.Store, set resolved) api.EmailTestService {

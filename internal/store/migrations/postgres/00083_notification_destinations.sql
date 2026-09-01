@@ -1,6 +1,5 @@
 -- +goose Up
--- Provider credentials live only on the durable destination and are resolved after claim; queued
--- attempts retain only this table's opaque id and a safe label (§11).
+-- PostgreSQL mirror of durable, secret-bearing notification destinations (§11).
 CREATE TABLE notification_destinations (
     id                  TEXT PRIMARY KEY,
     means               TEXT NOT NULL CHECK (means IN (
@@ -14,7 +13,7 @@ CREATE TABLE notification_destinations (
     topics_json         TEXT NOT NULL,
     enabled             INTEGER NOT NULL CHECK (enabled IN (0, 1)),
     configuration_json  TEXT NOT NULL DEFAULT '{}',
-    credentials_json    TEXT NOT NULL DEFAULT '{}',
+    credentials_encrypted TEXT NOT NULL,
     created_at          BIGINT NOT NULL,
     updated_at          BIGINT NOT NULL,
     CHECK (

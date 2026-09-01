@@ -226,38 +226,38 @@ func testNotificationDestinations(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	s := newStore(t)
 	now := time.Unix(1_900_000_000, 0)
-	destination := notifications.Destination{
+	destination := notifications.DestinationRecord{
 		ID: "destination-slack", Means: notifications.MeansSlack, Label: "Operations Slack",
 		Scope: notifications.ScopeInstallation, Audience: notifications.RecipientOperators,
 		Topics:  []notifications.Topic{notifications.TopicChannelDegraded, notifications.TopicAcquisitionGaveUp},
 		Enabled: true, Configuration: map[string]string{"channel": "alerts"},
-		Credentials: map[string]string{"token": "secret-that-must-round-trip"}, CreatedAt: now, UpdatedAt: now,
+		CredentialsEncrypted: "opaque-envelope-1", CreatedAt: now, UpdatedAt: now,
 	}
-	if err := s.SaveNotificationDestination(ctx, destination); err != nil {
+	if err := s.SaveNotificationDestinationRecord(ctx, destination); err != nil {
 		t.Fatalf("save destination: %v", err)
 	}
-	stored, err := s.GetNotificationDestination(ctx, destination.ID)
+	stored, err := s.GetNotificationDestinationRecord(ctx, destination.ID)
 	if err != nil || stored.ID != destination.ID || stored.Means != destination.Means ||
 		stored.Label != destination.Label || stored.Scope != destination.Scope || stored.Audience != destination.Audience ||
 		!stored.Enabled || len(stored.Topics) != 2 || stored.Configuration["channel"] != "alerts" ||
-		stored.Credentials["token"] != "secret-that-must-round-trip" {
-		t.Fatalf("stored destination = %+v, %v", stored.Summary(), err)
+		stored.CredentialsEncrypted != "opaque-envelope-1" {
+		t.Fatalf("stored destination = %+v, %v", stored, err)
 	}
-	listed, err := s.ListNotificationDestinations(ctx)
+	listed, err := s.ListNotificationDestinationRecords(ctx)
 	if err != nil || len(listed) != 1 || listed[0].ID != destination.ID {
 		t.Fatalf("listed destinations = %+v, %v", listed, err)
 	}
 
 	destination.Enabled = false
-	destination.Credentials = map[string]string{"token": "rotated-secret"}
+	destination.CredentialsEncrypted = "opaque-envelope-2"
 	destination.UpdatedAt = now.Add(time.Minute)
-	if err := s.SaveNotificationDestination(ctx, destination); err != nil {
+	if err := s.SaveNotificationDestinationRecord(ctx, destination); err != nil {
 		t.Fatalf("update destination: %v", err)
 	}
-	stored, err = s.GetNotificationDestination(ctx, destination.ID)
-	if err != nil || stored.Enabled || stored.Credentials["token"] != "rotated-secret" ||
+	stored, err = s.GetNotificationDestinationRecord(ctx, destination.ID)
+	if err != nil || stored.Enabled || stored.CredentialsEncrypted != "opaque-envelope-2" ||
 		!stored.CreatedAt.Equal(now) || !stored.UpdatedAt.Equal(now.Add(time.Minute)) {
-		t.Fatalf("updated destination = %+v, %v", stored.Summary(), err)
+		t.Fatalf("updated destination = %+v, %v", stored, err)
 	}
 	testIntent := notifications.Intent{
 		ID: "intent-destination-test", Topic: notifications.TopicDeliveryTest,
@@ -301,7 +301,7 @@ func testNotificationDestinations(t *testing.T, newStore NewStoreFunc) {
 	if err := s.DeleteNotificationDestination(ctx, destination.ID); err != nil {
 		t.Fatalf("delete destination: %v", err)
 	}
-	if _, err := s.GetNotificationDestination(ctx, destination.ID); !errors.Is(err, notifications.ErrNotFound) {
+	if _, err := s.GetNotificationDestinationRecord(ctx, destination.ID); !errors.Is(err, notifications.ErrNotFound) {
 		t.Fatalf("get deleted destination: %v", err)
 	}
 }

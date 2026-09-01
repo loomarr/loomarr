@@ -51,7 +51,7 @@ func TestInvitationEmailMintsBearerOnlyInsideClaimedAttemptsAndRotatesItBeforeRe
 		invitations: invitationService, publicURL: func() string { return "https://loomarr.example" },
 	}, sender)
 	ids := 0
-	notificationService := notifications.NewService(st, invitationEmailRouter{
+	notificationService := notifications.NewService(notificationRepositoryForTest(t, st), invitationEmailRouter{
 		invitations: invitationService, config: config,
 	}, []notifications.Adapter{adapter}, func() string {
 		ids++
@@ -197,7 +197,7 @@ func TestPasswordRecoveryEmailUsesSharedWorkerAndKeepsBearerEphemeral(t *testing
 		recovery: recoveryService, publicURL: func() string { return "https://loomarr.example" },
 	}, sender)
 	ids := 0
-	notificationService := notifications.NewService(st, invitationEmailRouter{
+	notificationService := notifications.NewService(notificationRepositoryForTest(t, st), invitationEmailRouter{
 		recovery: recoveryService, config: config,
 	}, []notifications.Adapter{adapter}, func() string {
 		ids++

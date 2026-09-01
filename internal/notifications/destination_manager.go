@@ -57,6 +57,16 @@ type DestinationRepository interface {
 	DeleteNotificationDestination(context.Context, string) error
 }
 
+// DestinationRecordRepository is the storage port below credential protection. Implementations
+// must never receive or return plaintext provider credentials.
+type DestinationRecordRepository interface {
+	SaveNotificationDestinationRecord(context.Context, DestinationRecord) error
+	GetNotificationDestinationRecord(context.Context, string) (DestinationRecord, error)
+	ListNotificationDestinationRecords(context.Context) ([]DestinationRecord, error)
+	ListNotificationDestinationHealth(context.Context) (map[string]DestinationHealth, error)
+	DeleteNotificationDestination(context.Context, string) error
+}
+
 type DestinationTestResult struct {
 	IntentID string
 	Created  bool

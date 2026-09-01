@@ -5877,6 +5877,11 @@ On edit, omission of a sensitive field preserves it and an explicit clear action
 may use the returned definition to render provider-specific controls, but it never receives or
 reconstructs the storage classification.
 
+The classified credential map is serialized and sealed as one record-bound envelope before it
+crosses the database port. The destination table stores only that opaque envelope; it has no
+plaintext credential JSON column. Data-key rotation reseals these envelopes alongside protected
+settings, while old keys remain readable until the pass completes.
+
 Destination scope, audience selection, recipient lookup, and configuration-versus-credential
 storage are internal routing concepts. The common Settings form does not expose them. Installation
 provider ownership comes from the authenticated administrator and recipient policy comes from the

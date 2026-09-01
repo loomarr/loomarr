@@ -620,9 +620,9 @@ type ActivityStore interface {
 
 // NotificationStore owns provider-neutral intents and bounded delivery work (§11).
 type NotificationStore interface {
-	SaveNotificationDestination(context.Context, notifications.Destination) error
-	GetNotificationDestination(context.Context, string) (notifications.Destination, error)
-	ListNotificationDestinations(context.Context) ([]notifications.Destination, error)
+	SaveNotificationDestinationRecord(context.Context, notifications.DestinationRecord) error
+	GetNotificationDestinationRecord(context.Context, string) (notifications.DestinationRecord, error)
+	ListNotificationDestinationRecords(context.Context) ([]notifications.DestinationRecord, error)
 	ListNotificationDestinationHealth(context.Context) (map[string]notifications.DestinationHealth, error)
 	DeleteNotificationDestination(context.Context, string) error
 	ListNotificationReferenceRecipients(context.Context, notifications.ReferenceKind, string) ([]string, error)
