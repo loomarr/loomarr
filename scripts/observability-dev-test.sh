@@ -4,6 +4,14 @@ set -euo pipefail
 repo_root=$(cd "$(dirname "$0")/.." && pwd)
 compose_file="$repo_root/docker/compose.observability.yaml"
 
+eval "$(LOOMARR_REPO_ROOT="$repo_root" "$repo_root/scripts/dev-env.sh" export)"
+[[ "$PROMETHEUS_DEV_PORT" =~ ^[0-9]+$ ]]
+[[ "$GRAFANA_DEV_PORT" =~ ^[0-9]+$ ]]
+[[ "$PROMETHEUS_DEV_PORT" != "$GRAFANA_DEV_PORT" ]]
+[[ "$PROMETHEUS_DEV_PORT" != "$LOOMARR_DEV_PORT" ]]
+[[ "$GRAFANA_DEV_PORT" != "$LOOMARR_DEV_PORT" ]]
+[[ "$OBSERVABILITY_COMPOSE_PROJECT_NAME" == "$COMPOSE_PROJECT_NAME-observability" ]]
+
 rendered=$(
   LOOMARR_DEV_PORT=18888 \
     PROMETHEUS_DEV_PORT=29090 \

@@ -60,6 +60,8 @@ git -C "$TMP" worktree add -q "$TMP-wt" -b secondary
 primary="$(LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/dev-env.sh" show)"
 printf '%s\n' "$primary" | grep -q 'http://localhost:8080'
 printf '%s\n' "$primary" | grep -q 'http://localhost:5173'
+printf '%s\n' "$primary" | grep -q 'prometheus.*http://localhost:9090'
+printf '%s\n' "$primary" | grep -q 'grafana.*http://localhost:3000'
 
 secondary="$(LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/dev-env.sh" show)"
 printf '%s\n' "$secondary" | grep -q 'database override.*\.agent-data/loomarr.db'
@@ -70,6 +72,13 @@ printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_PREPARED_DIR=.*\.age
 printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_DIAGNOSTICS_DIR=.*\.agent-data/diagnostics"
 printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_PUBLIC_URL=.*http://localhost:"
 printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_DEV_LOGIN='1'"
+printf '%s\n' "$secondary_exports" | grep -q "OBSERVABILITY_COMPOSE_PROJECT_NAME='loomarr-.*-observability'"
+secondary_backend_port="$(printf '%s\n' "$secondary_exports" | sed -n "s/export LOOMARR_DEV_PORT='\([0-9][0-9]*\)'/\1/p")"
+secondary_prometheus_port="$(printf '%s\n' "$secondary_exports" | sed -n "s/export PROMETHEUS_DEV_PORT='\([0-9][0-9]*\)'/\1/p")"
+secondary_grafana_port="$(printf '%s\n' "$secondary_exports" | sed -n "s/export GRAFANA_DEV_PORT='\([0-9][0-9]*\)'/\1/p")"
+[ "$secondary_backend_port" != "$secondary_prometheus_port" ]
+[ "$secondary_backend_port" != "$secondary_grafana_port" ]
+[ "$secondary_prometheus_port" != "$secondary_grafana_port" ]
 if printf '%s\n' "$(LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/dev-env.sh" export)" | grep -q "LOOMARR_AGENT_DEV_LOGIN='1'"; then
 	echo 'agent-harness-test: primary worktree enabled automatic dev login' >&2
 	exit 1
