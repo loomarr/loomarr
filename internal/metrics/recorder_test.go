@@ -94,6 +94,26 @@ func TestRecorderBoundsOutboundTargetAndRetryReason(t *testing.T) {
 	}
 }
 
+func TestRecorderBoundsFillerMatchLevelAndRecordsRotationState(t *testing.T) {
+	recorder := metrics.New(metrics.Options{})
+	hostile := `exact",channel="private-channel`
+	recorder.FillerPodAssembled(hostile)
+	recorder.FillerRotationAired(true, true, false)
+
+	body := scrape(t, recorder)
+	if strings.Contains(body, hostile) || strings.Contains(body, "private-channel") {
+		t.Fatalf("scrape leaked hostile filler match level:\n%s", body)
+	}
+	for _, want := range []string{
+		`loomarr_filler_pods_total{match_level="other"} 1`,
+		`loomarr_filler_rotation_airings_total{cooldown="relaxed",repeat="repeat"} 1`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("scrape does not contain %q", want)
+		}
+	}
+}
+
 func TestRecorderScrapeReportsLiveDatabasePoolStats(t *testing.T) {
 	recorder := metrics.New(metrics.Options{
 		DatabaseStats: func() sql.DBStats {

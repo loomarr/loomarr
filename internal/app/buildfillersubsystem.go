@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filleradmission"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/scheduler"
 	"github.com/loomarr/loomarr/internal/store"
@@ -38,6 +39,7 @@ func buildFillerSubsystem(
 	playoutResolver *playoutResolver,
 	channelService api.ChannelService,
 	processDiagnostics *diagnostics.ProcessManager,
+	metricRecorder *metrics.Recorder,
 ) fillerBuild {
 	var result fillerBuild
 	if st == nil {
@@ -102,7 +104,7 @@ func buildFillerSubsystem(
 		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st, wake: wake},
 	}
 
-	pods := buildPodAdapter(st, set, log)
+	pods := buildPodAdapter(st, set, log).WithMetrics(metricRecorder)
 	result.preview = podPreviewAdapter{store: st, pods: pods}
 	adapter.pool = result.preview.Pool
 	if playoutResolver != nil {

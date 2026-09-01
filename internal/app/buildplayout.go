@@ -147,6 +147,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	channelEngine.WithScheduleInvalidator(playoutMgr)
 	playoutRes = &playoutResolver{
 		engine: channelEngine, lib: lib, now: time.Now,
+		metrics:       deps.metrics,
 		detectContext: rootCtx,
 		// The store, narrowed to GetTitle — the grid's provenance line reads acquisition
 		// state and must not be able to change it.

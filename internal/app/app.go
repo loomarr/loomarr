@@ -168,7 +168,7 @@ func buildHandler(
 	}
 	fillers := buildFillerSubsystem(
 		st, set, fillerLayout, log, libraryClient, eventBus, emitter, jobReg, playoutRes, channelSvc,
-		foundation.processDiagnostics,
+		foundation.processDiagnostics, foundation.metrics,
 	)
 	healthProbes := connectionTests(set, libraryClient, tmdbClient)
 	completeStartupIntegrations(rootCtx, foundation.startup, set, healthProbes)

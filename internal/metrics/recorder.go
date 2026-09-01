@@ -38,6 +38,7 @@ type Recorder struct {
 	scheduler  recorderScheduler
 	playout    recorderPlayout
 	channels   recorderChannels
+	filler     recorderFiller
 }
 
 type recorderHTTP struct {
@@ -81,6 +82,11 @@ type recorderChannels struct {
 	reconciles    *prometheus.CounterVec
 	duration      prometheus.Histogram
 	substitutions prometheus.Counter
+}
+
+type recorderFiller struct {
+	pods    *prometheus.CounterVec
+	airings *prometheus.CounterVec
 }
 
 // New constructs an isolated generation registry with Loomarr identity and the
@@ -243,6 +249,16 @@ func New(options Options) *Recorder {
 			Help: "Scheduled programs demoted to a placeholder because the Title vanished.",
 		}),
 	}
+	fillerMetrics := recorderFiller{
+		pods: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loomarr", Subsystem: "filler", Name: "pods_total",
+			Help: "Assembled filler pods by fallback-ladder match level.",
+		}, []string{"match_level"}),
+		airings: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loomarr", Subsystem: "filler", Name: "rotation_airings_total",
+			Help: "Actual filler clip airings by repeat state and cooldown pressure.",
+		}, []string{"repeat", "cooldown"}),
+	}
 	for _, result := range []string{"success", "error"} {
 		channelMetrics.reconciles.WithLabelValues(result)
 	}
@@ -254,6 +270,14 @@ func New(options Options) *Recorder {
 	}
 	for _, reason := range []string{"hardware_to_software", "prepared_to_live", "file_to_stream", "other"} {
 		playoutMetrics.fallbacks.WithLabelValues(reason)
+	}
+	for _, level := range []string{"exact", "widened", "audience", "bumper_card", "other"} {
+		fillerMetrics.pods.WithLabelValues(level)
+	}
+	for _, repeat := range []string{"fresh", "repeat"} {
+		for _, cooldown := range []string{"ready", "relaxed", "override"} {
+			fillerMetrics.airings.WithLabelValues(repeat, cooldown)
+		}
 	}
 	for _, target := range []string{
 		"tunarr", "tmdb", "library", "seerr", "arr", "llm",
@@ -276,7 +300,8 @@ func New(options Options) *Recorder {
 		schedulerMetrics.duration, schedulerMetrics.running, schedulerMetrics.lastSuccess,
 		playoutMetrics.sessionsActive, playoutMetrics.sessionStarts,
 		playoutMetrics.processFailure, playoutMetrics.fallbacks,
-		channelMetrics.reconciles, channelMetrics.duration, channelMetrics.substitutions)
+		channelMetrics.reconciles, channelMetrics.duration, channelMetrics.substitutions,
+		fillerMetrics.pods, fillerMetrics.airings)
 	if options.Store != nil {
 		now := options.Now
 		if now == nil {
@@ -298,6 +323,7 @@ func New(options Options) *Recorder {
 		scheduler:  schedulerMetrics,
 		playout:    playoutMetrics,
 		channels:   channelMetrics,
+		filler:     fillerMetrics,
 	}
 }
 
@@ -510,4 +536,25 @@ func (r *Recorder) ChannelSlotSubstitutions(count int) {
 	if count > 0 {
 		r.channels.substitutions.Add(float64(count))
 	}
+}
+
+// FillerPodAssembled records one bounded fallback-ladder rung reached by an attached pod.
+func (r *Recorder) FillerPodAssembled(matchLevel string) {
+	matchLevel = closedLabel(matchLevel, "exact", "widened", "audience", "bumper_card")
+	r.filler.pods.WithLabelValues(matchLevel).Inc()
+}
+
+// FillerRotationAired records one actual internal-playout clip start.
+func (r *Recorder) FillerRotationAired(repeated, relaxed, pinned bool) {
+	repeat := "fresh"
+	if repeated {
+		repeat = "repeat"
+	}
+	cooldown := "ready"
+	if pinned && repeated {
+		cooldown = "override"
+	} else if relaxed {
+		cooldown = "relaxed"
+	}
+	r.filler.airings.WithLabelValues(repeat, cooldown).Inc()
 }
