@@ -153,6 +153,15 @@ assessment set with a per-call ledger. Run a distinct model family into a second
 `make filler-temporal-compare` to produce the deterministic unit/role disagreement and calibration
 report. Operational failures remain failures and neither command changes corpus truth.
 
+`make filler-temporal-select` projects that report's deterministic stratified candidates into an
+immutable, label-free selection bound to the package, both assessment sets, and comparison digest.
+`make filler-temporal-assess-openrouter` is the separate paid/manual calibration boundary for a
+stronger hosted model such as Qwen3.8. It verifies a less-than-24-hour capability snapshot, pins one
+ZDR provider route with fallback disabled, reserves the maximum charge before every serial request,
+and asks at most one unit plus one conditional role question per selected case. All request, spend,
+and per-request charge ceilings are mandatory. The hosted model digest is the immutable capability
+snapshot digest; the result is diagnostic evidence only and cannot certify or mutate corpus truth.
+
 Predictions record the inference role/rung, requested and resolved route, derivative bounds, detailed
 token categories, attempts, generation id, and the provider's exact charged decimal alongside an
 integer nanodollar projection. A failed call with missing or malformed settlement keeps those charge

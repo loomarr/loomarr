@@ -3966,6 +3966,22 @@ accounts for more than half the disputes, stops the development run for contract
 being hidden behind adjudication. This diagnostic artifact is non-certifying and does not replace the
 complete label or holdout contracts above.
 
+When that stop fires, a stronger hosted model may inspect only the comparison's deterministic,
+stratified calibration selection before another development-scale run. The selection is a separate
+content-addressed artifact bound to the package, both local assessment hashes, and the comparison
+hash; it contains only opaque aliases, reasons, and strata. It cannot silently expand to all disputed
+cases or the 300-case corpus. The maintained calibration is serial and makes at most one unit call and,
+only for `standalone`, one role call per selected case, so a 15-case selection has a hard 30-request
+ceiling. It uses the same less-than-24-hour OpenRouter capability snapshot, exact requested/canonical
+model and upstream route, ZDR, fallback-disabled strict-output contract as hosted review. Every call
+reserves its declared maximum nano-USD charge in a private checkpoint before HTTP and settles exact
+provider cost when returned. A normally returned failure with missing settlement keeps the distinct
+reservation consumed; a crash-stale `reserved` call blocks automatic resume. Neither state is retried
+or converted to a semantic label. The public result binds the ordinary provider-neutral assessment set
+to the selection, capability snapshot, prompt, route, request ledger, known charge, and still-consumed
+unknown-charge reservations. This diagnostic remains non-certifying and cannot authorize unattended
+admission or the 300-case relabel by itself.
+
 A hosted review run additionally binds one exact upstream route from a capability snapshot no more
 than 24 hours old. It requires image and text input plus strict structured output, zero-data-retention
 eligibility, one provider attempt with fallback disabled, and response metadata proving the selected
