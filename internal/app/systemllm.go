@@ -41,7 +41,7 @@ const (
 // selection hot-swaps it with no restart) plus the SystemLLMService that powers
 // /v1/system/llm* (§8.1). The active selection is the persisted settings (if any)
 // overlaid on the LLM_* env defaults, so a UI choice survives reboots.
-func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus, log *slog.Logger, metricRecorder *metrics.Recorder) (llm.Provider, api.SystemLLMService) {
+func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus, log *slog.Logger, metricRecorder *metrics.Recorder, owner *generationLifecycle) (llm.Provider, api.SystemLLMService) {
 	sel := resolveSelection(set)
 	sw := llm.NewSwappable(func(selection llm.Selection) llm.Provider {
 		return buildProviderFor(selection, metricRecorder)
@@ -101,6 +101,7 @@ func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus
 		bus:   bus,
 		log:   log,
 		newID: newID,
+		start: owner.startInteractiveOperation, operations: st, pullTimeout: modelPullTimeout,
 	}
 	return sw, svc
 }
@@ -235,6 +236,9 @@ type systemLLMService struct {
 	bus          *events.Bus
 	log          *slog.Logger
 	newID        func() string
+	start        interactiveOperationLauncher
+	operations   interactiveOperationWriter
+	pullTimeout  time.Duration
 
 	// discoverCache memoizes the machine-compatible download list. Building it fans out
 	// N per-repo calls to Hugging Face, and HF rate-limits an anonymous IP (429) — so a
@@ -249,6 +253,10 @@ type systemLLMService struct {
 
 // discoverTTL is how long a compatible-download list is reused before re-hitting HF.
 const discoverTTL = 10 * time.Minute
+
+// modelPullTimeout bounds a multi-gigabyte streaming download without imposing an HTTP-client
+// deadline. It is intentionally generous but finite: generation shutdown remains the earlier bound.
+const modelPullTimeout = 6 * time.Hour
 
 // prober builds a Prober against the CURRENT Ollama base (cheap; stateless).
 func (s *systemLLMService) prober() *llm.Prober { return llm.NewProber(s.ollamaBase()) }
@@ -539,21 +547,60 @@ func (s *systemLLMService) Pull(ctx context.Context, model string) (string, erro
 	if p := s.swap.Provider(); p != "ollama" && p != "" {
 		return "", api.ErrNotLocal
 	}
+	if s.start == nil || s.operations == nil {
+		return "", errors.New("model pull lifecycle is not configured")
+	}
 	jobID := s.newID()
-	go func() {
-		bg := context.Background()
+	now := time.Now
+	operation := store.InteractiveOperation{
+		ID: jobID, Kind: store.InteractiveOperationLLMPull, Subject: model,
+		Status: store.InteractiveOperationQueued, StartedAt: now().UTC(), UpdatedAt: now().UTC(),
+	}
+	if err := s.operations.UpsertInteractiveOperation(ctx, operation); err != nil {
+		return "", fmt.Errorf("queue model pull: %w", err)
+	}
+	err := s.start(s.pullTimeout, func(operationCtx context.Context) error {
+		operation.Status = store.InteractiveOperationRunning
+		operation.UpdatedAt = now().UTC()
+		s.persistPullOperation(operationCtx, operation)
 		s.publishPull(jobID, model, "starting", 0, 0, 0, "")
-		if err := s.prober().Pull(bg, model, func(pp llm.PullProgress) {
+		return s.prober().Pull(operationCtx, model, func(pp llm.PullProgress) {
+			operation.Percent, operation.Completed, operation.Total = pp.Percent(), pp.Completed, pp.Total
+			operation.UpdatedAt = now().UTC()
+			s.persistPullOperation(operationCtx, operation)
 			s.publishPull(jobID, model, pp.Status, pp.Percent(), pp.Completed, pp.Total, "")
-		}); err != nil {
-			s.log.Warn("llm pull failed", "model", model, "err", err)
-			s.publishPull(jobID, model, "error", -1, 0, 0, err.Error())
+		})
+	}, func(completionCtx context.Context, runErr error) {
+		operation.CompletedAt, operation.UpdatedAt = now().UTC(), now().UTC()
+		if runErr != nil {
+			operation.Status = store.InteractiveOperationError
+			operation.Error = runErr.Error()
+			s.persistPullOperation(completionCtx, operation)
+			s.log.Warn("llm pull failed", "model", model, "err", runErr)
+			s.publishPull(jobID, model, "error", operation.Percent, operation.Completed, operation.Total, runErr.Error())
 			return
 		}
+		operation.Status = store.InteractiveOperationSuccess
+		operation.Percent = 100
+		s.persistPullOperation(completionCtx, operation)
 		s.log.Info("llm pull complete", "model", model)
-		s.publishPull(jobID, model, "success", 100, 0, 0, "")
-	}()
+		s.publishPull(jobID, model, "success", 100, operation.Completed, operation.Total, "")
+	})
+	if err != nil {
+		operation.Status = store.InteractiveOperationError
+		operation.Error = err.Error()
+		operation.CompletedAt, operation.UpdatedAt = now().UTC(), now().UTC()
+		s.persistPullOperation(ctx, operation)
+		return "", err
+	}
 	return jobID, nil
+}
+
+func (s *systemLLMService) persistPullOperation(ctx context.Context, operation store.InteractiveOperation) {
+	if err := s.operations.UpsertInteractiveOperation(ctx, operation); err != nil && s.log != nil {
+		s.log.Error("could not persist model pull state", "operation", operation.ID,
+			"status", operation.Status, "err", err)
+	}
 }
 
 // persist writes the provider/url/model settings (the non-secret trio) through the

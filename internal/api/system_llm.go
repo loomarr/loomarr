@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // Sentinels the SystemLLMService returns; the handlers map them to HTTP status.
@@ -171,6 +174,13 @@ func (s *Server) registerSystemLLM(api huma.API) {
 	}, RoleAdmin), s.systemLLMPull)
 
 	huma.Register(api, withRole(huma.Operation{
+		OperationID: "system-llm-pull-operation", Method: http.MethodGet, Path: "/v1/system/llm/pull-operations/{jobId}",
+		Summary:     "Read local-model download progress and outcome",
+		Description: "Admin only. Authoritative reconnect state for the jobId returned by POST /v1/system/llm/pull. SSE llm_pull frames only accelerate progress display.",
+		Tags:        []string{"system"},
+	}, RoleAdmin), s.systemLLMPullOperation)
+
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "system-llm-discover", Method: http.MethodGet, Path: "/v1/system/llm/discover",
 		Summary: "Compatible downloadable local models",
 		Description: "Admin only. Returns the most-popular downloadable GGUF models (Hugging Face) that " +
@@ -319,7 +329,7 @@ type systemLLMPullInput struct {
 
 func (s *Server) systemLLMPull(ctx context.Context, in *systemLLMPullInput) (*struct {
 	Body struct {
-		JobID string `json:"jobId" doc:"Poll progress on /v1/events (type=llm_pull)"`
+		JobID string `json:"jobId" doc:"Read progress from /v1/system/llm/pull-operations/{jobId}; llm_pull events only accelerate display"`
 	}
 }, error) {
 	if s.systemLLM == nil {
@@ -337,9 +347,48 @@ func (s *Server) systemLLMPull(ctx context.Context, in *systemLLMPullInput) (*st
 	}
 	out := &struct {
 		Body struct {
-			JobID string `json:"jobId" doc:"Poll progress on /v1/events (type=llm_pull)"`
+			JobID string `json:"jobId" doc:"Read progress from /v1/system/llm/pull-operations/{jobId}; llm_pull events only accelerate display"`
 		}
 	}{}
 	out.Body.JobID = jobID
 	return out, nil
+}
+
+type systemLLMPullOperationInput struct {
+	JobID string `path:"jobId"`
+}
+
+type systemLLMPullOperationDTO struct {
+	JobID       string    `json:"jobId"`
+	Model       string    `json:"model"`
+	Status      string    `json:"status" enum:"queued,running,success,error"`
+	Percent     int       `json:"percent"`
+	Completed   int64     `json:"completed"`
+	Total       int64     `json:"total"`
+	Error       string    `json:"error,omitempty"`
+	StartedAt   time.Time `json:"startedAt"`
+	CompletedAt time.Time `json:"completedAt,omitempty"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+func (s *Server) systemLLMPullOperation(
+	ctx context.Context,
+	in *systemLLMPullOperationInput,
+) (*struct{ Body systemLLMPullOperationDTO }, error) {
+	operation, err := s.store.GetInteractiveOperation(ctx, in.JobID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, errNotFound("Model pull not found", "That model-pull operation doesn't exist.")
+	}
+	if err != nil {
+		return nil, err
+	}
+	if operation.Kind != store.InteractiveOperationLLMPull {
+		return nil, errNotFound("Model pull not found", "That model-pull operation doesn't exist.")
+	}
+	return &struct{ Body systemLLMPullOperationDTO }{Body: systemLLMPullOperationDTO{
+		JobID: operation.ID, Model: operation.Subject, Status: string(operation.Status),
+		Percent: operation.Percent, Completed: operation.Completed, Total: operation.Total,
+		Error: operation.Error, StartedAt: operation.StartedAt,
+		CompletedAt: operation.CompletedAt, UpdatedAt: operation.UpdatedAt,
+	}}, nil
 }

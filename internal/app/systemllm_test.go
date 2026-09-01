@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -12,8 +14,103 @@ import (
 
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
+
+func TestModelPull_IsOwnedByApplicationGenerationNotRequest(t *testing.T) {
+	started := make(chan struct{})
+	cancelled := make(chan struct{})
+	release := make(chan struct{})
+	defer close(release)
+	ollama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		_, _ = w.Write([]byte("{\"status\":\"pulling manifest\"}\n"))
+		w.(http.Flusher).Flush()
+		close(started)
+		select {
+		case <-r.Context().Done():
+			close(cancelled)
+		case <-release:
+		}
+	}))
+	defer ollama.Close()
+
+	st := testkit.MigratedSQLiteStore(t)
+	lifecycle := newGenerationLifecycle(t.Context())
+	application := &Application{lifecycle: lifecycle}
+	sut := &systemLLMService{
+		swap:       llm.NewSwappable(func(llm.Selection) llm.Provider { return nil }, llm.Selection{Provider: "ollama"}),
+		ollamaBase: func() string { return ollama.URL }, log: slog.Default(),
+		newID: func() string { return "pull-owned" }, start: lifecycle.startInteractiveOperation,
+		operations: st, pullTimeout: time.Hour,
+	}
+	requestCtx, disconnect := context.WithCancel(t.Context())
+	if _, err := sut.Pull(requestCtx, "qwen3:8b"); err != nil {
+		t.Fatalf("Pull: %v", err)
+	}
+	<-started
+	disconnect()
+	select {
+	case <-cancelled:
+		t.Fatal("request disconnect cancelled accepted model pull")
+	default:
+	}
+
+	shutdown := make(chan error, 1)
+	go func() { shutdown <- application.Shutdown(t.Context()) }()
+	select {
+	case err := <-shutdown:
+		t.Fatalf("Shutdown returned before model pull stopped: %v", err)
+	case <-cancelled:
+	}
+	if err := <-shutdown; err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+	operation, err := st.GetInteractiveOperation(t.Context(), "pull-owned")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if operation.Kind != store.InteractiveOperationLLMPull || operation.Status != store.InteractiveOperationError || operation.Error == "" {
+		t.Fatalf("model pull operation = %+v, want durable cancellation", operation)
+	}
+}
+
+func TestModelPull_HasExplicitTimeoutAndDurableTerminalOutcome(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	wantTimeout := 37 * time.Minute
+	start := func(
+		timeout time.Duration,
+		run func(context.Context) error,
+		complete func(context.Context, error),
+	) error {
+		if timeout != wantTimeout {
+			t.Fatalf("model pull timeout = %v, want %v", timeout, wantTimeout)
+		}
+		operationCtx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+		defer cancel()
+		complete(t.Context(), run(operationCtx))
+		return nil
+	}
+	sut := &systemLLMService{
+		swap:       llm.NewSwappable(func(llm.Selection) llm.Provider { return nil }, llm.Selection{Provider: "ollama"}),
+		ollamaBase: func() string { return "http://ollama.invalid" },
+		log:        slog.New(slog.DiscardHandler), newID: func() string { return "pull-timeout" },
+		start: start, operations: st, pullTimeout: wantTimeout,
+	}
+
+	jobID, err := sut.Pull(t.Context(), "qwen3:8b")
+	if err != nil || jobID != "pull-timeout" {
+		t.Fatalf("Pull = %q, %v", jobID, err)
+	}
+	operation, err := st.GetInteractiveOperation(t.Context(), jobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if operation.Status != store.InteractiveOperationError || !strings.Contains(operation.Error, context.DeadlineExceeded.Error()) {
+		t.Fatalf("timed out pull = %+v, want durable deadline error", operation)
+	}
+}
 
 // Selecting a model must HOT-APPLY, not merely land in the settings table
 // (config-design §3, which names the §8.1 selection as its example of hot-apply).
