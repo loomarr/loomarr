@@ -57,7 +57,12 @@ func imageService(s *images.Service) api.ImageService {
 // at runtime would orphan every file already written, while the public base URL genuinely must
 // hot-apply (an operator who sets `server.public_url` in the wizard needs absolute icon URLs on
 // the next request, because Tunarr fetches them machine-to-machine).
-func newImageService(st store.Store, set resolved, explicitWorker, release string) (*images.Service, error) {
+func newImageService(
+	st store.Store,
+	set resolved,
+	explicitWorker, release string,
+	recorder *metrics.Recorder,
+) (*images.Service, error) {
 	worker, err := resolveImageWorker(explicitWorker)
 	if err != nil {
 		return nil, err
@@ -74,9 +79,9 @@ func newImageService(st store.Store, set resolved, explicitWorker, release strin
 		MaxUploadBytes: func() int64 { return int64(set.intv("images.max_upload_bytes")) },
 		PublicBaseURL:  func() string { return set.str("server.public_url") },
 		Observer: images.Observer{
-			QueueWait: metrics.ImageWorkerQueueWait,
-			InFlight:  metrics.ImageWorkerInFlight,
-			Worker:    metrics.ImageWorkerObserved,
+			QueueWait: recorder.ImageWorkerQueueWait,
+			InFlight:  recorder.ImageWorkerInFlight,
+			Worker:    recorder.ImageWorkerObserved,
 		},
 	}, imageStore{st}, renderer, nil), nil
 }

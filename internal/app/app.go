@@ -161,6 +161,7 @@ func buildHandler(
 	suggestions, err := buildSuggestions(
 		rootCtx, st, set, ov, eventBus, emitter, jobReg, fillerLayout, activityRec, log,
 		libraryClient, tmdbClient, channelSvc, proposalApprover, owner,
+		foundation.metrics,
 	)
 	if err != nil {
 		return nil, nil, err

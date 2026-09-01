@@ -71,6 +71,7 @@ func LoginResult(success bool) {
 // threading a recorder through the provisioning, job, and session write paths.
 type storeCollector struct {
 	binding           atomic.Pointer[storeCollectorBinding]
+	scrapeErrors      *prometheus.CounterVec
 	titles            *prometheus.Desc
 	jobs              *prometheus.Desc
 	sessions          *prometheus.Desc
@@ -101,7 +102,7 @@ func (c *storeCollector) Collect(ch chan<- prometheus.Metric) {
 	binding := c.binding.Load()
 
 	if byState, err := binding.counts.CountTitlesByState(ctx); err != nil {
-		storeScrapeErrors.WithLabelValues("titles").Inc()
+		c.scrapeErrors.WithLabelValues("titles").Inc()
 	} else {
 		for _, st := range knownStates {
 			ch <- prometheus.MustNewConstMetric(c.titles, prometheus.GaugeValue,
@@ -110,7 +111,7 @@ func (c *storeCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	if byStatus, err := binding.counts.CountJobsByStatus(ctx); err != nil {
-		storeScrapeErrors.WithLabelValues("jobs").Inc()
+		c.scrapeErrors.WithLabelValues("jobs").Inc()
 	} else {
 		for _, status := range knownJobStatuses {
 			ch <- prometheus.MustNewConstMetric(c.jobs, prometheus.GaugeValue,
@@ -119,13 +120,13 @@ func (c *storeCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	if n, err := binding.counts.CountActiveSessions(ctx, binding.now()); err != nil {
-		storeScrapeErrors.WithLabelValues("sessions").Inc()
+		c.scrapeErrors.WithLabelValues("sessions").Inc()
 	} else {
 		ch <- prometheus.MustNewConstMetric(c.sessions, prometheus.GaugeValue, float64(n))
 	}
 
 	if oldest, err := binding.counts.OldestProposalJobsByStatus(ctx); err != nil {
-		storeScrapeErrors.WithLabelValues("proposal_job_age").Inc()
+		c.scrapeErrors.WithLabelValues("proposal_job_age").Inc()
 	} else {
 		now := binding.now()
 		for _, status := range []string{"queued", "running"} {
@@ -138,7 +139,7 @@ func (c *storeCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	if raw, err := binding.counts.CountProposalJobAttemptsByStatus(ctx); err != nil {
-		storeScrapeErrors.WithLabelValues("proposal_job_attempts").Inc()
+		c.scrapeErrors.WithLabelValues("proposal_job_attempts").Inc()
 	} else {
 		bounded := boundCounts(raw, knownProposalAttemptOutcomes[:len(knownProposalAttemptOutcomes)-1])
 		for _, outcome := range knownProposalAttemptOutcomes {
@@ -148,7 +149,7 @@ func (c *storeCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	if raw, err := binding.counts.CountFailedProposalJobsByCode(ctx); err != nil {
-		storeScrapeErrors.WithLabelValues("proposal_job_failures").Inc()
+		c.scrapeErrors.WithLabelValues("proposal_job_failures").Inc()
 	} else {
 		bounded := boundCounts(raw, knownProposalFailureCodes[:len(knownProposalFailureCodes)-1])
 		for _, code := range knownProposalFailureCodes {
@@ -179,7 +180,16 @@ func boundCounts(raw map[string]int, known []string) map[string]int {
 // newStoreCollector builds the collector with its metric descriptors. Split from
 // registration so tests can gather it through a private registry.
 func newStoreCollector(counts StoreCounts, now func() time.Time) *storeCollector {
+	return newStoreCollectorWithErrors(counts, now, storeScrapeErrors)
+}
+
+func newStoreCollectorWithErrors(
+	counts StoreCounts,
+	now func() time.Time,
+	scrapeErrors *prometheus.CounterVec,
+) *storeCollector {
 	c := &storeCollector{
+		scrapeErrors: scrapeErrors,
 		titles: prometheus.NewDesc("loomarr_titles",
 			"Provisioning records currently in each state.", []string{"state"}, nil),
 		jobs: prometheus.NewDesc("loomarr_jobs",

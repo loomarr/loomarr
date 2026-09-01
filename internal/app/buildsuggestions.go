@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/proposalworkflow"
 	"github.com/loomarr/loomarr/internal/recurate"
 	"github.com/loomarr/loomarr/internal/scheduler"
@@ -52,6 +53,7 @@ func buildSuggestions(
 	channelService api.ChannelService,
 	approver *suggest.Approver,
 	owner *generationLifecycle,
+	metricRecorder *metrics.Recorder,
 ) (suggestionBuild, error) {
 	var result suggestionBuild
 	if st == nil {
@@ -64,7 +66,9 @@ func buildSuggestions(
 	result.workflow = result.durableWorkflow
 
 	var err error
-	result.images, err = newImageService(st, set, overrides.ImageWorkerExecutable, buildinfo.Get().Version)
+	result.images, err = newImageService(
+		st, set, overrides.ImageWorkerExecutable, buildinfo.Get().Version, metricRecorder,
+	)
 	if err != nil {
 		overrides.Startup.Complete(diagnostics.StartupCheckImageWorker, diagnostics.StartupFailed,
 			"required image worker certification failed", "/settings/system/diagnostics", "")

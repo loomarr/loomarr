@@ -44,6 +44,7 @@ type foundationBuild struct {
 	startup                *diagnostics.Startup
 	startupReports         *diagnostics.StartupReports
 	instanceID             string
+	metrics                *metrics.Recorder
 }
 
 // buildFoundation creates the shared roots consumed by later subsystem builders. The returned
@@ -56,6 +57,15 @@ func buildFoundation(
 	owner *generationLifecycle,
 ) (foundationBuild, error) {
 	result := foundationBuild{}
+	info := buildinfo.Get()
+	database := string(store.DialectOf(st))
+	if database == "" {
+		database = "unavailable"
+	}
+	result.metrics = metrics.New(metrics.Options{
+		Version: info.Version, Revision: info.Commit, Database: database,
+		Store: st, Now: time.Now,
+	})
 	instanceID := ""
 	fallbackLog := log
 	var secretRedactor *settings.Redactor
@@ -92,10 +102,6 @@ func buildFoundation(
 		result.startupReports = diagnostics.NewStartupReports(result.startup, st, time.Now)
 	}
 	if st != nil {
-		if err := metrics.RegisterStoreCollector(st, time.Now); err != nil {
-			log.Warn("metrics: store collector not registered", "err", err)
-		}
-
 		set, secrets, redactor, redactedLog, err := bootSettings(context.Background(), st, log)
 		if err != nil {
 			result.startup.Complete(diagnostics.StartupCheckGeneratedSecrets, diagnostics.StartupFailed,

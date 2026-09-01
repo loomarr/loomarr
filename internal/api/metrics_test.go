@@ -2,9 +2,14 @@ package api_test
 
 import (
 	"io"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/metrics"
 )
 
 // /metrics is unauthenticated on the LAN (§7) and exposes both the Go runtime
@@ -71,6 +76,38 @@ func TestMetricsRecordsRoute(t *testing.T) {
 	// And the method must be its own label, not folded into the route.
 	if !strings.Contains(text, `method="GET"`) {
 		t.Error("expected method=\"GET\" label on the request counter")
+	}
+}
+
+func TestRouterUsesItsGenerationRecorderForTrafficAndScrapes(t *testing.T) {
+	recorder := metrics.New(metrics.Options{
+		Version: "v9.8.7", Revision: "generation-a", Database: "postgres",
+	})
+	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
+		Metrics: recorder,
+	}))
+	t.Cleanup(srv.Close)
+
+	health, err := http.Get(srv.URL + "/v1/healthz")
+	if err != nil {
+		t.Fatalf("GET /v1/healthz: %v", err)
+	}
+	_ = health.Body.Close()
+
+	response, err := http.Get(srv.URL + "/v1/metrics")
+	if err != nil {
+		t.Fatalf("GET /v1/metrics: %v", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	body, _ := io.ReadAll(response.Body)
+	text := string(body)
+	for _, want := range []string{
+		`loomarr_build_info{database="postgres",revision="generation-a",version="v9.8.7"} 1`,
+		`loomarr_http_requests_total{code="200",method="GET",route="/v1/healthz"} 1`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("generation scrape does not contain %q\n%s", want, grepLines(text, "loomarr_"))
+		}
 	}
 }
 

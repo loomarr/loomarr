@@ -24,6 +24,10 @@ type ReadyFunc func() (ready bool, detail string)
 // Router builds the top-level handler from the given options.
 func Router(log *slog.Logger, opts Options) http.Handler {
 	mux := http.NewServeMux()
+	recorder := opts.Metrics
+	if recorder == nil {
+		recorder = metrics.New(metrics.Options{Version: "dev", Database: "unknown"})
+	}
 
 	ready := opts.Ready
 	if ready == nil {
@@ -48,7 +52,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		// — a package-level var would survive the rebuild and keep counting from the
 		// original boot.
 		startedAt: time.Now(),
-		store:     opts.Store, auth: opts.Auth, log: log, backupSQLite: opts.BackupSQLite,
+		store:     opts.Store, auth: opts.Auth, log: log, metrics: recorder, backupSQLite: opts.BackupSQLite,
 		login: opts.Login, sessions: opts.Sessions, passwords: opts.Passwords, userSync: opts.UserSync, invitations: opts.Invitations, invitationDelivery: opts.InvitationDelivery, invitationRedemption: opts.InvitationRedemption, passwordRecovery: opts.PasswordRecovery, accessPublicURL: opts.AccessPublicURL, devices: opts.Devices, deviceLimiter: opts.DeviceLimiter, cookieSecure: opts.CookieSecure, trustProxy: opts.TrustProxy, devLogin: opts.DevLogin,
 		channels: opts.Channels, livetv: opts.LiveTV, tunerRescanner: opts.TunerRescanner, tunarrConnect: opts.TunarrConnect,
 		suggest: opts.Suggest, proposalWorkflow: opts.ProposalWorkflow, search: opts.Search, collections: opts.Collections, icons: opts.Icons, images: opts.Images, events: opts.Events, shutdown: opts.Shutdown, filler: opts.Filler, fillerDecisions: opts.FillerDecisions, pods: opts.Pods, taxonomy: opts.Taxonomy,
@@ -172,11 +176,13 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// mux has matched (§18 request metrics). withRequestID wraps everything so the
 	// correlation id exists for every handler — typed Huma ops AND the plain-mux ones
 	// (/v1/events, /v1/backup) — and is echoed on the response header.
-	// FanoutMiddleware sits INSIDE metrics.Middleware but outside every handler: it installs the
+	// FanoutMiddleware sits outside the Recorder middleware and every handler: it installs the
 	// per-request outbound counter that the instrumented transport increments, so
 	// `loomarr_http_outbound_fanout{route=…}` answers "how many downstream calls does this
 	// endpoint make" without serialising traffic and diffing a global counter by hand.
-	return withRequestID(metrics.Middleware(metrics.FanoutMiddleware(logRequests(log, mux))))
+	// It must be outside because it routes a request copy carrying that counter; the Recorder and
+	// mux must see that same copy for the mux-populated Pattern to reach the HTTP route label.
+	return withRequestID(recorder.FanoutMiddleware(recorder.Middleware(logRequests(log, mux))))
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

@@ -74,6 +74,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		Store:                st,
 		Auth:                 authorizer,
 		Log:                  log,
+		Metrics:              deps.foundation.metrics,
 		BackupSQLite:         backup,
 		Ready:                ready,
 		Login:                loginSvc,
