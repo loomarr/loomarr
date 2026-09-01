@@ -8,6 +8,7 @@ import (
 	htmltemplate "html/template"
 	"net/mail"
 	"net/url"
+	"strconv"
 	"strings"
 	texttemplate "text/template"
 	"time"
@@ -71,6 +72,36 @@ type EmailContent struct {
 	Subject  string
 	TextBody string
 	HTMLBody string
+}
+
+func RenderProductEmail(intent Intent, link string) (EmailContent, error) {
+	if intent.Policy != PolicyConfigurable || intent.Template.SubjectName == "" {
+		return EmailContent{}, fmt.Errorf("product email requires a configurable notification")
+	}
+	subject := "Loomarr: " + topicLabel(intent.Topic)
+	body := strings.TrimSpace(intent.Template.SubjectName)
+	if intent.Template.Summary != "" {
+		body += " — " + strings.TrimSpace(intent.Template.Summary)
+	}
+	textBody := body + "\n"
+	if link != "" {
+		textBody += "\nOpen Loomarr: " + link + "\n"
+	}
+	data := struct {
+		Heading string
+		Body    string
+		Link    string
+	}{Heading: subject, Body: body, Link: link}
+	const source = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>{{.Heading}}</title></head><body><main><h1>{{.Heading}}</h1><p>{{.Body}}</p>{{if .Link}}<p><a href="{{.Link}}">Open Loomarr</a></p>{{end}}</main></body></html>`
+	tpl, err := htmltemplate.New("product-email").Parse(source)
+	if err != nil {
+		return EmailContent{}, err
+	}
+	var htmlBody bytes.Buffer
+	if err := tpl.Execute(&htmlBody, data); err != nil {
+		return EmailContent{}, err
+	}
+	return EmailContent{Subject: truncate(subject, 200), TextBody: textBody, HTMLBody: htmlBody.String()}, nil
 }
 
 func RenderAccountEmail(intent Intent, actionURL string, expiresAt time.Time) (EmailContent, error) {
@@ -244,11 +275,32 @@ func NewEmailAdapter(config func() EmailConfig, materializer EmailMaterializer, 
 
 func (*EmailAdapter) Means() Means { return MeansEmail }
 
+func (*EmailAdapter) ValidateDestination(configuration, credentials map[string]string) error {
+	config, err := emailConfigFromProvider(configuration, credentials)
+	if err != nil {
+		return err
+	}
+	return config.Validate()
+}
+
 func (a *EmailAdapter) Deliver(ctx context.Context, delivery Delivery) Result {
-	if a == nil || a.config == nil {
+	if a == nil {
 		return emailConfigurationFailure()
 	}
-	config := a.config()
+	var config EmailConfig
+	if delivery.Destination != nil {
+		var err error
+		config, err = emailConfigFromProvider(
+			delivery.Destination.Configuration, delivery.Destination.Credentials,
+		)
+		if err != nil {
+			return emailConfigurationFailure()
+		}
+	} else if a.config != nil {
+		config = a.config()
+	} else {
+		return emailConfigurationFailure()
+	}
 	if !config.Enabled {
 		return Result{Status: StatusSuppressed, OutcomeCode: OutcomeDeliveryDisabled}
 	}
@@ -277,6 +329,19 @@ func (a *EmailAdapter) Deliver(ctx context.Context, delivery Delivery) Result {
 		}
 	}
 	return resultForEmailTransmission(transmission)
+}
+
+func emailConfigFromProvider(configuration, credentials map[string]string) (EmailConfig, error) {
+	port, err := strconv.Atoi(configuration["port"])
+	if err != nil {
+		return EmailConfig{}, fmt.Errorf("SMTP port must be a number")
+	}
+	return EmailConfig{
+		Enabled: true, Host: configuration["host"], Port: port,
+		Security: EmailSecurity(configuration["security"]), Username: configuration["username"],
+		Password: credentials["password"], FromAddress: configuration["fromAddress"],
+		FromName: configuration["fromName"],
+	}, nil
 }
 
 func emailDefinitelyNotAccepted(state EmailTransmissionState) bool {

@@ -13,6 +13,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
@@ -29,6 +30,9 @@ type Overrides struct {
 	Startup    *diagnostics.Startup
 	Programmer programmer.Programmer // nil ⇒ programmer.NewDynamic(live Tunarr config)
 	LLM        llm.Provider          // nil ⇒ the Swappable from buildLLM
+	// NotificationHTTP redirects provider requests to a hermetic transport in composition tests.
+	// nil uses the bounded production HTTP client owned by notifications.
+	NotificationHTTP notifications.HTTPDoer
 	// TMDBBaseURL redirects the real dynamic TMDB adapter to an in-process external
 	// service double. The credential still comes from live settings; accepting a
 	// prebuilt client here used to freeze its key at boot and bypass composition.

@@ -142,13 +142,40 @@ func (r invitationEmailRouter) Routes(ctx context.Context, intent notifications.
 type invitationEmailMaterializer struct {
 	invitations *invitation.Service
 	recovery    *auth.PasswordRecoveryService
+	contacts    contactAddressReader
 	publicURL   func() string
+}
+
+type contactAddressReader interface {
+	GetContactAddresses(context.Context, string) (contact.Set, error)
 }
 
 func (m invitationEmailMaterializer) Materialize(
 	ctx context.Context,
 	delivery notifications.Delivery,
 ) (notifications.MaterializedEmail, error) {
+	if delivery.Intent.Policy == notifications.PolicyConfigurable &&
+		delivery.Intent.RecipientKind == notifications.RecipientPerson && m.contacts != nil {
+		addresses, err := m.contacts.GetContactAddresses(ctx, delivery.Intent.RecipientID)
+		if err != nil || addresses.Verified == nil {
+			if errors.Is(err, store.ErrNotFound) || addresses.Verified == nil {
+				return notifications.MaterializedEmail{}, notifications.ErrEmailDestinationUnavailable
+			}
+			return notifications.MaterializedEmail{}, err
+		}
+		link := ""
+		if origin, originErr := recipientOriginValue(m.publicURL); originErr == nil {
+			link = productNotificationLink(origin, delivery.Intent)
+		}
+		content, err := notifications.RenderProductEmail(delivery.Intent, link)
+		if err != nil {
+			return notifications.MaterializedEmail{}, err
+		}
+		return notifications.MaterializedEmail{Message: notifications.EmailMessage{
+			ToAddress: addresses.Verified.Email, Subject: content.Subject,
+			TextBody: content.TextBody, HTMLBody: content.HTMLBody,
+		}}, nil
+	}
 	var address contact.Address
 	var issuedPlaintext string
 	var expiresAt time.Time
@@ -271,11 +298,13 @@ type accountDeliveryBuild struct {
 	recovery    *passwordRecoveryCoordinator
 	product     *notifications.ProductPublisher
 	service     *notifications.Service
+	validators  []notifications.DestinationValidator
 }
 
 func buildAccountDelivery(
 	st store.Store,
 	destinations notifications.DestinationRepository,
+	providerAdapters []notifications.Adapter,
 	set resolved,
 	invitationService *invitation.Service,
 	recoveryService *auth.PasswordRecoveryService,
@@ -287,16 +316,18 @@ func buildAccountDelivery(
 	}
 	materializer := invitationEmailMaterializer{
 		invitations: invitationService, recovery: recoveryService,
+		contacts:  st,
 		publicURL: func() string { return set.str("access.public_url") },
 	}
 	adapter := notifications.NewEmailAdapter(set.emailConfig, materializer, notifications.NewSMTPSender(15*time.Second))
+	adapters := append([]notifications.Adapter{adapter}, providerAdapters...)
 	repository := notificationServiceRepository{Store: st, destinations: destinations}
 	service := notifications.NewService(repository, combinedNotificationRouter{
 		account: invitationEmailRouter{
 			invitations: invitationService, recovery: recoveryService, config: set.emailConfig,
 		},
 		product: notifications.NewDestinationRouter(destinations, currentNotificationEligibility{users: st}),
-	}, []notifications.Adapter{adapter}, newID, time.Now)
+	}, adapters, newID, time.Now)
 	if registry != nil {
 		registry.Add(notificationDeliveryJob(service))
 	}
@@ -304,11 +335,25 @@ func buildAccountDelivery(
 		invitations: &invitationDeliveryCoordinator{invitations: invitationService, notifications: service},
 		product:     notifications.NewProductPublisher(service),
 		service:     service,
+		validators:  []notifications.DestinationValidator{adapter},
 		recovery: &passwordRecoveryCoordinator{
 			recovery: recoveryService, notifications: service,
 			requestLimiter: auth.NewRateLimiter(0.05, 3), redeemLimiter: auth.NewRateLimiter(0.1, 5),
 			log: log,
 		},
+	}
+}
+
+func productNotificationLink(origin string, intent notifications.Intent) string {
+	switch intent.ReferenceKind {
+	case notifications.ReferenceProposal:
+		return origin + "/queue/approval"
+	case notifications.ReferenceChannel:
+		return origin + "/channels/" + url.PathEscape(intent.ReferenceID)
+	case notifications.ReferenceTitle:
+		return origin + "/queue/flight"
+	default:
+		return origin
 	}
 }
 

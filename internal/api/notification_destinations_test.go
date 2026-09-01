@@ -12,6 +12,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/secretprotection"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -56,8 +57,15 @@ func TestNotificationProvidersUseOneRedactedAdminWorkflow(t *testing.T) {
 	st := openTestStore(t, t.TempDir()+"/notification-destinations.db")
 	t.Cleanup(func() { _ = st.Close() })
 	now := time.Unix(1_900_000_000, 0)
+	protection, err := secretprotection.NewManager(t.Context(), st, secretprotection.ManagerOptions{
+		InstallationKey: secretprotection.InstallationKey{0x51},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := notifications.NewProtectedDestinationRepository(st, protection)
 	manager := notifications.NewDestinationManager(
-		st, []notifications.DestinationValidator{acceptingDestinationValidator{means: notifications.MeansSlack}},
+		repository, []notifications.DestinationValidator{acceptingDestinationValidator{means: notifications.MeansSlack}},
 		func() string { return "destination-1" }, func() time.Time { return now },
 	).WithTester(acceptingDestinationTester{})
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
@@ -83,7 +91,7 @@ func TestNotificationProvidersUseOneRedactedAdminWorkflow(t *testing.T) {
 		strings.Contains(createdBody, `"configuration"`) || strings.Contains(createdBody, `"credentials"`) {
 		t.Fatalf("create response was not redacted: %s", createdBody)
 	}
-	stored, err := st.GetNotificationDestination(t.Context(), "destination-1")
+	stored, err := repository.GetNotificationDestination(t.Context(), "destination-1")
 	if err != nil || stored.Credentials["webhookUrl"] != "https://hooks.slack.com/services/never-return-this" {
 		t.Fatalf("stored destination = %+v, %v", stored.Summary(), err)
 	}
@@ -96,7 +104,7 @@ func TestNotificationProvidersUseOneRedactedAdminWorkflow(t *testing.T) {
 	if strings.Contains(updatedBody, "never-return-this") || !strings.Contains(updatedBody, `"label":"On-call Slack"`) {
 		t.Fatalf("update response was not redacted: %s", updatedBody)
 	}
-	stored, err = st.GetNotificationDestination(t.Context(), "destination-1")
+	stored, err = repository.GetNotificationDestination(t.Context(), "destination-1")
 	if err != nil || stored.Credentials["webhookUrl"] != "https://hooks.slack.com/services/never-return-this" {
 		t.Fatalf("updated stored destination = %+v, %v", stored.Summary(), err)
 	}

@@ -102,9 +102,13 @@ func buildOperations(
 	invitationService, _ := authResult.invitations.(*invitation.Service)
 	recoveryService := authResult.passwordRecovery
 	destinationRepository := notifications.NewProtectedDestinationRepository(st, protection)
-	accountDelivery := buildAccountDelivery(
-		st, destinationRepository, set, invitationService, recoveryService, registry, log,
+	providerAdapters, providerValidators := notifications.NewHTTPProviderAdapters(
+		overrides.NotificationHTTP, func() string { return set.str("access.public_url") },
 	)
+	accountDelivery := buildAccountDelivery(
+		st, destinationRepository, providerAdapters, set, invitationService, recoveryService, registry, log,
+	)
+	providerValidators = append(accountDelivery.validators, providerValidators...)
 	jobs := buildScheduler(rootCtx, st, set, registry, emitter, owner, log, metricRecorder)
 	triggerHealth := func(ctx context.Context) {
 		if jobs == nil {
@@ -122,14 +126,16 @@ func buildOperations(
 			st, set, desiredSet, secrets, libraryClient, tmdbClient,
 			refreshSecretRedactor, readGeneratedSecret, triggerHealth, log,
 		),
-		emailTest:                buildEmailTest(st, set),
-		notificationDestinations: buildNotificationDestinations(destinationRepository, accountDelivery.service),
-		productNotifications:     &productNotificationCoordinator{publisher: accountDelivery.product, source: st, log: log},
-		invitationDelivery:       accountDelivery.invitations,
-		passwordRecovery:         accountDelivery.recovery,
-		jobs:                     jobs,
-		database:                 buildDatabase(st, set, overrides, eventBus),
-		residentLLM:              buildResidentLLM(set, log),
+		emailTest: buildEmailTest(st, set),
+		notificationDestinations: buildNotificationDestinations(
+			destinationRepository, providerValidators, accountDelivery.service,
+		),
+		productNotifications: &productNotificationCoordinator{publisher: accountDelivery.product, source: st, log: log},
+		invitationDelivery:   accountDelivery.invitations,
+		passwordRecovery:     accountDelivery.recovery,
+		jobs:                 jobs,
+		database:             buildDatabase(st, set, overrides, eventBus),
+		residentLLM:          buildResidentLLM(set, log),
 	}
 	if st != nil {
 		result.liveConfig = set.str
@@ -140,14 +146,13 @@ func buildOperations(
 
 func buildNotificationDestinations(
 	repository notifications.DestinationRepository,
+	validators []notifications.DestinationValidator,
 	tester notifications.DestinationTester,
 ) api.NotificationDestinationService {
 	if repository == nil {
 		return nil
 	}
-	// Provider issues register their validators here as their adapters land. Until then an admin
-	// may save disabled drafts, while enabling an unavailable or incomplete provider fails closed.
-	return notifications.NewDestinationManager(repository, nil, newID, time.Now).WithTester(tester)
+	return notifications.NewDestinationManager(repository, validators, newID, time.Now).WithTester(tester)
 }
 
 func buildEmailTest(st store.Store, set resolved) api.EmailTestService {
