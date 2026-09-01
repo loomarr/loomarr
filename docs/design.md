@@ -154,7 +154,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns host-wide resources shared by live and background media work.
 - **`notifications`** · 5 importers
   Owns channel-neutral notification intents and delivery work (§11).
-- **`proctree`** · 2 importers
+- **`proctree`** · 3 importers
   Supervises one child process and every descendant it starts.
 - **`provision`** · 16 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
@@ -227,7 +227,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 7**
 
-- **`clipfetch`** · 1 importer · → `filler`
+- **`clipfetch`** · 1 importer · → `filler`, `proctree`
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`library`** · 7 importers · → `episodeevidence`, `filler`, `httpx`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
