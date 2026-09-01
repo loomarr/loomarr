@@ -55,22 +55,9 @@ type EpisodeRefresh struct {
 	log    *slog.Logger
 }
 
-// NewEpisodeRefresh builds the refresh job. `episodes` may be nil (no library wired), in which
-// case Run is a no-op rather than an error: an install without a media server has nothing to
-// refresh, and a job that fails every tick would fill the Tasks page with red for no reason.
-func NewEpisodeRefresh(
-	st EpisodeStore,
-	episodes EpisodeResolver,
-	maxAge func() time.Duration,
-	now func() time.Time,
-	log *slog.Logger,
-) *EpisodeRefresh {
-	return NewDynamicEpisodeRefresh(st, func() EpisodeResolver { return episodes }, maxAge, now, log)
-}
-
 // NewDynamicEpisodeRefresh builds a refresh job whose resolver is snapshotted once per Run.
 // The returned resolver may be nil while the media library is unconfigured; Run then remains
-// the same quiet no-op as the static constructor's nil resolver.
+// a quiet no-op rather than filling the Tasks page with failures on an unconfigured install.
 func NewDynamicEpisodeRefresh(
 	st EpisodeStore,
 	episodes EpisodeResolverSource,
