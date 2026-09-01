@@ -98,8 +98,7 @@ loomarr_titles{state="wanted"} 0
 	}
 }
 
-// A failing store must degrade the scrape, not crash it: the collector emits
-// nothing for the broken queries rather than panicking or reporting stale zeros.
+// A source that fails before any successful scrape emits no invented gauges.
 func TestStoreCollectorScrapeError(t *testing.T) {
 	c := testStoreCollector(fakeCounts{err: errors.New("db down")},
 		func() time.Time { return time.Unix(0, 0).UTC() })
