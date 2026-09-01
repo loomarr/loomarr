@@ -21,6 +21,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -63,6 +64,22 @@ func NewDynamic(apiKey func() string) *Client {
 // the credential is live configuration.
 func NewDynamicWithBase(baseURL string, apiKey func() string) *Client {
 	return newDynamicWithHTTP(baseURL, apiKey, httpx.NewNamed("tmdb", httpx.TimeoutTMDB))
+}
+
+// NewDynamicObserved binds outbound observations to one application generation.
+func NewDynamicObserved(apiKey func() string, recorder *metrics.Recorder) *Client {
+	return NewDynamicWithBaseObserved("https://api.themoviedb.org/3", apiKey, recorder)
+}
+
+// NewDynamicWithBaseObserved is NewDynamicObserved with an alternate endpoint.
+func NewDynamicWithBaseObserved(
+	baseURL string,
+	apiKey func() string,
+	recorder *metrics.Recorder,
+) *Client {
+	return newDynamicWithHTTP(
+		baseURL, apiKey, httpx.NewNamedObserved("tmdb", httpx.TimeoutTMDB, recorder),
+	)
 }
 
 // newDynamicWithHTTP is the adapter's in-process transport seam. Production

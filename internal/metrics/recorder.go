@@ -1,7 +1,9 @@
 package metrics
 
 import (
+	"database/sql"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -15,11 +17,12 @@ import (
 // Store, pool, and clock inputs join this configuration at their vertical slices;
 // callers do not receive the underlying Prometheus registry.
 type Options struct {
-	Version  string
-	Revision string
-	Database string
-	Store    StoreCounts
-	Now      func() time.Time
+	Version       string
+	Revision      string
+	Database      string
+	Store         StoreCounts
+	Now           func() time.Time
+	DatabaseStats func() sql.DBStats
 }
 
 // Recorder owns the complete Prometheus surface for one application generation.
@@ -31,6 +34,7 @@ type Recorder struct {
 	authLogins *prometheus.CounterVec
 	http       recorderHTTP
 	images     recorderImages
+	outbound   recorderOutbound
 }
 
 type recorderHTTP struct {
@@ -48,6 +52,12 @@ type recorderImages struct {
 	peakRSS     *prometheus.HistogramVec
 	queueWait   *prometheus.HistogramVec
 	inFlight    prometheus.Gauge
+}
+
+type recorderOutbound struct {
+	requests *prometheus.CounterVec
+	duration *prometheus.HistogramVec
+	retries  *prometheus.CounterVec
 }
 
 // New constructs an isolated generation registry with Loomarr identity and the
@@ -143,6 +153,29 @@ func New(options Options) *Recorder {
 			Help: "Rust image worker processes currently holding a global image slot.",
 		}),
 	}
+	outboundMetrics := recorderOutbound{
+		requests: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loomarr", Subsystem: "outbound", Name: "requests_total",
+			Help: "Outbound HTTP requests by target service and status code (error = no response).",
+		}, []string{"target", "code"}),
+		duration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: "loomarr", Subsystem: "outbound", Name: "request_duration_seconds",
+			Help:    "Outbound HTTP client latency in seconds, by target service.",
+			Buckets: []float64{0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120},
+		}, []string{"target"}),
+		retries: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loomarr", Subsystem: "outbound", Name: "retries_total",
+			Help: "Outbound HTTP retry attempts by target service and bounded reason.",
+		}, []string{"target", "reason"}),
+	}
+	for _, target := range []string{
+		"tunarr", "tmdb", "library", "seerr", "arr", "llm",
+		"filler_review", "filler_bakeoff", "other",
+	} {
+		for _, reason := range []string{"transport", "408", "429", "500", "502", "503", "504", "other"} {
+			outboundMetrics.retries.WithLabelValues(target, reason)
+		}
+	}
 	for _, kind := range []string{"inspect", "render", "other"} {
 		for _, result := range []string{"success", "refused", "canceled", "process_error", "protocol_error", "other"} {
 			imageMetrics.operations.WithLabelValues(kind, result)
@@ -151,13 +184,17 @@ func New(options Options) *Recorder {
 	registry.MustRegister(build, authLogins, storeErrors, httpMetrics.requests, httpMetrics.duration,
 		httpMetrics.inFlight, httpMetrics.fanout, imageMetrics.operations, imageMetrics.duration,
 		imageMetrics.inputBytes, imageMetrics.outputBytes, imageMetrics.peakRSS,
-		imageMetrics.queueWait, imageMetrics.inFlight)
+		imageMetrics.queueWait, imageMetrics.inFlight, outboundMetrics.requests,
+		outboundMetrics.duration, outboundMetrics.retries)
 	if options.Store != nil {
 		now := options.Now
 		if now == nil {
 			now = time.Now
 		}
 		registry.MustRegister(newStoreCollectorWithErrors(options.Store, now, storeErrors))
+	}
+	if options.DatabaseStats != nil {
+		registry.MustRegister(newDatabaseCollector(options.DatabaseStats))
 	}
 
 	return &Recorder{
@@ -166,6 +203,7 @@ func New(options Options) *Recorder {
 		authLogins: authLogins,
 		http:       httpMetrics,
 		images:     imageMetrics,
+		outbound:   outboundMetrics,
 	}
 }
 
@@ -249,4 +287,59 @@ func closedLabel(value string, allowed ...string) string {
 		}
 	}
 	return "other"
+}
+
+// InstrumentTransport wraps one logical outbound request with bounded RED metrics.
+func (r *Recorder) InstrumentTransport(target string, next http.RoundTripper) http.RoundTripper {
+	if next == nil {
+		next = http.DefaultTransport
+	}
+	return &recorderTransport{recorder: r, target: outboundTargetLabel(target), next: next}
+}
+
+// OutboundRetried records one actual additional attempt after its wait completed.
+func (r *Recorder) OutboundRetried(target string, reason OutboundRetryReason) {
+	reasonLabel := "other"
+	if int(reason) < len(outboundRetryReasonLabels) {
+		reasonLabel = outboundRetryReasonLabels[reason]
+	}
+	r.outbound.retries.WithLabelValues(outboundTargetLabel(target), reasonLabel).Inc()
+}
+
+type recorderTransport struct {
+	recorder *Recorder
+	target   string
+	next     http.RoundTripper
+}
+
+func (t *recorderTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	countOutbound(request.Context())
+	started := time.Now()
+	response, err := t.next.RoundTrip(request)
+	t.recorder.outbound.duration.WithLabelValues(t.target).Observe(time.Since(started).Seconds())
+	code := "error"
+	if err == nil && response != nil && response.StatusCode >= 100 && response.StatusCode <= 599 {
+		code = strconv.Itoa(response.StatusCode)
+	} else if err == nil {
+		code = "other"
+	}
+	t.recorder.outbound.requests.WithLabelValues(t.target, code).Inc()
+	return response, err
+}
+
+func outboundTargetLabel(target string) string {
+	switch target {
+	case "tunarr", "tunarr-bulk":
+		return "tunarr"
+	case "tmdb", "library", "seerr", "arr", "llm":
+		return target
+	case "llm-video":
+		return "llm"
+	case "filler-review-ollama", "filler-review-openrouter":
+		return "filler_review"
+	case "filler-bakeoff-ollama", "filler-bakeoff-openrouter", "filler-openrouter-snapshot":
+		return "filler_bakeoff"
+	default:
+		return "other"
+	}
 }

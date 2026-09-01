@@ -1,10 +1,13 @@
 package metrics_test
 
 import (
+	"database/sql"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/metrics"
 )
@@ -59,6 +62,73 @@ func TestRecorderScrapeInitializesAndIsolatesKnownLoginOutcomes(t *testing.T) {
 	}
 }
 
+func TestRecorderBoundsOutboundTargetAndRetryReason(t *testing.T) {
+	recorder := metrics.New(metrics.Options{})
+	hostile := "https://user@example.invalid/private/title/123"
+	transport := recorder.InstrumentTransport(hostile, roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusServiceUnavailable,
+			Body:       io.NopCloser(strings.NewReader("unavailable")),
+			Header:     make(http.Header),
+		}, nil
+	}))
+	request := httptest.NewRequest(http.MethodGet, "http://loomarr.invalid/", nil)
+	response, err := transport.RoundTrip(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	recorder.OutboundRetried(hostile, metrics.OutboundRetryReason(255))
+
+	body := scrape(t, recorder)
+	if strings.Contains(body, hostile) || strings.Contains(body, "example.invalid") {
+		t.Fatalf("scrape leaked hostile outbound target:\n%s", body)
+	}
+	for _, want := range []string{
+		`loomarr_outbound_requests_total{code="503",target="other"} 1`,
+		`loomarr_outbound_retries_total{reason="other",target="other"} 1`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("scrape does not contain %q", want)
+		}
+	}
+}
+
+func TestRecorderScrapeReportsLiveDatabasePoolStats(t *testing.T) {
+	recorder := metrics.New(metrics.Options{
+		DatabaseStats: func() sql.DBStats {
+			return sql.DBStats{
+				MaxOpenConnections: 10,
+				OpenConnections:    7,
+				InUse:              6,
+				Idle:               1,
+				WaitCount:          5,
+				WaitDuration:       2 * time.Second,
+				MaxIdleClosed:      3,
+				MaxIdleTimeClosed:  4,
+				MaxLifetimeClosed:  8,
+			}
+		},
+	})
+
+	body := scrape(t, recorder)
+	for _, want := range []string{
+		`loomarr_database_connections{state="idle"} 1`,
+		`loomarr_database_connections{state="in_use"} 6`,
+		`loomarr_database_connections{state="open"} 7`,
+		`loomarr_database_max_open_connections 10`,
+		`loomarr_database_connection_waits_total 5`,
+		`loomarr_database_connection_wait_duration_seconds_total 2`,
+		`loomarr_database_connections_closed_total{reason="idle_limit"} 3`,
+		`loomarr_database_connections_closed_total{reason="idle_time"} 4`,
+		`loomarr_database_connections_closed_total{reason="lifetime"} 8`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("scrape does not contain %q", want)
+		}
+	}
+}
+
 func scrape(t *testing.T, recorder *metrics.Recorder) string {
 	t.Helper()
 	response := httptest.NewRecorder()
@@ -67,4 +137,10 @@ func scrape(t *testing.T, recorder *metrics.Recorder) string {
 		t.Fatalf("GET /metrics status = %d, want 200", response.Code)
 	}
 	return response.Body.String()
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
 }

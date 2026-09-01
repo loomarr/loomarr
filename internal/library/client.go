@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/metrics"
 )
 
 // Connection is one immutable media-server connection snapshot. Flavor, URL,
@@ -82,6 +83,17 @@ func New(flavor Flavor, baseURL, token, deviceID string) *Client {
 // per public operation (config-design §3 hot-apply).
 func NewDynamic(current ConnectionSource, deviceID string) *Client {
 	return newDynamicWithHTTP(current, deviceID, httpx.NewNamed("library", httpx.TimeoutLibrary))
+}
+
+// NewDynamicObserved binds outbound observations to one application generation.
+func NewDynamicObserved(
+	current ConnectionSource,
+	deviceID string,
+	recorder *metrics.Recorder,
+) *Client {
+	return newDynamicWithHTTP(
+		current, deviceID, httpx.NewNamedObserved("library", httpx.TimeoutLibrary, recorder),
+	)
 }
 
 func newDynamicWithHTTP(current ConnectionSource, deviceID string, httpClient *http.Client) *Client {

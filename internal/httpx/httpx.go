@@ -54,6 +54,16 @@ func NewNamed(target string, timeout time.Duration) *http.Client {
 	return newNamedClient(target, timeout, newTransport())
 }
 
+// NewNamedObserved is NewNamed bound to one application generation's Recorder.
+// Production composition uses this form; NewNamed remains for standalone tools
+// and tests that do not own an application generation.
+func NewNamedObserved(target string, timeout time.Duration, recorder *metrics.Recorder) *http.Client {
+	if recorder == nil {
+		return NewNamed(target, timeout)
+	}
+	return newNamedObservedClient(target, timeout, newTransport(), recorder)
+}
+
 // NewStreaming returns an *http.Client for long streaming reads — an Ollama model
 // pull runs for minutes and a multi-GB body would blow any fixed whole-request
 // budget (a Client.Timeout aborts mid-body, surfacing as "context deadline
@@ -101,6 +111,19 @@ func newNamedClient(target string, timeout time.Duration, next http.RoundTripper
 	// status, and inbound fan-out describe one logical request. The retry counter
 	// above accounts separately for each additional attempt.
 	c.Transport = metrics.InstrumentTransport(target, c.Transport)
+	return c
+}
+
+func newNamedObservedClient(
+	target string,
+	timeout time.Duration,
+	next http.RoundTripper,
+	recorder *metrics.Recorder,
+) *http.Client {
+	c := newClient(timeout, next, func(reason metrics.OutboundRetryReason) {
+		recorder.OutboundRetried(target, reason)
+	})
+	c.Transport = recorder.InstrumentTransport(target, c.Transport)
 	return c
 }
 

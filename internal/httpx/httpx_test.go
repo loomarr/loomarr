@@ -4,10 +4,12 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/testkit/httpfixture"
 )
 
@@ -82,6 +84,27 @@ func TestNewNamedIsTransparent(t *testing.T) {
 	}
 	if string(body) != "ok" {
 		t.Fatalf("body = %q, want ok", body)
+	}
+}
+
+func TestNewNamedObservedRecordsIntoTheSuppliedGeneration(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(upstream.Close)
+	recorder := metrics.New(metrics.Options{})
+
+	response, err := NewNamedObserved("library", time.Second, recorder).Get(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+
+	scrape := httptest.NewRecorder()
+	recorder.Handler().ServeHTTP(scrape, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	want := `loomarr_outbound_requests_total{code="204",target="library"} 1`
+	if !strings.Contains(scrape.Body.String(), want) {
+		t.Errorf("generation scrape does not contain %q", want)
 	}
 }
 

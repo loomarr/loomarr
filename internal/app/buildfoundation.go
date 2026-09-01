@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"time"
@@ -62,9 +63,13 @@ func buildFoundation(
 	if database == "" {
 		database = "unavailable"
 	}
+	var databaseStats func() sql.DBStats
+	if pool := store.PoolOf(st); pool != nil {
+		databaseStats = pool.Stats
+	}
 	result.metrics = metrics.New(metrics.Options{
 		Version: info.Version, Revision: info.Commit, Database: database,
-		Store: st, Now: time.Now,
+		Store: st, Now: time.Now, DatabaseStats: databaseStats,
 	})
 	instanceID := ""
 	fallbackLog := log
@@ -123,12 +128,12 @@ func buildFoundation(
 		result.log = redactedLog
 		fallbackLog = redactedLog
 		secretRedactor = redactor
-		result.libraryClient = library.NewDynamic(result.set.libraryConn(), instanceID)
+		result.libraryClient = library.NewDynamicObserved(result.set.libraryConn(), instanceID, result.metrics)
 		key := func() string { return result.set.str("tmdb.api_key") }
 		if overrides.TMDBBaseURL != "" {
-			result.tmdbClient = tmdb.NewDynamicWithBase(overrides.TMDBBaseURL, key)
+			result.tmdbClient = tmdb.NewDynamicWithBaseObserved(overrides.TMDBBaseURL, key, result.metrics)
 		} else {
-			result.tmdbClient = tmdb.NewDynamic(key)
+			result.tmdbClient = tmdb.NewDynamicObserved(key, result.metrics)
 		}
 		result.refreshSecretRedactor = func() {
 			redactor.Set(collectSecrets(settings.NewRegistry(), result.set.svc, secrets))
