@@ -231,6 +231,7 @@ func testNotificationDestinations(t *testing.T, newStore NewStoreFunc) {
 		Scope: notifications.ScopeInstallation, Audience: notifications.RecipientOperators,
 		Topics:  []notifications.Topic{notifications.TopicChannelDegraded, notifications.TopicAcquisitionGaveUp},
 		Enabled: true, Configuration: map[string]string{"channel": "alerts"},
+		CredentialKeys:       []string{"token"},
 		CredentialsEncrypted: "opaque-envelope-1", CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.SaveNotificationDestinationRecord(ctx, destination); err != nil {
@@ -240,6 +241,7 @@ func testNotificationDestinations(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || stored.ID != destination.ID || stored.Means != destination.Means ||
 		stored.Label != destination.Label || stored.Scope != destination.Scope || stored.Audience != destination.Audience ||
 		!stored.Enabled || len(stored.Topics) != 2 || stored.Configuration["channel"] != "alerts" ||
+		len(stored.CredentialKeys) != 1 || stored.CredentialKeys[0] != "token" ||
 		stored.CredentialsEncrypted != "opaque-envelope-1" {
 		t.Fatalf("stored destination = %+v, %v", stored, err)
 	}

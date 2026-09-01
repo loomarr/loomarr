@@ -41,7 +41,7 @@ func (f *NotificationRepository) SaveNotificationDestination(
 	return nil
 }
 
-func (f *NotificationRepository) GetNotificationDestination(
+func (f *NotificationRepository) ResolveNotificationDestination(
 	_ context.Context,
 	id string,
 ) (notifications.Destination, error) {
@@ -52,15 +52,33 @@ func (f *NotificationRepository) GetNotificationDestination(
 	return destination, nil
 }
 
-func (f *NotificationRepository) ListNotificationDestinations(
-	_ context.Context,
-) ([]notifications.Destination, error) {
-	destinations := make([]notifications.Destination, 0, len(f.Destinations))
-	for _, destination := range f.Destinations {
-		destinations = append(destinations, destination)
+func (f *NotificationRepository) OpenNotificationDestinationForUpdate(
+	ctx context.Context,
+	id string,
+) (notifications.Destination, error) {
+	return f.ResolveNotificationDestination(ctx, id)
+}
+
+func (f *NotificationRepository) GetNotificationDestinationMetadata(
+	ctx context.Context,
+	id string,
+) (notifications.DestinationMetadata, error) {
+	destination, err := f.ResolveNotificationDestination(ctx, id)
+	if err != nil {
+		return notifications.DestinationMetadata{}, err
 	}
-	sort.Slice(destinations, func(i, j int) bool { return destinations[i].ID < destinations[j].ID })
-	return destinations, nil
+	return destination.Metadata(), nil
+}
+
+func (f *NotificationRepository) ListNotificationDestinationMetadata(
+	_ context.Context,
+) ([]notifications.DestinationMetadata, error) {
+	metadata := make([]notifications.DestinationMetadata, 0, len(f.Destinations))
+	for _, destination := range f.Destinations {
+		metadata = append(metadata, destination.Metadata())
+	}
+	sort.Slice(metadata, func(i, j int) bool { return metadata[i].ID < metadata[j].ID })
+	return metadata, nil
 }
 
 func (f *NotificationRepository) ListNotificationDestinationHealth(

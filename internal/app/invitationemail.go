@@ -148,7 +148,7 @@ func (r invitationEmailRouter) Routes(ctx context.Context, intent notifications.
 		}
 		return []notifications.Route{route}, nil
 	}
-	destinations, listErr := r.destinations.ListNotificationDestinations(ctx)
+	destinations, listErr := r.destinations.ListNotificationDestinationMetadata(ctx)
 	if listErr != nil {
 		return nil, listErr
 	}
@@ -428,22 +428,13 @@ type notificationServiceRepository struct {
 	destinations notifications.DestinationRepository
 }
 
-func (r notificationServiceRepository) GetNotificationDestination(
+func (r notificationServiceRepository) ResolveNotificationDestination(
 	ctx context.Context,
 	id string,
 ) (notifications.Destination, error) {
-	return r.destinations.GetNotificationDestination(ctx, id)
+	return r.destinations.ResolveNotificationDestination(ctx, id)
 }
 
 func (r notificationServiceRepository) RetireNotificationDestination(ctx context.Context, id string) error {
-	destination, err := r.destinations.GetNotificationDestination(ctx, id)
-	if err != nil {
-		return err
-	}
-	if !destination.Enabled {
-		return nil
-	}
-	destination.Enabled = false
-	destination.UpdatedAt = time.Now().UTC().Truncate(time.Second)
-	return r.destinations.SaveNotificationDestination(ctx, destination)
+	return r.destinations.RetireNotificationDestination(ctx, id)
 }

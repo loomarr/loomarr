@@ -14,8 +14,8 @@ const (
 	ScopePerson       DestinationScope = "person"
 )
 
-// Destination is the complete module-internal routing record. Configuration and Credentials are
-// resolved only after an attempt is claimed; API read models must use DestinationSummary instead.
+// Destination is the complete module-internal delivery record. Credentials are resolved only after
+// an attempt is claimed or an authorized update begins; API reads use DestinationSummary instead.
 type Destination struct {
 	ID            string
 	Means         Means
@@ -31,6 +31,23 @@ type Destination struct {
 	UpdatedAt     time.Time
 }
 
+// DestinationMetadata is the credential-free routing and management read model. CredentialKeys
+// records only which server-defined sensitive fields are configured; it never contains values.
+type DestinationMetadata struct {
+	ID             string
+	Means          Means
+	Label          string
+	Scope          DestinationScope
+	OwnerID        string
+	Audience       RecipientKind
+	Topics         []Topic
+	Enabled        bool
+	Configuration  map[string]string
+	CredentialKeys []string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
 // DestinationRecord is the persistence-safe form of a destination. The database layer only
 // handles an opaque credential envelope; plaintext credentials exist solely in Destination at
 // the notification module boundary after authenticated decryption.
@@ -44,6 +61,7 @@ type DestinationRecord struct {
 	Topics               []Topic
 	Enabled              bool
 	Configuration        map[string]string
+	CredentialKeys       []string
 	CredentialsEncrypted string
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
@@ -52,6 +70,16 @@ type DestinationRecord struct {
 func (r DestinationRecord) Validate() error {
 	if r.CredentialsEncrypted == "" {
 		return fmt.Errorf("destination record requires encrypted credentials")
+	}
+	seen := make(map[string]struct{}, len(r.CredentialKeys))
+	for _, key := range r.CredentialKeys {
+		if err := identifier("destination credential metadata key", key); err != nil {
+			return err
+		}
+		if _, exists := seen[key]; exists {
+			return fmt.Errorf("destination credential metadata key %q is duplicated", key)
+		}
+		seen[key] = struct{}{}
 	}
 	return destinationFromRecord(r).Validate()
 }
@@ -152,12 +180,47 @@ func (d Destination) Validate() error {
 }
 
 func (d Destination) Summary() DestinationSummary {
+	return d.Metadata().Summary()
+}
+
+func (d Destination) Metadata() DestinationMetadata {
+	keys := make([]string, 0, len(d.Credentials))
+	for key, value := range d.Credentials {
+		if value != "" {
+			keys = append(keys, key)
+		}
+	}
+	return DestinationMetadata{
+		ID: d.ID, Means: d.Means, Label: d.Label, Scope: d.Scope, OwnerID: d.OwnerID,
+		Audience: d.Audience, Topics: append([]Topic(nil), d.Topics...), Enabled: d.Enabled,
+		Configuration: cloneStringMap(d.Configuration), CredentialKeys: keys,
+		CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
+	}
+}
+
+func (d DestinationMetadata) Validate() error {
+	return d.destination().Validate()
+}
+
+func (d DestinationMetadata) Summary() DestinationSummary {
 	definition, _ := ProviderDefinitionFor(d.Means)
+	configured := make(map[string]string, len(d.CredentialKeys))
+	for _, key := range d.CredentialKeys {
+		configured[key] = "configured"
+	}
 	return DestinationSummary{
 		ID: d.ID, Means: d.Means, Label: d.Label, Scope: d.Scope, OwnerID: d.OwnerID,
 		Audience: d.Audience, Topics: append([]Topic(nil), d.Topics...), Enabled: d.Enabled,
-		CredentialsConfigured: len(d.Credentials) > 0, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
-		Settings: definition.Redact(d.Configuration, d.Credentials),
+		CredentialsConfigured: len(d.CredentialKeys) > 0, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
+		Settings: definition.Redact(d.Configuration, configured),
+	}
+}
+
+func (d DestinationMetadata) destination() Destination {
+	return Destination{
+		ID: d.ID, Means: d.Means, Label: d.Label, Scope: d.Scope, OwnerID: d.OwnerID,
+		Audience: d.Audience, Topics: append([]Topic(nil), d.Topics...), Enabled: d.Enabled,
+		Configuration: cloneStringMap(d.Configuration), CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
 	}
 }
 

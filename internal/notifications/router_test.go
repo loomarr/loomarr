@@ -18,8 +18,12 @@ func (e audienceEligibility) Eligible(_ context.Context, audience notifications.
 	return e[string(audience)+":"+personID], nil
 }
 
-func (s destinationSource) ListNotificationDestinations(context.Context) ([]notifications.Destination, error) {
-	return append([]notifications.Destination(nil), s.destinations...), nil
+func (s destinationSource) ListNotificationDestinationMetadata(context.Context) ([]notifications.DestinationMetadata, error) {
+	metadata := make([]notifications.DestinationMetadata, 0, len(s.destinations))
+	for _, destination := range s.destinations {
+		metadata = append(metadata, destination.Metadata())
+	}
+	return metadata, nil
 }
 
 func TestDestinationRouterMatchesOnlyEnabledAuthorizedDestinations(t *testing.T) {

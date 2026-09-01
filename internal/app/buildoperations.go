@@ -172,7 +172,7 @@ func migrateLegacySMTPProvider(
 	if repository == nil || set.svc == nil {
 		return nil
 	}
-	existing, err := repository.ListNotificationDestinations(ctx)
+	existing, err := repository.ListNotificationDestinationMetadata(ctx)
 	if err != nil {
 		return err
 	}

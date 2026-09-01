@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/secretprotection"
 )
@@ -14,6 +16,26 @@ import (
 type ProtectedDestinationRepository struct {
 	records    DestinationRecordRepository
 	protection *secretprotection.Manager
+}
+
+func (r *ProtectedDestinationRepository) ListNotificationDestinationMetadata(
+	ctx context.Context,
+) ([]DestinationMetadata, error) {
+	if r == nil || r.records == nil {
+		return nil, errors.New("notification destination repository is unavailable")
+	}
+	records, err := r.records.ListNotificationDestinationRecords(ctx)
+	if err != nil {
+		return nil, err
+	}
+	metadata := make([]DestinationMetadata, 0, len(records))
+	for _, record := range records {
+		if err := record.Validate(); err != nil {
+			return nil, fmt.Errorf("validate notification destination metadata %q: %w", record.ID, err)
+		}
+		metadata = append(metadata, destinationMetadataFromRecord(record))
+	}
+	return metadata, nil
 }
 
 func NewProtectedDestinationRepository(
@@ -54,7 +76,8 @@ func (r *ProtectedDestinationRepository) SaveNotificationDestination(
 	return r.records.SaveNotificationDestinationRecord(ctx, destinationRecord(destination, envelope))
 }
 
-func (r *ProtectedDestinationRepository) GetNotificationDestination(
+// ResolveNotificationDestination opens the complete destination for a claimed delivery attempt.
+func (r *ProtectedDestinationRepository) ResolveNotificationDestination(
 	ctx context.Context,
 	id string,
 ) (Destination, error) {
@@ -68,26 +91,30 @@ func (r *ProtectedDestinationRepository) GetNotificationDestination(
 	return r.open(ctx, record, true)
 }
 
-func (r *ProtectedDestinationRepository) ListNotificationDestinations(ctx context.Context) ([]Destination, error) {
-	if r == nil || r.records == nil || r.protection == nil {
-		return nil, errors.New("notification destination credential protection is unavailable")
+// OpenNotificationDestinationForUpdate is the explicit management-mutation boundary. Updating a
+// partial settings object must merge it with the existing sealed credential object before resealing.
+func (r *ProtectedDestinationRepository) OpenNotificationDestinationForUpdate(
+	ctx context.Context,
+	id string,
+) (Destination, error) {
+	return r.ResolveNotificationDestination(ctx, id)
+}
+
+func (r *ProtectedDestinationRepository) GetNotificationDestinationMetadata(
+	ctx context.Context,
+	id string,
+) (DestinationMetadata, error) {
+	if r == nil || r.records == nil {
+		return DestinationMetadata{}, errors.New("notification destination repository is unavailable")
 	}
-	if err := r.protection.Refresh(ctx); err != nil {
-		return nil, err
-	}
-	records, err := r.records.ListNotificationDestinationRecords(ctx)
+	record, err := r.records.GetNotificationDestinationRecord(ctx, id)
 	if err != nil {
-		return nil, err
+		return DestinationMetadata{}, err
 	}
-	destinations := make([]Destination, 0, len(records))
-	for _, record := range records {
-		destination, err := r.open(ctx, record, false)
-		if err != nil {
-			return nil, err
-		}
-		destinations = append(destinations, destination)
+	if err := record.Validate(); err != nil {
+		return DestinationMetadata{}, fmt.Errorf("validate notification destination metadata %q: %w", record.ID, err)
 	}
-	return destinations, nil
+	return destinationMetadataFromRecord(record), nil
 }
 
 func (r *ProtectedDestinationRepository) ListNotificationDestinationHealth(
@@ -98,6 +125,25 @@ func (r *ProtectedDestinationRepository) ListNotificationDestinationHealth(
 
 func (r *ProtectedDestinationRepository) DeleteNotificationDestination(ctx context.Context, id string) error {
 	return r.records.DeleteNotificationDestination(ctx, id)
+}
+
+func (r *ProtectedDestinationRepository) RetireNotificationDestination(ctx context.Context, id string) error {
+	if r == nil || r.records == nil {
+		return errors.New("notification destination repository is unavailable")
+	}
+	record, err := r.records.GetNotificationDestinationRecord(ctx, id)
+	if err != nil {
+		return err
+	}
+	if !record.Enabled {
+		return nil
+	}
+	record.Enabled = false
+	record.UpdatedAt = time.Now().UTC().Truncate(time.Second)
+	if record.UpdatedAt.Before(record.CreatedAt) {
+		record.UpdatedAt = record.CreatedAt
+	}
+	return r.records.SaveNotificationDestinationRecord(ctx, record)
 }
 
 // ReencryptAll reseals each credential object with the active data key after rotation. Older keys
@@ -162,11 +208,41 @@ func destinationCredentialRecord(id string) secretprotection.Record {
 }
 
 func destinationRecord(destination Destination, envelope string) DestinationRecord {
+	credentialKeys := make([]string, 0, len(destination.Credentials))
+	for key, value := range destination.Credentials {
+		if value != "" {
+			credentialKeys = append(credentialKeys, key)
+		}
+	}
+	sort.Strings(credentialKeys)
 	return DestinationRecord{
 		ID: destination.ID, Means: destination.Means, Label: destination.Label, Scope: destination.Scope,
 		OwnerID: destination.OwnerID, Audience: destination.Audience, Topics: append([]Topic(nil), destination.Topics...),
-		Enabled: destination.Enabled, Configuration: cloneStringMap(destination.Configuration),
+		Enabled: destination.Enabled, Configuration: cloneStringMap(destination.Configuration), CredentialKeys: credentialKeys,
 		CredentialsEncrypted: envelope, CreatedAt: destination.CreatedAt, UpdatedAt: destination.UpdatedAt,
+	}
+}
+
+func destinationMetadataFromRecord(record DestinationRecord) DestinationMetadata {
+	credentialKeys := append([]string(nil), record.CredentialKeys...)
+	if record.CredentialKeys == nil {
+		// Rows written before credential metadata was added cannot reveal which optional secrets
+		// were present without opening the envelope. Report all defined secret fields as configured
+		// until the next explicit update rewrites exact metadata; never decrypt during a read.
+		if definition, ok := ProviderDefinitionFor(record.Means); ok {
+			for _, field := range definition.Fields {
+				if field.Sensitive {
+					credentialKeys = append(credentialKeys, field.Key)
+				}
+			}
+		}
+	}
+	return DestinationMetadata{
+		ID: record.ID, Means: record.Means, Label: record.Label, Scope: record.Scope,
+		OwnerID: record.OwnerID, Audience: record.Audience, Topics: append([]Topic(nil), record.Topics...),
+		Enabled: record.Enabled, Configuration: cloneStringMap(record.Configuration),
+		CredentialKeys: credentialKeys,
+		CreatedAt:      record.CreatedAt, UpdatedAt: record.UpdatedAt,
 	}
 }
 

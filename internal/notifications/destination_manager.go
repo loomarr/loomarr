@@ -51,10 +51,13 @@ type DestinationValidator interface {
 
 type DestinationRepository interface {
 	SaveNotificationDestination(context.Context, Destination) error
-	GetNotificationDestination(context.Context, string) (Destination, error)
-	ListNotificationDestinations(context.Context) ([]Destination, error)
+	ResolveNotificationDestination(context.Context, string) (Destination, error)
+	OpenNotificationDestinationForUpdate(context.Context, string) (Destination, error)
+	GetNotificationDestinationMetadata(context.Context, string) (DestinationMetadata, error)
+	ListNotificationDestinationMetadata(context.Context) ([]DestinationMetadata, error)
 	ListNotificationDestinationHealth(context.Context) (map[string]DestinationHealth, error)
 	DeleteNotificationDestination(context.Context, string) error
+	RetireNotificationDestination(context.Context, string) error
 }
 
 // DestinationRecordRepository is the storage port below credential protection. Implementations
@@ -73,7 +76,7 @@ type DestinationTestResult struct {
 }
 
 type DestinationTester interface {
-	PublishDestinationTest(context.Context, Destination, string) (DestinationTestResult, error)
+	PublishDestinationTest(context.Context, DestinationMetadata, string) (DestinationTestResult, error)
 }
 
 type DestinationManager struct {
@@ -155,7 +158,7 @@ func (m *DestinationManager) List(ctx context.Context, principal Principal) ([]D
 	if m == nil || m.repository == nil {
 		return nil, fmt.Errorf("notification destination manager is unavailable")
 	}
-	destinations, err := m.repository.ListNotificationDestinations(ctx)
+	destinations, err := m.repository.ListNotificationDestinationMetadata(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -187,18 +190,22 @@ func (m *DestinationManager) Update(
 	if m == nil || m.repository == nil || m.now == nil {
 		return DestinationSummary{}, fmt.Errorf("notification destination manager is unavailable")
 	}
-	current, err := m.repository.GetNotificationDestination(ctx, id)
+	metadata, err := m.repository.GetNotificationDestinationMetadata(ctx, id)
 	if err != nil {
 		return DestinationSummary{}, err
 	}
-	if err := authorizeDestinationWrite(principal, current.Scope, current.OwnerID); err != nil {
+	if err := authorizeDestinationWrite(principal, metadata.Scope, metadata.OwnerID); err != nil {
 		return DestinationSummary{}, err
 	}
 	audience := command.Audience
 	if audience == "" {
-		audience = current.Audience
+		audience = metadata.Audience
 	}
-	if err := authorizeDestinationAudience(principal, current.Scope, audience); err != nil {
+	if err := authorizeDestinationAudience(principal, metadata.Scope, audience); err != nil {
+		return DestinationSummary{}, err
+	}
+	current, err := m.repository.OpenNotificationDestinationForUpdate(ctx, id)
+	if err != nil {
 		return DestinationSummary{}, err
 	}
 	credentials := current.Credentials
@@ -286,7 +293,7 @@ func (m *DestinationManager) Delete(ctx context.Context, principal Principal, id
 	if m == nil || m.repository == nil {
 		return fmt.Errorf("notification destination manager is unavailable")
 	}
-	current, err := m.repository.GetNotificationDestination(ctx, id)
+	current, err := m.repository.GetNotificationDestinationMetadata(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -308,7 +315,7 @@ func (m *DestinationManager) Test(
 	if err := identifier("destination test request id", requestID); err != nil {
 		return DestinationTestResult{}, err
 	}
-	destination, err := m.repository.GetNotificationDestination(ctx, id)
+	destination, err := m.repository.GetNotificationDestinationMetadata(ctx, id)
 	if err != nil {
 		return DestinationTestResult{}, err
 	}
@@ -317,9 +324,6 @@ func (m *DestinationManager) Test(
 	}
 	if !destination.Enabled {
 		return DestinationTestResult{}, fmt.Errorf("notification destination must be enabled before testing")
-	}
-	if err := m.validateEnabled(destination); err != nil {
-		return DestinationTestResult{}, err
 	}
 	return m.tester.PublishDestinationTest(ctx, destination, requestID)
 }

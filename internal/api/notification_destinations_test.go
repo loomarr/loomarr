@@ -47,7 +47,7 @@ type acceptingDestinationTester struct{}
 
 func (acceptingDestinationTester) PublishDestinationTest(
 	context.Context,
-	notifications.Destination,
+	notifications.DestinationMetadata,
 	string,
 ) (notifications.DestinationTestResult, error) {
 	return notifications.DestinationTestResult{IntentID: "intent-test-1", Created: true}, nil
@@ -91,7 +91,7 @@ func TestNotificationProvidersUseOneRedactedAdminWorkflow(t *testing.T) {
 		strings.Contains(createdBody, `"configuration"`) || strings.Contains(createdBody, `"credentials"`) {
 		t.Fatalf("create response was not redacted: %s", createdBody)
 	}
-	stored, err := repository.GetNotificationDestination(t.Context(), "destination-1")
+	stored, err := repository.ResolveNotificationDestination(t.Context(), "destination-1")
 	if err != nil || stored.Credentials["webhookUrl"] != "https://hooks.slack.com/services/never-return-this" {
 		t.Fatalf("stored destination = %+v, %v", stored.Summary(), err)
 	}
@@ -104,7 +104,7 @@ func TestNotificationProvidersUseOneRedactedAdminWorkflow(t *testing.T) {
 	if strings.Contains(updatedBody, "never-return-this") || !strings.Contains(updatedBody, `"label":"On-call Slack"`) {
 		t.Fatalf("update response was not redacted: %s", updatedBody)
 	}
-	stored, err = repository.GetNotificationDestination(t.Context(), "destination-1")
+	stored, err = repository.ResolveNotificationDestination(t.Context(), "destination-1")
 	if err != nil || stored.Credentials["webhookUrl"] != "https://hooks.slack.com/services/never-return-this" {
 		t.Fatalf("updated stored destination = %+v, %v", stored.Summary(), err)
 	}
@@ -207,7 +207,7 @@ func TestNotificationProvidersBindBrowserPushToTheAuthenticatedMember(t *testing
 	if created.StatusCode != http.StatusCreated {
 		t.Fatalf("member Web Push create = %d: %s", created.StatusCode, readBody(t, created))
 	}
-	stored, err := repository.GetNotificationDestination(t.Context(), "browser-1")
+	stored, err := repository.ResolveNotificationDestination(t.Context(), "browser-1")
 	if err != nil || stored.Scope != notifications.ScopePerson || stored.OwnerID != "member-1" ||
 		stored.Audience != notifications.RecipientPerson || stored.Credentials["endpoint"] == "" {
 		t.Fatalf("stored Web Push destination = %+v, %v", stored.Summary(), err)

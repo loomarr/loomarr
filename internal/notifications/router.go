@@ -7,7 +7,7 @@ import (
 )
 
 type DestinationSource interface {
-	ListNotificationDestinations(context.Context) ([]Destination, error)
+	ListNotificationDestinationMetadata(context.Context) ([]DestinationMetadata, error)
 }
 
 type AudienceEligibility interface {
@@ -32,7 +32,7 @@ func (r *DestinationRouter) Routes(ctx context.Context, intent Intent) ([]Route,
 	if r == nil || r.source == nil {
 		return nil, nil
 	}
-	destinations, err := r.source.ListNotificationDestinations(ctx)
+	destinations, err := r.source.ListNotificationDestinationMetadata(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list notification destinations: %w", err)
 	}
@@ -97,7 +97,7 @@ func (r *DestinationRouter) Routes(ctx context.Context, intent Intent) ([]Route,
 
 func (r *DestinationRouter) personalWebPushMatches(
 	ctx context.Context,
-	destination Destination,
+	destination DestinationMetadata,
 	intent Intent,
 ) (bool, error) {
 	if intent.RecipientKind == RecipientPerson {
@@ -134,7 +134,7 @@ func installationDestinationMatches(means Means, topic Topic, recipient Recipien
 	}
 }
 
-func destinationHasTopic(destination Destination, topic Topic) bool {
+func destinationHasTopic(destination DestinationMetadata, topic Topic) bool {
 	for _, selected := range destination.Topics {
 		if selected == topic {
 			return true
