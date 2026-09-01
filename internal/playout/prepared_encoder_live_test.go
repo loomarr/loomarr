@@ -27,7 +27,7 @@ func TestLivePreparedPackagerUsesDetectedHardware(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
 	defer cancel()
 
-	capability := Detect(ctx, bin, DefaultProfile(), "")
+	capability := DetectObserved(ctx, bin, DefaultProfile(), "", nil)
 	if capability.Chosen == EncoderSoftware {
 		t.Skip("no working hardware encoder")
 	}

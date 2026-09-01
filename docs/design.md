@@ -6525,14 +6525,16 @@ Recorded after a full sweep of `internal/`, because two of the rules below exist
 
 **The application generation owns an explicit lifecycle.** Building the application starts River,
 settings refresh, playout lifecycle listeners, and other generation-scoped work, so returning only an
-`http.Handler` hides half of the interface and forced shutdown ordering into `store.OnClose` plus a
-test-only mutable production global. The composition root returns one application value with a
+`http.Handler` hides half of the interface and previously forced shutdown ordering into store-close
+hooks plus a test-only mutable production global. The composition root returns one application value with a
 read-only Handler and an idempotent `Shutdown(ctx) error`. Build derives one generation context;
 parent cancellation asks it to stop, while `Shutdown` cancels and waits for every owned subsystem in
 reverse dependency order. The caller still owns the listener, signal handling, and Store: it cancels
-the generation, drains HTTP, waits for the application, then closes the Store. A failed Build unwinds everything it already
-started before returning. Tests observe wiring through the returned application or through behavior,
-never through package globals.
+the generation, drains HTTP, calls `Application.Shutdown`, then closes the Store directly. No
+subsystem registers work on Store closure: generation-owned resources stop through
+`Application.Shutdown`, which makes their ordering visible at the composition root and independently
+testable. A failed Build unwinds everything it already started before returning. Tests observe wiring
+through the returned application or through behavior, never through package globals.
 
 **Persistence is broad only at the root.** `store.Store` remains the full union held by the
 composition root and the one SQLite/Postgres conformance suite. A domain module accepts the smallest

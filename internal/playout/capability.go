@@ -137,24 +137,15 @@ type Capacity struct {
 	All []Capability
 }
 
-// Detect probes what the local ffmpeg can do and returns the best working encoder with its
-// measured capacity. "No hardware" is never an error — it is the expected outcome on most
-// machines, and software is a correct answer.
-//
 // HARDWARE WINS by default when it works (maintainer's call). The reason is CPU HEADROOM
 // rather than raw throughput: measured here, nvenc sustains 14x and libx264 veryfast 13.6x
 // at 720p25 — nearly identical channel counts, but libx264 burns cores the rest of the app
 // needs while nvenc offloads to otherwise-idle silicon. The gap widens with resolution,
 // which is why the probe runs at the PROFILE's resolution rather than a fixed one.
-// Detect picks the encoder and channel capacity for this box. gpuVendor is the probed GPU name (or
-// vendor substring); when it names a vendor with a mature native encoder, that encoder is trialled
-// first (preferenceFor). Pass "" when the GPU is unknown — the cross-vendor default order applies and
-// the trial still decides what actually works.
-func Detect(ctx context.Context, ffmpegPath string, p Profile, gpuVendor string) Capacity {
-	return DetectObserved(ctx, ffmpegPath, p, gpuVendor, nil)
-}
-
-// DetectObserved is Detect with best-effort Process-run diagnostics for each external probe.
+// DetectObserved probes what the local ffmpeg can do and returns the best working encoder with its
+// measured capacity, recording best-effort diagnostics when manager is non-nil. "No hardware" is
+// expected on many machines; software remains a correct answer. gpuVendor is the probed GPU name or
+// vendor substring; pass "" to use the cross-vendor default order.
 func DetectObserved(ctx context.Context, ffmpegPath string, p Profile, gpuVendor string,
 	manager *diagnostics.ProcessManager,
 ) Capacity {

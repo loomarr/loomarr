@@ -283,25 +283,6 @@ func MigrateData(ctx context.Context, src, dst Store, onProgress func(MigrationP
 	return prog, nil
 }
 
-// VerifyParity re-counts every table on BOTH sides and reports the tables that disagree.
-//
-// Deliberately re-counts rather than trusting MigrateData's tallies: the copy's numbers
-// come from the same code path that did the copying, so reusing them would make the check
-// self-confirming. Counting the destination independently is the only version of this
-// that can actually catch a bad copy.
-func VerifyParity(ctx context.Context, src, dst Store) ([]TableStat, error) {
-	s, ok1 := src.(*sqlStore)
-	d, ok2 := dst.(*sqlStore)
-	if !ok1 || !ok2 {
-		return nil, errors.New("verify: not SQL stores")
-	}
-	tables, err := userTables(ctx, d)
-	if err != nil {
-		return nil, err
-	}
-	return verifyParity(ctx, s.db, d.db, tables)
-}
-
 type rowCounter interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
