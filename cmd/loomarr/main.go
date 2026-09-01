@@ -313,22 +313,21 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 	// End generation-owned work and long-lived SSE streams before draining HTTP. Request
 	// contexts are independent, so the accepted migration response can still finish.
 	cancelRoot()
-	drainErr := srv.Shutdown(shutdownCtx)
-	applicationErr := application.Shutdown(shutdownCtx)
-	if err := errors.Join(drainErr, applicationErr); err != nil {
+	drainErr := drainGeneration(shutdownCtx, srv.Shutdown, application.Quiesce, application.Shutdown)
+	if drainErr != nil {
 		// A drain that timed out is worth reporting, but on a restart it must not abort
 		// the loop: the generation is finished either way, and refusing to come back up
 		// because a client held a connection open is the outage this feature prevents.
 		if databaseMigrationDSN != "" {
-			msg := conciseDatabaseMigrationError(fmt.Errorf("drain SQLite generation: %w", err))
+			msg := conciseDatabaseMigrationError(fmt.Errorf("drain SQLite generation: %w", drainErr))
 			log.Error("database migration could not start; restarting on SQLite", "err", msg)
 			databaseMigration.lastError = msg
 			return true, nil
 		}
 		if !restart {
-			return false, err
+			return false, drainErr
 		}
-		log.Warn("drain did not finish cleanly before restart", "err", err)
+		log.Warn("drain did not finish cleanly before restart", "err", drainErr)
 	}
 	if databaseMigrationDSN != "" {
 		if err := performDatabaseCutover(
@@ -354,6 +353,19 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 	}
 	log.Info("loomarr stopped cleanly")
 	return false, nil
+}
+
+func drainGeneration(
+	ctx context.Context,
+	drainHTTP func(context.Context) error,
+	quiesce func(context.Context) error,
+	finalize func(context.Context) error,
+) error {
+	var quiesceErr error
+	if quiesce != nil {
+		quiesceErr = quiesce(ctx)
+	}
+	return errors.Join(quiesceErr, drainHTTP(ctx), finalize(ctx))
 }
 
 type databaseMigrationState struct {

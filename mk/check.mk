@@ -12,6 +12,7 @@ check-static: rust-check fmt shellcheck privacy-verify observability-verify vet 
 .PHONY: observability-verify
 observability-verify: ## validate the metric manifest, Prometheus rules, and Grafana provisioning (needs Docker and jq)
 	@./scripts/verify-observability.sh
+	@./scripts/observability-dev-test.sh
 
 .PHONY: rust-check rust-test-worker rust-audit rust-fuzz
 rust-check: rust-test-worker ## format, lint, build, and test the required Rust image worker

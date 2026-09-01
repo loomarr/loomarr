@@ -111,6 +111,7 @@ type Origin struct {
 	// availability callback alone is insufficient: a tune could observe true, then attach after
 	// StopAll had already snapshotted the managers and escape teardown.
 	lifecycleMu sync.RWMutex
+	closed      bool
 	available   func() bool
 	eligible    func(context.Context, string) (bool, error)
 
@@ -205,6 +206,9 @@ func (o *Origin) AcquireAdmission(ctx context.Context, channelID string) (Admiss
 }
 
 func (o *Origin) checkAdmissionLocked(ctx context.Context, channelID string) error {
+	if o.closed {
+		return ErrUnavailable
+	}
 	if o.available != nil && !o.available() {
 		return ErrUnavailable
 	}
@@ -328,6 +332,23 @@ func (o *Origin) StopChannel(channelID string) {
 func (o *Origin) StopAll() {
 	o.lifecycleMu.Lock()
 	defer o.lifecycleMu.Unlock()
+	o.stopAllLocked()
+}
+
+// Quiesce permanently closes this generation's admission and retires every live delivery. Unlike
+// StopAll, which is reusable after a PostgreSQL listener recovers, Quiesce is the terminal
+// application-generation boundary and is safe to call repeatedly.
+func (o *Origin) Quiesce() {
+	o.lifecycleMu.Lock()
+	defer o.lifecycleMu.Unlock()
+	if o.closed {
+		return
+	}
+	o.closed = true
+	o.stopAllLocked()
+}
+
+func (o *Origin) stopAllLocked() {
 	o.cancelAdmissions("")
 	if o.hls != nil {
 		o.hls.StopAll()

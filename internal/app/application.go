@@ -59,6 +59,16 @@ func (a *Application) Handler() http.Handler {
 	return a.handler
 }
 
+// Quiesce closes generation admission, cancels generation-owned work, and stops the narrow set of
+// network resources whose active responses cannot finish without lifecycle intervention. It is
+// safe to call repeatedly or concurrently and deliberately does not run ordinary finalizers.
+func (a *Application) Quiesce(ctx context.Context) error {
+	if a == nil || a.lifecycle == nil {
+		return nil
+	}
+	return a.lifecycle.quiesce(ctx)
+}
+
 // Shutdown cancels generation-owned work, runs explicit stops in reverse construction order,
 // and waits for tracked workers. It is safe to call repeatedly or concurrently. A caller whose
 // context expires may call again with a fresh context to continue waiting for the same shutdown.
@@ -73,18 +83,24 @@ type generationLifecycle struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	mu       sync.Mutex
-	closed   bool
-	stops    []func(context.Context) error
-	wg       sync.WaitGroup
-	stopOnce sync.Once
-	done     chan struct{}
-	err      error
+	mu          sync.Mutex
+	closed      bool
+	quiescers   []func(context.Context) error
+	stops       []func(context.Context) error
+	wg          sync.WaitGroup
+	quiesceOnce sync.Once
+	quiesced    chan struct{}
+	quiesceErr  error
+	stopOnce    sync.Once
+	done        chan struct{}
+	err         error
 }
 
 func newGenerationLifecycle(parent context.Context) *generationLifecycle {
 	ctx, cancel := context.WithCancel(parent)
-	return &generationLifecycle{ctx: ctx, cancel: cancel, done: make(chan struct{})}
+	return &generationLifecycle{
+		ctx: ctx, cancel: cancel, quiesced: make(chan struct{}), done: make(chan struct{}),
+	}
 }
 
 // goRun starts one generation-owned worker. Construction is single-threaded, but the closed
@@ -120,16 +136,64 @@ func (l *generationLifecycle) addStop(stop func(context.Context) error) {
 	l.stops = append(l.stops, stop)
 }
 
+// addQuiesce registers a network-facing resource that must stop before HTTP drain can wait for
+// active responses. Reverse order preserves the dependency order established during construction.
+func (l *generationLifecycle) addQuiesce(quiesce func(context.Context) error) {
+	if quiesce == nil {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.closed {
+		panic("app: register generation quiescer after shutdown")
+	}
+	l.quiescers = append(l.quiescers, quiesce)
+}
+
+func (l *generationLifecycle) quiesce(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	l.startQuiesce(ctx)
+	select {
+	case <-l.quiesced:
+		return l.quiesceErr
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (l *generationLifecycle) startQuiesce(ctx context.Context) {
+	l.quiesceOnce.Do(func() {
+		l.mu.Lock()
+		l.closed = true
+		quiescers := append([]func(context.Context) error(nil), l.quiescers...)
+		l.mu.Unlock()
+		l.cancel()
+		go l.finishQuiesce(ctx, quiescers)
+	})
+}
+
+func (l *generationLifecycle) finishQuiesce(ctx context.Context, quiescers []func(context.Context) error) {
+	var errs []error
+	for i := len(quiescers) - 1; i >= 0; i-- {
+		if err := quiescers[i](ctx); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	l.quiesceErr = errors.Join(errs...)
+	close(l.quiesced)
+}
+
 func (l *generationLifecycle) shutdown(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	l.stopOnce.Do(func() {
+		l.startQuiesce(ctx)
 		l.mu.Lock()
-		l.closed = true
 		stops := append([]func(context.Context) error(nil), l.stops...)
 		l.mu.Unlock()
-		l.cancel()
 		go l.finish(ctx, stops)
 	})
 
@@ -142,6 +206,7 @@ func (l *generationLifecycle) shutdown(ctx context.Context) error {
 }
 
 func (l *generationLifecycle) finish(ctx context.Context, stops []func(context.Context) error) {
+	<-l.quiesced
 	var stopErrs []error
 	for i := len(stops) - 1; i >= 0; i-- {
 		if err := stops[i](ctx); err != nil {
@@ -149,6 +214,6 @@ func (l *generationLifecycle) finish(ctx context.Context, stops []func(context.C
 		}
 	}
 	l.wg.Wait()
-	l.err = errors.Join(stopErrs...)
+	l.err = errors.Join(l.quiesceErr, errors.Join(stopErrs...))
 	close(l.done)
 }

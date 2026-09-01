@@ -154,7 +154,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns host-wide resources shared by live and background media work.
 - **`notifications`** · 5 importers
   Owns channel-neutral notification intents and delivery work (§11).
-- **`proctree`** · 2 importers
+- **`proctree`** · 3 importers
   Supervises one child process and every descendant it starts.
 - **`provision`** · 16 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
@@ -227,7 +227,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 7**
 
-- **`clipfetch`** · 1 importer · → `filler`
+- **`clipfetch`** · 1 importer · → `filler`, `proctree`
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`library`** · 7 importers · → `episodeevidence`, `filler`, `httpx`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
@@ -2445,6 +2445,24 @@ loop — `for { app := Build(); app.Run(); app.Shutdown() }` — and a restart r
 current iteration so the next one constructs a fresh store, handler, scheduler and HTTP server.
 Same PID, no re-exec, **no supervisor required**.
 
+**A generation drains in two application phases around the HTTP wait.** First, it closes
+generation admission, cancels generation-owned work and event streams, and synchronously
+**quiesces network-facing resources whose active responses cannot finish by themselves**. Internal
+MPEG-TS sessions and live HLS remuxes are the canonical quiescers: an endless tuned response exits
+only when its session closes, while `http.Server.Shutdown` waits for that response. Quiescence must
+therefore precede HTTP drain or the two sides wait on each other until the shared deadline. After
+HTTP has drained, the application **finalizes** schedulers, diagnostics, workers, scratch roots and
+other owned resources in reverse construction order while their dependencies and the store remain
+open. The store closes only after finalization; a replacement generation cannot start earlier.
+
+Quiescers are a distinct, narrow lifecycle registry rather than ordinary finalizers run early.
+They are idempotent, safe under signal, operator restart, database migration and repeated calls,
+and reject new admission before taking their snapshot. A caller may wait again after its context
+expires. Ordinary finite handlers retain normal graceful-drain semantics, and diagnostics,
+scheduler infrastructure and the store are not torn down while they may still serve those
+handlers. SQLite and PostgreSQL follow this same ordering; PostgreSQL invalidation cancellation is
+additional fail-closed protection, not the mechanism that makes shutdown complete.
+
 **A generation is also the application boundary for storage topology.** Registry persistence and
 runtime application are deliberately separate for `filler.dir` + `filler.watch_dir`: saving either
 records the desired layout immediately, while the running generation keeps one immutable applied
@@ -3912,6 +3930,22 @@ disputed alias, never candidate predictions. Model agreement is therefore review
 automatic claim of truth: the locked development corpus can select candidates but cannot certify
 production, and the independently clustered holdout repeats this label protocol before it is opened
 to candidate scoring.
+
+Before another full development lock, the 32-case temporal diagnostic factors the previously
+conflated model output into two claims. `UnitAssessment` answers whether the bounded span is one
+standalone unit, a compilation, a programme excerpt, unusable, or unclear. `RoleAssessment` exists
+only for a standalone unit and answers commercial, promo, bumper, PSA, station ID, trailer,
+interstitial, or unclear. Each non-operational answer cites only signal IDs from the identity-blind
+packet; the validator resolves those IDs to their package-owned timestamps. Provider, schema,
+budget, and transport failures remain explicit operational failures rather than semantic labels.
+The local runner makes one constrained unit call for every case and a separate constrained role call
+only after the unit call returns `standalone`; it records every call's axis, response hash, latency,
+tokens, and failure rather than collapsing a two-call cascade into one attempt.
+Two model families run independently on the exact packet, and the deterministic comparison reports
+unit agreement separately from role agreement. More than 15% disputed cases, or one confusion that
+accounts for more than half the disputes, stops the development run for contract repair instead of
+being hidden behind adjudication. This diagnostic artifact is non-certifying and does not replace the
+complete label or holdout contracts above.
 
 A hosted review run additionally binds one exact upstream route from a capability snapshot no more
 than 24 hours old. It requires image and text input plus strict structured output, zero-data-retention
@@ -7124,6 +7158,15 @@ images/package inputs, and final legal review remain beta blockers.
 - **ai:** adds a local **Ollama** service (skip if using a hosted OpenAI-compatible provider or an external Ollama). The service ships **ready-to-use but model-less** — model choice is the wizard's job (§8.1: it depends on the user's GPU), so no model is baked in. Three deploy affordances, all optional and design-aligned: (1) a **healthcheck + `depends_on` gate** so `loomarr` waits for Ollama before its first probe (no transient "AI host unreachable" on first load) — the `depends_on` is `required:false`, so a hosted/external-LLM deploy that omits the `ai` profile skips it; (2) **opt-in GPU passthrough** via a separate overlay (`docker/compose.gpu.yaml`, NVIDIA + nvidia-container-toolkit; mirrors the dev Tunarr overlay) — without it Ollama runs on CPU (works, but slow); (3) **opt-in model preload** — set `LLM_MODEL` and a one-shot `ollama-pull` fetches it on first boot for a zero-wizard-step install; left empty (the default), the wizard picks the model, preserving the §8.1 "the user picks" default.
 **Filler ingest needs no profile, no tag, and no service.** The vendored yt-dlp + ffmpeg + deno ship in the single image (§16), so in-app clip downloads work out of the box — mount a drop-folder and go. *Revised: this supersedes both the `filler` compose profile and the opt-in `loomarr:filler` tag that replaced it; see §10's history note for why the question moved three times (retired-ok).*
 
+**Local observability is a separate development topology, never a release profile.** An explicit
+developer command may seed the same worktree-isolated SQLite store used by `make dev-be`, then start
+version-pinned Prometheus and Grafana containers that scrape that host backend. Its Compose project,
+published loopback ports, generated scrape configuration, and persistent volumes derive from the
+worktree identity, so two worktrees do not share monitoring state or collide. It mounts the shipped
+dashboard and optional rules read-only, provides an explicit non-destructive teardown, and tolerates
+the backend starting after the containers. The topology does not run Loomarr, Tunarr, Alertmanager,
+or an external integration, and it is absent from `docker/compose.yaml` and every release profile.
+
 The image is **non-root** (Debian `nonroot`, uid 65532). A freshly-created named
 volume is owned by `root:root`, so under the sqlite backend the container cannot create
 `/data/loomarr.db` (`SQLITE_CANTOPEN`) on first run. Fix it **in compose**, not by running
@@ -7571,9 +7614,12 @@ selection invalidates the preview and disables download until the replacement pr
   edits. Prometheus, Alertmanager, and Grafana are not required Loomarr services and are not added to
   default Compose. `make observability-verify` checks the metric manifest, hostile-label exclusions,
   dashboard query references, rule syntax/behavior, and provisioning in pinned test containers.
-  Additional dashboards need a distinct operator workflow; traces, hosted-model dollar estimates,
-  stack retention, alert routing, credentials, and published monitoring ports are explicitly out of
-  scope.
+  `make observability-dev` is the one development-only exception: it seeds the isolated local SQLite
+  store when absent and starts the pinned monitoring containers from §16 against `make dev-be`.
+  A Docker/HTTP smoke test must prove the Prometheus target is healthy, a seeded current-state metric
+  is queryable, and Grafana serves the stable dashboard UID. Additional dashboards need a distinct
+  operator workflow; traces, hosted-model dollar estimates, production stack retention, alert
+  routing, credentials, and production monitoring ports are explicitly out of scope.
 - **Readiness** is Current Health's required-check projection: required startup evidence must pass,
   continuously observed required checks must remain fresh, and sustained required-check failures make
   readiness false while liveness remains true. Optional warnings/failures/staleness produce

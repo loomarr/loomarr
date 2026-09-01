@@ -77,6 +77,8 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make eval-cert` |  | certify exact intents and mandatory scheduled viewer outcomes; fails closed and writes a scorecard |
 | `make eval-matrix` |  | explicitly certify local + OpenRouter generation sequentially (manual, resource-heavy) |
 | `make filler-eval-contract` |  | hermetic filler-admission corpus and selective-risk contracts |
+| `make filler-temporal-assess-ollama` |  | assess the sealed temporal challenge with a digest-pinned local model |
+| `make filler-temporal-compare` |  | compare two independent temporal assessment sets without inference |
 | `make filler-corpus-commons` |  | freeze bounded Commons pilot and full-inventory artifacts |
 | `make filler-corpus-cdc` |  | freeze bounded CDC pilot and full-inventory artifacts |
 | `make filler-corpus-loc` |  | freeze bounded LOC pilot and full-inventory artifacts |
@@ -112,6 +114,9 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make image-bench` | ✅ | benchmark release-worker AVIF ladders; optional IMAGE_BENCH_RUNS/ROLES/REPORT <br>*runs:* `rust-build` |
 | `make image-parallelism-bench` | ✅ | compare AVIF process/thread shapes at 2/4/8 CPUs (opt-in, Linux) <br>*runs:* `rust-build` |
 | `make dev` |  | dev compose stack (external deps: tunarr-dev; portable Mac/Linux, CPU transcode) |
+| `make observability-dev` |  | seed SQLite if needed, then start isolated local Prometheus + Grafana |
+| `make observability-dev-down` |  | stop this worktree's local observability stack (preserves its data) |
+| `make observability-dev-test` |  | prove seeded Loomarr metrics and Grafana provisioning over real Docker + HTTP |
 | `make test-sso` |  | SSO against REAL Authelia + Authentik containers (requires Docker) |
 | `make dev-be` |  | backend with live reload (Air) — rebuilds + restarts on Go/Rust changes <br>*runs:* `rust-dev-build` |
 | `make rust-dev-build` |  | build the required Rust worker for local development |

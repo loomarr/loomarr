@@ -20,6 +20,39 @@ curl -fsS http://localhost:8080/v1/metrics | head
 A healthy response starts with Prometheus `HELP` and `TYPE` records. Loomarr also exports Go and
 process collectors, so an otherwise idle instance still has data.
 
+## Run the local seeded stack
+
+The repository includes an opt-in development stack for inspecting real metrics without changing
+the default or release Compose deployments. Start it before the backend so a missing worktree
+SQLite database is populated through Loomarr's real seed command:
+
+```bash
+make observability-dev
+make dev-be
+```
+
+Keep `make dev-be` running in its own terminal. The first command starts only Prometheus and
+Grafana; Loomarr continues to run directly on the host with live reload. The launcher prints this
+worktree's URLs. In the primary worktree they default to:
+
+- Loomarr: `http://localhost:8080`
+- Prometheus: `http://localhost:9090`
+- Grafana: `http://localhost:3000` (`admin` / `loomarr`)
+
+Sibling worktrees receive deterministic, non-overlapping ports, Compose project names, SQLite
+paths, and monitoring volumes. Existing SQLite databases are never reseeded. A configured
+PostgreSQL database is scraped as-is; the launcher does not write fixtures to it.
+
+Stop only the monitoring containers with `make observability-dev-down`. Their Prometheus and
+Grafana volumes are preserved for the next session, and the seeded Loomarr database is left in
+place. The stack binds its UI ports to loopback and is for local development only.
+
+To verify the complete path independently, run `make observability-dev-test`. It creates a
+temporary SQLite fixture through `cmd/seed`, starts the real Loomarr binary and both pinned
+containers, and then uses HTTP to prove that Prometheus scraped a seeded `loomarr_titles` value and
+Grafana loaded dashboard UID `loomarr-overview`. The test removes its temporary containers,
+volumes, database, and backend when it exits.
+
 ## Configure Prometheus
 
 When Prometheus shares the Compose network, scrape Loomarr's private service port directly:
@@ -64,5 +97,5 @@ uses pinned Prometheus and Grafana containers to check rule behavior and prove G
 dashboard by its UID.
 
 Loomarr does not add Prometheus, Grafana, Alertmanager, credentials, storage, or monitoring ports to
-its default Compose topology. These artifacts integrate with an observability stack you already
-operate.
+its default Compose topology. The local stack is an explicit development overlay; the remaining
+artifacts integrate with an observability stack you already operate.

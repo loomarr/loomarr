@@ -3,12 +3,86 @@ package main
 import (
 	"context"
 	"errors"
+	"net"
+	"net/http"
 	"path/filepath"
+	"reflect"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/config"
 )
+
+func TestDrainGenerationQuiescesActiveStreamBeforeHTTPWait(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	var mu sync.Mutex
+	var events []string
+	record := func(event string) {
+		mu.Lock()
+		defer mu.Unlock()
+		events = append(events, event)
+	}
+
+	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		close(started)
+		<-release
+		record("stream-ended")
+		w.WriteHeader(http.StatusNoContent)
+	})}
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- server.Serve(listener) }()
+	t.Cleanup(func() {
+		releaseOnce.Do(func() { close(release) })
+		_ = server.Close()
+		<-serveDone
+	})
+
+	requestDone := make(chan error, 1)
+	go func() {
+		response, requestErr := http.Get("http://" + listener.Addr().String()) //nolint:noctx // request lifetime is the behavior under test
+		if requestErr == nil {
+			_ = response.Body.Close()
+		}
+		requestDone <- requestErr
+	}()
+	<-started
+
+	ctx, cancel := context.WithTimeout(t.Context(), 250*time.Millisecond)
+	defer cancel()
+	err = drainGeneration(
+		ctx,
+		server.Shutdown,
+		func(context.Context) error {
+			record("quiesce")
+			releaseOnce.Do(func() { close(release) })
+			return nil
+		},
+		func(context.Context) error {
+			record("finalize")
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("drain generation: %v", err)
+	}
+	if requestErr := <-requestDone; requestErr != nil {
+		t.Fatalf("active stream request: %v", requestErr)
+	}
+
+	mu.Lock()
+	got := append([]string(nil), events...)
+	mu.Unlock()
+	if want := []string{"quiesce", "stream-ended", "finalize"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("drain order = %v, want %v", got, want)
+	}
+}
 
 func TestDatabaseMigrationRequesterIsNonBlocking(t *testing.T) {
 	lifecycle := newLifecycleRequester()
