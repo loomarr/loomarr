@@ -180,6 +180,42 @@ func TestRunPublishesJobLifecycleToGenerationMetrics(t *testing.T) {
 	}
 }
 
+func TestExecutePublishesBoundedFailureKinds(t *testing.T) {
+	cases := []struct {
+		name string
+		run  func(context.Context) error
+		ctx  func() context.Context
+	}{
+		{name: "error", run: func(context.Context) error { return errors.New("private failure") }, ctx: context.Background},
+		{name: "panic", run: func(context.Context) error { panic("private panic") }, ctx: context.Background},
+		{name: "timeout", run: func(context.Context) error { return nil }, ctx: func() context.Context {
+			ctx, cancel := context.WithDeadline(context.Background(), time.Unix(1, 0))
+			defer cancel()
+			return ctx
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			job := Job{Name: "failure-check", Group: GroupSystem, Title: "Check failure",
+				Description: "Exercises one failure kind.", DefaultCron: everyMinute, Run: tc.run}
+			recorder := metrics.New(metrics.Options{})
+			scheduler := New(newFakeStore(), NewRegistry().Add(job), nil,
+				func() time.Time { return time.Unix(1000, 0) }, testLog()).WithObserver(recorder)
+			scheduler.execute(tc.ctx(), job, true)
+
+			scrape := httptest.NewRecorder()
+			recorder.Handler().ServeHTTP(scrape, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+			want := `loomarr_scheduler_job_executions_total{job="failure-check",result="` + tc.name + `",trigger="manual"} 1`
+			if !strings.Contains(scrape.Body.String(), want) {
+				t.Errorf("generation scrape does not contain %q", want)
+			}
+			if strings.Contains(scrape.Body.String(), "private failure") || strings.Contains(scrape.Body.String(), "private panic") {
+				t.Fatal("generation scrape leaked a job error")
+			}
+		})
+	}
+}
+
 // A job not yet due is NOT run.
 func TestNotDueDoesNotRun(t *testing.T) {
 	st := newFakeStore()
