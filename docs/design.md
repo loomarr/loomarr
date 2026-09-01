@@ -3933,6 +3933,22 @@ automatic claim of truth: the locked development corpus can select candidates bu
 production, and the independently clustered holdout repeats this label protocol before it is opened
 to candidate scoring.
 
+Before another full development lock, the 32-case temporal diagnostic factors the previously
+conflated model output into two claims. `UnitAssessment` answers whether the bounded span is one
+standalone unit, a compilation, a programme excerpt, unusable, or unclear. `RoleAssessment` exists
+only for a standalone unit and answers commercial, promo, bumper, PSA, station ID, trailer,
+interstitial, or unclear. Each non-operational answer cites only signal IDs from the identity-blind
+packet; the validator resolves those IDs to their package-owned timestamps. Provider, schema,
+budget, and transport failures remain explicit operational failures rather than semantic labels.
+The local runner makes one constrained unit call for every case and a separate constrained role call
+only after the unit call returns `standalone`; it records every call's axis, response hash, latency,
+tokens, and failure rather than collapsing a two-call cascade into one attempt.
+Two model families run independently on the exact packet, and the deterministic comparison reports
+unit agreement separately from role agreement. More than 15% disputed cases, or one confusion that
+accounts for more than half the disputes, stops the development run for contract repair instead of
+being hidden behind adjudication. This diagnostic artifact is non-certifying and does not replace the
+complete label or holdout contracts above.
+
 A hosted review run additionally binds one exact upstream route from a capability snapshot no more
 than 24 hours old. It requires image and text input plus strict structured output, zero-data-retention
 eligibility, one provider attempt with fallback disabled, and response metadata proving the selected
