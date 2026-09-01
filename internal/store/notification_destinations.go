@@ -11,7 +11,7 @@ import (
 )
 
 const notificationDestinationSelect = `SELECT id, means, label, scope, owner_id, audience,
-	topics_json, enabled, configuration_json, credentials_encrypted, created_at, updated_at
+	topics_json, enabled, configuration_json, credential_keys_json, credentials_encrypted, created_at, updated_at
 	FROM notification_destinations`
 
 func (s *sqlStore) SaveNotificationDestinationRecord(ctx context.Context, destination notifications.DestinationRecord) error {
@@ -26,10 +26,14 @@ func (s *sqlStore) SaveNotificationDestinationRecord(ctx context.Context, destin
 	if err != nil {
 		return fmt.Errorf("encode notification destination configuration: %w", err)
 	}
+	credentialKeysJSON, err := json.Marshal(destination.CredentialKeys)
+	if err != nil {
+		return fmt.Errorf("encode notification destination credential keys: %w", err)
+	}
 	_, err = s.db.ExecContext(ctx, s.ph(`INSERT INTO notification_destinations
 		(id, means, label, scope, owner_id, audience, topics_json, enabled,
-		 configuration_json, credentials_encrypted, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 configuration_json, credential_keys_json, credentials_encrypted, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
 			means = excluded.means,
 			label = excluded.label,
@@ -39,11 +43,12 @@ func (s *sqlStore) SaveNotificationDestinationRecord(ctx context.Context, destin
 			topics_json = excluded.topics_json,
 			enabled = excluded.enabled,
 			configuration_json = excluded.configuration_json,
+			credential_keys_json = excluded.credential_keys_json,
 			credentials_encrypted = excluded.credentials_encrypted,
 			updated_at = excluded.updated_at`),
 		destination.ID, destination.Means, destination.Label, destination.Scope, destination.OwnerID,
 		destination.Audience, string(topicsJSON), notificationBool(destination.Enabled), string(configurationJSON),
-		destination.CredentialsEncrypted, epoch(destination.CreatedAt), epoch(destination.UpdatedAt))
+		string(credentialKeysJSON), destination.CredentialsEncrypted, epoch(destination.CreatedAt), epoch(destination.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("save notification destination: %w", err)
 	}
@@ -132,11 +137,12 @@ func (s *sqlStore) DeleteNotificationDestination(ctx context.Context, id string)
 func scanNotificationDestinationRecord(sc scannable) (notifications.DestinationRecord, error) {
 	var destination notifications.DestinationRecord
 	var means, scope, audience, topicsJSON, configurationJSON string
+	var credentialKeysJSON sql.NullString
 	var enabled int
 	var createdAt, updatedAt int64
 	if err := sc.Scan(
 		&destination.ID, &means, &destination.Label, &scope, &destination.OwnerID, &audience,
-		&topicsJSON, &enabled, &configurationJSON, &destination.CredentialsEncrypted, &createdAt, &updatedAt,
+		&topicsJSON, &enabled, &configurationJSON, &credentialKeysJSON, &destination.CredentialsEncrypted, &createdAt, &updatedAt,
 	); errors.Is(err, sql.ErrNoRows) {
 		return notifications.DestinationRecord{}, notifications.ErrNotFound
 	} else if err != nil {
@@ -153,6 +159,11 @@ func scanNotificationDestinationRecord(sc scannable) (notifications.DestinationR
 	}
 	if err := json.Unmarshal([]byte(configurationJSON), &destination.Configuration); err != nil {
 		return notifications.DestinationRecord{}, fmt.Errorf("decode notification destination configuration: %w", err)
+	}
+	if credentialKeysJSON.Valid {
+		if err := json.Unmarshal([]byte(credentialKeysJSON.String), &destination.CredentialKeys); err != nil {
+			return notifications.DestinationRecord{}, fmt.Errorf("decode notification destination credential keys: %w", err)
+		}
 	}
 	return destination, nil
 }

@@ -228,7 +228,7 @@ func TestEncryptionServiceRotatesAndReencryptsStoredSettings(t *testing.T) {
 		t.Fatalf("destination did not move to rotated key: before=%q after=%q",
 			destinationBefore.CredentialsEncrypted, destinationAfter.CredentialsEncrypted)
 	}
-	opened, err := destinations.GetNotificationDestination(context.Background(), "slack-rotation")
+	opened, err := destinations.ResolveNotificationDestination(context.Background(), "slack-rotation")
 	if err != nil || opened.Credentials["webhookUrl"] != "https://hooks.slack.test/rotation-secret" {
 		t.Fatalf("rotated destination = (%q, %v)", opened.Credentials["webhookUrl"], err)
 	}

@@ -14,7 +14,7 @@ var (
 )
 
 type Repository interface {
-	GetNotificationDestination(context.Context, string) (Destination, error)
+	ResolveNotificationDestination(context.Context, string) (Destination, error)
 	CreateNotificationIntent(context.Context, Intent, []Attempt) (Intent, bool, error)
 	GetNotificationIntent(context.Context, string) (Intent, error)
 	ListNotificationIntentsByReference(context.Context, ReferenceKind, string) ([]Intent, error)
@@ -155,7 +155,7 @@ func (s *Service) Publish(ctx context.Context, command PublishCommand) (Intent, 
 // value means only that the durable handoff was accepted.
 func (s *Service) PublishDestinationTest(
 	ctx context.Context,
-	destination Destination,
+	destination DestinationMetadata,
 	requestID string,
 ) (DestinationTestResult, error) {
 	if err := destination.Validate(); err != nil {
@@ -244,7 +244,7 @@ func (s *Service) RunOne(ctx context.Context, owner string) (bool, error) {
 		destinationID = strings.TrimPrefix(destinationID, "provider:")
 	}
 	if usesConfiguredDestination {
-		destination, destinationErr := s.repository.GetNotificationDestination(ctx, destinationID)
+		destination, destinationErr := s.repository.ResolveNotificationDestination(ctx, destinationID)
 		if errors.Is(destinationErr, ErrNotFound) || (destinationErr == nil && !destination.Enabled) {
 			result = Result{Status: StatusSuppressed, OutcomeCode: OutcomeDestinationUnavailable}
 		} else if destinationErr != nil {

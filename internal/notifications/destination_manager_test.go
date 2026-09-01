@@ -38,7 +38,7 @@ func TestDestinationManagerKeepsCredentialsWriteOnlyAndScopesMemberReads(t *test
 	if err != nil || !summary.CredentialsConfigured {
 		t.Fatalf("create personal destination = %+v, %v", summary, err)
 	}
-	stored, err := repository.GetNotificationDestination(t.Context(), summary.ID)
+	stored, err := repository.ResolveNotificationDestination(t.Context(), summary.ID)
 	if err != nil || stored.Credentials["privateKey"] != "never-return-this" {
 		t.Fatalf("stored personal destination = %+v, %v", stored.Summary(), err)
 	}
@@ -66,7 +66,7 @@ func TestDestinationManagerClassifiesAndRedactsTheUnifiedProviderSettings(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	stored, err := repository.GetNotificationDestination(t.Context(), summary.ID)
+	stored, err := repository.ResolveNotificationDestination(t.Context(), summary.ID)
 	if err != nil || stored.Configuration["host"] != "mail.example.test" ||
 		stored.Credentials["password"] != "never-return-this" {
 		t.Fatalf("stored provider settings = %+v, %v", stored, err)
@@ -88,7 +88,7 @@ func TestDestinationManagerClassifiesAndRedactsTheUnifiedProviderSettings(t *tes
 	if err != nil || !updated.CredentialsConfigured {
 		t.Fatalf("updated provider = %+v, %v", updated, err)
 	}
-	stored, err = repository.GetNotificationDestination(t.Context(), summary.ID)
+	stored, err = repository.ResolveNotificationDestination(t.Context(), summary.ID)
 	if err != nil || stored.Configuration["host"] != "relay.example.test" ||
 		stored.Credentials["password"] != "never-return-this" {
 		t.Fatalf("updated provider settings = %+v, %v", stored, err)
@@ -176,7 +176,7 @@ func TestDestinationManagerUpdatePreservesWriteOnlyCredentialsAndOwnership(t *te
 	if err != nil || updated.Label != "Living-room browser" || !updated.CredentialsConfigured {
 		t.Fatalf("update destination = %+v, %v", updated, err)
 	}
-	stored, err := repository.GetNotificationDestination(t.Context(), created.ID)
+	stored, err := repository.ResolveNotificationDestination(t.Context(), created.ID)
 	if err != nil || stored.Credentials["privateKey"] != "preserve-me" || !stored.UpdatedAt.Equal(now) {
 		t.Fatalf("updated stored destination = %+v, %v", stored.Summary(), err)
 	}
@@ -266,13 +266,13 @@ func TestDestinationManagerExposesRedactedHealthOnlyToAdministrators(t *testing.
 }
 
 type recordingDestinationTester struct {
-	destination notifications.Destination
+	destination notifications.DestinationMetadata
 	requestID   string
 }
 
 func (t *recordingDestinationTester) PublishDestinationTest(
 	_ context.Context,
-	destination notifications.Destination,
+	destination notifications.DestinationMetadata,
 	requestID string,
 ) (notifications.DestinationTestResult, error) {
 	t.destination = destination

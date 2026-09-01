@@ -27,7 +27,7 @@ func TestMigrateLegacySMTPProviderCreatesOneEncryptedAccountOnlyProvider(t *test
 	if err := migrateLegacySMTPProvider(t.Context(), repository, set); err != nil {
 		t.Fatal(err)
 	}
-	destination, err := repository.GetNotificationDestination(t.Context(), "smtp-legacy")
+	destination, err := repository.ResolveNotificationDestination(t.Context(), "smtp-legacy")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestMigrateLegacySMTPProviderCreatesOneEncryptedAccountOnlyProvider(t *test
 	if err := migrateLegacySMTPProvider(t.Context(), repository, set); err != nil {
 		t.Fatal(err)
 	}
-	unchanged, err := repository.GetNotificationDestination(t.Context(), destination.ID)
+	unchanged, err := repository.ResolveNotificationDestination(t.Context(), destination.ID)
 	if err != nil || unchanged.Label != "Operator label" {
 		t.Fatalf("repeat migration overwrote provider = %+v, %v", unchanged.Summary(), err)
 	}

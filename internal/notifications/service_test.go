@@ -10,6 +10,29 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
+type claimCheckingRepository struct {
+	*testkit.NotificationRepository
+	t *testing.T
+}
+
+func (r claimCheckingRepository) ResolveNotificationDestination(
+	ctx context.Context,
+	id string,
+) (notifications.Destination, error) {
+	r.t.Helper()
+	claimed := false
+	for _, attempt := range r.Attempts {
+		if attempt.DestinationRef == id && attempt.Status == notifications.StatusSending {
+			claimed = true
+			break
+		}
+	}
+	if !claimed {
+		r.t.Fatalf("destination %q resolved before its attempt was claimed", id)
+	}
+	return r.NotificationRepository.ResolveNotificationDestination(ctx, id)
+}
+
 func TestPublishIsTypedDurableAndIdempotent(t *testing.T) {
 	repository := testkit.NewNotificationRepository()
 	now := time.Unix(1_900_000_000, 0)
@@ -118,6 +141,41 @@ func TestConfigurableProductIntentRoutesToIndependentDeliveryMeans(t *testing.T)
 		statuses[notifications.MeansWebhook].Status != notifications.StatusFailed ||
 		statuses[notifications.MeansWebhook].OutcomeCode != notifications.OutcomeMeansUnavailable {
 		t.Fatalf("independent outcomes = %+v", statuses)
+	}
+}
+
+func TestRunOneResolvesCompleteDestinationOnlyAfterClaim(t *testing.T) {
+	stored := testkit.NewNotificationRepository()
+	repository := claimCheckingRepository{NotificationRepository: stored, t: t}
+	now := time.Unix(1_900_000_000, 0).UTC()
+	destination := notifications.Destination{
+		ID: "destination-webhook", Means: notifications.MeansWebhook, Label: "Automation webhook",
+		Scope: notifications.ScopeInstallation, Audience: notifications.RecipientOperators,
+		Topics: []notifications.Topic{notifications.TopicChannelDegraded}, Enabled: true,
+		Credentials: map[string]string{"url": "https://hooks.example.test/private"},
+		CreatedAt:   now, UpdatedAt: now,
+	}
+	if err := repository.SaveNotificationDestination(t.Context(), destination); err != nil {
+		t.Fatal(err)
+	}
+	adapter := &testkit.NotificationAdapter{
+		DeliveryMeans: notifications.MeansWebhook,
+		Result:        notifications.Result{Status: notifications.StatusDelivered, ProviderMessageID: "accepted-1"},
+	}
+	router := testkit.NotificationRouter{RoutesResult: []notifications.Route{{
+		Means: destination.Means, DestinationRef: destination.ID, DestinationRedacted: destination.Label,
+	}}}
+	service := notifications.NewService(repository, router, []notifications.Adapter{adapter}, sequentialIDs(), func() time.Time { return now })
+	command := productCommand()
+	command.Topic = notifications.TopicChannelDegraded
+	command.RecipientKind = notifications.RecipientOperators
+	command.RecipientID = "operators"
+	command.IdempotencyKey = "channel-1:degraded:operators:claim-order"
+	if _, created, err := service.Publish(t.Context(), command); err != nil || !created {
+		t.Fatalf("publish = %t, %v", created, err)
+	}
+	if ran, err := service.RunOne(t.Context(), "worker-1"); err != nil || !ran {
+		t.Fatalf("run = %t, %v", ran, err)
 	}
 }
 
@@ -352,7 +410,7 @@ func TestServicePublishesDestinationTestAsItsOwnIntentAndDirectRoute(t *testing.
 	}
 	service := notifications.NewService(repository, rejectingRouter{}, nil, sequentialIDs(), func() time.Time { return now })
 
-	result, err := service.PublishDestinationTest(t.Context(), destination, "request-1")
+	result, err := service.PublishDestinationTest(t.Context(), destination.Metadata(), "request-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -406,7 +464,7 @@ func TestServiceRetiresGoneWebPushDestinationAfterTerminalCompletion(t *testing.
 	if ran, err := service.RunOne(t.Context(), "worker-1"); err != nil || !ran {
 		t.Fatalf("run = %t, %v", ran, err)
 	}
-	retired, err := repository.GetNotificationDestination(t.Context(), destination.ID)
+	retired, err := repository.ResolveNotificationDestination(t.Context(), destination.ID)
 	if err != nil || retired.Enabled {
 		t.Fatalf("retired destination = %+v, %v", retired, err)
 	}
