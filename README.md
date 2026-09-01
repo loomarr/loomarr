@@ -42,7 +42,7 @@ Silicon pulls the arm64 image and Intel Macs pull amd64.
 
 → [Install guide](docs/install/index.md) · [Docker](docs/install/docker.md) ·
 [Hardware acceleration](docs/install/hardware.md) · [Upgrading](docs/install/upgrading.md) ·
-[All settings](docs/configuration.md)
+[Monitoring](docs/install/monitoring.md) · [All settings](docs/configuration.md)
 
 ## How it plays
 
@@ -90,8 +90,9 @@ for the LLM. Details in [`docs/design.md`](docs/design.md) §14.
 
 - **Probes** — `/v1/healthz` and `/v1/readyz`, unauthenticated on the LAN. `/healthz` and
   `/readyz` also work.
-- **Metrics** — `/v1/metrics` in Prometheus format: HTTP rates and latency, Go runtime, state
-  gauges, per-dependency outbound timing, and channel reconcile timing.
+- **Metrics** — `/v1/metrics` in Prometheus format: HTTP, dependency, database, Job, Playout, Go
+  runtime, and bounded domain signals. See [Monitoring](docs/install/monitoring.md) for scraping and
+  the source-controlled Grafana overview.
 - **Backup** — `GET /v1/backup` for SQLite; a mode-`0600` `pg_dump --format=custom` archive for
   Postgres. Backups contain secrets; restore procedures are in the install and upgrade guides.
 

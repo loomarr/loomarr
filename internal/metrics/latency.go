@@ -9,14 +9,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-// The latency tranche of §17: client-side RED for every outbound call (Tunarr,
-// library, LLM, Seerr, TMDB) via one instrumented transport, plus the
-// reconcile-loop timing + channel-reconcile counter. Both share the "wrap the
-// boundary" pattern, distinct from the state-gauge/event-counter tranche.
-//
-// Still deferred after this (§17): LLM token/cost (needs the provider to surface
-// usage), filler pod fallback-ladder depth, and slot-drift substitutions — each
-// a domain-specific counter rather than a latency, a later tranche.
+// Client-side RED for every outbound call (Tunarr, Library, LLM, Seerr, TMDB)
+// lives at the shared transport boundary. Channel reconcile timing uses the
+// same boundary-observation principle at its domain seam.
 
 var (
 	// outboundRequests counts outbound HTTP calls by target service and status.

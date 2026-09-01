@@ -1,15 +1,11 @@
 // Package metrics is Loomarr's Prometheus surface (design §7 /metrics, §17).
 //
-// Scope note (honest, per AGENTS.md "no silent caps"): this package exports the
-// RED basics — HTTP request rate, errors, and duration — the Go runtime/process
-// collectors, and the first §17 domain tranche: title/job state, active sessions,
-// logins, images, and selected reconciliation/filler signals. The remaining
-// external-call latency and deeper programming outcomes land as follow-up
-// instrumentation. docs/help/runbook records exactly what is and isn't exported.
+// It owns Loomarr's RED signals, bounded operational-domain signals, live Store
+// gauges, Go/process collectors, and the exposition handler. Design §17 is the
+// normative family, label, compatibility, and privacy contract.
 //
-// The metric vars are package-level singletons registered once at init via
-// promauto, so Router() can be built many times in a process (tests) without a
-// duplicate-registration panic.
+// The current package-level collectors are compatibility scaffolding while the
+// surface moves to the generation-scoped Recorder required by design §17.
 package metrics
 
 import (

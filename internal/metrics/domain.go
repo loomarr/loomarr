@@ -13,12 +13,9 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
-// This file adds the first tranche of §17 *domain* metrics: the state gauges
-// (records-by-state, job-queue depth, active sessions) via a pull-based
-// collector, plus the two cleanest event counters (logins, webhook events).
-// The latency/LLM/filler series in §17 remain staged follow-up instrumentation
-// (documented in README Operations + PROGRESS) — several need their own timing
-// wrappers around external calls, a different pattern from these.
+// This file owns Store-backed current-state gauges and authentication outcomes.
+// The pull collector reads retained truth at scrape time rather than attempting
+// to mirror every Store mutation in an in-memory gauge.
 
 // StoreCounts is the narrow read surface the state-gauge collector needs. The
 // full store.Store satisfies it structurally, so wiring stays decoupled from the
