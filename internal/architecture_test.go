@@ -100,20 +100,15 @@ func TestProductionPackagesDoNotImportTheHTTPFramework(t *testing.T) {
 	// Transport-shaped dependencies a pure domain package has no business holding. `net/http` is
 	// deliberately NOT here: several domain packages are legitimate HTTP CLIENTS (library, tmdb,
 	// programmer talk to real services). The rule is about SERVING, not about the protocol.
-	frameworks := []string{
-		"github.com/danielgtaylor/huma/v2",
-		"github.com/danielgtaylor/huma/v2/adapters/humago",
-	}
+	const huma = "github.com/danielgtaylor/huma/v2"
 
 	for _, root := range inboundDependencyRulePackages(pkgs) {
 		reachable := reachableFrom(pkgs, root)
-		for _, fw := range frameworks {
-			if importers := importersOf(pkgs, reachable, fw); len(importers) > 0 {
-				t.Errorf("%s reaches the HTTP framework %s through %v (§14.1). A domain type that "+
-					"needs a wire format should get one in internal/api — see durationwire.go, "+
-					"which attaches a schema with Registry.RegisterTypeAlias instead of putting a "+
-					"huma method on the domain type.", root, fw, importers)
-			}
+		if importers := importersOfPackageFamily(pkgs, reachable, huma); len(importers) > 0 {
+			t.Errorf("%s reaches the HTTP framework family %s through %v (§14.1). A domain type "+
+				"that needs a wire format should get one in internal/api — see durationwire.go, "+
+				"which attaches a schema with Registry.RegisterTypeAlias instead of putting a "+
+				"Huma method on the domain type.", root, huma, importers)
 		}
 	}
 }
@@ -238,5 +233,23 @@ func packagesReaching(pkgs map[string]*build.Package, roots []string, target str
 			found = append(found, root)
 		}
 	}
+	return found
+}
+
+func importersOfPackageFamily(pkgs map[string]*build.Package, set map[string]bool, family string) []string {
+	var found []string
+	for path := range set {
+		pkg, ok := pkgs[path]
+		if !ok {
+			continue
+		}
+		for _, imported := range pkg.Imports {
+			if imported == family || strings.HasPrefix(imported, family+"/") {
+				found = append(found, path)
+				break
+			}
+		}
+	}
+	sort.Strings(found)
 	return found
 }

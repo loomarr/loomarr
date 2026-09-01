@@ -164,7 +164,7 @@ func TestRender_IsDeterministic(t *testing.T) {
 	}
 }
 
-func TestAssignLayers_IsDeterministicForCollapsedCycles(t *testing.T) {
+func TestAssignLayers_IsDeterministicForMalformedCycles(t *testing.T) {
 	orders := [][]string{{"app", "metrics", "provision"}, {"provision", "app", "metrics"}, {"metrics", "provision", "app"}}
 	var want map[string]int
 	for _, order := range orders {
