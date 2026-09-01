@@ -275,17 +275,6 @@ type Clip struct {
 // IsSegment reports whether a clip was split out of a composite (§10 V45) — it has a parent.
 func (c Clip) IsSegment() bool { return c.ParentHash != "" }
 
-// At builds a clip whose identity and location are the same string.
-//
-// ⚠ For TESTS and fixtures. Real clips get their identity from `ClipID` (the file's bytes) and
-// their location from intake; this exists so a test can say `At("coke", …)` instead of repeating
-// a 64-character hash, and so a `Clip{Path: …}` literal — which would leave `Hash` empty and make
-// `ID()` return "" — stops being the obvious thing to write. An empty id silently breaks every
-// pin, exclusion and lookup, which is exactly how V38c's identity change first showed up.
-func At(id string, kind Kind, era int, aud Audience, durationMs int64) Clip {
-	return Clip{Hash: id, Path: id, Kind: kind, Era: era, Audience: aud, DurationMs: durationMs}
-}
-
 // ID returns the clip's identity.
 //
 // ⚠ **This method is why V38c's identity change was one line.** It was written as a method rather
@@ -315,17 +304,6 @@ func (c Clip) IsBumper() bool { return c.Kind == Bumper || c.Kind == StationID }
 // 1990–1999 snaps to itself, so the widened rung would collapse into `exact` exactly when the
 // operator asked for a decade. `EraRange.Widened` — ten years at each end — replaces it and is
 // strictly wider than `exact` for every range, which is what a fallback rung has to be.
-
-// KindFromString parses a Kind, defaulting to interstitial for an unknown value
-// (a clip with a weird kind is still placeable as generic filler, never a program).
-func KindFromString(s string) Kind {
-	switch Kind(strings.ToLower(s)) {
-	case Commercial, Bumper, StationID, PSA, Trailer, Interstitial:
-		return Kind(strings.ToLower(s))
-	default:
-		return Interstitial
-	}
-}
 
 // KindFromName infers a clip Kind from its filename/folder convention (§10 — the
 // cheapest tagging tier, applied by the sync to Tunarr-`local` clips whose scan
