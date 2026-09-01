@@ -7282,10 +7282,51 @@ components:
           readOnly: true
           type: string
         jobId:
-          description: Detection job — progress streams on /v1/events as filler_split frames; the proposal id arrives in the terminal frame
+          description: Detection operation id — read /v1/filler/split-operations/{jobId}; filler_split events only accelerate progress
           type: string
       required:
         - jobId
+      type: object
+    SplitOperationDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/SplitOperationDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        clipHash:
+          type: string
+        completedAt:
+          format: date-time
+          type: string
+        error:
+          type: string
+        jobId:
+          type: string
+        proposalId:
+          type: string
+        startedAt:
+          format: date-time
+          type: string
+        status:
+          enum:
+            - queued
+            - running
+            - success
+            - error
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      required:
+        - jobId
+        - clipHash
+        - status
+        - startedAt
+        - updatedAt
       type: object
     SplitProposal:
       additionalProperties: false
@@ -11435,6 +11476,32 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Propose splits for a compilation clip
+      tags:
+        - filler
+  /v1/filler/split-operations/{jobId}:
+    get:
+      description: Admin only. Authoritative reconnect state for the jobId returned by POST /v1/filler/split. A successful operation carries the proposalId to read from /v1/filler/splits/{proposalId}; SSE is latency-only.
+      operationId: get-filler-split-operation
+      parameters:
+        - in: path
+          name: jobId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SplitOperationDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Read split-detection progress and outcome
       tags:
         - filler
   /v1/filler/splits/{proposalId}:

@@ -651,6 +651,7 @@ type fillerServiceAdapter struct {
 	newID       func() string
 	timeout     time.Duration
 	start       interactiveOperationLauncher
+	operations  interactiveOperationWriter
 	// sources registers what an operator added, so the Sources tab can show where clips
 	// came from. Narrow interface, not the whole store: this adapter has no other reason
 	// to reach persistence.
@@ -686,6 +687,10 @@ type fillerSourceRegistry interface {
 
 type fillerAcquisitionWriter interface {
 	UpsertAcquisitionRun(context.Context, filler.AcquisitionRun) error
+}
+
+type interactiveOperationWriter interface {
+	UpsertInteractiveOperation(context.Context, store.InteractiveOperation) error
 }
 
 type fillerReadinessStore interface {
@@ -946,14 +951,31 @@ func (a fillerServiceAdapter) Split(ctx context.Context, clipID string) (string,
 	if a.start == nil {
 		return "", errors.New("filler split lifecycle is not configured")
 	}
+	if a.operations == nil {
+		return "", errors.New("filler split operation store is not configured")
+	}
 	if _, found, err := a.splitClips.GetClip(ctx, clipID); err != nil {
 		return "", err
 	} else if !found {
 		return "", store.ErrNotFound
 	}
 	jobID := a.newID()
+	now := time.Now
+	if a.now != nil {
+		now = a.now
+	}
+	operation := store.InteractiveOperation{
+		ID: jobID, Kind: store.InteractiveOperationFillerSplit, Subject: clipID,
+		Status: store.InteractiveOperationQueued, StartedAt: now().UTC(), UpdatedAt: now().UTC(),
+	}
+	if err := a.operations.UpsertInteractiveOperation(ctx, operation); err != nil {
+		return "", fmt.Errorf("queue filler split: %w", err)
+	}
 	var proposal *filler.SplitProposal
 	err := a.start(a.timeout, func(operationCtx context.Context) error {
+		operation.Status = store.InteractiveOperationRunning
+		operation.UpdatedAt = now().UTC()
+		a.persistInteractiveOperation(operationCtx, operation)
 		a.publishSplit(jobID, clipID, "running", "", 0, "")
 		p, err := a.splitter.Propose(operationCtx, clipID)
 		if err != nil {
@@ -980,17 +1002,35 @@ func (a fillerServiceAdapter) Split(ctx context.Context, clipID string) (string,
 			_, _ = a.pipeline.Requeue(operationCtx, clipID)
 		}
 		return nil
-	}, func(_ context.Context, runErr error) {
+	}, func(completionCtx context.Context, runErr error) {
+		operation.CompletedAt, operation.UpdatedAt = now().UTC(), now().UTC()
 		if runErr != nil {
+			operation.Status = store.InteractiveOperationError
+			operation.Error = runErr.Error()
+			a.persistInteractiveOperation(completionCtx, operation)
 			a.publishSplit(jobID, clipID, "error", "", 0, runErr.Error())
 			return
 		}
+		operation.Status = store.InteractiveOperationSuccess
+		operation.ResultID = proposal.ID
+		a.persistInteractiveOperation(completionCtx, operation)
 		a.publishSplit(jobID, clipID, "success", proposal.ID, len(proposal.Segments), "")
 	})
 	if err != nil {
+		operation.Status = store.InteractiveOperationError
+		operation.Error = err.Error()
+		operation.CompletedAt, operation.UpdatedAt = now().UTC(), now().UTC()
+		a.persistInteractiveOperation(ctx, operation)
 		return "", err
 	}
 	return jobID, nil
+}
+
+func (a fillerServiceAdapter) persistInteractiveOperation(ctx context.Context, operation store.InteractiveOperation) {
+	if err := a.operations.UpsertInteractiveOperation(ctx, operation); err != nil && a.log != nil {
+		a.log.Error("could not persist interactive operation state",
+			"operation", operation.ID, "kind", operation.Kind, "status", operation.Status, "err", err)
+	}
 }
 
 // ConfirmSplit commits the operator's reviewed cut list (§10, V34) — straight

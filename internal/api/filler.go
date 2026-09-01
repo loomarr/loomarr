@@ -147,6 +147,13 @@ func (s *Server) registerFiller(api huma.API) {
 	}, RoleAdmin), s.splitFiller)
 
 	huma.Register(api, withRole(huma.Operation{
+		OperationID: "get-filler-split-operation", Method: http.MethodGet, Path: "/v1/filler/split-operations/{jobId}",
+		Summary:     "Read split-detection progress and outcome",
+		Description: "Admin only. Authoritative reconnect state for the jobId returned by POST /v1/filler/split. A successful operation carries the proposalId to read from /v1/filler/splits/{proposalId}; SSE is latency-only.",
+		Tags:        []string{"filler"},
+	}, RoleAdmin), s.getFillerSplitOperation)
+
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "get-filler-split", Method: http.MethodGet, Path: "/v1/filler/splits/{proposalId}",
 		Summary: "Read a split proposal",
 		Description: "Admin only (§10, V34). The review surface's source of truth on SSE reconnect — " +
@@ -1016,7 +1023,7 @@ type splitFillerInput struct {
 }
 type splitFillerOutput struct {
 	Body struct {
-		JobID string `json:"jobId" doc:"Detection job — progress streams on /v1/events as filler_split frames; the proposal id arrives in the terminal frame"`
+		JobID string `json:"jobId" doc:"Detection operation id — read /v1/filler/split-operations/{jobId}; filler_split events only accelerate progress"`
 	}
 }
 
@@ -1045,6 +1052,46 @@ func (s *Server) splitFiller(ctx context.Context, in *splitFillerInput) (*splitF
 	out := &splitFillerOutput{}
 	out.Body.JobID = jobID
 	return out, nil
+}
+
+type getFillerSplitOperationInput struct {
+	JobID string `path:"jobId"`
+}
+
+type splitOperationDTO struct {
+	JobID       string    `json:"jobId"`
+	ClipHash    string    `json:"clipHash"`
+	Status      string    `json:"status" enum:"queued,running,success,error"`
+	ProposalID  string    `json:"proposalId,omitempty"`
+	Error       string    `json:"error,omitempty"`
+	StartedAt   time.Time `json:"startedAt"`
+	CompletedAt time.Time `json:"completedAt,omitempty"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+type getFillerSplitOperationOutput struct {
+	Body splitOperationDTO
+}
+
+func (s *Server) getFillerSplitOperation(
+	ctx context.Context,
+	in *getFillerSplitOperationInput,
+) (*getFillerSplitOperationOutput, error) {
+	operation, err := s.store.GetInteractiveOperation(ctx, in.JobID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, errNotFound("Split operation not found", "That split operation doesn't exist.")
+	}
+	if err != nil {
+		return nil, err
+	}
+	if operation.Kind != store.InteractiveOperationFillerSplit {
+		return nil, errNotFound("Split operation not found", "That split operation doesn't exist.")
+	}
+	return &getFillerSplitOperationOutput{Body: splitOperationDTO{
+		JobID: operation.ID, ClipHash: operation.Subject, Status: string(operation.Status),
+		ProposalID: operation.ResultID, Error: operation.Error, StartedAt: operation.StartedAt,
+		CompletedAt: operation.CompletedAt, UpdatedAt: operation.UpdatedAt,
+	}}, nil
 }
 
 type getFillerSplitInput struct {

@@ -1179,6 +1179,65 @@ func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+func testInteractiveOperations(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_900_100_000, 0).UTC()
+
+	split := InteractiveOperation{
+		ID: "split-1", Kind: InteractiveOperationFillerSplit, Subject: "clip-hash",
+		Status: InteractiveOperationRunning, StartedAt: now, UpdatedAt: now,
+	}
+	if err := s.UpsertInteractiveOperation(ctx, split); err != nil {
+		t.Fatal(err)
+	}
+	split.Status = InteractiveOperationSuccess
+	split.ResultID = "sp-1"
+	split.CompletedAt, split.UpdatedAt = now.Add(time.Minute), now.Add(time.Minute)
+	if err := s.UpsertInteractiveOperation(ctx, split); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetInteractiveOperation(ctx, split.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != split {
+		t.Fatalf("split operation = %+v, want %+v", got, split)
+	}
+
+	pull := InteractiveOperation{
+		ID: "pull-1", Kind: InteractiveOperationLLMPull, Subject: "qwen3:8b",
+		Status: InteractiveOperationRunning, Percent: 42, Completed: 420, Total: 1000,
+		StartedAt: now.Add(time.Second), UpdatedAt: now.Add(time.Second),
+	}
+	if err := s.UpsertInteractiveOperation(ctx, pull); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetInteractiveOperation(ctx, "missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing operation = %v, want ErrNotFound", err)
+	}
+
+	recoveredAt := now.Add(2 * time.Minute)
+	if n, err := s.RecoverInterruptedInteractiveOperations(ctx, recoveredAt); err != nil || n != 1 {
+		t.Fatalf("recover operations = %d, %v; want one running pull", n, err)
+	}
+	recovered, err := s.GetInteractiveOperation(ctx, pull.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.Status != InteractiveOperationError || recovered.Error == "" || !recovered.CompletedAt.Equal(recoveredAt) {
+		t.Fatalf("recovered pull = %+v", recovered)
+	}
+	terminal, err := s.GetInteractiveOperation(ctx, split.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if terminal != split {
+		t.Fatalf("recovery rewrote terminal split = %+v, want %+v", terminal, split)
+	}
+}
+
 func testClipPipelineRetry(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 	s := newStore(t)

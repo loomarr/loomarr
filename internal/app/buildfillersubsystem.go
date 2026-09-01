@@ -76,6 +76,11 @@ func buildFillerSubsystem(
 	} else if n > 0 {
 		log.Info("recovered interrupted filler acquisitions", "runs", n)
 	}
+	if n, err := st.RecoverInterruptedInteractiveOperations(recoveryCtx, time.Now().UTC()); err != nil {
+		log.Warn("could not recover interrupted interactive operations", "err", err)
+	} else if n > 0 {
+		log.Info("recovered interrupted interactive operations", "operations", n)
+	}
 	recoveryCancel()
 
 	if dir := layout.ClipDir(); dir != "" {
@@ -101,7 +106,7 @@ func buildFillerSubsystem(
 	adapter := fillerServiceAdapter{
 		syncer: syncer, tagger: tagger, fetcher: fetcher,
 		bus: eventBus, log: log, newID: newID, timeout: set.dur("ingest.timeout"),
-		start:   owner.startInteractiveOperation,
+		start: owner.startInteractiveOperation, operations: st,
 		sources: st, acquisitions: st, readiness: st, now: time.Now,
 		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st, wake: wake},
 	}

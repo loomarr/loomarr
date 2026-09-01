@@ -123,7 +123,7 @@ func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerSe
 	a := fillerServiceAdapter{
 		bus: bus, newID: func() string { return "job-1" }, timeout: time.Minute,
 		splitClips: fillerSplitStoreAdapter{st: st},
-		start:      testInteractiveOperationLauncher,
+		start:      testInteractiveOperationLauncher, operations: st,
 	}
 	if withSplitter {
 		drop := t.TempDir()
@@ -173,7 +173,7 @@ func TestSplit_IsOwnedByApplicationGenerationNotRequest(t *testing.T) {
 	a := fillerServiceAdapter{
 		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st},
 		newID: func() string { return "split-owned" }, timeout: time.Minute,
-		start: lifecycle.startInteractiveOperation,
+		start: lifecycle.startInteractiveOperation, operations: st,
 	}
 	requestCtx, disconnect := context.WithCancel(t.Context())
 	if _, err := a.Split(requestCtx, compHash); err != nil {
@@ -196,6 +196,13 @@ func TestSplit_IsOwnedByApplicationGenerationNotRequest(t *testing.T) {
 	}
 	if err := <-shutdown; err != nil {
 		t.Fatalf("Shutdown: %v", err)
+	}
+	operation, err := st.GetInteractiveOperation(t.Context(), "split-owned")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if operation.Status != store.InteractiveOperationError || operation.Error == "" || operation.CompletedAt.IsZero() {
+		t.Fatalf("split operation = %+v, want durable cancellation outcome", operation)
 	}
 }
 
@@ -389,6 +396,13 @@ func TestSplit_ReportsOverTheBusAndPersistsTheProposal(t *testing.T) {
 	}
 	if len(p.Segments) != 2 || p.Segments[0].Name != "McDonald's" {
 		t.Errorf("persisted proposal = %+v", p.Segments)
+	}
+	operation, err := st.GetInteractiveOperation(context.Background(), jobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if operation.Status != store.InteractiveOperationSuccess || operation.ResultID != propID {
+		t.Fatalf("durable split operation = %+v, want successful proposal mapping", operation)
 	}
 }
 
