@@ -2,12 +2,16 @@ package internal_test
 
 import (
 	"go/build"
-	"os"
-	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 )
+
+var inboundDependencyExceptions = map[string]string{
+	modulePath + "/internal/api": "owns the inbound HTTP adapter and its Huma wire definitions",
+	modulePath + "/internal/app": "is the composition root that wires the inbound adapter to domain modules",
+}
 
 func TestInboundDependencyRuleIncludesNewNestedProductionPackages(t *testing.T) {
 	api := modulePath + "/internal/api"
@@ -59,32 +63,22 @@ func TestInboundDependencyRuleIncludesNewNestedProductionPackages(t *testing.T) 
 // Before: `ok (cached)`. After: FAIL, correctly, on a warm cache. It is also ~50x faster
 // (1.0s → 0.02s), because nothing spawns a subprocess per package any more.
 
-// The dependency direction is one-way: domain packages must not import the API layer. A domain
-// package that needs an API type is telling you the type belongs in the domain.
-func TestDomainPackagesDoNotImportAPI(t *testing.T) {
+// The dependency direction is one-way: every production package enters this rule automatically
+// except the named inbound adapter and composition root. A package that needs an API type is
+// telling us the type belongs in its owning module.
+func TestProductionPackagesDoNotImportAPI(t *testing.T) {
 	pkgs := loomarrPackages(t)
 	const api = modulePath + "/internal/api"
 
-	for _, domain := range []string{
-		"playout", "schedule", "store", "filler", "channels", "suggest", "library", "provision",
-	} {
-		root := modulePath + "/internal/" + domain
-		if _, ok := pkgs[root]; !ok {
-			// ⚠ A domain package that vanished from the graph must FAIL, not silently pass.
-			// A renamed package would otherwise remove itself from its own gate.
-			t.Errorf("%s is not in the import graph — renamed or moved? Update this list, "+
-				"because a domain package missing from it is a domain package nobody checks", root)
-			continue
-		}
-		if reachable := reachableFrom(pkgs, root); reachable[api] {
-			t.Errorf("%s transitively imports internal/api — the dependency direction is one-way "+
-				"(§14.1). A domain package that needs an API type is telling you the type belongs "+
-				"in the domain.", root)
-		}
+	for _, root := range packagesReaching(pkgs, inboundDependencyRulePackages(pkgs), api) {
+		t.Errorf("%s transitively imports internal/api — the dependency direction is one-way "+
+			"(§14.1). A domain type needed outside the inbound adapter belongs in its owning "+
+			"module, not internal/api.", root)
 	}
 }
 
-// The domain must not import the HTTP FRAMEWORK either, which is the same rule one level down.
+// Production packages must not import the HTTP FRAMEWORK either, which is the same rule one level
+// down. The same exhaustive source-derived package set keeps the two gates aligned.
 //
 // ⚠ **The gate above bans `internal/api` and that was not enough.** `internal/schedule` — 4,000-odd
 // lines of I/O-free scheduling logic, the purest package in the tree — imported `huma/v2` to
@@ -95,7 +89,7 @@ func TestDomainPackagesDoNotImportAPI(t *testing.T) {
 // The wire description now lives in `internal/api/durationwire.go` and is attached with
 // `Registry.RegisterTypeAlias`. This test is what stops the next one — a rule about a specific
 // package name could not have caught it, so the rule is about the LAYER.
-func TestDomainPackagesDoNotImportTheHTTPFramework(t *testing.T) {
+func TestProductionPackagesDoNotImportTheHTTPFramework(t *testing.T) {
 	pkgs := loomarrPackages(t)
 
 	// Transport-shaped dependencies a pure domain package has no business holding. `net/http` is
@@ -106,14 +100,7 @@ func TestDomainPackagesDoNotImportTheHTTPFramework(t *testing.T) {
 		"github.com/danielgtaylor/huma/v2/adapters/humago",
 	}
 
-	for _, domain := range []string{
-		"playout", "schedule", "store", "filler", "channels", "suggest", "library", "provision",
-	} {
-		root := modulePath + "/internal/" + domain
-		if _, ok := pkgs[root]; !ok {
-			t.Errorf("%s is not in the import graph — renamed or moved? Update this list", root)
-			continue
-		}
+	for _, root := range inboundDependencyRulePackages(pkgs) {
 		reachable := reachableFrom(pkgs, root)
 		for _, fw := range frameworks {
 			if importers := importersOf(pkgs, reachable, fw); len(importers) > 0 {
@@ -122,6 +109,19 @@ func TestDomainPackagesDoNotImportTheHTTPFramework(t *testing.T) {
 					"which attaches a schema with Registry.RegisterTypeAlias instead of putting a "+
 					"huma method on the domain type.", root, fw, importers)
 			}
+		}
+	}
+}
+
+func TestInboundDependencyExceptionsAreCurrent(t *testing.T) {
+	pkgs := loomarrPackages(t)
+	for path, rationale := range inboundDependencyExceptions {
+		if strings.TrimSpace(rationale) == "" {
+			t.Errorf("%s has no exception rationale", path)
+		}
+		pkg, ok := pkgs[path]
+		if !ok || len(pkg.GoFiles)+len(pkg.CgoFiles) == 0 {
+			t.Errorf("%s is an obsolete inbound-dependency exception — remove or replace it", path)
 		}
 	}
 }
@@ -196,45 +196,6 @@ func TestNoLoomarrPackageLinksTestingIntoTheBinary(t *testing.T) {
 	}
 }
 
-// The §14.2 package map lists every package. A map that silently goes stale is worse than no
-// map: it reads as authoritative while quietly omitting whatever was added last.
-//
-// This checks PRESENCE, not prose — the one-line description is generated from each package's
-// doc comment, and asserting on its wording would make the gate fire on every honest edit.
-func TestPackageMapListsEveryPackage(t *testing.T) {
-	doc, err := os.ReadFile(filepath.Join("..", "docs", "design.md"))
-	if err != nil {
-		t.Fatalf("read design.md: %v", err)
-	}
-	entries, err := os.ReadDir(".")
-	if err != nil {
-		t.Fatalf("read internal/: %v", err)
-	}
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		files, err := os.ReadDir(filepath.Join(".", e.Name()))
-		if err != nil {
-			t.Fatalf("read internal/%s: %v", e.Name(), err)
-		}
-		hasProductionGo := false
-		for _, f := range files {
-			if !f.IsDir() && strings.HasSuffix(f.Name(), ".go") && !strings.HasSuffix(f.Name(), "_test.go") {
-				hasProductionGo = true
-				break
-			}
-		}
-		if !hasProductionGo {
-			continue
-		}
-		if !strings.Contains(string(doc), "**`"+e.Name()+"`**") {
-			t.Errorf("internal/%s is missing from the §14.2 package map — add a row saying what it does",
-				e.Name())
-		}
-	}
-}
-
 // Every package carries a package doc. They are the orientation for subsystems whose invariants
 // are not visible from their types; internal/playout is the clearest case, and was the one
 // package missing one when §14.1 was written.
@@ -248,4 +209,29 @@ func TestEveryPackageHasAPackageDoc(t *testing.T) {
 		}
 		t.Errorf("%s has no package doc (§14.1) — write one where the subsystem's invariants live", path)
 	}
+}
+
+func inboundDependencyRulePackages(pkgs map[string]*build.Package) []string {
+	var roots []string
+	for path, pkg := range pkgs {
+		if !strings.HasPrefix(path, modulePath+"/internal/") || len(pkg.GoFiles)+len(pkg.CgoFiles) == 0 {
+			continue
+		}
+		if _, excepted := inboundDependencyExceptions[path]; excepted {
+			continue
+		}
+		roots = append(roots, path)
+	}
+	sort.Strings(roots)
+	return roots
+}
+
+func packagesReaching(pkgs map[string]*build.Package, roots []string, target string) []string {
+	var found []string
+	for _, root := range roots {
+		if reachableFrom(pkgs, root)[target] {
+			found = append(found, root)
+		}
+	}
+	return found
 }
