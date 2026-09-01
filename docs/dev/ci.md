@@ -530,7 +530,17 @@ downgrade behavior, historical data, and restart behavior retain dedicated fresh
 Postgres conformance remains unchanged. Re-running the exact race profile with the cloned fixture
 reduced the package to 40.3s and SQLite conformance to 6.2s (−76.2% and −95.4%, respectively). Five
 consecutive race-enabled conformance/factory runs remained green, followed by the unchanged real
-Postgres integration gate over store, backend transition, and app.
+Postgres integration gate over store, backend transition, and app. In the authoritative queue, the
+race steps moved from 7m42s / 6m38s / 11m30s to 9m13s / 6m35s / 5m33s: the critical path fell 2m17s
+(19.9%) and aggregate race-step time fell 4m29s (17.4%), despite normal per-runner variation moving
+shard 1 upward.
+
+Domain tests that need current persistence state, rather than migration behavior, use
+`testkit.MigratedSQLiteStore` for the same reason. A race-enabled 2026-09-01 profile found
+`internal/channels` spending 74.46s while its helpers replayed every migration for each private test
+database. Routing those helpers through the existing isolated migrated fixture reduced the exact
+package profile to 4.19s (94.4%). Tests that exercise startup, migration, downgrade, historical data,
+or restart behavior must continue to open and migrate fresh databases.
 
 Sharding is free on a public repo. Check the bill before copying it into a private one.
 
