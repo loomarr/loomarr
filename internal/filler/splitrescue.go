@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -138,8 +139,8 @@ func parseMMS(s string) (int64, error) {
 	parts := strings.Split(s, ":")
 	var secs float64
 	mult := 1.0
-	for i := len(parts) - 1; i >= 0; i-- {
-		v, err := strconv.ParseFloat(strings.TrimSpace(parts[i]), 64)
+	for _, part := range slices.Backward(parts) {
+		v, err := strconv.ParseFloat(strings.TrimSpace(part), 64)
 		if err != nil {
 			return 0, fmt.Errorf("bad timestamp %q", s)
 		}

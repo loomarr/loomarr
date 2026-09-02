@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -225,8 +226,8 @@ func (l *generationLifecycle) startQuiesce(ctx context.Context) {
 
 func (l *generationLifecycle) finishQuiesce(ctx context.Context, quiescers []func(context.Context) error) {
 	var errs []error
-	for i := len(quiescers) - 1; i >= 0; i-- {
-		if err := quiescers[i](ctx); err != nil {
+	for _, quiescer := range slices.Backward(quiescers) {
+		if err := quiescer(ctx); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -257,8 +258,8 @@ func (l *generationLifecycle) shutdown(ctx context.Context) error {
 func (l *generationLifecycle) finish(ctx context.Context, stops []func(context.Context) error) {
 	<-l.quiesced
 	var stopErrs []error
-	for i := len(stops) - 1; i >= 0; i-- {
-		if err := stops[i](ctx); err != nil {
+	for _, stop := range slices.Backward(stops) {
+		if err := stop(ctx); err != nil {
 			stopErrs = append(stopErrs, err)
 		}
 	}

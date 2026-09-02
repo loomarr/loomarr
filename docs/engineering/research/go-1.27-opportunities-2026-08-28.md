@@ -5,6 +5,9 @@ to Go 1.27 enables, what improves automatically, and which follow-up code change
 Sources are Go project release notes and standard-library documentation; repository observations
 come from the current tree at `36294a46`.
 
+The implemented follow-up measurements and compatibility decisions are recorded in
+[`go-1.27-follow-up-2026-09-02.md`](../go-1.27-follow-up-2026-09-02.md).
+
 ## Verdict
 
 Upgrade to Go 1.27, but treat the toolchain bump as a compatibility change rather than a version-only

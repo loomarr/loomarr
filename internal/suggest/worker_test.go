@@ -35,8 +35,8 @@ func newStore(t *testing.T) store.Store {
 }
 
 func idGen() func() string {
-	var n int64
-	return func() string { return "id-" + strconv.FormatInt(atomic.AddInt64(&n, 1), 10) }
+	var n atomic.Int64
+	return func() string { return "id-" + strconv.FormatInt(n.Add(1), 10) }
 }
 
 func buildService(t *testing.T, st suggest.ProposalStore, llmMock *testkit.LLM) *suggest.Service {
