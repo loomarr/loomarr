@@ -69,6 +69,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		notificationDestinations: opts.NotificationDestinations, backendTransition: opts.BackendTransition,
 		webPushPublicKey:      opts.WebPushPublicKey,
 		proposalNotifications: opts.ProposalNotifications,
+		decisionQuality:       opts.DecisionQuality,
 		backendCheckpoint:     opts.BackendCheckpoint,
 		provision:             opts.Provision, guide: opts.Guide,
 		liveConfig: opts.LiveConfig, liveConfigInt: opts.LiveConfigInt,

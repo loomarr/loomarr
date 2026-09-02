@@ -3,9 +3,11 @@ package suggest_test
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -78,7 +80,10 @@ func TestApproverOwnsPlanCommitPostCommitOrdering(t *testing.T) {
 		return ch
 	}}
 	decisionAt := time.Unix(1_800_000_000, 0).UTC()
-	approver := suggest.NewApprover(st, channels, func() time.Time { return decisionAt })
+	qualitySink := &testkit.QualityRecorder{Err: errors.New("ledger unavailable")}
+	decisionQuality := quality.NewProposalDecisionRecorder(qualitySink, slog.New(slog.DiscardHandler))
+	approver := suggest.NewApprover(st, channels, func() time.Time { return decisionAt }).
+		WithDecisionQuality(decisionQuality)
 	p := store.Proposal{
 		ID: "p1", JobID: "job1", Status: "submitted",
 		ProposalJSON: `{"acquisitions":[{"mediaType":"movie","tmdbId":100,"name":"Speed"}]}`,
@@ -103,6 +108,11 @@ func TestApproverOwnsPlanCommitPostCommitOrdering(t *testing.T) {
 	if len(channels.Committed) != 1 || channels.Committed[0] != "ch-approved" {
 		t.Fatalf("post-commit calls = %+v", channels.Committed)
 	}
+	observations := qualitySink.Observations()
+	if len(observations) != 1 || observations[0].Stage != quality.StageApproval ||
+		observations[0].Outcome != quality.OutcomeApproved || !observations[0].At.Equal(decisionAt) {
+		t.Fatalf("approval observations = %+v", observations)
+	}
 }
 
 func TestApproverPlanFailureDoesNotReachStore(t *testing.T) {
@@ -122,7 +132,9 @@ func TestApproverPlanFailureDoesNotReachStore(t *testing.T) {
 func TestApproverStoreFailureDoesNotRunPostCommit(t *testing.T) {
 	st := &testkit.ApprovalStore{CommitError: errors.New("local transaction failed")}
 	channels := &testkit.ApprovalChannels{}
-	approver := suggest.NewApprover(st, channels, time.Now)
+	qualitySink := &testkit.QualityRecorder{}
+	decisionQuality := quality.NewProposalDecisionRecorder(qualitySink, slog.New(slog.DiscardHandler))
+	approver := suggest.NewApprover(st, channels, time.Now).WithDecisionQuality(decisionQuality)
 	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", ProposalJSON: `{}`}
 
 	if _, err := approver.Approve(context.Background(), p, nil, "admin"); err == nil {
@@ -133,5 +145,8 @@ func TestApproverStoreFailureDoesNotRunPostCommit(t *testing.T) {
 	}
 	if len(channels.Committed) != 0 {
 		t.Fatalf("post-commit ran after failed transaction: %+v", channels.Committed)
+	}
+	if observations := qualitySink.Observations(); len(observations) != 0 {
+		t.Fatalf("failed transaction recorded approval: %+v", observations)
 	}
 }

@@ -7,13 +7,15 @@ import (
 	"github.com/loomarr/loomarr/internal/activity"
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/binder"
+	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 type approvalBuild struct {
-	binder   *binder.Binder
-	approver *suggest.Approver
+	binder          *binder.Binder
+	approver        *suggest.Approver
+	decisionQuality *quality.ProposalDecisionRecorder
 }
 
 func buildApproval(
@@ -43,7 +45,12 @@ func buildApproval(
 	if channelNumbers != nil {
 		channelBinder = channelBinder.WithChannelNumbers(channelNumbers)
 	}
+	decisionQuality := quality.NewProposalDecisionRecorder(st, log)
 	return approvalBuild{
-		binder: channelBinder, approver: suggest.NewApprover(st, channelBinder, time.Now).WithProposalNotifier(notifier),
+		binder: channelBinder,
+		approver: suggest.NewApprover(st, channelBinder, time.Now).
+			WithProposalNotifier(notifier).
+			WithDecisionQuality(decisionQuality),
+		decisionQuality: decisionQuality,
 	}
 }
