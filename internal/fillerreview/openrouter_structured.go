@@ -34,6 +34,7 @@ type openRouterStructuredPart struct {
 	Type     string                        `json:"type"`
 	Text     string                        `json:"text,omitempty"`
 	ImageURL *openRouterStructuredMediaURL `json:"image_url,omitempty"`
+	VideoURL *openRouterStructuredMediaURL `json:"video_url,omitempty"`
 }
 
 type openRouterStructuredMediaURL struct {
@@ -104,6 +105,7 @@ type openRouterStructuredCallConfig struct {
 	SystemPrompt     string
 	Content          string
 	Images           []string
+	Videos           []openRouterStructuredVideo
 	MaxTokens        int
 	MaxChargeNanoUSD int64
 	DisableReasoning bool
@@ -111,8 +113,14 @@ type openRouterStructuredCallConfig struct {
 	Reserve          func(string) error
 }
 
+type openRouterStructuredVideo struct {
+	MIMEType string
+	Base64   string
+}
+
 type openRouterStructuredCallResult struct {
 	Wire             openRouterStructuredResponse
+	RawResponse      []byte
 	RequestSHA256    string
 	ResponseSHA256   string
 	ChargedNanoUSD   int64
@@ -137,6 +145,12 @@ func callOpenRouterStructured(ctx context.Context, client *http.Client, baseURL 
 	parts := []openRouterStructuredPart{{Type: "text", Text: config.Content}}
 	for _, image := range config.Images {
 		parts = append(parts, openRouterStructuredPart{Type: "image_url", ImageURL: &openRouterStructuredMediaURL{URL: "data:image/jpeg;base64," + image}})
+	}
+	for _, video := range config.Videos {
+		if !validOpenRouterVideoMIME(video.MIMEType) || strings.TrimSpace(video.Base64) == "" {
+			return openRouterStructuredCallResult{}, fmt.Errorf("OpenRouter structured video input has an invalid MIME type or empty payload")
+		}
+		parts = append(parts, openRouterStructuredPart{Type: "video_url", VideoURL: &openRouterStructuredMediaURL{URL: "data:" + video.MIMEType + ";base64," + video.Base64}})
 	}
 	payload := openRouterStructuredRequest{
 		Model: config.Model,
@@ -181,6 +195,7 @@ func callOpenRouterStructured(ctx context.Context, client *http.Client, baseURL 
 		return result, fmt.Errorf("OpenRouter structured response exceeded its byte ceiling")
 	}
 	result.ResponseSHA256 = hashBytes(raw)
+	result.RawResponse = bytes.Clone(raw)
 	if response.StatusCode != http.StatusOK {
 		return result, &openRouterStructuredStatusError{StatusCode: response.StatusCode, Detail: boundedReviewMessage(raw)}
 	}
@@ -200,6 +215,15 @@ func callOpenRouterStructured(ctx context.Context, client *http.Client, baseURL 
 	}
 	result.StructuredOutput = result.Wire.Choices[0].Message.Content
 	return result, nil
+}
+
+func validOpenRouterVideoMIME(value string) bool {
+	switch value {
+	case "video/mp4", "video/mpeg", "video/mov", "video/webm":
+		return true
+	default:
+		return false
+	}
 }
 
 func validStructuredAttemptLedger(wire openRouterStructuredResponse, config openRouterStructuredCallConfig) bool {
