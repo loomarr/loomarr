@@ -18,7 +18,7 @@ func loadTemporalSuitabilityComparison(config TemporalSuitabilityComparisonConfi
 	if strings.TrimSpace(config.EvidenceManifestPath) == "" || strings.TrimSpace(config.FirstResultPath) == "" || strings.TrimSpace(config.SecondResultPath) == "" || strings.TrimSpace(config.OutputPath) == "" || config.ComparedAt.IsZero() || config.ExpectedCases <= 0 {
 		return temporalSuitabilityComparisonLoaded{}, fmt.Errorf("suitability comparison requires evidence, two results, expected cases, comparison time, and output")
 	}
-	manifest, evidenceSHA, err := LoadTemporalTruthEvidence(config.EvidenceManifestPath)
+	manifest, evidenceSHA, err := loadTemporalSuitabilityEvidence(config.EvidenceManifestPath, config.StructureAuthorityPath)
 	if err != nil {
 		return temporalSuitabilityComparisonLoaded{}, err
 	}
