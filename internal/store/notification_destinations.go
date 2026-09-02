@@ -90,12 +90,28 @@ func (s *sqlStore) ListNotificationDestinationHealth(
 ) (map[string]notifications.DestinationHealth, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT d.id,
 		COALESCE(MAX(CASE WHEN a.status = 'delivered' THEN a.finished_at ELSE 0 END), 0),
-		COALESCE(MAX(CASE WHEN a.status = 'failed' THEN a.finished_at ELSE 0 END), 0),
+		COALESCE(MAX(CASE WHEN a.status = 'failed' AND NOT EXISTS (
+			SELECT 1 FROM notification_delivery_attempts later
+			WHERE later.intent_id = a.intent_id AND later.means = a.means
+				AND later.destination_ref = a.destination_ref
+				AND later.attempt_number > a.attempt_number
+		) THEN a.finished_at ELSE 0 END), 0),
 		COALESCE((SELECT failed.outcome_code FROM notification_delivery_attempts failed
 			WHERE failed.destination_ref = d.id AND failed.status = 'failed'
+				AND NOT EXISTS (
+					SELECT 1 FROM notification_delivery_attempts later
+					WHERE later.intent_id = failed.intent_id AND later.means = failed.means
+						AND later.destination_ref = failed.destination_ref
+						AND later.attempt_number > failed.attempt_number
+				)
 			ORDER BY failed.finished_at DESC, failed.id DESC LIMIT 1), ''),
 		COALESCE(SUM(CASE WHEN a.status = 'queued' THEN 1 ELSE 0 END), 0),
-		COALESCE(SUM(CASE WHEN a.status = 'failed' THEN 1 ELSE 0 END), 0)
+		COALESCE(SUM(CASE WHEN a.status = 'failed' AND NOT EXISTS (
+			SELECT 1 FROM notification_delivery_attempts later
+			WHERE later.intent_id = a.intent_id AND later.means = a.means
+				AND later.destination_ref = a.destination_ref
+				AND later.attempt_number > a.attempt_number
+		) THEN 1 ELSE 0 END), 0)
 	FROM notification_destinations d
 	LEFT JOIN notification_delivery_attempts a ON a.destination_ref = d.id
 	GROUP BY d.id ORDER BY d.id`)

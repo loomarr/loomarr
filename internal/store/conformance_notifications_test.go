@@ -287,17 +287,75 @@ func testNotificationDestinations(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	failedAt := testIntent.CreatedAt.Add(time.Second)
+	retryAt := failedAt.Add(time.Minute)
+	retry := notifications.Attempt{
+		ID: "attempt-destination-test-2", IntentID: testIntent.ID, Means: destination.Means,
+		DestinationRef: destination.ID, DestinationRedacted: destination.Label,
+		Status: notifications.StatusQueued, AttemptNumber: 2,
+		AvailableAt: retryAt, CreatedAt: failedAt,
+	}
 	if err := s.CompleteNotificationAttempt(ctx, notifications.Completion{
 		AttemptID: claimed.ID, LeaseOwner: "health-worker", Status: notifications.StatusFailed,
-		FailureClass: notifications.FailurePermanent, OutcomeCode: notifications.OutcomeConfigurationInvalid,
-		FinishedAt: failedAt,
+		FailureClass: notifications.FailureTransientPreAcceptance,
+		OutcomeCode:  notifications.OutcomeTransportUnavailable,
+		FinishedAt:   failedAt, Next: &retry,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	health, err = s.ListNotificationDestinationHealth(ctx)
 	gotHealth := health[destination.ID]
+	if err != nil || gotHealth.QueuedCount != 1 || gotHealth.TerminalFailureCount != 0 ||
+		!gotHealth.LastFailureAt.IsZero() || gotHealth.LastFailureOutcome != "" {
+		t.Fatalf("retrying destination health = %+v, %v", gotHealth, err)
+	}
+	claimed, err = s.ClaimDueNotificationAttempt(ctx, "health-worker", retryAt, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deliveredAt := retryAt.Add(time.Second)
+	if err := s.CompleteNotificationAttempt(ctx, notifications.Completion{
+		AttemptID: claimed.ID, LeaseOwner: "health-worker", Status: notifications.StatusDelivered,
+		ProviderMessageID: "provider-message-safe", FinishedAt: deliveredAt,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	health, err = s.ListNotificationDestinationHealth(ctx)
+	gotHealth = health[destination.ID]
+	if err != nil || gotHealth.QueuedCount != 0 || gotHealth.TerminalFailureCount != 0 ||
+		!gotHealth.LastFailureAt.IsZero() || gotHealth.LastFailureOutcome != "" ||
+		!gotHealth.LastSuccessAt.Equal(deliveredAt) {
+		t.Fatalf("recovered destination health = %+v, %v", gotHealth, err)
+	}
+
+	terminalIntent := testIntent
+	terminalIntent.ID = "intent-destination-terminal"
+	terminalIntent.IdempotencyKey = "destination-test:request-terminal"
+	terminalIntent.CreatedAt = deliveredAt.Add(time.Minute)
+	terminalAttempt := testAttempt
+	terminalAttempt.ID = "attempt-destination-terminal"
+	terminalAttempt.IntentID = terminalIntent.ID
+	terminalAttempt.AvailableAt = terminalIntent.CreatedAt
+	terminalAttempt.CreatedAt = terminalIntent.CreatedAt
+	if _, created, err := s.CreateNotificationIntent(ctx, terminalIntent, []notifications.Attempt{terminalAttempt}); err != nil || !created {
+		t.Fatalf("create terminal destination test intent = %t, %v", created, err)
+	}
+	claimed, err = s.ClaimDueNotificationAttempt(ctx, "health-worker", terminalIntent.CreatedAt, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	terminalFailedAt := terminalIntent.CreatedAt.Add(time.Second)
+	if err := s.CompleteNotificationAttempt(ctx, notifications.Completion{
+		AttemptID: claimed.ID, LeaseOwner: "health-worker", Status: notifications.StatusFailed,
+		FailureClass: notifications.FailurePermanent, OutcomeCode: notifications.OutcomeConfigurationInvalid,
+		FinishedAt: terminalFailedAt,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	health, err = s.ListNotificationDestinationHealth(ctx)
+	gotHealth = health[destination.ID]
 	if err != nil || gotHealth.QueuedCount != 0 || gotHealth.TerminalFailureCount != 1 ||
-		gotHealth.LastFailureOutcome != notifications.OutcomeConfigurationInvalid || !gotHealth.LastFailureAt.Equal(failedAt) {
+		gotHealth.LastFailureOutcome != notifications.OutcomeConfigurationInvalid ||
+		!gotHealth.LastFailureAt.Equal(terminalFailedAt) {
 		t.Fatalf("failed destination health = %+v, %v", gotHealth, err)
 	}
 	if err := s.DeleteNotificationDestination(ctx, destination.ID); err != nil {
