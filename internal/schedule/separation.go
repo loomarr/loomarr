@@ -1,6 +1,7 @@
 package schedule
 
 import (
+	"slices"
 	"sort"
 
 	"github.com/loomarr/loomarr/internal/provision"
@@ -312,8 +313,8 @@ func separationOK(out []Slot, cand Slot, rp ResolvedPolicy) bool {
 	// blockMax: count the trailing run of the same series in `out`.
 	if rp.Sep.BlockMax > 0 {
 		run := 0
-		for i := len(out) - 1; i >= 0; i-- {
-			if seriesKeyOf(out[i]) == key {
+		for _, slot := range slices.Backward(out) {
+			if seriesKeyOf(slot) == key {
 				run++
 			} else {
 				break
@@ -330,12 +331,12 @@ func separationOK(out []Slot, cand Slot, rp ResolvedPolicy) bool {
 	if rp.Sep.SeriesMinGap > 0 {
 		var sinceMs int64 = -1 // -1 = series not seen in out
 		var accMs int64
-		for i := len(out) - 1; i >= 0; i-- {
-			if seriesKeyOf(out[i]) == key {
+		for _, slot := range slices.Backward(out) {
+			if seriesKeyOf(slot) == key {
 				sinceMs = accMs
 				break
 			}
-			accMs += out[i].DurationMs
+			accMs += slot.DurationMs
 		}
 		if sinceMs >= 0 && sinceMs < rp.Sep.SeriesMinGap.Milliseconds() {
 			return false
