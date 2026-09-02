@@ -204,6 +204,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	})
 
 	t.Run("Ops", func(t *testing.T) {
+		t.Run("DiscoveryQualityLedger", func(t *testing.T) { testDiscoveryQualityLedger(t, newStore) })
 		t.Run("SettingsKV", func(t *testing.T) { testSettings(t, newStore) })
 		t.Run("SessionLifecycle", func(t *testing.T) { testSessionLifecycle(t, newStore) })
 		t.Run("UserCredentialCapabilities", func(t *testing.T) { testUserCredentialCapabilities(t, newStore) })

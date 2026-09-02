@@ -169,6 +169,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Supervises one child process and every descendant it starts.
 - **`provision`** · 17 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
+- **`quality`** · 1 importer
+  Owns Loomarr's privacy-safe discovery-quality vocabulary.
 - **`recovery`** · 5 importers
   Owns local-password recovery records and their bearer grants (§11).
 - **`releasenotes`**
@@ -245,7 +247,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Materializes identity-blind evidence for independent semantic review.
 - **`library`** · 8 importers · → `episodeevidence`, `filler`, `httpx`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `invitation`, `notifications`, `provision`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
+- **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 **Layer 7**
@@ -8276,10 +8278,10 @@ selection invalidates the preview and disables download until the replacement pr
   Raw receipts contain only stage, closed outcome, event time, bounded duration/tool/candidate/cost
   quantities, and the opaque idempotency key. They never contain a Title or programme name, Intent or
   prompt text, raw error, URL, path, location, credential, username, user/Channel/device/media id, or
-  a hashed substitute for one. Housekeeping folds receipts into UTC daily counts, bounded duration
-  buckets, and numeric sums, then purges receipts after 30 days. Aggregates are retained for 24
-  months. At most 256 immutable evaluation-run snapshots are retained; oldest unreferenced snapshots
-  are removed first. A snapshot records schema and corpus versions, requested and resolved model,
+  a hashed substitute for one. Housekeeping folds receipts into UTC daily counts plus bounded
+  duration, tool, candidate, and cost totals, then purges receipts after 30 days. Aggregates are
+  retained for 24 months. At most 256 unreferenced immutable evaluation-run snapshots are retained;
+  referenced snapshots follow the aggregates' 24-month bound. A snapshot records schema and corpus versions,
   closed provider identity, budget profile, application version, and whether required accounting was
   available. Model strings are length-bounded facts, never labels or network locations; missing
   values remain explicitly missing rather than being guessed.
