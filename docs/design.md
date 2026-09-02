@@ -8280,6 +8280,16 @@ selection invalidates the preview and disables download until the replacement pr
   that boundary. Retried workers derive opaque idempotency keys from the durable Job id, attempt,
   and stage, so replaying a terminal callback cannot double-count it.
 
+  Proposal decisions follow the same committed-transition rule. The shared approval gate records
+  approval `approved` only after its proposal/title/Channel transaction commits, covering manual,
+  bulk, requester auto-approval, and Channel auto-curation without parallel instrumentation at each
+  caller. The denial handler records approval `declined` only after its submitted-to-denied compare
+  and swap commits. A refused, superseded, malformed, or otherwise failed decision attempt records
+  nothing. Decision receipts derive their opaque idempotency key from the Proposal id and approval
+  stage, carry the committed decision time, and contain no approver, requester, reason, edit, Title,
+  or Channel fact. In particular, `declined` remains only a Proposal workflow outcome and does not
+  create, imply, or join to a `less` or `never` taste signal.
+
   The module accepts typed observations and owns classification, aggregation, redaction, retention,
   and export. Callers cannot provide labels or arbitrary metadata. Recording is best-effort after
   the business transition commits: a quality-write failure is logged through the bounded diagnostics
