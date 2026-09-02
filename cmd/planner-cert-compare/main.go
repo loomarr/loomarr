@@ -25,45 +25,49 @@ func run(args []string, stderr io.Writer) int {
 		return 2
 	}
 	if *outPath == "" || *summaryPath == "" || flags.NArg() < 2 {
-		fmt.Fprintln(stderr, "planner-cert-compare: --out, --summary, and at least two scorecards are required")
+		report(stderr, "planner-cert-compare: --out, --summary, and at least two scorecards are required\n")
 		return 2
 	}
 	cards := make([]eval.Scorecard, 0, flags.NArg())
 	for _, path := range flags.Args() {
 		blob, err := os.ReadFile(path)
 		if err != nil {
-			fmt.Fprintf(stderr, "planner-cert-compare: read %s: %v\n", path, err)
+			report(stderr, "planner-cert-compare: read %s: %v\n", path, err)
 			return 1
 		}
 		var card eval.Scorecard
 		if err := json.Unmarshal(blob, &card); err != nil {
-			fmt.Fprintf(stderr, "planner-cert-compare: decode %s: %v\n", path, err)
+			report(stderr, "planner-cert-compare: decode %s: %v\n", path, err)
 			return 1
 		}
 		cards = append(cards, card)
 	}
 	comparison, err := eval.ComparePlannerModels(cards)
 	if err != nil {
-		fmt.Fprintf(stderr, "planner-cert-compare: %v\n", err)
+		report(stderr, "planner-cert-compare: %v\n", err)
 		return 1
 	}
 	blob, err := json.MarshalIndent(comparison, "", "  ")
 	if err != nil {
-		fmt.Fprintf(stderr, "planner-cert-compare: encode comparison: %v\n", err)
+		report(stderr, "planner-cert-compare: encode comparison: %v\n", err)
 		return 1
 	}
 	blob = append(blob, '\n')
 	if err := os.WriteFile(*outPath, blob, 0o600); err != nil {
-		fmt.Fprintf(stderr, "planner-cert-compare: write %s: %v\n", *outPath, err)
+		report(stderr, "planner-cert-compare: write %s: %v\n", *outPath, err)
 		return 1
 	}
 	if err := os.WriteFile(*summaryPath, []byte(eval.PlannerComparisonSummary(comparison)), 0o600); err != nil {
-		fmt.Fprintf(stderr, "planner-cert-compare: write %s: %v\n", *summaryPath, err)
+		report(stderr, "planner-cert-compare: write %s: %v\n", *summaryPath, err)
 		return 1
 	}
 	if comparison.DecisionStatus == "no_eligible" {
-		fmt.Fprintf(stderr, "planner-cert-compare: %s\n", comparison.DecisionReason)
+		report(stderr, "planner-cert-compare: %s\n", comparison.DecisionReason)
 		return 1
 	}
 	return 0
+}
+
+func report(w io.Writer, format string, args ...any) {
+	_, _ = fmt.Fprintf(w, format, args...)
 }
