@@ -10,7 +10,8 @@ import (
 )
 
 // TestPlannerModelCertification is the explicit, inference-spending lane for
-// comparing candidate models against the frozen 150-case catalog fixture.
+// comparing candidate models against the frozen catalog fixture. Family-smoke
+// mode selects one canonical Intent per family and is not release certification.
 func TestPlannerModelCertification(t *testing.T) {
 	if os.Getenv("LOOMARR_EVAL_PLANNER_CERTIFICATION") != "1" {
 		t.Skip("planner-model certification is an explicit non-CI command")
@@ -21,6 +22,12 @@ func TestPlannerModelCertification(t *testing.T) {
 	cases, err := CertificationCases()
 	if err != nil {
 		t.Fatal(err)
+	}
+	if os.Getenv("LOOMARR_EVAL_PLANNER_FAMILY_SMOKE") == "1" {
+		cases, err = CertificationFamilySmokeCases()
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	trials, err := ParseEvaluationTrials(true, os.Getenv("LOOMARR_EVAL_TRIALS"))
 	if err != nil {

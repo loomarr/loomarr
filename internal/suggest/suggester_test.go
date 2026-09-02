@@ -3,6 +3,7 @@ package suggest_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -16,10 +17,80 @@ import (
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
+type toolAvailabilitySensitiveLLM struct {
+	calls int
+	opts  []llm.ChatOptions
+	final []llm.Response
+}
+
+type unsolicitedFinalizationToolLLM struct {
+	calls           int
+	maxToolMessages int
+}
+
+func (m *unsolicitedFinalizationToolLLM) Name() string { return "unsolicited-finalization-tool" }
+
+func (m *unsolicitedFinalizationToolLLM) Chat(_ context.Context, messages []llm.Message, opts llm.ChatOptions) (llm.Response, error) {
+	m.calls++
+	toolMessages := 0
+	for _, message := range messages {
+		if message.Role == llm.Tool {
+			toolMessages++
+		}
+	}
+	m.maxToolMessages = max(m.maxToolMessages, toolMessages)
+	if m.calls <= 2 {
+		return llm.Response{ToolCalls: []llm.ToolCall{{
+			ID: fmt.Sprintf("call-%d", m.calls), Name: "catalog_search", Arguments: map[string]any{"query": "matrix"},
+		}}}, nil
+	}
+	return llm.Response{Content: `{"channelName":"Matrix Signal","rationale":"Grounded science fiction.","picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix","rationale":"It is the requested grounded title.","confidence":0.99}],"policy":{}}`}, nil
+}
+
+type emptyThenGroundedLLM struct {
+	calls int
+}
+
+func (m *emptyThenGroundedLLM) Name() string { return "empty-then-grounded" }
+
+func (m *emptyThenGroundedLLM) Chat(_ context.Context, _ []llm.Message, opts llm.ChatOptions) (llm.Response, error) {
+	m.calls++
+	switch m.calls {
+	case 1:
+		return testkit.ToolCallResponse("catalog_search", map[string]any{"query": "definitely absent"}), nil
+	case 2:
+		if len(opts.Tools) == 0 {
+			return llm.Response{}, errors.New("catalog tool disappeared after an empty result")
+		}
+		return testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}), nil
+	default:
+		if len(opts.Tools) != 0 {
+			return llm.Response{}, errors.New("catalog tool remained after a grounded result")
+		}
+		return testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`), nil
+	}
+}
+
+func (m *toolAvailabilitySensitiveLLM) Name() string { return "tool-availability-sensitive" }
+
+func (m *toolAvailabilitySensitiveLLM) Chat(_ context.Context, _ []llm.Message, opts llm.ChatOptions) (llm.Response, error) {
+	m.calls++
+	m.opts = append(m.opts, opts)
+	if len(opts.Tools) > 0 {
+		return testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}), nil
+	}
+	if len(m.final) > 0 {
+		response := m.final[0]
+		m.final = m.final[1:]
+		return response, nil
+	}
+	return testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`), nil
+}
+
 // buildSuggester wires a suggester over the real testkit mocks: library search
 // (pinned Emby fixture), TMDB (in-memory catalog: Speed 100, The Rock 101,
 // The Matrix 603, Breaking Bad 1396), and a scripted LLM.
-func buildSuggester(t *testing.T, llmMock *testkit.LLM) *suggest.Suggester {
+func buildSuggester(t *testing.T, llmMock llm.Provider) *suggest.Suggester {
 	ms := testkit.NewMediaServer(t)
 	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
 	mt := testkit.NewTMDB(t)
@@ -70,6 +141,67 @@ func TestGrounding_FabricatedTitleNeverReachesProposal(t *testing.T) {
 	}
 	if !traceHas(prop.Trace, "movie:tmdb:100", suggest.DispositionSelected, "selected") {
 		t.Fatalf("trace must preserve selected decision: %+v", prop.Trace)
+	}
+}
+
+func TestSuggest_FinalizesAfterGroundedCatalogResultWithoutRepeatingSearch(t *testing.T) {
+	model := &toolAvailabilitySensitiveLLM{}
+	prop, err := buildSuggester(t, model).Suggest(context.Background(), suggest.Intent{Description: "science fiction"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Lineup) != 1 || prop.Lineup[0].TMDBID != 603 {
+		t.Fatalf("grounded final proposal = %+v, want The Matrix", prop)
+	}
+	if model.calls != 2 {
+		t.Fatalf("model calls = %d, want one catalog call followed by one final proposal", model.calls)
+	}
+}
+
+func TestSuggest_DoesNotExecuteUnsolicitedToolCallDuringFinalization(t *testing.T) {
+	model := &unsolicitedFinalizationToolLLM{}
+	prop, err := buildSuggester(t, model).Suggest(context.Background(), suggest.Intent{Description: "The Matrix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Lineup) != 1 || prop.Lineup[0].TMDBID != 603 {
+		t.Fatalf("proposal lineup = %+v", prop.Lineup)
+	}
+	if model.calls != 3 || model.maxToolMessages != 1 {
+		t.Fatalf("model calls/tool-result messages = %d/%d, want 3/1", model.calls, model.maxToolMessages)
+	}
+}
+
+func TestSuggest_RepairKeepsToolsDisabledAfterGrounding(t *testing.T) {
+	model := &toolAvailabilitySensitiveLLM{final: []llm.Response{
+		testkit.FinalResponse(`not json`),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+	}}
+	prop, err := buildSuggester(t, model).Suggest(context.Background(), suggest.Intent{Description: "science fiction"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Lineup) != 1 || prop.Lineup[0].TMDBID != 603 {
+		t.Fatalf("repaired grounded proposal = %+v, want The Matrix", prop)
+	}
+	if model.calls != 3 {
+		t.Fatalf("model calls = %d, want retrieval + malformed final + repaired final", model.calls)
+	}
+	for turn, opts := range model.opts[1:] {
+		if len(opts.Tools) != 0 || !opts.JSONMode {
+			t.Fatalf("finalization turn %d options = %+v, want JSON mode without tools", turn+1, opts)
+		}
+	}
+}
+
+func TestSuggest_EmptyCatalogResultRetainsToolForAlternateSearch(t *testing.T) {
+	model := &emptyThenGroundedLLM{}
+	prop, err := buildSuggester(t, model).Suggest(context.Background(), suggest.Intent{Description: "science fiction"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Lineup) != 1 || prop.Lineup[0].TMDBID != 603 || model.calls != 3 {
+		t.Fatalf("empty-result recovery proposal = %+v after %d calls, want The Matrix after three", prop, model.calls)
 	}
 }
 
@@ -689,11 +821,11 @@ func TestGrounding_InLibraryPickBecomesLineup(t *testing.T) {
 
 // The acquisition cap (§8 quota) is honored: over-cap picks become alternates.
 func TestGrounding_AcquisitionCapPushesToAlternates(t *testing.T) {
-	// Two searches so BOTH Speed (100) and The Rock (101) are surfaced/grounded;
-	// with cap=1 the second becomes an alternate.
+	// One Action discovery surfaces BOTH Speed (100) and The Rock (101); with
+	// cap=1 the second becomes an alternate without violating the rule that a
+	// non-empty result ends retrieval.
 	llmMock := testkit.NewLLM(
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "speed"}),
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "rock"}),
+		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"Action"}, "media_type": "movie"}),
 		testkit.FinalResponse(`{"picks":[
 			{"mediaType":"movie","tmdbId":100,"name":"Speed"},
 			{"mediaType":"movie","tmdbId":101,"name":"The Rock"}
@@ -723,9 +855,7 @@ func TestGrounding_AcquisitionCapPushesToAlternates(t *testing.T) {
 
 func TestSuggest_GroundsEpisodeSelectionAcrossSeriesAlternates(t *testing.T) {
 	llmMock := testkit.NewLLM(
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "alpha series"}),
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "beta series"}),
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "companion movie"}),
+		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"Drama"}}),
 		testkit.FinalResponse(`{"picks":[
 			{"mediaType":"series","tmdbId":200,"name":"Alpha Series"},
 			{"mediaType":"series","tmdbId":201,"name":"Beta Series"},
@@ -734,9 +864,9 @@ func TestSuggest_GroundsEpisodeSelectionAcrossSeriesAlternates(t *testing.T) {
 	)
 	ms := testkit.NewMediaServer(t)
 	mt := testkit.NewTMDB(t)
-	mt.AddSeries(200, "Alpha Series", 1990, nil, "")
-	mt.AddSeries(201, "Beta Series", 1991, nil, "")
-	mt.AddMovie(202, "Companion Movie", 1992, nil, "")
+	mt.AddSeries(200, "Alpha Series", 1990, []int{18}, "")
+	mt.AddSeries(201, "Beta Series", 1991, []int{18}, "")
+	mt.AddMovie(202, "Companion Movie", 1992, []int{18}, "")
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	s := suggest.New(llmMock, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 1)
 
@@ -786,28 +916,31 @@ func TestScoring_Deterministic(t *testing.T) {
 // T0.1: sampling controls are forwarded to the provider (low temperature for the
 // grounded/JSON turns).
 func TestSuggest_ForwardsSamplingControls(t *testing.T) {
-	llmMock := testkit.NewLLM(
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
-	)
+	llmMock := &toolAvailabilitySensitiveLLM{}
 	s := buildSuggester(t, llmMock)
 	if _, err := s.Suggest(context.Background(), suggest.Intent{Description: "sci-fi"}); err != nil {
 		t.Fatal(err)
 	}
-	if llmMock.LastOpts.Temperature == nil {
+	if len(llmMock.opts) != 2 {
+		t.Fatalf("provider options = %d turns, want retrieval + finalization", len(llmMock.opts))
+	}
+	retrievalOpts, finalOpts := llmMock.opts[0], llmMock.opts[1]
+	if finalOpts.Temperature == nil {
 		t.Fatal("temperature not forwarded to the provider")
 	}
-	if *llmMock.LastOpts.Temperature > 0.5 {
-		t.Errorf("grounded temperature = %v, want low (<=0.5) for JSON/tool adherence", *llmMock.LastOpts.Temperature)
+	if *finalOpts.Temperature > 0.5 {
+		t.Errorf("grounded temperature = %v, want low (<=0.5) for JSON/tool adherence", *finalOpts.Temperature)
 	}
-	if llmMock.LastOpts.MaxTokens <= 0 || llmMock.LastOpts.MaxTokens > 2048 {
-		t.Errorf("grounded max tokens = %d, want a positive hosted-cost ceiling <= 2048", llmMock.LastOpts.MaxTokens)
+	if finalOpts.MaxTokens <= 0 || finalOpts.MaxTokens > 2048 {
+		t.Errorf("grounded max tokens = %d, want a positive hosted-cost ceiling <= 2048", finalOpts.MaxTokens)
 	}
-	// JSONMode is OFF while tools are offered — forcing format:json + tools corrupts
-	// the tool-call channel on some models (they emit the call as content JSON). The
-	// prompt + repair loop enforce final-answer JSON instead.
-	if llmMock.LastOpts.JSONMode {
-		t.Error("JSONMode should be OFF on grounded/tool turns (it corrupts tool-calling)")
+	// Retrieval offers tools without JSON mode; after a grounded result, finalization
+	// removes tools and enables JSON mode so a tool-biased model cannot repeat forever.
+	if len(retrievalOpts.Tools) != 1 || retrievalOpts.JSONMode {
+		t.Errorf("retrieval options = %+v, want one tool without JSON mode", retrievalOpts)
+	}
+	if len(finalOpts.Tools) != 0 || !finalOpts.JSONMode {
+		t.Errorf("finalization options = %+v, want JSON mode without tools", finalOpts)
 	}
 }
 
@@ -1085,7 +1218,6 @@ func TestProposal_KidSafeIntentCannotBeRelaxedByModelPicks(t *testing.T) {
 	})
 	llmMock := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "simpsons"}),
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "breaking bad"}),
 		testkit.FinalResponse(`{"rationale":"bright cartoons","picks":[
 			{"mediaType":"series","tmdbId":456,"name":"The Simpsons"},
 			{"mediaType":"series","tmdbId":1396,"name":"Breaking Bad"}
@@ -1098,6 +1230,7 @@ func TestProposal_KidSafeIntentCannotBeRelaxedByModelPicks(t *testing.T) {
 
 	prop, err := s.Suggest(context.Background(), suggest.Intent{
 		Description: "Saturday-morning cartoons like I watched as a kid — bright, silly, kid-safe",
+		Adjacent:    []suggest.AdjacentContext{{Name: "Breaking Bad", Year: 2008, Key: "series:tmdb:1396", Votes: 2}},
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "issue": 862,
+  "generatedAt": "2026-09-02",
+  "decision": {
+    "stockArtifactClearedFamilySmoke": false,
+    "authorizeFullCertification": false,
+    "authorizeRunpod": false,
+    "authorizeUnsloth": false,
+    "next": "Keep Qwen 3.5 9B as the leading local development artifact; improve and independently certify the planner contract before reconsidering a held-out Unsloth LoRA/QLoRA experiment."
+  },
+  "contract": {
+    "corpusVersion": "planner-certification-v3",
+    "promptVersion": "suggester-prompt-v2",
+    "toolSchemaVersion": "catalog-search-v1",
+    "messageTemplateVersion": "planner-tool-result-finalization-v1",
+    "systemPromptSha256": "5e2e8153e17e6a09262c94dd9c956a041228b0a63808b9afe782926ffa4a81af",
+    "userPromptSha256": "37f435b49e8c33fa43f3452f2a6bf7c761e2012facec6d1a93378db8891d48cc",
+    "messagesSha256": "9817bf525d2d10ac7e1c97fde40e0ac58f9f1ef128c914306787b64dabb20f4a",
+    "toolSchemaSha256": "db88c456c9714fb4df5901dd41cd3c1efa65efb645ae6c3ac0e827385193975b",
+    "postResult": {
+      "messageRoles": ["system", "user", "assistant", "tool"],
+      "toolsOff": true,
+      "jsonMode": true,
+      "temperature": 0.2,
+      "maxTokens": 2048,
+      "unsolicitedToolCallsExecuted": false
+    }
+  },
+  "lanes": [
+    {
+      "provider": "ollama",
+      "model": "qwen3.5:9b",
+      "profile": "local-qwen3.5-9b-post-json-think-fix",
+      "casePasses": 24,
+      "cases": 25,
+      "calls": 77,
+      "tokens": 218438,
+      "spendUsd": "0",
+      "peakVramBytes": 5511430797,
+      "groundedCompletionRate": 0.8181818181818182,
+      "correctToolOperationRate": 0.8,
+      "schemaValidityRate": 0.96,
+      "policyAccuracyRate": 0.6,
+      "proposalQualityRate": 0.76,
+      "recoveryRate": 0,
+      "p95ToolCalls": 5,
+      "diagnosticJsonValid": true,
+      "diagnosticRepeatedToolCall": false,
+      "outcome": "failed: genre-discovery exhausted five empty keyword searches; aggregate certification floors were not met"
+    },
+    {
+      "provider": "ollama",
+      "model": "gemma4:12b",
+      "profile": "local-gemma4-12b-post-json-think-fix",
+      "casePasses": 21,
+      "cases": 25,
+      "calls": 71,
+      "tokens": 185769,
+      "spendUsd": "0",
+      "peakVramBytes": 8059627764,
+      "groundedCompletionRate": 0.6818181818181818,
+      "correctToolOperationRate": 0.88,
+      "schemaValidityRate": 0.84,
+      "policyAccuracyRate": 0.4,
+      "proposalQualityRate": 0.6,
+      "recoveryRate": 0,
+      "p95ToolCalls": 5,
+      "diagnosticJsonValid": false,
+      "diagnosticRepeatedToolCall": false,
+      "outcome": "failed: four case-level failures and materially weaker schema/proposal quality than Qwen"
+    },
+    {
+      "provider": "openrouter",
+      "upstreamProvider": "DeepInfra",
+      "model": "openai/gpt-oss-20b",
+      "profile": "openrouter-gpt-oss-20b-deepinfra-post-finalization-guard",
+      "casePasses": 0,
+      "casesDeclared": 25,
+      "casesReached": 1,
+      "calls": 4,
+      "tokens": 7703,
+      "spendUsd": "0.00028862",
+      "diagnosticJsonValid": false,
+      "diagnosticRepeatedToolCall": true,
+      "catalogCallsExecuted": 1,
+      "outcome": "failed closed after the first family: unsolicited finalization tool calls were not executed; a later provider failure made usage unknown and latched the remaining cases"
+    }
+  ],
+  "budget": {
+    "aggregateAuthorizationUsd": "20",
+    "previousAccountedSpendUsd": "0.07155482",
+    "thisScorecardSpendUsd": "0.00028862",
+    "accountedSpendUsd": "0.07184344",
+    "unledgeredSuccessfulDiagnosticRequests": 1,
+    "runpodSpendUsd": "0"
+  }
+}

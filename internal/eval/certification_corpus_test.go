@@ -27,6 +27,9 @@ func TestEmbeddedCertificationCorpusIsFrozenHeldOutAndRepresentative(t *testing.
 	if corpus.SchemaVersion != 3 {
 		t.Fatalf("corpus schema version = %d, want 3", corpus.SchemaVersion)
 	}
+	if corpus.PromptVersion != suggest.PlannerPromptVersion || corpus.ToolSchemaVersion != suggest.PlannerToolSchemaVersion {
+		t.Fatalf("prompt/tool version = %q/%q, want production %q/%q", corpus.PromptVersion, corpus.ToolSchemaVersion, suggest.PlannerPromptVersion, suggest.PlannerToolSchemaVersion)
+	}
 	if corpus.Split != "certification" {
 		t.Fatalf("corpus split = %q, want certification", corpus.Split)
 	}
@@ -83,7 +86,7 @@ func TestEmbeddedCertificationCorpusIsFrozenHeldOutAndRepresentative(t *testing.
 func TestCertificationExtensionRejectsUnknownCaseReferences(t *testing.T) {
 	corpus := CertificationCorpus{Cases: []CertificationCase{{ID: "known"}}}
 	extension := certificationCorpusExtension{
-		SchemaVersion: 3, Version: "v3", ScorerVersion: "scorer",
+		SchemaVersion: 3, Version: "v3", PromptVersion: "prompt", ScorerVersion: "scorer",
 		QualityMetrics:      []string{"proposal_quality"},
 		ProposalExpectation: "exact_fixture_candidates_or_declared_abstention",
 		Selection: CertificationSelection{QualityMargin: 0.02, Weights: CertificationQualityWeights{
@@ -373,5 +376,25 @@ func TestCertificationCasesAreExecutableAndHaveHardGates(t *testing.T) {
 	if policyCases != 30 || proposalCases != 150 || recoveryCases != 6 {
 		t.Fatalf("quality answer coverage: policy=%d proposal=%d recovery=%d, want 30/150/6",
 			policyCases, proposalCases, recoveryCases)
+	}
+}
+
+func TestCertificationFamilySmokeCasesSelectExactlyOneBaseIntentPerFamily(t *testing.T) {
+	cases, err := CertificationFamilySmokeCases()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cases) != 25 {
+		t.Fatalf("family smoke cases = %d, want 25", len(cases))
+	}
+	seen := make(map[string]bool, len(cases))
+	for _, c := range cases {
+		if strings.Contains(c.Name, "--") {
+			t.Fatalf("smoke case %q is a phrasing variant, want the family's base Intent", c.Name)
+		}
+		if seen[c.Name] {
+			t.Fatalf("smoke case %q is duplicated", c.Name)
+		}
+		seen[c.Name] = true
 	}
 }

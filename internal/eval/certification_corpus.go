@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/loomarr/loomarr/internal/catalog"
@@ -71,6 +72,7 @@ type certificationCorpusExtension struct {
 	SchemaVersion       int                     `json:"schemaVersion"`
 	Version             string                  `json:"version"`
 	Base                CertificationFixture    `json:"base"`
+	PromptVersion       string                  `json:"promptVersion"`
 	ScorerVersion       string                  `json:"scorerVersion"`
 	QualityMetrics      []string                `json:"qualityMetrics"`
 	Thresholds          CertificationThresholds `json:"thresholds"`
@@ -139,8 +141,12 @@ func LoadEmbeddedCertificationCorpus() (CertificationCorpus, error) {
 	if err := validateCertificationExtension(extension, corpus); err != nil {
 		return CertificationCorpus{}, err
 	}
+	if extension.PromptVersion != suggest.PlannerPromptVersion || corpus.ToolSchemaVersion != suggest.PlannerToolSchemaVersion {
+		return CertificationCorpus{}, fmt.Errorf("certification prompt/tool identity differs from production Suggester")
+	}
 	corpus.SchemaVersion = extension.SchemaVersion
 	corpus.Version = extension.Version
+	corpus.PromptVersion = extension.PromptVersion
 	corpus.ScorerVersion = extension.ScorerVersion
 	corpus.QualityMetrics = append([]string(nil), extension.QualityMetrics...)
 	corpus.Thresholds = extension.Thresholds
@@ -170,7 +176,7 @@ func LoadEmbeddedCertificationCorpus() (CertificationCorpus, error) {
 }
 
 func validateCertificationExtension(extension certificationCorpusExtension, corpus CertificationCorpus) error {
-	if extension.SchemaVersion <= 0 || extension.Version == "" || extension.ScorerVersion == "" {
+	if extension.SchemaVersion <= 0 || extension.Version == "" || extension.PromptVersion == "" || extension.ScorerVersion == "" {
 		return fmt.Errorf("certification extension identity is incomplete")
 	}
 	if extension.ProposalExpectation != "exact_fixture_candidates_or_declared_abstention" {
@@ -294,6 +300,23 @@ func CertificationCases() ([]Case, error) {
 		}
 	}
 	return withProductionStructuralBounds(cases), nil
+}
+
+// CertificationFamilySmokeCases returns the canonical base Intent from every
+// frozen semantic family. It is the bounded live-model adapter smoke set, not a
+// release certification or a source of training examples.
+func CertificationFamilySmokeCases() ([]Case, error) {
+	cases, err := CertificationCases()
+	if err != nil {
+		return nil, err
+	}
+	smoke := make([]Case, 0, len(cases)/6)
+	for _, c := range cases {
+		if !strings.Contains(c.Name, "--") {
+			smoke = append(smoke, c)
+		}
+	}
+	return smoke, nil
 }
 
 type embeddedCertificationGenerator struct {

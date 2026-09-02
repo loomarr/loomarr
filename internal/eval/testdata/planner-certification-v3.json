@@ -5,6 +5,7 @@
     "path": "testdata/planner-certification-v2.json",
     "sha256": "70934f608f7e3a2ebc1e00e9c92b402b231805caccb5cb3c6d5dda5d6f2969da"
   },
+  "promptVersion": "suggester-prompt-v2",
   "scorerVersion": "planner-scorer-v2",
   "qualityMetrics": [
     "correct_tool_operation",
