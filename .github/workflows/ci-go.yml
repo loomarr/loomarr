@@ -135,11 +135,12 @@ jobs:
       #
       # ⚠ A STABLE key, deliberately NOT the rolling `github.run_id` pattern the golangci and
       # gobuild caches above use. Those cache contents track something their key does not
-      # (`~/.cache/go-build` tracks .go SOURCE), so they must re-save every run. This one's
-      # contents are fully determined by the key — a fixed package set at a runner image
-      # version — exactly like the pnpm caches, which are keyed on the lockfile alone. The
-      # rolling pattern here would write a fresh copy EVERY run into the budget that
-      # `cache-cleanup.yml` exists because the repo already blew through once.
+      # (`~/.cache/go-build` tracks .go SOURCE), so they must re-save every run. Ubuntu can
+      # retire package point versions while VERSION_ID remains unchanged, so this cache is an
+      # optimization rather than an immutable closure: the install step detects an incomplete
+      # cache, refreshes metadata, and fetches only the small missing delta. A rolling key would
+      # instead write a fresh ~63 MB copy EVERY run into the budget that `cache-cleanup.yml`
+      # exists because the repo already blew through once.
       #
       # ⚠ The Ubuntu RELEASE is in the key because the package versions come from the runner
       # image's apt sources. Without it a runner image bump would restore debs built for the
@@ -185,8 +186,10 @@ jobs:
       - name: Install ffmpeg (several filler tests skip without it)
         run: |
           sudo cp -n ~/ffmpeg-debs/*.deb /var/cache/apt/archives/ 2>/dev/null || true
-          sudo apt-get install -y --no-install-recommends --no-download ffmpeg \
-            || sudo apt-get install -y --no-install-recommends ffmpeg
+          if ! sudo apt-get install -y --no-install-recommends --no-download ffmpeg; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends ffmpeg
+          fi
       # ⚠ FAIL LOUDLY if the install silently stopped working. Without this the tests go back
       # to skipping and the job stays green — the exact "green but not covered" state this
       # step was added to end, and one nobody would notice because a skip looks like a pass
