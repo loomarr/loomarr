@@ -1,4 +1,4 @@
-import type { SearchOutputBody } from "@loomarr/api";
+import type { DiscoveryFeedbackDTO, SearchOutputBody } from "@loomarr/api";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { widthFrame } from "@/test/story-utils";
@@ -13,7 +13,7 @@ const jsonResponse = <T,>(body: T) =>
   new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
 // ChannelLineupEditor owns live generated-API hooks (useChannelLineup → useUpdateChannel,
-// plus searchApi.useSearch for the add palette) rather than taking injectable state —
+// plus searchApi.useSearch for the add palette and effective feedback) rather than taking injectable state —
 // same shape as RefinePanel elsewhere in this package, which stubs `fetch`
 // deterministically (no backend, no new dependency) for the same reason. Dispatches by
 // method/path: GET /v1/search answers the add-a-title palette with a couple of
@@ -22,6 +22,9 @@ const jsonResponse = <T,>(body: T) =>
 // snapshots the initial render (no play()) and never observes the result of a click.
 const withStubbedLineup = (): Decorator => (Story) => {
   window.fetch = ((url: string, init?: RequestInit) => {
+    if (typeof url === "string" && url.includes("/v1/discovery/feedback")) {
+      return Promise.resolve(jsonResponse<DiscoveryFeedbackDTO[]>([]));
+    }
     if (typeof url === "string" && url.includes("/v1/search")) {
       return Promise.resolve(
         jsonResponse<SearchOutputBody>({
