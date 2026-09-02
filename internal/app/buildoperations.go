@@ -99,13 +99,20 @@ func buildOperations(
 	log *slog.Logger,
 	metricRecorder *metrics.Recorder,
 	protection *secretprotection.Manager,
+	secretRedactor *settings.Redactor,
 ) (operationsBuild, error) {
 	restart, bootConfig := buildRestart(overrides, log)
 	backups := buildBackups(st, set, registry, log)
 	authResult := buildAuth(st, set, secrets, readGeneratedSecret, libraryClient, log)
 	invitationService, _ := authResult.invitations.(*invitation.Service)
 	recoveryService := authResult.passwordRecovery
-	destinationRepository := notifications.NewProtectedDestinationRepository(st, protection)
+	destinationRepository := notifications.NewProtectedDestinationRepository(st, protection).
+		WithCredentialRedactor(secretRedactor)
+	if destinationRepository != nil {
+		if err := destinationRepository.SeedCredentialRedaction(rootCtx); err != nil {
+			return operationsBuild{}, fmt.Errorf("register notification provider credentials for redaction: %w", err)
+		}
+	}
 	if err := migrateLegacySMTPProvider(rootCtx, destinationRepository, set); err != nil {
 		return operationsBuild{}, fmt.Errorf("migrate SMTP notification provider: %w", err)
 	}
