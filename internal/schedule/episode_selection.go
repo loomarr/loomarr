@@ -37,6 +37,68 @@ func selectEpisodes(episodes []ResolvedProgram, policy EpisodeSelection) []Resol
 	}
 }
 
+// selectEpisodesWithTrace applies the same selector and records each keep/drop at the
+// editorial seam. A selector that deliberately falls back to the full run says so instead of
+// claiming every episode positively matched highlights or a holiday.
+func selectEpisodesWithTrace(entry LineupEntry, episodes []ResolvedProgram, editorialUnavailable bool, trace *scheduleTraceBuilder) []ResolvedProgram {
+	if editorialUnavailable {
+		for _, episode := range episodes {
+			trace.add(episodeFact(entry, episode, StageEpisodeSelection, OutcomeSelected, ReasonFullRunFallback))
+		}
+		return episodes
+	}
+	selected := selectEpisodes(episodes, entry.EpisodeSelection)
+	mode := entry.EpisodeSelection.Mode
+	if mode == "" || mode == EpisodeComplete {
+		for _, episode := range selected {
+			trace.add(episodeFact(entry, episode, StageEpisodeSelection, OutcomeSelected, ReasonCompleteSelected))
+		}
+		return selected
+	}
+	// Both selective modes return the original slice unchanged when their evidence cannot
+	// safely narrow it. That is a fallback fact, not N positive matches.
+	if len(selected) == len(episodes) {
+		for _, episode := range selected {
+			trace.add(episodeFact(entry, episode, StageEpisodeSelection, OutcomeSelected, ReasonFullRunFallback))
+		}
+		return selected
+	}
+	selectedCounts := make(map[resolvedProgramID]int, len(selected))
+	for _, episode := range selected {
+		selectedCounts[resolvedProgramIdentity(episode)]++
+	}
+	selectedReason, omittedReason := ReasonHighlightsSelected, ReasonHighlightsOmitted
+	if mode == EpisodeHoliday {
+		selectedReason, omittedReason = ReasonHolidaySelected, ReasonHolidayOmitted
+	}
+	for _, episode := range episodes {
+		identity := resolvedProgramIdentity(episode)
+		if selectedCounts[identity] > 0 {
+			selectedCounts[identity]--
+			trace.add(episodeFact(entry, episode, StageEpisodeSelection, OutcomeSelected, selectedReason))
+		} else {
+			trace.add(episodeFact(entry, episode, StageEpisodeSelection, OutcomeOmitted, omittedReason))
+		}
+	}
+	return selected
+}
+
+type resolvedProgramID struct {
+	libraryItemID string
+	title         string
+	partGroup     string
+	season        int
+	episode       int
+	partIndex     int
+}
+
+func resolvedProgramIdentity(episode ResolvedProgram) resolvedProgramID {
+	return resolvedProgramID{
+		libraryItemID: episode.LibraryItemID, title: episode.Title, partGroup: episode.PartGroup,
+		season: episode.Season, episode: episode.Episode, partIndex: episode.PartIndex,
+	}
+}
+
 func selectHighlights(episodes []ResolvedProgram) []ResolvedProgram {
 	type selectionUnit struct {
 		episodes []int

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -227,6 +228,59 @@ type ActiveRuleDTO struct {
 	Matched  bool   `json:"matched" doc:"Whether a curation rule matched (false = base whole-policy behavior)"`
 }
 
+// ScheduleTraceDTO is the bounded scheduler-owned evidence for this exact preview. It is
+// projected from ComputeDesiredAt's result, never reconstructed from the final slots.
+type ScheduleTraceDTO struct {
+	Version       int                     `json:"version" doc:"Scheduler trace schema version"`
+	Ordering      string                  `json:"ordering" enum:"sequential,shuffle,syndication" doc:"Effective ordering mode"`
+	Seed          string                  `json:"seed" doc:"Deterministic signed 64-bit ordering seed as a decimal string (lossless in JavaScript)"`
+	WindowMs      int64                   `json:"windowMs" doc:"Effective rolling-window duration in ms (0 = whole run)"`
+	WindowIndex   int64                   `json:"windowIndex" doc:"Coarse deterministic window index used to rotate the deck"`
+	Relaxations   []ScheduleRelaxationDTO `json:"relaxations" doc:"Constraint relaxations applied while placing the deck"`
+	FactTotal     int                     `json:"factTotal" doc:"Total facts emitted before the display bound"`
+	RecordedTotal int                     `json:"recordedTotal" doc:"Facts included in this response"`
+	Truncated     bool                    `json:"truncated" doc:"Whether facts were omitted by the bound"`
+	Facts         []ScheduleFactDTO       `json:"facts" doc:"Stable pipeline-ordered decision facts"`
+}
+
+type ScheduleRelaxationDTO struct {
+	Kind string `json:"kind"`
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+type ScheduleFactDTO struct {
+	Stage         string `json:"stage" enum:"hard_filter,availability,episode_selection,placement"`
+	Outcome       string `json:"outcome" enum:"kept,excluded,available,pending,selected,omitted,placed,windowed_out,inserted"`
+	Reason        string `json:"reason" enum:"eligible,over_ceiling,unrated,out_of_scope,out_of_rule_scope,out_of_season,available,unavailable_pod_fill,unavailable_coming_soon,complete_selected,highlights_selected,highlights_omitted,holiday_selected,holiday_omitted,full_run_fallback,out_of_season_range,sequential,shuffle,syndication,windowed_out,commercial_break"`
+	Key           string `json:"key,omitempty" doc:"Canonical provisioning key; empty for a commercial gap"`
+	Title         string `json:"title,omitempty"`
+	Season        int    `json:"season,omitempty"`
+	Episode       int    `json:"episode,omitempty"`
+	DeckPosition  *int   `json:"deckPosition,omitempty" doc:"Zero-based position before rolling-window selection"`
+	CyclePosition *int   `json:"cyclePosition,omitempty" doc:"Zero-based final slot position after break insertion"`
+}
+
+func scheduleTraceToDTO(trace schedule.ScheduleTrace) ScheduleTraceDTO {
+	facts := make([]ScheduleFactDTO, 0, len(trace.Facts))
+	for _, fact := range trace.Facts {
+		facts = append(facts, ScheduleFactDTO{
+			Stage: string(fact.Stage), Outcome: string(fact.Outcome), Reason: string(fact.Reason),
+			Key: string(fact.Key), Title: fact.Title, Season: fact.Season, Episode: fact.Episode,
+			DeckPosition: fact.DeckPosition, CyclePosition: fact.CyclePosition,
+		})
+	}
+	relaxations := make([]ScheduleRelaxationDTO, 0, len(trace.Relaxations))
+	for _, relaxation := range trace.Relaxations {
+		relaxations = append(relaxations, ScheduleRelaxationDTO{Kind: relaxation.Kind, From: relaxation.From, To: relaxation.To})
+	}
+	return ScheduleTraceDTO{
+		Version: trace.Version, Ordering: string(trace.Ordering), Seed: strconv.FormatInt(trace.Seed, 10),
+		WindowMs: trace.WindowMs, WindowIndex: trace.WindowIndex, Relaxations: relaxations,
+		FactTotal: trace.FactTotal, RecordedTotal: trace.RecordedTotal, Truncated: trace.Truncated, Facts: facts,
+	}
+}
+
 type previewCycleInput struct {
 	ID string `path:"id"`
 	At string `query:"at" doc:"RFC3339 wall-clock to preview (default: now). May be past or future — 'what airs next Christmas morning?'"`
@@ -234,11 +288,12 @@ type previewCycleInput struct {
 
 type previewCycleOutput struct {
 	Body struct {
-		At         string         `json:"at" doc:"The resolved wall-clock this preview was computed for (RFC3339)"`
-		ActiveRule ActiveRuleDTO  `json:"activeRule"`
-		WindowMs   int64          `json:"windowMs" doc:"Resolved rolling-window horizon in ms (0 = the whole run, no truncation)"`
-		Slots      []CycleSlotDTO `json:"slots" doc:"The leading slots of the resolved cycle, in play order (capped)"`
-		Excluded   ExcludedDTO    `json:"excluded" doc:"What the hard filters REFUSED and why — the answer to \"why isn't X on my channel\" (§4)"`
+		At         string           `json:"at" doc:"The resolved wall-clock this preview was computed for (RFC3339)"`
+		ActiveRule ActiveRuleDTO    `json:"activeRule"`
+		WindowMs   int64            `json:"windowMs" doc:"Resolved rolling-window horizon in ms (0 = the whole run, no truncation)"`
+		Slots      []CycleSlotDTO   `json:"slots" doc:"The leading slots of the resolved cycle, in play order (capped)"`
+		Excluded   ExcludedDTO      `json:"excluded" doc:"What the hard filters REFUSED and why — the answer to \"why isn't X on my channel\" (§4)"`
+		Trace      ScheduleTraceDTO `json:"trace" doc:"Bounded scheduler-owned reasons emitted by the exact computation that produced slots"`
 	}
 }
 
@@ -286,6 +341,7 @@ func (s *Server) previewChannelCycle(ctx context.Context, in *previewCycleInput)
 	out.Body.WindowMs = cycle.Window.Milliseconds()
 	out.Body.Slots = cycleSlotsToDTO(cycle.Slots, cyclePreviewSlotCap)
 	out.Body.Excluded = excludedToDTO(cycle.Excluded)
+	out.Body.Trace = scheduleTraceToDTO(cycle.Trace)
 	return out, nil
 }
 

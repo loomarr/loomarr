@@ -180,4 +180,16 @@ func TestCyclePreviewDraft_CarriesTheExclusionReport(t *testing.T) {
 	if len(got.Slots) == 0 {
 		t.Fatal("expected the below-ceiling title to still air")
 	}
+	if got.Trace.Version != schedule.ScheduleTraceVersion || got.Trace.RecordedTotal == 0 {
+		t.Fatalf("scheduler trace was not carried from ComputeDesiredAt: %+v", got.Trace)
+	}
+	found := false
+	for _, fact := range got.Trace.Facts {
+		if fact.Key == "movie:tmdb:2" && fact.Reason == schedule.ReasonOverCeiling {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("trace does not carry the exact hard-filter fact: %+v", got.Trace.Facts)
+	}
 }

@@ -217,7 +217,7 @@ func applyRuleHow(rp ResolvedPolicy, how RuleOrdering) ResolvedPolicy {
 // scope + audience filters, so a rule cannot admit content the channel excluded, and
 // (crucially) it cannot bypass §4 audience safety. A nil scope keeps everything (the
 // rule inherits the channel scope). Reuses the same scope predicates as filterEntries.
-func applyRuleScope(entries []LineupEntry, what *ScopePolicy) []LineupEntry {
+func applyRuleScopeWithTrace(entries []LineupEntry, what *ScopePolicy, trace *scheduleTraceBuilder) []LineupEntry {
 	if what == nil {
 		return entries
 	}
@@ -226,16 +226,20 @@ func applyRuleScope(entries []LineupEntry, what *ScopePolicy) []LineupEntry {
 	for _, e := range entries {
 		if seriesAllow != nil && e.Key.IsSeries() {
 			if _, ok := seriesAllow[e.Key]; !ok {
+				trace.add(hardFilterFact(e, OutcomeExcluded, ReasonOutOfRuleScope))
 				continue
 			}
 		}
 		if e.Year > 0 && !what.Era.Contains(e.Year) {
+			trace.add(hardFilterFact(e, OutcomeExcluded, ReasonOutOfRuleScope))
 			continue
 		}
 		if !genreOK(e.Genres, what.Genres) {
+			trace.add(hardFilterFact(e, OutcomeExcluded, ReasonOutOfRuleScope))
 			continue
 		}
 		if what.RuntimeMax > 0 && e.RuntimeSec > 0 && e.RuntimeSec > what.RuntimeMax {
+			trace.add(hardFilterFact(e, OutcomeExcluded, ReasonOutOfRuleScope))
 			continue
 		}
 		out = append(out, e)

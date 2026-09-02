@@ -70,7 +70,7 @@ func (r *ExclusionReport) merge(o ExclusionReport) {
 // SeasonMin/Max). A Series allowlist, Era, Genre, and RuntimeMax filter apply here;
 // resolveEntry re-applies Era to each episode's own production year because a
 // long-running series' first-air year cannot represent its whole run.
-func filterEntries(entries []LineupEntry, rp ResolvedPolicy) ([]LineupEntry, ExclusionReport) {
+func filterEntriesWithTrace(entries []LineupEntry, rp ResolvedPolicy, trace *scheduleTraceBuilder) ([]LineupEntry, ExclusionReport) {
 	var report ExclusionReport
 	eligible := make([]LineupEntry, 0, len(entries))
 
@@ -82,6 +82,7 @@ func filterEntries(entries []LineupEntry, rp ResolvedPolicy) ([]LineupEntry, Exc
 		if seriesAllow != nil && e.Key.IsSeries() {
 			if _, ok := seriesAllow[e.Key]; !ok {
 				report.add(e, "out_of_scope")
+				trace.add(hardFilterFact(e, OutcomeExcluded, ReasonOutOfScope))
 				continue
 			}
 		}
@@ -90,6 +91,7 @@ func filterEntries(entries []LineupEntry, rp ResolvedPolicy) ([]LineupEntry, Exc
 		// a single production year); its episodes still carry the intent.
 		if e.Year > 0 && !rp.Scope.Era.Contains(e.Year) {
 			report.add(e, "out_of_scope")
+			trace.add(hardFilterFact(e, OutcomeExcluded, ReasonOutOfScope))
 			continue
 		}
 		// Genre include/exclude (§2). Exclude always wins; Include (when non-empty)
@@ -98,12 +100,14 @@ func filterEntries(entries []LineupEntry, rp ResolvedPolicy) ([]LineupEntry, Exc
 		// metadata gap for genre — genre is a taste filter, not a safety one).
 		if !genreOK(e.Genres, rp.Scope.Genres) {
 			report.add(e, "out_of_scope")
+			trace.add(hardFilterFact(e, OutcomeExcluded, ReasonOutOfScope))
 			continue
 		}
 		// Runtime cap (§2 "nothing over an hour"): only when both the cap and the
 		// entry runtime are known.
 		if rp.Scope.RuntimeMax > 0 && e.RuntimeSec > 0 && e.RuntimeSec > rp.Scope.RuntimeMax {
 			report.add(e, "out_of_scope")
+			trace.add(hardFilterFact(e, OutcomeExcluded, ReasonOutOfScope))
 			continue
 		}
 		// Media-server collections (programming-design §2.2). Reads the membership stamped
@@ -116,6 +120,7 @@ func filterEntries(entries []LineupEntry, rp ResolvedPolicy) ([]LineupEntry, Exc
 		// safety asymmetry, and it points the other way).
 		if !boxSetOK(e, rp.Scope.Collections) {
 			report.add(e, "out_of_scope")
+			trace.add(hardFilterFact(e, OutcomeExcluded, ReasonOutOfScope))
 			continue
 		}
 		// Audience ceiling (§4) — the fail-closed safety filter, NEVER relaxed.
@@ -124,16 +129,23 @@ func filterEntries(entries []LineupEntry, rp ResolvedPolicy) ([]LineupEntry, Exc
 			case verdictOverCeiling:
 				report.OverCeiling++
 				report.add(e, "over_ceiling")
+				trace.add(hardFilterFact(e, OutcomeExcluded, ReasonOverCeiling))
 				continue
 			case verdictUnratedExcluded:
 				report.Unrated++
 				report.add(e, "unrated")
+				trace.add(hardFilterFact(e, OutcomeExcluded, ReasonUnrated))
 				continue
 			}
 		}
 		eligible = append(eligible, e)
+		trace.add(hardFilterFact(e, OutcomeKept, ReasonEligible))
 	}
 	return eligible, report
+}
+
+func hardFilterFact(e LineupEntry, outcome ScheduleOutcome, reason ScheduleReason) ScheduleFact {
+	return ScheduleFact{Stage: StageHardFilter, Outcome: outcome, Reason: reason, Key: e.Key, Title: e.Title}
 }
 
 func (r *ExclusionReport) add(e LineupEntry, reason string) {

@@ -137,6 +137,12 @@ program in place only if that Title independently reaches `available` — so a m
 never make unapproved content play (§7).
 _Avoid_: placeholder, gap, empty slot
 
+**Scheduler decision trace**:
+The bounded, versioned record of how one `ComputeDesiredAt` run turned a Channel's approved
+Lineup, live availability, Policy, and wall-clock into a cycle. It is current schedule evidence,
+not the immutable evidence attached to the originating Proposal (§8; `programming-design.md` §8.4).
+_Avoid_: proposal trace, rationale, chain-of-thought
+
 ### Commercials
 
 **Clip**:
