@@ -30,6 +30,8 @@ Return {"concepts":[]} when the evidence is insufficient or contradictory.`
 type RunConfig struct {
 	Profile         string        `json:"profile"`
 	Model           string        `json:"model"`
+	ArtifactDigest  string        `json:"artifactDigest,omitempty"`
+	Upstream        string        `json:"upstream,omitempty"`
 	ExpectedCases   int           `json:"expectedCases"`
 	MaxCalls        int           `json:"maxCalls"`
 	MaxTokens       int           `json:"maxTokens"`
@@ -103,6 +105,12 @@ func NewRunner(provider llm.Provider, config RunConfig) (*Runner, error) {
 	}
 	if strings.TrimSpace(config.Profile) == "" || strings.TrimSpace(config.Model) == "" {
 		return nil, fmt.Errorf("recommendation runner requires profile and model identities")
+	}
+	if strings.EqualFold(provider.Name(), "ollama") && !validArtifactDigest(config.ArtifactDigest) {
+		return nil, fmt.Errorf("local recommendation certification requires a hexadecimal model artifact digest")
+	}
+	if strings.EqualFold(provider.Name(), "openrouter") && strings.TrimSpace(config.Upstream) == "" {
+		return nil, fmt.Errorf("OpenRouter recommendation certification requires a pinned upstream provider")
 	}
 	if config.ExpectedCases <= 0 {
 		return nil, fmt.Errorf("recommendation runner requires a positive expected case count")
@@ -324,4 +332,16 @@ func boundedError(err error) string {
 		return ""
 	}
 	return boundedIdentity(err.Error())
+}
+
+func validArtifactDigest(value string) bool {
+	if len(value) < 12 || len(value) > 64 {
+		return false
+	}
+	for _, char := range value {
+		if !((char >= '0' && char <= '9') || (char >= 'a' && char <= 'f')) {
+			return false
+		}
+	}
+	return true
 }

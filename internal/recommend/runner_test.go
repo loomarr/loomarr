@@ -32,7 +32,7 @@ func TestRunnerCertifiesOnlyACompleteSuiteMeetingFrozenThresholds(t *testing.T) 
 		}})
 	}
 	runner, err := recommend.NewRunner(provider, recommend.RunConfig{
-		Profile: "local-fixture", Model: "fixture:1b", ExpectedCases: 8, MaxCalls: 8, MaxTokens: 1_000,
+		Profile: "local-fixture", Model: "fixture:1b", ArtifactDigest: "0123456789ab", ExpectedCases: 8, MaxCalls: 8, MaxTokens: 1_000,
 		MaxSpendNanoUSD: 1, MaxOutputTokens: 256, PerCaseTimeout: time.Second,
 	})
 	if err != nil {
@@ -87,7 +87,7 @@ func TestRunnerUsesOneJSONOnlyCallPerSyntheticSnapshot(t *testing.T) {
 		})
 	}
 	runner, err := recommend.NewRunner(provider, recommend.RunConfig{
-		Profile: "local-fixture", Model: "fixture:1b", ExpectedCases: 8, MaxCalls: 8, MaxTokens: 1_000,
+		Profile: "local-fixture", Model: "fixture:1b", ArtifactDigest: "0123456789ab", ExpectedCases: 8, MaxCalls: 8, MaxTokens: 1_000,
 		MaxSpendNanoUSD: 1, MaxOutputTokens: 256, PerCaseTimeout: time.Second,
 	})
 	if err != nil {
@@ -125,7 +125,7 @@ func TestRunnerFailsClosedWhenHostedAccountingIsMissing(t *testing.T) {
 		},
 	}}}
 	runner, err := recommend.NewRunner(provider, recommend.RunConfig{
-		Profile: "hosted-fixture", Model: "vendor/model-1", ExpectedCases: 8, MaxCalls: 8, MaxTokens: 1_000,
+		Profile: "hosted-fixture", Model: "vendor/model-1", Upstream: "Provider", ExpectedCases: 8, MaxCalls: 8, MaxTokens: 1_000,
 		MaxSpendNanoUSD: 1_000_000, MaxOutputTokens: 256, PerCaseTimeout: time.Second,
 	})
 	if err != nil {
@@ -151,7 +151,7 @@ func TestRunnerStopsWhenExactProviderChargeCrossesSuiteCeiling(t *testing.T) {
 		},
 	}}}
 	runner, err := recommend.NewRunner(provider, recommend.RunConfig{
-		Profile: "hosted-fixture", Model: "vendor/model-1", ExpectedCases: 8, MaxCalls: 8, MaxTokens: 1_000,
+		Profile: "hosted-fixture", Model: "vendor/model-1", Upstream: "Provider", ExpectedCases: 8, MaxCalls: 8, MaxTokens: 1_000,
 		MaxSpendNanoUSD: 10, MaxOutputTokens: 256, PerCaseTimeout: time.Second,
 	})
 	if err != nil {
@@ -166,7 +166,7 @@ func TestRunnerStopsWhenExactProviderChargeCrossesSuiteCeiling(t *testing.T) {
 func TestNewRunnerRejectsBudgetThatCannotCoverTheDeclaredSuite(t *testing.T) {
 	provider := &scriptedProvider{name: "ollama"}
 	_, err := recommend.NewRunner(provider, recommend.RunConfig{
-		Profile: "local", Model: "fixture", ExpectedCases: 8, MaxCalls: 7, MaxTokens: 100,
+		Profile: "local", Model: "fixture", ArtifactDigest: "0123456789ab", ExpectedCases: 8, MaxCalls: 7, MaxTokens: 100,
 		MaxSpendNanoUSD: 1, MaxOutputTokens: 10, PerCaseTimeout: time.Second,
 	})
 	if err == nil || !strings.Contains(err.Error(), "max calls") {

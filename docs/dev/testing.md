@@ -233,6 +233,7 @@ LLM_PROVIDER=ollama \
 LLM_URL=http://127.0.0.1:11434 \
 LLM_MODEL=qwen3.5:9b \
 LOOMARR_RECOMMEND_PROFILE=qwen35-local \
+LOOMARR_RECOMMEND_MODEL_DIGEST=6488c96fa5fa \
 LOOMARR_RECOMMEND_MAX_CALLS=8 \
 LOOMARR_RECOMMEND_MAX_TOKENS=50000 \
 LOOMARR_RECOMMEND_MAX_SPEND_NANOUSD=1 \
@@ -242,7 +243,9 @@ make channel-recommend-cert
 For OpenRouter, use its exact canonical base, a concrete namespaced model, one pinned upstream
 provider in `LOOMARR_EVAL_GENERATOR_UPSTREAM_PROVIDER`, and `OPENROUTER_API_KEY` (or `LLM_API_KEY`).
 The route disables fallback and data collection and requests ZDR through the shared strict adapter.
-The scorecard records provider/model/profile, prompt/schema/scorer versions, fixture digest, calls,
+Local certification also requires the hexadecimal Ollama artifact ID from `ollama list`; a tag alone
+is mutable and is not certification identity. The scorecard records provider/model/profile, local
+artifact digest or hosted upstream, prompt/schema/scorer versions, fixture digest, calls,
 prompt/completion tokens, exact nanodollar charges, attempts, latency, hard failures, quality metrics,
 floors, and the pre-registered selection margin. It excludes credentials, endpoint URLs, prompts,
 generation IDs, reasoning text, and raw provider payloads. Missing hosted token or charge accounting

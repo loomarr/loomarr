@@ -40,11 +40,17 @@ func TestCommandWritesBothScorecardsEvenWhenModelDoesNotCertify(t *testing.T) {
 	markdownPath := filepath.Join(dir, "result.md")
 	provider := &commandProvider{}
 	args := []string{
-		"--model", "fixture:1b", "--profile", "local-fixture",
+		"--model", "fixture:1b", "--profile", "local-fixture", "--artifact-digest", "0123456789ab",
 		"--max-calls", "8", "--max-tokens", "1000", "--max-spend-nanousd", "1",
 		"--out", jsonPath, "--summary", markdownPath,
 	}
-	code := run(context.Background(), args, func(string) string { return "super-secret" },
+	getenv := func(key string) string {
+		if strings.Contains(key, "API_KEY") {
+			return "super-secret"
+		}
+		return ""
+	}
+	code := run(context.Background(), args, getenv,
 		&bytes.Buffer{}, &bytes.Buffer{}, func(providerConfig) (llm.Provider, error) { return provider, nil })
 	if code != 1 || provider.calls != 8 {
 		t.Fatalf("exit = %d, calls = %d", code, provider.calls)

@@ -40,6 +40,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	baseURL := flags.String("base-url", getenv("LLM_URL"), "provider API base")
 	model := flags.String("model", getenv("LLM_MODEL"), "exact model identity")
 	profile := flags.String("profile", getenv("LOOMARR_RECOMMEND_PROFILE"), "certification profile identity")
+	artifactDigest := flags.String("artifact-digest", getenv("LOOMARR_RECOMMEND_MODEL_DIGEST"), "local model artifact digest")
 	upstream := flags.String("upstream-provider", getenv("LOOMARR_EVAL_GENERATOR_UPSTREAM_PROVIDER"), "pinned OpenRouter upstream")
 	maxCalls := flags.String("max-calls", getenv("LOOMARR_RECOMMEND_MAX_CALLS"), "suite call ceiling")
 	maxTokens := flags.String("max-tokens", getenv("LOOMARR_RECOMMEND_MAX_TOKENS"), "suite token ceiling")
@@ -78,8 +79,16 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		_, _ = fmt.Fprintln(stderr, "channel-recommend-cert: OPENROUTER_API_KEY or LLM_API_KEY is required")
 		return 2
 	}
+	recordedDigest, recordedUpstream := "", ""
+	if provider == "ollama" {
+		recordedDigest = *artifactDigest
+	}
+	if provider == "openrouter" {
+		recordedUpstream = *upstream
+	}
 	config := recommend.RunConfig{
-		Profile: *profile, Model: *model, ExpectedCases: len(corpus.Cases), MaxCalls: parsedCalls,
+		Profile: *profile, Model: *model, ArtifactDigest: recordedDigest, Upstream: recordedUpstream,
+		ExpectedCases: len(corpus.Cases), MaxCalls: parsedCalls,
 		MaxTokens: parsedTokens, MaxSpendNanoUSD: parsedSpend, MaxOutputTokens: *maxOutputTokens,
 		PerCaseTimeout: *caseTimeout,
 	}
