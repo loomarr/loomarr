@@ -44,10 +44,13 @@ type Clip struct {
 // ClipFilter narrows a ListClips query. Any zero-value field is a wildcard, so a
 // zero ClipFilter lists everything (the pod-assembly catalog load).
 type ClipFilter struct {
-	Kind     filler.Kind
-	Era      int
-	Audience filler.Audience
-	Category string
+	Kind            filler.Kind
+	Era             int
+	Audience        filler.Audience
+	Category        string
+	GeographicScope filler.GeographicScope
+	Country         string
+	Market          string
 	// Taxon matches the denormalised full tag set, so selecting a parent includes descendants.
 	Taxon string
 	// WithoutTaxonomyTags restricts to playable clips with no asserted taxonomy rows.
@@ -270,8 +273,8 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// FIFTH and SIXTH, and they DO have a writer — SetClipArtworkImages, after the adoption
 		// job ingests the files. The scan knows nothing about image identities, so including them
 		// in the update list would blank every clip's artwork on re-sync.
-		`INSERT INTO clips (hash, path, tunarr_program_id, name, kind, era, audience, category, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged, is_composite, parent_hash, play_count, last_played_at, suggested_era, removed_at, held, confidence, auto_filed, updated_at, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO clips (hash, path, tunarr_program_id, name, kind, era, audience, category, geographic_scope, country, market, network, station, air_date, geo_evidence, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged, is_composite, parent_hash, play_count, last_played_at, suggested_era, removed_at, held, confidence, auto_filed, updated_at, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(hash) DO UPDATE SET
 		   path=excluded.path,
 		   tunarr_program_id=excluded.tunarr_program_id,
@@ -290,6 +293,7 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		   suggested_era=excluded.suggested_era,
 		   updated_at=excluded.updated_at`),
 		c.Hash, c.Path, nullIfEmpty(c.TunarrProgramID), c.Name, string(c.Kind), c.Era, string(c.Audience), c.Category,
+		clipGeographicScope(c), c.Country, c.Market, c.Network, c.Station, c.AirDate, c.GeoEvidence,
 		c.DurationMs, c.Rating, c.Source,
 		// ⚠ Bound as real bools. `ai_tagged` used `boolToInt` until V38c, when 00033 rebuilt the
 		// table and made it BOOLEAN on Postgres like `held`/`auto_filed` — so the helper that was
@@ -617,7 +621,15 @@ func clipCreatedAt(c Clip) time.Time {
 	return c.UpdatedAt
 }
 
+func clipGeographicScope(c Clip) string {
+	if c.GeographicScope == "" {
+		return string(filler.GeographicUnknown)
+	}
+	return string(c.GeographicScope)
+}
+
 const clipSelect = `SELECT hash, path, tunarr_program_id, name, kind, era, audience, category, duration_ms,
+	geographic_scope, country, market, network, station, air_date, geo_evidence,
 	rating, source, ai_tagged, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged,
 	is_composite, parent_hash,
 	play_count, last_played_at, suggested_era,
@@ -775,6 +787,18 @@ func clipWhere(f ClipFilter) ([]string, []any) {
 	if f.Category != "" {
 		where = append(where, "category = ?")
 		args = append(args, f.Category)
+	}
+	if f.GeographicScope != "" {
+		where = append(where, "geographic_scope = ?")
+		args = append(args, string(f.GeographicScope))
+	}
+	if f.Country != "" {
+		where = append(where, "UPPER(country) = UPPER(?)")
+		args = append(args, strings.TrimSpace(f.Country))
+	}
+	if f.Market != "" {
+		where = append(where, "LOWER(market) = LOWER(?)")
+		args = append(args, strings.Join(strings.Fields(f.Market), " "))
 	}
 	if f.Taxon != "" {
 		where = append(where, "EXISTS (SELECT 1 FROM clip_tags tx WHERE tx.clip_hash = clips.hash AND tx.taxon = ?)")
@@ -1019,6 +1043,20 @@ func (s *sqlStore) UpdateClipKind(ctx context.Context, id, kind string, updatedA
 	return nil
 }
 
+func (s *sqlStore) UpdateClipGeography(ctx context.Context, hash, scope, country, market, network, station, airDate, evidence string, updatedAt time.Time) error {
+	res, err := s.db.ExecContext(ctx, s.ph(`UPDATE clips SET geographic_scope = ?, country = ?, market = ?,
+		network = ?, station = ?, air_date = ?, geo_evidence = ?, updated_at = ? WHERE hash = ?`),
+		scope, country, market, network, station, airDate, evidence, epoch(updatedAt), hash)
+	if err != nil {
+		return fmt.Errorf("update clip geography %s: %w", hash, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // DeleteClipsNotIn prunes clips absent from the given id set (the sync reconcile).
 // With an empty keep set it deletes all clips. Returns the count removed.
 func (s *sqlStore) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, error) {
@@ -1111,7 +1149,8 @@ func scanClip(sc scannable) (Clip, error) {
 		createdAt int64
 	)
 	err := sc.Scan(&c.Hash, &c.Path, &tunarrID, &c.Name, &kind, &c.Era, &audience, &c.Category,
-		&c.DurationMs, &c.Rating, &c.Source, &aiTagged, &c.Quality, &c.License, &c.Thumbnail, &c.Preview,
+		&c.DurationMs, &c.GeographicScope, &c.Country, &c.Market, &c.Network, &c.Station, &c.AirDate, &c.GeoEvidence,
+		&c.Rating, &c.Source, &aiTagged, &c.Quality, &c.License, &c.Thumbnail, &c.Preview,
 		&c.ThumbImageHash, &c.HoverImageHash, &c.Language,
 		&c.Transcript, &c.Brand, &c.VisibleText, &visionTagged,
 		&isComposite, &c.ParentHash,

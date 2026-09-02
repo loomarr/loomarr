@@ -150,6 +150,8 @@ To replace the installation key, supply the new current key and provide the old 
 
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
+| `filler.home_country` (`FILLER_HOME_COUNTRY`) | string | — | Optional ISO two-letter country that constrains automatic filler use. Unknown and foreign clips remain reviewable but do not air. Leave blank to preserve the legacy unrestricted pool until geography is configured. |
+| `filler.home_market` (`FILLER_HOME_MARKET`) | string | — | Optional local broadcast market inside the home country, such as New York or Seattle. Local clips must match it exactly; Loomarr never infers it from the guide timezone. |
 | `filler.dir` (`FILLER_DIR`) | string | `/data/filler` | Where Loomarr stores clips. Each is filed under its content hash with its metadata beside it. Defaults inside /data so the documented volume carries it; point it elsewhere to use an existing clip library. _(required for filler; applies after restart)_ |
 | `filler.watch_dir` (`FILLER_WATCH_DIR`) | string | — | Folder Loomarr watches for new clips. Anything dropped here is filed into your clip folder and then removed. Leave blank to use a '_watch' folder inside the clip folder. _(applies after restart)_ |
 | `filler.sync_every` (`FILLER_SYNC_EVERY`) | duration | `15m` | How often Loomarr drains the drop folder and reconciles its own clip library. _(advanced)_ |

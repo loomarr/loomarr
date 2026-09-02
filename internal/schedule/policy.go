@@ -204,12 +204,20 @@ type AutoCurate struct {
 // Enum values mirror the filler package's wire strings deliberately — the policy model
 // validates its own closed sets and imports nothing (see the other enums here).
 type FillerSelection struct {
-	Era        *Range   `json:"era,omitempty"`        // year window; nil = inherit Scope.Era at derivation.
-	Audience   string   `json:"audience,omitempty"`   // "" = any; else kids|family|general|late_night
-	Categories []string `json:"categories,omitempty"` // empty = any; else a subset of the closed category set
-	Kinds      []string `json:"kinds,omitempty"`      // empty = the default kinds; else the chosen subset
-	Pinned     []string `json:"pinned,omitempty"`     // clip hashes always included (a top-priority pool)
-	Excluded   []string `json:"excluded,omitempty"`   // clip hashes never used (wins over Pinned)
+	Era        *Range           `json:"era,omitempty"`        // year window; nil = inherit Scope.Era at derivation.
+	Audience   string           `json:"audience,omitempty"`   // "" = any; else kids|family|general|late_night
+	Categories []string         `json:"categories,omitempty"` // empty = any; else a subset of the closed category set
+	Kinds      []string         `json:"kinds,omitempty"`      // empty = the default kinds; else the chosen subset
+	Pinned     []string         `json:"pinned,omitempty"`     // clip hashes always included (a top-priority pool)
+	Excluded   []string         `json:"excluded,omitempty"`   // clip hashes never used (wins over Pinned)
+	Geography  *FillerGeography `json:"geography,omitempty"`  // nil = inherit Installation geography
+}
+
+// FillerGeography is a Channel's explicit audience geography. Market is optional so a
+// country-wide Channel can use national Clips while excluding every local market.
+type FillerGeography struct {
+	Country string `json:"country"`
+	Market  string `json:"market,omitempty"`
 }
 
 // SeedFillerSelection hands the approved proposal's grounded scheduling facts to the

@@ -288,6 +288,13 @@ type ClipDTO struct {
 	Kind            string `json:"kind" enum:"commercial,bumper,station_id,psa,trailer,interstitial"`
 	Era             int    `json:"era,omitempty"`
 	Audience        string `json:"audience,omitempty" enum:"kids,family,general,late_night,"`
+	GeographicScope string `json:"geographicScope,omitempty" enum:"unknown,national,local"`
+	Country         string `json:"country,omitempty" doc:"ISO 3166-1 alpha-2 country when grounded"`
+	Market          string `json:"market,omitempty" doc:"Local broadcast market when geographicScope is local"`
+	Network         string `json:"network,omitempty"`
+	Station         string `json:"station,omitempty"`
+	AirDate         string `json:"airDate,omitempty" doc:"Grounded broadcast date in YYYY-MM-DD form"`
+	GeoEvidence     string `json:"geographyEvidence,omitempty" doc:"Literal source evidence or operator attribution"`
 	// Category is the DERIVED product-leaf shadow of Tags (§10 V45a) — kept for readers that show a
 	// single primary category; `Tags` is the full taxonomy set and the source of truth.
 	Category string `json:"category,omitempty" doc:"Derived primary product-leaf tag; the full set is in tags (§10 V45a)"`
@@ -448,6 +455,8 @@ func clipToDTO(c store.Clip, playsCounted bool, img func(string) *ImageDTO) Clip
 	d := ClipDTO{
 		Hash: c.Hash, TunarrProgramID: c.TunarrProgramID, Name: c.Name, Kind: string(c.Kind),
 		Era: c.Era, Audience: string(c.Audience), Category: c.Category, Tags: c.Tags, AssertedTags: c.AssertedTags,
+		GeographicScope: string(c.GeographicScope), Country: c.Country, Market: c.Market,
+		Network: c.Network, Station: c.Station, AirDate: c.AirDate, GeoEvidence: c.GeoEvidence,
 		DurationMs: c.DurationMs, Source: c.Source, Quality: c.Quality,
 		PlayCount: c.PlayCount, PlaysCounted: playsCounted,
 		AITagged: c.AITagged, Tagged: c.Tagged(), SuggestedEra: c.SuggestedEra,
@@ -468,14 +477,17 @@ func clipToDTO(c store.Clip, playsCounted bool, img func(string) *ImageDTO) Clip
 }
 
 type listFillerInput struct {
-	Kind         string `query:"kind" enum:"commercial,bumper,station_id,psa,trailer,interstitial"`
-	Era          int    `query:"era"`
-	Audience     string `query:"audience" enum:"kids,family,general,late_night"`
-	Category     string `query:"category"`
-	Taxon        string `query:"taxon" doc:"Match clips carrying this taxon directly or through a descendant rollup"`
-	Unclassified bool   `query:"unclassified" doc:"Only playable clips with no directly asserted taxonomy tags on any axis"`
-	WithoutAxis  string `query:"withoutAxis" enum:"product,format,seasonal,audience-cue" doc:"Only playable clips without a directly asserted taxonomy tag on this axis; absence may be valid for sparse cue axes"`
-	Untagged     bool   `query:"untagged" doc:"Only commercials missing match tags"`
+	Kind            string `query:"kind" enum:"commercial,bumper,station_id,psa,trailer,interstitial"`
+	Era             int    `query:"era"`
+	Audience        string `query:"audience" enum:"kids,family,general,late_night"`
+	Category        string `query:"category"`
+	GeographicScope string `query:"geographicScope" enum:"unknown,national,local"`
+	Country         string `query:"country" minLength:"2" maxLength:"2"`
+	Market          string `query:"market"`
+	Taxon           string `query:"taxon" doc:"Match clips carrying this taxon directly or through a descendant rollup"`
+	Unclassified    bool   `query:"unclassified" doc:"Only playable clips with no directly asserted taxonomy tags on any axis"`
+	WithoutAxis     string `query:"withoutAxis" enum:"product,format,seasonal,audience-cue" doc:"Only playable clips without a directly asserted taxonomy tag on this axis; absence may be valid for sparse cue axes"`
+	Untagged        bool   `query:"untagged" doc:"Only commercials missing match tags"`
 	// Q is the clip corpus's search box (§7.2). Clip search lives here rather than on
 	// /v1/search because a clip is not a provisionable title (§10) and cannot be a
 	// federated Candidate without leaking a non-title into the LLM grounding path.
@@ -545,6 +557,9 @@ func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFill
 		Era:                 in.Era,
 		Audience:            filler.Audience(in.Audience),
 		Category:            in.Category,
+		GeographicScope:     filler.GeographicScope(in.GeographicScope),
+		Country:             in.Country,
+		Market:              in.Market,
 		Taxon:               in.Taxon,
 		WithoutTaxonomyTags: in.Unclassified,
 		WithoutTaxonomyAxis: taxonomy.Axis(in.WithoutAxis),
@@ -613,7 +628,19 @@ type patchClipInput struct {
 		// wrong kind yields structurally wrong pods rather than just a mis-tagged clip.
 		// Empty means "leave it alone", so a tag-only edit never rewrites kind.
 		Kind string `json:"kind,omitempty" enum:"commercial,bumper,station_id,psa,trailer,interstitial,"`
+		// Geography is a complete, grounded replacement. Omit to leave it unchanged; use scope
+		// unknown to clear a bad classification. Operator edits are recorded as their own evidence.
+		Geography *ClipGeographyDTO `json:"geography,omitempty"`
 	}
+}
+
+type ClipGeographyDTO struct {
+	Scope   string `json:"scope" enum:"unknown,national,local"`
+	Country string `json:"country,omitempty" maxLength:"2"`
+	Market  string `json:"market,omitempty" maxLength:"120"`
+	Network string `json:"network,omitempty" maxLength:"120"`
+	Station string `json:"station,omitempty" maxLength:"120"`
+	AirDate string `json:"airDate,omitempty" doc:"YYYY-MM-DD when known"`
 }
 type clipOutput struct{ Body ClipDTO }
 
@@ -685,6 +712,38 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 			if errors.Is(err, store.ErrNotFound) {
 				return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 			}
+			return nil, err
+		}
+	}
+	if in.Body.Geography != nil {
+		g := in.Body.Geography
+		scope := filler.GeographicScope(g.Scope)
+		geo := filler.Geography{Country: g.Country, Market: g.Market}.Normalize()
+		if err := geo.Validate(); err != nil {
+			return nil, errUnprocessable("Invalid geography", err.Error())
+		}
+		switch scope {
+		case filler.GeographicUnknown:
+			geo = filler.Geography{}
+		case filler.GeographicNational:
+			if geo.Country == "" || geo.Market != "" {
+				return nil, errUnprocessable("Invalid geography", "National clips require a country and cannot carry a local market.")
+			}
+		case filler.GeographicLocal:
+			if geo.Country == "" || geo.Market == "" {
+				return nil, errUnprocessable("Invalid geography", "Local clips require both a country and a local market.")
+			}
+		default:
+			return nil, errUnprocessable("Invalid geography", "Geographic scope must be unknown, national, or local.")
+		}
+		airDate := strings.TrimSpace(g.AirDate)
+		if airDate != "" {
+			if _, err := time.Parse(time.DateOnly, airDate); err != nil {
+				return nil, errUnprocessable("Invalid air date", "Air date must use YYYY-MM-DD.")
+			}
+		}
+		if err := s.store.UpdateClipGeography(ctx, clip.Hash, string(scope), geo.Country, geo.Market,
+			strings.TrimSpace(g.Network), strings.TrimSpace(g.Station), airDate, "operator", now); err != nil {
 			return nil, err
 		}
 	}

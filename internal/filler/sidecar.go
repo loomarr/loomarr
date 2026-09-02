@@ -133,7 +133,14 @@ type SidecarTags struct {
 	// call) over the whole folder. Only a grounded brand is ever written to a clip in the first
 	// place, so what round-trips here is a fact, never a guess — the same "metadata travels with
 	// the clip" rule `originalName`/`normalizedLufs` follow.
-	Brand string `json:"brand,omitempty"`
+	Brand           string `json:"brand,omitempty"`
+	GeographicScope string `json:"geographicScope,omitempty"`
+	Country         string `json:"country,omitempty"`
+	Market          string `json:"market,omitempty"`
+	Network         string `json:"network,omitempty"`
+	Station         string `json:"station,omitempty"`
+	AirDate         string `json:"airDate,omitempty"`
+	GeoEvidence     string `json:"geographyEvidence,omitempty"`
 	// Transcript is the clip's spoken text (§10 V44), persisted beside the file for the same reason
 	// as `normalizedLufs`: it must survive a catalog rebuild, because re-deriving it means re-running
 	// Whisper (~341s per clip under QEMU) over the whole folder. omitempty keeps a wordless or

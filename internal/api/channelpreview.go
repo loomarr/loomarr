@@ -127,7 +127,7 @@ type CoverageRungDTO struct {
 // order the predicates run in would decide which setting gets the blame. Counted in isolation,
 // `audience: 0` beside `era: 214` names the culprit.
 type CoverageCriterionDTO struct {
-	Criterion string `json:"criterion" enum:"era,audience,category,kind,duration,quality" doc:"The channel setting this count is about"`
+	Criterion string `json:"criterion" enum:"geography,era,audience,category,kind,duration,quality" doc:"The channel setting this count is about"`
 	Clips     int    `json:"clips" doc:"Break-body commercials passing THIS setting alone, ignoring the others"`
 }
 

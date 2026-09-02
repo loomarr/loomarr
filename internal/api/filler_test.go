@@ -223,6 +223,10 @@ func newFillerServer(t *testing.T) (*httptest.Server, store.Store, *fakeFiller) 
 }
 
 func newFillerServerWithImages(t *testing.T, imageService api.ImageService) (*httptest.Server, store.Store, *fakeFiller) {
+	return newFillerServerWithConfig(t, imageService, nil)
+}
+
+func newFillerServerWithConfig(t *testing.T, imageService api.ImageService, liveConfig func(string) string) (*httptest.Server, store.Store, *fakeFiller) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/f.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -234,10 +238,11 @@ func newFillerServerWithImages(t *testing.T, imageService api.ImageService) (*ht
 		// with it a test that passes `memberToken` is really testing an anonymous caller — which
 		// is the exact gap api_test.go records four tests once falling into. `/v1/filler/watch`
 		// is member-readable and that has to be provable.
-		Auth:   testAuthorizer{},
-		Log:    slog.New(slog.DiscardHandler),
-		Filler: ff,
-		Images: imageService,
+		Auth:       testAuthorizer{},
+		Log:        slog.New(slog.DiscardHandler),
+		Filler:     ff,
+		Images:     imageService,
+		LiveConfig: liveConfig,
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -498,6 +503,30 @@ func TestPatchClip_AdminEditsTags(t *testing.T) {
 	resp = do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"nope","era":1990}`)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("patch missing → %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestPatchClip_AdminGroundsGeography(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	seedClip(t, st, "geo", filler.Commercial, 1994, "kids", "cereal")
+	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
+		`{"hash":"geo","era":1994,"audience":"kids","geography":{"scope":"local","country":"us","market":" New York ","network":"Fox","station":"WNYW","airDate":"1994-05-06"}}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("geography patch → %d", resp.StatusCode)
+	}
+	got, err := st.GetClip(context.Background(), "geo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.GeographicScope != filler.GeographicLocal || got.Country != "US" || got.Market != "New York" ||
+		got.Network != "Fox" || got.Station != "WNYW" || got.AirDate != "1994-05-06" || got.GeoEvidence != "operator" {
+		t.Fatalf("stored geography = %+v", got.Clip)
+	}
+
+	bad := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
+		`{"hash":"geo","era":1994,"audience":"kids","geography":{"scope":"local","country":"US"}}`)
+	if bad.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("local without market → %d, want 422", bad.StatusCode)
 	}
 }
 

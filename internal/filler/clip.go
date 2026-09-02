@@ -95,6 +95,13 @@ type Clip struct {
 	Kind            Kind     // commercial | bumper | station_id | psa | trailer | interstitial
 	Era             int      // decade/year, e.g. 1994; 0 = untagged
 	Audience        Audience // kids | family | general | late_night; "" = untagged
+	GeographicScope GeographicScope
+	Country         string // ISO 3166-1 alpha-2 when known
+	Market          string // local broadcast market; meaningful only for local scope
+	Network         string // grounded broadcast network context
+	Station         string // grounded station/callsign context
+	AirDate         string // grounded YYYY-MM-DD broadcast date
+	GeoEvidence     string // literal source evidence or "operator" correction attribution
 	// Category is the DERIVED SHADOW of the taxonomy tags (§10 V45a): the primary product leaf of
 	// `Tags`, computed at the single tag-write site (forest.PrimaryProductLeaf) and stored so the
 	// hot pod-selection read path stays a plain column read. ⚠ Never an input any more — it is

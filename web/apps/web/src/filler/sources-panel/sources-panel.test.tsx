@@ -114,12 +114,16 @@ describe("SourcesPanel", () => {
     renderPanel();
 
     // The add form is admin-only, so it appears only once `/v1/auth/me` has resolved.
-    const uri = await screen.findByRole("textbox");
-    await userEvent.type(uri, "/mnt/extra-ads");
+    await screen.findByRole("textbox", { name: "Library name" });
+    await userEvent.click(screen.getByRole("combobox", { name: "Kind of source to add" }));
+    await userEvent.click(screen.getByRole("option", { name: "Internet Archive" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Collection or URL" }), "vintage_ads");
+    await userEvent.type(screen.getByRole("textbox", { name: "Source country code" }), "us");
+    await userEvent.type(screen.getByRole("textbox", { name: "Source local market" }), "New York");
     await userEvent.click(screen.getByRole("button", { name: /add source/i }));
 
     await waitFor(() => {
-      expect(adds).toEqual([{ kind: "library", uri: "/mnt/extra-ads" }]);
+      expect(adds).toEqual([{ kind: "archive", uri: "vintage_ads", country: "US", market: "New York" }]);
     });
   });
 
@@ -170,13 +174,11 @@ describe("SourcesPanel", () => {
     expect(screen.queryByRole("button", { name: /^search vintage_ads$/i })).not.toBeInTheDocument();
   });
 
-  // Scheduled fetching has been live since V38b. Saying "downloads nothing" made a successful
-  // beta fetch look broken when its held clips correctly landed in Incoming instead of Catalog.
-  it("says that enabled remote sources download into Incoming on their schedule", async () => {
+  it("explains source geography before scheduled acquisition", async () => {
     stubSources();
     renderPanel();
-    expect(await screen.findByText(/checked on their schedule/i)).toBeInTheDocument();
-    expect(screen.getByText(/review-only sources stay in Incoming/i)).toBeInTheDocument();
+    expect(await screen.findByText(/country-only sources are nationwide/i)).toBeInTheDocument();
+    expect(screen.getByText(/unclassified and out-of-market sources are not fetched/i)).toBeInTheDocument();
   });
 
   it("fetches only the source row the operator selected", async () => {

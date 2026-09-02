@@ -87,6 +87,10 @@ components:
           format: uri
           readOnly: true
           type: string
+        country:
+          description: ISO 3166-1 alpha-2 source country
+          maxLength: 2
+          type: string
         kind:
           description: Which kind of source this is
           enum:
@@ -97,6 +101,10 @@ components:
           type: string
         label:
           description: Operator-facing name; falls back to the identifier
+          type: string
+        market:
+          description: Local source market; omit for country-wide
+          maxLength: 120
           type: string
         uri:
           description: An archive.org collection identifier/URL, a YouTube playlist or channel URL, a folder path Loomarr can read, or a media-server library name
@@ -1177,6 +1185,9 @@ components:
           type: string
         aiTagged:
           type: boolean
+        airDate:
+          description: Grounded broadcast date in YYYY-MM-DD form
+          type: string
         assertedTags:
           description: Directly asserted taxonomy tags; excludes derived rollups and is the set clip editors should round-trip
           items:
@@ -1200,12 +1211,24 @@ components:
           description: Tagging confidence 0-100; 0 = never scored (§10 V38), which is distinct from a low score
           format: int64
           type: integer
+        country:
+          description: ISO 3166-1 alpha-2 country when grounded
+          type: string
         durationMs:
           format: int64
           type: integer
         era:
           format: int64
           type: integer
+        geographicScope:
+          enum:
+            - unknown
+            - national
+            - local
+          type: string
+        geographyEvidence:
+          description: Literal source evidence or operator attribution
+          type: string
         hasTranscript:
           description: Whether a transcript exists (§10 V44). The text itself is a detail-surface read — kilobytes per clip that no grid renders.
           type: boolean
@@ -1238,7 +1261,12 @@ components:
         license:
           description: The licence URL the source declared. ⚠ Absent means UNKNOWN, never public domain — most archive.org items declare none.
           type: string
+        market:
+          description: Local broadcast market when geographicScope is local
+          type: string
         name:
+          type: string
+        network:
           type: string
         parentHash:
           description: The composite this clip was split from; absent for a non-segment clip (§10 V45)
@@ -1253,6 +1281,8 @@ components:
           description: Resolution label from the probed video height (1080p, 480p). Display-only by default; affects selection only when the filler.min_quality floor is set, which is off unless an operator turns it on.
           type: string
         source:
+          type: string
+        station:
           type: string
         suggestedEra:
           description: AI-proposed era NOT persisted as a tag because the year is absent from the clip's text signals (§10). Confirm by PATCHing era; 0 = no suggestion.
@@ -1300,6 +1330,33 @@ components:
           type: array
       required:
         - channels
+      type: object
+    ClipGeographyDTO:
+      additionalProperties: false
+      properties:
+        airDate:
+          description: YYYY-MM-DD when known
+          type: string
+        country:
+          maxLength: 2
+          type: string
+        market:
+          maxLength: 120
+          type: string
+        network:
+          maxLength: 120
+          type: string
+        scope:
+          enum:
+            - unknown
+            - national
+            - local
+          type: string
+        station:
+          maxLength: 120
+          type: string
+      required:
+        - scope
       type: object
     CollectionsOutputBody:
       additionalProperties: false
@@ -1428,6 +1485,7 @@ components:
         criterion:
           description: The channel setting this count is about
           enum:
+            - geography
             - era
             - audience
             - category
@@ -3022,6 +3080,16 @@ components:
         - enabled
         - catalogClips
       type: object
+    FillerGeography:
+      additionalProperties: false
+      properties:
+        country:
+          type: string
+        market:
+          type: string
+      required:
+        - country
+      type: object
     FillerIncomingOutputBody:
       additionalProperties: false
       properties:
@@ -3189,6 +3257,8 @@ components:
           items:
             type: string
           type: array
+        geography:
+          $ref: "#/components/schemas/FillerGeography"
         kinds:
           items:
             type: string
@@ -3210,6 +3280,9 @@ components:
         count:
           format: int64
           type: integer
+        country:
+          description: ISO 3166-1 alpha-2 country asserted for this source
+          type: string
         detail:
           type: string
         enabled:
@@ -3232,6 +3305,9 @@ components:
           type: string
         license:
           description: Licence the source declared; absent means unknown, NOT public domain
+          type: string
+        market:
+          description: Local market asserted for this source; absent means country-wide
           type: string
         parentId:
           type: string
@@ -5384,6 +5460,8 @@ components:
         era:
           format: int64
           type: integer
+        geography:
+          $ref: "#/components/schemas/ClipGeographyDTO"
         hash:
           description: The clip's content hash (its identity)
           type: string
@@ -6694,6 +6772,8 @@ components:
           type: string
         autoAdmit:
           type: boolean
+        country:
+          type: string
         enabled:
           type: boolean
         id:
@@ -6702,6 +6782,8 @@ components:
           type: string
         lastFetchedAt:
           description: RFC3339; absent if never fetched
+          type: string
+        market:
           type: string
         uri:
           type: string
@@ -7371,6 +7453,9 @@ components:
           maximum: 1000
           minimum: 1
           type: integer
+        geography:
+          $ref: "#/components/schemas/SourceGeographyDTO"
+          description: Complete source coverage replacement; country-only means country-wide
       required:
         - enabled
       type: object
@@ -7394,6 +7479,8 @@ components:
         fetchMaxPerRun:
           format: int64
           type: integer
+        geography:
+          $ref: "#/components/schemas/SourceGeographyDTO"
         id:
           type: string
       required:
@@ -7690,6 +7777,16 @@ components:
           type: array
       required:
         - checks
+      type: object
+    SourceGeographyDTO:
+      additionalProperties: false
+      properties:
+        country:
+          maxLength: 2
+          type: string
+        market:
+          maxLength: 120
+          type: string
       type: object
     SplitFillerInputBody:
       additionalProperties: false
@@ -10979,6 +11076,27 @@ paths:
         - explode: false
           in: query
           name: category
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: geographicScope
+          schema:
+            enum:
+              - unknown
+              - national
+              - local
+            type: string
+        - explode: false
+          in: query
+          name: country
+          schema:
+            maxLength: 2
+            minLength: 2
+            type: string
+        - explode: false
+          in: query
+          name: market
           schema:
             type: string
         - description: Match clips carrying this taxon directly or through a descendant rollup

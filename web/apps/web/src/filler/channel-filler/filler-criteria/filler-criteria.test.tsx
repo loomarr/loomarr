@@ -101,3 +101,55 @@ describe("FillerCriteria era", () => {
     expect(onChange).toHaveBeenCalledWith({ era: { from: 1990, to: 1999 } });
   });
 });
+
+describe("FillerCriteria geography", () => {
+  it("shows the inherited installation country and market", () => {
+    renderCriteria(
+      <FillerCriteria
+        selection={{}}
+        onChange={vi.fn()}
+        installationGeography={{ country: "US", market: "New York" }}
+      />,
+    );
+    expect(screen.getByTestId("geography-inherited")).toHaveTextContent(
+      "Following this installation (US · New York)",
+    );
+  });
+
+  it("creates an explicit channel override and can return to inheritance", async () => {
+    const onChange = vi.fn();
+    const { rerender } = renderCriteria(
+      <FillerCriteria
+        selection={{ audience: "kids" }}
+        onChange={onChange}
+        installationGeography={{ country: "US" }}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Set for this channel" }));
+    expect(onChange).toHaveBeenCalledWith({ audience: "kids", geography: { country: "US" } });
+
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <FillerCriteria
+          selection={{ audience: "kids", geography: { country: "US", market: "New York" } }}
+          onChange={onChange}
+        />
+      </QueryClientProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Follow installation geography" }));
+    expect(onChange).toHaveBeenLastCalledWith({ audience: "kids" });
+  });
+
+  it("keeps an explicit Channel inside the Installation country", () => {
+    renderCriteria(
+      <FillerCriteria
+        selection={{ geography: { country: "CA", market: "Toronto" } }}
+        onChange={vi.fn()}
+        installationGeography={{ country: "US" }}
+      />,
+    );
+    const country = screen.getByLabelText("Country code");
+    expect(country).toHaveValue("US");
+    expect(country).toBeDisabled();
+  });
+});

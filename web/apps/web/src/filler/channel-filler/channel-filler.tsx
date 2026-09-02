@@ -254,6 +254,8 @@ const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFiller
   const defaultBreaksEntry = settingEntries.find((e) => e.key === "filler.breaks_per_hour");
   const defaultBreaksPerHour = defaultBreaksEntry ? Number(defaultBreaksEntry.value) : undefined;
   const defaultBreakDuration = settingEntries.find((e) => e.key === "filler.break_duration")?.value;
+  const homeCountry = settingEntries.find((e) => e.key === "filler.home_country")?.value;
+  const homeMarket = settingEntries.find((e) => e.key === "filler.home_market")?.value;
 
   // Coverage for the channel's SAVED selection (V29b). A filler-less install answers 501;
   // retrying that three times is noise for a diagnostic disclosure that simply renders nothing.
@@ -332,6 +334,7 @@ const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFiller
           onChange={setDraft}
           disabled={isApplying}
           scopeEra={policy?.scope?.era ?? undefined}
+          installationGeography={{ country: homeCountry, market: homeMarket }}
         />
       </section>
 

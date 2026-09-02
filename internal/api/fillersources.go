@@ -103,6 +103,8 @@ type FillerSourceDTO struct {
 	// surface, so the operator could not see what a source claimed even though Loomarr had
 	// recorded it.
 	License string `json:"license,omitempty" doc:"Licence the source declared; absent means unknown, NOT public domain"`
+	Country string `json:"country,omitempty" doc:"ISO 3166-1 alpha-2 country asserted for this source"`
+	Market  string `json:"market,omitempty" doc:"Local market asserted for this source; absent means country-wide"`
 	// Group marks a PROVIDER node — one service, with the targets an operator added beneath it
 	// (§10 V51c). Three archive.org collections stop being three sibling rows and become one
 	// Archive.org row that twirls down.
@@ -164,8 +166,10 @@ type RemoteSourceDTO struct {
 	Enabled   bool `json:"enabled"`
 	AutoAdmit bool `json:"autoAdmit"`
 	// Label falls back to the URI when a source has none, so a row is never blank.
-	Label string `json:"label"`
-	URI   string `json:"uri"`
+	Label   string `json:"label"`
+	URI     string `json:"uri"`
+	Country string `json:"country,omitempty"`
+	Market  string `json:"market,omitempty"`
 	// LastFetchedAt is absent when never fetched — rendered as "never" rather than as an
 	// epoch date nobody meant.
 	LastFetchedAt string `json:"lastFetchedAt,omitempty" doc:"RFC3339; absent if never fetched"`
@@ -263,9 +267,11 @@ type addFillerSourceInput struct {
 		// hardcoded "archive", so `archiveIdentifier` — which rejects anything containing a dot —
 		// was applied to every URI, and a YouTube playlist URL 400'd on a message about
 		// archive.org collections. One validator cannot serve two vocabularies.
-		Kind  string `json:"kind" enum:"archive,youtube,folder,library" doc:"Which kind of source this is"`
-		URI   string `json:"uri" minLength:"1" doc:"An archive.org collection identifier/URL, a YouTube playlist or channel URL, a folder path Loomarr can read, or a media-server library name"`
-		Label string `json:"label,omitempty" doc:"Operator-facing name; falls back to the identifier"`
+		Kind    string `json:"kind" enum:"archive,youtube,folder,library" doc:"Which kind of source this is"`
+		URI     string `json:"uri" minLength:"1" doc:"An archive.org collection identifier/URL, a YouTube playlist or channel URL, a folder path Loomarr can read, or a media-server library name"`
+		Label   string `json:"label,omitempty" doc:"Operator-facing name; falls back to the identifier"`
+		Country string `json:"country,omitempty" maxLength:"2" doc:"ISO 3166-1 alpha-2 source country"`
+		Market  string `json:"market,omitempty" maxLength:"120" doc:"Local source market; omit for country-wide"`
 	}
 }
 
@@ -385,11 +391,22 @@ func (s *Server) addFillerSource(ctx context.Context, in *addFillerSourceInput) 
 	// NewFillerSource, never a struct literal: `Enabled` is a bool, so a literal that omits it
 	// registers the collection SWITCHED OFF (see the store).
 	src := store.NewFillerSource(rowID, kind, id, label, time.Now().UTC())
+	src.Geography = filler.Geography{Country: in.Body.Country, Market: in.Body.Market}.Normalize()
+	if err := src.Geography.Validate(); err != nil {
+		return nil, errUnprocessable("Invalid source geography", err.Error())
+	}
 	if err := s.store.UpsertFillerSource(ctx, src); err != nil {
 		return nil, huma.Error500InternalServerError("register filler source", err)
 	}
+	// Registration is also the explicit correction path for an existing source with the same
+	// identity. Upsert deliberately preserves policy fields; this targeted write changes only the
+	// geography the operator supplied on this request.
+	if err := s.store.SetFillerSourceGeography(ctx, src.ID, src.Geography); err != nil {
+		return nil, huma.Error500InternalServerError("set filler source geography", err)
+	}
 	return &addFillerSourceOutput{Body: RemoteSourceDTO{
 		ID: src.ID, Label: src.Label, URI: src.URI, Enabled: src.Enabled, AutoAdmit: src.AutoAdmit,
+		Country: src.Geography.Country, Market: src.Geography.Market,
 	}}, nil
 }
 
@@ -416,8 +433,14 @@ type setFillerSourceEnabledInput struct {
 		// ⚠ Minimum 1, NOT 0. "Fetch nothing per run" is what FetchEverySeconds=0 already says,
 		// and letting it be said twice invites the two to disagree — a source that is scheduled
 		// to poll but capped at nothing looks enabled and does nothing.
-		FetchMaxPerRun *int `json:"fetchMaxPerRun,omitempty" minimum:"1" maximum:"1000" doc:"Most clips to take from this source in one run. Omit or null to inherit the global setting."`
+		FetchMaxPerRun *int                `json:"fetchMaxPerRun,omitempty" minimum:"1" maximum:"1000" doc:"Most clips to take from this source in one run. Omit or null to inherit the global setting."`
+		Geography      *SourceGeographyDTO `json:"geography,omitempty" doc:"Complete source coverage replacement; country-only means country-wide"`
 	}
+}
+
+type SourceGeographyDTO struct {
+	Country string `json:"country,omitempty" maxLength:"2"`
+	Market  string `json:"market,omitempty" maxLength:"120"`
 }
 
 type setFillerSourceEnabledOutput struct {
@@ -428,8 +451,9 @@ type setFillerSourceEnabledOutput struct {
 		// Echoed back so the UI renders what was STORED rather than what it hoped it sent — the
 		// difference matters here because null and 0 mean different things and a client that
 		// muddles them would show "never fetch" as "inherit".
-		FetchEverySeconds *int `json:"fetchEverySeconds,omitempty"`
-		FetchMaxPerRun    *int `json:"fetchMaxPerRun,omitempty"`
+		FetchEverySeconds *int                `json:"fetchEverySeconds,omitempty"`
+		FetchMaxPerRun    *int                `json:"fetchMaxPerRun,omitempty"`
+		Geography         *SourceGeographyDTO `json:"geography,omitempty"`
 	}
 }
 
@@ -452,6 +476,22 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 	out.Body.ID, out.Body.Enabled = in.ID, in.Body.Enabled
 	out.Body.AutoAdmit = in.Body.AutoAdmit
 	out.Body.FetchEverySeconds, out.Body.FetchMaxPerRun = in.Body.FetchEverySeconds, in.Body.FetchMaxPerRun
+	out.Body.Geography = in.Body.Geography
+	if in.Body.Geography != nil {
+		if s.store == nil {
+			return nil, huma.Error501NotImplemented("no store configured")
+		}
+		geography := filler.Geography{Country: in.Body.Geography.Country, Market: in.Body.Geography.Market}.Normalize()
+		if err := geography.Validate(); err != nil {
+			return nil, errUnprocessable("Invalid source geography", err.Error())
+		}
+		if err := s.store.SetFillerSourceGeography(ctx, in.ID, geography); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return nil, errNotFound("Source not found", "That source isn't registered — it may have been removed.")
+			}
+			return nil, huma.Error500InternalServerError("set filler source geography", err)
+		}
+	}
 
 	switch in.ID {
 	case "folder":
@@ -513,7 +553,7 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 		// An admission-only PATCH must not reset fetch tuning. The older enabled/fetch contract
 		// treats two nil values as "clear both overrides", so autoAdmit is the discriminator that
 		// makes this new independent control genuinely independent without changing that wire rule.
-		if in.Body.AutoAdmit != nil && in.Body.FetchEverySeconds == nil && in.Body.FetchMaxPerRun == nil {
+		if (in.Body.AutoAdmit != nil || in.Body.Geography != nil) && in.Body.FetchEverySeconds == nil && in.Body.FetchMaxPerRun == nil {
 			return out, nil
 		}
 		// ⚠ The overrides are written UNCONDITIONALLY, including when both are nil — because nil
@@ -669,7 +709,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 				// A scanned folder whose button did nothing would read as broken; the store's
 				// `Fetchable()`/`Scannable()` pair is what keeps a folder out of a PULL plan,
 				// which is the distinction that actually matters.
-				Fetchable: canFetchRow(src, s.filler != nil),
+				Fetchable: canFetchRow(src, s.filler != nil) && src.GeographicallyEligible(s.fillerHomeGeography()),
 				// ⚠ Only archive can be searched in place. A "search" box on a YouTube playlist
 				// would have nothing to query: yt-dlp enumerates a playlist, it does not search
 				// YouTube, and offering the box would be a control that returns nothing forever.
@@ -687,6 +727,8 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 			// would have Loomarr asserting a legal fact about ~92% of archive.org items that
 			// declare no licence at all.
 			row.License = src.License
+			row.Country = src.Geography.Country
+			row.Market = src.Geography.Market
 			// ⚠ The parent is DERIVED from the kind here, at the one place a row is built. Any
 			// other arrangement — a stored column, a second pass that assigns parents — is a
 			// place the parent could disagree with the kind.

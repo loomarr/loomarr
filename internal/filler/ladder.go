@@ -33,6 +33,7 @@ type pool struct {
 // Each rung is filtered to eligible durations (density, §10). Clips already used
 // in the window are excluded at fill time (no-repeat), not here.
 func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
+	catalog = filterGeography(catalog, effectiveGeography(w.Geography, policy.Geography))
 	commercials := make([]Clip, 0, len(catalog))
 	for _, c := range catalog {
 		// ⚠ The quality floor applies to COMMERCIALS only, alongside the duration bounds —
