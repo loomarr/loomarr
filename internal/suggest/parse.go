@@ -132,8 +132,14 @@ type toolCandidate struct {
 	// Genres + Overview let the model judge theme-fit from real metadata instead of
 	// the title string (§8). Overview is truncated so a long synopsis doesn't blow
 	// the context of a small local model across many candidates.
-	Genres   []string `json:"genres,omitempty"`
-	Overview string   `json:"overview,omitempty"`
+	Genres           []string `json:"genres,omitempty"`
+	Overview         string   `json:"overview,omitempty"`
+	OriginalLanguage string   `json:"originalLanguage,omitempty"`
+	OriginCountries  []string `json:"originCountries,omitempty"`
+	RuntimeMinutes   int      `json:"runtimeMinutes,omitempty"`
+	VoteAverage      float64  `json:"voteAverage,omitempty"`
+	VoteCount        int      `json:"voteCount,omitempty"`
+	Keywords         []string `json:"keywords,omitempty"`
 }
 
 // overviewMax caps the per-candidate overview length sent to the model — enough to
@@ -147,6 +153,12 @@ func toolResult(cands []catalog.Candidate) []toolCandidate {
 			MediaType: string(c.MediaType), TMDBID: c.TMDBID, TVDBID: c.TVDBID,
 			Name: c.Name, Year: c.Year, InLibrary: c.InLibrary,
 			Genres: c.Genres, Overview: truncate(c.Overview, overviewMax),
+			OriginalLanguage: c.OriginalLanguage,
+			OriginCountries:  append([]string(nil), c.OriginCountries...),
+			RuntimeMinutes:   c.RuntimeMinutes,
+			VoteAverage:      c.VoteAverage,
+			VoteCount:        c.VoteCount,
+			Keywords:         append([]string(nil), c.Keywords...),
 		})
 	}
 	return out

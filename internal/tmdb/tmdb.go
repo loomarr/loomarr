@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -125,8 +126,12 @@ type multiResult struct {
 	OriginalTitle string `json:"original_title"`
 	// Enrichment (§8): TMDB already returns these on /search/multi + /discover; we
 	// now parse them so the model reasons about theme (genre/overview), not titles.
-	GenreIDs []int  `json:"genre_ids"`
-	Overview string `json:"overview"`
+	GenreIDs         []int    `json:"genre_ids"`
+	Overview         string   `json:"overview"`
+	OriginalLanguage string   `json:"original_language"`
+	OriginCountries  []string `json:"origin_country"`
+	VoteAverage      float64  `json:"vote_average"`
+	VoteCount        int      `json:"vote_count"`
 }
 
 type multiResponse struct {
@@ -172,14 +177,19 @@ func (c *Client) Search(ctx context.Context, term string, limit int) ([]catalog.
 			date = r.FirstAirDate
 		}
 		out = append(out, catalog.Candidate{
-			MediaType: mt,
-			TMDBID:    r.ID,
-			Name:      name,
-			Year:      yearFromDate(date),
-			InLibrary: false,
-			Genres:    genreNames(r.GenreIDs),
-			Overview:  r.Overview,
-			Source:    catalog.ScopeTMDB,
+			MediaType:        mt,
+			TMDBID:           r.ID,
+			Name:             name,
+			Year:             yearFromDate(date),
+			InLibrary:        false,
+			Genres:           genreNames(r.GenreIDs),
+			Overview:         r.Overview,
+			OriginalLanguage: normalizedLanguage(r.OriginalLanguage),
+			OriginCountries:  normalizedCodes(r.OriginCountries),
+			VoteAverage:      validVoteAverage(r.VoteAverage, r.VoteCount),
+			VoteCount:        validVoteCount(r.VoteAverage, r.VoteCount),
+			Source:           catalog.ScopeTMDB,
+			RelevanceRank:    len(out) + 1,
 		})
 		if limit > 0 && len(out) >= limit {
 			break
@@ -191,13 +201,17 @@ func (c *Client) Search(ctx context.Context, term string, limit int) ([]catalog.
 // discoverResult is one /discover row. Same shape as multiResult minus
 // media_type (discover is per-endpoint: /discover/movie vs /discover/tv).
 type discoverResult struct {
-	ID           int    `json:"id"`
-	Title        string `json:"title"`
-	Name         string `json:"name"`
-	ReleaseDate  string `json:"release_date"`
-	FirstAirDate string `json:"first_air_date"`
-	GenreIDs     []int  `json:"genre_ids"`
-	Overview     string `json:"overview"`
+	ID               int      `json:"id"`
+	Title            string   `json:"title"`
+	Name             string   `json:"name"`
+	ReleaseDate      string   `json:"release_date"`
+	FirstAirDate     string   `json:"first_air_date"`
+	GenreIDs         []int    `json:"genre_ids"`
+	Overview         string   `json:"overview"`
+	OriginalLanguage string   `json:"original_language"`
+	OriginCountries  []string `json:"origin_country"`
+	VoteAverage      float64  `json:"vote_average"`
+	VoteCount        int      `json:"vote_count"`
 }
 
 type discoverResponse struct {
@@ -250,7 +264,7 @@ func (c *Client) DiscoverKeywords(ctx context.Context, mt provision.MediaType, k
 	if limit <= 0 {
 		limit = 20
 	}
-	keywordIDs, err := c.resolveKeywordIDs(ctx, keywords)
+	keywordIDs, keywordNames, err := c.resolveKeywordIDs(ctx, keywords)
 	if err != nil || len(keywordIDs) == 0 {
 		return nil, err
 	}
@@ -261,6 +275,7 @@ func (c *Client) DiscoverKeywords(ctx context.Context, mt provision.MediaType, k
 			return nil, err
 		}
 		movies = appendDiscover(movies, rows, provision.Movie)
+		attachKeywords(movies, keywordNames)
 	}
 	if mt == "" || mt == provision.Series {
 		rows, err := c.discover(ctx, "/discover/tv", genreIDsForMedia(genres, provision.Series), keywordIDs, yearFrom, yearTo, "first_air_date", limit)
@@ -268,6 +283,7 @@ func (c *Client) DiscoverKeywords(ctx context.Context, mt provision.MediaType, k
 			return nil, err
 		}
 		series = appendDiscover(series, rows, provision.Series)
+		attachKeywords(series, keywordNames)
 	}
 	return blendMediaTypes(movies, series, limit), nil
 }
@@ -293,14 +309,27 @@ func blendMediaTypes(movies, series []catalog.Candidate, limit int) []catalog.Ca
 		seriesSlots = min(len(series), limit-movieSlots)
 	}
 	out := make([]catalog.Candidate, 0, movieSlots+seriesSlots)
-	out = append(out, movies[:movieSlots]...)
-	out = append(out, series[:seriesSlots]...)
+	// Movie and TV discovery are separate ranked endpoints. Interleave equal
+	// source ranks so a later catalog blend can preserve relevance without one
+	// endpoint consuming the entire mixed-media window.
+	for i := 0; i < max(movieSlots, seriesSlots); i++ {
+		if i < movieSlots {
+			out = append(out, movies[i])
+		}
+		if i < seriesSlots {
+			out = append(out, series[i])
+		}
+	}
+	for i := range out {
+		out[i].RelevanceRank = i + 1
+	}
 	return out
 }
 
-func (c *Client) resolveKeywordIDs(ctx context.Context, keywords []string) ([]int, error) {
+func (c *Client) resolveKeywordIDs(ctx context.Context, keywords []string) ([]int, []string, error) {
 	seen := map[int]bool{}
 	ids := make([]int, 0, len(keywords))
+	names := make([]string, 0, len(keywords))
 	for _, keyword := range keywords {
 		keyword = strings.TrimSpace(keyword)
 		if keyword == "" {
@@ -311,7 +340,7 @@ func (c *Client) resolveKeywordIDs(ctx context.Context, keywords []string) ([]in
 		q.Set("page", "1")
 		var resp keywordResponse
 		if err := c.get(ctx, "/search/keyword?"+q.Encode(), &resp); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if len(resp.Results) == 0 {
 			continue
@@ -323,12 +352,14 @@ func (c *Client) resolveKeywordIDs(ctx context.Context, keywords []string) ([]in
 				break
 			}
 		}
-		if chosen.ID > 0 && !seen[chosen.ID] {
+		name := strings.TrimSpace(chosen.Name)
+		if chosen.ID > 0 && name != "" && !seen[chosen.ID] {
 			seen[chosen.ID] = true
 			ids = append(ids, chosen.ID)
+			names = append(names, name)
 		}
 	}
-	return ids, nil
+	return ids, names, nil
 }
 
 // Recommendations returns TMDB's behavioural neighbours for one title — the
@@ -423,10 +454,76 @@ func appendDiscover(out []catalog.Candidate, rows []discoverResult, mt provision
 		out = append(out, catalog.Candidate{
 			MediaType: mt, TMDBID: r.ID, Name: name, Year: yearFromDate(date),
 			InLibrary: false, Genres: genreNames(r.GenreIDs), Overview: r.Overview,
-			Source: catalog.ScopeTMDB,
+			OriginalLanguage: normalizedLanguage(r.OriginalLanguage),
+			OriginCountries:  normalizedCodes(r.OriginCountries),
+			VoteAverage:      validVoteAverage(r.VoteAverage, r.VoteCount),
+			VoteCount:        validVoteCount(r.VoteAverage, r.VoteCount),
+			Source:           catalog.ScopeTMDB,
+			RelevanceRank:    len(out) + 1,
 		})
 	}
 	return out
+}
+
+func attachKeywords(candidates []catalog.Candidate, keywords []string) {
+	// Discover's OR query proves that each row matched at least one requested
+	// keyword, but it does not identify which one. Only a singleton query supports
+	// row-level attribution without a follow-up details request.
+	if len(keywords) != 1 {
+		return
+	}
+	for i := range candidates {
+		candidates[i].Keywords = append([]string(nil), keywords...)
+	}
+}
+
+func normalizedCodes(values []string) []string {
+	out := make([]string, 0, len(values))
+	seen := make(map[string]bool, len(values))
+	for _, value := range values {
+		value = strings.ToUpper(strings.TrimSpace(value))
+		if len(value) != 2 || !asciiLetters(value) || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
+}
+
+func normalizedLanguage(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if (len(value) != 2 && len(value) != 3) || !asciiLetters(value) {
+		return ""
+	}
+	return value
+}
+
+func asciiLetters(value string) bool {
+	for _, char := range value {
+		if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') {
+			return false
+		}
+	}
+	return true
+}
+
+func validVoteAverage(average float64, count int) float64 {
+	if !validVote(average, count) {
+		return 0
+	}
+	return average
+}
+
+func validVoteCount(average float64, count int) int {
+	if !validVote(average, count) {
+		return 0
+	}
+	return count
+}
+
+func validVote(average float64, count int) bool {
+	return count > 0 && !math.IsNaN(average) && !math.IsInf(average, 0) && average >= 0 && average <= 10
 }
 
 // genreIDsFor maps human genre names (case-insensitive) to TMDB ids, dropping

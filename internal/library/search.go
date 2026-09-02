@@ -23,6 +23,9 @@ type SearchResult struct {
 	// (§8); read from Emby when the Fields param requests them. Display only.
 	Genres   []string
 	Overview string
+	// RuntimeMinutes is the provider's exact item runtime rounded down to whole
+	// minutes. Zero is unavailable, never a zero-length title.
+	RuntimeMinutes int
 	// OfficialRating is the media server's content rating ("TV-Y7", "PG-13", …),
 	// the input to ChannelPolicy audience enforcement (programming-design §4).
 	// Display/enforcement metadata only — never identity.
@@ -38,6 +41,7 @@ type searchItem struct {
 	Genres         []string `json:"Genres"`
 	Overview       string   `json:"Overview"`
 	OfficialRating string   `json:"OfficialRating"`
+	RunTimeTicks   int64    `json:"RunTimeTicks"`
 	ProviderIds    struct {
 		Tmdb string `json:"Tmdb"`
 		Tvdb string `json:"Tvdb"`
@@ -70,7 +74,7 @@ func (c *Client) Search(ctx context.Context, term string, limit int) ([]SearchRe
 	q.Set("IncludeItemTypes", "Movie,Series")
 	q.Set("SearchTerm", term)
 	q.Set("Limit", strconv.Itoa(limit))
-	q.Set("Fields", "ProviderIds,ProductionYear,Genres,Overview,OfficialRating")
+	q.Set("Fields", "ProviderIds,ProductionYear,Genres,Overview,OfficialRating,RunTimeTicks")
 
 	req, err := c.newRequest(ctx, http.MethodGet, "/Items?"+q.Encode(), nil)
 	if err != nil {
@@ -94,10 +98,18 @@ func (c *Client) Search(ctx context.Context, term string, limit int) ([]SearchRe
 			IMDBID:         it.ProviderIds.Imdb,
 			Genres:         it.Genres,
 			Overview:       it.Overview,
+			RuntimeMinutes: runtimeMinutes(it.RunTimeTicks),
 			OfficialRating: it.OfficialRating,
 		})
 	}
 	return results, nil
+}
+
+func runtimeMinutes(ticks int64) int {
+	if ticks <= 0 {
+		return 0
+	}
+	return int(ticks / (10_000 * 60_000))
 }
 
 // mediaTypeFromEmby maps Emby's "Type" to our MediaType (Movie/Series).

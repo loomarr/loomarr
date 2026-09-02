@@ -13,6 +13,7 @@ import (
 
 func TestSearch_MapsMovieAndTV_DropsPerson(t *testing.T) {
 	mock := testkit.NewTMDB(t)
+	mock.SetDiscoveryEvidence(provision.Movie, 101, "en", []string{"US"}, 7.4, 1200)
 	c := tmdb.NewWithBase(mock.URL, "key")
 
 	got, err := c.Search(context.Background(), "the", 20) // matches The Rock, The Matrix
@@ -28,6 +29,44 @@ func TestSearch_MapsMovieAndTV_DropsPerson(t *testing.T) {
 		}
 		if cand.MediaType != provision.Movie && cand.MediaType != provision.Series {
 			t.Errorf("person/unknown result not filtered: %+v", cand)
+		}
+		if cand.TMDBID == 101 && (cand.OriginalLanguage != "en" || len(cand.OriginCountries) != 1 ||
+			cand.OriginCountries[0] != "US" || cand.VoteAverage != 7.4 || cand.VoteCount != 1200) {
+			t.Errorf("TMDB result lost discovery evidence: %+v", cand)
+		}
+	}
+}
+
+func TestDiscoverKeywordsCarriesResolvedKeywordEvidence(t *testing.T) {
+	mock := testkit.NewTMDB(t)
+	mock.AddKeywordMovie(77_001, "Winter Story", 2020, []int{10_751}, "A family reunion.", "Christmas")
+	c := tmdb.NewWithBase(mock.URL, "key")
+
+	got, err := c.DiscoverKeywords(context.Background(), provision.Movie, []string{"christmas"}, nil, 0, 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || len(got[0].Keywords) != 1 || got[0].Keywords[0] != "Christmas" {
+		t.Fatalf("keyword discovery evidence = %+v, want exact resolved TMDB keyword", got)
+	}
+}
+
+func TestDiscoverKeywordsDoesNotOverclaimORKeywordEvidence(t *testing.T) {
+	mock := testkit.NewTMDB(t)
+	mock.AddKeywordMovie(77_001, "Winter Story", 2020, nil, "A family reunion.", "Christmas")
+	mock.AddKeywordMovie(77_002, "October Story", 2021, nil, "A masked visitor.", "Halloween")
+	c := tmdb.NewWithBase(mock.URL, "key")
+
+	got, err := c.DiscoverKeywords(context.Background(), provision.Movie, []string{"christmas", "halloween"}, nil, 0, 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("keyword discovery = %+v, want two OR matches", got)
+	}
+	for _, candidate := range got {
+		if len(candidate.Keywords) != 0 {
+			t.Fatalf("OR discovery attributed unresolved row-level keywords: %+v", candidate)
 		}
 	}
 }

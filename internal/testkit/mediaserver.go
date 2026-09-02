@@ -186,13 +186,14 @@ func (s SearchStub) itemJSON() string {
 		ProductionYear int      `json:"ProductionYear"`
 		Genres         []string `json:"Genres"`
 		OfficialRating string   `json:"OfficialRating"`
+		RunTimeTicks   int64    `json:"RunTimeTicks"`
 		ProviderIds    struct {
 			Tmdb string `json:"Tmdb,omitempty"`
 			Tvdb string `json:"Tvdb,omitempty"`
 		} `json:"ProviderIds"`
 	}{
 		Id: s.LibraryItemID, Name: s.Name, Type: s.Type, ProductionYear: s.Year,
-		Genres: s.Genres, OfficialRating: s.OfficialRating,
+		Genres: s.Genres, OfficialRating: s.OfficialRating, RunTimeTicks: s.RunTimeTicks,
 		ProviderIds: struct {
 			Tmdb string `json:"Tmdb,omitempty"`
 			Tvdb string `json:"Tvdb,omitempty"`

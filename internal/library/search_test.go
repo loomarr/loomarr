@@ -13,13 +13,13 @@ import (
 // search_matrix fixture predates this field, so this uses an authored response that
 // carries it — testing the parser against the real Emby item shape, not remembered
 // field names.
-func TestSearch_ParsesOfficialRating(t *testing.T) {
+func TestSearch_ParsesOfficialRatingAndRuntime(t *testing.T) {
 	var gotFields string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotFields = r.URL.Query().Get("Fields")
 		_, _ = w.Write([]byte(`{"Items":[
 			{"Id":"lib-1","Name":"Cartoon Hour","Type":"Series","ProductionYear":1993,
-			 "Genres":["Animation"],"Overview":"kids show","OfficialRating":"TV-Y7",
+			 "Genres":["Animation"],"Overview":"kids show","OfficialRating":"TV-Y7","RunTimeTicks":54000000000,
 			 "ProviderIds":{"Tmdb":"456"}},
 			{"Id":"lib-2","Name":"Late Movie","Type":"Movie","ProductionYear":1999,
 			 "OfficialRating":"R","ProviderIds":{"Tmdb":"603"}}
@@ -36,11 +36,17 @@ func TestSearch_ParsesOfficialRating(t *testing.T) {
 	if !strings.Contains(gotFields, "OfficialRating") {
 		t.Errorf("Fields param = %q, must request OfficialRating", gotFields)
 	}
+	if !strings.Contains(gotFields, "RunTimeTicks") {
+		t.Errorf("Fields param = %q, must request RunTimeTicks", gotFields)
+	}
 	if len(got) != 2 {
 		t.Fatalf("got %d results, want 2", len(got))
 	}
 	if got[0].OfficialRating != "TV-Y7" {
 		t.Errorf("result[0].OfficialRating = %q, want TV-Y7", got[0].OfficialRating)
+	}
+	if got[0].RuntimeMinutes != 90 {
+		t.Errorf("result[0].RuntimeMinutes = %d, want 90", got[0].RuntimeMinutes)
 	}
 	if got[1].OfficialRating != "R" {
 		t.Errorf("result[1].OfficialRating = %q, want R", got[1].OfficialRating)

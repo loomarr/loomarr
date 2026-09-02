@@ -119,8 +119,14 @@ type ProposalItem struct {
 	// Genres + Overview carry from the grounded Candidate so deterministic theme
 	// scoring measures real metadata, not the title string (§8). Display/scoring
 	// only — never identity (Key ignores them).
-	Genres   []string `json:"genres,omitempty"`
-	Overview string   `json:"overview,omitempty"`
+	Genres           []string `json:"genres,omitempty"`
+	Overview         string   `json:"overview,omitempty"`
+	OriginalLanguage string   `json:"originalLanguage,omitempty"`
+	OriginCountries  []string `json:"originCountries,omitempty"`
+	RuntimeMinutes   int      `json:"runtimeMinutes,omitempty"`
+	VoteAverage      float64  `json:"voteAverage,omitempty"`
+	VoteCount        int      `json:"voteCount,omitempty"`
+	Keywords         []string `json:"keywords,omitempty"`
 	// OfficialRating carries from the grounded Candidate for ChannelPolicy audience
 	// enforcement (programming-design §4): it's stamped onto the channel's lineup
 	// entry at create time so enforcement filters without a library hit. Display/
@@ -145,6 +151,12 @@ func fromCandidate(c catalog.Candidate, rationale string, confidence float64) Pr
 		Name: c.Name, Year: c.Year, InLibrary: c.InLibrary, LibraryItemID: c.LibraryItemID,
 		Rationale: rationale, Confidence: confidence, Source: string(c.Source),
 		Genres: c.Genres, Overview: c.Overview, OfficialRating: c.OfficialRating,
+		OriginalLanguage: c.OriginalLanguage,
+		OriginCountries:  append([]string(nil), c.OriginCountries...),
+		RuntimeMinutes:   c.RuntimeMinutes,
+		VoteAverage:      c.VoteAverage,
+		VoteCount:        c.VoteCount,
+		Keywords:         append([]string(nil), c.Keywords...),
 	}
 }
 

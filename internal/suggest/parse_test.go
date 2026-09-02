@@ -1,8 +1,12 @@
 package suggest
 
 import (
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // The external-LLM smoke found Claude wraps its final JSON in a ```json fence even
@@ -66,6 +70,22 @@ func TestParsePicks_UnwrapsAndValidates(t *testing.T) {
 				t.Errorf("rationale = %q, want %q", out.Rationale, tt.wantRat)
 			}
 		})
+	}
+}
+
+func TestToolResultCarriesGroundedDiscoveryEvidence(t *testing.T) {
+	candidates := []catalog.Candidate{{
+		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", OriginalLanguage: "en",
+		OriginCountries: []string{"US"}, RuntimeMinutes: 136, VoteAverage: 8.2, VoteCount: 26000,
+		Keywords: []string{"artificial reality"},
+	}}
+
+	got := toolResult(candidates)
+	if len(got) != 1 || got[0].OriginalLanguage != "en" || got[0].RuntimeMinutes != 136 ||
+		got[0].VoteAverage != 8.2 || got[0].VoteCount != 26000 ||
+		!reflect.DeepEqual(got[0].OriginCountries, []string{"US"}) ||
+		!reflect.DeepEqual(got[0].Keywords, []string{"artificial reality"}) {
+		t.Fatalf("tool discovery evidence = %+v", got)
 	}
 }
 

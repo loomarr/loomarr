@@ -456,3 +456,43 @@ func TestCatalogDiscoverSnapshotsPresenceOnceAcrossBackfillBatch(t *testing.T) {
 		}
 	}
 }
+
+func TestCatalogDiscoverPreservesUpstreamRelevanceWithinOwnedOutsideBlend(t *testing.T) {
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+		{MediaType: provision.Movie, TMDBID: 4, Name: "Zulu Outside", Source: catalog.ScopeTMDB},
+		{MediaType: provision.Movie, TMDBID: 3, Name: "Zulu Owned", Source: catalog.ScopeTMDB},
+		{MediaType: provision.Movie, TMDBID: 2, Name: "Alpha Outside", Source: catalog.ScopeTMDB},
+		{MediaType: provision.Movie, TMDBID: 1, Name: "Alpha Owned", Source: catalog.ScopeTMDB},
+	}}
+	c := catalog.New(nil, corpus).WithPresence(&catalogfixture.Presence{Hits: map[int]catalog.Presence{
+		3: {LibraryItemID: "owned-3"}, 1: {LibraryItemID: "owned-1"},
+	}})
+
+	got, err := c.Discover(context.Background(), provision.Movie, nil, 0, 0, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []int{3, 1, 4, 2}
+	if len(got) != len(want) {
+		t.Fatalf("discovery count = %d, want %d", len(got), len(want))
+	}
+	for i, id := range want {
+		if got[i].TMDBID != id {
+			t.Fatalf("discovery order = %+v, want upstream-ranked owned %v then outside", got, want)
+		}
+	}
+}
+
+func TestCatalogDiscoverBreaksEqualSourceRanksByCanonicalIdentity(t *testing.T) {
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+		{MediaType: provision.Movie, TMDBID: 20, Name: "Earlier Alphabetically", RelevanceRank: 1},
+		{MediaType: provision.Movie, TMDBID: 10, Name: "Later Alphabetically", RelevanceRank: 1},
+	}}
+	got, err := catalog.New(nil, corpus).Discover(context.Background(), provision.Movie, nil, 0, 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].TMDBID != 10 || got[1].TMDBID != 20 {
+		t.Fatalf("equal-rank order = %+v, want canonical identity tie-break", got)
+	}
+}

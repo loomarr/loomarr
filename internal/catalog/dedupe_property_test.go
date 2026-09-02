@@ -3,7 +3,8 @@ package catalog
 // Property tests for the identity-stability invariants that protect grounding
 // (§8): dedupeKey / mergeCandidate / dedupeAndOrder must treat only
 // MediaType+(TMDBID|TVDBID|Name) as identity, must fold candidates idempotently
-// and order-independently, and must order in-library-first then by name. These
+// and order-independently, and must preserve source relevance inside the
+// in-library-first blend. These
 // functions are unexported, so this file is in-package (package catalog).
 //
 // Randomness is a seeded plain-Go loop (math/rand with a fixed source) — not a
@@ -13,7 +14,6 @@ package catalog
 import (
 	"math/rand"
 	"reflect"
-	"sort"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/provision"
@@ -223,8 +223,8 @@ func TestProp_DedupeKey_IdentityComponentsMatter(t *testing.T) {
 
 // foldCorpus replays the exact Search/Discover machinery (byKey map + insertion
 // order + add-or-merge) over a candidate slice and returns the deduped, ordered
-// output. This is the real production fold path; the tests below permute the
-// input order and assert stability of the result.
+// output. This is the real production fold path; the tests below assert identity,
+// relevance-order, and bounded-blend invariants against it.
 func foldCorpus(cands []Candidate, limit int) []Candidate {
 	byKey := map[string]*Candidate{}
 	order := []string{}
@@ -395,12 +395,11 @@ func TestProp_Fold_IdempotentOnIdentity(t *testing.T) {
 	}
 }
 
-// Invariant (3): dedupeAndOrder output order is STABLE — in-library first, then
-// by name — regardless of input order. We fold a corpus in several shuffles and
-// assert the ordered (InLibrary, Name) SORT-KEY sequence is identical across all
-// of them, and that the order actually obeys the in-library-first / name-asc
-// contract. (See orderKeys for why the tie-break identity is excluded.)
-func TestProp_DedupeAndOrder_StableRegardlessOfInputOrder(t *testing.T) {
+// Invariant (3): dedupeAndOrder keeps the first upstream occurrence as the
+// relevance rank, even when a later duplicate enriches or changes ownership.
+// The owned/outside blend may partition that stream, but it must not alphabetize
+// either partition.
+func TestProp_DedupeAndOrder_PreservesUpstreamOrderWithinPartitions(t *testing.T) {
 	rng := rand.New(rand.NewSource(propSeed + 4))
 	const iters = 1500
 	for i := 0; i < iters; i++ {
@@ -411,48 +410,52 @@ func TestProp_DedupeAndOrder_StableRegardlessOfInputOrder(t *testing.T) {
 		}
 		limit := 1000
 
-		reference := foldCorpus(corpus, limit)
-
-		// The ordered output must be the SAME regardless of how the corpus was fed.
-		for s := 0; s < 5; s++ {
-			shuffled := append([]Candidate(nil), corpus...)
-			rng.Shuffle(len(shuffled), func(a, b int) {
-				shuffled[a], shuffled[b] = shuffled[b], shuffled[a]
-			})
-			got := foldCorpus(shuffled, limit)
-			if !reflect.DeepEqual(orderKeys(got), orderKeys(reference)) {
-				t.Fatalf("seed=%#x iter=%d shuffle=%d: output ORDER depends on input order\nref=%v\ngot=%v\ncorpus=%+v",
-					propSeed, i, s, orderKeys(reference), orderKeys(got), corpus)
-			}
+		got := foldCorpus(corpus, limit)
+		want := sourceOrderByFinalPartition(corpus)
+		if !reflect.DeepEqual(orderKeys(got), want) {
+			t.Fatalf("seed=%#x iter=%d: source relevance order was not preserved\nwant=%v\ngot =%v\ncorpus=%+v",
+				propSeed, i, want, orderKeys(got), corpus)
 		}
-
-		// And the contract itself: in-library candidates come first; within each
-		// in-library group, names are non-decreasing.
-		assertInLibraryFirstThenName(t, reference)
+		assertInLibraryFirst(t, got)
 	}
 }
 
-// orderKeys projects the ordered output to its SORT KEY sequence: (InLibrary,
-// Name) per slot. That is exactly what dedupeAndOrder sorts on, so this sequence
-// is what must be stable across input permutations. It deliberately omits the
-// identity key: when two distinct candidates tie on (InLibrary, Name), the stable
-// sort keeps their relative insertion order, which shuffles — so the tie-break
-// identity is NOT an ordering invariant, only the sort-key sequence is.
+// orderKeys projects output to the canonical identity sequence: relevance order
+// is meaningful only among grounded identities, never display names.
 func orderKeys(cands []Candidate) []string {
 	out := make([]string, len(cands))
 	for i, c := range cands {
-		lib := "0"
-		if c.InLibrary {
-			lib = "1"
-		}
-		out[i] = lib + "|" + c.Name
+		out[i] = dedupeKey(c)
 	}
 	return out
 }
 
-func assertInLibraryFirstThenName(t *testing.T, cands []Candidate) {
+func sourceOrderByFinalPartition(corpus []Candidate) []string {
+	byKey := make(map[string]*Candidate, len(corpus))
+	order := make([]string, 0, len(corpus))
+	for _, candidate := range corpus {
+		key := dedupeKey(candidate)
+		if existing, ok := byKey[key]; ok {
+			mergeCandidate(existing, candidate)
+			continue
+		}
+		copy := candidate
+		byKey[key] = &copy
+		order = append(order, key)
+	}
+	out := make([]string, 0, len(order))
+	for _, inLibrary := range []bool{true, false} {
+		for _, key := range order {
+			if byKey[key].InLibrary == inLibrary {
+				out = append(out, key)
+			}
+		}
+	}
+	return out
+}
+
+func assertInLibraryFirst(t *testing.T, cands []Candidate) {
 	t.Helper()
-	// Partition point: no not-in-library may precede an in-library.
 	seenNotInLib := false
 	for _, c := range cands {
 		if !c.InLibrary {
@@ -461,29 +464,11 @@ func assertInLibraryFirstThenName(t *testing.T, cands []Candidate) {
 			t.Fatalf("in-library candidate after a not-in-library one: %+v", cands)
 		}
 	}
-	// Within the in-library prefix and within the not-in-library suffix, names
-	// must be non-decreasing (stable sort by name inside each group).
-	lib := []string{}
-	notLib := []string{}
-	for _, c := range cands {
-		if c.InLibrary {
-			lib = append(lib, c.Name)
-		} else {
-			notLib = append(notLib, c.Name)
-		}
-	}
-	for _, group := range [][]string{lib, notLib} {
-		if !sort.SliceIsSorted(group, func(a, b int) bool { return group[a] < group[b] }) {
-			t.Fatalf("group not sorted by name: %v (full=%+v)", group, cands)
-		}
-	}
 }
 
-// Truncation to limit is order-stable too. The bounded blend deliberately is NOT
-// the first `limit` rows of the full in-library-first output: when both partitions
-// exist it reserves outside-Library discovery slots. Which candidates fill that
-// blend must still be independent of add-order.
-func TestProp_DedupeAndOrder_TruncationStable(t *testing.T) {
+// Truncation takes the head of each relevance-preserving partition. It never
+// reaches deeper alphabetic entries merely because their names sort earlier.
+func TestProp_DedupeAndOrder_TruncationUsesPartitionHeads(t *testing.T) {
 	rng := rand.New(rand.NewSource(propSeed + 5))
 	const iters = 1000
 	for i := 0; i < iters; i++ {
@@ -495,20 +480,37 @@ func TestProp_DedupeAndOrder_TruncationStable(t *testing.T) {
 		full := foldCorpus(corpus, 1000)
 		limit := 1 + rng.Intn(len(full)+2)
 
-		want := orderKeys(foldCorpus(corpus, limit))
-		for s := 0; s < 3; s++ {
-			shuffled := append([]Candidate(nil), corpus...)
-			rng.Shuffle(len(shuffled), func(a, b int) {
-				shuffled[a], shuffled[b] = shuffled[b], shuffled[a]
-			})
-			got := orderKeys(foldCorpus(shuffled, limit))
-			if !reflect.DeepEqual(got, want) {
-				t.Fatalf("seed=%#x iter=%d shuffle=%d limit=%d: truncated output depends on add-order\nwant=%v\ngot =%v",
-					propSeed, i, s, limit, want, got)
-			}
+		got := foldCorpus(corpus, limit)
+		wantCandidates := blendHeads(full, limit)
+		want := orderKeys(wantCandidates)
+		if !reflect.DeepEqual(orderKeys(got), want) {
+			t.Fatalf("seed=%#x iter=%d limit=%d: truncation did not keep partition heads\nwant=%v\ngot =%v",
+				propSeed, i, limit, want, orderKeys(got))
 		}
 		if len(want) != min(limit, len(full)) {
 			t.Fatalf("seed=%#x iter=%d limit=%d: blended length=%d want %d", propSeed, i, limit, len(want), min(limit, len(full)))
 		}
 	}
+}
+
+func blendHeads(full []Candidate, limit int) []Candidate {
+	if len(full) <= limit {
+		return full
+	}
+	ownedEnd := 0
+	for ownedEnd < len(full) && full[ownedEnd].InLibrary {
+		ownedEnd++
+	}
+	owned, outside := full[:ownedEnd], full[ownedEnd:]
+	if len(owned) == 0 {
+		return outside[:min(limit, len(outside))]
+	}
+	if len(outside) == 0 {
+		return owned[:min(limit, len(owned))]
+	}
+	outsideSlots := min(max(1, limit/4), len(outside))
+	ownedSlots := min(limit-outsideSlots, len(owned))
+	outsideSlots = min(limit-ownedSlots, len(outside))
+	out := append([]Candidate(nil), owned[:ownedSlots]...)
+	return append(out, outside[:outsideSlots]...)
 }

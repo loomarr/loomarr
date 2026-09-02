@@ -68,6 +68,21 @@ type Candidate struct {
 	// names, overview) and the media server (Genres field), merged additively.
 	Genres   []string `json:"genres,omitempty"`
 	Overview string   `json:"overview,omitempty"`
+	// DiscoveryEvidence is source-backed editorial evidence used to interpret and
+	// rank a grounded identity. Empty values mean the source did not supply the
+	// fact; they never mean that a qualifier was disproved. None participates in
+	// Key or dedupeKey.
+	OriginalLanguage string   `json:"originalLanguage,omitempty"`
+	OriginCountries  []string `json:"originCountries,omitempty"`
+	RuntimeMinutes   int      `json:"runtimeMinutes,omitempty"`
+	VoteAverage      float64  `json:"voteAverage,omitempty"`
+	VoteCount        int      `json:"voteCount,omitempty"`
+	Keywords         []string `json:"keywords,omitempty"`
+	// RelevanceRank is the one-based position assigned by the source operation.
+	// It is transport-internal: callers observe its effect through result order,
+	// not as another score they could reinterpret. Zero is assigned from encounter
+	// order at the Catalog seam for simple adapters and fixtures.
+	RelevanceRank int `json:"-"`
 	// OfficialRating is the media server's content rating ("TV-Y7", "PG-13", …),
 	// the input to ChannelPolicy audience enforcement (programming-design §4). Like
 	// Genres/Overview it is DISPLAY/ENFORCEMENT metadata only — never identity
@@ -205,8 +220,10 @@ func (c *Catalog) Search(ctx context.Context, term string, scope Scope, limit in
 		if err != nil {
 			return nil, err
 		}
-		for _, r := range res {
-			add(fromLibrary(r))
+		for i, r := range res {
+			candidate := fromLibrary(r)
+			candidate.RelevanceRank = i + 1
+			add(candidate)
 		}
 	}
 	if scopeIncludes(scope, ScopeTMDB) && c.tmdb != nil {
@@ -272,7 +289,10 @@ func (c *Catalog) DiscoverKeywords(ctx context.Context, mt provision.MediaType, 
 func (c *Catalog) finishDiscovery(ctx context.Context, res []Candidate, poolLimit, limit int) []Candidate {
 	byKey := map[string]*Candidate{}
 	order := []string{}
-	for _, cand := range res {
+	for i, cand := range res {
+		if cand.RelevanceRank <= 0 {
+			cand.RelevanceRank = i + 1
+		}
 		k := dedupeKey(cand)
 		if existing, ok := byKey[k]; ok {
 			mergeCandidate(existing, cand)
@@ -467,13 +487,16 @@ func (c *Catalog) backfillPresence(ctx context.Context, cands []Candidate) {
 // blend the tool + UI depend on. Library candidates remain first because they can
 // play immediately, but when both partitions have matches one quarter of a full
 // page is reserved for outside-Library discovery. Each partition is sorted by
-// name so identical candidate sets always produce identical output regardless of
-// upstream or map insertion order; the upstream relevance rank still determines
-// which bounded candidates enter the pool.
+// upstream relevance order intact within each partition. Provider responses are
+// ordered evidence; alphabetizing here used to discard that evidence.
 func dedupeAndOrder(byKey map[string]*Candidate, order []string, limit int) []Candidate {
 	candidates := make([]Candidate, 0, len(order))
 	for _, k := range order {
-		candidates = append(candidates, *byKey[k])
+		candidate := *byKey[k]
+		if candidate.RelevanceRank <= 0 {
+			candidate.RelevanceRank = len(candidates) + 1
+		}
+		candidates = append(candidates, candidate)
 	}
 	return orderCandidates(candidates, limit)
 }
@@ -490,8 +513,8 @@ func orderCandidates(candidates []Candidate, limit int) []Candidate {
 			outside = append(outside, candidate)
 		}
 	}
-	sort.SliceStable(owned, func(i, j int) bool { return owned[i].Name < owned[j].Name })
-	sort.SliceStable(outside, func(i, j int) bool { return outside[i].Name < outside[j].Name })
+	sort.SliceStable(owned, func(i, j int) bool { return relevanceLess(owned[i], owned[j]) })
+	sort.SliceStable(outside, func(i, j int) bool { return relevanceLess(outside[i], outside[j]) })
 	if len(owned)+len(outside) <= limit {
 		return append(owned, outside...)
 	}
@@ -513,6 +536,13 @@ func orderCandidates(candidates []Candidate, limit int) []Candidate {
 	out = append(out, owned[:ownedSlots]...)
 	out = append(out, outside[:outsideSlots]...)
 	return out
+}
+
+func relevanceLess(a, b Candidate) bool {
+	if a.RelevanceRank != b.RelevanceRank {
+		return a.RelevanceRank < b.RelevanceRank
+	}
+	return dedupeKey(a) < dedupeKey(b)
 }
 
 func scopeIncludes(scope, want Scope) bool { return scope == ScopeAll || scope == want }
@@ -558,6 +588,22 @@ func mergeCandidate(dst *Candidate, src Candidate) {
 	if dst.Overview == "" && src.Overview != "" {
 		dst.Overview = src.Overview
 	}
+	if dst.OriginalLanguage == "" && src.OriginalLanguage != "" {
+		dst.OriginalLanguage = src.OriginalLanguage
+	}
+	if len(dst.OriginCountries) == 0 && len(src.OriginCountries) > 0 {
+		dst.OriginCountries = append([]string(nil), src.OriginCountries...)
+	}
+	if dst.RuntimeMinutes == 0 && src.RuntimeMinutes > 0 {
+		dst.RuntimeMinutes = src.RuntimeMinutes
+	}
+	if dst.VoteCount == 0 && src.VoteCount > 0 {
+		dst.VoteAverage = src.VoteAverage
+		dst.VoteCount = src.VoteCount
+	}
+	if len(dst.Keywords) == 0 && len(src.Keywords) > 0 {
+		dst.Keywords = append([]string(nil), src.Keywords...)
+	}
 	// OfficialRating comes from the library keyword search or the presence backfill —
 	// TMDB *search/discover* leaves it empty, though TMDB's content-ratings endpoint
 	// can fill it for a not-yet-owned acquisition (see enrichRatings). Keep whichever
@@ -579,6 +625,7 @@ func fromLibrary(r library.SearchResult) Candidate {
 		LibraryItemID:  r.LibraryItemID,
 		Genres:         r.Genres,
 		Overview:       r.Overview,
+		RuntimeMinutes: r.RuntimeMinutes,
 		OfficialRating: r.OfficialRating,
 		Source:         ScopeLibrary,
 	}

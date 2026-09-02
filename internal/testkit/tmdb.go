@@ -70,18 +70,38 @@ func (m *TMDB) WithRecommendations(graph map[int][]int) *TMDB {
 }
 
 type tmdbTitle struct {
-	ID           int
-	CollectionID int
-	Name         string
-	Year         int
-	Date         string
-	GenreIDs     []int // §8 enrichment: endpoint-specific TMDB genre ids (movie 878 vs TV 10765 for Sci-Fi)
-	KeywordIDs   []int
-	Overview     string // short synopsis the model reasons about
+	ID               int
+	CollectionID     int
+	Name             string
+	Year             int
+	Date             string
+	GenreIDs         []int // §8 enrichment: endpoint-specific TMDB genre ids (movie 878 vs TV 10765 for Sci-Fi)
+	KeywordIDs       []int
+	Overview         string // short synopsis the model reasons about
+	OriginalLanguage string
+	OriginCountries  []string
+	VoteAverage      float64
+	VoteCount        int
 	// USRating is the US content rating the /content_ratings (tv) or /release_dates
 	// (movie) endpoint reports (§389 acquisition enrichment). Empty ⇒ no US rating,
 	// which is the common sparse-coverage case a test may assert is handled.
 	USRating string
+}
+
+// SetDiscoveryEvidence scripts the metadata TMDB includes directly on search
+// and discovery result rows. It keeps adapter tests on the shared service mock.
+func (m *TMDB) SetDiscoveryEvidence(mt provision.MediaType, id int, language string, countries []string, voteAverage float64, voteCount int) {
+	catalog := m.movies
+	if mt == provision.Series {
+		catalog = m.series
+	}
+	title := catalog[id]
+	title.ID = id
+	title.OriginalLanguage = language
+	title.OriginCountries = append([]string(nil), countries...)
+	title.VoteAverage = voteAverage
+	title.VoteCount = voteCount
+	catalog[id] = title
 }
 
 // SetCollectionID scripts belongs_to_collection on the public movie detail
@@ -305,6 +325,8 @@ func movieRow(mv tmdbTitle) map[string]any {
 	return map[string]any{
 		"id": mv.ID, "media_type": "movie", "title": mv.Name, "release_date": mv.Date,
 		"genre_ids": mv.GenreIDs, "overview": mv.Overview,
+		"original_language": mv.OriginalLanguage, "origin_country": mv.OriginCountries,
+		"vote_average": mv.VoteAverage, "vote_count": mv.VoteCount,
 	}
 }
 
@@ -312,6 +334,8 @@ func tvRow(s tmdbTitle) map[string]any {
 	return map[string]any{
 		"id": s.ID, "media_type": "tv", "name": s.Name, "first_air_date": s.Date,
 		"genre_ids": s.GenreIDs, "overview": s.Overview,
+		"original_language": s.OriginalLanguage, "origin_country": s.OriginCountries,
+		"vote_average": s.VoteAverage, "vote_count": s.VoteCount,
 	}
 }
 

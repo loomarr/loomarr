@@ -155,13 +155,15 @@ func filterByMediaType(cands []catalog.Candidate, mt string) []catalog.Candidate
 // three modes: `query` runs title search; `genres` (+ optional `era`) discovers
 // genre themes; `keywords` discovers holidays, motifs, franchises, and topics
 // whose terms need not occur in the title. Every mode returns real ids + genres +
-// overview + an inLibrary flag; it is the ONLY way to find titles.
+// overview + source-backed discovery evidence + an inLibrary flag; it is the
+// ONLY way to find titles. Omitted evidence is unknown, never a mismatch.
 func catalogTool() llm.ToolSchema {
 	return llm.ToolSchema{
 		Name: catalogToolName,
 		Description: "Find real titles from the library + TMDB. Provide `query` to search by title, `genres` " +
 			"to discover genre/era matches, or `keywords` to discover holidays, motifs, franchises, and topics. " +
-			"Returns real external ids, genres, a short overview, and an inLibrary flag. This is the ONLY way to find titles.",
+			"Returns real external ids, genres, a short overview, available language/country/runtime/vote/keyword evidence, " +
+			"and an inLibrary flag. Missing fields mean unknown. This is the ONLY way to find titles.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

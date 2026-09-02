@@ -1037,8 +1037,10 @@ Two consequences worth stating, because both look like details and are not:
 deduplication, an `all` search that has both owned and missing matches reserves one quarter of the
 page (at least one row) for outside-Library candidates; the remainder prefers immediately playable
 Library candidates. An undersubscribed side yields its unused places to the other. The external
-corpora choose the bounded relevance pool; Loomarr orders each owned/missing partition
-deterministically by name so insertion timing cannot change the result. Genre/era discovery applies the same
+corpora choose and order the bounded relevance pool; Loomarr preserves that upstream order inside
+each owned/missing partition instead of alphabetizing away the source's relevance judgment.
+Identity deduplication keeps the first authoritative rank; canonical provisioning identity is the
+stable final tie-break when a source reports equal rank. Genre/era discovery applies the same
 owned/missing blend after its Library-presence backfill, drawing a larger bounded TMDB candidate
 pool when necessary so already-owned results cannot consume the entire grounding window. This is
 candidate **exposure**, not approval or acquisition: the model still rejects poor fits, every chosen
@@ -1093,7 +1095,7 @@ Evaluation pins these values or writes them into the request so identical inputs
 
 ### Grounding — the critical correctness rule
 An AI that can trigger real downloads must never act on a hallucinated title.
-- The LLM does **not** invent titles; it proposes candidates via a **catalog tool** (function-calling) that searches the real library + TMDB/TVDB and returns **real external ids**. The model selects from tool results. The tool supports **title search**, **genre + era discovery**, and **TMDB keyword discovery** for holidays, motifs, franchises, and topics — so an abstract intent ("high-energy 90s action") or a thematic one ("cozy Christmas movies") surfaces grounded content instead of depending on an exact title match. Each returned candidate carries **genre + a short overview** so the model reasons about theme rather than guessing from the title string alone.
+- The LLM does **not** invent titles; it proposes candidates via a **catalog tool** (function-calling) that searches the real library + TMDB/TVDB and returns **real external ids**. The model selects from tool results. The tool supports **title search**, **genre + era discovery**, and **TMDB keyword discovery** for holidays, motifs, franchises, and topics — so an abstract intent ("high-energy 90s action") or a thematic one ("cozy Christmas movies") surfaces grounded content instead of depending on an exact title match. Each returned candidate carries the source-backed subset of **genres, short overview, original language/country, runtime, vote average/count, and resolved keyword names** that its corpus supplied. These fields are additive reasoning evidence, never identity or authority: omitted means unknown, not mismatch; invalid/non-finite values are omitted; and sparse metadata cannot exclude a candidate by itself. Network and person anchors require their own grounded resolver and are not inferred from titles, studios, or model prose.
 - TMDB movie and TV discovery use different genre id namespaces. Human genre names are translated per endpoint (`Science Fiction` → movie `878` but TV `10765`, `Action` → movie `28` but TV `10759`, and `Family` → movie `10751` but TV `10762`) before a mixed search is blended. One shared numeric mapping would silently make valid TV discovery empty.
 - Every proposal item resolves to a real id, tagged `in_library: true|false`; unresolvable items are dropped before display.
 - Acquisitions re-validated against TMDB (exists) + library (not present) before actionable.
