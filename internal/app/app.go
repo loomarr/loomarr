@@ -186,7 +186,7 @@ func buildHandler(
 		rootCtx, st, set, desiredSet, secrets, readGeneratedSecret, refreshSecretRedactor,
 		libraryClient, tmdbClient, eventBus, emitter, jobReg, owner, playoutRes,
 		appliedBackendContext, ov, log, foundation.metrics,
-		foundation.protection,
+		foundation.protection, foundation.secretRedactor,
 	)
 	if err != nil {
 		return nil, nil, err

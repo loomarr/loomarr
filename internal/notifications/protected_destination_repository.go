@@ -16,7 +16,17 @@ import (
 type ProtectedDestinationRepository struct {
 	records    DestinationRecordRepository
 	protection *secretprotection.Manager
+	redactor   CredentialRedactor
 }
+
+// CredentialRedactor is the systemic sink for plaintext provider credentials. The protected
+// repository is the only component that can register these values because it is the only durable
+// boundary permitted to open their encryption envelopes.
+type CredentialRedactor interface {
+	SetSource(string, []string)
+}
+
+const notificationCredentialRedactionSource = "notification-destination:"
 
 func (r *ProtectedDestinationRepository) ListNotificationDestinationMetadata(
 	ctx context.Context,
@@ -48,6 +58,40 @@ func NewProtectedDestinationRepository(
 	return &ProtectedDestinationRepository{records: records, protection: protection}
 }
 
+// WithCredentialRedactor registers the systemic sink that must observe every plaintext value.
+func (r *ProtectedDestinationRepository) WithCredentialRedactor(
+	redactor CredentialRedactor,
+) *ProtectedDestinationRepository {
+	if r != nil {
+		r.redactor = redactor
+	}
+	return r
+}
+
+// SeedCredentialRedaction opens every stored credential envelope during startup so the systemic
+// logger is safe before provider delivery begins. Normal metadata reads remain credential-free.
+func (r *ProtectedDestinationRepository) SeedCredentialRedaction(ctx context.Context) error {
+	if r == nil || r.records == nil || r.protection == nil {
+		return errors.New("notification destination credential protection is unavailable")
+	}
+	if r.redactor == nil {
+		return errors.New("notification destination credential redactor is unavailable")
+	}
+	if err := r.protection.Refresh(ctx); err != nil {
+		return err
+	}
+	records, err := r.records.ListNotificationDestinationRecords(ctx)
+	if err != nil {
+		return err
+	}
+	for _, record := range records {
+		if _, err := r.open(ctx, record, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (r *ProtectedDestinationRepository) SaveNotificationDestination(
 	ctx context.Context,
 	destination Destination,
@@ -73,7 +117,11 @@ func (r *ProtectedDestinationRepository) SaveNotificationDestination(
 	if err != nil {
 		return fmt.Errorf("protect notification destination credentials: %w", err)
 	}
-	return r.records.SaveNotificationDestinationRecord(ctx, destinationRecord(destination, envelope))
+	if err := r.records.SaveNotificationDestinationRecord(ctx, destinationRecord(destination, envelope)); err != nil {
+		return err
+	}
+	r.registerCredentials(destination)
+	return nil
 }
 
 // ResolveNotificationDestination opens the complete destination for a claimed delivery attempt.
@@ -124,7 +172,13 @@ func (r *ProtectedDestinationRepository) ListNotificationDestinationHealth(
 }
 
 func (r *ProtectedDestinationRepository) DeleteNotificationDestination(ctx context.Context, id string) error {
-	return r.records.DeleteNotificationDestination(ctx, id)
+	if err := r.records.DeleteNotificationDestination(ctx, id); err != nil {
+		return err
+	}
+	if r.redactor != nil {
+		r.redactor.SetSource(notificationCredentialRedactionSource+id, nil)
+	}
+	return nil
 }
 
 func (r *ProtectedDestinationRepository) RetireNotificationDestination(ctx context.Context, id string) error {
@@ -200,7 +254,21 @@ func (r *ProtectedDestinationRepository) open(
 	if err := destination.Validate(); err != nil {
 		return Destination{}, fmt.Errorf("validate notification destination %q: %w", record.ID, err)
 	}
+	r.registerCredentials(destination)
 	return destination, nil
+}
+
+func (r *ProtectedDestinationRepository) registerCredentials(destination Destination) {
+	if r == nil || r.redactor == nil {
+		return
+	}
+	values := make([]string, 0, len(destination.Credentials))
+	for _, value := range destination.Credentials {
+		if value != "" {
+			values = append(values, value)
+		}
+	}
+	r.redactor.SetSource(notificationCredentialRedactionSource+destination.ID, values)
 }
 
 func destinationCredentialRecord(id string) secretprotection.Record {

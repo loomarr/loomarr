@@ -48,6 +48,7 @@ type foundationBuild struct {
 	instanceID             string
 	metrics                *metrics.Recorder
 	protection             *secretprotection.Manager
+	secretRedactor         *settings.Redactor
 }
 
 // buildFoundation creates the shared roots consumed by later subsystem builders. The returned
@@ -137,6 +138,7 @@ func buildFoundation(
 		result.log = redactedLog
 		fallbackLog = redactedLog
 		secretRedactor = redactor
+		result.secretRedactor = redactor
 		result.libraryClient = library.NewDynamicObserved(result.set.libraryConn(), instanceID, result.metrics)
 		key := func() string { return result.set.str("tmdb.api_key") }
 		if overrides.TMDBBaseURL != "" {
