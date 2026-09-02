@@ -13,13 +13,9 @@ import (
 // authority join from disk. Comparison and assessment tooling should use this
 // loader instead of decoding either artifact directly.
 func LoadTemporalStructureChallenge(publicManifestPath, authorityPath string, expectedCases int) (TemporalStructureChallengeManifest, TemporalStructureChallengeAuthority, string, string, error) {
-	manifestRaw, err := os.ReadFile(publicManifestPath)
+	manifest, manifestSHA, err := LoadTemporalStructureChallengePublic(publicManifestPath, expectedCases)
 	if err != nil {
-		return TemporalStructureChallengeManifest{}, TemporalStructureChallengeAuthority{}, "", "", fmt.Errorf("read public challenge manifest: %w", err)
-	}
-	manifest, err := readStrictJSON[TemporalStructureChallengeManifest](publicManifestPath)
-	if err != nil {
-		return TemporalStructureChallengeManifest{}, TemporalStructureChallengeAuthority{}, "", "", fmt.Errorf("decode public challenge manifest: %w", err)
+		return TemporalStructureChallengeManifest{}, TemporalStructureChallengeAuthority{}, "", "", err
 	}
 	authorityRaw, err := os.ReadFile(authorityPath)
 	if err != nil {
@@ -29,7 +25,6 @@ func LoadTemporalStructureChallenge(publicManifestPath, authorityPath string, ex
 	if err != nil {
 		return TemporalStructureChallengeManifest{}, TemporalStructureChallengeAuthority{}, "", "", fmt.Errorf("decode private challenge authority: %w", err)
 	}
-	manifestSHA := hashBytes(manifestRaw)
 	authoritySHA := hashBytes(authorityRaw)
 	if err := validateTemporalStructureChallenge(filepath.Dir(publicManifestPath), manifest, authority, manifestSHA, expectedCases); err != nil {
 		return TemporalStructureChallengeManifest{}, TemporalStructureChallengeAuthority{}, "", "", err
@@ -37,10 +32,31 @@ func LoadTemporalStructureChallenge(publicManifestPath, authorityPath string, ex
 	return manifest, authority, manifestSHA, authoritySHA, nil
 }
 
-func validateTemporalStructureChallenge(publicRoot string, manifest TemporalStructureChallengeManifest, authority TemporalStructureChallengeAuthority, manifestSHA string, expectedCases int) error {
-	if expectedCases <= 0 || manifest.SchemaVersion != TemporalStructureChallengeSchemaVersion || manifest.ContractVersion != TemporalStructureChallengeContractVersion || manifest.ChallengeID == "" || manifest.GeneratedAt.IsZero() || manifest.ProductionAdmissionAllowed || len(manifest.Cases) != expectedCases {
-		return fmt.Errorf("public challenge identity, count, or production disposition is invalid")
+// LoadTemporalStructureChallengePublic validates the complete assessor-facing
+// surface without opening private construction authority. Paid model runners
+// must use this loader so truth labels cannot enter their process.
+func LoadTemporalStructureChallengePublic(publicManifestPath string, expectedCases int) (TemporalStructureChallengeManifest, string, error) {
+	manifestRaw, err := os.ReadFile(publicManifestPath)
+	if err != nil {
+		return TemporalStructureChallengeManifest{}, "", fmt.Errorf("read public challenge manifest: %w", err)
 	}
+	manifest, err := readStrictJSON[TemporalStructureChallengeManifest](publicManifestPath)
+	if err != nil {
+		return TemporalStructureChallengeManifest{}, "", fmt.Errorf("decode public challenge manifest: %w", err)
+	}
+	manifestSHA := hashBytes(manifestRaw)
+	if _, err := validateTemporalStructureChallengePublic(filepath.Dir(publicManifestPath), manifest, expectedCases); err != nil {
+		return TemporalStructureChallengeManifest{}, "", err
+	}
+	return manifest, manifestSHA, nil
+}
+
+func validateTemporalStructureChallenge(publicRoot string, manifest TemporalStructureChallengeManifest, authority TemporalStructureChallengeAuthority, manifestSHA string, expectedCases int) error {
+	publicByAlias, err := validateTemporalStructureChallengePublic(publicRoot, manifest, expectedCases)
+	if err != nil {
+		return err
+	}
+
 	if authority.SchemaVersion != manifest.SchemaVersion || authority.ContractVersion != manifest.ContractVersion || authority.ChallengeID != manifest.ChallengeID || !authority.GeneratedAt.Equal(manifest.GeneratedAt) || !reviewSHA256(authority.AuthoringSHA256) || !reviewSHA256(authority.SeedSHA256) || authority.PublicManifestSHA256 != manifestSHA || len(authority.Cases) != expectedCases {
 		return fmt.Errorf("private challenge authority does not bind the public manifest")
 	}
@@ -48,23 +64,6 @@ func validateTemporalStructureChallenge(publicRoot string, manifest TemporalStru
 		if strings.TrimSpace(identity.Path) == "" || strings.TrimSpace(identity.Version) == "" || !reviewSHA256(identity.BinarySHA256) {
 			return fmt.Errorf("private challenge %s identity is invalid", name)
 		}
-	}
-	publicByAlias := make(map[string]TemporalStructureChallengePublicCase, expectedCases)
-	for index, item := range manifest.Cases {
-		if len(item.Alias) != len("case-")+24 || !strings.HasPrefix(item.Alias, "case-") || !isLowerHex(item.Alias[len("case-"):]) {
-			return fmt.Errorf("public challenge case %d has invalid alias", index)
-		}
-		if _, duplicate := publicByAlias[item.Alias]; duplicate {
-			return fmt.Errorf("public challenge repeats alias %q", item.Alias)
-		}
-		expectedPath := filepath.ToSlash(filepath.Join("cases", item.Alias, "video.mp4"))
-		if item.Video.Path != expectedPath || item.Video.DurationMS <= 0 || item.Video.Width <= 0 || item.Video.Height <= 0 || item.Video.Bytes <= 0 || item.Video.Bytes > TemporalTruthMaximumVideoBytes || !reviewSHA256(item.Video.SHA256) {
-			return fmt.Errorf("public challenge case %d has invalid video authority", index)
-		}
-		if err := verifyTemporalTruthEvidenceFile(publicRoot, item.Video, TemporalTruthMaximumVideoBytes); err != nil {
-			return fmt.Errorf("public challenge case %d: %w", index, err)
-		}
-		publicByAlias[item.Alias] = item
 	}
 	authorityAliases := make(map[string]struct{}, expectedCases)
 	caseIDs := make(map[string]struct{}, expectedCases)
@@ -89,6 +88,30 @@ func validateTemporalStructureChallenge(publicRoot string, manifest TemporalStru
 		}
 	}
 	return nil
+}
+
+func validateTemporalStructureChallengePublic(publicRoot string, manifest TemporalStructureChallengeManifest, expectedCases int) (map[string]TemporalStructureChallengePublicCase, error) {
+	if expectedCases <= 0 || manifest.SchemaVersion != TemporalStructureChallengeSchemaVersion || manifest.ContractVersion != TemporalStructureChallengeContractVersion || manifest.ChallengeID == "" || manifest.GeneratedAt.IsZero() || manifest.ProductionAdmissionAllowed || len(manifest.Cases) != expectedCases {
+		return nil, fmt.Errorf("public challenge identity, count, or production disposition is invalid")
+	}
+	publicByAlias := make(map[string]TemporalStructureChallengePublicCase, expectedCases)
+	for index, item := range manifest.Cases {
+		if len(item.Alias) != len("case-")+24 || !strings.HasPrefix(item.Alias, "case-") || !isLowerHex(item.Alias[len("case-"):]) {
+			return nil, fmt.Errorf("public challenge case %d has invalid alias", index)
+		}
+		if _, duplicate := publicByAlias[item.Alias]; duplicate {
+			return nil, fmt.Errorf("public challenge repeats alias %q", item.Alias)
+		}
+		expectedPath := filepath.ToSlash(filepath.Join("cases", item.Alias, "video.mp4"))
+		if item.Video.Path != expectedPath || item.Video.DurationMS <= 0 || item.Video.Width <= 0 || item.Video.Height <= 0 || item.Video.Bytes <= 0 || item.Video.Bytes > TemporalTruthMaximumVideoBytes || !reviewSHA256(item.Video.SHA256) {
+			return nil, fmt.Errorf("public challenge case %d has invalid video authority", index)
+		}
+		if err := verifyTemporalTruthEvidenceFile(publicRoot, item.Video, TemporalTruthMaximumVideoBytes); err != nil {
+			return nil, fmt.Errorf("public challenge case %d: %w", index, err)
+		}
+		publicByAlias[item.Alias] = item
+	}
+	return publicByAlias, nil
 }
 
 func validateTemporalStructureAuthorityCase(item TemporalStructureChallengeAuthorityCase, outputDurationMS int64) error {

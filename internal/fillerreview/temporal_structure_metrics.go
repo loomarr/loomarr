@@ -38,7 +38,8 @@ func buildTemporalStructureComparison(loaded temporalStructureComparisonLoaded, 
 		set := loadedAssessment.set
 		report.Assessors = append(report.Assessors, TemporalStructureAssessorReference{
 			AssessmentSetSHA256: loadedAssessment.fileSHA, RawResultSHA256: set.RawResultSHA256,
-			CapabilitySHA256: set.CapabilitySnapshotSHA256, CompletedAt: set.CompletedAt, Assessor: set.Assessor,
+			SnapshotFileSHA256: set.SnapshotFileSHA256,
+			CapabilitySHA256:   set.CapabilitySnapshotSHA256, CompletedAt: set.CompletedAt, Assessor: set.Assessor,
 		})
 		summaryByAssessor[set.Assessor.ID] = &TemporalStructureAssessorSummary{AssessorID: set.Assessor.ID, Cases: len(loaded.authority.Cases)}
 		for _, unit := range []fillereval.UnitKind{fillereval.UnitStandalone, fillereval.UnitCompilation, fillereval.UnitProgrammeExcerpt} {
