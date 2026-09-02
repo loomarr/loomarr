@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -171,14 +170,6 @@ func validHumanRole(role fillereval.TemporalRole) bool {
 		fillereval.TemporalRolePSA, fillereval.TemporalRoleStationID, fillereval.TemporalRoleTrailer,
 		fillereval.TemporalRoleInterstitial, fillereval.TemporalRoleUnclear,
 	}, role)
-}
-
-func temporalHumanAssessmentSetSHA256(set TemporalHumanAssessmentSet) string {
-	set.Assessments = slices.Clone(set.Assessments)
-	sort.Slice(set.Assessments, func(i, j int) bool {
-		return set.Assessments[i].EvidenceAlias < set.Assessments[j].EvidenceAlias
-	})
-	return temporalTruthJSONSHA(set)
 }
 
 func temporalHumanAttestationSHA256(attestation TemporalHumanReviewAttestation) string {
