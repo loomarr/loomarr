@@ -45,6 +45,7 @@ type ResourceUsage struct {
 type CertificationOptions struct {
 	Required          bool
 	LiveSchedule      bool
+	FrozenCatalog     bool
 	Trials            int
 	GeneratorProvider string
 	GeneratorBaseURL  string
@@ -102,7 +103,7 @@ func PrepareCertificationRun(caseCount int, options CertificationOptions) (CallB
 		return budget, err
 	}
 	budget.Resource = resource
-	if !options.LiveSchedule {
+	if !options.LiveSchedule && !options.FrozenCatalog {
 		return budget, fmt.Errorf("LOOMARR_EVAL_LIVE_SCHEDULE=1 is required in certification mode")
 	}
 	provider := strings.ToLower(strings.TrimSpace(options.GeneratorProvider))

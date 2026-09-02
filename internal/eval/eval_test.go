@@ -198,4 +198,13 @@ func writeScorecard(t *testing.T, scorecard Scorecard, required bool) {
 			}
 		}
 	}
+	if out := os.Getenv("LOOMARR_EVAL_SUMMARY_OUT"); out != "" {
+		if err := os.WriteFile(out, []byte(HumanSummary(scorecard)), 0o644); err != nil {
+			if required {
+				t.Errorf("write required semantic summary to %s: %v", out, err)
+			} else {
+				t.Logf("could not write semantic summary to %s: %v", out, err)
+			}
+		}
+	}
 }

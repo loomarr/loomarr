@@ -11,6 +11,15 @@ eval-cert: ## certify exact intents and mandatory scheduled viewer outcomes; fai
 	  LOOMARR_EVAL_REQUIRED=1 LOOMARR_EVAL_OUT="$$report" \
 	    $(GO) test -count=1 -tags=eval -v -timeout 20m ./internal/eval/
 
+eval-planner-cert: ## compare one model against the frozen planner corpus; explicit, inference-spending, non-CI
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  report="$${LOOMARR_EVAL_OUT:-$$LOOMARR_ARTIFACT_DIR/planner-certification.json}"; \
+	  summary="$${LOOMARR_EVAL_SUMMARY_OUT:-$$LOOMARR_ARTIFACT_DIR/planner-certification.md}"; \
+	  mkdir -p "$$(dirname "$$report")" "$$(dirname "$$summary")"; \
+	  LOOMARR_EVAL_PLANNER_CERTIFICATION=1 LOOMARR_EVAL_REQUIRED=1 \
+	  LOOMARR_EVAL_OUT="$$report" LOOMARR_EVAL_SUMMARY_OUT="$$summary" \
+	    $(GO) test -count=1 -tags=eval -run '^TestPlannerModelCertification$$' -v -timeout 20m ./internal/eval/
+
 eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (manual, resource-heavy)
 	@test -n "$$OPENROUTER_API_KEY" || { echo "eval-matrix: OPENROUTER_API_KEY is required" >&2; exit 2; }; \
 	  test -n "$$OPENROUTER_MODEL" || { echo "eval-matrix: OPENROUTER_MODEL is required" >&2; exit 2; }; \
