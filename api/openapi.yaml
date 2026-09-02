@@ -10765,7 +10765,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Record explicit household discovery feedback (admin)
+      summary: Record explicit household or Channel discovery feedback (admin)
       tags:
         - discovery
   /v1/discovery/feedback/clear:
@@ -10790,7 +10790,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Clear explicit household discovery feedback (admin)
+      summary: Clear explicit household or Channel discovery feedback (admin)
       tags:
         - discovery
   /v1/docs:

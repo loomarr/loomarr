@@ -48,6 +48,39 @@ type DiscoveryFeedbackStore interface {
 	ListDiscoveryFeedback(context.Context, FeedbackFilter) ([]DiscoveryFeedback, error)
 }
 
+// EffectiveDiscoveryFeedback resolves newest-event-wins within each scope and
+// channel-over-household precedence. Inputs must be newest-first, as returned by
+// ListDiscoveryFeedback. A channel clear removes only the override, allowing the
+// effective household event to reappear.
+func EffectiveDiscoveryFeedback(household, channel []DiscoveryFeedback) []DiscoveryFeedback {
+	overrides := make(map[provision.Key]bool, len(channel))
+	seenChannel := make(map[provision.Key]bool, len(channel))
+	out := make([]DiscoveryFeedback, 0, len(channel)+len(household))
+	for _, event := range channel {
+		if seenChannel[event.Target] {
+			continue
+		}
+		seenChannel[event.Target] = true
+		if event.Action == FeedbackClear {
+			continue
+		}
+		overrides[event.Target] = true
+		out = append(out, event)
+	}
+	seenHousehold := make(map[provision.Key]bool, len(household))
+	for _, event := range household {
+		if seenHousehold[event.Target] {
+			continue
+		}
+		seenHousehold[event.Target] = true
+		if event.Action == FeedbackClear || overrides[event.Target] {
+			continue
+		}
+		out = append(out, event)
+	}
+	return out
+}
+
 func (s *sqlStore) AppendDiscoveryFeedback(ctx context.Context, feedback DiscoveryFeedback) error {
 	if feedback.ID == "" || feedback.ActorID == "" || feedback.Target == "" {
 		return fmt.Errorf("append discovery feedback: id, actor, and target are required")
