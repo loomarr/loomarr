@@ -19,9 +19,9 @@ import (
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
-const certificationManifestPath = "testdata/planner-certification-v3.json"
+const certificationManifestPath = "testdata/planner-certification-v4.json"
 
-//go:embed testdata/planner-certification-v1.json testdata/planner-certification-v2.json testdata/planner-certification-v3.json testdata/planner-catalog-v1.json
+//go:embed testdata/planner-certification-v1.json testdata/planner-certification-v2.json testdata/planner-certification-v3.json testdata/planner-certification-v4.json testdata/planner-catalog-v1.json
 var certificationFiles embed.FS
 
 // CertificationCorpus is the immutable, held-out planner-model corpus contract.
@@ -73,6 +73,7 @@ type certificationCorpusExtension struct {
 	Version             string                  `json:"version"`
 	Base                CertificationFixture    `json:"base"`
 	PromptVersion       string                  `json:"promptVersion"`
+	ToolSchemaVersion   string                  `json:"toolSchemaVersion"`
 	ScorerVersion       string                  `json:"scorerVersion"`
 	QualityMetrics      []string                `json:"qualityMetrics"`
 	Thresholds          CertificationThresholds `json:"thresholds"`
@@ -141,12 +142,13 @@ func LoadEmbeddedCertificationCorpus() (CertificationCorpus, error) {
 	if err := validateCertificationExtension(extension, corpus); err != nil {
 		return CertificationCorpus{}, err
 	}
-	if extension.PromptVersion != suggest.PlannerPromptVersion || corpus.ToolSchemaVersion != suggest.PlannerToolSchemaVersion {
+	if extension.PromptVersion != suggest.PlannerPromptVersion || extension.ToolSchemaVersion != suggest.PlannerToolSchemaVersion {
 		return CertificationCorpus{}, fmt.Errorf("certification prompt/tool identity differs from production Suggester")
 	}
 	corpus.SchemaVersion = extension.SchemaVersion
 	corpus.Version = extension.Version
 	corpus.PromptVersion = extension.PromptVersion
+	corpus.ToolSchemaVersion = extension.ToolSchemaVersion
 	corpus.ScorerVersion = extension.ScorerVersion
 	corpus.QualityMetrics = append([]string(nil), extension.QualityMetrics...)
 	corpus.Thresholds = extension.Thresholds
@@ -176,7 +178,7 @@ func LoadEmbeddedCertificationCorpus() (CertificationCorpus, error) {
 }
 
 func validateCertificationExtension(extension certificationCorpusExtension, corpus CertificationCorpus) error {
-	if extension.SchemaVersion <= 0 || extension.Version == "" || extension.PromptVersion == "" || extension.ScorerVersion == "" {
+	if extension.SchemaVersion <= 0 || extension.Version == "" || extension.PromptVersion == "" || extension.ToolSchemaVersion == "" || extension.ScorerVersion == "" {
 		return fmt.Errorf("certification extension identity is incomplete")
 	}
 	if extension.ProposalExpectation != "exact_fixture_candidates_or_declared_abstention" {

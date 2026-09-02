@@ -21,11 +21,11 @@ func TestEmbeddedCertificationCorpusIsFrozenHeldOutAndRepresentative(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if corpus.Version != "planner-certification-v3" {
-		t.Fatalf("corpus version = %q, want planner-certification-v3", corpus.Version)
+	if corpus.Version != "planner-certification-v4" {
+		t.Fatalf("corpus version = %q, want planner-certification-v4", corpus.Version)
 	}
-	if corpus.SchemaVersion != 3 {
-		t.Fatalf("corpus schema version = %d, want 3", corpus.SchemaVersion)
+	if corpus.SchemaVersion != 4 {
+		t.Fatalf("corpus schema version = %d, want 4", corpus.SchemaVersion)
 	}
 	if corpus.PromptVersion != suggest.PlannerPromptVersion || corpus.ToolSchemaVersion != suggest.PlannerToolSchemaVersion {
 		t.Fatalf("prompt/tool version = %q/%q, want production %q/%q", corpus.PromptVersion, corpus.ToolSchemaVersion, suggest.PlannerPromptVersion, suggest.PlannerToolSchemaVersion)
@@ -86,7 +86,7 @@ func TestEmbeddedCertificationCorpusIsFrozenHeldOutAndRepresentative(t *testing.
 func TestCertificationExtensionRejectsUnknownCaseReferences(t *testing.T) {
 	corpus := CertificationCorpus{Cases: []CertificationCase{{ID: "known"}}}
 	extension := certificationCorpusExtension{
-		SchemaVersion: 3, Version: "v3", PromptVersion: "prompt", ScorerVersion: "scorer",
+		SchemaVersion: 4, Version: "v4", PromptVersion: "prompt", ToolSchemaVersion: "tool", ScorerVersion: "scorer",
 		QualityMetrics:      []string{"proposal_quality"},
 		ProposalExpectation: "exact_fixture_candidates_or_declared_abstention",
 		Selection: CertificationSelection{QualityMargin: 0.02, Weights: CertificationQualityWeights{
@@ -123,7 +123,7 @@ func TestCertificationScorecardCarriesVersionedContractAndHumanSummary(t *testin
 		t.Fatal(err)
 	}
 	card := NewRunner(scriptedGenerator{}, config).Run(context.Background(), []Case{{Name: "safe", NoFabrication: true}})
-	if card.Contract == nil || card.Contract.CatalogFixtureSHA256 == "" || card.CorpusVersion != "planner-certification-v3" {
+	if card.Contract == nil || card.Contract.CatalogFixtureSHA256 == "" || card.CorpusVersion != "planner-certification-v4" {
 		t.Fatalf("scorecard certification contract = %+v", card)
 	}
 	summary := HumanSummary(card)
