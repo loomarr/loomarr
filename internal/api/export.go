@@ -66,6 +66,7 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	srv.registerSystemLLM(humaAPI)
 	srv.registerSystemDatabase(humaAPI)
 	srv.registerSystemSecurity(humaAPI)
+	srv.registerDiscoveryQuality(humaAPI)
 	srv.registerSystemBackups(humaAPI)
 	srv.registerSystemRestart(humaAPI)
 	srv.registerDashboardPanels(humaAPI)

@@ -179,7 +179,12 @@ func (s *sqlStore) pruneQualitySnapshots(ctx context.Context, tx *sql.Tx) error 
 }
 
 func (s *sqlStore) ExportQualityLedger(ctx context.Context, now time.Time) (quality.Export, error) {
-	out := quality.Export{SchemaVersion: qualityExportSchemaVersion, GeneratedAt: now.UTC()}
+	out := quality.Export{
+		SchemaVersion: qualityExportSchemaVersion,
+		GeneratedAt:   now.UTC(),
+		Aggregates:    make([]quality.Aggregate, 0),
+		RunSnapshots:  make([]quality.RunSnapshot, 0),
+	}
 	rows, err := s.db.QueryContext(ctx, `SELECT day, stage, outcome, run_snapshot_id,
 		observation_count, duration_millis, tool_calls, candidate_count, cost_nanos
 		FROM quality_daily_aggregates ORDER BY day, stage, outcome, run_snapshot_id`)
