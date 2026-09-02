@@ -38,7 +38,7 @@ func TestPlanDownloadsSkipsRightsApprovedLocalMedia(t *testing.T) {
 	remoteApproval := approvalFor(inv, retrieved)
 	localApproval := remoteApproval
 	localApproval.CaseID, localApproval.CaptureIDs, localApproval.ItemID = local.CaseID, local.CaptureIDs, local.ItemID
-	opts := options{inventorySHA256: strings.Repeat("f", 64), generatedAt: retrieved.Add(2 * time.Minute), maxItems: 2, maxBytes: 4096, outputDir: t.TempDir()}
+	opts := options{profile: fillercorpus.RightsProfileDevelopment, inventorySHA256: strings.Repeat("f", 64), generatedAt: retrieved.Add(2 * time.Minute), maxItems: 2, maxBytes: 4096, outputDir: t.TempDir()}
 	plan, err := planDownloads(inv, []fillercorpus.RightsDecision{remoteApproval, localApproval}, opts)
 	if err != nil || len(plan) != 1 || plan[0].candidate.ItemID != "remote" {
 		t.Fatalf("plan = %+v, %v", plan, err)
@@ -46,7 +46,7 @@ func TestPlanDownloadsSkipsRightsApprovedLocalMedia(t *testing.T) {
 }
 
 func planOptions(retrieved time.Time) options {
-	return options{outputDir: "/tmp/corpus", inventorySHA256: strings.Repeat("f", 64), generatedAt: retrieved.Add(2 * time.Minute), maxItems: 1, maxBytes: 1024}
+	return options{profile: fillercorpus.RightsProfileDevelopment, outputDir: "/tmp/corpus", inventorySHA256: strings.Repeat("f", 64), generatedAt: retrieved.Add(2 * time.Minute), maxItems: 1, maxBytes: 1024}
 }
 
 func TestPlanDownloadsRequiresMetadataBoundRightsReview(t *testing.T) {
@@ -87,6 +87,42 @@ func TestPlanDownloadsRejectsUnallowlistedMediaHost(t *testing.T) {
 	inv.Cases[0].Representation.URL = "https://example.com/clip.mp4"
 	if _, err := planDownloads(inv, nil, planOptions(retrieved)); err == nil {
 		t.Fatal("unallowlisted host accepted")
+	}
+}
+
+func TestPlanDownloadsCertificationRejectsLegacyAndProcessorDrift(t *testing.T) {
+	retrieved := time.Date(2026, 9, 2, 8, 0, 0, 0, time.UTC)
+	inv := downloadableInventory(retrieved, "holdout", "")
+	approval := approvalFor(inv, retrieved)
+	approval.Redistributable = false
+	approval.HoldoutContract = downloadHoldoutContract()
+	opts := planOptions(retrieved)
+	opts.profile = fillercorpus.RightsProfileCertification
+	opts.processorID = approval.HoldoutContract.ProcessorID
+	opts.processorTermsSHA256 = approval.HoldoutContract.ProcessorTermsSHA256
+	if plan, err := planDownloads(inv, []fillercorpus.RightsDecision{approval}, opts); err != nil || len(plan) != 1 {
+		t.Fatalf("certification plan = %v, %v", plan, err)
+	}
+	legacy := approval
+	legacy.HoldoutContract = nil
+	if _, err := planDownloads(inv, []fillercorpus.RightsDecision{legacy}, opts); err == nil {
+		t.Fatal("schema-v3 approval authorized certification acquisition")
+	}
+	drifted := opts
+	drifted.processorTermsSHA256 = strings.Repeat("f", 64)
+	if _, err := planDownloads(inv, []fillercorpus.RightsDecision{approval}, drifted); err == nil {
+		t.Fatal("changed processor terms authorized certification acquisition")
+	}
+}
+
+func downloadHoldoutContract() *fillercorpus.HoldoutRightsContract {
+	return &fillercorpus.HoldoutRightsContract{
+		SchemaVersion: fillercorpus.HoldoutRightsContractSchemaVersion,
+		AgreementID:   "agreement-v1", AgreementSHA256: strings.Repeat("a", 64), ScheduleID: "schedule-v1", ScheduleSHA256: strings.Repeat("b", 64),
+		SignerAuthorityStatus: fillercorpus.RightsStatusCleared, SignerAuthorityEvidenceSHA256: strings.Repeat("c", 64), ProcessorID: "openrouter/vertex", ProcessorTermsSHA256: strings.Repeat("d", 64),
+		Grants:                       fillercorpus.HoldoutRightsGrants{CommercialEvaluation: true, CopyAndStorage: true, TechnicalModification: true, EvidenceExtraction: true, ProviderTransfer: true},
+		EmbeddedRights:               fillercorpus.EmbeddedRightsStatus{Music: fillercorpus.RightsStatusNotPresent, PerformersAndVoices: fillercorpus.RightsStatusCleared, StockAndArtwork: fillercorpus.RightsStatusNotPresent, Trademarks: fillercorpus.RightsStatusCleared, PrivacyAndPublicity: fillercorpus.RightsStatusCleared, Locations: fillercorpus.RightsStatusNotPresent},
+		EmbeddedRightsEvidenceSHA256: strings.Repeat("e", 64), RedistributionScope: fillercorpus.RedistributionExternalOnly, Territory: fillercorpus.RightsTerritoryWorldwide, Term: fillercorpus.RightsTermPerpetualIrrevocable, Withdrawal: fillercorpus.RightsWithdrawalDefectRetirement,
 	}
 }
 

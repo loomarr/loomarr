@@ -27,13 +27,18 @@ func run(args []string, stdout, stderr io.Writer) int {
 	outputPath := flags.String("out", "", "non-authorizing rights worksheet JSON")
 	csvOutputPath := flags.String("csv-out", "", "spreadsheet-safe non-authorizing rights worksheet CSV")
 	preparedAtText := flags.String("prepared-at", "", "worksheet preparation time in RFC3339 format")
+	profile := flags.String("profile", "", "required rights profile: development or certification")
+	agreementID := flags.String("agreement-id", "", "maintainer/counsel-approved agreement identifier (certification only)")
+	agreementSHA256 := flags.String("agreement-sha256", "", "SHA-256 of the approved agreement form (certification only)")
+	processorID := flags.String("processor-id", "", "exact approved inference processor identifier (certification only)")
+	processorTermsSHA256 := flags.String("processor-terms-sha256", "", "SHA-256 of approved processor terms snapshot (certification only)")
 	minItems := flags.Int("min-items", 0, "required minimum worksheet cases")
 	maxItems := flags.Int("max-items", 0, "hard worksheet case ceiling")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
-	if *inventoryPath == "" || *outputPath == "" || *preparedAtText == "" || *minItems <= 0 || *maxItems < *minItems {
-		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-review: inventory, output, preparation time, and positive min/max item bounds are required")
+	if *inventoryPath == "" || *outputPath == "" || *preparedAtText == "" || *minItems <= 0 || *maxItems < *minItems || (*profile != fillercorpus.RightsProfileDevelopment && *profile != fillercorpus.RightsProfileCertification) {
+		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-review: inventory, output, preparation time, explicit development/certification profile, and positive min/max item bounds are required")
 		return 2
 	}
 	preparedAt, err := time.Parse(time.RFC3339, *preparedAtText)
@@ -51,7 +56,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-review: decode inventory:", err)
 		return 1
 	}
-	result, err := prepareWorksheet(inv, sha256Hex(raw), preparedAt, *minItems, *maxItems)
+	var template *fillercorpus.HoldoutRightsTemplate
+	if *profile == fillercorpus.RightsProfileCertification {
+		template = &fillercorpus.HoldoutRightsTemplate{AgreementID: *agreementID, AgreementSHA256: *agreementSHA256, ProcessorID: *processorID, ProcessorTermsSHA256: *processorTermsSHA256}
+		if err := fillercorpus.ValidateHoldoutRightsTemplate(template); err != nil {
+			_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-review:", err)
+			return 2
+		}
+	}
+	result, err := prepareWorksheetForProfile(inv, sha256Hex(raw), preparedAt, *minItems, *maxItems, *profile, template)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-review:", err)
 		return 1
@@ -73,11 +86,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 func writeReviewCSV(path string, sheet fillercorpus.RightsWorksheet) error {
 	return writeAtomic(path, func(writer io.Writer) error {
 		csvWriter := csv.NewWriter(writer)
-		if err := csvWriter.Write(fillercorpus.RightsReviewCSVHeader()); err != nil {
+		header := fillercorpus.RightsReviewCSVHeader()
+		if sheet.SchemaVersion == fillercorpus.HoldoutRightsWorksheetSchemaVersion {
+			header = fillercorpus.HoldoutRightsReviewCSVHeader()
+		}
+		if err := csvWriter.Write(header); err != nil {
 			return err
 		}
 		for _, row := range sheet.Cases {
-			record := append(fillercorpus.ImmutableRightsReviewRecord(row), "", "", "", "", "", "", "")
+			record := append(fillercorpus.ImmutableRightsReviewRecord(row), make([]string, len(header)-len(fillercorpus.ImmutableRightsReviewRecord(row)))...)
 			if err := csvWriter.Write(record); err != nil {
 				return err
 			}
@@ -88,6 +105,10 @@ func writeReviewCSV(path string, sheet fillercorpus.RightsWorksheet) error {
 }
 
 func prepareWorksheet(inv fillercorpus.Inventory, digest string, preparedAt time.Time, minItems, maxItems int) (fillercorpus.RightsWorksheet, error) {
+	return prepareWorksheetForProfile(inv, digest, preparedAt, minItems, maxItems, fillercorpus.RightsProfileDevelopment, nil)
+}
+
+func prepareWorksheetForProfile(inv fillercorpus.Inventory, digest string, preparedAt time.Time, minItems, maxItems int, profile string, template *fillercorpus.HoldoutRightsTemplate) (fillercorpus.RightsWorksheet, error) {
 	if failures := fillercorpus.ValidateInventory(inv); len(failures) != 0 || preparedAt.Before(inv.SnapshotAt) {
 		return fillercorpus.RightsWorksheet{}, fmt.Errorf("inventory identity or worksheet time is invalid")
 	}
@@ -101,14 +122,31 @@ func prepareWorksheet(inv fillercorpus.Inventory, digest string, preparedAt time
 	if len(cases) > maxItems {
 		cases = cases[:maxItems]
 	}
+	schemaVersion := fillercorpus.RightsWorksheetSchemaVersion
+	if profile == fillercorpus.RightsProfileCertification {
+		if err := fillercorpus.ValidateHoldoutRightsTemplate(template); err != nil {
+			return fillercorpus.RightsWorksheet{}, err
+		}
+		schemaVersion = fillercorpus.HoldoutRightsWorksheetSchemaVersion
+	} else if profile != fillercorpus.RightsProfileDevelopment || template != nil {
+		return fillercorpus.RightsWorksheet{}, fmt.Errorf("rights profile and holdout template are inconsistent")
+	}
 	result := fillercorpus.RightsWorksheet{
-		SchemaVersion: fillercorpus.RightsWorksheetSchemaVersion, InventorySHA256: digest,
+		SchemaVersion: schemaVersion, Profile: profile, InventorySHA256: digest,
 		SnapshotAt: inv.SnapshotAt.UTC(), PreparedAt: preparedAt.UTC(), MinItems: minItems, MaxItems: maxItems,
+		HoldoutTemplate: template,
 		Instructions: []string{
 			"This worksheet is not download authority; blank rows fail closed.",
 			"Review the exact item, metadata, selected file, license assertion, rights prose, embedded material, attribution, and non-copyright restrictions.",
 			"Set decision to approved only with explicit redistributable=true and a reasoned basis; otherwise set decision to held.",
 		},
+	}
+	if profile == fillercorpus.RightsProfileCertification {
+		result.Instructions = []string{
+			"This worksheet is not legal, outreach, acquisition, download, provider-transfer, or spend authority; blank rows fail closed.",
+			"Review the exact executed per-master schedule, signer authority, every required grant, embedded rights category, territory, term, attribution, restriction, and any ambiguity adjudication.",
+			"Set decision to approved only when every certification field is complete and supported by the agreement and evidence digests; otherwise set decision to held with the unresolved facts preserved.",
+		}
 	}
 	seen := map[string]struct{}{}
 	for index, item := range cases {

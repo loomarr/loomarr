@@ -10,14 +10,16 @@ import (
 const RightsWorksheetSchemaVersion = 3
 
 type RightsWorksheet struct {
-	SchemaVersion   int               `json:"schemaVersion"`
-	InventorySHA256 string            `json:"inventorySha256"`
-	SnapshotAt      time.Time         `json:"snapshotAt"`
-	PreparedAt      time.Time         `json:"preparedAt"`
-	MinItems        int               `json:"minItems"`
-	MaxItems        int               `json:"maxItems"`
-	Instructions    []string          `json:"instructions"`
-	Cases           []RightsReviewRow `json:"cases"`
+	SchemaVersion   int                    `json:"schemaVersion"`
+	Profile         string                 `json:"profile,omitempty"`
+	InventorySHA256 string                 `json:"inventorySha256"`
+	SnapshotAt      time.Time              `json:"snapshotAt"`
+	PreparedAt      time.Time              `json:"preparedAt"`
+	MinItems        int                    `json:"minItems"`
+	MaxItems        int                    `json:"maxItems"`
+	Instructions    []string               `json:"instructions"`
+	HoldoutTemplate *HoldoutRightsTemplate `json:"holdoutTemplate,omitempty"`
+	Cases           []RightsReviewRow      `json:"cases"`
 }
 
 type RightsReviewRow struct {
@@ -60,7 +62,20 @@ var rightsReviewCSVHeader = []string{
 	"reviewer_id", "reviewed_at", "decision", "basis", "redistributable", "required_credit", "restrictions_json",
 }
 
+var holdoutRightsDecisionCSVFields = []string{
+	"reviewer_id", "reviewed_at", "decision", "basis",
+	"schedule_id", "schedule_sha256", "signer_authority_status", "signer_authority_evidence_sha256",
+	"commercial_evaluation", "copy_and_storage", "technical_modification", "evidence_extraction", "provider_transfer",
+	"embedded_music", "embedded_performers_voices", "embedded_stock_artwork", "embedded_trademarks", "embedded_privacy_publicity", "embedded_locations", "embedded_rights_evidence_sha256",
+	"redistribution_scope", "territory", "term", "expires_at", "withdrawal",
+	"adjudicator_id", "adjudicated_at", "adjudication_disposition", "required_credit", "restrictions_json",
+}
+
 func RightsReviewCSVHeader() []string { return append([]string(nil), rightsReviewCSVHeader...) }
+
+func HoldoutRightsReviewCSVHeader() []string {
+	return append(append([]string(nil), rightsReviewCSVHeader[:len(rightsReviewCSVHeader)-7]...), holdoutRightsDecisionCSVFields...)
+}
 
 func RightsReviewRowFromCase(item InventoryCase) RightsReviewRow {
 	return RightsReviewRow{

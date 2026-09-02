@@ -106,6 +106,10 @@ redirects stay within each authority's frozen and built-in host policy, and bodi
 their recorded size. Source checksums are checked when present, and the external ledger adds a
 locally computed SHA-256. Already-local direct-cohort cases are not downloaded again. A
 failed or stale approval writes no ledger and cannot silently widen the selected corpus.
+The caller must choose `development` or `certification` through
+`LOOMARR_FILLER_CORPUS_RIGHTS_PROFILE`. Certification additionally pins
+`LOOMARR_FILLER_CORPUS_PROCESSOR_ID` and `LOOMARR_FILLER_CORPUS_PROCESSOR_TERMS_SHA256`; a schema-v3
+development approval, changed processor, or changed terms snapshot fails before media access.
 
 `make filler-corpus-rights-review` converts a frozen mixed-authority inventory into a deterministic worksheet
 bounded by explicit minimum and maximum item counts. It exposes the source assertions and selected
@@ -113,11 +117,20 @@ representation in immutable JSON plus a spreadsheet-safe CSV, but leaves every a
 blank. Reviewers edit only `reviewer_id`, `reviewed_at`, `decision`, `basis`, `redistributable`,
 `required_credit`, and `restrictions_json`. Local rows expose the exact media, rights-evidence, and
 provenance-evidence paths and hashes. This is a review queue, not evidence that any row is legally reusable.
+For the explicit `certification` profile, the worksheet instead uses schema v4 and requires the
+maintainer/counsel-approved agreement and processor identities. Its per-master schedule separately
+records signer authority, every required grant, six embedded-rights categories, redistribution
+scope, territory, term/expiry, withdrawal, attribution/restrictions, and any adjudication. All
+authority cells remain blank in the generated CSV.
 
 `make filler-corpus-rights-lock` validates the completed CSV against both the original byte-exact
 inventory and the inert JSON worksheet. Every row must be present once, immutable source fields must
 match, decisions must be complete and time-bound, and approved BY/BY-SA media must carry attribution.
 Only a fully valid review is atomically converted to the JSONL consumed by the downloader.
+Schema-v4 approval is impossible while any required fact is missing, unknown, conflicting,
+expired, malformed, or inconsistent. Held rows retain stable machine-readable reasons. Schema-v3
+worksheets remain lockable only under the development profile and cannot pass certification
+download or preparation.
 
 `make filler-corpus-prepare` is the next mechanical boundary. Its required profile and schema-v4 plan
 must both identify either a development seed or a certification corpus. Development preparation uses

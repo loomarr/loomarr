@@ -381,6 +381,9 @@ filler-corpus-download: ## download only rights-approved corpus media under hard
 	    --ledger "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_LEDGER" \
 	    --user-agent "$${LOOMARR_FILLER_CORPUS_USER_AGENT:-$$LOOMARR_FILLER_CORPUS_ARCHIVE_USER_AGENT}" \
 	    --generated-at "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_GENERATED_AT" \
+	    --profile "$$LOOMARR_FILLER_CORPUS_RIGHTS_PROFILE" \
+	    --processor-id "$$LOOMARR_FILLER_CORPUS_PROCESSOR_ID" \
+	    --processor-terms-sha256 "$$LOOMARR_FILLER_CORPUS_PROCESSOR_TERMS_SHA256" \
 	    --max-requests "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_MAX_REQUESTS" \
 	    --max-items "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_MAX_ITEMS" \
 	    --max-bytes "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_MAX_BYTES" \
@@ -394,6 +397,11 @@ filler-corpus-rights-review: ## prepare an inert worksheet from a frozen filler 
 	    --out "$${LOOMARR_FILLER_CORPUS_RIGHTS_WORKSHEET:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-rights-review.json}" \
 	    --csv-out "$${LOOMARR_FILLER_CORPUS_RIGHTS_CSV:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-rights-review.csv}" \
 	    --prepared-at "$$LOOMARR_FILLER_CORPUS_RIGHTS_PREPARED_AT" \
+	    --profile "$$LOOMARR_FILLER_CORPUS_RIGHTS_PROFILE" \
+	    --agreement-id "$$LOOMARR_FILLER_CORPUS_AGREEMENT_ID" \
+	    --agreement-sha256 "$$LOOMARR_FILLER_CORPUS_AGREEMENT_SHA256" \
+	    --processor-id "$$LOOMARR_FILLER_CORPUS_PROCESSOR_ID" \
+	    --processor-terms-sha256 "$$LOOMARR_FILLER_CORPUS_PROCESSOR_TERMS_SHA256" \
 	    --min-items "$${LOOMARR_FILLER_CORPUS_RIGHTS_MIN_ITEMS:-1426}" \
 	    --max-items "$${LOOMARR_FILLER_CORPUS_RIGHTS_MAX_ITEMS:-1600}"
 
@@ -407,7 +415,8 @@ filler-corpus-rights-lock: ## validate completed rights review CSV into approval
 	    --worksheet "$$LOOMARR_FILLER_CORPUS_RIGHTS_WORKSHEET" \
 	    --completed-csv "$$LOOMARR_FILLER_CORPUS_RIGHTS_CSV" \
 	    --approvals-out "$${LOOMARR_FILLER_CORPUS_RIGHTS_APPROVALS:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-rights-approvals.jsonl}" \
-	    --locked-at "$$LOOMARR_FILLER_CORPUS_RIGHTS_LOCKED_AT"
+	    --locked-at "$$LOOMARR_FILLER_CORPUS_RIGHTS_LOCKED_AT" \
+	    --profile "$$LOOMARR_FILLER_CORPUS_RIGHTS_PROFILE"
 
 filler-corpus-lock: ## lock two blind filler-label batches into a certification manifest
 	@test -n "$$LOOMARR_FILLER_CORPUS_DRAFT" || { echo "filler-corpus-lock: LOOMARR_FILLER_CORPUS_DRAFT is required" >&2; exit 2; }; \
