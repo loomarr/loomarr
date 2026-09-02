@@ -33,13 +33,13 @@ func TestDiscoveryQualityExportIsAdminOnlyAndOmitsReceipts(t *testing.T) {
 	}
 
 	member := do(t, srv, http.MethodGet, "/v1/system/discovery-quality/export", memberToken, "")
-	defer member.Body.Close()
+	defer func() { _ = member.Body.Close() }()
 	if member.StatusCode != http.StatusForbidden {
 		t.Fatalf("member status = %d, want 403", member.StatusCode)
 	}
 
 	admin := do(t, srv, http.MethodGet, "/v1/system/discovery-quality/export", adminToken, "")
-	defer admin.Body.Close()
+	defer func() { _ = admin.Body.Close() }()
 	if admin.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(admin.Body)
 		t.Fatalf("admin status = %d, want 200: %s", admin.StatusCode, body)
