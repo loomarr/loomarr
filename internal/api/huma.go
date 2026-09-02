@@ -147,6 +147,7 @@ type Server struct {
 	notificationDestinations NotificationDestinationService
 	webPushPublicKey         string
 	proposalNotifications    suggest.ProposalNotifier
+	decisionQuality          ProposalDecisionQuality
 	// backendTransition owns the durable setting mutation -> prepare -> publish -> retire
 	// workflow for playout backend and URL changes. It serializes that entire workflow
 	// across replicas; failures after mutation remain non-fatal follow-on failures.
@@ -761,6 +762,12 @@ type ProposalApprover interface {
 	Approve(ctx context.Context, p store.Proposal, edit *suggest.ApprovalEdit, approvedBy string) (suggest.ApprovalResult, error)
 }
 
+// ProposalDecisionQuality receives a denial only after its submitted-to-denied
+// compare-and-swap commits. It cannot affect the HTTP decision outcome.
+type ProposalDecisionQuality interface {
+	ProposalDeclined(context.Context, string, time.Time)
+}
+
 // ChannelBinder resolves the legacy explicit POST /v1/channels intent helpers and
 // shares channel-number occupancy with manually typed channel numbers. Approval
 // uses ProposalApprover instead of reaching through this lower-level seam.
@@ -961,6 +968,7 @@ type Options struct {
 	NotificationDestinations NotificationDestinationService                   // redacted product-delivery routing (§11)
 	WebPushPublicKey         string                                           // public half of the generated VAPID identity (§11)
 	ProposalNotifications    suggest.ProposalNotifier                         // best-effort product lifecycle publication (§11)
+	DecisionQuality          ProposalDecisionQuality                          // committed Proposal denial quality outcome (§17)
 	BackendTransition        BackendTransitioner                              // durable backend prepare/publish/retire coordinator
 	BackendCheckpoint        func(context.Context) (BackendCheckpoint, error) // durable checkpoint, once per operation
 	Guide                    GuideReader                                      // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next

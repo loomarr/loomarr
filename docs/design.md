@@ -130,11 +130,12 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `metrics` | 8 | `provision` |
 | `notifications` | 5 | `httpx` |
 | `provision` | 17 | — |
+| `quality` | 5 | — |
 | `recovery` | 5 | — |
 | `schedule` | 15 | `provision` |
 | `scheduler` | 6 | `store` |
-| `store` | 14 | `contact`, `diagnostics`, `filler`, `filleradmission`, `invitation`, `notifications`, `provision`, `recovery`, `schedule`, `taxonomy` |
-| `suggest` | 6 | `catalog`, `llm`, `provision`, `schedule`, `store` |
+| `store` | 14 | `contact`, `diagnostics`, `filler`, `filleradmission`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
+| `suggest` | 6 | `catalog`, `llm`, `provision`, `quality`, `schedule`, `store` |
 | `taxonomy` | 5 | — |
 
 ##### Every package, by layer
@@ -169,7 +170,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Supervises one child process and every descendant it starts.
 - **`provision`** · 17 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
-- **`quality`** · 4 importers
+- **`quality`** · 5 importers
   Owns Loomarr's privacy-safe discovery-quality vocabulary.
 - **`recovery`** · 5 importers
   Owns local-password recovery records and their bearer grants (§11).
@@ -308,7 +309,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 11**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `httpx`, `images`, `images/rustgen`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recovery`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `httpx`, `images`, `images/rustgen`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -8279,6 +8280,16 @@ selection invalidates the preview and disables download until the replacement pr
   to generation; the other stage observations carry zero for quantities Loomarr cannot measure at
   that boundary. Retried workers derive opaque idempotency keys from the durable Job id, attempt,
   and stage, so replaying a terminal callback cannot double-count it.
+
+  Proposal decisions follow the same committed-transition rule. The shared approval gate records
+  approval `approved` only after its proposal/title/Channel transaction commits, covering manual,
+  bulk, requester auto-approval, and Channel auto-curation without parallel instrumentation at each
+  caller. The denial handler records approval `declined` only after its submitted-to-denied compare
+  and swap commits. A refused, superseded, malformed, or otherwise failed decision attempt records
+  nothing. Decision receipts derive their opaque idempotency key from the Proposal id and approval
+  stage, carry the committed decision time, and contain no approver, requester, reason, edit, Title,
+  or Channel fact. In particular, `declined` remains only a Proposal workflow outcome and does not
+  create, imply, or join to a `less` or `never` taste signal.
 
   The module accepts typed observations and owns classification, aggregation, redaction, retention,
   and export. Callers cannot provide labels or arbitrary metadata. Recording is best-effort after

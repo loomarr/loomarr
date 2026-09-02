@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/proposalworkflow"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -52,6 +53,14 @@ func newSuggestServer(t *testing.T) (*httptest.Server, store.Store, *fakeSuggest
 }
 
 func newSuggestServerWithSettings(t *testing.T, settings api.SettingsService) (*httptest.Server, store.Store, *fakeSuggest) {
+	return newSuggestServerWithSettingsAndDecisionQuality(t, settings, nil)
+}
+
+func newSuggestServerWithSettingsAndDecisionQuality(
+	t *testing.T,
+	settings api.SettingsService,
+	decisionQuality api.ProposalDecisionQuality,
+) (*httptest.Server, store.Store, *fakeSuggest) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/s.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -70,6 +79,7 @@ func newSuggestServerWithSettings(t *testing.T, settings api.SettingsService) (*
 		Search:           search,
 		Events:           events.NewBus(),
 		ProposalWorkflow: workflow,
+		DecisionQuality:  decisionQuality,
 		// No Reconciler wired here (channels isn't under test) — mirrors the
 		// composition root's nil-guard: the bind still creates/patches the
 		// channel row and just skips the immediate Tunarr reconcile push.
@@ -378,6 +388,31 @@ func TestDeny_StampsDecisionUpdateTime(t *testing.T) {
 	}
 	if after.Status != "denied" || after.DenyReason != "not a fit" || !after.UpdatedAt.After(before.UpdatedAt) {
 		t.Errorf("denied proposal = %+v; before updatedAt=%v", after, before.UpdatedAt)
+	}
+}
+
+func TestDeny_RecordsOnlyCommittedDecisionAsWorkflowOutcome(t *testing.T) {
+	qualitySink := &testkit.QualityRecorder{Err: errors.New("ledger unavailable")}
+	decisionQuality := quality.NewProposalDecisionRecorder(qualitySink, slog.New(slog.DiscardHandler))
+	srv, st, _ := newSuggestServerWithSettingsAndDecisionQuality(t, nil, decisionQuality)
+	seedProposal(t, st, "p1")
+
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p1/deny", adminToken, `{"reason":"not a fit"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("deny -> %d", resp.StatusCode)
+	}
+	observations := qualitySink.Observations()
+	if len(observations) != 1 || observations[0].Stage != quality.StageApproval ||
+		observations[0].Outcome != quality.OutcomeDeclined || observations[0].At.IsZero() {
+		t.Fatalf("denial observations = %+v", observations)
+	}
+
+	resp = do(t, srv, http.MethodPost, "/v1/proposals/p1/deny", adminToken, `{"reason":"again"}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("repeat deny -> %d, want 409", resp.StatusCode)
+	}
+	if observations = qualitySink.Observations(); len(observations) != 1 {
+		t.Fatalf("refused denial recorded an outcome: %+v", observations)
 	}
 }
 

@@ -88,10 +88,22 @@ type Approver struct {
 	channels ChannelBinder
 	now      func() time.Time
 	notify   ProposalNotifier
+	quality  ProposalApprovalQuality
+}
+
+// ProposalApprovalQuality receives only the authoritative identity and time of
+// a committed approval. The implementation owns privacy and best-effort writes.
+type ProposalApprovalQuality interface {
+	ProposalApproved(context.Context, string, time.Time)
 }
 
 func (a *Approver) WithProposalNotifier(notifier ProposalNotifier) *Approver {
 	a.notify = notifier
+	return a
+}
+
+func (a *Approver) WithDecisionQuality(recorder ProposalApprovalQuality) *Approver {
+	a.quality = recorder
 	return a
 }
 
@@ -273,6 +285,9 @@ func (a *Approver) approveDurably(
 		if err := ctx.Err(); err != nil {
 			return ApprovalResult{}, err
 		}
+	}
+	if a.quality != nil {
+		a.quality.ProposalApproved(ctx, p.ID, p.ApprovedAt)
 	}
 
 	if a.notify != nil {

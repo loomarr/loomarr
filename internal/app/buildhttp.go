@@ -136,6 +136,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		NotificationDestinations: deps.notificationDestinations,
 		WebPushPublicKey:         deps.webPushPublicKey,
 		ProposalNotifications:    deps.foundation.emitter,
+		DecisionQuality:          deps.approval.decisionQuality,
 		BackendTransition: currentBackendTransition{
 			controller: backendController, refresh: refreshBackendSettings, desired: desiredBackend,
 		},
