@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -261,6 +263,79 @@ const SemanticFrameMaxWidth = 1920
 // About three seconds at ordinary broadcast frame rates. The window itself is also capped at
 // three seconds, so this never grows with clip duration or buffers an entire reel.
 const semanticThumbnailFrames = 90
+
+var showinfoPTSRE = regexp.MustCompile(`\bpts_time:([0-9]+(?:\.[0-9]+)?)`)
+
+// SceneCutsIn returns visual scene changes in the measured [startMs,endMs)
+// span. It is evidence preparation and does not alter the split detector.
+func (t *FFmpegTools) SceneCutsIn(ctx context.Context, file string, startMs, endMs int64, threshold float64) ([]int64, error) {
+	if startMs < 0 || endMs <= startMs {
+		return nil, fmt.Errorf("scene cuts require a measured span, got %d..%d for %s", startMs, endMs, file)
+	}
+	if threshold <= 0 || threshold >= 1 {
+		return nil, fmt.Errorf("scene threshold must be between zero and one, got %g", threshold)
+	}
+	var stderr bytes.Buffer
+	filter := fmt.Sprintf("setpts=PTS-STARTPTS,select='gt(scene,%0.3f)',showinfo", threshold)
+	cmd := exec.CommandContext(ctx, t.FFmpegPath,
+		"-nostdin", "-hide_banner", "-nostats", "-v", "info",
+		"-ss", msToSeconds(startMs), "-t", msToSeconds(endMs-startMs),
+		"-i", file, "-an", "-vf", filter, "-f", "null", "-")
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("ffmpeg scene detect %s at %d..%d: %w: %s", file, startMs, endMs, err, stderr.String())
+	}
+	return parseShowinfoSceneCuts(stderr.String(), startMs, endMs)
+}
+
+func parseShowinfoSceneCuts(stderr string, startMs, endMs int64) ([]int64, error) {
+	seen := map[int64]struct{}{}
+	var cuts []int64
+	for _, match := range showinfoPTSRE.FindAllStringSubmatch(stderr, -1) {
+		seconds, err := strconv.ParseFloat(match[1], 64)
+		if err != nil {
+			return nil, fmt.Errorf("parse scene timestamp %q: %w", match[1], err)
+		}
+		at := startMs + int64(seconds*1000+0.5)
+		if at < startMs || at >= endMs {
+			return nil, fmt.Errorf("scene timestamp %dms is outside measured span %d..%d", at, startMs, endMs)
+		}
+		if _, duplicate := seen[at]; !duplicate {
+			seen[at] = struct{}{}
+			cuts = append(cuts, at)
+		}
+	}
+	sort.Slice(cuts, func(i, j int) bool { return cuts[i] < cuts[j] })
+	return cuts, nil
+}
+
+// FramesAt extracts exact timestamp-biased JPEG evidence. Unlike KeyframesIn,
+// it does not replace a boundary or transition with a nearby representative.
+func (t *FFmpegTools) FramesAt(ctx context.Context, file string, atMS []int64) ([][]byte, error) {
+	frames := make([][]byte, 0, len(atMS))
+	for _, at := range atMS {
+		if at < 0 {
+			return nil, fmt.Errorf("frame timestamp must be non-negative, got %d for %s", at, file)
+		}
+		var stdout, stderr bytes.Buffer
+		cmd := exec.CommandContext(ctx, t.FFmpegPath,
+			"-nostdin", "-hide_banner", "-v", "error",
+			"-ss", msToSeconds(at), "-i", file, "-an",
+			"-vf", fmt.Sprintf("scale=w='min(iw,%d)':h=-2", SemanticFrameMaxWidth),
+			"-frames:v", "1", "-q:v", "4", "-pix_fmt", "yuvj420p",
+			"-f", "image2pipe", "-c:v", "mjpeg", "-")
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		if err := cmd.Run(); err != nil {
+			return nil, fmt.Errorf("ffmpeg exact frame %s at %dms: %w: %s", file, at, err, stderr.String())
+		}
+		decoded := splitJPEGs(stdout.Bytes())
+		if len(decoded) != 1 {
+			return nil, fmt.Errorf("ffmpeg exact frame %s at %dms produced %d JPEGs", file, at, len(decoded))
+		}
+		frames = append(frames, decoded[0])
+	}
+	return frames, nil
+}
 
 func semanticWindowStarts(startMs, endMs int64, n int) []int64 {
 	spanMs := endMs - startMs

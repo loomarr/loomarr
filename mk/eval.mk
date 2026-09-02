@@ -49,7 +49,32 @@ eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (m
 	  exit "$$status"
 
 filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
-	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./internal/fillerreview/ ./cmd/filler-bakeoff-ollama/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-bakeoff-transcribe/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-direct/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-prepare/ ./cmd/filler-corpus-review/ ./cmd/filler-corpus-review-ollama/ ./cmd/filler-corpus-review-openrouter/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/ ./cmd/filler-temporal-assess-ollama/ ./cmd/filler-temporal-assess-openrouter/ ./cmd/filler-temporal-calibration-report/ ./cmd/filler-temporal-compare/ ./cmd/filler-temporal-select/
+	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./internal/fillerreview/ ./cmd/filler-bakeoff-ollama/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-bakeoff-transcribe/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-direct/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-prepare/ ./cmd/filler-corpus-review/ ./cmd/filler-corpus-review-ollama/ ./cmd/filler-corpus-review-openrouter/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/ ./cmd/filler-temporal-assess-ollama/ ./cmd/filler-temporal-assess-openrouter/ ./cmd/filler-temporal-calibration-report/ ./cmd/filler-temporal-compare/ ./cmd/filler-temporal-select/ ./cmd/filler-temporal-truth-select/ ./cmd/filler-temporal-truth-prepare/
+
+filler-temporal-truth-select: ## select the private 48-case truth-review sample from frozen history without inference
+	@for name in DRAFT SEED OUT A_PACKAGE A_MAP A_LABELS B_PACKAGE B_MAP B_LABELS C_PACKAGE C_MAP C_ADJUDICATIONS; do \
+	  value="$$(printenv "LOOMARR_FILLER_TRUTH_$$name" 2>/dev/null || true)"; \
+	  test -n "$$value" || { echo "filler-temporal-truth-select: LOOMARR_FILLER_TRUTH_$$name is required" >&2; exit 2; }; \
+	done; \
+	$(GO) run ./cmd/filler-temporal-truth-select \
+	  --draft "$$LOOMARR_FILLER_TRUTH_DRAFT" --seed "$$LOOMARR_FILLER_TRUTH_SEED" --out "$$LOOMARR_FILLER_TRUTH_OUT" \
+	  --a-package "$$LOOMARR_FILLER_TRUTH_A_PACKAGE" --a-map "$$LOOMARR_FILLER_TRUTH_A_MAP" --a-labels "$$LOOMARR_FILLER_TRUTH_A_LABELS" \
+	  --b-package "$$LOOMARR_FILLER_TRUTH_B_PACKAGE" --b-map "$$LOOMARR_FILLER_TRUTH_B_MAP" --b-labels "$$LOOMARR_FILLER_TRUTH_B_LABELS" \
+	  --c-package "$$LOOMARR_FILLER_TRUTH_C_PACKAGE" --c-map "$$LOOMARR_FILLER_TRUTH_C_MAP" --c-adjudications "$$LOOMARR_FILLER_TRUTH_C_ADJUDICATIONS"
+
+filler-temporal-truth-prepare: ## build the sealed complete-span 48-case evidence set without inference
+	@for name in SELECTION DRAFT DOWNLOAD_LEDGER MEDIA_ROOT PACKETS PACKET_ROOT TRANSCRIPTS EVIDENCE_OUT GENERATED_AT; do \
+	  value="$$(printenv "LOOMARR_FILLER_TRUTH_$$name" 2>/dev/null || true)"; \
+	  test -n "$$value" || { echo "filler-temporal-truth-prepare: LOOMARR_FILLER_TRUTH_$$name is required" >&2; exit 2; }; \
+	done; \
+	$(GO) run ./cmd/filler-temporal-truth-prepare \
+	  --selection "$$LOOMARR_FILLER_TRUTH_SELECTION" --draft "$$LOOMARR_FILLER_TRUTH_DRAFT" \
+	  --download-ledger "$$LOOMARR_FILLER_TRUTH_DOWNLOAD_LEDGER" --media-root "$$LOOMARR_FILLER_TRUTH_MEDIA_ROOT" \
+	  --packets "$$LOOMARR_FILLER_TRUTH_PACKETS" --packet-root "$$LOOMARR_FILLER_TRUTH_PACKET_ROOT" \
+	  --transcripts "$$LOOMARR_FILLER_TRUTH_TRANSCRIPTS" --out "$$LOOMARR_FILLER_TRUTH_EVIDENCE_OUT" \
+	  --generated-at "$$LOOMARR_FILLER_TRUTH_GENERATED_AT" --scene-threshold "$${LOOMARR_FILLER_TRUTH_SCENE_THRESHOLD:-0.30}" \
+	  --per-case-timeout "$${LOOMARR_FILLER_TRUTH_CASE_TIMEOUT:-5m}" \
+	  --ocr-engine "$${LOOMARR_FILLER_TRUTH_OCR_ENGINE:-}" --ocr-source "$${LOOMARR_FILLER_TRUTH_OCR_SOURCE:-}" --ocr-version "$${LOOMARR_FILLER_TRUTH_OCR_VERSION:-}"
 
 filler-temporal-assess-ollama: ## assess the sealed temporal challenge with a digest-pinned local model
 	@test -n "$$LOOMARR_FILLER_TEMPORAL_PACKAGE" || { echo "filler-temporal-assess-ollama: LOOMARR_FILLER_TEMPORAL_PACKAGE is required" >&2; exit 2; }; \
