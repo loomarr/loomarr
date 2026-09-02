@@ -1320,6 +1320,27 @@ repair opportunity actually encountered. It pre-registers respective floors of 9
 A clean first answer is not mislabeled as recovery, and all three remain aggregate quality measurements,
 not hard safety failures.
 
+The October reference-host bake-off adds a separate, provider-free
+`planner-reference-host-v1` manifest around each planner scorecard. One deep module interface accepts
+the exact raw scorecard bytes plus a bounded normalized capture and returns the canonical manifest;
+host-command execution remains an edge adapter and is not part of that interface. The module binds
+the scorecard SHA-256, schema/corpus/profile and generator identity; immutable Ollama artifact digest;
+source repository and revision; GGUF filename and SHA-256; quantization, context, template,
+Modelfile, and license identities; Ollama and macOS versions; architecture, hardware model, chip, and
+physical unified memory; benchmark start/end times; declared sampling and cold/warm protocol; and
+before/after resident-model evidence. The published manifest retains only normalized facts and
+SHA-256 identities for bounded raw captures, never local paths or unrelated resident-model details.
+
+Missing or mutable-only model identity, an unpinned source revision, a tag/digest mismatch, a
+scorecard for another model or profile, inconsistent quantization/context, invalid host memory or
+architecture, absent cold/warm evidence, malformed or trailing JSON, an over-bound input, or a raw
+capture digest mismatch fails before publication. The hermetic test adapter supplies fixed captures;
+the future macOS adapter may collect `ollama` inventory/show/residency, runtime version, `sw_vers`,
+architecture, and `system_profiler` evidence, but it never pulls a model or starts inference. The
+manifest is necessary provenance for #831, not model certification itself, and grants no Unsloth,
+LoRA/QLoRA, Runpod, distribution, production, or spend authority. All external compute and API work
+continues to share the current **$20 aggregate ceiling**; unused headroom is not a GPU allocation.
+
 `make eval-planner-compare` accepts two or more schema-v10 scorecards with identical frozen identities.
 Only candidates that clear every hard gate and threshold are eligible. Its pre-registered quality score
 weights grounded completion 20%, correct tool operation 20%, schema validity 10%, policy accuracy 15%,
