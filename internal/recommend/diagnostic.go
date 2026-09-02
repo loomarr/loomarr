@@ -11,13 +11,14 @@ import (
 // shape facts needed to distinguish prompt, schema, and output-ceiling failures;
 // it has no field capable of retaining a prompt, response, value, or field name.
 type StructuralDiagnostics struct {
-	RootJSONValid       bool `json:"rootJsonValid"`
-	RequiredFieldsValid bool `json:"requiredFieldsValid"`
-	UnknownFieldCount   int  `json:"unknownFieldCount"`
-	EffectfulFieldCount int  `json:"effectfulFieldCount"`
-	Truncated           bool `json:"truncated"`
-	Abstained           bool `json:"abstained"`
-	ConceptCount        int  `json:"conceptCount"`
+	RootJSONValid        bool `json:"rootJsonValid"`
+	RequiredFieldsValid  bool `json:"requiredFieldsValid"`
+	UnknownFieldCount    int  `json:"unknownFieldCount"`
+	EffectfulFieldCount  int  `json:"effectfulFieldCount"`
+	Truncated            bool `json:"truncated"`
+	OutputCeilingReached bool `json:"outputCeilingReached"`
+	Abstained            bool `json:"abstained"`
+	ConceptCount         int  `json:"conceptCount"`
 }
 
 // DiagnoseOutput classifies a model response without returning or retaining any
@@ -163,13 +164,13 @@ func looksTruncatedJSON(raw []byte) bool {
 	escaped := false
 	for _, char := range trimmed {
 		if inString {
-			if escaped {
+			switch {
+			case escaped:
 				escaped = false
 				continue
-			}
-			if char == '\\' {
+			case char == '\\':
 				escaped = true
-			} else if char == '"' {
+			case char == '"':
 				inString = false
 			}
 			continue

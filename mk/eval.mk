@@ -1,5 +1,5 @@
 eval-contract: ## hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB
-	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/ ./cmd/planner-cert-compare/ ./internal/recommend/ ./cmd/channel-recommend-cert/ ./cmd/channel-recommend-compare/
+	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/ ./cmd/planner-cert-compare/ ./internal/recommend/ ./cmd/channel-recommend-cert/ ./cmd/channel-recommend-compare/ ./cmd/channel-recommend-diagnostic/
 
 eval: ## semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate)
 	$(GO) test -tags=eval -v -timeout 20m ./internal/eval/
@@ -43,6 +43,11 @@ channel-recommend-cert: ## certify inert channel concepts on the frozen recommen
 	  summary="$${LOOMARR_RECOMMEND_SUMMARY_OUT:-$$LOOMARR_ARTIFACT_DIR/channel-recommendation-certification.md}"; \
 	  $(GO) run ./cmd/channel-recommend-cert \
 	    --out "$$report" --summary "$$summary"
+
+channel-recommend-diagnostic: ## diagnose recommendation JSON transport on the disjoint development corpus; explicit, inference-spending, non-CI
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  report="$${LOOMARR_RECOMMEND_DIAGNOSTIC_OUT:-$$LOOMARR_ARTIFACT_DIR/channel-recommendation-diagnostic.json}"; \
+	  $(GO) run ./cmd/channel-recommend-diagnostic --out "$$report"
 
 channel-recommend-compare: ## compare channel-recommendation scorecards without inference
 	@test -n "$$LOOMARR_RECOMMEND_SCORECARDS" || { echo "channel-recommend-compare: LOOMARR_RECOMMEND_SCORECARDS is required" >&2; exit 2; }; \
