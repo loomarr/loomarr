@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -122,6 +123,7 @@ func TestTemporalStructureOpenRouterWireEnforcesClosedConditionalShape(t *testin
 		want string
 	}{
 		{name: "valid compilation", wire: temporalStructureOpenRouterWire{Unit: "compilation", UnitDecisiveAtMS: []int64{100}, UnitReason: "join", Role: "none"}},
+		{name: "valid unicode character limit", wire: temporalStructureOpenRouterWire{Unit: "compilation", UnitDecisiveAtMS: []int64{100}, UnitReason: strings.Repeat("a", 511) + "–", Role: "none"}},
 		{name: "missing standalone role", wire: temporalStructureOpenRouterWire{Unit: "standalone", UnitDecisiveAtMS: []int64{100}, UnitReason: "bounded", Role: "none"}, want: "standalone role"},
 		{name: "non standalone role", wire: temporalStructureOpenRouterWire{Unit: "programme_excerpt", UnitDecisiveAtMS: []int64{0}, UnitReason: "cut", Role: "promo", RoleDecisiveAtMS: []int64{1}, RoleReason: "wrong"}, want: "carries role"},
 		{name: "duplicate times", wire: temporalStructureOpenRouterWire{Unit: "compilation", UnitDecisiveAtMS: []int64{100, 100}, UnitReason: "join", Role: "none"}, want: "unit claim"},
@@ -133,6 +135,20 @@ func TestTemporalStructureOpenRouterWireEnforcesClosedConditionalShape(t *testin
 				t.Fatalf("error = %v, want %q", err, test.want)
 			}
 		})
+	}
+}
+
+func TestNormalizeTemporalStructureOpenRouterWireSortsMechanicalTimestamps(t *testing.T) {
+	wire := temporalStructureOpenRouterWire{
+		Unit: "standalone", UnitDecisiveAtMS: []int64{900, 100}, UnitReason: "bounded",
+		Role: "promo", RoleDecisiveAtMS: []int64{800, 200}, RoleReason: "programme promotion",
+	}
+	normalizeTemporalStructureOpenRouterWire(&wire)
+	if err := validateTemporalStructureOpenRouterWire(wire, 1_000); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(wire.UnitDecisiveAtMS, []int64{100, 900}) || !slices.Equal(wire.RoleDecisiveAtMS, []int64{200, 800}) {
+		t.Fatalf("normalized wire = %+v", wire)
 	}
 }
 

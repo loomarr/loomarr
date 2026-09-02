@@ -68,6 +68,8 @@ func assessOpenRouterTemporalStructureCase(ctx context.Context, client *http.Cli
 	if callErr == nil {
 		if decodeErr := decodeStrictReviewJSON([]byte(callResult.StructuredOutput), &wire); decodeErr != nil {
 			callErr = fmt.Errorf("structure assessment JSON is invalid: %w", decodeErr)
+		} else {
+			normalizeTemporalStructureOpenRouterWire(&wire)
 		}
 	}
 	var failure *temporalCallError
