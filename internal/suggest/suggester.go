@@ -52,7 +52,8 @@ const groundedMaxTokens = 2048
 // field instead of using the native tool_calls array — so the grounding loop sees
 // no tool call and mis-parses it as a (pick-less) final answer, yielding an empty
 // proposal. The system prompt already mandates "reply with ONLY JSON" for the
-// FINAL turn, and the repair loop backstops any stray prose. (Caught live: qwen3:8b
+// FINAL turn. Once retrieval returns candidates, the tool loop removes tools and
+// JSONMode becomes true for finalization and every repair. (Caught live: qwen3:8b
 // on a themed intent — correct genres, but the call landed in content, not tool_calls.)
 func chatOpts(tools []llm.ToolSchema, temp float64) llm.ChatOptions {
 	return llm.ChatOptions{
@@ -229,8 +230,9 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 	// re-asks. JOB_TIMEOUT + httpx.TimeoutLLM are the hard ceilings.
 	repairs := 0
 	groundingRetried := false
+	finalizationOnly := false
 	for {
-		final, err := s.generate(ctx, &messages, tools, surfaced, &trace, temp, intent, feedback)
+		final, err := s.generate(ctx, &messages, tools, surfaced, &trace, temp, intent, feedback, &finalizationOnly)
 		if err != nil {
 			return Proposal{}, err
 		}
@@ -271,7 +273,10 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 // turn, appending assistant/tool messages to *messages and recording surfaced
 // candidates for grounding. Returns the final content (possibly empty — the
 // caller's repair loop handles that).
-func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools []llm.ToolSchema, surfaced map[provision.Key]catalog.Candidate, trace *DecisionTrace, temp float64, intent Intent, feedback []FeedbackSignal) (string, error) {
+func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools []llm.ToolSchema, surfaced map[provision.Key]catalog.Candidate, trace *DecisionTrace, temp float64, intent Intent, feedback []FeedbackSignal, finalizationOnly *bool) (string, error) {
+	if *finalizationOnly {
+		tools = nil
+	}
 	for round := 0; round < maxToolRounds; round++ {
 		// The model turn is about to block — say so BEFORE awaiting it. This is the
 		// slow step (model load + inference), so reporting it afterwards would leave
@@ -301,6 +306,15 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 				*messages = append(*messages, llm.Message{
 					Role: llm.Tool, Content: result, ToolCallID: tc.ID,
 				})
+				// A non-empty grounded result moves the conversation into a distinct
+				// finalization phase. Leaving catalog_search available here caused Gemma,
+				// Qwen, and gpt-oss to repeat the same useful search until the hard tool
+				// boundary. Empty/error results retain the tool so the model can try the
+				// alternate discovery mode. The state survives JSON repairs above.
+				if len(cands) > 0 {
+					*finalizationOnly = true
+					tools = nil
+				}
 			}
 			continue
 		}
@@ -1250,11 +1264,12 @@ func assistantToolCallMsg(calls []llm.ToolCall) llm.Message {
 const systemPrompt = `You are Loomarr's channel planner. You build TV channels from real content only.
 RULES:
 - You MUST NOT invent titles. To find any title, call the catalog_search tool.
-- Pick the search mode from the intent, and CALL THE TOOL MORE THAN ONCE if the first call comes back empty or thin:
+- Pick the search mode from the intent. If the first call comes back empty, call the tool again using the alternate mode:
   - GENRE/MOOD/ERA intent (e.g. "90s action", "feel-good sci-fi") → call catalog_search with "genres" (and "era") to DISCOVER by theme. Do NOT put a bare genre word in "query" — it won't match a title.
   - THEMATIC-KEYWORD intent — a holiday, franchise, motif, or topic that is NOT a genre (e.g. "Christmas", "Halloween", "zombie", "heist", "based on a true story", "Star Wars") → use "keywords". These resolve through TMDB's thematic keyword corpus, so titles do NOT need to contain the term. Add genres/era/media_type only when the request justifies narrowing it.
   - KNOWN TITLE → "query" with the title.
-- If a call returns few or no candidates, TRY THE OTHER MODE before giving up (a genre discovery that finds nothing → retry as a "query" keyword, and vice-versa). Never conclude "no content" after a single empty search.
+- If a call returns no candidates, TRY THE OTHER MODE before giving up (a genre discovery that finds nothing → retry as a "query" keyword, and vice-versa). Never conclude "no content" after a single empty search.
+- A non-empty result ends retrieval. Select the best grounded picks from that result and produce the final JSON; do not repeat or broaden a successful search.
 - Each result carries genres + a short overview — use them to judge which titles fit the intent.
 - HONOR EVERY QUALIFIER in the intent, not just the main noun. "cozy British murder mysteries" means British AND cozy AND mystery — a 1940s American noir or a Swedish thriller that merely has "murder" in the title does NOT fit; check the overview (setting, country, tone) and REJECT it. "classic Star Trek — the original series and Next Generation" names TWO specific shows: include those, not every Star Trek series. It is BETTER to return fewer, well-matched picks (or none) than to pad the lineup with titles that only match one keyword.
 - HONOR EXPLICITLY NAMED titles: if the intent names specific shows/movies, search for those by name and prefer them; don't substitute lookalikes.

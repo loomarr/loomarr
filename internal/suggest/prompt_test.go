@@ -39,3 +39,11 @@ func TestSystemPromptBalancesOwnedAnchorsWithOutsideLibraryDiscovery(t *testing.
 		}
 	}
 }
+
+func TestSystemPromptSeparatesEmptyResultRecoveryFromFinalization(t *testing.T) {
+	for _, want := range []string{"If a call returns no candidates", "A non-empty result ends retrieval"} {
+		if !strings.Contains(systemPrompt, want) {
+			t.Errorf("systemPrompt is missing the tool-to-final transition %q", want)
+		}
+	}
+}
