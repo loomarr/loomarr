@@ -138,10 +138,9 @@ func TestOllama_SendsOptionsBlock(t *testing.T) {
 	}
 }
 
-// Thinking is disabled when tools are present: a reasoning model's chain-of-thought
-// breaks tool-calls/JSON on Ollama (bugs #10976/#14601). Asserts think:false is sent
-// with tools, and NOT sent (field omitted) without them.
-func TestOllama_DisablesThinkingWithTools(t *testing.T) {
+// Thinking is disabled for tool and JSON turns: a reasoning model's chain-of-thought
+// breaks tool calls and final structured output on Ollama (bugs #10976/#14601).
+func TestOllama_DisablesThinkingWithToolsOrJSON(t *testing.T) {
 	resp := testkit.Fixture(t, "llm/ollama_final_response.json")
 	var sentReq map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -161,7 +160,17 @@ func TestOllama_DisablesThinkingWithTools(t *testing.T) {
 		t.Errorf("with tools, think should be false, got %v (present=%v)", think, ok)
 	}
 
-	// Without tools → think omitted (don't touch a non-thinking model's default).
+	// JSON finalization → think:false even though tools have been removed.
+	sentReq = nil
+	if _, err := o.Chat(context.Background(), []llm.Message{{Role: llm.User, Content: "x"}},
+		llm.ChatOptions{JSONMode: true}); err != nil {
+		t.Fatal(err)
+	}
+	if think, ok := sentReq["think"]; !ok || think != false {
+		t.Errorf("with JSON mode, think should be false, got %v (present=%v)", think, ok)
+	}
+
+	// Plain text without tools or JSON → think omitted.
 	sentReq = nil
 	if _, err := o.Chat(context.Background(), []llm.Message{{Role: llm.User, Content: "x"}}, llm.ChatOptions{}); err != nil {
 		t.Fatal(err)

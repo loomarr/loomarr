@@ -141,6 +141,9 @@ func LoadEmbeddedCertificationCorpus() (CertificationCorpus, error) {
 	if err := validateCertificationExtension(extension, corpus); err != nil {
 		return CertificationCorpus{}, err
 	}
+	if extension.PromptVersion != suggest.PlannerPromptVersion || corpus.ToolSchemaVersion != suggest.PlannerToolSchemaVersion {
+		return CertificationCorpus{}, fmt.Errorf("certification prompt/tool identity differs from production Suggester")
+	}
 	corpus.SchemaVersion = extension.SchemaVersion
 	corpus.Version = extension.Version
 	corpus.PromptVersion = extension.PromptVersion
