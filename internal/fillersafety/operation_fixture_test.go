@@ -79,8 +79,9 @@ func (r *memoryExecutionRepository) ReserveSpokenSafetyCall(_ context.Context, c
 			EvaluationID: command.EvaluationID, RequestSHA256: command.RequestSHA256,
 			RequestedProvider: command.RequestedProvider, RequestedModel: command.RequestedModel,
 			UpstreamProvider: command.UpstreamProvider, CapabilitySHA256: command.Versions.CapabilitySHA256,
-			PromptSHA256: command.Versions.PromptSHA256, CandidateID: command.CandidateID,
-			Modalities: slices.Clone(command.Modalities), RequestedNanoUSD: command.RequestedNanoUSD,
+			PromptSHA256: command.Versions.PromptSHA256, SchemaSHA256: command.Versions.SchemaSHA256,
+			CandidateID: command.CandidateID,
+			Modalities:  slices.Clone(command.Modalities), RequestedNanoUSD: command.RequestedNanoUSD,
 			ReservedNanoUSD: reserved, State: state,
 		},
 	}
@@ -133,6 +134,9 @@ func (a *operationAudioAdapter) identity(int64) hostedCallIdentity {
 
 func (a *operationAudioAdapter) adjudicate(_ context.Context, candidate Candidate, _ []byte, reserve func(string) error) (audioAttempt, error) {
 	attempt := audioAttempt{Assessment: AudioAssessment{CandidateID: candidate.ID, State: a.state}, MatchedRuleIDs: []string{}}
+	if a.state == AudioDetected {
+		attempt.MatchedRuleIDs = []string{"rule-000000000000000000000001"}
+	}
 	if err := reserve(strings.Repeat("d", 64)); err != nil {
 		return attempt, err
 	}

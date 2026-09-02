@@ -34,6 +34,9 @@ func (f *fakeAudioAdjudicator) identity(int64) hostedCallIdentity {
 func (f *fakeAudioAdjudicator) adjudicate(_ context.Context, candidate Candidate, _ []byte, reserve func(string) error) (audioAttempt, error) {
 	f.calls = append(f.calls, candidate.ID)
 	attempt := audioAttempt{Assessment: AudioAssessment{CandidateID: candidate.ID, State: f.states[candidate.ID]}, MatchedRuleIDs: []string{}}
+	if f.states[candidate.ID] == AudioDetected {
+		attempt.MatchedRuleIDs = []string{"rule-000000000000000000000001"}
+	}
 	if err := reserve(strings.Repeat("d", 64)); err != nil {
 		return attempt, err
 	}
@@ -111,6 +114,9 @@ func TestEvaluatePresenceOutranksFailureAndSkipsVideo(t *testing.T) {
 	if got.Result.Outcome != OutcomeQuarantine || !slices.Equal(got.Result.Reasons, []Reason{ReasonAudioFailure, ReasonAudioProhibitedSignal}) || video.calls != 0 {
 		t.Fatalf("evaluation=%+v video=%d", got, video.calls)
 	}
+	if !slices.Equal(got.Evidence.Audio[1].MatchedRuleIDs, []string{"rule-000000000000000000000001"}) {
+		t.Fatalf("matched rules=%v", got.Evidence.Audio[1].MatchedRuleIDs)
+	}
 }
 
 func TestEvaluateNoCandidatesStillRequiresCompleteVideo(t *testing.T) {
@@ -143,5 +149,29 @@ func TestEvaluateAdapterErrorsCannotSmugglePresence(t *testing.T) {
 	}
 	if got.Result.Outcome != OutcomeHold || !slices.Equal(got.Result.Reasons, []Reason{ReasonAudioFailure}) || video.calls != 0 {
 		t.Fatalf("evaluation=%+v video=%d", got, video.calls)
+	}
+	if len(got.Evidence.Audio[0].MatchedRuleIDs) != 0 {
+		t.Fatalf("provider error retained matched rules: %v", got.Evidence.Audio[0].MatchedRuleIDs)
+	}
+}
+
+func TestNormalizedAudioAttemptRejectsUnattributedOrMalformedDetection(t *testing.T) {
+	t.Parallel()
+	candidate := Candidate{ID: "candidate-one", StartMS: 100, EndMS: 800}
+	for name, ruleIDs := range map[string][]string{
+		"missing":   {},
+		"unknown":   {"rule-not-opaque"},
+		"duplicate": {"rule-000000000000000000000001", "rule-000000000000000000000001"},
+		"unsorted":  {"rule-000000000000000000000002", "rule-000000000000000000000001"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			attempt := normalizedAudioAttempt(candidate, audioAttempt{
+				Assessment:     AudioAssessment{CandidateID: candidate.ID, State: AudioDetected},
+				MatchedRuleIDs: ruleIDs,
+			}, nil)
+			if attempt.Assessment.State != AudioInvalidResponse || len(attempt.Assessment.MatchedRuleIDs) != 0 {
+				t.Fatalf("attempt=%+v", attempt)
+			}
+		})
 	}
 }

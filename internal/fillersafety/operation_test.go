@@ -2,6 +2,7 @@ package fillersafety
 
 import (
 	"encoding/json"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -16,6 +17,7 @@ func TestEvaluationOperationRecordsSerialCascadeBeforeReturningEvidence(t *testi
 		t.Fatal(err)
 	}
 	if report.Result.Outcome != OutcomeCandidateRejected || report.Run.ID != fixture.request.RunID ||
+		report.TerminalEventID == "" || !validSHA256(report.TerminalSHA256) ||
 		fixture.proposer.calls != 1 || fixture.audio.calls != 1 || fixture.video.calls != 1 {
 		t.Fatalf("report=%+v calls=%d/%d/%d", report, fixture.proposer.calls, fixture.audio.calls, fixture.video.calls)
 	}
@@ -34,10 +36,13 @@ func TestEvaluationOperationRecordsSerialCascadeBeforeReturningEvidence(t *testi
 	if !slices.Equal(kinds, wantKinds) {
 		t.Fatalf("event kinds=%v", kinds)
 	}
-	terminal := fixture.repository.events[len(fixture.repository.events)-1].Terminal
+	terminalEvent := fixture.repository.events[len(fixture.repository.events)-1]
+	terminal := terminalEvent.Terminal
+	digest, digestErr := LedgerEventSHA256(terminalEvent)
 	if terminal == nil || !sameResult(terminal.Result, report.Result) ||
-		len(terminal.EventIDs) != len(fixture.repository.events)-1 {
-		t.Fatalf("terminal=%+v", terminal)
+		len(terminal.EventIDs) != len(fixture.repository.events)-1 || digestErr != nil ||
+		report.TerminalEventID != terminalEvent.ID || report.TerminalSHA256 != digest {
+		t.Fatalf("terminal=%+v digest=%s err=%v", terminalEvent, digest, digestErr)
 	}
 	if len(fixture.repository.reservations) != 2 ||
 		!slices.Equal(fixture.repository.reservations[0].Modalities, []string{"audio"}) ||
@@ -71,8 +76,5 @@ func TestEvaluationOperationReturnsCompletedRunWithoutRepeatingWork(t *testing.T
 }
 
 func reflectEvaluationReport(first, second EvaluationReport) bool {
-	return first.Run == second.Run && sameResult(first.Result, second.Result) &&
-		first.Evidence.ProposalState == second.Evidence.ProposalState &&
-		slices.Equal(first.Evidence.Candidates, second.Evidence.Candidates) &&
-		slices.Equal(first.Evidence.Audio, second.Evidence.Audio) && first.Evidence.Video == second.Evidence.Video
+	return reflect.DeepEqual(first, second)
 }
