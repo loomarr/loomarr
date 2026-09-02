@@ -19,7 +19,10 @@ import (
 	"github.com/loomarr/loomarr/internal/store"
 )
 
-const playoutToken = "playout-token-abcdefghijklmnop"
+const (
+	playoutToken   = "playout-token-abcdefghijklmnop"
+	playoutTestURL = "http://example.com"
+)
 
 // fakePlayoutSessions stands in for playout.Manager. The session lifecycle is tested in
 // internal/playout; here the question is what the HTTP layer does with it.
@@ -184,14 +187,13 @@ func newPlayoutServer(t *testing.T, o playoutOpts) (*httptest.Server, store.Stor
 		opts.LiveConfig = func(k string) string { return cfg[k] }
 	}
 
-	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), opts))
-	t.Cleanup(srv.Close)
+	srv := httptest.NewTestServer(t, api.Router(slog.New(slog.DiscardHandler), opts))
 	return srv, st
 }
 
 func getPlayout(t *testing.T, srv *httptest.Server, path string) *http.Response {
 	t.Helper()
-	resp, err := srv.Client().Get(srv.URL + path)
+	resp, err := srv.Client().Get(playoutTestURL + path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +304,7 @@ func TestPlayout_AdminTokenIsNotAPlayoutToken(t *testing.T) {
 	// And the playout token grants no PRIVILEGED API access. POST /v1/channels is admin-only
 	// (requireAdmin); GET /v1/channels is deliberately NOT, so asserting against a read route
 	// would prove only that the route is public — which an earlier version of this test did.
-	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/channels",
+	req, _ := http.NewRequest(http.MethodPost, playoutTestURL+"/v1/channels",
 		strings.NewReader(`{"name":"Sneaky","number":99}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+playoutToken)
@@ -387,7 +389,7 @@ func TestPlayoutStream_LooksLikeALiveStreamNotAFile(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet,
-		srv.URL+"/v1/playout/stream/ch1?token="+playoutToken, nil)
+		playoutTestURL+"/v1/playout/stream/ch1?token="+playoutToken, nil)
 
 	// Feed one chunk so the handler writes something and we know it is streaming.
 	f.chunks = make(chan []byte, 1)
@@ -434,7 +436,7 @@ func TestPlayoutStream_ClientDisconnectDetaches(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet,
-		srv.URL+"/v1/playout/stream/ch1?token="+playoutToken, nil)
+		playoutTestURL+"/v1/playout/stream/ch1?token="+playoutToken, nil)
 	f.chunks <- []byte("x")
 
 	resp, err := srv.Client().Do(req)
