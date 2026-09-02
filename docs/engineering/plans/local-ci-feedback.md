@@ -236,6 +236,13 @@ gate documentation are amended before the first change that alters required beha
   `merge_group` and manual runs, guarded by `VerifyCINativeAdmission`. A later lane-ownership
   correction makes merge groups authoritative for all expensive affected integration gates and
   removes the redundant product-validation run from queue-produced main pushes.
+- A 2026-09-02 seven-entry burst exposed the cost of keeping that queue permanently serialized. One
+  native-client merge group took 22.9 minutes and left the fifth entry with GitHub's 2,577-second
+  estimate even though ordinary queue runs measured 7.6–9.1 minutes. Build concurrency is bounded at
+  two: merge limits do not combine CI builds, and a larger speculative window would multiply the
+  cumulative rebuilds invalidated by an earlier failure. The live policy checker preserves squash,
+  `ALLGREEN`, single-PR merges, no bypass actors, and the three-hour response timeout while changing
+  only this throughput control.
 - The first admission PR exposed a separate over-selection defect before merge: changing the CI
   workflow itself selected every product family, so unchanged Rust, Android, Apple, frontend,
   browser, image, Postgres, and Go code rebuilt. The live run was cancelled. CI orchestration now

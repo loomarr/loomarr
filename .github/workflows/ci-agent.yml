@@ -14,7 +14,7 @@ jobs:
   run:
     name: Agent harness (macOS)
     # Ordinary PR pushes get fast Linux feedback. Scarce macOS evidence is admitted by the
-    # one-at-a-time merge queue, then retained on main and deliberate manual certification.
+    # bounded-concurrency merge queue, then retained on main and deliberate manual certification.
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

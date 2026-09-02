@@ -78,6 +78,7 @@ make-android-module	mk/android.mk	android,policy
 make-frontend-module	mk/frontend.mk	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,policy
 container-image-acquisition	scripts/ensure-container-image.sh	contracts,postgres,visual,e2e,tuner,policy
 playwright-container-runner	scripts/run-playwright-container.sh	contracts,visual,e2e,tuner,policy
+merge-queue-policy	scripts/ci-merge-queue-policy.sh;scripts/ci-merge-queue-policy-test.sh	policy
 ci-policy-bootstrap	.github/workflows/ci.yml	policy
 ci-tooling-bundle	.github/workflows/ci.yml;internal/releaseverify/ci.go;cmd/releaseverify/main.go;scripts/agent.sh;docs/dev/ci.md	go,docs,agent,policy
 dev-compose	docker/compose.dev.yaml	contracts,agent
