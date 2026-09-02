@@ -199,7 +199,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns administrator admission decisions and their bearer grants (§11).
 - **`metrics`** · 8 importers · → `images/rustgen`, `provision`
   Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
-- **`openroutermedia`** · 1 importer · → `fillereval`
+- **`openroutermedia`** · 2 importers · → `fillereval`
   Owns Loomarr's bounded OpenRouter structured-media transport.
 - **`prepared`** · 3 importers · → `diagnostics`, `media`
   Owns immutable, reusable playout publications.
@@ -239,7 +239,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 - **`fillerreference`** · → `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `mediatools`, `taxonomy`
   Owns the deterministic pre-screen for the production-ready filler reference cohort.
-- **`fillersafety`** · 1 importer · → `mediatools`
+- **`fillersafety`** · 1 importer · → `mediatools`, `openroutermedia`
   Owns the fail-closed spoken-safety cascade and its shadow evidence.
 
 **Layer 6**
