@@ -39,8 +39,8 @@ func (s *Server) registerNotificationDestinations(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "notification-providers-delete", Method: http.MethodDelete,
 		Path: "/v1/notifications/providers/{id}", Summary: "Delete a notification provider",
-		Description: "Queued attempts suppress at execution when their destination no longer exists; delivery history remains redacted and unchanged.",
-		Tags:        []string{"notifications"}, DefaultStatus: http.StatusNoContent,
+		Description: "Queued attempts suppress at execution when their destination no longer exists. Browser Push may include this browser's endpoint in the request body; the response says whether the client should unsubscribe that local subscription.",
+		Tags:        []string{"notifications"},
 	}, RoleMember), s.notificationDestinationDelete)
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "notification-providers-test", Method: http.MethodPost,
@@ -173,7 +173,15 @@ type notificationDestinationUpdateInput struct {
 }
 type notificationDestinationUpdateOutput struct{ Body NotificationProviderDTO }
 type notificationDestinationDeleteInput struct {
-	ID string `path:"id"`
+	ID   string `path:"id"`
+	Body *struct {
+		CurrentBrowserEndpoint string `json:"currentBrowserEndpoint,omitempty" maxLength:"8000" doc:"The current browser's protected Push endpoint, used only to decide whether this local subscription matches the selected row."`
+	}
+}
+type notificationDestinationDeleteOutput struct {
+	Body struct {
+		UnsubscribeCurrentBrowser bool `json:"unsubscribeCurrentBrowser"`
+	}
 }
 type notificationDestinationTestInput struct {
 	ID   string `path:"id"`
@@ -252,14 +260,29 @@ func (s *Server) notificationDestinationUpdate(
 	return &notificationDestinationUpdateOutput{Body: notificationDestinationDTO(summary)}, nil
 }
 
-func (s *Server) notificationDestinationDelete(ctx context.Context, in *notificationDestinationDeleteInput) (*struct{}, error) {
+func (s *Server) notificationDestinationDelete(
+	ctx context.Context,
+	in *notificationDestinationDeleteInput,
+) (*notificationDestinationDeleteOutput, error) {
 	if s.notificationDestinations == nil {
 		return nil, errNotImplemented("Notification destinations unavailable", "Destination management isn't available in this Loomarr process.")
 	}
-	if err := s.notificationDestinations.Delete(ctx, notificationPrincipal(ctx), in.ID); err != nil {
+	currentBrowserEndpoint := ""
+	if in.Body != nil {
+		currentBrowserEndpoint = in.Body.CurrentBrowserEndpoint
+	}
+	result, err := s.notificationDestinations.Delete(
+		ctx,
+		notificationPrincipal(ctx),
+		in.ID,
+		currentBrowserEndpoint,
+	)
+	if err != nil {
 		return nil, notificationDestinationError(err)
 	}
-	return nil, nil
+	out := &notificationDestinationDeleteOutput{}
+	out.Body.UnsubscribeCurrentBrowser = result.UnsubscribeCurrentBrowser
+	return out, nil
 }
 
 func (s *Server) notificationDestinationTest(
@@ -325,6 +348,8 @@ func notificationDestinationError(err error) error {
 		return errNotFound("Notification destination not found", "That notification destination doesn't exist or has already been deleted.")
 	case errors.Is(err, notifications.ErrMeansUnavailable):
 		return errUnprocessable("Notification provider unavailable", "That provider cannot be enabled until its adapter is available and fully configured.")
+	case errors.Is(err, notifications.ErrConflict):
+		return apiErr(http.StatusConflict, "Notification provider conflicts with an existing destination", "This browser subscription is already assigned to another provider row.")
 	default:
 		return errUnprocessable("Notification destination is invalid", "Check the provider, audience, selected events, and required configuration, then try again.")
 	}

@@ -3,6 +3,7 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -129,7 +130,7 @@ func TestNotificationProvidersUseOneRedactedAdminWorkflow(t *testing.T) {
 		t.Fatalf("member list = %d: %s", memberList.StatusCode, memberListBody)
 	}
 	deleted := do(t, srv, http.MethodDelete, "/v1/notifications/providers/destination-1", adminToken, "")
-	if deleted.StatusCode != http.StatusNoContent {
+	if deleted.StatusCode != http.StatusOK || !strings.Contains(readBody(t, deleted), `"unsubscribeCurrentBrowser":false`) {
 		t.Fatalf("admin delete destination = %d", deleted.StatusCode)
 	}
 }
@@ -192,9 +193,13 @@ func TestNotificationProvidersBindBrowserPushToTheAuthenticatedMember(t *testing
 		t.Fatal(err)
 	}
 	repository := notifications.NewProtectedDestinationRepository(st, protection)
+	nextID := 0
 	manager := notifications.NewDestinationManager(repository, []notifications.DestinationValidator{
 		acceptingDestinationValidator{means: notifications.MeansWebPush},
-	}, func() string { return "browser-1" }, time.Now)
+	}, func() string {
+		nextID++
+		return fmt.Sprintf("browser-%d", nextID)
+	}, time.Now)
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st, Auth: notificationAuthorizer{}, NotificationDestinations: manager,
 		WebPushPublicKey: "public-vapid-key",
@@ -223,7 +228,36 @@ func TestNotificationProvidersBindBrowserPushToTheAuthenticatedMember(t *testing
 	}
 	memberList := do(t, srv, http.MethodGet, "/v1/notifications/providers", memberToken, "")
 	if body := readBody(t, memberList); !strings.Contains(body, "Laptop browser") ||
-		strings.Contains(body, "push.example.test") || strings.Contains(body, "browser-auth") {
+		strings.Contains(body, "push.example.test") || strings.Contains(body, "browser-auth") ||
+		strings.Contains(body, "subscriptionFingerprint") {
 		t.Fatalf("member Web Push list was not scoped/redacted: %s", body)
+	}
+
+	repeated := do(t, srv, http.MethodPost, "/v1/notifications/providers", memberToken, body)
+	repeatedBody := readBody(t, repeated)
+	if repeated.StatusCode != http.StatusCreated || !strings.Contains(repeatedBody, `"id":"browser-1"`) {
+		t.Fatalf("repeat Web Push create = %d: %s", repeated.StatusCode, repeatedBody)
+	}
+	records, err := st.ListNotificationDestinationRecords(t.Context())
+	if err != nil || len(records) != 1 {
+		t.Fatalf("repeat Web Push destination count = %d, %v", len(records), err)
+	}
+
+	otherBody := `{"type":"web_push","label":"Tablet","events":["proposal_approved"],"enabled":true,"settings":{"endpoint":"https://push.example.test/other-secret","p256dh":"browser-public","auth":"browser-auth"}}`
+	other := do(t, srv, http.MethodPost, "/v1/notifications/providers", memberToken, otherBody)
+	if other.StatusCode != http.StatusCreated {
+		t.Fatalf("other Web Push create = %d: %s", other.StatusCode, readBody(t, other))
+	}
+	deleteOther := do(t, srv, http.MethodDelete, "/v1/notifications/providers/browser-3", memberToken,
+		`{"currentBrowserEndpoint":"https://push.example.test/secret"}`)
+	if deleteOther.StatusCode != http.StatusOK ||
+		!strings.Contains(readBody(t, deleteOther), `"unsubscribeCurrentBrowser":false`) {
+		t.Fatalf("delete other browser = %d", deleteOther.StatusCode)
+	}
+	deleteCurrent := do(t, srv, http.MethodDelete, "/v1/notifications/providers/browser-1", memberToken,
+		`{"currentBrowserEndpoint":"https://push.example.test/secret"}`)
+	if deleteCurrent.StatusCode != http.StatusOK ||
+		!strings.Contains(readBody(t, deleteCurrent), `"unsubscribeCurrentBrowser":true`) {
+		t.Fatalf("delete current browser = %d", deleteCurrent.StatusCode)
 	}
 }

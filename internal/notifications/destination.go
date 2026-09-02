@@ -27,44 +27,49 @@ type Destination struct {
 	Enabled       bool
 	Configuration map[string]string
 	Credentials   map[string]string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	// SubscriptionFingerprint is a non-secret one-way identifier used only to make one person's
+	// Browser Push endpoint unique and to match deletion to the current browser.
+	SubscriptionFingerprint string
+	CreatedAt               time.Time
+	UpdatedAt               time.Time
 }
 
 // DestinationMetadata is the credential-free routing and management read model. CredentialKeys
 // records only which server-defined sensitive fields are configured; it never contains values.
 type DestinationMetadata struct {
-	ID             string
-	Means          Means
-	Label          string
-	Scope          DestinationScope
-	OwnerID        string
-	Audience       RecipientKind
-	Topics         []Topic
-	Enabled        bool
-	Configuration  map[string]string
-	CredentialKeys []string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID                      string
+	Means                   Means
+	Label                   string
+	Scope                   DestinationScope
+	OwnerID                 string
+	Audience                RecipientKind
+	Topics                  []Topic
+	Enabled                 bool
+	Configuration           map[string]string
+	CredentialKeys          []string
+	SubscriptionFingerprint string
+	CreatedAt               time.Time
+	UpdatedAt               time.Time
 }
 
 // DestinationRecord is the persistence-safe form of a destination. The database layer only
 // handles an opaque credential envelope; plaintext credentials exist solely in Destination at
 // the notification module boundary after authenticated decryption.
 type DestinationRecord struct {
-	ID                   string
-	Means                Means
-	Label                string
-	Scope                DestinationScope
-	OwnerID              string
-	Audience             RecipientKind
-	Topics               []Topic
-	Enabled              bool
-	Configuration        map[string]string
-	CredentialKeys       []string
-	CredentialsEncrypted string
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
+	ID                      string
+	Means                   Means
+	Label                   string
+	Scope                   DestinationScope
+	OwnerID                 string
+	Audience                RecipientKind
+	Topics                  []Topic
+	Enabled                 bool
+	Configuration           map[string]string
+	CredentialKeys          []string
+	CredentialsEncrypted    string
+	SubscriptionFingerprint string
+	CreatedAt               time.Time
+	UpdatedAt               time.Time
 }
 
 func (r DestinationRecord) Validate() error {
@@ -176,6 +181,14 @@ func (d Destination) Validate() error {
 	if err := validateDestinationValues("configuration", d.Configuration, 100, 4000); err != nil {
 		return err
 	}
+	if d.SubscriptionFingerprint != "" {
+		if d.Means != MeansWebPush {
+			return fmt.Errorf("only web push destinations may have a subscription fingerprint")
+		}
+		if err := identifier("web push subscription fingerprint", d.SubscriptionFingerprint); err != nil {
+			return err
+		}
+	}
 	return validateDestinationValues("credentials", d.Credentials, 20, 8000)
 }
 
@@ -194,7 +207,8 @@ func (d Destination) Metadata() DestinationMetadata {
 		ID: d.ID, Means: d.Means, Label: d.Label, Scope: d.Scope, OwnerID: d.OwnerID,
 		Audience: d.Audience, Topics: append([]Topic(nil), d.Topics...), Enabled: d.Enabled,
 		Configuration: cloneStringMap(d.Configuration), CredentialKeys: keys,
-		CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
+		SubscriptionFingerprint: d.SubscriptionFingerprint,
+		CreatedAt:               d.CreatedAt, UpdatedAt: d.UpdatedAt,
 	}
 }
 
@@ -220,7 +234,8 @@ func (d DestinationMetadata) destination() Destination {
 	return Destination{
 		ID: d.ID, Means: d.Means, Label: d.Label, Scope: d.Scope, OwnerID: d.OwnerID,
 		Audience: d.Audience, Topics: append([]Topic(nil), d.Topics...), Enabled: d.Enabled,
-		Configuration: cloneStringMap(d.Configuration), CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
+		Configuration: cloneStringMap(d.Configuration), SubscriptionFingerprint: d.SubscriptionFingerprint,
+		CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
 	}
 }
 

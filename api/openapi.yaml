@@ -4970,6 +4970,36 @@ components:
         - local
         - offlineLogin
       type: object
+    NotificationDestinationDeleteInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/NotificationDestinationDeleteInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        currentBrowserEndpoint:
+          description: The current browser's protected Push endpoint, used only to decide whether this local subscription matches the selected row.
+          maxLength: 8000
+          type: string
+      type: object
+    NotificationDestinationDeleteOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/NotificationDestinationDeleteOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        unsubscribeCurrentBrowser:
+          type: boolean
+      required:
+        - unsubscribeCurrentBrowser
+      type: object
     NotificationDestinationHealthDTO:
       additionalProperties: false
       properties:
@@ -12647,7 +12677,7 @@ paths:
         - notifications
   /v1/notifications/providers/{id}:
     delete:
-      description: Queued attempts suppress at execution when their destination no longer exists; delivery history remains redacted and unchanged.
+      description: Queued attempts suppress at execution when their destination no longer exists. Browser Push may include this browser's endpoint in the request body; the response says whether the client should unsubscribe that local subscription.
       operationId: notification-providers-delete
       parameters:
         - in: path
@@ -12655,9 +12685,18 @@ paths:
           required: true
           schema:
             type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationDestinationDeleteInputBody"
       responses:
-        "204":
-          description: No Content
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationDestinationDeleteOutputBody"
+          description: OK
         default:
           content:
             application/problem+json:

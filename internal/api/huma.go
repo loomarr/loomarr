@@ -321,7 +321,7 @@ type NotificationDestinationService interface {
 	Create(context.Context, notifications.Principal, notifications.DestinationCommand) (notifications.DestinationSummary, error)
 	List(context.Context, notifications.Principal) ([]notifications.DestinationSummary, error)
 	Update(context.Context, notifications.Principal, string, notifications.DestinationUpdateCommand) (notifications.DestinationSummary, error)
-	Delete(context.Context, notifications.Principal, string) error
+	Delete(context.Context, notifications.Principal, string, string) (notifications.DestinationDeleteResult, error)
 	Test(context.Context, notifications.Principal, string, string) (notifications.DestinationTestResult, error)
 }
 

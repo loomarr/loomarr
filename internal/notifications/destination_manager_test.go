@@ -28,7 +28,7 @@ func TestDestinationManagerKeepsCredentialsWriteOnlyAndScopesMemberReads(t *test
 		repository, []notifications.DestinationValidator{destinationValidator{means: notifications.MeansWebPush}},
 		sequentialDestinationIDs(), func() time.Time { return now },
 	)
-	credentials := map[string]string{"privateKey": "never-return-this"}
+	credentials := map[string]string{"endpoint": "https://push.example.test/subscription-private"}
 	summary, err := manager.Create(t.Context(), notifications.Principal{PersonID: "user-1"}, notifications.DestinationCommand{
 		Means: notifications.MeansWebPush, Label: "This browser", Scope: notifications.ScopePerson,
 		OwnerID: "user-1", Audience: notifications.RecipientPerson,
@@ -39,7 +39,7 @@ func TestDestinationManagerKeepsCredentialsWriteOnlyAndScopesMemberReads(t *test
 		t.Fatalf("create personal destination = %+v, %v", summary, err)
 	}
 	stored, err := repository.ResolveNotificationDestination(t.Context(), summary.ID)
-	if err != nil || stored.Credentials["privateKey"] != "never-return-this" {
+	if err != nil || stored.Credentials["endpoint"] != "https://push.example.test/subscription-private" {
 		t.Fatalf("stored personal destination = %+v, %v", stored.Summary(), err)
 	}
 	if summaries, err := manager.List(t.Context(), notifications.Principal{PersonID: "user-2"}); err != nil || len(summaries) != 0 {
@@ -179,7 +179,7 @@ func TestDestinationManagerUpdatePreservesWriteOnlyCredentialsAndOwnership(t *te
 		repository, []notifications.DestinationValidator{destinationValidator{means: notifications.MeansWebPush}},
 		sequentialDestinationIDs(), func() time.Time { return now },
 	)
-	credentials := map[string]string{"privateKey": "preserve-me"}
+	credentials := map[string]string{"endpoint": "https://push.example.test/subscription-preserved"}
 	created, err := manager.Create(t.Context(), notifications.Principal{PersonID: "user-1"}, notifications.DestinationCommand{
 		Means: notifications.MeansWebPush, Label: "Browser", Scope: notifications.ScopePerson,
 		OwnerID: "user-1", Audience: notifications.RecipientPerson,
@@ -199,7 +199,7 @@ func TestDestinationManagerUpdatePreservesWriteOnlyCredentialsAndOwnership(t *te
 		t.Fatalf("update destination = %+v, %v", updated, err)
 	}
 	stored, err := repository.ResolveNotificationDestination(t.Context(), created.ID)
-	if err != nil || stored.Credentials["privateKey"] != "preserve-me" || !stored.UpdatedAt.Equal(now) {
+	if err != nil || stored.Credentials["endpoint"] != "https://push.example.test/subscription-preserved" || !stored.UpdatedAt.Equal(now) {
 		t.Fatalf("updated stored destination = %+v, %v", stored.Summary(), err)
 	}
 	if _, err := manager.Update(t.Context(), notifications.Principal{PersonID: "user-2"}, created.ID, notifications.DestinationUpdateCommand{
@@ -208,11 +208,99 @@ func TestDestinationManagerUpdatePreservesWriteOnlyCredentialsAndOwnership(t *te
 	}); !errors.Is(err, notifications.ErrForbidden) {
 		t.Fatalf("cross-person update = %v", err)
 	}
-	if err := manager.Delete(t.Context(), notifications.Principal{PersonID: "user-2"}, created.ID); !errors.Is(err, notifications.ErrForbidden) {
+	if _, err := manager.Delete(t.Context(), notifications.Principal{PersonID: "user-2"}, created.ID, ""); !errors.Is(err, notifications.ErrForbidden) {
 		t.Fatalf("cross-person delete = %v", err)
 	}
-	if err := manager.Delete(t.Context(), notifications.Principal{PersonID: "user-1"}, created.ID); err != nil {
+	if _, err := manager.Delete(t.Context(), notifications.Principal{PersonID: "user-1"}, created.ID, ""); err != nil {
 		t.Fatalf("owner delete = %v", err)
+	}
+}
+
+func TestDestinationManagerReusesWebPushSubscriptionAndMatchesOnlyTheSelectedBrowser(t *testing.T) {
+	repository := testkit.NewNotificationRepository()
+	now := time.Unix(1_900_000_000, 0)
+	manager := notifications.NewDestinationManager(
+		repository, []notifications.DestinationValidator{destinationValidator{means: notifications.MeansWebPush}},
+		sequentialDestinationIDs(), func() time.Time { return now },
+	)
+	principal := notifications.Principal{PersonID: "user-1"}
+	settings := map[string]string{
+		"endpoint": "https://push.example.test/subscription-one", "p256dh": "public-key", "auth": "auth-secret",
+	}
+	first, err := manager.Create(t.Context(), principal, notifications.DestinationCommand{
+		Means: notifications.MeansWebPush, Label: "Laptop", Scope: notifications.ScopePerson,
+		OwnerID: principal.PersonID, Audience: notifications.RecipientPerson,
+		Topics: []notifications.Topic{notifications.TopicChannelLive}, Enabled: true, Settings: settings,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Minute)
+	second, err := manager.Create(t.Context(), principal, notifications.DestinationCommand{
+		Means: notifications.MeansWebPush, Label: "This browser", Scope: notifications.ScopePerson,
+		OwnerID: principal.PersonID, Audience: notifications.RecipientPerson,
+		Topics: []notifications.Topic{notifications.TopicProposalApproved}, Enabled: true, Settings: settings,
+	})
+	if err != nil || second.ID != first.ID || second.Label != "This browser" {
+		t.Fatalf("repeat create = %+v, %v; first = %+v", second, err, first)
+	}
+	if len(repository.Destinations) != 1 {
+		t.Fatalf("destination count = %d, want one", len(repository.Destinations))
+	}
+
+	otherSettings := map[string]string{
+		"endpoint": "https://push.example.test/subscription-two", "p256dh": "other-key", "auth": "other-secret",
+	}
+	other, err := manager.Create(t.Context(), principal, notifications.DestinationCommand{
+		Means: notifications.MeansWebPush, Label: "Tablet", Scope: notifications.ScopePerson,
+		OwnerID: principal.PersonID, Audience: notifications.RecipientPerson,
+		Topics: []notifications.Topic{notifications.TopicChannelLive}, Enabled: true, Settings: otherSettings,
+	})
+	if err != nil || other.ID == first.ID {
+		t.Fatalf("other subscription = %+v, %v", other, err)
+	}
+
+	deleted, err := manager.Delete(t.Context(), principal, other.ID, settings["endpoint"])
+	if err != nil || deleted.UnsubscribeCurrentBrowser {
+		t.Fatalf("delete other browser = %+v, %v", deleted, err)
+	}
+	deleted, err = manager.Delete(t.Context(), principal, first.ID, settings["endpoint"])
+	if err != nil || !deleted.UnsubscribeCurrentBrowser {
+		t.Fatalf("delete current browser = %+v, %v", deleted, err)
+	}
+}
+
+func TestDestinationManagerConsolidatesLegacyWebPushDuplicates(t *testing.T) {
+	repository := testkit.NewNotificationRepository()
+	now := time.Unix(1_900_000_000, 0)
+	endpoint := "https://push.example.test/legacy-subscription"
+	for index, id := range []string{"legacy-original", "legacy-duplicate"} {
+		createdAt := now.Add(time.Duration(index) * time.Second)
+		if err := repository.SaveNotificationDestination(t.Context(), notifications.Destination{
+			ID: id, Means: notifications.MeansWebPush, Label: id, Scope: notifications.ScopePerson,
+			OwnerID: "user-1", Audience: notifications.RecipientPerson,
+			Topics: []notifications.Topic{notifications.TopicChannelLive}, Enabled: true,
+			Credentials: map[string]string{"endpoint": endpoint, "p256dh": "legacy-key", "auth": "legacy-auth"},
+			CreatedAt:   createdAt, UpdatedAt: createdAt,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manager := notifications.NewDestinationManager(
+		repository, []notifications.DestinationValidator{destinationValidator{means: notifications.MeansWebPush}},
+		sequentialDestinationIDs(), func() time.Time { return now.Add(time.Minute) },
+	)
+	created, err := manager.Create(t.Context(), notifications.Principal{PersonID: "user-1"}, notifications.DestinationCommand{
+		Means: notifications.MeansWebPush, Label: "Current label", Scope: notifications.ScopePerson,
+		OwnerID: "user-1", Audience: notifications.RecipientPerson,
+		Topics: []notifications.Topic{notifications.TopicProposalApproved}, Enabled: true,
+		Settings: map[string]string{"endpoint": endpoint, "p256dh": "current-key", "auth": "current-auth"},
+	})
+	if err != nil || created.ID != "legacy-original" {
+		t.Fatalf("consolidated create = %+v, %v", created, err)
+	}
+	if len(repository.Destinations) != 1 || repository.Destinations[created.ID].SubscriptionFingerprint == "" {
+		t.Fatalf("consolidated destinations = %+v", repository.Destinations)
 	}
 }
 

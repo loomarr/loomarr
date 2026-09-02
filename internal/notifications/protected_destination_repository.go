@@ -52,6 +52,7 @@ func (r *ProtectedDestinationRepository) SaveNotificationDestination(
 	ctx context.Context,
 	destination Destination,
 ) error {
+	setWebPushSubscriptionFingerprint(&destination)
 	if err := destination.Validate(); err != nil {
 		return fmt.Errorf("validate notification destination: %w", err)
 	}
@@ -197,6 +198,12 @@ func (r *ProtectedDestinationRepository) open(
 	if err := json.Unmarshal(plain, &destination.Credentials); err != nil {
 		return Destination{}, fmt.Errorf("decode notification destination credentials %q: %w", record.ID, err)
 	}
+	if destination.Means == MeansWebPush && destination.SubscriptionFingerprint != "" && !sameFingerprint(
+		destination.SubscriptionFingerprint,
+		webPushSubscriptionFingerprint(destination.Credentials["endpoint"]),
+	) {
+		return Destination{}, fmt.Errorf("validate notification destination %q: subscription fingerprint mismatch", record.ID)
+	}
 	if err := destination.Validate(); err != nil {
 		return Destination{}, fmt.Errorf("validate notification destination %q: %w", record.ID, err)
 	}
@@ -219,7 +226,8 @@ func destinationRecord(destination Destination, envelope string) DestinationReco
 		ID: destination.ID, Means: destination.Means, Label: destination.Label, Scope: destination.Scope,
 		OwnerID: destination.OwnerID, Audience: destination.Audience, Topics: append([]Topic(nil), destination.Topics...),
 		Enabled: destination.Enabled, Configuration: cloneStringMap(destination.Configuration), CredentialKeys: credentialKeys,
-		CredentialsEncrypted: envelope, CreatedAt: destination.CreatedAt, UpdatedAt: destination.UpdatedAt,
+		CredentialsEncrypted: envelope, SubscriptionFingerprint: destination.SubscriptionFingerprint,
+		CreatedAt: destination.CreatedAt, UpdatedAt: destination.UpdatedAt,
 	}
 }
 
@@ -241,8 +249,8 @@ func destinationMetadataFromRecord(record DestinationRecord) DestinationMetadata
 		ID: record.ID, Means: record.Means, Label: record.Label, Scope: record.Scope,
 		OwnerID: record.OwnerID, Audience: record.Audience, Topics: append([]Topic(nil), record.Topics...),
 		Enabled: record.Enabled, Configuration: cloneStringMap(record.Configuration),
-		CredentialKeys: credentialKeys,
-		CreatedAt:      record.CreatedAt, UpdatedAt: record.UpdatedAt,
+		CredentialKeys: credentialKeys, SubscriptionFingerprint: record.SubscriptionFingerprint,
+		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
 	}
 }
 
@@ -251,6 +259,7 @@ func destinationFromRecord(record DestinationRecord) Destination {
 		ID: record.ID, Means: record.Means, Label: record.Label, Scope: record.Scope,
 		OwnerID: record.OwnerID, Audience: record.Audience, Topics: append([]Topic(nil), record.Topics...),
 		Enabled: record.Enabled, Configuration: cloneStringMap(record.Configuration),
-		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
+		SubscriptionFingerprint: record.SubscriptionFingerprint,
+		CreatedAt:               record.CreatedAt, UpdatedAt: record.UpdatedAt,
 	}
 }
