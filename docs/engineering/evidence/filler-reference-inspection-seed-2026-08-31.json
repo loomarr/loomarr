@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "kind": "filler_reference_inspection_seed",
+  "status": "preliminary_requires_full_playback",
+  "contractVersion": "filler-reference-cohort-2026-08-31-v3",
+  "sourceAuditSha256": "fdffb7f12b52077db39d8b5774bb62da275b1db6609e4232d8d8aeaa28713669",
+  "duplicateAuditSha256": "86ea3aedcba7ca4167b708c85152a17a66420f0ac10121d68342381b90c1318f",
+  "triageEvidence": {
+    "method": "four ordered full-source frames plus bound audit and duplicate evidence",
+    "sampledFramesPerSource": 4,
+    "limitations": "This pass can reject visible capture residue and obvious non-broadcast material, but cannot establish audio quality, exact boundaries, completeness, or a readiness grade. Every selected source requires full playback."
+  },
+  "selectionPolicy": {
+    "targetSources": 50,
+    "finalAcceptedClips": 32,
+    "prefer": [
+      "one self-contained broadcast filler unit",
+      "candidate disposition in the bound v3 audit",
+      "coverage across the audit's filler roles and acquisition sources",
+      "at most one member of a complete duplicate family",
+      "a bounded first-pass sample for complete playback, not an editorial ranking"
+    ],
+    "doNotBackfill": [
+      "station IDs",
+      "bumpers",
+      "interstitials",
+      "unvalidated bumper or station-ID coverage"
+    ],
+    "coverageShortfall": "The 50-source playback sample contains one candidate bumper and one candidate station ID. That is not enough validated coverage for Loomarr's default bumper/station-ID path: no candidate is accepted, and full playback plus technical measurement may further reduce this already short lane."
+  },
+  "selectedCaseIds": [
+    "archive.org/classic_tv_commercials/gilbeysginweb",
+    "archive.org/classic_tv_commercials/1958_Chicken_Butt",
+    "archive.org/classic_tv_commercials/1959RemcoMovielandDriveInTheaterWithPattyDuke",
+    "archive.org/classic_tv_commercials/1960sPurinaCatChowWithMarvinKaplan",
+    "archive.org/classic_tv_commercials/1964HiHeidiDollCommercial",
+    "archive.org/classic_tv_commercials/1970s7UpSeeTheLight1",
+    "archive.org/classic_tv_commercials/1970sFlorsheimShoesWithPeterBoyle",
+    "archive.org/classic_tv_commercials/1976Fotomat",
+    "archive.org/classic_tv_commercials/1977AlmondJoyMounds",
+    "archive.org/classic_tv_commercials/1977CarnationInstantMilkWithVickiLawrence",
+    "archive.org/classic_tv_commercials/1977SingerSewingMachinesWithDebbieReynolds",
+    "archive.org/classic_tv_commercials/1977EightIsEnoughPromos",
+    "archive.org/classic_tv_commercials/Promo_Gidget_ABC-TV_1965_Wednesday_night",
+    "archive.org/classic_tv_commercials/1970sFibberMcGeeForAARP",
+    "archive.org/classic_tv_commercials/AMessageFromErnestBorgnine",
+    "archive.org/classic_tv_commercials/the-toy-from-water-the-hills-original-australian-trailer",
+    "archive.org/movie_trailers_picfixer/ItAllCameTrueTrailer",
+    "archive.org/movie_trailers_picfixer/LittleFugitiveTrailer",
+    "archive.org/movie_trailers_picfixer/SkyMurderTrailer",
+    "archive.org/movie_trailers_picfixer/TheBullfightersTrailerWorkPrint",
+    "archive.org/movie_trailers_picfixer/TheInvisibleRayTrailer",
+    "archive.org/movie_trailers_picfixer/TheMasterKeyTrailer",
+    "archive.org/movie_trailers_picfixer/DaughterOfTheSunGodTrailer",
+    "archive.org/movie_trailers_picfixer/DeadEndTrailer",
+    "archive.org/movie_trailers_picfixer/HeAdventuresOfRedRyderTrailer",
+    "archive.org/movie_trailers_picfixer/HopeSprings2003Trailer",
+    "archive.org/movie_trailers_unsorted/Bud_Abbott_and_Lou_Costello_Meet_Frankenstein_trailer",
+    "archive.org/movie_trailers_unsorted/CaliforniaConquest",
+    "archive.org/movie_trailers_unsorted/Dracula1931-Trailer",
+    "archive.org/movie_trailers_unsorted/Abbott_and_Costello_Meet_Frankenstein_trailer",
+    "archive.org/movie_trailers_unsorted/BloodCreature-Trailer",
+    "archive.org/movie_trailers_unsorted/DeadEyesOfLondon-Trailer",
+    "archive.org/movie_trailers_unsorted/HarveyTrailer",
+    "archive.org/movie_trailers_unsorted/Homicidal_trailer",
+    "archive.org/newsandpublicaffairs/Public_Service_Announcement_-_Building_Bright_Futures_of_Chittenden_County",
+    "archive.org/newsandpublicaffairs/Public_Service_Announcement_-_Richmond_Community_Senior_Center",
+    "archive.org/classic_tv_commercials/Classic1959TelevisionCommercialForTheKodakStarmite",
+    "archive.org/vhscommercials/elsie-fisher-hersheys-kisses-christmas-commercial-2010-hq-version",
+    "archive.org/vhscommercials/y-2meta.com-cloud-b-twilight-sea-turtle-promo-2010-2011-tv-commercial-480p-2",
+    "archive.org/vhscommercials/2002-scooby-doo-the-movie-vhs-and-dvd-commerical-nz",
+    "archive.org/vhscommercials/vhs-1984-vid-20251203-183136",
+    "archive.org/vhscommercials/vhs-1984-vid-20260102-200046",
+    "archive.org/vhscommercials/bbc-one-continuity-1985-02-18-02",
+    "archive.org/vhscommercials/bbc-one-continuity-1993-09-29-september-29th-1993-live-and-kicking-promo",
+    "archive.org/vhscommercials/between-the-lions-pbs-kids-website-promo-2005-2009-hq-vhs-version",
+    "archive.org/vhscommercials/disney-air-buddies-movie-dvd-2006-promo-trailer-hq-vhs-rip",
+    "archive.org/vhscommercials/cartoon-network-cable-65-2000-psa-sailor-says-about-skin-protection",
+    "archive.org/vhscommercials/first-5-california-funding-commercial-2009-on-pbs-dvd-version-2",
+    "archive.org/vhscommercials/kix-commercial-on-pbs-kids-tv-funding-sponsor-2000-hq-prototype-version",
+    "archive.org/vhscommercials/vhs-1984-vid-20260104-200224"
+  ],
+  "explicitTriageFindings": [
+    {
+      "caseIdPattern": "duplicate-family-*",
+      "disposition": "inspection_hold",
+      "evidence": "The v3 family audit reports six connected duplicate families, including one non-clique. This seed selects no family member as a preferred rendition; full playback owns any rendition decision."
+    },
+    {
+      "caseIdPattern": "*",
+      "disposition": "no_editorial_acceptance",
+      "evidence": "Candidate disposition and technical measurement only authorize complete inspection. No selected source has a grade, acceptance, proposed cleanup, or preferred rendition."
+    }
+  ],
+  "requiredNextGate": "Play every selected full source with audio, confirm a single complete unit and exact boundaries, then create source-bound cleanup plans. No selected case has a readiness grade yet."
+}
+
