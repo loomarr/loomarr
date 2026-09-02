@@ -13,7 +13,8 @@ Ordinary pull-request pushes run affected policy, repository-contract, static-an
 compile/type, unit, documentation, shared-client, and Android feedback and return the required `CI`
 result quickly. They do not run race-policy shards, Postgres conformance, Playwright, release-image
 builds, runtime image certification, Apple mobile, Apple TV, the tuner matrix, or the macOS harness.
-The required `main` merge queue then builds one candidate at a time against the current base. That
+The required `main` merge queue then builds at most two cumulative candidates concurrently against
+the current base. That
 `merge_group` run is the authoritative integration lane: the same fail-closed classifier selects
 the complete affected gate set, and every selected result remains a dependency of `CI`. Explicit
 manual runs retain release-candidate and full recovery scopes plus an isolated Apple compilation
@@ -42,10 +43,14 @@ definitions, so splitting the physical files does not split the public command c
 
 This is admission control, not weaker assurance. A pull request cannot merge directly after its fast
 result: it must enter the queue and pass the generated current-base commit. The queue uses squash
-merges, `ALLGREEN`, one concurrent build, one PR per merge, and a three-hour check-response timeout.
-One-at-a-time admission prevents a burst of agent branches from occupying every Apple runner, while
-the queue gives accepted work a stable place in line instead of repeatedly invalidating successful
-strict-mode runs.
+merges, `ALLGREEN`, two concurrent builds, one PR per merge, and a three-hour check-response timeout.
+The concurrency cap is deliberately two: the serialized policy turned one 22.9-minute Apple build
+plus six ordinary queued changes into a 43-minute estimate, while unbounded parallelism would
+multiply cumulative builds and their invalidation cost when an earlier entry fails. Two removes the
+single-build head-of-line bottleneck without admitting a burst onto every Apple runner. The queue
+still gives accepted work a stable place in line instead of repeatedly invalidating successful
+strict-mode runs. `scripts/ci-merge-queue-policy.sh` checks the live ruleset; `APPLY=1` updates only
+its build-concurrency field and then re-checks every admission parameter.
 
 The policy has three coupled halves:
 
@@ -57,8 +62,8 @@ The policy has three coupled halves:
 
 `releaseverify.VerifyCINativeAdmission` rejects loss of the queue trigger, renewed PR admission, a
 queue-only condition that drops manual evidence, a restored post-merge product trigger, or a missing
-scarce-capacity job. The live ruleset is verified through GitHub's branch-rules API when changing
-repository protection.
+scarce-capacity job. The live ruleset is verified through `scripts/ci-merge-queue-policy.sh` and
+GitHub's branch-protection API when changing repository protection.
 
 ## Jobs run only when their inputs changed
 
