@@ -314,6 +314,12 @@ printf '%s\n' "$verify_output" | grep -q 'completed local gates: go'
 grep -q 'make -C .* fmt tags-verify' "$verify_log"
 grep -q 'make -C .* lint PKG=.*internal/app.*internal/suggest' "$verify_log"
 grep -q 'go test -race .*internal/app.*internal/suggest' "$verify_log"
+worker_line="$(grep -n 'make -C .* rust-test-worker' "$verify_log" | head -1 | cut -d: -f1)"
+test_line="$(grep -n 'go test ' "$verify_log" | head -1 | cut -d: -f1)"
+if [ -z "$worker_line" ] || [ -z "$test_line" ] || [ "$worker_line" -ge "$test_line" ]; then
+	echo 'agent-harness-test: scoped Go tests ran without their Rust image worker prerequisite' >&2
+	exit 1
+fi
 
 # A lint finding is part of the scoped verdict, not advisory output. Simulate the exact errcheck
 # class that escaped #914's local verifier and require its non-zero status to reach the caller.
