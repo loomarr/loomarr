@@ -232,6 +232,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`filler`** · 7 importers · → `diagnostics`, `filleradmission`, `fillerdecision`, `llm`, `mediatools`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
+- **`fillerreference`** · → `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `mediatools`, `taxonomy`
+  Owns the deterministic pre-screen for the production-ready filler reference cohort.
 
 **Layer 6**
 
