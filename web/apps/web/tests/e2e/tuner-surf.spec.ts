@@ -395,6 +395,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   expect(tunerManifest("ended", 1)).toContain("#EXT-X-ENDLIST");
   expect(tunerManifest("live", 4)).not.toContain("#EXT-X-ENDLIST");
   expect(tunerManifest("live", 4)).not.toContain("#EXT-X-PLAYLIST-TYPE:VOD");
+  expect(tunerManifest("live", 4).match(/segment-\d+\.m4s/g)).toHaveLength(3);
   await installFrameClock(page);
   const backend = await installTunerBackend(page);
   const freshMediaSourceBaseline = await measureFreshMediaSourceBaseline(page);
