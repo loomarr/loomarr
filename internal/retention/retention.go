@@ -45,6 +45,7 @@ type Store interface {
 	PurgeTerminalNotifications(ctx context.Context, before time.Time) (int, error)
 	PurgeTerminalPasswordRecoveries(ctx context.Context, before time.Time) (int, error)
 	PurgeDiagnostics(ctx context.Context, before time.Time, maxBytes int64) (diagnostics.PurgeResult, error)
+	MaintainQualityLedger(ctx context.Context, now time.Time) error
 	PurgeExpiredSessions(ctx context.Context, now time.Time) (int, error)
 }
 
@@ -198,6 +199,9 @@ func (s *Service) Housekeeping(ctx context.Context) error {
 	if err := s.PurgeDiagnostics(ctx); err != nil {
 		errs = append(errs, err)
 	}
+	if err := s.store.MaintainQualityLedger(ctx, s.now()); err != nil {
+		errs = append(errs, err)
+	}
 	if n, err := s.store.PurgeExpiredSessions(ctx, s.now()); err != nil {
 		errs = append(errs, err)
 	} else if n > 0 && s.log != nil {
@@ -210,7 +214,7 @@ func (s *Service) Housekeeping(ctx context.Context) error {
 func (s *Service) Job() scheduler.Job {
 	return scheduler.Job{
 		Name: "housekeeping", Group: scheduler.GroupSystem, Title: "Clean up old data",
-		Description: "Removes expired sessions, old activity, invitations, password recoveries, diagnostics and notifications, denied requests, and completed jobs after their retention periods.",
+		Description: "Rolls up discovery-quality observations and removes expired sessions, old activity, invitations, password recoveries, diagnostics and notifications, denied requests, and completed jobs after their retention periods.",
 		DefaultCron: "0 30 4 * * *", ScheduleKey: "job.housekeeping.schedule",
 		Run: s.Housekeeping,
 	}

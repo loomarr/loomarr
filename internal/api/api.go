@@ -123,6 +123,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerSystemLLM(humaAPI)
 	srv.registerSystemDatabase(humaAPI)
 	srv.registerSystemSecurity(humaAPI)
+	srv.registerDiscoveryQuality(humaAPI)
 	srv.registerSystemBackups(humaAPI)
 	srv.registerSystemRestart(humaAPI)
 	srv.registerDashboardPanels(humaAPI)

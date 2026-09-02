@@ -19,6 +19,8 @@ type retentionStore struct {
 	recoveryErr        error
 	notificationBefore time.Time
 	notificationErr    error
+	qualityAt          time.Time
+	qualityErr         error
 	sessionsCalled     bool
 }
 
@@ -56,6 +58,10 @@ func (s *retentionStore) PurgeExpiredSessions(context.Context, time.Time) (int, 
 	s.sessionsCalled = true
 	return 0, nil
 }
+func (s *retentionStore) MaintainQualityLedger(_ context.Context, at time.Time) error {
+	s.qualityAt = at
+	return s.qualityErr
+}
 
 func TestHousekeepingAppliesDiagnosticAgeAndStoragePolicy(t *testing.T) {
 	now := time.Date(2026, 8, 23, 17, 0, 0, 0, time.UTC)
@@ -87,6 +93,27 @@ func TestHousekeepingAppliesDiagnosticAgeAndStoragePolicy(t *testing.T) {
 	}
 	if want := now.Add(-30 * 24 * time.Hour); !store.recoveryBefore.Equal(want) {
 		t.Fatalf("password recovery horizon = %v, want %v", store.recoveryBefore, want)
+	}
+	if !store.qualityAt.Equal(now) {
+		t.Fatalf("quality ledger maintenance time = %v, want %v", store.qualityAt, now)
+	}
+}
+
+func TestHousekeepingAttemptsLaterStagesAfterQualityLedgerFailure(t *testing.T) {
+	want := errors.New("quality ledger unavailable")
+	store := &retentionStore{qualityErr: want}
+	service := New(store, Windows{
+		Proposals: func() time.Duration { return time.Hour }, Jobs: func() time.Duration { return time.Hour },
+		Activity: func() time.Duration { return time.Hour }, Diagnostics: func() time.Duration { return time.Hour },
+		DiagnosticsMaxBytes: func() int64 { return 1 },
+	}, time.Now, nil)
+
+	err := service.Housekeeping(context.Background())
+	if !errors.Is(err, want) {
+		t.Fatalf("Housekeeping error = %v, want quality ledger error", err)
+	}
+	if !store.sessionsCalled {
+		t.Fatal("quality ledger failure stopped later session cleanup")
 	}
 }
 
