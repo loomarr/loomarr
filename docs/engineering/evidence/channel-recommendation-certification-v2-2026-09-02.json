@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-02T06:26:44Z",
+  "corpusVersion": "channel-recommendation-v2",
+  "corpusSha256": "2caf971fd7ad14cc9c673c6c4bf92d481305086e9506d0fd67eb8f63cff1e17c",
+  "promptVersion": "channel-concept-prompt-v1",
+  "outputSchema": "channel-concept-schema-v1",
+  "scorerVersion": "channel-recommendation-scorer-v1",
+  "maxOutputTokens": 1024,
+  "profiles": [
+    {
+      "profile": "gemma4-recommendation-v2",
+      "provider": "ollama",
+      "model": "gemma4:12b",
+      "artifactDigest": "4eb23ef187e2",
+      "sourceScorecardSha256": "7b5a2ee380b6766344a2510bfe8c8d473c83b12ebb3fb0f5f8aac641be29e8dc",
+      "casesPassed": 4,
+      "casesTotal": 8,
+      "hardFailures": {},
+      "meanQuality": 0.8928571428571429,
+      "quality": {
+        "relevance": 0.625,
+        "novelty": 1,
+        "diversity": 1,
+        "catalogFeasibility": 1,
+        "policySafety": 1,
+        "abstention": 0.625,
+        "schemaValidity": 1
+      },
+      "p95LatencyNanos": 3495466375,
+      "calls": 8,
+      "tokens": 1862,
+      "spendNanoUsd": 0,
+      "accountingComplete": true,
+      "certified": false
+    },
+    {
+      "profile": "qwen35-shared-v2",
+      "provider": "ollama",
+      "model": "qwen3.5:9b",
+      "artifactDigest": "6488c96fa5fa",
+      "sourceScorecardSha256": "01570f8fb830ffc00fcfb65303f4f4a9e6c6ee002df1f96850e06927c6fc3d25",
+      "casesPassed": 1,
+      "casesTotal": 8,
+      "hardFailures": {
+        "invalid_schema": 4
+      },
+      "meanQuality": 0.39285714285714285,
+      "quality": {
+        "relevance": 0.125,
+        "novelty": 0.5,
+        "diversity": 0.5,
+        "catalogFeasibility": 0.5,
+        "policySafety": 0.5,
+        "abstention": 0.125,
+        "schemaValidity": 0.5
+      },
+      "p95LatencyNanos": 4085346208,
+      "calls": 8,
+      "tokens": 1821,
+      "spendNanoUsd": 0,
+      "accountingComplete": true,
+      "certified": false
+    },
+    {
+      "profile": "gpt-oss20b-deepinfra-v2",
+      "provider": "openrouter",
+      "model": "openai/gpt-oss-20b",
+      "upstream": "DeepInfra",
+      "sourceScorecardSha256": "806e54821a991218256412a52ff81b35eee3a964772873182ab7a0cad4574a6b",
+      "casesPassed": 0,
+      "casesTotal": 8,
+      "hardFailures": {},
+      "meanQuality": 0,
+      "stopReason": "provider_failure",
+      "providerFailureClass": "upstream_429_rate_limit",
+      "calls": 0,
+      "tokens": 0,
+      "spendNanoUsd": 0,
+      "accountingComplete": false,
+      "certified": false
+    }
+  ],
+  "comparison": {
+    "sourceSha256": "4051d06d809b549ed6d00e421e493c31bc78bbd09541ce89a55352c55353d603",
+    "selectionMetric": "mean_quality",
+    "selectionMargin": 0.02,
+    "sharedProfile": "qwen35-shared-v2",
+    "decision": "no_candidate_certified",
+    "reason": "No candidate cleared the complete recommendation certification contract."
+  },
+  "resources": {
+    "accountedCalls": 16,
+    "accountedTokens": 3683,
+    "accountedSpendNanoUsd": 0,
+    "incompleteAccountingEvents": 1,
+    "programAccountedOpenRouterSpendNanoUsd": 82016440,
+    "programUnledgeredEventCount": 3
+  },
+  "decision": {
+    "status": "no_candidate_certified",
+    "shipDecision": "no_ship",
+    "sharedPlannerModelSufficient": false,
+    "distinctRecommendationRouteSelected": false,
+    "fineTuningAuthorized": false,
+    "runpodAuthorized": false,
+    "deploymentAuthorized": false,
+    "developmentCandidate": "gemma4:12b"
+  }
+}
