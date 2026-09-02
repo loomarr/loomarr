@@ -176,6 +176,19 @@ func TestTemporalStructureConcatArgumentsPinDeterministicMetadataFreeCopy(t *tes
 	}
 }
 
+func TestTemporalStructurePartArgumentsPinOneJoinCompatibleProfile(t *testing.T) {
+	arguments := strings.Join(temporalStructurePartArguments("source.mp4", 1_000, 2_000, "part.mp4"), " ")
+	for _, required := range []string{
+		"-ss 1.000", "-t 2.000", "fps=30", "scale=w=960:h=720:force_original_aspect_ratio=decrease",
+		"pad=960:720", "-pix_fmt yuv420p", "-ar 48000", "-ac 2", "-video_track_timescale 90000",
+		"-threads 1", "-fflags +bitexact", "creation_time=", "encoder=",
+	} {
+		if !strings.Contains(arguments, required) {
+			t.Fatalf("structure part arguments omit %q: %s", required, arguments)
+		}
+	}
+}
+
 type temporalStructureFixture struct {
 	root          string
 	authoringPath string

@@ -4250,6 +4250,42 @@ accounts for more than half the disputes, stops the development run for contract
 being hidden behind adjudication. This diagnostic artifact is non-certifying and does not replace the
 complete label or holdout contracts above.
 
+The next temporal-structure gate is a private, mechanically constructed 36-case holdout; it does
+not require another full blind human viewing pass. Its planner strictly decodes and hashes the exact
+48-case selection, evidence manifest and private map, locked human assessment and attestation,
+full-decode media-quality report, two-family broadcast-suitability comparison, duplicate-family
+audit, and programme-parent inventory. It selects 12 quality-eligible, non-prohibited standalone
+anchors with two bumpers, three commercials, two promos, two PSAs, and three trailers. Every anchor
+has distinct source bytes and duplicate-family identity. The same anchors construct 12 two-item
+compilations with four actual joins in each of the first 40%, middle 20%, and final 40% of playback;
+the four pairs within a band are source-disjoint. Six distinct, provenance-bound programme parents
+each supply one 30-second near-start excerpt and one 45-second near-end excerpt, with at least five
+seconds of surrounding programme retained outside each cut.
+
+The planner emits only coordinator-private construction authoring and a receipt binding all input
+and output digests, deterministic seed ranks, selected families, role quotas, compilation pairs and
+join positions, and programme cuts. It performs no rendering or inference. The existing structure
+challenge preparer then renders and freshly blinds that authoring before two distinct direct-video
+model families assess it serially. Before concatenation, every segment is encoded deterministically
+to a common 960-by-720, 30-frame-per-second profile with aspect-preserving padding and a fixed video
+track time base; the measured part durations, rather than requested timestamps, remain the join
+authority. Coverage-only suitability holds may remain as evaluation material;
+prohibited and operational holds cannot be selected. The constructed truth can test unit boundaries
+without a second blind full-corpus review, but it cannot establish broadcast suitability, enter
+training data, or authorize production admission. Both permissions remain explicitly false.
+
+Suitability screening is repeated over every freshly rendered structure case because concatenation
+and excerpt construction create new viewing contexts. A prohibited signal in any derivative is a
+conservative source-level quarantine: the private construction authority projects the observation
+back to every overlapping source segment, and every case derived from that source remains held even
+when another model reports no signal. Repetition at the same source-relative interval strengthens
+the quarantine evidence; it is not counted as independent corroboration. A model non-flag is never a
+safety certificate, and majority voting cannot clear a prohibited observation. Quarantined media may
+remain in the immutable evaluation package so the miss is measurable, but cannot enter training,
+catalog ingestion, scheduling, or production. Operational and incomplete-modality outcomes also
+remain held. Only an independently specified suitability-recall certification can turn complete
+no-signal observations into an admission claim.
+
 The temporal `unusable` answer is diagnostic history, not media-integrity truth. Media integrity,
 presentation/source defects, broadcast suitability, semantic unit/role, and rights are five
 independent claims with independent policy owners. The maintained media-integrity challenge consumes

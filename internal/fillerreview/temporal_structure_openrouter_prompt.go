@@ -7,14 +7,15 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/loomarr/loomarr/internal/fillereval"
 )
 
 const (
-	TemporalStructureOpenRouterPromptVersion = "filler-temporal-structure-direct-video-v1"
+	TemporalStructureOpenRouterPromptVersion = "filler-temporal-structure-direct-video-v2"
 	temporalStructureRoleNone                = "none"
-	temporalStructureReasonMaximumCharacters = 320
+	temporalStructureReasonMaximumCharacters = 512
 )
 
 const temporalStructureOpenRouterContentFormat = "Complete video duration: %d milliseconds. Inspect the complete supplied video and return the closed temporal-structure assessment."
@@ -72,14 +73,19 @@ func temporalStructureOpenRouterContent(durationMS int64) string {
 	return fmt.Sprintf(temporalStructureOpenRouterContentFormat, durationMS)
 }
 
+func normalizeTemporalStructureOpenRouterWire(wire *temporalStructureOpenRouterWire) {
+	sort.Slice(wire.UnitDecisiveAtMS, func(i, j int) bool { return wire.UnitDecisiveAtMS[i] < wire.UnitDecisiveAtMS[j] })
+	sort.Slice(wire.RoleDecisiveAtMS, func(i, j int) bool { return wire.RoleDecisiveAtMS[i] < wire.RoleDecisiveAtMS[j] })
+}
+
 func validateTemporalStructureOpenRouterWire(wire temporalStructureOpenRouterWire, durationMS int64) error {
 	unit := fillereval.UnitKind(wire.Unit)
-	if !validHumanUnit(unit) || strings.TrimSpace(wire.UnitReason) == "" || len(wire.UnitReason) > temporalStructureReasonMaximumCharacters || !validTemporalStructureTimes(wire.UnitDecisiveAtMS, durationMS, unit == fillereval.UnitUnclear) {
+	if !validHumanUnit(unit) || strings.TrimSpace(wire.UnitReason) == "" || utf8.RuneCountInString(wire.UnitReason) > temporalStructureReasonMaximumCharacters || !validTemporalStructureTimes(wire.UnitDecisiveAtMS, durationMS, unit == fillereval.UnitUnclear) {
 		return fmt.Errorf("direct-video structure unit claim is invalid")
 	}
 	if unit == fillereval.UnitStandalone {
 		role := fillereval.TemporalRole(wire.Role)
-		if !validHumanRole(role) || strings.TrimSpace(wire.RoleReason) == "" || len(wire.RoleReason) > temporalStructureReasonMaximumCharacters || !validTemporalStructureTimes(wire.RoleDecisiveAtMS, durationMS, role == fillereval.TemporalRoleUnclear) {
+		if !validHumanRole(role) || strings.TrimSpace(wire.RoleReason) == "" || utf8.RuneCountInString(wire.RoleReason) > temporalStructureReasonMaximumCharacters || !validTemporalStructureTimes(wire.RoleDecisiveAtMS, durationMS, role == fillereval.TemporalRoleUnclear) {
 			return fmt.Errorf("direct-video standalone role claim is invalid")
 		}
 	} else if wire.Role != temporalStructureRoleNone || len(wire.RoleDecisiveAtMS) != 0 || wire.RoleReason != "" {

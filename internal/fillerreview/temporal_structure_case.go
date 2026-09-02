@@ -52,7 +52,7 @@ func buildTemporalStructureChallengeCase(ctx context.Context, config TemporalStr
 		outputStart = outputEnd
 	}
 	if absoluteInt64(outputStart-rendered.Video.DurationMS) > 1_000 {
-		return TemporalStructureChallengePublicCase{}, TemporalStructureChallengeAuthorityCase{}, fmt.Errorf("rendered parts do not bind output duration")
+		return TemporalStructureChallengePublicCase{}, TemporalStructureChallengeAuthorityCase{}, fmt.Errorf("rendered parts do not bind output duration: parts=%dms output=%dms", outputStart, rendered.Video.DurationMS)
 	}
 	return publicCase, authorityCase, nil
 }
