@@ -343,22 +343,27 @@ func mapIntent(i Intent) suggest.Intent {
 
 // Result is the scored outcome of one case.
 type Result struct {
-	Case              string          `json:"case"`
-	Trial             int             `json:"trial"`
-	Failures          []string        `json:"failures"` // all evaluation failures; empty means the trial passed
-	FailureStage      FailureStage    `json:"failureStage,omitempty"`
-	ThemeFit          float64         `json:"themeFit"`
-	Lineup            int             `json:"lineup"`
-	Acquisitions      int             `json:"acquisitions"`
-	Ceiling           string          `json:"ceiling"` // the extracted policy ceiling
-	JudgeScore        float64         `json:"judgeScore"`
-	RelevanceScore    float64         `json:"relevanceScore"`
-	SerendipityScore  float64         `json:"serendipityScore"`
-	JudgeNote         string          `json:"judgeNote"`
-	JudgeError        string          `json:"judgeError,omitempty"`
-	ScheduledPrograms []string        `json:"scheduledPrograms,omitempty"`
-	GeneratorCalls    []InferenceCall `json:"generatorCalls"`
-	JudgeCalls        []InferenceCall `json:"judgeCalls"`
+	Case                       string          `json:"case"`
+	Trial                      int             `json:"trial"`
+	Failures                   []string        `json:"failures"` // all evaluation failures; empty means the trial passed
+	FailureStage               FailureStage    `json:"failureStage,omitempty"`
+	ThemeFit                   float64         `json:"themeFit"`
+	Lineup                     int             `json:"lineup"`
+	Acquisitions               int             `json:"acquisitions"`
+	Ceiling                    string          `json:"ceiling"` // the extracted policy ceiling
+	JudgeScore                 float64         `json:"judgeScore"`
+	RelevanceScore             float64         `json:"relevanceScore"`
+	SerendipityScore           float64         `json:"serendipityScore"`
+	JudgeNote                  string          `json:"judgeNote"`
+	JudgeError                 string          `json:"judgeError,omitempty"`
+	ScheduledPrograms          []string        `json:"scheduledPrograms,omitempty"`
+	GroundedCompletionExpected bool            `json:"groundedCompletionExpected"`
+	GroundedCompletion         bool            `json:"groundedCompletion"`
+	ToolOperationExpected      bool            `json:"toolOperationExpected"`
+	CorrectToolOperation       bool            `json:"correctToolOperation"`
+	SchemaValid                bool            `json:"schemaValid"`
+	GeneratorCalls             []InferenceCall `json:"generatorCalls"`
+	JudgeCalls                 []InferenceCall `json:"judgeCalls"`
 	Observation
 }
 

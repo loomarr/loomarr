@@ -10,7 +10,7 @@ import (
 )
 
 // TestPlannerModelCertification is the explicit, inference-spending lane for
-// comparing candidate models against the frozen 25-case catalog fixture.
+// comparing candidate models against the frozen 150-case catalog fixture.
 func TestPlannerModelCertification(t *testing.T) {
 	if os.Getenv("LOOMARR_EVAL_PLANNER_CERTIFICATION") != "1" {
 		t.Skip("planner-model certification is an explicit non-CI command")
@@ -62,10 +62,19 @@ func TestPlannerModelCertification(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 18*time.Minute)
 	defer cancel()
-	card := NewRunner(generator, runnerConfig).WithObserver(observer).Run(ctx, cases)
+	runner := NewRunner(generator, runnerConfig).WithObserver(observer)
+	if normalizedProviderIdentity(generatorConfig.Provider) == "ollama" {
+		runner = runner.WithResourceProbe(NewOllamaResourceProbe(generatorConfig.BaseURL))
+	}
+	card := runner.Run(ctx, cases)
 	for _, result := range card.Results {
 		for _, failure := range result.Failures {
 			t.Errorf("%s trial %d: %s", result.Case, result.Trial, failure)
+		}
+	}
+	if card.Assessment != nil {
+		for _, failure := range card.Assessment.Failures {
+			t.Errorf("certification threshold: %s", failure)
 		}
 	}
 	writeScorecard(t, card, true)
