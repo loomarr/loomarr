@@ -106,7 +106,8 @@ func buildSuggestions(
 	}, newID, time.Now, log).
 		WithProgressEmitter(emitter).
 		WithProposalNotifier(emitter).
-		WithDurableWorkflow(result.durableWorkflow)
+		WithDurableWorkflow(result.durableWorkflow).
+		WithQualityRecorder(st)
 	service = service.WithAutoApprove(suggest.NewAutoApprover(
 		st, approver, func(context.Context) int { return set.intv("suggest.max_acquisitions") }, log,
 	))

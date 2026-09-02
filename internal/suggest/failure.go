@@ -101,7 +101,7 @@ func (m ConstraintMatches) any() bool {
 
 func knownTerminal(value string) bool {
 	switch value {
-	case ReasonRetrievalEmpty, FailureSelectionEmpty, FailureBudgetExhausted, TerminalProviderFailure, TerminalGenerationFailure, TerminalMalformedExhausted:
+	case ReasonRetrievalEmpty, FailureSelectionEmpty, FailureBudgetExhausted, TerminalProviderFailure, TerminalRetrievalFailure, TerminalGenerationFailure, TerminalMalformedExhausted:
 		return true
 	default:
 		return false

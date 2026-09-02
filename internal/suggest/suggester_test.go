@@ -282,7 +282,7 @@ func TestSuggest_RetrievalFailureIsNotReportedAsEmpty(t *testing.T) {
 	if !errors.As(err, &failure) {
 		t.Fatalf("retrieval failure did not return typed failure: %v", err)
 	}
-	if failure.Trace.Terminal != suggest.TerminalProviderFailure {
+	if failure.Trace.Terminal != suggest.TerminalRetrievalFailure {
 		t.Fatalf("retrieval failure was mislabeled: %+v", failure.Trace)
 	}
 }
