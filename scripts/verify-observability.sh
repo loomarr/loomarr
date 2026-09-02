@@ -17,8 +17,8 @@ jq -e '
 ' "$dashboard" >/dev/null
 
 {
-  rg -o 'loomarr_[A-Za-z0-9_]+' "$dashboard" "$prometheus_dir" || true
-} | sed -E 's/.*://' | sed -E 's/_(bucket|sum|count)$//' | sort -u >"$work_dir/referenced"
+  grep -ERho 'loomarr_[[:alnum:]_]+' "$dashboard" "$prometheus_dir" || true
+} | sed -E 's/_(bucket|sum|count)$//' | sort -u >"$work_dir/referenced"
 cut -d'|' -f1 "$manifest" | sed '/^#/d;/^$/d' | sort -u >"$work_dir/declared"
 if ! comm -23 "$work_dir/referenced" "$work_dir/declared" >"$work_dir/unknown"; then
   exit 1
@@ -46,7 +46,7 @@ docker run --rm \
     grafana server --homepath=/usr/share/grafana >/tmp/grafana.log 2>&1 &
     server_pid=$!
     i=0
-    while [ "$i" -lt 30 ]; do
+    while [ "$i" -lt 60 ]; do
       if wget -qO- http://127.0.0.1:3000/api/health >/dev/null 2>&1 &&
          wget -qO /tmp/dashboard.json --header="Authorization: Basic YWRtaW46dmVyaWZ5" http://127.0.0.1:3000/api/dashboards/uid/loomarr-overview &&
          grep -q "\"uid\":\"loomarr-overview\"" /tmp/dashboard.json; then
