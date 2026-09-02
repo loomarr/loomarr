@@ -39,7 +39,7 @@ func TestRunLocksCompleteSpreadsheetReviewToDownloaderJSONL(t *testing.T) {
 	}
 	rowValue := fillercorpus.RightsReviewRowFromCase(item)
 	rowValue.Rank, rowValue.InventorySHA256 = 1, digest
-	worksheet := fillercorpus.RightsWorksheet{SchemaVersion: fillercorpus.RightsWorksheetSchemaVersion, InventorySHA256: digest, SnapshotAt: retrievedTime, PreparedAt: retrievedTime.Add(30 * time.Minute), MinItems: 1, MaxItems: 1, Cases: []fillercorpus.RightsReviewRow{rowValue}}
+	worksheet := fillercorpus.RightsWorksheet{SchemaVersion: fillercorpus.RightsWorksheetSchemaVersion, Profile: fillercorpus.RightsProfileDevelopment, InventorySHA256: digest, SnapshotAt: retrievedTime, PreparedAt: retrievedTime.Add(30 * time.Minute), MinItems: 1, MaxItems: 1, Cases: []fillercorpus.RightsReviewRow{rowValue}}
 	raw, err := json.Marshal(worksheet)
 	if err != nil {
 		t.Fatal(err)
@@ -66,6 +66,7 @@ func TestRunLocksCompleteSpreadsheetReviewToDownloaderJSONL(t *testing.T) {
 		"--completed-csv", csvPath,
 		"--approvals-out", approvalsPath,
 		"--locked-at", "2026-08-25T10:00:00Z",
+		"--profile", "development",
 	}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("run() = %d, stderr = %s", code, stderr.String())
@@ -127,6 +128,55 @@ func TestParseDecisionRejectsIncompleteOrInconsistentAuthority(t *testing.T) {
 		byRow.LicenseURL = "https://creativecommons.org/licenses/by/4.0/"
 		if _, err := parseDecision(byRow, valid, lockedAt); err == nil {
 			t.Fatal("attribution-bearing approval without credit was accepted")
+		}
+	})
+}
+
+func TestParseHoldoutDecisionRequiresEveryIndependentAuthorityAxis(t *testing.T) {
+	retrievedAt := time.Date(2026, 9, 2, 8, 0, 0, 0, time.UTC)
+	lockedAt := retrievedAt.Add(2 * time.Hour)
+	row := fillercorpus.RightsReviewRow{CaseID: "direct/one", MetadataRetrievedAt: retrievedAt}
+	template := &fillercorpus.HoldoutRightsTemplate{AgreementID: "agreement-v1", AgreementSHA256: strings.Repeat("a", 64), ProcessorID: "openrouter/vertex", ProcessorTermsSHA256: strings.Repeat("b", 64)}
+	valid := []string{
+		"rights-reviewer", retrievedAt.Add(time.Hour).Format(time.RFC3339), "approved", "Executed schedule and every evidence bundle inspected.",
+		"schedule-one", strings.Repeat("c", 64), fillercorpus.RightsStatusCleared, strings.Repeat("d", 64),
+		"true", "true", "true", "true", "true",
+		fillercorpus.RightsStatusNotPresent, fillercorpus.RightsStatusCleared, fillercorpus.RightsStatusNotPresent, fillercorpus.RightsStatusCleared, fillercorpus.RightsStatusCleared, fillercorpus.RightsStatusNotPresent, strings.Repeat("e", 64),
+		fillercorpus.RedistributionExternalOnly, fillercorpus.RightsTerritoryWorldwide, fillercorpus.RightsTermPerpetualIrrevocable, "", fillercorpus.RightsWithdrawalDefectRetirement,
+		"", "", "", "", "[]",
+	}
+	decision, err := parseHoldoutDecision(row, template, valid, lockedAt)
+	if err != nil || decision.HoldoutContract == nil || len(decision.HoldoutContract.HoldReasons) != 0 || decision.Redistributable {
+		t.Fatalf("decision = %+v, %v", decision, err)
+	}
+	tests := map[string]func([]string){
+		"schedule digest mismatch": func(fields []string) { fields[5] = "bad" },
+		"unknown signer authority": func(fields []string) { fields[6] = fillercorpus.RightsStatusUnknown },
+		"provider grant missing":   func(fields []string) { fields[12] = "false" },
+		"embedded rights conflict": func(fields []string) { fields[13] = fillercorpus.RightsStatusConflicting },
+		"expired term": func(fields []string) {
+			fields[22] = fillercorpus.RightsTermExpires
+			fields[23] = lockedAt.Add(-time.Minute).Format(time.RFC3339)
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			fields := append([]string(nil), valid...)
+			mutate(fields)
+			if _, err := parseHoldoutDecision(row, template, fields, lockedAt); err == nil {
+				t.Fatal("incomplete certification authority was approved")
+			}
+		})
+	}
+	t.Run("blank held schedule emits reasons", func(t *testing.T) {
+		fields := append([]string(nil), valid...)
+		fields[2] = "held"
+		for index := 4; index < len(fields); index++ {
+			fields[index] = ""
+		}
+		decision, err := parseHoldoutDecision(row, template, fields, lockedAt)
+		if err != nil || decision.HoldoutContract == nil || len(decision.HoldoutContract.HoldReasons) == 0 {
+			t.Fatalf("held decision = %+v, %v", decision, err)
 		}
 	})
 }

@@ -228,7 +228,7 @@ func prepare(ctx context.Context, opts options, deriver mediaDeriver) (fillereva
 		if !exists {
 			return fillereval.Manifest{}, nil, fmt.Errorf("rights decision %q has no inventory case", decision.CaseID)
 		}
-		if err := validateRightsDecision(decision, item, inventoryDigest, opts.preparedAt); err != nil {
+		if err := validateRightsDecision(decision, item, inventoryDigest, opts.preparedAt, plan.Kind); err != nil {
 			return fillereval.Manifest{}, nil, err
 		}
 		decisions[decision.CaseID] = decision
@@ -502,12 +502,24 @@ func validateSliceGates(kind fillereval.CorpusKind, gates []fillereval.SliceGate
 	return nil
 }
 
-func validateRightsDecision(decision fillercorpus.RightsDecision, item fillercorpus.InventoryCase, inventoryDigest string, preparedAt time.Time) error {
+func validateRightsDecision(decision fillercorpus.RightsDecision, item fillercorpus.InventoryCase, inventoryDigest string, preparedAt time.Time, kind fillereval.CorpusKind) error {
 	if decision.InventorySHA256 != inventoryDigest || decision.MetadataSHA256 != item.MetadataSHA256 || !slices.Equal(decision.CaptureIDs, item.CaptureIDs) || decision.Authority != item.Authority || decision.ItemID != item.ItemID || strings.TrimSpace(decision.ReviewerID) == "" || strings.TrimSpace(decision.Basis) == "" || decision.ReviewedAt.Before(item.MetadataRetrievedAt) || decision.ReviewedAt.After(preparedAt) {
 		return fmt.Errorf("case %q has a rights decision that is not bound to this inventory", decision.CaseID)
 	}
-	if decision.Decision != "approved" && decision.Decision != "held" || decision.Redistributable != (decision.Decision == "approved") {
+	if decision.Decision != "approved" && decision.Decision != "held" {
 		return fmt.Errorf("case %q has an invalid rights decision", decision.CaseID)
+	}
+	if kind == fillereval.CorpusCertification {
+		contract := decision.HoldoutContract
+		if contract == nil || (decision.Decision == "approved" && (len(contract.HoldReasons) != 0 || len(fillercorpus.HoldoutRightsHoldReasons(contract, preparedAt)) != 0)) {
+			return fmt.Errorf("case %q lacks certification holdout authority", decision.CaseID)
+		}
+		wantRedistributable := contract.RedistributionScope == fillercorpus.RedistributionMasterAndDerivatives
+		if decision.Decision == "approved" && decision.Redistributable != wantRedistributable {
+			return fmt.Errorf("case %q has a conflicting redistribution scope", decision.CaseID)
+		}
+	} else if decision.HoldoutContract != nil || decision.Redistributable != (decision.Decision == "approved") {
+		return fmt.Errorf("case %q has an invalid development rights decision", decision.CaseID)
 	}
 	return nil
 }

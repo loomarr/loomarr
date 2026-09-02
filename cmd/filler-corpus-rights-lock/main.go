@@ -30,11 +30,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 	csvPath := flags.String("completed-csv", "", "completed rights review CSV")
 	outputPath := flags.String("approvals-out", "", "validated rights decisions JSONL")
 	lockedAtText := flags.String("locked-at", "", "decision lock time in RFC3339 format")
+	profile := flags.String("profile", "", "required rights profile: development or certification")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
-	if *inventoryPath == "" || *worksheetPath == "" || *csvPath == "" || *outputPath == "" || *lockedAtText == "" {
-		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-lock: inventory, worksheet, completed CSV, approvals output, and lock time are required")
+	if *inventoryPath == "" || *worksheetPath == "" || *csvPath == "" || *outputPath == "" || *lockedAtText == "" || (*profile != fillercorpus.RightsProfileDevelopment && *profile != fillercorpus.RightsProfileCertification) {
+		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-lock: inventory, worksheet, completed CSV, approvals output, lock time, and explicit development/certification profile are required")
 		return 2
 	}
 	lockedAt, err := time.Parse(time.RFC3339, *lockedAtText)
@@ -42,7 +43,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-lock: parse --locked-at:", err)
 		return 2
 	}
-	decisions, err := lockDecisions(*inventoryPath, *worksheetPath, *csvPath, lockedAt)
+	decisions, err := lockDecisionsForProfile(*inventoryPath, *worksheetPath, *csvPath, lockedAt, *profile)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-lock:", err)
 		return 1
@@ -55,7 +56,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func lockDecisions(inventoryPath, worksheetPath, csvPath string, lockedAt time.Time) ([]fillercorpus.RightsDecision, error) {
+func lockDecisionsForProfile(inventoryPath, worksheetPath, csvPath string, lockedAt time.Time, profile string) ([]fillercorpus.RightsDecision, error) {
 	inventoryRaw, err := os.ReadFile(inventoryPath)
 	if err != nil {
 		return nil, fmt.Errorf("read inventory: %w", err)
@@ -73,10 +74,22 @@ func lockDecisions(inventoryPath, worksheetPath, csvPath string, lockedAt time.T
 	if err := json.Unmarshal(raw, &sheet); err != nil {
 		return nil, fmt.Errorf("decode worksheet: %w", err)
 	}
-	if sheet.SchemaVersion != fillercorpus.RightsWorksheetSchemaVersion || len(sheet.Cases) == 0 || sheet.InventorySHA256 != inventoryDigest ||
+	expectedSchema := fillercorpus.RightsWorksheetSchemaVersion
+	if profile == fillercorpus.RightsProfileCertification {
+		expectedSchema = fillercorpus.HoldoutRightsWorksheetSchemaVersion
+	}
+	profileMatches := sheet.Profile == profile || (profile == fillercorpus.RightsProfileDevelopment && sheet.Profile == "")
+	if sheet.SchemaVersion != expectedSchema || !profileMatches || len(sheet.Cases) == 0 || sheet.InventorySHA256 != inventoryDigest ||
 		!sheet.SnapshotAt.Equal(inv.SnapshotAt) ||
 		sheet.PreparedAt.Before(sheet.SnapshotAt) || sheet.MinItems <= 0 || sheet.MaxItems < sheet.MinItems || len(inv.Cases) < sheet.MinItems {
 		return nil, fmt.Errorf("worksheet identity is invalid")
+	}
+	if profile == fillercorpus.RightsProfileCertification {
+		if err := fillercorpus.ValidateHoldoutRightsTemplate(sheet.HoldoutTemplate); err != nil {
+			return nil, err
+		}
+	} else if sheet.HoldoutTemplate != nil {
+		return nil, fmt.Errorf("development worksheet cannot contain a holdout contract template")
 	}
 	expectedCases := make([]fillercorpus.RightsReviewRow, 0, len(inv.Cases))
 	for _, item := range inv.Cases {
@@ -98,6 +111,9 @@ func lockDecisions(inventoryPath, worksheetPath, csvPath string, lockedAt time.T
 	defer func() { _ = file.Close() }()
 	reader := csv.NewReader(file)
 	header := fillercorpus.RightsReviewCSVHeader()
+	if profile == fillercorpus.RightsProfileCertification {
+		header = fillercorpus.HoldoutRightsReviewCSVHeader()
+	}
 	reader.FieldsPerRecord = len(header)
 	records, err := reader.ReadAll()
 	if err != nil {
@@ -137,7 +153,13 @@ func lockDecisions(inventoryPath, worksheetPath, csvPath string, lockedAt time.T
 		if expected := fillercorpus.ImmutableRightsReviewRecord(row); !reflect.DeepEqual(record[:len(expected)], expected) {
 			return nil, fmt.Errorf("completed review row %s changes immutable worksheet fields", caseID)
 		}
-		decision, err := parseDecision(row, record[len(fillercorpus.ImmutableRightsReviewRecord(row)):], lockedAt)
+		fields := record[len(fillercorpus.ImmutableRightsReviewRecord(row)):]
+		var decision fillercorpus.RightsDecision
+		if profile == fillercorpus.RightsProfileCertification {
+			decision, err = parseHoldoutDecision(row, sheet.HoldoutTemplate, fields, lockedAt)
+		} else {
+			decision, err = parseDecision(row, fields, lockedAt)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("completed review row %s: %w", caseID, err)
 		}
@@ -147,6 +169,98 @@ func lockDecisions(inventoryPath, worksheetPath, csvPath string, lockedAt time.T
 		return nil, fmt.Errorf("completed CSV covers %d of %d worksheet rows", len(seen), len(sheet.Cases))
 	}
 	return decisions, nil
+}
+
+func parseHoldoutDecision(row fillercorpus.RightsReviewRow, template *fillercorpus.HoldoutRightsTemplate, fields []string, lockedAt time.Time) (fillercorpus.RightsDecision, error) {
+	if len(fields) != 30 {
+		return fillercorpus.RightsDecision{}, fmt.Errorf("certification schedule has %d fields; want 30", len(fields))
+	}
+	reviewerID := strings.TrimSpace(fields[0])
+	reviewedAt, err := time.Parse(time.RFC3339, strings.TrimSpace(fields[1]))
+	if reviewerID == "" || err != nil || reviewedAt.Before(row.MetadataRetrievedAt) || reviewedAt.After(lockedAt) {
+		return fillercorpus.RightsDecision{}, fmt.Errorf("reviewer and review time must bind a completed review to the frozen metadata")
+	}
+	decision := strings.TrimSpace(fields[2])
+	if decision != "approved" && decision != "held" {
+		return fillercorpus.RightsDecision{}, fmt.Errorf("decision must be approved or held")
+	}
+	basis := strings.TrimSpace(fields[3])
+	if basis == "" {
+		return fillercorpus.RightsDecision{}, fmt.Errorf("a reasoned basis is required")
+	}
+	parseBool := func(index int) (bool, error) {
+		raw := strings.TrimSpace(fields[index])
+		if raw == "" {
+			return false, nil
+		}
+		value, parseErr := strconv.ParseBool(raw)
+		if parseErr != nil {
+			return false, fmt.Errorf("%s must be true or false", fillercorpus.HoldoutRightsReviewCSVHeader()[len(fillercorpus.ImmutableRightsReviewRecord(row))+index])
+		}
+		return value, nil
+	}
+	grants := fillercorpus.HoldoutRightsGrants{}
+	grantTargets := []*bool{&grants.CommercialEvaluation, &grants.CopyAndStorage, &grants.TechnicalModification, &grants.EvidenceExtraction, &grants.ProviderTransfer}
+	for offset, target := range grantTargets {
+		value, parseErr := parseBool(8 + offset)
+		if parseErr != nil {
+			return fillercorpus.RightsDecision{}, parseErr
+		}
+		*target = value
+	}
+	parseOptionalTime := func(value string) (*time.Time, error) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return nil, nil
+		}
+		parsed, parseErr := time.Parse(time.RFC3339, value)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		parsed = parsed.UTC()
+		return &parsed, nil
+	}
+	expiresAt, err := parseOptionalTime(fields[23])
+	if err != nil {
+		return fillercorpus.RightsDecision{}, fmt.Errorf("expires_at must be blank or RFC3339")
+	}
+	adjudicatedAt, err := parseOptionalTime(fields[26])
+	if err != nil {
+		return fillercorpus.RightsDecision{}, fmt.Errorf("adjudicated_at must be blank or RFC3339")
+	}
+	var restrictions []string
+	if strings.TrimSpace(fields[29]) != "" {
+		err = json.Unmarshal([]byte(fields[29]), &restrictions)
+	}
+	if err != nil {
+		return fillercorpus.RightsDecision{}, fmt.Errorf("restrictions_json must be a JSON string array")
+	}
+	contract := &fillercorpus.HoldoutRightsContract{
+		SchemaVersion: fillercorpus.HoldoutRightsContractSchemaVersion,
+		AgreementID:   template.AgreementID, AgreementSHA256: template.AgreementSHA256,
+		ScheduleID: strings.TrimSpace(fields[4]), ScheduleSHA256: strings.TrimSpace(fields[5]),
+		SignerAuthorityStatus: strings.TrimSpace(fields[6]), SignerAuthorityEvidenceSHA256: strings.TrimSpace(fields[7]),
+		ProcessorID: template.ProcessorID, ProcessorTermsSHA256: template.ProcessorTermsSHA256, Grants: grants,
+		EmbeddedRights:               fillercorpus.EmbeddedRightsStatus{Music: strings.TrimSpace(fields[13]), PerformersAndVoices: strings.TrimSpace(fields[14]), StockAndArtwork: strings.TrimSpace(fields[15]), Trademarks: strings.TrimSpace(fields[16]), PrivacyAndPublicity: strings.TrimSpace(fields[17]), Locations: strings.TrimSpace(fields[18])},
+		EmbeddedRightsEvidenceSHA256: strings.TrimSpace(fields[19]), RedistributionScope: strings.TrimSpace(fields[20]), Territory: strings.TrimSpace(fields[21]), Term: strings.TrimSpace(fields[22]), ExpiresAt: expiresAt, Withdrawal: strings.TrimSpace(fields[24]),
+		AdjudicatorID: strings.TrimSpace(fields[25]), AdjudicatedAt: adjudicatedAt, AdjudicationDisposition: strings.TrimSpace(fields[27]),
+	}
+	contract.HoldReasons = fillercorpus.HoldoutRightsHoldReasons(contract, lockedAt)
+	if decision == "approved" && len(contract.HoldReasons) != 0 {
+		return fillercorpus.RightsDecision{}, fmt.Errorf("approval is held by: %s", strings.Join(contract.HoldReasons, ", "))
+	}
+	if decision == "held" && len(contract.HoldReasons) == 0 {
+		contract.HoldReasons = []string{"reviewer_hold"}
+	}
+	redistributable := contract.RedistributionScope == fillercorpus.RedistributionMasterAndDerivatives
+	requiredCredit := strings.TrimSpace(fields[28])
+	if decision == "approved" && requiresCredit(row.LicenseURL) && requiredCredit == "" {
+		return fillercorpus.RightsDecision{}, fmt.Errorf("the asserted license requires attribution")
+	}
+	return fillercorpus.RightsDecision{
+		InventorySHA256: row.InventorySHA256, CaseID: row.CaseID, CaptureIDs: append([]string(nil), row.CaptureIDs...), Authority: row.Authority, ItemID: row.ItemID, MetadataSHA256: row.MetadataSHA256,
+		ReviewerID: reviewerID, ReviewedAt: reviewedAt.UTC(), Decision: decision, Basis: basis, Redistributable: redistributable, RequiredCredit: requiredCredit, Restrictions: restrictions, HoldoutContract: contract,
+	}, nil
 }
 
 func sha256Hex(value string) string {

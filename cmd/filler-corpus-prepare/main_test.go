@@ -96,6 +96,7 @@ func TestPrepareDevelopmentUsesEveryApprovedRowAndLeavesHeldRowsInert(t *testing
 func TestPrepareCertificationRejectsHeldInventoryRows(t *testing.T) {
 	opts, deriver := preparationFixture(t)
 	mutatePreparationFixture(t, opts, func(_ *fillercorpus.Inventory, decisions []fillercorpus.RightsDecision, plan *preparationPlan) {
+		addHoldoutContracts(decisions)
 		decisions[1].Decision, decisions[1].Redistributable = "held", false
 		plan.Kind = fillereval.CorpusCertification
 		plan.Cases[1].Split = fillereval.SplitHoldout
@@ -104,6 +105,19 @@ func TestPrepareCertificationRejectsHeldInventoryRows(t *testing.T) {
 	opts.kind = fillereval.CorpusCertification
 	if _, _, err := prepare(t.Context(), opts, deriver); err == nil || !strings.Contains(err.Error(), "requires every inventory case to be approved") {
 		t.Fatalf("certification held-row error = %v", err)
+	}
+}
+
+func TestPrepareCertificationRejectsSchemaThreeRightsApprovals(t *testing.T) {
+	opts, deriver := preparationFixture(t)
+	mutatePreparationFixture(t, opts, func(_ *fillercorpus.Inventory, _ []fillercorpus.RightsDecision, plan *preparationPlan) {
+		plan.Kind = fillereval.CorpusCertification
+		plan.Cases[1].Split = fillereval.SplitHoldout
+		plan.SliceGates[0].MinAccuracyLower = .5
+	})
+	opts.kind = fillereval.CorpusCertification
+	if _, _, err := prepare(t.Context(), opts, deriver); err == nil || !strings.Contains(err.Error(), "lacks certification holdout authority") {
+		t.Fatalf("schema-v3 certification error = %v", err)
 	}
 }
 
@@ -165,7 +179,8 @@ func TestPrepareRejectsPerceptualFamilySplitAcrossClusters(t *testing.T) {
 
 func TestPrepareRejectsCampaignAuthoredAfterAcquisition(t *testing.T) {
 	opts, deriver := preparationFixture(t)
-	mutatePreparationFixture(t, opts, func(inv *fillercorpus.Inventory, _ []fillercorpus.RightsDecision, plan *preparationPlan) {
+	mutatePreparationFixture(t, opts, func(inv *fillercorpus.Inventory, decisions []fillercorpus.RightsDecision, plan *preparationPlan) {
+		addHoldoutContracts(decisions)
 		inv.Cases[0].Campaign = ""
 		plan.Kind = fillereval.CorpusCertification
 		plan.Cases[1].Split = fillereval.SplitHoldout
@@ -174,6 +189,23 @@ func TestPrepareRejectsCampaignAuthoredAfterAcquisition(t *testing.T) {
 	opts.kind = fillereval.CorpusCertification
 	if _, _, err := prepare(t.Context(), opts, deriver); err == nil || !strings.Contains(err.Error(), "incomplete acquisition provenance") {
 		t.Fatalf("acquisition provenance error = %v", err)
+	}
+}
+
+func addHoldoutContracts(decisions []fillercorpus.RightsDecision) {
+	for index := range decisions {
+		decisions[index].HoldoutContract = validHoldoutContract(decisions[index].CaseID)
+	}
+}
+
+func validHoldoutContract(id string) *fillercorpus.HoldoutRightsContract {
+	return &fillercorpus.HoldoutRightsContract{
+		SchemaVersion: fillercorpus.HoldoutRightsContractSchemaVersion,
+		AgreementID:   "agreement-v1", AgreementSHA256: strings.Repeat("a", 64), ScheduleID: id, ScheduleSHA256: strings.Repeat("b", 64),
+		SignerAuthorityStatus: fillercorpus.RightsStatusCleared, SignerAuthorityEvidenceSHA256: strings.Repeat("c", 64), ProcessorID: "processor-v1", ProcessorTermsSHA256: strings.Repeat("d", 64),
+		Grants:                       fillercorpus.HoldoutRightsGrants{CommercialEvaluation: true, CopyAndStorage: true, TechnicalModification: true, EvidenceExtraction: true, ProviderTransfer: true},
+		EmbeddedRights:               fillercorpus.EmbeddedRightsStatus{Music: fillercorpus.RightsStatusNotPresent, PerformersAndVoices: fillercorpus.RightsStatusCleared, StockAndArtwork: fillercorpus.RightsStatusNotPresent, Trademarks: fillercorpus.RightsStatusCleared, PrivacyAndPublicity: fillercorpus.RightsStatusCleared, Locations: fillercorpus.RightsStatusNotPresent},
+		EmbeddedRightsEvidenceSHA256: strings.Repeat("e", 64), RedistributionScope: fillercorpus.RedistributionMasterAndDerivatives, Territory: fillercorpus.RightsTerritoryWorldwide, Term: fillercorpus.RightsTermPerpetualIrrevocable, Withdrawal: fillercorpus.RightsWithdrawalDefectRetirement,
 	}
 }
 

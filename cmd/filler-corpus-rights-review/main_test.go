@@ -37,7 +37,7 @@ func TestRunWritesSpreadsheetSafeInertCSV(t *testing.T) {
 		t.Fatal(err)
 	}
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"--inventory", inventoryPath, "--out", worksheetPath, "--csv-out", csvPath, "--prepared-at", snapshot.Add(time.Minute).Format(time.RFC3339), "--min-items", "1", "--max-items", "1"}, &stdout, &stderr); code != 0 {
+	if code := run([]string{"--inventory", inventoryPath, "--out", worksheetPath, "--csv-out", csvPath, "--prepared-at", snapshot.Add(time.Minute).Format(time.RFC3339), "--profile", "development", "--min-items", "1", "--max-items", "1"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("run() = %d, stderr = %s", code, stderr.String())
 	}
 	csvRaw, err := os.ReadFile(csvPath)
@@ -88,4 +88,54 @@ func TestPrepareWorksheetFailsBelowMinimum(t *testing.T) {
 	if _, err := prepareWorksheet(reviewInventory(snapshot, "one"), strings.Repeat("f", 64), snapshot, 2, 10); err == nil {
 		t.Fatal("undersized inventory was accepted")
 	}
+}
+
+func TestRunPreparesInertCertificationScheduleBoundToApprovedTemplate(t *testing.T) {
+	snapshot := time.Date(2026, 8, 25, 8, 0, 0, 0, time.UTC)
+	inv := reviewInventory(snapshot, "holdout-one")
+	raw, err := json.Marshal(inv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	inventoryPath, worksheetPath, csvPath := filepath.Join(dir, "inventory.json"), filepath.Join(dir, "worksheet.json"), filepath.Join(dir, "worksheet.csv")
+	if err := os.WriteFile(inventoryPath, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	shaA, shaB := strings.Repeat("a", 64), strings.Repeat("b", 64)
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--inventory", inventoryPath, "--out", worksheetPath, "--csv-out", csvPath, "--prepared-at", snapshot.Add(time.Minute).Format(time.RFC3339), "--profile", "certification", "--agreement-id", "agreement-v1", "--agreement-sha256", shaA, "--processor-id", "openrouter/vertex", "--processor-terms-sha256", shaB, "--min-items", "1", "--max-items", "1"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run() = %d, stderr = %s", code, stderr.String())
+	}
+	var worksheet fillercorpus.RightsWorksheet
+	worksheetRaw, _ := os.ReadFile(worksheetPath)
+	if err := json.Unmarshal(worksheetRaw, &worksheet); err != nil {
+		t.Fatal(err)
+	}
+	if worksheet.SchemaVersion != fillercorpus.HoldoutRightsWorksheetSchemaVersion || worksheet.Profile != fillercorpus.RightsProfileCertification || worksheet.HoldoutTemplate == nil || worksheet.HoldoutTemplate.AgreementSHA256 != shaA || worksheet.HoldoutTemplate.ProcessorTermsSHA256 != shaB {
+		t.Fatalf("worksheet = %+v", worksheet)
+	}
+	records, err := csv.NewReader(mustOpen(t, csvPath)).ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(records[0], fillercorpus.HoldoutRightsReviewCSVHeader()) {
+		t.Fatalf("header = %v", records[0])
+	}
+	for index := len(fillercorpus.ImmutableRightsReviewRecord(worksheet.Cases[0])); index < len(records[1]); index++ {
+		if records[1][index] != "" {
+			t.Fatalf("authority field %s was prefilled", records[0][index])
+		}
+	}
+}
+
+func mustOpen(t *testing.T, path string) *os.File {
+	t.Helper()
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = file.Close() })
+	return file
 }
