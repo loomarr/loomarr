@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	TemporalMediaQualitySchemaVersion   = 1
-	TemporalMediaQualityContractVersion = "filler-temporal-media-quality-v1"
+	TemporalMediaQualitySchemaVersion   = 2
+	TemporalMediaQualityContractVersion = "filler-temporal-media-quality-v2"
 	mediaQualityContinue                = "continue"
 	mediaQualityReview                  = "review"
 	mediaQualityReject                  = "reject"
@@ -42,6 +42,7 @@ type TemporalMediaQualityReport struct {
 	HumanAttestationFileSHA256 string                     `json:"humanAttestationFileSha256"`
 	EvidenceManifestSHA256     string                     `json:"evidenceManifestSha256"`
 	SelectionSHA256            string                     `json:"selectionSha256"`
+	MediaTools                 TemporalTruthMediaIdentity `json:"mediaTools"`
 	Cases                      int                        `json:"cases"`
 	HumanUnusableCases         int                        `json:"humanUnusableCases"`
 	OperationalFailures        int                        `json:"operationalFailures"`
@@ -91,17 +92,23 @@ func MeasureTemporalMediaQuality(ctx context.Context, config TemporalMediaQualit
 	if err != nil {
 		return TemporalMediaQualityReport{}, err
 	}
-	inspector := func(ctx context.Context, path string, durationMS int64, hadAudio bool) (mediatools.MediaQuality, error) {
-		return mediatools.InspectQuality(ctx, config.FFmpegPath, path, durationMS, hadAudio)
+	mediaTools, err := NewFFmpegTemporalTruthMedia(ctx, config.FFmpegPath, filler.FFprobePathNextTo(config.FFmpegPath))
+	if err != nil {
+		return TemporalMediaQualityReport{}, fmt.Errorf("temporal media quality tool identity: %w", err)
 	}
-	probe := filler.FFprobeNextTo(config.FFmpegPath)
+	mediaIdentity := mediaTools.Identity()
+	inspector := func(ctx context.Context, path string, durationMS int64, hadAudio bool) (mediatools.MediaQuality, error) {
+		return mediatools.InspectQuality(ctx, mediaIdentity.FFmpeg.Path, path, durationMS, hadAudio)
+	}
+	probe := filler.FFprobeNextTo(mediaIdentity.FFmpeg.Path)
 	report := TemporalMediaQualityReport{
 		SchemaVersion: TemporalMediaQualitySchemaVersion, ContractVersion: TemporalMediaQualityContractVersion,
 		MeasuredAt: config.MeasuredAt.UTC(), HumanPackageSHA256: loaded.packageSHA,
 		HumanPrivateMapSHA256: loaded.mapSHA, HumanAssessmentSetSHA256: loaded.assessmentSHA,
 		HumanAttestationFileSHA256: loaded.attestationFileSHA,
 		EvidenceManifestSHA256:     loaded.pack.EvidenceManifestSHA256, SelectionSHA256: loaded.pack.SelectionSHA256,
-		Cases: len(inputs), ProductionAdmissionAllowed: false,
+		MediaTools: mediaIdentity,
+		Cases:      len(inputs), ProductionAdmissionAllowed: false,
 		NextAction: "separate_media_quality_ground_truth_before_threshold_changes",
 	}
 	for index, input := range inputs {

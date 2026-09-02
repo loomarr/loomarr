@@ -56,3 +56,9 @@ func TestTemporalMediaQualityProbeRejectionUsesProductionReason(t *testing.T) {
 		t.Fatalf("unexpected probe rejection: %#v", got)
 	}
 }
+
+func TestTemporalMediaQualityContractVersionsTogether(t *testing.T) {
+	if TemporalMediaQualitySchemaVersion != 2 || TemporalMediaQualityContractVersion != "filler-temporal-media-quality-v2" {
+		t.Fatalf("media quality schema and contract drifted: %d %q", TemporalMediaQualitySchemaVersion, TemporalMediaQualityContractVersion)
+	}
+}
