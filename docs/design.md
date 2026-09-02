@@ -8269,6 +8269,17 @@ selection invalidates the preview and disables download until the replacement pr
   non-selection, and absence of approval are ambiguous and **must never** be recorded or exported as
   dislike. Exposure joins only after #497 supplies its dedicated authoritative ledger.
 
+  A Proposal Job records those first three stages only after its terminal job transition commits.
+  A committed Proposal records retrieval `succeeded`, generation `succeeded`, and grounding
+  `accepted`. A committed no-grounded-titles failure records retrieval `empty` when no candidate
+  was surfaced (otherwise `succeeded`), generation `abstained`, and grounding `rejected`. A catalog
+  lookup failure records retrieval `failed`; a provider, timeout, malformed-output, or structural
+  budget failure records generation `failed`. A stage the attempt never reached is absent rather
+  than guessed. Candidate totals belong to retrieval, and the end-to-end Suggester duration belongs
+  to generation; the other stage observations carry zero for quantities Loomarr cannot measure at
+  that boundary. Retried workers derive opaque idempotency keys from the durable Job id, attempt,
+  and stage, so replaying a terminal callback cannot double-count it.
+
   The module accepts typed observations and owns classification, aggregation, redaction, retention,
   and export. Callers cannot provide labels or arbitrary metadata. Recording is best-effort after
   the business transition commits: a quality-write failure is logged through the bounded diagnostics
