@@ -4470,6 +4470,34 @@ unattributed BY/BY-SA approval, or inconsistent redistribution claim, and only t
 the downloader's JSONL ledger. The completed ledger binds each row to both that inventory digest and
 the item's metadata digest; copying an approval between inventory snapshots fails closed.
 
+The certification holdout uses a distinct schema-v4 rights contract; a schema-v3 approval remains
+readable development history but cannot authorize certification acquisition or preparation. The
+caller must name the `development` or `certification` profile before either locking rights decisions
+or downloading media. Certification binds one maintainer/counsel-approved agreement identifier and
+SHA-256 plus one exact processor and terms-snapshot SHA-256 into the inert worksheet. Each completed
+per-master schedule then binds its own identifier and SHA-256, confirmed signer-authority evidence,
+and separate grants for commercial evaluation, copying/storage, technical transcoding, bounded
+frame/audio/transcript/OCR extraction, the named processor transfer, and the permitted redistribution
+scope. Provider transfer is never inferred from redistribution, a public licence, or zero-data-
+retention routing.
+
+The per-master schedule records a closed status for embedded music, performers and voices, stock
+footage and artwork, trademarks, privacy/publicity, and locations; worldwide territory; the granted
+term and any expiry; attribution and restrictions; and, when ambiguity was escalated, the distinct
+adjudicator and disposition. Approval requires every required grant, confirmed signer authority,
+each embedded-rights category cleared or proven absent, the exact worksheet processor and terms
+snapshot, a non-expired worldwide term, and digest-valid agreement, schedule, authority, and evidence
+records. Blank, unknown, conflicting, expired, or mismatched facts emit stable hold reasons and no
+certification authority. Executed agreements, schedules, reviewer identities, and media remain
+private external artifacts; repository fixtures are synthetic and public evidence records only
+content digests.
+
+This mechanical contract does not approve its legal form. The maintainer or counsel separately names
+the agreement, rights reviewer and ambiguity adjudicator, outreach identity/channel and compensation
+ceiling, processor boundary, and first recruitment batch before any contact, signature, acquisition,
+download, provider upload, or spend. Changing any of those approved identities invalidates the
+affected schedule rather than being treated as a compatible metadata update.
+
 Rollout is shadow-first on a bounded appliance workload. Deterministic rejection enables before
 certified admission slices; harder slices enable only after shadow evidence. A random sample of
 automatic outcomes and every disagreement between rungs remains auditable. Any model, provider,
