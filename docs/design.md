@@ -4210,6 +4210,35 @@ accounts for more than half the disputes, stops the development run for contract
 being hidden behind adjudication. This diagnostic artifact is non-certifying and does not replace the
 complete label or holdout contracts above.
 
+The temporal `unusable` answer is diagnostic history, not media-integrity truth. Media integrity,
+presentation/source defects, broadcast suitability, semantic unit/role, and rights are five
+independent claims with independent policy owners. The maintained media-integrity challenge consumes
+the exact full-decode report produced through `filler.EvaluateMediaQuality`; it never copies or tunes
+the production black, silence, or freeze thresholds. Its closed integrity slices are `no_video`,
+`no_audio`, `decode_failure`, `near_total_black`, `near_total_silence`, `stuck_or_low_motion`, and
+`clean_assessable`. Its separate presentation vocabulary is `screen_recapture`, `player_or_browser_chrome`,
+`timecode_or_recording_overlay`, and `third_party_stock_watermark`. A presentation observation cannot
+become an integrity failure merely because both occur in one clip.
+
+Challenge preparation takes a private authority manifest, the exact schema-v2 full-decode report,
+and a fresh secret seed. It emits a label-free public package containing only fresh opaque aliases
+and content/measurement digests plus an owner-only map binding those aliases to source identities,
+closed labels, expected `reject | review | continue | hold` outcomes, presentation observations, and
+an explicit low-motion disposition. Public bytes are scanned for every private case id, evidence
+alias, label, and seed before atomic publication. Missing or extra cases, duplicated aliases,
+invalid media or measurement digests, changed tool/policy/report identity, unknown vocabulary, and
+any label-bearing public field fail closed.
+
+The locked scorer rejoins the package, private map, and exact full-decode report by digest and scores
+each expected outcome against the production-policy result. A missing measurement or operational
+failure observes `hold`, never `continue`. Each integrity slice reports cases, exact confusion counts,
+accuracy, and the one-sided 95% Wilson lower bound. Presentation observations are counted separately
+and never alter integrity correctness. The known noisy/static case may carry
+`measured_gap` only when the current detector did not hold it; that gap remains visible and cannot be
+converted into a passing detection or a threshold change. Every output remains private,
+content-addressed, and `productionAdmissionAllowed: false` until a representative locked challenge
+and the independent certification holdout pass their own predeclared gates.
+
 When that stop fires, a stronger hosted model may inspect only the comparison's deterministic,
 stratified calibration selection before another development-scale run. The selection is a separate
 content-addressed artifact bound to the package, both local assessment hashes, and the comparison

@@ -70,7 +70,7 @@ func loadTemporalMediaQuality(config TemporalMediaQualityConfig) (temporalMediaQ
 			return temporalMediaQualityLoaded{}, nil, fmt.Errorf("locked non-standalone assessment %q carries a role", evidenceAlias)
 		}
 		inputs = append(inputs, temporalMediaQualityInput{
-			EvidenceAlias: evidenceAlias, HumanUnit: assessment.Unit, DurationMS: item.Video.DurationMS,
+			EvidenceAlias: evidenceAlias, SourceMediaSHA256: item.Video.SHA256, HumanUnit: assessment.Unit, DurationMS: item.Video.DurationMS,
 			Path: filepath.Join(root, filepath.FromSlash(item.Video.Path)),
 		})
 	}

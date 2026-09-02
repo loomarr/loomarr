@@ -107,6 +107,8 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make filler-corpus-rights-review` |  | prepare an inert worksheet from a frozen filler inventory |
 | `make filler-corpus-rights-lock` |  | validate completed rights review CSV into approval JSONL |
 | `make filler-corpus-lock` |  | lock two blind filler-label batches into a certification manifest |
+| `make filler-media-integrity-prepare` |  | prepare a label-free media-integrity challenge without inference |
+| `make filler-media-integrity-score` |  | lock the private media-integrity comparison without inference |
 | `make filler-corpus-review` |  | prepare one opaque randomized filler-label review batch |
 | `make filler-corpus-review-package` |  | materialize one verified identity-blind reviewer evidence package |
 | `make filler-corpus-review-ollama` |  | complete one blind package with a digest-pinned local reviewer |
