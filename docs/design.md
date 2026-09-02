@@ -1223,8 +1223,11 @@ declared margin of the best result and the best result overall. If a stock artif
 declared bar, Loomarr adopts that ordinary provider/model choice and does **not** build a training
 corpus, adapter, or custom release merely to own one.
 
-The first executable holdout slice is `planner-certification-v1`: exactly 25 synthetic Intents in
-the `certification` split, each bound to one case in the digest-pinned `planner-catalog-v1` fixture.
+The first executable holdout slice, retained as `planner-certification-v1`, has 25 synthetic Intents.
+The active `planner-certification-v2` expands those 25 auditable semantic families with five explicit,
+frozen alternative phrasings apiece: exactly 150 unique Intents in
+the `certification` split, each bound to its family's case in the digest-pinned
+`planner-catalog-v1` fixture.
 The manifest explicitly permits only `train` and `development` as training-source splits, so its
 certification cases cannot be repurposed as training examples. It covers named-title, genre, and
 keyword routing; include/exclude and refine constraints; season and audience limits; ambiguous,
@@ -1232,9 +1235,10 @@ conflicting, thin, empty, tool-error, repair, and fabrication attempts. Every ca
 production Suggester and public evaluator `Runner`; the only live boundary is the candidate model.
 The fixture owns synthetic ids, ownership, genres, ratings, and injected empty/error responses, so
 models never gain an advantage from catalog drift. Each case hard-gates unsupported ids and the
-production call/candidate bounds, and pins the expected title/genre/keyword operation. Twenty-two
-cases require at least one grounded pick; exactly three manifest-declared empty/conflicting cases
-permit an explicit no-grounded-title abstention. The model
+production call/candidate bounds. Grounded completion and the expected title/genre/keyword operation
+are quality measurements rather than safety failures. Of the 150 Intents, 132 expect at least one
+grounded pick; exactly 18 manifest-declared empty/conflicting phrasings permit an explicit
+no-grounded-title abstention. The model
 still has no acquisition, approval, or authorization capability: the evaluator observes a Proposal,
 not an effectful workflow.
 
@@ -1242,12 +1246,17 @@ not an effectful workflow.
 positive per-run and suite call/token/USD ceilings as other required semantic certification and
 local inference still requires `LOOMARR_EVAL_ALLOW_LOCAL=1`; it never starts or provisions a model.
 Before constructing the provider it verifies the embedded fixture digest and corpus references.
-Scorecard schema v8 records the corpus, fixture digest, prompt contract, catalog-tool schema, scorer,
+Scorecard schema v9 records the corpus, fixture digest, prompt contract, catalog-tool schema, scorer,
 and separate hard/quality metric lists, then writes both the JSON result manifest and a Markdown
-comparison summary. This 25-case vertical slice proves the replay and reporting contract; expanding
-the held-out corpus toward 150–250 cases, adding calibrated quality thresholds and latency/RAM/VRAM
-measurements, and locking the stock-model selection margin remain required before model selection or
-training begins.
+comparison summary. V2 pre-registers a 95% grounded-completion floor over the 132 completion cases,
+a 90% correct-operation floor, a 98% final-schema-validity floor, and a maximum of three tool calls at
+p95. Missing those aggregate quality thresholds fails certification without relabeling the individual
+quality miss as a hard safety violation. The scorecard sums provider-reported call latency per trial
+and records trial p50/p95 plus p95 tool calls. During local Ollama runs it samples `/api/ps` after each
+trial and retains the largest observed system-RAM and VRAM residency for the selected model; system
+RAM is total resident bytes minus `size_vram`, so the two are not double-counted. Hosted or failed
+resource probes remain explicitly unavailable rather than estimated. Calibrating policy/proposal
+quality, recovery thresholds, and the stock-model selection margin remains required before training.
 
 The initial experiment is bounded to **$200 of rented compute**. A request to exceed it is a new
 maintainer decision supported by the measured memory, throughput, failures, and projected cost from
@@ -6993,7 +7002,7 @@ range, including zero, and fails only the declared overall/relevance/serendipity
 judge evidence must explicitly contain all three finite scores within that range plus the prompt's
 non-blank reason. `Runner.Run` validates that contract independently of the configured `Judge`, so a
 custom implementation cannot certify NaN, infinity, an out-of-range value, or a blank reason;
-missing, null, or invalid evidence is a judge error, never defaulted or clamped. Schema v8
+missing, null, or invalid evidence is a judge error, never defaulted or clamped. Schema v9
 records exactly one first-failure stage on every failed trial from the closed vocabulary `retrieval`,
 `generation`, `deterministic`, `structural_budget`, `schedule`, `judge`, and `budget_exhausted`;
 later failures remain visible but never replace the first stage. `no_tool_call` and
