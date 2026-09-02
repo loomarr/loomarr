@@ -538,12 +538,8 @@ func dedupeAndOrderWithPolicy(
 	return orderCandidatesWithPolicy(candidates, limit, policy)
 }
 
-// orderCandidates applies the stable owned/missing blend after identity dedupe
-// and, for Discover, after Library-presence backfill.
-func orderCandidates(candidates []Candidate, limit int) []Candidate {
-	return orderCandidatesWithPolicy(candidates, limit, defaultCandidateBlendPolicy())
-}
-
+// orderCandidatesWithPolicy applies the stable owned/missing blend after
+// identity dedupe and, for Discover, after Library-presence backfill.
 func orderCandidatesWithPolicy(candidates []Candidate, limit int, policy CandidateBlendPolicy) []Candidate {
 	owned := make([]Candidate, 0, len(candidates))
 	outside := make([]Candidate, 0, len(candidates))
