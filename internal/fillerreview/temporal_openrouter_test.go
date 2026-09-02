@@ -291,7 +291,7 @@ func writeTemporalModelInferenceFixture(t *testing.T) string {
 		SchemaVersion: TemporalModelReviewSchemaVersion, ContractVersion: TemporalModelReviewContractVersion,
 		QuestionVersion: TemporalHumanReviewQuestionVersion, EvidenceViewVersion: TemporalModelReviewEvidenceViewVersion,
 		PanelSlot: "panel-a", BatchID: "model-panel-test", PreparedAt: time.Unix(10, 0).UTC(),
-		EvidenceManifestSHA256: strings.Repeat("a", 64), SelectionSHA256: strings.Repeat("b", 64), SeedSHA256: strings.Repeat("c", 64),
+		EvidenceManifestSHA256: strings.Repeat("a", 64), SelectionSHA256: strings.Repeat("b", 64), SeedSHA256: temporalTruthHash([]byte("model-seed")),
 		Cases: []TemporalReviewCase{{
 			Alias: alias, DurationMS: 1_000,
 			Frames: []TemporalReviewFrame{{
