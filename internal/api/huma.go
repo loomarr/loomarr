@@ -144,7 +144,6 @@ type Server struct {
 	// settings wires /v1/settings* + secrets regeneration (config-design §8);
 	// nil ⇒ routes 501. Implemented by a thin adapter over settings.Service.
 	settings                 SettingsService
-	emailTest                EmailTestService
 	notificationDestinations NotificationDestinationService
 	webPushPublicKey         string
 	proposalNotifications    suggest.ProposalNotifier
@@ -281,7 +280,7 @@ func (s *Server) libraryUnconfigured() bool {
 // so the API package needn't import internal/settings. Secrets are masked here —
 // a value never crosses this boundary (§4).
 type SettingsService interface {
-	// List returns every registry setting with its resolved value (secrets
+	// List returns every operator-managed setting with its resolved value (secrets
 	// masked) + provenance + audit metadata (config-design §8).
 	List(ctx context.Context) []SettingEntry
 	// Patch applies per-key edits, returning a per-key result (saved | invalid |
@@ -308,20 +307,11 @@ type SettingsService interface {
 	Test(ctx context.Context, check string) (ok bool, hint string)
 }
 
-type EmailTestResult struct {
-	OK      bool
-	Outcome string
-}
-
-type EmailTestService interface {
-	SendTest(context.Context, string) EmailTestResult
-}
-
 type NotificationDestinationService interface {
 	Create(context.Context, notifications.Principal, notifications.DestinationCommand) (notifications.DestinationSummary, error)
 	List(context.Context, notifications.Principal) ([]notifications.DestinationSummary, error)
 	Update(context.Context, notifications.Principal, string, notifications.DestinationUpdateCommand) (notifications.DestinationSummary, error)
-	Delete(context.Context, notifications.Principal, string) error
+	Delete(context.Context, notifications.Principal, string, string) (notifications.DestinationDeleteResult, error)
 	Test(context.Context, notifications.Principal, string, string) (notifications.DestinationTestResult, error)
 }
 
@@ -961,7 +951,6 @@ type Options struct {
 	RestartDrift             func() []string
 	Jobs                     JobService                                       // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
 	Settings                 SettingsService                                  // /v1/settings* (config-design §8); nil ⇒ routes 501
-	EmailTest                EmailTestService                                 // administrator SMTP test delivery (§11)
 	NotificationDestinations NotificationDestinationService                   // redacted product-delivery routing (§11)
 	WebPushPublicKey         string                                           // public half of the generated VAPID identity (§11)
 	ProposalNotifications    suggest.ProposalNotifier                         // best-effort product lifecycle publication (§11)

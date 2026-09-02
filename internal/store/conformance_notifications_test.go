@@ -249,6 +249,29 @@ func testNotificationDestinations(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || len(listed) != 1 || listed[0].ID != destination.ID {
 		t.Fatalf("listed destinations = %+v, %v", listed, err)
 	}
+	push := notifications.DestinationRecord{
+		ID: "destination-web-push", Means: notifications.MeansWebPush, Label: "Laptop",
+		Scope: notifications.ScopePerson, OwnerID: "person-1", Audience: notifications.RecipientPerson,
+		Topics: []notifications.Topic{notifications.TopicProposalApproved}, Enabled: true,
+		SubscriptionFingerprint: "endpoint-fingerprint-one",
+		CredentialKeys:          []string{"endpoint", "p256dh", "auth"}, CredentialsEncrypted: "opaque-push-envelope",
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := s.SaveNotificationDestinationRecord(ctx, push); err != nil {
+		t.Fatalf("save web push destination: %v", err)
+	}
+	duplicate := push
+	duplicate.ID = "destination-web-push-duplicate"
+	duplicate.CredentialsEncrypted = "opaque-push-envelope-duplicate"
+	if err := s.SaveNotificationDestinationRecord(ctx, duplicate); !errors.Is(err, notifications.ErrConflict) {
+		t.Fatalf("duplicate web push subscription = %v, want conflict", err)
+	}
+	otherOwner := duplicate
+	otherOwner.ID = "destination-web-push-other-owner"
+	otherOwner.OwnerID = "person-2"
+	if err := s.SaveNotificationDestinationRecord(ctx, otherOwner); err != nil {
+		t.Fatalf("save same subscription fingerprint for another owner: %v", err)
+	}
 
 	destination.Enabled = false
 	destination.CredentialsEncrypted = "opaque-envelope-2"
@@ -363,6 +386,11 @@ func testNotificationDestinations(t *testing.T, newStore NewStoreFunc) {
 	}
 	if _, err := s.GetNotificationDestinationRecord(ctx, destination.ID); !errors.Is(err, notifications.ErrNotFound) {
 		t.Fatalf("get deleted destination: %v", err)
+	}
+	for _, id := range []string{push.ID, otherOwner.ID} {
+		if err := s.DeleteNotificationDestination(ctx, id); err != nil {
+			t.Fatalf("delete web push destination %q: %v", id, err)
+		}
 	}
 }
 

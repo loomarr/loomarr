@@ -29,6 +29,8 @@ type CycleResult struct {
 	// being the documented purpose of the type. It is the same report reconcile computes,
 	// because it comes from the same call.
 	Excluded schedule.ExclusionReport
+	// Trace is the scheduler-owned evidence emitted by the same ComputeDesiredAt call as Slots.
+	Trace schedule.ScheduleTrace
 }
 
 // CyclePreview computes the channel's desired cycle at a chosen wall-clock `at` for the
@@ -154,5 +156,6 @@ func (e *Engine) CyclePreviewDraft(
 		// a caller: reconcile computes the identical report and discards it, so a title refused
 		// by the ceiling or the scope filters was invisible everywhere in the product.
 		Excluded: desired.Excluded,
+		Trace:    desired.Trace,
 	}, nil
 }

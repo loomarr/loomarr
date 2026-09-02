@@ -87,6 +87,10 @@ components:
           format: uri
           readOnly: true
           type: string
+        country:
+          description: ISO 3166-1 alpha-2 source country
+          maxLength: 2
+          type: string
         kind:
           description: Which kind of source this is
           enum:
@@ -97,6 +101,10 @@ components:
           type: string
         label:
           description: Operator-facing name; falls back to the identifier
+          type: string
+        market:
+          description: Local source market; omit for country-wide
+          maxLength: 120
           type: string
         uri:
           description: An archive.org collection identifier/URL, a YouTube playlist or channel URL, a folder path Loomarr can read, or a media-server library name
@@ -1177,6 +1185,9 @@ components:
           type: string
         aiTagged:
           type: boolean
+        airDate:
+          description: Grounded broadcast date in YYYY-MM-DD form
+          type: string
         assertedTags:
           description: Directly asserted taxonomy tags; excludes derived rollups and is the set clip editors should round-trip
           items:
@@ -1200,12 +1211,24 @@ components:
           description: Tagging confidence 0-100; 0 = never scored (§10 V38), which is distinct from a low score
           format: int64
           type: integer
+        country:
+          description: ISO 3166-1 alpha-2 country when grounded
+          type: string
         durationMs:
           format: int64
           type: integer
         era:
           format: int64
           type: integer
+        geographicScope:
+          enum:
+            - unknown
+            - national
+            - local
+          type: string
+        geographyEvidence:
+          description: Literal source evidence or operator attribution
+          type: string
         hasTranscript:
           description: Whether a transcript exists (§10 V44). The text itself is a detail-surface read — kilobytes per clip that no grid renders.
           type: boolean
@@ -1238,7 +1261,12 @@ components:
         license:
           description: The licence URL the source declared. ⚠ Absent means UNKNOWN, never public domain — most archive.org items declare none.
           type: string
+        market:
+          description: Local broadcast market when geographicScope is local
+          type: string
         name:
+          type: string
+        network:
           type: string
         parentHash:
           description: The composite this clip was split from; absent for a non-segment clip (§10 V45)
@@ -1253,6 +1281,8 @@ components:
           description: Resolution label from the probed video height (1080p, 480p). Display-only by default; affects selection only when the filler.min_quality floor is set, which is off unless an operator turns it on.
           type: string
         source:
+          type: string
+        station:
           type: string
         suggestedEra:
           description: AI-proposed era NOT persisted as a tag because the year is absent from the clip's text signals (§10). Confirm by PATCHing era; 0 = no suggestion.
@@ -1300,6 +1330,33 @@ components:
           type: array
       required:
         - channels
+      type: object
+    ClipGeographyDTO:
+      additionalProperties: false
+      properties:
+        airDate:
+          description: YYYY-MM-DD when known
+          type: string
+        country:
+          maxLength: 2
+          type: string
+        market:
+          maxLength: 120
+          type: string
+        network:
+          maxLength: 120
+          type: string
+        scope:
+          enum:
+            - unknown
+            - national
+            - local
+          type: string
+        station:
+          maxLength: 120
+          type: string
+      required:
+        - scope
       type: object
     CollectionsOutputBody:
       additionalProperties: false
@@ -1428,6 +1485,7 @@ components:
         criterion:
           description: The channel setting this count is about
           enum:
+            - geography
             - era
             - audience
             - category
@@ -3022,6 +3080,16 @@ components:
         - enabled
         - catalogClips
       type: object
+    FillerGeography:
+      additionalProperties: false
+      properties:
+        country:
+          type: string
+        market:
+          type: string
+      required:
+        - country
+      type: object
     FillerIncomingOutputBody:
       additionalProperties: false
       properties:
@@ -3189,6 +3257,8 @@ components:
           items:
             type: string
           type: array
+        geography:
+          $ref: "#/components/schemas/FillerGeography"
         kinds:
           items:
             type: string
@@ -3210,6 +3280,9 @@ components:
         count:
           format: int64
           type: integer
+        country:
+          description: ISO 3166-1 alpha-2 country asserted for this source
+          type: string
         detail:
           type: string
         enabled:
@@ -3232,6 +3305,9 @@ components:
           type: string
         license:
           description: Licence the source declared; absent means unknown, NOT public domain
+          type: string
+        market:
+          description: Local market asserted for this source; absent means country-wide
           type: string
         parentId:
           type: string
@@ -4970,6 +5046,36 @@ components:
         - local
         - offlineLogin
       type: object
+    NotificationDestinationDeleteInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/NotificationDestinationDeleteInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        currentBrowserEndpoint:
+          description: The current browser's protected Push endpoint, used only to decide whether this local subscription matches the selected row.
+          maxLength: 8000
+          type: string
+      type: object
+    NotificationDestinationDeleteOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/NotificationDestinationDeleteOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        unsubscribeCurrentBrowser:
+          type: boolean
+      required:
+        - unsubscribeCurrentBrowser
+      type: object
     NotificationDestinationHealthDTO:
       additionalProperties: false
       properties:
@@ -5187,6 +5293,7 @@ components:
             - number
             - select
             - toggle
+            - textarea
           type: string
         label:
           type: string
@@ -5272,52 +5379,6 @@ components:
       required:
         - providers
       type: object
-    NotificationsEmailTestInputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/NotificationsEmailTestInputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        to:
-          description: One destination mailbox for this test message.
-          maxLength: 320
-          minLength: 3
-          type: string
-      required:
-        - to
-      type: object
-    NotificationsEmailTestOutputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/NotificationsEmailTestOutputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        hint:
-          type: string
-        ok:
-          type: boolean
-        outcome:
-          enum:
-            - delivery_disabled
-            - destination_unavailable
-            - recipient_rejected
-            - configuration_invalid
-            - means_unavailable
-            - transport_unavailable
-            - acceptance_ambiguous
-            - cancelled
-          type: string
-      required:
-        - ok
-      type: object
     NowNextEntry:
       additionalProperties: false
       properties:
@@ -5400,6 +5461,8 @@ components:
         era:
           format: int64
           type: integer
+        geography:
+          $ref: "#/components/schemas/ClipGeographyDTO"
         hash:
           description: The clip's content hash (its identity)
           type: string
@@ -5856,6 +5919,9 @@ components:
           items:
             $ref: "#/components/schemas/CycleSlotDTO"
           type: array
+        trace:
+          $ref: "#/components/schemas/ScheduleTraceDTO"
+          description: Bounded scheduler-owned reasons emitted by the exact computation that produced slots
         windowMs:
           description: Resolved rolling-window horizon in ms (0 = the whole run, no truncation)
           format: int64
@@ -5866,6 +5932,7 @@ components:
         - windowMs
         - slots
         - excluded
+        - trace
       type: object
     PreviewDraftPodsInputBody:
       additionalProperties: false
@@ -5982,6 +6049,9 @@ components:
           items:
             $ref: "#/components/schemas/CycleSlotDTO"
           type: array
+        trace:
+          $ref: "#/components/schemas/ScheduleTraceDTO"
+          description: Bounded scheduler-owned reasons emitted by the exact draft computation
         windowMs:
           description: Resolved rolling-window horizon in ms (0 = the whole run, no truncation)
           format: int64
@@ -5993,6 +6063,7 @@ components:
         - slots
         - pods
         - excluded
+        - trace
       type: object
     ProcessDetail:
       additionalProperties: false
@@ -6702,6 +6773,8 @@ components:
           type: string
         autoAdmit:
           type: boolean
+        country:
+          type: string
         enabled:
           type: boolean
         id:
@@ -6710,6 +6783,8 @@ components:
           type: string
         lastFetchedAt:
           description: RFC3339; absent if never fetched
+          type: string
+        market:
           type: string
         uri:
           type: string
@@ -6878,6 +6953,148 @@ components:
           type: string
         separation:
           $ref: "#/components/schemas/SeparationPolicy"
+      type: object
+    ScheduleFactDTO:
+      additionalProperties: false
+      properties:
+        cyclePosition:
+          description: Zero-based final slot position after break insertion
+          format: int64
+          type: integer
+        deckPosition:
+          description: Zero-based position before rolling-window selection
+          format: int64
+          type: integer
+        episode:
+          format: int64
+          type: integer
+        key:
+          description: Canonical provisioning key; empty for a commercial gap
+          type: string
+        outcome:
+          enum:
+            - kept
+            - excluded
+            - available
+            - pending
+            - selected
+            - omitted
+            - placed
+            - windowed_out
+            - inserted
+          type: string
+        reason:
+          enum:
+            - eligible
+            - over_ceiling
+            - unrated
+            - out_of_scope
+            - out_of_rule_scope
+            - out_of_season
+            - available
+            - unavailable_pod_fill
+            - unavailable_coming_soon
+            - complete_selected
+            - highlights_selected
+            - highlights_omitted
+            - holiday_selected
+            - holiday_omitted
+            - full_run_fallback
+            - out_of_season_range
+            - sequential
+            - shuffle
+            - syndication
+            - windowed_out
+            - commercial_break
+          type: string
+        season:
+          format: int64
+          type: integer
+        stage:
+          enum:
+            - hard_filter
+            - availability
+            - episode_selection
+            - placement
+          type: string
+        title:
+          type: string
+      required:
+        - stage
+        - outcome
+        - reason
+      type: object
+    ScheduleRelaxationDTO:
+      additionalProperties: false
+      properties:
+        from:
+          type: string
+        kind:
+          type: string
+        to:
+          type: string
+      required:
+        - kind
+        - from
+        - to
+      type: object
+    ScheduleTraceDTO:
+      additionalProperties: false
+      properties:
+        factTotal:
+          description: Total facts emitted before the display bound
+          format: int64
+          type: integer
+        facts:
+          description: Stable pipeline-ordered decision facts
+          items:
+            $ref: "#/components/schemas/ScheduleFactDTO"
+          type: array
+        ordering:
+          description: Effective ordering mode
+          enum:
+            - sequential
+            - shuffle
+            - syndication
+          type: string
+        recordedTotal:
+          description: Facts included in this response
+          format: int64
+          type: integer
+        relaxations:
+          description: Constraint relaxations applied while placing the deck
+          items:
+            $ref: "#/components/schemas/ScheduleRelaxationDTO"
+          type: array
+        seed:
+          description: Deterministic signed 64-bit ordering seed as a decimal string (lossless in JavaScript)
+          type: string
+        truncated:
+          description: Whether facts were omitted by the bound
+          type: boolean
+        version:
+          description: Scheduler trace schema version
+          format: int64
+          type: integer
+        windowIndex:
+          description: Coarse deterministic window index used to rotate the deck
+          format: int64
+          type: integer
+        windowMs:
+          description: Effective rolling-window duration in ms (0 = whole run)
+          format: int64
+          type: integer
+      required:
+        - version
+        - ordering
+        - seed
+        - windowMs
+        - windowIndex
+        - relaxations
+        - factTotal
+        - recordedTotal
+        - truncated
+        - facts
       type: object
     SchedulingRule:
       additionalProperties: false
@@ -7237,6 +7454,9 @@ components:
           maximum: 1000
           minimum: 1
           type: integer
+        geography:
+          $ref: "#/components/schemas/SourceGeographyDTO"
+          description: Complete source coverage replacement; country-only means country-wide
       required:
         - enabled
       type: object
@@ -7260,6 +7480,8 @@ components:
         fetchMaxPerRun:
           format: int64
           type: integer
+        geography:
+          $ref: "#/components/schemas/SourceGeographyDTO"
         id:
           type: string
       required:
@@ -7556,6 +7778,16 @@ components:
           type: array
       required:
         - checks
+      type: object
+    SourceGeographyDTO:
+      additionalProperties: false
+      properties:
+        country:
+          maxLength: 2
+          type: string
+        market:
+          maxLength: 120
+          type: string
       type: object
     SplitFillerInputBody:
       additionalProperties: false
@@ -10847,6 +11079,27 @@ paths:
           name: category
           schema:
             type: string
+        - explode: false
+          in: query
+          name: geographicScope
+          schema:
+            enum:
+              - unknown
+              - national
+              - local
+            type: string
+        - explode: false
+          in: query
+          name: country
+          schema:
+            maxLength: 2
+            minLength: 2
+            type: string
+        - explode: false
+          in: query
+          name: market
+          schema:
+            type: string
         - description: Match clips carrying this taxon directly or through a descendant rollup
           explode: false
           in: query
@@ -12554,32 +12807,6 @@ paths:
       summary: Prometheus metrics
       tags:
         - ops
-  /v1/notifications/email/test:
-    post:
-      description: Admin only. Sends one message through the currently applied SMTP configuration and returns only a closed, provider-safe outcome.
-      operationId: notifications-email-test
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/NotificationsEmailTestInputBody"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/NotificationsEmailTestOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Send a test email
-      tags:
-        - notifications
   /v1/notifications/provider-types:
     get:
       description: Returns the server-owned provider fields and compatible events used to render the Add provider form. No configured values or credentials are returned.
@@ -12647,7 +12874,7 @@ paths:
         - notifications
   /v1/notifications/providers/{id}:
     delete:
-      description: Queued attempts suppress at execution when their destination no longer exists; delivery history remains redacted and unchanged.
+      description: Queued attempts suppress at execution when their destination no longer exists. Browser Push may include this browser's endpoint in the request body; the response says whether the client should unsubscribe that local subscription.
       operationId: notification-providers-delete
       parameters:
         - in: path
@@ -12655,9 +12882,18 @@ paths:
           required: true
           schema:
             type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationDestinationDeleteInputBody"
       responses:
-        "204":
-          description: No Content
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationDestinationDeleteOutputBody"
+          description: OK
         default:
           content:
             application/problem+json:
@@ -13332,7 +13568,7 @@ paths:
         - users
   /v1/settings:
     get:
-      description: Admin only. Every registry setting with resolved value (secrets masked), provenance, and audit (config-design §8).
+      description: Admin only. Every operator-managed setting with resolved value (secrets masked), provenance, and audit (config-design §8).
       operationId: settings-list
       responses:
         "200":

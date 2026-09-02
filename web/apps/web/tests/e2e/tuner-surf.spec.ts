@@ -289,7 +289,7 @@ const tuneInApp = async (page: Page, id: string): Promise<{ duration: number; tr
     const resources = performance
       .getEntriesByType("resource")
       .filter((entry) => entry.startTime >= since)
-      .filter((entry) => /play-url|master\.m3u8|init\.mp4|segment\.m4s/.test(entry.name))
+      .filter((entry) => /play-url|master\.m3u8|init\.mp4|segment(?:-\d+)?\.m4s/.test(entry.name))
       .map(
         (entry) =>
           `${new URL(entry.name).pathname.split("/").at(-1)}@${(entry.responseEnd - since).toFixed(0)}`,
@@ -381,7 +381,7 @@ const playbackSnapshot = async (page: Page, channel: string, since: number) =>
       resources: performance
         .getEntriesByType("resource")
         .filter((entry) => entry.startTime >= since)
-        .filter((entry) => /play-url|master\.m3u8|init\.mp4|segment\.m4s/.test(entry.name))
+        .filter((entry) => /play-url|master\.m3u8|init\.mp4|segment(?:-\d+)?\.m4s/.test(entry.name))
         .map((entry) => ({
           name: new URL(entry.name).pathname,
           responseEnd: entry.responseEnd - since,
@@ -395,6 +395,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   expect(tunerManifest("ended", 1)).toContain("#EXT-X-ENDLIST");
   expect(tunerManifest("live", 4)).not.toContain("#EXT-X-ENDLIST");
   expect(tunerManifest("live", 4)).not.toContain("#EXT-X-PLAYLIST-TYPE:VOD");
+  expect(tunerManifest("live", 4).match(/segment-\d+\.m4s/g)).toHaveLength(3);
   await installFrameClock(page);
   const backend = await installTunerBackend(page);
   const freshMediaSourceBaseline = await measureFreshMediaSourceBaseline(page);
@@ -537,7 +538,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
           const resources = performance
             .getEntriesByType("resource")
             .filter((entry) => entry.startTime >= started)
-            .filter((entry) => /master\.m3u8|init\.mp4|segment\.m4s/.test(entry.name))
+            .filter((entry) => /master\.m3u8|init\.mp4|segment(?:-\d+)?\.m4s/.test(entry.name))
             .map(
               (entry) =>
                 `${new URL(entry.name).pathname.split("/").at(-1)}:${(entry.startTime - started).toFixed(0)}-${(entry.responseEnd - started).toFixed(0)}`,
@@ -589,6 +590,10 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   )}ms; samples: ${adjacentFrames
     .map((sample) => sample.toFixed(1))
     .join(", ")}; traces: ${adjacentTraces.join(" | ")}`;
+  await test.info().attach("prepared-adjacent-timing", {
+    body: adjacentEvidence,
+    contentType: "text/plain",
+  });
   if (browserName === "webkit") {
     test.info().annotations.push({
       type: "webkit-compatibility-latency",

@@ -142,6 +142,12 @@ program in place only if that Title independently reaches `available` — so a m
 never make unapproved content play (§7).
 _Avoid_: placeholder, gap, empty slot
 
+**Scheduler decision trace**:
+The bounded, versioned record of how one `ComputeDesiredAt` run turned a Channel's approved
+Lineup, live availability, Policy, and wall-clock into a cycle. It is current schedule evidence,
+not the immutable evidence attached to the originating Proposal (§8; `programming-design.md` §8.4).
+_Avoid_: proposal trace, rationale, chain-of-thought
+
 ### Commercials
 
 **Clip**:
@@ -176,6 +182,26 @@ Loomarr-owned non-program content as a whole. It lives in a Tunarr-local media s
 in the operator's Library, so it structurally cannot leak into a programming Lineup (§10).
 _Avoid_: bumpers, interstitials (both are *kinds* of filler, not the category)
 
+**Filler role**:
+What kind of non-program item a Clip is, such as commercial, promo, bumper, PSA, station ID,
+trailer, or interstitial. A Filler role says nothing about Media quality or Airworthiness.
+_Avoid_: category, approval, suitability
+
+**Media quality**:
+Whether a Clip is technically intact, complete, and presentable enough for its intended playout.
+Media quality says nothing about the Clip's Filler role or Airworthiness.
+_Avoid_: usable (too narrow), appropriate, safe
+
+**Airworthiness**:
+Whether a Clip is permitted for unattended playout under the operator's audience and content
+policy. A recognized Filler role and acceptable Media quality never imply Airworthiness.
+_Avoid_: appropriateness (too vague), safety (an overclaim), admission (the larger decision)
+
+**Suitability flag**:
+A closed, evidence-backed description of content relevant to Airworthiness, such as explicit
+nudity or hateful language. It is an observation, not the policy verdict that consumes it.
+_Avoid_: warning, rating, rejection reason
+
 ### Delivery
 
 **Playout**:
@@ -201,6 +227,28 @@ interprets pixels and writes unpublished Renditions; Go still owns Image identit
 publication. It is an implementation detail shipped in the Loomarr container, not a sidecar or an
 optional integration.
 _Avoid_: image service (that includes the Go-owned domain), daemon, fallback
+
+### Filler geography
+
+**Installation geography**:
+The optional home country and local market that constrain automated filler use across the instance and supply the default for Channels without their own geography.
+_Avoid_: guide timezone, locale, server location
+
+**Channel geography**:
+The country and optional local market whose viewers a Channel is programmed for. It inherits Installation geography; a Channel may choose a market but cannot escape a configured Installation country.
+_Avoid_: station location, timezone, region
+
+**Source geography**:
+The asserted country and optional local market served by a registered filler Source. It constrains acquisition before discovery or download; an unknown Source is ineligible once Installation country is configured.
+_Avoid_: provider location, uploader location, inferred locale
+
+**Geographic scope**:
+Whether a Clip is applicable throughout its country (`national`), only inside one named market (`local`), or is not yet known (`unknown`).
+_Avoid_: region, location type, reach
+
+**Market**:
+An operator-visible local broadcast area within one country, such as New York or Seattle. It is an explicit identity, never inferred from a timezone.
+_Avoid_: timezone, city (a Market may cover more than one city), region
 
 ### People and access
 

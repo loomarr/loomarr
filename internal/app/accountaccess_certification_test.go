@@ -45,26 +45,21 @@ func TestAccountAccessLifecycleCertification(t *testing.T) {
 		func() (string, error) { return recoveryBearer, nil },
 		func() time.Time { return now },
 	)
-	config := func() notifications.EmailConfig {
-		return notifications.EmailConfig{
-			Enabled: true, Host: "smtp.example.com", Port: 587,
-			Security: notifications.EmailSecuritySTARTTLS, FromAddress: "loomarr@example.com",
-		}
-	}
 	sender := &sequenceEmailSender{results: []notifications.EmailTransmission{
 		{State: notifications.EmailAccepted, ProviderMessageID: "certification-invitation-message"},
 		{State: notifications.EmailAccepted, ProviderMessageID: "certification-recovery-message"},
 	}}
-	adapter := notifications.NewEmailAdapter(config, invitationEmailMaterializer{
+	adapter := notifications.NewEmailAdapter(invitationEmailMaterializer{
 		invitations: invitationService,
 		recovery:    recoveryService,
 		publicURL:   func() string { return "https://loomarr.example" },
 	}, sender)
 	sequence := 0
-	notificationService := notifications.NewService(notificationRepositoryForTest(t, st), invitationEmailRouter{
-		invitations: invitationService,
-		recovery:    recoveryService,
-		config:      config,
+	repository := notificationRepositoryForTest(t, st)
+	notificationService := notifications.NewService(repository, invitationEmailRouter{
+		invitations:  invitationService,
+		recovery:     recoveryService,
+		destinations: repository.destinations,
 	}, []notifications.Adapter{adapter}, func() string {
 		sequence++
 		return fmt.Sprintf("certification-notification-%d", sequence)

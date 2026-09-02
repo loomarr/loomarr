@@ -62,6 +62,7 @@ type fakeChannelSvc struct {
 	// cycleExcluded is the §4 exclusion report the draft preview reports back — what the
 	// audience ceiling / scope filters refused.
 	cycleExcluded schedule.ExclusionReport
+	cycleTrace    schedule.ScheduleTrace
 
 	// programming/preview draft capture (P6): what the last CyclePreviewDraft received.
 	draftLineup []schedule.LineupEntry
@@ -112,6 +113,7 @@ func (f *fakeChannelSvc) CyclePreviewDraft(ctx context.Context, id string, at ti
 		// for a channel that refused something, and a double that can only ever answer "nothing
 		// was excluded" cannot fail the test that asserts the handler renders it.
 		Excluded: f.cycleExcluded,
+		Trace:    f.cycleTrace,
 	}, nil
 }
 
@@ -508,6 +510,50 @@ func TestCyclePreview_RendersSlotsAndAttribution(t *testing.T) {
 	}
 	if body.Slots[3].Kind != "pending" {
 		t.Errorf("slot[3] kind = %q, want pending", body.Slots[3].Kind)
+	}
+}
+
+func TestCyclePreviews_ProjectTheSchedulerTraceWithoutReconstructingIt(t *testing.T) {
+	srv, _, chSvc, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "Trek", 5)
+	chSvc.cycleTrace = schedule.ScheduleTrace{
+		Version: 1, Ordering: schedule.OrderShuffle, Seed: 42, WindowMs: 86_400_000,
+		WindowIndex: 7, FactTotal: 2, RecordedTotal: 1, Truncated: true,
+		Facts: []schedule.ScheduleFact{{Stage: schedule.StageAvailability, Outcome: schedule.OutcomePending,
+			Reason: schedule.ReasonUnavailablePodFill, Key: "movie:tmdb:1", Title: "Waiting"}},
+	}
+
+	for _, tc := range []struct {
+		name, method, path, body string
+	}{
+		{"saved", http.MethodGet, "/v1/channels/c1/cycle", ""},
+		{"draft", http.MethodPost, "/v1/channels/c1/programming/preview", `{}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := do(t, srv, tc.method, tc.path, adminToken, tc.body)
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("preview → %d, want 200", resp.StatusCode)
+			}
+			var out struct {
+				Trace struct {
+					Version, FactTotal, RecordedTotal int
+					Ordering                          string
+					Seed                              string
+					WindowMs, WindowIndex             int64
+					Truncated                         bool
+					Facts                             []struct{ Stage, Outcome, Reason, Key, Title string }
+				} `json:"trace"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+				t.Fatal(err)
+			}
+			if out.Trace.Version != 1 || out.Trace.Ordering != "shuffle" || out.Trace.Seed != "42" || !out.Trace.Truncated {
+				t.Fatalf("trace metadata = %+v", out.Trace)
+			}
+			if len(out.Trace.Facts) != 1 || out.Trace.Facts[0].Reason != "unavailable_pod_fill" || out.Trace.Facts[0].Title != "Waiting" {
+				t.Fatalf("trace facts = %+v", out.Trace.Facts)
+			}
+		})
 	}
 }
 

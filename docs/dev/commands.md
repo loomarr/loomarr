@@ -83,6 +83,8 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make eval-planner-compare` |  | compare two or more frozen planner scorecards without inference |
 | `make eval-matrix` |  | explicitly certify local + OpenRouter generation sequentially (manual, resource-heavy) |
 | `make filler-eval-contract` |  | hermetic filler-admission corpus and selective-risk contracts |
+| `make filler-temporal-truth-select` |  | select the private 48-case truth-review sample from frozen history without inference |
+| `make filler-temporal-truth-prepare` |  | build the sealed complete-span 48-case evidence set without inference |
 | `make filler-temporal-assess-ollama` |  | assess the sealed temporal challenge with a digest-pinned local model |
 | `make filler-temporal-compare` |  | compare two independent temporal assessment sets without inference |
 | `make filler-temporal-select` |  | derive an immutable stratified temporal calibration selection without inference |

@@ -34,6 +34,24 @@ const providerTypes = [
     fields: [{ key: "webhookUrl", label: "Slack webhook URL", kind: "url", required: true, sensitive: true }],
   },
   {
+    type: "mqtt",
+    name: "MQTT",
+    memberOwned: false,
+    events: ["channel_degraded"],
+    fields: [
+      { key: "brokerUrl", label: "Broker URL", kind: "password", required: true, sensitive: true },
+      { key: "clientId", label: "Client ID", kind: "text", required: false, sensitive: false },
+      { key: "baseTopic", label: "Base topic", kind: "text", required: true, sensitive: false },
+      {
+        key: "tlsCaCertificate",
+        label: "TLS CA certificate",
+        kind: "textarea",
+        required: false,
+        sensitive: true,
+      },
+    ],
+  },
+  {
     type: "web_push",
     name: "Browser Push",
     memberOwned: true,
@@ -147,6 +165,41 @@ describe("NotificationDestinationsPanel", () => {
     );
   });
 
+  it("accepts multiline MQTT TLS credentials in the same provider form", async () => {
+    let created: Record<string, unknown> | undefined;
+    server.use(
+      providerTypeHandler,
+      http.get("*/v1/notifications/providers", () => HttpResponse.json({ providers: [] })),
+      http.post("*/v1/notifications/providers", async ({ request }) => {
+        created = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ ...provider, ...created, id: "mqtt-1", settings: [] }, { status: 201 });
+      }),
+    );
+    render(<NotificationDestinationsPanel />, { wrapper });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Add provider" }));
+    await userEvent.selectOptions(screen.getByLabelText("Provider"), "mqtt");
+    await userEvent.type(screen.getByLabelText("Broker URL *"), "mqtts://broker.example.test");
+    await userEvent.type(screen.getByLabelText("Base topic *"), "home/loomarr");
+    const caCertificate = "-----BEGIN CERTIFICATE-----\nprivate-ca\n-----END CERTIFICATE-----";
+    const caInput = screen.getByLabelText("TLS CA certificate");
+    expect(caInput.tagName).toBe("TEXTAREA");
+    await userEvent.type(caInput, caCertificate);
+    await userEvent.click(screen.getByLabelText("Channel Degraded"));
+    await userEvent.click(screen.getByRole("button", { name: "Save provider" }));
+
+    await waitFor(() =>
+      expect(created).toMatchObject({
+        type: "mqtt",
+        settings: {
+          brokerUrl: "mqtts://broker.example.test",
+          baseTopic: "home/loomarr",
+          tlsCaCertificate: caCertificate,
+        },
+      }),
+    );
+  });
+
   it("edits ordinary choices without resending a configured secret and confirms deletion", async () => {
     let update: Record<string, unknown> | undefined;
     let deleted = false;
@@ -159,7 +212,7 @@ describe("NotificationDestinationsPanel", () => {
       }),
       http.delete("*/v1/notifications/providers/provider-1", () => {
         deleted = true;
-        return new HttpResponse(null, { status: 204 });
+        return HttpResponse.json({ unsubscribeCurrentBrowser: false });
       }),
     );
     render(<NotificationDestinationsPanel />, { wrapper });
@@ -288,4 +341,59 @@ describe("NotificationDestinationsPanel", () => {
       },
     });
   });
+
+  it.each([
+    { selectedBrowserIsCurrent: false, expectedUnsubscribeCalls: 0 },
+    { selectedBrowserIsCurrent: true, expectedUnsubscribeCalls: 1 },
+  ])(
+    "unsubscribes the local browser only when the deleted row is its subscription ($selectedBrowserIsCurrent)",
+    async ({ selectedBrowserIsCurrent, expectedUnsubscribeCalls }) => {
+      const unsubscribe = vi.fn(async () => true);
+      const getSubscription = vi.fn(async () => ({
+        endpoint: "https://push.example.test/subscription/current",
+        unsubscribe,
+      }));
+      const getRegistration = vi.fn(async () => ({ pushManager: { getSubscription } }));
+      const navigatorWithServiceWorker = Object.create(navigator) as Navigator;
+      Object.defineProperty(navigatorWithServiceWorker, "serviceWorker", { value: { getRegistration } });
+      vi.stubGlobal("navigator", navigatorWithServiceWorker);
+      let deleteBody: Record<string, unknown> | undefined;
+      const browserProvider = {
+        ...provider,
+        id: "browser-1",
+        type: "web_push",
+        label: "Living room browser",
+        events: ["proposal_approved"],
+        settings: [
+          { key: "endpoint", secretConfigured: true },
+          { key: "p256dh", secretConfigured: true },
+          { key: "auth", secretConfigured: true },
+        ],
+        health: undefined,
+      };
+      server.use(
+        providerTypeHandler,
+        http.get("*/v1/notifications/providers", () => HttpResponse.json({ providers: [browserProvider] })),
+        http.delete("*/v1/notifications/providers/browser-1", async ({ request }) => {
+          deleteBody = (await request.json()) as Record<string, unknown>;
+          return HttpResponse.json({ unsubscribeCurrentBrowser: selectedBrowserIsCurrent });
+        }),
+      );
+      render(<NotificationDestinationsPanel />, { wrapper });
+
+      await userEvent.click(await screen.findByRole("button", { name: "Delete" }));
+      await userEvent.type(
+        screen.getByLabelText("Type Living room browser to confirm"),
+        "Living room browser",
+      );
+      await userEvent.click(screen.getByRole("button", { name: "Delete provider" }));
+
+      await waitFor(() =>
+        expect(deleteBody).toEqual({
+          currentBrowserEndpoint: "https://push.example.test/subscription/current",
+        }),
+      );
+      expect(unsubscribe).toHaveBeenCalledTimes(expectedUnsubscribeCalls);
+    },
+  );
 });

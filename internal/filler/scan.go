@@ -251,8 +251,11 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 			// clean title would silently lose filename-encoded eras. Without this a clip lands as a
 			// generic interstitial the pod assembler can never place, so filler would silently never
 			// build unless AI tagging is on.
-			Kind:       KindFromName(heuristicName),
-			Era:        EraFromName(heuristicName),
+			Kind:            KindFromName(heuristicName),
+			Era:             EraFromName(heuristicName),
+			GeographicScope: GeographicScope(tags.GeographicScope),
+			Country:         tags.Country, Market: tags.Market, Network: tags.Network,
+			Station: tags.Station, AirDate: tags.AirDate, GeoEvidence: tags.GeoEvidence,
 			DurationMs: pr.DurationMs,
 			// Quality is DERIVED, not probed: a clip with no video stream (or an
 			// unreadable one) simply has none, and the guide omits the badge rather

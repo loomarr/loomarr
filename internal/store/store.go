@@ -430,6 +430,9 @@ type ClipStore interface {
 	// signals, while kind is detected at sync and only a human corrects it (a trailer
 	// scanned as a commercial being the likely case).
 	UpdateClipKind(ctx context.Context, tunarrProgramID, kind string, updatedAt time.Time) error
+	// UpdateClipGeography records grounded broadcast applicability and context. It is hash-keyed;
+	// callers validate scope/country/date and provide the evidence attribution.
+	UpdateClipGeography(ctx context.Context, hash, scope, country, market, network, station, airDate, evidence string, updatedAt time.Time) error
 	// DeleteClipsNotIn removes clips whose id isn't in the given set — the sync's
 	// prune step (a clip removed from the media server's filler library is gone).
 	DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, error)
@@ -583,6 +586,7 @@ type FillerSourceStore interface {
 	// omits them so a re-register cannot blank an operator's tuning. nil clears an override back
 	// to "inherit the global", which is a real action and must be expressible.
 	SetFillerSourceFetchPolicy(ctx context.Context, id string, everySeconds, maxPerRun *int) error
+	SetFillerSourceGeography(ctx context.Context, id string, geography filler.Geography) error
 	// SetFillerSourceEnabled switches a source on or off (V35). ⚠ Disabling is NOT deleting:
 	// the row keeps its licence and fetch history, and clips it already brought in stay in the
 	// catalog. It only withdraws the source from future searching and downloading.

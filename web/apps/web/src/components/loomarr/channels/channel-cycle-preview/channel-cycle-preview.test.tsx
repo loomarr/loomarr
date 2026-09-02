@@ -1,4 +1,5 @@
 import { ExcludedItemDTOReason } from "@loomarr/api";
+import { ScheduleFactDTOReason } from "@loomarr/api/models/scheduleFactDTOReason";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -39,12 +40,59 @@ const loaded = (body: {
     unrated: number;
     items: { key: string; title: string; reason: ExcludedItemDTOReason }[];
   };
+  trace?: {
+    version: number;
+    ordering: "sequential" | "shuffle" | "syndication";
+    seed: string;
+    windowMs: number;
+    windowIndex: number;
+    relaxations: { kind: string; from: string; to: string }[];
+    factTotal: number;
+    recordedTotal: number;
+    truncated: boolean;
+    facts: {
+      stage: "hard_filter" | "availability" | "episode_selection" | "placement";
+      outcome:
+        | "kept"
+        | "excluded"
+        | "available"
+        | "pending"
+        | "selected"
+        | "omitted"
+        | "placed"
+        | "windowed_out"
+        | "inserted";
+      reason: ScheduleFactDTOReason;
+      key?: string;
+      title?: string;
+      deckPosition?: number;
+      cyclePosition?: number;
+    }[];
+  };
 }) => ({
   // ⚠ `excluded` is DEFAULTED, not optional on the wire — the BE marks it required, so a body
   // reaching the component without it is a contract break, not a state to render around. The
   // default exists so the tests that predate it (and care about rules/slots) stay unedited;
   // it must NOT become a reason for the component to guard against a missing field.
-  data: { status: 200, data: { excluded: { overCeiling: 0, unrated: 0, items: [] }, ...body } },
+  data: {
+    status: 200,
+    data: {
+      excluded: { overCeiling: 0, unrated: 0, items: [] },
+      trace: {
+        version: 1,
+        ordering: "sequential",
+        seed: "0",
+        windowMs: 0,
+        windowIndex: 0,
+        relaxations: [],
+        factTotal: 0,
+        recordedTotal: 0,
+        truncated: false,
+        facts: [],
+      },
+      ...body,
+    },
+  },
   isLoading: false,
   error: null,
   refetch: vi.fn(),
@@ -111,6 +159,53 @@ describe("ChannelCyclePreview", () => {
     expect(screen.getByText(/coming soon/i)).toBeInTheDocument();
     expect(screen.getByText(/commercial break/i)).toBeInTheDocument();
     expect(screen.getByText("Part 2")).toBeInTheDocument();
+  });
+
+  it("shows scheduler-owned why-this and why-not facts", async () => {
+    mockUsePreviewChannelCycle.mockReturnValue(
+      loaded({
+        at: "2026-07-24T14:00:00Z",
+        activeRule: { id: "", label: "Base policy", priority: 0, matched: false },
+        windowMs: 24 * 60 * 60 * 1000,
+        slots: [{ kind: "program", title: "Die Hard", key: "movie:tmdb:562" }],
+        trace: {
+          version: 1,
+          ordering: "shuffle",
+          seed: "42",
+          windowMs: 24 * 60 * 60 * 1000,
+          windowIndex: 7,
+          relaxations: [],
+          factTotal: 3,
+          recordedTotal: 2,
+          truncated: true,
+          facts: [
+            {
+              stage: "placement",
+              outcome: "placed",
+              reason: ScheduleFactDTOReason.shuffle,
+              key: "movie:tmdb:562",
+              title: "Die Hard",
+              deckPosition: 4,
+              cyclePosition: 0,
+            },
+            {
+              stage: "availability",
+              outcome: "pending",
+              reason: ScheduleFactDTOReason.unavailable_pod_fill,
+              key: "movie:tmdb:10719",
+              title: "Elf",
+            },
+          ],
+        },
+      }),
+    );
+
+    render(<ChannelCyclePreview channelId="ch-1" />);
+    expect(screen.getByText(/2 recorded decisions/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /show scheduler decisions/i }));
+    expect(screen.getByText(/placed by the deterministic shuffle/i)).toBeInTheDocument();
+    expect(screen.getByText(/waiting for acquisition; filler holds its place/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 additional decision omitted/i)).toBeInTheDocument();
   });
 
   it("shows the whole-run horizon when windowMs is 0", () => {
@@ -225,6 +320,18 @@ describe("ChannelCyclePreview — unsaved draft", () => {
           // Hand-built rather than via `loaded()` (this is the MUTATION shape, not the query's),
           // so it needs the required field spelled out — the BE sends it on both endpoints.
           excluded: { overCeiling: 0, unrated: 0, items: [] },
+          trace: {
+            version: 1,
+            ordering: "shuffle",
+            seed: "0",
+            windowMs: 0,
+            windowIndex: 0,
+            relaxations: [],
+            factTotal: 0,
+            recordedTotal: 0,
+            truncated: false,
+            facts: [],
+          },
         },
       },
     });

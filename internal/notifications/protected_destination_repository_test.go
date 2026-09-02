@@ -301,7 +301,7 @@ func TestProtectedDestinationRepositoryListsMetadataWithoutOpeningCredentials(t 
 	if err != nil || retired.Enabled {
 		t.Fatalf("retired metadata = %+v, %v", retired, err)
 	}
-	if err := managerAPI.Delete(ctx, notifications.Principal{PersonID: "admin", Administrator: true}, destination.ID); err != nil {
+	if _, err := managerAPI.Delete(ctx, notifications.Principal{PersonID: "admin", Administrator: true}, destination.ID, ""); err != nil {
 		t.Fatalf("delete from credential-free metadata: %v", err)
 	}
 }

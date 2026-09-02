@@ -105,12 +105,14 @@ func TestWriteSidecarTags_RoundTripsBrandAndTranscript(t *testing.T) {
 	}
 
 	want := filler.SidecarTags{
-		Kind:       "commercial",
-		Era:        1985,
-		Audience:   "general",
-		Category:   "general",
-		Brand:      "Coca-Cola",
-		Transcript: "Have a Coke and a smile — the real thing.",
+		Kind:            "commercial",
+		Era:             1985,
+		Audience:        "general",
+		Category:        "general",
+		Brand:           "Coca-Cola",
+		Transcript:      "Have a Coke and a smile — the real thing.",
+		GeographicScope: "local", Country: "US", Market: "New York", Network: "Fox",
+		Station: "WNYW", AirDate: "1985-05-06", GeoEvidence: "operator",
 	}
 	if err := filler.WriteSidecarTags(media, want, false); err != nil {
 		t.Fatal(err)

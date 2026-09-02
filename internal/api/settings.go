@@ -13,7 +13,7 @@ import (
 func (s *Server) registerSettings(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "settings-list", Method: http.MethodGet, Path: "/v1/settings",
-		Summary: "List settings", Description: "Admin only. Every registry setting with resolved value (secrets masked), provenance, and audit (config-design §8).",
+		Summary: "List settings", Description: "Admin only. Every operator-managed setting with resolved value (secrets masked), provenance, and audit (config-design §8).",
 		Tags: []string{"settings"},
 	}, RoleAdmin), s.settingsList)
 
@@ -43,12 +43,6 @@ func (s *Server) registerSettings(api huma.API) {
 		Summary: "Run one connection check", Description: "Admin only. Powers the per-block Test buttons (config-design §8).",
 		Tags: []string{"settings"},
 	}, RoleAdmin), s.settingsTest)
-
-	huma.Register(api, withRole(huma.Operation{
-		OperationID: "notifications-email-test", Method: http.MethodPost, Path: "/v1/notifications/email/test",
-		Summary: "Send a test email", Description: "Admin only. Sends one message through the currently applied SMTP configuration and returns only a closed, provider-safe outcome.",
-		Tags: []string{"notifications"},
-	}, RoleAdmin), s.notificationsEmailTest)
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "secret-reveal", Method: http.MethodGet, Path: "/v1/settings/secrets/{name}",
@@ -325,58 +319,6 @@ func (s *Server) settingsTest(ctx context.Context, in *settingsTestInput) (*sett
 	out.Body.OK = ok
 	out.Body.Hint = hint
 	return out, nil
-}
-
-type notificationsEmailTestInput struct {
-	Body struct {
-		To string `json:"to" minLength:"3" maxLength:"320" doc:"One destination mailbox for this test message."`
-	}
-}
-
-type notificationsEmailTestOutput struct {
-	Body struct {
-		OK      bool   `json:"ok"`
-		Outcome string `json:"outcome,omitempty" enum:"delivery_disabled,destination_unavailable,recipient_rejected,configuration_invalid,means_unavailable,transport_unavailable,acceptance_ambiguous,cancelled"`
-		Hint    string `json:"hint,omitempty"`
-	}
-}
-
-func (s *Server) notificationsEmailTest(ctx context.Context, in *notificationsEmailTestInput) (*notificationsEmailTestOutput, error) {
-	if s.emailTest == nil {
-		return nil, errNotImplemented("Email delivery unavailable", "The email delivery service isn't running, so a test message can't be sent.")
-	}
-	result := s.emailTest.SendTest(ctx, in.Body.To)
-	out := &notificationsEmailTestOutput{}
-	out.Body.OK = result.OK
-	out.Body.Outcome = result.Outcome
-	out.Body.Hint = emailTestHint(result)
-	return out, nil
-}
-
-func emailTestHint(result EmailTestResult) string {
-	if result.OK {
-		return "Test message accepted by the SMTP server."
-	}
-	switch result.Outcome {
-	case "delivery_disabled":
-		return "Enable email delivery before sending a test message."
-	case "destination_unavailable":
-		return "Enter one complete destination mailbox."
-	case "recipient_rejected":
-		return "The SMTP server rejected that recipient address."
-	case "configuration_invalid":
-		return "Complete the SMTP server, security, authentication, and sender settings, then try again."
-	case "means_unavailable":
-		return "Email delivery is not available in this Loomarr process."
-	case "transport_unavailable":
-		return "The SMTP server could not be reached or did not complete the request. Try again after checking the server and network."
-	case "acceptance_ambiguous":
-		return "The SMTP server may have accepted the message before the connection ended. Check the inbox before trying again."
-	case "cancelled":
-		return "The test was cancelled before delivery completed."
-	default:
-		return "The test message could not be sent. Check the email settings and try again."
-	}
 }
 
 type secretRevealInput struct {

@@ -168,6 +168,14 @@ const FillerSources = ({
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate font-medium text-sm">{s.target}</span>
           {!s.configured && <Badge variant="caution">not configured</Badge>}
+          {(s.kind === "archive" || s.kind === "youtube") &&
+            (s.country ? (
+              <Badge variant="neutral">
+                {s.market ? `${s.country} · ${s.market}` : `${s.country} · nationwide`}
+              </Badge>
+            ) : (
+              s.configured && <Badge variant="caution">geography needed</Badge>
+            ))}
         </div>
         <span className="truncate text-muted-foreground text-xs">
           {dormant(s) ? "Not being scanned. Clips it already found are still in your catalog." : s.detail}

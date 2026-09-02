@@ -143,6 +143,21 @@ func breakDuration(v any) error {
 	return nil
 }
 
+func optionalCountryCode(v any) error {
+	s, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("want a country code")
+	}
+	s = strings.ToUpper(strings.TrimSpace(s))
+	if s == "" {
+		return nil
+	}
+	if len(s) != 2 || s[0] < 'A' || s[0] > 'Z' || s[1] < 'A' || s[1] > 'Z' {
+		return fmt.Errorf("want an ISO 3166-1 alpha-2 country code (for example US or CA)")
+	}
+	return nil
+}
+
 // storagePath validates generation-scoped storage roots without importing their owning modules
 // back into settings. Absolute paths keep one generation anchored to an unambiguous root.
 // Refusing the filesystem root prevents a bad edit from turning a bounded subsystem into a walk
@@ -302,17 +317,17 @@ func declared() []Setting {
 		},
 		{
 			Key: "notifications.email.enabled", Label: "Send email notifications", EnvVar: "NOTIFICATIONS_EMAIL_ENABLED", Group: GroupNotifications,
-			Kind: KindBool, Presentation: PresentationSwitch, Default: false,
+			Kind: KindBool, Presentation: PresentationSwitch, Default: false, MigrationOnly: true,
 			Doc: "Deliver account invitations and recovery messages by email. An incomplete setup suppresses email without affecting copied links, QR codes, or direct account creation.",
 		},
 		{
 			Key: "notifications.smtp.host", Label: "SMTP host", EnvVar: "NOTIFICATIONS_SMTP_HOST", Group: GroupNotifications,
-			Kind: KindString, Default: "", ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
+			Kind: KindString, Default: "", MigrationOnly: true, ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
 			Doc: "Hostname of the SMTP submission server. Required when email delivery is enabled.",
 		},
 		{
 			Key: "notifications.smtp.port", Label: "SMTP port", EnvVar: "NOTIFICATIONS_SMTP_PORT", Group: GroupNotifications,
-			Kind: KindInt, Default: 587, Validate: smtpPort, ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
+			Kind: KindInt, Default: 587, MigrationOnly: true, Validate: smtpPort, ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
 			Doc: "Port of the SMTP submission server, from 1 through 65535.",
 		},
 		{
@@ -322,27 +337,27 @@ func declared() []Setting {
 				opt("tls", "TLS"),
 				opt("none", "None (insecure local relay)"),
 			},
-			Default: "starttls", ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
+			Default: "starttls", MigrationOnly: true, ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
 			Doc: "STARTTLS requires encryption and never downgrades; TLS connects encrypted immediately. None is only for an explicitly trusted local relay. Certificate verification is always enabled.",
 		},
 		{
 			Key: "notifications.smtp.username", Label: "SMTP username", EnvVar: "NOTIFICATIONS_SMTP_USERNAME", Group: GroupNotifications,
-			Kind: KindString, Default: "", ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
+			Kind: KindString, Default: "", MigrationOnly: true, ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
 			Doc: "Username for SMTP authentication. Leave empty only for an unauthenticated relay.",
 		},
 		{
 			Key: "notifications.smtp.password", Label: "SMTP password", EnvVar: "NOTIFICATIONS_SMTP_PASSWORD", Group: GroupNotifications,
-			Kind: KindSecret, Default: "", ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
+			Kind: KindSecret, Default: "", MigrationOnly: true, ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
 			Doc: "Password for SMTP authentication. It is write-only, masked on read, and must remain empty for an unauthenticated relay.",
 		},
 		{
 			Key: "notifications.email.from_address", Label: "Sender address", EnvVar: "NOTIFICATIONS_EMAIL_FROM_ADDRESS", Group: GroupNotifications,
-			Kind: KindString, Default: "", Validate: mailboxAddress, ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
+			Kind: KindString, Default: "", MigrationOnly: true, Validate: mailboxAddress, ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
 			Doc: "Mailbox Loomarr sends from, such as loomarr@example.com. Required when email delivery is enabled.",
 		},
 		{
 			Key: "notifications.email.from_name", Label: "Sender name", EnvVar: "NOTIFICATIONS_EMAIL_FROM_NAME", Group: GroupNotifications,
-			Kind: KindString, Default: "Loomarr", ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
+			Kind: KindString, Default: "Loomarr", MigrationOnly: true, ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
 			Doc: "Display name shown beside the sender address.",
 		},
 
@@ -581,6 +596,16 @@ func declared() []Setting {
 		},
 
 		// --- Filler / commercials (§15, Phase 12; §10 redesign — Tunarr-owned) ---
+		{
+			Key: "filler.home_country", Label: "Home country", EnvVar: "FILLER_HOME_COUNTRY", Group: GroupFiller,
+			Kind: KindString, Default: "", Validate: optionalCountryCode,
+			Doc: "Optional ISO two-letter country that constrains automatic filler use. Unknown and foreign clips remain reviewable but do not air. Leave blank to preserve the legacy unrestricted pool until geography is configured.",
+		},
+		{
+			Key: "filler.home_market", Label: "Home local market", EnvVar: "FILLER_HOME_MARKET", Group: GroupFiller,
+			Kind: KindString, Default: "",
+			Doc: "Optional local broadcast market inside the home country, such as New York or Seattle. Local clips must match it exactly; Loomarr never infers it from the guide timezone.",
+		},
 		{
 			// ⚠ Defaults inside /data, like database.url and backup.dir — the documented
 			// volume carries it, so a zero-env `docker run` has a working drop-folder

@@ -1,9 +1,11 @@
 package clipfetch
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -73,11 +75,29 @@ func NewYtDlpDownloader(ytDlpPath, ffmpegPath string) *YtDlpDownloader {
 
 // Download runs supervised yt-dlp for one source. It writes video + `.info.json` sidecars
 // into dropDir and uses --download-archive so a re-run skips already-fetched
-// items (idempotent ingest). It does NOT parse per-item results (deliberately
-// dumb — the media server scans the folder and the core syncs from there); it
-// returns (0,0,nil) on success, surfacing only exec failure.
+// items (idempotent ingest). It parses only yt-dlp's final paths so provenance
+// reaches the exact sidecars created by this invocation; the media server still
+// scans the folder and the core syncs from there. It returns (0,0,nil) on success,
+// surfacing only exec failure.
 func (d *YtDlpDownloader) Download(ctx context.Context, src Source, dropDir string) (int, int, error) {
-	archiveFile := dropDir + "/.yt-dlp-archive.txt"
+	absDropDir, err := filepath.Abs(dropDir)
+	if err != nil {
+		return 0, 0, fmt.Errorf("resolve yt-dlp drop directory: %w", err)
+	}
+	if err := os.MkdirAll(absDropDir, 0o750); err != nil {
+		return 0, 0, fmt.Errorf("create yt-dlp drop directory: %w", err)
+	}
+	archiveFile := filepath.Join(absDropDir, ".yt-dlp-archive.txt")
+	resultFile, err := os.CreateTemp(absDropDir, ".loomarr-ytdlp-results-*")
+	if err != nil {
+		return 0, 0, fmt.Errorf("create yt-dlp result file: %w", err)
+	}
+	resultPath := resultFile.Name()
+	if err := resultFile.Close(); err != nil {
+		_ = os.Remove(resultPath)
+		return 0, 0, fmt.Errorf("close yt-dlp result file: %w", err)
+	}
+	defer func() { _ = os.Remove(resultPath) }()
 	// -o with a sanitized template into the drop folder; --write-info-json so the
 	// title/description survive for AI tagging (§10); --download-archive for
 	// idempotent re-runs; --ffmpeg-location for the bundled binary.
@@ -86,7 +106,8 @@ func (d *YtDlpDownloader) Download(ctx context.Context, src Source, dropDir stri
 		"--write-info-json",
 		"--download-archive", archiveFile,
 		"--ffmpeg-location", d.ffmpegPath,
-		"-o", dropDir + "/%(title)s [%(id)s].%(ext)s",
+		"-o", filepath.Join(absDropDir, "%(title)s [%(id)s].%(ext)s"),
+		"--print-to-file", "after_move:%(filepath)j", resultPath,
 		src.URL,
 	}
 	cmd := exec.Command(d.ytDlpPath, args...)
@@ -116,48 +137,114 @@ func (d *YtDlpDownloader) Download(ctx context.Context, src Source, dropDir stri
 	//
 	// ⚠ Best-effort: a stamp that fails must not fail the download. The clip is on disk and
 	// catalogueable; the cost is that it files without review rather than being lost.
-	stampFetched(dropDir, src.ID, src.AcquisitionID)
+	root, err := os.OpenRoot(absDropDir)
+	if err == nil {
+		defer func() { _ = root.Close() }()
+		stampFetched(root, ytDlpSidecars(root, resultPath), src.ID, src.AcquisitionID)
+	}
 	return 0, 0, nil
 }
 
-// stampFetched adds Loomarr's `fetchedBy` mark to every info-JSON in dropDir that lacks one.
-//
-// ⚠ Sweeps the folder rather than tracking filenames, because yt-dlp names its own output from a
-// template (`%(title)s [%(id)s]`) after sanitising, and guessing that name back is how the mark
-// would silently miss the files it was written for. Anything already stamped is left alone, so a
-// re-run is cheap and idempotent.
-func stampFetched(dropDir, sourceID, acquisitionID string) {
-	entries, err := os.ReadDir(dropDir)
+// ytDlpSidecars reads yt-dlp's JSON-encoded after-move paths from the private result file for this
+// invocation. Ordinary stdout/stderr diagnostics are deliberately never considered provenance.
+// A skipped retry writes no records. Candidates are opened through root, so their descriptor stays
+// bound to the file yt-dlp named even if its path changes before stamping.
+func ytDlpSidecars(root *os.Root, resultPath string) []fetchedSidecar {
+	file, err := os.Open(resultPath)
 	if err != nil {
-		return
+		return nil
 	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".info.json") {
+	defer func() { _ = file.Close() }()
+
+	var sidecars []fetchedSidecar
+	seen := make(map[string]struct{})
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 4*1024), 1024*1024)
+	for scanner.Scan() {
+		var media string
+		if err := json.Unmarshal(scanner.Bytes(), &media); err != nil || media == "" {
 			continue
 		}
-		path := filepath.Join(dropDir, e.Name())
-		raw, err := os.ReadFile(path)
+		if !filepath.IsAbs(media) {
+			media = filepath.Join(root.Name(), media)
+		}
+		sidecar := strings.TrimSuffix(media, filepath.Ext(media)) + ".info.json"
+		relativeSidecar, err := filepath.Rel(root.Name(), sidecar)
+		if err != nil || !withinDir(relativeSidecar) {
+			continue
+		}
+		if _, ok := seen[relativeSidecar]; ok {
+			continue
+		}
+		sidecarFile, err := root.OpenFile(relativeSidecar, os.O_RDWR, 0)
 		if err != nil {
 			continue
 		}
-		var doc map[string]any
-		if err := json.Unmarshal(raw, &doc); err != nil {
-			// A sidecar we cannot read is left ALONE rather than replaced — it is yt-dlp's file,
-			// and overwriting something unparseable is the one move guaranteed to lose data.
-			continue
-		}
-		if _, done := doc[filler.SidecarLoomarrKey()]; done {
-			continue
-		}
-		doc[filler.SidecarLoomarrKey()] = filler.SidecarFetchedMarkForAcquisition(sourceID, acquisitionID)
-		out, err := json.MarshalIndent(doc, "", "  ")
-		if err != nil {
-			continue
-		}
-		// ⚠ A failed write is swallowed rather than logged: this type carries no logger, and the
-		// consequence is bounded — the clip files without review instead of being lost. The
-		// Ingestor above it reports the download itself.
-		_ = os.WriteFile(path, out, 0o644) //nolint:gosec // metadata beside media the operator owns
+		seen[relativeSidecar] = struct{}{}
+		sidecars = append(sidecars, fetchedSidecar{path: relativeSidecar, file: sidecarFile})
+	}
+	return sidecars
+}
+
+func withinDir(path string) bool {
+	return path != ".." && !strings.HasPrefix(path, ".."+string(filepath.Separator)) && !filepath.IsAbs(path)
+}
+
+type fetchedSidecar struct {
+	path string
+	file *os.File
+}
+
+// stampFetched adds Loomarr's `fetchedBy` mark to sidecars yt-dlp demonstrably produced during
+// this invocation. It must never sweep the drop folder: a later invocation must not claim an
+// unrelated operator drop or a previous download as its own acquisition.
+//
+// Anything already stamped is left alone, so a re-run is cheap and idempotent.
+func stampFetched(root *os.Root, sidecars []fetchedSidecar, sourceID, acquisitionID string) {
+	for _, sidecar := range sidecars {
+		func() {
+			defer func() { _ = sidecar.file.Close() }()
+
+			fileInfo, err := sidecar.file.Stat()
+			if err != nil {
+				return
+			}
+			pathInfo, err := root.Lstat(sidecar.path)
+			if err != nil || pathInfo.Mode()&os.ModeSymlink != 0 || !pathInfo.Mode().IsRegular() || !os.SameFile(fileInfo, pathInfo) {
+				return
+			}
+			if _, err := sidecar.file.Seek(0, io.SeekStart); err != nil {
+				return
+			}
+			raw, err := io.ReadAll(sidecar.file)
+			if err != nil {
+				return
+			}
+			var doc map[string]any
+			if err := json.Unmarshal(raw, &doc); err != nil {
+				// A sidecar we cannot read is left ALONE rather than replaced — it is yt-dlp's file,
+				// and overwriting something unparseable is the one move guaranteed to lose data.
+				return
+			}
+			if _, done := doc[filler.SidecarLoomarrKey()]; done {
+				return
+			}
+			doc[filler.SidecarLoomarrKey()] = filler.SidecarFetchedMarkForAcquisition(sourceID, acquisitionID)
+			out, err := json.MarshalIndent(doc, "", "  ")
+			if err != nil {
+				return
+			}
+			// ⚠ A failed write is swallowed rather than logged: this type carries no logger, and the
+			// consequence is bounded — the clip files without review instead of being lost. The
+			// Ingestor above it reports the download itself.
+			if err := sidecar.file.Truncate(0); err != nil {
+				return
+			}
+			if _, err := sidecar.file.Seek(0, io.SeekStart); err != nil {
+				return
+			}
+			_, _ = sidecar.file.Write(out) //nolint:gosec // metadata beside media the operator owns
+		}()
 	}
 }
 

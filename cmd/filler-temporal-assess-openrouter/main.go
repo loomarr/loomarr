@@ -21,8 +21,9 @@ import (
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 
 type paidTemporalCapabilities struct {
-	getenv func(string) string
-	run    func(context.Context, fillerreview.OpenRouterTemporalConfig) (fillerreview.OpenRouterTemporalResult, error)
+	getenv   func(string) string
+	run      func(context.Context, fillerreview.OpenRouterTemporalConfig) (fillerreview.OpenRouterTemporalResult, error)
+	runPanel func(context.Context, fillerreview.OpenRouterTemporalConfig) (fillerreview.OpenRouterTemporalResult, error)
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
@@ -30,8 +31,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runLockRecovery(args, stdout, stderr)
 	}
 	return runPaidAssessment(args, stdout, stderr, paidTemporalCapabilities{
-		getenv: os.Getenv,
-		run:    fillerreview.RunOpenRouterTemporalAssessment,
+		getenv: os.Getenv, run: fillerreview.RunOpenRouterTemporalAssessment,
+		runPanel: fillerreview.RunOpenRouterTemporalModelAssessment,
 	})
 }
 
@@ -42,8 +43,8 @@ func runPaidAssessment(args []string, stdout, stderr io.Writer, capabilities pai
 		return 2
 	}
 	apiKey := capabilities.getenv("OPENROUTER_API_KEY")
-	if apiKey == "" || options.packagePath == "" || options.selectionPath == "" || options.snapshotPath == "" || options.model == "" || options.modelFamily == "" || options.provider == "" || options.providerSlug == "" || options.assessorID == "" || options.outputPath == "" || options.maxRequests <= 0 || options.maxSpendNanoUSD <= 0 || options.maxChargeNanoUSD <= 0 {
-		_, _ = fmt.Fprintln(stderr, "filler-temporal-assess-openrouter: OPENROUTER_API_KEY and --package, --selection, --snapshot, --model, --model-family, --provider, --provider-slug, --assessor-id, --out, --max-requests, --max-spend-nanousd, and --max-charge-nanousd are required")
+	if apiKey == "" || options.packagePath == "" || !validPackageMode(options.modelPanel, options.selectionPath) || options.snapshotPath == "" || options.model == "" || options.modelFamily == "" || options.provider == "" || options.providerSlug == "" || options.assessorID == "" || options.outputPath == "" || options.maxRequests <= 0 || options.maxSpendNanoUSD <= 0 || options.maxChargeNanoUSD <= 0 {
+		_, _ = fmt.Fprintln(stderr, "filler-temporal-assess-openrouter: OPENROUTER_API_KEY, --package, exactly one package mode (--selection or --model-panel), --snapshot, --model, --model-family, --provider, --provider-slug, --assessor-id, --out, --max-requests, --max-spend-nanousd, and --max-charge-nanousd are required")
 		return 2
 	}
 	snapshot, err := fillerbakeoffio.ReadStrictJSON[fillerbakeoff.OpenRouterSnapshot](options.snapshotPath)
@@ -51,7 +52,11 @@ func runPaidAssessment(args []string, stdout, stderr io.Writer, capabilities pai
 		_, _ = fmt.Fprintln(stderr, "filler-temporal-assess-openrouter: read snapshot:", err)
 		return 1
 	}
-	result, err := capabilities.run(context.Background(), fillerreview.OpenRouterTemporalConfig{
+	runner := capabilities.run
+	if options.modelPanel {
+		runner = capabilities.runPanel
+	}
+	result, err := runner(context.Background(), fillerreview.OpenRouterTemporalConfig{
 		PackagePath: options.packagePath, SelectionPath: options.selectionPath, CheckpointDir: options.outputPath + ".private",
 		BaseURL: options.baseURL, APIKey: apiKey, Snapshot: snapshot, Model: options.model, ModelFamily: options.modelFamily,
 		UpstreamProvider: options.provider, UpstreamProviderSlug: options.providerSlug, AssessorID: options.assessorID,
@@ -94,6 +99,7 @@ type commandOptions struct {
 	packagePath, selectionPath, snapshotPath, model, modelFamily string
 	provider, providerSlug, assessorID, outputPath, baseURL      string
 	recoverLockSHA256                                            string
+	modelPanel                                                   bool
 	expectedPackageCases, expectedCalibrationCases, maxRequests  int
 	perCaseTimeout                                               time.Duration
 	maxSpendNanoUSD, maxChargeNanoUSD                            int64
@@ -109,6 +115,7 @@ func bindOptions(flags *flag.FlagSet) *commandOptions {
 	options := &commandOptions{}
 	flags.StringVar(&options.packagePath, "package", "", "sealed identity-blind temporal package JSON")
 	flags.StringVar(&options.selectionPath, "selection", "", "immutable calibration-selection JSON")
+	flags.BoolVar(&options.modelPanel, "model-panel", false, "assess every case in one fresh temporal model package; --selection must be absent")
 	flags.StringVar(&options.snapshotPath, "snapshot", "", "fresh immutable OpenRouter capability snapshot")
 	flags.StringVar(&options.model, "model", "", "concrete OpenRouter model ID")
 	flags.StringVar(&options.modelFamily, "model-family", "", "independent model family identity")
@@ -125,6 +132,10 @@ func bindOptions(flags *flag.FlagSet) *commandOptions {
 	flags.Int64Var(&options.maxSpendNanoUSD, "max-spend-nanousd", 0, "hard total paid spend ceiling in nano-USD")
 	flags.Int64Var(&options.maxChargeNanoUSD, "max-charge-nanousd", 0, "hard reserved per-request charge ceiling in nano-USD")
 	return options
+}
+
+func validPackageMode(modelPanel bool, selectionPath string) bool {
+	return modelPanel != (selectionPath != "")
 }
 
 func recoveryRequested(args []string) bool {

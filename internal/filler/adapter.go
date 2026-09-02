@@ -74,12 +74,13 @@ type ExposureReader interface {
 // the filler domain free of a schedule dependency. All fields optional; the zero
 // Selection is the whole catalog (the prior global behaviour).
 type Selection struct {
-	Era        EraRange // zero value = any; the inherit-vs-any decision is made before this point
-	Audience   Audience // "" = any
-	Categories []string // empty = any
-	Kinds      []string // empty = the default kinds
-	Pinned     []string // clip ids always included
-	Excluded   []string // clip ids never used
+	Era        EraRange  // zero value = any; the inherit-vs-any decision is made before this point
+	Audience   Audience  // "" = any
+	Categories []string  // empty = any
+	Kinds      []string  // empty = the default kinds
+	Pinned     []string  // clip ids always included
+	Excluded   []string  // clip ids never used
+	Geography  Geography // zero country inherits Installation geography from Policy
 	// BreakDurationMs is a per-channel override. Zero inherits Policy.BreakDurationMs.
 	BreakDurationMs int64
 }
@@ -301,7 +302,7 @@ func (a *PodAdapter) windowFor(channelID string, seed int64, sel Selection, podM
 	}
 	return Window{
 		ChannelID: channelID, Seed: seed,
-		Era: sel.Era, Audience: sel.Audience,
+		Era: sel.Era, Audience: sel.Audience, Geography: sel.Geography,
 		GapMs: gapMs, PodMax: podMax, BreakDurationMs: breakDurationMs,
 		Categories: sel.Categories, Kinds: sel.Kinds,
 		Pinned: sel.Pinned, Excluded: sel.Excluded,

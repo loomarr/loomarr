@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // recordingSources captures what got registered, and can fail on demand.
@@ -296,7 +297,7 @@ func TestIngest_PersistsLifecycleAndCarriesAcquisitionToDownloader(t *testing.T)
 		start: testInteractiveOperationLauncher,
 	}
 
-	jobID, err := a.IngestSource(t.Context(), "archive:classic", []string{
+	jobID, err := a.IngestSource(t.Context(), "archive:classic", "archive", []string{
 		"https://archive.org/details/one", "https://archive.org/details/two",
 	})
 	if err != nil {
@@ -326,12 +327,48 @@ func TestIngest_PersistsLifecycleAndCarriesAcquisitionToDownloader(t *testing.T)
 	select {
 	case sources := <-fetched.sources:
 		for _, source := range sources {
-			if source.AcquisitionID != "acq-17" || source.ID != "archive:classic" {
+			if source.AcquisitionID != "acq-17" || source.ID != "archive:classic" || source.Kind != clipfetch.Archive {
 				t.Fatalf("download source = %+v, want acquisition and source provenance", source)
 			}
 		}
 	case <-time.After(time.Second):
 		t.Fatal("downloader was not called")
+	}
+}
+
+func TestIngestPull_RejectsUnknownRegisteredKindBeforeDurableWork(t *testing.T) {
+	runs := make(chan filler.AcquisitionRun, 1)
+	a := fillerServiceAdapter{
+		fetcher: successfulClipIngestor{}, acquisitions: recordingAcquisitions{runs: runs},
+		newID: func() string { return "acq-17" },
+	}
+	if _, err := a.IngestPull(t.Context(), "pull-7", []filler.AcquisitionTarget{{
+		SourceID: "unknown", Kind: "other", URL: "https://archive.org/details/one",
+	}}); err == nil {
+		t.Fatal("unknown registered kind started acquisition")
+	}
+	select {
+	case run := <-runs:
+		t.Fatalf("unknown registered kind persisted durable work: %+v", run)
+	default:
+	}
+}
+
+func TestRegisteredSourceEnumerator_UsesStoredYouTubeKind(t *testing.T) {
+	ytdlp := testkit.Executable(t, "yt-dlp", `#!/bin/sh
+case "$*" in
+  *--no-config*--flat-playlist*--skip-download*--dump-single-json*--playlist-end\ 4*https://www.youtube.com/@retroads/videos) ;;
+  *) exit 9 ;;
+esac
+printf '%s\n' '{"entries":[{"id":"one","webpage_url":"https://www.youtube.com/watch?v=one"}]}'
+`)
+	items, _, err := (registeredSourceEnumerator{youtube: clipfetch.NewYouTubeEnumerator(ytdlp)}).Enumerate(
+		t.Context(), filler.FetchSource{Kind: "youtube", URI: "https://www.youtube.com/@retroads/videos"}, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].ID != "one" || items[0].URL != "https://www.youtube.com/watch?v=one" {
+		t.Fatalf("items = %+v, want bounded YouTube result", items)
 	}
 }
 
@@ -404,8 +441,8 @@ func TestIngestPull_PreservesPerTargetSourcesUnderOneRun(t *testing.T) {
 	}
 
 	_, err := a.IngestPull(t.Context(), "pull-7", []filler.AcquisitionTarget{
-		{SourceID: "classic", URL: "https://archive.org/details/one"},
-		{SourceID: "holiday", URL: "https://archive.org/details/two"},
+		{SourceID: "classic", Kind: "archive", URL: "https://archive.org/details/one"},
+		{SourceID: "holiday", Kind: "youtube", URL: "https://youtube.com/watch?v=two"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -418,6 +455,9 @@ func TestIngestPull_PreservesPerTargetSourcesUnderOneRun(t *testing.T) {
 	case sources := <-fetched.sources:
 		if sources[0].ID != "classic" || sources[1].ID != "holiday" {
 			t.Fatalf("sources = %+v, want per-target registered source ids", sources)
+		}
+		if sources[0].Kind != clipfetch.Archive || sources[1].Kind != clipfetch.YouTube {
+			t.Fatalf("sources = %+v, want registered provider kinds preserved", sources)
 		}
 		if sources[0].AcquisitionID != "acq-17" || sources[1].AcquisitionID != "acq-17" {
 			t.Fatalf("sources = %+v, want one acquisition id", sources)

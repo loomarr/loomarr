@@ -24,6 +24,18 @@ const previewBody: PreviewProgrammingOutputBody = {
   // Empty-but-present, like every other required array in this fixture: this hook's tests are
   // about the draft round-trip, not about what the §4 filters refused.
   excluded: { overCeiling: 0, unrated: 0, items: [] },
+  trace: {
+    version: 1,
+    ordering: "shuffle",
+    seed: "0",
+    windowMs: 0,
+    windowIndex: 0,
+    relaxations: [],
+    factTotal: 0,
+    recordedTotal: 0,
+    truncated: false,
+    facts: [],
+  },
 };
 
 // Records what the preview POST / apply PATCH actually SENT — the wire shape, not a mocked

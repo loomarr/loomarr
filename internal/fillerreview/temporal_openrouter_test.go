@@ -88,6 +88,55 @@ func TestRunOpenRouterTemporalAssessmentReservesAndBindsTwoAxisCalls(t *testing.
 	}
 }
 
+func TestRunOpenRouterTemporalModelAssessmentUsesCompleteFreshPackage(t *testing.T) {
+	const (
+		model    = "review/vendor-model"
+		provider = "Provider Route"
+		slug     = "provider/route"
+	)
+	packagePath := writeTemporalModelInferenceFixture(t)
+	now := time.Unix(15_000, 0).UTC()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request openRouterStructuredRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Error(err)
+			return
+		}
+		content := `{"kind":"standalone","decisiveSignalIds":["frame-01"]}`
+		if request.ResponseFormat.JSONSchema.Name == "filler_temporal_role" {
+			content = `{"kind":"commercial","decisiveSignalIds":["transcript-01"]}`
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": "generation", "model": model,
+			"choices": []any{map[string]any{"message": map[string]any{"content": content, "reasoning": ""}}},
+			"usage":   map[string]any{"prompt_tokens": 100, "completion_tokens": 20, "cost": 0.001},
+			"openrouter_metadata": map[string]any{
+				"attempt": 1, "attempts": []any{map[string]any{"provider": provider, "model": model, "status": 200}},
+				"endpoints": map[string]any{"available": []any{map[string]any{"provider": provider, "model": model, "selected": true}}},
+			},
+		})
+	}))
+	defer server.Close()
+
+	result, err := RunOpenRouterTemporalModelAssessment(t.Context(), OpenRouterTemporalConfig{
+		PackagePath: packagePath, CheckpointDir: filepath.Join(t.TempDir(), "private"),
+		BaseURL: server.URL, APIKey: "test-key", Snapshot: openRouterReviewSnapshot(server.URL, now),
+		Model: model, ModelFamily: "qwen3.8", UpstreamProvider: provider, UpstreamProviderSlug: slug, AssessorID: "panel-a-model",
+		ExpectedPackageCases: 1, ExpectedCalibrationCases: 1, PerCaseTimeout: time.Second,
+		MaxRequests: 2, MaxSpendNanoUSD: 4_000_000, MaxChargeNanoUSD: 2_000_000,
+		AllowInsecureTestURL: true, Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.AssessmentSet.BatchID != "model-panel-test" || len(result.AssessmentSet.Assessments) != 1 || result.AssessmentSet.Assessments[0].Alias != "model-00000000000000000000000000000001" {
+		t.Fatalf("model-panel result = %+v", result)
+	}
+	if err := ValidateOpenRouterTemporalModelResult(result, packagePath, 1); err != nil {
+		t.Fatalf("validate model-panel result: %v", err)
+	}
+}
+
 func TestTemporalClaimSchemaUsesPortableStructuredOutputSubset(t *testing.T) {
 	item := TemporalReviewCase{
 		Frames:             []TemporalReviewFrame{{ID: "frame-01", OCRSignalID: "ocr-01"}},
@@ -224,4 +273,41 @@ func writeTemporalCalibrationFixture(t *testing.T) (string, string) {
 		t.Fatal(err)
 	}
 	return packagePath, selectionPath
+}
+
+func writeTemporalModelInferenceFixture(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	alias := "model-00000000000000000000000000000001"
+	caseRoot := filepath.Join(root, "cases", alias)
+	if err := os.MkdirAll(caseRoot, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	frame := []byte("synthetic model frame")
+	if err := os.WriteFile(filepath.Join(caseRoot, "frame-01.jpg"), frame, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pack := TemporalModelReviewPackage{
+		SchemaVersion: TemporalModelReviewSchemaVersion, ContractVersion: TemporalModelReviewContractVersion,
+		QuestionVersion: TemporalHumanReviewQuestionVersion, EvidenceViewVersion: TemporalModelReviewEvidenceViewVersion,
+		PanelSlot: "panel-a", BatchID: "model-panel-test", PreparedAt: time.Unix(10, 0).UTC(),
+		EvidenceManifestSHA256: strings.Repeat("a", 64), SelectionSHA256: strings.Repeat("b", 64), SeedSHA256: temporalTruthHash([]byte("model-seed")),
+		Cases: []TemporalReviewCase{{
+			Alias: alias, DurationMS: 1_000,
+			Frames: []TemporalReviewFrame{{
+				ID: "frame-01", Path: filepath.ToSlash(filepath.Join("cases", alias, "frame-01.jpg")),
+				SHA256: hashBytes(frame), Bytes: int64(len(frame)), Width: 16, Height: 9, AtMS: 100,
+			}},
+			TranscriptSegments: []TemporalReviewTranscript{{ID: "transcript-01", StartMS: 200, EndMS: 400, Text: "Buy now"}},
+		}},
+	}
+	raw, err := json.Marshal(pack)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "manifest.json")
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }

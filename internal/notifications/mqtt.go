@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const mqttDeliveryTimeout = 15 * time.Second
@@ -101,6 +103,8 @@ type mqttConfig struct {
 	baseTopic string
 	qos       byte
 	retain    bool
+	clientID  string
+	tlsConfig *tls.Config
 }
 
 func mqttProviderConfig(configuration, credentials map[string]string) (mqttConfig, error) {
@@ -141,10 +145,52 @@ func mqttProviderConfig(configuration, credentials map[string]string) (mqttConfi
 	if configuration["username"] == "" && credentials["password"] != "" {
 		return mqttConfig{}, fmt.Errorf("an MQTT password requires a username")
 	}
+	clientID := strings.TrimSpace(configuration["clientId"])
+	if clientID != "" && !validMQTTString(clientID) {
+		return mqttConfig{}, fmt.Errorf("MQTT client ID must be valid UTF-8 without null bytes and at most 65535 bytes")
+	}
+	tlsConfig, err := mqttTLSConfig(target, credentials)
+	if err != nil {
+		return mqttConfig{}, err
+	}
 	return mqttConfig{
 		target: target, username: configuration["username"], password: credentials["password"],
-		baseTopic: baseTopic, qos: qosValue[0] - '0', retain: retain,
+		baseTopic: baseTopic, qos: qosValue[0] - '0', retain: retain, clientID: clientID, tlsConfig: tlsConfig,
 	}, nil
+}
+
+func mqttTLSConfig(target *url.URL, credentials map[string]string) (*tls.Config, error) {
+	caPEM := strings.TrimSpace(credentials["tlsCaCertificate"])
+	certificatePEM := strings.TrimSpace(credentials["tlsClientCertificate"])
+	keyPEM := strings.TrimSpace(credentials["tlsClientKey"])
+	if target.Scheme != "mqtts" {
+		if caPEM != "" || certificatePEM != "" || keyPEM != "" {
+			return nil, fmt.Errorf("MQTT TLS certificates require an mqtts:// broker URL")
+		}
+		return nil, nil
+	}
+	if (certificatePEM == "") != (keyPEM == "") {
+		return nil, fmt.Errorf("MQTT TLS client certificate and key must be configured together")
+	}
+	config := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: target.Hostname()}
+	if caPEM != "" {
+		roots, err := x509.SystemCertPool()
+		if err != nil || roots == nil {
+			roots = x509.NewCertPool()
+		}
+		if !roots.AppendCertsFromPEM([]byte(caPEM)) {
+			return nil, fmt.Errorf("MQTT TLS CA certificate is not valid PEM")
+		}
+		config.RootCAs = roots
+	}
+	if certificatePEM != "" {
+		certificate, err := tls.X509KeyPair([]byte(certificatePEM), []byte(keyPEM))
+		if err != nil {
+			return nil, fmt.Errorf("MQTT TLS client certificate or key is invalid: %w", err)
+		}
+		config.Certificates = []tls.Certificate{certificate}
+	}
+	return config, nil
 }
 
 func dialMQTT(ctx context.Context, config mqttConfig) (net.Conn, error) {
@@ -159,9 +205,7 @@ func dialMQTT(ctx context.Context, config mqttConfig) (net.Conn, error) {
 	address := net.JoinHostPort(config.target.Hostname(), port)
 	dialer := &net.Dialer{Timeout: mqttDeliveryTimeout, KeepAlive: 30 * time.Second}
 	if config.target.Scheme == "mqtts" {
-		tlsDialer := &tls.Dialer{NetDialer: dialer, Config: &tls.Config{
-			MinVersion: tls.VersionTLS12, ServerName: config.target.Hostname(),
-		}}
+		tlsDialer := &tls.Dialer{NetDialer: dialer, Config: config.tlsConfig.Clone()}
 		return tlsDialer.DialContext(ctx, "tcp", address)
 	}
 	return dialer.DialContext(ctx, "tcp", address)
@@ -176,7 +220,11 @@ func mqttConnectPacket(config mqttConfig, destinationID string) []byte {
 		flags |= 0x40
 	}
 	variable := []byte{0x00, 0x04, 'M', 'Q', 'T', 'T', 0x04, flags, 0x00, 0x1e}
-	payload := mqttString(mqttClientID(destinationID))
+	clientID := config.clientID
+	if clientID == "" {
+		clientID = mqttClientID(destinationID)
+	}
+	payload := mqttString(clientID)
 	if config.username != "" {
 		payload = append(payload, mqttString(config.username)...)
 	}
@@ -245,6 +293,10 @@ func mqttString(value string) []byte {
 	encoded := make([]byte, 2, len(value)+2)
 	binary.BigEndian.PutUint16(encoded, uint16(len(value)))
 	return append(encoded, value...)
+}
+
+func validMQTTString(value string) bool {
+	return value != "" && len(value) <= 65535 && utf8.ValidString(value) && !strings.ContainsRune(value, '\x00')
 }
 
 func mqttPacketID(intentID string) uint16 {

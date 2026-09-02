@@ -19,6 +19,19 @@ type TemporalCalibrationPackage struct {
 	SelectionSHA256 string
 }
 
+// temporalInferencePackage is the verified seam consumed by inference. The
+// legacy calibration selection and a fresh model-panel package are two real
+// adapters: both must reduce to the same closed case and signal contract
+// before any paid transport or checkpoint state exists.
+type temporalInferencePackage struct {
+	BatchID          string
+	Cases            []TemporalReviewCase
+	Signals          []fillereval.TemporalCaseSignals
+	PackageSHA256    string
+	SelectionSHA256  string
+	PackageCaseCount int
+}
+
 func LoadTemporalCalibrationPackage(packagePath, selectionPath string, expectedPackageCases, expectedCalibrationCases int) (TemporalCalibrationPackage, error) {
 	pack, allSignals, packageSHA256, err := LoadTemporalReviewPackage(packagePath, expectedPackageCases)
 	if err != nil {
@@ -54,5 +67,24 @@ func LoadTemporalCalibrationPackage(packagePath, selectionPath string, expectedP
 	return TemporalCalibrationPackage{
 		Package: pack, Cases: selectedCases, Signals: selectedSignals, PackageSHA256: packageSHA256,
 		Selection: selection, SelectionSHA256: hashBytes(selectionRaw),
+	}, nil
+}
+
+func (loaded TemporalCalibrationPackage) inferencePackage() temporalInferencePackage {
+	return temporalInferencePackage{
+		BatchID: loaded.Package.BatchID, Cases: loaded.Cases, Signals: loaded.Signals,
+		PackageSHA256: loaded.PackageSHA256, SelectionSHA256: loaded.SelectionSHA256,
+		PackageCaseCount: len(loaded.Package.Cases),
+	}
+}
+
+func loadTemporalModelInferencePackage(packagePath string, expectedCases int) (temporalInferencePackage, error) {
+	pack, signals, packageSHA, err := LoadTemporalModelReviewPackage(packagePath, expectedCases)
+	if err != nil {
+		return temporalInferencePackage{}, err
+	}
+	return temporalInferencePackage{
+		BatchID: pack.BatchID, Cases: pack.Cases, Signals: signals, PackageSHA256: packageSHA,
+		SelectionSHA256: pack.SelectionSHA256, PackageCaseCount: len(pack.Cases),
 	}, nil
 }

@@ -583,6 +583,9 @@ func SelectionFrom(f *schedule.FillerSelection, scopeEra *schedule.Range) filler
 		sel.Kinds = f.Kinds
 		sel.Pinned = f.Pinned
 		sel.Excluded = f.Excluded
+		if f.Geography != nil {
+			sel.Geography = filler.Geography{Country: f.Geography.Country, Market: f.Geography.Market}.Normalize()
+		}
 		if f.Era != nil {
 			// ⚠ **PRESENCE is the opt-in, and that is what finally makes "any era" reachable
 			// (§10, V51f).** A present range means the operator has ANSWERED the era question —

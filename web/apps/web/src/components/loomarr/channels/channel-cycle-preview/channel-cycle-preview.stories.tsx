@@ -15,6 +15,19 @@ const nothingExcluded: PreviewCycleOutputBody["excluded"] = {
   unrated: 0,
 };
 
+const emptyTrace: PreviewCycleOutputBody["trace"] = {
+  version: 1,
+  ordering: "sequential",
+  seed: "0",
+  windowMs: 0,
+  windowIndex: 0,
+  relaxations: [],
+  factTotal: 0,
+  recordedTotal: 0,
+  truncated: false,
+  facts: [],
+};
+
 // ChannelCyclePreview owns the live generated hook (channelsApi.usePreviewChannelCycle)
 // rather than taking injectable state — same shape as ChannelLineupEditor elsewhere in
 // this package. Stubs `fetch` deterministically (no backend, no new dependency):
@@ -57,6 +70,7 @@ const Matched: Story = {
       activeRule: { id: "r1", label: "Christmas · Marathon", priority: 60, matched: true },
       windowMs: 0,
       excluded: nothingExcluded,
+      trace: emptyTrace,
       slots: [
         { kind: "program", title: "Die Hard", key: "movie:tmdb:562", part: 0 },
         { kind: "break" },
@@ -87,6 +101,7 @@ const SeriesEpisodes: Story = {
       activeRule: { id: "", label: "Base policy", priority: 0, matched: false },
       windowMs: 24 * 60 * 60 * 1000,
       excluded: nothingExcluded,
+      trace: emptyTrace,
       slots: [
         { kind: "program", title: "Grandad", key: "series:tmdb:82728", season: 1, episode: 5 },
         { kind: "program", title: "The Sleepover", key: "series:tmdb:82728", season: 2, episode: 12 },
@@ -106,6 +121,7 @@ const BasePolicy: Story = {
       activeRule: { id: "", label: "Base policy", priority: 0, matched: false },
       windowMs: 24 * 60 * 60 * 1000,
       excluded: nothingExcluded,
+      trace: emptyTrace,
       slots: [
         { kind: "program", title: "Predator", key: "movie:tmdb:106" },
         { kind: "break" },
@@ -127,6 +143,7 @@ const LongList: Story = {
       activeRule: { id: "r1", label: "Weekend · TNG Marathon", priority: 60, matched: true },
       windowMs: 0,
       excluded: nothingExcluded,
+      trace: emptyTrace,
       slots: [
         ...Array.from({ length: 12 }, (_, i) => ({
           kind: "program" as const,
@@ -156,6 +173,7 @@ const Empty: Story = {
       activeRule: { id: "", label: "Base policy", priority: 0, matched: false },
       windowMs: 0,
       excluded: nothingExcluded,
+      trace: emptyTrace,
       slots: [],
     }),
   ],
@@ -189,6 +207,7 @@ const ExcludedBySafety: Story = {
           { key: "movie:tmdb:99999", title: "Home Movie Reel", reason: ExcludedItemDTOReason.unrated },
         ],
       },
+      trace: emptyTrace,
       slots: [
         { kind: "program", title: "Chuckie's a Lefty", key: "series:tmdb:3022", season: 2, episode: 3 },
         { kind: "break" },
@@ -214,6 +233,7 @@ const ExcludedByRules: Story = {
           { key: "movie:tmdb:771", title: "Home Alone", reason: ExcludedItemDTOReason.out_of_season },
         ],
       },
+      trace: emptyTrace,
       slots: [
         { kind: "program", title: "Predator", key: "movie:tmdb:106" },
         { kind: "break" },

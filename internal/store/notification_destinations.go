@@ -11,7 +11,8 @@ import (
 )
 
 const notificationDestinationSelect = `SELECT id, means, label, scope, owner_id, audience,
-	topics_json, enabled, configuration_json, credential_keys_json, credentials_encrypted, created_at, updated_at
+	topics_json, enabled, configuration_json, subscription_fingerprint, credential_keys_json,
+	credentials_encrypted, created_at, updated_at
 	FROM notification_destinations`
 
 func (s *sqlStore) SaveNotificationDestinationRecord(ctx context.Context, destination notifications.DestinationRecord) error {
@@ -32,8 +33,9 @@ func (s *sqlStore) SaveNotificationDestinationRecord(ctx context.Context, destin
 	}
 	_, err = s.db.ExecContext(ctx, s.ph(`INSERT INTO notification_destinations
 		(id, means, label, scope, owner_id, audience, topics_json, enabled,
-		 configuration_json, credential_keys_json, credentials_encrypted, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 configuration_json, subscription_fingerprint, credential_keys_json,
+		 credentials_encrypted, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
 			means = excluded.means,
 			label = excluded.label,
@@ -43,13 +45,18 @@ func (s *sqlStore) SaveNotificationDestinationRecord(ctx context.Context, destin
 			topics_json = excluded.topics_json,
 			enabled = excluded.enabled,
 			configuration_json = excluded.configuration_json,
+			subscription_fingerprint = excluded.subscription_fingerprint,
 			credential_keys_json = excluded.credential_keys_json,
 			credentials_encrypted = excluded.credentials_encrypted,
 			updated_at = excluded.updated_at`),
 		destination.ID, destination.Means, destination.Label, destination.Scope, destination.OwnerID,
 		destination.Audience, string(topicsJSON), notificationBool(destination.Enabled), string(configurationJSON),
-		string(credentialKeysJSON), destination.CredentialsEncrypted, epoch(destination.CreatedAt), epoch(destination.UpdatedAt))
+		destination.SubscriptionFingerprint, string(credentialKeysJSON), destination.CredentialsEncrypted,
+		epoch(destination.CreatedAt), epoch(destination.UpdatedAt))
 	if err != nil {
+		if isConstraintViolation(err) {
+			return notifications.ErrConflict
+		}
 		return fmt.Errorf("save notification destination: %w", err)
 	}
 	return nil
@@ -158,7 +165,8 @@ func scanNotificationDestinationRecord(sc scannable) (notifications.DestinationR
 	var createdAt, updatedAt int64
 	if err := sc.Scan(
 		&destination.ID, &means, &destination.Label, &scope, &destination.OwnerID, &audience,
-		&topicsJSON, &enabled, &configurationJSON, &credentialKeysJSON, &destination.CredentialsEncrypted, &createdAt, &updatedAt,
+		&topicsJSON, &enabled, &configurationJSON, &destination.SubscriptionFingerprint,
+		&credentialKeysJSON, &destination.CredentialsEncrypted, &createdAt, &updatedAt,
 	); errors.Is(err, sql.ErrNoRows) {
 		return notifications.DestinationRecord{}, notifications.ErrNotFound
 	} else if err != nil {

@@ -407,6 +407,20 @@ const ClipCard = ({
         ) : null;
       })()}
       {!clip.tagged && <Badge variant="caution">Untagged</Badge>}
+      {clip.geographicScope !== "national" && clip.geographicScope !== "local" ? (
+        <Badge
+          variant="caution"
+          title="This clip cannot air on a geographically constrained channel until reviewed"
+        >
+          Geography unknown
+        </Badge>
+      ) : (
+        <Badge variant="neutral">
+          {[clip.country, clip.geographicScope === "local" ? clip.market : "National"]
+            .filter(Boolean)
+            .join(" · ")}
+        </Badge>
+      )}
       {/* Resolution, from the probed video height. Display-only unless an operator sets the
           filler.min_quality floor (off by default), so it is a neutral fact here — NOT a
           warning. Colouring a 480p clip as a problem would invent a policy the install has

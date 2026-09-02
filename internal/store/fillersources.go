@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 // The persisted REMOTE filler-source registry (§10, V33).
@@ -67,6 +69,9 @@ type FillerSource struct {
 	// FetchEverySeconds=0 says, and saying it twice invites the two to disagree. The API rejects
 	// it; the store does not need to.
 	FetchMaxPerRun *int
+	// Geography is asserted source coverage. Country-only sources may feed any market in that
+	// country; a market-scoped source may feed only that market. Empty means unknown.
+	Geography filler.Geography
 }
 
 // FetchEvery resolves this source's poll interval against the global default (§10 V38c).
@@ -91,6 +96,11 @@ func (f FillerSource) MaxPerRun(global int) int {
 		return global
 	}
 	return *f.FetchMaxPerRun
+}
+
+// GeographicallyEligible reports whether this source may contribute to the target installation.
+func (f FillerSource) GeographicallyEligible(target filler.Geography) bool {
+	return filler.SourceGeographicallyEligible(f.Geography, target)
 }
 
 // Fetchable reports whether this source can be DOWNLOADED FROM — i.e. whether it may enter a
@@ -161,7 +171,7 @@ func NewFillerSource(id, kind, uri, label string, createdAt time.Time) FillerSou
 }
 
 const fillerSourceSelect = `SELECT id, kind, uri, label, license, last_fetched_at, created_at, enabled,
-	auto_admit, fetch_every_seconds, fetch_max_per_run
+	auto_admit, fetch_every_seconds, fetch_max_per_run, country, market
 	FROM filler_sources`
 
 // ListFillerSources returns every source, OLDEST FIRST. Ordering is explicit rather than
@@ -187,7 +197,8 @@ func (s *sqlStore) ListFillerSources(ctx context.Context) ([]FillerSource, error
 			perRun sql.NullInt64
 		)
 		if err := rows.Scan(&src.ID, &src.Kind, &src.URI, &src.Label, &src.License,
-			&fetchedAt, &createdAt, &src.Enabled, &src.AutoAdmit, &every, &perRun); err != nil {
+			&fetchedAt, &createdAt, &src.Enabled, &src.AutoAdmit, &every, &perRun,
+			&src.Geography.Country, &src.Geography.Market); err != nil {
 			return nil, fmt.Errorf("scan filler source: %w", err)
 		}
 		src.LastFetchedAt = fromEpoch(fetchedAt)
@@ -229,15 +240,35 @@ func (s *sqlStore) UpsertFillerSource(ctx context.Context, src FillerSource) err
 		// next re-register. Same failure V35 nearly shipped with `enabled`, one column over.
 		// SetFillerSourceFetchPolicy is their only writer.
 		`INSERT INTO filler_sources (id, kind, uri, label, license, last_fetched_at, created_at, enabled,
-		   auto_admit, fetch_every_seconds, fetch_max_per_run)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		   auto_admit, fetch_every_seconds, fetch_max_per_run, country, market)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   kind=excluded.kind, uri=excluded.uri, label=excluded.label, license=excluded.license`),
 		src.ID, src.Kind, src.URI, src.Label, src.License,
 		epoch(src.LastFetchedAt), epoch(src.CreatedAt), src.Enabled, src.AutoAdmit,
-		nullableInt(src.FetchEverySeconds), nullableInt(src.FetchMaxPerRun))
+		nullableInt(src.FetchEverySeconds), nullableInt(src.FetchMaxPerRun),
+		src.Geography.Normalize().Country, src.Geography.Normalize().Market)
 	if err != nil {
 		return fmt.Errorf("upsert filler source %s: %w", src.ID, err)
+	}
+	return nil
+}
+
+// SetFillerSourceGeography is the sole writer for an existing source's asserted coverage.
+func (s *sqlStore) SetFillerSourceGeography(ctx context.Context, id string, geography filler.Geography) error {
+	geography = geography.Normalize()
+	res, err := s.db.ExecContext(ctx, s.ph(
+		`UPDATE filler_sources SET country = ?, market = ? WHERE id = ?`),
+		geography.Country, geography.Market, id)
+	if err != nil {
+		return fmt.Errorf("set filler source geography %s: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("set filler source geography %s: %w", id, err)
+	}
+	if n == 0 {
+		return ErrNotFound
 	}
 	return nil
 }

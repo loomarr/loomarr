@@ -142,14 +142,15 @@ func (s *Server) proposeFillerPull(ctx context.Context, in *proposeFillerPullInp
 	// singletons, which are SCANNED rather than downloaded from — including one in a plan would
 	// enqueue a fetch of an empty URL at approval time.
 	var enabled []store.FillerSource
+	home := s.fillerHomeGeography()
 	for _, src := range srcs {
-		if src.Enabled && src.Fetchable() {
+		if src.Enabled && src.Fetchable() && src.GeographicallyEligible(home) {
 			enabled = append(enabled, src)
 		}
 	}
 	if len(enabled) == 0 {
-		return nil, errConflict("Every source is switched off",
-			"Loomarr can't plan a pull because none of your filler sources are turned on. Switch one on under Filler → Sources, then try again.")
+		return nil, errConflict("No eligible filler source is available",
+			"Loomarr can't plan a pull because every source is off, unclassified, or outside this installation's geography. Review Filler → Sources, then try again.")
 	}
 
 	now := time.Now().UTC()
@@ -272,8 +273,9 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 	// Same pair of conditions as propose — deliberately the same predicate, via the same method,
 	// so the commit-time re-check cannot drift from what was plannable at propose time.
 	live := make(map[string]store.FillerSource, len(srcs))
+	home := s.fillerHomeGeography()
 	for _, src := range srcs {
-		if src.Enabled && src.Fetchable() {
+		if src.Enabled && src.Fetchable() && src.GeographicallyEligible(home) {
 			live[src.ID] = src
 		}
 	}
@@ -284,7 +286,7 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 			return nil, errConflict("A source in this pull is no longer available",
 				"“"+row.Name+"” has been switched off or removed since this pull was proposed. Dismiss it and propose a new one.")
 		}
-		targets = append(targets, filler.AcquisitionTarget{SourceID: src.ID, URL: src.URI})
+		targets = append(targets, filler.AcquisitionTarget{SourceID: src.ID, Kind: src.Kind, URL: src.URI})
 	}
 
 	// THE gate's other half: the work goes through the ordinary ingest job. A pull never
@@ -306,6 +308,16 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 		return nil, huma.Error500InternalServerError("save pull decision", err)
 	}
 	return &pullOutput{Body: pullToDTO(p)}, nil
+}
+
+func (s *Server) fillerHomeGeography() filler.Geography {
+	if s.liveConfig == nil {
+		return filler.Geography{}
+	}
+	return filler.Geography{
+		Country: s.liveConfig("filler.home_country"),
+		Market:  s.liveConfig("filler.home_market"),
+	}.Normalize()
 }
 
 type dismissFillerPullInput struct {

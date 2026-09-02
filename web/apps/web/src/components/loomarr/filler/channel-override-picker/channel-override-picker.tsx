@@ -37,6 +37,7 @@ const REASON_NOTE: Record<string, string> = {
   quality: "below this channel's quality floor",
   category: "not one of this channel's categories",
   audience: "wrong audience for this channel",
+  geography: "outside this channel's country or local market",
   excluded: "you've blocked it here",
 };
 

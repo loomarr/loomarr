@@ -64,7 +64,7 @@ func (s *Service) SetEnvOverride(
 	ctx context.Context, w EnvOverrideSetter, key string, on bool, updatedBy string,
 ) (EnvOverrideStatus, error) {
 	set, ok := s.reg.Get(key)
-	if !ok {
+	if !ok || set.MigrationOnly {
 		return EnvOverrideUnknown, nil
 	}
 
@@ -132,7 +132,7 @@ func (s *Service) Patch(ctx context.Context, p Persister, edits map[string]strin
 
 	for key, raw := range edits {
 		set, ok := s.reg.Get(key)
-		if !ok {
+		if !ok || set.MigrationOnly {
 			results = append(results, PatchResult{Key: key, Status: PatchInvalid, Problem: "unknown setting"})
 			continue
 		}
@@ -191,7 +191,7 @@ func (s *Service) Patch(ctx context.Context, p Persister, edits map[string]strin
 // write. The result reuses PATCH's vocabulary so the API can map it to a status:
 // invalid → unknown key (404), pinned → the env wins (409), saved → cleared (204).
 func (s *Service) Clear(ctx context.Context, p Persister, key string) (PatchResult, error) {
-	if _, ok := s.reg.Get(key); !ok {
+	if set, ok := s.reg.Get(key); !ok || set.MigrationOnly {
 		return PatchResult{Key: key, Status: PatchInvalid, Problem: "unknown setting"}, nil
 	}
 	if s.Provenance(key) == ProvenanceEnv {

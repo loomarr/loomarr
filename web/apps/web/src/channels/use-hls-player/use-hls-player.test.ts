@@ -35,6 +35,7 @@ vi.mock("hls.js", () => {
     static Events = {
       ERROR: "error",
       FRAG_BUFFERED: "fragBuffered",
+      LEVEL_UPDATED: "levelUpdated",
       MANIFEST_PARSED: "manifestParsed",
     };
     static ErrorTypes = { MEDIA_ERROR: "mediaError", NETWORK_ERROR: "networkError" };
@@ -291,6 +292,7 @@ describe("useHlsPlayer", () => {
     let replacementLoadedData!: () => void;
     let replacementCanPlay!: () => void;
     let finishOutgoingSeek!: () => void;
+    let finishTargetFrame!: () => void;
     const video = {
       ...videoEl(),
       addEventListener: vi.fn((event: string, callback: () => void) => {
@@ -299,7 +301,10 @@ describe("useHlsPlayer", () => {
         if (event === "canplay") replacementCanPlay = callback;
         if (event === "seeked") finishOutgoingSeek = callback;
       }),
-      requestVideoFrameCallback: vi.fn(() => 1),
+      requestVideoFrameCallback: vi.fn((callback: () => void) => {
+        finishTargetFrame = callback;
+        return 1;
+      }),
       cancelVideoFrameCallback: vi.fn(),
     } as unknown as HTMLVideoElement;
     const resetCurrentTime = vi.fn();
@@ -420,7 +425,21 @@ describe("useHlsPlayer", () => {
       .at(-1)?.[1] as (() => void) | undefined;
     expect(manifestParsed).toBeTypeOf("function");
     manifestParsed?.();
+    expect(resetCurrentTime).toHaveBeenLastCalledWith(98);
     await waitFor(() => expect(video.play).toHaveBeenCalledOnce());
+
+    resetCurrentTime.mockClear();
+    const levelUpdated = replacement.on.mock.calls
+      .filter((call: unknown[]) => call[0] === "levelUpdated")
+      .at(-1)?.[1] as (() => void) | undefined;
+    expect(levelUpdated).toBeTypeOf("function");
+    levelUpdated?.();
+    expect(resetCurrentTime).toHaveBeenLastCalledWith(98);
+
+    finishTargetFrame();
+    resetCurrentTime.mockClear();
+    levelUpdated?.();
+    expect(resetCurrentTime).not.toHaveBeenCalled();
 
     vi.mocked(video.play).mockClear();
     const fragmentBuffered = replacement.on.mock.calls

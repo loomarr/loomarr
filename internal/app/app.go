@@ -201,7 +201,7 @@ func buildHandler(
 		channels: channelsBuilt, approval: approval, suggestions: suggestions, fillers: fillers,
 		auth: operations.auth, backups: operations.backups,
 		restart: operations.restart, bootConfig: operations.bootConfig,
-		guide: operations.guide, settings: operations.settings, emailTest: operations.emailTest,
+		guide: operations.guide, settings: operations.settings,
 		notificationDestinations: operations.notificationDestinations,
 		webPushPublicKey:         operations.webPushPublicKey,
 		invitationDelivery:       operations.invitationDelivery, passwordRecovery: operations.passwordRecovery,

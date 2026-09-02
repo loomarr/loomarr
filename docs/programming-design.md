@@ -457,7 +457,7 @@ When the eligible pool can't satisfy the policy (small library ∩ tight scope �
   episodes, curated highlights, or the explicit holiday scope. The review explains the selector;
   it does not let the client choose episode identities or bypass the deterministic binder.
   - ⚠ **The exclusion report reaches the CHANNEL EDITOR only; proposal review still does not show it.** Both preview endpoints (`GET …/cycle` and `POST …/programming/preview`) carry `excluded` — counts plus a per-item reason — and the cycle-preview panel renders it under the schedule. This half of the sentence was aspirational for as long as the type existed: `ComputeDesiredAt` filled the report on **every reconcile** and every caller discarded it, so a title the ceiling refused was invisible product-wide, and diagnosing one meant querying the media server by hand. **Reconcile still discards its copy** — it has no column and no event to put one in, and the preview recomputes the identical report from the same pure builder. Both remaining gaps are real and named rather than implied. The same chip surface is the **per-channel rules editor** (§8.1) on the channel page (§7 `PATCH .../{id}` writes `policy_json`); omitted chips inherit the built-in default (§9), and `audience` + explicit `scope` are shown as never-relaxed safety fields.
-- **Filler is part of the channel editor too (§10):** `policy.filler` (the `FillerSelection`) is edited on the channel page alongside the rules chips — theme criteria (era/audience/category/kinds) + pinned/excluded clips — with a live pod sandbox (`POST …/pods/preview`) that re-assembles the actual break against the unsaved draft before Apply. It also rides `policy_json`, so it round-trips and inherits the same "omitted = any" default; a new channel seeds its filler era from `scope.era`.
+- **Filler is part of the channel editor too (§10):** `policy.filler` (the `FillerSelection`) is edited on the channel page alongside the rules chips — theme criteria (era/audience/category/kinds) + pinned/excluded clips — with a live pod sandbox (`POST …/pods/preview`) that re-assembles the actual break against the unsaved draft before Apply. It also rides `policy_json`. The first approval of a generated Channel seeds its era from grounded `scope.era` and derives a conservative audience from the approved rating ceiling (`TV-Y`/`TV-Y7` → kids, `G`/`TV-G`/`PG`/`TV-PG` → family, otherwise general). Program genres never become filler product categories, and missing intent never invents late-night eligibility. This is a one-time ownership handoff: a present operator selection, including an explicitly empty one, is sticky across refine, re-curation, and reconcile.
 - **Lineup builder (§9):** hard filters → eligible pool → seeded constraint-aware slotting (greedy with backtracking is sufficient at envelope scale) → relaxation ladder on failure → pods → push. The periodic sweep re-evaluates policy (seasonal windows roll, library grows, relaxations un-relax when the pool recovers).
 
 ## 8.1. The cycle-preview endpoint & the rules editor (making the engine legible + editable)
@@ -470,12 +470,13 @@ Two surfaces make curation rules *authorable* and their resolution *visible* —
 - `activeRule` — the rule `pickRule` selected for `at`: `{ id, label, priority, matched }`. `matched:false` (with a synthesized `label:"Base policy"`) means **no rule matched** and the channel fell through to its base whole-policy behavior. This is the attribution that makes overlap resolution answerable: "at Saturday 9am, the *Weekend TNG marathon* rule (priority 20) is active." It is derived from the *same* `pickRule` call the engine makes — never a re-implementation.
 - `window` — the resolved rolling-window horizon for `at` (rule > channel > global default; `0`/`null` = whole run), so the preview explains *why* it shows ~24h of slots and not 800.
 - `slots` — the first N program/pending/break slots of the resolved cycle (N capped, default 50), each `{ kind, title, key, seriesTitle, part }` — enough to see intermixing, marathons, and franchise/two-parter adjacency at a glance. Filler break gaps render as `kind:"break"` (Tunarr owns what plays into them; the preview shows the *gap*, not the clip).
+- `trace` — the bounded `ScheduleTrace` emitted by that same `ComputeDesiredAt` call (§8.4), including hard-filter, availability, episode-selection, window, and placement facts. It is not reconstructed from `slots` or from the originating Proposal.
 
 The preview is **read-only and never touches Tunarr or the store** — it is `ComputeDesiredAt` on already-loaded state. `at` in the past or far future is legal (that's the feature — "what airs next Christmas morning?"); an unparseable `at` is a 400.
 
 **The "Programming rules" editor (`PATCH /v1/channels/{id}` → `policy_json`, admin) — authoring.** The channel page's Programming surface (design.md §12) renders `policy.rules` as an ordered list of **rule chips**, each showing its WHEN/WHAT/HOW tokens and priority. Authoring is **token-based, never raw predicates** — the same closed vocabulary the LLM uses (§6.6). **The vocabulary + lowering table is BE-authoritative, served by `GET /v1/programming/vocabulary`** (the WHEN/WHAT/HOW presets and how each lowers to `SchedulingRule` fields). The editor renders from it and the suggester's `groundRules` lowers with it — **one source, so hand-authored and LLM-authored rules are byte-identical by construction** (this closes the drift hazard of the FE re-implementing the §6.6 table). The BE re-validates on write (unknown tokens dropped, window clamped, audience stricter-only — enforced on *every* write path, not just the LLM's). Each rule carries a **`source` (`llm` or `operator`)** stamped at authoring time — the provenance a refresh proposal merges on (§8.2): a refine replaces the `llm` rules and preserves the `operator` ones. **Priority is drag-to-reorder** (list order *is* priority; higher = higher). `audience` and explicit `scope` remain never-relaxed safety fields, shown but not loosenable by a rule (§4, §7). Every save auto-reconciles (no rebuild).
 
-**`POST /v1/channels/{id}/programming/preview` — the whole-definition draft preview (admin authoring).** The cycle preview above (`GET …/cycle`) and the pod preview (`GET …/pods`, §10) each preview *saved* state; this generalizes both to an **unsaved draft** — body `{lineup?, policy?}`, returns the shared shape `{at, activeRule, window, slots, pods}` without persisting. It runs the **same** `ComputeDesiredAt` + pod assembler as reconcile (so a drafted lineup + rules + filler edit preview exactly what will air once applied), and is the call the Programming surface's **scheduling-rules draft** uses while editing (design.md §12 — the third review-before-apply surface, and the only block of that page that drafts; scope/ordering/auto-curate stay seamless because their edits are self-contained). ⚠ This sentence previously read "the one call the Programming surface uses while editing", which asserted a whole-page draft §12 did not sanction and the implementation never built — a companion doc contradicting the design doc, which AGENTS.md resolves in the design doc's favour. It **does not replace** the read paths: `GET …/cycle` stays the any-authenticated verification pane and `GET …/pods` the saved-pool read — the change is one shared response schema, not deleting the GETs. The preview shows play *order*, not wall-clock. Overview airtimes come from the backend actually streaming the channel: Tunarr's guide for Tunarr-backed channels and Loomarr's internal timeline for internal channels.
+**`POST /v1/channels/{id}/programming/preview` — the whole-definition draft preview (admin authoring).** The cycle preview above (`GET …/cycle`) and the pod preview (`GET …/pods`, §10) each preview *saved* state; this generalizes both to an **unsaved draft** — body `{lineup?, policy?}`, returns the shared shape `{at, activeRule, window, slots, trace, pods}` without persisting. It runs the **same** `ComputeDesiredAt` + pod assembler as reconcile (so a drafted lineup + rules + filler edit preview exactly what will air once applied), and is the call the Programming surface's **scheduling-rules draft** uses while editing (design.md §12 — the third review-before-apply surface, and the only block of that page that drafts; scope/ordering/auto-curate stay seamless because their edits are self-contained). ⚠ This sentence previously read "the one call the Programming surface uses while editing", which asserted a whole-page draft §12 did not sanction and the implementation never built — a companion doc contradicting the design doc, which AGENTS.md resolves in the design doc's favour. It **does not replace** the read paths: `GET …/cycle` stays the any-authenticated verification pane and `GET …/pods` the saved-pool read — the change is one shared response schema, not deleting the GETs. The preview shows play *order*, not wall-clock. Overview airtimes come from the backend actually streaming the channel: Tunarr's guide for Tunarr-backed channels and Loomarr's internal timeline for internal channels.
 
 ## 8.2. Self-updating channels (scheduled re-curation)
 
@@ -573,7 +574,7 @@ This also means adjacency **cannot** be a pure post-processing step bolted onto 
 
 **Deliberately deferred: TMDB `keywords`.** The endpoint works and looks tempting for thematic grouping, but the vocabulary is mixed — a probe across the same channel returned real themes (`dystopia`, `alien`, `creature`, `atomic bomb`) interleaved with mood tags (`excited`, `suspenseful`, `aggressive`), a structural tag (`sequel`), and a location (`los angeles, california`). Using it raw would group films by mood and geography and call it a theme. It needs a curated allowlist or a discriminating heuristic first — that is its own design decision, not a detail of this one. Logged in §9 rather than half-built here.
 
-## 8.4 Proposal trace and scheduler boundary
+## 8.4 Proposal and scheduler decision-trace boundary
 
 Proposal explanations are immutable evidence from the suggestion/ranking seam. The trace
 must carry the exact lexicographic rank tuple and tie-break inputs, plus bounded grounded
@@ -583,10 +584,35 @@ The tuple's integer relevance component and closed request/tone/era/include/excl
 booleans are v1's safe explicit-constraint evidence; raw request terms are not copied into each
 candidate trace.
 
-Scheduler explanations are a separate future seam: `schedule.ComputeDesiredAt` owns
-availability, episode selection, ordering, window, placement, and hard-exclusion reasons.
-Those facts may reuse closed reason names, but a proposal trace must never be relabeled as
-current-channel or scheduler evidence.
+Scheduler explanations are a separate seam owned by `schedule.ComputeDesiredAt`. Each run
+returns its slots and one `ScheduleTrace` produced in the same pass. The trace is current-cycle
+evidence over that run's approved Lineup, live `Availability`, resolved `ChannelPolicy`, and
+wall-clock; a proposal trace must never be relabeled as current-channel or scheduler evidence.
+
+`ScheduleTrace` is an ordered, append-only fact stream with four stages:
+
+1. `hard_filter` — channel scope/audience, active-rule scope, and seasonal decisions. Never-
+   relaxed audience and explicit scope refusals retain their existing closed reason names.
+2. `availability` — a movie or series resolves to playable program(s), or its approved entry
+   becomes the configured `pod_fill` / `coming_soon` pending outcome. An empty series resolution
+   is unavailable, not an unexplained episode-selection drop.
+3. `episode_selection` — each safe, in-season episode is kept or omitted by `complete`,
+   `highlights`, or `holiday`. A stale editorial cache and the highlights/holiday safety
+   fallbacks are explicit `full_run_fallback` facts; they never masquerade as positive matches.
+4. `placement` — the fact records the effective ordering mode, any relaxation, its pre-window
+   deck position, whether the rolling window retained or rotated it out, and its final cycle
+   position. Inserted commercial gaps are placement facts with no content key.
+
+The trace header carries version, effective ordering, the signed 64-bit seed as a lossless
+decimal string, resolved window duration, and the
+coarse window index. It is deterministic for the same `ComputeDesiredAt` inputs. Facts are
+capped at 1,024 while total counts continue; 256 retained slots are reserved for placement so
+episode-heavy traces cannot crowd the final stage out. The API reports both totals plus `truncated`.
+The two cycle-preview endpoints expose this exact trace beside `slots`; they do not infer it
+from the final slot list. UI explanations group the closed facts into concise “why this airs”
+and “why not” details, while the raw bounded facts remain available to evaluation and support
+tooling. The trace contains no provider payloads, prompts, rationale, secrets, paths, location,
+or chain-of-thought.
 
 ## 9. Extensibility — the checklist for "I'm sure I can think of more"
 

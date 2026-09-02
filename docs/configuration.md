@@ -66,19 +66,6 @@ To replace the installation key, supply the new current key and provide the old 
 | --- | --- | --- | --- |
 | `access.public_url` (`ACCESS_PUBLIC_URL`) | url | — | The absolute browser address invitation and recovery recipients can reach, e.g. https://loomarr.example.com. General suggests the current browser origin when this is empty; save a different address when recipients reach Loomarr elsewhere. The server never infers it from request headers. |
 
-## Notifications
-
-| Setting (env) | Kind | Default | Notes |
-| --- | --- | --- | --- |
-| `notifications.email.enabled` (`NOTIFICATIONS_EMAIL_ENABLED`) | bool | `false` | Deliver account invitations and recovery messages by email. An incomplete setup suppresses email without affecting copied links, QR codes, or direct account creation. |
-| `notifications.smtp.host` (`NOTIFICATIONS_SMTP_HOST`) | string | — | Hostname of the SMTP submission server. Required when email delivery is enabled. |
-| `notifications.smtp.port` (`NOTIFICATIONS_SMTP_PORT`) | int | `587` | Port of the SMTP submission server, from 1 through 65535. |
-| `notifications.smtp.security` (`NOTIFICATIONS_SMTP_SECURITY`) | enum | `starttls` | STARTTLS requires encryption and never downgrades; TLS connects encrypted immediately. None is only for an explicitly trusted local relay. Certificate verification is always enabled. _(one of: starttls \| tls \| none)_ |
-| `notifications.smtp.username` (`NOTIFICATIONS_SMTP_USERNAME`) | string | — | Username for SMTP authentication. Leave empty only for an unauthenticated relay. |
-| `notifications.smtp.password` (`NOTIFICATIONS_SMTP_PASSWORD`) | secret | (secret) | Password for SMTP authentication. It is write-only, masked on read, and must remain empty for an unauthenticated relay. |
-| `notifications.email.from_address` (`NOTIFICATIONS_EMAIL_FROM_ADDRESS`) | string | — | Mailbox Loomarr sends from, such as loomarr@example.com. Required when email delivery is enabled. |
-| `notifications.email.from_name` (`NOTIFICATIONS_EMAIL_FROM_NAME`) | string | `Loomarr` | Display name shown beside the sender address. |
-
 ## Backup
 
 | Setting (env) | Kind | Default | Notes |
@@ -163,6 +150,8 @@ To replace the installation key, supply the new current key and provide the old 
 
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
+| `filler.home_country` (`FILLER_HOME_COUNTRY`) | string | — | Optional ISO two-letter country that constrains automatic filler use. Unknown and foreign clips remain reviewable but do not air. Leave blank to preserve the legacy unrestricted pool until geography is configured. |
+| `filler.home_market` (`FILLER_HOME_MARKET`) | string | — | Optional local broadcast market inside the home country, such as New York or Seattle. Local clips must match it exactly; Loomarr never infers it from the guide timezone. |
 | `filler.dir` (`FILLER_DIR`) | string | `/data/filler` | Where Loomarr stores clips. Each is filed under its content hash with its metadata beside it. Defaults inside /data so the documented volume carries it; point it elsewhere to use an existing clip library. _(required for filler; applies after restart)_ |
 | `filler.watch_dir` (`FILLER_WATCH_DIR`) | string | — | Folder Loomarr watches for new clips. Anything dropped here is filed into your clip folder and then removed. Leave blank to use a '_watch' folder inside the clip folder. _(applies after restart)_ |
 | `filler.sync_every` (`FILLER_SYNC_EVERY`) | duration | `15m` | How often Loomarr drains the drop folder and reconciles its own clip library. _(advanced)_ |

@@ -154,7 +154,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   In-memory event bus behind SSE (§7 /v1/events, §8).
 - **`filleradmission`** · 7 importers
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
-- **`fillercorpus`**
+- **`fillercorpus`** · 1 importer
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
 - **`fillereval`** · 2 importers
   Owns the hermetic certification contract for filler admission.
@@ -222,9 +222,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 4**
 
-- **`fillerreview`** · → `filleradmission`, `fillerbakeoff`, `fillereval`, `httpx`
-  Materializes identity-blind evidence for independent semantic review.
-- **`mediatools`** · 2 importers · → `diagnostics`, `playout`, `proctree`
+- **`mediatools`** · 3 importers · → `diagnostics`, `playout`, `proctree`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`recommend`** · → `llm`
   Defines inert Channel Concepts and the hermetic evaluator used to certify channel-recommendation models.
@@ -233,6 +231,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`filler`** · 6 importers · → `diagnostics`, `filleradmission`, `fillerdecision`, `llm`, `mediatools`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
+- **`fillerreview`** · → `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `httpx`, `mediatools`
+  Materializes identity-blind evidence for independent semantic review.
 
 **Layer 6**
 
@@ -1130,6 +1130,38 @@ above that bound.
 Rank tuple components are integers by contract; no floating-point values are serialized, so
 non-finite-float handling is not part of this typed boundary.
 
+### Scheduler decision trace v1 (#496)
+
+Every `schedule.ComputeDesiredAt` run also emits a separate bounded, versioned **Scheduler
+decision trace**. This is current cycle evidence: it describes the approved Lineup, live
+availability, Policy, and wall-clock supplied to that exact computation. It is never copied
+from the originating Proposal and never rewrites that Proposal's immutable trace. A saved or
+draft `GET …/cycle` / `POST …/programming/preview` response exposes the trace returned by the
+same computation that produced its slots; handlers may project and cap it, but may not
+reconstruct explanations from Channel state after the fact.
+
+The trace is an ordered stream of facts emitted at the deciding seam. Its closed stages are
+`hard_filter`, `availability`, `episode_selection`, and `placement`. Facts identify a subject
+only by canonical provisioning key plus safe display identity (title and optional season /
+episode), then record a closed outcome/reason and optional zero-based deck/final position.
+Together they distinguish:
+
+- channel scope, audience, active-rule scope, and seasonal refusals;
+- available programs from unavailable titles resolved under `pod_fill` or `coming_soon`;
+- episode season-range and editorial-selection keeps/drops, including an explicit safe
+  full-run fallback when editorial evidence is unavailable or insufficient;
+- the effective ordering mode, relaxation, rolling-window membership, and final cycle
+  placement (including inserted commercial gaps).
+
+Trace metadata records the effective ordering, lossless decimal-string shuffle seed, resolved window duration and
+coarse window index used by `ComputeDesiredAt`. Facts are stable in pipeline order and bounded
+to 1,024 per computation, with 256 slots reserved for placement facts so a long series cannot
+erase the entire “why does this air here?” stage. `factTotal`, `recordedTotal`, and an explicit
+`truncated` flag continue counting after the display bound so truncation cannot look complete. The trace
+contains no prompts, model rationale, credentials, provider payloads, filesystem paths,
+precise user location, or chain-of-thought. Hard audience and scope gates remain the scheduler's
+authority and can never be relaxed to make a trace look more complete.
+
 ### Provider abstraction
 One `Suggester` interface; provider by config. **Two adapters, both plain `net/http` (no vendor SDK):**
 - **`ollama`** (native `/api/chat` with tools) — the homelab default: local, private, no cost, and its capability/version API gives the §13 wizard + §8.1 model picker a fast pre-check. On a reasoning model (Qwen3-class), thinking mode is disabled on tool turns — with tools present it otherwise returns empty/leaked-marker output that breaks tool-calls (open Ollama bugs).
@@ -1517,7 +1549,7 @@ Ad pods, bumpers, and station IDs between programs are what make a channel read 
 - On approval: build the channel from currently-available items; fill the remaining timeline with filler/fallback so it's **live immediately — never dead air**. **Default pending-slot policy: pod-fill** (fill the gap with matched filler); a "coming soon" interstitial card is a config alternative.
 - Subscribe to provisioner availability events (internal). On `available` → place the real title, re-push affected programming. On `unavailable` → substitute permanently: next-ranked candidate from the proposal's `alternates[]` (§8), else the fallback pool. **The fallback pool is defined as** the channel's already-available lineup items (loopable) plus its filler catalog — i.e., "never dead air" concretely means: loop what the channel has, padded with pods.
 - **Backfill placement is stable:** landed titles fill their pending slots in place; there is no global reshuffle of a live channel on backfill — viewers shouldn't see the guide scramble every time a download lands.
-- The desired lineup is built under the channel's **ChannelPolicy** — hard filters (scope, audience fail-closed, seasonal bench) → seeded constraint-aware slotting (separation, ordering) → **relaxation ladder** on shortfall (recorded + surfaced; audience and scope are never relaxed) → pods. Separation is enforced **across the cycle seam** (Tunarr lineups loop, so the last→first adjacency honors the gaps too). The audience filter emits an **exclusion report** (`{overCeiling, unrated, items}`) surfaced at proposal review *and* reconcile, so gaps are visible before approval ("14 excluded: 11 over ceiling, 3 unrated") — the fix (rate the media, or relax the policy) is a human decision. The `programming-design.md` doc is authoritative for the policy schema, the enforce-not-extract split, cycle-wrap separation, seasonality, and the ladder; the `GET /v1/channels/{id}/cycle` cycle preview (§8.1) shows the first N slots with the active-rule attribution for proposal review and the channel's Programming surface.
+- The desired lineup is built under the channel's **ChannelPolicy** — hard filters (scope, audience fail-closed, seasonal bench) → seeded constraint-aware slotting (separation, ordering) → **relaxation ladder** on shortfall (recorded + surfaced; audience and scope are never relaxed) → pods. Separation is enforced **across the cycle seam** (Tunarr lineups loop, so the last→first adjacency honors the gaps too). The audience filter emits an **exclusion report** (`{overCeiling, unrated, items}`) surfaced at proposal review *and* reconcile, so gaps are visible before approval ("14 excluded: 11 over ceiling, 3 unrated") — the fix (rate the media, or relax the policy) is a human decision. The `programming-design.md` doc is authoritative for the policy schema, the enforce-not-extract split, cycle-wrap separation, seasonality, and the ladder; the `GET /v1/channels/{id}/cycle` cycle preview (§8.1) shows the first N slots with active-rule attribution and the scheduler-owned trace for proposal review and the channel's Programming surface.
 - **Policy defaults:** omitted policy fields resolve to **built-in Go constants**. V55 removed the unused registry-default middle tier; per-channel policy is the only operator-authored override.
 - **Ordering has one operator-facing knob (`policy.ordering`), not two.** The canonical 3-tier precedence is **per-rule `How.Ordering` (within that rule's window) > `policy.ordering` > `Channel.Strategy` (the stored default)**. `Channel.Strategy` is the create-time default the suggester/binder seed and is consulted only when `policy.ordering` is unset (inherit); it is **not** a separately-editable field on the channel page — the operator edits `policy.ordering`. (`programming-design.md` §5 is authoritative for the ladder.)
 - Reconciliation is **backend-neutral and idempotent**. Every active channel recomputes and persists its desired lineup, applied policy, status, healed metadata, and next deadline. An internal channel stops there and never calls the `Programmer`; a Tunarr-backed channel additionally diffs the remote channel and applies the minimal API calls. Safe to re-run any time (`/v1/channels/{id}/reconcile`). Internal break eligibility uses Loomarr's local filler catalog (`HasPool`); Tunarr program UUIDs and filler-list attachment are projection details and are never required for internal playout.
@@ -1993,9 +2025,12 @@ It creates no second player or decoder, and the held poster still covers the sin
 failed open-source clears use the same fresh branch. Committing the target route may retire its
 transient tune-attempt object after the first frame; the adapter retains that attempt for the same
 Channel so this bookkeeping transition cannot tear down and reattach the live source. After
-confirming that the generation is still current, the adapter rewinds, attaches the cleared open handoff,
-arms target-frame observation, loads the replacement source, queues its playback join, and then explicitly
-starts media loading. This attach-before-source order is hls.js's transfer contract: parsing on a detached
+confirming that the generation is still current, the adapter temporarily rewinds, attaches the cleared open
+handoff, arms target-frame observation, loads the replacement source, queues its playback join, and then
+explicitly starts media loading. Once that replacement manifest exposes hls.js's computed live-sync
+position, the transferred handoff explicitly moves the element there before joining playback; it does not
+rely on a browser-specific implicit jump from the temporary rewind or wait for a later playlist refresh.
+This attach-before-source order is hls.js's transfer contract: parsing on a detached
 replacement can fetch init bytes before it adopts the transferred SourceBuffers and strand WebKit
 before the media request. A fresh-MSE replacement has no SourceBuffers to adopt, so it may load and
 parse its manifest before attachment while init/media loading remains explicitly stopped; that overlaps
@@ -2782,6 +2817,25 @@ all fail toward doing less:
 3. **A limit that is reached is REPORTED, never silent.** An operator whose catalog stopped
    growing must be able to see which ceiling stopped it. A crawler that quietly does nothing is
    indistinguishable from one that is broken.
+
+**Archive.org and YouTube are peer acquisition partners, not a primary source and a fallback.**
+Every registered remote is enumerated by its explicit `kind`: Archive uses the bounded collection
+API, while YouTube uses yt-dlp's listing-only flat-playlist mode. The fetcher never guesses a
+registered source's provider from a returned URL. The operator adding a YouTube playlist or
+channel is the bounded authorization to enumerate that target; Loomarr does not perform global
+YouTube search, follow recommendations, or crawl beyond it. Enumeration downloads no media and
+is capped before its per-item URLs enter the ordinary ingest path. Both partners then share the
+same per-source limit, catalog and disk ceilings, acquisition record, held lifecycle, provenance
+sidecar, cleanup pipeline, and admission authority. Missing YouTube licence metadata remains
+unknown rather than becoming either permission or a rejection; the source URL, uploader metadata,
+acquisition id, sidecar, and content hash remain the evidence trail.
+
+⚠ **The explicit kind is load-bearing at both boundaries.** A registered YouTube source once
+passed through the Archive collection enumerator because the fetcher accepted only one untyped
+discoverer; approved pull targets later re-inferred their downloader from URL. Both make the row's
+stored `kind` decorative and allow discovery and download to disagree. Registered work now carries
+the kind through enumeration and acquisition. URL inference remains only for a one-off URL an admin
+typed directly, where no registered source policy exists.
 
 The report is a **live measurement**, not a remembered fetch result: the filler status read counts
 the tracked catalog (including held clips already on disk) and measures the storage root against the same configured bounds the fetcher
@@ -5791,8 +5845,12 @@ watch for an `ffmpeg … thumbnail=n=` process. That is why V54's own shipping w
 ### Break & pod policy (per channel)
 The scheduler assembles realistic **ad pods**, not single random clips:
 - **Pod structure:** intro bumper → 2–4 matched commercials → return bumper, sized to the flex gap.
-- **Matching rules:** `era` to the block (90s sitcom block → 90s ads), `audience` to the channel (Saturday-morning cartoons → toy/cereal ads, not car insurance), `category` variety within a pod so it doesn't play three car ads back to back.
-- **Per-channel filler selection (`policy.filler`, the `FillerSelection`).** A channel narrows its own break content — the era/audience/category/kinds it draws from, plus specific clips to always include or never use — rather than every channel drawing the same global pool. It lives on `ChannelPolicy` (persisted in `policy_json`, no new column; edited on the channel page like the other programming rules). The shape: `era` (a year range, **both bounds honoured — V51f**, with THREE states because "unset" was never "any": **unset = INHERIT `policy.scope.era`**, applied live at every derivation rather than stamped once at create, so a 90s channel gets 90s ads out of the box and keeps getting them when its scope changes; **`{from: 0, to: 0}` = explicitly ANY era**, the escape hatch that did not exist before V51f; a set range = that window, matched with both ends. ⚠ **Before V51f only `from` was ever read** — `filler.Selection.Era` and `filler.Window.Era` were a single `int`, so 1990–1999 behaved identically to 1990–2035 while the UI rendered, canonicalised and inverted-range-validated a "To year" nobody consumed — and because the scope default was re-applied on every derivation rather than at create, clearing the field silently re-inherited, making "any era" unreachable on any channel that had a programming era. The presence-as-opt-in third state is the same pattern `AutoCurate` uses, for the same reason), `audience` (unset = any), `categories` (empty = any; a subset of the closed category set), `kinds` (empty = the default commercial+bumper+station_id; else the chosen subset), `pinned` (clip ids always included), `excluded` (clip ids never used). Every field is optional and an empty selection == the whole catalog (the prior behavior), so this is additive.
+- **Matching rules:** country/local-market eligibility first, then `era` to the block (90s sitcom block → 90s ads), `audience` to the channel (Saturday-morning cartoons → toy/cereal ads, not car insurance), `category` variety within a pod so it doesn't play three car ads back to back.
+- **Per-channel filler selection (`policy.filler`, the `FillerSelection`).** A channel narrows its own break content — the era/audience/category/kinds it draws from, plus specific clips to always include or never use — rather than every channel drawing the same global pool. It lives on `ChannelPolicy` (persisted in `policy_json`, no new column; edited on the channel page like the other programming rules). On the first approval of a generated Channel, one pure policy function seeds this operator-owned selection from the approved proposal: it copies grounded `scope.era`; maps `TV-Y`/`TV-Y7` to `kids`, `G`/`TV-G`/`PG`/`TV-PG` to `family`, and every broader or absent ceiling to the conservative `general` filler audience; and leaves categories and kinds empty unless a future approved policy carries their own grounded closed-vocabulary assertions. Program genres are not product taxonomy, and an unrestricted or late-night audience is never invented from missing intent. The seed is a handoff, not a live default: once `policy.filler` exists, refine, re-curation, and reconcile preserve the operator-owned value. The shape: `era` (a year range, **both bounds honoured — V51f**, with THREE states because "unset" was never "any": **unset = INHERIT `policy.scope.era`** at derivation; **`{from: 0, to: 0}` = explicitly ANY era**, the escape hatch that did not exist before V51f; a set range = that window, matched with both ends. A generated seed uses the third state and snapshots the approved scope era; an operator who later clears it deliberately returns to live scope inheritance. ⚠ **Before V51f only `from` was ever read** — `filler.Selection.Era` and `filler.Window.Era` were a single `int`, so 1990–1999 behaved identically to 1990–2035 while the UI rendered, canonicalised and inverted-range-validated a "To year" nobody consumed — and because the scope default was re-applied on every derivation rather than at create, clearing the field silently re-inherited, making "any era" unreachable on any channel that had a programming era. The presence-as-opt-in third state is the same pattern `AutoCurate` uses, for the same reason), `audience` (unset = any), `categories` (empty = any; a subset of the closed category set), `kinds` (empty = the default commercial+bumper+station_id; else the chosen subset), `pinned` (clip hashes always included), `excluded` (clip hashes never used). Every field remains optional for an operator-authored selection; the generated seed is what prevents missing approved audience intent from accidentally becoming the whole catalog.
+- **Geography in that selection is inherited but never relaxed.** Optional `geography` carries an
+  ISO country and optional normalized local market. Omission inherits Installation geography;
+  presence may choose a market but cannot change a configured Installation country. This field is
+  applied before `pinned`, so a pin cannot turn a foreign or out-of-market Clip into eligible content.
 - **How the selection reaches assembly.** The theme filter is applied as a **catalog pre-filter** (`[]Clip → []Clip` by category + kinds) plus `Window.Era`/`Window.Audience` from the selection — replacing the previously **hardcoded** `PodEra→0` and empty audience. `excluded` ids are pre-seeded into the assembler's no-repeat set (`used`), which already excludes at every pick site, so exclusion needs no ladder change. `pinned` ids are placed as a **top-priority pool** at the front of the commercial fill before the ladder takes the rest (the one genuinely new assembly step, since the ladder ranks pools and has no force-include). If a clip is both pinned and excluded, **exclude wins** (the safe default). *(Historical note: the assembler once passed `general` as the channel audience under a comment claiming it "matches broadly" — the opposite of the filter's actual behavior — so every channel's filler-list held only bumpers + the fallback card, §10's central feature silently doing nothing; found by building the §12 pod preview. The per-channel selection above is what finally wires real era/audience through.)*
 - **Density:** target break length and breaks-per-hour; min/max filler duration. `FILLER_BREAK_DURATION` defaults to 5m and may be overridden per channel as `policy.breakDuration`; it hot-applies on the next reconcile. The authored minimum is 30s because Tunarr silently clamps smaller flex gaps to 30s, which would otherwise make Loomarr's preview and guide disagree with playout. Zero never means off here — `policy.breaksPerHour = 0` is the one off switch. **For internal playout the target is a ceiling, not airtime that filler owns:** reconcile caps every keyless commercial-break slot at the deterministic pod's playable-file duration. If two selected commercials total 40s, the following programme begins at 40s; Loomarr does not retain the original 5m slot and draw a card for the remaining 4m20s. This cap may therefore produce an actual internal break shorter than the 30s authoring floor when that is all the selected media contains. Keyed `SlotFiller` entries are unavailable-program placeholders and are never contracted. `FILLER_POD_MAX` is a preferred clip-count ceiling, but break length wins: the adapter estimates the clips required from the median duration of the tightest matching pool and raises the limit when necessary, so a 5m target is not truncated to four 30s adverts. The assembled pool window is `max(10m, resolved break length)` so long custom breaks are not clipped by the pool's former fixed size. **Break placement (the scheduler's job, §9):** the scheduler interleaves break slots between program slots at `FILLER_BREAKS_PER_HOUR` — a break roughly every `60 / breaks-per-hour` minutes of accumulated program runtime (default 4/hr ⇒ ~every 15 min). Because Tunarr only inserts filler at **program boundaries** (below), breaks snap to the nearest boundary: walk the ordered program slots summing durations, and when the running total crosses the next break threshold, emit a `SlotFiller` break *after* the current program and reset the accumulator. This is duration-aware — a 90-min movie gets several breaks, a 22-min sitcom about one — and the reconcile's `PodAdapter.Assemble` bridge calls the pure `filler.Assemble` over the matched catalog. **Breaks are only interleaved when a filler pool actually exists** (the reconcile builds the pool up front and passes `BreaksPerHour 0` when it's empty / no `FILLER_DIR` / no `PodFiller`): inserting break gaps with no clips to fill them leaves empty flex that Tunarr renders as large **channel-named blocks** in the guide — a promise of commercials it can't keep. No pool ⇒ programs play **back-to-back** (still "never dead air"). Self-healing: once clips land, the next reconcile sees a pool and re-inserts breaks. Deterministic: the same lineup + seed yields the same break positions.
 
@@ -6064,6 +6122,15 @@ no user-visible draft stage. A saved provider may be edited, enabled or disabled
 an optional test from the same row. SMTP is a provider in this list and has no separate settings
 card, test panel, or setup path.
 
+The former `notifications.email.*` and `notifications.smtp.*` settings are accepted only as an
+upgrade migration source. On the first startup with this migration, Loomarr durably records that
+it inspected the legacy source and, when values exist and no SMTP destination already exists,
+creates one encrypted SMTP destination from them. An existing SMTP destination always wins. The
+legacy keys are absent from the Settings API and generated configuration reference, cannot be
+edited, and are never consulted by routing, delivery, validation, readiness, or testing after that
+one inspection. Deleting the migrated provider therefore does not recreate it on a later boot; the
+administrator adds another SMTP provider through the common workflow if one is wanted.
+
 The server owns a closed **Provider definition** for each Delivery means: display name, field keys,
 labels, input kinds, requiredness, safe defaults, sensitivity, validation, and supported events. A
 write submits values for those defined field keys through one settings object. The server rejects
@@ -6073,6 +6140,15 @@ configuration. Reads return ordinary values plus per-secret configured flags, ne
 On edit, omission of a sensitive field preserves it and an explicit clear action removes it. The UI
 may use the returned definition to render provider-specific controls, but it never receives or
 reconstructs the storage classification.
+
+MQTT follows that same provider contract rather than hiding connection behavior in the adapter. Its
+form accepts an optional client id; blank derives the same stable id from the destination on every
+connection. The broker URL selects plain `mqtt://` or verified `mqtts://`. For `mqtts://`, an
+administrator may add a PEM CA certificate and a paired PEM client certificate/private key for
+mutual TLS. Certificate material is write-only credential data, TLS is at least 1.2, and Loomarr
+always verifies the broker certificate and hostname. TLS material on `mqtt://`, an unpaired client
+certificate/key, invalid PEM, or an invalid client id is rejected before save. There is no
+certificate-verification bypass.
 
 The classified credential map is serialized and sealed as one record-bound envelope before it
 crosses the database port. The destination table stores only that opaque envelope; it has no
@@ -6091,12 +6167,18 @@ Browser Push is the provider-led exception to ordinary text fields. Choosing it 
 provider** shows an explicit **Enable this browser** action; only that user gesture may ask the user
 agent for notification permission and create a Push subscription. Loomarr binds the endpoint and
 its `p256dh`/authentication values to the authenticated person, encrypts all three in the ordinary
-destination credential envelope, and returns only a device label and configured state. The service
-worker always displays a notification, uses a deliberately low-detail locked-screen preview, and
-opens only a server-produced same-origin route. Unsubscribe removes both the browser subscription
-and the destination. HTTP 404/410 from the Push service disables the destination so it cannot form
-a retry storm. One installation VAPID P-256 identity is generated idempotently, its private key is
-protected as secret material, and only its public key crosses the API for `PushManager.subscribe`.
+destination credential envelope, and returns only a device label and configured state. A one-way,
+non-secret endpoint fingerprint is stored separately but never returned; its only purposes are to
+make `(person, subscription)` unique and to match a deletion to the browser making that request.
+Enabling an existing subscription updates its one destination instead of creating another route.
+The service worker always displays a notification, uses a deliberately low-detail locked-screen
+preview, and opens only a server-produced same-origin route. Deleting a row always removes that
+destination. The request may carry the current browser's endpoint in its body; the response tells
+the client to call `PushSubscription.unsubscribe` only when that endpoint belongs to the selected
+row, so deleting another device never unsubscribes the browser in front of the operator. HTTP
+404/410 from the Push service disables the destination so it cannot form a retry storm. One
+installation VAPID P-256 identity is generated idempotently, its private key is protected as secret
+material, and only its public key crosses the API for `PushManager.subscribe`.
 
 Proposal approval records requester provenance for every approved Title and the intent-bound Channel
 inside the same local transaction as the decision. That durable `(reference, person)` relation is the
@@ -7275,12 +7357,15 @@ volume compromise containing both database and installation key is outside this 
 | `TUNARR_TRANSCODE_CONFIG_ID` | Tunarr transcode-config uuid created channels reference (Phase-0: channel create requires a valid `transcodeConfigId`; empty → resolve the instance `Default` via `GET /api/transcode_configs`, §9) |
 | `SERVER_PUBLIC_URL` | **Re-scoped by §9.1 — no longer icon-only, and no longer Advanced.** Loomarr's own address as your media server *and* Tunarr reach it (e.g. `http://loomarr:8080`). Internal playout serves **every stream segment** from this base, so a wrong value means channels appear in the guide and never play. Still also used for **uploaded** channel icons — the stored icon URL is built from this, never from request headers (Host-injection-safe). Deliberately ONE key rather than a second `playout.public_url`: it is genuinely the server's own address, both callers need the same value, and two keys could drift. Empty → a relative `/v1/channels/{id}/icon` URL for icons (works when Tunarr shares Loomarr's origin); internal playout requires it set. |
 | `ACCESS_PUBLIC_URL` | Empty by default. The global `access.public_url` setting is the absolute `http`/`https` browser origin recipients can reach (for example `https://loomarr.example.test`), used to construct Invitation and local-recovery links (§11). Its General editor is labelled **Recipient-facing Loomarr address** and, when the setting is empty, stages the current browser origin as the default. The operator saves that value or changes it when recipients reach Loomarr elsewhere. The backend never infers the value from request headers, so async email delivery always uses explicit persisted configuration. It is intentionally distinct from `SERVER_PUBLIC_URL`, which may be a container-only machine-client address. Empty suppresses email and shareable-link generation with an actionable Settings → General link; it does not prevent direct account creation/import or storing an Invitation reservation. Notifications consumes its readiness state but does not own its editor. |
-| `NOTIFICATIONS_EMAIL_ENABLED` | `false`. Enables the email Delivery means only when the global application URL, SMTP host, and sender address are also complete. Disabled or incomplete email suppresses delivery without rolling back an Invitation; QR/copy remain available when `ACCESS_PUBLIC_URL` is configured. |
-| `NOTIFICATIONS_SMTP_HOST` / `NOTIFICATIONS_SMTP_PORT` | Empty / `587`. The outbound SMTP submission endpoint. Host is required when email is enabled; port is validated `1..65535`. |
-| `NOTIFICATIONS_SMTP_SECURITY` | `starttls` (default) / `tls` / `none`. `starttls` requires a successful STARTTLS upgrade and never falls back to cleartext; `tls` is implicit TLS. `none` is an explicit operator choice for a trusted local relay and is labelled insecure. Certificate verification is never disabled by a setting. |
-| `NOTIFICATIONS_SMTP_USERNAME` / `NOTIFICATIONS_SMTP_PASSWORD` | Empty / *(secret)*. Empty username means an unauthenticated relay and requires an empty password. Otherwise the adapter discovers the strongest mutually supported mechanism. The password is replace-only and covered by every config-secret redaction rule. |
-| `NOTIFICATIONS_EMAIL_FROM_ADDRESS` / `NOTIFICATIONS_EMAIL_FROM_NAME` | Empty / `Loomarr`. A single validated mailbox and its display name. The address is required when email is enabled; neither value is recipient-controlled. |
 | `JOB_NOTIFICATION_DELIVERY_SCHEDULE` | `*/15 * * * * *`. How often the provider-neutral worker claims queued account-message Delivery attempts. The worker drains a bounded batch per run; retry availability remains the fixed policy above rather than another setting. |
+
+**One-time SMTP upgrade input (not application settings).** The legacy environment variables
+`NOTIFICATIONS_EMAIL_ENABLED`, `NOTIFICATIONS_SMTP_HOST`, `NOTIFICATIONS_SMTP_PORT`,
+`NOTIFICATIONS_SMTP_SECURITY`, `NOTIFICATIONS_SMTP_USERNAME`, `NOTIFICATIONS_SMTP_PASSWORD`,
+`NOTIFICATIONS_EMAIL_FROM_ADDRESS`, and `NOTIFICATIONS_EMAIL_FROM_NAME` retain their former parsing
+rules only for the one upgrade inspection described in §11. They do not pin, recreate, or update a
+provider after that inspection. New installations configure SMTP only through **Settings →
+Notifications → Add provider**.
 
 **Playout (§9.1 — added with internal playout).**
 

@@ -80,6 +80,18 @@ const FieldInput = ({
             </option>
           ))}
         </select>
+      ) : field.kind === "textarea" ? (
+        <textarea
+          id={inputId}
+          className="min-h-28 rounded-md border border-input bg-transparent px-3 py-2 font-mono text-sm"
+          value={value}
+          disabled={cleared}
+          autoComplete={field.sensitive ? "new-password" : undefined}
+          spellCheck={false}
+          aria-invalid={error ? "true" : undefined}
+          aria-describedby={error ? errorId : undefined}
+          onChange={(event) => onChange(event.target.value)}
+        />
       ) : (
         <Input
           id={inputId}
@@ -550,21 +562,7 @@ const ProviderRow = ({
       },
     },
   });
-  const remove = notificationsApi.useNotificationProvidersDelete({
-    mutation: {
-      onSuccess: () => {
-        if (provider.type === "web_push" && "serviceWorker" in navigator) {
-          void navigator.serviceWorker
-            .getRegistration()
-            .then((registration) => registration?.pushManager.getSubscription())
-            .then((subscription) => subscription?.unsubscribe());
-        }
-        setConfirmingDelete(false);
-        setDeleteConfirmation("");
-        void refresh();
-      },
-    },
-  });
+  const remove = notificationsApi.useNotificationProvidersDelete();
   const test = notificationsApi.useNotificationProvidersTest({
     mutation: {
       onSuccess: (response) => {
@@ -573,6 +571,28 @@ const ProviderRow = ({
       },
     },
   });
+
+  const deleteProvider = async () => {
+    let currentSubscription: PushSubscription | null | undefined;
+    if (provider.type === "web_push" && "serviceWorker" in navigator) {
+      currentSubscription = await navigator.serviceWorker
+        .getRegistration()
+        .then((registration) => registration?.pushManager.getSubscription())
+        .catch(() => undefined);
+    }
+    const response = await remove.mutateAsync({
+      id: provider.id,
+      data: currentSubscription?.endpoint
+        ? { currentBrowserEndpoint: currentSubscription.endpoint }
+        : undefined,
+    });
+    if (response.status === 200 && response.data.unsubscribeCurrentBrowser) {
+      await currentSubscription?.unsubscribe().catch(() => false);
+    }
+    setConfirmingDelete(false);
+    setDeleteConfirmation("");
+    await refresh();
+  };
 
   if (editing && definition) {
     return (
@@ -678,7 +698,7 @@ const ProviderRow = ({
                 variant="destructive"
                 size="sm"
                 disabled={deleteConfirmation !== provider.label || remove.isPending}
-                onClick={() => remove.mutate({ id: provider.id })}
+                onClick={() => void deleteProvider().catch(() => undefined)}
               >
                 Delete provider
               </Button>

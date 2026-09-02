@@ -98,8 +98,9 @@ type Window struct {
 	Seed int64
 	// Era + Audience are the block's target (90s cartoons → 1990s + kids). Era is a RANGE
 	// (§10, V51f) — before that it was one int and the "To year" the UI collected was discarded.
-	Era      EraRange
-	Audience Audience
+	Era       EraRange
+	Audience  Audience
+	Geography Geography
 	// GapMs is the flex gap to fill.
 	GapMs int64
 	// BreaksMax caps clips per pod (FILLER_POD_MAX, §15).
@@ -124,6 +125,8 @@ type Window struct {
 
 // Policy tunes assembly (from §15 FILLER_* + per-channel pod policy).
 type Policy struct {
+	// Geography is the live Installation default. Empty preserves legacy behaviour.
+	Geography Geography
 	// MinClipMs/MaxClipMs bound which clips are eligible (density, §10) — wired from
 	// `filler.min_clip_seconds`/`filler.max_clip_seconds` (§15, V51f).
 	//
@@ -187,6 +190,9 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 		used = map[string]bool{}
 	}
 	rng := rand.New(rand.NewSource(w.Seed))
+
+	// The outer boundary: no pin or relaxed ladder rung may bypass geography.
+	catalog = filterGeography(catalog, effectiveGeography(w.Geography, policy.Geography))
 
 	// Per-channel selection (§10), all no-ops when unset:
 	//  - EXCLUDE: seed the no-repeat set with the excluded ids. Because `used` is

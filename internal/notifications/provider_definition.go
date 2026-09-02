@@ -17,6 +17,7 @@ const (
 	ProviderFieldNumber   ProviderFieldKind = "number"
 	ProviderFieldSelect   ProviderFieldKind = "select"
 	ProviderFieldToggle   ProviderFieldKind = "toggle"
+	ProviderFieldTextarea ProviderFieldKind = "textarea"
 )
 
 type ProviderFieldOption struct {
@@ -74,7 +75,7 @@ func (d ProviderDefinition) Validate() error {
 		}
 		switch field.Kind {
 		case ProviderFieldText, ProviderFieldPassword, ProviderFieldURL, ProviderFieldNumber,
-			ProviderFieldSelect, ProviderFieldToggle:
+			ProviderFieldSelect, ProviderFieldToggle, ProviderFieldTextarea:
 		default:
 			return fmt.Errorf("provider %q field %q has invalid kind %q", d.Means, field.Key, field.Kind)
 		}
@@ -249,6 +250,8 @@ var providerDefinitions = []ProviderDefinition{
 		Means: MeansMQTT, Name: "MQTT", Topics: sharedProviderTopics,
 		Fields: []ProviderField{
 			field("brokerUrl", "Broker URL", ProviderFieldPassword, true, true),
+			{Key: "clientId", Label: "Client ID", Kind: ProviderFieldText,
+				Description: "Optional. Loomarr derives a stable client ID when blank."},
 			field("username", "Username", ProviderFieldText, false, false),
 			field("password", "Password", ProviderFieldPassword, false, true),
 			field("baseTopic", "Base topic", ProviderFieldText, true, false),
@@ -256,6 +259,12 @@ var providerDefinitions = []ProviderDefinition{
 				{Value: "0", Label: "At most once"}, {Value: "1", Label: "At least once"},
 			}},
 			{Key: "retain", Label: "Retain messages", Kind: ProviderFieldToggle, Default: "false"},
+			{Key: "tlsCaCertificate", Label: "TLS CA certificate", Kind: ProviderFieldTextarea, Sensitive: true,
+				Description: "Optional PEM certificate authority for a private broker."},
+			{Key: "tlsClientCertificate", Label: "TLS client certificate", Kind: ProviderFieldTextarea, Sensitive: true,
+				Description: "Optional PEM certificate for mutual TLS; requires a client key."},
+			{Key: "tlsClientKey", Label: "TLS client key", Kind: ProviderFieldTextarea, Sensitive: true,
+				Description: "Optional PEM private key for mutual TLS; requires a client certificate."},
 		},
 	},
 	webhookDefinition(MeansSlack, "Slack", "Slack webhook URL"),
