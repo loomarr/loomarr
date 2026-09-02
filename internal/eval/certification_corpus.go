@@ -18,9 +18,9 @@ import (
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
-const certificationManifestPath = "testdata/planner-certification-v2.json"
+const certificationManifestPath = "testdata/planner-certification-v3.json"
 
-//go:embed testdata/planner-certification-v1.json testdata/planner-certification-v2.json testdata/planner-catalog-v1.json
+//go:embed testdata/planner-certification-v1.json testdata/planner-certification-v2.json testdata/planner-certification-v3.json testdata/planner-catalog-v1.json
 var certificationFiles embed.FS
 
 // CertificationCorpus is the immutable, held-out planner-model corpus contract.
@@ -35,6 +35,7 @@ type CertificationCorpus struct {
 	HardMetrics           []string                `json:"hardMetrics"`
 	QualityMetrics        []string                `json:"qualityMetrics"`
 	Thresholds            CertificationThresholds `json:"thresholds"`
+	Selection             CertificationSelection  `json:"selection"`
 	AllowedTrainingSplits []string                `json:"allowedTrainingSplits"`
 	Fixture               CertificationFixture    `json:"fixture"`
 	Cases                 []CertificationCase     `json:"cases"`
@@ -56,6 +57,7 @@ func CertificationRunnerConfig(config RunnerConfig) (RunnerConfig, error) {
 		HardMetrics:          append([]string(nil), corpus.HardMetrics...),
 		QualityMetrics:       append([]string(nil), corpus.QualityMetrics...),
 		Thresholds:           corpus.Thresholds,
+		Selection:            corpus.Selection,
 	}
 	return config, nil
 }
@@ -63,6 +65,20 @@ func CertificationRunnerConfig(config RunnerConfig) (RunnerConfig, error) {
 type CertificationFixture struct {
 	Path   string `json:"path"`
 	SHA256 string `json:"sha256"`
+}
+
+type certificationCorpusExtension struct {
+	SchemaVersion       int                     `json:"schemaVersion"`
+	Version             string                  `json:"version"`
+	Base                CertificationFixture    `json:"base"`
+	ScorerVersion       string                  `json:"scorerVersion"`
+	QualityMetrics      []string                `json:"qualityMetrics"`
+	Thresholds          CertificationThresholds `json:"thresholds"`
+	Selection           CertificationSelection  `json:"selection"`
+	ProposalExpectation string                  `json:"proposalExpectation"`
+	PolicyCeilings      map[string]string       `json:"policyCeilings"`
+	RecoveryCases       []string                `json:"recoveryCases"`
+	RepairCases         []string                `json:"repairCases"`
 }
 
 type CertificationCase struct {
@@ -100,14 +116,35 @@ type certificationFixtureResponse struct {
 // LoadEmbeddedCertificationCorpus verifies and returns the corpus manifest.
 // A digest mismatch or missing fixture case fails before any provider is called.
 func LoadEmbeddedCertificationCorpus() (CertificationCorpus, error) {
-	manifestBlob, err := certificationFiles.ReadFile(certificationManifestPath)
+	extensionBlob, err := certificationFiles.ReadFile(certificationManifestPath)
 	if err != nil {
 		return CertificationCorpus{}, fmt.Errorf("read certification manifest: %w", err)
 	}
-	var corpus CertificationCorpus
-	if err := json.Unmarshal(manifestBlob, &corpus); err != nil {
+	var extension certificationCorpusExtension
+	if err := json.Unmarshal(extensionBlob, &extension); err != nil {
 		return CertificationCorpus{}, fmt.Errorf("decode certification manifest: %w", err)
 	}
+	manifestBlob, err := certificationFiles.ReadFile(extension.Base.Path)
+	if err != nil {
+		return CertificationCorpus{}, fmt.Errorf("read certification base manifest: %w", err)
+	}
+	baseDigest := sha256.Sum256(manifestBlob)
+	if hex.EncodeToString(baseDigest[:]) != extension.Base.SHA256 {
+		return CertificationCorpus{}, fmt.Errorf("certification base manifest digest mismatch")
+	}
+	var corpus CertificationCorpus
+	if err := json.Unmarshal(manifestBlob, &corpus); err != nil {
+		return CertificationCorpus{}, fmt.Errorf("decode certification base manifest: %w", err)
+	}
+	if err := validateCertificationExtension(extension, corpus); err != nil {
+		return CertificationCorpus{}, err
+	}
+	corpus.SchemaVersion = extension.SchemaVersion
+	corpus.Version = extension.Version
+	corpus.ScorerVersion = extension.ScorerVersion
+	corpus.QualityMetrics = append([]string(nil), extension.QualityMetrics...)
+	corpus.Thresholds = extension.Thresholds
+	corpus.Selection = extension.Selection
 	fixtureBlob, err := certificationFiles.ReadFile(corpus.Fixture.Path)
 	if err != nil {
 		return CertificationCorpus{}, fmt.Errorf("read certification fixture: %w", err)
@@ -132,6 +169,50 @@ func LoadEmbeddedCertificationCorpus() (CertificationCorpus, error) {
 	return corpus, nil
 }
 
+func validateCertificationExtension(extension certificationCorpusExtension, corpus CertificationCorpus) error {
+	if extension.SchemaVersion <= 0 || extension.Version == "" || extension.ScorerVersion == "" {
+		return fmt.Errorf("certification extension identity is incomplete")
+	}
+	if extension.ProposalExpectation != "exact_fixture_candidates_or_declared_abstention" {
+		return fmt.Errorf("unsupported proposal expectation %q", extension.ProposalExpectation)
+	}
+	if len(extension.QualityMetrics) == 0 {
+		return fmt.Errorf("certification extension quality metrics are empty")
+	}
+	if err := validateSelection(extension.Selection); err != nil {
+		return fmt.Errorf("certification extension selection: %w", err)
+	}
+	known := make(map[string]bool, len(corpus.Cases))
+	for _, c := range corpus.Cases {
+		known[c.ID] = true
+	}
+	validateIDs := func(label string, ids []string) error {
+		seen := make(map[string]bool, len(ids))
+		for _, id := range ids {
+			if !known[id] {
+				return fmt.Errorf("certification extension %s references unknown case %q", label, id)
+			}
+			if seen[id] {
+				return fmt.Errorf("certification extension %s duplicates case %q", label, id)
+			}
+			seen[id] = true
+		}
+		return nil
+	}
+	policyIDs := make([]string, 0, len(extension.PolicyCeilings))
+	for id := range extension.PolicyCeilings {
+		policyIDs = append(policyIDs, id)
+	}
+	for label, ids := range map[string][]string{
+		"policy ceilings": policyIDs, "recovery cases": extension.RecoveryCases, "repair cases": extension.RepairCases,
+	} {
+		if err := validateIDs(label, ids); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // CertificationCases projects the frozen manifest onto Runner's public Case
 // seam. Every case starts with the two production structural bounds and the
 // unsupported-id hard gate; narrower expectations can deepen individual cases
@@ -150,10 +231,36 @@ func CertificationCases() ([]Case, error) {
 		return nil, fmt.Errorf("decode certification fixture: %w", err)
 	}
 	operationByCase := make(map[string]string, len(fixture.Cases))
+	keysByCase := make(map[string][]provision.Key, len(fixture.Cases))
 	for _, c := range fixture.Cases {
 		if len(c.Responses) > 0 {
 			operationByCase[c.ID] = c.Responses[0].Operation
 		}
+		for _, response := range c.Responses {
+			for _, candidate := range response.Candidates {
+				key, keyErr := candidate.Key()
+				if keyErr != nil {
+					return nil, fmt.Errorf("certification fixture case %q has invalid candidate: %w", c.ID, keyErr)
+				}
+				keysByCase[c.ID] = append(keysByCase[c.ID], key)
+			}
+		}
+	}
+	extensionBlob, err := certificationFiles.ReadFile(certificationManifestPath)
+	if err != nil {
+		return nil, fmt.Errorf("read certification manifest: %w", err)
+	}
+	var extension certificationCorpusExtension
+	if err := json.Unmarshal(extensionBlob, &extension); err != nil {
+		return nil, fmt.Errorf("decode certification manifest: %w", err)
+	}
+	recoveryCases := make(map[string]bool, len(extension.RecoveryCases))
+	for _, id := range extension.RecoveryCases {
+		recoveryCases[id] = true
+	}
+	repairCases := make(map[string]bool, len(extension.RepairCases))
+	for _, id := range extension.RepairCases {
+		repairCases[id] = true
 	}
 	cases := make([]Case, 0, len(corpus.Cases)*6)
 	for _, frozen := range corpus.Cases {
@@ -161,11 +268,19 @@ func CertificationCases() ([]Case, error) {
 			return nil, fmt.Errorf("certification case %q has a blank Intent", frozen.ID)
 		}
 		base := Case{
-			Name:                     frozen.ID,
-			Intent:                   Intent{Description: frozen.Description},
-			NoFabrication:            true,
-			ExpectGroundedCompletion: !frozen.AllowAbstention,
-			ExpectedToolOperation:    operationByCase[frozen.FixtureCase],
+			Name:                       frozen.ID,
+			Intent:                     Intent{Description: frozen.Description},
+			NoFabrication:              true,
+			ExpectGroundedCompletion:   !frozen.AllowAbstention,
+			ExpectedToolOperation:      operationByCase[frozen.FixtureCase],
+			ExpectedPolicyCeiling:      extension.PolicyCeilings[frozen.ID],
+			ExpectedProposalKeys:       append([]provision.Key(nil), keysByCase[frozen.FixtureCase]...),
+			ExpectedProposalAbstention: frozen.AllowAbstention,
+			RecoveryExpected:           recoveryCases[frozen.ID],
+			TrackRepairRecovery:        repairCases[frozen.ID],
+		}
+		if frozen.AllowAbstention {
+			base.ExpectedProposalKeys = nil
 		}
 		cases = append(cases, base)
 		for _, variant := range frozen.Variants {

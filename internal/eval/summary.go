@@ -37,6 +37,10 @@ func HumanSummary(card Scorecard) string {
 			card.Assessment.GroundedCompletionRate*100,
 			card.Assessment.CorrectToolOperationRate*100,
 			card.Assessment.SchemaValidityRate*100)
+		fmt.Fprintf(&b, "Policy accuracy: %.1f%%; proposal quality: %.1f%%; recovery: %.1f%%.\n",
+			card.Assessment.PolicyAccuracyRate*100,
+			card.Assessment.ProposalQualityRate*100,
+			card.Assessment.RecoveryRate*100)
 		performance := card.Assessment.Performance
 		fmt.Fprintf(&b, "Latency p50/p95: %s / %s; p95 tool calls: %d.\n",
 			time.Duration(performance.GeneratorLatencyP50Nanos),

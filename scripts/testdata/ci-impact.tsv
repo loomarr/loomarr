@@ -85,7 +85,7 @@ dev-compose	docker/compose.dev.yaml	contracts,agent
 production-compose	docker/compose.yaml	contracts,go,go_full
 combined-leaf-and-docs	internal/suggest/score.go;docs/dev/testing.md	contracts,go,postgres,image,docs
 filler-eval-corpus	internal/fillereval/corpus/seed-v1.json	contracts,go
-planner-eval-corpus	internal/eval/testdata/planner-certification-v1.json;internal/eval/testdata/planner-catalog-v1.json	contracts,go
+planner-eval-corpus	internal/eval/testdata/planner-certification-v1.json;internal/eval/testdata/planner-certification-v2.json;internal/eval/testdata/planner-certification-v3.json;internal/eval/testdata/planner-catalog-v1.json	contracts,go
 filler-corpus-pilot	internal/fillercorpus/corpus/pilot/prelinger.json	contracts,go
 filler-corpus-nasa	internal/fillercorpus/corpus/pilot/nasa.json	contracts,go
 filler-corpus-cdc	internal/fillercorpus/corpus/pilot/cdc.json;internal/fillercorpus/corpus/seeds/cdc.json	contracts,go
