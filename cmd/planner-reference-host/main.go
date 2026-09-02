@@ -99,12 +99,16 @@ func readEvidenceDirectory(root string) (map[string][]byte, error) {
 	return result, nil
 }
 
-func readBoundedFile(path string, limit int64) ([]byte, error) {
+func readBoundedFile(path string, limit int64) (raw []byte, resultErr error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); resultErr == nil && closeErr != nil {
+			resultErr = fmt.Errorf("close input: %w", closeErr)
+		}
+	}()
 	info, err := file.Stat()
 	if err != nil {
 		return nil, err
@@ -112,7 +116,7 @@ func readBoundedFile(path string, limit int64) ([]byte, error) {
 	if !info.Mode().IsRegular() || info.Size() < 1 || info.Size() > limit {
 		return nil, fmt.Errorf("file must be regular and 1..%d bytes", limit)
 	}
-	raw, err := io.ReadAll(io.LimitReader(file, limit+1))
+	raw, err = io.ReadAll(io.LimitReader(file, limit+1))
 	if err != nil {
 		return nil, err
 	}
