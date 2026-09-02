@@ -1329,16 +1329,25 @@ host-command execution remains an edge adapter and is not part of that interface
 the scorecard SHA-256, schema/corpus/profile and generator identity; immutable Ollama artifact digest;
 source repository and revision; GGUF filename and SHA-256; quantization, context, template,
 Modelfile, and license identities; Ollama and macOS versions; architecture, hardware model, chip, and
-physical unified memory; benchmark start/end times; declared sampling and cold/warm protocol; and
-before/after resident-model evidence. The published manifest retains only normalized facts and
-SHA-256 identities for bounded raw captures, never local paths or unrelated resident-model details.
+physical unified memory; benchmark start/end times; declared sampling and cold-started measured-suite
+protocol; and before/after resident-model evidence. The fixed raw evidence set is the Ollama version,
+inventory, show response, and cold-before/after residency responses; the pinned Hugging Face model
+metadata retained during authorized acquisition; a local GGUF SHA-256 result; `sw_vers`, `uname`,
+`sysctl hw.memsize`, and `system_profiler` output. Publication parses those bytes and cross-checks every
+normalized artifact, runtime, host, and residency fact; merely matching a declared raw-file digest is
+insufficient. The published manifest retains only normalized facts and SHA-256 identities for bounded
+raw captures, never local paths or unrelated resident-model details.
 
 Missing or mutable-only model identity, an unpinned source revision, a tag/digest mismatch, a
 scorecard for another model or profile, inconsistent quantization/context, invalid host memory or
-architecture, absent cold/warm evidence, malformed or trailing JSON, an over-bound input, or a raw
-capture digest mismatch fails before publication. The hermetic test adapter supplies fixed captures;
-the future macOS adapter may collect `ollama` inventory/show/residency, runtime version, `sw_vers`,
-architecture, and `system_profiler` evidence, but it never pulls a model or starts inference. The
+architecture, selected-model residency before the run, missing residency after it, malformed or
+trailing JSON, an over-bound input, a raw capture digest mismatch, or raw evidence that contradicts
+the normalized capture fails before publication. The cold-start protocol means one measured suite is
+started with the selected model absent; the suite's configured trials remain the scorecard's measured
+trials, and publication does not invent unreported inference or warm-up runs. The hermetic test adapter
+supplies fixed captures; the future macOS adapter may collect local Ollama and host evidence and
+consume source metadata retained during an already-authorized acquisition, but it never pulls a model,
+contacts a model provider, or starts inference. The
 manifest is necessary provenance for #831, not model certification itself, and grants no Unsloth,
 LoRA/QLoRA, Runpod, distribution, production, or spend authority. All external compute and API work
 continues to share the current **$20 aggregate ceiling**; unused headroom is not a GPU allocation.
