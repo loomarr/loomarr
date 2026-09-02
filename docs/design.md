@@ -7862,8 +7862,13 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   the default edit-loop, task-start, or pre-publication ritual. Normal local and agent work uses
   focused tests while editing, then classifies the changed paths once and runs the affected evidence
   through the tool-neutral `make verify BASE=<base>`; `make agent-verify` remains a compatibility
-  alias. The
-  pull-request fast lane and authoritative merge queue then provide the protected remote evidence.
+  alias. The command reports the complete CI impact separately from the gates it executes locally
+  and the specialized or platform-dependent gates left to protected CI; its final success line names
+  only completed local gates. A newly selected impact key without an explicit disposition fails
+  closed. `go_full` is an executable local scope modifier and reports a complete Go package set;
+  shared-client changes run `make clients` locally, while Postgres, browser-container, native-client,
+  and release-image gates remain explicit specialized or protected evidence. The pull-request fast
+  lane and authoritative merge queue then provide the protected remote evidence.
   A maintainer requests `make verify SCOPE=all` deliberately when auditing the complete repository, changing
   the gate machinery itself, or diagnosing a classifier boundary. CI may run its
   `check-static` contract half and its race-policy-aware `test` half as parallel jobs, and may shard

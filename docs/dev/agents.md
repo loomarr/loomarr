@@ -166,7 +166,10 @@ make agent-start TASK=filler-refresh CLAIMS=openapi-client
 
 During implementation, run focused tests for the edited surface. Before publication,
 `make verify BASE=origin/main` reports the changed-file scope and runs affected local evidence through
-the fail-closed CI classifier. The PR fast lane and merge queue provide the protected final evidence.
+the fail-closed CI classifier. Its output distinguishes the complete CI impact, locally executed
+gates, protected gates, and the local gates that actually completed; it never presents protected
+Postgres, browser, native-client, or release-image evidence as a local success. The PR fast lane and
+merge queue provide the protected final evidence.
 Run `make verify SCOPE=all` or `make agent-baseline` only for a deliberately requested complete-repository audit,
 changes to classifier/gate machinery, or boundary diagnosis—not merely because a worktree is new.
 
