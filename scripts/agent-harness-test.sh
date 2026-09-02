@@ -312,7 +312,23 @@ printf '%s\n' "$verify_output" | grep -q 'protected gates: contracts,postgres,im
 printf '%s\n' "$verify_output" | grep -q 'affected Go packages:'
 printf '%s\n' "$verify_output" | grep -q 'completed local gates: go'
 grep -q 'make -C .* fmt tags-verify' "$verify_log"
+grep -q 'make -C .* lint PKG=.*internal/app.*internal/suggest' "$verify_log"
 grep -q 'go test -race .*internal/app.*internal/suggest' "$verify_log"
+
+# A lint finding is part of the scoped verdict, not advisory output. Simulate the exact errcheck
+# class that escaped #914's local verifier and require its non-zero status to reach the caller.
+# shellcheck disable=SC2016 # VERIFY_LOG expands when the generated fixture executes.
+printf '%s\n' '#!/usr/bin/env sh' 'echo "make $*" >> "$VERIFY_LOG"' \
+	'case " $* " in *" lint "*) echo "probe.go:1: unchecked close (errcheck)" >&2; exit 1;; esac' > "$verify_bin/make"
+if PATH="$verify_bin:$PATH" REAL_GO="$real_go" VERIFY_LOG="$verify_log" \
+	BASE=HEAD LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" verify >/dev/null 2>"$TMP-wt/verify-failure"; then
+	echo 'agent-harness-test: scoped verification ignored a lint failure' >&2
+	exit 1
+fi
+grep -q 'errcheck' "$TMP-wt/verify-failure"
+# shellcheck disable=SC2016 # VERIFY_LOG expands when the generated fixture executes.
+printf '%s\n' '#!/usr/bin/env sh' 'echo "make $*" >> "$VERIFY_LOG"' > "$verify_bin/make"
+chmod +x "$verify_bin/make"
 rm -rf "$TMP/internal"
 
 # Cross-cutting Go inputs make go_full an observable local scope modifier. The local success line

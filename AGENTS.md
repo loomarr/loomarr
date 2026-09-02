@@ -66,7 +66,8 @@ files; the claim identifies the real seam where concurrent work would collide.
 
 During implementation, run the smallest focused test that covers the edit. Before pushing, run
 `make verify BASE=<base>`; the classifier selects affected local evidence through the same fail-closed
-impact policy as CI. The PR fast lane and merge queue provide the protected final evidence. Reserve
+impact policy as CI, including lint and tests over the affected Go package closure. The PR fast lane
+and merge queue provide the protected final evidence. Reserve
 `make verify SCOPE=all` and `make agent-baseline` for an explicitly requested complete audit, changes to the
 gate/classifier machinery, or diagnosis of a classifier boundary—not merely because a task started.
 Renew a long-running claim with `make agent-renew`; clean abandoned expired entries with

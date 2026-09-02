@@ -13,7 +13,8 @@ make verify BASE=origin/main                  # once the change is stable
 `make verify` classifies the diff through the same fail-closed impact policy as CI and runs the
 affected local evidence. It reports locally executable gates separately from specialized and
 platform-dependent gates owned by protected CI, and its completion line names only local evidence
-that ran successfully. Pull-request and merge-queue lanes provide protected remote evidence.
+that ran successfully. For Go changes, both golangci-lint and tests consume the affected
+reverse-dependency package closure. Pull-request and merge-queue lanes provide protected remote evidence.
 
 `make verify SCOPE=all` is the explicit complete-repository audit. Run it when a maintainer requests a full
 audit, when changing the gate/classifier machinery, or when diagnosing a selection boundary. It is
