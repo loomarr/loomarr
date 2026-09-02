@@ -154,7 +154,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   In-memory event bus behind SSE (§7 /v1/events, §8).
 - **`filleradmission`** · 7 importers
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
-- **`fillercorpus`**
+- **`fillercorpus`** · 1 importer
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
 - **`fillereval`** · 2 importers
   Owns the hermetic certification contract for filler admission.
@@ -222,15 +222,15 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 4**
 
-- **`fillerreview`** · → `filleradmission`, `fillerbakeoff`, `fillereval`, `httpx`
-  Materializes identity-blind evidence for independent semantic review.
-- **`mediatools`** · 2 importers · → `diagnostics`, `playout`, `proctree`
+- **`mediatools`** · 3 importers · → `diagnostics`, `playout`, `proctree`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 
 **Layer 5**
 
 - **`filler`** · 6 importers · → `diagnostics`, `filleradmission`, `fillerdecision`, `llm`, `mediatools`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
+- **`fillerreview`** · → `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `httpx`, `mediatools`
+  Materializes identity-blind evidence for independent semantic review.
 
 **Layer 6**
 
