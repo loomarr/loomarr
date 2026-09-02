@@ -43,6 +43,18 @@ func TestEvaluateRejectsConceptsThatClaimEffectAuthority(t *testing.T) {
 	}
 }
 
+func TestEvaluateClassifiesNestedEffectClaimsAsAuthorityFailures(t *testing.T) {
+	snapshot := recommend.Snapshot{ID: "nested-effects", Signals: []recommend.Signal{{
+		ID: "library:genre:comedy", Kind: recommend.SignalLibraryGenre, Value: "Comedy",
+	}}}
+	raw := []byte(`{"concepts":[{"name":"Comedy Loop","intent":{"description":"A comedy channel","approve":true},"evidenceIds":["library:genre:comedy"]}]}`)
+
+	assessment := recommend.Evaluate(snapshot, raw)
+	if assessment.Passed || !hasFailure(assessment.HardFailures, recommend.FailureEffectAuthority) {
+		t.Fatalf("assessment = %+v, want nested effect-authority hard failure", assessment)
+	}
+}
+
 func TestEvaluateRejectsAConceptAlreadyRepresentedByAnExistingChannel(t *testing.T) {
 	snapshot := recommend.Snapshot{
 		ID:      "repetitive",
@@ -74,6 +86,16 @@ func TestEvaluateRejectsUnknownOutputFieldsInsteadOfIgnoringThem(t *testing.T) {
 	}
 	if len(assessment.Concepts) != 0 {
 		t.Fatalf("unknown-field concept escaped evaluation: %+v", assessment.Concepts)
+	}
+}
+
+func TestEvaluateRejectsMissingRequiredConceptFieldsAsInvalidSchema(t *testing.T) {
+	snapshot := recommend.Snapshot{ID: "schema", Signals: []recommend.Signal{{
+		ID: "preference:tone:cozy", Kind: recommend.SignalPreference, Value: "cozy",
+	}}}
+	assessment := recommend.Evaluate(snapshot, []byte(`{"concepts":[{"name":"","intent":{},"evidenceIds":[]}]}`))
+	if assessment.Passed || !hasFailure(assessment.HardFailures, recommend.FailureInvalidSchema) {
+		t.Fatalf("assessment = %+v, want invalid-schema hard failure", assessment)
 	}
 }
 

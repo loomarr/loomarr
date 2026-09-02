@@ -46,6 +46,7 @@ wouldn't catch it either, since `go build` skips `_test.go` and most tagged file
 | LLM eval | `make eval` | Real intents against a real model | manual |
 | LLM certification | `make eval-cert` | Exact starter/adversarial corpus executed with a versioned scorecard | release/manual |
 | LLM matrix | `make eval-matrix` | Same corpus on local and OpenRouter generation, judged through OpenRouter | release/manual |
+| Channel recommendation | `make channel-recommend-cert` | Inert Channel Concepts on a digest-pinned synthetic holdout | release/manual |
 | Hosted filler bakeoff | `make filler-bakeoff-openrouter` | Locked label-blind filler packets through one pinned paid route profile | release/manual |
 | Local filler bakeoff | `make filler-bakeoff-ollama` | Same locked packets through one digest-pinned loopback model | release/manual |
 | Rust supply chain | `make rust-audit` | Cargo advisories, licences, and sources | weekly + manual |
@@ -213,6 +214,59 @@ with proposal cases. `LOOMARR_EVAL_REQUIRED=1` fails before provider constructio
 opt-in and consistent evidence are present, so `make eval-cert` cannot certify a proposal-only
 subset. Both adapters enter the same pure `schedule.ComputeDesiredAt` projection.
 `make eval-contract` always disables the live test before any adapter is constructed.
+
+### Channel recommendation certification
+
+`make channel-recommend-cert` is the independent certification lane for the recommendation pillar.
+It sends only a closed, synthetic Library/preference snapshot to the configured model and asks for
+inert Channel Concepts. It never exposes an operator identity or viewing history, supplies tools, or
+executes a Channel, Proposal, approval, acquisition, or spend effect. The digest-pinned
+`channel-recommendation-v1` holdout covers sparse, broad, repetitive, family, seasonal, era-heavy,
+conflicting, and adversarial contexts; its `certification` split is excluded from the training
+allowlist.
+
+The command is explicit, serial, and outside CI. Before it constructs a provider, set an exact
+model/profile plus positive whole-suite ceilings:
+
+```sh
+LLM_PROVIDER=ollama \
+LLM_URL=http://127.0.0.1:11434 \
+LLM_MODEL=qwen3.5:9b \
+LOOMARR_RECOMMEND_PROFILE=qwen35-local \
+LOOMARR_RECOMMEND_MAX_CALLS=8 \
+LOOMARR_RECOMMEND_MAX_TOKENS=50000 \
+LOOMARR_RECOMMEND_MAX_SPEND_NANOUSD=1 \
+make channel-recommend-cert
+```
+
+For OpenRouter, use its exact canonical base, a concrete namespaced model, one pinned upstream
+provider in `LOOMARR_EVAL_GENERATOR_UPSTREAM_PROVIDER`, and `OPENROUTER_API_KEY` (or `LLM_API_KEY`).
+The route disables fallback and data collection and requests ZDR through the shared strict adapter.
+The scorecard records provider/model/profile, prompt/schema/scorer versions, fixture digest, calls,
+prompt/completion tokens, exact nanodollar charges, attempts, latency, hard failures, quality metrics,
+floors, and the pre-registered selection margin. It excludes credentials, endpoint URLs, prompts,
+generation IDs, reasoning text, and raw provider payloads. Missing hosted token or charge accounting
+stops the suite; local Ollama is explicitly treated as unbilled. Crossing any ceiling records the
+consumed call and stops before another case. Machine JSON and Markdown are written under
+`$LOOMARR_ARTIFACT_DIR` unless the two `LOOMARR_RECOMMEND_*_OUT` variables override them.
+
+Run at least the shared planner profile and one alternative against that identical frozen contract,
+then compare their scorecards without inference:
+
+```sh
+LOOMARR_RECOMMEND_SHARED_PROFILE=qwen35-shared \
+LOOMARR_RECOMMEND_SCORECARDS="artifacts/qwen.json artifacts/gemma.json" \
+make channel-recommend-compare
+```
+
+The comparator rejects different fixture, prompt, schema, scorer, threshold, metric, or margin
+identities. A scorecard with incomplete accounting, an interrupted suite, a hard failure, or a missed
+floor is ineligible even if its serialized `certified` field says otherwise. `mean_quality` is the
+equal mean of the seven frozen quality metrics. The shared planner model remains selected unless a
+certified alternative exceeds it by at least `0.02`; if the shared model fails and an alternative
+certifies, the result justifies a distinct recommendation route. This is a routing/fine-tuning gate,
+not evidence that an adapter has already been trained or that certification transfers to another
+pillar.
 
 `make planner-tool-diagnostic` isolates the production turn immediately after one non-empty
 synthetic catalog result. It requires explicit `LLM_URL` and `LLM_MODEL`; `LLM_PROVIDER` defaults to

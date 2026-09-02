@@ -78,6 +78,8 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make eval-planner-cert` |  | compare one model against the frozen planner corpus; explicit, inference-spending, non-CI |
 | `make eval-planner-smoke` |  | replay one frozen base Intent per planner family; explicit, inference-spending, non-CI |
 | `make planner-tool-diagnostic` |  | probe the exact post-catalog-result model turn; explicit, inference-spending, non-CI |
+| `make channel-recommend-cert` |  | certify inert channel concepts on the frozen recommendation corpus; explicit, inference-spending, non-CI |
+| `make channel-recommend-compare` |  | compare channel-recommendation scorecards without inference |
 | `make eval-planner-compare` |  | compare two or more frozen planner scorecards without inference |
 | `make eval-matrix` |  | explicitly certify local + OpenRouter generation sequentially (manual, resource-heavy) |
 | `make filler-eval-contract` |  | hermetic filler-admission corpus and selective-risk contracts |

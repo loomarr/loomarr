@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 )
 
 const (
@@ -70,11 +71,14 @@ type modelOutput struct {
 	Concepts []ChannelConcept `json:"concepts"`
 }
 
+type rawModelOutput struct {
+	Concepts json.RawMessage `json:"concepts"`
+}
+
 // Evaluate scores one model output against only the facts in its supplied
 // synthetic snapshot. A concept citing any other fact is rejected whole.
 func Evaluate(snapshot Snapshot, raw []byte) Assessment {
-	effectful := effectfulConcepts(raw)
-	output, err := decodeModelOutput(raw, len(effectful) == 0)
+	output, effectful, invalid, err := decodeModelOutput(raw)
 	if err != nil {
 		return Assessment{HardFailures: []HardFailure{{Code: FailureInvalidSchema, ConceptIndex: -1}}}
 	}
@@ -92,6 +96,10 @@ func Evaluate(snapshot Snapshot, raw []byte) Assessment {
 	for i, concept := range output.Concepts {
 		if effectful[i] {
 			assessment.HardFailures = append(assessment.HardFailures, HardFailure{Code: FailureEffectAuthority, ConceptIndex: i})
+			continue
+		}
+		if invalid[i] {
+			assessment.HardFailures = append(assessment.HardFailures, HardFailure{Code: FailureInvalidSchema, ConceptIndex: i})
 			continue
 		}
 		if existingNames[normalizedConceptText(concept.Name)] || existingIntents[normalizedConceptText(concept.Intent.Description)] {
@@ -114,40 +122,97 @@ func Evaluate(snapshot Snapshot, raw []byte) Assessment {
 	return assessment
 }
 
-func decodeModelOutput(raw []byte, strict bool) (modelOutput, error) {
-	var output modelOutput
-	if !strict {
-		err := json.Unmarshal(raw, &output)
-		return output, err
-	}
+func decodeModelOutput(raw []byte) (modelOutput, map[int]bool, map[int]bool, error) {
+	var envelope rawModelOutput
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&output); err != nil {
-		return modelOutput{}, err
+	if err := decoder.Decode(&envelope); err != nil {
+		return modelOutput{}, nil, nil, err
 	}
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		return modelOutput{}, fmt.Errorf("trailing JSON value")
+		return modelOutput{}, nil, nil, fmt.Errorf("trailing JSON value")
 	}
-	return output, nil
-}
-
-func effectfulConcepts(raw []byte) map[int]bool {
-	var envelope struct {
-		Concepts []map[string]json.RawMessage `json:"concepts"`
+	var rawConcepts []json.RawMessage
+	if len(envelope.Concepts) == 0 || string(envelope.Concepts) == "null" || json.Unmarshal(envelope.Concepts, &rawConcepts) != nil {
+		return modelOutput{}, nil, nil, fmt.Errorf("concepts must be an array")
 	}
-	_ = json.Unmarshal(raw, &envelope)
+	if len(rawConcepts) > 4 {
+		return modelOutput{}, nil, nil, fmt.Errorf("too many concepts")
+	}
 	forbidden := map[string]bool{
 		"channelId": true, "proposalId": true, "jobId": true, "status": true,
 		"approve": true, "approved": true, "acquisitions": true,
 	}
-	result := make(map[int]bool)
-	for i, concept := range envelope.Concepts {
-		for field := range concept {
-			if forbidden[field] {
-				result[i] = true
-				break
+	output := modelOutput{Concepts: make([]ChannelConcept, len(rawConcepts))}
+	effectful := make(map[int]bool)
+	invalid := make(map[int]bool)
+	for i, rawConcept := range rawConcepts {
+		var generic any
+		if json.Unmarshal(rawConcept, &generic) != nil {
+			invalid[i] = true
+			continue
+		}
+		if containsForbiddenField(generic, forbidden) {
+			effectful[i] = true
+			_ = json.Unmarshal(rawConcept, &output.Concepts[i])
+			continue
+		}
+		conceptDecoder := json.NewDecoder(bytes.NewReader(rawConcept))
+		conceptDecoder.DisallowUnknownFields()
+		if conceptDecoder.Decode(&output.Concepts[i]) != nil || !validConceptSchema(output.Concepts[i]) {
+			invalid[i] = true
+		}
+	}
+	return output, effectful, invalid, nil
+}
+
+func containsForbiddenField(value any, forbidden map[string]bool) bool {
+	switch typed := value.(type) {
+	case map[string]any:
+		for field, nested := range typed {
+			if forbidden[field] || containsForbiddenField(nested, forbidden) {
+				return true
+			}
+		}
+	case []any:
+		for _, nested := range typed {
+			if containsForbiddenField(nested, forbidden) {
+				return true
 			}
 		}
 	}
-	return result
+	return false
+}
+
+func validConceptSchema(concept ChannelConcept) bool {
+	if !boundedRequired(concept.Name, 128) || !boundedRequired(concept.Intent.Description, 512) ||
+		len(concept.EvidenceIDs) == 0 || len(concept.EvidenceIDs) > 64 ||
+		!boundedOptional(concept.Intent.Era, 128) || !boundedOptional(concept.Intent.Tone, 128) ||
+		len(concept.Intent.MustInclude) > 32 || len(concept.Intent.MustExclude) > 32 {
+		return false
+	}
+	seenEvidence := make(map[string]bool, len(concept.EvidenceIDs))
+	for _, evidenceID := range concept.EvidenceIDs {
+		if !boundedRequired(evidenceID, 256) || seenEvidence[evidenceID] {
+			return false
+		}
+		seenEvidence[evidenceID] = true
+	}
+	for _, values := range [][]string{concept.Intent.MustInclude, concept.Intent.MustExclude} {
+		for _, value := range values {
+			if !boundedRequired(value, 256) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func boundedRequired(value string, max int) bool {
+	length := len([]rune(strings.TrimSpace(value)))
+	return length > 0 && length <= max
+}
+
+func boundedOptional(value string, max int) bool {
+	return value == "" || boundedRequired(value, max)
 }

@@ -38,6 +38,7 @@ type Corpus struct {
 	HardMetrics           []string        `json:"hardMetrics"`
 	QualityMetrics        []string        `json:"qualityMetrics"`
 	Thresholds            Thresholds      `json:"thresholds"`
+	SelectionMetric       string          `json:"selectionMetric"`
 	SelectionMargin       float64         `json:"selectionMargin"`
 	AllowedTrainingSplits []string        `json:"allowedTrainingSplits"`
 	Fixture               FixtureIdentity `json:"fixture"`
@@ -97,6 +98,7 @@ func LoadCorpus() (Corpus, error) {
 	}
 	if corpus.SchemaVersion != 1 || corpus.Version == "" || corpus.Split != "certification" ||
 		corpus.PromptVersion == "" || corpus.SchemaVersionName == "" || corpus.ScorerVersion == "" ||
+		corpus.SelectionMetric != "mean_quality" || corpus.SelectionMargin <= 0 ||
 		fixture.SchemaVersion != 1 || len(fixture.Cases) == 0 {
 		return Corpus{}, fmt.Errorf("invalid recommendation corpus identity")
 	}

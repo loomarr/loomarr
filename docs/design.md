@@ -126,7 +126,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `httpx` | 9 | `metrics` |
 | `invitation` | 6 | `contact` |
 | `library` | 8 | `filler`, `httpx`, `metrics` |
-| `llm` | 5 | `httpx`, `metrics` |
+| `llm` | 6 | `httpx`, `metrics` |
 | `metrics` | 8 | `provision` |
 | `notifications` | 5 | `httpx` |
 | `provision` | 17 | — |
@@ -209,7 +209,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`fillerbakeoff`** · 2 importers · → `filleradmission`, `fillereval`, `httpx`
   Runs bounded, inference-spending filler admission comparisons.
-- **`llm`** · 5 importers · → `httpx`, `metrics`
+- **`llm`** · 6 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
 - **`notifications`** · 5 importers · → `httpx`, `secretprotection`
   Owns channel-neutral notification intents and delivery work (§11).
@@ -226,6 +226,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Materializes identity-blind evidence for independent semantic review.
 - **`mediatools`** · 2 importers · → `diagnostics`, `playout`, `proctree`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
+- **`recommend`** · → `llm`
+  Defines inert Channel Concepts and the hermetic evaluator used to certify channel-recommendation models.
 
 **Layer 5**
 
