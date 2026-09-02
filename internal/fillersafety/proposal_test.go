@@ -48,7 +48,7 @@ func TestRunProposalNormalizesAndBindsCandidates(t *testing.T) {
 			t.Fatalf("candidate[%d]=%+v", index, candidate)
 		}
 	}
-	if adapter.request.SourcePath != plan.SourcePath || adapter.request.AuthoritySHA256 != plan.AuthoritySHA256 || adapter.request.DurationMS != plan.Audio.EndMS {
+	if adapter.request.SourcePath != plan.SourcePath || adapter.request.AuthoritySHA256 != plan.AuthoritySHA256 || adapter.request.PolicySHA256 != plan.PolicySHA256 || adapter.request.FFmpeg != plan.FFmpeg || adapter.request.DurationMS != plan.Audio.EndMS {
 		t.Fatalf("request did not bind verified plan: %+v", adapter.request)
 	}
 }
