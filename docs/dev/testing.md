@@ -215,6 +215,184 @@ opt-in and consistent evidence are present, so `make eval-cert` cannot certify a
 subset. Both adapters enter the same pure `schedule.ComputeDesiredAt` projection.
 `make eval-contract` always disables the live test before any adapter is constructed.
 
+### Planner reference-host evidence
+
+`make planner-reference-host` is the provider-free evidence-publication step for the stock-model
+bake-off tracked in #831. It does not run `ollama`, pull or load a model, start inference, contact a
+provider, or spend. It accepts the exact planner scorecard bytes, one normalized schema-v1 capture,
+and one directory containing these fourteen bounded raw captures:
+
+- `huggingface-model.json` retained during the authorized model acquisition and
+  `gguf-sha256.txt` computed from the exact local GGUF;
+- `ollama-version.json`, `ollama-list.json`, `ollama-show-request.json`, and
+  `ollama-show.json`;
+- `ollama-load-request.json`, `ollama-ps-cold-before.json`,
+  `ollama-ps-warm-before.json`, and `ollama-ps-after.json`;
+- `sw-vers.txt`, `uname.txt`, `sysctl-hw-memsize.txt`, and `system-profiler.json`.
+
+The normalized capture declares `planner-reference-host-v1`, its run id and times, the exact
+scorecard digest/size, model artifact and source identities, runtime/host facts, benchmark protocol,
+selected-model residency, and a digest/size for each raw file. The model block requires an explicit
+tag plus Ollama digest; pinned source repository/revision; GGUF filename/digest; quantization and the
+production 8K context; and template, Modelfile, and license identities. The runtime block requires native
+`arm64` macOS, exact Ollama/macOS/hardware/chip facts, and at least 64 GiB physical unified memory.
+The protocol records profile, production context/output limits, temperature, an explicitly unset seed,
+one cold start, one empty-prompt warm-up load, and one to ten measured warm trials. Every scorecard
+case must report that same trial count. Cold-before evidence must show the selected model absent;
+warm-before and after evidence must bind the exact tag/digest/context, agree with each other, and agree
+with the scorecard's measured `/api/ps` RAM/VRAM maximum.
+
+The source metadata is a prerequisite, not something this workflow downloads: preserve the exact
+Hugging Face model API response with `blobs=true` when acquisition is separately authorized, and keep
+the exact GGUF used to create the Ollama model. On the October reference host, set the candidate paths
+and the already-approved evaluation ceilings, then run this sequence from a clean evidence directory.
+`curl` below talks only to loopback Ollama; `make eval-planner-cert` is the sole inference step and must
+not be run without the separate #831 execution authority and aggregate-budget headroom.
+
+```sh
+set -eu
+MODEL='hf.co/owner/repository:Q4_K_M'
+PROFILE='m5-pro-candidate-q4km'
+RUN_ID='2026-10-m5-pro-candidate-q4km'
+GGUF='/absolute/path/candidate-Q4_K_M.gguf'
+HF_METADATA='/absolute/path/huggingface-model-blobs.json'
+SCORECARD='/absolute/path/planner-certification.json'
+CAPTURE='/absolute/path/reference-capture.json'
+EVIDENCE_DIR='/absolute/path/reference-evidence'
+OUT='/absolute/path/planner-reference-manifest.json'
+TRIALS=3
+
+: "${LOOMARR_EVAL_MAX_CALLS_PER_RUN:?required}"
+: "${LOOMARR_EVAL_MAX_CALLS_PER_SUITE:?required}"
+: "${LOOMARR_EVAL_MAX_TOKENS_PER_RUN:?required}"
+: "${LOOMARR_EVAL_MAX_TOKENS:?required}"
+: "${LOOMARR_EVAL_MAX_SPEND_PER_RUN:?required}"
+: "${LOOMARR_EVAL_MAX_SPEND:?required}"
+export LOOMARR_EVAL_MAX_CALLS_PER_RUN LOOMARR_EVAL_MAX_CALLS_PER_SUITE
+export LOOMARR_EVAL_MAX_TOKENS_PER_RUN LOOMARR_EVAL_MAX_TOKENS
+export LOOMARR_EVAL_MAX_SPEND_PER_RUN LOOMARR_EVAL_MAX_SPEND
+test ! -e "$EVIDENCE_DIR"
+mkdir -m 700 "$EVIDENCE_DIR"
+cp "$HF_METADATA" "$EVIDENCE_DIR/huggingface-model.json"
+shasum -a 256 "$GGUF" >"$EVIDENCE_DIR/gguf-sha256.txt"
+
+curl --fail --silent --show-error http://127.0.0.1:11434/api/version \
+  >"$EVIDENCE_DIR/ollama-version.json"
+curl --fail --silent --show-error http://127.0.0.1:11434/api/tags \
+  >"$EVIDENCE_DIR/ollama-list.json"
+jq -cn --arg model "$MODEL" '{model:$model}' \
+  >"$EVIDENCE_DIR/ollama-show-request.json"
+curl --fail --silent --show-error -H 'Content-Type: application/json' \
+  --data-binary @"$EVIDENCE_DIR/ollama-show-request.json" \
+  http://127.0.0.1:11434/api/show >"$EVIDENCE_DIR/ollama-show.json"
+sw_vers >"$EVIDENCE_DIR/sw-vers.txt"
+uname -m >"$EVIDENCE_DIR/uname.txt"
+sysctl -n hw.memsize >"$EVIDENCE_DIR/sysctl-hw-memsize.txt"
+system_profiler -json SPHardwareDataType >"$EVIDENCE_DIR/system-profiler.json"
+
+ollama stop "$MODEL" >/dev/null 2>&1 || true
+curl --fail --silent --show-error http://127.0.0.1:11434/api/ps \
+  >"$EVIDENCE_DIR/ollama-ps-cold-before.json"
+jq -cn --arg model "$MODEL" \
+  '{model:$model,prompt:"",stream:false,keep_alive:"30m",options:{num_ctx:8192}}' \
+  >"$EVIDENCE_DIR/ollama-load-request.json"
+curl --fail --silent --show-error -H 'Content-Type: application/json' \
+  --data-binary @"$EVIDENCE_DIR/ollama-load-request.json" \
+  http://127.0.0.1:11434/api/generate >/dev/null
+curl --fail --silent --show-error http://127.0.0.1:11434/api/ps \
+  >"$EVIDENCE_DIR/ollama-ps-warm-before.json"
+STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+LLM_PROVIDER=ollama LLM_URL=http://127.0.0.1:11434 LLM_MODEL="$MODEL" \
+  LOOMARR_EVAL_ALLOW_LOCAL=1 LOOMARR_EVAL_PROFILE="$PROFILE" \
+  LOOMARR_EVAL_TRIALS="$TRIALS" LOOMARR_EVAL_OUT="$SCORECARD" \
+  make eval-planner-cert
+COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+curl --fail --silent --show-error http://127.0.0.1:11434/api/ps \
+  >"$EVIDENCE_DIR/ollama-ps-after.json"
+```
+
+Build the normalized capture from those exact bytes. `jq -rj` is intentional: it hashes each JSON
+string without adding a newline. The macOS `stat -f %z` form records exact byte counts.
+
+```sh
+SOURCE_REPOSITORY="$(jq -er .id "$EVIDENCE_DIR/huggingface-model.json")"
+SOURCE_REVISION="$(jq -er .sha "$EVIDENCE_DIR/huggingface-model.json")"
+GGUF_FILE="$(basename "$GGUF")"
+GGUF_SHA256="$(awk 'NR==1 {print $1}' "$EVIDENCE_DIR/gguf-sha256.txt")"
+LICENSE_ID="$(jq -er .cardData.license "$EVIDENCE_DIR/huggingface-model.json")"
+OLLAMA_DIGEST="$(jq -er --arg model "$MODEL" \
+  '[.models[] | select(.name==$model and .model==$model)] | if length==1 then .[0].digest else error("model count") end' \
+  "$EVIDENCE_DIR/ollama-list.json")"
+QUANTIZATION="$(jq -er --arg model "$MODEL" \
+  '[.models[] | select(.name==$model and .model==$model)] | if length==1 then .[0].details.quantization_level else error("model count") end' \
+  "$EVIDENCE_DIR/ollama-list.json")"
+TEMPLATE_SHA256="$(jq -rj .template "$EVIDENCE_DIR/ollama-show.json" | shasum -a 256 | awk '{print $1}')"
+MODELFILE_SHA256="$(jq -rj .modelfile "$EVIDENCE_DIR/ollama-show.json" | shasum -a 256 | awk '{print $1}')"
+LICENSE_SHA256="$(jq -rj .license "$EVIDENCE_DIR/ollama-show.json" | shasum -a 256 | awk '{print $1}')"
+OLLAMA_VERSION="$(jq -er .version "$EVIDENCE_DIR/ollama-version.json")"
+MACOS_VERSION="$(awk -F: '$1=="ProductVersion" {gsub(/^[[:space:]]+/,"",$2); print $2}' "$EVIDENCE_DIR/sw-vers.txt")"
+MACOS_BUILD="$(awk -F: '$1=="BuildVersion" {gsub(/^[[:space:]]+/,"",$2); print $2}' "$EVIDENCE_DIR/sw-vers.txt")"
+ARCHITECTURE="$(tr -d '[:space:]' <"$EVIDENCE_DIR/uname.txt")"
+HARDWARE_MODEL="$(jq -er '.SPHardwareDataType | if length==1 then .[0].machine_model else error("hardware count") end' "$EVIDENCE_DIR/system-profiler.json")"
+CHIP="$(jq -er '.SPHardwareDataType | if length==1 then .[0].chip_type else error("hardware count") end' "$EVIDENCE_DIR/system-profiler.json")"
+MEMORY_BYTES="$(tr -d '[:space:]' <"$EVIDENCE_DIR/sysctl-hw-memsize.txt")"
+AFTER_RAM="$(jq -er --arg model "$MODEL" '[.models[] | select(.name==$model and .model==$model)] | if length==1 then .[0].size-.[0].size_vram else error("model count") end' "$EVIDENCE_DIR/ollama-ps-after.json")"
+AFTER_VRAM="$(jq -er --arg model "$MODEL" '[.models[] | select(.name==$model and .model==$model)] | if length==1 then .[0].size_vram else error("model count") end' "$EVIDENCE_DIR/ollama-ps-after.json")"
+SCORECARD_SHA256="$(shasum -a 256 "$SCORECARD" | awk '{print $1}')"
+SCORECARD_BYTES="$(stat -f %z "$SCORECARD")"
+EVIDENCE_JSON="$(for path in "$EVIDENCE_DIR"/*; do
+  jq -cn --arg kind "$(basename "$path")" \
+    --arg sha256 "$(shasum -a 256 "$path" | awk '{print $1}')" \
+    --argjson bytes "$(stat -f %z "$path")" '{kind:$kind,sha256:$sha256,bytes:$bytes}'
+done | jq -s .)"
+
+jq -n --arg runId "$RUN_ID" --arg startedAt "$STARTED_AT" --arg completedAt "$COMPLETED_AT" \
+  --arg scorecardSha256 "$SCORECARD_SHA256" --argjson scorecardBytes "$SCORECARD_BYTES" \
+  --arg tag "$MODEL" --arg digest "$OLLAMA_DIGEST" --arg sourceRepository "$SOURCE_REPOSITORY" \
+  --arg sourceRevision "$SOURCE_REVISION" --arg ggufFile "$GGUF_FILE" --arg ggufSha256 "$GGUF_SHA256" \
+  --arg quantization "$QUANTIZATION" --arg templateSha256 "$TEMPLATE_SHA256" \
+  --arg modelfileSha256 "$MODELFILE_SHA256" --arg licenseId "$LICENSE_ID" \
+  --arg licenseSha256 "$LICENSE_SHA256" --arg ollamaVersion "$OLLAMA_VERSION" \
+  --arg macosVersion "$MACOS_VERSION" --arg macosBuild "$MACOS_BUILD" \
+  --arg architecture "$ARCHITECTURE" --arg hardwareModel "$HARDWARE_MODEL" --arg chip "$CHIP" \
+  --arg profile "$PROFILE" --argjson memory "$MEMORY_BYTES" --argjson trials "$TRIALS" \
+  --argjson ram "$AFTER_RAM" --argjson vram "$AFTER_VRAM" --argjson evidence "$EVIDENCE_JSON" \
+  '{schemaVersion:1,contract:"planner-reference-host-v1",runId:$runId,startedAt:$startedAt,
+    completedAt:$completedAt,scorecardSha256:$scorecardSha256,scorecardBytes:$scorecardBytes,
+    model:{tag:$tag,ollamaDigest:$digest,sourceRepository:$sourceRepository,
+      sourceRevision:$sourceRevision,ggufFile:$ggufFile,ggufSha256:$ggufSha256,
+      quantization:$quantization,contextLength:8192,templateSha256:$templateSha256,
+      modelfileSha256:$modelfileSha256,licenseId:$licenseId,licenseSha256:$licenseSha256},
+    runtime:{ollamaVersion:$ollamaVersion,macosVersion:$macosVersion,macosBuild:$macosBuild,
+      architecture:$architecture,hardwareModel:$hardwareModel,chip:$chip,
+      physicalUnifiedMemoryBytes:$memory},
+    protocol:{profile:$profile,contextLength:8192,maxOutputTokens:2048,temperature:0.2,
+      seed:null,coldStarts:1,warmupLoads:1,measuredWarmTrials:$trials},
+    residency:{coldBefore:{selectedModelResident:false},warmBefore:{selectedModelResident:true,
+      model:$tag,ollamaDigest:$digest,ramBytes:$ram,vramBytes:$vram},after:{selectedModelResident:true,
+      model:$tag,ollamaDigest:$digest,ramBytes:$ram,vramBytes:$vram}},evidence:$evidence}' >"$CAPTURE"
+```
+
+Finally publish with fixed paths and a post-run time:
+
+```sh
+LOOMARR_PLANNER_REFERENCE_SCORECARD="$SCORECARD" \
+LOOMARR_PLANNER_REFERENCE_CAPTURE="$CAPTURE" \
+LOOMARR_PLANNER_REFERENCE_EVIDENCE_DIR="$EVIDENCE_DIR" \
+LOOMARR_PLANNER_REFERENCE_GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+LOOMARR_PLANNER_REFERENCE_OUT="$OUT" \
+make planner-reference-host
+```
+
+Publication is immutable: an existing output is never overwritten. The deep module re-hashes every
+raw input; parses the source, GGUF, Ollama, residency, and macOS evidence; rejects
+unknown/duplicate/trailing capture JSON; cross-checks every normalized artifact/runtime/host fact plus
+model/profile/trials and resident memory against the scorecard; sorts the evidence set; and emits only
+normalized facts plus digests and byte counts. Local paths and unrelated resident-model details remain
+in neither the capture nor the manifest. The result is necessary provenance, not certification or
+authority to train, deploy, or distribute. External compute and API work still shares the current $20
+aggregate ceiling; remaining headroom is not pre-allocated to GPU work.
+
 ### Channel recommendation certification
 
 `make channel-recommend-cert` is the independent certification lane for the recommendation pillar.

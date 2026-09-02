@@ -83,6 +83,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make channel-recommend-diagnostic` |  | diagnose recommendation JSON transport on the disjoint development corpus; explicit, inference-spending, non-CI |
 | `make channel-recommend-compare` |  | compare channel-recommendation scorecards without inference |
 | `make eval-planner-compare` |  | compare two or more frozen planner scorecards without inference |
+| `make planner-reference-host` |  | bind one planner scorecard to exact local artifact and reference-host evidence; no inference |
 | `make eval-matrix` |  | explicitly certify local + OpenRouter generation sequentially (manual, resource-heavy) |
 | `make filler-eval-contract` |  | hermetic filler-admission corpus and selective-risk contracts |
 | `make filler-temporal-truth-select` |  | select the private 48-case truth-review sample from frozen history without inference |
