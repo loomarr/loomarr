@@ -29,10 +29,24 @@ func DecodeOpenRouterTemporalResult(data []byte) (OpenRouterTemporalResult, erro
 // ValidateOpenRouterTemporalResult verifies the immutable result against the
 // already verified package/selection and recomputes all monetary accounting.
 func ValidateOpenRouterTemporalResult(result OpenRouterTemporalResult, loaded TemporalCalibrationPackage) error {
+	return validateOpenRouterTemporalInferenceResult(result, loaded.inferencePackage())
+}
+
+// ValidateOpenRouterTemporalModelResult re-verifies both the complete model
+// package and its result through the same inference seam used during the run.
+func ValidateOpenRouterTemporalModelResult(result OpenRouterTemporalResult, packagePath string, expectedCases int) error {
+	loaded, err := loadTemporalModelInferencePackage(packagePath, expectedCases)
+	if err != nil {
+		return err
+	}
+	return validateOpenRouterTemporalInferenceResult(result, loaded)
+}
+
+func validateOpenRouterTemporalInferenceResult(result OpenRouterTemporalResult, loaded temporalInferencePackage) error {
 	if result.SchemaVersion != OpenRouterTemporalResultSchemaVersion || result.ContractVersion != OpenRouterTemporalResultContract || result.SelectionSHA256 != loaded.SelectionSHA256 || !reviewSHA256(result.CapabilitySnapshotSHA256) || result.ResolvedModel == "" || result.UpstreamProvider == "" || result.UpstreamProviderSlug == "" || !reviewSHA256(result.PromptSHA256) || result.MaxRequests < len(loaded.Cases) || result.MaxRequests > len(loaded.Cases)*2 || result.MaxSpendNanoUSD <= 0 || result.MaxChargeNanoUSD <= 0 || result.MaxChargeNanoUSD > result.MaxSpendNanoUSD || result.CompletedAt.IsZero() {
 		return fmt.Errorf("OpenRouter temporal result identity or ceilings are invalid")
 	}
-	if err := fillereval.ValidateTemporalAssessmentSet(result.AssessmentSet, loaded.Package.BatchID, loaded.PackageSHA256, loaded.Signals); err != nil {
+	if err := fillereval.ValidateTemporalAssessmentSet(result.AssessmentSet, loaded.BatchID, loaded.PackageSHA256, loaded.Signals); err != nil {
 		return fmt.Errorf("OpenRouter temporal result assessment set: %w", err)
 	}
 	if result.AssessmentSet.Assessor.Provider != "openrouter" || result.AssessmentSet.Assessor.ModelDigest != result.CapabilitySnapshotSHA256 || result.AssessmentSet.Assessor.PromptVersion != OpenRouterTemporalPromptVersion {
@@ -48,8 +62,8 @@ func ValidateOpenRouterTemporalResult(result OpenRouterTemporalResult, loaded Te
 			BaseURL: "validated-result", Model: result.AssessmentSet.Assessor.Model, ResolvedModel: result.ResolvedModel,
 			ModelFamily: result.AssessmentSet.Assessor.ModelFamily, UpstreamProvider: result.UpstreamProvider,
 			UpstreamProviderSlug: result.UpstreamProviderSlug, PromptVersion: OpenRouterTemporalPromptVersion,
-			PromptSHA256: result.PromptSHA256, AssessorID: result.AssessmentSet.Assessor.ID, BatchID: loaded.Package.BatchID,
-			ExpectedPackageCases: len(loaded.Package.Cases), ExpectedCalibrationCases: len(loaded.Cases),
+			PromptSHA256: result.PromptSHA256, AssessorID: result.AssessmentSet.Assessor.ID, BatchID: loaded.BatchID,
+			ExpectedPackageCases: loaded.PackageCaseCount, ExpectedCalibrationCases: len(loaded.Cases),
 			MaxRequests: result.MaxRequests, MaxSpendNanoUSD: result.MaxSpendNanoUSD, MaxChargeNanoUSD: result.MaxChargeNanoUSD,
 		},
 		Attempts: result.Attempts, Assessments: result.AssessmentSet.Assessments,

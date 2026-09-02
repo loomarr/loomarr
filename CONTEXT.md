@@ -177,6 +177,26 @@ Loomarr-owned non-program content as a whole. It lives in a Tunarr-local media s
 in the operator's Library, so it structurally cannot leak into a programming Lineup (§10).
 _Avoid_: bumpers, interstitials (both are *kinds* of filler, not the category)
 
+**Filler role**:
+What kind of non-program item a Clip is, such as commercial, promo, bumper, PSA, station ID,
+trailer, or interstitial. A Filler role says nothing about Media quality or Airworthiness.
+_Avoid_: category, approval, suitability
+
+**Media quality**:
+Whether a Clip is technically intact, complete, and presentable enough for its intended playout.
+Media quality says nothing about the Clip's Filler role or Airworthiness.
+_Avoid_: usable (too narrow), appropriate, safe
+
+**Airworthiness**:
+Whether a Clip is permitted for unattended playout under the operator's audience and content
+policy. A recognized Filler role and acceptable Media quality never imply Airworthiness.
+_Avoid_: appropriateness (too vague), safety (an overclaim), admission (the larger decision)
+
+**Suitability flag**:
+A closed, evidence-backed description of content relevant to Airworthiness, such as explicit
+nudity or hateful language. It is an observation, not the policy verdict that consumes it.
+_Avoid_: warning, rating, rejection reason
+
 ### Delivery
 
 **Playout**:

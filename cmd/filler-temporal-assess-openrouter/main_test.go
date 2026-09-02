@@ -29,3 +29,20 @@ func TestRecoveryDispatchDoesNotReadCredential(t *testing.T) {
 		t.Fatal("recovery flag must select the offline path")
 	}
 }
+
+func TestPackageModeRequiresEitherSelectionOrCompletePanel(t *testing.T) {
+	for _, test := range []struct {
+		panel     bool
+		selection string
+		want      bool
+	}{
+		{selection: "selection.json", want: true},
+		{panel: true, want: true},
+		{},
+		{panel: true, selection: "selection.json"},
+	} {
+		if got := validPackageMode(test.panel, test.selection); got != test.want {
+			t.Errorf("validPackageMode(%t, %q) = %t; want %t", test.panel, test.selection, got, test.want)
+		}
+	}
+}

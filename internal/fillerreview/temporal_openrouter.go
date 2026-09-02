@@ -79,8 +79,8 @@ type OpenRouterTemporalResult struct {
 // RunOpenRouterTemporalAssessment executes only the aliases in the immutable
 // calibration selection. It is serial, makes at most one provider attempt per
 // axis, reserves before HTTP, and preserves semantic versus operational state.
-func RunOpenRouterTemporalAssessment(ctx context.Context, config OpenRouterTemporalConfig) (result OpenRouterTemporalResult, err error) {
-	baseURL, client, now, err := validateOpenRouterTemporalConfig(config)
+func RunOpenRouterTemporalAssessment(ctx context.Context, config OpenRouterTemporalConfig) (OpenRouterTemporalResult, error) {
+	baseURL, client, now, err := validateOpenRouterTemporalConfig(config, true)
 	if err != nil {
 		return OpenRouterTemporalResult{}, err
 	}
@@ -88,6 +88,29 @@ func RunOpenRouterTemporalAssessment(ctx context.Context, config OpenRouterTempo
 	if err != nil {
 		return OpenRouterTemporalResult{}, err
 	}
+	return runOpenRouterTemporalInference(ctx, config, loaded.inferencePackage(), baseURL, client, now)
+}
+
+// RunOpenRouterTemporalModelAssessment executes one complete freshly blinded
+// model-panel package. It shares all paid transport, durable reservation,
+// checkpoint, validation, and accounting behaviour with legacy calibration;
+// only the verified package adapter differs.
+func RunOpenRouterTemporalModelAssessment(ctx context.Context, config OpenRouterTemporalConfig) (OpenRouterTemporalResult, error) {
+	baseURL, client, now, err := validateOpenRouterTemporalConfig(config, false)
+	if err != nil {
+		return OpenRouterTemporalResult{}, err
+	}
+	if config.SelectionPath != "" || config.ExpectedPackageCases != config.ExpectedCalibrationCases {
+		return OpenRouterTemporalResult{}, fmt.Errorf("OpenRouter temporal model panel requires one complete package and no calibration selection")
+	}
+	loaded, err := loadTemporalModelInferencePackage(config.PackagePath, config.ExpectedPackageCases)
+	if err != nil {
+		return OpenRouterTemporalResult{}, err
+	}
+	return runOpenRouterTemporalInference(ctx, config, loaded, baseURL, client, now)
+}
+
+func runOpenRouterTemporalInference(ctx context.Context, config OpenRouterTemporalConfig, loaded temporalInferencePackage, baseURL string, client *http.Client, now func() time.Time) (result OpenRouterTemporalResult, err error) {
 	identity := buildTemporalOpenRouterCheckpointIdentity(config, loaded, baseURL)
 	activeLock, err := acquireOpenRouterActiveRunLock(config.CheckpointDir, identity, now, nil)
 	if err != nil {
@@ -132,14 +155,14 @@ func RunOpenRouterTemporalAssessment(ctx context.Context, config OpenRouterTempo
 	}
 	set := fillereval.TemporalAssessmentSet{
 		SchemaVersion: fillereval.TemporalAssessmentSchemaVersion, ContractVersion: fillereval.TemporalAssessmentContractVersion,
-		BatchID: loaded.Package.BatchID, PackageSHA256: loaded.PackageSHA256,
+		BatchID: loaded.BatchID, PackageSHA256: loaded.PackageSHA256,
 		Assessor: fillereval.TemporalAssessorIdentity{
 			ID: config.AssessorID, Provider: "openrouter", Model: config.Model, ModelFamily: config.ModelFamily,
 			ModelDigest: identity.CapabilitySnapshotSHA256, PromptVersion: OpenRouterTemporalPromptVersion,
 		},
 		Assessments: slices.Clone(checkpoint.Assessments),
 	}
-	if err := fillereval.ValidateTemporalAssessmentSet(set, loaded.Package.BatchID, loaded.PackageSHA256, loaded.Signals); err != nil {
+	if err := fillereval.ValidateTemporalAssessmentSet(set, loaded.BatchID, loaded.PackageSHA256, loaded.Signals); err != nil {
 		return OpenRouterTemporalResult{}, fmt.Errorf("validate OpenRouter temporal assessment set: %w", err)
 	}
 	consumed, err := temporalOpenRouterCheckpointSpend(checkpoint)
@@ -160,7 +183,7 @@ func RunOpenRouterTemporalAssessment(ctx context.Context, config OpenRouterTempo
 			result.UnknownChargeReservations++
 		}
 	}
-	if err := ValidateOpenRouterTemporalResult(result, loaded); err != nil {
+	if err := validateOpenRouterTemporalInferenceResult(result, loaded); err != nil {
 		return OpenRouterTemporalResult{}, err
 	}
 	return result, nil
