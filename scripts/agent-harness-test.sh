@@ -306,11 +306,46 @@ printf '%s\n' '#!/usr/bin/env sh' 'echo "make $*" >> "$VERIFY_LOG"' > "$verify_b
 chmod +x "$verify_bin/go" "$verify_bin/make"
 verify_output="$(PATH="$verify_bin:$PATH" REAL_GO="$real_go" VERIFY_LOG="$verify_log" \
 	BASE=HEAD LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" verify)"
-printf '%s\n' "$verify_output" | grep -q 'selected gates: contracts,go,postgres,image'
+printf '%s\n' "$verify_output" | grep -q 'CI impact gates: contracts,go,postgres,image'
+printf '%s\n' "$verify_output" | grep -q 'local gates: go'
+printf '%s\n' "$verify_output" | grep -q 'protected gates: contracts,postgres,image'
 printf '%s\n' "$verify_output" | grep -q 'affected Go packages:'
+printf '%s\n' "$verify_output" | grep -q 'completed local gates: go'
 grep -q 'make -C .* fmt tags-verify' "$verify_log"
 grep -q 'go test -race .*internal/app.*internal/suggest' "$verify_log"
 rm -rf "$TMP/internal"
+
+# Cross-cutting Go inputs make go_full an observable local scope modifier. The local success line
+# includes it only after the complete package set has run; Docker-backed Postgres and release-image
+# certification remain named as protected evidence rather than being implied by that success.
+step 'complete Go scope accounting'
+mkdir -p "$TMP/internal/app"
+printf 'package app\n' > "$TMP/internal/app/probe.go"
+: > "$verify_log"
+verify_output="$(PATH="$verify_bin:$PATH" REAL_GO="$real_go" VERIFY_LOG="$verify_log" \
+	BASE=HEAD LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" verify)"
+all_go_packages="$(cd "$project_root" && go list ./... | wc -l | tr -d ' ')"
+printf '%s\n' "$verify_output" | grep -q 'CI impact gates: contracts,go,go_full,postgres,image'
+printf '%s\n' "$verify_output" | grep -q 'local gates: go,go_full'
+printf '%s\n' "$verify_output" | grep -q 'protected gates: contracts,postgres,image'
+printf '%s\n' "$verify_output" | grep -q "affected Go packages: $all_go_packages (complete)"
+printf '%s\n' "$verify_output" | grep -q 'completed local gates: go,go_full'
+rm -rf "$TMP/internal"
+
+# Shared-client verification is locally executable and must not disappear behind the native and
+# browser gates that protected CI owns.
+step 'client gate accounting'
+mkdir -p "$TMP/web/apps/mobile"
+printf 'export {}\n' > "$TMP/web/apps/mobile/probe.ts"
+: > "$verify_log"
+verify_output="$(PATH="$verify_bin:$PATH" REAL_GO="$real_go" VERIFY_LOG="$verify_log" \
+	BASE=HEAD LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" verify)"
+printf '%s\n' "$verify_output" | grep -q 'CI impact gates: clients,apple_mobile,expo_android_mobile'
+printf '%s\n' "$verify_output" | grep -q 'local gates: clients'
+printf '%s\n' "$verify_output" | grep -q 'protected gates: apple_mobile,expo_android_mobile'
+printf '%s\n' "$verify_output" | grep -q 'completed local gates: clients'
+grep -q 'make -C .* clients' "$verify_log"
+rm -rf "$TMP/web"
 
 # Policy-only changes run policy validation without expanding into the complete repository audit.
 step 'policy-focused verification'
@@ -320,7 +355,9 @@ printf 'name: fixture\n' > "$TMP/.github/workflows/ci.yml"
 verify_output="$(PATH="$verify_bin:$PATH" REAL_GO="$real_go" VERIFY_LOG="$verify_log" \
 	BASE=HEAD LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" verify)"
 printf '%s\n' "$verify_output" | grep -q 'affected local evidence selected by CI impact'
-printf '%s\n' "$verify_output" | grep -q 'selected gates: policy'
+printf '%s\n' "$verify_output" | grep -q 'CI impact gates: policy'
+printf '%s\n' "$verify_output" | grep -q 'local gates: policy'
+printf '%s\n' "$verify_output" | grep -q 'completed local gates: policy'
 grep -q 'make -C .* ci-lint release-verify' "$verify_log"
 if grep -qE 'make -C .* (verify .*SCOPE=all|check-static|test)($| )|agent.sh verify-all' "$verify_log"; then
 	echo 'agent-harness-test: policy verification expanded into the complete audit' >&2

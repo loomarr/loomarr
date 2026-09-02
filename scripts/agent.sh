@@ -549,7 +549,34 @@ verify_changed() {
 	printf '%s\n' "$changed"
 	scope="$(printf '%s\n' "$changed" | "$SCRIPT_DIR/ci-impact.sh")"
 	selected="$(printf '%s\n' "$scope" | sed -n 's/=true$//p' | paste -sd, -)"
-	echo "verify: selected gates: $selected"
+	local_gates=
+	protected_gates=
+	while IFS='=' read -r gate enabled; do
+		[ "$enabled" = true ] || continue
+		case "$gate" in
+			go|go_full|rust|web|clients|docs|agent|android|policy)
+				if [ -n "$local_gates" ]; then local_gates="$local_gates,$gate"; else local_gates="$gate"; fi
+				;;
+			contracts|postgres|apple_mobile|apple_tv|expo_android_mobile|expo_android_tv|visual|e2e|tuner|image)
+				if [ -n "$protected_gates" ]; then protected_gates="$protected_gates,$gate"; else protected_gates="$gate"; fi
+				;;
+			*)
+				echo "verify: CI impact selected unsupported gate: $gate" >&2
+				exit 2
+				;;
+		esac
+	done <<EOF
+$scope
+EOF
+	[ -n "$local_gates" ] || local_gates=none
+	[ -n "$protected_gates" ] || protected_gates=none
+	echo "verify: CI impact gates: $selected"
+	echo "verify: local gates: $local_gates"
+	echo "verify: protected gates: $protected_gates"
+	if printf '%s\n' "$scope" | grep -qx 'go_full=true' && ! printf '%s\n' "$scope" | grep -qx 'go=true'; then
+		echo 'verify: go_full selected without the executable Go gate' >&2
+		exit 2
+	fi
 
 	if printf '%s\n' "$scope" | grep -qx 'contracts=true'; then
 		if printf '%s\n' "$changed" | grep -qE '\.go$|^go\.(mod|sum)$'; then
@@ -574,7 +601,12 @@ verify_changed() {
 	if printf '%s\n' "$scope" | grep -qx 'go=true'; then
 		packages="$(printf '%s\n' "$changed" | "$SCRIPT_DIR/go-impact.sh")"
 		[ -n "$packages" ] || { echo 'verify: Go selected but package closure is empty' >&2; exit 1; }
-		echo "verify: affected Go packages: $(printf '%s\n' "$packages" | wc -l | tr -d ' ')"
+		package_count="$(printf '%s\n' "$packages" | wc -l | tr -d ' ')"
+		if printf '%s\n' "$scope" | grep -qx 'go_full=true'; then
+			echo "verify: affected Go packages: $package_count (complete)"
+		else
+			echo "verify: affected Go packages: $package_count"
+		fi
 		traced="$(printf '%s\n' "$packages" | "$SCRIPT_DIR/go-race-policy.sh" --race)"
 		untraced="$(printf '%s\n' "$packages" | "$SCRIPT_DIR/go-race-policy.sh" --no-race)"
 		if [ -n "$traced" ]; then
@@ -592,12 +624,16 @@ verify_changed() {
 	if printf '%s\n' "$scope" | grep -qx 'web=true'; then
 		( cd "$ROOT/web" && pnpm codegen && pnpm lint && pnpm -r --parallel typecheck )
 	fi
+	if printf '%s\n' "$scope" | grep -qx 'clients=true'; then
+		make -C "$ROOT" clients
+	fi
 	if printf '%s\n' "$scope" | grep -qx 'docs=true'; then
 		make -C "$ROOT" docs-lint
 	fi
 	if printf '%s\n' "$scope" | grep -qx 'android=true'; then
 		make -C "$ROOT" android
 	fi
+	echo "verify: completed local gates: $local_gates"
 }
 
 verify_all() {

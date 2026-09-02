@@ -34,8 +34,9 @@ be restated here and in three other files, and the copies drifted apart. One hom
 ## Before you open a PR
 
 Use focused tests while editing, then run `make verify BASE=origin/main` once the change is stable.
-It selects affected local evidence through the same fail-closed impact policy as CI. Run a
-specialized gate directly when the change needs evidence beyond that local fast path:
+It selects affected local evidence through the same fail-closed impact policy as CI and reports
+locally completed gates separately from specialized or protected gates. Run a specialized gate
+directly when the change needs evidence beyond that local fast path:
 
 | Change | Run |
 | --- | --- |
