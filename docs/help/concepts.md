@@ -52,3 +52,19 @@ Between programmes, Loomarr inserts **pods** — short runs of bumpers and comme
 A channel carries a **policy**: which content, a rating cap, no repeats, ordering. The model
 suggests it from your intent ("for the kids" → a `TV-Y7` cap); the scheduler enforces it the
 same way every time. See the [programming guide](programming).
+
+## Private, local quality measurements
+
+Loomarr can keep local aggregate measurements of how far requested Proposals progressed: finding
+candidates, generating and grounding a result, approval, acquisition, and scheduling. This quality
+ledger is separate from Prometheus monitoring and is never uploaded by default.
+
+The ledger does not store title names, your Intent or prompt, locations, account identities,
+credentials, viewing history, or raw errors. Stopping playback, deleting a Channel, declining a
+Proposal, doing nothing, or leaving a candidate unselected does not mean “dislike” and is never
+treated that way. Only the visible **keep**, **less like this**, **never**, and **surprise me**
+actions are taste signals.
+
+Detailed transition receipts are kept for 30 days, then reduced to daily aggregates retained for
+24 months. An admin can download a sanitized local JSON export of those aggregates and their
+versioned evaluation context; raw receipts and internal idempotency keys are never exported.

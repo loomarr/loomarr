@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/recovery"
 	"github.com/loomarr/loomarr/internal/secretprotection"
 	"github.com/loomarr/loomarr/internal/taxonomy"
@@ -66,6 +67,10 @@ var ErrInferenceNotReserved = errors.New("store: inference evaluation is not res
 // ErrInferenceBudgetExceeded reports a provider charge above its pre-call
 // reservation. The charged fact is still persisted and the evaluation is held.
 var ErrInferenceBudgetExceeded = errors.New("store: inference budget exceeded")
+
+// ErrQualitySnapshotConflict reports reuse of an immutable evaluation-run id
+// with different facts.
+var ErrQualitySnapshotConflict = errors.New("store: quality snapshot conflict")
 
 // ErrJobOwnershipMismatch reports a result whose proposal requester differs
 // from the requester persisted on its job. It prevents a worker/store wiring
@@ -244,6 +249,14 @@ type ProposalStore interface {
 	// PROPOSALS_RETENTION). Approved proposals are the audit trail and are kept
 	// indefinitely; submitted ones are still awaiting an answer.
 	PurgeDeniedProposals(ctx context.Context, before time.Time) (int, error)
+}
+
+// DiscoveryQualityStore is the local privacy-safe quality ledger (§17).
+type DiscoveryQualityStore interface {
+	PutQualityRunSnapshot(ctx context.Context, snapshot quality.RunSnapshot) error
+	RecordQualityObservation(ctx context.Context, observation quality.Observation) error
+	MaintainQualityLedger(ctx context.Context, now time.Time) error
+	ExportQualityLedger(ctx context.Context, now time.Time) (quality.Export, error)
 }
 
 // ScheduledJobStore is the background-job scheduler's state (§18.1).
@@ -807,6 +820,7 @@ type Store interface {
 	CountStore
 	ImageStore
 	DiscoveryFeedbackStore
+	DiscoveryQualityStore
 
 	// Close releases the underlying database handle.
 	Close() error

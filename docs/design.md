@@ -169,6 +169,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Supervises one child process and every descendant it starts.
 - **`provision`** · 17 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
+- **`quality`** · 1 importer
+  Owns Loomarr's privacy-safe discovery-quality vocabulary.
 - **`recovery`** · 5 importers
   Owns local-password recovery records and their bearer grants (§11).
 - **`releasenotes`**
@@ -245,7 +247,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Materializes identity-blind evidence for independent semantic review.
 - **`library`** · 8 importers · → `episodeevidence`, `filler`, `httpx`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `invitation`, `notifications`, `provision`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
+- **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 **Layer 7**
@@ -8249,6 +8251,47 @@ selection invalidates the preview and disables download until the replacement pr
   is queryable, and Grafana serves the stable dashboard UID. Additional dashboards need a distinct
   operator workflow; traces, hosted-model dollar estimates, production stack retention, alert
   routing, credentials, and production monitoring ports are explicitly out of scope.
+- **Discovery quality is a separate local ledger, not another Prometheus label set.** Prometheus
+  answers whether Loomarr is operating; the quality ledger answers how far an explicitly requested
+  Proposal progressed. Its closed stages are `retrieval`, `generation`, `grounding`, `approval`,
+  `acquisition`, and `scheduling`. Each stage owns a closed outcome set rather than accepting a raw
+  error or caller-authored value. Retrieval may succeed, return no candidates, or fail; generation
+  may succeed, abstain, or fail; grounding may accept or reject the generated result; approval may
+  be approved or declined; acquisition may become playable or fail; scheduling may place the
+  approved result or fail. A declined Proposal is a workflow outcome, never a negative preference.
+
+  Only authoritative transitions write the ledger. The Proposal Job owns retrieval, generation,
+  and grounding observations; the approval transaction owns approved/declined; the provisioning
+  transition owns playable/failed and time-to-playable; and successful Channel reconciliation owns
+  scheduled. Explicit `keep`, `less`, `never`, and `surprise` actions from §8 are the only taste
+  signals. Proposal denial, Channel detach/deletion, playback stop, inactivity, candidate
+  non-selection, and absence of approval are ambiguous and **must never** be recorded or exported as
+  dislike. Exposure joins only after #497 supplies its dedicated authoritative ledger.
+
+  The module accepts typed observations and owns classification, aggregation, redaction, retention,
+  and export. Callers cannot provide labels or arbitrary metadata. Recording is best-effort after
+  the business transition commits: a quality-write failure is logged through the bounded diagnostics
+  path and can never fail Proposal generation, approval, acquisition, or scheduling. Each receipt has
+  an opaque idempotency key so retries do not double-count; that key is retained only with the raw
+  receipt and is neither queryable through the product API nor present in exports.
+
+  Raw receipts contain only stage, closed outcome, event time, bounded duration/tool/candidate/cost
+  quantities, and the opaque idempotency key. They never contain a Title or programme name, Intent or
+  prompt text, raw error, URL, path, location, credential, username, user/Channel/device/media id, or
+  a hashed substitute for one. Housekeeping folds receipts into UTC daily counts plus bounded
+  duration, tool, candidate, and cost totals, then purges receipts after 30 days. Aggregates are
+  retained for 24 months. At most 256 unreferenced immutable evaluation-run snapshots are retained;
+  referenced snapshots follow the aggregates' 24-month bound. A snapshot records schema and corpus versions,
+  closed provider identity, budget profile, application version, and whether required accounting was
+  available. Model strings are length-bounded facts, never labels or network locations; missing
+  values remain explicitly missing rather than being guessed.
+
+  One admin-only JSON export returns aggregate buckets and referenced evaluation-run snapshots; it
+  never returns raw receipts or idempotency keys. Export is a local download with a versioned schema,
+  deterministic ordering, and the same forbidden-field guard as Diagnostics. Loomarr does not send
+  the ledger anywhere, schedule an upload, or enable an external telemetry destination by default.
+  SQLite and Postgres implement one conformance suite for idempotent recording, aggregation, purge,
+  snapshot bounds, redaction, and sanitized export.
 - **Readiness** is Current Health's required-check projection: required startup evidence must pass,
   continuously observed required checks must remain fresh, and sustained required-check failures make
   readiness false while liveness remains true. Optional warnings/failures/staleness produce
