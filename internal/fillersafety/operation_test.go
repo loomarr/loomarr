@@ -47,6 +47,9 @@ func TestEvaluationOperationRecordsSerialCascadeBeforeReturningEvidence(t *testi
 	if len(fixture.repository.reservations) != 2 ||
 		!slices.Equal(fixture.repository.reservations[0].Modalities, []string{"audio"}) ||
 		!slices.Equal(fixture.repository.reservations[1].Modalities, []string{"audio", "video"}) ||
+		fixture.repository.events[2].Reserve.Role != "spoken-safety" || fixture.repository.events[2].Reserve.Rung != "native-audio" ||
+		fixture.repository.events[2].Reserve.DerivativeBytes <= 0 || fixture.repository.events[2].Reserve.DerivativeDurationMS <= 0 ||
+		fixture.repository.events[4].Reserve.Rung != "complete-video" ||
 		fixture.repository.reservations[0].Versions.EvidenceSHA256 != report.Run.AuthoritySHA256 ||
 		fixture.repository.reservations[0].Versions.CertificationSHA256 != report.Run.CertificationSHA256 {
 		t.Fatalf("reservations=%+v", fixture.repository.reservations)

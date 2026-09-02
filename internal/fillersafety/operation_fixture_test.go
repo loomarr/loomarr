@@ -78,11 +78,14 @@ func (r *memoryExecutionRepository) ReserveSpokenSafetyCall(_ context.Context, c
 		Reserve: &InferenceReserved{
 			EvaluationID: command.EvaluationID, RequestSHA256: command.RequestSHA256,
 			RequestedProvider: command.RequestedProvider, RequestedModel: command.RequestedModel,
-			UpstreamProvider: command.UpstreamProvider, CapabilitySHA256: command.Versions.CapabilitySHA256,
-			PromptSHA256: command.Versions.PromptSHA256, SchemaSHA256: command.Versions.SchemaSHA256,
+			UpstreamProvider: command.UpstreamProvider, Role: command.Role, Rung: command.Rung,
+			CapabilitySHA256: command.Versions.CapabilitySHA256,
+			PromptSHA256:     command.Versions.PromptSHA256, SchemaSHA256: command.Versions.SchemaSHA256,
 			CandidateID: command.CandidateID,
-			Modalities:  slices.Clone(command.Modalities), RequestedNanoUSD: command.RequestedNanoUSD,
-			ReservedNanoUSD: reserved, State: state,
+			Modalities:  slices.Clone(command.Modalities), DerivativeBytes: command.DerivativeBytes,
+			DerivativeDurationMS: command.DerivativeDurationMS, DerivativePixels: command.DerivativePixels,
+			RequestedNanoUSD: command.RequestedNanoUSD,
+			ReservedNanoUSD:  reserved, State: state,
 		},
 	}
 	if err := r.AppendSpokenSafetyEvent(context.Background(), event); err != nil {
