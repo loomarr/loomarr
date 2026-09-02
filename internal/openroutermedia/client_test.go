@@ -130,7 +130,8 @@ func TestCallFailsClosedAfterSettlement(t *testing.T) {
 			}))
 			defer server.Close()
 			result, err := Call(t.Context(), server.Client(), server.URL, validConfig(func(string) error { return nil }))
-			if err == nil || !strings.Contains(err.Error(), test.want) || result.ResponseSHA256 == "" {
+			if err == nil || !strings.Contains(err.Error(), test.want) || result.ResponseSHA256 == "" ||
+				test.want == "does not bind" && !errors.Is(err, ErrRouteMismatch) {
 				t.Fatalf("result=%+v err=%v", result, err)
 			}
 		})

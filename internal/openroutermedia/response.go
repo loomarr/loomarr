@@ -5,12 +5,17 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/fillereval"
 )
+
+// ErrRouteMismatch reports that a charged response did not prove the exact
+// requested model, upstream provider, selected endpoint, and one-attempt route.
+var ErrRouteMismatch = errors.New("OpenRouter structured response route mismatch")
 
 type structuredResponse struct {
 	ID      string `json:"id"`
@@ -74,7 +79,7 @@ func settleResponse(result Result, raw []byte, config Config) (Result, error) {
 	}
 	result.ChargedNanoUSD, result.ChargeKnown = charged, true
 	if wire.ID == "" || wire.Model != config.Model || len(wire.Choices) != 1 || wire.Metadata.Attempt != 1 || !validAttemptLedger(wire, config) || !selectedEndpoint(wire, config) {
-		return result, fmt.Errorf("OpenRouter structured response does not bind the requested one-attempt route (generation=%t model=%q choices=%d attempt=%d attempts=%s selected=%s)", wire.ID != "", wire.Model, len(wire.Choices), wire.Metadata.Attempt, attemptSummary(wire), endpointSummary(wire))
+		return result, fmt.Errorf("%w: does not bind the requested one-attempt route (generation=%t model=%q choices=%d attempt=%d attempts=%s selected=%s)", ErrRouteMismatch, wire.ID != "", wire.Model, len(wire.Choices), wire.Metadata.Attempt, attemptSummary(wire), endpointSummary(wire))
 	}
 	result.StructuredOutput = wire.Choices[0].Message.Content
 	result.ReasoningBytes = len(wire.Choices[0].Message.Reasoning)

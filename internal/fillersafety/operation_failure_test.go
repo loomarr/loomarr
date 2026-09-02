@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/openroutermedia"
 )
 
 func TestEvaluationOperationBudgetHoldPreventsHTTPAndReturnsDurableHold(t *testing.T) {
@@ -23,6 +25,22 @@ func TestEvaluationOperationBudgetHoldPreventsHTTPAndReturnsDurableHold(t *testi
 	}
 	if got := fixture.repository.events[len(fixture.repository.events)-1]; got.Terminal == nil {
 		t.Fatalf("budget hold did not reach a durable terminal: %+v", got)
+	}
+}
+
+func TestEvaluationOperationDistinguishesPinnedRouteMismatch(t *testing.T) {
+	t.Parallel()
+	fixture := newOperationFixture(t, []proposedInterval{{StartMS: 100, EndMS: 800}})
+	fixture.audio.err = openroutermedia.ErrRouteMismatch
+
+	report, err := fixture.operation.Evaluate(t.Context(), fixture.request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Result.Outcome != OutcomeHold || len(fixture.repository.settlements) != 1 ||
+		fixture.repository.settlements[0].Failure != FailureRouteMismatch ||
+		fixture.repository.settlements[0].ResolvedProvider != "" || fixture.repository.settlements[0].ResolvedModel != "" {
+		t.Fatalf("report=%+v settlement=%+v", report, fixture.repository.settlements)
 	}
 }
 
