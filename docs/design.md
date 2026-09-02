@@ -6076,6 +6076,15 @@ On edit, omission of a sensitive field preserves it and an explicit clear action
 may use the returned definition to render provider-specific controls, but it never receives or
 reconstructs the storage classification.
 
+MQTT follows that same provider contract rather than hiding connection behavior in the adapter. Its
+form accepts an optional client id; blank derives the same stable id from the destination on every
+connection. The broker URL selects plain `mqtt://` or verified `mqtts://`. For `mqtts://`, an
+administrator may add a PEM CA certificate and a paired PEM client certificate/private key for
+mutual TLS. Certificate material is write-only credential data, TLS is at least 1.2, and Loomarr
+always verifies the broker certificate and hostname. TLS material on `mqtt://`, an unpaired client
+certificate/key, invalid PEM, or an invalid client id is rejected before save. There is no
+certificate-verification bypass.
+
 The classified credential map is serialized and sealed as one record-bound envelope before it
 crosses the database port. The destination table stores only that opaque envelope; it has no
 plaintext credential JSON column. Data-key rotation reseals these envelopes alongside protected
