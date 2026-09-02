@@ -121,8 +121,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `catalog` | 6 | `library`, `provision` |
 | `contact` | 5 | — |
 | `diagnostics` | 8 | — |
-| `filler` | 7 | `diagnostics`, `filleradmission`, `llm` |
-| `filleradmission` | 7 | — |
+| `filler` | 7 | `diagnostics`, `filleradmission`, `llm`, `taxonomy` |
+| `filleradmission` | 8 | — |
 | `httpx` | 9 | `metrics` |
 | `invitation` | 6 | `contact` |
 | `library` | 8 | `filler`, `httpx`, `metrics` |
@@ -133,8 +133,9 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `recovery` | 5 | — |
 | `schedule` | 15 | `provision` |
 | `scheduler` | 6 | `store` |
-| `store` | 14 | `contact`, `diagnostics`, `filler`, `filleradmission`, `invitation`, `notifications`, `provision`, `recovery`, `schedule` |
+| `store` | 14 | `contact`, `diagnostics`, `filler`, `filleradmission`, `invitation`, `notifications`, `provision`, `recovery`, `schedule`, `taxonomy` |
 | `suggest` | 6 | `catalog`, `llm`, `provision`, `schedule`, `store` |
+| `taxonomy` | 5 | — |
 
 ##### Every package, by layer
 
@@ -152,11 +153,11 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns playable structure and bounded editorial facts used for episode curation.
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
-- **`filleradmission`** · 7 importers
+- **`filleradmission`** · 8 importers
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
-- **`fillercorpus`** · 1 importer
+- **`fillercorpus`** · 2 importers
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
-- **`fillereval`** · 2 importers
+- **`fillereval`** · 3 importers
   Owns the hermetic certification contract for filler admission.
 - **`images/rustgen`** · 4 importers
   Concrete adapter for Loomarr's required Rust image worker (§22).
@@ -174,7 +175,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Validates the repository's release publication policy.
 - **`secretprotection`** · 3 importers
   Encrypts database-backed secrets with installation-key-wrapped data keys and supports safe key rotation and replacement.
-- **`taxonomy`** · 4 importers
+- **`taxonomy`** · 5 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
 - **`testkit/httpfixture`**
   Shared no-network HTTP test seams without importing any application adapter.
@@ -207,7 +208,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 3**
 
-- **`fillerbakeoff`** · 2 importers · → `filleradmission`, `fillereval`, `httpx`
+- **`fillerbakeoff`** · 3 importers · → `filleradmission`, `fillereval`, `httpx`
   Runs bounded, inference-spending filler admission comparisons.
 - **`llm`** · 6 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
@@ -222,6 +223,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 4**
 
+- **`fillerreference`** · → `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `taxonomy`
+  Owns the deterministic pre-screen for the production-ready filler reference cohort.
 - **`mediatools`** · 3 importers · → `diagnostics`, `playout`, `proctree`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`recommend`** · → `llm`
