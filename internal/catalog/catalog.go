@@ -12,6 +12,7 @@ package catalog
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strconv"
 
@@ -176,6 +177,33 @@ type Catalog struct {
 	lib      LibrarySearcher
 	tmdb     TMDBSearcher
 	presence LibraryPresenceSource // optional; binds one backfill operation
+	blend    CandidateBlendPolicy
+}
+
+// CandidateBlendPolicy controls how a bounded mixed result allocates room to
+// outside-Library candidates. It is an internal composition seam for evaluation,
+// not an operator setting; New installs the production policy.
+type CandidateBlendPolicy struct {
+	outsideLibraryPercent int
+}
+
+const defaultOutsideLibraryPercent = 25
+
+// NewCandidateBlendPolicy constructs an evaluation policy. Zero is the
+// owned-first baseline; 100 reserves the whole bounded result for outside-Library
+// candidates when enough exist.
+func NewCandidateBlendPolicy(outsideLibraryPercent int) (CandidateBlendPolicy, error) {
+	if outsideLibraryPercent < 0 || outsideLibraryPercent > 100 {
+		return CandidateBlendPolicy{}, fmt.Errorf(
+			"outside-Library reserve must be between 0 and 100 percent: %d",
+			outsideLibraryPercent,
+		)
+	}
+	return CandidateBlendPolicy{outsideLibraryPercent: outsideLibraryPercent}, nil
+}
+
+func defaultCandidateBlendPolicy() CandidateBlendPolicy {
+	return CandidateBlendPolicy{outsideLibraryPercent: defaultOutsideLibraryPercent}
 }
 
 // LibraryPresenceSource binds one immutable media-library operation for an
@@ -184,7 +212,15 @@ type LibraryPresenceSource func() LibraryPresence
 
 // New builds a Catalog. Any corpus may be nil; its scope is then skipped.
 func New(lib LibrarySearcher, tmdb TMDBSearcher) *Catalog {
-	return &Catalog{lib: lib, tmdb: tmdb}
+	return &Catalog{lib: lib, tmdb: tmdb, blend: defaultCandidateBlendPolicy()}
+}
+
+// WithCandidateBlendPolicy overrides the production candidate blend for a
+// controlled evaluation or focused contract test. Public application wiring
+// deliberately does not expose this as configuration.
+func (c *Catalog) WithCandidateBlendPolicy(policy CandidateBlendPolicy) *Catalog {
+	c.blend = policy
+	return c
 }
 
 // WithPresence wires the in-library presence check used to backfill discovery
@@ -248,7 +284,7 @@ func (c *Catalog) Search(ctx context.Context, term string, scope Scope, limit in
 		}
 	}
 
-	return dedupeAndOrder(byKey, order, limit), nil
+	return dedupeAndOrderWithPolicy(byKey, order, limit, c.blend), nil
 }
 
 // Discover finds titles through structured genre, keyword, era, and scalar
@@ -294,9 +330,9 @@ func (c *Catalog) finishDiscovery(ctx context.Context, res []Candidate, poolLimi
 		byKey[k] = &cp
 		order = append(order, k)
 	}
-	out := dedupeAndOrder(byKey, order, poolLimit)
+	out := dedupeAndOrderWithPolicy(byKey, order, poolLimit, c.blend)
 	c.backfillPresence(ctx, out)
-	return orderCandidates(out, limit)
+	return orderCandidatesWithPolicy(out, limit, c.blend)
 }
 
 // TMDBRecommender is the adjacency corpus: TMDB's behavioural "also watched" graph for
@@ -482,6 +518,15 @@ func (c *Catalog) backfillPresence(ctx context.Context, cands []Candidate) {
 // upstream relevance order intact within each partition. Provider responses are
 // ordered evidence; alphabetizing here used to discard that evidence.
 func dedupeAndOrder(byKey map[string]*Candidate, order []string, limit int) []Candidate {
+	return dedupeAndOrderWithPolicy(byKey, order, limit, defaultCandidateBlendPolicy())
+}
+
+func dedupeAndOrderWithPolicy(
+	byKey map[string]*Candidate,
+	order []string,
+	limit int,
+	policy CandidateBlendPolicy,
+) []Candidate {
 	candidates := make([]Candidate, 0, len(order))
 	for _, k := range order {
 		candidate := *byKey[k]
@@ -490,12 +535,16 @@ func dedupeAndOrder(byKey map[string]*Candidate, order []string, limit int) []Ca
 		}
 		candidates = append(candidates, candidate)
 	}
-	return orderCandidates(candidates, limit)
+	return orderCandidatesWithPolicy(candidates, limit, policy)
 }
 
 // orderCandidates applies the stable owned/missing blend after identity dedupe
 // and, for Discover, after Library-presence backfill.
 func orderCandidates(candidates []Candidate, limit int) []Candidate {
+	return orderCandidatesWithPolicy(candidates, limit, defaultCandidateBlendPolicy())
+}
+
+func orderCandidatesWithPolicy(candidates []Candidate, limit int, policy CandidateBlendPolicy) []Candidate {
 	owned := make([]Candidate, 0, len(candidates))
 	outside := make([]Candidate, 0, len(candidates))
 	for _, candidate := range candidates {
@@ -517,7 +566,10 @@ func orderCandidates(candidates []Candidate, limit int) []Candidate {
 		return owned[:min(limit, len(owned))]
 	}
 
-	outsideSlots := max(1, limit/4)
+	outsideSlots := limit * policy.outsideLibraryPercent / 100
+	if policy.outsideLibraryPercent > 0 {
+		outsideSlots = max(1, outsideSlots)
+	}
 	outsideSlots = min(outsideSlots, len(outside))
 	ownedSlots := min(limit-outsideSlots, len(owned))
 	// If the preferred Library partition cannot fill its share, give every spare

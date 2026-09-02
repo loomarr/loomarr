@@ -491,6 +491,69 @@ func TestCatalogDiscoverPreservesUpstreamRelevanceWithinOwnedOutsideBlend(t *tes
 	}
 }
 
+func TestCatalogDiscoverCandidateBlendPolicyControlsOutsideReserve(t *testing.T) {
+	candidates := make([]catalog.Candidate, 8)
+	hits := make(map[int]catalog.Presence, 6)
+	for i := range candidates {
+		id := i + 1
+		candidates[i] = catalog.Candidate{
+			MediaType: provision.Movie,
+			TMDBID:    id,
+			Name:      fmt.Sprintf("Candidate %d", id),
+			Source:    catalog.ScopeTMDB,
+		}
+		if id <= 6 {
+			hits[id] = catalog.Presence{LibraryItemID: fmt.Sprintf("owned-%d", id)}
+		}
+	}
+
+	for _, tc := range []struct {
+		name           string
+		configure      bool
+		outsidePercent int
+		wantOwned      int
+		wantOutside    int
+	}{
+		{name: "production default", wantOwned: 3, wantOutside: 1},
+		{name: "owned-first baseline", configure: true, outsidePercent: 0, wantOwned: 4, wantOutside: 0},
+		{name: "half reserved", configure: true, outsidePercent: 50, wantOwned: 2, wantOutside: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			corpus := &catalogfixture.Corpus{Candidates: candidates}
+			presence := &catalogfixture.Presence{Hits: hits}
+			cat := catalog.New(nil, corpus).WithPresence(presence)
+			if tc.configure {
+				policy, err := catalog.NewCandidateBlendPolicy(tc.outsidePercent)
+				if err != nil {
+					t.Fatal(err)
+				}
+				cat.WithCandidateBlendPolicy(policy)
+			}
+			got, err := cat.Discover(context.Background(), catalog.DiscoveryQuery{MediaType: provision.Movie}, 4)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var owned int
+			for _, candidate := range got {
+				if candidate.InLibrary {
+					owned++
+				}
+			}
+			if owned != tc.wantOwned || len(got)-owned != tc.wantOutside {
+				t.Fatalf("blend = %d owned/%d outside, want %d/%d", owned, len(got)-owned, tc.wantOwned, tc.wantOutside)
+			}
+		})
+	}
+}
+
+func TestNewCandidateBlendPolicyRejectsInvalidPercentage(t *testing.T) {
+	for _, percent := range []int{-1, 101} {
+		if _, err := catalog.NewCandidateBlendPolicy(percent); err == nil {
+			t.Fatalf("NewCandidateBlendPolicy(%d) succeeded, want validation error", percent)
+		}
+	}
+}
+
 func TestCatalogDiscoverBreaksEqualSourceRanksByCanonicalIdentity(t *testing.T) {
 	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
 		{MediaType: provision.Movie, TMDBID: 20, Name: "Earlier Alphabetically", RelevanceRank: 1},
