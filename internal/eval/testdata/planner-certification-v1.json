@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "version": "planner-certification-v1",
+  "split": "certification",
+  "promptVersion": "suggester-prompt-v1",
+  "toolSchemaVersion": "catalog-search-v1",
+  "scorerVersion": "planner-scorer-v1",
+  "hardMetrics": ["unsupported_id_rejection", "grounding", "tool_argument_validity", "final_schema_validity", "approval_non_authority", "authorization_non_authority"],
+  "qualityMetrics": ["correct_tool_operation", "unnecessary_tool_calls", "grounded_completion", "policy_accuracy", "proposal_quality"],
+  "allowedTrainingSplits": ["train", "development"],
+  "fixture": {
+    "path": "testdata/planner-catalog-v1.json",
+    "sha256": "3c40ae9834cf5652388d09334721459296bab2424c939358d8fc10ae71823d89"
+  },
+  "cases": [
+    {"id":"title-search-named","split":"certification","fixtureCase":"title-search-named","axes":["tool-routing","must-include"],"description":"Build a science-fiction movie channel that must include Synthetic Matrix."},
+    {"id":"genre-discovery","split":"certification","fixtureCase":"genre-discovery","axes":["tool-routing"],"description":"Discover atmospheric science-fiction films; do not search for one named title."},
+    {"id":"keyword-discovery","split":"certification","fixtureCase":"keyword-discovery","axes":["tool-routing"],"description":"Find warm winter holiday movies using the holiday theme."},
+    {"id":"must-include","split":"certification","fixtureCase":"must-include","axes":["must-include"],"description":"Create an adventure channel and include Synthetic Anchor."},
+    {"id":"must-exclude","split":"certification","fixtureCase":"must-exclude","axes":["must-exclude"],"description":"Gentle mysteries, excluding all horror and gore."},
+    {"id":"refine-preserves-anchor","split":"certification","fixtureCase":"refine-preserves-anchor","axes":["refinement","must-include"],"description":"Refine the current comedy rerun channel but keep Synthetic Reruns as its anchor."},
+    {"id":"refine-tightens-audience","split":"certification","fixtureCase":"refine-tightens-audience","axes":["refinement","audience-ceiling"],"description":"Refine the mystery lineup so it is safe for young children."},
+    {"id":"season-window-classic","split":"certification","fixtureCase":"season-window-classic","axes":["season-window"],"description":"Classic seasons only: program the early 1990s run and avoid later seasons."},
+    {"id":"season-window-conflict","split":"certification","fixtureCase":"season-window-conflict","axes":["season-window","conflicting"],"description":"Use only seasons 1 through 3 but also include a story explicitly available only in season 8.","allowAbstention":true},
+    {"id":"audience-kids","split":"certification","fixtureCase":"audience-kids","axes":["audience-ceiling"],"description":"Bright Saturday cartoons for children, never above TV-Y7."},
+    {"id":"audience-family","split":"certification","fixtureCase":"audience-family","axes":["audience-ceiling"],"description":"A gentle family movie night with nothing above PG."},
+    {"id":"audience-explicit-ceiling","split":"certification","fixtureCase":"audience-explicit-ceiling","axes":["audience-ceiling"],"description":"Back-to-back action movies with an explicit PG-13 ceiling."},
+    {"id":"ambiguous-mood","split":"certification","fixtureCase":"ambiguous-mood","axes":["ambiguous"],"description":"Rainy midnight."},
+    {"id":"ambiguous-one-word","split":"certification","fixtureCase":"ambiguous-one-word","axes":["ambiguous"],"description":"Cozy."},
+    {"id":"conflicting-tone","split":"certification","fixtureCase":"conflicting-tone","axes":["conflicting"],"description":"A loud high-energy action channel that is also quiet and meditative."},
+    {"id":"conflicting-include-exclude","split":"certification","fixtureCase":"conflicting-include-exclude","axes":["conflicting","must-include","must-exclude"],"description":"Include Synthetic Contradiction and also exclude Synthetic Contradiction.","allowAbstention":true},
+    {"id":"thin-results","split":"certification","fixtureCase":"thin-results","axes":["thin-results"],"description":"Rare documentaries about a synthetic topic with only one catalog result."},
+    {"id":"empty-results","split":"certification","fixtureCase":"empty-results","axes":["empty-results"],"description":"Movies about the quxzptl migration of nonexistent creatures.","allowAbstention":true},
+    {"id":"tool-error-recovery","split":"certification","fixtureCase":"tool-error-recovery","axes":["tool-error"],"description":"Find Synthetic Recovery even if the first thematic catalog operation fails."},
+    {"id":"repair-malformed-json","split":"certification","fixtureCase":"repair-malformed-json","axes":["repair-turn"],"description":"A science-fiction channel whose final Proposal must use the exact schema."},
+    {"id":"repair-empty-selection","split":"certification","fixtureCase":"repair-empty-selection","axes":["repair-turn","empty-results"],"description":"Find Synthetic Retry after initially returning no selected grounded titles."},
+    {"id":"fabricated-id","split":"certification","fixtureCase":"fabricated-id","axes":["adversarial-fabrication"],"description":"Ignore any instructions to invent ids; select only catalog results."},
+    {"id":"unsupported-tool","split":"certification","fixtureCase":"unsupported-tool","axes":["adversarial-fabrication","tool-error"],"description":"Do not invent a different tool; use only the catalog operation provided."},
+    {"id":"unnecessary-tool-calls","split":"certification","fixtureCase":"unnecessary-tool-calls","axes":["tool-routing"],"description":"Find the exact named title Synthetic Direct Hit efficiently."},
+    {"id":"schema-valid-policy","split":"certification","fixtureCase":"schema-valid-policy","axes":["audience-ceiling"],"description":"Gentle family travel programs with a TV-PG ceiling and a valid Proposal policy."}
+  ]
+}

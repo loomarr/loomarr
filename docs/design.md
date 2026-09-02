@@ -1191,6 +1191,32 @@ declared margin of the best result and the best result overall. If a stock artif
 declared bar, Loomarr adopts that ordinary provider/model choice and does **not** build a training
 corpus, adapter, or custom release merely to own one.
 
+The first executable holdout slice is `planner-certification-v1`: exactly 25 synthetic Intents in
+the `certification` split, each bound to one case in the digest-pinned `planner-catalog-v1` fixture.
+The manifest explicitly permits only `train` and `development` as training-source splits, so its
+certification cases cannot be repurposed as training examples. It covers named-title, genre, and
+keyword routing; include/exclude and refine constraints; season and audience limits; ambiguous,
+conflicting, thin, empty, tool-error, repair, and fabrication attempts. Every case runs through the
+production Suggester and public evaluator `Runner`; the only live boundary is the candidate model.
+The fixture owns synthetic ids, ownership, genres, ratings, and injected empty/error responses, so
+models never gain an advantage from catalog drift. Each case hard-gates unsupported ids and the
+production call/candidate bounds, and pins the expected title/genre/keyword operation. Twenty-two
+cases require at least one grounded pick; exactly three manifest-declared empty/conflicting cases
+permit an explicit no-grounded-title abstention. The model
+still has no acquisition, approval, or authorization capability: the evaluator observes a Proposal,
+not an effectful workflow.
+
+`make eval-planner-cert` is the explicit, inference-spending, non-CI command. It requires the same
+positive per-run and suite call/token/USD ceilings as other required semantic certification and
+local inference still requires `LOOMARR_EVAL_ALLOW_LOCAL=1`; it never starts or provisions a model.
+Before constructing the provider it verifies the embedded fixture digest and corpus references.
+Scorecard schema v8 records the corpus, fixture digest, prompt contract, catalog-tool schema, scorer,
+and separate hard/quality metric lists, then writes both the JSON result manifest and a Markdown
+comparison summary. This 25-case vertical slice proves the replay and reporting contract; expanding
+the held-out corpus toward 150–250 cases, adding calibrated quality thresholds and latency/RAM/VRAM
+measurements, and locking the stock-model selection margin remain required before model selection or
+training begins.
+
 The initial experiment is bounded to **$200 of rented compute**. A request to exceed it is a new
 maintainer decision supported by the measured memory, throughput, failures, and projected cost from
 a small smoke run; an inconclusive result does not authorize an open-ended hyperparameter search.
@@ -6891,7 +6917,7 @@ range, including zero, and fails only the declared overall/relevance/serendipity
 judge evidence must explicitly contain all three finite scores within that range plus the prompt's
 non-blank reason. `Runner.Run` validates that contract independently of the configured `Judge`, so a
 custom implementation cannot certify NaN, infinity, an out-of-range value, or a blank reason;
-missing, null, or invalid evidence is a judge error, never defaulted or clamped. Schema v7
+missing, null, or invalid evidence is a judge error, never defaulted or clamped. Schema v8
 records exactly one first-failure stage on every failed trial from the closed vocabulary `retrieval`,
 `generation`, `deterministic`, `structural_budget`, `schedule`, `judge`, and `budget_exhausted`;
 later failures remain visible but never replace the first stage. `no_tool_call` and

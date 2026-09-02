@@ -386,7 +386,10 @@ func deterministicChecks(c Case, prop suggest.Proposal, groundErr error) []strin
 	// failure cannot certify the invariant because the production path did not run.
 	if c.NoFabrication {
 		if groundErr != nil && errors.Is(groundErr, suggest.ErrNoGroundedTitles) {
-			return nil // a clean grounding failure fabricated nothing → passes
+			if c.MinGrounded == 0 {
+				return nil // an explicit abstention case fabricated nothing → passes
+			}
+			return []string{fmt.Sprintf("grounding failed: %v", groundErr)}
 		}
 		if groundErr != nil {
 			return []string{fmt.Sprintf("evaluation failed before grounding could be assessed: %v", groundErr)}
@@ -396,7 +399,9 @@ func deterministicChecks(c Case, prop suggest.Proposal, groundErr error) []strin
 				f = append(f, fmt.Sprintf("FABRICATION: grounded item %q has no resolvable id: %v", it.Name, err))
 			}
 		}
-		return f
+		if len(f) > 0 {
+			return f
+		}
 	}
 	if groundErr != nil {
 		return []string{fmt.Sprintf("grounding failed: %v", groundErr)}

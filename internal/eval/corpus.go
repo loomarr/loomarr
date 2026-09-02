@@ -70,6 +70,9 @@ type Case struct {
 	MinDistinctGenres     int
 	MaxToolCalls          int
 	MaxCandidatesSurfaced int
+	// ExpectedToolOperation hard-gates the routing decision for the frozen
+	// certification fixture: title, genre, or keyword.
+	ExpectedToolOperation string
 	// RequireScheduledPrograms are stable concrete program identities observed
 	// after episode expansion, filtering, grouping, and ordering. Episode identities
 	// append :sXXeYY to their series Key.

@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	scorecardSchemaVersion = 7
+	scorecardSchemaVersion = 8
 	corpusVersion          = "2026-08-27.8"
 )
 
@@ -34,6 +34,19 @@ type RunnerConfig struct {
 	Generator      ModelIdentity
 	Judge          ModelIdentity
 	ResourceBudget ResourceBudget
+	Contract       *CertificationContract
+}
+
+// CertificationContract identifies every versioned input that makes a planner
+// model score comparable and keeps hard gates separate from quality metrics.
+type CertificationContract struct {
+	CorpusVersion        string   `json:"corpusVersion"`
+	CatalogFixtureSHA256 string   `json:"catalogFixtureSha256"`
+	PromptVersion        string   `json:"promptVersion"`
+	ToolSchemaVersion    string   `json:"toolSchemaVersion"`
+	ScorerVersion        string   `json:"scorerVersion"`
+	HardMetrics          []string `json:"hardMetrics"`
+	QualityMetrics       []string `json:"qualityMetrics"`
 }
 
 // ModelIdentity names one inference role without credentials or endpoint data.
@@ -57,18 +70,19 @@ const (
 
 // Scorecard is the versioned machine-readable result of one Runner execution.
 type Scorecard struct {
-	SchemaVersion int                  `json:"schemaVersion"`
-	CorpusVersion string               `json:"corpusVersion"`
-	GeneratedAt   time.Time            `json:"generatedAt"`
-	Profile       string               `json:"profile"`
-	Generator     ModelIdentity        `json:"generator"`
-	Judge         ModelIdentity        `json:"judge"`
-	CallBudget    CallBudget           `json:"callBudget"`
-	ResourceUsage ResourceUsage        `json:"resourceUsage"`
-	Certified     bool                 `json:"certified"`
-	FailureCounts map[FailureStage]int `json:"failureCounts"`
-	Results       []Result             `json:"results"`
-	Cases         []CaseSummary        `json:"cases"`
+	SchemaVersion int                    `json:"schemaVersion"`
+	CorpusVersion string                 `json:"corpusVersion"`
+	GeneratedAt   time.Time              `json:"generatedAt"`
+	Profile       string                 `json:"profile"`
+	Generator     ModelIdentity          `json:"generator"`
+	Judge         ModelIdentity          `json:"judge"`
+	CallBudget    CallBudget             `json:"callBudget"`
+	ResourceUsage ResourceUsage          `json:"resourceUsage"`
+	Certified     bool                   `json:"certified"`
+	FailureCounts map[FailureStage]int   `json:"failureCounts"`
+	Results       []Result               `json:"results"`
+	Cases         []CaseSummary          `json:"cases"`
+	Contract      *CertificationContract `json:"contract,omitempty"`
 }
 
 // CaseSummary makes stochastic stability visible rather than collapsing several
@@ -160,14 +174,19 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 	callBudget, budgetErr := computeCallBudget(len(cases), r.config.Trials)
 	callBudget.Resource = r.config.ResourceBudget
 	suiteUsage := newResourceAccumulator()
+	cardCorpusVersion := corpusVersion
+	if r.config.Contract != nil && r.config.Contract.CorpusVersion != "" {
+		cardCorpusVersion = r.config.Contract.CorpusVersion
+	}
 	card := Scorecard{
 		SchemaVersion: scorecardSchemaVersion,
-		CorpusVersion: corpusVersion,
+		CorpusVersion: cardCorpusVersion,
 		GeneratedAt:   time.Now().UTC(),
 		Profile:       r.config.Profile,
 		Generator:     r.config.Generator,
 		Judge:         r.config.Judge,
 		CallBudget:    callBudget,
+		Contract:      r.config.Contract,
 		Certified:     len(cases) > 0,
 		FailureCounts: map[FailureStage]int{
 			FailureStageRetrieval:        0,
@@ -255,6 +274,9 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 					if c.MaxCandidatesSurfaced > 0 && result.CandidatesSurfaced > c.MaxCandidatesSurfaced {
 						result.addFailures(FailureStageStructuralBudget,
 							fmt.Sprintf("candidates surfaced %d > budget %d", result.CandidatesSurfaced, c.MaxCandidatesSurfaced))
+					}
+					if message := expectedToolOperationFailure(c.ExpectedToolOperation, result.Observation); message != "" {
+						result.addFailures(FailureStageDeterministic, message)
 					}
 				}
 				if !boundaryBudget {
@@ -349,6 +371,26 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 		})
 	}
 	return card
+}
+
+func expectedToolOperationFailure(expected string, observation Observation) string {
+	var calls int
+	switch expected {
+	case "":
+		return ""
+	case "title":
+		calls = observation.TitleCalls
+	case "genre":
+		calls = observation.GenreCalls
+	case "keyword":
+		calls = observation.KeywordCalls
+	default:
+		return fmt.Sprintf("unknown expected tool operation %q", expected)
+	}
+	if calls == 0 {
+		return fmt.Sprintf("expected %s catalog operation was not used", expected)
+	}
+	return ""
 }
 
 func groundingFailureStage(groundingStage string) FailureStage {
