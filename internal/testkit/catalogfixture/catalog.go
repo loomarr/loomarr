@@ -18,7 +18,7 @@ func (c *Corpus) Search(context.Context, string, int) ([]catalog.Candidate, erro
 	return append([]catalog.Candidate(nil), c.Candidates...), nil
 }
 
-func (c *Corpus) Discover(context.Context, provision.MediaType, []string, int, int, int) ([]catalog.Candidate, error) {
+func (c *Corpus) Discover(context.Context, catalog.DiscoveryQuery, int) ([]catalog.Candidate, error) {
 	return append([]catalog.Candidate(nil), c.Candidates...), nil
 }
 

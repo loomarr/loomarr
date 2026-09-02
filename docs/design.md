@@ -1062,6 +1062,17 @@ and era filters may narrow the same request. The resulting candidates go through
 presence backfill and owned/missing blend above; keywords widen the real candidate corpus, never the
 set of ids the model may fabricate.
 
+Discovery may also carry an explicitly requested original-language code, origin-country code,
+runtime range, minimum vote average, or minimum vote count. These are authoritative retrieval
+qualifiers, not post-hoc model guesses: Loomarr validates two-letter language/country codes, bounded
+runtime and vote values, and ordered ranges before contacting TMDB, then maps them to the matching
+movie and TV discover parameters. A malformed qualifier returns a bounded tool error so it cannot be
+silently dropped into a broader search. Discovery-only qualifiers cannot be combined with title
+search; the model must choose the mode justified by the Intent. Omitted qualifiers contribute
+nothing, and missing candidate metadata remains unknown rather than a local false negative. Network
+and person names are not accepted as filters until Loomarr can resolve each name to an authoritative
+TMDB identity; neither is inferred from title, studio, overview, or model prose.
+
 **Scopes follow live configuration, not boot-time construction.** `library` requires a current,
 complete `library.flavor` + `library.url` + `library.token` connection; `tmdb` requires a current
 `tmdb.api_key`. `all` (and an omitted scope) searches
@@ -1095,7 +1106,7 @@ Evaluation pins these values or writes them into the request so identical inputs
 
 ### Grounding — the critical correctness rule
 An AI that can trigger real downloads must never act on a hallucinated title.
-- The LLM does **not** invent titles; it proposes candidates via a **catalog tool** (function-calling) that searches the real library + TMDB/TVDB and returns **real external ids**. The model selects from tool results. The tool supports **title search**, **genre + era discovery**, and **TMDB keyword discovery** for holidays, motifs, franchises, and topics — so an abstract intent ("high-energy 90s action") or a thematic one ("cozy Christmas movies") surfaces grounded content instead of depending on an exact title match. Each returned candidate carries the source-backed subset of **genres, short overview, original language/country, runtime, vote average/count, and resolved keyword names** that its corpus supplied. These fields are additive reasoning evidence, never identity or authority: omitted means unknown, not mismatch; invalid/non-finite values are omitted; and sparse metadata cannot exclude a candidate by itself. Network and person anchors require their own grounded resolver and are not inferred from titles, studios, or model prose.
+- The LLM does **not** invent titles; it proposes candidates via a **catalog tool** (function-calling) that searches the real library + TMDB/TVDB and returns **real external ids**. The model selects from tool results. The tool supports **title search**, **genre + era discovery**, **TMDB keyword discovery** for holidays, motifs, franchises, and topics, and validated scalar country/language/runtime/vote qualifiers on discovery — so an abstract intent ("high-energy 90s action") or a thematic one ("cozy Christmas movies") surfaces grounded content instead of depending on an exact title match. Each returned candidate carries the source-backed subset of **genres, short overview, original language/country, runtime, vote average/count, and resolved keyword names** that its corpus supplied. These fields are additive reasoning evidence, never identity or authority: omitted means unknown, not mismatch; invalid/non-finite values are omitted; and sparse metadata cannot exclude a candidate by itself. Network and person anchors require their own grounded resolver and are not inferred from titles, studios, or model prose.
 - TMDB movie and TV discovery use different genre id namespaces. Human genre names are translated per endpoint (`Science Fiction` → movie `878` but TV `10765`, `Action` → movie `28` but TV `10759`, and `Family` → movie `10751` but TV `10762`) before a mixed search is blended. One shared numeric mapping would silently make valid TV discovery empty.
 - Every proposal item resolves to a real id, tagged `in_library: true|false`; unresolvable items are dropped before display.
 - Acquisitions re-validated against TMDB (exists) + library (not present) before actionable.

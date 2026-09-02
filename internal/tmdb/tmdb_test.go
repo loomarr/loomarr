@@ -4,8 +4,10 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/tmdb"
@@ -13,7 +15,7 @@ import (
 
 func TestSearch_MapsMovieAndTV_DropsPerson(t *testing.T) {
 	mock := testkit.NewTMDB(t)
-	mock.SetDiscoveryEvidence(provision.Movie, 101, "en", []string{"US"}, 7.4, 1200)
+	mock.SetDiscoveryEvidence(provision.Movie, 101, "en", []string{"US"}, 136, 7.4, 1200)
 	c := tmdb.NewWithBase(mock.URL, "key")
 
 	got, err := c.Search(context.Background(), "the", 20) // matches The Rock, The Matrix
@@ -42,7 +44,9 @@ func TestDiscoverKeywordsCarriesResolvedKeywordEvidence(t *testing.T) {
 	mock.AddKeywordMovie(77_001, "Winter Story", 2020, []int{10_751}, "A family reunion.", "Christmas")
 	c := tmdb.NewWithBase(mock.URL, "key")
 
-	got, err := c.DiscoverKeywords(context.Background(), provision.Movie, []string{"christmas"}, nil, 0, 0, 20)
+	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{
+		MediaType: provision.Movie, Keywords: []string{"christmas"},
+	}, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +61,9 @@ func TestDiscoverKeywordsDoesNotOverclaimORKeywordEvidence(t *testing.T) {
 	mock.AddKeywordMovie(77_002, "October Story", 2021, nil, "A masked visitor.", "Halloween")
 	c := tmdb.NewWithBase(mock.URL, "key")
 
-	got, err := c.DiscoverKeywords(context.Background(), provision.Movie, []string{"christmas", "halloween"}, nil, 0, 0, 20)
+	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{
+		MediaType: provision.Movie, Keywords: []string{"christmas", "halloween"},
+	}, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,12 +82,60 @@ func TestDiscover_MapsScienceFictionToTVGenreID(t *testing.T) {
 	mock.AddSeries(52_001, "Midnight Orbit", 2022, []int{10765}, "Atmospheric science fiction after dark.")
 	c := tmdb.NewWithBase(mock.URL, "key")
 
-	got, err := c.Discover(context.Background(), provision.Series, []string{"science fiction"}, 0, 0, 20)
+	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{
+		MediaType: provision.Series, Genres: []string{"science fiction"},
+	}, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(got) != 1 || got[0].TMDBID != 52_001 {
 		t.Fatalf("TV science-fiction discovery = %+v, want Midnight Orbit via genre 10765", got)
+	}
+}
+
+func TestDiscover_AppliesAuthoritativeScalarQualifiersToMovieAndTV(t *testing.T) {
+	mock := testkit.NewTMDB(t)
+	c := tmdb.NewWithBase(mock.URL, "key")
+
+	_, err := c.Discover(context.Background(), catalog.DiscoveryQuery{
+		Genres:           []string{"Drama"},
+		OriginalLanguage: "en",
+		OriginCountry:    "GB",
+		RuntimeMin:       20,
+		RuntimeMax:       90,
+		VoteAverageMin:   7.5,
+		VoteCountMin:     100,
+	}, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := url.Values{
+		"with_original_language": {"en"},
+		"with_origin_country":    {"GB"},
+		"with_runtime.gte":       {"20"},
+		"with_runtime.lte":       {"90"},
+		"vote_average.gte":       {"7.5"},
+		"vote_count.gte":         {"100"},
+	}
+	seen := map[string]bool{}
+	for _, request := range mock.Requests() {
+		if request.Path != "/discover/movie" && request.Path != "/discover/tv" {
+			continue
+		}
+		seen[request.Path] = true
+		got, parseErr := url.ParseQuery(request.RawQuery)
+		if parseErr != nil {
+			t.Fatal(parseErr)
+		}
+		for key, values := range want {
+			if got.Get(key) != values[0] {
+				t.Errorf("%s %s = %q, want %q", request.Path, key, got.Get(key), values[0])
+			}
+		}
+	}
+	if !seen["/discover/movie"] || !seen["/discover/tv"] {
+		t.Fatalf("discover requests = %+v, want movie and TV", mock.Requests())
 	}
 }
 

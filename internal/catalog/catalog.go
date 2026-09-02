@@ -116,17 +116,28 @@ type TMDBSearcher interface {
 	Search(ctx context.Context, term string, limit int) ([]Candidate, error)
 }
 
-// TMDBDiscoverer is the TMDB discovery corpus — by genre + era rather than title
-// text (§8). Implemented by tmdb.Client. Optional: a nil tmdb ⇒ discovery is a
-// keyword fallback (the caller degrades to Search).
-type TMDBDiscoverer interface {
-	Discover(ctx context.Context, mt provision.MediaType, genres []string, yearFrom, yearTo, limit int) ([]Candidate, error)
+// DiscoveryQuery is the typed, provider-neutral discovery request. Empty fields
+// contribute no filter; validation of model-authored values happens at the
+// catalog-tool boundary before this trusted shape is constructed.
+type DiscoveryQuery struct {
+	MediaType        provision.MediaType
+	Keywords         []string
+	Genres           []string
+	YearFrom         int
+	YearTo           int
+	OriginalLanguage string
+	OriginCountry    string
+	RuntimeMin       int
+	RuntimeMax       int
+	VoteAverageMin   float64
+	VoteCountMin     int
 }
 
-// TMDBKeywordDiscoverer is thematic discovery for concepts that are not genres
-// and need not appear in a title: holidays, motifs, franchises, and topics.
-type TMDBKeywordDiscoverer interface {
-	DiscoverKeywords(ctx context.Context, mt provision.MediaType, keywords, genres []string, yearFrom, yearTo, limit int) ([]Candidate, error)
+// TMDBDiscoverer is the TMDB discovery corpus for structured, authoritative
+// filters rather than title text (§8). Implemented by tmdb.Client. Optional: a
+// nil or legacy search-only corpus yields no discovery results.
+type TMDBDiscoverer interface {
+	Discover(ctx context.Context, query DiscoveryQuery, limit int) ([]Candidate, error)
 }
 
 // LibraryPresence checks whether a specific title (by external id) is already in
@@ -195,7 +206,8 @@ func (c *Catalog) WithPresenceSource(source LibraryPresenceSource) *Catalog {
 // list (§7.2). Library results set InLibrary=true; a TMDB result that matches a
 // library candidate by id is merged into the library one (so a title present in
 // both shows in_library, not twice). Ordering is deterministic: in-library
-// first, then by name — the LLM tool and the UI must see a stable order.
+// first, preserving source relevance within each partition with canonical
+// identity as the stable equal-rank tie-break.
 func (c *Catalog) Search(ctx context.Context, term string, scope Scope, limit int) ([]Candidate, error) {
 	if limit <= 0 {
 		limit = 20
@@ -239,15 +251,15 @@ func (c *Catalog) Search(ctx context.Context, term string, scope Scope, limit in
 	return dedupeAndOrder(byKey, order, limit), nil
 }
 
-// Discover finds titles by genre + era (§8 discovery path) — the fix for abstract
-// intents that title keyword search can't surface. It is TMDB-only (the media
-// server has no discover endpoint), but merges/orders through the SAME machinery
-// as Search (in-library-first, deduped) so its output is grounding-compatible.
+// Discover finds titles through structured genre, keyword, era, and scalar
+// qualifiers (§8). It is TMDB-only (the media server has no discover endpoint),
+// but merges/orders through the SAME machinery as Search (in-library-first,
+// deduped) so its output is grounding-compatible.
 // A discovered title already in the library still comes back InLibrary=false here;
 // it merges to in-library IF the same run also keyword-surfaced it, and the
 // approve/schedule path re-checks library presence regardless. Returns an error
 // only on a real TMDB failure; a nil/unsupported tmdb yields no discovery results.
-func (c *Catalog) Discover(ctx context.Context, mt provision.MediaType, genres []string, yearFrom, yearTo, limit int) ([]Candidate, error) {
+func (c *Catalog) Discover(ctx context.Context, query DiscoveryQuery, limit int) ([]Candidate, error) {
 	if limit <= 0 {
 		limit = 20
 	}
@@ -259,27 +271,7 @@ func (c *Catalog) Discover(ctx context.Context, mt provision.MediaType, genres [
 	// owned first page cannot consume the entire result before the owned/missing
 	// blend has a chance to reserve discovery candidates.
 	poolLimit := limit * 2
-	res, err := d.Discover(ctx, mt, genres, yearFrom, yearTo, poolLimit)
-	if err != nil {
-		return nil, err
-	}
-	return c.finishDiscovery(ctx, res, poolLimit, limit), nil
-}
-
-// DiscoverKeywords finds titles by TMDB keyword, optionally narrowed by genre,
-// era, and media type. It shares discovery's presence backfill and bounded
-// owned/missing blend, so a holiday query can be both immediately useful and
-// open to coherent additions outside the current Library.
-func (c *Catalog) DiscoverKeywords(ctx context.Context, mt provision.MediaType, keywords, genres []string, yearFrom, yearTo, limit int) ([]Candidate, error) {
-	if limit <= 0 {
-		limit = 20
-	}
-	d, ok := c.tmdb.(TMDBKeywordDiscoverer)
-	if !ok || c.tmdb == nil {
-		return nil, nil
-	}
-	poolLimit := limit * 2
-	res, err := d.DiscoverKeywords(ctx, mt, keywords, genres, yearFrom, yearTo, poolLimit)
+	res, err := d.Discover(ctx, query, poolLimit)
 	if err != nil {
 		return nil, err
 	}
