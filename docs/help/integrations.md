@@ -112,7 +112,7 @@ queued or failed counts.
 | Telegram Bot | Bot token and chat ID; optionally a topic/thread ID. |
 | Mattermost | Incoming webhook URL. |
 | Matrix | Homeserver URL, room ID, and access token. |
-| MQTT | `mqtt://` or `mqtts://` broker URL, base topic, QoS 0/1, retain choice, and optional username/password. `mqtts://` verifies the broker certificate. |
+| MQTT | `mqtt://` or `mqtts://` broker URL, base topic, QoS 0/1, retain choice, and optional client ID or username/password. For private CAs or mutual TLS, add the PEM CA and paired client certificate/key. |
 | Browser Push | No keys to paste. Choose events, then click **Enable this browser**. The browser permission prompt appears only then. |
 
 ### Provider notes
@@ -142,10 +142,14 @@ queued or failed counts.
 - **Matrix:** invite a dedicated bot/user to the room and use that account's access token. Loomarr
   sends ordinary `m.room.message` text; end-to-end encrypted rooms are not supported. Rotate the
   account token, update the provider, and test before revoking the old token.
-- **MQTT:** Loomarr derives a stable client ID from the provider and publishes below
-  `<base topic>/<event type>`. Messages are not retained by default; enabling retain can replay an
-  old alert as though it were current. `mqtts://` verifies the broker certificate. Home Assistant
-  can subscribe without giving Loomarr any Home Assistant credential:
+- **MQTT:** leave Client ID blank to have Loomarr derive a stable value from the provider, or enter
+  the identity required by the broker. Loomarr publishes below `<base topic>/<event type>`. Messages
+  are not retained by default; enabling retain can replay an old alert as though it were current.
+  `mqtts://` uses TLS 1.2 or newer and always verifies the broker certificate and hostname. A PEM CA
+  certificate adds trust for a private broker; a client certificate and key must be supplied together
+  when the broker requires mutual TLS. Loomarr stores all three as encrypted, write-only fields and
+  does not offer a certificate-verification bypass. Home Assistant can subscribe without giving
+  Loomarr any Home Assistant credential:
 
   ```yaml
   automation:

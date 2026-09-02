@@ -5217,6 +5217,7 @@ components:
             - number
             - select
             - toggle
+            - textarea
           type: string
         label:
           type: string

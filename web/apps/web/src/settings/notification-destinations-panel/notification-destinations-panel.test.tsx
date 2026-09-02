@@ -34,6 +34,24 @@ const providerTypes = [
     fields: [{ key: "webhookUrl", label: "Slack webhook URL", kind: "url", required: true, sensitive: true }],
   },
   {
+    type: "mqtt",
+    name: "MQTT",
+    memberOwned: false,
+    events: ["channel_degraded"],
+    fields: [
+      { key: "brokerUrl", label: "Broker URL", kind: "password", required: true, sensitive: true },
+      { key: "clientId", label: "Client ID", kind: "text", required: false, sensitive: false },
+      { key: "baseTopic", label: "Base topic", kind: "text", required: true, sensitive: false },
+      {
+        key: "tlsCaCertificate",
+        label: "TLS CA certificate",
+        kind: "textarea",
+        required: false,
+        sensitive: true,
+      },
+    ],
+  },
+  {
     type: "web_push",
     name: "Browser Push",
     memberOwned: true,
@@ -143,6 +161,41 @@ describe("NotificationDestinationsPanel", () => {
         events: ["channel_degraded"],
         enabled: true,
         settings: { webhookUrl: "https://hooks.slack.com/services/secret" },
+      }),
+    );
+  });
+
+  it("accepts multiline MQTT TLS credentials in the same provider form", async () => {
+    let created: Record<string, unknown> | undefined;
+    server.use(
+      providerTypeHandler,
+      http.get("*/v1/notifications/providers", () => HttpResponse.json({ providers: [] })),
+      http.post("*/v1/notifications/providers", async ({ request }) => {
+        created = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ ...provider, ...created, id: "mqtt-1", settings: [] }, { status: 201 });
+      }),
+    );
+    render(<NotificationDestinationsPanel />, { wrapper });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Add provider" }));
+    await userEvent.selectOptions(screen.getByLabelText("Provider"), "mqtt");
+    await userEvent.type(screen.getByLabelText("Broker URL *"), "mqtts://broker.example.test");
+    await userEvent.type(screen.getByLabelText("Base topic *"), "home/loomarr");
+    const caCertificate = "-----BEGIN CERTIFICATE-----\nprivate-ca\n-----END CERTIFICATE-----";
+    const caInput = screen.getByLabelText("TLS CA certificate");
+    expect(caInput.tagName).toBe("TEXTAREA");
+    await userEvent.type(caInput, caCertificate);
+    await userEvent.click(screen.getByLabelText("Channel Degraded"));
+    await userEvent.click(screen.getByRole("button", { name: "Save provider" }));
+
+    await waitFor(() =>
+      expect(created).toMatchObject({
+        type: "mqtt",
+        settings: {
+          brokerUrl: "mqtts://broker.example.test",
+          baseTopic: "home/loomarr",
+          tlsCaCertificate: caCertificate,
+        },
       }),
     );
   });

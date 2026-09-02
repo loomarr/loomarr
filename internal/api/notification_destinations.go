@@ -58,7 +58,7 @@ type NotificationProviderFieldOptionDTO struct {
 type NotificationProviderFieldDTO struct {
 	Key         string                               `json:"key"`
 	Label       string                               `json:"label"`
-	Kind        notifications.ProviderFieldKind      `json:"kind" enum:"text,password,url,number,select,toggle"`
+	Kind        notifications.ProviderFieldKind      `json:"kind" enum:"text,password,url,number,select,toggle,textarea"`
 	Required    bool                                 `json:"required"`
 	Sensitive   bool                                 `json:"sensitive"`
 	Default     string                               `json:"default,omitempty"`
