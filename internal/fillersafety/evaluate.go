@@ -22,7 +22,7 @@ type cascadeJournal interface {
 }
 
 type evaluator struct {
-	proposer         acousticProposer
+	proposer         candidateProposer
 	proposerIdentity proposerIdentity
 	audioExtractor   candidateAudioExtractor
 	audio            audioAdjudicator
