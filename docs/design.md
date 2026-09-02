@@ -1967,9 +1967,12 @@ It creates no second player or decoder, and the held poster still covers the sin
 failed open-source clears use the same fresh branch. Committing the target route may retire its
 transient tune-attempt object after the first frame; the adapter retains that attempt for the same
 Channel so this bookkeeping transition cannot tear down and reattach the live source. After
-confirming that the generation is still current, the adapter rewinds, attaches the cleared open handoff,
-arms target-frame observation, loads the replacement source, queues its playback join, and then explicitly
-starts media loading. This attach-before-source order is hls.js's transfer contract: parsing on a detached
+confirming that the generation is still current, the adapter temporarily rewinds, attaches the cleared open
+handoff, arms target-frame observation, loads the replacement source, queues its playback join, and then
+explicitly starts media loading. Once that replacement manifest exposes hls.js's computed live-sync
+position, the transferred handoff explicitly moves the element there before joining playback; it does not
+rely on a browser-specific implicit jump from the temporary rewind or wait for a later playlist refresh.
+This attach-before-source order is hls.js's transfer contract: parsing on a detached
 replacement can fetch init bytes before it adopts the transferred SourceBuffers and strand WebKit
 before the media request. A fresh-MSE replacement has no SourceBuffers to adopt, so it may load and
 parse its manifest before attachment while init/media loading remains explicitly stopped; that overlaps

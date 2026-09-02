@@ -623,11 +623,29 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         joinReplacementOnLoadedMetadata = playReplacement;
         joinReplacementOnLoadedData = playReplacement;
         joinReplacementOnCanPlay = playReplacement;
+        const joinTransferredLiveSync = () => {
+          if (!transferred || firstFrame || !current()) return;
+          const liveSyncPosition = hls.liveSyncPosition;
+          if (
+            liveSyncPosition === null ||
+            !Number.isFinite(liveSyncPosition) ||
+            Math.abs(video.currentTime - liveSyncPosition) <= 0.05
+          ) {
+            return;
+          }
+          // Clearing a transferred MediaSource temporarily rewinds the persistent element. hls.js
+          // computes the replacement's live start from its level details, but Firefox does not
+          // always apply that implicit jump before the first append. Join explicitly so cached
+          // media cannot wait for the next playlist refresh.
+          video.currentTime = liveSyncPosition;
+        };
         const onManifestParsed = () => {
           manifestParsed = true;
           markTunePhase(playbackAttempt, "manifest");
+          joinTransferredLiveSync();
           playReplacement();
         };
+        const onLevelUpdated = () => joinTransferredLiveSync();
         const onFragmentBuffered = () => {
           armFirstFrameWatch();
           // attachMedia can queue a target loadstart after it returns. WebKit then resets the
@@ -684,6 +702,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
           video.addEventListener("canplay", onCanPlay, { once: true });
         } else armFirstFrameWatch();
         hls.on(Hls.Events.MANIFEST_PARSED, onManifestParsed);
+        hls.on(Hls.Events.LEVEL_UPDATED, onLevelUpdated);
         hls.on(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
         hls.on(Hls.Events.ERROR, onError);
 
@@ -719,6 +738,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
           if (discardTransfer) discardTransferredMedia(video, transferredObjectURL);
           stopFirstFrameWatch();
           hls.off(Hls.Events.MANIFEST_PARSED, onManifestParsed);
+          hls.off(Hls.Events.LEVEL_UPDATED, onLevelUpdated);
           hls.off(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
           hls.off(Hls.Events.ERROR, onError);
           hls.stopLoad();
@@ -774,6 +794,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
           stopDiagnostics();
           stopFirstFrameWatch();
           hls.off(Hls.Events.MANIFEST_PARSED, onManifestParsed);
+          hls.off(Hls.Events.LEVEL_UPDATED, onLevelUpdated);
           hls.off(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
           hls.off(Hls.Events.ERROR, onError);
           if (hlsRef.current.instance !== hls) return;
