@@ -72,7 +72,7 @@ if $packets; then
   esac
   printf '{"streams":[{"index":0,"codec_type":"video"}],"packets":[%%s],"format":{"duration":"10"}}\n' "$packet"
 elif $frames; then
-  printf '%%s\n' '{"frames":[{"stream_index":0,"best_effort_timestamp_time":"0","duration_time":"10"}]}'
+  printf '%%s\n' '0|0|10'
 elif $probe; then
   printf '%%s\n' '{"streams":[{"index":0,"codec_type":"video","start_time":"0","duration":"10","avg_frame_rate":"25/1"}],"format":{"duration":"10"}}'
 fi

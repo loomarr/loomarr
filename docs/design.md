@@ -3050,7 +3050,11 @@ ffmpeg, and treats each selected stream's decoded-frame EOF (timestamp plus fram
 audio sample count at its sample rate) as its detector timeline; that decoded EOF is checked exactly
 against 120 seconds before conversion to the returned integer milliseconds:
 black/freeze end at video EOF and silence ends at audio EOF, never at a longer container or sibling-
-stream duration. A selected stream without an independently available positive duration fails closed
+stream duration. Each selected stream is probed independently under the same byte cap. The compact
+frame parser owns only the ordered timestamp/duration-or-sample-count scalar prefix requested from
+ffprobe; codec tags and side-data that ffprobe appends despite that projection are bounded by the
+same cap and ignored because they cannot contribute timing evidence. A selected stream without an
+independently available positive duration fails closed
 before detector execution. Detector events must match the anchored ffmpeg blackdetect, silencedetect,
 or freezedetect line grammar and fall inside that selected stream's timeline. Every detector kind is
 bound to one exact filter instance, address, and modern/legacy grammar for the measurement; distinct or
@@ -3063,8 +3067,12 @@ rendering tolerance. Malformed, oversized, incomplete, duplicate, repeated, inve
 output fails closed rather than producing guessed precision. Conditioning appends exactly one black
 frame and one white frame before the video detectors, guaranteeing a changed frame even when the
 artifact ends frozen on either color.
-Detector timestamps contributed only by those two terminator frames are clamped away at the selected
-video stream's measured EOF and can never become evidence. These are execution limits, not content-quality
+The parser bounds their possible timestamp extension from the exact final decoded-video timestamp
+step (falling back to the declared cadence when fewer than two frame timestamps exist), because ffmpeg
+uses that terminal step for a sparse-VFR input rather than inventing a nominal cadence. A detector end
+may differ from the independently decoded EOF by at most one millisecond of decimal rendering before
+that bound is applied. Detector timestamps contributed only by those two terminator frames are clamped
+away at the selected video stream's measured EOF and can never become evidence. These are execution limits, not content-quality
 policy. V64 ends at this returned evidence: it does not invoke the filler pipeline, persist to the
 store or sidecar, expose an API, or decide what may be reviewed, certified, filed, admitted, rewritten,
 selected, or played. Those application-journey contracts remain tracked by issue #634 rather than
