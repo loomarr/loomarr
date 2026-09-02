@@ -68,7 +68,7 @@ type temporalOpenRouterCheckpoint struct {
 	Assessments []fillereval.TemporalAssessment      `json:"assessments"`
 }
 
-func buildTemporalOpenRouterCheckpointIdentity(config OpenRouterTemporalConfig, loaded TemporalCalibrationPackage, baseURL string) temporalOpenRouterCheckpointIdentity {
+func buildTemporalOpenRouterCheckpointIdentity(config OpenRouterTemporalConfig, loaded temporalInferencePackage, baseURL string) temporalOpenRouterCheckpointIdentity {
 	model := openRouterTemporalModel(config.Snapshot, config.Model)
 	return temporalOpenRouterCheckpointIdentity{
 		SchemaVersion: temporalOpenRouterCheckpointSchemaVersion, PackageSHA256: loaded.PackageSHA256,
@@ -76,7 +76,7 @@ func buildTemporalOpenRouterCheckpointIdentity(config OpenRouterTemporalConfig, 
 		BaseURL: baseURL, Model: config.Model, ResolvedModel: model.CanonicalSlug, ModelFamily: config.ModelFamily,
 		UpstreamProvider: config.UpstreamProvider, UpstreamProviderSlug: config.UpstreamProviderSlug,
 		PromptVersion: OpenRouterTemporalPromptVersion, PromptSHA256: temporalOpenRouterPromptSHA256(),
-		AssessorID: config.AssessorID, BatchID: loaded.Package.BatchID,
+		AssessorID: config.AssessorID, BatchID: loaded.BatchID,
 		ExpectedPackageCases: config.ExpectedPackageCases, ExpectedCalibrationCases: config.ExpectedCalibrationCases,
 		MaxRequests: config.MaxRequests, MaxSpendNanoUSD: config.MaxSpendNanoUSD, MaxChargeNanoUSD: config.MaxChargeNanoUSD,
 	}
@@ -191,7 +191,7 @@ func validateTemporalOpenRouterCheckpoint(checkpoint temporalOpenRouterCheckpoin
 	return nil
 }
 
-func validateTemporalOpenRouterCheckpointAgainstSelection(checkpoint temporalOpenRouterCheckpoint, loaded TemporalCalibrationPackage) error {
+func validateTemporalOpenRouterCheckpointAgainstSelection(checkpoint temporalOpenRouterCheckpoint, loaded temporalInferencePackage) error {
 	if len(checkpoint.Assessments) > len(loaded.Cases) {
 		return fmt.Errorf("OpenRouter temporal checkpoint has too many completed assessments")
 	}

@@ -12,7 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/httpx"
 )
 
-func validateOpenRouterTemporalConfig(config OpenRouterTemporalConfig) (string, *http.Client, func() time.Time, error) {
+func validateOpenRouterTemporalConfig(config OpenRouterTemporalConfig, requireSelection bool) (string, *http.Client, func() time.Time, error) {
 	baseURL := strings.TrimRight(strings.TrimSpace(config.BaseURL), "/")
 	if baseURL == "" {
 		baseURL = fillerbakeoff.OpenRouterBaseURL
@@ -22,7 +22,7 @@ func validateOpenRouterTemporalConfig(config OpenRouterTemporalConfig) (string, 
 	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (!loopback && (parsed.Scheme != "https" || parsed.Hostname() != "openrouter.ai" || parsed.Path != "/api/v1")) {
 		return "", nil, nil, fmt.Errorf("OpenRouter temporal assessment requires the canonical HTTPS API base")
 	}
-	if config.APIKey == "" || config.PackagePath == "" || config.SelectionPath == "" || config.CheckpointDir == "" || config.Model == "" || strings.Contains(strings.ToLower(config.Model), "latest") || config.ModelFamily == "" || config.UpstreamProvider == "" || config.UpstreamProviderSlug == "" || config.AssessorID == "" || config.ExpectedPackageCases <= 0 || config.ExpectedCalibrationCases <= 0 || config.PerCaseTimeout <= 0 || config.MaxRequests < config.ExpectedCalibrationCases || config.MaxRequests > config.ExpectedCalibrationCases*2 || config.MaxSpendNanoUSD <= 0 || config.MaxChargeNanoUSD <= 0 || config.MaxChargeNanoUSD > config.MaxSpendNanoUSD {
+	if config.APIKey == "" || config.PackagePath == "" || requireSelection && config.SelectionPath == "" || config.CheckpointDir == "" || config.Model == "" || strings.Contains(strings.ToLower(config.Model), "latest") || config.ModelFamily == "" || config.UpstreamProvider == "" || config.UpstreamProviderSlug == "" || config.AssessorID == "" || config.ExpectedPackageCases <= 0 || config.ExpectedCalibrationCases <= 0 || config.PerCaseTimeout <= 0 || config.MaxRequests < config.ExpectedCalibrationCases || config.MaxRequests > config.ExpectedCalibrationCases*2 || config.MaxSpendNanoUSD <= 0 || config.MaxChargeNanoUSD <= 0 || config.MaxChargeNanoUSD > config.MaxSpendNanoUSD {
 		return "", nil, nil, fmt.Errorf("OpenRouter temporal assessment requires exact identity and positive package, case, request, charge, spend, and timeout ceilings")
 	}
 	now := config.Now
