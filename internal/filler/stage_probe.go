@@ -84,7 +84,7 @@ func (s *ProbeStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	// quality decision here so a near-total-black clip cannot become airable merely because the
 	// database was recreated; first-time clips have no report yet and continue to transcode.
 	if tags, ok := ReadSidecarTags(file); ok && tags.MediaQuality != nil {
-		if v, reason, detail := mediaQualityVerdict(*tags.MediaQuality); v != VerdictContinue {
+		if v, reason, detail := EvaluateMediaQuality(*tags.MediaQuality); v != VerdictContinue {
 			out := StageResult{Verdict: v, Reason: reason, Detail: detail}
 			if v == VerdictReview {
 				out.Note, out.Detail = detail, ""

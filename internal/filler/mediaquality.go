@@ -11,9 +11,11 @@ const (
 	reviewFreeze       = 10 * time.Second
 )
 
-// mediaQualityVerdict turns measured intervals into the deliberately conservative V40 decision:
+// EvaluateMediaQuality turns measured intervals into the deliberately conservative V40 decision:
 // near-total dead air is objective; a long span that may be an intentional creative choice is not.
-func mediaQualityVerdict(q MediaQuality) (Verdict, RejectReason, string) {
+// Keeping this policy behind one interface lets offline calibration measure the production rule
+// without copying thresholds that could silently drift.
+func EvaluateMediaQuality(q MediaQuality) (Verdict, RejectReason, string) {
 	if q.DurationMs <= 0 {
 		return VerdictContinue, "", ""
 	}

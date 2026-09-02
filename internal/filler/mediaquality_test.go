@@ -18,7 +18,7 @@ func TestMediaQualityVerdict(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, reason, detail := mediaQualityVerdict(tt.q)
+			got, reason, detail := EvaluateMediaQuality(tt.q)
 			if got != tt.want || reason != tt.reason {
 				t.Fatalf("verdict/reason = %v/%q (%s), want %v/%q", got, reason, detail, tt.want, tt.reason)
 			}
