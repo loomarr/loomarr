@@ -8393,7 +8393,9 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   alias. The command reports the complete CI impact separately from the gates it executes locally
   and the specialized or platform-dependent gates left to protected CI; its final success line names
   only completed local gates. A newly selected impact key without an explicit disposition fails
-  closed. `go_full` is an executable local scope modifier and reports a complete Go package set;
+  closed. Go changes run golangci-lint and tests over the same affected reverse-dependency package
+  closure, so scoped verification catches static-analysis failures without expanding lint to the
+  whole repository. `go_full` is an executable local scope modifier and reports a complete Go package set;
   shared-client changes run `make clients` locally, while Postgres, browser-container, native-client,
   and release-image gates remain explicit specialized or protected evidence. The pull-request fast
   lane and authoritative merge queue then provide the protected remote evidence.
