@@ -15,12 +15,13 @@ const (
 )
 
 type TemporalSuitabilityComparisonConfig struct {
-	EvidenceManifestPath string
-	FirstResultPath      string
-	SecondResultPath     string
-	ComparedAt           time.Time
-	ExpectedCases        int
-	OutputPath           string
+	EvidenceManifestPath   string
+	StructureAuthorityPath string
+	FirstResultPath        string
+	SecondResultPath       string
+	ComparedAt             time.Time
+	ExpectedCases          int
+	OutputPath             string
 }
 
 type TemporalSuitabilityComparisonReport struct {

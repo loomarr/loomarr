@@ -49,26 +49,27 @@ const (
 )
 
 type TemporalSuitabilityConfig struct {
-	EvidenceManifestPath string
-	CaseAliases          []string
-	CheckpointDir        string
-	BaseURL              string
-	APIKey               string
-	Snapshot             fillerbakeoff.OpenRouterSnapshot
-	Model                string
-	ModelFamily          string
-	UpstreamProvider     string
-	UpstreamProviderSlug string
-	AssessorID           string
-	ReasoningMode        string
-	ExpectedCases        int
-	PerCaseTimeout       time.Duration
-	MaxRequests          int
-	MaxSpendNanoUSD      int64
-	MaxChargeNanoUSD     int64
-	AllowInsecureTestURL bool
-	Client               *http.Client
-	Now                  func() time.Time
+	EvidenceManifestPath   string
+	StructureAuthorityPath string
+	CaseAliases            []string
+	CheckpointDir          string
+	BaseURL                string
+	APIKey                 string
+	Snapshot               fillerbakeoff.OpenRouterSnapshot
+	Model                  string
+	ModelFamily            string
+	UpstreamProvider       string
+	UpstreamProviderSlug   string
+	AssessorID             string
+	ReasoningMode          string
+	ExpectedCases          int
+	PerCaseTimeout         time.Duration
+	MaxRequests            int
+	MaxSpendNanoUSD        int64
+	MaxChargeNanoUSD       int64
+	AllowInsecureTestURL   bool
+	Client                 *http.Client
+	Now                    func() time.Time
 }
 
 type TemporalSuitabilityResult struct {
@@ -123,7 +124,7 @@ func RunOpenRouterTemporalSuitability(ctx context.Context, config TemporalSuitab
 	if err != nil {
 		return TemporalSuitabilityResult{}, err
 	}
-	manifest, manifestSHA, err := LoadTemporalTruthEvidence(config.EvidenceManifestPath)
+	manifest, manifestSHA, err := loadTemporalSuitabilityEvidence(config.EvidenceManifestPath, config.StructureAuthorityPath)
 	if err != nil {
 		return TemporalSuitabilityResult{}, err
 	}

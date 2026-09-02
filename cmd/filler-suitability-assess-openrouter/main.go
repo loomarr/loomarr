@@ -42,7 +42,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 func runSuitability(args []string, stdout, stderr io.Writer, capabilities suitabilityCapabilities) int {
 	flags := flag.NewFlagSet("filler-suitability-assess-openrouter", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	manifest := flags.String("evidence", "", "verified temporal evidence manifest")
+	manifest := flags.String("evidence", "", "verified temporal evidence or structure-challenge manifest")
+	structureAuthority := flags.String("structure-authority", "", "private structure authority when --evidence is a structure challenge")
 	var aliases stringList
 	flags.Var(&aliases, "alias", "one evidence alias to screen; repeat; omit for the complete manifest")
 	snapshotPath := flags.String("snapshot", "", "fresh immutable OpenRouter capability snapshot")
@@ -73,7 +74,8 @@ func runSuitability(args []string, stdout, stderr io.Writer, capabilities suitab
 		return 1
 	}
 	result, err := capabilities.run(context.Background(), fillerreview.TemporalSuitabilityConfig{
-		EvidenceManifestPath: *manifest, CaseAliases: aliases, CheckpointDir: *output + ".private",
+		EvidenceManifestPath: *manifest, StructureAuthorityPath: *structureAuthority,
+		CaseAliases: aliases, CheckpointDir: *output + ".private",
 		BaseURL: *baseURL, APIKey: apiKey, Snapshot: snapshot, Model: *model, ModelFamily: *modelFamily,
 		UpstreamProvider: *provider, UpstreamProviderSlug: *providerSlug, AssessorID: *assessorID,
 		ReasoningMode: *reasoningMode,

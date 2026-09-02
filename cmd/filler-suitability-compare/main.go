@@ -18,7 +18,8 @@ func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 func run(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("filler-suitability-compare", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	evidence := flags.String("evidence", "", "verified temporal evidence manifest")
+	evidence := flags.String("evidence", "", "verified temporal evidence or structure-challenge manifest")
+	structureAuthority := flags.String("structure-authority", "", "private structure authority when --evidence is a structure challenge")
 	first := flags.String("first", "", "first immutable suitability result")
 	second := flags.String("second", "", "second immutable suitability result")
 	expectedCases := flags.Int("expected-cases", 48, "exact case count in both results")
@@ -33,7 +34,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	report, digest, err := fillerreview.PublishTemporalSuitabilityComparison(fillerreview.TemporalSuitabilityComparisonConfig{
-		EvidenceManifestPath: *evidence, FirstResultPath: *first, SecondResultPath: *second,
+		EvidenceManifestPath: *evidence, StructureAuthorityPath: *structureAuthority,
+		FirstResultPath: *first, SecondResultPath: *second,
 		ComparedAt: comparedAt.UTC(), ExpectedCases: *expectedCases, OutputPath: *output,
 	})
 	if err != nil {
