@@ -1170,6 +1170,70 @@ eligible slice deterministically at clock boundaries without re-running inferenc
 
 **Honest quality guidance:** ~7–8B-class models are the practical floor for reliable grounded tool use; local inference yields private, free, serviceable proposals, hosted frontier models yield noticeably better curation — the deterministic scoring below exists partly to narrow that gap.
 
+### Specialized local model experiment and release contract
+
+A Loomarr-specific local model is an **optional optimization of the existing Suggester**, not a
+new authority and not a prerequisite for local AI. The experiment asks whether supervised
+fine-tuning can make a smaller open-weight model choose the catalog operation more reliably, honor
+Intent qualifiers, produce the Proposal schema consistently, and abstain when the grounded result
+is empty. It does **not** teach title identity, availability, ratings, years, external ids, quotas,
+or authorization. Those facts and decisions remain owned by the live catalog and deterministic Go
+code: every pick still passes the surfaced-id chokepoint, acquisitions are revalidated, and the
+approval gate remains the only path that spends resources.
+
+**Certification precedes training and may end the project.** Before a base model is selected, the
+Go `internal/eval` harness freezes a versioned holdout over identical catalog fixtures and
+pre-registers its metrics, thresholds, and selection margin. Exact deployable stock artifacts are
+compared under the same quantization, context budget, sampling policy, runtime, and host. The hard
+gates — no unsupported id, grounding bypass, approval bypass, or authorization bypass — are pass/fail,
+never terms in a weighted quality score. At most two models advance: the smallest model within the
+declared margin of the best result and the best result overall. If a stock artifact clears the
+declared bar, Loomarr adopts that ordinary provider/model choice and does **not** build a training
+corpus, adapter, or custom release merely to own one.
+
+The initial experiment is bounded to **$200 of rented compute**. A request to exceed it is a new
+maintainer decision supported by the measured memory, throughput, failures, and projected cost from
+a small smoke run; an inconclusive result does not authorize an open-ended hyperparameter search.
+
+**The two repositories have different ownership.** This Loomarr repository owns the production
+provider boundary, prompt and tool schemas, frozen certification fixtures, the Go evaluator, hard
+gates, compatibility checks, and operator experience. A separate `loomarr-models` repository owns
+the non-application research toolchain: its pinned Linux/CUDA training image, training/validation
+code, reviewed training traces, dataset manifests, adapters, conversion recipes, model cards, and
+release manifests. Python, Transformers, TRL, PEFT, bitsandbytes, MLX, and model-conversion tools
+therefore never become Loomarr runtime or build dependencies. A model artifact is consumed through
+the existing Ollama/OpenAI-compatible boundary exactly like any other model; the training
+repository is never imported, executed, or required by this application.
+
+**Training data is a separate consent boundary.** Certification holdout cases never enter the
+training or development splits. The first training corpus contains only synthetic Intents,
+synthetic identities, frozen catalog fixtures, and human-reviewed target tool traces. Raw household
+prompts, viewing or request history, library inventories, Proposal approval/denial notes, databases,
+filesystem paths, and provider credentials are not training data. Any future use of real traces
+requires a prior design amendment that specifies affirmative consent, minimization and redaction,
+access and key custody, region/provider constraints, retention and deletion, incident response,
+human correction, and redistribution rights. A de-identified derivative is not assumed safe merely
+because direct identifiers were removed.
+
+**One release means one certified set of bytes.** The supported end-user artifact is a merged,
+quantized GGUF tested through the production Ollama path; a LoRA/QLoRA adapter and unquantized merge
+remain reproducibility artifacts, not something a household operator assembles. Redistributable
+datasets are versioned in dedicated Hugging Face dataset repositories under Loomarr's namespace,
+training source and manifests live in the separate GitHub `loomarr-models` repository, the canonical
+model card and weights live in a version-pinned Hugging Face model repository under that same
+namespace, and the exact namespaced Ollama package is the convenience install target. Every release
+manifest records the base revision, dataset and training manifest, converter and quantizer, GGUF
+checksum, Ollama content digest, quantization, license/NOTICE material, evaluation revision,
+prompt/tool contract, and minimum Loomarr and Ollama versions.
+
+Loomarr never selects `latest` for a curated release and never silently downloads or swaps
+multi-gigabyte weights. A new immutable version is pulled explicitly, verified by digest,
+capability-probed, exercised with a bounded real tool-call canary, and only then activated; the
+previous model remains available for rollback until the operator removes it. The ordinary AI
+profile remains model-less, arbitrary compatible models remain selectable, and hosted/custom
+providers remain first-class. Model weights are never embedded in the Loomarr image: application
+and model releases have independent size, hardware, licensing, update, and rollback lifecycles.
+
 ### 8.1 Model selection & system probe (local + hosted)
 
 Picking a local model is a real onboarding hurdle: a household admin shouldn't have to know which Ollama tag fits their GPU or supports tool-calling. Loomarr does that for them.
@@ -6606,6 +6670,22 @@ Build-time only — none of this ships in the binary or the image, and none of i
 | Markdown structure | **`markdownlint-cli2`**, lean config | Heading levels, list style, fenced-code languages. Line-length and inline-HTML rules are **off** — `design.md` uses both heavily by design, and a linter that fights the source of truth loses. Scoped to the user-facing and contributor sets. |
 | Prose + terminology | **`Vale`**, custom style only | Machine-enforces this repo's vocabulary, which until now lived only in `CONTEXT.md` and reviewers' heads: **Proposal** (not "suggestion" — §7's rename), and the proper-noun casing that drifts most (Tunarr, Jellyseerr, Emby, TMDB, `ffmpeg`, `yt-dlp`, SQLite, Postgres). ⚠ **The Microsoft and Google packages are deliberately NOT enabled.** Across ~270k words they produce findings in the hundreds, and a gate whose output is skimmed is a gate that has stopped working. |
 | Command reference | **generated** from the root Make interface and ordered `mk/*.mk` modules' `## ` comments (`cmd/dev-docs` → `docs/dev/commands.md`) | The same drift-by-copying that `config-docs-verify` solved for settings. The command contract was restated in four files that disagreed — on the Go version, the Node version, what `make fe` runs, and the visual-suite size (stated three ways, none correct). Generation makes the Make interface the one source and `dev-docs-verify` makes CI enforce it. |
+
+### Model research and release tooling
+
+Model fine-tuning is **research/release tooling in the separate `loomarr-models` repository**, not
+application code and not documentation tooling in this repository. That repository may use a
+pinned Python/CUDA stack (Transformers + TRL + PEFT + bitsandbytes), optional MLX experiments, and
+the model-family conversion tools required to reproduce an adapter and merged GGUF. It publishes
+only versioned datasets, manifests, adapters, model cards, and model artifacts; Loomarr consumes a
+certified model only through its existing HTTP provider boundary (§8).
+
+This exception does not widen Loomarr's language policy. No Python trainer, CUDA library, model
+converter, base checkpoint, adapter, or model weight is checked into this repository, added to its
+dependency manifests, embedded in its binary, or copied into its Docker image. The Go evaluator and
+frozen certification fixtures remain here because they define the application's behavior and hard
+gates; the separate toolchain remains replaceable because its release manifest, not its framework,
+is the contract.
 
 ### 14.1 Backend structure — the rules, and what they are not
 
