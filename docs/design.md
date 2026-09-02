@@ -6006,6 +6006,15 @@ no user-visible draft stage. A saved provider may be edited, enabled or disabled
 an optional test from the same row. SMTP is a provider in this list and has no separate settings
 card, test panel, or setup path.
 
+The former `notifications.email.*` and `notifications.smtp.*` settings are accepted only as an
+upgrade migration source. On the first startup with this migration, Loomarr atomically records that
+it inspected the legacy source and, when values exist and no SMTP destination already exists,
+creates one encrypted SMTP destination from them. An existing SMTP destination always wins. The
+legacy keys are absent from the Settings API and generated configuration reference, cannot be
+edited, and are never consulted by routing, delivery, validation, readiness, or testing after that
+one inspection. Deleting the migrated provider therefore does not recreate it on a later boot; the
+administrator adds another SMTP provider through the common workflow if one is wanted.
+
 The server owns a closed **Provider definition** for each Delivery means: display name, field keys,
 labels, input kinds, requiredness, safe defaults, sensitivity, validation, and supported events. A
 write submits values for those defined field keys through one settings object. The server rejects
@@ -7223,12 +7232,15 @@ volume compromise containing both database and installation key is outside this 
 | `TUNARR_TRANSCODE_CONFIG_ID` | Tunarr transcode-config uuid created channels reference (Phase-0: channel create requires a valid `transcodeConfigId`; empty → resolve the instance `Default` via `GET /api/transcode_configs`, §9) |
 | `SERVER_PUBLIC_URL` | **Re-scoped by §9.1 — no longer icon-only, and no longer Advanced.** Loomarr's own address as your media server *and* Tunarr reach it (e.g. `http://loomarr:8080`). Internal playout serves **every stream segment** from this base, so a wrong value means channels appear in the guide and never play. Still also used for **uploaded** channel icons — the stored icon URL is built from this, never from request headers (Host-injection-safe). Deliberately ONE key rather than a second `playout.public_url`: it is genuinely the server's own address, both callers need the same value, and two keys could drift. Empty → a relative `/v1/channels/{id}/icon` URL for icons (works when Tunarr shares Loomarr's origin); internal playout requires it set. |
 | `ACCESS_PUBLIC_URL` | Empty by default. The global `access.public_url` setting is the absolute `http`/`https` browser origin recipients can reach (for example `https://loomarr.example.test`), used to construct Invitation and local-recovery links (§11). Its General editor is labelled **Recipient-facing Loomarr address** and, when the setting is empty, stages the current browser origin as the default. The operator saves that value or changes it when recipients reach Loomarr elsewhere. The backend never infers the value from request headers, so async email delivery always uses explicit persisted configuration. It is intentionally distinct from `SERVER_PUBLIC_URL`, which may be a container-only machine-client address. Empty suppresses email and shareable-link generation with an actionable Settings → General link; it does not prevent direct account creation/import or storing an Invitation reservation. Notifications consumes its readiness state but does not own its editor. |
-| `NOTIFICATIONS_EMAIL_ENABLED` | `false`. Enables the email Delivery means only when the global application URL, SMTP host, and sender address are also complete. Disabled or incomplete email suppresses delivery without rolling back an Invitation; QR/copy remain available when `ACCESS_PUBLIC_URL` is configured. |
-| `NOTIFICATIONS_SMTP_HOST` / `NOTIFICATIONS_SMTP_PORT` | Empty / `587`. The outbound SMTP submission endpoint. Host is required when email is enabled; port is validated `1..65535`. |
-| `NOTIFICATIONS_SMTP_SECURITY` | `starttls` (default) / `tls` / `none`. `starttls` requires a successful STARTTLS upgrade and never falls back to cleartext; `tls` is implicit TLS. `none` is an explicit operator choice for a trusted local relay and is labelled insecure. Certificate verification is never disabled by a setting. |
-| `NOTIFICATIONS_SMTP_USERNAME` / `NOTIFICATIONS_SMTP_PASSWORD` | Empty / *(secret)*. Empty username means an unauthenticated relay and requires an empty password. Otherwise the adapter discovers the strongest mutually supported mechanism. The password is replace-only and covered by every config-secret redaction rule. |
-| `NOTIFICATIONS_EMAIL_FROM_ADDRESS` / `NOTIFICATIONS_EMAIL_FROM_NAME` | Empty / `Loomarr`. A single validated mailbox and its display name. The address is required when email is enabled; neither value is recipient-controlled. |
 | `JOB_NOTIFICATION_DELIVERY_SCHEDULE` | `*/15 * * * * *`. How often the provider-neutral worker claims queued account-message Delivery attempts. The worker drains a bounded batch per run; retry availability remains the fixed policy above rather than another setting. |
+
+**One-time SMTP upgrade input (not application settings).** The legacy environment variables
+`NOTIFICATIONS_EMAIL_ENABLED`, `NOTIFICATIONS_SMTP_HOST`, `NOTIFICATIONS_SMTP_PORT`,
+`NOTIFICATIONS_SMTP_SECURITY`, `NOTIFICATIONS_SMTP_USERNAME`, `NOTIFICATIONS_SMTP_PASSWORD`,
+`NOTIFICATIONS_EMAIL_FROM_ADDRESS`, and `NOTIFICATIONS_EMAIL_FROM_NAME` retain their former parsing
+rules only for the one upgrade inspection described in §11. They do not pin, recreate, or update a
+provider after that inspection. New installations configure SMTP only through **Settings →
+Notifications → Add provider**.
 
 **Playout (§9.1 — added with internal playout).**
 
