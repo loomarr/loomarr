@@ -1247,6 +1247,18 @@ count. Prompts, raw responses, reasoning, response values or field names, genera
 and provider payloads are not diagnostic artifacts. Any prompt or schema change receives a new version
 and must face a newly frozen untouched certification holdout before a ship claim.
 
+The retained `channel-recommendation-v1` holdout and its no-ship scorecards remain immutable. After
+the disjoint development corpus isolated a hosted reasoning/output ceiling rather than a JSON-mode or
+prompt failure, active `channel-recommendation-v2` freezes eight new case identities and normalized
+snapshot contents that are mechanically disjoint from both v1 and development. It retains
+`channel-concept-prompt-v1`, `channel-concept-schema-v1`, and
+`channel-recommendation-scorer-v1`, requires JSON mode, and binds every comparable call to exactly
+1,024 maximum output tokens. The certification command rejects any output-ceiling override rather
+than silently creating an incomparable run. A provider-free dry run emits the corpus, fixture,
+protocol, candidate identity, and complete resource envelope with `inferenceAuthorized=false`; it
+constructs no provider and is contract evidence only. Live inference still requires separate
+explicit execution and complete accounting.
+
 ### Specialized local model experiment and release contract
 
 A Loomarr-specific local model is an **optional optimization of the existing Suggester**, not a
