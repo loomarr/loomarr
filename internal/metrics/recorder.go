@@ -296,7 +296,7 @@ func New(options Options) *Recorder {
 	}
 	for _, target := range []string{
 		"tunarr", "tmdb", "library", "seerr", "arr", "llm",
-		"filler_review", "filler_bakeoff", "other",
+		"filler_review", "filler_bakeoff", "notifications", "other",
 	} {
 		for _, reason := range []string{"transport", "408", "429", "500", "502", "503", "504", "other"} {
 			outboundMetrics.retries.WithLabelValues(target, reason)
@@ -477,6 +477,8 @@ func outboundTargetLabel(target string) string {
 		return "filler_review"
 	case "filler-bakeoff-ollama", "filler-bakeoff-openrouter", "filler-openrouter-snapshot":
 		return "filler_bakeoff"
+	case "notification-provider":
+		return "notifications"
 	default:
 		return "other"
 	}

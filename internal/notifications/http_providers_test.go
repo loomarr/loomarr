@@ -7,7 +7,9 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -57,6 +59,29 @@ func TestWebhookSignatureCoversTheExactVersionedPayload(t *testing.T) {
 	want := "sha256=" + hex.EncodeToString(mac.Sum(nil))
 	if got := doer.request.header.Get("X-Loomarr-Signature"); got != want {
 		t.Fatalf("signature = %q, want %q", got, want)
+	}
+}
+
+func TestDefaultHTTPProviderClientDoesNotFollowWriteRedirects(t *testing.T) {
+	t.Parallel()
+	var redirected atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/redirected" {
+			redirected.Add(1)
+			response.WriteHeader(http.StatusNoContent)
+			return
+		}
+		http.Redirect(response, request, "/redirected", http.StatusTemporaryRedirect)
+	}))
+	defer server.Close()
+
+	adapter := httpAdapter(t, notifications.MeansWebhook, nil)
+	destination := providerDestination(notifications.MeansWebhook, nil, map[string]string{
+		"url": server.URL + "/provider",
+	})
+	result := adapter.Deliver(t.Context(), providerDelivery(&destination))
+	if result.Status == notifications.StatusDelivered || redirected.Load() != 0 {
+		t.Fatalf("redirected provider write result = %+v, redirected calls = %d", result, redirected.Load())
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/events"
+	"github.com/loomarr/loomarr/internal/httpx"
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
@@ -108,8 +109,12 @@ func buildOperations(
 	if err := migrateLegacySMTPProvider(rootCtx, destinationRepository, set); err != nil {
 		return operationsBuild{}, fmt.Errorf("migrate SMTP notification provider: %w", err)
 	}
+	providerHTTP := overrides.NotificationHTTP
+	if providerHTTP == nil {
+		providerHTTP = httpx.NewNamedObserved("notification-provider", httpx.TimeoutNotifications, metricRecorder)
+	}
 	providerAdapters, providerValidators := notifications.NewHTTPProviderAdapters(
-		overrides.NotificationHTTP, func() string { return set.str("access.public_url") },
+		providerHTTP, func() string { return set.str("access.public_url") },
 	)
 	mqttAdapter := notifications.NewMQTTAdapter(func() string { return set.str("access.public_url") })
 	providerAdapters = append(providerAdapters, mqttAdapter)

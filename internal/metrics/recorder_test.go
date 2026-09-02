@@ -252,6 +252,27 @@ func TestRecorderBoundsOutboundTargetAndRetryReason(t *testing.T) {
 	}
 }
 
+func TestRecorderUsesBoundedNotificationOutboundTarget(t *testing.T) {
+	recorder := metrics.New(metrics.Options{})
+	transport := recorder.InstrumentTransport("notification-provider", roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusNoContent,
+			Body:       io.NopCloser(strings.NewReader("")),
+			Header:     make(http.Header),
+		}, nil
+	}))
+	response, err := transport.RoundTrip(httptest.NewRequest(http.MethodPost, "http://loomarr.invalid/", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+
+	body := scrape(t, recorder)
+	if !strings.Contains(body, `loomarr_outbound_requests_total{code="204",target="notifications"} 1`) {
+		t.Fatalf("scrape does not contain bounded notifications target:\n%s", body)
+	}
+}
+
 func TestRecorderBoundsFillerMatchLevelAndRecordsRotationState(t *testing.T) {
 	recorder := metrics.New(metrics.Options{})
 	hostile := `exact",channel="private-channel`

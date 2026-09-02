@@ -18,11 +18,12 @@ import (
 
 // Per-service hard timeouts (§6). Verified reachable at these budgets in Phase 0.
 const (
-	TimeoutLibrary = 10 * time.Second // Emby/Jellyfin
-	TimeoutSeerr   = 10 * time.Second
-	TimeoutTMDB    = 10 * time.Second
-	TimeoutArr     = 10 * time.Second // Sonarr/Radarr
-	TimeoutTunarr  = 20 * time.Second // lineup pushes are chunky
+	TimeoutLibrary       = 10 * time.Second // Emby/Jellyfin
+	TimeoutSeerr         = 10 * time.Second
+	TimeoutTMDB          = 10 * time.Second
+	TimeoutArr           = 10 * time.Second // Sonarr/Radarr
+	TimeoutTunarr        = 20 * time.Second // lineup pushes are chunky
+	TimeoutNotifications = 15 * time.Second
 	// TimeoutTunarrBulk covers the ONE bulk read the programmer makes: the
 	// content-index build (GET /api/media-libraries/{id}/programs), which returns a
 	// library's ENTIRE persisted program list with no server-side paging. On a large
