@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "contract": "planner-reference-host-v1",
+  "generatedAt": "2026-10-15T15:01:00Z",
+  "runId": "m5-pro-gemma-q4",
+  "startedAt": "2026-10-15T14:00:00Z",
+  "completedAt": "2026-10-15T15:00:00Z",
+  "scorecard": {
+    "sha256": "339de798b3723159b82b17c2731096ff82618f93078c4780f44438b0b5c82fb4",
+    "bytes": 643,
+    "schemaVersion": 10,
+    "corpusVersion": "planner-certification-v3",
+    "profile": "m5-pro-gemma",
+    "generatorProvider": "ollama",
+    "generatorModel": "hf.co/loomarr/gemma:Q4_K_M",
+    "contractCorpusVersion": "planner-certification-v3",
+    "catalogFixtureSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "promptVersion": "planner-prompt-v1",
+    "toolSchemaVersion": "planner-tools-v1",
+    "scorerVersion": "planner-scorer-v3"
+  },
+  "model": {
+    "tag": "hf.co/loomarr/gemma:Q4_K_M",
+    "ollamaDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "sourceRepository": "loomarr/gemma-gguf",
+    "sourceRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "ggufFile": "gemma-Q4_K_M.gguf",
+    "ggufSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "quantization": "Q4_K_M",
+    "contextLength": 8192,
+    "templateSha256": "5cde0f1298f41f7d1c8b907a36992a7a513225a2615bd6e307bf1a9149b06b40",
+    "modelfileSha256": "cdffc70c1d335b1ba941370a44b6c8f00824e196b5c44e1b952d7a8e8be52a42",
+    "licenseId": "Gemma",
+    "licenseSha256": "67d5c7435efd8048b72ec16c4b6fe57405738ccb3351f828bc64885f7606fc4a"
+  },
+  "runtime": {
+    "ollamaVersion": "0.15.1",
+    "macosVersion": "27.0",
+    "macosBuild": "26A123",
+    "architecture": "arm64",
+    "hardwareModel": "Macmini11,1",
+    "chip": "Apple M5 Pro",
+    "physicalUnifiedMemoryBytes": 68719476736
+  },
+  "protocol": {
+    "profile": "m5-pro-gemma",
+    "contextLength": 8192,
+    "maxOutputTokens": 2048,
+    "temperature": 0.2,
+    "seed": null,
+    "coldStarts": 1,
+    "warmupLoads": 1,
+    "measuredWarmTrials": 3
+  },
+  "residency": {
+    "coldBefore": {
+      "selectedModelResident": false
+    },
+    "warmBefore": {
+      "selectedModelResident": true,
+      "model": "hf.co/loomarr/gemma:Q4_K_M",
+      "ollamaDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ramBytes": 2147483648,
+      "vramBytes": 10737418240
+    },
+    "after": {
+      "selectedModelResident": true,
+      "model": "hf.co/loomarr/gemma:Q4_K_M",
+      "ollamaDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ramBytes": 2147483648,
+      "vramBytes": 10737418240
+    }
+  },
+  "evidence": [
+    {
+      "kind": "gguf-sha256.txt",
+      "sha256": "7710a064ab3a4650eb40dd1763e2a5469776857a6a64816e0b11abed2339a1c0",
+      "bytes": 96
+    },
+    {
+      "kind": "huggingface-model.json",
+      "sha256": "4bf605462bb959ff9e1f851b40c591b6238482995750eb93b50a151f29395c38",
+      "bytes": 238
+    },
+    {
+      "kind": "ollama-list.json",
+      "sha256": "f3812d8c1bd029ddf1a826a225431902603cb94948c78d0b74c2fb1f24050277",
+      "bytes": 205
+    },
+    {
+      "kind": "ollama-load-request.json",
+      "sha256": "b85a26d39dc1023a875494dd0a114a3369674f7a53deea7ae0fd0fee49fb2c64",
+      "bytes": 111
+    },
+    {
+      "kind": "ollama-ps-after.json",
+      "sha256": "4ffb59ea3e0a642b1ec6dc2eb64f35663cc7e2f9b49473f9557ccb0edb414ac4",
+      "bytes": 228
+    },
+    {
+      "kind": "ollama-ps-cold-before.json",
+      "sha256": "0b3c63ffc9d89a8ca34ba132b84f6d9ea869b8d6ee3831cb49e5160a0c874ede",
+      "bytes": 224
+    },
+    {
+      "kind": "ollama-ps-warm-before.json",
+      "sha256": "4ffb59ea3e0a642b1ec6dc2eb64f35663cc7e2f9b49473f9557ccb0edb414ac4",
+      "bytes": 228
+    },
+    {
+      "kind": "ollama-show.json",
+      "sha256": "38b2068435750c4d90b9c306baa0ea8294054da49f8e3d91fc412d89e372fd05",
+      "bytes": 212
+    },
+    {
+      "kind": "ollama-show-request.json",
+      "sha256": "52e2d555802af02ecf34aedab279b5c38c635759d9c0f273a32c0604df95ef34",
+      "bytes": 38
+    },
+    {
+      "kind": "ollama-version.json",
+      "sha256": "cefc1824f20ecd7def19d95a977a26470fe01531a75aae60dbc8fad0428aa377",
+      "bytes": 20
+    },
+    {
+      "kind": "sw-vers.txt",
+      "sha256": "e13ef5b393731c855828a55a1bc6a12ca51ccbf0b6a446285262a26c835ac18b",
+      "bytes": 64
+    },
+    {
+      "kind": "sysctl-hw-memsize.txt",
+      "sha256": "57d5473bac8c93f9991ae91cf27dcff110029feff9821e24a4502928d1861a74",
+      "bytes": 12
+    },
+    {
+      "kind": "system-profiler.json",
+      "sha256": "d942788d89f31455c1999d45affd9a83fa93d2417fa95252c901f43ee1470e43",
+      "bytes": 83
+    },
+    {
+      "kind": "uname.txt",
+      "sha256": "c1669e1d8edca98769c37d494b76442a1d6e5ffffd7b4da1fb63aef8ebaf6f01",
+      "bytes": 6
+    }
+  ]
+}

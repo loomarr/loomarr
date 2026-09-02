@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +23,17 @@ func TestBuildManifestCanonicalizesAndBindsReferenceHostEvidence(t *testing.T) {
 	}
 	if !bytes.Equal(artifact.JSON, again.JSON) || artifact.SHA256 != again.SHA256 {
 		t.Fatal("identical raw inputs did not produce an identical manifest")
+	}
+	want, err := os.ReadFile("testdata/planner-reference-host-v1.golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(artifact.JSON, want) {
+		t.Fatalf("canonical manifest drifted\nwant:\n%s\ngot:\n%s", want, artifact.JSON)
+	}
+	const wantDigest = "46c78edcd8b08dfac708631561a4bc2f1f2b3ed526f334ecab4c1085aa5c16c4"
+	if artifact.SHA256 != wantDigest {
+		t.Fatalf("canonical manifest digest = %q, want %q", artifact.SHA256, wantDigest)
 	}
 	sum := sha256.Sum256(artifact.JSON)
 	if artifact.SHA256 != hex.EncodeToString(sum[:]) {

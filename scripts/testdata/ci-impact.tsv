@@ -87,6 +87,7 @@ combined-leaf-and-docs	internal/suggest/score.go;docs/dev/testing.md	contracts,g
 filler-eval-corpus	internal/fillereval/corpus/seed-v1.json	contracts,go
 planner-eval-corpus	internal/eval/testdata/planner-certification-v1.json;internal/eval/testdata/planner-certification-v2.json;internal/eval/testdata/planner-certification-v3.json;internal/eval/testdata/planner-catalog-v1.json	contracts,go
 recommendation-eval-corpus	internal/recommend/testdata/channel-recommendation-v1.json;internal/recommend/testdata/channel-recommendation-snapshots-v1.json	contracts,go
+planner-reference-golden	internal/plannerreference/testdata/planner-reference-host-v1.golden.json	contracts,go
 filler-corpus-pilot	internal/fillercorpus/corpus/pilot/prelinger.json	contracts,go
 filler-corpus-nasa	internal/fillercorpus/corpus/pilot/nasa.json	contracts,go
 filler-corpus-cdc	internal/fillercorpus/corpus/pilot/cdc.json;internal/fillercorpus/corpus/seeds/cdc.json	contracts,go
