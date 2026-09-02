@@ -88,3 +88,13 @@ include mk/docs.mk
 include mk/frontend.mk
 include mk/smoke.mk
 include mk/android.mk
+
+.PHONY: prototype-spoken-safety-cascade
+prototype-spoken-safety-cascade: ## PROTOTYPE: run the private native-audio spoken-safety pilot
+	@set -a; \
+	if [ -f ../loomarr/.env ]; then . ../loomarr/.env; fi; \
+	set +a; \
+	$(GO) run ./cmd/prototype-spoken-safety-cascade \
+		--auto \
+		--root "$(abspath ../../LoomarrData/filler-development-2026-08-30)" \
+		$(PROTOTYPE_ARGS)
