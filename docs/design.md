@@ -7338,6 +7338,19 @@ appends a tombstone rather than rewriting history. Members may read the effectiv
 mutate shared taste. Anonymous callers cannot read or write them.
 The latest event per `(scope, target)` is the effective signal, with channel scope overriding the
 household signal for that channel.
+`GET /v1/discovery/feedback?scope=household` returns the effective household view. The same read at
+channel scope returns the effective view *for that Channel*: channel events win, while unaffected or
+cleared targets fall back to their household event. Each row retains the scope and actor of the event
+that currently supplies it, so a client can explain whether the choice is Channel-specific or
+inherited. Replacing an action appends the replacement event; undo appends `clear`. Undoing a Channel
+override therefore reveals any household fallback rather than falsely presenting no preference.
+Feedback targets are canonical provisioning keys accepted by `provision.ParseKey`; prefix-like or
+otherwise malformed identities are rejected before persistence.
+
+Admin proposal and Channel-lineup controls render the effective action as selected, explain its
+scope, and offer Undo. Choosing another action replaces the effective action through the same
+append-only endpoint. The controls never imply that feedback edits the current Proposal or playout:
+the change applies to later fresh suggestion or re-curation ranking only.
 
 A channel-scoped event names a currently persisted Channel identity. The store checks that identity
 and appends the event or clear tombstone in one transaction; an absent identity returns
