@@ -1237,6 +1237,16 @@ scorecard replay are hermetic; any model run is an explicit non-CI command with 
 route, token, call, cost, latency, and memory identity. Planner certification never transfers to this
 pillar even when it supplies the candidate model family.
 
+Prompt and transport diagnosis uses a separately digest-pinned **Development Corpus** whose case ids
+and normalized snapshot-content digests must be disjoint from every recommendation certification
+fixture. It preserves the same privacy and no-effect authority boundary but provides no ship evidence;
+certification cases and their expectations are never inspected or tuned against. Development runs may
+retain synthetic case ids, exact resource accounting, and structural facts only: root-object validity,
+required-field validity, unknown/effectful field counts, syntactic truncation, abstention, and concept
+count. Prompts, raw responses, reasoning, response values or field names, generation ids, credentials,
+and provider payloads are not diagnostic artifacts. Any prompt or schema change receives a new version
+and must face a newly frozen untouched certification holdout before a ship claim.
+
 ### Specialized local model experiment and release contract
 
 A Loomarr-specific local model is an **optional optimization of the existing Suggester**, not a

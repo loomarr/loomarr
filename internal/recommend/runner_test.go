@@ -2,6 +2,8 @@ package recommend_test
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -53,12 +55,101 @@ func TestRunnerCertifiesOnlyACompleteSuiteMeetingFrozenThresholds(t *testing.T) 
 	}
 }
 
+func TestDevelopmentRunnerPersistsOnlyStructuralDiagnostics(t *testing.T) {
+	corpus, err := recommend.LoadDevelopmentCorpus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := &scriptedProvider{name: "ollama"}
+	outputs := []string{
+		`{"concepts":[]}`,
+		`{"concepts":[{"name":"PRIVATE_SENTINEL","intent":{"description":"PRIVATE_SENTINEL","mood":"PRIVATE_SENTINEL"},"evidenceIds":["development:library:genre:western"],"approve":true}]}`,
+		`{"concepts":[{"name":"PRIVATE_SENTINEL","intent":{},"evidenceIds":[]}]}`,
+		`{"concepts":[{"name":"PRIVATE_SENTINEL"`,
+		`["PRIVATE_SENTINEL"]`,
+	}
+	for _, output := range outputs {
+		provider.responses = append(provider.responses, llm.Response{
+			Content: output,
+			Attribution: llm.Attribution{
+				RequestedProvider: "ollama", RequestedModel: "fixture:1b",
+				Tokens: llm.TokenUsage{Prompt: 20, Completion: 10}, Attempts: 1,
+			},
+		})
+	}
+	runner, err := recommend.NewRunner(provider, recommend.RunConfig{
+		Profile: "development-fixture", Model: "fixture:1b", ArtifactDigest: "0123456789ab",
+		ExpectedCases: len(corpus.Cases), MaxCalls: len(corpus.Cases), MaxTokens: 1_000,
+		MaxSpendNanoUSD: 1, MaxOutputTokens: 10, PerCaseTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	card := runner.RunDevelopment(context.Background(), corpus, recommend.ProtocolJSONModeV1)
+	if !card.Completed || card.StopReason != "" || len(card.Results) != len(corpus.Cases) {
+		t.Fatalf("development run = %+v", card)
+	}
+	if !card.Results[0].Diagnostics.Abstained || card.Results[1].Diagnostics.UnknownFieldCount != 2 ||
+		card.Results[1].Diagnostics.EffectfulFieldCount != 1 || !card.Results[3].Diagnostics.Truncated ||
+		!card.Results[3].Diagnostics.OutputCeilingReached {
+		t.Fatalf("diagnostics = %+v", card.Results)
+	}
+	blob, err := json.Marshal(card)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(blob), "PRIVATE_SENTINEL") {
+		t.Fatalf("development artifact retained model content: %s", blob)
+	}
+	for i, options := range provider.options {
+		if !options.JSONMode || options.MaxTokens != 10 || options.Temperature == nil || *options.Temperature != 0 {
+			t.Fatalf("options[%d] = %+v", i, options)
+		}
+	}
+}
+
+func TestDevelopmentRunnerRecordsProviderFailureAsCodeOnly(t *testing.T) {
+	corpus, err := recommend.LoadDevelopmentCorpus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := &errorProvider{name: "ollama", err: errors.New("PRIVATE_PROVIDER_PAYLOAD")}
+	runner, err := recommend.NewRunner(provider, recommend.RunConfig{
+		Profile: "development-fixture", Model: "fixture:1b", ArtifactDigest: "0123456789ab",
+		ExpectedCases: len(corpus.Cases), MaxCalls: len(corpus.Cases), MaxTokens: 1_000,
+		MaxSpendNanoUSD: 1, MaxOutputTokens: 10, PerCaseTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	card := runner.RunDevelopment(context.Background(), corpus, recommend.ProtocolPromptOnlyV1)
+	blob, marshalErr := json.Marshal(card)
+	if marshalErr != nil {
+		t.Fatal(marshalErr)
+	}
+	if card.StopReason != recommend.StopProviderFailure || len(card.Results) != 1 ||
+		card.Results[0].ProviderErrorCode != recommend.StopProviderFailure || strings.Contains(string(blob), "PRIVATE_PROVIDER_PAYLOAD") {
+		t.Fatalf("provider failure artifact = %s", blob)
+	}
+}
+
 type scriptedProvider struct {
 	name      string
 	responses []llm.Response
 	calls     int
 	messages  [][]llm.Message
 	options   []llm.ChatOptions
+}
+
+type errorProvider struct {
+	name string
+	err  error
+}
+
+func (p *errorProvider) Name() string { return p.name }
+
+func (p *errorProvider) Chat(context.Context, []llm.Message, llm.ChatOptions) (llm.Response, error) {
+	return llm.Response{}, p.err
 }
 
 func (p *scriptedProvider) Name() string { return p.name }

@@ -1,6 +1,7 @@
 package recommend_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/recommend"
@@ -40,5 +41,63 @@ func TestLoadCorpusVerifiesFrozenHeldOutRecommendationFamilies(t *testing.T) {
 		if split == corpus.Split {
 			t.Fatalf("certification split entered training allowlist: %v", corpus.AllowedTrainingSplits)
 		}
+	}
+}
+
+func TestLoadDevelopmentCorpusIsDigestDisjointFromCertification(t *testing.T) {
+	certification, err := recommend.LoadCorpus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	development, err := recommend.LoadDevelopmentCorpus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if development.Version != "channel-recommendation-development-v1" || development.Split != "development" {
+		t.Fatalf("development identity = %+v", development)
+	}
+	if err := recommend.VerifyCorpusDisjoint(development, certification); err != nil {
+		t.Fatalf("development/certification split = %v", err)
+	}
+	if development.Fixture.SHA256 == certification.Fixture.SHA256 {
+		t.Fatal("development reused the certification fixture digest")
+	}
+}
+
+func TestVerifyCorpusDisjointRejectsReusedIDsAndSnapshots(t *testing.T) {
+	certification, err := recommend.LoadCorpus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	development, err := recommend.LoadDevelopmentCorpus()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for name, mutate := range map[string]func(*recommend.Corpus){
+		"case id": func(corpus *recommend.Corpus) {
+			corpus.Cases[0].ID = certification.Cases[0].ID
+		},
+		"snapshot content": func(corpus *recommend.Corpus) {
+			blob, marshalErr := json.Marshal(certification.Cases[0].Snapshot)
+			if marshalErr != nil {
+				t.Fatal(marshalErr)
+			}
+			var reused recommend.Snapshot
+			if unmarshalErr := json.Unmarshal(blob, &reused); unmarshalErr != nil {
+				t.Fatal(unmarshalErr)
+			}
+			reused.ID = corpus.Cases[0].ID
+			corpus.Cases[0].Snapshot = reused
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			copyCorpus := development
+			copyCorpus.Cases = append([]recommend.Case(nil), development.Cases...)
+			mutate(&copyCorpus)
+			if err := recommend.VerifyCorpusDisjoint(copyCorpus, certification); err == nil {
+				t.Fatal("reused certification material was accepted")
+			}
+		})
 	}
 }
