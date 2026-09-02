@@ -44,6 +44,10 @@ channel-recommend-cert: ## certify inert channel concepts on the frozen recommen
 	  $(GO) run ./cmd/channel-recommend-cert \
 	    --out "$$report" --summary "$$summary"
 
+channel-recommend-cert-dry-run: ## emit the provider-free recommendation certification contract; no inference
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  $(GO) run ./cmd/channel-recommend-cert --dry-run
+
 channel-recommend-diagnostic: ## diagnose recommendation JSON transport on the disjoint development corpus; explicit, inference-spending, non-CI
 	@eval "$$(./scripts/dev-env.sh export)"; \
 	  report="$${LOOMARR_RECOMMEND_DIAGNOSTIC_OUT:-$$LOOMARR_ARTIFACT_DIR/channel-recommendation-diagnostic.json}"; \

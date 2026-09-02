@@ -94,6 +94,20 @@ type Scorecard struct {
 	Certified         bool             `json:"certified"`
 }
 
+// CertificationContract is a provider-free preflight artifact. It freezes the
+// exact held-out evidence and resource envelope without granting inference.
+type CertificationContract struct {
+	SchemaVersion       int       `json:"schemaVersion"`
+	CorpusVersion       string    `json:"corpusVersion"`
+	CorpusSHA256        string    `json:"corpusSha256"`
+	PromptVersion       string    `json:"promptVersion"`
+	OutputSchema        string    `json:"outputSchema"`
+	ScorerVersion       string    `json:"scorerVersion"`
+	Provider            string    `json:"provider"`
+	Budget              RunConfig `json:"budget"`
+	InferenceAuthorized bool      `json:"inferenceAuthorized"`
+}
+
 type Runner struct {
 	provider llm.Provider
 	config   RunConfig
@@ -103,25 +117,49 @@ func NewRunner(provider llm.Provider, config RunConfig) (*Runner, error) {
 	if provider == nil {
 		return nil, fmt.Errorf("recommendation runner requires a provider")
 	}
-	if strings.TrimSpace(config.Profile) == "" || strings.TrimSpace(config.Model) == "" {
-		return nil, fmt.Errorf("recommendation runner requires profile and model identities")
-	}
-	if strings.EqualFold(provider.Name(), "ollama") && !validArtifactDigest(config.ArtifactDigest) {
-		return nil, fmt.Errorf("local recommendation certification requires a hexadecimal model artifact digest")
-	}
-	if strings.EqualFold(provider.Name(), "openrouter") && strings.TrimSpace(config.Upstream) == "" {
-		return nil, fmt.Errorf("OpenRouter recommendation certification requires a pinned upstream provider")
-	}
-	if config.ExpectedCases <= 0 {
-		return nil, fmt.Errorf("recommendation runner requires a positive expected case count")
-	}
-	if config.MaxCalls < config.ExpectedCases {
-		return nil, fmt.Errorf("max calls %d cannot cover %d declared cases", config.MaxCalls, config.ExpectedCases)
-	}
-	if config.MaxTokens <= 0 || config.MaxSpendNanoUSD <= 0 || config.MaxOutputTokens <= 0 || config.PerCaseTimeout <= 0 {
-		return nil, fmt.Errorf("recommendation runner requires positive token, spend, output, and timeout ceilings")
+	if err := validateRunConfig(provider.Name(), config); err != nil {
+		return nil, err
 	}
 	return &Runner{provider: provider, config: config}, nil
+}
+
+// BuildCertificationContract validates the complete pre-provider envelope and
+// records it without constructing or calling a provider.
+func BuildCertificationContract(provider string, corpus Corpus, config RunConfig) (CertificationContract, error) {
+	if err := validateRunConfig(provider, config); err != nil {
+		return CertificationContract{}, err
+	}
+	if len(corpus.Cases) != config.ExpectedCases || corpus.MaxOutputTokens <= 0 || config.MaxOutputTokens != corpus.MaxOutputTokens {
+		return CertificationContract{}, fmt.Errorf("recommendation certification budget does not match frozen corpus contract")
+	}
+	return CertificationContract{
+		SchemaVersion: 1, CorpusVersion: corpus.Version, CorpusSHA256: corpus.Fixture.SHA256,
+		PromptVersion: corpus.PromptVersion, OutputSchema: corpus.SchemaVersionName,
+		ScorerVersion: corpus.ScorerVersion, Provider: boundedIdentity(provider), Budget: config,
+		InferenceAuthorized: false,
+	}, nil
+}
+
+func validateRunConfig(provider string, config RunConfig) error {
+	if strings.TrimSpace(config.Profile) == "" || strings.TrimSpace(config.Model) == "" {
+		return fmt.Errorf("recommendation runner requires profile and model identities")
+	}
+	if strings.EqualFold(provider, "ollama") && !validArtifactDigest(config.ArtifactDigest) {
+		return fmt.Errorf("local recommendation certification requires a hexadecimal model artifact digest")
+	}
+	if strings.EqualFold(provider, "openrouter") && strings.TrimSpace(config.Upstream) == "" {
+		return fmt.Errorf("OpenRouter recommendation certification requires a pinned upstream provider")
+	}
+	if config.ExpectedCases <= 0 {
+		return fmt.Errorf("recommendation runner requires a positive expected case count")
+	}
+	if config.MaxCalls < config.ExpectedCases {
+		return fmt.Errorf("max calls %d cannot cover %d declared cases", config.MaxCalls, config.ExpectedCases)
+	}
+	if config.MaxTokens <= 0 || config.MaxSpendNanoUSD <= 0 || config.MaxOutputTokens <= 0 || config.PerCaseTimeout <= 0 {
+		return fmt.Errorf("recommendation runner requires positive token, spend, output, and timeout ceilings")
+	}
+	return nil
 }
 
 func (r *Runner) Run(ctx context.Context, corpus Corpus) Scorecard {
@@ -135,7 +173,7 @@ func (r *Runner) Run(ctx context.Context, corpus Corpus) Scorecard {
 		Resources:         ResourceUsage{AccountingComplete: true},
 		HardFailureCounts: make(map[string]int),
 	}
-	if len(corpus.Cases) != r.config.ExpectedCases {
+	if len(corpus.Cases) != r.config.ExpectedCases || corpus.MaxOutputTokens <= 0 || r.config.MaxOutputTokens != corpus.MaxOutputTokens {
 		card.StopReason = StopConfiguration
 		return card
 	}

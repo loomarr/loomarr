@@ -11,8 +11,8 @@ func TestScoreCaseSeparatesQualityFromHardFailuresAndRewardsCorrectAbstention(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	family := corpusCase(t, corpus, "family-safe")
-	familyRaw := []byte(`{"concepts":[{"name":"Family Animation Club","intent":{"description":"A family-safe animation channel"},"evidenceIds":["library:genre:animation","constraint:audience:family"]}]}`)
+	family := corpusCase(t, corpus, "cert-v2-family-gentle-animation")
+	familyRaw := []byte(`{"concepts":[{"name":"All-Ages Children","intent":{"description":"An all-ages children channel"},"evidenceIds":["library:genre:children","constraint:audience:all-ages"]}]}`)
 	familyResult := recommend.ScoreCase(family, familyRaw)
 	if !familyResult.Passed || len(familyResult.HardFailures) != 0 {
 		t.Fatalf("family result = %+v", familyResult)
@@ -21,7 +21,7 @@ func TestScoreCaseSeparatesQualityFromHardFailuresAndRewardsCorrectAbstention(t 
 		t.Fatalf("family quality = %+v", familyResult.Quality)
 	}
 
-	conflicting := corpusCase(t, corpus, "conflicting-preferences")
+	conflicting := corpusCase(t, corpus, "cert-v2-conflicting-reality")
 	abstained := recommend.ScoreCase(conflicting, []byte(`{"concepts":[]}`))
 	if !abstained.Passed || abstained.Quality.Abstention != 1 {
 		t.Fatalf("conflicting abstention = %+v", abstained)

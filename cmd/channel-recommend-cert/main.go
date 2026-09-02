@@ -45,8 +45,9 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	maxCalls := flags.String("max-calls", getenv("LOOMARR_RECOMMEND_MAX_CALLS"), "suite call ceiling")
 	maxTokens := flags.String("max-tokens", getenv("LOOMARR_RECOMMEND_MAX_TOKENS"), "suite token ceiling")
 	maxSpend := flags.String("max-spend-nanousd", getenv("LOOMARR_RECOMMEND_MAX_SPEND_NANOUSD"), "suite spend ceiling in nanodollars")
-	maxOutputTokens := flags.Int("max-output-tokens", 512, "per-case output-token ceiling")
+	maxOutputTokens := flags.Int("max-output-tokens", 0, "per-case output-token ceiling; omitted uses the frozen corpus contract")
 	caseTimeout := flags.Duration("case-timeout", 2*time.Minute, "per-case wall-clock ceiling")
+	dryRun := flags.Bool("dry-run", false, "write the provider-free certification contract without inference")
 	outPath := flags.String("out", getenv("LOOMARR_RECOMMEND_OUT"), "machine scorecard path")
 	summaryPath := flags.String("summary", getenv("LOOMARR_RECOMMEND_SUMMARY_OUT"), "human summary path")
 	if err := flags.Parse(args); err != nil {
@@ -57,13 +58,25 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	if err != nil {
 		return commandError(stderr, "load corpus", err)
 	}
+	resolvedMaxOutputTokens := *maxOutputTokens
+	if resolvedMaxOutputTokens == 0 {
+		resolvedMaxOutputTokens = corpus.MaxOutputTokens
+	}
+	if resolvedMaxOutputTokens <= 0 || resolvedMaxOutputTokens != corpus.MaxOutputTokens {
+		_, _ = fmt.Fprintf(stderr, "channel-recommend-cert: --max-output-tokens must equal frozen %s ceiling %d\n", corpus.Version, corpus.MaxOutputTokens)
+		return 2
+	}
 	parsedCalls, parsedTokens, parsedSpend, err := parseCeilings(*maxCalls, *maxTokens, *maxSpend)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "channel-recommend-cert: %v\n", err)
 		return 2
 	}
-	if strings.TrimSpace(*model) == "" || strings.TrimSpace(*profile) == "" || strings.TrimSpace(*outPath) == "" || strings.TrimSpace(*summaryPath) == "" {
-		_, _ = fmt.Fprintln(stderr, "channel-recommend-cert: --model, --profile, --out, and --summary are required")
+	if strings.TrimSpace(*model) == "" || strings.TrimSpace(*profile) == "" {
+		_, _ = fmt.Fprintln(stderr, "channel-recommend-cert: --model and --profile are required")
+		return 2
+	}
+	if !*dryRun && (strings.TrimSpace(*outPath) == "" || strings.TrimSpace(*summaryPath) == "") {
+		_, _ = fmt.Fprintln(stderr, "channel-recommend-cert: --out and --summary are required for live certification")
 		return 2
 	}
 	provider := strings.ToLower(strings.TrimSpace(*providerName))
@@ -75,7 +88,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	if apiKey == "" && provider == "openrouter" {
 		apiKey = getenv("OPENROUTER_API_KEY")
 	}
-	if provider == "openrouter" && apiKey == "" {
+	if !*dryRun && provider == "openrouter" && apiKey == "" {
 		_, _ = fmt.Fprintln(stderr, "channel-recommend-cert: OPENROUTER_API_KEY or LLM_API_KEY is required")
 		return 2
 	}
@@ -89,12 +102,24 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	config := recommend.RunConfig{
 		Profile: *profile, Model: *model, ArtifactDigest: recordedDigest, Upstream: recordedUpstream,
 		ExpectedCases: len(corpus.Cases), MaxCalls: parsedCalls,
-		MaxTokens: parsedTokens, MaxSpendNanoUSD: parsedSpend, MaxOutputTokens: *maxOutputTokens,
+		MaxTokens: parsedTokens, MaxSpendNanoUSD: parsedSpend, MaxOutputTokens: resolvedMaxOutputTokens,
 		PerCaseTimeout: *caseTimeout,
 	}
 	if parsedCalls < len(corpus.Cases) {
 		_, _ = fmt.Fprintf(stderr, "channel-recommend-cert: max calls %d cannot cover %d declared cases\n", parsedCalls, len(corpus.Cases))
 		return 2
+	}
+	if *dryRun {
+		contract, buildErr := recommend.BuildCertificationContract(provider, corpus, config)
+		if buildErr != nil {
+			return commandUsageError(stderr, "build certification contract", buildErr)
+		}
+		blob, marshalErr := json.MarshalIndent(contract, "", "  ")
+		if marshalErr != nil {
+			return commandError(stderr, "encode certification contract", marshalErr)
+		}
+		_, _ = stdout.Write(append(blob, '\n'))
+		return 0
 	}
 	generator, err := factory(providerConfig{
 		Provider: provider, BaseURL: url, Model: *model, APIKey: apiKey, Upstream: *upstream,

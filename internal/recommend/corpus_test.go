@@ -12,7 +12,7 @@ func TestLoadCorpusVerifiesFrozenHeldOutRecommendationFamilies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if corpus.Version != "channel-recommendation-v1" || corpus.Split != "certification" || corpus.PromptVersion == "" || corpus.ScorerVersion == "" {
+	if corpus.Version != "channel-recommendation-v2" || corpus.Split != "certification" || corpus.PromptVersion == "" || corpus.ScorerVersion == "" || corpus.MaxOutputTokens != 1024 {
 		t.Fatalf("corpus identity = %+v", corpus)
 	}
 	if len(corpus.Cases) != 8 {
@@ -41,6 +41,23 @@ func TestLoadCorpusVerifiesFrozenHeldOutRecommendationFamilies(t *testing.T) {
 		if split == corpus.Split {
 			t.Fatalf("certification split entered training allowlist: %v", corpus.AllowedTrainingSplits)
 		}
+	}
+}
+
+func TestCertificationV2IsDisjointFromImmutableV1(t *testing.T) {
+	legacy, err := recommend.LoadLegacyCorpus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := recommend.LoadCorpus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacy.Version != "channel-recommendation-v1" || legacy.Fixture.SHA256 != "549966d2a7add2edc16033d13a76f5a893d0355fe53acc8b953887a7cb16da01" {
+		t.Fatalf("legacy corpus drifted = %+v", legacy)
+	}
+	if err := recommend.VerifyCertificationCorporaDisjoint(legacy, current); err != nil {
+		t.Fatalf("v1/v2 split = %v", err)
 	}
 }
 
@@ -96,6 +113,44 @@ func TestVerifyCorpusDisjointRejectsReusedIDsAndSnapshots(t *testing.T) {
 			copyCorpus.Cases = append([]recommend.Case(nil), development.Cases...)
 			mutate(&copyCorpus)
 			if err := recommend.VerifyCorpusDisjoint(copyCorpus, certification); err == nil {
+				t.Fatal("reused certification material was accepted")
+			}
+		})
+	}
+}
+
+func TestVerifyCertificationCorporaDisjointRejectsReusedIDsAndSnapshots(t *testing.T) {
+	legacy, err := recommend.LoadLegacyCorpus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := recommend.LoadCorpus()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for name, mutate := range map[string]func(*recommend.Corpus){
+		"case id": func(corpus *recommend.Corpus) {
+			corpus.Cases[0].ID = legacy.Cases[0].ID
+		},
+		"snapshot content": func(corpus *recommend.Corpus) {
+			blob, marshalErr := json.Marshal(legacy.Cases[0].Snapshot)
+			if marshalErr != nil {
+				t.Fatal(marshalErr)
+			}
+			var reused recommend.Snapshot
+			if unmarshalErr := json.Unmarshal(blob, &reused); unmarshalErr != nil {
+				t.Fatal(unmarshalErr)
+			}
+			reused.ID = corpus.Cases[0].ID
+			corpus.Cases[0].Snapshot = reused
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			copyCorpus := current
+			copyCorpus.Cases = append([]recommend.Case(nil), current.Cases...)
+			mutate(&copyCorpus)
+			if err := recommend.VerifyCertificationCorporaDisjoint(legacy, copyCorpus); err == nil {
 				t.Fatal("reused certification material was accepted")
 			}
 		})
