@@ -1,5 +1,5 @@
 eval-contract: ## hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB
-	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/ ./cmd/planner-cert-compare/
+	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/ ./cmd/planner-cert-compare/ ./internal/recommend/ ./cmd/channel-recommend-cert/ ./cmd/channel-recommend-compare/
 
 eval: ## semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate)
 	$(GO) test -tags=eval -v -timeout 20m ./internal/eval/
@@ -36,6 +36,23 @@ eval-planner-smoke: ## replay one frozen base Intent per planner family; explici
 
 planner-tool-diagnostic: ## probe the exact post-catalog-result model turn; explicit, inference-spending, non-CI
 	$(GO) run ./cmd/planner-tool-diagnostic
+
+channel-recommend-cert: ## certify inert channel concepts on the frozen recommendation corpus; explicit, inference-spending, non-CI
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  report="$${LOOMARR_RECOMMEND_OUT:-$$LOOMARR_ARTIFACT_DIR/channel-recommendation-certification.json}"; \
+	  summary="$${LOOMARR_RECOMMEND_SUMMARY_OUT:-$$LOOMARR_ARTIFACT_DIR/channel-recommendation-certification.md}"; \
+	  $(GO) run ./cmd/channel-recommend-cert \
+	    --out "$$report" --summary "$$summary"
+
+channel-recommend-compare: ## compare channel-recommendation scorecards without inference
+	@test -n "$$LOOMARR_RECOMMEND_SCORECARDS" || { echo "channel-recommend-compare: LOOMARR_RECOMMEND_SCORECARDS is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_RECOMMEND_SHARED_PROFILE" || { echo "channel-recommend-compare: LOOMARR_RECOMMEND_SHARED_PROFILE is required" >&2; exit 2; }; \
+	  eval "$$(./scripts/dev-env.sh export)"; \
+	  report="$${LOOMARR_RECOMMEND_COMPARISON_OUT:-$$LOOMARR_ARTIFACT_DIR/channel-recommendation-comparison.json}"; \
+	  summary="$${LOOMARR_RECOMMEND_COMPARISON_SUMMARY_OUT:-$$LOOMARR_ARTIFACT_DIR/channel-recommendation-comparison.md}"; \
+	  mkdir -p "$$(dirname "$$report")" "$$(dirname "$$summary")"; \
+	  $(GO) run ./cmd/channel-recommend-compare --out "$$report" --summary "$$summary" \
+	    --shared-profile "$$LOOMARR_RECOMMEND_SHARED_PROFILE" $$LOOMARR_RECOMMEND_SCORECARDS
 
 eval-planner-compare: ## compare two or more frozen planner scorecards without inference
 	@test -n "$$LOOMARR_EVAL_SCORECARDS" || { echo "eval-planner-compare: LOOMARR_EVAL_SCORECARDS is required" >&2; exit 2; }; \

@@ -298,6 +298,11 @@ classify() {
       select_gate contracts
       select_gate go
       ;;
+    internal/recommend/testdata/*)
+      known=true
+      select_gate contracts
+      select_gate go
+      ;;
     internal/fillercorpus/corpus/*)
       known=true
       select_gate contracts

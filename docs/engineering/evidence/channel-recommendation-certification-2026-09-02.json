@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-02",
+  "issue": 855,
+  "pullRequest": 868,
+  "runnerCommit": "d16c4b43",
+  "contract": {
+    "corpusVersion": "channel-recommendation-v1",
+    "fixtureSha256": "549966d2a7add2edc16033d13a76f5a893d0355fe53acc8b953887a7cb16da01",
+    "promptVersion": "channel-concept-prompt-v1",
+    "outputSchema": "channel-concept-schema-v1",
+    "scorerVersion": "channel-recommendation-scorer-v1",
+    "selectionMetric": "mean_quality",
+    "selectionMargin": 0.02
+  },
+  "decision": {
+    "status": "no_candidate_certified",
+    "sharedPlannerModelSufficient": false,
+    "distinctRecommendationRouteSelected": false,
+    "fineTuningAuthorized": false,
+    "runpodAuthorized": false,
+    "reason": "No candidate cleared the complete recommendation certification contract. Diagnose the protocol on a separate development split before changing the frozen prompt or holdout."
+  },
+  "accountedTotals": {
+    "calls": 32,
+    "tokens": 12191,
+    "spendNanoUsd": 9503320,
+    "spendUsd": "0.009503320"
+  },
+  "candidates": [
+    {
+      "profile": "qwen35-shared",
+      "provider": "ollama",
+      "model": "qwen3.5:9b",
+      "artifactDigest": "6488c96fa5fa",
+      "certified": false,
+      "passedCases": 4,
+      "totalCases": 8,
+      "hardFailures": 1,
+      "calls": 8,
+      "tokens": 1941,
+      "spendNanoUsd": 0,
+      "totalLatencyNanos": 15300272208,
+      "meanQuality": 0.7857142857142857,
+      "scorecardSha256": "c5da51ceb972b922faa13b6b4e84b7e159095a2e69c57e0501b8088bd148e2dd"
+    },
+    {
+      "profile": "gemma4-recommendation",
+      "provider": "ollama",
+      "model": "gemma4:12b",
+      "artifactDigest": "4eb23ef187e2",
+      "certified": false,
+      "passedCases": 2,
+      "totalCases": 8,
+      "hardFailures": 0,
+      "calls": 8,
+      "tokens": 1629,
+      "spendNanoUsd": 0,
+      "totalLatencyNanos": 10103846624,
+      "meanQuality": 0.8035714285714286,
+      "scorecardSha256": "f232b17977e0ded34d248de2c4c75e9d99f575caf0512e9ffac352b4a9f5694a"
+    },
+    {
+      "profile": "gpt-oss20b-deepinfra-control",
+      "provider": "openrouter",
+      "upstream": "DeepInfra",
+      "model": "openai/gpt-oss-20b",
+      "certified": false,
+      "passedCases": 2,
+      "totalCases": 8,
+      "hardFailures": 6,
+      "calls": 8,
+      "tokens": 5523,
+      "spendNanoUsd": 565320,
+      "totalLatencyNanos": 46506496252,
+      "meanQuality": 0.25,
+      "scorecardSha256": "0e12188cb575851af9f68343d3a99d154037397129ff11149f340b0700d4d3b7"
+    },
+    {
+      "profile": "claude-haiku45-bedrock-control",
+      "provider": "openrouter",
+      "upstream": "Amazon Bedrock",
+      "model": "anthropic/claude-haiku-4.5",
+      "certified": false,
+      "passedCases": 0,
+      "totalCases": 8,
+      "hardFailures": 8,
+      "calls": 8,
+      "tokens": 3098,
+      "spendNanoUsd": 8938000,
+      "totalLatencyNanos": 16818318417,
+      "meanQuality": 0,
+      "scorecardSha256": "0cc450451581ab01ca0db16ae3bf12eba567e6c052693747cbcf30ad9d5d0685"
+    }
+  ],
+  "excludedAttempt": {
+    "profile": "gpt41mini-openai-control",
+    "provider": "openrouter",
+    "upstream": "OpenAI",
+    "model": "openai/gpt-4.1-mini",
+    "outcome": "provider rejected the request because the pinned endpoint did not satisfy zero-data-retention policy",
+    "accountingComplete": false,
+    "knownCalls": 0,
+    "knownTokens": 0,
+    "knownSpendNanoUsd": 0,
+    "scorecardSha256": "abbe36236f766e5c1d4119a13eed2d3e19717c640b82897439646e9a934439c9"
+  },
+  "comparisonSha256": "33fda048595ef273d95d4c54a4701d96e6e90cf7b5bcf97cab9d35d494d876c9"
+}

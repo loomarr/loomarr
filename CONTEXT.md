@@ -52,6 +52,11 @@ _Avoid_: download, request (a request is the downstream act, not the pick)
 The operator's natural-language description of a channel — the input to the Suggester.
 _Avoid_: prompt, query, description
 
+**Channel Concept**:
+An inert, evidence-backed draft Intent that Loomarr recommends an operator might choose to build.
+It is not a Proposal and carries no approval, acquisition, or Channel authority.
+_Avoid_: recommendation (the act, not the artifact), suggestion, template, proposal
+
 **Proposal Job**:
 One caller-owned durable execution of an Intent. Its id is the correlation spine for generation,
 the optional Proposal it produces, and the intent-bound Channel created on approval. A Proposal Job

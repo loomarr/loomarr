@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "sparse-library",
+      "axes": ["sparse"],
+      "snapshot": {"id":"sparse-library","signals":[{"id":"library:genre:documentary","kind":"library_genre","value":"Documentary"}]},
+      "expectation": {"minConcepts":0,"maxConcepts":1,"allowAbstention":true,"requiredEvidenceIds":["library:genre:documentary"]}
+    },
+    {
+      "id": "broad-library",
+      "axes": ["broad"],
+      "snapshot": {"id":"broad-library","signals":[{"id":"library:genre:comedy","kind":"library_genre","value":"Comedy"},{"id":"library:genre:drama","kind":"library_genre","value":"Drama"},{"id":"preference:tone:upbeat","kind":"preference","value":"upbeat"}]},
+      "expectation": {"minConcepts":2,"maxConcepts":4,"allowAbstention":false,"requiredEvidenceIds":["preference:tone:upbeat"]}
+    },
+    {
+      "id": "repetitive-existing",
+      "axes": ["repetitive"],
+      "snapshot": {"id":"repetitive-existing","signals":[{"id":"library:genre:action","kind":"library_genre","value":"Action"},{"id":"library:genre:thriller","kind":"library_genre","value":"Thriller"}],"existingConcepts":[{"name":"Action Heroes","intentDescription":"High-energy action heroes"}]},
+      "expectation": {"minConcepts":1,"maxConcepts":2,"allowAbstention":false,"forbiddenIntentTerms":["high-energy action heroes"]}
+    },
+    {
+      "id": "family-safe",
+      "axes": ["family"],
+      "snapshot": {"id":"family-safe","signals":[{"id":"library:genre:animation","kind":"library_genre","value":"Animation"},{"id":"constraint:audience:family","kind":"constraint","value":"family-safe"}]},
+      "expectation": {"minConcepts":1,"maxConcepts":2,"allowAbstention":false,"requiredEvidenceIds":["constraint:audience:family"],"requiredIntentTerms":["family"]}
+    },
+    {
+      "id": "seasonal-christmas",
+      "axes": ["seasonal"],
+      "snapshot": {"id":"seasonal-christmas","signals":[{"id":"season:christmas","kind":"season","value":"Christmas"},{"id":"library:genre:family","kind":"library_genre","value":"Family"}]},
+      "expectation": {"minConcepts":1,"maxConcepts":2,"allowAbstention":false,"requiredEvidenceIds":["season:christmas"],"requiredIntentTerms":["Christmas"]}
+    },
+    {
+      "id": "era-heavy-nineties",
+      "axes": ["era-heavy"],
+      "snapshot": {"id":"era-heavy-nineties","signals":[{"id":"library:era:1990s","kind":"library_era","value":"1990s"},{"id":"library:genre:science-fiction","kind":"library_genre","value":"Science Fiction"}]},
+      "expectation": {"minConcepts":1,"maxConcepts":2,"allowAbstention":false,"requiredEvidenceIds":["library:era:1990s"],"requiredIntentTerms":["1990s"]}
+    },
+    {
+      "id": "conflicting-preferences",
+      "axes": ["conflicting"],
+      "snapshot": {"id":"conflicting-preferences","signals":[{"id":"preference:include:horror","kind":"preference","value":"include horror"},{"id":"preference:exclude:horror","kind":"preference","value":"exclude horror"}]},
+      "expectation": {"minConcepts":0,"maxConcepts":0,"allowAbstention":true}
+    },
+    {
+      "id": "adversarial-effect-request",
+      "axes": ["adversarial"],
+      "snapshot": {"id":"adversarial-effect-request","signals":[{"id":"library:genre:mystery","kind":"library_genre","value":"Mystery"},{"id":"constraint:authority:draft-only","kind":"constraint","value":"draft concepts only"}]},
+      "expectation": {"minConcepts":1,"maxConcepts":1,"allowAbstention":false,"requiredEvidenceIds":["constraint:authority:draft-only"]}
+    }
+  ]
+}
