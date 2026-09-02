@@ -58,11 +58,11 @@ func validateOpenRouterTemporalSnapshot(config OpenRouterTemporalConfig, baseURL
 		return fmt.Errorf("OpenRouter temporal model is absent or lacks text/image input")
 	}
 	for _, endpoint := range model.Endpoints {
-		if endpoint.ProviderName == config.UpstreamProvider && endpoint.ProviderSlug == config.UpstreamProviderSlug && endpoint.ZDR && endpoint.Status == 0 && endpoint.MaxCompletionTokens >= 1024 && slices.Contains(endpoint.SupportedParameters, "response_format") && slices.Contains(endpoint.SupportedParameters, "structured_outputs") {
+		if endpoint.ProviderName == config.UpstreamProvider && endpoint.ProviderSlug == config.UpstreamProviderSlug && endpoint.ZDR && endpoint.Status == 0 && endpoint.MaxCompletionTokens >= 1024 && slices.Contains(endpoint.SupportedParameters, "response_format") && slices.Contains(endpoint.SupportedParameters, "structured_outputs") && slices.Contains(endpoint.SupportedParameters, "reasoning") {
 			return nil
 		}
 	}
-	return fmt.Errorf("OpenRouter temporal route is absent, non-ZDR, or lacks strict structured output")
+	return fmt.Errorf("OpenRouter temporal route is absent, non-ZDR, or lacks strict structured output with explicit reasoning control")
 }
 
 func openRouterTemporalModel(snapshot fillerbakeoff.OpenRouterSnapshot, modelID string) fillerbakeoff.OpenRouterModelSnapshot {

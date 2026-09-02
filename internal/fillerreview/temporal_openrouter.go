@@ -15,10 +15,20 @@ import (
 )
 
 const (
-	OpenRouterTemporalPromptVersion       = "filler-temporal-unit-role-openrouter-v1"
+	OpenRouterTemporalPromptVersion       = "filler-temporal-unit-role-openrouter-v7"
 	OpenRouterTemporalResultSchemaVersion = 1
 	OpenRouterTemporalResultContract      = "filler-temporal-openrouter-calibration-v1"
 )
+
+type temporalHostedUnitWire struct {
+	Kind              string   `json:"kind"`
+	DecisiveSignalIDs []string `json:"decisiveSignalIds"`
+}
+
+type temporalHostedRoleWire struct {
+	Kind              string   `json:"kind"`
+	DecisiveSignalIDs []string `json:"decisiveSignalIds"`
+}
 
 var errTemporalOpenRouterBudget = errors.New("OpenRouter temporal reservation exhausted")
 
@@ -165,7 +175,7 @@ func assessOpenRouterTemporalCase(ctx context.Context, client *http.Client, base
 		return temporalFailedAssessment(item.Alias, now().UTC(), []fillereval.TemporalInferenceCall{{Axis: "unit", Attempt: 1, OperationalFailure: failure.code}}, failure), nil
 	}
 	calls := make([]fillereval.TemporalInferenceCall, 0, 2)
-	var unit temporalUnitWire
+	var unit temporalHostedUnitWire
 	call, failure, err := callOpenRouterTemporalClaim(caseCtx, client, baseURL, config, item, "unit", content, images, &unit, checkpoint, now)
 	if err != nil {
 		return fillereval.TemporalAssessment{}, err
@@ -174,9 +184,10 @@ func assessOpenRouterTemporalCase(ctx context.Context, client *http.Client, base
 	if failure != nil {
 		return temporalFailedAssessment(item.Alias, now().UTC(), calls, failure), nil
 	}
-	assessment := fillereval.TemporalAssessment{Alias: item.Alias, Unit: &fillereval.UnitAssessment{Kind: fillereval.UnitKind(unit.Kind), DecisiveSignalIDs: unit.DecisiveSignalIDs, Reason: strings.TrimSpace(unit.Reason)}}
+	unitSignalIDs := temporalHostedSignalIDs(unit.DecisiveSignalIDs)
+	assessment := fillereval.TemporalAssessment{Alias: item.Alias, Unit: &fillereval.UnitAssessment{Kind: fillereval.UnitKind(unit.Kind), DecisiveSignalIDs: unitSignalIDs, Reason: temporalHostedReason("unit", unit.Kind, unitSignalIDs)}}
 	if assessment.Unit.Kind == fillereval.UnitStandalone {
-		var role temporalRoleWire
+		var role temporalHostedRoleWire
 		roleContent := content + "\nThe independent unit pass classified this span as standalone. Classify only its semantic role."
 		call, failure, err = callOpenRouterTemporalClaim(caseCtx, client, baseURL, config, item, "role", roleContent, images, &role, checkpoint, now)
 		if err != nil {
@@ -186,7 +197,8 @@ func assessOpenRouterTemporalCase(ctx context.Context, client *http.Client, base
 		if failure != nil {
 			return temporalFailedAssessment(item.Alias, now().UTC(), calls, failure), nil
 		}
-		assessment.Role = &fillereval.RoleAssessment{Kind: fillereval.TemporalRole(role.Kind), DecisiveSignalIDs: role.DecisiveSignalIDs, Reason: strings.TrimSpace(role.Reason)}
+		roleSignalIDs := temporalHostedSignalIDs(role.DecisiveSignalIDs)
+		assessment.Role = &fillereval.RoleAssessment{Kind: fillereval.TemporalRole(role.Kind), DecisiveSignalIDs: roleSignalIDs, Reason: temporalHostedReason("role", role.Kind, roleSignalIDs)}
 	}
 	assessment = fillereval.NormalizeTemporalAssessment(assessment)
 	assessment.Inference = temporalInferenceFromCalls(now().UTC(), calls)
@@ -210,9 +222,9 @@ func assessOpenRouterTemporalCase(ctx context.Context, client *http.Client, base
 
 func callOpenRouterTemporalClaim(ctx context.Context, client *http.Client, baseURL string, config OpenRouterTemporalConfig, item TemporalReviewCase, axis, content string, images []string, target any, checkpoint *temporalOpenRouterCheckpoint, now func() time.Time) (call fillereval.TemporalInferenceCall, failure *temporalCallError, terminalErr error) {
 	attemptNumber := 1
-	schema, prompt, schemaName := temporalUnitSchema(item), temporalUnitSystemPrompt, "filler_temporal_unit"
+	schema, prompt, schemaName := temporalHostedUnitSchema(item), temporalHostedUnitSystemPrompt, "filler_temporal_unit"
 	if axis == "role" {
-		attemptNumber, schema, prompt, schemaName = 2, temporalRoleSchema(item), temporalRoleSystemPrompt, "filler_temporal_role"
+		attemptNumber, schema, prompt, schemaName = 2, temporalHostedRoleSchema(item), temporalHostedRoleSystemPrompt, "filler_temporal_role"
 	}
 	call.Axis, call.Attempt = axis, attemptNumber
 	started := time.Now()
@@ -220,7 +232,8 @@ func callOpenRouterTemporalClaim(ctx context.Context, client *http.Client, baseU
 		APIKey: config.APIKey, Model: config.Model, ResolvedModel: openRouterTemporalModel(config.Snapshot, config.Model).CanonicalSlug,
 		UpstreamProvider: config.UpstreamProvider, ProviderSlug: config.UpstreamProviderSlug,
 		SchemaName: schemaName, Schema: schema, SystemPrompt: prompt, Content: content, Images: images,
-		MaxTokens: 1024, MaxChargeNanoUSD: config.MaxChargeNanoUSD, Title: "Loomarr filler temporal calibration",
+		MaxTokens: 1024, MaxChargeNanoUSD: config.MaxChargeNanoUSD, DisableReasoning: true,
+		Title: "Loomarr filler temporal calibration",
 		Reserve: func(requestSHA256 string) error {
 			spent, spendErr := temporalOpenRouterCheckpointSpend(*checkpoint)
 			if spendErr != nil {
@@ -276,6 +289,16 @@ func callOpenRouterTemporalClaim(ctx context.Context, client *http.Client, baseU
 	return call, failure, nil
 }
 
+func temporalHostedReason(axis, kind string, signalIDs []string) string {
+	return fmt.Sprintf("Hosted %s class %s selected from decisive signals %s.", axis, kind, strings.Join(signalIDs, ", "))
+}
+
+func temporalHostedSignalIDs(signalIDs []string) []string {
+	normalized := slices.Clone(signalIDs)
+	slices.Sort(normalized)
+	return slices.Compact(normalized)
+}
+
 func temporalFailedAssessment(alias string, assessedAt time.Time, calls []fillereval.TemporalInferenceCall, failure *temporalCallError) fillereval.TemporalAssessment {
 	return fillereval.TemporalAssessment{
 		Alias: alias, OperationalFailure: &fillereval.TemporalOperationalFailure{Code: failure.code, Detail: boundedTemporalDetail(failure.detail), Retryable: failure.retryable},
@@ -289,6 +312,11 @@ func classifyTemporalOpenRouterFailure(ctx context.Context, result openRouterStr
 	}
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return &temporalCallError{code: fillereval.TemporalFailureTimeout, detail: "per-case inference deadline exceeded", retryable: true}
+	}
+	var statusErr *openRouterStructuredStatusError
+	if errors.As(err, &statusErr) {
+		retryable := statusErr.StatusCode == http.StatusRequestTimeout || statusErr.StatusCode == http.StatusTooManyRequests || statusErr.StatusCode >= 500
+		return &temporalCallError{code: fillereval.TemporalFailureProvider, detail: err.Error(), retryable: retryable}
 	}
 	if result.ResponseSHA256 != "" {
 		return &temporalCallError{code: fillereval.TemporalFailureInvalidResponse, detail: err.Error()}

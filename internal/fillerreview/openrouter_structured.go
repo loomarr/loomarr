@@ -13,11 +13,16 @@ import (
 )
 
 type openRouterStructuredRequest struct {
-	Model          string                        `json:"model"`
-	Messages       []openRouterStructuredMessage `json:"messages"`
-	Provider       openRouterStructuredRoute     `json:"provider"`
-	ResponseFormat openRouterStructuredFormat    `json:"response_format"`
-	MaxTokens      int                           `json:"max_tokens"`
+	Model          string                         `json:"model"`
+	Messages       []openRouterStructuredMessage  `json:"messages"`
+	Provider       openRouterStructuredRoute      `json:"provider"`
+	ResponseFormat openRouterStructuredFormat     `json:"response_format"`
+	Reasoning      *openRouterStructuredReasoning `json:"reasoning,omitempty"`
+	MaxTokens      int                            `json:"max_tokens"`
+}
+
+type openRouterStructuredReasoning struct {
+	Enabled bool `json:"enabled"`
 }
 
 type openRouterStructuredMessage struct {
@@ -101,6 +106,7 @@ type openRouterStructuredCallConfig struct {
 	Images           []string
 	MaxTokens        int
 	MaxChargeNanoUSD int64
+	DisableReasoning bool
 	Title            string
 	Reserve          func(string) error
 }
@@ -112,6 +118,15 @@ type openRouterStructuredCallResult struct {
 	ChargedNanoUSD   int64
 	ChargeKnown      bool
 	StructuredOutput string
+}
+
+type openRouterStructuredStatusError struct {
+	StatusCode int
+	Detail     string
+}
+
+func (e *openRouterStructuredStatusError) Error() string {
+	return fmt.Sprintf("OpenRouter structured call returned status %d: %s", e.StatusCode, e.Detail)
 }
 
 // callOpenRouterStructured owns the exact paid transport contract shared by
@@ -132,6 +147,9 @@ func callOpenRouterStructured(ctx context.Context, client *http.Client, baseURL 
 		Provider:       openRouterStructuredRoute{Order: []string{config.ProviderSlug}, RequireParameters: true, DataCollection: "deny", ZDR: true},
 		ResponseFormat: openRouterStructuredFormat{Type: "json_schema", JSONSchema: openRouterStructuredJSONSchema{Name: config.SchemaName, Strict: true, Schema: config.Schema}},
 		MaxTokens:      config.MaxTokens,
+	}
+	if config.DisableReasoning {
+		payload.Reasoning = &openRouterStructuredReasoning{Enabled: false}
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -164,7 +182,7 @@ func callOpenRouterStructured(ctx context.Context, client *http.Client, baseURL 
 	}
 	result.ResponseSHA256 = hashBytes(raw)
 	if response.StatusCode != http.StatusOK {
-		return result, fmt.Errorf("OpenRouter structured call returned status %d: %s", response.StatusCode, boundedReviewMessage(raw))
+		return result, &openRouterStructuredStatusError{StatusCode: response.StatusCode, Detail: boundedReviewMessage(raw)}
 	}
 	if err := decodeProviderReviewJSON(raw, &result.Wire); err != nil {
 		return result, err

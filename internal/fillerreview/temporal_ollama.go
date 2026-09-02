@@ -18,7 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/httpx"
 )
 
-const OllamaTemporalPromptVersion = "filler-temporal-unit-role-ollama-v4"
+const OllamaTemporalPromptVersion = "filler-temporal-unit-role-ollama-v7"
 
 type OllamaTemporalConfig struct {
 	PackagePath    string
@@ -32,26 +32,6 @@ type OllamaTemporalConfig struct {
 	Client         *http.Client
 	Now            func() time.Time
 }
-
-type temporalUnitWire struct {
-	Kind              string   `json:"kind"`
-	DecisiveSignalIDs []string `json:"decisiveSignalIds"`
-	Reason            string   `json:"reason"`
-}
-
-type temporalRoleWire struct {
-	Kind              string   `json:"kind"`
-	DecisiveSignalIDs []string `json:"decisiveSignalIds"`
-	Reason            string   `json:"reason"`
-}
-
-type temporalCallError struct {
-	code      fillereval.TemporalFailureCode
-	detail    string
-	retryable bool
-}
-
-func (e *temporalCallError) Error() string { return e.detail }
 
 // RunOllamaTemporalAssessment makes one serial unit request per case and a
 // second role request only for standalone units. Case-level failures remain
@@ -261,57 +241,3 @@ func temporalReviewerContent(root string, item TemporalReviewCase) (string, []st
 	raw, err := json.Marshal(payload)
 	return string(raw), images, err
 }
-
-func temporalUnitSchema(item TemporalReviewCase) map[string]any {
-	return temporalClaimSchema(item, []string{"standalone", "compilation", "programme_excerpt", "unusable", "unclear"})
-}
-
-func temporalRoleSchema(item TemporalReviewCase) map[string]any {
-	return temporalClaimSchema(item, []string{"commercial", "promo", "bumper", "psa", "station_id", "trailer", "interstitial", "unclear"})
-}
-
-func temporalClaimSchema(item TemporalReviewCase, kinds []string) map[string]any {
-	signalIDs := make([]string, 0, len(item.Frames)*2+len(item.TranscriptSegments))
-	for _, frame := range item.Frames {
-		signalIDs = append(signalIDs, frame.ID)
-		if frame.OCRSignalID != "" {
-			signalIDs = append(signalIDs, frame.OCRSignalID)
-		}
-	}
-	for _, segment := range item.TranscriptSegments {
-		signalIDs = append(signalIDs, segment.ID)
-	}
-	references := map[string]any{"type": "array", "minItems": 1, "maxItems": 4, "uniqueItems": true, "items": map[string]any{"type": "string", "enum": signalIDs}}
-	reason := map[string]any{"type": "string", "minLength": 1, "maxLength": 500}
-	return map[string]any{
-		"type": "object", "additionalProperties": false, "required": []string{"kind", "decisiveSignalIds", "reason"},
-		"properties": map[string]any{
-			"kind":              map[string]any{"type": "string", "enum": kinds},
-			"decisiveSignalIds": references,
-			"reason":            reason,
-		},
-	}
-}
-
-func boundedTemporalDetail(detail string) string {
-	detail = strings.TrimSpace(detail)
-	if len(detail) > 512 {
-		return detail[:512]
-	}
-	if detail == "" {
-		return "unspecified temporal assessment failure"
-	}
-	return detail
-}
-
-const temporalUnitSystemPrompt = `Assess the temporal structure of one identity-blind video span using only its ordered images, OCR, card hints, and transcript. Return exactly {"kind":"one closed value","decisiveSignalIds":["one to four supplied ids"],"reason":"one sentence"} with no other keys.
-
-standalone means exactly one bounded, self-contained item. compilation means multiple discrete items or boundaries inside the supplied span. programme_excerpt means an ordinary sustained programme scene without standalone framing. unusable means the evidence cannot be interpreted because the media itself is defective. unclear means the supplied evidence is insufficient to choose. Do not classify semantic purpose and do not use semantic purpose to force a standalone unit.
-
-Cite one to four decisive supplied signal ids. A frame id cites what is visibly present; its OCR signal id cites only machine-read text from that frame; a transcript id cites only that segment. Keep the reason to one evidence-grounded sentence. Never infer source identity, prior labels, or facts absent from the package.`
-
-const temporalRoleSystemPrompt = `Classify the semantic role of one video span already assessed as a standalone unit. Use only its ordered images, OCR, card hints, and transcript. Return exactly {"kind":"one closed value","decisiveSignalIds":["one to four supplied ids"],"reason":"one sentence"} with no other keys.
-
-commercial means a product, brand, service, or paid proposition. promo means a television programme, channel, episode, or scheduled broadcast. bumper means a product-free break transition. psa means a public-interest appeal. station_id means station or network identification. trailer means a theatrical or film release. interstitial means other standalone connective filler. unclear means the standalone role cannot be established.
-
-Cite one to four decisive supplied signal ids. A frame id cites what is visibly present; its OCR signal id cites only machine-read text from that frame; a transcript id cites only that segment. Keep the reason to one evidence-grounded sentence. Never infer source identity, prior labels, or facts absent from the package.`
