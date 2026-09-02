@@ -189,3 +189,43 @@ func TestValidate(t *testing.T) {
 		}
 	}
 }
+
+func TestSeedFillerSelectionDerivesOnlyGroundedChannelFacts(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		ceiling  Rating
+		audience string
+	}{
+		{name: "young children", ceiling: "TV-Y", audience: "kids"},
+		{name: "older children", ceiling: "TV-Y7", audience: "kids"},
+		{name: "all ages television", ceiling: "TV-G", audience: "family"},
+		{name: "family television", ceiling: "TV-PG", audience: "family"},
+		{name: "all ages film", ceiling: "G", audience: "family"},
+		{name: "family film", ceiling: "PG", audience: "family"},
+		{name: "teen ceiling", ceiling: "TV-14", audience: "general"},
+		{name: "adult ceiling", ceiling: "TV-MA", audience: "general"},
+		{name: "missing ceiling", audience: "general"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			era := &Range{From: 1990, To: 1999}
+			policy := ProposalPolicy{
+				Scope:    ScopePolicy{Era: era, Genres: GenreFilter{Include: []string{"Animation"}}},
+				Audience: AudiencePolicy{Ceiling: tc.ceiling},
+			}
+			got := SeedFillerSelection(policy)
+			if got == nil || got.Audience != tc.audience || got.Era == nil || *got.Era != *era {
+				t.Fatalf("seed = %+v, want era %+v and audience %q", got, *era, tc.audience)
+			}
+			if len(got.Categories) != 0 || len(got.Kinds) != 0 {
+				t.Fatalf("program genres or missing intent invented filler taxonomy: %+v", got)
+			}
+			got.Era.From = 1980
+			if policy.Scope.Era.From != 1990 {
+				t.Fatal("seed aliases proposal-owned era instead of handing off an independent value")
+			}
+		})
+	}
+}

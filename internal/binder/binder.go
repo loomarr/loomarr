@@ -200,11 +200,12 @@ func (b *Binder) PlanApprovedChannel(ctx context.Context, p store.Proposal) (sto
 	// rules merge by provenance. This replaces the old capture-then-restore block; a refine can
 	// no longer silently revert an operator's era/ceiling edit or turn off its own AutoCurate.
 	ch.Policy = existing.Policy.MergeFromProposal(proposal.Policy)
-	// On a FIRST approval the channel has no filler yet → seed it from the program scope era so
-	// a "90s action" channel gets 90s ads out of the box (audience/category/kinds stay "any").
-	// A re-approval keeps the operator's tuned filler (MergeFromProposal already preserved it).
-	if ch.Policy.Filler == nil && ch.Policy.Scope.Era != nil {
-		ch.Policy.Filler = &schedule.FillerSelection{Era: ch.Policy.Scope.Era}
+	// A generated channel hands grounded era + audience facts to its operator-owned filler
+	// selection once. A present selection—including one whose fields are all unset—is
+	// operator-owned and never re-seeded by refine or auto-curation. Unset era retains its
+	// documented live scope inheritance in channels.SelectionFrom.
+	if ch.Policy.Filler == nil {
+		ch.Policy.Filler = schedule.SeedFillerSelection(ch.Policy.ProposalPolicy)
 	}
 	ch.Status = schedule.StatusBuilding
 	// ⚠ **Due NOW, so the sweep owns this channel from the moment it exists** (§9 V54). The

@@ -317,7 +317,8 @@ func TestPlan_UsesTheExactCandidateWithoutWriting(t *testing.T) {
 	body := suggest.Proposal{
 		ChannelName: "The Exact Candidate",
 		Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
-			Scope: schedule.ScopePolicy{Era: &schedule.Range{From: 1990, To: 1999}},
+			Scope:    schedule.ScopePolicy{Era: &schedule.Range{From: 1990, To: 1999}},
+			Audience: schedule.AudiencePolicy{Ceiling: "TV-Y7"},
 		}},
 		Lineup: []suggest.ProposalItem{inLib(1, "Exact")},
 	}
@@ -349,11 +350,44 @@ func TestPlan_UsesTheExactCandidateWithoutWriting(t *testing.T) {
 	if got := lineupKeys(ch); !got[movieKey(1)] || got[movieKey(2)] {
 		t.Errorf("planner did not use exact candidate: %+v", ch.Lineup)
 	}
-	if ch.Policy.Filler == nil || ch.Policy.Filler.Era == nil || ch.Policy.Filler.Era.From != 1990 {
-		t.Errorf("filler era was not seeded from exact candidate policy: %+v", ch.Policy.Filler)
+	if ch.Policy.Filler == nil || ch.Policy.Filler.Era == nil || ch.Policy.Filler.Era.From != 1990 || ch.Policy.Filler.Audience != "kids" {
+		t.Errorf("filler policy was not safely seeded from exact candidate policy: %+v", ch.Policy.Filler)
 	}
 	if _, err := st.GetChannel(ctx, ch.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("planning wrote channel %q: %v", ch.ID, err)
+	}
+}
+
+func TestPlanApprovedChannelPreservesAnExplicitEmptyFillerSelection(t *testing.T) {
+	t.Parallel()
+
+	st := newStore(t)
+	putAvailable(t, st, 1, "Film")
+	seedChannel(t, st, "c1", "job1", []schedule.LineupEntry{entry(1, "Film")},
+		schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{Filler: &schedule.FillerSelection{}}})
+	seedApprovedProposal(t, st, "p1", "job1", "admin", []suggest.ProposalItem{inLib(1, "Film")}, nil)
+
+	p := mustProposal(t, st, "p1")
+	var body suggest.Proposal
+	if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
+		t.Fatal(err)
+	}
+	body.Policy.Audience.Ceiling = "TV-Y7"
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.ProposalJSON = string(raw)
+
+	ch, err := binder.New(st, nil, nil, testkit.Logger()).PlanApprovedChannel(context.Background(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch.Policy.Filler == nil {
+		t.Fatal("explicit empty filler selection was replaced with absence")
+	}
+	if ch.Policy.Filler.Audience != "" || ch.Policy.Filler.Era != nil || len(ch.Policy.Filler.Categories) != 0 || len(ch.Policy.Filler.Kinds) != 0 {
+		t.Fatalf("approved refresh overwrote operator filler selection: %+v", ch.Policy.Filler)
 	}
 }
 
