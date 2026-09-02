@@ -9,11 +9,12 @@ import (
 )
 
 const (
-	corpusManifestPath            = "testdata/channel-recommendation-v1.json"
+	corpusManifestPath            = "testdata/channel-recommendation-v2.json"
+	legacyCorpusManifestPath      = "testdata/channel-recommendation-v1.json"
 	developmentCorpusManifestPath = "testdata/channel-recommendation-development-v1.json"
 )
 
-//go:embed testdata/channel-recommendation-v1.json testdata/channel-recommendation-snapshots-v1.json testdata/channel-recommendation-development-v1.json testdata/channel-recommendation-development-snapshots-v1.json
+//go:embed testdata/channel-recommendation-v1.json testdata/channel-recommendation-snapshots-v1.json testdata/channel-recommendation-v2.json testdata/channel-recommendation-snapshots-v2.json testdata/channel-recommendation-development-v1.json testdata/channel-recommendation-development-snapshots-v1.json
 var corpusFiles embed.FS
 
 type Thresholds struct {
@@ -38,6 +39,7 @@ type Corpus struct {
 	PromptVersion         string          `json:"promptVersion"`
 	SchemaVersionName     string          `json:"schemaVersionName"`
 	ScorerVersion         string          `json:"scorerVersion"`
+	MaxOutputTokens       int             `json:"maxOutputTokens,omitempty"`
 	HardMetrics           []string        `json:"hardMetrics"`
 	QualityMetrics        []string        `json:"qualityMetrics"`
 	Thresholds            Thresholds      `json:"thresholds"`
@@ -79,7 +81,24 @@ type fixtureCaseWire struct {
 // LoadCorpus verifies the embedded held-out fixture digest and every closed
 // snapshot schema before returning any certification case.
 func LoadCorpus() (Corpus, error) {
-	return loadCorpus(corpusManifestPath, "certification")
+	current, err := loadCorpus(corpusManifestPath, "certification")
+	if err != nil {
+		return Corpus{}, err
+	}
+	legacy, err := LoadLegacyCorpus()
+	if err != nil {
+		return Corpus{}, err
+	}
+	if err := VerifyCertificationCorporaDisjoint(legacy, current); err != nil {
+		return Corpus{}, err
+	}
+	return current, nil
+}
+
+// LoadLegacyCorpus retains the immutable v1 no-ship holdout so current
+// certification can prove it neither rewrites nor reuses the earlier evidence.
+func LoadLegacyCorpus() (Corpus, error) {
+	return loadCorpus(legacyCorpusManifestPath, "certification")
 }
 
 // LoadDevelopmentCorpus returns the synthetic prompt-development split only
@@ -95,6 +114,13 @@ func LoadDevelopmentCorpus() (Corpus, error) {
 		return Corpus{}, err
 	}
 	if err := VerifyCorpusDisjoint(development, certification); err != nil {
+		return Corpus{}, err
+	}
+	legacy, err := LoadLegacyCorpus()
+	if err != nil {
+		return Corpus{}, err
+	}
+	if err := VerifyCorpusDisjoint(development, legacy); err != nil {
 		return Corpus{}, err
 	}
 	return development, nil
@@ -156,29 +182,42 @@ func VerifyCorpusDisjoint(development, certification Corpus) error {
 	if development.Split != "development" || certification.Split != "certification" {
 		return fmt.Errorf("corpus split identities are invalid")
 	}
-	if development.Fixture.SHA256 == certification.Fixture.SHA256 {
-		return fmt.Errorf("development and certification fixture digests overlap")
+	return verifyCorpusMaterialDisjoint(development, certification)
+}
+
+// VerifyCertificationCorporaDisjoint prevents a new held-out contract from
+// disguising earlier certification evidence behind new case identifiers.
+func VerifyCertificationCorporaDisjoint(legacy, current Corpus) error {
+	if legacy.Split != "certification" || current.Split != "certification" || legacy.Version == current.Version {
+		return fmt.Errorf("certification corpus identities are invalid")
 	}
-	certificationIDs := make(map[string]bool, len(certification.Cases))
-	certificationSnapshots := make(map[string]bool, len(certification.Cases))
-	for _, certificationCase := range certification.Cases {
-		certificationIDs[certificationCase.ID] = true
-		digest, err := snapshotContentDigest(certificationCase.Snapshot)
+	return verifyCorpusMaterialDisjoint(legacy, current)
+}
+
+func verifyCorpusMaterialDisjoint(left, right Corpus) error {
+	if left.Fixture.SHA256 == right.Fixture.SHA256 {
+		return fmt.Errorf("corpus fixture digests overlap")
+	}
+	rightIDs := make(map[string]bool, len(right.Cases))
+	rightSnapshots := make(map[string]bool, len(right.Cases))
+	for _, rightCase := range right.Cases {
+		rightIDs[rightCase.ID] = true
+		digest, err := snapshotContentDigest(rightCase.Snapshot)
 		if err != nil {
 			return err
 		}
-		certificationSnapshots[digest] = true
+		rightSnapshots[digest] = true
 	}
-	for _, developmentCase := range development.Cases {
-		if certificationIDs[developmentCase.ID] {
-			return fmt.Errorf("development case id %q overlaps certification", developmentCase.ID)
+	for _, leftCase := range left.Cases {
+		if rightIDs[leftCase.ID] {
+			return fmt.Errorf("corpus case id %q overlaps", leftCase.ID)
 		}
-		digest, err := snapshotContentDigest(developmentCase.Snapshot)
+		digest, err := snapshotContentDigest(leftCase.Snapshot)
 		if err != nil {
 			return err
 		}
-		if certificationSnapshots[digest] {
-			return fmt.Errorf("development snapshot %q overlaps certification content", developmentCase.ID)
+		if rightSnapshots[digest] {
+			return fmt.Errorf("corpus snapshot %q overlaps content", leftCase.ID)
 		}
 	}
 	return nil

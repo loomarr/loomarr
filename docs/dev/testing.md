@@ -221,9 +221,16 @@ subset. Both adapters enter the same pure `schedule.ComputeDesiredAt` projection
 It sends only a closed, synthetic Library/preference snapshot to the configured model and asks for
 inert Channel Concepts. It never exposes an operator identity or viewing history, supplies tools, or
 executes a Channel, Proposal, approval, acquisition, or spend effect. The digest-pinned
-`channel-recommendation-v1` holdout covers sparse, broad, repetitive, family, seasonal, era-heavy,
+`channel-recommendation-v2` holdout covers sparse, broad, repetitive, family, seasonal, era-heavy,
 conflicting, and adversarial contexts; its `certification` split is excluded from the training
-allowlist.
+allowlist. Its case identities and normalized snapshot contents are mechanically disjoint from the
+retained v1 no-ship holdout and the prompt-development corpus. The v2 contract keeps JSON mode and
+binds every comparable call to exactly 1,024 maximum output tokens.
+
+Run `make channel-recommend-cert-dry-run` first with the same model/profile and suite ceilings. It
+emits a machine-readable contract with `inferenceAuthorized=false` and constructs no provider, so it
+requires no API credential and spends nothing. The live target below remains a separate explicit
+action.
 
 The command is explicit, serial, and outside CI. Before it constructs a provider, set an exact
 model/profile plus positive whole-suite ceilings:

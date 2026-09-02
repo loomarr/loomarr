@@ -19,13 +19,13 @@ func TestRunnerCertifiesOnlyACompleteSuiteMeetingFrozenThresholds(t *testing.T) 
 	}
 	outputs := []string{
 		`{"concepts":[]}`,
-		`{"concepts":[{"name":"Upbeat Comedy","intent":{"description":"Upbeat comedy favorites"},"evidenceIds":["library:genre:comedy","preference:tone:upbeat"]},{"name":"Upbeat Drama","intent":{"description":"Upbeat dramatic stories"},"evidenceIds":["library:genre:drama","preference:tone:upbeat"]}]}`,
-		`{"concepts":[{"name":"Thriller Nights","intent":{"description":"Tense thriller stories"},"evidenceIds":["library:genre:thriller"]}]}`,
-		`{"concepts":[{"name":"Family Animation Club","intent":{"description":"A family-safe animation channel"},"evidenceIds":["library:genre:animation","constraint:audience:family"]}]}`,
-		`{"concepts":[{"name":"Christmas Family","intent":{"description":"Christmas family favorites"},"evidenceIds":["season:christmas","library:genre:family"]}]}`,
-		`{"concepts":[{"name":"1990s Science Fiction","intent":{"description":"1990s science-fiction stories"},"evidenceIds":["library:era:1990s","library:genre:science-fiction"]}]}`,
+		`{"concepts":[{"name":"Warm Romance","intent":{"description":"Warm romance favorites"},"evidenceIds":["library:genre:romance","preference:tone:warm"]},{"name":"Warm Musicals","intent":{"description":"Warm musical stories"},"evidenceIds":["library:genre:musical","preference:tone:warm"]}]}`,
+		`{"concepts":[{"name":"Adventure Realms","intent":{"description":"Fantasy adventure realms"},"evidenceIds":["library:genre:fantasy"]}]}`,
+		`{"concepts":[{"name":"All-Ages Children","intent":{"description":"All-ages children adventures"},"evidenceIds":["library:genre:children","constraint:audience:all-ages"]}]}`,
+		`{"concepts":[{"name":"Halloween Supernatural","intent":{"description":"Halloween supernatural stories"},"evidenceIds":["season:halloween","library:genre:supernatural"]}]}`,
+		`{"concepts":[{"name":"1980s Music","intent":{"description":"1980s music programs"},"evidenceIds":["library:era:1980s","library:genre:music"]}]}`,
 		`{"concepts":[]}`,
-		`{"concepts":[{"name":"Mystery Draft","intent":{"description":"Draft-only mystery programming"},"evidenceIds":["library:genre:mystery","constraint:authority:draft-only"]}]}`,
+		`{"concepts":[{"name":"History Draft","intent":{"description":"Draft history documentary concepts"},"evidenceIds":["library:genre:history","constraint:authority:concept-only"]}]}`,
 	}
 	provider := &scriptedProvider{name: "ollama"}
 	for _, output := range outputs {
@@ -35,7 +35,7 @@ func TestRunnerCertifiesOnlyACompleteSuiteMeetingFrozenThresholds(t *testing.T) 
 	}
 	runner, err := recommend.NewRunner(provider, recommend.RunConfig{
 		Profile: "local-fixture", Model: "fixture:1b", ArtifactDigest: "0123456789ab", ExpectedCases: 8, MaxCalls: 8, MaxTokens: 1_000,
-		MaxSpendNanoUSD: 1, MaxOutputTokens: 256, PerCaseTimeout: time.Second,
+		MaxSpendNanoUSD: 1, MaxOutputTokens: 1024, PerCaseTimeout: time.Second,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -48,7 +48,7 @@ func TestRunnerCertifiesOnlyACompleteSuiteMeetingFrozenThresholds(t *testing.T) 
 		t.Fatalf("aggregate quality = %+v hard failures %v", card.Quality, card.HardFailureCounts)
 	}
 	summary := recommend.HumanSummary(card)
-	for _, want := range []string{"CERTIFIED", "channel-recommendation-v1", "fixture:1b", "8 calls", "$0.000000000", "Relevance"} {
+	for _, want := range []string{"CERTIFIED", "channel-recommendation-v2", "fixture:1b", "8 calls", "$0.000000000", "Relevance"} {
 		if !strings.Contains(summary, want) {
 			t.Errorf("summary missing %q:\n%s", want, summary)
 		}
@@ -179,7 +179,7 @@ func TestRunnerUsesOneJSONOnlyCallPerSyntheticSnapshot(t *testing.T) {
 	}
 	runner, err := recommend.NewRunner(provider, recommend.RunConfig{
 		Profile: "local-fixture", Model: "fixture:1b", ArtifactDigest: "0123456789ab", ExpectedCases: 8, MaxCalls: 8, MaxTokens: 1_000,
-		MaxSpendNanoUSD: 1, MaxOutputTokens: 256, PerCaseTimeout: time.Second,
+		MaxSpendNanoUSD: 1, MaxOutputTokens: 1024, PerCaseTimeout: time.Second,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -192,7 +192,7 @@ func TestRunnerUsesOneJSONOnlyCallPerSyntheticSnapshot(t *testing.T) {
 		if len(messages) != 2 || messages[0].Role != llm.System || messages[1].Role != llm.User {
 			t.Fatalf("messages[%d] = %+v", i, messages)
 		}
-		if !provider.options[i].JSONMode || len(provider.options[i].Tools) != 0 || provider.options[i].MaxTokens != 256 {
+		if !provider.options[i].JSONMode || len(provider.options[i].Tools) != 0 || provider.options[i].MaxTokens != 1024 {
 			t.Fatalf("options[%d] = %+v", i, provider.options[i])
 		}
 		for _, forbidden := range []string{"userId", "viewerHistory", "requiredIntentTerms", "allowAbstention"} {
@@ -217,7 +217,7 @@ func TestRunnerFailsClosedWhenHostedAccountingIsMissing(t *testing.T) {
 	}}}
 	runner, err := recommend.NewRunner(provider, recommend.RunConfig{
 		Profile: "hosted-fixture", Model: "vendor/model-1", Upstream: "Provider", ExpectedCases: 8, MaxCalls: 8, MaxTokens: 1_000,
-		MaxSpendNanoUSD: 1_000_000, MaxOutputTokens: 256, PerCaseTimeout: time.Second,
+		MaxSpendNanoUSD: 1_000_000, MaxOutputTokens: 1024, PerCaseTimeout: time.Second,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -243,7 +243,7 @@ func TestRunnerStopsWhenExactProviderChargeCrossesSuiteCeiling(t *testing.T) {
 	}}}
 	runner, err := recommend.NewRunner(provider, recommend.RunConfig{
 		Profile: "hosted-fixture", Model: "vendor/model-1", Upstream: "Provider", ExpectedCases: 8, MaxCalls: 8, MaxTokens: 1_000,
-		MaxSpendNanoUSD: 10, MaxOutputTokens: 256, PerCaseTimeout: time.Second,
+		MaxSpendNanoUSD: 10, MaxOutputTokens: 1024, PerCaseTimeout: time.Second,
 	})
 	if err != nil {
 		t.Fatal(err)
