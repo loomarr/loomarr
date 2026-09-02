@@ -607,6 +607,8 @@ EOF
 		else
 			echo "verify: affected Go packages: $package_count"
 		fi
+		package_args="$(printf '%s\n' "$packages" | paste -sd ' ' -)"
+		make -C "$ROOT" lint PKG="$package_args"
 		traced="$(printf '%s\n' "$packages" | "$SCRIPT_DIR/go-race-policy.sh" --race)"
 		untraced="$(printf '%s\n' "$packages" | "$SCRIPT_DIR/go-race-policy.sh" --no-race)"
 		if [ -n "$traced" ]; then
