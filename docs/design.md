@@ -4004,7 +4004,11 @@ of prompts and makes the exact provider input replayable.
 
 One bakeoff run accepts a locked manifest, an exact packet set, a versioned admission policy, an
 ordered role/rung route, and positive request/spend/concurrency ceilings; it emits an immutable
-prediction ledger. The runner is serial by default. Before each call it reserves that rung's
+prediction ledger. Command boundaries that read a complete immutable JSON evidence or attestation
+artifact use exact, case-sensitive member names and reject unknown or duplicate members, invalid
+UTF-8, and trailing values; `null` and empty collections retain their distinct wire meanings. Writers
+remain on the established canonical encoding so strengthening a reader cannot change an artifact's
+bytes or SHA-256. The runner is serial by default. Before each call it reserves that rung's
 predeclared maximum nanodollar charge and request count, then reconciles the provider-reported exact
 charge without binary floating point. A call is refused when its reservation cannot fit. If a failed
 call omits or corrupts settlement, its exact charge remains missing while the distinct recorded
