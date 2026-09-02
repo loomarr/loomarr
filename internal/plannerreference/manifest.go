@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -37,13 +38,18 @@ var (
 )
 
 var requiredEvidenceKinds = []string{
+	"gguf-sha256.txt",
+	"huggingface-model.json",
 	"ollama-list.json",
+	"ollama-load-request.json",
 	"ollama-ps-after.json",
 	"ollama-ps-cold-before.json",
 	"ollama-ps-warm-before.json",
 	"ollama-show.json",
-	"ollama-version.txt",
+	"ollama-show-request.json",
+	"ollama-version.json",
 	"sw-vers.txt",
+	"sysctl-hw-memsize.txt",
 	"system-profiler.json",
 	"uname.txt",
 }
@@ -108,9 +114,9 @@ type protocolCapture struct {
 	ContextLength      int     `json:"contextLength"`
 	MaxOutputTokens    int     `json:"maxOutputTokens"`
 	Temperature        float64 `json:"temperature"`
-	Seed               int64   `json:"seed"`
-	ColdRuns           int     `json:"coldRuns"`
-	UnreportedWarmups  int     `json:"unreportedWarmups"`
+	Seed               *int64  `json:"seed"`
+	ColdStarts         int     `json:"coldStarts"`
+	WarmupLoads        int     `json:"warmupLoads"`
 	MeasuredWarmTrials int     `json:"measuredWarmTrials"`
 }
 
@@ -238,6 +244,9 @@ func BuildManifest(in RawInputs) (Artifact, error) {
 	if err != nil {
 		return Artifact{}, err
 	}
+	if err := validateRawEvidence(captured, in.Evidence); err != nil {
+		return Artifact{}, err
+	}
 
 	out := manifest{
 		SchemaVersion: manifestSchemaVersion,
@@ -315,8 +324,8 @@ func validateModel(m modelCapture) error {
 	if !quantizationID.MatchString(m.Quantization) {
 		return errors.New("model.quantization is invalid")
 	}
-	if m.ContextLength != 8192 && m.ContextLength != 16384 {
-		return errors.New("model.contextLength must be 8192 or 16384")
+	if m.ContextLength != 8192 {
+		return errors.New("model.contextLength must match the production 8192-token context")
 	}
 	if !licenseID.MatchString(m.LicenseID) {
 		return errors.New("model.licenseId is invalid")
@@ -357,9 +366,11 @@ func validateProtocol(p protocolCapture, m modelCapture) error {
 	if math.IsNaN(p.Temperature) || math.IsInf(p.Temperature, 0) || p.Temperature < 0 || p.Temperature > 2 {
 		return errors.New("protocol.temperature must be finite in 0..2")
 	}
-	if p.Seed < 0 || p.ColdRuns != 1 || p.UnreportedWarmups < 1 || p.UnreportedWarmups > 5 ||
-		p.MeasuredWarmTrials < 1 || p.MeasuredWarmTrials > 10 {
-		return errors.New("protocol seed or cold/warm run counts are invalid")
+	if p.Seed != nil {
+		return errors.New("protocol.seed must be null because the production Ollama path does not set a seed")
+	}
+	if p.ColdStarts != 1 || p.WarmupLoads != 1 || p.MeasuredWarmTrials < 1 || p.MeasuredWarmTrials > 10 {
+		return errors.New("protocol cold-start, warm-up load, or measured warm-trial count is invalid")
 	}
 	return nil
 }
@@ -373,10 +384,9 @@ func validateResidency(r residencyCapture, m modelCapture) error {
 		name   string
 		sample selectedResidency
 	}{{"warmBefore", r.WarmBefore}, {"after", r.After}} {
-		name, sample := item.name, item.sample
-		if !sample.SelectedModelResident || sample.Model != m.Tag || sample.OllamaDigest != m.OllamaDigest ||
-			sample.RAMBytes < 0 || sample.VRAMBytes <= 0 || sample.RAMBytes > math.MaxInt64-sample.VRAMBytes {
-			return fmt.Errorf("residency.%s does not bind the selected resident model and positive bounded memory", name)
+		if !item.sample.SelectedModelResident || item.sample.Model != m.Tag || item.sample.OllamaDigest != m.OllamaDigest ||
+			item.sample.RAMBytes < 0 || item.sample.VRAMBytes <= 0 || item.sample.RAMBytes > math.MaxInt64-item.sample.VRAMBytes {
+			return fmt.Errorf("residency.%s does not bind the selected resident model and positive bounded memory", item.name)
 		}
 	}
 	if r.WarmBefore.RAMBytes != r.After.RAMBytes || r.WarmBefore.VRAMBytes != r.After.VRAMBytes {
@@ -461,6 +471,287 @@ func validateEvidence(declared []evidenceReference, raw map[string][]byte) ([]ev
 		}
 	}
 	return out, nil
+}
+
+type huggingFaceEvidence struct {
+	ID       string `json:"id"`
+	SHA      string `json:"sha"`
+	CardData struct {
+		License string `json:"license"`
+	} `json:"cardData"`
+	Siblings []struct {
+		Filename string `json:"rfilename"`
+		LFS      *struct {
+			SHA256 string `json:"sha256"`
+		} `json:"lfs"`
+	} `json:"siblings"`
+}
+
+type ollamaModelEvidence struct {
+	Name          string `json:"name"`
+	Model         string `json:"model"`
+	Digest        string `json:"digest"`
+	Size          int64  `json:"size"`
+	SizeVRAM      int64  `json:"size_vram"`
+	ContextLength int    `json:"context_length"`
+	Details       struct {
+		Quantization string `json:"quantization_level"`
+	} `json:"details"`
+}
+
+type ollamaModelsEvidence struct {
+	Models []ollamaModelEvidence `json:"models"`
+}
+
+type ollamaShowEvidence struct {
+	License   string `json:"license"`
+	Modelfile string `json:"modelfile"`
+	Template  string `json:"template"`
+	Details   struct {
+		Quantization string `json:"quantization_level"`
+	} `json:"details"`
+}
+
+func validateRawEvidence(c capture, raw map[string][]byte) error {
+	checks := []struct {
+		kind string
+		fn   func([]byte) error
+	}{
+		{"huggingface-model.json", func(value []byte) error { return validateHuggingFace(value, c.Model) }},
+		{"gguf-sha256.txt", func(value []byte) error { return validateGGUFSum(value, c.Model) }},
+		{"ollama-version.json", func(value []byte) error { return validateOllamaVersion(value, c.Runtime) }},
+		{"ollama-list.json", func(value []byte) error { return validateOllamaList(value, c.Model) }},
+		{"ollama-load-request.json", func(value []byte) error { return validateOllamaLoadRequest(value, c) }},
+		{"ollama-show-request.json", func(value []byte) error { return validateOllamaShowRequest(value, c.Model) }},
+		{"ollama-show.json", func(value []byte) error { return validateOllamaShow(value, c.Model) }},
+		{"ollama-ps-cold-before.json", func(value []byte) error { return validateOllamaProcess(value, c, "cold-before", nil) }},
+		{"ollama-ps-warm-before.json", func(value []byte) error {
+			return validateOllamaProcess(value, c, "warm-before", &c.Residency.WarmBefore)
+		}},
+		{"ollama-ps-after.json", func(value []byte) error { return validateOllamaProcess(value, c, "after", &c.Residency.After) }},
+		{"sw-vers.txt", func(value []byte) error { return validateSWVers(value, c.Runtime) }},
+		{"uname.txt", func(value []byte) error { return exactText(value, c.Runtime.Architecture) }},
+		{"sysctl-hw-memsize.txt", func(value []byte) error { return validateMemory(value, c.Runtime) }},
+		{"system-profiler.json", func(value []byte) error { return validateSystemProfiler(value, c.Runtime) }},
+	}
+	for _, check := range checks {
+		if err := check.fn(raw[check.kind]); err != nil {
+			return fmt.Errorf("%s: %w", check.kind, err)
+		}
+	}
+	return nil
+}
+
+func validateHuggingFace(raw []byte, model modelCapture) error {
+	var evidence huggingFaceEvidence
+	if err := decodeEvidence(raw, &evidence); err != nil {
+		return err
+	}
+	if evidence.ID != model.SourceRepository || evidence.SHA != model.SourceRevision ||
+		!strings.EqualFold(evidence.CardData.License, model.LicenseID) {
+		return errors.New("source repository, revision, or license does not match capture")
+	}
+	matches := 0
+	for _, sibling := range evidence.Siblings {
+		if sibling.Filename == model.GGUFFile {
+			matches++
+			if sibling.LFS == nil || sibling.LFS.SHA256 != model.GGUFSHA256 {
+				return errors.New("GGUF LFS digest does not match capture")
+			}
+		}
+	}
+	if matches != 1 {
+		return fmt.Errorf("GGUF filename occurs %d times, want exactly one", matches)
+	}
+	return nil
+}
+
+func validateGGUFSum(raw []byte, model modelCapture) error {
+	line := strings.TrimSpace(string(raw))
+	fields := strings.Fields(line)
+	if len(fields) < 2 || fields[0] != model.GGUFSHA256 {
+		return errors.New("local GGUF digest does not match capture")
+	}
+	filename := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line[len(fields[0]):]), "*"))
+	if filepath.Base(filename) != model.GGUFFile {
+		return errors.New("local GGUF filename does not match capture")
+	}
+	return nil
+}
+
+func validateOllamaVersion(raw []byte, runtime runtimeCapture) error {
+	var evidence struct {
+		Version string `json:"version"`
+	}
+	if err := decodeStrict("ollama version evidence", raw, &evidence); err != nil {
+		return err
+	}
+	if evidence.Version != runtime.OllamaVersion {
+		return errors.New("version does not match capture")
+	}
+	return nil
+}
+
+func validateOllamaList(raw []byte, model modelCapture) error {
+	var evidence ollamaModelsEvidence
+	if err := decodeEvidence(raw, &evidence); err != nil {
+		return err
+	}
+	matches := 0
+	for _, item := range evidence.Models {
+		if item.Name == model.Tag || item.Model == model.Tag {
+			matches++
+			if item.Name != model.Tag || item.Model != model.Tag || item.Digest != model.OllamaDigest ||
+				item.Details.Quantization != model.Quantization {
+				return errors.New("selected model identity, digest, or quantization does not match capture")
+			}
+		}
+	}
+	if matches != 1 {
+		return fmt.Errorf("selected model occurs %d times, want exactly one", matches)
+	}
+	return nil
+}
+
+func validateOllamaLoadRequest(raw []byte, c capture) error {
+	var evidence struct {
+		Model     string  `json:"model"`
+		Prompt    *string `json:"prompt"`
+		Stream    *bool   `json:"stream"`
+		KeepAlive string  `json:"keep_alive"`
+		Options   struct {
+			ContextLength int `json:"num_ctx"`
+		} `json:"options"`
+	}
+	if err := decodeStrict("Ollama preload request evidence", raw, &evidence); err != nil {
+		return err
+	}
+	if evidence.Model != c.Model.Tag || evidence.Prompt == nil || *evidence.Prompt != "" ||
+		evidence.Stream == nil || *evidence.Stream || evidence.KeepAlive != "30m" ||
+		evidence.Options.ContextLength != c.Protocol.ContextLength {
+		return errors.New("empty-prompt preload request does not match the selected model and production context")
+	}
+	return nil
+}
+
+func validateOllamaShowRequest(raw []byte, model modelCapture) error {
+	var evidence struct {
+		Model string `json:"model"`
+	}
+	if err := decodeStrict("Ollama show request evidence", raw, &evidence); err != nil {
+		return err
+	}
+	if evidence.Model != model.Tag {
+		return errors.New("request model does not match capture")
+	}
+	return nil
+}
+
+func validateOllamaShow(raw []byte, model modelCapture) error {
+	var evidence ollamaShowEvidence
+	if err := decodeEvidence(raw, &evidence); err != nil {
+		return err
+	}
+	if evidence.Details.Quantization != model.Quantization || sha256String(evidence.Template) != model.TemplateSHA256 ||
+		sha256String(evidence.Modelfile) != model.ModelfileSHA256 || sha256String(evidence.License) != model.LicenseSHA256 {
+		return errors.New("quantization, template, Modelfile, or license digest does not match capture")
+	}
+	if !strings.Contains(evidence.Modelfile, model.GGUFSHA256) {
+		return errors.New("modelfile does not bind the selected local GGUF digest")
+	}
+	return nil
+}
+
+func validateOllamaProcess(raw []byte, c capture, stage string, expected *selectedResidency) error {
+	var evidence ollamaModelsEvidence
+	if err := decodeEvidence(raw, &evidence); err != nil {
+		return err
+	}
+	matches := make([]ollamaModelEvidence, 0, 1)
+	for _, item := range evidence.Models {
+		if item.Name == c.Model.Tag || item.Model == c.Model.Tag {
+			matches = append(matches, item)
+		}
+	}
+	if expected == nil {
+		if len(matches) != 0 {
+			return errors.New("selected model is resident before the cold-started suite")
+		}
+		return nil
+	}
+	if len(matches) != 1 {
+		return fmt.Errorf("selected model occurs %d times at %s, want exactly one", len(matches), stage)
+	}
+	item := matches[0]
+	if item.Name != c.Model.Tag || item.Model != c.Model.Tag || item.Digest != c.Model.OllamaDigest ||
+		item.ContextLength != c.Protocol.ContextLength || item.Size < item.SizeVRAM || item.SizeVRAM <= 0 ||
+		item.Size-item.SizeVRAM != expected.RAMBytes || item.SizeVRAM != expected.VRAMBytes {
+		return errors.New("selected model digest, context, RAM, or VRAM does not match capture")
+	}
+	return nil
+}
+
+func validateSWVers(raw []byte, runtime runtimeCapture) error {
+	values := make(map[string]string)
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		key, value, ok := strings.Cut(line, ":")
+		key, value = strings.TrimSpace(key), strings.TrimSpace(value)
+		if !ok || key == "" || value == "" || values[key] != "" {
+			return errors.New("malformed or duplicate sw_vers field")
+		}
+		values[key] = value
+	}
+	if values["ProductVersion"] != runtime.MacOSVersion || values["BuildVersion"] != runtime.MacOSBuild {
+		return errors.New("macOS version or build does not match capture")
+	}
+	return nil
+}
+
+func validateMemory(raw []byte, runtime runtimeCapture) error {
+	value, err := strconv.ParseInt(strings.TrimSpace(string(raw)), 10, 64)
+	if err != nil || value != runtime.PhysicalUnifiedMemoryBytes {
+		return errors.New("physical memory does not match capture")
+	}
+	return nil
+}
+
+func validateSystemProfiler(raw []byte, runtime runtimeCapture) error {
+	var evidence struct {
+		Hardware []struct {
+			Model string `json:"machine_model"`
+			Chip  string `json:"chip_type"`
+		} `json:"SPHardwareDataType"`
+	}
+	if err := decodeEvidence(raw, &evidence); err != nil {
+		return err
+	}
+	if len(evidence.Hardware) != 1 || evidence.Hardware[0].Model != runtime.HardwareModel || evidence.Hardware[0].Chip != runtime.Chip {
+		return errors.New("hardware model or chip does not match capture")
+	}
+	return nil
+}
+
+func exactText(raw []byte, want string) error {
+	if strings.TrimSpace(string(raw)) != want {
+		return fmt.Errorf("value does not match %q", want)
+	}
+	return nil
+}
+
+func decodeEvidence(raw []byte, out any) error {
+	if err := rejectDuplicateKeys(raw); err != nil {
+		return err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	if err := decoder.Decode(out); err != nil {
+		return err
+	}
+	return requireEOF(decoder)
+}
+
+func sha256String(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])
 }
 
 func decodeStrict(name string, raw []byte, out any) error {

@@ -36,7 +36,7 @@ func TestBuildManifestCanonicalizesAndBindsReferenceHostEvidence(t *testing.T) {
 		`"generatorProvider": "ollama"`,
 		`"generatorModel": "hf.co/loomarr/gemma:Q4_K_M"`,
 		`"physicalUnifiedMemoryBytes": 68719476736`,
-		`"kind": "ollama-list.json"`,
+		`"kind": "huggingface-model.json"`,
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("manifest missing %s", want)
@@ -45,6 +45,121 @@ func TestBuildManifestCanonicalizesAndBindsReferenceHostEvidence(t *testing.T) {
 	if strings.Contains(text, "/Users/") || strings.Contains(text, "unrelated-resident-model") ||
 		strings.Contains(text, "raw capture") {
 		t.Fatal("manifest leaked raw capture content or local paths")
+	}
+}
+
+func TestBuildManifestRejectsSemanticallyUnrelatedRawEvidenceEvenWhenRehashed(t *testing.T) {
+	card, captured, evidence, generatedAt := validFixture(t)
+	tests := map[string]struct {
+		kind   string
+		mutate func([]byte) []byte
+		want   string
+	}{
+		"ollama inventory digest": {
+			kind: "ollama-list.json",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(strings.Repeat("a", 64)), []byte(strings.Repeat("9", 64)), 1)
+			},
+			want: "ollama-list.json",
+		},
+		"source revision": {
+			kind: "huggingface-model.json",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(strings.Repeat("b", 40)), []byte(strings.Repeat("8", 40)), 1)
+			},
+			want: "huggingface-model.json",
+		},
+		"local GGUF": {
+			kind: "gguf-sha256.txt",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(strings.Repeat("c", 64)), []byte(strings.Repeat("6", 64)), 1)
+			},
+			want: "gguf-sha256.txt",
+		},
+		"Ollama version": {
+			kind:   "ollama-version.json",
+			mutate: func(raw []byte) []byte { return bytes.Replace(raw, []byte("0.15.1"), []byte("0.14.0"), 1) },
+			want:   "ollama-version.json",
+		},
+		"show request": {
+			kind: "ollama-show-request.json",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(`hf.co/loomarr/gemma:Q4_K_M`), []byte(`other/model:Q4_K_M`), 1)
+			},
+			want: "ollama-show-request.json",
+		},
+		"preload context": {
+			kind: "ollama-load-request.json",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(`"num_ctx":8192`), []byte(`"num_ctx":4096`), 1)
+			},
+			want: "ollama-load-request.json",
+		},
+		"show template": {
+			kind: "ollama-show.json",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(`"template":"template"`), []byte(`"template":"other"`), 1)
+			},
+			want: "ollama-show.json",
+		},
+		"after residency": {
+			kind: "ollama-ps-after.json",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(`"size_vram":10737418240`), []byte(`"size_vram":9663676416`), 1)
+			},
+			want: "ollama-ps-after.json",
+		},
+		"after context": {
+			kind: "ollama-ps-after.json",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(`"context_length":8192`), []byte(`"context_length":4096`), 1)
+			},
+			want: "ollama-ps-after.json",
+		},
+		"cold selected model": {
+			kind: "ollama-ps-cold-before.json",
+			mutate: func([]byte) []byte {
+				return []byte(`{"models":[{"name":"hf.co/loomarr/gemma:Q4_K_M","model":"hf.co/loomarr/gemma:Q4_K_M"}]}`)
+			},
+			want: "ollama-ps-cold-before.json",
+		},
+		"warm residency": {
+			kind: "ollama-ps-warm-before.json",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(`"size_vram":10737418240`), []byte(`"size_vram":9663676416`), 1)
+			},
+			want: "ollama-ps-warm-before.json",
+		},
+		"macOS build": {
+			kind:   "sw-vers.txt",
+			mutate: func(raw []byte) []byte { return bytes.Replace(raw, []byte("26A123"), []byte("26A999"), 1) },
+			want:   "sw-vers.txt",
+		},
+		"host architecture": {
+			kind:   "uname.txt",
+			mutate: func([]byte) []byte { return []byte("x86_64\n") },
+			want:   "uname.txt",
+		},
+		"host memory": {
+			kind:   "sysctl-hw-memsize.txt",
+			mutate: func([]byte) []byte { return []byte("34359738368\n") },
+			want:   "sysctl-hw-memsize.txt",
+		},
+		"host chip": {
+			kind:   "system-profiler.json",
+			mutate: func(raw []byte) []byte { return bytes.Replace(raw, []byte("Apple M5 Pro"), []byte("Apple M4 Pro"), 1) },
+			want:   "system-profiler.json",
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			mutatedCapture := captured
+			mutatedEvidence := cloneEvidence(evidence)
+			mutatedEvidence[test.kind] = test.mutate(mutatedEvidence[test.kind])
+			mutatedCapture.Evidence = evidenceReferences(mutatedEvidence)
+			_, err := BuildManifest(rawInputs(t, card, mutatedCapture, mutatedEvidence, generatedAt))
+			assertErrorContains(t, err, test.want)
+		})
 	}
 }
 
@@ -98,8 +213,9 @@ func TestBuildManifestRejectsMutableOrInconsistentModelAndHostEvidence(t *testin
 		"host memory":       {func(c *capture) { c.Runtime.PhysicalUnifiedMemoryBytes = 32 << 30 }, "64..512 GiB"},
 		"cold resident":     {func(c *capture) { c.Residency.ColdBefore.SelectedModelResident = true }, "selected model was absent"},
 		"warm absent":       {func(c *capture) { c.Residency.WarmBefore.SelectedModelResident = false }, "warmBefore"},
-		"warm mismatch":     {func(c *capture) { c.Residency.WarmBefore.VRAMBytes++ }, "residency disagree"},
-		"cold runs":         {func(c *capture) { c.Protocol.ColdRuns = 0 }, "cold/warm run counts"},
+		"after absent":      {func(c *capture) { c.Residency.After.SelectedModelResident = false }, "after"},
+		"cold starts":       {func(c *capture) { c.Protocol.ColdStarts = 0 }, "cold-start"},
+		"warm-up loads":     {func(c *capture) { c.Protocol.WarmupLoads = 0 }, "warm-up load"},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -140,6 +256,23 @@ func TestBuildManifestRejectsMalformedAdversarialAndOverBoundInputs(t *testing.T
 			assertErrorContains(t, err, test.want)
 		})
 	}
+
+	t.Run("duplicate raw evidence field", func(t *testing.T) {
+		mutatedCapture := captured
+		mutatedEvidence := cloneEvidence(evidence)
+		mutatedEvidence["ollama-version.json"] = []byte(`{"version":"0.15.1","version":"0.15.1"}`)
+		mutatedCapture.Evidence = evidenceReferences(mutatedEvidence)
+		_, err := BuildManifest(rawInputs(t, card, mutatedCapture, mutatedEvidence, generatedAt))
+		assertErrorContains(t, err, "duplicate object key")
+	})
+	t.Run("over-bound raw evidence", func(t *testing.T) {
+		mutatedCapture := captured
+		mutatedEvidence := cloneEvidence(evidence)
+		mutatedEvidence["ollama-show.json"] = bytes.Repeat([]byte("x"), maxEvidenceBytes+1)
+		mutatedCapture.Evidence = evidenceReferences(mutatedEvidence)
+		_, err := BuildManifest(rawInputs(t, card, mutatedCapture, mutatedEvidence, generatedAt))
+		assertErrorContains(t, err, "evidence ollama-show.json exceeds")
+	})
 }
 
 func validFixture(t *testing.T) ([]byte, capture, map[string][]byte, time.Time) {
@@ -150,15 +283,6 @@ func validFixture(t *testing.T) ([]byte, capture, map[string][]byte, time.Time) 
 		vram     = int64(10 << 30)
 	)
 	card := []byte(`{"schemaVersion":10,"corpusVersion":"planner-certification-v3","profile":"m5-pro-gemma","generator":{"provider":"ollama","model":"` + modelTag + `"},"contract":{"corpusVersion":"planner-certification-v3","catalogFixtureSha256":"` + strings.Repeat("1", 64) + `","promptVersion":"planner-prompt-v1","toolSchemaVersion":"planner-tools-v1","scorerVersion":"planner-scorer-v3"},"assessment":{"performance":{"resourceStatus":"measured","resourceSource":"ollama:/api/ps","peakRamBytes":2147483648,"peakVramBytes":10737418240}},"cases":[{"case":"one","trials":3},{"case":"two","trials":3}],"certified":false}`)
-	evidence := make(map[string][]byte, len(requiredEvidenceKinds))
-	declared := make([]evidenceReference, 0, len(requiredEvidenceKinds))
-	for i := len(requiredEvidenceKinds) - 1; i >= 0; i-- {
-		kind := requiredEvidenceKinds[i]
-		raw := []byte("bounded raw capture for " + kind)
-		evidence[kind] = raw
-		sum := sha256.Sum256(raw)
-		declared = append(declared, evidenceReference{Kind: kind, SHA256: hex.EncodeToString(sum[:]), Bytes: int64(len(raw))})
-	}
 	captured := capture{
 		SchemaVersion: 1, Contract: contractVersion, RunID: "m5-pro-gemma-q4",
 		StartedAt:   time.Date(2026, 10, 15, 14, 0, 0, 0, time.UTC),
@@ -167,8 +291,9 @@ func validFixture(t *testing.T) ([]byte, capture, map[string][]byte, time.Time) 
 			Tag: modelTag, OllamaDigest: strings.Repeat("a", 64),
 			SourceRepository: "loomarr/gemma-gguf", SourceRevision: strings.Repeat("b", 40),
 			GGUFFile: "gemma-Q4_K_M.gguf", GGUFSHA256: strings.Repeat("c", 64),
-			Quantization: "Q4_K_M", ContextLength: 8192, TemplateSHA256: strings.Repeat("d", 64),
-			ModelfileSHA256: strings.Repeat("e", 64), LicenseID: "Gemma", LicenseSHA256: strings.Repeat("f", 64),
+			Quantization: "Q4_K_M", ContextLength: 8192, TemplateSHA256: sha256Text("template"),
+			ModelfileSHA256: sha256Text("FROM /Users/test/sha256-" + strings.Repeat("c", 64) + "\nPARAMETER num_ctx 8192\n"),
+			LicenseID:       "Gemma", LicenseSHA256: sha256Text("Gemma"),
 		},
 		Runtime: runtimeCapture{
 			OllamaVersion: "0.15.1", MacOSVersion: "27.0", MacOSBuild: "26A123",
@@ -177,16 +302,54 @@ func validFixture(t *testing.T) ([]byte, capture, map[string][]byte, time.Time) 
 		},
 		Protocol: protocolCapture{
 			Profile: "m5-pro-gemma", ContextLength: 8192, MaxOutputTokens: 2048,
-			Temperature: 0, Seed: 42, ColdRuns: 1, UnreportedWarmups: 1, MeasuredWarmTrials: 3,
+			Temperature: 0.2, ColdStarts: 1, WarmupLoads: 1, MeasuredWarmTrials: 3,
 		},
 		Residency: residencyCapture{
 			ColdBefore: selectedResidency{},
 			WarmBefore: selectedResidency{SelectedModelResident: true, Model: modelTag, OllamaDigest: strings.Repeat("a", 64), RAMBytes: ram, VRAMBytes: vram},
 			After:      selectedResidency{SelectedModelResident: true, Model: modelTag, OllamaDigest: strings.Repeat("a", 64), RAMBytes: ram, VRAMBytes: vram},
 		},
-		Evidence: declared,
 	}
+	evidence := validEvidence(t, captured)
+	captured.Evidence = evidenceReferences(evidence)
 	return card, captured, evidence, time.Date(2026, 10, 15, 15, 1, 0, 0, time.UTC)
+}
+
+func validEvidence(t *testing.T, captured capture) map[string][]byte {
+	t.Helper()
+	model := captured.Model
+	return map[string][]byte{
+		"huggingface-model.json":     []byte(`{"id":"` + model.SourceRepository + `","sha":"` + model.SourceRevision + `","cardData":{"license":"` + model.LicenseID + `"},"siblings":[{"rfilename":"` + model.GGUFFile + `","lfs":{"sha256":"` + model.GGUFSHA256 + `"}}]}`),
+		"gguf-sha256.txt":            []byte(model.GGUFSHA256 + `  /Users/test/` + model.GGUFFile + "\n"),
+		"ollama-version.json":        []byte(`{"version":"` + captured.Runtime.OllamaVersion + `"}`),
+		"ollama-list.json":           []byte(`{"models":[{"name":"` + model.Tag + `","model":"` + model.Tag + `","digest":"` + model.OllamaDigest + `","details":{"quantization_level":"` + model.Quantization + `"}}]}`),
+		"ollama-load-request.json":   []byte(`{"model":"` + model.Tag + `","prompt":"","stream":false,"keep_alive":"30m","options":{"num_ctx":8192}}`),
+		"ollama-show.json":           []byte(`{"license":"Gemma","modelfile":"FROM /Users/test/sha256-` + model.GGUFSHA256 + `\nPARAMETER num_ctx 8192\n","template":"template","details":{"quantization_level":"Q4_K_M"}}`),
+		"ollama-show-request.json":   []byte(`{"model":"` + model.Tag + `"}`),
+		"ollama-ps-cold-before.json": []byte(`{"models":[{"name":"unrelated-resident-model:Q4_K_M","model":"unrelated-resident-model:Q4_K_M","digest":"` + strings.Repeat("7", 64) + `","size":1024,"size_vram":1024,"context_length":8192}]}`),
+		"ollama-ps-warm-before.json": []byte(`{"models":[{"name":"` + model.Tag + `","model":"` + model.Tag + `","digest":"` + model.OllamaDigest + `","size":12884901888,"size_vram":10737418240,"context_length":8192}]}`),
+		"ollama-ps-after.json":       []byte(`{"models":[{"name":"` + model.Tag + `","model":"` + model.Tag + `","digest":"` + model.OllamaDigest + `","size":12884901888,"size_vram":10737418240,"context_length":8192}]}`),
+		"sw-vers.txt":                []byte("ProductName:\t\tmacOS\nProductVersion:\t\t27.0\nBuildVersion:\t\t26A123\n"),
+		"system-profiler.json":       []byte(`{"SPHardwareDataType":[{"machine_model":"Macmini11,1","chip_type":"Apple M5 Pro"}]}`),
+		"sysctl-hw-memsize.txt":      []byte("68719476736\n"),
+		"uname.txt":                  []byte("arm64\n"),
+	}
+}
+
+func evidenceReferences(evidence map[string][]byte) []evidenceReference {
+	declared := make([]evidenceReference, 0, len(evidence))
+	for i := len(requiredEvidenceKinds) - 1; i >= 0; i-- {
+		kind := requiredEvidenceKinds[i]
+		raw := evidence[kind]
+		sum := sha256.Sum256(raw)
+		declared = append(declared, evidenceReference{Kind: kind, SHA256: hex.EncodeToString(sum[:]), Bytes: int64(len(raw))})
+	}
+	return declared
+}
+
+func sha256Text(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])
 }
 
 func rawInputs(t *testing.T, card []byte, captured capture, evidence map[string][]byte, generatedAt time.Time) RawInputs {
