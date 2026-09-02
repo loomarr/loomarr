@@ -223,9 +223,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 4**
 
-- **`fillerreference`** · → `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `taxonomy`
-  Owns the deterministic pre-screen for the production-ready filler reference cohort.
-- **`mediatools`** · 3 importers · → `diagnostics`, `playout`, `proctree`
+- **`mediatools`** · 4 importers · → `diagnostics`, `playout`, `proctree`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`recommend`** · → `llm`
   Defines inert Channel Concepts and the hermetic evaluator used to certify channel-recommendation models.
@@ -4409,6 +4407,32 @@ rendition. Related pairs form deterministic connected components. A transitive c
 a complete clique remains explicitly unresolved for full playback rather than being silently
 collapsed. Once a family is recorded, every later development/holdout or inspection split treats it
 as one indivisible similarity cluster: exact or near-duplicate members cannot cross a split boundary.
+
+Gate B begins from one immutable inspection seed bound to the exact production-reference audit and
+duplicate-inventory bytes. The seed names exactly 50 non-excluded, positive-duration sources within
+the two-minute conditioning ceiling, records its four-frame triage method and limitations, preserves
+the 32-clip proposal target and any role/source coverage shortfall, and requires full playback as its
+next gate. Selection is a bounded inspection proposal, not a preferred-rendition decision: duplicate
+membership is visible, a non-clique family stays unresolved, and selecting renditions for comparison
+does not collapse or grade them. Archive and operator-authorized YouTube are independent first-class
+partner lanes under the same provenance and inspection rules; absence or scarcity in either lane is
+reported rather than making one conditional on failure of the other.
+
+The Gate B selector owns and strictly decodes the exact raw Gate A, duplicate-inventory, and seed
+bytes, derives all three SHA-256 identities itself, and recomputes the duplicate inventory from its
+stored identity and relationship graph before returning any case; it does not reopen media or repeat
+the quadratic fingerprint comparison at this later gate. Unknown or duplicate JSON members, trailing values,
+identity/summary drift, a missing, extra, repeated, excluded, over-duration, content-mismatched, or
+family-unbound case, an unreported family collision, or an empty/full-playback gate invalidates the
+whole selection. The measurement command then re-opens each selected source beneath the declared
+root without following an escaping symlink, verifies its full content SHA-256, and runs the bounded
+conditioning contract above with one two-minute process deadline per source. Decoder/probe failures
+become explicit technical holds; identity, containment, input-contract, time, or publication failures
+abort the artifact instead. Output is immutable and deterministic for fixed inputs and time, records
+every selected case exactly once, and reports only measured versus technical-hold counts and errors.
+It neither edits media nor assigns filler identity, taxonomy, editorial grade, scheduling use,
+acceptance, admission, or provider authority. At least 48 measured sources may proceed to complete
+playback; otherwise Gate B records an honest technical shortfall and stops.
 
 Shared transcription is a separately locked provider artifact, not text pasted into a mutable packet.
 For each case it binds the exact raw packet digest, audio signal identity/hash/bytes/duration, transcript
