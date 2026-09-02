@@ -607,8 +607,14 @@ EOF
 		else
 			echo "verify: affected Go packages: $package_count"
 		fi
-		package_args="$(printf '%s\n' "$packages" | paste -sd ' ' -)"
-		make -C "$ROOT" lint PKG="$package_args"
+		module_path="$(cd "$SCRIPT_DIR/.." && go list -m)"
+		lint_packages="$(printf '%s\n' "$packages" | awk -v module="$module_path" '
+			$0 == module { print "."; next }
+			index($0, module "/") == 1 { print "./" substr($0, length(module) + 2); next }
+			{ print "verify: affected package is outside module: " $0 > "/dev/stderr"; exit 2 }
+		')"
+		lint_package_args="$(printf '%s\n' "$lint_packages" | paste -sd ' ' -)"
+		make -C "$ROOT" lint PKG="$lint_package_args"
 		traced="$(printf '%s\n' "$packages" | "$SCRIPT_DIR/go-race-policy.sh" --race)"
 		untraced="$(printf '%s\n' "$packages" | "$SCRIPT_DIR/go-race-policy.sh" --no-race)"
 		if [ -n "$traced" ]; then
