@@ -11,7 +11,7 @@ import (
 )
 
 // FeedbackSignal is the ranker's store-independent view of one effective
-// explicit household signal. Passive playback never enters this interface.
+// explicit household or channel signal. Passive playback never enters this interface.
 type FeedbackSignal struct {
 	Target provision.Key
 	Action FeedbackAction
@@ -83,6 +83,7 @@ type RankTuple struct {
 
 const DecisionTraceVersion = 1
 const DecisionTraceMaxCandidates = 64
+const rankNoveltyMax = 2
 
 // DecisionTraceMaxTotal bounds all surfaced and recorded facts. Production can
 // surface 576 candidates; the remainder is reserved for adjacent decisions.
@@ -196,6 +197,7 @@ func (q rankQuery) match(candidate map[string]bool) ConstraintMatches {
 func rankDetailed(query rankQuery, candidates []catalog.Candidate, signals []FeedbackSignal) rankedCandidates {
 	effective := make(map[provision.Key]FeedbackAction, len(signals))
 	lessGenres := map[string]bool{}
+	surpriseTargets := map[provision.Key]bool{}
 	byKey := make(map[provision.Key]catalog.Candidate, len(candidates))
 	for _, candidate := range candidates {
 		if key, err := candidate.Key(); err == nil {
@@ -204,10 +206,13 @@ func rankDetailed(query rankQuery, candidates []catalog.Candidate, signals []Fee
 	}
 	for _, signal := range signals {
 		effective[signal.Target] = signal.Action
-		if signal.Action == FeedbackLess {
-			for _, genre := range byKey[signal.Target].Genres {
-				lessGenres[strings.ToLower(genre)] = true
-			}
+	}
+	for target, action := range effective {
+		switch action {
+		case FeedbackLess:
+			addGenres(lessGenres, byKey[target].Genres)
+		case FeedbackSurprise:
+			surpriseTargets[target] = true
 		}
 	}
 	allTerms := query.all()
@@ -223,11 +228,9 @@ func rankDetailed(query rankQuery, candidates []catalog.Candidate, signals []Fee
 			preference += 3
 		case FeedbackLess:
 			preference -= 4
-		case FeedbackSurprise:
-			preference += 3
 		}
 		for _, genre := range candidate.Genres {
-			if lessGenres[strings.ToLower(genre)] && effective[key] != FeedbackSurprise {
+			if lessGenres[normalizeGenre(genre)] && effective[key] != FeedbackSurprise {
 				preference--
 				break
 			}
@@ -246,7 +249,18 @@ func rankDetailed(query rankQuery, candidates []catalog.Candidate, signals []Fee
 		}
 		result.included = append(result.included, item)
 	}
-	slices.SortFunc(result.included, func(a, b rankedCandidate) int {
+	sortRankedCandidates(result.included)
+	if len(surpriseTargets) > 0 {
+		result.included = diversifyRankedCandidates(result.included, surpriseTargets)
+	}
+	slices.SortFunc(result.excluded, func(a, b rankedCandidate) int {
+		return cmp.Compare(string(a.key), string(b.key))
+	})
+	return result
+}
+
+func sortRankedCandidates(candidates []rankedCandidate) {
+	slices.SortFunc(candidates, func(a, b rankedCandidate) int {
 		if order := cmp.Compare(b.relevance, a.relevance); order != 0 {
 			return order
 		}
@@ -258,10 +272,64 @@ func rankDetailed(query rankQuery, candidates []catalog.Candidate, signals []Fee
 		}
 		return cmp.Compare(string(a.key), string(b.key))
 	})
-	slices.SortFunc(result.excluded, func(a, b rankedCandidate) int {
-		return cmp.Compare(string(a.key), string(b.key))
-	})
-	return result
+}
+
+func diversifyRankedCandidates(candidates []rankedCandidate, surpriseTargets map[provision.Key]bool) []rankedCandidate {
+	seenGenres := map[string]bool{}
+	for _, candidate := range candidates {
+		if surpriseTargets[candidate.key] {
+			addGenres(seenGenres, candidate.candidate.Genres)
+		}
+	}
+
+	out := make([]rankedCandidate, 0, len(candidates))
+	for start := 0; start < len(candidates); {
+		end := start + 1
+		for end < len(candidates) && candidates[end].relevance == candidates[start].relevance && candidates[end].preference == candidates[start].preference {
+			end++
+		}
+		band := append([]rankedCandidate(nil), candidates[start:end]...)
+		for len(band) > 0 {
+			best := 0
+			bestNovelty := diversifiedNovelty(band[0], seenGenres)
+			for i := 1; i < len(band); i++ {
+				novelty := diversifiedNovelty(band[i], seenGenres)
+				if novelty > bestNovelty || (novelty == bestNovelty && band[i].key < band[best].key) {
+					best = i
+					bestNovelty = novelty
+				}
+			}
+			selected := band[best]
+			selected.novelty = bestNovelty
+			out = append(out, selected)
+			addGenres(seenGenres, selected.candidate.Genres)
+			band = append(band[:best], band[best+1:]...)
+		}
+		start = end
+	}
+	return out
+}
+
+func diversifiedNovelty(candidate rankedCandidate, seenGenres map[string]bool) int {
+	for _, genre := range candidate.candidate.Genres {
+		normalized := normalizeGenre(genre)
+		if normalized != "" && !seenGenres[normalized] {
+			return candidate.novelty + 1
+		}
+	}
+	return candidate.novelty
+}
+
+func addGenres(dst map[string]bool, genres []string) {
+	for _, genre := range genres {
+		if normalized := normalizeGenre(genre); normalized != "" {
+			dst[normalized] = true
+		}
+	}
+}
+
+func normalizeGenre(genre string) string {
+	return strings.ToLower(strings.TrimSpace(genre))
 }
 
 func wordSet(text string) map[string]bool {
