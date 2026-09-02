@@ -1202,6 +1202,25 @@ eligible slice deterministically at clock boundaries without re-running inferenc
 
 **Honest quality guidance:** ~7–8B-class models are the practical floor for reliable grounded tool use; local inference yields private, free, serviceable proposals, hosted frontier models yield noticeably better curation — the deterministic scoring below exists partly to narrow that gap.
 
+### Three independently certified AI pillars
+
+Loomarr's model work has three product pillars with separate authority and release contracts:
+
+1. **Channel recommendation** proposes grounded channel concepts and draft Intents from an operator's
+   Library and stated preferences. It may suggest what to build; it never creates a Channel or spends
+   resources.
+2. **Channel curation** turns a chosen Intent into a grounded Proposal and ChannelPolicy, then supports
+   Refine and re-curation. This is the planner-model contract certified below.
+3. **Filler curation** classifies, summarizes, tags, and ranks clips and pod candidates from bounded
+   transcript, OCR, filename, frame, audio, or video evidence. Rights, admission, confidence, review,
+   deletion, and scheduling authority remain with deterministic filler policy and the existing gates.
+
+Recommendation and channel curation may share a text/tool-calling base or adapter. Filler may instead
+need a multimodal model or its own adapter. A shared model family is an operational convenience, not
+evidence that one set of weights is certified for all three jobs: every pillar owns its own corpus,
+thresholds, scorecard, and ship/no-ship decision. The planner corpus cannot certify filler automation,
+and the filler corpus cannot certify channel recommendation or curation.
+
 ### Specialized local model experiment and release contract
 
 A Loomarr-specific local model is an **optional optimization of the existing Suggester**, not a
@@ -1224,10 +1243,11 @@ declared bar, Loomarr adopts that ordinary provider/model choice and does **not*
 corpus, adapter, or custom release merely to own one.
 
 The first executable holdout slice, retained as `planner-certification-v1`, has 25 synthetic Intents.
-The active `planner-certification-v2` expands those 25 auditable semantic families with five explicit,
+The retained `planner-certification-v2` expands those 25 auditable semantic families with five explicit,
 frozen alternative phrasings apiece: exactly 150 unique Intents in
 the `certification` split, each bound to its family's case in the digest-pinned
-`planner-catalog-v1` fixture.
+`planner-catalog-v1` fixture. Active `planner-certification-v3` digest-pins and layers its scoring
+answers over those unchanged v2 Intent bytes rather than rewriting the frozen holdout.
 The manifest explicitly permits only `train` and `development` as training-source splits, so its
 certification cases cannot be repurposed as training examples. It covers named-title, genre, and
 keyword routing; include/exclude and refine constraints; season and audience limits; ambiguous,
@@ -1246,7 +1266,7 @@ not an effectful workflow.
 positive per-run and suite call/token/USD ceilings as other required semantic certification and
 local inference still requires `LOOMARR_EVAL_ALLOW_LOCAL=1`; it never starts or provisions a model.
 Before constructing the provider it verifies the embedded fixture digest and corpus references.
-Scorecard schema v9 records the corpus, fixture digest, prompt contract, catalog-tool schema, scorer,
+Scorecard schema v10 records the corpus, fixture digest, prompt contract, catalog-tool schema, scorer,
 and separate hard/quality metric lists, then writes both the JSON result manifest and a Markdown
 comparison summary. V2 pre-registers a 95% grounded-completion floor over the 132 completion cases,
 a 90% correct-operation floor, a 98% final-schema-validity floor, and a maximum of three tool calls at
@@ -1255,10 +1275,23 @@ quality miss as a hard safety violation. The scorecard sums provider-reported ca
 and records trial p50/p95 plus p95 tool calls. During local Ollama runs it samples `/api/ps` after each
 trial and retains the largest observed system-RAM and VRAM residency for the selected model; system
 RAM is total resident bytes minus `size_vram`, so the two are not double-counted. Hosted or failed
-resource probes remain explicitly unavailable rather than estimated. Calibrating policy/proposal
-quality, recovery thresholds, and the stock-model selection margin remains required before training.
+resource probes remain explicitly unavailable rather than estimated. V3 additionally scores exact
+audience-ceiling extraction on the 30 applicable trials, exact fixture-candidate selection or declared
+abstention on all 150 trials, and recovery on the six injected tool-error trials plus any bounded JSON
+repair opportunity actually encountered. It pre-registers respective floors of 95%, 90%, and 80%.
+A clean first answer is not mislabeled as recovery, and all three remain aggregate quality measurements,
+not hard safety failures.
 
-The initial experiment is bounded to **$200 of rented compute**. A request to exceed it is a new
+`make eval-planner-compare` accepts two or more schema-v10 scorecards with identical frozen identities.
+Only candidates that clear every hard gate and threshold are eligible. Its pre-registered quality score
+weights grounded completion 20%, correct tool operation 20%, schema validity 10%, policy accuracy 15%,
+proposal quality 25%, and recovery 10%. The equivalence margin is two percentage points. At most two
+artifacts advance: the best quality result and, when distinct, the smallest measured resident footprint
+within that margin. A hosted result with unavailable footprint cannot claim the smallest-local-artifact
+tiebreak. If no stock artifact clears the bar, the comparison fails closed rather than selecting the
+least-bad model.
+
+The initial experiment is bounded to **$20 of hosted inference and rented compute**. A request to exceed it is a new
 maintainer decision supported by the measured memory, throughput, failures, and projected cost from
 a small smoke run; an inconclusive result does not authorize an open-ended hyperparameter search.
 
@@ -7002,7 +7035,7 @@ range, including zero, and fails only the declared overall/relevance/serendipity
 judge evidence must explicitly contain all three finite scores within that range plus the prompt's
 non-blank reason. `Runner.Run` validates that contract independently of the configured `Judge`, so a
 custom implementation cannot certify NaN, infinity, an out-of-range value, or a blank reason;
-missing, null, or invalid evidence is a judge error, never defaulted or clamped. Schema v9
+missing, null, or invalid evidence is a judge error, never defaulted or clamped. Schema v10
 records exactly one first-failure stage on every failed trial from the closed vocabulary `retrieval`,
 `generation`, `deterministic`, `structural_budget`, `schedule`, `judge`, and `budget_exhausted`;
 later failures remain visible but never replace the first stage. `no_tool_call` and

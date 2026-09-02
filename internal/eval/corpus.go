@@ -76,6 +76,15 @@ type Case struct {
 	// ExpectGroundedCompletion contributes to the certification quality rate;
 	// explicit abstention cases leave it false.
 	ExpectGroundedCompletion bool
+	// ExpectedPolicyCeiling and ExpectedProposalKeys are frozen quality answers,
+	// not hard gates. ExpectedProposalAbstention requires a clean, explicit
+	// no-grounded-title outcome instead of an empty malformed Proposal.
+	ExpectedPolicyCeiling      string
+	ExpectedProposalKeys       []provision.Key
+	ExpectedProposalAbstention bool
+	// RecoveryExpected marks an injected failure the candidate must recover from.
+	RecoveryExpected    bool
+	TrackRepairRecovery bool
 	// RequireScheduledPrograms are stable concrete program identities observed
 	// after episode expansion, filtering, grouping, and ordering. Episode identities
 	// append :sXXeYY to their series Key.

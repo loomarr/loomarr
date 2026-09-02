@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -19,11 +21,11 @@ func TestEmbeddedCertificationCorpusIsFrozenHeldOutAndRepresentative(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if corpus.Version != "planner-certification-v2" {
-		t.Fatalf("corpus version = %q, want planner-certification-v2", corpus.Version)
+	if corpus.Version != "planner-certification-v3" {
+		t.Fatalf("corpus version = %q, want planner-certification-v3", corpus.Version)
 	}
-	if corpus.SchemaVersion != 2 {
-		t.Fatalf("corpus schema version = %d, want 2", corpus.SchemaVersion)
+	if corpus.SchemaVersion != 3 {
+		t.Fatalf("corpus schema version = %d, want 3", corpus.SchemaVersion)
 	}
 	if corpus.Split != "certification" {
 		t.Fatalf("corpus split = %q, want certification", corpus.Split)
@@ -67,8 +69,31 @@ func TestEmbeddedCertificationCorpusIsFrozenHeldOutAndRepresentative(t *testing.
 	}
 	if corpus.Thresholds.MinGroundedCompletionRate != 0.95 ||
 		corpus.Thresholds.MinCorrectToolOperationRate != 0.90 ||
-		corpus.Thresholds.MinSchemaValidityRate != 0.98 || corpus.Thresholds.MaxP95ToolCalls != 3 {
+		corpus.Thresholds.MinSchemaValidityRate != 0.98 ||
+		corpus.Thresholds.MinPolicyAccuracyRate != 0.95 ||
+		corpus.Thresholds.MinProposalQualityRate != 0.90 ||
+		corpus.Thresholds.MinRecoveryRate != 0.80 || corpus.Thresholds.MaxP95ToolCalls != 3 {
 		t.Fatalf("certification thresholds drifted: %+v", corpus.Thresholds)
+	}
+	if corpus.Selection.QualityMargin != 0.02 || validateSelection(corpus.Selection) != nil {
+		t.Fatalf("certification selection contract drifted: %+v", corpus.Selection)
+	}
+}
+
+func TestCertificationExtensionRejectsUnknownCaseReferences(t *testing.T) {
+	corpus := CertificationCorpus{Cases: []CertificationCase{{ID: "known"}}}
+	extension := certificationCorpusExtension{
+		SchemaVersion: 3, Version: "v3", ScorerVersion: "scorer",
+		QualityMetrics:      []string{"proposal_quality"},
+		ProposalExpectation: "exact_fixture_candidates_or_declared_abstention",
+		Selection: CertificationSelection{QualityMargin: 0.02, Weights: CertificationQualityWeights{
+			GroundedCompletion: 0.20, CorrectToolOperation: 0.20, SchemaValidity: 0.10,
+			PolicyAccuracy: 0.15, ProposalQuality: 0.25, Recovery: 0.10,
+		}},
+		RecoveryCases: []string{"unknown"},
+	}
+	if err := validateCertificationExtension(extension, corpus); err == nil || !strings.Contains(err.Error(), "unknown") {
+		t.Fatalf("unknown extension case error = %v", err)
 	}
 }
 
@@ -95,7 +120,7 @@ func TestCertificationScorecardCarriesVersionedContractAndHumanSummary(t *testin
 		t.Fatal(err)
 	}
 	card := NewRunner(scriptedGenerator{}, config).Run(context.Background(), []Case{{Name: "safe", NoFabrication: true}})
-	if card.Contract == nil || card.Contract.CatalogFixtureSHA256 == "" || card.CorpusVersion != "planner-certification-v2" {
+	if card.Contract == nil || card.Contract.CatalogFixtureSHA256 == "" || card.CorpusVersion != "planner-certification-v3" {
 		t.Fatalf("scorecard certification contract = %+v", card)
 	}
 	summary := HumanSummary(card)
@@ -142,6 +167,88 @@ func TestRunnerScoresWrongCertificationToolRouteAsQuality(t *testing.T) {
 	}
 	if card.Certified || card.Assessment == nil || card.Assessment.CorrectToolOperationRate != 0 {
 		t.Fatalf("wrong tool route escaped aggregate threshold: %+v", card)
+	}
+}
+
+func TestCertificationRunnerScoresPolicyProposalAndRecoveryQuality(t *testing.T) {
+	proposal := suggest.Proposal{
+		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 10019, Name: "Synthetic Recovery"}},
+		Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
+			Audience: schedule.AudiencePolicy{Ceiling: "TV-Y7"},
+		}},
+	}
+	runner := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{Contract: &CertificationContract{
+		Thresholds: CertificationThresholds{
+			MinPolicyAccuracyRate: 1, MinProposalQualityRate: 1, MinRecoveryRate: 1,
+		},
+	}}).WithObserver(&scriptedObserver{value: Observation{
+		ModelCalls: 3, ToolCalls: 2, KeywordCalls: 1, TitleCalls: 1, GroundingStage: "grounded",
+	}})
+	card := runner.Run(context.Background(), []Case{{
+		Name: "recovery", NoFabrication: true,
+		ExpectedPolicyCeiling: "TV-Y7",
+		ExpectedProposalKeys:  []provision.Key{"movie:tmdb:10019"},
+		RecoveryExpected:      true,
+	}})
+	if card.Assessment == nil || !card.Assessment.Passed {
+		t.Fatalf("certification assessment = %+v", card.Assessment)
+	}
+	if card.Assessment.PolicyAccuracyRate != 1 || card.Assessment.ProposalQualityRate != 1 ||
+		card.Assessment.RecoveryRate != 1 {
+		t.Fatalf("new certification rates = %+v", card.Assessment)
+	}
+	result := card.Results[0]
+	if !result.PolicyAccurate || !result.ProposalQuality || !result.RecoverySuccessful {
+		t.Fatalf("new result quality evidence = %+v", result)
+	}
+	for _, want := range []string{"Policy accuracy: 100.0%", "proposal quality: 100.0%", "recovery: 100.0%"} {
+		if summary := HumanSummary(card); !strings.Contains(summary, want) {
+			t.Fatalf("human summary missing %q:\n%s", want, summary)
+		}
+	}
+}
+
+func TestCertificationQualityThresholdMissesDoNotBecomeHardFailures(t *testing.T) {
+	runner := NewRunner(scriptedGenerator{}, RunnerConfig{Contract: &CertificationContract{
+		Thresholds: CertificationThresholds{
+			MinPolicyAccuracyRate: 1, MinProposalQualityRate: 1, MinRecoveryRate: 1,
+		},
+	}}).WithObserver(&scriptedObserver{value: Observation{ModelCalls: 1, ToolCalls: 1, GroundingStage: "grounded"}})
+	card := runner.Run(context.Background(), []Case{{
+		Name:                  "quality-miss",
+		ExpectedPolicyCeiling: "TV-Y7",
+		ExpectedProposalKeys:  []provision.Key{"movie:tmdb:10019"},
+		RecoveryExpected:      true,
+	}})
+	if !card.Results[0].Passed() || card.Results[0].FailureStage != "" {
+		t.Fatalf("quality misses became a hard failure: %+v", card.Results[0])
+	}
+	if card.Certified || card.Assessment == nil || len(card.Assessment.Failures) != 3 {
+		t.Fatalf("quality threshold misses escaped certification: %+v", card)
+	}
+}
+
+func TestCertificationCountsOnlyEncounteredRepairRecoveryOpportunities(t *testing.T) {
+	observer := &sequenceObserver{values: []Observation{
+		{ModelCalls: 3, ToolCalls: 1, GroundingStage: "grounded"},
+		{ModelCalls: 2, ToolCalls: 1, GroundingStage: "grounded"},
+	}}
+	card := NewRunner(scriptedGenerator{proposal: suggest.Proposal{Lineup: []suggest.ProposalItem{{
+		MediaType: provision.Movie, TMDBID: 10020, Name: "Synthetic Repair",
+	}}}}, RunnerConfig{Contract: &CertificationContract{Thresholds: CertificationThresholds{
+		MinRecoveryRate: 1,
+	}}}).WithObserver(observer).Run(context.Background(), []Case{
+		{Name: "repair-used", TrackRepairRecovery: true},
+		{Name: "repair-not-needed", TrackRepairRecovery: true},
+	})
+	if !card.Results[0].RecoveryExpected || !card.Results[0].RecoverySuccessful {
+		t.Fatalf("encountered repair was not scored: %+v", card.Results[0])
+	}
+	if card.Results[1].RecoveryExpected {
+		t.Fatalf("clean first answer was mislabeled as recovery: %+v", card.Results[1])
+	}
+	if card.Assessment == nil || card.Assessment.RecoveryRate != 1 {
+		t.Fatalf("repair recovery assessment = %+v", card.Assessment)
 	}
 }
 
@@ -229,6 +336,9 @@ func TestCertificationCasesAreExecutableAndHaveHardGates(t *testing.T) {
 		t.Fatalf("executable certification cases = %d, want 150", len(cases))
 	}
 	abstentions := 0
+	policyCases := 0
+	proposalCases := 0
+	recoveryCases := 0
 	intents := make(map[string]bool, len(cases))
 	for _, c := range cases {
 		if c.Name == "" || c.Intent.Description == "" {
@@ -243,6 +353,15 @@ func TestCertificationCasesAreExecutableAndHaveHardGates(t *testing.T) {
 		if !c.ExpectGroundedCompletion {
 			abstentions++
 		}
+		if c.ExpectedPolicyCeiling != "" {
+			policyCases++
+		}
+		if len(c.ExpectedProposalKeys) > 0 || c.ExpectedProposalAbstention {
+			proposalCases++
+		}
+		if c.RecoveryExpected {
+			recoveryCases++
+		}
 		if intents[c.Intent.Description] {
 			t.Fatalf("Intent %q is duplicated", c.Intent.Description)
 		}
@@ -250,5 +369,9 @@ func TestCertificationCasesAreExecutableAndHaveHardGates(t *testing.T) {
 	}
 	if abstentions != 18 {
 		t.Fatalf("abstention cases = %d, want exactly 18 explicit empty/conflict cases", abstentions)
+	}
+	if policyCases != 30 || proposalCases != 150 || recoveryCases != 6 {
+		t.Fatalf("quality answer coverage: policy=%d proposal=%d recovery=%d, want 30/150/6",
+			policyCases, proposalCases, recoveryCases)
 	}
 }

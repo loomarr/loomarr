@@ -76,6 +76,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make eval` |  | semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate) |
 | `make eval-cert` |  | certify exact intents and mandatory scheduled viewer outcomes; fails closed and writes a scorecard |
 | `make eval-planner-cert` |  | compare one model against the frozen planner corpus; explicit, inference-spending, non-CI |
+| `make eval-planner-compare` |  | compare two or more frozen planner scorecards without inference |
 | `make eval-matrix` |  | explicitly certify local + OpenRouter generation sequentially (manual, resource-heavy) |
 | `make filler-eval-contract` |  | hermetic filler-admission corpus and selective-risk contracts |
 | `make filler-temporal-truth-select` |  | select the private 48-case truth-review sample from frozen history without inference |
