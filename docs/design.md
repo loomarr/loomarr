@@ -162,6 +162,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Concrete adapter for Loomarr's required Rust image worker (§22).
 - **`media`** · 3 importers
   Owns host-wide resources shared by live and background media work.
+- **`plannerreference`**
+  Binds a planner scorecard to the exact local model, runtime, host, and cold/warm protocol used to produce it.
 - **`proctree`** · 3 importers
   Supervises one child process and every descendant it starts.
 - **`provision`** · 17 importers
@@ -7409,6 +7411,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `testkit` | Shared test doubles and pinned fixtures — never linked into the binary |
 | `integration` | Journey tests that drive the REAL composition root |
 | `eval` | Semantic evaluation of suggester output, run by hand not by CI |
+| `plannerreference` | Provider-free, fail-closed binding of planner scorecards to exact local artifact, runtime, host, and cold/warm evidence (§8) |
 
 ---
 

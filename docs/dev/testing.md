@@ -215,6 +215,49 @@ opt-in and consistent evidence are present, so `make eval-cert` cannot certify a
 subset. Both adapters enter the same pure `schedule.ComputeDesiredAt` projection.
 `make eval-contract` always disables the live test before any adapter is constructed.
 
+### Planner reference-host evidence
+
+`make planner-reference-host` is the provider-free evidence-publication step for the stock-model
+bake-off tracked in #831. It does not run `ollama`, pull or load a model, start inference, contact a
+provider, or spend. It accepts the exact planner scorecard bytes, one normalized schema-v1 capture,
+and one directory containing these nine bounded raw captures:
+
+- `ollama-version.txt`, `ollama-list.json`, and `ollama-show.json`;
+- `ollama-ps-cold-before.json`, `ollama-ps-warm-before.json`, and `ollama-ps-after.json`;
+- `sw-vers.txt`, `uname.txt`, and `system-profiler.json`.
+
+The normalized capture declares `planner-reference-host-v1`, its run id and times, the exact
+scorecard digest/size, model artifact and source identities, runtime/host facts, benchmark protocol,
+selected-model residency, and a digest/size for each raw file. The model block requires an explicit
+tag plus Ollama digest; pinned source repository/revision; GGUF filename/digest; quantization and
+8K/16K context; and template, Modelfile, and license identities. The runtime block requires native
+`arm64` macOS, exact Ollama/macOS/hardware/chip facts, and at least 64 GiB physical unified memory.
+The protocol records profile, context/output limits, temperature, seed, exactly one cold run, one to
+five unreported warmups, and one to ten measured warm trials. Every scorecard case must report that
+same trial count. Cold-before evidence must show the selected model absent; warm-before and after
+must bind the exact tag/digest and agree with the scorecard's measured `/api/ps` RAM/VRAM maximum.
+
+On the October reference host, capture the raw command responses before, around, and after the
+explicit `make eval-planner-cert` run, record only their normalized facts in the capture JSON, then
+publish with fixed paths and time:
+
+```sh
+LOOMARR_PLANNER_REFERENCE_SCORECARD=/absolute/path/planner-certification.json \
+LOOMARR_PLANNER_REFERENCE_CAPTURE=/absolute/path/reference-capture.json \
+LOOMARR_PLANNER_REFERENCE_EVIDENCE_DIR=/absolute/path/reference-evidence \
+LOOMARR_PLANNER_REFERENCE_GENERATED_AT=2026-10-15T15:01:00Z \
+LOOMARR_PLANNER_REFERENCE_OUT=/absolute/path/planner-reference-manifest.json \
+make planner-reference-host
+```
+
+Publication is immutable: an existing output is never overwritten. The deep module re-hashes every
+raw input, rejects unknown/duplicate/trailing capture JSON, cross-checks model/profile/trials and
+resident memory against the scorecard, sorts the evidence set, and emits only normalized facts plus
+digests and byte counts. Local paths and unrelated resident-model details remain in neither the
+capture nor the manifest. The result is necessary provenance, not certification or authority to
+train, deploy, or distribute. External compute and API work still shares the current $20 aggregate
+ceiling; remaining headroom is not pre-allocated to GPU work.
+
 ### Channel recommendation certification
 
 `make channel-recommend-cert` is the independent certification lane for the recommendation pillar.

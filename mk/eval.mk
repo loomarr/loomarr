@@ -71,6 +71,18 @@ eval-planner-compare: ## compare two or more frozen planner scorecards without i
 	  mkdir -p "$$(dirname "$$report")" "$$(dirname "$$summary")"; \
 	  $(GO) run -tags=eval ./cmd/planner-cert-compare --out "$$report" --summary "$$summary" $$LOOMARR_EVAL_SCORECARDS
 
+planner-reference-host: ## bind one planner scorecard to exact local artifact and reference-host evidence; no inference
+	@for name in SCORECARD CAPTURE EVIDENCE_DIR GENERATED_AT OUT; do \
+	  value="$$(printenv "LOOMARR_PLANNER_REFERENCE_$$name" 2>/dev/null || true)"; \
+	  test -n "$$value" || { echo "planner-reference-host: LOOMARR_PLANNER_REFERENCE_$$name is required" >&2; exit 2; }; \
+	done; \
+	$(GO) run ./cmd/planner-reference-host \
+	  --scorecard "$$LOOMARR_PLANNER_REFERENCE_SCORECARD" \
+	  --capture "$$LOOMARR_PLANNER_REFERENCE_CAPTURE" \
+	  --evidence-dir "$$LOOMARR_PLANNER_REFERENCE_EVIDENCE_DIR" \
+	  --generated-at "$$LOOMARR_PLANNER_REFERENCE_GENERATED_AT" \
+	  --out "$$LOOMARR_PLANNER_REFERENCE_OUT"
+
 eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (manual, resource-heavy)
 	@test -n "$$OPENROUTER_API_KEY" || { echo "eval-matrix: OPENROUTER_API_KEY is required" >&2; exit 2; }; \
 	  test -n "$$OPENROUTER_MODEL" || { echo "eval-matrix: OPENROUTER_MODEL is required" >&2; exit 2; }; \
