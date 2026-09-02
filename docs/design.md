@@ -121,7 +121,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `catalog` | 6 | `library`, `provision` |
 | `contact` | 5 | — |
 | `diagnostics` | 8 | — |
-| `filler` | 6 | `diagnostics`, `filleradmission`, `llm` |
+| `filler` | 7 | `diagnostics`, `filleradmission`, `llm` |
 | `filleradmission` | 7 | — |
 | `httpx` | 9 | `metrics` |
 | `invitation` | 6 | `contact` |
@@ -227,15 +227,15 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 5**
 
-- **`filler`** · 6 importers · → `diagnostics`, `filleradmission`, `fillerdecision`, `llm`, `mediatools`, `taxonomy`
+- **`filler`** · 7 importers · → `diagnostics`, `filleradmission`, `fillerdecision`, `llm`, `mediatools`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
-- **`fillerreview`** · → `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `httpx`, `mediatools`
-  Materializes identity-blind evidence for independent semantic review.
 
 **Layer 6**
 
 - **`clipfetch`** · 1 importer · → `filler`, `proctree`
   Downloads filler clips into the drop-folder (design §10, §16).
+- **`fillerreview`** · → `filler`, `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `httpx`, `mediatools`
+  Materializes identity-blind evidence for independent semantic review.
 - **`library`** · 8 importers · → `episodeevidence`, `filler`, `httpx`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
 - **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `invitation`, `notifications`, `provision`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
