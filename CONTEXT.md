@@ -57,6 +57,11 @@ An inert, evidence-backed draft Intent that Loomarr recommends an operator might
 It is not a Proposal and carries no approval, acquisition, or Channel authority.
 _Avoid_: recommendation (the act, not the artifact), suggestion, template, proposal
 
+**Development Corpus**:
+A digest-pinned synthetic split used to change or diagnose an AI prompt, schema, or transport. It is
+disjoint from certification evidence and cannot support a ship claim.
+_Avoid_: test set, holdout, certification corpus
+
 **Proposal Job**:
 One caller-owned durable execution of an Intent. Its id is the correlation spine for generation,
 the optional Proposal it produces, and the intent-bound Channel created on approval. A Proposal Job

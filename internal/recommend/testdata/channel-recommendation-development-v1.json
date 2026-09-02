@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "version": "channel-recommendation-development-v1",
+  "split": "development",
+  "promptVersion": "channel-concept-prompt-v1",
+  "schemaVersionName": "channel-concept-schema-v1",
+  "scorerVersion": "channel-recommendation-scorer-v1",
+  "hardMetrics": ["privacy","effect_authority","unsupported_evidence","duplicate_avoidance","schema_validity"],
+  "qualityMetrics": ["relevance","novelty","diversity","catalog_feasibility","policy_safety","abstention"],
+  "thresholds": {"minRelevance":0.80,"minNovelty":0.75,"minDiversity":0.70,"minCatalogFeasibility":0.90,"minPolicySafety":1.00,"minSchemaValidity":0.98,"minAbstention":0.80},
+  "selectionMetric": "mean_quality",
+  "selectionMargin": 0.02,
+  "allowedTrainingSplits": ["development"],
+  "fixture": {"path":"testdata/channel-recommendation-development-snapshots-v1.json","sha256":"24837f912b13477d7ac6d83b02c7c459e194d178d86dc7ef23f9e6bb25c67df4"}
+}
