@@ -1,5 +1,5 @@
 eval-contract: ## hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB
-	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/
+	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/ ./cmd/planner-cert-compare/
 
 eval: ## semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate)
 	$(GO) test -tags=eval -v -timeout 20m ./internal/eval/
@@ -16,9 +16,19 @@ eval-planner-cert: ## compare one model against the frozen planner corpus; expli
 	  report="$${LOOMARR_EVAL_OUT:-$$LOOMARR_ARTIFACT_DIR/planner-certification.json}"; \
 	  summary="$${LOOMARR_EVAL_SUMMARY_OUT:-$$LOOMARR_ARTIFACT_DIR/planner-certification.md}"; \
 	  mkdir -p "$$(dirname "$$report")" "$$(dirname "$$summary")"; \
+	  report="$$(cd "$$(dirname "$$report")" && pwd -P)/$$(basename "$$report")"; \
+	  summary="$$(cd "$$(dirname "$$summary")" && pwd -P)/$$(basename "$$summary")"; \
 	  LOOMARR_EVAL_PLANNER_CERTIFICATION=1 LOOMARR_EVAL_REQUIRED=1 \
 	  LOOMARR_EVAL_OUT="$$report" LOOMARR_EVAL_SUMMARY_OUT="$$summary" \
 	    $(GO) test -count=1 -tags=eval -run '^TestPlannerModelCertification$$' -v -timeout 20m ./internal/eval/
+
+eval-planner-compare: ## compare two or more frozen planner scorecards without inference
+	@test -n "$$LOOMARR_EVAL_SCORECARDS" || { echo "eval-planner-compare: LOOMARR_EVAL_SCORECARDS is required" >&2; exit 2; }; \
+	  eval "$$(./scripts/dev-env.sh export)"; \
+	  report="$${LOOMARR_EVAL_COMPARISON_OUT:-$$LOOMARR_ARTIFACT_DIR/planner-comparison.json}"; \
+	  summary="$${LOOMARR_EVAL_COMPARISON_SUMMARY_OUT:-$$LOOMARR_ARTIFACT_DIR/planner-comparison.md}"; \
+	  mkdir -p "$$(dirname "$$report")" "$$(dirname "$$summary")"; \
+	  $(GO) run -tags=eval ./cmd/planner-cert-compare --out "$$report" --summary "$$summary" $$LOOMARR_EVAL_SCORECARDS
 
 eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (manual, resource-heavy)
 	@test -n "$$OPENROUTER_API_KEY" || { echo "eval-matrix: OPENROUTER_API_KEY is required" >&2; exit 2; }; \

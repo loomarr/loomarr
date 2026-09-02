@@ -362,6 +362,12 @@ type Result struct {
 	ToolOperationExpected      bool            `json:"toolOperationExpected"`
 	CorrectToolOperation       bool            `json:"correctToolOperation"`
 	SchemaValid                bool            `json:"schemaValid"`
+	PolicyAccuracyExpected     bool            `json:"policyAccuracyExpected"`
+	PolicyAccurate             bool            `json:"policyAccurate"`
+	ProposalQualityExpected    bool            `json:"proposalQualityExpected"`
+	ProposalQuality            bool            `json:"proposalQuality"`
+	RecoveryExpected           bool            `json:"recoveryExpected"`
+	RecoverySuccessful         bool            `json:"recoverySuccessful"`
 	GeneratorCalls             []InferenceCall `json:"generatorCalls"`
 	JudgeCalls                 []InferenceCall `json:"judgeCalls"`
 	Observation

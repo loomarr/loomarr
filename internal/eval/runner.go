@@ -11,11 +11,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 const (
-	scorecardSchemaVersion = 9
+	scorecardSchemaVersion = 10
 	corpusVersion          = "2026-08-27.8"
 )
 
@@ -48,12 +49,30 @@ type CertificationContract struct {
 	HardMetrics          []string                `json:"hardMetrics"`
 	QualityMetrics       []string                `json:"qualityMetrics"`
 	Thresholds           CertificationThresholds `json:"thresholds"`
+	Selection            CertificationSelection  `json:"selection"`
+}
+
+type CertificationSelection struct {
+	QualityMargin float64                     `json:"qualityMargin"`
+	Weights       CertificationQualityWeights `json:"weights"`
+}
+
+type CertificationQualityWeights struct {
+	GroundedCompletion   float64 `json:"groundedCompletion"`
+	CorrectToolOperation float64 `json:"correctToolOperation"`
+	SchemaValidity       float64 `json:"schemaValidity"`
+	PolicyAccuracy       float64 `json:"policyAccuracy"`
+	ProposalQuality      float64 `json:"proposalQuality"`
+	Recovery             float64 `json:"recovery"`
 }
 
 type CertificationThresholds struct {
 	MinGroundedCompletionRate   float64 `json:"minGroundedCompletionRate"`
 	MinCorrectToolOperationRate float64 `json:"minCorrectToolOperationRate"`
 	MinSchemaValidityRate       float64 `json:"minSchemaValidityRate"`
+	MinPolicyAccuracyRate       float64 `json:"minPolicyAccuracyRate"`
+	MinProposalQualityRate      float64 `json:"minProposalQualityRate"`
+	MinRecoveryRate             float64 `json:"minRecoveryRate"`
 	MaxP95ToolCalls             int     `json:"maxP95ToolCalls"`
 }
 
@@ -62,6 +81,9 @@ type CertificationAssessment struct {
 	GroundedCompletionRate   float64            `json:"groundedCompletionRate"`
 	CorrectToolOperationRate float64            `json:"correctToolOperationRate"`
 	SchemaValidityRate       float64            `json:"schemaValidityRate"`
+	PolicyAccuracyRate       float64            `json:"policyAccuracyRate"`
+	ProposalQualityRate      float64            `json:"proposalQualityRate"`
+	RecoveryRate             float64            `json:"recoveryRate"`
 	Failures                 []string           `json:"failures"`
 	Performance              PerformanceSummary `json:"performance"`
 }
@@ -257,6 +279,9 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 				Case: c.Name, Trial: trial,
 				GroundedCompletionExpected: c.ExpectGroundedCompletion,
 				ToolOperationExpected:      c.ExpectedToolOperation != "",
+				PolicyAccuracyExpected:     c.ExpectedPolicyCeiling != "",
+				ProposalQualityExpected:    len(c.ExpectedProposalKeys) > 0 || c.ExpectedProposalAbstention,
+				RecoveryExpected:           c.RecoveryExpected,
 				GeneratorCalls:             make([]InferenceCall, 0), JudgeCalls: make([]InferenceCall, 0),
 			}
 			runUsage := newResourceAccumulator()
@@ -288,6 +313,8 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 				result.GroundedCompletion = result.Lineup+result.Acquisitions > 0
 				result.SchemaValid = err == nil || errors.Is(err, suggest.ErrNoGroundedTitles)
 				result.Ceiling = string(prop.Policy.Audience.Ceiling)
+				result.PolicyAccurate = c.ExpectedPolicyCeiling == "" || result.Ceiling == c.ExpectedPolicyCeiling
+				result.ProposalQuality = proposalQualityMatches(c, prop, err)
 				result.ThemeFit = prop.Scores.ThemeFit
 				result.Failures = deterministicChecks(c, prop, err)
 				if !result.Passed() {
@@ -327,6 +354,10 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 							fmt.Sprintf("candidates surfaced %d > budget %d", result.CandidatesSurfaced, c.MaxCandidatesSurfaced))
 					}
 					result.CorrectToolOperation = expectedToolOperationFailure(c.ExpectedToolOperation, result.Observation) == ""
+					encounteredRepair := c.TrackRepairRecovery && result.ModelCalls > result.ToolCalls+1
+					result.RecoveryExpected = c.RecoveryExpected || encounteredRepair
+					result.RecoverySuccessful = !result.RecoveryExpected ||
+						(result.GroundedCompletion && result.SchemaValid && (!c.RecoveryExpected || result.ToolCalls >= 2))
 				}
 				if !boundaryBudget {
 					if budgetMessage := consumeGeneratorObservation(r.config.ResourceBudget, runUsage, suiteUsage, result.Observation); budgetMessage != "" {
@@ -455,6 +486,9 @@ func assessCertification(results []Result, thresholds CertificationThresholds, m
 	assessment := CertificationAssessment{Passed: true}
 	groundedExpected, grounded := 0, 0
 	toolExpected, correctTool := 0, 0
+	policyExpected, policyAccurate := 0, 0
+	proposalExpected, proposalQuality := 0, 0
+	recoveryExpected, recoverySuccessful := 0, 0
 	validSchema := 0
 	var runLatencies []int64
 	toolCalls := make([]int, 0, len(results))
@@ -474,6 +508,24 @@ func assessCertification(results []Result, thresholds CertificationThresholds, m
 		if result.SchemaValid {
 			validSchema++
 		}
+		if result.PolicyAccuracyExpected {
+			policyExpected++
+			if result.PolicyAccurate {
+				policyAccurate++
+			}
+		}
+		if result.ProposalQualityExpected {
+			proposalExpected++
+			if result.ProposalQuality {
+				proposalQuality++
+			}
+		}
+		if result.RecoveryExpected {
+			recoveryExpected++
+			if result.RecoverySuccessful {
+				recoverySuccessful++
+			}
+		}
 		toolCalls = append(toolCalls, result.ToolCalls)
 		var runLatency int64
 		latencyKnown := len(result.GeneratorCalls) > 0
@@ -491,6 +543,9 @@ func assessCertification(results []Result, thresholds CertificationThresholds, m
 	assessment.GroundedCompletionRate = fractionOrOne(grounded, groundedExpected)
 	assessment.CorrectToolOperationRate = fractionOrOne(correctTool, toolExpected)
 	assessment.SchemaValidityRate = fractionOrOne(validSchema, len(results))
+	assessment.PolicyAccuracyRate = fractionOrOne(policyAccurate, policyExpected)
+	assessment.ProposalQualityRate = fractionOrOne(proposalQuality, proposalExpected)
+	assessment.RecoveryRate = fractionOrOne(recoverySuccessful, recoveryExpected)
 	assessment.Performance = performanceSummary(runLatencies, toolCalls, measurement)
 	if assessment.GroundedCompletionRate < thresholds.MinGroundedCompletionRate {
 		assessment.Failures = append(assessment.Failures, fmt.Sprintf("grounded completion rate %.3f < %.3f", assessment.GroundedCompletionRate, thresholds.MinGroundedCompletionRate))
@@ -501,11 +556,46 @@ func assessCertification(results []Result, thresholds CertificationThresholds, m
 	if assessment.SchemaValidityRate < thresholds.MinSchemaValidityRate {
 		assessment.Failures = append(assessment.Failures, fmt.Sprintf("schema validity rate %.3f < %.3f", assessment.SchemaValidityRate, thresholds.MinSchemaValidityRate))
 	}
+	if assessment.PolicyAccuracyRate < thresholds.MinPolicyAccuracyRate {
+		assessment.Failures = append(assessment.Failures, fmt.Sprintf("policy accuracy rate %.3f < %.3f", assessment.PolicyAccuracyRate, thresholds.MinPolicyAccuracyRate))
+	}
+	if assessment.ProposalQualityRate < thresholds.MinProposalQualityRate {
+		assessment.Failures = append(assessment.Failures, fmt.Sprintf("proposal quality rate %.3f < %.3f", assessment.ProposalQualityRate, thresholds.MinProposalQualityRate))
+	}
+	if assessment.RecoveryRate < thresholds.MinRecoveryRate {
+		assessment.Failures = append(assessment.Failures, fmt.Sprintf("recovery rate %.3f < %.3f", assessment.RecoveryRate, thresholds.MinRecoveryRate))
+	}
 	if thresholds.MaxP95ToolCalls > 0 && assessment.Performance.P95ToolCalls > thresholds.MaxP95ToolCalls {
 		assessment.Failures = append(assessment.Failures, fmt.Sprintf("p95 tool calls %d > %d", assessment.Performance.P95ToolCalls, thresholds.MaxP95ToolCalls))
 	}
 	assessment.Passed = len(assessment.Failures) == 0
 	return assessment
+}
+
+func proposalQualityMatches(c Case, proposal suggest.Proposal, err error) bool {
+	if c.ExpectedProposalAbstention {
+		return len(allItems(proposal)) == 0 && errors.Is(err, suggest.ErrNoGroundedTitles)
+	}
+	if len(c.ExpectedProposalKeys) == 0 {
+		return true
+	}
+	actual := make(map[provision.Key]bool, len(allItems(proposal)))
+	for _, item := range allItems(proposal) {
+		key, keyErr := item.Key()
+		if keyErr != nil {
+			return false
+		}
+		actual[key] = true
+	}
+	if len(actual) != len(c.ExpectedProposalKeys) {
+		return false
+	}
+	for _, expected := range c.ExpectedProposalKeys {
+		if !actual[expected] {
+			return false
+		}
+	}
+	return true
 }
 
 func performanceSummary(runLatencies []int64, toolCalls []int, measurement ResourceMeasurement) PerformanceSummary {
