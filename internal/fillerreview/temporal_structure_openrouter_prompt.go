@@ -74,12 +74,12 @@ func temporalStructureOpenRouterContent(durationMS int64) string {
 
 func validateTemporalStructureOpenRouterWire(wire temporalStructureOpenRouterWire, durationMS int64) error {
 	unit := fillereval.UnitKind(wire.Unit)
-	if !validHumanUnit(unit) || strings.TrimSpace(wire.UnitReason) == "" || len(wire.UnitReason) > temporalStructureReasonMaximumCharacters || !validTemporalStructureTimes(wire.UnitDecisiveAtMS, durationMS, unit == fillereval.UnitUnclear) {
+	if !validHumanUnit(unit) || !validTemporalStructureReason(wire.UnitReason) || !validTemporalStructureTimes(wire.UnitDecisiveAtMS, durationMS, unit == fillereval.UnitUnclear) {
 		return fmt.Errorf("direct-video structure unit claim is invalid")
 	}
 	if unit == fillereval.UnitStandalone {
 		role := fillereval.TemporalRole(wire.Role)
-		if !validHumanRole(role) || strings.TrimSpace(wire.RoleReason) == "" || len(wire.RoleReason) > temporalStructureReasonMaximumCharacters || !validTemporalStructureTimes(wire.RoleDecisiveAtMS, durationMS, role == fillereval.TemporalRoleUnclear) {
+		if !validHumanRole(role) || !validTemporalStructureReason(wire.RoleReason) || !validTemporalStructureTimes(wire.RoleDecisiveAtMS, durationMS, role == fillereval.TemporalRoleUnclear) {
 			return fmt.Errorf("direct-video standalone role claim is invalid")
 		}
 	} else if wire.Role != temporalStructureRoleNone || len(wire.RoleDecisiveAtMS) != 0 || wire.RoleReason != "" {

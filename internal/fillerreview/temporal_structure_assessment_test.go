@@ -49,6 +49,9 @@ func TestLoadTemporalStructureAssessmentRejectsSemanticAndAccountingDrift(t *tes
 		{name: "unsorted evidence", mutate: func(_ *temporalStructureComparisonFixture, set *TemporalStructureAssessmentSet) {
 			set.Assessments[0].Unit.DecisiveAtMS = []int64{2, 1}
 		}, want: "decisive timestamps"},
+		{name: "oversized reason", mutate: func(_ *temporalStructureComparisonFixture, set *TemporalStructureAssessmentSet) {
+			set.Assessments[0].Unit.Reason = strings.Repeat("é", temporalStructureReasonMaximumCharacters+1)
+		}, want: "unit claim"},
 		{name: "non standalone role", mutate: func(_ *temporalStructureComparisonFixture, set *TemporalStructureAssessmentSet) {
 			item := temporalStructureAssessmentByTruth(set, fillereval.UnitCompilation)
 			item.Role = &TemporalStructureRoleClaim{Kind: fillereval.TemporalRolePromo, DecisiveAtMS: []int64{1}, Reason: "wrong"}

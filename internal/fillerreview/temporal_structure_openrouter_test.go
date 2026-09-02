@@ -122,6 +122,8 @@ func TestTemporalStructureOpenRouterWireEnforcesClosedConditionalShape(t *testin
 		want string
 	}{
 		{name: "valid compilation", wire: temporalStructureOpenRouterWire{Unit: "compilation", UnitDecisiveAtMS: []int64{100}, UnitReason: "join", Role: "none"}},
+		{name: "unicode character limit", wire: temporalStructureOpenRouterWire{Unit: "compilation", UnitDecisiveAtMS: []int64{100}, UnitReason: strings.Repeat("é", temporalStructureReasonMaximumCharacters), Role: "none"}},
+		{name: "over character limit", wire: temporalStructureOpenRouterWire{Unit: "compilation", UnitDecisiveAtMS: []int64{100}, UnitReason: strings.Repeat("é", temporalStructureReasonMaximumCharacters+1), Role: "none"}, want: "unit claim"},
 		{name: "missing standalone role", wire: temporalStructureOpenRouterWire{Unit: "standalone", UnitDecisiveAtMS: []int64{100}, UnitReason: "bounded", Role: "none"}, want: "standalone role"},
 		{name: "non standalone role", wire: temporalStructureOpenRouterWire{Unit: "programme_excerpt", UnitDecisiveAtMS: []int64{0}, UnitReason: "cut", Role: "promo", RoleDecisiveAtMS: []int64{1}, RoleReason: "wrong"}, want: "carries role"},
 		{name: "duplicate times", wire: temporalStructureOpenRouterWire{Unit: "compilation", UnitDecisiveAtMS: []int64{100, 100}, UnitReason: "join", Role: "none"}, want: "unit claim"},

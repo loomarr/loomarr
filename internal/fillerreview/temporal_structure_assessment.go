@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/loomarr/loomarr/internal/fillereval"
 )
@@ -118,11 +119,11 @@ func validateTemporalStructureAssessment(assessment TemporalStructureAssessment,
 		}
 		return nil
 	}
-	if assessment.Unit == nil || !validHumanUnit(assessment.Unit.Kind) || strings.TrimSpace(assessment.Unit.Reason) == "" || !validTemporalStructureTimes(assessment.Unit.DecisiveAtMS, durationMS, assessment.Unit.Kind == fillereval.UnitUnclear) {
+	if assessment.Unit == nil || !validHumanUnit(assessment.Unit.Kind) || !validTemporalStructureReason(assessment.Unit.Reason) || !validTemporalStructureTimes(assessment.Unit.DecisiveAtMS, durationMS, assessment.Unit.Kind == fillereval.UnitUnclear) {
 		return fmt.Errorf("unit claim or decisive timestamps are invalid")
 	}
 	if assessment.Unit.Kind == fillereval.UnitStandalone {
-		if assessment.Role == nil || !validHumanRole(assessment.Role.Kind) || strings.TrimSpace(assessment.Role.Reason) == "" || !validTemporalStructureTimes(assessment.Role.DecisiveAtMS, durationMS, assessment.Role.Kind == fillereval.TemporalRoleUnclear) {
+		if assessment.Role == nil || !validHumanRole(assessment.Role.Kind) || !validTemporalStructureReason(assessment.Role.Reason) || !validTemporalStructureTimes(assessment.Role.DecisiveAtMS, durationMS, assessment.Role.Kind == fillereval.TemporalRoleUnclear) {
 			return fmt.Errorf("standalone role claim or decisive timestamps are invalid")
 		}
 	} else if assessment.Role != nil {
@@ -151,6 +152,10 @@ func validateTemporalStructureInference(inference fillereval.TemporalInference, 
 		return fmt.Errorf("inference aggregate accounting does not match its call ledger")
 	}
 	return nil
+}
+
+func validTemporalStructureReason(value string) bool {
+	return strings.TrimSpace(value) != "" && utf8.ValidString(value) && utf8.RuneCountInString(value) <= temporalStructureReasonMaximumCharacters
 }
 
 func validTemporalStructureTimes(values []int64, durationMS int64, mayBeEmpty bool) bool {
