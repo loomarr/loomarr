@@ -35,6 +35,7 @@ type TemporalMediaQualityConfig struct {
 type TemporalMediaQualityReport struct {
 	SchemaVersion              int                        `json:"schemaVersion"`
 	ContractVersion            string                     `json:"contractVersion"`
+	PolicyVersion              string                     `json:"policyVersion"`
 	MeasuredAt                 time.Time                  `json:"measuredAt"`
 	HumanPackageSHA256         string                     `json:"humanPackageSha256"`
 	HumanPrivateMapSHA256      string                     `json:"humanPrivateMapSha256"`
@@ -60,6 +61,7 @@ type TemporalMediaQualityReport struct {
 
 type TemporalMediaQualityCase struct {
 	EvidenceAlias      string                   `json:"evidenceAlias"`
+	SourceMediaSHA256  string                   `json:"sourceMediaSha256"`
 	HumanUnit          fillereval.UnitKind      `json:"humanUnit"`
 	DurationMS         int64                    `json:"durationMs"`
 	HadAudio           bool                     `json:"hadAudio"`
@@ -76,11 +78,12 @@ type TemporalMediaQualityCase struct {
 }
 
 type temporalMediaQualityInput struct {
-	EvidenceAlias string
-	HumanUnit     fillereval.UnitKind
-	DurationMS    int64
-	HadAudio      bool
-	Path          string
+	EvidenceAlias     string
+	SourceMediaSHA256 string
+	HumanUnit         fillereval.UnitKind
+	DurationMS        int64
+	HadAudio          bool
+	Path              string
 }
 
 type temporalQualityInspector func(context.Context, string, int64, bool) (mediatools.MediaQuality, error)
@@ -103,7 +106,8 @@ func MeasureTemporalMediaQuality(ctx context.Context, config TemporalMediaQualit
 	probe := filler.FFprobeNextTo(mediaIdentity.FFmpeg.Path)
 	report := TemporalMediaQualityReport{
 		SchemaVersion: TemporalMediaQualitySchemaVersion, ContractVersion: TemporalMediaQualityContractVersion,
-		MeasuredAt: config.MeasuredAt.UTC(), HumanPackageSHA256: loaded.packageSHA,
+		PolicyVersion: MediaIntegrityPolicyVersion,
+		MeasuredAt:    config.MeasuredAt.UTC(), HumanPackageSHA256: loaded.packageSHA,
 		HumanPrivateMapSHA256: loaded.mapSHA, HumanAssessmentSetSHA256: loaded.assessmentSHA,
 		HumanAttestationFileSHA256: loaded.attestationFileSHA,
 		EvidenceManifestSHA256:     loaded.pack.EvidenceManifestSHA256, SelectionSHA256: loaded.pack.SelectionSHA256,
@@ -116,7 +120,7 @@ func MeasureTemporalMediaQuality(ctx context.Context, config TemporalMediaQualit
 		var measurement TemporalMediaQualityCase
 		switch {
 		case probeErr != nil:
-			measurement = TemporalMediaQualityCase{EvidenceAlias: input.EvidenceAlias, HumanUnit: input.HumanUnit, DurationMS: input.DurationMS, OperationalFailure: probeErr.Error()}
+			measurement = TemporalMediaQualityCase{EvidenceAlias: input.EvidenceAlias, SourceMediaSHA256: input.SourceMediaSHA256, HumanUnit: input.HumanUnit, DurationMS: input.DurationMS, OperationalFailure: probeErr.Error()}
 		case probed.NoVideo:
 			measurement = temporalMediaQualityProbeRejection(input, filler.ReasonNoVideo, "The review artifact has no video stream.")
 		case probed.Silent:
@@ -136,13 +140,13 @@ func MeasureTemporalMediaQuality(ctx context.Context, config TemporalMediaQualit
 
 func temporalMediaQualityProbeRejection(input temporalMediaQualityInput, reason filler.RejectReason, detail string) TemporalMediaQualityCase {
 	return TemporalMediaQualityCase{
-		EvidenceAlias: input.EvidenceAlias, HumanUnit: input.HumanUnit, DurationMS: input.DurationMS,
+		EvidenceAlias: input.EvidenceAlias, SourceMediaSHA256: input.SourceMediaSHA256, HumanUnit: input.HumanUnit, DurationMS: input.DurationMS,
 		PolicyVerdict: mediaQualityReject, PolicyReason: reason, PolicyDetail: detail,
 	}
 }
 
 func measureTemporalMediaQualityCase(ctx context.Context, input temporalMediaQualityInput, inspect temporalQualityInspector) TemporalMediaQualityCase {
-	result := TemporalMediaQualityCase{EvidenceAlias: input.EvidenceAlias, HumanUnit: input.HumanUnit, DurationMS: input.DurationMS, HadAudio: input.HadAudio}
+	result := TemporalMediaQualityCase{EvidenceAlias: input.EvidenceAlias, SourceMediaSHA256: input.SourceMediaSHA256, HumanUnit: input.HumanUnit, DurationMS: input.DurationMS, HadAudio: input.HadAudio}
 	quality, err := inspect(ctx, input.Path, input.DurationMS, input.HadAudio)
 	if err != nil {
 		result.OperationalFailure = err.Error()

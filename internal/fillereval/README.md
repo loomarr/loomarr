@@ -188,6 +188,14 @@ or mixed local support repairs the evidence or prompt. Only preserved controls p
 support on each dispute axis permits revising the assessor mix and repeating the complete 32-case
 diagnostic. The disposition never authorizes the 300-case relabel directly.
 
+`make filler-media-integrity-prepare` turns a private purpose-built authority manifest and the exact
+full-decode report into a label-free public package plus owner-only map. Integrity slices and
+presentation/source defects use separate closed vocabularies; public bytes contain only fresh aliases
+and content/measurement digests. `make filler-media-integrity-score` locks the private comparison
+against the same production-policy report, records confusion and one-sided Wilson bounds per slice,
+keeps operational failures as holds, and preserves noisy/static misses as measured gaps. Neither
+command reads media, calls a provider, tunes production thresholds, or permits production admission.
+
 Predictions record the inference role/rung, requested and resolved route, derivative bounds, detailed
 token categories, attempts, generation id, and the provider's exact charged decimal alongside an
 integer nanodollar projection. A failed call with missing or malformed settlement keeps those charge

@@ -100,7 +100,7 @@ eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (m
 	  exit "$$status"
 
 filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
-	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./internal/fillerreview/ ./cmd/filler-bakeoff-ollama/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-bakeoff-transcribe/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-direct/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-prepare/ ./cmd/filler-corpus-review/ ./cmd/filler-corpus-review-ollama/ ./cmd/filler-corpus-review-openrouter/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/ ./cmd/filler-temporal-assess-ollama/ ./cmd/filler-temporal-assess-openrouter/ ./cmd/filler-temporal-calibration-report/ ./cmd/filler-temporal-compare/ ./cmd/filler-temporal-select/ ./cmd/filler-temporal-truth-select/ ./cmd/filler-temporal-truth-prepare/
+	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./internal/fillerreview/ ./cmd/filler-bakeoff-ollama/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-bakeoff-transcribe/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-direct/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-prepare/ ./cmd/filler-corpus-review/ ./cmd/filler-corpus-review-ollama/ ./cmd/filler-corpus-review-openrouter/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/ ./cmd/filler-media-integrity-prepare/ ./cmd/filler-media-integrity-score/ ./cmd/filler-temporal-assess-ollama/ ./cmd/filler-temporal-assess-openrouter/ ./cmd/filler-temporal-calibration-report/ ./cmd/filler-temporal-compare/ ./cmd/filler-temporal-select/ ./cmd/filler-temporal-truth-select/ ./cmd/filler-temporal-truth-prepare/
 
 filler-temporal-truth-select: ## select the private 48-case truth-review sample from frozen history without inference
 	@for name in DRAFT SEED OUT A_PACKAGE A_MAP A_LABELS B_PACKAGE B_MAP B_LABELS C_PACKAGE C_MAP C_ADJUDICATIONS; do \
@@ -461,6 +461,24 @@ filler-corpus-lock: ## lock two blind filler-label batches into a certification 
 	    --adjudications "$$LOOMARR_FILLER_CORPUS_ADJUDICATIONS" \
 	    --locked-at "$$LOOMARR_FILLER_CORPUS_LOCKED_AT" \
 	    --out "$$LOOMARR_FILLER_CORPUS_OUT"
+
+filler-media-integrity-prepare: ## prepare a label-free media-integrity challenge without inference
+	@test -n "$$LOOMARR_FILLER_MEDIA_INTEGRITY_AUTHORITY" || { echo "filler-media-integrity-prepare: LOOMARR_FILLER_MEDIA_INTEGRITY_AUTHORITY is required" >&2; exit 2; }; \
+	  $(GO) run ./cmd/filler-media-integrity-prepare \
+	    --authority "$$LOOMARR_FILLER_MEDIA_INTEGRITY_AUTHORITY" \
+	    --media-quality "$$LOOMARR_FILLER_MEDIA_QUALITY_REPORT" \
+	    --seed "$$LOOMARR_FILLER_MEDIA_INTEGRITY_SEED" \
+	    --prepared-at "$$LOOMARR_FILLER_MEDIA_INTEGRITY_PREPARED_AT" \
+	    --out "$$LOOMARR_FILLER_MEDIA_INTEGRITY_OUT"
+
+filler-media-integrity-score: ## lock the private media-integrity comparison without inference
+	@test -n "$$LOOMARR_FILLER_MEDIA_INTEGRITY_PACKAGE" || { echo "filler-media-integrity-score: LOOMARR_FILLER_MEDIA_INTEGRITY_PACKAGE is required" >&2; exit 2; }; \
+	  $(GO) run ./cmd/filler-media-integrity-score \
+	    --package "$$LOOMARR_FILLER_MEDIA_INTEGRITY_PACKAGE" \
+	    --map "$$LOOMARR_FILLER_MEDIA_INTEGRITY_MAP" \
+	    --media-quality "$$LOOMARR_FILLER_MEDIA_QUALITY_REPORT" \
+	    --locked-at "$$LOOMARR_FILLER_MEDIA_INTEGRITY_LOCKED_AT" \
+	    --out "$$LOOMARR_FILLER_MEDIA_INTEGRITY_REPORT"
 
 filler-corpus-review: ## prepare one opaque randomized filler-label review batch
 	@test -n "$$LOOMARR_FILLER_CORPUS_DRAFT" || { echo "filler-corpus-review: LOOMARR_FILLER_CORPUS_DRAFT is required" >&2; exit 2; }; \
