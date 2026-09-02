@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -26,9 +27,16 @@ type fakeAudioAdjudicator struct {
 	calls  []string
 }
 
-func (f *fakeAudioAdjudicator) adjudicate(_ context.Context, candidate Candidate, _ []byte) (audioAttempt, error) {
+func (f *fakeAudioAdjudicator) identity(int64) hostedCallIdentity {
+	return validHostedCallIdentityFixture()
+}
+
+func (f *fakeAudioAdjudicator) adjudicate(_ context.Context, candidate Candidate, _ []byte, reserve func(string) error) (audioAttempt, error) {
 	f.calls = append(f.calls, candidate.ID)
 	attempt := audioAttempt{Assessment: AudioAssessment{CandidateID: candidate.ID, State: f.states[candidate.ID]}, MatchedRuleIDs: []string{}}
+	if err := reserve(strings.Repeat("d", 64)); err != nil {
+		return attempt, err
+	}
 	if f.errors[candidate.ID] {
 		return attempt, errors.New("private provider detail")
 	}
@@ -41,9 +49,26 @@ type fakeVideoCorroborator struct {
 	calls int
 }
 
-func (f *fakeVideoCorroborator) corroborate(context.Context, *CompleteMediaPlan) (videoAttempt, error) {
+func (f *fakeVideoCorroborator) identity(int64) hostedCallIdentity {
+	return validHostedCallIdentityFixture()
+}
+
+func (f *fakeVideoCorroborator) corroborate(_ context.Context, _ *CompleteMediaPlan, reserve func(string) error) (videoAttempt, error) {
 	f.calls++
+	if err := reserve(strings.Repeat("e", 64)); err != nil {
+		return videoAttempt{State: VideoFailed, Flags: []videoFlag{}}, err
+	}
 	return videoAttempt{State: f.state, Flags: []videoFlag{}}, f.err
+}
+
+func validHostedCallIdentityFixture() hostedCallIdentity {
+	return hostedCallIdentity{
+		RequestedProvider: "openrouter", RequestedModel: "vendor/model",
+		ResolvedProvider: "openrouter", ResolvedModel: "vendor/model-2026",
+		UpstreamProvider: "provider", CapabilitySHA256: strings.Repeat("a", 64),
+		PromptSHA256: strings.Repeat("b", 64), SchemaSHA256: strings.Repeat("c", 64),
+		MaxChargeNanoUSD: 100,
+	}
 }
 
 func TestEvaluateRunsSerialCascadeAndRejectsOnlyTwoModelNegatives(t *testing.T) {
@@ -59,7 +84,10 @@ func TestEvaluateRunsSerialCascadeAndRejectsOnlyTwoModelNegatives(t *testing.T) 
 	firstID := proposalCandidateID(plan.AuthoritySHA256, proposedInterval{StartMS: 100, EndMS: 800})
 	secondID := proposalCandidateID(plan.AuthoritySHA256, proposedInterval{StartMS: 2_000, EndMS: 2_500})
 	audio.states[firstID], audio.states[secondID] = AudioAbsent, AudioAbsent
-	got := eval.evaluate(context.Background(), plan)
+	got, err := eval.evaluate(context.Background(), plan, unrecordedCascadeJournal{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got.Result.Outcome != OutcomeCandidateRejected || got.VideoAttempt == nil || got.VideoAttempt.State != VideoNoSignal || video.calls != 1 || !slices.Equal(extractor.calls, []string{firstID, secondID}) || !slices.Equal(audio.calls, []string{firstID, secondID}) {
 		t.Fatalf("evaluation=%+v extract=%v audio=%v video=%d", got, extractor.calls, audio.calls, video.calls)
 	}
@@ -76,7 +104,10 @@ func TestEvaluatePresenceOutranksFailureAndSkipsVideo(t *testing.T) {
 	extractor := &fakeAudioExtractor{fail: map[string]bool{firstID: true}}
 	audio := &fakeAudioAdjudicator{states: map[string]AudioState{secondID: AudioDetected}}
 	video := &fakeVideoCorroborator{state: VideoNoSignal}
-	got := (&evaluator{proposer: proposer, proposerIdentity: identity, audioExtractor: extractor, audio: audio, video: video}).evaluate(context.Background(), plan)
+	got, err := (&evaluator{proposer: proposer, proposerIdentity: identity, audioExtractor: extractor, audio: audio, video: video}).evaluate(context.Background(), plan, unrecordedCascadeJournal{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got.Result.Outcome != OutcomeQuarantine || !slices.Equal(got.Result.Reasons, []Reason{ReasonAudioFailure, ReasonAudioProhibitedSignal}) || video.calls != 0 {
 		t.Fatalf("evaluation=%+v video=%d", got, video.calls)
 	}
@@ -88,7 +119,10 @@ func TestEvaluateNoCandidatesStillRequiresCompleteVideo(t *testing.T) {
 	identity := validProposerIdentityFixture()
 	proposer := &fakeAcousticProposer{output: proposalOutput{Identity: identity, Complete: true}}
 	video := &fakeVideoCorroborator{state: VideoIncomplete}
-	got := (&evaluator{proposer: proposer, proposerIdentity: identity, audioExtractor: &fakeAudioExtractor{}, audio: &fakeAudioAdjudicator{}, video: video}).evaluate(context.Background(), plan)
+	got, err := (&evaluator{proposer: proposer, proposerIdentity: identity, audioExtractor: &fakeAudioExtractor{}, audio: &fakeAudioAdjudicator{}, video: video}).evaluate(context.Background(), plan, unrecordedCascadeJournal{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got.Result.Outcome != OutcomeHold || !slices.Equal(got.Result.Reasons, []Reason{ReasonVideoIncomplete}) || video.calls != 1 {
 		t.Fatalf("evaluation=%+v video=%d", got, video.calls)
 	}
@@ -103,7 +137,10 @@ func TestEvaluateAdapterErrorsCannotSmugglePresence(t *testing.T) {
 	proposer := &fakeAcousticProposer{output: proposalOutput{Identity: identity, Complete: true, Candidates: []proposedInterval{interval}}}
 	audio := &fakeAudioAdjudicator{states: map[string]AudioState{id: AudioDetected}, errors: map[string]bool{id: true}}
 	video := &fakeVideoCorroborator{state: VideoNoSignal}
-	got := (&evaluator{proposer: proposer, proposerIdentity: identity, audioExtractor: &fakeAudioExtractor{}, audio: audio, video: video}).evaluate(context.Background(), plan)
+	got, err := (&evaluator{proposer: proposer, proposerIdentity: identity, audioExtractor: &fakeAudioExtractor{}, audio: audio, video: video}).evaluate(context.Background(), plan, unrecordedCascadeJournal{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got.Result.Outcome != OutcomeHold || !slices.Equal(got.Result.Reasons, []Reason{ReasonAudioFailure}) || video.calls != 0 {
 		t.Fatalf("evaluation=%+v video=%d", got, video.calls)
 	}
