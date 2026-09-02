@@ -80,6 +80,18 @@ const FieldInput = ({
             </option>
           ))}
         </select>
+      ) : field.kind === "textarea" ? (
+        <textarea
+          id={inputId}
+          className="min-h-28 rounded-md border border-input bg-transparent px-3 py-2 font-mono text-sm"
+          value={value}
+          disabled={cleared}
+          autoComplete={field.sensitive ? "new-password" : undefined}
+          spellCheck={false}
+          aria-invalid={error ? "true" : undefined}
+          aria-describedby={error ? errorId : undefined}
+          onChange={(event) => onChange(event.target.value)}
+        />
       ) : (
         <Input
           id={inputId}

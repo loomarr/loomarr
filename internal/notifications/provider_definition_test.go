@@ -63,6 +63,18 @@ func TestProviderDefinitionClassifiesSecretsOnTheServer(t *testing.T) {
 			wantConfig:  map[string]string{},
 			wantSecrets: map[string]string{"webhookUrl": "https://hooks.slack.com/services/secret"},
 		},
+		{
+			means: notifications.MeansMQTT,
+			settings: map[string]string{
+				"clientId": "living-room", "tlsCaCertificate": "private CA",
+				"tlsClientCertificate": "client certificate", "tlsClientKey": "private key",
+			},
+			wantConfig: map[string]string{"clientId": "living-room"},
+			wantSecrets: map[string]string{
+				"tlsCaCertificate": "private CA", "tlsClientCertificate": "client certificate",
+				"tlsClientKey": "private key",
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.means), func(t *testing.T) {
@@ -178,6 +190,23 @@ func TestCredentialBearingProviderLocationsAreAlwaysSensitive(t *testing.T) {
 		if !ok || !field.Sensitive {
 			t.Errorf("%s.%s must be server-classified as sensitive", means, key)
 		}
+	}
+}
+
+func TestMQTTProviderDefinitionUsesWriteOnlyMultilineTLSFields(t *testing.T) {
+	definition, ok := notifications.ProviderDefinitionFor(notifications.MeansMQTT)
+	if !ok {
+		t.Fatal("MQTT provider definition is missing")
+	}
+	for _, key := range []string{"tlsCaCertificate", "tlsClientCertificate", "tlsClientKey"} {
+		field, exists := definition.Field(key)
+		if !exists || !field.Sensitive || field.Kind != notifications.ProviderFieldTextarea {
+			t.Errorf("MQTT %s field = %+v, exists %t", key, field, exists)
+		}
+	}
+	clientID, ok := definition.Field("clientId")
+	if !ok || clientID.Sensitive || clientID.Kind != notifications.ProviderFieldText || clientID.Required {
+		t.Fatalf("MQTT client ID field = %+v, exists %t", clientID, ok)
 	}
 }
 
