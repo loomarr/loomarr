@@ -30,6 +30,34 @@ commercial control as promo. Prompt-v7 error repair improved local exact agreeme
 worsened unit agreement to 19/32, with 13 Gemma-standalone/Qwen-programme-excerpt confusions. The
 small local families and two old controls are therefore not temporal truth authorities.
 
+### 48-case truth-review evidence execution
+
+Issue #843 now owns the inference-free bridge into Phase 2. The deterministic selector strictly
+joined the frozen 300-case draft, three reviewer packages and private maps, and the Mistral, Gemini,
+and composite Gemma submission artifacts. With seed
+`filler-temporal-truth-review-2026-09-01-v1`, it produced 48 unique content identities: exactly 16
+agreement probes, 16 non-risk disagreement probes, and 16 high-risk probes, including exactly four
+each for programme excerpts, compilations, unusable/unclear cases, and sub-15-second boundaries.
+The private selection SHA-256 is
+`1de478f5a9fda04944b93a744eeddeff3dcc65e262b55fe9b32da51738e552af`.
+
+The first complete evidence build used original acquired media, not the old provider derivative,
+and passed all 48 cases. It produced 469 ordered frames, 47 content-bound transcript artifacts, and
+708 Apple Vision observations on 226 frames. Review videos cover the complete measured span from
+9,783 to 120,000 ms; the largest is 41,248,821 bytes under the declared 64 MiB ceiling. The public
+manifest SHA-256 is `f2182f358fe1d266391f6e776367496d95db3f5fbe7123995da980ae5dee588e`;
+the owner-only map SHA-256 is
+`53c68da97ef9642c3b5b1b7d1b893d96d954b5561d1d5e5e9c343c4431a90b5a`.
+Every declared public frame/video hash and byte count re-verified, and an exact search found no
+private case ID or source filename in the public tree. This artifact is evidence only and makes no
+truth, accuracy, or certification claim.
+
+Reproduce selection with `make filler-temporal-truth-select` and evidence with
+`make filler-temporal-truth-prepare`, supplying the required `LOOMARR_FILLER_TRUTH_*` paths listed by
+each target. The evidence command additionally pins generation time, ffmpeg/ffprobe executable
+hashes, the optional OCR executable/source hashes, scene threshold, timeout, frame ceiling, and video
+ceiling. Output paths are immutable and publication is one atomic directory rename.
+
 ## Decision
 
 Use multimodal models as the primary classifiers and evidence extractors. Do not ask the maintainer
@@ -145,12 +173,34 @@ model agreement and adjudication rates reported by structural slice.
 
 ### Phase 2 — small independent calibration, not a 300-case human audit
 
-Commission two people other than the maintainer to answer only the two short questions above. Use a
-stratified 48-case calibration sample:
+Select the calibration sample before any new stronger-model or human answer exists. The immutable
+Mistral, Gemini, and Gemma 300-case recovery history is selection evidence only, never truth. Build a
+stratified 48-case set from that frozen history:
 
-- 16 random unanimous model cases, so correlated model mistakes remain detectable;
-- 16 model disagreements or abstentions;
-- 16 high-risk compilations/programme excerpts and short boundary cases.
+- 16 exact three-artifact unit/role agreements, so correlated historical mistakes remain detectable;
+- 16 historical disagreements or ambiguities; and
+- 16 high-risk compilations, programme excerpts, unusable/unclear media, and short boundary cases.
+
+The selector uses a declared seed and SHA-256 ranking over content identity, fails rather than silently
+borrowing from an underfilled quota, and records the digest of every input. The old recovery schema
+is normalized conservatively: deterministic-invalid becomes `unusable`; ambiguous becomes `unclear`
+even when the same row suggests a structural role; explicit programme excerpt or compilation comes
+next; only then may an eligible row become `standalone`. This precedence prevents the old conflated
+truth/role fields from promoting an ambiguous or structurally unsafe span into a control.
+
+Materialize new evidence from the complete acquired media, not the old four-frame/60-second reviewer
+derivatives. Each opaque case gets one complete-span bounded review video, at most twelve ordered
+near-full-resolution frames including boundary and scene-change evidence, a content-hash-bound
+timestamped transcript when audio exists, and optional local OCR bound to the exact frame hashes.
+Source filenames, old aliases, case IDs, labels, assessor identities, and selection reasons remain in
+the owner-only map and selection ledger. The public package is content-addressed and published only
+after every derivative verifies.
+
+Only after that evidence is sealed do the stronger Qwen and Claude families and two people other than
+the maintainer answer the same two short questions in fresh, independently shuffled blind batches.
+Neither model answers nor old recovery labels are shown to the human reviewers. This order avoids a
+circular sample definition in which strong-model disagreements would be required to select the very
+calibration evidence intended to validate those models.
 
 The reviewer sees ordered frames, OCR, transcript, and optionally the bounded clip, but not model
 answers, source identity, filenames, or prior labels. The UI should support autoplay, speed control,
@@ -226,13 +276,16 @@ authority.
    disagreement report.
 3. Complete: the sealed 15-case slice ran through Qwen 3.8 and Claude Opus 5 with zero final
    operational failures. It identified five bounded error classes and proved two old controls unsafe.
-4. In progress: replace the invalid controls and build the 48-case independent-review package around
-   random model agreements, strong-model disagreements, and high-risk temporal cases. This is a
-   short unit/role review, not a blind 300-case audit.
-5. When the 64 GB Apple-silicon host is available, benchmark pinned Qwen 3.8 27B MLX against the same
+4. In progress in #843: deterministically select 48 cases from immutable recovery history and build
+   their stronger, complete-span, identity-blind evidence. Do not use fresh Qwen, Claude, or human
+   answers to select the sample.
+5. Pending in #846: give that same sealed evidence to Qwen, Claude, and two independent human
+   reviewers through fresh blind batches with the two-question submission lock. This is a short
+   unit/role review, not a blind 300-case audit.
+6. When the 64 GB Apple-silicon host is available, benchmark pinned Qwen 3.8 27B MLX against the same
    sealed diagnostic and hosted Qwen result; promote it only if it reproduces the stronger-family
    behavior.
-6. Pending the repaired Phase 0 gate: run the two-family 300-case relabel. Do not substitute mass
+7. Pending the repaired Phase 0 gate: run the two-family 300-case relabel. Do not substitute mass
    adjudication for a passing diagnostic.
-7. Pending calibrated development truth: run #555 and keep production in shadow until the separate
+8. Pending calibrated development truth: run #555 and keep production in shadow until the separate
    holdout passes.
