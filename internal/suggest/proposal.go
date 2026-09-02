@@ -5,6 +5,11 @@
 // and nothing is auto-executed (§8 human-in-the-loop). Generation runs as a
 // persisted job (§8 execution model); this package is the pure suggestion logic,
 // driven by a worker (Phase 11e) and exposed via the API (Phase 11f).
+//
+// Source ownership follows the generation pipeline: suggester.go owns the public
+// facade and model loop, prompt.go owns prompt messages, tools.go owns catalog
+// tool execution, proposal_grounding.go owns the trust boundary that constructs a
+// Proposal, and intent_policy.go owns deterministic interpretation of user intent.
 package suggest
 
 import (
