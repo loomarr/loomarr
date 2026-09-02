@@ -260,27 +260,12 @@ func BuildTemporalTruthEvidence(ctx context.Context, config TemporalTruthEvidenc
 		transcriptByID[item.CaseID] = item
 	}
 
-	output, err := filepath.Abs(config.OutputDir)
+	stage, err := beginTemporalTruthEvidenceStage(config.OutputDir)
 	if err != nil {
 		return TemporalTruthEvidenceManifest{}, err
 	}
-	if _, err := os.Lstat(output); err == nil || !os.IsNotExist(err) {
-		return TemporalTruthEvidenceManifest{}, fmt.Errorf("output already exists: %s", output)
-	}
-	if err := os.MkdirAll(filepath.Dir(output), 0o750); err != nil {
-		return TemporalTruthEvidenceManifest{}, err
-	}
-	stage, err := os.MkdirTemp(filepath.Dir(output), ".filler-temporal-truth-evidence-*")
-	if err != nil {
-		return TemporalTruthEvidenceManifest{}, err
-	}
-	published := false
-	defer func() {
-		if !published {
-			_ = os.RemoveAll(stage)
-		}
-	}()
-	publicRoot, privateRoot := filepath.Join(stage, "public"), filepath.Join(stage, "private")
+	defer stage.Cleanup()
+	publicRoot, privateRoot := filepath.Join(stage.path, "public"), filepath.Join(stage.path, "private")
 	if err := os.MkdirAll(publicRoot, 0o750); err != nil {
 		return TemporalTruthEvidenceManifest{}, err
 	}
@@ -366,10 +351,9 @@ func BuildTemporalTruthEvidence(ctx context.Context, config TemporalTruthEvidenc
 	if err := writeTemporalTruthNew(filepath.Join(privateRoot, "map.json"), append(privateRaw, '\n'), 0o600); err != nil {
 		return TemporalTruthEvidenceManifest{}, err
 	}
-	if err := os.Rename(stage, output); err != nil {
+	if err := stage.Publish(); err != nil {
 		return TemporalTruthEvidenceManifest{}, err
 	}
-	published = true
 	return manifest, nil
 }
 

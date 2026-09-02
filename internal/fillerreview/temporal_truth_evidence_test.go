@@ -86,6 +86,26 @@ func TestLoadTemporalTruthEvidenceRejectsTamperedPublicArtifact(t *testing.T) {
 	}
 }
 
+func TestTemporalTruthEvidenceStageRemovesPartialOutputOnFailure(t *testing.T) {
+	parent := t.TempDir()
+	output := filepath.Join(parent, "evidence")
+	stage, err := beginTemporalTruthEvidenceStage(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stage.path, "partial"), []byte("incomplete"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	stage.Cleanup()
+	if _, err := os.Lstat(output); !os.IsNotExist(err) {
+		t.Fatalf("failed build published output: %v", err)
+	}
+	stages, err := filepath.Glob(filepath.Join(parent, ".filler-temporal-truth-evidence-*"))
+	if err != nil || len(stages) != 0 {
+		t.Fatalf("failed build left staging directories %v: %v", stages, err)
+	}
+}
+
 type temporalTruthFakeMedia struct{ frame []byte }
 
 func (fake *temporalTruthFakeMedia) Identity() TemporalTruthMediaIdentity {

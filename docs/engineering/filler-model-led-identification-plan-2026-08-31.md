@@ -41,16 +41,18 @@ each for programme excerpts, compilations, unusable/unclear cases, and sub-15-se
 The private selection SHA-256 is
 `1de478f5a9fda04944b93a744eeddeff3dcc65e262b55fe9b32da51738e552af`.
 
-The first complete evidence build used original acquired media, not the old provider derivative,
+The corrected complete evidence build used original acquired media, not the old provider derivative,
 and passed all 48 cases. It produced 469 ordered frames, 47 content-bound transcript artifacts, and
 708 Apple Vision observations on 226 frames. Review videos cover the complete measured span from
 9,783 to 120,000 ms; the largest is 41,248,821 bytes under the declared 64 MiB ceiling. The public
-manifest SHA-256 is `f2182f358fe1d266391f6e776367496d95db3f5fbe7123995da980ae5dee588e`;
+manifest SHA-256 is `b6fcda4110c2cacbb1cb1727629dcf14ce4287074cc550d0786866b8470b84c8`;
 the owner-only map SHA-256 is
 `53c68da97ef9642c3b5b1b7d1b893d96d954b5561d1d5e5e9c343c4431a90b5a`.
 Every declared public frame/video hash and byte count re-verified, and an exact search found no
-private case ID or source filename in the public tree. This artifact is evidence only and makes no
-truth, accuracy, or certification claim.
+private case ID or source filename in the public tree. An initial repeated build exposed
+decoder-thread nondeterminism in two Theora inputs. After pinning both FFmpeg input decoding and
+output encoding to one thread, two complete executions produced byte-identical public and private
+directories. This artifact is evidence only and makes no truth, accuracy, or certification claim.
 
 Reproduce selection with `make filler-temporal-truth-select` and evidence with
 `make filler-temporal-truth-prepare`, supplying the required `LOOMARR_FILLER_TRUTH_*` paths listed by
