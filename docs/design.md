@@ -5935,12 +5935,18 @@ Browser Push is the provider-led exception to ordinary text fields. Choosing it 
 provider** shows an explicit **Enable this browser** action; only that user gesture may ask the user
 agent for notification permission and create a Push subscription. Loomarr binds the endpoint and
 its `p256dh`/authentication values to the authenticated person, encrypts all three in the ordinary
-destination credential envelope, and returns only a device label and configured state. The service
-worker always displays a notification, uses a deliberately low-detail locked-screen preview, and
-opens only a server-produced same-origin route. Unsubscribe removes both the browser subscription
-and the destination. HTTP 404/410 from the Push service disables the destination so it cannot form
-a retry storm. One installation VAPID P-256 identity is generated idempotently, its private key is
-protected as secret material, and only its public key crosses the API for `PushManager.subscribe`.
+destination credential envelope, and returns only a device label and configured state. A one-way,
+non-secret endpoint fingerprint is stored separately but never returned; its only purposes are to
+make `(person, subscription)` unique and to match a deletion to the browser making that request.
+Enabling an existing subscription updates its one destination instead of creating another route.
+The service worker always displays a notification, uses a deliberately low-detail locked-screen
+preview, and opens only a server-produced same-origin route. Deleting a row always removes that
+destination. The request may carry the current browser's endpoint in its body; the response tells
+the client to call `PushSubscription.unsubscribe` only when that endpoint belongs to the selected
+row, so deleting another device never unsubscribes the browser in front of the operator. HTTP
+404/410 from the Push service disables the destination so it cannot form a retry storm. One
+installation VAPID P-256 identity is generated idempotently, its private key is protected as secret
+material, and only its public key crosses the API for `PushManager.subscribe`.
 
 Proposal approval records requester provenance for every approved Title and the intent-bound Channel
 inside the same local transaction as the decision. That durable `(reference, person)` relation is the
