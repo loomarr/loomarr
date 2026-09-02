@@ -57,6 +57,64 @@ func (s *Service) ResolveMany(keys ...string) map[string]Resolved {
 	return resolved
 }
 
+// ResolveMigrationOnly strictly resolves former settings for a one-time importer. Unlike ordinary
+// runtime resolution, malformed legacy database values do not self-heal and malformed environment
+// values do not fall through: importing a different value than the operator supplied would turn a
+// compatibility path into a new source of configuration authority.
+func (s *Service) ResolveMigrationOnly(keys ...string) (map[string]Resolved, error) {
+	type input struct {
+		set      Setting
+		dbRaw    string
+		hasDB    bool
+		unlocked bool
+	}
+	inputs := make([]input, len(keys))
+	for i, key := range keys {
+		set, ok := s.reg.Get(key)
+		if !ok || !set.MigrationOnly {
+			return nil, fmt.Errorf("settings: %s is not a migration-only setting", key)
+		}
+		inputs[i].set = set
+	}
+	s.mu.RLock()
+	for i, key := range keys {
+		inputs[i].dbRaw, inputs[i].hasDB = s.db[key]
+		inputs[i].unlocked = s.unlocked[key]
+	}
+	s.mu.RUnlock()
+
+	resolved := make(map[string]Resolved, len(keys))
+	for i, key := range keys {
+		in := inputs[i]
+		if !in.unlocked {
+			raw, present, err := s.envValue(in.set)
+			if err != nil {
+				return nil, err
+			}
+			if present {
+				value, err := in.set.parse(raw)
+				if err != nil {
+					return nil, fmt.Errorf("invalid legacy env %s: %w", in.set.EnvVar, err)
+				}
+				resolved[key] = Resolved{Setting: in.set, Value: value, Provenance: ProvenanceEnv}
+				continue
+			}
+		}
+		if in.hasDB {
+			value, err := in.set.parse(in.dbRaw)
+			if err != nil {
+				return nil, fmt.Errorf("invalid legacy setting %s: %w", key, err)
+			}
+			resolved[key] = Resolved{
+				Setting: in.set, Value: value, Provenance: ProvenanceDB, EnvOverride: in.unlocked,
+			}
+			continue
+		}
+		resolved[key] = s.defaultResolved(in.set, false, in.unlocked)
+	}
+	return resolved, nil
+}
+
 // resolve implements config-design §3's asymmetric resolution for one setting.
 //
 // Precedence is env > db > default. The asymmetry is in how a BAD value at each

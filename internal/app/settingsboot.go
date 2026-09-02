@@ -133,11 +133,11 @@ func (r resolved) boolv(key string) bool {
 	return false
 }
 
-func (r resolved) emailConfig() notifications.EmailConfig {
+func (r resolved) legacyEmailConfig() (notifications.EmailConfig, error) {
 	if r.svc == nil {
-		return notifications.EmailConfig{}
+		return notifications.EmailConfig{}, nil
 	}
-	values := r.svc.ResolveMany(
+	values, err := r.svc.ResolveMigrationOnly(
 		"notifications.email.enabled",
 		"notifications.smtp.host",
 		"notifications.smtp.port",
@@ -147,6 +147,9 @@ func (r resolved) emailConfig() notifications.EmailConfig {
 		"notifications.email.from_address",
 		"notifications.email.from_name",
 	)
+	if err != nil {
+		return notifications.EmailConfig{}, err
+	}
 	stringValue := func(key string) string {
 		value, _ := values[key].Value.(string)
 		return value
@@ -158,7 +161,7 @@ func (r resolved) emailConfig() notifications.EmailConfig {
 		Security: notifications.EmailSecurity(stringValue("notifications.smtp.security")),
 		Username: stringValue("notifications.smtp.username"), Password: stringValue("notifications.smtp.password"),
 		FromAddress: stringValue("notifications.email.from_address"), FromName: stringValue("notifications.email.from_name"),
-	}
+	}, nil
 }
 
 // freeze captures a coherent generation-scoped snapshot. Persistence remains

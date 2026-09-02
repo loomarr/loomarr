@@ -2,10 +2,10 @@ package settings
 
 import "fmt"
 
-// Registry is the ordered, indexed set of every app-managed Setting. Built once
-// from the declared list below; the API, resolution, docs, and gating all read
-// it. Env-only bootstrap keys (config-design §1) are deliberately absent — they
-// live in config.Config and never resolve through here.
+// Registry is the ordered, indexed set of every app-managed Setting plus explicitly marked
+// one-time migration inputs. Runtime resolution reads both; API, docs, and write surfaces omit the
+// migration-only entries. Env-only bootstrap keys (config-design §1) are deliberately absent —
+// they live in config.Config and never resolve through here.
 type Registry struct {
 	ordered []Setting          // declaration order (stable docs/UI ordering)
 	byKey   map[string]Setting // key → Setting
@@ -53,7 +53,7 @@ func newRegistry(list []Setting) *Registry {
 // Get returns the Setting for a key, or false if the key is not declared.
 func (r *Registry) Get(key string) (Setting, bool) { s, ok := r.byKey[key]; return s, ok }
 
-// All returns the declared settings in declaration order (stable for docs/UI).
+// All returns every declaration in stable order, including migration-only inputs.
 func (r *Registry) All() []Setting { return r.ordered }
 
 // RestartKeys returns the app-managed settings that take effect at the next
@@ -69,23 +69,26 @@ func (r *Registry) RestartKeys() []string {
 	return keys
 }
 
-// ByGroup returns the settings in one group, in declaration order.
+// ByGroup returns public settings in one group, in declaration order.
 func (r *Registry) ByGroup(g Group) []Setting {
 	var out []Setting
 	for _, s := range r.ordered {
-		if s.Group == g {
+		if s.Group == g && !s.MigrationOnly {
 			out = append(out, s)
 		}
 	}
 	return out
 }
 
-// Groups returns the groups present, in a stable order (for the docs generator
-// and the Settings IA). Declaration order across groups is preserved.
+// Groups returns groups with public settings in a stable order (for the docs generator and the
+// Settings IA). Declaration order across groups is preserved.
 func (r *Registry) Groups() []Group {
 	seen := map[Group]bool{}
 	var out []Group
 	for _, s := range r.ordered {
+		if s.MigrationOnly {
+			continue
+		}
 		if !seen[s.Group] {
 			seen[s.Group] = true
 			out = append(out, s.Group)

@@ -109,6 +109,11 @@ func New(ctx context.Context, reg *Registry, loader Loader, log *slog.Logger) (*
 	}
 	// Validate every env pin at boot — an operator typo must fail here, not lurk.
 	for _, set := range reg.All() {
+		// Migration-only inputs are validated only if their one-time importer still needs them.
+		// Once imported, stale legacy environment must have no power to break a later boot.
+		if set.MigrationOnly {
+			continue
+		}
 		raw, present, err := s.envRaw(set)
 		if err != nil {
 			return nil, err

@@ -6007,7 +6007,7 @@ an optional test from the same row. SMTP is a provider in this list and has no s
 card, test panel, or setup path.
 
 The former `notifications.email.*` and `notifications.smtp.*` settings are accepted only as an
-upgrade migration source. On the first startup with this migration, Loomarr atomically records that
+upgrade migration source. On the first startup with this migration, Loomarr durably records that
 it inspected the legacy source and, when values exist and no SMTP destination already exists,
 creates one encrypted SMTP destination from them. An existing SMTP destination always wins. The
 legacy keys are absent from the Settings API and generated configuration reference, cannot be

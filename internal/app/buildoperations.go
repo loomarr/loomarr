@@ -66,7 +66,6 @@ type operationsBuild struct {
 	auth                     authBuild
 	guide                    api.GuideReader
 	settings                 api.SettingsService
-	emailTest                api.EmailTestService
 	notificationDestinations api.NotificationDestinationService
 	webPushPublicKey         string
 	productNotifications     *productNotificationCoordinator
@@ -113,7 +112,7 @@ func buildOperations(
 			return operationsBuild{}, fmt.Errorf("register notification provider credentials for redaction: %w", err)
 		}
 	}
-	if err := migrateLegacySMTPProvider(rootCtx, destinationRepository, set); err != nil {
+	if err := migrateLegacySMTPProvider(rootCtx, st, destinationRepository, set); err != nil {
 		return operationsBuild{}, fmt.Errorf("migrate SMTP notification provider: %w", err)
 	}
 	providerHTTP := overrides.NotificationHTTP
@@ -155,7 +154,6 @@ func buildOperations(
 			st, set, desiredSet, secrets, libraryClient, tmdbClient,
 			refreshSecretRedactor, readGeneratedSecret, triggerHealth, log,
 		),
-		emailTest: buildEmailTest(st, set),
 		notificationDestinations: buildNotificationDestinations(
 			destinationRepository, providerValidators, accountDelivery.service,
 		),
@@ -178,36 +176,50 @@ func buildOperations(
 
 func migrateLegacySMTPProvider(
 	ctx context.Context,
+	st store.Store,
 	repository notifications.DestinationRepository,
 	set resolved,
 ) error {
-	if repository == nil || set.svc == nil {
+	if st == nil || repository == nil || set.svc == nil {
 		return nil
 	}
-	existing, err := repository.ListNotificationDestinationMetadata(ctx)
-	if err != nil {
-		return err
-	}
-	for _, destination := range existing {
-		if destination.Means == notifications.MeansEmail {
+	const marker = "migration.notifications.smtp_provider.v1"
+	return st.WithSettingLock(ctx, marker, func(ctx context.Context) error {
+		if _, err := st.GetSetting(ctx, marker); err == nil {
 			return nil
+		} else if !errors.Is(err, store.ErrNotFound) {
+			return err
 		}
-	}
-	config := set.emailConfig()
-	if strings.TrimSpace(config.Host) == "" && strings.TrimSpace(config.FromAddress) == "" &&
-		config.Username == "" && config.Password == "" {
-		return nil
-	}
-	now := time.Now().UTC().Truncate(time.Second)
-	return repository.SaveNotificationDestination(ctx, notifications.Destination{
-		ID: "smtp-legacy", Means: notifications.MeansEmail, Label: "SMTP",
-		Scope: notifications.ScopeInstallation, Audience: notifications.RecipientOperators,
-		Enabled: config.Enabled,
-		Configuration: map[string]string{
-			"host": config.Host, "port": strconv.Itoa(config.Port), "security": string(config.Security),
-			"fromAddress": config.FromAddress, "fromName": config.FromName, "username": config.Username,
-		},
-		Credentials: map[string]string{"password": config.Password}, CreatedAt: now, UpdatedAt: now,
+		existing, err := repository.ListNotificationDestinationMetadata(ctx)
+		if err != nil {
+			return err
+		}
+		for _, destination := range existing {
+			if destination.Means == notifications.MeansEmail {
+				return st.SetSetting(ctx, marker, "true")
+			}
+		}
+		config, err := set.legacyEmailConfig()
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(config.Host) != "" || strings.TrimSpace(config.FromAddress) != "" ||
+			config.Username != "" || config.Password != "" {
+			now := time.Now().UTC().Truncate(time.Second)
+			if err := repository.SaveNotificationDestination(ctx, notifications.Destination{
+				ID: "smtp-legacy", Means: notifications.MeansEmail, Label: "SMTP",
+				Scope: notifications.ScopeInstallation, Audience: notifications.RecipientOperators,
+				Enabled: config.Enabled,
+				Configuration: map[string]string{
+					"host": config.Host, "port": strconv.Itoa(config.Port), "security": string(config.Security),
+					"fromAddress": config.FromAddress, "fromName": config.FromName, "username": config.Username,
+				},
+				Credentials: map[string]string{"password": config.Password}, CreatedAt: now, UpdatedAt: now,
+			}); err != nil {
+				return err
+			}
+		}
+		return st.SetSetting(ctx, marker, "true")
 	})
 }
 
@@ -220,14 +232,6 @@ func buildNotificationDestinations(
 		return nil
 	}
 	return notifications.NewDestinationManager(repository, validators, newID, time.Now).WithTester(tester)
-}
-
-func buildEmailTest(st store.Store, set resolved) api.EmailTestService {
-	if st == nil || set.svc == nil {
-		return nil
-	}
-	adapter := notifications.NewEmailAdapter(set.emailConfig, nil, notifications.NewSMTPSender(15*time.Second))
-	return emailTestAdapter{adapter: adapter}
 }
 
 func buildResidentLLM(set resolved, log *slog.Logger) residentLLMBuild {

@@ -78,6 +78,27 @@ func TestPatch_SaveInvalidUnknown(t *testing.T) {
 	}
 }
 
+func TestMigrationOnlySMTPSettingsAreNotPubliclyWritable(t *testing.T) {
+	s, p := patchService(t, nil)
+	results, err := s.Patch(context.Background(), p, map[string]string{
+		"notifications.smtp.host": "smtp.example.test",
+	}, "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Status != PatchInvalid || p.applyCalls != 0 {
+		t.Fatalf("migration-only patch = %+v, apply calls %d", results, p.applyCalls)
+	}
+	if result, err := s.Clear(context.Background(), p, "notifications.smtp.host"); err != nil || result.Status != PatchInvalid {
+		t.Fatalf("migration-only clear = %+v, %v", result, err)
+	}
+	for _, entry := range s.List(context.Background(), nil) {
+		if entry.Setting.MigrationOnly {
+			t.Fatalf("settings list exposed migration-only key %q", entry.Setting.Key)
+		}
+	}
+}
+
 // Patch persists the CANONICAL parsed value, not the raw input: a URL keeps no
 // trailing slash and a secret is trimmed IN THE STORE, so the stored form and the
 // resolved form agree (regression — Patch used to persist raw, dropping normalization).

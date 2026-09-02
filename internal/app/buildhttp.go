@@ -28,7 +28,6 @@ type httpBuild struct {
 	bootConfig               *config.Config
 	guide                    api.GuideReader
 	settings                 api.SettingsService
-	emailTest                api.EmailTestService
 	notificationDestinations api.NotificationDestinationService
 	webPushPublicKey         string
 	invitationDelivery       api.InvitationDeliveryService
@@ -134,7 +133,6 @@ func buildHTTP(deps httpBuild) http.Handler {
 		RestartDrift:             restartDrift(bootCfg, appliedRestartSettings, canonicalRestartCurrent(desiredSet)),
 		Jobs:                     jobsSvc,
 		Settings:                 settingsSvc,
-		EmailTest:                deps.emailTest,
 		NotificationDestinations: deps.notificationDestinations,
 		WebPushPublicKey:         deps.webPushPublicKey,
 		ProposalNotifications:    deps.foundation.emitter,

@@ -73,7 +73,6 @@ type invitationEmailRouter struct {
 	invitations  *invitation.Service
 	recovery     *auth.PasswordRecoveryService
 	destinations notifications.DestinationSource
-	config       func() notifications.EmailConfig
 }
 
 type combinedNotificationRouter struct {
@@ -143,9 +142,7 @@ func (r invitationEmailRouter) Routes(ctx context.Context, intent notifications.
 	}
 	route.DestinationRedacted = redactMailbox(address.Email)
 	if r.destinations == nil {
-		if r.config == nil || !r.config().Enabled {
-			route.Suppressed = notifications.OutcomeDeliveryDisabled
-		}
+		route.Suppressed = notifications.OutcomeDeliveryDisabled
 		return []notifications.Route{route}, nil
 	}
 	destinations, listErr := r.destinations.ListNotificationDestinationMetadata(ctx)
@@ -385,7 +382,7 @@ func buildAccountDelivery(
 		contacts:  st,
 		publicURL: func() string { return set.str("access.public_url") },
 	}
-	adapter := notifications.NewEmailAdapter(set.emailConfig, materializer, notifications.NewSMTPSender(15*time.Second))
+	adapter := notifications.NewEmailAdapter(materializer, notifications.NewSMTPSender(15*time.Second))
 	adapters := append([]notifications.Adapter{adapter}, providerAdapters...)
 	repository := notificationServiceRepository{Store: st, destinations: destinations}
 	service := notifications.NewService(repository, combinedNotificationRouter{

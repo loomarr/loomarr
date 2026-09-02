@@ -37,22 +37,17 @@ func TestInvitationEmailMintsBearerOnlyInsideClaimedAttemptsAndRotatesItBeforeRe
 	}); err != nil {
 		t.Fatal(err)
 	}
-	config := func() notifications.EmailConfig {
-		return notifications.EmailConfig{
-			Enabled: true, Host: "smtp.example.com", Port: 587,
-			Security: notifications.EmailSecuritySTARTTLS, FromAddress: "loomarr@example.com",
-		}
-	}
 	sender := &sequenceEmailSender{results: []notifications.EmailTransmission{
 		{State: notifications.EmailTransientPreAcceptance},
 		{State: notifications.EmailAccepted, ProviderMessageID: "safe-message-42"},
 	}}
-	adapter := notifications.NewEmailAdapter(config, invitationEmailMaterializer{
+	adapter := notifications.NewEmailAdapter(invitationEmailMaterializer{
 		invitations: invitationService, publicURL: func() string { return "https://loomarr.example" },
 	}, sender)
 	ids := 0
-	notificationService := notifications.NewService(notificationRepositoryForTest(t, st), invitationEmailRouter{
-		invitations: invitationService, config: config,
+	repository := notificationRepositoryForTest(t, st)
+	notificationService := notifications.NewService(repository, invitationEmailRouter{
+		invitations: invitationService, destinations: repository.destinations,
 	}, []notifications.Adapter{adapter}, func() string {
 		ids++
 		return fmt.Sprintf("notification-%d", ids)
@@ -184,21 +179,16 @@ func TestPasswordRecoveryEmailUsesSharedWorkerAndKeepsBearerEphemeral(t *testing
 	const bearer = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 	recoveryService := auth.NewPasswordRecoveryService(st, func() string { return "recovery-1" },
 		func() (string, error) { return bearer, nil }, func() time.Time { return now })
-	config := func() notifications.EmailConfig {
-		return notifications.EmailConfig{
-			Enabled: true, Host: "smtp.example.com", Port: 587,
-			Security: notifications.EmailSecuritySTARTTLS, FromAddress: "loomarr@example.com",
-		}
-	}
 	sender := &sequenceEmailSender{results: []notifications.EmailTransmission{{
 		State: notifications.EmailAccepted, ProviderMessageID: "recovery-message-1",
 	}}}
-	adapter := notifications.NewEmailAdapter(config, invitationEmailMaterializer{
+	adapter := notifications.NewEmailAdapter(invitationEmailMaterializer{
 		recovery: recoveryService, publicURL: func() string { return "https://loomarr.example" },
 	}, sender)
 	ids := 0
-	notificationService := notifications.NewService(notificationRepositoryForTest(t, st), invitationEmailRouter{
-		recovery: recoveryService, config: config,
+	repository := notificationRepositoryForTest(t, st)
+	notificationService := notifications.NewService(repository, invitationEmailRouter{
+		recovery: recoveryService, destinations: repository.destinations,
 	}, []notifications.Adapter{adapter}, func() string {
 		ids++
 		return fmt.Sprintf("recovery-notification-%d", ids)
@@ -282,6 +272,57 @@ func TestProductEmailMaterializerResolvesVerifiedEnabledAdministratorsForGroupEv
 	if len(materialized.Messages) != 2 || materialized.Messages[0].ToAddress != "ada@example.com" ||
 		materialized.Messages[1].ToAddress != "grace@example.com" {
 		t.Fatalf("group recipients = %+v", materialized.Messages)
+	}
+}
+
+func TestSMTPProviderRowTestUsesTheCommonDestinationQueue(t *testing.T) {
+	ctx := t.Context()
+	st := testkit.MigratedSQLiteStore(t)
+	now := time.Unix(1_900_000_000, 0).UTC()
+	if err := st.UpsertUser(ctx, store.User{
+		ID: "admin-1", Name: "Ada", Role: store.RoleAdmin, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	email, normalized, err := contact.Normalize("ada@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.PutPendingContactAddress(ctx, contact.Address{
+		OwnerKind: contact.OwnerUser, OwnerID: "admin-1", Email: email, Normalized: normalized,
+		Status: contact.StatusPending, Provenance: contact.ProvenanceAdmin, CreatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.VerifyPendingContactAddress(ctx, "admin-1", normalized, now); err != nil {
+		t.Fatal(err)
+	}
+	repository := notificationRepositoryForTest(t, st)
+	sender := &sequenceEmailSender{results: []notifications.EmailTransmission{{
+		State: notifications.EmailAccepted, ProviderMessageID: "smtp-test-message",
+	}}}
+	adapter := notifications.NewEmailAdapter(invitationEmailMaterializer{
+		contacts: st, publicURL: func() string { return "https://loomarr.example" },
+	}, sender)
+	sequence := 0
+	service := notifications.NewService(repository, combinedNotificationRouter{}, []notifications.Adapter{adapter}, func() string {
+		sequence++
+		return fmt.Sprintf("smtp-test-%d", sequence)
+	}, func() time.Time { return now })
+	destinations, err := repository.destinations.ListNotificationDestinationMetadata(ctx)
+	if err != nil || len(destinations) != 1 {
+		t.Fatalf("SMTP providers = %+v, %v", destinations, err)
+	}
+	queued, err := service.PublishDestinationTest(ctx, destinations[0], "request-1")
+	if err != nil || !queued.Created {
+		t.Fatalf("queue SMTP provider test = %+v, %v", queued, err)
+	}
+	if ran, err := service.RunOne(ctx, "worker-1"); err != nil || !ran {
+		t.Fatalf("run SMTP provider test = %t, %v", ran, err)
+	}
+	if len(sender.messages) != 1 || sender.messages[0].ToAddress != "ada@example.com" ||
+		!strings.Contains(strings.ToLower(sender.messages[0].Subject), "test") {
+		t.Fatalf("SMTP provider test messages = %+v", sender.messages)
 	}
 }
 
