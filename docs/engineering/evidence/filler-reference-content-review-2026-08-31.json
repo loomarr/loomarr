@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "kind": "filler_reference_content_review",
+  "contractVersion": "filler-reference-cohort-2026-08-31-v3",
+  "reviewerId": "filler-reference-contract-review-2026-08-31",
+  "reviewedAt": "2026-08-31T23:45:00Z",
+  "sourceManifestSha256": "6457fa5fa48df9ea8951c93c7c6f8434cff99c61fcd76d8f7f80df9668fe51f1",
+  "findings": [
+    {
+      "contentSha256": "b20e6f9b35c18fc11af19baf1b95af9fbdf07dfca51bcb733f4c8b6dfe346f4e",
+      "disposition": "exclude",
+      "reasonCode": "non_broadcast_material",
+      "detail": "The bound frames depict casual candid personal activity and the bound transcript supplies no broadcast, sponsor, station, programme-promotion, public-service, trailer, bumper, or interstitial function.",
+      "evidenceRefs": [
+        "frame-01",
+        "frame-02",
+        "frame-03",
+        "frame-04",
+        "transcript-01"
+      ]
+    }
+  ]
+}
