@@ -346,6 +346,11 @@ printf '%s\n' "$verify_output" | grep -q 'local gates: go,go_full'
 printf '%s\n' "$verify_output" | grep -q 'protected gates: contracts,postgres,image'
 printf '%s\n' "$verify_output" | grep -q "affected Go packages: $all_go_packages (complete)"
 printf '%s\n' "$verify_output" | grep -q 'completed local gates: go,go_full'
+grep -q 'make -C .* lint PKG=\./cmd/' "$verify_log"
+if grep 'make -C .* lint PKG=' "$verify_log" | grep -q 'github.com/loomarr/loomarr/'; then
+	echo 'agent-harness-test: full-scope lint received module import paths instead of package patterns' >&2
+	exit 1
+fi
 rm -rf "$TMP/internal"
 
 # Shared-client verification is locally executable and must not disappear behind the native and
