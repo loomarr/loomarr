@@ -5,6 +5,7 @@ package eval
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 // HumanSummary renders a stable Markdown comparison summary from the same
@@ -30,6 +31,26 @@ func HumanSummary(card Scorecard) string {
 		b.WriteString("No certification quality-metric manifest attached.\n")
 	} else {
 		fmt.Fprintf(&b, "%s.\n", strings.Join(card.Contract.QualityMetrics, ", "))
+	}
+	if card.Assessment != nil {
+		fmt.Fprintf(&b, "\nGrounded completion: %.1f%%; correct tool operation: %.1f%%; schema validity: %.1f%%.\n",
+			card.Assessment.GroundedCompletionRate*100,
+			card.Assessment.CorrectToolOperationRate*100,
+			card.Assessment.SchemaValidityRate*100)
+		performance := card.Assessment.Performance
+		fmt.Fprintf(&b, "Latency p50/p95: %s / %s; p95 tool calls: %d.\n",
+			time.Duration(performance.GeneratorLatencyP50Nanos),
+			time.Duration(performance.GeneratorLatencyP95Nanos), performance.P95ToolCalls)
+		if performance.ResourceStatus == "measured" {
+			fmt.Fprintf(&b, "Peak RAM/VRAM: %.2f GiB / %.2f GiB (%s).\n",
+				float64(performance.PeakRAMBytes)/(1<<30),
+				float64(performance.PeakVRAMBytes)/(1<<30), performance.ResourceSource)
+		} else {
+			fmt.Fprintf(&b, "Peak RAM/VRAM: unavailable (%s).\n", performance.ResourceSource)
+		}
+		for _, failure := range card.Assessment.Failures {
+			fmt.Fprintf(&b, "- Threshold failure: %s\n", failure)
+		}
 	}
 	b.WriteString("\n| Case | Trial | Result | Tool calls | Candidates | Theme fit | Judge |\n")
 	b.WriteString("| --- | ---: | --- | ---: | ---: | ---: | ---: |\n")

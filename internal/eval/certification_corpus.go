@@ -18,25 +18,26 @@ import (
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
-const certificationManifestPath = "testdata/planner-certification-v1.json"
+const certificationManifestPath = "testdata/planner-certification-v2.json"
 
-//go:embed testdata/planner-certification-v1.json testdata/planner-catalog-v1.json
+//go:embed testdata/planner-certification-v1.json testdata/planner-certification-v2.json testdata/planner-catalog-v1.json
 var certificationFiles embed.FS
 
 // CertificationCorpus is the immutable, held-out planner-model corpus contract.
 // It names the exact fixture bytes used by every candidate model.
 type CertificationCorpus struct {
-	SchemaVersion         int                  `json:"schemaVersion"`
-	Version               string               `json:"version"`
-	Split                 string               `json:"split"`
-	PromptVersion         string               `json:"promptVersion"`
-	ToolSchemaVersion     string               `json:"toolSchemaVersion"`
-	ScorerVersion         string               `json:"scorerVersion"`
-	HardMetrics           []string             `json:"hardMetrics"`
-	QualityMetrics        []string             `json:"qualityMetrics"`
-	AllowedTrainingSplits []string             `json:"allowedTrainingSplits"`
-	Fixture               CertificationFixture `json:"fixture"`
-	Cases                 []CertificationCase  `json:"cases"`
+	SchemaVersion         int                     `json:"schemaVersion"`
+	Version               string                  `json:"version"`
+	Split                 string                  `json:"split"`
+	PromptVersion         string                  `json:"promptVersion"`
+	ToolSchemaVersion     string                  `json:"toolSchemaVersion"`
+	ScorerVersion         string                  `json:"scorerVersion"`
+	HardMetrics           []string                `json:"hardMetrics"`
+	QualityMetrics        []string                `json:"qualityMetrics"`
+	Thresholds            CertificationThresholds `json:"thresholds"`
+	AllowedTrainingSplits []string                `json:"allowedTrainingSplits"`
+	Fixture               CertificationFixture    `json:"fixture"`
+	Cases                 []CertificationCase     `json:"cases"`
 }
 
 // CertificationRunnerConfig binds Runner output to the exact corpus, fixture,
@@ -54,6 +55,7 @@ func CertificationRunnerConfig(config RunnerConfig) (RunnerConfig, error) {
 		ScorerVersion:        corpus.ScorerVersion,
 		HardMetrics:          append([]string(nil), corpus.HardMetrics...),
 		QualityMetrics:       append([]string(nil), corpus.QualityMetrics...),
+		Thresholds:           corpus.Thresholds,
 	}
 	return config, nil
 }
@@ -64,12 +66,18 @@ type CertificationFixture struct {
 }
 
 type CertificationCase struct {
-	ID              string   `json:"id"`
-	Split           string   `json:"split"`
-	FixtureCase     string   `json:"fixtureCase"`
-	Axes            []string `json:"axes"`
-	Description     string   `json:"description"`
-	AllowAbstention bool     `json:"allowAbstention,omitempty"`
+	ID              string                 `json:"id"`
+	Split           string                 `json:"split"`
+	FixtureCase     string                 `json:"fixtureCase"`
+	Axes            []string               `json:"axes"`
+	Description     string                 `json:"description"`
+	AllowAbstention bool                   `json:"allowAbstention,omitempty"`
+	Variants        []CertificationVariant `json:"variants,omitempty"`
+}
+
+type CertificationVariant struct {
+	ID          string `json:"id"`
+	Description string `json:"description"`
 }
 
 type certificationCatalogFixture struct {
@@ -147,22 +155,28 @@ func CertificationCases() ([]Case, error) {
 			operationByCase[c.ID] = c.Responses[0].Operation
 		}
 	}
-	cases := make([]Case, 0, len(corpus.Cases))
+	cases := make([]Case, 0, len(corpus.Cases)*6)
 	for _, frozen := range corpus.Cases {
 		if frozen.Description == "" {
 			return nil, fmt.Errorf("certification case %q has a blank Intent", frozen.ID)
 		}
-		minimumGrounded := 1
-		if frozen.AllowAbstention {
-			minimumGrounded = 0
+		base := Case{
+			Name:                     frozen.ID,
+			Intent:                   Intent{Description: frozen.Description},
+			NoFabrication:            true,
+			ExpectGroundedCompletion: !frozen.AllowAbstention,
+			ExpectedToolOperation:    operationByCase[frozen.FixtureCase],
 		}
-		cases = append(cases, Case{
-			Name:                  frozen.ID,
-			Intent:                Intent{Description: frozen.Description},
-			NoFabrication:         true,
-			MinGrounded:           minimumGrounded,
-			ExpectedToolOperation: operationByCase[frozen.FixtureCase],
-		})
+		cases = append(cases, base)
+		for _, variant := range frozen.Variants {
+			if variant.ID == "" || variant.Description == "" {
+				return nil, fmt.Errorf("certification case %q has a blank variant", frozen.ID)
+			}
+			variantCase := base
+			variantCase.Name = frozen.ID + "--" + variant.ID
+			variantCase.Intent.Description = variant.Description
+			cases = append(cases, variantCase)
+		}
 	}
 	return withProductionStructuralBounds(cases), nil
 }
@@ -205,6 +219,9 @@ func NewEmbeddedCertificationGenerator(provider llm.Provider) (Generator, Observ
 	caseByIntent := make(map[string]string, len(corpus.Cases))
 	for _, c := range corpus.Cases {
 		caseByIntent[c.Description] = c.FixtureCase
+		for _, variant := range c.Variants {
+			caseByIntent[variant.Description] = c.FixtureCase
+		}
 	}
 	return &embeddedCertificationGenerator{inner: suggester, fixture: fixture, caseByIntent: caseByIntent}, observed, nil
 }

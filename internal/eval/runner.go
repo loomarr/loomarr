@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	scorecardSchemaVersion = 8
+	scorecardSchemaVersion = 9
 	corpusVersion          = "2026-08-27.8"
 )
 
@@ -40,13 +40,52 @@ type RunnerConfig struct {
 // CertificationContract identifies every versioned input that makes a planner
 // model score comparable and keeps hard gates separate from quality metrics.
 type CertificationContract struct {
-	CorpusVersion        string   `json:"corpusVersion"`
-	CatalogFixtureSHA256 string   `json:"catalogFixtureSha256"`
-	PromptVersion        string   `json:"promptVersion"`
-	ToolSchemaVersion    string   `json:"toolSchemaVersion"`
-	ScorerVersion        string   `json:"scorerVersion"`
-	HardMetrics          []string `json:"hardMetrics"`
-	QualityMetrics       []string `json:"qualityMetrics"`
+	CorpusVersion        string                  `json:"corpusVersion"`
+	CatalogFixtureSHA256 string                  `json:"catalogFixtureSha256"`
+	PromptVersion        string                  `json:"promptVersion"`
+	ToolSchemaVersion    string                  `json:"toolSchemaVersion"`
+	ScorerVersion        string                  `json:"scorerVersion"`
+	HardMetrics          []string                `json:"hardMetrics"`
+	QualityMetrics       []string                `json:"qualityMetrics"`
+	Thresholds           CertificationThresholds `json:"thresholds"`
+}
+
+type CertificationThresholds struct {
+	MinGroundedCompletionRate   float64 `json:"minGroundedCompletionRate"`
+	MinCorrectToolOperationRate float64 `json:"minCorrectToolOperationRate"`
+	MinSchemaValidityRate       float64 `json:"minSchemaValidityRate"`
+	MaxP95ToolCalls             int     `json:"maxP95ToolCalls"`
+}
+
+type CertificationAssessment struct {
+	Passed                   bool               `json:"passed"`
+	GroundedCompletionRate   float64            `json:"groundedCompletionRate"`
+	CorrectToolOperationRate float64            `json:"correctToolOperationRate"`
+	SchemaValidityRate       float64            `json:"schemaValidityRate"`
+	Failures                 []string           `json:"failures"`
+	Performance              PerformanceSummary `json:"performance"`
+}
+
+type PerformanceSummary struct {
+	MeasuredRuns             int    `json:"measuredRuns"`
+	GeneratorLatencyP50Nanos int64  `json:"generatorLatencyP50Nanos"`
+	GeneratorLatencyP95Nanos int64  `json:"generatorLatencyP95Nanos"`
+	P95ToolCalls             int    `json:"p95ToolCalls"`
+	ResourceStatus           string `json:"resourceStatus"`
+	ResourceSource           string `json:"resourceSource,omitempty"`
+	PeakRAMBytes             int64  `json:"peakRamBytes,omitempty"`
+	PeakVRAMBytes            int64  `json:"peakVramBytes,omitempty"`
+}
+
+type ResourceMeasurement struct {
+	Status        string
+	Source        string
+	PeakRAMBytes  int64
+	PeakVRAMBytes int64
+}
+
+type ResourceProbe interface {
+	Measure(context.Context, ModelIdentity) ResourceMeasurement
 }
 
 // ModelIdentity names one inference role without credentials or endpoint data.
@@ -70,19 +109,20 @@ const (
 
 // Scorecard is the versioned machine-readable result of one Runner execution.
 type Scorecard struct {
-	SchemaVersion int                    `json:"schemaVersion"`
-	CorpusVersion string                 `json:"corpusVersion"`
-	GeneratedAt   time.Time              `json:"generatedAt"`
-	Profile       string                 `json:"profile"`
-	Generator     ModelIdentity          `json:"generator"`
-	Judge         ModelIdentity          `json:"judge"`
-	CallBudget    CallBudget             `json:"callBudget"`
-	ResourceUsage ResourceUsage          `json:"resourceUsage"`
-	Certified     bool                   `json:"certified"`
-	FailureCounts map[FailureStage]int   `json:"failureCounts"`
-	Results       []Result               `json:"results"`
-	Cases         []CaseSummary          `json:"cases"`
-	Contract      *CertificationContract `json:"contract,omitempty"`
+	SchemaVersion int                      `json:"schemaVersion"`
+	CorpusVersion string                   `json:"corpusVersion"`
+	GeneratedAt   time.Time                `json:"generatedAt"`
+	Profile       string                   `json:"profile"`
+	Generator     ModelIdentity            `json:"generator"`
+	Judge         ModelIdentity            `json:"judge"`
+	CallBudget    CallBudget               `json:"callBudget"`
+	ResourceUsage ResourceUsage            `json:"resourceUsage"`
+	Certified     bool                     `json:"certified"`
+	FailureCounts map[FailureStage]int     `json:"failureCounts"`
+	Results       []Result                 `json:"results"`
+	Cases         []CaseSummary            `json:"cases"`
+	Contract      *CertificationContract   `json:"contract,omitempty"`
+	Assessment    *CertificationAssessment `json:"assessment,omitempty"`
 }
 
 // CaseSummary makes stochastic stability visible rather than collapsing several
@@ -140,11 +180,12 @@ func (l *providerResourceLedger) afterCall(call InferenceCall) string {
 // Later schedule and judge evidence deepen this same interface rather than
 // creating parallel exploratory/certification paths.
 type Runner struct {
-	generator    Generator
-	materializer ScheduleMaterializer
-	judge        Judge
-	observer     Observer
-	config       RunnerConfig
+	generator     Generator
+	materializer  ScheduleMaterializer
+	judge         Judge
+	observer      Observer
+	resourceProbe ResourceProbe
+	config        RunnerConfig
 }
 
 func (r *Runner) WithMaterializer(materializer ScheduleMaterializer) *Runner {
@@ -162,6 +203,11 @@ func (r *Runner) WithObserver(observer Observer) *Runner {
 	return r
 }
 
+func (r *Runner) WithResourceProbe(probe ResourceProbe) *Runner {
+	r.resourceProbe = probe
+	return r
+}
+
 func NewRunner(generator Generator, config RunnerConfig) *Runner {
 	if config.Trials <= 0 {
 		config.Trials = 1
@@ -174,6 +220,7 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 	callBudget, budgetErr := computeCallBudget(len(cases), r.config.Trials)
 	callBudget.Resource = r.config.ResourceBudget
 	suiteUsage := newResourceAccumulator()
+	peakMeasurement := ResourceMeasurement{Status: "unavailable"}
 	cardCorpusVersion := corpusVersion
 	if r.config.Contract != nil && r.config.Contract.CorpusVersion != "" {
 		cardCorpusVersion = r.config.Contract.CorpusVersion
@@ -208,7 +255,9 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 		for trial := 1; trial <= r.config.Trials; trial++ {
 			result := Result{
 				Case: c.Name, Trial: trial,
-				GeneratorCalls: make([]InferenceCall, 0), JudgeCalls: make([]InferenceCall, 0),
+				GroundedCompletionExpected: c.ExpectGroundedCompletion,
+				ToolOperationExpected:      c.ExpectedToolOperation != "",
+				GeneratorCalls:             make([]InferenceCall, 0), JudgeCalls: make([]InferenceCall, 0),
 			}
 			runUsage := newResourceAccumulator()
 			boundaryBudget := false
@@ -236,6 +285,8 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 				prop, err = r.generator.Suggest(ctx, mapIntent(c.Intent))
 				result.Lineup = len(prop.Lineup)
 				result.Acquisitions = len(prop.Acquisitions)
+				result.GroundedCompletion = result.Lineup+result.Acquisitions > 0
+				result.SchemaValid = err == nil || errors.Is(err, suggest.ErrNoGroundedTitles)
 				result.Ceiling = string(prop.Policy.Audience.Ceiling)
 				result.ThemeFit = prop.Scores.ThemeFit
 				result.Failures = deterministicChecks(c, prop, err)
@@ -247,7 +298,7 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 				}
 				if r.observer != nil {
 					result.Observation = r.observer.Snapshot(err)
-					if err != nil && !errors.Is(err, errProviderBudgetExhausted) {
+					if err != nil && !errors.Is(err, errProviderBudgetExhausted) && !result.Passed() {
 						result.FailureStage = groundingFailureStage(result.GroundingStage)
 					}
 					if result.generatorBudgetErr != "" {
@@ -275,9 +326,7 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 						result.addFailures(FailureStageStructuralBudget,
 							fmt.Sprintf("candidates surfaced %d > budget %d", result.CandidatesSurfaced, c.MaxCandidatesSurfaced))
 					}
-					if message := expectedToolOperationFailure(c.ExpectedToolOperation, result.Observation); message != "" {
-						result.addFailures(FailureStageDeterministic, message)
-					}
+					result.CorrectToolOperation = expectedToolOperationFailure(c.ExpectedToolOperation, result.Observation) == ""
 				}
 				if !boundaryBudget {
 					if budgetMessage := consumeGeneratorObservation(r.config.ResourceBudget, runUsage, suiteUsage, result.Observation); budgetMessage != "" {
@@ -355,6 +404,9 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 			}
 			card.ResourceUsage = suiteUsage.usage()
 			card.Results = append(card.Results, result)
+			if r.resourceProbe != nil {
+				peakMeasurement = maxResourceMeasurement(peakMeasurement, r.resourceProbe.Measure(ctx, r.config.Generator))
+			}
 			if result.Passed() {
 				passed++
 			} else {
@@ -370,7 +422,126 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 			Overall:  scoreRange(overall), Relevance: scoreRange(relevance), Serendipity: scoreRange(serendipity),
 		})
 	}
+	if r.config.Contract != nil {
+		assessment := assessCertification(card.Results, r.config.Contract.Thresholds, peakMeasurement)
+		card.Assessment = &assessment
+		if !assessment.Passed {
+			card.Certified = false
+		}
+	}
 	return card
+}
+
+func maxResourceMeasurement(current, sample ResourceMeasurement) ResourceMeasurement {
+	if sample.Status != "measured" {
+		if current.Source == "" {
+			current.Source = sample.Source
+		}
+		return current
+	}
+	if current.Status != "measured" {
+		current = sample
+	}
+	if sample.PeakRAMBytes > current.PeakRAMBytes {
+		current.PeakRAMBytes = sample.PeakRAMBytes
+	}
+	if sample.PeakVRAMBytes > current.PeakVRAMBytes {
+		current.PeakVRAMBytes = sample.PeakVRAMBytes
+	}
+	return current
+}
+
+func assessCertification(results []Result, thresholds CertificationThresholds, measurement ResourceMeasurement) CertificationAssessment {
+	assessment := CertificationAssessment{Passed: true}
+	groundedExpected, grounded := 0, 0
+	toolExpected, correctTool := 0, 0
+	validSchema := 0
+	var runLatencies []int64
+	toolCalls := make([]int, 0, len(results))
+	for _, result := range results {
+		if result.GroundedCompletionExpected {
+			groundedExpected++
+			if result.GroundedCompletion {
+				grounded++
+			}
+		}
+		if result.ToolOperationExpected {
+			toolExpected++
+			if result.CorrectToolOperation {
+				correctTool++
+			}
+		}
+		if result.SchemaValid {
+			validSchema++
+		}
+		toolCalls = append(toolCalls, result.ToolCalls)
+		var runLatency int64
+		latencyKnown := len(result.GeneratorCalls) > 0
+		for _, call := range result.GeneratorCalls {
+			if call.LatencyNanos <= 0 || runLatency > math.MaxInt64-call.LatencyNanos {
+				latencyKnown = false
+				break
+			}
+			runLatency += call.LatencyNanos
+		}
+		if latencyKnown {
+			runLatencies = append(runLatencies, runLatency)
+		}
+	}
+	assessment.GroundedCompletionRate = fractionOrOne(grounded, groundedExpected)
+	assessment.CorrectToolOperationRate = fractionOrOne(correctTool, toolExpected)
+	assessment.SchemaValidityRate = fractionOrOne(validSchema, len(results))
+	assessment.Performance = performanceSummary(runLatencies, toolCalls, measurement)
+	if assessment.GroundedCompletionRate < thresholds.MinGroundedCompletionRate {
+		assessment.Failures = append(assessment.Failures, fmt.Sprintf("grounded completion rate %.3f < %.3f", assessment.GroundedCompletionRate, thresholds.MinGroundedCompletionRate))
+	}
+	if assessment.CorrectToolOperationRate < thresholds.MinCorrectToolOperationRate {
+		assessment.Failures = append(assessment.Failures, fmt.Sprintf("correct tool operation rate %.3f < %.3f", assessment.CorrectToolOperationRate, thresholds.MinCorrectToolOperationRate))
+	}
+	if assessment.SchemaValidityRate < thresholds.MinSchemaValidityRate {
+		assessment.Failures = append(assessment.Failures, fmt.Sprintf("schema validity rate %.3f < %.3f", assessment.SchemaValidityRate, thresholds.MinSchemaValidityRate))
+	}
+	if thresholds.MaxP95ToolCalls > 0 && assessment.Performance.P95ToolCalls > thresholds.MaxP95ToolCalls {
+		assessment.Failures = append(assessment.Failures, fmt.Sprintf("p95 tool calls %d > %d", assessment.Performance.P95ToolCalls, thresholds.MaxP95ToolCalls))
+	}
+	assessment.Passed = len(assessment.Failures) == 0
+	return assessment
+}
+
+func performanceSummary(runLatencies []int64, toolCalls []int, measurement ResourceMeasurement) PerformanceSummary {
+	slices.Sort(runLatencies)
+	slices.Sort(toolCalls)
+	return PerformanceSummary{
+		MeasuredRuns:             len(runLatencies),
+		GeneratorLatencyP50Nanos: percentileInt64(runLatencies, 0.50),
+		GeneratorLatencyP95Nanos: percentileInt64(runLatencies, 0.95),
+		P95ToolCalls:             percentileInt(toolCalls, 0.95),
+		ResourceStatus:           measurement.Status, ResourceSource: measurement.Source,
+		PeakRAMBytes: measurement.PeakRAMBytes, PeakVRAMBytes: measurement.PeakVRAMBytes,
+	}
+}
+
+func percentileInt64(sorted []int64, percentile float64) int64 {
+	if len(sorted) == 0 {
+		return 0
+	}
+	index := int(math.Ceil(percentile*float64(len(sorted)))) - 1
+	return sorted[max(index, 0)]
+}
+
+func percentileInt(sorted []int, percentile float64) int {
+	if len(sorted) == 0 {
+		return 0
+	}
+	index := int(math.Ceil(percentile*float64(len(sorted)))) - 1
+	return sorted[max(index, 0)]
+}
+
+func fractionOrOne(numerator, denominator int) float64 {
+	if denominator == 0 {
+		return 1
+	}
+	return float64(numerator) / float64(denominator)
 }
 
 func expectedToolOperationFailure(expected string, observation Observation) string {
