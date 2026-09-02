@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	TemporalStructureAssessmentSchemaVersion   = 1
-	TemporalStructureAssessmentContractVersion = "filler-temporal-structure-assessment-v1"
+	TemporalStructureAssessmentSchemaVersion   = 2
+	TemporalStructureAssessmentContractVersion = "filler-temporal-structure-assessment-v2"
 	temporalStructureMaximumDecisiveTimes      = 8
 )
 
@@ -25,8 +25,10 @@ type TemporalStructureAssessmentSet struct {
 	PublicManifestSHA256       string                              `json:"publicManifestSha256"`
 	PrivateAuthoritySHA256     string                              `json:"privateAuthoritySha256"`
 	RawResultSHA256            string                              `json:"rawResultSha256"`
+	SnapshotFileSHA256         string                              `json:"snapshotFileSha256"`
 	CapabilitySnapshotSHA256   string                              `json:"capabilitySnapshotSha256"`
 	CompletedAt                time.Time                           `json:"completedAt"`
+	LockedAt                   time.Time                           `json:"lockedAt"`
 	Assessor                   fillereval.TemporalAssessorIdentity `json:"assessor"`
 	Assessments                []TemporalStructureAssessment       `json:"assessments"`
 	ProductionAdmissionAllowed bool                                `json:"productionAdmissionAllowed"`
@@ -80,7 +82,7 @@ func loadTemporalStructureAssessment(path string, manifest TemporalStructureChal
 }
 
 func validateTemporalStructureAssessmentSet(set TemporalStructureAssessmentSet, manifest TemporalStructureChallengeManifest, publicSHA, authoritySHA string, durationByAlias map[string]int64) (map[string]TemporalStructureAssessment, error) {
-	if set.SchemaVersion != TemporalStructureAssessmentSchemaVersion || set.ContractVersion != TemporalStructureAssessmentContractVersion || set.ChallengeID != manifest.ChallengeID || set.PublicManifestSHA256 != publicSHA || set.PrivateAuthoritySHA256 != authoritySHA || !reviewSHA256(set.RawResultSHA256) || !reviewSHA256(set.CapabilitySnapshotSHA256) || set.CompletedAt.Before(manifest.GeneratedAt) || set.ProductionAdmissionAllowed {
+	if set.SchemaVersion != TemporalStructureAssessmentSchemaVersion || set.ContractVersion != TemporalStructureAssessmentContractVersion || set.ChallengeID != manifest.ChallengeID || set.PublicManifestSHA256 != publicSHA || set.PrivateAuthoritySHA256 != authoritySHA || !reviewSHA256(set.RawResultSHA256) || !reviewSHA256(set.SnapshotFileSHA256) || !reviewSHA256(set.CapabilitySnapshotSHA256) || set.CompletedAt.Before(manifest.GeneratedAt) || set.LockedAt.Before(set.CompletedAt) || set.ProductionAdmissionAllowed {
 		return nil, fmt.Errorf("temporal structure assessment identity or production disposition is invalid")
 	}
 	if strings.TrimSpace(set.Assessor.ID) == "" || strings.TrimSpace(set.Assessor.Provider) == "" || strings.TrimSpace(set.Assessor.Model) == "" || strings.TrimSpace(set.Assessor.ModelFamily) == "" || !reviewSHA256(set.Assessor.ModelDigest) || strings.TrimSpace(set.Assessor.PromptVersion) == "" {
@@ -126,12 +128,8 @@ func validateTemporalStructureAssessment(assessment TemporalStructureAssessment,
 	} else if assessment.Role != nil {
 		return fmt.Errorf("non-standalone assessment carries a role claim")
 	}
-	expectedCalls := 1
-	if assessment.Unit.Kind == fillereval.UnitStandalone {
-		expectedCalls = 2
-	}
-	if len(assessment.Inference.Calls) != expectedCalls || assessment.Inference.Calls[len(assessment.Inference.Calls)-1].OperationalFailure != "" {
-		return fmt.Errorf("successful assessment has %d calls; want %d successful unit/role calls", len(assessment.Inference.Calls), expectedCalls)
+	if len(assessment.Inference.Calls) != 1 || assessment.Inference.Calls[0].Axis != "structure" || assessment.Inference.Calls[0].OperationalFailure != "" {
+		return fmt.Errorf("successful assessment requires one atomic structure call")
 	}
 	return nil
 }
@@ -142,7 +140,7 @@ func validateTemporalStructureInference(inference fillereval.TemporalInference, 
 	}
 	var latencyMS, promptTokens, completionTokens int64
 	for index, call := range inference.Calls {
-		if call.Attempt != index+1 || call.LatencyMS < 0 || call.PromptTokens < 0 || call.CompletionTokens < 0 || (call.Axis != "unit" && call.Axis != "role") || index == 0 && call.Axis != "unit" || index > 0 && call.Axis != "role" || call.ResponseSHA256 != "" && !reviewSHA256(call.ResponseSHA256) || call.ResponseSHA256 == "" && call.OperationalFailure == "" || call.OperationalFailure != "" && !validTemporalStructureFailure(call.OperationalFailure) {
+		if call.Attempt != index+1 || call.LatencyMS < 0 || call.PromptTokens < 0 || call.CompletionTokens < 0 || call.Axis != "structure" || call.ResponseSHA256 != "" && !reviewSHA256(call.ResponseSHA256) || call.ResponseSHA256 == "" && call.OperationalFailure == "" || call.OperationalFailure != "" && !validTemporalStructureFailure(call.OperationalFailure) {
 			return fmt.Errorf("inference call %d has invalid order, axis, digest, failure, or accounting", index+1)
 		}
 		latencyMS += call.LatencyMS

@@ -49,6 +49,7 @@ type TemporalStructureComparisonReport struct {
 type TemporalStructureAssessorReference struct {
 	AssessmentSetSHA256 string                              `json:"assessmentSetSha256"`
 	RawResultSHA256     string                              `json:"rawResultSha256"`
+	SnapshotFileSHA256  string                              `json:"snapshotFileSha256"`
 	CapabilitySHA256    string                              `json:"capabilitySnapshotSha256"`
 	CompletedAt         time.Time                           `json:"completedAt"`
 	Assessor            fillereval.TemporalAssessorIdentity `json:"assessor"`

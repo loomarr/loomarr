@@ -2,6 +2,7 @@ package fillerreview
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -84,7 +85,8 @@ func TestLoadTemporalStructureAssessmentRejectsUnknownFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw = []byte(strings.Replace(string(raw), `"schemaVersion":1`, `"schemaVersion":1,"futureField":true`, 1))
+	version := fmt.Sprintf(`"schemaVersion":%d`, TemporalStructureAssessmentSchemaVersion)
+	raw = []byte(strings.Replace(string(raw), version, version+`,"futureField":true`, 1))
 	path := filepath.Join(t.TempDir(), "assessment.json")
 	if err := os.WriteFile(path, raw, 0o600); err != nil {
 		t.Fatal(err)
@@ -128,7 +130,8 @@ func (fixture temporalStructureComparisonFixture) assessmentSet(id, family, mode
 	set := TemporalStructureAssessmentSet{
 		SchemaVersion: TemporalStructureAssessmentSchemaVersion, ContractVersion: TemporalStructureAssessmentContractVersion,
 		ChallengeID: fixture.manifest.ChallengeID, PublicManifestSHA256: fixture.publicSHA, PrivateAuthoritySHA256: fixture.authoritySHA,
-		RawResultSHA256: strings.Repeat("c", 64), CapabilitySnapshotSHA256: strings.Repeat("d", 64), CompletedAt: completedAt,
+		RawResultSHA256: strings.Repeat("c", 64), SnapshotFileSHA256: strings.Repeat("b", 64),
+		CapabilitySnapshotSHA256: strings.Repeat("d", 64), CompletedAt: completedAt, LockedAt: completedAt.Add(time.Hour),
 		Assessor: fillereval.TemporalAssessorIdentity{
 			ID: id, Provider: "provider", Model: model, ModelFamily: family, ModelDigest: strings.Repeat("e", 64), PromptVersion: "structure-v1",
 		},
@@ -148,18 +151,14 @@ func (fixture temporalStructureComparisonFixture) assessmentSet(id, family, mode
 		}
 		if truth.Unit == fillereval.UnitStandalone {
 			assessment.Role = &TemporalStructureRoleClaim{Kind: truth.Role, DecisiveAtMS: []int64{1_500}, Reason: "closed role"}
-			assessment.Inference = temporalStructureTestInference(completedAt.Add(-time.Minute), true)
 		}
 		set.Assessments = append(set.Assessments, assessment)
 	}
 	return set
 }
 
-func temporalStructureTestInference(at time.Time, withRole bool) fillereval.TemporalInference {
-	calls := []fillereval.TemporalInferenceCall{{Axis: "unit", Attempt: 1, ResponseSHA256: strings.Repeat("1", 64), LatencyMS: 10, PromptTokens: 20, CompletionTokens: 5}}
-	if withRole {
-		calls = append(calls, fillereval.TemporalInferenceCall{Axis: "role", Attempt: 2, ResponseSHA256: strings.Repeat("2", 64), LatencyMS: 7, PromptTokens: 10, CompletionTokens: 3})
-	}
+func temporalStructureTestInference(at time.Time, _ bool) fillereval.TemporalInference {
+	calls := []fillereval.TemporalInferenceCall{{Axis: "structure", Attempt: 1, ResponseSHA256: strings.Repeat("1", 64), LatencyMS: 10, PromptTokens: 20, CompletionTokens: 5}}
 	result := fillereval.TemporalInference{AssessedAt: at, Attempts: len(calls), Calls: calls}
 	for _, call := range calls {
 		result.LatencyMS += call.LatencyMS
