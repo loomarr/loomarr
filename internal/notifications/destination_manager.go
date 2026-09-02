@@ -438,6 +438,9 @@ func webPushSubscriptionFingerprint(endpoint string) string {
 	if endpoint == "" {
 		return ""
 	}
+	// A Push service generates this high-entropy opaque endpoint; it is not a human password.
+	// The deterministic digest supports equality and uniqueness without persisting the bearer URL.
+	// codeql[go/weak-sensitive-data-hashing]
 	digest := sha256.Sum256([]byte(endpoint))
 	return base64.RawURLEncoding.EncodeToString(digest[:])
 }

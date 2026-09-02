@@ -467,7 +467,7 @@ func TestRegistry_EmailDeliverySettings(t *testing.T) {
 			continue
 		}
 		if setting.Group != GroupNotifications || setting.EnvVar != expected.env ||
-			setting.Kind != expected.kind || setting.Default != expected.defaultValue {
+			setting.Kind != expected.kind || setting.Default != expected.defaultValue || !setting.MigrationOnly {
 			t.Errorf("%s = group %q env %q kind %q default %#v", key, setting.Group,
 				setting.EnvVar, setting.Kind, setting.Default)
 		}

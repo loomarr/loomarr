@@ -56,6 +56,9 @@ func (r *Registry) Markdown() []byte {
 		b.WriteString("| Setting (env) | Kind | Default | Notes |\n")
 		b.WriteString("| --- | --- | --- | --- |\n")
 		for _, s := range r.ByGroup(g) {
+			if s.MigrationOnly {
+				continue
+			}
 			b.WriteString(row(s))
 		}
 		b.WriteString("\n")
@@ -110,6 +113,9 @@ func escapePipes(s string) string { return strings.ReplaceAll(s, "|", "\\|") }
 func keysForDocs(r *Registry) []string {
 	out := make([]string, 0, len(r.All()))
 	for _, s := range r.All() {
+		if s.MigrationOnly {
+			continue
+		}
 		out = append(out, s.Key)
 	}
 	sort.Strings(out)

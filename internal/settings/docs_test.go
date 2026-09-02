@@ -35,6 +35,15 @@ func TestConfigDocs_CoversEveryKey(t *testing.T) {
 	}
 }
 
+func TestConfigDocs_OmitsMigrationOnlySMTPSettings(t *testing.T) {
+	md := string(NewRegistry().Markdown())
+	for _, key := range []string{"notifications.email.enabled", "notifications.smtp.host", "notifications.smtp.password"} {
+		if strings.Contains(md, "`"+key+"`") {
+			t.Errorf("config docs expose migration-only key %q", key)
+		}
+	}
+}
+
 // repoRoot finds the module root by walking up until go.mod is found.
 func repoRoot(t *testing.T) string {
 	t.Helper()

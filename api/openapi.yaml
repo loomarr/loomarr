@@ -5302,52 +5302,6 @@ components:
       required:
         - providers
       type: object
-    NotificationsEmailTestInputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/NotificationsEmailTestInputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        to:
-          description: One destination mailbox for this test message.
-          maxLength: 320
-          minLength: 3
-          type: string
-      required:
-        - to
-      type: object
-    NotificationsEmailTestOutputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/NotificationsEmailTestOutputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        hint:
-          type: string
-        ok:
-          type: boolean
-        outcome:
-          enum:
-            - delivery_disabled
-            - destination_unavailable
-            - recipient_rejected
-            - configuration_invalid
-            - means_unavailable
-            - transport_unavailable
-            - acceptance_ambiguous
-            - cancelled
-          type: string
-      required:
-        - ok
-      type: object
     NowNextEntry:
       additionalProperties: false
       properties:
@@ -12734,32 +12688,6 @@ paths:
       summary: Prometheus metrics
       tags:
         - ops
-  /v1/notifications/email/test:
-    post:
-      description: Admin only. Sends one message through the currently applied SMTP configuration and returns only a closed, provider-safe outcome.
-      operationId: notifications-email-test
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/NotificationsEmailTestInputBody"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/NotificationsEmailTestOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Send a test email
-      tags:
-        - notifications
   /v1/notifications/provider-types:
     get:
       description: Returns the server-owned provider fields and compatible events used to render the Add provider form. No configured values or credentials are returned.
@@ -13521,7 +13449,7 @@ paths:
         - users
   /v1/settings:
     get:
-      description: Admin only. Every registry setting with resolved value (secrets masked), provenance, and audit (config-design §8).
+      description: Admin only. Every operator-managed setting with resolved value (secrets masked), provenance, and audit (config-design §8).
       operationId: settings-list
       responses:
         "200":

@@ -267,13 +267,12 @@ type EmailSender interface {
 }
 
 type EmailAdapter struct {
-	config       func() EmailConfig
 	materializer EmailMaterializer
 	sender       EmailSender
 }
 
-func NewEmailAdapter(config func() EmailConfig, materializer EmailMaterializer, sender EmailSender) *EmailAdapter {
-	return &EmailAdapter{config: config, materializer: materializer, sender: sender}
+func NewEmailAdapter(materializer EmailMaterializer, sender EmailSender) *EmailAdapter {
+	return &EmailAdapter{materializer: materializer, sender: sender}
 }
 
 func (*EmailAdapter) Means() Means { return MeansEmail }
@@ -290,18 +289,13 @@ func (a *EmailAdapter) Deliver(ctx context.Context, delivery Delivery) Result {
 	if a == nil {
 		return emailConfigurationFailure()
 	}
-	var config EmailConfig
-	if delivery.Destination != nil {
-		var err error
-		config, err = emailConfigFromProvider(
-			delivery.Destination.Configuration, delivery.Destination.Credentials,
-		)
-		if err != nil {
-			return emailConfigurationFailure()
-		}
-	} else if a.config != nil {
-		config = a.config()
-	} else {
+	if delivery.Destination == nil {
+		return emailConfigurationFailure()
+	}
+	config, err := emailConfigFromProvider(
+		delivery.Destination.Configuration, delivery.Destination.Credentials,
+	)
+	if err != nil {
 		return emailConfigurationFailure()
 	}
 	if !config.Enabled {
@@ -375,29 +369,6 @@ func emailConfigFromProvider(configuration, credentials map[string]string) (Emai
 func emailDefinitelyNotAccepted(state EmailTransmissionState) bool {
 	return state == EmailTransientPreAcceptance || state == EmailRecipientRejected ||
 		state == EmailConfigurationRejected
-}
-
-func (a *EmailAdapter) SendTest(ctx context.Context, destination string) Result {
-	if a == nil || a.config == nil {
-		return emailConfigurationFailure()
-	}
-	config := a.config()
-	if !config.Enabled {
-		return Result{Status: StatusSuppressed, OutcomeCode: OutcomeDeliveryDisabled}
-	}
-	if err := config.Validate(); err != nil || a.sender == nil {
-		return emailConfigurationFailure()
-	}
-	message := EmailMessage{
-		ToAddress: destination,
-		Subject:   "Loomarr test email",
-		TextBody:  "Loomarr email delivery is configured correctly.\n",
-		HTMLBody:  `<!doctype html><html lang="en"><body><main><p>Loomarr email delivery is configured correctly.</p></main></body></html>`,
-	}
-	if err := message.Validate(); err != nil {
-		return Result{Status: StatusFailed, FailureClass: FailurePermanent, OutcomeCode: OutcomeDestinationUnavailable}
-	}
-	return resultForEmailTransmission(a.sender.Send(ctx, config, message))
 }
 
 func resultForEmailTransmission(transmission EmailTransmission) Result {

@@ -136,9 +136,12 @@ type Setting struct {
 	Default      any          // zero value of the Kind if a key has no default (e.g. a secret)
 	Enum         []EnumOption // Kind == KindEnum: the closed set, each with a display label
 	Advanced     bool         // hidden behind the per-page "Show advanced" toggle (§5)
-	Required     Feature      // RequiredFor: the feature this key gates (§7); FeatureNone = always-optional
-	Validate     ValidateFunc // shape validation; nil = Kind-default only
-	Doc          string       // one-liner: UI help text + generated docs (§2)
+	// MigrationOnly retains a former setting solely long enough to import it into its successor.
+	// It is resolvable by the migration, but absent from every settings read/write and docs surface.
+	MigrationOnly bool
+	Required      Feature      // RequiredFor: the feature this key gates (§7); FeatureNone = always-optional
+	Validate      ValidateFunc // shape validation; nil = Kind-default only
+	Doc           string       // one-liner: UI help text + generated docs (§2)
 	// ShowWhen makes a field CONDITIONAL (config-design §5): it is shown only when the
 	// current value of a named key is one of the listed values. Empty/nil = always shown.
 	// e.g. llm.api_key: {"llm.provider": {"openai"}} hides the key when Ollama is picked.

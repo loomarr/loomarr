@@ -38,7 +38,7 @@ type AuditRow struct {
 	UpdatedAt time.Time
 }
 
-// List returns every registry setting resolved, with secrets masked and audit
+// List returns every operator-managed setting resolved, with secrets masked and audit
 // metadata attached (config-design §8). audit may be nil (no audit info).
 func (s *Service) List(ctx context.Context, audit AuditLister) []Entry {
 	var rows map[string]AuditRow
@@ -49,6 +49,9 @@ func (s *Service) List(ctx context.Context, audit AuditLister) []Entry {
 	}
 	out := make([]Entry, 0, len(s.reg.All()))
 	for _, set := range s.reg.All() {
+		if set.MigrationOnly {
+			continue
+		}
 		r := s.Resolve(set.Key)
 		e := Entry{
 			Setting:     set,
