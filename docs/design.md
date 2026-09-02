@@ -3960,6 +3960,14 @@ budget, and transport failures remain explicit operational failures rather than 
 The local runner makes one constrained unit call for every case and a separate constrained role call
 only after the unit call returns `standalone`; it records every call's axis, response hash, latency,
 tokens, and failure rather than collapsing a two-call cascade into one attempt.
+The hosted adapter's provider-facing schema contains only the closed class and one to four package-
+owned decisive signal IDs. Free-form explanatory prose is deliberately not accepted over that seam:
+routes advertising strict JSON have emitted unescaped titles, HTML fragments, and trailing braces in
+otherwise usable explanations. The adapter derives the assessment's required audit sentence from the
+closed class and cited IDs after strict decoding. This preserves the decision and its evidence while
+preventing non-decision prose from turning a valid classification into a transport failure. Local
+diagnostic adapters may retain a model-authored sentence, but comparison and disposition never use
+sentence wording as a vote or confidence signal.
 Two model families run independently on the exact packet, and the deterministic comparison reports
 unit agreement separately from role agreement. More than 15% disputed cases, or one confusion that
 accounts for more than half the disputes, stops the development run for contract repair instead of

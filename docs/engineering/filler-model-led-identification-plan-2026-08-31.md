@@ -1,8 +1,8 @@
 # Model-led filler identification plan
 
 Date: 2026-08-31
-Status: active execution plan for #548, #549, #555, #786, and #787; the local diagnostic gate
-failed and the full-corpus run is paused pending bounded third-family calibration
+Status: active execution plan for #548, #549, #555, #786, and #787; hosted calibration identified
+invalid controls and weak local temporal assessors, so the full-corpus run remains paused
 
 ## Current execution evidence
 
@@ -21,8 +21,14 @@ selection now covers four unit disagreements, eight role disagreements, and thre
 (selection SHA-256 `acfb309e7e09ea6efa868e0530c5fc0c642707e277c86dcbc8b006b00f89455f`).
 PR #804 shipped a serial, snapshot-bound, zero-data-retention hosted runner with hard request,
 per-request, and total-spend ceilings. PR #807 shipped the inference-free three-assessor report. The
-Qwen3.8 run remains deliberately unexecuted until its bounded provider spend is explicitly
-authorized.
+first authorized Qwen3.8 attempt pinned the AkashML FP8 route and failed operationally on all 15 unit
+requests with provider-side HTTP 502 responses. The same sealed selection then completed without
+operational failures on Qwen 3.8/CoreWeave and Claude Opus 5/Amazon Bedrock. Those stronger families
+agreed on unit structure for 12/15 cases and on 4/6 comparable roles. Both independently rejected the
+supposed standalone/promo agreement control as a programme excerpt; Qwen also rejected the supposed
+commercial control as promo. Prompt-v7 error repair improved local exact agreement to 11/32 but
+worsened unit agreement to 19/32, with 13 Gemma-standalone/Qwen-programme-excerpt confusions. The
+small local families and two old controls are therefore not temporal truth authorities.
 
 ## Decision
 
@@ -68,7 +74,10 @@ Keep one deep admission module behind the existing deterministic seam:
    temporal frames, timestamped transcript, OCR, and bounded derivative identities.
 2. Model adapters implement two internal inference roles: temporal structure and semantic role.
    Provider-specific request shapes, retries, structured-output repair, attribution, and cost remain
-   inside the module.
+   inside the module. Hosted provider output is limited to the closed answer and package-owned
+   decisive signal IDs; the adapter derives the required audit sentence locally. Free-form provider
+   prose is not part of the hosted seam because it has broken nominally strict JSON without changing
+   the underlying classification.
 3. `filleradmission.Evaluator.Evaluate` remains the sole terminal decision interface. It consumes
    validated facts and returns `admit | reject | review` or an operational hold. It never reads a
    model's self-reported confidence.
@@ -113,10 +122,11 @@ modality is an operational hold, never `invalid` and never an automatic admissio
 Gate: the same inputs produce byte-identical packets and scoring; every disagreement is assigned to a
 named structural or role confusion; no free-form taxonomy difference counts as a role disagreement.
 
-Implementation and reproducibility passed. Model agreement did not. Phase 0 therefore remains at its
-declared repair boundary: use the 15-case third-family calibration to distinguish weak local models
-from weak evidence/prompt structure, then revise only the failing contract slice before any 300-case
-run.
+Implementation and reproducibility passed. Hosted calibration separated transport defects, weak
+local models, and five bounded contract/evidence gaps, but it also proved that two old agreement
+controls are unsafe. Phase 0 therefore remains at its declared repair boundary: replace the invalid
+controls and independently review only the disputed/high-risk slice before any 300-case run. Do not
+keep tuning prompts against the same 32 cases.
 
 ### Phase 1 — model-led 300-case relabel
 
@@ -214,12 +224,15 @@ authority.
 1. Complete: #786 and #787 no longer assign 332 blind labels to the maintainer.
 2. Complete in #793: implement the factored assessment schema, evidence validation, and deterministic
    disagreement report.
-3. In progress: the 32-case local diagnostic completed and failed its agreement gate; #804 and #807
-   prepared a bounded Qwen3.8 third-family calibration over the deterministic 15-case slice. Execute
-   it only after explicit spend authorization, then classify the failure as model, prompt, or
-   evidence-route weakness.
-4. Pending the repaired Phase 0 gate: run the two-family 300-case relabel. Do not substitute mass
+3. Complete: the sealed 15-case slice ran through Qwen 3.8 and Claude Opus 5 with zero final
+   operational failures. It identified five bounded error classes and proved two old controls unsafe.
+4. In progress: replace the invalid controls and build the 48-case independent-review package around
+   random model agreements, strong-model disagreements, and high-risk temporal cases. This is a
+   short unit/role review, not a blind 300-case audit.
+5. When the 64 GB Apple-silicon host is available, benchmark pinned Qwen 3.8 27B MLX against the same
+   sealed diagnostic and hosted Qwen result; promote it only if it reproduces the stronger-family
+   behavior.
+6. Pending the repaired Phase 0 gate: run the two-family 300-case relabel. Do not substitute mass
    adjudication for a passing diagnostic.
-5. Pending Phase 1: build the 48-case calibration package and commission its independent review.
-6. Pending calibrated development truth: run #555 and keep production in shadow until the separate
+7. Pending calibrated development truth: run #555 and keep production in shadow until the separate
    holdout passes.

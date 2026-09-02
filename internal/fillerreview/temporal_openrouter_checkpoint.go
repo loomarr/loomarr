@@ -240,5 +240,5 @@ func temporalOpenRouterCheckpointSpend(checkpoint temporalOpenRouterCheckpoint) 
 }
 
 func temporalOpenRouterPromptSHA256() string {
-	return hashBytes([]byte(strings.Join([]string{temporalUnitSystemPrompt, temporalRoleSystemPrompt}, "\x00")))
+	return hashBytes([]byte(strings.Join([]string{temporalHostedUnitSystemPrompt, temporalHostedRoleSystemPrompt}, "\x00")))
 }

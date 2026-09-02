@@ -34,16 +34,16 @@ func TestRunOpenRouterTemporalAssessmentReservesAndBindsTwoAxisCalls(t *testing.
 			t.Error(err)
 			return
 		}
-		if request.Model != model || request.Provider.AllowFallbacks || !request.Provider.RequireParameters || !request.Provider.ZDR || request.Provider.DataCollection != "deny" || len(request.Provider.Order) != 1 || request.Provider.Order[0] != slug || request.ResponseFormat.Type != "json_schema" || !request.ResponseFormat.JSONSchema.Strict {
+		if request.Model != model || request.Provider.AllowFallbacks || !request.Provider.RequireParameters || !request.Provider.ZDR || request.Provider.DataCollection != "deny" || len(request.Provider.Order) != 1 || request.Provider.Order[0] != slug || request.ResponseFormat.Type != "json_schema" || !request.ResponseFormat.JSONSchema.Strict || request.Reasoning == nil || request.Reasoning.Enabled {
 			t.Errorf("request is not pinned and strict: %+v", request)
 		}
 		checkpoint, err := readStrictJSON[temporalOpenRouterCheckpoint](filepath.Join(checkpointDir, temporalOpenRouterCheckpointFilename))
 		if err != nil || len(checkpoint.Attempts) == 0 || checkpoint.Attempts[len(checkpoint.Attempts)-1].State != temporalOpenRouterAttemptReserved {
 			t.Errorf("HTTP occurred before durable reservation: checkpoint=%+v err=%v", checkpoint, err)
 		}
-		content := `{"kind":"standalone","decisiveSignalIds":["frame-01"],"reason":"One bounded item."}`
+		content := `{"kind":"standalone","decisiveSignalIds":["frame-01"]}`
 		if request.ResponseFormat.JSONSchema.Name == "filler_temporal_role" {
-			content = `{"kind":"commercial","decisiveSignalIds":["transcript-01"],"reason":"A product offer is made."}`
+			content = `{"kind":"commercial","decisiveSignalIds":["transcript-01"]}`
 		}
 		calls.Add(1)
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -73,7 +73,7 @@ func TestRunOpenRouterTemporalAssessmentReservesAndBindsTwoAxisCalls(t *testing.
 	if calls.Load() != 2 || result.Requests != 2 || result.ChargedNanoUSD != 2_000_000 || result.ConsumedNanoUSD != 2_000_000 || result.UnknownChargeReservations != 0 {
 		t.Fatalf("accounting = %+v calls=%d", result, calls.Load())
 	}
-	if len(result.AssessmentSet.Assessments) != 1 || result.AssessmentSet.Assessments[0].Unit.Kind != fillereval.UnitStandalone || result.AssessmentSet.Assessments[0].Role.Kind != fillereval.TemporalRoleCommercial {
+	if len(result.AssessmentSet.Assessments) != 1 || result.AssessmentSet.Assessments[0].Unit.Kind != fillereval.UnitStandalone || result.AssessmentSet.Assessments[0].Role.Kind != fillereval.TemporalRoleCommercial || !strings.Contains(result.AssessmentSet.Assessments[0].Unit.Reason, "Hosted unit class standalone") {
 		t.Fatalf("assessment = %+v", result.AssessmentSet.Assessments)
 	}
 	if len(result.Attempts) != 2 || result.Attempts[0].Axis != "unit" || result.Attempts[1].Axis != "role" || result.Attempts[0].State != temporalOpenRouterAttemptAccepted || result.AssessmentSet.Assessor.ModelDigest != result.CapabilitySnapshotSHA256 {
@@ -88,13 +88,46 @@ func TestRunOpenRouterTemporalAssessmentReservesAndBindsTwoAxisCalls(t *testing.
 	}
 }
 
+func TestTemporalClaimSchemaUsesPortableStructuredOutputSubset(t *testing.T) {
+	item := TemporalReviewCase{
+		Frames:             []TemporalReviewFrame{{ID: "frame-01", OCRSignalID: "ocr-01"}},
+		TranscriptSegments: []TemporalReviewTranscript{{ID: "transcript-01"}},
+	}
+	schema := temporalHostedUnitSchema(item)
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("properties = %#v", schema["properties"])
+	}
+	if _, freeText := properties["reason"]; freeText {
+		t.Fatalf("provider-facing schema exposes free-form reason: %#v", properties)
+	}
+	references, ok := properties["decisiveSignalIds"].(map[string]any)
+	if !ok {
+		t.Fatalf("decisiveSignalIds = %#v", properties["decisiveSignalIds"])
+	}
+	if _, unsupported := references["uniqueItems"]; unsupported {
+		t.Fatalf("provider-facing schema contains unsupported uniqueItems: %#v", references)
+	}
+	if references["minItems"] != 1 || references["maxItems"] != 4 {
+		t.Fatalf("reference bounds = %#v", references)
+	}
+	items, ok := references["items"].(map[string]any)
+	if !ok {
+		t.Fatalf("reference items = %#v", references["items"])
+	}
+	got, ok := items["enum"].([]string)
+	if !ok || strings.Join(got, ",") != "frame-01,ocr-01,transcript-01" {
+		t.Fatalf("reference enum = %#v", items["enum"])
+	}
+}
+
 func TestRunOpenRouterTemporalAssessmentTurnsSettledInvalidClaimIntoOperationalFailure(t *testing.T) {
 	packagePath, selectionPath := writeTemporalCalibrationFixture(t)
 	now := time.Unix(20_000, 0).UTC()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id": "generation", "model": "review/vendor-model",
-			"choices":             []any{map[string]any{"message": map[string]any{"content": `{"kind":"invented","decisiveSignalIds":["frame-01"],"reason":"Wrong enum."}`}}},
+			"choices":             []any{map[string]any{"message": map[string]any{"content": `{"kind":"invented","decisiveSignalIds":["frame-01"]}`}}},
 			"usage":               map[string]any{"prompt_tokens": 100, "completion_tokens": 20, "cost": 0.001},
 			"openrouter_metadata": map[string]any{"attempt": 1, "endpoints": map[string]any{"available": []any{map[string]any{"provider": "Provider Route", "model": "review/vendor-model", "selected": true}}}, "attempts": []any{map[string]any{"provider": "Provider Route", "model": "review/vendor-model", "status": 200}}},
 		})
@@ -116,6 +149,29 @@ func TestRunOpenRouterTemporalAssessmentTurnsSettledInvalidClaimIntoOperationalF
 	}
 }
 
+func TestRunOpenRouterTemporalAssessmentClassifiesHTTP502AsRetryableProviderFailure(t *testing.T) {
+	packagePath, selectionPath := writeTemporalCalibrationFixture(t)
+	now := time.Unix(25_000, 0).UTC()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "upstream unavailable", http.StatusBadGateway)
+	}))
+	defer server.Close()
+	result, err := RunOpenRouterTemporalAssessment(t.Context(), OpenRouterTemporalConfig{
+		PackagePath: packagePath, SelectionPath: selectionPath, CheckpointDir: filepath.Join(t.TempDir(), "private"),
+		BaseURL: server.URL, APIKey: "test-key", Snapshot: openRouterReviewSnapshot(server.URL, now),
+		Model: "review/vendor-model", ModelFamily: "qwen3.8", UpstreamProvider: "Provider Route", UpstreamProviderSlug: "provider/route", AssessorID: "hosted-calibrator",
+		ExpectedPackageCases: 1, ExpectedCalibrationCases: 1, PerCaseTimeout: time.Second,
+		MaxRequests: 1, MaxSpendNanoUSD: 2_000_000, MaxChargeNanoUSD: 2_000_000, AllowInsecureTestURL: true, Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assessment := result.AssessmentSet.Assessments[0]
+	if assessment.OperationalFailure == nil || assessment.OperationalFailure.Code != fillereval.TemporalFailureProvider || !assessment.OperationalFailure.Retryable || result.UnknownChargeReservations != 1 || result.ConsumedNanoUSD != 2_000_000 {
+		t.Fatalf("502 was not retained as a retryable provider failure with conservative spend: result=%+v", result)
+	}
+}
+
 func TestRunOpenRouterTemporalAssessmentRecordsPreRequestBudgetExhaustion(t *testing.T) {
 	packagePath, selectionPath := writeTemporalCalibrationFixture(t)
 	now := time.Unix(30_000, 0).UTC()
@@ -124,7 +180,7 @@ func TestRunOpenRouterTemporalAssessmentRecordsPreRequestBudgetExhaustion(t *tes
 		calls.Add(1)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id": "generation", "model": "review/vendor-model",
-			"choices":             []any{map[string]any{"message": map[string]any{"content": `{"kind":"standalone","decisiveSignalIds":["frame-01"],"reason":"One bounded item."}`}}},
+			"choices":             []any{map[string]any{"message": map[string]any{"content": `{"kind":"standalone","decisiveSignalIds":["frame-01"]}`}}},
 			"usage":               map[string]any{"prompt_tokens": 100, "completion_tokens": 20, "cost": 0.001},
 			"openrouter_metadata": map[string]any{"attempt": 1, "endpoints": map[string]any{"available": []any{map[string]any{"provider": "Provider Route", "model": "review/vendor-model", "selected": true}}}, "attempts": []any{map[string]any{"provider": "Provider Route", "model": "review/vendor-model", "status": 200}}},
 		})
