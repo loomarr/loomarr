@@ -22,6 +22,21 @@ eval-planner-cert: ## compare one model against the frozen planner corpus; expli
 	  LOOMARR_EVAL_OUT="$$report" LOOMARR_EVAL_SUMMARY_OUT="$$summary" \
 	    $(GO) test -count=1 -tags=eval -run '^TestPlannerModelCertification$$' -v -timeout 20m ./internal/eval/
 
+eval-planner-smoke: ## replay one frozen base Intent per planner family; explicit, inference-spending, non-CI
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  report="$${LOOMARR_EVAL_OUT:-$$LOOMARR_ARTIFACT_DIR/planner-family-smoke.json}"; \
+	  summary="$${LOOMARR_EVAL_SUMMARY_OUT:-$$LOOMARR_ARTIFACT_DIR/planner-family-smoke.md}"; \
+	  mkdir -p "$$(dirname "$$report")" "$$(dirname "$$summary")"; \
+	  report="$$(cd "$$(dirname "$$report")" && pwd -P)/$$(basename "$$report")"; \
+	  summary="$$(cd "$$(dirname "$$summary")" && pwd -P)/$$(basename "$$summary")"; \
+	  LOOMARR_EVAL_PLANNER_CERTIFICATION=1 LOOMARR_EVAL_PLANNER_FAMILY_SMOKE=1 \
+	  LOOMARR_EVAL_REQUIRED=1 LOOMARR_EVAL_TRIALS=1 \
+	  LOOMARR_EVAL_OUT="$$report" LOOMARR_EVAL_SUMMARY_OUT="$$summary" \
+	    $(GO) test -count=1 -tags=eval -run '^TestPlannerModelCertification$$' -v -timeout 20m ./internal/eval/
+
+planner-tool-diagnostic: ## probe the exact post-catalog-result model turn; explicit, inference-spending, non-CI
+	$(GO) run ./cmd/planner-tool-diagnostic
+
 eval-planner-compare: ## compare two or more frozen planner scorecards without inference
 	@test -n "$$LOOMARR_EVAL_SCORECARDS" || { echo "eval-planner-compare: LOOMARR_EVAL_SCORECARDS is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \

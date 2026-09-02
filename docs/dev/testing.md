@@ -214,6 +214,16 @@ opt-in and consistent evidence are present, so `make eval-cert` cannot certify a
 subset. Both adapters enter the same pure `schedule.ComputeDesiredAt` projection.
 `make eval-contract` always disables the live test before any adapter is constructed.
 
+`make planner-tool-diagnostic` isolates the production turn immediately after one non-empty
+synthetic catalog result. It requires explicit `LLM_URL` and `LLM_MODEL`; `LLM_PROVIDER` defaults to
+`ollama`. An OpenRouter run also requires `LLM_API_KEY` and exactly one
+`LOOMARR_EVAL_GENERATOR_UPSTREAM_PROVIDER`. The command uses the production system/user renderer,
+catalog tool schema, assistant tool-call correlation, tool-result shape, sampling controls, and
+post-result JSON mode. Its JSON report contains versioned prompt/tool/message-template identities,
+SHA-256 digests, message roles, option flags, provider attribution, JSON validity, and whether the
+model repeated a tool call. It never emits prompt text, tool-result content, model output,
+credentials, or reasoning content. This is focused adapter evidence, not model certification.
+
 `make eval-matrix` prevents tuning to one local model. It requires the ordinary exported `LLM_*`
 configuration plus `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`,
 `OPENROUTER_GENERATOR_PROVIDER`, and `OPENROUTER_JUDGE_PROVIDER`;

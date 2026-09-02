@@ -288,6 +288,14 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 			trace.Terminal = TerminalProviderFailure
 			return "", NewFailure(FailureProvider, *trace, fmt.Errorf("llm chat: %w", err))
 		}
+		// Some OpenAI-compatible models can repeat a tool call from conversation
+		// history even when the finalization request exposes no tools. Never execute
+		// that unsolicited call: returning an empty final turn routes it through the
+		// existing bounded JSON-repair path while preserving the original surfaced
+		// candidates and hard call limits.
+		if *finalizationOnly && resp.WantsTools() {
+			return "", nil
+		}
 		if resp.WantsTools() {
 			reportProgress(ctx, PhaseSearching, round+1)
 			// The provider-neutral contract is sequential single-tool. Some hosted

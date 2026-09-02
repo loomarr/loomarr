@@ -149,11 +149,11 @@ func (o *Ollama) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 	if opts.JSONMode {
 		req.Format = "json"
 	}
-	// Disable thinking whenever tools are in play: a reasoning model's chain-of-
-	// thought interferes with tool-calls + JSON on Ollama (empty output / leaked
-	// markers). Our grounding loop always passes tools, so this is effectively
-	// always off for the suggester — the intended behavior.
-	if len(opts.Tools) > 0 {
+	// Disable thinking on both retrieval and structured-finalization turns: a
+	// reasoning model's chain-of-thought interferes with tool calls and JSON on
+	// Ollama (empty output / leaked markers). Finalization deliberately removes
+	// tools, so JSONMode must independently keep thinking off.
+	if len(opts.Tools) > 0 || opts.JSONMode {
 		off := false
 		req.Think = &off
 	}

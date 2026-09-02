@@ -27,8 +27,8 @@ func TestEmbeddedCertificationCorpusIsFrozenHeldOutAndRepresentative(t *testing.
 	if corpus.SchemaVersion != 3 {
 		t.Fatalf("corpus schema version = %d, want 3", corpus.SchemaVersion)
 	}
-	if corpus.PromptVersion != "suggester-prompt-v2" {
-		t.Fatalf("prompt version = %q, want suggester-prompt-v2", corpus.PromptVersion)
+	if corpus.PromptVersion != suggest.PlannerPromptVersion || corpus.ToolSchemaVersion != suggest.PlannerToolSchemaVersion {
+		t.Fatalf("prompt/tool version = %q/%q, want production %q/%q", corpus.PromptVersion, corpus.ToolSchemaVersion, suggest.PlannerPromptVersion, suggest.PlannerToolSchemaVersion)
 	}
 	if corpus.Split != "certification" {
 		t.Fatalf("corpus split = %q, want certification", corpus.Split)

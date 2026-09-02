@@ -3,6 +3,7 @@ package suggest_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -20,6 +21,30 @@ type toolAvailabilitySensitiveLLM struct {
 	calls int
 	opts  []llm.ChatOptions
 	final []llm.Response
+}
+
+type unsolicitedFinalizationToolLLM struct {
+	calls           int
+	maxToolMessages int
+}
+
+func (m *unsolicitedFinalizationToolLLM) Name() string { return "unsolicited-finalization-tool" }
+
+func (m *unsolicitedFinalizationToolLLM) Chat(_ context.Context, messages []llm.Message, opts llm.ChatOptions) (llm.Response, error) {
+	m.calls++
+	toolMessages := 0
+	for _, message := range messages {
+		if message.Role == llm.Tool {
+			toolMessages++
+		}
+	}
+	m.maxToolMessages = max(m.maxToolMessages, toolMessages)
+	if m.calls <= 2 {
+		return llm.Response{ToolCalls: []llm.ToolCall{{
+			ID: fmt.Sprintf("call-%d", m.calls), Name: "catalog_search", Arguments: map[string]any{"query": "matrix"},
+		}}}, nil
+	}
+	return llm.Response{Content: `{"channelName":"Matrix Signal","rationale":"Grounded science fiction.","picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix","rationale":"It is the requested grounded title.","confidence":0.99}],"policy":{}}`}, nil
 }
 
 type emptyThenGroundedLLM struct {
@@ -130,6 +155,20 @@ func TestSuggest_FinalizesAfterGroundedCatalogResultWithoutRepeatingSearch(t *te
 	}
 	if model.calls != 2 {
 		t.Fatalf("model calls = %d, want one catalog call followed by one final proposal", model.calls)
+	}
+}
+
+func TestSuggest_DoesNotExecuteUnsolicitedToolCallDuringFinalization(t *testing.T) {
+	model := &unsolicitedFinalizationToolLLM{}
+	prop, err := buildSuggester(t, model).Suggest(context.Background(), suggest.Intent{Description: "The Matrix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Lineup) != 1 || prop.Lineup[0].TMDBID != 603 {
+		t.Fatalf("proposal lineup = %+v", prop.Lineup)
+	}
+	if model.calls != 3 || model.maxToolMessages != 1 {
+		t.Fatalf("model calls/tool-result messages = %d/%d, want 3/1", model.calls, model.maxToolMessages)
 	}
 }
 
@@ -782,11 +821,11 @@ func TestGrounding_InLibraryPickBecomesLineup(t *testing.T) {
 
 // The acquisition cap (§8 quota) is honored: over-cap picks become alternates.
 func TestGrounding_AcquisitionCapPushesToAlternates(t *testing.T) {
-	// Two searches so BOTH Speed (100) and The Rock (101) are surfaced/grounded;
-	// with cap=1 the second becomes an alternate.
+	// One Action discovery surfaces BOTH Speed (100) and The Rock (101); with
+	// cap=1 the second becomes an alternate without violating the rule that a
+	// non-empty result ends retrieval.
 	llmMock := testkit.NewLLM(
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "speed"}),
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "rock"}),
+		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"Action"}, "media_type": "movie"}),
 		testkit.FinalResponse(`{"picks":[
 			{"mediaType":"movie","tmdbId":100,"name":"Speed"},
 			{"mediaType":"movie","tmdbId":101,"name":"The Rock"}
@@ -816,9 +855,7 @@ func TestGrounding_AcquisitionCapPushesToAlternates(t *testing.T) {
 
 func TestSuggest_GroundsEpisodeSelectionAcrossSeriesAlternates(t *testing.T) {
 	llmMock := testkit.NewLLM(
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "alpha series"}),
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "beta series"}),
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "companion movie"}),
+		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"Drama"}}),
 		testkit.FinalResponse(`{"picks":[
 			{"mediaType":"series","tmdbId":200,"name":"Alpha Series"},
 			{"mediaType":"series","tmdbId":201,"name":"Beta Series"},
@@ -827,9 +864,9 @@ func TestSuggest_GroundsEpisodeSelectionAcrossSeriesAlternates(t *testing.T) {
 	)
 	ms := testkit.NewMediaServer(t)
 	mt := testkit.NewTMDB(t)
-	mt.AddSeries(200, "Alpha Series", 1990, nil, "")
-	mt.AddSeries(201, "Beta Series", 1991, nil, "")
-	mt.AddMovie(202, "Companion Movie", 1992, nil, "")
+	mt.AddSeries(200, "Alpha Series", 1990, []int{18}, "")
+	mt.AddSeries(201, "Beta Series", 1991, []int{18}, "")
+	mt.AddMovie(202, "Companion Movie", 1992, []int{18}, "")
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	s := suggest.New(llmMock, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 1)
 
@@ -1181,7 +1218,6 @@ func TestProposal_KidSafeIntentCannotBeRelaxedByModelPicks(t *testing.T) {
 	})
 	llmMock := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "simpsons"}),
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "breaking bad"}),
 		testkit.FinalResponse(`{"rationale":"bright cartoons","picks":[
 			{"mediaType":"series","tmdbId":456,"name":"The Simpsons"},
 			{"mediaType":"series","tmdbId":1396,"name":"Breaking Bad"}
@@ -1194,6 +1230,7 @@ func TestProposal_KidSafeIntentCannotBeRelaxedByModelPicks(t *testing.T) {
 
 	prop, err := s.Suggest(context.Background(), suggest.Intent{
 		Description: "Saturday-morning cartoons like I watched as a kid — bright, silly, kid-safe",
+		Adjacent:    []suggest.AdjacentContext{{Name: "Breaking Bad", Year: 2008, Key: "series:tmdb:1396", Votes: 2}},
 	})
 	if err != nil {
 		t.Fatal(err)
