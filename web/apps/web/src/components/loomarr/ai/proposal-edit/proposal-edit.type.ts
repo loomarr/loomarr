@@ -1,6 +1,7 @@
 import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
 import type { EpisodeSelection } from "@loomarr/api/models/episodeSelection";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
+import type { ReactNode } from "react";
 
 interface ProposalEditProps {
   // The proposal's two pick lists, as the queue already renders them. Both are needed:
@@ -16,7 +17,7 @@ interface ProposalEditProps {
   // must send NO body in that case, so an unmodified approval stays byte-identical to what it
   // was before edit-before-approve existed.
   onChange: (edit: ApprovalEditDTO | undefined) => void;
-  onFeedback?: (item: ProposalItem, action: "keep" | "less" | "never" | "surprise") => void;
+  renderFeedback?: (item: ProposalItem) => ReactNode;
   disabled?: boolean;
   className?: string;
 }

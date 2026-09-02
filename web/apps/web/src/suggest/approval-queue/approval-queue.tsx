@@ -1,8 +1,8 @@
-import * as discoveryApi from "@loomarr/api/endpoints/discovery";
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
 import { unwrap } from "@loomarr/api/unwrap";
+import { provisionKey } from "@loomarr/core/provision";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -12,6 +12,7 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PullCard } from "@/components/loomarr/filler/pull-card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DiscoveryFeedbackControls, useDiscoveryFeedback } from "@/discovery-feedback";
 
 // The admin approval queue (§7, §11) — the human gate every acquisition passes through.
 // It lists everything still `submitted`, which is exactly what the status filter means.
@@ -41,7 +42,7 @@ const ApprovalQueue = () => {
     },
   });
   const deny = proposalsApi.useDenyProposal({ mutation: { onSuccess: invalidate } });
-  const feedback = discoveryApi.useRecordDiscoveryFeedback();
+  const feedback = useDiscoveryFeedback({ scope: "household" });
 
   // Filler pulls (V35). ⚠ `status: "pending"` and not a client-side filter: a decided pull is
   // KEPT on the server for the History tab, so asking for everything would put approvals an
@@ -114,8 +115,11 @@ const ApprovalQueue = () => {
 
   return (
     <div className="flex flex-col gap-3">
-      {(approve.error ?? deny.error ?? bulk.error) != null && (
-        <ErrorState error={approve.error ?? deny.error ?? bulk.error} />
+      {(approve.error ?? deny.error ?? bulk.error ?? feedback.error) != null && (
+        <ErrorState
+          error={approve.error ?? deny.error ?? bulk.error ?? feedback.error}
+          onRetry={feedback.error ? feedback.retry : undefined}
+        />
       )}
 
       {/* Filler pulls (V35), above the title proposals. ⚠ They sit on THIS queue rather than
@@ -196,13 +200,20 @@ const ApprovalQueue = () => {
               refused={p.proposal.refused ?? []}
               status={busy ? "approving" : "pending"}
               onEdit={(edit) => setEdit(p.id, edit)}
-              onFeedback={(item, action) => {
-                const provider = item.tmdbId ? "tmdb" : "tvdb";
-                const id = item.tmdbId ?? item.tvdbId;
-                if (!id) return;
-                feedback.mutate({
-                  data: { scope: "household", targetKey: `${item.mediaType}:${provider}:${id}`, action },
-                });
+              renderFeedback={(item) => {
+                const targetKey = provisionKey(item);
+                if (!targetKey) return null;
+                return (
+                  <DiscoveryFeedbackControls
+                    compact
+                    name={item.name}
+                    scope={{ scope: "household" }}
+                    effective={feedback.feedbackFor(targetKey)}
+                    disabled={feedback.isPending}
+                    onSet={(action) => feedback.setFeedback(targetKey, action)}
+                    onClear={() => feedback.clearFeedback(targetKey)}
+                  />
+                );
               }}
               // The edit rides the SAME approve call — there is no separate "save edit" step,
               // because the edit is a parameter to the one approval gate, not a mutation of the

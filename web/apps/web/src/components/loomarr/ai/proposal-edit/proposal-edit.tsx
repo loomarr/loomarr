@@ -39,7 +39,7 @@ const ProposalEdit = ({
   acquisitions,
   episodeSelectionPreview,
   onChange,
-  onFeedback,
+  renderFeedback,
   disabled,
   className,
 }: ProposalEditProps) => {
@@ -160,23 +160,7 @@ const ProposalEdit = ({
                 {episodeSelectionLabel(item, episodeSelectionPreview) && (
                   <Badge variant="suggest">{episodeSelectionLabel(item, episodeSelectionPreview)}</Badge>
                 )}
-                {onFeedback && !isDropped && (
-                  <div className="flex gap-1">
-                    {(["keep", "less", "never", "surprise"] as const).map((action) => (
-                      <Button
-                        key={action}
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={disabled}
-                        aria-label={`${action} ${item.name}`}
-                        onClick={() => onFeedback(item, action)}
-                      >
-                        {action === "less" ? "Less" : action === "surprise" ? "Surprise" : action}
-                      </Button>
-                    ))}
-                  </div>
-                )}
+                {renderFeedback && !isDropped && renderFeedback(item)}
                 {/* A pick with no usable id was never enqueueable, so there is nothing to drop
                     — the control is omitted rather than rendered inert. */}
                 {key !== "" && (

@@ -106,18 +106,20 @@ describe("ApprovalQueueItem", () => {
     expect(screen.queryByText(/won't be included/i)).not.toBeInTheDocument();
   });
 
-  it("records explicit taste separately from approving or dropping a pick", () => {
-    const onFeedback = vi.fn();
+  it("mounts the feature-owned feedback control separately from approval", () => {
+    const renderFeedback = vi.fn((item: { name: string }) => (
+      <button type="button">Taste: {item.name}</button>
+    ));
     render(
       <ApprovalQueueItem
         title="Classic Simpsons"
         lineup={[{ mediaType: "series", name: "The Simpsons", tmdbId: 456, inLibrary: true }]}
-        onFeedback={onFeedback}
+        renderFeedback={renderFeedback}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /show picks/i }));
-    fireEvent.click(screen.getByRole("button", { name: "Never" }));
-    expect(onFeedback).toHaveBeenCalledWith(expect.objectContaining({ tmdbId: 456 }), "never");
+    expect(screen.getByRole("button", { name: "Taste: The Simpsons" })).toBeInTheDocument();
+    expect(renderFeedback).toHaveBeenCalledWith(expect.objectContaining({ tmdbId: 456 }));
   });
 
   it("explains complete and specific episode modes in the mounted edit surface", () => {

@@ -52,6 +52,9 @@ const stubApi = () => {
       if (typeof url === "string" && url.includes("/v1/search")) {
         return Promise.resolve(jsonResponse({ candidates: [] }));
       }
+      if (typeof url === "string" && url.includes("/v1/discovery/feedback")) {
+        return Promise.resolve(jsonResponse([]));
+      }
       if (typeof url === "string" && url.includes("/v1/proposals")) {
         return Promise.resolve(jsonResponse({ proposals: [proposal] }));
       }
@@ -80,6 +83,9 @@ const stubEpisodePreviewApi = (preview: EpisodeSelection) => {
             ],
           }),
         );
+      }
+      if (typeof url === "string" && url.includes("/v1/discovery/feedback")) {
+        return Promise.resolve(jsonResponse([]));
       }
       if (typeof url === "string" && url.includes("/v1/proposals")) {
         return Promise.resolve(
