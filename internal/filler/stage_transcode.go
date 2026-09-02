@@ -120,7 +120,7 @@ func (s *TranscodeStage) Applies(_ context.Context, c StoreClip) (bool, string) 
 	if tags, ok := ReadSidecarTags(full); ok && tags.Mezzanine == s.profile.ID() && tags.MediaQuality != nil {
 		// A clean report is finished work. An anomalous report must remain applicable so a
 		// failed hold/tombstone write can cheaply re-emit the same safety verdict next pass.
-		if verdict, _, _ := mediaQualityVerdict(*tags.MediaQuality); verdict == VerdictContinue {
+		if verdict, _, _ := EvaluateMediaQuality(*tags.MediaQuality); verdict == VerdictContinue {
 			return false, "already encoded to the ingest profile"
 		}
 	}
@@ -623,7 +623,7 @@ func validConditioningLineage(lineage *ConditioningLineage, childParentHash stri
 }
 
 func mediaQualityResult(c StoreClip, quality MediaQuality) StageResult {
-	verdict, reason, detail := mediaQualityVerdict(quality)
+	verdict, reason, detail := EvaluateMediaQuality(quality)
 	result := StageResult{Clip: c, Verdict: verdict}
 	switch verdict {
 	case VerdictReject:
