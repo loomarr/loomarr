@@ -4393,6 +4393,23 @@ exactly one valid hashed, positive-byte, positive-duration, positive-dimension `
 presentation. Missing streams or a missing/malformed presentation are unusable; impossible segment
 bounds invalidate the audit rather than being reinterpreted as a hold.
 
+The production-reference duplicate inventory is a separate deterministic derivative of one exact
+production-reference audit artifact. It fingerprints every non-excluded case and no other case,
+re-opens each acquired source only beneath the declared source root, and verifies the full source
+bytes against the audit's content SHA-256 before decoding. The inventory records the source-audit
+SHA-256, algorithm version, case ID, content identity, local-file identity, complete ordered visual
+fingerprint, and complete audio envelope. Missing, extra, repeated, excluded, mutated, unbound, or
+symlink-escaped sources invalidate the whole inventory; a diagnostic subset cannot be published as
+the cohort inventory. Visual comparison uses a fixed two-frame-per-second centre-crop dHash sequence,
+ignores near-flat frames as positive evidence, and requires sustained fixed-offset agreement across
+at least 70% of the shorter useful sequence. Audio comparison uses fixed 100 ms RMS bins and requires
+at least 90% normalized correlation across the same minimum coverage. Either modality may relate a
+pair, but neither assigns semantic truth, editorial grade, scheduling use, admission, or a preferred
+rendition. Related pairs form deterministic connected components. A transitive component that is not
+a complete clique remains explicitly unresolved for full playback rather than being silently
+collapsed. Once a family is recorded, every later development/holdout or inspection split treats it
+as one indivisible similarity cluster: exact or near-duplicate members cannot cross a split boundary.
+
 Shared transcription is a separately locked provider artifact, not text pasted into a mutable packet.
 For each case it binds the exact raw packet digest, audio signal identity/hash/bytes/duration, transcript
 schema and prompt versions, whisper implementation identity, executable SHA-256, model filename and
