@@ -2,8 +2,12 @@ package notifications
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 )
 
@@ -75,6 +79,10 @@ type DestinationTestResult struct {
 	Created  bool
 }
 
+type DestinationDeleteResult struct {
+	UnsubscribeCurrentBrowser bool
+}
+
 type DestinationTester interface {
 	PublishDestinationTest(context.Context, DestinationMetadata, string) (DestinationTestResult, error)
 }
@@ -139,11 +147,18 @@ func (m *DestinationManager) Create(
 	} else if command.Credentials != nil {
 		destination.Credentials = cloneStringMap(*command.Credentials)
 	}
+	setWebPushSubscriptionFingerprint(&destination)
+	if destination.Means == MeansWebPush && destination.SubscriptionFingerprint == "" {
+		return DestinationSummary{}, fmt.Errorf("web push destination requires a subscription endpoint")
+	}
 	if err := destination.Validate(); err != nil {
 		return DestinationSummary{}, err
 	}
 	if err := m.validateEnabled(destination); err != nil {
 		return DestinationSummary{}, err
+	}
+	if destination.Means == MeansWebPush {
+		return m.createOrReplaceWebPushDestination(ctx, destination)
 	}
 	if err := m.repository.SaveNotificationDestination(ctx, destination); err != nil {
 		return DestinationSummary{}, err
@@ -230,6 +245,10 @@ func (m *DestinationManager) Update(
 		Enabled: command.Enabled, Configuration: configuration,
 		Credentials: credentials, CreatedAt: current.CreatedAt, UpdatedAt: m.now().UTC().Truncate(time.Second),
 	}
+	setWebPushSubscriptionFingerprint(&updated)
+	if updated.Means == MeansWebPush && updated.SubscriptionFingerprint == "" {
+		return DestinationSummary{}, fmt.Errorf("web push destination requires a subscription endpoint")
+	}
 	if err := updated.Validate(); err != nil {
 		return DestinationSummary{}, err
 	}
@@ -289,18 +308,142 @@ func mergeDestinationSettings(
 	return configuration, credentials, nil
 }
 
-func (m *DestinationManager) Delete(ctx context.Context, principal Principal, id string) error {
+func (m *DestinationManager) Delete(
+	ctx context.Context,
+	principal Principal,
+	id string,
+	currentBrowserEndpoint string,
+) (DestinationDeleteResult, error) {
 	if m == nil || m.repository == nil {
-		return fmt.Errorf("notification destination manager is unavailable")
+		return DestinationDeleteResult{}, fmt.Errorf("notification destination manager is unavailable")
 	}
 	current, err := m.repository.GetNotificationDestinationMetadata(ctx, id)
 	if err != nil {
-		return err
+		return DestinationDeleteResult{}, err
 	}
 	if err := authorizeDestinationWrite(principal, current.Scope, current.OwnerID); err != nil {
-		return err
+		return DestinationDeleteResult{}, err
 	}
-	return m.repository.DeleteNotificationDestination(ctx, id)
+	result := DestinationDeleteResult{}
+	if current.Means == MeansWebPush && currentBrowserEndpoint != "" {
+		fingerprint := current.SubscriptionFingerprint
+		if fingerprint == "" {
+			opened, openErr := m.repository.OpenNotificationDestinationForUpdate(ctx, id)
+			if openErr != nil {
+				return DestinationDeleteResult{}, openErr
+			}
+			fingerprint = webPushSubscriptionFingerprint(opened.Credentials["endpoint"])
+		}
+		result.UnsubscribeCurrentBrowser = sameFingerprint(
+			fingerprint,
+			webPushSubscriptionFingerprint(currentBrowserEndpoint),
+		)
+	}
+	if err := m.repository.DeleteNotificationDestination(ctx, id); err != nil {
+		return DestinationDeleteResult{}, err
+	}
+	return result, nil
+}
+
+func (m *DestinationManager) createOrReplaceWebPushDestination(
+	ctx context.Context,
+	destination Destination,
+) (DestinationSummary, error) {
+	matches, err := m.matchingWebPushDestinations(ctx, destination)
+	if err != nil {
+		return DestinationSummary{}, err
+	}
+	if len(matches) > 0 {
+		return m.replaceWebPushDestinations(ctx, destination, matches)
+	}
+	if err := m.repository.SaveNotificationDestination(ctx, destination); err == nil {
+		return destination.Summary(), nil
+	} else if !errors.Is(err, ErrConflict) {
+		return DestinationSummary{}, err
+	}
+	// A concurrent create may have inserted the same owner/subscription after the first lookup.
+	matches, err = m.matchingWebPushDestinations(ctx, destination)
+	if err != nil {
+		return DestinationSummary{}, err
+	}
+	if len(matches) == 0 {
+		return DestinationSummary{}, ErrConflict
+	}
+	return m.replaceWebPushDestinations(ctx, destination, matches)
+}
+
+func (m *DestinationManager) matchingWebPushDestinations(
+	ctx context.Context,
+	destination Destination,
+) ([]DestinationMetadata, error) {
+	metadata, err := m.repository.ListNotificationDestinationMetadata(ctx)
+	if err != nil {
+		return nil, err
+	}
+	matches := make([]DestinationMetadata, 0, 1)
+	for _, candidate := range metadata {
+		if candidate.Means != MeansWebPush || candidate.OwnerID != destination.OwnerID {
+			continue
+		}
+		fingerprint := candidate.SubscriptionFingerprint
+		if fingerprint == "" {
+			legacy, openErr := m.repository.OpenNotificationDestinationForUpdate(ctx, candidate.ID)
+			if openErr != nil {
+				return nil, openErr
+			}
+			fingerprint = webPushSubscriptionFingerprint(legacy.Credentials["endpoint"])
+		}
+		if sameFingerprint(fingerprint, destination.SubscriptionFingerprint) {
+			matches = append(matches, candidate)
+		}
+	}
+	sort.Slice(matches, func(i, j int) bool {
+		if matches[i].CreatedAt.Equal(matches[j].CreatedAt) {
+			return matches[i].ID < matches[j].ID
+		}
+		return matches[i].CreatedAt.Before(matches[j].CreatedAt)
+	})
+	return matches, nil
+}
+
+func (m *DestinationManager) replaceWebPushDestinations(
+	ctx context.Context,
+	destination Destination,
+	matches []DestinationMetadata,
+) (DestinationSummary, error) {
+	canonical := matches[0]
+	destination.ID = canonical.ID
+	destination.CreatedAt = canonical.CreatedAt
+	if destination.UpdatedAt.Before(destination.CreatedAt) {
+		destination.UpdatedAt = destination.CreatedAt
+	}
+	if err := m.repository.SaveNotificationDestination(ctx, destination); err != nil {
+		return DestinationSummary{}, err
+	}
+	for _, duplicate := range matches[1:] {
+		if err := m.repository.DeleteNotificationDestination(ctx, duplicate.ID); err != nil {
+			return DestinationSummary{}, fmt.Errorf("remove duplicate web push destination: %w", err)
+		}
+	}
+	return destination.Summary(), nil
+}
+
+func setWebPushSubscriptionFingerprint(destination *Destination) {
+	if destination != nil && destination.Means == MeansWebPush {
+		destination.SubscriptionFingerprint = webPushSubscriptionFingerprint(destination.Credentials["endpoint"])
+	}
+}
+
+func webPushSubscriptionFingerprint(endpoint string) string {
+	if endpoint == "" {
+		return ""
+	}
+	digest := sha256.Sum256([]byte(endpoint))
+	return base64.RawURLEncoding.EncodeToString(digest[:])
+}
+
+func sameFingerprint(left, right string) bool {
+	return left != "" && right != "" && subtle.ConstantTimeCompare([]byte(left), []byte(right)) == 1
 }
 
 func (m *DestinationManager) Test(

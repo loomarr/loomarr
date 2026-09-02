@@ -34,6 +34,14 @@ func (f *NotificationRepository) SaveNotificationDestination(
 	if err := destination.Validate(); err != nil {
 		return err
 	}
+	if destination.SubscriptionFingerprint != "" {
+		for id, current := range f.Destinations {
+			if id != destination.ID && current.Means == destination.Means && current.OwnerID == destination.OwnerID &&
+				current.SubscriptionFingerprint == destination.SubscriptionFingerprint {
+				return notifications.ErrConflict
+			}
+		}
+	}
 	if current, ok := f.Destinations[destination.ID]; ok {
 		destination.CreatedAt = current.CreatedAt
 	}
