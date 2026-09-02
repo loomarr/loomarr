@@ -220,7 +220,10 @@ func (a searchAdapter) Search(ctx context.Context, q, scope string, limit int) (
 		out = append(out, api.SearchCandidate{
 			MediaType: string(c.MediaType), TMDBID: c.TMDBID, TVDBID: c.TVDBID,
 			Name: c.Name, Year: c.Year, InLibrary: c.InLibrary, LibraryItemID: c.LibraryItemID,
-			Genres: c.Genres, OfficialRating: c.OfficialRating,
+			Genres: c.Genres, Overview: c.Overview,
+			OriginalLanguage: c.OriginalLanguage, OriginCountries: c.OriginCountries,
+			RuntimeMinutes: c.RuntimeMinutes, VoteAverage: c.VoteAverage, VoteCount: c.VoteCount,
+			Keywords: c.Keywords, OfficialRating: c.OfficialRating,
 		})
 	}
 	return out, nil

@@ -6297,6 +6297,10 @@ components:
           type: array
         inLibrary:
           type: boolean
+        keywords:
+          items:
+            type: string
+          type: array
         libraryItemId:
           type: string
         mediaType:
@@ -6305,10 +6309,19 @@ components:
           type: string
         officialRating:
           type: string
+        originCountries:
+          items:
+            type: string
+          type: array
+        originalLanguage:
+          type: string
         overview:
           type: string
         rationale:
           type: string
+        runtimeMinutes:
+          format: int64
+          type: integer
         seasonMax:
           format: int64
           type: integer
@@ -6326,6 +6339,12 @@ components:
           format: int64
           type: integer
         tvdbId:
+          format: int64
+          type: integer
+        voteAverage:
+          format: double
+          type: number
+        voteCount:
           format: int64
           type: integer
         year:
@@ -7172,6 +7191,10 @@ components:
           type: array
         inLibrary:
           type: boolean
+        keywords:
+          items:
+            type: string
+          type: array
         libraryItemId:
           type: string
         mediaType:
@@ -7180,10 +7203,27 @@ components:
           type: string
         officialRating:
           type: string
+        originCountries:
+          items:
+            type: string
+          type: array
+        originalLanguage:
+          type: string
+        overview:
+          type: string
+        runtimeMinutes:
+          format: int64
+          type: integer
         tmdbId:
           format: int64
           type: integer
         tvdbId:
+          format: int64
+          type: integer
+        voteAverage:
+          format: double
+          type: number
+        voteCount:
           format: int64
           type: integer
         year:
