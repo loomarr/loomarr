@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -82,15 +83,16 @@ type tmdbTitle struct {
 	OriginCountries  []string
 	VoteAverage      float64
 	VoteCount        int
+	RuntimeMinutes   int
 	// USRating is the US content rating the /content_ratings (tv) or /release_dates
 	// (movie) endpoint reports (§389 acquisition enrichment). Empty ⇒ no US rating,
 	// which is the common sparse-coverage case a test may assert is handled.
 	USRating string
 }
 
-// SetDiscoveryEvidence scripts the metadata TMDB includes directly on search
-// and discovery result rows. It keeps adapter tests on the shared service mock.
-func (m *TMDB) SetDiscoveryEvidence(mt provision.MediaType, id int, language string, countries []string, voteAverage float64, voteCount int) {
+// SetDiscoveryEvidence scripts source metadata and the runtime used by TMDB's
+// remote discovery filter. It keeps adapter tests on the shared service mock.
+func (m *TMDB) SetDiscoveryEvidence(mt provision.MediaType, id int, language string, countries []string, runtimeMinutes int, voteAverage float64, voteCount int) {
 	catalog := m.movies
 	if mt == provision.Series {
 		catalog = m.series
@@ -99,6 +101,7 @@ func (m *TMDB) SetDiscoveryEvidence(mt provision.MediaType, id int, language str
 	title.ID = id
 	title.OriginalLanguage = language
 	title.OriginCountries = append([]string(nil), countries...)
+	title.RuntimeMinutes = runtimeMinutes
 	title.VoteAverage = voteAverage
 	title.VoteCount = voteCount
 	catalog[id] = title
@@ -228,7 +231,7 @@ func NewTMDB(t testing.TB) *TMDB {
 		wantKeywords := parseGenreParam(r.URL.Query().Get("with_keywords"))
 		var results []map[string]any
 		for _, mv := range sortedTitles(m.movies) {
-			if allIDsMatch(mv.GenreIDs, want) && anyIDMatches(mv.KeywordIDs, wantKeywords) {
+			if allIDsMatch(mv.GenreIDs, want) && anyIDMatches(mv.KeywordIDs, wantKeywords) && matchesDiscoveryQualifiers(mv, r.URL.Query()) {
 				results = append(results, movieRow(mv))
 			}
 		}
@@ -240,7 +243,7 @@ func NewTMDB(t testing.TB) *TMDB {
 		wantKeywords := parseGenreParam(r.URL.Query().Get("with_keywords"))
 		var results []map[string]any
 		for _, s := range sortedTitles(m.series) {
-			if allIDsMatch(s.GenreIDs, want) && anyIDMatches(s.KeywordIDs, wantKeywords) {
+			if allIDsMatch(s.GenreIDs, want) && anyIDMatches(s.KeywordIDs, wantKeywords) && matchesDiscoveryQualifiers(s, r.URL.Query()) {
 				results = append(results, tvRow(s))
 			}
 		}
@@ -350,6 +353,34 @@ func sortedTitles(catalog map[int]tmdbTitle) []tmdbTitle {
 		out = append(out, catalog[id])
 	}
 	return out
+}
+
+func matchesDiscoveryQualifiers(title tmdbTitle, query url.Values) bool {
+	if want := query.Get("with_original_language"); want != "" && !strings.EqualFold(title.OriginalLanguage, want) {
+		return false
+	}
+	if want := query.Get("with_origin_country"); want != "" {
+		matched := false
+		for _, country := range title.OriginCountries {
+			matched = matched || strings.EqualFold(country, want)
+		}
+		if !matched {
+			return false
+		}
+	}
+	if minimum := atoiPath(query.Get("with_runtime.gte")); minimum > 0 && title.RuntimeMinutes < minimum {
+		return false
+	}
+	if maximum := atoiPath(query.Get("with_runtime.lte")); maximum > 0 && title.RuntimeMinutes > maximum {
+		return false
+	}
+	if minimum, _ := strconv.ParseFloat(query.Get("vote_average.gte"), 64); minimum > 0 && title.VoteAverage < minimum {
+		return false
+	}
+	if minimum := atoiPath(query.Get("vote_count.gte")); minimum > 0 && title.VoteCount < minimum {
+		return false
+	}
+	return true
 }
 
 // TMDB discovery pages contain at most twenty results. Modelling that boundary

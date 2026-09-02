@@ -19,9 +19,9 @@ import (
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
-const certificationManifestPath = "testdata/planner-certification-v4.json"
+const certificationManifestPath = "testdata/planner-certification-v5.json"
 
-//go:embed testdata/planner-certification-v1.json testdata/planner-certification-v2.json testdata/planner-certification-v3.json testdata/planner-certification-v4.json testdata/planner-catalog-v1.json
+//go:embed testdata/planner-certification-v1.json testdata/planner-certification-v2.json testdata/planner-certification-v3.json testdata/planner-certification-v4.json testdata/planner-certification-v5.json testdata/planner-catalog-v1.json
 var certificationFiles embed.FS
 
 // CertificationCorpus is the immutable, held-out planner-model corpus contract.
@@ -459,10 +459,9 @@ func (c embeddedTMDBCatalog) Search(context.Context, string, int) ([]catalog.Can
 	return c.fixture.response("title")
 }
 
-func (c embeddedTMDBCatalog) Discover(context.Context, provision.MediaType, []string, int, int, int) ([]catalog.Candidate, error) {
+func (c embeddedTMDBCatalog) Discover(_ context.Context, query catalog.DiscoveryQuery, _ int) ([]catalog.Candidate, error) {
+	if len(query.Keywords) > 0 {
+		return c.fixture.response("keyword")
+	}
 	return c.fixture.response("genre")
-}
-
-func (c embeddedTMDBCatalog) DiscoverKeywords(context.Context, provision.MediaType, []string, []string, int, int, int) ([]catalog.Candidate, error) {
-	return c.fixture.response("keyword")
 }

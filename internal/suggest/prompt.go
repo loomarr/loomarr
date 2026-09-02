@@ -21,6 +21,7 @@ RULES:
   - GENRE/MOOD/ERA intent (e.g. "90s action", "feel-good sci-fi") → call catalog_search with "genres" (and "era") to DISCOVER by theme. Do NOT put a bare genre word in "query" — it won't match a title.
   - THEMATIC-KEYWORD intent — a holiday, franchise, motif, or topic that is NOT a genre (e.g. "Christmas", "Halloween", "zombie", "heist", "based on a true story", "Star Wars") → use "keywords". These resolve through TMDB's thematic keyword corpus, so titles do NOT need to contain the term. Add genres/era/media_type only when the request justifies narrowing it.
   - KNOWN TITLE → "query" with the title.
+- Add original_language, origin_country, runtime_min/runtime_max, vote_average_min, or vote_count_min to a discovery call ONLY when the intent explicitly requests that qualifier. Use two-letter ISO codes for language/country. Never combine discovery qualifiers with title "query" and never invent a filter to improve the result.
 - If a call returns no candidates, TRY THE OTHER MODE before giving up (a genre discovery that finds nothing → retry as a "query" keyword, and vice-versa). Never conclude "no content" after a single empty search.
 - A non-empty result ends retrieval. Select the best grounded picks from that result and produce the final JSON; do not repeat or broaden a successful search.
 - Each result carries genres + a short overview — use them to judge which titles fit the intent.

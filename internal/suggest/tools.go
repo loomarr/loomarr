@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
+	"strings"
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
@@ -19,23 +21,18 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 		return fmt.Sprintf(`{"error":"unknown tool %q; only %s is available"}`, tc.Name, catalogToolName), nil, DecisionTrace{}
 	}
 	mtArg, _ := tc.Arguments["media_type"].(string)
-	genres := stringSlice(tc.Arguments["genres"])
-	keywords := stringSlice(tc.Arguments["keywords"])
+	discovery, discoveryMode, parseErr := parseDiscoveryQuery(tc.Arguments)
+	if parseErr != nil {
+		return fmt.Sprintf(`{"error":%q}`, parseErr.Error()), nil, DecisionTrace{}
+	}
 
 	var cands []catalog.Candidate
 	var err error
-	if len(keywords) > 0 {
-		// THEMATIC DISCOVERY: holidays, motifs, franchises, and topics live in
-		// TMDB's keyword corpus and need not occur in the title text.
-		from, to := parseEra(stringArg(tc.Arguments["era"]))
-		cands, err = s.catalog.DiscoverKeywords(ctx, mediaTypeArg(mtArg), keywords, genres, from, to, catalogSearchLimit)
-	} else if len(genres) > 0 {
-		// DISCOVERY: the model gave genres → find by theme (+ era) rather than title.
-		// This is what lets an abstract intent surface real content instead of an
-		// empty keyword result. Grounding is unaffected: discovered candidates are
-		// keyed into `surfaced` by the caller exactly like search results.
-		from, to := parseEra(stringArg(tc.Arguments["era"]))
-		cands, err = s.catalog.Discover(ctx, mediaTypeArg(mtArg), genres, from, to, catalogSearchLimit)
+	if discoveryMode {
+		// Structured discovery covers genres, thematic keywords, era, and the
+		// validated scalar qualifiers. Grounding is unchanged: every returned row
+		// is keyed into `surfaced` exactly like a title-search result.
+		cands, err = s.catalog.Discover(ctx, discovery, catalogSearchLimit)
 	} else {
 		// KEYWORD: search both corpora by title.
 		cands, err = s.catalog.Search(ctx, stringArg(tc.Arguments["query"]), catalog.ScopeAll, catalogSearchLimit)
@@ -50,6 +47,123 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 	cands = ranked.Candidates
 	blob, _ := json.Marshal(toolResult(cands))
 	return string(blob), cands, ranked.Trace
+}
+
+const (
+	maxDiscoveryRuntimeMinutes = 24 * 60
+	maxDiscoveryVoteCount      = 100_000_000
+)
+
+func parseDiscoveryQuery(args map[string]any) (catalog.DiscoveryQuery, bool, error) {
+	query := catalog.DiscoveryQuery{
+		MediaType: mediaTypeArg(stringArg(args["media_type"])),
+		Keywords:  stringSlice(args["keywords"]),
+		Genres:    stringSlice(args["genres"]),
+	}
+	rawEra := strings.TrimSpace(stringArg(args["era"]))
+	query.YearFrom, query.YearTo = parseEra(rawEra)
+	if rawEra != "" && query.YearFrom == 0 {
+		return catalog.DiscoveryQuery{}, false, fmt.Errorf("era must be a year, decade, or year range")
+	}
+
+	var err error
+	if rawValue, ok := args["original_language"]; ok {
+		raw, stringOK := rawValue.(string)
+		if !stringOK || strings.TrimSpace(raw) == "" {
+			return catalog.DiscoveryQuery{}, false, fmt.Errorf("original_language: must be a two-letter code")
+		}
+		query.OriginalLanguage, err = discoveryCode(raw, false)
+		if err != nil {
+			return catalog.DiscoveryQuery{}, false, fmt.Errorf("original_language: %w", err)
+		}
+	}
+	if rawValue, ok := args["origin_country"]; ok {
+		raw, stringOK := rawValue.(string)
+		if !stringOK || strings.TrimSpace(raw) == "" {
+			return catalog.DiscoveryQuery{}, false, fmt.Errorf("origin_country: must be a two-letter code")
+		}
+		query.OriginCountry, err = discoveryCode(raw, true)
+		if err != nil {
+			return catalog.DiscoveryQuery{}, false, fmt.Errorf("origin_country: %w", err)
+		}
+	}
+	if query.RuntimeMin, err = boundedIntArg(args, "runtime_min", maxDiscoveryRuntimeMinutes); err != nil {
+		return catalog.DiscoveryQuery{}, false, err
+	}
+	if query.RuntimeMax, err = boundedIntArg(args, "runtime_max", maxDiscoveryRuntimeMinutes); err != nil {
+		return catalog.DiscoveryQuery{}, false, err
+	}
+	if query.RuntimeMin > 0 && query.RuntimeMax > 0 && query.RuntimeMin > query.RuntimeMax {
+		return catalog.DiscoveryQuery{}, false, fmt.Errorf("runtime_min must not exceed runtime_max")
+	}
+	if query.VoteCountMin, err = boundedIntArg(args, "vote_count_min", maxDiscoveryVoteCount); err != nil {
+		return catalog.DiscoveryQuery{}, false, err
+	}
+	_, voteAverageSet := args["vote_average_min"]
+	if raw, ok := args["vote_average_min"]; ok {
+		query.VoteAverageMin, err = finiteNumber(raw)
+		if err != nil || query.VoteAverageMin <= 0 || query.VoteAverageMin > 10 {
+			return catalog.DiscoveryQuery{}, false, fmt.Errorf("vote_average_min must be greater than 0 and at most 10")
+		}
+	}
+
+	discoveryMode := len(query.Keywords) > 0 || len(query.Genres) > 0 || rawEra != "" ||
+		query.OriginalLanguage != "" || query.OriginCountry != "" || query.RuntimeMin > 0 ||
+		query.RuntimeMax > 0 || voteAverageSet || query.VoteCountMin > 0
+	if discoveryMode && strings.TrimSpace(stringArg(args["query"])) != "" {
+		return catalog.DiscoveryQuery{}, false, fmt.Errorf("query cannot be combined with discovery qualifiers")
+	}
+	if !discoveryMode && strings.TrimSpace(stringArg(args["query"])) == "" {
+		return catalog.DiscoveryQuery{}, false, fmt.Errorf("provide query or a discovery qualifier")
+	}
+	return query, discoveryMode, nil
+}
+
+func discoveryCode(value string, upper bool) (string, error) {
+	value = strings.TrimSpace(value)
+	if len(value) != 2 || !asciiLetter(value[0]) || !asciiLetter(value[1]) {
+		return "", fmt.Errorf("must be a two-letter code")
+	}
+	if upper {
+		return strings.ToUpper(value), nil
+	}
+	return strings.ToLower(value), nil
+}
+
+func asciiLetter(value byte) bool {
+	return value >= 'A' && value <= 'Z' || value >= 'a' && value <= 'z'
+}
+
+func boundedIntArg(args map[string]any, key string, maxValue int) (int, error) {
+	raw, ok := args[key]
+	if !ok {
+		return 0, nil
+	}
+	value, err := finiteNumber(raw)
+	if err != nil || value != math.Trunc(value) || value < 1 || value > float64(maxValue) {
+		return 0, fmt.Errorf("%s must be an integer from 1 to %d", key, maxValue)
+	}
+	return int(value), nil
+}
+
+func finiteNumber(value any) (float64, error) {
+	var number float64
+	switch value := value.(type) {
+	case float64:
+		number = value
+	case float32:
+		number = float64(value)
+	case int:
+		number = float64(value)
+	case int64:
+		number = float64(value)
+	default:
+		return 0, fmt.Errorf("not a number")
+	}
+	if math.IsNaN(number) || math.IsInf(number, 0) {
+		return 0, fmt.Errorf("not a finite number")
+	}
+	return number, nil
 }
 
 func mergeDecisionTrace(dst, src *DecisionTrace) {
@@ -162,16 +276,23 @@ func catalogTool() llm.ToolSchema {
 		Name: catalogToolName,
 		Description: "Find real titles from the library + TMDB. Provide `query` to search by title, `genres` " +
 			"to discover genre/era matches, or `keywords` to discover holidays, motifs, franchises, and topics. " +
+			"Discovery may also use explicitly requested country, original-language, runtime, and vote filters. " +
 			"Returns real external ids, genres, a short overview, available language/country/runtime/vote/keyword evidence, " +
 			"and an inLibrary flag. Missing fields mean unknown. This is the ONLY way to find titles.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"query":      map[string]any{"type": "string", "description": "title keywords (for a known title)"},
-				"keywords":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "TMDB thematic keywords, e.g. [\"Christmas\"] or [\"heist\"]"},
-				"genres":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "genre names to discover by, e.g. [\"Action\",\"Science Fiction\"]"},
-				"era":        map[string]any{"type": "string", "description": "decade or year range for discovery, e.g. \"1990s\" or \"1985-1995\""},
-				"media_type": map[string]any{"type": "string", "enum": []string{"movie", "series"}},
+				"query":             map[string]any{"type": "string", "description": "title keywords (for a known title)"},
+				"keywords":          map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "TMDB thematic keywords, e.g. [\"Christmas\"] or [\"heist\"]"},
+				"genres":            map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "genre names to discover by, e.g. [\"Action\",\"Science Fiction\"]"},
+				"era":               map[string]any{"type": "string", "description": "decade or year range for discovery, e.g. \"1990s\" or \"1985-1995\""},
+				"media_type":        map[string]any{"type": "string", "enum": []string{"movie", "series"}},
+				"original_language": map[string]any{"type": "string", "description": "explicit ISO 639-1 original-language code, e.g. \"ja\""},
+				"origin_country":    map[string]any{"type": "string", "description": "explicit ISO 3166-1 origin-country code, e.g. \"GB\""},
+				"runtime_min":       map[string]any{"type": "integer", "minimum": 1, "maximum": maxDiscoveryRuntimeMinutes},
+				"runtime_max":       map[string]any{"type": "integer", "minimum": 1, "maximum": maxDiscoveryRuntimeMinutes},
+				"vote_average_min":  map[string]any{"type": "number", "exclusiveMinimum": 0, "maximum": 10},
+				"vote_count_min":    map[string]any{"type": "integer", "minimum": 1, "maximum": maxDiscoveryVoteCount},
 			},
 		},
 	}

@@ -256,7 +256,9 @@ func TestCatalogDiscover_BackfillsInLibrary(t *testing.T) {
 		ratings: map[int]string{603: "R"},
 	})
 
-	got, err := c.Discover(context.Background(), provision.Movie, []string{"Action"}, 1990, 1999, 20)
+	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{
+		MediaType: provision.Movie, Genres: []string{"Action"}, YearFrom: 1990, YearTo: 1999,
+	}, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,7 +308,9 @@ func TestCatalogDiscover_KeepsOutsideLibraryCandidatesAfterPresenceBackfill(t *t
 	corpus := &catalogfixture.Corpus{Candidates: candidates}
 	c := catalog.New(nil, corpus).WithPresence(&catalogfixture.Presence{Hits: owned})
 
-	got, err := c.Discover(context.Background(), provision.Movie, []string{"Family"}, 0, 0, 24)
+	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{
+		MediaType: provision.Movie, Genres: []string{"Family"},
+	}, 24)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,7 +342,9 @@ func TestCatalogDiscover_ReachesOutsideLibraryCandidatesBeyondTMDBFirstPage(t *t
 	tmdbClient := tmdb.NewWithBase(tmdbServer.URL, "test-key")
 	c := catalog.New(nil, tmdbClient).WithPresence(&catalogfixture.Presence{Hits: owned})
 
-	got, err := c.Discover(context.Background(), provision.Movie, []string{"Family"}, 0, 0, 24)
+	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{
+		MediaType: provision.Movie, Genres: []string{"Family"},
+	}, 24)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -367,7 +373,7 @@ func TestCatalogDiscover_UnpinnedMediaTypeKeepsMoviesAndSeries(t *testing.T) {
 	tmdbServer.AddSeries(51_000, "Action Dispatch", 2018, []int{10759}, "An action series.")
 	c := catalog.New(nil, tmdb.NewWithBase(tmdbServer.URL, "test-key"))
 
-	got, err := c.Discover(context.Background(), "", []string{"Action"}, 0, 0, 24)
+	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{Genres: []string{"Action"}}, 24)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,8 +402,10 @@ func TestCatalogDiscoverKeywords_FindsThematicTitleAndKeepsItOutsideLibrary(t *t
 	tmdbClient := tmdb.NewWithBase(tmdbServer.URL, "test-key")
 	c := catalog.New(nil, tmdbClient).WithPresence(&catalogfixture.Presence{})
 
-	got, err := c.DiscoverKeywords(context.Background(), provision.Movie,
-		[]string{"Christmas"}, []string{"Comedy", "Family"}, 2015, 2025, 24)
+	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{
+		MediaType: provision.Movie, Keywords: []string{"Christmas"}, Genres: []string{"Comedy", "Family"},
+		YearFrom: 2015, YearTo: 2025,
+	}, 24)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,7 +445,7 @@ func TestCatalogDiscoverSnapshotsPresenceOnceAcrossBackfillBatch(t *testing.T) {
 		return rotated
 	})
 
-	got, err := c.Discover(context.Background(), provision.Movie, nil, 0, 0, 20)
+	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{MediaType: provision.Movie}, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -468,7 +476,7 @@ func TestCatalogDiscoverPreservesUpstreamRelevanceWithinOwnedOutsideBlend(t *tes
 		3: {LibraryItemID: "owned-3"}, 1: {LibraryItemID: "owned-1"},
 	}})
 
-	got, err := c.Discover(context.Background(), provision.Movie, nil, 0, 0, 4)
+	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{MediaType: provision.Movie}, 4)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -488,7 +496,7 @@ func TestCatalogDiscoverBreaksEqualSourceRanksByCanonicalIdentity(t *testing.T) 
 		{MediaType: provision.Movie, TMDBID: 20, Name: "Earlier Alphabetically", RelevanceRank: 1},
 		{MediaType: provision.Movie, TMDBID: 10, Name: "Later Alphabetically", RelevanceRank: 1},
 	}}
-	got, err := catalog.New(nil, corpus).Discover(context.Background(), provision.Movie, nil, 0, 0, 20)
+	got, err := catalog.New(nil, corpus).Discover(context.Background(), catalog.DiscoveryQuery{MediaType: provision.Movie}, 20)
 	if err != nil {
 		t.Fatal(err)
 	}

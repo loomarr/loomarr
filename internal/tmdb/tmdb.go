@@ -220,13 +220,11 @@ type discoverResponse struct {
 	Results    []discoverResult `json:"results"`
 }
 
-// Discover finds titles by GENRE + ERA rather than title text (§8 discovery path)
-// — the fix for abstract intents ("high-energy 90s action") that keyword search
-// can't surface. genres are human names (mapped to TMDB ids); era bounds the
-// primary release date (yearFrom/yearTo, 0 = unbounded). Returns enriched, grounded
-// Candidates (real ids + genres/overview). Movies + series unless a media type is
-// pinned via mt ("" = both). sort_by=popularity.desc so the strongest fits lead.
-func (c *Client) Discover(ctx context.Context, mt provision.MediaType, genres []string, yearFrom, yearTo, limit int) ([]catalog.Candidate, error) {
+// Discover finds titles through TMDB's structured movie/TV filters (§8). It
+// resolves thematic keywords, maps human genres into endpoint-specific ids, and
+// forwards already-validated scalar qualifiers. Movies + series are blended
+// unless the request pins one media type.
+func (c *Client) Discover(ctx context.Context, query catalog.DiscoveryQuery, limit int) ([]catalog.Candidate, error) {
 	ctx, err := c.operation(ctx)
 	if err != nil {
 		return nil, err
@@ -234,51 +232,25 @@ func (c *Client) Discover(ctx context.Context, mt provision.MediaType, genres []
 	if limit <= 0 {
 		limit = 20
 	}
-	var movies, series []catalog.Candidate
-	if mt == "" || mt == provision.Movie {
-		rows, err := c.discover(ctx, "/discover/movie", genreIDsForMedia(genres, provision.Movie), nil, yearFrom, yearTo, "primary_release_date", limit)
-		if err != nil {
+	var keywordIDs []int
+	var keywordNames []string
+	if len(query.Keywords) > 0 {
+		keywordIDs, keywordNames, err = c.resolveKeywordIDs(ctx, query.Keywords)
+		if err != nil || len(keywordIDs) == 0 {
 			return nil, err
 		}
-		movies = appendDiscover(movies, rows, provision.Movie)
-	}
-	if mt == "" || mt == provision.Series {
-		rows, err := c.discover(ctx, "/discover/tv", genreIDsForMedia(genres, provision.Series), nil, yearFrom, yearTo, "first_air_date", limit)
-		if err != nil {
-			return nil, err
-		}
-		series = appendDiscover(series, rows, provision.Series)
-	}
-	return blendMediaTypes(movies, series, limit), nil
-}
-
-// DiscoverKeywords resolves human thematic terms through /search/keyword and
-// feeds their real ids into TMDB discovery. Multiple terms are OR alternatives:
-// the model performs the precision step over grounded genres and overviews, while
-// this adapter preserves recall for synonyms and related holiday terms.
-func (c *Client) DiscoverKeywords(ctx context.Context, mt provision.MediaType, keywords, genres []string, yearFrom, yearTo, limit int) ([]catalog.Candidate, error) {
-	ctx, err := c.operation(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if limit <= 0 {
-		limit = 20
-	}
-	keywordIDs, keywordNames, err := c.resolveKeywordIDs(ctx, keywords)
-	if err != nil || len(keywordIDs) == 0 {
-		return nil, err
 	}
 	var movies, series []catalog.Candidate
-	if mt == "" || mt == provision.Movie {
-		rows, err := c.discover(ctx, "/discover/movie", genreIDsForMedia(genres, provision.Movie), keywordIDs, yearFrom, yearTo, "primary_release_date", limit)
+	if query.MediaType == "" || query.MediaType == provision.Movie {
+		rows, err := c.discover(ctx, "/discover/movie", genreIDsForMedia(query.Genres, provision.Movie), keywordIDs, query, "primary_release_date", limit)
 		if err != nil {
 			return nil, err
 		}
 		movies = appendDiscover(movies, rows, provision.Movie)
 		attachKeywords(movies, keywordNames)
 	}
-	if mt == "" || mt == provision.Series {
-		rows, err := c.discover(ctx, "/discover/tv", genreIDsForMedia(genres, provision.Series), keywordIDs, yearFrom, yearTo, "first_air_date", limit)
+	if query.MediaType == "" || query.MediaType == provision.Series {
+		rows, err := c.discover(ctx, "/discover/tv", genreIDsForMedia(query.Genres, provision.Series), keywordIDs, query, "first_air_date", limit)
 		if err != nil {
 			return nil, err
 		}
@@ -400,7 +372,7 @@ func (c *Client) discover(
 	path string,
 	genreIDs []int,
 	keywordIDs []int,
-	yearFrom, yearTo int,
+	query catalog.DiscoveryQuery,
 	dateField string,
 	limit int,
 ) ([]discoverResult, error) {
@@ -421,11 +393,29 @@ func (c *Client) discover(
 		}
 		q.Set("with_keywords", strings.Join(parts, "|")) // pipe = OR
 	}
-	if yearFrom > 0 {
-		q.Set(dateField+".gte", fmt.Sprintf("%04d-01-01", yearFrom))
+	if query.YearFrom > 0 {
+		q.Set(dateField+".gte", fmt.Sprintf("%04d-01-01", query.YearFrom))
 	}
-	if yearTo > 0 {
-		q.Set(dateField+".lte", fmt.Sprintf("%04d-12-31", yearTo))
+	if query.YearTo > 0 {
+		q.Set(dateField+".lte", fmt.Sprintf("%04d-12-31", query.YearTo))
+	}
+	if query.OriginalLanguage != "" {
+		q.Set("with_original_language", query.OriginalLanguage)
+	}
+	if query.OriginCountry != "" {
+		q.Set("with_origin_country", query.OriginCountry)
+	}
+	if query.RuntimeMin > 0 {
+		q.Set("with_runtime.gte", strconv.Itoa(query.RuntimeMin))
+	}
+	if query.RuntimeMax > 0 {
+		q.Set("with_runtime.lte", strconv.Itoa(query.RuntimeMax))
+	}
+	if query.VoteAverageMin > 0 {
+		q.Set("vote_average.gte", strconv.FormatFloat(query.VoteAverageMin, 'f', -1, 64))
+	}
+	if query.VoteCountMin > 0 {
+		q.Set("vote_count.gte", strconv.Itoa(query.VoteCountMin))
 	}
 	rows := make([]discoverResult, 0, limit)
 	for page := 1; len(rows) < limit; page++ {

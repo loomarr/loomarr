@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit/httpfixture"
 )
@@ -84,7 +85,7 @@ func TestDynamicAPIKey_EmptyFailsEveryOperationWithoutHTTP(t *testing.T) {
 		run  func() error
 	}{
 		{"Search", func() error { _, err := client.Search(context.Background(), "matrix", 1); return err }},
-		{"Discover", func() error { _, err := client.Discover(context.Background(), "", nil, 0, 0, 1); return err }},
+		{"Discover", func() error { _, err := client.Discover(context.Background(), catalog.DiscoveryQuery{}, 1); return err }},
 		{"Recommendations", func() error {
 			_, err := client.Recommendations(context.Background(), provision.Movie, 603, 1)
 			return err
@@ -130,7 +131,7 @@ func TestDynamicAPIKey_SnapshotsMultiRequestOperation(t *testing.T) {
 		return key.Load().(string)
 	}, transport)
 
-	if _, err := client.Discover(context.Background(), "", nil, 0, 0, 10); err != nil {
+	if _, err := client.Discover(context.Background(), catalog.DiscoveryQuery{}, 10); err != nil {
 		t.Fatal(err)
 	}
 	requests := script.Requests()

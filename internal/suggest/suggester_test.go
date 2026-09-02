@@ -323,7 +323,7 @@ func TestSuggest_HolidayKeywordDiscoversTitleWithoutHolidayInName(t *testing.T) 
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	llmMock := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{
-			"query": "Christmas", "keywords": []any{"Christmas"}, "media_type": "movie",
+			"keywords": []any{"Christmas"}, "media_type": "movie",
 		}),
 		testkit.FinalResponse(`{"channelName":"Snow Day Cinema","picks":[
 			{"mediaType":"movie","tmdbId":2401,"name":"Snowbound Reunion","confidence":0.91}
@@ -1015,6 +1015,70 @@ func TestSuggest_DiscoversByGenre(t *testing.T) {
 	}
 	if !got[100] || !got[603] {
 		t.Errorf("discovered ids should be grounded into the proposal, got %+v", all)
+	}
+}
+
+func TestSuggest_DiscoveryAppliesExplicitScalarQualifiers(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	mt := testkit.NewTMDB(t)
+	mt.SetDiscoveryEvidence(provision.Movie, 100, "en", []string{"US"}, 116, 7.3, 900)
+	mt.SetDiscoveryEvidence(provision.Movie, 101, "en", []string{"US"}, 136, 7.4, 1200)
+	mt.SetDiscoveryEvidence(provision.Movie, 603, "en", []string{"GB"}, 136, 8.7, 20_000)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{
+			"genres":            []any{"Action"},
+			"media_type":        "movie",
+			"original_language": "EN",
+			"origin_country":    "gb",
+			"runtime_min":       120,
+			"runtime_max":       150,
+			"vote_average_min":  8.0,
+			"vote_count_min":    1000,
+		}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+	)
+	s := suggest.New(llmMock, catalog.New(lib, tm), tm, 10)
+
+	proposal, err := s.Suggest(context.Background(), suggest.Intent{
+		Description: "British English action movies around two hours with at least an 8/10 from 1000 votes",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := append(append([]suggest.ProposalItem(nil), proposal.Lineup...), proposal.Acquisitions...)
+	if len(items) != 1 || items[0].TMDBID != 603 {
+		t.Fatalf("qualified discovery proposal = %+v, want only the grounded matching title", proposal)
+	}
+}
+
+func TestSuggest_MalformedDiscoveryQualifierDoesNotBroadenOrReachTMDB(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{
+			"genres": []any{"Action"}, "origin_country": "United Kingdom",
+		}),
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+	)
+	s := suggest.New(llmMock, catalog.New(lib, tm), tm, 10)
+
+	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "The Matrix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := append(append([]suggest.ProposalItem(nil), proposal.Lineup...), proposal.Acquisitions...)
+	if len(items) != 1 || items[0].TMDBID != 603 {
+		t.Fatalf("recovered proposal = %+v, want grounded title-search result", proposal)
+	}
+	for _, request := range mt.Requests() {
+		if strings.HasPrefix(request.Path, "/discover/") {
+			t.Fatalf("malformed qualifier reached TMDB as broadened discovery: %+v", mt.Requests())
+		}
 	}
 }
 
