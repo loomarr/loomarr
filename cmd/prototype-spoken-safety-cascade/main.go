@@ -28,13 +28,15 @@ import (
 )
 
 const (
-	question      = "Can a pinned native-audio LLM adjudicate KWS candidates accurately enough to remove broad human review?"
-	defaultModel  = "google/gemini-3.8-flash"
-	defaultCanon  = "google/gemini-3.8-flash-20260902"
-	defaultVendor = "Google"
-	defaultRoute  = "google-vertex/global"
-	apiBase       = "https://openrouter.ai/api/v1"
-	maxResponse   = 1 << 20
+	audioQuestion     = "Can a pinned native-audio LLM adjudicate KWS candidates accurately enough to remove broad human review?"
+	videoQuestion     = "How many native-audio candidate rejections survive an independent complete-video suitability screen?"
+	challengeQuestion = "Can the exact complete-video lane recover the prior prohibited-signal anchors before its negative agreements are trusted?"
+	defaultModel      = "google/gemini-3.8-flash"
+	defaultCanon      = "google/gemini-3.8-flash-20260902"
+	defaultVendor     = "Google"
+	defaultRoute      = "google-vertex/global"
+	apiBase           = "https://openrouter.ai/api/v1"
+	maxResponse       = 1 << 20
 )
 
 type authority struct {
@@ -61,9 +63,11 @@ type packet struct {
 }
 
 type signal struct {
-	Kind   string `json:"kind"`
-	Path   string `json:"path"`
-	SHA256 string `json:"sha256"`
+	Kind       string `json:"kind"`
+	Path       string `json:"path"`
+	SHA256     string `json:"sha256"`
+	Bytes      int64  `json:"bytes"`
+	DurationMS int64  `json:"durationMs"`
 }
 
 type policy struct {
@@ -103,6 +107,9 @@ type selectedCase struct {
 	Audio     signal
 	AudioPath string
 	AudioSHA  string
+	Video     signal
+	VideoPath string
+	VideoSHA  string
 	Windows   []window
 }
 
@@ -172,25 +179,29 @@ type requestRoute struct {
 }
 
 type options struct {
-	auto               bool
-	mode               string
-	root               string
-	authorityPath      string
-	packetsPath        string
-	policyPath         string
-	snapshotPath       string
-	outputPath         string
-	maxRequests        int
-	maxSpendNanoUSD    int64
-	maxChargeNanoUSD   int64
-	reasoningEffort    string
-	model              string
-	canonicalModel     string
-	providerName       string
-	providerSlug       string
-	kwsIDsPath         string
-	kwsResultsPath     string
-	realDiagnosticPath string
+	auto                bool
+	mode                string
+	root                string
+	authorityPath       string
+	packetsPath         string
+	policyPath          string
+	snapshotPath        string
+	outputPath          string
+	maxRequests         int
+	maxSpendNanoUSD     int64
+	maxChargeNanoUSD    int64
+	reasoningEffort     string
+	model               string
+	canonicalModel      string
+	providerName        string
+	providerSlug        string
+	kwsIDsPath          string
+	kwsResultsPath      string
+	realDiagnosticPath  string
+	cascadeReportPath   string
+	preparedPacketsPath string
+	videoManifestPath   string
+	videoChallengePath  string
 }
 
 type runner struct {
@@ -212,7 +223,7 @@ func main() {
 func run() error {
 	var opts options
 	flag.BoolVar(&opts.auto, "auto", false, "run the selected cases without waiting for keystrokes")
-	flag.StringVar(&opts.mode, "mode", "pilot", "pilot selects all clean cases plus one positive per slice; all selects every control")
+	flag.StringVar(&opts.mode, "mode", "pilot", "pilot selects control representatives; all selects every control; real adjudicates KWS candidates; corroborate screens native-audio negative candidates by video")
 	flag.StringVar(&opts.root, "root", "", "private filler development root")
 	flag.StringVar(&opts.authorityPath, "authority", "", "challenge authority JSON (defaults under root)")
 	flag.StringVar(&opts.packetsPath, "packets", "", "control packet JSONL (defaults under root)")
@@ -230,6 +241,10 @@ func run() error {
 	flag.StringVar(&opts.kwsIDsPath, "kws-ids", "", "real-corpus KWS event-to-audio ID list (defaults under root)")
 	flag.StringVar(&opts.kwsResultsPath, "kws-results", "", "real-corpus KWS event JSONL (defaults under root)")
 	flag.StringVar(&opts.realDiagnosticPath, "real-diagnostic", "", "redacted real-corpus diagnostic (defaults under root)")
+	flag.StringVar(&opts.cascadeReportPath, "cascade-report", "", "native-audio real-candidate report for corroboration (defaults under root)")
+	flag.StringVar(&opts.preparedPacketsPath, "prepared-packets", "", "full prepared corpus packet JSONL for corroboration (defaults under root)")
+	flag.StringVar(&opts.videoManifestPath, "video-manifest", "", "verified 48-case video evidence manifest for challenge replay (defaults under root)")
+	flag.StringVar(&opts.videoChallengePath, "video-challenge-result", "", "prior suitability result used only to choose challenge cases (defaults under root)")
 	flag.Parse()
 	if opts.root == "" {
 		return errors.New("--root is required")
@@ -242,17 +257,27 @@ func run() error {
 	if opts.mode == "real" && opts.maxRequests == 17 {
 		opts.maxRequests = 88
 	}
+	if opts.mode == "corroborate" && opts.maxRequests == 17 {
+		opts.maxRequests = 38
+	}
+	if opts.mode == "video-challenge" && opts.maxRequests == 17 {
+		opts.maxRequests = 3
+	}
 	if opts.outputPath == "" {
 		name := "gemini38-native-audio-control-pilot-v1.json"
 		if opts.mode == "all" {
 			name = "gemini38-native-audio-controls-full-v1.json"
 		} else if opts.mode == "real" {
 			name = "native-audio-real-kws-candidates-v1.json"
+		} else if opts.mode == "corroborate" {
+			name = "gemini38-video-corroboration-v1.json"
+		} else if opts.mode == "video-challenge" {
+			name = "gemini38-video-positive-challenge-v1.json"
 		}
 		opts.outputPath = filepath.Join(truthRoot, "spoken-safety-controls-v2", name)
 	}
-	if opts.mode != "pilot" && opts.mode != "all" && opts.mode != "real" {
-		return errors.New("--mode must be pilot, all, or real")
+	if opts.mode != "pilot" && opts.mode != "all" && opts.mode != "real" && opts.mode != "corroborate" && opts.mode != "video-challenge" {
+		return errors.New("--mode must be pilot, all, real, corroborate, or video-challenge")
 	}
 	if !slices.Contains([]string{"none", "minimal", "low", "medium", "high"}, opts.reasoningEffort) {
 		return errors.New("--reasoning-effort must be none, minimal, low, medium, or high")
@@ -312,6 +337,18 @@ func flagDefaults(opts *options, truthRoot string) {
 	if opts.realDiagnosticPath == "" {
 		opts.realDiagnosticPath = filepath.Join(real, "linux-arm64-redacted-diagnostic.json")
 	}
+	if opts.cascadeReportPath == "" {
+		opts.cascadeReportPath = filepath.Join(truthRoot, "voxtral24b-real-kws-candidates-v1.json")
+	}
+	if opts.preparedPacketsPath == "" {
+		opts.preparedPacketsPath = filepath.Join(opts.root, "prepared-v1", "packets.jsonl")
+	}
+	if opts.videoManifestPath == "" {
+		opts.videoManifestPath = filepath.Join(truthRoot, "evidence-v1", "public", "manifest.json")
+	}
+	if opts.videoChallengePath == "" {
+		opts.videoChallengePath = filepath.Join(truthRoot, "suitability-gemini37-video-full-2026-09-02.json")
+	}
 }
 
 func loadRunner(opts options, apiKey string) (*runner, error) {
@@ -338,6 +375,20 @@ func loadRunner(opts options, apiKey string) (*runner, error) {
 			return nil, err
 		}
 		evidencePaths = append(evidencePaths, opts.kwsIDsPath, opts.kwsResultsPath, opts.realDiagnosticPath)
+	} else if opts.mode == "corroborate" {
+		var err error
+		selected, err = selectCorroborationCases(opts)
+		if err != nil {
+			return nil, err
+		}
+		evidencePaths = append(evidencePaths, opts.kwsIDsPath, opts.kwsResultsPath, opts.realDiagnosticPath, opts.cascadeReportPath, opts.preparedPacketsPath)
+	} else if opts.mode == "video-challenge" {
+		var err error
+		selected, err = selectVideoChallengeCases(opts)
+		if err != nil {
+			return nil, err
+		}
+		evidencePaths = append(evidencePaths, opts.videoManifestPath, opts.videoChallengePath)
 	} else {
 		var auth authority
 		if err := readJSON(opts.authorityPath, &auth); err != nil {
@@ -364,7 +415,7 @@ func loadRunner(opts options, apiKey string) (*runner, error) {
 	result := &runner{
 		options: opts, apiKey: apiKey, policy: privatePolicy, cases: selected,
 		state: prototypeState{
-			Question: question, Mode: opts.mode, Model: opts.model, CanonicalModel: opts.canonicalModel,
+			Question: questionForMode(opts.mode), Mode: opts.mode, Model: opts.model, CanonicalModel: opts.canonicalModel,
 			ProviderSlug: opts.providerSlug, ReasoningEffort: opts.reasoningEffort,
 			SnapshotSHA256: evidenceHashes[0], PolicySHA256: evidenceHashes[1], PlannedCases: len(selected),
 		},
@@ -374,11 +425,32 @@ func loadRunner(opts options, apiKey string) (*runner, error) {
 		result.state.KWSIDsSHA256 = evidenceHashes[2]
 		result.state.KWSResultsSHA256 = evidenceHashes[3]
 		result.state.RealDiagnosticSHA256 = evidenceHashes[4]
+	} else if opts.mode == "corroborate" {
+		result.state.KWSIDsSHA256 = evidenceHashes[2]
+		result.state.KWSResultsSHA256 = evidenceHashes[3]
+		result.state.RealDiagnosticSHA256 = evidenceHashes[4]
+		result.state.CascadeReportSHA256 = evidenceHashes[5]
+		result.state.PreparedPacketsSHA256 = evidenceHashes[6]
+		result.state.PromptSHA256 = hash([]byte(videoSuitabilitySystemPrompt))
+	} else if opts.mode == "video-challenge" {
+		result.state.VideoManifestSHA256 = evidenceHashes[2]
+		result.state.ChallengeResultSHA256 = evidenceHashes[3]
+		result.state.PromptSHA256 = hash([]byte(videoSuitabilitySystemPrompt))
 	} else {
 		result.state.AuthoritySHA256 = evidenceHashes[2]
 		result.state.PacketsSHA256 = evidenceHashes[3]
 	}
 	return result, nil
+}
+
+func questionForMode(mode string) string {
+	if mode == "video-challenge" {
+		return challengeQuestion
+	}
+	if mode == "corroborate" {
+		return videoQuestion
+	}
+	return audioQuestion
 }
 
 func selectCases(opts options, cases []challengeCase, packets map[string]packet) ([]selectedCase, error) {
@@ -573,6 +645,13 @@ func (r *runner) next(ctx context.Context) error {
 }
 
 func (r *runner) call(ctx context.Context, selected selectedCase) (observation, error) {
+	if r.options.mode == "corroborate" || r.options.mode == "video-challenge" {
+		return r.callVideo(ctx, selected)
+	}
+	return r.callAudio(ctx, selected)
+}
+
+func (r *runner) callAudio(ctx context.Context, selected selectedCase) (observation, error) {
 	path := selected.AudioPath
 	expectedSHA := selected.AudioSHA
 	if path == "" {
@@ -783,12 +862,16 @@ func validateRoute(wire chatResponse, opts options) error {
 }
 
 func validateSnapshot(value snapshot, opts options) error {
+	requiredModality := "audio"
+	if opts.mode == "corroborate" || opts.mode == "video-challenge" {
+		requiredModality = "video"
+	}
 	for _, model := range value.Models {
 		if model.ID != opts.model {
 			continue
 		}
-		if model.CanonicalSlug != opts.canonicalModel || !slices.Contains(model.InputModalities, "audio") {
-			return errors.New("snapshot model identity or audio capability drifted")
+		if model.CanonicalSlug != opts.canonicalModel || !slices.Contains(model.InputModalities, requiredModality) {
+			return fmt.Errorf("snapshot model identity or %s capability drifted", requiredModality)
 		}
 		for _, endpoint := range model.Endpoints {
 			if endpoint.ProviderName == opts.providerName && endpoint.ProviderSlug == opts.providerSlug && endpoint.ZDR &&
@@ -798,7 +881,7 @@ func validateSnapshot(value snapshot, opts options) error {
 			}
 		}
 	}
-	return errors.New("snapshot does not prove the pinned native-audio ZDR route")
+	return fmt.Errorf("snapshot does not prove the pinned native-%s ZDR route", requiredModality)
 }
 
 func (r *runner) interactive() error {
@@ -835,7 +918,7 @@ func (r *runner) interactive() error {
 func (r *runner) render(status string) {
 	fmt.Print("\x1b[2J\x1b[H")
 	fmt.Printf("\x1b[1mTHROWAWAY SPOKEN-SAFETY CASCADE PROTOTYPE\x1b[0m\n")
-	fmt.Printf("\x1b[2mQuestion: %s\x1b[0m\n\n", question)
+	fmt.Printf("\x1b[2mQuestion: %s\x1b[0m\n\n", r.state.Question)
 	fmt.Printf("\x1b[1mstatus\x1b[0m              %s\n", status)
 	fmt.Printf("\x1b[1mmode\x1b[0m                %s\n", r.state.Mode)
 	fmt.Printf("\x1b[1mreasoning\x1b[0m           %s\n", r.state.ReasoningEffort)
@@ -843,7 +926,7 @@ func (r *runner) render(status string) {
 	fmt.Printf("\x1b[1mrequests\x1b[0m            %d/%d\n", r.state.Requests, r.options.maxRequests)
 	fmt.Printf("\x1b[1mcharged\x1b[0m             $%.9f / $%.2f\n", float64(r.state.ChargedNanoUSD)/1e9, float64(r.options.maxSpendNanoUSD)/1e9)
 	fmt.Printf("\x1b[1mdecisions\x1b[0m           detected=%d absent=%d unclear=%d failure=%d\n", r.state.Detected, r.state.Absent, r.state.Unclear, r.state.Failures)
-	if r.state.Mode == "real" {
+	if r.state.Mode == "real" || r.state.Mode == "corroborate" || r.state.Mode == "video-challenge" {
 		fmt.Printf("\x1b[1mknown positive\x1b[0m      retained=%d missed-or-held=%d\n", r.state.KnownPositiveHeld, r.state.KnownPositiveMissed)
 		fmt.Printf("\x1b[1munlabelled candidates\x1b[0m retained=%d rejected=%d held=%d\n", r.state.UnlabelledRetained, r.state.UnlabelledRejected, r.state.UnlabelledHeld)
 	} else {
