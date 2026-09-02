@@ -27,7 +27,11 @@ const (
 	conditioningFFmpegOutputLimit = 256 << 10
 	conditioningSnapshotCopyChunk = 64 << 10
 	conditioningFrameReadInterval = "%+120.000001"
-	conditioningDetectorTail      = "tpad=stop_mode=add:stop=1:color=black,tpad=stop_mode=add:stop=1:color=white,"
+	// ffmpeg and ffprobe render terminal timestamps independently. A detector end
+	// may exceed the decoded EOF by a decimal microsecond even when both describe
+	// the same final audio sample; accept at most one millisecond, then clamp it.
+	conditioningDetectorEndToleranceMs = 1
+	conditioningDetectorTail           = "tpad=stop_mode=add:stop=1:color=black,tpad=stop_mode=add:stop=1:color=white,"
 )
 
 var (
@@ -133,10 +137,6 @@ type conditioningProbeJSON struct {
 	} `json:"format"`
 }
 
-type conditioningFrameProbeJSON struct {
-	Frames []conditioningProbeFrameJSON `json:"frames"`
-}
-
 type conditioningProbeStreamJSON struct {
 	Index        *int   `json:"index"`
 	CodecType    string `json:"codec_type"`
@@ -233,18 +233,11 @@ func (t *FFmpegTools) MeasureConditioning(ctx context.Context, req ConditioningR
 	if err != nil {
 		return ConditioningMeasurement{}, err
 	}
-	frameRaw, err := runConditioningCommand(ctx, t.FFprobePath, conditioningProbeOutputLimit, false,
-		"-v", "error", "-read_intervals", conditioningFrameReadInterval, "-show_frames",
-		"-show_entries", "frame=stream_index,pts_time,best_effort_timestamp_time,duration_time,nb_samples",
-		"-of", "json", artifactPath)
+	frames, err := conditioningSelectedFrames(ctx, t.FFprobePath, artifactPath, detectorStreams)
 	if err != nil {
 		return ConditioningMeasurement{}, fmt.Errorf("condition decoded frame probe: %w", err)
 	}
-	var frameProbe conditioningFrameProbeJSON
-	if err := json.Unmarshal(frameRaw, &frameProbe); err != nil {
-		return ConditioningMeasurement{}, fmt.Errorf("%w: parse decoded frame JSON: %v", ErrConditioningOutput, err)
-	}
-	if err := bindConditioningDetectorEOFs(&detectorStreams, probed.Streams, frameProbe.Frames); err != nil {
+	if err := bindConditioningDetectorEOFs(&detectorStreams, probed.Streams, frames); err != nil {
 		return ConditioningMeasurement{}, err
 	}
 	detectorOutput, err := t.conditioningDetectorOutput(ctx, artifactPath, detectorStreams)
@@ -271,6 +264,79 @@ func (t *FFmpegTools) MeasureConditioning(ctx context.Context, req ConditioningR
 		measurement.Cuts = append(measurement.Cuts, matched)
 	}
 	return measurement, nil
+}
+
+// conditioningSelectedFrames bounds each selected stream independently. A
+// single valid audio stream can contain thousands of decoded frames and exceed
+// a shared probe-output cap even though its own bounded evidence is valid.
+func conditioningSelectedFrames(ctx context.Context, ffprobePath, artifactPath string, selected conditioningDetectorStreams) ([]conditioningProbeFrameJSON, error) {
+	streams := []*ConditioningStream{selected.video, selected.audio}
+	frames := make([]conditioningProbeFrameJSON, 0)
+	for _, stream := range streams {
+		if stream == nil {
+			continue
+		}
+		specifier, err := conditioningStreamSpecifier(stream.Kind)
+		if err != nil {
+			return nil, err
+		}
+		frameEntries := "frame=pts_time,best_effort_timestamp_time,duration_time"
+		if stream.Kind == StreamAudio {
+			frameEntries = "frame=pts_time,best_effort_timestamp_time,nb_samples"
+		}
+		raw, err := runConditioningCommand(ctx, ffprobePath, conditioningProbeOutputLimit, false,
+			"-v", "error", "-read_intervals", conditioningFrameReadInterval, "-select_streams", specifier, "-show_frames",
+			"-show_entries", frameEntries,
+			"-of", "compact=p=0:nk=1", artifactPath)
+		if err != nil {
+			return nil, err
+		}
+		probe, err := parseConditioningCompactFrames(raw, stream.Kind, stream.Index)
+		if err != nil {
+			return nil, err
+		}
+		frames = append(frames, probe...)
+	}
+	return frames, nil
+}
+
+func conditioningStreamSpecifier(kind StreamKind) (string, error) {
+	switch kind {
+	case StreamVideo:
+		return "v:0", nil
+	case StreamAudio:
+		return "a:0", nil
+	default:
+		return "", fmt.Errorf("%w: selected detector stream has unknown kind %q", ErrConditioningOutput, kind)
+	}
+}
+
+func parseConditioningCompactFrames(raw []byte, kind StreamKind, index int) ([]conditioningProbeFrameJSON, error) {
+	frames := make([]conditioningProbeFrameJSON, 0)
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		if line == "" {
+			continue
+		}
+		fields := strings.Split(line, "|")
+		if len(fields) < 3 {
+			return nil, fmt.Errorf("%w: decoded frame record has %d fields", ErrConditioningOutput, len(fields))
+		}
+		frame := conditioningProbeFrameJSON{StreamIndex: new(int), PTS: fields[0], BestEffortTimestamp: fields[1], Duration: fields[2]}
+		*frame.StreamIndex = index
+		if kind == StreamAudio {
+			samples, err := strconv.ParseInt(fields[2], 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("%w: selected audio frame has invalid sample count", ErrConditioningOutput)
+			}
+			frame.Duration = ""
+			frame.NumberOfSamples = &samples
+		}
+		frames = append(frames, frame)
+	}
+	if len(frames) == 0 {
+		return nil, fmt.Errorf("%w: selected %s stream %d has no decoded frames", ErrConditioningOutput, kind, index)
+	}
+	return frames, nil
 }
 
 type conditioningInputSnapshots struct {
@@ -556,10 +622,11 @@ func checkedConditioningSub(a, b int64) (int64, error) {
 }
 
 type conditioningDetectorStreams struct {
-	video    *ConditioningStream
-	audio    *ConditioningStream
-	videoEOF conditioningDetectorScalar
-	audioEOF conditioningDetectorScalar
+	video       *ConditioningStream
+	audio       *ConditioningStream
+	videoEOF    conditioningDetectorScalar
+	audioEOF    conditioningDetectorScalar
+	videoTailMs int64
 }
 
 func selectConditioningDetectorStreams(streams []ConditioningStream) (conditioningDetectorStreams, error) {
@@ -592,6 +659,11 @@ func bindConditioningDetectorEOFs(selected *conditioningDetectorStreams, probedS
 			return err
 		}
 		selected.videoEOF = eof
+		tailMs, err := conditioningVideoDetectorTailAllowance(selected.video.Index, frames, *selected.video)
+		if err != nil {
+			return err
+		}
+		selected.videoTailMs = tailMs
 	}
 	if selected.audio != nil {
 		sampleRate := ""
@@ -749,7 +821,7 @@ func parseConditioningDetectorEvents(raw string, containerDurationMs int64, stre
 	audioTimeline := conditioningDetectorTimeline{eof: zero}
 	if streams.video != nil {
 		videoTimeline.eof = streams.videoEOF
-		videoTimeline.tailMs = conditioningDetectorTailAllowance(*streams.video)
+		videoTimeline.tailMs = streams.videoTailMs
 	}
 	if streams.audio != nil {
 		audioTimeline.eof = streams.audioEOF
@@ -889,7 +961,7 @@ func completeConditioningDetectorIntervalFromStart(kind string, start conditioni
 }
 
 func completeConditioningDetectorIntervalFromScalars(kind string, start conditioningDetectorScalar, endRaw string, detectorDuration conditioningDetectorScalar, timeline conditioningDetectorTimeline, seen map[conditioningDetectorIntervalKey]struct{}) (*Interval, error) {
-	end, err := parseConditioningDetectorTime(endRaw, timeline.maximumSeconds())
+	end, err := parseConditioningDetectorEndTime(endRaw, timeline.maximumSeconds())
 	if err != nil || end.seconds.Cmp(start.seconds) <= 0 || end.ms <= start.ms {
 		return nil, fmt.Errorf("%w: detector interval is inverted or out of range", ErrConditioningOutput)
 	}
@@ -918,6 +990,21 @@ func parseConditioningDetectorTime(raw string, maximumSeconds *big.Rat) (conditi
 		return conditioningDetectorScalar{}, fmt.Errorf("%w: detector time %q is outside the permitted timeline", ErrConditioningOutput, raw)
 	}
 	return value, nil
+}
+
+func parseConditioningDetectorEndTime(raw string, maximumSeconds *big.Rat) (conditioningDetectorScalar, error) {
+	value, err := parseConditioningDetectorScalar(raw)
+	if err != nil {
+		return conditioningDetectorScalar{}, err
+	}
+	if value.seconds.Cmp(maximumSeconds) <= 0 {
+		return value, nil
+	}
+	excess := new(big.Rat).Sub(value.seconds, maximumSeconds)
+	if excess.Cmp(big.NewRat(conditioningDetectorEndToleranceMs, 1_000)) <= 0 {
+		return value, nil
+	}
+	return conditioningDetectorScalar{}, fmt.Errorf("%w: detector end time %q is outside the permitted timeline", ErrConditioningOutput, raw)
 }
 
 func parseConditioningDetectorDuration(raw string, maximumSeconds *big.Rat) (conditioningDetectorScalar, error) {
@@ -966,6 +1053,44 @@ func conditioningDetectorTailAllowance(stream ConditioningStream) int64 {
 		return ConditioningMaxDurationMs
 	}
 	return max(int64(1), frameMs.Int64()) + 1
+}
+
+func conditioningVideoDetectorTailAllowance(index int, frames []conditioningProbeFrameJSON, stream ConditioningStream) (int64, error) {
+	fallback := conditioningDetectorTailAllowance(stream)
+	var latest, previous *big.Rat
+	for _, frame := range frames {
+		if frame.StreamIndex == nil || *frame.StreamIndex != index {
+			continue
+		}
+		ptsRaw := frame.BestEffortTimestamp
+		if ptsRaw == "" || strings.EqualFold(ptsRaw, "N/A") {
+			ptsRaw = frame.PTS
+		}
+		pts, ok := new(big.Rat).SetString(ptsRaw)
+		if !ok || pts.Sign() < 0 {
+			return 0, fmt.Errorf("%w: selected video stream %d has invalid frame timestamp", ErrConditioningOutput, index)
+		}
+		switch {
+		case latest == nil || pts.Cmp(latest) > 0:
+			previous = latest
+			latest = pts
+		case pts.Cmp(latest) < 0 && (previous == nil || pts.Cmp(previous) > 0):
+			previous = pts
+		}
+	}
+	if latest == nil || previous == nil {
+		return fallback, nil
+	}
+	deltaMs := new(big.Rat).Mul(new(big.Rat).Sub(latest, previous), big.NewRat(1_000, 1))
+	quotient, remainder := new(big.Int), new(big.Int)
+	quotient.QuoRem(deltaMs.Num(), deltaMs.Denom(), remainder)
+	if remainder.Sign() > 0 {
+		quotient.Add(quotient, big.NewInt(1))
+	}
+	if !quotient.IsInt64() || quotient.Int64() >= ConditioningMaxDurationMs {
+		return ConditioningMaxDurationMs, nil
+	}
+	return max(fallback, quotient.Int64()+1), nil
 }
 
 func parseConditioningLoudness(raw string) (ConditioningLoudness, error) {

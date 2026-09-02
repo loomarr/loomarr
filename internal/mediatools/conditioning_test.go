@@ -162,7 +162,7 @@ func TestMeasureConditioningPreflightsExactDurationBeforeFrameEnumeration(t *tes
 			probe := testkit.POSIXExecutable(t, "conditioning-tool", `case " $* " in
   *" -show_frames "*)
     touch "`+framesReached+`"
-    printf '%s\n' '{"frames":[{"stream_index":0,"best_effort_timestamp_time":"0","duration_time":"120"}]}' ;;
+    printf '%s\n' '0|0|120' ;;
   *) printf '%s\n' '{"streams":[{"index":0,"codec_type":"video","start_time":"0","duration":"`+duration+`","avg_frame_rate":"25/1"}],"format":{"duration":"`+duration+`"}}' ;;
 esac`)
 			got, err := mediatools.NewFFmpegTools(testkit.POSIXExecutable(t, "conditioning-tool", "exit 0"), probe, "", "", "").MeasureConditioning(context.Background(), mediatools.ConditioningRequest{Path: artifact})
@@ -191,7 +191,7 @@ func TestMeasureConditioningBoundsSparseFrameEnumerationIndependentlyOfOutput(t 
 	probe := testkit.POSIXExecutable(t, "conditioning-tool", `case " $* " in
   *" -show_frames "*)
     case " $* " in *" -read_intervals %+120.000001 "*) ;; *) touch "`+unbounded+`"; exit 91 ;; esac
-    printf '%s\n' '{"frames":[{"stream_index":0,"best_effort_timestamp_time":"119","duration_time":"1"}]}' ;;
+    printf '%s\n' '119|119|1' ;;
   *) printf '%s\n' '{"streams":[{"index":0,"codec_type":"video","start_time":"0","duration":"120","avg_frame_rate":"25/1"}],"format":{"duration":"120"}}' ;;
 esac`)
 	_, err := mediatools.NewFFmpegTools(testkit.POSIXExecutable(t, "conditioning-tool", "exit 0"), probe, "", "", "").MeasureConditioning(context.Background(), mediatools.ConditioningRequest{Path: artifact})
@@ -203,11 +203,49 @@ esac`)
 	}
 }
 
+func TestMeasureConditioningProbesSelectedFramesSeparatelyWithinOutputBound(t *testing.T) {
+	artifact := conditioningArtifact(t, "fixture.mp4")
+	probe := testkit.POSIXExecutable(t, "conditioning-tool", `case " $* " in
+  *" -show_frames "*)
+    case " $* " in
+      *" -select_streams v:0 "*" -of compact=p=0:nk=1 "*) printf '%s\n' '0|0|2|H.264 side data' ;;
+      *" -select_streams a:0 "*" -of compact=p=0:nk=1 "*) printf '%s\n' '0|0|2000|audio side data' ;;
+      *) yes 0123456789abcdef | head -c 1048577 ;;
+    esac ;;
+  *) printf '%s\n' '{"streams":[{"index":0,"codec_type":"video","start_time":"0","duration":"2","avg_frame_rate":"25/1"},{"index":1,"codec_type":"audio","start_time":"0","duration":"2","sample_rate":"1000"}],"format":{"duration":"2"}}' ;;
+esac`)
+	ffmpeg := conditioningLoudnessExecutable(t, "-3.0")
+	if _, err := mediatools.NewFFmpegTools(ffmpeg, probe, "", "", "").MeasureConditioning(context.Background(), mediatools.ConditioningRequest{Path: artifact}); err != nil {
+		t.Fatalf("separately bounded selected-frame probes: %v", err)
+	}
+}
+
+func TestMeasureConditioningToleratesOneMicrosecondTerminalDetectorRounding(t *testing.T) {
+	artifact := conditioningArtifact(t, "fixture.mp4")
+	probe := testkit.POSIXExecutable(t, "conditioning-tool", `case " $* " in
+  *" -show_frames "*) printf '%s\n' '0|0|60544579' ;;
+  *) printf '%s\n' '{"streams":[{"index":0,"codec_type":"audio","start_time":"0","duration":"60.544579","sample_rate":"1000000"}],"format":{"duration":"60.544579"}}' ;;
+esac`)
+	ffmpeg := testkit.POSIXExecutable(t, "conditioning-tool", `cat >&2 <<'EOF'
+[Parsed_silencedetect_1 @ 0xabc] silence_start: 59.433333
+[Parsed_silencedetect_1 @ 0xabc] silence_end: 60.544580 | silence_duration: 1.111247
+ I: -24.0 LUFS
+ Peak: -3.0 dBFS
+EOF`)
+	got, err := mediatools.NewFFmpegTools(ffmpeg, probe, "", "", "").MeasureConditioning(context.Background(), mediatools.ConditioningRequest{Path: artifact})
+	if err != nil {
+		t.Fatalf("one-microsecond terminal detector rounding: %v", err)
+	}
+	if got.Quality.Silence[len(got.Quality.Silence)-1].EndMs != 60_545 {
+		t.Fatalf("terminal silence = %+v, want clamp at 60545ms", got.Quality.Silence)
+	}
+}
+
 func TestMeasureConditioningRejectsExactDecodedEOFPastLimit(t *testing.T) {
 	artifact := conditioningArtifact(t, "fixture.mp4")
 	detectorRan := filepath.Join(t.TempDir(), "detector-ran")
 	probe := testkit.POSIXExecutable(t, "conditioning-tool", `case " $* " in
-  *" -show_frames "*) printf '%s\n' '{"frames":[{"stream_index":0,"best_effort_timestamp_time":"0","duration_time":"120.000000001"}]}' ;;
+  *" -show_frames "*) printf '%s\n' '0|0|120.000000001' ;;
   *) printf '%s\n' '{"streams":[{"index":0,"codec_type":"video","start_time":"0","duration":"120","avg_frame_rate":"25/1"}],"format":{"duration":"120"}}' ;;
 esac`)
 	ffmpeg := testkit.POSIXExecutable(t, "conditioning-tool", `touch "`+detectorRan+`"`)
@@ -475,7 +513,12 @@ func TestMeasureConditioningAllowsOneMillisecondDetectorDurationTolerance(t *tes
 func TestMeasureConditioningUsesExplicitSelectedStreamEOFs(t *testing.T) {
 	artifact := conditioningArtifact(t, "fixture.mp4")
 	probe := testkit.POSIXExecutable(t, "conditioning-tool", `case " $* " in
-  *" -show_frames "*) printf '%s\n' '{"frames":[{"stream_index":3,"best_effort_timestamp_time":"4","nb_samples":10004},{"stream_index":2,"best_effort_timestamp_time":"3","duration_time":"1.0004"},{"stream_index":3,"best_effort_timestamp_time":"0","nb_samples":10000},{"stream_index":2,"best_effort_timestamp_time":"0","duration_time":"1"}]}' ;;
+  *" -show_frames "*)
+    case " $* " in
+      *" -select_streams v:0 "*) printf '%s\n' '3|3|1.0004' '0|0|1' ;;
+      *" -select_streams a:0 "*) printf '%s\n' '4|4|10004' '0|0|10000' ;;
+      *) exit 93 ;;
+    esac ;;
   *) printf '%s\n' '{"streams":[{"index":5,"codec_type":"video","start_time":"0","duration":"3","avg_frame_rate":"25/1"},{"index":2,"codec_type":"video","start_time":"0","duration":"3.5","avg_frame_rate":"25/1"},{"index":7,"codec_type":"audio","start_time":"0","duration":"6","sample_rate":"10000"},{"index":3,"codec_type":"audio","start_time":"0","duration":"4.5","sample_rate":"10000"}],"format":{"duration":"6"}}' ;;
 esac`)
 	ffmpeg := testkit.POSIXExecutable(t, "conditioning-tool", `
@@ -577,6 +620,22 @@ EOF`)
 	}
 	if len(got.Quality.Black) != 0 || len(got.Quality.Freeze) != 0 {
 		t.Fatalf("terminator-only evidence leaked: %+v", got.Quality)
+	}
+}
+
+func TestMeasureConditioningBoundsTerminatorTailFromFinalDecodedStep(t *testing.T) {
+	artifact := conditioningArtifact(t, "fixture.mp4")
+	probe := testkit.POSIXExecutable(t, "conditioning-tool", `case " $* " in
+  *" -show_frames "*) printf '%s\n' '0|0|0.033' '3|3|0.033' '3.4|3.4|0.033' ;;
+  *) printf '%s\n' '{"streams":[{"index":0,"codec_type":"video","start_time":"0","duration":"3.433","avg_frame_rate":"30/1"}],"format":{"duration":"3.433"}}' ;;
+esac`)
+	ffmpeg := testkit.POSIXExecutable(t, "conditioning-tool", `printf '%s\n' '[Parsed_blackdetect_2 @ 0xabc] black_start:3 black_end:3.833 black_duration:0.833' >&2`)
+	got, err := mediatools.NewFFmpegTools(ffmpeg, probe, "", "", "").MeasureConditioning(context.Background(), mediatools.ConditioningRequest{Path: artifact})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Quality.Black) != 1 || got.Quality.Black[0] != (mediatools.Interval{StartMs: 3_000, EndMs: 3_433}) {
+		t.Fatalf("sparse terminator interval = %+v, want clamp at decoded EOF", got.Quality.Black)
 	}
 }
 
@@ -840,9 +899,12 @@ func conditioningPacketExecutable(t *testing.T, audioDurationState string) strin
 	}
 	return testkit.POSIXExecutable(t, "conditioning-tool", `case " $* " in
   *" -show_packets "*) ;;
-  *" -show_frames "*) cat <<'EOF'
-{"frames":[{"stream_index":0,"best_effort_timestamp_time":"0","duration_time":"10"},{"stream_index":1,"best_effort_timestamp_time":"0","nb_samples":10000}]}
-EOF
+  *" -show_frames "*)
+     case " $* " in
+       *" -select_streams v:0 "*) printf '%s\n' '0|0|10' ;;
+       *" -select_streams a:0 "*) printf '%s\n' '0|0|10000' ;;
+       *) exit 93 ;;
+     esac
      exit 0 ;;
   *) cat <<'EOF'
 {"streams":[{"index":0,"codec_type":"video","start_time":"0","duration":"10","avg_frame_rate":"30000/1001"},{"index":1,"codec_type":"audio","start_time":"0","duration":"10","sample_rate":"1000"},{"index":2,"codec_type":"audio","start_time":"0","duration":"10"}],"format":{"duration":"10"}}
@@ -896,6 +958,9 @@ func conditioningExactProbe(t *testing.T, raw string) string {
 	if err := json.Unmarshal([]byte(raw), &probe); err != nil {
 		t.Fatal(err)
 	}
+	videoIndex, audioIndex := 0, 0
+	haveVideo, haveAudio := false, false
+	videoFrame, audioFrame := "", ""
 	for i := range probe.Streams {
 		stream := &probe.Streams[i]
 		if stream.Index == nil || stream.Duration == "" {
@@ -903,9 +968,11 @@ func conditioningExactProbe(t *testing.T, raw string) string {
 		}
 		switch stream.CodecType {
 		case "video":
-			probe.Frames = append(probe.Frames, map[string]any{
-				"stream_index": *stream.Index, "best_effort_timestamp_time": "0", "duration_time": stream.Duration,
-			})
+			if !haveVideo || *stream.Index < videoIndex {
+				haveVideo = true
+				videoIndex = *stream.Index
+				videoFrame = "0|0|" + stream.Duration
+			}
 		case "audio":
 			seconds, ok := new(big.Rat).SetString(stream.Duration)
 			if !ok || seconds.Sign() <= 0 {
@@ -916,28 +983,25 @@ func conditioningExactProbe(t *testing.T, raw string) string {
 				t.Fatalf("fake audio duration %q is not exactly representable at 1MHz", stream.Duration)
 			}
 			stream.SampleRate = "1000000"
-			probe.Frames = append(probe.Frames, map[string]any{
-				"stream_index": *stream.Index, "best_effort_timestamp_time": "0", "nb_samples": samples.Num().Int64(),
-			})
+			if !haveAudio || *stream.Index < audioIndex {
+				haveAudio = true
+				audioIndex = *stream.Index
+				audioFrame = "0|0|" + samples.Num().String()
+			}
 		}
 	}
-	frames := probe.Frames
 	probe.Frames = nil
 	metadata, err := json.Marshal(probe)
 	if err != nil {
 		t.Fatal(err)
 	}
-	frameProbe, err := json.Marshal(struct {
-		Frames []map[string]any `json:"frames"`
-	}{Frames: frames})
-	if err != nil {
-		t.Fatal(err)
-	}
 	return testkit.POSIXExecutable(t, "conditioning-tool", `case " $* " in
-  *" -show_frames "*) cat <<'EOF'
-`+string(frameProbe)+`
-EOF
-    ;;
+  *" -show_frames "*)
+    case " $* " in
+      *" -select_streams v:0 "*) printf '%s\n' '`+videoFrame+`' ;;
+      *" -select_streams a:0 "*) printf '%s\n' '`+audioFrame+`' ;;
+      *) exit 93 ;;
+    esac ;;
   *) cat <<'EOF'
 `+string(metadata)+`
 EOF
