@@ -7376,10 +7376,16 @@ and process restart without making a client-writable scope an authorization fact
 A single pure deterministic discovery ranker consumes grounded candidate metadata plus effective
 signals. Explicit includes/excludes, grounding, audience safety, approval, and quotas remain outside
 and above it. `never` is a hard candidate exclusion; `keep` protects an existing lineup item from
-automatic retirement; `less` is a bounded exact-title demotion and may also demote a same-genre
-candidate when that relationship is present in the grounded batch; and `surprise` is a bounded
-positive signal. Outside-Library candidates receive a novelty tie-break, but relevance remains the
-primary rank band. Ranking affects only a later fresh proposal or re-curation proposal. It never
+automatic retirement; and `less` is a bounded exact-title demotion that also demotes a same-genre
+candidate when that relationship is present in the grounded batch. `surprise` never boosts the
+marked title. Instead, the presence of an effective `surprise` signal enables a deterministic
+diversity pass inside each unchanged relevance/preference band. The pass seeds its covered genres
+from surprised targets present in the grounded batch, then gives each next candidate at most one
+new-genre point in addition to the existing outside-Library novelty point;
+canonical provisioning identity remains the final tie-break. A missing target or missing genre
+metadata creates no inferred relationship. Relevance and preference bands therefore remain hard
+floors while a grounded batch becomes more varied. Ranking affects only a later fresh proposal or
+re-curation proposal. It never
 edits current playout, and no playback/broadcast history is converted into taste.
 `make eval-matrix` runs that unchanged corpus twice—once with the configured local generator and once
 through OpenRouter's OpenAI-compatible endpoint—and writes separate named scorecards. Both generator

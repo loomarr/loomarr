@@ -110,7 +110,10 @@ func TestDiscoveryFeedback_DurableRecurationKeepsChannelScope(t *testing.T) {
 		t.Fatalf("generator calls = %d, want 8 for four durable recurate attempts", llmMock.Calls)
 	}
 	toolOrders.capture(llmMock.LastMessages)
-	if got, want := toolOrders.all(), [][]int{{100, 101}, {603, 101}, {603, 100, 101}, {603, 101}}; !slices.EqualFunc(got, want, slices.Equal) {
+	// The household surprise target is Matrix (603). It never boosts Matrix itself: when a
+	// Channel override does not exclude it, the grounded Thriller neighbors widen the batch
+	// ahead of the marked Action/Sci-Fi anchor. Channel-scoped never still wins first.
+	if got, want := toolOrders.all(), [][]int{{100, 101}, {101, 603}, {100, 101, 603}, {101, 603}}; !slices.EqualFunc(got, want, slices.Equal) {
 		t.Fatalf("grounded rank orders = %v, want %v", got, want)
 	}
 }

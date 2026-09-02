@@ -1,6 +1,8 @@
 package suggest
 
 import (
+	"bytes"
+	"encoding/json"
 	"slices"
 	"testing"
 
@@ -45,6 +47,82 @@ func TestRankGroundedCandidatesAppliesExplicitFeedbackDeterministically(t *testi
 	if !foundNever || trace.RecordedTotal != len(candidates) || trace.Terminal != "" {
 		t.Fatalf("never exclusion was not preserved as a bounded decision: %+v", trace)
 	}
+}
+
+func TestRankGroundedCandidatesSurpriseDiversifiesWithinRelevanceBand(t *testing.T) {
+	candidates := []catalog.Candidate{
+		{MediaType: provision.Movie, TMDBID: 100, Name: "Space Anchor", Genres: []string{"Science Fiction"}, InLibrary: true},
+		{MediaType: provision.Movie, TMDBID: 200, Name: "Space Familiar", Genres: []string{"Science Fiction"}},
+		{MediaType: provision.Movie, TMDBID: 300, Name: "Space Western", Genres: []string{"Western"}},
+		{MediaType: provision.Movie, TMDBID: 400, Name: "Unrelated Western", Genres: []string{"Western"}},
+	}
+	baseline := candidateIDs(RankGroundedCandidates("space", candidates, nil))
+	if baseline[0] != 200 {
+		t.Fatalf("baseline = %v, fixture must put the familiar canonical tie first", baseline)
+	}
+
+	signals := []FeedbackSignal{{Target: "movie:tmdb:100", Action: FeedbackSurprise}}
+	ranked := RankGroundedCandidatesWithTrace("space", candidates, signals)
+	got := candidateIDs(ranked.Candidates)
+	if got[0] != 300 || got[1] != 200 || got[2] != 100 {
+		t.Fatalf("surprise ranking = %v, want diverse neighbor before familiar and marked titles", got)
+	}
+	if got[3] != 400 {
+		t.Fatalf("surprise ranking = %v, irrelevant diversity crossed the relevance floor", got)
+	}
+	if ranked.Trace.Candidates[0].Rank.Novelty != rankNoveltyMax {
+		t.Fatalf("diverse candidate trace = %+v, want bounded novelty/diversity term", ranked.Trace.Candidates[0].Rank)
+	}
+	if err := ValidateDecisionTrace(ranked.Trace); err != nil {
+		t.Fatalf("surprise trace rejected by shared validator: %v", err)
+	}
+}
+
+func TestRankGroundedCandidatesLessDemotesGroundedGenreNeighbors(t *testing.T) {
+	candidates := []catalog.Candidate{
+		{MediaType: provision.Movie, TMDBID: 100, Name: "Night Anchor", Genres: []string{"Science Fiction"}},
+		{MediaType: provision.Movie, TMDBID: 200, Name: "Night Neighbor", Genres: []string{"Science Fiction"}},
+		{MediaType: provision.Movie, TMDBID: 300, Name: "Night Mystery", Genres: []string{"Mystery"}},
+	}
+	got := candidateIDs(RankGroundedCandidates("night", candidates,
+		[]FeedbackSignal{{Target: "movie:tmdb:100", Action: FeedbackLess}}))
+	if !slices.Equal(got, []int{300, 200, 100}) {
+		t.Fatalf("less ranking = %v, want unrelated, related demotion, exact demotion", got)
+	}
+}
+
+func TestRankGroundedCandidatesProducesByteIdenticalResult(t *testing.T) {
+	candidates := []catalog.Candidate{
+		{MediaType: provision.Movie, TMDBID: 100, Name: "Space Anchor", Genres: []string{"Science Fiction"}, InLibrary: true},
+		{MediaType: provision.Movie, TMDBID: 200, Name: "Space Western", Genres: []string{"Western"}},
+		{MediaType: provision.Movie, TMDBID: 300, Name: "Space Mystery", Genres: []string{"Mystery"}},
+	}
+	signals := []FeedbackSignal{{Target: "movie:tmdb:100", Action: FeedbackSurprise}}
+	want, err := json.Marshal(RankGroundedCandidatesWithTrace("space", candidates, signals))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 20; i++ {
+		input := append([]catalog.Candidate(nil), candidates...)
+		if i%2 == 1 {
+			slices.Reverse(input)
+		}
+		got, err := json.Marshal(RankGroundedCandidatesWithTrace("space", input, signals))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, want) {
+			t.Fatalf("run %d was not byte-identical:\n%s\n%s", i, want, got)
+		}
+	}
+}
+
+func candidateIDs(candidates []catalog.Candidate) []int {
+	ids := make([]int, 0, len(candidates))
+	for _, candidate := range candidates {
+		ids = append(ids, candidate.TMDBID)
+	}
+	return ids
 }
 
 func TestRankGroundedCandidatesWithTracePublishesExactLexicographicTupleAndBound(t *testing.T) {

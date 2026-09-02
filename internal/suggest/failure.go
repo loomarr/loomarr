@@ -82,7 +82,7 @@ func ValidateDecisionTrace(trace DecisionTrace) error {
 		if _, _, _, ok := provision.ParseKey(provision.Key(c.Key)); !ok {
 			return fmt.Errorf("invalid canonical key")
 		}
-		if c.Rank.Relevance < 0 || c.Rank.Relevance > 1<<31-1 || c.Rank.Preference < -5 || c.Rank.Preference > 3 || c.Rank.Novelty < 0 || c.Rank.Novelty > 1 {
+		if c.Rank.Relevance < 0 || c.Rank.Relevance > 1<<31-1 || c.Rank.Preference < -5 || c.Rank.Preference > 3 || c.Rank.Novelty < 0 || c.Rank.Novelty > rankNoveltyMax {
 			return fmt.Errorf("rank tuple outside representation bounds")
 		}
 		if (c.Rank.Relevance > 0) != c.Constraints.any() {
