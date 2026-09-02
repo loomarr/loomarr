@@ -107,6 +107,7 @@ const (
 	ReasonBudgetExhausted        = "budget_exhausted"
 	ReasonNotSelected            = "not_selected"
 	TerminalProviderFailure      = "provider_failure"
+	TerminalRetrievalFailure     = "retrieval_failure"
 	TerminalGenerationFailure    = "generation_failure"
 	TerminalMalformedExhausted   = "malformed_exhausted"
 )

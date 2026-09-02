@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -57,6 +59,18 @@ type Service struct {
 	autoCurate ChannelAutoCurator
 	workflow   DurableWorkflow
 	notify     ProposalNotifier
+	quality    QualityRecorder
+}
+
+// QualityRecorder is the narrow, best-effort sink for authoritative Proposal
+// Job stage outcomes. The worker owns classification; the sink cannot add labels.
+type QualityRecorder interface {
+	RecordQualityObservation(context.Context, quality.Observation) error
+}
+
+func (s *Service) WithQualityRecorder(recorder QualityRecorder) *Service {
+	s.quality = recorder
+	return s
 }
 
 type ProposalNotifier interface {
@@ -340,19 +354,22 @@ func (s *Service) runWorkflow(ctx context.Context, work WorkflowWork) {
 
 	intent, err := s.executionIntent(jobCtx, work.Kind, work.JobID, work.Intent)
 	if err != nil {
-		s.failWorkflow(ctx, work, err)
+		s.failWorkflow(ctx, work, err, 0, false)
 		return
 	}
+	started := s.now()
 	proposal, err := s.suggester.Suggest(jobCtx, intent)
+	duration := s.now().Sub(started)
 	if err != nil {
-		s.failWorkflow(ctx, work, err)
+		s.failWorkflow(ctx, work, err, duration, true)
 		return
 	}
 	completed, err := s.workflow.Complete(ctx, work, proposal)
 	if err != nil {
-		s.failWorkflow(ctx, work, fmt.Errorf("persist proposal: %w", err))
+		s.failWorkflow(ctx, work, fmt.Errorf("persist proposal: %w", err), 0, false)
 		return
 	}
+	s.recordSuggestionQuality(ctx, work.JobID, work.Attempt, duration, completed.Proposal, nil)
 	blob, err := json.Marshal(completed.Proposal)
 	if err != nil {
 		// The same value was already encoded by the workflow repository, so this
@@ -369,7 +386,7 @@ func (s *Service) runWorkflow(ctx context.Context, work WorkflowWork) {
 	s.emitPhase(work.JobID, PhaseDone, 0)
 }
 
-func (s *Service) failWorkflow(ctx context.Context, work WorkflowWork, cause error) {
+func (s *Service) failWorkflow(ctx context.Context, work WorkflowWork, cause error, measuredDuration time.Duration, measured bool) {
 	traceJSON, cause := persistedFailure(cause)
 	if err := s.workflow.Fail(ctx, work, classifyFailure(cause), cause.Error(), traceJSON); err != nil {
 		s.log.Info("discarding stale or undurable Proposal Job failure",
@@ -377,6 +394,9 @@ func (s *Service) failWorkflow(ctx context.Context, work WorkflowWork, cause err
 		return
 	}
 	s.log.Error("suggestion job failed", "job", work.JobID, "attempt", work.Attempt, "err", cause)
+	if measured {
+		s.recordSuggestionQuality(ctx, work.JobID, work.Attempt, measuredDuration, Proposal{}, cause)
+	}
 	s.emitPhase(work.JobID, PhaseFailed, 0)
 }
 
@@ -392,27 +412,29 @@ func (s *Service) runJob(ctx context.Context, job store.Job) {
 
 	var intent Intent
 	if err := json.Unmarshal([]byte(job.IntentJSON), &intent); err != nil {
-		s.failJob(ctx, job, fmt.Errorf("bad intent json: %w", err))
+		s.failJob(ctx, job, fmt.Errorf("bad intent json: %w", err), 0, false)
 		return
 	}
 	intent, err := s.executionIntent(jobCtx, job.Kind, job.ID, intent)
 	if err != nil {
-		s.failJob(ctx, job, err)
+		s.failJob(ctx, job, err, 0, false)
 		return
 	}
 
+	started := s.now()
 	prop, err := s.suggester.Suggest(jobCtx, intent)
+	duration := s.now().Sub(started)
 	if err != nil {
-		s.failJob(ctx, job, err)
+		s.failJob(ctx, job, err, duration, true)
 		return
 	}
 	if err := ValidateDecisionTrace(prop.Trace); err != nil {
-		s.failJob(ctx, job, fmt.Errorf("validate proposal trace: %w", err))
+		s.failJob(ctx, job, fmt.Errorf("validate proposal trace: %w", err), 0, false)
 		return
 	}
 	propBlob, err := json.Marshal(prop)
 	if err != nil {
-		s.failJob(ctx, job, fmt.Errorf("marshal proposal: %w", err))
+		s.failJob(ctx, job, fmt.Errorf("marshal proposal: %w", err), 0, false)
 		return
 	}
 	// Persist the proposal into the approval queue (submitted). created_by carries
@@ -427,12 +449,13 @@ func (s *Service) runJob(ctx context.Context, job store.Job) {
 			s.log.Info("discarding stale suggestion result", "job", job.ID, "attempt", job.Attempts, "err", err)
 			return
 		}
-		s.failJob(ctx, job, fmt.Errorf("persist proposal: %w", err))
+		s.failJob(ctx, job, fmt.Errorf("persist proposal: %w", err), 0, false)
 		return
 	}
 	if s.notify != nil {
 		s.notify.ProposalSubmitted(ctx, p)
 	}
+	s.recordSuggestionQuality(ctx, job.ID, job.Attempts, duration, prop, nil)
 	s.considerAutomaticApproval(ctx, job, p)
 	s.emitPhase(job.ID, PhaseDone, 0)
 }
@@ -496,7 +519,7 @@ func (s *Service) considerAutomaticApproval(ctx context.Context, job store.Job, 
 	}
 }
 
-func (s *Service) failJob(ctx context.Context, job store.Job, cause error) {
+func (s *Service) failJob(ctx context.Context, job store.Job, cause error, measuredDuration time.Duration, measured bool) {
 	traceJSON, cause := persistedFailure(cause)
 	if err := s.store.CommitSuggestionFailure(
 		ctx, job.ID, job.Attempts, cause.Error(), classifyFailure(cause), traceJSON, s.now(),
@@ -511,7 +534,104 @@ func (s *Service) failJob(ctx context.Context, job store.Job, cause error) {
 		return
 	}
 	s.log.Error("suggestion job failed", "job", job.ID, "attempt", job.Attempts, "err", cause)
+	if measured {
+		s.recordSuggestionQuality(ctx, job.ID, job.Attempts, measuredDuration, Proposal{}, cause)
+	}
 	s.emitPhase(job.ID, PhaseFailed, 0)
+}
+
+func (s *Service) recordSuggestionQuality(
+	ctx context.Context,
+	jobID string,
+	attempt int,
+	duration time.Duration,
+	proposal Proposal,
+	cause error,
+) {
+	if s.quality == nil {
+		return
+	}
+	at := s.now()
+	if duration < 0 {
+		duration = 0
+	} else if duration > quality.MaxObservationDuration {
+		duration = quality.MaxObservationDuration
+	}
+	trace := proposal.Trace
+	var failure *Failure
+	if errors.As(cause, &failure) {
+		trace = failure.Trace
+	}
+	observations := classifySuggestionQuality(trace, duration, cause == nil, failure)
+	for _, observation := range observations {
+		observation.IdempotencyKey = qualityObservationKey(jobID, attempt, observation.Stage)
+		observation.At = at
+		if err := s.quality.RecordQualityObservation(ctx, observation); err != nil {
+			s.log.Warn("record Proposal Job quality observation", "job", jobID, "attempt", attempt,
+				"stage", observation.Stage, "err", err)
+		}
+	}
+}
+
+func classifySuggestionQuality(
+	trace DecisionTrace,
+	duration time.Duration,
+	succeeded bool,
+	failure *Failure,
+) []quality.Observation {
+	observation := func(stage quality.Stage, outcome quality.Outcome) quality.Observation {
+		return quality.Observation{Stage: stage, Outcome: outcome}
+	}
+	if succeeded {
+		retrieval := observation(quality.StageRetrieval, quality.OutcomeSucceeded)
+		retrieval.CandidateCount = trace.SurfacedTotal
+		generation := observation(quality.StageGeneration, quality.OutcomeSucceeded)
+		generation.Duration = duration
+		return []quality.Observation{
+			retrieval,
+			generation,
+			observation(quality.StageGrounding, quality.OutcomeAccepted),
+		}
+	}
+
+	if failure != nil && failure.Code == FailureCodeNoGroundedTitles {
+		retrievalOutcome := quality.OutcomeEmpty
+		if trace.SurfacedTotal > 0 {
+			retrievalOutcome = quality.OutcomeSucceeded
+		} else if trace.Terminal == TerminalRetrievalFailure {
+			retrievalOutcome = quality.OutcomeFailed
+		}
+		retrieval := observation(quality.StageRetrieval, retrievalOutcome)
+		retrieval.CandidateCount = trace.SurfacedTotal
+		generation := observation(quality.StageGeneration, quality.OutcomeAbstained)
+		generation.Duration = duration
+		return []quality.Observation{
+			retrieval,
+			generation,
+			observation(quality.StageGrounding, quality.OutcomeRejected),
+		}
+	}
+
+	result := make([]quality.Observation, 0, 2)
+	if trace.SurfacedTotal > 0 {
+		retrieval := observation(quality.StageRetrieval, quality.OutcomeSucceeded)
+		retrieval.CandidateCount = trace.SurfacedTotal
+		result = append(result, retrieval)
+	} else if trace.Terminal == ReasonRetrievalEmpty || trace.Terminal == TerminalRetrievalFailure {
+		outcome := quality.OutcomeEmpty
+		if trace.Terminal == TerminalRetrievalFailure {
+			outcome = quality.OutcomeFailed
+		}
+		result = append(result, observation(quality.StageRetrieval, outcome))
+	}
+	generation := observation(quality.StageGeneration, quality.OutcomeFailed)
+	generation.Duration = duration
+	return append(result, generation)
+}
+
+func qualityObservationKey(jobID string, attempt int, stage quality.Stage) string {
+	sum := sha256.Sum256([]byte(jobID + "\x00" + strconv.Itoa(attempt) + "\x00" + string(stage)))
+	return hex.EncodeToString(sum[:])
 }
 
 func persistedFailure(cause error) (string, error) {

@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/proposalworkflow"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -270,6 +271,116 @@ func TestWorker_NoGroundedTitlesPersistsTypedFailure(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("job did not reach failed state")
+}
+
+func TestWorker_RecordsCommittedDiscoveryQualityStages(t *testing.T) {
+	tests := []struct {
+		name      string
+		model     *testkit.LLM
+		wantJob   string
+		want      map[quality.Stage]quality.Outcome
+		wantCands bool
+	}{
+		{
+			name: "accepted grounded proposal",
+			model: testkit.NewLLM(
+				testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
+				testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+			),
+			wantJob: "done", wantCands: true,
+			want: map[quality.Stage]quality.Outcome{
+				quality.StageRetrieval:  quality.OutcomeSucceeded,
+				quality.StageGeneration: quality.OutcomeSucceeded,
+				quality.StageGrounding:  quality.OutcomeAccepted,
+			},
+		},
+		{
+			name: "empty retrieval abstains and rejects grounding",
+			model: testkit.NewLLM(
+				testkit.ToolCallResponse("catalog_search", map[string]any{"query": "definitely absent"}),
+				testkit.FinalResponse(`{"picks":[]}`),
+				testkit.FinalResponse(`{"picks":[]}`),
+			),
+			wantJob: "failed",
+			want: map[quality.Stage]quality.Outcome{
+				quality.StageRetrieval:  quality.OutcomeEmpty,
+				quality.StageGeneration: quality.OutcomeAbstained,
+				quality.StageGrounding:  quality.OutcomeRejected,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			st := newStore(t)
+			workflow := proposalworkflow.New(st, idGen(), time.Now)
+			recorder := &testkit.QualityRecorder{}
+			terminal := newDoneEmitter()
+			svc := buildService(t, st, tt.model).
+				WithDurableWorkflow(workflow).
+				WithProgressEmitter(terminal).
+				WithQualityRecorder(recorder)
+			jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "matrix"}, "alice")
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			go svc.Run(ctx)
+			if tt.wantJob == "done" {
+				waitForDoneEvent(t, terminal)
+			} else {
+				waitForFailedEvent(t, terminal)
+			}
+
+			job, err := st.GetJob(context.Background(), jobID)
+			if err != nil || job.Status != tt.wantJob {
+				t.Fatalf("terminal Job = %+v, %v; want status %q", job, err, tt.wantJob)
+			}
+			observations := recorder.Observations()
+			if len(observations) != len(tt.want) {
+				t.Fatalf("quality observations = %+v", observations)
+			}
+			seenKeys := make(map[string]bool, len(observations))
+			for _, observation := range observations {
+				if observation.Outcome != tt.want[observation.Stage] {
+					t.Errorf("%s outcome = %q, want %q", observation.Stage, observation.Outcome, tt.want[observation.Stage])
+				}
+				if strings.Contains(observation.IdempotencyKey, jobID) || len(observation.IdempotencyKey) != 64 || seenKeys[observation.IdempotencyKey] {
+					t.Errorf("idempotency key is not unique opaque SHA-256: %q", observation.IdempotencyKey)
+				}
+				seenKeys[observation.IdempotencyKey] = true
+				if observation.Stage != quality.StageRetrieval && observation.CandidateCount != 0 {
+					t.Errorf("%s candidate count = %d, want 0", observation.Stage, observation.CandidateCount)
+				}
+			}
+			if tt.wantCands && observations[0].CandidateCount == 0 {
+				t.Fatalf("successful retrieval did not record candidates: %+v", observations)
+			}
+		})
+	}
+}
+
+func TestWorker_QualityRecordingFailureDoesNotFailCommittedProposal(t *testing.T) {
+	st := newStore(t)
+	workflow := proposalworkflow.New(st, idGen(), time.Now)
+	recorder := &testkit.QualityRecorder{Err: errors.New("ledger unavailable")}
+	terminal := newDoneEmitter()
+	svc := buildService(t, st, testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+	)).WithDurableWorkflow(workflow).WithProgressEmitter(terminal).WithQualityRecorder(recorder)
+	jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "matrix"}, "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go svc.Run(ctx)
+	waitForDoneEvent(t, terminal)
+	job, err := st.GetJob(context.Background(), jobID)
+	if err != nil || job.Status != "done" {
+		t.Fatalf("quality sink changed committed Job = %+v, %v", job, err)
+	}
 }
 
 func TestWorker_DurableWorkflowNormalizesContextFailureTrace(t *testing.T) {
