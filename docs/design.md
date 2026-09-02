@@ -4371,6 +4371,25 @@ or authorize unattended admission. Rejecting an unlocked or partially reviewed d
 is a pre-provider failure. This is not a compatibility path around certification; it is the explicit
 non-scoring half of the development/holdout experiment.
 
+The production-reference audit composes that immutable development manifest with one separate,
+versioned, negative-only content-review artifact. The review binds the exact manifest digest and
+keys every finding by unique content SHA-256, never by case ID, filename, collection, uploader text,
+or source title. Each finding cites at least two distinct in-clip frame, transcript, OCR, audio, or
+video evidence rows already bound into that exact manifest case. The audit rejects an unknown or
+duplicate content identity, a missing or mismatched evidence row, an unsupported evidence kind or
+closed reason, a future review time, or any artifact/input digest mismatch before screening. A valid
+finding may only exclude the exact bytes; it cannot admit, relabel, add taxonomy, mutate the locked
+manifest, or satisfy later human playback acceptance. The ordinary policy remains general for every
+unlisted case. Positive source and segment duration are also required: zero-duration media is
+unusable even when an upstream fact calls it usable. The audit owns the exact raw manifest, packet,
+mapping, acquisition-ledger, and content-review bytes: it strictly decodes them, rejects duplicate
+object keys at every depth plus unknown fields and trailing values, and derives their recorded
+SHA-256 identities itself rather than accepting caller assertions. A usable decoder fact requires
+`no_video=false`, `no_audio=false`, segment bounds wholly inside the positive source duration, and
+exactly one valid hashed, positive-byte, positive-duration, positive-dimension `video/mp4` evidence
+presentation. Missing streams or a missing/malformed presentation are unusable; impossible segment
+bounds invalidate the audit rather than being reinterpreted as a hold.
+
 Shared transcription is a separately locked provider artifact, not text pasted into a mutable packet.
 For each case it binds the exact raw packet digest, audio signal identity/hash/bytes/duration, transcript
 schema and prompt versions, whisper implementation identity, executable SHA-256, model filename and
