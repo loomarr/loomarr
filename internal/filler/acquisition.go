@@ -52,7 +52,10 @@ type AcquisitionRun struct {
 // because one approved pull may deliberately draw from several registered sources.
 type AcquisitionTarget struct {
 	SourceID string
-	URL      string
+	// Kind is the registered source provider. Empty is reserved for a one-off URL an admin typed,
+	// where the ingest boundary must infer the downloader because no source policy exists.
+	Kind string
+	URL  string
 }
 
 // AcquisitionOutcome is the current lifecycle distribution of every clip enrolled from one run.

@@ -470,22 +470,38 @@ func (a fetchStoreAdapter) MarkFetched(ctx context.Context, id string, at time.T
 	return a.st.MarkFillerSourceFetched(ctx, id, at)
 }
 
-// archiveDiscoverAdapter bridges clipfetch → filler.FetchDiscoverer.
-type archiveDiscoverAdapter struct{}
+// registeredSourceEnumerator dispatches only by the registered row's explicit provider kind.
+// A returned item's host is not provider policy and must never select this lane.
+type registeredSourceEnumerator struct{ youtube *clipfetch.YouTubeEnumerator }
 
-func (archiveDiscoverAdapter) DiscoverCollection(ctx context.Context, ref string, limit int) ([]filler.DiscoveredRef, int, error) {
-	res, err := clipfetch.NewArchiveDownloader(false).DiscoverCollection(ctx, ref, limit)
-	if err != nil {
-		return nil, 0, err
+func (e registeredSourceEnumerator) Enumerate(ctx context.Context, source filler.FetchSource, limit int) ([]filler.DiscoveredRef, int, error) {
+	switch source.Kind {
+	case "archive":
+		res, err := clipfetch.NewArchiveDownloader(false).DiscoverCollection(ctx, source.URI, limit)
+		if err != nil {
+			return nil, 0, err
+		}
+		out := make([]filler.DiscoveredRef, 0, len(res.Items))
+		for _, it := range res.Items {
+			out = append(out, filler.DiscoveredRef{ID: it.ID, URL: "https://archive.org/details/" + it.ID})
+		}
+		return out, res.Total, nil
+	case "youtube":
+		if e.youtube == nil {
+			return nil, 0, fmt.Errorf("youtube enumerator is unavailable")
+		}
+		items, total, err := e.youtube.Enumerate(ctx, source.URI, limit)
+		if err != nil {
+			return nil, 0, err
+		}
+		out := make([]filler.DiscoveredRef, len(items))
+		for i, item := range items {
+			out[i] = filler.DiscoveredRef{ID: item.ID, URL: item.URL}
+		}
+		return out, total, nil
+	default:
+		return nil, 0, fmt.Errorf("unsupported registered filler source kind %q", source.Kind)
 	}
-	out := make([]filler.DiscoveredRef, 0, len(res.Items))
-	for _, it := range res.Items {
-		out = append(out, filler.DiscoveredRef{ID: it.ID, URL: "https://archive.org/details/" + it.ID})
-	}
-	// ⚠ `res.Total` is the collection's FULL size, not len(Items) — see DiscoveryResult. The
-	// fetcher does not use it today, but returning len() here would quietly make an 8362-item
-	// collection report 5 to whatever reads it next.
-	return out, res.Total, nil
 }
 
 // clipCatalogAdapter bridges the store → filler.CatalogReader (pod assembly).
@@ -780,19 +796,19 @@ func (a fillerServiceAdapter) Tag(ctx context.Context) (int, int, int, int, erro
 // pull uses, because it is the same problem (long external process, no request to hold).
 // ⚠ Downloads only — it does NOT register a source. See `rememberSources`.
 func (a fillerServiceAdapter) Ingest(ctx context.Context, urls []string) (string, error) {
-	return a.ingest(ctx, filler.AcquisitionManual, "", acquisitionTargets("", urls))
+	return a.ingest(ctx, filler.AcquisitionManual, "", acquisitionTargets("", "", urls))
 }
 
 // IngestSource is the unattended registered-source path. It preserves source attribution through
 // the downloader sidecar so the catalog can apply and audit the correct admission policy.
-func (a fillerServiceAdapter) IngestSource(ctx context.Context, sourceID string, urls []string) (string, error) {
-	return a.ingest(ctx, filler.AcquisitionSource, "", acquisitionTargets(sourceID, urls))
+func (a fillerServiceAdapter) IngestSource(ctx context.Context, sourceID, sourceKind string, urls []string) (string, error) {
+	return a.ingest(ctx, filler.AcquisitionSource, "", acquisitionTargets(sourceID, sourceKind, urls))
 }
 
 // IngestAsked downloads AND remembers the target, for the one path where an operator named it.
 func (a fillerServiceAdapter) IngestAsked(ctx context.Context, urls []string) (string, error) {
 	a.rememberSources(ctx, urls)
-	return a.ingest(ctx, filler.AcquisitionManual, "", acquisitionTargets("", urls))
+	return a.ingest(ctx, filler.AcquisitionManual, "", acquisitionTargets("", "", urls))
 }
 
 // IngestPull preserves one approval identity across a plan that may contain several registered
@@ -805,10 +821,10 @@ func (a fillerServiceAdapter) IngestPull(
 	return a.ingest(ctx, filler.AcquisitionPull, pullID, targets)
 }
 
-func acquisitionTargets(sourceID string, urls []string) []filler.AcquisitionTarget {
+func acquisitionTargets(sourceID, sourceKind string, urls []string) []filler.AcquisitionTarget {
 	targets := make([]filler.AcquisitionTarget, 0, len(urls))
 	for _, url := range urls {
-		targets = append(targets, filler.AcquisitionTarget{SourceID: sourceID, URL: url})
+		targets = append(targets, filler.AcquisitionTarget{SourceID: sourceID, Kind: sourceKind, URL: url})
 	}
 	return targets
 }
@@ -831,9 +847,16 @@ func (a fillerServiceAdapter) ingest(
 	jobID := a.newID()
 	sources := make([]clipfetch.Source, 0, len(targets))
 	for _, target := range targets {
+		kind := clipfetch.Kind(target.Kind)
+		if kind == "" {
+			// Only the deliberate one-off admin path lacks registered source policy.
+			kind = clipfetch.KindForURL(target.URL)
+		} else if kind != clipfetch.Archive && kind != clipfetch.YouTube {
+			return "", fmt.Errorf("unsupported registered filler source kind %q", target.Kind)
+		}
 		sources = append(sources, clipfetch.Source{
 			ID: target.SourceID, AcquisitionID: jobID,
-			Kind: clipfetch.KindForURL(target.URL), URL: target.URL,
+			Kind: kind, URL: target.URL,
 		})
 	}
 	sourceID := commonAcquisitionSource(targets)

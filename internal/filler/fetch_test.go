@@ -12,14 +12,16 @@ import (
 )
 
 type fetchStub struct {
-	sources   []filler.FetchSource
-	paths     []string
-	offers    []filler.DiscoveredRef
-	queued    []string
-	sourceID  string
-	calls     int
-	listed    []string
-	ingestErr error
+	sources     []filler.FetchSource
+	paths       []string
+	offers      []filler.DiscoveredRef
+	queued      []string
+	sourceID    string
+	sourceKind  string
+	calls       int
+	listed      []string
+	listedKinds []string
+	ingestErr   error
 	// stamped records which sources were marked fetched, and when.
 	stamped map[string]time.Time
 }
@@ -28,13 +30,15 @@ func (f *fetchStub) ListFetchSources(context.Context) ([]filler.FetchSource, err
 	return f.sources, nil
 }
 func (f *fetchStub) CatalogPaths(context.Context) ([]string, error) { return f.paths, nil }
-func (f *fetchStub) DiscoverCollection(_ context.Context, ref string, _ int) ([]filler.DiscoveredRef, int, error) {
+func (f *fetchStub) Enumerate(_ context.Context, source filler.FetchSource, _ int) ([]filler.DiscoveredRef, int, error) {
 	f.calls++
-	f.listed = append(f.listed, ref)
+	f.listed = append(f.listed, source.URI)
+	f.listedKinds = append(f.listedKinds, source.Kind)
 	return f.offers, len(f.offers), nil
 }
-func (f *fetchStub) IngestSource(_ context.Context, sourceID string, urls []string) (string, error) {
+func (f *fetchStub) IngestSource(_ context.Context, sourceID, sourceKind string, urls []string) (string, error) {
 	f.sourceID = sourceID
+	f.sourceKind = sourceKind
 	if f.ingestErr != nil {
 		return "", f.ingestErr
 	}
@@ -90,6 +94,22 @@ func TestFetch_StopsAtMaxPerRun(t *testing.T) {
 	}
 }
 
+func TestFetch_EnumeratesTheRegisteredProviderKind(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{{ID: "youtube:kids", Kind: "youtube", URI: "https://youtube.com/@kids/videos", Enabled: true}},
+		offers:  []filler.DiscoveredRef{{ID: "video-1", URL: "https://youtube.com/watch?v=video-1"}},
+	}
+	if _, err := newFetcher(t, stub, limits(2, 2000, 20)).Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(stub.listedKinds) != 1 || stub.listedKinds[0] != "youtube" {
+		t.Fatalf("enumerated kinds = %v, want the registered YouTube lane", stub.listedKinds)
+	}
+	if stub.sourceKind != "youtube" {
+		t.Fatalf("queued source kind = %q, want the registered YouTube kind", stub.sourceKind)
+	}
+}
+
 // A disabled source is not polled. The Sources switch claims Loomarr "stops scanning, searching
 // and downloading" from it; auto-fetch honouring anything less makes that copy false.
 func TestFetch_SkipsDisabledSources(t *testing.T) {
@@ -139,6 +159,62 @@ func TestFetch_SkipsWhatIsAlreadyInTheCatalog(t *testing.T) {
 	}
 	if len(stub.queued) != 1 || stub.queued[0] != "https://archive.org/details/c" {
 		t.Errorf("queued %v, want only the new item", stub.queued)
+	}
+}
+
+// Archive's downloader writes `<item ID> - <file>` to avoid collisions between source files with
+// the same name. The catalog high-water mark must recover that item ID before comparing offers.
+func TestFetch_SkipsCataloguedArchiveOutputTemplatePath(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		paths:   []string{"CampbellsSoupAdvert - Campbell's Soup Advert 1993.mp4"},
+		offers:  refs("CampbellsSoupAdvert", "new-ad"),
+	}
+	res, err := newFetcher(t, stub, limits(10, 2000, 20)).Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Skipped != 1 {
+		t.Fatalf("skipped %d, want catalogued Archive item skipped", res.Skipped)
+	}
+	if len(stub.queued) != 1 || stub.queued[0] != "https://archive.org/details/new-ad" {
+		t.Fatalf("queued = %v, want only the new Archive item", stub.queued)
+	}
+}
+
+func TestFetch_DoesNotTreatAnOrdinaryNameAsArchiveOutput(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		paths:   []string{"An ordinary catalog name - not an Archive item ID.mp4"},
+		offers:  refs("An ordinary catalog name"),
+	}
+	res, err := newFetcher(t, stub, limits(10, 2000, 20)).Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Skipped != 0 || len(stub.queued) != 1 {
+		t.Fatalf("result = %+v; queued = %v, want ordinary name left unmatched", res, stub.queued)
+	}
+}
+
+// yt-dlp's production output template is `<title> [<id>].<ext>`. The catalog is the durable
+// high-water mark, so this spelling must dedupe against the bare ID that flat-playlist
+// enumeration returns; its download archive is only a downloader-local optimization.
+func TestFetch_SkipsCataloguedYouTubeOutputTemplatePath(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{{ID: "youtube:retro", Kind: "youtube", URI: "https://youtube.com/@retro/videos", Enabled: true}},
+		paths:   []string{"Title for a catalogued clip [video-id].mp4"},
+		offers:  []filler.DiscoveredRef{{ID: "video-id", URL: "https://youtube.com/watch?v=video-id"}},
+	}
+	res, err := newFetcher(t, stub, limits(10, 2000, 20)).Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Skipped != 1 || len(stub.queued) != 0 {
+		t.Fatalf("result = %+v; queued = %v, want catalogued YouTube video skipped", res, stub.queued)
+	}
+	if _, stamped := stub.stamped["youtube:retro"]; stamped {
+		t.Fatal("stamped a source whose catalogued YouTube video was not queued")
 	}
 }
 

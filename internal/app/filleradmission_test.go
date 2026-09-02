@@ -259,7 +259,7 @@ func TestTrustedFillerSourceConvergesIntoChannelBreak(t *testing.T) {
 			return err
 		},
 	}
-	if _, err := service.IngestSource(ctx, source.ID, []string{"https://archive.org/details/trusted-clip"}); err != nil {
+	if _, err := service.IngestSource(ctx, source.ID, source.Kind, []string{"https://archive.org/details/trusted-clip"}); err != nil {
 		t.Fatal(err)
 	}
 
