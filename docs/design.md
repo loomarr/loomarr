@@ -1034,9 +1034,12 @@ Two consequences worth stating, because both look like details and are not:
 `GET /v1/search?q=&scope=library|tmdb|all` fans out accordingly and returns unified `Candidate` results (external ids, library item id when present, `in_library` flag). **Clips are deliberately NOT a search scope (revised).** `Candidate` models a *provisionable title* — its `MediaType` admits only `movie|series`, and it flows through the same dedupe/identity machinery that grounds the LLM. A clip is not a title (§10: commercials "are not 'titles,' so the provisioning loop does not apply"), so representing one as a `Candidate` would push an unprovisionable row with an invalid media type through the grounding path — the exact filler-into-programming leak §10 is built to prevent. Clip search therefore lives where clips live: `GET /v1/filler?q=` applies the `name LIKE` filter this section prescribes and returns real `ClipDTO`s, so a result carries a Tunarr program id and can be deep-linked. *The `clips` scope was advertised in the enum but never implemented — the catalog was always constructed with a nil clip searcher, so it silently returned nothing. Removing it corrects the contract rather than shipping a leak to satisfy it.* Crucially, **this is the same implementation as the Catalog boundary (§8)** — the LLM's grounding tool and the human's search box share one code path, so humans and the model see identical results, and "why did the suggester pick/miss X" is debuggable by typing the query into the UI. Results feed the lineup editor: adding an `in_library` result places it; adding a missing one creates an acquisition — which flows through the existing approval gate, so search adds **no new privilege surface and no new config**.
 
 **A federated result is a bounded blend, not “Library until the page is full.”** After identity
-deduplication, an `all` search that has both owned and missing matches reserves one quarter of the
-page (at least one row) for outside-Library candidates; the remainder prefers immediately playable
-Library candidates. An undersubscribed side yields its unused places to the other. The external
+deduplication, an `all` search that has both owned and missing matches uses the Catalog's candidate
+blend policy: production reserves one quarter of the page (at least one row) for outside-Library
+candidates, while evaluation may inject a different percentage—including zero for the owned-first
+baseline—without creating an operator setting or changing the production default. The remainder
+prefers immediately playable Library candidates. An undersubscribed side yields its unused places
+to the other. The external
 corpora choose and order the bounded relevance pool; Loomarr preserves that upstream order inside
 each owned/missing partition instead of alphabetizing away the source's relevance judgment.
 Identity deduplication keeps the first authoritative rank; canonical provisioning identity is the
