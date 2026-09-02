@@ -1176,7 +1176,9 @@ Loomarr's model work has three product pillars with separate authority and relea
 
 1. **Channel recommendation** proposes grounded channel concepts and draft Intents from an operator's
    Library and stated preferences. It may suggest what to build; it never creates a Channel or spends
-   resources.
+   resources. The artifact is a **Channel Concept**: a short display name, one draft Intent, and the
+   ids of the supplied context signals that justify it. A Concept is not a Proposal, Job, approval,
+   acquisition, or Channel and contains none of those effectful fields.
 2. **Channel curation** turns a chosen Intent into a grounded Proposal and ChannelPolicy, then supports
    Refine and re-curation. This is the planner-model contract certified below.
 3. **Filler curation** classifies, summarizes, tags, and ranks clips and pod candidates from bounded
@@ -1188,6 +1190,18 @@ need a multimodal model or its own adapter. A shared model family is an operatio
 evidence that one set of weights is certified for all three jobs: every pillar owns its own corpus,
 thresholds, scorecard, and ship/no-ship decision. The planner corpus cannot certify filler automation,
 and the filler corpus cannot certify channel recommendation or curation.
+
+Channel-recommendation certification uses digest-pinned synthetic context snapshots, not production
+operator identity or private viewing history. A snapshot contains only bounded Library facts,
+explicitly stated preference signals, season/time context, and existing Channel Concepts used for
+duplicate avoidance. Every model-produced Concept must cite only signal ids present in that snapshot;
+an unsupported id, effectful field, identity/history field, invalid schema, or duplicate Concept is a
+hard failure. Relevance, novelty, diversity, catalog feasibility, policy safety, and appropriate
+abstention are scored separately from those hard gates. The corpus, prompt/schema contract, scorer,
+thresholds, and train/development exclusions are versioned before live inference. Unit tests and
+scorecard replay are hermetic; any model run is an explicit non-CI command with provider, model,
+route, token, call, cost, latency, and memory identity. Planner certification never transfers to this
+pillar even when it supplies the candidate model family.
 
 ### Specialized local model experiment and release contract
 
