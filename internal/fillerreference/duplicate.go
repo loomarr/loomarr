@@ -182,8 +182,7 @@ func BuildFamilyAudit(sourceAuditRaw []byte, fingerprints []FamilyFingerprint, g
 		if !clique {
 			nonClique++
 		}
-		digest := sha256.Sum256([]byte(strings.Join(members, "\n")))
-		families = append(families, DuplicateFamily{FamilyID: "duplicate-family-" + hex.EncodeToString(digest[:12]), Members: members, CompleteClique: clique})
+		families = append(families, DuplicateFamily{FamilyID: duplicateFamilyID(members), Members: members, CompleteClique: clique})
 	}
 	slices.SortFunc(families, func(a, b DuplicateFamily) int { return strings.Compare(a.FamilyID, b.FamilyID) })
 	return FamilyAudit{
@@ -191,6 +190,11 @@ func BuildFamilyAudit(sourceAuditRaw []byte, fingerprints []FamilyFingerprint, g
 		Summary:      FamilySummary{Cases: len(fingerprints), RelatedPairs: len(pairs), ClosestNonMatches: len(nonMatches), DuplicateFamilies: len(families), NonCliqueFamilies: nonClique},
 		Fingerprints: fingerprints, Pairs: pairs, ClosestPairs: nonMatches, Families: families,
 	}, nil
+}
+
+func duplicateFamilyID(members []string) string {
+	digest := sha256.Sum256([]byte(strings.Join(members, "\n")))
+	return "duplicate-family-" + hex.EncodeToString(digest[:12])
 }
 
 func validateFamilyInputs(source Audit, fingerprints []FamilyFingerprint, generatedAt time.Time) error {
