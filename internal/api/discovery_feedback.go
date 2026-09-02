@@ -16,7 +16,7 @@ import (
 func (s *Server) registerDiscoveryFeedback(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "record-discovery-feedback", Method: http.MethodPost, Path: "/v1/discovery/feedback",
-		Summary: "Record explicit household discovery feedback (admin)", Tags: []string{"discovery"},
+		Summary: "Record explicit household or Channel discovery feedback (admin)", Tags: []string{"discovery"},
 	}, RoleAdmin), s.recordDiscoveryFeedback)
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "list-discovery-feedback", Method: http.MethodGet, Path: "/v1/discovery/feedback",
@@ -24,7 +24,7 @@ func (s *Server) registerDiscoveryFeedback(api huma.API) {
 	}, RoleMember), s.listDiscoveryFeedback)
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "clear-discovery-feedback", Method: http.MethodPost, Path: "/v1/discovery/feedback/clear",
-		Summary: "Clear explicit household discovery feedback (admin)", Tags: []string{"discovery"},
+		Summary: "Clear explicit household or Channel discovery feedback (admin)", Tags: []string{"discovery"},
 	}, RoleAdmin), s.clearDiscoveryFeedback)
 }
 
@@ -96,31 +96,45 @@ func (s *Server) appendDiscoveryFeedback(ctx context.Context, scope store.Feedba
 }
 
 func (s *Server) listDiscoveryFeedback(ctx context.Context, in *listDiscoveryFeedbackInput) (*listDiscoveryFeedbackOutput, error) {
-	if s.store == nil || !validFeedbackRequest(in.Scope, in.ScopeID, "movie:tmdb:1") {
+	if s.store == nil || !validFeedbackScope(in.Scope, in.ScopeID) {
 		return nil, errBadRequest("Invalid discovery feedback scope", "Choose household scope or a specific channel.")
 	}
-	events, err := s.store.ListDiscoveryFeedback(ctx, store.FeedbackFilter{Scope: in.Scope, ScopeID: in.ScopeID})
+	household, err := s.store.ListDiscoveryFeedback(ctx, store.FeedbackFilter{Scope: store.FeedbackHousehold})
 	if err != nil {
 		return nil, err
 	}
-	seen := make(map[provision.Key]bool, len(events))
+	var channel []store.DiscoveryFeedback
+	if in.Scope == store.FeedbackChannel {
+		channel, err = s.store.ListDiscoveryFeedback(ctx, store.FeedbackFilter{Scope: in.Scope, ScopeID: in.ScopeID})
+		if err != nil {
+			return nil, err
+		}
+	}
+	events := store.EffectiveDiscoveryFeedback(household, channel)
 	out := &listDiscoveryFeedbackOutput{Body: make([]discoveryFeedbackDTO, 0, len(events))}
 	for _, event := range events {
-		if seen[event.Target] {
-			continue
-		}
-		seen[event.Target] = true
-		if event.Action != store.FeedbackClear {
-			out.Body = append(out.Body, feedbackDTO(event))
-		}
+		out.Body = append(out.Body, feedbackDTO(event))
 	}
 	return out, nil
 }
 
 func validFeedbackRequest(scope store.FeedbackScope, scopeID string, target provision.Key) bool {
-	validScope := (scope == store.FeedbackHousehold && scopeID == "") || (scope == store.FeedbackChannel && scopeID != "")
-	validTarget := strings.HasPrefix(string(target), "movie:") || strings.HasPrefix(string(target), "series:")
-	return validScope && validTarget
+	mt, provider, id, ok := provision.ParseKey(target)
+	if !ok {
+		return false
+	}
+	title := provision.Title{MediaType: mt}
+	if provider == "tmdb" {
+		title.TMDBID = id
+	} else {
+		title.TVDBID = id
+	}
+	canonical, err := title.Key()
+	return validFeedbackScope(scope, scopeID) && err == nil && canonical == target
+}
+
+func validFeedbackScope(scope store.FeedbackScope, scopeID string) bool {
+	return (scope == store.FeedbackHousehold && scopeID == "") || (scope == store.FeedbackChannel && scopeID != "")
 }
 
 func feedbackDTO(feedback store.DiscoveryFeedback) discoveryFeedbackDTO {

@@ -201,6 +201,9 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
         }));
       return json(route, { proposals: rows });
     }
+    if (path === "/v1/discovery/feedback" && method === "GET") {
+      return json(route, []);
+    }
     if (path.endsWith("/approve") && method === "POST") {
       if (state.role !== "admin") {
         return json(route, { title: "Forbidden", detail: "Approving is an admin action." }, 403);

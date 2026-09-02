@@ -2,6 +2,7 @@ import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
 import type { EpisodeSelection } from "@loomarr/api/models/episodeSelection";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { RefusedPick } from "@loomarr/api/models/refusedPick";
+import type { ReactNode } from "react";
 
 type ApprovalStatus = "pending" | "approving" | "denied";
 
@@ -33,9 +34,10 @@ interface ApprovalQueueItemProps {
   // `undefined` is load-bearing, not laziness: the caller sends no human edit in that case.
   // The server may still ground a missing/crafted series selector from the original Intent.
   onEdit?: (edit: ApprovalEditDTO | undefined) => void;
-  // Explicit household taste only. This never approves, denies, or mutates the
-  // current proposal; it shapes a later suggestion through the backend ranker.
-  onFeedback?: (item: ProposalItem, action: "keep" | "less" | "never" | "surprise") => void;
+  // The queue only chooses where feedback belongs in a pick row. The feature module owns
+  // effective state, scope explanation, replacement, and Undo so those semantics are shared
+  // with Channel programming rather than reimplemented here.
+  renderFeedback?: (item: ProposalItem) => ReactNode;
   onApprove?: () => void;
   // Deny carries the admin's optional reason — the same string this component already
   // renders back via `denyReason` once the proposal is denied. The two halves were

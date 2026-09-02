@@ -19,12 +19,14 @@ import type { LineupEntryDTOState } from "@loomarr/api/models/lineupEntryDTOStat
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
 import { GripVertical, Plus, X } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useChannelLineup } from "@/channels/use-channel-lineup";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Caption } from "@/components/ui/caption";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { DiscoveryFeedbackControls, useDiscoveryFeedback } from "@/discovery-feedback";
 import { cn } from "@/lib/utils";
 import { SearchCommand } from "../../shell";
 import type { ChannelLineupEditorProps } from "./channel-lineup-editor.type";
@@ -70,6 +72,7 @@ const SortableLineupRow = ({
   disabled,
   onRemove,
   onSeasonChange,
+  feedback,
 }: {
   entry: LineupEntryDTO;
   disabled: boolean;
@@ -77,6 +80,7 @@ const SortableLineupRow = ({
   // Commit a season-window edit for THIS entry (series only). A blank/0 field clears that
   // bound — "no constraint", never season 0 (§9). Omitted for a movie row.
   onSeasonChange?: (patch: { seasonMin?: number; seasonMax?: number }) => void;
+  feedback?: ReactNode;
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: entry.key,
@@ -144,6 +148,8 @@ const SortableLineupRow = ({
         )}
       </div>
 
+      {feedback}
+
       <Tooltip>
         <TooltipTrigger
           render={
@@ -191,6 +197,8 @@ const ChannelLineupEditor = ({ channelId, revision, lineup, className }: Channel
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<LineupSort>("order");
+  const feedbackScope = { scope: "channel" as const, scopeId: channelId };
+  const feedback = useDiscoveryFeedback(feedbackScope);
 
   const { entries, isPending, add, remove, reorder, updateEntry } = useChannelLineup(
     channelId,
@@ -255,6 +263,8 @@ const ChannelLineupEditor = ({ channelId, revision, lineup, className }: Channel
         </p>
       </div>
 
+      {feedback.error && <ErrorState error={feedback.error} onRetry={feedback.retry} className="p-4" />}
+
       {/* Sort is a VIEW, not an edit — nothing here writes. Newest-first exists because
           auto-curate appends, so the default play order shows the oldest picks first and hides
           everything added since. */}
@@ -311,6 +321,17 @@ const ChannelLineupEditor = ({ channelId, revision, lineup, className }: Channel
                   disabled={isPending || !dragEnabled}
                   onRemove={() => remove(entry.key)}
                   onSeasonChange={(patch) => updateEntry(entry.key, patch)}
+                  feedback={
+                    <DiscoveryFeedbackControls
+                      compact
+                      name={entry.name}
+                      scope={feedbackScope}
+                      effective={feedback.feedbackFor(entry.key)}
+                      disabled={feedback.isPending}
+                      onSet={(action) => feedback.setFeedback(entry.key, action)}
+                      onClear={() => feedback.clearFeedback(entry.key)}
+                    />
+                  }
                 />
               ))}
             </ul>

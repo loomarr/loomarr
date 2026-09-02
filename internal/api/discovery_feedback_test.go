@@ -148,3 +148,58 @@ func TestDiscoveryFeedbackAuthorizationAndRoundTrip(t *testing.T) {
 		_ = resp.Body.Close()
 	}
 }
+
+func TestDiscoveryFeedbackChannelReadExplainsHouseholdFallbackAfterUndo(t *testing.T) {
+	srv, st := newServer(t)
+	ctx := context.Background()
+	_, err := st.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{ID: "feedback-channel", Name: "Feedback Channel",
+		Number: 44, Strategy: schedule.Sequential, Status: schedule.StatusLive}, ReconcileDeadline: time.Now().Add(time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requests := []string{
+		`{"scope":"household","targetKey":"movie:tmdb:603","action":"keep"}`,
+		`{"scope":"channel","scopeId":"feedback-channel","targetKey":"movie:tmdb:603","action":"never"}`,
+	}
+	for _, body := range requests {
+		resp := do(t, srv, http.MethodPost, "/v1/discovery/feedback", adminToken, body)
+		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close()
+			t.Fatalf("record feedback = %d", resp.StatusCode)
+		}
+		_ = resp.Body.Close()
+	}
+	clear := `{"scope":"channel","scopeId":"feedback-channel","targetKey":"movie:tmdb:603"}`
+	resp := do(t, srv, http.MethodPost, "/v1/discovery/feedback/clear", adminToken, clear)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("clear channel feedback = %d", resp.StatusCode)
+	}
+
+	resp = do(t, srv, http.MethodGet, "/v1/discovery/feedback?scope=channel&scopeId=feedback-channel", memberToken, "")
+	defer func() { _ = resp.Body.Close() }()
+	var got []discoveryFeedbackView
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK || len(got) != 1 || got[0].Scope != "household" || got[0].Action != "keep" {
+		t.Fatalf("effective channel feedback = %+v status=%d, want explained household fallback", got, resp.StatusCode)
+	}
+}
+
+type discoveryFeedbackView struct {
+	Scope  string `json:"scope"`
+	Action string `json:"action"`
+}
+
+func TestDiscoveryFeedbackRejectsNonCanonicalTargetKeys(t *testing.T) {
+	srv, _ := newServer(t)
+	for _, target := range []string{"movie:tmdb:not-a-number", "movie:tvdb:603", "movie:tmdb:0603", "movie:tmdb:603:extra"} {
+		body := `{"scope":"household","targetKey":"` + target + `","action":"keep"}`
+		resp := do(t, srv, http.MethodPost, "/v1/discovery/feedback", adminToken, body)
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("target %q status = %d, want 400", target, resp.StatusCode)
+		}
+	}
+}

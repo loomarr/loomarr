@@ -1,5 +1,11 @@
 import type { LineupEntryDTO, SearchCandidate } from "@loomarr/api";
-import { getSearchMockHandler, getUpdateChannelMockHandler } from "@loomarr/api/msw";
+import {
+  getClearDiscoveryFeedbackMockHandler,
+  getListDiscoveryFeedbackMockHandler,
+  getRecordDiscoveryFeedbackMockHandler,
+  getSearchMockHandler,
+  getUpdateChannelMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -36,6 +42,7 @@ const pointBreak: LineupEntryDTO = { key: "movie:tmdb:9426", name: "Point Break"
 const stubEditor = (opts: { candidates?: SearchCandidate[] } = {}) => {
   const patches: unknown[] = [];
   server.use(
+    getListDiscoveryFeedbackMockHandler([]),
     getSearchMockHandler(() => ({ candidates: opts.candidates ?? [] })),
     getUpdateChannelMockHandler(async ({ request }) => {
       patches.push(await request.json());
@@ -56,6 +63,65 @@ describe("ChannelLineupEditor", () => {
     expect(screen.getByText("Point Break")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reorder Heat" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove Heat" })).toBeInTheDocument();
+  });
+
+  it("shows inherited feedback, records a Channel override, and Undo reveals the fallback", async () => {
+    stubEditor();
+    const writes: unknown[] = [];
+    const household = {
+      id: "feedback-household",
+      targetKey: heat.key,
+      action: "never",
+      scope: "household",
+      actorId: "admin",
+      createdAt: "2026-09-02T12:00:00Z",
+    };
+    let effective = household;
+
+    server.use(
+      getListDiscoveryFeedbackMockHandler(({ request }) => {
+        const url = new URL(request.url);
+        expect(url.searchParams.get("scope")).toBe("channel");
+        expect(url.searchParams.get("scopeId")).toBe("ch-1");
+        return [effective];
+      }),
+      getRecordDiscoveryFeedbackMockHandler(async ({ request }) => {
+        const body = (await request.json()) as {
+          action: string;
+          scope: string;
+          scopeId: string;
+          targetKey: string;
+        };
+        writes.push(body);
+        effective = { ...household, id: "feedback-channel", action: body.action, scope: "channel" };
+        return effective;
+      }),
+      getClearDiscoveryFeedbackMockHandler(async ({ request }) => {
+        writes.push(await request.json());
+        effective = household;
+        return { ...household, id: "feedback-clear", action: "clear", scope: "channel" };
+      }),
+    );
+
+    render(<ChannelLineupEditor channelId="ch-1" revision={1} lineup={[heat]} />, {
+      wrapper: makeWrapper(),
+    });
+
+    expect(await screen.findByText(/Inherited household preference: Never/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Keep — Heat" }));
+    expect(await screen.findByText(/This Channel: Keep/i)).toBeInTheDocument();
+    expect(writes[0]).toEqual({
+      scope: "channel",
+      scopeId: "ch-1",
+      targetKey: heat.key,
+      action: "keep",
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(await screen.findByText(/Inherited household preference: Never/i)).toBeInTheDocument();
+    expect(writes[1]).toEqual({ scope: "channel", scopeId: "ch-1", targetKey: heat.key });
   });
 
   it("shows an empty state when the lineup is empty", () => {
