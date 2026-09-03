@@ -49,6 +49,11 @@ type TranscodeStage struct {
 	// transcode is a seam around the ffmpeg driver. Production always uses mediatools.Transcode;
 	// tests replace it with a byte writer so the lifecycle can be exercised without a host binary.
 	transcode func(context.Context, mediatools.TranscodeRequest, func(int)) (MediaQuality, error)
+	// evidenceTranscode and identifyFFmpeg are enabled together by WithMediaDerivatives. Keeping
+	// this explicit lets legacy recovery tests exercise only the historical playback saga while
+	// the production composition root always opts into the V66 two-derivative contract.
+	evidenceTranscode func(context.Context, mediatools.TranscodeRequest, func(int)) (MediaQuality, error)
+	identifyFFmpeg    func(context.Context, string) (mediatools.MediaToolIdentity, error)
 	// inspect backfills quality facts for a mezzanine made before those facts rode the encode.
 	inspect   func(context.Context, string, string, int64, bool) (MediaQuality, error)
 	condition func(context.Context, mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error)
@@ -56,6 +61,16 @@ type TranscodeStage struct {
 	// os.Remove; tests inject its failure to prove the explicit quarantine survives a restart.
 	removeSource func(string) error
 	diagnostics  *diagnostics.ProcessManager
+}
+
+// WithMediaDerivatives enables the V66 evidence/playback recipe contract. Production composition
+// always calls it; the method exists so media construction remains a testable boundary.
+func (s *TranscodeStage) WithMediaDerivatives() *TranscodeStage {
+	if s != nil {
+		s.evidenceTranscode = mediatools.Transcode
+		s.identifyFFmpeg = mediatools.IdentifyFFmpeg
+	}
+	return s
 }
 
 // WithConditioning joins the read-only conditioning inspector to this existing pipeline rung.
@@ -178,7 +193,10 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 			return StageResult{}, fmt.Errorf("create conditioning staging folder: %w", err)
 		}
 		defer func() { _ = os.RemoveAll(conditioningStageDir) }()
-		snapshots, err := snapshotConditioningArtifacts(ctx, conditioningStageDir, inputFull, conditioningParentFull, c.Hash, parent.Hash)
+		// After a committed re-key c.Hash names playback bytes while the retained master keeps the
+		// reviewed stream-copy child's sparse identity. Restart validation must bind each role to
+		// its own identity rather than asking the master to masquerade as playback.
+		snapshots, err := snapshotConditioningArtifacts(ctx, conditioningStageDir, inputFull, conditioningParentFull, sourceMaster.ClipHash, parent.Hash)
 		if err != nil {
 			return conditioningReview(c, err.Error()), nil
 		}
@@ -298,6 +316,28 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 	if s.ffmpegPath != nil {
 		ffmpeg = s.ffmpegPath()
 	}
+	var evidence *MediaDerivativeLineage
+	var mediaTool mediatools.MediaToolIdentity
+	if s.evidenceTranscode != nil {
+		if s.identifyFFmpeg == nil {
+			return StageResult{}, fmt.Errorf("transcode %s: media tool identity is unavailable", oldRel)
+		}
+		mediaTool, err = s.identifyFFmpeg(ctx, ffmpeg)
+		if err != nil {
+			return StageResult{}, fmt.Errorf("transcode %s: %w", oldRel, err)
+		}
+		built, err := buildMediaDerivative(ctx, mediaDerivativeRequest{
+			ClipDir: s.clipDir, Source: sourceMaster, Input: in,
+			Recipe: mediatools.EvidenceDerivativeRecipe(), Tool: mediaTool,
+			FFmpegPath: ffmpeg, Probe: s.probe, Diagnostics: s.diagnostics,
+			Transcode:  s.evidenceTranscode,
+			OnProgress: func(percent int) { reportProgress(ctx, StageTranscode, percent*45/100) },
+		})
+		if err != nil {
+			return StageResult{}, fmt.Errorf("transcode %s: %w", oldRel, err)
+		}
+		evidence = &built
+	}
 
 	req := mediatools.TranscodeRequest{
 		In: inputFull, Out: stageFull,
@@ -306,7 +346,13 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 		FFmpegPath: ffmpeg, Probe: s.probe,
 		Diagnostics: s.diagnostics,
 	}
-	quality, err := s.transcode(ctx, req, func(pct int) { reportProgress(ctx, StageTranscode, pct) })
+	quality, err := s.transcode(ctx, req, func(pct int) {
+		if evidence != nil {
+			reportProgress(ctx, StageTranscode, 45+pct*55/100)
+			return
+		}
+		reportProgress(ctx, StageTranscode, pct)
+	})
 	if err != nil {
 		if conditioningBefore != nil && isConditioningCancellation(err) {
 			return conditioningReview(c, "conditioning transcode was cancelled"), nil
@@ -361,6 +407,26 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 	}
 	newRel := filepath.ToSlash(ClipRelPath(newHash, ".mp4"))
 	newFull := filepath.Join(s.clipDir, filepath.FromSlash(newRel))
+	assets := MediaAssetManifest{Version: mediaAssetManifestVersion, SourceMaster: sourceMaster, Evidence: evidence}
+	if evidence != nil {
+		playbackRecipe := mediatools.PlaybackDerivativeRecipe(s.profile, lufs)
+		playbackRecipeDigest, recipeErr := playbackRecipe.Digest()
+		if recipeErr != nil {
+			return StageResult{}, recipeErr
+		}
+		playbackDigest, playbackBytes, digestErr := FileSHA256(stageFull)
+		if digestErr != nil {
+			return StageResult{}, fmt.Errorf("digest playback derivative: %w", digestErr)
+		}
+		assets.Playback = &MediaDerivativeLineage{
+			Asset:       MediaAssetIdentity{Role: MediaAssetPlayback, SHA256: playbackDigest, Bytes: playbackBytes, ClipHash: newHash, Path: newRel},
+			InputSHA256: sourceMaster.SHA256, RecipeID: playbackRecipe.ID, RecipeSHA256: playbackRecipeDigest,
+			Tool: mediaTool, DurationMs: out.DurationMs, Quality: quality,
+		}
+		if err := assets.validate(); err != nil {
+			return StageResult{}, fmt.Errorf("build media asset manifest: %w", err)
+		}
+	}
 	var builtConditioning *ConditioningEvidence
 	if conditioningBefore != nil {
 		builtConditioning = &ConditioningEvidence{
@@ -389,7 +455,7 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 			// commit. The marker distinguishes that recoverable saga state from an unrelated sparse-
 			// hash collision; retry the durable re-key without overwriting either file.
 			if err := validateRecoveredTranscode(ctx, stageFull, newFull, newHash, s.profile.ID(),
-				tags.ConditioningLineage, builtConditioning, quality, lufs); err != nil {
+				tags.ConditioningLineage, builtConditioning, quality, lufs, &assets); err != nil {
 				if builtConditioning != nil {
 					return conditioningReview(c, err.Error()), nil
 				}
@@ -449,7 +515,7 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 	tags.Confidence = c.Confidence
 	tags.SuggestedEra = c.SuggestedEra
 	tags.Mezzanine = s.profile.ID()
-	tags.MediaAssets = &MediaAssetManifest{Version: mediaAssetManifestVersion, SourceMaster: sourceMaster}
+	tags.MediaAssets = &assets
 	tags.SupersededByHash = ""
 	tags.ConditioningPublication = publication
 	tags.MediaQuality = &quality

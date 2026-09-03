@@ -110,53 +110,7 @@ func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percen
 	tmp := req.Out + ".mezz.tmp" + filepath.Ext(req.Out)
 	defer func() { _ = os.Remove(tmp) }()
 
-	// Detector facts share this encode. `-v info` is required because the three filters report on
-	// stderr at info level; `-nostats` keeps that capture bounded to diagnostics and measurements.
-	args := []string{"-nostdin", "-hide_banner", "-nostats", "-v", "info"}
-	// ⚠ stdout carries the progress stream. `-progress pipe:1` keeps it OFF stderr, which is where
-	// ffmpeg also writes real errors — scraping the two out of one stream is what viewra did, and
-	// a chunked read there can split a token across the buffer boundary. This also works on Windows,
-	// where Go deliberately does not support Cmd.ExtraFiles.
-	args = append(args, "-progress", "pipe:1")
-	args = append(args, "-i", req.In)
-
-	p := req.Profile
-	args = append(args,
-		"-c:v", "libx264", "-crf", strconv.Itoa(p.CRF), "-preset", p.Preset,
-		"-pix_fmt", p.PixelFormat,
-		"-vf", qualityVideoFilters)
-	if p.KeyframeSeconds > 0 {
-		// A keyframe at frame 0 and every N seconds. `expr:gte(t,n_forced*N)` is the form that
-		// also guarantees the FIRST frame is an IDR — a clip whose first keyframe arrives late is
-		// the black-screen-on-start class §9.1 records.
-		args = append(args, "-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%d)", p.KeyframeSeconds))
-	}
-	if req.HadAudio {
-		args = append(args, "-c:a", p.AudioCodec,
-			"-b:a", strconv.Itoa(p.AudioKbps)+"k",
-			"-ar", strconv.Itoa(p.AudioRateHz), "-ac", strconv.Itoa(p.AudioCh))
-		audioFilter := qualityAudioFilter
-		if req.TargetLUFS != 0 {
-			// ⚠ Loudness rides along in the pass that is already re-encoding the audio, rather
-			// than as a second rewrite of the same file. V42's standalone loudness pass existed
-			// for the case where only the audio changes and the video is copied; here we are
-			// re-encoding anyway, so a separate pass would be a second generation of loss for
-			// nothing. (That pass is retired — it had no production caller, so this is the first
-			// time `filler.autofile.normalize_loudness` has actually done anything.)
-			//
-			// Single-pass loudnorm, unlike the two-pass form that pass used: two-pass wants a
-			// measurement run over the whole file, which here would mean decoding the source
-			// twice on top of an already-expensive encode. The first-second ramp single-pass
-			// leaves is the accepted cost, and playout normalises again anyway.
-			audioFilter += ",loudnorm=I=" + strconv.FormatFloat(req.TargetLUFS, 'f', -1, 64) + ":TP=-1:LRA=11"
-		}
-		args = append(args, "-af", audioFilter)
-	} else {
-		args = append(args, "-an")
-	}
-	// faststart puts the moov atom first, so a player (and Tunarr's probe) can start without
-	// reading to the end of the file.
-	args = append(args, "-movflags", "+faststart", "-y", tmp)
+	args := transcodeArguments(req, tmp)
 
 	cmd := exec.Command(FFmpegOr(req.FFmpegPath), args...) //nolint:gosec // args are built by this package
 	var stderr boundedBytes
@@ -245,6 +199,47 @@ func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percen
 		onProgress(100)
 	}
 	return qualityFromDetectorOutput(stderr.String(), req.DurationMs), nil
+}
+
+func transcodeArguments(req TranscodeRequest, output string) []string {
+	// Detector facts share this encode. `-v info` is required because the three filters report on
+	// stderr at info level; `-nostats` keeps that capture bounded to diagnostics and measurements.
+	args := []string{"-nostdin", "-hide_banner", "-nostats", "-v", "info"}
+	// stdout carries progress; stderr remains exclusively diagnostics and detector evidence.
+	args = append(args, "-progress", "pipe:1", "-i", req.In)
+	// One explicit A/V pair is part of the recipe identity. Metadata, chapters, subtitles and data
+	// are not semantic media and cannot silently cross into a derivative.
+	args = append(args, "-map", "0:v:0", "-map", "0:a:0?", "-map_metadata", "-1", "-map_chapters", "-1", "-sn", "-dn")
+
+	p := req.Profile
+	args = append(args,
+		"-c:v", "libx264", "-crf", strconv.Itoa(p.CRF), "-preset", p.Preset,
+		"-pix_fmt", p.PixelFormat,
+		"-vf", qualityVideoFilters)
+	if p.KeyframeSeconds > 0 {
+		// A keyframe at frame 0 and every N seconds. `expr:gte(t,n_forced*N)` is the form that
+		// also guarantees the FIRST frame is an IDR — a clip whose first keyframe arrives late is
+		// the black-screen-on-start class §9.1 records.
+		args = append(args, "-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%d)", p.KeyframeSeconds))
+	}
+	if req.HadAudio {
+		args = append(args, "-c:a", p.AudioCodec,
+			"-b:a", strconv.Itoa(p.AudioKbps)+"k",
+			"-ar", strconv.Itoa(p.AudioRateHz), "-ac", strconv.Itoa(p.AudioCh))
+		audioFilter := qualityAudioFilter
+		if req.TargetLUFS != 0 {
+			// Loudness belongs only to the playback recipe. It rides the one audio encode rather
+			// than creating another lossy generation.
+			audioFilter += ",loudnorm=I=" + strconv.FormatFloat(req.TargetLUFS, 'f', -1, 64) + ":TP=-1:LRA=11"
+		}
+		args = append(args, "-af", audioFilter)
+	} else {
+		args = append(args, "-an")
+	}
+	// Preserve cadence and geometry, normalize negative timestamp origin without independently
+	// resetting A/V streams, and put the moov atom first for bounded startup/seek behavior.
+	args = append(args, "-fps_mode", "passthrough", "-avoid_negative_ts", "make_zero", "-movflags", "+faststart", "-y", output)
+	return args
 }
 
 type boundedBytes struct {

@@ -14,6 +14,7 @@ import (
 const (
 	MediaAssetRootName        = ".loomarr-media"
 	mediaMasterDirName        = "masters"
+	mediaEvidenceDirName      = "evidence"
 	mediaAssetManifestVersion = 1
 )
 
@@ -39,17 +40,54 @@ type MediaAssetIdentity struct {
 // Derivative execution details are added by the recipe layer; source retention can ship first
 // without inventing an evidence/playback identity that does not exist yet.
 type MediaAssetManifest struct {
-	Version      int                 `json:"version"`
-	SourceMaster MediaAssetIdentity  `json:"sourceMaster"`
-	Evidence     *MediaAssetIdentity `json:"evidence,omitempty"`
-	Playback     *MediaAssetIdentity `json:"playback,omitempty"`
+	Version      int                     `json:"version"`
+	SourceMaster MediaAssetIdentity      `json:"sourceMaster"`
+	Evidence     *MediaDerivativeLineage `json:"evidence,omitempty"`
+	Playback     *MediaDerivativeLineage `json:"playback,omitempty"`
+}
+
+// MediaDerivativeLineage proves which source, recipe and executable produced one rendition.
+type MediaDerivativeLineage struct {
+	Asset        MediaAssetIdentity           `json:"asset"`
+	InputSHA256  string                       `json:"inputSha256"`
+	RecipeID     string                       `json:"recipeId"`
+	RecipeSHA256 string                       `json:"recipeSha256"`
+	Tool         mediatools.MediaToolIdentity `json:"tool"`
+	DurationMs   int64                        `json:"durationMs"`
+	Quality      MediaQuality                 `json:"quality"`
 }
 
 func (m MediaAssetManifest) validate() error {
 	if m.Version != mediaAssetManifestVersion {
 		return fmt.Errorf("media asset manifest version %d is unsupported", m.Version)
 	}
-	return validateMediaAssetIdentity(m.SourceMaster, MediaAssetSourceMaster, mediaMasterDirName)
+	if err := validateMediaAssetIdentity(m.SourceMaster, MediaAssetSourceMaster, mediaMasterDirName); err != nil {
+		return err
+	}
+	if m.Evidence != nil {
+		if err := validateMediaDerivative(*m.Evidence, MediaAssetEvidence, mediaEvidenceDirName, m.SourceMaster.SHA256); err != nil {
+			return err
+		}
+	}
+	if m.Playback != nil {
+		if err := validateMediaDerivative(*m.Playback, MediaAssetPlayback, "", m.SourceMaster.SHA256); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateMediaDerivative(derivative MediaDerivativeLineage, role MediaAssetRole, tree, inputSHA256 string) error {
+	if err := validateMediaAssetIdentity(derivative.Asset, role, tree); err != nil {
+		return err
+	}
+	if derivative.InputSHA256 != inputSHA256 || !isContentHash(derivative.RecipeSHA256) || derivative.RecipeID == "" || derivative.DurationMs <= 0 {
+		return fmt.Errorf("%s derivative lineage is incomplete", role)
+	}
+	if err := derivative.Tool.Validate(); err != nil {
+		return fmt.Errorf("%s derivative tool identity: %w", role, err)
+	}
+	return nil
 }
 
 func validateMediaAssetIdentity(asset MediaAssetIdentity, role MediaAssetRole, tree string) error {
@@ -57,8 +95,17 @@ func validateMediaAssetIdentity(asset MediaAssetIdentity, role MediaAssetRole, t
 		return fmt.Errorf("%s media asset identity is invalid", role)
 	}
 	clean := filepath.Clean(filepath.FromSlash(asset.Path))
+	if filepath.IsAbs(clean) || !manifestRelativePath(clean) {
+		return fmt.Errorf("%s media asset path is outside the filler root", role)
+	}
+	if tree == "" {
+		if pathContains(MediaAssetRootName, clean) {
+			return fmt.Errorf("%s media asset path is hidden rather than playable", role)
+		}
+		return nil
+	}
 	wantPrefix := filepath.Join(MediaAssetRootName, tree)
-	if filepath.IsAbs(clean) || clean == wantPrefix || !pathContains(wantPrefix, clean) {
+	if clean == wantPrefix || !pathContains(wantPrefix, clean) {
 		return fmt.Errorf("%s media asset path is outside its hidden tree", role)
 	}
 	return nil

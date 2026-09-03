@@ -1245,6 +1245,54 @@ func TestTranscodeStage_RekeysBytesAndPreservesHumanMetadata(t *testing.T) {
 	}
 }
 
+func TestTranscodeStage_BuildsEvidenceAndPlaybackIndependentlyFromMaster(t *testing.T) {
+	dir := t.TempDir()
+	oldHash := writeContentAddressedClip(t, dir, []byte("authoritative source master"), ".mkv")
+	oldRel := filepath.ToSlash(ClipRelPath(oldHash, ".mkv"))
+	stored := &transcodeStore{}
+	probe := func(context.Context, string) (Probed, error) {
+		return Probed{DurationMs: 30_000, Height: 480}, nil
+	}
+	stage := NewTranscodeStage(stored, probe, dir, mediatools.DefaultMezzanine(), nil, func() float64 { return -23 }, time.Now).WithMediaDerivatives()
+	tool := mediatools.MediaToolIdentity{Name: "ffmpeg", Version: "ffmpeg version fixture", ExecutableSHA256: strings.Repeat("a", 64)}
+	stage.identifyFFmpeg = func(context.Context, string) (mediatools.MediaToolIdentity, error) { return tool, nil }
+	var evidenceInput, playbackInput string
+	stage.evidenceTranscode = func(_ context.Context, request mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+		evidenceInput = request.In
+		if request.Profile.CRF != 14 || request.TargetLUFS != 0 {
+			t.Fatalf("evidence recipe leaked playback policy: %+v", request)
+		}
+		return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("evidence derivative"), 0o600)
+	}
+	stage.transcode = func(_ context.Context, request mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+		playbackInput = request.In
+		if request.Profile.CRF != 20 || request.TargetLUFS != -23 {
+			t.Fatalf("playback recipe = %+v", request)
+		}
+		return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("playback derivative"), 0o600)
+	}
+
+	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{Hash: oldHash, Path: oldRel, Name: "Advert", Kind: Commercial}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tags, state := ReadSidecarTagsState(filepath.Join(dir, filepath.FromSlash(out.Clip.Path)))
+	if state != SidecarValid || tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil || tags.MediaAssets.Playback == nil {
+		t.Fatalf("media asset manifest = %+v state=%v", tags.MediaAssets, state)
+	}
+	masterPath := filepath.Join(dir, filepath.FromSlash(tags.MediaAssets.SourceMaster.Path))
+	if evidenceInput != masterPath || playbackInput != masterPath {
+		t.Fatalf("derivative inputs = evidence %q playback %q, want master %q", evidenceInput, playbackInput, masterPath)
+	}
+	if tags.MediaAssets.Evidence.InputSHA256 != tags.MediaAssets.SourceMaster.SHA256 ||
+		tags.MediaAssets.Playback.InputSHA256 != tags.MediaAssets.SourceMaster.SHA256 {
+		t.Fatalf("derivatives are not independently bound to master: %+v", tags.MediaAssets)
+	}
+	if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(tags.MediaAssets.Evidence.Asset.Path))); err != nil {
+		t.Fatalf("evidence derivative is unavailable: %v", err)
+	}
+}
+
 func TestTranscodeStage_IdenticalOutputAlreadyAtCanonicalPath(t *testing.T) {
 	dir := t.TempDir()
 	bytes := []byte("already normalized mezzanine bytes")
