@@ -331,6 +331,9 @@ type SplitProposal struct {
 	// Source binds detection and confirmation to one exact derivative. It is internal durable
 	// state rather than review UI; zero is a pre-V66 proposal that resolves through legacy rules.
 	Source SplitSourceAsset `json:"-"`
+	// Structure is the V67 exact-source, complete-timeline assessment. nil is a legacy proposal or
+	// a V34 shadow proposal that has not reached structure reduction yet.
+	Structure *SourceStructureAssessment `json:"-"`
 	// Spawned remembers children already produced by partial auto-confirm. It is private durable
 	// state, not review UI: final confirmation needs the whole new generation so it can retire
 	// superseded children without also retiring cuts produced on an earlier pass.

@@ -2949,12 +2949,29 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	now := time.Now().UTC().Truncate(time.Second)
 
+	source := filler.SplitSourceAsset{
+		Role: filler.SplitSourceEvidence, SHA256: strings.Repeat("a", 64), Bytes: 42,
+		ClipHash: strings.Repeat("b", 64), Path: ".loomarr-media/evidence/aa/bb/evidence.mp4", DurationMs: 149_000,
+	}
+	structure, err := filler.AssessSourceStructure(filler.SourceStructureInput{
+		Source: source, AssessedAt: now,
+		Observations: []filler.StructureObservation{
+			{ID: "black", Kind: filler.ObservationBlackInterval, Effect: filler.ObservationProposesBoundary, StartMs: 29_900, EndMs: 30_100, Producer: "fixture:v1", EvidenceSHA256: strings.Repeat("c", 64)},
+			{ID: "silence", Kind: filler.ObservationSilenceInterval, Effect: filler.ObservationProposesBoundary, StartMs: 29_900, EndMs: 30_100, Producer: "fixture:v1", EvidenceSHA256: strings.Repeat("d", 64)},
+			{ID: "role-left", Kind: filler.ObservationOCRLogoChange, Effect: filler.ObservationSupportsBoundary, StartMs: 30_000, EndMs: 30_000, Producer: "fixture:v1", EvidenceSHA256: strings.Repeat("e", 64)},
+			{ID: "role-right", Kind: filler.ObservationTranscriptChange, Effect: filler.ObservationSupportsBoundary, StartMs: 30_000, EndMs: 30_000, Producer: "fixture:v1", EvidenceSHA256: strings.Repeat("f", 64)},
+		},
+		RoleClaims: []filler.StructureRoleClaim{
+			{StartMs: 0, EndMs: 30_000, Role: filler.SegmentRoleCommercial, EvidenceIDs: []string{"role-left"}, Reason: "commercial evidence"},
+			{StartMs: 30_000, EndMs: 149_000, Role: filler.SegmentRolePromo, EvidenceIDs: []string{"role-right"}, Reason: "promo evidence"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	p := filler.SplitProposal{
 		ID: "sp_1", ClipHash: clipHashFor("comps/1987.mp4"), CreatedAt: now,
-		Source: filler.SplitSourceAsset{
-			Role: filler.SplitSourceEvidence, SHA256: strings.Repeat("a", 64), Bytes: 42,
-			ClipHash: strings.Repeat("b", 64), Path: ".loomarr-media/evidence/aa/bb/evidence.mp4", DurationMs: 149_000,
-		},
+		Source: source, Structure: &structure,
 		Segments: []filler.SplitSegment{
 			{Index: 0, StartMs: 0, EndMs: 30000, Name: "comps/1987 part 1", Era: 1987, Audience: filler.Kids, Category: "toys"},
 			{Index: 1, StartMs: 30000, EndMs: 61000, Name: "unknown", SuggestedEra: 1985, DupOf: "old/ad.mp4", Looked: true},
@@ -2968,7 +2985,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.ClipHash != p.ClipHash || got.Source != p.Source || len(got.Segments) != 3 || !got.CreatedAt.Equal(now) {
+	if got.ClipHash != p.ClipHash || got.Source != p.Source || !reflect.DeepEqual(got.Structure, p.Structure) || len(got.Segments) != 3 || !got.CreatedAt.Equal(now) {
 		t.Fatalf("proposal round-trip = %+v", got)
 	}
 	// Every segment field survives the JSON round-trip — including the V34-specific

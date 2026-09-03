@@ -23,15 +23,24 @@ const splitProposalSelect = `SELECT id, clip_hash, segments_json, created_at FRO
 // migration. Detection checkpoints are implementation state, not independently queryable data;
 // keeping them in the proposal's one authored/read document preserves that ownership.
 type splitProposalDocument struct {
-	Version   int                            `json:"version"`
-	Segments  []filler.SplitSegment          `json:"segments,omitempty"`
-	Detection *filler.SplitDetectionProgress `json:"detection,omitempty"`
-	Spawned   []string                       `json:"spawned,omitempty"`
-	Source    filler.SplitSourceAsset        `json:"source,omitempty"`
+	Version   int                               `json:"version"`
+	Segments  []filler.SplitSegment             `json:"segments,omitempty"`
+	Detection *filler.SplitDetectionProgress    `json:"detection,omitempty"`
+	Spawned   []string                          `json:"spawned,omitempty"`
+	Source    filler.SplitSourceAsset           `json:"source,omitempty"`
+	Structure *filler.SourceStructureAssessment `json:"structure,omitempty"`
 }
 
 func marshalSplitProposal(p filler.SplitProposal) ([]byte, error) {
-	return json.Marshal(splitProposalDocument{Version: 3, Segments: p.Segments, Detection: p.Detection, Spawned: p.Spawned, Source: p.Source})
+	if p.Structure != nil {
+		if err := filler.ValidateSourceStructureAssessment(*p.Structure); err != nil {
+			return nil, fmt.Errorf("invalid source structure assessment: %w", err)
+		}
+		if p.Source != p.Structure.Source {
+			return nil, fmt.Errorf("source structure assessment does not bind the proposal source")
+		}
+	}
+	return json.Marshal(splitProposalDocument{Version: 4, Segments: p.Segments, Detection: p.Detection, Spawned: p.Spawned, Source: p.Source, Structure: p.Structure})
 }
 
 func unmarshalSplitProposal(raw string, p *filler.SplitProposal) error {
@@ -45,7 +54,15 @@ func unmarshalSplitProposal(raw string, p *filler.SplitProposal) error {
 	if err := json.Unmarshal(trimmed, &doc); err != nil {
 		return err
 	}
-	p.Segments, p.Detection, p.Spawned, p.Source = doc.Segments, doc.Detection, doc.Spawned, doc.Source
+	p.Segments, p.Detection, p.Spawned, p.Source, p.Structure = doc.Segments, doc.Detection, doc.Spawned, doc.Source, doc.Structure
+	if p.Structure != nil {
+		if err := filler.ValidateSourceStructureAssessment(*p.Structure); err != nil {
+			return fmt.Errorf("invalid source structure assessment: %w", err)
+		}
+		if p.Source != p.Structure.Source {
+			return fmt.Errorf("source structure assessment does not bind the proposal source")
+		}
+	}
 	return nil
 }
 
