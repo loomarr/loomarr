@@ -4778,6 +4778,22 @@ slice counts, errors, and reducer contract. It always sets training and automati
 permission false: a pass is evidence from which a separate window-specific materialization authority
 may later be issued after the locked short-versus-long shadow comparison.
 
+That shadow comparison is a provider-neutral replay over the complete 24-case long-reel corpus, not
+a second truth-scoring pass. For every opaque case it receives the two immutable reducer artifacts
+produced from the same exact source: one through `complete_video` and one through
+`window_media_set`. It revalidates both artifacts, requires the same reducer version, boundary
+tolerance, source identity, and ordered pair of underlying model families, and requires each paired
+family to retain the same provider, declared model, model digest, and capability snapshot across the
+two representations. Prompt and evidence-contract identities remain representation-specific and are
+therefore bound in the report rather than required to be equal. Both decisions must be confirmed and
+must agree on whole-source unit and standalone role, interval count, every interval role and
+disposition, and every internal boundary within the certified tolerance. Missing, duplicate, held,
+wrong-kind, differently sourced, differently profiled, or semantically divergent cases fail the
+whole shadow report; there is no majority or partial-slice pass. The content-addressed report binds
+both artifact digests for every case and always leaves training and automatic materialization false.
+A separately reviewed long-reel authority may consume only a complete passing report together with
+the passing window certificate; the shadow report cannot activate production by itself.
+
 Each family run is a separate truth-blind artifact over the complete 24-case public window-set
 manifest. The runner receives only opaque aliases, exact public source and media-set authority, and
 machine-local window paths; it cannot open case identifiers, construction truth, measured slice
