@@ -485,3 +485,36 @@ func TestSplitStage_ResumesOnlyReviewsItCanImprove(t *testing.T) {
 		t.Error("a segment the model already examined was requeued; it genuinely needs review")
 	}
 }
+
+type pendingStructureShadow struct {
+	pending map[string]bool
+}
+
+func (s pendingStructureShadow) NeedsStructureSplitObservation(_ context.Context, proposal SplitProposal) (bool, error) {
+	return s.pending[proposal.ClipHash], nil
+}
+
+func (pendingStructureShadow) ObserveStructureSplit(context.Context, SplitProposal, SplitPartition) error {
+	return nil
+}
+
+func TestSplitStageResumesExistingReviewForOneMissingShadowObservation(t *testing.T) {
+	queue := proposalQueue{proposals: []SplitProposal{
+		{ClipHash: "unobserved", Segments: []SplitSegment{{StartMs: 0, EndMs: 30_000, Looked: true}}},
+		{ClipHash: "observed", Segments: []SplitSegment{{StartMs: 0, EndMs: 30_000, Looked: true}}},
+	}}
+	stage := NewSplitStage(nil, queue).WithStructureShadow(pendingStructureShadow{
+		pending: map[string]bool{"unobserved": true},
+	})
+
+	hashes, err := stage.resumableReviewHashes(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := hashes["unobserved"]; !ok {
+		t.Fatal("unobserved existing proposal was not requeued")
+	}
+	if _, ok := hashes["observed"]; ok {
+		t.Fatal("observed proposal was requeued again")
+	}
+}

@@ -480,6 +480,11 @@ type SplitProposalStore interface {
 	// CompleteSplitConfirmation atomically transitions a fully reviewed split proposal, retained
 	// parent, replacement pipelines, and selected child generation (§10 V65).
 	CompleteSplitConfirmation(ctx context.Context, completion filler.SplitCompletion) (int, error)
+	// Put/ListStructureSplitShadowDecisions own the immutable V67 compatibility-versus-complete-
+	// plan history. It survives proposal consumption so publication cannot erase disagreement.
+	PutStructureSplitShadowDecision(ctx context.Context, decision filler.StructureSplitShadowDecision) error
+	GetStructureSplitShadowDecision(ctx context.Context, id string) (filler.StructureSplitShadowDecision, bool, error)
+	ListStructureSplitShadowDecisions(ctx context.Context, clipHash string, limit int) ([]filler.StructureSplitShadowDecision, error)
 
 	// --- The per-clip ingest pipeline (§10 V51b, migration 00044) ---
 	//

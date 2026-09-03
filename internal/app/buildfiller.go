@@ -392,37 +392,53 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 		}, func() bool { return set.boolv("filler.reject.unidentified") }, time.Now),
 	}
 	if splitter != nil {
+		autoSplitPolicy := &filler.AutoSplitPolicy{
+			Enabled:       func() bool { return set.boolv("filler.autosplit.enabled") },
+			MinConfidence: func() int { return set.intv("filler.autosplit.min_confidence") },
+			MaxDuration:   func() time.Duration { return set.dur("filler.autosplit.max_duration") },
+		}
+		minClipDuration := func() time.Duration { return set.dur("filler.min_duration") }
+		// No production slice is certified yet. The shadow still runs the complete-plan gate and
+		// records exactly where it stops, while the compatibility outcome remains application
+		// authority. A later locked certificate replaces these closures for its declared slices.
+		structureShadow, shadowErr := filler.NewStructureSplitShadow(st, autoSplitPolicy, &filler.StructureCertificationPolicy{
+			AssessmentCertified: func(filler.SourceStructureAssessment) bool { return false },
+			ScreeningCertified:  func(filler.SegmentScreeningEvidence) bool { return false },
+		}, minClipDuration, "production-shadow-no-certified-slices-v1")
+		if shadowErr != nil {
+			log.Error("could not construct filler structure split shadow", "err", shadowErr)
+		}
 		// ⚠ Appended rather than placed in order — `NewPipeline` indexes the slice by stage id
 		// and `StageOrder` is the ONE definition of the sequence, so the order here is
 		// irrelevant. Stating that is worth a line, because a slice that looks like a pipeline
 		// invites someone to "fix" its order.
-		pipelineStages = append(pipelineStages,
-			filler.NewSplitStage(splitter, fillerSplitStoreAdapter{st: st, wake: wake}).
-				WithLogger(log).
-				WithAutoConfirm(filler.AutoSplitPolicy{
-					Enabled:       func() bool { return set.boolv("filler.autosplit.enabled") },
-					MinConfidence: func() int { return set.intv("filler.autosplit.min_confidence") },
-					MaxDuration:   func() time.Duration { return set.dur("filler.autosplit.max_duration") },
-				}, func() time.Duration { return set.dur("filler.min_duration") }).
-				// The split-time grounder (§10 V54). Without it the auto-confirm gate has no data
-				// and `filler.autosplit.enabled` — default ON — can never fire.
-				//
-				// ⚠ Gated on the SAME `filler.vision.enabled` the vision rung uses, via a zero
-				// budget rather than a nil grounder: an operator who turned vision off did not
-				// ask for it back on a different rung, and one switch governing both is what
-				// keeps "is Loomarr sending my frames to a model" answerable in one place.
-				WithSegmentVision(&filler.SegmentVision{
-					Tools:    fillerTools,
-					Provider: visionProvider,
-					Taxa:     fillerVisionStoreAdapter{st},
-					ClipDir:  clipDir,
-					Budget: func() int {
-						if !set.boolv("filler.vision.enabled") {
-							return 0
-						}
-						return set.intv("filler.pipeline.max_split_vision")
-					},
-				}))
+		splitStage := filler.NewSplitStage(splitter, fillerSplitStoreAdapter{st: st, wake: wake}).
+			WithLogger(log).
+			WithAutoConfirm(*autoSplitPolicy, minClipDuration).
+			// The split-time grounder (§10 V54). Without it the auto-confirm gate has no data
+			// and `filler.autosplit.enabled` — default ON — can never fire.
+			//
+			// ⚠ Gated on the SAME `filler.vision.enabled` the vision rung uses, via a zero
+			// budget rather than a nil grounder: an operator who turned vision off did not
+			// ask for it back on a different rung, and one switch governing both is what
+			// keeps "is Loomarr sending my frames to a model" answerable in one place.
+			WithSegmentVision(&filler.SegmentVision{
+				Tools:    fillerTools,
+				Provider: visionProvider,
+				Taxa:     fillerVisionStoreAdapter{st},
+				ClipDir:  clipDir,
+				Budget: func() int {
+					if !set.boolv("filler.vision.enabled") {
+						return 0
+					}
+					return set.intv("filler.pipeline.max_split_vision")
+				},
+			})
+		// Attach even when construction returned a nil typed pointer. Its observer methods fail
+		// closed, preserving the rule that an internal wiring fault cannot silently restore
+		// unattended compatibility publication.
+		splitStage.WithStructureShadow(structureShadow)
+		pipelineStages = append(pipelineStages, splitStage)
 	}
 	fillerPipeline := filler.NewPipeline(st, fillerPipelineClipAdapter{st}, pipelineStages,
 		filler.Budget{

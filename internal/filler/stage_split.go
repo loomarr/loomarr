@@ -52,6 +52,9 @@ type SplitStage struct {
 	// vision grounds proposed segments from their own frames so the gate has data (§10 V54).
 	// nil ⇒ propose only.
 	vision *SegmentVision
+	// structureShadow durably compares the compatibility gate with V67's complete-plan gate
+	// before the compatibility outcome may publish. nil preserves the pre-shadow path.
+	structureShadow StructureSplitShadowObserver
 	// log reports what a grounding pass actually did (§10 V54b). nil is tolerated everywhere.
 	log *slog.Logger
 }
@@ -100,6 +103,14 @@ func (s *SplitStage) WithAutoConfirm(pol AutoSplitPolicy, minClipDuration func()
 // "confirm without one".
 func (s *SplitStage) WithSegmentVision(v *SegmentVision) *SplitStage {
 	s.vision = v
+	return s
+}
+
+// WithStructureShadow attaches the durable dual-evaluation module. A recording failure is an
+// error rather than a log-only omission: unattended publication must not erase the disagreement
+// evidence by consuming its proposal.
+func (s *SplitStage) WithStructureShadow(observer StructureSplitShadowObserver) *SplitStage {
+	s.structureShadow = observer
 	return s
 }
 
@@ -553,6 +564,11 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	// ⚠ **PER SEGMENT since V54.** This used to be one verdict for the reel, so one doubtful cut
 	// in 52 sent all 52 back and the operator's work never shrank.
 	part := AutoConfirmable(*p, s.autoConfirm, s.minClipFloor())
+	if s.structureShadow != nil {
+		if err := s.structureShadow.ObserveStructureSplit(ctx, *p, part); err != nil {
+			return StageResult{}, err
+		}
+	}
 	if part.Reject != AutoSplitOK {
 		// A whole-proposal refusal — auto-split switched off, or nothing detected.
 		note := string(part.Reject)
@@ -656,6 +672,16 @@ func (s *SplitStage) resumableReviewHashes(ctx context.Context) (map[string]stru
 		if !p.Ready() {
 			out[p.ClipHash] = struct{}{}
 			continue
+		}
+		if s.structureShadow != nil {
+			pending, shadowErr := s.structureShadow.NeedsStructureSplitObservation(ctx, p)
+			if shadowErr != nil {
+				return nil, shadowErr
+			}
+			if pending {
+				out[p.ClipHash] = struct{}{}
+				continue
+			}
 		}
 		kept, discarded := discardDeterministic(p.Segments, s.minClipFloor())
 		if len(kept) != len(p.Segments) || discarded.duplicates > 0 || discarded.short > 0 {

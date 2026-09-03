@@ -4177,6 +4177,58 @@ func testFillerAdmissionDecisionAudit(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+func testFillerSplitShadowDecisions(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	decision := filler.StructureSplitShadowDecision{
+		SchemaVersion: filler.StructureSplitShadowSchemaVersion, ContractVersion: filler.StructureSplitShadowContractVersion,
+		ProposalID: "proposal-shadow-1", ClipHash: "clip-shadow-1",
+		SourceSHA256: strings.Repeat("a", 64), AssessmentSHA256: strings.Repeat("b", 64),
+		PolicyVersion: "production-shadow-no-certified-slices-v1",
+		Legacy: filler.StructureSplitShadowOutcome{
+			Confirm: []filler.StructureSplitShadowSpan{{StartMs: 0, EndMs: 30_000}, {StartMs: 30_000, EndMs: 60_000}},
+		},
+		Certified: filler.StructureSplitShadowOutcome{
+			Verdict: filler.RejectStructureUncertified,
+			Hold: []filler.StructureSplitShadowSpan{
+				{StartMs: 0, EndMs: 30_000, HoldReason: string(filler.RejectStructureUncertified)},
+				{StartMs: 30_000, EndMs: 60_000, HoldReason: string(filler.RejectStructureUncertified)},
+			},
+		},
+		ObservedAt: time.Unix(1_900_000_000, 123).UTC(),
+	}
+	decision.SHA256 = filler.StructureSplitShadowDecisionSHA256(decision)
+	decision.ID = "split-shadow-" + decision.SHA256
+	if err := filler.ValidateStructureSplitShadowDecision(decision); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PutStructureSplitShadowDecision(ctx, decision); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PutStructureSplitShadowDecision(ctx, decision); err != nil {
+		t.Fatalf("idempotent retry failed: %v", err)
+	}
+	got, found, err := s.GetStructureSplitShadowDecision(ctx, decision.ID)
+	if err != nil || !found || !reflect.DeepEqual(got, decision) {
+		t.Fatalf("get split shadow = %+v, %v, %v; want %+v", got, found, err, decision)
+	}
+	if _, found, err := s.GetStructureSplitShadowDecision(ctx, "missing-split-shadow"); err != nil || found {
+		t.Fatalf("missing split shadow found = %v, error = %v", found, err)
+	}
+	rows, err := s.ListStructureSplitShadowDecisions(ctx, decision.ClipHash, 10)
+	if err != nil || len(rows) != 1 || !reflect.DeepEqual(rows[0], decision) {
+		t.Fatalf("split shadow round trip = %+v, %v; want %+v", rows, err, decision)
+	}
+	other, err := s.ListStructureSplitShadowDecisions(ctx, "another-clip", 10)
+	if err != nil || len(other) != 0 {
+		t.Fatalf("split shadow clip filter = %+v, %v", other, err)
+	}
+	if _, err := s.ListStructureSplitShadowDecisions(ctx, "", 0); err == nil {
+		t.Fatal("invalid split shadow page limit was accepted")
+	}
+}
+
 func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 	s := newStore(t)

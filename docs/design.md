@@ -3251,6 +3251,15 @@ unresolved hold; applicable safety/rights screens permit the interval; and the s
 slice is inside a locked certification scope. Otherwise Loomarr retains one concise structure review. A
 human confirmation is still validated against complete coverage and exact source identity.
 
+During shadow rollout, the split stage evaluates the same exact proposal through both the compatibility
+gate and the complete-plan gate before the compatibility result can publish anything. One deep shadow
+module writes an immutable decision containing the proposal, source, assessment, and policy identities plus
+the exact confirm, hold, and discard spans from both outcomes. Its content identity makes a retry
+idempotent, and the record survives proposal consumption so a successful legacy publication cannot erase
+the disagreement being measured. Failure to record the shadow decision blocks unattended publication but
+leaves the proposal reviewable. The compatibility outcome remains application authority until a locked
+certificate activates declared source/signal slices; merely recording agreement never activates them.
+
 Validated children reuse the V66 derivative publisher and are prepared as one replacement generation.
 Their playable and evidence derivatives are built from the exact reviewed source intervals, not from an
 older playback rendition. The parent, assessment, observations, and prior complete child generation remain
