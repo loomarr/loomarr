@@ -4490,10 +4490,19 @@ The planner emits only coordinator-private construction authoring and a receipt 
 and output digests, deterministic seed ranks, selected families, role quotas, compilation pairs and
 join positions, and programme cuts. It performs no rendering or inference. The existing structure
 challenge preparer then renders and freshly blinds that authoring before two distinct direct-video
-model families assess it serially. Before concatenation, every segment is encoded deterministically
-to a common 960-by-720, 30-frame-per-second profile with aspect-preserving padding and a fixed video
-track time base; the measured part durations, rather than requested timestamps, remain the join
-authority. Coverage-only suitability holds may remain as evaluation material;
+model families assess it serially. The hosted-model interface requests only one complete,
+coverage-preserving segment timeline with a role and evidence for each interval; it does not request
+a second, potentially contradictory whole-file class. The adapter deterministically projects the
+internal whole-file claim from that timeline: one filler interval is a standalone unit, two or more
+non-programme intervals are a compilation, one programme interval is a programme excerpt, and
+programme intervals surrounding filler are programme-with-spots. One whole-file ambiguous,
+non-filler, or unusable interval projects to unclear, unclear, or unusable respectively; any other
+mixed shape is unclear. A standalone role and its evidence come from its sole interval. This
+projection keeps provider output smaller while preserving the exact unit, role, boundary, and
+per-segment claims scored by certification. Before concatenation, every segment is encoded
+deterministically to a common 960-by-720, 30-frame-per-second profile with aspect-preserving padding
+and a fixed video track time base; the measured part durations, rather than requested timestamps,
+remain the join authority. Coverage-only suitability holds may remain as evaluation material;
 prohibited and operational holds cannot be selected. The constructed truth can test unit boundaries
 without a second blind full-corpus review, but it cannot establish broadcast suitability, enter
 training data, or authorize production admission. Both permissions remain explicitly false.

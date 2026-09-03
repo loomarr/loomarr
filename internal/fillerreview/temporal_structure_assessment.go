@@ -129,7 +129,7 @@ func validateTemporalStructureAssessment(assessment TemporalStructureAssessment,
 		}
 		return nil
 	}
-	if assessment.Unit == nil || !validTemporalStructureUnit(assessment.Unit.Kind) || strings.TrimSpace(assessment.Unit.Reason) == "" || !validTemporalStructureTimes(assessment.Unit.DecisiveAtMS, durationMS, assessment.Unit.Kind == fillereval.UnitUnclear) {
+	if assessment.Unit == nil || !validTemporalStructureUnit(assessment.Unit.Kind) || strings.TrimSpace(assessment.Unit.Reason) == "" || !validTemporalStructureTimes(assessment.Unit.DecisiveAtMS, durationMS, temporalStructureUnitMayLackDecisiveEvidence(assessment.Unit.Kind)) {
 		return fmt.Errorf("unit claim or decisive timestamps are invalid")
 	}
 	if assessment.Unit.Kind == fillereval.UnitStandalone {
@@ -196,6 +196,10 @@ func validateTemporalStructureSegments(assessment TemporalStructureAssessment, d
 
 func validTemporalStructureUnit(unit fillereval.UnitKind) bool {
 	return unit == fillereval.UnitStandalone || unit == fillereval.UnitCompilation || unit == fillereval.UnitProgrammeExcerpt || unit == fillereval.UnitProgrammeSpots || unit == fillereval.UnitUnusable || unit == fillereval.UnitUnclear
+}
+
+func temporalStructureUnitMayLackDecisiveEvidence(unit fillereval.UnitKind) bool {
+	return unit == fillereval.UnitUnclear || unit == fillereval.UnitUnusable
 }
 
 func temporalStructureFillerSegmentRole(role fillereval.TemporalSegmentRole) bool {

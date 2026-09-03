@@ -15,7 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillereval"
 )
 
-const temporalStructureStandaloneResponse = `{"unit":"standalone","unitDecisiveAtMs":[100],"unitReason":"independent opening and close","role":"commercial","roleDecisiveAtMs":[200],"roleReason":"product offer framing","segments":[{"startMs":0,"endMs":10000,"role":"commercial","decisiveAtMs":[200],"reason":"one complete product offer"}]}`
+const temporalStructureStandaloneResponse = `{"segments":[{"startMs":0,"endMs":10000,"role":"commercial","decisiveAtMs":[200],"reason":"one complete product offer"}]}`
 
 func TestRunOpenRouterTemporalStructureRejectsFutureChallengeBeforeRequest(t *testing.T) {
 	fixture := newTemporalStructureFixture(t)
@@ -105,13 +105,13 @@ func TestValidateTemporalStructureOpenRouterResultRejectsEvidenceAccountingDrift
 	}
 }
 
-func TestRunOpenRouterTemporalStructureTurnsInvalidConditionalRoleIntoFailure(t *testing.T) {
+func TestRunOpenRouterTemporalStructureTurnsRedundantWholeFileClaimIntoFailure(t *testing.T) {
 	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
 	fixture := newTemporalStructureFixture(t)
 	root, _ := fixture.build(t, "invalid-role")
 	manifestPath := filepath.Join(root, "public", "manifest.json")
 	manifest := readStrictTestJSON[TemporalStructureChallengeManifest](t, manifestPath)
-	server := newTemporalSuitabilityServer(t, nil, `{"unit":"compilation","unitDecisiveAtMs":[100],"unitReason":"join","role":"commercial","roleDecisiveAtMs":[200],"roleReason":"invalid"}`)
+	server := newTemporalSuitabilityServer(t, nil, `{"unit":"compilation","segments":[{"startMs":0,"endMs":10000,"role":"commercial","decisiveAtMs":[200],"reason":"one product offer"}]}`)
 	defer server.Close()
 	result, err := RunOpenRouterTemporalStructure(t.Context(), temporalStructureOpenRouterTestConfig(manifestPath, filepath.Join(t.TempDir(), "private"), []string{manifest.Cases[0].Alias}, server, now))
 	if err != nil {
@@ -138,25 +138,55 @@ func TestRunOpenRouterTemporalStructureRequiresSnapshotVideoModality(t *testing.
 	}
 }
 
-func TestTemporalStructureOpenRouterWireEnforcesClosedConditionalShape(t *testing.T) {
+func TestTemporalStructureOpenRouterWireEnforcesCompleteSegmentShape(t *testing.T) {
 	tests := []struct {
 		name string
 		wire temporalStructureOpenRouterWire
 		want string
 	}{
-		{name: "valid compilation", wire: temporalStructureOpenRouterWire{Unit: "compilation", UnitDecisiveAtMS: []int64{100}, UnitReason: "join", Role: "none", Segments: []temporalStructureOpenRouterSegmentWire{{StartMS: 0, EndMS: 100, Role: "commercial", DecisiveAtMS: []int64{50}, Reason: "offer"}, {StartMS: 100, EndMS: 1_000, Role: "promo", DecisiveAtMS: []int64{200}, Reason: "programme promotion"}}}},
-		{name: "valid programme with spots", wire: temporalStructureOpenRouterWire{Unit: "programme_with_spots", UnitDecisiveAtMS: []int64{300, 700}, UnitReason: "inserted spot", Role: "none", Segments: []temporalStructureOpenRouterSegmentWire{{StartMS: 0, EndMS: 300, Role: "programme_fragment", DecisiveAtMS: []int64{100}, Reason: "programme scene"}, {StartMS: 300, EndMS: 700, Role: "commercial", DecisiveAtMS: []int64{500}, Reason: "product offer"}, {StartMS: 700, EndMS: 1_000, Role: "programme_fragment", DecisiveAtMS: []int64{900}, Reason: "programme resumes"}}}},
-		{name: "programme spots without surrounding programme", wire: temporalStructureOpenRouterWire{Unit: "programme_with_spots", UnitDecisiveAtMS: []int64{500}, UnitReason: "claimed insert", Role: "none", Segments: []temporalStructureOpenRouterSegmentWire{{StartMS: 0, EndMS: 500, Role: "programme_fragment", DecisiveAtMS: []int64{100}, Reason: "programme"}, {StartMS: 500, EndMS: 1_000, Role: "commercial", DecisiveAtMS: []int64{700}, Reason: "offer"}}}, want: "programme with spots"},
-		{name: "valid unicode character limit", wire: temporalStructureOpenRouterWire{Unit: "compilation", UnitDecisiveAtMS: []int64{100}, UnitReason: strings.Repeat("a", 511) + "–", Role: "none", Segments: []temporalStructureOpenRouterSegmentWire{{StartMS: 0, EndMS: 100, Role: "commercial", DecisiveAtMS: []int64{50}, Reason: "offer"}, {StartMS: 100, EndMS: 1_000, Role: "promo", DecisiveAtMS: []int64{200}, Reason: "programme promotion"}}}},
-		{name: "missing standalone role", wire: temporalStructureOpenRouterWire{Unit: "standalone", UnitDecisiveAtMS: []int64{100}, UnitReason: "bounded", Role: "none"}, want: "standalone role"},
-		{name: "non standalone role", wire: temporalStructureOpenRouterWire{Unit: "programme_excerpt", UnitDecisiveAtMS: []int64{0}, UnitReason: "cut", Role: "promo", RoleDecisiveAtMS: []int64{1}, RoleReason: "wrong"}, want: "carries role"},
-		{name: "duplicate times", wire: temporalStructureOpenRouterWire{Unit: "compilation", UnitDecisiveAtMS: []int64{100, 100}, UnitReason: "join", Role: "none"}, want: "unit claim"},
+		{name: "valid compilation", wire: temporalStructureOpenRouterWire{Segments: []temporalStructureOpenRouterSegmentWire{{StartMS: 0, EndMS: 100, Role: "commercial", DecisiveAtMS: []int64{50}, Reason: "offer"}, {StartMS: 100, EndMS: 1_000, Role: "promo", DecisiveAtMS: []int64{200}, Reason: "programme promotion"}}}},
+		{name: "valid programme with spots", wire: temporalStructureOpenRouterWire{Segments: []temporalStructureOpenRouterSegmentWire{{StartMS: 0, EndMS: 300, Role: "programme_fragment", DecisiveAtMS: []int64{100}, Reason: "programme scene"}, {StartMS: 300, EndMS: 700, Role: "commercial", DecisiveAtMS: []int64{500}, Reason: "product offer"}, {StartMS: 700, EndMS: 1_000, Role: "programme_fragment", DecisiveAtMS: []int64{900}, Reason: "programme resumes"}}}},
+		{name: "valid unicode character limit", wire: temporalStructureOpenRouterWire{Segments: []temporalStructureOpenRouterSegmentWire{{StartMS: 0, EndMS: 100, Role: "commercial", DecisiveAtMS: []int64{50}, Reason: strings.Repeat("a", 511) + "–"}, {StartMS: 100, EndMS: 1_000, Role: "promo", DecisiveAtMS: []int64{200}, Reason: "programme promotion"}}}},
+		{name: "missing timeline", wire: temporalStructureOpenRouterWire{}, want: "segment plan"},
+		{name: "gap", wire: temporalStructureOpenRouterWire{Segments: []temporalStructureOpenRouterSegmentWire{{StartMS: 0, EndMS: 400, Role: "commercial", DecisiveAtMS: []int64{200}, Reason: "offer"}, {StartMS: 500, EndMS: 1_000, Role: "promo", DecisiveAtMS: []int64{700}, Reason: "promotion"}}}, want: "segment plan"},
+		{name: "duplicate times", wire: temporalStructureOpenRouterWire{Segments: []temporalStructureOpenRouterSegmentWire{{StartMS: 0, EndMS: 1_000, Role: "commercial", DecisiveAtMS: []int64{100, 100}, Reason: "offer"}}}, want: "segment plan"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			err := validateTemporalStructureOpenRouterWire(test.wire, 1_000)
 			if test.want == "" && err != nil || test.want != "" && (err == nil || !strings.Contains(err.Error(), test.want)) {
 				t.Fatalf("error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestTemporalStructureAssessmentDerivesWholeFileClaimFromSegmentTimeline(t *testing.T) {
+	tests := []struct {
+		name     string
+		segments []temporalStructureOpenRouterSegmentWire
+		unit     fillereval.UnitKind
+		role     fillereval.TemporalRole
+	}{
+		{name: "standalone", segments: []temporalStructureOpenRouterSegmentWire{{StartMS: 0, EndMS: 1_000, Role: "commercial", DecisiveAtMS: []int64{500}, Reason: "one product offer"}}, unit: fillereval.UnitStandalone, role: fillereval.TemporalRoleCommercial},
+		{name: "compilation", segments: []temporalStructureOpenRouterSegmentWire{{StartMS: 0, EndMS: 400, Role: "commercial", DecisiveAtMS: []int64{200}, Reason: "product offer"}, {StartMS: 400, EndMS: 1_000, Role: "promo", DecisiveAtMS: []int64{700}, Reason: "programme promotion"}}, unit: fillereval.UnitCompilation},
+		{name: "programme excerpt", segments: []temporalStructureOpenRouterSegmentWire{{StartMS: 0, EndMS: 1_000, Role: "programme_fragment", DecisiveAtMS: []int64{100, 900}, Reason: "dependent programme edges"}}, unit: fillereval.UnitProgrammeExcerpt},
+		{name: "programme with spots", segments: []temporalStructureOpenRouterSegmentWire{{StartMS: 0, EndMS: 300, Role: "programme_fragment", DecisiveAtMS: []int64{100}, Reason: "programme begins"}, {StartMS: 300, EndMS: 700, Role: "psa", DecisiveAtMS: []int64{500}, Reason: "public-service message"}, {StartMS: 700, EndMS: 1_000, Role: "programme_fragment", DecisiveAtMS: []int64{900}, Reason: "programme resumes"}}, unit: fillereval.UnitProgrammeSpots},
+		{name: "unclear", segments: []temporalStructureOpenRouterSegmentWire{{StartMS: 0, EndMS: 1_000, Role: "ambiguous", Reason: "insufficient evidence"}}, unit: fillereval.UnitUnclear},
+		{name: "unusable", segments: []temporalStructureOpenRouterSegmentWire{{StartMS: 0, EndMS: 1_000, Role: "unusable", Reason: "corrupt throughout"}}, unit: fillereval.UnitUnusable},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			wire := temporalStructureOpenRouterWire{Segments: test.segments}
+			if err := validateTemporalStructureOpenRouterWire(wire, 1_000); err != nil {
+				t.Fatal(err)
+			}
+			assessment := temporalStructureAssessmentFromWire("case", wire, time.Unix(1, 0), fillereval.TemporalInferenceCall{Axis: "structure", Attempt: 1, ResponseSHA256: strings.Repeat("a", 64)})
+			if assessment.Unit == nil || assessment.Unit.Kind != test.unit {
+				t.Fatalf("unit = %+v, want %s", assessment.Unit, test.unit)
+			}
+			if test.role == "" && assessment.Role != nil || test.role != "" && (assessment.Role == nil || assessment.Role.Kind != test.role) {
+				t.Fatalf("role = %+v, want %s", assessment.Role, test.role)
 			}
 		})
 	}
@@ -176,20 +206,18 @@ func TestTemporalStructureOpenRouterSchemaRequiresCompleteSegmentPlan(t *testing
 	if !ok || segments["minItems"] != 1 || segments["maxItems"] != 128 {
 		t.Fatalf("segments schema = %#v", properties["segments"])
 	}
+	if len(required) != 1 || len(properties) != 1 {
+		t.Fatalf("provider schema duplicates derived whole-file fields: %#v", schema)
+	}
 }
 
 func TestNormalizeTemporalStructureOpenRouterWireSortsMechanicalTimestamps(t *testing.T) {
 	wire := temporalStructureOpenRouterWire{
-		Unit: "standalone", UnitDecisiveAtMS: []int64{900, 100}, UnitReason: "bounded",
-		Role: "promo", RoleDecisiveAtMS: []int64{800, 200}, RoleReason: "programme promotion",
 		Segments: []temporalStructureOpenRouterSegmentWire{{StartMS: 0, EndMS: 1_000, Role: "promo", DecisiveAtMS: []int64{800, 200}, Reason: "programme promotion"}},
 	}
 	normalizeTemporalStructureOpenRouterWire(&wire)
 	if err := validateTemporalStructureOpenRouterWire(wire, 1_000); err != nil {
 		t.Fatal(err)
-	}
-	if !slices.Equal(wire.UnitDecisiveAtMS, []int64{100, 900}) || !slices.Equal(wire.RoleDecisiveAtMS, []int64{200, 800}) {
-		t.Fatalf("normalized wire = %+v", wire)
 	}
 	if !slices.Equal(wire.Segments[0].DecisiveAtMS, []int64{200, 800}) {
 		t.Fatalf("segment timestamps were not normalized: %+v", wire.Segments)
