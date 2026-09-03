@@ -198,15 +198,22 @@ func (i *Ingestor) manifests(src Source, outputDir string, outputs []Output) []f
 	now := i.now().UTC()
 	manifests := make([]filler.AcquisitionArtifact, 0, len(outputs))
 	for _, output := range outputs {
+		outputRelative, outputErr := filepath.Rel(outputDir, output.MediaPath)
 		stagingPath, stageErr := filepath.Rel(i.dropDir, output.MediaPath)
 		mediaPath := filepath.Base(output.MediaPath)
-		if stageErr != nil || !withinDir(stagingPath) {
+		if outputErr != nil || !withinDir(outputRelative) || stageErr != nil || !withinDir(stagingPath) {
 			output.Repair = "downloader returned a path outside its quarantine"
 			stagingPath = filepath.Join(".loomarr-acquisitions", src.AcquisitionID, filepath.Base(output.MediaPath))
 		}
 		sidecarPath := ""
 		if output.SidecarPath != "" {
-			sidecarPath = strings.TrimSuffix(mediaPath, filepath.Ext(mediaPath)) + ".info.json"
+			expectedSidecar := strings.TrimSuffix(output.MediaPath, filepath.Ext(output.MediaPath)) + ".info.json"
+			sidecarRelative, sidecarErr := filepath.Rel(outputDir, output.SidecarPath)
+			if sidecarErr != nil || !withinDir(sidecarRelative) || filepath.Clean(output.SidecarPath) != filepath.Clean(expectedSidecar) {
+				output.Repair = "downloader returned a sidecar outside its exact media pair"
+			} else {
+				sidecarPath = strings.TrimSuffix(mediaPath, filepath.Ext(mediaPath)) + ".info.json"
+			}
 		}
 		state := filler.ArtifactStaged
 		if output.Repair != "" {

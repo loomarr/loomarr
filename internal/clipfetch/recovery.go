@@ -29,6 +29,7 @@ type RecoveryResult struct {
 func RecoverAcquisitionArtifacts(
 	ctx context.Context,
 	watchDir string,
+	clipDir string,
 	store ArtifactRecoveryStore,
 	now func() time.Time,
 ) (RecoveryResult, error) {
@@ -57,6 +58,12 @@ func RecoverAcquisitionArtifacts(
 			mediaErr := verifyManifestFile(filepath.Join(watchDir, artifact.MediaPath), artifact)
 			sidecarErr := verifyPortableProvenance(filepath.Join(watchDir, artifact.SidecarPath), artifact)
 			if err := errors.Join(mediaErr, sidecarErr); err != nil {
+				if consumed, consumedErr := recoverConsumedArtifact(clipDir, artifact, now()); consumedErr == nil {
+					if err := store.UpsertAcquisitionArtifacts(ctx, []filler.AcquisitionArtifact{consumed}); err != nil {
+						return result, err
+					}
+					continue
+				}
 				artifact = repairArtifact(artifact, "published artifact validation: "+err.Error(), now())
 				if err := store.UpsertAcquisitionArtifacts(ctx, []filler.AcquisitionArtifact{artifact}); err != nil {
 					return result, err
@@ -80,6 +87,12 @@ func RecoverAcquisitionArtifacts(
 					return result, err
 				}
 				result.Pending++
+				continue
+			}
+			if consumed, consumedErr := recoverConsumedArtifact(clipDir, artifact, now()); consumedErr == nil {
+				if err := store.UpsertAcquisitionArtifacts(ctx, []filler.AcquisitionArtifact{consumed}); err != nil {
+					return result, err
+				}
 				continue
 			}
 			artifact = repairArtifact(artifact, "staged artifact validation: "+err.Error(), now())
@@ -116,6 +129,33 @@ func RecoverAcquisitionArtifacts(
 		result.Published++
 	}
 	return result, nil
+}
+
+func recoverConsumedArtifact(clipDir string, artifact filler.AcquisitionArtifact, at time.Time) (filler.AcquisitionArtifact, error) {
+	if clipDir == "" || artifact.ClipHash == "" {
+		return artifact, errors.New("consumed location unavailable")
+	}
+	media, err := filler.ClipPath(clipDir, artifact.ClipHash, filepath.Ext(artifact.MediaPath))
+	if err != nil {
+		return artifact, err
+	}
+	if err := verifyManifestFile(media, artifact); err != nil {
+		return artifact, err
+	}
+	sidecar := strings.TrimSuffix(media, filepath.Ext(media)) + ".info.json"
+	if err := verifyPortableProvenance(sidecar, artifact); err != nil {
+		return artifact, err
+	}
+	relative, err := filepath.Rel(clipDir, media)
+	if err != nil || !withinDir(relative) {
+		return artifact, errors.New("consumed artifact escaped clip root")
+	}
+	artifact.State = filler.ArtifactConsumed
+	artifact.MediaPath = filepath.ToSlash(relative)
+	artifact.SidecarPath = strings.TrimSuffix(artifact.MediaPath, filepath.Ext(artifact.MediaPath)) + ".info.json"
+	artifact.RepairReason = ""
+	artifact.UpdatedAt = at.UTC()
+	return artifact, nil
 }
 
 func verifyManifestFile(path string, artifact filler.AcquisitionArtifact) error {

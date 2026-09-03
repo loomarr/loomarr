@@ -70,7 +70,7 @@ func TestRecoverAcquisitionArtifacts_PublishesValidatedStagedPair(t *testing.T) 
 	artifact := stagedRecoveryArtifact(t, root)
 	store := &recoveryStore{artifacts: []filler.AcquisitionArtifact{artifact}}
 
-	result, err := RecoverAcquisitionArtifacts(t.Context(), root, store, time.Now)
+	result, err := RecoverAcquisitionArtifacts(t.Context(), root, root, store, time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestRecoverAcquisitionArtifacts_DigestSubstitutionBecomesRepair(t *testing.
 	}
 	store := &recoveryStore{artifacts: []filler.AcquisitionArtifact{artifact}}
 
-	result, err := RecoverAcquisitionArtifacts(t.Context(), root, store, time.Now)
+	result, err := RecoverAcquisitionArtifacts(t.Context(), root, root, store, time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
