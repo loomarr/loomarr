@@ -202,6 +202,9 @@ type SidecarTags struct {
 	// Rollback may remove a visible child only while this exact token remains beside it, so a
 	// recovered confirmer cannot lose its bytes to a stale predecessor.
 	SplitPublicationToken string `json:"splitPublicationToken,omitempty"`
+	// MediaAssets binds the playable catalog rendition to the immutable source master and every
+	// reproducible derivative. It is portable authority beside the bytes, not a cache-only path hint.
+	MediaAssets *MediaAssetManifest `json:"mediaAssets,omitempty"`
 }
 
 type ConditioningPublication struct {
@@ -371,6 +374,9 @@ func decodeSidecarTags(raw []byte) (SidecarTags, SidecarReadState, bool) {
 	}
 	var tags SidecarTags
 	if json.Unmarshal(ours, &tags) != nil {
+		return SidecarTags{}, SidecarInvalid, true
+	}
+	if _, present := fields["mediaAssets"]; present && (tags.MediaAssets == nil || tags.MediaAssets.validate() != nil) {
 		return SidecarTags{}, SidecarInvalid, true
 	}
 	return tags, SidecarValid, true

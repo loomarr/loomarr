@@ -138,8 +138,16 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 	}
 	oldRel := c.Path
 	oldFull := filepath.Join(s.clipDir, filepath.FromSlash(oldRel))
-	inputFull := oldFull
 	tags, hasTags := ReadSidecarTags(oldFull)
+	sourceMaster, err := retainedSourceMaster(ctx, s.clipDir, oldFull, c.Hash, tags)
+	if err != nil {
+		if c.ParentHash != "" {
+			return conditioningReview(c, "source master could not be retained"), nil
+		}
+		return StageResult{}, fmt.Errorf("transcode %s: %w", oldRel, err)
+	}
+	sourceMasterFull := filepath.Join(s.clipDir, filepath.FromSlash(sourceMaster.Path))
+	inputFull := sourceMasterFull
 	var conditioningReq mediatools.ConditioningRequest
 	var conditioningBefore *mediatools.ConditioningMeasurement
 	var conditioningStageDir, conditioningParentFull string
@@ -170,7 +178,7 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 			return StageResult{}, fmt.Errorf("create conditioning staging folder: %w", err)
 		}
 		defer func() { _ = os.RemoveAll(conditioningStageDir) }()
-		snapshots, err := snapshotConditioningArtifacts(ctx, conditioningStageDir, oldFull, conditioningParentFull, c.Hash, parent.Hash)
+		snapshots, err := snapshotConditioningArtifacts(ctx, conditioningStageDir, inputFull, conditioningParentFull, c.Hash, parent.Hash)
 		if err != nil {
 			return conditioningReview(c, err.Error()), nil
 		}
@@ -400,13 +408,25 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 		}
 	}
 	if conditioningBefore != nil {
-		sourceEqual, sourceErr := exactFileBytesEqual(ctx, oldFull, inputFull, mediatools.ConditioningMaxSnapshotBytes)
+		sourceEqual, sourceErr := exactFileBytesEqual(ctx, sourceMasterFull, inputFull, mediatools.ConditioningMaxSnapshotBytes)
 		parentEqual, parentErr := exactFileBytesEqual(ctx, conditioningParentFull, conditioningReq.ParentPath, mediatools.ConditioningMaxSnapshotBytes)
 		if sourceErr != nil || parentErr != nil || !sourceEqual || !parentEqual {
 			return conditioningReview(c, "conditioning source or parent changed while evidence was prepared"), nil
 		}
 		if ctx.Err() != nil {
 			return conditioningReview(c, "conditioning transcode was cancelled"), nil
+		}
+	}
+	// Retaining a master stabilizes the recipe input; it does not grant ownership of whatever path
+	// now occupies the catalog name. Re-open the visible source before publication so a replacement
+	// cannot be re-keyed and then deleted as if it were the bytes we preserved.
+	if sourceMaster.ClipHash == c.Hash {
+		sourceStillOwned, sourceErr := exactFileBytesEqual(ctx, oldFull, sourceMasterFull, mediatools.ConditioningMaxSnapshotBytes)
+		if sourceErr != nil || !sourceStillOwned {
+			if conditioningBefore != nil {
+				return conditioningReview(c, "conditioning source changed while evidence was prepared"), nil
+			}
+			return StageResult{}, fmt.Errorf("transcode %s: source changed while derivatives were prepared", oldRel)
 		}
 	}
 
@@ -429,6 +449,7 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 	tags.Confidence = c.Confidence
 	tags.SuggestedEra = c.SuggestedEra
 	tags.Mezzanine = s.profile.ID()
+	tags.MediaAssets = &MediaAssetManifest{Version: mediaAssetManifestVersion, SourceMaster: sourceMaster}
 	tags.SupersededByHash = ""
 	tags.ConditioningPublication = publication
 	tags.MediaQuality = &quality
