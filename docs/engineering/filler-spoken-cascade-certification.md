@@ -141,3 +141,7 @@ remains a development comparison only while its exact weight authority is unreso
 The remaining operational prerequisite is a real source-disjoint private authority and its
 independent execution through the pinned hosted routes. Until that exists, this command is
 tested machinery, not a production certification claim.
+
+The first upstream corpus step is the non-authorizing
+[VCTK clean-control preparer](filler-spoken-vctk-preparation.md). Its output is only one
+review-ready cohort; it cannot be scored or locked as a complete authority by itself.
