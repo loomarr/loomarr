@@ -177,10 +177,14 @@ func validateStructureAssessmentOutput(path string, probe Probed, source SplitSo
 		return errors.New("structure assessment media is not a bounded regular file")
 	}
 	sampleAspect := strings.ReplaceAll(probe.SampleAspect, ":", "/")
+	durationDrift := absoluteDurationDifference(probe.DurationMs, source.DurationMs)
 	if probe.NoVideo || probe.Silent || probe.Width != profile.Width || probe.Height != profile.Height ||
 		probe.Cadence != profile.FrameRate || sampleAspect != profile.SampleAspectRatio ||
-		probe.DurationMs <= 0 || absoluteDurationDifference(probe.DurationMs, source.DurationMs) > profile.MaximumTimelineDriftMS {
-		return errors.New("structure assessment media does not match the canonical profile")
+		probe.DurationMs <= 0 || durationDrift > profile.MaximumTimelineDriftMS {
+		return fmt.Errorf("structure assessment media does not match the canonical profile: video=%t audio=%t dimensions=%dx%d want=%dx%d cadence=%q want=%q sample_aspect=%q want=%q duration_ms=%d want=%d drift_ms=%d maximum_drift_ms=%d",
+			!probe.NoVideo, !probe.Silent, probe.Width, probe.Height, profile.Width, profile.Height,
+			probe.Cadence, profile.FrameRate, sampleAspect, profile.SampleAspectRatio,
+			probe.DurationMs, source.DurationMs, durationDrift, profile.MaximumTimelineDriftMS)
 	}
 	return nil
 }

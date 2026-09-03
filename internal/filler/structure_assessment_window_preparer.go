@@ -184,10 +184,14 @@ func validateStructureAssessmentWindowOutput(path string, probe Probed, window f
 	sampleAspect := strings.ReplaceAll(probe.SampleAspect, ":", "/")
 	wantProfile := fillerstructuremedia.CanonicalProfile()
 	wantDuration := window.MediaEndMS - window.MediaStartMS
+	durationDrift := absoluteDurationDifference(probe.DurationMs, wantDuration)
 	if probe.NoVideo || probe.Silent || probe.Width != wantProfile.Width || probe.Height != wantProfile.Height ||
 		probe.Cadence != wantProfile.FrameRate || sampleAspect != wantProfile.SampleAspectRatio || probe.DurationMs <= 0 ||
-		absoluteDurationDifference(probe.DurationMs, wantDuration) > profile.MaximumTimelineDriftMS {
-		return errors.New("structure assessment window does not match the canonical profile")
+		durationDrift > profile.MaximumTimelineDriftMS {
+		return fmt.Errorf("structure assessment window does not match the canonical profile: video=%t audio=%t dimensions=%dx%d want=%dx%d cadence=%q want=%q sample_aspect=%q want=%q duration_ms=%d want=%d drift_ms=%d maximum_drift_ms=%d",
+			!probe.NoVideo, !probe.Silent, probe.Width, probe.Height, wantProfile.Width, wantProfile.Height,
+			probe.Cadence, wantProfile.FrameRate, sampleAspect, wantProfile.SampleAspectRatio,
+			probe.DurationMs, wantDuration, durationDrift, profile.MaximumTimelineDriftMS)
 	}
 	return nil
 }

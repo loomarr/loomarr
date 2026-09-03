@@ -8,7 +8,7 @@ import (
 
 func TestCanonicalProfilePinsCompleteAssessmentRecipe(t *testing.T) {
 	profile := CanonicalProfile()
-	if profile.SHA256 != "6d156f5ebb9136e2b72c386336b9676029f3c7bfe5c518922ac2b33eb47272fb" {
+	if profile.SHA256 != "58b09cd2b54d235ac126675f381b8898462fb3461b3d95bdb0af42dd248ae73c" {
 		t.Fatalf("canonical profile digest = %s", profile.SHA256)
 	}
 	if profile.SHA256 != ProfileSHA256(profile) || profile.SHA256 == "" ||
@@ -28,7 +28,7 @@ func TestCanonicalProfilePinsCompleteAssessmentRecipe(t *testing.T) {
 func TestPartArgumentsPinJoinCompatibleProfile(t *testing.T) {
 	arguments := strings.Join(PartArguments("source.mp4", 1_000, 2_000, "part.mp4"), " ")
 	for _, required := range []string{
-		"-ss 1.000", "-t 2.000", "fps=30", "scale=w=960:h=720:force_original_aspect_ratio=decrease",
+		"-ss 1.000 -i source.mp4 -t 2.000", "fps=30:start_time=0", "scale=w=960:h=720:force_original_aspect_ratio=decrease",
 		"pad=960:720", "-pix_fmt yuv420p", "-ar 48000", "-ac 2", "-video_track_timescale 90000",
 		"-threads 1", "-fflags +bitexact", "creation_time=", "encoder=",
 	} {

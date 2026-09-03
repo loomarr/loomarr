@@ -27,9 +27,9 @@ func ConcatArguments(list, output string) []string {
 func partArgumentTemplate() []string {
 	return []string{
 		"-nostdin", "-hide_banner", "-v", "error", "-y",
-		"-threads", "1", "-ss", startToken, "-t", durationToken, "-i", inputToken,
+		"-threads", "1", "-ss", startToken, "-i", inputToken, "-t", durationToken,
 		"-map", "0:v:0", "-map", "0:a:0?", "-map_metadata", "-1", "-map_chapters", "-1",
-		"-vf", "fps=30,scale=w=960:h=720:force_original_aspect_ratio=decrease,pad=960:720:(ow-iw)/2:(oh-ih)/2,setsar=1",
+		"-vf", "fps=30:start_time=0,scale=w=960:h=720:force_original_aspect_ratio=decrease,pad=960:720:(ow-iw)/2:(oh-ih)/2,setsar=1",
 		"-c:v", "libx264", "-preset", "medium", "-crf", "23", "-pix_fmt", "yuv420p",
 		"-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2",
 		"-threads", "1", "-filter_threads", "1", "-filter_complex_threads", "1",
