@@ -11,18 +11,19 @@ import (
 )
 
 const (
-	VCTKReleaseSchemaVersion         = 1
-	VCTKReleaseContractVersion       = "filler-spoken-vctk-release-v1"
-	VCTKReleaseID                    = "VCTK-Corpus-0.92"
-	VCTKReleaseRecordURL             = "https://datashare.ed.ac.uk/items/30e7453c-9ea8-48b4-8e18-f96d0dc62928"
-	VCTKLicenseID                    = "CC-BY-4.0"
-	PreparedCohortSchemaVersion      = 1
-	PreparedCohortContractVersion    = "filler-spoken-prepared-cohort-v1"
-	PreparedCohortKindCleanCandidate = "clean_candidate"
-	VCTKOwnerMapContractVersion      = "filler-spoken-vctk-owner-map-v1"
-	VCTKDatasetID                    = "vctk-0.92"
-	VCTKTargetLocaleSlice            = "target_locale"
-	VCTKNeutralVideoRecipe           = "vctk-neutral-video-640x360-30fps-h264-aac-v1"
+	VCTKReleaseSchemaVersion            = 1
+	VCTKReleaseContractVersion          = "filler-spoken-vctk-release-v1"
+	VCTKReleaseID                       = "VCTK-Corpus-0.92"
+	VCTKReleaseRecordURL                = "https://datashare.ed.ac.uk/items/30e7453c-9ea8-48b4-8e18-f96d0dc62928"
+	VCTKLicenseID                       = "CC-BY-4.0"
+	PreparedCohortSchemaVersion         = 1
+	PreparedCohortContractVersion       = "filler-spoken-prepared-cohort-v1"
+	PreparedCohortKindCleanCandidate    = "clean_candidate"
+	PreparedCohortKindPositiveCandidate = "positive_candidate"
+	VCTKOwnerMapContractVersion         = "filler-spoken-vctk-owner-map-v1"
+	VCTKDatasetID                       = "vctk-0.92"
+	VCTKTargetLocaleSlice               = "target_locale"
+	VCTKNeutralVideoRecipe              = "vctk-neutral-video-640x360-30fps-h264-aac-v1"
 )
 
 type FileAuthority struct {
@@ -100,13 +101,25 @@ type PreparedCohortCase struct {
 	SourcePath            string                       `json:"sourcePath"`
 	SourceAuthority       fillersafety.SourceAuthority `json:"sourceAuthority"`
 	SourceFamily          string                       `json:"sourceFamily"`
+	TranscriptPath        string                       `json:"transcriptPath,omitempty"`
+	TranscriptSHA256      string                       `json:"transcriptSha256,omitempty"`
+	TranscriptBytes       int64                        `json:"transcriptBytes,omitempty"`
 	TruthProvenancePath   string                       `json:"truthProvenancePath"`
 	TruthProvenanceSHA256 string                       `json:"truthProvenanceSha256"`
+	TruthProvenanceBytes  int64                        `json:"truthProvenanceBytes"`
 	RightsPath            string                       `json:"rightsPath"`
 	RightsSHA256          string                       `json:"rightsSha256"`
+	RightsBytes           int64                        `json:"rightsBytes"`
 	Claim                 string                       `json:"claim"`
 	Locale                string                       `json:"locale"`
 	Slices                []string                     `json:"slices"`
+	PositiveIntervals     []PreparedPositiveInterval   `json:"positiveIntervals,omitempty"`
+}
+
+type PreparedPositiveInterval struct {
+	RuleID  string `json:"ruleId"`
+	StartMS int64  `json:"startMs"`
+	EndMS   int64  `json:"endMs"`
 }
 
 type VCTKOwnerMap struct {

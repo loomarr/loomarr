@@ -24,6 +24,89 @@ The private plan binds:
 - the exact combined case count; and
 - aggregate verified-input, published-output, and wall-time ceilings.
 
+The plan itself is `0600`; its paths are canonical slash-separated paths
+relative to the `0700` input root. A three-cohort certification plan has this
+shape (every digest placeholder is replaced by 64 lowercase hexadecimal
+characters):
+
+```json
+{
+  "schemaVersion": 1,
+  "contractVersion": "filler-spoken-corpus-assembly-plan-v1",
+  "assembledAt": "2026-09-04T12:00:00Z",
+  "challengeKind": "certification",
+  "policy": {
+    "path": "policy.json",
+    "sha256": "<policy-sha256>",
+    "bytes": 4096
+  },
+  "proposerSha256": "<proposer-sha256>",
+  "proposerFamily": "complete-audio-window-proposer",
+  "implementation": "spoken-safety-evaluator-v1",
+  "audioRoute": {
+    "role": "spoken-safety",
+    "rung": "native-audio",
+    "modalities": ["audio"],
+    "requestedProvider": "openrouter",
+    "requestedModel": "<requested-audio-model>",
+    "resolvedProvider": "openrouter",
+    "resolvedModel": "<resolved-audio-model>",
+    "upstreamProvider": "<pinned-upstream>",
+    "modelFamily": "<audio-model-family>",
+    "capabilitySha256": "<capability-sha256>",
+    "promptSha256": "<prompt-sha256>",
+    "schemaSha256": "<schema-sha256>"
+  },
+  "videoRoute": {
+    "role": "spoken-safety",
+    "rung": "complete-video",
+    "modalities": ["audio", "video"],
+    "requestedProvider": "openrouter",
+    "requestedModel": "<requested-video-model>",
+    "resolvedProvider": "openrouter",
+    "resolvedModel": "<resolved-video-model>",
+    "upstreamProvider": "<pinned-upstream>",
+    "modelFamily": "<video-model-family>",
+    "capabilitySha256": "<capability-sha256>",
+    "promptSha256": "<prompt-sha256>",
+    "schemaSha256": "<schema-sha256>"
+  },
+  "cohorts": [
+    {
+      "cohortPath": "01-positive/cohort.json",
+      "sourceRoot": "01-positive",
+      "sha256": "<positive-cohort-sha256>",
+      "kind": "positive_candidate",
+      "dataset": "consented-known-script",
+      "expectedCases": 59,
+      "maximumBytes": 1073741824
+    },
+    {
+      "cohortPath": "02-vctk/cohort.json",
+      "sourceRoot": "02-vctk",
+      "sha256": "<vctk-cohort-sha256>",
+      "kind": "clean_candidate",
+      "dataset": "vctk-0.92",
+      "expectedCases": 100,
+      "maximumBytes": 1073741824
+    },
+    {
+      "cohortPath": "03-other-clean/cohort.json",
+      "sourceRoot": "03-other-clean",
+      "sha256": "<other-clean-cohort-sha256>",
+      "kind": "clean_candidate",
+      "dataset": "curated-other-clean",
+      "expectedCases": 3,
+      "maximumBytes": 268435456
+    }
+  ],
+  "expectedCases": 162,
+  "maximumInputBytes": 2415919104,
+  "maximumOutputBytes": 2415919104,
+  "maximumWallTimeMs": 7200000
+}
+```
+
 Every prepared case supplies one opaque case and source-family identity, a
 complete audiovisual source authority, an optional transcript path and digest,
 rights and truth-provenance paths and digests, locale, sorted slices, a proposed
@@ -44,8 +127,9 @@ The output is one atomic private `0700` directory containing `0600` files:
 - `draft.json`, the canonical path-bearing #929 authority draft;
 - `policy.json`, the exact policy bytes reviewers use;
 - `primary-review-one.json` and `primary-review-two.json`, byte-identical
-  worklists that bind the draft and policy digests and contain every case in
-  canonical order; and
+  worklists that bind the draft, policy, source authority, transcript,
+  provenance, and rights digests and contain every case in canonical order;
+  and
 - `cases/<opaque-case>/source.mp4`, optional `transcript.txt`,
   `provenance.json`, and `rights.json` snapshots.
 

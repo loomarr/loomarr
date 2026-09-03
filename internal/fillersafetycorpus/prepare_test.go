@@ -174,7 +174,7 @@ func TestPrepareVCTKRemovesPartialStageOnWrapperFailure(t *testing.T) {
 	if _, err := os.Stat(fixture.output); !os.IsNotExist(err) {
 		t.Fatalf("output exists after failure: %v", err)
 	}
-	matches, err := filepath.Glob(filepath.Join(fixture.root, ".vctk-stage-*"))
+	matches, err := filepath.Glob(filepath.Join(fixture.root, ".filler-safety-stage-*"))
 	if err != nil || len(matches) != 0 {
 		t.Fatalf("partial stages=%v err=%v", matches, err)
 	}

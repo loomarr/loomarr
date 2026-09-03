@@ -250,10 +250,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`fillerreview`** · → `filler`, `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `fillersafety`, `httpx`, `mediatools`, `openroutermedia`
   Materializes identity-blind evidence for independent semantic review.
-- **`fillersafetycert`** · → `fillersafety`
+- **`fillersafetycert`** · 1 importer · → `fillersafety`
   Owns deterministic, non-authorizing certification of the durable spoken-safety cascade.
-- **`fillersafetycorpus`** · → `fillercorpus`, `fillersafety`
-  Prepares private real-speech cohorts for later spoken-safety authority assembly without assigning certification truth.
 - **`library`** · 8 importers · → `episodeevidence`, `filler`, `httpx`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
 - **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `fillersafety`, `invitation`, `notifications`, `provision`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
@@ -269,6 +267,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
 - **`catalog`** · 6 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
+- **`fillersafetycorpus`** · → `fillercorpus`, `fillersafety`, `fillersafetycert`
+  Prepares private real-speech cohorts for later spoken-safety authority assembly without assigning certification truth.
 - **`scheduler`** · 6 importers · → `store`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 - **`settings`** · 1 importer · → `library`
@@ -4588,7 +4588,8 @@ and enforces the certification minima and complete positive/clean slice vocabula
 
 Assembly snapshots only referenced verified bytes into one self-contained `0700` tree. It writes private `0600`
 case media, transcripts, provenance, and rights evidence; the canonical #929 path-bearing `draft.json`; the exact
-policy; and two byte-identical primary-review worklists bound to the draft digest and case order. Each worklist may
+policy; and two byte-identical primary-review worklists bound to the draft digest, policy, evidence, and case order.
+Each worklist may
 show the proposed claim and intervals needed to verify known-script evidence but contains no evaluation result,
 other review, reviewer identity, or completed decision. Outputs are deterministic for the same plan and inputs,
 created atomically without overwrite, and remain non-authorizing. Reviewers submit separate #929 review documents;
