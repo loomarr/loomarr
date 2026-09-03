@@ -13,6 +13,7 @@ const (
 )
 
 type proposerIdentity struct {
+	Kind           proposerKind
 	Implementation string
 	Platform       string
 	RuntimeVersion string
@@ -20,6 +21,13 @@ type proposerIdentity struct {
 	ModelSHA256    string
 	ConfigSHA256   string
 }
+
+type proposerKind string
+
+const (
+	proposerDeterministic proposerKind = "deterministic"
+	proposerExternalModel proposerKind = "external_model"
+)
 
 type proposalRequest struct {
 	AuthoritySHA256 string
@@ -42,11 +50,11 @@ type proposalOutput struct {
 	Candidates []proposedInterval
 }
 
-type acousticProposer interface {
+type candidateProposer interface {
 	Propose(context.Context, proposalRequest) (proposalOutput, error)
 }
 
-func runProposal(ctx context.Context, proposer acousticProposer, expected proposerIdentity, plan *CompleteMediaPlan) Evidence {
+func runProposal(ctx context.Context, proposer candidateProposer, expected proposerIdentity, plan *CompleteMediaPlan) Evidence {
 	failed := Evidence{ProposalState: ProposalFailed, Candidates: []Candidate{}, Audio: []AudioAssessment{}, Video: VideoNotRun}
 	if ctx == nil || ctx.Err() != nil || proposer == nil || !validProposerIdentity(expected) || !validProposalPlan(plan) {
 		return failed

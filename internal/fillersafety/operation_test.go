@@ -60,6 +60,25 @@ func TestEvaluationOperationRecordsSerialCascadeBeforeReturningEvidence(t *testi
 	}
 }
 
+func TestEvaluationOperationUsesWeightFreeWindowsForCompleteAudioCoverage(t *testing.T) {
+	t.Parallel()
+	fixture := newOperationFixture(t, nil)
+	proposer, identity := newCompleteAudioWindowProposer()
+	fixture.operation.cascade.proposer = proposer
+	fixture.operation.cascade.proposerIdentity = identity
+
+	report, err := fixture.operation.Evaluate(t.Context(), fixture.request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Result.Outcome != OutcomeCandidateRejected || len(report.Evidence.Candidates) != 2 ||
+		fixture.audio.calls != 2 || fixture.video.calls != 1 || len(fixture.repository.reservations) != 3 ||
+		report.Evidence.Candidates[0].StartMS != 0 || report.Evidence.Candidates[0].EndMS != completeAudioWindowMS ||
+		report.Evidence.Candidates[1].StartMS != completeAudioWindowMS || report.Evidence.Candidates[1].EndMS != report.Run.DurationMS {
+		t.Fatalf("report=%+v calls=%d/%d reservations=%d", report, fixture.audio.calls, fixture.video.calls, len(fixture.repository.reservations))
+	}
+}
+
 func TestEvaluationOperationReturnsCompletedRunWithoutRepeatingWork(t *testing.T) {
 	t.Parallel()
 	fixture := newOperationFixture(t, []proposedInterval{{StartMS: 100, EndMS: 800}})
