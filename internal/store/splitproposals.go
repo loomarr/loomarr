@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerstructure"
 )
 
 // The persisted split proposal (§10, V34 — migration 00025). Detection runs
@@ -23,14 +24,15 @@ const splitProposalSelect = `SELECT id, clip_hash, segments_json, created_at FRO
 // migration. Detection checkpoints are implementation state, not independently queryable data;
 // keeping them in the proposal's one authored/read document preserves that ownership.
 type splitProposalDocument struct {
-	Version      int                               `json:"version"`
-	Segments     []filler.SplitSegment             `json:"segments,omitempty"`
-	Detection    *filler.SplitDetectionProgress    `json:"detection,omitempty"`
-	Spawned      []string                          `json:"spawned,omitempty"`
-	Source       filler.SplitSourceAsset           `json:"source,omitempty"`
-	Structure    *filler.SourceStructureAssessment `json:"structure,omitempty"`
-	RoleEvidence []filler.StructureRoleEvidence    `json:"roleEvidence,omitempty"`
-	Screenings   []filler.SegmentScreeningEvidence `json:"screenings,omitempty"`
+	Version           int                               `json:"version"`
+	Segments          []filler.SplitSegment             `json:"segments,omitempty"`
+	Detection         *filler.SplitDetectionProgress    `json:"detection,omitempty"`
+	Spawned           []string                          `json:"spawned,omitempty"`
+	Source            filler.SplitSourceAsset           `json:"source,omitempty"`
+	Structure         *filler.SourceStructureAssessment `json:"structure,omitempty"`
+	StructureDecision *fillerstructure.Artifact         `json:"structureDecision,omitempty"`
+	RoleEvidence      []filler.StructureRoleEvidence    `json:"roleEvidence,omitempty"`
+	Screenings        []filler.SegmentScreeningEvidence `json:"screenings,omitempty"`
 }
 
 func marshalSplitProposal(p filler.SplitProposal) ([]byte, error) {
@@ -38,6 +40,9 @@ func marshalSplitProposal(p filler.SplitProposal) ([]byte, error) {
 		return nil, err
 	}
 	if err := validateSplitProposalScreenings(p); err != nil {
+		return nil, err
+	}
+	if err := validateSplitProposalStructureDecision(p); err != nil {
 		return nil, err
 	}
 	if p.Structure != nil {
@@ -49,8 +54,9 @@ func marshalSplitProposal(p filler.SplitProposal) ([]byte, error) {
 		}
 	}
 	return json.Marshal(splitProposalDocument{
-		Version: 6, Segments: p.Segments, Detection: p.Detection, Spawned: p.Spawned,
-		Source: p.Source, Structure: p.Structure, RoleEvidence: splitProposalRoleEvidence(p), Screenings: splitProposalScreenings(p),
+		Version: 7, Segments: p.Segments, Detection: p.Detection, Spawned: p.Spawned,
+		Source: p.Source, Structure: p.Structure, StructureDecision: p.StructureDecision,
+		RoleEvidence: splitProposalRoleEvidence(p), Screenings: splitProposalScreenings(p),
 	})
 }
 
@@ -66,6 +72,7 @@ func unmarshalSplitProposal(raw string, p *filler.SplitProposal) error {
 		return err
 	}
 	p.Segments, p.Detection, p.Spawned, p.Source, p.Structure = doc.Segments, doc.Detection, doc.Spawned, doc.Source, doc.Structure
+	p.StructureDecision = doc.StructureDecision
 	if err := attachSplitProposalRoleEvidence(p, doc.RoleEvidence); err != nil {
 		return err
 	}
@@ -76,6 +83,9 @@ func unmarshalSplitProposal(raw string, p *filler.SplitProposal) error {
 		return err
 	}
 	if err := validateSplitProposalScreenings(*p); err != nil {
+		return err
+	}
+	if err := validateSplitProposalStructureDecision(*p); err != nil {
 		return err
 	}
 	if p.Structure != nil {

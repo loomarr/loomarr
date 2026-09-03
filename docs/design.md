@@ -162,7 +162,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
 - **`fillereval`** · 5 importers
   Owns the hermetic certification contract for filler admission.
-- **`fillerstructure`** · 1 importer
+- **`fillerstructure`** · 3 importers
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
 - **`images/rustgen`** · 4 importers
   Concrete adapter for Loomarr's required Rust image worker (§22).
@@ -241,7 +241,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 5**
 
-- **`filler`** · 7 importers · → `diagnostics`, `filleradmission`, `fillerdecision`, `llm`, `mediatools`, `taxonomy`
+- **`filler`** · 7 importers · → `diagnostics`, `filleradmission`, `fillerdecision`, `fillerstructure`, `llm`, `mediatools`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 - **`fillerreference`** · → `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `mediatools`, `taxonomy`
   Owns the deterministic pre-screen for the production-ready filler reference cohort.
@@ -258,7 +258,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns deterministic, non-authorizing certification of the durable spoken-safety cascade.
 - **`library`** · 8 importers · → `episodeevidence`, `filler`, `httpx`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `fillersafety`, `invitation`, `notifications`, `provision`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
+- **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `fillersafety`, `fillerstructure`, `invitation`, `notifications`, `provision`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 **Layer 7**
@@ -4578,6 +4578,13 @@ and persistence stay outside that module. Its interface retains exact source ide
 timelines, assessor/model-family identity, immutable assessment identity, and every disagreement;
 this makes implementation drift between the passing certificate and the deployed decision path a
 compile-time architecture error rather than a rollout convention.
+Production persists that reducer input and output as one content-addressed decision artifact before
+the split proposal may consume it. The artifact identifies the reducer contract and boundary
+tolerance, retains every independent complete-timeline candidate or operational failure, and
+reproduces the decision byte-for-byte when validated. The proposal document binds the artifact's
+media digest and duration to its exact retained source. An invalid, drifted, missing, or held artifact
+cannot certify the heuristic assessment; a later certification authority must verify its declared
+assessor slices rather than replacing those durable identities with a boolean callback.
 
 Suitability screening is repeated over every freshly rendered structure case because concatenation
 and excerpt construction create new viewing contexts. A prohibited signal in any derivative is a

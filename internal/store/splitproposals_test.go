@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerstructure"
 )
 
 func TestUnmarshalSplitProposal_AcceptsLegacyBareSegmentArray(t *testing.T) {
@@ -62,5 +63,39 @@ func TestMarshalSplitProposalRejectsScreeningForAnotherSpan(t *testing.T) {
 	}
 	if _, err := marshalSplitProposal(proposal); err == nil || !strings.Contains(err.Error(), "does not bind") {
 		t.Fatalf("span-binding error = %v", err)
+	}
+}
+
+func TestMarshalSplitProposalRejectsStructureDecisionForAnotherSource(t *testing.T) {
+	source := filler.SplitSourceAsset{
+		Role: filler.SplitSourceLegacyPlayback, SHA256: strings.Repeat("a", 64), Bytes: 100,
+		ClipHash: strings.Repeat("b", 64), Path: "aa/bb/source.mp4", DurationMs: 60_000,
+	}
+	decisionSource := fillerstructure.Source{SHA256: strings.Repeat("c", 64), DurationMS: source.DurationMs}
+	candidate := func(id, family, assessmentDigest string) fillerstructure.Candidate {
+		return fillerstructure.Candidate{
+			Source: decisionSource,
+			Assessor: fillerstructure.Assessor{
+				ID: id, ModelFamily: family, Provider: "provider", Model: "model",
+				ModelDigest: strings.Repeat("d", 64), PromptVersion: "prompt-v1",
+				AssessmentSHA256: assessmentDigest,
+			},
+			Unit: fillerstructure.UnitStandalone, Role: fillerstructure.RoleCommercial,
+			Segments: []fillerstructure.Segment{{StartMS: 0, EndMS: source.DurationMs, Role: fillerstructure.RoleCommercial}},
+		}
+	}
+	artifact, err := fillerstructure.NewArtifact(fillerstructure.Request{
+		Source: decisionSource, BoundaryToleranceMS: 2_000,
+		Candidates: []fillerstructure.Candidate{
+			candidate("assessor-a", "family-a", strings.Repeat("e", 64)),
+			candidate("assessor-b", "family-b", strings.Repeat("f", 64)),
+		},
+	}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	proposal := filler.SplitProposal{ID: "proposal", ClipHash: source.ClipHash, Source: source, StructureDecision: &artifact}
+	if _, err := marshalSplitProposal(proposal); err == nil || !strings.Contains(err.Error(), "does not bind") {
+		t.Fatalf("source-binding error = %v", err)
 	}
 }
