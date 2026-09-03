@@ -2969,11 +2969,22 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	roleEvidence, err := filler.NewStructureRoleEvidence(filler.StructureRoleEvidenceInput{
+		Source: source, StartMs: 0, EndMs: 30_000, Role: filler.SegmentRoleCommercial,
+		Reason: "product offer and closing brand card", Frames: [][]byte{[]byte("opening"), []byte("closing")},
+		PromptVersion: "filler-vision-grounding-v2", Prompt: "bounded segment prompt", Response: `{"role":"commercial"}`,
+		RequestedProvider: "ollama", ResolvedProvider: "ollama", RequestedModel: "vision", ResolvedModel: "vision@sha256:fixture",
+		Modalities: []string{"image", "text"}, Tokens: filler.StructureRoleTokenUsage{Prompt: 20, Completion: 5, Image: 2},
+		LatencyMs: 100, Attempts: 1, AssessedAt: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	p := filler.SplitProposal{
 		ID: "sp_1", ClipHash: clipHashFor("comps/1987.mp4"), CreatedAt: now,
 		Source: source, Structure: &structure,
 		Segments: []filler.SplitSegment{
-			{Index: 0, StartMs: 0, EndMs: 30000, Name: "comps/1987 part 1", Era: 1987, Audience: filler.Kids, Category: "toys"},
+			{Index: 0, StartMs: 0, EndMs: 30000, Name: "comps/1987 part 1", Era: 1987, Audience: filler.Kids, Category: "toys", RoleEvidence: &roleEvidence},
 			{Index: 1, StartMs: 30000, EndMs: 61000, Name: "unknown", SuggestedEra: 1985, DupOf: "old/ad.mp4", Looked: true},
 			{Index: 2, StartMs: 61000, EndMs: 149000, Name: "comps/1987 part 3", Unsplittable: true, Transcript: "[00:00] …"},
 		},
@@ -2996,6 +3007,9 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	}
 	if !got.Segments[2].Unsplittable || got.Segments[2].Transcript == "" {
 		t.Errorf("unsplittable marker/transcript lost: %+v", got.Segments[2])
+	}
+	if !reflect.DeepEqual(got.Segments[0].RoleEvidence, &roleEvidence) {
+		t.Errorf("segment role evidence lost: %+v", got.Segments[0].RoleEvidence)
 	}
 
 	draft := filler.SplitProposal{

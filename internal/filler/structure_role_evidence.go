@@ -224,3 +224,10 @@ func cloneStructureRoleCharge(charge *StructureRoleCharge) *StructureRoleCharge 
 	clone.Amount, clone.Currency = strings.TrimSpace(clone.Amount), strings.TrimSpace(clone.Currency)
 	return &clone
 }
+
+func cloneStructureRoleEvidence(evidence StructureRoleEvidence) StructureRoleEvidence {
+	evidence.FrameSHA256 = slices.Clone(evidence.FrameSHA256)
+	evidence.Modalities = slices.Clone(evidence.Modalities)
+	evidence.Charge = cloneStructureRoleCharge(evidence.Charge)
+	return evidence
+}

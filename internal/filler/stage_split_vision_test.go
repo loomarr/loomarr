@@ -2,6 +2,7 @@ package filler
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -44,17 +45,20 @@ func (s *spanTools) GrayFrames(context.Context, string, int64, int64) ([][]byte,
 func (s *spanTools) Cut(context.Context, string, int64, int64, string) error { return nil }
 
 type fixedVision struct {
-	answer string
-	err    error
-	calls  int
+	answer      string
+	err         error
+	calls       int
+	attribution llm.Attribution
+	prompts     []string
 }
 
-func (f *fixedVision) AskAboutImages(context.Context, string, [][]byte) (llm.Response, error) {
+func (f *fixedVision) AskAboutImages(_ context.Context, prompt string, _ [][]byte) (llm.Response, error) {
 	f.calls++
+	f.prompts = append(f.prompts, prompt)
 	if f.err != nil {
 		return llm.Response{}, f.err
 	}
-	return llm.Response{Content: f.answer}, nil
+	return llm.Response{Content: f.answer, Attribution: f.attribution}, nil
 }
 
 type seedTaxa struct{}
@@ -139,6 +143,73 @@ func TestSegmentVision_GroundsFromFramesSoTheGateCanFire(t *testing.T) {
 			t.Errorf("segment %d carries SuggestedEra %d — that is an automatic gate refusal",
 				sg.Index, sg.SuggestedEra)
 		}
+	}
+}
+
+func TestSegmentVisionRetainsExactPerSpanRoleEvidence(t *testing.T) {
+	tools := &spanTools{frames: [][]byte{[]byte("opening"), []byte("closing")}}
+	model := &fixedVision{
+		answer: `{"visibleText":"ACME","brand":"ACME","tags":["toys"],"role":"commercial","roleReason":"a product offer and closing brand card"}`,
+		attribution: llm.Attribution{
+			RequestedProvider: "ollama", ResolvedProvider: "ollama", RequestedModel: "vision", ResolvedModel: "vision@sha256:abc",
+			Modalities: []string{"text", "image"}, Tokens: llm.TokenUsage{Prompt: 20, Completion: 5, Image: 2},
+			Latency: 100 * time.Millisecond, Attempts: 1,
+		},
+	}
+	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
+		Tools: tools, Provider: model, Taxa: seedTaxa{}, Budget: func() int { return 10 },
+	})
+	source := structureSource(61_000)
+	segments := twoSegments()
+	pass := s.groundAt(context.Background(), StoreClip{}, "source.mp4", source, segments)
+	if pass.Looked != 2 || pass.Pending != 0 {
+		t.Fatalf("ground pass = %+v", pass)
+	}
+	for index, segment := range segments {
+		if segment.RoleEvidence == nil || segment.RoleEvidence.Role != SegmentRoleCommercial || segment.RoleEvidence.Source != source || segment.RoleEvidence.StartMs != segment.StartMs || segment.RoleEvidence.EndMs != segment.EndMs || segment.RoleEvidence.SHA256 == "" {
+			t.Fatalf("segment %d role evidence = %+v", index, segment.RoleEvidence)
+		}
+	}
+	if len(model.prompts) != 2 || !strings.Contains(model.prompts[0], "programme_fragment") || !strings.Contains(model.prompts[0], "never infer role from the generated filename or duration") {
+		t.Fatalf("role prompt = %q", model.prompts[0])
+	}
+
+	base := assessStructure(t, source.DurationMs, []StructureObservation{
+		structureObservation("black", ObservationBlackInterval, ObservationProposesBoundary, 29_900, 30_100),
+		structureObservation("silence", ObservationSilenceInterval, ObservationProposesBoundary, 29_900, 30_100),
+	}, nil)
+	assessment, err := reassessProposalStructure(SplitProposal{Source: source, Structure: &base, Segments: segments}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if assessment.Kind != StructureCompilationBreak || len(assessment.Plan) != 2 || assessment.Plan[0].Role != SegmentRoleCommercial || assessment.Plan[1].Role != SegmentRoleCommercial {
+		t.Fatalf("role-enriched assessment = %+v", assessment)
+	}
+	// Partial confirmation removes published cuts from the live proposal. Regrounding a held cut
+	// must not erase the already-published interval's role from the complete source assessment.
+	remaining, err := reassessProposalStructure(SplitProposal{
+		Source: source, Structure: &assessment, Segments: segments[1:],
+	}, time.Now().Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if remaining.Kind != StructureCompilationBreak || remaining.Plan[0].Role != SegmentRoleCommercial || remaining.Plan[1].Role != SegmentRoleCommercial {
+		t.Fatalf("partial proposal erased prior role evidence: %+v", remaining)
+	}
+}
+
+func TestSegmentVisionMissingAttributionCannotEstablishRole(t *testing.T) {
+	model := &fixedVision{answer: `{"tags":["toys"],"role":"commercial","roleReason":"a product offer"}`}
+	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
+		Tools: &spanTools{frames: [][]byte{[]byte("frame")}}, Provider: model, Taxa: seedTaxa{}, Budget: func() int { return 1 },
+	})
+	segments := twoSegments()[:1]
+	s.groundAt(context.Background(), StoreClip{}, "source.mp4", structureSource(61_000), segments)
+	if segments[0].RoleEvidence != nil {
+		t.Fatalf("unattributed model output established a role: %+v", segments[0].RoleEvidence)
+	}
+	if segments[0].Category == "" {
+		t.Fatal("invalid role attribution discarded independently valid taxonomy grounding")
 	}
 }
 

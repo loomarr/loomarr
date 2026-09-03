@@ -160,6 +160,13 @@ func (sp *Splitter) Reground(ctx context.Context, proposalID string, grounded []
 		return SplitProposal{}, err
 	}
 	current.Segments = mergeGrounding(current.Segments, grounded)
+	if current.Structure != nil {
+		structure, structureErr := reassessProposalStructure(current, sp.now().UTC())
+		if structureErr != nil {
+			return SplitProposal{}, fmt.Errorf("reground source structure: %w", structureErr)
+		}
+		current.Structure = &structure
+	}
 	if err := sp.store.UpdateSplitProposal(ctx, current); err != nil {
 		return SplitProposal{}, err
 	}
@@ -194,6 +201,10 @@ func mergeGrounding(onto, from []SplitSegment) []SplitSegment {
 		}
 		if g.Era > 0 {
 			out[i].Era = g.Era
+		}
+		if g.RoleEvidence != nil {
+			roleEvidence := cloneStructureRoleEvidence(*g.RoleEvidence)
+			out[i].RoleEvidence = &roleEvidence
 		}
 		// Unlike learned tags, an empty reason is meaningful: a later pass may have supplied the
 		// evidence that clears an earlier hold. Always copy it so stale explanations cannot survive.

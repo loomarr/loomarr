@@ -140,12 +140,12 @@ func (s *SplitStage) ground(ctx context.Context, c StoreClip, segs []SplitSegmen
 	if s.vision != nil {
 		file = filepath.Join(s.vision.ClipDir, filepath.FromSlash(c.Path))
 	}
-	return s.groundAt(ctx, c, file, segs)
+	return s.groundAt(ctx, c, file, SplitSourceAsset{}, segs)
 }
 
 func (s *SplitStage) groundFromSource(ctx context.Context, c StoreClip, source SplitSourceAsset, segs []SplitSegment) groundPass {
 	if s.vision == nil {
-		return s.groundAt(ctx, c, "", segs)
+		return s.groundAt(ctx, c, "", source, segs)
 	}
 	resolveSource := resolveSplitSource
 	if s.splitter != nil && s.splitter.resolveSource != nil {
@@ -156,7 +156,7 @@ func (s *SplitStage) groundFromSource(ctx context.Context, c StoreClip, source S
 		s.groundSkipped(ctx, c, "the proposal's evidence derivative is unavailable", "err", err)
 		return groundPass{Pending: countPendingGrounding(segs)}
 	}
-	return s.groundAt(ctx, c, file, segs)
+	return s.groundAt(ctx, c, file, source, segs)
 }
 
 func countPendingGrounding(segs []SplitSegment) int {
@@ -169,7 +169,7 @@ func countPendingGrounding(segs []SplitSegment) int {
 	return n
 }
 
-func (s *SplitStage) groundAt(ctx context.Context, c StoreClip, file string, segs []SplitSegment) groundPass {
+func (s *SplitStage) groundAt(ctx context.Context, c StoreClip, file string, source SplitSourceAsset, segs []SplitSegment) groundPass {
 	pending := func() int {
 		return countPendingGrounding(segs)
 	}
@@ -204,7 +204,7 @@ func (s *SplitStage) groundAt(ctx context.Context, c StoreClip, file string, seg
 	looked := 0
 	// The pass tally. Counted rather than logged per segment: 60 lines a pass is noise, and the
 	// question an operator has is about the pass, not any one cut.
-	var noFrames, unreadable, learned int
+	var noFrames, unreadable, learned, roles, unresolvedRoles int
 	var providerErr error
 	for i := range segs {
 		if looked >= budget {
@@ -219,7 +219,8 @@ func (s *SplitStage) groundAt(ctx context.Context, c StoreClip, file string, seg
 			noFrames++
 			continue
 		}
-		resp, err := s.vision.Provider.AskAboutImages(ctx, visionPrompt(forest), frames)
+		prompt := visionPrompt(forest)
+		resp, err := s.vision.Provider.AskAboutImages(ctx, prompt, frames)
 		if err != nil {
 			// ⚠ NOT marked, and the loop STOPS: a provider that is failing will fail for every
 			// remaining segment too, so marking would burn the whole reel on one outage. Next pass
@@ -234,7 +235,14 @@ func (s *SplitStage) groundAt(ctx context.Context, c StoreClip, file string, seg
 			continue
 		}
 		v := groundVisionTags(out, forest)
-		if len(v.Tags) > 0 || v.Era > 0 {
+		roleEvidence, roleErr := structureRoleEvidenceFromVision(source, segs[i], prompt, frames, resp, out, s.structureAssessedAt())
+		if roleErr == nil && roleEvidence != nil {
+			segs[i].RoleEvidence = roleEvidence
+			roles++
+		} else {
+			unresolvedRoles++
+		}
+		if len(v.Tags) > 0 || v.Era > 0 || roleEvidence != nil {
 			learned++
 		}
 		segs[i].Tags = unionLeaves(segs[i].Tags, v.Tags)
@@ -248,15 +256,23 @@ func (s *SplitStage) groundAt(ctx context.Context, c StoreClip, file string, seg
 	}
 	s.groundReport(ctx, c, groundTally{
 		looked: looked, pending: pending(), learned: learned,
-		noFrames: noFrames, unreadable: unreadable, providerErr: providerErr,
+		noFrames: noFrames, unreadable: unreadable, roles: roles, unresolvedRoles: unresolvedRoles,
+		providerErr: providerErr,
 	})
 	return groundPass{Looked: looked, Pending: pending()}
 }
 
 // groundTally is one pass's outcome, counted so the pass can be reported in a single line.
 type groundTally struct {
-	looked, pending, learned, noFrames, unreadable int
-	providerErr                                    error
+	looked, pending, learned, noFrames, unreadable, roles, unresolvedRoles int
+	providerErr                                                            error
+}
+
+func (s *SplitStage) structureAssessedAt() time.Time {
+	if s.splitter != nil && s.splitter.now != nil {
+		return s.splitter.now().UTC()
+	}
+	return time.Now().UTC()
 }
 
 // groundSkipped reports a pass that never began. Each caller passes a DIFFERENT reason, which is
@@ -285,6 +301,7 @@ func (s *SplitStage) groundReport(ctx context.Context, c StoreClip, t groundTall
 	args := []any{
 		"clip", c.Hash, "looked", t.looked, "learned", t.learned,
 		"pending", t.pending, "noFrames", t.noFrames, "unreadable", t.unreadable,
+		"roles", t.roles, "unresolvedRoles", t.unresolvedRoles,
 	}
 	switch {
 	case t.providerErr != nil:

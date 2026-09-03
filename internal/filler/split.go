@@ -268,6 +268,11 @@ type SplitSegment struct {
 	// provider-error path does NOT set it, because a failing backend fails for every segment and
 	// should be retried next pass rather than poisoning the reel.
 	Looked bool `json:"looked,omitempty"`
+	// RoleEvidence is the exact, independently attributable frame judgement for THIS span. It is
+	// intentionally not flattened into Category or copied from the parent: the source-structure
+	// reducer consumes it as a segment_role observation and decides whether the span is keepable.
+	// nil means no valid role evidence was produced, even when Looked is true.
+	RoleEvidence *StructureRoleEvidence `json:"-"`
 	// DupOf is the path of an existing catalog clip this segment duplicates
 	// (dHash, measured 25× separation). Propose records the detection fact; the automated split
 	// stage then discards it before classification because it cannot add a new catalog clip.
