@@ -166,13 +166,14 @@ type searchDoc struct {
 type registeredSourceContextKey struct{}
 
 type acquisitionContext struct {
-	sourceID      string
-	acquisitionID string
+	sourceID       string
+	acquisitionID  string
+	publicationDir string
 }
 
-func withAcquisition(ctx context.Context, sourceID, acquisitionID string) context.Context {
+func withAcquisition(ctx context.Context, sourceID, acquisitionID, publicationDir string) context.Context {
 	return context.WithValue(ctx, registeredSourceContextKey{}, acquisitionContext{
-		sourceID: sourceID, acquisitionID: acquisitionID,
+		sourceID: sourceID, acquisitionID: acquisitionID, publicationDir: publicationDir,
 	})
 }
 
@@ -242,7 +243,12 @@ func (c *archiveClient) downloadItem(ctx context.Context, id string, meta metada
 	mediaPath := filepath.Join(dropDir, base)
 	sidecarPath := strings.TrimSuffix(mediaPath, filepath.Ext(mediaPath)) + ".info.json"
 
-	if c.fs.Exists(mediaPath) {
+	acquisition := acquisitionFrom(ctx)
+	existingPath := mediaPath
+	if acquisition.publicationDir != "" {
+		existingPath = filepath.Join(acquisition.publicationDir, base)
+	}
+	if c.fs.Exists(existingPath) {
 		return 0, 1, nil, nil // idempotent: already fetched
 	}
 
@@ -280,7 +286,6 @@ func (c *archiveClient) downloadItem(ctx context.Context, id string, meta metada
 	// Nothing wrote this until V38c.8, so every auto-fetched clip landed `held=false` and went
 	// straight to air unreviewed. Caught by running auto-fetch against real collections and
 	// reading the rows back, not by any test.
-	acquisition := acquisitionFrom(ctx)
 	fields[filler.SidecarLoomarrKey()] = filler.SidecarFetchedMarkForAcquisition(
 		acquisition.sourceID, acquisition.acquisitionID,
 	)

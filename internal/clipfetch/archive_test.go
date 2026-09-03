@@ -149,7 +149,7 @@ func TestArchive_DownloadsItemAndSidecar(t *testing.T) {
 func TestArchive_DownloadCarriesAcquisitionProvenance(t *testing.T) {
 	fs := newMemSink()
 	c := newTestClient(t, fs)
-	ctx := withAcquisition(context.Background(), "archive:classic", "acq-17")
+	ctx := withAcquisition(context.Background(), "archive:classic", "acq-17", "")
 
 	if _, _, _, err := c.walk(ctx, "test-ad", "/drop"); err != nil {
 		t.Fatal(err)

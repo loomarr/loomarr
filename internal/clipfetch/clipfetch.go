@@ -52,6 +52,9 @@ type Source struct {
 	AcquisitionID string
 	Kind          Kind
 	URL           string
+	// PublicationDir is set only by the Ingestor while downloading into hidden staging. It lets
+	// adapters retain their provider-specific idempotency index without publishing into it.
+	PublicationDir string
 }
 
 // Output is one exact file produced by a downloader. Provider adapters identify bytes; the
@@ -156,6 +159,7 @@ func (i *Ingestor) Run(ctx context.Context, sources []Source) Result {
 				res.Failed++
 				continue
 			}
+			src.PublicationDir = i.dropDir
 		}
 		download, err := dl.Download(ctx, src, outputDir)
 		manifests := i.manifests(src, outputDir, download.Outputs)
@@ -169,7 +173,6 @@ func (i *Ingestor) Run(ctx context.Context, sources []Source) Result {
 			manifests = published
 			if publishErr != nil {
 				i.logf("publish acquisition outputs for %s: %v", src.URL, publishErr)
-				res.Failed++
 				err = errors.Join(err, publishErr)
 			}
 		}

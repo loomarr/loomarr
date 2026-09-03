@@ -88,7 +88,14 @@ func (d *YtDlpDownloader) Download(ctx context.Context, src Source, dropDir stri
 	if err := os.MkdirAll(absDropDir, 0o750); err != nil {
 		return DownloadResult{}, fmt.Errorf("create yt-dlp drop directory: %w", err)
 	}
-	archiveFile := filepath.Join(absDropDir, ".yt-dlp-archive.txt")
+	archiveRoot := absDropDir
+	if src.PublicationDir != "" {
+		archiveRoot, err = filepath.Abs(src.PublicationDir)
+		if err != nil {
+			return DownloadResult{}, fmt.Errorf("resolve yt-dlp publication directory: %w", err)
+		}
+	}
+	archiveFile := filepath.Join(archiveRoot, ".yt-dlp-archive.txt")
 	resultFile, err := os.CreateTemp(absDropDir, ".loomarr-ytdlp-results-*")
 	if err != nil {
 		return DownloadResult{}, fmt.Errorf("create yt-dlp result file: %w", err)
@@ -312,7 +319,7 @@ func NewArchiveDownloader(preferOriginal bool) *ArchiveDownloader {
 
 // Download fetches an Archive.org source into dropDir (§10).
 func (d *ArchiveDownloader) Download(ctx context.Context, src Source, dropDir string) (DownloadResult, error) {
-	fetched, skipped, outputs, err := d.client.walk(withAcquisition(ctx, src.ID, src.AcquisitionID), src.URL, dropDir)
+	fetched, skipped, outputs, err := d.client.walk(withAcquisition(ctx, src.ID, src.AcquisitionID, src.PublicationDir), src.URL, dropDir)
 	return DownloadResult{Fetched: fetched, Skipped: skipped, Outputs: outputs}, err
 }
 
