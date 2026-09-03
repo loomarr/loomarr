@@ -156,7 +156,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   In-memory event bus behind SSE (§7 /v1/events, §8).
 - **`filleradmission`** · 8 importers
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
-- **`fillercorpus`** · 2 importers
+- **`fillercorpus`** · 3 importers
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
 - **`fillereval`** · 4 importers
   Owns the hermetic certification contract for filler admission.
@@ -241,7 +241,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 - **`fillerreference`** · → `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `mediatools`, `taxonomy`
   Owns the deterministic pre-screen for the production-ready filler reference cohort.
-- **`fillersafety`** · 3 importers · → `mediatools`, `openroutermedia`, `proctree`
+- **`fillersafety`** · 4 importers · → `mediatools`, `openroutermedia`, `proctree`
   Owns the fail-closed spoken-safety cascade and its shadow evidence.
 
 **Layer 6**
@@ -252,6 +252,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Materializes identity-blind evidence for independent semantic review.
 - **`fillersafetycert`** · → `fillersafety`
   Owns deterministic, non-authorizing certification of the durable spoken-safety cascade.
+- **`fillersafetycorpus`** · → `fillercorpus`, `fillersafety`
+  Prepares private real-speech cohorts for later spoken-safety authority assembly without assigning certification truth.
 - **`library`** · 8 importers · → `episodeevidence`, `filler`, `httpx`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
 - **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `fillersafety`, `invitation`, `notifications`, `provision`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
@@ -4547,6 +4549,27 @@ private seed. Reviewers are blind to evaluation output and one another; known-sc
 claim they must verify. Model-backed primary/adjudicating reviewers are permitted only when their model
 families differ from one another and from every evaluated proposer/adjudicator/corroborator family. This lock
 does not download a dataset, create consent, transform media, run inference, or begin certification.
+
+Public clean-speech preparation is upstream and non-authorizing. The first pinned adapter accepts an already-
+acquired VCTK 0.92 tree, an exact release/member manifest, a completed certification-rights contract, and a
+private seed. It does not crawl or download the release. It verifies the archive/release, licence, README,
+rights-review, transcript, speaker, microphone, and audio identities; p315 is excluded because the release does
+not supply its transcript. From owner-screened eligible utterances it deterministically selects exactly one
+utterance from each of 100 distinct speakers. Alternate microphones, takes, encodes, and later transformations
+retain that speaker family and cannot increase the denominator.
+
+Because the evaluated cascade requires complete audio and video, the adapter wraps each selected real utterance
+in a deterministic neutral-video MP4 using exact ffmpeg/ffprobe executable identities and a fixed recipe. The
+speech remains real but its encoding is a declared derivative; input/output hashes, decoded duration, recipe,
+tool versions, and source-relative complete span are retained. Both output streams must also survive a complete
+bounded decode; a header-valid derivative with a corrupt tail is refused. The adapter emits a private review-ready
+cohort
+and owner map, not a certification authority or clean label. A later full-draft assembler combines it with the
+positive and other clean-slice cohorts before any review bundle binds that exact draft. Reviewing the VCTK
+cohort before assembly would bind the wrong digest and is forbidden. Raw media, transcripts, speaker ids,
+paths, seed, and maps stay outside Git. Missing rights, release drift, an unsafe path, duplicate family/content,
+tool drift, an incomplete output, or fewer than 100 eligible speakers fails before atomic publication. This
+preparation performs no provider call, policy classification, certification run, or spend.
 
 No model is trained or fine-tuned for this lane until governed source-disjoint labels exist and the
 certified stock cascade demonstrably misses a locked gate. Existing unknown commercials and agreement
