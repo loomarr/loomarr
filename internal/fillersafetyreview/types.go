@@ -143,19 +143,20 @@ type checkpoint struct {
 }
 
 type loadedInputs struct {
-	plan           Plan
-	planSHA256     string
-	draft          fillersafetycert.AuthorityDraft
-	draftSHA256    string
-	worklist       fillersafetycorpus.ReviewWorklist
-	worklistSHA256 string
-	policy         fillersafety.Policy
-	policySHA256   string
-	policyBytes    int64
-	snapshotSHA256 string
-	snapshot       fillerbakeoff.OpenRouterSnapshot
-	root           string
-	inputBytes     int64
+	plan              Plan
+	planSHA256        string
+	draft             fillersafetycert.AuthorityDraft
+	draftSHA256       string
+	worklist          fillersafetycorpus.ReviewWorklist
+	worklistSHA256    string
+	policy            fillersafety.Policy
+	policySHA256      string
+	policyBytes       int64
+	snapshotSHA256    string
+	snapshot          fillerbakeoff.OpenRouterSnapshot
+	root              string
+	inputBytes        int64
+	knownScriptRights map[string]fillersafetycorpus.FileAuthority
 }
 
 type reviewRuntime struct {

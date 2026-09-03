@@ -42,7 +42,7 @@ func newKnownScriptFixtureForPolicy(t *testing.T, policySHA256 string) *knownScr
 	processorSchedule := writeAuthorityJSON(t, root, "shared/processors.json", KnownScriptProcessorSchedule{
 		SchemaVersion: KnownScriptProcessorSchemaVersion, ContractVersion: KnownScriptProcessorContractVersion,
 		Processors: []KnownScriptHostedProcessor{{
-			Kind: knownScriptProcessorOpenRouter, SourceBaseURL: "https://openrouter.ai/api/v1",
+			Kind: KnownScriptProcessorOpenRouter, SourceBaseURL: "https://openrouter.ai/api/v1",
 			RequestedModel: "vendor/reviewer", ResolvedModel: "vendor/reviewer-2026",
 			UpstreamProvider: "Pinned Provider", UpstreamProviderSlug: "pinned-provider", ZDR: true,
 		}},

@@ -4650,7 +4650,15 @@ the draft's proposer, native-audio adjudicator, and complete-video corroborator.
 separate plan, reviewer identity, checkpoint, and model family; the operation never sees the sibling review.
 
 For each case the module first reopens and hashes the source, draft, worklist, policy, and evidence bindings,
-then extracts the complete soundtrack from the verified source snapshot into bounded 16 kHz mono WAV. Calls
+then asks the rights owner to authorize the exact hosted processor before any media tool, checkpoint creation,
+HTTP request, or spend reservation. A rights document bearing the known-script rights-envelope contract is strictly
+decoded inside the corpus module; its participant binding, grants, expiry/withdrawal state, processor schedule,
+and time-sensitive asset rights are revalidated at review time. Authorization requires an exact match on the
+OpenRouter HTTPS base URL, requested and resolved model, upstream provider name and slug, and ZDR. A malformed
+recognized envelope or unmatched route fails closed without logging consent contents, participant identity, or
+private paths. Other rights contracts retain their existing validators and are not reinterpreted as participant
+consent. After preflight, the reviewer extracts the complete soundtrack from the verified source snapshot into
+bounded 16 kHz mono WAV. Calls
 are serial, fallback-disabled, ZDR-only, and strict-schema. The prompt exposes the private policy, proposed
 claim, opaque rule ids, and proposed intervals but no evaluation output or other review. The model may return
 only `verified | rejected | unclear`, `clear | degraded | no_speech`, sorted opaque matched-rule ids, and the

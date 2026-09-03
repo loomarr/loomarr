@@ -16,6 +16,8 @@ const (
 	KnownScriptMappingContractVersion   = "filler-spoken-known-script-policy-mapping-v1"
 	KnownScriptProcessorSchemaVersion   = 1
 	KnownScriptProcessorContractVersion = "filler-spoken-hosted-processor-schedule-v1"
+	KnownScriptRightsSchemaVersion      = 1
+	KnownScriptRightsContractVersion    = "filler-spoken-known-script-rights-v1"
 	KnownScriptOwnerMapContractVersion  = "filler-spoken-known-script-owner-map-v1"
 	KnownScriptDatasetID                = "consented-known-script"
 	KnownScriptPackagingRecipe          = "known-script-neutral-video-640x360-30fps-h264-aac-v1"
@@ -26,6 +28,8 @@ const (
 
 	KnownScriptAssetMusic = "music"
 	KnownScriptAssetNoise = "noise"
+
+	KnownScriptProcessorOpenRouter = "openrouter"
 )
 
 type KnownScriptAuthority struct {
@@ -98,6 +102,17 @@ type KnownScriptHostedProcessor struct {
 	UpstreamProvider     string `json:"upstreamProvider"`
 	UpstreamProviderSlug string `json:"upstreamProviderSlug"`
 	ZDR                  bool   `json:"zdr"`
+}
+
+type knownScriptRights struct {
+	SchemaVersion     int                          `json:"schemaVersion"`
+	ContractVersion   string                       `json:"contractVersion"`
+	PreparedAt        time.Time                    `json:"preparedAt"`
+	AuthoritySHA256   string                       `json:"authoritySha256"`
+	ParticipantID     string                       `json:"participantId"`
+	Consent           KnownScriptConsent           `json:"consent"`
+	ProcessorSchedule KnownScriptProcessorSchedule `json:"processorSchedule"`
+	Assets            []KnownScriptAsset           `json:"assets"`
 }
 
 type KnownScriptTransformation struct {

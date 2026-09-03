@@ -51,7 +51,8 @@ func validateInputs(ctx context.Context, config Config, loaded *loadedInputs, ru
 		loaded.plan.ModelFamily == loaded.draft.VideoRoute.ModelFamily {
 		return fillersafety.ToolIdentity{}, "", fmt.Errorf("model reviewer family is not independent from the evaluated cascade")
 	}
-	if err := verifyWorklist(ctx, loaded, now); err != nil {
+	processor := plannedKnownScriptProcessor(loaded.plan, runtime.baseURL)
+	if err := verifyWorklist(ctx, loaded, now, processor); err != nil {
 		return fillersafety.ToolIdentity{}, "", err
 	}
 	ffmpeg, resolved, err := runtime.identify(ctx, config.FFmpegPath)
@@ -62,6 +63,15 @@ func validateInputs(ctx context.Context, config Config, loaded *loadedInputs, ru
 		return fillersafety.ToolIdentity{}, "", err
 	}
 	return ffmpeg, resolved, nil
+}
+
+func plannedKnownScriptProcessor(plan Plan, baseURL string) fillersafetycorpus.KnownScriptHostedProcessor {
+	return fillersafetycorpus.KnownScriptHostedProcessor{
+		Kind: fillersafetycorpus.KnownScriptProcessorOpenRouter, SourceBaseURL: baseURL,
+		RequestedModel: plan.Model, ResolvedModel: plan.ResolvedModel,
+		UpstreamProvider: plan.UpstreamProvider, UpstreamProviderSlug: plan.UpstreamProviderSlug,
+		ZDR: true,
+	}
 }
 
 func validatePlan(plan Plan) error {

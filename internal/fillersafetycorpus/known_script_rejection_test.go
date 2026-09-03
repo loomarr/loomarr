@@ -95,7 +95,7 @@ func TestPrepareKnownScriptRejectsUnauthorizedProcessorScheduleBeforeMedia(t *te
 				SchemaVersion:   KnownScriptProcessorSchemaVersion,
 				ContractVersion: KnownScriptProcessorContractVersion,
 				Processors: []KnownScriptHostedProcessor{{
-					Kind: knownScriptProcessorOpenRouter, SourceBaseURL: "https://openrouter.invalid/api/v1",
+					Kind: KnownScriptProcessorOpenRouter, SourceBaseURL: "https://openrouter.invalid/api/v1",
 					RequestedModel: "vendor/reviewer", ResolvedModel: "vendor/reviewer-2026",
 					UpstreamProvider: "Pinned Provider", UpstreamProviderSlug: "pinned-provider", ZDR: true,
 				}},

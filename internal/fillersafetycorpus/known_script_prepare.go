@@ -31,17 +31,6 @@ type knownScriptProvenance struct {
 	DurationMS        int64                      `json:"durationMs"`
 }
 
-type knownScriptRights struct {
-	SchemaVersion     int                          `json:"schemaVersion"`
-	ContractVersion   string                       `json:"contractVersion"`
-	PreparedAt        time.Time                    `json:"preparedAt"`
-	AuthoritySHA256   string                       `json:"authoritySha256"`
-	ParticipantID     string                       `json:"participantId"`
-	Consent           KnownScriptConsent           `json:"consent"`
-	ProcessorSchedule KnownScriptProcessorSchedule `json:"processorSchedule"`
-	Assets            []KnownScriptAsset           `json:"assets"`
-}
-
 // PrepareKnownScript verifies and packages already acquired, consented real
 // speech. It emits positive candidates, never established certification truth.
 func PrepareKnownScript(ctx context.Context, config PrepareKnownScriptConfig) (PrepareKnownScriptResult, error) {
@@ -146,7 +135,7 @@ func prepareKnownScript(
 			return PrepareKnownScriptResult{}, fmt.Errorf("write known-script provenance %d", index+1)
 		}
 		rights := knownScriptRights{
-			SchemaVersion: KnownScriptConsentSchemaVersion, ContractVersion: KnownScriptConsentContractVersion,
+			SchemaVersion: KnownScriptRightsSchemaVersion, ContractVersion: KnownScriptRightsContractVersion,
 			PreparedAt: config.PreparedAt.UTC(), AuthoritySHA256: loaded.authoritySHA256,
 			ParticipantID: member.ParticipantID, Consent: member.Consent,
 			ProcessorSchedule: input.processorSchedule, Assets: slices.Clone(member.Transformation.Assets),

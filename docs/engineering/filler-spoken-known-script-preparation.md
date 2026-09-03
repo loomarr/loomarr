@@ -111,9 +111,10 @@ All digest placeholders are 64 lowercase hexadecimal characters. The processor
 schedule is strict `filler-spoken-hosted-processor-schedule-v1` JSON. Each
 sorted entry binds an OpenRouter HTTPS base URL, requested and resolved model,
 upstream provider name and slug, and mandatory ZDR. The packager verifies and
-embeds the parsed schedule in each private `rights.json`; later hosted stages
-can therefore enforce the allow-list rather than merely trusting its file
-digest. Preparation performs no network request.
+embeds the parsed schedule in each private `rights.json`. The hosted reviewer
+reopens that document and requires its exact request route to appear in the
+schedule before it may extract audio, create a checkpoint, reserve spend, or
+make HTTP. Preparation performs no network request.
 
 ```json
 {
@@ -154,6 +155,12 @@ The atomically created mode-`0700` output contains private mode-`0600` files:
 - `cases/<opaque-case>/source.mp4` and `transcript.txt`; and
 - per-case `provenance.json` and `rights.json` containing exact private
   transformation and consent evidence.
+
+Each `rights.json` uses the distinct
+`filler-spoken-known-script-rights-v1` envelope; the nested participant grant
+retains `filler-spoken-participant-consent-v1`. Keeping those identities
+separate lets a hosted reviewer recognize the package without confusing a raw
+consent record for review authorization.
 
 ```bash
 go run ./cmd/filler-spoken-known-script-prepare \

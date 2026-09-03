@@ -87,6 +87,13 @@ func runOpenRouter(ctx context.Context, config Config, runtime reviewRuntime) (r
 		}
 		work := loaded.worklist.Cases[caseIndex]
 		draftCase := loaded.draft.Cases[caseIndex]
+		if rights, ok := loaded.knownScriptRights[work.CaseID]; ok {
+			if _, err := authorizeKnownScriptRights(
+				loaded.root, rights, runtime.now().UTC(), plannedKnownScriptProcessor(loaded.plan, runtime.baseURL),
+			); err != nil {
+				return Result{}, fmt.Errorf("model review case %d processor authorization changed", caseIndex+1)
+			}
+		}
 		sourcePath, err := resolveRootPath(loaded.root, work.SourcePath)
 		if err != nil {
 			return Result{}, fmt.Errorf("model review case %d source path changed", caseIndex+1)
