@@ -50,11 +50,13 @@ type MediaAssetManifest struct {
 type MediaDerivativeLineage struct {
 	Asset        MediaAssetIdentity           `json:"asset"`
 	InputSHA256  string                       `json:"inputSha256"`
-	RecipeID     string                       `json:"recipeId"`
+	Recipe       mediatools.DerivativeRecipe  `json:"recipe"`
 	RecipeSHA256 string                       `json:"recipeSha256"`
 	Tool         mediatools.MediaToolIdentity `json:"tool"`
 	DurationMs   int64                        `json:"durationMs"`
 	Quality      MediaQuality                 `json:"quality"`
+	InputProbe   Probed                       `json:"inputProbe"`
+	OutputProbe  Probed                       `json:"outputProbe"`
 }
 
 func (m MediaAssetManifest) validate() error {
@@ -81,8 +83,20 @@ func validateMediaDerivative(derivative MediaDerivativeLineage, role MediaAssetR
 	if err := validateMediaAssetIdentity(derivative.Asset, role, tree); err != nil {
 		return err
 	}
-	if derivative.InputSHA256 != inputSHA256 || !isContentHash(derivative.RecipeSHA256) || derivative.RecipeID == "" || derivative.DurationMs <= 0 {
+	if derivative.InputSHA256 != inputSHA256 || !isContentHash(derivative.RecipeSHA256) || derivative.DurationMs <= 0 {
 		return fmt.Errorf("%s derivative lineage is incomplete", role)
+	}
+	wantRecipeRole := mediatools.DerivativeEvidence
+	if role == MediaAssetPlayback {
+		wantRecipeRole = mediatools.DerivativePlayback
+	}
+	computedRecipeDigest, err := derivative.Recipe.Digest()
+	if err != nil || derivative.Recipe.Role != wantRecipeRole || computedRecipeDigest != derivative.RecipeSHA256 {
+		return fmt.Errorf("%s derivative recipe identity is invalid", role)
+	}
+	if derivative.InputProbe.DurationMs <= 0 || derivative.OutputProbe.DurationMs != derivative.DurationMs ||
+		derivative.InputProbe.Height <= 0 || derivative.OutputProbe.Height <= 0 {
+		return fmt.Errorf("%s derivative probe evidence is incomplete", role)
 	}
 	if err := derivative.Tool.Validate(); err != nil {
 		return fmt.Errorf("%s derivative tool identity: %w", role, err)

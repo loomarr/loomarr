@@ -23,6 +23,30 @@ type mediaDerivativeRequest struct {
 	OnProgress  func(int)
 }
 
+func (s *TranscodeStage) prepareEvidenceDerivative(ctx context.Context, source MediaAssetIdentity, input Probed, ffmpeg string) (*MediaDerivativeLineage, mediatools.MediaToolIdentity, error) {
+	if s.evidenceTranscode == nil {
+		return nil, mediatools.MediaToolIdentity{}, nil
+	}
+	if s.identifyFFmpeg == nil {
+		return nil, mediatools.MediaToolIdentity{}, fmt.Errorf("media tool identity is unavailable")
+	}
+	tool, err := s.identifyFFmpeg(ctx, ffmpeg)
+	if err != nil {
+		return nil, mediatools.MediaToolIdentity{}, err
+	}
+	built, err := buildMediaDerivative(ctx, mediaDerivativeRequest{
+		ClipDir: s.clipDir, Source: source, Input: input,
+		Recipe: mediatools.EvidenceDerivativeRecipe(), Tool: tool,
+		FFmpegPath: ffmpeg, Probe: s.probe, Diagnostics: s.diagnostics,
+		Transcode:  s.evidenceTranscode,
+		OnProgress: func(percent int) { reportProgress(ctx, StageTranscode, percent*45/100) },
+	})
+	if err != nil {
+		return nil, mediatools.MediaToolIdentity{}, err
+	}
+	return &built, tool, nil
+}
+
 func buildMediaDerivative(ctx context.Context, request mediaDerivativeRequest) (MediaDerivativeLineage, error) {
 	if err := validateMediaAssetIdentity(request.Source, MediaAssetSourceMaster, mediaMasterDirName); err != nil {
 		return MediaDerivativeLineage{}, err
@@ -64,6 +88,7 @@ func buildMediaDerivative(ctx context.Context, request mediaDerivativeRequest) (
 	}()
 	quality, err := request.Transcode(ctx, mediatools.TranscodeRequest{
 		In: sourcePath, Out: stagePath, DurationMs: request.Input.DurationMs, HadAudio: !request.Input.Silent,
+		InputProbe: &request.Input,
 		TargetLUFS: request.Recipe.TargetLUFS, Profile: request.Recipe.Profile(), FFmpegPath: request.FFmpegPath,
 		Probe: request.Probe, Diagnostics: request.Diagnostics,
 	}, request.OnProgress)
@@ -93,8 +118,9 @@ func buildMediaDerivative(ctx context.Context, request mediaDerivativeRequest) (
 	}
 	lineage := MediaDerivativeLineage{
 		Asset:       MediaAssetIdentity{Role: MediaAssetEvidence, SHA256: digest, Bytes: size, ClipHash: clipHash, Path: rel},
-		InputSHA256: request.Source.SHA256, RecipeID: request.Recipe.ID, RecipeSHA256: recipeDigest,
+		InputSHA256: request.Source.SHA256, Recipe: request.Recipe, RecipeSHA256: recipeDigest,
 		Tool: request.Tool, DurationMs: output.DurationMs, Quality: quality,
+		InputProbe: request.Input, OutputProbe: output,
 	}
 	if err := validateMediaDerivative(lineage, MediaAssetEvidence, mediaEvidenceDirName, request.Source.SHA256); err != nil {
 		return MediaDerivativeLineage{}, err

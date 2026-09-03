@@ -1455,6 +1455,50 @@ func TestTranscodeStage_BackfillsQualityWithoutReencodingOldMezzanine(t *testing
 	}
 }
 
+func TestTranscodeStage_BackfillsEvidenceWithoutReencodingExistingPlayback(t *testing.T) {
+	dir := t.TempDir()
+	sourceBytes := []byte("legacy playback is the best source still available")
+	hash := writeContentAddressedClip(t, dir, sourceBytes, ".mp4")
+	rel := filepath.ToSlash(ClipRelPath(hash, ".mp4"))
+	full := filepath.Join(dir, filepath.FromSlash(rel))
+	quality := MediaQuality{EvidenceVersion: mediatools.MediaQualityEvidenceV1,
+		Provenance: mediatools.MediaQualityProvenanceFFmpegDetectors, DurationMs: 30_000}
+	if err := WriteSidecarTags(full, SidecarTags{OriginalName: "Legacy advert", Mezzanine: mediatools.DefaultMezzanine().ID(), MediaQuality: &quality}, false); err != nil {
+		t.Fatal(err)
+	}
+	probe := func(context.Context, string) (Probed, error) { return Probed{DurationMs: 30_000, Height: 480}, nil }
+	stage := NewTranscodeStage(&transcodeStore{}, probe, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now).WithMediaDerivatives()
+	stage.identifyFFmpeg = func(context.Context, string) (mediatools.MediaToolIdentity, error) {
+		return mediatools.MediaToolIdentity{Name: "ffmpeg", Version: "fixture", ExecutableSHA256: strings.Repeat("b", 64)}, nil
+	}
+	stage.evidenceTranscode = func(_ context.Context, request mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+		return quality, os.WriteFile(request.Out, []byte("evidence from legacy playback"), 0o600)
+	}
+	stage.transcode = func(context.Context, mediatools.TranscodeRequest, func(int)) (MediaQuality, error) {
+		t.Fatal("backfill must not create another playback generation")
+		return MediaQuality{}, nil
+	}
+	clip := StoreClip{Clip: Clip{Hash: hash, Path: rel, Name: "Legacy advert", Kind: Commercial}}
+	if applies, _ := stage.Applies(context.Background(), clip); !applies {
+		t.Fatal("legacy playback without evidence did not re-enter the rung")
+	}
+	out, err := stage.Run(context.Background(), clip)
+	if err != nil || out.Verdict != VerdictContinue {
+		t.Fatalf("backfill result = %+v, %v", out, err)
+	}
+	got, err := os.ReadFile(full)
+	if err != nil || !bytes.Equal(got, sourceBytes) {
+		t.Fatalf("legacy playback was rewritten: %q, %v", got, err)
+	}
+	tags, state := ReadSidecarTagsState(full)
+	if state != SidecarValid || tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil || tags.MediaAssets.Playback != nil {
+		t.Fatalf("backfilled asset manifest = %+v state=%v", tags.MediaAssets, state)
+	}
+	if applies, reason := stage.Applies(context.Background(), clip); applies {
+		t.Fatalf("completed evidence backfill still applies: %s", reason)
+	}
+}
+
 func writeContentAddressedClip(t *testing.T, dir string, body []byte, ext string) string {
 	t.Helper()
 	tmp := filepath.Join(dir, "source"+ext)

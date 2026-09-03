@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -93,6 +94,9 @@ func (r DerivativeRecipe) Validate() error {
 	}
 	if r.Role == DerivativeEvidence && r.TargetLUFS != 0 {
 		return errors.New("evidence derivative must not apply playout loudness")
+	}
+	if math.IsNaN(r.TargetLUFS) || math.IsInf(r.TargetLUFS, 0) || r.TargetLUFS > 0 || r.TargetLUFS < -70 {
+		return errors.New("derivative loudness target is invalid")
 	}
 	return nil
 }

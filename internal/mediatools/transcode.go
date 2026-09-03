@@ -4,12 +4,15 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
@@ -82,6 +85,9 @@ type TranscodeRequest struct {
 	// DurationMs is the probed duration, used both for the progress percentage and for the
 	// output verification.
 	DurationMs int64
+	// InputProbe carries optional preservation facts. V66 derivative builders always provide it;
+	// legacy callers may leave it nil.
+	InputProbe *Probed
 	// HadAudio is whether the INPUT carried an audio stream, so the verification can require one
 	// in the output only when there was one to begin with.
 	HadAudio bool
@@ -311,5 +317,62 @@ func verifyTranscode(ctx context.Context, req TranscodeRequest, tmp string) erro
 				filepath.Base(req.In), float64(out.DurationMs)/1000, float64(req.DurationMs)/1000)
 		}
 	}
+	if req.InputProbe != nil {
+		if err := verifyPreservedMedia(*req.InputProbe, out); err != nil {
+			return fmt.Errorf("transcode %s: %w", filepath.Base(req.In), err)
+		}
+	}
 	return nil
+}
+
+func verifyPreservedMedia(input, output Probed) error {
+	if (input.Width > 0 && output.Width != input.Width) || (input.Height > 0 && output.Height != input.Height) {
+		return fmt.Errorf("geometry changed from %dx%d to %dx%d", input.Width, input.Height, output.Width, output.Height)
+	}
+	for _, value := range []struct {
+		name   string
+		before string
+		after  string
+	}{
+		{name: "cadence", before: input.Cadence, after: output.Cadence},
+		{name: "sample aspect", before: input.SampleAspect, after: output.SampleAspect},
+		{name: "display aspect", before: input.DisplayAspect, after: output.DisplayAspect},
+	} {
+		if value.before != "" && !equivalentMediaRatio(value.before, value.after) {
+			return fmt.Errorf("%s changed from %q to %q", value.name, value.before, value.after)
+		}
+	}
+	if input.FieldOrder != "" && output.FieldOrder != input.FieldOrder {
+		return fmt.Errorf("field order changed from %q to %q without a declared interlace recipe", input.FieldOrder, output.FieldOrder)
+	}
+	if input.VideoTimingKnown && input.AudioTimingKnown {
+		if !output.VideoTimingKnown || !output.AudioTimingKnown {
+			return errors.New("A/V timing became unavailable")
+		}
+		inputStartSkew := input.AudioStartMs - input.VideoStartMs
+		outputStartSkew := output.AudioStartMs - output.VideoStartMs
+		if math.Abs(float64(outputStartSkew-inputStartSkew)) > 50 {
+			return fmt.Errorf("A/V start skew changed from %dms to %dms", inputStartSkew, outputStartSkew)
+		}
+		inputEndSkew := input.AudioStartMs + input.AudioDurationMs - input.VideoStartMs - input.VideoDurationMs
+		outputEndSkew := output.AudioStartMs + output.AudioDurationMs - output.VideoStartMs - output.VideoDurationMs
+		if math.Abs(float64(outputEndSkew-inputEndSkew)) > verifyTranscodeToleranceMs {
+			return fmt.Errorf("A/V end skew changed from %dms to %dms", inputEndSkew, outputEndSkew)
+		}
+	}
+	return nil
+}
+
+func equivalentMediaRatio(before, after string) bool {
+	if before == "" || after == "" {
+		return false
+	}
+	parse := func(value string) (*big.Rat, bool) {
+		value = strings.ReplaceAll(value, ":", "/")
+		ratio, ok := new(big.Rat).SetString(value)
+		return ratio, ok && ratio.Sign() > 0
+	}
+	left, leftOK := parse(before)
+	right, rightOK := parse(after)
+	return leftOK && rightOK && left.Cmp(right) == 0
 }

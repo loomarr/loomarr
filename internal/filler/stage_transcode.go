@@ -136,6 +136,9 @@ func (s *TranscodeStage) Applies(_ context.Context, c StoreClip) (bool, string) 
 		// A clean report is finished work. An anomalous report must remain applicable so a
 		// failed hold/tombstone write can cheaply re-emit the same safety verdict next pass.
 		if verdict, _, _ := EvaluateMediaQuality(*tags.MediaQuality); verdict == VerdictContinue {
+			if s.evidenceTranscode != nil && (tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil) {
+				return true, ""
+			}
 			return false, "already encoded to the ingest profile"
 		}
 	}
@@ -254,6 +257,28 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 	// The inspection report is also the retry record for the airability gate. Re-emit its
 	// decision without decoding or encoding again if the previous pass could not hold the clip.
 	if hasTags && tags.Mezzanine == s.profile.ID() && tags.MediaQuality != nil {
+		if s.evidenceTranscode == nil || tags.MediaAssets != nil && tags.MediaAssets.Evidence != nil {
+			return mediaQualityResult(c, *tags.MediaQuality), nil
+		}
+		input, err := s.probe(ctx, inputFull)
+		if err != nil {
+			return StageResult{}, fmt.Errorf("probe retained source before evidence backfill: %w", err)
+		}
+		ffmpeg := ""
+		if s.ffmpegPath != nil {
+			ffmpeg = s.ffmpegPath()
+		}
+		evidence, _, err := s.prepareEvidenceDerivative(ctx, sourceMaster, input, ffmpeg)
+		if err != nil {
+			return StageResult{}, fmt.Errorf("build evidence derivative for existing playback: %w", err)
+		}
+		tags.MediaAssets = &MediaAssetManifest{Version: mediaAssetManifestVersion, SourceMaster: sourceMaster, Evidence: evidence}
+		if err := tags.MediaAssets.validate(); err != nil {
+			return StageResult{}, err
+		}
+		if err := WriteSidecarTags(oldFull, tags, false); err != nil {
+			return StageResult{}, fmt.Errorf("persist evidence derivative for existing playback: %w", err)
+		}
 		return mediaQualityResult(c, *tags.MediaQuality), nil
 	}
 
@@ -316,32 +341,15 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 	if s.ffmpegPath != nil {
 		ffmpeg = s.ffmpegPath()
 	}
-	var evidence *MediaDerivativeLineage
-	var mediaTool mediatools.MediaToolIdentity
-	if s.evidenceTranscode != nil {
-		if s.identifyFFmpeg == nil {
-			return StageResult{}, fmt.Errorf("transcode %s: media tool identity is unavailable", oldRel)
-		}
-		mediaTool, err = s.identifyFFmpeg(ctx, ffmpeg)
-		if err != nil {
-			return StageResult{}, fmt.Errorf("transcode %s: %w", oldRel, err)
-		}
-		built, err := buildMediaDerivative(ctx, mediaDerivativeRequest{
-			ClipDir: s.clipDir, Source: sourceMaster, Input: in,
-			Recipe: mediatools.EvidenceDerivativeRecipe(), Tool: mediaTool,
-			FFmpegPath: ffmpeg, Probe: s.probe, Diagnostics: s.diagnostics,
-			Transcode:  s.evidenceTranscode,
-			OnProgress: func(percent int) { reportProgress(ctx, StageTranscode, percent*45/100) },
-		})
-		if err != nil {
-			return StageResult{}, fmt.Errorf("transcode %s: %w", oldRel, err)
-		}
-		evidence = &built
+	evidence, mediaTool, err := s.prepareEvidenceDerivative(ctx, sourceMaster, in, ffmpeg)
+	if err != nil {
+		return StageResult{}, fmt.Errorf("transcode %s: %w", oldRel, err)
 	}
 
 	req := mediatools.TranscodeRequest{
 		In: inputFull, Out: stageFull,
 		DurationMs: in.DurationMs, HadAudio: !in.Silent,
+		InputProbe: &in,
 		TargetLUFS: lufs, Profile: s.profile,
 		FFmpegPath: ffmpeg, Probe: s.probe,
 		Diagnostics: s.diagnostics,
@@ -420,8 +428,9 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 		}
 		assets.Playback = &MediaDerivativeLineage{
 			Asset:       MediaAssetIdentity{Role: MediaAssetPlayback, SHA256: playbackDigest, Bytes: playbackBytes, ClipHash: newHash, Path: newRel},
-			InputSHA256: sourceMaster.SHA256, RecipeID: playbackRecipe.ID, RecipeSHA256: playbackRecipeDigest,
+			InputSHA256: sourceMaster.SHA256, Recipe: playbackRecipe, RecipeSHA256: playbackRecipeDigest,
 			Tool: mediaTool, DurationMs: out.DurationMs, Quality: quality,
+			InputProbe: in, OutputProbe: out,
 		}
 		if err := assets.validate(); err != nil {
 			return StageResult{}, fmt.Errorf("build media asset manifest: %w", err)
