@@ -4700,6 +4700,14 @@ window must still fit the media byte ceiling, every window must complete for one
 produce one source-level candidate, and a real seam-focused certificate must authorize the duration
 slice before use. Sparse sampling, chunk-majority voting, and silently lowering the canonical media
 quality are not valid long-reel fallbacks.
+Production chooses between those protocols once, before media preparation, from the immutable
+source duration and an explicitly configured short-source ceiling that must equal the activated
+short certificate's duration envelope. Sources at or below that ceiling use the complete-video
+runtime; longer sources use the window runtime only through its declared 30-minute capacity. A
+selected runtime's preparation, provider, evidence, or reduction failure is final for that attempt:
+the router never falls through to another representation, because doing so would silently change
+the prompt, media authority, accounting operation, and certification slice. A source outside both
+duration envelopes holds before either runtime can prepare media or reserve provider spend.
 
 One content-addressed media-set artifact embeds the complete plan and the ordinal, normalized media
 identity, and lineage of every window; its ordered membership is the common input authority for all
