@@ -16,8 +16,12 @@ func TestAssessmentRecordBindsRawResponseAndParsedTimeline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	input, err := NewCompleteVideoInput(recorded.Record.Source, recorded.Record.Media)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if candidate.Assessor.AssessmentSHA256 != recorded.Record.SHA256 || candidate.Unit != UnitCompilation ||
-		candidate.Source != recorded.Record.Source || candidate.Media != recorded.Record.Media ||
+		candidate.Source != recorded.Record.Source || candidate.InputSHA256 != input.SHA256 ||
 		len(candidate.Segments) != 2 || candidate.Segments[0].EndMS != 5_000 || candidate.Segments[1].Role != RolePromo {
 		t.Fatalf("record=%+v candidate=%+v", recorded.Record, candidate)
 	}

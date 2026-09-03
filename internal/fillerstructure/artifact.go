@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	ArtifactSchemaVersion   = 3
-	ArtifactContractVersion = "filler-structure-decision-artifact-v3"
-	ReducerContractVersion  = "filler-structure-agreement-v1"
+	ArtifactSchemaVersion   = 4
+	ArtifactContractVersion = "filler-structure-decision-artifact-v4"
+	ReducerContractVersion  = "filler-structure-agreement-v2"
 )
 
 // Artifact is the durable production evidence for one complete-timeline reduction. It retains
@@ -56,7 +56,7 @@ func ValidateArtifact(artifact Artifact) error {
 		return errors.New("filler structure artifact: digest does not match")
 	}
 	reduced := Reduce(Request{
-		Source: artifact.Decision.Source, Media: artifact.Decision.Media, BoundaryToleranceMS: artifact.BoundaryToleranceMS,
+		Source: artifact.Decision.Source, Input: artifact.Decision.Input, BoundaryToleranceMS: artifact.BoundaryToleranceMS,
 		Candidates: artifact.Decision.Candidates,
 	})
 	if slices.Contains(reduced.ReasonCodes, ReasonInvalidCandidate) || !reflect.DeepEqual(reduced, artifact.Decision) {

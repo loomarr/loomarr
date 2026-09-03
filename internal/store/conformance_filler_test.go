@@ -2994,9 +2994,13 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	}
 	decisionSource := fillerstructure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: source.DurationMs}
 	structureMedia := fillerstructure.AssessmentMedia{SHA256: strings.Repeat("6", 64), Bytes: source.Bytes, DurationMS: source.DurationMs, ProfileSHA256: strings.Repeat("5", 64), LineageSHA256: strings.Repeat("4", 64)}
+	structureInput, err := fillerstructure.NewCompleteVideoInput(decisionSource, structureMedia)
+	if err != nil {
+		t.Fatal(err)
+	}
 	structureCandidate := func(id, family, assessmentDigest string) fillerstructure.Candidate {
 		return fillerstructure.Candidate{
-			Source: decisionSource, Media: structureMedia,
+			Source: decisionSource, InputSHA256: structureInput.SHA256,
 			Assessor: fillerstructure.Assessor{
 				ID: id, ModelFamily: family, Provider: "fixture-provider", Model: "fixture-model",
 				ModelDigest: strings.Repeat("8", 64), CapabilitySHA256: strings.Repeat("7", 64),
@@ -3011,7 +3015,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 		}
 	}
 	structureDecision, err := fillerstructure.NewArtifact(fillerstructure.Request{
-		Source: decisionSource, Media: structureMedia, BoundaryToleranceMS: 2_000,
+		Source: decisionSource, Input: structureInput, BoundaryToleranceMS: 2_000,
 		Candidates: []fillerstructure.Candidate{
 			structureCandidate("structure-assessor-a", "structure-family-a", strings.Repeat("9", 64)),
 			structureCandidate("structure-assessor-b", "structure-family-b", strings.Repeat("a", 64)),

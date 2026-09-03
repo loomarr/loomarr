@@ -8,7 +8,8 @@ import (
 )
 
 func invalidCandidates(request Request) bool {
-	if !validSource(request.Source) || !validAssessmentMedia(request.Media, request.Source) || request.BoundaryToleranceMS < 0 || len(request.Candidates) < 2 {
+	if !validSource(request.Source) || ValidateAssessmentInput(request.Input) != nil ||
+		request.Input.Source != request.Source || request.BoundaryToleranceMS < 0 || len(request.Candidates) < 2 {
 		return true
 	}
 	assessors := make(map[string]struct{}, len(request.Candidates))
@@ -16,7 +17,7 @@ func invalidCandidates(request Request) bool {
 	for _, candidate := range request.Candidates {
 		identity := candidate.Assessor
 		family := strings.ToLower(strings.TrimSpace(identity.ModelFamily))
-		if candidate.Source != request.Source || candidate.Media != request.Media || !canonicalIdentity(identity.ID) || family == "" || !canonicalIdentity(identity.Provider) || !canonicalIdentity(identity.Model) || !canonicalIdentity(identity.PromptVersion) || !canonicalIdentity(identity.EvidenceContract) || !digest(identity.ModelDigest) || !digest(identity.CapabilitySHA256) || !digest(identity.AssessmentSHA256) {
+		if candidate.Source != request.Source || candidate.InputSHA256 != request.Input.SHA256 || family == "" || !validAssessor(identity) {
 			return true
 		}
 		if _, duplicate := assessors[identity.ID]; duplicate {

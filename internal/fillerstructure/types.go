@@ -97,18 +97,18 @@ type Segment struct {
 }
 
 type Candidate struct {
-	Source   Source          `json:"source"`
-	Media    AssessmentMedia `json:"media"`
-	Assessor Assessor        `json:"assessor"`
-	Failure  string          `json:"failure,omitempty"`
-	Unit     Unit            `json:"unit,omitempty"`
-	Role     Role            `json:"role,omitempty"`
-	Segments []Segment       `json:"segments,omitempty"`
+	Source      Source    `json:"source"`
+	InputSHA256 string    `json:"inputSha256"`
+	Assessor    Assessor  `json:"assessor"`
+	Failure     string    `json:"failure,omitempty"`
+	Unit        Unit      `json:"unit,omitempty"`
+	Role        Role      `json:"role,omitempty"`
+	Segments    []Segment `json:"segments,omitempty"`
 }
 
 type Request struct {
 	Source              Source
-	Media               AssessmentMedia
+	Input               AssessmentInput
 	BoundaryToleranceMS int64
 	Candidates          []Candidate
 }
@@ -122,7 +122,7 @@ type DecisionSegment struct {
 
 type Decision struct {
 	Source      Source            `json:"source"`
-	Media       AssessmentMedia   `json:"media"`
+	Input       AssessmentInput   `json:"input"`
 	Status      Status            `json:"status"`
 	ReasonCodes []string          `json:"reasonCodes"`
 	Unit        Unit              `json:"unit,omitempty"`

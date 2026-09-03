@@ -94,9 +94,13 @@ func structureDecisionArtifact(t *testing.T, source filler.SplitSourceAsset, joi
 		SHA256: strings.Repeat("9", 64), Bytes: source.Bytes, DurationMS: source.DurationMs,
 		ProfileSHA256: strings.Repeat("8", 64), LineageSHA256: strings.Repeat("7", 64),
 	}
+	input, err := fillerstructure.NewCompleteVideoInput(core, media)
+	if err != nil {
+		t.Fatal(err)
+	}
 	candidate := func(id, family, digest string, segments []fillerstructure.Segment) fillerstructure.Candidate {
 		return fillerstructure.Candidate{
-			Source: core, Media: media,
+			Source: core, InputSHA256: input.SHA256,
 			Assessor: fillerstructure.Assessor{
 				ID: id, ModelFamily: family, Provider: "captured", Model: "model-" + id,
 				ModelDigest: strings.Repeat("a", 64), CapabilitySHA256: strings.Repeat("b", 64),
@@ -118,7 +122,7 @@ func structureDecisionArtifact(t *testing.T, source filler.SplitSourceAsset, joi
 		right.Segments = []fillerstructure.Segment{{StartMS: 0, EndMS: source.DurationMs, Role: fillerstructure.RoleCommercial}}
 	}
 	artifact, err := fillerstructure.NewArtifact(fillerstructure.Request{
-		Source: core, Media: media, BoundaryToleranceMS: 2_000, Candidates: []fillerstructure.Candidate{left, right},
+		Source: core, Input: input, BoundaryToleranceMS: 2_000, Candidates: []fillerstructure.Candidate{left, right},
 	}, time.Date(2026, time.September, 10, 7, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)

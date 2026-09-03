@@ -60,12 +60,35 @@ func TestVerifyAuthorityRejectsHeldDecision(t *testing.T) {
 	}
 }
 
+func TestCompleteVideoAuthorityCannotAuthorizeWindowMediaSet(t *testing.T) {
+	request := fixtureRequest()
+	windowed, err := NewWindowMediaSetInput(request.Source, strings.Repeat("9", 64), request.Input.Items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Input = windowed
+	for index := range request.Candidates {
+		request.Candidates[index].InputSHA256 = windowed.SHA256
+	}
+	artifact, err := NewArtifact(request, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	passing, err := NewArtifact(fixtureRequest(), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyAuthority(artifact, fixtureAuthority(passing)); err == nil {
+		t.Fatal("complete-video authority admitted a window media set")
+	}
+}
+
 func fixtureAuthority(artifact Artifact) Authority {
 	authority := Authority{
 		SchemaVersion: AuthoritySchemaVersion, ContractVersion: AuthorityContractVersion,
-		CertificateSHA256: strings.Repeat("f", 64), AssessmentMediaProfileSHA256: artifact.Decision.Media.ProfileSHA256,
+		CertificateSHA256: strings.Repeat("f", 64), AssessmentMediaProfileSHA256: artifact.Decision.Input.ProfileSHA256,
 		MinimumSourceDurationMS: 1, MaximumSourceDurationMS: artifact.Decision.Source.DurationMS,
-		MaximumAssessmentMediaBytes: artifact.Decision.Media.Bytes, ReducerVersion: ReducerContractVersion,
+		MaximumAssessmentMediaBytes: artifact.Decision.Input.Items[0].Bytes, ReducerVersion: ReducerContractVersion,
 		BoundaryToleranceMS: artifact.BoundaryToleranceMS, AllowedUnits: []Unit{UnitCompilation},
 		AllowedRoles: []Role{RoleCommercial, RolePromo}, AutomaticMaterializationAllowed: true,
 	}

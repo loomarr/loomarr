@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	AuthoritySchemaVersion   = 3
-	AuthorityContractVersion = "filler-structure-materialization-authority-v3"
+	AuthoritySchemaVersion   = 4
+	AuthorityContractVersion = "filler-structure-materialization-authority-v4"
 )
 
 type AssessorProfile struct {

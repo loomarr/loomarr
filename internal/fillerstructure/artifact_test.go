@@ -48,7 +48,7 @@ func TestArtifactRejectsInvalidCandidatesAndMutation(t *testing.T) {
 		{name: "decision", mutate: func(a *Artifact) { a.Decision.Segments[0].EndMS++ }},
 		{name: "candidate", mutate: func(a *Artifact) { a.Decision.Candidates[0].Segments[0].EndMS++ }},
 		{name: "source", mutate: func(a *Artifact) { a.Decision.Source.SHA256 = strings.Repeat("f", 64) }},
-		{name: "media", mutate: func(a *Artifact) { a.Decision.Media.SHA256 = strings.Repeat("f", 64) }},
+		{name: "input", mutate: func(a *Artifact) { a.Decision.Input.Items[0].SHA256 = strings.Repeat("f", 64) }},
 		{name: "policy", mutate: func(a *Artifact) { a.BoundaryToleranceMS = -1 }},
 	}
 	for _, test := range tests {
@@ -56,6 +56,7 @@ func TestArtifactRejectsInvalidCandidatesAndMutation(t *testing.T) {
 			candidate := artifact
 			candidate.Decision.Segments = slices.Clone(artifact.Decision.Segments)
 			candidate.Decision.Candidates = cloneCandidates(artifact.Decision.Candidates)
+			candidate.Decision.Input.Items = slices.Clone(artifact.Decision.Input.Items)
 			test.mutate(&candidate)
 			candidate.SHA256 = ArtifactSHA256(candidate)
 			if err := ValidateArtifact(candidate); err == nil {

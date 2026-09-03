@@ -64,9 +64,10 @@ func VerifyAuthority(artifact Artifact, authority Authority) error {
 	decision := artifact.Decision
 	if !authority.AutomaticMaterializationAllowed || artifact.ReducerVersion != authority.ReducerVersion ||
 		artifact.BoundaryToleranceMS != authority.BoundaryToleranceMS || decision.Status != StatusConfirmed ||
-		decision.Media.ProfileSHA256 != authority.AssessmentMediaProfileSHA256 ||
+		decision.Input.Kind != AssessmentInputCompleteVideo ||
+		decision.Input.ProfileSHA256 != authority.AssessmentMediaProfileSHA256 || len(decision.Input.Items) != 1 ||
 		decision.Source.DurationMS < authority.MinimumSourceDurationMS || decision.Source.DurationMS > authority.MaximumSourceDurationMS ||
-		decision.Media.Bytes > authority.MaximumAssessmentMediaBytes ||
+		decision.Input.Items[0].Bytes > authority.MaximumAssessmentMediaBytes ||
 		!slices.Contains(authority.AllowedUnits, decision.Unit) {
 		return errors.New("filler structure authority: decision is outside certified policy")
 	}

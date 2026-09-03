@@ -46,6 +46,10 @@ func passingStructureDecision(t *testing.T, assessment SourceStructureAssessment
 	}
 	source := fillerstructure.Source{SHA256: assessment.Source.SHA256, Bytes: assessment.Source.Bytes, DurationMS: assessment.DurationMs}
 	media := fillerstructure.AssessmentMedia{SHA256: strings.Repeat("9", 64), Bytes: assessment.Source.Bytes, DurationMS: assessment.DurationMs, ProfileSHA256: strings.Repeat("8", 64), LineageSHA256: strings.Repeat("7", 64)}
+	input, err := fillerstructure.NewCompleteVideoInput(source, media)
+	if err != nil {
+		t.Fatal(err)
+	}
 	segments := make([]fillerstructure.Segment, 0, len(assessment.Plan))
 	for _, planned := range assessment.Plan {
 		segments = append(segments, fillerstructure.Segment{
@@ -54,7 +58,7 @@ func passingStructureDecision(t *testing.T, assessment SourceStructureAssessment
 	}
 	candidate := func(id, family, digest string) fillerstructure.Candidate {
 		return fillerstructure.Candidate{
-			Source: source, Media: media,
+			Source: source, InputSHA256: input.SHA256,
 			Assessor: fillerstructure.Assessor{
 				ID: id, ModelFamily: family, Provider: "fixture-provider", Model: "fixture-model",
 				ModelDigest: strings.Repeat("b", 64), CapabilitySHA256: strings.Repeat("c", 64),
@@ -65,7 +69,7 @@ func passingStructureDecision(t *testing.T, assessment SourceStructureAssessment
 		}
 	}
 	artifact, err := fillerstructure.NewArtifact(fillerstructure.Request{
-		Source: source, Media: media, BoundaryToleranceMS: 2_000,
+		Source: source, Input: input, BoundaryToleranceMS: 2_000,
 		Candidates: []fillerstructure.Candidate{
 			candidate("assessor-a", "family-a", "1"), candidate("assessor-b", "family-b", "2"),
 		},

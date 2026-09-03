@@ -4735,7 +4735,11 @@ The agreement policy itself is one provider-neutral production-domain module, no
 copy: both the challenge adapter and the eventual production runtime supply source-bound immutable
 candidate assessments to the same pure reducer. Challenge aliases, private truth, provider clients,
 and persistence stay outside that module. Its interface retains exact source identity, complete
-timelines, assessor/model-family identity, immutable assessment identity, and every disagreement;
+timelines, assessor/model-family identity, immutable assessment identity, and every disagreement.
+The shared assessment-input manifest represents either one complete normalized video or one complete
+ordered window media set; it binds the source, media profile, every derivative identity and lineage,
+and the window plan digest when applicable. Candidates name that manifest's digest. The reducer never
+models a window set as one synthetic video and never needs provider or filesystem knowledge;
 this makes implementation drift between the passing certificate and the deployed decision path a
 compile-time architecture error rather than a rollout convention.
 Production persists that reducer input and output as one content-addressed decision artifact before
@@ -4754,6 +4758,9 @@ locks the external certificate digest, reducer contract and tolerance, exact ass
 provider/model/capability/prompt/evidence-contract profiles, and the allowed source-unit and segment-
 role slices. Verification requires an exact profile set and a confirmed artifact; unknown profiles,
 units, roles, held decisions, or an authority without explicit production permission fail closed.
+The current short-source authority admits only the complete-video input kind. Window-set activation
+requires its separately measured certificate and receives a distinct authority contract; a short-
+source certificate cannot authorize a long reel merely because both use the same encode profile.
 The runtime assessment coordinator calls each configured complete-timeline assessor serially with
 the same immutable conditioned-media identity and path. Its port exposes no prior answers. Each
 adapter must return either a complete source-bound candidate or an attributable operational-failure

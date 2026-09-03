@@ -30,9 +30,10 @@ type temporalStructureDecisionCandidate struct {
 func reduceTemporalStructureDecision(alias, sourceSHA string, sourceBytes, durationMS int64, profileSHA, lineageSHA string, candidates []temporalStructureDecisionCandidate) TemporalStructureCaseDecision {
 	source := fillerstructure.Source{SHA256: sourceSHA, Bytes: sourceBytes, DurationMS: durationMS}
 	media := fillerstructure.AssessmentMedia{SHA256: sourceSHA, Bytes: sourceBytes, DurationMS: durationMS, ProfileSHA256: profileSHA, LineageSHA256: lineageSHA}
-	request := fillerstructure.Request{Source: source, Media: media, BoundaryToleranceMS: TemporalStructureNearBoundaryMS}
+	input, _ := fillerstructure.NewCompleteVideoInput(source, media)
+	request := fillerstructure.Request{Source: source, Input: input, BoundaryToleranceMS: TemporalStructureNearBoundaryMS}
 	for _, candidate := range candidates {
-		request.Candidates = append(request.Candidates, temporalStructureCoreCandidate(source, media, candidate))
+		request.Candidates = append(request.Candidates, temporalStructureCoreCandidate(source, input.SHA256, candidate))
 	}
 	reduced := fillerstructure.Reduce(request)
 	decision := TemporalStructureCaseDecision{
@@ -55,10 +56,10 @@ func reduceTemporalStructureDecision(alias, sourceSHA string, sourceBytes, durat
 	return decision
 }
 
-func temporalStructureCoreCandidate(source fillerstructure.Source, media fillerstructure.AssessmentMedia, candidate temporalStructureDecisionCandidate) fillerstructure.Candidate {
+func temporalStructureCoreCandidate(source fillerstructure.Source, inputSHA256 string, candidate temporalStructureDecisionCandidate) fillerstructure.Candidate {
 	identity := candidate.assessor
 	result := fillerstructure.Candidate{
-		Source: source, Media: media,
+		Source: source, InputSHA256: inputSHA256,
 		Assessor: fillerstructure.Assessor{
 			ID: identity.ID, ModelFamily: strings.ToLower(strings.TrimSpace(identity.ModelFamily)),
 			Provider: identity.Provider, Model: identity.Model, ModelDigest: identity.ModelDigest,

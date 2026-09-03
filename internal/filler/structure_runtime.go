@@ -94,10 +94,14 @@ func (r *StructureAssessmentRuntime) Assess(ctx context.Context, input Structure
 		return fillerstructure.Artifact{}, fmt.Errorf("structure assessment preparer drifted source or path")
 	}
 	source := fillerstructure.Source{SHA256: media.Source.SHA256, Bytes: media.Source.Bytes, DurationMS: media.Source.DurationMs}
-	request := fillerstructure.Request{Source: source, Media: media.Assessment, BoundaryToleranceMS: r.boundaryTolerance}
 	if err := fillerstructure.ValidateAssessmentMedia(source, media.Assessment); err != nil {
 		return fillerstructure.Artifact{}, fmt.Errorf("structure assessment preparer returned invalid media authority")
 	}
+	assessmentInput, err := fillerstructure.NewCompleteVideoInput(source, media.Assessment)
+	if err != nil {
+		return fillerstructure.Artifact{}, fmt.Errorf("structure assessment preparer returned invalid input authority")
+	}
+	request := fillerstructure.Request{Source: source, Input: assessmentInput, BoundaryToleranceMS: r.boundaryTolerance}
 	for index, assessor := range r.assessors {
 		if err := ctx.Err(); err != nil {
 			return fillerstructure.Artifact{}, err
@@ -113,7 +117,7 @@ func (r *StructureAssessmentRuntime) Assess(ctx context.Context, input Structure
 		if err != nil {
 			return fillerstructure.Artifact{}, fmt.Errorf("complete-timeline assessor %d returned invalid candidate: %w", index, err)
 		}
-		if candidate.Source != source || candidate.Media != media.Assessment || !reflect.DeepEqual(fillerstructure.Profile(candidate.Assessor), assessor.Profile()) {
+		if candidate.Source != source || candidate.InputSHA256 != assessmentInput.SHA256 || !reflect.DeepEqual(fillerstructure.Profile(candidate.Assessor), assessor.Profile()) {
 			return fillerstructure.Artifact{}, fmt.Errorf("complete-timeline assessor %d drifted source, media, or profile", index)
 		}
 		if err := r.evidence.PutStructureAssessmentEvidence(ctx, recorded); err != nil {

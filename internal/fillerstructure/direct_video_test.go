@@ -28,7 +28,10 @@ func TestParseDirectVideoResponseNormalizesAndDerivesProgrammeSpots(t *testing.T
 		t.Fatalf("response=%+v assessment=%+v", response, assessment)
 	}
 	fixture := fixtureRequest()
-	candidate := DirectVideoCandidate(Source{SHA256: strings.Repeat("a", 64), Bytes: 2_048, DurationMS: 99_555}, AssessmentMedia{SHA256: strings.Repeat("e", 64), Bytes: 1_024, DurationMS: 99_555, ProfileSHA256: strings.Repeat("f", 64), LineageSHA256: strings.Repeat("d", 64)}, fixture.Candidates[0].Assessor, assessment)
+	candidate, err := DirectVideoCandidate(Source{SHA256: strings.Repeat("a", 64), Bytes: 2_048, DurationMS: 99_555}, AssessmentMedia{SHA256: strings.Repeat("e", 64), Bytes: 1_024, DurationMS: 99_555, ProfileSHA256: strings.Repeat("f", 64), LineageSHA256: strings.Repeat("d", 64)}, fixture.Candidates[0].Assessor, assessment)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if candidate.Unit != UnitProgrammeSpots || len(candidate.Segments) != 3 || candidate.Segments[1].Role != RoleCommercial {
 		t.Fatalf("candidate=%+v", candidate)
 	}

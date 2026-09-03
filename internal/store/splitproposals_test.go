@@ -50,9 +50,13 @@ func TestMarshalSplitProposalRejectsStructureDecisionForAnotherSource(t *testing
 	}
 	decisionSource := fillerstructure.Source{SHA256: strings.Repeat("c", 64), Bytes: source.Bytes, DurationMS: source.DurationMs}
 	media := fillerstructure.AssessmentMedia{SHA256: strings.Repeat("2", 64), Bytes: source.Bytes, DurationMS: source.DurationMs, ProfileSHA256: strings.Repeat("3", 64), LineageSHA256: strings.Repeat("4", 64)}
+	input, err := fillerstructure.NewCompleteVideoInput(decisionSource, media)
+	if err != nil {
+		t.Fatal(err)
+	}
 	candidate := func(id, family, assessmentDigest string) fillerstructure.Candidate {
 		return fillerstructure.Candidate{
-			Source: decisionSource, Media: media,
+			Source: decisionSource, InputSHA256: input.SHA256,
 			Assessor: fillerstructure.Assessor{
 				ID: id, ModelFamily: family, Provider: "provider", Model: "model",
 				ModelDigest: strings.Repeat("d", 64), CapabilitySHA256: strings.Repeat("1", 64),
@@ -64,7 +68,7 @@ func TestMarshalSplitProposalRejectsStructureDecisionForAnotherSource(t *testing
 		}
 	}
 	artifact, err := fillerstructure.NewArtifact(fillerstructure.Request{
-		Source: decisionSource, Media: media, BoundaryToleranceMS: 2_000,
+		Source: decisionSource, Input: input, BoundaryToleranceMS: 2_000,
 		Candidates: []fillerstructure.Candidate{
 			candidate("assessor-a", "family-a", strings.Repeat("e", 64)),
 			candidate("assessor-b", "family-b", strings.Repeat("f", 64)),

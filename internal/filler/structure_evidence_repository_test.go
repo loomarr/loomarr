@@ -99,13 +99,13 @@ func TestFileStructureAssessmentEvidenceRepositoryRejectsMissingOrDriftedDecisio
 	if _, err := repository.GetStructureDecisionArtifact(t.Context(), strings.Repeat("a", 64)); err == nil {
 		t.Fatal("missing decision was accepted")
 	}
+	source, input := structureDecisionRepositoryInput(t)
 	artifact, err := fillerstructure.NewArtifact(fillerstructure.Request{
-		Source:              fillerstructure.Source{SHA256: strings.Repeat("1", 64), Bytes: 2_048, DurationMS: 10_000},
-		Media:               fillerstructure.AssessmentMedia{SHA256: strings.Repeat("6", 64), Bytes: 1_024, DurationMS: 10_000, ProfileSHA256: strings.Repeat("7", 64), LineageSHA256: strings.Repeat("8", 64)},
+		Source: source, Input: input,
 		BoundaryToleranceMS: 2_000,
 		Candidates: []fillerstructure.Candidate{
-			structureDecisionRepositoryCandidate("a", "family-a", "2"),
-			structureDecisionRepositoryCandidate("b", "family-b", "3"),
+			structureDecisionRepositoryCandidate(source, input.SHA256, "a", "family-a", "2"),
+			structureDecisionRepositoryCandidate(source, input.SHA256, "b", "family-b", "3"),
 		},
 	}, time.Date(2026, time.September, 10, 0, 0, 0, 0, time.UTC))
 	if err != nil {
@@ -123,10 +123,9 @@ func TestFileStructureAssessmentEvidenceRepositoryRejectsMissingOrDriftedDecisio
 	}
 }
 
-func structureDecisionRepositoryCandidate(id, family, assessment string) fillerstructure.Candidate {
+func structureDecisionRepositoryCandidate(source fillerstructure.Source, inputSHA256, id, family, assessment string) fillerstructure.Candidate {
 	return fillerstructure.Candidate{
-		Source: fillerstructure.Source{SHA256: strings.Repeat("1", 64), Bytes: 2_048, DurationMS: 10_000},
-		Media:  fillerstructure.AssessmentMedia{SHA256: strings.Repeat("6", 64), Bytes: 1_024, DurationMS: 10_000, ProfileSHA256: strings.Repeat("7", 64), LineageSHA256: strings.Repeat("8", 64)},
+		Source: source, InputSHA256: inputSHA256,
 		Assessor: fillerstructure.Assessor{
 			ID: "assessor-" + id, ModelFamily: family, Provider: "captured", Model: "model-" + id,
 			ModelDigest: strings.Repeat("4", 64), CapabilitySHA256: strings.Repeat("5", 64),
@@ -135,6 +134,17 @@ func structureDecisionRepositoryCandidate(id, family, assessment string) fillers
 		Unit: fillerstructure.UnitStandalone, Role: fillerstructure.RoleCommercial,
 		Segments: []fillerstructure.Segment{{StartMS: 0, EndMS: 10_000, Role: fillerstructure.RoleCommercial}},
 	}
+}
+
+func structureDecisionRepositoryInput(t *testing.T) (fillerstructure.Source, fillerstructure.AssessmentInput) {
+	t.Helper()
+	source := fillerstructure.Source{SHA256: strings.Repeat("1", 64), Bytes: 2_048, DurationMS: 10_000}
+	media := fillerstructure.AssessmentMedia{SHA256: strings.Repeat("6", 64), Bytes: 1_024, DurationMS: 10_000, ProfileSHA256: strings.Repeat("7", 64), LineageSHA256: strings.Repeat("8", 64)}
+	input, err := fillerstructure.NewCompleteVideoInput(source, media)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return source, input
 }
 
 func structureEvidenceRepositoryFixture(t *testing.T) *FileStructureAssessmentEvidenceRepository {

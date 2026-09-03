@@ -70,13 +70,21 @@ func (record AssessmentRecord) Candidate() (Candidate, error) {
 		CapabilitySHA256: record.Assessor.CapabilitySHA256, PromptVersion: record.Assessor.PromptVersion,
 		EvidenceContract: record.Assessor.EvidenceContract, AssessmentSHA256: record.SHA256,
 	}
-	candidate := Candidate{Source: record.Source, Media: record.Media, Assessor: assessor}
-	if record.State != AssessmentRecordAccepted {
-		candidate.Failure = record.Failure
-		return candidate, nil
+	input, err := NewCompleteVideoInput(record.Source, record.Media)
+	if err != nil {
+		return Candidate{}, err
 	}
-	candidate.Unit, candidate.Role = record.Result.Unit, record.Result.Role
-	candidate.Segments = slices.Clone(record.Result.Segments)
+	if record.State != AssessmentRecordAccepted {
+		return NewCandidate(record.Source, input.SHA256, assessor, record.Failure, nil)
+	}
+	candidate, err := NewCandidate(record.Source, input.SHA256, assessor, "", record.Result.Segments)
+	if err != nil {
+		return Candidate{}, err
+	}
+	if candidate.Unit != record.Result.Unit || candidate.Role != record.Result.Role ||
+		!slices.Equal(candidate.Segments, record.Result.Segments) {
+		return Candidate{}, errors.New("filler structure assessment record claims do not reproduce from timeline")
+	}
 	return candidate, nil
 }
 

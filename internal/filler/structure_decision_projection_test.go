@@ -128,9 +128,13 @@ func projectedStructureArtifact(t *testing.T, source SplitSourceAsset, unit fill
 	t.Helper()
 	coreSource := fillerstructure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: source.DurationMs}
 	media := fillerstructure.AssessmentMedia{SHA256: strings.Repeat("9", 64), Bytes: source.Bytes, DurationMS: source.DurationMs, ProfileSHA256: strings.Repeat("8", 64), LineageSHA256: strings.Repeat("7", 64)}
+	input, err := fillerstructure.NewCompleteVideoInput(coreSource, media)
+	if err != nil {
+		t.Fatal(err)
+	}
 	candidate := func(id, family, assessmentDigest string, segments []fillerstructure.Segment) fillerstructure.Candidate {
 		return fillerstructure.Candidate{
-			Source: coreSource, Media: media,
+			Source: coreSource, InputSHA256: input.SHA256,
 			Assessor: fillerstructure.Assessor{
 				ID: id, ModelFamily: family, Provider: "fixture-provider", Model: "fixture-model",
 				ModelDigest: strings.Repeat("a", 64), CapabilitySHA256: strings.Repeat("b", 64),
@@ -141,7 +145,7 @@ func projectedStructureArtifact(t *testing.T, source SplitSourceAsset, unit fill
 		}
 	}
 	artifact, err := fillerstructure.NewArtifact(fillerstructure.Request{
-		Source: coreSource, Media: media, BoundaryToleranceMS: 2_000,
+		Source: coreSource, Input: input, BoundaryToleranceMS: 2_000,
 		Candidates: []fillerstructure.Candidate{
 			candidate("assessor-a", "family-a", "1", first),
 			candidate("assessor-b", "family-b", "2", second),
