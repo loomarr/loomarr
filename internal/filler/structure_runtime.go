@@ -22,6 +22,12 @@ type CompleteTimelineStructureAssessor interface {
 	AssessCompleteTimeline(context.Context, StructureAssessmentMedia) (fillerstructure.RecordedAssessment, error)
 }
 
+// CompleteTimelineStructureDecisioner is the split stage's deep assessment interface. The
+// implementation owns independent execution, evidence persistence, and deterministic reduction.
+type CompleteTimelineStructureDecisioner interface {
+	Assess(context.Context, StructureAssessmentMedia) (fillerstructure.Artifact, error)
+}
+
 // StructureAssessmentEvidenceRepository must durably commit the record and its exact response
 // bytes before returning. The runtime never reduces an in-memory-only model answer.
 type StructureAssessmentEvidenceRepository interface {
@@ -92,3 +98,5 @@ func (r *StructureAssessmentRuntime) Assess(ctx context.Context, media Structure
 	}
 	return fillerstructure.NewArtifact(request, r.now())
 }
+
+var _ CompleteTimelineStructureDecisioner = (*StructureAssessmentRuntime)(nil)

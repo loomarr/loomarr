@@ -55,6 +55,9 @@ type SplitStage struct {
 	// structureShadow durably compares the compatibility gate with V67's complete-plan gate
 	// before the compatibility outcome may publish. nil preserves the pre-shadow path.
 	structureShadow StructureSplitShadowObserver
+	// structureDecisioner independently assesses the complete retained source once. nil leaves
+	// detector structure in place and makes no provider request.
+	structureDecisioner CompleteTimelineStructureDecisioner
 	// log reports what a grounding pass actually did (§10 V54b). nil is tolerated everywhere.
 	log *slog.Logger
 }
@@ -111,6 +114,14 @@ func (s *SplitStage) WithSegmentVision(v *SegmentVision) *SplitStage {
 // evidence by consuming its proposal.
 func (s *SplitStage) WithStructureShadow(observer StructureSplitShadowObserver) *SplitStage {
 	s.structureShadow = observer
+	return s
+}
+
+// WithCompleteTimelineStructureAssessment attaches the independently reduced whole-source
+// assessment module. Merely attaching it cannot authorize publication; the certified gate still
+// requires an immutable authority and every exact-span screen.
+func (s *SplitStage) WithCompleteTimelineStructureAssessment(decisioner CompleteTimelineStructureDecisioner) *SplitStage {
+	s.structureDecisioner = decisioner
 	return s
 }
 
@@ -509,6 +520,16 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 			return StageResult{}, ErrDeferred
 		}
 	}
+	if p.StructureDecision == nil && s.structureDecisioner != nil {
+		assessed, assessErr := s.splitter.AssessProposalStructure(ctx, *p, s.structureDecisioner)
+		if errors.Is(assessErr, ErrProposalGone) {
+			return StageResult{Verdict: VerdictContinue, Note: "already resolved"}, nil
+		}
+		if assessErr != nil {
+			return StageResult{}, assessErr
+		}
+		p = &assessed
+	}
 
 	// Deterministic outcomes are curation, not decisions. Persist them before any model work so a
 	// restart and the review UI see the same smaller reel.
@@ -670,6 +691,10 @@ func (s *SplitStage) resumableReviewHashes(ctx context.Context) (map[string]stru
 	out := make(map[string]struct{})
 	for _, p := range proposals {
 		if !p.Ready() {
+			out[p.ClipHash] = struct{}{}
+			continue
+		}
+		if s.structureDecisioner != nil && p.StructureDecision == nil {
 			out[p.ClipHash] = struct{}{}
 			continue
 		}
