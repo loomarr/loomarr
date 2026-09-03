@@ -68,6 +68,25 @@ func TestRunOpenRouterTemporalStructureBindsOneAtomicVideoAssessment(t *testing.
 	}
 }
 
+func TestRunOpenRouterTemporalStructureExplicitlyEnablesRequiredReasoning(t *testing.T) {
+	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
+	fixture := newTemporalStructureFixture(t)
+	root, _ := fixture.build(t, "required-reasoning")
+	manifestPath := filepath.Join(root, "public", "manifest.json")
+	manifest := readStrictTestJSON[TemporalStructureChallengeManifest](t, manifestPath)
+	var request openRouterStructuredRequest
+	server := newTemporalSuitabilityServer(t, &request, temporalStructureStandaloneResponse)
+	defer server.Close()
+	config := temporalStructureOpenRouterTestConfig(manifestPath, filepath.Join(t.TempDir(), "private"), []string{manifest.Cases[0].Alias}, server, now)
+	config.ReasoningMode = TemporalStructureOpenRouterReasoningRequired
+	if _, err := RunOpenRouterTemporalStructure(t.Context(), config); err != nil {
+		t.Fatal(err)
+	}
+	if request.Reasoning == nil || !request.Reasoning.Enabled {
+		t.Fatalf("reasoning = %+v", request.Reasoning)
+	}
+}
+
 func TestValidateTemporalStructureOpenRouterResultRejectsEvidenceAccountingDrift(t *testing.T) {
 	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
 	fixture := newTemporalStructureFixture(t)

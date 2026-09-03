@@ -37,6 +37,7 @@ func assessOpenRouterTemporalStructureCase(ctx context.Context, client *http.Cli
 		Videos:    []openroutermedia.Video{{MIMEType: "video/mp4", Base64: base64.StdEncoding.EncodeToString(video)}},
 		MaxTokens: temporalStructureOpenRouterMaxTokens, MaxChargeNanoUSD: config.MaxChargeNanoUSD,
 		DisableReasoning: config.ReasoningMode == TemporalStructureOpenRouterReasoningDisabled,
+		EnableReasoning:  config.ReasoningMode == TemporalStructureOpenRouterReasoningRequired,
 		Title:            temporalStructureOpenRouterTitle,
 		Reserve: func(requestSHA string) error {
 			spent, spendErr := temporalStructureOpenRouterCheckpointSpend(*checkpoint)

@@ -68,6 +68,36 @@ func TestCallRejectsInvalidAudioBeforeReservation(t *testing.T) {
 	}
 }
 
+func TestCallRejectsContradictoryReasoningBeforeReservation(t *testing.T) {
+	t.Parallel()
+	reserved := false
+	_, err := Call(t.Context(), http.DefaultClient, "https://openrouter.ai/api/v1", Config{
+		DisableReasoning: true,
+		EnableReasoning:  true,
+		Reserve:          func(string) error { reserved = true; return nil },
+	})
+	if err == nil || !strings.Contains(err.Error(), "enable and disable reasoning") || reserved {
+		t.Fatalf("err=%v reserved=%t", err, reserved)
+	}
+}
+
+func TestBuildRequestCanExplicitlyEnableReasoning(t *testing.T) {
+	t.Parallel()
+	config := validConfig(func(string) error { return nil })
+	config.EnableReasoning = true
+	body, err := buildRequest(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var request structuredRequest
+	if err := json.Unmarshal(body, &request); err != nil {
+		t.Fatal(err)
+	}
+	if request.Reasoning == nil || !request.Reasoning.Enabled {
+		t.Fatalf("reasoning = %+v", request.Reasoning)
+	}
+}
+
 func TestCallRequiresReservationBeforeHTTP(t *testing.T) {
 	t.Parallel()
 	called := false

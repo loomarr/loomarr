@@ -31,6 +31,7 @@ type Config struct {
 	MaxTokens        int
 	MaxChargeNanoUSD int64
 	DisableReasoning bool
+	EnableReasoning  bool
 	Title            string
 	Reserve          func(string) error
 }
