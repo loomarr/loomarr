@@ -74,6 +74,21 @@ func TestBuildAuthorityRejectsChangedSourceBytesWithoutPublishing(t *testing.T) 
 	}
 }
 
+func TestBuildAuthorityRejectsEvidenceChangedAfterReview(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthorityBuildFixture(t)
+	if err := os.WriteFile(fixture.root+"/truth.bin", []byte("post-review mutation"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := BuildAuthority(t.Context(), fixture.config); err == nil || !strings.Contains(err.Error(), "truth provenance") {
+		t.Fatalf("err=%v", err)
+	}
+	if _, err := os.Stat(fixture.outputPath); !os.IsNotExist(err) {
+		t.Fatalf("output exists after failure: %v", err)
+	}
+}
+
 func TestBuildAuthorityUsesAdjudicationOnlyForDisagreement(t *testing.T) {
 	t.Parallel()
 	fixture := newAuthorityBuildFixture(t)

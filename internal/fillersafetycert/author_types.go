@@ -30,16 +30,18 @@ type AuthorityDraft struct {
 }
 
 type AuthorityDraftCase struct {
-	CaseID              string                       `json:"caseId"`
-	SourcePath          string                       `json:"sourcePath"`
-	SourceAuthority     fillersafety.SourceAuthority `json:"sourceAuthority"`
-	SourceFamily        string                       `json:"sourceFamily"`
-	TruthProvenancePath string                       `json:"truthProvenancePath"`
-	RightsPath          string                       `json:"rightsPath"`
-	Label               string                       `json:"label"`
-	Locale              string                       `json:"locale"`
-	Slices              []string                     `json:"slices"`
-	PositiveIntervals   []PositiveInterval           `json:"positiveIntervals,omitempty"`
+	CaseID                string                       `json:"caseId"`
+	SourcePath            string                       `json:"sourcePath"`
+	SourceAuthority       fillersafety.SourceAuthority `json:"sourceAuthority"`
+	SourceFamily          string                       `json:"sourceFamily"`
+	TruthProvenancePath   string                       `json:"truthProvenancePath"`
+	TruthProvenanceSHA256 string                       `json:"truthProvenanceSha256"`
+	RightsPath            string                       `json:"rightsPath"`
+	RightsSHA256          string                       `json:"rightsSha256"`
+	Label                 string                       `json:"label"`
+	Locale                string                       `json:"locale"`
+	Slices                []string                     `json:"slices"`
+	PositiveIntervals     []PositiveInterval           `json:"positiveIntervals,omitempty"`
 }
 
 // AuthorityReview is one independently produced, evaluation-output-blind

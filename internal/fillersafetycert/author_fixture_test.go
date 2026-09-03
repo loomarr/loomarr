@@ -91,7 +91,9 @@ func fixtureDraftCase(t *testing.T, root string, measuredAt time.Time, index int
 	digest := fmt.Sprintf("%x", sha256.Sum256(contents))
 	item := AuthorityDraftCase{
 		CaseID: id, SourcePath: relative, SourceFamily: fmt.Sprintf("speaker-%03d", index+1),
-		TruthProvenancePath: "truth.bin", RightsPath: "rights.bin", Label: label, Locale: "en-US", Slices: slices,
+		TruthProvenancePath: "truth.bin", TruthProvenanceSHA256: hashBytes([]byte("private truth provenance")),
+		RightsPath: "rights.bin", RightsSHA256: hashBytes([]byte("private rights evidence")),
+		Label: label, Locale: "en-US", Slices: slices,
 		SourceAuthority: fillersafety.SourceAuthority{
 			SchemaVersion: fillersafety.SourceAuthoritySchemaVersion, PolicySHA256: fixtureSHA(10),
 			Implementation: "spoken-safety-evaluator-v1", SourceID: id, SourceSHA256: digest,

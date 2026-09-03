@@ -67,11 +67,11 @@ func BuildAuthority(ctx context.Context, config AuthorityBuildConfig) (Authority
 			return AuthorityBuildResult{}, fmt.Errorf("authority case %d source snapshot cleanup failed", index+1)
 		}
 		truthSHA, err := hashPrivateEvidence(inputs.sourceRoot, item.TruthProvenancePath)
-		if err != nil {
+		if err != nil || truthSHA != item.TruthProvenanceSHA256 {
 			return AuthorityBuildResult{}, fmt.Errorf("authority case %d truth provenance is invalid", index+1)
 		}
 		rightsSHA, err := hashPrivateEvidence(inputs.sourceRoot, item.RightsPath)
-		if err != nil {
+		if err != nil || rightsSHA != item.RightsSHA256 {
 			return AuthorityBuildResult{}, fmt.Errorf("authority case %d rights evidence is invalid", index+1)
 		}
 		caseReviewers, err := bindCaseReviews(inputs, reviews, item)

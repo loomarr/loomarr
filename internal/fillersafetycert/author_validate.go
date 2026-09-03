@@ -35,6 +35,7 @@ func validateAuthorityDraft(draft AuthorityDraft, expectedCases int) error {
 		if !boundedPrivateID(item.CaseID) || item.CaseID <= previous || !boundedPrivateID(item.SourceFamily) ||
 			item.SourceAuthority.SourceID != item.CaseID || item.SourceAuthority.PolicySHA256 != draft.PolicySHA256 ||
 			item.SourceAuthority.Implementation != draft.Implementation || !validLocale(item.Locale) ||
+			!validSHA256(item.TruthProvenanceSHA256) || !validSHA256(item.RightsSHA256) ||
 			len(item.Slices) == 0 || len(item.Slices) > 8 || !strictlySorted(item.Slices) {
 			return fmt.Errorf("authority draft contains invalid or unsorted case identity")
 		}
