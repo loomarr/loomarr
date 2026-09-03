@@ -19,20 +19,27 @@ type StructureAssessmentMedia struct {
 // returned as source-bound Candidate.Failure evidence; error is reserved for missing authority.
 type CompleteTimelineStructureAssessor interface {
 	Profile() fillerstructure.AssessorProfile
-	AssessCompleteTimeline(context.Context, StructureAssessmentMedia) (fillerstructure.Candidate, error)
+	AssessCompleteTimeline(context.Context, StructureAssessmentMedia) (fillerstructure.RecordedAssessment, error)
 }
 
-// StructureAssessmentRuntime owns serial independent execution and shared reduction, not provider
-// configuration, reservations, or response persistence; those remain inside each assessor adapter.
+// StructureAssessmentEvidenceRepository must durably commit the record and its exact response
+// bytes before returning. The runtime never reduces an in-memory-only model answer.
+type StructureAssessmentEvidenceRepository interface {
+	PutStructureAssessmentEvidence(context.Context, fillerstructure.RecordedAssessment) error
+}
+
+// StructureAssessmentRuntime owns serial independent execution, evidence persistence, and shared
+// reduction. Provider configuration and accounting reservations remain inside each assessor adapter.
 type StructureAssessmentRuntime struct {
 	assessors         []CompleteTimelineStructureAssessor
+	evidence          StructureAssessmentEvidenceRepository
 	boundaryTolerance int64
 	now               func() time.Time
 }
 
-func NewStructureAssessmentRuntime(assessors []CompleteTimelineStructureAssessor, boundaryTolerance int64, now func() time.Time) (*StructureAssessmentRuntime, error) {
-	if len(assessors) < 2 || boundaryTolerance < 0 || now == nil {
-		return nil, fmt.Errorf("structure assessment runtime requires two assessors, tolerance, and clock")
+func NewStructureAssessmentRuntime(assessors []CompleteTimelineStructureAssessor, evidence StructureAssessmentEvidenceRepository, boundaryTolerance int64, now func() time.Time) (*StructureAssessmentRuntime, error) {
+	if len(assessors) < 2 || evidence == nil || boundaryTolerance < 0 || now == nil {
+		return nil, fmt.Errorf("structure assessment runtime requires two assessors, evidence repository, tolerance, and clock")
 	}
 	profiles := make([]fillerstructure.AssessorProfile, 0, len(assessors))
 	for _, assessor := range assessors {
@@ -46,6 +53,7 @@ func NewStructureAssessmentRuntime(assessors []CompleteTimelineStructureAssessor
 	}
 	return &StructureAssessmentRuntime{
 		assessors:         append([]CompleteTimelineStructureAssessor(nil), assessors...),
+		evidence:          evidence,
 		boundaryTolerance: boundaryTolerance, now: now,
 	}, nil
 }
@@ -63,12 +71,22 @@ func (r *StructureAssessmentRuntime) Assess(ctx context.Context, media Structure
 		if err := ctx.Err(); err != nil {
 			return fillerstructure.Artifact{}, err
 		}
-		candidate, err := assessor.AssessCompleteTimeline(ctx, media)
+		recorded, err := assessor.AssessCompleteTimeline(ctx, media)
 		if err != nil {
 			return fillerstructure.Artifact{}, fmt.Errorf("complete-timeline assessor %d produced no authority: %w", index, err)
 		}
+		if err := fillerstructure.ValidateRecordedAssessment(recorded); err != nil {
+			return fillerstructure.Artifact{}, fmt.Errorf("complete-timeline assessor %d returned invalid evidence: %w", index, err)
+		}
+		candidate, err := recorded.Record.Candidate()
+		if err != nil {
+			return fillerstructure.Artifact{}, fmt.Errorf("complete-timeline assessor %d returned invalid candidate: %w", index, err)
+		}
 		if candidate.Source != source || !reflect.DeepEqual(fillerstructure.Profile(candidate.Assessor), assessor.Profile()) {
 			return fillerstructure.Artifact{}, fmt.Errorf("complete-timeline assessor %d drifted source or profile", index)
+		}
+		if err := r.evidence.PutStructureAssessmentEvidence(ctx, recorded); err != nil {
+			return fillerstructure.Artifact{}, fmt.Errorf("persist complete-timeline assessor %d evidence: %w", index, err)
 		}
 		request.Candidates = append(request.Candidates, candidate)
 	}

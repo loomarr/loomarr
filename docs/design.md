@@ -4605,6 +4605,15 @@ schema, strict decoder, programme-only coalescing, whole-source unit derivation,
 and reducer-candidate projection are one `fillerstructure` contract used by evaluation and runtime.
 Provider adapters supply transport and durable attribution only; they may not carry a private parser
 or reinterpret interval roles.
+Each runtime assessor returns one content-addressed assessment record rather than an unaudited
+candidate. The record binds the exact source bytes and duration, declared assessor profile, request
+and raw-response digests, requested and resolved route, generation, tokens, accounting reservation,
+provider charge, closed operational state, and either one complete parsed timeline or no semantic
+claim. The coordinator verifies the supplied raw bytes against that record and commits both through
+its evidence-repository seam before projecting a reducer candidate. A missing response for a closed
+transport failure remains explicit; an unsettled, budget-held, over-reservation, route-drifted, or
+invalid-response record becomes attributable operational-hold evidence. Persistence failure aborts
+the reduction, so a paid call can never influence a split from memory alone.
 
 Suitability screening is repeated over every freshly rendered structure case because concatenation
 and excerpt construction create new viewing contexts. A prohibited signal in any derivative is a
