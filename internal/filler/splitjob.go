@@ -772,6 +772,15 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	// the catalog), so the operator can fix and retry rather than losing cuts.
 	publication := splitPublication{token: claimToken}
 	for i, seg := range segments {
+		childKind := clip.Kind
+		structureAuthority, hasStructureAuthority := structureDecisionAuthorityForInterval(p, seg)
+		if hasStructureAuthority {
+			var mapped bool
+			childKind, mapped = catalogKindForStructureRole(structureAuthority.role)
+			if !mapped {
+				return nil, fmt.Errorf("split confirm: certified segment %d has no catalog kind", i)
+			}
+		}
 		tmp := filepath.Join(tmpDir, fmt.Sprintf("seg-%03d%s", i, ext))
 		if err := sp.tools.Cut(ctx, sourceSnapshot, seg.StartMs, seg.EndMs, tmp); err != nil {
 			return nil, err
@@ -791,13 +800,15 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 			SourceID:              parentTags.SourceID,
 			AcquisitionID:         parentTags.AcquisitionID,
 			OriginalName:          seg.Name + ext,
+			Kind:                  string(childKind),
 			SplitPublicationToken: claimToken,
 			ConditioningLineage: &ConditioningLineage{
 				ChildHash:               id,
 				ParentHash:              clip.Hash,
 				ParentAssetRole:         string(source.Role),
 				ParentAssetSHA256:       source.SHA256,
-				StructureDecisionSHA256: structureDecisionSHA256ForInterval(p, seg),
+				StructureDecisionSHA256: structureAuthority.sha256,
+				StructureRole:           structureAuthority.role,
 				IntendedStartMs:         seg.StartMs,
 				IntendedEndMs:           seg.EndMs,
 			},
@@ -825,10 +836,10 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 			if err := WriteSidecarTags(dst, childTags, false); err != nil {
 				return nil, fmt.Errorf("split confirm: fence existing segment %d: %w", i, err)
 			}
-			publication.cuts = append(publication.cuts, preparedSplitCut{segment: seg, hash: id, path: ClipRelPath(id, ext), staged: tmp, final: dst, existing: true})
+			publication.cuts = append(publication.cuts, preparedSplitCut{segment: seg, kind: childKind, hash: id, path: ClipRelPath(id, ext), staged: tmp, final: dst, existing: true})
 			continue
 		}
-		publication.cuts = append(publication.cuts, preparedSplitCut{segment: seg, hash: id, path: ClipRelPath(id, ext), staged: tmp, final: dst})
+		publication.cuts = append(publication.cuts, preparedSplitCut{segment: seg, kind: childKind, hash: id, path: ClipRelPath(id, ext), staged: tmp, final: dst})
 	}
 	if err := validateSplitCompositeOwnership(ctx, src, sourceSnapshot); err != nil {
 		return nil, fmt.Errorf("split confirm: composite source changed while cuts were prepared: %w", err)
@@ -860,7 +871,7 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		nc.Hash = c.hash
 		nc.Path = c.path
 		nc.Name = c.segment.Name
-		nc.Kind = clip.Kind
+		nc.Kind = c.kind
 		nc.DurationMs = c.segment.EndMs - c.segment.StartMs
 		nc.Era = c.segment.Era
 		nc.SuggestedEra = c.segment.SuggestedEra

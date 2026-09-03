@@ -769,7 +769,8 @@ func validConditioningLineage(lineage *ConditioningLineage, childParentHash stri
 	}
 	assetBound := lineage.ParentAssetRole != "" || lineage.ParentAssetSHA256 != ""
 	role := SplitSourceRole(lineage.ParentAssetRole)
-	decisionBound := lineage.StructureDecisionSHA256 == "" || isContentHash(lineage.StructureDecisionSHA256)
+	decisionBound := lineage.StructureDecisionSHA256 == "" && lineage.StructureRole == "" ||
+		isContentHash(lineage.StructureDecisionSHA256) && certifiedFillerRole(lineage.StructureRole)
 	return decisionBound && (!assetBound || ((role == SplitSourceEvidence || role == SplitSourceLegacyPlayback) && isContentHash(lineage.ParentAssetSHA256)))
 }
 

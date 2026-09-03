@@ -254,8 +254,12 @@ type ConditioningLineage struct {
 	ParentAssetRole         string `json:"parentAssetRole,omitempty"`
 	ParentAssetSHA256       string `json:"parentAssetSha256,omitempty"`
 	StructureDecisionSHA256 string `json:"structureDecisionSha256,omitempty"`
-	IntendedStartMs         int64  `json:"intendedStartMs"`
-	IntendedEndMs           int64  `json:"intendedEndMs"`
+	// StructureRole is the exact semantic role from the confirmed complete-timeline decision.
+	// It remains distinct from SidecarTags.Kind because promo is projected to the legacy
+	// interstitial catalog kind while its more precise assessment meaning must survive rebuilds.
+	StructureRole   StructureSegmentRole `json:"structureRole,omitempty"`
+	IntendedStartMs int64                `json:"intendedStartMs"`
+	IntendedEndMs   int64                `json:"intendedEndMs"`
 }
 
 // ConditioningEvidence keeps measurements separate from policy decisions and target markers.
@@ -397,7 +401,10 @@ func decodeSidecarTags(raw []byte) (SidecarTags, SidecarReadState, bool) {
 			(!rawJSONString(lineageFields, "parentAssetRole") || !rawJSONString(lineageFields, "parentAssetSha256")) {
 			return SidecarTags{}, SidecarInvalid, true
 		}
-		if _, present := lineageFields["structureDecisionSha256"]; present && !rawJSONString(lineageFields, "structureDecisionSha256") {
+		_, hasStructureDecision := lineageFields["structureDecisionSha256"]
+		_, hasStructureRole := lineageFields["structureRole"]
+		if hasStructureDecision != hasStructureRole || hasStructureDecision &&
+			(!rawJSONString(lineageFields, "structureDecisionSha256") || !rawJSONString(lineageFields, "structureRole")) {
 			return SidecarTags{}, SidecarInvalid, true
 		}
 		if _, present := lineageFields["segmentScreeningSha256"]; present && !rawJSONString(lineageFields, "segmentScreeningSha256") {
@@ -427,6 +434,9 @@ func decodeSidecarTags(raw []byte) (SidecarTags, SidecarReadState, bool) {
 	}
 	var tags SidecarTags
 	if json.Unmarshal(ours, &tags) != nil {
+		return SidecarTags{}, SidecarInvalid, true
+	}
+	if tags.Kind != "" && !validKind(Kind(tags.Kind)) {
 		return SidecarTags{}, SidecarInvalid, true
 	}
 	if _, present := fields["mediaAssets"]; present && (tags.MediaAssets == nil || tags.MediaAssets.validate() != nil) {

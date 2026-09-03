@@ -65,7 +65,8 @@ func TestSegmentScreeningSubjectBindsRenderedChildAndExactParentInterval(t *test
 	lineage := ConditioningLineage{
 		ChildHash: manifest.SourceMaster.ClipHash, ParentHash: strings.Repeat("7", 64),
 		ParentAssetRole: string(SplitSourceEvidence), ParentAssetSHA256: strings.Repeat("8", 64),
-		StructureDecisionSHA256: strings.Repeat("a", 64), IntendedStartMs: 1_000, IntendedEndMs: 31_000,
+		StructureDecisionSHA256: strings.Repeat("a", 64), StructureRole: SegmentRoleCommercial,
+		IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 	}
 	measurement := completeConditioningMeasurement(-23)
 	conditioning := ConditioningEvidence{

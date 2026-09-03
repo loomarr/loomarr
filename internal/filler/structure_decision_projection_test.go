@@ -77,6 +77,23 @@ func TestProjectConfirmedStructureDecisionKeepsProgrammeOutOfFillerPlan(t *testi
 	}
 }
 
+func TestProjectConfirmedStructureDecisionKeepsInterstitialRole(t *testing.T) {
+	source := structureSource(60_000)
+	segments := []fillerstructure.Segment{
+		{StartMS: 0, EndMS: 30_000, Role: fillerstructure.RoleInterstitial},
+		{StartMS: 30_000, EndMS: 60_000, Role: fillerstructure.RoleCommercial},
+	}
+	artifact := projectedStructureArtifact(t, source, fillerstructure.UnitCompilation, segments, segments)
+	assessment, err := ProjectConfirmedStructureDecision(source, nil, artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if assessment.Kind != StructureCompilationBreak || assessment.Plan[0].Disposition != StructureKeep ||
+		assessment.Plan[0].Role != SegmentRoleInterstitial {
+		t.Fatalf("interstitial projection = %+v", assessment)
+	}
+}
+
 func TestProjectConfirmedStructureDecisionRejectsHeldOrDriftedEvidence(t *testing.T) {
 	source := structureSource(60_000)
 	first := []fillerstructure.Segment{

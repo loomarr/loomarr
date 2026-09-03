@@ -3138,7 +3138,10 @@ the master; it never promotes a partial derivative.
 
 Confirmed compilation children retain the reviewed parent hash and exact intended interval as today,
 and additionally bind the parent media-asset digest and the exact source role from which the cut was
-made. Boundary measurements compare the child with that immutable parent role. This prevents a future
+made. A child cut from a confirmed complete-timeline decision also retains that decision's exact
+semantic segment role; materialization derives the catalog kind from this role instead of copying the
+compilation parent's generic kind. Boundary measurements compare the child with that immutable parent
+role. This prevents a future
 playback-recipe change from silently changing what the split decision meant. The actual boundary
 detection and commercial-versus-scene-change policy remain the following split rung's responsibility.
 
@@ -3212,11 +3215,15 @@ the plan while preserving complete coverage; it cannot make omitted time disappe
 drop tally is compatibility display data only and is not structure authority.
 
 Each `keep` interval is classified independently as `commercial`, `promo`, `bumper`, `station_id`, `psa`,
-`trailer`, `programme_fragment`, `non_filler`, `ambiguous`, or `unusable`. A parent catalog kind is never
+`trailer`, `interstitial`, `programme_fragment`, `non_filler`, `ambiguous`, or `unusable`. A parent catalog kind is never
 copied as the child's role. `programme_fragment`, `non_filler`, `ambiguous`, and `unusable` are never
 automatically admitted as filler. Every child binds its role evidence, transcript spans, OCR/logo findings,
 frame/audio evidence, exact parent evidence asset, and intended source-relative interval before media is
-cut. Post-screen taxonomy enrichment remains a later operation and cannot repair an unresolved role.
+cut. The portable lineage retains the exact role and the sidecar retains the derived catalog kind so a
+catalog rebuild cannot collapse every child back to the parent's generic `commercial` value. The legacy
+catalog vocabulary represents `promo` as `interstitial`; the exact `promo` role remains in lineage rather
+than being erased by that scheduling projection. Post-screen taxonomy enrichment remains a later operation
+and cannot repair an unresolved role.
 
 The existing bounded split-time vision request may return taxonomy grounding and a segment-role judgement
 in the same call; role assessment does not introduce an unbounded second request per cut. The role result is

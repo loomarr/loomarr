@@ -94,6 +94,7 @@ const (
 	SegmentRoleStationID         StructureSegmentRole = "station_id"
 	SegmentRolePSA               StructureSegmentRole = "psa"
 	SegmentRoleTrailer           StructureSegmentRole = "trailer"
+	SegmentRoleInterstitial      StructureSegmentRole = "interstitial"
 	SegmentRoleProgrammeFragment StructureSegmentRole = "programme_fragment"
 	SegmentRoleNonFiller         StructureSegmentRole = "non_filler"
 	SegmentRoleAmbiguous         StructureSegmentRole = "ambiguous"

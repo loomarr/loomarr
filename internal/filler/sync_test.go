@@ -888,6 +888,7 @@ func TestSync_UnreadableOrWrongTypedConditioningStateRemainsHeld(t *testing.T) {
 		{name: "conditioned mezzanine malformed lineage", sidecar: `{"loomarr":{"mezzanine":"h264-crf20-aac192","conditioningLineage":"not-lineage","conditioning":{"beforeRewriteHash":"before","afterRewriteHash":"after"}}}`, wantHeld: true, wantState: filler.SidecarInvalid},
 		{name: "wrong typed lineage", sidecar: `{"loomarr":{"conditioningLineage":"not-lineage"}}`, wantHeld: true, wantState: filler.SidecarInvalid},
 		{name: "wrong typed conditioning evidence", sidecar: `{"loomarr":{"conditioning":[]}}`, wantHeld: true, wantState: filler.SidecarInvalid},
+		{name: "unknown catalog kind", sidecar: `{"loomarr":{"kind":"programme"}}`, wantHeld: true, wantState: filler.SidecarInvalid},
 		{name: "valid ordinary top-level tags", sidecar: `{"loomarr":{"originalName":"ordinary.mp4"}}`, wantHeld: false, wantState: filler.SidecarValid},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

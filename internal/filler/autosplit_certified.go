@@ -165,7 +165,7 @@ func certifiedSplitReject(segments []SplitSegment, reason AutoSplitReject) Split
 
 func certifiedFillerRole(role StructureSegmentRole) bool {
 	switch role {
-	case SegmentRoleCommercial, SegmentRolePromo, SegmentRoleBumper, SegmentRoleStationID, SegmentRolePSA, SegmentRoleTrailer:
+	case SegmentRoleCommercial, SegmentRolePromo, SegmentRoleBumper, SegmentRoleStationID, SegmentRolePSA, SegmentRoleTrailer, SegmentRoleInterstitial:
 		return true
 	default:
 		return false

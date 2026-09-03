@@ -89,7 +89,7 @@ func buildStructurePlan(durationMs int64, boundaries []StructureBoundary, claims
 			segment.Role, segment.EvidenceIDs, segment.Reason = claim.Role, claim.EvidenceIDs, claim.Reason
 			if segment.StartStatus == BoundaryResolved && segment.EndStatus == BoundaryResolved {
 				switch claim.Role {
-				case SegmentRoleCommercial, SegmentRolePromo, SegmentRoleBumper, SegmentRoleStationID, SegmentRolePSA, SegmentRoleTrailer:
+				case SegmentRoleCommercial, SegmentRolePromo, SegmentRoleBumper, SegmentRoleStationID, SegmentRolePSA, SegmentRoleTrailer, SegmentRoleInterstitial:
 					segment.Disposition, segment.Reason = StructureKeep, claim.Reason
 				case SegmentRoleProgrammeFragment, SegmentRoleNonFiller:
 					segment.Disposition, segment.Reason = StructureDiscard, claim.Reason
@@ -181,7 +181,7 @@ func validSourceStructureKind(kind SourceStructureKind) bool {
 
 func validStructureSegmentRole(role StructureSegmentRole) bool {
 	switch role {
-	case SegmentRoleCommercial, SegmentRolePromo, SegmentRoleBumper, SegmentRoleStationID, SegmentRolePSA, SegmentRoleTrailer, SegmentRoleProgrammeFragment, SegmentRoleNonFiller, SegmentRoleAmbiguous, SegmentRoleUnusable:
+	case SegmentRoleCommercial, SegmentRolePromo, SegmentRoleBumper, SegmentRoleStationID, SegmentRolePSA, SegmentRoleTrailer, SegmentRoleInterstitial, SegmentRoleProgrammeFragment, SegmentRoleNonFiller, SegmentRoleAmbiguous, SegmentRoleUnusable:
 		return true
 	default:
 		return false

@@ -203,6 +203,7 @@ func playbackIntegrityMediaFixture(t *testing.T, quality MediaQuality) SegmentSc
 		ChildHash: manifest.SourceMaster.ClipHash, ParentHash: "7777777777777777777777777777777777777777777777777777777777777777",
 		ParentAssetRole: string(SplitSourceEvidence), ParentAssetSHA256: "8888888888888888888888888888888888888888888888888888888888888888",
 		StructureDecisionSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		StructureRole:           SegmentRoleCommercial,
 		IntendedStartMs:         1_000, IntendedEndMs: 31_000,
 	}
 	measurement := completeConditioningMeasurement(-23)
