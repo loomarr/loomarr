@@ -66,6 +66,16 @@ func TestSegmentScreeningCertificationFailsClosedOnReleaseAndEvidenceDrift(t *te
 			t.Fatal("missing aggregate evidence passed")
 		}
 	})
+	t.Run("settled operation", func(t *testing.T) {
+		aggregate, certification, repository, records := screeningCertificationFixture(t, subject, true)
+		operationSHA256 := segmentScreeningOperationSHA256(subject.SHA256, records[0].Evidence.Profile)
+		if err := os.Remove(repository.operationPath(operationSHA256)); err != nil {
+			t.Fatal(err)
+		}
+		if err := certification.Verify(t.Context(), aggregate); err == nil {
+			t.Fatal("axis without its settled operation passed")
+		}
+	})
 	t.Run("profile", func(t *testing.T) {
 		aggregate, _, repository, records := screeningCertificationFixture(t, subject, true)
 		profiles := screeningProfiles(records)

@@ -3323,10 +3323,23 @@ a retry after a later persistence failure replays the same closed authority-boun
 a possibly billed call. An operational error means no trustworthy result exists and creates an operational
 hold. Reject and hold are durable domain answers, not retryable absence.
 
-Screening aggregates, provider-neutral axis records, and opaque raw evidence live separately in a private
-content-addressed repository. The immutable screening-release authority is explicitly non-authorizing by
-default, names exactly one canonical profile per axis, and locks the aggregate contract. Terminal admission
-must re-read the aggregate, every axis record, and every raw-evidence identity; verify exact child lineage,
+The file evidence adapter gives each subject/profile pair one deterministic operation identity pointing at
+its settled axis record. Once present, a different result cannot replace it; paid evaluators still own their
+pre-call reservation journals so a crash before publication cannot repeat an ambiguous charge. The
+deterministic playback evaluator reopens the final playback file, verifies its full SHA-256, byte length, and
+sparse catalog identity, reprojects the at-most-64-MiB non-symlink sidecar, and then reopens the playback file
+before deciding. Its subject requires valid derivative quality evidence and, for a split child, exact agreement
+between the playback manifest and post-rewrite conditioning measurement. Existing derivative QC supplies
+complete decode, seek, keyframe, A/V, loudness, and fast-start evidence; the conservative media-quality rule
+rejects objective dead air and holds long black, silent, or frozen spans. A sparse-hash match alone never
+passes because middle-of-file changes must be caught by the full digest.
+
+Screening aggregates, provider-neutral axis records, operation identities, and opaque raw evidence live
+separately in a private content-addressed repository. The immutable screening-release authority is explicitly
+non-authorizing by default, names exactly one canonical profile per axis, and locks the aggregate contract.
+Terminal admission
+must re-read the aggregate, every axis record, its unique settled operation, and every raw-evidence identity;
+verify exact child lineage,
 all three media identities, parent span, outcomes, reasons, and profiles; and require all four passes plus
 explicit production permission. A boolean callback, aggregate-only replay, model self-assertion, pre-split
 screen, or structure certificate cannot release a child. Missing, stale, rejected, held, identity-drifted,

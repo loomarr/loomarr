@@ -35,6 +35,9 @@ func (r *FileSegmentScreeningEvidenceRepository) PutSegmentScreeningAxisEvidence
 	if err := r.files.putImmutable(ctx, r.axisPath("screening-axis-records", recorded.Evidence.SHA256), raw, segmentScreeningAxisRecordMaxBytes); err != nil {
 		return fmt.Errorf("persist segment screening axis record: %w", err)
 	}
+	if err := r.putSegmentScreeningOperation(ctx, recorded.Evidence); err != nil {
+		return err
+	}
 	return nil
 }
 

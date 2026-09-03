@@ -26,6 +26,7 @@ type SegmentScreeningReleaseAuthority struct {
 }
 
 type SegmentScreeningCertificationEvidenceReader interface {
+	SegmentScreeningAxisEvidenceReplay
 	GetSegmentScreeningSubject(context.Context, string) (SegmentScreeningSubject, error)
 	GetSegmentScreeningEvidence(context.Context, string) (SegmentScreeningEvidence, error)
 	GetSegmentScreeningAxisEvidence(context.Context, string) (RecordedSegmentScreeningAxisEvidence, error)
@@ -86,6 +87,10 @@ func (c *SegmentScreeningCertification) Verify(ctx context.Context, aggregate Se
 			recorded.Evidence.SubjectSHA256 != aggregate.SubjectSHA256 ||
 			recorded.Evidence.Result() != result {
 			return fmt.Errorf("segment screening axis %q does not reproduce aggregate result %d", result.Axis, index)
+		}
+		settled, found, err := c.evidence.FindSegmentScreeningAxisEvidence(ctx, aggregate.SubjectSHA256, recorded.Evidence.Profile)
+		if err != nil || !found || !reflect.DeepEqual(settled, recorded) {
+			return fmt.Errorf("segment screening axis %q is not the settled subject/profile operation", result.Axis)
 		}
 		profiles = append(profiles, recorded.Evidence.Profile)
 	}
