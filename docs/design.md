@@ -5322,7 +5322,8 @@ retain their exact item URL; excluded rows retain why they lost (`already_catalo
 `already_queued`, `previously_declined`, `duplicate_remote`, `source_disabled`,
 `source_not_allowed`, `geography_mismatch`, `rights_unknown`, `rights_mismatch`,
 `era_unknown`, `era_mismatch`, `duration_unknown`, `duration_exceeded`, `quality_unknown`,
-`quality_below_floor`, `role_unknown`, `audience_unknown`, `taxonomy_unknown`, or
+`quality_below_floor`, `role_unknown`, `role_mismatch`, `audience_unknown`,
+`audience_mismatch`, `taxonomy_unknown`, `taxonomy_mismatch`, or
 `ranked_below_limit`). Ranking is deterministic: constraint fitness, declared-rights preference,
 representation quality, useful diversity across source/era observations, then normalized remote
 identity as the final tie-break. The same inputs therefore produce the same proposal and rejected
