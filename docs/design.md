@@ -4492,10 +4492,13 @@ join positions, and programme cuts. It performs no rendering or inference. The e
 challenge preparer then renders and freshly blinds that authoring before two distinct direct-video
 model families assess it serially. The hosted-model interface requests only one complete,
 coverage-preserving segment timeline with a role and evidence for each interval; it does not request
-a second, potentially contradictory whole-file class. The adapter deterministically projects the
-internal whole-file claim from that timeline: one filler interval is a standalone unit, two or more
-non-programme intervals are a compilation, one programme interval is a programme excerpt, and
-programme intervals surrounding filler are programme-with-spots. One whole-file ambiguous,
+a second, potentially contradictory whole-file class. The adapter first coalesces adjacent
+programme-fragment observations because title cards, credits, and scene changes inside uninterrupted
+programme material are not filler boundaries; it never coalesces adjacent filler intervals, even
+when their roles match. It then deterministically projects the internal whole-file claim from that
+timeline: one filler interval is a standalone unit, two or more non-programme intervals are a
+compilation, one programme interval is a programme excerpt, and programme intervals surrounding
+filler are programme-with-spots. One whole-file ambiguous,
 non-filler, or unusable interval projects to unclear, unclear, or unusable respectively; any other
 mixed shape is unclear. A standalone role and its evidence come from its sole interval. This
 projection keeps provider output smaller while preserving the exact unit, role, boundary, and

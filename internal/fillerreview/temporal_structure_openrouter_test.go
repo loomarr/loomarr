@@ -224,6 +224,38 @@ func TestNormalizeTemporalStructureOpenRouterWireSortsMechanicalTimestamps(t *te
 	}
 }
 
+func TestNormalizeTemporalStructureOpenRouterWireCoalescesOnlyAdjacentProgrammeObservations(t *testing.T) {
+	wire := temporalStructureOpenRouterWire{Segments: []temporalStructureOpenRouterSegmentWire{
+		{StartMS: 0, EndMS: 4_500, Role: "programme_fragment", DecisiveAtMS: []int64{0, 1_000, 4_800}, Reason: "programme title card"},
+		{StartMS: 4_500, EndMS: 9_500, Role: "programme_fragment", DecisiveAtMS: []int64{5_000, 9_000}, Reason: "programme title"},
+		{StartMS: 9_500, EndMS: 20_000, Role: "programme_fragment", DecisiveAtMS: []int64{11_000, 19_500}, Reason: "programme credits"},
+		{StartMS: 20_000, EndMS: 80_000, Role: "commercial", DecisiveAtMS: []int64{25_000, 75_000}, Reason: "complete product offer"},
+		{StartMS: 80_000, EndMS: 99_555, Role: "programme_fragment", DecisiveAtMS: []int64{82_000, 98_000}, Reason: "programme resumes"},
+	}}
+	normalizeTemporalStructureOpenRouterWire(&wire)
+	if err := validateTemporalStructureOpenRouterWire(wire, 99_555); err != nil {
+		t.Fatal(err)
+	}
+	if len(wire.Segments) != 3 || wire.Segments[0].StartMS != 0 || wire.Segments[0].EndMS != 20_000 || wire.Segments[1].Role != "commercial" {
+		t.Fatalf("normalized segments = %+v", wire.Segments)
+	}
+	assessment := temporalStructureAssessmentFromWire("case", wire, time.Unix(1, 0), fillereval.TemporalInferenceCall{Axis: "structure", Attempt: 1, ResponseSHA256: strings.Repeat("a", 64)})
+	if assessment.Unit == nil || assessment.Unit.Kind != fillereval.UnitProgrammeSpots || !slices.Equal(assessment.Unit.DecisiveAtMS, []int64{20_000, 80_000}) {
+		t.Fatalf("assessment = %+v", assessment)
+	}
+}
+
+func TestNormalizeTemporalStructureOpenRouterWirePreservesAdjacentSameRoleFiller(t *testing.T) {
+	wire := temporalStructureOpenRouterWire{Segments: []temporalStructureOpenRouterSegmentWire{
+		{StartMS: 0, EndMS: 500, Role: "commercial", DecisiveAtMS: []int64{200}, Reason: "first offer"},
+		{StartMS: 500, EndMS: 1_000, Role: "commercial", DecisiveAtMS: []int64{700}, Reason: "second offer"},
+	}}
+	normalizeTemporalStructureOpenRouterWire(&wire)
+	if len(wire.Segments) != 2 {
+		t.Fatalf("adjacent filler was coalesced: %+v", wire.Segments)
+	}
+}
+
 func temporalStructureOpenRouterTestConfig(manifestPath, checkpointDir string, aliases []string, server *httptest.Server, now time.Time) TemporalStructureOpenRouterConfig {
 	snapshot := openRouterReviewSnapshot(server.URL, now)
 	snapshot.Models[0].InputModalities = append(snapshot.Models[0].InputModalities, "video")

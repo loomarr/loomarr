@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	TemporalStructureOpenRouterPromptVersion = "filler-temporal-structure-direct-video-v5"
+	TemporalStructureOpenRouterPromptVersion = "filler-temporal-structure-direct-video-v6"
 	temporalStructureReasonMaximumCharacters = 512
 )
 
@@ -80,6 +80,40 @@ func normalizeTemporalStructureOpenRouterWire(wire *temporalStructureOpenRouterW
 		})
 	}
 	sort.Slice(wire.Segments, func(i, j int) bool { return wire.Segments[i].StartMS < wire.Segments[j].StartMS })
+	wire.Segments = coalesceTemporalStructureProgrammeObservations(wire.Segments)
+}
+
+func coalesceTemporalStructureProgrammeObservations(segments []temporalStructureOpenRouterSegmentWire) []temporalStructureOpenRouterSegmentWire {
+	coalesced := make([]temporalStructureOpenRouterSegmentWire, 0, len(segments))
+	for _, segment := range segments {
+		if len(coalesced) == 0 {
+			coalesced = append(coalesced, segment)
+			continue
+		}
+		previous := &coalesced[len(coalesced)-1]
+		if previous.Role != string(fillereval.TemporalSegmentProgrammeFragment) || segment.Role != previous.Role || previous.EndMS != segment.StartMS {
+			coalesced = append(coalesced, segment)
+			continue
+		}
+		previous.EndMS = segment.EndMS
+		previous.DecisiveAtMS = boundedTemporalStructureTimes(append(slices.Clone(previous.DecisiveAtMS), segment.DecisiveAtMS...))
+		previous.Reason = "adjacent programme observations form one continuous programme interval"
+	}
+	return coalesced
+}
+
+func boundedTemporalStructureTimes(values []int64) []int64 {
+	sort.Slice(values, func(i, j int) bool { return values[i] < values[j] })
+	values = slices.Compact(values)
+	if len(values) <= temporalStructureMaximumDecisiveTimes {
+		return values
+	}
+	bounded := make([]int64, 0, temporalStructureMaximumDecisiveTimes)
+	for index := range temporalStructureMaximumDecisiveTimes {
+		at := index * (len(values) - 1) / (temporalStructureMaximumDecisiveTimes - 1)
+		bounded = append(bounded, values[at])
+	}
+	return bounded
 }
 
 func validateTemporalStructureOpenRouterWire(wire temporalStructureOpenRouterWire, durationMS int64) error {
