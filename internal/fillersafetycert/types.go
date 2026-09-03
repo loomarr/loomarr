@@ -48,6 +48,7 @@ const (
 	SliceTargetLocale          = "target_locale"
 
 	MinimumPositiveFamilies = 59
+	MinimumCleanFamilies    = 100
 	MaximumCleanFPRate      = 0.01
 	NextAction              = "retain_non_authorizing_evidence_and_run_remaining_safety_lanes"
 )
@@ -110,6 +111,7 @@ type ReviewerAttestation struct {
 	Method            string `json:"method"`
 	ModelFamily       string `json:"modelFamily,omitempty"`
 	Decision          string `json:"decision"`
+	EvidenceSHA256    string `json:"evidenceSha256"`
 	AttestationSHA256 string `json:"attestationSha256"`
 }
 

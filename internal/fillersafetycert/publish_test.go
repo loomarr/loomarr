@@ -15,7 +15,7 @@ func TestPublishCertifiesExhaustiveSourceDisjointCascade(t *testing.T) {
 	}
 	if report.CertificationStatus != StatusPassed || report.DetectedPositiveSources != MinimumPositiveFamilies ||
 		report.PositiveFamilies != MinimumPositiveFamilies || report.MissedPositiveSources != 0 ||
-		report.SourceRecallExactLower95 < 0.95 || report.CleanSources != len(requiredCleanSlices()) ||
+		report.SourceRecallExactLower95 < 0.95 || report.CleanSources != MinimumCleanFamilies ||
 		report.CleanFalsePositiveSources != 0 || report.CoverageHolds != 0 || !validSHA256(digest) ||
 		report.TrainingAllowed || report.IngestionAllowed || report.SchedulingAllowed || report.ProductionAdmissionAllowed {
 		t.Fatalf("report=%+v digest=%q", report, digest)

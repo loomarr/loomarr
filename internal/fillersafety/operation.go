@@ -39,7 +39,8 @@ func newEvaluationOperation(
 }
 
 func (o *evaluationOperation) Evaluate(ctx context.Context, request EvaluationRequest) (EvaluationReport, error) {
-	if o == nil || ctx == nil || ctx.Err() != nil || !boundedLedgerID(request.RunID) || request.StartedAt.IsZero() {
+	if o == nil || ctx == nil || ctx.Err() != nil || !boundedLedgerID(request.RunID) || request.StartedAt.IsZero() ||
+		!validSHA256(request.CertificationSHA256) {
 		return EvaluationReport{}, ErrEvaluationInvalid
 	}
 	plan, err := PlanCompleteMedia(ctx, request.Source)
@@ -133,7 +134,7 @@ func evaluationLedgerRun(request EvaluationRequest, plan CompleteMediaPlan, prop
 		ID: request.RunID, ClipHash: plan.SourceSHA256,
 		AuthoritySHA256: plan.AuthoritySHA256, SourceSHA256: plan.SourceSHA256,
 		SourceBytes: plan.SourceBytes, DurationMS: plan.Audio.EndMS,
-		CertificationSHA256: request.Source.Authority.CertificationSHA256,
+		CertificationSHA256: request.CertificationSHA256,
 		PolicySHA256:        request.Source.Authority.PolicySHA256, ProposerSHA256: proposerSHA256,
 		Implementation: evaluationImplementation, CreatedAt: request.StartedAt.UTC(),
 	}
