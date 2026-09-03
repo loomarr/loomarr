@@ -4687,6 +4687,21 @@ produce one source-level candidate, and a real seam-focused certificate must aut
 slice before use. Sparse sampling, chunk-majority voting, and silently lowering the canonical media
 quality are not valid long-reel fallbacks.
 
+Each accepted window answer covers its complete media interval in source-relative coordinates and
+binds the exact plan, normalized-window identity and lineage, and assessor profile. An attributable
+transport or provider failure is retained as an operational-failure answer with no semantic timeline;
+it holds that assessor family's complete source result rather than letting the remaining windows vote.
+The deterministic stitcher requires exactly one answer for every planned window from one assessor
+profile. For each adjacent pair it compares the complete ordered boundary sequence and the role on
+both sides throughout their shared context. Matching observations no more than 2,000 ms apart become
+one boundary at their deterministic mean; a missing, extra, differently typed, or farther-apart
+observation holds the complete family result. A boundary observed only in non-owning context is not
+projected, while a matched observation that straddles a primary seam is retained. Projection must
+reproduce one ordered timeline covering `[0,duration)` and preserves adjacent same-role intervals:
+two consecutive commercials are two units even though both carry `commercial`. The stitch artifact
+retains the plan and every window answer and replays byte-for-byte; it is one assessor-family
+candidate, not independent agreement and not split authority.
+
 The direct-video runner's per-request nanodollar value is an **accounting reservation**, not a
 provider-enforced total-price cap. OpenRouter does not expose such a cap for token-priced video.
 The transport therefore preserves every syntactically valid provider-reported charge before it
