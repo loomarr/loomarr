@@ -4582,6 +4582,38 @@ paths, seed, and maps stay outside Git. Missing rights, release drift, an unsafe
 tool drift, an incomplete output, or fewer than 100 eligible speakers fails before atomic publication. This
 preparation performs no provider call, policy classification, certification run, or spend.
 
+Consented known-script positive preparation is a second upstream, non-authorizing adapter over recordings
+that already exist. Its one external interface accepts a private owner-authored cohort authority, a private
+source root and alias seed, exact ffmpeg/ffprobe executables, a fixed preparation time, exact case and resource
+ceilings, and a new output directory. It never discovers participants, solicits consent, records or synthesizes
+speech, authors a restricted script, downloads media, or sends content to a provider. A file's presence is not
+consent: every real participant has a separate bound consent document, signer-authority evidence, processor
+schedule, withdrawal instructions, and owner-reviewed consent contract. That contract explicitly covers
+collection, private storage, deterministic modification, evidence extraction, independent review, hosted model
+evaluation, the participant's redistribution choice, retention and withdrawal, and no endorsement. An expired,
+withdrawn, incomplete, ambiguous, or mismatched contract fails before any media tool runs.
+
+The owner authority binds exactly one selected take or derivative for each private participant id and source
+family. It also binds recording session/take identity, locale/accent, exact versioned script bytes, private
+policy digest and policy-mapping evidence, dry master and selected audio bytes, source-relative intended
+positive intervals, and a deterministic transformation record. That record names its recipe and digest,
+rendering tool identity and time, master and output authorities, and every music/noise/mix asset with separately
+reviewed rights covering the same transformations and hosted processors. Retakes, cuts, re-encodes, mixes,
+clipping, placement derivatives, and alternate representations of one participant remain one source family and
+cannot inflate the denominator. The selected cases must contain at least 59 unique participants, use only the
+locked positive-slice vocabulary, and cover every required positive slice; a music-overlap declaration requires
+a rights-cleared music asset.
+
+Preparation reopens and hashes every authority-bound byte, derives opaque case/family ids from the private seed,
+copies the selected script only as the private transcript, and wraps the selected real audio in the existing
+deterministic neutral audiovisual recipe. Exact tool identity is checked before and after processing, both final
+streams must fully decode, and every proposed interval must remain ordered, non-overlapping, rule-valid, and
+bounded by the measured final source. Atomic private output contains one positive-candidate cohort, an owner map,
+and per-case source, transcript, provenance, and rights documents. Restricted script text, participant identity,
+input paths, and seed never enter public output, Git, logs, or errors. The script and preparation establish only
+an intended claim: two independent reviews over the fully assembled draft, plus disagreement-only adjudication,
+still establish certification truth.
+
 Prepared spoken-safety cohorts use one private candidate contract. Every case binds its complete audiovisual
 source, optional exact transcript, source family, rights and truth-provenance evidence, proposed `clean` or
 `positive` claim, locale, slices, and any proposed positive intervals. A preparation adapter may propose those

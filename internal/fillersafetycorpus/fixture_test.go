@@ -28,6 +28,8 @@ type fakeWrapper struct {
 	failAt        int
 	identityCalls int
 	driftIdentity bool
+	recipe        string
+	onWrap        func(int)
 }
 
 func (wrapper *fakeWrapper) Identity(context.Context) (fillersafety.ToolIdentity, fillersafety.ToolIdentity, string, error) {
@@ -36,13 +38,20 @@ func (wrapper *fakeWrapper) Identity(context.Context) (fillersafety.ToolIdentity
 	if wrapper.driftIdentity && wrapper.identityCalls > 1 {
 		ffmpegHash = fixtureSHA(801)
 	}
+	recipe := wrapper.recipe
+	if recipe == "" {
+		recipe = VCTKNeutralVideoRecipe
+	}
 	return fillersafety.ToolIdentity{Version: "ffmpeg version fixture", BinarySHA256: ffmpegHash},
 		fillersafety.ToolIdentity{Version: "ffprobe version fixture", BinarySHA256: fixtureSHA(802)},
-		hashBytes([]byte(VCTKNeutralVideoRecipe)), nil
+		hashBytes([]byte(recipe)), nil
 }
 
 func (wrapper *fakeWrapper) Wrap(_ context.Context, input, output string) (wrappedMedia, error) {
 	wrapper.calls++
+	if wrapper.onWrap != nil {
+		wrapper.onWrap(wrapper.calls)
+	}
 	if wrapper.failAt == wrapper.calls {
 		return wrappedMedia{}, fmt.Errorf("fixture failure")
 	}
