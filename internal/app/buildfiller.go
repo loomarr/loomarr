@@ -237,7 +237,7 @@ func buildFillerMediaTools(set resolved, recorder *metrics.Recorder) *mediatools
 	})
 }
 
-// buildPipeline constructs the ingest pipeline: one driver over nine rungs (§10 V51b/V61).
+// buildPipeline constructs the ingest pipeline: one driver over ten rungs (§10 V51b/V61).
 //
 // ⚠ **This block was measured as an 11-input seam and skipped on that basis. The measurement
 // was wrong, and the way it was wrong is worth keeping.** The window had been drawn at the
@@ -331,7 +331,7 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 	}
 	// ── The ingest pipeline (§10 V51b) ────────────────────────────────────────────────────
 	//
-	// One driver over nine rungs, replacing `filler-language`, `filler-split`,
+	// One driver over ten rungs, replacing `filler-language`, `filler-split`,
 	// `filler-transcribe` and `filler-vision`.
 	//
 	// ⚠ **Every rung is registered unconditionally, even when the thing it needs is absent.**
@@ -370,6 +370,11 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 				}
 				return lufs
 			}, time.Now).WithMediaDerivatives().WithConditioning(fillerTools.MeasureConditioning).WithDiagnostics(processDiagnostics),
+		// Rendered compilation children must not reach enrichment or the compatibility score gate
+		// until the four certified authorities are wired. The visible stage is deliberately
+		// registered with no runtime during qualification: top-level clips skip it, while a child
+		// resolves to review instead of silently inheriting its parent's suitability.
+		filler.NewSegmentScreeningStage(nil, nil, clipDir),
 		filler.NewLanguageStage(langDetect, fillerLanguageStoreAdapter{st}, clipDir,
 			func() string { return set.str("filler.language") }, time.Now),
 		filler.NewTranscribeStage(fillerTools, fillerTranscribeStoreAdapter{st}, clipDir, fillerDrop,

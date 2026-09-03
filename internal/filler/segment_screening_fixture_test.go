@@ -25,6 +25,16 @@ func screeningSubjectFixture(t *testing.T) SegmentScreeningSubject {
 
 func screeningChildSubjectFixture(t *testing.T) SegmentScreeningSubject {
 	t.Helper()
+	tags := screeningChildTagsFixture(t)
+	subject, err := NewSegmentScreeningSubject(tags.MediaAssets.Playback.Asset.ClipHash, tags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return subject
+}
+
+func screeningChildTagsFixture(t *testing.T) SidecarTags {
+	t.Helper()
 	manifest := screeningSubjectManifest(t)
 	lineage := ConditioningLineage{
 		ChildHash: manifest.SourceMaster.ClipHash, ParentHash: strings.Repeat("7", 64),
@@ -37,14 +47,10 @@ func screeningChildSubjectFixture(t *testing.T) SegmentScreeningSubject {
 		BeforeRewrite: measurement, AfterRewrite: measurement,
 		DerivedParentEdgesAfterRewrite: measurement.Cuts[0],
 	}
-	subject, err := NewSegmentScreeningSubject(manifest.Playback.Asset.ClipHash, SidecarTags{
+	return SidecarTags{
 		SourceID: "archive:commercials", AcquisitionID: "acq-17", MediaAssets: &manifest,
 		ConditioningLineage: &lineage, Conditioning: &conditioning,
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
-	return subject
 }
 
 func passingAxisEvidence(t *testing.T, subject SegmentScreeningSubject) []RecordedSegmentScreeningAxisEvidence {

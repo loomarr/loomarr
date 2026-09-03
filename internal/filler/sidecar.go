@@ -203,6 +203,41 @@ type SidecarTags struct {
 	// MediaAssets binds the playable catalog rendition to the immutable source master and every
 	// reproducible derivative. It is portable authority beside the bytes, not a cache-only path hint.
 	MediaAssets *MediaAssetManifest `json:"mediaAssets,omitempty"`
+	// SegmentScreening points to the exact immutable subject and four-axis aggregate recorded for
+	// this rendered child. It is a portable locator, never release authority: terminal admission
+	// reprojects the current sidecar and replays every referenced evidence record.
+	SegmentScreening *SegmentScreeningReference `json:"segmentScreening,omitempty"`
+}
+
+const segmentScreeningReferenceSchemaVersion = 1
+
+// SegmentScreeningReference is the small durable join between portable media lineage and the
+// private content-addressed screening repository.
+type SegmentScreeningReference struct {
+	SchemaVersion  int    `json:"schemaVersion"`
+	SubjectSHA256  string `json:"subjectSha256"`
+	EvidenceSHA256 string `json:"evidenceSha256"`
+}
+
+func NewSegmentScreeningReference(subject SegmentScreeningSubject, evidence SegmentScreeningEvidence) (SegmentScreeningReference, error) {
+	if ValidateSegmentScreeningSubject(subject) != nil || ValidateSegmentScreeningEvidence(evidence) != nil {
+		return SegmentScreeningReference{}, fmt.Errorf("segment screening reference requires valid subject and aggregate evidence")
+	}
+	reference := SegmentScreeningReference{
+		SchemaVersion: segmentScreeningReferenceSchemaVersion,
+		SubjectSHA256: subject.SHA256, EvidenceSHA256: evidence.SHA256,
+	}
+	if err := reference.validate(); err != nil || evidence.SubjectSHA256 != subject.SHA256 {
+		return SegmentScreeningReference{}, fmt.Errorf("segment screening reference does not bind the subject and aggregate")
+	}
+	return reference, nil
+}
+
+func (r SegmentScreeningReference) validate() error {
+	if r.SchemaVersion != segmentScreeningReferenceSchemaVersion || !isContentHash(r.SubjectSHA256) || !isContentHash(r.EvidenceSHA256) {
+		return fmt.Errorf("segment screening reference is invalid")
+	}
+	return nil
 }
 
 type ConditioningPublication struct {
@@ -381,6 +416,12 @@ func decodeSidecarTags(raw []byte) (SidecarTags, SidecarReadState, bool) {
 		if string(publicationRaw) == "null" || json.Unmarshal(publicationRaw, &publicationFields) != nil || publicationFields == nil ||
 			!rawJSONString(publicationFields, "state") || !rawJSONString(publicationFields, "owner") ||
 			!rawJSONString(publicationFields, "sourceHash") || !rawJSONString(publicationFields, "targetHash") {
+			return SidecarTags{}, SidecarInvalid, true
+		}
+	}
+	if screeningRaw, ok := fields["segmentScreening"]; ok {
+		var screening SegmentScreeningReference
+		if string(screeningRaw) == "null" || json.Unmarshal(screeningRaw, &screening) != nil || screening.validate() != nil {
 			return SidecarTags{}, SidecarInvalid, true
 		}
 	}

@@ -3325,6 +3325,23 @@ times, not a fresh coordinator clock reading, so a crash after aggregate publica
 records the digest reproduces the same aggregate identity on retry. An operational error means no trustworthy result exists and creates an operational
 hold. Reject and hold are durable domain answers, not retryable absence.
 
+The ordinary ingest ladder has one rendered-child screening rung immediately after split. It does
+not apply to a top-level source; every child with parent lineage reaches it after transcode has
+published the final evidence and playback derivatives. The rung writes a versioned portable pointer
+to the exact subject and aggregate only after both are durable. A missing coordinator, malformed
+sidecar, operational failure, non-passing result, absent production release authority, or failed
+terminal replay resolves to review or rejection and never falls through to metadata enrichment or
+the compatibility score gate. The pipeline's exhausted-failure policy parks this rung just as it
+parks admission; a panic or store outage cannot turn screening into a skipped stage.
+At startup, a data-selected compatibility repair holds and rewinds any pre-rung child that had
+already advanced beyond screening and lacks a completed screening stage record. It holds the clip
+before rewriting its pipeline row, so an interrupted repair cannot leave the legacy child airable;
+already certified children, top-level clips, dismissed rows, and hard file rejections are untouched.
+The administrator filing endpoint enforces the same boundary for materialized children: it may
+settle a later human metadata decision only when the pipeline row proves that screening completed
+and advanced. A review-shaped screening result is recorded as done at its current rung but cannot
+be filed, because a person's generic catalog action is not a substitute for the release authority.
+
 The file evidence adapter gives each subject/profile pair one deterministic operation identity pointing at
 its settled axis record. Once present, a different result cannot replace it; paid evaluators still own their
 pre-call reservation journals so a crash before publication cannot repeat an ambiguous charge. The
@@ -6736,7 +6753,7 @@ appears in the UI without a second edit, and a guard test compares the served li
 way to hide the bug.
 
 ⚠ **A disabled stage is a `skipped` rung, not an absent one.** An install with vision off still has
-a nine-rung pipeline; the rung renders greyed with its reason inline ("Listen — skipped (the
+a ten-rung pipeline; the rung renders greyed with its reason inline ("Listen — skipped (the
 description already says enough)"). A stage that silently does not happen reads as broken, and the
 sentence is what turns a bug report into an answer.
 
@@ -6745,7 +6762,7 @@ frames merge onto the cached row and never assemble it: the bus drops frames for
 by design, a frame for an unknown clip triggers a refetch rather than inserting a half-built row,
 and a terminal frame invalidates `/v1/filler` outright — a filed clip changes the catalog, which
 nobody watching the catalog tab has a pipeline listener for. Only running frames merge, which is
-what keeps forty clips × nine rungs from becoming 360 refetches.
+what keeps forty clips × ten rungs from becoming 400 refetches.
 
 ⚠ **The ordering rule is derived from the ladder, because there is no sequence number.** A frame
 carries no `seq` and no timestamp, so "is this newer than what is shown" is answered by the

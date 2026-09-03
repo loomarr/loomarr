@@ -2857,6 +2857,7 @@ components:
             - probe
             - transcode
             - split
+            - screen
             - language
             - transcribe
             - tag
@@ -7187,6 +7188,7 @@ components:
             - probe
             - transcode
             - split
+            - screen
             - language
             - transcribe
             - tag
@@ -11844,7 +11846,7 @@ paths:
         - filler
   /v1/filler/file:
     post:
-      description: "Admin only (§10 V38). Admits held clips to the playable catalog — they become matchable into pods. With `asSuggested`, each clip's OWN ungrounded era guess is confirmed as it files (the mock's \"File all as suggested\"), which `bulk/tag` cannot express because it applies one era to the whole selection. Filing by hand CLEARS the auto-filed marker: a human looked."
+      description: "Admin only (§10 V38). Admits held clips to the playable catalog — they become matchable into pods. With `asSuggested`, each clip's OWN ungrounded era guess is confirmed as it files (the mock's \"File all as suggested\"), which `bulk/tag` cannot express because it applies one era to the whole selection. Filing by hand CLEARS the auto-filed marker: a human looked. A materialized compilation child cannot be filed until its rendered-child screening rung completed."
       operationId: file-filler-clips
       requestBody:
         content:
