@@ -65,8 +65,8 @@ func validateModelReviewEvidence(review AuthorityReview) error {
 		}
 		switch attempt.State {
 		case ModelReviewAttemptFailed:
-			if !attempt.ReviewedAt.IsZero() || attempt.ObservationSHA256 != "" {
-				return fmt.Errorf("failed model review attempt claims an accepted observation")
+			if !attempt.ReviewedAt.IsZero() || attempt.ObservationSHA256 != "" && !validSHA256(attempt.ObservationSHA256) {
+				return fmt.Errorf("failed model review attempt has invalid observation evidence")
 			}
 		case ModelReviewAttemptAccepted:
 			if attempt.ReviewedAt.IsZero() || attempt.ReviewedAt.Before(attempt.RequestedAt) ||

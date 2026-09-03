@@ -58,6 +58,7 @@ checkpoint directory, and output file.
   "resolvedModel": "vendor/model-version-revision",
   "upstreamProvider": "Pinned Provider",
   "upstreamProviderSlug": "pinned-provider",
+  "disableReasoning": false,
   "expectedCases": 162,
   "maximumRequests": 166,
   "maximumChargeNanoUsd": 100000000,
@@ -111,7 +112,7 @@ free.
 
 Once every case has a decisive assessment, the command writes one canonical
 `filler-spoken-cascade-authority-review-v2` document with an atomic create-only
-rename. Its embedded path-free model evidence binds the plan, worklist, policy,
+publication. Its embedded path-free model evidence binds the plan, worklist, policy,
 ZDR snapshot, exact route, prompt/schema, ffmpeg identity, limits, aggregate
 usage/cost, and each attempt's request/response/observation digests and settled
 charge. The review and final authority attestations retain the canonical

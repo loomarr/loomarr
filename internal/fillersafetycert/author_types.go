@@ -82,6 +82,7 @@ type ModelReviewEvidence struct {
 	ResolvedModel        string                       `json:"resolvedModel"`
 	UpstreamProvider     string                       `json:"upstreamProvider"`
 	UpstreamProviderSlug string                       `json:"upstreamProviderSlug"`
+	DisableReasoning     bool                         `json:"disableReasoning"`
 	ModelFamily          string                       `json:"modelFamily"`
 	PromptSHA256         string                       `json:"promptSha256"`
 	SchemaSHA256         string                       `json:"schemaSha256"`
