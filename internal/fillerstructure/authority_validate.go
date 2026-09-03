@@ -16,8 +16,21 @@ func ValidateAuthority(authority Authority) error {
 	if len(authority.Assessors) < 2 || !slices.IsSortedFunc(authority.Assessors, compareProfiles) {
 		return errors.New("filler structure authority: assessor profiles are incomplete or non-canonical")
 	}
+	if err := ValidateAssessorProfiles(authority.Assessors); err != nil {
+		return err
+	}
+	if !validAuthorityUnits(authority.AllowedUnits) || !validAuthorityRoles(authority.AllowedRoles) {
+		return errors.New("filler structure authority: allowed slices are invalid")
+	}
+	return nil
+}
+
+func ValidateAssessorProfiles(profiles []AssessorProfile) error {
+	if len(profiles) < 2 {
+		return errors.New("filler structure authority: at least two assessor profiles are required")
+	}
 	ids, families := map[string]struct{}{}, map[string]struct{}{}
-	for _, profile := range authority.Assessors {
+	for _, profile := range profiles {
 		if !validProfile(profile) {
 			return errors.New("filler structure authority: assessor profile is invalid")
 		}
@@ -26,8 +39,8 @@ func ValidateAuthority(authority Authority) error {
 		}
 		ids[profile.ID], families[profile.ModelFamily] = struct{}{}, struct{}{}
 	}
-	if len(families) < 2 || !validAuthorityUnits(authority.AllowedUnits) || !validAuthorityRoles(authority.AllowedRoles) {
-		return errors.New("filler structure authority: independent families or allowed slices are invalid")
+	if len(families) < 2 {
+		return errors.New("filler structure authority: independent model families are required")
 	}
 	return nil
 }

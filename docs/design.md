@@ -4594,6 +4594,12 @@ locks the external certificate digest, reducer contract and tolerance, exact ass
 provider/model/capability/prompt/evidence-contract profiles, and the allowed source-unit and segment-
 role slices. Verification requires an exact profile set and a confirmed artifact; unknown profiles,
 units, roles, held decisions, or an authority without explicit production permission fail closed.
+The runtime assessment coordinator calls each configured complete-timeline assessor serially with
+the same immutable conditioned-media identity and path. Its port exposes no prior answers. Each
+adapter must return either a complete source-bound candidate or an attributable operational-failure
+candidate; ordinary provider failures are domain evidence, while an error means the adapter could
+not produce trustworthy evidence and aborts reduction. The coordinator rejects declared-profile or
+source drift before creating the durable artifact.
 
 Suitability screening is repeated over every freshly rendered structure case because concatenation
 and excerpt construction create new viewing contexts. A prohibited signal in any derivative is a
