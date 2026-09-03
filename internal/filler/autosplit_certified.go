@@ -57,7 +57,8 @@ func CertifiedAutoConfirmable(p SplitProposal, auto *AutoSplitPolicy, certificat
 		return SplitPartition{Reject: RejectStructureUncertified, Hold: keep, Discard: discard}
 	}
 	for _, segment := range keep {
-		if segment.Screening == nil || segment.Screening.Source != assessment.Source || segment.Screening.StartMs != segment.StartMs || segment.Screening.EndMs != segment.EndMs || !segment.Screening.Passes() || certification.ScreeningCertified == nil || !certification.ScreeningCertified(*segment.Screening) {
+		screening := screeningForStructureInterval(p, segment)
+		if screening == nil || screening.Source != assessment.Source || screening.StartMs != segment.StartMs || screening.EndMs != segment.EndMs || !screening.Passes() || certification.ScreeningCertified == nil || !certification.ScreeningCertified(*screening) {
 			return SplitPartition{Reject: RejectSegmentUnscreened, Hold: keep, Discard: discard}
 		}
 	}

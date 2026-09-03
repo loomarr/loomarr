@@ -355,6 +355,9 @@ type SplitProposal struct {
 	// StructureDecision retains the independent complete-video assessments and their replayable
 	// provider-neutral reduction. It cannot authorize publication by itself.
 	StructureDecision *fillerstructure.Artifact `json:"-"`
+	// StructureScreenings bind the four admission axes to exact decided keep intervals without
+	// rewriting compatibility detector segments during shadow rollout.
+	StructureScreenings []SegmentScreeningEvidence `json:"-"`
 	// Spawned remembers children already produced by partial auto-confirm. It is private durable
 	// state, not review UI: final confirmation needs the whole new generation so it can retire
 	// superseded children without also retiring cuts produced on an earlier pass.

@@ -3296,6 +3296,12 @@ copied into the split proposal. All four must pass, the screening record digest 
 certification adapter must re-establish every referenced artifact before automatic publication. A missing,
 stale, rejected, held, span-mismatched, or unverifiable axis sends the complete plan to review.
 
+Structure-plan screenings are keyed independently from compatibility detector segments. This matters when
+the independently reduced join differs from the detector coordinate: retaining a screen for the decided
+span must not rewrite the compatibility proposal being measured in shadow. The screening runtime receives
+only missing `keep` spans, executes each four-axis operation once, and persists every closed aggregate before
+returning it. Reject and hold are durable answers; neither is retried as though no screen occurred.
+
 Automatic publication requires all of the following: a `compilation_break` or explicitly bounded filler
 portion of `programme_with_spots`; exact evidence bytes still match; every published interval has resolved
 boundaries and an allowed filler role; every non-published interval is an explained discard rather than an

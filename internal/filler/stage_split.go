@@ -58,6 +58,9 @@ type SplitStage struct {
 	// structureDecisioner independently assesses the complete retained source once. nil leaves
 	// detector structure in place and makes no provider request.
 	structureDecisioner CompleteTimelineStructureDecisioner
+	// structureScreener closes all four admission axes for exact decided keep spans. nil performs
+	// no screening work and therefore cannot make the certified gate pass.
+	structureScreener ExactSpanScreeningDecisioner
 	// log reports what a grounding pass actually did (§10 V54b). nil is tolerated everywhere.
 	log *slog.Logger
 }
@@ -122,6 +125,11 @@ func (s *SplitStage) WithStructureShadow(observer StructureSplitShadowObserver) 
 // requires an immutable authority and every exact-span screen.
 func (s *SplitStage) WithCompleteTimelineStructureAssessment(decisioner CompleteTimelineStructureDecisioner) *SplitStage {
 	s.structureDecisioner = decisioner
+	return s
+}
+
+func (s *SplitStage) WithExactSpanStructureScreening(screener ExactSpanScreeningDecisioner) *SplitStage {
+	s.structureScreener = screener
 	return s
 }
 
@@ -530,6 +538,16 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		}
 		p = &assessed
 	}
+	if s.structureScreener != nil && proposalNeedsStructureScreening(*p) {
+		screened, screenErr := s.splitter.ScreenProposalStructure(ctx, *p, s.structureScreener)
+		if errors.Is(screenErr, ErrProposalGone) {
+			return StageResult{Verdict: VerdictContinue, Note: "already resolved"}, nil
+		}
+		if screenErr != nil {
+			return StageResult{}, screenErr
+		}
+		p = &screened
+	}
 
 	// Deterministic outcomes are curation, not decisions. Persist them before any model work so a
 	// restart and the review UI see the same smaller reel.
@@ -695,6 +713,10 @@ func (s *SplitStage) resumableReviewHashes(ctx context.Context) (map[string]stru
 			continue
 		}
 		if s.structureDecisioner != nil && p.StructureDecision == nil {
+			out[p.ClipHash] = struct{}{}
+			continue
+		}
+		if s.structureScreener != nil && proposalNeedsStructureScreening(p) {
 			out[p.ClipHash] = struct{}{}
 			continue
 		}

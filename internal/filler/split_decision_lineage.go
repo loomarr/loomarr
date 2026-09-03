@@ -16,3 +16,12 @@ func structureDecisionSHA256ForInterval(proposal SplitProposal, segment SplitSeg
 	}
 	return ""
 }
+
+func segmentScreeningSHA256ForInterval(proposal SplitProposal, segment SplitSegment) string {
+	evidence := screeningForStructureInterval(proposal, segment)
+	if evidence == nil || ValidateSegmentScreeningEvidence(*evidence) != nil || evidence.Source != proposal.Source ||
+		evidence.StartMs != segment.StartMs || evidence.EndMs != segment.EndMs {
+		return ""
+	}
+	return evidence.SHA256
+}

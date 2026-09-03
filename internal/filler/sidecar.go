@@ -219,6 +219,7 @@ type ConditioningLineage struct {
 	ParentAssetRole         string `json:"parentAssetRole,omitempty"`
 	ParentAssetSHA256       string `json:"parentAssetSha256,omitempty"`
 	StructureDecisionSHA256 string `json:"structureDecisionSha256,omitempty"`
+	SegmentScreeningSHA256  string `json:"segmentScreeningSha256,omitempty"`
 	IntendedStartMs         int64  `json:"intendedStartMs"`
 	IntendedEndMs           int64  `json:"intendedEndMs"`
 }
@@ -363,6 +364,9 @@ func decodeSidecarTags(raw []byte) (SidecarTags, SidecarReadState, bool) {
 			return SidecarTags{}, SidecarInvalid, true
 		}
 		if _, present := lineageFields["structureDecisionSha256"]; present && !rawJSONString(lineageFields, "structureDecisionSha256") {
+			return SidecarTags{}, SidecarInvalid, true
+		}
+		if _, present := lineageFields["segmentScreeningSha256"]; present && !rawJSONString(lineageFields, "segmentScreeningSha256") {
 			return SidecarTags{}, SidecarInvalid, true
 		}
 	}
