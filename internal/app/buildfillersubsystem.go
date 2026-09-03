@@ -101,6 +101,14 @@ func buildFillerSubsystem(
 			}
 		}
 	}
+	artifactRecoveryCtx, artifactRecoveryCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	if recovered, err := clipfetch.RecoverAcquisitionArtifacts(artifactRecoveryCtx, layout.WatchDir(), st, time.Now); err != nil {
+		log.Warn("could not recover filler acquisition artifacts", "err", err)
+	} else if recovered.Published > 0 || recovered.Repair > 0 || recovered.Pending > 0 {
+		log.Info("recovered filler acquisition artifacts",
+			"published", recovered.Published, "repair", recovered.Repair, "pending", recovered.Pending)
+	}
+	artifactRecoveryCancel()
 
 	fillerProgrammer := programmer.NewDynamicObserved(set.tunarrConfig(), metricRecorder)
 	wake := &fillerChannelWake{st: st, channels: channelService, log: log}
