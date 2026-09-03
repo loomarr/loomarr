@@ -26,10 +26,11 @@ type SegmentScreeningMedia struct {
 // same source and span must replay its closed result rather than repeat a possibly billed call.
 type SegmentScreeningEvaluator interface {
 	Axis() SegmentScreeningAxis
-	Evaluate(context.Context, SegmentScreeningMedia) (SegmentScreeningResult, error)
+	Evaluate(context.Context, SegmentScreeningMedia) (RecordedSegmentScreeningAxisEvidence, error)
 }
 
 type StructureScreeningEvidenceRepository interface {
+	PutSegmentScreeningAxisEvidence(context.Context, RecordedSegmentScreeningAxisEvidence) error
 	PutSegmentScreeningEvidence(context.Context, SegmentScreeningEvidence) error
 }
 
@@ -88,12 +89,20 @@ func (r *ExactSpanScreeningRuntime) Screen(ctx context.Context, media StructureS
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
-			result, err := evaluator.Evaluate(ctx, input)
+			recorded, err := evaluator.Evaluate(ctx, input)
 			if err != nil {
 				return nil, fmt.Errorf("screen interval %d axis %q produced no authority: %w", intervalIndex, evaluator.Axis(), err)
 			}
+			if err := ValidateRecordedSegmentScreeningAxisEvidence(recorded); err != nil ||
+				recorded.Evidence.Source != input.Source || recorded.Evidence.StartMs != input.StartMs || recorded.Evidence.EndMs != input.EndMs {
+				return nil, fmt.Errorf("screen interval %d axis %q returned invalid or source-drifted evidence", intervalIndex, evaluator.Axis())
+			}
+			result := recorded.Evidence.Result()
 			if result.Axis != segmentScreeningAxisOrder[axisIndex] || validateSegmentScreeningResult(result) != nil {
 				return nil, fmt.Errorf("screen interval %d axis %q returned invalid or drifted evidence", intervalIndex, evaluator.Axis())
+			}
+			if err := r.evidence.PutSegmentScreeningAxisEvidence(ctx, recorded); err != nil {
+				return nil, fmt.Errorf("persist screen interval %d axis %q: %w", intervalIndex, evaluator.Axis(), err)
 			}
 			axisResults = append(axisResults, result)
 		}

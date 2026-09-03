@@ -1,6 +1,7 @@
 package filler
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -8,11 +9,11 @@ import (
 )
 
 // StructureCertificationPolicy is the release boundary between a valid assessment and unattended
-// publication. Authority owns locked source/signal slices. ScreeningCertified verifies that all
-// four content-addressed screening artifacts still exist in their owning ledgers.
+// publication. Authority owns locked source/signal slices. Screening replays all four exact-span
+// axis records and raw evidence against one immutable release authority.
 type StructureCertificationPolicy struct {
-	Authority          *fillerstructure.Authority
-	ScreeningCertified func(SegmentScreeningEvidence) bool
+	Authority *fillerstructure.Authority
+	Screening *SegmentScreeningCertification
 }
 
 const (
@@ -27,7 +28,7 @@ const (
 // CertifiedAutoConfirmable applies V67's complete-plan rules independently of the compatibility
 // detector's cut coordinates and confidence score. It never returns a partial confirmation: if any
 // keep interval fails metadata admission, every keep interval remains together for one review.
-func CertifiedAutoConfirmable(p SplitProposal, auto *AutoSplitPolicy, certification *StructureCertificationPolicy, minClipDuration time.Duration) SplitPartition {
+func CertifiedAutoConfirmable(ctx context.Context, p SplitProposal, auto *AutoSplitPolicy, certification *StructureCertificationPolicy, minClipDuration time.Duration) SplitPartition {
 	if p.Structure == nil {
 		return certifiedSplitReject(p.Segments, RejectStructureMissing)
 	}
@@ -58,7 +59,7 @@ func CertifiedAutoConfirmable(p SplitProposal, auto *AutoSplitPolicy, certificat
 	}
 	for _, segment := range keep {
 		screening := screeningForStructureInterval(p, segment)
-		if screening == nil || screening.Source != assessment.Source || screening.StartMs != segment.StartMs || screening.EndMs != segment.EndMs || !screening.Passes() || certification.ScreeningCertified == nil || !certification.ScreeningCertified(*screening) {
+		if screening == nil || screening.Source != assessment.Source || screening.StartMs != segment.StartMs || screening.EndMs != segment.EndMs || !screening.Passes() || certification.Screening == nil || certification.Screening.Verify(ctx, *screening) != nil {
 			return SplitPartition{Reject: RejectSegmentUnscreened, Hold: keep, Discard: discard}
 		}
 	}

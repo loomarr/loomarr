@@ -3291,10 +3291,14 @@ Every proposed `keep` interval also carries one content-addressed screening reco
 source bytes and half-open span. It contains exactly four independent closed outcomes: `visual_safety`
 (including explicit imagery), `spoken_safety` (including prohibited language), `rights`, and
 `playback_integrity`. Each outcome is `pass`, `reject`, or `hold`, names an opaque reason code, and binds the
-SHA-256 of the owning policy/ledger/measurement artifact; raw restricted phrases and descriptions are not
-copied into the split proposal. All four must pass, the screening record digest must validate, and the
-certification adapter must re-establish every referenced artifact before automatic publication. A missing,
-stale, rejected, held, span-mismatched, or unverifiable axis sends the complete plan to review.
+SHA-256 of one immutable axis-evidence record; raw restricted phrases and descriptions are not copied into
+the split proposal. That record binds the exact source/span and outcome, the evaluator's policy,
+certification, implementation, and evidence-contract profile, and the SHA-256 of its private bounded raw
+ledger or measurement bytes. The axis record publishes only after those raw bytes are durable. All four
+must pass, the aggregate must replay from immutable storage, and one immutable screening-release authority
+must match all four profiles and re-read every axis record plus its raw bytes before automatic publication. A boolean
+callback, aggregate-only replay, or model self-assertion cannot certify screening. A missing, stale,
+rejected, held, span-mismatched, profile-drifted, or unverifiable axis sends the complete plan to review.
 
 Structure-plan screenings are keyed independently from compatibility detector segments. This matters when
 the independently reduced join differs from the detector coordinate: retaining a screen for the decided
@@ -3309,6 +3313,12 @@ same closed authority-bound result rather than repeat a possibly billed call. An
 trustworthy result exists and aborts the aggregate. Reject and hold are durable domain answers; neither is
 retried as though no screen occurred. Screening aggregates live in their own private content-addressed
 repository and replay only when their digest and complete four-axis contract still validate.
+The same repository stores the provider-neutral axis records and opaque raw evidence separately. The
+screening-release authority is content-addressed, explicitly non-authorizing by default, names exactly one
+canonical profile per axis, and locks the aggregate contract. Verification requires production permission,
+an exact profile set, exact source/span/outcome/reason projection, and replayable raw-evidence identity for
+every axis. The current shadow configuration carries no release authority, so adding the repository or
+coordinator cannot silently enable publication.
 
 Automatic publication requires all of the following: a `compilation_break` or explicitly bounded filler
 portion of `programme_with_spots`; exact evidence bytes still match; every published interval has resolved

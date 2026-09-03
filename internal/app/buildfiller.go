@@ -402,8 +402,8 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 		// records exactly where it stops, while the compatibility outcome remains application
 		// authority. A later locked certificate supplies one immutable authority for its slices.
 		structureShadow, shadowErr := filler.NewStructureSplitShadow(st, autoSplitPolicy, &filler.StructureCertificationPolicy{
-			Authority:          nil,
-			ScreeningCertified: func(filler.SegmentScreeningEvidence) bool { return false },
+			Authority: nil,
+			Screening: nil,
 		}, minClipDuration, "production-shadow-no-certified-slices-v1")
 		if shadowErr != nil {
 			log.Error("could not construct filler structure split shadow", "err", shadowErr)
