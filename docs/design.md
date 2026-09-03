@@ -4546,6 +4546,20 @@ prohibited and operational holds cannot be selected. The constructed truth can t
 without a second blind full-corpus review, but it cannot establish broadcast suitability, enter
 training data, or authorize production admission. Both permissions remain explicitly false.
 
+The direct-video runner's per-request nanodollar value is an **accounting reservation**, not a
+provider-enforced total-price cap. OpenRouter does not expose such a cap for token-priced video.
+The transport therefore preserves every syntactically valid provider-reported charge before it
+checks the reservation. A charge above the reservation closes that attempt as
+`over_reservation`, records the exact decimal and nanodollars, request/response digests, generation,
+route, tokens, and reserved amount, and makes the structured answer semantically unusable. The
+actual charge, even when it exceeds the run's authorized spend, is the consumed-spend truth; the
+overrun is explicit and no later request may start. Missing or malformed settlement remains the
+separate unknown-charge state and consumes the reservation. The runner must never describe either
+the reservation or the run authorization as a hard provider billing limit. Before media is opened,
+the runner also multiplies the pinned route's snapshot prompt/completion prices by a declared
+worst-case input-token allowance and the fixed completion-token ceiling using exact decimal
+arithmetic; a reservation smaller than that bound is refused before HTTP.
+
 The immutable structure-certification report reproduces the comparison from at least two locked,
 distinct model-family assessment sets and binds its digest to the exact public manifest, private
 construction authority, holdout authoring, and source-family receipt. Certification requires all 60

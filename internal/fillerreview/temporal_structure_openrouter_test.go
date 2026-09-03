@@ -37,6 +37,28 @@ func TestRunOpenRouterTemporalStructureRejectsFutureChallengeBeforeRequest(t *te
 	}
 }
 
+func TestRunOpenRouterTemporalStructureRejectsReservationBelowSnapshotPriceBound(t *testing.T) {
+	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
+	fixture := newTemporalStructureFixture(t)
+	root, _ := fixture.build(t, "price-bound")
+	manifestPath := filepath.Join(root, "public", "manifest.json")
+	manifest := readStrictTestJSON[TemporalStructureChallengeManifest](t, manifestPath)
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests.Add(1)
+	}))
+	defer server.Close()
+	config := temporalStructureOpenRouterTestConfig(manifestPath, filepath.Join(t.TempDir(), "private"), []string{manifest.Cases[0].Alias}, server, now)
+	config.ReservationNanoUSD = 20_000_000
+	config.MaxSpendNanoUSD = 20_000_000
+	if _, err := RunOpenRouterTemporalStructure(t.Context(), config); err == nil || !strings.Contains(err.Error(), "below the snapshot price bound") {
+		t.Fatalf("error=%v", err)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("provider received %d requests", requests.Load())
+	}
+}
+
 func TestRunOpenRouterTemporalStructureBindsOneAtomicVideoAssessment(t *testing.T) {
 	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
 	fixture := newTemporalStructureFixture(t)
@@ -53,7 +75,7 @@ func TestRunOpenRouterTemporalStructureBindsOneAtomicVideoAssessment(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.PublicManifestSHA256 != challenge.PublicManifestSHA256 || result.ReasoningMode != TemporalStructureOpenRouterReasoningDisabled || result.Requests != 1 || len(result.Assessments) != 1 || result.ProductionAdmissionAllowed || result.Assessments[0].Unit.Kind != fillereval.UnitStandalone || result.Assessments[0].Role.Kind != fillereval.TemporalRoleCommercial || len(result.Assessments[0].Inference.Calls) != 1 || result.Assessments[0].Inference.Calls[0].Axis != "structure" {
+	if result.PublicManifestSHA256 != challenge.PublicManifestSHA256 || result.ReasoningMode != TemporalStructureOpenRouterReasoningDisabled || result.MaximumInputTokens != 20_000 || result.EstimatedMaximumChargeNanoUSD != 21_024_000 || result.Requests != 1 || len(result.Assessments) != 1 || result.ProductionAdmissionAllowed || result.Assessments[0].Unit.Kind != fillereval.UnitStandalone || result.Assessments[0].Role.Kind != fillereval.TemporalRoleCommercial || len(result.Assessments[0].Inference.Calls) != 1 || result.Assessments[0].Inference.Calls[0].Axis != "structure" {
 		t.Fatalf("result = %+v", result)
 	}
 	parts := request.Messages[1].Content
@@ -65,6 +87,42 @@ func TestRunOpenRouterTemporalStructureBindsOneAtomicVideoAssessment(t *testing.
 	info, err := os.Stat(rawPath)
 	if err != nil || info.Mode().Perm() != 0o600 || attempt.State != temporalOpenRouterAttemptAccepted || attempt.ResponseSHA256 != result.Assessments[0].Inference.Calls[0].ResponseSHA256 {
 		t.Fatalf("raw mode=%v attempt=%+v error=%v", info.Mode(), attempt, err)
+	}
+}
+
+func TestRunOpenRouterTemporalStructureRecordsChargeAboveReservationAndStops(t *testing.T) {
+	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
+	fixture := newTemporalStructureFixture(t)
+	root, _ := fixture.build(t, "over-reservation")
+	manifestPath := filepath.Join(root, "public", "manifest.json")
+	manifest := readStrictTestJSON[TemporalStructureChallengeManifest](t, manifestPath)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": "generation", "model": "review/vendor-model",
+			"choices": []any{map[string]any{"message": map[string]any{"content": temporalStructureStandaloneResponse}}},
+			"usage":   map[string]any{"prompt_tokens": 42_781, "completion_tokens": 283, "cost": 0.132588},
+			"openrouter_metadata": map[string]any{
+				"attempt":   1,
+				"endpoints": map[string]any{"available": []any{map[string]any{"provider": "Provider Route", "model": "review/vendor-model", "selected": true}}},
+			},
+		})
+	}))
+	defer server.Close()
+	checkpointDir := filepath.Join(t.TempDir(), "private")
+	config := temporalStructureOpenRouterTestConfig(manifestPath, checkpointDir, []string{manifest.Cases[0].Alias}, server, now)
+	config.ReservationNanoUSD = 100_000_000
+	config.MaxSpendNanoUSD = 100_000_000
+	result, err := RunOpenRouterTemporalStructure(t.Context(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt := result.Attempts[0]
+	assessment := result.Assessments[0]
+	if attempt.State != temporalOpenRouterAttemptOverReservation || attempt.ChargedAmountUSD != "0.132588" || attempt.ChargedNanoUSD != 132_588_000 || attempt.ReservedNanoUSD != 100_000_000 || result.ChargedNanoUSD != 132_588_000 || result.ConsumedNanoUSD != 132_588_000 || result.OverReservationNanoUSD != 32_588_000 || assessment.OperationalFailure == nil || assessment.OperationalFailure.Code != fillereval.TemporalFailureProvider || assessment.Unit != nil || assessment.Role != nil || len(assessment.Segments) != 0 {
+		t.Fatalf("result=%+v attempt=%+v assessment=%+v", result, attempt, assessment)
+	}
+	if _, err := RunOpenRouterTemporalStructure(t.Context(), config); err == nil || !strings.Contains(err.Error(), "over-reservation") {
+		t.Fatalf("resume error=%v", err)
 	}
 }
 
@@ -311,7 +369,8 @@ func temporalStructureOpenRouterTestConfig(manifestPath, checkpointDir string, a
 		UpstreamProvider: "Provider Route", UpstreamProviderSlug: "provider/route", AssessorID: "structure-assessor",
 		ReasoningMode: TemporalStructureOpenRouterReasoningDisabled,
 		ExpectedCases: len(aliases), PerCaseTimeout: time.Second, MaxRequests: len(aliases),
-		MaxSpendNanoUSD: int64(len(aliases)) * 2_000_000, MaxChargeNanoUSD: 2_000_000,
+		MaxSpendNanoUSD: int64(len(aliases)) * 100_000_000, ReservationNanoUSD: 100_000_000,
+		MaximumInputTokens:   20_000,
 		AllowInsecureTestURL: true, Client: server.Client(), Now: func() time.Time { return now },
 	}
 }

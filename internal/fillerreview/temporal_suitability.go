@@ -204,7 +204,7 @@ func assessOpenRouterSuitabilityCase(ctx context.Context, client *http.Client, b
 		SchemaName: "filler_suitability", Schema: temporalSuitabilitySchema(item.DurationMS),
 		SystemPrompt: temporalSuitabilitySystemPrompt, Content: temporalSuitabilityContent(item),
 		Videos:    []openroutermedia.Video{{MIMEType: "video/mp4", Base64: base64.StdEncoding.EncodeToString(video)}},
-		MaxTokens: 1024, MaxChargeNanoUSD: config.MaxChargeNanoUSD, DisableReasoning: config.ReasoningMode == TemporalSuitabilityReasoningDisabled,
+		MaxTokens: 1024, ReservationNanoUSD: config.MaxChargeNanoUSD, DisableReasoning: config.ReasoningMode == TemporalSuitabilityReasoningDisabled,
 		Title: "Loomarr filler suitability screening",
 		Reserve: func(requestSHA string) error {
 			spent, spendErr := temporalSuitabilityCheckpointSpend(*checkpoint)

@@ -35,7 +35,7 @@ func assessOpenRouterTemporalStructureCase(ctx context.Context, client *http.Cli
 		SchemaName: temporalStructureOpenRouterSchemaName, Schema: temporalStructureOpenRouterSchema(item.Video.DurationMS),
 		SystemPrompt: temporalStructureOpenRouterSystemPrompt, Content: temporalStructureOpenRouterContent(item.Video.DurationMS),
 		Videos:    []openroutermedia.Video{{MIMEType: "video/mp4", Base64: base64.StdEncoding.EncodeToString(video)}},
-		MaxTokens: temporalStructureOpenRouterMaxTokens, MaxChargeNanoUSD: config.MaxChargeNanoUSD,
+		MaxTokens: temporalStructureOpenRouterMaxTokens, ReservationNanoUSD: config.ReservationNanoUSD,
 		DisableReasoning: config.ReasoningMode == TemporalStructureOpenRouterReasoningDisabled,
 		EnableReasoning:  config.ReasoningMode == TemporalStructureOpenRouterReasoningRequired,
 		Title:            temporalStructureOpenRouterTitle,
@@ -44,12 +44,12 @@ func assessOpenRouterTemporalStructureCase(ctx context.Context, client *http.Cli
 			if spendErr != nil {
 				return spendErr
 			}
-			if len(checkpoint.Attempts) >= config.MaxRequests || spent > config.MaxSpendNanoUSD-config.MaxChargeNanoUSD {
+			if len(checkpoint.Attempts) >= config.MaxRequests || spent > config.MaxSpendNanoUSD-config.ReservationNanoUSD {
 				return fmt.Errorf("%w before structure alias %q", errTemporalOpenRouterBudget, item.Alias)
 			}
 			checkpoint.Attempts = append(checkpoint.Attempts, TemporalStructureOpenRouterAttempt{
 				Alias: item.Alias, RequestedAt: now().UTC(), RequestSHA256: requestSHA,
-				State: temporalOpenRouterAttemptReserved, ReservedNanoUSD: config.MaxChargeNanoUSD,
+				State: temporalOpenRouterAttemptReserved, ReservedNanoUSD: config.ReservationNanoUSD,
 			})
 			return persistTemporalStructureOpenRouterCheckpoint(config.CheckpointDir, *checkpoint, selected)
 		},
@@ -94,7 +94,10 @@ func assessOpenRouterTemporalStructureCase(ctx context.Context, client *http.Cli
 	if callResult.ChargeKnown {
 		attempt.ChargedAmountUSD, attempt.ChargedNanoUSD = callResult.ChargedAmountUSD, callResult.ChargedNanoUSD
 	}
-	if failure == nil {
+	if callResult.OverReservationNanoUSD > 0 {
+		attempt.State = temporalOpenRouterAttemptOverReservation
+		attempt.OperationalFailure = fillereval.TemporalFailureProvider
+	} else if failure == nil {
 		attempt.State = temporalOpenRouterAttemptAccepted
 	} else {
 		attempt.OperationalFailure = failure.code
