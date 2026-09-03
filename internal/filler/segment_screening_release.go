@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"time"
 )
 
 const (
@@ -38,20 +39,22 @@ type SegmentScreeningCertificationEvidenceReader interface {
 type SegmentScreeningCertification struct {
 	authority SegmentScreeningReleaseAuthority
 	evidence  SegmentScreeningCertificationEvidenceReader
+	rights    CurrentFillerRightsAuthority
+	now       func() time.Time
 }
 
-func NewSegmentScreeningCertification(authority SegmentScreeningReleaseAuthority, evidence SegmentScreeningCertificationEvidenceReader) (*SegmentScreeningCertification, error) {
+func NewSegmentScreeningCertification(authority SegmentScreeningReleaseAuthority, evidence SegmentScreeningCertificationEvidenceReader, rights CurrentFillerRightsAuthority, now func() time.Time) (*SegmentScreeningCertification, error) {
 	if err := ValidateSegmentScreeningReleaseAuthority(authority); err != nil {
 		return nil, err
 	}
-	if evidence == nil {
-		return nil, fmt.Errorf("segment screening certification requires an evidence repository")
+	if evidence == nil || rights == nil || now == nil {
+		return nil, fmt.Errorf("segment screening certification requires evidence, current rights, and clock")
 	}
-	return &SegmentScreeningCertification{authority: authority, evidence: evidence}, nil
+	return &SegmentScreeningCertification{authority: authority, evidence: evidence, rights: rights, now: now}, nil
 }
 
 func (c *SegmentScreeningCertification) Verify(ctx context.Context, aggregate SegmentScreeningEvidence) error {
-	if c == nil || c.evidence == nil {
+	if c == nil || c.evidence == nil || c.rights == nil || c.now == nil {
 		return fmt.Errorf("segment screening certification is unavailable")
 	}
 	if err := ValidateSegmentScreeningReleaseAuthority(c.authority); err != nil {
@@ -97,6 +100,33 @@ func (c *SegmentScreeningCertification) Verify(ctx context.Context, aggregate Se
 	canonicalizeSegmentScreeningProfiles(profiles)
 	if !reflect.DeepEqual(profiles, c.authority.Profiles) {
 		return fmt.Errorf("segment screening profiles do not match release authority")
+	}
+	if err := c.verifyCurrentRights(ctx, subject, profiles); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *SegmentScreeningCertification) verifyCurrentRights(ctx context.Context, subject SegmentScreeningSubject, profiles []SegmentScreeningAxisProfile) error {
+	rightsIndex := slices.IndexFunc(profiles, func(profile SegmentScreeningAxisProfile) bool { return profile.Axis == ScreenRights })
+	if rightsIndex < 0 {
+		return fmt.Errorf("segment screening release lacks a rights profile")
+	}
+	request := FillerRightsUseRequest{
+		SubjectSHA256: subject.SHA256, SourceID: subject.SourceID, AcquisitionID: subject.AcquisitionID,
+		SourceMasterSHA256: subject.SourceMasterSHA256, PolicySHA256: profiles[rightsIndex].PolicySHA256,
+		Use: FillerBroadcastUse, RequestedAt: c.now().UTC(),
+	}
+	if !validFillerRightsUseRequest(request) {
+		return fmt.Errorf("segment screening release lacks rights-bound child identity")
+	}
+	decision, found, err := c.rights.CurrentFillerRights(ctx, request)
+	if err != nil {
+		return fmt.Errorf("recheck current filler rights: %w", err)
+	}
+	if !found || ValidateFillerRightsUseDecision(decision) != nil || !fillerRightsDecisionMatchesRequest(decision, request) ||
+		decision.Status != FillerRightsAuthorized || decision.Withdrawal != FillerRightsWithdrawalClear {
+		return fmt.Errorf("segment screening release does not have current broadcast rights")
 	}
 	return nil
 }
