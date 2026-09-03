@@ -4687,8 +4687,14 @@ produce one source-level candidate, and a real seam-focused certificate must aut
 slice before use. Sparse sampling, chunk-majority voting, and silently lowering the canonical media
 quality are not valid long-reel fallbacks.
 
-Each accepted window answer covers its complete media interval in source-relative coordinates and
-binds the exact plan, normalized-window identity and lineage, and assessor profile. An attributable
+One content-addressed media-set artifact embeds the complete plan and the ordinal, normalized media
+identity, and lineage of every window; its ordered membership is the common input authority for all
+assessor families. The preparer takes one full-hash- and sparse-hash-verified immutable source snapshot,
+renders every declared media interval through the same canonical 960-by-720 profile as the short path,
+fully decodes each output, and publishes media and lineage only by content address. Reuse re-hashes,
+re-probes, and fully decodes the retained bytes; no partial set is returned after a failed window.
+Each accepted window answer covers its complete media interval in source-relative
+coordinates and binds that exact media set, its own ordinal, and the assessor profile. An attributable
 transport or provider failure is retained as an operational-failure answer with no semantic timeline;
 it holds that assessor family's complete source result rather than letting the remaining windows vote.
 The deterministic stitcher requires exactly one answer for every planned window from one assessor

@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	PlanSchemaVersion   = 1
-	PlanContractVersion = "filler-structure-window-plan-v1"
+	PlanSchemaVersion   = 2
+	PlanContractVersion = "filler-structure-window-plan-v2"
 )
 
 // Window separates the one source interval whose decisions it owns from the wider media interval

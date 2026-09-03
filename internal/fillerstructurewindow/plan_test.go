@@ -112,9 +112,10 @@ func TestValidatePlanRejectsIdentityAndCoverageDrift(t *testing.T) {
 
 func TestCanonicalProfileIsStableAndBindsAssessmentMedia(t *testing.T) {
 	profile := CanonicalProfile()
-	if profile.SHA256 != "1d6c6c395265225d8a53fe110d46bafec100fe7fd5ba6818c878643cac005409" ||
+	if profile.SHA256 != "54fa970f07756b5a72f9dfd2b305313046b98bae30906d2ed0b41531b6a138d1" ||
 		profile.SHA256 != ProfileSHA256(profile) ||
 		profile.MaximumWindowDurationMS != 150_000 || profile.MaximumWindows != 15 ||
+		profile.MaximumWindowBytes != 64<<20 || profile.MaximumTimelineDriftMS != 1_000 ||
 		profile.AssessmentMediaProfileSHA256 == "" {
 		t.Fatalf("profile = %+v", profile)
 	}

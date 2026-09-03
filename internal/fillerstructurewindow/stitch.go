@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	StitchSchemaVersion   = 1
-	StitchContractVersion = "filler-structure-window-stitch-v1"
+	StitchSchemaVersion   = 2
+	StitchContractVersion = "filler-structure-window-stitch-v2"
 
 	HoldOperationalFailure = "window_operational_failure"
 	HoldOverlapConflict    = "window_overlap_conflict"
@@ -32,7 +32,7 @@ const (
 type StitchResult struct {
 	SchemaVersion       int                             `json:"schemaVersion"`
 	ContractVersion     string                          `json:"contractVersion"`
-	Plan                Plan                            `json:"plan"`
+	MediaSet            MediaSet                        `json:"mediaSet"`
 	Assessor            fillerstructure.AssessorProfile `json:"assessor"`
 	BoundaryToleranceMS int64                           `json:"boundaryToleranceMs"`
 	Assessments         []Assessment                    `json:"assessments"`
@@ -44,8 +44,8 @@ type StitchResult struct {
 
 // Stitch builds one replayable family result. Missing window authority is an error; an explicit
 // operational-failure assessment is a durable held result.
-func Stitch(plan Plan, assessments []Assessment, boundaryToleranceMS int64) (StitchResult, error) {
-	result, err := buildStitch(plan, assessments, boundaryToleranceMS)
+func Stitch(set MediaSet, assessments []Assessment, boundaryToleranceMS int64) (StitchResult, error) {
+	result, err := buildStitch(set, assessments, boundaryToleranceMS)
 	if err != nil {
 		return StitchResult{}, err
 	}
@@ -72,7 +72,7 @@ func ValidateStitchResult(result StitchResult) error {
 	if !contentHash(result.SHA256) || result.SHA256 != StitchSHA256(result) {
 		return errors.New("structure window stitch identity is invalid")
 	}
-	want, err := buildStitch(result.Plan, result.Assessments, result.BoundaryToleranceMS)
+	want, err := buildStitch(result.MediaSet, result.Assessments, result.BoundaryToleranceMS)
 	if err != nil {
 		return err
 	}
@@ -83,10 +83,11 @@ func ValidateStitchResult(result StitchResult) error {
 	return nil
 }
 
-func buildStitch(plan Plan, assessments []Assessment, boundaryToleranceMS int64) (StitchResult, error) {
-	if err := ValidatePlan(plan); err != nil {
+func buildStitch(set MediaSet, assessments []Assessment, boundaryToleranceMS int64) (StitchResult, error) {
+	if err := ValidateMediaSet(set); err != nil {
 		return StitchResult{}, err
 	}
+	plan := set.Plan
 	if boundaryToleranceMS < 0 || boundaryToleranceMS >= plan.Profile.ContextOverlapMS {
 		return StitchResult{}, errors.New("structure window boundary tolerance is invalid")
 	}
@@ -101,7 +102,7 @@ func buildStitch(plan Plan, assessments []Assessment, boundaryToleranceMS int64)
 		if assessment.WindowOrdinal != index {
 			return StitchResult{}, errors.New("structure window stitch repeats or omits a window")
 		}
-		if err := ValidateAssessment(plan, assessment); err != nil {
+		if err := ValidateAssessment(set, assessment); err != nil {
 			return StitchResult{}, err
 		}
 		if index == 0 {
@@ -113,7 +114,7 @@ func buildStitch(plan Plan, assessments []Assessment, boundaryToleranceMS int64)
 	}
 	result := StitchResult{
 		SchemaVersion: StitchSchemaVersion, ContractVersion: StitchContractVersion,
-		Plan: plan, Assessor: assessor, BoundaryToleranceMS: boundaryToleranceMS, Assessments: ordered,
+		MediaSet: set, Assessor: assessor, BoundaryToleranceMS: boundaryToleranceMS, Assessments: ordered,
 	}
 	if failed {
 		result.Status, result.HoldReason = StitchHeld, HoldOperationalFailure

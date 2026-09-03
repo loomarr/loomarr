@@ -2,7 +2,6 @@ package fillerstructurewindow
 
 import (
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/fillerstructure"
@@ -13,12 +12,13 @@ func TestStitchProducesOneTimelineAndPreservesSameRoleSeam(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	set := mediaSetForPlan(t, plan)
 	truth := []fillerstructure.Segment{
 		{StartMS: 0, EndMS: 120_000, Role: fillerstructure.RoleCommercial},
 		{StartMS: 120_000, EndMS: 240_000, Role: fillerstructure.RoleCommercial},
 		{StartMS: 240_000, EndMS: 300_000, Role: fillerstructure.RolePromo},
 	}
-	result, err := Stitch(plan, assessmentsForTimeline(t, plan, truth), 2_000)
+	result, err := Stitch(set, assessmentsForTimeline(t, set, truth), 2_000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,19 +36,20 @@ func TestStitchReconcilesSameFamilyOverlapObservationWithinTolerance(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
+	set := mediaSetForPlan(t, plan)
 	assessments := make([]Assessment, len(plan.Windows))
-	assessments[0] = newWindowAssessment(t, plan, 0, []fillerstructure.Segment{
+	assessments[0] = newWindowAssessment(t, set, 0, []fillerstructure.Segment{
 		{StartMS: 0, EndMS: 119_500, Role: fillerstructure.RoleCommercial},
 		{StartMS: 119_500, EndMS: 135_000, Role: fillerstructure.RolePromo},
 	})
-	assessments[1] = newWindowAssessment(t, plan, 1, []fillerstructure.Segment{
+	assessments[1] = newWindowAssessment(t, set, 1, []fillerstructure.Segment{
 		{StartMS: 105_000, EndMS: 120_500, Role: fillerstructure.RoleCommercial},
 		{StartMS: 120_500, EndMS: 255_000, Role: fillerstructure.RolePromo},
 	})
-	assessments[2] = newWindowAssessment(t, plan, 2, []fillerstructure.Segment{
+	assessments[2] = newWindowAssessment(t, set, 2, []fillerstructure.Segment{
 		{StartMS: 225_000, EndMS: 300_000, Role: fillerstructure.RolePromo},
 	})
-	result, err := Stitch(plan, assessments, 2_000)
+	result, err := Stitch(set, assessments, 2_000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,6 +67,7 @@ func TestStitchHoldsWholeFamilyOnOverlapConflict(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	set := mediaSetForPlan(t, plan)
 	truth := []fillerstructure.Segment{
 		{StartMS: 0, EndMS: 120_000, Role: fillerstructure.RoleCommercial},
 		{StartMS: 120_000, EndMS: 300_000, Role: fillerstructure.RolePromo},
@@ -75,18 +77,18 @@ func TestStitchHoldsWholeFamilyOnOverlapConflict(t *testing.T) {
 		mutate func(*testing.T, Plan, []Assessment)
 	}{
 		{name: "missing boundary", mutate: func(t *testing.T, plan Plan, assessments []Assessment) {
-			assessments[1] = newWindowAssessment(t, plan, 1, []fillerstructure.Segment{
+			assessments[1] = newWindowAssessment(t, set, 1, []fillerstructure.Segment{
 				{StartMS: 105_000, EndMS: 255_000, Role: fillerstructure.RoleCommercial},
 			})
 		}},
 		{name: "role conflict", mutate: func(t *testing.T, plan Plan, assessments []Assessment) {
-			assessments[1] = newWindowAssessment(t, plan, 1, []fillerstructure.Segment{
+			assessments[1] = newWindowAssessment(t, set, 1, []fillerstructure.Segment{
 				{StartMS: 105_000, EndMS: 120_000, Role: fillerstructure.RoleCommercial},
 				{StartMS: 120_000, EndMS: 255_000, Role: fillerstructure.RoleTrailer},
 			})
 		}},
 		{name: "outside tolerance", mutate: func(t *testing.T, plan Plan, assessments []Assessment) {
-			assessments[1] = newWindowAssessment(t, plan, 1, []fillerstructure.Segment{
+			assessments[1] = newWindowAssessment(t, set, 1, []fillerstructure.Segment{
 				{StartMS: 105_000, EndMS: 123_000, Role: fillerstructure.RoleCommercial},
 				{StartMS: 123_000, EndMS: 255_000, Role: fillerstructure.RolePromo},
 			})
@@ -94,9 +96,9 @@ func TestStitchHoldsWholeFamilyOnOverlapConflict(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			assessments := assessmentsForTimeline(t, plan, truth)
+			assessments := assessmentsForTimeline(t, set, truth)
 			test.mutate(t, plan, assessments)
-			result, err := Stitch(plan, assessments, 2_000)
+			result, err := Stitch(set, assessments, 2_000)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -112,15 +114,16 @@ func TestStitchRetainsOperationalFailureAsWholeFamilyHold(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	set := mediaSetForPlan(t, plan)
 	truth := []fillerstructure.Segment{{StartMS: 0, EndMS: 300_000, Role: fillerstructure.RoleCommercial}}
-	assessments := assessmentsForTimeline(t, plan, truth)
-	input := assessmentInputFixture(plan, 1, nil)
+	assessments := assessmentsForTimeline(t, set, truth)
+	input := assessmentInputFixture(set, 1, nil)
 	input.Failure = "provider_timeout"
 	assessments[1], err = NewAssessment(input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := Stitch(plan, assessments, 2_000)
+	result, err := Stitch(set, assessments, 2_000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,19 +137,20 @@ func TestStitchRejectsMissingOrMixedAssessmentAuthority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	set := mediaSetForPlan(t, plan)
 	truth := []fillerstructure.Segment{{StartMS: 0, EndMS: 300_000, Role: fillerstructure.RoleCommercial}}
-	assessments := assessmentsForTimeline(t, plan, truth)
-	if _, err := Stitch(plan, assessments[:2], 2_000); err == nil {
+	assessments := assessmentsForTimeline(t, set, truth)
+	if _, err := Stitch(set, assessments[:2], 2_000); err == nil {
 		t.Fatal("missing window assessment was accepted")
 	}
-	input := assessmentInputFixture(plan, 1, clipTimeline(truth, plan.Windows[1]))
+	input := assessmentInputFixture(set, 1, clipTimeline(truth, plan.Windows[1]))
 	input.Assessor.ID = "assessor-b"
 	input.Assessor.ModelFamily = "family-b"
 	assessments[1], err = NewAssessment(input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Stitch(plan, assessments, 2_000); err == nil {
+	if _, err := Stitch(set, assessments, 2_000); err == nil {
 		t.Fatal("mixed assessor profiles were accepted")
 	}
 }
@@ -156,8 +160,9 @@ func TestValidateStitchResultRejectsRehashedProjectionDrift(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	set := mediaSetForPlan(t, plan)
 	truth := []fillerstructure.Segment{{StartMS: 0, EndMS: 300_000, Role: fillerstructure.RoleCommercial}}
-	result, err := Stitch(plan, assessmentsForTimeline(t, plan, truth), 2_000)
+	result, err := Stitch(set, assessmentsForTimeline(t, set, truth), 2_000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,20 +173,19 @@ func TestValidateStitchResultRejectsRehashedProjectionDrift(t *testing.T) {
 	}
 }
 
-func assessmentsForTimeline(t *testing.T, plan Plan, timeline []fillerstructure.Segment) []Assessment {
+func assessmentsForTimeline(t *testing.T, set MediaSet, timeline []fillerstructure.Segment) []Assessment {
 	t.Helper()
+	plan := set.Plan
 	assessments := make([]Assessment, len(plan.Windows))
 	for ordinal, window := range plan.Windows {
-		assessments[ordinal] = newWindowAssessment(t, plan, ordinal, clipTimeline(timeline, window))
+		assessments[ordinal] = newWindowAssessment(t, set, ordinal, clipTimeline(timeline, window))
 	}
 	return assessments
 }
 
-func newWindowAssessment(t *testing.T, plan Plan, ordinal int, segments []fillerstructure.Segment) Assessment {
+func newWindowAssessment(t *testing.T, set MediaSet, ordinal int, segments []fillerstructure.Segment) Assessment {
 	t.Helper()
-	input := assessmentInputFixture(plan, ordinal, segments)
-	input.Media.SHA256 = strings.Repeat(string(rune('a'+ordinal)), 64)
-	input.Media.LineageSHA256 = strings.Repeat(string(rune('d'+ordinal)), 64)
+	input := assessmentInputFixture(set, ordinal, segments)
 	assessment, err := NewAssessment(input)
 	if err != nil {
 		t.Fatal(err)

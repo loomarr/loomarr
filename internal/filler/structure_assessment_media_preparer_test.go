@@ -286,7 +286,8 @@ func structureAssessmentPreparerFixture(root string, tool mediatools.MediaToolId
 			return Probed{DurationMs: 10_000, Width: 960, Height: 720, Cadence: "30/1", SampleAspect: "1:1"}, nil
 		},
 		identify: func(context.Context, string) (mediatools.MediaToolIdentity, error) { return tool, nil },
-		run:      run, snapshot: snapshotOwnedFile,
+		run:      run, decode: func(context.Context, string, string) error { return nil },
+		snapshot: snapshotOwnedFile,
 	}
 }
 

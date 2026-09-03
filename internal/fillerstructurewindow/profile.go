@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	ProfileSchemaVersion   = 1
-	ProfileContractVersion = "filler-structure-window-profile-v1"
+	ProfileSchemaVersion   = 2
+	ProfileContractVersion = "filler-structure-window-profile-v2"
 
 	PrimarySpanMS           int64 = 120_000
 	ContextOverlapMS        int64 = 15_000
@@ -27,6 +27,8 @@ type Profile struct {
 	SchemaVersion                int    `json:"schemaVersion"`
 	ContractVersion              string `json:"contractVersion"`
 	AssessmentMediaProfileSHA256 string `json:"assessmentMediaProfileSha256"`
+	MaximumWindowBytes           int64  `json:"maximumWindowBytes"`
+	MaximumTimelineDriftMS       int64  `json:"maximumTimelineDriftMs"`
 	PrimarySpanMS                int64  `json:"primarySpanMs"`
 	ContextOverlapMS             int64  `json:"contextOverlapMs"`
 	MaximumWindowDurationMS      int64  `json:"maximumWindowDurationMs"`
@@ -40,6 +42,8 @@ func CanonicalProfile() Profile {
 	profile := Profile{
 		SchemaVersion: ProfileSchemaVersion, ContractVersion: ProfileContractVersion,
 		AssessmentMediaProfileSHA256: fillerstructuremedia.CanonicalProfile().SHA256,
+		MaximumWindowBytes:           fillerstructuremedia.CanonicalProfile().MaximumVideoBytes,
+		MaximumTimelineDriftMS:       fillerstructuremedia.CanonicalProfile().MaximumTimelineDriftMS,
 		PrimarySpanMS:                PrimarySpanMS, ContextOverlapMS: ContextOverlapMS,
 		MaximumWindowDurationMS: MaximumWindowDurationMS,
 		MaximumSourceDurationMS: MaximumSourceDurationMS, MaximumWindows: MaximumWindows,

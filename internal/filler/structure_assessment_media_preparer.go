@@ -26,6 +26,7 @@ type FFmpegStructureAssessmentMediaPreparer struct {
 	probe      Prober
 	identify   func(context.Context, string) (mediatools.MediaToolIdentity, error)
 	run        func(context.Context, string, []string) error
+	decode     func(context.Context, string, string) error
 	snapshot   func(context.Context, string, string) error
 }
 
@@ -38,59 +39,22 @@ func NewFFmpegStructureAssessmentMediaPreparer(clipDir, ffmpegPath string) (*FFm
 	return &FFmpegStructureAssessmentMediaPreparer{
 		clipDir: clipDir, ffmpegPath: ffmpegPath, probe: FFprobeNextTo(ffmpegPath),
 		identify: mediatools.IdentifyFFmpeg, run: runStructureAssessmentFFmpeg,
+		decode:   runStructureAssessmentDecode,
 		snapshot: snapshotOwnedFile,
 	}, nil
 }
 
 func (p *FFmpegStructureAssessmentMediaPreparer) Prepare(ctx context.Context, input StructureAssessmentSource) (StructureAssessmentMedia, error) {
-	if p == nil || p.probe == nil || p.identify == nil || p.run == nil || p.snapshot == nil {
+	if p == nil || p.run == nil || p.decode == nil {
 		return StructureAssessmentMedia{}, errors.New("structure assessment media preparer is unavailable")
 	}
-	if err := input.Source.validate(); err != nil {
-		return StructureAssessmentMedia{}, fmt.Errorf("structure assessment source: %w", err)
+	prepared, err := p.prepareSource(ctx, input)
+	if err != nil {
+		return StructureAssessmentMedia{}, err
 	}
-	expectedSource := filepath.Join(p.clipDir, filepath.FromSlash(input.Source.Path))
-	if !filepath.IsAbs(input.FullPath) || filepath.Clean(input.FullPath) != input.FullPath || input.FullPath != expectedSource {
-		return StructureAssessmentMedia{}, errors.New("structure assessment source path does not match its retained identity")
-	}
-	info, err := os.Lstat(input.FullPath)
-	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() != input.Source.Bytes {
-		return StructureAssessmentMedia{}, errors.New("structure assessment source is not the declared regular file")
-	}
-
+	defer func() { _ = os.Remove(prepared.SnapshotPath) }()
 	stageDir := filepath.Join(p.clipDir, MediaAssetRootName, ".staging")
-	if err := os.MkdirAll(stageDir, 0o755); err != nil {
-		return StructureAssessmentMedia{}, fmt.Errorf("create structure assessment staging: %w", err)
-	}
-	snapshotMarker, err := os.CreateTemp(stageDir, "structure-source-*")
-	if err != nil {
-		return StructureAssessmentMedia{}, err
-	}
-	snapshotPath := snapshotMarker.Name()
-	if err := snapshotMarker.Close(); err != nil {
-		_ = os.Remove(snapshotPath)
-		return StructureAssessmentMedia{}, err
-	}
-	_ = os.Remove(snapshotPath)
-	defer func() { _ = os.Remove(snapshotPath) }()
-	if err := p.snapshot(ctx, input.FullPath, snapshotPath); err != nil {
-		return StructureAssessmentMedia{}, fmt.Errorf("snapshot structure assessment source: %w", err)
-	}
-	if err := validateStructureAssessmentSourceSnapshot(snapshotPath, input.Source); err != nil {
-		return StructureAssessmentMedia{}, err
-	}
-	inputProbe, err := p.probe(ctx, snapshotPath)
-	if err != nil || inputProbe.NoVideo || inputProbe.Silent || inputProbe.Width <= 0 || inputProbe.Height <= 0 ||
-		absoluteDurationDifference(inputProbe.DurationMs, input.Source.DurationMs) > fillerstructure.AssessmentMediaMaximumTimelineDriftMS {
-		return StructureAssessmentMedia{}, errors.New("structure assessment source streams or duration do not match authority")
-	}
-
-	profile := fillerstructuremedia.CanonicalProfile()
-	tool, err := p.identify(ctx, p.ffmpegPath)
-	if err != nil {
-		return StructureAssessmentMedia{}, fmt.Errorf("identify structure assessment media tool: %w", err)
-	}
-	sourceIdentity := structureAssessmentSourceIdentity(input.Source)
+	profile, tool, sourceIdentity := prepared.Profile, prepared.Tool, prepared.Identity
 	operation := structureAssessmentOperationSHA256(sourceIdentity, profile, tool)
 	if !isContentHash(operation) {
 		return StructureAssessmentMedia{}, errors.New("structure assessment media operation identity is invalid")
@@ -115,7 +79,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) Prepare(ctx context.Context, in
 	}
 	_ = os.Remove(outputPath)
 	defer func() { _ = os.Remove(outputPath) }()
-	arguments := fillerstructuremedia.PartArguments(snapshotPath, 0, input.Source.DurationMs, outputPath)
+	arguments := fillerstructuremedia.PartArguments(prepared.SnapshotPath, 0, input.Source.DurationMs, outputPath)
 	if err := p.run(ctx, mediatools.FFmpegOr(p.ffmpegPath), arguments); err != nil {
 		return StructureAssessmentMedia{}, fmt.Errorf("render structure assessment media: %w", err)
 	}
@@ -125,6 +89,9 @@ func (p *FFmpegStructureAssessmentMediaPreparer) Prepare(ctx context.Context, in
 	}
 	if err := validateStructureAssessmentOutput(outputPath, outputProbe, input.Source, profile); err != nil {
 		return StructureAssessmentMedia{}, err
+	}
+	if err := p.decode(ctx, p.ffmpegPath, outputPath); err != nil {
+		return StructureAssessmentMedia{}, fmt.Errorf("decode structure assessment media: %w", err)
 	}
 	mediaSHA, mediaBytes, err := FileSHA256(outputPath)
 	if err != nil {
@@ -185,6 +152,9 @@ func (p *FFmpegStructureAssessmentMediaPreparer) reuse(ctx context.Context, sour
 	}
 	if err := validateStructureAssessmentOutput(mediaPath, probe, source, profile); err != nil || probe.DurationMs != lineage.Media.DurationMS {
 		return StructureAssessmentMedia{}, errors.New("reused structure assessment media profile does not match lineage")
+	}
+	if err := p.decode(ctx, p.ffmpegPath, mediaPath); err != nil {
+		return StructureAssessmentMedia{}, fmt.Errorf("decode reused structure assessment media: %w", err)
 	}
 	return preparedStructureAssessmentMedia(source, lineage, mediaPath), nil
 }
@@ -263,6 +233,13 @@ func runStructureAssessmentFFmpeg(ctx context.Context, executable string, argume
 		return fmt.Errorf("%w: %s", err, message)
 	}
 	return nil
+}
+
+func runStructureAssessmentDecode(ctx context.Context, ffmpegPath, path string) error {
+	return runStructureAssessmentFFmpeg(ctx, mediatools.FFmpegOr(ffmpegPath), []string{
+		"-nostdin", "-hide_banner", "-v", "error", "-i", path,
+		"-map", "0:v:0", "-map", "0:a:0", "-f", "null", "-",
+	})
 }
 
 var _ StructureAssessmentMediaPreparer = (*FFmpegStructureAssessmentMediaPreparer)(nil)

@@ -13,7 +13,8 @@ func TestWindowAssessmentRequiresCompleteSourceRelativeCoverage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assessment, err := NewAssessment(assessmentInputFixture(plan, 1, []fillerstructure.Segment{
+	set := mediaSetForPlan(t, plan)
+	assessment, err := NewAssessment(assessmentInputFixture(set, 1, []fillerstructure.Segment{
 		{StartMS: 105_000, EndMS: 120_000, Role: fillerstructure.RoleCommercial},
 		{StartMS: 120_000, EndMS: 180_000, Role: fillerstructure.RolePromo},
 		{StartMS: 180_000, EndMS: 255_000, Role: fillerstructure.RoleCommercial},
@@ -31,7 +32,8 @@ func TestWindowAssessmentRetainsOperationalFailureWithoutSemanticClaim(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := assessmentInputFixture(plan, 1, nil)
+	set := mediaSetForPlan(t, plan)
+	input := assessmentInputFixture(set, 1, nil)
 	input.Failure = "provider_timeout"
 	assessment, err := NewAssessment(input)
 	if err != nil {
@@ -47,7 +49,8 @@ func TestWindowAssessmentRejectsDriftAndIncompleteAnswers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	valid, err := NewAssessment(assessmentInputFixture(plan, 1, []fillerstructure.Segment{
+	set := mediaSetForPlan(t, plan)
+	valid, err := NewAssessment(assessmentInputFixture(set, 1, []fillerstructure.Segment{
 		{StartMS: 105_000, EndMS: 255_000, Role: fillerstructure.RoleCommercial},
 	}))
 	if err != nil {
@@ -58,6 +61,7 @@ func TestWindowAssessmentRejectsDriftAndIncompleteAnswers(t *testing.T) {
 		mutate func(*Assessment)
 	}{
 		{name: "plan", mutate: func(value *Assessment) { value.PlanSHA256 = strings.Repeat("f", 64) }},
+		{name: "media set", mutate: func(value *Assessment) { value.MediaSetSHA256 = strings.Repeat("f", 64) }},
 		{name: "source", mutate: func(value *Assessment) { value.Source.DurationMS++ }},
 		{name: "ordinal", mutate: func(value *Assessment) { value.WindowOrdinal++ }},
 		{name: "media profile", mutate: func(value *Assessment) { value.Media.ProfileSHA256 = strings.Repeat("e", 64) }},
@@ -74,23 +78,16 @@ func TestWindowAssessmentRejectsDriftAndIncompleteAnswers(t *testing.T) {
 			assessment := valid
 			assessment.Segments = append([]fillerstructure.Segment(nil), valid.Segments...)
 			test.mutate(&assessment)
-			if err := ValidateAssessment(plan, assessment); err == nil {
+			if err := ValidateAssessment(set, assessment); err == nil {
 				t.Fatal("drifted assessment was accepted")
 			}
 		})
 	}
 }
 
-func assessmentInputFixture(plan Plan, ordinal int, segments []fillerstructure.Segment) AssessmentInput {
-	window := plan.Windows[ordinal]
+func assessmentInputFixture(set MediaSet, ordinal int, segments []fillerstructure.Segment) AssessmentInput {
 	return AssessmentInput{
-		Plan: plan, WindowOrdinal: ordinal,
-		Media: fillerstructure.AssessmentMedia{
-			SHA256: strings.Repeat("b", 64), Bytes: 1_024,
-			DurationMS:    window.MediaEndMS - window.MediaStartMS,
-			ProfileSHA256: plan.Profile.AssessmentMediaProfileSHA256,
-			LineageSHA256: strings.Repeat("c", 64),
-		},
+		MediaSet: set, WindowOrdinal: ordinal,
 		Assessor: fillerstructure.AssessorProfile{
 			ID: "assessor-a", ModelFamily: "family-a", Provider: "provider-a", Model: "model-a",
 			ModelDigest: strings.Repeat("d", 64), CapabilitySHA256: strings.Repeat("e", 64),
@@ -98,4 +95,13 @@ func assessmentInputFixture(plan Plan, ordinal int, segments []fillerstructure.S
 		},
 		Segments: segments, AssessedAt: time.Date(2026, 9, 3, 19, 0, ordinal, 0, time.UTC),
 	}
+}
+
+func mediaSetForPlan(t *testing.T, plan Plan) MediaSet {
+	t.Helper()
+	set, err := NewMediaSet(plan, mediaSetFixture(plan))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return set
 }

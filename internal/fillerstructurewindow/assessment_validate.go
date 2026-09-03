@@ -8,14 +8,15 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 )
 
-// ValidateAssessment binds a window answer to exact plan geometry, media lineage, assessor
+// ValidateAssessment binds a window answer to exact media-set geometry, lineage, assessor
 // identity, and either complete source-relative coverage or a closed operational failure.
-func ValidateAssessment(plan Plan, assessment Assessment) error {
-	if err := ValidatePlan(plan); err != nil {
+func ValidateAssessment(set MediaSet, assessment Assessment) error {
+	if err := ValidateMediaSet(set); err != nil {
 		return err
 	}
+	plan := set.Plan
 	if assessment.SchemaVersion != AssessmentSchemaVersion || assessment.ContractVersion != AssessmentContractVersion ||
-		assessment.PlanSHA256 != plan.SHA256 || assessment.Source != plan.Source ||
+		assessment.PlanSHA256 != plan.SHA256 || assessment.MediaSetSHA256 != set.SHA256 || assessment.Source != plan.Source ||
 		assessment.WindowOrdinal < 0 || assessment.WindowOrdinal >= len(plan.Windows) ||
 		assessment.AssessedAt.IsZero() || assessment.AssessedAt != assessment.AssessedAt.UTC() ||
 		!contentHash(assessment.SHA256) || assessment.SHA256 != AssessmentSHA256(assessment) {
@@ -25,12 +26,13 @@ func ValidateAssessment(plan Plan, assessment Assessment) error {
 		return err
 	}
 	window := plan.Windows[assessment.WindowOrdinal]
+	expectedMedia := set.Windows[assessment.WindowOrdinal].Media
 	windowDuration := window.MediaEndMS - window.MediaStartMS
 	if !contentHash(assessment.Media.SHA256) || assessment.Media.Bytes <= 0 ||
 		assessment.Media.Bytes > fillerstructuremedia.MaximumVideoBytes || assessment.Media.DurationMS <= 0 ||
 		absolute(assessment.Media.DurationMS-windowDuration) > fillerstructure.AssessmentMediaMaximumTimelineDriftMS ||
 		assessment.Media.ProfileSHA256 != plan.Profile.AssessmentMediaProfileSHA256 ||
-		!contentHash(assessment.Media.LineageSHA256) {
+		!contentHash(assessment.Media.LineageSHA256) || assessment.Media != expectedMedia {
 		return errors.New("structure window assessment media is invalid")
 	}
 	switch assessment.State {
