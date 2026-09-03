@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -206,6 +207,7 @@ func (c *archiveClient) walkCollection(ctx context.Context, collID, dropDir stri
 	}
 	var fetched, skipped int
 	var outputs []Output
+	var failures error
 	for _, id := range ids {
 		select {
 		case <-ctx.Done():
@@ -214,17 +216,19 @@ func (c *archiveClient) walkCollection(ctx context.Context, collID, dropDir stri
 		}
 		meta, err := c.metadata(ctx, id)
 		if err != nil {
+			failures = errors.Join(failures, err)
 			continue // skip a bad item, keep the collection going
 		}
 		f, s, itemOutputs, err := c.downloadItem(ctx, id, meta, dropDir)
-		if err != nil {
-			continue
-		}
 		fetched += f
 		skipped += s
 		outputs = append(outputs, itemOutputs...)
+		if err != nil {
+			failures = errors.Join(failures, err)
+			continue
+		}
 	}
-	return fetched, skipped, outputs, nil
+	return fetched, skipped, outputs, failures
 }
 
 // downloadItem picks the best video derivative and downloads it + a sidecar.

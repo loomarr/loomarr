@@ -230,14 +230,8 @@ func (i *Ingestor) publish(ctx context.Context, manifests []filler.AcquisitionAr
 		if updated[index].State == filler.ArtifactRepair {
 			continue
 		}
-		target := filepath.Join(i.dropDir, updated[index].MediaPath)
-		if err := publishFile(outputs[index].MediaPath, target); err != nil {
-			updated[index].State = filler.ArtifactRepair
-			updated[index].RepairReason = "publish media: " + err.Error()
-			updated[index].UpdatedAt = i.now().UTC()
-			_ = i.writer.UpsertAcquisitionArtifacts(ctx, updated[index:index+1])
-			return updated, err
-		}
+		// Publish portable provenance first. A sidecar without media is inert; media without its
+		// sidecar creates a race with intake even though the durable manifest remains authoritative.
 		if outputs[index].SidecarPath != "" {
 			if err := publishFile(outputs[index].SidecarPath, filepath.Join(i.dropDir, updated[index].SidecarPath)); err != nil {
 				updated[index].State = filler.ArtifactRepair
@@ -246,6 +240,14 @@ func (i *Ingestor) publish(ctx context.Context, manifests []filler.AcquisitionAr
 				_ = i.writer.UpsertAcquisitionArtifacts(ctx, updated[index:index+1])
 				return updated, err
 			}
+		}
+		target := filepath.Join(i.dropDir, updated[index].MediaPath)
+		if err := publishFile(outputs[index].MediaPath, target); err != nil {
+			updated[index].State = filler.ArtifactRepair
+			updated[index].RepairReason = "publish media: " + err.Error()
+			updated[index].UpdatedAt = i.now().UTC()
+			_ = i.writer.UpsertAcquisitionArtifacts(ctx, updated[index:index+1])
+			return updated, err
 		}
 		updated[index].State = filler.ArtifactPublished
 		updated[index].UpdatedAt = i.now().UTC()

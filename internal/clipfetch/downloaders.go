@@ -3,7 +3,6 @@ package clipfetch
 import (
 	"bufio"
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -282,21 +281,15 @@ func inspectOutput(path string) (digest string, size int64, clipHash string, err
 	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 		return "", 0, "", fmt.Errorf("downloaded output %s is not a regular file", path)
 	}
-	file, err := os.Open(path)
+	digest, size, err = filler.FileSHA256(path)
 	if err != nil {
-		return "", 0, "", fmt.Errorf("open downloaded output: %w", err)
-	}
-	defer func() { _ = file.Close() }()
-	hash := sha256.New()
-	size, err = io.Copy(hash, file)
-	if err != nil {
-		return "", 0, "", fmt.Errorf("hash downloaded output: %w", err)
+		return "", 0, "", err
 	}
 	clipHash, err = filler.ClipID(path)
 	if err != nil {
 		return "", 0, "", err
 	}
-	return fmt.Sprintf("%x", hash.Sum(nil)), size, clipHash, nil
+	return digest, size, clipHash, nil
 }
 
 // ArchiveDownloader fetches an Archive.org item/collection via plain net/http

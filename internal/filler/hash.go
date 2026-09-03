@@ -98,6 +98,25 @@ func ClipIDFromReaderAt(r io.ReaderAt, size int64) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
+// FileSHA256 returns the full-file identity used by acquisition manifests. Catalog scans keep
+// using ClipID's sparse identity; this stronger digest is paid only at acquisition boundaries.
+func FileSHA256(path string) (string, int64, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", 0, fmt.Errorf("open file for full digest %s: %w", path, err)
+	}
+	defer func() { _ = file.Close() }()
+	hash := sha256.New()
+	size, err := io.Copy(hash, file)
+	if err != nil {
+		return "", 0, fmt.Errorf("hash full file %s: %w", path, err)
+	}
+	if size <= 0 {
+		return "", 0, fmt.Errorf("hash full file %s: empty file", path)
+	}
+	return hex.EncodeToString(hash.Sum(nil)), size, nil
+}
+
 // hashSection reads at most n bytes from offset into the hash.
 //
 // ⚠ `io.EOF` is tolerated rather than returned: `ReadAt` reports it on a short read at the end of
