@@ -32,8 +32,8 @@ The output directory is created atomically at mode `0700` and contains only
 private `0600` files:
 
 - `cohort.json`: 100 review-ready clean candidates with opaque case/family IDs,
-  source authorities, complete source paths, target-locale slice claims, and
-  rights/truth-provenance paths;
+  source authorities, complete source and transcript paths/digests,
+  target-locale slice claims, and rights/truth-provenance paths;
 - `owner-map.json`: the private mapping back to exact VCTK speaker, utterance,
   microphone, audio, and transcript identities;
 - `evidence/release-authority.json`: the exact reviewed release authority used

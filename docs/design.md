@@ -4563,13 +4563,37 @@ in a deterministic neutral-video MP4 using exact ffmpeg/ffprobe executable ident
 speech remains real but its encoding is a declared derivative; input/output hashes, decoded duration, recipe,
 tool versions, and source-relative complete span are retained. Both output streams must also survive a complete
 bounded decode; a header-valid derivative with a corrupt tail is refused. The adapter emits a private review-ready
-cohort
-and owner map, not a certification authority or clean label. A later full-draft assembler combines it with the
+cohort and owner map, not a certification authority or clean label. A later full-draft assembler combines it with the
 positive and other clean-slice cohorts before any review bundle binds that exact draft. Reviewing the VCTK
 cohort before assembly would bind the wrong digest and is forbidden. Raw media, transcripts, speaker ids,
 paths, seed, and maps stay outside Git. Missing rights, release drift, an unsafe path, duplicate family/content,
 tool drift, an incomplete output, or fewer than 100 eligible speakers fails before atomic publication. This
 preparation performs no provider call, policy classification, certification run, or spend.
+
+Prepared spoken-safety cohorts use one private candidate contract. Every case binds its complete audiovisual
+source, optional exact transcript, source family, rights and truth-provenance evidence, proposed `clean` or
+`positive` claim, locale, slices, and any proposed positive intervals. A preparation adapter may propose those
+facts from source-owned evidence, but the proposal is not certification truth. Clean candidates carry no positive
+intervals; positive candidates carry sorted, non-overlapping, bounded intervals with the exact restricted-rule id.
+The cohort document binds transcript bytes separately even when provenance also names the original transcript,
+so a model or human reviewer cannot unknowingly assess a changed convenience copy.
+
+One deep offline assembly module owns the transition from separately prepared cohorts to the single review seam.
+Its interface is one operation over a private assembly plan, one private input root, and one new output directory.
+The plan binds the exact private policy bytes; draft envelope and route identities; every cohort document/root,
+kind, dataset, digest, and exact case count; the expected combined case count; and aggregate input, output, and
+wall-time ceilings. The module revalidates current source, transcript, rights, provenance, policy, and cohort bytes;
+requires one policy and implementation; rejects cross-cohort case, source-content, or source-family collisions;
+and enforces the certification minima and complete positive/clean slice vocabulary before publication.
+
+Assembly snapshots only referenced verified bytes into one self-contained `0700` tree. It writes private `0600`
+case media, transcripts, provenance, and rights evidence; the canonical #929 path-bearing `draft.json`; the exact
+policy; and two byte-identical primary-review worklists bound to the draft digest and case order. Each worklist may
+show the proposed claim and intervals needed to verify known-script evidence but contains no evaluation result,
+other review, reviewer identity, or completed decision. Outputs are deterministic for the same plan and inputs,
+created atomically without overwrite, and remain non-authorizing. Reviewers submit separate #929 review documents;
+two complete independent agreements, or disagreement-only independent adjudication, are still required before the
+authority locker can establish truth. Assembly runs no model, reviewer, certifier, downloader, or production ingest.
 
 No model is trained or fine-tuned for this lane until governed source-disjoint labels exist and the
 certified stock cascade demonstrably misses a locked gate. Existing unknown commercials and agreement
