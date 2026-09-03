@@ -68,7 +68,9 @@ type Assessor struct {
 	Provider         string `json:"provider"`
 	Model            string `json:"model"`
 	ModelDigest      string `json:"modelDigest"`
+	CapabilitySHA256 string `json:"capabilitySha256"`
 	PromptVersion    string `json:"promptVersion"`
+	EvidenceContract string `json:"evidenceContract"`
 	AssessmentSHA256 string `json:"assessmentSha256"`
 }
 

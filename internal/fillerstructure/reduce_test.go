@@ -77,8 +77,13 @@ func fixtureRequest() Request {
 	source := Source{SHA256: strings.Repeat("a", 64), DurationMS: 10_000}
 	candidate := func(id, family, digest string) Candidate {
 		return Candidate{
-			Source:   source,
-			Assessor: Assessor{ID: id, ModelFamily: family, Provider: "provider", Model: "model", ModelDigest: strings.Repeat("b", 64), PromptVersion: "prompt-v1", AssessmentSHA256: strings.Repeat(digest, 64)},
+			Source: source,
+			Assessor: Assessor{
+				ID: id, ModelFamily: family, Provider: "provider", Model: "model",
+				ModelDigest: strings.Repeat("b", 64), CapabilitySHA256: strings.Repeat("c", 64),
+				PromptVersion: "prompt-v1", EvidenceContract: "assessment-v1",
+				AssessmentSHA256: strings.Repeat(digest, 64),
+			},
 			Unit:     UnitCompilation,
 			Segments: []Segment{{StartMS: 0, EndMS: 5_000, Role: RoleCommercial}, {StartMS: 5_000, EndMS: 10_000, Role: RolePromo}},
 		}

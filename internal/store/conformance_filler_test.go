@@ -3007,7 +3007,8 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 			Source: decisionSource,
 			Assessor: fillerstructure.Assessor{
 				ID: id, ModelFamily: family, Provider: "fixture-provider", Model: "fixture-model",
-				ModelDigest: strings.Repeat("8", 64), PromptVersion: "structure-prompt-v1",
+				ModelDigest: strings.Repeat("8", 64), CapabilitySHA256: strings.Repeat("7", 64),
+				PromptVersion: "structure-prompt-v1", EvidenceContract: "assessment-v1",
 				AssessmentSHA256: assessmentDigest,
 			},
 			Unit: fillerstructure.UnitCompilation,

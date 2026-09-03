@@ -1,14 +1,17 @@
 package filler
 
-import "time"
+import (
+	"time"
+
+	"github.com/loomarr/loomarr/internal/fillerstructure"
+)
 
 // StructureCertificationPolicy is the release boundary between a valid assessment and unattended
-// publication. AssessmentCertified owns locked source/signal slices. ScreeningCertified verifies
-// that all four content-addressed screening artifacts still exist in their owning ledgers. The
-// decisions themselves are durable exact-span proposal evidence, not injectable booleans.
+// publication. Authority owns locked source/signal slices. ScreeningCertified verifies that all
+// four content-addressed screening artifacts still exist in their owning ledgers.
 type StructureCertificationPolicy struct {
-	AssessmentCertified func(SourceStructureAssessment) bool
-	ScreeningCertified  func(SegmentScreeningEvidence) bool
+	Authority          *fillerstructure.Authority
+	ScreeningCertified func(SegmentScreeningEvidence) bool
 }
 
 const (
@@ -78,7 +81,7 @@ func CertifiedAutoConfirmable(p SplitProposal, auto *AutoSplitPolicy, certificat
 	if ValidateStructureDecisionProjection(assessment, *p.StructureDecision) != nil {
 		return SplitPartition{Reject: RejectStructureMismatch, Hold: keep, Discard: discard}
 	}
-	if certification == nil || certification.AssessmentCertified == nil || !certification.AssessmentCertified(assessment) {
+	if certification == nil || certification.Authority == nil || fillerstructure.VerifyAuthority(*p.StructureDecision, *certification.Authority) != nil {
 		return SplitPartition{Reject: RejectStructureUncertified, Hold: keep, Discard: discard}
 	}
 	for _, segment := range keep {

@@ -175,7 +175,8 @@ func buildTemporalStructureDecision(loaded temporalStructureDecisionLoaded, deci
 		candidates := make([]temporalStructureDecisionCandidate, 0, len(loaded.assessments))
 		for _, assessment := range loaded.assessments {
 			candidates = append(candidates, temporalStructureDecisionCandidate{
-				assessor: assessment.set.Assessor, assessmentSHA: assessment.fileSHA,
+				assessor: assessment.set.Assessor, capabilitySHA: assessment.set.CapabilitySnapshotSHA256,
+				evidenceContract: assessment.set.ContractVersion, assessmentSHA: assessment.fileSHA,
 				assessment: assessment.byAlias[item.Alias],
 			})
 		}

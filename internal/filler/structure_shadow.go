@@ -80,7 +80,7 @@ type StructureSplitShadow struct {
 
 func NewStructureSplitShadow(repository StructureSplitShadowRepository, auto *AutoSplitPolicy, certification *StructureCertificationPolicy, minClipDuration func() time.Duration, policyVersion string) (*StructureSplitShadow, error) {
 	policyVersion = strings.TrimSpace(policyVersion)
-	if repository == nil || auto == nil || certification == nil || certification.AssessmentCertified == nil || certification.ScreeningCertified == nil || minClipDuration == nil || policyVersion == "" || len(policyVersion) > 128 {
+	if repository == nil || auto == nil || certification == nil || certification.ScreeningCertified == nil || minClipDuration == nil || policyVersion == "" || len(policyVersion) > 128 {
 		return nil, fmt.Errorf("structure split shadow requires repository, complete policies, clip floor, and bounded policy identity")
 	}
 	return &StructureSplitShadow{

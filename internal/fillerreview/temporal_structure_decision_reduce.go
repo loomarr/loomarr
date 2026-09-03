@@ -20,9 +20,11 @@ const (
 )
 
 type temporalStructureDecisionCandidate struct {
-	assessor      fillereval.TemporalAssessorIdentity
-	assessmentSHA string
-	assessment    TemporalStructureAssessment
+	assessor         fillereval.TemporalAssessorIdentity
+	capabilitySHA    string
+	evidenceContract string
+	assessmentSHA    string
+	assessment       TemporalStructureAssessment
 }
 
 func reduceTemporalStructureDecision(alias, sourceSHA string, durationMS int64, candidates []temporalStructureDecisionCandidate) TemporalStructureCaseDecision {
@@ -59,7 +61,8 @@ func temporalStructureCoreCandidate(source fillerstructure.Source, candidate tem
 		Assessor: fillerstructure.Assessor{
 			ID: identity.ID, ModelFamily: strings.ToLower(strings.TrimSpace(identity.ModelFamily)),
 			Provider: identity.Provider, Model: identity.Model, ModelDigest: identity.ModelDigest,
-			PromptVersion: identity.PromptVersion, AssessmentSHA256: candidate.assessmentSHA,
+			CapabilitySHA256: candidate.capabilitySHA, PromptVersion: identity.PromptVersion,
+			EvidenceContract: candidate.evidenceContract, AssessmentSHA256: candidate.assessmentSHA,
 		},
 	}
 	if candidate.assessment.OperationalFailure != nil {

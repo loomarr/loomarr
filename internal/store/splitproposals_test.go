@@ -77,7 +77,8 @@ func TestMarshalSplitProposalRejectsStructureDecisionForAnotherSource(t *testing
 			Source: decisionSource,
 			Assessor: fillerstructure.Assessor{
 				ID: id, ModelFamily: family, Provider: "provider", Model: "model",
-				ModelDigest: strings.Repeat("d", 64), PromptVersion: "prompt-v1",
+				ModelDigest: strings.Repeat("d", 64), CapabilitySHA256: strings.Repeat("1", 64),
+				PromptVersion: "prompt-v1", EvidenceContract: "assessment-v1",
 				AssessmentSHA256: assessmentDigest,
 			},
 			Unit: fillerstructure.UnitStandalone, Role: fillerstructure.RoleCommercial,

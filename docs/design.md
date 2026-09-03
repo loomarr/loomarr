@@ -4589,6 +4589,11 @@ The complete-plan gate independently checks that a confirmed artifact and the pr
 name the same source unit and the same exhaustive ordered spans, roles, and filler/non-filler
 dispositions. A certification callback therefore cannot turn a detector-only plan into model
 agreement or approve a projection whose programme spans became filler children.
+Structure release authority is itself a content-addressed document, not an injected predicate. It
+locks the external certificate digest, reducer contract and tolerance, exact assessor/model-family/
+provider/model/capability/prompt/evidence-contract profiles, and the allowed source-unit and segment-
+role slices. Verification requires an exact profile set and a confirmed artifact; unknown profiles,
+units, roles, held decisions, or an authority without explicit production permission fail closed.
 
 Suitability screening is repeated over every freshly rendered structure case because concatenation
 and excerpt construction create new viewing contexts. A prohibited signal in any derivative is a

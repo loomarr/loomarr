@@ -400,10 +400,10 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 		minClipDuration := func() time.Duration { return set.dur("filler.min_duration") }
 		// No production slice is certified yet. The shadow still runs the complete-plan gate and
 		// records exactly where it stops, while the compatibility outcome remains application
-		// authority. A later locked certificate replaces these closures for its declared slices.
+		// authority. A later locked certificate supplies one immutable authority for its slices.
 		structureShadow, shadowErr := filler.NewStructureSplitShadow(st, autoSplitPolicy, &filler.StructureCertificationPolicy{
-			AssessmentCertified: func(filler.SourceStructureAssessment) bool { return false },
-			ScreeningCertified:  func(filler.SegmentScreeningEvidence) bool { return false },
+			Authority:          nil,
+			ScreeningCertified: func(filler.SegmentScreeningEvidence) bool { return false },
 		}, minClipDuration, "production-shadow-no-certified-slices-v1")
 		if shadowErr != nil {
 			log.Error("could not construct filler structure split shadow", "err", shadowErr)

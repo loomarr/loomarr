@@ -15,7 +15,7 @@ func invalidCandidates(request Request) bool {
 	for _, candidate := range request.Candidates {
 		identity := candidate.Assessor
 		family := strings.ToLower(strings.TrimSpace(identity.ModelFamily))
-		if candidate.Source != request.Source || !canonicalIdentity(identity.ID) || family == "" || !canonicalIdentity(identity.Provider) || !canonicalIdentity(identity.Model) || !canonicalIdentity(identity.PromptVersion) || !digest(identity.ModelDigest) || !digest(identity.AssessmentSHA256) {
+		if candidate.Source != request.Source || !canonicalIdentity(identity.ID) || family == "" || !canonicalIdentity(identity.Provider) || !canonicalIdentity(identity.Model) || !canonicalIdentity(identity.PromptVersion) || !canonicalIdentity(identity.EvidenceContract) || !digest(identity.ModelDigest) || !digest(identity.CapabilitySHA256) || !digest(identity.AssessmentSHA256) {
 			return true
 		}
 		if _, duplicate := assessors[identity.ID]; duplicate {

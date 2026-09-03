@@ -32,8 +32,7 @@ func TestStructureSplitShadowPersistsCompatibilityAndCompletePlanDecisions(t *te
 	auto := certifiedAutoPolicy()
 	repository := &structureShadowMemoryRepository{}
 	shadow, err := NewStructureSplitShadow(repository, auto, &StructureCertificationPolicy{
-		AssessmentCertified: func(SourceStructureAssessment) bool { return false },
-		ScreeningCertified:  func(SegmentScreeningEvidence) bool { return false },
+		ScreeningCertified: func(SegmentScreeningEvidence) bool { return false },
 	}, func() time.Duration { return 10 * time.Second }, "production-shadow-no-certified-slices-v1")
 	if err != nil {
 		t.Fatal(err)

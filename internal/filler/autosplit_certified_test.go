@@ -16,10 +16,23 @@ func certifiedAutoPolicy() *AutoSplitPolicy {
 }
 
 func allowCertifiedStructure() *StructureCertificationPolicy {
-	return &StructureCertificationPolicy{
-		AssessmentCertified: func(SourceStructureAssessment) bool { return true },
-		ScreeningCertified:  func(SegmentScreeningEvidence) bool { return true },
+	authority := fillerstructure.Authority{
+		SchemaVersion: fillerstructure.AuthoritySchemaVersion, ContractVersion: fillerstructure.AuthorityContractVersion,
+		CertificateSHA256: strings.Repeat("f", 64), ReducerVersion: fillerstructure.ReducerContractVersion,
+		BoundaryToleranceMS:        2_000,
+		AllowedUnits:               []fillerstructure.Unit{fillerstructure.UnitCompilation, fillerstructure.UnitProgrammeSpots},
+		AllowedRoles:               []fillerstructure.Role{fillerstructure.RoleCommercial, fillerstructure.RoleProgrammeFragment, fillerstructure.RolePromo},
+		ProductionAdmissionAllowed: true,
 	}
+	for _, pair := range [][2]string{{"assessor-a", "family-a"}, {"assessor-b", "family-b"}} {
+		authority.Assessors = append(authority.Assessors, fillerstructure.AssessorProfile{
+			ID: pair[0], ModelFamily: pair[1], Provider: "fixture-provider", Model: "fixture-model",
+			ModelDigest: strings.Repeat("b", 64), CapabilitySHA256: strings.Repeat("c", 64),
+			PromptVersion: "prompt-v1", EvidenceContract: "assessment-v1",
+		})
+	}
+	authority.SHA256 = fillerstructure.AuthoritySHA256(authority)
+	return &StructureCertificationPolicy{Authority: &authority, ScreeningCertified: func(SegmentScreeningEvidence) bool { return true }}
 }
 
 func passingSegmentScreening(t *testing.T, source SplitSourceAsset, startMs, endMs int64) *SegmentScreeningEvidence {
@@ -55,7 +68,8 @@ func passingStructureDecision(t *testing.T, assessment SourceStructureAssessment
 			Source: source,
 			Assessor: fillerstructure.Assessor{
 				ID: id, ModelFamily: family, Provider: "fixture-provider", Model: "fixture-model",
-				ModelDigest: strings.Repeat("b", 64), PromptVersion: "prompt-v1",
+				ModelDigest: strings.Repeat("b", 64), CapabilitySHA256: strings.Repeat("c", 64),
+				PromptVersion: "prompt-v1", EvidenceContract: "assessment-v1",
 				AssessmentSHA256: strings.Repeat(digest, 64),
 			},
 			Unit: unit, Segments: segments,
@@ -113,7 +127,8 @@ func TestCertifiedAutoConfirmableRequiresCompleteCertifiedScreenedPlan(t *testin
 		{name: "missing assessment", mutate: func(p *SplitProposal, _ *StructureCertificationPolicy) { p.Structure = nil }, want: RejectStructureMissing},
 		{name: "missing structure decision", mutate: func(p *SplitProposal, _ *StructureCertificationPolicy) { p.StructureDecision = nil }, want: RejectStructureUncertified},
 		{name: "uncertified slice", mutate: func(_ *SplitProposal, c *StructureCertificationPolicy) {
-			c.AssessmentCertified = func(SourceStructureAssessment) bool { return false }
+			c.Authority.ProductionAdmissionAllowed = false
+			c.Authority.SHA256 = fillerstructure.AuthoritySHA256(*c.Authority)
 		}, want: RejectStructureUncertified},
 		{name: "unscreened segment", mutate: func(p *SplitProposal, _ *StructureCertificationPolicy) { p.Segments[0].Screening = nil }, want: RejectSegmentUnscreened},
 		{name: "visual safety rejection", mutate: func(p *SplitProposal, _ *StructureCertificationPolicy) {
