@@ -5286,6 +5286,62 @@ Three rules, each of which is a safety property rather than a feature:
 
 ⚠ **The gate binds bulk composition, not an admin's own hands.** An admin searching one source and queueing one clip stays direct — the §7 shape, where an admin may `POST /v1/titles` because the admin *is* the gate. Requiring a proposal for a single deliberate click would make the gate ceremony, and ceremony is what teaches people to click through it. What the gate exists for is what happens when *nobody is looking*: a composed multi-source plan, which is exactly what a pull is.
 
+### Acquisition intent chooses exact remote items (V66)
+
+V35 supplied the approval object but its first implementation stopped one level too early: it
+made one row for every enabled source, described each as *“a source you added and left switched
+on”*, and approval downloaded the entire collection. That is an approval over **where** bytes come
+from, not a decision about **which bytes are worth acquiring**. On a compilation-heavy source it
+also hands the splitter an arbitrary prefix rather than material chosen to close a catalog gap.
+
+A pull now begins with a versioned **acquisition intent**. Its vocabulary is closed and
+inspectable: desired content roles, era observation range, audience, target geography, maximum
+remote duration, missing taxonomy axes, rights preference, source allow-list, representation
+quality floor, requested item count, and the catalog reason for the pull. An omitted constraint
+means *not requested*; an unknown candidate field means **unknown**, never a match. In particular,
+an upload or publication date is only a weak remote observation and never becomes the clip's era.
+The admitted clip still earns its semantic facts from the ordinary evidence pipeline.
+
+The application derives a default intent from the same `PoolReport`/per-channel coverage read used
+by the Filler overview, so *“why this pull?”* cannot drift from what the operator sees. Explicit
+operator constraints may narrow that draft. Deterministic policy owns selection: a future LLM may
+propose evidence or search terms, but may not silently relax a constraint, invent missing metadata,
+select an unregistered source, or cross the approval boundary.
+
+Planning is metadata-only. Each enabled, fetchable, geographically eligible, allowed source is
+enumerated through its registered provider adapter with bounded pagination. The normalized remote
+identity is `(provider, registered source id, provider item id)`; URLs are payload, not identity.
+Archive and YouTube are peers behind this seam. The planner filters items already catalogued,
+staged, queued by another pending/approved pull, previously declined in the same intent family,
+offered by a now-disabled source, or repeated within the proposal. It then applies rights,
+geography, duration, era-observation and representation-quality constraints. Missing metadata does
+not imply permission and does not satisfy a hard floor.
+
+Every considered item receives a stable disposition code and measured observations. Selected rows
+retain their exact item URL; excluded rows retain why they lost (`already_catalogued`,
+`already_queued`, `previously_declined`, `duplicate_remote`, `source_disabled`,
+`source_not_allowed`, `geography_mismatch`, `rights_unknown`, `rights_mismatch`,
+`era_unknown`, `era_mismatch`, `duration_unknown`, `duration_exceeded`, `quality_unknown`,
+`quality_below_floor`, `role_unknown`, `audience_unknown`, `taxonomy_unknown`, or
+`ranked_below_limit`). Ranking is deterministic: constraint fitness, declared-rights preference,
+representation quality, useful diversity across source/era observations, then normalized remote
+identity as the final tie-break. The same inputs therefore produce the same proposal and rejected
+explanations.
+
+The persisted pull binds the intent version, selected exact candidates, rejected explanations, and
+source snapshot used to decide. Approval may drop individual candidates and add a narrowing note.
+At the commit point Loomarr revalidates that every selected candidate still belongs to the same
+enabled registered source, remains inside its geographic/source policy, and is not already
+catalogued or queued. It then hands **the candidate URLs**, never the collection URL, to the
+existing manifest-backed ingest path. Nothing is downloaded during enumeration or proposal.
+
+Scheduled acquisition adopts this selector only after parity tests prove its existing disk/catalog
+ceilings, per-source bounds, held lifecycle, and failure reporting remain intact. Until that cutover,
+the explicit pull is the proving surface; there must not be two ranking algorithms. Safety
+classification, media conditioning, compilation segmentation, post-screen taxonomy enrichment,
+and final admission remain downstream stages. Acquisition intent chooses promising evidence; it
+does not certify that evidence as safe or airable.
+
 ### Removing a clip from the catalog is a tombstone (V35)
 
 The catalog's bulk actions include **Remove from catalog**. It marks the clip removed; it does **not** delete the row, and it does **not** touch the file.
