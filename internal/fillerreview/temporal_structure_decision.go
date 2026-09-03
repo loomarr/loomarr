@@ -8,18 +8,19 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillereval"
+	"github.com/loomarr/loomarr/internal/fillerstructure"
 )
 
 const (
 	TemporalStructureDecisionSchemaVersion   = 1
 	TemporalStructureDecisionContractVersion = "filler-temporal-structure-decision-v1"
 
-	TemporalStructureDecisionConfirmed = "confirmed"
-	TemporalStructureDecisionHeld      = "held"
+	TemporalStructureDecisionConfirmed = string(fillerstructure.StatusConfirmed)
+	TemporalStructureDecisionHeld      = string(fillerstructure.StatusHeld)
 
-	TemporalStructureDispositionFillerCandidate = "filler_candidate"
-	TemporalStructureDispositionNonFiller       = "non_filler"
-	TemporalStructureDispositionUnresolved      = "unresolved"
+	TemporalStructureDispositionFillerCandidate = string(fillerstructure.DispositionFillerCandidate)
+	TemporalStructureDispositionNonFiller       = string(fillerstructure.DispositionNonFiller)
+	TemporalStructureDispositionUnresolved      = string(fillerstructure.DispositionUnresolved)
 )
 
 // TemporalStructureDecisionConfig deliberately has no private-authority path.
@@ -174,11 +175,11 @@ func buildTemporalStructureDecision(loaded temporalStructureDecisionLoaded, deci
 		candidates := make([]temporalStructureDecisionCandidate, 0, len(loaded.assessments))
 		for _, assessment := range loaded.assessments {
 			candidates = append(candidates, temporalStructureDecisionCandidate{
-				family:     strings.ToLower(strings.TrimSpace(assessment.set.Assessor.ModelFamily)),
-				assessorID: assessment.set.Assessor.ID, assessment: assessment.byAlias[item.Alias],
+				assessor: assessment.set.Assessor, assessmentSHA: assessment.fileSHA,
+				assessment: assessment.byAlias[item.Alias],
 			})
 		}
-		decision := reduceTemporalStructureDecision(item.Alias, item.Video.DurationMS, candidates)
+		decision := reduceTemporalStructureDecision(item.Alias, item.Video.SHA256, item.Video.DurationMS, candidates)
 		report.Decisions = append(report.Decisions, decision)
 		if decision.Status == TemporalStructureDecisionConfirmed {
 			report.ConfirmedCases++

@@ -162,6 +162,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
 - **`fillereval`** · 5 importers
   Owns the hermetic certification contract for filler admission.
+- **`fillerstructure`** · 1 importer
+  Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
 - **`images/rustgen`** · 4 importers
   Concrete adapter for Loomarr's required Rust image worker (§22).
 - **`media`** · 3 importers
@@ -250,7 +252,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`clipfetch`** · 1 importer · → `filler`, `proctree`
   Downloads filler clips into the drop-folder (design §10, §16).
-- **`fillerreview`** · → `filler`, `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `fillersafety`, `httpx`, `mediatools`, `openroutermedia`
+- **`fillerreview`** · → `filler`, `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `fillersafety`, `fillerstructure`, `httpx`, `mediatools`, `openroutermedia`
   Materializes identity-blind evidence for independent semantic review.
 - **`fillersafetycert`** · 2 importers · → `fillersafety`
   Owns deterministic, non-authorizing certification of the durable spoken-safety cascade.
@@ -4569,6 +4571,13 @@ inserted spots in either the early or late position. Every assessor must have ze
 failures, under-splits, over-splits, incomplete timelines, wrong segment roles, or structural
 boundary misses beyond 2,000 ms, both globally and in every slice. A passing report still grants no
 training or production-admission permission; its only next action is the locked shadow comparison.
+The agreement policy itself is one provider-neutral production-domain module, not a scorer-owned
+copy: both the challenge adapter and the eventual production runtime supply source-bound immutable
+candidate assessments to the same pure reducer. Challenge aliases, private truth, provider clients,
+and persistence stay outside that module. Its interface retains exact source identity, complete
+timelines, assessor/model-family identity, immutable assessment identity, and every disagreement;
+this makes implementation drift between the passing certificate and the deployed decision path a
+compile-time architecture error rather than a rollout convention.
 
 Suitability screening is repeated over every freshly rendered structure case because concatenation
 and excerpt construction create new viewing contexts. A prohibited signal in any derivative is a
