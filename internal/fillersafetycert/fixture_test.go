@@ -69,8 +69,8 @@ func fixtureAuthorityCase(index int, label string, slices []string) AuthorityCas
 		TruthProvenanceSHA256: fixtureSHA(2000 + index), RightsSHA256: fixtureSHA(3000 + index),
 		Label: label, Locale: "en-US", Slices: slices,
 		Reviewers: []ReviewerAttestation{
-			{ReviewerID: fixtureOpaque("reviewer-", index*2+1), Role: ReviewerPrimary, Method: ReviewerHuman, Decision: label, AttestationSHA256: fixtureSHA(4000 + index*2)},
-			{ReviewerID: fixtureOpaque("reviewer-", index*2+2), Role: ReviewerPrimary, Method: ReviewerHuman, Decision: label, AttestationSHA256: fixtureSHA(4001 + index*2)},
+			{ReviewerID: fixtureOpaque("reviewer-", index*2+1), Role: ReviewerPrimary, Method: ReviewerHuman, Decision: ReviewDecisionVerified, AttestationSHA256: fixtureSHA(4000 + index*2)},
+			{ReviewerID: fixtureOpaque("reviewer-", index*2+2), Role: ReviewerPrimary, Method: ReviewerHuman, Decision: ReviewDecisionVerified, AttestationSHA256: fixtureSHA(4001 + index*2)},
 		},
 	}
 	if label == LabelPositive {

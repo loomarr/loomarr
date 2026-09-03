@@ -9,8 +9,11 @@ import (
 const (
 	AuthorityDraftSchemaVersion    = 1
 	AuthorityDraftContractVersion  = "filler-spoken-cascade-authority-draft-v1"
-	AuthorityReviewSchemaVersion   = 1
-	AuthorityReviewContractVersion = "filler-spoken-cascade-authority-review-v1"
+	AuthorityReviewSchemaVersion   = 2
+	AuthorityReviewContractVersion = "filler-spoken-cascade-authority-review-v2"
+
+	ReviewDecisionVerified = "verified"
+	ReviewDecisionRejected = "rejected"
 )
 
 // AuthorityDraft is the private, path-bearing source and truth declaration

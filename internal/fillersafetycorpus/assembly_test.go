@@ -137,7 +137,8 @@ func fixtureAuthorityReviewFromDraft(
 	}
 	for _, item := range draft.Cases {
 		review.Assessments = append(review.Assessments, fillersafetycert.ReviewAssessment{
-			CaseID: item.CaseID, Decision: item.Label, PositiveIntervals: item.PositiveIntervals,
+			CaseID: item.CaseID, Decision: fillersafetycert.ReviewDecisionVerified,
+			PositiveIntervals: item.PositiveIntervals,
 		})
 	}
 	return review

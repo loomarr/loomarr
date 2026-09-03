@@ -178,10 +178,10 @@ func validateReviewEnvelope(review AuthorityReview, draftSHA, role string, autho
 }
 
 func validReviewAssessment(assessment ReviewAssessment, item AuthorityDraftCase) bool {
-	if assessment.Decision != LabelPositive && assessment.Decision != LabelClean {
+	if assessment.Decision != ReviewDecisionVerified && assessment.Decision != ReviewDecisionRejected {
 		return false
 	}
-	if assessment.Decision == LabelClean {
+	if assessment.Decision == ReviewDecisionRejected || item.Label == LabelClean {
 		return len(assessment.PositiveIntervals) == 0
 	}
 	return validPositiveIntervals(assessment.PositiveIntervals, item.SourceAuthority.DurationMS) &&

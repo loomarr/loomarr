@@ -92,14 +92,14 @@ func TestBuildAuthorityRejectsEvidenceChangedAfterReview(t *testing.T) {
 func TestBuildAuthorityUsesAdjudicationOnlyForDisagreement(t *testing.T) {
 	t.Parallel()
 	fixture := newAuthorityBuildFixture(t)
-	fixture.first.Assessments[0].Decision = LabelClean
+	fixture.first.Assessments[0].Decision = ReviewDecisionRejected
 	fixture.first.Assessments[0].PositiveIntervals = nil
 	fixture.adjudicator = AuthorityReview{
 		SchemaVersion: AuthorityReviewSchemaVersion, ContractVersion: AuthorityReviewContractVersion,
 		ReviewerID: "reviewer-three", Role: ReviewerAdjudicator, Method: ReviewerHuman,
 		SubmittedAt: fixture.config.AuthoredAt.Add(-time.Minute),
 		Assessments: []ReviewAssessment{{
-			CaseID: fixture.draft.Cases[0].CaseID, Decision: LabelPositive,
+			CaseID: fixture.draft.Cases[0].CaseID, Decision: ReviewDecisionVerified,
 			PositiveIntervals: append([]PositiveInterval(nil), fixture.draft.Cases[0].PositiveIntervals...),
 		}},
 	}
@@ -118,6 +118,41 @@ func TestBuildAuthorityUsesAdjudicationOnlyForDisagreement(t *testing.T) {
 		if item.Alias == alias && len(item.Reviewers) != 3 {
 			t.Fatalf("disputed case reviewers=%+v", item.Reviewers)
 		}
+	}
+}
+
+func TestBuildAuthorityCanAdjudicateRejectedCleanControl(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthorityBuildFixture(t)
+	cleanIndex := MinimumPositiveFamilies
+	fixture.first.Assessments[cleanIndex].Decision = ReviewDecisionRejected
+	fixture.adjudicator = AuthorityReview{
+		SchemaVersion: AuthorityReviewSchemaVersion, ContractVersion: AuthorityReviewContractVersion,
+		ReviewerID: "reviewer-three", Role: ReviewerAdjudicator, Method: ReviewerHuman,
+		SubmittedAt: fixture.config.AuthoredAt.Add(-time.Minute),
+		Assessments: []ReviewAssessment{{
+			CaseID: fixture.draft.Cases[cleanIndex].CaseID, Decision: ReviewDecisionVerified,
+		}},
+	}
+	fixture.config.AdjudicatorPath = fixture.adjudicatorPath
+	fixture.rewrite(t)
+
+	if _, err := BuildAuthority(t.Context(), fixture.config); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBuildAuthorityRejectsCleanControlRejectedByBothPrimaries(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthorityBuildFixture(t)
+	cleanIndex := MinimumPositiveFamilies
+	fixture.first.Assessments[cleanIndex].Decision = ReviewDecisionRejected
+	fixture.second.Assessments[cleanIndex].Decision = ReviewDecisionRejected
+	fixture.rewrite(t)
+
+	if _, err := BuildAuthority(t.Context(), fixture.config); err == nil ||
+		!strings.Contains(err.Error(), "reviews do not establish declared truth") {
+		t.Fatalf("err=%v", err)
 	}
 }
 

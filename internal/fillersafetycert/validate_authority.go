@@ -119,7 +119,7 @@ func validateReviewers(item AuthorityCase, excludedFamilies, attestations map[st
 	adjudicator := ""
 	for _, reviewer := range item.Reviewers {
 		if !validOpaqueID(reviewer.ReviewerID, "reviewer-") || !validSHA256(reviewer.AttestationSHA256) ||
-			(reviewer.Decision != LabelPositive && reviewer.Decision != LabelClean) {
+			(reviewer.Decision != ReviewDecisionVerified && reviewer.Decision != ReviewDecisionRejected) {
 			return fmt.Errorf("reviewer identity, attestation, or decision is invalid")
 		}
 		if _, duplicate := ids[reviewer.ReviewerID]; duplicate {
@@ -164,13 +164,13 @@ func validateReviewers(item AuthorityCase, excludedFamilies, attestations map[st
 		return fmt.Errorf("exactly two primary reviewers are required")
 	}
 	if primary[0] == primary[1] {
-		if adjudicator != "" || primary[0] != item.Label {
-			return fmt.Errorf("agreeing primaries must establish the label without an adjudicator")
+		if adjudicator != "" || primary[0] != ReviewDecisionVerified {
+			return fmt.Errorf("agreeing primaries must verify the label without an adjudicator")
 		}
 		return nil
 	}
-	if adjudicator == "" || adjudicator != item.Label {
-		return fmt.Errorf("disagreeing primaries require an adjudicator establishing the label")
+	if adjudicator != ReviewDecisionVerified {
+		return fmt.Errorf("disagreeing primaries require an adjudicator verifying the label")
 	}
 	return nil
 }

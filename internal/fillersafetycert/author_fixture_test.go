@@ -116,7 +116,8 @@ func fixtureAuthorityReview(draft AuthorityDraft, draftSHA, reviewerID string, s
 	}
 	for _, item := range draft.Cases {
 		review.Assessments = append(review.Assessments, ReviewAssessment{
-			CaseID: item.CaseID, Decision: item.Label, PositiveIntervals: append([]PositiveInterval(nil), item.PositiveIntervals...),
+			CaseID: item.CaseID, Decision: ReviewDecisionVerified,
+			PositiveIntervals: append([]PositiveInterval(nil), item.PositiveIntervals...),
 		})
 	}
 	return review
