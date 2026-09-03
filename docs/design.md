@@ -4631,6 +4631,14 @@ exhausted resource limits leaves no review bundle. Only an exhaustive decisive p
 model-backed authority-review document at mode `0600`; it performs no authority locking, certification scoring,
 training, ingestion, scheduling, or production admission.
 
+The model review embeds a bounded, path-free evidence record rather than asking the authority locker to trust a
+free-form model-family string. That record binds the plan, worklist, policy and snapshot digests; exact requested
+and resolved model and upstream endpoint; model family; prompt and schema digests; ffmpeg identity; fixed resource
+ceilings; aggregate usage and settled charge; and every attempt's case id, request/response digest, generation id,
+state, observation digest, token counts, and settled charge. It contains neither the response body nor source
+content. The review envelope carries the canonical evidence digest, and every final reviewer attestation retains
+that digest. Human reviews instead bind a separately authored evidence digest and cannot claim model evidence.
+
 No model is trained or fine-tuned for this lane until governed source-disjoint labels exist and the
 certified stock cascade demonstrably misses a locked gate. Existing unknown commercials and agreement
 between candidate models remain development observations and cannot be promoted into training truth.

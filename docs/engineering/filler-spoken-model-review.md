@@ -111,8 +111,12 @@ free.
 
 Once every case has a decisive assessment, the command writes one canonical
 `filler-spoken-cascade-authority-review-v2` document with an atomic create-only
-rename. It does not include raw media, policy text, transcript, response body,
-API key, or private source path.
+rename. Its embedded path-free model evidence binds the plan, worklist, policy,
+ZDR snapshot, exact route, prompt/schema, ffmpeg identity, limits, aggregate
+usage/cost, and each attempt's request/response/observation digests and settled
+charge. The review and final authority attestations retain the canonical
+evidence digest. It does not include raw media, policy text, transcript,
+response body, API key, or private source path.
 
 ```bash
 go run ./cmd/filler-spoken-model-review \
