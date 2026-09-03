@@ -16,6 +16,7 @@ type fetchStub struct {
 	paths       []string
 	offers      []filler.DiscoveredRef
 	queued      []string
+	queuedIDs   []string
 	sourceID    string
 	sourceKind  string
 	calls       int
@@ -44,6 +45,14 @@ func (f *fetchStub) IngestSource(_ context.Context, sourceID, sourceKind string,
 	}
 	f.queued = append(f.queued, urls...)
 	return "job-1", nil
+}
+func (f *fetchStub) IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []filler.DiscoveredRef) (string, error) {
+	urls := make([]string, 0, len(items))
+	for _, item := range items {
+		f.queuedIDs = append(f.queuedIDs, item.ID)
+		urls = append(urls, item.URL)
+	}
+	return f.IngestSource(ctx, sourceID, sourceKind, urls)
 }
 func (f *fetchStub) MarkFetched(_ context.Context, id string, at time.Time) error {
 	if f.stamped == nil {
@@ -91,6 +100,26 @@ func TestFetch_StopsAtMaxPerRun(t *testing.T) {
 	}
 	if stub.sourceID != "s1" {
 		t.Errorf("queued source id = %q, want s1 — admission provenance was dropped", stub.sourceID)
+	}
+	if len(stub.queuedIDs) != 3 {
+		t.Fatalf("queued remote ids = %v, want exact identities retained", stub.queuedIDs)
+	}
+}
+
+func TestFetch_RanksMetadataInsteadOfTakingProviderOrder(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		offers: []filler.DiscoveredRef{
+			{ID: "first-low", URL: "https://archive.org/details/first-low", Height: 240},
+			{ID: "second-hd", URL: "https://archive.org/details/second-hd", Height: 1080, License: "cc-by"},
+		},
+	}
+	res, err := newFetcher(t, stub, limits(1, 2000, 20)).Run(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Queued != 1 || len(stub.queuedIDs) != 1 || stub.queuedIDs[0] != "second-hd" {
+		t.Fatalf("scheduled selection queued %v, want the declared-rights HD item", stub.queuedIDs)
 	}
 }
 

@@ -23,6 +23,7 @@ import (
 
 // fakeFiller records sync/tag calls.
 type fakeFiller struct {
+	store                store.Store
 	syncs, tags, fetches int
 	fetchedSourceIDs     []string
 	rewinds              []struct {
@@ -55,16 +56,52 @@ type fakeFiller struct {
 	enriched  []string
 	enrichErr error
 	// V34 split knobs.
-	splits           []fakeSplitCall
-	splitUnavailable bool
-	splitNotFound    bool
-	confirmNotFound  bool
-	confirmInvalid   bool
-	fetchStatus      filler.FetchStatus
-	fetchErr         error
-	readiness        filler.Readiness
-	pullID           string
-	pullTargets      []filler.AcquisitionTarget
+	splits            []fakeSplitCall
+	splitUnavailable  bool
+	splitNotFound     bool
+	confirmNotFound   bool
+	confirmInvalid    bool
+	fetchStatus       filler.FetchStatus
+	fetchErr          error
+	readiness         filler.Readiness
+	pullID            string
+	pullTargets       []filler.AcquisitionTarget
+	plannedCandidates []filler.AcquisitionCandidate
+	planErr           error
+}
+
+func (f *fakeFiller) PlanAcquisition(ctx context.Context, intent filler.AcquisitionIntent) (filler.AcquisitionPlan, error) {
+	if f.planErr != nil {
+		return filler.AcquisitionPlan{}, f.planErr
+	}
+	if intent.CatalogReason == "" {
+		intent.CatalogReason = "Increase the eligible filler catalog."
+	}
+	intent = intent.Normalize()
+	candidates := append([]filler.AcquisitionCandidate(nil), f.plannedCandidates...)
+	if len(candidates) == 0 && f.store != nil {
+		sources, err := f.store.ListFillerSources(ctx)
+		if err != nil {
+			return filler.AcquisitionPlan{}, err
+		}
+		for _, source := range sources {
+			if !source.Enabled || !source.Fetchable() || !source.GeographicallyEligible(intent.Geography) {
+				continue
+			}
+			candidates = append(candidates, filler.AcquisitionCandidate{
+				Identity: filler.RemoteIdentity{Provider: source.Kind, SourceID: source.ID, RemoteID: source.ID},
+				URL:      source.URI, Title: source.Label, License: source.License, Geography: source.Geography,
+			})
+		}
+	}
+	if len(candidates) == 0 {
+		return filler.AcquisitionPlan{}, filler.ErrNoAcquisitionSources
+	}
+	plan, err := filler.PlanAcquisition(intent, candidates, nil)
+	if err == nil && len(plan.Selected) == 0 {
+		err = filler.ErrNoAcquisitionCandidates
+	}
+	return plan, err
 }
 
 func (f *fakeFiller) Readiness(context.Context) (filler.Readiness, error) { return f.readiness, nil }
@@ -230,7 +267,7 @@ func newFillerServerWithConfig(t *testing.T, imageService api.ImageService, live
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/f.db")
 	t.Cleanup(func() { _ = st.Close() })
-	ff := &fakeFiller{}
+	ff := &fakeFiller{store: st}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st,
 		// ⚠ `testAuthorizer`, not `NewTokenAuthorizer(adminToken)`. The production authorizer

@@ -23,7 +23,7 @@ func TestPlanAcquisition_IsDeterministicAndDiverse(t *testing.T) {
 		candidate("b", "second", 1990, 720, "cc-by"),
 		candidate("a", "fourth", 1993, 2160, "cc-by"),
 	}
-	want := []string{"fourth", "second", "third"}
+	want := []string{"fourth", "second", "first"}
 	for run := 0; run < 2; run++ {
 		plan, err := filler.PlanAcquisition(intent, input, nil)
 		if err != nil {
@@ -110,5 +110,31 @@ func TestDefaultAcquisitionIntent_NamesTheCoverageProjection(t *testing.T) {
 	}
 	if intent.Geography.Country != "US" || intent.Count != 12 || intent.Version != filler.AcquisitionIntentVersion {
 		t.Fatalf("intent = %+v", intent)
+	}
+}
+
+func TestPlanAcquisition_RejectsConstraintsOutsideTheClosedVocabulary(t *testing.T) {
+	for _, intent := range []filler.AcquisitionIntent{
+		{Count: -1},
+		{Count: 51},
+		{EraStart: 1799},
+		{EraEnd: 2201},
+		{MinHeight: 4321},
+	} {
+		if _, err := filler.PlanAcquisition(intent, nil, nil); err == nil {
+			t.Errorf("PlanAcquisition(%+v) succeeded, want validation error", intent)
+		}
+	}
+}
+
+func TestAcquisitionIntentFamily_IgnoresPresentationButKeepsSelectionConstraints(t *testing.T) {
+	base := filler.AcquisitionIntent{EraStart: 1990, EraEnd: 1999, Count: 2, CatalogReason: "first"}
+	presentationChange := filler.AcquisitionIntent{EraStart: 1990, EraEnd: 1999, Count: 40, CatalogReason: "second"}
+	constraintChange := filler.AcquisitionIntent{EraStart: 1980, EraEnd: 1989, Count: 2, CatalogReason: "first"}
+	if base.FamilyKey() != presentationChange.FamilyKey() {
+		t.Fatal("count/reason changed the semantic intent family")
+	}
+	if base.FamilyKey() == constraintChange.FamilyKey() {
+		t.Fatal("era constraints did not change the semantic intent family")
 	}
 }

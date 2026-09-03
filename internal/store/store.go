@@ -540,6 +540,8 @@ type FillerAcquisitionStore interface {
 	AcquisitionArtifactForClip(ctx context.Context, mediaPath, clipHash string) (filler.AcquisitionArtifact, bool, error)
 	// ListRecoverableAcquisitionArtifacts exposes bounded staged/published/repair work.
 	ListRecoverableAcquisitionArtifacts(ctx context.Context, limit int) ([]filler.AcquisitionArtifact, error)
+	// ListAcquisitionRemoteStates is the acquisition planner's exact-item high-water mark.
+	ListAcquisitionRemoteStates(ctx context.Context) (map[string]filler.ExistingRemoteState, error)
 	// RecoverInterruptedAcquisitionRuns marks work orphaned by the previous process as failed.
 	// The beta is single-replica; startup is therefore the exact ownership boundary.
 	RecoverInterruptedAcquisitionRuns(ctx context.Context, at time.Time) (int, error)

@@ -5308,19 +5308,26 @@ operator constraints may narrow that draft. Deterministic policy owns selection:
 propose evidence or search terms, but may not silently relax a constraint, invent missing metadata,
 select an unregistered source, or cross the approval boundary.
 
-Planning is metadata-only. Each enabled, fetchable, geographically eligible, allowed source is
-enumerated through its registered provider adapter with bounded pagination. The normalized remote
+Planning is metadata-only and has one fixed 90-second wall-time budget, at most 12 enumerated
+sources, and at most 100 candidate observations across the whole proposal. Candidate quota is
+distributed deterministically across the eligible source prefix; sources beyond the bound remain
+visible as `source_limit`, rather than disappearing from the audit. Each enabled, fetchable,
+geographically eligible, allowed source is enumerated through its registered provider adapter with
+bounded pagination. The normalized remote
 identity is `(provider, registered source id, provider item id)`; URLs are payload, not identity.
 Archive and YouTube are peers behind this seam. The planner filters items already catalogued,
 staged, queued by another pending/approved pull, previously declined in the same intent family,
-offered by a now-disabled source, or repeated within the proposal. It then applies rights,
+or repeated within the proposal. It then applies rights,
 geography, duration, era-observation and representation-quality constraints. Missing metadata does
 not imply permission and does not satisfy a hard floor.
 
-Every considered item receives a stable disposition code and measured observations. Selected rows
+Every registered source receives its own durable disposition (`enumerated`, `disabled`,
+`not_fetchable`, `not_allowed`, `geography_mismatch`, `source_limit`, or
+`enumeration_failed`) because a source that yields no candidate cannot honestly attach its result
+to an item. Every considered item likewise receives a stable disposition code and measured observations. Selected rows
 retain their exact item URL; excluded rows retain why they lost (`already_catalogued`,
-`already_queued`, `previously_declined`, `duplicate_remote`, `source_disabled`,
-`source_not_allowed`, `geography_mismatch`, `rights_unknown`, `rights_mismatch`,
+`already_queued`, `previously_declined`, `duplicate_remote`, `source_not_allowed`,
+`geography_mismatch`, `rights_unknown`,
 `era_unknown`, `era_mismatch`, `duration_unknown`, `duration_exceeded`, `quality_unknown`,
 `quality_below_floor`, `role_unknown`, `role_mismatch`, `audience_unknown`,
 `audience_mismatch`, `taxonomy_unknown`, `taxonomy_mismatch`, or
@@ -5664,6 +5671,11 @@ identities, provider, source URL, media and sidecar paths, byte length, full SHA
 completion time, and lifecycle state. The application persists that set before making the files
 eligible for ordinary intake. Counts are a projection of these records, never a substitute for
 them.
+
+V66 additionally carries the registered provider's exact remote item id from candidate selection
+through the target and manifest. A consumed manifest is therefore the acquisition planner's
+`already_catalogued` high-water mark; staged, published, and repair manifests are `already_queued`.
+This avoids reconstructing identity from a mutable URL or downloaded filename.
 
 Downloaded bytes remain under a run-owned hidden staging directory until their manifest is durable.
 Publication records the intended watch-folder path before the rename, so recovery can distinguish

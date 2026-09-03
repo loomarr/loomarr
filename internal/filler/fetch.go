@@ -93,8 +93,15 @@ type SourceEnumerator interface {
 // DiscoveredRef is one item a source offers — an id stable enough to dedupe on, and the URL to
 // hand the ingest path.
 type DiscoveredRef struct {
-	ID  string
-	URL string
+	ID      string
+	URL     string
+	Title   string
+	License string
+	// ObservedYear is provider metadata used only to rank acquisition. It is not grounded clip era.
+	ObservedYear int
+	PublishedAt  string
+	DurationMS   int
+	Height       int
 }
 
 // FetchIngestor hands URLs to the ordinary ingest path.
@@ -103,6 +110,12 @@ type DiscoveredRef struct {
 // shape §10 rejects by name, and it is how one route would quietly stop honouring the lifecycle.
 type FetchIngestor interface {
 	IngestSource(ctx context.Context, sourceID, sourceKind string, urls []string) (string, error)
+}
+
+// IdentifiedFetchIngestor is the V66 production seam: scheduled selection retains provider item
+// identity into the durable manifest. The URL-only interface remains for narrow older embeddings.
+type IdentifiedFetchIngestor interface {
+	IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []DiscoveredRef) (string, error)
 }
 
 // Fetcher polls registered sources.
@@ -287,23 +300,63 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 			continue
 		}
 
+		// The scheduled path uses the same deterministic selector as explicit pulls. There are no
+		// hard semantic constraints here—the remote listing cannot certify them—but declared rights,
+		// representation quality, era-observation diversity, and stable identity now choose the
+		// bounded prefix instead of whichever item the provider returned first.
+		candidates := make([]AcquisitionCandidate, 0, len(items))
+		existing := map[string]ExistingRemoteState{}
+		for _, item := range items {
+			candidate := AcquisitionCandidate{
+				Identity: RemoteIdentity{Provider: src.Kind, SourceID: src.ID, RemoteID: item.ID},
+				URL:      item.URL, Title: item.Title, License: item.License,
+				ObservedYear: item.ObservedYear, PublishedAt: item.PublishedAt,
+				DurationMS: item.DurationMS, Height: item.Height,
+			}
+			candidates = append(candidates, candidate)
+			if seen[fetchKey(item.ID)] {
+				existing[candidate.Identity.Key()] = RemoteCatalogued
+			}
+		}
+		selection, serr := PlanAcquisition(AcquisitionIntent{
+			Count: perRun, Rights: RightsPreferDeclared,
+			CatalogReason: "Bounded scheduled refresh of a registered source.",
+		}, candidates, existing)
+		if serr != nil {
+			if !scheduled {
+				return res, fmt.Errorf("select source %q: %w", src.ID, serr)
+			}
+			f.log.Warn("filler auto-fetch: source candidates could not be selected", "source", src.ID, "err", serr)
+			continue
+		}
 		var urls []string
-		for _, it := range items {
-			if len(urls) >= perRun {
-				break
-			}
-			if seen[fetchKey(it.ID)] {
+		selectedItems := make([]DiscoveredRef, 0, len(selection.Selected))
+		for _, decision := range selection.Rejected {
+			if decision.Disposition == CandidateAlreadyCatalogued {
 				res.Skipped++
-				continue
 			}
-			urls = append(urls, it.URL)
+		}
+		for _, decision := range selection.Selected {
+			urls = append(urls, decision.Candidate.URL)
+			selectedItems = append(selectedItems, DiscoveredRef{
+				ID: decision.Candidate.Identity.RemoteID, URL: decision.Candidate.URL,
+				Title: decision.Candidate.Title, License: decision.Candidate.License,
+				ObservedYear: decision.Candidate.ObservedYear, PublishedAt: decision.Candidate.PublishedAt,
+				DurationMS: decision.Candidate.DurationMS, Height: decision.Candidate.Height,
+			})
 			// Mark immediately so two sources offering the same item queue it once.
-			seen[fetchKey(it.ID)] = true
+			seen[fetchKey(decision.Candidate.Identity.RemoteID)] = true
 		}
 		if len(urls) == 0 {
 			continue
 		}
-		if _, ierr := f.ingest.IngestSource(ctx, src.ID, src.Kind, urls); ierr != nil {
+		var ierr error
+		if identified, ok := f.ingest.(IdentifiedFetchIngestor); ok {
+			_, ierr = identified.IngestSourceItems(ctx, src.ID, src.Kind, selectedItems)
+		} else {
+			_, ierr = f.ingest.IngestSource(ctx, src.ID, src.Kind, urls)
+		}
+		if ierr != nil {
 			if !scheduled {
 				return res, fmt.Errorf("queue source %q: %w", src.ID, ierr)
 			}

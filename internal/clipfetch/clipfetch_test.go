@@ -152,7 +152,7 @@ func TestRun_PersistsExactManifestBeforePublishing(t *testing.T) {
 
 	res := ing.Run(t.Context(), []clipfetch.Source{{
 		ID: "youtube:classic", AcquisitionID: "acq-1", Kind: clipfetch.YouTube,
-		URL: "https://youtube.com/watch?v=one",
+		URL: "https://youtube.com/watch?v=one", RemoteID: "one",
 	}})
 	if res.Failed != 0 || res.Fetched != 1 || len(res.Artifacts) != 1 {
 		t.Fatalf("result = %+v, want one published artifact", res)
@@ -162,6 +162,9 @@ func TestRun_PersistsExactManifestBeforePublishing(t *testing.T) {
 	}
 	if len(writer.snapshots) != 2 || writer.snapshots[0][0].State != filler.ArtifactStaged || writer.snapshots[1][0].State != filler.ArtifactPublished {
 		t.Fatalf("manifest snapshots = %+v, want staged then published", writer.snapshots)
+	}
+	if res.Artifacts[0].RemoteID != "one" {
+		t.Fatalf("artifact remote id = %q, want one", res.Artifacts[0].RemoteID)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "download.mp4")); err != nil {
 		t.Fatalf("published media: %v", err)
