@@ -9,7 +9,7 @@ import (
 )
 
 func validateTemporalStructureHoldoutReceipt(receipt TemporalStructureHoldoutReceipt, authoring TemporalStructureChallengeAuthoring) error {
-	if receipt.SchemaVersion != TemporalStructureHoldoutSchemaVersion || receipt.ContractVersion != TemporalStructureHoldoutContractVersion || receipt.PlannedAt.IsZero() || !reviewSHA256(receipt.SeedSHA256) || !reviewSHA256(receipt.AuthoringSHA256) || receipt.Cases != TemporalStructureHoldoutCases || receipt.StandaloneCases != temporalStructureHoldoutClassCases || receipt.CompilationCases != temporalStructureHoldoutClassCases || receipt.ProgrammeExcerptCases != temporalStructureHoldoutClassCases || receipt.ProgrammeSpotCases != temporalStructureHoldoutClassCases || receipt.IndependentSources != temporalStructureHoldoutClassCases || receipt.ProgrammeParents != temporalStructureHoldoutParentSources || len(receipt.SelectedAnchors) != temporalStructureHoldoutClassCases || len(receipt.CompilationConstructions) != temporalStructureHoldoutClassCases || len(receipt.ProgrammeConstructions) != temporalStructureHoldoutClassCases || len(receipt.ProgrammeSpotConstructions) != temporalStructureHoldoutClassCases || receipt.TrainingAllowed || receipt.ProductionAdmissionAllowed || len(authoring.Cases) != receipt.Cases || len(authoring.Sources) != temporalStructureHoldoutClassCases+temporalStructureHoldoutParentSources {
+	if receipt.SchemaVersion != TemporalStructureHoldoutSchemaVersion || receipt.ContractVersion != TemporalStructureHoldoutContractVersion || receipt.PlannedAt.IsZero() || !reviewSHA256(receipt.SeedSHA256) || !reviewSHA256(receipt.AuthoringSHA256) || receipt.Cases != TemporalStructureHoldoutCases || receipt.StandaloneCases != temporalStructureHoldoutClassCases || receipt.CompilationCases != temporalStructureHoldoutClassCases || receipt.MultiCompilationCases != temporalStructureHoldoutClassCases || receipt.ProgrammeExcerptCases != temporalStructureHoldoutClassCases || receipt.ProgrammeSpotCases != temporalStructureHoldoutClassCases || receipt.IndependentSources != temporalStructureHoldoutClassCases || receipt.ProgrammeParents != temporalStructureHoldoutParentSources || len(receipt.SelectedAnchors) != temporalStructureHoldoutClassCases || len(receipt.CompilationConstructions) != temporalStructureHoldoutClassCases || len(receipt.MultiCompilationConstructions) != temporalStructureHoldoutClassCases || len(receipt.ProgrammeConstructions) != temporalStructureHoldoutClassCases || len(receipt.ProgrammeSpotConstructions) != temporalStructureHoldoutClassCases || receipt.TrainingAllowed || receipt.ProductionAdmissionAllowed || len(authoring.Cases) != receipt.Cases || len(authoring.Sources) != temporalStructureHoldoutClassCases+temporalStructureHoldoutParentSources {
 		return fmt.Errorf("temporal structure holdout receipt counts or disposition are invalid")
 	}
 	if err := validateTemporalStructureHoldoutInputs(receipt.Inputs); err != nil {
@@ -19,7 +19,7 @@ func validateTemporalStructureHoldoutReceipt(receipt TemporalStructureHoldoutRec
 	if err != nil {
 		return err
 	}
-	if unitCounts[fillereval.UnitStandalone] != temporalStructureHoldoutClassCases || unitCounts[fillereval.UnitCompilation] != temporalStructureHoldoutClassCases || unitCounts[fillereval.UnitProgrammeExcerpt] != temporalStructureHoldoutClassCases || unitCounts[fillereval.UnitProgrammeSpots] != temporalStructureHoldoutClassCases || len(unitCounts) != 4 {
+	if unitCounts[fillereval.UnitStandalone] != temporalStructureHoldoutClassCases || unitCounts[fillereval.UnitCompilation] != temporalStructureHoldoutClassCases*2 || unitCounts[fillereval.UnitProgrammeExcerpt] != temporalStructureHoldoutClassCases || unitCounts[fillereval.UnitProgrammeSpots] != temporalStructureHoldoutClassCases || len(unitCounts) != 4 {
 		return fmt.Errorf("temporal structure holdout authoring is not balanced by unit")
 	}
 	anchors, err := validateTemporalStructureHoldoutAnchors(receipt, sources)
@@ -30,6 +30,9 @@ func validateTemporalStructureHoldoutReceipt(receipt TemporalStructureHoldoutRec
 		return err
 	}
 	if err := validateTemporalStructureHoldoutCompilations(receipt.CompilationConstructions, cases, anchors); err != nil {
+		return err
+	}
+	if err := validateTemporalStructureHoldoutMultiCompilations(receipt.MultiCompilationConstructions, cases, anchors); err != nil {
 		return err
 	}
 	if err := validateTemporalStructureHoldoutProgrammeCuts(receipt.ProgrammeConstructions, cases, sources); err != nil {

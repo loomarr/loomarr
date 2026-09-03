@@ -19,7 +19,7 @@ func constructTemporalStructureHoldout(config TemporalStructureHoldoutConfig, lo
 		PlannedAt: config.PlannedAt.UTC(), SeedSHA256: hashBytes([]byte(config.Seed)), Inputs: loaded.inputs,
 		Cases: TemporalStructureHoldoutCases, StandaloneCases: temporalStructureHoldoutClassCases,
 		CompilationCases: temporalStructureHoldoutClassCases, ProgrammeExcerptCases: temporalStructureHoldoutClassCases,
-		ProgrammeSpotCases: temporalStructureHoldoutClassCases,
+		ProgrammeSpotCases: temporalStructureHoldoutClassCases, MultiCompilationCases: temporalStructureHoldoutClassCases,
 		IndependentSources: temporalStructureHoldoutClassCases, ProgrammeParents: temporalStructureHoldoutParentSources,
 		StandaloneRoleCounts: map[fillereval.TemporalRole]int{}, TrainingAllowed: false, ProductionAdmissionAllowed: false,
 	}
@@ -45,6 +45,12 @@ func constructTemporalStructureHoldout(config TemporalStructureHoldoutConfig, lo
 	}
 	authoring.Cases = append(authoring.Cases, compilationCases...)
 	receipt.CompilationConstructions = compilationReceipt
+	multiCompilationCases, multiCompilationReceipt, err := constructTemporalStructureHoldoutMultiCompilations(config.Seed, anchors)
+	if err != nil {
+		return TemporalStructureChallengeAuthoring{}, TemporalStructureHoldoutReceipt{}, err
+	}
+	authoring.Cases = append(authoring.Cases, multiCompilationCases...)
+	receipt.MultiCompilationConstructions = multiCompilationReceipt
 	programmeCases, programmeReceipt := constructTemporalStructureHoldoutProgrammeCuts(config.Seed, parents)
 	authoring.Cases = append(authoring.Cases, programmeCases...)
 	receipt.ProgrammeConstructions = programmeReceipt
@@ -56,6 +62,9 @@ func constructTemporalStructureHoldout(config TemporalStructureHoldoutConfig, lo
 	sort.Slice(receipt.SelectedAnchors, func(i, j int) bool { return receipt.SelectedAnchors[i].SourceID < receipt.SelectedAnchors[j].SourceID })
 	sort.Slice(receipt.CompilationConstructions, func(i, j int) bool {
 		return receipt.CompilationConstructions[i].CaseID < receipt.CompilationConstructions[j].CaseID
+	})
+	sort.Slice(receipt.MultiCompilationConstructions, func(i, j int) bool {
+		return receipt.MultiCompilationConstructions[i].CaseID < receipt.MultiCompilationConstructions[j].CaseID
 	})
 	sort.Slice(receipt.ProgrammeConstructions, func(i, j int) bool {
 		return receipt.ProgrammeConstructions[i].CaseID < receipt.ProgrammeConstructions[j].CaseID

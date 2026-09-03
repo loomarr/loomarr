@@ -38,7 +38,7 @@ func TestBuildTemporalStructureHoldoutPlanBindsAuthoritiesAndBuildsBalancedConst
 	for _, item := range authoring.Cases {
 		unitCounts[item.Unit]++
 	}
-	if unitCounts[fillereval.UnitStandalone] != 12 || unitCounts[fillereval.UnitCompilation] != 12 || unitCounts[fillereval.UnitProgrammeExcerpt] != 12 || unitCounts[fillereval.UnitProgrammeSpots] != 12 || len(authoring.Sources) != 18 || receipt.StandaloneRoleCounts[fillereval.TemporalRoleBumper] != 2 || receipt.StandaloneRoleCounts[fillereval.TemporalRoleCommercial] != 3 || receipt.StandaloneRoleCounts[fillereval.TemporalRolePromo] != 2 || receipt.StandaloneRoleCounts[fillereval.TemporalRolePSA] != 2 || receipt.StandaloneRoleCounts[fillereval.TemporalRoleTrailer] != 3 || receipt.TrainingAllowed || receipt.ProductionAdmissionAllowed {
+	if unitCounts[fillereval.UnitStandalone] != 12 || unitCounts[fillereval.UnitCompilation] != 24 || unitCounts[fillereval.UnitProgrammeExcerpt] != 12 || unitCounts[fillereval.UnitProgrammeSpots] != 12 || len(authoring.Sources) != 18 || receipt.StandaloneRoleCounts[fillereval.TemporalRoleBumper] != 2 || receipt.StandaloneRoleCounts[fillereval.TemporalRoleCommercial] != 3 || receipt.StandaloneRoleCounts[fillereval.TemporalRolePromo] != 2 || receipt.StandaloneRoleCounts[fillereval.TemporalRolePSA] != 2 || receipt.StandaloneRoleCounts[fillereval.TemporalRoleTrailer] != 3 || receipt.TrainingAllowed || receipt.ProductionAdmissionAllowed {
 		t.Fatalf("authoring counts=%v sources=%d receipt=%+v", unitCounts, len(authoring.Sources), receipt)
 	}
 	bands := map[string]int{}
@@ -65,8 +65,21 @@ func TestBuildTemporalStructureHoldoutPlanBindsAuthoritiesAndBuildsBalancedConst
 		spotPatterns[item.Pattern]++
 		spotFillers[item.FillerSourceID] = struct{}{}
 	}
-	if bands["early"] != 4 || bands["middle"] != 4 || bands["late"] != 4 || patterns["near_parent_start"] != 6 || patterns["near_parent_end"] != 6 || spotPatterns["early_insert"] != 6 || spotPatterns["late_insert"] != 6 || len(spotFillers) != 12 {
+	multiTraits := map[string]int{}
+	multiSources := map[string]int{}
+	for _, item := range receipt.MultiCompilationConstructions {
+		multiTraits[item.Trait]++
+		for _, sourceID := range item.SourceIDs {
+			multiSources[sourceID]++
+		}
+	}
+	if bands["early"] != 4 || bands["middle"] != 4 || bands["late"] != 4 || patterns["near_parent_start"] != 6 || patterns["near_parent_end"] != 6 || spotPatterns["early_insert"] != 6 || spotPatterns["late_insert"] != 6 || len(spotFillers) != 12 || multiTraits[temporalStructureMultiSameRoleJoin] != 6 || multiTraits[temporalStructureMultiMixedRoleJoins] != 6 || len(multiSources) != 12 {
 		t.Fatalf("bands=%v patterns=%v", bands, patterns)
+	}
+	for sourceID, count := range multiSources {
+		if count != 3 {
+			t.Fatalf("multi-item source %q used %d times", sourceID, count)
+		}
 	}
 	if _, err := BuildTemporalStructureHoldoutPlan(firstConfig); err == nil {
 		t.Fatal("immutable holdout output was overwritten")
@@ -170,6 +183,39 @@ func TestTemporalStructureHoldoutReceiptRejectsProgrammeSpotTampering(t *testing
 		receipt.ProgrammeSpotConstructions = receipt.ProgrammeSpotConstructions[:len(receipt.ProgrammeSpotConstructions)-1]
 		if err := validateTemporalStructureHoldoutReceipt(receipt, authoring); err == nil || !strings.Contains(err.Error(), "counts or disposition") {
 			t.Fatalf("missing programme spot error = %v", err)
+		}
+	})
+
+	t.Run("multi-item repeated source", func(t *testing.T) {
+		authoring := readStrictTestJSON[TemporalStructureChallengeAuthoring](t, authoringPath)
+		receipt := readStrictTestJSON[TemporalStructureHoldoutReceipt](t, receiptPath)
+		item := &receipt.MultiCompilationConstructions[0]
+		item.SourceIDs[1] = item.SourceIDs[0]
+		item.Roles[1] = item.Roles[0]
+		var firstDuration int64
+		for _, anchor := range receipt.SelectedAnchors {
+			if anchor.SourceID == item.SourceIDs[0] {
+				firstDuration = anchor.DurationMS
+				break
+			}
+		}
+		for caseIndex := range authoring.Cases {
+			if authoring.Cases[caseIndex].ID == item.CaseID {
+				authoring.Cases[caseIndex].Segments[1] = TemporalStructureChallengeSegment{SourceID: item.SourceIDs[0], DurationMS: firstDuration}
+				break
+			}
+		}
+		if err := validateTemporalStructureHoldoutReceipt(receipt, authoring); err == nil || !strings.Contains(err.Error(), "repeats a source") {
+			t.Fatalf("multi-item repeated source error = %v", err)
+		}
+	})
+
+	t.Run("multi-item trait drift", func(t *testing.T) {
+		authoring := readStrictTestJSON[TemporalStructureChallengeAuthoring](t, authoringPath)
+		receipt := readStrictTestJSON[TemporalStructureHoldoutReceipt](t, receiptPath)
+		receipt.MultiCompilationConstructions[0].Trait = temporalStructureMultiMixedRoleJoins
+		if err := validateTemporalStructureHoldoutReceipt(receipt, authoring); err == nil || !strings.Contains(err.Error(), "duration or trait drift") {
+			t.Fatalf("multi-item trait error = %v", err)
 		}
 	})
 }
