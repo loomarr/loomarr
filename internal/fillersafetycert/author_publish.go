@@ -119,13 +119,13 @@ func bindCaseReviews(inputs loadedAuthorityInputs, reviews validatedReviews, ite
 	}
 	slices.SortFunc(result, func(a, b ReviewerAttestation) int { return strings.Compare(a.ReviewerID, b.ReviewerID) })
 	if first.Decision == second.Decision {
-		if first.Decision != item.Label {
-			return nil, fmt.Errorf("agreeing primary reviews differ from declared truth")
+		if first.Decision != ReviewDecisionVerified {
+			return nil, fmt.Errorf("agreeing primary reviews reject declared truth")
 		}
 		return result, nil
 	}
 	adjudication, ok := reviews.adjudicator[item.CaseID]
-	if !ok || adjudication.Decision != item.Label || inputs.adjudicator == nil {
+	if !ok || adjudication.Decision != ReviewDecisionVerified || inputs.adjudicator == nil {
 		return nil, fmt.Errorf("adjudication does not establish declared truth")
 	}
 	return append(result, makeReviewerAttestation(inputs.seed, *inputs.adjudicator, adjudication)), nil
@@ -135,6 +135,7 @@ func makeReviewerAttestation(seed []byte, review AuthorityReview, assessment Rev
 	return ReviewerAttestation{
 		ReviewerID: opaqueID(seed, "reviewer", review.ReviewerID, "reviewer-"), Role: review.Role,
 		Method: review.Method, ModelFamily: review.ModelFamily, Decision: assessment.Decision,
+		EvidenceSHA256:    review.EvidenceSHA256,
 		AttestationSHA256: reviewAttestationSHA256(review, assessment),
 	}
 }

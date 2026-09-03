@@ -29,6 +29,13 @@ families must differ from one another and from the proposer, native-audio adjudi
 complete-video corroborator families. Thus independent models can do routine review and a human
 can be reserved for consent and genuine disagreements.
 
+Review decisions are `verified` or `rejected`, not `positive` or `clean`. The draft already owns
+the proposed label. This lets a reviewer reject either a contaminated clean control or an inaudible
+positive without inventing different truth. A verified positive repeats the exact proposed
+intervals; all clean and rejected decisions omit intervals. Two agreeing rejections fail authority
+construction, while a primary disagreement requires a separate independent adjudicator whose
+`verified` decision establishes the draft claim.
+
 ```bash
 go run ./cmd/filler-spoken-cascade-authority \
   --draft /private/cascade-draft.json \
@@ -145,3 +152,6 @@ tested machinery, not a production certification claim.
 The first upstream corpus step is the non-authorizing
 [VCTK clean-control preparer](filler-spoken-vctk-preparation.md). Its output is only one
 review-ready cohort; it cannot be scored or locked as a complete authority by itself.
+The assembled full draft can be reviewed without a blind maintainer playback pass by the
+[spoken-safety model-review operation](filler-spoken-model-review.md); two independent runs are
+still required and any disagreement remains an explicit adjudication case.
