@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	SegmentScreeningReleaseSchemaVersion   = 1
-	SegmentScreeningReleaseContractVersion = "filler-segment-screening-release-v1"
+	SegmentScreeningReleaseSchemaVersion   = 2
+	SegmentScreeningReleaseContractVersion = "filler-rendered-child-screening-release-v2"
 )
 
 type SegmentScreeningReleaseAuthority struct {
@@ -26,6 +26,7 @@ type SegmentScreeningReleaseAuthority struct {
 }
 
 type SegmentScreeningCertificationEvidenceReader interface {
+	GetSegmentScreeningSubject(context.Context, string) (SegmentScreeningSubject, error)
 	GetSegmentScreeningEvidence(context.Context, string) (SegmentScreeningEvidence, error)
 	GetSegmentScreeningAxisEvidence(context.Context, string) (RecordedSegmentScreeningAxisEvidence, error)
 }
@@ -61,6 +62,13 @@ func (c *SegmentScreeningCertification) Verify(ctx context.Context, aggregate Se
 	if err := ValidateSegmentScreeningEvidence(aggregate); err != nil || !aggregate.Passes() {
 		return fmt.Errorf("segment screening aggregate is invalid or does not pass")
 	}
+	subject, err := c.evidence.GetSegmentScreeningSubject(ctx, aggregate.SubjectSHA256)
+	if err != nil {
+		return fmt.Errorf("replay segment screening subject: %w", err)
+	}
+	if err := ValidateSegmentScreeningSubject(subject); err != nil || subject.SHA256 != aggregate.SubjectSHA256 {
+		return fmt.Errorf("segment screening subject does not reproduce aggregate identity")
+	}
 	persisted, err := c.evidence.GetSegmentScreeningEvidence(ctx, aggregate.SHA256)
 	if err != nil {
 		return fmt.Errorf("replay segment screening aggregate: %w", err)
@@ -75,7 +83,7 @@ func (c *SegmentScreeningCertification) Verify(ctx context.Context, aggregate Se
 			return fmt.Errorf("replay segment screening axis %q: %w", result.Axis, err)
 		}
 		if err := ValidateRecordedSegmentScreeningAxisEvidence(recorded); err != nil ||
-			recorded.Evidence.Source != aggregate.Source || recorded.Evidence.StartMs != aggregate.StartMs || recorded.Evidence.EndMs != aggregate.EndMs ||
+			recorded.Evidence.SubjectSHA256 != aggregate.SubjectSHA256 ||
 			recorded.Evidence.Result() != result {
 			return fmt.Errorf("segment screening axis %q does not reproduce aggregate result %d", result.Axis, index)
 		}

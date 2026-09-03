@@ -1,15 +1,14 @@
 package filler
 
 import (
-	"strings"
 	"testing"
 	"time"
 )
 
 func TestSegmentScreeningAxisEvidenceBindsRawBytesAndExactSpan(t *testing.T) {
-	source := structureSource(60_000)
+	subject := screeningSubjectFixture(t)
 	recorded, err := NewSegmentScreeningAxisEvidence(
-		source, 10_000, 40_000, screeningProfileFixture(ScreenVisualSafety, "1"),
+		subject, screeningProfileFixture(ScreenVisualSafety, "1"),
 		ScreenHold, "manual_review", []byte(`{"detections":[]}`),
 		time.Date(2026, time.September, 12, 6, 0, 0, 0, time.UTC),
 	)
@@ -26,12 +25,7 @@ func TestSegmentScreeningAxisEvidenceBindsRawBytesAndExactSpan(t *testing.T) {
 		mutate func(*RecordedSegmentScreeningAxisEvidence)
 	}{
 		{name: "raw bytes", mutate: func(item *RecordedSegmentScreeningAxisEvidence) { item.RawEvidence = []byte("replaced") }},
-		{name: "source", mutate: func(item *RecordedSegmentScreeningAxisEvidence) {
-			item.Evidence.Source.SHA256 = strings.Repeat("f", 64)
-		}},
-		{name: "span", mutate: func(item *RecordedSegmentScreeningAxisEvidence) {
-			item.Evidence.EndMs = item.Evidence.Source.DurationMs + 1
-		}},
+		{name: "subject", mutate: func(item *RecordedSegmentScreeningAxisEvidence) { item.Evidence.SubjectSHA256 = "" }},
 		{name: "profile", mutate: func(item *RecordedSegmentScreeningAxisEvidence) { item.Evidence.Profile.PolicySHA256 = "" }},
 		{name: "outcome", mutate: func(item *RecordedSegmentScreeningAxisEvidence) { item.Evidence.Outcome = "maybe" }},
 	}

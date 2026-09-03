@@ -8,7 +8,7 @@ import (
 
 func segmentScreeningFixture(t *testing.T) SegmentScreeningEvidence {
 	t.Helper()
-	evidence, err := NewSegmentScreeningEvidence(structureSource(60_000), 10_000, 40_000, []SegmentScreeningResult{
+	evidence, err := NewSegmentScreeningEvidence(screeningSubjectFixture(t), []SegmentScreeningResult{
 		{Axis: ScreenVisualSafety, Outcome: ScreenPass, AuthoritySHA256: strings.Repeat("1", 64), ReasonCode: "policy_clear"},
 		{Axis: ScreenSpokenSafety, Outcome: ScreenPass, AuthoritySHA256: strings.Repeat("2", 64), ReasonCode: "policy_clear"},
 		{Axis: ScreenRights, Outcome: ScreenPass, AuthoritySHA256: strings.Repeat("3", 64), ReasonCode: "rights_verified"},
@@ -52,7 +52,7 @@ func TestValidateSegmentScreeningRejectsCoverageAndIdentityDrift(t *testing.T) {
 		{name: "unknown outcome", mutate: func(e *SegmentScreeningEvidence) { e.Results[0].Outcome = "maybe" }},
 		{name: "missing authority", mutate: func(e *SegmentScreeningEvidence) { e.Results[0].AuthoritySHA256 = "" }},
 		{name: "unsafe reason text", mutate: func(e *SegmentScreeningEvidence) { e.Results[0].ReasonCode = "contains restricted phrase" }},
-		{name: "span", mutate: func(e *SegmentScreeningEvidence) { e.EndMs = e.Source.DurationMs + 1 }},
+		{name: "subject", mutate: func(e *SegmentScreeningEvidence) { e.SubjectSHA256 = "" }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

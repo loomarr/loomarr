@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	SegmentScreeningSchemaVersion   = 1
-	SegmentScreeningContractVersion = "filler-segment-screening-v1"
+	SegmentScreeningSchemaVersion   = 2
+	SegmentScreeningContractVersion = "filler-rendered-child-screening-v2"
 )
 
 var segmentScreeningAxisOrder = []SegmentScreeningAxis{
@@ -33,6 +33,7 @@ func validateSegmentScreeningAxis(axis SegmentScreeningAxis) error {
 // SegmentScreeningEvidenceRepository stores provider-neutral axis evidence and its four-axis
 // aggregate. Concrete evaluators own their private raw-evidence settlement.
 type SegmentScreeningEvidenceRepository interface {
+	PutSegmentScreeningSubject(context.Context, SegmentScreeningSubject) error
 	PutSegmentScreeningAxisEvidence(context.Context, RecordedSegmentScreeningAxisEvidence) error
 	PutSegmentScreeningEvidence(context.Context, SegmentScreeningEvidence) error
 }
@@ -64,24 +65,25 @@ type SegmentScreeningResult struct {
 	ReasonCode      string                  `json:"reasonCode"`
 }
 
-// SegmentScreeningEvidence proves the four independent pre-publication screens for one exact
-// source interval. No individual pass, aggregate confidence, or absent result can substitute for
-// all four authority-bound outcomes.
+// SegmentScreeningEvidence proves the four independent pre-publication screens for one immutable
+// rendered-child subject. No individual pass, aggregate confidence, or absent result can
+// substitute for all four authority-bound outcomes.
 type SegmentScreeningEvidence struct {
 	SchemaVersion   int                      `json:"schemaVersion"`
 	ContractVersion string                   `json:"contractVersion"`
-	Source          SplitSourceAsset         `json:"source"`
-	StartMs         int64                    `json:"startMs"`
-	EndMs           int64                    `json:"endMs"`
+	SubjectSHA256   string                   `json:"subjectSha256"`
 	Results         []SegmentScreeningResult `json:"results"`
 	AssessedAt      time.Time                `json:"assessedAt"`
 	SHA256          string                   `json:"sha256"`
 }
 
-func NewSegmentScreeningEvidence(source SplitSourceAsset, startMs, endMs int64, results []SegmentScreeningResult, assessedAt time.Time) (SegmentScreeningEvidence, error) {
+func NewSegmentScreeningEvidence(subject SegmentScreeningSubject, results []SegmentScreeningResult, assessedAt time.Time) (SegmentScreeningEvidence, error) {
+	if err := ValidateSegmentScreeningSubject(subject); err != nil {
+		return SegmentScreeningEvidence{}, err
+	}
 	evidence := SegmentScreeningEvidence{
 		SchemaVersion: SegmentScreeningSchemaVersion, ContractVersion: SegmentScreeningContractVersion,
-		Source: source, StartMs: startMs, EndMs: endMs, Results: slices.Clone(results), AssessedAt: assessedAt.UTC(),
+		SubjectSHA256: subject.SHA256, Results: slices.Clone(results), AssessedAt: assessedAt.UTC(),
 	}
 	slices.SortFunc(evidence.Results, func(a, b SegmentScreeningResult) int { return strings.Compare(string(a.Axis), string(b.Axis)) })
 	evidence.SHA256 = SegmentScreeningEvidenceSHA256(evidence)
@@ -92,7 +94,7 @@ func NewSegmentScreeningEvidence(source SplitSourceAsset, startMs, endMs int64, 
 }
 
 func ValidateSegmentScreeningEvidence(evidence SegmentScreeningEvidence) error {
-	if evidence.SchemaVersion != SegmentScreeningSchemaVersion || evidence.ContractVersion != SegmentScreeningContractVersion || evidence.Source.validate() != nil || evidence.StartMs < 0 || evidence.EndMs <= evidence.StartMs || evidence.EndMs > evidence.Source.DurationMs || evidence.AssessedAt.IsZero() {
+	if evidence.SchemaVersion != SegmentScreeningSchemaVersion || evidence.ContractVersion != SegmentScreeningContractVersion || !isContentHash(evidence.SubjectSHA256) || evidence.AssessedAt.IsZero() {
 		return fmt.Errorf("segment screening identity or interval is invalid")
 	}
 	want := map[SegmentScreeningAxis]struct{}{ScreenVisualSafety: {}, ScreenSpokenSafety: {}, ScreenRights: {}, ScreenPlayback: {}}

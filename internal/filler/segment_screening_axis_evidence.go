@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	SegmentScreeningAxisEvidenceSchemaVersion   = 1
-	SegmentScreeningAxisEvidenceContractVersion = "filler-segment-screening-axis-evidence-v1"
+	SegmentScreeningAxisEvidenceSchemaVersion   = 2
+	SegmentScreeningAxisEvidenceContractVersion = "filler-rendered-child-screening-axis-evidence-v2"
 )
 
 // SegmentScreeningAxisProfile is the immutable evaluator identity locked by a release authority.
@@ -24,14 +24,12 @@ type SegmentScreeningAxisProfile struct {
 	ImplementationSHA256 string               `json:"implementationSha256"`
 }
 
-// SegmentScreeningAxisEvidence is the provider-neutral closed result for one axis and exact span.
+// SegmentScreeningAxisEvidence is the provider-neutral closed result for one axis and rendered child.
 // RawEvidenceSHA256 points at private bounded bytes stored before this record is published.
 type SegmentScreeningAxisEvidence struct {
 	SchemaVersion     int                         `json:"schemaVersion"`
 	ContractVersion   string                      `json:"contractVersion"`
-	Source            SplitSourceAsset            `json:"source"`
-	StartMs           int64                       `json:"startMs"`
-	EndMs             int64                       `json:"endMs"`
+	SubjectSHA256     string                      `json:"subjectSha256"`
 	Profile           SegmentScreeningAxisProfile `json:"profile"`
 	Outcome           SegmentScreeningOutcome     `json:"outcome"`
 	ReasonCode        string                      `json:"reasonCode"`
@@ -45,11 +43,14 @@ type RecordedSegmentScreeningAxisEvidence struct {
 	RawEvidence []byte
 }
 
-func NewSegmentScreeningAxisEvidence(source SplitSourceAsset, startMs, endMs int64, profile SegmentScreeningAxisProfile, outcome SegmentScreeningOutcome, reasonCode string, rawEvidence []byte, assessedAt time.Time) (RecordedSegmentScreeningAxisEvidence, error) {
+func NewSegmentScreeningAxisEvidence(subject SegmentScreeningSubject, profile SegmentScreeningAxisProfile, outcome SegmentScreeningOutcome, reasonCode string, rawEvidence []byte, assessedAt time.Time) (RecordedSegmentScreeningAxisEvidence, error) {
+	if err := ValidateSegmentScreeningSubject(subject); err != nil {
+		return RecordedSegmentScreeningAxisEvidence{}, err
+	}
 	record := RecordedSegmentScreeningAxisEvidence{
 		Evidence: SegmentScreeningAxisEvidence{
 			SchemaVersion: SegmentScreeningAxisEvidenceSchemaVersion, ContractVersion: SegmentScreeningAxisEvidenceContractVersion,
-			Source: source, StartMs: startMs, EndMs: endMs, Profile: profile,
+			SubjectSHA256: subject.SHA256, Profile: profile,
 			Outcome: outcome, ReasonCode: reasonCode, RawEvidenceSHA256: screeningBytesSHA256(rawEvidence), AssessedAt: assessedAt.UTC(),
 		},
 		RawEvidence: append([]byte(nil), rawEvidence...),
@@ -78,8 +79,7 @@ func ValidateSegmentScreeningAxisEvidence(evidence SegmentScreeningAxisEvidence)
 	}
 	if evidence.SchemaVersion != SegmentScreeningAxisEvidenceSchemaVersion ||
 		evidence.ContractVersion != SegmentScreeningAxisEvidenceContractVersion ||
-		evidence.Source.validate() != nil || evidence.StartMs < 0 || evidence.EndMs <= evidence.StartMs ||
-		evidence.EndMs > evidence.Source.DurationMs || ValidateSegmentScreeningAxisProfile(evidence.Profile) != nil ||
+		!isContentHash(evidence.SubjectSHA256) || ValidateSegmentScreeningAxisProfile(evidence.Profile) != nil ||
 		validateSegmentScreeningResult(projected) != nil || !isContentHash(evidence.RawEvidenceSHA256) ||
 		evidence.AssessedAt.IsZero() || evidence.SHA256 != SegmentScreeningAxisEvidenceSHA256(evidence) {
 		return fmt.Errorf("segment screening axis evidence is invalid")

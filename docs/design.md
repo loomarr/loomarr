@@ -3300,8 +3300,11 @@ confirmation is still validated against complete coverage and exact source ident
 The four content screens run on each materialized child only after its final playback derivative exists.
 This sequencing is mandatory: a playback-integrity result over the parent span, the stream-copy cut, or a
 throwaway preflight rendition cannot prove the bytes that will air. One content-addressed child-screening
-record binds the immutable child lineage, source-master identity, evidence-derivative identity, final
-playback-derivative identity, and the parent's exact half-open interval. It contains exactly four independent
+subject binds the immutable child lineage, source-master identity, evidence-derivative identity, final
+playback-derivative identity, derivative recipes and measurements, and the parent's exact half-open interval.
+The subject excludes relocatable filesystem paths: runtime paths only locate artifacts, and each evaluator
+must reopen the artifact it uses and reproduce the subject's byte identity before deciding. The aggregate
+contains exactly four independent
 closed outcomes: `visual_safety` (including explicit imagery), `spoken_safety` (including prohibited
 language), `rights`, and `playback_integrity`. Visual and spoken evaluators inspect the complete evidence
 derivative; rights replays acquisition and participation authority; playback integrity inspects the final
@@ -3312,9 +3315,10 @@ descriptions never enter proposal, catalog, or public admission records.
 Each axis record binds the complete child subject described above, its outcome, and the evaluator's policy,
 certification, implementation, and evidence-contract profile, plus the SHA-256 of its private bounded raw
 ledger or measurement bytes. The axis record publishes only after those raw bytes are durable. A child
-screening coordinator requires exactly one named evaluator for each axis, calls them serially without
-showing one evaluator another's answer, rejects subject or profile drift, and persists the validated
-four-axis aggregate before returning it. Each evaluator owns repeat-safe settlement of its exact operation;
+screening coordinator requires exactly one named evaluator for each axis, makes the path-free subject durable
+before the first call, calls them serially without showing one evaluator another's answer, rejects subject or
+profile drift, and persists each axis before moving to the next and the validated four-axis aggregate before
+returning it. Each evaluator owns repeat-safe settlement of its exact operation;
 a retry after a later persistence failure replays the same closed authority-bound result instead of repeating
 a possibly billed call. An operational error means no trustworthy result exists and creates an operational
 hold. Reject and hold are durable domain answers, not retryable absence.

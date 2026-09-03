@@ -10,8 +10,8 @@ import (
 )
 
 func TestSegmentScreeningCertificationReplaysEveryAxisAndRawEvidence(t *testing.T) {
-	source := structureSource(60_000)
-	aggregate, certification, repository, records := screeningCertificationFixture(t, source, 0, 30_000, true)
+	subject := screeningSubjectFixture(t)
+	aggregate, certification, repository, records := screeningCertificationFixture(t, subject, true)
 	if err := certification.Verify(t.Context(), aggregate); err != nil {
 		t.Fatal(err)
 	}
@@ -24,23 +24,23 @@ func TestSegmentScreeningCertificationReplaysEveryAxisAndRawEvidence(t *testing.
 }
 
 func TestSegmentScreeningCertificationFailsClosedOnReleaseAndEvidenceDrift(t *testing.T) {
-	source := structureSource(60_000)
+	subject := screeningSubjectFixture(t)
 	t.Run("production permission", func(t *testing.T) {
-		aggregate, certification, _, _ := screeningCertificationFixture(t, source, 0, 30_000, false)
+		aggregate, certification, _, _ := screeningCertificationFixture(t, subject, false)
 		if err := certification.Verify(t.Context(), aggregate); err == nil {
 			t.Fatal("non-authorizing release passed")
 		}
 	})
-	t.Run("source span", func(t *testing.T) {
-		aggregate, certification, _, _ := screeningCertificationFixture(t, source, 0, 30_000, true)
-		aggregate.StartMs++
+	t.Run("subject", func(t *testing.T) {
+		aggregate, certification, _, _ := screeningCertificationFixture(t, subject, true)
+		aggregate.SubjectSHA256 = strings.Repeat("f", 64)
 		aggregate.SHA256 = SegmentScreeningEvidenceSHA256(aggregate)
 		if err := certification.Verify(t.Context(), aggregate); err == nil {
-			t.Fatal("source-span drift passed")
+			t.Fatal("subject drift passed")
 		}
 	})
 	t.Run("axis projection", func(t *testing.T) {
-		aggregate, certification, _, _ := screeningCertificationFixture(t, source, 0, 30_000, true)
+		aggregate, certification, _, _ := screeningCertificationFixture(t, subject, true)
 		aggregate.Results[0].ReasonCode = "different_reason"
 		aggregate.SHA256 = SegmentScreeningEvidenceSHA256(aggregate)
 		if err := certification.Verify(t.Context(), aggregate); err == nil {
@@ -48,7 +48,7 @@ func TestSegmentScreeningCertificationFailsClosedOnReleaseAndEvidenceDrift(t *te
 		}
 	})
 	t.Run("raw evidence", func(t *testing.T) {
-		aggregate, certification, repository, records := screeningCertificationFixture(t, source, 0, 30_000, true)
+		aggregate, certification, repository, records := screeningCertificationFixture(t, subject, true)
 		first := records[0].Evidence
 		if err := os.WriteFile(repository.axisPath("screening-axis-raw", first.RawEvidenceSHA256), []byte("tampered"), 0o600); err != nil {
 			t.Fatal(err)
@@ -58,7 +58,7 @@ func TestSegmentScreeningCertificationFailsClosedOnReleaseAndEvidenceDrift(t *te
 		}
 	})
 	t.Run("aggregate evidence", func(t *testing.T) {
-		aggregate, certification, repository, _ := screeningCertificationFixture(t, source, 0, 30_000, true)
+		aggregate, certification, repository, _ := screeningCertificationFixture(t, subject, true)
 		if err := os.Remove(repository.path(aggregate.SHA256)); err != nil {
 			t.Fatal(err)
 		}
@@ -67,7 +67,7 @@ func TestSegmentScreeningCertificationFailsClosedOnReleaseAndEvidenceDrift(t *te
 		}
 	})
 	t.Run("profile", func(t *testing.T) {
-		aggregate, _, repository, records := screeningCertificationFixture(t, source, 0, 30_000, true)
+		aggregate, _, repository, records := screeningCertificationFixture(t, subject, true)
 		profiles := screeningProfiles(records)
 		profiles[0].PolicySHA256 = strings.Repeat("f", 64)
 		release := screeningReleaseFixture(profiles, true)
@@ -81,13 +81,16 @@ func TestSegmentScreeningCertificationFailsClosedOnReleaseAndEvidenceDrift(t *te
 	})
 }
 
-func screeningCertificationFixture(t *testing.T, source SplitSourceAsset, startMs, endMs int64, production bool) (SegmentScreeningEvidence, *SegmentScreeningCertification, *FileSegmentScreeningEvidenceRepository, []RecordedSegmentScreeningAxisEvidence) {
+func screeningCertificationFixture(t *testing.T, subject SegmentScreeningSubject, production bool) (SegmentScreeningEvidence, *SegmentScreeningCertification, *FileSegmentScreeningEvidenceRepository, []RecordedSegmentScreeningAxisEvidence) {
 	t.Helper()
 	repository, err := NewFileSegmentScreeningEvidenceRepository(filepath.Join(t.TempDir(), "evidence"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	records := passingAxisEvidence(t, source, startMs, endMs)
+	if err := repository.PutSegmentScreeningSubject(t.Context(), subject); err != nil {
+		t.Fatal(err)
+	}
+	records := passingAxisEvidence(t, subject)
 	results := make([]SegmentScreeningResult, 0, len(records))
 	for _, recorded := range records {
 		if err := repository.PutSegmentScreeningAxisEvidence(t.Context(), recorded); err != nil {
@@ -95,7 +98,7 @@ func screeningCertificationFixture(t *testing.T, source SplitSourceAsset, startM
 		}
 		results = append(results, recorded.Evidence.Result())
 	}
-	aggregate, err := NewSegmentScreeningEvidence(source, startMs, endMs, results, time.Date(2026, time.September, 12, 7, 0, 0, 0, time.UTC))
+	aggregate, err := NewSegmentScreeningEvidence(subject, results, time.Date(2026, time.September, 12, 7, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)
 	}

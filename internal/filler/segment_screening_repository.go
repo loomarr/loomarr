@@ -12,7 +12,7 @@ import (
 
 const segmentScreeningEvidenceMaxBytes = 64 << 10
 
-// FileSegmentScreeningEvidenceRepository stores exact-span aggregates separately from
+// FileSegmentScreeningEvidenceRepository stores rendered-child aggregates separately from
 // complete-timeline assessment records while reusing the same private immutable-file discipline.
 type FileSegmentScreeningEvidenceRepository struct {
 	files *FileStructureAssessmentEvidenceRepository

@@ -30,6 +30,27 @@ func TestFileSegmentScreeningEvidenceRepositoryRoundTripsAndRejectsTampering(t *
 	}
 }
 
+func TestFileSegmentScreeningEvidenceRepositoryRoundTripsSubject(t *testing.T) {
+	repository, err := NewFileSegmentScreeningEvidenceRepository(filepath.Join(t.TempDir(), "screening-evidence"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	subject := screeningSubjectFixture(t)
+	if err := repository.PutSegmentScreeningSubject(t.Context(), subject); err != nil {
+		t.Fatal(err)
+	}
+	replayed, err := repository.GetSegmentScreeningSubject(t.Context(), subject.SHA256)
+	if err != nil || replayed.SHA256 != subject.SHA256 {
+		t.Fatalf("replayed=%+v error=%v", replayed, err)
+	}
+	if err := os.WriteFile(repository.subjectPath(subject.SHA256), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.GetSegmentScreeningSubject(t.Context(), subject.SHA256); err == nil {
+		t.Fatal("tampered screening subject was accepted")
+	}
+}
+
 func TestFileSegmentScreeningEvidenceRepositoryRejectsInvalidIdentity(t *testing.T) {
 	repository, err := NewFileSegmentScreeningEvidenceRepository(filepath.Join(t.TempDir(), "screening-evidence"))
 	if err != nil {
@@ -50,7 +71,7 @@ func TestFileSegmentScreeningEvidenceRepositoryPublishesAxisRawBytesBeforeRecord
 	if err != nil {
 		t.Fatal(err)
 	}
-	recorded := passingAxisEvidence(t, structureSource(30_000), 0, 30_000)[0]
+	recorded := passingAxisEvidence(t, screeningSubjectFixture(t))[0]
 	if err := repository.PutSegmentScreeningAxisEvidence(t.Context(), recorded); err != nil {
 		t.Fatal(err)
 	}
