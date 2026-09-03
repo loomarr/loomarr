@@ -39,11 +39,16 @@ func TestPrepareKnownScriptFeedsVCTKReviewDraftAndAuthorityLock(t *testing.T) {
 	}
 
 	positive := readPreparedFixture[PreparedCohort](t, filepath.Join(fixture.output, "cohort.json"))
-	target := makePreparedFixtureCohort(
-		t, fixture.parent, "02-vctk", PreparedCohortKindCleanCandidate, VCTKDatasetID,
-		fillersafetycert.MinimumCleanFamilies, preparedAt, bytesSHA(policyRaw),
-		func(int) []string { return []string{fillersafetycert.SliceTargetLocale} },
-	)
+	vctkFixture := newVCTKFixture(t)
+	vctkFixture.output = filepath.Join(fixture.parent, "02-vctk")
+	vctkFixture.config.OutputDirectory = vctkFixture.output
+	vctkFixture.config.PolicySHA256 = bytesSHA(policyRaw)
+	vctkFixture.config.Implementation = positive.Cases[0].SourceAuthority.Implementation
+	vctkFixture.config.PreparedAt = preparedAt
+	if _, err := prepareVCTK(t.Context(), vctkFixture.config, vctkFixture.wrapper); err != nil {
+		t.Fatal(err)
+	}
+	target := readPreparedFixture[PreparedCohort](t, filepath.Join(vctkFixture.output, "cohort.json"))
 	otherSlices := []string{
 		fillersafetycert.SliceMusicOnly,
 		fillersafetycert.SliceNearMatch,
@@ -128,10 +133,18 @@ func TestPrepareKnownScriptFeedsVCTKReviewDraftAndAuthorityLock(t *testing.T) {
 	if err := os.WriteFile(seedPath, []byte("abcdef0123456789abcdef0123456789"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	evidenceValidator := NewCertificationEvidenceValidator()
 	locked, err := fillersafetycert.BuildAuthority(t.Context(), fillersafetycert.AuthorityBuildConfig{
 		DraftPath: draftPath, FirstReviewPath: firstReviewPath, SecondReviewPath: secondReviewPath,
 		SeedPath: seedPath, SourceRoot: assembledRoot, AuthoredAt: assembledAt.Add(3 * time.Hour),
 		ExpectedCases: len(draft.Cases), MaximumSourceBytes: 64 << 20,
+		ValidateEvidence: func(rightsRaw, provenanceRaw []byte, item fillersafetycert.AuthorityDraftCase, at time.Time) error {
+			if item.Label == fillersafetycert.LabelClean &&
+				(len(item.Slices) != 1 || item.Slices[0] != fillersafetycert.SliceTargetLocale) {
+				return nil // Synthetic clean cohorts exercise assembly, not a supported rights contract.
+			}
+			return evidenceValidator.Validate(rightsRaw, provenanceRaw, item, at)
+		},
 		OutputPath: filepath.Join(fixture.parent, "locked-authority.json"),
 	})
 	if err != nil {

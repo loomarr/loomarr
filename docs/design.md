@@ -4554,6 +4554,25 @@ claim they must verify. Model-backed primary/adjudicating reviewers are permitte
 families differ from one another and from every evaluated proposer/adjudicator/corroborator family. This lock
 does not download a dataset, create consent, transform media, run inference, or begin certification.
 
+Matching a rights digest is necessary but is not a current rights decision, and a currently valid document is
+not proof that it governs the source beside it. Before planning or decoding any source, the authority locker
+asks the corpus owner to validate every case's exact rights bytes together with its exact truth-provenance bytes
+and source authority at the fixed authority-authored time. Shared rights documents may be decoded and cached
+once, but case binding is never deduplicated. The production command hard-wires that validator; callers cannot
+omit it. The closed initial vocabulary is the complete VCTK release-authority v1 envelope and the canonical
+known-script rights v1 envelope. VCTK validation rechecks the release identity, rights-review chronology,
+complete member authority, hosted-evaluation contract and current term, then requires the provenance's named
+member and original evidence authorities to occur in that release and its wrapped output identity to equal the
+case source authority. Known-script validation rechecks the participant binding, every grant,
+expiry/withdrawal state, time-sensitive music/noise rights, authority and transformation binding, then requires
+the packaged output identity to equal the case source authority. Unknown, malformed, unsupported,
+noncanonical, expired, withdrawn, unbound, or mismatched evidence invalidates the complete lock before media
+work or publication. The exact hosted route was
+already authorized immediately before each model request; the later lock establishes that the participant and
+asset rights remain current, not that an expired grant retroactively authorized a call. A path-free immutable
+authority is not a live withdrawal registry: any future production admission must recheck then-current rights
+through a separately designed live-use boundary, and all output permissions remain false meanwhile.
+
 A review verdict is `verified` or `rejected`; it is not another copy of the draft's proposed `positive` or
 `clean` label. A verified positive retains the draft's exact proposed intervals, while every rejected verdict
 and every clean verification carries no interval. This distinction is required so a reviewer can reject a

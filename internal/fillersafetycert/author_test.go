@@ -1,8 +1,10 @@
 package fillersafetycert
 
 import (
+	"fmt"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -10,6 +12,15 @@ import (
 func TestBuildAuthorityPublishesOpaqueVerifiedAuthority(t *testing.T) {
 	t.Parallel()
 	fixture := newAuthorityBuildFixture(t)
+	fixtureValidator := fixture.config.ValidateEvidence
+	validatedCases := make(map[string]struct{}, len(fixture.draft.Cases))
+	fixture.config.ValidateEvidence = func(rightsRaw, provenanceRaw []byte, item AuthorityDraftCase, at time.Time) error {
+		if _, duplicate := validatedCases[item.CaseID]; duplicate {
+			t.Fatalf("case evidence validated twice: %s", item.CaseID)
+		}
+		validatedCases[item.CaseID] = struct{}{}
+		return fixtureValidator(rightsRaw, provenanceRaw, item, at)
+	}
 
 	result, err := BuildAuthority(t.Context(), fixture.config)
 	if err != nil {
@@ -21,7 +32,8 @@ func TestBuildAuthorityPublishesOpaqueVerifiedAuthority(t *testing.T) {
 	}
 	if result.Cases != len(fixture.draft.Cases) || result.PositiveFamilies != MinimumPositiveFamilies ||
 		result.CleanFamilies != MinimumCleanFamilies || result.AuthoritySHA256 != hashBytes(raw) ||
-		authority.CorpusManifestSHA256 != fixture.first.DraftSHA256 || len(authority.Cases) != result.Cases {
+		authority.CorpusManifestSHA256 != fixture.first.DraftSHA256 || len(authority.Cases) != result.Cases ||
+		len(validatedCases) != len(fixture.draft.Cases) {
 		t.Fatalf("result=%+v authority=%+v", result, authority)
 	}
 	text := string(raw)
@@ -86,6 +98,45 @@ func TestBuildAuthorityRejectsEvidenceChangedAfterReview(t *testing.T) {
 	}
 	if _, err := os.Stat(fixture.outputPath); !os.IsNotExist(err) {
 		t.Fatalf("output exists after failure: %v", err)
+	}
+}
+
+func TestBuildAuthorityRejectsUnboundRightsBeforeSourcePlanning(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthorityBuildFixture(t)
+	var calls atomic.Int64
+	fixture.config.ValidateEvidence = func(rightsRaw, provenanceRaw []byte, item AuthorityDraftCase, at time.Time) error {
+		calls.Add(1)
+		if string(rightsRaw) != "private rights evidence" || string(provenanceRaw) != "private truth provenance" ||
+			item.CaseID != fixture.draft.Cases[0].CaseID || !at.Equal(fixture.config.AuthoredAt) {
+			t.Fatalf("rights=%q provenance=%q case=%q at=%v", rightsRaw, provenanceRaw, item.CaseID, at)
+		}
+		return fmt.Errorf("rights do not bind source")
+	}
+	sourcePath := fixture.root + "/" + fixture.draft.Cases[0].SourcePath
+	if err := os.WriteFile(sourcePath, []byte("changed source that must not be planned"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := BuildAuthority(t.Context(), fixture.config)
+	if err == nil || !strings.Contains(err.Error(), "do not authorize") || strings.Contains(err.Error(), "bind source") {
+		t.Fatalf("err=%v", err)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("rights validation calls=%d", calls.Load())
+	}
+	if _, statErr := os.Stat(fixture.outputPath); !os.IsNotExist(statErr) {
+		t.Fatalf("output exists after rights failure: %v", statErr)
+	}
+}
+
+func TestBuildAuthorityRequiresEvidenceValidator(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthorityBuildFixture(t)
+	fixture.config.ValidateEvidence = nil
+
+	if _, err := BuildAuthority(t.Context(), fixture.config); err == nil || !strings.Contains(err.Error(), "rights and provenance validation") {
+		t.Fatalf("err=%v", err)
 	}
 }
 

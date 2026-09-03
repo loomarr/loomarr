@@ -18,7 +18,13 @@ The builder consumes a private source-and-truth draft, two independent review bu
 optional adjudication bundle containing exactly the disputed cases, a private alias seed, and
 the root containing the exact complete-audiovisual sources and rights/truth evidence. It checks
 the actual source bytes through each certification-independent source authority and verifies the
-draft-pinned rights/truth digests against their current files, then derives
+draft-pinned rights/truth digests against their current files. Before any source planning or decode,
+it also validates every case's rights, truth provenance, and source authority together at the fixed
+authoring time. Shared rights bytes may be parsed once, but the source/provenance binding is checked
+for every case. The closed supported set is the complete canonical VCTK release-authority v1 contract
+and the canonical known-script rights v1 contract. Expired or invalid VCTK evaluation rights, a VCTK
+member/provenance mismatch, an output/source mismatch, or expired, withdrawn, malformed, unsupported,
+unbound, or asset-rights-invalid participant evidence invalidates the whole lock. It then derives
 opaque case, source-family, and reviewer IDs. The output contains no path or private source,
 family, or reviewer identifier.
 
@@ -54,7 +60,8 @@ Every input and evidence file is a non-symlinked private file at mode `0600` or 
 output is created once at `0600`. The command reads and hashes local files only. It does not
 download data, manufacture consent, wrap audio-only datasets into video, transform sources,
 call a provider, or spend money. Those acquisition and preparation operations remain explicit
-upstream steps.
+upstream steps. Its immutable output is not a live withdrawal registry and grants no ingestion or
+production-admission permission; a later live-use boundary must recheck current rights again.
 
 ## Inputs
 

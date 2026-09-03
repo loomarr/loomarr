@@ -31,6 +31,9 @@ func BuildAuthority(ctx context.Context, config AuthorityBuildConfig) (Authority
 	if err != nil {
 		return AuthorityBuildResult{}, err
 	}
+	if err := validateAuthorityEvidence(ctx, inputs, config); err != nil {
+		return AuthorityBuildResult{}, err
+	}
 	authority := Authority{
 		SchemaVersion: SchemaVersion, ContractVersion: ContractVersion, AuthoredAt: config.AuthoredAt.UTC(),
 		ChallengeKind: inputs.draft.ChallengeKind, CorpusManifestSHA256: inputs.draftSHA,
