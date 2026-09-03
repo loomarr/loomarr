@@ -4368,8 +4368,14 @@ their provider, process, and tool details do not leak into callers. The module e
 evidence plus an immutable per-step ledger. It does not return or imply a filler-admission verdict, and
 `filleradmission.Evaluator` remains the only terminal semantic authority.
 
-The operation request supplies a stable run id and start time plus the source authority and machine-local
-path. The path remains excluded from every returned or durable value. A first invocation atomically creates
+The operation request supplies a stable run id and start time, the certification-authority digest, and the
+source authority plus machine-local path. The source authority identifies only the immutable source,
+measurement, policy, implementation, and tool facts that exist before a certification challenge is locked;
+it does not contain the certification-authority digest. Keeping those identities separate is mandatory:
+placing the certification digest in the source authority while the certification authority stores the source-
+authority digest creates an unconstructable hash cycle. The request joins the two independently immutable
+documents, and the durable run header binds both. The path remains excluded from every returned or durable
+value. A first invocation atomically creates
 the immutable run header before appending source-plan and proposal events; a repeated invocation of the same
 completed run returns its already-canonical terminal evidence without repeating local or hosted work. An
 existing incomplete run is never resumed in place or silently reissued: recovery closes it conservatively and
@@ -4511,7 +4517,9 @@ authored before evaluation and binds the policy, evaluator/proposer and hosted-r
 provenance and rights/consent digests, opaque case and source-family ids, locale/slice coverage, positive rule
 intervals, and two agreeing reviewer attestations (or a third adjudicator). A model-backed reviewer declares
 its model family, which must be absent from every proposer/adjudicator/corroborator family in the same
-authority. The label-blind result manifest contains every authority alias exactly once with the complete
+authority. Each case binds the digest of its certification-independent source authority. Evaluation supplies
+the completed certification-authority digest alongside that source authority and binds both separately in the
+run header; neither digest is defined in terms of the other. The label-blind result manifest contains every authority alias exactly once with the complete
 path-free run header and ordered ledger events; it contains no truth label. Every run must start after the
 authority was authored, bind that exact authority digest as its certification identity, and end in the named
 terminal event/digest. Missing, extra, duplicate, incomplete, identity-drifted, or non-canonical runs make the
