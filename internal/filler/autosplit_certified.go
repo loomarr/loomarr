@@ -1,6 +1,7 @@
 package filler
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillerstructure"
@@ -23,10 +24,9 @@ const (
 	RejectSegmentUnscreened    AutoSplitReject = "a segment has not passed the required safety and rights screens"
 )
 
-// CertifiedAutoConfirmable applies V67's complete-plan rules before the compatibility V54 gate.
-// It never returns a partial confirmation: if any keep interval fails the older tag/boundary rules,
-// every keep interval remains together for one concise structure review. Explained discard spans
-// are returned separately and never masquerade as held filler.
+// CertifiedAutoConfirmable applies V67's complete-plan rules independently of the compatibility
+// detector's cut coordinates and confidence score. It never returns a partial confirmation: if any
+// keep interval fails metadata admission, every keep interval remains together for one review.
 func CertifiedAutoConfirmable(p SplitProposal, auto *AutoSplitPolicy, certification *StructureCertificationPolicy, minClipDuration time.Duration) SplitPartition {
 	if p.Structure == nil {
 		return certifiedSplitReject(p.Segments, RejectStructureMissing)
@@ -43,36 +43,8 @@ func CertifiedAutoConfirmable(p SplitProposal, auto *AutoSplitPolicy, certificat
 		// those older children. They stay reviewable; V67 never guesses which plan spans they own.
 		return certifiedSplitReject(p.Segments, RejectStructureMismatch)
 	}
-	type span struct{ start, end int64 }
-	segments := make(map[span]SplitSegment, len(p.Segments))
-	for _, segment := range p.Segments {
-		key := span{segment.StartMs, segment.EndMs}
-		if _, duplicate := segments[key]; duplicate {
-			return certifiedSplitReject(p.Segments, RejectStructureMismatch)
-		}
-		segments[key] = segment
-	}
-	var keep, discard []SplitSegment
-	for _, planned := range assessment.Plan {
-		if planned.Disposition == StructureUnresolved {
-			return certifiedSplitReject(p.Segments, RejectStructureAmbiguous)
-		}
-		segment, exists := segments[span{planned.StartMs, planned.EndMs}]
-		switch planned.Disposition {
-		case StructureKeep:
-			if !exists || !certifiedFillerRole(planned.Role) {
-				return certifiedSplitReject(p.Segments, RejectStructureMismatch)
-			}
-			keep = append(keep, segment)
-			delete(segments, span{planned.StartMs, planned.EndMs})
-		case StructureDiscard:
-			if exists {
-				discard = append(discard, segment)
-				delete(segments, span{planned.StartMs, planned.EndMs})
-			}
-		}
-	}
-	if len(segments) != 0 || len(keep) == 0 {
+	keep, discard, err := projectCertifiedStructureSegments(p.Segments, assessment.Plan)
+	if err != nil || len(keep) == 0 {
 		return certifiedSplitReject(p.Segments, RejectStructureMismatch)
 	}
 	if p.StructureDecision == nil {
@@ -89,16 +61,89 @@ func CertifiedAutoConfirmable(p SplitProposal, auto *AutoSplitPolicy, certificat
 			return SplitPartition{Reject: RejectSegmentUnscreened, Hold: keep, Discard: discard}
 		}
 	}
-	legacy := AutoConfirmable(SplitProposal{Segments: keep}, auto, minClipDuration)
-	if legacy.Reject != AutoSplitOK {
-		legacy.Discard = discard
-		return legacy
+	certified := certifiedPlanConfirmable(keep, auto, minClipDuration)
+	if certified.Reject != AutoSplitOK {
+		certified.Discard = discard
+		return certified
 	}
-	if len(legacy.Hold) > 0 {
-		return SplitPartition{Reject: legacy.Verdict(), Hold: keep, Discard: discard}
+	if len(certified.Hold) > 0 {
+		return SplitPartition{Reject: certified.Verdict(), Hold: certified.Hold, Discard: discard}
 	}
-	legacy.Discard = discard
-	return legacy
+	certified.Discard = discard
+	return certified
+}
+
+func projectCertifiedStructureSegments(existing []SplitSegment, plan []StructurePlanSegment) ([]SplitSegment, []SplitSegment, error) {
+	type span struct{ start, end int64 }
+	metadata := make(map[span]SplitSegment, len(existing))
+	for _, segment := range existing {
+		key := span{segment.StartMs, segment.EndMs}
+		if _, duplicate := metadata[key]; duplicate {
+			return nil, nil, fmt.Errorf("certified split projection repeats a detector span")
+		}
+		metadata[key] = segment
+	}
+	var keep, discard []SplitSegment
+	for _, planned := range plan {
+		segment := metadata[span{planned.StartMs, planned.EndMs}]
+		segment.Index, segment.StartMs, segment.EndMs = planned.Index, planned.StartMs, planned.EndMs
+		segment.HoldReason = ""
+		switch planned.Disposition {
+		case StructureKeep:
+			if !certifiedFillerRole(planned.Role) {
+				return nil, nil, fmt.Errorf("certified split projection has a non-filler keep interval")
+			}
+			keep = append(keep, segment)
+		case StructureDiscard:
+			discard = append(discard, segment)
+		default:
+			return nil, nil, fmt.Errorf("certified split projection has an unresolved interval")
+		}
+	}
+	return keep, discard, nil
+}
+
+func certifiedPlanConfirmable(segments []SplitSegment, policy *AutoSplitPolicy, minClipDuration time.Duration) SplitPartition {
+	if policy == nil || policy.Enabled == nil || !policy.Enabled() {
+		return SplitPartition{Reject: RejectDisabled, Hold: segments}
+	}
+	if len(segments) == 0 {
+		return SplitPartition{Reject: RejectNoSegments}
+	}
+	maxDuration := 120 * time.Second
+	if policy.MaxDuration != nil {
+		if configured := policy.MaxDuration(); configured > 0 {
+			maxDuration = configured
+		}
+	}
+	partition := SplitPartition{}
+	for _, segment := range segments {
+		if reason := segmentContentVerdict(segment, policy, minClipDuration, maxDuration); reason != AutoSplitOK {
+			segment.HoldReason = string(reason)
+			partition.Hold = append(partition.Hold, segment)
+			continue
+		}
+		partition.Confirm = append(partition.Confirm, segment)
+	}
+	if len(partition.Hold) > 0 {
+		reject := partition.Verdict()
+		type span struct{ start, end int64 }
+		reasons := make(map[span]string, len(partition.Hold))
+		for _, held := range partition.Hold {
+			reasons[span{held.StartMs, held.EndMs}] = held.HoldReason
+		}
+		allHeld := append([]SplitSegment(nil), segments...)
+		for index := range allHeld {
+			allHeld[index].HoldReason = reasons[span{allHeld[index].StartMs, allHeld[index].EndMs}]
+			if allHeld[index].HoldReason == "" {
+				allHeld[index].HoldReason = string(reject)
+			}
+		}
+		partition.Confirm = nil
+		partition.Hold = allHeld
+		partition.Reject = reject
+	}
+	return partition
 }
 
 func certifiedSplitReject(segments []SplitSegment, reason AutoSplitReject) SplitPartition {

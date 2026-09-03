@@ -143,7 +143,10 @@ func TestCertifiedAutoConfirmableRequiresCompleteCertifiedScreenedPlan(t *testin
 		{name: "unverified screening authority", mutate: func(_ *SplitProposal, c *StructureCertificationPolicy) {
 			c.ScreeningCertified = func(SegmentScreeningEvidence) bool { return false }
 		}, want: RejectSegmentUnscreened},
-		{name: "span mismatch", mutate: func(p *SplitProposal, _ *StructureCertificationPolicy) { p.Segments[0].EndMs-- }, want: RejectStructureMismatch},
+		{name: "detector span differs and exact span needs screening", mutate: func(p *SplitProposal, _ *StructureCertificationPolicy) { p.Segments[0].EndMs-- }, want: RejectSegmentUnscreened},
+		{name: "duplicate detector span", mutate: func(p *SplitProposal, _ *StructureCertificationPolicy) {
+			p.Segments = append(p.Segments, p.Segments[0])
+		}, want: RejectStructureMismatch},
 		{name: "prior partial generation", mutate: func(p *SplitProposal, _ *StructureCertificationPolicy) { p.Spawned = []string{"child"} }, want: RejectStructureMismatch},
 	}
 	for _, test := range tests {
@@ -168,6 +171,18 @@ func TestCertifiedAutoConfirmableDoesNotPartiallyPublishLegacyHolds(t *testing.T
 	}
 }
 
+func TestCertifiedAutoConfirmableDoesNotInventLegacyBoundaryConfidence(t *testing.T) {
+	proposal := certifiedStructureProposal(t)
+	for index := range proposal.Segments {
+		proposal.Segments[index].BoundaryConfidence = 0
+		proposal.Segments[index].Unsplittable = true
+	}
+	partition := CertifiedAutoConfirmable(proposal, certifiedAutoPolicy(), allowCertifiedStructure(), 10*time.Second)
+	if partition.Reject != AutoSplitOK || len(partition.Confirm) != 2 || len(partition.Hold) != 0 {
+		t.Fatalf("certified decision was converted back into detector confidence: %+v", partition)
+	}
+}
+
 func TestCertifiedAutoConfirmableSeparatesProgrammeDiscardFromFiller(t *testing.T) {
 	observations := []StructureObservation{
 		structureObservation("chapter-left", ObservationChapterEdge, ObservationProposesBoundary, 20_000, 20_000),
@@ -182,12 +197,10 @@ func TestCertifiedAutoConfirmableSeparatesProgrammeDiscardFromFiller(t *testing.
 		structureClaim(50_000, 70_000, SegmentRoleProgrammeFragment, "programme-right"),
 	})
 	proposal := SplitProposal{Source: assessment.Source, Structure: &assessment, Segments: []SplitSegment{
-		{StartMs: 0, EndMs: 20_000, BoundaryConfidence: 90},
-		{StartMs: 20_000, EndMs: 50_000, Category: "toys", BoundaryConfidence: 90},
-		{StartMs: 50_000, EndMs: 70_000, BoundaryConfidence: 90},
+		{StartMs: 20_000, EndMs: 50_000, Category: "toys"},
 	}}
 	proposal.StructureDecision = passingStructureDecision(t, assessment)
-	proposal.Segments[1].Screening = passingSegmentScreening(t, assessment.Source, 20_000, 50_000)
+	proposal.Segments[0].Screening = passingSegmentScreening(t, assessment.Source, 20_000, 50_000)
 	partition := CertifiedAutoConfirmable(proposal, certifiedAutoPolicy(), allowCertifiedStructure(), 10*time.Second)
 	if partition.Reject != AutoSplitOK || len(partition.Confirm) != 1 || partition.Confirm[0].StartMs != 20_000 || len(partition.Discard) != 2 || len(partition.Hold) != 0 {
 		t.Fatalf("programme/filler partition = %+v", partition)

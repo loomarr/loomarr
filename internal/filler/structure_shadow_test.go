@@ -70,6 +70,30 @@ func TestStructureSplitShadowPersistsCompatibilityAndCompletePlanDecisions(t *te
 	}
 }
 
+func TestStructureSplitShadowComparesDetectorAndProjectedSpans(t *testing.T) {
+	proposal := certifiedStructureProposal(t)
+	proposal.ID = "proposal-projected"
+	proposal.ClipHash = proposal.Source.ClipHash
+	proposal.CreatedAt = time.Date(2026, time.September, 10, 4, 0, 0, 0, time.UTC)
+	proposal.Segments[0].EndMs = 28_000
+	proposal.Segments[1].StartMs = 28_000
+	repository := &structureShadowMemoryRepository{}
+	shadow, err := NewStructureSplitShadow(repository, certifiedAutoPolicy(), allowCertifiedStructure(), func() time.Duration { return 10 * time.Second }, "projected-spans-v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := AutoConfirmable(proposal, certifiedAutoPolicy(), 10*time.Second)
+	if err := shadow.ObserveStructureSplit(t.Context(), proposal, legacy); err != nil {
+		t.Fatal(err)
+	}
+	record := repository.records[0]
+	if len(record.Legacy.Confirm) != 2 || record.Legacy.Confirm[0].EndMs != 28_000 ||
+		len(record.Certified.Hold) != 2 || record.Certified.Hold[0].EndMs != 30_000 ||
+		record.Certified.Verdict != RejectSegmentUnscreened {
+		t.Fatalf("shadow did not retain separate detector and certified coordinates: %+v", record)
+	}
+}
+
 func TestStructureSplitShadowDetectsUnobservedAndChangedProposals(t *testing.T) {
 	proposal := certifiedStructureProposal(t)
 	proposal.ID = "proposal-1"
