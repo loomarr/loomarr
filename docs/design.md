@@ -4554,6 +4554,20 @@ claim they must verify. Model-backed primary/adjudicating reviewers are permitte
 families differ from one another and from every evaluated proposer/adjudicator/corroborator family. This lock
 does not download a dataset, create consent, transform media, run inference, or begin certification.
 
+Matching a rights digest is necessary but is not a current rights decision. Before planning or decoding any
+source, the authority locker groups identical rights authorities and asks the corpus owner to semantically
+validate each unique document at the fixed authority-authored time. The production command hard-wires that
+validator; callers cannot omit it. The closed initial vocabulary is the complete VCTK release-authority v1
+envelope and the canonical known-script rights v1 envelope. VCTK validation rechecks the release identity,
+rights-review chronology, complete member authority, and hosted-evaluation contract, including its current
+term. Known-script validation rechecks the participant binding, every grant, expiry/withdrawal state, and
+time-sensitive music/noise rights. Unknown, malformed, unsupported, noncanonical where required, expired, or
+withdrawn evidence invalidates the complete lock before media work or publication. The exact hosted route was
+already authorized immediately before each model request; the later lock establishes that the participant and
+asset rights remain current, not that an expired grant retroactively authorized a call. A path-free immutable
+authority is not a live withdrawal registry: any future production admission must recheck then-current rights
+through a separately designed live-use boundary, and all output permissions remain false meanwhile.
+
 A review verdict is `verified` or `rejected`; it is not another copy of the draft's proposed `positive` or
 `clean` label. A verified positive retains the draft's exact proposed intervals, while every rejected verdict
 and every clean verification carries no interval. This distinction is required so a reviewer can reject a
