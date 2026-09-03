@@ -30,13 +30,13 @@ func ValidateAssessmentRecord(record AssessmentRecord) error {
 			return errors.New("filler structure assessment record: accepted result is incomplete")
 		}
 	case AssessmentRecordFailed:
-		if !slices.Contains([]string{AssessmentFailureTransport, AssessmentFailureProvider, AssessmentFailureInvalidResponse, AssessmentFailureRouteMismatch}, record.Failure) ||
+		if !slices.Contains([]string{AssessmentFailureProvider, AssessmentFailureInvalidResponse, AssessmentFailureRouteMismatch}, record.Failure) ||
 			record.Result != nil || !validFailedAssessmentResponse(record) || !closedAssessmentCharge(record) ||
 			record.ReservedNanoUSD != record.RequestedNanoUSD || record.AccountedNanoUSD != record.ChargedNanoUSD {
 			return errors.New("filler structure assessment record: failed result is incomplete")
 		}
 	case AssessmentRecordUnsettled:
-		if record.Failure != AssessmentFailureUnsettled || record.Result != nil || record.ChargeKnown ||
+		if !slices.Contains([]string{AssessmentFailureUnsettled, AssessmentFailureTransport}, record.Failure) || record.Result != nil || record.ChargeKnown ||
 			record.ChargedAmountUSD != "" || record.ChargedNanoUSD != 0 || record.ReservedNanoUSD != record.RequestedNanoUSD ||
 			record.AccountedNanoUSD != record.ReservedNanoUSD {
 			return errors.New("filler structure assessment record: unsettled result is invalid")
@@ -61,11 +61,13 @@ func ValidateAssessmentRecord(record AssessmentRecord) error {
 }
 
 func validFailedAssessmentResponse(record AssessmentRecord) bool {
-	if record.Failure == AssessmentFailureTransport {
-		return record.ResponseSHA256 == "" && record.StructuredOutputSHA256 == "" &&
-			record.ResolvedProvider == "" && record.ResolvedModel == "" && record.GenerationID == ""
+	if record.ResponseSHA256 == "" {
+		return false
 	}
-	return record.ResponseSHA256 != "" && closedAssessmentRoute(record)
+	if record.Failure == AssessmentFailureInvalidResponse {
+		return closedAssessmentRoute(record)
+	}
+	return record.ResolvedProvider == "" && record.ResolvedModel == ""
 }
 
 func validAssessmentResult(result AssessmentResult, durationMS int64) bool {

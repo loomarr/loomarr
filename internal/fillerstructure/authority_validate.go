@@ -45,6 +45,13 @@ func ValidateAssessorProfiles(profiles []AssessorProfile) error {
 	return nil
 }
 
+func ValidateAssessorProfile(profile AssessorProfile) error {
+	if !validProfile(profile) {
+		return errors.New("filler structure authority: assessor profile is invalid")
+	}
+	return nil
+}
+
 func VerifyAuthority(artifact Artifact, authority Authority) error {
 	if err := ValidateArtifact(artifact); err != nil {
 		return err

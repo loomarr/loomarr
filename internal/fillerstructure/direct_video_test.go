@@ -1,10 +1,22 @@
 package fillerstructure
 
 import (
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
 )
+
+func TestDirectVideoPromptAndSchemaIdentityAreStableAndDurationBound(t *testing.T) {
+	wantDigest := regexp.MustCompile(`^[0-9a-f]{64}$`)
+	prompt := DirectVideoPromptSHA256(1_000)
+	schema := DirectVideoSchemaSHA256(1_000)
+	if !wantDigest.MatchString(prompt) || !wantDigest.MatchString(schema) ||
+		prompt != DirectVideoPromptSHA256(1_000) || schema != DirectVideoSchemaSHA256(1_000) ||
+		prompt == DirectVideoPromptSHA256(2_000) || schema == DirectVideoSchemaSHA256(2_000) {
+		t.Fatalf("prompt=%q schema=%q", prompt, schema)
+	}
+}
 
 func TestParseDirectVideoResponseNormalizesAndDerivesProgrammeSpots(t *testing.T) {
 	raw := `{"segments":[{"endMs":4500,"role":"programme_fragment","decisiveAtMs":[4000,1000],"reason":"title"},{"endMs":20000,"role":"programme_fragment","decisiveAtMs":[15000],"reason":"opening"},{"endMs":80000,"role":"commercial","decisiveAtMs":[70000,25000],"reason":"offer"},{"endMs":99555,"role":"programme_fragment","decisiveAtMs":[98000],"reason":"resumes"}]}`

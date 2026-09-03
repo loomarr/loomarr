@@ -121,7 +121,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `catalog` | 6 | `library`, `provision` |
 | `contact` | 5 | — |
 | `diagnostics` | 8 | — |
-| `filler` | 7 | `diagnostics`, `filleradmission`, `llm`, `mediatools`, `taxonomy` |
+| `filler` | 8 | `diagnostics`, `filleradmission`, `llm`, `mediatools`, `taxonomy` |
 | `filleradmission` | 8 | — |
 | `fillereval` | 5 | — |
 | `fillersafety` | 5 | `mediatools` |
@@ -162,7 +162,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
 - **`fillereval`** · 5 importers
   Owns the hermetic certification contract for filler admission.
-- **`fillerstructure`** · 3 importers
+- **`fillerstructure`** · 4 importers
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
 - **`images/rustgen`** · 4 importers
   Concrete adapter for Loomarr's required Rust image worker (§22).
@@ -205,7 +205,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns administrator admission decisions and their bearer grants (§11).
 - **`metrics`** · 8 importers · → `images/rustgen`, `provision`
   Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
-- **`openroutermedia`** · 3 importers · → `fillereval`
+- **`openroutermedia`** · 4 importers · → `fillereval`
   Owns Loomarr's bounded OpenRouter structured-media transport.
 - **`prepared`** · 3 importers · → `diagnostics`, `media`
   Owns immutable, reusable playout publications.
@@ -241,7 +241,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 5**
 
-- **`filler`** · 7 importers · → `diagnostics`, `filleradmission`, `fillerdecision`, `fillerstructure`, `llm`, `mediatools`, `taxonomy`
+- **`filler`** · 8 importers · → `diagnostics`, `filleradmission`, `fillerdecision`, `fillerstructure`, `llm`, `mediatools`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 - **`fillerreference`** · → `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `mediatools`, `taxonomy`
   Owns the deterministic pre-screen for the production-ready filler reference cohort.
@@ -256,6 +256,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Materializes identity-blind evidence for independent semantic review.
 - **`fillersafetycert`** · 2 importers · → `fillersafety`
   Owns deterministic, non-authorizing certification of the durable spoken-safety cascade.
+- **`fillerstructureopenrouter`** · → `filler`, `fillerstructure`, `openroutermedia`
+  Adapts the bounded OpenRouter media transport to the provider-neutral complete-timeline assessor port.
 - **`library`** · 8 importers · → `episodeevidence`, `filler`, `httpx`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
 - **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `fillersafety`, `fillerstructure`, `invitation`, `notifications`, `provision`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
@@ -3190,10 +3192,10 @@ Boundary fusion is deterministic and conservative:
    unattended publication.
 3. Transcript, OCR/logo, audio-continuity, and visual-continuity changes may support, contradict, or leave
    that candidate unresolved. Absence from a modality that did not run is not negative evidence.
-4. A model may inspect only unresolved bounded spans. Its strict output cites supplied observation IDs and
-   records exact provider, model, prompt/schema, request/response digest, time, token, and cost identity. It
-   contributes an observation and cannot override a hard conflict, invent an observation, or directly set
-   the source verdict.
+4. The bounded observation model may inspect only unresolved spans. Its strict output cites supplied
+   observation IDs and records exact provider, model, prompt/schema, request/response digest, time, token,
+   and cost identity. It contributes an observation and cannot override a hard conflict, invent an
+   observation, or directly set the source verdict.
 5. No scene-only, duration-only, model-only, or round-timestamp candidate becomes an automatic cut.
 
 The assessment contains a **coverage-preserving segment plan** over the complete half-open source timeline
@@ -3248,6 +3250,19 @@ revalidates complete coverage. A hard detector conflict, operational failure, mi
 unit, different role, excessive join distance, or unsupported candidate produces an explicit hold.
 Majority voting cannot turn disagreement into a decision, and one valid prohibited observation remains
 governed by the separate safety reducer rather than this structure policy.
+
+A complete-timeline candidate assessor is distinct from the bounded observation and per-interval role
+escalations above. It receives the same exact retained MP4, sees no peer answer, and must describe every
+millisecond from zero through the measured duration. The OpenRouter adapter fixes one fallback-disabled,
+zero-data-retention route and strict schema, hashes the exact prompt, schema, request, response, and
+structured output, and durably reserves the request digest before sending any bytes. Its configured
+worst-case charge must fit inside that reservation. A budget hold sends no provider request; an unknown
+transport settlement retains the full reservation; a known charge closes against the provider-reported
+amount, and an over-reservation response is retained but unusable. The adapter settles the durable
+accounting record before it returns candidate evidence. A crash between reservation and settlement leaves
+a discoverable open reservation rather than silently freeing budget. Implementing this adapter grants no
+runtime or publication authority: two independently locked families, persisted raw evidence, the reducer,
+the screening axes, and a locked slice certificate remain mandatory.
 
 The reducer's immutable artifact retains every candidate identity and the exact reason each case was
 confirmed or held. Certification scores this deterministic policy as the production candidate: every

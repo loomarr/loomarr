@@ -56,10 +56,14 @@ func TestAssessmentRecordProjectsClosedOperationalStatesWithoutClaims(t *testing
 		failure string
 		mutate  func(*AssessmentRecordInput)
 	}{
-		{name: "provider failure", state: AssessmentRecordFailed, failure: AssessmentFailureProvider},
-		{name: "transport failure without response", state: AssessmentRecordFailed, failure: AssessmentFailureTransport, mutate: func(input *AssessmentRecordInput) {
+		{name: "provider failure", state: AssessmentRecordFailed, failure: AssessmentFailureProvider, mutate: func(input *AssessmentRecordInput) {
+			input.ResolvedProvider, input.ResolvedModel = "", ""
+		}},
+		{name: "transport failure without response", state: AssessmentRecordUnsettled, failure: AssessmentFailureTransport, mutate: func(input *AssessmentRecordInput) {
 			input.RawResponse, input.StructuredOutput = nil, ""
 			input.ResolvedProvider, input.ResolvedModel, input.GenerationID = "", "", ""
+			input.ChargeKnown, input.ChargedAmountUSD, input.ChargedNanoUSD = false, "", 0
+			input.AccountedNanoUSD = input.ReservedNanoUSD
 		}},
 		{name: "unsettled", state: AssessmentRecordUnsettled, failure: AssessmentFailureUnsettled, mutate: func(input *AssessmentRecordInput) {
 			input.RawResponse, input.StructuredOutput = nil, ""
