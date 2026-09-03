@@ -3214,6 +3214,17 @@ automatically admitted as filler. Every child binds its role evidence, transcrip
 frame/audio evidence, exact parent evidence asset, and intended source-relative interval before media is
 cut. Post-screen taxonomy enrichment remains a later operation and cannot repair an unresolved role.
 
+The existing bounded split-time vision request may return taxonomy grounding and a segment-role judgement
+in the same call; role assessment does not introduce an unbounded second request per cut. The role result is
+a distinct `segment_role` observation, not a tag projected into a role. It binds the exact source and span,
+ordered frame digests, prompt contract and digest, request and response digests, assessment time, requested
+and resolved provider/model identity, modalities, attempts, latency, token accounting, generation identity,
+and provider-reported charge when available. Missing provider/model identity, malformed evidence, an
+unsupported role, or an absent explanation yields no role claim. `ambiguous` and `unusable` remain recorded
+outcomes but cannot create a `keep` interval. Rebuilding an assessment replaces role observations for the
+same spans from the proposal's retained evidence while preserving independent detector observations and
+explicit discard intervals; it never treats a prior tag, generated name, or parent kind as role evidence.
+
 Automatic publication requires all of the following: a `compilation_break` or explicitly bounded filler
 portion of `programme_with_spots`; exact evidence bytes still match; every published interval has resolved
 boundaries and an allowed filler role; every non-published interval is an explained discard rather than an
