@@ -18,6 +18,13 @@ func normalizeStructureObservations(in []StructureObservation, durationMs int64)
 	seen := make(map[string]struct{}, len(out))
 	for i := range out {
 		o := &out[i]
+		if o.RoleEvidence != nil {
+			roleEvidence := *o.RoleEvidence
+			roleEvidence.FrameSHA256 = slices.Clone(roleEvidence.FrameSHA256)
+			roleEvidence.Modalities = slices.Clone(roleEvidence.Modalities)
+			roleEvidence.Charge = cloneStructureRoleCharge(roleEvidence.Charge)
+			o.RoleEvidence = &roleEvidence
+		}
 		o.ID, o.Producer = strings.TrimSpace(o.ID), strings.TrimSpace(o.Producer)
 		if o.ID == "" || o.Producer == "" || !isContentHash(o.EvidenceSHA256) || !validStructureObservationKind(o.Kind) || !validStructureObservationEffect(o.Effect) || o.StartMs < 0 || o.EndMs < o.StartMs || o.EndMs > durationMs {
 			return nil, fmt.Errorf("source structure: invalid observation %q", o.ID)
@@ -26,6 +33,13 @@ func normalizeStructureObservations(in []StructureObservation, durationMs int64)
 			if o.Effect != ObservationContextOnly {
 				return nil, fmt.Errorf("source structure: %s may only be context", o.Kind)
 			}
+		}
+		if o.Kind == ObservationSegmentRole {
+			if o.Effect != ObservationContextOnly || o.RoleEvidence == nil || ValidateStructureRoleEvidence(*o.RoleEvidence) != nil || o.StartMs != o.RoleEvidence.StartMs || o.EndMs != o.RoleEvidence.EndMs || o.EvidenceSHA256 != o.RoleEvidence.SHA256 {
+				return nil, fmt.Errorf("source structure: segment role observation %q is invalid", o.ID)
+			}
+		} else if o.RoleEvidence != nil {
+			return nil, fmt.Errorf("source structure: non-role observation %q carries role evidence", o.ID)
 		}
 		if _, duplicate := seen[o.ID]; duplicate {
 			return nil, fmt.Errorf("source structure: duplicate observation %q", o.ID)
@@ -105,11 +119,20 @@ func windowsOverlap(aStart, aEnd, bStart, bEnd int64) bool {
 
 func validStructureObservationKind(kind StructureObservationKind) bool {
 	switch kind {
-	case ObservationChapterEdge, ObservationBlackInterval, ObservationSilenceInterval, ObservationTranscriptChange, ObservationOCRLogoChange, ObservationAudioContinuity, ObservationVisualContinuity, ObservationSceneChange, ObservationStandardDuration:
+	case ObservationChapterEdge, ObservationBlackInterval, ObservationSilenceInterval, ObservationTranscriptChange, ObservationOCRLogoChange, ObservationAudioContinuity, ObservationVisualContinuity, ObservationSceneChange, ObservationStandardDuration, ObservationSegmentRole:
 		return true
 	default:
 		return false
 	}
+}
+
+func validateStructureRoleObservationSources(observations []StructureObservation, source SplitSourceAsset) error {
+	for _, observation := range observations {
+		if observation.RoleEvidence != nil && observation.RoleEvidence.Source != source {
+			return fmt.Errorf("source structure: role observation %q binds a different source", observation.ID)
+		}
+	}
+	return nil
 }
 
 func validStructureObservationEffect(effect StructureObservationEffect) bool {

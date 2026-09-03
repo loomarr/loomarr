@@ -40,6 +40,7 @@ const (
 	ObservationVisualContinuity StructureObservationKind = "visual_continuity"
 	ObservationSceneChange      StructureObservationKind = "scene_change"
 	ObservationStandardDuration StructureObservationKind = "standard_duration"
+	ObservationSegmentRole      StructureObservationKind = "segment_role"
 )
 
 type StructureObservationEffect string
@@ -61,6 +62,7 @@ type StructureObservation struct {
 	EndMs          int64                      `json:"endMs"`
 	Producer       string                     `json:"producer"`
 	EvidenceSHA256 string                     `json:"evidenceSha256"`
+	RoleEvidence   *StructureRoleEvidence     `json:"roleEvidence,omitempty"`
 }
 
 type StructureBoundaryStatus string
@@ -217,6 +219,9 @@ func ValidateSourceStructureAssessment(assessment SourceStructureAssessment) err
 	normalized, err := normalizeStructureObservations(assessment.Observations, assessment.DurationMs)
 	if err != nil || !reflect.DeepEqual(normalized, assessment.Observations) {
 		return errors.New("source structure: observations are invalid or non-canonical")
+	}
+	if err := validateStructureRoleObservationSources(normalized, assessment.Source); err != nil {
+		return err
 	}
 	boundaries := fuseStructureBoundaries(normalized, assessment.DurationMs)
 	if !reflect.DeepEqual(boundaries, assessment.Boundaries) {
