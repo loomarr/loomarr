@@ -196,6 +196,9 @@ type SplitPartition struct {
 	Confirm []SplitSegment
 	// Hold stays in the proposal, each carrying the reason it was kept back.
 	Hold []SplitSegment
+	// Discard is complete-plan material intentionally omitted with retained structure authority.
+	// It is neither publishable nor an unresolved hold.
+	Discard []SplitSegment
 	// Reject is set only for a WHOLE-proposal refusal (auto-split switched off, nothing detected).
 	// A per-segment refusal is on the segment, not here.
 	Reject AutoSplitReject
