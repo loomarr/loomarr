@@ -5,9 +5,13 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/clipfetch"
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 // fakeDL records which sources it was handed and returns scripted results.
@@ -17,12 +21,50 @@ type fakeDL struct {
 	err     error
 }
 
-func (f *fakeDL) Download(_ context.Context, src clipfetch.Source, _ string) (int, int, error) {
+type outputDL struct{ missingSidecar bool }
+
+func (d outputDL) Download(_ context.Context, _ clipfetch.Source, dir string) (clipfetch.DownloadResult, error) {
+	media := filepath.Join(dir, "download.mp4")
+	if err := os.WriteFile(media, []byte("downloaded video bytes"), 0o600); err != nil {
+		return clipfetch.DownloadResult{}, err
+	}
+	digest, clipHash := strings.Repeat("a", 64), strings.Repeat("b", 64)
+	output := clipfetch.Output{MediaPath: media, SHA256: digest, Bytes: 22, ClipHash: clipHash}
+	if d.missingSidecar {
+		output.Repair = "missing sidecar"
+		return clipfetch.DownloadResult{Fetched: 1, Outputs: []clipfetch.Output{output}}, errors.New("missing sidecar")
+	}
+	sidecar := filepath.Join(dir, "download.info.json")
+	if err := os.WriteFile(sidecar, []byte(`{"loomarr":{"fetchedBy":"loomarr"}}`), 0o600); err != nil {
+		return clipfetch.DownloadResult{}, err
+	}
+	output.SidecarPath = sidecar
+	return clipfetch.DownloadResult{Fetched: 1, Outputs: []clipfetch.Output{output}}, nil
+}
+
+type recordingArtifactWriter struct {
+	t          *testing.T
+	root       string
+	snapshots  [][]filler.AcquisitionArtifact
+	targetSeen bool
+}
+
+func (w *recordingArtifactWriter) UpsertAcquisitionArtifacts(_ context.Context, artifacts []filler.AcquisitionArtifact) error {
+	if len(w.snapshots) == 0 {
+		if _, err := os.Stat(filepath.Join(w.root, "download.mp4")); err == nil {
+			w.targetSeen = true
+		}
+	}
+	w.snapshots = append(w.snapshots, append([]filler.AcquisitionArtifact(nil), artifacts...))
+	return nil
+}
+
+func (f *fakeDL) Download(_ context.Context, src clipfetch.Source, _ string) (clipfetch.DownloadResult, error) {
 	f.got = append(f.got, src)
 	if f.err != nil {
-		return 0, 0, f.err
+		return clipfetch.DownloadResult{}, f.err
 	}
-	return f.fetched, 0, nil
+	return clipfetch.DownloadResult{Fetched: f.fetched}, nil
 }
 
 func discardLog() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
@@ -100,5 +142,48 @@ func TestRun_EmptySourceIsSurfaced(t *testing.T) {
 	}
 	if res.Fetched != 2 {
 		t.Errorf("the good source still runs: fetched = %d, want 2", res.Fetched)
+	}
+}
+
+func TestRun_PersistsExactManifestBeforePublishing(t *testing.T) {
+	dir := t.TempDir()
+	writer := &recordingArtifactWriter{t: t, root: dir}
+	ing := clipfetch.New(outputDL{}, nil, dir, discardLog()).WithArtifactWriter(writer)
+
+	res := ing.Run(t.Context(), []clipfetch.Source{{
+		ID: "youtube:classic", AcquisitionID: "acq-1", Kind: clipfetch.YouTube,
+		URL: "https://youtube.com/watch?v=one",
+	}})
+	if res.Failed != 0 || res.Fetched != 1 || len(res.Artifacts) != 1 {
+		t.Fatalf("result = %+v, want one published artifact", res)
+	}
+	if writer.targetSeen {
+		t.Fatal("download became intake-visible before its manifest was durable")
+	}
+	if len(writer.snapshots) != 2 || writer.snapshots[0][0].State != filler.ArtifactStaged || writer.snapshots[1][0].State != filler.ArtifactPublished {
+		t.Fatalf("manifest snapshots = %+v, want staged then published", writer.snapshots)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "download.mp4")); err != nil {
+		t.Fatalf("published media: %v", err)
+	}
+}
+
+func TestRun_MissingProvenanceRemainsInHiddenRepairQuarantine(t *testing.T) {
+	dir := t.TempDir()
+	writer := &recordingArtifactWriter{t: t, root: dir}
+	ing := clipfetch.New(outputDL{missingSidecar: true}, nil, dir, discardLog()).WithArtifactWriter(writer)
+
+	res := ing.Run(t.Context(), []clipfetch.Source{{
+		ID: "youtube:classic", AcquisitionID: "acq-1", Kind: clipfetch.YouTube,
+		URL: "https://youtube.com/watch?v=one",
+	}})
+	if res.Failed != 1 || len(res.Artifacts) != 1 || res.Artifacts[0].State != filler.ArtifactRepair {
+		t.Fatalf("result = %+v, want one repair artifact", res)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "download.mp4")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("repair media became intake-visible: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, res.Artifacts[0].StagingPath)); err != nil {
+		t.Fatalf("repair media was not retained for recovery: %v", err)
 	}
 }
