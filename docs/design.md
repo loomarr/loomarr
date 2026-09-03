@@ -4776,6 +4776,18 @@ slice counts, errors, and reducer contract. It always sets training and automati
 permission false: a pass is evidence from which a separate window-specific materialization authority
 may later be issued after the locked short-versus-long shadow comparison.
 
+The first long-reel corpus plan reuses only the twelve family-distinct bounded anchors and six
+programme parents already locked by the 60-case holdout. One private deterministic planner binds
+that authoring and receipt and emits 24 programme-with-spots constructions: six place a same-role
+filler join ten seconds inside shared seam context, six place it one second left of primary ownership,
+six place it one second right, and six place one complete filler unit across a primary seam. Programme
+material brackets every construction, filler sources are always used whole, same-role pairs never
+share a source or source family, and exact source-relative truth is derived from requested parts rather
+than entered separately. The plan performs no rendering or model call. A later renderer measures the
+canonical encoded parts and may publish a certification suite only when wordless, motion, and largest-
+byte evidence also satisfy the fixed slice counts; insufficiency fails the corpus rather than causing
+model-outcome-guided case substitution.
+
 The agreement policy itself is one provider-neutral production-domain module, not a scorer-owned
 copy: both the challenge adapter and the eventual production runtime supply source-bound immutable
 candidate assessments to the same pure reducer. Challenge aliases, private truth, provider clients,
