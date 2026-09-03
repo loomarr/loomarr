@@ -11,7 +11,12 @@ import (
 	"github.com/loomarr/loomarr/internal/fillersafetycorpus"
 )
 
-func verifyWorklist(ctx context.Context, loaded *loadedInputs, now time.Time) error {
+func verifyWorklist(
+	ctx context.Context,
+	loaded *loadedInputs,
+	now time.Time,
+	processor fillersafetycorpus.KnownScriptHostedProcessor,
+) error {
 	worklist := loaded.worklist
 	if worklist.SchemaVersion != fillersafetycorpus.ReviewWorklistSchemaVersion ||
 		worklist.ContractVersion != fillersafetycorpus.ReviewWorklistContractVersion ||
@@ -21,6 +26,8 @@ func verifyWorklist(ctx context.Context, loaded *loadedInputs, now time.Time) er
 		return fmt.Errorf("model review worklist identity or exact case count is invalid")
 	}
 	seen := map[string]fillersafetycorpus.FileAuthority{}
+	authorizedRights := map[fillersafetycorpus.FileAuthority]bool{}
+	loaded.knownScriptRights = make(map[string]fillersafetycorpus.FileAuthority)
 	for _, authority := range []fillersafetycorpus.FileAuthority{
 		loaded.plan.Draft,
 		loaded.plan.Worklist,
@@ -111,11 +118,43 @@ func verifyWorklist(ctx context.Context, loaded *loadedInputs, now time.Time) er
 		if err := addEvidence(fillersafetycorpus.FileAuthority{Path: item.TruthProvenancePath, SHA256: item.TruthProvenanceSHA256, Bytes: item.TruthProvenanceBytes}, maximumDocumentBytes); err != nil {
 			return fmt.Errorf("model review case %d truth provenance is invalid", index+1)
 		}
-		if err := addEvidence(fillersafetycorpus.FileAuthority{Path: item.RightsPath, SHA256: item.RightsSHA256, Bytes: item.RightsBytes}, maximumDocumentBytes); err != nil {
+		rightsAuthority := fillersafetycorpus.FileAuthority{
+			Path: item.RightsPath, SHA256: item.RightsSHA256, Bytes: item.RightsBytes,
+		}
+		if err := addEvidence(rightsAuthority, maximumDocumentBytes); err != nil {
 			return fmt.Errorf("model review case %d rights evidence is invalid", index+1)
+		}
+		applies, alreadyAuthorized := authorizedRights[rightsAuthority]
+		if !alreadyAuthorized {
+			var err error
+			applies, err = authorizeKnownScriptRights(loaded.root, rightsAuthority, now, processor)
+			if err != nil {
+				return fmt.Errorf("model review case %d processor authorization failed", index+1)
+			}
+			authorizedRights[rightsAuthority] = applies
+		}
+		if applies {
+			loaded.knownScriptRights[item.CaseID] = rightsAuthority
 		}
 	}
 	return nil
+}
+
+func authorizeKnownScriptRights(
+	root string,
+	authority fillersafetycorpus.FileAuthority,
+	at time.Time,
+	processor fillersafetycorpus.KnownScriptHostedProcessor,
+) (bool, error) {
+	path, err := resolveRootPath(root, authority.Path)
+	if err != nil {
+		return false, fmt.Errorf("resolve model review rights")
+	}
+	raw, err := readPrivateFile(path, maximumDocumentBytes)
+	if err != nil || int64(len(raw)) != authority.Bytes || hashBytes(raw) != authority.SHA256 {
+		return false, fmt.Errorf("model review rights bytes changed during authorization")
+	}
+	return fillersafetycorpus.AuthorizeKnownScriptProcessor(raw, at, processor)
 }
 
 func claimLabel(claim string) string {

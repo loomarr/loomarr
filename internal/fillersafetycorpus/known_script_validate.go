@@ -14,8 +14,6 @@ import (
 	"github.com/loomarr/loomarr/internal/fillersafetycert"
 )
 
-const knownScriptProcessorOpenRouter = "openrouter"
-
 func validateKnownScriptConfig(config PrepareKnownScriptConfig) error {
 	if strings.TrimSpace(config.AuthorityPath) == "" || strings.TrimSpace(config.SourceRoot) == "" ||
 		strings.TrimSpace(config.SeedPath) == "" || strings.TrimSpace(config.FFmpegPath) == "" ||
@@ -118,21 +116,29 @@ func validateKnownScriptTransformation(member KnownScriptMember, authoredAt, pre
 		value.MasterSHA256 != member.MasterAudio.SHA256 || value.OutputSHA256 != member.SelectedAudio.SHA256 {
 		return fmt.Errorf("recipe, tool, time, master, or output binding is invalid")
 	}
-	previous, hasMusic := "", false
-	for _, asset := range value.Assets {
-		key := asset.Role + "\x00" + asset.Media.SHA256
-		if (asset.Role != KnownScriptAssetMusic && asset.Role != KnownScriptAssetNoise) || key <= previous ||
-			!validFileAuthority(asset.Media) || !validFileAuthority(asset.RightsEvidence) ||
-			len(fillercorpus.HoldoutRightsHoldReasons(&asset.RightsContract, preparedAt)) != 0 {
-			return fmt.Errorf("asset identity, order, or rights are invalid")
-		}
-		hasMusic = hasMusic || asset.Role == KnownScriptAssetMusic
-		previous = key
+	hasMusic, err := validateKnownScriptAssets(value.Assets, preparedAt)
+	if err != nil {
+		return err
 	}
 	if slices.Contains(member.Slices, fillersafetycert.SliceMusicOverlap) && !hasMusic {
 		return fmt.Errorf("music-overlap slice lacks a rights-cleared music asset")
 	}
 	return nil
+}
+
+func validateKnownScriptAssets(assets []KnownScriptAsset, at time.Time) (bool, error) {
+	previous, hasMusic := "", false
+	for _, asset := range assets {
+		key := asset.Role + "\x00" + asset.Media.SHA256
+		if (asset.Role != KnownScriptAssetMusic && asset.Role != KnownScriptAssetNoise) || key <= previous ||
+			!validFileAuthority(asset.Media) || !validFileAuthority(asset.RightsEvidence) ||
+			len(fillercorpus.HoldoutRightsHoldReasons(&asset.RightsContract, at)) != 0 {
+			return false, fmt.Errorf("asset identity, order, or rights are invalid")
+		}
+		hasMusic = hasMusic || asset.Role == KnownScriptAssetMusic
+		previous = key
+	}
+	return hasMusic, nil
 }
 
 func validateKnownScriptMapping(mapping KnownScriptPolicyMapping, member KnownScriptMember, policySHA256 string) error {
@@ -156,15 +162,19 @@ func validateKnownScriptProcessorSchedule(schedule KnownScriptProcessorSchedule)
 			processor.Kind, processor.SourceBaseURL, processor.RequestedModel, processor.ResolvedModel,
 			processor.UpstreamProvider, processor.UpstreamProviderSlug,
 		}, "\x00")
-		if processor.Kind != knownScriptProcessorOpenRouter || !validKnownScriptProcessorURL(processor.SourceBaseURL) ||
-			!validKnownScriptModel(processor.RequestedModel) || !validKnownScriptModel(processor.ResolvedModel) ||
-			!boundedProcessorName(processor.UpstreamProvider) || !boundedID(processor.UpstreamProviderSlug) || !processor.ZDR ||
+		if !validKnownScriptProcessor(processor) ||
 			key <= previous {
 			return fmt.Errorf("known-script hosted processor schedule contains an invalid, unsafe, or unsorted route")
 		}
 		previous = key
 	}
 	return nil
+}
+
+func validKnownScriptProcessor(processor KnownScriptHostedProcessor) bool {
+	return processor.Kind == KnownScriptProcessorOpenRouter && validKnownScriptProcessorURL(processor.SourceBaseURL) &&
+		validKnownScriptModel(processor.RequestedModel) && validKnownScriptModel(processor.ResolvedModel) &&
+		boundedProcessorName(processor.UpstreamProvider) && boundedID(processor.UpstreamProviderSlug) && processor.ZDR
 }
 
 func validKnownScriptProcessorURL(value string) bool {
