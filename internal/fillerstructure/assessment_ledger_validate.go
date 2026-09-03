@@ -11,8 +11,8 @@ func ValidateAssessmentReservation(reservation AssessmentReservation) error {
 	if reservation.SchemaVersion != AssessmentReservationSchemaVersion ||
 		reservation.ContractVersion != AssessmentReservationContractVersion ||
 		!digest(reservation.SHA256) || reservation.SHA256 != AssessmentReservationSHA256(reservation) ||
-		!digest(reservation.RequestSHA256) || !digest(reservation.Source.SHA256) || reservation.Source.DurationMS <= 0 ||
-		reservation.SourceBytes <= 0 || ValidateAssessorProfile(reservation.Assessor) != nil ||
+		!digest(reservation.RequestSHA256) || !validSource(reservation.Source) ||
+		!validAssessmentMedia(reservation.Media, reservation.Source) || ValidateAssessorProfile(reservation.Assessor) != nil ||
 		!digest(reservation.PromptSHA256) || !digest(reservation.SchemaSHA256) ||
 		!canonicalIdentity(reservation.ExpectedResolvedModel) || !canonicalIdentity(reservation.UpstreamProvider) ||
 		!canonicalIdentity(reservation.UpstreamProviderSlug) || reservation.RequestedNanoUSD <= 0 ||
@@ -45,7 +45,7 @@ func ValidateAssessmentLedgerEntry(entry AssessmentLedgerEntry) error {
 
 func assessmentRecordMatchesReservation(record AssessmentRecord, reservation AssessmentReservation) bool {
 	if record.RequestSHA256 != reservation.RequestSHA256 || record.Source != reservation.Source ||
-		record.SourceBytes != reservation.SourceBytes || !reflect.DeepEqual(record.Assessor, reservation.Assessor) ||
+		record.Media != reservation.Media || !reflect.DeepEqual(record.Assessor, reservation.Assessor) ||
 		record.PromptSHA256 != reservation.PromptSHA256 || record.SchemaSHA256 != reservation.SchemaSHA256 ||
 		record.UpstreamProvider != reservation.UpstreamProvider || record.UpstreamProviderSlug != reservation.UpstreamProviderSlug ||
 		record.RequestedNanoUSD != reservation.RequestedNanoUSD || record.AssessedAt.Before(reservation.RequestedAt) {

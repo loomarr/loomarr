@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	AuthoritySchemaVersion   = 2
-	AuthorityContractVersion = "filler-structure-materialization-authority-v2"
+	AuthoritySchemaVersion   = 3
+	AuthorityContractVersion = "filler-structure-materialization-authority-v3"
 )
 
 type AssessorProfile struct {
@@ -28,6 +28,10 @@ type Authority struct {
 	SchemaVersion                   int               `json:"schemaVersion"`
 	ContractVersion                 string            `json:"contractVersion"`
 	CertificateSHA256               string            `json:"certificateSha256"`
+	AssessmentMediaProfileSHA256    string            `json:"assessmentMediaProfileSha256"`
+	MinimumSourceDurationMS         int64             `json:"minimumSourceDurationMs"`
+	MaximumSourceDurationMS         int64             `json:"maximumSourceDurationMs"`
+	MaximumAssessmentMediaBytes     int64             `json:"maximumAssessmentMediaBytes"`
 	ReducerVersion                  string            `json:"reducerVersion"`
 	BoundaryToleranceMS             int64             `json:"boundaryToleranceMs"`
 	Assessors                       []AssessorProfile `json:"assessors"`

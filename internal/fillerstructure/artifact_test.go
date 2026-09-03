@@ -48,6 +48,7 @@ func TestArtifactRejectsInvalidCandidatesAndMutation(t *testing.T) {
 		{name: "decision", mutate: func(a *Artifact) { a.Decision.Segments[0].EndMS++ }},
 		{name: "candidate", mutate: func(a *Artifact) { a.Decision.Candidates[0].Segments[0].EndMS++ }},
 		{name: "source", mutate: func(a *Artifact) { a.Decision.Source.SHA256 = strings.Repeat("f", 64) }},
+		{name: "media", mutate: func(a *Artifact) { a.Decision.Media.SHA256 = strings.Repeat("f", 64) }},
 		{name: "policy", mutate: func(a *Artifact) { a.BoundaryToleranceMS = -1 }},
 	}
 	for _, test := range tests {

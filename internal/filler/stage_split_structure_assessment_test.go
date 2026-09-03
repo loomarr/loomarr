@@ -13,11 +13,11 @@ import (
 
 type capturedStructureDecisioner struct {
 	artifact fillerstructure.Artifact
-	media    []filler.StructureAssessmentMedia
+	media    []filler.StructureAssessmentSource
 	err      error
 }
 
-func (d *capturedStructureDecisioner) Assess(_ context.Context, media filler.StructureAssessmentMedia) (fillerstructure.Artifact, error) {
+func (d *capturedStructureDecisioner) Assess(_ context.Context, media filler.StructureAssessmentSource) (fillerstructure.Artifact, error) {
 	d.media = append(d.media, media)
 	return d.artifact, d.err
 }
@@ -89,10 +89,14 @@ func TestHeldCompleteTimelineDecisionDoesNotReplaceDetectorAssessment(t *testing
 
 func structureDecisionArtifact(t *testing.T, source filler.SplitSourceAsset, joinMS int64, disagree bool) fillerstructure.Artifact {
 	t.Helper()
-	core := fillerstructure.Source{SHA256: source.SHA256, DurationMS: source.DurationMs}
+	core := fillerstructure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: source.DurationMs}
+	media := fillerstructure.AssessmentMedia{
+		SHA256: strings.Repeat("9", 64), Bytes: source.Bytes, DurationMS: source.DurationMs,
+		ProfileSHA256: strings.Repeat("8", 64),
+	}
 	candidate := func(id, family, digest string, segments []fillerstructure.Segment) fillerstructure.Candidate {
 		return fillerstructure.Candidate{
-			Source: core,
+			Source: core, Media: media,
 			Assessor: fillerstructure.Assessor{
 				ID: id, ModelFamily: family, Provider: "captured", Model: "model-" + id,
 				ModelDigest: strings.Repeat("a", 64), CapabilitySHA256: strings.Repeat("b", 64),
@@ -114,7 +118,7 @@ func structureDecisionArtifact(t *testing.T, source filler.SplitSourceAsset, joi
 		right.Segments = []fillerstructure.Segment{{StartMS: 0, EndMS: source.DurationMs, Role: fillerstructure.RoleCommercial}}
 	}
 	artifact, err := fillerstructure.NewArtifact(fillerstructure.Request{
-		Source: core, BoundaryToleranceMS: 2_000, Candidates: []fillerstructure.Candidate{left, right},
+		Source: core, Media: media, BoundaryToleranceMS: 2_000, Candidates: []fillerstructure.Candidate{left, right},
 	}, time.Date(2026, time.September, 10, 7, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)

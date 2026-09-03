@@ -17,6 +17,7 @@ func TestAssessmentRecordBindsRawResponseAndParsedTimeline(t *testing.T) {
 		t.Fatal(err)
 	}
 	if candidate.Assessor.AssessmentSHA256 != recorded.Record.SHA256 || candidate.Unit != UnitCompilation ||
+		candidate.Source != recorded.Record.Source || candidate.Media != recorded.Record.Media ||
 		len(candidate.Segments) != 2 || candidate.Segments[0].EndMS != 5_000 || candidate.Segments[1].Role != RolePromo {
 		t.Fatalf("record=%+v candidate=%+v", recorded.Record, candidate)
 	}
@@ -107,6 +108,8 @@ func TestAssessmentRecordRejectsOpenOrContradictorySettlement(t *testing.T) {
 		mutate func(*AssessmentRecordInput)
 	}{
 		{name: "accepted without response", mutate: func(input *AssessmentRecordInput) { input.RawResponse = nil }},
+		{name: "media profile missing", mutate: func(input *AssessmentRecordInput) { input.Media.ProfileSHA256 = "" }},
+		{name: "media duration drift", mutate: func(input *AssessmentRecordInput) { input.Media.DurationMS += 1_001 }},
 		{name: "accepted over reservation", mutate: func(input *AssessmentRecordInput) { input.ChargedNanoUSD = 2_000; input.AccountedNanoUSD = 2_000 }},
 		{name: "failed without closed reason", mutate: func(input *AssessmentRecordInput) {
 			input.State, input.Failure, input.StructuredOutput = AssessmentRecordFailed, "", ""
@@ -143,7 +146,8 @@ func acceptedAssessmentRecord(t *testing.T) RecordedAssessment {
 
 func acceptedAssessmentInput() AssessmentRecordInput {
 	return AssessmentRecordInput{
-		Source: Source{SHA256: strings.Repeat("a", 64), DurationMS: 10_000}, SourceBytes: 1_024,
+		Source: Source{SHA256: strings.Repeat("a", 64), Bytes: 2_048, DurationMS: 10_000},
+		Media:  AssessmentMedia{SHA256: strings.Repeat("1", 64), Bytes: 1_024, DurationMS: 10_000, ProfileSHA256: strings.Repeat("2", 64)},
 		Assessor: AssessorProfile{
 			ID: "assessor-a", ModelFamily: "family-a", Provider: "openrouter", Model: "vendor/model",
 			ModelDigest: strings.Repeat("b", 64), CapabilitySHA256: strings.Repeat("c", 64),

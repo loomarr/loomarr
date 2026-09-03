@@ -8,12 +8,12 @@ import (
 
 func TestCanonicalProfilePinsCompleteAssessmentRecipe(t *testing.T) {
 	profile := CanonicalProfile()
-	if profile.SHA256 != "b12597d26686cbfd33d65f893230d3f8a6f47b44156dfabd95053b9ac8648659" {
+	if profile.SHA256 != "6d156f5ebb9136e2b72c386336b9676029f3c7bfe5c518922ac2b33eb47272fb" {
 		t.Fatalf("canonical profile digest = %s", profile.SHA256)
 	}
 	if profile.SHA256 != ProfileSHA256(profile) || profile.SHA256 == "" ||
 		profile.PartRecipeSHA256 == "" || profile.ConcatRecipeSHA256 == "" ||
-		profile.MaximumVideoBytes != 64<<20 {
+		profile.MaximumVideoBytes != 64<<20 || profile.MaximumTimelineDriftMS != 1_000 {
 		t.Fatalf("invalid canonical profile: %+v", profile)
 	}
 	if second := CanonicalProfile(); !reflect.DeepEqual(profile, second) {

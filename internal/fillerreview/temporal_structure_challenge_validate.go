@@ -62,7 +62,7 @@ func validateTemporalStructureChallenge(publicRoot string, manifest TemporalStru
 	if authority.SchemaVersion != manifest.SchemaVersion || authority.ContractVersion != manifest.ContractVersion || authority.ChallengeID != manifest.ChallengeID || !authority.GeneratedAt.Equal(manifest.GeneratedAt) || !reviewSHA256(authority.AuthoringSHA256) || !reviewSHA256(authority.SeedSHA256) || authority.PublicManifestSHA256 != manifestSHA || len(authority.Cases) != expectedCases {
 		return fmt.Errorf("private challenge authority does not bind the public manifest")
 	}
-	if !reflect.DeepEqual(authority.AssessmentMediaProfile, fillerstructuremedia.CanonicalProfile()) {
+	if !reflect.DeepEqual(authority.AssessmentMediaProfile, fillerstructuremedia.CanonicalProfile()) || authority.AssessmentMediaProfile.SHA256 != manifest.AssessmentMediaProfileSHA256 {
 		return fmt.Errorf("private challenge assessment media profile is invalid")
 	}
 	for name, identity := range map[string]TemporalTruthToolIdentity{"ffmpeg": authority.MediaTools.FFmpeg, "ffprobe": authority.MediaTools.FFprobe} {
@@ -96,7 +96,7 @@ func validateTemporalStructureChallenge(publicRoot string, manifest TemporalStru
 }
 
 func validateTemporalStructureChallengePublic(publicRoot string, manifest TemporalStructureChallengeManifest, expectedCases int) (map[string]TemporalStructureChallengePublicCase, error) {
-	if expectedCases <= 0 || manifest.SchemaVersion != TemporalStructureChallengeSchemaVersion || manifest.ContractVersion != TemporalStructureChallengeContractVersion || manifest.ChallengeID == "" || manifest.GeneratedAt.IsZero() || manifest.ProductionAdmissionAllowed || len(manifest.Cases) != expectedCases {
+	if expectedCases <= 0 || manifest.SchemaVersion != TemporalStructureChallengeSchemaVersion || manifest.ContractVersion != TemporalStructureChallengeContractVersion || manifest.ChallengeID == "" || manifest.GeneratedAt.IsZero() || manifest.AssessmentMediaProfileSHA256 != fillerstructuremedia.CanonicalProfile().SHA256 || manifest.ProductionAdmissionAllowed || len(manifest.Cases) != expectedCases {
 		return nil, fmt.Errorf("public challenge identity, count, or production disposition is invalid")
 	}
 	publicByAlias := make(map[string]TemporalStructureChallengePublicCase, expectedCases)

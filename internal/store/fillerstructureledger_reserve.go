@@ -79,10 +79,10 @@ func structureAssessmentEvaluation(reservation fillerstructure.AssessmentReserva
 		Role: "complete_timeline_structure", Rung: "complete_video",
 		RequestedProvider: reservation.Assessor.Provider, RequestedModel: reservation.Assessor.Model,
 		UpstreamProvider: reservation.UpstreamProvider, Modalities: []string{"text", "video"},
-		DerivativeBytes: reservation.SourceBytes, DerivativeDurationMS: reservation.Source.DurationMS,
+		DerivativeBytes: reservation.Media.Bytes, DerivativeDurationMS: reservation.Media.DurationMS,
 		EstimatedNanoUSD: reservation.MaximumChargeNanoUSD, ReservedNanoUSD: reservation.RequestedNanoUSD,
 		Versions: InferenceVersions{
-			Evidence: reservation.Source.SHA256, Extractor: reservation.Assessor.EvidenceContract,
+			Evidence: reservation.Media.SHA256, Extractor: reservation.Media.ProfileSHA256,
 			Prompt: reservation.PromptSHA256, Schema: reservation.SchemaSHA256,
 			Taxonomy: reservation.Assessor.PromptVersion, AdmissionPolicy: "structure-shadow-v1",
 			RolePolicy: fillerstructure.ReducerContractVersion, CapabilitySnapshot: reservation.Assessor.CapabilitySHA256,

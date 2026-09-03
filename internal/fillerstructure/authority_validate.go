@@ -10,6 +10,8 @@ import (
 func ValidateAuthority(authority Authority) error {
 	if authority.SchemaVersion != AuthoritySchemaVersion || authority.ContractVersion != AuthorityContractVersion ||
 		authority.ReducerVersion != ReducerContractVersion || !digest(authority.CertificateSHA256) ||
+		!digest(authority.AssessmentMediaProfileSHA256) || authority.MinimumSourceDurationMS <= 0 ||
+		authority.MaximumSourceDurationMS < authority.MinimumSourceDurationMS || authority.MaximumAssessmentMediaBytes <= 0 || authority.MaximumAssessmentMediaBytes > AssessmentMediaMaximumBytes ||
 		authority.BoundaryToleranceMS < 0 || !digest(authority.SHA256) || authority.SHA256 != AuthoritySHA256(authority) {
 		return errors.New("filler structure authority: identity or policy is invalid")
 	}
@@ -62,6 +64,9 @@ func VerifyAuthority(artifact Artifact, authority Authority) error {
 	decision := artifact.Decision
 	if !authority.AutomaticMaterializationAllowed || artifact.ReducerVersion != authority.ReducerVersion ||
 		artifact.BoundaryToleranceMS != authority.BoundaryToleranceMS || decision.Status != StatusConfirmed ||
+		decision.Media.ProfileSHA256 != authority.AssessmentMediaProfileSHA256 ||
+		decision.Source.DurationMS < authority.MinimumSourceDurationMS || decision.Source.DurationMS > authority.MaximumSourceDurationMS ||
+		decision.Media.Bytes > authority.MaximumAssessmentMediaBytes ||
 		!slices.Contains(authority.AllowedUnits, decision.Unit) {
 		return errors.New("filler structure authority: decision is outside certified policy")
 	}

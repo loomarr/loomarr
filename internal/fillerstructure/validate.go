@@ -2,12 +2,13 @@ package fillerstructure
 
 import (
 	"encoding/hex"
+	"errors"
 	"slices"
 	"strings"
 )
 
 func invalidCandidates(request Request) bool {
-	if request.Source.DurationMS <= 0 || !digest(request.Source.SHA256) || request.BoundaryToleranceMS < 0 || len(request.Candidates) < 2 {
+	if !validSource(request.Source) || !validAssessmentMedia(request.Media, request.Source) || request.BoundaryToleranceMS < 0 || len(request.Candidates) < 2 {
 		return true
 	}
 	assessors := make(map[string]struct{}, len(request.Candidates))
@@ -15,7 +16,7 @@ func invalidCandidates(request Request) bool {
 	for _, candidate := range request.Candidates {
 		identity := candidate.Assessor
 		family := strings.ToLower(strings.TrimSpace(identity.ModelFamily))
-		if candidate.Source != request.Source || !canonicalIdentity(identity.ID) || family == "" || !canonicalIdentity(identity.Provider) || !canonicalIdentity(identity.Model) || !canonicalIdentity(identity.PromptVersion) || !canonicalIdentity(identity.EvidenceContract) || !digest(identity.ModelDigest) || !digest(identity.CapabilitySHA256) || !digest(identity.AssessmentSHA256) {
+		if candidate.Source != request.Source || candidate.Media != request.Media || !canonicalIdentity(identity.ID) || family == "" || !canonicalIdentity(identity.Provider) || !canonicalIdentity(identity.Model) || !canonicalIdentity(identity.PromptVersion) || !canonicalIdentity(identity.EvidenceContract) || !digest(identity.ModelDigest) || !digest(identity.CapabilitySHA256) || !digest(identity.AssessmentSHA256) {
 			return true
 		}
 		if _, duplicate := assessors[identity.ID]; duplicate {
@@ -34,6 +35,29 @@ func invalidCandidates(request Request) bool {
 		}
 	}
 	return len(families) < 2
+}
+
+func validSource(source Source) bool {
+	return digest(source.SHA256) && source.Bytes > 0 && source.DurationMS > 0
+}
+
+func validAssessmentMedia(media AssessmentMedia, source Source) bool {
+	return digest(media.SHA256) && media.Bytes > 0 && media.Bytes <= AssessmentMediaMaximumBytes && media.DurationMS > 0 &&
+		digest(media.ProfileSHA256) && absolute(media.DurationMS-source.DurationMS) <= AssessmentMediaMaximumTimelineDriftMS
+}
+
+func ValidateAssessmentMedia(source Source, media AssessmentMedia) error {
+	if !validSource(source) || !validAssessmentMedia(media, source) {
+		return errors.New("filler structure assessment media identity is invalid")
+	}
+	return nil
+}
+
+func absolute(value int64) int64 {
+	if value < 0 {
+		return -value
+	}
+	return value
 }
 
 func canonicalIdentity(value string) bool {

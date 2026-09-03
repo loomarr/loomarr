@@ -156,6 +156,7 @@ func newStructureSplitShadowDecision(proposal SplitProposal, legacy, certified S
 		artifact := *proposal.StructureDecision
 		if err := fillerstructure.ValidateArtifact(artifact); err != nil ||
 			artifact.Decision.Source.SHA256 != proposal.Source.SHA256 ||
+			artifact.Decision.Source.Bytes != proposal.Source.Bytes ||
 			artifact.Decision.Source.DurationMS != proposal.Source.DurationMs {
 			return StructureSplitShadowDecision{}, fmt.Errorf("structure split shadow proposal decision is invalid")
 		}

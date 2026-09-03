@@ -10,9 +10,10 @@ import (
 	"github.com/loomarr/loomarr/internal/openroutermedia"
 )
 
-func (a *Assessor) recordAssessment(media filler.StructureAssessmentMedia, sourceBytes int64, assessedAt time.Time, reservation fillerstructure.AssessmentReservationState, result openroutermedia.Result, callErr error) (fillerstructure.RecordedAssessment, error) {
+func (a *Assessor) recordAssessment(media filler.StructureAssessmentMedia, assessedAt time.Time, reservation fillerstructure.AssessmentReservationState, result openroutermedia.Result, callErr error) (fillerstructure.RecordedAssessment, error) {
 	input := fillerstructure.AssessmentRecordInput{
-		Source: fillerstructure.Source{SHA256: media.Source.SHA256, DurationMS: media.Source.DurationMs}, SourceBytes: sourceBytes, Assessor: a.config.Profile,
+		Source: fillerstructure.Source{SHA256: media.Source.SHA256, Bytes: media.Source.Bytes, DurationMS: media.Source.DurationMs},
+		Media:  media.Assessment, Assessor: a.config.Profile,
 		PromptSHA256:  fillerstructure.DirectVideoPromptSHA256(media.Source.DurationMs),
 		SchemaSHA256:  fillerstructure.DirectVideoSchemaSHA256(media.Source.DurationMs),
 		RequestSHA256: result.RequestSHA256, RawResponse: result.RawResponse,

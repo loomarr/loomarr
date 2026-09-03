@@ -45,7 +45,7 @@ func (a *Assessor) AssessCompleteTimeline(ctx context.Context, media filler.Stru
 	if err != nil {
 		return fillerstructure.RecordedAssessment{}, err
 	}
-	source := fillerstructure.Source{SHA256: media.Source.SHA256, DurationMS: media.Source.DurationMs}
+	source := fillerstructure.Source{SHA256: media.Source.SHA256, Bytes: media.Source.Bytes, DurationMS: media.Source.DurationMs}
 	requestedAt := a.config.Now().UTC().Round(0)
 	var reservationState fillerstructure.AssessmentReservationState
 	callResult, callErr := openroutermedia.Call(ctx, a.config.Client, a.config.BaseURL, openroutermedia.Config{
@@ -59,7 +59,7 @@ func (a *Assessor) AssessCompleteTimeline(ctx context.Context, media filler.Stru
 		Title: structureTitle,
 		Reserve: func(requestSHA256 string) error {
 			reservation, reservationErr := fillerstructure.NewAssessmentReservation(fillerstructure.AssessmentReservationInput{
-				RequestSHA256: requestSHA256, Source: source, SourceBytes: int64(len(video)), Assessor: a.config.Profile,
+				RequestSHA256: requestSHA256, Source: source, Media: media.Assessment, Assessor: a.config.Profile,
 				PromptSHA256:          fillerstructure.DirectVideoPromptSHA256(media.Source.DurationMs),
 				SchemaSHA256:          fillerstructure.DirectVideoSchemaSHA256(media.Source.DurationMs),
 				ExpectedResolvedModel: a.config.ResolvedModel,
@@ -88,7 +88,7 @@ func (a *Assessor) AssessCompleteTimeline(ctx context.Context, media filler.Stru
 	if callResult.RequestSHA256 == "" || reservationState == "" {
 		return fillerstructure.RecordedAssessment{}, fmt.Errorf("filler structure OpenRouter call acquired no durable reservation: %w", callErr)
 	}
-	recorded, err := a.recordAssessment(media, int64(len(video)), a.config.Now().UTC().Round(0), reservationState, callResult, callErr)
+	recorded, err := a.recordAssessment(media, a.config.Now().UTC().Round(0), reservationState, callResult, callErr)
 	if err != nil {
 		return fillerstructure.RecordedAssessment{}, err
 	}
@@ -123,7 +123,10 @@ func readBoundVideo(ctx context.Context, media filler.StructureAssessmentMedia) 
 		return nil, err
 	}
 	if !filepath.IsAbs(media.FullPath) || filepath.Clean(media.FullPath) != media.FullPath || strings.ToLower(filepath.Ext(media.FullPath)) != ".mp4" ||
-		len(media.Source.SHA256) != 64 || media.Source.Bytes <= 0 || media.Source.DurationMs <= 0 {
+		fillerstructure.ValidateAssessmentMedia(
+			fillerstructure.Source{SHA256: media.Source.SHA256, Bytes: media.Source.Bytes, DurationMS: media.Source.DurationMs},
+			media.Assessment,
+		) != nil {
 		return nil, fmt.Errorf("filler structure OpenRouter media identity is invalid")
 	}
 	pathInfo, err := os.Lstat(media.FullPath)
@@ -136,7 +139,7 @@ func readBoundVideo(ctx context.Context, media filler.StructureAssessmentMedia) 
 	}
 	defer func() { _ = file.Close() }()
 	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() != media.Source.Bytes || info.Size() > MaximumVideoBytes {
+	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() != media.Assessment.Bytes || info.Size() > MaximumVideoBytes {
 		return nil, fmt.Errorf("filler structure OpenRouter video is unavailable or outside its byte ceiling")
 	}
 	raw, err := io.ReadAll(io.LimitReader(file, MaximumVideoBytes+1))
@@ -144,7 +147,7 @@ func readBoundVideo(ctx context.Context, media filler.StructureAssessmentMedia) 
 		return nil, fmt.Errorf("read filler structure OpenRouter video")
 	}
 	sum := sha256.Sum256(raw)
-	if hex.EncodeToString(sum[:]) != media.Source.SHA256 {
+	if hex.EncodeToString(sum[:]) != media.Assessment.SHA256 {
 		return nil, fmt.Errorf("filler structure OpenRouter video bytes drifted")
 	}
 	if err := ctx.Err(); err != nil {

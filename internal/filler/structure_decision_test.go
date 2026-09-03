@@ -47,7 +47,7 @@ func structureDecisionRequest(artifact fillerstructure.Artifact) fillerstructure
 		candidates[index] = candidate
 	}
 	return fillerstructure.Request{
-		Source: artifact.Decision.Source, BoundaryToleranceMS: artifact.BoundaryToleranceMS,
+		Source: artifact.Decision.Source, Media: artifact.Decision.Media, BoundaryToleranceMS: artifact.BoundaryToleranceMS,
 		Candidates: candidates,
 	}
 }

@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	TemporalStructureChallengeSchemaVersion   = 4
-	TemporalStructureChallengeContractVersion = "filler-temporal-structure-challenge-v4"
+	TemporalStructureChallengeSchemaVersion   = 5
+	TemporalStructureChallengeContractVersion = "filler-temporal-structure-challenge-v5"
 
 	TemporalStructureSourceBoundedItem     = "independently_bounded_item"
 	TemporalStructureSourceProgrammeParent = "programme_parent"
@@ -108,12 +108,13 @@ type TemporalStructureChallengeSegment struct {
 // surface. It deliberately contains no source identity, construction class,
 // role, boundary, tool path, or authoring digest.
 type TemporalStructureChallengeManifest struct {
-	SchemaVersion              int                                    `json:"schemaVersion"`
-	ContractVersion            string                                 `json:"contractVersion"`
-	ChallengeID                string                                 `json:"challengeId"`
-	GeneratedAt                time.Time                              `json:"generatedAt"`
-	Cases                      []TemporalStructureChallengePublicCase `json:"cases"`
-	ProductionAdmissionAllowed bool                                   `json:"productionAdmissionAllowed"`
+	SchemaVersion                int                                    `json:"schemaVersion"`
+	ContractVersion              string                                 `json:"contractVersion"`
+	ChallengeID                  string                                 `json:"challengeId"`
+	GeneratedAt                  time.Time                              `json:"generatedAt"`
+	AssessmentMediaProfileSHA256 string                                 `json:"assessmentMediaProfileSha256"`
+	Cases                        []TemporalStructureChallengePublicCase `json:"cases"`
+	ProductionAdmissionAllowed   bool                                   `json:"productionAdmissionAllowed"`
 }
 
 type TemporalStructureChallengePublicCase struct {
@@ -216,7 +217,8 @@ func BuildTemporalStructureChallenge(ctx context.Context, config TemporalStructu
 
 	manifest := TemporalStructureChallengeManifest{
 		SchemaVersion: TemporalStructureChallengeSchemaVersion, ContractVersion: TemporalStructureChallengeContractVersion,
-		ChallengeID: config.ChallengeID, GeneratedAt: config.GeneratedAt.UTC(), ProductionAdmissionAllowed: false,
+		ChallengeID: config.ChallengeID, GeneratedAt: config.GeneratedAt.UTC(),
+		AssessmentMediaProfileSHA256: fillerstructuremedia.CanonicalProfile().SHA256, ProductionAdmissionAllowed: false,
 		Cases: make([]TemporalStructureChallengePublicCase, 0, len(prepared)),
 	}
 	authority := TemporalStructureChallengeAuthority{

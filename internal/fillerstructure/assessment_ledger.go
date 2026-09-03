@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	AssessmentReservationSchemaVersion   = 1
-	AssessmentReservationContractVersion = "filler-structure-assessment-reservation-v1"
+	AssessmentReservationSchemaVersion   = 2
+	AssessmentReservationContractVersion = "filler-structure-assessment-reservation-v2"
 )
 
 type AssessmentReservationState string
@@ -32,7 +32,7 @@ type AssessmentReservation struct {
 	ContractVersion       string          `json:"contractVersion"`
 	RequestSHA256         string          `json:"requestSha256"`
 	Source                Source          `json:"source"`
-	SourceBytes           int64           `json:"sourceBytes"`
+	Media                 AssessmentMedia `json:"media"`
 	Assessor              AssessorProfile `json:"assessor"`
 	PromptSHA256          string          `json:"promptSha256"`
 	SchemaSHA256          string          `json:"schemaSha256"`
@@ -48,7 +48,7 @@ type AssessmentReservation struct {
 type AssessmentReservationInput struct {
 	RequestSHA256         string
 	Source                Source
-	SourceBytes           int64
+	Media                 AssessmentMedia
 	Assessor              AssessorProfile
 	PromptSHA256          string
 	SchemaSHA256          string
@@ -69,7 +69,7 @@ type AssessmentLedgerEntry struct {
 func NewAssessmentReservation(input AssessmentReservationInput) (AssessmentReservation, error) {
 	reservation := AssessmentReservation{
 		SchemaVersion: AssessmentReservationSchemaVersion, ContractVersion: AssessmentReservationContractVersion,
-		RequestSHA256: input.RequestSHA256, Source: input.Source, SourceBytes: input.SourceBytes,
+		RequestSHA256: input.RequestSHA256, Source: input.Source, Media: input.Media,
 		Assessor: input.Assessor, PromptSHA256: input.PromptSHA256, SchemaSHA256: input.SchemaSHA256,
 		ExpectedResolvedModel: input.ExpectedResolvedModel,
 		UpstreamProvider:      input.UpstreamProvider, UpstreamProviderSlug: input.UpstreamProviderSlug,

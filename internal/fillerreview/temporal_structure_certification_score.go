@@ -33,6 +33,17 @@ func scoreTemporalStructureCertification(decision TemporalStructureDecisionRepor
 	}
 	report.AssessorIDs = sortedUniqueStrings(report.AssessorIDs)
 	report.ModelFamilies = sortedUniqueStrings(report.ModelFamilies)
+	for index, item := range manifest.Cases {
+		if index == 0 || item.Video.DurationMS < report.MinimumTimelineDurationMS {
+			report.MinimumTimelineDurationMS = item.Video.DurationMS
+		}
+		if item.Video.DurationMS > report.MaximumTimelineDurationMS {
+			report.MaximumTimelineDurationMS = item.Video.DurationMS
+		}
+		if item.Video.Bytes > report.MaximumAssessmentMediaBytes {
+			report.MaximumAssessmentMediaBytes = item.Video.Bytes
+		}
+	}
 	if report.Cases < temporalStructureCertificationMinimumCases {
 		report.FailureCodes = append(report.FailureCodes, "insufficient_cases")
 	}

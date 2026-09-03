@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	TemporalStructureDecisionSchemaVersion   = 1
-	TemporalStructureDecisionContractVersion = "filler-temporal-structure-decision-v1"
+	TemporalStructureDecisionSchemaVersion   = 2
+	TemporalStructureDecisionContractVersion = "filler-temporal-structure-decision-v2"
 
 	TemporalStructureDecisionConfirmed = string(fillerstructure.StatusConfirmed)
 	TemporalStructureDecisionHeld      = string(fillerstructure.StatusHeld)
@@ -35,21 +35,22 @@ type TemporalStructureDecisionConfig struct {
 }
 
 type TemporalStructureDecisionReport struct {
-	SchemaVersion              int                                    `json:"schemaVersion"`
-	ContractVersion            string                                 `json:"contractVersion"`
-	ChallengeID                string                                 `json:"challengeId"`
-	PublicManifestSHA256       string                                 `json:"publicManifestSha256"`
-	PrivateAuthoritySHA256     string                                 `json:"privateAuthoritySha256"`
-	DecidedAt                  time.Time                              `json:"decidedAt"`
-	BoundaryToleranceMS        int64                                  `json:"boundaryToleranceMs"`
-	Cases                      int                                    `json:"cases"`
-	ConfirmedCases             int                                    `json:"confirmedCases"`
-	HeldCases                  int                                    `json:"heldCases"`
-	IndependentModelFamilies   int                                    `json:"independentModelFamilies"`
-	Assessors                  []TemporalStructureAssessorReference   `json:"assessors"`
-	HoldReasons                []TemporalStructureDecisionReasonCount `json:"holdReasons,omitempty"`
-	Decisions                  []TemporalStructureCaseDecision        `json:"decisions"`
-	ProductionAdmissionAllowed bool                                   `json:"productionAdmissionAllowed"`
+	SchemaVersion                int                                    `json:"schemaVersion"`
+	ContractVersion              string                                 `json:"contractVersion"`
+	ChallengeID                  string                                 `json:"challengeId"`
+	PublicManifestSHA256         string                                 `json:"publicManifestSha256"`
+	PrivateAuthoritySHA256       string                                 `json:"privateAuthoritySha256"`
+	AssessmentMediaProfileSHA256 string                                 `json:"assessmentMediaProfileSha256"`
+	DecidedAt                    time.Time                              `json:"decidedAt"`
+	BoundaryToleranceMS          int64                                  `json:"boundaryToleranceMs"`
+	Cases                        int                                    `json:"cases"`
+	ConfirmedCases               int                                    `json:"confirmedCases"`
+	HeldCases                    int                                    `json:"heldCases"`
+	IndependentModelFamilies     int                                    `json:"independentModelFamilies"`
+	Assessors                    []TemporalStructureAssessorReference   `json:"assessors"`
+	HoldReasons                  []TemporalStructureDecisionReasonCount `json:"holdReasons,omitempty"`
+	Decisions                    []TemporalStructureCaseDecision        `json:"decisions"`
+	ProductionAdmissionAllowed   bool                                   `json:"productionAdmissionAllowed"`
 }
 
 type TemporalStructureDecisionReasonCount struct {
@@ -159,7 +160,8 @@ func buildTemporalStructureDecision(loaded temporalStructureDecisionLoaded, deci
 	report := TemporalStructureDecisionReport{
 		SchemaVersion: TemporalStructureDecisionSchemaVersion, ContractVersion: TemporalStructureDecisionContractVersion,
 		ChallengeID: loaded.manifest.ChallengeID, PublicManifestSHA256: loaded.publicSHA,
-		PrivateAuthoritySHA256: loaded.authoritySHA, DecidedAt: decidedAt,
+		PrivateAuthoritySHA256:       loaded.authoritySHA,
+		AssessmentMediaProfileSHA256: loaded.manifest.AssessmentMediaProfileSHA256, DecidedAt: decidedAt,
 		BoundaryToleranceMS: TemporalStructureNearBoundaryMS, Cases: len(loaded.manifest.Cases),
 		IndependentModelFamilies: loaded.families, ProductionAdmissionAllowed: false,
 	}
@@ -180,7 +182,7 @@ func buildTemporalStructureDecision(loaded temporalStructureDecisionLoaded, deci
 				assessment: assessment.byAlias[item.Alias],
 			})
 		}
-		decision := reduceTemporalStructureDecision(item.Alias, item.Video.SHA256, item.Video.DurationMS, candidates)
+		decision := reduceTemporalStructureDecision(item.Alias, item.Video.SHA256, item.Video.Bytes, item.Video.DurationMS, loaded.manifest.AssessmentMediaProfileSHA256, candidates)
 		report.Decisions = append(report.Decisions, decision)
 		if decision.Status == TemporalStructureDecisionConfirmed {
 			report.ConfirmedCases++

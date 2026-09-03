@@ -61,6 +61,7 @@ func TestAssessorReturnsAcceptedReplayableAssessmentAfterDurableReservation(t *t
 	if !slices.Equal(ledger.order, []string{"reserve", "call", "settle"}) || len(ledger.reservations) != 1 || len(ledger.settlements) != 1 ||
 		recorded.Record.State != fillerstructure.AssessmentRecordAccepted || candidate.Unit != fillerstructure.UnitCompilation || len(candidate.Segments) != 2 ||
 		recorded.Record.RequestSHA256 != ledger.reservations[0].RequestSHA256 || recorded.Record.SHA256 != ledger.settlements[0].SHA256 ||
+		ledger.reservations[0].Source.SHA256 != media.Source.SHA256 || ledger.reservations[0].Media != media.Assessment ||
 		ledger.reservations[0].MaximumChargeNanoUSD != 1_500 || ledger.reservations[0].ExpectedResolvedModel != "resolved-model" ||
 		ledger.reservations[0].PromptSHA256 != recorded.Record.PromptSHA256 || ledger.reservations[0].SchemaSHA256 != recorded.Record.SchemaSHA256 {
 		t.Fatalf("order=%v record=%+v candidate=%+v", ledger.order, recorded.Record, candidate)
@@ -145,7 +146,7 @@ func TestAssessorDoesNotReturnEvidenceWhenSettlementFails(t *testing.T) {
 	}
 }
 
-func TestAssessorRejectsSourceByteDriftBeforeReservationOrCall(t *testing.T) {
+func TestAssessorRejectsAssessmentMediaByteDriftBeforeReservationOrCall(t *testing.T) {
 	ledger := &capturedLedger{state: fillerstructure.AssessmentReservationAccepted}
 	calls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls++ }))
@@ -156,7 +157,7 @@ func TestAssessorRejectsSourceByteDriftBeforeReservationOrCall(t *testing.T) {
 	}
 	assessor := assessorFixture(t, server.URL, server.Client(), ledger)
 	if _, err := assessor.AssessCompleteTimeline(t.Context(), media); err == nil {
-		t.Fatal("expected source-byte drift to fail")
+		t.Fatal("expected assessment-media byte drift to fail")
 	}
 	if calls != 0 || len(ledger.reservations) != 0 || len(ledger.settlements) != 0 {
 		t.Fatalf("calls=%d reservations=%d settlements=%d", calls, len(ledger.reservations), len(ledger.settlements))
@@ -229,8 +230,12 @@ func assessorMediaFixture(t *testing.T) filler.StructureAssessmentMedia {
 	}
 	return filler.StructureAssessmentMedia{
 		Source: filler.SplitSourceAsset{
-			Role: filler.SplitSourceLegacyPlayback, SHA256: hex.EncodeToString(digest[:]), Bytes: int64(len(raw)),
+			Role: filler.SplitSourceLegacyPlayback, SHA256: strings.Repeat("a", 64), Bytes: 2_048,
 			ClipHash: strings.Repeat("c", 64), Path: "conditioned.mp4", DurationMs: 10_000,
+		},
+		Assessment: fillerstructure.AssessmentMedia{
+			SHA256: hex.EncodeToString(digest[:]), Bytes: int64(len(raw)), DurationMS: 10_000,
+			ProfileSHA256: strings.Repeat("d", 64),
 		},
 		FullPath: path,
 	}

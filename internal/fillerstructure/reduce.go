@@ -18,8 +18,8 @@ func Reduce(request Request) Decision {
 		}
 		return candidates[i].Assessor.AssessmentSHA256 < candidates[j].Assessor.AssessmentSHA256
 	})
-	decision := Decision{Source: request.Source, Status: StatusHeld, Candidates: candidates}
-	if invalidCandidates(Request{Source: request.Source, BoundaryToleranceMS: request.BoundaryToleranceMS, Candidates: candidates}) {
+	decision := Decision{Source: request.Source, Media: request.Media, Status: StatusHeld, Candidates: candidates}
+	if invalidCandidates(Request{Source: request.Source, Media: request.Media, BoundaryToleranceMS: request.BoundaryToleranceMS, Candidates: candidates}) {
 		decision.ReasonCodes = []string{ReasonInvalidCandidate}
 		return decision
 	}

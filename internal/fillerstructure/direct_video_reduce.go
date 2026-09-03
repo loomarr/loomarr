@@ -61,8 +61,8 @@ func AssessDirectVideoResponse(response DirectVideoResponse, durationMS int64) (
 
 // DirectVideoCandidate projects the shared parsed assessment into the reducer input after the
 // adapter has persisted the response and supplied its complete immutable assessor identity.
-func DirectVideoCandidate(source Source, assessor Assessor, assessment DirectVideoAssessment) Candidate {
-	candidate := Candidate{Source: source, Assessor: assessor, Unit: Unit(assessment.Unit.Kind)}
+func DirectVideoCandidate(source Source, media AssessmentMedia, assessor Assessor, assessment DirectVideoAssessment) Candidate {
+	candidate := Candidate{Source: source, Media: media, Assessor: assessor, Unit: Unit(assessment.Unit.Kind)}
 	if assessment.Role != nil {
 		candidate.Role = Role(assessment.Role.Kind)
 	}

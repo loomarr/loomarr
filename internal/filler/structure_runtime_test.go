@@ -18,10 +18,25 @@ type capturedStructureAssessor struct {
 	order    *[]string
 }
 
+type capturedStructureMediaPreparer struct {
+	media  StructureAssessmentMedia
+	inputs []StructureAssessmentSource
+	err    error
+	order  *[]string
+}
+
+func (p *capturedStructureMediaPreparer) Prepare(_ context.Context, input StructureAssessmentSource) (StructureAssessmentMedia, error) {
+	p.inputs = append(p.inputs, input)
+	if p.order != nil {
+		*p.order = append(*p.order, "prepare:"+input.Source.SHA256+":"+input.FullPath)
+	}
+	return p.media, p.err
+}
+
 func (a *capturedStructureAssessor) Profile() fillerstructure.AssessorProfile { return a.profile }
 
 func (a *capturedStructureAssessor) AssessCompleteTimeline(_ context.Context, media StructureAssessmentMedia) (fillerstructure.RecordedAssessment, error) {
-	*a.order = append(*a.order, a.profile.ID+":"+media.Source.SHA256+":"+media.FullPath)
+	*a.order = append(*a.order, a.profile.ID+":"+media.Source.SHA256+":"+media.Assessment.SHA256+":"+media.FullPath)
 	return a.recorded, a.err
 }
 
@@ -53,28 +68,31 @@ func (r *capturedStructureEvidenceRepository) PutStructureAssessmentEvidence(_ c
 
 func TestStructureAssessmentRuntimeCallsIndependentAssessorsSerially(t *testing.T) {
 	source := structureSource(10_000)
-	media := StructureAssessmentMedia{Source: source, FullPath: "/tmp/conditioned-source.mp4"}
+	input := StructureAssessmentSource{Source: source, FullPath: "/tmp/source.mp4"}
+	media := structureAssessmentMediaFixture(source, "/tmp/conditioned-source.mp4")
 	order := []string{}
 	assessors := runtimeAssessorFixtures(source, &order)
+	preparer := &capturedStructureMediaPreparer{media: media, order: &order}
 	evidence := &capturedStructureEvidenceRepository{order: &order}
-	runtime, err := NewStructureAssessmentRuntime(assessors, evidence, 2_000, func() time.Time {
+	runtime, err := NewStructureAssessmentRuntime(assessors, preparer, evidence, 2_000, func() time.Time {
 		return time.Date(2026, time.September, 9, 1, 0, 0, 0, time.UTC)
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	artifact, err := runtime.Assess(t.Context(), media)
+	artifact, err := runtime.Assess(t.Context(), input)
 	if err != nil {
 		t.Fatal(err)
 	}
 	wantOrder := []string{
-		"assessor-a:" + source.SHA256 + ":" + media.FullPath,
+		"prepare:" + source.SHA256 + ":" + input.FullPath,
+		"assessor-a:" + source.SHA256 + ":" + media.Assessment.SHA256 + ":" + media.FullPath,
 		"persist:assessor-a",
-		"assessor-b:" + source.SHA256 + ":" + media.FullPath,
+		"assessor-b:" + source.SHA256 + ":" + media.Assessment.SHA256 + ":" + media.FullPath,
 		"persist:assessor-b",
 		"persist:decision",
 	}
-	if !slices.Equal(order, wantOrder) || len(evidence.records) != 2 || len(evidence.decisions) != 1 ||
+	if !slices.Equal(order, wantOrder) || len(preparer.inputs) != 1 || len(evidence.records) != 2 || len(evidence.decisions) != 1 ||
 		evidence.decisions[0].SHA256 != artifact.SHA256 || artifact.Decision.Status != fillerstructure.StatusConfirmed || len(artifact.Decision.Candidates) != 2 {
 		t.Fatalf("order=%v artifact=%+v", order, artifact)
 	}
@@ -104,11 +122,12 @@ func TestStructureAssessmentRuntimeRejectsMissingOrDriftedAuthority(t *testing.T
 		t.Run(test.name, func(t *testing.T) {
 			items := runtimeAssessorFixtures(source, &order)
 			test.mutate(items)
-			runtime, err := NewStructureAssessmentRuntime(items, &capturedStructureEvidenceRepository{order: &order}, 2_000, time.Now)
+			preparer := &capturedStructureMediaPreparer{media: structureAssessmentMediaFixture(source, "/tmp/conditioned.mp4")}
+			runtime, err := NewStructureAssessmentRuntime(items, preparer, &capturedStructureEvidenceRepository{order: &order}, 2_000, time.Now)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := runtime.Assess(t.Context(), StructureAssessmentMedia{Source: source, FullPath: "/tmp/source.mp4"}); err == nil {
+			if _, err := runtime.Assess(t.Context(), StructureAssessmentSource{Source: source, FullPath: "/tmp/source.mp4"}); err == nil {
 				t.Fatal("invalid adapter result was reduced")
 			}
 		})
@@ -122,8 +141,39 @@ func TestStructureAssessmentRuntimeRejectsNonIndependentConfigurationBeforeCalls
 	second := assessors[1].(*capturedStructureAssessor)
 	second.profile.ModelFamily = "family-a"
 	second.recorded.Record.Assessor.ModelFamily = "family-a"
-	if _, err := NewStructureAssessmentRuntime(assessors, &capturedStructureEvidenceRepository{order: &order}, 2_000, time.Now); err == nil || len(order) != 0 {
+	if _, err := NewStructureAssessmentRuntime(assessors, &capturedStructureMediaPreparer{}, &capturedStructureEvidenceRepository{order: &order}, 2_000, time.Now); err == nil || len(order) != 0 {
 		t.Fatalf("non-independent runtime error=%v calls=%v", err, order)
+	}
+}
+
+func TestStructureAssessmentRuntimeRejectsInvalidPreparedMediaBeforeAssessors(t *testing.T) {
+	source := structureSource(10_000)
+	input := StructureAssessmentSource{Source: source, FullPath: "/tmp/source.mp4"}
+	tests := []struct {
+		name   string
+		mutate func(*StructureAssessmentMedia)
+	}{
+		{name: "source drift", mutate: func(media *StructureAssessmentMedia) { media.Source.SHA256 = strings.Repeat("f", 64) }},
+		{name: "profile missing", mutate: func(media *StructureAssessmentMedia) { media.Assessment.ProfileSHA256 = "" }},
+		{name: "duration drift", mutate: func(media *StructureAssessmentMedia) { media.Assessment.DurationMS += 1_001 }},
+		{name: "source reused as derivative path", mutate: func(media *StructureAssessmentMedia) { media.FullPath = input.FullPath }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			order := []string{}
+			media := structureAssessmentMediaFixture(source, "/tmp/conditioned.mp4")
+			test.mutate(&media)
+			runtime, err := NewStructureAssessmentRuntime(
+				runtimeAssessorFixtures(source, &order), &capturedStructureMediaPreparer{media: media},
+				&capturedStructureEvidenceRepository{order: &order}, 2_000, time.Now,
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := runtime.Assess(t.Context(), input); err == nil || len(order) != 0 {
+				t.Fatalf("prepared media error=%v assessor order=%v", err, order)
+			}
+		})
 	}
 }
 
@@ -133,11 +183,12 @@ func TestStructureAssessmentRuntimeDoesNotReduceUnpersistedEvidence(t *testing.T
 	assessors := runtimeAssessorFixtures(source, &order)
 	want := errors.New("evidence unavailable")
 	repository := &capturedStructureEvidenceRepository{order: &order, err: want}
-	runtime, err := NewStructureAssessmentRuntime(assessors, repository, 2_000, time.Now)
+	preparer := &capturedStructureMediaPreparer{media: structureAssessmentMediaFixture(source, "/tmp/conditioned.mp4")}
+	runtime, err := NewStructureAssessmentRuntime(assessors, preparer, repository, 2_000, time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runtime.Assess(t.Context(), StructureAssessmentMedia{Source: source, FullPath: "/tmp/source.mp4"}); !errors.Is(err, want) {
+	if _, err := runtime.Assess(t.Context(), StructureAssessmentSource{Source: source, FullPath: "/tmp/source.mp4"}); !errors.Is(err, want) {
 		t.Fatalf("error=%v, want persistence failure", err)
 	}
 	if len(order) != 1 || len(repository.records) != 0 {
@@ -150,11 +201,12 @@ func TestStructureAssessmentRuntimeDoesNotReturnUnpersistedDecision(t *testing.T
 	order := []string{}
 	want := errors.New("decision unavailable")
 	repository := &capturedStructureEvidenceRepository{order: &order, decisionErr: want}
-	runtime, err := NewStructureAssessmentRuntime(runtimeAssessorFixtures(source, &order), repository, 2_000, time.Now)
+	preparer := &capturedStructureMediaPreparer{media: structureAssessmentMediaFixture(source, "/tmp/conditioned.mp4")}
+	runtime, err := NewStructureAssessmentRuntime(runtimeAssessorFixtures(source, &order), preparer, repository, 2_000, time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runtime.Assess(t.Context(), StructureAssessmentMedia{Source: source, FullPath: "/tmp/source.mp4"}); !errors.Is(err, want) {
+	if _, err := runtime.Assess(t.Context(), StructureAssessmentSource{Source: source, FullPath: "/tmp/source.mp4"}); !errors.Is(err, want) {
 		t.Fatalf("error=%v, want decision persistence failure", err)
 	}
 	if len(repository.records) != 2 || len(repository.decisions) != 0 || !slices.Equal(order[len(order)-1:], []string{"persist:assessor-b"}) {
@@ -166,11 +218,12 @@ func TestStructureAssessmentRuntimeDecisionReplaysItsPersistedAssessmentRecords(
 	source := structureSource(10_000)
 	order := []string{}
 	repository := structureEvidenceRepositoryFixture(t)
-	runtime, err := NewStructureAssessmentRuntime(runtimeAssessorFixtures(source, &order), repository, 2_000, time.Now)
+	preparer := &capturedStructureMediaPreparer{media: structureAssessmentMediaFixture(source, "/tmp/conditioned.mp4")}
+	runtime, err := NewStructureAssessmentRuntime(runtimeAssessorFixtures(source, &order), preparer, repository, 2_000, time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	artifact, err := runtime.Assess(t.Context(), StructureAssessmentMedia{Source: source, FullPath: "/tmp/source.mp4"})
+	artifact, err := runtime.Assess(t.Context(), StructureAssessmentSource{Source: source, FullPath: "/tmp/source.mp4"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +244,8 @@ func TestStructureAssessmentRuntimeDecisionReplaysItsPersistedAssessmentRecords(
 }
 
 func runtimeAssessorFixtures(source SplitSourceAsset, order *[]string) []CompleteTimelineStructureAssessor {
-	coreSource := fillerstructure.Source{SHA256: source.SHA256, DurationMS: source.DurationMs}
+	coreSource := fillerstructure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: source.DurationMs}
+	media := structureAssessmentMediaFixture(source, "/tmp/conditioned.mp4").Assessment
 	build := func(id, family, assessmentDigest string) *capturedStructureAssessor {
 		profile := fillerstructure.AssessorProfile{
 			ID: id, ModelFamily: family, Provider: "captured", Model: "video-model",
@@ -199,7 +253,7 @@ func runtimeAssessorFixtures(source SplitSourceAsset, order *[]string) []Complet
 			PromptVersion: "prompt-v1", EvidenceContract: "assessment-v1",
 		}
 		recorded, err := fillerstructure.NewAssessmentRecord(fillerstructure.AssessmentRecordInput{
-			Source: coreSource, SourceBytes: 1_024, Assessor: profile,
+			Source: coreSource, Media: media, Assessor: profile,
 			PromptSHA256: strings.Repeat("d", 64), SchemaSHA256: strings.Repeat("e", 64),
 			RequestSHA256: strings.Repeat(assessmentDigest, 64), RawResponse: []byte(`{"id":"generation"}`),
 			StructuredOutput: `{"segments":[{"endMs":5000,"role":"commercial","decisiveAtMs":[1000],"reason":"offer"},{"endMs":10000,"role":"promo","decisiveAtMs":[7000],"reason":"promotion"}]}`,
@@ -217,4 +271,15 @@ func runtimeAssessorFixtures(source SplitSourceAsset, order *[]string) []Complet
 		return &capturedStructureAssessor{profile: profile, recorded: recorded, order: order}
 	}
 	return []CompleteTimelineStructureAssessor{build("assessor-a", "family-a", "1"), build("assessor-b", "family-b", "2")}
+}
+
+func structureAssessmentMediaFixture(source SplitSourceAsset, path string) StructureAssessmentMedia {
+	return StructureAssessmentMedia{
+		Source: source,
+		Assessment: fillerstructure.AssessmentMedia{
+			SHA256: strings.Repeat("9", 64), Bytes: 1_024, DurationMS: source.DurationMs,
+			ProfileSHA256: strings.Repeat("8", 64),
+		},
+		FullPath: path,
+	}
 }

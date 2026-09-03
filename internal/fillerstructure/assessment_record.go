@@ -14,7 +14,7 @@ import (
 func NewAssessmentRecord(input AssessmentRecordInput) (RecordedAssessment, error) {
 	record := AssessmentRecord{
 		SchemaVersion: AssessmentRecordSchemaVersion, ContractVersion: AssessmentRecordContractVersion,
-		Source: input.Source, SourceBytes: input.SourceBytes, Assessor: input.Assessor,
+		Source: input.Source, Media: input.Media, Assessor: input.Assessor,
 		PromptSHA256: input.PromptSHA256, SchemaSHA256: input.SchemaSHA256,
 		RequestSHA256: input.RequestSHA256, ResponseSHA256: optionalAssessmentDigest(input.RawResponse),
 		StructuredOutputSHA256: optionalAssessmentDigest([]byte(input.StructuredOutput)),
@@ -70,7 +70,7 @@ func (record AssessmentRecord) Candidate() (Candidate, error) {
 		CapabilitySHA256: record.Assessor.CapabilitySHA256, PromptVersion: record.Assessor.PromptVersion,
 		EvidenceContract: record.Assessor.EvidenceContract, AssessmentSHA256: record.SHA256,
 	}
-	candidate := Candidate{Source: record.Source, Assessor: assessor}
+	candidate := Candidate{Source: record.Source, Media: record.Media, Assessor: assessor}
 	if record.State != AssessmentRecordAccepted {
 		candidate.Failure = record.Failure
 		return candidate, nil

@@ -3,8 +3,8 @@ package fillerstructure
 import "time"
 
 const (
-	AssessmentRecordSchemaVersion   = 1
-	AssessmentRecordContractVersion = "filler-structure-assessment-record-v1"
+	AssessmentRecordSchemaVersion   = 2
+	AssessmentRecordContractVersion = "filler-structure-assessment-record-v2"
 	AssessmentMaximumResponseBytes  = 256 << 10
 )
 
@@ -51,7 +51,7 @@ type AssessmentRecord struct {
 	SchemaVersion          int                   `json:"schemaVersion"`
 	ContractVersion        string                `json:"contractVersion"`
 	Source                 Source                `json:"source"`
-	SourceBytes            int64                 `json:"sourceBytes"`
+	Media                  AssessmentMedia       `json:"media"`
 	Assessor               AssessorProfile       `json:"assessor"`
 	PromptSHA256           string                `json:"promptSha256"`
 	SchemaSHA256           string                `json:"schemaSha256"`
@@ -86,7 +86,7 @@ type RecordedAssessment struct {
 
 type AssessmentRecordInput struct {
 	Source               Source
-	SourceBytes          int64
+	Media                AssessmentMedia
 	Assessor             AssessorProfile
 	PromptSHA256         string
 	SchemaSHA256         string

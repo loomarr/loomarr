@@ -100,7 +100,8 @@ func TestFileStructureAssessmentEvidenceRepositoryRejectsMissingOrDriftedDecisio
 		t.Fatal("missing decision was accepted")
 	}
 	artifact, err := fillerstructure.NewArtifact(fillerstructure.Request{
-		Source:              fillerstructure.Source{SHA256: strings.Repeat("1", 64), DurationMS: 10_000},
+		Source:              fillerstructure.Source{SHA256: strings.Repeat("1", 64), Bytes: 2_048, DurationMS: 10_000},
+		Media:               fillerstructure.AssessmentMedia{SHA256: strings.Repeat("6", 64), Bytes: 1_024, DurationMS: 10_000, ProfileSHA256: strings.Repeat("7", 64)},
 		BoundaryToleranceMS: 2_000,
 		Candidates: []fillerstructure.Candidate{
 			structureDecisionRepositoryCandidate("a", "family-a", "2"),
@@ -124,7 +125,8 @@ func TestFileStructureAssessmentEvidenceRepositoryRejectsMissingOrDriftedDecisio
 
 func structureDecisionRepositoryCandidate(id, family, assessment string) fillerstructure.Candidate {
 	return fillerstructure.Candidate{
-		Source: fillerstructure.Source{SHA256: strings.Repeat("1", 64), DurationMS: 10_000},
+		Source: fillerstructure.Source{SHA256: strings.Repeat("1", 64), Bytes: 2_048, DurationMS: 10_000},
+		Media:  fillerstructure.AssessmentMedia{SHA256: strings.Repeat("6", 64), Bytes: 1_024, DurationMS: 10_000, ProfileSHA256: strings.Repeat("7", 64)},
 		Assessor: fillerstructure.Assessor{
 			ID: "assessor-" + id, ModelFamily: family, Provider: "captured", Model: "model-" + id,
 			ModelDigest: strings.Repeat("4", 64), CapabilitySHA256: strings.Repeat("5", 64),

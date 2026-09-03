@@ -24,7 +24,7 @@ func ProjectConfirmedStructureDecision(source SplitSourceAsset, detector *Source
 	if decision.Status != fillerstructure.StatusConfirmed {
 		return SourceStructureAssessment{}, fmt.Errorf("project structure decision: decision is held")
 	}
-	if decision.Source.SHA256 != source.SHA256 || decision.Source.DurationMS != source.DurationMs {
+	if decision.Source.SHA256 != source.SHA256 || decision.Source.Bytes != source.Bytes || decision.Source.DurationMS != source.DurationMs {
 		return SourceStructureAssessment{}, fmt.Errorf("project structure decision: artifact binds another source")
 	}
 

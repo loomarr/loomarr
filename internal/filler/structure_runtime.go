@@ -10,9 +10,21 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 )
 
-type StructureAssessmentMedia struct {
+type StructureAssessmentSource struct {
 	Source   SplitSourceAsset
 	FullPath string
+}
+
+type StructureAssessmentMedia struct {
+	Source     SplitSourceAsset
+	Assessment fillerstructure.AssessmentMedia
+	FullPath   string
+}
+
+// StructureAssessmentMediaPreparer produces one durable canonical derivative
+// before either independent assessor runs.
+type StructureAssessmentMediaPreparer interface {
+	Prepare(context.Context, StructureAssessmentSource) (StructureAssessmentMedia, error)
 }
 
 // CompleteTimelineStructureAssessor receives no peer answers. Expected provider failures must be
@@ -25,7 +37,7 @@ type CompleteTimelineStructureAssessor interface {
 // CompleteTimelineStructureDecisioner is the split stage's deep assessment interface. The
 // implementation owns independent execution, evidence persistence, and deterministic reduction.
 type CompleteTimelineStructureDecisioner interface {
-	Assess(context.Context, StructureAssessmentMedia) (fillerstructure.Artifact, error)
+	Assess(context.Context, StructureAssessmentSource) (fillerstructure.Artifact, error)
 }
 
 // StructureAssessmentEvidenceRepository must durably commit each record and exact response before
@@ -39,14 +51,15 @@ type StructureAssessmentEvidenceRepository interface {
 // reduction. Provider configuration and accounting reservations remain inside each assessor adapter.
 type StructureAssessmentRuntime struct {
 	assessors         []CompleteTimelineStructureAssessor
+	preparer          StructureAssessmentMediaPreparer
 	evidence          StructureAssessmentEvidenceRepository
 	boundaryTolerance int64
 	now               func() time.Time
 }
 
-func NewStructureAssessmentRuntime(assessors []CompleteTimelineStructureAssessor, evidence StructureAssessmentEvidenceRepository, boundaryTolerance int64, now func() time.Time) (*StructureAssessmentRuntime, error) {
-	if len(assessors) < 2 || evidence == nil || boundaryTolerance < 0 || now == nil {
-		return nil, fmt.Errorf("structure assessment runtime requires two assessors, evidence repository, tolerance, and clock")
+func NewStructureAssessmentRuntime(assessors []CompleteTimelineStructureAssessor, preparer StructureAssessmentMediaPreparer, evidence StructureAssessmentEvidenceRepository, boundaryTolerance int64, now func() time.Time) (*StructureAssessmentRuntime, error) {
+	if len(assessors) < 2 || preparer == nil || evidence == nil || boundaryTolerance < 0 || now == nil {
+		return nil, fmt.Errorf("structure assessment runtime requires two assessors, media preparer, evidence repository, tolerance, and clock")
 	}
 	profiles := make([]fillerstructure.AssessorProfile, 0, len(assessors))
 	for _, assessor := range assessors {
@@ -60,20 +73,31 @@ func NewStructureAssessmentRuntime(assessors []CompleteTimelineStructureAssessor
 	}
 	return &StructureAssessmentRuntime{
 		assessors:         append([]CompleteTimelineStructureAssessor(nil), assessors...),
+		preparer:          preparer,
 		evidence:          evidence,
 		boundaryTolerance: boundaryTolerance, now: now,
 	}, nil
 }
 
-func (r *StructureAssessmentRuntime) Assess(ctx context.Context, media StructureAssessmentMedia) (fillerstructure.Artifact, error) {
-	if r == nil || len(r.assessors) < 2 || r.now == nil {
+func (r *StructureAssessmentRuntime) Assess(ctx context.Context, input StructureAssessmentSource) (fillerstructure.Artifact, error) {
+	if r == nil || len(r.assessors) < 2 || r.preparer == nil || r.now == nil {
 		return fillerstructure.Artifact{}, fmt.Errorf("structure assessment runtime is unavailable")
 	}
-	if err := media.Source.validate(); err != nil || !filepath.IsAbs(media.FullPath) || filepath.Clean(media.FullPath) != media.FullPath {
-		return fillerstructure.Artifact{}, fmt.Errorf("structure assessment runtime media is invalid")
+	if err := input.Source.validate(); err != nil || !filepath.IsAbs(input.FullPath) || filepath.Clean(input.FullPath) != input.FullPath {
+		return fillerstructure.Artifact{}, fmt.Errorf("structure assessment runtime source is invalid")
 	}
-	source := fillerstructure.Source{SHA256: media.Source.SHA256, DurationMS: media.Source.DurationMs}
-	request := fillerstructure.Request{Source: source, BoundaryToleranceMS: r.boundaryTolerance}
+	media, err := r.preparer.Prepare(ctx, input)
+	if err != nil {
+		return fillerstructure.Artifact{}, fmt.Errorf("prepare structure assessment media: %w", err)
+	}
+	if media.Source != input.Source || !filepath.IsAbs(media.FullPath) || filepath.Clean(media.FullPath) != media.FullPath || media.FullPath == input.FullPath {
+		return fillerstructure.Artifact{}, fmt.Errorf("structure assessment preparer drifted source or path")
+	}
+	source := fillerstructure.Source{SHA256: media.Source.SHA256, Bytes: media.Source.Bytes, DurationMS: media.Source.DurationMs}
+	request := fillerstructure.Request{Source: source, Media: media.Assessment, BoundaryToleranceMS: r.boundaryTolerance}
+	if err := fillerstructure.ValidateAssessmentMedia(source, media.Assessment); err != nil {
+		return fillerstructure.Artifact{}, fmt.Errorf("structure assessment preparer returned invalid media authority")
+	}
 	for index, assessor := range r.assessors {
 		if err := ctx.Err(); err != nil {
 			return fillerstructure.Artifact{}, err
@@ -89,8 +113,8 @@ func (r *StructureAssessmentRuntime) Assess(ctx context.Context, media Structure
 		if err != nil {
 			return fillerstructure.Artifact{}, fmt.Errorf("complete-timeline assessor %d returned invalid candidate: %w", index, err)
 		}
-		if candidate.Source != source || !reflect.DeepEqual(fillerstructure.Profile(candidate.Assessor), assessor.Profile()) {
-			return fillerstructure.Artifact{}, fmt.Errorf("complete-timeline assessor %d drifted source or profile", index)
+		if candidate.Source != source || candidate.Media != media.Assessment || !reflect.DeepEqual(fillerstructure.Profile(candidate.Assessor), assessor.Profile()) {
+			return fillerstructure.Artifact{}, fmt.Errorf("complete-timeline assessor %d drifted source, media, or profile", index)
 		}
 		if err := r.evidence.PutStructureAssessmentEvidence(ctx, recorded); err != nil {
 			return fillerstructure.Artifact{}, fmt.Errorf("persist complete-timeline assessor %d evidence: %w", index, err)

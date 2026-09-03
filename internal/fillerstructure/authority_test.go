@@ -23,6 +23,9 @@ func TestVerifyAuthorityRequiresExactCertifiedProfilesAndSlices(t *testing.T) {
 	}{
 		{name: "permission", mutate: func(a *Authority) { a.AutomaticMaterializationAllowed = false }},
 		{name: "model", mutate: func(a *Authority) { a.Assessors[0].Model = "another-model" }},
+		{name: "media profile", mutate: func(a *Authority) { a.AssessmentMediaProfileSHA256 = strings.Repeat("e", 64) }},
+		{name: "duration envelope", mutate: func(a *Authority) { a.MaximumSourceDurationMS-- }},
+		{name: "byte envelope", mutate: func(a *Authority) { a.MaximumAssessmentMediaBytes-- }},
 		{name: "unit slice", mutate: func(a *Authority) { a.AllowedUnits = []Unit{UnitProgrammeSpots} }},
 		{name: "role slice", mutate: func(a *Authority) { a.AllowedRoles = []Role{RoleCommercial} }},
 	}
@@ -60,7 +63,9 @@ func TestVerifyAuthorityRejectsHeldDecision(t *testing.T) {
 func fixtureAuthority(artifact Artifact) Authority {
 	authority := Authority{
 		SchemaVersion: AuthoritySchemaVersion, ContractVersion: AuthorityContractVersion,
-		CertificateSHA256: strings.Repeat("f", 64), ReducerVersion: ReducerContractVersion,
+		CertificateSHA256: strings.Repeat("f", 64), AssessmentMediaProfileSHA256: artifact.Decision.Media.ProfileSHA256,
+		MinimumSourceDurationMS: 1, MaximumSourceDurationMS: artifact.Decision.Source.DurationMS,
+		MaximumAssessmentMediaBytes: artifact.Decision.Media.Bytes, ReducerVersion: ReducerContractVersion,
 		BoundaryToleranceMS: artifact.BoundaryToleranceMS, AllowedUnits: []Unit{UnitCompilation},
 		AllowedRoles: []Role{RoleCommercial, RolePromo}, AutomaticMaterializationAllowed: true,
 	}

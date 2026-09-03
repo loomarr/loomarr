@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillereval"
+	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 )
 
 func TestPublishTemporalStructureDecisionsConfirmsAgreementWithoutPrivateTruth(t *testing.T) {
@@ -28,7 +29,7 @@ func TestPublishTemporalStructureDecisionsConfirmsAgreementWithoutPrivateTruth(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reviewSHA256(digest) || report.Cases != 3 || report.ConfirmedCases != 3 || report.HeldCases != 0 || report.IndependentModelFamilies != 2 || report.ProductionAdmissionAllowed || len(report.HoldReasons) != 0 {
+	if !reviewSHA256(digest) || report.AssessmentMediaProfileSHA256 != fillerstructuremedia.CanonicalProfile().SHA256 || report.Cases != 3 || report.ConfirmedCases != 3 || report.HeldCases != 0 || report.IndependentModelFamilies != 2 || report.ProductionAdmissionAllowed || len(report.HoldReasons) != 0 {
 		t.Fatalf("decision report = %+v digest=%q", report, digest)
 	}
 	decision := temporalStructureDecisionByUnit(t, report, fillereval.UnitCompilation)

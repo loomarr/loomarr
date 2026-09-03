@@ -45,7 +45,7 @@ func TestBuildTemporalStructureChallengeSeparatesBlindedMediaFromConstructionAut
 	if err != nil || loadedManifestSHA != firstResult.PublicManifestSHA256 || loadedAuthoritySHA != firstResult.AuthoritySHA256 || len(loadedManifest.Cases) != 3 || len(loadedAuthority.Cases) != 3 {
 		t.Fatalf("loaded authority = %d/%d %s/%s, %v", len(loadedManifest.Cases), len(loadedAuthority.Cases), loadedManifestSHA, loadedAuthoritySHA, err)
 	}
-	if manifest.ProductionAdmissionAllowed || len(manifest.Cases) != 3 || authority.PublicManifestSHA256 != firstResult.PublicManifestSHA256 || authority.AssessmentMediaProfile.SHA256 != fillerstructuremedia.CanonicalProfile().SHA256 || len(authority.Cases) != 3 {
+	if manifest.ProductionAdmissionAllowed || manifest.AssessmentMediaProfileSHA256 != fillerstructuremedia.CanonicalProfile().SHA256 || len(manifest.Cases) != 3 || authority.PublicManifestSHA256 != firstResult.PublicManifestSHA256 || authority.AssessmentMediaProfile.SHA256 != manifest.AssessmentMediaProfileSHA256 || len(authority.Cases) != 3 {
 		t.Fatalf("manifest=%+v authority=%+v", manifest, authority)
 	}
 	units := make(map[fillereval.UnitKind]TemporalStructureChallengeAuthorityCase, len(authority.Cases))

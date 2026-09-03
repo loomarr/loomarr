@@ -27,11 +27,12 @@ type temporalStructureDecisionCandidate struct {
 	assessment       TemporalStructureAssessment
 }
 
-func reduceTemporalStructureDecision(alias, sourceSHA string, durationMS int64, candidates []temporalStructureDecisionCandidate) TemporalStructureCaseDecision {
-	source := fillerstructure.Source{SHA256: sourceSHA, DurationMS: durationMS}
-	request := fillerstructure.Request{Source: source, BoundaryToleranceMS: TemporalStructureNearBoundaryMS}
+func reduceTemporalStructureDecision(alias, sourceSHA string, sourceBytes, durationMS int64, profileSHA string, candidates []temporalStructureDecisionCandidate) TemporalStructureCaseDecision {
+	source := fillerstructure.Source{SHA256: sourceSHA, Bytes: sourceBytes, DurationMS: durationMS}
+	media := fillerstructure.AssessmentMedia{SHA256: sourceSHA, Bytes: sourceBytes, DurationMS: durationMS, ProfileSHA256: profileSHA}
+	request := fillerstructure.Request{Source: source, Media: media, BoundaryToleranceMS: TemporalStructureNearBoundaryMS}
 	for _, candidate := range candidates {
-		request.Candidates = append(request.Candidates, temporalStructureCoreCandidate(source, candidate))
+		request.Candidates = append(request.Candidates, temporalStructureCoreCandidate(source, media, candidate))
 	}
 	reduced := fillerstructure.Reduce(request)
 	decision := TemporalStructureCaseDecision{
@@ -54,10 +55,10 @@ func reduceTemporalStructureDecision(alias, sourceSHA string, durationMS int64, 
 	return decision
 }
 
-func temporalStructureCoreCandidate(source fillerstructure.Source, candidate temporalStructureDecisionCandidate) fillerstructure.Candidate {
+func temporalStructureCoreCandidate(source fillerstructure.Source, media fillerstructure.AssessmentMedia, candidate temporalStructureDecisionCandidate) fillerstructure.Candidate {
 	identity := candidate.assessor
 	result := fillerstructure.Candidate{
-		Source: source,
+		Source: source, Media: media,
 		Assessor: fillerstructure.Assessor{
 			ID: identity.ID, ModelFamily: strings.ToLower(strings.TrimSpace(identity.ModelFamily)),
 			Provider: identity.Provider, Model: identity.Model, ModelDigest: identity.ModelDigest,

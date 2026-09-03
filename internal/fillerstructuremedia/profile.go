@@ -6,35 +6,38 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+
+	"github.com/loomarr/loomarr/internal/fillerstructure"
 )
 
 const (
-	ProfileSchemaVersion   = 1
-	ProfileContractVersion = "filler-structure-assessment-media-v1"
-	MaximumVideoBytes      = int64(64 << 20)
+	ProfileSchemaVersion   = 2
+	ProfileContractVersion = "filler-structure-assessment-media-v2"
+	MaximumVideoBytes      = fillerstructure.AssessmentMediaMaximumBytes
 )
 
 // Profile is the path-free identity of the one supported assessment-media
 // recipe. Media-tool binary identities are bound separately by the caller.
 type Profile struct {
-	SchemaVersion       int    `json:"schemaVersion"`
-	ContractVersion     string `json:"contractVersion"`
-	MIMEType            string `json:"mimeType"`
-	Container           string `json:"container"`
-	VideoCodec          string `json:"videoCodec"`
-	PixelFormat         string `json:"pixelFormat"`
-	Width               int    `json:"width"`
-	Height              int    `json:"height"`
-	FrameRate           string `json:"frameRate"`
-	SampleAspectRatio   string `json:"sampleAspectRatio"`
-	AudioCodec          string `json:"audioCodec"`
-	AudioSampleRate     int    `json:"audioSampleRate"`
-	AudioChannels       int    `json:"audioChannels"`
-	VideoTrackTimescale int    `json:"videoTrackTimescale"`
-	MaximumVideoBytes   int64  `json:"maximumVideoBytes"`
-	PartRecipeSHA256    string `json:"partRecipeSha256"`
-	ConcatRecipeSHA256  string `json:"concatRecipeSha256"`
-	SHA256              string `json:"sha256"`
+	SchemaVersion          int    `json:"schemaVersion"`
+	ContractVersion        string `json:"contractVersion"`
+	MIMEType               string `json:"mimeType"`
+	Container              string `json:"container"`
+	VideoCodec             string `json:"videoCodec"`
+	PixelFormat            string `json:"pixelFormat"`
+	Width                  int    `json:"width"`
+	Height                 int    `json:"height"`
+	FrameRate              string `json:"frameRate"`
+	SampleAspectRatio      string `json:"sampleAspectRatio"`
+	AudioCodec             string `json:"audioCodec"`
+	AudioSampleRate        int    `json:"audioSampleRate"`
+	AudioChannels          int    `json:"audioChannels"`
+	VideoTrackTimescale    int    `json:"videoTrackTimescale"`
+	MaximumVideoBytes      int64  `json:"maximumVideoBytes"`
+	MaximumTimelineDriftMS int64  `json:"maximumTimelineDriftMs"`
+	PartRecipeSHA256       string `json:"partRecipeSha256"`
+	ConcatRecipeSHA256     string `json:"concatRecipeSha256"`
+	SHA256                 string `json:"sha256"`
 }
 
 // CanonicalProfile returns a fresh value so callers cannot mutate shared
@@ -46,8 +49,9 @@ func CanonicalProfile() Profile {
 		Width: 960, Height: 720, FrameRate: "30/1", SampleAspectRatio: "1/1",
 		AudioCodec: "aac", AudioSampleRate: 48_000, AudioChannels: 2,
 		VideoTrackTimescale: 90_000, MaximumVideoBytes: MaximumVideoBytes,
-		PartRecipeSHA256:   recipeSHA256(partArgumentTemplate()),
-		ConcatRecipeSHA256: recipeSHA256(concatArgumentTemplate()),
+		MaximumTimelineDriftMS: fillerstructure.AssessmentMediaMaximumTimelineDriftMS,
+		PartRecipeSHA256:       recipeSHA256(partArgumentTemplate()),
+		ConcatRecipeSHA256:     recipeSHA256(concatArgumentTemplate()),
 	}
 	profile.SHA256 = ProfileSHA256(profile)
 	return profile

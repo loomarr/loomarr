@@ -2,6 +2,11 @@
 // agreement policy shared by certification and production.
 package fillerstructure
 
+const (
+	AssessmentMediaMaximumBytes           int64 = 64 << 20
+	AssessmentMediaMaximumTimelineDriftMS int64 = 1_000
+)
+
 type Status string
 
 const (
@@ -59,7 +64,17 @@ const (
 
 type Source struct {
 	SHA256     string `json:"sha256"`
+	Bytes      int64  `json:"bytes"`
 	DurationMS int64  `json:"durationMs"`
+}
+
+// AssessmentMedia identifies the exact transformed bytes submitted to every
+// complete-timeline assessor. Source remains the original timeline authority.
+type AssessmentMedia struct {
+	SHA256        string `json:"sha256"`
+	Bytes         int64  `json:"bytes"`
+	DurationMS    int64  `json:"durationMs"`
+	ProfileSHA256 string `json:"profileSha256"`
 }
 
 type Assessor struct {
@@ -81,16 +96,18 @@ type Segment struct {
 }
 
 type Candidate struct {
-	Source   Source    `json:"source"`
-	Assessor Assessor  `json:"assessor"`
-	Failure  string    `json:"failure,omitempty"`
-	Unit     Unit      `json:"unit,omitempty"`
-	Role     Role      `json:"role,omitempty"`
-	Segments []Segment `json:"segments,omitempty"`
+	Source   Source          `json:"source"`
+	Media    AssessmentMedia `json:"media"`
+	Assessor Assessor        `json:"assessor"`
+	Failure  string          `json:"failure,omitempty"`
+	Unit     Unit            `json:"unit,omitempty"`
+	Role     Role            `json:"role,omitempty"`
+	Segments []Segment       `json:"segments,omitempty"`
 }
 
 type Request struct {
 	Source              Source
+	Media               AssessmentMedia
 	BoundaryToleranceMS int64
 	Candidates          []Candidate
 }
@@ -104,6 +121,7 @@ type DecisionSegment struct {
 
 type Decision struct {
 	Source      Source            `json:"source"`
+	Media       AssessmentMedia   `json:"media"`
 	Status      Status            `json:"status"`
 	ReasonCodes []string          `json:"reasonCodes"`
 	Unit        Unit              `json:"unit,omitempty"`

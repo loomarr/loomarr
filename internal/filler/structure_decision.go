@@ -20,7 +20,7 @@ func ValidateStructureDecisionProjection(assessment SourceStructureAssessment, a
 	if decision.Status != fillerstructure.StatusConfirmed {
 		return errors.New("source structure decision is held")
 	}
-	if decision.Source.SHA256 != assessment.Source.SHA256 || decision.Source.DurationMS != assessment.DurationMs {
+	if decision.Source.SHA256 != assessment.Source.SHA256 || decision.Source.Bytes != assessment.Source.Bytes || decision.Source.DurationMS != assessment.DurationMs {
 		return errors.New("source structure decision binds another source")
 	}
 	kind, err := projectedStructureKind(decision.Unit)

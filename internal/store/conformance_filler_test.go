@@ -2992,10 +2992,11 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	decisionSource := fillerstructure.Source{SHA256: source.SHA256, DurationMS: source.DurationMs}
+	decisionSource := fillerstructure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: source.DurationMs}
+	structureMedia := fillerstructure.AssessmentMedia{SHA256: strings.Repeat("6", 64), Bytes: source.Bytes, DurationMS: source.DurationMs, ProfileSHA256: strings.Repeat("5", 64)}
 	structureCandidate := func(id, family, assessmentDigest string) fillerstructure.Candidate {
 		return fillerstructure.Candidate{
-			Source: decisionSource,
+			Source: decisionSource, Media: structureMedia,
 			Assessor: fillerstructure.Assessor{
 				ID: id, ModelFamily: family, Provider: "fixture-provider", Model: "fixture-model",
 				ModelDigest: strings.Repeat("8", 64), CapabilitySHA256: strings.Repeat("7", 64),
@@ -3010,7 +3011,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 		}
 	}
 	structureDecision, err := fillerstructure.NewArtifact(fillerstructure.Request{
-		Source: decisionSource, BoundaryToleranceMS: 2_000,
+		Source: decisionSource, Media: structureMedia, BoundaryToleranceMS: 2_000,
 		Candidates: []fillerstructure.Candidate{
 			structureCandidate("structure-assessor-a", "structure-family-a", strings.Repeat("9", 64)),
 			structureCandidate("structure-assessor-b", "structure-family-b", strings.Repeat("a", 64)),
@@ -4047,8 +4048,8 @@ func structureAssessmentReservationFixture(t *testing.T, requestDigit, sourceDig
 	t.Helper()
 	reservation, err := fillerstructure.NewAssessmentReservation(fillerstructure.AssessmentReservationInput{
 		RequestSHA256: strings.Repeat(requestDigit, 64),
-		Source:        fillerstructure.Source{SHA256: strings.Repeat(sourceDigit, 64), DurationMS: 10_000},
-		SourceBytes:   4_096,
+		Source:        fillerstructure.Source{SHA256: strings.Repeat(sourceDigit, 64), Bytes: 8_192, DurationMS: 10_000},
+		Media:         fillerstructure.AssessmentMedia{SHA256: strings.Repeat("8", 64), Bytes: 4_096, DurationMS: 10_000, ProfileSHA256: strings.Repeat("9", 64)},
 		Assessor: fillerstructure.AssessorProfile{
 			ID: "assessor-" + requestDigit, ModelFamily: "family-" + requestDigit,
 			Provider: "openrouter", Model: "requested-model-" + requestDigit,
@@ -4070,7 +4071,7 @@ func structureAssessmentReservationFixture(t *testing.T, requestDigit, sourceDig
 func structureAssessmentRecordFixture(t *testing.T, reservation fillerstructure.AssessmentReservation, state fillerstructure.AssessmentRecordState, charge int64) fillerstructure.AssessmentRecord {
 	t.Helper()
 	input := fillerstructure.AssessmentRecordInput{
-		Source: reservation.Source, SourceBytes: reservation.SourceBytes, Assessor: reservation.Assessor,
+		Source: reservation.Source, Media: reservation.Media, Assessor: reservation.Assessor,
 		PromptSHA256: reservation.PromptSHA256, SchemaSHA256: reservation.SchemaSHA256,
 		RequestSHA256:    reservation.RequestSHA256,
 		UpstreamProvider: reservation.UpstreamProvider, UpstreamProviderSlug: reservation.UpstreamProviderSlug,

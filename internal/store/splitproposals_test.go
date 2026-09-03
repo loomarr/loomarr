@@ -48,10 +48,11 @@ func TestMarshalSplitProposalRejectsStructureDecisionForAnotherSource(t *testing
 		Role: filler.SplitSourceLegacyPlayback, SHA256: strings.Repeat("a", 64), Bytes: 100,
 		ClipHash: strings.Repeat("b", 64), Path: "aa/bb/source.mp4", DurationMs: 60_000,
 	}
-	decisionSource := fillerstructure.Source{SHA256: strings.Repeat("c", 64), DurationMS: source.DurationMs}
+	decisionSource := fillerstructure.Source{SHA256: strings.Repeat("c", 64), Bytes: source.Bytes, DurationMS: source.DurationMs}
+	media := fillerstructure.AssessmentMedia{SHA256: strings.Repeat("2", 64), Bytes: source.Bytes, DurationMS: source.DurationMs, ProfileSHA256: strings.Repeat("3", 64)}
 	candidate := func(id, family, assessmentDigest string) fillerstructure.Candidate {
 		return fillerstructure.Candidate{
-			Source: decisionSource,
+			Source: decisionSource, Media: media,
 			Assessor: fillerstructure.Assessor{
 				ID: id, ModelFamily: family, Provider: "provider", Model: "model",
 				ModelDigest: strings.Repeat("d", 64), CapabilitySHA256: strings.Repeat("1", 64),
@@ -63,7 +64,7 @@ func TestMarshalSplitProposalRejectsStructureDecisionForAnotherSource(t *testing
 		}
 	}
 	artifact, err := fillerstructure.NewArtifact(fillerstructure.Request{
-		Source: decisionSource, BoundaryToleranceMS: 2_000,
+		Source: decisionSource, Media: media, BoundaryToleranceMS: 2_000,
 		Candidates: []fillerstructure.Candidate{
 			candidate("assessor-a", "family-a", strings.Repeat("e", 64)),
 			candidate("assessor-b", "family-b", strings.Repeat("f", 64)),

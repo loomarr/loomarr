@@ -9,7 +9,7 @@ import (
 func TestAssessmentReservationAndLedgerEntryBindSettlement(t *testing.T) {
 	input := acceptedAssessmentInput()
 	reservation, err := NewAssessmentReservation(AssessmentReservationInput{
-		RequestSHA256: input.RequestSHA256, Source: input.Source, SourceBytes: input.SourceBytes,
+		RequestSHA256: input.RequestSHA256, Source: input.Source, Media: input.Media,
 		Assessor: input.Assessor, PromptSHA256: input.PromptSHA256, SchemaSHA256: input.SchemaSHA256,
 		ExpectedResolvedModel: input.ResolvedModel,
 		UpstreamProvider:      input.UpstreamProvider, UpstreamProviderSlug: input.UpstreamProviderSlug,
@@ -31,6 +31,7 @@ func TestAssessmentReservationAndLedgerEntryBindSettlement(t *testing.T) {
 	mutations := map[string]func(*AssessmentLedgerEntry){
 		"request": func(entry *AssessmentLedgerEntry) { entry.Record.RequestSHA256 = strings.Repeat("0", 64) },
 		"source":  func(entry *AssessmentLedgerEntry) { entry.Record.Source.DurationMS++ },
+		"media":   func(entry *AssessmentLedgerEntry) { entry.Record.Media.SHA256 = strings.Repeat("9", 64) },
 		"model":   func(entry *AssessmentLedgerEntry) { entry.Record.ResolvedModel = "another-model" },
 		"time": func(entry *AssessmentLedgerEntry) {
 			entry.Record.AssessedAt = reservation.RequestedAt.Add(-time.Second)
@@ -53,7 +54,7 @@ func TestAssessmentReservationAndLedgerEntryBindSettlement(t *testing.T) {
 func TestAssessmentLedgerOpenStatesCannotContainARecord(t *testing.T) {
 	input := acceptedAssessmentInput()
 	reservation, err := NewAssessmentReservation(AssessmentReservationInput{
-		RequestSHA256: input.RequestSHA256, Source: input.Source, SourceBytes: input.SourceBytes,
+		RequestSHA256: input.RequestSHA256, Source: input.Source, Media: input.Media,
 		Assessor: input.Assessor, PromptSHA256: input.PromptSHA256, SchemaSHA256: input.SchemaSHA256,
 		ExpectedResolvedModel: input.ResolvedModel,
 		UpstreamProvider:      input.UpstreamProvider, UpstreamProviderSlug: input.UpstreamProviderSlug,

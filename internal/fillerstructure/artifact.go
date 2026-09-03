@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	ArtifactSchemaVersion   = 1
-	ArtifactContractVersion = "filler-structure-decision-artifact-v1"
+	ArtifactSchemaVersion   = 2
+	ArtifactContractVersion = "filler-structure-decision-artifact-v2"
 	ReducerContractVersion  = "filler-structure-agreement-v1"
 )
 
@@ -56,7 +56,7 @@ func ValidateArtifact(artifact Artifact) error {
 		return errors.New("filler structure artifact: digest does not match")
 	}
 	reduced := Reduce(Request{
-		Source: artifact.Decision.Source, BoundaryToleranceMS: artifact.BoundaryToleranceMS,
+		Source: artifact.Decision.Source, Media: artifact.Decision.Media, BoundaryToleranceMS: artifact.BoundaryToleranceMS,
 		Candidates: artifact.Decision.Candidates,
 	})
 	if slices.Contains(reduced.ReasonCodes, ReasonInvalidCandidate) || !reflect.DeepEqual(reduced, artifact.Decision) {

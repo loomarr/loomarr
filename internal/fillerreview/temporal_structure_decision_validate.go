@@ -18,7 +18,7 @@ func loadTemporalStructureDecisionArtifact(path, publicManifestPath string, asse
 	if err != nil {
 		return TemporalStructureDecisionReport{}, "", fmt.Errorf("decode temporal structure decision: %w", err)
 	}
-	if report.SchemaVersion != TemporalStructureDecisionSchemaVersion || report.ContractVersion != TemporalStructureDecisionContractVersion || report.BoundaryToleranceMS != TemporalStructureNearBoundaryMS || report.Cases != expectedCases || report.ProductionAdmissionAllowed {
+	if report.SchemaVersion != TemporalStructureDecisionSchemaVersion || report.ContractVersion != TemporalStructureDecisionContractVersion || report.BoundaryToleranceMS != TemporalStructureNearBoundaryMS || !reviewSHA256(report.AssessmentMediaProfileSHA256) || report.Cases != expectedCases || report.ProductionAdmissionAllowed {
 		return TemporalStructureDecisionReport{}, "", fmt.Errorf("temporal structure decision identity, policy, count, or production disposition is invalid")
 	}
 	loaded, err := loadTemporalStructureDecision(TemporalStructureDecisionConfig{
@@ -27,6 +27,9 @@ func loadTemporalStructureDecisionArtifact(path, publicManifestPath string, asse
 	})
 	if err != nil {
 		return TemporalStructureDecisionReport{}, "", err
+	}
+	if report.AssessmentMediaProfileSHA256 != loaded.manifest.AssessmentMediaProfileSHA256 {
+		return TemporalStructureDecisionReport{}, "", fmt.Errorf("temporal structure decision media profile does not bind the public challenge")
 	}
 	reproduced := buildTemporalStructureDecision(loaded, report.DecidedAt.UTC())
 	reproducedRaw, err := json.MarshalIndent(reproduced, "", "  ")

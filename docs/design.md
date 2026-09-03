@@ -3266,7 +3266,11 @@ assessment-media contract owns the challenge and runtime normalization recipe: M
 a 90,000 video timescale, normalized timestamp origin, stripped metadata, bitexact controls, and a 64 MiB
 encoded-byte ceiling. The recipe identity includes the exact part and concat argument templates; copying
 those arguments into a challenge-only or provider-only adapter is not an equivalent contract. Every
-assessment binds both the immutable V66 source and the exact submitted derivative. The certification
+assessment binds both the immutable V66 source (complete SHA-256, byte length, and source timeline) and
+the exact submitted derivative (complete SHA-256, byte length, measured duration, and media-profile
+SHA-256). The source and derivative are distinct first-class identities in every candidate, reservation,
+settled assessment, reducer decision, and materialization-authority check; a transformed-media digest may
+never replace or masquerade as the parent source digest. The certification
 authority also names the tested source-duration and encoded-byte envelope, and runtime holds before spend
 when a source or derivative falls outside it. Qualification may not extrapolate from shorter cases, silently
 truncate a reel, or replace complete-timeline authority with independently judged chunks. If a truthful

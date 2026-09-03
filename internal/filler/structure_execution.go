@@ -29,12 +29,12 @@ func (sp *Splitter) AssessProposalStructure(ctx context.Context, proposal SplitP
 	if err != nil {
 		return SplitProposal{}, fmt.Errorf("assess proposal structure source: %w", err)
 	}
-	artifact, err := decisioner.Assess(ctx, StructureAssessmentMedia{Source: source, FullPath: fullPath})
+	artifact, err := decisioner.Assess(ctx, StructureAssessmentSource{Source: source, FullPath: fullPath})
 	if err != nil {
 		return SplitProposal{}, fmt.Errorf("assess complete proposal timeline: %w", err)
 	}
 	if err := fillerstructure.ValidateArtifact(artifact); err != nil ||
-		artifact.Decision.Source.SHA256 != source.SHA256 || artifact.Decision.Source.DurationMS != source.DurationMs {
+		artifact.Decision.Source.SHA256 != source.SHA256 || artifact.Decision.Source.Bytes != source.Bytes || artifact.Decision.Source.DurationMS != source.DurationMs {
 		return SplitProposal{}, fmt.Errorf("assess proposal structure: decision is invalid or source-drifted")
 	}
 	updated := proposal

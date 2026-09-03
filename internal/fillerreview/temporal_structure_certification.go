@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	TemporalStructureCertificationSchemaVersion   = 3
-	TemporalStructureCertificationContractVersion = "filler-temporal-structure-certification-v3"
+	TemporalStructureCertificationSchemaVersion   = 4
+	TemporalStructureCertificationContractVersion = "filler-temporal-structure-certification-v4"
 	TemporalStructureCertificationPassed          = "passed"
 	TemporalStructureCertificationFailed          = "failed"
 
@@ -54,6 +54,9 @@ type TemporalStructureCertificationReport struct {
 	PublicManifestSHA256         string                                `json:"publicManifestSha256"`
 	PrivateAuthoritySHA256       string                                `json:"privateAuthoritySha256"`
 	AssessmentMediaProfileSHA256 string                                `json:"assessmentMediaProfileSha256"`
+	MinimumTimelineDurationMS    int64                                 `json:"minimumTimelineDurationMs"`
+	MaximumTimelineDurationMS    int64                                 `json:"maximumTimelineDurationMs"`
+	MaximumAssessmentMediaBytes  int64                                 `json:"maximumAssessmentMediaBytes"`
 	DecisionSHA256               string                                `json:"decisionSha256"`
 	Cases                        int                                   `json:"cases"`
 	DecidedCases                 int                                   `json:"decidedCases"`
@@ -135,6 +138,9 @@ func PublishTemporalStructureCertification(config TemporalStructureCertification
 	}
 	if decision.ChallengeID != manifest.ChallengeID || decision.PublicManifestSHA256 != publicSHA || decision.PrivateAuthoritySHA256 != authoritySHA {
 		return TemporalStructureCertificationReport{}, "", fmt.Errorf("temporal structure decision does not bind the challenge authority")
+	}
+	if decision.AssessmentMediaProfileSHA256 != authority.AssessmentMediaProfile.SHA256 {
+		return TemporalStructureCertificationReport{}, "", fmt.Errorf("temporal structure decision does not bind the challenge media profile")
 	}
 	if authority.AuthoringSHA256 != receipt.AuthoringSHA256 || authority.SeedSHA256 != receipt.SeedSHA256 || authority.GeneratedAt.Before(receipt.PlannedAt) {
 		return TemporalStructureCertificationReport{}, "", fmt.Errorf("temporal structure challenge does not descend from the certified holdout")

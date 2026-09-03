@@ -8,8 +8,8 @@ import (
 
 func ValidateAssessmentRecord(record AssessmentRecord) error {
 	if record.SchemaVersion != AssessmentRecordSchemaVersion || record.ContractVersion != AssessmentRecordContractVersion ||
-		!digest(record.SHA256) || record.SHA256 != AssessmentRecordSHA256(record) || !digest(record.Source.SHA256) ||
-		record.Source.DurationMS <= 0 || record.SourceBytes <= 0 || !validProfile(record.Assessor) ||
+		!digest(record.SHA256) || record.SHA256 != AssessmentRecordSHA256(record) || !validSource(record.Source) ||
+		!validAssessmentMedia(record.Media, record.Source) || !validProfile(record.Assessor) ||
 		!digest(record.PromptSHA256) || !digest(record.SchemaSHA256) || !digest(record.RequestSHA256) ||
 		!canonicalIdentity(record.UpstreamProvider) || !canonicalIdentity(record.UpstreamProviderSlug) ||
 		record.RequestedNanoUSD <= 0 || record.ReservedNanoUSD < 0 || record.ChargedNanoUSD < 0 ||
