@@ -157,7 +157,8 @@ func verifyFastStart(path string) (bool, error) {
 		}
 		size := int64(binary.BigEndian.Uint32(header[:4]))
 		headerSize := int64(8)
-		if size == 1 {
+		switch size {
+		case 1:
 			if _, err := file.ReadAt(header[8:16], offset+8); err != nil {
 				return false, fmt.Errorf("read extended MP4 box at %d: %w", offset, err)
 			}
@@ -166,7 +167,7 @@ func verifyFastStart(path string) (bool, error) {
 			}
 			size = int64(binary.BigEndian.Uint64(header[8:16]))
 			headerSize = 16
-		} else if size == 0 {
+		case 0:
 			size = info.Size() - offset
 		}
 		if size < headerSize || size > info.Size()-offset {
