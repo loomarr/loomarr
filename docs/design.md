@@ -3225,6 +3225,16 @@ outcomes but cannot create a `keep` interval. Rebuilding an assessment replaces 
 same spans from the proposal's retained evidence while preserving independent detector observations and
 explicit discard intervals; it never treats a prior tag, generated name, or parent kind as role evidence.
 
+When that sparse-frame request cannot establish a role, the exact unresolved interval may make one
+**direct-video escalation** through the certified `filler_video` route. The escalation receives a freshly
+rendered, metadata-free MP4 of only that source interval, capped at 60 seconds and 12 MiB; an over-limit span
+is held rather than narrowed silently. A valid frame role suppresses the escalation. The resulting role
+evidence binds the derivative SHA-256 instead of frame SHA-256s plus the same exact source/span,
+prompt/response, route, modalities, accounting, and generation identity. An extraction failure, derivative
+identity drift, unavailable route, malformed output, missing attribution, or unsupported role leaves the
+interval unresolved. Merely implementing or capability-checking this route does not certify it and cannot
+expand unattended publication; only the locked source/signal-slice result below may do that.
+
 Automatic publication requires all of the following: a `compilation_break` or explicitly bounded filler
 portion of `programme_with_spots`; exact evidence bytes still match; every published interval has resolved
 boundaries and an allowed filler role; every non-published interval is an explained discard rather than an

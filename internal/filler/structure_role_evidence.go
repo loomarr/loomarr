@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	StructureRoleEvidenceSchemaVersion   = 1
-	StructureRoleEvidenceContractVersion = "filler-structure-role-evidence-v1"
+	StructureRoleEvidenceSchemaVersion   = 2
+	StructureRoleEvidenceContractVersion = "filler-structure-role-evidence-v2"
 	structureRoleReasonMaximumBytes      = 2_048
 )
 
@@ -38,7 +38,8 @@ type StructureRoleCharge struct {
 }
 
 // StructureRoleEvidence binds one semantic role judgement to exact source bytes, one interval,
-// ordered frame bytes, the prompt/response, and the provider's attribution envelope.
+// either ordered frame bytes or one bounded video derivative, the prompt/response, and the
+// provider's attribution envelope.
 type StructureRoleEvidence struct {
 	SchemaVersion     int                     `json:"schemaVersion"`
 	ContractVersion   string                  `json:"contractVersion"`
@@ -48,6 +49,7 @@ type StructureRoleEvidence struct {
 	Role              StructureSegmentRole    `json:"role"`
 	Reason            string                  `json:"reason"`
 	FrameSHA256       []string                `json:"frameSha256"`
+	VideoSHA256       string                  `json:"videoSha256,omitempty"`
 	PromptVersion     string                  `json:"promptVersion"`
 	PromptSHA256      string                  `json:"promptSha256"`
 	RequestSHA256     string                  `json:"requestSha256"`
@@ -73,6 +75,7 @@ type StructureRoleEvidenceInput struct {
 	Role              StructureSegmentRole
 	Reason            string
 	Frames            [][]byte
+	Video             []byte
 	PromptVersion     string
 	Prompt            string
 	Response          string
@@ -96,6 +99,9 @@ func NewStructureRoleEvidence(input StructureRoleEvidenceInput) (StructureRoleEv
 	if strings.TrimSpace(input.Prompt) == "" || strings.TrimSpace(input.Response) == "" {
 		return StructureRoleEvidence{}, errors.New("source structure: role evidence prompt and response are required")
 	}
+	if (len(input.Frames) == 0) == (len(input.Video) == 0) {
+		return StructureRoleEvidence{}, errors.New("source structure: role evidence requires exactly one frame or video input")
+	}
 	frames := make([]string, 0, len(input.Frames))
 	for _, frame := range input.Frames {
 		if len(frame) == 0 {
@@ -109,6 +115,7 @@ func NewStructureRoleEvidence(input StructureRoleEvidenceInput) (StructureRoleEv
 		Source: input.Source, StartMs: input.StartMs, EndMs: input.EndMs, Role: input.Role,
 		Reason: strings.TrimSpace(input.Reason), FrameSHA256: frames,
 		PromptVersion: strings.TrimSpace(input.PromptVersion), PromptSHA256: promptSHA,
+		VideoSHA256:       structureOptionalBytesSHA256(input.Video),
 		ResponseSHA256:    structureBytesSHA256([]byte(input.Response)),
 		RequestedProvider: strings.TrimSpace(input.RequestedProvider), ResolvedProvider: strings.TrimSpace(input.ResolvedProvider),
 		RequestedModel: strings.TrimSpace(input.RequestedModel), ResolvedModel: strings.TrimSpace(input.ResolvedModel),
@@ -148,8 +155,10 @@ func ValidateStructureRoleEvidence(evidence StructureRoleEvidence) error {
 	if !validStructureSegmentRole(evidence.Role) || evidence.Reason != strings.TrimSpace(evidence.Reason) || evidence.Reason == "" || len(evidence.Reason) > structureRoleReasonMaximumBytes {
 		return errors.New("source structure: role evidence claim is invalid")
 	}
-	if len(evidence.FrameSHA256) == 0 || len(evidence.FrameSHA256) > VisionKeyframes {
-		return errors.New("source structure: role evidence frame set is invalid")
+	frameEvidence := len(evidence.FrameSHA256) > 0 && evidence.VideoSHA256 == ""
+	videoEvidence := len(evidence.FrameSHA256) == 0 && isContentHash(evidence.VideoSHA256)
+	if !frameEvidence && !videoEvidence || len(evidence.FrameSHA256) > VisionKeyframes {
+		return errors.New("source structure: role evidence media binding is invalid")
 	}
 	for _, digest := range evidence.FrameSHA256 {
 		if !isContentHash(digest) {
@@ -163,7 +172,8 @@ func ValidateStructureRoleEvidence(evidence StructureRoleEvidence) error {
 		return errors.New("source structure: role evidence request digest does not match")
 	}
 	canonicalModalities := slices.Compact(slices.Clone(evidence.Modalities))
-	if evidence.RequestedProvider != strings.TrimSpace(evidence.RequestedProvider) || evidence.ResolvedProvider != strings.TrimSpace(evidence.ResolvedProvider) || evidence.RequestedModel != strings.TrimSpace(evidence.RequestedModel) || evidence.ResolvedModel != strings.TrimSpace(evidence.ResolvedModel) || evidence.RequestedProvider == "" || evidence.ResolvedProvider == "" || evidence.RequestedModel == "" || evidence.ResolvedModel == "" || !slices.IsSorted(evidence.Modalities) || !slices.Equal(evidence.Modalities, canonicalModalities) || !slices.Contains(evidence.Modalities, "image") || !slices.Contains(evidence.Modalities, "text") {
+	mediaModalityValid := frameEvidence && slices.Contains(evidence.Modalities, "image") && !slices.Contains(evidence.Modalities, "video") || videoEvidence && slices.Contains(evidence.Modalities, "video") && !slices.Contains(evidence.Modalities, "image")
+	if evidence.RequestedProvider != strings.TrimSpace(evidence.RequestedProvider) || evidence.ResolvedProvider != strings.TrimSpace(evidence.ResolvedProvider) || evidence.RequestedModel != strings.TrimSpace(evidence.RequestedModel) || evidence.ResolvedModel != strings.TrimSpace(evidence.ResolvedModel) || evidence.RequestedProvider == "" || evidence.ResolvedProvider == "" || evidence.RequestedModel == "" || evidence.ResolvedModel == "" || !slices.IsSorted(evidence.Modalities) || !slices.Equal(evidence.Modalities, canonicalModalities) || !slices.Contains(evidence.Modalities, "text") || !mediaModalityValid {
 		return errors.New("source structure: role evidence provider identity is incomplete")
 	}
 	if evidence.Attempts < 1 || evidence.LatencyMs < 0 || !validStructureRoleTokens(evidence.Tokens) || evidence.AssessedAt.IsZero() {
@@ -187,9 +197,10 @@ func StructureRoleRequestSHA256(evidence StructureRoleEvidence) string {
 		StartMs       int64            `json:"startMs"`
 		EndMs         int64            `json:"endMs"`
 		FrameSHA256   []string         `json:"frameSha256"`
+		VideoSHA256   string           `json:"videoSha256,omitempty"`
 		PromptVersion string           `json:"promptVersion"`
 		PromptSHA256  string           `json:"promptSha256"`
-	}{evidence.Source, evidence.StartMs, evidence.EndMs, evidence.FrameSHA256, evidence.PromptVersion, evidence.PromptSHA256}
+	}{evidence.Source, evidence.StartMs, evidence.EndMs, evidence.FrameSHA256, evidence.VideoSHA256, evidence.PromptVersion, evidence.PromptSHA256}
 	raw, err := json.Marshal(request)
 	if err != nil {
 		return ""
@@ -209,6 +220,13 @@ func StructureRoleEvidenceSHA256(evidence StructureRoleEvidence) string {
 func structureBytesSHA256(raw []byte) string {
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
+}
+
+func structureOptionalBytesSHA256(raw []byte) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	return structureBytesSHA256(raw)
 }
 
 func validStructureRoleTokens(tokens StructureRoleTokenUsage) bool {

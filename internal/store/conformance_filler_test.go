@@ -2980,12 +2980,23 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	videoRoleEvidence, err := filler.NewStructureRoleEvidence(filler.StructureRoleEvidenceInput{
+		Source: source, StartMs: 30_000, EndMs: 61_000, Role: filler.SegmentRolePromo,
+		Reason: "complete sequence promotes a programme", Video: []byte("bounded-video-derivative"),
+		PromptVersion: "filler-segment-video-role-v1", Prompt: "bounded video prompt", Response: `{"role":"promo"}`,
+		RequestedProvider: "openrouter", ResolvedProvider: "openrouter", RequestedModel: "video", ResolvedModel: "video",
+		Modalities: []string{"audio", "text", "video"}, Tokens: filler.StructureRoleTokenUsage{Prompt: 30, Completion: 5, Video: 4, Audio: 2},
+		LatencyMs: 200, Attempts: 1, GenerationID: "video-generation", AssessedAt: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	p := filler.SplitProposal{
 		ID: "sp_1", ClipHash: clipHashFor("comps/1987.mp4"), CreatedAt: now,
 		Source: source, Structure: &structure,
 		Segments: []filler.SplitSegment{
 			{Index: 0, StartMs: 0, EndMs: 30000, Name: "comps/1987 part 1", Era: 1987, Audience: filler.Kids, Category: "toys", RoleEvidence: &roleEvidence},
-			{Index: 1, StartMs: 30000, EndMs: 61000, Name: "unknown", SuggestedEra: 1985, DupOf: "old/ad.mp4", Looked: true},
+			{Index: 1, StartMs: 30000, EndMs: 61000, Name: "unknown", SuggestedEra: 1985, DupOf: "old/ad.mp4", Looked: true, RoleEvidence: &videoRoleEvidence},
 			{Index: 2, StartMs: 61000, EndMs: 149000, Name: "comps/1987 part 3", Unsplittable: true, Transcript: "[00:00] …"},
 		},
 	}
@@ -3010,6 +3021,9 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	}
 	if !reflect.DeepEqual(got.Segments[0].RoleEvidence, &roleEvidence) {
 		t.Errorf("segment role evidence lost: %+v", got.Segments[0].RoleEvidence)
+	}
+	if !reflect.DeepEqual(got.Segments[1].RoleEvidence, &videoRoleEvidence) || got.Segments[1].RoleEvidence.VideoSHA256 == "" {
+		t.Errorf("segment video role evidence lost: %+v", got.Segments[1].RoleEvidence)
 	}
 
 	draft := filler.SplitProposal{

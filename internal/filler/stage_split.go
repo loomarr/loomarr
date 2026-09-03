@@ -108,8 +108,11 @@ func (s *SplitStage) WithSegmentVision(v *SegmentVision) *SplitStage {
 type SegmentVision struct {
 	Tools    MediaTools
 	Provider llm.VisionProvider
-	Taxa     TaxaLister
-	ClipDir  string
+	// RoleEscalator inspects an exact bounded video only when frame evidence cannot establish
+	// a role. nil leaves the span unresolved; it never weakens the publication gate.
+	RoleEscalator SegmentRoleEscalator
+	Taxa          TaxaLister
+	ClipDir       string
 	// Budget caps how many segments ONE pass will look at (`filler.pipeline.max_split_vision`).
 	//
 	// ⚠ It is a per-pass cost bound, and §10 V51g is why it is not optional: a rung's cost must
@@ -204,7 +207,7 @@ func (s *SplitStage) groundAt(ctx context.Context, c StoreClip, file string, sou
 	looked := 0
 	// The pass tally. Counted rather than logged per segment: 60 lines a pass is noise, and the
 	// question an operator has is about the pass, not any one cut.
-	var noFrames, unreadable, learned, roles, unresolvedRoles int
+	var noFrames, unreadable, learned, roles, unresolvedRoles, videoAttempts, videoRoles, videoErrors int
 	var providerErr error
 	for i := range segs {
 		if looked >= budget {
@@ -217,25 +220,71 @@ func (s *SplitStage) groundAt(ctx context.Context, c StoreClip, file string, sou
 		if err != nil || len(frames) == 0 {
 			segs[i].Looked, looked = true, looked+1
 			noFrames++
+			if evidence, attempted, escalationErr := s.escalateSegmentRole(ctx, source, file, segs[i]); attempted {
+				videoAttempts++
+				if escalationErr != nil {
+					videoErrors++
+					unresolvedRoles++
+				} else if evidence != nil {
+					segs[i].RoleEvidence = evidence
+					roles, videoRoles, learned = roles+1, videoRoles+1, learned+1
+				} else {
+					unresolvedRoles++
+				}
+			} else {
+				unresolvedRoles++
+			}
 			continue
 		}
 		prompt := visionPrompt(forest)
 		resp, err := s.vision.Provider.AskAboutImages(ctx, prompt, frames)
 		if err != nil {
-			// ⚠ NOT marked, and the loop STOPS: a provider that is failing will fail for every
-			// remaining segment too, so marking would burn the whole reel on one outage. Next pass
-			// retries exactly the segments this one could not reach.
+			// A separately routed direct-video model may still settle the temporal role. Only a
+			// successful escalation marks the span looked; if both routes fail, the old retry
+			// behavior remains and this pass stops without burning the rest of the reel.
+			if evidence, attempted, escalationErr := s.escalateSegmentRole(ctx, source, file, segs[i]); attempted {
+				videoAttempts++
+				if escalationErr != nil {
+					videoErrors++
+					providerErr = errors.Join(err, escalationErr)
+					break
+				}
+				segs[i].Looked, looked = true, looked+1
+				if evidence != nil {
+					segs[i].RoleEvidence = evidence
+					roles, videoRoles, learned = roles+1, videoRoles+1, learned+1
+				} else {
+					unresolvedRoles++
+				}
+				continue
+			}
 			providerErr = err
 			break
 		}
 		segs[i].Looked, looked = true, looked+1
 		var out visionOutput
-		if err := json.Unmarshal([]byte(llm.ExtractJSONObject(resp.Content)), &out); err != nil {
+		parsed := json.Unmarshal([]byte(llm.ExtractJSONObject(resp.Content)), &out) == nil
+		if !parsed {
 			unreadable++
-			continue
 		}
 		v := groundVisionTags(out, forest)
-		roleEvidence, roleErr := structureRoleEvidenceFromVision(source, segs[i], prompt, frames, resp, out, s.structureAssessedAt())
+		var roleEvidence *StructureRoleEvidence
+		var roleErr error
+		if parsed {
+			roleEvidence, roleErr = structureRoleEvidenceFromVision(source, segs[i], prompt, frames, resp, out, s.structureAssessedAt())
+		}
+		if roleEvidence == nil {
+			if evidence, attempted, escalationErr := s.escalateSegmentRole(ctx, source, file, segs[i]); attempted {
+				videoAttempts++
+				if escalationErr != nil {
+					videoErrors++
+				} else if evidence != nil {
+					roleEvidence = evidence
+					roleErr = nil
+					videoRoles++
+				}
+			}
+		}
 		if roleErr == nil && roleEvidence != nil {
 			segs[i].RoleEvidence = roleEvidence
 			roles++
@@ -257,6 +306,7 @@ func (s *SplitStage) groundAt(ctx context.Context, c StoreClip, file string, sou
 	s.groundReport(ctx, c, groundTally{
 		looked: looked, pending: pending(), learned: learned,
 		noFrames: noFrames, unreadable: unreadable, roles: roles, unresolvedRoles: unresolvedRoles,
+		videoAttempts: videoAttempts, videoRoles: videoRoles, videoErrors: videoErrors,
 		providerErr: providerErr,
 	})
 	return groundPass{Looked: looked, Pending: pending()}
@@ -265,7 +315,16 @@ func (s *SplitStage) groundAt(ctx context.Context, c StoreClip, file string, sou
 // groundTally is one pass's outcome, counted so the pass can be reported in a single line.
 type groundTally struct {
 	looked, pending, learned, noFrames, unreadable, roles, unresolvedRoles int
+	videoAttempts, videoRoles, videoErrors                                 int
 	providerErr                                                            error
+}
+
+func (s *SplitStage) escalateSegmentRole(ctx context.Context, source SplitSourceAsset, file string, segment SplitSegment) (*StructureRoleEvidence, bool, error) {
+	if s.vision == nil || s.vision.RoleEscalator == nil || source.validate() != nil {
+		return nil, false, nil
+	}
+	evidence, err := s.vision.RoleEscalator.EscalateRole(ctx, source, file, segment, s.structureAssessedAt())
+	return evidence, true, err
 }
 
 func (s *SplitStage) structureAssessedAt() time.Time {
@@ -302,6 +361,7 @@ func (s *SplitStage) groundReport(ctx context.Context, c StoreClip, t groundTall
 		"clip", c.Hash, "looked", t.looked, "learned", t.learned,
 		"pending", t.pending, "noFrames", t.noFrames, "unreadable", t.unreadable,
 		"roles", t.roles, "unresolvedRoles", t.unresolvedRoles,
+		"videoAttempts", t.videoAttempts, "videoRoles", t.videoRoles, "videoErrors", t.videoErrors,
 	}
 	switch {
 	case t.providerErr != nil:

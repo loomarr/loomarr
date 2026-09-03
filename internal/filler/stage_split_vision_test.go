@@ -2,6 +2,7 @@ package filler
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -50,6 +51,31 @@ type fixedVision struct {
 	calls       int
 	attribution llm.Attribution
 	prompts     []string
+}
+
+type scriptedRoleEscalator struct {
+	calls int
+	spans [][2]int64
+	err   error
+}
+
+func (s *scriptedRoleEscalator) EscalateRole(_ context.Context, source SplitSourceAsset, _ string, segment SplitSegment, assessedAt time.Time) (*StructureRoleEvidence, error) {
+	s.calls++
+	s.spans = append(s.spans, [2]int64{segment.StartMs, segment.EndMs})
+	if s.err != nil {
+		return nil, s.err
+	}
+	evidence, err := NewStructureRoleEvidence(StructureRoleEvidenceInput{
+		Source: source, StartMs: segment.StartMs, EndMs: segment.EndMs,
+		Role: SegmentRoleCommercial, Reason: "the complete sequence contains a product offer and call to action",
+		Video: []byte("bounded-video"), PromptVersion: "video-role-v1", Prompt: "classify bounded video", Response: `{"role":"commercial"}`,
+		RequestedProvider: "openrouter", ResolvedProvider: "openrouter", RequestedModel: "video", ResolvedModel: "video",
+		Modalities: []string{"text", "video"}, Tokens: StructureRoleTokenUsage{Video: 1}, Attempts: 1, AssessedAt: assessedAt,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &evidence, nil
 }
 
 func (f *fixedVision) AskAboutImages(_ context.Context, prompt string, _ [][]byte) (llm.Response, error) {
@@ -148,6 +174,7 @@ func TestSegmentVision_GroundsFromFramesSoTheGateCanFire(t *testing.T) {
 
 func TestSegmentVisionRetainsExactPerSpanRoleEvidence(t *testing.T) {
 	tools := &spanTools{frames: [][]byte{[]byte("opening"), []byte("closing")}}
+	escalator := &scriptedRoleEscalator{}
 	model := &fixedVision{
 		answer: `{"visibleText":"ACME","brand":"ACME","tags":["toys"],"role":"commercial","roleReason":"a product offer and closing brand card"}`,
 		attribution: llm.Attribution{
@@ -157,7 +184,7 @@ func TestSegmentVisionRetainsExactPerSpanRoleEvidence(t *testing.T) {
 		},
 	}
 	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
-		Tools: tools, Provider: model, Taxa: seedTaxa{}, Budget: func() int { return 10 },
+		Tools: tools, Provider: model, RoleEscalator: escalator, Taxa: seedTaxa{}, Budget: func() int { return 10 },
 	})
 	source := structureSource(61_000)
 	segments := twoSegments()
@@ -172,6 +199,9 @@ func TestSegmentVisionRetainsExactPerSpanRoleEvidence(t *testing.T) {
 	}
 	if len(model.prompts) != 2 || !strings.Contains(model.prompts[0], "programme_fragment") || !strings.Contains(model.prompts[0], "never infer role from the generated filename or duration") {
 		t.Fatalf("role prompt = %q", model.prompts[0])
+	}
+	if escalator.calls != 0 {
+		t.Fatalf("resolved frame roles triggered %d video escalations", escalator.calls)
 	}
 
 	base := assessStructure(t, source.DurationMs, []StructureObservation{
@@ -210,6 +240,61 @@ func TestSegmentVisionMissingAttributionCannotEstablishRole(t *testing.T) {
 	}
 	if segments[0].Category == "" {
 		t.Fatal("invalid role attribution discarded independently valid taxonomy grounding")
+	}
+}
+
+func TestSegmentVisionEscalatesOnlyUnresolvedRolesToBoundedVideo(t *testing.T) {
+	escalator := &scriptedRoleEscalator{}
+	model := &fixedVision{answer: `{"category":"toys","visibleText":"TOYS R US","role":"","roleReason":""}`}
+	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
+		Tools: &spanTools{frames: [][]byte{[]byte("frame")}}, Provider: model, RoleEscalator: escalator,
+		Taxa: seedTaxa{}, Budget: func() int { return 2 },
+	})
+	segments := twoSegments()
+	s.groundAt(context.Background(), StoreClip{}, "source.mp4", structureSource(61_000), segments)
+	if escalator.calls != 2 || len(escalator.spans) != 2 || escalator.spans[0] != [2]int64{0, 30_000} || escalator.spans[1] != [2]int64{30_000, 61_000} {
+		t.Fatalf("escalation calls=%d spans=%v", escalator.calls, escalator.spans)
+	}
+	for index, segment := range segments {
+		if segment.RoleEvidence == nil || segment.RoleEvidence.VideoSHA256 == "" || len(segment.RoleEvidence.FrameSHA256) != 0 || segment.Category == "" {
+			t.Fatalf("segment %d did not preserve taxonomy plus video role evidence: %+v", index, segment)
+		}
+	}
+}
+
+func TestSegmentVisionCanEscalateWhenSparseFramesAreUnavailable(t *testing.T) {
+	escalator := &scriptedRoleEscalator{}
+	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
+		Tools: &spanTools{}, Provider: &fixedVision{}, RoleEscalator: escalator, Taxa: seedTaxa{}, Budget: func() int { return 1 },
+	})
+	segments := twoSegments()[:1]
+	pass := s.groundAt(context.Background(), StoreClip{}, "source.mp4", structureSource(61_000), segments)
+	if pass.Looked != 1 || pass.Pending != 0 || escalator.calls != 1 || segments[0].RoleEvidence == nil || segments[0].RoleEvidence.VideoSHA256 == "" {
+		t.Fatalf("pass=%+v escalation=%d segment=%+v", pass, escalator.calls, segments[0])
+	}
+}
+
+func TestSegmentVisionDirectVideoCanResolveAnIndependentFrameProviderFailure(t *testing.T) {
+	escalator := &scriptedRoleEscalator{}
+	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
+		Tools: &spanTools{frames: [][]byte{[]byte("frame")}}, Provider: &fixedVision{err: errors.New("frame provider unavailable")},
+		RoleEscalator: escalator, Taxa: seedTaxa{}, Budget: func() int { return 1 },
+	})
+	segments := twoSegments()[:1]
+	pass := s.groundAt(context.Background(), StoreClip{}, "source.mp4", structureSource(61_000), segments)
+	if pass.Looked != 1 || pass.Pending != 0 || escalator.calls != 1 || segments[0].RoleEvidence == nil {
+		t.Fatalf("pass=%+v escalation=%d segment=%+v", pass, escalator.calls, segments[0])
+	}
+
+	failing := &scriptedRoleEscalator{err: errors.New("video provider unavailable")}
+	s = NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
+		Tools: &spanTools{frames: [][]byte{[]byte("frame")}}, Provider: &fixedVision{err: errors.New("frame provider unavailable")},
+		RoleEscalator: failing, Taxa: seedTaxa{}, Budget: func() int { return 1 },
+	})
+	segments = twoSegments()[:1]
+	pass = s.groundAt(context.Background(), StoreClip{}, "source.mp4", structureSource(61_000), segments)
+	if pass.Looked != 0 || pass.Pending != 1 || failing.calls != 1 || segments[0].Looked {
+		t.Fatalf("dual failure burned retry: pass=%+v escalation=%d segment=%+v", pass, failing.calls, segments[0])
 	}
 }
 

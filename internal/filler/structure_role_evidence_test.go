@@ -47,6 +47,54 @@ func TestNewStructureRoleEvidenceBindsExactRequestAndResponse(t *testing.T) {
 	}
 }
 
+func TestNewStructureRoleEvidenceBindsBoundedVideoInsteadOfFrames(t *testing.T) {
+	evidence, err := NewStructureRoleEvidence(StructureRoleEvidenceInput{
+		Source: structureSource(60_000), StartMs: 10_000, EndMs: 40_000,
+		Role: SegmentRolePromo, Reason: "the complete bounded sequence promotes another programme",
+		Video: []byte("bounded mp4 evidence"), PromptVersion: "segment-video-role-v1",
+		Prompt: "classify this exact bounded video", Response: `{"role":"promo","reason":"programme promotion"}`,
+		RequestedProvider: "openrouter", ResolvedProvider: "openrouter", RequestedModel: "video-model", ResolvedModel: "video-model",
+		Modalities: []string{"video", "audio", "text"}, Tokens: StructureRoleTokenUsage{Prompt: 30, Completion: 8, Video: 10, Audio: 4},
+		LatencyMs: 250, Attempts: 1, GenerationID: "generation-1", AssessedAt: time.Date(2026, time.September, 4, 12, 30, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if evidence.VideoSHA256 == "" || len(evidence.FrameSHA256) != 0 || evidence.RequestSHA256 == evidence.VideoSHA256 {
+		t.Fatalf("video role evidence = %+v", evidence)
+	}
+	mutated := evidence
+	mutated.VideoSHA256 = strings.Repeat("a", 64)
+	mutated.SHA256 = StructureRoleEvidenceSHA256(mutated)
+	if err := ValidateStructureRoleEvidence(mutated); err == nil {
+		t.Fatal("video mutation survived request binding")
+	}
+}
+
+func TestNewStructureRoleEvidenceRequiresExactlyOneMediaForm(t *testing.T) {
+	base := StructureRoleEvidenceInput{
+		Source: structureSource(60_000), StartMs: 0, EndMs: 30_000,
+		Role: SegmentRoleCommercial, Reason: "product offer", PromptVersion: "role-v1", Prompt: "classify", Response: `{}`,
+		RequestedProvider: "provider", ResolvedProvider: "provider", RequestedModel: "model", ResolvedModel: "model",
+		Modalities: []string{"image", "text"}, Attempts: 1, AssessedAt: time.Now(),
+	}
+	for name, mutate := range map[string]func(*StructureRoleEvidenceInput){
+		"neither": func(*StructureRoleEvidenceInput) {},
+		"both": func(input *StructureRoleEvidenceInput) {
+			input.Frames = [][]byte{[]byte("frame")}
+			input.Video = []byte("video")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			input := base
+			mutate(&input)
+			if _, err := NewStructureRoleEvidence(input); err == nil {
+				t.Fatal("ambiguous media evidence was accepted")
+			}
+		})
+	}
+}
+
 func TestValidateStructureRoleEvidenceRejectsMutationEvenWhenRehashed(t *testing.T) {
 	tests := []struct {
 		name   string
