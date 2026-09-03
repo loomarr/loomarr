@@ -59,9 +59,10 @@ func passingAxisEvidence(t *testing.T, subject SegmentScreeningSubject) []Record
 	records := make([]RecordedSegmentScreeningAxisEvidence, 0, len(segmentScreeningAxisOrder))
 	for index, axis := range segmentScreeningAxisOrder {
 		reason := "policy_clear"
-		if axis == ScreenRights {
+		switch axis {
+		case ScreenRights:
 			reason = "rights_verified"
-		} else if axis == ScreenPlayback {
+		case ScreenPlayback:
 			reason = "playback_verified"
 		}
 		recorded, err := NewSegmentScreeningAxisEvidence(

@@ -121,11 +121,12 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `catalog` | 6 | `library`, `provision` |
 | `contact` | 5 | — |
 | `diagnostics` | 8 | — |
-| `filler` | 9 | `diagnostics`, `filleradmission`, `fillerstructure`, `llm`, `mediatools`, `taxonomy` |
+| `filler` | 9 | `diagnostics`, `filleradmission`, `fillerstructure`, `fillerstructurewindow`, `llm`, `mediatools`, `taxonomy` |
 | `filleradmission` | 8 | — |
 | `fillereval` | 5 | — |
 | `fillersafety` | 5 | `mediatools`, `openroutermedia` |
 | `fillerstructure` | 8 | — |
+| `fillerstructurewindow` | 5 | `fillerstructure` |
 | `httpx` | 10 | `metrics` |
 | `invitation` | 6 | `contact` |
 | `library` | 8 | `filler`, `httpx`, `metrics` |
@@ -138,7 +139,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `recovery` | 5 | — |
 | `schedule` | 15 | `provision` |
 | `scheduler` | 6 | `store` |
-| `store` | 14 | `contact`, `diagnostics`, `filler`, `filleradmission`, `fillersafety`, `fillerstructure`, `invitation`, `notifications`, `provision`, `recovery`, `schedule`, `taxonomy` |
+| `store` | 14 | `contact`, `diagnostics`, `filler`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `invitation`, `notifications`, `provision`, `recovery`, `schedule`, `taxonomy` |
 | `suggest` | 6 | `catalog`, `llm`, `provision`, `schedule`, `store` |
 | `taxonomy` | 5 | — |
 
@@ -254,7 +255,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`fillersafetycert`** · 2 importers · → `fillersafety`
   Owns deterministic, non-authorizing certification of the durable spoken-safety cascade.
-- **`fillerstructurewindow`** · 4 importers · → `fillerstructure`, `fillerstructuremedia`
+- **`fillerstructurewindow`** · 5 importers · → `fillerstructure`, `fillerstructuremedia`
   Owns the complete-coverage plan used to assess long filler reels without pretending that independently processed windows are independent model votes.
 
 **Layer 7**
@@ -263,14 +264,14 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 - **`fillersafetycorpus`** · 1 importer · → `fillercorpus`, `fillersafety`, `fillersafetycert`
   Prepares private real-speech cohorts for later spoken-safety authority assembly without assigning certification truth.
-- **`fillerstructurewindowcert`** · → `fillerstructure`, `fillerstructurewindow`
+- **`fillerstructurewindowcert`** · 1 importer · → `fillerstructure`, `fillerstructurewindow`
   Certifies the long-reel window protocol against private, known-truth timelines.
 
 **Layer 8**
 
 - **`clipfetch`** · 1 importer · → `filler`, `proctree`
   Downloads filler clips into the drop-folder (design §10, §16).
-- **`fillerreview`** · → `filler`, `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `httpx`, `mediatools`, `openroutermedia`
+- **`fillerreview`** · → `filler`, `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `fillerstructurewindowcert`, `httpx`, `mediatools`, `openroutermedia`
   Materializes identity-blind evidence for independent semantic review.
 - **`fillersafetyreview`** · → `fillerbakeoff`, `fillereval`, `fillersafety`, `fillersafetycert`, `fillersafetycorpus`, `httpx`, `mediatools`, `openroutermedia`
   Runs one independent, exhaustive model review of an assembled spoken-safety certification draft.

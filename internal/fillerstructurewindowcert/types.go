@@ -21,7 +21,7 @@ const (
 	ReportContractVersion = "filler-structure-window-certification-report-v1"
 
 	BoundaryToleranceMS int64 = 2_000
-	MinimumSliceCases         = 6
+	MinimumSliceCases   int   = 6
 
 	WordlessEvidenceContract = "filler-structure-wordless-boundary-evidence-v1"
 	MotionEvidenceContract   = "filler-structure-window-motion-evidence-v1"

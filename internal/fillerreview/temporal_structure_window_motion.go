@@ -116,7 +116,7 @@ func parseTemporalStructureWindowMicroluma(value string) (int64, error) {
 	}
 	mantissa, exponent := value, 0
 	if marker := strings.IndexAny(value, "eE"); marker >= 0 {
-		if strings.IndexAny(value[marker+1:], "eE") >= 0 {
+		if strings.ContainsAny(value[marker+1:], "eE") {
 			return 0, errors.New("ffmpeg motion emitted invalid luma delta")
 		}
 		mantissa = value[:marker]
