@@ -155,6 +155,7 @@ func TestStructureAssessmentRuntimeRejectsInvalidPreparedMediaBeforeAssessors(t 
 	}{
 		{name: "source drift", mutate: func(media *StructureAssessmentMedia) { media.Source.SHA256 = strings.Repeat("f", 64) }},
 		{name: "profile missing", mutate: func(media *StructureAssessmentMedia) { media.Assessment.ProfileSHA256 = "" }},
+		{name: "lineage missing", mutate: func(media *StructureAssessmentMedia) { media.Assessment.LineageSHA256 = "" }},
 		{name: "duration drift", mutate: func(media *StructureAssessmentMedia) { media.Assessment.DurationMS += 1_001 }},
 		{name: "source reused as derivative path", mutate: func(media *StructureAssessmentMedia) { media.FullPath = input.FullPath }},
 	}
@@ -278,7 +279,7 @@ func structureAssessmentMediaFixture(source SplitSourceAsset, path string) Struc
 		Source: source,
 		Assessment: fillerstructure.AssessmentMedia{
 			SHA256: strings.Repeat("9", 64), Bytes: 1_024, DurationMS: source.DurationMs,
-			ProfileSHA256: strings.Repeat("8", 64),
+			ProfileSHA256: strings.Repeat("8", 64), LineageSHA256: strings.Repeat("7", 64),
 		},
 		FullPath: path,
 	}

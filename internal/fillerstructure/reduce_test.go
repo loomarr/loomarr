@@ -76,7 +76,7 @@ func TestReduceGivesOneBoundaryVotePerModelFamily(t *testing.T) {
 
 func fixtureRequest() Request {
 	source := Source{SHA256: strings.Repeat("a", 64), Bytes: 2_048, DurationMS: 10_000}
-	media := AssessmentMedia{SHA256: strings.Repeat("e", 64), Bytes: 1_024, DurationMS: 10_000, ProfileSHA256: strings.Repeat("f", 64)}
+	media := AssessmentMedia{SHA256: strings.Repeat("e", 64), Bytes: 1_024, DurationMS: 10_000, ProfileSHA256: strings.Repeat("f", 64), LineageSHA256: strings.Repeat("d", 64)}
 	candidate := func(id, family, digest string) Candidate {
 		return Candidate{
 			Source: source, Media: media,

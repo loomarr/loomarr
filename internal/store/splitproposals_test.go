@@ -49,7 +49,7 @@ func TestMarshalSplitProposalRejectsStructureDecisionForAnotherSource(t *testing
 		ClipHash: strings.Repeat("b", 64), Path: "aa/bb/source.mp4", DurationMs: 60_000,
 	}
 	decisionSource := fillerstructure.Source{SHA256: strings.Repeat("c", 64), Bytes: source.Bytes, DurationMS: source.DurationMs}
-	media := fillerstructure.AssessmentMedia{SHA256: strings.Repeat("2", 64), Bytes: source.Bytes, DurationMS: source.DurationMs, ProfileSHA256: strings.Repeat("3", 64)}
+	media := fillerstructure.AssessmentMedia{SHA256: strings.Repeat("2", 64), Bytes: source.Bytes, DurationMS: source.DurationMs, ProfileSHA256: strings.Repeat("3", 64), LineageSHA256: strings.Repeat("4", 64)}
 	candidate := func(id, family, assessmentDigest string) fillerstructure.Candidate {
 		return fillerstructure.Candidate{
 			Source: decisionSource, Media: media,

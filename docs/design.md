@@ -4727,6 +4727,15 @@ adapter must return either a complete source-bound candidate or an attributable 
 candidate; ordinary provider failures are domain evidence, while an error means the adapter could
 not produce trustworthy evidence and aborts reduction. The coordinator rejects declared-profile or
 source drift before creating the durable artifact.
+The conditioned-media identity also binds a content-addressed, path-free lineage document. That
+document names the original source identity, the complete canonical assessment-media profile, the
+exact ffmpeg version and executable digest, and the normalized derivative's digest, byte count, and
+measured duration. Production renders the derivative into staging, validates its streams and profile,
+then atomically publishes both derivative and lineage beneath the hidden media tree. A retry may reuse
+that derivative only after strictly decoding and re-hashing the lineage, re-hashing and re-probing the
+media, and reproducing the operation key from source, profile, and tool identities. Filesystem paths
+are locations, never authority. A missing, drifted, oversized, incomplete-stream, or out-of-profile
+derivative fails before either assessor or provider is called.
 The direct-video prompt version, identity-blind system instructions, dynamic duration message, JSON
 schema, strict decoder, programme-only coalescing, whole-source unit derivation, evidence bounds,
 and reducer-candidate projection are one `fillerstructure` contract used by evaluation and runtime.

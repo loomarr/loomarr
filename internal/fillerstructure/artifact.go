@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	ArtifactSchemaVersion   = 2
-	ArtifactContractVersion = "filler-structure-decision-artifact-v2"
+	ArtifactSchemaVersion   = 3
+	ArtifactContractVersion = "filler-structure-decision-artifact-v3"
 	ReducerContractVersion  = "filler-structure-agreement-v1"
 )
 

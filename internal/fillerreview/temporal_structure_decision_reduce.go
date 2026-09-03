@@ -27,9 +27,9 @@ type temporalStructureDecisionCandidate struct {
 	assessment       TemporalStructureAssessment
 }
 
-func reduceTemporalStructureDecision(alias, sourceSHA string, sourceBytes, durationMS int64, profileSHA string, candidates []temporalStructureDecisionCandidate) TemporalStructureCaseDecision {
+func reduceTemporalStructureDecision(alias, sourceSHA string, sourceBytes, durationMS int64, profileSHA, lineageSHA string, candidates []temporalStructureDecisionCandidate) TemporalStructureCaseDecision {
 	source := fillerstructure.Source{SHA256: sourceSHA, Bytes: sourceBytes, DurationMS: durationMS}
-	media := fillerstructure.AssessmentMedia{SHA256: sourceSHA, Bytes: sourceBytes, DurationMS: durationMS, ProfileSHA256: profileSHA}
+	media := fillerstructure.AssessmentMedia{SHA256: sourceSHA, Bytes: sourceBytes, DurationMS: durationMS, ProfileSHA256: profileSHA, LineageSHA256: lineageSHA}
 	request := fillerstructure.Request{Source: source, Media: media, BoundaryToleranceMS: TemporalStructureNearBoundaryMS}
 	for _, candidate := range candidates {
 		request.Candidates = append(request.Candidates, temporalStructureCoreCandidate(source, media, candidate))

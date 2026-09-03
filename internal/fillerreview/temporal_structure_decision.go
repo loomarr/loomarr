@@ -182,7 +182,7 @@ func buildTemporalStructureDecision(loaded temporalStructureDecisionLoaded, deci
 				assessment: assessment.byAlias[item.Alias],
 			})
 		}
-		decision := reduceTemporalStructureDecision(item.Alias, item.Video.SHA256, item.Video.Bytes, item.Video.DurationMS, loaded.manifest.AssessmentMediaProfileSHA256, candidates)
+		decision := reduceTemporalStructureDecision(item.Alias, item.Video.SHA256, item.Video.Bytes, item.Video.DurationMS, loaded.manifest.AssessmentMediaProfileSHA256, loaded.authoritySHA, candidates)
 		report.Decisions = append(report.Decisions, decision)
 		if decision.Status == TemporalStructureDecisionConfirmed {
 			report.ConfirmedCases++

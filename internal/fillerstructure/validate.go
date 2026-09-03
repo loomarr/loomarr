@@ -43,7 +43,8 @@ func validSource(source Source) bool {
 
 func validAssessmentMedia(media AssessmentMedia, source Source) bool {
 	return digest(media.SHA256) && media.Bytes > 0 && media.Bytes <= AssessmentMediaMaximumBytes && media.DurationMS > 0 &&
-		digest(media.ProfileSHA256) && absolute(media.DurationMS-source.DurationMS) <= AssessmentMediaMaximumTimelineDriftMS
+		digest(media.ProfileSHA256) && digest(media.LineageSHA256) &&
+		absolute(media.DurationMS-source.DurationMS) <= AssessmentMediaMaximumTimelineDriftMS
 }
 
 func ValidateAssessmentMedia(source Source, media AssessmentMedia) error {

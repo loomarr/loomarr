@@ -92,7 +92,7 @@ func structureDecisionArtifact(t *testing.T, source filler.SplitSourceAsset, joi
 	core := fillerstructure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: source.DurationMs}
 	media := fillerstructure.AssessmentMedia{
 		SHA256: strings.Repeat("9", 64), Bytes: source.Bytes, DurationMS: source.DurationMs,
-		ProfileSHA256: strings.Repeat("8", 64),
+		ProfileSHA256: strings.Repeat("8", 64), LineageSHA256: strings.Repeat("7", 64),
 	}
 	candidate := func(id, family, digest string, segments []fillerstructure.Segment) fillerstructure.Candidate {
 		return fillerstructure.Candidate{

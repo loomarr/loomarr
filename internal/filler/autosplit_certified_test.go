@@ -45,7 +45,7 @@ func passingStructureDecision(t *testing.T, assessment SourceStructureAssessment
 		unit = fillerstructure.UnitProgrammeSpots
 	}
 	source := fillerstructure.Source{SHA256: assessment.Source.SHA256, Bytes: assessment.Source.Bytes, DurationMS: assessment.DurationMs}
-	media := fillerstructure.AssessmentMedia{SHA256: strings.Repeat("9", 64), Bytes: assessment.Source.Bytes, DurationMS: assessment.DurationMs, ProfileSHA256: strings.Repeat("8", 64)}
+	media := fillerstructure.AssessmentMedia{SHA256: strings.Repeat("9", 64), Bytes: assessment.Source.Bytes, DurationMS: assessment.DurationMs, ProfileSHA256: strings.Repeat("8", 64), LineageSHA256: strings.Repeat("7", 64)}
 	segments := make([]fillerstructure.Segment, 0, len(assessment.Plan))
 	for _, planned := range assessment.Plan {
 		segments = append(segments, fillerstructure.Segment{

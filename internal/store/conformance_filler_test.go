@@ -2993,7 +2993,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	decisionSource := fillerstructure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: source.DurationMs}
-	structureMedia := fillerstructure.AssessmentMedia{SHA256: strings.Repeat("6", 64), Bytes: source.Bytes, DurationMS: source.DurationMs, ProfileSHA256: strings.Repeat("5", 64)}
+	structureMedia := fillerstructure.AssessmentMedia{SHA256: strings.Repeat("6", 64), Bytes: source.Bytes, DurationMS: source.DurationMs, ProfileSHA256: strings.Repeat("5", 64), LineageSHA256: strings.Repeat("4", 64)}
 	structureCandidate := func(id, family, assessmentDigest string) fillerstructure.Candidate {
 		return fillerstructure.Candidate{
 			Source: decisionSource, Media: structureMedia,
@@ -4049,7 +4049,7 @@ func structureAssessmentReservationFixture(t *testing.T, requestDigit, sourceDig
 	reservation, err := fillerstructure.NewAssessmentReservation(fillerstructure.AssessmentReservationInput{
 		RequestSHA256: strings.Repeat(requestDigit, 64),
 		Source:        fillerstructure.Source{SHA256: strings.Repeat(sourceDigit, 64), Bytes: 8_192, DurationMS: 10_000},
-		Media:         fillerstructure.AssessmentMedia{SHA256: strings.Repeat("8", 64), Bytes: 4_096, DurationMS: 10_000, ProfileSHA256: strings.Repeat("9", 64)},
+		Media:         fillerstructure.AssessmentMedia{SHA256: strings.Repeat("8", 64), Bytes: 4_096, DurationMS: 10_000, ProfileSHA256: strings.Repeat("9", 64), LineageSHA256: strings.Repeat("7", 64)},
 		Assessor: fillerstructure.AssessorProfile{
 			ID: "assessor-" + requestDigit, ModelFamily: "family-" + requestDigit,
 			Provider: "openrouter", Model: "requested-model-" + requestDigit,

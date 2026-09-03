@@ -109,6 +109,7 @@ func TestAssessmentRecordRejectsOpenOrContradictorySettlement(t *testing.T) {
 	}{
 		{name: "accepted without response", mutate: func(input *AssessmentRecordInput) { input.RawResponse = nil }},
 		{name: "media profile missing", mutate: func(input *AssessmentRecordInput) { input.Media.ProfileSHA256 = "" }},
+		{name: "media lineage missing", mutate: func(input *AssessmentRecordInput) { input.Media.LineageSHA256 = "" }},
 		{name: "media duration drift", mutate: func(input *AssessmentRecordInput) { input.Media.DurationMS += 1_001 }},
 		{name: "accepted over reservation", mutate: func(input *AssessmentRecordInput) { input.ChargedNanoUSD = 2_000; input.AccountedNanoUSD = 2_000 }},
 		{name: "failed without closed reason", mutate: func(input *AssessmentRecordInput) {
@@ -147,7 +148,7 @@ func acceptedAssessmentRecord(t *testing.T) RecordedAssessment {
 func acceptedAssessmentInput() AssessmentRecordInput {
 	return AssessmentRecordInput{
 		Source: Source{SHA256: strings.Repeat("a", 64), Bytes: 2_048, DurationMS: 10_000},
-		Media:  AssessmentMedia{SHA256: strings.Repeat("1", 64), Bytes: 1_024, DurationMS: 10_000, ProfileSHA256: strings.Repeat("2", 64)},
+		Media:  AssessmentMedia{SHA256: strings.Repeat("1", 64), Bytes: 1_024, DurationMS: 10_000, ProfileSHA256: strings.Repeat("2", 64), LineageSHA256: strings.Repeat("3", 64)},
 		Assessor: AssessorProfile{
 			ID: "assessor-a", ModelFamily: "family-a", Provider: "openrouter", Model: "vendor/model",
 			ModelDigest: strings.Repeat("b", 64), CapabilitySHA256: strings.Repeat("c", 64),

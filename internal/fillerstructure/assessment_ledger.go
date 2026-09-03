@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	AssessmentReservationSchemaVersion   = 2
-	AssessmentReservationContractVersion = "filler-structure-assessment-reservation-v2"
+	AssessmentReservationSchemaVersion   = 3
+	AssessmentReservationContractVersion = "filler-structure-assessment-reservation-v3"
 )
 
 type AssessmentReservationState string

@@ -75,6 +75,7 @@ type AssessmentMedia struct {
 	Bytes         int64  `json:"bytes"`
 	DurationMS    int64  `json:"durationMs"`
 	ProfileSHA256 string `json:"profileSha256"`
+	LineageSHA256 string `json:"lineageSha256"`
 }
 
 type Assessor struct {

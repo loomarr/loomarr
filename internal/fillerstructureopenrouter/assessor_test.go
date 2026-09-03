@@ -235,7 +235,7 @@ func assessorMediaFixture(t *testing.T) filler.StructureAssessmentMedia {
 		},
 		Assessment: fillerstructure.AssessmentMedia{
 			SHA256: hex.EncodeToString(digest[:]), Bytes: int64(len(raw)), DurationMS: 10_000,
-			ProfileSHA256: strings.Repeat("d", 64),
+			ProfileSHA256: strings.Repeat("d", 64), LineageSHA256: strings.Repeat("e", 64),
 		},
 		FullPath: path,
 	}

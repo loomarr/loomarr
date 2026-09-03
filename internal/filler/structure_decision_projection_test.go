@@ -127,7 +127,7 @@ func TestProjectConfirmedStructureDecisionRejectsHeldOrDriftedEvidence(t *testin
 func projectedStructureArtifact(t *testing.T, source SplitSourceAsset, unit fillerstructure.Unit, first, second []fillerstructure.Segment) fillerstructure.Artifact {
 	t.Helper()
 	coreSource := fillerstructure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: source.DurationMs}
-	media := fillerstructure.AssessmentMedia{SHA256: strings.Repeat("9", 64), Bytes: source.Bytes, DurationMS: source.DurationMs, ProfileSHA256: strings.Repeat("8", 64)}
+	media := fillerstructure.AssessmentMedia{SHA256: strings.Repeat("9", 64), Bytes: source.Bytes, DurationMS: source.DurationMs, ProfileSHA256: strings.Repeat("8", 64), LineageSHA256: strings.Repeat("7", 64)}
 	candidate := func(id, family, assessmentDigest string, segments []fillerstructure.Segment) fillerstructure.Candidate {
 		return fillerstructure.Candidate{
 			Source: coreSource, Media: media,

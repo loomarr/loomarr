@@ -3,8 +3,8 @@ package fillerstructure
 import "time"
 
 const (
-	AssessmentRecordSchemaVersion   = 2
-	AssessmentRecordContractVersion = "filler-structure-assessment-record-v2"
+	AssessmentRecordSchemaVersion   = 3
+	AssessmentRecordContractVersion = "filler-structure-assessment-record-v3"
 	AssessmentMaximumResponseBytes  = 256 << 10
 )
 
