@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	TemporalStructureOpenRouterPromptVersion = "filler-temporal-structure-direct-video-v6"
+	TemporalStructureOpenRouterPromptVersion = "filler-temporal-structure-direct-video-v7"
 	temporalStructureReasonMaximumCharacters = 512
 )
 
@@ -21,7 +21,7 @@ const temporalStructureOpenRouterContentFormat = "Complete video duration: %d mi
 
 const temporalStructureOpenRouterSystemPrompt = `Segment one complete identity-blind video. Judge the supplied file's actual item boundaries, not whether its topic resembles an advertisement.
 
-Return segments covering every millisecond from 0 through the supplied duration: sorted, adjacent, with no gaps or overlaps. Keep one independently bounded, self-contained item with one cohesive communicative purpose as one segment even when it contains many shots, scenes, title cards, or credits. Split whenever separately bounded items have been joined. For programme material with an inserted filler item, return the programme before the insertion, every inserted item, and the resumed programme as separate intervals. A scene change inside one continuing programme is not an item boundary.
+Return segments in playback order covering every millisecond from 0 through the supplied duration. Each segment supplies its exclusive endMs: the first starts at 0, every later segment starts at the preceding endMs, and the final endMs equals the supplied duration. Keep one independently bounded, self-contained item with one cohesive communicative purpose as one segment even when it contains many shots, scenes, title cards, or credits. Split whenever separately bounded items have been joined. For programme material with an inserted filler item, return the programme before the insertion, every inserted item, and the resumed programme as separate intervals. A scene change inside one continuing programme is not an item boundary.
 
 Give every segment its own role: commercial, promo, bumper, psa, station_id, trailer, interstitial, programme_fragment, non_filler, ambiguous, or unusable. Use programme_fragment for material whose beginning or ending depends on a larger programme, including an ordinary scene, programme opening, sustained performance, credits/title fragment, or interior cut. Never copy one role across the file merely because the source appears commercial. Use ambiguous rather than guessing. Use unusable only when corruption or degradation prevents reliable temporal assessment; age, poor image quality, or recording overlays alone are insufficient.
 
@@ -32,7 +32,6 @@ type temporalStructureOpenRouterWire struct {
 }
 
 type temporalStructureOpenRouterSegmentWire struct {
-	StartMS      int64   `json:"startMs"`
 	EndMS        int64   `json:"endMs"`
 	Role         string  `json:"role"`
 	DecisiveAtMS []int64 `json:"decisiveAtMs"`
@@ -51,9 +50,8 @@ func temporalStructureOpenRouterSchema(durationMS int64) map[string]any {
 	times := map[string]any{"type": "array", "maxItems": temporalStructureMaximumDecisiveTimes, "items": map[string]any{"type": "integer", "minimum": 0, "maximum": durationMS}}
 	segment := map[string]any{
 		"type": "object", "additionalProperties": false,
-		"required": []string{"startMs", "endMs", "role", "decisiveAtMs", "reason"},
+		"required": []string{"endMs", "role", "decisiveAtMs", "reason"},
 		"properties": map[string]any{
-			"startMs":      map[string]any{"type": "integer", "minimum": 0, "maximum": durationMS},
 			"endMs":        map[string]any{"type": "integer", "minimum": 1, "maximum": durationMS},
 			"role":         map[string]any{"type": "string", "enum": segmentRoles},
 			"decisiveAtMs": times,
@@ -79,7 +77,6 @@ func normalizeTemporalStructureOpenRouterWire(wire *temporalStructureOpenRouterW
 			return wire.Segments[index].DecisiveAtMS[i] < wire.Segments[index].DecisiveAtMS[j]
 		})
 	}
-	sort.Slice(wire.Segments, func(i, j int) bool { return wire.Segments[i].StartMS < wire.Segments[j].StartMS })
 	wire.Segments = coalesceTemporalStructureProgrammeObservations(wire.Segments)
 }
 
@@ -91,7 +88,7 @@ func coalesceTemporalStructureProgrammeObservations(segments []temporalStructure
 			continue
 		}
 		previous := &coalesced[len(coalesced)-1]
-		if previous.Role != string(fillereval.TemporalSegmentProgrammeFragment) || segment.Role != previous.Role || previous.EndMS != segment.StartMS {
+		if previous.Role != string(fillereval.TemporalSegmentProgrammeFragment) || segment.Role != previous.Role || segment.EndMS <= previous.EndMS {
 			coalesced = append(coalesced, segment)
 			continue
 		}
@@ -135,11 +132,13 @@ func temporalStructureAssessmentFromWire(alias string, wire temporalStructureOpe
 		Alias:     alias,
 		Inference: temporalInferenceFromCalls(assessedAt, []fillereval.TemporalInferenceCall{call}),
 	}
+	startMS := int64(0)
 	for _, segment := range wire.Segments {
 		assessment.Segments = append(assessment.Segments, TemporalStructureSegmentClaim{
-			StartMS: segment.StartMS, EndMS: segment.EndMS, Role: fillereval.TemporalSegmentRole(segment.Role),
+			StartMS: startMS, EndMS: segment.EndMS, Role: fillereval.TemporalSegmentRole(segment.Role),
 			DecisiveAtMS: slices.Clone(segment.DecisiveAtMS), Reason: strings.TrimSpace(segment.Reason),
 		})
+		startMS = segment.EndMS
 	}
 	assessment.Unit, assessment.Role = deriveTemporalStructureWholeFileClaim(assessment.Segments)
 	return assessment

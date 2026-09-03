@@ -4490,9 +4490,10 @@ The planner emits only coordinator-private construction authoring and a receipt 
 and output digests, deterministic seed ranks, selected families, role quotas, compilation pairs and
 join positions, and programme cuts. It performs no rendering or inference. The existing structure
 challenge preparer then renders and freshly blinds that authoring before two distinct direct-video
-model families assess it serially. The hosted-model interface requests only one complete,
-coverage-preserving segment timeline with a role and evidence for each interval; it does not request
-a second, potentially contradictory whole-file class. The adapter first coalesces adjacent
+model families assess it serially. The hosted-model interface requests only one ordered,
+coverage-preserving segment timeline with a role, exclusive end timestamp, and evidence for each
+interval; the first interval starts at zero and each later start is the preceding end. It does not
+request redundant starts or a second, potentially contradictory whole-file class. The adapter first coalesces adjacent
 programme-fragment observations because title cards, credits, and scene changes inside uninterrupted
 programme material are not filler boundaries; it never coalesces adjacent filler intervals, even
 when their roles match. It then deterministically projects the internal whole-file claim from that
