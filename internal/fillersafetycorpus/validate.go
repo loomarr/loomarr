@@ -79,45 +79,85 @@ func boundedID(value string) bool {
 }
 
 func validatePreparedCohort(value PreparedCohort, expected int) error {
+	if err := validatePreparedCandidateCohort(value, expected, PreparedCohortKindCleanCandidate, VCTKDatasetID, value.PreparedAt); err != nil {
+		return fmt.Errorf("prepared VCTK cohort: %w", err)
+	}
+	for _, item := range value.Cases {
+		expectedRoot := "cases/" + item.CaseID
+		if item.TranscriptPath != expectedRoot+"/transcript.txt" || !validSHA256(item.TranscriptSHA256) ||
+			item.TranscriptBytes <= 0 || item.RightsPath != "evidence/release-authority.json" ||
+			!item.SourceAuthority.MeasuredAt.Equal(value.PreparedAt) ||
+			!slices.Equal(item.Slices, []string{VCTKTargetLocaleSlice}) {
+			return fmt.Errorf("prepared VCTK cohort contains an invalid case")
+		}
+	}
+	return nil
+}
+
+func validatePreparedCandidateCohort(value PreparedCohort, expected int, kind, dataset string, latest time.Time) error {
 	if value.SchemaVersion != PreparedCohortSchemaVersion || value.ContractVersion != PreparedCohortContractVersion ||
-		value.PreparedAt.IsZero() || value.Kind != PreparedCohortKindCleanCandidate || value.Dataset != VCTKDatasetID ||
+		value.PreparedAt.IsZero() || value.PreparedAt.After(latest) || value.Kind != kind || value.Dataset != dataset ||
+		(kind != PreparedCohortKindCleanCandidate && kind != PreparedCohortKindPositiveCandidate) || !boundedID(dataset) ||
 		!validSHA256(value.ReleaseAuthoritySHA256) || !validSHA256(value.RecipeSHA256) || len(value.Cases) != expected ||
 		!validTool(value.FFmpeg) || !validTool(value.FFprobe) {
-		return fmt.Errorf("prepared VCTK cohort identity or exact case count is invalid")
+		return fmt.Errorf("prepared candidate cohort identity or exact case count is invalid")
 	}
 	previous := ""
 	families, sources := map[string]struct{}{}, map[string]struct{}{}
 	policy, implementation := "", ""
 	for _, item := range value.Cases {
 		expectedRoot := "cases/" + item.CaseID
+		validTranscript := item.TranscriptPath == "" && item.TranscriptSHA256 == "" && item.TranscriptBytes == 0
+		validTranscript = validTranscript || (item.TranscriptPath == expectedRoot+"/transcript.txt" &&
+			validSHA256(item.TranscriptSHA256) && item.TranscriptBytes > 0 && item.TranscriptBytes <= maximumTranscriptBytes)
 		if !boundedID(item.CaseID) || item.CaseID <= previous || !boundedID(item.SourceFamily) ||
 			item.SourceAuthority.SourceID != item.CaseID || item.SourceAuthority.PolicySHA256 == "" ||
 			item.SourceAuthority.FFmpeg != value.FFmpeg || item.SourceAuthority.FFprobe != value.FFprobe ||
-			!item.SourceAuthority.MeasuredAt.Equal(value.PreparedAt) || item.SourcePath != expectedRoot+"/source.mp4" ||
-			item.TruthProvenancePath != expectedRoot+"/provenance.json" || item.RightsPath != "evidence/release-authority.json" ||
-			!validSHA256(item.TruthProvenanceSHA256) || !validSHA256(item.RightsSHA256) ||
-			item.Claim != PreparedCohortKindCleanCandidate || !vctkLocale.MatchString(item.Locale) ||
-			!slices.Equal(item.Slices, []string{VCTKTargetLocaleSlice}) {
-			return fmt.Errorf("prepared VCTK cohort contains an invalid case")
+			item.SourceAuthority.MeasuredAt.After(value.PreparedAt) || item.SourcePath != expectedRoot+"/source.mp4" ||
+			!validTranscript || item.TruthProvenancePath != expectedRoot+"/provenance.json" ||
+			!validSHA256(item.TruthProvenanceSHA256) || item.TruthProvenanceBytes <= 0 ||
+			item.TruthProvenanceBytes > maximumReleaseAuthorityBytes || !validRelative(item.RightsPath) ||
+			!validSHA256(item.RightsSHA256) || item.RightsBytes <= 0 || item.RightsBytes > maximumReleaseAuthorityBytes ||
+			item.Claim != kind || !vctkLocale.MatchString(item.Locale) || len(item.Slices) == 0 || len(item.Slices) > 8 ||
+			!strictlySortedStrings(item.Slices) || !validPreparedIntervals(item.PositiveIntervals, item.SourceAuthority.DurationMS) ||
+			(kind == PreparedCohortKindCleanCandidate && len(item.PositiveIntervals) != 0) ||
+			(kind == PreparedCohortKindPositiveCandidate && len(item.PositiveIntervals) == 0) {
+			return fmt.Errorf("prepared candidate cohort contains an invalid case")
 		}
 		if _, duplicate := families[item.SourceFamily]; duplicate {
-			return fmt.Errorf("prepared VCTK cohort repeats a source family")
+			return fmt.Errorf("prepared candidate cohort repeats a source family")
 		}
 		if _, duplicate := sources[item.SourceAuthority.SourceSHA256]; duplicate {
-			return fmt.Errorf("prepared VCTK cohort repeats source content")
+			return fmt.Errorf("prepared candidate cohort repeats source content")
 		}
 		if _, err := fillersafety.SourceAuthoritySHA256(item.SourceAuthority); err != nil {
-			return fmt.Errorf("prepared VCTK cohort contains an invalid source authority")
+			return fmt.Errorf("prepared candidate cohort contains an invalid source authority")
 		}
 		if policy == "" {
 			policy, implementation = item.SourceAuthority.PolicySHA256, item.SourceAuthority.Implementation
 		} else if item.SourceAuthority.PolicySHA256 != policy || item.SourceAuthority.Implementation != implementation {
-			return fmt.Errorf("prepared VCTK cohort mixes policy or implementation identity")
+			return fmt.Errorf("prepared candidate cohort mixes policy or implementation identity")
 		}
 		families[item.SourceFamily], sources[item.SourceAuthority.SourceSHA256] = struct{}{}, struct{}{}
 		previous = item.CaseID
 	}
 	return nil
+}
+
+func validPreparedIntervals(intervals []PreparedPositiveInterval, durationMS int64) bool {
+	previousEnd := int64(0)
+	for index, interval := range intervals {
+		if !fillersafety.ValidPolicyRuleID(interval.RuleID) || interval.StartMS < 0 || interval.EndMS <= interval.StartMS ||
+			interval.EndMS > durationMS || (index > 0 && interval.StartMS < previousEnd) {
+			return false
+		}
+		previousEnd = interval.EndMS
+	}
+	return true
+}
+
+func strictlySortedStrings(values []string) bool {
+	return slices.IsSorted(values) && len(slices.Compact(slices.Clone(values))) == len(values)
 }
 
 func validateOwnerMap(value VCTKOwnerMap, cohort PreparedCohort, cohortSHA string) error {

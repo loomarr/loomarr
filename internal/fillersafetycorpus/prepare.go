@@ -144,9 +144,11 @@ func prepareVCTK(ctx context.Context, config PrepareVCTKConfig, wrapper mediaWra
 				SourceBytes: wrapped.Bytes, DurationMS: wrapped.DurationMS, HasAudio: true, HasVideo: true,
 				MeasuredAt: config.PreparedAt.UTC(), FFmpeg: ffmpeg, FFprobe: ffprobe,
 			},
-			SourceFamily:        selectedCase.sourceFamily,
+			SourceFamily: selectedCase.sourceFamily, TranscriptPath: transcriptRelative,
+			TranscriptSHA256: hashBytes(input.transcriptRaw), TranscriptBytes: int64(len(input.transcriptRaw)),
 			TruthProvenancePath: provenanceRelative, TruthProvenanceSHA256: hashBytes(provenanceRaw),
-			RightsPath: rightsRelative, RightsSHA256: rightsSHA, Claim: PreparedCohortKindCleanCandidate,
+			TruthProvenanceBytes: int64(len(provenanceRaw)), RightsPath: rightsRelative,
+			RightsSHA256: rightsSHA, RightsBytes: int64(len(loaded.authorityRaw)), Claim: PreparedCohortKindCleanCandidate,
 			Locale: member.Locale, Slices: []string{VCTKTargetLocaleSlice},
 		})
 		owner.Entries = append(owner.Entries, VCTKOwnerMapEntry{

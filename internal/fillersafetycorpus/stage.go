@@ -19,14 +19,14 @@ func beginPrivateStage(target string) (*privateStage, error) {
 		return nil, err
 	}
 	if _, err := os.Lstat(absolute); err == nil || !os.IsNotExist(err) {
-		return nil, fmt.Errorf("VCTK output already exists or cannot be inspected")
+		return nil, fmt.Errorf("private output already exists or cannot be inspected")
 	}
 	parent := filepath.Dir(absolute)
 	info, err := os.Stat(parent)
 	if err != nil || !info.IsDir() {
-		return nil, fmt.Errorf("VCTK output parent must exist")
+		return nil, fmt.Errorf("private output parent must exist")
 	}
-	path, err := os.MkdirTemp(parent, ".vctk-stage-")
+	path, err := os.MkdirTemp(parent, ".filler-safety-stage-")
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +45,7 @@ func (stage *privateStage) cleanup() {
 
 func (stage *privateStage) publish() error {
 	if stage == nil || stage.published {
-		return fmt.Errorf("VCTK stage is invalid")
+		return fmt.Errorf("private stage is invalid")
 	}
 	if err := os.Rename(stage.path, stage.target); err != nil {
 		return err
