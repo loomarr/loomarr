@@ -3235,6 +3235,15 @@ identity drift, unavailable route, malformed output, missing attribution, or uns
 interval unresolved. Merely implementing or capability-checking this route does not certify it and cannot
 expand unattended publication; only the locked source/signal-slice result below may do that.
 
+Every proposed `keep` interval also carries one content-addressed screening record bound to the exact
+source bytes and half-open span. It contains exactly four independent closed outcomes: `visual_safety`
+(including explicit imagery), `spoken_safety` (including prohibited language), `rights`, and
+`playback_integrity`. Each outcome is `pass`, `reject`, or `hold`, names an opaque reason code, and binds the
+SHA-256 of the owning policy/ledger/measurement artifact; raw restricted phrases and descriptions are not
+copied into the split proposal. All four must pass, the screening record digest must validate, and the
+certification adapter must re-establish every referenced artifact before automatic publication. A missing,
+stale, rejected, held, span-mismatched, or unverifiable axis sends the complete plan to review.
+
 Automatic publication requires all of the following: a `compilation_break` or explicitly bounded filler
 portion of `programme_with_spots`; exact evidence bytes still match; every published interval has resolved
 boundaries and an allowed filler role; every non-published interval is an explained discard rather than an

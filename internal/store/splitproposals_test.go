@@ -41,3 +41,26 @@ func TestMarshalSplitProposalRejectsRoleEvidenceForAnotherSpan(t *testing.T) {
 		t.Fatalf("span-binding error = %v", err)
 	}
 }
+
+func TestMarshalSplitProposalRejectsScreeningForAnotherSpan(t *testing.T) {
+	source := filler.SplitSourceAsset{
+		Role: filler.SplitSourceLegacyPlayback, SHA256: strings.Repeat("a", 64), Bytes: 100,
+		ClipHash: strings.Repeat("b", 64), Path: "aa/bb/source.mp4", DurationMs: 60_000,
+	}
+	screening, err := filler.NewSegmentScreeningEvidence(source, 0, 30_000, []filler.SegmentScreeningResult{
+		{Axis: filler.ScreenVisualSafety, Outcome: filler.ScreenPass, AuthoritySHA256: strings.Repeat("1", 64), ReasonCode: "clear"},
+		{Axis: filler.ScreenSpokenSafety, Outcome: filler.ScreenPass, AuthoritySHA256: strings.Repeat("2", 64), ReasonCode: "clear"},
+		{Axis: filler.ScreenRights, Outcome: filler.ScreenPass, AuthoritySHA256: strings.Repeat("3", 64), ReasonCode: "verified"},
+		{Axis: filler.ScreenPlayback, Outcome: filler.ScreenPass, AuthoritySHA256: strings.Repeat("4", 64), ReasonCode: "verified"},
+	}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	proposal := filler.SplitProposal{
+		ID: "proposal", ClipHash: source.ClipHash, Source: source,
+		Segments: []filler.SplitSegment{{StartMs: 0, EndMs: 30_001, Screening: &screening}},
+	}
+	if _, err := marshalSplitProposal(proposal); err == nil || !strings.Contains(err.Error(), "does not bind") {
+		t.Fatalf("span-binding error = %v", err)
+	}
+}

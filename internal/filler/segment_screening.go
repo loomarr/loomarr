@@ -1,0 +1,128 @@
+package filler
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"slices"
+	"strings"
+	"time"
+)
+
+const (
+	SegmentScreeningSchemaVersion   = 1
+	SegmentScreeningContractVersion = "filler-segment-screening-v1"
+)
+
+type SegmentScreeningAxis string
+
+const (
+	ScreenVisualSafety SegmentScreeningAxis = "visual_safety"
+	ScreenSpokenSafety SegmentScreeningAxis = "spoken_safety"
+	ScreenRights       SegmentScreeningAxis = "rights"
+	ScreenPlayback     SegmentScreeningAxis = "playback_integrity"
+)
+
+type SegmentScreeningOutcome string
+
+const (
+	ScreenPass   SegmentScreeningOutcome = "pass"
+	ScreenReject SegmentScreeningOutcome = "reject"
+	ScreenHold   SegmentScreeningOutcome = "hold"
+)
+
+// SegmentScreeningResult carries one closed decision and the immutable artifact that made it.
+// ReasonCode is deliberately opaque: restricted words or visual descriptions do not enter the
+// proposal document merely to explain why a segment was blocked.
+type SegmentScreeningResult struct {
+	Axis            SegmentScreeningAxis    `json:"axis"`
+	Outcome         SegmentScreeningOutcome `json:"outcome"`
+	AuthoritySHA256 string                  `json:"authoritySha256"`
+	ReasonCode      string                  `json:"reasonCode"`
+}
+
+// SegmentScreeningEvidence proves the four independent pre-publication screens for one exact
+// source interval. No individual pass, aggregate confidence, or absent result can substitute for
+// all four authority-bound outcomes.
+type SegmentScreeningEvidence struct {
+	SchemaVersion   int                      `json:"schemaVersion"`
+	ContractVersion string                   `json:"contractVersion"`
+	Source          SplitSourceAsset         `json:"source"`
+	StartMs         int64                    `json:"startMs"`
+	EndMs           int64                    `json:"endMs"`
+	Results         []SegmentScreeningResult `json:"results"`
+	AssessedAt      time.Time                `json:"assessedAt"`
+	SHA256          string                   `json:"sha256"`
+}
+
+func NewSegmentScreeningEvidence(source SplitSourceAsset, startMs, endMs int64, results []SegmentScreeningResult, assessedAt time.Time) (SegmentScreeningEvidence, error) {
+	evidence := SegmentScreeningEvidence{
+		SchemaVersion: SegmentScreeningSchemaVersion, ContractVersion: SegmentScreeningContractVersion,
+		Source: source, StartMs: startMs, EndMs: endMs, Results: slices.Clone(results), AssessedAt: assessedAt.UTC(),
+	}
+	slices.SortFunc(evidence.Results, func(a, b SegmentScreeningResult) int { return strings.Compare(string(a.Axis), string(b.Axis)) })
+	evidence.SHA256 = SegmentScreeningEvidenceSHA256(evidence)
+	if err := ValidateSegmentScreeningEvidence(evidence); err != nil {
+		return SegmentScreeningEvidence{}, err
+	}
+	return evidence, nil
+}
+
+func ValidateSegmentScreeningEvidence(evidence SegmentScreeningEvidence) error {
+	if evidence.SchemaVersion != SegmentScreeningSchemaVersion || evidence.ContractVersion != SegmentScreeningContractVersion || evidence.Source.validate() != nil || evidence.StartMs < 0 || evidence.EndMs <= evidence.StartMs || evidence.EndMs > evidence.Source.DurationMs || evidence.AssessedAt.IsZero() {
+		return fmt.Errorf("segment screening identity or interval is invalid")
+	}
+	want := map[SegmentScreeningAxis]struct{}{ScreenVisualSafety: {}, ScreenSpokenSafety: {}, ScreenRights: {}, ScreenPlayback: {}}
+	if len(evidence.Results) != len(want) || !slices.IsSortedFunc(evidence.Results, func(a, b SegmentScreeningResult) int { return strings.Compare(string(a.Axis), string(b.Axis)) }) {
+		return fmt.Errorf("segment screening must contain four ordered axis results")
+	}
+	for _, result := range evidence.Results {
+		if _, ok := want[result.Axis]; !ok || result.Outcome != ScreenPass && result.Outcome != ScreenReject && result.Outcome != ScreenHold || !isContentHash(result.AuthoritySHA256) || !validScreeningReasonCode(result.ReasonCode) {
+			return fmt.Errorf("segment screening contains an invalid axis result")
+		}
+		delete(want, result.Axis)
+	}
+	if len(want) != 0 || evidence.SHA256 == "" || evidence.SHA256 != SegmentScreeningEvidenceSHA256(evidence) {
+		return fmt.Errorf("segment screening coverage or digest is invalid")
+	}
+	return nil
+}
+
+func (e SegmentScreeningEvidence) Passes() bool {
+	if ValidateSegmentScreeningEvidence(e) != nil {
+		return false
+	}
+	for _, result := range e.Results {
+		if result.Outcome != ScreenPass {
+			return false
+		}
+	}
+	return true
+}
+
+func SegmentScreeningEvidenceSHA256(evidence SegmentScreeningEvidence) string {
+	evidence.SHA256 = ""
+	raw, err := json.Marshal(evidence)
+	if err != nil {
+		return ""
+	}
+	digest := sha256.Sum256(raw)
+	return hex.EncodeToString(digest[:])
+}
+
+func validScreeningReasonCode(value string) bool {
+	if len(value) < 1 || len(value) > 96 || value != strings.TrimSpace(value) {
+		return false
+	}
+	for _, r := range value {
+		if r < 'a' || r > 'z' {
+			if r < '0' || r > '9' {
+				if r != '_' && r != '-' && r != '.' {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}

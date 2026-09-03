@@ -3,11 +3,12 @@ package filler
 import "time"
 
 // StructureCertificationPolicy is the release boundary between a valid assessment and unattended
-// publication. Both callbacks fail closed when absent. AssessmentCertified owns locked source/signal
-// slices; SegmentScreened owns the applicable safety and rights result for each kept interval.
+// publication. AssessmentCertified owns locked source/signal slices. ScreeningCertified verifies
+// that all four content-addressed screening artifacts still exist in their owning ledgers. The
+// decisions themselves are durable exact-span proposal evidence, not injectable booleans.
 type StructureCertificationPolicy struct {
 	AssessmentCertified func(SourceStructureAssessment) bool
-	SegmentScreened     func(SourceStructureAssessment, StructurePlanSegment) bool
+	ScreeningCertified  func(SegmentScreeningEvidence) bool
 }
 
 const (
@@ -74,15 +75,8 @@ func CertifiedAutoConfirmable(p SplitProposal, auto *AutoSplitPolicy, certificat
 	if certification == nil || certification.AssessmentCertified == nil || !certification.AssessmentCertified(assessment) {
 		return SplitPartition{Reject: RejectStructureUncertified, Hold: keep, Discard: discard}
 	}
-	if certification.SegmentScreened == nil {
-		return SplitPartition{Reject: RejectSegmentUnscreened, Hold: keep, Discard: discard}
-	}
-	planBySpan := make(map[span]StructurePlanSegment, len(assessment.Plan))
-	for _, planned := range assessment.Plan {
-		planBySpan[span{planned.StartMs, planned.EndMs}] = planned
-	}
 	for _, segment := range keep {
-		if !certification.SegmentScreened(assessment, planBySpan[span{segment.StartMs, segment.EndMs}]) {
+		if segment.Screening == nil || segment.Screening.Source != assessment.Source || segment.Screening.StartMs != segment.StartMs || segment.Screening.EndMs != segment.EndMs || !segment.Screening.Passes() || certification.ScreeningCertified == nil || !certification.ScreeningCertified(*segment.Screening) {
 			return SplitPartition{Reject: RejectSegmentUnscreened, Hold: keep, Discard: discard}
 		}
 	}

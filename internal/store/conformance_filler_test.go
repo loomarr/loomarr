@@ -2991,11 +2991,20 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	screening, err := filler.NewSegmentScreeningEvidence(source, 0, 30_000, []filler.SegmentScreeningResult{
+		{Axis: filler.ScreenVisualSafety, Outcome: filler.ScreenPass, AuthoritySHA256: strings.Repeat("1", 64), ReasonCode: "policy_clear"},
+		{Axis: filler.ScreenSpokenSafety, Outcome: filler.ScreenPass, AuthoritySHA256: strings.Repeat("2", 64), ReasonCode: "policy_clear"},
+		{Axis: filler.ScreenRights, Outcome: filler.ScreenPass, AuthoritySHA256: strings.Repeat("3", 64), ReasonCode: "rights_verified"},
+		{Axis: filler.ScreenPlayback, Outcome: filler.ScreenPass, AuthoritySHA256: strings.Repeat("4", 64), ReasonCode: "playback_verified"},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
 	p := filler.SplitProposal{
 		ID: "sp_1", ClipHash: clipHashFor("comps/1987.mp4"), CreatedAt: now,
 		Source: source, Structure: &structure,
 		Segments: []filler.SplitSegment{
-			{Index: 0, StartMs: 0, EndMs: 30000, Name: "comps/1987 part 1", Era: 1987, Audience: filler.Kids, Category: "toys", RoleEvidence: &roleEvidence},
+			{Index: 0, StartMs: 0, EndMs: 30000, Name: "comps/1987 part 1", Era: 1987, Audience: filler.Kids, Category: "toys", RoleEvidence: &roleEvidence, Screening: &screening},
 			{Index: 1, StartMs: 30000, EndMs: 61000, Name: "unknown", SuggestedEra: 1985, DupOf: "old/ad.mp4", Looked: true, RoleEvidence: &videoRoleEvidence},
 			{Index: 2, StartMs: 61000, EndMs: 149000, Name: "comps/1987 part 3", Unsplittable: true, Transcript: "[00:00] …"},
 		},
@@ -3021,6 +3030,9 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	}
 	if !reflect.DeepEqual(got.Segments[0].RoleEvidence, &roleEvidence) {
 		t.Errorf("segment role evidence lost: %+v", got.Segments[0].RoleEvidence)
+	}
+	if !reflect.DeepEqual(got.Segments[0].Screening, &screening) || !got.Segments[0].Screening.Passes() {
+		t.Errorf("segment screening evidence lost: %+v", got.Segments[0].Screening)
 	}
 	if !reflect.DeepEqual(got.Segments[1].RoleEvidence, &videoRoleEvidence) || got.Segments[1].RoleEvidence.VideoSHA256 == "" {
 		t.Errorf("segment video role evidence lost: %+v", got.Segments[1].RoleEvidence)

@@ -30,10 +30,14 @@ type splitProposalDocument struct {
 	Source       filler.SplitSourceAsset           `json:"source,omitempty"`
 	Structure    *filler.SourceStructureAssessment `json:"structure,omitempty"`
 	RoleEvidence []filler.StructureRoleEvidence    `json:"roleEvidence,omitempty"`
+	Screenings   []filler.SegmentScreeningEvidence `json:"screenings,omitempty"`
 }
 
 func marshalSplitProposal(p filler.SplitProposal) ([]byte, error) {
 	if err := validateSplitProposalRoleEvidence(p); err != nil {
+		return nil, err
+	}
+	if err := validateSplitProposalScreenings(p); err != nil {
 		return nil, err
 	}
 	if p.Structure != nil {
@@ -45,8 +49,8 @@ func marshalSplitProposal(p filler.SplitProposal) ([]byte, error) {
 		}
 	}
 	return json.Marshal(splitProposalDocument{
-		Version: 5, Segments: p.Segments, Detection: p.Detection, Spawned: p.Spawned,
-		Source: p.Source, Structure: p.Structure, RoleEvidence: splitProposalRoleEvidence(p),
+		Version: 6, Segments: p.Segments, Detection: p.Detection, Spawned: p.Spawned,
+		Source: p.Source, Structure: p.Structure, RoleEvidence: splitProposalRoleEvidence(p), Screenings: splitProposalScreenings(p),
 	})
 }
 
@@ -65,7 +69,13 @@ func unmarshalSplitProposal(raw string, p *filler.SplitProposal) error {
 	if err := attachSplitProposalRoleEvidence(p, doc.RoleEvidence); err != nil {
 		return err
 	}
+	if err := attachSplitProposalScreenings(p, doc.Screenings); err != nil {
+		return err
+	}
 	if err := validateSplitProposalRoleEvidence(*p); err != nil {
+		return err
+	}
+	if err := validateSplitProposalScreenings(*p); err != nil {
 		return err
 	}
 	if p.Structure != nil {
@@ -119,6 +129,51 @@ func validateSplitProposalRoleEvidence(p filler.SplitProposal) error {
 		}
 		if segment.RoleEvidence.Source != p.Source || segment.RoleEvidence.StartMs != segment.StartMs || segment.RoleEvidence.EndMs != segment.EndMs {
 			return fmt.Errorf("segment %d role evidence does not bind the proposal source and span", index)
+		}
+	}
+	return nil
+}
+
+func splitProposalScreenings(p filler.SplitProposal) []filler.SegmentScreeningEvidence {
+	var screenings []filler.SegmentScreeningEvidence
+	for _, segment := range p.Segments {
+		if segment.Screening != nil {
+			screenings = append(screenings, *segment.Screening)
+		}
+	}
+	return screenings
+}
+
+func attachSplitProposalScreenings(p *filler.SplitProposal, screenings []filler.SegmentScreeningEvidence) error {
+	type span struct{ start, end int64 }
+	bySpan := make(map[span]int, len(p.Segments))
+	for index, segment := range p.Segments {
+		bySpan[span{segment.StartMs, segment.EndMs}] = index
+	}
+	for i := range screenings {
+		index, exists := bySpan[span{screenings[i].StartMs, screenings[i].EndMs}]
+		if !exists {
+			return fmt.Errorf("screening %d does not name a proposal segment", i)
+		}
+		if p.Segments[index].Screening != nil {
+			return fmt.Errorf("screening %d repeats a proposal segment", i)
+		}
+		screening := screenings[i]
+		p.Segments[index].Screening = &screening
+	}
+	return nil
+}
+
+func validateSplitProposalScreenings(p filler.SplitProposal) error {
+	for index, segment := range p.Segments {
+		if segment.Screening == nil {
+			continue
+		}
+		if err := filler.ValidateSegmentScreeningEvidence(*segment.Screening); err != nil {
+			return fmt.Errorf("segment %d has invalid screening evidence: %w", index, err)
+		}
+		if segment.Screening.Source != p.Source || segment.Screening.StartMs != segment.StartMs || segment.Screening.EndMs != segment.EndMs {
+			return fmt.Errorf("segment %d screening does not bind the proposal source and span", index)
 		}
 	}
 	return nil
