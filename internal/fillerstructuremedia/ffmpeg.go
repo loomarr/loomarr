@@ -25,6 +25,10 @@ func ConcatArguments(list, output string) []string {
 }
 
 func partArgumentTemplate() []string {
+	// -t is deliberately an output option after -i. As an input option it capped audio while
+	// the fps filter emitted video through the source's full timeline on real MP4 inputs.
+	// start_time=0 prevents a positive source start timestamp from dropping the first output
+	// frame and turning an otherwise constant 30 fps stream into a non-canonical average rate.
 	return []string{
 		"-nostdin", "-hide_banner", "-v", "error", "-y",
 		"-threads", "1", "-ss", startToken, "-i", inputToken, "-t", durationToken,
