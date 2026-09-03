@@ -21,7 +21,9 @@ same speaker never becomes another source family.
 Each selected real utterance is wrapped into a complete audiovisual MP4 with a
 fixed neutral-video recipe. The adapter pins the exact ffmpeg and ffprobe bytes
 and versions, uses bounded single-threaded encoding, strips metadata, probes the
-result, and records input/output hashes and complete-span timing. This changes
+result, fully decodes both output streams, and records input/output hashes and
+complete-span timing. The wall-time ceiling is an execution deadline, including
+tool probes, encoding, and decode validation. This changes
 the representation, not the speaker-family identity. The fixed visual carrier
 exists only because the certification cascade requires both modalities; it is
 not visual-suitability evidence.
@@ -50,6 +52,8 @@ go run ./cmd/filler-spoken-vctk-prepare \
   --seed /private/vctk/selection-seed.bin \
   --ffmpeg /usr/local/bin/ffmpeg \
   --ffprobe /usr/local/bin/ffprobe \
+  --policy-sha256 <private-policy-sha256> \
+  --implementation spoken-safety-evaluator-v1 \
   --prepared-at 2026-09-03T12:00:00Z \
   --expected-speakers 100 \
   --max-input-bytes 1073741824 \
@@ -60,5 +64,7 @@ go run ./cmd/filler-spoken-vctk-prepare \
 
 An existing output, source or evidence drift, unsafe path or symlink, duplicate
 content/family, incomplete rights contract, tool drift, insufficient speakers,
-resource ceiling, partial encode, or non-reproducible identity fails closed.
+resource ceiling, partial encode, decode failure, or non-reproducible identity
+fails closed. Aggregate input accounting counts the authority, seed, and each
+unique verified file once even when VCTK microphone records share a transcript.
 Console output contains aggregate counts and document digests only.
