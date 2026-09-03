@@ -35,6 +35,13 @@ func TestFileStructureWindowEvidenceRepositoryRoundTripsValidatedArtifacts(t *te
 		if err != nil || !reflect.DeepEqual(loaded, assessment) {
 			t.Fatalf("loaded assessment=%+v error=%v", loaded, err)
 		}
+		found, ok, err := repository.FindStructureWindowAssessmentEvidence(t.Context(), set, assessment.Record.WindowOrdinal, assessment.Record.Assessor)
+		if err != nil || !ok || !reflect.DeepEqual(found, assessment) {
+			t.Fatalf("found assessment=%+v ok=%t error=%v", found, ok, err)
+		}
+	}
+	if _, ok, err := repository.FindStructureWindowAssessmentEvidence(t.Context(), set, 0, windowAssessorFixture("other", "other-family", "c", timeline, &[]string{}).Profile()); err != nil || ok {
+		t.Fatalf("missing operation ok=%t error=%v", ok, err)
 	}
 	if err := repository.PutStructureWindowStitch(t.Context(), stitch); err != nil {
 		t.Fatal(err)
@@ -59,7 +66,7 @@ func TestFileStructureWindowEvidenceRepositoryRejectsDrift(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, target := range []string{"record", "assessment", "response", "output", "stitch"} {
+	for _, target := range []string{"publication", "record", "assessment", "response", "output", "stitch"} {
 		t.Run(target, func(t *testing.T) {
 			repository := structureEvidenceRepositoryFixture(t)
 			var path string
@@ -70,6 +77,9 @@ func TestFileStructureWindowEvidenceRepositoryRejectsDrift(t *testing.T) {
 				switch target {
 				case "record":
 					path = repository.blobPath("window-call-records", recorded[0].Record.SHA256)
+				case "publication":
+					operation := fillerstructurewindow.CallOperationSHA256(set, recorded[0].Record.WindowOrdinal, recorded[0].Record.Assessor)
+					path = repository.blobPath("window-call-publications", operation)
 				case "assessment":
 					path = repository.blobPath("window-assessments", recorded[0].Assessment.SHA256)
 				case "response":
@@ -87,7 +97,13 @@ func TestFileStructureWindowEvidenceRepositoryRejectsDrift(t *testing.T) {
 				t.Fatal(err)
 			}
 			if target != "stitch" {
-				if _, err := repository.GetStructureWindowAssessmentEvidence(t.Context(), set, recorded[0].Record.SHA256); err == nil {
+				var err error
+				if target == "publication" {
+					_, _, err = repository.FindStructureWindowAssessmentEvidence(t.Context(), set, recorded[0].Record.WindowOrdinal, recorded[0].Record.Assessor)
+				} else {
+					_, err = repository.GetStructureWindowAssessmentEvidence(t.Context(), set, recorded[0].Record.SHA256)
+				}
+				if err == nil {
 					t.Fatal("tampered window call evidence was accepted")
 				}
 			} else if _, err := repository.GetStructureWindowStitch(t.Context(), stitch.SHA256); err == nil {

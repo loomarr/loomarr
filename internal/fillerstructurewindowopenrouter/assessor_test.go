@@ -160,6 +160,20 @@ func TestAssessorRejectsWindowMediaByteDriftBeforeReservationOrCall(t *testing.T
 	}
 }
 
+func TestAssessorDoesNotRepeatProviderCallWhenDurableReservationConflicts(t *testing.T) {
+	ledger := &capturedLedger{reserveErr: fillerstructurewindow.ErrCallLedgerConflict}
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls++ }))
+	defer server.Close()
+	set, media := assessorMediaFixture(t)
+	if _, err := assessorFixture(t, server.URL, server.Client(), ledger).AssessWindow(t.Context(), set, media); err == nil {
+		t.Fatal("existing durable reservation did not stop the repeated operation")
+	}
+	if calls != 0 || len(ledger.reservations) != 1 || len(ledger.settlements) != 0 {
+		t.Fatalf("calls=%d reservations=%d settlements=%d", calls, len(ledger.reservations), len(ledger.settlements))
+	}
+}
+
 func TestAssessorRetainsKnownOverReservationAsOperationalEvidence(t *testing.T) {
 	ledger := &capturedLedger{state: fillerstructurewindow.CallReservationAccepted}
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {

@@ -4805,6 +4805,16 @@ failure assessment with no segments. Cancellation does not bypass settlement: on
 exists, the adapter settles through a bounded context detached from caller cancellation. A paid or
 reserved call therefore cannot influence a boundary from memory alone, disappear from accounting,
 or be mistaken for semantic evidence.
+The completed-call lookup is itself immutable and deterministic. An operation identity hashes the
+exact media-set digest, ordinal, and complete assessor profile; its publication binds that operation
+to exactly one call-record digest and is written only after all referenced evidence and the durable
+settlement exist. On restart, the coordinator resolves this identity before invoking an assessor,
+strictly reloads every referenced byte, and reuses the answer only when the complete authority
+revalidates. A second, different record for one operation is a conflict, not a retry. A missing
+publication permits a new call only when no durable reservation for that exact request exists; an
+open crash reservation remains an explicit unknown-charge hold and must never cause an automatic
+duplicate provider call. Completed earlier windows therefore resume without repayment while an
+interrupted in-flight window fails closed instead of guessing whether the provider charged it.
 The conditioned-media identity also binds a content-addressed, path-free lineage document. That
 document names the original source identity, the complete canonical assessment-media profile, the
 exact ffmpeg version and executable digest, and the normalized derivative's digest, byte count, and

@@ -68,6 +68,7 @@ type capturedWindowEvidence struct {
 	failEvent   string
 	assessments []fillerstructurewindow.RecordedAssessment
 	byRecord    map[string]fillerstructurewindow.RecordedAssessment
+	byOperation map[string]string
 	stitches    []fillerstructurewindow.StitchResult
 	decisions   []fillerstructure.Artifact
 }
@@ -84,6 +85,14 @@ func (e *capturedWindowEvidence) PutStructureWindowAssessmentEvidence(_ context.
 		e.byRecord = make(map[string]fillerstructurewindow.RecordedAssessment)
 	}
 	e.byRecord[recorded.Record.SHA256] = recorded
+	if e.byOperation == nil {
+		e.byOperation = make(map[string]string)
+	}
+	operation := fillerstructurewindow.CallOperationSHA256(recorded.Record.MediaSet, recorded.Record.WindowOrdinal, recorded.Record.Assessor)
+	if existing := e.byOperation[operation]; existing != "" && existing != recorded.Record.SHA256 {
+		return errors.New("operation conflict")
+	}
+	e.byOperation[operation] = recorded.Record.SHA256
 	return nil
 }
 
@@ -98,6 +107,21 @@ func (e *capturedWindowEvidence) GetStructureWindowAssessmentEvidence(_ context.
 		return fillerstructurewindow.RecordedAssessment{}, errors.New("replay failed")
 	}
 	return recorded, nil
+}
+
+func (e *capturedWindowEvidence) FindStructureWindowAssessmentEvidence(_ context.Context, set fillerstructurewindow.MediaSet, ordinal int, profile fillerstructure.AssessorProfile) (fillerstructurewindow.RecordedAssessment, bool, error) {
+	operation := fillerstructurewindow.CallOperationSHA256(set, ordinal, profile)
+	recordSHA256 := e.byOperation[operation]
+	if recordSHA256 == "" {
+		return fillerstructurewindow.RecordedAssessment{}, false, nil
+	}
+	recorded := e.byRecord[recordSHA256]
+	event := "reuse:" + profile.ID + ":" + string(rune('0'+ordinal))
+	*e.events = append(*e.events, event)
+	if event == e.failEvent {
+		return fillerstructurewindow.RecordedAssessment{}, false, errors.New("resume failed")
+	}
+	return recorded, true, nil
 }
 
 func (e *capturedWindowEvidence) PutStructureWindowStitch(_ context.Context, stitch fillerstructurewindow.StitchResult) error {
@@ -248,6 +272,52 @@ func TestStructureWindowRuntimeFreezesConfiguredProfiles(t *testing.T) {
 	left.profile.ID = "assessor-a-mutated"
 	if _, err := runtime.Assess(t.Context(), input); err == nil {
 		t.Fatal("profile mutation after construction was accepted")
+	}
+}
+
+func TestStructureWindowRuntimeResumesPublishedWindowsWithoutDuplicateCalls(t *testing.T) {
+	input, prepared := structureWindowRuntimeFixture(t)
+	events := []string{}
+	timeline := []fillerstructure.Segment{
+		{StartMS: 0, EndMS: 120_000, Role: fillerstructure.RoleCommercial},
+		{StartMS: 120_000, EndMS: 300_000, Role: fillerstructure.RolePromo},
+	}
+	left := windowAssessorFixture("assessor-a", "family-a", "a", timeline, &events)
+	right := windowAssessorFixture("assessor-b", "family-b", "b", timeline, &events)
+	evidence := &capturedWindowEvidence{events: &events}
+	for ordinal := 0; ordinal < 2; ordinal++ {
+		recorded, err := left.AssessWindow(t.Context(), prepared.Authority, prepared.Windows[ordinal])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := evidence.PutStructureWindowAssessmentEvidence(t.Context(), recorded); err != nil {
+			t.Fatal(err)
+		}
+	}
+	events = nil
+	runtime, err := NewStructureWindowAssessmentRuntime(
+		[]CompleteWindowStructureAssessor{left, right}, &capturedWindowPreparer{prepared: prepared}, evidence,
+		2_000, func() time.Time { return time.Date(2026, time.September, 12, 12, 0, 0, 0, time.UTC) },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := runtime.Assess(t.Context(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPrefix := []string{
+		"reuse:assessor-a:0", "get:assessor-a:0", "reuse:assessor-a:1", "get:assessor-a:1",
+		"call:assessor-a:2", "put:assessor-a:2", "get:assessor-a:2", "stitch:assessor-a",
+	}
+	if len(events) < len(wantPrefix) || !reflect.DeepEqual(events[:len(wantPrefix)], wantPrefix) ||
+		artifact.Decision.Status != fillerstructure.StatusConfirmed {
+		t.Fatalf("events=%v artifact=%+v", events, artifact)
+	}
+	for _, event := range events {
+		if event == "call:assessor-a:0" || event == "call:assessor-a:1" || event == "put:assessor-a:0" || event == "put:assessor-a:1" {
+			t.Fatalf("published window was called or rewritten: %v", events)
+		}
 	}
 }
 

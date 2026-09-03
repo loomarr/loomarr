@@ -25,6 +25,7 @@ type CompleteWindowStructureAssessor interface {
 type StructureWindowEvidenceRepository interface {
 	PutStructureWindowAssessmentEvidence(context.Context, fillerstructurewindow.RecordedAssessment) error
 	GetStructureWindowAssessmentEvidence(context.Context, fillerstructurewindow.MediaSet, string) (fillerstructurewindow.RecordedAssessment, error)
+	FindStructureWindowAssessmentEvidence(context.Context, fillerstructurewindow.MediaSet, int, fillerstructure.AssessorProfile) (fillerstructurewindow.RecordedAssessment, bool, error)
 	PutStructureWindowStitch(context.Context, fillerstructurewindow.StitchResult) error
 	PutStructureDecisionArtifact(context.Context, fillerstructure.Artifact) error
 }
@@ -94,18 +95,23 @@ func (r *StructureWindowAssessmentRuntime) Assess(ctx context.Context, input Str
 			if err := ctx.Err(); err != nil {
 				return fillerstructure.Artifact{}, err
 			}
-			recorded, err := assessor.AssessWindow(ctx, prepared.Authority, window)
+			recorded, found, err := r.evidence.FindStructureWindowAssessmentEvidence(ctx, prepared.Authority, ordinal, r.profiles[family])
 			if err != nil {
-				return fillerstructure.Artifact{}, fmt.Errorf("structure window assessor %d window %d produced no authority: %w", family, ordinal, err)
+				return fillerstructure.Artifact{}, fmt.Errorf("find structure window assessor %d window %d evidence: %w", family, ordinal, err)
 			}
-			if err := fillerstructurewindow.ValidateRecordedAssessment(recorded); err != nil ||
-				recorded.Assessment.WindowOrdinal != ordinal || recorded.Assessment.Media != window.Media.Media ||
-				!reflect.DeepEqual(recorded.Assessment.Assessor, r.profiles[family]) ||
-				!reflect.DeepEqual(recorded.Record.MediaSet, prepared.Authority) {
+			if !found {
+				recorded, err = assessor.AssessWindow(ctx, prepared.Authority, window)
+				if err != nil {
+					return fillerstructure.Artifact{}, fmt.Errorf("structure window assessor %d window %d produced no authority: %w", family, ordinal, err)
+				}
+			}
+			if !validRecordedWindowAuthority(prepared.Authority, window, r.profiles[family], ordinal, recorded) {
 				return fillerstructure.Artifact{}, fmt.Errorf("structure window assessor %d window %d drifted authority", family, ordinal)
 			}
-			if err := r.evidence.PutStructureWindowAssessmentEvidence(ctx, recorded); err != nil {
-				return fillerstructure.Artifact{}, fmt.Errorf("persist structure window assessor %d window %d: %w", family, ordinal, err)
+			if !found {
+				if err := r.evidence.PutStructureWindowAssessmentEvidence(ctx, recorded); err != nil {
+					return fillerstructure.Artifact{}, fmt.Errorf("persist structure window assessor %d window %d: %w", family, ordinal, err)
+				}
 			}
 			replayed, err := r.evidence.GetStructureWindowAssessmentEvidence(ctx, prepared.Authority, recorded.Record.SHA256)
 			if err != nil {
@@ -140,6 +146,12 @@ func (r *StructureWindowAssessmentRuntime) Assess(ctx context.Context, input Str
 		return fillerstructure.Artifact{}, fmt.Errorf("persist structure window decision: %w", err)
 	}
 	return artifact, nil
+}
+
+func validRecordedWindowAuthority(set fillerstructurewindow.MediaSet, window StructureAssessmentWindowMedia, profile fillerstructure.AssessorProfile, ordinal int, recorded fillerstructurewindow.RecordedAssessment) bool {
+	return fillerstructurewindow.ValidateRecordedAssessment(recorded) == nil &&
+		recorded.Assessment.WindowOrdinal == ordinal && recorded.Assessment.Media == window.Media.Media &&
+		reflect.DeepEqual(recorded.Assessment.Assessor, profile) && reflect.DeepEqual(recorded.Record.MediaSet, set)
 }
 
 func structureWindowSetReusesSourcePath(prepared StructureAssessmentWindowMediaSet, sourcePath string) bool {

@@ -7,19 +7,22 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"reflect"
 
+	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 )
 
 const (
-	structureWindowAssessmentMaximumBytes = 1 << 20
-	structureWindowCallRecordMaximumBytes = 1 << 20
-	structureWindowStitchMaximumBytes     = 4 << 20
+	structureWindowAssessmentMaximumBytes  = 1 << 20
+	structureWindowCallRecordMaximumBytes  = 1 << 20
+	structureWindowCallPublicationMaxBytes = 64 << 10
+	structureWindowStitchMaximumBytes      = 4 << 20
 )
 
-// PutStructureWindowAssessmentEvidence publishes provider blobs and the semantic assessment before
-// the call record. A visible record is therefore always replayable after a crash.
+// PutStructureWindowAssessmentEvidence publishes provider blobs, semantic assessment, and call
+// record before the operation publication. A resumable operation is therefore fully replayable.
 func (r *FileStructureAssessmentEvidenceRepository) PutStructureWindowAssessmentEvidence(ctx context.Context, recorded fillerstructurewindow.RecordedAssessment) error {
 	if r == nil || r.root == "" {
 		return errors.New("structure window evidence repository is unavailable")
@@ -34,6 +37,14 @@ func (r *FileStructureAssessmentEvidenceRepository) PutStructureWindowAssessment
 	recordRaw, err := json.Marshal(recorded.Record)
 	if err != nil || len(recordRaw) == 0 || len(recordRaw) > structureWindowCallRecordMaximumBytes {
 		return errors.New("marshal bounded structure window call record")
+	}
+	publication, err := fillerstructurewindow.NewCallPublication(recorded.Record)
+	if err != nil {
+		return err
+	}
+	publicationRaw, err := json.Marshal(publication)
+	if err != nil || len(publicationRaw) == 0 || len(publicationRaw) > structureWindowCallPublicationMaxBytes {
+		return errors.New("marshal bounded structure window call publication")
 	}
 	if recorded.Record.ResponseSHA256 != "" {
 		if err := r.putImmutable(ctx, r.blobPath("responses", recorded.Record.ResponseSHA256), recorded.RawResponse, structureAssessmentResponseMaxBytes); err != nil {
@@ -51,7 +62,37 @@ func (r *FileStructureAssessmentEvidenceRepository) PutStructureWindowAssessment
 	if err := r.putImmutable(ctx, r.blobPath("window-call-records", recorded.Record.SHA256), recordRaw, structureWindowCallRecordMaximumBytes); err != nil {
 		return fmt.Errorf("persist structure window call record: %w", err)
 	}
+	if err := r.putImmutable(ctx, r.blobPath("window-call-publications", publication.OperationSHA256), publicationRaw, structureWindowCallPublicationMaxBytes); err != nil {
+		return fmt.Errorf("publish structure window call: %w", err)
+	}
 	return nil
+}
+
+func (r *FileStructureAssessmentEvidenceRepository) FindStructureWindowAssessmentEvidence(ctx context.Context, set fillerstructurewindow.MediaSet, ordinal int, profile fillerstructure.AssessorProfile) (fillerstructurewindow.RecordedAssessment, bool, error) {
+	if r == nil || r.root == "" || fillerstructurewindow.ValidateMediaSet(set) != nil ||
+		ordinal < 0 || ordinal >= len(set.Windows) || fillerstructure.ValidateAssessorProfile(profile) != nil {
+		return fillerstructurewindow.RecordedAssessment{}, false, errors.New("structure window call operation is invalid")
+	}
+	operationSHA256 := fillerstructurewindow.CallOperationSHA256(set, ordinal, profile)
+	raw, err := r.readImmutable(ctx, r.blobPath("window-call-publications", operationSHA256), structureWindowCallPublicationMaxBytes)
+	if errors.Is(err, fs.ErrNotExist) {
+		return fillerstructurewindow.RecordedAssessment{}, false, nil
+	}
+	if err != nil {
+		return fillerstructurewindow.RecordedAssessment{}, false, fmt.Errorf("read structure window call publication: %w", err)
+	}
+	var publication fillerstructurewindow.CallPublication
+	if err := decodeStructureWindowEvidence(raw, &publication); err != nil || publication.OperationSHA256 != operationSHA256 {
+		return fillerstructurewindow.RecordedAssessment{}, false, errors.New("decode structure window call publication")
+	}
+	recorded, err := r.GetStructureWindowAssessmentEvidence(ctx, set, publication.RecordSHA256)
+	if err != nil {
+		return fillerstructurewindow.RecordedAssessment{}, false, err
+	}
+	if err := fillerstructurewindow.ValidateCallPublication(publication, recorded.Record); err != nil {
+		return fillerstructurewindow.RecordedAssessment{}, false, err
+	}
+	return recorded, true, nil
 }
 
 func (r *FileStructureAssessmentEvidenceRepository) GetStructureWindowAssessmentEvidence(ctx context.Context, set fillerstructurewindow.MediaSet, recordSHA256 string) (fillerstructurewindow.RecordedAssessment, error) {
