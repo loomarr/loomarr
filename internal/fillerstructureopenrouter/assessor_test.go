@@ -20,15 +20,15 @@ import (
 )
 
 type capturedLedger struct {
-	state        ReservationState
+	state        fillerstructure.AssessmentReservationState
 	reserveErr   error
 	settleErr    error
-	reservations []Reservation
+	reservations []fillerstructure.AssessmentReservation
 	settlements  []fillerstructure.AssessmentRecord
 	order        []string
 }
 
-func (l *capturedLedger) Reserve(_ context.Context, reservation Reservation) (ReservationState, error) {
+func (l *capturedLedger) Reserve(_ context.Context, reservation fillerstructure.AssessmentReservation) (fillerstructure.AssessmentReservationState, error) {
 	l.order = append(l.order, "reserve")
 	l.reservations = append(l.reservations, reservation)
 	return l.state, l.reserveErr
@@ -41,7 +41,7 @@ func (l *capturedLedger) Settle(_ context.Context, record fillerstructure.Assess
 }
 
 func TestAssessorReturnsAcceptedReplayableAssessmentAfterDurableReservation(t *testing.T) {
-	ledger := &capturedLedger{state: ReservationAccepted}
+	ledger := &capturedLedger{state: fillerstructure.AssessmentReservationAccepted}
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		ledger.order = append(ledger.order, "call")
 		response.Header().Set("Content-Type", "application/json")
@@ -60,13 +60,15 @@ func TestAssessorReturnsAcceptedReplayableAssessmentAfterDurableReservation(t *t
 	}
 	if !slices.Equal(ledger.order, []string{"reserve", "call", "settle"}) || len(ledger.reservations) != 1 || len(ledger.settlements) != 1 ||
 		recorded.Record.State != fillerstructure.AssessmentRecordAccepted || candidate.Unit != fillerstructure.UnitCompilation || len(candidate.Segments) != 2 ||
-		recorded.Record.RequestSHA256 != ledger.reservations[0].RequestSHA256 || recorded.Record.SHA256 != ledger.settlements[0].SHA256 {
+		recorded.Record.RequestSHA256 != ledger.reservations[0].RequestSHA256 || recorded.Record.SHA256 != ledger.settlements[0].SHA256 ||
+		ledger.reservations[0].MaximumChargeNanoUSD != 1_500 || ledger.reservations[0].ExpectedResolvedModel != "resolved-model" ||
+		ledger.reservations[0].PromptSHA256 != recorded.Record.PromptSHA256 || ledger.reservations[0].SchemaSHA256 != recorded.Record.SchemaSHA256 {
 		t.Fatalf("order=%v record=%+v candidate=%+v", ledger.order, recorded.Record, candidate)
 	}
 }
 
 func TestAssessorRecordsBudgetHoldWithoutCallingProvider(t *testing.T) {
-	ledger := &capturedLedger{state: ReservationHeldBudget}
+	ledger := &capturedLedger{state: fillerstructure.AssessmentReservationHeldBudget}
 	calls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls++ }))
 	defer server.Close()
@@ -110,7 +112,7 @@ func TestAssessorFailsClosedAcrossProviderOutcomes(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			ledger := &capturedLedger{state: ReservationAccepted}
+			ledger := &capturedLedger{state: fillerstructure.AssessmentReservationAccepted}
 			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) { _, _ = response.Write([]byte(test.response)) }))
 			defer server.Close()
 			client := server.Client()
@@ -132,7 +134,7 @@ func TestAssessorFailsClosedAcrossProviderOutcomes(t *testing.T) {
 
 func TestAssessorDoesNotReturnEvidenceWhenSettlementFails(t *testing.T) {
 	want := errors.New("ledger unavailable")
-	ledger := &capturedLedger{state: ReservationAccepted, settleErr: want}
+	ledger := &capturedLedger{state: fillerstructure.AssessmentReservationAccepted, settleErr: want}
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		_, _ = response.Write([]byte(successResponse(`{"segments":[{"endMs":10000,"role":"commercial","decisiveAtMs":[1000],"reason":"offer"}]}`, "resolved-model")))
 	}))
@@ -144,7 +146,7 @@ func TestAssessorDoesNotReturnEvidenceWhenSettlementFails(t *testing.T) {
 }
 
 func TestAssessorRejectsSourceByteDriftBeforeReservationOrCall(t *testing.T) {
-	ledger := &capturedLedger{state: ReservationAccepted}
+	ledger := &capturedLedger{state: fillerstructure.AssessmentReservationAccepted}
 	calls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls++ }))
 	defer server.Close()
@@ -162,7 +164,7 @@ func TestAssessorRejectsSourceByteDriftBeforeReservationOrCall(t *testing.T) {
 }
 
 func TestAssessorRetainsKnownOverReservationAsUnusableEvidence(t *testing.T) {
-	ledger := &capturedLedger{state: ReservationAccepted}
+	ledger := &capturedLedger{state: fillerstructure.AssessmentReservationAccepted}
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		raw := strings.Replace(successResponse(`{"segments":[{"endMs":10000,"role":"commercial","decisiveAtMs":[1000],"reason":"offer"}]}`, "resolved-model"), `"cost":0.000001`, `"cost":0.000003`, 1)
 		_, _ = response.Write([]byte(raw))
@@ -185,7 +187,7 @@ func TestAssessorRetainsKnownOverReservationAsUnusableEvidence(t *testing.T) {
 }
 
 func TestNewRejectsWorstCaseChargeOutsideReservation(t *testing.T) {
-	ledger := &capturedLedger{state: ReservationAccepted}
+	ledger := &capturedLedger{state: fillerstructure.AssessmentReservationAccepted}
 	config := assessorConfig("http://example.test", &http.Client{}, ledger)
 	config.MaximumChargeNanoUSD = config.ReservationNanoUSD + 1
 	if _, err := New(config); err == nil {

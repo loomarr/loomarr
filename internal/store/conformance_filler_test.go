@@ -3969,6 +3969,153 @@ func testFillerInferenceAccountingAndBudgets(t *testing.T, newStore NewStoreFunc
 	}
 }
 
+func testFillerStructureAssessmentLedger(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, time.September, 10, 6, 0, 0, 0, time.UTC)
+	budget := InferenceBudget{PerClipNanoUSD: 200, PerDayNanoUSD: 2_000}
+
+	acceptedReservation := structureAssessmentReservationFixture(t, "1", "a", at)
+	state, err := s.ReserveStructureAssessment(ctx, acceptedReservation, budget)
+	if err != nil || state != fillerstructure.AssessmentReservationAccepted {
+		t.Fatalf("accepted reservation state=%q error=%v", state, err)
+	}
+	open, err := s.GetStructureAssessmentLedgerEntry(ctx, acceptedReservation.RequestSHA256)
+	if err != nil || open.State != fillerstructure.AssessmentLedgerOpen || open.Record != nil {
+		t.Fatalf("open ledger entry=%+v error=%v", open, err)
+	}
+	if _, err := s.ReserveStructureAssessment(ctx, acceptedReservation, budget); !errors.Is(err, fillerstructure.ErrAssessmentLedgerConflict) {
+		t.Fatalf("duplicate reservation error=%v", err)
+	}
+	accepted := structureAssessmentRecordFixture(t, acceptedReservation, fillerstructure.AssessmentRecordAccepted, 40)
+	if err := s.SettleStructureAssessment(ctx, accepted); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SettleStructureAssessment(ctx, accepted); err != nil {
+		t.Fatalf("idempotent settlement: %v", err)
+	}
+	closed, err := s.GetStructureAssessmentLedgerEntry(ctx, acceptedReservation.RequestSHA256)
+	if err != nil || closed.State != fillerstructure.AssessmentLedgerSettled || closed.Record == nil || closed.Record.SHA256 != accepted.SHA256 {
+		t.Fatalf("closed ledger entry=%+v error=%v", closed, err)
+	}
+	drifted := accepted
+	drifted.AssessedAt = drifted.AssessedAt.Add(time.Second)
+	drifted.SHA256 = fillerstructure.AssessmentRecordSHA256(drifted)
+	if err := s.SettleStructureAssessment(ctx, drifted); !errors.Is(err, fillerstructure.ErrAssessmentLedgerConflict) {
+		t.Fatalf("drifted settlement error=%v", err)
+	}
+	evaluation, err := s.GetInferenceEvaluation(ctx, "structure-"+acceptedReservation.RequestSHA256)
+	if err != nil || evaluation.State != InferenceCompleted || evaluation.ReservedNanoUSD != 40 || evaluation.Outcome != "standalone" {
+		t.Fatalf("shared accepted accounting=%+v error=%v", evaluation, err)
+	}
+
+	unsettledReservation := structureAssessmentReservationFixture(t, "2", "b", at.Add(time.Minute))
+	if state, err = s.ReserveStructureAssessment(ctx, unsettledReservation, budget); err != nil || state != fillerstructure.AssessmentReservationAccepted {
+		t.Fatalf("unsettled reservation state=%q error=%v", state, err)
+	}
+	unsettled := structureAssessmentRecordFixture(t, unsettledReservation, fillerstructure.AssessmentRecordUnsettled, 0)
+	if err := s.SettleStructureAssessment(ctx, unsettled); err != nil {
+		t.Fatal(err)
+	}
+	evaluation, err = s.GetInferenceEvaluation(ctx, "structure-"+unsettledReservation.RequestSHA256)
+	if err != nil || evaluation.State != InferenceFailed || evaluation.ReservedNanoUSD != unsettledReservation.RequestedNanoUSD {
+		t.Fatalf("shared unsettled accounting=%+v error=%v", evaluation, err)
+	}
+
+	heldReservation := structureAssessmentReservationFixture(t, "3", "c", at.Add(2*time.Minute))
+	heldBudget := InferenceBudget{PerClipNanoUSD: 50, PerDayNanoUSD: 2_000}
+	if state, err = s.ReserveStructureAssessment(ctx, heldReservation, heldBudget); err != nil || state != fillerstructure.AssessmentReservationHeldBudget {
+		t.Fatalf("held reservation state=%q error=%v", state, err)
+	}
+	entries, err := s.ListOpenStructureAssessmentLedgerEntries(ctx, 10)
+	if err != nil || len(entries) != 1 || entries[0].State != fillerstructure.AssessmentLedgerHeldBudget {
+		t.Fatalf("open ledger entries=%+v error=%v", entries, err)
+	}
+	held := structureAssessmentRecordFixture(t, heldReservation, fillerstructure.AssessmentRecordHeldBudget, 0)
+	if err := s.SettleStructureAssessment(ctx, held); err != nil {
+		t.Fatal(err)
+	}
+
+	overReservation := structureAssessmentReservationFixture(t, "4", "d", at.Add(3*time.Minute))
+	if state, err = s.ReserveStructureAssessment(ctx, overReservation, budget); err != nil || state != fillerstructure.AssessmentReservationAccepted {
+		t.Fatalf("over reservation state=%q error=%v", state, err)
+	}
+	over := structureAssessmentRecordFixture(t, overReservation, fillerstructure.AssessmentRecordOverReservation, 120)
+	if err := s.SettleStructureAssessment(ctx, over); err != nil {
+		t.Fatal(err)
+	}
+	evaluation, err = s.GetInferenceEvaluation(ctx, "structure-"+overReservation.RequestSHA256)
+	if err != nil || evaluation.State != InferenceHeldBudget || evaluation.ChargedNanoUSD != 120 || evaluation.ReservedNanoUSD != 120 {
+		t.Fatalf("shared over-reservation accounting=%+v error=%v", evaluation, err)
+	}
+	entries, err = s.ListOpenStructureAssessmentLedgerEntries(ctx, 10)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("remaining open ledger entries=%+v error=%v", entries, err)
+	}
+}
+
+func structureAssessmentReservationFixture(t *testing.T, requestDigit, sourceDigit string, at time.Time) fillerstructure.AssessmentReservation {
+	t.Helper()
+	reservation, err := fillerstructure.NewAssessmentReservation(fillerstructure.AssessmentReservationInput{
+		RequestSHA256: strings.Repeat(requestDigit, 64),
+		Source:        fillerstructure.Source{SHA256: strings.Repeat(sourceDigit, 64), DurationMS: 10_000},
+		SourceBytes:   4_096,
+		Assessor: fillerstructure.AssessorProfile{
+			ID: "assessor-" + requestDigit, ModelFamily: "family-" + requestDigit,
+			Provider: "openrouter", Model: "requested-model-" + requestDigit,
+			ModelDigest: strings.Repeat("a", 64), CapabilitySHA256: strings.Repeat("b", 64),
+			PromptVersion:    fillerstructure.DirectVideoPromptVersion,
+			EvidenceContract: fillerstructure.AssessmentRecordContractVersion,
+		},
+		PromptSHA256: strings.Repeat("c", 64), SchemaSHA256: strings.Repeat("d", 64),
+		ExpectedResolvedModel: "resolved-model-" + requestDigit,
+		UpstreamProvider:      "Provider", UpstreamProviderSlug: "provider",
+		RequestedNanoUSD: 100, MaximumChargeNanoUSD: 80, RequestedAt: at,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return reservation
+}
+
+func structureAssessmentRecordFixture(t *testing.T, reservation fillerstructure.AssessmentReservation, state fillerstructure.AssessmentRecordState, charge int64) fillerstructure.AssessmentRecord {
+	t.Helper()
+	input := fillerstructure.AssessmentRecordInput{
+		Source: reservation.Source, SourceBytes: reservation.SourceBytes, Assessor: reservation.Assessor,
+		PromptSHA256: reservation.PromptSHA256, SchemaSHA256: reservation.SchemaSHA256,
+		RequestSHA256:    reservation.RequestSHA256,
+		UpstreamProvider: reservation.UpstreamProvider, UpstreamProviderSlug: reservation.UpstreamProviderSlug,
+		RequestedNanoUSD: reservation.RequestedNanoUSD, AssessedAt: reservation.RequestedAt.Add(time.Second),
+		State: state,
+	}
+	switch state {
+	case fillerstructure.AssessmentRecordAccepted:
+		input.RawResponse = []byte(`{"id":"generation"}`)
+		input.StructuredOutput = `{"segments":[{"endMs":10000,"role":"commercial","decisiveAtMs":[1000],"reason":"offer"}]}`
+		input.ResolvedProvider, input.ResolvedModel = "openrouter", reservation.ExpectedResolvedModel
+		input.GenerationID = "generation"
+		input.ReservedNanoUSD, input.ChargeKnown = reservation.RequestedNanoUSD, true
+		input.ChargedAmountUSD, input.ChargedNanoUSD, input.AccountedNanoUSD = "0.00000004", charge, charge
+	case fillerstructure.AssessmentRecordUnsettled:
+		input.Failure = fillerstructure.AssessmentFailureTransport
+		input.ReservedNanoUSD, input.AccountedNanoUSD = reservation.RequestedNanoUSD, reservation.RequestedNanoUSD
+	case fillerstructure.AssessmentRecordHeldBudget:
+		input.Failure = fillerstructure.AssessmentFailureBudget
+	case fillerstructure.AssessmentRecordOverReservation:
+		input.Failure = fillerstructure.AssessmentFailureOverReservation
+		input.RawResponse = []byte(`{"id":"generation"}`)
+		input.GenerationID = "generation"
+		input.ReservedNanoUSD, input.ChargeKnown = reservation.RequestedNanoUSD, true
+		input.ChargedAmountUSD, input.ChargedNanoUSD, input.AccountedNanoUSD = "0.00000012", charge, charge
+	}
+	recorded, err := fillerstructure.NewAssessmentRecord(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return recorded.Record
+}
+
 func testFillerAdmissionDecisionAudit(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 	s := newStore(t)

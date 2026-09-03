@@ -47,7 +47,7 @@ func (a *Assessor) AssessCompleteTimeline(ctx context.Context, media filler.Stru
 	}
 	source := fillerstructure.Source{SHA256: media.Source.SHA256, DurationMS: media.Source.DurationMs}
 	requestedAt := a.config.Now().UTC().Round(0)
-	var reservationState ReservationState
+	var reservationState fillerstructure.AssessmentReservationState
 	callResult, callErr := openroutermedia.Call(ctx, a.config.Client, a.config.BaseURL, openroutermedia.Config{
 		APIKey: a.config.APIKey, Model: a.config.Model, ResolvedModel: a.config.ResolvedModel,
 		UpstreamProvider: a.config.UpstreamProvider, ProviderSlug: a.config.UpstreamProviderSlug,
@@ -58,18 +58,27 @@ func (a *Assessor) AssessCompleteTimeline(ctx context.Context, media filler.Stru
 		DisableReasoning: a.config.DisableReasoning, EnableReasoning: a.config.EnableReasoning,
 		Title: structureTitle,
 		Reserve: func(requestSHA256 string) error {
-			state, reserveErr := a.config.Ledger.Reserve(ctx, Reservation{
-				RequestSHA256: requestSHA256, Source: source, SourceBytes: int64(len(video)),
-				Assessor: a.config.Profile, RequestedNanoUSD: a.config.ReservationNanoUSD, RequestedAt: requestedAt,
+			reservation, reservationErr := fillerstructure.NewAssessmentReservation(fillerstructure.AssessmentReservationInput{
+				RequestSHA256: requestSHA256, Source: source, SourceBytes: int64(len(video)), Assessor: a.config.Profile,
+				PromptSHA256:          fillerstructure.DirectVideoPromptSHA256(media.Source.DurationMs),
+				SchemaSHA256:          fillerstructure.DirectVideoSchemaSHA256(media.Source.DurationMs),
+				ExpectedResolvedModel: a.config.ResolvedModel,
+				UpstreamProvider:      a.config.UpstreamProvider, UpstreamProviderSlug: a.config.UpstreamProviderSlug,
+				RequestedNanoUSD: a.config.ReservationNanoUSD, MaximumChargeNanoUSD: a.config.MaximumChargeNanoUSD,
+				RequestedAt: requestedAt,
 			})
+			if reservationErr != nil {
+				return reservationErr
+			}
+			state, reserveErr := a.config.Ledger.Reserve(ctx, reservation)
 			if reserveErr != nil {
 				return reserveErr
 			}
 			reservationState = state
 			switch state {
-			case ReservationAccepted:
+			case fillerstructure.AssessmentReservationAccepted:
 				return nil
-			case ReservationHeldBudget:
+			case fillerstructure.AssessmentReservationHeldBudget:
 				return errReservationHeld
 			default:
 				return fmt.Errorf("filler structure OpenRouter ledger returned invalid reservation state %q", state)

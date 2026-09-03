@@ -115,6 +115,11 @@ func TestAssessmentRecordRejectsOpenOrContradictorySettlement(t *testing.T) {
 			input.State, input.Failure, input.StructuredOutput = AssessmentRecordUnsettled, AssessmentFailureUnsettled, ""
 			input.ChargeKnown, input.ChargedAmountUSD, input.ChargedNanoUSD, input.AccountedNanoUSD = false, "", 0, 0
 		}},
+		{name: "failed charge exceeds reservation", mutate: func(input *AssessmentRecordInput) {
+			input.State, input.Failure, input.StructuredOutput = AssessmentRecordFailed, AssessmentFailureProvider, ""
+			input.ResolvedProvider, input.ResolvedModel = "", ""
+			input.ChargedAmountUSD, input.ChargedNanoUSD, input.AccountedNanoUSD = "0.000002", 2_000, 2_000
+		}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

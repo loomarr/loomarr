@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillersafety"
+	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -571,6 +572,15 @@ type FillerInferenceStore interface {
 	ListInferenceEvaluations(ctx context.Context, filter InferenceEvaluationFilter) ([]InferenceEvaluation, error)
 }
 
+// FillerStructureAssessmentStore owns the structure-specific journal layered over shared filler
+// inference accounting. Duplicate requests remain visible conflicts rather than implicit retries.
+type FillerStructureAssessmentStore interface {
+	ReserveStructureAssessment(context.Context, fillerstructure.AssessmentReservation, InferenceBudget) (fillerstructure.AssessmentReservationState, error)
+	SettleStructureAssessment(context.Context, fillerstructure.AssessmentRecord) error
+	GetStructureAssessmentLedgerEntry(context.Context, string) (fillerstructure.AssessmentLedgerEntry, error)
+	ListOpenStructureAssessmentLedgerEntries(context.Context, int) ([]fillerstructure.AssessmentLedgerEntry, error)
+}
+
 // FillerDecisionStore owns immutable V63 admission results and append-only
 // operator actions. Projection rules remain in fillerdecision.Service.
 type FillerDecisionStore interface {
@@ -819,6 +829,7 @@ type Store interface {
 	FillerAcquisitionStore
 	InteractiveOperationStore
 	FillerInferenceStore
+	FillerStructureAssessmentStore
 	FillerDecisionStore
 	FillerSafetyStore
 	SplitProposalStore

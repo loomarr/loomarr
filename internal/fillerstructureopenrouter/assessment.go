@@ -10,7 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/openroutermedia"
 )
 
-func (a *Assessor) recordAssessment(media filler.StructureAssessmentMedia, sourceBytes int64, assessedAt time.Time, reservation ReservationState, result openroutermedia.Result, callErr error) (fillerstructure.RecordedAssessment, error) {
+func (a *Assessor) recordAssessment(media filler.StructureAssessmentMedia, sourceBytes int64, assessedAt time.Time, reservation fillerstructure.AssessmentReservationState, result openroutermedia.Result, callErr error) (fillerstructure.RecordedAssessment, error) {
 	input := fillerstructure.AssessmentRecordInput{
 		Source: fillerstructure.Source{SHA256: media.Source.SHA256, DurationMS: media.Source.DurationMs}, SourceBytes: sourceBytes, Assessor: a.config.Profile,
 		PromptSHA256:  fillerstructure.DirectVideoPromptSHA256(media.Source.DurationMs),
@@ -25,14 +25,14 @@ func (a *Assessor) recordAssessment(media filler.StructureAssessmentMedia, sourc
 		RequestedNanoUSD: a.config.ReservationNanoUSD,
 		AssessedAt:       assessedAt,
 	}
-	if reservation == ReservationHeldBudget {
+	if reservation == fillerstructure.AssessmentReservationHeldBudget {
 		if !errors.Is(callErr, errReservationHeld) || len(result.RawResponse) != 0 {
 			return fillerstructure.RecordedAssessment{}, fmt.Errorf("filler structure OpenRouter budget hold is inconsistent")
 		}
 		input.State, input.Failure = fillerstructure.AssessmentRecordHeldBudget, fillerstructure.AssessmentFailureBudget
 		return a.newAssessmentRecord(input)
 	}
-	if reservation != ReservationAccepted {
+	if reservation != fillerstructure.AssessmentReservationAccepted {
 		return fillerstructure.RecordedAssessment{}, fmt.Errorf("filler structure OpenRouter reservation was not accepted")
 	}
 	input.ReservedNanoUSD = a.config.ReservationNanoUSD

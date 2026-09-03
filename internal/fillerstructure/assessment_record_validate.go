@@ -32,7 +32,8 @@ func ValidateAssessmentRecord(record AssessmentRecord) error {
 	case AssessmentRecordFailed:
 		if !slices.Contains([]string{AssessmentFailureProvider, AssessmentFailureInvalidResponse, AssessmentFailureRouteMismatch}, record.Failure) ||
 			record.Result != nil || !validFailedAssessmentResponse(record) || !closedAssessmentCharge(record) ||
-			record.ReservedNanoUSD != record.RequestedNanoUSD || record.AccountedNanoUSD != record.ChargedNanoUSD {
+			record.ReservedNanoUSD != record.RequestedNanoUSD || record.ChargedNanoUSD > record.ReservedNanoUSD ||
+			record.AccountedNanoUSD != record.ChargedNanoUSD {
 			return errors.New("filler structure assessment record: failed result is incomplete")
 		}
 	case AssessmentRecordUnsettled:

@@ -3264,6 +3264,14 @@ a discoverable open reservation rather than silently freeing budget. Implementin
 runtime or publication authority: two independently locked families, persisted raw evidence, the reducer,
 the screening axes, and a locked slice certificate remain mandatory.
 
+The structure reservation participates in the shared filler-inference budget rather than keeping a
+provider-specific spend total. One transaction reserves that shared budget and appends a structure journal
+entry binding the exact source, assessor profile, expected route, prompt/schema, request, worst-case charge,
+and request time. The journal rejects a second reservation for the same request regardless of whether the
+first is open, budget-held, or settled. Settlement atomically closes the shared accounting row and stores
+the validated content-addressed assessment record. Open and budget-held entries remain listable for
+recovery; they are operational holds, never permission to repeat a possibly billed request.
+
 The reducer's immutable artifact retains every candidate identity and the exact reason each case was
 confirmed or held. Certification scores this deterministic policy as the production candidate: every
 automatic decision must have zero under-splits, over-splits, unexplained gaps, wrong filler/programme
