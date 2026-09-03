@@ -25,8 +25,11 @@ func buildTemporalStructureChallengeCase(ctx context.Context, config TemporalStr
 		return TemporalStructureChallengePublicCase{}, TemporalStructureChallengeAuthorityCase{}, err
 	}
 	info, err := os.Stat(videoPath)
-	if err != nil || info.Size() <= 0 || info.Size() > TemporalTruthMaximumVideoBytes {
-		return TemporalStructureChallengePublicCase{}, TemporalStructureChallengeAuthorityCase{}, fmt.Errorf("rendered video has invalid size")
+	if err != nil {
+		return TemporalStructureChallengePublicCase{}, TemporalStructureChallengeAuthorityCase{}, fmt.Errorf("inspect rendered video size: %w", err)
+	}
+	if info.Size() <= 0 || info.Size() > TemporalTruthMaximumVideoBytes {
+		return TemporalStructureChallengePublicCase{}, TemporalStructureChallengeAuthorityCase{}, fmt.Errorf("rendered video size %d exceeds allowed range 1..%d bytes", info.Size(), TemporalTruthMaximumVideoBytes)
 	}
 	publicCase := TemporalStructureChallengePublicCase{Alias: item.alias, Video: TemporalTruthEvidenceFile{
 		Path: filepath.ToSlash(filepath.Join("cases", item.alias, "video.mp4")), SHA256: digest, Bytes: info.Size(),

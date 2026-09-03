@@ -225,6 +225,19 @@ func TestTemporalStructureChallengeRejectsUnknownAuthoringFields(t *testing.T) {
 	}
 }
 
+func TestBuildTemporalStructureChallengeReportsObservedOversizedMedia(t *testing.T) {
+	fixture := newTemporalStructureFixture(t)
+	fixture.media.renderBytes = TemporalTruthMaximumVideoBytes + 1
+	output := filepath.Join(fixture.root, "oversized")
+	_, err := BuildTemporalStructureChallenge(context.Background(), fixture.config(output, "oversized"))
+	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("%d exceeds allowed range 1..%d bytes", fixture.media.renderBytes, TemporalTruthMaximumVideoBytes)) {
+		t.Fatalf("oversized render error = %v", err)
+	}
+	if _, statErr := os.Stat(output); !os.IsNotExist(statErr) {
+		t.Fatalf("oversized build published partial output: %v", statErr)
+	}
+}
+
 type temporalStructureFixture struct {
 	root          string
 	authoringPath string
@@ -316,6 +329,7 @@ func (fixture temporalStructureFixture) writeAuthoring(t *testing.T) {
 type fakeTemporalStructureMedia struct {
 	durationByPath map[string]int64
 	probeCalls     int
+	renderBytes    int64
 }
 
 func (media *fakeTemporalStructureMedia) Identity() TemporalTruthMediaIdentity {
@@ -348,6 +362,11 @@ func (media *fakeTemporalStructureMedia) Render(_ context.Context, segments []Te
 	}
 	if err := os.WriteFile(output, []byte(hex.EncodeToString(hasher.Sum(nil))), 0o640); err != nil {
 		return TemporalStructureRenderResult{}, err
+	}
+	if media.renderBytes > 0 {
+		if err := os.Truncate(output, media.renderBytes); err != nil {
+			return TemporalStructureRenderResult{}, err
+		}
 	}
 	return result, nil
 }
