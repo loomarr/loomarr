@@ -22,7 +22,7 @@ func TestValidateAuthorizedWindowRunRequiresEveryWindowWithinExactRequestCeiling
 	for index := range manifest.Cases {
 		manifest.Cases[index].Windows = make([]fillerreview.TemporalStructureWindowSetWindow, 2)
 	}
-	if windows, err := validateAuthorizedWindowRun(manifest, 48, 100_000_000, 3_000_000_000); err != nil || windows != 48 {
+	if windows, err := validateAuthorizedWindowRun(manifest, 48, 100_000_000, 5_000_000_000); err != nil || windows != 48 {
 		t.Fatalf("windows=%d error=%v", windows, err)
 	}
 	if _, err := validateAuthorizedWindowRun(manifest, 30, 100_000_000, 3_000_000_000); err == nil || !strings.Contains(err.Error(), "requires exactly 48") {
@@ -30,6 +30,9 @@ func TestValidateAuthorizedWindowRunRequiresEveryWindowWithinExactRequestCeiling
 	}
 	if _, err := validateAuthorizedWindowRun(manifest, 48, 100_000_000, 50_000_000); err == nil || !strings.Contains(err.Error(), "reservation exceeds") {
 		t.Fatalf("spend ceiling error=%v", err)
+	}
+	if _, err := validateAuthorizedWindowRun(manifest, 48, 100_000_000, 3_000_000_000); err == nil || !strings.Contains(err.Error(), "cannot reserve all") {
+		t.Fatalf("aggregate ceiling error=%v", err)
 	}
 }
 

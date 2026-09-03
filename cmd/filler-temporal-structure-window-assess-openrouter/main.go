@@ -212,6 +212,9 @@ func validateAuthorizedWindowRun(manifest fillerreview.TemporalStructureWindowSe
 	if reservationNanoUSD <= 0 || maxSpendNanoUSD <= 0 || reservationNanoUSD > maxSpendNanoUSD {
 		return 0, errors.New("per-request reservation exceeds aggregate spend ceiling")
 	}
+	if int64(windows) > maxSpendNanoUSD/reservationNanoUSD {
+		return 0, fmt.Errorf("aggregate spend ceiling cannot reserve all %d required window requests", windows)
+	}
 	return windows, nil
 }
 
