@@ -4550,6 +4550,14 @@ claim they must verify. Model-backed primary/adjudicating reviewers are permitte
 families differ from one another and from every evaluated proposer/adjudicator/corroborator family. This lock
 does not download a dataset, create consent, transform media, run inference, or begin certification.
 
+A review verdict is `verified` or `rejected`; it is not another copy of the draft's proposed `positive` or
+`clean` label. A verified positive retains the draft's exact proposed intervals, while every rejected verdict
+and every clean verification carries no interval. This distinction is required so a reviewer can reject a
+supposed clean control after hearing prohibited speech without first manufacturing positive timing truth, and
+can reject a supposed positive whose intended phrase is inaudible. Two agreeing rejections cannot lock the
+draft. A primary disagreement requires the existing independent adjudicator, whose `verified` verdict is the
+only outcome that can establish the draft's proposed truth. A rejected adjudication also prevents publication.
+
 Public clean-speech preparation is upstream and non-authorizing. The first pinned adapter accepts an already-
 acquired VCTK 0.92 tree, an exact release/member manifest, a completed certification-rights contract, and a
 private seed. It does not crawl or download the release. It verifies the archive/release, licence, README,
@@ -4595,6 +4603,33 @@ other review, reviewer identity, or completed decision. Outputs are deterministi
 created atomically without overwrite, and remain non-authorizing. Reviewers submit separate #929 review documents;
 two complete independent agreements, or disagreement-only independent adjudication, are still required before the
 authority locker can establish truth. Assembly runs no model, reviewer, certifier, downloader, or production ingest.
+
+Independent routine review is one separate deep module, not a human playback loop hidden in the assembler.
+Its interface is one operation over a private review plan, the assembled private root, an API credential, the
+exact local ffmpeg executable, a private checkpoint directory, and a new output path. The plan binds the exact
+draft, worklist, private policy, fresh OpenRouter capability/price/ZDR snapshot, reviewer and model-family
+identities, one exact requested/resolved model and upstream endpoint, expected case count, and request, charge,
+spend, input-byte, audio-byte, per-case-time, and wall-time ceilings. The reviewer model family must differ from
+the draft's proposer, native-audio adjudicator, and complete-video corroborator. A second primary review uses a
+separate plan, reviewer identity, checkpoint, and model family; the operation never sees the sibling review.
+
+For each case the module first reopens and hashes the source, draft, worklist, policy, and evidence bindings,
+then extracts the complete soundtrack from the verified source snapshot into bounded 16 kHz mono WAV. Calls
+are serial, fallback-disabled, ZDR-only, and strict-schema. The prompt exposes the private policy, proposed
+claim, opaque rule ids, and proposed intervals but no evaluation output or other review. The model may return
+only `verified | rejected | unclear`, `clear | degraded | no_speech`, sorted opaque matched-rule ids, and the
+indexes of proposed intervals it heard; it is instructed never to transcribe or quote speech. A positive is
+verified only when every proposed interval is confirmed with its expected rule. A clean candidate is verified
+only with no matched rule. A contrary decisive observation becomes `rejected`; unclear or degraded evidence is
+an operational stop and cannot become a review verdict.
+
+The maximum per-call charge is durably reserved before HTTP and exact usage is settled afterward. The private
+checkpoint binds all input, prompt, schema, route, tool, and budget identities; accepted cases form a canonical
+prefix and are not called again. A process interruption after reservation remains an unsettled hold rather than
+an automatic replay. Source or identity drift, ambiguous output, provider failure, a stale route snapshot, or
+exhausted resource limits leaves no review bundle. Only an exhaustive decisive pass publishes the canonical
+model-backed authority-review document at mode `0600`; it performs no authority locking, certification scoring,
+training, ingestion, scheduling, or production admission.
 
 No model is trained or fine-tuned for this lane until governed source-disjoint labels exist and the
 certified stock cascade demonstrably misses a locked gate. Existing unknown commercials and agreement
