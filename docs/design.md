@@ -273,7 +273,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`fillersafetyreview`** · → `fillerbakeoff`, `fillereval`, `fillersafety`, `fillersafetycert`, `fillersafetycorpus`, `httpx`, `mediatools`, `openroutermedia`
   Runs one independent, exhaustive model review of an assembled spoken-safety certification draft.
-- **`fillerstructureopenrouter`** · → `filler`, `fillerstructure`, `fillerstructuremedia`, `openroutermedia`
+- **`fillerstructureopenrouter`** · 1 importer · → `filler`, `fillerstructure`, `fillerstructuremedia`, `openroutermedia`
   Adapts the bounded OpenRouter media transport to the provider-neutral complete-timeline assessor port.
 - **`fillerstructurewindowopenrouter`** · 1 importer · → `filler`, `fillerstructure`, `fillerstructurewindow`, `openroutermedia`
   Adapts the bounded OpenRouter media transport to one complete planned-window assessment call.
@@ -292,7 +292,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
 - **`catalog`** · 6 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
-- **`fillerreview`** · → `filler`, `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `fillerstructurewindowcert`, `fillerstructurewindowopenrouter`, `httpx`, `mediatools`, `openroutermedia`
+- **`fillerreview`** · → `filler`, `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructureopenrouter`, `fillerstructurewindow`, `fillerstructurewindowcert`, `fillerstructurewindowopenrouter`, `httpx`, `mediatools`, `openroutermedia`
   Materializes identity-blind evidence for independent semantic review.
 - **`scheduler`** · 6 importers · → `store`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
@@ -4791,6 +4791,11 @@ disposition, and every internal boundary within the certified tolerance. Missing
 wrong-kind, differently sourced, differently profiled, or semantically divergent cases fail the
 whole shadow report; there is no majority or partial-slice pass. The content-addressed report binds
 both artifact digests for every case and always leaves training and automatic materialization false.
+A repository publication wrapper additionally binds the content and file digests of the passing
+window certificate and both complete decision sets, so the family-result lineage checked before the
+comparison remains recoverable rather than becoming an unrecorded coordinator precondition. The
+wrapper embeds the self-contained replayable report and grants neither training, production
+admission, nor automatic materialization authority.
 A separately reviewed long-reel authority may consume only a complete passing report together with
 the passing window certificate; the shadow report cannot activate production by itself.
 
