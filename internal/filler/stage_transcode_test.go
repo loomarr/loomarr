@@ -173,6 +173,94 @@ func completeConditioningMeasurement(lufs float64) mediatools.ConditioningMeasur
 	}
 }
 
+func TestTranscodeStage_ConditionsEvidenceBoundChildAgainstExactEvidenceAsset(t *testing.T) {
+	dir := t.TempDir()
+	parentSource := filepath.Join(dir, "parent-source.mkv")
+	if err := os.WriteFile(parentSource, []byte("parent source master bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	parentSourceHash, err := ClipID(parentSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	master, err := preserveSourceMaster(context.Background(), dir, parentSource, parentSourceHash, SidecarTags{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tool := mediatools.MediaToolIdentity{
+		Name: "ffmpeg", Version: "ffmpeg version fixture",
+		ExecutableSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+	}
+	evidenceBytes := []byte("the exact evidence rendition used to detect and cut")
+	evidence, err := buildMediaDerivative(context.Background(), mediaDerivativeRequest{
+		ClipDir: dir, Source: master, Input: Probed{DurationMs: 61_000, Height: 480},
+		Recipe: mediatools.EvidenceDerivativeRecipe(), Tool: tool,
+		Probe: func(context.Context, string) (Probed, error) {
+			return Probed{DurationMs: 61_000, Height: 480}, nil
+		},
+		Transcode: func(_ context.Context, request mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+			return MediaQuality{DurationMs: 61_000}, os.WriteFile(request.Out, evidenceBytes, 0o600)
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	parentHash := writeContentAddressedClip(t, dir, []byte("playback rendition differs from evidence"), ".mp4")
+	parentRel := filepath.ToSlash(ClipRelPath(parentHash, ".mp4"))
+	parentFull := filepath.Join(dir, filepath.FromSlash(parentRel))
+	if err := WriteSidecarTags(parentFull, SidecarTags{MediaAssets: &MediaAssetManifest{
+		Version: mediaAssetManifestVersion, SourceMaster: master, Evidence: &evidence,
+	}}, false); err != nil {
+		t.Fatal(err)
+	}
+	childHash := writeContentAddressedClip(t, dir, []byte("reviewed child cut from evidence"), ".mkv")
+	childRel := filepath.ToSlash(ClipRelPath(childHash, ".mkv"))
+	childFull := filepath.Join(dir, filepath.FromSlash(childRel))
+	if err := WriteSidecarTags(childFull, SidecarTags{ConditioningLineage: &ConditioningLineage{
+		ChildHash: childHash, ParentHash: parentHash,
+		ParentAssetRole: string(SplitSourceEvidence), ParentAssetSHA256: evidence.Asset.SHA256,
+		IntendedStartMs: 1_000, IntendedEndMs: 31_000,
+	}}, false); err != nil {
+		t.Fatal(err)
+	}
+
+	before := completeConditioningMeasurement(-28.4)
+	after := completeConditioningMeasurement(-23.1)
+	for i := range after.Cuts[0].Streams {
+		after.Cuts[0].Streams[i].StartError = mediatools.OptionalMilliseconds{}
+		after.Cuts[0].Streams[i].EndError = mediatools.OptionalMilliseconds{}
+	}
+	stored := &transcodeStore{clips: map[string]StoreClip{parentHash: {Clip: Clip{
+		Hash: parentHash, Path: parentRel, DurationMs: 61_000, IsComposite: true,
+	}}}}
+	stage := NewTranscodeStage(stored, func(context.Context, string) (Probed, error) {
+		return Probed{DurationMs: 30_000, Height: 480}, nil
+	}, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
+	stage.transcode = func(_ context.Context, request mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+		return after.Quality, os.WriteFile(request.Out, []byte("conditioned playback child"), 0o600)
+	}
+	measurements := 0
+	stage.WithConditioning(func(_ context.Context, request mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error) {
+		gotParent, err := os.ReadFile(request.ParentPath)
+		if err != nil || !bytes.Equal(gotParent, evidenceBytes) {
+			t.Fatalf("conditioning parent bytes = %q, %v; want exact evidence bytes", gotParent, err)
+		}
+		measurements++
+		if measurements == 1 {
+			return before, nil
+		}
+		return after, nil
+	})
+
+	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
+		Hash: childHash, Path: childRel, Name: "Reviewed child", Kind: Commercial, ParentHash: parentHash,
+	}})
+	if err != nil || out.Verdict != VerdictContinue || measurements != 2 || stored.oldHash != childHash {
+		t.Fatalf("evidence-bound conditioning = %+v, measurements=%d stored=%q err=%v", out, measurements, stored.oldHash, err)
+	}
+}
+
 func TestTranscodeStage_UnavailableOrMalformedConditioningHoldsChildWithoutTranscoding(t *testing.T) {
 	dir := t.TempDir()
 	parentHash := writeContentAddressedClip(t, dir, []byte("parent"), ".mp4")

@@ -169,6 +169,7 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 	var conditioningReq mediatools.ConditioningRequest
 	var conditioningBefore *mediatools.ConditioningMeasurement
 	var conditioningStageDir, conditioningParentFull string
+	var conditioningParentHash string
 	if c.ParentHash != "" {
 		strictTags, present, readErr := readConditioningSidecar(oldFull)
 		if readErr != nil {
@@ -187,6 +188,40 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 			return conditioningReview(c, "conditioning parent is unavailable"), nil
 		}
 		conditioningParentFull = filepath.Join(s.clipDir, filepath.FromSlash(parent.Path))
+		conditioningParentHash = parent.Hash
+		if tags.ConditioningLineage.ParentAssetRole != "" {
+			var parentSource SplitSourceAsset
+			switch SplitSourceRole(tags.ConditioningLineage.ParentAssetRole) {
+			case SplitSourceEvidence:
+				parentTags, ok := ReadSidecarTags(conditioningParentFull)
+				if !ok || parentTags.MediaAssets == nil || parentTags.MediaAssets.Evidence == nil ||
+					parentTags.MediaAssets.Evidence.Asset.SHA256 != tags.ConditioningLineage.ParentAssetSHA256 {
+					return conditioningReview(c, "conditioning parent evidence asset is unavailable"), nil
+				}
+				evidence := parentTags.MediaAssets.Evidence
+				parentSource = SplitSourceAsset{
+					Role: SplitSourceEvidence, SHA256: evidence.Asset.SHA256, Bytes: evidence.Asset.Bytes,
+					ClipHash: evidence.Asset.ClipHash, Path: evidence.Asset.Path, DurationMs: evidence.DurationMs,
+				}
+			case SplitSourceLegacyPlayback:
+				digest, size, err := FileSHA256(conditioningParentFull)
+				if err != nil || digest != tags.ConditioningLineage.ParentAssetSHA256 {
+					return conditioningReview(c, "conditioning parent playback asset changed"), nil
+				}
+				parentSource = SplitSourceAsset{
+					Role: SplitSourceLegacyPlayback, SHA256: digest, Bytes: size,
+					ClipHash: parent.Hash, Path: parent.Path, DurationMs: parent.DurationMs,
+				}
+			default:
+				return conditioningReview(c, "conditioning parent asset role is invalid"), nil
+			}
+			resolvedParent, resolvedPath, err := resolveSplitSource(ctx, s.clipDir, parent, parentSource)
+			if err != nil {
+				return conditioningReview(c, "conditioning parent asset changed"), nil
+			}
+			conditioningParentFull = resolvedPath
+			conditioningParentHash = resolvedParent.ClipHash
+		}
 		stageRoot := filepath.Join(s.clipDir, transcodeStagingDir)
 		if err := os.MkdirAll(stageRoot, 0o755); err != nil {
 			return StageResult{}, fmt.Errorf("create transcode staging folder: %w", err)
@@ -199,7 +234,7 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 		// After a committed re-key c.Hash names playback bytes while the retained master keeps the
 		// reviewed stream-copy child's sparse identity. Restart validation must bind each role to
 		// its own identity rather than asking the master to masquerade as playback.
-		snapshots, err := snapshotConditioningArtifacts(ctx, conditioningStageDir, inputFull, conditioningParentFull, sourceMaster.ClipHash, parent.Hash)
+		snapshots, err := snapshotConditioningArtifacts(ctx, conditioningStageDir, inputFull, conditioningParentFull, sourceMaster.ClipHash, conditioningParentHash)
 		if err != nil {
 			return conditioningReview(c, err.Error()), nil
 		}
@@ -713,9 +748,13 @@ func validateConditioningPair(e ConditioningEvidence, beforeHash, afterHash stri
 }
 
 func validConditioningLineage(lineage *ConditioningLineage, childParentHash string) bool {
-	return lineage != nil && isContentHash(lineage.ChildHash) && isContentHash(lineage.ParentHash) &&
-		lineage.ParentHash == childParentHash &&
-		lineage.IntendedStartMs >= 0 && lineage.IntendedEndMs > lineage.IntendedStartMs
+	if lineage == nil || !isContentHash(lineage.ChildHash) || !isContentHash(lineage.ParentHash) ||
+		lineage.ParentHash != childParentHash || lineage.IntendedStartMs < 0 || lineage.IntendedEndMs <= lineage.IntendedStartMs {
+		return false
+	}
+	assetBound := lineage.ParentAssetRole != "" || lineage.ParentAssetSHA256 != ""
+	role := SplitSourceRole(lineage.ParentAssetRole)
+	return !assetBound || ((role == SplitSourceEvidence || role == SplitSourceLegacyPlayback) && isContentHash(lineage.ParentAssetSHA256))
 }
 
 func mediaQualityResult(c StoreClip, quality MediaQuality) StageResult {
