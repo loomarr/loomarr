@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	TemporalStructureComparisonSchemaVersion   = 2
-	TemporalStructureComparisonContractVersion = "filler-temporal-structure-comparison-v2"
+	TemporalStructureComparisonSchemaVersion   = 3
+	TemporalStructureComparisonContractVersion = "filler-temporal-structure-comparison-v3"
 	TemporalStructureNearBoundaryMS            = 2_000
 	TemporalStructureBroadBoundaryMS           = 5_000
 )

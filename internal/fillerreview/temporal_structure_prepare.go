@@ -108,6 +108,25 @@ func prepareTemporalStructureCase(config TemporalStructureChallengeConfig, item 
 		if len(item.Segments) != 1 || item.Role != "" || source.Provenance.Kind != TemporalStructureSourceProgrammeParent || segment.StartMS < 5_000 || segment.StartMS+segment.DurationMS > source.DurationMS-5_000 {
 			return temporalStructurePreparedCase{}, fmt.Errorf("programme excerpt requires one interior cut with five-second parent margins")
 		}
+	case fillereval.UnitProgrammeSpots:
+		if item.Role != "" || len(item.Segments) < 3 {
+			return temporalStructurePreparedCase{}, fmt.Errorf("programme with spots requires programme material around at least one bounded filler item and no role")
+		}
+		programmeParts, fillerParts := 0, 0
+		for index, source := range result.sources {
+			switch source.Provenance.Kind {
+			case TemporalStructureSourceProgrammeParent:
+				programmeParts++
+			case TemporalStructureSourceBoundedItem:
+				if !wholeBoundedTemporalSource(item.Segments[index], source) {
+					return temporalStructurePreparedCase{}, fmt.Errorf("programme-with-spots filler segment %d is not one whole bounded item", index)
+				}
+				fillerParts++
+			}
+		}
+		if programmeParts < 2 || fillerParts < 1 {
+			return temporalStructurePreparedCase{}, fmt.Errorf("programme with spots requires programme material around at least one bounded filler item and no role")
+		}
 	default:
 		return temporalStructurePreparedCase{}, fmt.Errorf("unit %q has no provenance-grounded construction", item.Unit)
 	}
@@ -185,7 +204,7 @@ func auditTemporalStructureChallengeLeakage(publicRoot string, authoring Tempora
 	if err != nil {
 		return err
 	}
-	secrets := []string{string(fillereval.UnitStandalone), string(fillereval.UnitCompilation), string(fillereval.UnitProgrammeExcerpt)}
+	secrets := []string{string(fillereval.UnitStandalone), string(fillereval.UnitCompilation), string(fillereval.UnitProgrammeExcerpt), string(fillereval.UnitProgrammeSpots)}
 	for _, source := range authoring.Sources {
 		secrets = append(secrets, source.ID, source.Path, source.Provenance.Authority, source.Provenance.Reference, source.Provenance.MetadataSHA256)
 	}

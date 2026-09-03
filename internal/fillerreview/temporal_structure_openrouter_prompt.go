@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	TemporalStructureOpenRouterPromptVersion = "filler-temporal-structure-direct-video-v3"
+	TemporalStructureOpenRouterPromptVersion = "filler-temporal-structure-direct-video-v4"
 	temporalStructureRoleNone                = "none"
 	temporalStructureReasonMaximumCharacters = 512
 )
@@ -26,6 +26,7 @@ unit definitions:
 - standalone: exactly one independently bounded, self-contained inserted item with one cohesive communicative purpose. It may contain many shots or scenes when they belong to that one item.
 - compilation: two or more separately bounded items joined in the supplied file. A montage or multiple shots inside one cohesive item is not a compilation.
 - programme_excerpt: material whose beginning or ending depends on a larger programme, including an ordinary scene, programme opening, sustained performance, credits/title fragment, or an interior cut from a longer programme.
+- programme_with_spots: programme material with one or more inserted, independently bounded filler items. Return every programme and filler interval separately.
 - unusable: corruption or degradation prevents reliable temporal assessment. Age, poor image quality, or recording overlays alone are not enough while the structure remains assessable.
 - unclear: the complete video is available but structural evidence remains genuinely insufficient to choose.
 
@@ -57,7 +58,7 @@ type temporalStructureOpenRouterSegmentWire struct {
 
 func temporalStructureOpenRouterSchema(durationMS int64) map[string]any {
 	units := []string{
-		string(fillereval.UnitStandalone), string(fillereval.UnitCompilation), string(fillereval.UnitProgrammeExcerpt),
+		string(fillereval.UnitStandalone), string(fillereval.UnitCompilation), string(fillereval.UnitProgrammeExcerpt), string(fillereval.UnitProgrammeSpots),
 		string(fillereval.UnitUnusable), string(fillereval.UnitUnclear),
 	}
 	roles := []string{
@@ -117,7 +118,7 @@ func normalizeTemporalStructureOpenRouterWire(wire *temporalStructureOpenRouterW
 
 func validateTemporalStructureOpenRouterWire(wire temporalStructureOpenRouterWire, durationMS int64) error {
 	unit := fillereval.UnitKind(wire.Unit)
-	if !validHumanUnit(unit) || strings.TrimSpace(wire.UnitReason) == "" || utf8.RuneCountInString(wire.UnitReason) > temporalStructureReasonMaximumCharacters || !validTemporalStructureTimes(wire.UnitDecisiveAtMS, durationMS, unit == fillereval.UnitUnclear) {
+	if !validTemporalStructureUnit(unit) || strings.TrimSpace(wire.UnitReason) == "" || utf8.RuneCountInString(wire.UnitReason) > temporalStructureReasonMaximumCharacters || !validTemporalStructureTimes(wire.UnitDecisiveAtMS, durationMS, unit == fillereval.UnitUnclear) {
 		return fmt.Errorf("direct-video structure unit claim is invalid")
 	}
 	if unit == fillereval.UnitStandalone {

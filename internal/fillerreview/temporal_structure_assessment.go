@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	TemporalStructureAssessmentSchemaVersion   = 3
-	TemporalStructureAssessmentContractVersion = "filler-temporal-structure-assessment-v3"
+	TemporalStructureAssessmentSchemaVersion   = 4
+	TemporalStructureAssessmentContractVersion = "filler-temporal-structure-assessment-v4"
 	temporalStructureMaximumDecisiveTimes      = 8
 )
 
@@ -129,7 +129,7 @@ func validateTemporalStructureAssessment(assessment TemporalStructureAssessment,
 		}
 		return nil
 	}
-	if assessment.Unit == nil || !validHumanUnit(assessment.Unit.Kind) || strings.TrimSpace(assessment.Unit.Reason) == "" || !validTemporalStructureTimes(assessment.Unit.DecisiveAtMS, durationMS, assessment.Unit.Kind == fillereval.UnitUnclear) {
+	if assessment.Unit == nil || !validTemporalStructureUnit(assessment.Unit.Kind) || strings.TrimSpace(assessment.Unit.Reason) == "" || !validTemporalStructureTimes(assessment.Unit.DecisiveAtMS, durationMS, assessment.Unit.Kind == fillereval.UnitUnclear) {
 		return fmt.Errorf("unit claim or decisive timestamps are invalid")
 	}
 	if assessment.Unit.Kind == fillereval.UnitStandalone {
@@ -173,15 +173,40 @@ func validateTemporalStructureSegments(assessment TemporalStructureAssessment, d
 			return fmt.Errorf("standalone assessment requires one whole-video segment matching its role")
 		}
 	case fillereval.UnitCompilation:
-		if len(assessment.Segments) < 2 {
+		if len(assessment.Segments) < 2 || programmeSegments > 0 {
 			return fmt.Errorf("compilation assessment requires at least two covered segments")
 		}
 	case fillereval.UnitProgrammeExcerpt:
-		if programmeSegments == 0 {
+		if len(assessment.Segments) != 1 || programmeSegments != 1 {
 			return fmt.Errorf("programme excerpt requires an explicit programme_fragment segment")
+		}
+	case fillereval.UnitProgrammeSpots:
+		fillerSegments := 0
+		for _, segment := range assessment.Segments {
+			if temporalStructureFillerSegmentRole(segment.Role) {
+				fillerSegments++
+			}
+		}
+		if programmeSegments < 2 || fillerSegments < 1 {
+			return fmt.Errorf("programme with spots requires programme fragments around at least one filler segment")
 		}
 	}
 	return nil
+}
+
+func validTemporalStructureUnit(unit fillereval.UnitKind) bool {
+	return unit == fillereval.UnitStandalone || unit == fillereval.UnitCompilation || unit == fillereval.UnitProgrammeExcerpt || unit == fillereval.UnitProgrammeSpots || unit == fillereval.UnitUnusable || unit == fillereval.UnitUnclear
+}
+
+func temporalStructureFillerSegmentRole(role fillereval.TemporalSegmentRole) bool {
+	switch role {
+	case fillereval.TemporalSegmentCommercial, fillereval.TemporalSegmentPromo, fillereval.TemporalSegmentBumper,
+		fillereval.TemporalSegmentPSA, fillereval.TemporalSegmentStationID, fillereval.TemporalSegmentTrailer,
+		fillereval.TemporalSegmentInterstitial:
+		return true
+	default:
+		return false
+	}
 }
 
 func validateTemporalStructureInference(inference fillereval.TemporalInference, generatedAt, completedAt time.Time) error {

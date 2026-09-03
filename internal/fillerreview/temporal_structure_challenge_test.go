@@ -78,6 +78,43 @@ func TestBuildTemporalStructureChallengeSeparatesBlindedMediaFromConstructionAut
 	}
 }
 
+func TestBuildTemporalStructureChallengeSupportsProgrammeWithInsertedSpot(t *testing.T) {
+	fixture := newTemporalStructureFixture(t)
+	fixture.authoring.Cases = append(fixture.authoring.Cases, TemporalStructureChallengeCase{
+		ID: "programme-spots-case-secret", Unit: fillereval.UnitProgrammeSpots,
+		Segments: []TemporalStructureChallengeSegment{
+			{SourceID: "programme-parent-secret", StartMS: 10_000, DurationMS: 10_000},
+			{SourceID: "bounded-commercial-secret", DurationMS: 10_000},
+			{SourceID: "programme-parent-secret", StartMS: 20_000, DurationMS: 10_000},
+		},
+	})
+	fixture.secrets = append(fixture.secrets, "programme-spots-case-secret", string(fillereval.UnitProgrammeSpots))
+	fixture.writeAuthoring(t)
+	output := filepath.Join(t.TempDir(), "challenge")
+	result, err := BuildTemporalStructureChallenge(context.Background(), fixture.config(output, "programme-spots"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, authority, _, _, err := LoadTemporalStructureChallenge(
+		filepath.Join(output, "public", "manifest.json"), filepath.Join(output, "private", "authority.json"), 4,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Cases != 4 {
+		t.Fatalf("challenge cases = %d, want 4", result.Cases)
+	}
+	var inserted TemporalStructureChallengeAuthorityCase
+	for _, item := range authority.Cases {
+		if item.Unit == fillereval.UnitProgrammeSpots {
+			inserted = item
+		}
+	}
+	if len(inserted.Segments) != 3 || len(inserted.JoinTimesMS) != 2 || inserted.JoinTimesMS[0] != 10_000 || inserted.JoinTimesMS[1] != 20_000 || inserted.Segments[0].Provenance.Kind != TemporalStructureSourceProgrammeParent || inserted.Segments[1].SourceRole != fillereval.TemporalRoleCommercial || inserted.Segments[2].Provenance.Kind != TemporalStructureSourceProgrammeParent {
+		t.Fatalf("programme-with-spots authority = %+v", inserted)
+	}
+}
+
 func TestLoadTemporalStructureChallengeFailsClosedOnPublicAndPrivateTamper(t *testing.T) {
 	fixture := newTemporalStructureFixture(t)
 	root, _ := fixture.build(t, "load-tamper")

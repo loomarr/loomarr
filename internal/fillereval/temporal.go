@@ -24,6 +24,7 @@ const (
 	UnitStandalone       UnitKind = "standalone"
 	UnitCompilation      UnitKind = "compilation"
 	UnitProgrammeExcerpt UnitKind = "programme_excerpt"
+	UnitProgrammeSpots   UnitKind = "programme_with_spots"
 	UnitUnusable         UnitKind = "unusable"
 	UnitUnclear          UnitKind = "unclear"
 )

@@ -42,7 +42,7 @@ func buildTemporalStructureComparison(loaded temporalStructureComparisonLoaded, 
 			CapabilitySHA256:   set.CapabilitySnapshotSHA256, CompletedAt: set.CompletedAt, Assessor: set.Assessor,
 		})
 		summaryByAssessor[set.Assessor.ID] = &TemporalStructureAssessorSummary{AssessorID: set.Assessor.ID, Cases: len(loaded.authority.Cases)}
-		for _, unit := range []fillereval.UnitKind{fillereval.UnitStandalone, fillereval.UnitCompilation, fillereval.UnitProgrammeExcerpt} {
+		for _, unit := range temporalStructureScoredUnits() {
 			key := temporalStructureSummaryKey{assessor: set.Assessor.ID, unit: unit}
 			constructionByKey[key] = &TemporalStructureConstructionSummary{AssessorID: set.Assessor.ID, TruthUnit: unit}
 		}
@@ -87,7 +87,7 @@ func buildTemporalStructureComparison(loaded temporalStructureComparisonLoaded, 
 		summary := summaryByAssessor[id]
 		summary.Boundary.MedianDistanceMS = temporalStructureMedian(boundaryDistances[id])
 		report.AssessorSummaries = append(report.AssessorSummaries, *summary)
-		for _, unit := range []fillereval.UnitKind{fillereval.UnitStandalone, fillereval.UnitCompilation, fillereval.UnitProgrammeExcerpt} {
+		for _, unit := range temporalStructureScoredUnits() {
 			key := temporalStructureSummaryKey{assessor: id, unit: unit}
 			constructionByKey[key].Boundary.MedianDistanceMS = temporalStructureMedian(constructionDistances[key])
 			report.ConstructionSummaries = append(report.ConstructionSummaries, *constructionByKey[key])
@@ -197,7 +197,7 @@ func accumulateTemporalStructureResult(summary *TemporalStructureAssessorSummary
 
 func temporalStructureTruthSegments(item TemporalStructureChallengeAuthorityCase, durationMS int64) []TemporalStructureTruthSegment {
 	switch item.Unit {
-	case fillereval.UnitStandalone, fillereval.UnitCompilation:
+	case fillereval.UnitStandalone, fillereval.UnitCompilation, fillereval.UnitProgrammeSpots:
 		segments := make([]TemporalStructureTruthSegment, 0, len(item.Segments))
 		for index, part := range item.Segments {
 			endMS := part.OutputEndMS
@@ -207,9 +207,13 @@ func temporalStructureTruthSegments(item TemporalStructureChallengeAuthorityCase
 				// is the timeline the assessor actually receives and must cover.
 				endMS = durationMS
 			}
+			role := fillereval.TemporalSegmentRole(part.SourceRole)
+			if part.Provenance.Kind == TemporalStructureSourceProgrammeParent {
+				role = fillereval.TemporalSegmentProgrammeFragment
+			}
 			segments = append(segments, TemporalStructureTruthSegment{
 				StartMS: part.OutputStartMS, EndMS: endMS,
-				Role: fillereval.TemporalSegmentRole(part.SourceRole),
+				Role: role,
 			})
 		}
 		return segments
@@ -308,7 +312,7 @@ func matchTemporalStructureCuts(truth, predicted []int64, toleranceMS int64) int
 
 func temporalStructureTruthBoundaries(item TemporalStructureChallengeAuthorityCase, durationMS int64) []temporalStructureTruthBoundary {
 	switch item.Unit {
-	case fillereval.UnitCompilation:
+	case fillereval.UnitCompilation, fillereval.UnitProgrammeSpots:
 		result := make([]temporalStructureTruthBoundary, 0, len(item.JoinTimesMS))
 		for _, atMS := range item.JoinTimesMS {
 			result = append(result, temporalStructureTruthBoundary{kind: temporalStructureBoundaryConstructedJoin, atMS: atMS})
@@ -319,6 +323,10 @@ func temporalStructureTruthBoundaries(item TemporalStructureChallengeAuthorityCa
 	default:
 		return nil
 	}
+}
+
+func temporalStructureScoredUnits() []fillereval.UnitKind {
+	return []fillereval.UnitKind{fillereval.UnitStandalone, fillereval.UnitCompilation, fillereval.UnitProgrammeExcerpt, fillereval.UnitProgrammeSpots}
 }
 
 func nearestTemporalStructureTime(target int64, candidates []int64) (int64, int64) {

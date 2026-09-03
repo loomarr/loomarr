@@ -20,7 +20,7 @@ func TestCompareTemporalStructureAssessmentsScoresConstructionTruthAndBoundaries
 	if report.Cases != 3 || report.AllAssessorsExactCorrect != 3 || report.ProductionAdmissionAllowed || len(report.DiagnosticCandidates) != 0 || report.Disposition.NextAction != "expand_provenance_grounded_challenge" || report.Disposition.BlindHumanAuditRequired || report.Disposition.TrainingAllowed {
 		t.Fatalf("report disposition or totals = %+v", report)
 	}
-	if len(report.AssessorSummaries) != 2 || len(report.ConstructionSummaries) != 6 || len(report.PairSummaries) != 1 {
+	if len(report.AssessorSummaries) != 2 || len(report.ConstructionSummaries) != 8 || len(report.PairSummaries) != 1 {
 		t.Fatalf("summary cardinality = %d/%d/%d", len(report.AssessorSummaries), len(report.ConstructionSummaries), len(report.PairSummaries))
 	}
 	for _, summary := range report.AssessorSummaries {

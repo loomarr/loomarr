@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	TemporalStructureChallengeSchemaVersion   = 1
-	TemporalStructureChallengeContractVersion = "filler-temporal-structure-challenge-v1"
+	TemporalStructureChallengeSchemaVersion   = 2
+	TemporalStructureChallengeContractVersion = "filler-temporal-structure-challenge-v2"
 
 	TemporalStructureSourceBoundedItem     = "independently_bounded_item"
 	TemporalStructureSourceProgrammeParent = "programme_parent"

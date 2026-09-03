@@ -155,6 +155,28 @@ func validateTemporalStructureAuthorityCase(item TemporalStructureChallengeAutho
 		if len(item.Segments) != 1 || item.Role != "" || part.Provenance.Kind != TemporalStructureSourceProgrammeParent || part.SourceStartMS < 5_000 || part.SourceStartMS+part.RequestedMS > part.SourceDurationMS-5_000 || len(item.JoinTimesMS) != 0 {
 			return fmt.Errorf("programme excerpt authority is not one interior parent cut")
 		}
+	case fillereval.UnitProgrammeSpots:
+		if len(item.Segments) < 3 || item.Role != "" || len(item.JoinTimesMS) != len(item.Segments)-1 {
+			return fmt.Errorf("programme-with-spots authority has invalid cardinality, role, or joins")
+		}
+		programmeParts, fillerParts := 0, 0
+		for index, part := range item.Segments {
+			if index > 0 && item.JoinTimesMS[index-1] != part.OutputStartMS {
+				return fmt.Errorf("programme-with-spots segment %d does not bind its asserted join", index)
+			}
+			switch part.Provenance.Kind {
+			case TemporalStructureSourceProgrammeParent:
+				programmeParts++
+			case TemporalStructureSourceBoundedItem:
+				if part.SourceStartMS != 0 || part.RequestedMS != part.SourceDurationMS {
+					return fmt.Errorf("programme-with-spots filler segment %d is not a whole bounded item", index)
+				}
+				fillerParts++
+			}
+		}
+		if programmeParts < 2 || fillerParts < 1 {
+			return fmt.Errorf("programme-with-spots authority lacks programme or filler material")
+		}
 	default:
 		return fmt.Errorf("unit %q has no provenance-grounded authority", item.Unit)
 	}
