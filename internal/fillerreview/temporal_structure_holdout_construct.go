@@ -19,6 +19,7 @@ func constructTemporalStructureHoldout(config TemporalStructureHoldoutConfig, lo
 		PlannedAt: config.PlannedAt.UTC(), SeedSHA256: hashBytes([]byte(config.Seed)), Inputs: loaded.inputs,
 		Cases: TemporalStructureHoldoutCases, StandaloneCases: temporalStructureHoldoutClassCases,
 		CompilationCases: temporalStructureHoldoutClassCases, ProgrammeExcerptCases: temporalStructureHoldoutClassCases,
+		ProgrammeSpotCases: temporalStructureHoldoutClassCases,
 		IndependentSources: temporalStructureHoldoutClassCases, ProgrammeParents: temporalStructureHoldoutParentSources,
 		StandaloneRoleCounts: map[fillereval.TemporalRole]int{}, TrainingAllowed: false, ProductionAdmissionAllowed: false,
 	}
@@ -47,6 +48,9 @@ func constructTemporalStructureHoldout(config TemporalStructureHoldoutConfig, lo
 	programmeCases, programmeReceipt := constructTemporalStructureHoldoutProgrammeCuts(config.Seed, parents)
 	authoring.Cases = append(authoring.Cases, programmeCases...)
 	receipt.ProgrammeConstructions = programmeReceipt
+	programmeSpotCases, programmeSpotReceipt := constructTemporalStructureHoldoutProgrammeSpots(config.Seed, parents, anchors)
+	authoring.Cases = append(authoring.Cases, programmeSpotCases...)
+	receipt.ProgrammeSpotConstructions = programmeSpotReceipt
 	sort.Slice(authoring.Sources, func(i, j int) bool { return authoring.Sources[i].ID < authoring.Sources[j].ID })
 	sort.Slice(authoring.Cases, func(i, j int) bool { return authoring.Cases[i].ID < authoring.Cases[j].ID })
 	sort.Slice(receipt.SelectedAnchors, func(i, j int) bool { return receipt.SelectedAnchors[i].SourceID < receipt.SelectedAnchors[j].SourceID })
@@ -56,14 +60,53 @@ func constructTemporalStructureHoldout(config TemporalStructureHoldoutConfig, lo
 	sort.Slice(receipt.ProgrammeConstructions, func(i, j int) bool {
 		return receipt.ProgrammeConstructions[i].CaseID < receipt.ProgrammeConstructions[j].CaseID
 	})
+	sort.Slice(receipt.ProgrammeSpotConstructions, func(i, j int) bool {
+		return receipt.ProgrammeSpotConstructions[i].CaseID < receipt.ProgrammeSpotConstructions[j].CaseID
+	})
 	prepared, err := prepareTemporalStructureChallenge(TemporalStructureChallengeConfig{SourceRoot: config.SourceRoot, Seed: config.Seed}, authoring)
 	if err != nil {
 		return TemporalStructureChallengeAuthoring{}, TemporalStructureHoldoutReceipt{}, err
 	}
 	if len(prepared) != TemporalStructureHoldoutCases {
-		return TemporalStructureChallengeAuthoring{}, TemporalStructureHoldoutReceipt{}, fmt.Errorf("temporal structure holdout authoring did not produce 36 unique blinded cases")
+		return TemporalStructureChallengeAuthoring{}, TemporalStructureHoldoutReceipt{}, fmt.Errorf("temporal structure holdout authoring did not produce %d unique blinded cases", TemporalStructureHoldoutCases)
 	}
 	return authoring, receipt, nil
+}
+
+func constructTemporalStructureHoldoutProgrammeSpots(seed string, parents []TemporalStructureChallengeSource, anchors []temporalStructureHoldoutSelectedAnchor) ([]TemporalStructureChallengeCase, []TemporalStructureHoldoutProgrammeSpot) {
+	const programmePartMS int64 = 20_000
+	var cases []TemporalStructureChallengeCase
+	var receipts []TemporalStructureHoldoutProgrammeSpot
+	anchorIndex := 0
+	for _, parent := range parents {
+		patterns := []struct {
+			name        string
+			beforeStart int64
+			afterStart  int64
+		}{
+			{name: "early_insert", beforeStart: 10_000, afterStart: 30_000},
+			{name: "late_insert", beforeStart: parent.DurationMS - 50_000, afterStart: parent.DurationMS - 30_000},
+		}
+		for _, pattern := range patterns {
+			anchor := anchors[anchorIndex]
+			anchorIndex++
+			caseID := temporalStructureHoldoutCaseID(seed, "programme_with_spots", fmt.Sprintf("%s\x00%s\x00%s", parent.ID, anchor.source.ID, pattern.name))
+			cases = append(cases, TemporalStructureChallengeCase{
+				ID: caseID, Unit: fillereval.UnitProgrammeSpots,
+				Segments: []TemporalStructureChallengeSegment{
+					{SourceID: parent.ID, StartMS: pattern.beforeStart, DurationMS: programmePartMS},
+					{SourceID: anchor.source.ID, DurationMS: anchor.source.DurationMS},
+					{SourceID: parent.ID, StartMS: pattern.afterStart, DurationMS: programmePartMS},
+				},
+			})
+			receipts = append(receipts, TemporalStructureHoldoutProgrammeSpot{
+				CaseID: caseID, ParentSourceID: parent.ID, FillerSourceID: anchor.source.ID, Pattern: pattern.name,
+				ParentDurationMS: parent.DurationMS, BeforeSourceStartMS: pattern.beforeStart, AfterSourceStartMS: pattern.afterStart,
+				ProgrammePartMS: programmePartMS, FillerDurationMS: anchor.source.DurationMS, FillerRole: anchor.receipt.Role,
+			})
+		}
+	}
+	return cases, receipts
 }
 
 func constructTemporalStructureHoldoutCompilations(seed string, selected []temporalStructureHoldoutSelectedAnchor) ([]TemporalStructureChallengeCase, []TemporalStructureHoldoutCompilation, error) {

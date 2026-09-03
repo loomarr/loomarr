@@ -9,7 +9,7 @@ import (
 )
 
 func validateTemporalStructureHoldoutReceipt(receipt TemporalStructureHoldoutReceipt, authoring TemporalStructureChallengeAuthoring) error {
-	if receipt.SchemaVersion != TemporalStructureHoldoutSchemaVersion || receipt.ContractVersion != TemporalStructureHoldoutContractVersion || receipt.PlannedAt.IsZero() || !reviewSHA256(receipt.SeedSHA256) || !reviewSHA256(receipt.AuthoringSHA256) || receipt.Cases != TemporalStructureHoldoutCases || receipt.StandaloneCases != temporalStructureHoldoutClassCases || receipt.CompilationCases != temporalStructureHoldoutClassCases || receipt.ProgrammeExcerptCases != temporalStructureHoldoutClassCases || receipt.IndependentSources != temporalStructureHoldoutClassCases || receipt.ProgrammeParents != temporalStructureHoldoutParentSources || len(receipt.SelectedAnchors) != temporalStructureHoldoutClassCases || len(receipt.CompilationConstructions) != temporalStructureHoldoutClassCases || len(receipt.ProgrammeConstructions) != temporalStructureHoldoutClassCases || receipt.TrainingAllowed || receipt.ProductionAdmissionAllowed || len(authoring.Cases) != receipt.Cases || len(authoring.Sources) != temporalStructureHoldoutClassCases+temporalStructureHoldoutParentSources {
+	if receipt.SchemaVersion != TemporalStructureHoldoutSchemaVersion || receipt.ContractVersion != TemporalStructureHoldoutContractVersion || receipt.PlannedAt.IsZero() || !reviewSHA256(receipt.SeedSHA256) || !reviewSHA256(receipt.AuthoringSHA256) || receipt.Cases != TemporalStructureHoldoutCases || receipt.StandaloneCases != temporalStructureHoldoutClassCases || receipt.CompilationCases != temporalStructureHoldoutClassCases || receipt.ProgrammeExcerptCases != temporalStructureHoldoutClassCases || receipt.ProgrammeSpotCases != temporalStructureHoldoutClassCases || receipt.IndependentSources != temporalStructureHoldoutClassCases || receipt.ProgrammeParents != temporalStructureHoldoutParentSources || len(receipt.SelectedAnchors) != temporalStructureHoldoutClassCases || len(receipt.CompilationConstructions) != temporalStructureHoldoutClassCases || len(receipt.ProgrammeConstructions) != temporalStructureHoldoutClassCases || len(receipt.ProgrammeSpotConstructions) != temporalStructureHoldoutClassCases || receipt.TrainingAllowed || receipt.ProductionAdmissionAllowed || len(authoring.Cases) != receipt.Cases || len(authoring.Sources) != temporalStructureHoldoutClassCases+temporalStructureHoldoutParentSources {
 		return fmt.Errorf("temporal structure holdout receipt counts or disposition are invalid")
 	}
 	if err := validateTemporalStructureHoldoutInputs(receipt.Inputs); err != nil {
@@ -19,7 +19,7 @@ func validateTemporalStructureHoldoutReceipt(receipt TemporalStructureHoldoutRec
 	if err != nil {
 		return err
 	}
-	if unitCounts[fillereval.UnitStandalone] != temporalStructureHoldoutClassCases || unitCounts[fillereval.UnitCompilation] != temporalStructureHoldoutClassCases || unitCounts[fillereval.UnitProgrammeExcerpt] != temporalStructureHoldoutClassCases {
+	if unitCounts[fillereval.UnitStandalone] != temporalStructureHoldoutClassCases || unitCounts[fillereval.UnitCompilation] != temporalStructureHoldoutClassCases || unitCounts[fillereval.UnitProgrammeExcerpt] != temporalStructureHoldoutClassCases || unitCounts[fillereval.UnitProgrammeSpots] != temporalStructureHoldoutClassCases || len(unitCounts) != 4 {
 		return fmt.Errorf("temporal structure holdout authoring is not balanced by unit")
 	}
 	anchors, err := validateTemporalStructureHoldoutAnchors(receipt, sources)
@@ -32,7 +32,10 @@ func validateTemporalStructureHoldoutReceipt(receipt TemporalStructureHoldoutRec
 	if err := validateTemporalStructureHoldoutCompilations(receipt.CompilationConstructions, cases, anchors); err != nil {
 		return err
 	}
-	return validateTemporalStructureHoldoutProgrammeCuts(receipt.ProgrammeConstructions, cases, sources)
+	if err := validateTemporalStructureHoldoutProgrammeCuts(receipt.ProgrammeConstructions, cases, sources); err != nil {
+		return err
+	}
+	return validateTemporalStructureHoldoutProgrammeSpots(receipt.ProgrammeSpotConstructions, cases, sources, anchors)
 }
 
 func validateTemporalStructureHoldoutInputs(inputs []TemporalStructureHoldoutInput) error {
@@ -203,6 +206,51 @@ func validateTemporalStructureHoldoutProgrammeCuts(items []TemporalStructureHold
 	for _, count := range parents {
 		if count != 2 {
 			return fmt.Errorf("temporal structure holdout must make two cuts per programme parent")
+		}
+	}
+	return nil
+}
+
+func validateTemporalStructureHoldoutProgrammeSpots(items []TemporalStructureHoldoutProgrammeSpot, cases map[string]TemporalStructureChallengeCase, sources map[string]TemporalStructureChallengeSource, anchors map[string]TemporalStructureHoldoutAnchor) error {
+	parents, fillers, patterns, seenCases := map[string]int{}, map[string]int{}, map[string]int{}, map[string]struct{}{}
+	for _, item := range items {
+		challenge, caseExists := cases[item.CaseID]
+		parent, parentExists := sources[item.ParentSourceID]
+		anchor, fillerExists := anchors[item.FillerSourceID]
+		if !caseExists || challenge.Unit != fillereval.UnitProgrammeSpots || !parentExists || parent.Provenance.Kind != TemporalStructureSourceProgrammeParent || !fillerExists || len(challenge.Segments) != 3 || item.ParentDurationMS != parent.DurationMS || item.ProgrammePartMS != 20_000 || item.FillerDurationMS != anchor.DurationMS || item.FillerRole != anchor.Role || challenge.Segments[0] != (TemporalStructureChallengeSegment{SourceID: parent.ID, StartMS: item.BeforeSourceStartMS, DurationMS: item.ProgrammePartMS}) || challenge.Segments[1] != (TemporalStructureChallengeSegment{SourceID: anchor.SourceID, DurationMS: anchor.DurationMS}) || challenge.Segments[2] != (TemporalStructureChallengeSegment{SourceID: parent.ID, StartMS: item.AfterSourceStartMS, DurationMS: item.ProgrammePartMS}) {
+			return fmt.Errorf("temporal structure holdout contains an invalid programme-with-spots construction")
+		}
+		switch item.Pattern {
+		case "early_insert":
+			if item.BeforeSourceStartMS != 10_000 || item.AfterSourceStartMS != 30_000 {
+				return fmt.Errorf("temporal structure holdout early inserted-spot pattern drift")
+			}
+		case "late_insert":
+			if item.BeforeSourceStartMS != parent.DurationMS-50_000 || item.AfterSourceStartMS != parent.DurationMS-30_000 {
+				return fmt.Errorf("temporal structure holdout late inserted-spot pattern drift")
+			}
+		default:
+			return fmt.Errorf("temporal structure holdout contains an unknown inserted-spot pattern")
+		}
+		if _, duplicate := seenCases[item.CaseID]; duplicate {
+			return fmt.Errorf("temporal structure holdout repeats a programme-with-spots case")
+		}
+		seenCases[item.CaseID] = struct{}{}
+		parents[item.ParentSourceID]++
+		fillers[item.FillerSourceID]++
+		patterns[item.Pattern]++
+	}
+	if len(parents) != temporalStructureHoldoutParentSources || len(fillers) != temporalStructureHoldoutClassCases || patterns["early_insert"] != temporalStructureHoldoutParentSources || patterns["late_insert"] != temporalStructureHoldoutParentSources || len(patterns) != 2 {
+		return fmt.Errorf("temporal structure holdout programme-with-spots coverage is incomplete")
+	}
+	for _, count := range parents {
+		if count != 2 {
+			return fmt.Errorf("temporal structure holdout must make two inserted-spot cases per programme parent")
+		}
+	}
+	for _, count := range fillers {
+		if count != 1 {
+			return fmt.Errorf("temporal structure holdout must use each filler once in an inserted-spot case")
 		}
 	}
 	return nil

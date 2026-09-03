@@ -38,7 +38,7 @@ func TestBuildTemporalStructureHoldoutPlanBindsAuthoritiesAndBuildsBalancedConst
 	for _, item := range authoring.Cases {
 		unitCounts[item.Unit]++
 	}
-	if unitCounts[fillereval.UnitStandalone] != 12 || unitCounts[fillereval.UnitCompilation] != 12 || unitCounts[fillereval.UnitProgrammeExcerpt] != 12 || len(authoring.Sources) != 18 || receipt.StandaloneRoleCounts[fillereval.TemporalRoleBumper] != 2 || receipt.StandaloneRoleCounts[fillereval.TemporalRoleCommercial] != 3 || receipt.StandaloneRoleCounts[fillereval.TemporalRolePromo] != 2 || receipt.StandaloneRoleCounts[fillereval.TemporalRolePSA] != 2 || receipt.StandaloneRoleCounts[fillereval.TemporalRoleTrailer] != 3 || receipt.TrainingAllowed || receipt.ProductionAdmissionAllowed {
+	if unitCounts[fillereval.UnitStandalone] != 12 || unitCounts[fillereval.UnitCompilation] != 12 || unitCounts[fillereval.UnitProgrammeExcerpt] != 12 || unitCounts[fillereval.UnitProgrammeSpots] != 12 || len(authoring.Sources) != 18 || receipt.StandaloneRoleCounts[fillereval.TemporalRoleBumper] != 2 || receipt.StandaloneRoleCounts[fillereval.TemporalRoleCommercial] != 3 || receipt.StandaloneRoleCounts[fillereval.TemporalRolePromo] != 2 || receipt.StandaloneRoleCounts[fillereval.TemporalRolePSA] != 2 || receipt.StandaloneRoleCounts[fillereval.TemporalRoleTrailer] != 3 || receipt.TrainingAllowed || receipt.ProductionAdmissionAllowed {
 		t.Fatalf("authoring counts=%v sources=%d receipt=%+v", unitCounts, len(authoring.Sources), receipt)
 	}
 	bands := map[string]int{}
@@ -59,7 +59,13 @@ func TestBuildTemporalStructureHoldoutPlanBindsAuthoritiesAndBuildsBalancedConst
 			t.Fatalf("programme cut lacks parent margins: %+v", item)
 		}
 	}
-	if bands["early"] != 4 || bands["middle"] != 4 || bands["late"] != 4 || patterns["near_parent_start"] != 6 || patterns["near_parent_end"] != 6 {
+	spotPatterns := map[string]int{}
+	spotFillers := map[string]struct{}{}
+	for _, item := range receipt.ProgrammeSpotConstructions {
+		spotPatterns[item.Pattern]++
+		spotFillers[item.FillerSourceID] = struct{}{}
+	}
+	if bands["early"] != 4 || bands["middle"] != 4 || bands["late"] != 4 || patterns["near_parent_start"] != 6 || patterns["near_parent_end"] != 6 || spotPatterns["early_insert"] != 6 || spotPatterns["late_insert"] != 6 || len(spotFillers) != 12 {
 		t.Fatalf("bands=%v patterns=%v", bands, patterns)
 	}
 	if _, err := BuildTemporalStructureHoldoutPlan(firstConfig); err == nil {
@@ -111,6 +117,61 @@ func TestBuildTemporalStructureHoldoutPlanRejectsMediaQualitySummaryDrift(t *tes
 	if err == nil || !strings.Contains(err.Error(), "summary does not match") {
 		t.Fatalf("media-quality summary error = %v", err)
 	}
+}
+
+func TestTemporalStructureHoldoutReceiptRejectsProgrammeSpotTampering(t *testing.T) {
+	fixture := newTemporalStructureHoldoutFixture(t)
+	output := filepath.Join(t.TempDir(), "output")
+	if _, err := BuildTemporalStructureHoldoutPlan(fixture.config(output)); err != nil {
+		t.Fatal(err)
+	}
+	authoringPath := filepath.Join(output, "authoring.json")
+	receiptPath := filepath.Join(output, "receipt.json")
+
+	t.Run("repeated filler", func(t *testing.T) {
+		authoring := readStrictTestJSON[TemporalStructureChallengeAuthoring](t, authoringPath)
+		receipt := readStrictTestJSON[TemporalStructureHoldoutReceipt](t, receiptPath)
+		first := receipt.ProgrammeSpotConstructions[0]
+		second := &receipt.ProgrammeSpotConstructions[1]
+		second.FillerSourceID = first.FillerSourceID
+		second.FillerDurationMS = first.FillerDurationMS
+		second.FillerRole = first.FillerRole
+		for caseIndex := range authoring.Cases {
+			if authoring.Cases[caseIndex].ID == second.CaseID {
+				authoring.Cases[caseIndex].Segments[1].SourceID = first.FillerSourceID
+				authoring.Cases[caseIndex].Segments[1].DurationMS = first.FillerDurationMS
+				break
+			}
+		}
+		if err := validateTemporalStructureHoldoutReceipt(receipt, authoring); err == nil || !strings.Contains(err.Error(), "coverage is incomplete") {
+			t.Fatalf("repeated filler error = %v", err)
+		}
+	})
+
+	t.Run("invalid insertion bounds", func(t *testing.T) {
+		authoring := readStrictTestJSON[TemporalStructureChallengeAuthoring](t, authoringPath)
+		receipt := readStrictTestJSON[TemporalStructureHoldoutReceipt](t, receiptPath)
+		item := &receipt.ProgrammeSpotConstructions[0]
+		item.BeforeSourceStartMS++
+		for caseIndex := range authoring.Cases {
+			if authoring.Cases[caseIndex].ID == item.CaseID {
+				authoring.Cases[caseIndex].Segments[0].StartMS = item.BeforeSourceStartMS
+				break
+			}
+		}
+		if err := validateTemporalStructureHoldoutReceipt(receipt, authoring); err == nil || !strings.Contains(err.Error(), "inserted-spot pattern drift") {
+			t.Fatalf("insertion bounds error = %v", err)
+		}
+	})
+
+	t.Run("missing programme spot", func(t *testing.T) {
+		authoring := readStrictTestJSON[TemporalStructureChallengeAuthoring](t, authoringPath)
+		receipt := readStrictTestJSON[TemporalStructureHoldoutReceipt](t, receiptPath)
+		receipt.ProgrammeSpotConstructions = receipt.ProgrammeSpotConstructions[:len(receipt.ProgrammeSpotConstructions)-1]
+		if err := validateTemporalStructureHoldoutReceipt(receipt, authoring); err == nil || !strings.Contains(err.Error(), "counts or disposition") {
+			t.Fatalf("missing programme spot error = %v", err)
+		}
+	})
 }
 
 type temporalStructureHoldoutFixture struct {
@@ -252,7 +313,7 @@ func newTemporalStructureHoldoutFixture(t *testing.T) temporalStructureHoldoutFi
 		t.Fatal(err)
 	}
 	inventory := TemporalStructureHoldoutProgrammeInventory{
-		SchemaVersion: TemporalStructureHoldoutSchemaVersion, ContractVersion: TemporalStructureHoldoutProgrammeInventoryContract,
+		SchemaVersion: TemporalStructureHoldoutProgrammeInventorySchemaVersion, ContractVersion: TemporalStructureHoldoutProgrammeInventoryContract,
 		GeneratedAt: family.GeneratedAt.Add(time.Hour),
 	}
 	for index := 0; index < temporalStructureHoldoutParentSources; index++ {

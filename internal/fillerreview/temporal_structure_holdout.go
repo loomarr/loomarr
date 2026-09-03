@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	TemporalStructureHoldoutSchemaVersion   = 1
-	TemporalStructureHoldoutContractVersion = "filler-temporal-structure-holdout-plan-v1"
-	TemporalStructureHoldoutCases           = 36
+	TemporalStructureHoldoutSchemaVersion   = 2
+	TemporalStructureHoldoutContractVersion = "filler-temporal-structure-holdout-plan-v2"
+	TemporalStructureHoldoutCases           = 48
 	temporalStructureHoldoutClassCases      = 12
 	temporalStructureHoldoutParentSources   = 6
 )
@@ -42,24 +42,26 @@ type TemporalStructureHoldoutProgrammeInventory struct {
 }
 
 type TemporalStructureHoldoutReceipt struct {
-	SchemaVersion              int                                    `json:"schemaVersion"`
-	ContractVersion            string                                 `json:"contractVersion"`
-	PlannedAt                  time.Time                              `json:"plannedAt"`
-	SeedSHA256                 string                                 `json:"seedSha256"`
-	Inputs                     []TemporalStructureHoldoutInput        `json:"inputs"`
-	AuthoringSHA256            string                                 `json:"authoringSha256"`
-	Cases                      int                                    `json:"cases"`
-	StandaloneCases            int                                    `json:"standaloneCases"`
-	CompilationCases           int                                    `json:"compilationCases"`
-	ProgrammeExcerptCases      int                                    `json:"programmeExcerptCases"`
-	IndependentSources         int                                    `json:"independentSources"`
-	ProgrammeParents           int                                    `json:"programmeParents"`
-	StandaloneRoleCounts       map[fillereval.TemporalRole]int        `json:"standaloneRoleCounts"`
-	SelectedAnchors            []TemporalStructureHoldoutAnchor       `json:"selectedAnchors"`
-	CompilationConstructions   []TemporalStructureHoldoutCompilation  `json:"compilationConstructions"`
-	ProgrammeConstructions     []TemporalStructureHoldoutProgrammeCut `json:"programmeConstructions"`
-	TrainingAllowed            bool                                   `json:"trainingAllowed"`
-	ProductionAdmissionAllowed bool                                   `json:"productionAdmissionAllowed"`
+	SchemaVersion              int                                     `json:"schemaVersion"`
+	ContractVersion            string                                  `json:"contractVersion"`
+	PlannedAt                  time.Time                               `json:"plannedAt"`
+	SeedSHA256                 string                                  `json:"seedSha256"`
+	Inputs                     []TemporalStructureHoldoutInput         `json:"inputs"`
+	AuthoringSHA256            string                                  `json:"authoringSha256"`
+	Cases                      int                                     `json:"cases"`
+	StandaloneCases            int                                     `json:"standaloneCases"`
+	CompilationCases           int                                     `json:"compilationCases"`
+	ProgrammeExcerptCases      int                                     `json:"programmeExcerptCases"`
+	ProgrammeSpotCases         int                                     `json:"programmeSpotCases"`
+	IndependentSources         int                                     `json:"independentSources"`
+	ProgrammeParents           int                                     `json:"programmeParents"`
+	StandaloneRoleCounts       map[fillereval.TemporalRole]int         `json:"standaloneRoleCounts"`
+	SelectedAnchors            []TemporalStructureHoldoutAnchor        `json:"selectedAnchors"`
+	CompilationConstructions   []TemporalStructureHoldoutCompilation   `json:"compilationConstructions"`
+	ProgrammeConstructions     []TemporalStructureHoldoutProgrammeCut  `json:"programmeConstructions"`
+	ProgrammeSpotConstructions []TemporalStructureHoldoutProgrammeSpot `json:"programmeSpotConstructions"`
+	TrainingAllowed            bool                                    `json:"trainingAllowed"`
+	ProductionAdmissionAllowed bool                                    `json:"productionAdmissionAllowed"`
 }
 
 type TemporalStructureHoldoutInput struct {
@@ -94,6 +96,19 @@ type TemporalStructureHoldoutProgrammeCut struct {
 	StartMS     int64  `json:"startMs"`
 	DurationMS  int64  `json:"durationMs"`
 	ParentEndMS int64  `json:"parentEndMs"`
+}
+
+type TemporalStructureHoldoutProgrammeSpot struct {
+	CaseID              string                  `json:"caseId"`
+	ParentSourceID      string                  `json:"parentSourceId"`
+	FillerSourceID      string                  `json:"fillerSourceId"`
+	Pattern             string                  `json:"pattern"`
+	ParentDurationMS    int64                   `json:"parentDurationMs"`
+	BeforeSourceStartMS int64                   `json:"beforeSourceStartMs"`
+	AfterSourceStartMS  int64                   `json:"afterSourceStartMs"`
+	ProgrammePartMS     int64                   `json:"programmePartMs"`
+	FillerDurationMS    int64                   `json:"fillerDurationMs"`
+	FillerRole          fillereval.TemporalRole `json:"fillerRole"`
 }
 
 type TemporalStructureHoldoutResult struct {
