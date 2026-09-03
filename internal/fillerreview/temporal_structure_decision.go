@@ -86,6 +86,9 @@ type TemporalStructureDecisionCandidateObservation struct {
 // PublishTemporalStructureDecisions reduces independently locked observations
 // without opening private truth, then atomically publishes the immutable result.
 func PublishTemporalStructureDecisions(config TemporalStructureDecisionConfig) (TemporalStructureDecisionReport, string, error) {
+	if strings.TrimSpace(config.OutputPath) == "" {
+		return TemporalStructureDecisionReport{}, "", fmt.Errorf("temporal structure decision output path is required")
+	}
 	loaded, err := loadTemporalStructureDecision(config)
 	if err != nil {
 		return TemporalStructureDecisionReport{}, "", err
@@ -111,8 +114,8 @@ type temporalStructureDecisionLoaded struct {
 }
 
 func loadTemporalStructureDecision(config TemporalStructureDecisionConfig) (temporalStructureDecisionLoaded, error) {
-	if strings.TrimSpace(config.PublicManifestPath) == "" || !reviewSHA256(config.PrivateAuthoritySHA256) || len(config.AssessmentPaths) < 2 || config.ExpectedCases <= 0 || config.DecidedAt.IsZero() || strings.TrimSpace(config.OutputPath) == "" {
-		return temporalStructureDecisionLoaded{}, fmt.Errorf("temporal structure decision requires a public challenge, private-authority digest, at least two assessments, exact case count, decision time, and output path")
+	if strings.TrimSpace(config.PublicManifestPath) == "" || !reviewSHA256(config.PrivateAuthoritySHA256) || len(config.AssessmentPaths) < 2 || config.ExpectedCases <= 0 || config.DecidedAt.IsZero() {
+		return temporalStructureDecisionLoaded{}, fmt.Errorf("temporal structure decision requires a public challenge, private-authority digest, at least two assessments, exact case count, and decision time")
 	}
 	manifest, publicSHA, err := LoadTemporalStructureChallengePublic(config.PublicManifestPath, config.ExpectedCases)
 	if err != nil {

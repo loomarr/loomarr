@@ -3254,7 +3254,10 @@ dispositions, wrong roles, or boundary misses beyond tolerance. Abstentions rema
 are reported as coverage, globally and per predeclared slice. Raw assessors may be imperfect; they do not
 individually need perfect recall when their disagreement correctly becomes a hold. Each enabled slice still
 requires its predeclared minimum number of independently sourced decided cases and zero wrong automatic
-decisions. This changes what is measured, not the safety bar.
+decisions. The development certificate that permits shadow evaluation requires at least 30 of 60 decisions
+globally, at least 6 decisions in each source-unit category, and at least 6 decisions in every declared
+difficult slice. It grants no publication authority; later slice activation remains a separate decision based
+on the locked shadow evidence. This changes what is measured, not the safety bar.
 
 Every proposed `keep` interval also carries one content-addressed screening record bound to the exact
 source bytes and half-open span. It contains exactly four independent closed outcomes: `visual_safety`

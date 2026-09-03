@@ -39,21 +39,16 @@ func run(args []string, stdout, stderr io.Writer, capability capabilities) int {
 	receipt := flags.String("holdout-receipt", "", "coordinator-private source-family holdout receipt JSON")
 	public := flags.String("public", "", "public temporal-structure manifest JSON")
 	authority := flags.String("authority", "", "coordinator-private temporal-structure authority JSON")
+	decision := flags.String("decision", "", "immutable truth-blind structure-decision JSON")
 	var assessments assessmentPaths
 	flags.Var(&assessments, "assessment", "locked assessment JSON; repeat for each independent model family")
-	comparedRaw := flags.String("compared-at", "", "fixed RFC3339 comparison time")
 	certifiedRaw := flags.String("certified-at", "", "fixed RFC3339 certification time")
 	output := flags.String("out", "", "new immutable private certification JSON")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
-	if *authoring == "" || *receipt == "" || *public == "" || *authority == "" || len(assessments) < 2 || *comparedRaw == "" || *certifiedRaw == "" || *output == "" {
-		_, _ = fmt.Fprintln(stderr, "filler-temporal-structure-certify: holdout authoring and receipt, challenge authority, at least two --assessment values, fixed comparison and certification times, and output are required")
-		return 2
-	}
-	comparedAt, err := time.Parse(time.RFC3339Nano, *comparedRaw)
-	if err != nil {
-		_, _ = fmt.Fprintln(stderr, "filler-temporal-structure-certify: --compared-at must be RFC3339")
+	if *authoring == "" || *receipt == "" || *public == "" || *authority == "" || *decision == "" || len(assessments) < 2 || *certifiedRaw == "" || *output == "" {
+		_, _ = fmt.Fprintln(stderr, "filler-temporal-structure-certify: holdout authoring and receipt, challenge authority, immutable decision, at least two --assessment values, fixed certification time, and output are required")
 		return 2
 	}
 	certifiedAt, err := time.Parse(time.RFC3339Nano, *certifiedRaw)
@@ -64,12 +59,12 @@ func run(args []string, stdout, stderr io.Writer, capability capabilities) int {
 	report, digest, err := capability.publish(fillerreview.TemporalStructureCertificationConfig{
 		HoldoutAuthoringPath: *authoring, HoldoutReceiptPath: *receipt,
 		PublicManifestPath: *public, PrivateAuthorityPath: *authority,
-		AssessmentPaths: assessments, ComparedAt: comparedAt, CertifiedAt: certifiedAt, OutputPath: *output,
+		DecisionPath: *decision, AssessmentPaths: assessments, CertifiedAt: certifiedAt, OutputPath: *output,
 	})
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-temporal-structure-certify:", err)
 		return 1
 	}
-	_, _ = fmt.Fprintf(stdout, "filler-temporal-structure-certify: %s; %d cases across %d assessors; %d/%d difficult slices certified; productionAdmissionAllowed=%t; sha256 %s; %s\n", report.CertificationStatus, report.Cases, len(report.AssessorIDs), len(report.CertifiedSlices), len(report.Slices), report.ProductionAdmissionAllowed, digest, *output)
+	_, _ = fmt.Fprintf(stdout, "filler-temporal-structure-certify: %s; %d/%d decisions with %d wrong and %d held across %d model families; %d/%d units and %d/%d difficult slices certified; productionAdmissionAllowed=%t; sha256 %s; %s\n", report.CertificationStatus, report.DecidedCases, report.Cases, report.WrongAutomaticDecisions, report.HeldCases, len(report.ModelFamilies), len(report.CertifiedUnits), len(report.Units), len(report.CertifiedSlices), len(report.Slices), report.ProductionAdmissionAllowed, digest, *output)
 	return 0
 }

@@ -49,11 +49,12 @@ func TestPublishTemporalStructureCertificationBindsCompleteHoldoutLineage(t *tes
 	second := exactTemporalStructureAssessmentSet(manifest, authority, publicSHA, authoritySHA, completedAt, "assessor-b", "claude")
 	firstPath := writeTemporalHumanJSON(t, t.TempDir(), "first.json", first)
 	secondPath := writeTemporalHumanJSON(t, t.TempDir(), "second.json", second)
-	comparedAt := completedAt.Add(time.Hour)
-	_, comparisonDigest, err := PublishTemporalStructureComparison(TemporalStructureComparisonConfig{
-		PublicManifestPath: manifestPath, PrivateAuthorityPath: authorityPath,
+	decidedAt := completedAt.Add(time.Hour)
+	decisionPath := filepath.Join(t.TempDir(), "decision.json")
+	_, decisionDigest, err := PublishTemporalStructureDecisions(TemporalStructureDecisionConfig{
+		PublicManifestPath: manifestPath, PrivateAuthoritySHA256: authoritySHA,
 		AssessmentPaths: []string{firstPath, secondPath}, ExpectedCases: TemporalStructureHoldoutCases,
-		ComparedAt: comparedAt, OutputPath: filepath.Join(t.TempDir(), "comparison.json"),
+		DecidedAt: decidedAt, OutputPath: decisionPath,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -62,14 +63,24 @@ func TestPublishTemporalStructureCertificationBindsCompleteHoldoutLineage(t *tes
 	config := TemporalStructureCertificationConfig{
 		HoldoutAuthoringPath: authoringPath, HoldoutReceiptPath: filepath.Join(holdoutRoot, "receipt.json"),
 		PublicManifestPath: manifestPath, PrivateAuthorityPath: authorityPath,
-		AssessmentPaths: []string{firstPath, secondPath}, ComparedAt: comparedAt,
+		DecisionPath: decisionPath, AssessmentPaths: []string{firstPath, secondPath},
 		CertifiedAt: completedAt.Add(2 * time.Hour), OutputPath: output,
+	}
+	tampered := readStrictTestJSON[TemporalStructureDecisionReport](t, decisionPath)
+	holdTemporalStructureTestDecision(&tampered.Decisions[0])
+	tamperedPath := writeTemporalHumanJSON(t, t.TempDir(), "tampered-decision.json", tampered)
+	tamperedConfig := config
+	tamperedConfig.DecisionPath = tamperedPath
+	tamperedConfig.PrivateAuthorityPath = filepath.Join(t.TempDir(), "truth-must-not-open.json")
+	tamperedConfig.OutputPath = filepath.Join(t.TempDir(), "tampered-certification.json")
+	if _, _, err := PublishTemporalStructureCertification(tamperedConfig); err == nil || !strings.Contains(err.Error(), "does not match deterministic reduction") {
+		t.Fatalf("tampered truth-blind decision error = %v", err)
 	}
 	report, digest, err := PublishTemporalStructureCertification(config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.CertificationStatus != TemporalStructureCertificationPassed || len(report.CertifiedSlices) != len(temporalStructureCertificationRequiredSlices) || !reviewSHA256(report.HoldoutAuthoringSHA256) || !reviewSHA256(report.HoldoutReceiptSHA256) || !reviewSHA256(report.PublicManifestSHA256) || !reviewSHA256(report.PrivateAuthoritySHA256) || report.ComparisonSHA256 != comparisonDigest || !reviewSHA256(digest) || report.TrainingAllowed || report.ProductionAdmissionAllowed {
+	if report.CertificationStatus != TemporalStructureCertificationPassed || report.DecidedCases != TemporalStructureHoldoutCases || report.HeldCases != 0 || report.WrongAutomaticDecisions != 0 || len(report.CertifiedUnits) != len(temporalStructureScoredUnits()) || len(report.CertifiedSlices) != len(temporalStructureCertificationRequiredSlices) || !reviewSHA256(report.HoldoutAuthoringSHA256) || !reviewSHA256(report.HoldoutReceiptSHA256) || !reviewSHA256(report.PublicManifestSHA256) || !reviewSHA256(report.PrivateAuthoritySHA256) || report.DecisionSHA256 != decisionDigest || !reviewSHA256(digest) || report.TrainingAllowed || report.ProductionAdmissionAllowed {
 		t.Fatalf("certification report = %+v digest=%q", report, digest)
 	}
 	if _, err := os.Stat(output); err != nil {
@@ -78,97 +89,81 @@ func TestPublishTemporalStructureCertificationBindsCompleteHoldoutLineage(t *tes
 	if _, _, err := PublishTemporalStructureCertification(config); err == nil {
 		t.Fatal("immutable certification output was overwritten")
 	}
-}
 
-func TestScoreTemporalStructureCertificationRequiresPerfectGlobalAndSliceResults(t *testing.T) {
-	comparison := perfectTemporalStructureCertificationComparison()
-	report := scoreTemporalStructureCertification(comparison, comparison.ComparedAt.Add(time.Minute))
-	if report.CertificationStatus != TemporalStructureCertificationPassed || report.NextAction != "run_locked_shadow_comparison" || report.TrainingAllowed || report.ProductionAdmissionAllowed {
-		t.Fatalf("certification disposition = %+v", report)
-	}
-	if len(report.CertifiedSlices) != len(temporalStructureCertificationRequiredSlices) || len(report.FailureCodes) != 0 {
-		t.Fatalf("certified slices or failures = %+v / %v", report.CertifiedSlices, report.FailureCodes)
-	}
-	for _, slice := range report.Slices {
-		if !slice.Passed || slice.Cases != temporalStructureCertificationMinimumSliceCases || slice.Assessors != 2 || len(slice.FailureCodes) != 0 {
-			t.Fatalf("slice certification = %+v", slice)
+	t.Run("raw assessor error becomes a passing conservative hold", func(t *testing.T) {
+		heldSecond := exactTemporalStructureAssessmentSet(manifest, authority, publicSHA, authoritySHA, completedAt, "assessor-held", "claude")
+		standalone := temporalStructureAssessmentByTruth(&heldSecond, fillereval.UnitStandalone)
+		if standalone.Role.Kind == fillereval.TemporalRoleCommercial {
+			standalone.Role.Kind = fillereval.TemporalRolePromo
+			standalone.Segments[0].Role = fillereval.TemporalSegmentPromo
+		} else {
+			standalone.Role.Kind = fillereval.TemporalRoleCommercial
+			standalone.Segments[0].Role = fillereval.TemporalSegmentCommercial
 		}
-	}
-}
-
-func TestScoreTemporalStructureCertificationFailsOnlyAffectedSlice(t *testing.T) {
-	comparison := perfectTemporalStructureCertificationComparison()
-	for index := range comparison.SliceSummaries {
-		if comparison.SliceSummaries[index].Slice == TemporalStructureSliceMixedRoleJoins && comparison.SliceSummaries[index].AssessorID == "assessor-b" {
-			comparison.SliceSummaries[index].UnderSplits = 1
-			break
+		heldSecondPath := writeTemporalHumanJSON(t, t.TempDir(), "held-second.json", heldSecond)
+		heldDecisionPath := filepath.Join(t.TempDir(), "held-decision.json")
+		if _, _, err := PublishTemporalStructureDecisions(TemporalStructureDecisionConfig{
+			PublicManifestPath: manifestPath, PrivateAuthoritySHA256: authoritySHA,
+			AssessmentPaths: []string{firstPath, heldSecondPath}, ExpectedCases: TemporalStructureHoldoutCases,
+			DecidedAt: decidedAt, OutputPath: heldDecisionPath,
+		}); err != nil {
+			t.Fatal(err)
 		}
-	}
-	report := scoreTemporalStructureCertification(comparison, comparison.ComparedAt.Add(time.Minute))
-	if report.CertificationStatus != TemporalStructureCertificationFailed || report.NextAction != "diagnose_failed_source_and_signal_slices" || len(report.FailureCodes) != 0 {
-		t.Fatalf("certification disposition = %+v", report)
-	}
-	if slices.Contains(report.CertifiedSlices, TemporalStructureSliceMixedRoleJoins) || len(report.CertifiedSlices) != len(temporalStructureCertificationRequiredSlices)-1 {
-		t.Fatalf("certified slices = %v", report.CertifiedSlices)
-	}
-	for _, slice := range report.Slices {
-		if slice.Slice == TemporalStructureSliceMixedRoleJoins && (slice.Passed || !slices.Contains(slice.FailureCodes, "under_split")) {
-			t.Fatalf("failed slice = %+v", slice)
+		heldConfig := config
+		heldConfig.DecisionPath = heldDecisionPath
+		heldConfig.AssessmentPaths = []string{firstPath, heldSecondPath}
+		heldConfig.OutputPath = filepath.Join(t.TempDir(), "held-certification.json")
+		heldReport, _, err := PublishTemporalStructureCertification(heldConfig)
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-}
-
-func TestScoreTemporalStructureCertificationGlobalFailureCertifiesNoSlice(t *testing.T) {
-	comparison := perfectTemporalStructureCertificationComparison()
-	comparison.AssessorSummaries[0].OperationalFailures = 1
-	report := scoreTemporalStructureCertification(comparison, comparison.ComparedAt.Add(time.Minute))
-	if report.CertificationStatus != TemporalStructureCertificationFailed || !slices.Contains(report.FailureCodes, "operational_failure") || len(report.CertifiedSlices) != 0 {
-		t.Fatalf("certification = %+v", report)
-	}
-}
-
-func TestScoreTemporalStructureCertificationRejectsIncompleteCorpusAndAssessorSummary(t *testing.T) {
-	comparison := perfectTemporalStructureCertificationComparison()
-	comparison.Cases--
-	comparison.AssessorSummaries[0].Cases--
-	comparison.AssessorSummaries[0].ExactUnitCorrect--
-	comparison.AssessorSummaries[0].CoverageComplete--
-	comparison.AssessorSummaries[0].ExactSegmentPlans--
-	report := scoreTemporalStructureCertification(comparison, comparison.ComparedAt.Add(time.Minute))
-	if !slices.Contains(report.FailureCodes, "insufficient_cases") || len(report.CertifiedSlices) != 0 {
-		t.Fatalf("certification = %+v", report)
-	}
-}
-
-func perfectTemporalStructureCertificationComparison() TemporalStructureComparisonReport {
-	comparedAt := time.Date(2026, time.September, 3, 12, 0, 0, 0, time.UTC)
-	report := TemporalStructureComparisonReport{
-		SchemaVersion: TemporalStructureComparisonSchemaVersion, ContractVersion: TemporalStructureComparisonContractVersion,
-		ChallengeID: "challenge", ComparedAt: comparedAt, Cases: TemporalStructureHoldoutCases,
-		Assessors: []TemporalStructureAssessorReference{
-			{Assessor: fillereval.TemporalAssessorIdentity{ID: "assessor-a"}},
-			{Assessor: fillereval.TemporalAssessorIdentity{ID: "assessor-b"}},
-		},
-	}
-	for _, assessorID := range []string{"assessor-a", "assessor-b"} {
-		report.AssessorSummaries = append(report.AssessorSummaries, TemporalStructureAssessorSummary{
-			AssessorID: assessorID, Cases: TemporalStructureHoldoutCases,
-			ExactUnitCorrect: TemporalStructureHoldoutCases, CoverageComplete: TemporalStructureHoldoutCases,
-			ExactSegmentPlans: TemporalStructureHoldoutCases, SegmentRoleTargets: 96, SegmentRoleCorrect: 96,
-			Boundary: TemporalStructureBoundarySummary{TruthTargets: 72, ComparableTargets: 72, Within2000MS: 72, Within5000MS: 72},
-		})
-		for _, slice := range temporalStructureCertificationRequiredSlices {
-			report.SliceSummaries = append(report.SliceSummaries, TemporalStructureConstructionSummary{
-				AssessorID: assessorID, Slice: slice, Cases: temporalStructureCertificationMinimumSliceCases,
-				ExactUnitCorrect:   temporalStructureCertificationMinimumSliceCases,
-				CoverageComplete:   temporalStructureCertificationMinimumSliceCases,
-				ExactSegmentPlans:  temporalStructureCertificationMinimumSliceCases,
-				SegmentRoleTargets: 18, SegmentRoleCorrect: 18,
-				Boundary: TemporalStructureBoundarySummary{TruthTargets: 12, ComparableTargets: 12, Within2000MS: 12, Within5000MS: 12},
-			})
+		if heldReport.CertificationStatus != TemporalStructureCertificationPassed || heldReport.DecidedCases != TemporalStructureHoldoutCases-1 || heldReport.HeldCases != 1 || heldReport.WrongAutomaticDecisions != 0 {
+			t.Fatalf("conservative hold certificate = %+v", heldReport)
 		}
-	}
-	return report
+	})
+
+	t.Run("one wrong automatic role fails globally", func(t *testing.T) {
+		candidate := readStrictTestJSON[TemporalStructureDecisionReport](t, decisionPath)
+		candidate.Decisions[0].Segments[0].Role = fillereval.TemporalSegmentNonFiller
+		candidate.Decisions[0].Segments[0].Disposition = TemporalStructureDispositionNonFiller
+		scored := scoreTemporalStructureCertification(candidate, manifest, authority, config.CertifiedAt)
+		if scored.CertificationStatus != TemporalStructureCertificationFailed || scored.WrongAutomaticDecisions != 1 || !slices.Contains(scored.FailureCodes, "wrong_automatic_decision") || !slices.Contains(scored.FailureCodes, "segment_role_error") || len(scored.CertifiedSlices) != 0 {
+			t.Fatalf("wrong automatic decision score = %+v", scored)
+		}
+	})
+
+	t.Run("held cases stay in difficult-slice coverage", func(t *testing.T) {
+		candidate := readStrictTestJSON[TemporalStructureDecisionReport](t, decisionPath)
+		aliases := map[string]struct{}{}
+		for _, truth := range authority.Cases {
+			if slices.Contains(truth.Slices, TemporalStructureSliceMixedRoleJoins) {
+				aliases[truth.Alias] = struct{}{}
+			}
+		}
+		for index := range candidate.Decisions {
+			if _, hold := aliases[candidate.Decisions[index].Alias]; hold {
+				holdTemporalStructureTestDecision(&candidate.Decisions[index])
+			}
+		}
+		scored := scoreTemporalStructureCertification(candidate, manifest, authority, config.CertifiedAt)
+		for _, slice := range scored.Slices {
+			if slice.Slice == TemporalStructureSliceMixedRoleJoins {
+				if slice.Passed || slice.HeldCases != slice.Cases || slice.DecidedCases != 0 || !slices.Contains(slice.FailureCodes, "insufficient_slice_decisions") {
+					t.Fatalf("held slice score = %+v", slice)
+				}
+				return
+			}
+		}
+		t.Fatal("mixed-role slice score is absent")
+	})
+}
+
+func holdTemporalStructureTestDecision(decision *TemporalStructureCaseDecision) {
+	decision.Status = TemporalStructureDecisionHeld
+	decision.ReasonCodes = []string{temporalStructureDecisionReasonRoleDisagreement}
+	decision.Unit = ""
+	decision.Role = ""
+	decision.Segments = nil
 }
 
 func exactTemporalStructureAssessmentSet(manifest TemporalStructureChallengeManifest, authority TemporalStructureChallengeAuthority, publicSHA, authoritySHA string, completedAt time.Time, assessorID, family string) TemporalStructureAssessmentSet {
