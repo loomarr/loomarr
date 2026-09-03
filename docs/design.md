@@ -3299,8 +3299,16 @@ stale, rejected, held, span-mismatched, or unverifiable axis sends the complete 
 Structure-plan screenings are keyed independently from compatibility detector segments. This matters when
 the independently reduced join differs from the detector coordinate: retaining a screen for the decided
 span must not rewrite the compatibility proposal being measured in shadow. The screening runtime receives
-only missing `keep` spans, executes each four-axis operation once, and persists every closed aggregate before
-returning it. Reject and hold are durable answers; neither is retried as though no screen occurred.
+only missing `keep` spans. Its interface is deliberately deeper than a callback that can manufacture an
+aggregate pass: construction requires exactly one named evaluator for each of `visual_safety`,
+`spoken_safety`, `rights`, and `playback_integrity`. The coordinator calls them serially with the same exact
+source identity, local artifact, and half-open span, exposes no peer answer, rejects axis or source drift,
+and persists the validated four-axis aggregate before starting the next span or returning it. Each evaluator
+owns repeat-safe settlement of its exact operation; a retry after proposal persistence fails must return the
+same closed authority-bound result rather than repeat a possibly billed call. An operational error means no
+trustworthy result exists and aborts the aggregate. Reject and hold are durable domain answers; neither is
+retried as though no screen occurred. Screening aggregates live in their own private content-addressed
+repository and replay only when their digest and complete four-axis contract still validate.
 
 Automatic publication requires all of the following: a `compilation_break` or explicitly bounded filler
 portion of `programme_with_spots`; exact evidence bytes still match; every published interval has resolved

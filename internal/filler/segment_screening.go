@@ -78,13 +78,26 @@ func ValidateSegmentScreeningEvidence(evidence SegmentScreeningEvidence) error {
 		return fmt.Errorf("segment screening must contain four ordered axis results")
 	}
 	for _, result := range evidence.Results {
-		if _, ok := want[result.Axis]; !ok || result.Outcome != ScreenPass && result.Outcome != ScreenReject && result.Outcome != ScreenHold || !isContentHash(result.AuthoritySHA256) || !validScreeningReasonCode(result.ReasonCode) {
+		if _, ok := want[result.Axis]; !ok || validateSegmentScreeningResult(result) != nil {
 			return fmt.Errorf("segment screening contains an invalid axis result")
 		}
 		delete(want, result.Axis)
 	}
 	if len(want) != 0 || evidence.SHA256 == "" || evidence.SHA256 != SegmentScreeningEvidenceSHA256(evidence) {
 		return fmt.Errorf("segment screening coverage or digest is invalid")
+	}
+	return nil
+}
+
+func validateSegmentScreeningResult(result SegmentScreeningResult) error {
+	if result.Axis != ScreenVisualSafety && result.Axis != ScreenSpokenSafety && result.Axis != ScreenRights && result.Axis != ScreenPlayback {
+		return fmt.Errorf("segment screening axis is invalid")
+	}
+	if result.Outcome != ScreenPass && result.Outcome != ScreenReject && result.Outcome != ScreenHold {
+		return fmt.Errorf("segment screening outcome is invalid")
+	}
+	if !isContentHash(result.AuthoritySHA256) || !validScreeningReasonCode(result.ReasonCode) {
+		return fmt.Errorf("segment screening authority is invalid")
 	}
 	return nil
 }
