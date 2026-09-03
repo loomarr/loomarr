@@ -30,12 +30,11 @@ type SegmentScreeningEvaluator interface {
 type SegmentScreeningRuntime struct {
 	evaluators []SegmentScreeningEvaluator
 	evidence   SegmentScreeningEvidenceRepository
-	now        func() time.Time
 }
 
-func NewSegmentScreeningRuntime(evaluators []SegmentScreeningEvaluator, evidence SegmentScreeningEvidenceRepository, now func() time.Time) (*SegmentScreeningRuntime, error) {
-	if len(evaluators) != len(segmentScreeningAxisOrder) || evidence == nil || now == nil {
-		return nil, fmt.Errorf("segment screening runtime requires four evaluators, evidence repository, and clock")
+func NewSegmentScreeningRuntime(evaluators []SegmentScreeningEvaluator, evidence SegmentScreeningEvidenceRepository) (*SegmentScreeningRuntime, error) {
+	if len(evaluators) != len(segmentScreeningAxisOrder) || evidence == nil {
+		return nil, fmt.Errorf("segment screening runtime requires four evaluators and evidence repository")
 	}
 	byAxis := make(map[SegmentScreeningAxis]SegmentScreeningEvaluator, len(evaluators))
 	for _, evaluator := range evaluators {
@@ -59,11 +58,11 @@ func NewSegmentScreeningRuntime(evaluators []SegmentScreeningEvaluator, evidence
 		}
 		ordered = append(ordered, evaluator)
 	}
-	return &SegmentScreeningRuntime{evaluators: ordered, evidence: evidence, now: now}, nil
+	return &SegmentScreeningRuntime{evaluators: ordered, evidence: evidence}, nil
 }
 
 func (r *SegmentScreeningRuntime) Screen(ctx context.Context, media SegmentScreeningMedia) (SegmentScreeningEvidence, error) {
-	if r == nil || len(r.evaluators) != len(segmentScreeningAxisOrder) || r.evidence == nil || r.now == nil {
+	if r == nil || len(r.evaluators) != len(segmentScreeningAxisOrder) || r.evidence == nil {
 		return SegmentScreeningEvidence{}, fmt.Errorf("segment screening runtime is unavailable")
 	}
 	if err := validateSegmentScreeningMedia(media); err != nil {
@@ -77,6 +76,7 @@ func (r *SegmentScreeningRuntime) Screen(ctx context.Context, media SegmentScree
 	}
 
 	results := make([]SegmentScreeningResult, 0, len(r.evaluators))
+	var aggregateAssessedAt time.Time
 	for index, evaluator := range r.evaluators {
 		if err := ctx.Err(); err != nil {
 			return SegmentScreeningEvidence{}, err
@@ -96,8 +96,11 @@ func (r *SegmentScreeningRuntime) Screen(ctx context.Context, media SegmentScree
 			return SegmentScreeningEvidence{}, fmt.Errorf("persist screen child axis %q: %w", evaluator.Axis(), err)
 		}
 		results = append(results, result)
+		if recorded.Evidence.AssessedAt.After(aggregateAssessedAt) {
+			aggregateAssessedAt = recorded.Evidence.AssessedAt
+		}
 	}
-	aggregate, err := NewSegmentScreeningEvidence(media.Subject, results, r.now())
+	aggregate, err := NewSegmentScreeningEvidence(media.Subject, results, aggregateAssessedAt)
 	if err != nil {
 		return SegmentScreeningEvidence{}, fmt.Errorf("assemble child screening: %w", err)
 	}

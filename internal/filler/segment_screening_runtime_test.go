@@ -9,13 +9,14 @@ import (
 )
 
 type capturedSegmentScreeningEvaluator struct {
-	axis    SegmentScreeningAxis
-	profile SegmentScreeningAxisProfile
-	outcome SegmentScreeningOutcome
-	err     error
-	mutate  func(*RecordedSegmentScreeningAxisEvidence)
-	order   *[]string
-	seen    []SegmentScreeningMedia
+	axis       SegmentScreeningAxis
+	profile    SegmentScreeningAxisProfile
+	outcome    SegmentScreeningOutcome
+	assessedAt time.Time
+	err        error
+	mutate     func(*RecordedSegmentScreeningAxisEvidence)
+	order      *[]string
+	seen       []SegmentScreeningMedia
 }
 
 func (e *capturedSegmentScreeningEvaluator) Axis() SegmentScreeningAxis { return e.axis }
@@ -28,7 +29,7 @@ func (e *capturedSegmentScreeningEvaluator) Evaluate(_ context.Context, media Se
 	}
 	recorded, err := NewSegmentScreeningAxisEvidence(
 		media.Subject, e.profile, e.outcome, "authority_clear", []byte("raw-"+string(e.axis)),
-		time.Date(2026, time.September, 12, 2, 0, 0, 0, time.UTC),
+		e.assessedAt,
 	)
 	if err == nil && e.mutate != nil {
 		e.mutate(&recorded)
@@ -80,7 +81,7 @@ func TestSegmentScreeningRuntimePersistsSubjectThenCallsFourAxesSerially(t *test
 	repository := &capturedSegmentScreeningRepository{order: &order}
 	runtime, err := NewSegmentScreeningRuntime([]SegmentScreeningEvaluator{
 		evaluators[ScreenRights], evaluators[ScreenPlayback], evaluators[ScreenVisualSafety], evaluators[ScreenSpokenSafety],
-	}, repository, func() time.Time { return time.Date(2026, time.September, 12, 3, 0, 0, 0, time.UTC) })
+	}, repository)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,6 +100,9 @@ func TestSegmentScreeningRuntimePersistsSubjectThenCallsFourAxesSerially(t *test
 	}
 	if !slices.Equal(order, wantOrder) || len(repository.subjects) != 1 || len(repository.axis) != 4 || len(repository.aggregates) != 1 || !aggregate.Passes() {
 		t.Fatalf("order=%v subjects=%d axes=%d aggregates=%d aggregate=%+v", order, len(repository.subjects), len(repository.axis), len(repository.aggregates), aggregate)
+	}
+	if want := time.Date(2026, time.September, 12, 2, 3, 0, 0, time.UTC); aggregate.AssessedAt != want {
+		t.Fatalf("aggregate assessedAt=%s, want latest immutable axis time %s", aggregate.AssessedAt, want)
 	}
 	for _, evaluator := range evaluators {
 		if len(evaluator.seen) != 1 || evaluator.seen[0] != media {
@@ -165,13 +169,35 @@ func TestSegmentScreeningRuntimeRejectsIncompleteOrDuplicateAxesBeforeCalls(t *t
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := NewSegmentScreeningRuntime(test.items, repository, time.Now); err == nil {
+			if _, err := NewSegmentScreeningRuntime(test.items, repository); err == nil {
 				t.Fatal("invalid evaluator set was accepted")
 			}
 		})
 	}
 	if len(order) != 0 {
 		t.Fatalf("constructor called evaluators: %v", order)
+	}
+}
+
+func TestSegmentScreeningRuntimeRetryReproducesAggregateIdentity(t *testing.T) {
+	order := []string{}
+	evaluators := segmentScreeningEvaluatorFixtures(&order)
+	repository := &capturedSegmentScreeningRepository{order: &order}
+	runtime := mustSegmentScreeningRuntime(t, evaluators, repository)
+	media := segmentScreeningRuntimeMedia(t)
+
+	first, err := runtime.Screen(t.Context(), media)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := runtime.Screen(t.Context(), media)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.SHA256 != second.SHA256 || first.AssessedAt != second.AssessedAt ||
+		!slices.Equal(first.Results, second.Results) || len(repository.aggregates) != 2 ||
+		repository.aggregates[0].SHA256 != repository.aggregates[1].SHA256 {
+		t.Fatalf("retry changed aggregate identity: first=%+v second=%+v", first, second)
 	}
 }
 
@@ -247,7 +273,7 @@ func mustSegmentScreeningRuntime(t *testing.T, items map[SegmentScreeningAxis]*c
 	t.Helper()
 	runtime, err := NewSegmentScreeningRuntime([]SegmentScreeningEvaluator{
 		items[ScreenVisualSafety], items[ScreenSpokenSafety], items[ScreenRights], items[ScreenPlayback],
-	}, repository, time.Now)
+	}, repository)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +284,8 @@ func segmentScreeningEvaluatorFixtures(order *[]string) map[SegmentScreeningAxis
 	items := make(map[SegmentScreeningAxis]*capturedSegmentScreeningEvaluator, len(segmentScreeningAxisOrder))
 	for index, axis := range segmentScreeningAxisOrder {
 		items[axis] = &capturedSegmentScreeningEvaluator{
-			axis: axis, profile: screeningProfileFixture(axis, string(rune('1'+index))), outcome: ScreenPass, order: order,
+			axis: axis, profile: screeningProfileFixture(axis, string(rune('1'+index))), outcome: ScreenPass,
+			assessedAt: time.Date(2026, time.September, 12, 2, index, 0, 0, time.UTC), order: order,
 		}
 	}
 	return items

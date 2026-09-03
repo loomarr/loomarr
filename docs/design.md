@@ -3320,7 +3320,9 @@ before the first call, calls them serially without showing one evaluator another
 profile drift, and persists each axis before moving to the next and the validated four-axis aggregate before
 returning it. Each evaluator owns repeat-safe settlement of its exact operation;
 a retry after a later persistence failure replays the same closed authority-bound result instead of repeating
-a possibly billed call. An operational error means no trustworthy result exists and creates an operational
+a possibly billed call. The aggregate's `assessedAt` is the latest of those four immutable axis assessment
+times, not a fresh coordinator clock reading, so a crash after aggregate publication but before its caller
+records the digest reproduces the same aggregate identity on retry. An operational error means no trustworthy result exists and creates an operational
 hold. Reject and hold are durable domain answers, not retryable absence.
 
 The file evidence adapter gives each subject/profile pair one deterministic operation identity pointing at
