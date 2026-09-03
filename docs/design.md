@@ -3143,6 +3143,103 @@ a master only after no playable clip, split lineage, audit record, inference evi
 authority, or retention obligation refers to it and after proving every remaining derivative is
 regenerable. Until that complete ownership graph exists, storage costs are visible and masters stay.
 
+### Compilation structure is assessed before segments are published (V67)
+
+The duration quarantine introduced in V45 answers only **“is this recording too long to air as one
+ordinary filler clip?”** It does not answer **“does this recording contain several commercials?”** A
+two-hour programme excerpt, a damaged capture, and a commercial compilation all cross the same duration
+threshold. The existing `is_composite` column remains the conservative non-airable guard for migration
+compatibility, but while structure is unresolved it means **long-source candidate**, not a semantic
+compilation verdict. Only the source-structure assessment below may establish that verdict.
+
+One deep structure-assessment module owns the complete evidence-to-plan operation. Its interface accepts
+an exact V66 evidence asset plus independently timestamped observations and returns one validated,
+content-addressed assessment. Callers do not sequence individual detectors, interpret model confidence,
+or assemble cuts themselves. Internally the module may use deterministic reducers and a bounded model
+adapter; those are internal seams, not additional application interfaces.
+
+The source verdict uses one closed vocabulary:
+
+| Source structure | Meaning |
+| --- | --- |
+| `single_unit` | One independently usable item, including a long single-product infomercial. |
+| `compilation_break` | Two or more independently bounded filler units recorded back to back. |
+| `programme_with_spots` | Programme material containing inserted filler units; programme spans remain explicit. |
+| `ambiguous` | Available evidence cannot safely distinguish the structures above. |
+| `unusable` | The source cannot support a complete trustworthy assessment (for example, corrupt or materially missing evidence). |
+
+Duration can request assessment and keep a source non-airable; it is never evidence for
+`compilation_break`. A source remains `ambiguous` rather than being promoted by plausible 15/30/60-second
+unit lengths. A single long span is not split merely because it resembles several standard slots.
+
+Every observation is a durable source-relative fact with a closed kind, exact interval or uncertainty
+window, producer identity, evidence digest, and outcome. Container chapters, black intervals, silence
+intervals, transcript topic transitions, OCR/logo transitions, audio continuity, and visual continuity
+remain independent observations even when they coincide. Coincidence is computed by the reducer; it is
+not flattened into a score that discards which detector agreed or contradicted the candidate. An ordinary
+scene cut is never a boundary proposal because it describes editing inside commercials as often as joins
+between them. Scene change and standard duration may be recorded only as supporting context for a boundary
+already proposed by a more specific observation.
+
+Boundary fusion is deterministic and conservative:
+
+1. A declared chapter edge or compatible precise separator observations may propose a bounded cut.
+2. Agreement narrows the candidate's uncertainty window; conflicts survive on the candidate and prevent
+   unattended publication.
+3. Transcript, OCR/logo, audio-continuity, and visual-continuity changes may support, contradict, or leave
+   that candidate unresolved. Absence from a modality that did not run is not negative evidence.
+4. A model may inspect only unresolved bounded spans. Its strict output cites supplied observation IDs and
+   records exact provider, model, prompt/schema, request/response digest, time, token, and cost identity. It
+   contributes an observation and cannot override a hard conflict, invent an observation, or directly set
+   the source verdict.
+5. No scene-only, duration-only, model-only, or round-timestamp candidate becomes an automatic cut.
+
+The assessment contains a **coverage-preserving segment plan** over the complete half-open source timeline
+`[0,duration)`. Plan intervals are ordered, non-overlapping, adjacent, and together cover exactly the whole
+asset. Every interval has one disposition:
+
+- `keep`: a proposed child with two resolved boundaries and one independently established role;
+- `discard`: material intentionally omitted with a closed reason and retained source-relative interval;
+- `unresolved`: material requiring review, including uncertain joins or roles.
+
+There are no implicit gaps. A three-second stinger that cannot enter the catalog may be an explained
+discard, but its time, evidence, and reason remain in the proposal. Editing or partial confirmation rewrites
+the plan while preserving complete coverage; it cannot make omitted time disappear. The existing aggregate
+drop tally is compatibility display data only and is not structure authority.
+
+Each `keep` interval is classified independently as `commercial`, `promo`, `bumper`, `station_id`, `psa`,
+`trailer`, `programme_fragment`, `non_filler`, `ambiguous`, or `unusable`. A parent catalog kind is never
+copied as the child's role. `programme_fragment`, `non_filler`, `ambiguous`, and `unusable` are never
+automatically admitted as filler. Every child binds its role evidence, transcript spans, OCR/logo findings,
+frame/audio evidence, exact parent evidence asset, and intended source-relative interval before media is
+cut. Post-screen taxonomy enrichment remains a later operation and cannot repair an unresolved role.
+
+Automatic publication requires all of the following: a `compilation_break` or explicitly bounded filler
+portion of `programme_with_spots`; exact evidence bytes still match; every published interval has resolved
+boundaries and an allowed filler role; every non-published interval is an explained discard rather than an
+unresolved hold; applicable safety/rights screens permit the interval; and the source family plus signal
+slice is inside a locked certification scope. Otherwise Loomarr retains one concise structure review. A
+human confirmation is still validated against complete coverage and exact source identity.
+
+Validated children reuse the V66 derivative publisher and are prepared as one replacement generation.
+Their playable and evidence derivatives are built from the exact reviewed source intervals, not from an
+older playback rendition. The parent, assessment, observations, and prior complete child generation remain
+intact until every replacement child and durable lineage record validates and the generation switch commits
+atomically. A crash, partial re-split, or derivative failure cannot replace a complete generation with a
+partial one.
+
+Certification is separate from production assessment. Its rights-cleared corpus is split by source family
+and contains declared/chaptered truth, deterministically authored compilations, programme excerpts with
+inserted spots, long single units, same-brand joins, wordless units, bumpers/station IDs, slivers, damaged
+tails, and adversarial internal scene/music changes and standard-duration non-joins. It scores source
+structure, under-splitting, over-splitting, boundary error at predeclared tolerances, segment purity,
+timeline coverage, role accuracy, abstention, operational failures, and worst source/signal slices.
+Under-splitting and over-splitting remain separate safety results. No automatic slice may contain an
+observed cross-unit merge, unexplained timeline gap, or published interval with an unresolved role. New
+logic first runs in shadow against the V34/V54 proposals; automatic publication expands only for the exact
+predeclared slices whose locked point estimates and confidence bounds pass. Model training is deferred
+until this measurement identifies a specific residual error class and a rights-cleared training split.
+
 **Conditioning measurement is evidence, never authority (V64).** The media-tools module can inspect
 one bounded local regular-file artifact and, optionally, compare it with one local regular-file
 parent artifact plus up to eight intended cut intervals. A request has at most one parent; individual
@@ -3570,25 +3667,28 @@ single wrong tag over a whole break. V45 fixes this at the root and turns the sp
 clips a channel can be **automatically, confidently curated** to match. Four parts, each building on
 V44's signals.
 
-#### 1. Composite is a first-class kind, detected at intake
+#### 1. Long-source quarantine is first-class at intake (semantic structure moves to V67)
 
-A **composite** is a recorded break — many adverts in one file. It is detected when the clip is
-pulled in (not left to be mis-tagged as a single advert) from the cheap deterministic signal the
-catalog already has: duration past `OverlongSegmentMs` (§10 V34, 120s — by definition it cannot be
-one normally airable advert). The earlier intake detector also required multiple black/silence
+A **confirmed composite** is a recorded break — many independently bounded units in one file. Intake
+cannot establish that from duration. It conservatively quarantines a **long-source candidate** (not left
+to be mis-tagged or aired as a single ordinary advert) from the cheap deterministic signal the catalog
+already has: duration past `OverlongSegmentMs` (§10 V34, 120s). V67 structure assessment determines
+whether that source is a compilation, a programme with spots, one long unit, ambiguous, or unusable.
+The earlier intake detector also required multiple black/silence
 boundaries, but that made `probe` fully decode every long recording and then made `split` fully
 decode it again. On hour-scale captures the first pass could consume the whole job deadline before
 the owning stage began. Boundary detection therefore belongs only to `split`; a long single-product
-infomercial may ultimately remain one `unsplittable` proposal for review, but it is still correctly
-quarantined from playout while Loomarr decides. A composite is **not airable**: it is never matched
-into a pod, exactly like a `held` clip, because airing a 16-minute block as one "commercial" is the
-bug this section removes.
+infomercial may ultimately be established as `single_unit`, but it is still correctly quarantined
+from playout while Loomarr decides. A long-source candidate or confirmed composite is **not airable**:
+neither is matched into a pod, exactly like a `held` clip, because airing a 16-minute block as one
+"commercial" is the bug this section removes.
 
-⚠ **`IsComposite` is a distinct axis from `Kind`, deliberately.** A composite's *segments* are
-commercials/bumpers/PSAs; the composite itself is a container. Overloading `Kind` with a `composite`
+⚠ **`IsComposite` is a distinct axis from `Kind`, deliberately, and its persisted name is now broader
+than its unresolved meaning.** A confirmed composite's *segments* are commercials/bumpers/PSAs; the
+composite itself is a container. Overloading `Kind` with a `composite`
 value would make every `filterKinds` call site have to special-case it, which is how a container
 leaks into a pod. A boolean the pod filter excludes once (like `held`/`removed_at`) is the safe
-polarity.
+polarity. The V67 assessment, rather than this compatibility-named boolean, is semantic authority.
 
 #### 2. Auto-detect, auto-split, review to confirm — and KEEP THE PARENT
 
@@ -5849,12 +5949,21 @@ pill in that space instead. The capability is not lost — the Tasks page has Ru
 scheduled job — and the pill's "last scan" is what those buttons were really being used to check.
 
 ### Compilation splitting (V34)
+V67 supersedes V34's assumption that every duration-quarantined source is a compilation and its
+lossy drop tally. The V34 detector remains a shadow/proposal input while the V67 structure assessment
+adds semantic source proof, complete timeline coverage, independent interval roles, and certified-slice
+admission. The measured detector behavior below remains evidence; where it conflicts, V67 governs.
+
 Discovery (V33) surfaces a source; ingest downloads it. But a large share of what discovery finds is a **compilation** — one file holding twenty or more commercials back to back. Ingested whole it is a single 15-minute "clip" the pod assembler can never place (`durationEligible` rejects anything far longer than a break); split blindly it is twenty files named `compilation_seg07` with no era, audience or category, which the ladder cannot place either. **Splitting and metadata are one phase because either alone produces unplaceable clips.** The pipeline, designed from measurement on six real compilations rather than reasoning (plan §6.4 — every number below names its method there):
 
 1. **Triage.** A source with chapters splits for free (chapters are exposed without downloading the file). Rare in practice — 6 of 8 sampled sources had none — so this is an optimisation, not the mechanism.
-2. **Coarse split.** ffmpeg's `blackdetect` + `silencedetect`, parsed in Go; segments under the **detection floor** are dropped. That floor is `max(MinSegmentMs, filler.min_duration)` — the 3s sliver floor and the catalog floor, whichever binds (10s on a default install). ⚠ `max()`, never replacement: `filler.min_duration` is settable to `0s`, and a 400ms fade artefact must still be dropped there. The two numbers are **one floor on purpose** — a segment the auto-confirm gate would admit and the scan boundary would then reject (§10 V40) is a clip cut out of a compilation and thrown away, work done to produce nothing and a source file consumed for it. Scene-cut detectors (`scdet`, PySceneDetect) were measured and rejected: they fire on camera cuts *inside* an advert — the wrong granularity, not a tuning problem. Detection quality is a property of the **source**, not of any threshold (69–100% across the six compilations; two had genuinely absent boundaries no setting fixes).
+2. **Coarse split.** ffmpeg's `blackdetect` + `silencedetect`, parsed in Go; segments under the **detection floor** become explicit discard intervals in the V67 plan rather than disappearing. That floor is `max(MinSegmentMs, filler.min_duration)` — the 3s sliver floor and the catalog floor, whichever binds (10s on a default install). ⚠ `max()`, never replacement: `filler.min_duration` is settable to `0s`, and a 400ms fade artefact must still be omitted there. The two numbers are **one floor on purpose** — a segment the auto-confirm gate would admit and the scan boundary would then reject (§10 V40) is a clip cut out of a compilation and thrown away, work done to produce nothing. Scene-cut detectors (`scdet`, PySceneDetect) were measured and rejected: they fire on camera cuts *inside* an advert — the wrong granularity, not a tuning problem. Detection quality is a property of the **source**, not of any threshold (69–100% across the six compilations; two had genuinely absent boundaries no setting fixes).
 3. **Rescue.** A segment far longer than a plausible advert means boundaries the A/V pass could not see; it goes to **transcript (whisper) + LLM** for cut points. ⚠ The LLM must return **exactly one entry when the transcript is a single advert** — without that instruction it invented cuts at suspiciously round 30/61/92s marks inside one 121s infomercial. With no runnable whisper (`INGEST_WHISPER_PATH`, §15) an over-long segment is not guessed at: it surfaces in the review as **unsplittable**.
-4. **Metadata.** Each segment's transcript feeds the **existing** text-signal classifier unchanged (above) — it already knows `cereal`, `toys`, `cars`. Era follows the grounding rule above: persisted only when the year appears in the text, else carried on the proposal as an unconfirmed suggestion.
+4. **Independent role before enrichment (V67).** Each planned interval first receives its own closed
+content role; a reel-wide `commercial` kind is never inherited. Only after the role and structure are
+resolved may ordinary text/vision taxonomy enrichment add product, era, and audience facts. Era follows
+the grounding rule above: persisted only when the year appears in the evidence, else carried as an
+unconfirmed suggestion.
 5. **Deterministic discard.** The same advert recurs across compilations. A dHash over frames sampled at 1/3fps — ~30 lines of pure Go over `ffmpeg -pix_fmt gray` output, no library, no cgo — separates a re-encoded duplicate from a different advert by a measured 25× margin (mean per-frame Hamming 1.1 vs 27.6–32.2), so any threshold in the teens works. A matched segment is discarded before classification: keeping another copy cannot improve the catalog, and asking a person to make that decision is queue-shaped busywork. A segment shorter than the existing `filler.min_duration` floor is discarded at the same seam — the scan boundary would reject the resulting clip immediately, so cutting and reviewing it can produce no usable outcome. **Neither discard deletes source media:** the composite row and file remain (§10 V45), so re-splitting with improved detection is the recovery path. Detection ambiguity is never a deterministic discard: an `unsplittable` or over-long span remains with the whole reel for review.
 6. **Review — required unless the result is unambiguous (V43).** Because detection quality is a property of the source, an uncertain result is confirmed by a human before anything enters the catalog; auto-accepting a 69% result puts 3-minute "commercials" into 30-second breaks. Detection runs as a **job** (minutes per file) producing a **persisted split proposal** (§5) — review can happen long after detection, and a restart must not lose it — and an unconfirmed proposal writes nothing until `POST /v1/filler/splits/{id}/confirm` (§7) commits a cut list.
 
