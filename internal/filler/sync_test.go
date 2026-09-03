@@ -1041,6 +1041,29 @@ func TestReadSidecarTagsState_ConditioningLineageRequiresExactPrimitiveTypes(t *
 	}
 }
 
+func TestReadSidecarTagsState_ConditioningDecisionIdentityRequiresAString(t *testing.T) {
+	dir := t.TempDir()
+	media := filepath.Join(dir, "conditioned.mp4")
+	if err := os.WriteFile(media, []byte("conditioned bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(map[string]any{"loomarr": map[string]any{"conditioningLineage": map[string]any{
+		"childHash": "reviewed-child", "parentHash": "retained-parent",
+		"intendedStartMs": int64(0), "intendedEndMs": int64(30_000),
+		"structureDecisionSha256": 7,
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sidecar := strings.TrimSuffix(media, filepath.Ext(media)) + ".info.json"
+	if err := os.WriteFile(sidecar, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, state := filler.ReadSidecarTagsState(media); state != filler.SidecarInvalid {
+		t.Fatalf("sidecar state = %v, want invalid", state)
+	}
+}
+
 func TestReadSidecarTagsState_ConditioningEvidenceHashesRequireExactStrings(t *testing.T) {
 	for _, field := range []string{"beforeRewriteHash", "afterRewriteHash"} {
 		for _, mutation := range []struct {

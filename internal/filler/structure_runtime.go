@@ -28,10 +28,11 @@ type CompleteTimelineStructureDecisioner interface {
 	Assess(context.Context, StructureAssessmentMedia) (fillerstructure.Artifact, error)
 }
 
-// StructureAssessmentEvidenceRepository must durably commit the record and its exact response
-// bytes before returning. The runtime never reduces an in-memory-only model answer.
+// StructureAssessmentEvidenceRepository must durably commit each record and exact response before
+// reduction, then commit the reduced artifact before the runtime returns it.
 type StructureAssessmentEvidenceRepository interface {
 	PutStructureAssessmentEvidence(context.Context, fillerstructure.RecordedAssessment) error
+	PutStructureDecisionArtifact(context.Context, fillerstructure.Artifact) error
 }
 
 // StructureAssessmentRuntime owns serial independent execution, evidence persistence, and shared
@@ -96,7 +97,14 @@ func (r *StructureAssessmentRuntime) Assess(ctx context.Context, media Structure
 		}
 		request.Candidates = append(request.Candidates, candidate)
 	}
-	return fillerstructure.NewArtifact(request, r.now())
+	artifact, err := fillerstructure.NewArtifact(request, r.now())
+	if err != nil {
+		return fillerstructure.Artifact{}, err
+	}
+	if err := r.evidence.PutStructureDecisionArtifact(ctx, artifact); err != nil {
+		return fillerstructure.Artifact{}, fmt.Errorf("persist complete-timeline decision: %w", err)
+	}
+	return artifact, nil
 }
 
 var _ CompleteTimelineStructureDecisioner = (*StructureAssessmentRuntime)(nil)

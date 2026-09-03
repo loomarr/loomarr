@@ -769,7 +769,8 @@ func validConditioningLineage(lineage *ConditioningLineage, childParentHash stri
 	}
 	assetBound := lineage.ParentAssetRole != "" || lineage.ParentAssetSHA256 != ""
 	role := SplitSourceRole(lineage.ParentAssetRole)
-	return !assetBound || ((role == SplitSourceEvidence || role == SplitSourceLegacyPlayback) && isContentHash(lineage.ParentAssetSHA256))
+	decisionBound := lineage.StructureDecisionSHA256 == "" || isContentHash(lineage.StructureDecisionSHA256)
+	return decisionBound && (!assetBound || ((role == SplitSourceEvidence || role == SplitSourceLegacyPlayback) && isContentHash(lineage.ParentAssetSHA256)))
 }
 
 func mediaQualityResult(c StoreClip, quality MediaQuality) StageResult {

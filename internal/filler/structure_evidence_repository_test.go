@@ -4,7 +4,11 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/loomarr/loomarr/internal/fillerstructure"
 )
 
 func TestFileStructureAssessmentEvidenceRepositoryRoundTripsAndReplays(t *testing.T) {
@@ -87,6 +91,47 @@ func TestFileStructureAssessmentEvidenceRepositoryRejectsSymlinkedRoot(t *testin
 	recorded := runtimeAssessorFixtures(structureSource(10_000), &[]string{})[0].(*capturedStructureAssessor).recorded
 	if err := repository.PutStructureAssessmentEvidence(t.Context(), recorded); err == nil {
 		t.Fatal("symlinked evidence root was accepted")
+	}
+}
+
+func TestFileStructureAssessmentEvidenceRepositoryRejectsMissingOrDriftedDecision(t *testing.T) {
+	repository := structureEvidenceRepositoryFixture(t)
+	if _, err := repository.GetStructureDecisionArtifact(t.Context(), strings.Repeat("a", 64)); err == nil {
+		t.Fatal("missing decision was accepted")
+	}
+	artifact, err := fillerstructure.NewArtifact(fillerstructure.Request{
+		Source:              fillerstructure.Source{SHA256: strings.Repeat("1", 64), DurationMS: 10_000},
+		BoundaryToleranceMS: 2_000,
+		Candidates: []fillerstructure.Candidate{
+			structureDecisionRepositoryCandidate("a", "family-a", "2"),
+			structureDecisionRepositoryCandidate("b", "family-b", "3"),
+		},
+	}, time.Date(2026, time.September, 10, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.PutStructureDecisionArtifact(t.Context(), artifact); err != nil {
+		t.Fatal(err)
+	}
+	path := repository.blobPath("decisions", artifact.SHA256)
+	if err := os.WriteFile(path, []byte(`{"sha256":"drifted"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.GetStructureDecisionArtifact(t.Context(), artifact.SHA256); err == nil {
+		t.Fatal("drifted decision was accepted")
+	}
+}
+
+func structureDecisionRepositoryCandidate(id, family, assessment string) fillerstructure.Candidate {
+	return fillerstructure.Candidate{
+		Source: fillerstructure.Source{SHA256: strings.Repeat("1", 64), DurationMS: 10_000},
+		Assessor: fillerstructure.Assessor{
+			ID: "assessor-" + id, ModelFamily: family, Provider: "captured", Model: "model-" + id,
+			ModelDigest: strings.Repeat("4", 64), CapabilitySHA256: strings.Repeat("5", 64),
+			PromptVersion: "prompt-v1", EvidenceContract: "assessment-v1", AssessmentSHA256: strings.Repeat(assessment, 64),
+		},
+		Unit: fillerstructure.UnitStandalone, Role: fillerstructure.RoleCommercial,
+		Segments: []fillerstructure.Segment{{StartMS: 0, EndMS: 10_000, Role: fillerstructure.RoleCommercial}},
 	}
 }
 

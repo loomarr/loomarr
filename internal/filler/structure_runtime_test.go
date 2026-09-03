@@ -26,9 +26,20 @@ func (a *capturedStructureAssessor) AssessCompleteTimeline(_ context.Context, me
 }
 
 type capturedStructureEvidenceRepository struct {
-	order   *[]string
-	records []fillerstructure.RecordedAssessment
-	err     error
+	order       *[]string
+	records     []fillerstructure.RecordedAssessment
+	decisions   []fillerstructure.Artifact
+	err         error
+	decisionErr error
+}
+
+func (r *capturedStructureEvidenceRepository) PutStructureDecisionArtifact(_ context.Context, artifact fillerstructure.Artifact) error {
+	if r.decisionErr != nil {
+		return r.decisionErr
+	}
+	*r.order = append(*r.order, "persist:decision")
+	r.decisions = append(r.decisions, artifact)
+	return nil
 }
 
 func (r *capturedStructureEvidenceRepository) PutStructureAssessmentEvidence(_ context.Context, recorded fillerstructure.RecordedAssessment) error {
@@ -61,8 +72,10 @@ func TestStructureAssessmentRuntimeCallsIndependentAssessorsSerially(t *testing.
 		"persist:assessor-a",
 		"assessor-b:" + source.SHA256 + ":" + media.FullPath,
 		"persist:assessor-b",
+		"persist:decision",
 	}
-	if !slices.Equal(order, wantOrder) || len(evidence.records) != 2 || artifact.Decision.Status != fillerstructure.StatusConfirmed || len(artifact.Decision.Candidates) != 2 {
+	if !slices.Equal(order, wantOrder) || len(evidence.records) != 2 || len(evidence.decisions) != 1 ||
+		evidence.decisions[0].SHA256 != artifact.SHA256 || artifact.Decision.Status != fillerstructure.StatusConfirmed || len(artifact.Decision.Candidates) != 2 {
 		t.Fatalf("order=%v artifact=%+v", order, artifact)
 	}
 }
@@ -132,6 +145,23 @@ func TestStructureAssessmentRuntimeDoesNotReduceUnpersistedEvidence(t *testing.T
 	}
 }
 
+func TestStructureAssessmentRuntimeDoesNotReturnUnpersistedDecision(t *testing.T) {
+	source := structureSource(10_000)
+	order := []string{}
+	want := errors.New("decision unavailable")
+	repository := &capturedStructureEvidenceRepository{order: &order, decisionErr: want}
+	runtime, err := NewStructureAssessmentRuntime(runtimeAssessorFixtures(source, &order), repository, 2_000, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.Assess(t.Context(), StructureAssessmentMedia{Source: source, FullPath: "/tmp/source.mp4"}); !errors.Is(err, want) {
+		t.Fatalf("error=%v, want decision persistence failure", err)
+	}
+	if len(repository.records) != 2 || len(repository.decisions) != 0 || !slices.Equal(order[len(order)-1:], []string{"persist:assessor-b"}) {
+		t.Fatalf("decision persistence state: order=%v records=%d decisions=%d", order, len(repository.records), len(repository.decisions))
+	}
+}
+
 func TestStructureAssessmentRuntimeDecisionReplaysItsPersistedAssessmentRecords(t *testing.T) {
 	source := structureSource(10_000)
 	order := []string{}
@@ -143,6 +173,10 @@ func TestStructureAssessmentRuntimeDecisionReplaysItsPersistedAssessmentRecords(
 	artifact, err := runtime.Assess(t.Context(), StructureAssessmentMedia{Source: source, FullPath: "/tmp/source.mp4"})
 	if err != nil {
 		t.Fatal(err)
+	}
+	replayedArtifact, err := repository.GetStructureDecisionArtifact(t.Context(), artifact.SHA256)
+	if err != nil || replayedArtifact.SHA256 != artifact.SHA256 {
+		t.Fatalf("decision replay=%+v error=%v", replayedArtifact, err)
 	}
 	for _, candidate := range artifact.Decision.Candidates {
 		recorded, loadErr := repository.GetStructureAssessmentEvidence(t.Context(), candidate.Assessor.AssessmentSHA256)

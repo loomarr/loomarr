@@ -3273,10 +3273,13 @@ the validated content-addressed assessment record. Open and budget-held entries 
 recovery; they are operational holds, never permission to repeat a possibly billed request.
 
 The reducer's immutable artifact retains every candidate identity and the exact reason each case was
-confirmed or held. Certification scores this deterministic policy as the production candidate: every
-automatic decision must have zero under-splits, over-splits, unexplained gaps, wrong filler/programme
-dispositions, wrong roles, or boundary misses beyond tolerance. Abstentions remain in the denominator and
-are reported as coverage, globally and per predeclared slice. Raw assessors may be imperfect; they do not
+confirmed or held. The runtime publishes that content-addressed artifact before attaching it to a split
+proposal. A child cut on an exact confirmed `keep` interval carries the artifact SHA-256 in its portable
+conditioning lineage; a legacy detector cut or operator-edited interval leaves that field absent rather
+than claiming decision provenance it does not have. Certification scores this deterministic policy as the
+production candidate: every automatic decision must have zero under-splits, over-splits, unexplained gaps,
+wrong filler/programme dispositions, wrong roles, or boundary misses beyond tolerance. Abstentions remain
+in the denominator and are reported as coverage, globally and per predeclared slice. Raw assessors may be imperfect; they do not
 individually need perfect recall when their disagreement correctly becomes a hold. Each enabled slice still
 requires its predeclared minimum number of independently sourced decided cases and zero wrong automatic
 decisions. The development certificate that permits shadow evaluation requires at least 30 of 60 decisions

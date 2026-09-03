@@ -212,14 +212,15 @@ type ConditioningPublication struct {
 	TargetHash string `json:"targetHash"`
 }
 
-// ConditioningLineage is immutable provenance for one operator-reviewed split interval.
+// ConditioningLineage is immutable provenance for one reviewed split interval.
 type ConditioningLineage struct {
-	ChildHash         string `json:"childHash"`
-	ParentHash        string `json:"parentHash"`
-	ParentAssetRole   string `json:"parentAssetRole,omitempty"`
-	ParentAssetSHA256 string `json:"parentAssetSha256,omitempty"`
-	IntendedStartMs   int64  `json:"intendedStartMs"`
-	IntendedEndMs     int64  `json:"intendedEndMs"`
+	ChildHash               string `json:"childHash"`
+	ParentHash              string `json:"parentHash"`
+	ParentAssetRole         string `json:"parentAssetRole,omitempty"`
+	ParentAssetSHA256       string `json:"parentAssetSha256,omitempty"`
+	StructureDecisionSHA256 string `json:"structureDecisionSha256,omitempty"`
+	IntendedStartMs         int64  `json:"intendedStartMs"`
+	IntendedEndMs           int64  `json:"intendedEndMs"`
 }
 
 // ConditioningEvidence keeps measurements separate from policy decisions and target markers.
@@ -359,6 +360,9 @@ func decodeSidecarTags(raw []byte) (SidecarTags, SidecarReadState, bool) {
 		_, hasParentAssetSHA := lineageFields["parentAssetSha256"]
 		if hasParentAssetRole != hasParentAssetSHA || hasParentAssetRole &&
 			(!rawJSONString(lineageFields, "parentAssetRole") || !rawJSONString(lineageFields, "parentAssetSha256")) {
+			return SidecarTags{}, SidecarInvalid, true
+		}
+		if _, present := lineageFields["structureDecisionSha256"]; present && !rawJSONString(lineageFields, "structureDecisionSha256") {
 			return SidecarTags{}, SidecarInvalid, true
 		}
 	}

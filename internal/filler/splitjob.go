@@ -793,12 +793,13 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 			OriginalName:          seg.Name + ext,
 			SplitPublicationToken: claimToken,
 			ConditioningLineage: &ConditioningLineage{
-				ChildHash:         id,
-				ParentHash:        clip.Hash,
-				ParentAssetRole:   string(source.Role),
-				ParentAssetSHA256: source.SHA256,
-				IntendedStartMs:   seg.StartMs,
-				IntendedEndMs:     seg.EndMs,
+				ChildHash:               id,
+				ParentHash:              clip.Hash,
+				ParentAssetRole:         string(source.Role),
+				ParentAssetSHA256:       source.SHA256,
+				StructureDecisionSHA256: structureDecisionSHA256ForInterval(p, seg),
+				IntendedStartMs:         seg.StartMs,
+				IntendedEndMs:           seg.EndMs,
 			},
 		}
 		if err := WriteSidecarTags(tmp, childTags, false); err != nil {
