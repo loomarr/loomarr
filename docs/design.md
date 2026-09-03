@@ -4812,6 +4812,19 @@ profile mismatch, over-ceiling window, incomplete decode, or partial source snap
 package. This packager does not measure semantic traits, call an assessor, assign a certificate, or
 grant materialization authority.
 
+The suite assembler accepts only those locked media and pre-model authorities; model responses are
+not an input. A wordless join is proven when at least one independently bounded filler source beside
+the planned join has a retained transcript artifact containing one or more closed non-speech markers
+and no lexical segment. The source-to-evidence alias and transcript digest must replay through the
+holdout receipt. Motion is measured over every prepared window as the mean absolute luma delta between
+each pair of adjacent decoded frames; the evidence also retains frame count, sum, 95th percentile,
+maximum, exact media identity, and ffmpeg identity. The highest-scoring window in each case competes
+for the fixed six-case high-motion cohort, with stable case/ordinal tie-breaking, and the sixth score
+becomes the reproduced cohort threshold. Selecting one window per case prevents several energetic
+windows from one construction from satisfying the slice by themselves. Both measured slices are fixed
+before inference, and insufficiency aborts suite publication rather than substituting cases after model
+outcomes are known.
+
 The agreement policy itself is one provider-neutral production-domain module, not a scorer-owned
 copy: both the challenge adapter and the eventual production runtime supply source-bound immutable
 candidate assessments to the same pure reducer. Challenge aliases, private truth, provider clients,

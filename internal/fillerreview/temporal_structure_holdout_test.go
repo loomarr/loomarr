@@ -232,6 +232,10 @@ type temporalStructureHoldoutFixture struct {
 }
 
 func newTemporalStructureHoldoutFixture(t *testing.T) temporalStructureHoldoutFixture {
+	return newTemporalStructureHoldoutFixtureWithEvidence(t, nil)
+}
+
+func newTemporalStructureHoldoutFixtureWithEvidence(t *testing.T, mutate func(*TemporalTruthEvidenceManifest, *TemporalTruthEvidencePrivateMap)) temporalStructureHoldoutFixture {
 	t.Helper()
 	base := newTemporalHumanReviewFixture(t)
 	manifest := readStrictTestJSON[TemporalTruthEvidenceManifest](t, base.manifest)
@@ -251,6 +255,10 @@ func newTemporalStructureHoldoutFixture(t *testing.T) temporalStructureHoldoutFi
 		manifest.Cases[index].Video.SHA256 = hashBytes(raw)
 		manifest.Cases[index].Video.Bytes = int64(len(raw))
 		manifest.Cases[index].Video.DurationMS = durationMS
+	}
+	if mutate != nil {
+		mutate(&manifest, &privateMap)
+		writeTemporalHumanJSON(t, filepath.Dir(base.privateMap), filepath.Base(base.privateMap), privateMap)
 	}
 	writeTemporalHumanJSON(t, filepath.Dir(base.manifest), filepath.Base(base.manifest), manifest)
 	evidenceSHA, err := hashFile(base.manifest)
