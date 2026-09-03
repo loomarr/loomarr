@@ -33,7 +33,7 @@ type StructureWindowEvidenceRepository interface {
 // StructureWindowAssessmentRuntime owns complete preparation, family-major serial execution,
 // deterministic stitching, and the same provider-neutral reduction used by short sources.
 type StructureWindowAssessmentRuntime struct {
-	assessors         []CompleteWindowStructureAssessor
+	families          []*StructureWindowFamilyRuntime
 	profiles          []fillerstructure.AssessorProfile
 	preparer          StructureAssessmentWindowMediaPreparer
 	evidence          StructureWindowEvidenceRepository
@@ -56,15 +56,22 @@ func NewStructureWindowAssessmentRuntime(assessors []CompleteWindowStructureAsse
 	if err := fillerstructure.ValidateAssessorProfiles(profiles); err != nil {
 		return nil, fmt.Errorf("structure window runtime profiles: %w", err)
 	}
+	families := make([]*StructureWindowFamilyRuntime, 0, len(assessors))
+	for _, assessor := range assessors {
+		family, err := NewStructureWindowFamilyRuntime(assessor, evidence, boundaryTolerance)
+		if err != nil {
+			return nil, err
+		}
+		families = append(families, family)
+	}
 	return &StructureWindowAssessmentRuntime{
-		assessors: append([]CompleteWindowStructureAssessor(nil), assessors...),
-		profiles:  slices.Clone(profiles),
-		preparer:  preparer, evidence: evidence, boundaryTolerance: boundaryTolerance, now: now,
+		families: families, profiles: slices.Clone(profiles),
+		preparer: preparer, evidence: evidence, boundaryTolerance: boundaryTolerance, now: now,
 	}, nil
 }
 
 func (r *StructureWindowAssessmentRuntime) Assess(ctx context.Context, input StructureAssessmentSource) (fillerstructure.Artifact, error) {
-	if r == nil || len(r.assessors) < 2 || len(r.profiles) != len(r.assessors) || r.preparer == nil || r.evidence == nil || r.now == nil {
+	if r == nil || len(r.families) < 2 || len(r.profiles) != len(r.families) || r.preparer == nil || r.evidence == nil || r.now == nil {
 		return fillerstructure.Artifact{}, errors.New("structure window runtime is unavailable")
 	}
 	if err := input.Source.validate(); err != nil || !filepath.IsAbs(input.FullPath) || filepath.Clean(input.FullPath) != input.FullPath {
@@ -89,45 +96,10 @@ func (r *StructureWindowAssessmentRuntime) Assess(ctx context.Context, input Str
 		return fillerstructure.Artifact{}, err
 	}
 	request := fillerstructure.Request{Source: source, Input: requestInput, BoundaryToleranceMS: r.boundaryTolerance}
-	for family, assessor := range r.assessors {
-		assessments := make([]fillerstructurewindow.Assessment, 0, len(prepared.Windows))
-		for ordinal, window := range prepared.Windows {
-			if err := ctx.Err(); err != nil {
-				return fillerstructure.Artifact{}, err
-			}
-			recorded, found, err := r.evidence.FindStructureWindowAssessmentEvidence(ctx, prepared.Authority, ordinal, r.profiles[family])
-			if err != nil {
-				return fillerstructure.Artifact{}, fmt.Errorf("find structure window assessor %d window %d evidence: %w", family, ordinal, err)
-			}
-			if !found {
-				recorded, err = assessor.AssessWindow(ctx, prepared.Authority, window)
-				if err != nil {
-					return fillerstructure.Artifact{}, fmt.Errorf("structure window assessor %d window %d produced no authority: %w", family, ordinal, err)
-				}
-			}
-			if !validRecordedWindowAuthority(prepared.Authority, window, r.profiles[family], ordinal, recorded) {
-				return fillerstructure.Artifact{}, fmt.Errorf("structure window assessor %d window %d drifted authority", family, ordinal)
-			}
-			if !found {
-				if err := r.evidence.PutStructureWindowAssessmentEvidence(ctx, recorded); err != nil {
-					return fillerstructure.Artifact{}, fmt.Errorf("persist structure window assessor %d window %d: %w", family, ordinal, err)
-				}
-			}
-			replayed, err := r.evidence.GetStructureWindowAssessmentEvidence(ctx, prepared.Authority, recorded.Record.SHA256)
-			if err != nil {
-				return fillerstructure.Artifact{}, fmt.Errorf("replay structure window assessor %d window %d evidence: %w", family, ordinal, err)
-			}
-			if !reflect.DeepEqual(replayed, recorded) {
-				return fillerstructure.Artifact{}, fmt.Errorf("replay structure window assessor %d window %d evidence drifted", family, ordinal)
-			}
-			assessments = append(assessments, replayed.Assessment)
-		}
-		stitched, err := fillerstructurewindow.Stitch(prepared.Authority, assessments, r.boundaryTolerance)
+	for family, familyRuntime := range r.families {
+		stitched, err := familyRuntime.Assess(ctx, prepared)
 		if err != nil {
-			return fillerstructure.Artifact{}, fmt.Errorf("stitch structure window assessor %d: %w", family, err)
-		}
-		if err := r.evidence.PutStructureWindowStitch(ctx, stitched); err != nil {
-			return fillerstructure.Artifact{}, fmt.Errorf("persist structure window assessor %d stitch: %w", family, err)
+			return fillerstructure.Artifact{}, fmt.Errorf("assess structure window family %d: %w", family, err)
 		}
 		candidateInput, candidate, err := fillerstructurewindow.ReducerCandidate(stitched)
 		if err != nil {

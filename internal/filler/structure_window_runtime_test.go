@@ -176,6 +176,37 @@ func TestStructureWindowRuntimePersistsFamilyMajorSerialEvidenceBeforeReduction(
 	}
 }
 
+func TestStructureWindowFamilyRuntimePersistsAndReturnsOneReplayableStitch(t *testing.T) {
+	_, prepared := structureWindowRuntimeFixture(t)
+	events := []string{}
+	timeline := []fillerstructure.Segment{
+		{StartMS: 0, EndMS: 120_000, Role: fillerstructure.RoleCommercial},
+		{StartMS: 120_000, EndMS: 300_000, Role: fillerstructure.RolePromo},
+	}
+	evidence := &capturedWindowEvidence{events: &events}
+	runtime, err := NewStructureWindowFamilyRuntime(
+		windowAssessorFixture("assessor-a", "family-a", "a", timeline, &events), evidence, 2_000,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stitch, err := runtime.Assess(t.Context(), prepared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantEvents := []string{
+		"call:assessor-a:0", "put:assessor-a:0", "get:assessor-a:0",
+		"call:assessor-a:1", "put:assessor-a:1", "get:assessor-a:1",
+		"call:assessor-a:2", "put:assessor-a:2", "get:assessor-a:2",
+		"stitch:assessor-a",
+	}
+	if !reflect.DeepEqual(events, wantEvents) || len(evidence.stitches) != 1 ||
+		!reflect.DeepEqual(stitch, evidence.stitches[0]) || fillerstructurewindow.ValidateStitchResult(stitch) != nil ||
+		stitch.Status != fillerstructurewindow.StitchComplete {
+		t.Fatalf("events=%v stitch=%+v evidence=%+v", events, stitch, evidence)
+	}
+}
+
 func TestStructureWindowRuntimeRetainsOperationalFailureAndCompletesEveryWindow(t *testing.T) {
 	input, prepared := structureWindowRuntimeFixture(t)
 	events := []string{}
