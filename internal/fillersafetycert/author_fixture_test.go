@@ -64,7 +64,15 @@ func newAuthorityBuildFixture(t *testing.T) *authorityBuildFixture {
 	fixture.config = AuthorityBuildConfig{
 		DraftPath: draftPath, FirstReviewPath: firstPath, SecondReviewPath: secondPath,
 		SeedPath: seedPath, SourceRoot: root, AuthoredAt: authoredAt,
-		ExpectedCases: len(draft.Cases), MaximumSourceBytes: 1 << 20, OutputPath: fixture.outputPath,
+		ExpectedCases: len(draft.Cases), MaximumSourceBytes: 1 << 20,
+		ValidateEvidence: func(rightsRaw, provenanceRaw []byte, item AuthorityDraftCase, _ time.Time) error {
+			if string(rightsRaw) != "private rights evidence" || string(provenanceRaw) != "private truth provenance" ||
+				item.SourceAuthority.SourceID != item.CaseID {
+				return fmt.Errorf("unexpected fixture evidence")
+			}
+			return nil
+		},
+		OutputPath: fixture.outputPath,
 	}
 	return fixture
 }

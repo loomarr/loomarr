@@ -120,6 +120,14 @@ type ReviewAssessment struct {
 	PositiveIntervals []PositiveInterval `json:"positiveIntervals,omitempty"`
 }
 
+// AuthorityEvidenceValidator lets the corpus owner interpret private,
+// corpus-specific evidence while the certification locker stays format-neutral.
+type AuthorityEvidenceValidator func(
+	rightsRaw, truthProvenanceRaw []byte,
+	item AuthorityDraftCase,
+	authoredAt time.Time,
+) error
+
 type AuthorityBuildConfig struct {
 	DraftPath          string
 	FirstReviewPath    string
@@ -130,6 +138,7 @@ type AuthorityBuildConfig struct {
 	AuthoredAt         time.Time
 	ExpectedCases      int
 	MaximumSourceBytes int64
+	ValidateEvidence   AuthorityEvidenceValidator
 	OutputPath         string
 }
 

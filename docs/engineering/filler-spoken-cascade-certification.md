@@ -19,10 +19,12 @@ optional adjudication bundle containing exactly the disputed cases, a private al
 the root containing the exact complete-audiovisual sources and rights/truth evidence. It checks
 the actual source bytes through each certification-independent source authority and verifies the
 draft-pinned rights/truth digests against their current files. Before any source planning or decode,
-it also validates each unique rights document semantically at the fixed authoring time. The closed
-supported set is the complete VCTK release-authority v1 contract and the canonical known-script
-rights v1 contract. Expired or invalid VCTK evaluation rights, or expired, withdrawn, malformed,
-unsupported, or asset-rights-invalid participant evidence, invalidates the whole lock. It then derives
+it also validates every case's rights, truth provenance, and source authority together at the fixed
+authoring time. Shared rights bytes may be parsed once, but the source/provenance binding is checked
+for every case. The closed supported set is the complete canonical VCTK release-authority v1 contract
+and the canonical known-script rights v1 contract. Expired or invalid VCTK evaluation rights, a VCTK
+member/provenance mismatch, an output/source mismatch, or expired, withdrawn, malformed, unsupported,
+unbound, or asset-rights-invalid participant evidence invalidates the whole lock. It then derives
 opaque case, source-family, and reviewer IDs. The output contains no path or private source,
 family, or reviewer identifier.
 

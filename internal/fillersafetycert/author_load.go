@@ -26,9 +26,9 @@ func loadAuthorityInputs(config AuthorityBuildConfig) (loadedAuthorityInputs, er
 	if config.AdjudicatorPath != "" {
 		paths = append(paths, config.AdjudicatorPath)
 	}
-	if config.ExpectedCases <= 0 || config.MaximumSourceBytes <= 0 || config.AuthoredAt.IsZero() ||
+	if config.ExpectedCases <= 0 || config.MaximumSourceBytes <= 0 || config.AuthoredAt.IsZero() || config.ValidateEvidence == nil ||
 		strings.TrimSpace(config.SourceRoot) == "" || slicesContainBlank(paths) {
-		return loadedAuthorityInputs{}, fmt.Errorf("authority build requires draft, two reviews, seed, source root, fixed authoring time, positive ceilings, and output")
+		return loadedAuthorityInputs{}, fmt.Errorf("authority build requires draft, two reviews, seed, source root, fixed authoring time, rights and provenance validation, positive ceilings, and output")
 	}
 	if err := requireDistinctPaths(paths); err != nil {
 		return loadedAuthorityInputs{}, err
@@ -147,13 +147,21 @@ func resolvePrivateRelative(root, relative string) (string, error) {
 }
 
 func hashPrivateEvidence(root, relative string) (string, error) {
-	path, err := resolvePrivateRelative(root, relative)
-	if err != nil {
-		return "", err
-	}
-	raw, err := readPrivateRaw(path, maxPrivateDocumentBytes)
+	raw, err := readPrivateEvidence(root, relative)
 	if err != nil {
 		return "", err
 	}
 	return hashBytes(raw), nil
+}
+
+func readPrivateEvidence(root, relative string) ([]byte, error) {
+	path, err := resolvePrivateRelative(root, relative)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := readPrivateRaw(path, maxPrivateDocumentBytes)
+	if err != nil {
+		return nil, err
+	}
+	return raw, nil
 }

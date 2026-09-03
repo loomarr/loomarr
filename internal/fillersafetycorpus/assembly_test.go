@@ -1,6 +1,7 @@
 package fillersafetycorpus
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,6 +89,12 @@ func TestAssembleReviewDraftPublishesOneSelfContainedLockerCompatibleCorpus(t *t
 		DraftPath: draftPath, FirstReviewPath: firstReviewPath, SecondReviewPath: secondReviewPath,
 		SeedPath: seedPath, SourceRoot: fixture.output, AuthoredAt: fixture.plan.AssembledAt.Add(3 * time.Hour),
 		ExpectedCases: len(draft.Cases), MaximumSourceBytes: 64 << 20,
+		ValidateEvidence: func(_, _ []byte, item fillersafetycert.AuthorityDraftCase, _ time.Time) error {
+			if item.SourceAuthority.SourceID != item.CaseID {
+				return fmt.Errorf("fixture source is unbound")
+			}
+			return nil
+		},
 		OutputPath: filepath.Join(fixture.root, "locked-authority.json"),
 	})
 	if err != nil || locked.PositiveFamilies != 59 || locked.CleanFamilies != 103 {

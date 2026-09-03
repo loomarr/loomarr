@@ -139,7 +139,14 @@ func TestIndependentModelReviewsFeedAuthorityLock(t *testing.T) {
 		DraftPath: filepath.Join(first.root, "draft.json"), FirstReviewPath: first.outputPath,
 		SecondReviewPath: second.outputPath, SeedPath: seedPath, SourceRoot: first.root,
 		AuthoredAt: first.now.Add(time.Hour), ExpectedCases: plan.ExpectedCases,
-		MaximumSourceBytes: 1 << 20, OutputPath: authorityPath,
+		MaximumSourceBytes: 1 << 20,
+		ValidateEvidence: func(_, _ []byte, item fillersafetycert.AuthorityDraftCase, _ time.Time) error {
+			if item.SourceAuthority.SourceID != item.CaseID {
+				return fmt.Errorf("fixture source is unbound")
+			}
+			return nil
+		},
+		OutputPath: authorityPath,
 	})
 	if err != nil {
 		t.Fatal(err)

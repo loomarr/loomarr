@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillersafetycert"
+	"github.com/loomarr/loomarr/internal/fillersafetycorpus"
 )
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
@@ -37,11 +38,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "filler-spoken-cascade-authority: --draft, two reviews, --seed, --source-root, valid --authored-at, positive ceilings, and --output are required")
 		return 2
 	}
+	evidenceValidator := fillersafetycorpus.NewCertificationEvidenceValidator()
 	result, err := fillersafetycert.BuildAuthority(context.Background(), fillersafetycert.AuthorityBuildConfig{
 		DraftPath: *draft, FirstReviewPath: *firstReview, SecondReviewPath: *secondReview,
 		AdjudicatorPath: *adjudicator, SeedPath: *seed, SourceRoot: *sourceRoot,
 		AuthoredAt: authoredAt.UTC(), ExpectedCases: *expectedCases,
-		MaximumSourceBytes: *maximumSourceBytes, OutputPath: *output,
+		MaximumSourceBytes: *maximumSourceBytes,
+		ValidateEvidence:   evidenceValidator.Validate,
+		OutputPath:         *output,
 	})
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-spoken-cascade-authority:", err)
