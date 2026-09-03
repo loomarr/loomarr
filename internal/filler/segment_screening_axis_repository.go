@@ -15,9 +15,9 @@ const (
 	segmentScreeningAxisRawMaxBytes    = 1 << 20
 )
 
-func (r *FileStructureScreeningEvidenceRepository) PutSegmentScreeningAxisEvidence(ctx context.Context, recorded RecordedSegmentScreeningAxisEvidence) error {
+func (r *FileSegmentScreeningEvidenceRepository) PutSegmentScreeningAxisEvidence(ctx context.Context, recorded RecordedSegmentScreeningAxisEvidence) error {
 	if r == nil || r.files == nil {
-		return fmt.Errorf("structure screening evidence repository is unavailable")
+		return fmt.Errorf("segment screening evidence repository is unavailable")
 	}
 	if err := ValidateRecordedSegmentScreeningAxisEvidence(recorded); err != nil {
 		return err
@@ -38,7 +38,7 @@ func (r *FileStructureScreeningEvidenceRepository) PutSegmentScreeningAxisEviden
 	return nil
 }
 
-func (r *FileStructureScreeningEvidenceRepository) GetSegmentScreeningAxisEvidence(ctx context.Context, evidenceSHA256 string) (RecordedSegmentScreeningAxisEvidence, error) {
+func (r *FileSegmentScreeningEvidenceRepository) GetSegmentScreeningAxisEvidence(ctx context.Context, evidenceSHA256 string) (RecordedSegmentScreeningAxisEvidence, error) {
 	if r == nil || r.files == nil || !structureEvidenceDigest(evidenceSHA256) {
 		return RecordedSegmentScreeningAxisEvidence{}, fmt.Errorf("segment screening axis evidence identity is invalid")
 	}
@@ -70,8 +70,8 @@ func (r *FileStructureScreeningEvidenceRepository) GetSegmentScreeningAxisEviden
 	return recorded, nil
 }
 
-func (r *FileStructureScreeningEvidenceRepository) axisPath(kind, digest string) string {
+func (r *FileSegmentScreeningEvidenceRepository) axisPath(kind, digest string) string {
 	return filepath.Join(r.files.root, kind, digest[:2], digest+".json")
 }
 
-var _ SegmentScreeningCertificationEvidenceReader = (*FileStructureScreeningEvidenceRepository)(nil)
+var _ SegmentScreeningCertificationEvidenceReader = (*FileSegmentScreeningEvidenceRepository)(nil)

@@ -16,9 +16,7 @@ func ValidateStructureSplitShadowDecision(decision StructureSplitShadowDecision)
 	if decision.SourceSHA256 != "" && !isContentHash(decision.SourceSHA256) ||
 		decision.AssessmentSHA256 != "" && !isContentHash(decision.AssessmentSHA256) ||
 		decision.StructureDecisionSHA256 != "" && !isContentHash(decision.StructureDecisionSHA256) ||
-		decision.StructureAuthoritySHA256 != "" && !isContentHash(decision.StructureAuthoritySHA256) ||
-		decision.ScreeningAuthoritySHA256 != "" && !isContentHash(decision.ScreeningAuthoritySHA256) ||
-		!validStructureShadowScreeningIdentities(decision.ScreeningSHA256s) {
+		decision.StructureAuthoritySHA256 != "" && !isContentHash(decision.StructureAuthoritySHA256) {
 		return fmt.Errorf("structure split shadow decision source or assessment digest is invalid")
 	}
 	if err := validateStructureSplitShadowOutcome(decision.Legacy); err != nil {
@@ -31,18 +29,6 @@ func ValidateStructureSplitShadowDecision(decision StructureSplitShadowDecision)
 		return fmt.Errorf("structure split shadow decision digest is invalid")
 	}
 	return nil
-}
-
-func validStructureShadowScreeningIdentities(identities []string) bool {
-	if !slices.IsSorted(identities) || len(slices.Compact(slices.Clone(identities))) != len(identities) {
-		return false
-	}
-	for _, identity := range identities {
-		if !isContentHash(identity) {
-			return false
-		}
-	}
-	return true
 }
 
 func validateStructureSplitShadowOutcome(outcome StructureSplitShadowOutcome) error {

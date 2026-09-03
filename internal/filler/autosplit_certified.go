@@ -1,19 +1,16 @@
 package filler
 
 import (
-	"context"
 	"fmt"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 )
 
-// StructureCertificationPolicy is the release boundary between a valid assessment and unattended
-// publication. Authority owns locked source/signal slices. Screening replays all four exact-span
-// axis records and raw evidence against one immutable release authority.
-type StructureCertificationPolicy struct {
+// StructureMaterializationPolicy is the release boundary between a valid assessment and unattended
+// creation of held child work items. It cannot authorize broadcast admission.
+type StructureMaterializationPolicy struct {
 	Authority *fillerstructure.Authority
-	Screening *SegmentScreeningCertification
 }
 
 const (
@@ -22,13 +19,12 @@ const (
 	RejectStructureAmbiguous   AutoSplitReject = "the source structure or a segment role remains unresolved"
 	RejectStructureMismatch    AutoSplitReject = "the proposed cuts do not match the complete structure plan"
 	RejectStructureUncertified AutoSplitReject = "this source and signal path is not certified for automatic splitting"
-	RejectSegmentUnscreened    AutoSplitReject = "a segment has not passed the required safety and rights screens"
 )
 
-// CertifiedAutoConfirmable applies V67's complete-plan rules independently of the compatibility
-// detector's cut coordinates and confidence score. It never returns a partial confirmation: if any
-// keep interval fails metadata admission, every keep interval remains together for one review.
-func CertifiedAutoConfirmable(ctx context.Context, p SplitProposal, auto *AutoSplitPolicy, certification *StructureCertificationPolicy, minClipDuration time.Duration) SplitPartition {
+// CertifiedStructureMaterializable applies V67's complete-plan rules independently of the
+// compatibility detector's cut coordinates and confidence score. Confirm means "create a held child",
+// never "make this media airable". If any keep interval fails, the plan remains together for review.
+func CertifiedStructureMaterializable(p SplitProposal, auto *AutoSplitPolicy, certification *StructureMaterializationPolicy, minClipDuration time.Duration) SplitPartition {
 	if p.Structure == nil {
 		return certifiedSplitReject(p.Segments, RejectStructureMissing)
 	}
@@ -40,7 +36,7 @@ func CertifiedAutoConfirmable(ctx context.Context, p SplitProposal, auto *AutoSp
 		return certifiedSplitReject(p.Segments, RejectStructureAmbiguous)
 	}
 	if len(p.Spawned) > 0 {
-		// V54 proposals that already published a partial generation lack source-span lineage for
+		// V54 proposals that already materialized a partial generation lack source-span lineage for
 		// those older children. They stay reviewable; V67 never guesses which plan spans they own.
 		return certifiedSplitReject(p.Segments, RejectStructureMismatch)
 	}
@@ -57,13 +53,7 @@ func CertifiedAutoConfirmable(ctx context.Context, p SplitProposal, auto *AutoSp
 	if certification == nil || certification.Authority == nil || fillerstructure.VerifyAuthority(*p.StructureDecision, *certification.Authority) != nil {
 		return SplitPartition{Reject: RejectStructureUncertified, Hold: keep, Discard: discard}
 	}
-	for _, segment := range keep {
-		screening := screeningForStructureInterval(p, segment)
-		if screening == nil || screening.Source != assessment.Source || screening.StartMs != segment.StartMs || screening.EndMs != segment.EndMs || !screening.Passes() || certification.Screening == nil || certification.Screening.Verify(ctx, *screening) != nil {
-			return SplitPartition{Reject: RejectSegmentUnscreened, Hold: keep, Discard: discard}
-		}
-	}
-	certified := certifiedPlanConfirmable(keep, auto, minClipDuration)
+	certified := certifiedPlanMaterializable(keep, auto, minClipDuration)
 	if certified.Reject != AutoSplitOK {
 		certified.Discard = discard
 		return certified
@@ -105,7 +95,7 @@ func projectCertifiedStructureSegments(existing []SplitSegment, plan []Structure
 	return keep, discard, nil
 }
 
-func certifiedPlanConfirmable(segments []SplitSegment, policy *AutoSplitPolicy, minClipDuration time.Duration) SplitPartition {
+func certifiedPlanMaterializable(segments []SplitSegment, policy *AutoSplitPolicy, minClipDuration time.Duration) SplitPartition {
 	if policy == nil || policy.Enabled == nil || !policy.Enabled() {
 		return SplitPartition{Reject: RejectDisabled, Hold: segments}
 	}
@@ -120,7 +110,7 @@ func certifiedPlanConfirmable(segments []SplitSegment, policy *AutoSplitPolicy, 
 	}
 	partition := SplitPartition{}
 	for _, segment := range segments {
-		if reason := segmentContentVerdict(segment, policy, minClipDuration, maxDuration); reason != AutoSplitOK {
+		if reason := structureMaterializationSegmentVerdict(segment, minClipDuration, maxDuration); reason != AutoSplitOK {
 			segment.HoldReason = string(reason)
 			partition.Hold = append(partition.Hold, segment)
 			continue
@@ -146,6 +136,23 @@ func certifiedPlanConfirmable(segments []SplitSegment, policy *AutoSplitPolicy, 
 		partition.Reject = reject
 	}
 	return partition
+}
+
+// structureMaterializationSegmentVerdict checks only whether the decided interval can become a
+// held child. Role came from the certified complete-timeline plan; category, audience, era, safety,
+// rights, and playback facts belong to the child pipeline and cannot be required before it exists.
+func structureMaterializationSegmentVerdict(segment SplitSegment, minClipDuration, maxDuration time.Duration) AutoSplitReject {
+	if segment.DupOf != "" {
+		return RejectDuplicate
+	}
+	span := time.Duration(segment.EndMs-segment.StartMs) * time.Millisecond
+	if span > maxDuration {
+		return RejectTooLong
+	}
+	if minClipDuration > 0 && span < minClipDuration {
+		return RejectTooShort
+	}
+	return AutoSplitOK
 }
 
 func certifiedSplitReject(segments []SplitSegment, reason AutoSplitReject) SplitPartition {

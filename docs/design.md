@@ -3147,7 +3147,7 @@ a master only after no playable clip, split lineage, audit record, inference evi
 authority, or retention obligation refers to it and after proving every remaining derivative is
 regenerable. Until that complete ownership graph exists, storage costs are visible and masters stay.
 
-### Compilation structure is assessed before segments are published (V67)
+### Compilation structure is assessed before held children are materialized (V67)
 
 The duration quarantine introduced in V45 answers only **“is this recording too long to air as one
 ordinary filler clip?”** It does not answer **“does this recording contain several commercials?”** A
@@ -3189,7 +3189,7 @@ Boundary fusion is deterministic and conservative:
 
 1. A declared chapter edge or compatible precise separator observations may propose a bounded cut.
 2. Agreement narrows the candidate's uncertainty window; conflicts survive on the candidate and prevent
-   unattended publication.
+   unattended materialization.
 3. Transcript, OCR/logo, audio-continuity, and visual-continuity changes may support, contradict, or leave
    that candidate unresolved. Absence from a modality that did not run is not negative evidence.
 4. The bounded observation model may inspect only unresolved spans. Its strict output cites supplied
@@ -3237,9 +3237,9 @@ evidence binds the derivative SHA-256 instead of frame SHA-256s plus the same ex
 prompt/response, route, modalities, accounting, and generation identity. An extraction failure, derivative
 identity drift, unavailable route, malformed output, missing attribution, or unsupported role leaves the
 interval unresolved. Merely implementing or capability-checking this route does not certify it and cannot
-expand unattended publication; only the locked source/signal-slice result below may do that.
+expand unattended materialization; only the locked source/signal-slice result below may do that.
 
-Raw assessors are observations, not competing publication authorities. A deterministic
+Raw assessors are observations, not competing materialization authorities. A deterministic
 **structure-decision reducer** receives complete, content-addressed candidate assessments from at least
 two independently locked producer families bound by the current reducer certificate. Two routes serving
 the same model family count once. The
@@ -3261,8 +3261,9 @@ transport settlement retains the full reservation; a known charge closes against
 amount, and an over-reservation response is retained but unusable. The adapter settles the durable
 accounting record before it returns candidate evidence. A crash between reservation and settlement leaves
 a discoverable open reservation rather than silently freeing budget. Implementing this adapter grants no
-runtime or publication authority: two independently locked families, persisted raw evidence, the reducer,
-the screening axes, and a locked slice certificate remain mandatory.
+runtime or materialization authority: two independently locked families, persisted raw evidence, the
+reducer, and a locked structure-slice certificate remain mandatory. Downstream screening remains mandatory
+for broadcast admission but is intentionally not part of this pre-child decision.
 
 The structure reservation participates in the shared filler-inference budget rather than keeping a
 provider-specific spend total. One transaction reserves that shared budget and appends a structure journal
@@ -3284,64 +3285,68 @@ individually need perfect recall when their disagreement correctly becomes a hol
 requires its predeclared minimum number of independently sourced decided cases and zero wrong automatic
 decisions. The development certificate that permits shadow evaluation requires at least 30 of 60 decisions
 globally, at least 6 decisions in each source-unit category, and at least 6 decisions in every declared
-difficult slice. It grants no publication authority; later slice activation remains a separate decision based
+difficult slice. It grants no automatic materialization authority; later slice activation remains a separate decision based
 on the locked shadow evidence. This changes what is measured, not the safety bar.
 
-Every proposed `keep` interval also carries one content-addressed screening record bound to the exact
-source bytes and half-open span. It contains exactly four independent closed outcomes: `visual_safety`
-(including explicit imagery), `spoken_safety` (including prohibited language), `rights`, and
-`playback_integrity`. Each outcome is `pass`, `reject`, or `hold`, names an opaque reason code, and binds the
-SHA-256 of one immutable axis-evidence record; raw restricted phrases and descriptions are not copied into
-the split proposal. That record binds the exact source/span and outcome, the evaluator's policy,
-certification, implementation, and evidence-contract profile, and the SHA-256 of its private bounded raw
-ledger or measurement bytes. The axis record publishes only after those raw bytes are durable. All four
-must pass, the aggregate must replay from immutable storage, and one immutable screening-release authority
-must match all four profiles and re-read every axis record plus its raw bytes before automatic publication. A boolean
-callback, aggregate-only replay, or model self-assertion cannot certify screening. A missing, stale,
-rejected, held, span-mismatched, profile-drifted, or unverifiable axis sends the complete plan to review.
+Structure authority and broadcast admission are deliberately separate decisions. A certified
+`compilation_break` or explicitly bounded filler portion of `programme_with_spots` may authorize automatic
+**materialization** of its complete keep plan: Loomarr cuts every decided filler interval into a held,
+non-airable child and enrolls each child at the start of the ordinary ingest ladder. This authority requires
+exact evidence bytes, resolved boundaries and allowed filler roles, complete explained coverage, and a
+source/signal slice inside the locked structure certificate. It does not claim that a child is safe, lawful,
+playable, enriched, or ready to air. An unresolved interval retains one concise structure review, and a human
+confirmation is still validated against complete coverage and exact source identity.
 
-Structure-plan screenings are keyed independently from compatibility detector segments. This matters when
-the independently reduced join differs from the detector coordinate: retaining a screen for the decided
-span must not rewrite the compatibility proposal being measured in shadow. The screening runtime receives
-only missing `keep` spans. Its interface is deliberately deeper than a callback that can manufacture an
-aggregate pass: construction requires exactly one named evaluator for each of `visual_safety`,
-`spoken_safety`, `rights`, and `playback_integrity`. The coordinator calls them serially with the same exact
-source identity, local artifact, and half-open span, exposes no peer answer, rejects axis or source drift,
-and persists the validated four-axis aggregate before starting the next span or returning it. Each evaluator
-owns repeat-safe settlement of its exact operation; a retry after proposal persistence fails must return the
-same closed authority-bound result rather than repeat a possibly billed call. An operational error means no
-trustworthy result exists and aborts the aggregate. Reject and hold are durable domain answers; neither is
-retried as though no screen occurred. Screening aggregates live in their own private content-addressed
-repository and replay only when their digest and complete four-axis contract still validate.
-The same repository stores the provider-neutral axis records and opaque raw evidence separately. The
-screening-release authority is content-addressed, explicitly non-authorizing by default, names exactly one
-canonical profile per axis, and locks the aggregate contract. Verification requires production permission,
-an exact profile set, exact source/span/outcome/reason projection, and replayable raw-evidence identity for
-every axis. The current shadow configuration carries no release authority, so adding the repository or
-coordinator cannot silently enable publication.
+The four content screens run on each materialized child only after its final playback derivative exists.
+This sequencing is mandatory: a playback-integrity result over the parent span, the stream-copy cut, or a
+throwaway preflight rendition cannot prove the bytes that will air. One content-addressed child-screening
+record binds the immutable child lineage, source-master identity, evidence-derivative identity, final
+playback-derivative identity, and the parent's exact half-open interval. It contains exactly four independent
+closed outcomes: `visual_safety` (including explicit imagery), `spoken_safety` (including prohibited
+language), `rights`, and `playback_integrity`. Visual and spoken evaluators inspect the complete evidence
+derivative; rights replays acquisition and participation authority; playback integrity inspects the final
+playback derivative plus its conditioning evidence. Each outcome is `pass`, `reject`, or `hold`, names an
+opaque reason code, and binds the SHA-256 of one immutable axis-evidence record. Raw restricted phrases and
+descriptions never enter proposal, catalog, or public admission records.
 
-Automatic publication requires all of the following: a `compilation_break` or explicitly bounded filler
-portion of `programme_with_spots`; exact evidence bytes still match; every published interval has resolved
-boundaries and an allowed filler role; every non-published interval is an explained discard rather than an
-unresolved hold; applicable safety/rights screens permit the interval; and the source family plus signal
-slice is inside a locked certification scope. Otherwise Loomarr retains one concise structure review. A
-human confirmation is still validated against complete coverage and exact source identity.
+Each axis record binds the complete child subject described above, its outcome, and the evaluator's policy,
+certification, implementation, and evidence-contract profile, plus the SHA-256 of its private bounded raw
+ledger or measurement bytes. The axis record publishes only after those raw bytes are durable. A child
+screening coordinator requires exactly one named evaluator for each axis, calls them serially without
+showing one evaluator another's answer, rejects subject or profile drift, and persists the validated
+four-axis aggregate before returning it. Each evaluator owns repeat-safe settlement of its exact operation;
+a retry after a later persistence failure replays the same closed authority-bound result instead of repeating
+a possibly billed call. An operational error means no trustworthy result exists and creates an operational
+hold. Reject and hold are durable domain answers, not retryable absence.
+
+Screening aggregates, provider-neutral axis records, and opaque raw evidence live separately in a private
+content-addressed repository. The immutable screening-release authority is explicitly non-authorizing by
+default, names exactly one canonical profile per axis, and locks the aggregate contract. Terminal admission
+must re-read the aggregate, every axis record, and every raw-evidence identity; verify exact child lineage,
+all three media identities, parent span, outcomes, reasons, and profiles; and require all four passes plus
+explicit production permission. A boolean callback, aggregate-only replay, model self-assertion, pre-split
+screen, or structure certificate cannot release a child. Missing, stale, rejected, held, identity-drifted,
+profile-drifted, or unverifiable evidence keeps it held.
 
 During shadow rollout, the split stage evaluates the same exact proposal through both the compatibility
-gate and the complete-plan gate before the compatibility result can publish anything. One deep shadow
-module writes an immutable decision containing the proposal, source, assessment, and policy identities plus
-the exact confirm, hold, and discard spans from both outcomes. Its content identity makes a retry
-idempotent, and the record survives proposal consumption so a successful legacy publication cannot erase
-the disagreement being measured. Failure to record the shadow decision blocks unattended publication but
-leaves the proposal reviewable. The compatibility outcome remains application authority until a locked
-certificate activates declared source/signal slices; merely recording agreement never activates them.
+gate and the complete-plan materialization gate before the compatibility result can create children. One
+deep shadow module writes an immutable decision containing the proposal, source, assessment, structure
+authority, and policy identities plus the exact materialize, hold, and discard spans from both outcomes. Its
+content identity makes a retry idempotent, and the record survives proposal consumption so successful legacy
+materialization cannot erase the disagreement being measured. Failure to record the shadow decision blocks
+unattended materialization but leaves the proposal reviewable. The compatibility outcome remains application
+authority until a locked structure certificate activates declared source/signal slices; merely recording
+agreement never activates them. Screening identities do not enter this ledger because no child playback
+derivative exists yet. The separate admission shadow ledger compares held-child terminal decisions only
+after all child evidence exists.
 
-Validated children reuse the V66 derivative publisher and are prepared as one replacement generation.
+Structure-validated children reuse the V66 derivative publisher and are prepared as one replacement generation.
 Their playable and evidence derivatives are built from the exact reviewed source intervals, not from an
 older playback rendition. The parent, assessment, observations, and prior complete child generation remain
 intact until every replacement child and durable lineage record validates and the generation switch commits
-atomically. A crash, partial re-split, or derivative failure cannot replace a complete generation with a
-partial one.
+atomically. New children remain held through derivative production, the four screens, enrichment, and
+terminal admission; filesystem visibility is not broadcast permission. A crash, partial re-split,
+derivative failure, or screening failure cannot replace a complete generation with a partial airable one.
 
 Certification is separate from production assessment. Its rights-cleared corpus is split by source family
 and contains declared/chaptered truth, deterministically authored compilations, programme excerpts with
@@ -3351,7 +3356,7 @@ structure, under-splitting, over-splitting, boundary error at predeclared tolera
 timeline coverage, role accuracy, abstention, operational failures, and worst source/signal slices.
 Under-splitting and over-splitting remain separate safety results. No automatic slice may contain an
 observed cross-unit merge, unexplained timeline gap, or published interval with an unresolved role. New
-logic first runs in shadow against the V34/V54 proposals; automatic publication expands only for the exact
+logic first runs in shadow against the V34/V54 proposals; automatic materialization expands only for the exact
 predeclared slices whose locked point estimates and confidence bounds pass. Model training is deferred
 until this measurement identifies a specific residual error class and a rights-cleared training split.
 

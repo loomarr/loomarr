@@ -21,7 +21,7 @@ func TestVerifyAuthorityRequiresExactCertifiedProfilesAndSlices(t *testing.T) {
 		name   string
 		mutate func(*Authority)
 	}{
-		{name: "permission", mutate: func(a *Authority) { a.ProductionAdmissionAllowed = false }},
+		{name: "permission", mutate: func(a *Authority) { a.AutomaticMaterializationAllowed = false }},
 		{name: "model", mutate: func(a *Authority) { a.Assessors[0].Model = "another-model" }},
 		{name: "unit slice", mutate: func(a *Authority) { a.AllowedUnits = []Unit{UnitProgrammeSpots} }},
 		{name: "role slice", mutate: func(a *Authority) { a.AllowedRoles = []Role{RoleCommercial} }},
@@ -62,7 +62,7 @@ func fixtureAuthority(artifact Artifact) Authority {
 		SchemaVersion: AuthoritySchemaVersion, ContractVersion: AuthorityContractVersion,
 		CertificateSHA256: strings.Repeat("f", 64), ReducerVersion: ReducerContractVersion,
 		BoundaryToleranceMS: artifact.BoundaryToleranceMS, AllowedUnits: []Unit{UnitCompilation},
-		AllowedRoles: []Role{RoleCommercial, RolePromo}, ProductionAdmissionAllowed: true,
+		AllowedRoles: []Role{RoleCommercial, RolePromo}, AutomaticMaterializationAllowed: true,
 	}
 	for _, candidate := range artifact.Decision.Candidates {
 		authority.Assessors = append(authority.Assessors, Profile(candidate.Assessor))

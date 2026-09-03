@@ -1,8 +1,6 @@
 package filler
 
 import (
-	"context"
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -17,36 +15,15 @@ func certifiedAutoPolicy() *AutoSplitPolicy {
 	}
 }
 
-type screeningAxisMemoryReader struct {
-	records    map[string]RecordedSegmentScreeningAxisEvidence
-	aggregates map[string]SegmentScreeningEvidence
-}
-
-func (r *screeningAxisMemoryReader) GetSegmentScreeningAxisEvidence(_ context.Context, digest string) (RecordedSegmentScreeningAxisEvidence, error) {
-	recorded, exists := r.records[digest]
-	if !exists {
-		return RecordedSegmentScreeningAxisEvidence{}, fmt.Errorf("screening axis evidence %s is unavailable", digest)
-	}
-	return recorded, nil
-}
-
-func (r *screeningAxisMemoryReader) GetSegmentScreeningEvidence(_ context.Context, digest string) (SegmentScreeningEvidence, error) {
-	evidence, exists := r.aggregates[digest]
-	if !exists {
-		return SegmentScreeningEvidence{}, fmt.Errorf("screening aggregate %s is unavailable", digest)
-	}
-	return evidence, nil
-}
-
-func allowCertifiedStructure(t *testing.T, proposal SplitProposal) *StructureCertificationPolicy {
+func allowCertifiedStructure(t *testing.T) *StructureMaterializationPolicy {
 	t.Helper()
 	authority := fillerstructure.Authority{
 		SchemaVersion: fillerstructure.AuthoritySchemaVersion, ContractVersion: fillerstructure.AuthorityContractVersion,
 		CertificateSHA256: strings.Repeat("f", 64), ReducerVersion: fillerstructure.ReducerContractVersion,
-		BoundaryToleranceMS:        2_000,
-		AllowedUnits:               []fillerstructure.Unit{fillerstructure.UnitCompilation, fillerstructure.UnitProgrammeSpots},
-		AllowedRoles:               []fillerstructure.Role{fillerstructure.RoleCommercial, fillerstructure.RoleProgrammeFragment, fillerstructure.RolePromo},
-		ProductionAdmissionAllowed: true,
+		BoundaryToleranceMS:             2_000,
+		AllowedUnits:                    []fillerstructure.Unit{fillerstructure.UnitCompilation, fillerstructure.UnitProgrammeSpots},
+		AllowedRoles:                    []fillerstructure.Role{fillerstructure.RoleCommercial, fillerstructure.RoleProgrammeFragment, fillerstructure.RolePromo},
+		AutomaticMaterializationAllowed: true,
 	}
 	for _, pair := range [][2]string{{"assessor-a", "family-a"}, {"assessor-b", "family-b"}} {
 		authority.Assessors = append(authority.Assessors, fillerstructure.AssessorProfile{
@@ -56,62 +33,7 @@ func allowCertifiedStructure(t *testing.T, proposal SplitProposal) *StructureCer
 		})
 	}
 	authority.SHA256 = fillerstructure.AuthoritySHA256(authority)
-	reader := &screeningAxisMemoryReader{
-		records: map[string]RecordedSegmentScreeningAxisEvidence{}, aggregates: map[string]SegmentScreeningEvidence{},
-	}
-	profiles := make([]SegmentScreeningAxisProfile, 0, len(segmentScreeningAxisOrder))
-	for _, screening := range proposalScreeningEvidence(proposal) {
-		reader.aggregates[screening.SHA256] = screening
-		for _, recorded := range passingAxisEvidence(t, screening.Source, screening.StartMs, screening.EndMs) {
-			reader.records[recorded.Evidence.SHA256] = recorded
-			if len(profiles) < len(segmentScreeningAxisOrder) {
-				profiles = append(profiles, recorded.Evidence.Profile)
-			}
-		}
-	}
-	release := SegmentScreeningReleaseAuthority{
-		SchemaVersion: SegmentScreeningReleaseSchemaVersion, ContractVersion: SegmentScreeningReleaseContractVersion,
-		CertificateSHA256: strings.Repeat("e", 64), AggregateContractVersion: SegmentScreeningContractVersion,
-		Profiles: profiles, ProductionAdmissionAllowed: true,
-	}
-	release.SHA256 = SegmentScreeningReleaseAuthoritySHA256(release)
-	screening, err := NewSegmentScreeningCertification(release, reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return &StructureCertificationPolicy{Authority: &authority, Screening: screening}
-}
-
-func passingSegmentScreening(t *testing.T, source SplitSourceAsset, startMs, endMs int64) *SegmentScreeningEvidence {
-	t.Helper()
-	records := passingAxisEvidence(t, source, startMs, endMs)
-	results := make([]SegmentScreeningResult, 0, len(records))
-	for _, recorded := range records {
-		results = append(results, recorded.Evidence.Result())
-	}
-	evidence, err := NewSegmentScreeningEvidence(source, startMs, endMs, results, time.Date(2026, time.September, 12, 5, 0, 0, 0, time.UTC))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return &evidence
-}
-
-func proposalScreeningEvidence(proposal SplitProposal) []SegmentScreeningEvidence {
-	seen := map[string]struct{}{}
-	result := append([]SegmentScreeningEvidence(nil), proposal.StructureScreenings...)
-	for _, item := range result {
-		seen[item.SHA256] = struct{}{}
-	}
-	for _, segment := range proposal.Segments {
-		if segment.Screening == nil {
-			continue
-		}
-		if _, exists := seen[segment.Screening.SHA256]; !exists {
-			result = append(result, *segment.Screening)
-			seen[segment.Screening.SHA256] = struct{}{}
-		}
-	}
-	return result
+	return &StructureMaterializationPolicy{Authority: &authority}
 }
 
 func passingStructureDecision(t *testing.T, assessment SourceStructureAssessment) *fillerstructure.Artifact {
@@ -167,58 +89,41 @@ func certifiedStructureProposal(t *testing.T) SplitProposal {
 		{StartMs: 0, EndMs: 30_000, Category: "toys", BoundaryConfidence: 90},
 		{StartMs: 30_000, EndMs: 60_000, Category: "television", BoundaryConfidence: 90},
 	}
-	for index := range segments {
-		segments[index].Screening = passingSegmentScreening(t, assessment.Source, segments[index].StartMs, segments[index].EndMs)
-	}
 	return SplitProposal{
 		Source: assessment.Source, Structure: &assessment,
 		StructureDecision: passingStructureDecision(t, assessment), Segments: segments,
 	}
 }
 
-func TestCertifiedAutoConfirmableRequiresCompleteCertifiedScreenedPlan(t *testing.T) {
+func TestCertifiedStructureMaterializableRequiresCompleteCertifiedPlan(t *testing.T) {
 	proposal := certifiedStructureProposal(t)
-	partition := CertifiedAutoConfirmable(t.Context(), proposal, certifiedAutoPolicy(), allowCertifiedStructure(t, proposal), 10*time.Second)
+	partition := CertifiedStructureMaterializable(proposal, certifiedAutoPolicy(), allowCertifiedStructure(t), 10*time.Second)
 	if partition.Reject != AutoSplitOK || len(partition.Confirm) != 2 || len(partition.Hold) != 0 || len(partition.Discard) != 0 {
 		t.Fatalf("certified partition = %+v", partition)
 	}
 
 	tests := []struct {
 		name   string
-		mutate func(*SplitProposal, *StructureCertificationPolicy)
+		mutate func(*SplitProposal, *StructureMaterializationPolicy)
 		want   AutoSplitReject
 	}{
-		{name: "missing assessment", mutate: func(p *SplitProposal, _ *StructureCertificationPolicy) { p.Structure = nil }, want: RejectStructureMissing},
-		{name: "missing structure decision", mutate: func(p *SplitProposal, _ *StructureCertificationPolicy) { p.StructureDecision = nil }, want: RejectStructureUncertified},
-		{name: "uncertified slice", mutate: func(_ *SplitProposal, c *StructureCertificationPolicy) {
-			c.Authority.ProductionAdmissionAllowed = false
+		{name: "missing assessment", mutate: func(p *SplitProposal, _ *StructureMaterializationPolicy) { p.Structure = nil }, want: RejectStructureMissing},
+		{name: "missing structure decision", mutate: func(p *SplitProposal, _ *StructureMaterializationPolicy) { p.StructureDecision = nil }, want: RejectStructureUncertified},
+		{name: "uncertified slice", mutate: func(_ *SplitProposal, c *StructureMaterializationPolicy) {
+			c.Authority.AutomaticMaterializationAllowed = false
 			c.Authority.SHA256 = fillerstructure.AuthoritySHA256(*c.Authority)
 		}, want: RejectStructureUncertified},
-		{name: "unscreened segment", mutate: func(p *SplitProposal, _ *StructureCertificationPolicy) { p.Segments[0].Screening = nil }, want: RejectSegmentUnscreened},
-		{name: "visual safety rejection", mutate: func(p *SplitProposal, _ *StructureCertificationPolicy) {
-			for index := range p.Segments[0].Screening.Results {
-				if p.Segments[0].Screening.Results[index].Axis == ScreenVisualSafety {
-					p.Segments[0].Screening.Results[index].Outcome = ScreenReject
-					p.Segments[0].Screening.Results[index].ReasonCode = "explicit_visual_content"
-				}
-			}
-			p.Segments[0].Screening.SHA256 = SegmentScreeningEvidenceSHA256(*p.Segments[0].Screening)
-		}, want: RejectSegmentUnscreened},
-		{name: "unverified screening authority", mutate: func(_ *SplitProposal, c *StructureCertificationPolicy) {
-			c.Screening = nil
-		}, want: RejectSegmentUnscreened},
-		{name: "detector span differs and exact span needs screening", mutate: func(p *SplitProposal, _ *StructureCertificationPolicy) { p.Segments[0].EndMs-- }, want: RejectSegmentUnscreened},
-		{name: "duplicate detector span", mutate: func(p *SplitProposal, _ *StructureCertificationPolicy) {
+		{name: "duplicate detector span", mutate: func(p *SplitProposal, _ *StructureMaterializationPolicy) {
 			p.Segments = append(p.Segments, p.Segments[0])
 		}, want: RejectStructureMismatch},
-		{name: "prior partial generation", mutate: func(p *SplitProposal, _ *StructureCertificationPolicy) { p.Spawned = []string{"child"} }, want: RejectStructureMismatch},
+		{name: "prior partial generation", mutate: func(p *SplitProposal, _ *StructureMaterializationPolicy) { p.Spawned = []string{"child"} }, want: RejectStructureMismatch},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			candidate := certifiedStructureProposal(t)
-			certification := allowCertifiedStructure(t, candidate)
+			certification := allowCertifiedStructure(t)
 			test.mutate(&candidate, certification)
-			got := CertifiedAutoConfirmable(t.Context(), candidate, certifiedAutoPolicy(), certification, 10*time.Second)
+			got := CertifiedStructureMaterializable(candidate, certifiedAutoPolicy(), certification, 10*time.Second)
 			if got.Reject != test.want || len(got.Confirm) != 0 {
 				t.Fatalf("partition = %+v, want reject %q", got, test.want)
 			}
@@ -226,28 +131,30 @@ func TestCertifiedAutoConfirmableRequiresCompleteCertifiedScreenedPlan(t *testin
 	}
 }
 
-func TestCertifiedAutoConfirmableDoesNotPartiallyPublishLegacyHolds(t *testing.T) {
+func TestCertifiedStructureMaterializableDoesNotRequirePreChildEnrichment(t *testing.T) {
 	proposal := certifiedStructureProposal(t)
 	proposal.Segments[1].Category = ""
-	partition := CertifiedAutoConfirmable(t.Context(), proposal, certifiedAutoPolicy(), allowCertifiedStructure(t, proposal), 10*time.Second)
-	if partition.Reject != RejectUntagged || len(partition.Confirm) != 0 || len(partition.Hold) != 2 {
-		t.Fatalf("partial legacy result escaped complete-plan gate: %+v", partition)
+	proposal.Segments[1].Audience = ""
+	proposal.Segments[1].SuggestedEra = 1980
+	partition := CertifiedStructureMaterializable(proposal, certifiedAutoPolicy(), allowCertifiedStructure(t), 10*time.Second)
+	if partition.Reject != AutoSplitOK || len(partition.Confirm) != 2 || len(partition.Hold) != 0 {
+		t.Fatalf("child-only metadata blocked materialization: %+v", partition)
 	}
 }
 
-func TestCertifiedAutoConfirmableDoesNotInventLegacyBoundaryConfidence(t *testing.T) {
+func TestCertifiedStructureMaterializableDoesNotInventLegacyBoundaryConfidence(t *testing.T) {
 	proposal := certifiedStructureProposal(t)
 	for index := range proposal.Segments {
 		proposal.Segments[index].BoundaryConfidence = 0
 		proposal.Segments[index].Unsplittable = true
 	}
-	partition := CertifiedAutoConfirmable(t.Context(), proposal, certifiedAutoPolicy(), allowCertifiedStructure(t, proposal), 10*time.Second)
+	partition := CertifiedStructureMaterializable(proposal, certifiedAutoPolicy(), allowCertifiedStructure(t), 10*time.Second)
 	if partition.Reject != AutoSplitOK || len(partition.Confirm) != 2 || len(partition.Hold) != 0 {
 		t.Fatalf("certified decision was converted back into detector confidence: %+v", partition)
 	}
 }
 
-func TestCertifiedAutoConfirmableSeparatesProgrammeDiscardFromFiller(t *testing.T) {
+func TestCertifiedStructureMaterializableSeparatesProgrammeDiscardFromFiller(t *testing.T) {
 	observations := []StructureObservation{
 		structureObservation("chapter-left", ObservationChapterEdge, ObservationProposesBoundary, 20_000, 20_000),
 		structureObservation("chapter-right", ObservationChapterEdge, ObservationProposesBoundary, 50_000, 50_000),
@@ -264,8 +171,7 @@ func TestCertifiedAutoConfirmableSeparatesProgrammeDiscardFromFiller(t *testing.
 		{StartMs: 20_000, EndMs: 50_000, Category: "toys"},
 	}}
 	proposal.StructureDecision = passingStructureDecision(t, assessment)
-	proposal.Segments[0].Screening = passingSegmentScreening(t, assessment.Source, 20_000, 50_000)
-	partition := CertifiedAutoConfirmable(t.Context(), proposal, certifiedAutoPolicy(), allowCertifiedStructure(t, proposal), 10*time.Second)
+	partition := CertifiedStructureMaterializable(proposal, certifiedAutoPolicy(), allowCertifiedStructure(t), 10*time.Second)
 	if partition.Reject != AutoSplitOK || len(partition.Confirm) != 1 || partition.Confirm[0].StartMs != 20_000 || len(partition.Discard) != 2 || len(partition.Hold) != 0 {
 		t.Fatalf("programme/filler partition = %+v", partition)
 	}

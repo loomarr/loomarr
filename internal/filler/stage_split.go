@@ -58,9 +58,6 @@ type SplitStage struct {
 	// structureDecisioner independently assesses the complete retained source once. nil leaves
 	// detector structure in place and makes no provider request.
 	structureDecisioner CompleteTimelineStructureDecisioner
-	// structureScreener closes all four admission axes for exact decided keep spans. nil performs
-	// no screening work and therefore cannot make the certified gate pass.
-	structureScreener ExactSpanScreeningDecisioner
 	// log reports what a grounding pass actually did (§10 V54b). nil is tolerated everywhere.
 	log *slog.Logger
 }
@@ -113,7 +110,7 @@ func (s *SplitStage) WithSegmentVision(v *SegmentVision) *SplitStage {
 }
 
 // WithStructureShadow attaches the durable dual-evaluation module. A recording failure is an
-// error rather than a log-only omission: unattended publication must not erase the disagreement
+// error rather than a log-only omission: unattended materialization must not erase the disagreement
 // evidence by consuming its proposal.
 func (s *SplitStage) WithStructureShadow(observer StructureSplitShadowObserver) *SplitStage {
 	s.structureShadow = observer
@@ -121,15 +118,10 @@ func (s *SplitStage) WithStructureShadow(observer StructureSplitShadowObserver) 
 }
 
 // WithCompleteTimelineStructureAssessment attaches the independently reduced whole-source
-// assessment module. Merely attaching it cannot authorize publication; the certified gate still
-// requires an immutable authority and every exact-span screen.
+// assessment module. Merely attaching it cannot authorize child materialization; the complete-plan
+// gate still requires an immutable structure authority.
 func (s *SplitStage) WithCompleteTimelineStructureAssessment(decisioner CompleteTimelineStructureDecisioner) *SplitStage {
 	s.structureDecisioner = decisioner
-	return s
-}
-
-func (s *SplitStage) WithExactSpanStructureScreening(screener ExactSpanScreeningDecisioner) *SplitStage {
-	s.structureScreener = screener
 	return s
 }
 
@@ -538,17 +530,6 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		}
 		p = &assessed
 	}
-	if s.structureScreener != nil && proposalNeedsStructureScreening(*p) {
-		screened, screenErr := s.splitter.ScreenProposalStructure(ctx, *p, s.structureScreener)
-		if errors.Is(screenErr, ErrProposalGone) {
-			return StageResult{Verdict: VerdictContinue, Note: "already resolved"}, nil
-		}
-		if screenErr != nil {
-			return StageResult{}, screenErr
-		}
-		p = &screened
-	}
-
 	// Deterministic outcomes are curation, not decisions. Persist them before any model work so a
 	// restart and the review UI see the same smaller reel.
 	kept, discarded := discardDeterministic(p.Segments, s.minClipFloor())
@@ -713,10 +694,6 @@ func (s *SplitStage) resumableReviewHashes(ctx context.Context) (map[string]stru
 			continue
 		}
 		if s.structureDecisioner != nil && p.StructureDecision == nil {
-			out[p.ClipHash] = struct{}{}
-			continue
-		}
-		if s.structureScreener != nil && proposalNeedsStructureScreening(p) {
 			out[p.ClipHash] = struct{}{}
 			continue
 		}

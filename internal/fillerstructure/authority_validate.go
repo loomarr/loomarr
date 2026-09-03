@@ -60,7 +60,7 @@ func VerifyAuthority(artifact Artifact, authority Authority) error {
 		return err
 	}
 	decision := artifact.Decision
-	if !authority.ProductionAdmissionAllowed || artifact.ReducerVersion != authority.ReducerVersion ||
+	if !authority.AutomaticMaterializationAllowed || artifact.ReducerVersion != authority.ReducerVersion ||
 		artifact.BoundaryToleranceMS != authority.BoundaryToleranceMS || decision.Status != StatusConfirmed ||
 		!slices.Contains(authority.AllowedUnits, decision.Unit) {
 		return errors.New("filler structure authority: decision is outside certified policy")

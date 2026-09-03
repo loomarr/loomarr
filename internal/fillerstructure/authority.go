@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	AuthoritySchemaVersion   = 1
-	AuthorityContractVersion = "filler-structure-certification-authority-v1"
+	AuthoritySchemaVersion   = 2
+	AuthorityContractVersion = "filler-structure-materialization-authority-v2"
 )
 
 type AssessorProfile struct {
@@ -25,16 +25,16 @@ type AssessorProfile struct {
 // Authority is the immutable release boundary produced from an external certificate. It names
 // only certified stable profiles; source-specific assessment digests remain in each Artifact.
 type Authority struct {
-	SchemaVersion              int               `json:"schemaVersion"`
-	ContractVersion            string            `json:"contractVersion"`
-	CertificateSHA256          string            `json:"certificateSha256"`
-	ReducerVersion             string            `json:"reducerVersion"`
-	BoundaryToleranceMS        int64             `json:"boundaryToleranceMs"`
-	Assessors                  []AssessorProfile `json:"assessors"`
-	AllowedUnits               []Unit            `json:"allowedUnits"`
-	AllowedRoles               []Role            `json:"allowedRoles"`
-	ProductionAdmissionAllowed bool              `json:"productionAdmissionAllowed"`
-	SHA256                     string            `json:"sha256"`
+	SchemaVersion                   int               `json:"schemaVersion"`
+	ContractVersion                 string            `json:"contractVersion"`
+	CertificateSHA256               string            `json:"certificateSha256"`
+	ReducerVersion                  string            `json:"reducerVersion"`
+	BoundaryToleranceMS             int64             `json:"boundaryToleranceMs"`
+	Assessors                       []AssessorProfile `json:"assessors"`
+	AllowedUnits                    []Unit            `json:"allowedUnits"`
+	AllowedRoles                    []Role            `json:"allowedRoles"`
+	AutomaticMaterializationAllowed bool              `json:"automaticMaterializationAllowed"`
+	SHA256                          string            `json:"sha256"`
 }
 
 func Profile(assessor Assessor) AssessorProfile {

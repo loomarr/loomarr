@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-func TestFileStructureScreeningEvidenceRepositoryRoundTripsAndRejectsTampering(t *testing.T) {
-	repository, err := NewFileStructureScreeningEvidenceRepository(filepath.Join(t.TempDir(), "screening-evidence"))
+func TestFileSegmentScreeningEvidenceRepositoryRoundTripsAndRejectsTampering(t *testing.T) {
+	repository, err := NewFileSegmentScreeningEvidenceRepository(filepath.Join(t.TempDir(), "screening-evidence"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,8 +30,8 @@ func TestFileStructureScreeningEvidenceRepositoryRoundTripsAndRejectsTampering(t
 	}
 }
 
-func TestFileStructureScreeningEvidenceRepositoryRejectsInvalidIdentity(t *testing.T) {
-	repository, err := NewFileStructureScreeningEvidenceRepository(filepath.Join(t.TempDir(), "screening-evidence"))
+func TestFileSegmentScreeningEvidenceRepositoryRejectsInvalidIdentity(t *testing.T) {
+	repository, err := NewFileSegmentScreeningEvidenceRepository(filepath.Join(t.TempDir(), "screening-evidence"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,8 +45,8 @@ func TestFileStructureScreeningEvidenceRepositoryRejectsInvalidIdentity(t *testi
 	}
 }
 
-func TestFileStructureScreeningEvidenceRepositoryPublishesAxisRawBytesBeforeRecord(t *testing.T) {
-	repository, err := NewFileStructureScreeningEvidenceRepository(filepath.Join(t.TempDir(), "screening-evidence"))
+func TestFileSegmentScreeningEvidenceRepositoryPublishesAxisRawBytesBeforeRecord(t *testing.T) {
+	repository, err := NewFileSegmentScreeningEvidenceRepository(filepath.Join(t.TempDir(), "screening-evidence"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestFileStructureScreeningEvidenceRepositoryPublishesAxisRawBytesBeforeReco
 		}
 	}
 
-	conflicting, err := NewFileStructureScreeningEvidenceRepository(filepath.Join(t.TempDir(), "screening-evidence"))
+	conflicting, err := NewFileSegmentScreeningEvidenceRepository(filepath.Join(t.TempDir(), "screening-evidence"))
 	if err != nil {
 		t.Fatal(err)
 	}

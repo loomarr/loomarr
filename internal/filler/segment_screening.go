@@ -1,6 +1,7 @@
 package filler
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -14,6 +15,27 @@ const (
 	SegmentScreeningSchemaVersion   = 1
 	SegmentScreeningContractVersion = "filler-segment-screening-v1"
 )
+
+var segmentScreeningAxisOrder = []SegmentScreeningAxis{
+	ScreenVisualSafety,
+	ScreenSpokenSafety,
+	ScreenRights,
+	ScreenPlayback,
+}
+
+func validateSegmentScreeningAxis(axis SegmentScreeningAxis) error {
+	if !slices.Contains(segmentScreeningAxisOrder, axis) {
+		return fmt.Errorf("segment screening axis is invalid")
+	}
+	return nil
+}
+
+// SegmentScreeningEvidenceRepository stores provider-neutral axis evidence and its four-axis
+// aggregate. Concrete evaluators own their private raw-evidence settlement.
+type SegmentScreeningEvidenceRepository interface {
+	PutSegmentScreeningAxisEvidence(context.Context, RecordedSegmentScreeningAxisEvidence) error
+	PutSegmentScreeningEvidence(context.Context, SegmentScreeningEvidence) error
+}
 
 type SegmentScreeningAxis string
 

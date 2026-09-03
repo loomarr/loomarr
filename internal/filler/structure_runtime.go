@@ -28,18 +28,6 @@ type CompleteTimelineStructureDecisioner interface {
 	Assess(context.Context, StructureAssessmentMedia) (fillerstructure.Artifact, error)
 }
 
-type StructureScreeningMedia struct {
-	Source    SplitSourceAsset
-	FullPath  string
-	Intervals []StructurePlanSegment
-}
-
-// ExactSpanScreeningDecisioner owns the four independent screening operations and persists their
-// aggregate evidence before returning. The stage supplies only missing decided keep intervals.
-type ExactSpanScreeningDecisioner interface {
-	Screen(context.Context, StructureScreeningMedia) ([]SegmentScreeningEvidence, error)
-}
-
 // StructureAssessmentEvidenceRepository must durably commit each record and exact response before
 // reduction, then commit the reduced artifact before the runtime returns it.
 type StructureAssessmentEvidenceRepository interface {

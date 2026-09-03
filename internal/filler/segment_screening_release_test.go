@@ -81,9 +81,9 @@ func TestSegmentScreeningCertificationFailsClosedOnReleaseAndEvidenceDrift(t *te
 	})
 }
 
-func screeningCertificationFixture(t *testing.T, source SplitSourceAsset, startMs, endMs int64, production bool) (SegmentScreeningEvidence, *SegmentScreeningCertification, *FileStructureScreeningEvidenceRepository, []RecordedSegmentScreeningAxisEvidence) {
+func screeningCertificationFixture(t *testing.T, source SplitSourceAsset, startMs, endMs int64, production bool) (SegmentScreeningEvidence, *SegmentScreeningCertification, *FileSegmentScreeningEvidenceRepository, []RecordedSegmentScreeningAxisEvidence) {
 	t.Helper()
-	repository, err := NewFileStructureScreeningEvidenceRepository(filepath.Join(t.TempDir(), "evidence"))
+	repository, err := NewFileSegmentScreeningEvidenceRepository(filepath.Join(t.TempDir(), "evidence"))
 	if err != nil {
 		t.Fatal(err)
 	}

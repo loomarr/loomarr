@@ -798,7 +798,6 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 				ParentAssetRole:         string(source.Role),
 				ParentAssetSHA256:       source.SHA256,
 				StructureDecisionSHA256: structureDecisionSHA256ForInterval(p, seg),
-				SegmentScreeningSHA256:  segmentScreeningSHA256ForInterval(p, seg),
 				IntendedStartMs:         seg.StartMs,
 				IntendedEndMs:           seg.EndMs,
 			},

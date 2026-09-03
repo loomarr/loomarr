@@ -32,14 +32,13 @@ type splitProposalDocument struct {
 	Structure         *filler.SourceStructureAssessment `json:"structure,omitempty"`
 	StructureDecision *fillerstructure.Artifact         `json:"structureDecision,omitempty"`
 	RoleEvidence      []filler.StructureRoleEvidence    `json:"roleEvidence,omitempty"`
-	Screenings        []filler.SegmentScreeningEvidence `json:"screenings,omitempty"`
+	// Screenings reads and discards the short-lived V67 pre-child experiment. Screening now binds
+	// rendered child artifacts at terminal admission, never a split proposal.
+	Screenings []filler.SegmentScreeningEvidence `json:"screenings,omitempty"`
 }
 
 func marshalSplitProposal(p filler.SplitProposal) ([]byte, error) {
 	if err := validateSplitProposalRoleEvidence(p); err != nil {
-		return nil, err
-	}
-	if err := validateSplitProposalScreenings(p); err != nil {
 		return nil, err
 	}
 	if err := validateSplitProposalStructureDecision(p); err != nil {
@@ -54,9 +53,9 @@ func marshalSplitProposal(p filler.SplitProposal) ([]byte, error) {
 		}
 	}
 	return json.Marshal(splitProposalDocument{
-		Version: 8, Segments: p.Segments, Detection: p.Detection, Spawned: p.Spawned,
+		Version: 9, Segments: p.Segments, Detection: p.Detection, Spawned: p.Spawned,
 		Source: p.Source, Structure: p.Structure, StructureDecision: p.StructureDecision,
-		RoleEvidence: splitProposalRoleEvidence(p), Screenings: splitProposalScreenings(p),
+		RoleEvidence: splitProposalRoleEvidence(p),
 	})
 }
 
@@ -76,13 +75,7 @@ func unmarshalSplitProposal(raw string, p *filler.SplitProposal) error {
 	if err := attachSplitProposalRoleEvidence(p, doc.RoleEvidence); err != nil {
 		return err
 	}
-	if err := attachSplitProposalScreenings(p, doc.Screenings); err != nil {
-		return err
-	}
 	if err := validateSplitProposalRoleEvidence(*p); err != nil {
-		return err
-	}
-	if err := validateSplitProposalScreenings(*p); err != nil {
 		return err
 	}
 	if err := validateSplitProposalStructureDecision(*p); err != nil {

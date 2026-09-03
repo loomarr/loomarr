@@ -31,7 +31,7 @@ func TestStructureSplitShadowPersistsCompatibilityAndCompletePlanDecisions(t *te
 	proposal.CreatedAt = time.Date(2026, time.September, 3, 13, 0, 0, 0, time.UTC)
 	auto := certifiedAutoPolicy()
 	repository := &structureShadowMemoryRepository{}
-	shadow, err := NewStructureSplitShadow(repository, auto, &StructureCertificationPolicy{}, func() time.Duration { return 10 * time.Second }, "production-shadow-no-certified-slices-v1")
+	shadow, err := NewStructureSplitShadow(repository, auto, &StructureMaterializationPolicy{}, func() time.Duration { return 10 * time.Second }, "production-shadow-no-certified-slices-v1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestStructureSplitShadowPersistsCompatibilityAndCompletePlanDecisions(t *te
 		wantObservedAt = proposal.StructureDecision.DecidedAt
 	}
 	if record.AssessmentSHA256 != proposal.Structure.SHA256 || record.StructureDecisionSHA256 != proposal.StructureDecision.SHA256 || record.SourceSHA256 != proposal.Source.SHA256 ||
-		record.StructureAuthoritySHA256 != "" || record.ScreeningAuthoritySHA256 != "" || len(record.ScreeningSHA256s) != 2 ||
+		record.StructureAuthoritySHA256 != "" ||
 		record.ObservedAt != wantObservedAt || ValidateStructureSplitShadowDecision(record) != nil {
 		t.Fatalf("record = %+v", record)
 	}
@@ -78,7 +78,7 @@ func TestStructureSplitShadowComparesDetectorAndProjectedSpans(t *testing.T) {
 	proposal.Segments[0].EndMs = 28_000
 	proposal.Segments[1].StartMs = 28_000
 	repository := &structureShadowMemoryRepository{}
-	certification := allowCertifiedStructure(t, proposal)
+	certification := allowCertifiedStructure(t)
 	shadow, err := NewStructureSplitShadow(repository, certifiedAutoPolicy(), certification, func() time.Duration { return 10 * time.Second }, "projected-spans-v1")
 	if err != nil {
 		t.Fatal(err)
@@ -89,10 +89,9 @@ func TestStructureSplitShadowComparesDetectorAndProjectedSpans(t *testing.T) {
 	}
 	record := repository.records[0]
 	if len(record.Legacy.Confirm) != 2 || record.Legacy.Confirm[0].EndMs != 28_000 ||
-		len(record.Certified.Hold) != 2 || record.Certified.Hold[0].EndMs != 30_000 ||
-		record.Certified.Verdict != RejectSegmentUnscreened ||
-		record.StructureAuthoritySHA256 != certification.Authority.SHA256 ||
-		record.ScreeningAuthoritySHA256 != certification.Screening.AuthoritySHA256() || len(record.ScreeningSHA256s) != 2 {
+		len(record.Certified.Confirm) != 2 || record.Certified.Confirm[0].EndMs != 30_000 ||
+		record.Certified.Verdict != AutoSplitOK ||
+		record.StructureAuthoritySHA256 != certification.Authority.SHA256 {
 		t.Fatalf("shadow did not retain separate detector and certified coordinates: %+v", record)
 	}
 }
@@ -103,7 +102,7 @@ func TestStructureSplitShadowDetectsUnobservedAndChangedProposals(t *testing.T) 
 	proposal.ClipHash = proposal.Source.ClipHash
 	proposal.CreatedAt = time.Date(2026, time.September, 3, 13, 0, 0, 0, time.UTC)
 	repository := &structureShadowMemoryRepository{}
-	shadow, err := NewStructureSplitShadow(repository, certifiedAutoPolicy(), allowCertifiedStructure(t, proposal), func() time.Duration { return 10 * time.Second }, "candidate-v1")
+	shadow, err := NewStructureSplitShadow(repository, certifiedAutoPolicy(), allowCertifiedStructure(t), func() time.Duration { return 10 * time.Second }, "candidate-v1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +129,7 @@ func TestStructureSplitShadowWholeProposalReasonOverridesStaleSegmentReason(t *t
 	proposal.Segments[0].HoldReason = string(RejectBoundaryUncertain)
 	legacy := AutoConfirmable(proposal, certifiedAutoPolicy(), 10*time.Second)
 	certified := SplitPartition{Reject: RejectStructureUncertified, Hold: proposal.Segments}
-	decision, err := newStructureSplitShadowDecision(proposal, legacy, certified, allowCertifiedStructure(t, proposal), "candidate-v1")
+	decision, err := newStructureSplitShadowDecision(proposal, legacy, certified, allowCertifiedStructure(t), "candidate-v1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +146,7 @@ func TestStructureSplitShadowRejectsIncompleteCompatibilityOutcome(t *testing.T)
 	proposal.ClipHash = proposal.Source.ClipHash
 	proposal.CreatedAt = time.Date(2026, time.September, 3, 13, 0, 0, 0, time.UTC)
 	repository := &structureShadowMemoryRepository{}
-	shadow, err := NewStructureSplitShadow(repository, certifiedAutoPolicy(), allowCertifiedStructure(t, proposal), func() time.Duration { return 10 * time.Second }, "candidate-v1")
+	shadow, err := NewStructureSplitShadow(repository, certifiedAutoPolicy(), allowCertifiedStructure(t), func() time.Duration { return 10 * time.Second }, "candidate-v1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +162,7 @@ func TestValidateStructureSplitShadowDecisionRejectsMutation(t *testing.T) {
 	proposal.ClipHash = proposal.Source.ClipHash
 	proposal.CreatedAt = time.Date(2026, time.September, 3, 13, 0, 0, 0, time.UTC)
 	legacy := AutoConfirmable(proposal, certifiedAutoPolicy(), 10*time.Second)
-	decision, err := newStructureSplitShadowDecision(proposal, legacy, legacy, allowCertifiedStructure(t, proposal), "candidate-v1")
+	decision, err := newStructureSplitShadowDecision(proposal, legacy, legacy, allowCertifiedStructure(t), "candidate-v1")
 	if err != nil {
 		t.Fatal(err)
 	}

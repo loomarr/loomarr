@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	StructureSplitShadowSchemaVersion   = 1
-	StructureSplitShadowContractVersion = "filler-structure-split-shadow-v1"
+	StructureSplitShadowSchemaVersion   = 2
+	StructureSplitShadowContractVersion = "filler-structure-materialization-shadow-v2"
 )
 
 var ErrStructureSplitShadowConflict = errors.New("filler: structure split shadow decision conflicts with its content identity")
@@ -59,8 +59,6 @@ type StructureSplitShadowDecision struct {
 	AssessmentSHA256         string                      `json:"assessmentSha256,omitempty"`
 	StructureDecisionSHA256  string                      `json:"structureDecisionSha256,omitempty"`
 	StructureAuthoritySHA256 string                      `json:"structureAuthoritySha256,omitempty"`
-	ScreeningAuthoritySHA256 string                      `json:"screeningAuthoritySha256,omitempty"`
-	ScreeningSHA256s         []string                    `json:"screeningSha256s,omitempty"`
 	PolicyVersion            string                      `json:"policyVersion"`
 	Legacy                   StructureSplitShadowOutcome `json:"legacy"`
 	Certified                StructureSplitShadowOutcome `json:"certified"`
@@ -72,18 +70,18 @@ type StructureSplitShadowDecision struct {
 type StructureSplitShadow struct {
 	repository      StructureSplitShadowRepository
 	auto            *AutoSplitPolicy
-	certification   *StructureCertificationPolicy
+	materialization *StructureMaterializationPolicy
 	minClipDuration func() time.Duration
 	policyVersion   string
 }
 
-func NewStructureSplitShadow(repository StructureSplitShadowRepository, auto *AutoSplitPolicy, certification *StructureCertificationPolicy, minClipDuration func() time.Duration, policyVersion string) (*StructureSplitShadow, error) {
+func NewStructureSplitShadow(repository StructureSplitShadowRepository, auto *AutoSplitPolicy, materialization *StructureMaterializationPolicy, minClipDuration func() time.Duration, policyVersion string) (*StructureSplitShadow, error) {
 	policyVersion = strings.TrimSpace(policyVersion)
-	if repository == nil || auto == nil || certification == nil || minClipDuration == nil || policyVersion == "" || len(policyVersion) > 128 {
+	if repository == nil || auto == nil || materialization == nil || minClipDuration == nil || policyVersion == "" || len(policyVersion) > 128 {
 		return nil, fmt.Errorf("structure split shadow requires repository, complete policies, clip floor, and bounded policy identity")
 	}
 	return &StructureSplitShadow{
-		repository: repository, auto: auto, certification: certification,
+		repository: repository, auto: auto, materialization: materialization,
 		minClipDuration: minClipDuration, policyVersion: policyVersion,
 	}, nil
 }
@@ -92,8 +90,8 @@ func (s *StructureSplitShadow) ObserveStructureSplit(ctx context.Context, propos
 	if s == nil || s.repository == nil {
 		return fmt.Errorf("structure split shadow is unavailable")
 	}
-	certified := CertifiedAutoConfirmable(ctx, proposal, s.auto, s.certification, s.minClipDuration())
-	decision, err := newStructureSplitShadowDecision(proposal, legacy, certified, s.certification, s.policyVersion)
+	certified := CertifiedStructureMaterializable(proposal, s.auto, s.materialization, s.minClipDuration())
+	decision, err := newStructureSplitShadowDecision(proposal, legacy, certified, s.materialization, s.policyVersion)
 	if err != nil {
 		return err
 	}
@@ -111,8 +109,8 @@ func (s *StructureSplitShadow) NeedsStructureSplitObservation(ctx context.Contex
 		return false, fmt.Errorf("structure split shadow is unavailable")
 	}
 	legacy := AutoConfirmable(proposal, s.auto, s.minClipDuration())
-	certified := CertifiedAutoConfirmable(ctx, proposal, s.auto, s.certification, s.minClipDuration())
-	expected, err := newStructureSplitShadowDecision(proposal, legacy, certified, s.certification, s.policyVersion)
+	certified := CertifiedStructureMaterializable(proposal, s.auto, s.materialization, s.minClipDuration())
+	expected, err := newStructureSplitShadowDecision(proposal, legacy, certified, s.materialization, s.policyVersion)
 	if err != nil {
 		return false, err
 	}
@@ -129,7 +127,7 @@ func (s *StructureSplitShadow) NeedsStructureSplitObservation(ctx context.Contex
 	return false, nil
 }
 
-func newStructureSplitShadowDecision(proposal SplitProposal, legacy, certified SplitPartition, certification *StructureCertificationPolicy, policyVersion string) (StructureSplitShadowDecision, error) {
+func newStructureSplitShadowDecision(proposal SplitProposal, legacy, certified SplitPartition, materialization *StructureMaterializationPolicy, policyVersion string) (StructureSplitShadowDecision, error) {
 	if strings.TrimSpace(proposal.ID) == "" || strings.TrimSpace(proposal.ClipHash) == "" || proposal.CreatedAt.IsZero() || len(proposal.Segments) == 0 {
 		return StructureSplitShadowDecision{}, fmt.Errorf("structure split shadow requires a complete proposal identity and segments")
 	}
@@ -166,19 +164,14 @@ func newStructureSplitShadowDecision(proposal SplitProposal, legacy, certified S
 			observedAt = artifact.DecidedAt
 		}
 	}
-	structureAuthoritySHA, screeningAuthoritySHA := structureCertificationAuthorityIdentities(certification)
-	screeningSHA256s, err := structureScreeningIdentities(proposal)
-	if err != nil {
-		return StructureSplitShadowDecision{}, err
-	}
+	structureAuthoritySHA := structureMaterializationAuthorityIdentity(materialization)
 	decision := StructureSplitShadowDecision{
 		SchemaVersion: StructureSplitShadowSchemaVersion, ContractVersion: StructureSplitShadowContractVersion,
 		ProposalID: proposal.ID, ClipHash: proposal.ClipHash, SourceSHA256: sourceSHA,
 		AssessmentSHA256: assessmentSHA, StructureDecisionSHA256: structureDecisionSHA,
-		StructureAuthoritySHA256: structureAuthoritySHA, ScreeningAuthoritySHA256: screeningAuthoritySHA,
-		ScreeningSHA256s: screeningSHA256s,
-		PolicyVersion:    strings.TrimSpace(policyVersion),
-		Legacy:           legacyOutcome, Certified: certifiedOutcome, ObservedAt: observedAt,
+		StructureAuthoritySHA256: structureAuthoritySHA,
+		PolicyVersion:            strings.TrimSpace(policyVersion),
+		Legacy:                   legacyOutcome, Certified: certifiedOutcome, ObservedAt: observedAt,
 	}
 	decision.SHA256 = StructureSplitShadowDecisionSHA256(decision)
 	decision.ID = "split-shadow-" + decision.SHA256

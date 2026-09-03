@@ -201,7 +201,7 @@ func AutoConfirmable(p SplitProposal, pol *AutoSplitPolicy, minClipDuration time
 
 // SplitPartition is what the gate decided, segment by segment.
 type SplitPartition struct {
-	// Confirm may be cut and filed unattended.
+	// Confirm may be cut into held child work items unattended.
 	Confirm []SplitSegment
 	// Hold stays in the proposal, each carrying the reason it was kept back.
 	Hold []SplitSegment

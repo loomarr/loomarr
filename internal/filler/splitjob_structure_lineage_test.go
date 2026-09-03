@@ -37,21 +37,12 @@ func TestConfirmBindsExactStructureDecisionToPublishedChildren(t *testing.T) {
 	if err := store.UpdateSplitProposal(t.Context(), *proposal); err != nil {
 		t.Fatal(err)
 	}
-	screened, err := splitter.ScreenProposalStructure(t.Context(), *proposal, &capturedExactSpanScreener{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	proposal = &screened
 	spawned, err := splitter.Confirm(t.Context(), proposal.ID, proposal.Segments)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(spawned) != 2 {
 		t.Fatalf("spawned=%v", spawned)
-	}
-	screeningBySpan := make(map[[2]int64]string, len(proposal.StructureScreenings))
-	for _, screening := range proposal.StructureScreenings {
-		screeningBySpan[[2]int64{screening.StartMs, screening.EndMs}] = screening.SHA256
 	}
 	for _, childHash := range spawned {
 		child, found, err := store.GetClip(t.Context(), childHash)
@@ -60,8 +51,7 @@ func TestConfirmBindsExactStructureDecisionToPublishedChildren(t *testing.T) {
 		}
 		tags, ok := filler.ReadSidecarTags(filepath.Join(drop, filepath.FromSlash(child.Path)))
 		lineage := tags.ConditioningLineage
-		if !ok || lineage == nil || lineage.StructureDecisionSHA256 != artifact.SHA256 ||
-			lineage.SegmentScreeningSHA256 != screeningBySpan[[2]int64{lineage.IntendedStartMs, lineage.IntendedEndMs}] {
+		if !ok || lineage == nil || lineage.StructureDecisionSHA256 != artifact.SHA256 {
 			t.Fatalf("child %s lineage=%+v ok=%v", childHash, tags.ConditioningLineage, ok)
 		}
 	}

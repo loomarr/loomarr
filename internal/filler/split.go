@@ -275,9 +275,6 @@ type SplitSegment struct {
 	// reducer consumes it as a segment_role observation and decides whether the span is keepable.
 	// nil means no valid role evidence was produced, even when Looked is true.
 	RoleEvidence *StructureRoleEvidence `json:"-"`
-	// Screening is the exact-span visual safety, spoken safety, rights, and playback-integrity
-	// authority consumed by the certified publication gate. It remains private proposal state.
-	Screening *SegmentScreeningEvidence `json:"-"`
 	// DupOf is the path of an existing catalog clip this segment duplicates
 	// (dHash, measured 25× separation). Propose records the detection fact; the automated split
 	// stage then discards it before classification because it cannot add a new catalog clip.
@@ -355,9 +352,6 @@ type SplitProposal struct {
 	// StructureDecision retains the independent complete-video assessments and their replayable
 	// provider-neutral reduction. It cannot authorize publication by itself.
 	StructureDecision *fillerstructure.Artifact `json:"-"`
-	// StructureScreenings bind the four admission axes to exact decided keep intervals without
-	// rewriting compatibility detector segments during shadow rollout.
-	StructureScreenings []SegmentScreeningEvidence `json:"-"`
 	// Spawned remembers children already produced by partial auto-confirm. It is private durable
 	// state, not review UI: final confirmation needs the whole new generation so it can retire
 	// superseded children without also retiring cuts produced on an earlier pass.

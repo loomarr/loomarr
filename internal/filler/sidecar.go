@@ -219,7 +219,6 @@ type ConditioningLineage struct {
 	ParentAssetRole         string `json:"parentAssetRole,omitempty"`
 	ParentAssetSHA256       string `json:"parentAssetSha256,omitempty"`
 	StructureDecisionSHA256 string `json:"structureDecisionSha256,omitempty"`
-	SegmentScreeningSHA256  string `json:"segmentScreeningSha256,omitempty"`
 	IntendedStartMs         int64  `json:"intendedStartMs"`
 	IntendedEndMs           int64  `json:"intendedEndMs"`
 }
