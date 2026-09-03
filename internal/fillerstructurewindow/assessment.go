@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"slices"
 	"strings"
 	"time"
@@ -55,6 +56,9 @@ type AssessmentInput struct {
 func NewAssessment(input AssessmentInput) (Assessment, error) {
 	state := AssessmentAccepted
 	failure := strings.TrimSpace(input.Failure)
+	if failure != input.Failure {
+		return Assessment{}, errors.New("structure window assessment failure is not canonical")
+	}
 	if failure != "" {
 		state = AssessmentOperationalFailure
 	}

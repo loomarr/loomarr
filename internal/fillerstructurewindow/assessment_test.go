@@ -44,6 +44,18 @@ func TestWindowAssessmentRetainsOperationalFailureWithoutSemanticClaim(t *testin
 	}
 }
 
+func TestWindowAssessmentRejectsNonCanonicalFailure(t *testing.T) {
+	plan, err := NewPlan(sourceFixture(300_000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := assessmentInputFixture(mediaSetForPlan(t, plan), 1, nil)
+	input.Failure = " provider_timeout "
+	if _, err := NewAssessment(input); err == nil {
+		t.Fatal("non-canonical failure was normalized and accepted")
+	}
+}
+
 func TestWindowAssessmentRejectsDriftAndIncompleteAnswers(t *testing.T) {
 	plan, err := NewPlan(sourceFixture(300_000))
 	if err != nil {

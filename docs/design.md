@@ -4767,6 +4767,15 @@ adapter must return either a complete source-bound candidate or an attributable 
 candidate; ordinary provider failures are domain evidence, while an error means the adapter could
 not produce trustworthy evidence and aborts reduction. The coordinator rejects declared-profile or
 source drift before creating the durable artifact.
+The long-reel coordinator preserves those semantics in family-major order. It prepares one complete
+window media set, then calls every window for the first assessor serially, durably commits each
+validated window answer before starting the next, deterministically stitches and commits that family,
+and only then repeats for the next assessor. An assessor receives exactly one path, its source-relative
+window geometry, and the common media-set identity; the interface exposes no peer or earlier-family
+answers. A normal provider failure returns an attributable operational-failure window and still closes
+the family as a held stitch. An error, profile/media/ordinal drift, or failure to persist any answer or
+stitch aborts without reduction. Only persisted, replay-valid family stitches become whole-source
+candidates, and the final decision artifact is persisted before return.
 The conditioned-media identity also binds a content-addressed, path-free lineage document. That
 document names the original source identity, the complete canonical assessment-media profile, the
 exact ffmpeg version and executable digest, and the normalized derivative's digest, byte count, and
