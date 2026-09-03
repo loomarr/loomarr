@@ -88,6 +88,9 @@ func RunOpenRouterTemporalStructure(ctx context.Context, config TemporalStructur
 	if err != nil {
 		return TemporalStructureOpenRouterResult{}, err
 	}
+	if now().UTC().Before(manifest.GeneratedAt) {
+		return TemporalStructureOpenRouterResult{}, fmt.Errorf("OpenRouter structure assessment clock predates the challenge")
+	}
 	selected, aliases, selectionSHA, err := selectTemporalStructureOpenRouterCases(manifest, config.CaseAliases, config.ExpectedCases)
 	if err != nil {
 		return TemporalStructureOpenRouterResult{}, err

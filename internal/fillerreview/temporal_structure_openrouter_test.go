@@ -2,11 +2,13 @@ package fillerreview
 
 import (
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,6 +16,26 @@ import (
 )
 
 const temporalStructureStandaloneResponse = `{"unit":"standalone","unitDecisiveAtMs":[100],"unitReason":"independent opening and close","role":"commercial","roleDecisiveAtMs":[200],"roleReason":"product offer framing","segments":[{"startMs":0,"endMs":10000,"role":"commercial","decisiveAtMs":[200],"reason":"one complete product offer"}]}`
+
+func TestRunOpenRouterTemporalStructureRejectsFutureChallengeBeforeRequest(t *testing.T) {
+	fixture := newTemporalStructureFixture(t)
+	root, _ := fixture.build(t, "future-challenge")
+	manifestPath := filepath.Join(root, "public", "manifest.json")
+	manifest := readStrictTestJSON[TemporalStructureChallengeManifest](t, manifestPath)
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests.Add(1)
+	}))
+	defer server.Close()
+	now := fixture.generatedAt.Add(-time.Second)
+	config := temporalStructureOpenRouterTestConfig(manifestPath, filepath.Join(t.TempDir(), "private"), []string{manifest.Cases[0].Alias}, server, now)
+	if _, err := RunOpenRouterTemporalStructure(t.Context(), config); err == nil || !strings.Contains(err.Error(), "predates the challenge") {
+		t.Fatalf("error = %v", err)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("provider received %d requests", requests.Load())
+	}
+}
 
 func TestRunOpenRouterTemporalStructureBindsOneAtomicVideoAssessment(t *testing.T) {
 	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
