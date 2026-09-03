@@ -9,19 +9,18 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
-	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 )
 
 const (
-	TemporalStructureWindowFamilySchemaVersion   = 1
-	TemporalStructureWindowFamilyContractVersion = "filler-temporal-structure-window-family-result-v1"
+	TemporalStructureWindowFamilySchemaVersion   = 2
+	TemporalStructureWindowFamilyContractVersion = "filler-temporal-structure-window-family-result-v2"
 )
 
 // TemporalStructureWindowFamily is the deliberately small certification seam for one assessor
 // family. Implementations own paid calls, replay, evidence persistence, and source-level stitching.
 type TemporalStructureWindowFamily interface {
 	Profile() fillerstructure.AssessorProfile
-	Assess(context.Context, filler.StructureAssessmentWindowMediaSet) (fillerstructurewindow.StitchResult, error)
+	AssessWithEvidence(context.Context, filler.StructureAssessmentWindowMediaSet) (filler.StructureWindowFamilyEvidence, error)
 }
 
 type TemporalStructureWindowFamilyConfig struct {
@@ -40,14 +39,19 @@ type TemporalStructureWindowFamilyResult struct {
 	Assessor                   fillerstructure.AssessorProfile     `json:"assessor"`
 	CompletedAt                time.Time                           `json:"completedAt"`
 	Cases                      []TemporalStructureWindowFamilyCase `json:"cases"`
+	CallRecords                int                                 `json:"callRecords"`
+	ProviderRequests           int                                 `json:"providerRequests"`
+	ChargedNanoUSD             int64                               `json:"chargedNanoUsd"`
+	AccountedNanoUSD           int64                               `json:"accountedNanoUsd"`
+	UnknownChargeReservations  int                                 `json:"unknownChargeReservations"`
 	TrainingAllowed            bool                                `json:"trainingAllowed"`
 	ProductionAdmissionAllowed bool                                `json:"productionAdmissionAllowed"`
 	SHA256                     string                              `json:"sha256"`
 }
 
 type TemporalStructureWindowFamilyCase struct {
-	Alias  string                             `json:"alias"`
-	Stitch fillerstructurewindow.StitchResult `json:"stitch"`
+	Alias    string                               `json:"alias"`
+	Evidence filler.StructureWindowFamilyEvidence `json:"evidence"`
 }
 
 // RunTemporalStructureWindowFamily evaluates every case in manifest order. It returns no partial
@@ -75,11 +79,12 @@ func RunTemporalStructureWindowFamily(ctx context.Context, config TemporalStruct
 			return TemporalStructureWindowFamilyResult{}, err
 		}
 		prepared := temporalStructureWindowFamilyMedia(root, item)
-		stitched, err := config.Family.Assess(ctx, prepared)
+		evidence, err := config.Family.AssessWithEvidence(ctx, prepared)
 		if err != nil {
 			return TemporalStructureWindowFamilyResult{}, fmt.Errorf("assess window family case %d (%s): %w", index, item.Alias, err)
 		}
-		result.Cases = append(result.Cases, TemporalStructureWindowFamilyCase{Alias: item.Alias, Stitch: stitched})
+		result.Cases = append(result.Cases, TemporalStructureWindowFamilyCase{Alias: item.Alias, Evidence: evidence})
+		accumulateTemporalStructureWindowFamilyAccounting(&result, evidence)
 	}
 	result.CompletedAt = config.Now().UTC()
 	result.SHA256 = temporalStructureWindowFamilySHA256(result)
@@ -87,6 +92,20 @@ func RunTemporalStructureWindowFamily(ctx context.Context, config TemporalStruct
 		return TemporalStructureWindowFamilyResult{}, err
 	}
 	return result, nil
+}
+
+func accumulateTemporalStructureWindowFamilyAccounting(result *TemporalStructureWindowFamilyResult, evidence filler.StructureWindowFamilyEvidence) {
+	for _, record := range evidence.CallRecords {
+		result.CallRecords++
+		result.ChargedNanoUSD += record.ChargedNanoUSD
+		result.AccountedNanoUSD += record.AccountedNanoUSD
+		if record.State != fillerstructure.AssessmentRecordHeldBudget {
+			result.ProviderRequests++
+		}
+		if record.State == fillerstructure.AssessmentRecordUnsettled {
+			result.UnknownChargeReservations++
+		}
+	}
 }
 
 func temporalStructureWindowFamilyMedia(root string, item TemporalStructureWindowSetPublicCase) filler.StructureAssessmentWindowMediaSet {

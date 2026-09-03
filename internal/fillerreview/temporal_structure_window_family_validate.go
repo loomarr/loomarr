@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
-	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 )
 
 // ValidateTemporalStructureWindowFamilyResult verifies the self-contained, truth-blind family
@@ -24,6 +24,7 @@ func ValidateTemporalStructureWindowFamilyResult(result TemporalStructureWindowF
 	}
 	aliases := make(map[string]struct{}, len(result.Cases))
 	mediaSets := make(map[string]struct{}, len(result.Cases))
+	wantAccounting := TemporalStructureWindowFamilyResult{}
 	for index, item := range result.Cases {
 		if len(item.Alias) != len("case-")+24 || !strings.HasPrefix(item.Alias, "case-") || !isLowerHex(item.Alias[len("case-"):]) {
 			return fmt.Errorf("window family case %d has invalid alias", index)
@@ -31,17 +32,24 @@ func ValidateTemporalStructureWindowFamilyResult(result TemporalStructureWindowF
 		if _, duplicate := aliases[item.Alias]; duplicate {
 			return fmt.Errorf("window family result repeats alias %q", item.Alias)
 		}
-		if _, duplicate := mediaSets[item.Stitch.MediaSet.SHA256]; duplicate {
-			return fmt.Errorf("window family result repeats media set %q", item.Stitch.MediaSet.SHA256)
+		stitch := item.Evidence.Stitch
+		if _, duplicate := mediaSets[stitch.MediaSet.SHA256]; duplicate {
+			return fmt.Errorf("window family result repeats media set %q", stitch.MediaSet.SHA256)
 		}
-		if item.Stitch.Assessor != result.Assessor {
+		if stitch.Assessor != result.Assessor {
 			return fmt.Errorf("window family case %d mixes assessor identity", index)
 		}
-		if err := fillerstructurewindow.ValidateStitchResult(item.Stitch); err != nil {
-			return fmt.Errorf("window family case %d stitch: %w", index, err)
+		if err := filler.ValidateStructureWindowFamilyEvidence(item.Evidence); err != nil {
+			return fmt.Errorf("window family case %d evidence: %w", index, err)
 		}
+		accumulateTemporalStructureWindowFamilyAccounting(&wantAccounting, item.Evidence)
 		aliases[item.Alias] = struct{}{}
-		mediaSets[item.Stitch.MediaSet.SHA256] = struct{}{}
+		mediaSets[stitch.MediaSet.SHA256] = struct{}{}
+	}
+	if result.CallRecords != wantAccounting.CallRecords || result.ProviderRequests != wantAccounting.ProviderRequests ||
+		result.ChargedNanoUSD != wantAccounting.ChargedNanoUSD || result.AccountedNanoUSD != wantAccounting.AccountedNanoUSD ||
+		result.UnknownChargeReservations != wantAccounting.UnknownChargeReservations {
+		return errors.New("window family result accounting does not reproduce")
 	}
 	return nil
 }
@@ -56,7 +64,7 @@ func validateTemporalStructureWindowFamilyResultAgainstManifest(result TemporalS
 	}
 	for index, item := range result.Cases {
 		public := manifest.Cases[index]
-		if item.Alias != public.Alias || !reflect.DeepEqual(item.Stitch.MediaSet, public.MediaSet) {
+		if item.Alias != public.Alias || !reflect.DeepEqual(item.Evidence.Stitch.MediaSet, public.MediaSet) {
 			return fmt.Errorf("window family case %d drifted from public window set", index)
 		}
 	}

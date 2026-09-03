@@ -190,10 +190,11 @@ func TestStructureWindowFamilyRuntimePersistsAndReturnsOneReplayableStitch(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	stitch, err := runtime.Assess(t.Context(), prepared)
+	familyEvidence, err := runtime.AssessWithEvidence(t.Context(), prepared)
 	if err != nil {
 		t.Fatal(err)
 	}
+	stitch := familyEvidence.Stitch
 	wantEvents := []string{
 		"call:assessor-a:0", "put:assessor-a:0", "get:assessor-a:0",
 		"call:assessor-a:1", "put:assessor-a:1", "get:assessor-a:1",
@@ -202,8 +203,17 @@ func TestStructureWindowFamilyRuntimePersistsAndReturnsOneReplayableStitch(t *te
 	}
 	if !reflect.DeepEqual(events, wantEvents) || len(evidence.stitches) != 1 ||
 		!reflect.DeepEqual(stitch, evidence.stitches[0]) || fillerstructurewindow.ValidateStitchResult(stitch) != nil ||
-		stitch.Status != fillerstructurewindow.StitchComplete {
-		t.Fatalf("events=%v stitch=%+v evidence=%+v", events, stitch, evidence)
+		stitch.Status != fillerstructurewindow.StitchComplete || ValidateStructureWindowFamilyEvidence(familyEvidence) != nil ||
+		len(familyEvidence.CallRecords) != len(prepared.Windows) || len(familyEvidence.Publications) != len(prepared.Windows) {
+		t.Fatalf("events=%v family=%+v evidence=%+v", events, familyEvidence, evidence)
+	}
+	drifted := familyEvidence
+	drifted.Publications = append([]fillerstructurewindow.CallPublication(nil), familyEvidence.Publications...)
+	drifted.Publications[0].RecordSHA256 = strings.Repeat("f", 64)
+	drifted.Publications[0].SHA256 = fillerstructurewindow.CallPublicationSHA256(drifted.Publications[0])
+	drifted.SHA256 = StructureWindowFamilyEvidenceSHA256(drifted)
+	if err := ValidateStructureWindowFamilyEvidence(drifted); err == nil {
+		t.Fatal("family evidence accepted a publication detached from its call record")
 	}
 }
 

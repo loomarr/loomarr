@@ -51,11 +51,13 @@ func TestRunReportsCompleteSerialWindowFamily(t *testing.T) {
 			config.ReservationNanoUSD != 100_000_000 || config.APIKey != "test-key" || config.OutputPath != "family.json" {
 			t.Fatalf("config=%+v", config)
 		}
-		return commandResult{Cases: 24, Windows: 56, CompleteStitches: 23, HeldStitches: 1,
+		return commandResult{Cases: 24, Windows: 56, ProviderRequests: 56, CompleteStitches: 23, HeldStitches: 1,
+			ChargedNanoUSD: 123_000_000, AccountedNanoUSD: 123_000_000,
 			EstimatedMaximumChargeNanoUSD: 80_000_000, ArtifactFileSHA256: strings.Repeat("a", 64)}, nil
 	}})
 	if code != 0 || !called || stderr.Len() != 0 ||
-		!strings.Contains(stdout.String(), "assessed 24 cases/56 windows serially; complete=23 held=1") ||
+		!strings.Contains(stdout.String(), "assessed 24 cases/56 windows serially in 56 provider requests; complete=23 held=1") ||
+		!strings.Contains(stdout.String(), "charged=123000000 accounted=123000000 nano-USD unknown=0") ||
 		!strings.Contains(stdout.String(), "training=false production=false") {
 		t.Fatalf("code=%d called=%v stdout=%q stderr=%q", code, called, stdout.String(), stderr.String())
 	}

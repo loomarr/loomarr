@@ -3,6 +3,7 @@ package fillerreview
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -26,7 +27,7 @@ func (f *fakeTemporalStructureWindowFamily) Profile() fillerstructure.AssessorPr
 	return f.profile
 }
 
-func (f *fakeTemporalStructureWindowFamily) Assess(_ context.Context, prepared filler.StructureAssessmentWindowMediaSet) (fillerstructurewindow.StitchResult, error) {
+func (f *fakeTemporalStructureWindowFamily) AssessWithEvidence(_ context.Context, prepared filler.StructureAssessmentWindowMediaSet) (filler.StructureWindowFamilyEvidence, error) {
 	f.calls = append(f.calls, prepared.Source.SHA256)
 	paths := make([]string, len(prepared.Windows))
 	for index, window := range prepared.Windows {
@@ -34,28 +35,47 @@ func (f *fakeTemporalStructureWindowFamily) Assess(_ context.Context, prepared f
 	}
 	f.paths = append(f.paths, paths)
 	if f.failAt > 0 && len(f.calls) == f.failAt {
-		return fillerstructurewindow.StitchResult{}, errors.New("fixture family failure")
+		return filler.StructureWindowFamilyEvidence{}, errors.New("fixture family failure")
 	}
 	assessments := make([]fillerstructurewindow.Assessment, 0, len(prepared.Windows))
+	recorded := make([]fillerstructurewindow.RecordedAssessment, 0, len(prepared.Windows))
 	for _, window := range prepared.Windows {
-		assessment, err := fillerstructurewindow.NewAssessment(fillerstructurewindow.AssessmentInput{
+		durationMS := window.Window.MediaEndMS - window.Window.MediaStartMS
+		structured := fmt.Sprintf(`{"segments":[{"endMs":%d,"role":"commercial","decisiveAtMs":[1000],"reason":"fixture offer"}]}`, durationMS)
+		item, err := fillerstructurewindow.NewRecordedAssessment(fillerstructurewindow.CallRecordInput{
 			MediaSet: prepared.Authority, WindowOrdinal: window.Window.Ordinal, Assessor: f.profile,
-			Segments: []fillerstructure.Segment{{
-				StartMS: window.Window.MediaStartMS, EndMS: window.Window.MediaEndMS, Role: fillerstructure.RoleCommercial,
-			}},
+			PromptSHA256:  fillerstructurewindow.DirectVideoPromptSHA256(durationMS),
+			SchemaSHA256:  fillerstructurewindow.DirectVideoSchemaSHA256(durationMS),
+			RequestSHA256: hashBytes([]byte(fmt.Sprintf("%s:%s:%d", prepared.Source.SHA256, f.profile.ID, window.Window.Ordinal))),
+			RawResponse:   []byte("fixture provider response"), StructuredOutput: structured,
+			ResolvedProvider: "openrouter", ResolvedModel: "provider/model", UpstreamProvider: "Fixture Provider",
+			UpstreamProviderSlug: "fixture/provider", GenerationID: fmt.Sprintf("generation-%d", window.Window.Ordinal),
+			Tokens:           fillerstructure.AssessmentTokenUsage{Prompt: 100, Completion: 20, Video: 80},
+			RequestedNanoUSD: 1_000, ReservedNanoUSD: 1_000, ChargedAmountUSD: "0.0000001",
+			ChargedNanoUSD: 100, AccountedNanoUSD: 100, ChargeKnown: true,
+			State:      fillerstructure.AssessmentRecordAccepted,
 			AssessedAt: time.Date(2026, time.September, 13, 1, 0, window.Window.Ordinal, 0, time.UTC),
 		})
 		if err != nil {
-			return fillerstructurewindow.StitchResult{}, err
+			return filler.StructureWindowFamilyEvidence{}, err
 		}
-		assessments = append(assessments, assessment)
+		recorded = append(recorded, item)
+		assessments = append(assessments, item.Assessment)
 	}
-	return fillerstructurewindow.Stitch(prepared.Authority, assessments, 2_000)
+	stitched, err := fillerstructurewindow.Stitch(prepared.Authority, assessments, 2_000)
+	if err != nil {
+		return filler.StructureWindowFamilyEvidence{}, err
+	}
+	return filler.NewStructureWindowFamilyEvidence(recorded, stitched)
 }
 
 func TestRunTemporalStructureWindowFamilyUsesOnlyCompletePublicMediaSets(t *testing.T) {
 	suiteConfig, _ := temporalStructureWindowSuiteFixture(t, filepath.Join(t.TempDir(), "suite"))
 	manifest := readStrictTestJSON[TemporalStructureWindowSetManifest](t, suiteConfig.WindowSetManifestPath)
+	windows := 0
+	for _, item := range manifest.Cases {
+		windows += len(item.Windows)
+	}
 	family := &fakeTemporalStructureWindowFamily{profile: temporalStructureWindowFamilyProfile("family-a")}
 	completedAt := time.Date(2026, time.September, 13, 2, 0, 0, 0, time.UTC)
 	result, err := RunTemporalStructureWindowFamily(t.Context(), TemporalStructureWindowFamilyConfig{
@@ -72,12 +92,14 @@ func TestRunTemporalStructureWindowFamilyUsesOnlyCompletePublicMediaSets(t *test
 	}
 	if result.CompletedAt != completedAt || result.Assessor != family.profile ||
 		len(result.Cases) != TemporalStructureWindowCorpusCases || len(family.calls) != len(result.Cases) ||
+		result.CallRecords != windows || result.ProviderRequests != windows ||
+		result.ChargedNanoUSD != int64(windows*100) || result.AccountedNanoUSD != int64(windows*100) ||
 		result.ProductionAdmissionAllowed || result.TrainingAllowed || !reviewSHA256(result.SHA256) {
-		t.Fatalf("result=%+v calls=%d", result, len(family.calls))
+		t.Fatalf("cases=%d records=%d requests=%d charged=%d accounted=%d calls=%d", len(result.Cases), result.CallRecords, result.ProviderRequests, result.ChargedNanoUSD, result.AccountedNanoUSD, len(family.calls))
 	}
 	for index, item := range result.Cases {
-		if item.Alias != manifest.Cases[index].Alias || item.Stitch.MediaSet.SHA256 != manifest.Cases[index].MediaSet.SHA256 ||
-			item.Stitch.Assessor != family.profile || fillerstructurewindow.ValidateStitchResult(item.Stitch) != nil ||
+		if item.Alias != manifest.Cases[index].Alias || item.Evidence.Stitch.MediaSet.SHA256 != manifest.Cases[index].MediaSet.SHA256 ||
+			item.Evidence.Stitch.Assessor != family.profile || filler.ValidateStructureWindowFamilyEvidence(item.Evidence) != nil ||
 			family.calls[index] != manifest.Cases[index].Source.SHA256 {
 			t.Fatalf("case %d=%+v call=%s", index, item, family.calls[index])
 		}
@@ -144,9 +166,12 @@ func TestValidateTemporalStructureWindowFamilyResultRejectsDrift(t *testing.T) {
 		},
 		"alias": func(value *TemporalStructureWindowFamilyResult) { value.Cases[0].Alias = value.Cases[1].Alias },
 		"assessor": func(value *TemporalStructureWindowFamilyResult) {
-			value.Cases[0].Stitch.Assessor = temporalStructureWindowFamilyProfile("family-b")
+			value.Cases[0].Evidence.Stitch.Assessor = temporalStructureWindowFamilyProfile("family-b")
 		},
 		"training": func(value *TemporalStructureWindowFamilyResult) { value.TrainingAllowed = true },
+		"accounting": func(value *TemporalStructureWindowFamilyResult) {
+			value.AccountedNanoUSD++
+		},
 	}
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {

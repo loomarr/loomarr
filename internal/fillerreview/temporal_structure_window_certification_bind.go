@@ -29,12 +29,12 @@ func bindTemporalStructureWindowCertificationCases(manifest TemporalStructureWin
 			return nil, fmt.Errorf("window certification private case %q is reused", private.ID)
 		}
 		if first.Cases[index].Alias != public.Alias || second.Cases[index].Alias != public.Alias ||
-			!reflect.DeepEqual(first.Cases[index].Stitch.MediaSet, public.MediaSet) ||
-			!reflect.DeepEqual(second.Cases[index].Stitch.MediaSet, public.MediaSet) {
+			!reflect.DeepEqual(first.Cases[index].Evidence.Stitch.MediaSet, public.MediaSet) ||
+			!reflect.DeepEqual(second.Cases[index].Evidence.Stitch.MediaSet, public.MediaSet) {
 			return nil, fmt.Errorf("window certification family case %d drifted from public input", index)
 		}
 		results = append(results, fillerstructurewindowcert.CaseResult{
-			CaseID: private.ID, Stitches: []fillerstructurewindow.StitchResult{first.Cases[index].Stitch, second.Cases[index].Stitch},
+			CaseID: private.ID, Stitches: []fillerstructurewindow.StitchResult{first.Cases[index].Evidence.Stitch, second.Cases[index].Evidence.Stitch},
 		})
 		seenSuiteCases[private.ID] = struct{}{}
 	}

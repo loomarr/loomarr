@@ -44,6 +44,10 @@ type commandResult struct {
 	Windows                       int
 	CompleteStitches              int
 	HeldStitches                  int
+	ProviderRequests              int
+	ChargedNanoUSD                int64
+	AccountedNanoUSD              int64
+	UnknownChargeReservations     int
 	EstimatedMaximumChargeNanoUSD int64
 	ArtifactFileSHA256            string
 }
@@ -99,8 +103,9 @@ func run(args []string, stdout, stderr io.Writer, capability capabilities) int {
 		_, _ = fmt.Fprintln(stderr, "filler-temporal-structure-window-assess-openrouter:", err)
 		return 1
 	}
-	_, _ = fmt.Fprintf(stdout, "filler-temporal-structure-window-assess-openrouter: assessed %d cases/%d windows serially; complete=%d held=%d; per-request snapshot price bound=%d nano-USD; training=false production=false; sha256 %s; %s\n",
-		result.Cases, result.Windows, result.CompleteStitches, result.HeldStitches,
+	_, _ = fmt.Fprintf(stdout, "filler-temporal-structure-window-assess-openrouter: assessed %d cases/%d windows serially in %d provider requests; complete=%d held=%d; charged=%d accounted=%d nano-USD unknown=%d; per-request snapshot price bound=%d nano-USD; training=false production=false; sha256 %s; %s\n",
+		result.Cases, result.Windows, result.ProviderRequests, result.CompleteStitches, result.HeldStitches,
+		result.ChargedNanoUSD, result.AccountedNanoUSD, result.UnknownChargeReservations,
 		result.EstimatedMaximumChargeNanoUSD, result.ArtifactFileSHA256, config.OutputPath)
 	return 0
 }
@@ -178,10 +183,12 @@ func execute(ctx context.Context, config commandConfig) (commandResult, error) {
 	}
 	summary := commandResult{
 		Cases: len(result.Cases), Windows: windows,
+		ProviderRequests: result.ProviderRequests, ChargedNanoUSD: result.ChargedNanoUSD,
+		AccountedNanoUSD: result.AccountedNanoUSD, UnknownChargeReservations: result.UnknownChargeReservations,
 		EstimatedMaximumChargeNanoUSD: family.EstimatedMaximumChargeNanoUSD, ArtifactFileSHA256: fileSHA,
 	}
 	for _, item := range result.Cases {
-		switch item.Stitch.Status {
+		switch item.Evidence.Stitch.Status {
 		case fillerstructurewindow.StitchComplete:
 			summary.CompleteStitches++
 		case fillerstructurewindow.StitchHeld:

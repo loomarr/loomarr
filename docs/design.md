@@ -4783,7 +4783,10 @@ manifest. The runner receives only opaque aliases, exact public source and media
 machine-local window paths; it cannot open case identifiers, construction truth, measured slice
 labels, or another family's answers. It evaluates cases and windows serially through the same
 production family runtime, returns no partial result after an error, and retains one replay-valid
-stitch per alias plus the exact assessor profile, manifest digest, completion time, and self-digest.
+stitch per alias plus every ordered call record and completed-operation publication that produced
+it. The result reproduces provider-request count, known charge, conservative accounted spend, and
+unknown-charge reservations and binds them with the exact assessor profile, manifest digest,
+completion time, and self-digest.
 Publication reopens the complete public manifest and creates the private result file immutably. The
 private certification join starts only after both complete family artifacts exist, attaches case
 identifiers by exact media-set identity from the suite, and binds its wrapper digest to the public
