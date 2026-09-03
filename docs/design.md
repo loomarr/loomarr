@@ -125,7 +125,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `filleradmission` | 8 | — |
 | `fillereval` | 5 | — |
 | `fillersafety` | 5 | `mediatools`, `openroutermedia` |
-| `fillerstructure` | 7 | — |
+| `fillerstructure` | 8 | — |
 | `httpx` | 10 | `metrics` |
 | `invitation` | 6 | `contact` |
 | `library` | 8 | `filler`, `httpx`, `metrics` |
@@ -164,7 +164,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
 - **`fillereval`** · 5 importers
   Owns the hermetic certification contract for filler admission.
-- **`fillerstructure`** · 7 importers
+- **`fillerstructure`** · 8 importers
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
 - **`images/rustgen`** · 4 importers
   Concrete adapter for Loomarr's required Rust image worker (§22).
@@ -254,7 +254,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`fillersafetycert`** · 2 importers · → `fillersafety`
   Owns deterministic, non-authorizing certification of the durable spoken-safety cascade.
-- **`fillerstructurewindow`** · 3 importers · → `fillerstructure`, `fillerstructuremedia`
+- **`fillerstructurewindow`** · 4 importers · → `fillerstructure`, `fillerstructuremedia`
   Owns the complete-coverage plan used to assess long filler reels without pretending that independently processed windows are independent model votes.
 
 **Layer 7**
@@ -263,6 +263,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 - **`fillersafetycorpus`** · 1 importer · → `fillercorpus`, `fillersafety`, `fillersafetycert`
   Prepares private real-speech cohorts for later spoken-safety authority assembly without assigning certification truth.
+- **`fillerstructurewindowcert`** · → `fillerstructure`, `fillerstructurewindow`
+  Certifies the long-reel window protocol against private, known-truth timelines.
 
 **Layer 8**
 
@@ -4753,6 +4755,25 @@ inserted spots in either the early or late position. Every assessor must have ze
 failures, under-splits, over-splits, incomplete timelines, wrong segment roles, or structural
 boundary misses beyond 2,000 ms, both globally and in every slice. A passing report still grants no
 training or production-admission permission; its only next action is the locked shadow comparison.
+
+Long-reel certification is a separate content-addressed authority over the window protocol rather
+than an extrapolation from that complete-video report. Its private suite binds every case to one real,
+replay-valid window media set, a complete known-truth source timeline, and the complete set of derived
+seam traits. Non-geometric traits such as a wordless join or high-motion window additionally name an
+independent measured-evidence digest; a coordinator declaration alone does not prove them. The suite
+must contain at least six cases in each predeclared slice: a boundary in shared overlap, immediately
+left and immediately right of primary ownership seams, an adjacent same-role join, one unit crossing
+a seam, a programme/filler join, a wordless join, a high-motion window, and a window at or above 75%
+of the protocol byte ceiling. Exactly two locked, distinct assessor families supply complete persisted
+stitches for every case. The certification judge replays each stitch, scores each family independently
+against private truth, then feeds the same two source-level candidates through `fillerstructure.Reduce`
+and scores that confirmed decision too. Any missing case or stitch, held family, operational failure,
+under-split, over-split, wrong role, incomplete coverage, or boundary error beyond 2,000 ms fails the
+affected slice and the whole certificate. The immutable report names the suite, assessor profiles,
+slice counts, errors, and reducer contract. It always sets training and automatic-materialization
+permission false: a pass is evidence from which a separate window-specific materialization authority
+may later be issued after the locked short-versus-long shadow comparison.
+
 The agreement policy itself is one provider-neutral production-domain module, not a scorer-owned
 copy: both the challenge adapter and the eventual production runtime supply source-bound immutable
 candidate assessments to the same pure reducer. Challenge aliases, private truth, provider clients,
