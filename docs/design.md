@@ -4470,17 +4470,21 @@ accounts for more than half the disputes, stops the development run for contract
 being hidden behind adjudication. This diagnostic artifact is non-certifying and does not replace the
 complete label or holdout contracts above.
 
-The next temporal-structure gate is a private, mechanically constructed 36-case holdout; it does
+The current temporal-structure gate is a private, mechanically constructed 60-case holdout; it does
 not require another full blind human viewing pass. Its planner strictly decodes and hashes the exact
 48-case selection, evidence manifest and private map, locked human assessment and attestation,
 full-decode media-quality report, two-family broadcast-suitability comparison, duplicate-family
 audit, and programme-parent inventory. It selects 12 quality-eligible, non-prohibited standalone
 anchors with two bumpers, three commercials, two promos, two PSAs, and three trailers. Every anchor
-has distinct source bytes and duplicate-family identity. The same anchors construct 12 two-item
-compilations with four actual joins in each of the first 40%, middle 20%, and final 40% of playback;
-the four pairs within a band are source-disjoint. Six distinct, provenance-bound programme parents
-each supply one 30-second near-start excerpt and one 45-second near-end excerpt, with at least five
-seconds of surrounding programme retained outside each cut.
+has distinct source bytes and duplicate-family identity. The cases comprise those 12 standalone
+units, 12 two-item compilations, 12 three-item compilations, 12 programme excerpts, and 12 programme
+excerpts with one inserted filler unit. The two-item set has four actual joins in each of the first
+40%, middle 20%, and final 40% of playback; the four pairs within a band are source-disjoint. Every
+anchor appears exactly three times across the three-item set: six cases contain an adjacent
+same-role join and six contain only mixed-role joins. Six distinct, provenance-bound programme
+parents each supply one 30-second near-start excerpt, one 45-second near-end excerpt, one early
+inserted spot, and one late inserted spot, with at least five seconds of surrounding programme
+retained outside each plain excerpt. Every anchor appears exactly once as an inserted spot.
 
 The planner emits only coordinator-private construction authoring and a receipt binding all input
 and output digests, deterministic seed ranks, selected families, role quotas, compilation pairs and
@@ -4493,6 +4497,16 @@ authority. Coverage-only suitability holds may remain as evaluation material;
 prohibited and operational holds cannot be selected. The constructed truth can test unit boundaries
 without a second blind full-corpus review, but it cannot establish broadcast suitability, enter
 training data, or authorize production admission. Both permissions remain explicitly false.
+
+The immutable structure-certification report reproduces the comparison from at least two locked,
+distinct model-family assessment sets and binds its digest to the exact public manifest, private
+construction authority, holdout authoring, and source-family receipt. Certification requires all 60
+cases and at least six cases from each predeclared difficult slice: two-item compilations, three-item
+compilations, adjacent same-role joins, mixed-role joins, programme cuts near either parent edge, and
+inserted spots in either the early or late position. Every assessor must have zero operational
+failures, under-splits, over-splits, incomplete timelines, wrong segment roles, or structural
+boundary misses beyond 2,000 ms, both globally and in every slice. A passing report still grants no
+training or production-admission permission; its only next action is the locked shadow comparison.
 
 Suitability screening is repeated over every freshly rendered structure case because concatenation
 and excerpt construction create new viewing contexts. A prohibited signal in any derivative is a
