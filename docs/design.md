@@ -121,22 +121,24 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `catalog` | 6 | `library`, `provision` |
 | `contact` | 5 | — |
 | `diagnostics` | 8 | — |
-| `filler` | 8 | `diagnostics`, `filleradmission`, `llm`, `mediatools`, `taxonomy` |
+| `filler` | 9 | `diagnostics`, `filleradmission`, `fillerstructure`, `llm`, `mediatools`, `taxonomy` |
 | `filleradmission` | 8 | — |
 | `fillereval` | 5 | — |
-| `fillersafety` | 5 | `mediatools` |
+| `fillersafety` | 5 | `mediatools`, `openroutermedia` |
+| `fillerstructure` | 7 | — |
 | `httpx` | 10 | `metrics` |
 | `invitation` | 6 | `contact` |
 | `library` | 8 | `filler`, `httpx`, `metrics` |
 | `llm` | 6 | `httpx`, `metrics` |
-| `mediatools` | 6 | `diagnostics` |
+| `mediatools` | 7 | `diagnostics` |
 | `metrics` | 8 | `provision` |
 | `notifications` | 5 | `httpx` |
+| `openroutermedia` | 5 | `fillereval` |
 | `provision` | 17 | — |
 | `recovery` | 5 | — |
 | `schedule` | 15 | `provision` |
 | `scheduler` | 6 | `store` |
-| `store` | 14 | `contact`, `diagnostics`, `filler`, `filleradmission`, `fillersafety`, `invitation`, `notifications`, `provision`, `recovery`, `schedule`, `taxonomy` |
+| `store` | 14 | `contact`, `diagnostics`, `filler`, `filleradmission`, `fillersafety`, `fillerstructure`, `invitation`, `notifications`, `provision`, `recovery`, `schedule`, `taxonomy` |
 | `suggest` | 6 | `catalog`, `llm`, `provision`, `schedule`, `store` |
 | `taxonomy` | 5 | — |
 
@@ -162,7 +164,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
 - **`fillereval`** · 5 importers
   Owns the hermetic certification contract for filler admission.
-- **`fillerstructure`** · 4 importers
+- **`fillerstructure`** · 7 importers
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
 - **`images/rustgen`** · 4 importers
   Concrete adapter for Loomarr's required Rust image worker (§22).
@@ -205,7 +207,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns administrator admission decisions and their bearer grants (§11).
 - **`metrics`** · 8 importers · → `images/rustgen`, `provision`
   Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
-- **`openroutermedia`** · 4 importers · → `fillereval`
+- **`openroutermedia`** · 5 importers · → `fillereval`
   Owns Loomarr's bounded OpenRouter structured-media transport.
 - **`prepared`** · 3 importers · → `diagnostics`, `media`
   Owns immutable, reusable playout publications.
@@ -234,36 +236,52 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 4**
 
-- **`mediatools`** · 6 importers · → `diagnostics`, `playout`, `proctree`
+- **`mediatools`** · 7 importers · → `diagnostics`, `playout`, `proctree`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`recommend`** · → `llm`
   Defines inert Channel Concepts and the hermetic evaluator used to certify channel-recommendation models.
 
 **Layer 5**
 
-- **`filler`** · 8 importers · → `diagnostics`, `filleradmission`, `fillerdecision`, `fillerstructure`, `llm`, `mediatools`, `taxonomy`
-  Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 - **`fillerreference`** · → `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `mediatools`, `taxonomy`
   Owns the deterministic pre-screen for the production-ready filler reference cohort.
 - **`fillersafety`** · 5 importers · → `mediatools`, `openroutermedia`, `proctree`
   Owns the fail-closed spoken-safety cascade and its shadow evidence.
+- **`fillerstructuremedia`** · 4 importers · → `fillerstructure`, `mediatools`
+  Owns the exact media contract shared by complete-timeline structure qualification and production assessment.
 
 **Layer 6**
 
-- **`clipfetch`** · 1 importer · → `filler`, `proctree`
-  Downloads filler clips into the drop-folder (design §10, §16).
-- **`fillerreview`** · → `filler`, `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `fillersafety`, `fillerstructure`, `httpx`, `mediatools`, `openroutermedia`
-  Materializes identity-blind evidence for independent semantic review.
 - **`fillersafetycert`** · 2 importers · → `fillersafety`
   Owns deterministic, non-authorizing certification of the durable spoken-safety cascade.
-- **`fillerstructureopenrouter`** · → `filler`, `fillerstructure`, `openroutermedia`
-  Adapts the bounded OpenRouter media transport to the provider-neutral complete-timeline assessor port.
-- **`library`** · 8 importers · → `episodeevidence`, `filler`, `httpx`, `metrics`
-  Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `fillersafety`, `fillerstructure`, `invitation`, `notifications`, `provision`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
-  Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
+- **`fillerstructurewindow`** · 3 importers · → `fillerstructure`, `fillerstructuremedia`
+  Owns the complete-coverage plan used to assess long filler reels without pretending that independently processed windows are independent model votes.
 
 **Layer 7**
+
+- **`filler`** · 9 importers · → `diagnostics`, `filleradmission`, `fillerdecision`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `llm`, `mediatools`, `taxonomy`
+  Commercials & filler domain (design §10): the clip catalog model and pod assembly.
+- **`fillersafetycorpus`** · 1 importer · → `fillercorpus`, `fillersafety`, `fillersafetycert`
+  Prepares private real-speech cohorts for later spoken-safety authority assembly without assigning certification truth.
+
+**Layer 8**
+
+- **`clipfetch`** · 1 importer · → `filler`, `proctree`
+  Downloads filler clips into the drop-folder (design §10, §16).
+- **`fillerreview`** · → `filler`, `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `httpx`, `mediatools`, `openroutermedia`
+  Materializes identity-blind evidence for independent semantic review.
+- **`fillersafetyreview`** · → `fillerbakeoff`, `fillereval`, `fillersafety`, `fillersafetycert`, `fillersafetycorpus`, `httpx`, `mediatools`, `openroutermedia`
+  Runs one independent, exhaustive model review of an assembled spoken-safety certification draft.
+- **`fillerstructureopenrouter`** · → `filler`, `fillerstructure`, `fillerstructuremedia`, `openroutermedia`
+  Adapts the bounded OpenRouter media transport to the provider-neutral complete-timeline assessor port.
+- **`fillerstructurewindowopenrouter`** · → `filler`, `fillerstructure`, `fillerstructurewindow`, `openroutermedia`
+  Adapts the bounded OpenRouter media transport to one complete planned-window assessment call.
+- **`library`** · 8 importers · → `episodeevidence`, `filler`, `httpx`, `metrics`
+  Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
+- **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `invitation`, `notifications`, `provision`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
+  Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
+
+**Layer 9**
 
 - **`activity`** · 3 importers · → `store`
   Records what Loomarr did, for the Dashboard's Recent activity feed (§5, §12, V32).
@@ -273,8 +291,6 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
 - **`catalog`** · 6 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
-- **`fillersafetycorpus`** · 1 importer · → `fillercorpus`, `fillersafety`, `fillersafetycert`
-  Prepares private real-speech cohorts for later spoken-safety authority assembly without assigning certification truth.
 - **`scheduler`** · 6 importers · → `store`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 - **`settings`** · 1 importer · → `library`
@@ -286,14 +302,12 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 - **`testkit/libraryfixture`** · → `library`, `schedule`
   No-network adapters for library-facing tests.
 
-**Layer 8**
+**Layer 10**
 
 - **`channels`** · 2 importers · → `filler`, `programmer`, `provision`, `schedule`, `scheduler`, `store`
   Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
 - **`devbootstrap`** · → `auth`, `store`
   Prepares an isolated agent worktree for UI development.
-- **`fillersafetyreview`** · → `fillerbakeoff`, `fillereval`, `fillersafety`, `fillersafetycert`, `fillersafetycorpus`, `httpx`, `mediatools`, `openroutermedia`
-  Runs one independent, exhaustive model review of an assembled spoken-safety certification draft.
 - **`images`** · 2 importers · → `images/rustgen`, `scheduler`
   One pipeline every image in Loomarr travels (§22).
 - **`reconcile`** · 1 importer · → `activity`, `library`, `provision`, `requester`, `schedule`, `scheduler`, `store`
@@ -307,7 +321,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 - **`tmdb`** · 2 importers · → `catalog`, `httpx`, `metrics`, `provision`
   TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.
 
-**Layer 9**
+**Layer 11**
 
 - **`binder`** · 2 importers · → `provision`, `schedule`, `store`, `suggest`
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
@@ -318,12 +332,12 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 - **`recurate`** · 1 importer · → `catalog`, `provision`, `schedule`, `scheduler`, `store`, `suggest`
   Scheduled channel re-curation (programming-design §8.2): a self-updating channel that periodically re-evaluates its intent against the current library and evolves its lineup — preferring in-library matches, weighting net-new acquisitions by quality + intent, and NEVER bypassing the approval gate.
 
-**Layer 10**
+**Layer 12**
 
 - **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `images`, `invitation`, `media`, `metrics`, `notifications`, `playout`, `prepared`, `proposalworkflow`, `provision`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
-**Layer 11**
+**Layer 13**
 
 - **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `httpx`, `images`, `images/rustgen`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recovery`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.

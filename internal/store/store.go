@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillersafety"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -579,6 +580,10 @@ type FillerStructureAssessmentStore interface {
 	SettleStructureAssessment(context.Context, fillerstructure.AssessmentRecord) error
 	GetStructureAssessmentLedgerEntry(context.Context, string) (fillerstructure.AssessmentLedgerEntry, error)
 	ListOpenStructureAssessmentLedgerEntries(context.Context, int) ([]fillerstructure.AssessmentLedgerEntry, error)
+	ReserveStructureWindowCall(context.Context, fillerstructurewindow.CallReservation, InferenceBudget) (fillerstructurewindow.CallReservationState, error)
+	SettleStructureWindowCall(context.Context, fillerstructurewindow.CallRecord) error
+	GetStructureWindowCallLedgerEntry(context.Context, string) (fillerstructurewindow.CallLedgerEntry, error)
+	ListOpenStructureWindowCallLedgerEntries(context.Context, int) ([]fillerstructurewindow.CallLedgerEntry, error)
 }
 
 // FillerDecisionStore owns immutable V63 admission results and append-only
