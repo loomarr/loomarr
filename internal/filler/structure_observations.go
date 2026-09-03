@@ -81,7 +81,7 @@ func fuseStructureBoundaries(observations []StructureObservation, durationMs int
 	for i := range candidates {
 		c := &candidates[i]
 		c.AtMs = (c.WindowStartMs + c.WindowEndMs) / 2
-		hasChapter, hasBlack, hasSilence := false, false, false
+		hasChapter, hasBlack, hasSilence, hasCompleteDecision := false, false, false, false
 		for _, id := range c.ObservationIDs {
 			switch byID[id].Kind {
 			case ObservationChapterEdge:
@@ -91,6 +91,8 @@ func fuseStructureBoundaries(observations []StructureObservation, durationMs int
 				hasBlack = true
 			case ObservationSilenceInterval:
 				hasSilence = true
+			case ObservationCompleteTimelineDecision:
+				hasCompleteDecision = true
 			}
 		}
 		for _, o := range observations {
@@ -103,7 +105,7 @@ func fuseStructureBoundaries(observations []StructureObservation, durationMs int
 		switch {
 		case len(c.ConflictIDs) > 0:
 			c.Status = BoundaryConflicted
-		case hasChapter || hasBlack && hasSilence:
+		case hasCompleteDecision || hasChapter || hasBlack && hasSilence:
 			c.Status = BoundaryResolved
 		default:
 			c.Status = BoundaryUnresolved
@@ -119,7 +121,7 @@ func windowsOverlap(aStart, aEnd, bStart, bEnd int64) bool {
 
 func validStructureObservationKind(kind StructureObservationKind) bool {
 	switch kind {
-	case ObservationChapterEdge, ObservationBlackInterval, ObservationSilenceInterval, ObservationTranscriptChange, ObservationOCRLogoChange, ObservationAudioContinuity, ObservationVisualContinuity, ObservationSceneChange, ObservationStandardDuration, ObservationSegmentRole:
+	case ObservationChapterEdge, ObservationBlackInterval, ObservationSilenceInterval, ObservationTranscriptChange, ObservationOCRLogoChange, ObservationAudioContinuity, ObservationVisualContinuity, ObservationSceneChange, ObservationStandardDuration, ObservationSegmentRole, ObservationCompleteTimelineDecision:
 		return true
 	default:
 		return false

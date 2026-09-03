@@ -4614,6 +4614,21 @@ its evidence-repository seam before projecting a reducer candidate. A missing re
 transport failure remains explicit; an unsettled, budget-held, over-reservation, route-drifted, or
 invalid-response record becomes attributable operational-hold evidence. Persistence failure aborts
 the reduction, so a paid call can never influence a split from memory alone.
+Only one confirmed artifact may project model-decided spans into V67. The projection validates and
+replays the artifact, binds it to the proposal's exact source, and constructs the V67 assessment
+from the artifact's exhaustive ordered intervals. Previous
+chapter, black, silence, transcript, and sparse-frame observations remain content-addressed context;
+their boundary effects are neutralized in the projected assessment so they cannot impersonate a
+third assessor, add an interval, or override the certified reducer. The detector-authored proposal
+remains intact for compatibility comparison; a later certified split projection joins metadata only
+onto exact decided spans and does not carry stale detector failure or hold decisions. Programme and
+non-filler intervals remain explicit discards and never enter the child-confirm list.
+
+The certified gate does not translate complete-timeline agreement into the legacy detector's
+boundary-confidence percentage or require that percentage to authorize the same cut a verified
+artifact already establishes. It still applies deterministic duplicate and duration refusals,
+grounded taxonomy requirements, the four exact-span screens, and the immutable structure authority.
+The compatibility gate remains unchanged and authoritative during shadow rollout.
 
 Suitability screening is repeated over every freshly rendered structure case because concatenation
 and excerpt construction create new viewing contexts. A prohibited signal in any derivative is a

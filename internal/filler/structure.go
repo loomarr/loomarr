@@ -41,6 +41,9 @@ const (
 	ObservationSceneChange      StructureObservationKind = "scene_change"
 	ObservationStandardDuration StructureObservationKind = "standard_duration"
 	ObservationSegmentRole      StructureObservationKind = "segment_role"
+	// ObservationCompleteTimelineDecision projects a replayed multi-family artifact; it is not
+	// another raw signal or assessor vote. Certified publication still requires that artifact.
+	ObservationCompleteTimelineDecision StructureObservationKind = "complete_timeline_decision"
 )
 
 type StructureObservationEffect string
