@@ -7,12 +7,13 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillereval"
+	"github.com/loomarr/loomarr/internal/fillerstructure"
 )
 
 const (
 	TemporalStructureAssessmentSchemaVersion   = 4
 	TemporalStructureAssessmentContractVersion = "filler-temporal-structure-assessment-v4"
-	temporalStructureMaximumDecisiveTimes      = 8
+	temporalStructureMaximumDecisiveTimes      = fillerstructure.DirectVideoMaximumDecisiveTime
 )
 
 // TemporalStructureAssessmentSet is the immutable, full-video assessor

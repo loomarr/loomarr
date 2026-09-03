@@ -4600,6 +4600,11 @@ adapter must return either a complete source-bound candidate or an attributable 
 candidate; ordinary provider failures are domain evidence, while an error means the adapter could
 not produce trustworthy evidence and aborts reduction. The coordinator rejects declared-profile or
 source drift before creating the durable artifact.
+The direct-video prompt version, identity-blind system instructions, dynamic duration message, JSON
+schema, strict decoder, programme-only coalescing, whole-source unit derivation, evidence bounds,
+and reducer-candidate projection are one `fillerstructure` contract used by evaluation and runtime.
+Provider adapters supply transport and durable attribution only; they may not carry a private parser
+or reinterpret interval roles.
 
 Suitability screening is repeated over every freshly rendered structure case because concatenation
 and excerpt construction create new viewing contexts. A prohibited signal in any derivative is a

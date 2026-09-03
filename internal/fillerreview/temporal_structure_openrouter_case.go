@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillereval"
+	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/openroutermedia"
 )
 
@@ -68,10 +69,11 @@ func assessOpenRouterTemporalStructureCase(ctx context.Context, client *http.Cli
 	}
 	var wire temporalStructureOpenRouterWire
 	if callErr == nil {
-		if decodeErr := decodeStrictReviewJSON([]byte(callResult.StructuredOutput), &wire); decodeErr != nil {
+		parsed, _, decodeErr := fillerstructure.ParseDirectVideoResponse(callResult.StructuredOutput, item.Video.DurationMS)
+		if decodeErr != nil {
 			callErr = fmt.Errorf("structure assessment JSON is invalid: %w", decodeErr)
 		} else {
-			normalizeTemporalStructureOpenRouterWire(&wire)
+			wire = parsed
 		}
 	}
 	var failure *temporalCallError
