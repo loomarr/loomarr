@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillereval"
+	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 )
 
 func TestBuildTemporalStructureChallengeSeparatesBlindedMediaFromConstructionAuthority(t *testing.T) {
@@ -44,7 +45,7 @@ func TestBuildTemporalStructureChallengeSeparatesBlindedMediaFromConstructionAut
 	if err != nil || loadedManifestSHA != firstResult.PublicManifestSHA256 || loadedAuthoritySHA != firstResult.AuthoritySHA256 || len(loadedManifest.Cases) != 3 || len(loadedAuthority.Cases) != 3 {
 		t.Fatalf("loaded authority = %d/%d %s/%s, %v", len(loadedManifest.Cases), len(loadedAuthority.Cases), loadedManifestSHA, loadedAuthoritySHA, err)
 	}
-	if manifest.ProductionAdmissionAllowed || len(manifest.Cases) != 3 || authority.PublicManifestSHA256 != firstResult.PublicManifestSHA256 || len(authority.Cases) != 3 {
+	if manifest.ProductionAdmissionAllowed || len(manifest.Cases) != 3 || authority.PublicManifestSHA256 != firstResult.PublicManifestSHA256 || authority.AssessmentMediaProfile.SHA256 != fillerstructuremedia.CanonicalProfile().SHA256 || len(authority.Cases) != 3 {
 		t.Fatalf("manifest=%+v authority=%+v", manifest, authority)
 	}
 	units := make(map[fillereval.UnitKind]TemporalStructureChallengeAuthorityCase, len(authority.Cases))
@@ -144,6 +145,22 @@ func TestLoadTemporalStructureChallengeFailsClosedOnPublicAndPrivateTamper(t *te
 	if _, _, _, _, err := LoadTemporalStructureChallenge(manifestPath, authorityPath, 3); err == nil || !strings.Contains(err.Error(), "output authority") {
 		t.Fatalf("tampered private authority error = %v", err)
 	}
+
+	root, _ = fixture.build(t, "profile-tamper")
+	manifestPath = filepath.Join(root, "public", "manifest.json")
+	authorityPath = filepath.Join(root, "private", "authority.json")
+	authority = readStrictTestJSON[TemporalStructureChallengeAuthority](t, authorityPath)
+	authority.AssessmentMediaProfile.Width++
+	raw, err = json.MarshalIndent(authority, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(authorityPath, append(raw, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, _, err := LoadTemporalStructureChallenge(manifestPath, authorityPath, 3); err == nil || !strings.Contains(err.Error(), "media profile") {
+		t.Fatalf("tampered media profile error = %v", err)
+	}
 }
 
 func TestBuildTemporalStructureChallengeRejectsInvalidConstructionAndTamperAtomically(t *testing.T) {
@@ -205,28 +222,6 @@ func TestTemporalStructureChallengeRejectsUnknownAuthoringFields(t *testing.T) {
 	_, err = BuildTemporalStructureChallenge(context.Background(), fixture.config(filepath.Join(fixture.root, "unknown"), "seed"))
 	if err == nil || !strings.Contains(err.Error(), "unknown field") {
 		t.Fatalf("unknown-field error = %v", err)
-	}
-}
-
-func TestTemporalStructureConcatArgumentsPinDeterministicMetadataFreeCopy(t *testing.T) {
-	arguments := strings.Join(temporalStructureConcatArguments("concat.txt", "result.mp4"), " ")
-	for _, required := range []string{"-safe 1", "-map_metadata -1", "-map_chapters -1", "-c copy", "-fflags +bitexact", "creation_time=", "encoder="} {
-		if !strings.Contains(arguments, required) {
-			t.Fatalf("concat arguments omit %q: %s", required, arguments)
-		}
-	}
-}
-
-func TestTemporalStructurePartArgumentsPinOneJoinCompatibleProfile(t *testing.T) {
-	arguments := strings.Join(temporalStructurePartArguments("source.mp4", 1_000, 2_000, "part.mp4"), " ")
-	for _, required := range []string{
-		"-ss 1.000", "-t 2.000", "fps=30", "scale=w=960:h=720:force_original_aspect_ratio=decrease",
-		"pad=960:720", "-pix_fmt yuv420p", "-ar 48000", "-ac 2", "-video_track_timescale 90000",
-		"-threads 1", "-fflags +bitexact", "creation_time=", "encoder=",
-	} {
-		if !strings.Contains(arguments, required) {
-			t.Fatalf("structure part arguments omit %q: %s", required, arguments)
-		}
 	}
 }
 

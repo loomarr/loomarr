@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/fillereval"
+	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 )
 
 // LoadTemporalStructureChallenge re-establishes the complete public/private
@@ -59,6 +61,9 @@ func validateTemporalStructureChallenge(publicRoot string, manifest TemporalStru
 
 	if authority.SchemaVersion != manifest.SchemaVersion || authority.ContractVersion != manifest.ContractVersion || authority.ChallengeID != manifest.ChallengeID || !authority.GeneratedAt.Equal(manifest.GeneratedAt) || !reviewSHA256(authority.AuthoringSHA256) || !reviewSHA256(authority.SeedSHA256) || authority.PublicManifestSHA256 != manifestSHA || len(authority.Cases) != expectedCases {
 		return fmt.Errorf("private challenge authority does not bind the public manifest")
+	}
+	if !reflect.DeepEqual(authority.AssessmentMediaProfile, fillerstructuremedia.CanonicalProfile()) {
+		return fmt.Errorf("private challenge assessment media profile is invalid")
 	}
 	for name, identity := range map[string]TemporalTruthToolIdentity{"ffmpeg": authority.MediaTools.FFmpeg, "ffprobe": authority.MediaTools.FFprobe} {
 		if strings.TrimSpace(identity.Path) == "" || strings.TrimSpace(identity.Version) == "" || !reviewSHA256(identity.BinarySHA256) {

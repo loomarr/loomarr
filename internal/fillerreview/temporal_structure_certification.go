@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	TemporalStructureCertificationSchemaVersion   = 2
-	TemporalStructureCertificationContractVersion = "filler-temporal-structure-certification-v2"
+	TemporalStructureCertificationSchemaVersion   = 3
+	TemporalStructureCertificationContractVersion = "filler-temporal-structure-certification-v3"
 	TemporalStructureCertificationPassed          = "passed"
 	TemporalStructureCertificationFailed          = "failed"
 
@@ -45,34 +45,35 @@ type TemporalStructureCertificationConfig struct {
 }
 
 type TemporalStructureCertificationReport struct {
-	SchemaVersion              int                                   `json:"schemaVersion"`
-	ContractVersion            string                                `json:"contractVersion"`
-	CertifiedAt                time.Time                             `json:"certifiedAt"`
-	ChallengeID                string                                `json:"challengeId"`
-	HoldoutAuthoringSHA256     string                                `json:"holdoutAuthoringSha256"`
-	HoldoutReceiptSHA256       string                                `json:"holdoutReceiptSha256"`
-	PublicManifestSHA256       string                                `json:"publicManifestSha256"`
-	PrivateAuthoritySHA256     string                                `json:"privateAuthoritySha256"`
-	DecisionSHA256             string                                `json:"decisionSha256"`
-	Cases                      int                                   `json:"cases"`
-	DecidedCases               int                                   `json:"decidedCases"`
-	HeldCases                  int                                   `json:"heldCases"`
-	WrongAutomaticDecisions    int                                   `json:"wrongAutomaticDecisions"`
-	AssessorIDs                []string                              `json:"assessorIds"`
-	ModelFamilies              []string                              `json:"modelFamilies"`
-	BoundaryToleranceMS        int64                                 `json:"boundaryToleranceMs"`
-	MinimumDecidedCases        int                                   `json:"minimumDecidedCases"`
-	MinimumUnitDecisions       int                                   `json:"minimumUnitDecisions"`
-	MinimumSliceDecisions      int                                   `json:"minimumSliceDecisions"`
-	Units                      []TemporalStructureUnitCertification  `json:"units"`
-	Slices                     []TemporalStructureSliceCertification `json:"slices"`
-	CertifiedUnits             []fillereval.UnitKind                 `json:"certifiedUnits"`
-	CertifiedSlices            []string                              `json:"certifiedSlices"`
-	FailureCodes               []string                              `json:"failureCodes,omitempty"`
-	CertificationStatus        string                                `json:"certificationStatus"`
-	TrainingAllowed            bool                                  `json:"trainingAllowed"`
-	ProductionAdmissionAllowed bool                                  `json:"productionAdmissionAllowed"`
-	NextAction                 string                                `json:"nextAction"`
+	SchemaVersion                int                                   `json:"schemaVersion"`
+	ContractVersion              string                                `json:"contractVersion"`
+	CertifiedAt                  time.Time                             `json:"certifiedAt"`
+	ChallengeID                  string                                `json:"challengeId"`
+	HoldoutAuthoringSHA256       string                                `json:"holdoutAuthoringSha256"`
+	HoldoutReceiptSHA256         string                                `json:"holdoutReceiptSha256"`
+	PublicManifestSHA256         string                                `json:"publicManifestSha256"`
+	PrivateAuthoritySHA256       string                                `json:"privateAuthoritySha256"`
+	AssessmentMediaProfileSHA256 string                                `json:"assessmentMediaProfileSha256"`
+	DecisionSHA256               string                                `json:"decisionSha256"`
+	Cases                        int                                   `json:"cases"`
+	DecidedCases                 int                                   `json:"decidedCases"`
+	HeldCases                    int                                   `json:"heldCases"`
+	WrongAutomaticDecisions      int                                   `json:"wrongAutomaticDecisions"`
+	AssessorIDs                  []string                              `json:"assessorIds"`
+	ModelFamilies                []string                              `json:"modelFamilies"`
+	BoundaryToleranceMS          int64                                 `json:"boundaryToleranceMs"`
+	MinimumDecidedCases          int                                   `json:"minimumDecidedCases"`
+	MinimumUnitDecisions         int                                   `json:"minimumUnitDecisions"`
+	MinimumSliceDecisions        int                                   `json:"minimumSliceDecisions"`
+	Units                        []TemporalStructureUnitCertification  `json:"units"`
+	Slices                       []TemporalStructureSliceCertification `json:"slices"`
+	CertifiedUnits               []fillereval.UnitKind                 `json:"certifiedUnits"`
+	CertifiedSlices              []string                              `json:"certifiedSlices"`
+	FailureCodes                 []string                              `json:"failureCodes,omitempty"`
+	CertificationStatus          string                                `json:"certificationStatus"`
+	TrainingAllowed              bool                                  `json:"trainingAllowed"`
+	ProductionAdmissionAllowed   bool                                  `json:"productionAdmissionAllowed"`
+	NextAction                   string                                `json:"nextAction"`
 }
 
 type TemporalStructureUnitCertification struct {

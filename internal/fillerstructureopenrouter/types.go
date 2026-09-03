@@ -8,9 +8,10 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 )
 
-const MaximumVideoBytes int64 = 64 << 20
+const MaximumVideoBytes int64 = fillerstructuremedia.MaximumVideoBytes
 
 // Ledger must commit Reserve before returning and atomically close that request in Settle. A
 // process crash between those calls intentionally leaves a discoverable open reservation.

@@ -80,7 +80,7 @@ func TestPublishTemporalStructureCertificationBindsCompleteHoldoutLineage(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.CertificationStatus != TemporalStructureCertificationPassed || report.DecidedCases != TemporalStructureHoldoutCases || report.HeldCases != 0 || report.WrongAutomaticDecisions != 0 || len(report.CertifiedUnits) != len(temporalStructureScoredUnits()) || len(report.CertifiedSlices) != len(temporalStructureCertificationRequiredSlices) || !reviewSHA256(report.HoldoutAuthoringSHA256) || !reviewSHA256(report.HoldoutReceiptSHA256) || !reviewSHA256(report.PublicManifestSHA256) || !reviewSHA256(report.PrivateAuthoritySHA256) || report.DecisionSHA256 != decisionDigest || !reviewSHA256(digest) || report.TrainingAllowed || report.ProductionAdmissionAllowed {
+	if report.CertificationStatus != TemporalStructureCertificationPassed || report.DecidedCases != TemporalStructureHoldoutCases || report.HeldCases != 0 || report.WrongAutomaticDecisions != 0 || len(report.CertifiedUnits) != len(temporalStructureScoredUnits()) || len(report.CertifiedSlices) != len(temporalStructureCertificationRequiredSlices) || !reviewSHA256(report.HoldoutAuthoringSHA256) || !reviewSHA256(report.HoldoutReceiptSHA256) || !reviewSHA256(report.PublicManifestSHA256) || !reviewSHA256(report.PrivateAuthoritySHA256) || report.AssessmentMediaProfileSHA256 != authority.AssessmentMediaProfile.SHA256 || report.DecisionSHA256 != decisionDigest || !reviewSHA256(digest) || report.TrainingAllowed || report.ProductionAdmissionAllowed {
 		t.Fatalf("certification report = %+v digest=%q", report, digest)
 	}
 	if _, err := os.Stat(output); err != nil {

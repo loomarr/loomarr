@@ -3259,10 +3259,23 @@ Majority voting cannot turn disagreement into a decision, and one valid prohibit
 governed by the separate safety reducer rather than this structure policy.
 
 A complete-timeline candidate assessor is distinct from the bounded observation and per-interval role
-escalations above. It receives the same exact retained MP4, sees no peer answer, and must describe every
-millisecond from zero through the measured duration. The OpenRouter adapter fixes one fallback-disabled,
-zero-data-retention route and strict schema, hashes the exact prompt, schema, request, response, and
-structured output, and durably reserves the request digest before sending any bytes. Its configured
+escalations above. It receives the same exact deterministic assessment derivative, sees no peer answer,
+and must describe every millisecond from zero through the measured duration. One shared, content-addressed
+assessment-media contract owns the challenge and runtime normalization recipe: MP4 with H.264/yuv420p at
+960-by-720 and 30 frames per second using aspect-preserving padding and square pixels, AAC stereo at 48 kHz,
+a 90,000 video timescale, normalized timestamp origin, stripped metadata, bitexact controls, and a 64 MiB
+encoded-byte ceiling. The recipe identity includes the exact part and concat argument templates; copying
+those arguments into a challenge-only or provider-only adapter is not an equivalent contract. Every
+assessment binds both the immutable V66 source and the exact submitted derivative. The certification
+authority also names the tested source-duration and encoded-byte envelope, and runtime holds before spend
+when a source or derivative falls outside it. Qualification may not extrapolate from shorter cases, silently
+truncate a reel, or replace complete-timeline authority with independently judged chunks. If a truthful
+full-timeline derivative cannot fit the certified ceiling, long-reel handling requires a separate designed
+and certified protocol.
+
+The OpenRouter adapter fixes one fallback-disabled, zero-data-retention route and strict schema, hashes the
+exact prompt, schema, request, response, and structured output, and durably reserves the request digest
+before sending any bytes. Its configured
 worst-case charge must fit inside that reservation. A budget hold sends no provider request; an unknown
 transport settlement retains the full reservation; a known charge closes against the provider-reported
 amount, and an over-reservation response is retained but unusable. The adapter settles the durable

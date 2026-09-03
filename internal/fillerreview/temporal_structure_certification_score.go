@@ -20,11 +20,12 @@ func scoreTemporalStructureCertification(decision TemporalStructureDecisionRepor
 	report := TemporalStructureCertificationReport{
 		SchemaVersion: TemporalStructureCertificationSchemaVersion, ContractVersion: TemporalStructureCertificationContractVersion,
 		CertifiedAt: certifiedAt.UTC(), ChallengeID: decision.ChallengeID, Cases: len(authority.Cases),
-		BoundaryToleranceMS:   TemporalStructureNearBoundaryMS,
-		MinimumDecidedCases:   temporalStructureCertificationMinimumDecidedCases,
-		MinimumUnitDecisions:  temporalStructureCertificationMinimumUnitDecisions,
-		MinimumSliceDecisions: temporalStructureCertificationMinimumSliceDecisions,
-		TrainingAllowed:       false, ProductionAdmissionAllowed: false,
+		AssessmentMediaProfileSHA256: authority.AssessmentMediaProfile.SHA256,
+		BoundaryToleranceMS:          TemporalStructureNearBoundaryMS,
+		MinimumDecidedCases:          temporalStructureCertificationMinimumDecidedCases,
+		MinimumUnitDecisions:         temporalStructureCertificationMinimumUnitDecisions,
+		MinimumSliceDecisions:        temporalStructureCertificationMinimumSliceDecisions,
+		TrainingAllowed:              false, ProductionAdmissionAllowed: false,
 	}
 	for _, assessor := range decision.Assessors {
 		report.AssessorIDs = append(report.AssessorIDs, assessor.Assessor.ID)
