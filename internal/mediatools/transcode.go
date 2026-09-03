@@ -20,8 +20,8 @@ import (
 	"github.com/loomarr/loomarr/internal/proctree"
 )
 
-// Mezzanine transcoding (§10 V51b) — every clip is re-encoded once, to one profile, so that
-// everything downstream can rely on what it is holding.
+// Derivative transcoding (§10 V66) — source masters feed separately identified evidence and
+// playback recipes so downstream code can rely on both the bytes and their intended role.
 //
 // ⚠ **This is a MEZZANINE normalisation, not a BROADCAST one, and the distinction is the whole
 // design.** The obvious-looking move is to reuse `playout.DefaultProfile()`. Do not: that is
@@ -35,7 +35,8 @@ import (
 // What this stage owes playout is a file that is decodable, seekable, loudness-correct and cheap
 // to copy or re-encode. Nothing else.
 
-// MezzanineProfile is the one shape every clip is re-encoded to.
+// MezzanineProfile is the codec-level shape shared by a derivative recipe. Recipe identity and
+// measured QC live separately so this type does not become a grab bag of provenance fields.
 type MezzanineProfile struct {
 	// VideoCodec is the universal floor — everything decodes h264.
 	VideoCodec string
@@ -75,7 +76,7 @@ func (p MezzanineProfile) ID() string {
 	return fmt.Sprintf("%s-crf%d-%s%dk", p.VideoCodec, p.CRF, p.AudioCodec, p.AudioKbps)
 }
 
-// TranscodeRequest is one clip's re-encode.
+// TranscodeRequest is one derivative encode from an immutable input.
 type TranscodeRequest struct {
 	// In is the absolute path of the file to read.
 	In string

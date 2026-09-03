@@ -33,6 +33,9 @@ func TestResolveSplitSourcePrefersEvidenceAndRejectsDrift(t *testing.T) {
 		Probe: func(context.Context, string) (Probed, error) {
 			return Probed{DurationMs: 61_000, Height: 480}, nil
 		},
+		Verify: func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) (mediatools.DerivativeQC, error) {
+			return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, targetLUFS), nil
+		},
 		Transcode: func(_ context.Context, request mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 			return MediaQuality{DurationMs: 61_000}, os.WriteFile(request.Out, []byte("evidence derivative bytes"), 0o600)
 		},

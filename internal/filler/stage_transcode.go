@@ -16,7 +16,8 @@ import (
 	"github.com/loomarr/loomarr/internal/mediatools"
 )
 
-// The TRANSCODE stage (§10 V51b): every clip is re-encoded once, to one mezzanine profile.
+// The TRANSCODE stage (§10 V66): retains the source and independently produces evidence and
+// playback derivatives under measured recipes.
 //
 // See transcode.go for what the profile is and — more importantly — what it is NOT. This file is
 // the rung: when it applies, what it writes, and how the clip's row follows the file.
@@ -34,7 +35,7 @@ type TranscodeClipStore interface {
 	CommitConditioningPublication(ctx context.Context, publication ConditioningPublication, target StoreClip) error
 }
 
-// TranscodeStage re-encodes a clip to the mezzanine profile.
+// TranscodeStage owns retained-source resolution and verified derivative publication.
 type TranscodeStage struct {
 	store   TranscodeClipStore
 	probe   Prober
@@ -54,6 +55,7 @@ type TranscodeStage struct {
 	// the production composition root always opts into the V66 two-derivative contract.
 	evidenceTranscode func(context.Context, mediatools.TranscodeRequest, func(int)) (MediaQuality, error)
 	identifyFFmpeg    func(context.Context, string) (mediatools.MediaToolIdentity, error)
+	verifyDerivative  func(context.Context, string, string, int64, int, bool, float64) (mediatools.DerivativeQC, error)
 	// inspect backfills quality facts for a mezzanine made before those facts rode the encode.
 	inspect   func(context.Context, string, string, int64, bool) (MediaQuality, error)
 	condition func(context.Context, mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error)
@@ -69,6 +71,7 @@ func (s *TranscodeStage) WithMediaDerivatives() *TranscodeStage {
 	if s != nil {
 		s.evidenceTranscode = mediatools.Transcode
 		s.identifyFFmpeg = mediatools.IdentifyFFmpeg
+		s.verifyDerivative = mediatools.VerifyDerivative
 	}
 	return s
 }
@@ -391,10 +394,10 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 	}
 	quality, err := s.transcode(ctx, req, func(pct int) {
 		if evidence != nil {
-			reportProgress(ctx, StageTranscode, 45+pct*55/100)
+			reportProgress(ctx, StageTranscode, 40+pct*50/100)
 			return
 		}
-		reportProgress(ctx, StageTranscode, pct)
+		reportProgress(ctx, StageTranscode, pct*90/100)
 	})
 	if err != nil {
 		if conditioningBefore != nil && isConditioningCancellation(err) {
@@ -444,6 +447,18 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 		!reflect.DeepEqual(quality, conditioningAfter.Quality)) {
 		return conditioningReview(c, "transcode media-quality evidence does not match post-rewrite measurement"), nil
 	}
+	var playbackQC mediatools.DerivativeQC
+	if evidence != nil {
+		if s.verifyDerivative == nil {
+			return StageResult{}, errors.New("playback derivative verification is unavailable")
+		}
+		playbackQC, err = s.verifyDerivative(ctx, ffmpeg, stageFull, out.DurationMs,
+			s.profile.KeyframeSeconds, !out.Silent, lufs)
+		if err != nil {
+			return StageResult{}, fmt.Errorf("verify playback derivative: %w", err)
+		}
+		reportProgress(ctx, StageTranscode, 95)
+	}
 	newHash, err := ClipID(stageFull)
 	if err != nil {
 		return StageResult{}, fmt.Errorf("hash transformed clip %s: %w", oldRel, err)
@@ -464,7 +479,7 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 		assets.Playback = &MediaDerivativeLineage{
 			Asset:       MediaAssetIdentity{Role: MediaAssetPlayback, SHA256: playbackDigest, Bytes: playbackBytes, ClipHash: newHash, Path: newRel},
 			InputSHA256: sourceMaster.SHA256, Recipe: playbackRecipe, RecipeSHA256: playbackRecipeDigest,
-			Tool: mediaTool, DurationMs: out.DurationMs, Quality: quality,
+			Tool: mediaTool, DurationMs: out.DurationMs, Quality: quality, QC: playbackQC,
 			InputProbe: in, OutputProbe: out,
 		}
 		if err := assets.validate(); err != nil {

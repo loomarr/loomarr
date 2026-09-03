@@ -317,13 +317,7 @@ func FFprobeNextTo(ffmpegPath string) Prober {
 // ffprobe directly, which is why the derivation is exported rather than buried
 // in the prober above.
 func FFprobePathNextTo(ffmpegPath string) string {
-	if ffmpegPath != "" && ffmpegPath != "ffmpeg" {
-		// Same directory, ffmpeg → ffprobe. Handles /opt/ffmpeg/bin/ffmpeg and a
-		// ffmpeg-with-suffix build alike, since only the basename's leading token changes.
-		dir, base := filepath.Split(ffmpegPath)
-		return filepath.Join(dir, strings.Replace(base, "ffmpeg", "ffprobe", 1))
-	}
-	return "ffprobe"
+	return mediatools.FFprobePathNextTo(ffmpegPath)
 }
 
 func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {

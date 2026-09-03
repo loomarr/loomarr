@@ -49,4 +49,13 @@ func TestTranscodePreservesMeasuredGeometryCadenceAspectAndAVSkew(t *testing.T) 
 		got.SampleAspect != input.SampleAspect || got.DisplayAspect != input.DisplayAspect {
 		t.Fatalf("input probe = %+v; evidence probe = %+v", input, got)
 	}
+	qc, err := mediatools.VerifyDerivative(context.Background(), ffmpeg, output, got.DurationMs,
+		recipe.KeyframeSeconds, !got.Silent, recipe.TargetLUFS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !qc.FastStart || !qc.CompleteDecode || !qc.Seekable || !qc.Loudness.Available ||
+		qc.MaxVideoKeyframeGapMs > 1_250 {
+		t.Fatalf("derivative QC = %+v", qc)
+	}
 }

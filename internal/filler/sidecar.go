@@ -170,17 +170,15 @@ type SidecarTags struct {
 	// the profile's ID — `h264-crf20-aac192` — rather than a bare `true`.
 	//
 	// ⚠ An IDEMPOTENCY MARKER like `normalizedLufs`, and here the stakes are higher: a transcode
-	// is a GENERATION OF LOSS, and the original is deleted once the re-encode is installed. A
-	// second unnecessary pass therefore degrades a file whose source no longer exists. The
-	// pipeline ladder normally prevents that, but the ladder lives in a table and this lives
-	// beside the file — so a catalog rebuild that also loses the pipeline row still cannot cause
-	// a re-encode.
+	// is a GENERATION OF LOSS. V66 retains the exact source master, but a second unnecessary pass
+	// would still waste time and could make the visible playback identity drift. The pipeline
+	// ladder normally prevents that, while this portable marker survives a catalog rebuild.
 	//
 	// ⚠ The profile ID rather than a flag, so a future profile CHANGE is expressible: a clip
 	// carrying an older id is re-encoded (from the operator's own file, once), while a bare `true`
 	// would silently pin every existing clip to whatever profile shipped first.
 	Mezzanine string `json:"mezzanine,omitempty"`
-	// MediaQuality is the content inspection measured during the mezzanine encode. A pointer is
+	// MediaQuality is the content inspection measured during the playback encode. A pointer is
 	// deliberate: nil means "not inspected yet", while a non-nil report with empty intervals is
 	// the meaningful answer "inspected and clean". Keeping it beside the bytes prevents a catalog
 	// rebuild from paying for another full decode or forgetting a prior refusal.
@@ -190,7 +188,7 @@ type SidecarTags struct {
 	// confirmation and the clip table is a rebuildable cache. Nil identifies a top-level clip.
 	ConditioningLineage *ConditioningLineage `json:"conditioningLineage,omitempty"`
 	// Conditioning carries the immutable measurements of the reviewed child before transcode and
-	// of the hidden mezzanine after transcode. It is written before the replacement is published.
+	// of the staged playback derivative after transcode. It is written before publication.
 	Conditioning *ConditioningEvidence `json:"conditioning,omitempty"`
 	// ConditioningPublication is the owner-bound quarantine record written before a conditioned
 	// target becomes visible. Sync must hold the target until this exact owner clears it after re-key.
@@ -244,14 +242,13 @@ type ConditioningEvidence struct {
 // ⚠ **This writes only `*.info.json`** — never the media file beside it.
 //
 // ⚠ That used to read "the media files themselves stay byte-for-byte untouched", full stop, and
-// V42 made the unqualified version false. V51b makes it false unconditionally: the TRANSCODE rung
-// re-encodes every clip to the mezzanine profile as it is ingested, and deletes the original once
-// the new file is installed. `Transcode` (transcode.go) is the one function that may replace a
-// media file.
+// V42 made the unqualified version false. The TRANSCODE rung now snapshots the exact source into
+// the retained master tree, builds independently verified evidence and playback derivatives, and
+// may replace only the visible playable name after durable publication. The retained master is
+// not deleted by that replacement.
 //
 // The guarantee this function keeps is unchanged — it writes `*.info.json` and nothing else. The
-// guarantee the PACKAGE keeps is now much weaker than it was, and a comment claiming otherwise
-// would be the drift the repo's do-not rules exist to catch.
+// package-level mutation and retention contracts live with the derivative publisher.
 func WriteSidecarTags(mediaPath string, tags SidecarTags, fetched bool) error {
 	path := sidecarPathFor(mediaPath)
 

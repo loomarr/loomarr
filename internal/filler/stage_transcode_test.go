@@ -198,6 +198,9 @@ func TestTranscodeStage_ConditionsEvidenceBoundChildAgainstExactEvidenceAsset(t 
 		Probe: func(context.Context, string) (Probed, error) {
 			return Probed{DurationMs: 61_000, Height: 480}, nil
 		},
+		Verify: func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) (mediatools.DerivativeQC, error) {
+			return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, targetLUFS), nil
+		},
 		Transcode: func(_ context.Context, request mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 			return MediaQuality{DurationMs: 61_000}, os.WriteFile(request.Out, evidenceBytes, 0o600)
 		},
@@ -1344,6 +1347,9 @@ func TestTranscodeStage_BuildsEvidenceAndPlaybackIndependentlyFromMaster(t *test
 	stage := NewTranscodeStage(stored, probe, dir, mediatools.DefaultMezzanine(), nil, func() float64 { return -23 }, time.Now).WithMediaDerivatives()
 	tool := mediatools.MediaToolIdentity{Name: "ffmpeg", Version: "ffmpeg version fixture", ExecutableSHA256: strings.Repeat("a", 64)}
 	stage.identifyFFmpeg = func(context.Context, string) (mediatools.MediaToolIdentity, error) { return tool, nil }
+	stage.verifyDerivative = func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) (mediatools.DerivativeQC, error) {
+		return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, targetLUFS), nil
+	}
 	var evidenceInput, playbackInput string
 	stage.evidenceTranscode = func(_ context.Context, request mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 		evidenceInput = request.In
@@ -1378,6 +1384,49 @@ func TestTranscodeStage_BuildsEvidenceAndPlaybackIndependentlyFromMaster(t *test
 	}
 	if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(tags.MediaAssets.Evidence.Asset.Path))); err != nil {
 		t.Fatalf("evidence derivative is unavailable: %v", err)
+	}
+}
+
+func TestTranscodeStage_PlaybackQCFailurePreservesSourceAndCatalogIdentity(t *testing.T) {
+	dir := t.TempDir()
+	sourceBytes := []byte("source must survive a failed playback verification")
+	sourceHash := writeContentAddressedClip(t, dir, sourceBytes, ".mkv")
+	sourceRel := filepath.ToSlash(ClipRelPath(sourceHash, ".mkv"))
+	sourceFull := filepath.Join(dir, filepath.FromSlash(sourceRel))
+	stored := &transcodeStore{}
+	probe := func(context.Context, string) (Probed, error) {
+		return Probed{DurationMs: 30_000, Height: 480}, nil
+	}
+	stage := NewTranscodeStage(stored, probe, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now).WithMediaDerivatives()
+	stage.identifyFFmpeg = func(context.Context, string) (mediatools.MediaToolIdentity, error) {
+		return mediatools.MediaToolIdentity{Name: "ffmpeg", Version: "fixture", ExecutableSHA256: strings.Repeat("c", 64)}, nil
+	}
+	stage.evidenceTranscode = func(_ context.Context, request mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+		return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("verified evidence"), 0o600)
+	}
+	stage.transcode = func(_ context.Context, request mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+		return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("unseekable playback"), 0o600)
+	}
+	verified := 0
+	stage.verifyDerivative = func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) (mediatools.DerivativeQC, error) {
+		verified++
+		if verified == 2 {
+			return mediatools.DerivativeQC{}, errors.New("midpoint seek failed")
+		}
+		return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, targetLUFS), nil
+	}
+
+	if _, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
+		Hash: sourceHash, Path: sourceRel, Name: "Advert", Kind: Commercial,
+	}}); err == nil || !strings.Contains(err.Error(), "midpoint seek failed") {
+		t.Fatalf("playback verification error = %v", err)
+	}
+	got, err := os.ReadFile(sourceFull)
+	if err != nil || !bytes.Equal(got, sourceBytes) {
+		t.Fatalf("source after failed verification = %q, %v", got, err)
+	}
+	if stored.oldHash != "" {
+		t.Fatalf("catalog was re-keyed after failed verification: %q", stored.oldHash)
 	}
 }
 
@@ -1558,6 +1607,9 @@ func TestTranscodeStage_BackfillsEvidenceWithoutReencodingExistingPlayback(t *te
 	stage := NewTranscodeStage(&transcodeStore{}, probe, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now).WithMediaDerivatives()
 	stage.identifyFFmpeg = func(context.Context, string) (mediatools.MediaToolIdentity, error) {
 		return mediatools.MediaToolIdentity{Name: "ffmpeg", Version: "fixture", ExecutableSHA256: strings.Repeat("b", 64)}, nil
+	}
+	stage.verifyDerivative = func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) (mediatools.DerivativeQC, error) {
+		return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, targetLUFS), nil
 	}
 	stage.evidenceTranscode = func(_ context.Context, request mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 		return quality, os.WriteFile(request.Out, []byte("evidence from legacy playback"), 0o600)

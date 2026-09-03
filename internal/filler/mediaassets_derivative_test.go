@@ -9,6 +9,25 @@ import (
 	"github.com/loomarr/loomarr/internal/mediatools"
 )
 
+func fixtureDerivativeQC(durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) mediatools.DerivativeQC {
+	loudness := mediatools.ConditioningLoudness{TruePeak: mediatools.ConditioningTruePeak{State: mediatools.TruePeakUnavailable}}
+	if hadAudio {
+		integrated := -21.0
+		if targetLUFS != 0 {
+			integrated = targetLUFS
+		}
+		loudness = mediatools.ConditioningLoudness{
+			IntegratedLUFS: integrated, Available: true,
+			TruePeak: mediatools.ConditioningTruePeak{State: mediatools.TruePeakFinite, DBTP: -2},
+		}
+	}
+	gap := int64(keyframeSeconds) * 1000
+	return mediatools.DerivativeQC{
+		Version: mediatools.DerivativeQCVersion, FastStart: true, CompleteDecode: true, Seekable: true,
+		MaxVideoKeyframeGapMs: gap, TerminalKeyframeGapMs: min(gap, durationMs), Loudness: loudness,
+	}
+}
+
 func TestBuildEvidenceDerivativeUsesMasterAndPublishesHiddenLineage(t *testing.T) {
 	root := t.TempDir()
 	source := filepath.Join(root, "source.mkv")
@@ -29,6 +48,9 @@ func TestBuildEvidenceDerivativeUsesMasterAndPublishesHiddenLineage(t *testing.T
 		ClipDir: root, Source: master, Input: Probed{DurationMs: 30_000, Height: 480},
 		Recipe: mediatools.EvidenceDerivativeRecipe(), Tool: tool,
 		Probe: func(context.Context, string) (Probed, error) { return Probed{DurationMs: 30_000, Height: 480}, nil },
+		Verify: func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) (mediatools.DerivativeQC, error) {
+			return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, targetLUFS), nil
+		},
 		Transcode: func(_ context.Context, request mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 			if request.In != filepath.Join(root, filepath.FromSlash(master.Path)) || request.TargetLUFS != 0 || request.Profile.CRF != 14 {
 				t.Fatalf("evidence request = %+v", request)

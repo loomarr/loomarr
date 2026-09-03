@@ -3054,9 +3054,10 @@ targets in one system means a clip normalised on file is then corrected again do
 different number — double processing, and a quieter result than either setting asks for. One
 target, whichever stage applies it.
 
-⚠ **It is DESTRUCTIVE and the operator is told so.** The original cannot be recovered; that is
-inherent to rewriting in place and is why this is opt-in rather than the default. What it must not
-also be is *repeating*: a re-scan cannot tell by looking that a file has already been normalised,
+⚠ **It changes the playback derivative and the operator is told so.** V66 retains the immutable
+source master, so the acquired bytes remain recoverable; the opt-in still changes what will air and
+therefore cannot be implicit. What it must not also be is *repeating*: a re-scan cannot tell by looking
+that a playable file has already been normalised,
 so without a marker every pass would normalise an already-normalised file, walking the loudness
 down on each run. The sidecar records `normalizedLufs` beside the clip, and the pass **skips any
 file already carrying that marker at the current target**. The marker travels with the clip the

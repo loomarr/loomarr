@@ -176,7 +176,7 @@ func IdentifyFFmpeg(ctx context.Context, configured string) (MediaToolIdentity, 
 	}
 	versionCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	output, err := exec.CommandContext(versionCtx, path, "-version").Output() //nolint:gosec // operator-configured media tool
+	output, err := runDerivativeCommand(versionCtx, path, false, "-version")
 	if err != nil {
 		return MediaToolIdentity{}, fmt.Errorf("identify ffmpeg version: %w", err)
 	}

@@ -20,6 +20,7 @@ type mediaDerivativeRequest struct {
 	Probe       Prober
 	Diagnostics *diagnostics.ProcessManager
 	Transcode   func(context.Context, mediatools.TranscodeRequest, func(int)) (MediaQuality, error)
+	Verify      func(context.Context, string, string, int64, int, bool, float64) (mediatools.DerivativeQC, error)
 	OnProgress  func(int)
 }
 
@@ -38,8 +39,8 @@ func (s *TranscodeStage) prepareEvidenceDerivative(ctx context.Context, source M
 		ClipDir: s.clipDir, Source: source, Input: input,
 		Recipe: mediatools.EvidenceDerivativeRecipe(), Tool: tool,
 		FFmpegPath: ffmpeg, Probe: s.probe, Diagnostics: s.diagnostics,
-		Transcode:  s.evidenceTranscode,
-		OnProgress: func(percent int) { reportProgress(ctx, StageTranscode, percent*45/100) },
+		Transcode: s.evidenceTranscode, Verify: s.verifyDerivative,
+		OnProgress: func(percent int) { reportProgress(ctx, StageTranscode, percent*40/100) },
 	})
 	if err != nil {
 		return nil, mediatools.MediaToolIdentity{}, err
@@ -60,8 +61,8 @@ func buildMediaDerivative(ctx context.Context, request mediaDerivativeRequest) (
 	if err := request.Tool.Validate(); err != nil {
 		return MediaDerivativeLineage{}, err
 	}
-	if request.Transcode == nil || request.Probe == nil || request.Input.DurationMs <= 0 || request.Input.Height <= 0 {
-		return MediaDerivativeLineage{}, fmt.Errorf("build media derivative: transcode, probe, and measured input are required")
+	if request.Transcode == nil || request.Verify == nil || request.Probe == nil || request.Input.DurationMs <= 0 || request.Input.Height <= 0 {
+		return MediaDerivativeLineage{}, fmt.Errorf("build media derivative: transcode, verification, probe, and measured input are required")
 	}
 	recipeDigest, err := request.Recipe.Digest()
 	if err != nil {
@@ -99,6 +100,11 @@ func buildMediaDerivative(ctx context.Context, request mediaDerivativeRequest) (
 	if err != nil || output.DurationMs <= 0 || output.Height <= 0 || (!request.Input.Silent && output.Silent) {
 		return MediaDerivativeLineage{}, fmt.Errorf("build evidence derivative: output streams are incomplete")
 	}
+	qc, err := request.Verify(ctx, request.FFmpegPath, stagePath, output.DurationMs,
+		request.Recipe.KeyframeSeconds, !output.Silent, request.Recipe.TargetLUFS)
+	if err != nil {
+		return MediaDerivativeLineage{}, fmt.Errorf("build evidence derivative: %w", err)
+	}
 	digest, size, err := FileSHA256(stagePath)
 	if err != nil {
 		return MediaDerivativeLineage{}, err
@@ -119,7 +125,7 @@ func buildMediaDerivative(ctx context.Context, request mediaDerivativeRequest) (
 	lineage := MediaDerivativeLineage{
 		Asset:       MediaAssetIdentity{Role: MediaAssetEvidence, SHA256: digest, Bytes: size, ClipHash: clipHash, Path: rel},
 		InputSHA256: request.Source.SHA256, Recipe: request.Recipe, RecipeSHA256: recipeDigest,
-		Tool: request.Tool, DurationMs: output.DurationMs, Quality: quality,
+		Tool: request.Tool, DurationMs: output.DurationMs, Quality: quality, QC: qc,
 		InputProbe: request.Input, OutputProbe: output,
 	}
 	if err := validateMediaDerivative(lineage, MediaAssetEvidence, mediaEvidenceDirName, request.Source.SHA256); err != nil {

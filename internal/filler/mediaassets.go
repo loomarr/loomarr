@@ -55,6 +55,7 @@ type MediaDerivativeLineage struct {
 	Tool         mediatools.MediaToolIdentity `json:"tool"`
 	DurationMs   int64                        `json:"durationMs"`
 	Quality      MediaQuality                 `json:"quality"`
+	QC           mediatools.DerivativeQC      `json:"qc"`
 	InputProbe   Probed                       `json:"inputProbe"`
 	OutputProbe  Probed                       `json:"outputProbe"`
 }
@@ -100,6 +101,10 @@ func validateMediaDerivative(derivative MediaDerivativeLineage, role MediaAssetR
 	}
 	if err := derivative.Tool.Validate(); err != nil {
 		return fmt.Errorf("%s derivative tool identity: %w", role, err)
+	}
+	if err := mediatools.ValidateDerivativeQC(derivative.QC, derivative.DurationMs,
+		derivative.Recipe.KeyframeSeconds, !derivative.OutputProbe.Silent, derivative.Recipe.TargetLUFS); err != nil {
+		return fmt.Errorf("%s derivative QC: %w", role, err)
 	}
 	return nil
 }
