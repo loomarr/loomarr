@@ -1252,6 +1252,13 @@ func testFillerAcquisitionArtifacts(t *testing.T, newStore NewStoreFunc) {
 	if len(recoverable) != 1 || recoverable[0].ID != artifacts[1].ID {
 		t.Fatalf("recoverable artifacts = %+v, want only published artifact", recoverable)
 	}
+	runs, err := s.ListAcquisitionRuns(ctx, 10, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 || runs[0].Artifacts.Consumed != 1 || runs[0].Artifacts.Published != 1 {
+		t.Fatalf("run artifact outcome = %+v", runs)
+	}
 
 	invalid := artifacts[1]
 	invalid.ID = "invalid"

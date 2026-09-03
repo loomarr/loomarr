@@ -39,3 +39,15 @@ func TestAcquisitionArtifactValidate_BindsExactWatchRelativeBytes(t *testing.T) 
 		})
 	}
 }
+
+func TestAcquisitionArtifactOutcomeFrom_ExposesBoundedRepairReason(t *testing.T) {
+	artifacts := []filler.AcquisitionArtifact{
+		{State: filler.ArtifactRepair, RepairReason: "newest actionable reason"},
+		{State: filler.ArtifactConsumed},
+		{State: filler.ArtifactRepair, RepairReason: "older reason"},
+	}
+	got := filler.AcquisitionArtifactOutcomeFrom(artifacts)
+	if got.Repair != 2 || got.Consumed != 1 || got.RepairReason != "newest actionable reason" {
+		t.Fatalf("outcome = %+v", got)
+	}
+}
