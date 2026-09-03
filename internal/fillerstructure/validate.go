@@ -41,6 +41,14 @@ func validSource(source Source) bool {
 	return digest(source.SHA256) && source.Bytes > 0 && source.DurationMS > 0
 }
 
+// ValidateSource checks the immutable complete-file identity consumed by structure protocols.
+func ValidateSource(source Source) error {
+	if !validSource(source) {
+		return errors.New("filler structure source is invalid")
+	}
+	return nil
+}
+
 func validAssessmentMedia(media AssessmentMedia, source Source) bool {
 	return digest(media.SHA256) && media.Bytes > 0 && media.Bytes <= AssessmentMediaMaximumBytes && media.DurationMS > 0 &&
 		digest(media.ProfileSHA256) && digest(media.LineageSHA256) &&

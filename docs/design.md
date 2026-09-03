@@ -4675,6 +4675,18 @@ prohibited and operational holds cannot be selected. The constructed truth can t
 without a second blind full-corpus review, but it cannot establish broadcast suitability, enter
 training data, or authorize production admission. Both permissions remain explicitly false.
 
+The single-video protocol is only the short-source slice. It cannot authorize general compilation
+reels: a 579.5-second construction from the 12 independently reviewed anchors exceeds the 64 MiB
+transport ceiling. The separately versioned long-reel protocol therefore plans complete primary
+coverage in two-minute spans with 15 seconds of context on both sides, clamped only at source ends,
+for at most 30 minutes and 15 windows. Primary spans partition the source exactly; overlap supplies
+context but never creates a second boundary vote. A boundary exactly on a primary seam belongs to the
+right-hand span. These limits describe protocol capacity, not production authority: every normalized
+window must still fit the media byte ceiling, every window must complete for one assessor family to
+produce one source-level candidate, and a real seam-focused certificate must authorize the duration
+slice before use. Sparse sampling, chunk-majority voting, and silently lowering the canonical media
+quality are not valid long-reel fallbacks.
+
 The direct-video runner's per-request nanodollar value is an **accounting reservation**, not a
 provider-enforced total-price cap. OpenRouter does not expose such a cap for token-priced video.
 The transport therefore preserves every syntactically valid provider-reported charge before it
