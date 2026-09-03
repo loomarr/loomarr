@@ -53,14 +53,15 @@ func buildTemporalStructureComparison(loaded temporalStructureComparisonLoaded, 
 	for _, truthCase := range authorityCases {
 		publicCase := temporalStructurePublicCase(loaded.manifest, truthCase.Alias)
 		boundaries := temporalStructureTruthBoundaries(truthCase, publicCase.Video.DurationMS)
+		truthSegments := temporalStructureTruthSegments(truthCase, publicCase.Video.DurationMS)
 		comparison := TemporalStructureCaseComparison{
 			Alias: truthCase.Alias, DurationMS: publicCase.Video.DurationMS,
-			Truth: TemporalStructureTruthLabel{Unit: truthCase.Unit, Role: truthCase.Role},
+			Truth: TemporalStructureTruthLabel{Unit: truthCase.Unit, Role: truthCase.Role}, TruthSegments: truthSegments,
 		}
 		allExact := true
 		for _, loadedAssessment := range loaded.assessments {
 			assessment := loadedAssessment.byAlias[truthCase.Alias]
-			result := scoreTemporalStructureCase(loadedAssessment.set.Assessor.ID, truthCase, boundaries, assessment)
+			result := scoreTemporalStructureCase(loadedAssessment.set.Assessor.ID, truthCase, boundaries, truthSegments, assessment)
 			comparison.Assessments = append(comparison.Assessments, result)
 			allExact = allExact && result.ExactLabelCorrect
 			assessorSummary := summaryByAssessor[result.AssessorID]
@@ -97,7 +98,7 @@ func buildTemporalStructureComparison(loaded temporalStructureComparisonLoaded, 
 	return report
 }
 
-func scoreTemporalStructureCase(assessorID string, truth TemporalStructureChallengeAuthorityCase, boundaries []temporalStructureTruthBoundary, assessment TemporalStructureAssessment) TemporalStructureAssessorCaseResult {
+func scoreTemporalStructureCase(assessorID string, truth TemporalStructureChallengeAuthorityCase, boundaries []temporalStructureTruthBoundary, truthSegments []TemporalStructureTruthSegment, assessment TemporalStructureAssessment) TemporalStructureAssessorCaseResult {
 	result := TemporalStructureAssessorCaseResult{AssessorID: assessorID}
 	if assessment.OperationalFailure != nil {
 		result.Prediction.Failure = assessment.OperationalFailure.Code
@@ -107,11 +108,15 @@ func scoreTemporalStructureCase(assessorID string, truth TemporalStructureChalle
 	if assessment.Role != nil {
 		result.Prediction.Role = assessment.Role.Kind
 	}
+	for _, segment := range assessment.Segments {
+		result.Prediction.Segments = append(result.Prediction.Segments, TemporalStructurePredictedSegment{StartMS: segment.StartMS, EndMS: segment.EndMS, Role: segment.Role})
+	}
 	result.UnitCorrect = result.Prediction.Unit == truth.Unit
 	result.StandaloneClassCorrect = (result.Prediction.Unit == fillereval.UnitStandalone) == (truth.Unit == fillereval.UnitStandalone)
 	result.RoleComparable = truth.Unit == fillereval.UnitStandalone && result.Prediction.Unit == fillereval.UnitStandalone
 	result.RoleCorrect = result.RoleComparable && result.Prediction.Role == truth.Role
 	result.ExactLabelCorrect = result.UnitCorrect && (truth.Unit != fillereval.UnitStandalone || result.RoleCorrect)
+	scoreTemporalStructureSegments(&result, truthSegments)
 	if result.UnitCorrect && len(boundaries) > 0 {
 		for _, boundary := range boundaries {
 			nearest, distance := nearestTemporalStructureTime(boundary.atMS, assessment.Unit.DecisiveAtMS)
@@ -160,6 +165,22 @@ func accumulateTemporalStructureResult(summary *TemporalStructureAssessorSummary
 		summary.ExactLabelCorrect++
 		construction.ExactLabelCorrect++
 	}
+	if result.CoverageComplete {
+		summary.CoverageComplete++
+		construction.CoverageComplete++
+	}
+	summary.UnderSplits += result.UnderSplits
+	construction.UnderSplits += result.UnderSplits
+	summary.OverSplits += result.OverSplits
+	construction.OverSplits += result.OverSplits
+	summary.SegmentRoleTargets += result.SegmentRoleTargets
+	construction.SegmentRoleTargets += result.SegmentRoleTargets
+	summary.SegmentRoleCorrect += result.SegmentRoleCorrect
+	construction.SegmentRoleCorrect += result.SegmentRoleCorrect
+	if result.ExactSegmentPlan {
+		summary.ExactSegmentPlans++
+		construction.ExactSegmentPlans++
+	}
 	for _, distance := range result.BoundaryDistances {
 		summary.Boundary.ComparableTargets++
 		construction.Boundary.ComparableTargets++
@@ -172,6 +193,117 @@ func accumulateTemporalStructureResult(summary *TemporalStructureAssessorSummary
 			construction.Boundary.Within5000MS++
 		}
 	}
+}
+
+func temporalStructureTruthSegments(item TemporalStructureChallengeAuthorityCase, durationMS int64) []TemporalStructureTruthSegment {
+	switch item.Unit {
+	case fillereval.UnitStandalone, fillereval.UnitCompilation:
+		segments := make([]TemporalStructureTruthSegment, 0, len(item.Segments))
+		for index, part := range item.Segments {
+			endMS := part.OutputEndMS
+			if index == len(item.Segments)-1 {
+				// Container probing may differ from the requested render duration by up to
+				// the challenge's validated one-second tolerance. The public media duration
+				// is the timeline the assessor actually receives and must cover.
+				endMS = durationMS
+			}
+			segments = append(segments, TemporalStructureTruthSegment{
+				StartMS: part.OutputStartMS, EndMS: endMS,
+				Role: fillereval.TemporalSegmentRole(part.SourceRole),
+			})
+		}
+		return segments
+	case fillereval.UnitProgrammeExcerpt:
+		return []TemporalStructureTruthSegment{{StartMS: 0, EndMS: durationMS, Role: fillereval.TemporalSegmentProgrammeFragment}}
+	default:
+		return []TemporalStructureTruthSegment{{StartMS: 0, EndMS: durationMS, Role: fillereval.TemporalSegmentAmbiguous}}
+	}
+}
+
+func scoreTemporalStructureSegments(result *TemporalStructureAssessorCaseResult, truth []TemporalStructureTruthSegment) {
+	if len(truth) == 0 {
+		return
+	}
+	predicted := result.Prediction.Segments
+	result.CoverageComplete = completeTemporalStructureCoverage(predicted, truth[len(truth)-1].EndMS)
+	truthCuts := temporalStructureSegmentCutsTruth(truth)
+	predictedCuts := temporalStructureSegmentCutsPredicted(predicted)
+	matched := matchTemporalStructureCuts(truthCuts, predictedCuts, TemporalStructureNearBoundaryMS)
+	result.UnderSplits = len(truthCuts) - matched
+	result.OverSplits = len(predictedCuts) - matched
+	result.SegmentRoleTargets = len(truth)
+	used := make([]bool, len(predicted))
+	for _, target := range truth {
+		best, bestDistance := -1, int64(^uint64(0)>>1)
+		for index, candidate := range predicted {
+			if used[index] || candidate.Role != target.Role {
+				continue
+			}
+			startDistance := absoluteInt64(candidate.StartMS - target.StartMS)
+			endDistance := absoluteInt64(candidate.EndMS - target.EndMS)
+			if startDistance > TemporalStructureNearBoundaryMS || endDistance > TemporalStructureNearBoundaryMS {
+				continue
+			}
+			if distance := startDistance + endDistance; distance < bestDistance {
+				best, bestDistance = index, distance
+			}
+		}
+		if best >= 0 {
+			used[best] = true
+			result.SegmentRoleCorrect++
+		}
+	}
+	result.ExactSegmentPlan = result.CoverageComplete && result.UnderSplits == 0 && result.OverSplits == 0 && result.SegmentRoleCorrect == result.SegmentRoleTargets && len(predicted) == len(truth)
+}
+
+func completeTemporalStructureCoverage(segments []TemporalStructurePredictedSegment, durationMS int64) bool {
+	if len(segments) == 0 || segments[0].StartMS != 0 || segments[len(segments)-1].EndMS != durationMS {
+		return false
+	}
+	for index, segment := range segments {
+		if segment.EndMS <= segment.StartMS || index > 0 && segment.StartMS != segments[index-1].EndMS {
+			return false
+		}
+	}
+	return true
+}
+
+func temporalStructureSegmentCutsTruth(segments []TemporalStructureTruthSegment) []int64 {
+	cuts := make([]int64, 0, len(segments)-1)
+	for index := 1; index < len(segments); index++ {
+		cuts = append(cuts, segments[index].StartMS)
+	}
+	return cuts
+}
+
+func temporalStructureSegmentCutsPredicted(segments []TemporalStructurePredictedSegment) []int64 {
+	cuts := make([]int64, 0, len(segments)-1)
+	for index := 1; index < len(segments); index++ {
+		cuts = append(cuts, segments[index].StartMS)
+	}
+	return cuts
+}
+
+func matchTemporalStructureCuts(truth, predicted []int64, toleranceMS int64) int {
+	truth = append([]int64(nil), truth...)
+	predicted = append([]int64(nil), predicted...)
+	sort.Slice(truth, func(i, j int) bool { return truth[i] < truth[j] })
+	sort.Slice(predicted, func(i, j int) bool { return predicted[i] < predicted[j] })
+	truthIndex, predictedIndex := 0, 0
+	matched := 0
+	for truthIndex < len(truth) && predictedIndex < len(predicted) {
+		switch {
+		case predicted[predictedIndex] < truth[truthIndex]-toleranceMS:
+			predictedIndex++
+		case predicted[predictedIndex] > truth[truthIndex]+toleranceMS:
+			truthIndex++
+		default:
+			matched++
+			truthIndex++
+			predictedIndex++
+		}
+	}
+	return matched
 }
 
 func temporalStructureTruthBoundaries(item TemporalStructureChallengeAuthorityCase, durationMS int64) []temporalStructureTruthBoundary {

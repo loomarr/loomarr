@@ -13,7 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillereval"
 )
 
-const temporalStructureStandaloneResponse = `{"unit":"standalone","unitDecisiveAtMs":[100],"unitReason":"independent opening and close","role":"commercial","roleDecisiveAtMs":[200],"roleReason":"product offer framing"}`
+const temporalStructureStandaloneResponse = `{"unit":"standalone","unitDecisiveAtMs":[100],"unitReason":"independent opening and close","role":"commercial","roleDecisiveAtMs":[200],"roleReason":"product offer framing","segments":[{"startMs":0,"endMs":10000,"role":"commercial","decisiveAtMs":[200],"reason":"one complete product offer"}]}`
 
 func TestRunOpenRouterTemporalStructureBindsOneAtomicVideoAssessment(t *testing.T) {
 	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
@@ -122,8 +122,8 @@ func TestTemporalStructureOpenRouterWireEnforcesClosedConditionalShape(t *testin
 		wire temporalStructureOpenRouterWire
 		want string
 	}{
-		{name: "valid compilation", wire: temporalStructureOpenRouterWire{Unit: "compilation", UnitDecisiveAtMS: []int64{100}, UnitReason: "join", Role: "none"}},
-		{name: "valid unicode character limit", wire: temporalStructureOpenRouterWire{Unit: "compilation", UnitDecisiveAtMS: []int64{100}, UnitReason: strings.Repeat("a", 511) + "–", Role: "none"}},
+		{name: "valid compilation", wire: temporalStructureOpenRouterWire{Unit: "compilation", UnitDecisiveAtMS: []int64{100}, UnitReason: "join", Role: "none", Segments: []temporalStructureOpenRouterSegmentWire{{StartMS: 0, EndMS: 100, Role: "commercial", DecisiveAtMS: []int64{50}, Reason: "offer"}, {StartMS: 100, EndMS: 1_000, Role: "promo", DecisiveAtMS: []int64{200}, Reason: "programme promotion"}}}},
+		{name: "valid unicode character limit", wire: temporalStructureOpenRouterWire{Unit: "compilation", UnitDecisiveAtMS: []int64{100}, UnitReason: strings.Repeat("a", 511) + "–", Role: "none", Segments: []temporalStructureOpenRouterSegmentWire{{StartMS: 0, EndMS: 100, Role: "commercial", DecisiveAtMS: []int64{50}, Reason: "offer"}, {StartMS: 100, EndMS: 1_000, Role: "promo", DecisiveAtMS: []int64{200}, Reason: "programme promotion"}}}},
 		{name: "missing standalone role", wire: temporalStructureOpenRouterWire{Unit: "standalone", UnitDecisiveAtMS: []int64{100}, UnitReason: "bounded", Role: "none"}, want: "standalone role"},
 		{name: "non standalone role", wire: temporalStructureOpenRouterWire{Unit: "programme_excerpt", UnitDecisiveAtMS: []int64{0}, UnitReason: "cut", Role: "promo", RoleDecisiveAtMS: []int64{1}, RoleReason: "wrong"}, want: "carries role"},
 		{name: "duplicate times", wire: temporalStructureOpenRouterWire{Unit: "compilation", UnitDecisiveAtMS: []int64{100, 100}, UnitReason: "join", Role: "none"}, want: "unit claim"},
@@ -138,10 +138,27 @@ func TestTemporalStructureOpenRouterWireEnforcesClosedConditionalShape(t *testin
 	}
 }
 
+func TestTemporalStructureOpenRouterSchemaRequiresCompleteSegmentPlan(t *testing.T) {
+	schema := temporalStructureOpenRouterSchema(1_000)
+	required, ok := schema["required"].([]string)
+	if !ok || !slices.Contains(required, "segments") {
+		t.Fatalf("top-level required fields = %#v", schema["required"])
+	}
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("schema properties = %#v", schema["properties"])
+	}
+	segments, ok := properties["segments"].(map[string]any)
+	if !ok || segments["minItems"] != 1 || segments["maxItems"] != 128 {
+		t.Fatalf("segments schema = %#v", properties["segments"])
+	}
+}
+
 func TestNormalizeTemporalStructureOpenRouterWireSortsMechanicalTimestamps(t *testing.T) {
 	wire := temporalStructureOpenRouterWire{
 		Unit: "standalone", UnitDecisiveAtMS: []int64{900, 100}, UnitReason: "bounded",
 		Role: "promo", RoleDecisiveAtMS: []int64{800, 200}, RoleReason: "programme promotion",
+		Segments: []temporalStructureOpenRouterSegmentWire{{StartMS: 0, EndMS: 1_000, Role: "promo", DecisiveAtMS: []int64{800, 200}, Reason: "programme promotion"}},
 	}
 	normalizeTemporalStructureOpenRouterWire(&wire)
 	if err := validateTemporalStructureOpenRouterWire(wire, 1_000); err != nil {
@@ -149,6 +166,9 @@ func TestNormalizeTemporalStructureOpenRouterWireSortsMechanicalTimestamps(t *te
 	}
 	if !slices.Equal(wire.UnitDecisiveAtMS, []int64{100, 900}) || !slices.Equal(wire.RoleDecisiveAtMS, []int64{200, 800}) {
 		t.Fatalf("normalized wire = %+v", wire)
+	}
+	if !slices.Equal(wire.Segments[0].DecisiveAtMS, []int64{200, 800}) {
+		t.Fatalf("segment timestamps were not normalized: %+v", wire.Segments)
 	}
 }
 

@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	TemporalStructureOpenRouterPromptVersion = "filler-temporal-structure-direct-video-v2"
+	TemporalStructureOpenRouterPromptVersion = "filler-temporal-structure-direct-video-v3"
 	temporalStructureRoleNone                = "none"
 	temporalStructureReasonMaximumCharacters = 512
 )
@@ -31,17 +31,28 @@ unit definitions:
 
 Return decisive timestamps in milliseconds. For a compilation, include the observed internal item joins. For a programme excerpt, include evidence at or near the dependent start/end edges. For standalone, include the moments that establish independent framing. Use at most eight sorted unique timestamps.
 
+Also return segments covering every millisecond from 0 through the supplied duration: sorted, adjacent, no gaps, no overlaps. Give every segment its own role: commercial, promo, bumper, psa, station_id, trailer, interstitial, programme_fragment, non_filler, ambiguous, or unusable. A compilation's items may have different roles. Never copy one role across the file merely because the source appears commercial. Each segment cites decisive timestamps inside its own interval. Use ambiguous rather than guessing; use unusable only for materially unassessable media.
+
 role applies only when unit is standalone. Choose commercial, promo, bumper, psa, station_id, trailer, interstitial, or unclear. For every non-standalone unit return role=none, an empty roleDecisiveAtMs array, and an empty roleReason.
 
 Do not infer source identity, do not mention filenames or aliases, and do not claim content suitability. Return only the requested JSON.`
 
 type temporalStructureOpenRouterWire struct {
-	Unit             string  `json:"unit"`
-	UnitDecisiveAtMS []int64 `json:"unitDecisiveAtMs"`
-	UnitReason       string  `json:"unitReason"`
-	Role             string  `json:"role"`
-	RoleDecisiveAtMS []int64 `json:"roleDecisiveAtMs"`
-	RoleReason       string  `json:"roleReason"`
+	Unit             string                                   `json:"unit"`
+	UnitDecisiveAtMS []int64                                  `json:"unitDecisiveAtMs"`
+	UnitReason       string                                   `json:"unitReason"`
+	Role             string                                   `json:"role"`
+	RoleDecisiveAtMS []int64                                  `json:"roleDecisiveAtMs"`
+	RoleReason       string                                   `json:"roleReason"`
+	Segments         []temporalStructureOpenRouterSegmentWire `json:"segments"`
+}
+
+type temporalStructureOpenRouterSegmentWire struct {
+	StartMS      int64   `json:"startMs"`
+	EndMS        int64   `json:"endMs"`
+	Role         string  `json:"role"`
+	DecisiveAtMS []int64 `json:"decisiveAtMs"`
+	Reason       string  `json:"reason"`
 }
 
 func temporalStructureOpenRouterSchema(durationMS int64) map[string]any {
@@ -54,10 +65,29 @@ func temporalStructureOpenRouterSchema(durationMS int64) map[string]any {
 		string(fillereval.TemporalRoleBumper), string(fillereval.TemporalRolePSA), string(fillereval.TemporalRoleStationID),
 		string(fillereval.TemporalRoleTrailer), string(fillereval.TemporalRoleInterstitial), string(fillereval.TemporalRoleUnclear),
 	}
+	segmentRoles := []string{
+		string(fillereval.TemporalSegmentCommercial), string(fillereval.TemporalSegmentPromo),
+		string(fillereval.TemporalSegmentBumper), string(fillereval.TemporalSegmentPSA),
+		string(fillereval.TemporalSegmentStationID), string(fillereval.TemporalSegmentTrailer),
+		string(fillereval.TemporalSegmentInterstitial), string(fillereval.TemporalSegmentProgrammeFragment),
+		string(fillereval.TemporalSegmentNonFiller), string(fillereval.TemporalSegmentAmbiguous),
+		string(fillereval.TemporalSegmentUnusable),
+	}
 	times := map[string]any{"type": "array", "maxItems": temporalStructureMaximumDecisiveTimes, "items": map[string]any{"type": "integer", "minimum": 0, "maximum": durationMS}}
+	segment := map[string]any{
+		"type": "object", "additionalProperties": false,
+		"required": []string{"startMs", "endMs", "role", "decisiveAtMs", "reason"},
+		"properties": map[string]any{
+			"startMs":      map[string]any{"type": "integer", "minimum": 0, "maximum": durationMS},
+			"endMs":        map[string]any{"type": "integer", "minimum": 1, "maximum": durationMS},
+			"role":         map[string]any{"type": "string", "enum": segmentRoles},
+			"decisiveAtMs": times,
+			"reason":       map[string]any{"type": "string", "maxLength": temporalStructureReasonMaximumCharacters},
+		},
+	}
 	return map[string]any{
 		"type": "object", "additionalProperties": false,
-		"required": []string{"unit", "unitDecisiveAtMs", "unitReason", "role", "roleDecisiveAtMs", "roleReason"},
+		"required": []string{"unit", "unitDecisiveAtMs", "unitReason", "role", "roleDecisiveAtMs", "roleReason", "segments"},
 		"properties": map[string]any{
 			"unit":             map[string]any{"type": "string", "enum": units},
 			"unitDecisiveAtMs": times,
@@ -65,6 +95,7 @@ func temporalStructureOpenRouterSchema(durationMS int64) map[string]any {
 			"role":             map[string]any{"type": "string", "enum": roles},
 			"roleDecisiveAtMs": times,
 			"roleReason":       map[string]any{"type": "string", "maxLength": temporalStructureReasonMaximumCharacters},
+			"segments":         map[string]any{"type": "array", "minItems": 1, "maxItems": 128, "items": segment},
 		},
 	}
 }
@@ -76,6 +107,12 @@ func temporalStructureOpenRouterContent(durationMS int64) string {
 func normalizeTemporalStructureOpenRouterWire(wire *temporalStructureOpenRouterWire) {
 	sort.Slice(wire.UnitDecisiveAtMS, func(i, j int) bool { return wire.UnitDecisiveAtMS[i] < wire.UnitDecisiveAtMS[j] })
 	sort.Slice(wire.RoleDecisiveAtMS, func(i, j int) bool { return wire.RoleDecisiveAtMS[i] < wire.RoleDecisiveAtMS[j] })
+	for index := range wire.Segments {
+		sort.Slice(wire.Segments[index].DecisiveAtMS, func(i, j int) bool {
+			return wire.Segments[index].DecisiveAtMS[i] < wire.Segments[index].DecisiveAtMS[j]
+		})
+	}
+	sort.Slice(wire.Segments, func(i, j int) bool { return wire.Segments[i].StartMS < wire.Segments[j].StartMS })
 }
 
 func validateTemporalStructureOpenRouterWire(wire temporalStructureOpenRouterWire, durationMS int64) error {
@@ -94,6 +131,10 @@ func validateTemporalStructureOpenRouterWire(wire temporalStructureOpenRouterWir
 	if !slices.IsSorted(wire.UnitDecisiveAtMS) || !slices.IsSorted(wire.RoleDecisiveAtMS) {
 		return fmt.Errorf("direct-video decisive timestamps are not sorted")
 	}
+	assessment := temporalStructureAssessmentFromWire("validation", wire, time.Unix(1, 0), fillereval.TemporalInferenceCall{Axis: "structure", Attempt: 1, ResponseSHA256: strings.Repeat("a", 64)})
+	if err := validateTemporalStructureSegments(assessment, durationMS); err != nil {
+		return fmt.Errorf("direct-video segment plan is invalid: %w", err)
+	}
 	return nil
 }
 
@@ -109,6 +150,12 @@ func temporalStructureAssessmentFromWire(alias string, wire temporalStructureOpe
 		roleTimes := slices.Clone(wire.RoleDecisiveAtMS)
 		sort.Slice(roleTimes, func(i, j int) bool { return roleTimes[i] < roleTimes[j] })
 		assessment.Role = &TemporalStructureRoleClaim{Kind: fillereval.TemporalRole(wire.Role), DecisiveAtMS: roleTimes, Reason: strings.TrimSpace(wire.RoleReason)}
+	}
+	for _, segment := range wire.Segments {
+		assessment.Segments = append(assessment.Segments, TemporalStructureSegmentClaim{
+			StartMS: segment.StartMS, EndMS: segment.EndMS, Role: fillereval.TemporalSegmentRole(segment.Role),
+			DecisiveAtMS: slices.Clone(segment.DecisiveAtMS), Reason: strings.TrimSpace(segment.Reason),
+		})
 	}
 	return assessment
 }

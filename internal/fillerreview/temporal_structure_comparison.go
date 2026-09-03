@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	TemporalStructureComparisonSchemaVersion   = 1
-	TemporalStructureComparisonContractVersion = "filler-temporal-structure-comparison-v1"
+	TemporalStructureComparisonSchemaVersion   = 2
+	TemporalStructureComparisonContractVersion = "filler-temporal-structure-comparison-v2"
 	TemporalStructureNearBoundaryMS            = 2_000
 	TemporalStructureBroadBoundaryMS           = 5_000
 )
@@ -67,6 +67,12 @@ type TemporalStructureAssessorSummary struct {
 	RoleComparable         int                              `json:"roleComparable"`
 	RoleCorrect            int                              `json:"roleCorrect"`
 	ExactLabelCorrect      int                              `json:"exactLabelCorrect"`
+	ExactSegmentPlans      int                              `json:"exactSegmentPlans"`
+	CoverageComplete       int                              `json:"coverageComplete"`
+	UnderSplits            int                              `json:"underSplits"`
+	OverSplits             int                              `json:"overSplits"`
+	SegmentRoleTargets     int                              `json:"segmentRoleTargets"`
+	SegmentRoleCorrect     int                              `json:"segmentRoleCorrect"`
 	Boundary               TemporalStructureBoundarySummary `json:"boundary"`
 }
 
@@ -80,6 +86,12 @@ type TemporalStructureConstructionSummary struct {
 	RoleComparable         int                              `json:"roleComparable"`
 	RoleCorrect            int                              `json:"roleCorrect"`
 	ExactLabelCorrect      int                              `json:"exactLabelCorrect"`
+	ExactSegmentPlans      int                              `json:"exactSegmentPlans"`
+	CoverageComplete       int                              `json:"coverageComplete"`
+	UnderSplits            int                              `json:"underSplits"`
+	OverSplits             int                              `json:"overSplits"`
+	SegmentRoleTargets     int                              `json:"segmentRoleTargets"`
+	SegmentRoleCorrect     int                              `json:"segmentRoleCorrect"`
 	Boundary               TemporalStructureBoundarySummary `json:"boundary"`
 }
 
@@ -92,14 +104,15 @@ type TemporalStructureBoundarySummary struct {
 }
 
 type TemporalStructurePairSummary struct {
-	Pair                     string `json:"pair"`
-	Cases                    int    `json:"cases"`
-	OperationallyComparable  int    `json:"operationallyComparable"`
-	ExactUnitAgreement       int    `json:"exactUnitAgreement"`
-	StandaloneClassAgreement int    `json:"standaloneClassAgreement"`
-	RoleComparable           int    `json:"roleComparable"`
-	RoleAgreement            int    `json:"roleAgreement"`
-	ExactLabelAgreement      int    `json:"exactLabelAgreement"`
+	Pair                      string `json:"pair"`
+	Cases                     int    `json:"cases"`
+	OperationallyComparable   int    `json:"operationallyComparable"`
+	ExactUnitAgreement        int    `json:"exactUnitAgreement"`
+	StandaloneClassAgreement  int    `json:"standaloneClassAgreement"`
+	RoleComparable            int    `json:"roleComparable"`
+	RoleAgreement             int    `json:"roleAgreement"`
+	ExactLabelAgreement       int    `json:"exactLabelAgreement"`
+	ExactSegmentPlanAgreement int    `json:"exactSegmentPlanAgreement"`
 }
 
 type TemporalStructureTruthLabel struct {
@@ -108,9 +121,22 @@ type TemporalStructureTruthLabel struct {
 }
 
 type TemporalStructurePredictedLabel struct {
-	Unit    fillereval.UnitKind            `json:"unit,omitempty"`
-	Role    fillereval.TemporalRole        `json:"role,omitempty"`
-	Failure fillereval.TemporalFailureCode `json:"failure,omitempty"`
+	Unit     fillereval.UnitKind                 `json:"unit,omitempty"`
+	Role     fillereval.TemporalRole             `json:"role,omitempty"`
+	Failure  fillereval.TemporalFailureCode      `json:"failure,omitempty"`
+	Segments []TemporalStructurePredictedSegment `json:"segments,omitempty"`
+}
+
+type TemporalStructurePredictedSegment struct {
+	StartMS int64                          `json:"startMs"`
+	EndMS   int64                          `json:"endMs"`
+	Role    fillereval.TemporalSegmentRole `json:"role"`
+}
+
+type TemporalStructureTruthSegment struct {
+	StartMS int64                          `json:"startMs"`
+	EndMS   int64                          `json:"endMs"`
+	Role    fillereval.TemporalSegmentRole `json:"role"`
 }
 
 type TemporalStructureBoundaryDistance struct {
@@ -130,14 +156,21 @@ type TemporalStructureAssessorCaseResult struct {
 	RoleComparable         bool                                `json:"roleComparable"`
 	RoleCorrect            bool                                `json:"roleCorrect"`
 	ExactLabelCorrect      bool                                `json:"exactLabelCorrect"`
+	CoverageComplete       bool                                `json:"coverageComplete"`
+	UnderSplits            int                                 `json:"underSplits"`
+	OverSplits             int                                 `json:"overSplits"`
+	SegmentRoleTargets     int                                 `json:"segmentRoleTargets"`
+	SegmentRoleCorrect     int                                 `json:"segmentRoleCorrect"`
+	ExactSegmentPlan       bool                                `json:"exactSegmentPlan"`
 	BoundaryDistances      []TemporalStructureBoundaryDistance `json:"boundaryDistances,omitempty"`
 }
 
 type TemporalStructureCaseComparison struct {
-	Alias       string                                `json:"alias"`
-	DurationMS  int64                                 `json:"durationMs"`
-	Truth       TemporalStructureTruthLabel           `json:"truth"`
-	Assessments []TemporalStructureAssessorCaseResult `json:"assessments"`
+	Alias         string                                `json:"alias"`
+	DurationMS    int64                                 `json:"durationMs"`
+	Truth         TemporalStructureTruthLabel           `json:"truth"`
+	TruthSegments []TemporalStructureTruthSegment       `json:"truthSegments"`
+	Assessments   []TemporalStructureAssessorCaseResult `json:"assessments"`
 }
 
 type TemporalStructureDiagnosticCandidate struct {

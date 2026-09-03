@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	TemporalStructureOpenRouterResultSchemaVersion = 1
-	TemporalStructureOpenRouterResultContract      = "filler-temporal-structure-openrouter-v1"
+	TemporalStructureOpenRouterResultSchemaVersion = 2
+	TemporalStructureOpenRouterResultContract      = "filler-temporal-structure-openrouter-v2"
 	TemporalStructureOpenRouterMaximumVideoBytes   = int64(64 << 20)
 	TemporalStructureOpenRouterReasoningDisabled   = "disabled"
 	TemporalStructureOpenRouterReasoningRequired   = "provider_required"
