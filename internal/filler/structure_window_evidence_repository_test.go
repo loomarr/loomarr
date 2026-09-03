@@ -4,7 +4,6 @@ import (
 	"os"
 	"reflect"
 	"testing"
-	"time"
 
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
@@ -18,20 +17,21 @@ func TestFileStructureWindowEvidenceRepositoryRoundTripsValidatedArtifacts(t *te
 		{StartMS: 120_000, EndMS: 300_000, Role: fillerstructure.RolePromo},
 	}
 	profile := windowAssessorFixture("assessor-a", "family-a", "a", timeline, &[]string{}).Profile()
-	assessments := structureWindowAssessmentFixtures(t, set, profile, timeline)
+	recorded := structureWindowRecordedAssessmentFixtures(t, set, profile, timeline)
+	assessments := recordedWindowAssessments(recorded)
 	stitch, err := fillerstructurewindow.Stitch(set, assessments, 2_000)
 	if err != nil {
 		t.Fatal(err)
 	}
 	repository := structureEvidenceRepositoryFixture(t)
-	for _, assessment := range assessments {
-		if err := repository.PutStructureWindowAssessment(t.Context(), set, assessment); err != nil {
+	for _, assessment := range recorded {
+		if err := repository.PutStructureWindowAssessmentEvidence(t.Context(), assessment); err != nil {
 			t.Fatal(err)
 		}
-		if err := repository.PutStructureWindowAssessment(t.Context(), set, assessment); err != nil {
+		if err := repository.PutStructureWindowAssessmentEvidence(t.Context(), assessment); err != nil {
 			t.Fatalf("idempotent assessment persistence: %v", err)
 		}
-		loaded, err := repository.GetStructureWindowAssessment(t.Context(), set, assessment.SHA256)
+		loaded, err := repository.GetStructureWindowAssessmentEvidence(t.Context(), set, assessment.Record.SHA256)
 		if err != nil || !reflect.DeepEqual(loaded, assessment) {
 			t.Fatalf("loaded assessment=%+v error=%v", loaded, err)
 		}
@@ -53,20 +53,30 @@ func TestFileStructureWindowEvidenceRepositoryRejectsDrift(t *testing.T) {
 	set := prepared.Authority
 	timeline := []fillerstructure.Segment{{StartMS: 0, EndMS: 300_000, Role: fillerstructure.RoleCommercial}}
 	profile := windowAssessorFixture("assessor-a", "family-a", "a", timeline, &[]string{}).Profile()
-	assessments := structureWindowAssessmentFixtures(t, set, profile, timeline)
+	recorded := structureWindowRecordedAssessmentFixtures(t, set, profile, timeline)
+	assessments := recordedWindowAssessments(recorded)
 	stitch, err := fillerstructurewindow.Stitch(set, assessments, 2_000)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, target := range []string{"assessment", "stitch"} {
+	for _, target := range []string{"record", "assessment", "response", "output", "stitch"} {
 		t.Run(target, func(t *testing.T) {
 			repository := structureEvidenceRepositoryFixture(t)
 			var path string
-			if target == "assessment" {
-				if err := repository.PutStructureWindowAssessment(t.Context(), set, assessments[0]); err != nil {
+			if target != "stitch" {
+				if err := repository.PutStructureWindowAssessmentEvidence(t.Context(), recorded[0]); err != nil {
 					t.Fatal(err)
 				}
-				path = repository.blobPath("window-assessments", assessments[0].SHA256)
+				switch target {
+				case "record":
+					path = repository.blobPath("window-call-records", recorded[0].Record.SHA256)
+				case "assessment":
+					path = repository.blobPath("window-assessments", recorded[0].Assessment.SHA256)
+				case "response":
+					path = repository.blobPath("responses", recorded[0].Record.ResponseSHA256)
+				case "output":
+					path = repository.blobPath("outputs", recorded[0].Record.StructuredOutputSHA256)
+				}
 			} else {
 				if err := repository.PutStructureWindowStitch(t.Context(), stitch); err != nil {
 					t.Fatal(err)
@@ -76,9 +86,9 @@ func TestFileStructureWindowEvidenceRepositoryRejectsDrift(t *testing.T) {
 			if err := os.WriteFile(path, []byte(`{"tampered":true}`), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if target == "assessment" {
-				if _, err := repository.GetStructureWindowAssessment(t.Context(), set, assessments[0].SHA256); err == nil {
-					t.Fatal("tampered assessment was accepted")
+			if target != "stitch" {
+				if _, err := repository.GetStructureWindowAssessmentEvidence(t.Context(), set, recorded[0].Record.SHA256); err == nil {
+					t.Fatal("tampered window call evidence was accepted")
 				}
 			} else if _, err := repository.GetStructureWindowStitch(t.Context(), stitch.SHA256); err == nil {
 				t.Fatal("tampered stitch was accepted")
@@ -87,19 +97,26 @@ func TestFileStructureWindowEvidenceRepositoryRejectsDrift(t *testing.T) {
 	}
 }
 
-func structureWindowAssessmentFixtures(t *testing.T, set fillerstructurewindow.MediaSet, profile fillerstructure.AssessorProfile, timeline []fillerstructure.Segment) []fillerstructurewindow.Assessment {
+func structureWindowRecordedAssessmentFixtures(t *testing.T, set fillerstructurewindow.MediaSet, profile fillerstructure.AssessorProfile, timeline []fillerstructure.Segment) []fillerstructurewindow.RecordedAssessment {
 	t.Helper()
-	assessments := make([]fillerstructurewindow.Assessment, len(set.Plan.Windows))
+	recorded := make([]fillerstructurewindow.RecordedAssessment, len(set.Plan.Windows))
+	assessor := &capturedWindowAssessor{profile: profile, timeline: timeline, events: &[]string{}, failureOrdinal: -1}
 	for ordinal, window := range set.Plan.Windows {
-		assessment, err := fillerstructurewindow.NewAssessment(fillerstructurewindow.AssessmentInput{
-			MediaSet: set, WindowOrdinal: ordinal, Assessor: profile,
-			Segments:   clipStructureTimeline(timeline, window),
-			AssessedAt: time.Date(2026, time.September, 11, 11, 0, ordinal, 0, time.UTC),
+		assessment, err := assessor.AssessWindow(t.Context(), set, StructureAssessmentWindowMedia{
+			Window: window, Media: set.Windows[ordinal], FullPath: "unused",
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
-		assessments[ordinal] = assessment
+		recorded[ordinal] = assessment
+	}
+	return recorded
+}
+
+func recordedWindowAssessments(recorded []fillerstructurewindow.RecordedAssessment) []fillerstructurewindow.Assessment {
+	assessments := make([]fillerstructurewindow.Assessment, len(recorded))
+	for index := range recorded {
+		assessments[index] = recorded[index].Assessment
 	}
 	return assessments
 }

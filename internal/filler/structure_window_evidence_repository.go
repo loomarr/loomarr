@@ -7,51 +7,96 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 )
 
 const (
 	structureWindowAssessmentMaximumBytes = 1 << 20
+	structureWindowCallRecordMaximumBytes = 1 << 20
 	structureWindowStitchMaximumBytes     = 4 << 20
 )
 
-func (r *FileStructureAssessmentEvidenceRepository) PutStructureWindowAssessment(ctx context.Context, set fillerstructurewindow.MediaSet, assessment fillerstructurewindow.Assessment) error {
+// PutStructureWindowAssessmentEvidence publishes provider blobs and the semantic assessment before
+// the call record. A visible record is therefore always replayable after a crash.
+func (r *FileStructureAssessmentEvidenceRepository) PutStructureWindowAssessmentEvidence(ctx context.Context, recorded fillerstructurewindow.RecordedAssessment) error {
 	if r == nil || r.root == "" {
 		return errors.New("structure window evidence repository is unavailable")
 	}
-	if err := fillerstructurewindow.ValidateAssessment(set, assessment); err != nil {
+	if err := fillerstructurewindow.ValidateRecordedAssessment(recorded); err != nil {
 		return err
 	}
-	raw, err := json.Marshal(assessment)
-	if err != nil || len(raw) == 0 || len(raw) > structureWindowAssessmentMaximumBytes {
+	assessmentRaw, err := json.Marshal(recorded.Assessment)
+	if err != nil || len(assessmentRaw) == 0 || len(assessmentRaw) > structureWindowAssessmentMaximumBytes {
 		return errors.New("marshal bounded structure window assessment")
 	}
-	if err := r.putImmutable(ctx, r.blobPath("window-assessments", assessment.SHA256), raw, structureWindowAssessmentMaximumBytes); err != nil {
+	recordRaw, err := json.Marshal(recorded.Record)
+	if err != nil || len(recordRaw) == 0 || len(recordRaw) > structureWindowCallRecordMaximumBytes {
+		return errors.New("marshal bounded structure window call record")
+	}
+	if recorded.Record.ResponseSHA256 != "" {
+		if err := r.putImmutable(ctx, r.blobPath("responses", recorded.Record.ResponseSHA256), recorded.RawResponse, structureAssessmentResponseMaxBytes); err != nil {
+			return fmt.Errorf("persist structure window raw response: %w", err)
+		}
+	}
+	if recorded.Record.StructuredOutputSHA256 != "" {
+		if err := r.putImmutable(ctx, r.blobPath("outputs", recorded.Record.StructuredOutputSHA256), []byte(recorded.StructuredOutput), structureAssessmentResponseMaxBytes); err != nil {
+			return fmt.Errorf("persist structure window structured output: %w", err)
+		}
+	}
+	if err := r.putImmutable(ctx, r.blobPath("window-assessments", recorded.Assessment.SHA256), assessmentRaw, structureWindowAssessmentMaximumBytes); err != nil {
 		return fmt.Errorf("persist structure window assessment: %w", err)
+	}
+	if err := r.putImmutable(ctx, r.blobPath("window-call-records", recorded.Record.SHA256), recordRaw, structureWindowCallRecordMaximumBytes); err != nil {
+		return fmt.Errorf("persist structure window call record: %w", err)
 	}
 	return nil
 }
 
-func (r *FileStructureAssessmentEvidenceRepository) GetStructureWindowAssessment(ctx context.Context, set fillerstructurewindow.MediaSet, assessmentSHA256 string) (fillerstructurewindow.Assessment, error) {
-	if r == nil || r.root == "" || !structureEvidenceDigest(assessmentSHA256) {
-		return fillerstructurewindow.Assessment{}, errors.New("structure window assessment identity is invalid")
+func (r *FileStructureAssessmentEvidenceRepository) GetStructureWindowAssessmentEvidence(ctx context.Context, set fillerstructurewindow.MediaSet, recordSHA256 string) (fillerstructurewindow.RecordedAssessment, error) {
+	if r == nil || r.root == "" || !structureEvidenceDigest(recordSHA256) {
+		return fillerstructurewindow.RecordedAssessment{}, errors.New("structure window call record identity is invalid")
 	}
-	raw, err := r.readImmutable(ctx, r.blobPath("window-assessments", assessmentSHA256), structureWindowAssessmentMaximumBytes)
+	recordRaw, err := r.readImmutable(ctx, r.blobPath("window-call-records", recordSHA256), structureWindowCallRecordMaximumBytes)
 	if err != nil {
-		return fillerstructurewindow.Assessment{}, fmt.Errorf("read structure window assessment: %w", err)
+		return fillerstructurewindow.RecordedAssessment{}, fmt.Errorf("read structure window call record: %w", err)
+	}
+	var record fillerstructurewindow.CallRecord
+	if err := decodeStructureWindowEvidence(recordRaw, &record); err != nil {
+		return fillerstructurewindow.RecordedAssessment{}, fmt.Errorf("decode structure window call record: %w", err)
+	}
+	if record.SHA256 != recordSHA256 || !reflect.DeepEqual(record.MediaSet, set) {
+		return fillerstructurewindow.RecordedAssessment{}, errors.New("structure window call record path or media set does not match")
+	}
+	assessmentRaw, err := r.readImmutable(ctx, r.blobPath("window-assessments", record.AssessmentSHA256), structureWindowAssessmentMaximumBytes)
+	if err != nil {
+		return fillerstructurewindow.RecordedAssessment{}, fmt.Errorf("read structure window assessment: %w", err)
 	}
 	var assessment fillerstructurewindow.Assessment
-	if err := decodeStructureWindowEvidence(raw, &assessment); err != nil {
-		return fillerstructurewindow.Assessment{}, fmt.Errorf("decode structure window assessment: %w", err)
+	if err := decodeStructureWindowEvidence(assessmentRaw, &assessment); err != nil {
+		return fillerstructurewindow.RecordedAssessment{}, fmt.Errorf("decode structure window assessment: %w", err)
 	}
-	if assessment.SHA256 != assessmentSHA256 {
-		return fillerstructurewindow.Assessment{}, errors.New("structure window assessment path does not match content")
+	var rawResponse, structuredOutput []byte
+	if record.ResponseSHA256 != "" {
+		rawResponse, err = r.readImmutable(ctx, r.blobPath("responses", record.ResponseSHA256), structureAssessmentResponseMaxBytes)
+		if err != nil {
+			return fillerstructurewindow.RecordedAssessment{}, fmt.Errorf("read structure window raw response: %w", err)
+		}
 	}
-	if err := fillerstructurewindow.ValidateAssessment(set, assessment); err != nil {
-		return fillerstructurewindow.Assessment{}, err
+	if record.StructuredOutputSHA256 != "" {
+		structuredOutput, err = r.readImmutable(ctx, r.blobPath("outputs", record.StructuredOutputSHA256), structureAssessmentResponseMaxBytes)
+		if err != nil {
+			return fillerstructurewindow.RecordedAssessment{}, fmt.Errorf("read structure window structured output: %w", err)
+		}
 	}
-	return assessment, nil
+	recorded := fillerstructurewindow.RecordedAssessment{
+		Record: record, Assessment: assessment, RawResponse: rawResponse, StructuredOutput: string(structuredOutput),
+	}
+	if err := fillerstructurewindow.ValidateRecordedAssessment(recorded); err != nil {
+		return fillerstructurewindow.RecordedAssessment{}, err
+	}
+	return recorded, nil
 }
 
 func (r *FileStructureAssessmentEvidenceRepository) PutStructureWindowStitch(ctx context.Context, stitch fillerstructurewindow.StitchResult) error {

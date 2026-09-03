@@ -4776,6 +4776,21 @@ answers. A normal provider failure returns an attributable operational-failure w
 the family as a held stitch. An error, profile/media/ordinal drift, or failure to persist any answer or
 stitch aborts without reduction. Only persisted, replay-valid family stitches become whole-source
 candidates, and the final decision artifact is persisted before return.
+Each window call crosses the persistence seam as one separately versioned recorded assessment, not
+as a bare semantic answer. Its reservation and settlement embed the complete media-set authority and
+bind the exact ordinal, assessor profile, prompt and schema digests, requested and resolved route,
+generation, tokens, requested/reserved/charged/accounted nanodollars, closed state, raw-response and
+structured-output digests, and the resulting semantic window-assessment digest. The request is
+durably reserved before transport. Response and structured-output blobs plus the semantic assessment
+publish before the settlement record, and the coordinator reloads that complete record before the
+answer may enter stitching. Accepted output is parsed in window-local coordinates and projected
+deterministically onto the plan's source-relative media interval; the exact planned interval, rather
+than encoder-duration drift, remains the coverage authority. Budget holds, route drift, provider or
+schema failure, unknown settlement, and reservation overrun each produce one closed operational-
+failure assessment with no segments. Cancellation does not bypass settlement: once a reservation
+exists, the adapter settles through a bounded context detached from caller cancellation. A paid or
+reserved call therefore cannot influence a boundary from memory alone, disappear from accounting,
+or be mistaken for semantic evidence.
 The conditioned-media identity also binds a content-addressed, path-free lineage document. That
 document names the original source identity, the complete canonical assessment-media profile, the
 exact ffmpeg version and executable digest, and the normalized derivative's digest, byte count, and

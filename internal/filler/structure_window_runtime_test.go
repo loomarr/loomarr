@@ -2,6 +2,9 @@ package filler
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"reflect"
@@ -32,39 +35,69 @@ type capturedWindowAssessor struct {
 
 func (a *capturedWindowAssessor) Profile() fillerstructure.AssessorProfile { return a.profile }
 
-func (a *capturedWindowAssessor) AssessWindow(_ context.Context, set fillerstructurewindow.MediaSet, media StructureAssessmentWindowMedia) (fillerstructurewindow.Assessment, error) {
+func (a *capturedWindowAssessor) AssessWindow(_ context.Context, set fillerstructurewindow.MediaSet, media StructureAssessmentWindowMedia) (fillerstructurewindow.RecordedAssessment, error) {
 	*a.events = append(*a.events, "call:"+a.profile.ID+":"+string(rune('0'+media.Window.Ordinal)))
 	profile := a.profile
 	if a.driftProfile {
 		profile.ID += "-drift"
 	}
-	input := fillerstructurewindow.AssessmentInput{
+	duration := media.Window.MediaEndMS - media.Window.MediaStartMS
+	input := fillerstructurewindow.CallRecordInput{
 		MediaSet: set, WindowOrdinal: media.Window.Ordinal, Assessor: profile,
-		Segments:   clipStructureTimeline(a.timeline, media.Window),
+		PromptSHA256:  fillerstructurewindow.DirectVideoPromptSHA256(duration),
+		SchemaSHA256:  fillerstructurewindow.DirectVideoSchemaSHA256(duration),
+		RequestSHA256: windowRequestDigest(profile.ID, media.Window.Ordinal),
+		RawResponse:   []byte("provider response"), StructuredOutput: windowStructuredOutput(timelineWithinWindow(a.timeline, media.Window), media.Window),
+		ResolvedProvider: profile.Provider, ResolvedModel: "resolved-model", UpstreamProvider: "Provider",
+		UpstreamProviderSlug: "provider", GenerationID: "generation-1",
+		Tokens:           fillerstructure.AssessmentTokenUsage{Prompt: 100, Completion: 20, Video: 80},
+		RequestedNanoUSD: 2_000, ReservedNanoUSD: 2_000, ChargedAmountUSD: "0.000001",
+		ChargedNanoUSD: 1_000, AccountedNanoUSD: 1_000, ChargeKnown: true,
+		State:      fillerstructure.AssessmentRecordAccepted,
 		AssessedAt: time.Date(2026, time.September, 11, 10, 0, media.Window.Ordinal, 0, time.UTC),
 	}
 	if media.Window.Ordinal == a.failureOrdinal {
-		input.Failure, input.Segments = "provider_timeout", nil
+		input.State, input.Failure = fillerstructure.AssessmentRecordFailed, fillerstructure.AssessmentFailureProvider
+		input.ResolvedProvider, input.ResolvedModel = "", ""
 	}
-	return fillerstructurewindow.NewAssessment(input)
+	return fillerstructurewindow.NewRecordedAssessment(input)
 }
 
 type capturedWindowEvidence struct {
 	events      *[]string
 	failEvent   string
-	assessments []fillerstructurewindow.Assessment
+	assessments []fillerstructurewindow.RecordedAssessment
+	byRecord    map[string]fillerstructurewindow.RecordedAssessment
 	stitches    []fillerstructurewindow.StitchResult
 	decisions   []fillerstructure.Artifact
 }
 
-func (e *capturedWindowEvidence) PutStructureWindowAssessment(_ context.Context, _ fillerstructurewindow.MediaSet, assessment fillerstructurewindow.Assessment) error {
+func (e *capturedWindowEvidence) PutStructureWindowAssessmentEvidence(_ context.Context, recorded fillerstructurewindow.RecordedAssessment) error {
+	assessment := recorded.Assessment
 	event := "put:" + assessment.Assessor.ID + ":" + string(rune('0'+assessment.WindowOrdinal))
 	*e.events = append(*e.events, event)
 	if event == e.failEvent {
 		return errors.New("persistence failed")
 	}
-	e.assessments = append(e.assessments, assessment)
+	e.assessments = append(e.assessments, recorded)
+	if e.byRecord == nil {
+		e.byRecord = make(map[string]fillerstructurewindow.RecordedAssessment)
+	}
+	e.byRecord[recorded.Record.SHA256] = recorded
 	return nil
+}
+
+func (e *capturedWindowEvidence) GetStructureWindowAssessmentEvidence(_ context.Context, _ fillerstructurewindow.MediaSet, recordSHA256 string) (fillerstructurewindow.RecordedAssessment, error) {
+	recorded, ok := e.byRecord[recordSHA256]
+	if !ok {
+		return fillerstructurewindow.RecordedAssessment{}, errors.New("missing evidence")
+	}
+	event := "get:" + recorded.Assessment.Assessor.ID + ":" + string(rune('0'+recorded.Assessment.WindowOrdinal))
+	*e.events = append(*e.events, event)
+	if event == e.failEvent {
+		return fillerstructurewindow.RecordedAssessment{}, errors.New("replay failed")
+	}
+	return recorded, nil
 }
 
 func (e *capturedWindowEvidence) PutStructureWindowStitch(_ context.Context, stitch fillerstructurewindow.StitchResult) error {
@@ -109,8 +142,8 @@ func TestStructureWindowRuntimePersistsFamilyMajorSerialEvidenceBeforeReduction(
 		t.Fatal(err)
 	}
 	wantEvents := []string{
-		"call:assessor-a:0", "put:assessor-a:0", "call:assessor-a:1", "put:assessor-a:1", "call:assessor-a:2", "put:assessor-a:2", "stitch:assessor-a",
-		"call:assessor-b:0", "put:assessor-b:0", "call:assessor-b:1", "put:assessor-b:1", "call:assessor-b:2", "put:assessor-b:2", "stitch:assessor-b", "decision",
+		"call:assessor-a:0", "put:assessor-a:0", "get:assessor-a:0", "call:assessor-a:1", "put:assessor-a:1", "get:assessor-a:1", "call:assessor-a:2", "put:assessor-a:2", "get:assessor-a:2", "stitch:assessor-a",
+		"call:assessor-b:0", "put:assessor-b:0", "get:assessor-b:0", "call:assessor-b:1", "put:assessor-b:1", "get:assessor-b:1", "call:assessor-b:2", "put:assessor-b:2", "get:assessor-b:2", "stitch:assessor-b", "decision",
 	}
 	if !reflect.DeepEqual(events, wantEvents) || len(evidence.assessments) != 6 || len(evidence.stitches) != 2 || len(evidence.decisions) != 1 ||
 		artifact.Decision.Status != fillerstructure.StatusConfirmed || artifact.Decision.Unit != fillerstructure.UnitCompilation ||
@@ -151,6 +184,7 @@ func TestStructureWindowRuntimeStopsBeforeNextCallOnDriftOrPersistenceFailure(t 
 	}{
 		{name: "profile drift", drift: true},
 		{name: "assessment persistence", failEvent: "put:assessor-a:0"},
+		{name: "assessment replay", failEvent: "get:assessor-a:0"},
 		{name: "stitch persistence", failEvent: "stitch:assessor-a"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -257,7 +291,8 @@ func windowAssessorFixture(id, family, digest string, timeline []fillerstructure
 		profile: fillerstructure.AssessorProfile{
 			ID: id, ModelFamily: family, Provider: "provider", Model: "model",
 			ModelDigest: strings.Repeat(digest, 64), CapabilitySHA256: strings.Repeat("f", 64),
-			PromptVersion: "window-prompt-v1", EvidenceContract: "window-assessment-v2",
+			PromptVersion:    fillerstructurewindow.DirectVideoPromptVersion,
+			EvidenceContract: fillerstructurewindow.CallRecordContractVersion,
 		},
 		timeline: timeline, events: events, failureOrdinal: -1,
 	}
@@ -272,4 +307,33 @@ func clipStructureTimeline(timeline []fillerstructure.Segment, window fillerstru
 		}
 	}
 	return clipped
+}
+
+func timelineWithinWindow(timeline []fillerstructure.Segment, window fillerstructurewindow.Window) []fillerstructure.Segment {
+	return clipStructureTimeline(timeline, window)
+}
+
+func windowStructuredOutput(segments []fillerstructure.Segment, window fillerstructurewindow.Window) string {
+	type responseSegment struct {
+		EndMS        int64   `json:"endMs"`
+		Role         string  `json:"role"`
+		DecisiveAtMS []int64 `json:"decisiveAtMs"`
+		Reason       string  `json:"reason"`
+	}
+	response := struct {
+		Segments []responseSegment `json:"segments"`
+	}{Segments: make([]responseSegment, 0, len(segments))}
+	for _, segment := range segments {
+		localEnd := segment.EndMS - window.MediaStartMS
+		response.Segments = append(response.Segments, responseSegment{
+			EndMS: localEnd, Role: string(segment.Role), DecisiveAtMS: []int64{max(0, localEnd-1)}, Reason: "fixture evidence",
+		})
+	}
+	raw, _ := json.Marshal(response)
+	return string(raw)
+}
+
+func windowRequestDigest(assessorID string, ordinal int) string {
+	digest := sha256.Sum256([]byte(assessorID + ":" + string(rune('0'+ordinal))))
+	return hex.EncodeToString(digest[:])
 }

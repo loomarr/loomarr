@@ -14,16 +14,17 @@ import (
 )
 
 // CompleteWindowStructureAssessor sees one exact window and no peer answers. Ordinary provider
-// failures return a valid operational-failure Assessment; error means no trustworthy evidence.
+// failures return a recorded operational-failure assessment; error means no trustworthy evidence.
 type CompleteWindowStructureAssessor interface {
 	Profile() fillerstructure.AssessorProfile
-	AssessWindow(context.Context, fillerstructurewindow.MediaSet, StructureAssessmentWindowMedia) (fillerstructurewindow.Assessment, error)
+	AssessWindow(context.Context, fillerstructurewindow.MediaSet, StructureAssessmentWindowMedia) (fillerstructurewindow.RecordedAssessment, error)
 }
 
-// StructureWindowEvidenceRepository commits each answer before the next call, each family stitch
-// before the next family, and the final decision before return.
+// StructureWindowEvidenceRepository commits and reloads each complete call before the next call,
+// each family stitch before the next family, and the final decision before return.
 type StructureWindowEvidenceRepository interface {
-	PutStructureWindowAssessment(context.Context, fillerstructurewindow.MediaSet, fillerstructurewindow.Assessment) error
+	PutStructureWindowAssessmentEvidence(context.Context, fillerstructurewindow.RecordedAssessment) error
+	GetStructureWindowAssessmentEvidence(context.Context, fillerstructurewindow.MediaSet, string) (fillerstructurewindow.RecordedAssessment, error)
 	PutStructureWindowStitch(context.Context, fillerstructurewindow.StitchResult) error
 	PutStructureDecisionArtifact(context.Context, fillerstructure.Artifact) error
 }
@@ -93,19 +94,27 @@ func (r *StructureWindowAssessmentRuntime) Assess(ctx context.Context, input Str
 			if err := ctx.Err(); err != nil {
 				return fillerstructure.Artifact{}, err
 			}
-			assessment, err := assessor.AssessWindow(ctx, prepared.Authority, window)
+			recorded, err := assessor.AssessWindow(ctx, prepared.Authority, window)
 			if err != nil {
 				return fillerstructure.Artifact{}, fmt.Errorf("structure window assessor %d window %d produced no authority: %w", family, ordinal, err)
 			}
-			if err := fillerstructurewindow.ValidateAssessment(prepared.Authority, assessment); err != nil ||
-				assessment.WindowOrdinal != ordinal || assessment.Media != window.Media.Media ||
-				!reflect.DeepEqual(assessment.Assessor, r.profiles[family]) {
+			if err := fillerstructurewindow.ValidateRecordedAssessment(recorded); err != nil ||
+				recorded.Assessment.WindowOrdinal != ordinal || recorded.Assessment.Media != window.Media.Media ||
+				!reflect.DeepEqual(recorded.Assessment.Assessor, r.profiles[family]) ||
+				!reflect.DeepEqual(recorded.Record.MediaSet, prepared.Authority) {
 				return fillerstructure.Artifact{}, fmt.Errorf("structure window assessor %d window %d drifted authority", family, ordinal)
 			}
-			if err := r.evidence.PutStructureWindowAssessment(ctx, prepared.Authority, assessment); err != nil {
+			if err := r.evidence.PutStructureWindowAssessmentEvidence(ctx, recorded); err != nil {
 				return fillerstructure.Artifact{}, fmt.Errorf("persist structure window assessor %d window %d: %w", family, ordinal, err)
 			}
-			assessments = append(assessments, assessment)
+			replayed, err := r.evidence.GetStructureWindowAssessmentEvidence(ctx, prepared.Authority, recorded.Record.SHA256)
+			if err != nil {
+				return fillerstructure.Artifact{}, fmt.Errorf("replay structure window assessor %d window %d evidence: %w", family, ordinal, err)
+			}
+			if !reflect.DeepEqual(replayed, recorded) {
+				return fillerstructure.Artifact{}, fmt.Errorf("replay structure window assessor %d window %d evidence drifted", family, ordinal)
+			}
+			assessments = append(assessments, replayed.Assessment)
 		}
 		stitched, err := fillerstructurewindow.Stitch(prepared.Authority, assessments, r.boundaryTolerance)
 		if err != nil {
