@@ -1,6 +1,6 @@
 # Known-script spoken-safety positive preparation
 
-`cmd/filler-spoken-known-script-prepare` will turn already acquired,
+`cmd/filler-spoken-known-script-prepare` turns already acquired,
 consented real-speaker recordings into the positive candidate cohort consumed
 by `cmd/filler-spoken-corpus-assemble`. It does not recruit or record a
 participant, author a restricted script, create consent, send media to a
@@ -81,6 +81,7 @@ The authority shape is:
       "consent": {
         "schemaVersion": 1,
         "contractVersion": "filler-spoken-participant-consent-v1",
+        "participantId": "private-participant-001",
         "document": {"path": "consent/001.pdf", "sha256": "<sha256>", "bytes": 4096},
         "signerAuthorityEvidence": {"path": "consent/001-signer.json", "sha256": "<sha256>", "bytes": 512},
         "processorSchedule": {"path": "consent/processors-v1.json", "sha256": "<sha256>", "bytes": 512},
@@ -106,9 +107,31 @@ The authority shape is:
 }
 ```
 
-All digest placeholders are 64 lowercase hexadecimal characters. The
-processor schedule is the owner-controlled allow-list for later hosted review;
-the packager verifies its bytes but performs no network request.
+All digest placeholders are 64 lowercase hexadecimal characters. The processor
+schedule is strict `filler-spoken-hosted-processor-schedule-v1` JSON. Each
+sorted entry binds an OpenRouter HTTPS base URL, requested and resolved model,
+upstream provider name and slug, and mandatory ZDR. The packager verifies and
+embeds the parsed schedule in each private `rights.json`; later hosted stages
+can therefore enforce the allow-list rather than merely trusting its file
+digest. Preparation performs no network request.
+
+```json
+{
+  "schemaVersion": 1,
+  "contractVersion": "filler-spoken-hosted-processor-schedule-v1",
+  "processors": [
+    {
+      "kind": "openrouter",
+      "sourceBaseUrl": "https://openrouter.ai/api/v1",
+      "requestedModel": "vendor/reviewer",
+      "resolvedModel": "vendor/reviewer-version",
+      "upstreamProvider": "Pinned Provider",
+      "upstreamProviderSlug": "pinned-provider",
+      "zdr": true
+    }
+  ]
+}
+```
 
 ## Family lock and output
 

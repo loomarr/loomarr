@@ -24,6 +24,7 @@ const (
 type ffmpegWrapper struct {
 	ffmpegPath, ffprobePath string
 	ffmpeg, ffprobe         string
+	recipe                  string
 }
 
 func (wrapper *ffmpegWrapper) Identity(ctx context.Context) (fillersafety.ToolIdentity, fillersafety.ToolIdentity, string, error) {
@@ -44,12 +45,16 @@ func (wrapper *ffmpegWrapper) Identity(ctx context.Context) (fillersafety.ToolId
 		return fillersafety.ToolIdentity{}, fillersafety.ToolIdentity{}, "", err
 	}
 	wrapper.ffmpeg, wrapper.ffprobe = ffmpeg, ffprobe
-	return ffmpegIdentity, ffprobeIdentity, hashBytes([]byte(VCTKNeutralVideoRecipe)), nil
+	recipe := wrapper.recipe
+	if recipe == "" {
+		recipe = VCTKNeutralVideoRecipe
+	}
+	return ffmpegIdentity, ffprobeIdentity, hashBytes([]byte(recipe)), nil
 }
 
 func (wrapper *ffmpegWrapper) Wrap(ctx context.Context, input, output string) (wrappedMedia, error) {
 	if wrapper.ffmpeg == "" || wrapper.ffprobe == "" {
-		return wrappedMedia{}, fmt.Errorf("VCTK media wrapper is not identified")
+		return wrappedMedia{}, fmt.Errorf("spoken-safety media wrapper is not identified")
 	}
 	args := []string{
 		"-nostdin", "-hide_banner", "-nostats", "-v", "error", "-y",
@@ -67,7 +72,7 @@ func (wrapper *ffmpegWrapper) Wrap(ctx context.Context, input, output string) (w
 	stderr := &boundedBuffer{remaining: maximumToolOutputBytes}
 	command.Stdout, command.Stderr = stdout, stderr
 	if err := command.Run(); err != nil || stdout.overflow || stderr.overflow {
-		return wrappedMedia{}, fmt.Errorf("VCTK ffmpeg wrapping failed")
+		return wrappedMedia{}, fmt.Errorf("spoken-safety ffmpeg wrapping failed")
 	}
 	durationMS, err := probeCompleteAV(ctx, wrapper.ffprobe, output)
 	if err != nil {
@@ -78,11 +83,11 @@ func (wrapper *ffmpegWrapper) Wrap(ctx context.Context, input, output string) (w
 	}
 	info, err := os.Lstat(output)
 	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
-		return wrappedMedia{}, fmt.Errorf("VCTK wrapper output is invalid")
+		return wrappedMedia{}, fmt.Errorf("spoken-safety wrapper output is invalid")
 	}
 	digest, bytes, err := hashRegularFile(output, maximumToolBytes)
 	if err != nil || bytes != info.Size() {
-		return wrappedMedia{}, fmt.Errorf("VCTK wrapper output cannot be bound")
+		return wrappedMedia{}, fmt.Errorf("spoken-safety wrapper output cannot be bound")
 	}
 	return wrappedMedia{SHA256: digest, Bytes: bytes, DurationMS: durationMS}, nil
 }
@@ -158,7 +163,7 @@ func probeCompleteAV(ctx context.Context, ffprobe, path string) (int64, error) {
 	stdout.remaining, stderr.remaining = maximumToolOutputBytes, maximumToolOutputBytes
 	command.Stdout, command.Stderr = &stdout, &stderr
 	if err := command.Run(); err != nil || stdout.overflow || stderr.overflow {
-		return 0, fmt.Errorf("VCTK ffprobe validation failed")
+		return 0, fmt.Errorf("spoken-safety ffprobe validation failed")
 	}
 	var result struct {
 		Streams []struct {
@@ -180,7 +185,7 @@ func probeCompleteAV(ctx context.Context, ffprobe, path string) (int64, error) {
 	}
 	durationMS, err := decimalSecondsToMS(result.Format.Duration)
 	if err != nil || !hasAudio || !hasVideo || durationMS <= 0 {
-		return 0, fmt.Errorf("VCTK wrapped source lacks complete audio, video, or duration")
+		return 0, fmt.Errorf("spoken-safety wrapped source lacks complete audio, video, or duration")
 	}
 	return durationMS, nil
 }
@@ -193,7 +198,7 @@ func decodeCompleteAV(ctx context.Context, ffmpeg, path string) error {
 	stderr := &boundedBuffer{remaining: maximumToolOutputBytes}
 	command.Stdout, command.Stderr = stdout, stderr
 	if err := command.Run(); err != nil || stdout.overflow || stderr.overflow {
-		return fmt.Errorf("VCTK wrapped source does not fully decode")
+		return fmt.Errorf("spoken-safety wrapped source does not fully decode")
 	}
 	return nil
 }

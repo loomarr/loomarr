@@ -54,6 +54,13 @@ printf '%s\n' '{"streams":[{"codec_type":"video"},{"codec_type":"audio"}],"forma
 		media.SHA256 != bytesSHA([]byte("wrapped audiovisual fixture")) {
 		t.Fatalf("ffmpeg=%+v ffprobe=%+v recipe=%s media=%+v", ffmpegIdentity, ffprobeIdentity, recipeSHA, media)
 	}
+	knownScriptWrapper := &ffmpegWrapper{
+		ffmpegPath: ffmpeg, ffprobePath: ffprobe, recipe: KnownScriptPackagingRecipe,
+	}
+	_, _, knownScriptRecipeSHA, err := knownScriptWrapper.Identity(t.Context())
+	if err != nil || knownScriptRecipeSHA != hashBytes([]byte(KnownScriptPackagingRecipe)) {
+		t.Fatalf("known-script recipe=%s err=%v", knownScriptRecipeSHA, err)
+	}
 	raw, err := os.ReadFile(arguments)
 	if err != nil {
 		t.Fatal(err)
