@@ -8,6 +8,46 @@ The workflow replaces a maintainer blind-viewing marathon with governed source t
 deterministic replay. Humans may author or adjudicate truth, but the maintainer does not have
 to watch every source and the scorer never asks anyone to judge a model output interactively.
 
+`cmd/filler-spoken-cascade-authority` builds the first input; the certification command scores
+the second. Authority building and scoring are separate so no evaluated result can influence
+truth or challenge membership.
+
+## Building the authority
+
+The builder consumes a private source-and-truth draft, two independent review bundles, an
+optional adjudication bundle containing exactly the disputed cases, a private alias seed, and
+the root containing the exact complete-audiovisual sources and rights/truth evidence. It checks
+the actual source bytes through each certification-independent source authority, then derives
+opaque case, source-family, and reviewer IDs. The output contains no path or private source,
+family, or reviewer identifier.
+
+Review bundles bind the exact draft digest and are complete and sorted. Reviewers are blind to
+the cascade's output and to one another's answers; known-script reviewers may see the intended
+claim and interval they must verify. A reviewer can be model-backed, but all model reviewer
+families must differ from one another and from the proposer, native-audio adjudicator, and
+complete-video corroborator families. Thus independent models can do routine review and a human
+can be reserved for consent and genuine disagreements.
+
+```bash
+go run ./cmd/filler-spoken-cascade-authority \
+  --draft /private/cascade-draft.json \
+  --first-review /private/reviewer-a.json \
+  --second-review /private/reviewer-b.json \
+  --seed /private/alias-seed.bin \
+  --source-root /private/corpus \
+  --authored-at 2026-09-02T16:00:00Z \
+  --expected-cases 159 \
+  --max-source-bytes 10737418240 \
+  --output /private/cascade-authority.json
+```
+
+Add `--adjudicator /private/adjudicator.json` only when the primary reviews disagree.
+Every input and evidence file is a non-symlinked private file at mode `0600` or stricter; the
+output is created once at `0600`. The command reads and hashes local files only. It does not
+download data, manufacture consent, wrap audio-only datasets into video, transform sources,
+call a provider, or spend money. Those acquisition and preparation operations remain explicit
+upstream steps.
+
 ## Inputs
 
 Both inputs are immutable JSON files, regular files rather than symlinks, and mode `0600` or
@@ -36,8 +76,10 @@ adjudicator, and video corroborator families. Reviewer IDs, aliases, families, a
 are opaque; the file contains no transcript, phrase, quote, or source path.
 
 Cases and their slice lists are strictly sorted. Source content and source families cannot be
-reused across cases. A valid authority covers all required positive and clean slices, contains
-clean cases, and has at least 59 positive source families.
+reused across cases. A valid certification authority covers all required positive and clean
+slices, contains at least 59 positive source families and at least 100 independent clean source
+families. The latter gives the 1% observed false-positive gate one-source granularity; it is not
+a confidence-bound claim.
 
 ### Label-blind result manifest
 

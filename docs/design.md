@@ -4531,8 +4531,21 @@ presence, a hold, or a candidate interval without rule attribution is not a hit.
 unique source families. Clean false positives are any audio prohibited detection and are reported for both
 locale and declared clean slices. A development authority can produce only `diagnostic_passed`; a
 certification authority still requires at least 59 positive families, zero misses, a one-sided exact 95%
-source-recall lower bound of at least 95%, zero coverage holds, and no declared clean slice above the
-predeclared 1% observed false-positive ceiling. Every output permission remains false regardless of status.
+source-recall lower bound of at least 95%, at least 100 independent clean families so the declared 1%
+observed false-positive ceiling has one-source granularity, zero coverage holds, and no declared clean slice
+above that ceiling. This is explicitly an observed-rate gate, not a 95% upper confidence claim; the latter
+would require at least 299 clean families with zero false positives. Every output permission remains false
+regardless of status.
+
+Authority locking is a separate offline operation over a private path-bearing draft, two independent complete
+review bundles, an optional disagreement-only adjudication bundle, a private alias seed, and the exact source
+and evidence bytes. It verifies source-authority and media identity, policy and implementation identity,
+review order and draft binding, rights and truth-provenance bytes, family uniqueness, and all corpus minima
+before emitting a path-free authority. Opaque case, family, and reviewer ids are keyed derivations from the
+private seed. Reviewers are blind to evaluation output and one another; known-script reviewers may see the
+claim they must verify. Model-backed primary/adjudicating reviewers are permitted only when their model
+families differ from one another and from every evaluated proposer/adjudicator/corroborator family. This lock
+does not download a dataset, create consent, transform media, run inference, or begin certification.
 
 No model is trained or fine-tuned for this lane until governed source-disjoint labels exist and the
 certified stock cascade demonstrably misses a locked gate. Existing unknown commercials and agreement
