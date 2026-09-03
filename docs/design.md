@@ -271,13 +271,11 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`clipfetch`** · 1 importer · → `filler`, `proctree`
   Downloads filler clips into the drop-folder (design §10, §16).
-- **`fillerreview`** · → `filler`, `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `fillerstructurewindowcert`, `httpx`, `mediatools`, `openroutermedia`
-  Materializes identity-blind evidence for independent semantic review.
 - **`fillersafetyreview`** · → `fillerbakeoff`, `fillereval`, `fillersafety`, `fillersafetycert`, `fillersafetycorpus`, `httpx`, `mediatools`, `openroutermedia`
   Runs one independent, exhaustive model review of an assembled spoken-safety certification draft.
 - **`fillerstructureopenrouter`** · → `filler`, `fillerstructure`, `fillerstructuremedia`, `openroutermedia`
   Adapts the bounded OpenRouter media transport to the provider-neutral complete-timeline assessor port.
-- **`fillerstructurewindowopenrouter`** · → `filler`, `fillerstructure`, `fillerstructurewindow`, `openroutermedia`
+- **`fillerstructurewindowopenrouter`** · 1 importer · → `filler`, `fillerstructure`, `fillerstructurewindow`, `openroutermedia`
   Adapts the bounded OpenRouter media transport to one complete planned-window assessment call.
 - **`library`** · 8 importers · → `episodeevidence`, `filler`, `httpx`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
@@ -294,6 +292,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
 - **`catalog`** · 6 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
+- **`fillerreview`** · → `filler`, `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `fillerstructurewindowcert`, `fillerstructurewindowopenrouter`, `httpx`, `mediatools`, `openroutermedia`
+  Materializes identity-blind evidence for independent semantic review.
 - **`scheduler`** · 6 importers · → `store`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 - **`settings`** · 1 importer · → `library`
@@ -4767,7 +4767,8 @@ left and immediately right of primary ownership seams, an adjacent same-role joi
 a seam, a programme/filler join, a wordless join, a high-motion window, and the six largest
 successfully encoded windows in the fixed corpus. The suite records and reproduces the resulting
 minimum high-byte threshold; separately constructed over-ceiling cases must hold before inference
-rather than being mislabeled as successful stress cases. Exactly two locked, distinct assessor families supply complete persisted
+rather than being mislabeled as successful stress cases. Exactly two locked, distinct assessor families
+supply complete persisted
 stitches for every case. The certification judge replays each stitch, scores each family independently
 against private truth, then feeds the same two source-level candidates through `fillerstructure.Reduce`
 and scores that confirmed decision too. Any missing case or stitch, held family, operational failure,
@@ -4776,6 +4777,23 @@ affected slice and the whole certificate. The immutable report names the suite, 
 slice counts, errors, and reducer contract. It always sets training and automatic-materialization
 permission false: a pass is evidence from which a separate window-specific materialization authority
 may later be issued after the locked short-versus-long shadow comparison.
+
+Each family run is a separate truth-blind artifact over the complete 24-case public window-set
+manifest. The runner receives only opaque aliases, exact public source and media-set authority, and
+machine-local window paths; it cannot open case identifiers, construction truth, measured slice
+labels, or another family's answers. It evaluates cases and windows serially through the same
+production family runtime, returns no partial result after an error, and retains one replay-valid
+stitch per alias plus the exact assessor profile, manifest digest, completion time, and self-digest.
+Publication reopens the complete public manifest and creates the private result file immutably. The
+private certification join starts only after both complete family artifacts exist, attaches case
+identifiers by exact media-set identity from the suite, and binds its wrapper digest to the public
+manifest, suite content and file digests, and both family content and file digests. Neither the family
+artifact nor its certification wrapper grants training or automatic-materialization permission.
+The calibration command requires its declared request ceiling to equal the manifest's complete
+window count before opening the provider transport, rejects an existing result path before spending,
+and uses the production SQLite call ledger for aggregate spend reservation and settlement. Replaying
+settled content-addressed evidence consumes no request; a crash-open request conflicts in that ledger
+before transport rather than being retried speculatively.
 
 The first long-reel corpus plan reuses only the twelve family-distinct bounded anchors and six
 programme parents already locked by the 60-case holdout. One private deterministic planner binds
