@@ -28,19 +28,18 @@ type ToolIdentity struct {
 // SourceAuthority is the path-independent identity and measured coverage of
 // one complete filler source.
 type SourceAuthority struct {
-	SchemaVersion       int          `json:"schemaVersion"`
-	CertificationSHA256 string       `json:"certificationSha256"`
-	PolicySHA256        string       `json:"policySha256"`
-	Implementation      string       `json:"implementation"`
-	SourceID            string       `json:"sourceId"`
-	SourceSHA256        string       `json:"sourceSha256"`
-	SourceBytes         int64        `json:"sourceBytes"`
-	DurationMS          int64        `json:"durationMs"`
-	HasAudio            bool         `json:"hasAudio"`
-	HasVideo            bool         `json:"hasVideo"`
-	MeasuredAt          time.Time    `json:"measuredAt"`
-	FFmpeg              ToolIdentity `json:"ffmpeg"`
-	FFprobe             ToolIdentity `json:"ffprobe"`
+	SchemaVersion  int          `json:"schemaVersion"`
+	PolicySHA256   string       `json:"policySha256"`
+	Implementation string       `json:"implementation"`
+	SourceID       string       `json:"sourceId"`
+	SourceSHA256   string       `json:"sourceSha256"`
+	SourceBytes    int64        `json:"sourceBytes"`
+	DurationMS     int64        `json:"durationMs"`
+	HasAudio       bool         `json:"hasAudio"`
+	HasVideo       bool         `json:"hasVideo"`
+	MeasuredAt     time.Time    `json:"measuredAt"`
+	FFmpeg         ToolIdentity `json:"ffmpeg"`
+	FFprobe        ToolIdentity `json:"ffprobe"`
 }
 
 // AuthorityCode is a non-sensitive reason that source planning failed.
@@ -66,7 +65,7 @@ func validateSourceAuthority(authority SourceAuthority) error {
 	if authority.SchemaVersion != SourceAuthoritySchemaVersion {
 		return &AuthorityError{Code: AuthoritySchemaInvalid}
 	}
-	if !validSHA256(authority.CertificationSHA256) || !validSHA256(authority.PolicySHA256) || !boundedAuthorityID(authority.Implementation) || !boundedAuthorityID(authority.SourceID) || !validToolIdentity(authority.FFmpeg) || !validToolIdentity(authority.FFprobe) {
+	if !validSHA256(authority.PolicySHA256) || !boundedAuthorityID(authority.Implementation) || !boundedAuthorityID(authority.SourceID) || !validToolIdentity(authority.FFmpeg) || !validToolIdentity(authority.FFprobe) {
 		return &AuthorityError{Code: AuthorityIdentityInvalid}
 	}
 	if !validSHA256(authority.SourceSHA256) || authority.SourceBytes <= 0 || authority.SourceBytes > mediatools.ConditioningMaxSnapshotBytes || authority.DurationMS <= 0 || authority.MeasuredAt.IsZero() {

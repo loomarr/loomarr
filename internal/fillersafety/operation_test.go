@@ -2,11 +2,23 @@ package fillersafety
 
 import (
 	"encoding/json"
+	"errors"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
 )
+
+func TestEvaluationOperationRejectsMissingCertificationBeforeOpeningSource(t *testing.T) {
+	t.Parallel()
+	fixture := newOperationFixture(t, nil)
+	fixture.request.CertificationSHA256 = ""
+
+	_, err := fixture.operation.Evaluate(t.Context(), fixture.request)
+	if !errors.Is(err, ErrEvaluationInvalid) || fixture.repository.begun || fixture.proposer.calls != 0 {
+		t.Fatalf("err=%v begun=%t proposer_calls=%d", err, fixture.repository.begun, fixture.proposer.calls)
+	}
+}
 
 func TestEvaluationOperationRecordsSerialCascadeBeforeReturningEvidence(t *testing.T) {
 	t.Parallel()
