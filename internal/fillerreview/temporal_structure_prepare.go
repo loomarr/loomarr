@@ -77,6 +77,9 @@ func prepareTemporalStructureCase(config TemporalStructureChallengeConfig, item 
 	if strings.TrimSpace(item.ID) == "" || len(item.Segments) == 0 {
 		return temporalStructurePreparedCase{}, fmt.Errorf("id and segments are required")
 	}
+	if err := validateTemporalStructureSlices(item.Slices); err != nil {
+		return temporalStructurePreparedCase{}, err
+	}
 	result := temporalStructurePreparedCase{spec: item}
 	for index, segment := range item.Segments {
 		source, exists := sources[segment.SourceID]
@@ -210,10 +213,29 @@ func auditTemporalStructureChallengeLeakage(publicRoot string, authoring Tempora
 	}
 	for _, item := range authoring.Cases {
 		secrets = append(secrets, item.ID)
+		secrets = append(secrets, item.Slices...)
 	}
 	for _, secret := range secrets {
 		if strings.TrimSpace(secret) != "" && strings.Contains(string(public), secret) {
 			return fmt.Errorf("public challenge leaks coordinator-private value %q", secret)
+		}
+	}
+	return nil
+}
+
+func validateTemporalStructureSlices(slices []string) error {
+	allowed := map[string]struct{}{
+		TemporalStructureSliceTwoItemCompilation: {}, TemporalStructureSliceThreeItemCompilation: {},
+		TemporalStructureSliceAdjacentSameRole: {}, TemporalStructureSliceMixedRoleJoins: {},
+		TemporalStructureSliceProgrammeNearStart: {}, TemporalStructureSliceProgrammeNearEnd: {},
+		TemporalStructureSliceSpotEarly: {}, TemporalStructureSliceSpotLate: {},
+	}
+	if !sort.StringsAreSorted(slices) {
+		return fmt.Errorf("challenge slices are not ordered")
+	}
+	for index, slice := range slices {
+		if _, ok := allowed[slice]; !ok || index > 0 && slice == slices[index-1] {
+			return fmt.Errorf("challenge contains an unknown or repeated slice")
 		}
 	}
 	return nil

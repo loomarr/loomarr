@@ -2,6 +2,7 @@ package fillerreview
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/loomarr/loomarr/internal/fillereval"
 )
@@ -12,7 +13,7 @@ func validateTemporalStructureHoldoutMultiCompilations(items []TemporalStructure
 	seenCases := map[string]struct{}{}
 	for _, item := range items {
 		challenge, exists := cases[item.CaseID]
-		if !exists || challenge.Unit != fillereval.UnitCompilation || len(item.SourceIDs) != 3 || len(item.Roles) != 3 || len(item.JoinTimesMS) != 2 || len(challenge.Segments) != 3 {
+		if !exists || challenge.Unit != fillereval.UnitCompilation || !slices.Equal(challenge.Slices, []string{item.Trait, TemporalStructureSliceThreeItemCompilation}) || len(item.SourceIDs) != 3 || len(item.Roles) != 3 || len(item.JoinTimesMS) != 2 || len(challenge.Segments) != 3 {
 			return fmt.Errorf("temporal structure holdout contains an invalid multi-item compilation")
 		}
 		if _, duplicate := seenCases[item.CaseID]; duplicate {

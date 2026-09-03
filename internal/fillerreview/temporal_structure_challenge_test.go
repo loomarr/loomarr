@@ -155,6 +155,10 @@ func TestBuildTemporalStructureChallengeRejectsInvalidConstructionAndTamperAtomi
 		{name: "standalone partial", mutate: func(f *temporalStructureFixture) { f.authoring.Cases[0].Segments[0].DurationMS-- }, want: "one whole bounded source"},
 		{name: "standalone role drift", mutate: func(f *temporalStructureFixture) { f.authoring.Cases[0].Role = fillereval.TemporalRolePromo }, want: "authority-bound role"},
 		{name: "compilation partial", mutate: func(f *temporalStructureFixture) { f.authoring.Cases[1].Segments[1].StartMS = 1 }, want: "invalid bounds"},
+		{name: "unknown certification slice", mutate: func(f *temporalStructureFixture) { f.authoring.Cases[1].Slices = []string{"easy_cases"} }, want: "unknown or repeated slice"},
+		{name: "unordered certification slices", mutate: func(f *temporalStructureFixture) {
+			f.authoring.Cases[1].Slices = []string{TemporalStructureSliceTwoItemCompilation, TemporalStructureSliceMixedRoleJoins}
+		}, want: "slices are not ordered"},
 		{name: "excerpt edge", mutate: func(f *temporalStructureFixture) { f.authoring.Cases[2].Segments[0].StartMS = 0 }, want: "five-second parent margins"},
 		{name: "unclear has no construction", mutate: func(f *temporalStructureFixture) { f.authoring.Cases[2].Unit = fillereval.UnitUnclear }, want: "no provenance-grounded construction"},
 		{name: "source tamper", mutate: func(f *temporalStructureFixture) {
@@ -274,10 +278,10 @@ func newTemporalStructureFixture(t *testing.T) temporalStructureFixture {
 	}
 	authoring.Cases = []TemporalStructureChallengeCase{
 		{ID: "standalone-case-secret", Unit: fillereval.UnitStandalone, Role: fillereval.TemporalRoleCommercial, Segments: []TemporalStructureChallengeSegment{{SourceID: specs[0].id, DurationMS: specs[0].duration}}},
-		{ID: "compilation-case-secret", Unit: fillereval.UnitCompilation, Segments: []TemporalStructureChallengeSegment{{SourceID: specs[0].id, DurationMS: specs[0].duration}, {SourceID: specs[1].id, DurationMS: specs[1].duration}}},
+		{ID: "compilation-case-secret", Unit: fillereval.UnitCompilation, Slices: []string{TemporalStructureSliceMixedRoleJoins, TemporalStructureSliceTwoItemCompilation}, Segments: []TemporalStructureChallengeSegment{{SourceID: specs[0].id, DurationMS: specs[0].duration}, {SourceID: specs[1].id, DurationMS: specs[1].duration}}},
 		{ID: "excerpt-case-secret", Unit: fillereval.UnitProgrammeExcerpt, Segments: []TemporalStructureChallengeSegment{{SourceID: specs[2].id, StartMS: 10_000, DurationMS: 20_000}}},
 	}
-	secrets = append(secrets, "standalone-case-secret", "compilation-case-secret", "excerpt-case-secret")
+	secrets = append(secrets, "standalone-case-secret", "compilation-case-secret", "excerpt-case-secret", TemporalStructureSliceMixedRoleJoins, TemporalStructureSliceTwoItemCompilation)
 	fixture := temporalStructureFixture{
 		root: root, authoringPath: filepath.Join(root, "authoring.json"), authoring: authoring, media: media,
 		generatedAt: time.Date(2026, 9, 2, 2, 0, 0, 0, time.UTC), secrets: secrets,

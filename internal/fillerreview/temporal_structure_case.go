@@ -32,7 +32,7 @@ func buildTemporalStructureChallengeCase(ctx context.Context, config TemporalStr
 		Path: filepath.ToSlash(filepath.Join("cases", item.alias, "video.mp4")), SHA256: digest, Bytes: info.Size(),
 		DurationMS: rendered.Video.DurationMS, Width: rendered.Video.Width, Height: rendered.Video.Height,
 	}}
-	authorityCase := TemporalStructureChallengeAuthorityCase{Alias: item.alias, CaseID: item.spec.ID, Unit: item.spec.Unit, Role: item.spec.Role, VideoSHA256: digest}
+	authorityCase := TemporalStructureChallengeAuthorityCase{Alias: item.alias, CaseID: item.spec.ID, Unit: item.spec.Unit, Role: item.spec.Role, Slices: append([]string(nil), item.spec.Slices...), VideoSHA256: digest}
 	outputStart := int64(0)
 	for index, part := range rendered.Parts {
 		if part.DurationMS <= 0 || absoluteInt64(part.DurationMS-item.segments[index].DurationMS) > 1_000 {

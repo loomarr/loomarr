@@ -102,6 +102,7 @@ func constructTemporalStructureHoldoutProgrammeSpots(seed string, parents []Temp
 			caseID := temporalStructureHoldoutCaseID(seed, "programme_with_spots", fmt.Sprintf("%s\x00%s\x00%s", parent.ID, anchor.source.ID, pattern.name))
 			cases = append(cases, TemporalStructureChallengeCase{
 				ID: caseID, Unit: fillereval.UnitProgrammeSpots,
+				Slices: []string{map[string]string{"early_insert": TemporalStructureSliceSpotEarly, "late_insert": TemporalStructureSliceSpotLate}[pattern.name]},
 				Segments: []TemporalStructureChallengeSegment{
 					{SourceID: parent.ID, StartMS: pattern.beforeStart, DurationMS: programmePartMS},
 					{SourceID: anchor.source.ID, DurationMS: anchor.source.DurationMS},
@@ -129,8 +130,10 @@ func constructTemporalStructureHoldoutCompilations(seed string, selected []tempo
 		first, second := selected[item.first], selected[item.second]
 		durationMS := first.source.DurationMS + second.source.DurationMS
 		caseID := temporalStructureHoldoutCaseID(seed, "compilation", first.source.ID+"\x00"+second.source.ID)
+		roles := []fillereval.TemporalRole{first.receipt.Role, second.receipt.Role}
 		cases = append(cases, TemporalStructureChallengeCase{
 			ID: caseID, Unit: fillereval.UnitCompilation,
+			Slices: []string{temporalStructureMultiTrait(roles), TemporalStructureSliceTwoItemCompilation},
 			Segments: []TemporalStructureChallengeSegment{
 				{SourceID: first.source.ID, DurationMS: first.source.DurationMS},
 				{SourceID: second.source.ID, DurationMS: second.source.DurationMS},
@@ -139,7 +142,7 @@ func constructTemporalStructureHoldoutCompilations(seed string, selected []tempo
 		receipts = append(receipts, TemporalStructureHoldoutCompilation{
 			CaseID: caseID, FirstSourceID: first.source.ID, SecondSourceID: second.source.ID,
 			JoinBand: item.band, JoinAtMS: first.source.DurationMS, DurationMS: durationMS,
-			Roles: []string{string(first.receipt.Role), string(second.receipt.Role)},
+			Roles: []string{string(roles[0]), string(roles[1])},
 		})
 	}
 	return cases, receipts, nil
@@ -227,6 +230,7 @@ func constructTemporalStructureHoldoutProgrammeCuts(seed string, parents []Tempo
 			caseID := temporalStructureHoldoutCaseID(seed, "programme_excerpt", fmt.Sprintf("%s\x00%s\x00%d\x00%d", parent.ID, cut.pattern, cut.start, cut.durationMS))
 			cases = append(cases, TemporalStructureChallengeCase{
 				ID: caseID, Unit: fillereval.UnitProgrammeExcerpt,
+				Slices:   []string{map[string]string{"near_parent_start": TemporalStructureSliceProgrammeNearStart, "near_parent_end": TemporalStructureSliceProgrammeNearEnd}[cut.pattern]},
 				Segments: []TemporalStructureChallengeSegment{{SourceID: parent.ID, StartMS: cut.start, DurationMS: cut.durationMS}},
 			})
 			receipts = append(receipts, TemporalStructureHoldoutProgrammeCut{

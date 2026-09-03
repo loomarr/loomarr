@@ -20,8 +20,13 @@ func TestCompareTemporalStructureAssessmentsScoresConstructionTruthAndBoundaries
 	if report.Cases != 3 || report.AllAssessorsExactCorrect != 3 || report.ProductionAdmissionAllowed || len(report.DiagnosticCandidates) != 0 || report.Disposition.NextAction != "expand_provenance_grounded_challenge" || report.Disposition.BlindHumanAuditRequired || report.Disposition.TrainingAllowed {
 		t.Fatalf("report disposition or totals = %+v", report)
 	}
-	if len(report.AssessorSummaries) != 2 || len(report.ConstructionSummaries) != 8 || len(report.PairSummaries) != 1 {
-		t.Fatalf("summary cardinality = %d/%d/%d", len(report.AssessorSummaries), len(report.ConstructionSummaries), len(report.PairSummaries))
+	if len(report.AssessorSummaries) != 2 || len(report.ConstructionSummaries) != 8 || len(report.SliceSummaries) != 4 || len(report.PairSummaries) != 1 {
+		t.Fatalf("summary cardinality = %d/%d/%d/%d", len(report.AssessorSummaries), len(report.ConstructionSummaries), len(report.SliceSummaries), len(report.PairSummaries))
+	}
+	for _, summary := range report.SliceSummaries {
+		if summary.Slice != TemporalStructureSliceMixedRoleJoins && summary.Slice != TemporalStructureSliceTwoItemCompilation || summary.TruthUnit != "" || summary.Cases != 1 || summary.ExactUnitCorrect != 1 || summary.ExactSegmentPlans != 1 || summary.CoverageComplete != 1 || summary.UnderSplits != 0 || summary.OverSplits != 0 || summary.SegmentRoleTargets != 2 || summary.SegmentRoleCorrect != 2 || summary.Boundary.TruthTargets != 1 || summary.Boundary.ComparableTargets != 1 || summary.Boundary.Within2000MS != 1 || summary.Boundary.MedianDistanceMS == nil || *summary.Boundary.MedianDistanceMS != 100 {
+			t.Fatalf("slice summary = %+v", summary)
+		}
 	}
 	for _, summary := range report.AssessorSummaries {
 		if summary.ExactUnitCorrect != 3 || summary.StandaloneClassCorrect != 3 || summary.RoleComparable != 1 || summary.RoleCorrect != 1 || summary.ExactLabelCorrect != 3 || summary.ExactSegmentPlans != 3 || summary.CoverageComplete != 3 || summary.UnderSplits != 0 || summary.OverSplits != 0 || summary.SegmentRoleTargets != 4 || summary.SegmentRoleCorrect != 4 || summary.Boundary.TruthTargets != 3 || summary.Boundary.ComparableTargets != 3 || summary.Boundary.Within2000MS != 3 || summary.Boundary.Within5000MS != 3 || summary.Boundary.MedianDistanceMS == nil || *summary.Boundary.MedianDistanceMS != 100 {
@@ -38,6 +43,9 @@ func TestCompareTemporalStructureAssessmentsScoresConstructionTruthAndBoundaries
 		}
 		if item.Truth.Unit == fillereval.UnitCompilation && (len(item.TruthSegments) != 2 || item.TruthSegments[0].Role == item.TruthSegments[1].Role) {
 			t.Fatalf("compilation did not preserve mixed per-segment roles: %+v", item.TruthSegments)
+		}
+		if item.Truth.Unit == fillereval.UnitCompilation && (len(item.Truth.Slices) != 2 || item.Truth.Slices[0] != TemporalStructureSliceMixedRoleJoins) {
+			t.Fatalf("compilation did not preserve private certification slices: %+v", item.Truth)
 		}
 		if item.Truth.Unit == fillereval.UnitStandalone && len(item.Assessments[0].BoundaryDistances) != 0 {
 			t.Fatalf("standalone invented a structural boundary: %+v", item)

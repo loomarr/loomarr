@@ -23,6 +23,11 @@ type temporalStructureSummaryKey struct {
 	unit     fillereval.UnitKind
 }
 
+type temporalStructureSliceSummaryKey struct {
+	assessor string
+	slice    string
+}
+
 func buildTemporalStructureComparison(loaded temporalStructureComparisonLoaded, comparedAt time.Time) TemporalStructureComparisonReport {
 	report := TemporalStructureComparisonReport{
 		SchemaVersion: TemporalStructureComparisonSchemaVersion, ContractVersion: TemporalStructureComparisonContractVersion,
@@ -32,8 +37,10 @@ func buildTemporalStructureComparison(loaded temporalStructureComparisonLoaded, 
 	}
 	summaryByAssessor := make(map[string]*TemporalStructureAssessorSummary, len(loaded.assessments))
 	constructionByKey := make(map[temporalStructureSummaryKey]*TemporalStructureConstructionSummary)
+	sliceByKey := make(map[temporalStructureSliceSummaryKey]*TemporalStructureConstructionSummary)
 	boundaryDistances := make(map[string][]int64)
 	constructionDistances := make(map[temporalStructureSummaryKey][]int64)
+	sliceDistances := make(map[temporalStructureSliceSummaryKey][]int64)
 	for _, loadedAssessment := range loaded.assessments {
 		set := loadedAssessment.set
 		report.Assessors = append(report.Assessors, TemporalStructureAssessorReference{
@@ -56,7 +63,7 @@ func buildTemporalStructureComparison(loaded temporalStructureComparisonLoaded, 
 		truthSegments := temporalStructureTruthSegments(truthCase, publicCase.Video.DurationMS)
 		comparison := TemporalStructureCaseComparison{
 			Alias: truthCase.Alias, DurationMS: publicCase.Video.DurationMS,
-			Truth: TemporalStructureTruthLabel{Unit: truthCase.Unit, Role: truthCase.Role}, TruthSegments: truthSegments,
+			Truth: TemporalStructureTruthLabel{Unit: truthCase.Unit, Role: truthCase.Role, Slices: append([]string(nil), truthCase.Slices...)}, TruthSegments: truthSegments,
 		}
 		allExact := true
 		for _, loadedAssessment := range loaded.assessments {
@@ -67,10 +74,23 @@ func buildTemporalStructureComparison(loaded temporalStructureComparisonLoaded, 
 			assessorSummary := summaryByAssessor[result.AssessorID]
 			constructionSummary := constructionByKey[temporalStructureSummaryKey{assessor: result.AssessorID, unit: truthCase.Unit}]
 			accumulateTemporalStructureResult(assessorSummary, constructionSummary, result, assessment, len(boundaries))
+			for _, slice := range truthCase.Slices {
+				key := temporalStructureSliceSummaryKey{assessor: result.AssessorID, slice: slice}
+				summary := sliceByKey[key]
+				if summary == nil {
+					summary = &TemporalStructureConstructionSummary{AssessorID: result.AssessorID, Slice: slice}
+					sliceByKey[key] = summary
+				}
+				accumulateTemporalStructureConstruction(summary, result, len(boundaries))
+			}
 			for _, distance := range result.BoundaryDistances {
 				boundaryDistances[result.AssessorID] = append(boundaryDistances[result.AssessorID], distance.DistanceMS)
 				key := temporalStructureSummaryKey{assessor: result.AssessorID, unit: truthCase.Unit}
 				constructionDistances[key] = append(constructionDistances[key], distance.DistanceMS)
+				for _, slice := range truthCase.Slices {
+					sliceKey := temporalStructureSliceSummaryKey{assessor: result.AssessorID, slice: slice}
+					sliceDistances[sliceKey] = append(sliceDistances[sliceKey], distance.DistanceMS)
+				}
 			}
 		}
 		if allExact {
@@ -92,6 +112,20 @@ func buildTemporalStructureComparison(loaded temporalStructureComparisonLoaded, 
 			constructionByKey[key].Boundary.MedianDistanceMS = temporalStructureMedian(constructionDistances[key])
 			report.ConstructionSummaries = append(report.ConstructionSummaries, *constructionByKey[key])
 		}
+	}
+	sliceKeys := make([]temporalStructureSliceSummaryKey, 0, len(sliceByKey))
+	for key := range sliceByKey {
+		sliceKeys = append(sliceKeys, key)
+	}
+	sort.Slice(sliceKeys, func(i, j int) bool {
+		if sliceKeys[i].assessor != sliceKeys[j].assessor {
+			return sliceKeys[i].assessor < sliceKeys[j].assessor
+		}
+		return sliceKeys[i].slice < sliceKeys[j].slice
+	})
+	for _, key := range sliceKeys {
+		sliceByKey[key].Boundary.MedianDistanceMS = temporalStructureMedian(sliceDistances[key])
+		report.SliceSummaries = append(report.SliceSummaries, *sliceByKey[key])
 	}
 	report.PairSummaries = buildTemporalStructurePairSummaries(report.CaseComparisons, loaded.assessments)
 	report.Disposition = temporalStructureComparisonDisposition(report.DiagnosticCandidates)
@@ -130,12 +164,10 @@ func scoreTemporalStructureCase(assessorID string, truth TemporalStructureChalle
 }
 
 func accumulateTemporalStructureResult(summary *TemporalStructureAssessorSummary, construction *TemporalStructureConstructionSummary, result TemporalStructureAssessorCaseResult, assessment TemporalStructureAssessment, truthBoundaries int) {
-	construction.Cases++
 	summary.Boundary.TruthTargets += truthBoundaries
-	construction.Boundary.TruthTargets += truthBoundaries
 	if result.Prediction.Failure != "" {
 		summary.OperationalFailures++
-		construction.OperationalFailures++
+		accumulateTemporalStructureConstruction(construction, result, truthBoundaries)
 		return
 	}
 	summary.UnitComparable++
@@ -147,50 +179,81 @@ func accumulateTemporalStructureResult(summary *TemporalStructureAssessorSummary
 	}
 	if result.UnitCorrect {
 		summary.ExactUnitCorrect++
-		construction.ExactUnitCorrect++
 	}
 	if result.StandaloneClassCorrect {
 		summary.StandaloneClassCorrect++
-		construction.StandaloneClassCorrect++
 	}
 	if result.RoleComparable {
 		summary.RoleComparable++
-		construction.RoleComparable++
 	}
 	if result.RoleCorrect {
 		summary.RoleCorrect++
-		construction.RoleCorrect++
 	}
 	if result.ExactLabelCorrect {
 		summary.ExactLabelCorrect++
-		construction.ExactLabelCorrect++
 	}
 	if result.CoverageComplete {
 		summary.CoverageComplete++
-		construction.CoverageComplete++
 	}
 	summary.UnderSplits += result.UnderSplits
-	construction.UnderSplits += result.UnderSplits
 	summary.OverSplits += result.OverSplits
-	construction.OverSplits += result.OverSplits
 	summary.SegmentRoleTargets += result.SegmentRoleTargets
-	construction.SegmentRoleTargets += result.SegmentRoleTargets
 	summary.SegmentRoleCorrect += result.SegmentRoleCorrect
-	construction.SegmentRoleCorrect += result.SegmentRoleCorrect
 	if result.ExactSegmentPlan {
 		summary.ExactSegmentPlans++
-		construction.ExactSegmentPlans++
 	}
 	for _, distance := range result.BoundaryDistances {
 		summary.Boundary.ComparableTargets++
 		construction.Boundary.ComparableTargets++
 		if distance.Within2000MS {
 			summary.Boundary.Within2000MS++
-			construction.Boundary.Within2000MS++
 		}
 		if distance.Within5000MS {
 			summary.Boundary.Within5000MS++
-			construction.Boundary.Within5000MS++
+		}
+	}
+	accumulateTemporalStructureConstruction(construction, result, truthBoundaries)
+}
+
+func accumulateTemporalStructureConstruction(summary *TemporalStructureConstructionSummary, result TemporalStructureAssessorCaseResult, truthBoundaries int) {
+	summary.Cases++
+	summary.Boundary.TruthTargets += truthBoundaries
+	if result.Prediction.Failure != "" {
+		summary.OperationalFailures++
+		return
+	}
+	if result.UnitCorrect {
+		summary.ExactUnitCorrect++
+	}
+	if result.StandaloneClassCorrect {
+		summary.StandaloneClassCorrect++
+	}
+	if result.RoleComparable {
+		summary.RoleComparable++
+	}
+	if result.RoleCorrect {
+		summary.RoleCorrect++
+	}
+	if result.ExactLabelCorrect {
+		summary.ExactLabelCorrect++
+	}
+	if result.CoverageComplete {
+		summary.CoverageComplete++
+	}
+	summary.UnderSplits += result.UnderSplits
+	summary.OverSplits += result.OverSplits
+	summary.SegmentRoleTargets += result.SegmentRoleTargets
+	summary.SegmentRoleCorrect += result.SegmentRoleCorrect
+	if result.ExactSegmentPlan {
+		summary.ExactSegmentPlans++
+	}
+	for _, distance := range result.BoundaryDistances {
+		summary.Boundary.ComparableTargets++
+		if distance.Within2000MS {
+			summary.Boundary.Within2000MS++
+		}
+		if distance.Within5000MS {
+			summary.Boundary.Within5000MS++
 		}
 	}
 }

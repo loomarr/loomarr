@@ -13,11 +13,20 @@ import (
 )
 
 const (
-	TemporalStructureChallengeSchemaVersion   = 2
-	TemporalStructureChallengeContractVersion = "filler-temporal-structure-challenge-v2"
+	TemporalStructureChallengeSchemaVersion   = 3
+	TemporalStructureChallengeContractVersion = "filler-temporal-structure-challenge-v3"
 
 	TemporalStructureSourceBoundedItem     = "independently_bounded_item"
 	TemporalStructureSourceProgrammeParent = "programme_parent"
+
+	TemporalStructureSliceTwoItemCompilation   = "two_item_compilation"
+	TemporalStructureSliceThreeItemCompilation = "three_item_compilation"
+	TemporalStructureSliceAdjacentSameRole     = "adjacent_same_role"
+	TemporalStructureSliceMixedRoleJoins       = "mixed_role_joins"
+	TemporalStructureSliceProgrammeNearStart   = "programme_near_start"
+	TemporalStructureSliceProgrammeNearEnd     = "programme_near_end"
+	TemporalStructureSliceSpotEarly            = "spot_early"
+	TemporalStructureSliceSpotLate             = "spot_late"
 )
 
 // TemporalStructureChallengeMedia is the construction seam. The builder owns
@@ -84,6 +93,7 @@ type TemporalStructureChallengeCase struct {
 	ID       string                              `json:"id"`
 	Unit     fillereval.UnitKind                 `json:"unit"`
 	Role     fillereval.TemporalRole             `json:"role,omitempty"`
+	Slices   []string                            `json:"slices,omitempty"`
 	Segments []TemporalStructureChallengeSegment `json:"segments"`
 }
 
@@ -127,6 +137,7 @@ type TemporalStructureChallengeAuthorityCase struct {
 	CaseID      string                                    `json:"caseId"`
 	Unit        fillereval.UnitKind                       `json:"unit"`
 	Role        fillereval.TemporalRole                   `json:"role,omitempty"`
+	Slices      []string                                  `json:"slices,omitempty"`
 	VideoSHA256 string                                    `json:"videoSha256"`
 	JoinTimesMS []int64                                   `json:"joinTimesMs,omitempty"`
 	Segments    []TemporalStructureChallengeAuthorityPart `json:"segments"`

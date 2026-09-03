@@ -118,6 +118,9 @@ func validateTemporalStructureAuthorityCase(item TemporalStructureChallengeAutho
 	if len(item.Segments) == 0 {
 		return fmt.Errorf("segments are required")
 	}
+	if err := validateTemporalStructureSlices(item.Slices); err != nil {
+		return err
+	}
 	for index, part := range item.Segments {
 		if part.Ordinal != index || strings.TrimSpace(part.SourceID) == "" || part.SourcePath == "" || !reviewSHA256(part.SourceSHA256) || part.SourceDurationMS <= 0 || part.SourceStartMS < 0 || part.RequestedMS <= 0 || part.RenderedMS <= 0 || part.SourceStartMS+part.RequestedMS > part.SourceDurationMS || absoluteInt64(part.RequestedMS-part.RenderedMS) > 1_000 {
 			return fmt.Errorf("segment %d has invalid source or render authority", index)

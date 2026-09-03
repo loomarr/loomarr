@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	temporalStructureMultiSameRoleJoin   = "adjacent_same_role"
-	temporalStructureMultiMixedRoleJoins = "mixed_role_joins"
+	temporalStructureMultiSameRoleJoin   = TemporalStructureSliceAdjacentSameRole
+	temporalStructureMultiMixedRoleJoins = TemporalStructureSliceMixedRoleJoins
 )
 
 // The schedule is balanced over the holdout's fixed 2/3/2/2/3 role quotas.
@@ -56,7 +56,10 @@ func constructTemporalStructureHoldoutMultiCompilations(seed string, anchors []t
 			return nil, nil, fmt.Errorf("temporal structure multi-item schedule does not satisfy its declared join traits")
 		}
 		caseID := temporalStructureHoldoutCaseID(seed, "multi_compilation", strings.Join(sourceIDs, "\x00"))
-		cases = append(cases, TemporalStructureChallengeCase{ID: caseID, Unit: fillereval.UnitCompilation, Segments: segments})
+		cases = append(cases, TemporalStructureChallengeCase{
+			ID: caseID, Unit: fillereval.UnitCompilation,
+			Slices: []string{trait, TemporalStructureSliceThreeItemCompilation}, Segments: segments,
+		})
 		receipts = append(receipts, TemporalStructureHoldoutMultiCompilation{
 			CaseID: caseID, SourceIDs: sourceIDs, Roles: roles, JoinTimesMS: joins, DurationMS: durationMS, Trait: trait,
 		})

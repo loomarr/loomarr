@@ -214,7 +214,7 @@ func TestTemporalStructureHoldoutReceiptRejectsProgrammeSpotTampering(t *testing
 		authoring := readStrictTestJSON[TemporalStructureChallengeAuthoring](t, authoringPath)
 		receipt := readStrictTestJSON[TemporalStructureHoldoutReceipt](t, receiptPath)
 		receipt.MultiCompilationConstructions[0].Trait = temporalStructureMultiMixedRoleJoins
-		if err := validateTemporalStructureHoldoutReceipt(receipt, authoring); err == nil || !strings.Contains(err.Error(), "duration or trait drift") {
+		if err := validateTemporalStructureHoldoutReceipt(receipt, authoring); err == nil || !strings.Contains(err.Error(), "invalid multi-item compilation") {
 			t.Fatalf("multi-item trait error = %v", err)
 		}
 	})

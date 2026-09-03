@@ -2,6 +2,7 @@ package fillerreview
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -144,7 +145,8 @@ func validateTemporalStructureHoldoutCompilations(items []TemporalStructureHoldo
 		first, firstExists := anchors[item.FirstSourceID]
 		second, secondExists := anchors[item.SecondSourceID]
 		pairID := item.FirstSourceID + "\x00" + item.SecondSourceID
-		if !exists || challenge.Unit != fillereval.UnitCompilation || !firstExists || !secondExists || item.FirstSourceID == item.SecondSourceID || len(challenge.Segments) != 2 || item.JoinAtMS != first.DurationMS || item.DurationMS != first.DurationMS+second.DurationMS || item.JoinBand != temporalStructureHoldoutJoinBand(item.JoinAtMS, item.DurationMS) || len(item.Roles) != 2 || item.Roles[0] != string(first.Role) || item.Roles[1] != string(second.Role) || challenge.Segments[0].SourceID != item.FirstSourceID || challenge.Segments[0].DurationMS != first.DurationMS || challenge.Segments[1].SourceID != item.SecondSourceID || challenge.Segments[1].DurationMS != second.DurationMS {
+		roles := []fillereval.TemporalRole{first.Role, second.Role}
+		if !exists || challenge.Unit != fillereval.UnitCompilation || !firstExists || !secondExists || item.FirstSourceID == item.SecondSourceID || !slices.Equal(challenge.Slices, []string{temporalStructureMultiTrait(roles), TemporalStructureSliceTwoItemCompilation}) || len(challenge.Segments) != 2 || item.JoinAtMS != first.DurationMS || item.DurationMS != first.DurationMS+second.DurationMS || item.JoinBand != temporalStructureHoldoutJoinBand(item.JoinAtMS, item.DurationMS) || len(item.Roles) != 2 || item.Roles[0] != string(first.Role) || item.Roles[1] != string(second.Role) || challenge.Segments[0].SourceID != item.FirstSourceID || challenge.Segments[0].DurationMS != first.DurationMS || challenge.Segments[1].SourceID != item.SecondSourceID || challenge.Segments[1].DurationMS != second.DurationMS {
 			return fmt.Errorf("temporal structure holdout contains an invalid compilation construction")
 		}
 		if _, duplicate := seenCases[item.CaseID]; duplicate {
@@ -179,7 +181,8 @@ func validateTemporalStructureHoldoutProgrammeCuts(items []TemporalStructureHold
 		challenge, caseExists := cases[item.CaseID]
 		source, sourceExists := sources[item.SourceID]
 		patternID := item.SourceID + "\x00" + item.Pattern
-		if !caseExists || challenge.Unit != fillereval.UnitProgrammeExcerpt || !sourceExists || source.Provenance.Kind != TemporalStructureSourceProgrammeParent || source.DurationMS != item.ParentEndMS || len(challenge.Segments) != 1 || challenge.Segments[0].SourceID != item.SourceID || challenge.Segments[0].StartMS != item.StartMS || challenge.Segments[0].DurationMS != item.DurationMS || item.StartMS < 5_000 || item.StartMS+item.DurationMS > item.ParentEndMS-5_000 {
+		wantSlice := map[string]string{"near_parent_start": TemporalStructureSliceProgrammeNearStart, "near_parent_end": TemporalStructureSliceProgrammeNearEnd}[item.Pattern]
+		if !caseExists || challenge.Unit != fillereval.UnitProgrammeExcerpt || !sourceExists || source.Provenance.Kind != TemporalStructureSourceProgrammeParent || source.DurationMS != item.ParentEndMS || !slices.Equal(challenge.Slices, []string{wantSlice}) || len(challenge.Segments) != 1 || challenge.Segments[0].SourceID != item.SourceID || challenge.Segments[0].StartMS != item.StartMS || challenge.Segments[0].DurationMS != item.DurationMS || item.StartMS < 5_000 || item.StartMS+item.DurationMS > item.ParentEndMS-5_000 {
 			return fmt.Errorf("temporal structure holdout contains an invalid programme cut")
 		}
 		switch item.Pattern {
@@ -220,7 +223,8 @@ func validateTemporalStructureHoldoutProgrammeSpots(items []TemporalStructureHol
 		challenge, caseExists := cases[item.CaseID]
 		parent, parentExists := sources[item.ParentSourceID]
 		anchor, fillerExists := anchors[item.FillerSourceID]
-		if !caseExists || challenge.Unit != fillereval.UnitProgrammeSpots || !parentExists || parent.Provenance.Kind != TemporalStructureSourceProgrammeParent || !fillerExists || len(challenge.Segments) != 3 || item.ParentDurationMS != parent.DurationMS || item.ProgrammePartMS != 20_000 || item.FillerDurationMS != anchor.DurationMS || item.FillerRole != anchor.Role || challenge.Segments[0] != (TemporalStructureChallengeSegment{SourceID: parent.ID, StartMS: item.BeforeSourceStartMS, DurationMS: item.ProgrammePartMS}) || challenge.Segments[1] != (TemporalStructureChallengeSegment{SourceID: anchor.SourceID, DurationMS: anchor.DurationMS}) || challenge.Segments[2] != (TemporalStructureChallengeSegment{SourceID: parent.ID, StartMS: item.AfterSourceStartMS, DurationMS: item.ProgrammePartMS}) {
+		wantSlice := map[string]string{"early_insert": TemporalStructureSliceSpotEarly, "late_insert": TemporalStructureSliceSpotLate}[item.Pattern]
+		if !caseExists || challenge.Unit != fillereval.UnitProgrammeSpots || !parentExists || parent.Provenance.Kind != TemporalStructureSourceProgrammeParent || !fillerExists || !slices.Equal(challenge.Slices, []string{wantSlice}) || len(challenge.Segments) != 3 || item.ParentDurationMS != parent.DurationMS || item.ProgrammePartMS != 20_000 || item.FillerDurationMS != anchor.DurationMS || item.FillerRole != anchor.Role || challenge.Segments[0] != (TemporalStructureChallengeSegment{SourceID: parent.ID, StartMS: item.BeforeSourceStartMS, DurationMS: item.ProgrammePartMS}) || challenge.Segments[1] != (TemporalStructureChallengeSegment{SourceID: anchor.SourceID, DurationMS: anchor.DurationMS}) || challenge.Segments[2] != (TemporalStructureChallengeSegment{SourceID: parent.ID, StartMS: item.AfterSourceStartMS, DurationMS: item.ProgrammePartMS}) {
 			return fmt.Errorf("temporal structure holdout contains an invalid programme-with-spots construction")
 		}
 		switch item.Pattern {

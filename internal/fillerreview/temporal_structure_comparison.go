@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	TemporalStructureComparisonSchemaVersion   = 3
-	TemporalStructureComparisonContractVersion = "filler-temporal-structure-comparison-v3"
+	TemporalStructureComparisonSchemaVersion   = 4
+	TemporalStructureComparisonContractVersion = "filler-temporal-structure-comparison-v4"
 	TemporalStructureNearBoundaryMS            = 2_000
 	TemporalStructureBroadBoundaryMS           = 5_000
 )
@@ -38,6 +38,7 @@ type TemporalStructureComparisonReport struct {
 	Assessors                  []TemporalStructureAssessorReference   `json:"assessors"`
 	AssessorSummaries          []TemporalStructureAssessorSummary     `json:"assessorSummaries"`
 	ConstructionSummaries      []TemporalStructureConstructionSummary `json:"constructionSummaries"`
+	SliceSummaries             []TemporalStructureConstructionSummary `json:"sliceSummaries,omitempty"`
 	PairSummaries              []TemporalStructurePairSummary         `json:"pairSummaries"`
 	AllAssessorsExactCorrect   int                                    `json:"allAssessorsExactCorrect"`
 	CaseComparisons            []TemporalStructureCaseComparison      `json:"caseComparisons"`
@@ -78,7 +79,8 @@ type TemporalStructureAssessorSummary struct {
 
 type TemporalStructureConstructionSummary struct {
 	AssessorID             string                           `json:"assessorId"`
-	TruthUnit              fillereval.UnitKind              `json:"truthUnit"`
+	TruthUnit              fillereval.UnitKind              `json:"truthUnit,omitempty"`
+	Slice                  string                           `json:"slice,omitempty"`
 	Cases                  int                              `json:"cases"`
 	OperationalFailures    int                              `json:"operationalFailures"`
 	ExactUnitCorrect       int                              `json:"exactUnitCorrect"`
@@ -116,8 +118,9 @@ type TemporalStructurePairSummary struct {
 }
 
 type TemporalStructureTruthLabel struct {
-	Unit fillereval.UnitKind     `json:"unit"`
-	Role fillereval.TemporalRole `json:"role,omitempty"`
+	Unit   fillereval.UnitKind     `json:"unit"`
+	Role   fillereval.TemporalRole `json:"role,omitempty"`
+	Slices []string                `json:"slices,omitempty"`
 }
 
 type TemporalStructurePredictedLabel struct {
