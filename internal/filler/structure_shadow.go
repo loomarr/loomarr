@@ -12,6 +12,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/fillerstructure"
 )
 
 const (
@@ -52,18 +54,19 @@ type StructureSplitShadowOutcome struct {
 // StructureSplitShadowDecision preserves both decisions after the proposal is consumed. SHA256
 // addresses the canonical record with ID and SHA256 empty; ID is derived from that digest.
 type StructureSplitShadowDecision struct {
-	SchemaVersion    int                         `json:"schemaVersion"`
-	ContractVersion  string                      `json:"contractVersion"`
-	ID               string                      `json:"id"`
-	ProposalID       string                      `json:"proposalId"`
-	ClipHash         string                      `json:"clipHash"`
-	SourceSHA256     string                      `json:"sourceSha256,omitempty"`
-	AssessmentSHA256 string                      `json:"assessmentSha256,omitempty"`
-	PolicyVersion    string                      `json:"policyVersion"`
-	Legacy           StructureSplitShadowOutcome `json:"legacy"`
-	Certified        StructureSplitShadowOutcome `json:"certified"`
-	ObservedAt       time.Time                   `json:"observedAt"`
-	SHA256           string                      `json:"sha256"`
+	SchemaVersion           int                         `json:"schemaVersion"`
+	ContractVersion         string                      `json:"contractVersion"`
+	ID                      string                      `json:"id"`
+	ProposalID              string                      `json:"proposalId"`
+	ClipHash                string                      `json:"clipHash"`
+	SourceSHA256            string                      `json:"sourceSha256,omitempty"`
+	AssessmentSHA256        string                      `json:"assessmentSha256,omitempty"`
+	StructureDecisionSHA256 string                      `json:"structureDecisionSha256,omitempty"`
+	PolicyVersion           string                      `json:"policyVersion"`
+	Legacy                  StructureSplitShadowOutcome `json:"legacy"`
+	Certified               StructureSplitShadowOutcome `json:"certified"`
+	ObservedAt              time.Time                   `json:"observedAt"`
+	SHA256                  string                      `json:"sha256"`
 }
 
 // StructureSplitShadow is the deep dual-evaluation module used during rollout.
@@ -140,7 +143,7 @@ func newStructureSplitShadowDecision(proposal SplitProposal, legacy, certified S
 		return StructureSplitShadowDecision{}, fmt.Errorf("certified structure split outcome: %w", err)
 	}
 	observedAt := proposal.CreatedAt.UTC()
-	sourceSHA, assessmentSHA := proposal.Source.SHA256, ""
+	sourceSHA, assessmentSHA, structureDecisionSHA := proposal.Source.SHA256, "", ""
 	if proposal.Structure != nil {
 		if err := ValidateSourceStructureAssessment(*proposal.Structure); err != nil || proposal.Structure.Source != proposal.Source {
 			return StructureSplitShadowDecision{}, fmt.Errorf("structure split shadow proposal assessment is invalid")
@@ -148,11 +151,24 @@ func newStructureSplitShadowDecision(proposal SplitProposal, legacy, certified S
 		assessmentSHA = proposal.Structure.SHA256
 		observedAt = proposal.Structure.AssessedAt.UTC()
 	}
+	if proposal.StructureDecision != nil {
+		artifact := *proposal.StructureDecision
+		if err := fillerstructure.ValidateArtifact(artifact); err != nil ||
+			artifact.Decision.Source.SHA256 != proposal.Source.SHA256 ||
+			artifact.Decision.Source.DurationMS != proposal.Source.DurationMs {
+			return StructureSplitShadowDecision{}, fmt.Errorf("structure split shadow proposal decision is invalid")
+		}
+		structureDecisionSHA = artifact.SHA256
+		if artifact.DecidedAt.After(observedAt) {
+			observedAt = artifact.DecidedAt
+		}
+	}
 	decision := StructureSplitShadowDecision{
 		SchemaVersion: StructureSplitShadowSchemaVersion, ContractVersion: StructureSplitShadowContractVersion,
 		ProposalID: proposal.ID, ClipHash: proposal.ClipHash, SourceSHA256: sourceSHA,
-		AssessmentSHA256: assessmentSHA, PolicyVersion: strings.TrimSpace(policyVersion),
-		Legacy: legacyOutcome, Certified: certifiedOutcome, ObservedAt: observedAt,
+		AssessmentSHA256: assessmentSHA, StructureDecisionSHA256: structureDecisionSHA,
+		PolicyVersion: strings.TrimSpace(policyVersion),
+		Legacy:        legacyOutcome, Certified: certifiedOutcome, ObservedAt: observedAt,
 	}
 	decision.SHA256 = StructureSplitShadowDecisionSHA256(decision)
 	decision.ID = "split-shadow-" + decision.SHA256
@@ -220,7 +236,9 @@ func ValidateStructureSplitShadowDecision(decision StructureSplitShadowDecision)
 	if decision.SchemaVersion != StructureSplitShadowSchemaVersion || decision.ContractVersion != StructureSplitShadowContractVersion || decision.ID == "" || decision.ProposalID == "" || decision.ClipHash == "" || strings.TrimSpace(decision.PolicyVersion) != decision.PolicyVersion || decision.PolicyVersion == "" || len(decision.PolicyVersion) > 128 || decision.ObservedAt.IsZero() || decision.ObservedAt != decision.ObservedAt.UTC() {
 		return fmt.Errorf("structure split shadow decision identity is invalid")
 	}
-	if decision.SourceSHA256 != "" && !isContentHash(decision.SourceSHA256) || decision.AssessmentSHA256 != "" && !isContentHash(decision.AssessmentSHA256) {
+	if decision.SourceSHA256 != "" && !isContentHash(decision.SourceSHA256) ||
+		decision.AssessmentSHA256 != "" && !isContentHash(decision.AssessmentSHA256) ||
+		decision.StructureDecisionSHA256 != "" && !isContentHash(decision.StructureDecisionSHA256) {
 		return fmt.Errorf("structure split shadow decision source or assessment digest is invalid")
 	}
 	if err := validateStructureSplitShadowOutcome(decision.Legacy); err != nil {

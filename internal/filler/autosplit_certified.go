@@ -72,6 +72,12 @@ func CertifiedAutoConfirmable(p SplitProposal, auto *AutoSplitPolicy, certificat
 	if len(segments) != 0 || len(keep) == 0 {
 		return certifiedSplitReject(p.Segments, RejectStructureMismatch)
 	}
+	if p.StructureDecision == nil {
+		return SplitPartition{Reject: RejectStructureUncertified, Hold: keep, Discard: discard}
+	}
+	if ValidateStructureDecisionProjection(assessment, *p.StructureDecision) != nil {
+		return SplitPartition{Reject: RejectStructureMismatch, Hold: keep, Discard: discard}
+	}
 	if certification == nil || certification.AssessmentCertified == nil || !certification.AssessmentCertified(assessment) {
 		return SplitPartition{Reject: RejectStructureUncertified, Hold: keep, Discard: discard}
 	}

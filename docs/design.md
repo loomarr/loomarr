@@ -4585,6 +4585,10 @@ reproduces the decision byte-for-byte when validated. The proposal document bind
 media digest and duration to its exact retained source. An invalid, drifted, missing, or held artifact
 cannot certify the heuristic assessment; a later certification authority must verify its declared
 assessor slices rather than replacing those durable identities with a boolean callback.
+The complete-plan gate independently checks that a confirmed artifact and the proposal assessment
+name the same source unit and the same exhaustive ordered spans, roles, and filler/non-filler
+dispositions. A certification callback therefore cannot turn a detector-only plan into model
+agreement or approve a projection whose programme spans became filler children.
 
 Suitability screening is repeated over every freshly rendered structure case because concatenation
 and excerpt construction create new viewing contexts. A prohibited signal in any derivative is a

@@ -1,8 +1,11 @@
 package filler
 
 import (
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/fillerstructure"
 )
 
 func certifiedAutoPolicy() *AutoSplitPolicy {
@@ -34,6 +37,42 @@ func passingSegmentScreening(t *testing.T, source SplitSourceAsset, startMs, end
 	return &evidence
 }
 
+func passingStructureDecision(t *testing.T, assessment SourceStructureAssessment) *fillerstructure.Artifact {
+	t.Helper()
+	unit := fillerstructure.UnitCompilation
+	if assessment.Kind == StructureProgrammeSpots {
+		unit = fillerstructure.UnitProgrammeSpots
+	}
+	source := fillerstructure.Source{SHA256: assessment.Source.SHA256, DurationMS: assessment.DurationMs}
+	segments := make([]fillerstructure.Segment, 0, len(assessment.Plan))
+	for _, planned := range assessment.Plan {
+		segments = append(segments, fillerstructure.Segment{
+			StartMS: planned.StartMs, EndMS: planned.EndMs, Role: fillerstructure.Role(planned.Role),
+		})
+	}
+	candidate := func(id, family, digest string) fillerstructure.Candidate {
+		return fillerstructure.Candidate{
+			Source: source,
+			Assessor: fillerstructure.Assessor{
+				ID: id, ModelFamily: family, Provider: "fixture-provider", Model: "fixture-model",
+				ModelDigest: strings.Repeat("b", 64), PromptVersion: "prompt-v1",
+				AssessmentSHA256: strings.Repeat(digest, 64),
+			},
+			Unit: unit, Segments: segments,
+		}
+	}
+	artifact, err := fillerstructure.NewArtifact(fillerstructure.Request{
+		Source: source, BoundaryToleranceMS: 2_000,
+		Candidates: []fillerstructure.Candidate{
+			candidate("assessor-a", "family-a", "1"), candidate("assessor-b", "family-b", "2"),
+		},
+	}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &artifact
+}
+
 func certifiedStructureProposal(t *testing.T) SplitProposal {
 	t.Helper()
 	observations := []StructureObservation{
@@ -53,7 +92,10 @@ func certifiedStructureProposal(t *testing.T) SplitProposal {
 	for index := range segments {
 		segments[index].Screening = passingSegmentScreening(t, assessment.Source, segments[index].StartMs, segments[index].EndMs)
 	}
-	return SplitProposal{Source: assessment.Source, Structure: &assessment, Segments: segments}
+	return SplitProposal{
+		Source: assessment.Source, Structure: &assessment,
+		StructureDecision: passingStructureDecision(t, assessment), Segments: segments,
+	}
 }
 
 func TestCertifiedAutoConfirmableRequiresCompleteCertifiedScreenedPlan(t *testing.T) {
@@ -69,6 +111,7 @@ func TestCertifiedAutoConfirmableRequiresCompleteCertifiedScreenedPlan(t *testin
 		want   AutoSplitReject
 	}{
 		{name: "missing assessment", mutate: func(p *SplitProposal, _ *StructureCertificationPolicy) { p.Structure = nil }, want: RejectStructureMissing},
+		{name: "missing structure decision", mutate: func(p *SplitProposal, _ *StructureCertificationPolicy) { p.StructureDecision = nil }, want: RejectStructureUncertified},
 		{name: "uncertified slice", mutate: func(_ *SplitProposal, c *StructureCertificationPolicy) {
 			c.AssessmentCertified = func(SourceStructureAssessment) bool { return false }
 		}, want: RejectStructureUncertified},
@@ -128,6 +171,7 @@ func TestCertifiedAutoConfirmableSeparatesProgrammeDiscardFromFiller(t *testing.
 		{StartMs: 20_000, EndMs: 50_000, Category: "toys", BoundaryConfidence: 90},
 		{StartMs: 50_000, EndMs: 70_000, BoundaryConfidence: 90},
 	}}
+	proposal.StructureDecision = passingStructureDecision(t, assessment)
 	proposal.Segments[1].Screening = passingSegmentScreening(t, assessment.Source, 20_000, 50_000)
 	partition := CertifiedAutoConfirmable(proposal, certifiedAutoPolicy(), allowCertifiedStructure(), 10*time.Second)
 	if partition.Reject != AutoSplitOK || len(partition.Confirm) != 1 || partition.Confirm[0].StartMs != 20_000 || len(partition.Discard) != 2 || len(partition.Hold) != 0 {

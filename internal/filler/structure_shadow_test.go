@@ -52,7 +52,11 @@ func TestStructureSplitShadowPersistsCompatibilityAndCompletePlanDecisions(t *te
 	if len(record.Certified.Confirm) != 0 || len(record.Certified.Hold) != 2 || record.Certified.Verdict != RejectStructureUncertified {
 		t.Fatalf("certified outcome = %+v", record.Certified)
 	}
-	if record.AssessmentSHA256 != proposal.Structure.SHA256 || record.SourceSHA256 != proposal.Source.SHA256 || record.ObservedAt != proposal.Structure.AssessedAt || ValidateStructureSplitShadowDecision(record) != nil {
+	wantObservedAt := proposal.Structure.AssessedAt
+	if proposal.StructureDecision.DecidedAt.After(wantObservedAt) {
+		wantObservedAt = proposal.StructureDecision.DecidedAt
+	}
+	if record.AssessmentSHA256 != proposal.Structure.SHA256 || record.StructureDecisionSHA256 != proposal.StructureDecision.SHA256 || record.SourceSHA256 != proposal.Source.SHA256 || record.ObservedAt != wantObservedAt || ValidateStructureSplitShadowDecision(record) != nil {
 		t.Fatalf("record = %+v", record)
 	}
 	if err := shadow.ObserveStructureSplit(t.Context(), proposal, legacy); err != nil {
