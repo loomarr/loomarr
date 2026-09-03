@@ -43,7 +43,8 @@ func Certify(suite Suite, results []CaseResult, certifiedAt time.Time) (Report, 
 		SchemaVersion: ReportSchemaVersion, ContractVersion: ReportContractVersion,
 		CertifiedAt: certifiedAt, SuiteSHA256: suite.SHA256,
 		ReducerVersion: fillerstructure.ReducerContractVersion, BoundaryToleranceMS: BoundaryToleranceMS,
-		Cases: len(suite.Cases), TrainingAllowed: false, AutomaticMaterializationAllowed: false,
+		HighByteMinimumBytes: suite.HighByteMinimumBytes,
+		Cases:                len(suite.Cases), TrainingAllowed: false, AutomaticMaterializationAllowed: false,
 	}
 	resultByID := make(map[string]CaseResult, len(results))
 	for _, result := range results {

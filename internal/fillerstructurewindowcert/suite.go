@@ -15,8 +15,9 @@ func NewSuite(cases []Case) (Suite, error) {
 		SchemaVersion: SuiteSchemaVersion, ContractVersion: SuiteContractVersion,
 		BoundaryToleranceMS: BoundaryToleranceMS, Cases: cloneCases(cases),
 	}
+	suite.HighByteMinimumBytes = highByteMinimum(suite.Cases)
 	for index := range suite.Cases {
-		derived, err := caseSlices(suite.Cases[index])
+		derived, err := caseSlices(suite.Cases[index], suite.HighByteMinimumBytes)
 		if err != nil {
 			return Suite{}, err
 		}
@@ -29,7 +30,8 @@ func NewSuite(cases []Case) (Suite, error) {
 func ValidateSuite(suite Suite) error {
 	if suite.SchemaVersion != SuiteSchemaVersion || suite.ContractVersion != SuiteContractVersion ||
 		suite.BoundaryToleranceMS != BoundaryToleranceMS || !validDigest(suite.SHA256) ||
-		suite.SHA256 != SuiteSHA256(suite) || len(suite.Cases) == 0 {
+		suite.SHA256 != SuiteSHA256(suite) || len(suite.Cases) < MinimumSliceCases ||
+		suite.HighByteMinimumBytes <= 0 || suite.HighByteMinimumBytes != highByteMinimum(suite.Cases) {
 		return errors.New("window certification suite identity is invalid")
 	}
 	counts := make(map[Slice]int, len(requiredSlices))
@@ -50,7 +52,7 @@ func ValidateSuite(suite Suite) error {
 		if !completeTimeline(item.Truth, item.MediaSet.Plan.Source.DurationMS) {
 			return errors.New("window certification truth is incomplete")
 		}
-		wantSlices, err := caseSlices(item)
+		wantSlices, err := caseSlices(item, suite.HighByteMinimumBytes)
 		if err != nil || !slices.Equal(item.Slices, wantSlices) {
 			return errors.New("window certification case slices do not reproduce")
 		}
@@ -66,7 +68,7 @@ func ValidateSuite(suite Suite) error {
 	return nil
 }
 
-func caseSlices(item Case) ([]Slice, error) {
+func caseSlices(item Case, highByteMinimumBytes int64) ([]Slice, error) {
 	found := make(map[Slice]struct{}, len(requiredSlices))
 	plan := item.MediaSet.Plan
 	for _, seamWindow := range plan.Windows[1:] {
@@ -96,9 +98,8 @@ func caseSlices(item Case) ([]Slice, error) {
 			found[SliceProgrammeFiller] = struct{}{}
 		}
 	}
-	threshold := plan.Profile.MaximumWindowBytes * HighByteThresholdPPM / 1_000_000
 	for _, media := range item.MediaSet.Windows {
-		if media.Media.Bytes >= threshold {
+		if media.Media.Bytes >= highByteMinimumBytes {
 			found[SliceHighByteWindow] = struct{}{}
 		}
 	}
@@ -132,6 +133,29 @@ func caseSlices(item Case) ([]Slice, error) {
 		}
 	}
 	return result, nil
+}
+
+func highByteMinimum(cases []Case) int64 {
+	if len(cases) < MinimumSliceCases {
+		return 0
+	}
+	maximums := make([]int64, len(cases))
+	for index, item := range cases {
+		for _, media := range item.MediaSet.Windows {
+			maximums[index] = max(maximums[index], media.Media.Bytes)
+		}
+	}
+	slices.SortFunc(maximums, func(left, right int64) int {
+		switch {
+		case left > right:
+			return -1
+		case left < right:
+			return 1
+		default:
+			return 0
+		}
+	})
+	return maximums[MinimumSliceCases-1]
 }
 
 func completeTimeline(segments []fillerstructure.Segment, durationMS int64) bool {

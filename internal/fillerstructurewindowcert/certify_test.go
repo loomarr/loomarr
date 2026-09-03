@@ -132,7 +132,7 @@ func certificationMediaSet(t *testing.T, seed int) fillerstructurewindow.MediaSe
 	for ordinal, window := range plan.Windows {
 		media[ordinal] = fillerstructure.AssessmentMedia{
 			SHA256:        fixtureDigest(1000 + seed*10 + ordinal),
-			Bytes:         plan.Profile.MaximumWindowBytes * HighByteThresholdPPM / 1_000_000,
+			Bytes:         int64(20<<20) + int64(seed*1000+ordinal),
 			DurationMS:    window.MediaEndMS - window.MediaStartMS,
 			ProfileSHA256: plan.Profile.AssessmentMediaProfileSHA256,
 			LineageSHA256: fixtureDigest(2000 + seed*10 + ordinal),

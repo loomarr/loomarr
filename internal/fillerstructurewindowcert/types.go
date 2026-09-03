@@ -20,9 +20,8 @@ const (
 	ReportSchemaVersion   = 1
 	ReportContractVersion = "filler-structure-window-certification-report-v1"
 
-	BoundaryToleranceMS  int64 = 2_000
-	MinimumSliceCases          = 6
-	HighByteThresholdPPM       = 750_000
+	BoundaryToleranceMS int64 = 2_000
+	MinimumSliceCases         = 6
 
 	WordlessEvidenceContract = "filler-structure-wordless-boundary-evidence-v1"
 	MotionEvidenceContract   = "filler-structure-window-motion-evidence-v1"
@@ -76,11 +75,12 @@ type Case struct {
 }
 
 type Suite struct {
-	SchemaVersion       int    `json:"schemaVersion"`
-	ContractVersion     string `json:"contractVersion"`
-	BoundaryToleranceMS int64  `json:"boundaryToleranceMs"`
-	Cases               []Case `json:"cases"`
-	SHA256              string `json:"sha256"`
+	SchemaVersion        int    `json:"schemaVersion"`
+	ContractVersion      string `json:"contractVersion"`
+	BoundaryToleranceMS  int64  `json:"boundaryToleranceMs"`
+	HighByteMinimumBytes int64  `json:"highByteMinimumBytes"`
+	Cases                []Case `json:"cases"`
+	SHA256               string `json:"sha256"`
 }
 
 type CaseResult struct {
@@ -105,6 +105,7 @@ type Report struct {
 	SuiteSHA256                     string                            `json:"suiteSha256"`
 	ReducerVersion                  string                            `json:"reducerVersion"`
 	BoundaryToleranceMS             int64                             `json:"boundaryToleranceMs"`
+	HighByteMinimumBytes            int64                             `json:"highByteMinimumBytes"`
 	AssessorProfiles                []fillerstructure.AssessorProfile `json:"assessorProfiles"`
 	Cases                           int                               `json:"cases"`
 	DecidedCases                    int                               `json:"decidedCases"`

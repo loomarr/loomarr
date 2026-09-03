@@ -4763,8 +4763,10 @@ seam traits. Non-geometric traits such as a wordless join or high-motion window 
 independent measured-evidence digest; a coordinator declaration alone does not prove them. The suite
 must contain at least six cases in each predeclared slice: a boundary in shared overlap, immediately
 left and immediately right of primary ownership seams, an adjacent same-role join, one unit crossing
-a seam, a programme/filler join, a wordless join, a high-motion window, and a window at or above 75%
-of the protocol byte ceiling. Exactly two locked, distinct assessor families supply complete persisted
+a seam, a programme/filler join, a wordless join, a high-motion window, and the six largest
+successfully encoded windows in the fixed corpus. The suite records and reproduces the resulting
+minimum high-byte threshold; separately constructed over-ceiling cases must hold before inference
+rather than being mislabeled as successful stress cases. Exactly two locked, distinct assessor families supply complete persisted
 stitches for every case. The certification judge replays each stitch, scores each family independently
 against private truth, then feeds the same two source-level candidates through `fillerstructure.Reduce`
 and scores that confirmed decision too. Any missing case or stitch, held family, operational failure,
