@@ -156,6 +156,12 @@ The atomically created mode-`0700` output contains private mode-`0600` files:
 - per-case `provenance.json` and `rights.json` containing exact private
   transformation and consent evidence.
 
+Each `rights.json` uses the distinct
+`filler-spoken-known-script-rights-v1` envelope; the nested participant grant
+retains `filler-spoken-participant-consent-v1`. Keeping those identities
+separate lets a hosted reviewer recognize the package without confusing a raw
+consent record for review authorization.
+
 ```bash
 go run ./cmd/filler-spoken-known-script-prepare \
   --authority /private/spoken-positive/authority.json \

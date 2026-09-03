@@ -35,7 +35,7 @@ checkpoint directory, and output file.
 
 Before any local media tool, checkpoint write, charge reservation, or HTTP
 request, the reviewer reopens each rights document. The corpus module
-recognizes its own known-script rights contract, strictly decodes it, and
+recognizes the `filler-spoken-known-script-rights-v1` envelope, strictly decodes it, and
 revalidates the participant binding, complete hosted-evaluation grant,
 expiry/withdrawal state, processor schedule, and any time-sensitive asset
 rights at the review time. It authorizes only an exact match for the review

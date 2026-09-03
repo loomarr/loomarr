@@ -4651,7 +4651,7 @@ separate plan, reviewer identity, checkpoint, and model family; the operation ne
 
 For each case the module first reopens and hashes the source, draft, worklist, policy, and evidence bindings,
 then asks the rights owner to authorize the exact hosted processor before any media tool, checkpoint creation,
-HTTP request, or spend reservation. A rights document bearing the known-script consent contract is strictly
+HTTP request, or spend reservation. A rights document bearing the known-script rights-envelope contract is strictly
 decoded inside the corpus module; its participant binding, grants, expiry/withdrawal state, processor schedule,
 and time-sensitive asset rights are revalidated at review time. Authorization requires an exact match on the
 OpenRouter HTTPS base URL, requested and resolved model, upstream provider name and slug, and ZDR. A malformed
