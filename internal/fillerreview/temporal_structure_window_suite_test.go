@@ -89,6 +89,9 @@ func TestParseTemporalStructureWindowMicrolumaIsExactAndBounded(t *testing.T) {
 		{value: "3.05962", want: 3_059_620},
 		{value: "0.0428834", want: 42_883},
 		{value: "0.0428836", want: 42_884},
+		{value: "3.76157e-05", want: 38},
+		{value: "5.78704e-06", want: 6},
+		{value: "6.07639E-05", want: 61},
 		{value: "255.000000", want: 255_000_000},
 	} {
 		got, err := parseTemporalStructureWindowMicroluma(test.value)
@@ -96,7 +99,7 @@ func TestParseTemporalStructureWindowMicrolumaIsExactAndBounded(t *testing.T) {
 			t.Fatalf("parse %q = %d, %v; want %d", test.value, got, err, test.want)
 		}
 	}
-	for _, value := range []string{"", "-1", "+1", "256", "1.nope", "1.2.3"} {
+	for _, value := range []string{"", "-1", "+1", "256", "1.nope", "1.2.3", "1e", "1e+", "1e1e1", "2.56e2"} {
 		if _, err := parseTemporalStructureWindowMicroluma(value); err == nil {
 			t.Fatalf("invalid microluma %q accepted", value)
 		}

@@ -114,36 +114,72 @@ func parseTemporalStructureWindowMicroluma(value string) (int64, error) {
 	if value == "" || strings.HasPrefix(value, "-") || strings.HasPrefix(value, "+") {
 		return 0, errors.New("ffmpeg motion emitted invalid luma delta")
 	}
-	parts := strings.Split(value, ".")
-	if len(parts) > 2 || parts[0] == "" {
-		return 0, errors.New("ffmpeg motion emitted invalid luma delta")
+	mantissa, exponent := value, 0
+	if marker := strings.IndexAny(value, "eE"); marker >= 0 {
+		if strings.IndexAny(value[marker+1:], "eE") >= 0 {
+			return 0, errors.New("ffmpeg motion emitted invalid luma delta")
+		}
+		mantissa = value[:marker]
+		parsed, err := strconv.ParseInt(value[marker+1:], 10, 32)
+		if err != nil {
+			return 0, errors.New("ffmpeg motion emitted invalid luma delta")
+		}
+		exponent = int(parsed)
 	}
-	whole, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil || whole < 0 || whole > 255 {
+	parts := strings.Split(mantissa, ".")
+	if len(parts) > 2 || parts[0] == "" {
 		return 0, errors.New("ffmpeg motion emitted invalid luma delta")
 	}
 	fraction := ""
 	if len(parts) == 2 {
 		fraction = parts[1]
 	}
-	for _, char := range fraction {
+	digits := parts[0] + fraction
+	for _, char := range digits {
 		if char < '0' || char > '9' {
 			return 0, errors.New("ffmpeg motion emitted invalid luma delta")
 		}
 	}
-	padded := fraction + "0000000"
-	micro, err := strconv.ParseInt(padded[:6], 10, 64)
-	if err != nil {
+	digits = strings.TrimLeft(digits, "0")
+	if digits == "" {
+		return 0, nil
+	}
+
+	// Scale the decimal text to millionths without a floating-point round trip. FFmpeg uses
+	// scientific notation for very small deltas, and those values still need deterministic
+	// half-up rounding into the signed artifact format.
+	power := exponent - len(fraction) + 6
+	maximum := strconv.FormatInt(255*TemporalStructureWindowMotionScale, 10)
+	var scaled int64
+	if power >= 0 {
+		if power > len(maximum) || len(digits)+power > len(maximum) {
+			return 0, errors.New("ffmpeg motion emitted invalid luma delta")
+		}
+		parsed, err := strconv.ParseInt(digits+strings.Repeat("0", power), 10, 64)
+		if err != nil {
+			return 0, errors.New("ffmpeg motion emitted invalid luma delta")
+		}
+		scaled = parsed
+	} else {
+		cut := len(digits) + power
+		if cut > len(maximum) {
+			return 0, errors.New("ffmpeg motion emitted invalid luma delta")
+		}
+		if cut > 0 {
+			parsed, err := strconv.ParseInt(digits[:cut], 10, 64)
+			if err != nil {
+				return 0, errors.New("ffmpeg motion emitted invalid luma delta")
+			}
+			scaled = parsed
+		}
+		if cut >= 0 && cut < len(digits) && digits[cut] >= '5' {
+			scaled++
+		}
+	}
+	if scaled > 255*TemporalStructureWindowMotionScale {
 		return 0, errors.New("ffmpeg motion emitted invalid luma delta")
 	}
-	if len(fraction) > 6 && padded[6] >= '5' {
-		micro++
-	}
-	result := whole*TemporalStructureWindowMotionScale + micro
-	if result > 255*TemporalStructureWindowMotionScale {
-		return 0, errors.New("ffmpeg motion emitted invalid luma delta")
-	}
-	return result, nil
+	return scaled, nil
 }
 
 var _ TemporalStructureWindowMotionMeasurer = (*FFmpegTemporalStructureWindowMotionMeasurer)(nil)
