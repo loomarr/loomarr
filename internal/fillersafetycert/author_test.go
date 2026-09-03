@@ -1,0 +1,119 @@
+package fillersafetycert
+
+import (
+	"os"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestBuildAuthorityPublishesOpaqueVerifiedAuthority(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthorityBuildFixture(t)
+
+	result, err := BuildAuthority(t.Context(), fixture.config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authority, raw, err := readPrivateJSON[Authority](fixture.outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Cases != len(fixture.draft.Cases) || result.PositiveFamilies != MinimumPositiveFamilies ||
+		result.CleanFamilies != MinimumCleanFamilies || result.AuthoritySHA256 != hashBytes(raw) ||
+		authority.CorpusManifestSHA256 != fixture.first.DraftSHA256 || len(authority.Cases) != result.Cases {
+		t.Fatalf("result=%+v authority=%+v", result, authority)
+	}
+	text := string(raw)
+	for _, private := range []string{"case-001", "speaker-001", "sources/", "reviewer-one", "truth.bin", "rights.bin"} {
+		if strings.Contains(text, private) {
+			t.Fatalf("authority leaked private value %q", private)
+		}
+	}
+	info, err := os.Stat(fixture.outputPath)
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("output info=%v err=%v", info, err)
+	}
+}
+
+func TestBuildAuthorityIsByteReproducible(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthorityBuildFixture(t)
+	secondOutput := fixture.root + "/authority-second.json"
+
+	first, err := BuildAuthority(t.Context(), fixture.config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondConfig := fixture.config
+	secondConfig.OutputPath = secondOutput
+	second, err := BuildAuthority(t.Context(), secondConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstRaw, firstErr := os.ReadFile(fixture.outputPath)
+	secondRaw, secondErr := os.ReadFile(secondOutput)
+	if firstErr != nil || secondErr != nil || first.AuthoritySHA256 != second.AuthoritySHA256 || string(firstRaw) != string(secondRaw) {
+		t.Fatalf("first=%+v second=%+v read_errs=%v/%v", first, second, firstErr, secondErr)
+	}
+}
+
+func TestBuildAuthorityRejectsChangedSourceBytesWithoutPublishing(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthorityBuildFixture(t)
+	path := fixture.root + "/" + fixture.draft.Cases[0].SourcePath
+	if err := os.WriteFile(path, []byte("changed"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := BuildAuthority(t.Context(), fixture.config); err == nil || !strings.Contains(err.Error(), "source bytes") {
+		t.Fatalf("err=%v", err)
+	}
+	if _, err := os.Stat(fixture.outputPath); !os.IsNotExist(err) {
+		t.Fatalf("output exists after failure: %v", err)
+	}
+}
+
+func TestBuildAuthorityUsesAdjudicationOnlyForDisagreement(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthorityBuildFixture(t)
+	fixture.first.Assessments[0].Decision = LabelClean
+	fixture.first.Assessments[0].PositiveIntervals = nil
+	fixture.adjudicator = AuthorityReview{
+		SchemaVersion: AuthorityReviewSchemaVersion, ContractVersion: AuthorityReviewContractVersion,
+		ReviewerID: "reviewer-three", Role: ReviewerAdjudicator, Method: ReviewerHuman,
+		SubmittedAt: fixture.config.AuthoredAt.Add(-time.Minute),
+		Assessments: []ReviewAssessment{{
+			CaseID: fixture.draft.Cases[0].CaseID, Decision: LabelPositive,
+			PositiveIntervals: append([]PositiveInterval(nil), fixture.draft.Cases[0].PositiveIntervals...),
+		}},
+	}
+	fixture.config.AdjudicatorPath = fixture.adjudicatorPath
+	fixture.rewrite(t)
+
+	if _, err := BuildAuthority(t.Context(), fixture.config); err != nil {
+		t.Fatal(err)
+	}
+	authority, _, err := readPrivateJSON[Authority](fixture.outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alias := opaqueID([]byte("0123456789abcdef0123456789abcdef"), "case", fixture.draft.Cases[0].CaseID, "sc-")
+	for _, item := range authority.Cases {
+		if item.Alias == alias && len(item.Reviewers) != 3 {
+			t.Fatalf("disputed case reviewers=%+v", item.Reviewers)
+		}
+	}
+}
+
+func TestBuildAuthorityRejectsRepeatedModelReviewerFamily(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthorityBuildFixture(t)
+	fixture.first.Method, fixture.second.Method = ReviewerModel, ReviewerModel
+	fixture.first.ModelFamily, fixture.second.ModelFamily = "review-model-family", "review-model-family"
+	fixture.rewrite(t)
+
+	if _, err := BuildAuthority(t.Context(), fixture.config); err == nil || !strings.Contains(err.Error(), "families are not independent") {
+		t.Fatalf("err=%v", err)
+	}
+}

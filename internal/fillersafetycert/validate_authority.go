@@ -97,9 +97,9 @@ func validateAuthorityCases(cases []AuthorityCase, excludedFamilies map[string]s
 			return fmt.Errorf("case label is invalid")
 		}
 	}
-	if positiveFamilies < MinimumPositiveFamilies || cleanSources == 0 ||
+	if positiveFamilies < MinimumPositiveFamilies || cleanSources < MinimumCleanFamilies ||
 		!coversExactly(positiveSlices, requiredPositiveSlices()) || !coversExactly(cleanSlices, requiredCleanSlices()) {
-		return fmt.Errorf("authority requires at least %d positive families, clean sources, and complete declared slice coverage", MinimumPositiveFamilies)
+		return fmt.Errorf("authority requires at least %d positive families, at least %d clean families, and complete declared slice coverage", MinimumPositiveFamilies, MinimumCleanFamilies)
 	}
 	return nil
 }
@@ -108,7 +108,13 @@ func validateReviewers(item AuthorityCase, excludedFamilies, attestations map[st
 	if len(item.Reviewers) < 2 || len(item.Reviewers) > 3 {
 		return fmt.Errorf("two primary reviewers and at most one adjudicator are required")
 	}
+	if item.Reviewers[0].Role != ReviewerPrimary || item.Reviewers[1].Role != ReviewerPrimary ||
+		item.Reviewers[0].ReviewerID >= item.Reviewers[1].ReviewerID ||
+		(len(item.Reviewers) == 3 && item.Reviewers[2].Role != ReviewerAdjudicator) {
+		return fmt.Errorf("reviewers are not in canonical primary/adjudicator order")
+	}
 	ids := map[string]struct{}{}
+	modelFamilies := map[string]struct{}{}
 	primary := make([]string, 0, 2)
 	adjudicator := ""
 	for _, reviewer := range item.Reviewers {
@@ -135,6 +141,10 @@ func validateReviewers(item AuthorityCase, excludedFamilies, attestations map[st
 			if _, excluded := excludedFamilies[reviewer.ModelFamily]; excluded {
 				return fmt.Errorf("model reviewer is not family-independent")
 			}
+			if _, repeated := modelFamilies[reviewer.ModelFamily]; repeated {
+				return fmt.Errorf("model reviewer families are not independent")
+			}
+			modelFamilies[reviewer.ModelFamily] = struct{}{}
 		default:
 			return fmt.Errorf("reviewer method is invalid")
 		}

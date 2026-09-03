@@ -14,7 +14,7 @@ import (
 
 const (
 	// SourceAuthoritySchemaVersion identifies the immutable complete-source contract.
-	SourceAuthoritySchemaVersion = 1
+	SourceAuthoritySchemaVersion = 2
 	maxAuthorityIDBytes          = 128
 )
 
@@ -25,8 +25,9 @@ type ToolIdentity struct {
 	BinarySHA256 string `json:"binarySha256"`
 }
 
-// SourceAuthority is the path-independent identity and measured coverage of
-// one complete filler source.
+// SourceAuthority is the certification-independent, path-independent identity
+// and measured coverage of one complete filler source. A caller joins it to a
+// certification authority in EvaluationRequest, avoiding a circular digest.
 type SourceAuthority struct {
 	SchemaVersion  int          `json:"schemaVersion"`
 	PolicySHA256   string       `json:"policySha256"`
@@ -84,6 +85,15 @@ func sourceAuthoritySHA256(authority SourceAuthority) (string, error) {
 	}
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:]), nil
+}
+
+// SourceAuthoritySHA256 validates and hashes the complete path-independent
+// source identity so a certification authority can bind it before evaluation.
+func SourceAuthoritySHA256(authority SourceAuthority) (string, error) {
+	if err := validateSourceAuthority(authority); err != nil {
+		return "", err
+	}
+	return sourceAuthoritySHA256(authority)
 }
 
 func validToolIdentity(identity ToolIdentity) bool {

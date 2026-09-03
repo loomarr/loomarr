@@ -48,6 +48,7 @@ const (
 	SliceTargetLocale          = "target_locale"
 
 	MinimumPositiveFamilies = 59
+	MinimumCleanFamilies    = 100
 	MaximumCleanFPRate      = 0.01
 	NextAction              = "retain_non_authorizing_evidence_and_run_remaining_safety_lanes"
 )

@@ -37,8 +37,9 @@ func newCertificationFixture(t *testing.T) *certificationFixture {
 	for index := range MinimumPositiveFamilies {
 		authority.Cases = append(authority.Cases, fixtureAuthorityCase(index, LabelPositive, []string{positiveSlices[index%len(positiveSlices)]}))
 	}
-	for index, slice := range requiredCleanSlices() {
-		authority.Cases = append(authority.Cases, fixtureAuthorityCase(MinimumPositiveFamilies+index, LabelClean, []string{slice}))
+	cleanSlices := requiredCleanSlices()
+	for index := range MinimumCleanFamilies {
+		authority.Cases = append(authority.Cases, fixtureAuthorityCase(MinimumPositiveFamilies+index, LabelClean, []string{cleanSlices[index%len(cleanSlices)]}))
 	}
 	fixture := &certificationFixture{
 		authorityPath: filepath.Join(directory, "authority.json"),
